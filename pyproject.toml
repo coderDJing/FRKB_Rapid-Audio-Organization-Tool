@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "better-music-library"
+version = "0.1.0"
+description = ""
+authors = ["coderDJing <tongrenlu@foxmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+numpy = "^1.26.4"
+librosa = "^0.10.2.post1"
+matplotlib = "^3.9.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
