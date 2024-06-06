@@ -1,5 +1,6 @@
 from datetime import datetime
 import os
+import hashlib
 
 
 # 获取当前时间（用于日志文件命名）
@@ -54,3 +55,24 @@ def find_audio_files(directory, extensions):
             if any(file.lower().endswith(ext) for ext in extensions):
                 audio_files.append(os.path.join(root, file))
     return audio_files
+
+
+def numpy_array_to_md5(arr):
+    # 将NumPy数组转换为字符串
+    arr_str = " ".join(map(str, arr.flatten()))
+
+    # 将字符串编码为字节流
+    arr_bytes = arr_str.encode("utf-8")
+
+    # 计算MD5哈希值
+    md5_hash = hashlib.md5(arr_bytes).hexdigest()
+
+    return md5_hash
+
+
+def delete_file(file_path):
+    try:
+        os.remove(file_path)
+        print(f"文件 {file_path} 已被删除")
+    except OSError as e:
+        print(f"删除文件时出错: {file_path} - {e.strerror}")
