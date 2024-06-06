@@ -1,5 +1,3 @@
-import hashlib
-
 import util
 import core
 
@@ -16,24 +14,11 @@ audio_paths = util.find_audio_files(search_directory, audio_extensions)
 myAudioList = []
 
 
-def numpy_array_to_md5(arr):
-    # 将NumPy数组转换为字符串
-    arr_str = " ".join(map(str, arr.flatten()))
-
-    # 将字符串编码为字节流
-    arr_bytes = arr_str.encode("utf-8")
-
-    # 计算MD5哈希值
-    md5_hash = hashlib.md5(arr_bytes).hexdigest()
-
-    return md5_hash
-
-
 for index, value in enumerate(audio_paths):
     myAudioList.append(
         {
             "path": value,
-            "fingerprintMd5": numpy_array_to_md5(
+            "fingerprintMd5": util.numpy_array_to_md5(
                 core.generate_audio_fingerprint(value)
             ),
         }
