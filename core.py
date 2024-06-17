@@ -15,3 +15,14 @@ def generate_audio_fingerprint(audio_file):
     fingerprint = np.mean(mfccs.T, axis=0)
 
     return fingerprint
+
+
+# 读取指定路径的library字符串返回列表形式
+def readLibrary(path):
+    with open(path, "r") as file:
+        content = file.read()
+    if content:  # 如果content不为空
+        split_content = content.split(",")
+    else:
+        split_content = []  # 如果content为空，则直接返回空列表
+    return split_content

@@ -2,10 +2,9 @@ import util
 import core
 
 # 设定要搜索的目录和音频文件扩展名
-with open("updatePath.txt", "r") as file:
-    search_directory = file.read()  # 目录路径
+search_directory = util.getConfigJson()["updatePath"]  # 目录路径
 
-audio_extensions = [".mp3", ".wav", ".flac"]  # 你可以根据需要添加其他扩展名
+audio_extensions = util.getConfigJson()["audio_extensions"]
 
 # 查找音频文件并打印路径
 audio_paths = util.find_audio_files(search_directory, audio_extensions)
@@ -25,11 +24,10 @@ for index, value in enumerate(audio_paths):
     )
     util.print_progress_bar(index + 1, len(audio_paths))
 
-seen_fingerprintMd5s = set()  # 用于 []存储  已经#见过的 用于指纹存储不
-# 以只读模式打开文件
-with open("songLibrary", "r") as file:
-    seen_fingerprintMd5s = set(file.read().split(","))  # 读取文件全部内容
-    libraryLengthBefore = len(seen_fingerprintMd5s)
+seen_fingerprintMd5s = set(
+    core.readLibrary("./library/songLibrary")
+)  # 用于 []存储  已经#见过的 用于指纹存储不
+libraryLengthBefore = len(seen_fingerprintMd5s)
 
 
 def remove_duplicates_with_paths(data):
@@ -44,17 +42,19 @@ def remove_duplicates_with_paths(data):
     return toBeDeleted
 
 
-toBeDeletedList = remove_duplicates_with_paths(myAudioList)
-libraryLengthAfter = 0
-with open("songLibrary", "w") as f:
+toBeDeletedList = remove_duplicates_with_paths(
+    myAudioList
+)  # 重复项List暂时没用到，后续可能有功能会用到
+
+with open("./library/songLibrary", "w") as f:
     f.write(",".join(seen_fingerprintMd5s))
     libraryLengthAfter = len(seen_fingerprintMd5s)
 
-with open("./logs/" + util.getDateTime() + ".txt", "w") as f:
-    f.write(
-        "本次共扫描"
-        + str(len(myAudioList))
-        + "首歌,新增"
-        + str(libraryLengthAfter - libraryLengthBefore)
-        + "首歌"
-    )
+
+util.writeLog(
+    "本次共扫描"
+    + str(len(myAudioList))
+    + "首歌,新增"
+    + str(libraryLengthAfter - libraryLengthBefore)
+    + "首歌"
+)
