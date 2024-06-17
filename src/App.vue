@@ -1,7 +1,6 @@
 <template>
   <titleComponent />
   <homePage />
-
 </template>
 
 <script setup>
@@ -9,7 +8,7 @@ import homePage from "./pages/homePage.vue"
 import titleComponent from './components/titleComponent.vue'
 </script>
 
-<style>
+<style lang="scss">
 #app {
   font-family: Avenir, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
