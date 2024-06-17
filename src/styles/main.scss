@@ -1,0 +1,16 @@
+.unselectable {
+    -webkit-user-select: none;
+    /* Safari */
+    -ms-user-select: none;
+    /* IE10+/Edge */
+    user-select: none;
+    /* Standard syntax */
+}
+
+.canDrag {
+    -webkit-app-region: drag
+}
+
+.canNotDrag {
+    -webkit-app-region: no-drag
+}

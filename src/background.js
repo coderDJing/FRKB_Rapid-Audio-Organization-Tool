@@ -16,6 +16,7 @@ async function createWindow() {
     width: 900,
     height: 600,
     frame:false,
+    transparent:true,
     webPreferences: {
       
       // Use pluginOptions.nodeIntegration, leave this alone
