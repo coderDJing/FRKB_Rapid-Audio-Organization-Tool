@@ -1,6 +1,18 @@
 from datetime import datetime
 import os
 import hashlib
+import json
+
+
+def writeLog(logStr):
+    with open("./logs/" + getDateTime() + ".txt", "w") as f:
+        f.write(logStr)
+
+
+# 获取config文件中的配置项
+def getConfigJson():
+    with open("config.json", "r") as file:
+        return json.loads(file.read())
 
 
 # 获取当前时间（用于日志文件命名）
@@ -70,6 +82,7 @@ def numpy_array_to_md5(arr):
     return md5_hash
 
 
+# 删除指定路径的文件
 def delete_file(file_path):
     try:
         os.remove(file_path)

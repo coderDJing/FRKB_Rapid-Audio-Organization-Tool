@@ -1,0 +1,9 @@
+{
+    "audio_extensions": [
+        ".mp3",
+        ".wav",
+        ".flac"
+    ],
+    "scanPath": "./testSong",
+    "updatePath": "./testSong"
+}
