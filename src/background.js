@@ -1,6 +1,6 @@
 'use strict'
 
-import { app, protocol, BrowserWindow, ipcMain, screen } from 'electron'
+import { app, protocol, BrowserWindow, ipcMain } from 'electron'
 import { createProtocol } from 'vue-cli-plugin-electron-builder/lib'
 // import installExtension, { VUEJS3_DEVTOOLS } from 'electron-devtools-installer'
 // import { useRuntime } from '@/stores'
@@ -59,6 +59,14 @@ async function createWindow() {
     }
   });
 
+  ipcMain.on('toggle-minimize', () => {
+    win.minimize()
+  })
+
+  ipcMain.on('toggle-close', () => {
+    app.exit()
+  })
+
 }
 // Quit when all windows are closed.
 app.on('window-all-closed', () => {
@@ -67,10 +75,6 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
-})
-
-app.on('display-metrics-changed', () => {
-  console.log(1111111111111)
 })
 
 app.on('activate', () => {
