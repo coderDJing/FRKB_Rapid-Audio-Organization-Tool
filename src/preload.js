@@ -4,7 +4,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // 暴露给渲染进程的 IPC 方法
     send: (channel, data) => {
         // whitelist channels
-        let validChannels = ["toggle-maximize"];
+        let validChannels = ["toggle-maximize", "toggle-minimize", "toggle-close"];
         if (validChannels.includes(channel)) {
             ipcRenderer.send(channel, data);
         }
