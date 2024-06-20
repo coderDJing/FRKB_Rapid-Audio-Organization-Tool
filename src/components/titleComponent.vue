@@ -4,7 +4,6 @@ import chromeMaximize from '@/assets/chrome-maximize.svg'
 import chromeRestore from '@/assets/chrome-restore.svg'
 import chromeMiniimize from '@/assets/chrome-minimize.svg'
 import { useRuntimeStore } from '@/stores/runtime'
-import { ref } from 'vue';
 
 const toggleMaximize = () => {
     window.electronAPI.send('toggle-maximize');
@@ -15,36 +14,6 @@ window.electronAPI.receive('mainWin-max', (bool) => {
     runtime.isWindowMaximized = bool
 })
 
-const draggableDiv = ref(null);
-let isDragging = false;
-let XY = {}
-const startDrag = () => {
-    if(runtime.isWindowMaximized){
-        return
-    }
-    isDragging = true;
-    window.electronAPI.send('window-start')
-};
-window.electronAPI.receive('window-startRecive', (data) => {
-    XY = data
-})
-
-const drag = (event) => {
-    if (!isDragging) return;
-    event.preventDefault();
-
-    const params = {
-        x: event.screenX - XY.x,
-        y: event.screenY - XY.y,
-    };
-
-    window.electronAPI.send('window-move', params);
-};
-
-const stopDrag = () => {
-    isDragging = false;
-};
-
 </script>
 <template>
     <div class="title unselectable">Better Music Library</div>
@@ -52,9 +21,7 @@ const stopDrag = () => {
         <div style="z-index: 1">
             123123123
         </div>
-
-        <div ref="draggableDiv" style="flex-grow: 1;height:35px;z-index: 1;" @dblclick="toggleMaximize()"
-            @mousedown="startDrag" @mousemove="drag" @mouseup="stopDrag" @mouseleave="stopDrag">
+        <div class="canDrag" style="flex-grow: 1;height:35px;z-index: 1;">
         </div>
         <div style="display: flex;z-index: 1;">
             <div class="rightIcon">

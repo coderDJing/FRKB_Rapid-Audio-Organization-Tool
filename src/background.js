@@ -20,7 +20,7 @@ async function createWindow() {
     width: 900,
     height: 600,
     frame: false,
-    transparent: true,
+    transparent: false,
     webPreferences: {
       preload: path.join(__dirname, '../src/preload.js'),
       // Use pluginOptions.nodeIntegration, leave this alone
@@ -40,38 +40,26 @@ async function createWindow() {
     win.loadURL('app://./index.html')
   }
 
-
   if (win.isMaximized()) {
     win.webContents.send('mainWin-max', true)
   } else {
     win.webContents.send('mainWin-max', false)
   }
- 
+  win.on('maximize', () => {
+    win.webContents.send('mainWin-max', true)
+  })
+  win.on('unmaximize', () => {
+    win.webContents.send('mainWin-max', false)
+  })
   ipcMain.on('toggle-maximize', () => {
     if (win.isMaximized()) {
       win.unmaximize();
-      win.webContents.send('mainWin-max', false)
     } else {
       win.maximize();
-      win.webContents.send('mainWin-max', true)
     }
   });
 
-  ipcMain.on('window-start', (event) => {
-    const winPosition = win.getPosition();
-    const cursorPosition = screen.getCursorScreenPoint();
-
-    let x = cursorPosition.x - winPosition[0];
-    let y = cursorPosition.y - winPosition[1];
-
-    win.webContents.send('window-startRecive', { x, y })
-  })
-
-  ipcMain.on('window-move', (event, params) => {
-    win.setPosition(params.x, params.y, true)
-  })
 }
-
 // Quit when all windows are closed.
 app.on('window-all-closed', () => {
   // On macOS it is common for applications and their menu bar
@@ -79,6 +67,10 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('display-metrics-changed', () => {
+  console.log(1111111111111)
 })
 
 app.on('activate', () => {
