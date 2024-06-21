@@ -5,7 +5,10 @@ export const useRuntimeStore = defineStore('runtime', {
     state: () => {
         return {
             isWindowMaximized: null,
-            libraryAreaSelected: 'listLibrary'
+            libraryAreaSelected: 'listLibrary',
+            layoutConfig: {
+                libraryAreaWidth: 200
+            }
         }
     }
 })

@@ -3,6 +3,11 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
+import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset'
+const fs = require('fs')
+let layoutConfig = JSON.parse(fs.readFileSync(layoutConfigFileUrl))
+
+
 function createWindow() {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
@@ -44,8 +49,16 @@ function createWindow() {
     } else {
       mainWindow.webContents.send('mainWin-max', false)
     }
+    mainWindow.webContents.send('layoutConfigReaded', layoutConfig)
   })
 
+  ipcMain.on('layoutConfigChanged', (e, layoutConfig) => {
+    fs.writeFile(layoutConfigFileUrl, layoutConfig, (error) => {
+      if (error) {
+        console.log("ipcMain.on('layoutConfigChanged') some error has occurred ", error);
+      }
+    })
+  })
   mainWindow.on('maximize', () => {
     mainWindow.webContents.send('mainWin-max', true)
   })
