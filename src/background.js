@@ -3,8 +3,10 @@
 import { app, protocol, BrowserWindow, ipcMain } from 'electron'
 import { createProtocol } from 'vue-cli-plugin-electron-builder/lib'
 // import installExtension, { VUEJS3_DEVTOOLS } from 'electron-devtools-installer'
-// import { useRuntime } from '@/stores'
 
+// const Store = require('electron-store')
+// const store = new Store()
+// console.log(store.get('userLocalData'))
 
 const path = require('path');
 const isDevelopment = process.env.NODE_ENV !== 'production'

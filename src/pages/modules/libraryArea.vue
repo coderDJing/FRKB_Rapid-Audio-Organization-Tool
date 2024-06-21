@@ -1,10 +1,18 @@
 <script setup>
+import { useRuntimeStore } from '@/stores/runtime'
+import { watch } from 'Vue';
 
+const runtime = useRuntimeStore()
+watch(() => runtime.libraryAreaSelected, () => {
+    console.log(runtime.libraryAreaSelected)
+}, {
+    immediate: true
+})
 </script>
 <template>
-    <div style="height: 100%;width: 100%;display: flex;">
-        <div style="flex-grow: 1;background-color: #181818;"></div>
-        <div style="width:1px;background-color: #2b2b2b;"></div>
+    <div style="height: 100%;width: 100%;display: flex;flex-grow: 1;background-color: #181818;">
+
+
     </div>
 </template>
 <style lang="scss" scoped></style>
