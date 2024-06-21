@@ -1,6 +1,15 @@
 <template>
-  <titleComponent />
-  <homePage />
+  <div style="height: 100%;width: 100%;display: flex;flex-direction: column;">
+    <div>
+      <titleComponent />
+    </div>
+    <div style="flex-grow: 1;">
+      <homePage />
+    </div>
+
+
+  </div>
+
 </template>
 
 <script setup>
