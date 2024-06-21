@@ -1,12 +1,12 @@
 <script setup>
-import listGrey from '@/assets/list-grey.png'
-import listWhite from '@/assets/list-white.png'
-import likeGrey from '@/assets/like-grey.png'
-import likeWhite from '@/assets/like-white.png'
-import settingGrey from '@/assets/setting-grey.png'
-import settingWhite from '@/assets/setting-white.png'
-import { ref } from 'Vue'
-import { useRuntimeStore } from '@/stores/runtime'
+import listGrey from '@renderer/assets/list-grey.png'
+import listWhite from '@renderer/assets/list-white.png'
+import likeGrey from '@renderer/assets/like-grey.png'
+import likeWhite from '@renderer/assets/like-white.png'
+import settingGrey from '@renderer/assets/setting-grey.png'
+import settingWhite from '@renderer/assets/setting-white.png'
+import { ref } from 'vue'
+import { useRuntimeStore } from '@renderer/stores/runtime'
 const iconArr = ref([{
     name: 'listLibrary',
     grey: listGrey,

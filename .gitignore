@@ -1,6 +1,8 @@
-.DS_Store
 node_modules
-/dist
+dist
+out
+.DS_Store
+*.log*
 
 
 # local env files
@@ -185,6 +187,3 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-
-#Electron-builder output
-/dist_electron

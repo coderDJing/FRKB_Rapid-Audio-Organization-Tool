@@ -1,24 +1,34 @@
-# better-music-library
+# electron-app
 
-## Project setup
-```
-pnpm install
-```
+An Electron application with Vue
 
-### Compiles and hot-reloads for development
-```
-pnpm run serve
-```
+## Recommended IDE Setup
 
-### Compiles and minifies for production
-```
-pnpm run build
-```
+- [VSCode](https://code.visualstudio.com/) + [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) + [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar)
 
-### Lints and fixes files
-```
-pnpm run lint
+## Project Setup
+
+### Install
+
+```bash
+$ pnpm install
 ```
 
-### Customize configuration
-See [Configuration Reference](https://cli.vuejs.org/config/).
+### Development
+
+```bash
+$ pnpm dev
+```
+
+### Build
+
+```bash
+# For windows
+$ pnpm build:win
+
+# For macOS
+$ pnpm build:mac
+
+# For Linux
+$ pnpm build:linux
+```
