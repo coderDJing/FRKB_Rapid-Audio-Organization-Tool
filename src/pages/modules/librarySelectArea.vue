@@ -6,15 +6,16 @@ import likeWhite from '@/assets/like-white.png'
 import settingGrey from '@/assets/setting-grey.png'
 import settingWhite from '@/assets/setting-white.png'
 import { ref } from 'Vue'
+import { useRuntimeStore } from '@/stores/runtime'
 const iconArr = ref([{
-    name: 'list',
+    name: 'listLibrary',
     grey: listGrey,
     white: listWhite,
     src: listGrey,
     alt: '筛选库',
     showAlt: false
 }, {
-    name: 'like',
+    name: 'likeLibrary',
     grey: likeGrey,
     white: likeWhite,
     src: likeGrey,
@@ -25,19 +26,23 @@ const iconArr = ref([{
 const selectedIcon = ref(iconArr.value[0])
 selectedIcon.value.src = selectedIcon.value.white
 
+const runtime = useRuntimeStore()
 const clickIcon = (item) => {
     if (item.name == selectedIcon.value.name) {
         return
     }
-    if (item.name == 'setting') {
-        //todo
-        return
-    }
+    runtime.libraryAreaSelected = item.name
     selectedIcon.value.src = selectedIcon.value.grey
     selectedIcon.value = item
     selectedIcon.value.src = selectedIcon.value.white
 }
-let hoverTimer;
+const clickButtomIcon = (item) => {
+    if (item.name == 'setting') {
+        //todo
+        return
+    }
+}
+let hoverTimer = null;
 const iconMouseover = (item) => {
     if (selectedIcon.value != item) {
         item.src = item.white
@@ -82,7 +87,7 @@ const buttomIconArr = ref([{
 
         </div>
         <div>
-            <div v-for="item of buttomIconArr" :key="item.name" class="iconBox" @click="clickIcon(item)"
+            <div v-for="item of buttomIconArr" :key="item.name" class="iconBox" @click="clickButtomIcon(item)"
                 @mouseover="iconMouseover(item)" @mouseout="iconMouseout(item)">
                 <div style="width: 2px;height: 100%;"
                     :style="{ 'backgroundColor': item.name == selectedIcon.name ? '#0078d4' : '' }"></div>
