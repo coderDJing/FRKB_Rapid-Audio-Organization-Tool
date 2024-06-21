@@ -1,3 +1,14 @@
+<script setup>
+import homePage from "./pages/homePage.vue"
+import titleComponent from './components/titleComponent.vue'
+import { useRuntimeStore } from '@renderer/stores/runtime'
+
+const runtime = useRuntimeStore()
+window.electron.ipcRenderer.on('layoutConfigReaded', (event, layoutConfig) => {
+  runtime.layoutConfig = layoutConfig
+})
+
+</script>
 <template>
   <div style="height: 100%;width: 100%;display: flex;flex-direction: column;">
     <div>
@@ -9,14 +20,7 @@
 
 
   </div>
-
 </template>
-
-<script setup>
-import homePage from "./pages/homePage.vue"
-import titleComponent from './components/titleComponent.vue'
-</script>
-
 <style lang="scss">
 #app {
   font-family: Avenir, Helvetica, Arial, sans-serif;

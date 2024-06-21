@@ -1,13 +1,5 @@
 <script setup>
-// import { useRuntimeStore } from '@renderer/stores/runtime'
-// import { watch } from 'vue';
 
-// const runtime = useRuntimeStore()
-// watch(() => runtime.libraryAreaSelected, () => {
-//     console.log(runtime.libraryAreaSelected)
-// }, {
-//     immediate: true
-// })
 </script>
 <template>
     <div style="height: 100%;width: 100%;display: flex;flex-grow: 1;background-color: #181818;">

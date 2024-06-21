@@ -1,5 +1,5 @@
 appId: com.electron.app
-productName: electron-app
+productName: better-music-library
 directories:
   buildResources: build
 files:
@@ -11,7 +11,7 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: electron-app
+  executableName: better-music-library
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
