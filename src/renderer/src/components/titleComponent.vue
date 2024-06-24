@@ -6,6 +6,7 @@ import logo from '@renderer/assets/logo.png'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { ref } from 'vue'
 import menuComponent from './menu.vue'
+// import scanNewSongDialog from './scanNewSongDialog.vue'
 
 const toggleMaximize = () => {
   window.electron.ipcRenderer.send('toggle-maximize');
@@ -27,15 +28,34 @@ window.electron.ipcRenderer.on('mainWin-max', (event, bool) => {
 const fillColor = ref('#9d9d9d')
 
 
-const menuArr = [{
+const menuArr = ref([{
   name: '文件(F)',
+  show: false,
   subMenu: [
-    [{ name: '扫描歌曲', shortcutKey: 'Ctrl+R' }],
+    [{ name: '入库新歌曲', shortcutKey: 'Ctrl+R' }, { name: '手动添加歌曲指纹' }],
+    [{ name: '退出' }]
   ]
 }, {
   name: '帮助(H)',
-  subMenu: []
-}]
+  show: false,
+  subMenu: [
+    [{ name: '使用说明' }, { name: '关于' }]
+  ]
+}])
+const menuClick = (item) => {
+  emitMenuEnd()
+  item.show = true
+}
+const emitMenuEnd = () => {
+  for (let item of menuArr.value) {
+    item.show = false
+  }
+}
+const menuButtonClick = (item) => {
+  if (item.name == '入库新歌曲') {
+    debugger
+  }
+}
 </script>
 <template>
   <div class="title unselectable">Better Music Library</div>
@@ -44,8 +64,9 @@ const menuArr = [{
       <img :src="logo" style="width: 22px;" />
     </div>
     <div style="z-index: 1;padding-left: 5px;" v-for="item in menuArr" :key="item.name">
-      <div class="functionButton">{{ item.name }}</div>
-      <menuComponent :menuArr="item.subMenu"></menuComponent>
+      <div class="functionButton" @click.stop="menuClick(item)">{{ item.name }}</div>
+      <menuComponent :menuArr="item.subMenu" :show="item.show" @emitMenuEnd="emitMenuEnd"
+        @menuButtonClick="menuButtonClick"></menuComponent>
     </div>
     <div class="canDrag" style="flex-grow: 1;height:35px;z-index: 1;">
     </div>
@@ -65,6 +86,7 @@ const menuArr = [{
       </div>
     </div>
   </div>
+  <!-- <scanNewSongDialog /> -->
 </template>
 <style lang="scss" scoped>
 .functionButton {

@@ -14,3 +14,22 @@
 .canNotDrag {
     -webkit-app-region: no-drag
 }
+
+.dialog {
+    width: 100vw;
+    height: 100vh;
+    position: absolute;
+    top: 0px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: absolute;
+    z-index: 99;
+
+    .inner {
+        border: 1px solid #2c2c2c;
+        background-color: #181818;
+        border-radius: 5px;
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+    }
+}
