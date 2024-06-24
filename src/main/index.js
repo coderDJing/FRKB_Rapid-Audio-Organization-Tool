@@ -2,11 +2,11 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-
+import { readSortedDescriptionFiles } from './utils.js'
 import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset'
+
 const fs = require('fs')
 let layoutConfig = JSON.parse(fs.readFileSync(layoutConfigFileUrl))
-
 
 function createWindow() {
   // Create the browser window.
@@ -79,6 +79,34 @@ function createWindow() {
 
   ipcMain.on('toggle-close', () => {
     app.exit()
+  })
+
+
+  ipcMain.on('queryLibrary', () => {
+    //检查有没有library文件夹
+    fs.promises.access(join(__dirname, 'library'), fs.constants.F_OK).then(async () => {
+      //有library文件夹
+      let descriptions = await readSortedDescriptionFiles(join(__dirname, 'library'))
+      mainWindow.webContents.send('libraryDescriptionFilesReaded', JSON.stringify(descriptions))
+
+    }).catch(async err => {
+      //没有library文件夹
+      const makeLibrary = async (libraryPath, libraryName, order) => {
+        await fs.promises.mkdir(libraryPath, { recursive: true })
+        let description = {
+          type: 'library',
+          libraryName: libraryName,
+          path: 'library/' + libraryName,
+          order: order
+        }
+        await fs.promises.writeFile(join(libraryPath, 'description.json'), JSON.stringify(description))
+      }
+      await makeLibrary(join(__dirname, 'library/listLibrary'), 'listLibrary', 1)
+      await makeLibrary(join(__dirname, 'library/likeLibrary'), 'likeLibrary', 2)
+
+      let descriptions = await readSortedDescriptionFiles(join(__dirname, 'library'))
+      mainWindow.webContents.send('libraryDescriptionFilesReaded', JSON.stringify(descriptions))
+    })
   })
 }
 
