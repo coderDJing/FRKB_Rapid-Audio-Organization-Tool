@@ -2,8 +2,10 @@
 import chromeMaximize from '@renderer/assets/chrome-maximize.svg'
 import chromeRestore from '@renderer/assets/chrome-restore.svg'
 import chromeMiniimize from '@renderer/assets/chrome-minimize.svg'
+import logo from '@renderer/assets/logo.png'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { ref } from 'vue'
+import menuComponent from './menu.vue'
 
 const toggleMaximize = () => {
   window.electron.ipcRenderer.send('toggle-maximize');
@@ -23,12 +25,27 @@ window.electron.ipcRenderer.on('mainWin-max', (event, bool) => {
 })
 
 const fillColor = ref('#9d9d9d')
+
+
+const menuArr = [{
+  name: '文件(F)',
+  subMenu: [
+    [{ name: '扫描歌曲', shortcutKey: 'Ctrl+R' }],
+  ]
+}, {
+  name: '帮助(H)',
+  subMenu: []
+}]
 </script>
 <template>
   <div class="title unselectable">Better Music Library</div>
   <div class="titleComponent unselectable">
-    <div style="z-index: 1">
-      123123123
+    <div style="z-index: 1;padding-left: 10px;display: flex;justify-content: center;align-items: center;">
+      <img :src="logo" style="width: 22px;" />
+    </div>
+    <div style="z-index: 1;padding-left: 5px;" v-for="item in menuArr" :key="item.name">
+      <div class="functionButton">{{ item.name }}</div>
+      <menuComponent :menuArr="item.subMenu"></menuComponent>
     </div>
     <div class="canDrag" style="flex-grow: 1;height:35px;z-index: 1;">
     </div>
@@ -50,16 +67,30 @@ const fillColor = ref('#9d9d9d')
   </div>
 </template>
 <style lang="scss" scoped>
+.functionButton {
+  height: 22px;
+  line-height: 22px;
+  padding: 0 5px;
+  cursor: pointer;
+  font-size: 12px;
+  border-radius: 5px;
+}
+
+.functionButton:hover {
+  background-color: #2d2e2e;
+}
+
 .title {
   position: absolute;
   width: 100%;
-  height: 35px;
+  height: 34px;
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: #2a2a2a;
+  background-color: #181818;
   z-index: 0;
   font-size: 13px;
+  border-bottom: 1px solid #424242;
 }
 
 .titleComponent {
