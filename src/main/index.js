@@ -1,10 +1,11 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { readSortedDescriptionFiles } from './utils.js'
 import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset'
 
+// const { dialog } = require('electron').dialog;
 const fs = require('fs')
 let layoutConfig = JSON.parse(fs.readFileSync(layoutConfigFileUrl))
 
@@ -109,7 +110,15 @@ function createWindow() {
     })
   })
 }
-
+ipcMain.handle('select-folder', async (event, arg) => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory']
+  });
+  if (result.canceled) {
+    return null;
+  }
+  return result.filePaths[0];
+});
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
@@ -123,9 +132,6 @@ app.whenReady().then(() => {
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
-
-  // IPC test
-  ipcMain.on('ping', () => console.log('pong'))
 
   createWindow()
 

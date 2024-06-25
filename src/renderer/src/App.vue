@@ -3,23 +3,28 @@ import homePage from "./pages/homePage.vue"
 import titleComponent from './components/titleComponent.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import scanNewSongDialog from "./components/scanNewSongDialog.vue";
+import { ref } from 'vue'
 
 const runtime = useRuntimeStore()
 window.electron.ipcRenderer.on('layoutConfigReaded', (event, layoutConfig) => {
   runtime.layoutConfig = layoutConfig
 })
 
+const activeDialog = ref('')
+const openDialog = (item) => {
+  activeDialog.value = item
+}
 </script>
 <template>
   <div style="height: 100%;width: 100%;display: flex;flex-direction: column;">
     <div>
-      <titleComponent />
+      <titleComponent @openDialog="openDialog" />
     </div>
     <div style="flex-grow: 1;">
       <homePage />
     </div>
   </div>
-  <scanNewSongDialog></scanNewSongDialog>
+  <scanNewSongDialog v-if="activeDialog == '导入新歌曲'" @cancel="activeDialog = ''"></scanNewSongDialog>
 </template>
 <style lang="scss">
 #app {
