@@ -1,9 +1,5 @@
 lockfileVersion: '6.0'
 
-settings:
-  autoInstallPeers: true
-  excludeLinksFromLockfile: false
-
 dependencies:
   '@electron-toolkit/preload':
     specifier: ^3.0.1
@@ -17,6 +13,9 @@ dependencies:
   sass:
     specifier: ^1.77.6
     version: 1.77.6
+  uuid:
+    specifier: ^10.0.0
+    version: 10.0.0
 
 devDependencies:
   '@electron-toolkit/eslint-config':
@@ -3678,6 +3677,11 @@ packages:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
     dev: true
 
+  /uuid@10.0.0:
+    resolution: {integrity: sha512-8XkAphELsDnEGrDxUOHB3RGvXz6TeuYSGEZBOjtTtPm2lwhGBjLgOzLHB63IUWfBpNucQjND6d3AOudO+H3RWQ==}
+    hasBin: true
+    dev: false
+
   /verror@1.10.1:
     resolution: {integrity: sha512-veufcmxri4e3XSrT0xwfUR7kguIkaxBeosDg00yDWhk49wdwkSUrvvsm7nc75e1PUyvIeZj6nS8VQRYz2/S4Xg==}
     engines: {node: '>=0.6.0'}
@@ -3867,3 +3871,7 @@ packages:
       compress-commons: 4.1.2
       readable-stream: 3.6.2
     dev: true
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false

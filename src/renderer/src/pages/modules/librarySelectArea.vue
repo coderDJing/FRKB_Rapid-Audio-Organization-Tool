@@ -5,7 +5,7 @@ import likeGrey from '@renderer/assets/like-grey.png'
 import likeWhite from '@renderer/assets/like-white.png'
 import settingGrey from '@renderer/assets/setting-grey.png'
 import settingWhite from '@renderer/assets/setting-white.png'
-import { ref, defineEmits } from 'vue'
+import { ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 
 const emit = defineEmits(['librarySelectedChange'])

@@ -1,5 +1,5 @@
 <script setup>
-import { defineProps, watch, defineEmits } from 'vue';
+import { watch } from 'vue';
 const emit = defineEmits(['emitMenuEnd', 'menuButtonClick'])
 const props = defineProps({
   menuArr: {
@@ -26,7 +26,7 @@ const menuButtonClick = (item) => {
 
 </script>
 <template>
-  <div class="menu" v-if="props.show">
+  <div class="menu" v-if="props.show" @click.stop="() => { }">
     <div v-for="item of props.menuArr" class="menuGroup">
       <div v-for="button of item" class="menuButton" @click="menuButtonClick(button)">
         <span>{{ button.name }}</span>

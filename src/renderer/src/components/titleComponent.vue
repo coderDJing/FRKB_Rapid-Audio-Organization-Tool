@@ -6,8 +6,8 @@ import logo from '@renderer/assets/logo.png'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { ref } from 'vue'
 import menuComponent from './menu.vue'
-// import scanNewSongDialog from './scanNewSongDialog.vue'
 
+const emit = defineEmits(['openDialog'])
 const toggleMaximize = () => {
   window.electron.ipcRenderer.send('toggle-maximize');
 }
@@ -32,7 +32,7 @@ const menuArr = ref([{
   name: '文件(F)',
   show: false,
   subMenu: [
-    [{ name: '入库新歌曲', shortcutKey: 'Ctrl+R' }, { name: '手动添加歌曲指纹' }],
+    [{ name: '导入新歌曲', shortcutKey: 'Ctrl+R' }, { name: '手动添加歌曲指纹' }],
     [{ name: '退出' }]
   ]
 }, {
@@ -52,9 +52,10 @@ const emitMenuEnd = () => {
   }
 }
 const menuButtonClick = (item) => {
-  if (item.name == '入库新歌曲') {
-    debugger
-  }
+  emitMenuEnd()
+
+  emit('openDialog', item.name)
+
 }
 </script>
 <template>
@@ -86,7 +87,6 @@ const menuButtonClick = (item) => {
       </div>
     </div>
   </div>
-  <!-- <scanNewSongDialog /> -->
 </template>
 <style lang="scss" scoped>
 .functionButton {

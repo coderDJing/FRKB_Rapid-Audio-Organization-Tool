@@ -1,35 +1,53 @@
 .unselectable {
-    -webkit-user-select: none;
-    /* Safari */
-    -ms-user-select: none;
-    /* IE10+/Edge */
-    user-select: none;
-    /* Standard syntax */
+  -webkit-user-select: none;
+  /* Safari */
+  -ms-user-select: none;
+  /* IE10+/Edge */
+  user-select: none;
+  /* Standard syntax */
 }
 
 .canDrag {
-    -webkit-app-region: drag
+  -webkit-app-region: drag
 }
 
 .canNotDrag {
-    -webkit-app-region: no-drag
+  -webkit-app-region: no-drag
 }
 
 .dialog {
-    width: 100vw;
-    height: 100vh;
-    position: absolute;
-    top: 0px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    position: absolute;
-    z-index: 99;
+  width: 100vw;
+  height: 100vh;
+  position: absolute;
+  top: 0px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: absolute;
+  z-index: 99;
+  background-color: rgba(0, 0, 0, 0.5);
 
-    .inner {
-        border: 1px solid #2c2c2c;
-        background-color: #181818;
-        border-radius: 5px;
-        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
-    }
+  .inner {
+    border: 1px solid #2c2c2c;
+    background-color: #181818;
+    border-radius: 5px;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+  }
 }
+
+.button {
+  height: 25px;
+  line-height: 25px;
+  padding: 0 10px;
+  border-radius: 5px;
+  background-color: #2d2e2e;
+  font-size: 14px;
+
+  &:hover {
+    color: white;
+    background-color: #0078d4;
+  }
+}
+
+
+
