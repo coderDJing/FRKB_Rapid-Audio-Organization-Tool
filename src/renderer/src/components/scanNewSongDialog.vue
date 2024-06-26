@@ -60,6 +60,11 @@ const confirm = () => {
 const cancel = () => {
   emits('cancel')
 }
+
+const songListSelected = ref('')
+const clickChooseSongList = () => {
+
+}
 </script>
 <template>
   <div class="dialog unselectable">
@@ -79,8 +84,12 @@ const cancel = () => {
           </div>
           <div style="margin-top: 10px;display: flex;">
             <div class="formLabel"><span>选择歌单：</span></div>
-            <div style="width:310px">
-              //todo
+
+            <div style="width: 310px;">
+              <div class="chooseDirDiv flashing-border" @click="clickChooseSongList()" :title="songListSelected">
+                {{ songListSelected }}
+              </div>
+
             </div>
           </div>
           <div style="margin-top: 10px;display: flex;">

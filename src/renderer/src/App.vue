@@ -14,6 +14,12 @@ const activeDialog = ref('')
 const openDialog = (item) => {
   activeDialog.value = item
 }
+const documentHandleClick = () => {
+  runtime.activeMenuUUID = ''
+}
+document.addEventListener('click', documentHandleClick)
+document.addEventListener('contextmenu', documentHandleClick)
+
 </script>
 <template>
   <div style="height: 100%;width: 100%;display: flex;flex-direction: column;">
