@@ -109,6 +109,10 @@ function createWindow() {
       mainWindow.webContents.send('libraryDescriptionFilesReaded', JSON.stringify(descriptions))
     })
   })
+
+  ipcMain.on('querySonglist', (e, libraryPath) => {
+    console.log(libraryPath)
+  })
 }
 ipcMain.handle('select-folder', async (event, arg) => {
   const result = await dialog.showOpenDialog({

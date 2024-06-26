@@ -43,19 +43,10 @@ const menuArr = ref([{
   ]
 }])
 const menuClick = (item) => {
-  emitMenuEnd()
   item.show = true
 }
-const emitMenuEnd = () => {
-  for (let item of menuArr.value) {
-    item.show = false
-  }
-}
 const menuButtonClick = (item) => {
-  emitMenuEnd()
-
   emit('openDialog', item.name)
-
 }
 </script>
 <template>
@@ -66,8 +57,7 @@ const menuButtonClick = (item) => {
     </div>
     <div style="z-index: 1;padding-left: 5px;" v-for="item in menuArr" :key="item.name">
       <div class="functionButton" @click.stop="menuClick(item)">{{ item.name }}</div>
-      <menuComponent :menuArr="item.subMenu" :show="item.show" @emitMenuEnd="emitMenuEnd"
-        @menuButtonClick="menuButtonClick"></menuComponent>
+      <menuComponent :menuArr="item.subMenu" v-model="item.show" @menuButtonClick="menuButtonClick"></menuComponent>
     </div>
     <div class="canDrag" style="flex-grow: 1;height:35px;z-index: 1;">
     </div>

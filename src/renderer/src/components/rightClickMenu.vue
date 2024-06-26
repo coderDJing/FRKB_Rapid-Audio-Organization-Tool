@@ -1,5 +1,5 @@
 <script setup>
-import { watch } from 'vue';
+import { watch, ref } from 'vue';
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidv4 } from 'uuid';
 const uuid = uuidv4()
@@ -20,7 +20,12 @@ const props = defineProps({
     type: Boolean,
     required: true
   },
+  clickEvent: {
+    type: Object,
+    required: true
+  }
 })
+
 watch(() => props.modelValue, () => {
   if (props.modelValue == true) {
     runtime.activeMenuUUID = uuid
@@ -31,9 +36,24 @@ const menuButtonClick = (item) => {
   emits('menuButtonClick', item)
 }
 
+let positionTop = ref(0)
+let positionLeft = ref(0)
+watch(() => props.clickEvent, () => {
+  let windowWidth = window.innerWidth;
+  let windowHeight = window.innerHeight;
+  let clickX = props.clickEvent.clientX
+  let clickY = props.clickEvent.clientY
+  positionLeft.value = clickX
+  positionTop.value = clickY
+
+  //todo
+})
+
+
 </script>
 <template>
-  <div class="menu" v-if="props.modelValue" @click.stop="() => { }">
+  <div v-if="props.modelValue" class="menu" :style="{ top: positionTop + 'px', left: positionLeft + 'px' }"
+    @click.stop="() => { }">
     <div v-for="item of props.menuArr" class="menuGroup">
       <div v-for="button of item" class="menuButton" @click="menuButtonClick(button)"
         @contextmenu="menuButtonClick(button)">

@@ -6,6 +6,7 @@ export const useRuntimeStore = defineStore('runtime', {
     return {
       isWindowMaximized: null,
       libraryAreaSelected: 'listLibrary',
+      activeMenuUUID: '',
       layoutConfig: {
         libraryAreaWidth: 200,
         scanNewSongDialog: {
