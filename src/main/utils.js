@@ -16,7 +16,7 @@ export const readJsonFile = async (filePath) => {
 }
 export const readSortedDescriptionFiles = async (directoryPath) => {
   try {
-    // 读取目录中的文件和文件夹
+    // 读取目录中的文件夹
     const dirs = await fs.promises.readdir(directoryPath, { withFileTypes: true }).then(dirents => dirents.filter(dirent => dirent.isDirectory()));
     // 存储所有description.json文件的内容
     const descriptions = [];
