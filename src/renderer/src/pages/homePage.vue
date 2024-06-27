@@ -71,17 +71,22 @@ const librarySelectedChange = (item) => {
   }
 
   librarySelected.value = item.name
+
 }
 
-
+window.electron.ipcRenderer.send('queryLibrary');
 </script>
 <template>
   <div style="display: flex;height: 100%">
     <librarySelectArea @librarySelectedChange="librarySelectedChange"></librarySelectArea>
-
     <div style="width: 200px;border-right: 1px solid #2b2b2b;"
       :style="'width:' + runtime.layoutConfig.libraryAreaWidth + 'px'">
-      <libraryArea :librarySelected="librarySelected"></libraryArea>
+      <div style="width: 100%;height: 100%;" v-show="librarySelected == 'listLibrary'">
+        <libraryArea library="listLibrary"></libraryArea>
+      </div>
+      <div style="width: 100%;height: 100%;" v-show="librarySelected == 'likeLibrary'">
+        <libraryArea library="likeLibrary"></libraryArea>
+      </div>
     </div>
     <div style="width:4px;cursor:ew-resize;height: calc(100vh - 35px);" @mousedown="startResize" class="dragBar"
       @mouseenter="handleMouseEnter" @mouseleave="handleMouseLeave" :class="{ dragBarHovered: isHovered }">
