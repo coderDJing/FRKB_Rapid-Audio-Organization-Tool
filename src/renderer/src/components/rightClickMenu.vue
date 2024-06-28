@@ -33,7 +33,7 @@ watch(() => props.modelValue, () => {
 })
 const menuButtonClick = (item) => {
   runtime.activeMenuUUID = ''
-  emits('menuButtonClick', item)
+  emits('menuButtonClick', item, props.clickEvent)
 }
 
 let positionTop = ref(0)
