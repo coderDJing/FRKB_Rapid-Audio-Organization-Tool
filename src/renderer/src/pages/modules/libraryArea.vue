@@ -43,10 +43,10 @@ const rightClickMenuShow = ref(false)
 const clickEvent = ref({})
 const menuArr = ref([])
 const contextmenuEvent = (event, item) => {
+  debugger
   if (event.target.className.split(' ').indexOf('blankArea') != -1) {
     menuArr.value = [[{ name: '新建歌单' }, { name: '新建文件夹' }]]
-  }
-  if (item.type === 'dir') {
+  } else if (item.type === 'dir') {
     //todo 在文件夹上右键菜单+右键后的文件夹和歌单样式
     menuArr.value = [[{ name: '新建歌单' }, { name: '新建文件夹' }], [{ name: '重命名' }, { name: '删除' }]]
   }
@@ -160,9 +160,9 @@ const menuButtonClick = async (item, e) => {
               d="M10.072 8.024L5.715 3.667l.618-.62L11 7.716v.618L6.333 13l-.618-.619 4.357-4.357z" />
           </svg>
           <!-- <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
-                                                                                                                              <path fill-rule="evenodd" clip-rule="evenodd"
-                                                                                                                                d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z" />
-                                                                                                                            </svg> -->
+                                                                                                                                    <path fill-rule="evenodd" clip-rule="evenodd"
+                                                                                                                                      d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z" />
+                                                                                                                                  </svg> -->
         </div>
         <div style="height:23px;flex-grow: 1;">
           <div v-if="item.name" style="line-height: 23px;font-size: 13px;">{{ item.name }}</div>
