@@ -82,10 +82,10 @@ window.electron.ipcRenderer.send('queryLibrary');
     <div style="width: 200px;border-right: 1px solid #2b2b2b;"
       :style="'width:' + runtime.layoutConfig.libraryAreaWidth + 'px'">
       <div style="width: 100%;height: 100%;" v-show="librarySelected == 'listLibrary'">
-        <libraryArea library="listLibrary"></libraryArea>
+        <libraryArea library="listLibrary" libraryName="筛选库"></libraryArea>
       </div>
       <div style="width: 100%;height: 100%;" v-show="librarySelected == 'likeLibrary'">
-        <libraryArea library="likeLibrary"></libraryArea>
+        <libraryArea library="likeLibrary" libraryName="精选库"></libraryArea>
       </div>
     </div>
     <div style="width:4px;cursor:ew-resize;height: calc(100vh - 35px);" @mousedown="startResize" class="dragBar"

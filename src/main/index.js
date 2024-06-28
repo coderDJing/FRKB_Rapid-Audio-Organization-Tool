@@ -112,10 +112,12 @@ function createWindow() {
 
 
 }
+ipcMain.handle('mkDir', async (e, descriptionJson, dirPath) => {
+  //todo
+  return
+})
 ipcMain.handle('querySonglist', async (e, dirPath) => {
-  console.log(dirPath)
   let descriptions = await readSortedDescriptionFiles(join(__dirname, dirPath))
-  console.log(descriptions)
   return descriptions
 })
 ipcMain.handle('select-folder', async (event, arg) => {
