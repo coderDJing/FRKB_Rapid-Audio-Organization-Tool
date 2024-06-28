@@ -2,7 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { readSortedDescriptionFiles } from './utils.js'
+import { readSortedDescriptionFiles, updateTargetDirSubdirOrder } from './utils.js'
 import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset'
 
 // const { dialog } = require('electron').dialog;
@@ -100,7 +100,7 @@ function createWindow() {
           path: 'library/' + libraryName,
           order: order
         }
-        await fs.promises.writeFile(join(libraryPath, 'description.json'), JSON.stringify(description))
+        await fs.promises.writeFile(join(libraryPath, 'description.json'), JSON.stringify(description, null, 2))
       }
       await makeLibrary(join(__dirname, 'library/listLibrary'), 'listLibrary', 1)
       await makeLibrary(join(__dirname, 'library/likeLibrary'), 'likeLibrary', 2)
@@ -113,7 +113,11 @@ function createWindow() {
 
 }
 ipcMain.handle('mkDir', async (e, descriptionJson, dirPath) => {
-  //todo
+  await updateTargetDirSubdirOrder(join(__dirname, dirPath))
+  let path = join(__dirname, descriptionJson.path)
+  await fs.promises.mkdir(path, { recursive: true })
+  await fs.promises.writeFile(join(path, 'description.json'), JSON.stringify(descriptionJson, null, 2))
+
   return
 })
 ipcMain.handle('querySonglist', async (e, dirPath) => {
