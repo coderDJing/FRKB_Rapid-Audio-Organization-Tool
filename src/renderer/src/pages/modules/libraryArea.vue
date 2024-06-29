@@ -1,8 +1,10 @@
 <script setup>
 import { ref, computed, nextTick } from 'vue'
-import rightClickMenu from '../../components/rightClickMenu.vue';
+import rightClickMenu from '@renderer/components/rightClickMenu.vue';
 import chevronDown from '@renderer/assets/chevron-down.svg'
 import chevronRight from '@renderer/assets/chevron-right.svg'
+import libraryDirItem from '@renderer/components/libraryDirItem.vue';
+import librarySonglistItem from '@renderer/components/librarySonglistItem.vue'
 const props = defineProps(
   {
     library: {
@@ -41,100 +43,35 @@ const iconMouseout = () => {
 
 const rightClickMenuShow = ref(false)
 const clickEvent = ref({})
-const menuArr = ref([])
-const contextmenuEvent = (event, item) => {
-  debugger
-  if (event.target.className.split(' ').indexOf('blankArea') != -1) {
-    menuArr.value = [[{ name: '新建歌单' }, { name: '新建文件夹' }]]
-  } else if (item.type === 'dir') {
-    //todo 在文件夹上右键菜单+右键后的文件夹和歌单样式
-    menuArr.value = [[{ name: '新建歌单' }, { name: '新建文件夹' }], [{ name: '重命名' }, { name: '删除' }]]
-  }
-
+const menuArr = ref([[{ name: '新建歌单' }, { name: '新建文件夹' }]])
+const contextmenuEvent = (event) => {
   clickEvent.value = event
   rightClickMenuShow.value = true
 }
 
-let operationInputTargetArr = []
-let operationInputValue = ref('')
-let inputHintText = ref('')
-const inputBlurHandle = async () => {
-  if (inputHintShow.value) {
-    operationInputTargetArr.shift()
-    operationInputValue.value = ''
-    inputHintShow.value = false
-    return
+const menuButtonClick = async (item, e) => {
+  if (item.name == '新建文件夹') {
+    libraryData.value.songListArr.unshift({
+      "type": "dir",
+      "name": "",
+      "path": "library/" + props.library
+    })
   }
-  inputHintShow.value = false
-  await window.electron.ipcRenderer.invoke('mkDir', {
-    "type": "dir",
-    "name": operationInputValue.value,
-    "path": operationInputTargetArr[0].path + '/' + operationInputValue.value,
-    "order": 1
-  }, operationInputTargetArr[0].path)
+}
 
-  for (let item of operationInputTargetArr) {
+const allItemOrderUpdate = () => {
+  for (let item of libraryData.value.songListArr) {
     if (item.order) {
       item.order++
     }
   }
-  operationInputTargetArr[0].name = operationInputValue.value
-  operationInputTargetArr[0].path = operationInputTargetArr[0].path + operationInputValue.value
-  operationInputTargetArr[0].order = 1
-  operationInputValue.value = ''
-
 }
-const myInputHandleInput = (e) => {
-  if (operationInputValue.value == '') {
-    inputHintText.value = '必须提供歌单或文件夹名。'
-    inputHintShow.value = true
-  } else {
-    let exists = operationInputTargetArr.some(obj => obj.name == operationInputValue.value)
-    if (exists) {
-      inputHintText.value = '此位置已存在歌单或文件夹' + operationInputValue.value + '。请选择其他名称'
-      inputHintShow.value = true
-    } else {
-      inputHintShow.value = false
-    }
-  }
-}
-const inputHintShow = ref(false)
-const inputKeyDownEnter = () => {
-  if (inputHintShow.value) {
-    return
-  }
-  myInput.value[0].blur();
-}
-const inputKeyDownEsc = () => {
-  operationInputValue.value = ''
-  inputBlurHandle()
-}
-
-const myInput = ref(null)
-const menuButtonClick = async (item, e) => {
-  if (item.name == '新建文件夹') {
-    if (e.target.className.split(' ').indexOf('blankArea') != -1) {
-      libraryData.value.songListArr.unshift({
-        "type": "dir",
-        "name": "",
-        "path": "library/" + props.library
-      })
-      operationInputTargetArr = libraryData.value.songListArr
-      await nextTick()
-      myInput.value[0].focus();
-    } else {
-      //todo 文件夹上点击的新建文件夹
-    }
-  }
-}
-
-
 
 
 </script>
 <template>
   <div class="content" @contextmenu.stop="contextmenuEvent">
-    <div class="unselectable blankArea libraryTitle">
+    <div class="unselectable libraryTitle">
       <span>{{ props.libraryName }}</span>
       <div style="display: flex;justify-content: center;align-items: center;">
         <div class="collapseButton" @mouseover="iconMouseover()" @mouseout="iconMouseout()">
@@ -151,71 +88,23 @@ const menuButtonClick = async (item, e) => {
         </transition>
       </div>
     </div>
-    <div class="unselectable blankArea" v-if="libraryData.songListArr.length" style="height:100%;width: 100%;">
-      <div v-for="item of libraryData.songListArr" style="display: flex;cursor: pointer;"
-        @contextmenu.stop="contextmenuEvent($event, item)">
-        <div class="prefixIcon">
-          <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
-            <path fill-rule="evenodd" clip-rule="evenodd"
-              d="M10.072 8.024L5.715 3.667l.618-.62L11 7.716v.618L6.333 13l-.618-.619 4.357-4.357z" />
-          </svg>
-          <!-- <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
-                                                                                                                                    <path fill-rule="evenodd" clip-rule="evenodd"
-                                                                                                                                      d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z" />
-                                                                                                                                  </svg> -->
-        </div>
-        <div style="height:23px;flex-grow: 1;">
-          <div v-if="item.name" style="line-height: 23px;font-size: 13px;">{{ item.name }}</div>
-          <div v-else>
-            <input ref="myInput" v-model="operationInputValue" class="myInput"
-              :class="{ 'myInputRedBorder': inputHintShow }" @blur="inputBlurHandle" @keydown.enter="inputKeyDownEnter"
-              @keydown.esc="inputKeyDownEsc" @click.stop="() => { }" @contextmenu.stop="() => { }"
-              @input="myInputHandleInput" />
-            <div v-show="inputHintShow" class="myInputHint">
-              <div>{{ inputHintText }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div class="unselectable" v-if="libraryData.songListArr.length" style="height:100%;width: 100%;">
+      <template v-for="(item, index) of libraryData.songListArr" :key="item.name">
+        <libraryDirItem v-if="item.type == 'dir'" v-model="libraryData.songListArr[index]"
+          :parentArr="libraryData.songListArr" @cancelMkDir="libraryData.songListArr.shift()"
+          @allItemOrderUpdate="allItemOrderUpdate" />
+        <librarySonglistItem v-if="item.type == 'songList'" />
+      </template>
     </div>
-    <div class="unselectable blankArea" v-else
+    <div class="unselectable" v-else
       style="height:100%;width: 100%;display: flex;justify-content: center;align-items: center;">
-      <span class="blankArea" style="font-size: 12px;color: #8c8c8c;">右键新建歌单</span>
+      <span style="font-size: 12px;color: #8c8c8c;">右键新建歌单</span>
     </div>
   </div>
   <rightClickMenu v-model="rightClickMenuShow" :menuArr="menuArr" :clickEvent="clickEvent"
     @menuButtonClick="menuButtonClick"></rightClickMenu>
 </template>
 <style lang="scss" scoped>
-.myInput {
-  width: calc(100% - 6px);
-  height: 19px;
-  background-color: #313131;
-  border: 1px solid #086bb7;
-  outline: none;
-  color: #cccccc
-}
-
-.myInputRedBorder {
-  border: 1px solid #be1100;
-}
-
-.myInputHint {
-  div {
-    width: calc(100% - 7px);
-    min-height: 25px;
-    line-height: 25px;
-    background-color: #5a1d1d;
-    border-right: 1px solid #be1100;
-    border-left: 1px solid #be1100;
-    border-bottom: 1px solid #be1100;
-    font-size: 12px;
-    padding-left: 5px;
-    position: relative;
-    z-index: 100;
-  }
-}
-
 .content {
   height: 100%;
   width: 100%;
@@ -225,15 +114,7 @@ const menuButtonClick = async (item, e) => {
   overflow: hidden;
   flex-direction: column;
 
-  .prefixIcon {
-    color: #cccccc;
-    width: 20px;
-    min-width: 20px;
-    height: 23px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-  }
+
 
   .libraryTitle {
     height: 35px;
