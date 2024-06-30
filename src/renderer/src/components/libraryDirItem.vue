@@ -1,6 +1,10 @@
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, watch } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu.vue';
+import libraryDirItem from '@renderer/components/libraryDirItem.vue'
+import librarySonglistItem from '@renderer/components/librarySonglistItem.vue'
+import { useRuntimeStore } from '@renderer/stores/runtime'
+const runtime = useRuntimeStore()
 const props = defineProps({
     modelValue: {
         type: Object,
@@ -12,6 +16,15 @@ const props = defineProps({
     }
 })
 const emits = defineEmits(['cancelMkDir', 'allItemOrderUpdate', 'update:modelValue'])
+
+const getSongListArr = async () => {
+    let songListArr = []
+    if (props.modelValue.name) {
+        songListArr = await window.electron.ipcRenderer.invoke('querySonglist', props.modelValue.path)
+    }
+    emits('update:modelValue', { ...props.modelValue, songListArr: songListArr })
+}
+getSongListArr()
 const myInputHandleInput = (e) => {
     if (operationInputValue.value == '') {
         inputHintText.value = '必须提供歌单或文件夹名。'
@@ -83,10 +96,28 @@ if (props.modelValue.name == '') {
         myInput.value.focus()
     })
 }
+
+const renameDivShow = ref(false)
 const menuButtonClick = async (item, e) => {
-    if (item.name == '新建文件夹') {
-        //新建文件夹之前肯定得先知道文件夹下的结构情况
-        console.log(9999)
+    if (item.name == '新建歌单') {
+
+    } else if (item.name == '新建文件夹') {
+        dirChildRendered.value = true
+        dirChildShow.value = true
+        let songListArr = props.modelValue.songListArr
+        songListArr.unshift({
+            "type": "dir",
+            "name": "",
+            "path": props.modelValue.path
+        })
+        emits('update:modelValue', {
+            ...props.modelValue, songListArr: songListArr
+        })
+    } else if (item.name == '重命名') {
+        renameDivShow.value == true
+        //todo
+    } else if (item.name == "删除") {
+
     }
 }
 
@@ -97,22 +128,47 @@ const contextmenuEvent = (event) => {
     clickEvent.value = event
     rightClickMenuShow.value = true
 }
+
+const allItemOrderUpdate = () => {
+    let songListArr = props.modelValue.songListArr
+    for (let item of songListArr) {
+        if (item.order) {
+            item.order++
+        }
+    }
+    emits('update:modelValue', { ...props.modelValue, songListArr: songListArr })
+}
+const dirChildShow = ref(false)
+const dirChildRendered = ref(false)
+const dirHandleClick = async () => {
+    dirChildRendered.value = true
+    dirChildShow.value = !dirChildShow.value
+}
+watch(() => runtime.collapseAllDirClicked, () => {
+    if (runtime.collapseAllDirClicked) {
+        dirChildShow.value = false
+        runtime.collapseAllDirClicked = false
+    }
+})
 </script>
 <template>
-    <div style="display: flex;cursor: pointer;" @contextmenu.stop="contextmenuEvent">
+    <div style="display: flex;cursor: pointer;" @contextmenu.stop="contextmenuEvent" @click.stop="dirHandleClick()"
+        :class="{ 'rightClickBorder': rightClickMenuShow }">
         <div class="prefixIcon">
-            <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+            <svg v-show="!dirChildShow" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"
+                fill="currentColor">
                 <path fill-rule="evenodd" clip-rule="evenodd"
                     d="M10.072 8.024L5.715 3.667l.618-.62L11 7.716v.618L6.333 13l-.618-.619 4.357-4.357z" />
             </svg>
-            <!-- <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
-                                    <path fill-rule="evenodd" clip-rule="evenodd"
-                                        d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z" />
-                                </svg> -->
+            <svg v-show="dirChildShow" width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"
+                fill="currentColor">
+                <path fill-rule="evenodd" clip-rule="evenodd"
+                    d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z" />
+            </svg>
         </div>
         <div style="height:23px;flex-grow: 1;">
             <div v-if="props.modelValue.name" style="line-height: 23px;font-size: 13px;">{{ props.modelValue.name }}</div>
-            <div v-else>
+            <div v-if="!props.modelValue.name">
                 <input ref="myInput" v-model="operationInputValue" class="myInput"
                     :class="{ 'myInputRedBorder': inputHintShow }" @blur="inputBlurHandle"
                     @keydown.enter="inputKeyDownEnter" @keydown.esc="inputKeyDownEsc" @click.stop="() => { }"
@@ -121,12 +177,27 @@ const contextmenuEvent = (event) => {
                     <div>{{ inputHintText }}</div>
                 </div>
             </div>
+            <div v-if="renameDivShow">
+                //todo
+            </div>
         </div>
+    </div>
+    <div v-if="dirChildRendered" v-show="dirChildShow" style="padding-left: 5px;">
+        <template v-for="(item, index) of props.modelValue.songListArr" :key="item.name">
+            <libraryDirItem v-if="item.type == 'dir'" v-model="props.modelValue.songListArr[index]"
+                :parentArr="props.modelValue.songListArr" @cancelMkDir="props.modelValue.songListArr.shift()"
+                @allItemOrderUpdate="allItemOrderUpdate" />
+            <librarySonglistItem v-if="item.type == 'songList'" />
+        </template>
     </div>
     <rightClickMenu v-model="rightClickMenuShow" :menuArr="menuArr" :clickEvent="clickEvent"
         @menuButtonClick="menuButtonClick"></rightClickMenu>
 </template>
 <style lang="scss" scoped>
+.rightClickBorder {
+    border: 1px solid #0078d4;
+}
+
 .myInput {
     width: calc(100% - 6px);
     height: 19px;

@@ -5,6 +5,8 @@ import chevronDown from '@renderer/assets/chevron-down.svg'
 import chevronRight from '@renderer/assets/chevron-right.svg'
 import libraryDirItem from '@renderer/components/libraryDirItem.vue';
 import librarySonglistItem from '@renderer/components/librarySonglistItem.vue'
+import { useRuntimeStore } from '@renderer/stores/runtime'
+const runtime = useRuntimeStore()
 const props = defineProps(
   {
     library: {
@@ -50,7 +52,9 @@ const contextmenuEvent = (event) => {
 }
 
 const menuButtonClick = async (item, e) => {
-  if (item.name == '新建文件夹') {
+  if (item.name == '新建歌单') {
+
+  } else if (item.name == '新建文件夹') {
     libraryData.value.songListArr.unshift({
       "type": "dir",
       "name": "",
@@ -67,14 +71,17 @@ const allItemOrderUpdate = () => {
   }
 }
 
-
+const collapseButtonHandleClick = () => {
+  runtime.collapseAllDirClicked = true
+}
 </script>
 <template>
   <div class="content" @contextmenu.stop="contextmenuEvent">
     <div class="unselectable libraryTitle">
       <span>{{ props.libraryName }}</span>
       <div style="display: flex;justify-content: center;align-items: center;">
-        <div class="collapseButton" @mouseover="iconMouseover()" @mouseout="iconMouseout()">
+        <div class="collapseButton" @mouseover="iconMouseover()" @mouseout="iconMouseout()"
+          @click="collapseButtonHandleClick()">
           <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
             <path d="M9 9H4v1h5V9z" />
             <path fill-rule="evenodd" clip-rule="evenodd"

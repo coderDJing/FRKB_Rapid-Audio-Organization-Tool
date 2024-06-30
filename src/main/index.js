@@ -82,7 +82,6 @@ function createWindow() {
     app.exit()
   })
 
-
   ipcMain.on('queryLibrary', () => {
     //检查有没有library文件夹
     fs.promises.access(join(__dirname, 'library'), fs.constants.F_OK).then(async () => {
@@ -109,15 +108,13 @@ function createWindow() {
       mainWindow.webContents.send('libraryDescriptionFilesReaded', JSON.stringify(descriptions))
     })
   })
-
-
 }
+
 ipcMain.handle('mkDir', async (e, descriptionJson, dirPath) => {
   await updateTargetDirSubdirOrder(join(__dirname, dirPath))
   let path = join(__dirname, descriptionJson.path)
   await fs.promises.mkdir(path, { recursive: true })
   await fs.promises.writeFile(join(path, 'description.json'), JSON.stringify(descriptionJson, null, 2))
-
   return
 })
 ipcMain.handle('querySonglist', async (e, dirPath) => {

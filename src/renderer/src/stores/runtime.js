@@ -13,7 +13,8 @@ export const useRuntimeStore = defineStore('runtime', {
           isDeleteSourceFile: true,
           isDeleteSourceDir: true
         }
-      }
+      },
+      collapseAllDirClicked: false
     }
   }
 })
