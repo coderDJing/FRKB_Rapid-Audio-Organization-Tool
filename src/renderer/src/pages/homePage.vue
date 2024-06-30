@@ -69,9 +69,7 @@ const librarySelectedChange = (item) => {
   if (item.name == librarySelected.value) {
     return
   }
-
   librarySelected.value = item.name
-
 }
 
 window.electron.ipcRenderer.send('queryLibrary');
