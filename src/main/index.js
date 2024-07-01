@@ -2,7 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { readSortedDescriptionFiles, updateTargetDirSubdirOrder } from './utils.js'
+import { readSortedDescriptionFiles, updateTargetDirSubdirOrder, readJsonFile } from './utils.js'
 import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset'
 
 // const { dialog } = require('electron').dialog;
@@ -109,6 +109,26 @@ function createWindow() {
     })
   })
 }
+ipcMain.handle('renameDir', async (e, newName, dirPath) => {
+  let descriptionPath = join(__dirname, join(dirPath, 'description.json'))
+  let descriptionJson = await readJsonFile(descriptionPath)
+  descriptionJson.name = newName
+  descriptionJson.path = descriptionJson.path.replace(/(\/[^\/]+)$/, `/${newName}`)
+  await fs.promises.writeFile(descriptionPath, JSON.stringify(descriptionJson, null, 2))
+  await fs.promises.rename(join(__dirname, dirPath), join(__dirname, descriptionJson.path))
+  const modifySubfolderJson = async (targetDirPath) => {
+    const dirs = await fs.promises.readdir(targetDirPath, { withFileTypes: true }).then(dirents => dirents.filter(dirent => dirent.isDirectory()));
+    for (const dir of dirs) {
+      modifySubfolderJson(join(dir.path, dir.name))
+      const filePath = join(join(dir.path, dir.name), 'description.json');
+      const fileData = await readJsonFile(filePath);
+      fileData.path = fileData.path.replace(dirPath, descriptionJson.path)
+      await fs.promises.writeFile(filePath, JSON.stringify(fileData, null, 2))
+    }
+  }
+  modifySubfolderJson(join(__dirname, descriptionJson.path))
+  return
+})
 
 ipcMain.handle('mkDir', async (e, descriptionJson, dirPath) => {
   await updateTargetDirSubdirOrder(join(__dirname, dirPath))

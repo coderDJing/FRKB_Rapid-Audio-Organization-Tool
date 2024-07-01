@@ -71,7 +71,6 @@ const librarySelectedChange = (item) => {
   }
   librarySelected.value = item.name
 }
-
 window.electron.ipcRenderer.send('queryLibrary');
 </script>
 <template>
