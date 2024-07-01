@@ -4,6 +4,7 @@ import rightClickMenu from '@renderer/components/rightClickMenu.vue';
 import libraryDirItem from '@renderer/components/libraryDirItem.vue'
 import librarySonglistItem from '@renderer/components/librarySonglistItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import confirmDialog from '@renderer/components/confirmDialog.vue';
 const runtime = useRuntimeStore()
 const props = defineProps({
   modelValue: {
@@ -118,7 +119,7 @@ const menuButtonClick = async (item, e) => {
     await nextTick()
     myRenameInput.value.focus()
   } else if (item.name == "删除") {
-
+    confirmDialogShow.value = true
   }
 }
 
@@ -212,6 +213,10 @@ const renameMyInputHandleInput = (e) => {
 }
 
 //----------------------------------------
+//------删除功能
+const confirmDialogShow = ref(false)
+//todo
+//-----------
 </script>
 <template>
   <div style="display: flex;cursor: pointer;" @contextmenu.stop="contextmenuEvent" @click.stop="dirHandleClick()"
@@ -260,6 +265,7 @@ const renameMyInputHandleInput = (e) => {
   </div>
   <rightClickMenu v-model="rightClickMenuShow" :menuArr="menuArr" :clickEvent="clickEvent"
     @menuButtonClick="menuButtonClick"></rightClickMenu>
+  <confirmDialog v-if="confirmDialogShow" />
 </template>
 <style lang="scss" scoped>
 .rightClickBorder {
