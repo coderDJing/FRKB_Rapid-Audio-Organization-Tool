@@ -77,6 +77,21 @@ const collapseButtonHandleClick = () => {
 const cancelMkDir = () => {
   libraryData.value.songListArr.shift()
 }
+
+const dirDeleted = async (deleteItem) => {
+  await window.electron.ipcRenderer.invoke('updateOrderAfterNum', 'library/' + props.library, deleteItem.order)
+  let deleteIndex = null
+  for (let index in libraryData.value.songListArr) {
+    if (libraryData.value.songListArr[index] == deleteItem) {
+      deleteIndex = index
+      continue
+    }
+    if (libraryData.value.songListArr[index].order > deleteItem.order) {
+      libraryData.value.songListArr[index].order--
+    }
+  }
+  libraryData.value.songListArr.splice(deleteIndex, 1)
+}
 </script>
 <template>
   <div class="content" @contextmenu.stop="contextmenuEvent">
@@ -101,7 +116,8 @@ const cancelMkDir = () => {
     <div class="unselectable" v-if="libraryData.songListArr.length" style="height:100%;width: 100%;">
       <template v-for="(item, index) of libraryData.songListArr" :key="item.name">
         <libraryDirItem v-if="item.type == 'dir'" v-model="libraryData.songListArr[index]"
-          :parentArr="libraryData.songListArr" @cancelMkDir="cancelMkDir" @allItemOrderUpdate="allItemOrderUpdate" />
+          :parentArr="libraryData.songListArr" @cancelMkDir="cancelMkDir" @allItemOrderUpdate="allItemOrderUpdate"
+          @dirDeleted="dirDeleted" />
         <librarySonglistItem v-if="item.type == 'songList'" />
       </template>
     </div>
