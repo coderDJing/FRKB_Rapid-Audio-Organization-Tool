@@ -20,10 +20,10 @@
   height: 100vh;
   position: absolute;
   top: 0px;
+  left: 0px;
   display: flex;
   justify-content: center;
   align-items: center;
-  position: absolute;
   z-index: 99;
   background-color: rgba(0, 0, 0, 0.5);
 
@@ -48,6 +48,3 @@
     background-color: #0078d4;
   }
 }
-
-
-

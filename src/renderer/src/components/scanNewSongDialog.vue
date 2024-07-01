@@ -71,7 +71,8 @@ const clickChooseSongList = () => {
     <div style="width: 450px;height: 260px;display: flex;flex-direction: column;justify-content: space-between;"
       class="inner">
       <div>
-        <div style="text-align: center;height:30px;line-height: 30px;font-size: 14px;"><span>导入新歌曲</span></div>
+        <div style="text-align: center;height:30px;line-height: 30px;font-size: 14px;"><span
+            style="font-weight: bold;">导入新歌曲</span></div>
         <div style="padding-left: 20px;padding-top: 30px;padding-right: 20px;">
           <div style="display: flex;">
             <div class="formLabel"><span>选择文件夹：</span></div>
