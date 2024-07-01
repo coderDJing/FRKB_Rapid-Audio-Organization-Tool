@@ -53,7 +53,11 @@ const contextmenuEvent = (event) => {
 
 const menuButtonClick = async (item, e) => {
   if (item.name == '新建歌单') {
-
+    libraryData.value.songListArr.unshift({
+      "type": "songList",
+      "name": "",
+      "path": "library/" + props.library
+    })
   } else if (item.name == '新建文件夹') {
     libraryData.value.songListArr.unshift({
       "type": "dir",
@@ -113,12 +117,15 @@ const dirDeleted = async (deleteItem) => {
         </transition>
       </div>
     </div>
-    <div class="unselectable" v-if="libraryData.songListArr.length" style="height:100%;width: 100%;">
+    <div class="unselectable" v-if="libraryData.songListArr.length"
+      style="height:calc(100% - 35px);max-height: calc(100% - 35px); width: 100%;overflow-y: scroll;overflow-x: scroll;">
       <template v-for="(item, index) of libraryData.songListArr" :key="item.name">
         <libraryDirItem v-if="item.type == 'dir'" v-model="libraryData.songListArr[index]"
           :parentArr="libraryData.songListArr" @cancelMkDir="cancelMkDir" @allItemOrderUpdate="allItemOrderUpdate"
           @dirDeleted="dirDeleted" />
-        <librarySonglistItem v-if="item.type == 'songList'" />
+        <librarySonglistItem v-if="item.type == 'songList'" v-model="libraryData.songListArr[index]"
+          :parentArr="libraryData.songListArr" @cancelMkDir="cancelMkDir" @allItemOrderUpdate="allItemOrderUpdate"
+          @dirDeleted="dirDeleted" />
       </template>
     </div>
     <div class="unselectable" v-else
@@ -131,7 +138,7 @@ const dirDeleted = async (deleteItem) => {
 </template>
 <style lang="scss" scoped>
 .content {
-  height: 100%;
+  height: calc(100vh - 35px);
   width: 100%;
   display: flex;
   flex-grow: 1;
