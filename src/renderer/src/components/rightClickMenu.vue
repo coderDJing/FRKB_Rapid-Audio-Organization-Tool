@@ -63,7 +63,7 @@ watch(() => props.clickEvent, () => {
 
 </script>
 <template>
-  <div v-if="props.modelValue" class="menu" :style="{ top: positionTop + 'px', left: positionLeft + 'px' }"
+  <div v-if="props.modelValue" class="menu unselectable" :style="{ top: positionTop + 'px', left: positionLeft + 'px' }"
     @click.stop="() => { }">
     <div v-for="item of props.menuArr" class="menuGroup">
       <div v-for="button of item" class="menuButton" @click="menuButtonClick(button)"
