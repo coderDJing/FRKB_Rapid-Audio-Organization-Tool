@@ -10,7 +10,7 @@ export const readJsonFile = async (filePath) => {
     if (err.code === 'ENOENT') {
       console.error(`文件 ${filePath} 不存在`);
     } else {
-      console.error(`读取文件 ${filePath} 时出错: ${err.message}`);
+      console.error(`read file ${filePath} occur error: ${err.message}`);
     }
     return null;
   }

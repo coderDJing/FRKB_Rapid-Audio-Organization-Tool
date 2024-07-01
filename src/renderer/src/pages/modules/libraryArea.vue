@@ -74,6 +74,9 @@ const allItemOrderUpdate = () => {
 const collapseButtonHandleClick = () => {
   runtime.collapseAllDirClicked = true
 }
+const cancelMkDir = () => {
+  libraryData.value.songListArr.shift()
+}
 </script>
 <template>
   <div class="content" @contextmenu.stop="contextmenuEvent">
@@ -98,8 +101,7 @@ const collapseButtonHandleClick = () => {
     <div class="unselectable" v-if="libraryData.songListArr.length" style="height:100%;width: 100%;">
       <template v-for="(item, index) of libraryData.songListArr" :key="item.name">
         <libraryDirItem v-if="item.type == 'dir'" v-model="libraryData.songListArr[index]"
-          :parentArr="libraryData.songListArr" @cancelMkDir="libraryData.songListArr.shift()"
-          @allItemOrderUpdate="allItemOrderUpdate" />
+          :parentArr="libraryData.songListArr" @cancelMkDir="cancelMkDir" @allItemOrderUpdate="allItemOrderUpdate" />
         <librarySonglistItem v-if="item.type == 'songList'" />
       </template>
     </div>
