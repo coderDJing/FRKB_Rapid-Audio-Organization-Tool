@@ -2,7 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { readSortedDescriptionFiles, updateTargetDirSubdirOrder, readJsonFile } from './utils.js'
+import { readSortedDescriptionFiles, updateTargetDirSubdirOrder, readJsonFile, deleteFolderRecursive, updateTargetDirSubdirOrderAfterNumMinus } from './utils.js'
 import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset'
 
 // const { dialog } = require('electron').dialog;
@@ -127,6 +127,14 @@ ipcMain.handle('renameDir', async (e, newName, dirPath) => {
     }
   }
   modifySubfolderJson(join(__dirname, descriptionJson.path))
+  return
+})
+ipcMain.handle('updateOrderAfterNum', async (e, path, order) => {
+  await updateTargetDirSubdirOrderAfterNumMinus(join(__dirname, path), order)
+})
+
+ipcMain.handle('delDir', async (e, path) => {
+  await deleteFolderRecursive(join(__dirname, path))
   return
 })
 
