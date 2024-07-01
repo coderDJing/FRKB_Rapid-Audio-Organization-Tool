@@ -100,7 +100,17 @@ if (props.modelValue.name == '') {
 
 const menuButtonClick = async (item, e) => {
     if (item.name == '新建歌单') {
-
+        dirChildRendered.value = true
+        dirChildShow.value = true
+        let songListArr = props.modelValue.songListArr
+        songListArr.unshift({
+            "type": "songList",
+            "name": "",
+            "path": props.modelValue.path
+        })
+        emits('update:modelValue', {
+            ...props.modelValue, songListArr: songListArr
+        })
     } else if (item.name == '新建文件夹') {
         dirChildRendered.value = true
         dirChildShow.value = true
@@ -260,8 +270,8 @@ const dirDeleted = async (deleteItem) => {
             </svg>
         </div>
         <div style="height:23px;flex-grow: 1;">
-            <div v-if="props.modelValue.name && !renameDivShow" style="line-height: 23px;font-size: 13px;">{{
-                props.modelValue.name }}</div>
+            <div v-if="props.modelValue.name && !renameDivShow" style="line-height: 23px;font-size: 13px;">
+                {{ props.modelValue.name }}</div>
             <div v-if="!props.modelValue.name">
                 <input ref="myInput" v-model="operationInputValue" class="myInput"
                     :class="{ 'myInputRedBorder': inputHintShow }" @blur="inputBlurHandle"
@@ -282,12 +292,14 @@ const dirDeleted = async (deleteItem) => {
             </div>
         </div>
     </div>
-    <div v-if="dirChildRendered" v-show="dirChildShow" style="padding-left: 5px;">
+    <div v-if="dirChildRendered" v-show="dirChildShow" style="padding-left: 15px;">
         <template v-for="(item, index) of props.modelValue.songListArr" :key="item.name">
             <libraryDirItem v-if="item.type == 'dir'" v-model="props.modelValue.songListArr[index]"
                 :parentArr="props.modelValue.songListArr" @cancelMkDir="cancelMkDir"
                 @allItemOrderUpdate="allItemOrderUpdate" @dirDeleted="dirDeleted" />
-            <librarySonglistItem v-if="item.type == 'songList'" />
+            <librarySonglistItem v-if="item.type == 'songList'" v-model="props.modelValue.songListArr[index]"
+                :parentArr="props.modelValue.songListArr" @cancelMkDir="cancelMkDir"
+                @allItemOrderUpdate="allItemOrderUpdate" @dirDeleted="dirDeleted" />
         </template>
     </div>
     <rightClickMenu v-model="rightClickMenuShow" :menuArr="menuArr" :clickEvent="clickEvent"
