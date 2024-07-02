@@ -1,10 +1,7 @@
 <script setup>
-import { ref, computed, nextTick } from 'vue'
+import { ref } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu.vue';
-import chevronDown from '@renderer/assets/chevron-down.svg'
-import chevronRight from '@renderer/assets/chevron-right.svg'
-import libraryDirItem from '@renderer/components/libraryDirItem.vue';
-import librarySonglistItem from '@renderer/components/librarySonglistItem.vue'
+import libraryItem from '@renderer/components/libraryItem.vue';
 import { useRuntimeStore } from '@renderer/stores/runtime'
 const runtime = useRuntimeStore()
 const props = defineProps(
@@ -118,14 +115,10 @@ const dirDeleted = async (deleteItem) => {
       </div>
     </div>
     <div class="unselectable" v-if="libraryData.songListArr.length"
-      style="height:calc(100% - 35px);max-height: calc(100% - 35px); width: 100%;overflow-y: scroll;overflow-x: scroll;">
+      style="height:calc(100% - 35px);max-height: calc(100% - 35px); width: 100%;overflow-y: hidden;overflow-x: hidden;">
       <template v-for="(item, index) of libraryData.songListArr" :key="item.name">
-        <libraryDirItem v-if="item.type == 'dir'" v-model="libraryData.songListArr[index]"
-          :parentArr="libraryData.songListArr" @cancelMkDir="cancelMkDir" @allItemOrderUpdate="allItemOrderUpdate"
-          @dirDeleted="dirDeleted" />
-        <librarySonglistItem v-if="item.type == 'songList'" v-model="libraryData.songListArr[index]"
-          :parentArr="libraryData.songListArr" @cancelMkDir="cancelMkDir" @allItemOrderUpdate="allItemOrderUpdate"
-          @dirDeleted="dirDeleted" />
+        <libraryItem v-model="libraryData.songListArr[index]" :parentArr="libraryData.songListArr"
+          @cancelMkDir="cancelMkDir" @allItemOrderUpdate="allItemOrderUpdate" @dirDeleted="dirDeleted" />
       </template>
     </div>
     <div class="unselectable" v-else
