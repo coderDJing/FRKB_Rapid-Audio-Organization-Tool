@@ -72,7 +72,10 @@ const allItemOrderUpdate = () => {
   }
 }
 
-const collapseButtonHandleClick = () => {
+const collapseButtonHandleClick = async () => {
+  let a = await window.electron.ipcRenderer.invoke('getLibrary')
+  debugger
+
   runtime.collapseAllDirClicked = true
 }
 const cancelMkDir = () => {

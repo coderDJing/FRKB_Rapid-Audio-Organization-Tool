@@ -43,6 +43,50 @@ export const readJsonFile = async (filePath) => {
     return null;
   }
 }
+
+
+// 辅助函数：对对象数组按照 order 属性进行排序
+function sortByOrder(items) {
+  return items.sort((a, b) => a.order - b.order);
+}
+
+// 递归函数：构建树状结构
+export async function getLibrary(dir = join(__dirname, 'library')) {
+  //todo
+  // 读取目录中的所有文件和子目录
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  console.log(entries)
+  // 过滤出description.json文件
+  const descriptionFiles = entries.filter(entry => entry.isFile() && entry.name === 'description.json');
+
+  // 读取description.json文件并获取描述对象
+  const descriptions = await Promise.all(descriptionFiles.map(async entry => {
+    const filePath = path.join(dir, entry.name);
+    return readJsonFile(filePath);
+  }));
+
+  // 过滤出目录
+  const dirs = entries.filter(entry => entry.isDirectory());
+
+  // 构建当前层级的树节点
+  const treeItems = sortByOrder(descriptions.map(desc => ({
+    ...desc, // 保留description.json中的原始对象
+    children: [] // 初始化children为空数组
+  })));
+
+  // 递归构建子目录的树
+  for (const treeItem of treeItems) {
+    // 如果存在同名的子目录，则递归构建children
+    const subdirEntry = dirs.find(dirEntry => dirEntry.name === treeItem.name);
+    if (subdirEntry) {
+      const subdirPath = path.join(dir, subdirEntry.name);
+      treeItem.children = await getLibrary(subdirPath);
+    }
+  }
+
+  return treeItems;
+}
+
 export const readSortedDescriptionFiles = async (directoryPath) => {
   try {
     // 读取目录中的文件夹
