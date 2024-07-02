@@ -2,7 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { readSortedDescriptionFiles, updateTargetDirSubdirOrder, readJsonFile, deleteFolderRecursive, updateTargetDirSubdirOrderAfterNumMinus } from './utils.js'
+import { readSortedDescriptionFiles, updateTargetDirSubdirOrder, readJsonFile, deleteFolderRecursive, updateTargetDirSubdirOrderAfterNumMinus, getLibrary } from './utils.js'
 import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset'
 
 // const { dialog } = require('electron').dialog;
@@ -109,6 +109,11 @@ function createWindow() {
     })
   })
 }
+ipcMain.handle('getLibrary', async () => {
+  const library = await getLibrary()
+  return library
+})
+
 ipcMain.handle('renameDir', async (e, newName, dirPath) => {
   let descriptionPath = join(__dirname, join(dirPath, 'description.json'))
   let descriptionJson = await readJsonFile(descriptionPath)
