@@ -253,10 +253,58 @@ const dirDeleted = async (deleteItem) => {
   props.modelValue.songListArr.splice(deleteIndex, 1)
 }
 //------------------------------------
+
+const dragstart = (e) => {
+  runtime.dragItemData = props.modelValue
+}
+const dragApproach = ref('')
+const dragover = (e) => {
+  if (runtime.dragItemData == props.modelValue) {
+    return
+  }
+  if (e.offsetY <= 8) {
+    dragApproach.value = 'top'
+  } else if (e.offsetY > 8 && e.offsetY < 16) {
+    dragApproach.value = 'center'
+  } else {
+    dragApproach.value = 'bottom'
+  }
+  e.dataTransfer.dropEffect = 'move';
+}
+const dragenter = (e) => {
+  if (runtime.dragItemData == props.modelValue) {
+    return
+  }
+  if (e.offsetY <= 8) {
+    dragApproach.value = 'top'
+  } else if (e.offsetY > 8 && e.offsetY < 16) {
+    dragApproach.value = 'center'
+  } else {
+    dragApproach.value = 'bottom'
+  }
+  e.dataTransfer.dropEffect = 'move';
+}
+const dragleave = (e) => {
+  dragApproach.value = ''
+}
+const drop = (e) => {
+  dragApproach.value = ''
+  if (runtime.dragItemData == props.modelValue) {
+    return
+  }
+  //todo
+}
 </script>
 <template>
-  <div style="display: flex;cursor: pointer;" @contextmenu.stop="contextmenuEvent" @click.stop="dirHandleClick()"
-    :class="{ 'rightClickBorder': rightClickMenuShow }">
+  <div style="display: flex;cursor: pointer;box-sizing: border-box;" @contextmenu.stop="contextmenuEvent"
+    @click.stop="dirHandleClick()" @dragover.stop.prevent="dragover" @dragstart.stop="dragstart"
+    @dragenter.stop.prevent="dragenter" @drop.stop="drop" @dragleave.stop="dragleave"
+    :draggable="(props.modelValue.name && !renameDivShow) ? true : false" :class="{
+      'rightClickBorder': rightClickMenuShow,
+      'borderTop': dragApproach == 'top',
+      'borderBottom': dragApproach == 'bottom',
+      'borderCenter': dragApproach == 'center'
+    }">
     <div class="prefixIcon">
       <svg v-if="props.modelValue.type == 'dir'" v-show="!dirChildShow" width="16" height="16" viewBox="0 0 16 16"
         xmlns="http://www.w3.org/2000/svg" fill="currentColor">
@@ -270,8 +318,9 @@ const dirDeleted = async (deleteItem) => {
       </svg>
       <img v-if="props.modelValue.type == 'songList'" style="width: 13px;height: 13px;" :src="listIcon" />
     </div>
-    <div style="height:23px;flex-grow: 1;">
-      <div v-if="props.modelValue.name && !renameDivShow" style="line-height: 23px;font-size: 13px;">
+    <div style="height:23px;width: calc(100% - 20px);">
+      <div v-if="props.modelValue.name && !renameDivShow"
+        style="line-height: 23px;font-size: 13px;overflow: hidden;text-overflow: ellipsis;white-space: nowrap;">
         {{ props.modelValue.name }}</div>
       <div v-if="!props.modelValue.name">
         <input ref="myInput" v-model="operationInputValue" class="myInput"
@@ -293,7 +342,8 @@ const dirDeleted = async (deleteItem) => {
       </div>
     </div>
   </div>
-  <div v-if="props.modelValue.type == 'dir' && dirChildRendered" v-show="dirChildShow" style="padding-left: 15px;">
+  <div v-if="props.modelValue.type == 'dir' && dirChildRendered" v-show="dirChildShow"
+    style="padding-left: 15px;width: 100%;box-sizing: border-box;">
     <template v-for="(item, index) of props.modelValue.songListArr" :key="item.name">
       <libraryItem v-model="props.modelValue.songListArr[index]" :parentArr="props.modelValue.songListArr"
         @cancelMkDir="cancelMkDir" @allItemOrderUpdate="allItemOrderUpdate" @dirDeleted="dirDeleted" />
@@ -305,6 +355,18 @@ const dirDeleted = async (deleteItem) => {
     @cancel="deleteCancel" />
 </template>
 <style lang="scss" scoped>
+.borderTop {
+  border-top: 1px solid #0078d4;
+}
+
+.borderBottom {
+  border-bottom: 1px solid #0078d4;
+}
+
+.borderCenter {
+  border: 1px solid #0078d4;
+}
+
 .rightClickBorder {
   border: 1px solid #0078d4;
 }
