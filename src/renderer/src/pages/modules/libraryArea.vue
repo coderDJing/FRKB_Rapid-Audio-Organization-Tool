@@ -93,6 +93,31 @@ const dirDeleted = async (deleteItem) => {
   }
   libraryData.value.songListArr.splice(deleteIndex, 1)
 }
+
+const dragover = (e) => {
+  //todo
+  e.dataTransfer.dropEffect = 'move';
+
+}
+const dragenter = (e) => {
+  //todo
+  e.dataTransfer.dropEffect = 'move';
+
+}
+const dragoverBlankArea = (e) => {
+  //todo
+  e.dataTransfer.dropEffect = 'move';
+
+}
+const dragenterBlankArea = (e) => {
+  //todo
+  e.dataTransfer.dropEffect = 'move';
+
+}
+const drop = (e) => {
+  //todo
+  console.log(runtime.dragItemData)
+}
 </script>
 <template>
   <div class="content" @contextmenu.stop="contextmenuEvent">
@@ -114,12 +139,15 @@ const dirDeleted = async (deleteItem) => {
         </transition>
       </div>
     </div>
-    <div class="unselectable" v-if="libraryData.songListArr.length"
-      style="height:calc(100% - 35px);max-height: calc(100% - 35px); width: 100%;overflow-y: hidden;overflow-x: hidden;">
+    <div class="unselectable libraryArea" v-if="libraryData.songListArr.length" @dragover.stop.prevent="dragover"
+      @dragenter.stop.prevent="dragenter" @drop.stop="drop">
       <template v-for="(item, index) of libraryData.songListArr" :key="item.name">
         <libraryItem v-model="libraryData.songListArr[index]" :parentArr="libraryData.songListArr"
           @cancelMkDir="cancelMkDir" @allItemOrderUpdate="allItemOrderUpdate" @dirDeleted="dirDeleted" />
       </template>
+      <div style="flex-grow: 1;" @dragover.stop.prevent="dragoverBlankArea" @dragenter.stop.prevent="dragenterBlankArea"
+        @drop.stop="dropBlankArea">
+      </div>
     </div>
     <div class="unselectable" v-else
       style="height:100%;width: 100%;display: flex;justify-content: center;align-items: center;">
@@ -130,6 +158,21 @@ const dirDeleted = async (deleteItem) => {
     @menuButtonClick="menuButtonClick"></rightClickMenu>
 </template>
 <style lang="scss" scoped>
+.libraryArea {
+  height: calc(100% - 35px);
+  max-height: calc(100% - 35px);
+  width: 100%;
+  overflow-y: hidden;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  display: flex;
+  flex-direction: column;
+
+  &:hover {
+    overflow-y: auto;
+  }
+}
+
 .content {
   height: calc(100vh - 35px);
   width: 100%;
