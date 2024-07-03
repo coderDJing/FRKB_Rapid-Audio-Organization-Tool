@@ -15,7 +15,8 @@ export const useRuntimeStore = defineStore('runtime', {
         }
       },
       collapseAllDirClicked: false,
-      dragItemData: null
+      dragItemData: null,
+      libraryTree: {}
     }
   }
 })

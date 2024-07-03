@@ -64,25 +64,22 @@ onUnmounted(() => {
   clearTimeout(hoverTimeout);
 });
 
-let librarySelected = ref('listLibrary')
+let librarySelected = ref('筛选库')
 const librarySelectedChange = (item) => {
   if (item.name == librarySelected.value) {
     return
   }
   librarySelected.value = item.name
 }
-window.electron.ipcRenderer.send('queryLibrary');
 </script>
 <template>
   <div style="display: flex;height: 100%">
     <librarySelectArea @librarySelectedChange="librarySelectedChange"></librarySelectArea>
     <div style="width: 200px;border-right: 1px solid #2b2b2b;"
       :style="'width:' + runtime.layoutConfig.libraryAreaWidth + 'px'">
-      <div style="width: 100%;height: 100%;" v-show="librarySelected == 'listLibrary'">
-        <libraryArea library="listLibrary" libraryName="筛选库"></libraryArea>
-      </div>
-      <div style="width: 100%;height: 100%;" v-show="librarySelected == 'likeLibrary'">
-        <libraryArea library="likeLibrary" libraryName="精选库"></libraryArea>
+      <div v-for="item of runtime.libraryTree.children" style="width: 100%;height: 100%;"
+        v-show="librarySelected == item.dirName">
+        <libraryArea :uuid="item.uuid"></libraryArea>
       </div>
     </div>
     <div style="width:4px;cursor:ew-resize;height: calc(100vh - 35px);" @mousedown="startResize" class="dragBar"

@@ -68,7 +68,7 @@ watch(() => props.clickEvent, () => {
     <div v-for="item of props.menuArr" class="menuGroup">
       <div v-for="button of item" class="menuButton" @click="menuButtonClick(button)"
         @contextmenu="menuButtonClick(button)">
-        <span>{{ button.name }}</span>
+        <span>{{ button.menuName }}</span>
         <span>{{ button.shortcutKey }}</span>
       </div>
     </div>

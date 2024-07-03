@@ -10,18 +10,16 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 
 const emit = defineEmits(['librarySelectedChange'])
 const iconArr = ref([{
-  name: 'listLibrary',
+  name: '筛选库',
   grey: listGrey,
   white: listWhite,
   src: listGrey,
-  alt: '筛选库',
   showAlt: false
 }, {
-  name: 'likeLibrary',
+  name: '精选库',
   grey: likeGrey,
   white: likeWhite,
   src: likeGrey,
-  alt: '精选库',
   showAlt: false
 }])
 
@@ -62,11 +60,10 @@ const iconMouseout = (item) => {
 }
 
 const buttomIconArr = ref([{
-  name: 'setting',
+  name: '设置',
   grey: settingGrey,
   white: settingWhite,
   src: settingGrey,
-  alt: '设置',
   showAlt: false
 }])
 
@@ -87,7 +84,7 @@ const libraryHandleClick = (item) => {
           <img :src="item.src" draggable="false" />
           <transition name="fade">
             <div class="bubbleBox" v-if="item.showAlt" style="position: absolute;left: 50px;">
-              {{ item.alt }}
+              {{ item.name }}
             </div>
           </transition>
         </div>
@@ -103,7 +100,7 @@ const libraryHandleClick = (item) => {
           <img :src="item.src" draggable="false" />
           <transition name="fade">
             <div class="bubbleBox" v-if="item.showAlt" style="position: absolute;left: 50px;">
-              {{ item.alt }}
+              {{ item.name }}
             </div>
           </transition>
         </div>
