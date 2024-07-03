@@ -5,33 +5,24 @@ import libraryItem from '@renderer/components/libraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import confirmDialog from '@renderer/components/confirmDialog.vue';
 import listIcon from '@renderer/assets/listIcon.png'
-const runtime = useRuntimeStore()
+import libraryUtils from '@renderer/utils/libraryUtils.js'
+import { v4 as uuidv4 } from 'uuid';
+
 const props = defineProps({
-  modelValue: {
-    type: Object,
-    required: true
-  },
-  parentArr: {
-    type: Array,
-    required: true
+  uuid: {
+    type: String,
+    required: true,
   }
 })
-const emits = defineEmits(['cancelMkDir', 'allItemOrderUpdate', 'update:modelValue', 'dirDeleted'])
-
-const getSongListArr = async () => {
-  let songListArr = []
-  if (props.modelValue.name) {
-    songListArr = await window.electron.ipcRenderer.invoke('querySonglist', props.modelValue.path)
-  }
-  emits('update:modelValue', { ...props.modelValue, songListArr: songListArr })
-}
-getSongListArr()
+const runtime = useRuntimeStore()
+let dirData = libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, props.uuid)
+let fatherDirData = libraryUtils.getFatherLibraryTreeByUUID(runtime.libraryTree, props.uuid)
 const myInputHandleInput = (e) => {
   if (operationInputValue.value == '') {
     inputHintText.value = '必须提供歌单或文件夹名。'
     inputHintShow.value = true
   } else {
-    let exists = props.parentArr.some(obj => obj.name == operationInputValue.value)
+    let exists = fatherDirData.children.some(obj => obj.dirName == operationInputValue.value)
     if (exists) {
       inputHintText.value = '此位置已存在歌单或文件夹' + operationInputValue.value + '。请选择其他名称'
       inputHintShow.value = true
@@ -61,30 +52,32 @@ const inputKeyDownEsc = () => {
 const inputHintText = ref('')
 const inputBlurHandle = async () => {
   if (inputHintShow.value || operationInputValue.value == '') {
-    if (props.parentArr[0]?.name == '') {
-      emits('cancelMkDir')
+    if (dirData.dirName == '') {
+      if (fatherDirData.children[0]?.dirName == '') {
+        fatherDirData.children.shift()
+      }
     }
     operationInputValue.value = ''
     inputHintShow.value = false
     return
   }
+
   await window.electron.ipcRenderer.invoke('mkDir', {
-    "type": props.modelValue.type == "dir" ? "dir" : "songList",
-    "name": operationInputValue.value,
-    "path": props.modelValue.path + '/' + operationInputValue.value,
+    "uuid": dirData.uuid,
+    "type": dirData.type == "dir" ? "dir" : "songList",
+    "dirName": operationInputValue.value,
     "order": 1
-  }, props.modelValue.path)
-  let dirItemJson = {
-    ...props.modelValue
+  }, libraryUtils.findDirPathByUuid(runtime.libraryTree, props.uuid))
+
+  for (let item of fatherDirData.children) {
+    if (item.order) {
+      item.order++
+    }
   }
-  emits('allItemOrderUpdate')
-
-  dirItemJson.name = operationInputValue.value
-  dirItemJson.path = dirItemJson.path + '/' + operationInputValue.value
-  dirItemJson.order = 1
+  dirData.dirName = operationInputValue.value
+  dirData.order = 1
+  dirData.children = []
   operationInputValue.value = ''
-  emits('update:modelValue', dirItemJson)
-
 }
 let operationInputValue = ref('')
 
@@ -92,65 +85,50 @@ let operationInputValue = ref('')
 const inputHintShow = ref(false)
 
 const myInput = ref(null)
-if (props.modelValue.name == '') {
+if (dirData.dirName == '') {
   nextTick(() => {
     myInput.value.focus()
   })
 }
 
 const menuButtonClick = async (item, e) => {
-  if (item.name == '新建歌单') {
+  if (item.menuName == '新建歌单') {
     dirChildRendered.value = true
     dirChildShow.value = true
-    let songListArr = props.modelValue.songListArr
-    songListArr.unshift({
+
+    dirData.children.unshift({
+      "uuid": uuidv4(),
+      "dirName": "",
       "type": "songList",
-      "name": "",
-      "path": props.modelValue.path
     })
-    emits('update:modelValue', {
-      ...props.modelValue, songListArr: songListArr
-    })
-  } else if (item.name == '新建文件夹') {
+  } else if (item.menuName == '新建文件夹') {
     dirChildRendered.value = true
     dirChildShow.value = true
-    let songListArr = props.modelValue.songListArr
-    songListArr.unshift({
+
+    dirData.children.unshift({
+      "uuid": uuidv4(),
+      "dirName": "",
       "type": "dir",
-      "name": "",
-      "path": props.modelValue.path
     })
-    emits('update:modelValue', {
-      ...props.modelValue, songListArr: songListArr
-    })
-  } else if (item.name == '重命名') {
+  } else if (item.menuName == '重命名') {
     renameDivShow.value = true
-    renameDivValue.value = props.modelValue.name
+    renameDivValue.value = dirData.dirName
     await nextTick()
     myRenameInput.value.focus()
-  } else if (item.name == "删除") {
-    confirmDialogContent.value = [props.modelValue.type == 'dir' ? '确认删除此文件夹吗？' : '确认删除此歌单吗？', props.modelValue.type == 'dir' ? '文件夹中的内容将一并被删除' : '歌单中的歌曲将一并被删除', '"' + props.modelValue.name + '"']
+  } else if (item.menuName == "删除") {
+    confirmDialogContent.value = [dirData.type == 'dir' ? '确认删除此文件夹吗？' : '确认删除此歌单吗？', dirData.type == 'dir' ? '文件夹中的内容将一并被删除' : '歌单中的歌曲将一并被删除', '"' + dirData.dirName + '"']
     confirmDialogShow.value = true
   }
 }
 
 const rightClickMenuShow = ref(false)
 const clickEvent = ref({})
-const menuArr = ref(props.modelValue.type == "dir" ? [[{ name: '新建歌单' }, { name: '新建文件夹' }], [{ name: '重命名' }, { name: '删除' }]] : [[{ name: '重命名' }, { name: '删除' }]])
+const menuArr = ref(dirData.type == "dir" ? [[{ menuName: '新建歌单' }, { menuName: '新建文件夹' }], [{ menuName: '重命名' }, { menuName: '删除' }]] : [[{ menuName: '重命名' }, { menuName: '删除' }]])
 const contextmenuEvent = (event) => {
   clickEvent.value = event
   rightClickMenuShow.value = true
 }
 
-const allItemOrderUpdate = () => {
-  let songListArr = props.modelValue.songListArr
-  for (let item of songListArr) {
-    if (item.order) {
-      item.order++
-    }
-  }
-  emits('update:modelValue', { ...props.modelValue, songListArr: songListArr })
-}
 const dirChildShow = ref(false)
 const dirChildRendered = ref(false)
 const dirHandleClick = async () => {
@@ -163,14 +141,6 @@ watch(() => runtime.collapseAllDirClicked, () => {
     runtime.collapseAllDirClicked = false
   }
 })
-const cancelMkDir = () => {
-  let songListArr = props.modelValue.songListArr
-  songListArr.shift()
-  emits('update:modelValue', {
-    ...props.modelValue,
-    songListArr: songListArr
-  })
-}
 //----重命名功能--------------------------------------
 const renameDivShow = ref(false)
 const renameDivValue = ref('')
@@ -178,20 +148,15 @@ const myRenameInput = ref(null)
 const renameInputHintShow = ref(false)
 const renameInputHintText = ref('')
 const renameInputBlurHandle = async () => {
-  if (renameInputHintShow.value || renameDivValue.value == '' || renameDivValue.value == props.modelValue.name) {
+  if (renameInputHintShow.value || renameDivValue.value == '' || renameDivValue.value == dirData.dirName) {
     renameDivValue.value = ''
     renameDivShow.value = false
     return
   }
-  await window.electron.ipcRenderer.invoke('renameDir', renameDivValue.value, props.modelValue.path)
-
-  emits('update:modelValue', {
-    ...props.modelValue,
-    name: renameDivValue.value,
-    path: props.modelValue.path.replace(/(\/[^\/]+)$/, `/${renameDivValue.value}`)
-  })
+  await window.electron.ipcRenderer.invoke('renameDir', renameDivValue.value, libraryUtils.findDirPathByUuid(runtime.libraryTree, props.uuid))
+  dirData.dirName = renameDivValue.value
   renameDivValue.value = ''
-
+  renameDivShow.value = false
 }
 const renameInputKeyDownEnter = () => {
   if (renameDivValue.value == '') {
@@ -213,7 +178,7 @@ const renameMyInputHandleInput = (e) => {
     renameInputHintText.value = '必须提供歌单或文件夹名。'
     renameInputHintShow.value = true
   } else {
-    let exists = props.parentArr.some(obj => obj.name == renameDivValue.value)
+    let exists = fatherDirData.children.some(obj => obj.dirName == renameDivValue.value)
     if (exists) {
       renameInputHintText.value = '此位置已存在歌单或文件夹' + renameDivValue.value + '。请选择其他名称'
       renameInputHintShow.value = true
@@ -228,38 +193,34 @@ const renameMyInputHandleInput = (e) => {
 const confirmDialogShow = ref(false)
 const confirmDialogContent = ref([])
 const deleteConfirm = async () => {
-  const path = props.modelValue.path
+  const path = libraryUtils.findDirPathByUuid(runtime.libraryTree, props.uuid)
   await window.electron.ipcRenderer.invoke('delDir', path)
-  emits('dirDeleted', props.modelValue)
+  await window.electron.ipcRenderer.invoke('updateOrderAfterNum', libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid), dirData.order)
+  let deleteIndex = null
+  for (let index in fatherDirData.children) {
+    if (fatherDirData.children[index] == dirData) {
+      deleteIndex = index
+      continue
+    }
+    if (fatherDirData.children[index].order > dirData.order) {
+      fatherDirData.children[index].order--
+    }
+  }
+  fatherDirData.children.splice(deleteIndex, 1)
   deleteCancel()
 }
 const deleteCancel = () => {
   confirmDialogContent.value = []
   confirmDialogShow.value = false
 }
-
-const dirDeleted = async (deleteItem) => {
-  await window.electron.ipcRenderer.invoke('updateOrderAfterNum', props.modelValue.path, deleteItem.order)
-  let deleteIndex = null
-  for (let index in props.modelValue.songListArr) {
-    if (props.modelValue.songListArr[index] == deleteItem) {
-      deleteIndex = index
-      continue
-    }
-    if (props.modelValue.songListArr[index].order > deleteItem.order) {
-      props.modelValue.songListArr[index].order--
-    }
-  }
-  props.modelValue.songListArr.splice(deleteIndex, 1)
-}
 //------------------------------------
 
 const dragstart = (e) => {
-  runtime.dragItemData = props.modelValue
+  runtime.dragItemData = dirData
 }
 const dragApproach = ref('')
 const dragover = (e) => {
-  if (runtime.dragItemData == props.modelValue) {
+  if (runtime.dragItemData == dirData) {
     return
   }
   if (e.offsetY <= 8) {
@@ -272,7 +233,7 @@ const dragover = (e) => {
   e.dataTransfer.dropEffect = 'move';
 }
 const dragenter = (e) => {
-  if (runtime.dragItemData == props.modelValue) {
+  if (runtime.dragItemData == dirData) {
     return
   }
   if (e.offsetY <= 8) {
@@ -289,7 +250,7 @@ const dragleave = (e) => {
 }
 const drop = (e) => {
   dragApproach.value = ''
-  if (runtime.dragItemData == props.modelValue) {
+  if (runtime.dragItemData == dirData) {
     return
   }
   //todo
@@ -299,30 +260,30 @@ const drop = (e) => {
   <div style="display: flex;cursor: pointer;box-sizing: border-box;" @contextmenu.stop="contextmenuEvent"
     @click.stop="dirHandleClick()" @dragover.stop.prevent="dragover" @dragstart.stop="dragstart"
     @dragenter.stop.prevent="dragenter" @drop.stop="drop" @dragleave.stop="dragleave"
-    :draggable="(props.modelValue.name && !renameDivShow) ? true : false" :class="{
+    :draggable="(dirData.dirName && !renameDivShow) ? true : false" :class="{
       'rightClickBorder': rightClickMenuShow,
       'borderTop': dragApproach == 'top',
       'borderBottom': dragApproach == 'bottom',
       'borderCenter': dragApproach == 'center'
     }">
     <div class="prefixIcon">
-      <svg v-if="props.modelValue.type == 'dir'" v-show="!dirChildShow" width="16" height="16" viewBox="0 0 16 16"
+      <svg v-if="dirData.type == 'dir'" v-show="!dirChildShow" width="16" height="16" viewBox="0 0 16 16"
         xmlns="http://www.w3.org/2000/svg" fill="currentColor">
         <path fill-rule="evenodd" clip-rule="evenodd"
           d="M10.072 8.024L5.715 3.667l.618-.62L11 7.716v.618L6.333 13l-.618-.619 4.357-4.357z" />
       </svg>
-      <svg v-if="props.modelValue.type == 'dir'" v-show="dirChildShow" width="16" height="16" viewBox="0 0 16 16"
+      <svg v-if="dirData.type == 'dir'" v-show="dirChildShow" width="16" height="16" viewBox="0 0 16 16"
         xmlns="http://www.w3.org/2000/svg" fill="currentColor">
         <path fill-rule="evenodd" clip-rule="evenodd"
           d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z" />
       </svg>
-      <img v-if="props.modelValue.type == 'songList'" style="width: 13px;height: 13px;" :src="listIcon" />
+      <img v-if="dirData.type == 'songList'" style="width: 13px;height: 13px;" :src="listIcon" />
     </div>
     <div style="height:23px;width: calc(100% - 20px);">
-      <div v-if="props.modelValue.name && !renameDivShow"
+      <div v-if="dirData.dirName && !renameDivShow"
         style="line-height: 23px;font-size: 13px;overflow: hidden;text-overflow: ellipsis;white-space: nowrap;">
-        {{ props.modelValue.name }}</div>
-      <div v-if="!props.modelValue.name">
+        {{ dirData.dirName }}</div>
+      <div v-if="!dirData.dirName">
         <input ref="myInput" v-model="operationInputValue" class="myInput"
           :class="{ 'myInputRedBorder': inputHintShow }" @blur="inputBlurHandle" @keydown.enter="inputKeyDownEnter"
           @keydown.esc="inputKeyDownEsc" @click.stop="() => { }" @contextmenu.stop="() => { }"
@@ -342,11 +303,10 @@ const drop = (e) => {
       </div>
     </div>
   </div>
-  <div v-if="props.modelValue.type == 'dir' && dirChildRendered" v-show="dirChildShow"
+  <div v-if="dirData.type == 'dir' && dirChildRendered" v-show="dirChildShow"
     style="padding-left: 15px;width: 100%;box-sizing: border-box;">
-    <template v-for="(item, index) of props.modelValue.songListArr" :key="item.name">
-      <libraryItem v-model="props.modelValue.songListArr[index]" :parentArr="props.modelValue.songListArr"
-        @cancelMkDir="cancelMkDir" @allItemOrderUpdate="allItemOrderUpdate" @dirDeleted="dirDeleted" />
+    <template v-for="item of dirData.children" :key="item.uuid">
+      <libraryItem :uuid="item.uuid" />
     </template>
   </div>
   <rightClickMenu v-model="rightClickMenuShow" :menuArr="menuArr" :clickEvent="clickEvent"

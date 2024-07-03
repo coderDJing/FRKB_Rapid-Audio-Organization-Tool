@@ -20,6 +20,10 @@ const documentHandleClick = () => {
 document.addEventListener('click', documentHandleClick)
 document.addEventListener('contextmenu', documentHandleClick)
 
+const getLibrary = async () => {
+  runtime.libraryTree = await window.electron.ipcRenderer.invoke('getLibrary')
+}
+getLibrary()
 </script>
 <template>
   <div style="height: 100%;width: 100%;display: flex;flex-direction: column;">

@@ -3,30 +3,18 @@ import { ref } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu.vue';
 import libraryItem from '@renderer/components/libraryItem.vue';
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import libraryUtils from '@renderer/utils/libraryUtils.js'
+import { v4 as uuidv4 } from 'uuid';
 const runtime = useRuntimeStore()
 const props = defineProps(
   {
-    library: {
-      type: String,
-      required: true
-    },
-    libraryName: {
+    uuid: {
       type: String,
       required: true
     }
   }
 )
-let libraryData = ref({
-  songListArr: []
-})
-
-window.electron.ipcRenderer.on('libraryDescriptionFilesReaded', async (event, descriptions) => {
-  libraryData.value = JSON.parse(descriptions).filter((item) => item.libraryName == props.library)[0]
-  libraryData.value.songListArr = []
-  let songListArr = await window.electron.ipcRenderer.invoke('querySonglist', libraryData.value.path)
-  libraryData.value.songListArr = songListArr
-})
-
+let libraryData = libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, props.uuid)
 let hoverTimer = null;
 let collapseButtonHintShow = ref(false)
 const iconMouseover = () => {
@@ -42,60 +30,33 @@ const iconMouseout = () => {
 
 const rightClickMenuShow = ref(false)
 const clickEvent = ref({})
-const menuArr = ref([[{ name: '新建歌单' }, { name: '新建文件夹' }]])
+const menuArr = ref([[{ menuName: '新建歌单' }, { menuName: '新建文件夹' }]])
 const contextmenuEvent = (event) => {
   clickEvent.value = event
   rightClickMenuShow.value = true
 }
 
 const menuButtonClick = async (item, e) => {
-  if (item.name == '新建歌单') {
-    libraryData.value.songListArr.unshift({
+  if (item.menuName == '新建歌单') {
+    libraryData.children.unshift({
+      "uuid": uuidv4(),
       "type": "songList",
-      "name": "",
-      "path": "library/" + props.library
+      "dirName": "",
     })
-  } else if (item.name == '新建文件夹') {
-    libraryData.value.songListArr.unshift({
+  } else if (item.menuName == '新建文件夹') {
+    libraryData.children.unshift({
+      "uuid": uuidv4(),
       "type": "dir",
-      "name": "",
-      "path": "library/" + props.library
+      "dirName": "",
     })
   }
 }
 
-const allItemOrderUpdate = () => {
-  for (let item of libraryData.value.songListArr) {
-    if (item.order) {
-      item.order++
-    }
-  }
-}
 
 const collapseButtonHandleClick = async () => {
-  let a = await window.electron.ipcRenderer.invoke('getLibrary')
-  debugger
-
   runtime.collapseAllDirClicked = true
 }
-const cancelMkDir = () => {
-  libraryData.value.songListArr.shift()
-}
 
-const dirDeleted = async (deleteItem) => {
-  await window.electron.ipcRenderer.invoke('updateOrderAfterNum', 'library/' + props.library, deleteItem.order)
-  let deleteIndex = null
-  for (let index in libraryData.value.songListArr) {
-    if (libraryData.value.songListArr[index] == deleteItem) {
-      deleteIndex = index
-      continue
-    }
-    if (libraryData.value.songListArr[index].order > deleteItem.order) {
-      libraryData.value.songListArr[index].order--
-    }
-  }
-  libraryData.value.songListArr.splice(deleteIndex, 1)
-}
 
 const dragover = (e) => {
   //todo
@@ -125,7 +86,7 @@ const drop = (e) => {
 <template>
   <div class="content" @contextmenu.stop="contextmenuEvent">
     <div class="unselectable libraryTitle">
-      <span>{{ props.libraryName }}</span>
+      <span>{{ libraryData.dirName }}</span>
       <div style="display: flex;justify-content: center;align-items: center;">
         <div class="collapseButton" @mouseover="iconMouseover()" @mouseout="iconMouseout()"
           @click="collapseButtonHandleClick()">
@@ -142,11 +103,10 @@ const drop = (e) => {
         </transition>
       </div>
     </div>
-    <div class="unselectable libraryArea" v-if="libraryData.songListArr.length" @dragover.stop.prevent="dragover"
+    <div class="unselectable libraryArea" v-if="libraryData.children.length" @dragover.stop.prevent="dragover"
       @dragenter.stop.prevent="dragenter" @drop.stop="drop">
-      <template v-for="(item, index) of libraryData.songListArr" :key="item.name">
-        <libraryItem v-model="libraryData.songListArr[index]" :parentArr="libraryData.songListArr"
-          @cancelMkDir="cancelMkDir" @allItemOrderUpdate="allItemOrderUpdate" @dirDeleted="dirDeleted" />
+      <template v-for="item of libraryData.children" :key="item.uuid">
+        <libraryItem :uuid="item.uuid" />
       </template>
       <div style="flex-grow: 1;" @dragover.stop.prevent="dragoverBlankArea" @dragenter.stop.prevent="dragenterBlankArea"
         @drop.stop="dropBlankArea">
