@@ -7,6 +7,7 @@ import confirmDialog from '@renderer/components/confirmDialog.vue';
 import listIcon from '@renderer/assets/listIcon.png'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { v4 as uuidv4 } from 'uuid';
+import confirm from '@renderer/components/confirm.js'
 
 const props = defineProps({
   uuid: {
@@ -264,11 +265,25 @@ const dragenter = (e) => {
 const dragleave = (e) => {
   dragApproach.value = ''
 }
-const drop = (e) => {
-  dragApproach.value = ''
+const drop = async (e) => {
   if (runtime.dragItemData == dirData) {
     return
   }
+  if (dragApproach.value == 'center') {
+    for (let item of dirData.children) {
+      if (item.dirName == runtime.dragItemData.dirName) {
+        let res = await confirm({ title: '移动', content: ['目标文件夹下已存在："' + runtime.dragItemData.dirName + '"', '是否继续执行替换', '（被替换的歌单或文件夹将被删除）'] })
+        if (res == 'confirm') {
+          //todo
+        }
+        return
+      }
+    }
+    await window.electron.ipcRenderer.invoke('updateTargetDirSubdirOrderAdd', libraryUtils.findDirPathByUuid(runtime.libraryTree, dirData.uuid))
+
+
+  }
+  dragApproach.value = ''
   //todo
 }
 </script>

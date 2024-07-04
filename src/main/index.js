@@ -12,7 +12,7 @@ import {
 import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset'
 import { v4 as uuidv4 } from 'uuid';
 
-const fs = require('fs')
+const fs = require('fs-extra')
 let layoutConfig = JSON.parse(fs.readFileSync(layoutConfigFileUrl))
 
 const libraryInit = async () => {
@@ -152,6 +152,12 @@ ipcMain.handle('mkDir', async (e, descriptionJson, dirPath) => {
   await fs.promises.writeFile(join(path, 'description.json'), JSON.stringify(descriptionJson, null, 2))
   return
 })
+
+ipcMain.handle('updateTargetDirSubdirOrderAdd', async (e, dirPath) => {
+  await updateTargetDirSubdirOrder(join(__dirname, dirPath))
+  return
+})
+
 ipcMain.handle('select-folder', async (event, arg) => {
   const result = await dialog.showOpenDialog({
     properties: ['openDirectory']
