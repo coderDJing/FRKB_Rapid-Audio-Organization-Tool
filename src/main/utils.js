@@ -45,32 +45,42 @@ async function updateOrderInFile(filePath, type) {
 // 异步函数，用于遍历目录并处理 description.json 文件中的order大于参数orderNum时-1
 export const updateTargetDirSubdirOrderAfterNumMinus = async (dirPath, orderNum) => {
   try {
-    // 读取目录内容
     const subdirs = await fs.readdir(dirPath, { withFileTypes: true });
-
-    // 过滤出子文件夹
     const dirs = subdirs.filter(dirent => dirent.isDirectory());
-
-    // 初始化一个用于存储 Promise 的数组
     const promises = [];
-
-    // 遍历每个子文件夹
     for (const dirent of dirs) {
       const subdirPath = join(dirPath, dirent.name);
       const descriptionJsonPath = join(subdirPath, 'description.json');
       let description = await fs.readJSON(descriptionJsonPath)
       if (description.order > orderNum) {
-        // 添加一个 Promise 到数组中以并发处理
-        promises.push(updateOrderInFile(descriptionJsonPath));
+        promises.push(updateOrderInFile(descriptionJsonPath, 'minus'));
       }
     }
-    // 使用 Promise.all 并发处理所有文件
     await Promise.all(promises);
   } catch (error) {
     console.error(`Error traversing directory ${dirPath}:`, error);
   }
 }
 
+// 异步函数，用于遍历目录并处理 description.json 文件中的order小于参数orderNum时+1
+export const updateTargetDirSubdirOrderBeforeNumPlus = async (dirPath, orderNum) => {
+  try {
+    const subdirs = await fs.readdir(dirPath, { withFileTypes: true });
+    const dirs = subdirs.filter(dirent => dirent.isDirectory());
+    const promises = [];
+    for (const dirent of dirs) {
+      const subdirPath = join(dirPath, dirent.name);
+      const descriptionJsonPath = join(subdirPath, 'description.json');
+      let description = await fs.readJSON(descriptionJsonPath)
+      if (description.order < orderNum) {
+        promises.push(updateOrderInFile(descriptionJsonPath));
+      }
+    }
+    await Promise.all(promises);
+  } catch (error) {
+    console.error(`Error traversing directory ${dirPath}:`, error);
+  }
+}
 // 异步函数，用于遍历目录并处理 description.json 文件中的order++
 export const updateTargetDirSubdirOrder = async (dirPath) => {
   try {
