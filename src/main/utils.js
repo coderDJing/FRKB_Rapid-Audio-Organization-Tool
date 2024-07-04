@@ -1,5 +1,5 @@
 import { join } from 'path'
-const fs = require('fs')
+const fs = require('fs-extra')
 const path = require('path');
 
 export const deleteFolderRecursive = async (folderPath) => {
