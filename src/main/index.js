@@ -4,8 +4,6 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import {
   updateTargetDirSubdirOrder,
-  readJsonFile,
-  deleteFolderRecursive,
   updateTargetDirSubdirOrderAfterNumMinus,
   getLibrary
 } from './utils.js'
@@ -13,35 +11,28 @@ import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?common
 import { v4 as uuidv4 } from 'uuid';
 
 const fs = require('fs-extra')
-let layoutConfig = JSON.parse(fs.readFileSync(layoutConfigFileUrl))
+let layoutConfig = fs.readJSONSync(layoutConfigFileUrl)
 
 const libraryInit = async () => {
-  //检查有没有library文件夹
-  fs.promises.access(join(__dirname, 'library'), fs.constants.F_OK).then(async () => {
-    //有library文件夹
-  }).catch(async err => {
-    //没有library文件夹
-    const makeLibrary = async (libraryPath, libraryName, order) => {
-      await fs.promises.mkdir(libraryPath, { recursive: true })
-      let description = {
-        uuid: uuidv4(),
-        type: 'library',
-        dirName: libraryName,
-        order: order
-      }
-      await fs.promises.writeFile(join(libraryPath, 'description.json'), JSON.stringify(description, null, 2))
-    }
-    await fs.promises.mkdir(join(__dirname, 'library'), { recursive: true })
-    let rootDescription = {
+  let rootDescription = {
+    uuid: uuidv4(),
+    type: 'root',
+    dirName: 'library',
+    order: 1
+  }
+  await fs.outputJson(join(join(__dirname, 'library'), 'description.json'), rootDescription)
+  const makeLibrary = async (libraryPath, libraryName, order) => {
+    let description = {
       uuid: uuidv4(),
-      type: 'root',
-      dirName: 'library',
-      order: 1
+      type: 'library',
+      dirName: libraryName,
+      order: order
     }
-    await fs.promises.writeFile(join(join(__dirname, 'library'), 'description.json'), JSON.stringify(rootDescription, null, 2))
-    await makeLibrary(join(__dirname, 'library/筛选库'), '筛选库', 1)
-    await makeLibrary(join(__dirname, 'library/精选库'), '精选库', 2)
-  })
+    await fs.outputJson(join(libraryPath, 'description.json'), description)
+  }
+  await makeLibrary(join(__dirname, 'library/筛选库'), '筛选库', 1)
+  await makeLibrary(join(__dirname, 'library/精选库'), '精选库', 2)
+
 }
 libraryInit()
 
@@ -90,11 +81,7 @@ function createWindow() {
   })
 
   ipcMain.on('layoutConfigChanged', (e, layoutConfig) => {
-    fs.writeFile(layoutConfigFileUrl, layoutConfig, (error) => {
-      if (error) {
-        console.log("ipcMain.on('layoutConfigChanged') some error has occurred ", error);
-      }
-    })
+    fs.outputJson(layoutConfigFileUrl, JSON.parse(layoutConfig))
   })
   mainWindow.on('maximize', () => {
     mainWindow.webContents.send('mainWin-max', true)
@@ -121,7 +108,16 @@ function createWindow() {
     mainWindow.webContents.send('collapseButtonHandleClick')
   })
 }
+ipcMain.handle('moveDir', async (e, src, dest, newOrder, isOverwrite) => {
+  await fs.move(join(__dirname, src), join(__dirname, dest), { overwrite: true })
+  //todo 改新的文件的order
+  if (isOverwrite) {
 
+  }else{
+
+  }
+  return
+})
 
 ipcMain.handle('getLibrary', async () => {
   const library = await getLibrary()
@@ -130,10 +126,10 @@ ipcMain.handle('getLibrary', async () => {
 
 ipcMain.handle('renameDir', async (e, newName, dirPath) => {
   let descriptionPath = join(__dirname, join(dirPath, 'description.json'))
-  let descriptionJson = await readJsonFile(descriptionPath)
+  let descriptionJson = await fs.readJSON(descriptionPath)
   descriptionJson.dirName = newName
-  await fs.promises.writeFile(descriptionPath, JSON.stringify(descriptionJson, null, 2))
-  await fs.promises.rename(join(__dirname, dirPath), join(__dirname, dirPath.slice(0, dirPath.lastIndexOf('/') + 1) + newName))
+  await fs.outputJson(descriptionPath, descriptionJson)
+  await fs.rename(join(__dirname, dirPath), join(__dirname, dirPath.slice(0, dirPath.lastIndexOf('/') + 1) + newName))
   return
 })
 ipcMain.handle('updateOrderAfterNum', async (e, path, order) => {
@@ -141,15 +137,14 @@ ipcMain.handle('updateOrderAfterNum', async (e, path, order) => {
 })
 
 ipcMain.handle('delDir', async (e, path) => {
-  await deleteFolderRecursive(join(__dirname, path))
+  await fs.remove(join(__dirname, path))
   return
 })
 
 ipcMain.handle('mkDir', async (e, descriptionJson, dirPath) => {
   await updateTargetDirSubdirOrder(join(__dirname, dirPath))
   let path = join(__dirname, dirPath, descriptionJson.dirName)
-  await fs.promises.mkdir(path, { recursive: true })
-  await fs.promises.writeFile(join(path, 'description.json'), JSON.stringify(descriptionJson, null, 2))
+  await fs.outputJson(join(path, 'description.json'), descriptionJson)
   return
 })
 
