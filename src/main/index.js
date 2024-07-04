@@ -117,8 +117,12 @@ function createWindow() {
   ipcMain.on('toggle-close', () => {
     app.exit()
   })
-
+  ipcMain.on('collapseButtonHandleClick', () => {
+    mainWindow.webContents.send('collapseButtonHandleClick')
+  })
 }
+
+
 ipcMain.handle('getLibrary', async () => {
   const library = await getLibrary()
   return library

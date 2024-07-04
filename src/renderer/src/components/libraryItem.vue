@@ -132,14 +132,13 @@ const contextmenuEvent = (event) => {
 const dirChildShow = ref(false)
 const dirChildRendered = ref(false)
 const dirHandleClick = async () => {
+  runtime.activeMenuUUID = ''
   dirChildRendered.value = true
   dirChildShow.value = !dirChildShow.value
 }
-watch(() => runtime.collapseAllDirClicked, () => {
-  if (runtime.collapseAllDirClicked) {
-    dirChildShow.value = false
-    runtime.collapseAllDirClicked = false
-  }
+
+window.electron.ipcRenderer.on('collapseButtonHandleClick', (event) => {
+  dirChildShow.value = false
 })
 //----重命名功能--------------------------------------
 const renameDivShow = ref(false)
@@ -223,25 +222,42 @@ const dragover = (e) => {
   if (runtime.dragItemData == dirData) {
     return
   }
-  if (e.offsetY <= 8) {
-    dragApproach.value = 'top'
-  } else if (e.offsetY > 8 && e.offsetY < 16) {
-    dragApproach.value = 'center'
+  if (dirData.type == 'songList') {
+    if (e.offsetY <= 12) {
+      dragApproach.value = 'top'
+    } else {
+      dragApproach.value = 'bottom'
+    }
   } else {
-    dragApproach.value = 'bottom'
+    if (e.offsetY <= 8) {
+      dragApproach.value = 'top'
+    } else if (e.offsetY > 8 && e.offsetY < 16) {
+      dragApproach.value = 'center'
+    } else {
+      dragApproach.value = 'bottom'
+    }
   }
+
   e.dataTransfer.dropEffect = 'move';
 }
 const dragenter = (e) => {
   if (runtime.dragItemData == dirData) {
     return
   }
-  if (e.offsetY <= 8) {
-    dragApproach.value = 'top'
-  } else if (e.offsetY > 8 && e.offsetY < 16) {
-    dragApproach.value = 'center'
+  if (dirData.type == 'songList') {
+    if (e.offsetY <= 12) {
+      dragApproach.value = 'top'
+    } else {
+      dragApproach.value = 'bottom'
+    }
   } else {
-    dragApproach.value = 'bottom'
+    if (e.offsetY <= 8) {
+      dragApproach.value = 'top'
+    } else if (e.offsetY > 8 && e.offsetY < 16) {
+      dragApproach.value = 'center'
+    } else {
+      dragApproach.value = 'bottom'
+    }
   }
   e.dataTransfer.dropEffect = 'move';
 }
