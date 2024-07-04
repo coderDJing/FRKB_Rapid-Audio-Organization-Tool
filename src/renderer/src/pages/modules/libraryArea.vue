@@ -55,6 +55,7 @@ const menuButtonClick = async (item, e) => {
 
 const collapseButtonHandleClick = async () => {
   window.electron.ipcRenderer.send('collapseButtonHandleClick');
+  console.log(runtime.libraryTree)
 }
 
 

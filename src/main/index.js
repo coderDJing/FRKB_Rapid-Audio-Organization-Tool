@@ -5,6 +5,7 @@ import icon from '../../resources/icon.png?asset'
 import {
   updateTargetDirSubdirOrder,
   updateTargetDirSubdirOrderAfterNumMinus,
+  updateTargetDirSubdirOrderBeforeNumPlus,
   getLibrary
 } from './utils.js'
 import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset'
@@ -108,13 +109,17 @@ function createWindow() {
     mainWindow.webContents.send('collapseButtonHandleClick')
   })
 }
-ipcMain.handle('moveDir', async (e, src, dest, newOrder, isOverwrite) => {
-  await fs.move(join(__dirname, src), join(__dirname, dest), { overwrite: true })
-  //todo 改新的文件的order
-  if (isOverwrite) {
-
-  }else{
-
+ipcMain.handle('moveDir', async (e, src, dest, isExist) => {
+  if (isExist) {
+    let oldJson = await fs.readJSON(join(__dirname, dest, 'description.json'))
+    await fs.remove(join(__dirname, dest, src.split('/')[dest, src.split('/').length - 1]))
+    await updateTargetDirSubdirOrderBeforeNumPlus(join(__dirname, dest), oldJson.order)
+    await fs.move(join(__dirname, src), join(__dirname, dest, src.split('/')[dest, src.split('/').length - 1]))
+    let json = await fs.readJSON(join(__dirname, dest, 'description.json'))
+    json.order = 1
+    await fs.outputJSON(join(__dirname, dest, 'description.json'), json)
+  } else {
+    //todo
   }
   return
 })

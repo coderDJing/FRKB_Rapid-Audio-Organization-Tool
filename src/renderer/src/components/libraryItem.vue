@@ -274,12 +274,24 @@ const drop = async (e) => {
       if (item.dirName == runtime.dragItemData.dirName) {
         let res = await confirm({ title: '移动', content: ['目标文件夹下已存在："' + runtime.dragItemData.dirName + '"', '是否继续执行替换', '（被替换的歌单或文件夹将被删除）'] })
         if (res == 'confirm') {
-          await window.electron.ipcRenderer.invoke('moveDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData,), libraryUtils.findDirPathByUuid(runtime.libraryTree, dirData.uuid), dirData.order)
-          //todo
+          await window.electron.ipcRenderer.invoke('moveDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid,), libraryUtils.findDirPathByUuid(runtime.libraryTree, dirData.uuid), true)
+          let oldOrder = item.order
+          dirData.children.splice(dirData.children.indexOf(item), 1)
+          for (let item of dirData.children) {
+            if (item.order < oldOrder) {
+              item.order++
+            } else {
+              break
+            }
+          }
+          dirData.children.unshift({ ...runtime.dragItemData, order: 1 })
+          let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(runtime.libraryTree, runtime.dragItemData.uuid)
+          dragItemDataFather.children.splice(dragItemDataFather.children.indexOf(runtime.dragItemData), 1)
         }
         return
       }
     }
+    //todo
     await window.electron.ipcRenderer.invoke('updateTargetDirSubdirOrderAdd', libraryUtils.findDirPathByUuid(runtime.libraryTree, dirData.uuid))
 
 
