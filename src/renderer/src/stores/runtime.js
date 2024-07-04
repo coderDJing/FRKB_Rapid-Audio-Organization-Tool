@@ -14,7 +14,6 @@ export const useRuntimeStore = defineStore('runtime', {
           isDeleteSourceDir: true
         }
       },
-      collapseAllDirClicked: false,
       dragItemData: null,
       libraryTree: {}
     }
