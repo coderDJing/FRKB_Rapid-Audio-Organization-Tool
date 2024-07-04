@@ -274,6 +274,7 @@ const drop = async (e) => {
       if (item.dirName == runtime.dragItemData.dirName) {
         let res = await confirm({ title: '移动', content: ['目标文件夹下已存在："' + runtime.dragItemData.dirName + '"', '是否继续执行替换', '（被替换的歌单或文件夹将被删除）'] })
         if (res == 'confirm') {
+          await window.electron.ipcRenderer.invoke('moveDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData,), libraryUtils.findDirPathByUuid(runtime.libraryTree, dirData.uuid), dirData.order)
           //todo
         }
         return
