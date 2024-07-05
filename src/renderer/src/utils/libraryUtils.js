@@ -67,10 +67,22 @@ export const findDirPathByUuid = (data, targetUuid, path = '') => {
   // 如果没有找到，返回null
   return null;
 }
+export const sortByOrder = (array) => {
+  array.sort((a, b) => {
+    if (a.order < b.order) {
+      return -1;
+    }
+    if (a.order > b.order) {
+      return 1;
+    }
+    return 0;
+  });
+}
 
 export const libraryUtils = {
   getFatherLibraryTreeByUUID,
   getLibraryTreeByUUID,
-  findDirPathByUuid
+  findDirPathByUuid,
+  sortByOrder
 }
 export default libraryUtils

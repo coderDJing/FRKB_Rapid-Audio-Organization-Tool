@@ -10,6 +10,7 @@ import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?common
 import { v4 as uuidv4 } from 'uuid';
 
 const fs = require('fs-extra')
+const path = require('path')
 let layoutConfig = fs.readJSONSync(layoutConfigFileUrl)
 
 const libraryInit = async () => {
@@ -107,21 +108,51 @@ function createWindow() {
     mainWindow.webContents.send('collapseButtonHandleClick')
   })
 }
-ipcMain.handle('moveDir', async (e, src, dest, isExist) => {
+ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
+  const srcFullPath = join(__dirname, src)
+  const destDir = join(__dirname, dest)
+  const destFileName = path.basename(srcFullPath)
+  const destFullPath = join(destDir, destFileName)
   if (isExist) {
-    let oldJson = await fs.readJSON(join(__dirname, dest, 'description.json'))
-    await fs.remove(join(__dirname, dest, src.split('/')[dest, src.split('/').length - 1]))
-    await updateTargetDirSubdirOrder(join(__dirname, dest), oldJson.order, 'before', 'plus')
-    await fs.move(join(__dirname, src), join(__dirname, dest, src.split('/')[dest, src.split('/').length - 1]))
-    let json = await fs.readJSON(join(__dirname, dest, 'description.json'))
+    let oldJson = await fs.readJSON(join(destDir, 'description.json'))
+    await updateTargetDirSubdirOrder(destDir, oldJson.order, 'before', 'plus')
+    await fs.move(srcFullPath, destFullPath, { overwrite: true })
+    let json = await fs.readJSON(join(destFullPath, 'description.json'))
+    let originalOrder = json.order
     json.order = 1
-    await fs.outputJSON(join(__dirname, dest, 'description.json'), json)
+    await fs.outputJSON(join(destFullPath, 'description.json'), json)
+    const srcDir = path.dirname(srcFullPath)
+    await updateTargetDirSubdirOrder(srcDir, originalOrder, 'after', 'minus')
   } else {
-    //todo
+    await updateTargetDirSubdirOrder(destDir, 0, 'after', 'plus')
+    await fs.move(srcFullPath, destFullPath, { overwrite: true })
+    let json = await fs.readJSON(join(destFullPath, 'description.json'))
+    let originalOrder = json.order
+    json.order = 1
+    await fs.outputJSON(join(destFullPath, 'description.json'), json)
+    await updateTargetDirSubdirOrder(path.dirname(srcFullPath), originalOrder, 'after', 'minus')
   }
-  return
+})
+ipcMain.handle('reOrderSubDir', async (e, targetPath, subDirArrJson) => {
+  let subDirArr = JSON.parse(subDirArrJson)
+  const promises = []
+  const changeOrder = async (item) => {
+    let jsonPath = join(__dirname, targetPath, item.dirName, 'description.json')
+    let json = await fs.readJSON(jsonPath)
+    if (json.order != item.order) {
+      json.order = item.order
+      await fs.outputJSON(jsonPath, json)
+    }
+  }
+  for (let item of subDirArr) {
+    promises.push(changeOrder(item))
+  }
+  await Promise.all(promises);
 })
 
+// ipcMain.handle('moveNextToItem', async (e, src, dest, isExist, direction) => {
+//   //todo
+// })
 ipcMain.handle('getLibrary', async () => {
   const library = await getLibrary()
   return library
@@ -133,28 +164,23 @@ ipcMain.handle('renameDir', async (e, newName, dirPath) => {
   descriptionJson.dirName = newName
   await fs.outputJson(descriptionPath, descriptionJson)
   await fs.rename(join(__dirname, dirPath), join(__dirname, dirPath.slice(0, dirPath.lastIndexOf('/') + 1) + newName))
-  return
 })
-ipcMain.handle('updateOrderAfterNum', async (e, path, order) => {
-  await updateTargetDirSubdirOrder(join(__dirname, path), order, 'after', 'minus')
-  return
+ipcMain.handle('updateOrderAfterNum', async (e, targetPath, order) => {
+  await updateTargetDirSubdirOrder(join(__dirname, targetPath), order, 'after', 'minus')
 })
 
-ipcMain.handle('delDir', async (e, path) => {
-  await fs.remove(join(__dirname, path))
-  return
+ipcMain.handle('delDir', async (e, targetPath) => {
+  await fs.remove(join(__dirname, targetPath))
 })
 
 ipcMain.handle('mkDir', async (e, descriptionJson, dirPath) => {
   await updateTargetDirSubdirOrder(join(__dirname, dirPath), 0, 'after', 'plus')
-  let path = join(__dirname, dirPath, descriptionJson.dirName)
-  await fs.outputJson(join(path, 'description.json'), descriptionJson)
-  return
+  let targetPath = join(__dirname, dirPath, descriptionJson.dirName)
+  await fs.outputJson(join(targetPath, 'description.json'), descriptionJson)
 })
 
 ipcMain.handle('updateTargetDirSubdirOrderAdd', async (e, dirPath) => {
   await updateTargetDirSubdirOrder(join(__dirname, dirPath), 0, 'after', 'plus')
-  return
 })
 
 ipcMain.handle('select-folder', async (event, arg) => {
