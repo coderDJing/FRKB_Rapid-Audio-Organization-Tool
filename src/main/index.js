@@ -4,8 +4,6 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import {
   updateTargetDirSubdirOrder,
-  updateTargetDirSubdirOrderAfterNumMinus,
-  updateTargetDirSubdirOrderBeforeNumPlus,
   getLibrary
 } from './utils.js'
 import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset'
@@ -113,7 +111,7 @@ ipcMain.handle('moveDir', async (e, src, dest, isExist) => {
   if (isExist) {
     let oldJson = await fs.readJSON(join(__dirname, dest, 'description.json'))
     await fs.remove(join(__dirname, dest, src.split('/')[dest, src.split('/').length - 1]))
-    await updateTargetDirSubdirOrderBeforeNumPlus(join(__dirname, dest), oldJson.order)
+    await updateTargetDirSubdirOrder(join(__dirname, dest), oldJson.order, 'before', 'plus')
     await fs.move(join(__dirname, src), join(__dirname, dest, src.split('/')[dest, src.split('/').length - 1]))
     let json = await fs.readJSON(join(__dirname, dest, 'description.json'))
     json.order = 1
@@ -138,7 +136,8 @@ ipcMain.handle('renameDir', async (e, newName, dirPath) => {
   return
 })
 ipcMain.handle('updateOrderAfterNum', async (e, path, order) => {
-  await updateTargetDirSubdirOrderAfterNumMinus(join(__dirname, path), order)
+  await updateTargetDirSubdirOrder(join(__dirname, path), order, 'after', 'minus')
+  return
 })
 
 ipcMain.handle('delDir', async (e, path) => {
@@ -147,14 +146,14 @@ ipcMain.handle('delDir', async (e, path) => {
 })
 
 ipcMain.handle('mkDir', async (e, descriptionJson, dirPath) => {
-  await updateTargetDirSubdirOrder(join(__dirname, dirPath))
+  await updateTargetDirSubdirOrder(join(__dirname, dirPath), 0, 'after', 'plus')
   let path = join(__dirname, dirPath, descriptionJson.dirName)
   await fs.outputJson(join(path, 'description.json'), descriptionJson)
   return
 })
 
 ipcMain.handle('updateTargetDirSubdirOrderAdd', async (e, dirPath) => {
-  await updateTargetDirSubdirOrder(join(__dirname, dirPath))
+  await updateTargetDirSubdirOrder(join(__dirname, dirPath), 0, 'after', 'plus')
   return
 })
 
