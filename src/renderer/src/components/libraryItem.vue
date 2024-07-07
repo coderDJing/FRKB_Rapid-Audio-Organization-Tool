@@ -332,18 +332,44 @@ const drop = async (e) => {
       return
     } else {
       // 两个dir不在同一目录下
-      for (let item of fatherDirData.children) {
-        if (item.dirName == runtime.dragItemData.dirName) {
-          let res = await confirm({ title: '移动', content: ['目标文件夹下已存在："' + runtime.dragItemData.dirName + '"', '是否继续执行替换', '（被替换的歌单或文件夹将被删除）'] })
-          if (res == 'confirm') {
-            //todo//目标目录下存在同名文件夹
-            // await window.electron.ipcRenderer.invoke('moveNextToItem', libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid,), libraryUtils.findDirPathByUuid(runtime.libraryTree, dirData.uuid), true, 'top')
+      const existingItem = fatherDirData.children.find(item => {
+        return item.dirName === runtime.dragItemData.dirName && item.uuid !== runtime.dragItemData.uuid;
+      });
+      if (existingItem) {
+        let res = await confirm({ title: '移动', content: ['目标文件夹下已存在："' + runtime.dragItemData.dirName + '"', '是否继续执行替换', '（被替换的歌单或文件夹将被删除）'] })
+        if (res == 'confirm') {
+          let targetPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, existingItem.uuid)
+          await window.electron.ipcRenderer.invoke('delDir', targetPath)
+          fatherDirData.children.splice(approach == 'top' ? fatherDirData.children.indexOf(dirData) : fatherDirData.children.indexOf(dirData) + 1,
+            0,
+            runtime.dragItemData)
+          fatherDirData.children.splice(fatherDirData.children.indexOf(existingItem), 1)
+          for (let index in fatherDirData.children) {
+            fatherDirData.children[index].order = Number(index) + 1
           }
-          return
+          await window.electron.ipcRenderer.invoke('moveToDirSample', libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid), libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid))
+          await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid), JSON.stringify(fatherDirData.children))
+          dragItemDataFather.children.splice(dragItemDataFather.children.indexOf(runtime.dragItemData), 1)
+          for (let index in dragItemDataFather.children) {
+            dragItemDataFather.children[index].order = Number(index) + 1
+          }
+          await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid), JSON.stringify(dragItemDataFather.children))
         }
+        return
       }
-
-      //todo//目标目录下不存在同名文件夹
+      await window.electron.ipcRenderer.invoke('moveToDirSample', libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid), libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid))
+      let removedElement = dragItemDataFather.children.splice(dragItemDataFather.children.indexOf(runtime.dragItemData), 1)[0]
+      fatherDirData.children.splice(approach == 'top' ? fatherDirData.children.indexOf(dirData) : fatherDirData.children.indexOf(dirData) + 1,
+        0,
+        removedElement)
+      for (let index in dragItemDataFather.children) {
+        dragItemDataFather.children[index].order = Number(index) + 1
+      }
+      await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid), JSON.stringify(dragItemDataFather.children))
+      for (let index in fatherDirData.children) {
+        fatherDirData.children[index].order = Number(index) + 1
+      }
+      await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid), JSON.stringify(fatherDirData.children))
       return
     }
   }
@@ -378,10 +404,9 @@ const drop = async (e) => {
         style="line-height: 23px;font-size: 13px;overflow: hidden;text-overflow: ellipsis;white-space: nowrap;">
         {{ dirData.dirName }}</div>
       <div v-if="!dirData.dirName">
-        <input ref="myInput" v-model="operationInputValue" class="myInput"
-          :class="{ 'myInputRedBorder': inputHintShow }" @blur="inputBlurHandle" @keydown.enter="inputKeyDownEnter"
-          @keydown.esc="inputKeyDownEsc" @click.stop="() => { }" @contextmenu.stop="() => { }"
-          @input="myInputHandleInput" />
+        <input ref="myInput" v-model="operationInputValue" class="myInput" :class="{ 'myInputRedBorder': inputHintShow }"
+          @blur="inputBlurHandle" @keydown.enter="inputKeyDownEnter" @keydown.esc="inputKeyDownEsc"
+          @click.stop="() => { }" @contextmenu.stop="() => { }" @input="myInputHandleInput" />
         <div v-show="inputHintShow" class="myInputHint">
           <div>{{ inputHintText }}</div>
         </div>
