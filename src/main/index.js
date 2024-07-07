@@ -133,6 +133,13 @@ ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
     await updateTargetDirSubdirOrder(path.dirname(srcFullPath), originalOrder, 'after', 'minus')
   }
 })
+ipcMain.handle('moveToDirSample', async (e, src, dest) => {
+  const srcFullPath = join(__dirname, src)
+  const destDir = join(__dirname, dest)
+  const destFileName = path.basename(srcFullPath)
+  const destFullPath = join(destDir, destFileName)
+  await fs.move(srcFullPath, destFullPath)
+})
 ipcMain.handle('reOrderSubDir', async (e, targetPath, subDirArrJson) => {
   let subDirArr = JSON.parse(subDirArrJson)
   const promises = []
