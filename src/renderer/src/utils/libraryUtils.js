@@ -84,11 +84,24 @@ export const reOrderChildren = (children) => {
   }
 }
 
+export const isDragItemInDirChildren = (children, targetUUID) => {
+  for (const child of children) {
+    if (child.uuid === targetUUID) {
+      return true;
+    }
+    if (isDragItemInDirChildren(child.children, targetUUID)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export const libraryUtils = {
   getFatherLibraryTreeByUUID,
   getLibraryTreeByUUID,
   findDirPathByUuid,
   sortByOrder,
-  reOrderChildren
+  reOrderChildren,
+  isDragItemInDirChildren
 }
 export default libraryUtils

@@ -15,7 +15,8 @@ export const useRuntimeStore = defineStore('runtime', {
         }
       },
       dragItemData: null,
-      libraryTree: {}
+      libraryTree: {},
+      selectSongListDialogShow: false
     }
   }
 })

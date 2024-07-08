@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import singleCheckbox from './singleCheckbox.vue';
 import { useRuntimeStore } from '@renderer/stores/runtime'
-
+import selectSongListDialog from './selectSongListDialog.vue';
 const runtime = useRuntimeStore()
 const folderPathVal = ref('') //文件夹路径
 const clickChooseDir = async () => {
@@ -63,7 +63,7 @@ const cancel = () => {
 
 const songListSelected = ref('')
 const clickChooseSongList = () => {
-
+  runtime.selectSongListDialogShow = true
 }
 </script>
 <template>
@@ -120,6 +120,8 @@ const clickChooseSongList = () => {
       </div>
     </div>
   </div>
+  <selectSongListDialog v-if="runtime.selectSongListDialogShow" />
+  <!-- //todo -->
 </template>
 <style lang="scss" scoped>
 .chooseDirDiv {
