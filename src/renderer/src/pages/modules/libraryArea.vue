@@ -5,6 +5,7 @@ import libraryItem from '@renderer/components/libraryItem.vue';
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { v4 as uuidv4 } from 'uuid';
+import confirm from '@renderer/components/confirm.js'
 const runtime = useRuntimeStore()
 const props = defineProps(
   {
@@ -58,31 +59,63 @@ const collapseButtonHandleClick = async () => {
   console.log(runtime.libraryTree)
 }
 
-
+const dragApproach = ref('')
 const dragover = (e) => {
-  //todo
   e.dataTransfer.dropEffect = 'move';
-
+  dragApproach.value = 'top'
 }
 const dragenter = (e) => {
-  //todo
   e.dataTransfer.dropEffect = 'move';
+  dragApproach.value = 'top'
+}
+const dragleave = (e) => {
+  dragApproach.value = ''
+}
+const drop = async (e) => {
+  dragApproach.value = ''
+  let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(runtime.libraryTree, runtime.dragItemData.uuid)
+  if (dragItemDataFather.uuid == props.uuid) {
+    if (libraryData.children[libraryData.children.length - 1].uuid == runtime.dragItemData.uuid) {
+      return
+    }
+    //同一层级仅调换位置
+    let removedElement = libraryData.children.splice(libraryData.children.indexOf(runtime.dragItemData), 1)[0]
+    libraryData.children.push(removedElement)
+    libraryUtils.reOrderChildren(libraryData.children)
+    await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid), JSON.stringify(libraryData.children))
+    return
+  } else {
+    const existingItem = libraryData.children.find(item => {
+      return item.dirName === runtime.dragItemData.dirName && item.uuid !== runtime.dragItemData.uuid;
+    });
+    if (existingItem) {
 
+      let res = await confirm({ title: '移动', content: ['目标文件夹下已存在："' + runtime.dragItemData.dirName + '"', '是否继续执行替换', '（被替换的歌单或文件夹将被删除）'] })
+      if (res == 'confirm') {
+        let targetPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, existingItem.uuid)
+        await window.electron.ipcRenderer.invoke('delDir', targetPath)
+        await window.electron.ipcRenderer.invoke('moveToDirSample', libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid), libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid))
+        libraryData.children.splice(libraryData.children.indexOf(existingItem), 1)
+        let removedElement = dragItemDataFather.children.splice(dragItemDataFather.children.indexOf(runtime.dragItemData), 1)[0]
+        libraryUtils.reOrderChildren(dragItemDataFather.children)
+        await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid), JSON.stringify(dragItemDataFather.children))
+        libraryData.children.push(removedElement)
+        libraryUtils.reOrderChildren(libraryData.children)
+        await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid), JSON.stringify(libraryData.children))
+      }
+      return
+    }
+    await window.electron.ipcRenderer.invoke('moveToDirSample', libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid), libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid))
+    let removedElement = dragItemDataFather.children.splice(dragItemDataFather.children.indexOf(runtime.dragItemData), 1)[0]
+    libraryUtils.reOrderChildren(dragItemDataFather.children)
+    await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid), JSON.stringify(dragItemDataFather.children))
+    libraryData.children.push(removedElement)
+    libraryUtils.reOrderChildren(libraryData.children)
+    await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid), JSON.stringify(libraryData.children))
+    return
+  }
 }
-const dragoverBlankArea = (e) => {
-  //todo
-  e.dataTransfer.dropEffect = 'move';
 
-}
-const dragenterBlankArea = (e) => {
-  //todo
-  e.dataTransfer.dropEffect = 'move';
-
-}
-const drop = (e) => {
-  //todo
-  console.log(runtime.dragItemData)
-}
 </script>
 <template>
   <div class="content" @contextmenu.stop="contextmenuEvent">
@@ -104,13 +137,12 @@ const drop = (e) => {
         </transition>
       </div>
     </div>
-    <div class="unselectable libraryArea" v-if="libraryData.children.length" @dragover.stop.prevent="dragover"
-      @dragenter.stop.prevent="dragenter" @drop.stop="drop">
+    <div class="unselectable libraryArea" v-if="libraryData.children.length">
       <template v-for="item of libraryData.children" :key="item.uuid">
         <libraryItem :uuid="item.uuid" />
       </template>
-      <div style="flex-grow: 1;" @dragover.stop.prevent="dragoverBlankArea" @dragenter.stop.prevent="dragenterBlankArea"
-        @drop.stop="dropBlankArea">
+      <div style="flex-grow: 1;" @dragover.stop.prevent="dragover" @dragenter.stop.prevent="dragenter" @drop.stop="drop"
+        @dragleave.stop="dragleave" :class="{ 'borderTop': dragApproach == 'top', }">
       </div>
     </div>
     <div class="unselectable" v-else
@@ -122,6 +154,10 @@ const drop = (e) => {
     @menuButtonClick="menuButtonClick"></rightClickMenu>
 </template>
 <style lang="scss" scoped>
+.borderTop {
+  border-top: 1px solid #0078d4;
+}
+
 .libraryArea {
   height: calc(100% - 35px);
   max-height: calc(100% - 35px);
