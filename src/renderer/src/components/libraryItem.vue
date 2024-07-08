@@ -325,9 +325,8 @@ const drop = async (e) => {
       fatherDirData.children.splice(approach == 'top' ? fatherDirData.children.indexOf(dirData) : fatherDirData.children.indexOf(dirData) + 1,
         0,
         removedElement)
-      for (let index in fatherDirData.children) {
-        fatherDirData.children[index].order = Number(index) + 1
-      }
+      libraryUtils.reOrderChildren(fatherDirData.children)
+
       await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid), JSON.stringify(fatherDirData.children))
       return
     } else {
@@ -339,20 +338,17 @@ const drop = async (e) => {
         let res = await confirm({ title: '移动', content: ['目标文件夹下已存在："' + runtime.dragItemData.dirName + '"', '是否继续执行替换', '（被替换的歌单或文件夹将被删除）'] })
         if (res == 'confirm') {
           let targetPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, existingItem.uuid)
+
           await window.electron.ipcRenderer.invoke('delDir', targetPath)
           fatherDirData.children.splice(approach == 'top' ? fatherDirData.children.indexOf(dirData) : fatherDirData.children.indexOf(dirData) + 1,
             0,
             runtime.dragItemData)
           fatherDirData.children.splice(fatherDirData.children.indexOf(existingItem), 1)
-          for (let index in fatherDirData.children) {
-            fatherDirData.children[index].order = Number(index) + 1
-          }
+          libraryUtils.reOrderChildren(fatherDirData.children)
           await window.electron.ipcRenderer.invoke('moveToDirSample', libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid), libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid))
           await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid), JSON.stringify(fatherDirData.children))
           dragItemDataFather.children.splice(dragItemDataFather.children.indexOf(runtime.dragItemData), 1)
-          for (let index in dragItemDataFather.children) {
-            dragItemDataFather.children[index].order = Number(index) + 1
-          }
+          libraryUtils.reOrderChildren(dragItemDataFather.children)
           await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid), JSON.stringify(dragItemDataFather.children))
         }
         return
@@ -362,13 +358,9 @@ const drop = async (e) => {
       fatherDirData.children.splice(approach == 'top' ? fatherDirData.children.indexOf(dirData) : fatherDirData.children.indexOf(dirData) + 1,
         0,
         removedElement)
-      for (let index in dragItemDataFather.children) {
-        dragItemDataFather.children[index].order = Number(index) + 1
-      }
+      libraryUtils.reOrderChildren(dragItemDataFather.children)
       await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid), JSON.stringify(dragItemDataFather.children))
-      for (let index in fatherDirData.children) {
-        fatherDirData.children[index].order = Number(index) + 1
-      }
+      libraryUtils.reOrderChildren(fatherDirData.children)
       await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid), JSON.stringify(fatherDirData.children))
       return
     }
@@ -404,9 +396,10 @@ const drop = async (e) => {
         style="line-height: 23px;font-size: 13px;overflow: hidden;text-overflow: ellipsis;white-space: nowrap;">
         {{ dirData.dirName }}</div>
       <div v-if="!dirData.dirName">
-        <input ref="myInput" v-model="operationInputValue" class="myInput" :class="{ 'myInputRedBorder': inputHintShow }"
-          @blur="inputBlurHandle" @keydown.enter="inputKeyDownEnter" @keydown.esc="inputKeyDownEsc"
-          @click.stop="() => { }" @contextmenu.stop="() => { }" @input="myInputHandleInput" />
+        <input ref="myInput" v-model="operationInputValue" class="myInput"
+          :class="{ 'myInputRedBorder': inputHintShow }" @blur="inputBlurHandle" @keydown.enter="inputKeyDownEnter"
+          @keydown.esc="inputKeyDownEsc" @click.stop="() => { }" @contextmenu.stop="() => { }"
+          @input="myInputHandleInput" />
         <div v-show="inputHintShow" class="myInputHint">
           <div>{{ inputHintText }}</div>
         </div>

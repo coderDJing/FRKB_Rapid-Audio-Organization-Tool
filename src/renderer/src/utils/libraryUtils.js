@@ -78,11 +78,17 @@ export const sortByOrder = (array) => {
     return 0;
   });
 }
+export const reOrderChildren = (children) => {
+  for (let index in children) {
+    children[index].order = Number(index) + 1
+  }
+}
 
 export const libraryUtils = {
   getFatherLibraryTreeByUUID,
   getLibraryTreeByUUID,
   findDirPathByUuid,
-  sortByOrder
+  sortByOrder,
+  reOrderChildren
 }
 export default libraryUtils
