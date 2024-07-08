@@ -157,9 +157,6 @@ ipcMain.handle('reOrderSubDir', async (e, targetPath, subDirArrJson) => {
   await Promise.all(promises);
 })
 
-// ipcMain.handle('moveNextToItem', async (e, src, dest, isExist, direction) => {
-//   //todo
-// })
 ipcMain.handle('getLibrary', async () => {
   const library = await getLibrary()
   return library

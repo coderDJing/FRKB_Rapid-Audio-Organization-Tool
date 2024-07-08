@@ -220,7 +220,36 @@ const dragstart = (e) => {
 }
 const dragApproach = ref('')
 const dragover = (e) => {
+  e.dataTransfer.dropEffect = 'move';
   if (runtime.dragItemData == dirData) {
+    return
+  }
+
+  if (libraryUtils.isDragItemInDirChildren(runtime.dragItemData.children, dirData.uuid)) {
+    return
+  }
+  if (dirData.type == 'songList') {
+    if (e.offsetY <= 12) {
+      dragApproach.value = 'top'
+    } else {
+      dragApproach.value = 'bottom'
+    }
+  } else {
+    if (e.offsetY <= 8) {
+      dragApproach.value = 'top'
+    } else if (e.offsetY > 8 && e.offsetY < 16) {
+      dragApproach.value = 'center'
+    } else {
+      dragApproach.value = 'bottom'
+    }
+  }
+}
+const dragenter = (e) => {
+  e.dataTransfer.dropEffect = 'move';
+  if (runtime.dragItemData == dirData) {
+    return
+  }
+  if (libraryUtils.isDragItemInDirChildren(runtime.dragItemData.children, dirData.uuid)) {
     return
   }
   if (dirData.type == 'songList') {
@@ -239,28 +268,6 @@ const dragover = (e) => {
     }
   }
 
-  e.dataTransfer.dropEffect = 'move';
-}
-const dragenter = (e) => {
-  if (runtime.dragItemData == dirData) {
-    return
-  }
-  if (dirData.type == 'songList') {
-    if (e.offsetY <= 12) {
-      dragApproach.value = 'top'
-    } else {
-      dragApproach.value = 'bottom'
-    }
-  } else {
-    if (e.offsetY <= 8) {
-      dragApproach.value = 'top'
-    } else if (e.offsetY > 8 && e.offsetY < 16) {
-      dragApproach.value = 'center'
-    } else {
-      dragApproach.value = 'bottom'
-    }
-  }
-  e.dataTransfer.dropEffect = 'move';
 }
 const dragleave = (e) => {
   dragApproach.value = ''
@@ -283,7 +290,17 @@ const drop = async (e) => {
   if (runtime.dragItemData == dirData) {
     return
   }
+  if (libraryUtils.isDragItemInDirChildren(runtime.dragItemData.children, dirData.uuid)) {
+    return
+  }
   if (approach == 'center') {
+    if (libraryUtils.getFatherLibraryTreeByUUID(runtime.libraryTree, runtime.dragItemData.uuid).uuid == dirData.uuid) {
+      let removedElement = dirData.children.splice(dirData.children.indexOf(runtime.dragItemData), 1)[0]
+      dirData.children.unshift(removedElement)
+      libraryUtils.reOrderChildren(dirData.children)
+      await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, dirData.uuid), JSON.stringify(dirData.children))
+      return
+    }
     const existingItem = dirData.children.find(item => {
       return item.dirName === runtime.dragItemData.dirName && item.uuid !== runtime.dragItemData.uuid;
     });
@@ -304,11 +321,14 @@ const drop = async (e) => {
       }
       return
     }
-    await window.electron.ipcRenderer.invoke('moveInDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid,), libraryUtils.findDirPathByUuid(runtime.libraryTree, dirData.uuid), false)
-    for (let item of dirData.children) {
-      item.order++
-    }
-    approachCenterEnd()
+    let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(runtime.libraryTree, runtime.dragItemData.uuid)
+    await window.electron.ipcRenderer.invoke('moveToDirSample', libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid), libraryUtils.findDirPathByUuid(runtime.libraryTree, dirData.uuid))
+    let removedElement = dragItemDataFather.children.splice(dragItemDataFather.children.indexOf(runtime.dragItemData), 1)[0]
+    libraryUtils.reOrderChildren(dragItemDataFather.children)
+    await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid), JSON.stringify(dragItemDataFather.children))
+    dirData.children.unshift(removedElement)
+    libraryUtils.reOrderChildren(dirData.children)
+    await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, dirData.uuid), JSON.stringify(dirData.children))
     return
   }
   else if (approach == 'top' || approach == 'bottom') {
@@ -427,6 +447,7 @@ const drop = async (e) => {
     @cancel="deleteCancel" />
 </template>
 <style lang="scss" scoped>
+//todo 缺一个hover效果 一个选中效果
 .borderTop {
   border-top: 1px solid #0078d4;
 }
