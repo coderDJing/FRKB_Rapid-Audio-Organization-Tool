@@ -55,8 +55,7 @@ const menuButtonClick = async (item, e) => {
 
 
 const collapseButtonHandleClick = async () => {
-  //todo 现在点击回收起所有地方的文件夹包括dialog
-  window.electron.ipcRenderer.send('collapseButtonHandleClick');
+  window.electron.ipcRenderer.send('collapseButtonHandleClick', libraryData.dirName);
   console.log(runtime.libraryTree)
   console.log(JSON.stringify(runtime.libraryTree))
 }
@@ -141,7 +140,8 @@ const drop = async (e) => {
     </div>
     <div class="unselectable libraryArea" v-if="libraryData.children.length">
       <template v-for="item of libraryData.children" :key="item.uuid">
-        <libraryItem :uuid="item.uuid" v-if="!(runtime.selectSongListDialogShow && !item.dirName)" />
+        <libraryItem :uuid="item.uuid" :libraryName="libraryData.dirName"
+          v-if="!(runtime.selectSongListDialogShow && !item.dirName)" />
       </template>
       <div style="flex-grow: 1;" @dragover.stop.prevent="dragover" @dragenter.stop.prevent="dragenter" @drop.stop="drop"
         @dragleave.stop="dragleave" :class="{ 'borderTop': dragApproach == 'top', }">

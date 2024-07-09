@@ -13,6 +13,9 @@ const props = defineProps({
   uuid: {
     type: String,
     required: true,
+  },
+  libraryName: {
+    type: String
   }
 })
 const runtime = useRuntimeStore()
@@ -138,8 +141,10 @@ const dirHandleClick = async () => {
   dirChildShow.value = !dirChildShow.value
 }
 
-window.electron.ipcRenderer.on('collapseButtonHandleClick', (event) => {
-  dirChildShow.value = false
+window.electron.ipcRenderer.on('collapseButtonHandleClick', (event, libraryName) => {
+  if (libraryName == props.libraryName) {
+    dirChildShow.value = false
+  }
 })
 //----重命名功能--------------------------------------
 const renameDivShow = ref(false)
@@ -438,7 +443,7 @@ const drop = async (e) => {
   <div v-if="dirData.type == 'dir' && dirChildRendered" v-show="dirChildShow"
     style="padding-left: 15px;width: 100%;box-sizing: border-box;">
     <template v-for="item of dirData.children" :key="item.uuid">
-      <libraryItem :uuid="item.uuid" />
+      <libraryItem :uuid="item.uuid" :libraryName="props.libraryName" />
     </template>
   </div>
   <rightClickMenu v-model="rightClickMenuShow" :menuArr="menuArr" :clickEvent="clickEvent"
