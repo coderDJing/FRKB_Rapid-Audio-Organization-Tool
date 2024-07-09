@@ -107,6 +107,13 @@ function createWindow() {
   ipcMain.on('collapseButtonHandleClick', (e, libraryName) => {
     mainWindow.webContents.send('collapseButtonHandleClick', libraryName)
   })
+
+  ipcMain.on('startImportSongs', (e, formData) => {
+    formData.songListPath = join(__dirname, formData.songListPath)
+    console.log(formData)
+    //todo开始导入歌曲
+
+  })
 }
 ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
   const srcFullPath = join(__dirname, src)
