@@ -1,7 +1,7 @@
 <script setup>
-import { ref } from 'vue'
+import { onUnmounted, ref } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu.vue';
-import libraryItem from '@renderer/components/libraryItem.vue';
+import dialogLibraryItem from '@renderer/components/dialogLibraryItem.vue';
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { v4 as uuidv4 } from 'uuid';
@@ -66,7 +66,7 @@ const dragleave = (e) => {
 const drop = async (e) => {
   dragApproach.value = ''
   let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(runtime.libraryTree, runtime.dragItemData.uuid)
-  if (dragItemDataFather.uuid == props.uuid) {
+  if (dragItemDataFather.uuid == filtrateLibraryUUID) {
     if (libraryData.children[libraryData.children.length - 1].uuid == runtime.dragItemData.uuid) {
       return
     }
@@ -107,11 +107,40 @@ const drop = async (e) => {
     return
   }
 }
+onUnmounted(() => {
+  runtime.dialogSelectedSongListUUID = ''
+})
 
+const flashArea = ref(''); // 控制动画是否正在播放
+// 模拟闪烁三次的逻辑（使用 setTimeout）
+const flashBorder = (flashAreaName) => {
+  flashArea.value = flashAreaName
+  let count = 0;
+  const interval = setInterval(() => {
+    count++;
+    if (count >= 3) {
+      clearInterval(interval);
+      flashArea.value = ''; // 动画结束，不再闪烁
+    }
+  }, 500); // 每次闪烁间隔 500 毫秒
+};
+const confirmHandle = () => {
+  if (runtime.dialogSelectedSongListUUID == '') {
+    if (!flashArea.value) {
+      flashBorder('selectSongList')
+    }
+  } else {
+    emits('confirm', runtime.dialogSelectedSongListUUID)
+  }
+}
+const emits = defineEmits(['cancel', 'confirm'])
+const cancel = () => {
+  emits('cancel')
+}
 </script>
 <template>
   <div class="dialog unselectable">
-    <div class="content" @contextmenu.stop="contextmenuEvent">
+    <div class="content inner" @contextmenu.stop="contextmenuEvent">
       <div class="unselectable libraryTitle">
         <span>{{ libraryData.dirName }}</span>
         <div style="display: flex;justify-content: center;align-items: center;">
@@ -130,9 +159,10 @@ const drop = async (e) => {
           </transition>
         </div>
       </div>
-      <div class="unselectable libraryArea" v-if="libraryData.children.length">
+      <div class="unselectable libraryArea flashing-border" :class="{ 'is-flashing': flashArea == 'selectSongList' }"
+        v-if="libraryData.children.length">
         <template v-for="item of libraryData.children" :key="item.uuid">
-          <libraryItem :uuid="item.uuid" :libraryName="libraryData.dirName + 'Dialog'" />
+          <dialogLibraryItem :uuid="item.uuid" :libraryName="libraryData.dirName + 'Dialog'" />
         </template>
         <div style="flex-grow: 1;" @dragover.stop.prevent="dragover" @dragenter.stop.prevent="dragenter"
           @drop.stop="drop" @dragleave.stop="dragleave" :class="{ 'borderTop': dragApproach == 'top', }">
@@ -142,9 +172,17 @@ const drop = async (e) => {
         style="height:100%;width: 100%;display: flex;justify-content: center;align-items: center;">
         <span style="font-size: 12px;color: #8c8c8c;">右键新建歌单</span>
       </div>
+      <div style="display: flex;justify-content: center;padding-bottom: 10px;">
+        <div class="button" style="margin-right: 10px;" @click="confirmHandle()">
+          确定
+        </div>
+        <div class="button" @click="cancel()">
+          取消
+        </div>
+      </div>
     </div>
   </div>
-  <rightClickMenu v-model="rightClickMenuShow" :menuArr="menuArr" :clickEvent="clickEvent"
+  <rightClickMenu v-model="rightClickMenuShow" :menuArr="menuArr" :clickEvent="clickEvent" style="z-index: 99;"
     @menuButtonClick="menuButtonClick"></rightClickMenu>
 </template>
 <style lang="scss" scoped>
@@ -153,10 +191,8 @@ const drop = async (e) => {
 }
 
 .libraryArea {
-  width: 300px;
   height: 500px;
   max-width: 300px;
-  width: 100%;
   overflow-y: hidden;
   overflow-x: hidden;
   scrollbar-gutter: stable;
@@ -177,8 +213,6 @@ const drop = async (e) => {
   background-color: #181818;
   overflow: hidden;
   flex-direction: column;
-
-
 
   .libraryTitle {
     height: 35px;

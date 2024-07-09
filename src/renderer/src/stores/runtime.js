@@ -16,7 +16,10 @@ export const useRuntimeStore = defineStore('runtime', {
       },
       dragItemData: null,
       libraryTree: {},
-      selectSongListDialogShow: false
+      selectSongListDialogShow: false,
+      dialogSelectedSongListUUID: '',//dialog中被选中的歌单UUID
+      selectedSongListUUID: '',//被选中的歌单UUID
+
     }
   }
 })
