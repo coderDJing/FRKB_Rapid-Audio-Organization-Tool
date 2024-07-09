@@ -9,19 +9,22 @@ import { ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 
 const emit = defineEmits(['librarySelectedChange'])
-const iconArr = ref([{
-  name: '筛选库',
-  grey: listGrey,
-  white: listWhite,
-  src: listGrey,
-  showAlt: false
-}, {
-  name: '精选库',
-  grey: likeGrey,
-  white: likeWhite,
-  src: likeGrey,
-  showAlt: false
-}])
+const iconArr = ref([
+  {
+    name: '筛选库',
+    grey: listGrey,
+    white: listWhite,
+    src: listGrey,
+    showAlt: false
+  },
+  {
+    name: '精选库',
+    grey: likeGrey,
+    white: likeWhite,
+    src: likeGrey,
+    showAlt: false
+  }
+])
 
 const selectedIcon = ref(iconArr.value[0])
 selectedIcon.value.src = selectedIcon.value.white
@@ -42,64 +45,96 @@ const clickButtomIcon = (item) => {
     return
   }
 }
-let hoverTimer = null;
+let hoverTimer = null
 const iconMouseover = (item) => {
   if (selectedIcon.value != item) {
     item.src = item.white
   }
   hoverTimer = setTimeout(() => {
-    item.showAlt = true;
-  }, 500);
+    item.showAlt = true
+  }, 500)
 }
 const iconMouseout = (item) => {
-  clearTimeout(hoverTimer);
+  clearTimeout(hoverTimer)
   if (selectedIcon.value != item) {
     item.src = item.grey
   }
   item.showAlt = false
 }
 
-const buttomIconArr = ref([{
-  name: '设置',
-  grey: settingGrey,
-  white: settingWhite,
-  src: settingGrey,
-  showAlt: false
-}])
+const buttomIconArr = ref([
+  {
+    name: '设置',
+    grey: settingGrey,
+    white: settingWhite,
+    src: settingGrey,
+    showAlt: false
+  }
+])
 
 const libraryHandleClick = (item) => {
   emit('librarySelectedChange', item)
 }
-
 </script>
 <template>
   <div class="librarySelectArea unselectable">
     <div>
-      <div v-for="item of iconArr" :key="item.name" class="iconBox" @click="clickIcon(item)"
-        @mouseover="iconMouseover(item)" @mouseout="iconMouseout(item)">
-        <div style="width: 2px;height: 100%;"
-          :style="{ 'backgroundColor': item.name == selectedIcon.name ? '#0078d4' : '' }"></div>
-        <div style="flex-grow: 1;height: 100%;display: flex;justify-content: center;align-items: center;"
-          @click="libraryHandleClick(item)">
+      <div
+        v-for="item of iconArr"
+        :key="item.name"
+        class="iconBox"
+        @click="clickIcon(item)"
+        @mouseover="iconMouseover(item)"
+        @mouseout="iconMouseout(item)"
+      >
+        <div
+          style="width: 2px; height: 100%"
+          :style="{ backgroundColor: item.name == selectedIcon.name ? '#0078d4' : '' }"
+        ></div>
+        <div
+          style="
+            flex-grow: 1;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+          "
+          @click="libraryHandleClick(item)"
+        >
           <img :src="item.src" draggable="false" />
           <transition name="fade">
-            <div class="bubbleBox" v-if="item.showAlt" style="position: absolute;left: 50px;">
+            <div class="bubbleBox" v-if="item.showAlt" style="position: absolute; left: 50px">
               {{ item.name }}
             </div>
           </transition>
         </div>
       </div>
-
     </div>
     <div>
-      <div v-for="item of buttomIconArr" :key="item.name" class="iconBox" @click="clickButtomIcon(item)"
-        @mouseover="iconMouseover(item)" @mouseout="iconMouseout(item)">
-        <div style="width: 2px;height: 100%;"
-          :style="{ 'backgroundColor': item.name == selectedIcon.name ? '#0078d4' : '' }"></div>
-        <div style="flex-grow: 1;height: 100%;display: flex;justify-content: center;align-items: center;">
+      <div
+        v-for="item of buttomIconArr"
+        :key="item.name"
+        class="iconBox"
+        @click="clickButtomIcon(item)"
+        @mouseover="iconMouseover(item)"
+        @mouseout="iconMouseout(item)"
+      >
+        <div
+          style="width: 2px; height: 100%"
+          :style="{ backgroundColor: item.name == selectedIcon.name ? '#0078d4' : '' }"
+        ></div>
+        <div
+          style="
+            flex-grow: 1;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+          "
+        >
           <img :src="item.src" draggable="false" />
           <transition name="fade">
-            <div class="bubbleBox" v-if="item.showAlt" style="position: absolute;left: 50px;">
+            <div class="bubbleBox" v-if="item.showAlt" style="position: absolute; left: 50px">
               {{ item.name }}
             </div>
           </transition>
@@ -120,12 +155,12 @@ const libraryHandleClick = (item) => {
 
   .fade-enter-active,
   .fade-leave-active {
-    transition: opacity 0.15s
+    transition: opacity 0.15s;
   }
 
   .fade-enter,
   .fade-leave-to {
-    opacity: 0
+    opacity: 0;
   }
 
   .iconBox {

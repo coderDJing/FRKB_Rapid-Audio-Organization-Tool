@@ -1,9 +1,9 @@
 <script setup>
-import homePage from "./pages/homePage.vue"
+import homePage from './pages/homePage.vue'
 import titleComponent from './components/titleComponent.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import scanNewSongDialog from "./components/scanNewSongDialog.vue";
-import bottomInfoArea from "./pages/modules/bottomInfoArea.vue";
+import scanNewSongDialog from './components/scanNewSongDialog.vue'
+import bottomInfoArea from './pages/modules/bottomInfoArea.vue'
 import { ref } from 'vue'
 
 const runtime = useRuntimeStore()
@@ -27,18 +27,23 @@ const getLibrary = async () => {
 getLibrary()
 </script>
 <template>
-  <div style="height: 100%;max-height: 100%; width: 100%;display: flex;flex-direction: column;">
-    <div style="height: 35px;">
+  <div style="height: 100%; max-height: 100%; width: 100%; display: flex; flex-direction: column">
+    <div style="height: 35px">
       <titleComponent @openDialog="openDialog" />
     </div>
-    <div style="height:calc(100% - 55px);">
+    <div style="height: calc(100% - 55px)">
       <homePage />
     </div>
-    <div style="height: 20px;width: 100%;background-color: #181818;border-top: 1px solid #2b2b2b;">
+    <div
+      style="height: 20px; width: 100%; background-color: #181818; border-top: 1px solid #2b2b2b"
+    >
       <bottomInfoArea />
     </div>
   </div>
-  <scanNewSongDialog v-if="activeDialog == '导入新歌曲'" @cancel="activeDialog = ''"></scanNewSongDialog>
+  <scanNewSongDialog
+    v-if="activeDialog == '导入新歌曲'"
+    @cancel="activeDialog = ''"
+  ></scanNewSongDialog>
 </template>
 <style lang="scss">
 #app {

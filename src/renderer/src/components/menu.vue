@@ -1,16 +1,19 @@
 <script setup>
-import { watch } from 'vue';
+import { watch } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from 'uuid'
 const uuid = uuidv4()
 const runtime = useRuntimeStore()
 
 const emits = defineEmits(['menuButtonClick', 'update:modelValue'])
-watch(() => runtime.activeMenuUUID, (val) => {
-  if (val !== uuid) {
-    emits('update:modelValue', false)
+watch(
+  () => runtime.activeMenuUUID,
+  (val) => {
+    if (val !== uuid) {
+      emits('update:modelValue', false)
+    }
   }
-})
+)
 const props = defineProps({
   menuArr: {
     type: Array,
@@ -19,24 +22,30 @@ const props = defineProps({
   modelValue: {
     type: Boolean,
     required: true
-  },
-})
-watch(() => props.modelValue, () => {
-  if (props.modelValue == true) {
-    runtime.activeMenuUUID = uuid
   }
 })
+watch(
+  () => props.modelValue,
+  () => {
+    if (props.modelValue == true) {
+      runtime.activeMenuUUID = uuid
+    }
+  }
+)
 const menuButtonClick = (item) => {
   runtime.activeMenuUUID = ''
   emits('menuButtonClick', item)
 }
-
 </script>
 <template>
-  <div class="menu" v-if="props.modelValue" @click.stop="() => { }">
+  <div class="menu" v-if="props.modelValue" @click.stop="() => {}">
     <div v-for="item of props.menuArr" class="menuGroup">
-      <div v-for="button of item" class="menuButton" @click="menuButtonClick(button)"
-        @contextmenu="menuButtonClick(button)">
+      <div
+        v-for="button of item"
+        class="menuButton"
+        @click="menuButtonClick(button)"
+        @contextmenu="menuButtonClick(button)"
+      >
         <span>{{ button.name }}</span>
         <span>{{ button.shortcutKey }}</span>
       </div>
@@ -72,6 +81,5 @@ const menuButtonClick = (item) => {
   .menuGroup:last-child {
     border-bottom: 0px;
   }
-
 }
 </style>

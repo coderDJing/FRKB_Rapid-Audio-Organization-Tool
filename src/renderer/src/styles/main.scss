@@ -8,11 +8,11 @@
 }
 
 .canDrag {
-  -webkit-app-region: drag
+  -webkit-app-region: drag;
 }
 
 .canNotDrag {
-  -webkit-app-region: no-drag
+  -webkit-app-region: no-drag;
 }
 
 .dialog {
@@ -63,7 +63,6 @@
 
 ::-webkit-scrollbar {
   width: 6px;
-
 }
 
 ::-webkit-scrollbar-thumb {
@@ -92,7 +91,6 @@
 }
 
 @keyframes flash {
-
   0%,
   100% {
     border-color: transparent;

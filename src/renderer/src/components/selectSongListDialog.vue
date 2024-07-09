@@ -1,26 +1,27 @@
 <script setup>
 import { onUnmounted, ref } from 'vue'
-import rightClickMenu from '@renderer/components/rightClickMenu.vue';
-import dialogLibraryItem from '@renderer/components/dialogLibraryItem.vue';
+import rightClickMenu from '@renderer/components/rightClickMenu.vue'
+import dialogLibraryItem from '@renderer/components/dialogLibraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from 'uuid'
 import confirm from '@renderer/components/confirm.js'
 const runtime = useRuntimeStore()
-let filtrateLibraryUUID = runtime.libraryTree.children.find((element => element.dirName == '筛选库')).uuid
+let filtrateLibraryUUID = runtime.libraryTree.children.find(
+  (element) => element.dirName == '筛选库'
+).uuid
 let libraryData = libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, filtrateLibraryUUID)
-let hoverTimer = null;
+let hoverTimer = null
 let collapseButtonHintShow = ref(false)
 const iconMouseover = () => {
   hoverTimer = setTimeout(() => {
-    collapseButtonHintShow.value = true;
-  }, 500);
+    collapseButtonHintShow.value = true
+  }, 500)
 }
 const iconMouseout = () => {
-  clearTimeout(hoverTimer);
+  clearTimeout(hoverTimer)
   collapseButtonHintShow.value = false
 }
-
 
 const rightClickMenuShow = ref(false)
 const clickEvent = ref({})
@@ -33,31 +34,30 @@ const contextmenuEvent = (event) => {
 const menuButtonClick = async (item, e) => {
   if (item.menuName == '新建歌单') {
     libraryData.children.unshift({
-      "uuid": uuidv4(),
-      "type": "songList",
-      "dirName": "",
+      uuid: uuidv4(),
+      type: 'songList',
+      dirName: ''
     })
   } else if (item.menuName == '新建文件夹') {
     libraryData.children.unshift({
-      "uuid": uuidv4(),
-      "type": "dir",
-      "dirName": "",
+      uuid: uuidv4(),
+      type: 'dir',
+      dirName: ''
     })
   }
 }
 
-
 const collapseButtonHandleClick = async () => {
-  window.electron.ipcRenderer.send('collapseButtonHandleClick', libraryData.dirName + 'Dialog');
+  window.electron.ipcRenderer.send('collapseButtonHandleClick', libraryData.dirName + 'Dialog')
 }
 
 const dragApproach = ref('')
 const dragover = (e) => {
-  e.dataTransfer.dropEffect = 'move';
+  e.dataTransfer.dropEffect = 'move'
   dragApproach.value = 'top'
 }
 const dragenter = (e) => {
-  e.dataTransfer.dropEffect = 'move';
+  e.dataTransfer.dropEffect = 'move'
   dragApproach.value = 'top'
 }
 const dragleave = (e) => {
@@ -65,45 +65,93 @@ const dragleave = (e) => {
 }
 const drop = async (e) => {
   dragApproach.value = ''
-  let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(runtime.libraryTree, runtime.dragItemData.uuid)
+  let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(
+    runtime.libraryTree,
+    runtime.dragItemData.uuid
+  )
   if (dragItemDataFather.uuid == filtrateLibraryUUID) {
     if (libraryData.children[libraryData.children.length - 1].uuid == runtime.dragItemData.uuid) {
       return
     }
     //同一层级仅调换位置
-    let removedElement = libraryData.children.splice(libraryData.children.indexOf(runtime.dragItemData), 1)[0]
+    let removedElement = libraryData.children.splice(
+      libraryData.children.indexOf(runtime.dragItemData),
+      1
+    )[0]
     libraryData.children.push(removedElement)
     libraryUtils.reOrderChildren(libraryData.children)
-    await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid), JSON.stringify(libraryData.children))
+    await window.electron.ipcRenderer.invoke(
+      'reOrderSubDir',
+      libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid),
+      JSON.stringify(libraryData.children)
+    )
     return
   } else {
-    const existingItem = libraryData.children.find(item => {
-      return item.dirName === runtime.dragItemData.dirName && item.uuid !== runtime.dragItemData.uuid;
-    });
+    const existingItem = libraryData.children.find((item) => {
+      return (
+        item.dirName === runtime.dragItemData.dirName && item.uuid !== runtime.dragItemData.uuid
+      )
+    })
     if (existingItem) {
-
-      let res = await confirm({ title: '移动', content: ['目标文件夹下已存在："' + runtime.dragItemData.dirName + '"', '是否继续执行替换', '（被替换的歌单或文件夹将被删除）'] })
+      let res = await confirm({
+        title: '移动',
+        content: [
+          '目标文件夹下已存在："' + runtime.dragItemData.dirName + '"',
+          '是否继续执行替换',
+          '（被替换的歌单或文件夹将被删除）'
+        ]
+      })
       if (res == 'confirm') {
         let targetPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, existingItem.uuid)
         await window.electron.ipcRenderer.invoke('delDir', targetPath)
-        await window.electron.ipcRenderer.invoke('moveToDirSample', libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid), libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid))
+        await window.electron.ipcRenderer.invoke(
+          'moveToDirSample',
+          libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid),
+          libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid)
+        )
         libraryData.children.splice(libraryData.children.indexOf(existingItem), 1)
-        let removedElement = dragItemDataFather.children.splice(dragItemDataFather.children.indexOf(runtime.dragItemData), 1)[0]
+        let removedElement = dragItemDataFather.children.splice(
+          dragItemDataFather.children.indexOf(runtime.dragItemData),
+          1
+        )[0]
         libraryUtils.reOrderChildren(dragItemDataFather.children)
-        await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid), JSON.stringify(dragItemDataFather.children))
+        await window.electron.ipcRenderer.invoke(
+          'reOrderSubDir',
+          libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid),
+          JSON.stringify(dragItemDataFather.children)
+        )
         libraryData.children.push(removedElement)
         libraryUtils.reOrderChildren(libraryData.children)
-        await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid), JSON.stringify(libraryData.children))
+        await window.electron.ipcRenderer.invoke(
+          'reOrderSubDir',
+          libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid),
+          JSON.stringify(libraryData.children)
+        )
       }
       return
     }
-    await window.electron.ipcRenderer.invoke('moveToDirSample', libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid), libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid))
-    let removedElement = dragItemDataFather.children.splice(dragItemDataFather.children.indexOf(runtime.dragItemData), 1)[0]
+    await window.electron.ipcRenderer.invoke(
+      'moveToDirSample',
+      libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid),
+      libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid)
+    )
+    let removedElement = dragItemDataFather.children.splice(
+      dragItemDataFather.children.indexOf(runtime.dragItemData),
+      1
+    )[0]
     libraryUtils.reOrderChildren(dragItemDataFather.children)
-    await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid), JSON.stringify(dragItemDataFather.children))
+    await window.electron.ipcRenderer.invoke(
+      'reOrderSubDir',
+      libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid),
+      JSON.stringify(dragItemDataFather.children)
+    )
     libraryData.children.push(removedElement)
     libraryUtils.reOrderChildren(libraryData.children)
-    await window.electron.ipcRenderer.invoke('reOrderSubDir', libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid), JSON.stringify(libraryData.children))
+    await window.electron.ipcRenderer.invoke(
+      'reOrderSubDir',
+      libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid),
+      JSON.stringify(libraryData.children)
+    )
     return
   }
 }
@@ -111,19 +159,19 @@ onUnmounted(() => {
   runtime.dialogSelectedSongListUUID = ''
 })
 
-const flashArea = ref(''); // 控制动画是否正在播放
+const flashArea = ref('') // 控制动画是否正在播放
 // 模拟闪烁三次的逻辑（使用 setTimeout）
 const flashBorder = (flashAreaName) => {
   flashArea.value = flashAreaName
-  let count = 0;
+  let count = 0
   const interval = setInterval(() => {
-    count++;
+    count++
     if (count >= 3) {
-      clearInterval(interval);
-      flashArea.value = ''; // 动画结束，不再闪烁
+      clearInterval(interval)
+      flashArea.value = '' // 动画结束，不再闪烁
     }
-  }, 500); // 每次闪烁间隔 500 毫秒
-};
+  }, 500) // 每次闪烁间隔 500 毫秒
+}
 const confirmHandle = () => {
   if (runtime.dialogSelectedSongListUUID == '') {
     if (!flashArea.value) {
@@ -143,47 +191,82 @@ const cancel = () => {
     <div class="content inner" @contextmenu.stop="contextmenuEvent">
       <div class="unselectable libraryTitle">
         <span>{{ libraryData.dirName }}</span>
-        <div style="display: flex;justify-content: center;align-items: center;">
-          <div class="collapseButton" @mouseover="iconMouseover()" @mouseout="iconMouseout()"
-            @click="collapseButtonHandleClick()">
-            <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+        <div style="display: flex; justify-content: center; align-items: center">
+          <div
+            class="collapseButton"
+            @mouseover="iconMouseover()"
+            @mouseout="iconMouseout()"
+            @click="collapseButtonHandleClick()"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="currentColor"
+            >
               <path d="M9 9H4v1h5V9z" />
-              <path fill-rule="evenodd" clip-rule="evenodd"
-                d="M5 3l1-1h7l1 1v7l-1 1h-2v2l-1 1H3l-1-1V6l1-1h2V3zm1 2h4l1 1v4h2V3H6v2zm4 1H3v7h7V6z" />
+              <path
+                fill-rule="evenodd"
+                clip-rule="evenodd"
+                d="M5 3l1-1h7l1 1v7l-1 1h-2v2l-1 1H3l-1-1V6l1-1h2V3zm1 2h4l1 1v4h2V3H6v2zm4 1H3v7h7V6z"
+              />
             </svg>
           </div>
           <transition name="fade">
-            <div class="bubbleBox" v-if="collapseButtonHintShow" style="position: absolute;top: 70px;">
+            <div
+              class="bubbleBox"
+              v-if="collapseButtonHintShow"
+              style="position: absolute; top: 70px"
+            >
               折叠文件夹
             </div>
           </transition>
         </div>
       </div>
-      <div class="unselectable libraryArea flashing-border" :class="{ 'is-flashing': flashArea == 'selectSongList' }"
-        v-if="libraryData.children.length">
+      <div
+        class="unselectable libraryArea flashing-border"
+        :class="{ 'is-flashing': flashArea == 'selectSongList' }"
+        v-if="libraryData.children.length"
+      >
         <template v-for="item of libraryData.children" :key="item.uuid">
           <dialogLibraryItem :uuid="item.uuid" :libraryName="libraryData.dirName + 'Dialog'" />
         </template>
-        <div style="flex-grow: 1;" @dragover.stop.prevent="dragover" @dragenter.stop.prevent="dragenter"
-          @drop.stop="drop" @dragleave.stop="dragleave" :class="{ 'borderTop': dragApproach == 'top', }">
-        </div>
+        <div
+          style="flex-grow: 1"
+          @dragover.stop.prevent="dragover"
+          @dragenter.stop.prevent="dragenter"
+          @drop.stop="drop"
+          @dragleave.stop="dragleave"
+          :class="{ borderTop: dragApproach == 'top' }"
+        ></div>
       </div>
-      <div class="unselectable" v-else
-        style="height:100%;width: 100%;display: flex;justify-content: center;align-items: center;">
-        <span style="font-size: 12px;color: #8c8c8c;">右键新建歌单</span>
+      <div
+        class="unselectable"
+        v-else
+        style="
+          height: 100%;
+          width: 100%;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        "
+      >
+        <span style="font-size: 12px; color: #8c8c8c">右键新建歌单</span>
       </div>
-      <div style="display: flex;justify-content: center;padding-bottom: 10px;">
-        <div class="button" style="margin-right: 10px;" @click="confirmHandle()">
-          确定
-        </div>
-        <div class="button" @click="cancel()">
-          取消
-        </div>
+      <div style="display: flex; justify-content: center; padding-bottom: 10px">
+        <div class="button" style="margin-right: 10px" @click="confirmHandle()">确定</div>
+        <div class="button" @click="cancel()">取消</div>
       </div>
     </div>
   </div>
-  <rightClickMenu v-model="rightClickMenuShow" :menuArr="menuArr" :clickEvent="clickEvent" style="z-index: 99;"
-    @menuButtonClick="menuButtonClick"></rightClickMenu>
+  <rightClickMenu
+    v-model="rightClickMenuShow"
+    :menuArr="menuArr"
+    :clickEvent="clickEvent"
+    style="z-index: 99"
+    @menuButtonClick="menuButtonClick"
+  ></rightClickMenu>
 </template>
 <style lang="scss" scoped>
 .borderTop {
@@ -255,11 +338,11 @@ const cancel = () => {
 
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.15s
+  transition: opacity 0.15s;
 }
 
 .fade-enter,
 .fade-leave-to {
-  opacity: 0
+  opacity: 0;
 }
 </style>

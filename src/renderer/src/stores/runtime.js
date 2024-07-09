@@ -1,4 +1,3 @@
-
 import { defineStore } from 'pinia'
 
 export const useRuntimeStore = defineStore('runtime', {
@@ -17,9 +16,8 @@ export const useRuntimeStore = defineStore('runtime', {
       dragItemData: null,
       libraryTree: {},
       selectSongListDialogShow: false,
-      dialogSelectedSongListUUID: '',//dialog中被选中的歌单UUID
-      selectedSongListUUID: '',//被选中的歌单UUID
-
+      dialogSelectedSongListUUID: '', //dialog中被选中的歌单UUID
+      selectedSongListUUID: '' //被选中的歌单UUID
     }
   }
 })
