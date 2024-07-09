@@ -104,8 +104,8 @@ function createWindow() {
   ipcMain.on('toggle-close', () => {
     app.exit()
   })
-  ipcMain.on('collapseButtonHandleClick', () => {
-    mainWindow.webContents.send('collapseButtonHandleClick')
+  ipcMain.on('collapseButtonHandleClick', (e, libraryName) => {
+    mainWindow.webContents.send('collapseButtonHandleClick', libraryName)
   })
 }
 ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {

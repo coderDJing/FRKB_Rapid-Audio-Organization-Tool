@@ -48,8 +48,7 @@ const menuButtonClick = async (item, e) => {
 
 
 const collapseButtonHandleClick = async () => {
-  window.electron.ipcRenderer.send('collapseButtonHandleClick');
-  console.log(runtime.libraryTree)
+  window.electron.ipcRenderer.send('collapseButtonHandleClick', libraryData.dirName + 'Dialog');
 }
 
 const dragApproach = ref('')
@@ -67,7 +66,7 @@ const dragleave = (e) => {
 const drop = async (e) => {
   dragApproach.value = ''
   let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(runtime.libraryTree, runtime.dragItemData.uuid)
-  if (dragItemDataFather.uuid == filtrateLibraryUUID) {
+  if (dragItemDataFather.uuid == props.uuid) {
     if (libraryData.children[libraryData.children.length - 1].uuid == runtime.dragItemData.uuid) {
       return
     }
@@ -82,6 +81,7 @@ const drop = async (e) => {
       return item.dirName === runtime.dragItemData.dirName && item.uuid !== runtime.dragItemData.uuid;
     });
     if (existingItem) {
+
       let res = await confirm({ title: '移动', content: ['目标文件夹下已存在："' + runtime.dragItemData.dirName + '"', '是否继续执行替换', '（被替换的歌单或文件夹将被删除）'] })
       if (res == 'confirm') {
         let targetPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, existingItem.uuid)
@@ -107,10 +107,9 @@ const drop = async (e) => {
     return
   }
 }
-//todo
+
 </script>
 <template>
-  <!-- 样式todo -->
   <div class="dialog unselectable">
     <div class="content" @contextmenu.stop="contextmenuEvent">
       <div class="unselectable libraryTitle">
@@ -133,7 +132,7 @@ const drop = async (e) => {
       </div>
       <div class="unselectable libraryArea" v-if="libraryData.children.length">
         <template v-for="item of libraryData.children" :key="item.uuid">
-          <libraryItem :uuid="item.uuid" />
+          <libraryItem :uuid="item.uuid" :libraryName="libraryData.dirName + 'Dialog'" />
         </template>
         <div style="flex-grow: 1;" @dragover.stop.prevent="dragover" @dragenter.stop.prevent="dragenter"
           @drop.stop="drop" @dragleave.stop="dragleave" :class="{ 'borderTop': dragApproach == 'top', }">
@@ -144,9 +143,9 @@ const drop = async (e) => {
         <span style="font-size: 12px;color: #8c8c8c;">右键新建歌单</span>
       </div>
     </div>
-    <rightClickMenu v-model="rightClickMenuShow" :menuArr="menuArr" :clickEvent="clickEvent"
-      @menuButtonClick="menuButtonClick"></rightClickMenu>
   </div>
+  <rightClickMenu v-model="rightClickMenuShow" :menuArr="menuArr" :clickEvent="clickEvent"
+    @menuButtonClick="menuButtonClick"></rightClickMenu>
 </template>
 <style lang="scss" scoped>
 .borderTop {
@@ -157,6 +156,7 @@ const drop = async (e) => {
   width: 300px;
   height: 500px;
   max-width: 300px;
+  width: 100%;
   overflow-y: hidden;
   overflow-x: hidden;
   scrollbar-gutter: stable;
