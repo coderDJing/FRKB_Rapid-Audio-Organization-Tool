@@ -36,6 +36,17 @@
   }
 }
 
+.disableButton {
+  height: 25px;
+  line-height: 25px;
+  padding: 0 10px;
+  border-radius: 5px;
+  background-color: #1e1e1e;
+  font-size: 14px;
+  cursor: not-allowed;
+  color: #a8abb2;
+}
+
 .button {
   height: 25px;
   line-height: 25px;
@@ -66,4 +77,32 @@
 
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+.flashing-border {
+  border: 1px solid transparent;
+  /* 初始边框为透明，以便动画从透明到#0078d4 */
+  transition: border-color 0.2s ease;
+  /* 过渡效果使边框颜色变化更平滑 */
+}
+
+.flashing-border.is-flashing {
+  animation: flash 0.5s infinite;
+  /* 1.5秒内闪烁三次，但infinite会被下面的JavaScript逻辑覆盖 */
+}
+
+@keyframes flash {
+
+  0%,
+  100% {
+    border-color: transparent;
+  }
+
+  /* 开始和结束都是透明 */
+  33.33%,
+  66.66% {
+    border-color: #0078d4;
+  }
+
+  /* 在1/3和2/3的时间点显示边框 */
 }

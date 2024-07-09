@@ -1,7 +1,7 @@
 <script setup>
 import { ref, nextTick, watch } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu.vue';
-import libraryItem from '@renderer/components/libraryItem.vue'
+import dialogLibraryItem from '@renderer/components/dialogLibraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import confirmDialog from '@renderer/components/confirmDialog.vue';
 import listIcon from '@renderer/assets/listIcon.png'
@@ -138,7 +138,7 @@ const dirChildRendered = ref(false)
 const dirHandleClick = async () => {
   runtime.activeMenuUUID = ''
   if (dirData.type == 'songList') {
-    runtime.selectedSongListUUID = props.uuid
+    runtime.dialogSelectedSongListUUID = props.uuid
   } else {
     dirChildRendered.value = true
     dirChildShow.value = !dirChildShow.value
@@ -408,7 +408,7 @@ indentWidth.value = (libraryUtils.getDepthByUuid(runtime.libraryTree, props.uuid
       'borderTop': dragApproach == 'top',
       'borderBottom': dragApproach == 'bottom',
       'borderCenter': dragApproach == 'center',
-      'selectedDir': props.uuid == runtime.selectedSongListUUID
+      'selectedDir': props.uuid == runtime.dialogSelectedSongListUUID
     }">
     <div class="prefixIcon">
       <svg v-if="dirData.type == 'dir'" v-show="!dirChildShow" width="16" height="16" viewBox="0 0 16 16"
@@ -450,7 +450,7 @@ indentWidth.value = (libraryUtils.getDepthByUuid(runtime.libraryTree, props.uuid
   <div v-if="dirData.type == 'dir' && dirChildRendered" v-show="dirChildShow"
     style="width: 100%;box-sizing: border-box;">
     <template v-for="item of dirData.children" :key="item.uuid">
-      <libraryItem :uuid="item.uuid" :libraryName="props.libraryName" />
+      <dialogLibraryItem :uuid="item.uuid" :libraryName="props.libraryName" />
     </template>
   </div>
   <rightClickMenu v-model="rightClickMenuShow" :menuArr="menuArr" :clickEvent="clickEvent"

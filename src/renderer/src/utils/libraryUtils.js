@@ -96,12 +96,41 @@ export const isDragItemInDirChildren = (children, targetUUID) => {
   return false;
 }
 
+export function getDepthByUuid(data, targetUuid) {
+  // 递归函数，用于遍历JSON对象并计算深度
+  function traverse(node, depth = 0) {
+    // 如果当前节点的UUID与目标UUID匹配，返回当前深度
+    if (node.uuid === targetUuid) {
+      return depth;
+    }
+
+    // 遍历子节点
+    if (node.children && node.children.length > 0) {
+      for (let i = 0; i < node.children.length; i++) {
+        // 递归调用traverse函数，深度+1
+        let result = traverse(node.children[i], depth + 1);
+        // 如果找到了匹配的UUID，则返回结果
+        if (result !== undefined) {
+          return result;
+        }
+      }
+    }
+
+    // 如果没有找到匹配的UUID，返回undefined
+    return undefined;
+  }
+
+  // 从根节点开始遍历
+  return traverse(data);
+}
+
 export const libraryUtils = {
   getFatherLibraryTreeByUUID,
   getLibraryTreeByUUID,
   findDirPathByUuid,
   sortByOrder,
   reOrderChildren,
-  isDragItemInDirChildren
+  isDragItemInDirChildren,
+  getDepthByUuid
 }
 export default libraryUtils

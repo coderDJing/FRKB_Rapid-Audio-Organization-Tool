@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import singleCheckbox from './singleCheckbox.vue';
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import selectSongListDialog from './selectSongListDialog.vue';
+import libraryUtils from '@renderer/utils/libraryUtils.js'
 const runtime = useRuntimeStore()
 const folderPathVal = ref('') //文件夹路径
 const clickChooseDir = async () => {
@@ -55,7 +56,15 @@ const confirm = () => {
     if (!flashArea.value) {
       flashBorder('folderPathVal')
     }
+    return
   }
+  if (!songListSelected.value) {
+    if (!flashArea.value) {
+      flashBorder('songListPathVal')
+    }
+    return
+  }
+  //todo真正开始导入歌曲
 }
 const cancel = () => {
   emits('cancel')
@@ -64,6 +73,15 @@ const cancel = () => {
 const songListSelected = ref('')
 const clickChooseSongList = () => {
   runtime.selectSongListDialogShow = true
+}
+let songListSelectedPath = ''
+const selectSongListDialogConfirm = (uuid) => {
+  songListSelectedPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, uuid)
+  let songListSelectedPathArr = libraryUtils.findDirPathByUuid(runtime.libraryTree, uuid).split('/')
+  songListSelectedPathArr.shift()
+  songListSelectedPathArr.shift()
+  songListSelected.value = songListSelectedPathArr.join('\\')
+  runtime.selectSongListDialogShow = false
 }
 </script>
 <template>
@@ -87,21 +105,22 @@ const clickChooseSongList = () => {
             <div class="formLabel"><span>选择歌单：</span></div>
 
             <div style="width: 310px;">
-              <div class="chooseDirDiv flashing-border" @click="clickChooseSongList()" :title="songListSelected">
+              <div class="chooseDirDiv flashing-border" @click="clickChooseSongList()" :title="songListSelected"
+                :class="{ 'is-flashing': flashArea == 'songListPathVal' }">
                 {{ songListSelected }}
               </div>
 
             </div>
           </div>
-          <div style="margin-top: 10px;display: flex;">
-            <div class="formLabel"><span>删除原文件：</span></div>
+          <div style="margin-top: 30px;display: flex;">
+            <div class="formLabel" style="width:130px"><span>导入后删除原文件：</span></div>
             <div style="width:21px;height: 21px;display: flex;align-items: center;">
               <singleCheckbox v-model="runtime.layoutConfig.scanNewSongDialog.isDeleteSourceFile"
                 @change="isDeleteSourceFileChange" />
             </div>
           </div>
           <div style="margin-top: 10px;display: flex;">
-            <div class="formLabel"><span>删除文件夹：</span></div>
+            <div class="formLabel" style="width:130px"><span>导入后删除文件夹：</span></div>
             <div style="width:21px;height: 21px;display: flex;align-items: center;">
               <singleCheckbox v-model="runtime.layoutConfig.scanNewSongDialog.isDeleteSourceDir"
                 @change="isDeleteSourceDirChange" />
@@ -120,8 +139,8 @@ const clickChooseSongList = () => {
       </div>
     </div>
   </div>
-  <selectSongListDialog v-if="runtime.selectSongListDialogShow" />
-  <!-- //todo -->
+  <selectSongListDialog v-if="runtime.selectSongListDialogShow" @confirm="selectSongListDialogConfirm"
+    @cancel="() => { runtime.selectSongListDialogShow = false }" />
 </template>
 <style lang="scss" scoped>
 .chooseDirDiv {
@@ -140,34 +159,7 @@ const clickChooseSongList = () => {
 .formLabel {
   width: 100px;
   min-width: 100px;
-  text-align: right;
-}
-
-.flashing-border {
-  border: 1px solid transparent;
-  /* 初始边框为透明，以便动画从透明到#0078d4 */
-  transition: border-color 0.2s ease;
-  /* 过渡效果使边框颜色变化更平滑 */
-}
-
-.flashing-border.is-flashing {
-  animation: flash 0.5s infinite;
-  /* 1.5秒内闪烁三次，但infinite会被下面的JavaScript逻辑覆盖 */
-}
-
-@keyframes flash {
-
-  0%,
-  100% {
-    border-color: transparent;
-  }
-
-  /* 开始和结束都是透明 */
-  33.33%,
-  66.66% {
-    border-color: #0078d4;
-  }
-
-  /* 在1/3和2/3的时间点显示边框 */
+  text-align: left;
+  font-size: 14px;
 }
 </style>
