@@ -51,24 +51,7 @@ const flashBorder = (flashAreaName) => {
     }
   }, 500); // 每次闪烁间隔 500 毫秒
 };
-const confirm = () => {
-  if (!folderPathVal.value) {
-    if (!flashArea.value) {
-      flashBorder('folderPathVal')
-    }
-    return
-  }
-  if (!songListSelected.value) {
-    if (!flashArea.value) {
-      flashBorder('songListPathVal')
-    }
-    return
-  }
-  //todo真正开始导入歌曲
-}
-const cancel = () => {
-  emits('cancel')
-}
+
 
 const songListSelected = ref('')
 const clickChooseSongList = () => {
@@ -82,6 +65,31 @@ const selectSongListDialogConfirm = (uuid) => {
   songListSelectedPathArr.shift()
   songListSelected.value = songListSelectedPathArr.join('\\')
   runtime.selectSongListDialogShow = false
+}
+
+const confirm = () => {
+  if (!folderPathVal.value) {
+    if (!flashArea.value) {
+      flashBorder('folderPathVal')
+    }
+    return
+  }
+  if (!songListSelected.value) {
+    if (!flashArea.value) {
+      flashBorder('songListPathVal')
+    }
+    return
+  }
+  window.electron.ipcRenderer.send('startImportSongs', {
+    folderPath: folderPathVal.value,
+    songListPath: songListSelectedPath,
+    isDeleteSourceFile: runtime.layoutConfig.scanNewSongDialog.isDeleteSourceFile,
+    isDeleteSourceDir: runtime.layoutConfig.scanNewSongDialog.isDeleteSourceDir
+  });
+  cancel()
+}
+const cancel = () => {
+  emits('cancel')
 }
 </script>
 <template>
