@@ -154,6 +154,8 @@ const selectSongListDialogConfirm = (uuid) => {
   word-break: break-all;
   white-space: nowrap;
   max-width: 100%;
+  font-size: 14px;
+  padding-left: 5px;
 }
 
 .formLabel {
