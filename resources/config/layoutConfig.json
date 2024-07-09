@@ -1,1 +1,4 @@
-{"libraryAreaWidth":212,"scanNewSongDialog":{"isDeleteSourceFile":true,"isDeleteSourceDir":true}}
+{
+  "libraryAreaWidth": 212,
+  "scanNewSongDialog": { "isDeleteSourceFile": true, "isDeleteSourceDir": true }
+}

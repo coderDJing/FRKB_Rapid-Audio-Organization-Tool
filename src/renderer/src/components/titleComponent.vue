@@ -9,15 +9,15 @@ import menuComponent from './menu.vue'
 
 const emit = defineEmits(['openDialog'])
 const toggleMaximize = () => {
-  window.electron.ipcRenderer.send('toggle-maximize');
+  window.electron.ipcRenderer.send('toggle-maximize')
 }
 
 const toggleMinimize = () => {
-  window.electron.ipcRenderer.send('toggle-minimize');
+  window.electron.ipcRenderer.send('toggle-minimize')
 }
 
 const toggleClose = () => {
-  window.electron.ipcRenderer.send('toggle-close');
+  window.electron.ipcRenderer.send('toggle-close')
 }
 const runtime = useRuntimeStore()
 
@@ -27,21 +27,21 @@ window.electron.ipcRenderer.on('mainWin-max', (event, bool) => {
 
 const fillColor = ref('#9d9d9d')
 
-
-const menuArr = ref([{
-  name: '文件(F)',
-  show: false,
-  subMenu: [
-    [{ name: '导入新歌曲', shortcutKey: 'Ctrl+R' }, { name: '手动添加歌曲指纹' }],
-    [{ name: '退出' }]
-  ]
-}, {
-  name: '帮助(H)',
-  show: false,
-  subMenu: [
-    [{ name: '使用说明' }, { name: '关于' }]
-  ]
-}])
+const menuArr = ref([
+  {
+    name: '文件(F)',
+    show: false,
+    subMenu: [
+      [{ name: '导入新歌曲', shortcutKey: 'Ctrl+R' }, { name: '手动添加歌曲指纹' }],
+      [{ name: '退出' }]
+    ]
+  },
+  {
+    name: '帮助(H)',
+    show: false,
+    subMenu: [[{ name: '使用说明' }, { name: '关于' }]]
+  }
+])
 const menuClick = (item) => {
   item.show = true
 }
@@ -52,27 +52,51 @@ const menuButtonClick = (item) => {
 <template>
   <div class="title unselectable">Better Music Library</div>
   <div class="titleComponent unselectable">
-    <div style="z-index: 1;padding-left: 10px;display: flex;justify-content: center;align-items: center;">
-      <img :src="logo" style="width: 22px;" />
+    <div
+      style="
+        z-index: 1;
+        padding-left: 10px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      "
+    >
+      <img :src="logo" style="width: 22px" />
     </div>
-    <div style="z-index: 1;padding-left: 5px;" v-for="item in menuArr" :key="item.name">
+    <div style="z-index: 1; padding-left: 5px" v-for="item in menuArr" :key="item.name">
       <div class="functionButton" @click.stop="menuClick(item)">{{ item.name }}</div>
-      <menuComponent :menuArr="item.subMenu" v-model="item.show" @menuButtonClick="menuButtonClick"></menuComponent>
+      <menuComponent
+        :menuArr="item.subMenu"
+        v-model="item.show"
+        @menuButtonClick="menuButtonClick"
+      ></menuComponent>
     </div>
-    <div class="canDrag" style="flex-grow: 1;height:35px;z-index: 1;">
-    </div>
-    <div style="display: flex;z-index: 1;">
+    <div class="canDrag" style="flex-grow: 1; height: 35px; z-index: 1"></div>
+    <div style="display: flex; z-index: 1">
       <div class="rightIcon" @click="toggleMinimize()">
-        <img :src="chromeMiniimize">
+        <img :src="chromeMiniimize" />
       </div>
       <div class="rightIcon" @click="toggleMaximize()">
-        <img :src="runtime.isWindowMaximized ? chromeRestore : chromeMaximize">
+        <img :src="runtime.isWindowMaximized ? chromeRestore : chromeMaximize" />
       </div>
-      <div class="rightIcon closeIcon" @mouseover="fillColor = '#ffffff'" @mouseout="fillColor = '#9d9d9d'"
-        @click="toggleClose()">
-        <svg width="15" height="15" viewBox="0 0 15 15" xmlns="http://www.w3.org/2000/svg" :fill="fillColor">
-          <path fill-rule="evenodd" clip-rule="evenodd"
-            d="M7.116 8l-4.558 4.558.884.884L8 8.884l4.558 4.558.884-.884L8.884 8l4.558-4.558-.884-.884L8 7.116 3.442 2.558l-.884.884L7.116 8z" />
+      <div
+        class="rightIcon closeIcon"
+        @mouseover="fillColor = '#ffffff'"
+        @mouseout="fillColor = '#9d9d9d'"
+        @click="toggleClose()"
+      >
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 15 15"
+          xmlns="http://www.w3.org/2000/svg"
+          :fill="fillColor"
+        >
+          <path
+            fill-rule="evenodd"
+            clip-rule="evenodd"
+            d="M7.116 8l-4.558 4.558.884.884L8 8.884l4.558 4.558.884-.884L8.884 8l4.558-4.558-.884-.884L8 7.116 3.442 2.558l-.884.884L7.116 8z"
+          />
         </svg>
       </div>
     </div>
@@ -121,7 +145,6 @@ const menuButtonClick = (item) => {
     align-items: center;
     height: 35px;
     transition: background-color 0.15s ease;
-
   }
 
   .rightIcon:hover {

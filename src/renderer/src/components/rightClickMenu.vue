@@ -1,16 +1,19 @@
 <script setup>
-import { watch, ref } from 'vue';
+import { watch, ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from 'uuid'
 const uuid = uuidv4()
 const runtime = useRuntimeStore()
 
 const emits = defineEmits(['menuButtonClick', 'update:modelValue'])
-watch(() => runtime.activeMenuUUID, (val) => {
-  if (val !== uuid) {
-    emits('update:modelValue', false)
+watch(
+  () => runtime.activeMenuUUID,
+  (val) => {
+    if (val !== uuid) {
+      emits('update:modelValue', false)
+    }
   }
-})
+)
 const props = defineProps({
   menuArr: {
     type: Array,
@@ -26,11 +29,14 @@ const props = defineProps({
   }
 })
 
-watch(() => props.modelValue, () => {
-  if (props.modelValue == true) {
-    runtime.activeMenuUUID = uuid
+watch(
+  () => props.modelValue,
+  () => {
+    if (props.modelValue == true) {
+      runtime.activeMenuUUID = uuid
+    }
   }
-})
+)
 const menuButtonClick = (item) => {
   runtime.activeMenuUUID = ''
   emits('menuButtonClick', item, props.clickEvent)
@@ -38,36 +44,45 @@ const menuButtonClick = (item) => {
 
 let positionTop = ref(0)
 let positionLeft = ref(0)
-watch(() => props.clickEvent, () => {
-  let windowWidth = window.innerWidth;
-  let windowHeight = window.innerHeight;
-  let clickX = props.clickEvent.clientX
-  let clickY = props.clickEvent.clientY
-  positionLeft.value = clickX
-  positionTop.value = clickY
+watch(
+  () => props.clickEvent,
+  () => {
+    let windowWidth = window.innerWidth
+    let windowHeight = window.innerHeight
+    let clickX = props.clickEvent.clientX
+    let clickY = props.clickEvent.clientY
+    positionLeft.value = clickX
+    positionTop.value = clickY
 
-  let itemCount = 0
-  for (let arr of props.menuArr) {
-    itemCount = itemCount + arr.length
+    let itemCount = 0
+    for (let arr of props.menuArr) {
+      itemCount = itemCount + arr.length
+    }
+    let divHeight = props.menuArr.length * 10 + itemCount * 28 + (props.menuArr.length - 1) + 5
+    let divWidth = 255
+    if (clickY + divHeight > windowHeight) {
+      positionTop.value = clickY - (clickY + divHeight - windowHeight)
+    }
+    if (clickX + divWidth > windowWidth) {
+      positionLeft.value = clickX - (clickX + divWidth - windowWidth)
+    }
   }
-  let divHeight = (props.menuArr.length * 10) + (itemCount * 28) + (props.menuArr.length - 1) + 5
-  let divWidth = 255
-  if ((clickY + divHeight) > windowHeight) {
-    positionTop.value = clickY - (clickY + divHeight - windowHeight)
-  }
-  if ((clickX + divWidth) > windowWidth) {
-    positionLeft.value = clickX - (clickX + divWidth - windowWidth)
-  }
-})
-
-
+)
 </script>
 <template>
-  <div v-if="props.modelValue" class="menu unselectable" :style="{ top: positionTop + 'px', left: positionLeft + 'px' }"
-    @click.stop="() => { }">
+  <div
+    v-if="props.modelValue"
+    class="menu unselectable"
+    :style="{ top: positionTop + 'px', left: positionLeft + 'px' }"
+    @click.stop="() => {}"
+  >
     <div v-for="item of props.menuArr" class="menuGroup">
-      <div v-for="button of item" class="menuButton" @click="menuButtonClick(button)"
-        @contextmenu="menuButtonClick(button)">
+      <div
+        v-for="button of item"
+        class="menuButton"
+        @click="menuButtonClick(button)"
+        @contextmenu="menuButtonClick(button)"
+      >
         <span>{{ button.menuName }}</span>
         <span>{{ button.shortcutKey }}</span>
       </div>
@@ -103,6 +118,5 @@ watch(() => props.clickEvent, () => {
   .menuGroup:last-child {
     border-bottom: 0px;
   }
-
 }
 </style>

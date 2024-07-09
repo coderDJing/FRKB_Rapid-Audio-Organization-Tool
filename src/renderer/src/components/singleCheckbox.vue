@@ -1,5 +1,5 @@
 <script setup>
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from 'uuid'
 import { ref, watch } from 'vue'
 
 const uuid = uuidv4()
@@ -16,12 +16,15 @@ watch(
   () => value.value,
   (val) => {
     emits('update:modelValue', val)
-  },
+  }
 )
 
-watch(() => props.modelValue, () => {
-  value.value = props.modelValue
-})
+watch(
+  () => props.modelValue,
+  () => {
+    value.value = props.modelValue
+  }
+)
 
 function handleChange() {
   emits('change', value.value)
@@ -29,13 +32,19 @@ function handleChange() {
 </script>
 <template>
   <div class="checkBox">
-    <input class="sure" type="checkbox" v-model="value" :value="true" @change="handleChange"
-      :id="'checkBoxInput' + uuid">
+    <input
+      class="sure"
+      type="checkbox"
+      v-model="value"
+      :value="true"
+      @change="handleChange"
+      :id="'checkBoxInput' + uuid"
+    />
     <label :for="'checkBoxInput' + uuid"></label>
   </div>
 </template>
 <style lang="scss" scoped>
-input[type=checkbox] {
+input[type='checkbox'] {
   visibility: hidden;
 }
 
@@ -45,7 +54,6 @@ input[type=checkbox] {
   height: 18px;
   background: #313131;
 }
-
 
 .checkBox label {
   cursor: pointer;
@@ -82,7 +90,7 @@ input[type=checkbox] {
   opacity: 0;
 }
 
-.checkBox input[type=checkbox]:checked+label:after {
+.checkBox input[type='checkbox']:checked + label:after {
   opacity: 1;
 }
 </style>

@@ -1,8 +1,8 @@
 <script setup>
 import { ref } from 'vue'
-import singleCheckbox from './singleCheckbox.vue';
+import singleCheckbox from './singleCheckbox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import selectSongListDialog from './selectSongListDialog.vue';
+import selectSongListDialog from './selectSongListDialog.vue'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 const runtime = useRuntimeStore()
 const folderPathVal = ref('') //文件夹路径
@@ -14,7 +14,7 @@ const clickChooseDir = async () => {
 }
 
 const runtimeLayoutConfigChanged = () => {
-  window.electron.ipcRenderer.send('layoutConfigChanged', JSON.stringify(runtime.layoutConfig));
+  window.electron.ipcRenderer.send('layoutConfigChanged', JSON.stringify(runtime.layoutConfig))
 }
 
 const isDeleteSourceFileChange = (bool) => {
@@ -33,25 +33,20 @@ const isDeleteSourceDirChange = (bool) => {
 
 const emits = defineEmits(['cancel'])
 
-
-
-
-const flashArea = ref(''); // 控制动画是否正在播放
-
+const flashArea = ref('') // 控制动画是否正在播放
 
 // 模拟闪烁三次的逻辑（使用 setTimeout）
 const flashBorder = (flashAreaName) => {
   flashArea.value = flashAreaName
-  let count = 0;
+  let count = 0
   const interval = setInterval(() => {
-    count++;
+    count++
     if (count >= 3) {
-      clearInterval(interval);
-      flashArea.value = ''; // 动画结束，不再闪烁
+      clearInterval(interval)
+      flashArea.value = '' // 动画结束，不再闪烁
     }
-  }, 500); // 每次闪烁间隔 500 毫秒
-};
-
+  }, 500) // 每次闪烁间隔 500 毫秒
+}
 
 const songListSelected = ref('')
 const clickChooseSongList = () => {
@@ -85,7 +80,7 @@ const confirm = () => {
     songListPath: songListSelectedPath,
     isDeleteSourceFile: runtime.layoutConfig.scanNewSongDialog.isDeleteSourceFile,
     isDeleteSourceDir: runtime.layoutConfig.scanNewSongDialog.isDeleteSourceDir
-  });
+  })
   cancel()
 }
 const cancel = () => {
@@ -94,61 +89,84 @@ const cancel = () => {
 </script>
 <template>
   <div class="dialog unselectable">
-    <div style="width: 450px;height: 260px;display: flex;flex-direction: column;justify-content: space-between;"
-      class="inner">
+    <div
+      style="
+        width: 450px;
+        height: 260px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      "
+      class="inner"
+    >
       <div>
-        <div style="text-align: center;height:30px;line-height: 30px;font-size: 14px;"><span
-            style="font-weight: bold;">导入新歌曲</span></div>
-        <div style="padding-left: 20px;padding-top: 30px;padding-right: 20px;">
-          <div style="display: flex;">
+        <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
+          <span style="font-weight: bold">导入新歌曲</span>
+        </div>
+        <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
+          <div style="display: flex">
             <div class="formLabel"><span>选择文件夹：</span></div>
-            <div style="width: 310px;">
-              <div class="chooseDirDiv flashing-border" @click="clickChooseDir()" :title="folderPathVal"
-                :class="{ 'is-flashing': flashArea == 'folderPathVal' }">
+            <div style="width: 310px">
+              <div
+                class="chooseDirDiv flashing-border"
+                @click="clickChooseDir()"
+                :title="folderPathVal"
+                :class="{ 'is-flashing': flashArea == 'folderPathVal' }"
+              >
                 {{ folderPathVal }}
               </div>
             </div>
           </div>
-          <div style="margin-top: 10px;display: flex;">
+          <div style="margin-top: 10px; display: flex">
             <div class="formLabel"><span>选择歌单：</span></div>
 
-            <div style="width: 310px;">
-              <div class="chooseDirDiv flashing-border" @click="clickChooseSongList()" :title="songListSelected"
-                :class="{ 'is-flashing': flashArea == 'songListPathVal' }">
+            <div style="width: 310px">
+              <div
+                class="chooseDirDiv flashing-border"
+                @click="clickChooseSongList()"
+                :title="songListSelected"
+                :class="{ 'is-flashing': flashArea == 'songListPathVal' }"
+              >
                 {{ songListSelected }}
               </div>
-
             </div>
           </div>
-          <div style="margin-top: 30px;display: flex;">
-            <div class="formLabel" style="width:130px"><span>导入后删除原文件：</span></div>
-            <div style="width:21px;height: 21px;display: flex;align-items: center;">
-              <singleCheckbox v-model="runtime.layoutConfig.scanNewSongDialog.isDeleteSourceFile"
-                @change="isDeleteSourceFileChange" />
+          <div style="margin-top: 30px; display: flex">
+            <div class="formLabel" style="width: 130px"><span>导入后删除原文件：</span></div>
+            <div style="width: 21px; height: 21px; display: flex; align-items: center">
+              <singleCheckbox
+                v-model="runtime.layoutConfig.scanNewSongDialog.isDeleteSourceFile"
+                @change="isDeleteSourceFileChange"
+              />
             </div>
           </div>
-          <div style="margin-top: 10px;display: flex;">
-            <div class="formLabel" style="width:130px"><span>导入后删除文件夹：</span></div>
-            <div style="width:21px;height: 21px;display: flex;align-items: center;">
-              <singleCheckbox v-model="runtime.layoutConfig.scanNewSongDialog.isDeleteSourceDir"
-                @change="isDeleteSourceDirChange" />
+          <div style="margin-top: 10px; display: flex">
+            <div class="formLabel" style="width: 130px"><span>导入后删除文件夹：</span></div>
+            <div style="width: 21px; height: 21px; display: flex; align-items: center">
+              <singleCheckbox
+                v-model="runtime.layoutConfig.scanNewSongDialog.isDeleteSourceDir"
+                @change="isDeleteSourceDirChange"
+              />
             </div>
           </div>
         </div>
       </div>
 
-      <div style="display: flex;justify-content: center;padding-bottom: 10px;">
-        <div class="button" style="margin-right: 10px;" @click="confirm()">
-          确定
-        </div>
-        <div class="button" @click="cancel()">
-          取消
-        </div>
+      <div style="display: flex; justify-content: center; padding-bottom: 10px">
+        <div class="button" style="margin-right: 10px" @click="confirm()">确定</div>
+        <div class="button" @click="cancel()">取消</div>
       </div>
     </div>
   </div>
-  <selectSongListDialog v-if="runtime.selectSongListDialogShow" @confirm="selectSongListDialogConfirm"
-    @cancel="() => { runtime.selectSongListDialogShow = false }" />
+  <selectSongListDialog
+    v-if="runtime.selectSongListDialogShow"
+    @confirm="selectSongListDialogConfirm"
+    @cancel="
+      () => {
+        runtime.selectSongListDialogShow = false
+      }
+    "
+  />
 </template>
 <style lang="scss" scoped>
 .chooseDirDiv {

@@ -2,12 +2,9 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import {
-  updateTargetDirSubdirOrder,
-  getLibrary
-} from './utils.js'
+import { updateTargetDirSubdirOrder, getLibrary } from './utils.js'
 import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset'
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from 'uuid'
 
 const fs = require('fs-extra')
 const path = require('path')
@@ -32,7 +29,6 @@ const libraryInit = async () => {
   }
   await makeLibrary(join(__dirname, 'library/筛选库'), '筛选库', 1)
   await makeLibrary(join(__dirname, 'library/精选库'), '精选库', 2)
-
 }
 libraryInit()
 
@@ -91,11 +87,11 @@ function createWindow() {
   })
   ipcMain.on('toggle-maximize', () => {
     if (mainWindow.isMaximized()) {
-      mainWindow.unmaximize();
+      mainWindow.unmaximize()
     } else {
-      mainWindow.maximize();
+      mainWindow.maximize()
     }
-  });
+  })
 
   ipcMain.on('toggle-minimize', () => {
     mainWindow.minimize()
@@ -112,7 +108,6 @@ function createWindow() {
     formData.songListPath = join(__dirname, formData.songListPath)
     console.log(formData)
     //todo开始导入歌曲
-
   })
 }
 ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
@@ -161,7 +156,7 @@ ipcMain.handle('reOrderSubDir', async (e, targetPath, subDirArrJson) => {
   for (let item of subDirArr) {
     promises.push(changeOrder(item))
   }
-  await Promise.all(promises);
+  await Promise.all(promises)
 })
 
 ipcMain.handle('getLibrary', async () => {
@@ -174,7 +169,10 @@ ipcMain.handle('renameDir', async (e, newName, dirPath) => {
   let descriptionJson = await fs.readJSON(descriptionPath)
   descriptionJson.dirName = newName
   await fs.outputJson(descriptionPath, descriptionJson)
-  await fs.rename(join(__dirname, dirPath), join(__dirname, dirPath.slice(0, dirPath.lastIndexOf('/') + 1) + newName))
+  await fs.rename(
+    join(__dirname, dirPath),
+    join(__dirname, dirPath.slice(0, dirPath.lastIndexOf('/') + 1) + newName)
+  )
 })
 ipcMain.handle('updateOrderAfterNum', async (e, targetPath, order) => {
   await updateTargetDirSubdirOrder(join(__dirname, targetPath), order, 'after', 'minus')
@@ -197,12 +195,12 @@ ipcMain.handle('updateTargetDirSubdirOrderAdd', async (e, dirPath) => {
 ipcMain.handle('select-folder', async (event, arg) => {
   const result = await dialog.showOpenDialog({
     properties: ['openDirectory']
-  });
+  })
   if (result.canceled) {
-    return null;
+    return null
   }
-  return result.filePaths[0];
-});
+  return result.filePaths[0]
+})
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
