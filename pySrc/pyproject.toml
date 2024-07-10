@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "pysrc"
+version = "0.1.0"
+description = ""
+authors = ["coderDJing <tongrenlu@foxmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+librosa = "^0.10.2.post1"
+numpy = "1.26.4"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
