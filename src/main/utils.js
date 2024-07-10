@@ -1,5 +1,6 @@
 import { join } from 'path'
 const fs = require('fs-extra')
+const path = require('path')
 
 async function getdirsDescriptionJson(dirPath, dirs) {
   const jsons = await Promise.all(
@@ -68,4 +69,73 @@ export const updateTargetDirSubdirOrder = async (dirPath, orderNum, direction, o
   } catch (error) {
     console.error(`Error traversing directory ${dirPath}:`, error)
   }
+}
+
+export const collectFilesWithExtensions = async (dir, extensions = []) => {
+  let files = [];
+
+  // 读取目录中的文件和子目录
+  const directoryEntries = await fs.readdir(dir, { withFileTypes: true });
+
+  for (const entry of directoryEntries) {
+    const fullPath = path.join(dir, entry.name);
+
+    // 如果是文件，检查扩展名
+    if (entry.isFile()) {
+      const ext = path.extname(fullPath).toLowerCase();
+      if (extensions.includes(ext)) {
+        files.push(fullPath);
+      }
+    } else if (entry.isDirectory()) {
+      // 如果是目录，递归调用
+      const subFiles = await collectFilesWithExtensions(fullPath, extensions);
+      files = files.concat(subFiles);
+    }
+  }
+
+  return files;
+}
+
+const { spawn } = require('child_process');
+export function executeScript(exePath, args, results, end) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(exePath, args, {
+      stdio: ['inherit', 'pipe', 'pipe'] // 继承stdin，pipe stdout和stderr到Node.js
+    });
+
+    let stdoutData = '';
+    let stderrData = '';
+
+    child.stdout.on('data', (data) => {
+      stdoutData += data.toString();
+    });
+
+    child.stderr.on('data', (data) => {
+      stderrData += data.toString();
+    });
+
+    child.on('error', (err) => {
+      reject(err);
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+
+        // 处理输出数据
+        if (stderrData) {
+          console.error('stderr:', stderrData);
+        }
+        console.log(stdoutData)
+        let json = JSON.parse(stdoutData)
+        json.md5_hash = json.md5_hash.substring(0, stdoutData.length - 4)
+        results.push(json)
+        console.log(json)
+        end()
+        resolve();
+      } else {
+        // 非零退出码通常表示错误
+        reject(new Error(`子进程退出，退出代码：${code}\n${stderrData}`));
+      }
+    });
+  });
 }
