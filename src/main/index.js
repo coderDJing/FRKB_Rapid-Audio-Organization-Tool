@@ -2,8 +2,9 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { updateTargetDirSubdirOrder, getLibrary } from './utils.js'
+import { updateTargetDirSubdirOrder, getLibrary, collectFilesWithExtensions, executeScript } from './utils.js'
 import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset'
+import analyseSongFingerprintPyScriptUrl from '../../resources/pyScript/analyseSongFingerprint.exe?commonjs-external&asset'
 import { v4 as uuidv4 } from 'uuid'
 
 const fs = require('fs-extra')
@@ -29,6 +30,7 @@ const libraryInit = async () => {
   }
   await makeLibrary(join(__dirname, 'library/筛选库'), '筛选库', 1)
   await makeLibrary(join(__dirname, 'library/精选库'), '精选库', 2)
+  await fs.outputJSON(join(__dirname, 'songFingerprint', 'songFingerprint.json'), [])
 }
 libraryInit()
 
@@ -104,10 +106,22 @@ function createWindow() {
     mainWindow.webContents.send('collapseButtonHandleClick', libraryName)
   })
 
-  ipcMain.on('startImportSongs', (e, formData) => {
+  ipcMain.on('startImportSongs', async (e, formData) => {
+    let fingerprintResults = []
     formData.songListPath = join(__dirname, formData.songListPath)
-    console.log(formData)
-    //todo开始导入歌曲
+    let songFileUrls = await collectFilesWithExtensions(formData.folderPath, ['.mp3'])
+    let processNum = 0
+    mainWindow.webContents.send('progressSet', '分析声音指纹中', processNum, songFileUrls.length)
+    const promises = []
+    const endHandle = () => {
+      processNum++
+      mainWindow.webContents.send('progressSet', '分析声音指纹中', processNum, songFileUrls.length)
+    }
+    for (let songFileUrl of songFileUrls) {
+      promises.push(executeScript(analyseSongFingerprintPyScriptUrl, [songFileUrl], fingerprintResults, endHandle))
+    }
+    await Promise.all(promises)
+    //todo声音指纹比对，重复的删掉
   })
 }
 ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
