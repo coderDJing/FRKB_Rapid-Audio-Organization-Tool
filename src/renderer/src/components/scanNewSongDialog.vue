@@ -14,7 +14,7 @@ const clickChooseDir = async () => {
 }
 
 //todo测试音频播放可行性代码待删除-------------
-const audioContext = new AudioContext();
+// const audioContext = new AudioContext();
 // async function play() {
 //   const audioData = await window.electron.ipcRenderer.invoke('aaa')
 //   const uint8Buffer = Uint8Array.from(audioData)
@@ -36,18 +36,18 @@ const audioContext = new AudioContext();
 //   // })
 // }
 // play()
-async function play() {
-  const audioData = await window.electron.ipcRenderer.invoke('aaa')
-  const uint8Buffer = Uint8Array.from(audioData)
+// async function play() {
+//   const audioData = await window.electron.ipcRenderer.invoke('aaa')
+//   const uint8Buffer = Uint8Array.from(audioData)
 
-  audioContext.decodeAudioData(uint8Buffer.buffer, (buffer) => {
-    const source = audioContext.createBufferSource();
-    source.buffer = buffer;
-    source.connect(audioContext.destination);
-    source.start(0); // 开始播放
-  })
-}
-play()
+//   audioContext.decodeAudioData(uint8Buffer.buffer, (buffer) => {
+//     const source = audioContext.createBufferSource();
+//     source.buffer = buffer;
+//     source.connect(audioContext.destination);
+//     source.start(0); // 开始播放
+//   })
+// }
+// play()
 //---------------------
 
 
@@ -129,7 +129,7 @@ const cancel = () => {
 <template>
   <div class="dialog unselectable">
     <!-- <audio id="audioPlayer" controls autoplay>
-
+todo测试音频播放可行性代码待删除-------------
     </audio> -->
     <div style="
         width: 450px;
