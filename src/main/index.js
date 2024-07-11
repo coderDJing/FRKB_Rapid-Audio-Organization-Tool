@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from 'uuid'
 const fs = require('fs-extra')
 const path = require('path')
 let layoutConfig = fs.readJSONSync(layoutConfigFileUrl)
-
+let songFingerprintList = []
 const libraryInit = async () => {
   let rootDescription = {
     uuid: uuidv4(),
@@ -18,7 +18,7 @@ const libraryInit = async () => {
     dirName: 'library',
     order: 1
   }
-  await fs.outputJson(join(join(__dirname, 'library'), 'description.json'), rootDescription)
+  await fs.outputJson(join(__dirname, 'library', 'description.json'), rootDescription)
   const makeLibrary = async (libraryPath, libraryName, order) => {
     let description = {
       uuid: uuidv4(),
@@ -32,7 +32,13 @@ const libraryInit = async () => {
   await makeLibrary(join(__dirname, 'library/精选库'), '精选库', 2)
   await fs.outputJSON(join(__dirname, 'songFingerprint', 'songFingerprint.json'), [])
 }
-libraryInit()
+let isLibraryExist = fs.pathExistsSync(join(__dirname, 'library', 'description.json'))
+if (!isLibraryExist) {
+  libraryInit()
+} else {
+  songFingerprintList = fs.readJSONSync(join(__dirname, 'songFingerprint', 'songFingerprint.json'))
+}
+
 
 function createWindow() {
   // Create the browser window.
@@ -121,6 +127,35 @@ function createWindow() {
       promises.push(executeScript(analyseSongFingerprintPyScriptUrl, [songFileUrl], fingerprintResults, endHandle))
     }
     await Promise.all(promises)
+
+    let delList = []
+    let toBeRemoveDuplicates = []
+    for (let item of fingerprintResults) {
+      if (songFingerprintList.indexOf(item.md5_hash) != -1) {
+        delList.push(item.path)
+      } else {
+        toBeRemoveDuplicates.push(item)
+      }
+    }
+    let map = new Map();
+    let duplicates = [];
+    // 遍历数组
+    toBeRemoveDuplicates.forEach(item => {
+      if (map.has(item.md5_hash)) {
+        duplicates.push(item.path);
+      } else {
+        map.set(item.md5_hash, item);
+      }
+    });
+    delList = delList.concat(duplicates)
+    let toBeDealSongs = Array.from(map.values());
+    for (let item of toBeDealSongs) {
+      songFingerprintList.push(item.md5_hash)
+      if (formData.isDeleteSourceFile) {
+
+      }
+    }
+    console.log(toBeDealSongs)
     //todo声音指纹比对，重复的删掉
   })
 }
@@ -149,6 +184,11 @@ ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
     await updateTargetDirSubdirOrder(path.dirname(srcFullPath), originalOrder, 'after', 'minus')
   }
 })
+ipcMain.handle('aaa', async (e) => {
+  let mp3 = fs.readFileSync(join(__dirname, 'library/1.mp3'))
+  return mp3
+})
+
 ipcMain.handle('moveToDirSample', async (e, src, dest) => {
   const srcFullPath = join(__dirname, src)
   const destDir = join(__dirname, dest)
