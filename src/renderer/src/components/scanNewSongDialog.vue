@@ -13,6 +13,45 @@ const clickChooseDir = async () => {
   }
 }
 
+//todo测试音频播放可行性代码待删除-------------
+const audioContext = new AudioContext();
+// async function play() {
+//   const audioData = await window.electron.ipcRenderer.invoke('aaa')
+//   const uint8Buffer = Uint8Array.from(audioData)
+//   // const bolb = new Blob([uint8Buffer])
+//   // let bolbUrl = window.URL.createObjectURL(bolb)
+//   // setTimeout(() => {
+//   //   let audioPlayer = document.getElementById('audioPlayer');
+//   //   audioPlayer.src = bolbUrl;
+//   //   audioPlayer.addEventListener('ended', function () {
+//   //     window.URL.revokeObjectURL(bolbUrl);
+//   //   });
+//   // }, 1000)
+
+//   // audioContext.decodeAudioData(uint8Buffer.buffer, (buffer) => {
+//   //   const source = audioContext.createBufferSource();
+//   //   source.buffer = buffer;
+//   //   source.connect(audioContext.destination);
+//   //   source.start(0); // 开始播放
+//   // })
+// }
+// play()
+async function play() {
+  const audioData = await window.electron.ipcRenderer.invoke('aaa')
+  const uint8Buffer = Uint8Array.from(audioData)
+
+  audioContext.decodeAudioData(uint8Buffer.buffer, (buffer) => {
+    const source = audioContext.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioContext.destination);
+    source.start(0); // 开始播放
+  })
+}
+play()
+//---------------------
+
+
+
 const runtimeLayoutConfigChanged = () => {
   window.electron.ipcRenderer.send('layoutConfigChanged', JSON.stringify(runtime.layoutConfig))
 }
@@ -89,16 +128,16 @@ const cancel = () => {
 </script>
 <template>
   <div class="dialog unselectable">
-    <div
-      style="
+    <!-- <audio id="audioPlayer" controls autoplay>
+
+    </audio> -->
+    <div style="
         width: 450px;
         height: 260px;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
-      "
-      class="inner"
-    >
+      " class="inner">
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
           <span style="font-weight: bold">导入新歌曲</span>
@@ -107,12 +146,8 @@ const cancel = () => {
           <div style="display: flex">
             <div class="formLabel"><span>选择文件夹：</span></div>
             <div style="width: 310px">
-              <div
-                class="chooseDirDiv flashing-border"
-                @click="clickChooseDir()"
-                :title="folderPathVal"
-                :class="{ 'is-flashing': flashArea == 'folderPathVal' }"
-              >
+              <div class="chooseDirDiv flashing-border" @click="clickChooseDir()" :title="folderPathVal"
+                :class="{ 'is-flashing': flashArea == 'folderPathVal' }">
                 {{ folderPathVal }}
               </div>
             </div>
@@ -121,12 +156,8 @@ const cancel = () => {
             <div class="formLabel"><span>选择歌单：</span></div>
 
             <div style="width: 310px">
-              <div
-                class="chooseDirDiv flashing-border"
-                @click="clickChooseSongList()"
-                :title="songListSelected"
-                :class="{ 'is-flashing': flashArea == 'songListPathVal' }"
-              >
+              <div class="chooseDirDiv flashing-border" @click="clickChooseSongList()" :title="songListSelected"
+                :class="{ 'is-flashing': flashArea == 'songListPathVal' }">
                 {{ songListSelected }}
               </div>
             </div>
@@ -134,13 +165,11 @@ const cancel = () => {
           <div style="margin-top: 30px; display: flex">
             <div class="formLabel" style="width: 130px"><span>导入后删除原文件：</span></div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
-              <singleCheckbox
-                v-model="runtime.layoutConfig.scanNewSongDialog.isDeleteSourceFile"
-                @change="isDeleteSourceFileChange"
-              />
+              <singleCheckbox v-model="runtime.layoutConfig.scanNewSongDialog.isDeleteSourceFile"
+                @change="isDeleteSourceFileChange" />
             </div>
           </div>
-          <div style="margin-top: 10px; display: flex">
+          <!-- <div style="margin-top: 10px; display: flex">
             <div class="formLabel" style="width: 130px"><span>导入后删除文件夹：</span></div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
               <singleCheckbox
@@ -148,7 +177,7 @@ const cancel = () => {
                 @change="isDeleteSourceDirChange"
               />
             </div>
-          </div>
+          </div> -->
         </div>
       </div>
 
@@ -158,15 +187,10 @@ const cancel = () => {
       </div>
     </div>
   </div>
-  <selectSongListDialog
-    v-if="runtime.selectSongListDialogShow"
-    @confirm="selectSongListDialogConfirm"
-    @cancel="
-      () => {
-        runtime.selectSongListDialogShow = false
-      }
-    "
-  />
+  <selectSongListDialog v-if="runtime.selectSongListDialogShow" @confirm="selectSongListDialogConfirm" @cancel="() => {
+    runtime.selectSongListDialogShow = false
+  }
+    " />
 </template>
 <style lang="scss" scoped>
 .chooseDirDiv {

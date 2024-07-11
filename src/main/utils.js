@@ -120,16 +120,13 @@ export function executeScript(exePath, args, results, end) {
 
     child.on('close', (code) => {
       if (code === 0) {
-
+        console.log(stdoutData)
         // 处理输出数据
         if (stderrData) {
           console.error('stderr:', stderrData);
         }
-        console.log(stdoutData)
         let json = JSON.parse(stdoutData)
-        json.md5_hash = json.md5_hash.substring(0, stdoutData.length - 4)
         results.push(json)
-        console.log(json)
         end()
         resolve();
       } else {
