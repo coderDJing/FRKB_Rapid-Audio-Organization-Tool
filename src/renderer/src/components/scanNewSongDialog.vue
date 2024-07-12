@@ -4,6 +4,7 @@ import singleCheckbox from './singleCheckbox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import selectSongListDialog from './selectSongListDialog.vue'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
+import hintIcon from '@renderer/assets/hint.png'
 const runtime = useRuntimeStore()
 const folderPathVal = ref('') //文件夹路径
 const clickChooseDir = async () => {
@@ -70,6 +71,8 @@ const isDeleteSourceDirChange = (bool) => {
   runtimeLayoutConfigChanged()
 }
 
+
+
 const emits = defineEmits(['cancel'])
 
 const flashArea = ref('') // 控制动画是否正在播放
@@ -133,7 +136,7 @@ todo测试音频播放可行性代码待删除-------------
     </audio> -->
     <div style="
         width: 450px;
-        height: 260px;
+        height: 300px;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
@@ -163,10 +166,32 @@ todo测试音频播放可行性代码待删除-------------
             </div>
           </div>
           <div style="margin-top: 30px; display: flex">
-            <div class="formLabel" style="width: 130px"><span>导入后删除原文件：</span></div>
+            <div class="formLabel" style="width: 130px;text-align: right;"><span>导入后删除原文件：</span></div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
               <singleCheckbox v-model="runtime.layoutConfig.scanNewSongDialog.isDeleteSourceFile"
                 @change="isDeleteSourceFileChange" />
+            </div>
+          </div>
+          <div style="margin-top: 10px; display: flex">
+            <div class="formLabel" style="width: 130px;text-align: right;"><span>比对声音指纹去重：</span></div>
+            <div style="width: 21px; height: 21px; display: flex; align-items: center">
+              <singleCheckbox v-model="runtime.layoutConfig.scanNewSongDialog.isComparisonSongFingerprint"
+                @change="runtimeLayoutConfigChanged()" />
+            </div>
+            <div style="height:21px;display: flex;align-items: center;padding-left: 3px;">
+              <img :src="hintIcon" style="width: 15px;height: 15px;" />
+              <!-- //todo hint说明 -->
+            </div>
+          </div>
+          <div style="margin-top: 10px; display: flex">
+            <div class="formLabel" style="width: 130px;text-align: right;"><span>加入声音指纹库：</span></div>
+            <div style="width: 21px; height: 21px; display: flex; align-items: center">
+              <singleCheckbox v-model="runtime.layoutConfig.scanNewSongDialog.isPushSongFingerprintLibrary"
+                @change="runtimeLayoutConfigChanged()" />
+            </div>
+            <div style="height:21px;display: flex;align-items: center;padding-left: 3px;">
+              <img :src="hintIcon" style="width: 15px;height: 15px;" />
+              <!-- //todo hint说明 -->
             </div>
           </div>
           <!-- <div style="margin-top: 10px; display: flex">
