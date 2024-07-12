@@ -7,14 +7,21 @@ window.electron.ipcRenderer.on('progressSet', (event, title, nowNum, total) => {
   barTitle.value = title
   barNowNum.value = nowNum
   barTotal.value = total
+  if (nowNum == total) {
+    barTitle.value = ''
+  }
 })
 </script>
 <template>
   <div style="width: 100%; height: 100%;display: flex;">
-    <div style="width: 300px;">//todo</div>
-    <div class="container">
+    <div v-if="barTitle" style="width: fit-content;font-size: 10px;height: 19px;line-height: 19px;padding: 0 10px;">
+      {{ barTitle + '...' }}
+      {{ barNowNum }} /
+      {{ barTotal }}
+    </div>
+    <div class="container" v-if="barTitle">
       <div class="progress">
-        <div class="progress-bar">
+        <div class="progress-bar" :style="'width:' + (barNowNum / barTotal * 100) + '%'">
         </div>
       </div>
     </div>
@@ -37,6 +44,6 @@ window.electron.ipcRenderer.on('progressSet', (event, title, nowNum, total) => {
   height: 5px;
   background-color: #0078d4;
   // border-radius: 4px;
-  width: 50%;
+  // width: 100%;
 }
 </style>

@@ -120,7 +120,6 @@ export function executeScript(exePath, args, results, end) {
 
     child.on('close', (code) => {
       if (code === 0) {
-        console.log(stdoutData)
         // 处理输出数据
         if (stderrData) {
           console.error('stderr:', stderrData);
