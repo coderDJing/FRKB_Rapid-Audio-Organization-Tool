@@ -113,6 +113,7 @@ function createWindow() {
   })
 
   ipcMain.on('startImportSongs', async (e, formData) => {
+    //缺少对isComparisonSongFingerprint和isPushSongFingerprintLibrary的处理
     let fingerprintResults = []
     formData.songListPath = join(__dirname, formData.songListPath)
     let songFileUrls = await collectFilesWithExtensions(formData.folderPath, ['.mp3'])
@@ -122,6 +123,7 @@ function createWindow() {
     const endHandle = () => {
       processNum++
       mainWindow.webContents.send('progressSet', '分析声音指纹中', processNum, songFileUrls.length)
+
     }
     for (let songFileUrl of songFileUrls) {
       promises.push(executeScript(analyseSongFingerprintPyScriptUrl, [songFileUrl], fingerprintResults, endHandle))
@@ -147,16 +149,52 @@ function createWindow() {
         map.set(item.md5_hash, item);
       }
     });
-    delList = delList.concat(duplicates)
+    delList = delList.concat(duplicates)//待删数组
     let toBeDealSongs = Array.from(map.values());
+
+    processNum = 0
+    mainWindow.webContents.send('progressSet', formData.isDeleteSourceFile ? '移动歌曲中' : '复制歌曲中', processNum, toBeDealSongs.length)
+
     for (let item of toBeDealSongs) {
       songFingerprintList.push(item.md5_hash)
-      if (formData.isDeleteSourceFile) {
-
+      let targetPath = join(formData.songListPath, item.path.match(/[^\\]+$/)[0])
+      let isExist = await fs.pathExists(targetPath)
+      if (isExist) {
+        let counter = 1
+        let baseName = path.basename(targetPath, path.extname(targetPath));
+        let extension = path.extname(targetPath);
+        let directory = path.dirname(targetPath);
+        let newFileName = `${baseName} (${counter})${extension}`;
+        while (await fs.pathExists(join(directory, newFileName))) {
+          counter++
+          newFileName = `${baseName} (${counter})${extension}`;
+        }
+        if (formData.isDeleteSourceFile) {
+          fs.move(item.path, join(directory, newFileName))
+        } else {
+          fs.copy(item.path, join(directory, newFileName))
+        }
+      } else {
+        if (formData.isDeleteSourceFile) {
+          fs.move(item.path, targetPath)
+        } else {
+          fs.copy(item.path, targetPath)
+        }
+      }
+      processNum++
+      mainWindow.webContents.send('progressSet', formData.isDeleteSourceFile ? '移动歌曲中' : '复制歌曲中', processNum, toBeDealSongs.length)
+    }
+    if (formData.isDeleteSourceFile) {
+      processNum = 0
+      mainWindow.webContents.send('progressSet', '删除重复歌曲中', processNum, delList.length)
+      for (let item of delList) {
+        fs.remove(item)
+        processNum++
+        mainWindow.webContents.send('progressSet', '删除重复歌曲中', processNum, delList.length)
       }
     }
-    console.log(toBeDealSongs)
-    //todo声音指纹比对，重复的删掉
+    fs.outputJSON(join(__dirname, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
+
   })
 }
 ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
