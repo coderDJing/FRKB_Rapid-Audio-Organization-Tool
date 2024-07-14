@@ -2,7 +2,12 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { updateTargetDirSubdirOrder, getLibrary, collectFilesWithExtensions, executeScript } from './utils.js'
+import {
+  updateTargetDirSubdirOrder,
+  getLibrary,
+  collectFilesWithExtensions,
+  executeScript
+} from './utils.js'
 import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset'
 import analyseSongFingerprintPyScriptUrl from '../../resources/pyScript/analyseSongFingerprint.exe?commonjs-external&asset'
 import { v4 as uuidv4 } from 'uuid'
@@ -38,7 +43,6 @@ if (!isLibraryExist) {
 } else {
   songFingerprintList = fs.readJSONSync(join(__dirname, 'songFingerprint', 'songFingerprint.json'))
 }
-
 
 function createWindow() {
   // Create the browser window.
@@ -113,90 +117,184 @@ function createWindow() {
   })
 
   ipcMain.on('startImportSongs', async (e, formData) => {
-    //缺少对isComparisonSongFingerprint和isPushSongFingerprintLibrary的处理
-    let fingerprintResults = []
     formData.songListPath = join(__dirname, formData.songListPath)
     let songFileUrls = await collectFilesWithExtensions(formData.folderPath, ['.mp3'])
     let processNum = 0
-    mainWindow.webContents.send('progressSet', '分析声音指纹中', processNum, songFileUrls.length)
-    const promises = []
-    const endHandle = () => {
-      processNum++
-      mainWindow.webContents.send('progressSet', '分析声音指纹中', processNum, songFileUrls.length)
+    let fingerprintResults = []
 
-    }
-    for (let songFileUrl of songFileUrls) {
-      promises.push(executeScript(analyseSongFingerprintPyScriptUrl, [songFileUrl], fingerprintResults, endHandle))
-    }
-    await Promise.all(promises)
-
-    let delList = []
-    let toBeRemoveDuplicates = []
-    for (let item of fingerprintResults) {
-      if (songFingerprintList.indexOf(item.md5_hash) != -1) {
-        delList.push(item.path)
-      } else {
-        toBeRemoveDuplicates.push(item)
-      }
-    }
-    let map = new Map();
-    let duplicates = [];
-    // 遍历数组
-    toBeRemoveDuplicates.forEach(item => {
-      if (map.has(item.md5_hash)) {
-        duplicates.push(item.path);
-      } else {
-        map.set(item.md5_hash, item);
-      }
-    });
-    delList = delList.concat(duplicates)//待删数组
-    let toBeDealSongs = Array.from(map.values());
-
-    processNum = 0
-    mainWindow.webContents.send('progressSet', formData.isDeleteSourceFile ? '移动歌曲中' : '复制歌曲中', processNum, toBeDealSongs.length)
-
-    for (let item of toBeDealSongs) {
-      songFingerprintList.push(item.md5_hash)
-      let targetPath = join(formData.songListPath, item.path.match(/[^\\]+$/)[0])
-      let isExist = await fs.pathExists(targetPath)
-      if (isExist) {
-        let counter = 1
-        let baseName = path.basename(targetPath, path.extname(targetPath));
-        let extension = path.extname(targetPath);
-        let directory = path.dirname(targetPath);
-        let newFileName = `${baseName} (${counter})${extension}`;
-        while (await fs.pathExists(join(directory, newFileName))) {
-          counter++
-          newFileName = `${baseName} (${counter})${extension}`;
-        }
-        if (formData.isDeleteSourceFile) {
-          fs.move(item.path, join(directory, newFileName))
-        } else {
-          fs.copy(item.path, join(directory, newFileName))
-        }
-      } else {
-        if (formData.isDeleteSourceFile) {
-          fs.move(item.path, targetPath)
-        } else {
-          fs.copy(item.path, targetPath)
-        }
-      }
-      processNum++
-      mainWindow.webContents.send('progressSet', formData.isDeleteSourceFile ? '移动歌曲中' : '复制歌曲中', processNum, toBeDealSongs.length)
-    }
-    if (formData.isDeleteSourceFile) {
+    async function moveSong() {
       processNum = 0
-      mainWindow.webContents.send('progressSet', '删除重复歌曲中', processNum, delList.length)
-      for (let item of delList) {
-        fs.remove(item)
+      mainWindow.webContents.send(
+        'progressSet',
+        formData.isDeleteSourceFile ? '移动歌曲中' : '复制歌曲中',
+        processNum,
+        songFileUrls.length
+      )
+      for (let songFileUrl of songFileUrls) {
+        let targetPath = join(formData.songListPath, songFileUrl.match(/[^\\]+$/)[0])
+        let isExist = await fs.pathExists(targetPath)
+        if (isExist) {
+          let counter = 1
+          let baseName = path.basename(targetPath, path.extname(targetPath))
+          let extension = path.extname(targetPath)
+          let directory = path.dirname(targetPath)
+          let newFileName = `${baseName} (${counter})${extension}`
+          while (await fs.pathExists(join(directory, newFileName))) {
+            counter++
+            newFileName = `${baseName} (${counter})${extension}`
+          }
+          if (formData.isDeleteSourceFile) {
+            fs.move(songFileUrl, join(directory, newFileName))
+          } else {
+            fs.copy(songFileUrl, join(directory, newFileName))
+          }
+        } else {
+          if (formData.isDeleteSourceFile) {
+            fs.move(songFileUrl, targetPath)
+          } else {
+            fs.copy(songFileUrl, targetPath)
+          }
+        }
         processNum++
-        mainWindow.webContents.send('progressSet', '删除重复歌曲中', processNum, delList.length)
+        mainWindow.webContents.send(
+          'progressSet',
+          formData.isDeleteSourceFile ? '移动歌曲中' : '复制歌曲中',
+          processNum,
+          songFileUrls.length
+        )
       }
     }
-    fs.outputJSON(join(__dirname, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
 
+    async function analyseSongFingerprint() {
+      mainWindow.webContents.send('progressSet', '分析声音指纹中', processNum, songFileUrls.length)
+      const promises = []
+      processNum = 0
+      const endHandle = () => {
+        processNum++
+        mainWindow.webContents.send(
+          'progressSet',
+          '分析声音指纹中',
+          processNum,
+          songFileUrls.length
+        )
+      }
+      for (let songFileUrl of songFileUrls) {
+        promises.push(
+          executeScript(
+            analyseSongFingerprintPyScriptUrl,
+            [songFileUrl],
+            fingerprintResults,
+            endHandle
+          )
+        )
+      }
+      await Promise.all(promises)
+    }
+
+    if (!formData.isComparisonSongFingerprint && !formData.isPushSongFingerprintLibrary) {
+      //既不比对，也不加入指纹库
+      await moveSong()
+      return
+    } else if (formData.isComparisonSongFingerprint) {
+      //比对声音指纹
+      await analyseSongFingerprint()
+      let delList = []
+      let toBeRemoveDuplicates = []
+      for (let item of fingerprintResults) {
+        if (songFingerprintList.indexOf(item.md5_hash) != -1) {
+          delList.push(item.path)
+        } else {
+          toBeRemoveDuplicates.push(item)
+        }
+      }
+      let map = new Map()
+      let duplicates = []
+      // 遍历数组
+      toBeRemoveDuplicates.forEach((item) => {
+        if (map.has(item.md5_hash)) {
+          duplicates.push(item.path)
+        } else {
+          map.set(item.md5_hash, item)
+        }
+      })
+      delList = delList.concat(duplicates) //待删数组
+      let toBeDealSongs = Array.from(map.values())
+
+      processNum = 0
+      mainWindow.webContents.send(
+        'progressSet',
+        formData.isDeleteSourceFile ? '移动歌曲中' : '复制歌曲中',
+        processNum,
+        toBeDealSongs.length
+      )
+
+      for (let item of toBeDealSongs) {
+        if (formData.isPushSongFingerprintLibrary) {
+          songFingerprintList.push(item.md5_hash)
+        }
+        let targetPath = join(formData.songListPath, item.path.match(/[^\\]+$/)[0])
+        let isExist = await fs.pathExists(targetPath)
+        if (isExist) {
+          let counter = 1
+          let baseName = path.basename(targetPath, path.extname(targetPath))
+          let extension = path.extname(targetPath)
+          let directory = path.dirname(targetPath)
+          let newFileName = `${baseName} (${counter})${extension}`
+          while (await fs.pathExists(join(directory, newFileName))) {
+            counter++
+            newFileName = `${baseName} (${counter})${extension}`
+          }
+          if (formData.isDeleteSourceFile) {
+            fs.move(item.path, join(directory, newFileName))
+          } else {
+            fs.copy(item.path, join(directory, newFileName))
+          }
+        } else {
+          if (formData.isDeleteSourceFile) {
+            fs.move(item.path, targetPath)
+          } else {
+            fs.copy(item.path, targetPath)
+          }
+        }
+        processNum++
+        mainWindow.webContents.send(
+          'progressSet',
+          formData.isDeleteSourceFile ? '移动歌曲中' : '复制歌曲中',
+          processNum,
+          toBeDealSongs.length
+        )
+      }
+      if (formData.isDeleteSourceFile) {
+        processNum = 0
+        mainWindow.webContents.send('progressSet', '删除重复歌曲中', processNum, delList.length)
+        for (let item of delList) {
+          fs.remove(item)
+          processNum++
+          mainWindow.webContents.send('progressSet', '删除重复歌曲中', processNum, delList.length)
+        }
+      }
+      if (formData.isPushSongFingerprintLibrary) {
+        fs.outputJSON(
+          join(__dirname, 'songFingerprint', 'songFingerprint.json'),
+          songFingerprintList
+        )
+      }
+      return
+    } else if (!formData.isComparisonSongFingerprint && formData.isPushSongFingerprintLibrary) {
+      //不比对声音指纹，仅加入指纹库
+      await analyseSongFingerprint()
+      for (let item of fingerprintResults) {
+        if (songFingerprintList.indexOf(item.md5_hash) == -1) {
+          songFingerprintList.push(item.md5_hash)
+        }
+      }
+      fs.outputJSON(join(__dirname, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
+      await moveSong()
+      return
+    }
   })
 }
+
 ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
   const srcFullPath = join(__dirname, src)
   const destDir = join(__dirname, dest)

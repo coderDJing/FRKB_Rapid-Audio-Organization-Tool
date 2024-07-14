@@ -72,66 +72,66 @@ export const updateTargetDirSubdirOrder = async (dirPath, orderNum, direction, o
 }
 
 export const collectFilesWithExtensions = async (dir, extensions = []) => {
-  let files = [];
+  let files = []
 
   // 读取目录中的文件和子目录
-  const directoryEntries = await fs.readdir(dir, { withFileTypes: true });
+  const directoryEntries = await fs.readdir(dir, { withFileTypes: true })
 
   for (const entry of directoryEntries) {
-    const fullPath = path.join(dir, entry.name);
+    const fullPath = path.join(dir, entry.name)
 
     // 如果是文件，检查扩展名
     if (entry.isFile()) {
-      const ext = path.extname(fullPath).toLowerCase();
+      const ext = path.extname(fullPath).toLowerCase()
       if (extensions.includes(ext)) {
-        files.push(fullPath);
+        files.push(fullPath)
       }
     } else if (entry.isDirectory()) {
       // 如果是目录，递归调用
-      const subFiles = await collectFilesWithExtensions(fullPath, extensions);
-      files = files.concat(subFiles);
+      const subFiles = await collectFilesWithExtensions(fullPath, extensions)
+      files = files.concat(subFiles)
     }
   }
 
-  return files;
+  return files
 }
 
-const { spawn } = require('child_process');
+const { spawn } = require('child_process')
 export function executeScript(exePath, args, results, end) {
   return new Promise((resolve, reject) => {
     const child = spawn(exePath, args, {
       stdio: ['inherit', 'pipe', 'pipe'] // 继承stdin，pipe stdout和stderr到Node.js
-    });
+    })
 
-    let stdoutData = '';
-    let stderrData = '';
+    let stdoutData = ''
+    let stderrData = ''
 
     child.stdout.on('data', (data) => {
-      stdoutData += data.toString();
-    });
+      stdoutData += data.toString()
+    })
 
     child.stderr.on('data', (data) => {
-      stderrData += data.toString();
-    });
+      stderrData += data.toString()
+    })
 
     child.on('error', (err) => {
-      reject(err);
-    });
+      reject(err)
+    })
 
     child.on('close', (code) => {
       if (code === 0) {
         // 处理输出数据
         if (stderrData) {
-          console.error('stderr:', stderrData);
+          console.error('stderr:', stderrData)
         }
         let json = JSON.parse(stdoutData)
         results.push(json)
         end()
-        resolve();
+        resolve()
       } else {
         // 非零退出码通常表示错误
-        reject(new Error(`子进程退出，退出代码：${code}\n${stderrData}`));
+        reject(new Error(`子进程退出，退出代码：${code}\n${stderrData}`))
       }
-    });
-  });
+    })
+  })
 }
