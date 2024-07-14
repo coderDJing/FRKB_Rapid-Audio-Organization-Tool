@@ -13,16 +13,18 @@ window.electron.ipcRenderer.on('progressSet', (event, title, nowNum, total) => {
 })
 </script>
 <template>
-  <div style="width: 100%; height: 100%;display: flex;">
-    <div v-if="barTitle" style="width: fit-content;font-size: 10px;height: 19px;line-height: 19px;padding: 0 10px;">
+  <div style="width: 100%; height: 100%; display: flex">
+    <div
+      v-if="barTitle"
+      style="width: fit-content; font-size: 10px; height: 19px; line-height: 19px; padding: 0 10px"
+    >
       {{ barTitle + '...' }}
       {{ barNowNum }} /
       {{ barTotal }}
     </div>
     <div class="container" v-if="barTitle">
       <div class="progress">
-        <div class="progress-bar" :style="'width:' + (barNowNum / barTotal * 100) + '%'">
-        </div>
+        <div class="progress-bar" :style="'width:' + (barNowNum / barTotal) * 100 + '%'"></div>
       </div>
     </div>
   </div>

@@ -1,9 +1,9 @@
 {
   "libraryAreaWidth": 212,
   "scanNewSongDialog": {
-    "isDeleteSourceFile": true,
+    "isDeleteSourceFile": false,
     "isDeleteSourceDir": false,
     "isComparisonSongFingerprint": true,
-    "isPushSongFingerprintLibrary": true
+    "isPushSongFingerprintLibrary": false
   }
 }
