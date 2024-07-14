@@ -104,3 +104,26 @@
 
   /* 在1/3和2/3的时间点显示边框 */
 }
+
+.bubbleBox {
+  height: 22px;
+  line-height: 22px;
+  text-align: center;
+  position: relative;
+  border-radius: 3px;
+  border: 1px solid #424242;
+  font-size: 12px;
+  background-color: #202020;
+  padding: 0 10px;
+  font-weight: normal;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s;
+}
+
+.fade-enter,
+.fade-leave-to {
+  opacity: 0;
+}

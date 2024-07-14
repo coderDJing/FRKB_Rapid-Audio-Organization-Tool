@@ -192,36 +192,67 @@ const cancel = () => {
       <div class="unselectable libraryTitle">
         <span>{{ libraryData.dirName }}</span>
         <div style="display: flex; justify-content: center; align-items: center">
-          <div class="collapseButton" @mouseover="iconMouseover()" @mouseout="iconMouseout()"
-            @click="collapseButtonHandleClick()">
-            <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+          <div
+            class="collapseButton"
+            @mouseover="iconMouseover()"
+            @mouseout="iconMouseout()"
+            @click="collapseButtonHandleClick()"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="currentColor"
+            >
               <path d="M9 9H4v1h5V9z" />
-              <path fill-rule="evenodd" clip-rule="evenodd"
-                d="M5 3l1-1h7l1 1v7l-1 1h-2v2l-1 1H3l-1-1V6l1-1h2V3zm1 2h4l1 1v4h2V3H6v2zm4 1H3v7h7V6z" />
+              <path
+                fill-rule="evenodd"
+                clip-rule="evenodd"
+                d="M5 3l1-1h7l1 1v7l-1 1h-2v2l-1 1H3l-1-1V6l1-1h2V3zm1 2h4l1 1v4h2V3H6v2zm4 1H3v7h7V6z"
+              />
             </svg>
           </div>
           <transition name="fade">
-            <div class="bubbleBox" v-if="collapseButtonHintShow" style="position: absolute; top: 70px">
+            <div
+              class="bubbleBox"
+              v-if="collapseButtonHintShow"
+              style="position: absolute; top: 70px"
+            >
               折叠文件夹
             </div>
           </transition>
         </div>
       </div>
-      <div class="unselectable libraryArea flashing-border" :class="{ 'is-flashing': flashArea == 'selectSongList' }"
-        v-if="libraryData.children.length">
+      <div
+        class="unselectable libraryArea flashing-border"
+        :class="{ 'is-flashing': flashArea == 'selectSongList' }"
+        v-if="libraryData.children.length"
+      >
         <template v-for="item of libraryData.children" :key="item.uuid">
           <dialogLibraryItem :uuid="item.uuid" :libraryName="libraryData.dirName + 'Dialog'" />
         </template>
-        <div style="flex-grow: 1" @dragover.stop.prevent="dragover" @dragenter.stop.prevent="dragenter"
-          @drop.stop="drop" @dragleave.stop="dragleave" :class="{ borderTop: dragApproach == 'top' }"></div>
+        <div
+          style="flex-grow: 1"
+          @dragover.stop.prevent="dragover"
+          @dragenter.stop.prevent="dragenter"
+          @drop.stop="drop"
+          @dragleave.stop="dragleave"
+          :class="{ borderTop: dragApproach == 'top' }"
+        ></div>
       </div>
-      <div class="unselectable flashing-border" :class="{ 'is-flashing': flashArea == 'selectSongList' }" v-else style="
+      <div
+        class="unselectable flashing-border"
+        :class="{ 'is-flashing': flashArea == 'selectSongList' }"
+        v-else
+        style="
           height: 100%;
           max-width: 300px;
           display: flex;
           justify-content: center;
           align-items: center;
-        ">
+        "
+      >
         <span style="font-size: 12px; color: #8c8c8c">右键新建歌单</span>
       </div>
       <div style="display: flex; justify-content: center; padding-bottom: 10px">
@@ -230,8 +261,13 @@ const cancel = () => {
       </div>
     </div>
   </div>
-  <rightClickMenu v-model="rightClickMenuShow" :menuArr="menuArr" :clickEvent="clickEvent" style="z-index: 99"
-    @menuButtonClick="menuButtonClick"></rightClickMenu>
+  <rightClickMenu
+    v-model="rightClickMenuShow"
+    :menuArr="menuArr"
+    :clickEvent="clickEvent"
+    style="z-index: 99"
+    @menuButtonClick="menuButtonClick"
+  ></rightClickMenu>
 </template>
 <style lang="scss" scoped>
 .borderTop {

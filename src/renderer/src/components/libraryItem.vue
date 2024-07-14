@@ -141,7 +141,7 @@ const menuArr = ref(
         [{ menuName: '新建歌单' }, { menuName: '新建文件夹' }],
         [{ menuName: '重命名' }, { menuName: '删除' }]
       ]
-    : [[{ menuName: '重命名' }, { menuName: '删除' }]]
+    : [[{ menuName: '重命名' }, { menuName: '删除' }]]//todo缺导入歌曲选项
 )
 const contextmenuEvent = (event) => {
   clickEvent.value = event
