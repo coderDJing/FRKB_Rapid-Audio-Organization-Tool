@@ -8,16 +8,17 @@ import json
 def analyze_song(file_path):
     # 读取音频文件
     y, sr = librosa.load(file_path, sr=None)
-    y_str = np.array2string(
-        y, separator=",", formatter={"float_kind": lambda x: f"{x:.6f}"}
-    )
-    y_str_clean = "".join(
-        filter(
-            str.isdigit,
-            y_str.replace(".", "").replace(",", "").replace("[", "").replace("]", ""),
-        )
-    )
-    md5_hash = hashlib.md5(y_str_clean.encode("utf-8")).hexdigest()
+    mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+    fingerprint = np.mean(mfccs.T, axis=0)
+
+    # 将NumPy数组转换为字符串
+    arr_str = " ".join(map(str, fingerprint.flatten()))
+
+    # 将字符串编码为字节流
+    arr_bytes = arr_str.encode("utf-8")
+
+    # 计算MD5哈希值
+    md5_hash = hashlib.md5(arr_bytes).hexdigest()
     return md5_hash
 
 

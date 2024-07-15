@@ -1,5 +1,7 @@
 <script setup>
 import { ref } from 'vue'
+import confirm from '@renderer/components/confirm.js'
+
 const barTitle = ref('')
 const barNowNum = ref(0)
 const barTotal = ref(0)
@@ -11,13 +13,17 @@ window.electron.ipcRenderer.on('progressSet', (event, title, nowNum, total) => {
     barTitle.value = ''
   }
 })
+window.electron.ipcRenderer.on('importFinished', async (event, contentArr) => {
+  await confirm({
+    title: '导入完成',
+    content: contentArr,
+    confirmShow: false
+  })
+})
 </script>
 <template>
   <div style="width: 100%; height: 100%; display: flex">
-    <div
-      v-if="barTitle"
-      style="width: fit-content; font-size: 10px; height: 19px; line-height: 19px; padding: 0 10px"
-    >
+    <div v-if="barTitle" style="width: fit-content; font-size: 10px; height: 19px; line-height: 19px; padding: 0 10px">
       {{ barTitle + '...' }}
       {{ barNowNum }} /
       {{ barTotal }}

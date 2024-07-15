@@ -1,6 +1,7 @@
 <script setup>
 import librarySelectArea from './modules/librarySelectArea.vue'
 import libraryArea from './modules/libraryArea.vue'
+import songsArea from './modules/songsArea.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { onUnmounted, ref } from 'vue'
 const runtime = useRuntimeStore()
@@ -75,27 +76,18 @@ const librarySelectedChange = (item) => {
 <template>
   <div style="display: flex; height: 100%">
     <librarySelectArea @librarySelectedChange="librarySelectedChange"></librarySelectArea>
-    <div
-      style="width: 200px; border-right: 1px solid #2b2b2b"
-      :style="'width:' + runtime.layoutConfig.libraryAreaWidth + 'px'"
-    >
-      <div
-        v-for="item of runtime.libraryTree.children"
-        style="width: 100%; height: 100%"
-        v-show="librarySelected == item.dirName"
-      >
+    <div style="width: 200px; border-right: 1px solid #2b2b2b"
+      :style="'width:' + runtime.layoutConfig.libraryAreaWidth + 'px'">
+      <div v-for="item of runtime.libraryTree.children" style="width: 100%; height: 100%"
+        v-show="librarySelected == item.dirName">
         <libraryArea :uuid="item.uuid"></libraryArea>
       </div>
     </div>
-    <div
-      style="width: 4px; cursor: ew-resize; height: calc(100vh - 35px)"
-      @mousedown="startResize"
-      class="dragBar"
-      @mouseenter="handleMouseEnter"
-      @mouseleave="handleMouseLeave"
-      :class="{ dragBarHovered: isHovered }"
-    ></div>
-    <div style="flex-grow: 1"></div>
+    <div style="width: 4px; cursor: ew-resize; height: calc(100vh - 35px)" @mousedown="startResize" class="dragBar"
+      @mouseenter="handleMouseEnter" @mouseleave="handleMouseLeave" :class="{ dragBarHovered: isHovered }"></div>
+    <div style="flex-grow: 1">
+      <songsArea />
+    </div>
   </div>
 </template>
 <style lang="scss" scoped>
