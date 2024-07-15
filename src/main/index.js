@@ -166,7 +166,12 @@ function createWindow() {
     }
 
     async function analyseSongFingerprint() {
-      mainWindow.webContents.send('progressSet', '分析声音指纹中', processNum, songFileUrls.length)
+      mainWindow.webContents.send(
+        'progressSet',
+        '分析声音指纹初始化中',
+        processNum,
+        songFileUrls.length
+      )
       const promises = []
       processNum = 0
       const endHandle = () => {

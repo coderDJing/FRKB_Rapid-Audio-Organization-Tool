@@ -4,6 +4,6 @@
     "isDeleteSourceFile": false,
     "isDeleteSourceDir": false,
     "isComparisonSongFingerprint": true,
-    "isPushSongFingerprintLibrary": false
+    "isPushSongFingerprintLibrary": true
   }
 }

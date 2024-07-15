@@ -8,6 +8,7 @@ import listIcon from '@renderer/assets/listIcon.png'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { v4 as uuidv4 } from 'uuid'
 import confirm from '@renderer/components/confirm.js'
+import scanNewSongDialog from '@renderer/components/scanNewSongDialog.vue'
 
 const props = defineProps({
   uuid: {
@@ -98,7 +99,7 @@ if (dirData.dirName == '') {
     myInput.value.focus()
   })
 }
-
+const importSongsDialogShow = ref(false)
 const menuButtonClick = async (item, e) => {
   if (item.menuName == '新建歌单') {
     dirChildRendered.value = true
@@ -130,6 +131,8 @@ const menuButtonClick = async (item, e) => {
       '"' + dirData.dirName + '"'
     ]
     confirmDialogShow.value = true
+  } else if (item.menuName == '导入歌曲') {
+    importSongsDialogShow.value = true
   }
 }
 
@@ -141,7 +144,7 @@ const menuArr = ref(
         [{ menuName: '新建歌单' }, { menuName: '新建文件夹' }],
         [{ menuName: '重命名' }, { menuName: '删除' }]
       ]
-    : [[{ menuName: '重命名' }, { menuName: '删除' }]]//todo缺导入歌曲选项
+    : [[{ menuName: '导入歌曲' }], [{ menuName: '重命名' }, { menuName: '删除' }]]
 )
 const contextmenuEvent = (event) => {
   clickEvent.value = event
@@ -654,6 +657,12 @@ indentWidth.value = (libraryUtils.getDepthByUuid(runtime.libraryTree, props.uuid
     @confirm="deleteConfirm"
     @cancel="deleteCancel"
   />
+  <scanNewSongDialog
+    v-if="importSongsDialogShow"
+    @cancel="importSongsDialogShow = false"
+    :songListUuid="props.uuid"
+  >
+  </scanNewSongDialog>
 </template>
 <style lang="scss" scoped>
 .selectedDir {
