@@ -9,7 +9,7 @@ import {
   executeScript
 } from './utils.js'
 import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset'
-import analyseSongFingerprintPyScriptUrl from '../../resources/pyScript/analyseSongFingerprint.exe?commonjs-external&asset'
+import analyseSongFingerprintPyScriptUrl from '../../resources/pyScript/analyseSongFingerprint/analyseSongFingerprint.exe?commonjs-external&asset'
 import { v4 as uuidv4 } from 'uuid'
 
 const fs = require('fs-extra')
@@ -175,7 +175,6 @@ function createWindow() {
         processNum,
         songFileUrls.length
       )
-      const promises = []
       processNum = 0
       const endHandle = () => {
         processNum++
@@ -186,17 +185,36 @@ function createWindow() {
           songFileUrls.length
         )
       }
-      for (let songFileUrl of songFileUrls) {
-        promises.push(
-          executeScript(
-            analyseSongFingerprintPyScriptUrl,
-            [songFileUrl],
-            fingerprintResults,
-            endHandle
-          )
-        )
-      }
-      await Promise.all(promises)
+      fingerprintResults = await executeScript(analyseSongFingerprintPyScriptUrl, [formData.folderPath, ['.mp3', '.wav'].join(',')], endHandle)
+      // console.log(fingerprintResults)
+      // mainWindow.webContents.send(
+      //   'progressSet',
+      //   '分析声音指纹初始化中',
+      //   processNum,
+      //   songFileUrls.length
+      // )
+      // const promises = []
+      // processNum = 0
+      // const endHandle = () => {
+      //   processNum++
+      //   mainWindow.webContents.send(
+      //     'progressSet',
+      //     '分析声音指纹中',
+      //     processNum,
+      //     songFileUrls.length
+      //   )
+      // }
+      // for (let songFileUrl of songFileUrls) {
+      //   promises.push(
+      //     executeScript(
+      //       analyseSongFingerprintPyScriptUrl,
+      //       [songFileUrl],
+      //       fingerprintResults,
+      //       endHandle
+      //     )
+      //   )
+      // }
+      // await Promise.all(promises)
     }
 
     if (!formData.isComparisonSongFingerprint && !formData.isPushSongFingerprintLibrary) {
@@ -207,6 +225,7 @@ function createWindow() {
       await analyseSongFingerprint()
 
       let toBeRemoveDuplicates = []
+
       for (let item of fingerprintResults) {
         if (songFingerprintList.indexOf(item.md5_hash) != -1) {
           delList.push(item.path)
