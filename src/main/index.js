@@ -121,8 +121,11 @@ function createWindow() {
     let songFileUrls = await collectFilesWithExtensions(formData.folderPath, ['.mp3'])
     let processNum = 0
     let fingerprintResults = []
-
+    let delList = []
+    let songFingerprintListLengthBefore = songFingerprintList.length
+    let importSongsCount = 0
     async function moveSong() {
+      importSongsCount = songFileUrls.length
       processNum = 0
       mainWindow.webContents.send(
         'progressSet',
@@ -199,11 +202,10 @@ function createWindow() {
     if (!formData.isComparisonSongFingerprint && !formData.isPushSongFingerprintLibrary) {
       //既不比对，也不加入指纹库
       await moveSong()
-      return
     } else if (formData.isComparisonSongFingerprint) {
       //比对声音指纹
       await analyseSongFingerprint()
-      let delList = []
+
       let toBeRemoveDuplicates = []
       for (let item of fingerprintResults) {
         if (songFingerprintList.indexOf(item.md5_hash) != -1) {
@@ -214,7 +216,7 @@ function createWindow() {
       }
       let map = new Map()
       let duplicates = []
-      // 遍历数组
+      // 待去重数组（本地导入的曲包内部去重）
       toBeRemoveDuplicates.forEach((item) => {
         if (map.has(item.md5_hash)) {
           duplicates.push(item.path)
@@ -232,7 +234,7 @@ function createWindow() {
         processNum,
         toBeDealSongs.length
       )
-
+      importSongsCount = toBeDealSongs.length
       for (let item of toBeDealSongs) {
         if (formData.isPushSongFingerprintLibrary) {
           songFingerprintList.push(item.md5_hash)
@@ -284,7 +286,7 @@ function createWindow() {
           songFingerprintList
         )
       }
-      return
+
     } else if (!formData.isComparisonSongFingerprint && formData.isPushSongFingerprintLibrary) {
       //不比对声音指纹，仅加入指纹库
       await analyseSongFingerprint()
@@ -295,8 +297,22 @@ function createWindow() {
       }
       fs.outputJSON(join(__dirname, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
       await moveSong()
-      return
+
     }
+    let contentArr = ['文件夹下共扫描' + songFileUrls.length + '首歌曲']
+    if (formData.isComparisonSongFingerprint) {
+      contentArr.push('比对声音指纹去除' + delList.length + '首重复歌曲')
+    }
+    if (formData.isPushSongFingerprintLibrary) {
+      contentArr.push('声音指纹库新增' + (songFingerprintList.length - songFingerprintListLengthBefore) + '首歌曲')
+    }
+    contentArr.push('歌单共导入' + importSongsCount + '首歌曲')
+    contentArr.push('声音指纹库现有' + songFingerprintList.length + '声音指纹')
+    mainWindow.webContents.send(
+      'importFinished',
+      contentArr
+    )
+    return
   })
 }
 
@@ -325,9 +341,18 @@ ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
     await updateTargetDirSubdirOrder(path.dirname(srcFullPath), originalOrder, 'after', 'minus')
   }
 })
-ipcMain.handle('aaa', async (e) => {
-  let mp3 = fs.readFileSync(join(__dirname, 'library/1.mp3'))
-  return mp3
+
+//todo测试音频播放可行性代码待删除-------------
+// ipcMain.handle('aaa', async (e) => {
+//   let mp3 = fs.readFileSync(join(__dirname, 'library/1.mp3'))
+//   return mp3
+// })
+
+ipcMain.handle('scanSongList', async (e, songListPath) => {
+  let songInfoArr = []
+  let songFileUrls = await collectFilesWithExtensions(songListPath, ['.mp3'])
+
+  return songInfoArr
 })
 
 ipcMain.handle('moveToDirSample', async (e, src, dest) => {
