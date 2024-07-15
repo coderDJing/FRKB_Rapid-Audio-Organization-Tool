@@ -97,17 +97,63 @@ export const collectFilesWithExtensions = async (dir, extensions = []) => {
 }
 
 const { spawn } = require('child_process')
-export function executeScript(exePath, args, results, end) {
+// export function executeScript(exePath, args, results, end) {
+//   return new Promise((resolve, reject) => {
+//     const child = spawn(exePath, args, {
+//       stdio: ['inherit', 'pipe', 'pipe'] // 继承stdin，pipe stdout和stderr到Node.js
+//     })
+
+//     let stdoutData = ''
+//     let stderrData = ''
+
+//     child.stdout.on('data', (data) => {
+//       stdoutData += data.toString()
+//     })
+
+//     child.stderr.on('data', (data) => {
+//       stderrData += data.toString()
+//     })
+
+//     child.on('error', (err) => {
+//       reject(err)
+//     })
+
+//     child.on('close', (code) => {
+//       if (code === 0) {
+//         // 处理输出数据
+//         if (stderrData) {
+//           console.error('stderr:', stderrData)
+//         }
+//         let json = JSON.parse(stdoutData)
+//         results.push(json)
+//         end()
+//         resolve()
+//       } else {
+//         // 非零退出码通常表示错误
+//         reject(new Error(`子进程退出，退出代码：${code}\n${stderrData}`))
+//       }
+//     })
+//   })
+// }
+export function executeScript(exePath, args, end) {
   return new Promise((resolve, reject) => {
     const child = spawn(exePath, args, {
       stdio: ['inherit', 'pipe', 'pipe'] // 继承stdin，pipe stdout和stderr到Node.js
     })
 
-    let stdoutData = ''
+    let stdoutData = []
     let stderrData = ''
 
     child.stdout.on('data', (data) => {
-      stdoutData += data.toString()
+      console.log('```````````````````````````````````')
+      // let analyse = data.toString().split('|')
+      // analyse[1] = analyse[1].trim()
+      console.log(data.toString())
+      // stdoutData.push({
+      //   md5_hash: analyse[0],
+      //   path: analyse[1]
+      // })
+      end()
     })
 
     child.stderr.on('data', (data) => {
@@ -120,14 +166,7 @@ export function executeScript(exePath, args, results, end) {
 
     child.on('close', (code) => {
       if (code === 0) {
-        // 处理输出数据
-        if (stderrData) {
-          console.error('stderr:', stderrData)
-        }
-        let json = JSON.parse(stdoutData)
-        results.push(json)
-        end()
-        resolve()
+        resolve(stdoutData)
       } else {
         // 非零退出码通常表示错误
         reject(new Error(`子进程退出，退出代码：${code}\n${stderrData}`))
