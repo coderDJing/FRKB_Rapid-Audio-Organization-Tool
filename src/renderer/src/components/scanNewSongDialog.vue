@@ -5,6 +5,13 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import selectSongListDialog from './selectSongListDialog.vue'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import hintIcon from '@renderer/assets/hint.png'
+
+const props = defineProps({
+  songListUuid: {
+    type: String
+  }
+})
+
 const runtime = useRuntimeStore()
 const folderPathVal = ref('') //文件夹路径
 const clickChooseDir = async () => {
@@ -87,14 +94,23 @@ const flashBorder = (flashAreaName) => {
 }
 
 const songListSelected = ref('')
+
 const clickChooseSongList = () => {
+  if (props.songListUuid) {
+    return
+  }
   runtime.selectSongListDialogShow = true
 }
 let songListSelectedPath = ''
+if (props.songListUuid) {
+  songListSelectedPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, props.songListUuid)
+  let songListSelectedPathArr = songListSelectedPath.split('/')
+  songListSelectedPathArr.shift()
+  songListSelected.value = songListSelectedPathArr.join('\\')
+}
 const selectSongListDialogConfirm = (uuid) => {
   songListSelectedPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, uuid)
   let songListSelectedPathArr = libraryUtils.findDirPathByUuid(runtime.libraryTree, uuid).split('/')
-  songListSelectedPathArr.shift()
   songListSelectedPathArr.shift()
   songListSelected.value = songListSelectedPathArr.join('\\')
   runtime.selectSongListDialogShow = false
@@ -153,8 +169,8 @@ const hint2IconMouseout = () => {
 <template>
   <div class="dialog unselectable">
     <!-- <audio id="audioPlayer" controls autoplay>
-                      todo测试音频播放可行性代码待删除-------------
-                          </audio> -->
+      todo测试音频播放可行性代码待删除-------------
+    </audio> -->
     <div
       style="
         width: 450px;
@@ -273,18 +289,18 @@ const hint2IconMouseout = () => {
                     text-align: left;
                   "
                 >
-                  将导入的歌曲根据歌曲内容本身进行声音指纹分析，并将分析结果永久入库供以后去重比对，哪怕歌曲本身已经被删除分析结果仍会存在
+                  将导入的歌曲根据歌曲内容本身进行声音指纹分析，并将分析结果永久入库，供去重比对使用，哪怕歌曲本身已经被删除分析结果仍会存在
                 </div>
               </transition>
             </div>
           </div>
           <!-- <div style="margin-top: 10px; display: flex">
-                        <div class="formLabel" style="width: 130px"><span>导入后删除文件夹：</span></div>
-                        <div style="width: 21px; height: 21px; display: flex; align-items: center">
-                          <singleCheckbox v-model="runtime.layoutConfig.scanNewSongDialog.isDeleteSourceDir"
-                            @change="isDeleteSourceDirChange" />
-                        </div>
-                      </div> -->
+            <div class="formLabel" style="width: 130px"><span>导入后删除文件夹：</span></div>
+            <div style="width: 21px; height: 21px; display: flex; align-items: center">
+              <singleCheckbox v-model="runtime.layoutConfig.scanNewSongDialog.isDeleteSourceDir"
+                @change="isDeleteSourceDirChange" />
+            </div>
+          </div> -->
         </div>
       </div>
 
