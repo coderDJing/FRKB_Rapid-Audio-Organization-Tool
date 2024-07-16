@@ -37,7 +37,7 @@ def analyze_song(file_path):
 
     # 计算MD5哈希值
     md5_hash = hashlib.md5(arr_bytes).hexdigest()
-    print(md5_hash + "|" + file_path)
+    print(md5_hash + "|" + file_path, flush=True)
 
 
 if __name__ == "__main__":

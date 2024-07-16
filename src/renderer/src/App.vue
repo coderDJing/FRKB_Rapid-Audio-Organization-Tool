@@ -41,7 +41,7 @@ getLibrary()
     </div>
   </div>
   <scanNewSongDialog
-    v-if="activeDialog == '导入新歌曲'"
+    v-if="activeDialog == '导入新曲目'"
     @cancel="activeDialog = ''"
   ></scanNewSongDialog>
 </template>

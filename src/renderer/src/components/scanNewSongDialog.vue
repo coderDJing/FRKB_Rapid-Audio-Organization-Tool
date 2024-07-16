@@ -183,7 +183,7 @@ const hint2IconMouseout = () => {
     >
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
-          <span style="font-weight: bold">导入新歌曲</span>
+          <span style="font-weight: bold">导入新曲目</span>
         </div>
         <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
           <div style="display: flex">
@@ -254,7 +254,7 @@ const hint2IconMouseout = () => {
                     text-align: left;
                   "
                 >
-                  将对所有导入过并加入声音指纹库的歌曲进行比对，重复的歌曲将不会被导入，哪怕它曾经已被删除
+                  将对所有导入过并加入声音指纹库的曲目进行比对，重复的曲目将不会被导入，哪怕它曾经已被删除
                 </div>
               </transition>
             </div>
@@ -289,7 +289,7 @@ const hint2IconMouseout = () => {
                     text-align: left;
                   "
                 >
-                  将导入的歌曲根据歌曲内容本身进行声音指纹分析，并将分析结果永久入库，供去重比对使用，哪怕歌曲本身已经被删除分析结果仍会存在
+                  将导入的曲目根据曲目内容本身进行声音指纹分析，并将分析结果永久入库，供去重比对使用，哪怕曲目本身已经被删除分析结果仍会存在
                 </div>
               </transition>
             </div>

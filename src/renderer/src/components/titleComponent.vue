@@ -32,7 +32,7 @@ const menuArr = ref([
     name: '文件(F)',
     show: false,
     subMenu: [
-      [{ name: '导入新歌曲', shortcutKey: 'Ctrl+R' }, { name: '手动添加歌曲指纹' }],
+      [{ name: '导入新曲目', shortcutKey: 'Ctrl+R' }, { name: '手动添加曲目指纹' }],
       [{ name: '退出' }]
     ]
   },

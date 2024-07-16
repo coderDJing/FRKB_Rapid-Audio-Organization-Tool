@@ -12,8 +12,11 @@ import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?common
 import analyseSongFingerprintPyScriptUrl from '../../resources/pyScript/analyseSongFingerprint/analyseSongFingerprint.exe?commonjs-external&asset'
 import { v4 as uuidv4 } from 'uuid'
 
+
+// import { parseFile } from 'music-metadata';
 const fs = require('fs-extra')
 const path = require('path')
+
 let layoutConfig = fs.readJSONSync(layoutConfigFileUrl)
 let songFingerprintList = []
 const libraryInit = async () => {
@@ -118,7 +121,7 @@ function createWindow() {
 
   ipcMain.on('startImportSongs', async (e, formData) => {
     formData.songListPath = join(__dirname, formData.songListPath)
-    let songFileUrls = await collectFilesWithExtensions(formData.folderPath, ['.mp3'])
+    let songFileUrls = await collectFilesWithExtensions(formData.folderPath, ['.mp3', '.wav', '.flac'])
     let processNum = 0
     let fingerprintResults = []
     let delList = []
@@ -129,7 +132,7 @@ function createWindow() {
       processNum = 0
       mainWindow.webContents.send(
         'progressSet',
-        formData.isDeleteSourceFile ? '移动歌曲中' : '复制歌曲中',
+        formData.isDeleteSourceFile ? '移动曲目中' : '复制曲目中',
         processNum,
         songFileUrls.length
       )
@@ -161,7 +164,7 @@ function createWindow() {
         processNum++
         mainWindow.webContents.send(
           'progressSet',
-          formData.isDeleteSourceFile ? '移动歌曲中' : '复制歌曲中',
+          formData.isDeleteSourceFile ? '移动曲目中' : '复制曲目中',
           processNum,
           songFileUrls.length
         )
@@ -185,36 +188,7 @@ function createWindow() {
           songFileUrls.length
         )
       }
-      fingerprintResults = await executeScript(analyseSongFingerprintPyScriptUrl, [formData.folderPath, ['.mp3', '.wav'].join(',')], endHandle)
-      // console.log(fingerprintResults)
-      // mainWindow.webContents.send(
-      //   'progressSet',
-      //   '分析声音指纹初始化中',
-      //   processNum,
-      //   songFileUrls.length
-      // )
-      // const promises = []
-      // processNum = 0
-      // const endHandle = () => {
-      //   processNum++
-      //   mainWindow.webContents.send(
-      //     'progressSet',
-      //     '分析声音指纹中',
-      //     processNum,
-      //     songFileUrls.length
-      //   )
-      // }
-      // for (let songFileUrl of songFileUrls) {
-      //   promises.push(
-      //     executeScript(
-      //       analyseSongFingerprintPyScriptUrl,
-      //       [songFileUrl],
-      //       fingerprintResults,
-      //       endHandle
-      //     )
-      //   )
-      // }
-      // await Promise.all(promises)
+      fingerprintResults = await executeScript(analyseSongFingerprintPyScriptUrl, [formData.folderPath, ['.mp3', '.wav', '.flac'].join(',')], endHandle)
     }
 
     if (!formData.isComparisonSongFingerprint && !formData.isPushSongFingerprintLibrary) {
@@ -249,7 +223,7 @@ function createWindow() {
       processNum = 0
       mainWindow.webContents.send(
         'progressSet',
-        formData.isDeleteSourceFile ? '移动歌曲中' : '复制歌曲中',
+        formData.isDeleteSourceFile ? '移动曲目中' : '复制曲目中',
         processNum,
         toBeDealSongs.length
       )
@@ -285,18 +259,18 @@ function createWindow() {
         processNum++
         mainWindow.webContents.send(
           'progressSet',
-          formData.isDeleteSourceFile ? '移动歌曲中' : '复制歌曲中',
+          formData.isDeleteSourceFile ? '移动曲目中' : '复制曲目中',
           processNum,
           toBeDealSongs.length
         )
       }
       if (formData.isDeleteSourceFile) {
         processNum = 0
-        mainWindow.webContents.send('progressSet', '删除重复歌曲中', processNum, delList.length)
+        mainWindow.webContents.send('progressSet', '删除重复曲目中', processNum, delList.length)
         for (let item of delList) {
           fs.remove(item)
           processNum++
-          mainWindow.webContents.send('progressSet', '删除重复歌曲中', processNum, delList.length)
+          mainWindow.webContents.send('progressSet', '删除重复曲目中', processNum, delList.length)
         }
       }
       if (formData.isPushSongFingerprintLibrary) {
@@ -318,14 +292,14 @@ function createWindow() {
       await moveSong()
 
     }
-    let contentArr = ['文件夹下共扫描' + songFileUrls.length + '首歌曲']
+    let contentArr = ['文件夹下共扫描' + songFileUrls.length + '首曲目']
+    contentArr.push('歌单共导入' + importSongsCount + '首曲目')
     if (formData.isComparisonSongFingerprint) {
-      contentArr.push('比对声音指纹去除' + delList.length + '首重复歌曲')
+      contentArr.push('比对声音指纹去除' + delList.length + '首重复曲目')
     }
     if (formData.isPushSongFingerprintLibrary) {
-      contentArr.push('声音指纹库新增' + (songFingerprintList.length - songFingerprintListLengthBefore) + '首歌曲')
+      contentArr.push('声音指纹库新增' + (songFingerprintList.length - songFingerprintListLengthBefore) + '首曲目')
     }
-    contentArr.push('歌单共导入' + importSongsCount + '首歌曲')
     contentArr.push('声音指纹库现有' + songFingerprintList.length + '声音指纹')
     mainWindow.webContents.send(
       'importFinished',
@@ -369,8 +343,11 @@ ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
 
 ipcMain.handle('scanSongList', async (e, songListPath) => {
   let songInfoArr = []
-  let songFileUrls = await collectFilesWithExtensions(songListPath, ['.mp3'])
-
+  let songFileUrls = await collectFilesWithExtensions(songListPath, ['.mp3', '.wav', '.flac'])
+  for (let url of songFileUrls) {
+    // let metadata = await mm.parseFile(url)
+    console.log(metadata)
+  }
   return songInfoArr
 })
 
