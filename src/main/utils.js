@@ -103,16 +103,11 @@ export function executeScript(exePath, args, end) {
       stdio: ['inherit', 'pipe', 'pipe'] // 继承stdin，pipe stdout和stderr到Node.js
     })
 
-    let stdoutData = []
+    let stdoutData = ''
     let stderrData = ''
 
     child.stdout.on('data', (data) => {
-      let analyse = data.toString().split('|')
-      analyse[1] = analyse[1].trim()
-      stdoutData.push({
-        md5_hash: analyse[0],
-        path: analyse[1]
-      })
+      stdoutData = stdoutData + data.toString()
       end()
     })
 
@@ -126,7 +121,18 @@ export function executeScript(exePath, args, end) {
 
     child.on('close', (code) => {
       if (code === 0) {
-        resolve(stdoutData)
+        let dataArr = stdoutData.split('||')
+        if (dataArr.length > 1) {
+          dataArr.pop()
+        }
+        let result = []
+        for (let item of dataArr) {
+          result.push({
+            md5_hash: item.split('|')[0],
+            path: item.split('|')[1]
+          })
+        }
+        resolve(result)
       } else {
         // 非零退出码通常表示错误
         reject(new Error(`子进程退出，退出代码：${code}\n${stderrData}`))
