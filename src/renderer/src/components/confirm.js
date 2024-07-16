@@ -17,7 +17,15 @@ export default ({ title, content, confirmShow, textAlign, innerHeight }) => {
       div.remove()
       resolve('cancel')
     }
-    const vnode = createVNode(confirmDialog, { title, content, confirmShow, textAlign, innerHeight, confirmCallback, cancelCallback })
+    const vnode = createVNode(confirmDialog, {
+      title,
+      content,
+      confirmShow,
+      textAlign,
+      innerHeight,
+      confirmCallback,
+      cancelCallback
+    })
     render(vnode, div)
   })
 }

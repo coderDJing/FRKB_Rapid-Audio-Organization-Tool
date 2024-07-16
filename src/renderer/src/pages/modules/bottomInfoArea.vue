@@ -25,7 +25,10 @@ window.electron.ipcRenderer.on('importFinished', async (event, contentArr) => {
 </script>
 <template>
   <div style="width: 100%; height: 100%; display: flex">
-    <div v-if="barTitle" style="width: fit-content; font-size: 10px; height: 19px; line-height: 19px; padding: 0 10px">
+    <div
+      v-if="barTitle"
+      style="width: fit-content; font-size: 10px; height: 19px; line-height: 19px; padding: 0 10px"
+    >
       {{ barTitle + '...' }}
       {{ barNowNum }} /
       {{ barTotal }}

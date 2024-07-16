@@ -12,8 +12,6 @@ import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?common
 import analyseSongFingerprintPyScriptUrl from '../../resources/pyScript/analyseSongFingerprint/analyseSongFingerprint.exe?commonjs-external&asset'
 import { v4 as uuidv4 } from 'uuid'
 
-
-// import { parseFile } from 'music-metadata';
 const fs = require('fs-extra')
 const path = require('path')
 
@@ -121,7 +119,11 @@ function createWindow() {
 
   ipcMain.on('startImportSongs', async (e, formData) => {
     formData.songListPath = join(__dirname, formData.songListPath)
-    let songFileUrls = await collectFilesWithExtensions(formData.folderPath, ['.mp3', '.wav', '.flac'])
+    let songFileUrls = await collectFilesWithExtensions(formData.folderPath, [
+      '.mp3',
+      '.wav',
+      '.flac'
+    ])
     let processNum = 0
     let fingerprintResults = []
     let delList = []
@@ -188,7 +190,11 @@ function createWindow() {
           songFileUrls.length
         )
       }
-      fingerprintResults = await executeScript(analyseSongFingerprintPyScriptUrl, [formData.folderPath, ['.mp3', '.wav', '.flac'].join(',')], endHandle)
+      fingerprintResults = await executeScript(
+        analyseSongFingerprintPyScriptUrl,
+        [formData.folderPath, ['.mp3', '.wav', '.flac'].join(',')],
+        endHandle
+      )
     }
 
     if (!formData.isComparisonSongFingerprint && !formData.isPushSongFingerprintLibrary) {
@@ -279,7 +285,6 @@ function createWindow() {
           songFingerprintList
         )
       }
-
     } else if (!formData.isComparisonSongFingerprint && formData.isPushSongFingerprintLibrary) {
       //不比对声音指纹，仅加入指纹库
       await analyseSongFingerprint()
@@ -290,7 +295,6 @@ function createWindow() {
       }
       fs.outputJSON(join(__dirname, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
       await moveSong()
-
     }
     let contentArr = ['文件夹下共扫描' + songFileUrls.length + '首曲目']
     contentArr.push('歌单共导入' + importSongsCount + '首曲目')
@@ -298,13 +302,12 @@ function createWindow() {
       contentArr.push('比对声音指纹去除' + delList.length + '首重复曲目')
     }
     if (formData.isPushSongFingerprintLibrary) {
-      contentArr.push('声音指纹库新增' + (songFingerprintList.length - songFingerprintListLengthBefore) + '首曲目')
+      contentArr.push(
+        '声音指纹库新增' + (songFingerprintList.length - songFingerprintListLengthBefore) + '首曲目'
+      )
     }
     contentArr.push('声音指纹库现有' + songFingerprintList.length + '声音指纹')
-    mainWindow.webContents.send(
-      'importFinished',
-      contentArr
-    )
+    mainWindow.webContents.send('importFinished', contentArr)
     return
   })
 }
@@ -342,11 +345,22 @@ ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
 // })
 
 ipcMain.handle('scanSongList', async (e, songListPath) => {
+  let scanPath = join(__dirname, songListPath)
+  const mm = await import('music-metadata')
   let songInfoArr = []
-  let songFileUrls = await collectFilesWithExtensions(songListPath, ['.mp3', '.wav', '.flac'])
+  let songFileUrls = await collectFilesWithExtensions(scanPath, ['.mp3', '.wav', '.flac'])
   for (let url of songFileUrls) {
-    // let metadata = await mm.parseFile(url)
-    console.log(metadata)
+    let metadata = await mm.parseFile(url)
+    let cover = mm.selectCover(metadata.common.picture)
+    songInfoArr.push({
+      uuid: uuidv4(),
+      title: metadata.common.title,
+      artist: metadata.common.artist,
+      album: metadata.common.album,
+      genre: metadata.common.genre,
+      label: metadata.common.label,
+      cover: cover
+    })
   }
   return songInfoArr
 })
