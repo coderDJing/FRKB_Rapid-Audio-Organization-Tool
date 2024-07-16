@@ -127,11 +127,11 @@ const menuButtonClick = async (item, e) => {
   } else if (item.menuName == '删除') {
     confirmDialogContent.value = [
       dirData.type == 'dir' ? '确认删除此文件夹吗？' : '确认删除此歌单吗？',
-      dirData.type == 'dir' ? '文件夹中的内容将一并被删除' : '歌单中的歌曲将一并被删除',
+      dirData.type == 'dir' ? '文件夹中的内容将一并被删除' : '歌单中的曲目将一并被删除',
       '"' + dirData.dirName + '"'
     ]
     confirmDialogShow.value = true
-  } else if (item.menuName == '导入歌曲') {
+  } else if (item.menuName == '导入曲目') {
     importSongsDialogShow.value = true
   }
 }
@@ -144,7 +144,7 @@ const menuArr = ref(
         [{ menuName: '新建歌单' }, { menuName: '新建文件夹' }],
         [{ menuName: '重命名' }, { menuName: '删除' }]
       ]
-    : [[{ menuName: '导入歌曲' }], [{ menuName: '重命名' }, { menuName: '删除' }]]
+    : [[{ menuName: '导入曲目' }], [{ menuName: '重命名' }, { menuName: '删除' }]]
 )
 const contextmenuEvent = (event) => {
   clickEvent.value = event

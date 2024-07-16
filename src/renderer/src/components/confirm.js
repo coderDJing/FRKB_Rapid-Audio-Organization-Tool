@@ -1,7 +1,7 @@
 import { createVNode, render } from 'vue'
 import confirmDialog from './confirmDialog.vue'
 
-export default ({ title, content, confirmShow }) => {
+export default ({ title, content, confirmShow, textAlign, innerHeight }) => {
   return new Promise((resolve, reject) => {
     const div = document.createElement('div')
     div.setAttribute('class', 'dialog')
@@ -17,7 +17,7 @@ export default ({ title, content, confirmShow }) => {
       div.remove()
       resolve('cancel')
     }
-    const vnode = createVNode(confirmDialog, { title, content, confirmShow, confirmCallback, cancelCallback })
+    const vnode = createVNode(confirmDialog, { title, content, confirmShow, textAlign, innerHeight, confirmCallback, cancelCallback })
     render(vnode, div)
   })
 }

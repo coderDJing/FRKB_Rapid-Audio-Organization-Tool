@@ -2,6 +2,7 @@
 import { watch, ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
+
 const runtime = useRuntimeStore()
 let songInfoArr = ref([])
 watch(() => runtime.selectedSongListUUID, async() => {

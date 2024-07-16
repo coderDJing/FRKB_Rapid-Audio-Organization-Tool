@@ -126,7 +126,7 @@ const menuButtonClick = async (item, e) => {
   } else if (item.menuName == '删除') {
     confirmDialogContent.value = [
       dirData.type == 'dir' ? '确认删除此文件夹吗？' : '确认删除此歌单吗？',
-      dirData.type == 'dir' ? '文件夹中的内容将一并被删除' : '歌单中的歌曲将一并被删除',
+      dirData.type == 'dir' ? '文件夹中的内容将一并被删除' : '歌单中的曲目将一并被删除',
       '"' + dirData.dirName + '"'
     ]
     confirmDialogShow.value = true
