@@ -17,6 +17,8 @@ window.electron.ipcRenderer.on('importFinished', async (event, contentArr) => {
   await confirm({
     title: '导入完成',
     content: contentArr,
+    textAlign: 'left',
+    innerHeight: 250,
     confirmShow: false
   })
 })

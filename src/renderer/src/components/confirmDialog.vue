@@ -10,6 +10,14 @@ const props = defineProps({
     type: Boolean,
     default: true
   },
+  textAlign: {
+    type: String,
+    default: 'center'
+  },
+  innerHeight: {
+    type: Number,
+    default: 180
+  },
   confirmCallback: {
     type: Function
   },
@@ -35,17 +43,17 @@ const cancel = () => {
   <div class="dialog unselectable" style="position: absolute; font-size: 14px">
     <div style="
         width: 300px;
-        height: 180px;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
-      " class="inner">
+      " class="inner" :style="'height:' + innerHeight + 'px'">
+
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
           <span style="font-weight: bold">{{ props.title }}</span>
         </div>
         <div style="padding-left: 20px; padding-right: 20px">
-          <div v-for="item of props.content" style="text-align: center; margin-top: 10px">
+          <div v-for="item of props.content" style="margin-top: 10px" :style="'text-align:' + textAlign">
             <span>{{ item }}</span>
           </div>
         </div>
