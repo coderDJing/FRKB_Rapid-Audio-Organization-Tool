@@ -51,7 +51,7 @@ getLibrary()
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color: #cccccc;
-  background-color: #1f1f1f;
+  background-color: #181818;
   width: 100vw;
   height: 100vh;
 }
