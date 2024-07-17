@@ -305,6 +305,16 @@ function createWindow() {
       contentArr.push(
         '声音指纹库新增' + (songFingerprintList.length - songFingerprintListLengthBefore) + '首曲目'
       )
+      if (
+        !formData.isComparisonSongFingerprint &&
+        fingerprintResults.length != songFingerprintList.length - songFingerprintListLengthBefore
+      ) {
+        let notPushFingerprintLibraryCount =
+          fingerprintResults.length - (songFingerprintList.length - songFingerprintListLengthBefore)
+        contentArr.push(
+          notPushFingerprintLibraryCount + '首声音指纹未添加，因为已存在于声音指纹库中'
+        )
+      }
     }
     contentArr.push('声音指纹库现有' + songFingerprintList.length + '声音指纹')
     mainWindow.webContents.send('importFinished', contentArr)
