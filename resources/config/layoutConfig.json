@@ -3,7 +3,7 @@
   "scanNewSongDialog": {
     "isDeleteSourceFile": false,
     "isDeleteSourceDir": false,
-    "isComparisonSongFingerprint": true,
+    "isComparisonSongFingerprint": false,
     "isPushSongFingerprintLibrary": true
   }
 }

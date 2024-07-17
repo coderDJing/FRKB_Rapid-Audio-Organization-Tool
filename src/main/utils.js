@@ -128,7 +128,7 @@ export function executeScript(exePath, args, end) {
         let result = []
         for (let item of dataArr) {
           result.push({
-            md5_hash: item.split('|')[0],
+            md5_hash: item.split('|')[0].replace(/\r\n/g, ''),
             path: item.split('|')[1]
           })
         }
