@@ -75,29 +75,37 @@ const librarySelectedChange = (item) => {
 </script>
 <template>
   <div style="display: flex; height: 100%">
-    <librarySelectArea @librarySelectedChange="librarySelectedChange"></librarySelectArea>
-    <div
-      style="width: 200px; border-right: 1px solid #2b2b2b"
-      :style="'width:' + runtime.layoutConfig.libraryAreaWidth + 'px'"
-    >
-      <div
-        v-for="item of runtime.libraryTree.children"
-        style="width: 100%; height: 100%"
-        v-show="librarySelected == item.dirName"
-      >
-        <libraryArea :uuid="item.uuid"></libraryArea>
+    <librarySelectArea
+      @librarySelectedChange="librarySelectedChange"
+      style="flex-shrink: 0"
+    ></librarySelectArea>
+    <div style="flex-grow: 1">
+      <div style="display: flex; height: calc(100% - 51px)">
+        <div
+          style="width: 200px; border-right: 1px solid #2b2b2b; flex-shrink: 0"
+          :style="'width:' + runtime.layoutConfig.libraryAreaWidth + 'px'"
+        >
+          <div
+            v-for="item of runtime.libraryTree.children"
+            style="width: 100%; height: 100%"
+            v-show="librarySelected == item.dirName"
+          >
+            <libraryArea :uuid="item.uuid"></libraryArea>
+          </div>
+        </div>
+        <div
+          style="width: 4px; cursor: ew-resize; height: calc(100%); flex-shrink: 0"
+          @mousedown="startResize"
+          class="dragBar"
+          @mouseenter="handleMouseEnter"
+          @mouseleave="handleMouseLeave"
+          :class="{ dragBarHovered: isHovered }"
+        ></div>
+        <div style="flex: 1; background-color: #181818">
+          <songsArea />
+        </div>
       </div>
-    </div>
-    <div
-      style="width: 4px; cursor: ew-resize; height: calc(100vh - 35px)"
-      @mousedown="startResize"
-      class="dragBar"
-      @mouseenter="handleMouseEnter"
-      @mouseleave="handleMouseLeave"
-      :class="{ dragBarHovered: isHovered }"
-    ></div>
-    <div style="flex-grow: 1; background-color: #181818">
-      <songsArea />
+      <div style="height: 50px; border-top: 1px solid #2b2b2b">//todo播放器</div>
     </div>
   </div>
 </template>

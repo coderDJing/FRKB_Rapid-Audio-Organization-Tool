@@ -50,7 +50,7 @@ const menuButtonClick = (item) => {
 }
 </script>
 <template>
-  <div class="title unselectable">Better Music Library</div>
+  <div class="title unselectable">FRKB - Better Music Library</div>
   <div class="titleComponent unselectable">
     <div
       style="
