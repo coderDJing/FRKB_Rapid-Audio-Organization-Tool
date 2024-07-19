@@ -369,7 +369,10 @@ ipcMain.handle('scanSongList', async (e, songListPath) => {
       album: metadata.common.album,
       genre: metadata.common.genre,
       label: metadata.common.label,
-      cover: cover
+      cover: cover,
+      duration: metadata.format.duration, //时长
+      container: metadata.format.duration, //编码格式
+      bitrate: metadata.format.duration //比特率
     })
   }
   return songInfoArr
