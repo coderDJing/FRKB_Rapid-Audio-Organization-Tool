@@ -48,13 +48,14 @@ if (!isLibraryExist) {
 function createWindow() {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 600,
+    width: layoutConfig.mainWindowWidth, //默认应为900
+    height: layoutConfig.mainWindowHeight, //默认应为600
     minWidth: 500,
     minHeight: 300,
     frame: false,
     transparent: false,
     show: false,
+    backgroundColor: '#181818',
 
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
@@ -62,8 +63,11 @@ function createWindow() {
       sandbox: false
     }
   })
-
+  mainWindow.openDevTools() //todo del
   mainWindow.on('ready-to-show', () => {
+    if (layoutConfig.isMaxMainWin) {
+      mainWindow.maximize()
+    }
     mainWindow.show()
   })
 
@@ -98,6 +102,14 @@ function createWindow() {
   mainWindow.on('unmaximize', () => {
     mainWindow.webContents.send('mainWin-max', false)
   })
+
+  let mainWindowWidth = layoutConfig.mainWindowWidth
+  let mainWindowHeight = layoutConfig.mainWindowHeight
+  mainWindow.on('resized', (e) => {
+    let size = mainWindow.getSize()
+    mainWindowWidth = size[0]
+    mainWindowHeight = size[1]
+  })
   ipcMain.on('toggle-maximize', () => {
     if (mainWindow.isMaximized()) {
       mainWindow.unmaximize()
@@ -110,7 +122,16 @@ function createWindow() {
     mainWindow.minimize()
   })
 
-  ipcMain.on('toggle-close', () => {
+  ipcMain.on('toggle-close', async () => {
+    let layoutConfig = fs.readJSONSync(layoutConfigFileUrl)
+    if (mainWindow.isMaximized()) {
+      layoutConfig.isMaxMainWin = true
+    } else {
+      layoutConfig.isMaxMainWin = false
+    }
+    layoutConfig.mainWindowWidth = mainWindowWidth
+    layoutConfig.mainWindowHeight = mainWindowHeight
+    await fs.outputJson(layoutConfigFileUrl, layoutConfig)
     app.exit()
   })
   ipcMain.on('collapseButtonHandleClick', (e, libraryName) => {
