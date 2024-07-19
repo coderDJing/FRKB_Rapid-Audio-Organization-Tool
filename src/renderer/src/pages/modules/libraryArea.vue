@@ -251,7 +251,7 @@ const drop = async (e) => {
 }
 
 .content {
-  height: calc(100vh - 35px);
+  height: 100%;
   width: 100%;
   display: flex;
   flex-grow: 1;

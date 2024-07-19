@@ -1,11 +1,11 @@
 <script setup>
-import { watch, ref } from 'vue'
+import { watch, ref, nextTick } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 
 const runtime = useRuntimeStore()
 let songInfoArr = ref([])
-let loading = ref(false)
+let loadingShow = ref(false)
 watch(
   () => runtime.selectedSongListUUID,
   async () => {
@@ -14,13 +14,18 @@ watch(
         URL.revokeObjectURL(item.coverUrl)
       }
     }
+    songInfoArr.value = []
+    await nextTick(() => {})
     let songListPath = libraryUtils.findDirPathByUuid(
       runtime.libraryTree,
       runtime.selectedSongListUUID
     )
-    loading.value = true
+    let loadingSetTimeout = setTimeout(() => {
+      loadingShow.value = true
+    }, 100)
     let scanData = await window.electron.ipcRenderer.invoke('scanSongList', songListPath)
-    loading.value = false
+    clearTimeout(loadingSetTimeout)
+    loadingShow.value = false
     for (let item of scanData) {
       if (item.cover) {
         let blob = new Blob([Uint8Array.from(item.cover.data)], { type: item.cover.format })
@@ -28,8 +33,8 @@ watch(
         item.coverUrl = blobUrl
       }
     }
-    //todo v-for懒加载
     songInfoArr.value = scanData
+    debugger
   }
 )
 
@@ -42,37 +47,61 @@ watch(
   >
     <div class="loading"></div>
   </div>
-
-  <div class="songItem lightBackground" v-if="songInfoArr.length > 0">
-    <div
-      class="coverDiv"
-      style="border-right: 1px solid #000000; padding-left: 10px; box-sizing: border-box"
-    >
-      专辑封面
+  <div
+    style="height: 100%; width: 100%; overflow: auto"
+    v-if="runtime.selectedSongListUUID && songInfoArr.length != 0"
+  >
+    <div class="songItem lightBackground" style="position: sticky; top: 0">
+      <div
+        class="coverDiv lightBackground"
+        style="border-right: 1px solid #000000; padding-left: 10px; box-sizing: border-box"
+      >
+        专辑封面
+      </div>
+      <div
+        class="titleDiv lightBackground"
+        style="border-right: 1px solid #000000; padding-left: 10px; box-sizing: border-box"
+      >
+        曲目标题
+      </div>
+      <div
+        class="titleDiv lightBackground"
+        style="border-right: 1px solid #000000; padding-left: 10px; box-sizing: border-box"
+      >
+        作曲家
+      </div>
+      <div
+        class="titleDiv lightBackground"
+        style="border-right: 1px solid #000000; padding-left: 10px; box-sizing: border-box"
+      >
+        专辑
+      </div>
     </div>
-    <div
-      class="titleDiv"
-      style="border-right: 1px solid #000000; padding-left: 10px; box-sizing: border-box"
-    >
-      曲目标题
+    <div>
+      <div v-for="(item, index) of songInfoArr" :key="item.uuid" class="songItem">
+        <div
+          :class="{ lightBackground: index % 2 === 1, darkBackground: index % 2 === 0 }"
+          style="display: flex"
+        >
+          <div class="coverDiv" style="overflow: hidden">
+            <img :src="item.coverUrl" class="unselectable" />
+          </div>
+          <div class="titleDiv">{{ item.title }}</div>
+          <div class="titleDiv">{{ item.artist }}</div>
+          <div class="titleDiv">{{ item.album }}</div>
+          <!-- todo 动态加载列 -->
+        </div>
+      </div>
     </div>
   </div>
-  <!-- <div style="height: calc(100% - 30px) ;width: 100%;overflow-y: auto;">
-          <div v-for="(item, index) of songInfoArr" :key="item.uuid" class="songItem"
-            :class="{ lightBackground: index % 2 === 1, darkBackground: index % 2 === 0 }">
-            <div class="coverDiv" style="overflow: hidden;">
-              <img :src="item.coverUrl" class="unselectable" />
-            </div>
-            <div class="titleDiv">{{ item.title }}</div>
-          </div>
-        </div> -->
 </template>
 <style lang="scss" scoped>
 .coverDiv {
-  width: 15%;
-  height: 30px;
+  width: 100px;
+  height: 29px;
   line-height: 30px;
   border-right: 1px solid #2b2b2b;
+  border-bottom: 1px solid transparent;
 
   img {
     width: 100%;
@@ -80,7 +109,7 @@ watch(
 }
 
 .titleDiv {
-  width: 20%;
+  width: 200px;
   height: 30px;
   line-height: 30px;
   padding-left: 10px;
@@ -91,10 +120,14 @@ watch(
 }
 
 .songItem {
-  width: 100%;
+  width: 0;
   height: 30px;
   display: flex;
   font-size: 14px;
+
+  div {
+    flex-shrink: 0;
+  }
 }
 
 .lightBackground {
