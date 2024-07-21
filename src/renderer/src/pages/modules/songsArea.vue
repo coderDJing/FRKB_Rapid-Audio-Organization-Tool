@@ -2,6 +2,60 @@
 import { watch, ref, nextTick } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
+import { vDraggable } from 'vue-draggable-plus'
+
+let columnData = ref([])
+if (localStorage.getItem('songColumnData')) {
+  columnData.value = JSON.parse(localStorage.getItem('songColumnData'))
+} else {
+  columnData.value = [
+    {
+      columnName: "专辑封面",
+      key: 'coverUrl',
+      width: 100,
+    },
+    {
+      columnName: "曲目标题",
+      key: 'title',
+      width: 250
+    },
+    {
+      columnName: "表演者",
+      key: 'artist',
+      width: 200
+    },
+    {
+      columnName: "时长",
+      key: 'duration',
+      width: 100
+    },
+    {
+      columnName: "专辑",
+      key: 'album',
+      width: 200
+    },
+    {
+      columnName: "风格",
+      key: 'genre',
+      width: 200
+    },
+    {
+      columnName: "唱片公司",
+      key: 'label',
+      width: 200
+    },
+    {
+      columnName: "比特率",
+      key: 'bitrate',
+      width: 200
+    },
+    {
+      columnName: "编码格式",
+      key: 'container',
+      width: 200
+    },
+  ]
+}
 
 const runtime = useRuntimeStore()
 let songInfoArr = ref([])
@@ -15,7 +69,7 @@ watch(
       }
     }
     songInfoArr.value = []
-    await nextTick(() => {})
+    await nextTick(() => { })
     let songListPath = libraryUtils.findDirPathByUuid(
       runtime.libraryTree,
       runtime.selectedSongListUUID
@@ -34,62 +88,43 @@ watch(
       }
     }
     songInfoArr.value = scanData
-    debugger
+    console.log(scanData)
   }
 )
+function onUpdate() {
+  localStorage.setItem('songColumnData', JSON.stringify(columnData.value))
+}
 
-//todo 列拉伸 列显示隐藏 列顺序改变
+//todo 列拉伸 列显示隐藏
 </script>
 <template>
-  <div
-    v-show="loadingShow"
-    style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center"
-  >
+  <div v-show="loadingShow"
+    style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center">
     <div class="loading"></div>
   </div>
-  <div
-    style="height: 100%; width: 100%; overflow: auto"
-    v-if="runtime.selectedSongListUUID && songInfoArr.length != 0"
-  >
-    <div class="songItem lightBackground" style="position: sticky; top: 0">
-      <div
-        class="coverDiv lightBackground"
+  <div style="height: 100%; width: 100%; overflow: auto" v-if="runtime.selectedSongListUUID && songInfoArr.length != 0">
+    <div class="songItem lightBackground" style="position: sticky; top: 0" v-draggable="[columnData, {
+      animation: 150,
+      direction: 'horizontal',
+      onUpdate
+    }]">
+      <div class="coverDiv lightBackground unselectable" v-for="col of columnData" :key="col.key"
+        :class="{ coverDiv: col.key == 'coverUrl', titleDiv: col.key != 'coverUrl' }"
         style="border-right: 1px solid #000000; padding-left: 10px; box-sizing: border-box"
-      >
-        专辑封面
-      </div>
-      <div
-        class="titleDiv lightBackground"
-        style="border-right: 1px solid #000000; padding-left: 10px; box-sizing: border-box"
-      >
-        曲目标题
-      </div>
-      <div
-        class="titleDiv lightBackground"
-        style="border-right: 1px solid #000000; padding-left: 10px; box-sizing: border-box"
-      >
-        作曲家
-      </div>
-      <div
-        class="titleDiv lightBackground"
-        style="border-right: 1px solid #000000; padding-left: 10px; box-sizing: border-box"
-      >
-        专辑
+        :style="'width:' + col.width + 'px'">
+        {{ col.columnName }}
       </div>
     </div>
     <div>
       <div v-for="(item, index) of songInfoArr" :key="item.uuid" class="songItem">
-        <div
-          :class="{ lightBackground: index % 2 === 1, darkBackground: index % 2 === 0 }"
-          style="display: flex"
-        >
-          <div class="coverDiv" style="overflow: hidden">
-            <img :src="item.coverUrl" class="unselectable" />
-          </div>
-          <div class="titleDiv">{{ item.title }}</div>
-          <div class="titleDiv">{{ item.artist }}</div>
-          <div class="titleDiv">{{ item.album }}</div>
-          <!-- todo 动态加载列 -->
+        <div :class="{ lightBackground: index % 2 === 1, darkBackground: index % 2 === 0 }" style="display: flex">
+          <template v-for="col of columnData" :key="col.key">
+            <div v-if="col.key == 'coverUrl'" class="coverDiv" style="overflow: hidden"
+              :style="'width:' + col.width + 'px'">
+              <img :src="item.coverUrl" class="unselectable" />
+            </div>
+            <div v-else class="titleDiv" :style="'width:' + col.width + 'px'">{{ item[col.key] }}</div>
+          </template>
         </div>
       </div>
     </div>
@@ -97,7 +132,7 @@ watch(
 </template>
 <style lang="scss" scoped>
 .coverDiv {
-  width: 100px;
+  // width: 100px;
   height: 29px;
   line-height: 30px;
   border-right: 1px solid #2b2b2b;
@@ -109,7 +144,7 @@ watch(
 }
 
 .titleDiv {
-  width: 200px;
+  // width: 200px;
   height: 30px;
   line-height: 30px;
   padding-left: 10px;
@@ -171,6 +206,7 @@ watch(
 }
 
 @keyframes rectangle {
+
   0%,
   80%,
   100% {

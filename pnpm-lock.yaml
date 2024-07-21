@@ -1,5 +1,9 @@
 lockfileVersion: '6.0'
 
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
 dependencies:
   '@electron-toolkit/preload':
     specifier: ^3.0.1
@@ -22,6 +26,9 @@ dependencies:
   uuid:
     specifier: ^10.0.0
     version: 10.0.0
+  vue-draggable-plus:
+    specifier: ^0.5.2
+    version: 0.5.2(@types/sortablejs@1.15.8)
 
 devDependencies:
   '@electron-toolkit/eslint-config':
@@ -957,6 +964,10 @@ packages:
     resolution: {integrity: sha512-H/+L+UkTV33uf49PH5pCAUBVPNj2nDBXTN+qS1dOwyyg24l3CcicicCA7ca+HMvJBZcFgl5r8e+RR6elsb4Lyw==}
     dependencies:
       '@types/node': 20.14.7
+
+  /@types/sortablejs@1.15.8:
+    resolution: {integrity: sha512-b79830lW+RZfwaztgs1aVPgbasJ8e7AXtZYHTELNXZPsERt4ymJdjV4OccDbHQAvHrCcFpbF78jkm0R6h/pZVg==}
+    dev: false
 
   /@types/verror@1.10.10:
     resolution: {integrity: sha512-l4MM0Jppn18hb9xmM6wwD1uTdShpf9Pn80aXTStnK1C94gtPvJcV2FrDmbOQUAQfJ1cKZHktkQUDwEqaAKXMMg==}
@@ -3577,6 +3588,18 @@ packages:
       vue: 3.4.30
     dev: false
 
+  /vue-draggable-plus@0.5.2(@types/sortablejs@1.15.8):
+    resolution: {integrity: sha512-+EWOYOtY6MVbhPpG+H4rjyuWAJiQU2VoLI/ehOCZkz62anrKrGHz5CBL2HDXi01hpNSP9BTDgkBcibhdO9/Jgg==}
+    peerDependencies:
+      '@types/sortablejs': ^1.15.0
+      '@vue/composition-api': '*'
+    peerDependenciesMeta:
+      '@vue/composition-api':
+        optional: true
+    dependencies:
+      '@types/sortablejs': 1.15.8
+    dev: false
+
   /vue-eslint-parser@9.4.3(eslint@8.57.0):
     resolution: {integrity: sha512-2rYRLWlIpaiN8xbPiDyXZXRgLGOtWxERV7ND5fFAv5qo1D2N9Fu9MNajBNc6o13lZ+24DAWCkQCvj4klgmcITg==}
     engines: {node: ^14.17.0 || >=16.0.0}
@@ -3704,7 +3727,3 @@ packages:
       compress-commons: 4.1.2
       readable-stream: 3.6.2
     dev: true
-
-settings:
-  autoInstallPeers: true
-  excludeLinksFromLockfile: false
