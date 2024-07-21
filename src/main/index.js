@@ -380,20 +380,32 @@ ipcMain.handle('scanSongList', async (e, songListPath) => {
   const mm = await import('music-metadata')
   let songInfoArr = []
   let songFileUrls = await collectFilesWithExtensions(scanPath, ['.mp3', '.wav', '.flac'])
+
+  function convertSecondsToMinutesSeconds(seconds) {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+
+    // 使用 padStart 方法确保分钟和秒数都是两位数
+    const minutesStr = minutes.toString().padStart(2, '0');
+    const secondsStr = remainingSeconds.toString().padStart(2, '0');
+
+    // 返回格式为 "MM:SS" 的字符串
+    return `${minutesStr}:${secondsStr}`;
+  }
   for (let url of songFileUrls) {
     let metadata = await mm.parseFile(url)
     let cover = mm.selectCover(metadata.common.picture)
     songInfoArr.push({
       uuid: uuidv4(),
+      cover: cover,
       title: metadata.common.title,
       artist: metadata.common.artist,
       album: metadata.common.album,
-      genre: metadata.common.genre,
+      duration: convertSecondsToMinutesSeconds(Math.round(metadata.format.duration)), //时长
+      genre: metadata.common.genre[0],
       label: metadata.common.label,
-      cover: cover,
-      duration: metadata.format.duration, //时长
-      container: metadata.format.duration, //编码格式
-      bitrate: metadata.format.duration //比特率
+      bitrate: metadata.format.bitrate, //比特率
+      container: metadata.format.container //编码格式
     })
   }
   return songInfoArr
