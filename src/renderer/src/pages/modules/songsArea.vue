@@ -1,5 +1,5 @@
 <script setup>
-import { watch, ref, nextTick } from 'vue'
+import { watch, ref, nextTick, onUnmounted } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { vDraggable } from 'vue-draggable-plus'
@@ -104,7 +104,44 @@ function onUpdate() {
   localStorage.setItem('songColumnData', JSON.stringify(columnData.value))
 }
 
-//todo 列拉伸 列显示隐藏
+let startX = 0
+let resizingCol = null
+let isResizing = false
+let initWidth = 0
+function startResize(e, col) {
+  if (col.key === 'coverUrl') {
+    return
+  }
+  e.preventDefault && e.preventDefault()
+  isResizing = true
+  startX = e.clientX
+  resizingCol = col
+  initWidth = col.width
+  document.addEventListener('mousemove', resize)
+  document.addEventListener('mouseup', stopResize)
+}
+
+function resize(e) {
+  if (!isResizing) return
+  const deltaX = e.clientX - startX
+  const newWidth = Math.max(50, initWidth + deltaX) // 设置最小宽度
+  resizingCol.width = newWidth
+}
+
+function stopResize() {
+  isResizing = false
+  document.removeEventListener('mousemove', resize)
+  document.removeEventListener('mouseup', stopResize)
+  onUpdate()
+}
+
+onUnmounted(() => {
+  document.removeEventListener('mousemove', resize)
+  document.removeEventListener('mouseup', stopResize)
+})
+
+//todo 列显示隐藏
+//todo 列选中
 </script>
 <template>
   <div
@@ -134,10 +171,22 @@ function onUpdate() {
         v-for="col of columnData"
         :key="col.key"
         :class="{ coverDiv: col.key == 'coverUrl', titleDiv: col.key != 'coverUrl' }"
-        style="border-right: 1px solid #000000; padding-left: 10px; box-sizing: border-box"
         :style="'width:' + col.width + 'px'"
+        style="
+          border-right: 1px solid #000000;
+          padding-left: 10px;
+          box-sizing: border-box;
+          display: flex;
+        "
       >
-        {{ col.columnName }}
+        <div style="flex-grow: 1; overflow: hidden">
+          <div style="width: 0; white-space: nowrap">{{ col.columnName }}</div>
+        </div>
+        <div
+          v-if="col.key !== 'coverUrl'"
+          style="width: 5px; cursor: e-resize"
+          @mousedown="startResize($event, col)"
+        ></div>
       </div>
     </div>
     <div>
@@ -166,7 +215,6 @@ function onUpdate() {
 </template>
 <style lang="scss" scoped>
 .coverDiv {
-  // width: 100px;
   height: 29px;
   line-height: 30px;
   border-right: 1px solid #2b2b2b;
@@ -178,7 +226,6 @@ function onUpdate() {
 }
 
 .titleDiv {
-  // width: 200px;
   height: 30px;
   line-height: 30px;
   padding-left: 10px;

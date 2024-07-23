@@ -44,6 +44,7 @@ getLibrary()
     v-if="activeDialog == '导入新曲目'"
     @cancel="activeDialog = ''"
   ></scanNewSongDialog>
+  <!-- todo手动添加指纹 -->
 </template>
 <style lang="scss">
 #app {
