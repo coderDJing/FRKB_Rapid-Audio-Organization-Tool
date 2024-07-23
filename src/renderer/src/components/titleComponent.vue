@@ -6,6 +6,7 @@ import logo from '@renderer/assets/logo.png'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { ref } from 'vue'
 import menuComponent from './menu.vue'
+import confirm from '@renderer/components/confirm.js'
 
 const emit = defineEmits(['openDialog'])
 const toggleMaximize = () => {
@@ -16,7 +17,15 @@ const toggleMinimize = () => {
   window.electron.ipcRenderer.send('toggle-minimize')
 }
 
-const toggleClose = () => {
+const toggleClose = async () => {
+  if (runtime.isProgressing) {
+    await confirm({
+      title: '导入',
+      content: ['请等待当前导入任务完成'],
+      confirmShow: false
+    })
+    return
+  }
   window.electron.ipcRenderer.send('toggle-close')
 }
 const runtime = useRuntimeStore()
@@ -45,7 +54,17 @@ const menuArr = ref([
 const menuClick = (item) => {
   item.show = true
 }
-const menuButtonClick = (item) => {
+const menuButtonClick = async (item) => {
+  if (item.name === '导入新曲目' || item.name === '手动添加曲目指纹') {
+    if (runtime.isProgressing) {
+      await confirm({
+        title: '导入',
+        content: ['请等待当前导入任务完成'],
+        confirmShow: false
+      })
+      return
+    }
+  }
   emit('openDialog', item.name)
 }
 </script>

@@ -138,7 +138,7 @@ function createWindow() {
     mainWindow.webContents.send('collapseButtonHandleClick', libraryName)
   })
 
-  ipcMain.on('startImportSongs', async (e, formData) => {
+  ipcMain.on('startImportSongs', async (e, formData, songListUUID) => {
     formData.songListPath = join(__dirname, formData.songListPath)
     let songFileUrls = await collectFilesWithExtensions(formData.folderPath, [
       '.mp3',
@@ -155,7 +155,7 @@ function createWindow() {
       processNum = 0
       mainWindow.webContents.send(
         'progressSet',
-        formData.isDeleteSourceFile ? '移动曲目中' : '复制曲目中',
+        formData.isDeleteSourceFile ? '移动曲目' : '复制曲目',
         processNum,
         songFileUrls.length
       )
@@ -187,7 +187,7 @@ function createWindow() {
         processNum++
         mainWindow.webContents.send(
           'progressSet',
-          formData.isDeleteSourceFile ? '移动曲目中' : '复制曲目中',
+          formData.isDeleteSourceFile ? '移动曲目' : '复制曲目',
           processNum,
           songFileUrls.length
         )
@@ -197,19 +197,14 @@ function createWindow() {
     async function analyseSongFingerprint() {
       mainWindow.webContents.send(
         'progressSet',
-        '分析声音指纹初始化中',
+        '分析声音指纹初始化',
         processNum,
         songFileUrls.length
       )
       processNum = 0
       const endHandle = () => {
         processNum++
-        mainWindow.webContents.send(
-          'progressSet',
-          '分析声音指纹中',
-          processNum,
-          songFileUrls.length
-        )
+        mainWindow.webContents.send('progressSet', '分析声音指纹', processNum, songFileUrls.length)
       }
       fingerprintResults = await executeScript(
         analyseSongFingerprintPyScriptUrl,
@@ -250,7 +245,7 @@ function createWindow() {
       processNum = 0
       mainWindow.webContents.send(
         'progressSet',
-        formData.isDeleteSourceFile ? '移动曲目中' : '复制曲目中',
+        formData.isDeleteSourceFile ? '移动曲目' : '复制曲目',
         processNum,
         toBeDealSongs.length
       )
@@ -286,18 +281,18 @@ function createWindow() {
         processNum++
         mainWindow.webContents.send(
           'progressSet',
-          formData.isDeleteSourceFile ? '移动曲目中' : '复制曲目中',
+          formData.isDeleteSourceFile ? '移动曲目' : '复制曲目',
           processNum,
           toBeDealSongs.length
         )
       }
       if (formData.isDeleteSourceFile) {
         processNum = 0
-        mainWindow.webContents.send('progressSet', '删除重复曲目中', processNum, delList.length)
+        mainWindow.webContents.send('progressSet', '删除重复曲目', processNum, delList.length)
         for (let item of delList) {
           fs.remove(item)
           processNum++
-          mainWindow.webContents.send('progressSet', '删除重复曲目中', processNum, delList.length)
+          mainWindow.webContents.send('progressSet', '删除重复曲目', processNum, delList.length)
         }
       }
       if (formData.isPushSongFingerprintLibrary) {
@@ -338,7 +333,7 @@ function createWindow() {
       }
     }
     contentArr.push('声音指纹库现有' + songFingerprintList.length + '声音指纹')
-    mainWindow.webContents.send('importFinished', contentArr)
+    mainWindow.webContents.send('importFinished', contentArr, songListUUID)
     return
   })
 }
@@ -382,15 +377,15 @@ ipcMain.handle('scanSongList', async (e, songListPath) => {
   let songFileUrls = await collectFilesWithExtensions(scanPath, ['.mp3', '.wav', '.flac'])
 
   function convertSecondsToMinutesSeconds(seconds) {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
+    const minutes = Math.floor(seconds / 60)
+    const remainingSeconds = seconds % 60
 
     // 使用 padStart 方法确保分钟和秒数都是两位数
-    const minutesStr = minutes.toString().padStart(2, '0');
-    const secondsStr = remainingSeconds.toString().padStart(2, '0');
+    const minutesStr = minutes.toString().padStart(2, '0')
+    const secondsStr = remainingSeconds.toString().padStart(2, '0')
 
     // 返回格式为 "MM:SS" 的字符串
-    return `${minutesStr}:${secondsStr}`;
+    return `${minutesStr}:${secondsStr}`
   }
   for (let url of songFileUrls) {
     let metadata = await mm.parseFile(url)

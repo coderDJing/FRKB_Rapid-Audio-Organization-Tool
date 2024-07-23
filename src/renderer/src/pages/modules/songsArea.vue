@@ -10,87 +10,96 @@ if (localStorage.getItem('songColumnData')) {
 } else {
   columnData.value = [
     {
-      columnName: "专辑封面",
+      columnName: '专辑封面',
       key: 'coverUrl',
-      width: 100,
+      width: 100
     },
     {
-      columnName: "曲目标题",
+      columnName: '曲目标题',
       key: 'title',
       width: 250
     },
     {
-      columnName: "表演者",
+      columnName: '表演者',
       key: 'artist',
       width: 200
     },
     {
-      columnName: "时长",
+      columnName: '时长',
       key: 'duration',
       width: 100
     },
     {
-      columnName: "专辑",
+      columnName: '专辑',
       key: 'album',
       width: 200
     },
     {
-      columnName: "风格",
+      columnName: '风格',
       key: 'genre',
       width: 200
     },
     {
-      columnName: "唱片公司",
+      columnName: '唱片公司',
       key: 'label',
       width: 200
     },
     {
-      columnName: "比特率",
+      columnName: '比特率',
       key: 'bitrate',
       width: 200
     },
     {
-      columnName: "编码格式",
+      columnName: '编码格式',
       key: 'container',
       width: 200
-    },
+    }
   ]
 }
 
 const runtime = useRuntimeStore()
 let songInfoArr = ref([])
 let loadingShow = ref(false)
+
+const openSongList = async () => {
+  for (let item of songInfoArr.value) {
+    if (item.coverUrl) {
+      URL.revokeObjectURL(item.coverUrl)
+    }
+  }
+  songInfoArr.value = []
+  await nextTick(() => {})
+  let songListPath = libraryUtils.findDirPathByUuid(
+    runtime.libraryTree,
+    runtime.selectedSongListUUID
+  )
+  let loadingSetTimeout = setTimeout(() => {
+    loadingShow.value = true
+  }, 100)
+  let scanData = await window.electron.ipcRenderer.invoke('scanSongList', songListPath)
+  clearTimeout(loadingSetTimeout)
+  loadingShow.value = false
+  for (let item of scanData) {
+    if (item.cover) {
+      let blob = new Blob([Uint8Array.from(item.cover.data)], { type: item.cover.format })
+      const blobUrl = URL.createObjectURL(blob)
+      item.coverUrl = blobUrl
+    }
+  }
+  songInfoArr.value = scanData
+}
 watch(
   () => runtime.selectedSongListUUID,
   async () => {
-    for (let item of songInfoArr.value) {
-      if (item.coverUrl) {
-        URL.revokeObjectURL(item.coverUrl)
-      }
-    }
-    songInfoArr.value = []
-    await nextTick(() => { })
-    let songListPath = libraryUtils.findDirPathByUuid(
-      runtime.libraryTree,
-      runtime.selectedSongListUUID
-    )
-    let loadingSetTimeout = setTimeout(() => {
-      loadingShow.value = true
-    }, 100)
-    let scanData = await window.electron.ipcRenderer.invoke('scanSongList', songListPath)
-    clearTimeout(loadingSetTimeout)
-    loadingShow.value = false
-    for (let item of scanData) {
-      if (item.cover) {
-        let blob = new Blob([Uint8Array.from(item.cover.data)], { type: item.cover.format })
-        const blobUrl = URL.createObjectURL(blob)
-        item.coverUrl = blobUrl
-      }
-    }
-    songInfoArr.value = scanData
-    console.log(scanData)
+    await openSongList()
   }
 )
+
+window.electron.ipcRenderer.on('importFinished', async (event, contentArr, songListUUID) => {
+  if (songListUUID == runtime.selectedSongListUUID) {
+    await openSongList()
+  }
+})
 function onUpdate() {
   localStorage.setItem('songColumnData', JSON.stringify(columnData.value))
 }
@@ -98,32 +107,57 @@ function onUpdate() {
 //todo 列拉伸 列显示隐藏
 </script>
 <template>
-  <div v-show="loadingShow"
-    style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center">
+  <div
+    v-show="loadingShow"
+    style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center"
+  >
     <div class="loading"></div>
   </div>
-  <div style="height: 100%; width: 100%; overflow: auto" v-if="runtime.selectedSongListUUID && songInfoArr.length != 0">
-    <div class="songItem lightBackground" style="position: sticky; top: 0" v-draggable="[columnData, {
-      animation: 150,
-      direction: 'horizontal',
-      onUpdate
-    }]">
-      <div class="coverDiv lightBackground unselectable" v-for="col of columnData" :key="col.key"
+  <div
+    style="height: 100%; width: 100%; overflow: auto"
+    v-if="runtime.selectedSongListUUID && songInfoArr.length != 0"
+  >
+    <div
+      class="songItem lightBackground"
+      style="position: sticky; top: 0"
+      v-draggable="[
+        columnData,
+        {
+          animation: 150,
+          direction: 'horizontal',
+          onUpdate
+        }
+      ]"
+    >
+      <div
+        class="coverDiv lightBackground unselectable"
+        v-for="col of columnData"
+        :key="col.key"
         :class="{ coverDiv: col.key == 'coverUrl', titleDiv: col.key != 'coverUrl' }"
         style="border-right: 1px solid #000000; padding-left: 10px; box-sizing: border-box"
-        :style="'width:' + col.width + 'px'">
+        :style="'width:' + col.width + 'px'"
+      >
         {{ col.columnName }}
       </div>
     </div>
     <div>
       <div v-for="(item, index) of songInfoArr" :key="item.uuid" class="songItem">
-        <div :class="{ lightBackground: index % 2 === 1, darkBackground: index % 2 === 0 }" style="display: flex">
+        <div
+          :class="{ lightBackground: index % 2 === 1, darkBackground: index % 2 === 0 }"
+          style="display: flex"
+        >
           <template v-for="col of columnData" :key="col.key">
-            <div v-if="col.key == 'coverUrl'" class="coverDiv" style="overflow: hidden"
-              :style="'width:' + col.width + 'px'">
+            <div
+              v-if="col.key == 'coverUrl'"
+              class="coverDiv"
+              style="overflow: hidden"
+              :style="'width:' + col.width + 'px'"
+            >
               <img :src="item.coverUrl" class="unselectable" />
             </div>
-            <div v-else class="titleDiv" :style="'width:' + col.width + 'px'">{{ item[col.key] }}</div>
+            <div v-else class="titleDiv" :style="'width:' + col.width + 'px'">
+              {{ item[col.key] }}
+            </div>
           </template>
         </div>
       </div>
@@ -206,7 +240,6 @@ function onUpdate() {
 }
 
 @keyframes rectangle {
-
   0%,
   80%,
   100% {
