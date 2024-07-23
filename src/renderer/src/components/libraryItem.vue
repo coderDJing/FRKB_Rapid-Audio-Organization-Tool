@@ -1,5 +1,5 @@
 <script setup>
-import { ref, nextTick, watch } from 'vue'
+import { ref, nextTick } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu.vue'
 import libraryItem from '@renderer/components/libraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -132,6 +132,14 @@ const menuButtonClick = async (item, e) => {
     ]
     confirmDialogShow.value = true
   } else if (item.menuName == '导入曲目') {
+    if (runtime.isProgressing) {
+      await confirm({
+        title: '导入',
+        content: ['请等待当前导入任务完成'],
+        confirmShow: false
+      })
+      return
+    }
     importSongsDialogShow.value = true
   }
 }
@@ -584,7 +592,15 @@ indentWidth.value = (libraryUtils.getDepthByUuid(runtime.libraryTree, props.uuid
           d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"
         />
       </svg>
-      <img v-if="dirData.type == 'songList'" style="width: 13px; height: 13px" :src="listIcon" />
+      <img
+        v-if="dirData.type == 'songList' && runtime.importingSongListUUID != props.uuid"
+        style="width: 13px; height: 13px"
+        :src="listIcon"
+      />
+      <div
+        v-if="dirData.type == 'songList' && runtime.importingSongListUUID == props.uuid"
+        class="loading"
+      ></div>
     </div>
     <div style="height: 23px; width: calc(100% - 20px)">
       <div
@@ -665,6 +681,26 @@ indentWidth.value = (libraryUtils.getDepthByUuid(runtime.libraryTree, props.uuid
   </scanNewSongDialog>
 </template>
 <style lang="scss" scoped>
+.loading {
+  width: 8px;
+  height: 8px;
+  border: 2px solid #cccccc;
+  border-top-color: transparent;
+  border-radius: 100%;
+  animation: circle infinite 0.75s linear;
+}
+
+// 转转转动画
+@keyframes circle {
+  0% {
+    transform: rotate(0);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
 .selectedDir {
   background-color: #37373d;
 

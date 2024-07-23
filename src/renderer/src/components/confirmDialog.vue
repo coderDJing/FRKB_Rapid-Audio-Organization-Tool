@@ -18,6 +18,10 @@ const props = defineProps({
     type: Number,
     default: 180
   },
+  innerWidth: {
+    type: Number,
+    default: 300
+  },
   confirmCallback: {
     type: Function
   },
@@ -42,9 +46,9 @@ const cancel = () => {
 <template>
   <div class="dialog unselectable" style="position: absolute; font-size: 14px">
     <div
-      style="width: 300px; display: flex; flex-direction: column; justify-content: space-between"
+      style="display: flex; flex-direction: column; justify-content: space-between"
       class="inner"
-      :style="'height:' + innerHeight + 'px'"
+      :style="'height:' + innerHeight + 'px;' + 'width:' + innerWidth + 'px;'"
     >
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">

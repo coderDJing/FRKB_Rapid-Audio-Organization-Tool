@@ -102,13 +102,17 @@ const clickChooseSongList = () => {
   runtime.selectSongListDialogShow = true
 }
 let songListSelectedPath = ''
+let importingSongListUUID = ''
 if (props.songListUuid) {
+  importingSongListUUID = props.songListUuid
   songListSelectedPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, props.songListUuid)
   let songListSelectedPathArr = songListSelectedPath.split('/')
   songListSelectedPathArr.shift()
   songListSelected.value = songListSelectedPathArr.join('\\')
 }
+
 const selectSongListDialogConfirm = (uuid) => {
+  importingSongListUUID = uuid
   songListSelectedPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, uuid)
   let songListSelectedPathArr = libraryUtils.findDirPathByUuid(runtime.libraryTree, uuid).split('/')
   songListSelectedPathArr.shift()
@@ -129,15 +133,22 @@ const confirm = () => {
     }
     return
   }
-  window.electron.ipcRenderer.send('startImportSongs', {
-    folderPath: folderPathVal.value,
-    songListPath: songListSelectedPath,
-    isDeleteSourceFile: runtime.layoutConfig.scanNewSongDialog.isDeleteSourceFile,
-    isDeleteSourceDir: runtime.layoutConfig.scanNewSongDialog.isDeleteSourceDir,
-    isComparisonSongFingerprint: runtime.layoutConfig.scanNewSongDialog.isComparisonSongFingerprint,
-    isPushSongFingerprintLibrary:
-      runtime.layoutConfig.scanNewSongDialog.isPushSongFingerprintLibrary
-  })
+  runtime.importingSongListUUID = importingSongListUUID
+  runtime.isProgressing = true
+  window.electron.ipcRenderer.send(
+    'startImportSongs',
+    {
+      folderPath: folderPathVal.value,
+      songListPath: songListSelectedPath,
+      isDeleteSourceFile: runtime.layoutConfig.scanNewSongDialog.isDeleteSourceFile,
+      isDeleteSourceDir: runtime.layoutConfig.scanNewSongDialog.isDeleteSourceDir,
+      isComparisonSongFingerprint:
+        runtime.layoutConfig.scanNewSongDialog.isComparisonSongFingerprint,
+      isPushSongFingerprintLibrary:
+        runtime.layoutConfig.scanNewSongDialog.isPushSongFingerprintLibrary
+    },
+    importingSongListUUID
+  )
   cancel()
 }
 const cancel = () => {
