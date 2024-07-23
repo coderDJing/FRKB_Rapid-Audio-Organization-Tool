@@ -4,7 +4,7 @@
   "scanNewSongDialog": {
     "isDeleteSourceFile": false,
     "isDeleteSourceDir": false,
-    "isComparisonSongFingerprint": false,
+    "isComparisonSongFingerprint": true,
     "isPushSongFingerprintLibrary": true
   },
   "mainWindowWidth": 900,
