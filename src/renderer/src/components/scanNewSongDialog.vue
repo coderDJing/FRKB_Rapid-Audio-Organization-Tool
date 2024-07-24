@@ -96,9 +96,6 @@ const flashBorder = (flashAreaName) => {
 const songListSelected = ref('')
 
 const clickChooseSongList = () => {
-  if (props.songListUuid) {
-    return
-  }
   runtime.selectSongListDialogShow = true
 }
 let songListSelectedPath = ''
