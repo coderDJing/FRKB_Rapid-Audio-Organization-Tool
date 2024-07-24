@@ -16,6 +16,10 @@ const props = defineProps({
   },
   libraryName: {
     type: String
+  },
+  needPaddingLeft: {
+    type: Boolean,
+    default: true
   }
 })
 const runtime = useRuntimeStore()
@@ -150,13 +154,19 @@ const contextmenuEvent = (event) => {
 
 const dirChildShow = ref(false)
 const dirChildRendered = ref(false)
-const dirHandleClick = async () => {
+const dirHandleClick = () => {
   runtime.activeMenuUUID = ''
   if (dirData.type == 'songList') {
     runtime.dialogSelectedSongListUUID = props.uuid
   } else {
     dirChildRendered.value = true
     dirChildShow.value = !dirChildShow.value
+  }
+}
+const emits = defineEmits(['dblClickSongList'])
+const dirHandleDblClick = () => {
+  if (dirData.type == 'songList') {
+    emits('dblClickSongList')
   }
 }
 
@@ -533,9 +543,10 @@ indentWidth.value = (libraryUtils.getDepthByUuid(runtime.libraryTree, props.uuid
   <div
     class="mainBody"
     style="display: flex; cursor: pointer; box-sizing: border-box"
-    :style="'padding-left:' + indentWidth + 'px'"
+    :style="'padding-left:' + (props.needPaddingLeft ? indentWidth : 0) + 'px'"
     @contextmenu.stop="contextmenuEvent"
     @click.stop="dirHandleClick()"
+    @dblclick.stop="dirHandleDblClick()"
     @dragover.stop.prevent="dragover"
     @dragstart.stop="dragstart"
     @dragenter.stop.prevent="dragenter"
@@ -638,7 +649,11 @@ indentWidth.value = (libraryUtils.getDepthByUuid(runtime.libraryTree, props.uuid
     style="width: 100%; box-sizing: border-box"
   >
     <template v-for="item of dirData.children" :key="item.uuid">
-      <dialogLibraryItem :uuid="item.uuid" :libraryName="props.libraryName" />
+      <dialogLibraryItem
+        :uuid="item.uuid"
+        :libraryName="props.libraryName"
+        @dblClickSongList="emits('dblClickSongList')"
+      />
     </template>
   </div>
   <rightClickMenu

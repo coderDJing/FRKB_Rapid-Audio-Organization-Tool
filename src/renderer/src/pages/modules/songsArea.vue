@@ -1,8 +1,9 @@
 <script setup>
-import { watch, ref, nextTick, onUnmounted } from 'vue'
+import { watch, ref, nextTick, onUnmounted, computed } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { vDraggable } from 'vue-draggable-plus'
+import songAreaColRightClickMenu from '@renderer/components/songAreaColRightClickMenu.vue'
 
 let columnData = ref([])
 if (localStorage.getItem('songColumnData')) {
@@ -12,46 +13,55 @@ if (localStorage.getItem('songColumnData')) {
     {
       columnName: '专辑封面',
       key: 'coverUrl',
+      show: true,
       width: 100
     },
     {
       columnName: '曲目标题',
       key: 'title',
+      show: true,
       width: 250
     },
     {
       columnName: '表演者',
       key: 'artist',
+      show: true,
       width: 200
     },
     {
       columnName: '时长',
       key: 'duration',
+      show: true,
       width: 100
     },
     {
       columnName: '专辑',
       key: 'album',
+      show: true,
       width: 200
     },
     {
       columnName: '风格',
       key: 'genre',
+      show: true,
       width: 200
     },
     {
       columnName: '唱片公司',
       key: 'label',
+      show: true,
       width: 200
     },
     {
       columnName: '比特率',
       key: 'bitrate',
+      show: true,
       width: 200
     },
     {
       columnName: '编码格式',
       key: 'container',
+      show: true,
       width: 200
     }
   ]
@@ -140,7 +150,25 @@ onUnmounted(() => {
   document.removeEventListener('mouseup', stopResize)
 })
 
-//todo 列显示隐藏
+const colRightClickMenuShow = ref(false)
+const colClickEvent = ref({})
+const contextmenuEvent = (event) => {
+  colClickEvent.value = event
+  colRightClickMenuShow.value = true
+}
+
+const colMenuHandleClick = (item) => {
+  for (let col of columnData.value) {
+    if (col.key === item.key) {
+      col.show = !col.show
+      onUpdate()
+      return
+    }
+  }
+}
+let columnDataArr = computed(() => {
+  return columnData.value.filter((item) => item.show)
+})
 //todo 列选中
 </script>
 <template>
@@ -155,6 +183,7 @@ onUnmounted(() => {
     v-if="runtime.selectedSongListUUID && songInfoArr.length != 0"
   >
     <div
+      @contextmenu.stop="contextmenuEvent"
       class="songItem lightBackground"
       style="position: sticky; top: 0"
       v-draggable="[
@@ -168,7 +197,7 @@ onUnmounted(() => {
     >
       <div
         class="coverDiv lightBackground unselectable"
-        v-for="col of columnData"
+        v-for="col of columnDataArr"
         :key="col.key"
         :class="{ coverDiv: col.key == 'coverUrl', titleDiv: col.key != 'coverUrl' }"
         :style="'width:' + col.width + 'px'"
@@ -195,23 +224,31 @@ onUnmounted(() => {
           :class="{ lightBackground: index % 2 === 1, darkBackground: index % 2 === 0 }"
           style="display: flex"
         >
-          <template v-for="col of columnData" :key="col.key">
-            <div
-              v-if="col.key == 'coverUrl'"
-              class="coverDiv"
-              style="overflow: hidden"
-              :style="'width:' + col.width + 'px'"
-            >
-              <img :src="item.coverUrl" class="unselectable" />
-            </div>
-            <div v-else class="titleDiv" :style="'width:' + col.width + 'px'">
-              {{ item[col.key] }}
-            </div>
+          <template v-for="col of columnDataArr" :key="col.key">
+            <template v-if="col.show">
+              <div
+                v-if="col.key == 'coverUrl'"
+                class="coverDiv"
+                style="overflow: hidden"
+                :style="'width:' + col.width + 'px'"
+              >
+                <img :src="item.coverUrl" class="unselectable" />
+              </div>
+              <div v-else class="titleDiv" :style="'width:' + col.width + 'px'">
+                {{ item[col.key] }}
+              </div>
+            </template>
           </template>
         </div>
       </div>
     </div>
   </div>
+  <songAreaColRightClickMenu
+    v-model="colRightClickMenuShow"
+    :clickEvent="colClickEvent"
+    :columnData="columnData"
+    @colMenuHandleClick="colMenuHandleClick"
+  />
 </template>
 <style lang="scss" scoped>
 .coverDiv {

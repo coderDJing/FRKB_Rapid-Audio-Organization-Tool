@@ -6,7 +6,24 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { v4 as uuidv4 } from 'uuid'
 import confirm from '@renderer/components/confirm.js'
+
 const runtime = useRuntimeStore()
+
+let recentDialogSelectedSongListUUID = []
+let localStorageRecentDialogSelectedSongListUUID = localStorage.getItem(
+  'recentDialogSelectedSongListUUID'
+)
+if (localStorageRecentDialogSelectedSongListUUID) {
+  recentDialogSelectedSongListUUID = JSON.parse(localStorageRecentDialogSelectedSongListUUID)
+}
+const recentSongListArr = ref([])
+for (let uuid of recentDialogSelectedSongListUUID) {
+  let obj = libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, uuid)
+  if (obj) {
+    recentSongListArr.value.push(obj)
+  }
+}
+
 let filtrateLibraryUUID = runtime.libraryTree.children.find(
   (element) => element.dirName == '筛选库'
 ).uuid
@@ -178,6 +195,16 @@ const confirmHandle = () => {
       flashBorder('selectSongList')
     }
   } else {
+    if (recentDialogSelectedSongListUUID.indexOf(runtime.dialogSelectedSongListUUID) === -1) {
+      recentDialogSelectedSongListUUID.push(runtime.dialogSelectedSongListUUID)
+      if (recentDialogSelectedSongListUUID.length > 3) {
+        recentDialogSelectedSongListUUID.shift()
+      }
+      localStorage.setItem(
+        'recentDialogSelectedSongListUUID',
+        JSON.stringify(recentDialogSelectedSongListUUID)
+      )
+    }
     emits('confirm', runtime.dialogSelectedSongListUUID)
   }
 }
@@ -229,8 +256,25 @@ const cancel = () => {
         :class="{ 'is-flashing': flashArea == 'selectSongList' }"
         v-if="libraryData.children.length"
       >
+        <template v-if="recentSongListArr.length > 0">
+          <div><span style="font-size: 14px">最近使用</span></div>
+          <div style="width: 100%; background-color: #8c8c8c; height: 1px"></div>
+          <template v-for="item of recentSongListArr" :key="item.uuid">
+            <dialogLibraryItem
+              :uuid="item.uuid"
+              :libraryName="libraryData.dirName + 'Dialog'"
+              @dblClickSongList="confirmHandle()"
+              :needPaddingLeft="false"
+            />
+          </template>
+          <div style="width: 100%; background-color: #8c8c8c; height: 1px"></div>
+        </template>
         <template v-for="item of libraryData.children" :key="item.uuid">
-          <dialogLibraryItem :uuid="item.uuid" :libraryName="libraryData.dirName + 'Dialog'" />
+          <dialogLibraryItem
+            :uuid="item.uuid"
+            :libraryName="libraryData.dirName + 'Dialog'"
+            @dblClickSongList="confirmHandle()"
+          />
         </template>
         <div
           style="flex-grow: 1"
