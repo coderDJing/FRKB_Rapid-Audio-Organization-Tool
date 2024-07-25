@@ -97,6 +97,7 @@ const openSongList = async () => {
     }
   }
   songInfoArr.value = scanData
+  console.log(songInfoArr.value)
 }
 watch(
   () => runtime.selectedSongListUUID,
@@ -107,7 +108,9 @@ watch(
 
 window.electron.ipcRenderer.on('importFinished', async (event, contentArr, songListUUID) => {
   if (songListUUID == runtime.selectedSongListUUID) {
-    await openSongList()
+    setTimeout(async () => {
+      await openSongList()
+    }, 1000)
   }
 })
 function onUpdate() {
@@ -169,7 +172,16 @@ const colMenuHandleClick = (item) => {
 let columnDataArr = computed(() => {
   return columnData.value.filter((item) => item.show)
 })
-//todo 列选中
+const selectedSongFilePath = ref('')
+const songClick = (song) => {
+  selectedSongFilePath.value = song.filePath
+}
+const playingSongFilePath = ref('')
+const songDblClick = (song) => {
+  playingSongFilePath.value = song.filePath
+  runtime.playingSong = song
+  window.electron.ipcRenderer.send('readSongFile', song.filePath)
+}
 </script>
 <template>
   <div
@@ -219,9 +231,21 @@ let columnDataArr = computed(() => {
       </div>
     </div>
     <div>
-      <div v-for="(item, index) of songInfoArr" :key="item.uuid" class="songItem">
+      <div
+        v-for="(item, index) of songInfoArr"
+        :key="item.filePath"
+        class="songItem"
+        @click="songClick(item)"
+        @contextmenu="songClick(item)"
+        @dblclick="songDblClick(item)"
+      >
         <div
-          :class="{ lightBackground: index % 2 === 1, darkBackground: index % 2 === 0 }"
+          :class="{
+            lightBackground: index % 2 === 1 && item.filePath !== selectedSongFilePath,
+            darkBackground: index % 2 === 0 && item.filePath !== selectedSongFilePath,
+            selectedSong: item.filePath === selectedSongFilePath,
+            playingSong: item.filePath === playingSongFilePath
+          }"
           style="display: flex"
         >
           <template v-for="col of columnDataArr" :key="col.key">
@@ -251,6 +275,15 @@ let columnDataArr = computed(() => {
   />
 </template>
 <style lang="scss" scoped>
+.selectedSong {
+  background-color: #37373d;
+}
+
+.playingSong {
+  background-color: #0078d4 !important;
+  color: white;
+}
+
 .coverDiv {
   height: 29px;
   line-height: 30px;
