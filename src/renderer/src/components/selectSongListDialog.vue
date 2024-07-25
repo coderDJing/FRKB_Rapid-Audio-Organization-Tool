@@ -196,15 +196,22 @@ const confirmHandle = () => {
     }
   } else {
     if (recentDialogSelectedSongListUUID.indexOf(runtime.dialogSelectedSongListUUID) === -1) {
-      recentDialogSelectedSongListUUID.push(runtime.dialogSelectedSongListUUID)
+      recentDialogSelectedSongListUUID.unshift(runtime.dialogSelectedSongListUUID)
       if (recentDialogSelectedSongListUUID.length > 3) {
-        recentDialogSelectedSongListUUID.shift()
+        recentDialogSelectedSongListUUID.pop()
       }
-      localStorage.setItem(
-        'recentDialogSelectedSongListUUID',
-        JSON.stringify(recentDialogSelectedSongListUUID)
+    } else {
+      recentDialogSelectedSongListUUID.unshift(
+        recentDialogSelectedSongListUUID.splice(
+          recentDialogSelectedSongListUUID.indexOf(runtime.dialogSelectedSongListUUID),
+          1
+        )[0]
       )
     }
+    localStorage.setItem(
+      'recentDialogSelectedSongListUUID',
+      JSON.stringify(recentDialogSelectedSongListUUID)
+    )
     emits('confirm', runtime.dialogSelectedSongListUUID)
   }
 }

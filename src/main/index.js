@@ -138,6 +138,11 @@ function createWindow() {
     mainWindow.webContents.send('collapseButtonHandleClick', libraryName)
   })
 
+  ipcMain.on('readSongFile', async (e, filePath) => {
+    let file = await fs.readFile(filePath)
+    mainWindow.webContents.send('readedSongFile', file)
+  })
+
   ipcMain.on('startImportSongs', async (e, formData, songListUUID) => {
     formData.songListPath = join(__dirname, formData.songListPath)
     let songFileUrls = await collectFilesWithExtensions(formData.folderPath, [
@@ -391,7 +396,7 @@ ipcMain.handle('scanSongList', async (e, songListPath) => {
     let metadata = await mm.parseFile(url)
     let cover = mm.selectCover(metadata.common.picture)
     songInfoArr.push({
-      uuid: uuidv4(),
+      filePath: url,
       cover: cover,
       title: metadata.common.title,
       artist: metadata.common.artist,
