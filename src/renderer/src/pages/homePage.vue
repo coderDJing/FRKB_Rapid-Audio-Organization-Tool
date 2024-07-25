@@ -4,6 +4,7 @@ import libraryArea from './modules/libraryArea.vue'
 import songsArea from './modules/songsArea.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { onUnmounted, ref } from 'vue'
+import songPlayer from './modules/songPlayer.vue'
 const runtime = useRuntimeStore()
 let startX = 0
 let isResizing = false
@@ -105,7 +106,9 @@ const librarySelectedChange = (item) => {
           <songsArea />
         </div>
       </div>
-      <div style="height: 50px; border-top: 1px solid #2b2b2b">//todo播放器</div>
+      <div style="height: 50px; border-top: 1px solid #2b2b2b">
+        <songPlayer />
+      </div>
     </div>
   </div>
 </template>
