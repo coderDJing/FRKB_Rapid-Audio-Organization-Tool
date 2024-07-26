@@ -21,43 +21,6 @@ const clickChooseDir = async () => {
   }
 }
 
-//todo测试音频播放可行性代码待删除-------------
-// const audioContext = new AudioContext();
-// async function play() {
-//   const audioData = await window.electron.ipcRenderer.invoke('aaa')
-//   const uint8Buffer = Uint8Array.from(audioData)
-//   // const bolb = new Blob([uint8Buffer])
-//   // let bolbUrl = window.URL.createObjectURL(bolb)
-//   // setTimeout(() => {
-//   //   let audioPlayer = document.getElementById('audioPlayer');
-//   //   audioPlayer.src = bolbUrl;
-//   //   audioPlayer.addEventListener('ended', function () {
-//   //     window.URL.revokeObjectURL(bolbUrl);
-//   //   });
-//   // }, 1000)
-
-//   // audioContext.decodeAudioData(uint8Buffer.buffer, (buffer) => {
-//   //   const source = audioContext.createBufferSource();
-//   //   source.buffer = buffer;
-//   //   source.connect(audioContext.destination);
-//   //   source.start(0); // 开始播放
-//   // })
-// }
-// play()
-// async function play() {
-//   const audioData = await window.electron.ipcRenderer.invoke('aaa')
-//   const uint8Buffer = Uint8Array.from(audioData)
-
-//   audioContext.decodeAudioData(uint8Buffer.buffer, (buffer) => {
-//     const source = audioContext.createBufferSource();
-//     source.buffer = buffer;
-//     source.connect(audioContext.destination);
-//     source.start(0); // 开始播放
-//   })
-// }
-// play()
-//---------------------
-
 const runtimeLayoutConfigChanged = () => {
   window.electron.ipcRenderer.send('layoutConfigChanged', JSON.stringify(runtime.layoutConfig))
 }
@@ -176,9 +139,6 @@ const hint2IconMouseout = () => {
 </script>
 <template>
   <div class="dialog unselectable">
-    <!-- <audio id="audioPlayer" controls autoplay>
-      todo测试音频播放可行性代码待删除-------------
-    </audio> -->
     <div
       style="
         width: 450px;

@@ -369,13 +369,7 @@ ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
   }
 })
 
-//todo测试音频播放可行性代码待删除-------------
-// ipcMain.handle('aaa', async (e) => {
-//   let mp3 = fs.readFileSync(join(__dirname, 'library/1.mp3'))
-//   return mp3
-// })
-
-ipcMain.handle('scanSongList', async (e, songListPath) => {
+ipcMain.handle('scanSongList', async (e, songListPath, songListUUID) => {
   let scanPath = join(__dirname, songListPath)
   const mm = await import('music-metadata')
   let songInfoArr = []
@@ -408,7 +402,7 @@ ipcMain.handle('scanSongList', async (e, songListPath) => {
       container: metadata.format.container //编码格式
     })
   }
-  return songInfoArr
+  return { scanData: songInfoArr, songListUUID }
 })
 
 ipcMain.handle('moveToDirSample', async (e, src, dest) => {
