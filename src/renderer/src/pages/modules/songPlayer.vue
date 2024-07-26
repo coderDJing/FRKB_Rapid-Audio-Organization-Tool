@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, watch } from 'vue'
 import WaveSurfer from 'wavesurfer.js'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import musicIcon from '@renderer/assets/musicIcon.png'
+import playerControls from '../../components/playerControls.vue'
 
 const runtime = useRuntimeStore()
 const waveform = ref(null)
@@ -15,21 +16,14 @@ const ctx = canvas.getContext('2d')
 // Define the waveform gradient
 const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
 gradient.addColorStop(0, '#cccccc') // Top color
-// gradient.addColorStop((canvas.height * 0.7) / canvas.height, '#656666') // Top color
-// gradient.addColorStop((canvas.height * 0.7 + 1) / canvas.height, '#ffffff') // White line
-// gradient.addColorStop((canvas.height * 0.7 + 2) / canvas.height, '#ffffff') // White line
-// gradient.addColorStop((canvas.height * 0.7 + 3) / canvas.height, '#B1B1B1') // Bottom color
 gradient.addColorStop(1, '#cccccc') // Bottom color
 
 const progressGradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
 progressGradient.addColorStop(0, '#0078d4') // Top color
-// progressGradient.addColorStop((canvas.height * 0.7) / canvas.height, '#EB4926') // Top color
-// progressGradient.addColorStop((canvas.height * 0.7 + 1) / canvas.height, '#ffffff') // White line
-// progressGradient.addColorStop((canvas.height * 0.7 + 2) / canvas.height, '#ffffff') // White line
-// progressGradient.addColorStop((canvas.height * 0.7 + 3) / canvas.height, '#F6B094') // Bottom color
 progressGradient.addColorStop(1, '#0078d4') // Bottom color
 const waveformShow = ref(false)
 
+const playerControlsRef = ref(null)
 onMounted(() => {
   // 初始化 WaveSurfer 实例
   wavesurferInstance = WaveSurfer.create({
@@ -68,14 +62,13 @@ onMounted(() => {
     wavesurferInstance.on('finish', () => {
       console.log('finish')
     })
+    wavesurferInstance.on('pause', () => {
+      playerControlsRef.value.setPlayingValue(false)
+    })
+    wavesurferInstance.on('play', () => {
+      playerControlsRef.value.setPlayingValue(true)
+    })
   }
-
-  window.electron.ipcRenderer.on('readedSongFile', (event, audioData) => {
-    const uint8Buffer = Uint8Array.from(audioData)
-    const blob = new Blob([uint8Buffer])
-    waveformShow.value = true
-    wavesurferInstance.loadBlob(blob)
-  })
 })
 
 onUnmounted(() => {
@@ -87,6 +80,52 @@ onUnmounted(() => {
 })
 
 const songInfoShow = ref(false)
+const coverBlobUrl = ref('')
+window.electron.ipcRenderer.on('readedSongFile', (event, audioData) => {
+  const uint8Buffer = Uint8Array.from(audioData)
+  const blob = new Blob([uint8Buffer])
+  waveformShow.value = true
+  wavesurferInstance.loadBlob(blob)
+  if (runtime.playingData.playingSong.cover) {
+    if (coverBlobUrl.value) {
+      URL.revokeObjectURL(coverBlobUrl.value)
+    }
+    let coverBlob = new Blob([Uint8Array.from(runtime.playingData.playingSong.cover.data)], {
+      type: runtime.playingData.playingSong.cover.format
+    })
+    coverBlobUrl.value = URL.createObjectURL(coverBlob)
+  } else {
+    if (coverBlobUrl.value) {
+      URL.revokeObjectURL(coverBlobUrl.value)
+    }
+    coverBlobUrl.value = ''
+  }
+})
+
+const pause = () => {
+  wavesurferInstance.pause()
+}
+
+const play = () => {
+  wavesurferInstance.play()
+}
+
+const fastForward = () => {
+  wavesurferInstance.skip(10)
+}
+const fastBackward = () => {
+  wavesurferInstance.skip(-5)
+}
+const nextSong = () => {
+  let index = runtime.playingData.playingSongListData.findIndex((item) => {
+    return item.filePath === runtime.playingData.playingSong.filePath
+  })
+  if (index === runtime.playingData.playingSongListData.length - 1) {
+    return
+  }
+  runtime.playingData.playingSong = runtime.playingData.playingSongListData[index + 1]
+  window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
+}
 </script>
 <template>
   <div
@@ -111,11 +150,7 @@ const songInfoShow = ref(false)
         "
         @mouseenter="songInfoShow = true"
       >
-        <img
-          v-if="runtime.playingSong.coverUrl"
-          :src="runtime.playingSong.coverUrl"
-          class="songCover"
-        />
+        <img v-if="coverBlobUrl" :src="coverBlobUrl" class="songCover" />
         <img v-else :src="musicIcon" style="width: 25px; height: 25px" />
       </div>
     </div>
@@ -123,24 +158,37 @@ const songInfoShow = ref(false)
       <div v-if="songInfoShow" @mouseleave="songInfoShow = false" class="songInfo">
         <div class="cover">
           <img
-            v-if="runtime.playingSong.coverUrl"
-            :src="runtime.playingSong.coverUrl"
+            v-if="coverBlobUrl"
+            :src="coverBlobUrl"
             style="width: 280px; height: 280px"
+            draggable="false"
           />
-          <img v-else :src="musicIcon" style="width: 48px; height: 48px" />
+          <img v-else :src="musicIcon" style="width: 48px; height: 48px" draggable="false" />
         </div>
         <div style="font-size: 14px" class="info">
-          {{ runtime.playingSong.title }}
+          {{ runtime.playingData.playingSong.title }}
         </div>
         <div style="font-size: 12px" class="info">
-          {{ runtime.playingSong.artist }}
+          {{ runtime.playingData.playingSong.artist }}
         </div>
         <div style="font-size: 10px" class="info">
-          {{ runtime.playingSong.album }}
+          {{ runtime.playingData.playingSong.album }}
+        </div>
+        <div style="font-size: 10px" class="info">
+          {{ runtime.playingData.playingSong.label }}
         </div>
       </div>
     </transition>
-    <div style="width: 260px">//todo Controls</div>
+    <div style="width: 260px" v-show="waveformShow">
+      <playerControls
+        ref="playerControlsRef"
+        @pause="pause"
+        @play="play"
+        @fastForward="fastForward"
+        @fastBackward="fastBackward"
+        @nextSong="nextSong"
+      />
+    </div>
     <div style="flex-grow: 1">
       <div id="waveform" ref="waveform" v-show="waveformShow">
         <div id="time">0:00</div>
@@ -153,7 +201,7 @@ const songInfoShow = ref(false)
 <style lang="scss" scoped>
 .songInfo {
   width: 300px;
-  height: 350px;
+  height: 370px;
   background-color: #202020;
   position: absolute;
   bottom: 25px;

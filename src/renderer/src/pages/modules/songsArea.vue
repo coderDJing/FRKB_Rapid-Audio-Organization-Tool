@@ -4,7 +4,6 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { vDraggable } from 'vue-draggable-plus'
 import songAreaColRightClickMenu from '@renderer/components/songAreaColRightClickMenu.vue'
-
 let columnData = ref([])
 if (localStorage.getItem('songColumnData')) {
   columnData.value = JSON.parse(localStorage.getItem('songColumnData'))
@@ -79,16 +78,26 @@ const openSongList = async () => {
   }
   songInfoArr.value = []
   await nextTick(() => {})
+
   let songListPath = libraryUtils.findDirPathByUuid(
     runtime.libraryTree,
     runtime.selectedSongListUUID
   )
+  loadingShow.value = false
   let loadingSetTimeout = setTimeout(() => {
     loadingShow.value = true
   }, 100)
-  let scanData = await window.electron.ipcRenderer.invoke('scanSongList', songListPath)
+  let { scanData, songListUUID } = await window.electron.ipcRenderer.invoke(
+    'scanSongList',
+    songListPath,
+    runtime.selectedSongListUUID
+  )
   clearTimeout(loadingSetTimeout)
   loadingShow.value = false
+  if (songListUUID != runtime.selectedSongListUUID) {
+    return
+  }
+
   for (let item of scanData) {
     if (item.cover) {
       let blob = new Blob([Uint8Array.from(item.cover.data)], { type: item.cover.format })
@@ -97,7 +106,6 @@ const openSongList = async () => {
     }
   }
   songInfoArr.value = scanData
-  console.log(songInfoArr.value)
 }
 watch(
   () => runtime.selectedSongListUUID,
@@ -177,9 +185,18 @@ const songClick = (song) => {
   selectedSongFilePath.value = song.filePath
 }
 const playingSongFilePath = ref('')
+
+watch(
+  () => runtime.playingData.playingSong,
+  () => {
+    playingSongFilePath.value = runtime.playingData.playingSong.filePath
+  }
+)
 const songDblClick = (song) => {
   playingSongFilePath.value = song.filePath
-  runtime.playingSong = song
+  selectedSongFilePath.value = ''
+  runtime.playingData.playingSong = song
+  runtime.playingData.playingSongListData = songInfoArr.value
   window.electron.ipcRenderer.send('readSongFile', song.filePath)
 }
 </script>
@@ -234,7 +251,7 @@ const songDblClick = (song) => {
       <div
         v-for="(item, index) of songInfoArr"
         :key="item.filePath"
-        class="songItem"
+        class="songItem unselectable"
         @click="songClick(item)"
         @contextmenu="songClick(item)"
         @dblclick="songDblClick(item)"
@@ -280,15 +297,15 @@ const songDblClick = (song) => {
 }
 
 .playingSong {
-  background-color: #0078d4 !important;
-  color: white;
+  color: #0078d4 !important;
+  font-weight: bold;
 }
 
 .coverDiv {
   height: 29px;
   line-height: 30px;
   border-right: 1px solid #2b2b2b;
-  border-bottom: 1px solid transparent;
+  border-bottom: 1px solid #2b2b2b;
 
   img {
     width: 100%;

@@ -25,7 +25,11 @@ export const useRuntimeStore = defineStore('runtime', {
       selectedSongListUUID: '', //被选中的歌单UUID
       importingSongListUUID: '', //正在执行导入中的歌单
       isProgressing: false, //正在执行某计算或IO任务
-      playingSong: {} //正在播放的歌曲
+      playingData: {
+        //播放器相关
+        playingSong: {}, //正在播放的歌曲
+        playingSongListData: [] //正在播放的歌单的曲目数组
+      }
     }
   }
 })
