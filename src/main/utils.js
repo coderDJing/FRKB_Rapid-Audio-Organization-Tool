@@ -72,28 +72,32 @@ export const updateTargetDirSubdirOrder = async (dirPath, orderNum, direction, o
 }
 
 export const collectFilesWithExtensions = async (dir, extensions = []) => {
-  let files = []
+  try {
+    let files = []
 
-  // 读取目录中的文件和子目录
-  const directoryEntries = await fs.readdir(dir, { withFileTypes: true })
+    // 读取目录中的文件和子目录
+    const directoryEntries = await fs.readdir(dir, { withFileTypes: true })
 
-  for (const entry of directoryEntries) {
-    const fullPath = path.join(dir, entry.name)
+    for (const entry of directoryEntries) {
+      const fullPath = path.join(dir, entry.name)
 
-    // 如果是文件，检查扩展名
-    if (entry.isFile()) {
-      const ext = path.extname(fullPath).toLowerCase()
-      if (extensions.includes(ext)) {
-        files.push(fullPath)
+      // 如果是文件，检查扩展名
+      if (entry.isFile()) {
+        const ext = path.extname(fullPath).toLowerCase()
+        if (extensions.includes(ext)) {
+          files.push(fullPath)
+        }
+      } else if (entry.isDirectory()) {
+        // 如果是目录，递归调用
+        const subFiles = await collectFilesWithExtensions(fullPath, extensions)
+        files = files.concat(subFiles)
       }
-    } else if (entry.isDirectory()) {
-      // 如果是目录，递归调用
-      const subFiles = await collectFilesWithExtensions(fullPath, extensions)
-      files = files.concat(subFiles)
     }
-  }
 
-  return files
+    return files
+  } catch (error) {
+    console.log(error)
+  }
 }
 
 const { spawn } = require('child_process')
@@ -126,13 +130,20 @@ export function executeScript(exePath, args, end) {
           dataArr.pop()
         }
         let result = []
+        let errorResult = []
         for (let item of dataArr) {
-          result.push({
-            md5_hash: item.split('|')[0].replace(/\r\n/g, ''),
-            path: item.split('|')[1]
-          })
+          if (item.split('|')[0].replace(/\r\n/g, '') === 'error') {
+            errorResult.push({
+              path: item.split('|')[1]
+            })
+          } else {
+            result.push({
+              md5_hash: item.split('|')[0].replace(/\r\n/g, ''),
+              path: item.split('|')[1]
+            })
+          }
         }
-        resolve(result)
+        resolve({ result, errorResult })
       } else {
         // 非零退出码通常表示错误
         reject(new Error(`子进程退出，退出代码：${code}\n${stderrData}`))
