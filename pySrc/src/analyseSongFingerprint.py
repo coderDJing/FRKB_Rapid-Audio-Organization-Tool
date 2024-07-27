@@ -2,11 +2,10 @@ import sys
 import numpy as np
 import librosa
 import hashlib
-import json
 import os
 import multiprocessing
 
-folderPath = sys.argv[1]
+folderPaths = sys.argv[1]
 extensions = sys.argv[2].split(",")
 
 
@@ -20,24 +19,40 @@ def find_files_with_extension(directory, extensions):
     return matched_files
 
 
-files_found = find_files_with_extension(folderPath, extensions)
+def find_files_in_multiple_directories(folderPaths, extensions):
+    all_matched_files = []
+    # 分割 folderPaths 字符串，得到目录列表
+    directories = folderPaths.split("|")
+    # 遍历每个目录
+    for directory in directories:
+        # 调用 find_files_with_extension 函数并收集结果
+        matched_files = find_files_with_extension(directory, extensions)
+        all_matched_files.extend(matched_files)
+    return all_matched_files
+
+
+files_found = find_files_in_multiple_directories(folderPaths, extensions)
 
 
 def analyze_song(file_path):
-    # 读取音频文件
-    y, sr = librosa.load(file_path, sr=None)
-    mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-    fingerprint = np.mean(mfccs.T, axis=0)
+    try:
+        # 读取音频文件
+        y, sr = librosa.load(file_path, sr=None)
+        mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+        fingerprint = np.mean(mfccs.T, axis=0)
 
-    # 将NumPy数组转换为字符串
-    arr_str = " ".join(map(str, fingerprint.flatten()))
+        # 将NumPy数组转换为字符串
+        arr_str = " ".join(map(str, fingerprint.flatten()))
 
-    # 将字符串编码为字节流
-    arr_bytes = arr_str.encode("utf-8")
+        # 将字符串编码为字节流
+        arr_bytes = arr_str.encode("utf-8")
 
-    # 计算MD5哈希值
-    md5_hash = hashlib.md5(arr_bytes).hexdigest()
-    print(md5_hash + "|" + file_path + "||", flush=True)
+        # 计算MD5哈希值
+        md5_hash = hashlib.md5(arr_bytes).hexdigest()
+        print(md5_hash + "|" + file_path + "||", flush=True)
+    except Exception as e:
+        # 打印出错的文件路径和异常信息
+        print("error" + "|" + file_path + "||", flush=True)
 
 
 if __name__ == "__main__":

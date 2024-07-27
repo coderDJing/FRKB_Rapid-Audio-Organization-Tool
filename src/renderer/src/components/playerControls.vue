@@ -9,7 +9,14 @@ import more from '@renderer/assets/more.png'
 import { ref, onUnmounted } from 'vue'
 const playing = ref(true)
 
-const emits = defineEmits(['pause', 'play', 'fastForward', 'fastBackward', 'nextSong'])
+const emits = defineEmits([
+  'pause',
+  'play',
+  'fastForward',
+  'fastBackward',
+  'nextSong',
+  'previousSong'
+])
 
 const setPlayingValue = (value) => {
   playing.value = value
@@ -55,6 +62,10 @@ const handleNextSong = () => {
   emits('nextSong')
 }
 
+const handlePreviousSong = () => {
+  emits('previousSong')
+}
+
 onUnmounted(() => {
   document.removeEventListener('mouseup', handleFastForwardMouseup)
   document.removeEventListener('mouseup', handleFastBackwardMouseup)
@@ -75,9 +86,8 @@ defineExpose({
       align-items: center;
     "
   >
-    <div>
+    <div @click="handlePreviousSong()">
       <img :src="previousSong" draggable="false" />
-      <!-- //todo -->
     </div>
     <div @mousedown="handleFastBackward()">
       <img :src="fastBackward" draggable="false" />
