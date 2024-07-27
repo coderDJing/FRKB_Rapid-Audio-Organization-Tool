@@ -14,34 +14,16 @@
   --sklearn-color-fitted-level-3: cornflowerblue;
 
   /* Specific color for light theme */
-  --sklearn-color-text-on-default-background: var(
-    --sg-text-color,
-    var(--theme-code-foreground, var(--jp-content-font-color1, black))
-  );
-  --sklearn-color-background: var(
-    --sg-background-color,
-    var(--theme-background, var(--jp-layout-color0, white))
-  );
-  --sklearn-color-border-box: var(
-    --sg-text-color,
-    var(--theme-code-foreground, var(--jp-content-font-color1, black))
-  );
+  --sklearn-color-text-on-default-background: var(--sg-text-color, var(--theme-code-foreground, var(--jp-content-font-color1, black)));
+  --sklearn-color-background: var(--sg-background-color, var(--theme-background, var(--jp-layout-color0, white)));
+  --sklearn-color-border-box: var(--sg-text-color, var(--theme-code-foreground, var(--jp-content-font-color1, black)));
   --sklearn-color-icon: #696969;
 
   @media (prefers-color-scheme: dark) {
     /* Redefinition of color scheme for dark theme */
-    --sklearn-color-text-on-default-background: var(
-      --sg-text-color,
-      var(--theme-code-foreground, var(--jp-content-font-color1, white))
-    );
-    --sklearn-color-background: var(
-      --sg-background-color,
-      var(--theme-background, var(--jp-layout-color0, #111))
-    );
-    --sklearn-color-border-box: var(
-      --sg-text-color,
-      var(--theme-code-foreground, var(--jp-content-font-color1, white))
-    );
+    --sklearn-color-text-on-default-background: var(--sg-text-color, var(--theme-code-foreground, var(--jp-content-font-color1, white)));
+    --sklearn-color-background: var(--sg-background-color, var(--theme-background, var(--jp-layout-color0, #111)));
+    --sklearn-color-border-box: var(--sg-text-color, var(--theme-code-foreground, var(--jp-content-font-color1, white)));
     --sklearn-color-icon: #878787;
   }
 }
@@ -92,10 +74,7 @@ div.sk-parallel-item,
 div.sk-serial,
 div.sk-item {
   /* draw centered vertical line to link estimators */
-  background-image: linear-gradient(
-    var(--sklearn-color-text-on-default-background),
-    var(--sklearn-color-text-on-default-background)
-  );
+  background-image: linear-gradient(var(--sklearn-color-text-on-default-background), var(--sklearn-color-text-on-default-background));
   background-size: 2px 100%;
   background-repeat: no-repeat;
   background-position: center center;
@@ -104,7 +83,7 @@ div.sk-item {
 /* Parallel-specific style estimator block */
 
 #$id div.sk-parallel-item::after {
-  content: '';
+  content: "";
   width: 100%;
   border-bottom: 2px solid var(--sklearn-color-text-on-default-background);
   flex-grow: 1;
@@ -148,6 +127,7 @@ div.sk-item {
   padding-left: 1em;
 }
 
+
 /* Toggleable style: style used for estimator/Pipeline/ColumnTransformer box that is
 clickable and can be expanded/collapsed.
 - Pipeline and ColumnTransformer use this feature and define the default style
@@ -175,7 +155,7 @@ clickable and can be expanded/collapsed.
 
 #$id label.sk-toggleable__label-arrow:before {
   /* Arrow on the left of the label */
-  content: '▸';
+  content: "▸";
   float: left;
   margin-right: 0.25em;
   color: var(--sklearn-color-icon);
@@ -214,37 +194,37 @@ clickable and can be expanded/collapsed.
   background-color: var(--sklearn-color-fitted-level-0);
 }
 
-#$id input.sk-toggleable__control:checked ~ div.sk-toggleable__content {
+#$id input.sk-toggleable__control:checked~div.sk-toggleable__content {
   /* Expand drop-down */
   max-height: 200px;
   max-width: 100%;
   overflow: auto;
 }
 
-#$id input.sk-toggleable__control:checked ~ label.sk-toggleable__label-arrow:before {
-  content: '▾';
+#$id input.sk-toggleable__control:checked~label.sk-toggleable__label-arrow:before {
+  content: "▾";
 }
 
 /* Pipeline/ColumnTransformer-specific style */
 
-#$id div.sk-label input.sk-toggleable__control:checked ~ label.sk-toggleable__label {
+#$id div.sk-label input.sk-toggleable__control:checked~label.sk-toggleable__label {
   color: var(--sklearn-color-text);
   background-color: var(--sklearn-color-unfitted-level-2);
 }
 
-#$id div.sk-label.fitted input.sk-toggleable__control:checked ~ label.sk-toggleable__label {
+#$id div.sk-label.fitted input.sk-toggleable__control:checked~label.sk-toggleable__label {
   background-color: var(--sklearn-color-fitted-level-2);
 }
 
 /* Estimator-specific style */
 
 /* Colorize estimator box */
-#$id div.sk-estimator input.sk-toggleable__control:checked ~ label.sk-toggleable__label {
+#$id div.sk-estimator input.sk-toggleable__control:checked~label.sk-toggleable__label {
   /* unfitted */
   background-color: var(--sklearn-color-unfitted-level-2);
 }
 
-#$id div.sk-estimator.fitted input.sk-toggleable__control:checked ~ label.sk-toggleable__label {
+#$id div.sk-estimator.fitted input.sk-toggleable__control:checked~label.sk-toggleable__label {
   /* fitted */
   background-color: var(--sklearn-color-fitted-level-2);
 }
@@ -364,9 +344,9 @@ div.sk-label-container:hover .sk-estimator-doc-link.fitted:hover,
   z-index: 9999;
   position: relative;
   font-weight: normal;
-  right: 0.2ex;
-  padding: 0.5ex;
-  margin: 0.5ex;
+  right: .2ex;
+  padding: .5ex;
+  margin: .5ex;
   width: min-content;
   min-width: 20ex;
   max-width: 50ex;
@@ -374,7 +354,7 @@ div.sk-label-container:hover .sk-estimator-doc-link.fitted:hover,
   box-shadow: 2pt 2pt 4pt #999;
   /* unfitted */
   background: var(--sklearn-color-unfitted-level-0);
-  border: 0.5pt solid var(--sklearn-color-unfitted-level-3);
+  border: .5pt solid var(--sklearn-color-unfitted-level-3);
 }
 
 .sk-estimator-doc-link.fitted span {

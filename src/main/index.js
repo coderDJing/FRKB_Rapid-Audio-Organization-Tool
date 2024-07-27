@@ -143,15 +143,87 @@ function createWindow() {
     mainWindow.webContents.send('readedSongFile', file)
   })
 
-  ipcMain.on('startImportSongs', async (e, formData, songListUUID) => {
-    formData.songListPath = join(__dirname, formData.songListPath)
-    let songFileUrls = await collectFilesWithExtensions(formData.folderPath, [
-      '.mp3',
-      '.wav',
-      '.flac'
-    ])
+  ipcMain.on('addSongFingerprint', async (e, folderPath) => {
+    mainWindow.webContents.send('progressSet', '扫描文件中', 0, 1)
+    let songFileUrls = []
+    const promises = []
+    for (let item of folderPath) {
+      promises.push(collectFilesWithExtensions(item, ['.mp3', '.wav', '.flac']))
+    }
+    let res = await Promise.all(promises)
+    songFileUrls = res.flat(1)
+    mainWindow.webContents.send('progressSet', '扫描文件中', 1, 1)
     let processNum = 0
     let fingerprintResults = []
+    let fingerprintErrorResults = []
+    mainWindow.webContents.send(
+      'progressSet',
+      '分析声音指纹初始化',
+      processNum,
+      songFileUrls.length
+    )
+    const endHandle = () => {
+      processNum++
+      mainWindow.webContents.send('progressSet', '分析声音指纹', processNum, songFileUrls.length)
+    }
+    let { result, errorResult } = await executeScript(
+      analyseSongFingerprintPyScriptUrl,
+      [folderPath.join('|'), ['.mp3', '.wav', '.flac'].join(',')],
+      endHandle
+    )
+    mainWindow.webContents.send(
+      'progressSet',
+      '分析声音指纹',
+      songFileUrls.length,
+      songFileUrls.length
+    )
+    fingerprintResults = result
+    fingerprintErrorResults = errorResult
+    let map = new Map()
+    for (let item of fingerprintResults) {
+      if (songFingerprintList.indexOf(item.md5_hash) === -1) {
+        map.set(item.md5_hash, item.md5_hash)
+      }
+    }
+    let removeDuplicatesFingerprintResults = Array.from(map.values())
+    songFingerprintList = songFingerprintList.concat(removeDuplicatesFingerprintResults)
+    fs.outputJSON(join(__dirname, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
+    let contentArr = [
+      '文件夹下共扫描' + songFileUrls.length + '首曲目',
+      '比对声音指纹去除' +
+        (songFileUrls.length -
+          removeDuplicatesFingerprintResults.length -
+          fingerprintErrorResults.length) +
+        '首重复曲目',
+      '本次声音指纹库新增' + removeDuplicatesFingerprintResults.length + '声音指纹',
+      '声音指纹库现有' + songFingerprintList.length + '声音指纹'
+    ]
+    if (fingerprintErrorResults.length) {
+      contentArr.splice(
+        1,
+        0,
+        '其中' +
+          fingerprintErrorResults.length +
+          '首曲目尝试分析失败，通常由于文件内容损坏或传输过程发生错误'
+      )
+    }
+    mainWindow.webContents.send('addSongFingerprintFinished', contentArr)
+  })
+
+  ipcMain.on('startImportSongs', async (e, formData, songListUUID) => {
+    formData.songListPath = join(__dirname, formData.songListPath)
+    mainWindow.webContents.send('progressSet', '扫描文件中', 0, 1)
+    let songFileUrls = []
+    const promises = []
+    for (let item of formData.folderPath) {
+      promises.push(collectFilesWithExtensions(item, ['.mp3', '.wav', '.flac']))
+    }
+    let res = await Promise.all(promises)
+    songFileUrls = res.flat(1)
+    mainWindow.webContents.send('progressSet', '扫描文件中', 1, 1)
+    let processNum = 0
+    let fingerprintResults = []
+    let fingerprintErrorResults = []
     let delList = []
     let songFingerprintListLengthBefore = songFingerprintList.length
     let importSongsCount = 0
@@ -165,7 +237,9 @@ function createWindow() {
         songFileUrls.length
       )
       for (let songFileUrl of songFileUrls) {
+        console.log(1)
         let targetPath = join(formData.songListPath, songFileUrl.match(/[^\\]+$/)[0])
+        console.log(2)
         let isExist = await fs.pathExists(targetPath)
         if (isExist) {
           let counter = 1
@@ -211,11 +285,19 @@ function createWindow() {
         processNum++
         mainWindow.webContents.send('progressSet', '分析声音指纹', processNum, songFileUrls.length)
       }
-      fingerprintResults = await executeScript(
+      let { result, errorResult } = await executeScript(
         analyseSongFingerprintPyScriptUrl,
-        [formData.folderPath, ['.mp3', '.wav', '.flac'].join(',')],
+        [formData.folderPath.join('|'), ['.mp3', '.wav', '.flac'].join(',')],
         endHandle
       )
+      mainWindow.webContents.send(
+        'progressSet',
+        '分析声音指纹',
+        songFileUrls.length,
+        songFileUrls.length
+      )
+      fingerprintResults = result
+      fingerprintErrorResults = errorResult
     }
 
     if (!formData.isComparisonSongFingerprint && !formData.isPushSongFingerprintLibrary) {
@@ -226,7 +308,6 @@ function createWindow() {
       await analyseSongFingerprint()
 
       let toBeRemoveDuplicates = []
-
       for (let item of fingerprintResults) {
         if (songFingerprintList.indexOf(item.md5_hash) != -1) {
           delList.push(item.path)
@@ -246,7 +327,6 @@ function createWindow() {
       })
       delList = delList.concat(duplicates) //待删数组
       let toBeDealSongs = Array.from(map.values())
-
       processNum = 0
       mainWindow.webContents.send(
         'progressSet',
@@ -318,6 +398,16 @@ function createWindow() {
       await moveSong()
     }
     let contentArr = ['文件夹下共扫描' + songFileUrls.length + '首曲目']
+    if (
+      fingerprintErrorResults.length &&
+      (formData.isComparisonSongFingerprint || formData.isPushSongFingerprintLibrary)
+    ) {
+      contentArr.push(
+        '其中' +
+          fingerprintErrorResults.length +
+          '首曲目尝试分析失败，通常由于文件内容损坏或传输过程发生错误'
+      )
+    }
     contentArr.push('歌单共导入' + importSongsCount + '首曲目')
     if (formData.isComparisonSongFingerprint) {
       contentArr.push('比对声音指纹去除' + delList.length + '首重复曲目')
@@ -392,14 +482,14 @@ ipcMain.handle('scanSongList', async (e, songListPath, songListUUID) => {
     songInfoArr.push({
       filePath: url,
       cover: cover,
-      title: metadata.common.title,
-      artist: metadata.common.artist,
-      album: metadata.common.album,
+      title: metadata.common?.title,
+      artist: metadata.common?.artist,
+      album: metadata.common?.album,
       duration: convertSecondsToMinutesSeconds(Math.round(metadata.format.duration)), //时长
-      genre: metadata.common.genre[0],
-      label: metadata.common.label[0],
-      bitrate: metadata.format.bitrate, //比特率
-      container: metadata.format.container //编码格式
+      genre: metadata.common?.genre?.[0],
+      label: metadata.common?.label?.[0],
+      bitrate: metadata.format?.bitrate, //比特率
+      container: metadata.format?.container //编码格式
     })
   }
   return { scanData: songInfoArr, songListUUID }
@@ -464,12 +554,12 @@ ipcMain.handle('updateTargetDirSubdirOrderAdd', async (e, dirPath) => {
 
 ipcMain.handle('select-folder', async (event, arg) => {
   const result = await dialog.showOpenDialog({
-    properties: ['openDirectory']
+    properties: ['openDirectory', 'multiSelections']
   })
   if (result.canceled) {
     return null
   }
-  return result.filePaths[0]
+  return result.filePaths
 })
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.

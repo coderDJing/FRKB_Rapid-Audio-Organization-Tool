@@ -4,6 +4,7 @@ import titleComponent from './components/titleComponent.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import scanNewSongDialog from './components/scanNewSongDialog.vue'
 import bottomInfoArea from './pages/modules/bottomInfoArea.vue'
+import manualAddSongFingerprintDialog from './components/manualAddSongFingerprintDialog.vue'
 import { ref } from 'vue'
 
 const runtime = useRuntimeStore()
@@ -44,7 +45,10 @@ getLibrary()
     v-if="activeDialog == '导入新曲目'"
     @cancel="activeDialog = ''"
   ></scanNewSongDialog>
-  <!-- todo手动添加指纹 -->
+  <manualAddSongFingerprintDialog
+    v-if="activeDialog == '手动添加曲目指纹'"
+    @cancel="activeDialog = ''"
+  />
 </template>
 <style lang="scss">
 #app {

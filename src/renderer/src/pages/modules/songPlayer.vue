@@ -126,6 +126,16 @@ const nextSong = () => {
   runtime.playingData.playingSong = runtime.playingData.playingSongListData[index + 1]
   window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
 }
+const previousSong = () => {
+  let index = runtime.playingData.playingSongListData.findIndex((item) => {
+    return item.filePath === runtime.playingData.playingSong.filePath
+  })
+  if (index === 0) {
+    return
+  }
+  runtime.playingData.playingSong = runtime.playingData.playingSongListData[index - 1]
+  window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
+}
 </script>
 <template>
   <div
@@ -187,6 +197,7 @@ const nextSong = () => {
         @fastForward="fastForward"
         @fastBackward="fastBackward"
         @nextSong="nextSong"
+        @previousSong="previousSong"
       />
     </div>
     <div style="flex-grow: 1">

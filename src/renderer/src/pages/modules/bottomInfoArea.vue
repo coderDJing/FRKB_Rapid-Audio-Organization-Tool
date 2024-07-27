@@ -27,6 +27,18 @@ window.electron.ipcRenderer.on('importFinished', async (event, contentArr) => {
     confirmShow: false
   })
 })
+
+window.electron.ipcRenderer.on('addSongFingerprintFinished', async (event, contentArr) => {
+  runtime.isProgressing = false
+  await confirm({
+    title: '添加完成',
+    content: contentArr,
+    textAlign: 'left',
+    innerHeight: 250,
+    innerWidth: 400,
+    confirmShow: false
+  })
+})
 </script>
 <template>
   <div style="width: 100%; height: 100%; display: flex" v-if="barTitle">

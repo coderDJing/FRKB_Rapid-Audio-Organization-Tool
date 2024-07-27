@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import singleCheckbox from './singleCheckbox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import selectSongListDialog from './selectSongListDialog.vue'
@@ -13,7 +13,7 @@ const props = defineProps({
 })
 
 const runtime = useRuntimeStore()
-const folderPathVal = ref('') //文件夹路径
+const folderPathVal = ref([]) //文件夹路径
 const clickChooseDir = async () => {
   const folderPath = await window.electron.ipcRenderer.invoke('select-folder')
   if (folderPath) {
@@ -21,6 +21,17 @@ const clickChooseDir = async () => {
   }
 }
 
+const folderPathDisplay = computed(() => {
+  let newPaths = folderPathVal.value.map((path) => {
+    let parts = path.split('\\')
+    return parts[parts.length - 1]
+  })
+  let str = []
+  for (let item of newPaths) {
+    str.push('"' + item + '"')
+  }
+  return str.join(',')
+})
 const runtimeLayoutConfigChanged = () => {
   window.electron.ipcRenderer.send('layoutConfigChanged', JSON.stringify(runtime.layoutConfig))
 }
@@ -98,7 +109,7 @@ const confirm = () => {
   window.electron.ipcRenderer.send(
     'startImportSongs',
     {
-      folderPath: folderPathVal.value,
+      folderPath: JSON.parse(JSON.stringify(folderPathVal.value)),
       songListPath: songListSelectedPath,
       isDeleteSourceFile: runtime.layoutConfig.scanNewSongDialog.isDeleteSourceFile,
       isDeleteSourceDir: runtime.layoutConfig.scanNewSongDialog.isDeleteSourceDir,
@@ -160,10 +171,10 @@ const hint2IconMouseout = () => {
               <div
                 class="chooseDirDiv flashing-border"
                 @click="clickChooseDir()"
-                :title="folderPathVal"
+                :title="folderPathDisplay"
                 :class="{ 'is-flashing': flashArea == 'folderPathVal' }"
               >
-                {{ folderPathVal }}
+                {{ folderPathDisplay }}
               </div>
             </div>
           </div>
@@ -290,9 +301,8 @@ const hint2IconMouseout = () => {
 </template>
 <style lang="scss" scoped>
 .chooseDirDiv {
-  width: 100%;
+  width: calc(100% - 5px);
   height: 100%;
-  line-height: 21px;
   background-color: #313131;
   cursor: pointer;
   text-overflow: ellipsis;
