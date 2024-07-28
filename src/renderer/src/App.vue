@@ -8,6 +8,18 @@ import manualAddSongFingerprintDialog from './components/manualAddSongFingerprin
 import { ref } from 'vue'
 
 const runtime = useRuntimeStore()
+
+const detectPlatform = () => {
+  const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+  if (/Mac/i.test(userAgent)) {
+    return 'Mac';
+  } else if (/Windows/i.test(userAgent)) {
+    return 'Windows';
+  } else if (/Linux/i.test(userAgent)) {
+    return 'Linux';
+  }
+}
+runtime.platform = detectPlatform()
 window.electron.ipcRenderer.on('layoutConfigReaded', (event, layoutConfig) => {
   runtime.layoutConfig = layoutConfig
 })
@@ -35,20 +47,12 @@ getLibrary()
     <div style="height: calc(100% - 55px)">
       <homePage />
     </div>
-    <div
-      style="height: 20px; width: 100%; background-color: #181818; border-top: 1px solid #2b2b2b"
-    >
+    <div style="height: 20px; width: 100%; background-color: #181818; border-top: 1px solid #2b2b2b">
       <bottomInfoArea />
     </div>
   </div>
-  <scanNewSongDialog
-    v-if="activeDialog == '导入新曲目'"
-    @cancel="activeDialog = ''"
-  ></scanNewSongDialog>
-  <manualAddSongFingerprintDialog
-    v-if="activeDialog == '手动添加曲目指纹'"
-    @cancel="activeDialog = ''"
-  />
+  <scanNewSongDialog v-if="activeDialog == '导入新曲目'" @cancel="activeDialog = ''"></scanNewSongDialog>
+  <manualAddSongFingerprintDialog v-if="activeDialog == '手动添加曲目指纹'" @cancel="activeDialog = ''" />
 </template>
 <style lang="scss">
 #app {

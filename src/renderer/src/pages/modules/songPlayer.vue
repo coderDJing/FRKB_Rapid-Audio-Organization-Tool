@@ -148,7 +148,7 @@ const previousSong = () => {
       box-sizing: border-box;
     "
   >
-    <div style="width: 50px; display: flex">
+    <div style="width: 50px; display: flex" class="unselectable">
       <div
         v-show="waveformShow"
         style="
@@ -200,7 +200,7 @@ const previousSong = () => {
         @previousSong="previousSong"
       />
     </div>
-    <div style="flex-grow: 1">
+    <div style="flex-grow: 1" class="unselectable">
       <div id="waveform" ref="waveform" v-show="waveformShow">
         <div id="time">0:00</div>
         <div id="duration">0:00</div>
