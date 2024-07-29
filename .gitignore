@@ -3,6 +3,7 @@ dist
 out
 build
 .DS_Store
+resources/pyScript/
 *.log*
 
 # local env files
