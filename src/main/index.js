@@ -458,6 +458,13 @@ ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
     await updateTargetDirSubdirOrder(path.dirname(srcFullPath), originalOrder, 'after', 'minus')
   }
 })
+ipcMain.on('delSongs', async (e, songFilePaths) => {
+  const promises = []
+  for (let item of songFilePaths) {
+    promises.push(fs.remove(item))
+  }
+  await Promise.all(promises)
+})
 
 ipcMain.handle('scanSongList', async (e, songListPath, songListUUID) => {
   let scanPath = join(__dirname, songListPath)

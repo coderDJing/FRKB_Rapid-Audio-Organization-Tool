@@ -28,7 +28,8 @@ export const useRuntimeStore = defineStore('runtime', {
       isProgressing: false, //正在执行某计算或IO任务
       playingData: {
         //播放器相关
-        playingSong: {}, //正在播放的歌曲
+        playingSong: null, //正在播放的歌曲信息
+        playingSongListUUID: '', //正在播放的歌单的UUID
         playingSongListData: [] //正在播放的歌单的曲目数组
       }
     }
