@@ -126,7 +126,20 @@ export function getDepthByUuid(data, targetUuid) {
   // 从根节点开始遍历
   return traverse(data)
 }
-//todo需要一个获取所有子集的uuid的方法（删除的时候判断用）
+//获取平铺的所有子UUID（包括自己）
+export function getAllUuids(data) {
+  const uuids = []
+  function traverse(node) {
+    uuids.push(node.uuid)
+    if (node.children && node.children.length > 0) {
+      node.children.forEach((child) => {
+        traverse(child)
+      })
+    }
+  }
+  traverse(data)
+  return uuids
+}
 export const libraryUtils = {
   getFatherLibraryTreeByUUID,
   getLibraryTreeByUUID,
@@ -134,6 +147,7 @@ export const libraryUtils = {
   sortByOrder,
   reOrderChildren,
   isDragItemInDirChildren,
-  getDepthByUuid
+  getDepthByUuid,
+  getAllUuids
 }
 export default libraryUtils

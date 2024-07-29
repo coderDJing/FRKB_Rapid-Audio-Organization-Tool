@@ -128,8 +128,7 @@ const menuButtonClick = async (item, e) => {
   } else if (item.menuName == '删除') {
     confirmDialogContent.value = [
       dirData.type == 'dir' ? '确认删除此文件夹吗？' : '确认删除此歌单吗？',
-      dirData.type == 'dir' ? '文件夹中的内容将一并被删除' : '歌单中的曲目将一并被删除',
-      '"' + dirData.dirName + '"'
+      '(曲目将在磁盘上被删除，但声音指纹依然会保留)'
     ]
     confirmDialogShow.value = true
   } else if (item.menuName == '导入曲目') {
@@ -252,6 +251,17 @@ const renameMyInputHandleInput = (e) => {
 const confirmDialogShow = ref(false)
 const confirmDialogContent = ref([])
 const deleteConfirm = async () => {
+  let uuids = libraryUtils.getAllUuids(
+    libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, props.uuid)
+  )
+
+  if (uuids.indexOf(runtime.selectedSongListUUID) !== -1) {
+    runtime.selectedSongListUUID = ''
+  }
+  if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
+    runtime.playingData.playingSongListData = []
+    runtime.playingData.playingSong = null
+  }
   const path = libraryUtils.findDirPathByUuid(runtime.libraryTree, props.uuid)
   await window.electron.ipcRenderer.invoke('delDir', path)
   await window.electron.ipcRenderer.invoke(
@@ -270,15 +280,6 @@ const deleteConfirm = async () => {
     }
   }
   fatherDirData.children.splice(deleteIndex, 1)
-  if (runtime.selectedSongListUUID === props.uuid) {
-    //todo如果是文件夹的话还要判断是否是子文件夹的歌单
-    runtime.selectedSongListUUID = ''
-  }
-  if (runtime.playingData.playingSongListUUID === props.uuid) {
-    //todo如果是文件夹的话还要判断是否是子文件夹的歌单
-    runtime.playingData.playingSongListData = []
-    runtime.playingData.playingSong = null
-  }
   deleteCancel()
 }
 const deleteCancel = () => {
