@@ -100,6 +100,7 @@ if (dirData.dirName == '') {
   })
 }
 const importSongsDialogShow = ref(false)
+const exportSongsDialogShow = ref(false)
 const menuButtonClick = async (item, e) => {
   if (item.menuName == '新建歌单') {
     dirChildRendered.value = true
@@ -141,6 +142,17 @@ const menuButtonClick = async (item, e) => {
       return
     }
     importSongsDialogShow.value = true
+  } else if (item.menuName == '导出曲目') {
+    if (runtime.isProgressing) {
+      await confirm({
+        title: '导入',
+        content: ['请等待当前导入任务完成'],
+        confirmShow: false
+      })
+      return
+    }
+    exportSongsDialogShow.value = true
+    //todo 完成导出曲目对话框
   }
 }
 
@@ -152,7 +164,10 @@ const menuArr = ref(
         [{ menuName: '新建歌单' }, { menuName: '新建文件夹' }],
         [{ menuName: '重命名' }, { menuName: '删除' }]
       ]
-    : [[{ menuName: '导入曲目' }], [{ menuName: '重命名' }, { menuName: '删除' }]]
+    : [
+        [{ menuName: '导入曲目' }, { menuName: '导出曲目' }],
+        [{ menuName: '重命名' }, { menuName: '删除' }]
+      ]
 )
 const contextmenuEvent = (event) => {
   clickEvent.value = event
@@ -255,6 +270,15 @@ const deleteConfirm = async () => {
     }
   }
   fatherDirData.children.splice(deleteIndex, 1)
+  if (runtime.selectedSongListUUID === props.uuid) {
+    //todo如果是文件夹的话还要判断是否是子文件夹的歌单
+    runtime.selectedSongListUUID = ''
+  }
+  if (runtime.playingData.playingSongListUUID === props.uuid) {
+    //todo如果是文件夹的话还要判断是否是子文件夹的歌单
+    runtime.playingData.playingSongListData = []
+    runtime.playingData.playingSong = null
+  }
   deleteCancel()
 }
 const deleteCancel = () => {

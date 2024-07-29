@@ -70,7 +70,15 @@ onMounted(() => {
     })
   }
 })
-
+watch(
+  () => runtime.playingData.playingSong,
+  () => {
+    if (runtime.playingData.playingSong === null) {
+      waveformShow.value = false
+      wavesurferInstance.empty()
+    }
+  }
+)
 onUnmounted(() => {
   // 组件卸载时销毁 WaveSurfer 实例
   if (wavesurferInstance) {
@@ -166,7 +174,7 @@ const previousSong = () => {
     </div>
     <transition name="fade">
       <div v-if="songInfoShow" @mouseleave="songInfoShow = false" class="songInfo">
-        <div class="cover">
+        <div class="cover unselectable">
           <img
             v-if="coverBlobUrl"
             :src="coverBlobUrl"
