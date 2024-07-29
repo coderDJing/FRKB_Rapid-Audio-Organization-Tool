@@ -238,7 +238,7 @@ const menuButtonClick = async (item) => {
   if (item.menuName === '删除曲目') {
     let res = await confirm({
       title: '删除',
-      content: ['确定删除选中的曲目吗', '（文件将在磁盘上被删除，但声音指纹依然会保留）']
+      content: ['确定删除选中的曲目吗', '（曲目将在磁盘上被删除，但声音指纹依然会保留）']
     })
     if (res === 'confirm') {
       window.electron.ipcRenderer.send(
