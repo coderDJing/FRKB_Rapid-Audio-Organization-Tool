@@ -5,6 +5,8 @@ import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { vDraggable } from 'vue-draggable-plus'
 import songAreaColRightClickMenu from '@renderer/components/songAreaColRightClickMenu.vue'
 import hotkeys from 'hotkeys-js'
+import rightClickMenu from '@renderer/components/rightClickMenu.vue'
+import confirm from '@renderer/components/confirm.js'
 let columnData = ref([])
 if (localStorage.getItem('songColumnData')) {
   columnData.value = JSON.parse(localStorage.getItem('songColumnData'))
@@ -112,7 +114,16 @@ watch(
   () => runtime.selectedSongListUUID,
   async () => {
     selectedSongFilePath.value.length = 0
-    await openSongList()
+    if (runtime.selectedSongListUUID) {
+      await openSongList()
+    } else {
+      for (let item of songInfoArr.value) {
+        if (item.coverUrl) {
+          URL.revokeObjectURL(item.coverUrl)
+        }
+      }
+      songInfoArr.value = []
+    }
   }
 )
 
@@ -159,9 +170,9 @@ function stopResize() {
 }
 
 const colRightClickMenuShow = ref(false)
-const colClickEvent = ref({})
+const colRightClickEvent = ref({})
 const contextmenuEvent = (event) => {
-  colClickEvent.value = event
+  colRightClickEvent.value = event
   colRightClickMenuShow.value = true
 }
 
@@ -213,9 +224,37 @@ const songClick = (event, song) => {
     selectedSongFilePath.value = [song.filePath]
   }
 }
-const songContextmenu = (song) => {
-  runtime.activeMenuUUID = ''
-  //todo
+const songRightClickMenuShow = ref(false)
+const songRightClickEvent = ref({})
+const menuArr = ref([[{ menuName: '删除曲目' }]])
+const songContextmenu = (event, song) => {
+  if (selectedSongFilePath.value.indexOf(song.filePath) === -1) {
+    selectedSongFilePath.value = [song.filePath]
+  }
+  songRightClickEvent.value = event
+  songRightClickMenuShow.value = true
+}
+const menuButtonClick = async (item) => {
+  if (item.menuName === '删除曲目') {
+    let res = await confirm({
+      title: '删除',
+      content: ['确定删除选中的曲目吗', '（文件将在磁盘上被删除，但声音指纹依然会保留）']
+    })
+    if (res === 'confirm') {
+      window.electron.ipcRenderer.send(
+        'delSongs',
+        JSON.parse(JSON.stringify(selectedSongFilePath.value))
+      )
+      songInfoArr.value = songInfoArr.value.filter(
+        (item) => selectedSongFilePath.value.indexOf(item.filePath) === -1
+      )
+      runtime.playingData.playingSongListData = songInfoArr.value
+      if (selectedSongFilePath.value.indexOf(runtime.playingData.playingSong.filePath) !== -1) {
+        runtime.playingData.playingSong = null
+      }
+      selectedSongFilePath.value.length = 0
+    }
+  }
 }
 
 const playingSongFilePath = ref('')
@@ -223,7 +262,11 @@ const playingSongFilePath = ref('')
 watch(
   () => runtime.playingData.playingSong,
   () => {
-    playingSongFilePath.value = runtime.playingData.playingSong.filePath
+    if (runtime.playingData.playingSong === null) {
+      playingSongFilePath.value = ''
+    } else {
+      playingSongFilePath.value = runtime.playingData.playingSong.filePath
+    }
   }
 )
 const songDblClick = (song) => {
@@ -231,6 +274,7 @@ const songDblClick = (song) => {
   playingSongFilePath.value = song.filePath
   selectedSongFilePath.value = []
   runtime.playingData.playingSong = song
+  runtime.playingData.playingSongListUUID = runtime.selectedSongListUUID
   runtime.playingData.playingSongListData = songInfoArr.value
   window.electron.ipcRenderer.send('readSongFile', song.filePath)
 }
@@ -297,7 +341,7 @@ hotkeys('ctrl+a, command+a', () => {
         :key="item.filePath"
         class="songItem unselectable"
         @click.stop="songClick($event, item)"
-        @contextmenu.stop="songContextmenu(item)"
+        @contextmenu.stop="songContextmenu($event, item)"
         @dblclick.stop="songDblClick(item)"
       >
         <div
@@ -330,10 +374,16 @@ hotkeys('ctrl+a, command+a', () => {
   </div>
   <songAreaColRightClickMenu
     v-model="colRightClickMenuShow"
-    :clickEvent="colClickEvent"
+    :clickEvent="colRightClickEvent"
     :columnData="columnData"
     @colMenuHandleClick="colMenuHandleClick"
   />
+  <rightClickMenu
+    v-model="songRightClickMenuShow"
+    :menuArr="menuArr"
+    :clickEvent="songRightClickEvent"
+    @menuButtonClick="menuButtonClick"
+  ></rightClickMenu>
 </template>
 <style lang="scss" scoped>
 .selectedSong {
