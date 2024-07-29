@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 export const useRuntimeStore = defineStore('runtime', {
   state: () => {
     return {
-      platform:'',//使用平台//暂时没用
+      platform: '', //使用平台//暂时没用
       isWindowMaximized: null,
       libraryAreaSelected: 'listLibrary',
       activeMenuUUID: '',

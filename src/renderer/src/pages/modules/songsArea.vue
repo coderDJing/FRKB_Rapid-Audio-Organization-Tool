@@ -4,7 +4,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { vDraggable } from 'vue-draggable-plus'
 import songAreaColRightClickMenu from '@renderer/components/songAreaColRightClickMenu.vue'
-import hotkeys from 'hotkeys-js';
+import hotkeys from 'hotkeys-js'
 let columnData = ref([])
 if (localStorage.getItem('songColumnData')) {
   columnData.value = JSON.parse(localStorage.getItem('songColumnData'))
@@ -78,7 +78,7 @@ const openSongList = async () => {
     }
   }
   songInfoArr.value = []
-  await nextTick(() => { })
+  await nextTick(() => {})
 
   let songListPath = libraryUtils.findDirPathByUuid(
     runtime.libraryTree,
@@ -158,8 +158,6 @@ function stopResize() {
   onUpdate()
 }
 
-
-
 const colRightClickMenuShow = ref(false)
 const colClickEvent = ref({})
 const contextmenuEvent = (event) => {
@@ -180,9 +178,40 @@ let columnDataArr = computed(() => {
   return columnData.value.filter((item) => item.show)
 })
 const selectedSongFilePath = ref([])
-const songClick = (song) => {
+const songClick = (event, song) => {
   runtime.activeMenuUUID = ''
-  selectedSongFilePath.value = [song.filePath]
+  if (event.ctrlKey) {
+    let index = selectedSongFilePath.value.indexOf(song.filePath)
+    if (index !== -1) {
+      selectedSongFilePath.value.splice(index, 1)
+    } else {
+      selectedSongFilePath.value.push(song.filePath)
+    }
+  } else if (event.shiftKey) {
+    let lastClickSongFilePath = null
+    if (selectedSongFilePath.value.length) {
+      lastClickSongFilePath = selectedSongFilePath.value[selectedSongFilePath.value.length - 1]
+    }
+    let lastClickSongIndex = 0
+    if (lastClickSongFilePath) {
+      lastClickSongIndex = songInfoArr.value.findIndex(
+        (item) => item.filePath === lastClickSongFilePath
+      )
+    }
+
+    let clickSongIndex = songInfoArr.value.findIndex((item) => item.filePath === song.filePath)
+    let sliceArr = songInfoArr.value.slice(
+      Math.min(lastClickSongIndex, clickSongIndex),
+      Math.max(lastClickSongIndex, clickSongIndex) + 1
+    )
+    for (let item of sliceArr) {
+      if (selectedSongFilePath.value.indexOf(item.filePath) === -1) {
+        selectedSongFilePath.value.push(item.filePath)
+      }
+    }
+  } else {
+    selectedSongFilePath.value = [song.filePath]
+  }
 }
 const songContextmenu = (song) => {
   runtime.activeMenuUUID = ''
@@ -213,20 +242,23 @@ hotkeys('ctrl+a, command+a', () => {
   }
   return false
 })
-//todo ctrl单选 shift多选
-window.electron.ipcRenderer.on('mainWindow-blur', async (event) => {
-  console.log('mainWindow-blur')
-  //todo
-})
 </script>
 <template>
-  <div v-show="loadingShow"
-    style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center">
+  <div
+    v-show="loadingShow"
+    style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center"
+  >
     <div class="loading"></div>
   </div>
-  <div style="height: 100%; width: 100%; overflow: auto" v-if="runtime.selectedSongListUUID && songInfoArr.length != 0"
-    @click="selectedSongFilePath.length = 0">
-    <div @contextmenu.stop="contextmenuEvent" class="songItem lightBackground" style="position: sticky; top: 0"
+  <div
+    style="height: 100%; width: 100%; overflow: auto"
+    v-if="runtime.selectedSongListUUID && songInfoArr.length != 0"
+    @click="selectedSongFilePath.length = 0"
+  >
+    <div
+      @contextmenu.stop="contextmenuEvent"
+      class="songItem lightBackground"
+      style="position: sticky; top: 0"
       v-draggable="[
         columnData,
         {
@@ -234,35 +266,57 @@ window.electron.ipcRenderer.on('mainWindow-blur', async (event) => {
           direction: 'horizontal',
           onUpdate
         }
-      ]">
-      <div class="coverDiv lightBackground unselectable" v-for="col of columnDataArr" :key="col.key"
+      ]"
+    >
+      <div
+        class="coverDiv lightBackground unselectable"
+        v-for="col of columnDataArr"
+        :key="col.key"
         :class="{ coverDiv: col.key == 'coverUrl', titleDiv: col.key != 'coverUrl' }"
-        :style="'width:' + col.width + 'px'" style="
+        :style="'width:' + col.width + 'px'"
+        style="
           border-right: 1px solid #000000;
           padding-left: 10px;
           box-sizing: border-box;
           display: flex;
-        ">
+        "
+      >
         <div style="flex-grow: 1; overflow: hidden">
           <div style="width: 0; white-space: nowrap">{{ col.columnName }}</div>
         </div>
-        <div v-if="col.key !== 'coverUrl'" style="width: 5px; cursor: e-resize" @mousedown="startResize($event, col)">
-        </div>
+        <div
+          v-if="col.key !== 'coverUrl'"
+          style="width: 5px; cursor: e-resize"
+          @mousedown="startResize($event, col)"
+        ></div>
       </div>
     </div>
     <div>
-      <div v-for="(item, index) of songInfoArr" :key="item.filePath" class="songItem unselectable"
-        @click.stop="songClick(item)" @contextmenu.stop="songContextmenu(item)" @dblclick.stop="songDblClick(item)">
-        <div :class="{
-          lightBackground: index % 2 === 1 && selectedSongFilePath.indexOf(item.filePath) === -1,
-          darkBackground: index % 2 === 0 && selectedSongFilePath.indexOf(item.filePath) === -1,
-          selectedSong: selectedSongFilePath.indexOf(item.filePath) !== -1,
-          playingSong: item.filePath === playingSongFilePath
-        }" style="display: flex">
+      <div
+        v-for="(item, index) of songInfoArr"
+        :key="item.filePath"
+        class="songItem unselectable"
+        @click.stop="songClick($event, item)"
+        @contextmenu.stop="songContextmenu(item)"
+        @dblclick.stop="songDblClick(item)"
+      >
+        <div
+          :class="{
+            lightBackground: index % 2 === 1 && selectedSongFilePath.indexOf(item.filePath) === -1,
+            darkBackground: index % 2 === 0 && selectedSongFilePath.indexOf(item.filePath) === -1,
+            selectedSong: selectedSongFilePath.indexOf(item.filePath) !== -1,
+            playingSong: item.filePath === playingSongFilePath
+          }"
+          style="display: flex"
+        >
           <template v-for="col of columnDataArr" :key="col.key">
             <template v-if="col.show">
-              <div v-if="col.key == 'coverUrl'" class="coverDiv" style="overflow: hidden"
-                :style="'width:' + col.width + 'px'">
+              <div
+                v-if="col.key == 'coverUrl'"
+                class="coverDiv"
+                style="overflow: hidden"
+                :style="'width:' + col.width + 'px'"
+              >
                 <img :src="item.coverUrl" class="unselectable" />
               </div>
               <div v-else class="titleDiv" :style="'width:' + col.width + 'px'">
@@ -274,8 +328,12 @@ window.electron.ipcRenderer.on('mainWindow-blur', async (event) => {
       </div>
     </div>
   </div>
-  <songAreaColRightClickMenu v-model="colRightClickMenuShow" :clickEvent="colClickEvent" :columnData="columnData"
-    @colMenuHandleClick="colMenuHandleClick" />
+  <songAreaColRightClickMenu
+    v-model="colRightClickMenuShow"
+    :clickEvent="colClickEvent"
+    :columnData="columnData"
+    @colMenuHandleClick="colMenuHandleClick"
+  />
 </template>
 <style lang="scss" scoped>
 .selectedSong {
@@ -360,7 +418,6 @@ window.electron.ipcRenderer.on('mainWindow-blur', async (event) => {
 }
 
 @keyframes rectangle {
-
   0%,
   80%,
   100% {
