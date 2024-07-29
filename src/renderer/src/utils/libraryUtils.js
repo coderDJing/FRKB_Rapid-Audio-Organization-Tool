@@ -126,7 +126,7 @@ export function getDepthByUuid(data, targetUuid) {
   // 从根节点开始遍历
   return traverse(data)
 }
-
+//todo需要一个获取所有子集的uuid的方法（删除的时候判断用）
 export const libraryUtils = {
   getFatherLibraryTreeByUUID,
   getLibraryTreeByUUID,
