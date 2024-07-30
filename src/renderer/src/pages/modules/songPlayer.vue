@@ -4,6 +4,7 @@ import WaveSurfer from 'wavesurfer.js'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import musicIcon from '@renderer/assets/musicIcon.png'
 import playerControls from '../../components/playerControls.vue'
+import hotkeys from 'hotkeys-js'
 
 const runtime = useRuntimeStore()
 const waveform = ref(null)
@@ -110,20 +111,37 @@ window.electron.ipcRenderer.on('readedSongFile', (event, audioData) => {
   }
 })
 
+hotkeys('space', () => {
+  if (wavesurferInstance.isPlaying()) {
+    pause()
+  } else {
+    play()
+  }
+
+  return false
+})
+const play = () => {
+  wavesurferInstance.play()
+}
 const pause = () => {
   wavesurferInstance.pause()
 }
 
-const play = () => {
-  wavesurferInstance.play()
-}
+hotkeys('d', () => {
+  fastForward()
+})
 
 const fastForward = () => {
   wavesurferInstance.skip(10)
 }
+
+hotkeys('a', () => {
+  fastBackward()
+})
 const fastBackward = () => {
   wavesurferInstance.skip(-5)
 }
+//todo上一首下一首快捷键
 const nextSong = () => {
   let index = runtime.playingData.playingSongListData.findIndex((item) => {
     return item.filePath === runtime.playingData.playingSong.filePath

@@ -73,6 +73,32 @@ const librarySelectedChange = (item) => {
   }
   librarySelected.value = item.name
 }
+let dragOverSongsArea = ref(false)
+const dragover = (e) => {
+  if (runtime.dragItemData !== null) {
+    e.dataTransfer.dropEffect = 'none'
+    return
+  }
+  e.dataTransfer.dropEffect = 'move'
+  dragOverSongsArea.value = true
+}
+const dragleave = (e) => {
+  if (runtime.dragItemData !== null) {
+    e.dataTransfer.dropEffect = 'none'
+    return
+  }
+  dragOverSongsArea.value = false
+}
+
+const drop = (e) => {
+  if (runtime.dragItemData !== null) {
+    e.dataTransfer.dropEffect = 'none'
+    return
+  }
+  dragOverSongsArea.value = false
+  //todo外部拖动导入
+  console.log(e.dataTransfer.files)
+}
 </script>
 <template>
   <div style="display: flex; height: 100%">
@@ -102,7 +128,12 @@ const librarySelectedChange = (item) => {
           @mouseleave="handleMouseLeave"
           :class="{ dragBarHovered: isHovered }"
         ></div>
-        <div style="flex: 1; background-color: #181818">
+        <div
+          style="flex: 1; background-color: #181818"
+          @dragover.stop.prevent="dragover"
+          @dragleave.stop="dragleave"
+          @drop.stop.prevent="drop"
+        >
           <songsArea />
         </div>
       </div>
