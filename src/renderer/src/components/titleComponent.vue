@@ -93,10 +93,10 @@ const menuButtonClick = async (item) => {
     <div class="canDrag" style="flex-grow: 1; height: 35px; z-index: 1"></div>
     <div style="display: flex; z-index: 1">
       <div class="rightIcon" @click="toggleMinimize()">
-        <img :src="chromeMiniimize" />
+        <img :src="chromeMiniimize" :draggable="false" />
       </div>
       <div class="rightIcon" @click="toggleMaximize()">
-        <img :src="runtime.isWindowMaximized ? chromeRestore : chromeMaximize" />
+        <img :src="runtime.isWindowMaximized ? chromeRestore : chromeMaximize" :draggable="false" />
       </div>
       <div
         class="rightIcon closeIcon"

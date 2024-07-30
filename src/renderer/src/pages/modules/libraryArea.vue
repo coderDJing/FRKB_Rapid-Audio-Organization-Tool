@@ -58,106 +58,127 @@ const collapseButtonHandleClick = async () => {
 
 const dragApproach = ref('')
 const dragover = (e) => {
+  if (runtime.dragItemData === null) {
+    e.dataTransfer.dropEffect = 'none'
+    return
+  }
   e.dataTransfer.dropEffect = 'move'
   dragApproach.value = 'top'
 }
 const dragenter = (e) => {
+  if (runtime.dragItemData === null) {
+    e.dataTransfer.dropEffect = 'none'
+    return
+  }
   e.dataTransfer.dropEffect = 'move'
   dragApproach.value = 'top'
 }
 const dragleave = (e) => {
+  if (runtime.dragItemData === null) {
+    e.dataTransfer.dropEffect = 'none'
+    return
+  }
   dragApproach.value = ''
 }
 const drop = async (e) => {
-  dragApproach.value = ''
-  let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(
-    runtime.libraryTree,
-    runtime.dragItemData.uuid
-  )
-  if (dragItemDataFather.uuid == props.uuid) {
-    if (libraryData.children[libraryData.children.length - 1].uuid == runtime.dragItemData.uuid) {
-      return
-    }
-    //同一层级仅调换位置
-    let removedElement = libraryData.children.splice(
-      libraryData.children.indexOf(runtime.dragItemData),
-      1
-    )[0]
-    libraryData.children.push(removedElement)
-    libraryUtils.reOrderChildren(libraryData.children)
-    await window.electron.ipcRenderer.invoke(
-      'reOrderSubDir',
-      libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid),
-      JSON.stringify(libraryData.children)
-    )
+  if (runtime.dragItemData === null) {
+    e.dataTransfer.dropEffect = 'none'
     return
-  } else {
-    const existingItem = libraryData.children.find((item) => {
-      return (
-        item.dirName === runtime.dragItemData.dirName && item.uuid !== runtime.dragItemData.uuid
-      )
-    })
-    if (existingItem) {
-      let res = await confirm({
-        title: '移动',
-        content: [
-          '目标文件夹下已存在："' + runtime.dragItemData.dirName + '"',
-          '是否继续执行替换',
-          '（被替换的歌单或文件夹将被删除）'
-        ]
-      })
-      if (res == 'confirm') {
-        let targetPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, existingItem.uuid)
-        await window.electron.ipcRenderer.invoke('delDir', targetPath)
-        await window.electron.ipcRenderer.invoke(
-          'moveToDirSample',
-          libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid),
-          libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid)
-        )
-        libraryData.children.splice(libraryData.children.indexOf(existingItem), 1)
-        let removedElement = dragItemDataFather.children.splice(
-          dragItemDataFather.children.indexOf(runtime.dragItemData),
-          1
-        )[0]
-        libraryUtils.reOrderChildren(dragItemDataFather.children)
-        await window.electron.ipcRenderer.invoke(
-          'reOrderSubDir',
-          libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid),
-          JSON.stringify(dragItemDataFather.children)
-        )
-        libraryData.children.push(removedElement)
-        libraryUtils.reOrderChildren(libraryData.children)
-        await window.electron.ipcRenderer.invoke(
-          'reOrderSubDir',
-          libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid),
-          JSON.stringify(libraryData.children)
-        )
+  }
+  try {
+    dragApproach.value = ''
+    let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(
+      runtime.libraryTree,
+      runtime.dragItemData.uuid
+    )
+    if (dragItemDataFather.uuid == props.uuid) {
+      if (libraryData.children[libraryData.children.length - 1].uuid == runtime.dragItemData.uuid) {
+        return
       }
+      //同一层级仅调换位置
+      let removedElement = libraryData.children.splice(
+        libraryData.children.indexOf(runtime.dragItemData),
+        1
+      )[0]
+      libraryData.children.push(removedElement)
+      libraryUtils.reOrderChildren(libraryData.children)
+      await window.electron.ipcRenderer.invoke(
+        'reOrderSubDir',
+        libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid),
+        JSON.stringify(libraryData.children)
+      )
+      return
+    } else {
+      const existingItem = libraryData.children.find((item) => {
+        return (
+          item.dirName === runtime.dragItemData.dirName && item.uuid !== runtime.dragItemData.uuid
+        )
+      })
+      if (existingItem) {
+        let res = await confirm({
+          title: '移动',
+          content: [
+            '目标文件夹下已存在："' + runtime.dragItemData.dirName + '"',
+            '是否继续执行替换',
+            '（被替换的歌单或文件夹将被删除）'
+          ]
+        })
+        if (res == 'confirm') {
+          let targetPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, existingItem.uuid)
+          await window.electron.ipcRenderer.invoke('delDir', targetPath)
+          await window.electron.ipcRenderer.invoke(
+            'moveToDirSample',
+            libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid),
+            libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid)
+          )
+          libraryData.children.splice(libraryData.children.indexOf(existingItem), 1)
+          let removedElement = dragItemDataFather.children.splice(
+            dragItemDataFather.children.indexOf(runtime.dragItemData),
+            1
+          )[0]
+          libraryUtils.reOrderChildren(dragItemDataFather.children)
+          await window.electron.ipcRenderer.invoke(
+            'reOrderSubDir',
+            libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid),
+            JSON.stringify(dragItemDataFather.children)
+          )
+          libraryData.children.push(removedElement)
+          libraryUtils.reOrderChildren(libraryData.children)
+          await window.electron.ipcRenderer.invoke(
+            'reOrderSubDir',
+            libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid),
+            JSON.stringify(libraryData.children)
+          )
+        }
+        return
+      }
+      await window.electron.ipcRenderer.invoke(
+        'moveToDirSample',
+        libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid),
+        libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid)
+      )
+      let removedElement = dragItemDataFather.children.splice(
+        dragItemDataFather.children.indexOf(runtime.dragItemData),
+        1
+      )[0]
+      libraryUtils.reOrderChildren(dragItemDataFather.children)
+      await window.electron.ipcRenderer.invoke(
+        'reOrderSubDir',
+        libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid),
+        JSON.stringify(dragItemDataFather.children)
+      )
+      libraryData.children.push(removedElement)
+      libraryUtils.reOrderChildren(libraryData.children)
+      await window.electron.ipcRenderer.invoke(
+        'reOrderSubDir',
+        libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid),
+        JSON.stringify(libraryData.children)
+      )
       return
     }
-    await window.electron.ipcRenderer.invoke(
-      'moveToDirSample',
-      libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid),
-      libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid)
-    )
-    let removedElement = dragItemDataFather.children.splice(
-      dragItemDataFather.children.indexOf(runtime.dragItemData),
-      1
-    )[0]
-    libraryUtils.reOrderChildren(dragItemDataFather.children)
-    await window.electron.ipcRenderer.invoke(
-      'reOrderSubDir',
-      libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid),
-      JSON.stringify(dragItemDataFather.children)
-    )
-    libraryData.children.push(removedElement)
-    libraryUtils.reOrderChildren(libraryData.children)
-    await window.electron.ipcRenderer.invoke(
-      'reOrderSubDir',
-      libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid),
-      JSON.stringify(libraryData.children)
-    )
-    return
+  } catch (error) {
+  } finally {
+    runtime.dragItemData = null
   }
 }
 </script>
