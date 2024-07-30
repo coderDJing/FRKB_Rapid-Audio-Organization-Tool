@@ -277,6 +277,10 @@ const dragstart = (e) => {
 }
 const dragApproach = ref('')
 const dragover = (e) => {
+  if (runtime.dragItemData === null) {
+    e.dataTransfer.dropEffect = 'none'
+    return
+  }
   e.dataTransfer.dropEffect = 'move'
   if (runtime.dragItemData == dirData) {
     return
@@ -302,6 +306,10 @@ const dragover = (e) => {
   }
 }
 const dragenter = (e) => {
+  if (runtime.dragItemData === null) {
+    e.dataTransfer.dropEffect = 'none'
+    return
+  }
   e.dataTransfer.dropEffect = 'move'
   if (runtime.dragItemData == dirData) {
     return
@@ -326,6 +334,10 @@ const dragenter = (e) => {
   }
 }
 const dragleave = (e) => {
+  if (runtime.dragItemData === null) {
+    e.dataTransfer.dropEffect = 'none'
+    return
+  }
   dragApproach.value = ''
 }
 
@@ -343,128 +355,38 @@ const approachCenterEnd = () => {
   dragItemDataFather.children.splice(dragItemDataFather.children.indexOf(runtime.dragItemData), 1)
 }
 const drop = async (e) => {
-  let approach = dragApproach.value
-  dragApproach.value = ''
-  if (runtime.dragItemData == dirData) {
+  if (runtime.dragItemData === null) {
+    e.dataTransfer.dropEffect = 'none'
     return
   }
-  if (libraryUtils.isDragItemInDirChildren(runtime.dragItemData.children, dirData.uuid)) {
-    return
-  }
-  if (approach == 'center') {
-    if (
-      libraryUtils.getFatherLibraryTreeByUUID(runtime.libraryTree, runtime.dragItemData.uuid)
-        .uuid == dirData.uuid
-    ) {
-      let removedElement = dirData.children.splice(
-        dirData.children.indexOf(runtime.dragItemData),
-        1
-      )[0]
-      dirData.children.unshift(removedElement)
-      libraryUtils.reOrderChildren(dirData.children)
-      await window.electron.ipcRenderer.invoke(
-        'reOrderSubDir',
-        libraryUtils.findDirPathByUuid(runtime.libraryTree, dirData.uuid),
-        JSON.stringify(dirData.children)
-      )
+  try {
+    let approach = dragApproach.value
+    dragApproach.value = ''
+    if (runtime.dragItemData == dirData) {
       return
     }
-    const existingItem = dirData.children.find((item) => {
-      return (
-        item.dirName === runtime.dragItemData.dirName && item.uuid !== runtime.dragItemData.uuid
-      )
-    })
-    if (existingItem) {
-      let res = await confirm({
-        title: '移动',
-        content: [
-          '目标文件夹下已存在："' + runtime.dragItemData.dirName + '"',
-          '是否继续执行替换',
-          '（被替换的歌单或文件夹将被删除）'
-        ]
-      })
-      if (res == 'confirm') {
+    if (libraryUtils.isDragItemInDirChildren(runtime.dragItemData.children, dirData.uuid)) {
+      return
+    }
+    if (approach == 'center') {
+      if (
+        libraryUtils.getFatherLibraryTreeByUUID(runtime.libraryTree, runtime.dragItemData.uuid)
+          .uuid == dirData.uuid
+      ) {
+        let removedElement = dirData.children.splice(
+          dirData.children.indexOf(runtime.dragItemData),
+          1
+        )[0]
+        dirData.children.unshift(removedElement)
+        libraryUtils.reOrderChildren(dirData.children)
         await window.electron.ipcRenderer.invoke(
-          'moveInDir',
-          libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid),
+          'reOrderSubDir',
           libraryUtils.findDirPathByUuid(runtime.libraryTree, dirData.uuid),
-          true
+          JSON.stringify(dirData.children)
         )
-        let oldOrder = existingItem.order
-        dirData.children.splice(dirData.children.indexOf(existingItem), 1)
-        for (let item of dirData.children) {
-          if (item.order < oldOrder) {
-            item.order++
-          } else {
-            break
-          }
-        }
-        approachCenterEnd()
-      }
-      return
-    }
-    let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(
-      runtime.libraryTree,
-      runtime.dragItemData.uuid
-    )
-    await window.electron.ipcRenderer.invoke(
-      'moveToDirSample',
-      libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid),
-      libraryUtils.findDirPathByUuid(runtime.libraryTree, dirData.uuid)
-    )
-    let removedElement = dragItemDataFather.children.splice(
-      dragItemDataFather.children.indexOf(runtime.dragItemData),
-      1
-    )[0]
-    libraryUtils.reOrderChildren(dragItemDataFather.children)
-    await window.electron.ipcRenderer.invoke(
-      'reOrderSubDir',
-      libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid),
-      JSON.stringify(dragItemDataFather.children)
-    )
-    dirData.children.unshift(removedElement)
-    libraryUtils.reOrderChildren(dirData.children)
-    await window.electron.ipcRenderer.invoke(
-      'reOrderSubDir',
-      libraryUtils.findDirPathByUuid(runtime.libraryTree, dirData.uuid),
-      JSON.stringify(dirData.children)
-    )
-    return
-  } else if (approach == 'top' || approach == 'bottom') {
-    let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(
-      runtime.libraryTree,
-      runtime.dragItemData.uuid
-    )
-    if (dragItemDataFather == fatherDirData) {
-      // 两个dir在同一目录下
-      if (approach == 'top' && dirData.order - runtime.dragItemData.order == 1) {
         return
       }
-      if (approach == 'bottom' && runtime.dragItemData.order - dirData.order == 1) {
-        return
-      }
-      let removedElement = fatherDirData.children.splice(
-        fatherDirData.children.indexOf(runtime.dragItemData),
-        1
-      )[0]
-      fatherDirData.children.splice(
-        approach == 'top'
-          ? fatherDirData.children.indexOf(dirData)
-          : fatherDirData.children.indexOf(dirData) + 1,
-        0,
-        removedElement
-      )
-      libraryUtils.reOrderChildren(fatherDirData.children)
-
-      await window.electron.ipcRenderer.invoke(
-        'reOrderSubDir',
-        libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid),
-        JSON.stringify(fatherDirData.children)
-      )
-      return
-    } else {
-      // 两个dir不在同一目录下
-      const existingItem = fatherDirData.children.find((item) => {
+      const existingItem = dirData.children.find((item) => {
         return (
           item.dirName === runtime.dragItemData.dirName && item.uuid !== runtime.dragItemData.uuid
         )
@@ -479,71 +401,170 @@ const drop = async (e) => {
           ]
         })
         if (res == 'confirm') {
-          let targetPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, existingItem.uuid)
-
-          await window.electron.ipcRenderer.invoke('delDir', targetPath)
-          fatherDirData.children.splice(
-            approach == 'top'
-              ? fatherDirData.children.indexOf(dirData)
-              : fatherDirData.children.indexOf(dirData) + 1,
-            0,
-            runtime.dragItemData
-          )
-          fatherDirData.children.splice(fatherDirData.children.indexOf(existingItem), 1)
-          libraryUtils.reOrderChildren(fatherDirData.children)
           await window.electron.ipcRenderer.invoke(
-            'moveToDirSample',
+            'moveInDir',
             libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid),
-            libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid)
+            libraryUtils.findDirPathByUuid(runtime.libraryTree, dirData.uuid),
+            true
           )
-          await window.electron.ipcRenderer.invoke(
-            'reOrderSubDir',
-            libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid),
-            JSON.stringify(fatherDirData.children)
-          )
-          dragItemDataFather.children.splice(
-            dragItemDataFather.children.indexOf(runtime.dragItemData),
-            1
-          )
-          libraryUtils.reOrderChildren(dragItemDataFather.children)
-          await window.electron.ipcRenderer.invoke(
-            'reOrderSubDir',
-            libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid),
-            JSON.stringify(dragItemDataFather.children)
-          )
+          let oldOrder = existingItem.order
+          dirData.children.splice(dirData.children.indexOf(existingItem), 1)
+          for (let item of dirData.children) {
+            if (item.order < oldOrder) {
+              item.order++
+            } else {
+              break
+            }
+          }
+          approachCenterEnd()
         }
         return
       }
+      let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(
+        runtime.libraryTree,
+        runtime.dragItemData.uuid
+      )
       await window.electron.ipcRenderer.invoke(
         'moveToDirSample',
         libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid),
-        libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid)
+        libraryUtils.findDirPathByUuid(runtime.libraryTree, dirData.uuid)
       )
       let removedElement = dragItemDataFather.children.splice(
         dragItemDataFather.children.indexOf(runtime.dragItemData),
         1
       )[0]
-      fatherDirData.children.splice(
-        approach == 'top'
-          ? fatherDirData.children.indexOf(dirData)
-          : fatherDirData.children.indexOf(dirData) + 1,
-        0,
-        removedElement
-      )
       libraryUtils.reOrderChildren(dragItemDataFather.children)
       await window.electron.ipcRenderer.invoke(
         'reOrderSubDir',
         libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid),
         JSON.stringify(dragItemDataFather.children)
       )
-      libraryUtils.reOrderChildren(fatherDirData.children)
+      dirData.children.unshift(removedElement)
+      libraryUtils.reOrderChildren(dirData.children)
       await window.electron.ipcRenderer.invoke(
         'reOrderSubDir',
-        libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid),
-        JSON.stringify(fatherDirData.children)
+        libraryUtils.findDirPathByUuid(runtime.libraryTree, dirData.uuid),
+        JSON.stringify(dirData.children)
       )
       return
+    } else if (approach == 'top' || approach == 'bottom') {
+      let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(
+        runtime.libraryTree,
+        runtime.dragItemData.uuid
+      )
+      if (dragItemDataFather == fatherDirData) {
+        // 两个dir在同一目录下
+        if (approach == 'top' && dirData.order - runtime.dragItemData.order == 1) {
+          return
+        }
+        if (approach == 'bottom' && runtime.dragItemData.order - dirData.order == 1) {
+          return
+        }
+        let removedElement = fatherDirData.children.splice(
+          fatherDirData.children.indexOf(runtime.dragItemData),
+          1
+        )[0]
+        fatherDirData.children.splice(
+          approach == 'top'
+            ? fatherDirData.children.indexOf(dirData)
+            : fatherDirData.children.indexOf(dirData) + 1,
+          0,
+          removedElement
+        )
+        libraryUtils.reOrderChildren(fatherDirData.children)
+
+        await window.electron.ipcRenderer.invoke(
+          'reOrderSubDir',
+          libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid),
+          JSON.stringify(fatherDirData.children)
+        )
+        return
+      } else {
+        // 两个dir不在同一目录下
+        const existingItem = fatherDirData.children.find((item) => {
+          return (
+            item.dirName === runtime.dragItemData.dirName && item.uuid !== runtime.dragItemData.uuid
+          )
+        })
+        if (existingItem) {
+          let res = await confirm({
+            title: '移动',
+            content: [
+              '目标文件夹下已存在："' + runtime.dragItemData.dirName + '"',
+              '是否继续执行替换',
+              '（被替换的歌单或文件夹将被删除）'
+            ]
+          })
+          if (res == 'confirm') {
+            let targetPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, existingItem.uuid)
+
+            await window.electron.ipcRenderer.invoke('delDir', targetPath)
+            fatherDirData.children.splice(
+              approach == 'top'
+                ? fatherDirData.children.indexOf(dirData)
+                : fatherDirData.children.indexOf(dirData) + 1,
+              0,
+              runtime.dragItemData
+            )
+            fatherDirData.children.splice(fatherDirData.children.indexOf(existingItem), 1)
+            libraryUtils.reOrderChildren(fatherDirData.children)
+            await window.electron.ipcRenderer.invoke(
+              'moveToDirSample',
+              libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid),
+              libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid)
+            )
+            await window.electron.ipcRenderer.invoke(
+              'reOrderSubDir',
+              libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid),
+              JSON.stringify(fatherDirData.children)
+            )
+            dragItemDataFather.children.splice(
+              dragItemDataFather.children.indexOf(runtime.dragItemData),
+              1
+            )
+            libraryUtils.reOrderChildren(dragItemDataFather.children)
+            await window.electron.ipcRenderer.invoke(
+              'reOrderSubDir',
+              libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid),
+              JSON.stringify(dragItemDataFather.children)
+            )
+          }
+          return
+        }
+        await window.electron.ipcRenderer.invoke(
+          'moveToDirSample',
+          libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid),
+          libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid)
+        )
+        let removedElement = dragItemDataFather.children.splice(
+          dragItemDataFather.children.indexOf(runtime.dragItemData),
+          1
+        )[0]
+        fatherDirData.children.splice(
+          approach == 'top'
+            ? fatherDirData.children.indexOf(dirData)
+            : fatherDirData.children.indexOf(dirData) + 1,
+          0,
+          removedElement
+        )
+        libraryUtils.reOrderChildren(dragItemDataFather.children)
+        await window.electron.ipcRenderer.invoke(
+          'reOrderSubDir',
+          libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid),
+          JSON.stringify(dragItemDataFather.children)
+        )
+        libraryUtils.reOrderChildren(fatherDirData.children)
+        await window.electron.ipcRenderer.invoke(
+          'reOrderSubDir',
+          libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid),
+          JSON.stringify(fatherDirData.children)
+        )
+        return
+      }
     }
+  } catch (error) {
+  } finally {
+    runtime.dragItemData = null
   }
 }
 const indentWidth = ref(0)
