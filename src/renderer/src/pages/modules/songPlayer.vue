@@ -112,12 +112,13 @@ window.electron.ipcRenderer.on('readedSongFile', (event, audioData) => {
 })
 
 hotkeys('space', () => {
-  if (wavesurferInstance.isPlaying()) {
-    pause()
-  } else {
-    play()
+  if (waveformShow.value) {
+    if (wavesurferInstance.isPlaying()) {
+      pause()
+    } else {
+      play()
+    }
   }
-
   return false
 })
 const play = () => {
@@ -128,7 +129,10 @@ const pause = () => {
 }
 
 hotkeys('d', () => {
-  fastForward()
+  if (waveformShow.value) {
+    fastForward()
+  }
+  return false
 })
 
 const fastForward = () => {
@@ -136,12 +140,20 @@ const fastForward = () => {
 }
 
 hotkeys('a', () => {
-  fastBackward()
+  if (waveformShow.value) {
+    fastBackward()
+  }
+  return false
 })
 const fastBackward = () => {
   wavesurferInstance.skip(-5)
 }
-//todo上一首下一首快捷键
+hotkeys('s', () => {
+  if (waveformShow.value) {
+    nextSong()
+  }
+  return false
+})
 const nextSong = () => {
   let index = runtime.playingData.playingSongListData.findIndex((item) => {
     return item.filePath === runtime.playingData.playingSong.filePath
@@ -152,6 +164,12 @@ const nextSong = () => {
   runtime.playingData.playingSong = runtime.playingData.playingSongListData[index + 1]
   window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
 }
+hotkeys('w', () => {
+  if (waveformShow.value) {
+    previousSong()
+  }
+  return false
+})
 const previousSong = () => {
   let index = runtime.playingData.playingSongListData.findIndex((item) => {
     return item.filePath === runtime.playingData.playingSong.filePath
