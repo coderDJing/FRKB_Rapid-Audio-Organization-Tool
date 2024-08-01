@@ -266,7 +266,7 @@ const confirmHandle = () => {
   } else {
     if (recentDialogSelectedSongListUUID.indexOf(runtime.dialogSelectedSongListUUID) === -1) {
       recentDialogSelectedSongListUUID.unshift(runtime.dialogSelectedSongListUUID)
-      if (recentDialogSelectedSongListUUID.length > 3) {
+      if (recentDialogSelectedSongListUUID.length > 10) {
         recentDialogSelectedSongListUUID.pop()
       }
     } else {

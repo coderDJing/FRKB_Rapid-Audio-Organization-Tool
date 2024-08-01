@@ -9,13 +9,23 @@ import hintIcon from '@renderer/assets/hint.png'
 const props = defineProps({
   songListUuid: {
     type: String
+  },
+  libraryName: {
+    type: String,
+    default: '筛选库'
   }
 })
 
 const runtime = useRuntimeStore()
 const folderPathVal = ref([]) //文件夹路径
+let clickChooseDirFlag = false
 const clickChooseDir = async () => {
+  if (clickChooseDirFlag) {
+    return
+  }
+  clickChooseDirFlag = true
   const folderPath = await window.electron.ipcRenderer.invoke('select-folder')
+  clickChooseDirFlag = false
   if (folderPath) {
     folderPathVal.value = folderPath
   }
@@ -291,6 +301,7 @@ const hint2IconMouseout = () => {
   </div>
   <selectSongListDialog
     v-if="selectSongListDialogShow"
+    :libraryName="'精选库'"
     @confirm="selectSongListDialogConfirm"
     @cancel="
       () => {

@@ -29,7 +29,9 @@ const emits = defineEmits([
   'fastBackward',
   'nextSong',
   'previousSong',
-  'delSong'
+  'delSong',
+  'moveToLikeLibrary',
+  'moveToListLibrary'
 ])
 
 const setPlayingValue = (value) => {
@@ -110,6 +112,14 @@ const nextSongRef = ref(null)
 const delSong = () => {
   emits('delSong')
 }
+
+const moveToLikeLibrary = () => {
+  emits('moveToLikeLibrary')
+}
+
+const moveToListLibrary = () => {
+  emits('moveToListLibrary')
+}
 </script>
 <template>
   <div
@@ -155,14 +165,14 @@ const delSong = () => {
       <div class="menuButton">
         <span>导出</span>
       </div>
-      <div class="menuButton">
+      <div class="menuButton" @click="moveToListLibrary()">
         <div><span>移动到筛选库</span></div>
         <div style="display: flex; align-items: center">
           <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" />
           <span>Q</span>
         </div>
       </div>
-      <div class="menuButton">
+      <div class="menuButton" @click="moveToLikeLibrary()">
         <div>
           <span>移动到精选库</span>
         </div>
@@ -170,7 +180,7 @@ const delSong = () => {
           <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>E</span>
         </div>
       </div>
-      <div class="menuButton" @click="delSong">
+      <div class="menuButton" @click="delSong()">
         <div>
           <span>删除曲目</span>
         </div>
