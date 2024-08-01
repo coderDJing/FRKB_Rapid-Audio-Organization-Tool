@@ -16,7 +16,6 @@ const props = defineProps({
     required: true
   },
   libraryName: {
-    //todo 判断一下，如果是精选库的，导入时要显示精选库
     type: String
   }
 })

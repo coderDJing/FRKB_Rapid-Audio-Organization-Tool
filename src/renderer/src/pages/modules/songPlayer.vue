@@ -222,20 +222,26 @@ const delSong = async () => {
 const selectSongListDialogLibraryName = ref('筛选库')
 const selectSongListDialogConfirmHotkey = ref('E')
 const selectSongListDialogShow = ref(false)
-hotkeys('e', () => {
-  if (waveformShow.value && !runtime.selectSongListDialogShow) {
-    selectSongListDialogLibraryName.value = '筛选库'
-    selectSongListDialogConfirmHotkey.value = 'E'
-    selectSongListDialogShow.value = true
-  }
-})
 hotkeys('q', () => {
   if (waveformShow.value && !runtime.selectSongListDialogShow) {
-    selectSongListDialogLibraryName.value = '精选库'
-    selectSongListDialogConfirmHotkey.value = 'Q'
-    selectSongListDialogShow.value = true
+    moveToListLibrary()
   }
 })
+const moveToListLibrary = () => {
+  selectSongListDialogLibraryName.value = '筛选库'
+  selectSongListDialogConfirmHotkey.value = 'Q'
+  selectSongListDialogShow.value = true
+}
+hotkeys('e', () => {
+  if (waveformShow.value && !runtime.selectSongListDialogShow) {
+    moveToLikeLibrary()
+  }
+})
+const moveToLikeLibrary = () => {
+  selectSongListDialogLibraryName.value = '精选库'
+  selectSongListDialogConfirmHotkey.value = 'E'
+  selectSongListDialogShow.value = true
+}
 const selectSongListDialogConfirm = (item) => {
   selectSongListDialogShow.value = false
   //todo 移动到目标歌单 自动下一首 删除当前播放歌单中的这首歌 删除当前显示的list歌单中的这首歌
@@ -304,6 +310,8 @@ const selectSongListDialogConfirm = (item) => {
         @nextSong="nextSong"
         @previousSong="previousSong"
         @delSong="delSong"
+        @moveToListLibrary="moveToListLibrary"
+        @moveToLikeLibrary="moveToLikeLibrary"
       />
     </div>
     <div style="flex-grow: 1" class="unselectable">
