@@ -20,8 +20,14 @@ const flashBorder = (flashAreaName) => {
 }
 
 const folderPathVal = ref([]) //文件夹路径
+let clickChooseDirFlag = false
 const clickChooseDir = async () => {
+  if (clickChooseDirFlag) {
+    return
+  }
+  clickChooseDirFlag = true
   const folderPath = await window.electron.ipcRenderer.invoke('select-folder')
+  clickChooseDirFlag = false
   if (folderPath) {
     folderPathVal.value = folderPath
   }

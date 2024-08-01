@@ -270,6 +270,12 @@ watch(
     } else {
       playingSongFilePath.value = runtime.playingData.playingSong.filePath
     }
+    if (
+      runtime.selectedSongListUUID === runtime.playingData.playingSongListUUID &&
+      runtime.playingData.playingSongListData.length !== songInfoArr.value.length
+    ) {
+      songInfoArr.value = runtime.playingData.playingSongListData
+    }
   }
 )
 const songDblClick = (song) => {
