@@ -5,7 +5,8 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import musicIcon from '@renderer/assets/musicIcon.png'
 import playerControls from '../../components/playerControls.vue'
 import hotkeys from 'hotkeys-js'
-
+import confirm from '@renderer/components/confirm'
+import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 const runtime = useRuntimeStore()
 const waveform = ref(null)
 let wavesurferInstance = null
@@ -149,6 +150,9 @@ const fastBackward = () => {
   wavesurferInstance.skip(-5)
 }
 hotkeys('s', () => {
+  if (runtime.selectSongListDialogShow) {
+    return
+  }
   if (waveformShow.value) {
     nextSong()
   }
@@ -165,6 +169,9 @@ const nextSong = () => {
   window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
 }
 hotkeys('w', () => {
+  if (runtime.selectSongListDialogShow) {
+    return
+  }
   if (waveformShow.value) {
     previousSong()
   }
@@ -179,6 +186,60 @@ const previousSong = () => {
   }
   runtime.playingData.playingSong = runtime.playingData.playingSongListData[index - 1]
   window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
+}
+let showDelConfirm = false
+hotkeys('F', () => {
+  if (showDelConfirm || runtime.confirmShow) {
+    return
+  }
+  runtime.activeMenuUUID = ''
+  showDelConfirm = true
+  delSong()
+})
+const delSong = async () => {
+  let res = await confirm({
+    title: '删除',
+    content: ['确定删除选中的曲目吗', '（曲目将在磁盘上被删除，但声音指纹依然会保留）'],
+    confirmHotkey: 'F'
+  })
+  showDelConfirm = false
+  if (res === 'confirm') {
+    let filePath = runtime.playingData.playingSong.filePath
+    window.electron.ipcRenderer.send('delSongs', [filePath])
+    let index = runtime.playingData.playingSongListData.findIndex((item) => {
+      return item.filePath === filePath
+    })
+    if (index === runtime.playingData.playingSongListData.length - 1) {
+      runtime.playingData.playingSongListData.splice(index, 1)
+      runtime.playingData.playingSong = null
+    } else {
+      runtime.playingData.playingSong = runtime.playingData.playingSongListData[index + 1]
+      runtime.playingData.playingSongListData.splice(index, 1)
+      window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
+    }
+  }
+}
+const selectSongListDialogLibraryName = ref('筛选库')
+const selectSongListDialogConfirmHotkey = ref('E')
+const selectSongListDialogShow = ref(false)
+hotkeys('e', () => {
+  if (waveformShow.value && !runtime.selectSongListDialogShow) {
+    selectSongListDialogLibraryName.value = '筛选库'
+    selectSongListDialogConfirmHotkey.value = 'E'
+    selectSongListDialogShow.value = true
+  }
+})
+hotkeys('q', () => {
+  if (waveformShow.value && !runtime.selectSongListDialogShow) {
+    selectSongListDialogLibraryName.value = '精选库'
+    selectSongListDialogConfirmHotkey.value = 'Q'
+    selectSongListDialogShow.value = true
+  }
+})
+const selectSongListDialogConfirm = (item) => {
+  selectSongListDialogShow.value = false
+  //todo 移动到目标歌单 自动下一首 删除当前播放歌单中的这首歌 删除当前显示的list歌单中的这首歌
+  console.log(item)
 }
 </script>
 <template>
@@ -242,6 +303,7 @@ const previousSong = () => {
         @fastBackward="fastBackward"
         @nextSong="nextSong"
         @previousSong="previousSong"
+        @delSong="delSong"
       />
     </div>
     <div style="flex-grow: 1" class="unselectable">
@@ -252,6 +314,17 @@ const previousSong = () => {
       </div>
     </div>
   </div>
+  <selectSongListDialog
+    v-if="selectSongListDialogShow"
+    :libraryName="selectSongListDialogLibraryName"
+    :confirmHotkey="selectSongListDialogConfirmHotkey"
+    @confirm="selectSongListDialogConfirm"
+    @cancel="
+      () => {
+        selectSongListDialogShow = false
+      }
+    "
+  />
 </template>
 <style lang="scss" scoped>
 .songInfo {

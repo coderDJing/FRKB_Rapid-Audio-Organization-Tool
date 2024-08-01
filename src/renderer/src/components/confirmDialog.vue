@@ -1,4 +1,8 @@
 <script setup>
+import hotkeys from 'hotkeys-js'
+import { onUnmounted } from 'vue'
+import { useRuntimeStore } from '@renderer/stores/runtime'
+const runtime = useRuntimeStore()
 const props = defineProps({
   title: {
     type: String
@@ -22,6 +26,10 @@ const props = defineProps({
     type: Number,
     default: 300
   },
+  confirmHotkey: {
+    type: String,
+    default: '↵'
+  },
   confirmCallback: {
     type: Function
   },
@@ -42,6 +50,19 @@ const cancel = () => {
     props.cancelCallback()
   }
 }
+hotkeys(props.confirmHotkey === '↵' ? 'enter' : props.confirmHotkey, () => {
+  if (props.confirmShow) {
+    confirm()
+  }
+})
+
+hotkeys('esc', () => {
+  cancel()
+})
+runtime.confirmShow = true
+onUnmounted(() => {
+  runtime.confirmShow = false
+})
 </script>
 <template>
   <div class="dialog unselectable" style="position: absolute; font-size: 14px">
@@ -65,14 +86,17 @@ const cancel = () => {
         </div>
       </div>
       <div v-if="confirmShow" style="display: flex; justify-content: center; padding-bottom: 10px">
-        <div class="button" style="margin-right: 10px" @click="confirm()">确定</div>
-        <div class="button" @click="cancel()">取消</div>
+        <div
+          class="button"
+          style="margin-right: 10px; width: 60px; text-align: center"
+          @click="confirm()"
+        >
+          确定 {{ props.confirmHotkey }}
+        </div>
+        <div class="button" style="width: 60px; text-align: center" @click="cancel()">取消 Esc</div>
       </div>
-      <div
-        v-else="confirmShow"
-        style="display: flex; justify-content: center; padding-bottom: 10px"
-      >
-        <div class="button" @click="cancel()">关闭</div>
+      <div v-if="!confirmShow" style="display: flex; justify-content: center; padding-bottom: 10px">
+        <div class="button" @click="cancel()">关闭 Esc</div>
       </div>
     </div>
   </div>

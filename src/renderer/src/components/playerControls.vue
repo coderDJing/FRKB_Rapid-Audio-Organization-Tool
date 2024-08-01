@@ -10,7 +10,7 @@ import { ref, onUnmounted, watch } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
-
+import shortcutIcon from '@renderer/assets/shortcutIcon.png'
 const uuid = uuidv4()
 const runtime = useRuntimeStore()
 const playing = ref(true)
@@ -28,7 +28,8 @@ const emits = defineEmits([
   'fastForward',
   'fastBackward',
   'nextSong',
-  'previousSong'
+  'previousSong',
+  'delSong'
 ])
 
 const setPlayingValue = (value) => {
@@ -105,6 +106,10 @@ const playRef = ref(null)
 const pauseRef = ref(null)
 const fastForwardRef = ref(null)
 const nextSongRef = ref(null)
+
+const delSong = () => {
+  emits('delSong')
+}
 </script>
 <template>
   <div
@@ -120,7 +125,7 @@ const nextSongRef = ref(null)
     <div ref="previousSongRef" class="buttonIcon" @click="handlePreviousSong()">
       <img :src="previousSong" draggable="false" />
     </div>
-    <bubbleBox :dom="previousSongRef" title="上一首" shortcut="W" :left="50" />
+    <bubbleBox :dom="previousSongRef" title="上一首" shortcut="W" :left="60" />
     <div ref="fastBackwardRef" class="buttonIcon" @mousedown="handleFastBackward()">
       <img :src="fastBackward" draggable="false" />
     </div>
@@ -136,24 +141,43 @@ const nextSongRef = ref(null)
     <div ref="fastForwardRef" class="buttonIcon" @mousedown="handleFastForward()">
       <img :src="fastForward" draggable="false" />
     </div>
-    <bubbleBox :dom="fastForwardRef" title="快进" shortcut="D" :left="200" />
+    <bubbleBox :dom="fastForwardRef" title="快进" shortcut="D" :left="190" />
     <div ref="nextSongRef" class="buttonIcon" @click="handleNextSong()">
       <img :src="nextSong" draggable="false" />
     </div>
-    <bubbleBox :dom="nextSongRef" title="下一首" shortcut="S" :left="250" />
+    <bubbleBox :dom="nextSongRef" title="下一首" shortcut="S" :left="230" />
     <div class="buttonIcon" @click.stop="handelMoreClick()">
       <img :src="more" draggable="false" />
     </div>
   </div>
   <transition name="fade">
-    <!-- todo加上快捷键icon -->
-    <div class="moreMenu" v-if="moreMenuShow">
+    <div class="moreMenu unselectable" v-if="moreMenuShow">
       <div class="menuButton">
         <span>导出</span>
       </div>
-      <div class="menuButton"><span>移动到筛选库</span><span>Q</span></div>
-      <div class="menuButton"><span>移动到精选库</span><span>E</span></div>
-      <div class="menuButton"><span>删除曲目</span><span>F</span></div>
+      <div class="menuButton">
+        <div><span>移动到筛选库</span></div>
+        <div style="display: flex; align-items: center">
+          <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" />
+          <span>Q</span>
+        </div>
+      </div>
+      <div class="menuButton">
+        <div>
+          <span>移动到精选库</span>
+        </div>
+        <div style="display: flex; align-items: center">
+          <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>E</span>
+        </div>
+      </div>
+      <div class="menuButton" @click="delSong">
+        <div>
+          <span>删除曲目</span>
+        </div>
+        <div style="display: flex; align-items: center">
+          <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>F</span>
+        </div>
+      </div>
     </div>
   </transition>
 </template>
