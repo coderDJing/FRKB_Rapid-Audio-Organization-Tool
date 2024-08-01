@@ -249,7 +249,10 @@ const menuButtonClick = async (item) => {
         (item) => selectedSongFilePath.value.indexOf(item.filePath) === -1
       )
       runtime.playingData.playingSongListData = songInfoArr.value
-      if (selectedSongFilePath.value.indexOf(runtime.playingData.playingSong.filePath) !== -1) {
+      if (
+        runtime.playingData.playingSong &&
+        selectedSongFilePath.value.indexOf(runtime.playingData.playingSong.filePath) !== -1
+      ) {
         runtime.playingData.playingSong = null
       }
       selectedSongFilePath.value.length = 0

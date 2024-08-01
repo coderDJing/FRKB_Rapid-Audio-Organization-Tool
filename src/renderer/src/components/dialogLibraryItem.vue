@@ -717,19 +717,19 @@ indentWidth.value = (libraryUtils.getDepthByUuid(runtime.libraryTree, props.uuid
 }
 
 .borderTop {
-  border-top: 1px solid #0078d4;
+  box-shadow: inset 0 1px 0 0 #0078d4;
 }
 
 .borderBottom {
-  border-bottom: 1px solid #0078d4;
+  box-shadow: inset 0 -1px 0 0 #0078d4;
 }
 
 .borderCenter {
-  border: 1px solid #0078d4;
+  box-shadow: inset 0 0 0 1px #0078d4;
 }
 
 .rightClickBorder {
-  border: 1px solid #0078d4;
+  box-shadow: inset 0 0 0 1px #0078d4;
 }
 
 .myInput {

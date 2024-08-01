@@ -21,7 +21,7 @@ export const useRuntimeStore = defineStore('runtime', {
       },
       dragItemData: null,
       libraryTree: {},
-      selectSongListDialogShow: false,
+      selectSongListDialogShow: false, //全局是否有歌单选择器正在展示
       dialogSelectedSongListUUID: '', //dialog中被选中的歌单UUID
       selectedSongListUUID: '', //被选中的歌单UUID
       importingSongListUUID: '', //正在执行导入中的歌单
@@ -31,7 +31,8 @@ export const useRuntimeStore = defineStore('runtime', {
         playingSong: null, //正在播放的歌曲信息
         playingSongListUUID: '', //正在播放的歌单的UUID
         playingSongListData: [] //正在播放的歌单的曲目数组
-      }
+      },
+      confirmShow: false //是否有确认框正在显示
     }
   }
 })
