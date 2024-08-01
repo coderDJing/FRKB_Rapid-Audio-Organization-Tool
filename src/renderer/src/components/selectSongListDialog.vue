@@ -1,31 +1,94 @@
 <script setup>
-import { onUnmounted, ref } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu.vue'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { v4 as uuidv4 } from 'uuid'
 import confirm from '@renderer/components/confirm.js'
+import hotkeys from 'hotkeys-js'
+import listIcon from '@renderer/assets/listIcon.png'
+
+const props = defineProps({
+  confirmHotkey: {
+    type: String,
+    default: '↵'
+  },
+  libraryName: {
+    type: String,
+    default: '筛选库'
+  }
+})
 
 const runtime = useRuntimeStore()
-
+runtime.selectSongListDialogShow = true
 let recentDialogSelectedSongListUUID = []
 let localStorageRecentDialogSelectedSongListUUID = localStorage.getItem(
-  'recentDialogSelectedSongListUUID'
+  'recentDialogSelectedSongListUUID' + props.libraryName
 )
 if (localStorageRecentDialogSelectedSongListUUID) {
   recentDialogSelectedSongListUUID = JSON.parse(localStorageRecentDialogSelectedSongListUUID)
 }
-const recentSongListArr = ref([])
-for (let uuid of recentDialogSelectedSongListUUID) {
-  let obj = libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, uuid)
-  if (obj) {
-    recentSongListArr.value.push(obj)
-  }
+let index = 0
+if (recentDialogSelectedSongListUUID.length !== 0) {
+  runtime.dialogSelectedSongListUUID = recentDialogSelectedSongListUUID[index]
 }
+hotkeys('s', 'selectSongListDialog', () => {
+  if (recentDialogSelectedSongListUUID.length !== 0) {
+    index++
+    if (index === recentDialogSelectedSongListUUID.length) {
+      index = 0
+    }
+    runtime.dialogSelectedSongListUUID = recentDialogSelectedSongListUUID[index]
+  }
+})
+hotkeys('w', 'selectSongListDialog', () => {
+  if (recentDialogSelectedSongListUUID.length !== 0) {
+    index--
+    if (index === -1) {
+      index = recentDialogSelectedSongListUUID.length - 1
+    }
+    runtime.dialogSelectedSongListUUID = recentDialogSelectedSongListUUID[index]
+  }
+})
+hotkeys.setScope('selectSongListDialog')
+hotkeys(props.confirmHotkey === '↵' ? 'enter' : props.confirmHotkey, () => {
+  confirmHandle()
+})
+hotkeys('esc', () => {
+  cancel()
+})
+const recentSongListArr = ref([])
+let delRecentDialogSelectedSongListUUID = []
+watch(
+  () => runtime.libraryTree,
+  () => {
+    recentSongListArr.value = []
+    delRecentDialogSelectedSongListUUID = []
+    for (let uuid of recentDialogSelectedSongListUUID) {
+      let obj = libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, uuid)
+      if (obj === null) {
+        delRecentDialogSelectedSongListUUID.push(uuid)
+      }
+      if (obj) {
+        recentSongListArr.value.push(obj)
+      }
+    }
+    if (delRecentDialogSelectedSongListUUID.length !== 0) {
+      recentDialogSelectedSongListUUID = recentDialogSelectedSongListUUID.filter(
+        (item) => delRecentDialogSelectedSongListUUID.indexOf(item) === -1
+      )
+      localStorage.setItem(
+        'recentDialogSelectedSongListUUID' + props.libraryName,
+        JSON.stringify(recentDialogSelectedSongListUUID)
+      )
+    }
+  },
+  { deep: true, immediate: true }
+)
 
 let filtrateLibraryUUID = runtime.libraryTree.children.find(
-  (element) => element.dirName == '筛选库'
+  (element) => element.type === 'library' && element.dirName == props.libraryName
 ).uuid
 let libraryData = libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, filtrateLibraryUUID)
 let hoverTimer = null
@@ -173,7 +236,9 @@ const drop = async (e) => {
   }
 }
 onUnmounted(() => {
+  hotkeys.deleteScope('selectSongListDialog')
   runtime.dialogSelectedSongListUUID = ''
+  runtime.selectSongListDialogShow = false
 })
 
 const flashArea = ref('') // 控制动画是否正在播放
@@ -190,7 +255,11 @@ const flashBorder = (flashAreaName) => {
   }, 500) // 每次闪烁间隔 500 毫秒
 }
 const confirmHandle = () => {
-  if (runtime.dialogSelectedSongListUUID == '') {
+  if (
+    runtime.dialogSelectedSongListUUID === '' ||
+    libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, runtime.dialogSelectedSongListUUID) ===
+      null
+  ) {
     if (!flashArea.value) {
       flashBorder('selectSongList')
     }
@@ -209,7 +278,7 @@ const confirmHandle = () => {
       )
     }
     localStorage.setItem(
-      'recentDialogSelectedSongListUUID',
+      'recentDialogSelectedSongListUUID' + props.libraryName,
       JSON.stringify(recentDialogSelectedSongListUUID)
     )
     emits('confirm', runtime.dialogSelectedSongListUUID)
@@ -264,16 +333,23 @@ const cancel = () => {
         v-if="libraryData.children.length"
       >
         <template v-if="recentSongListArr.length > 0">
-          <div><span style="font-size: 14px">最近使用</span></div>
+          <div style="padding-left: 5px"><span style="font-size: 14px">最近使用</span></div>
           <div style="width: 100%; background-color: #8c8c8c; height: 1px"></div>
-          <template v-for="item of recentSongListArr" :key="item.uuid">
-            <dialogLibraryItem
-              :uuid="item.uuid"
-              :libraryName="libraryData.dirName + 'Dialog'"
-              @dblClickSongList="confirmHandle()"
-              :needPaddingLeft="false"
-            />
-          </template>
+          <div
+            v-for="item of recentSongListArr"
+            :key="item.uuid"
+            @click="runtime.dialogSelectedSongListUUID = item.uuid"
+            @dblclick="confirmHandle()"
+            :class="{ selectedDir: item.uuid == runtime.dialogSelectedSongListUUID }"
+            class="recentLibraryItem"
+          >
+            <div style="width: 20px; justify-content: center; align-items: center; display: flex">
+              <img style="width: 13px; height: 13px" :src="listIcon" />
+            </div>
+            <div>
+              {{ item.dirName }}
+            </div>
+          </div>
           <div style="width: 100%; background-color: #8c8c8c; height: 1px"></div>
         </template>
         <template v-for="item of libraryData.children" :key="item.uuid">
@@ -307,8 +383,14 @@ const cancel = () => {
         <span style="font-size: 12px; color: #8c8c8c">右键新建歌单</span>
       </div>
       <div style="display: flex; justify-content: center; padding-bottom: 10px">
-        <div class="button" style="margin-right: 10px" @click="confirmHandle()">确定</div>
-        <div class="button" @click="cancel()">取消</div>
+        <div
+          class="button"
+          style="margin-right: 10px; width: 60px; text-align: center"
+          @click="confirmHandle()"
+        >
+          确定 {{ props.confirmHotkey }}
+        </div>
+        <div class="button" style="width: 60px; text-align: center" @click="cancel()">取消 Esc</div>
       </div>
     </div>
   </div>
@@ -321,8 +403,28 @@ const cancel = () => {
   ></rightClickMenu>
 </template>
 <style lang="scss" scoped>
+.recentLibraryItem {
+  display: flex;
+  cursor: pointer;
+  height: 23px;
+  align-items: center;
+  font-size: 13px;
+
+  &:hover {
+    background-color: #2a2d2e;
+  }
+}
+
+.selectedDir {
+  background-color: #37373d;
+
+  &:hover {
+    background-color: #37373d !important;
+  }
+}
+
 .borderTop {
-  border-top: 1px solid #0078d4;
+  box-shadow: inset 0 1px 0 0 #0078d4;
 }
 
 .libraryArea {

@@ -253,7 +253,7 @@ const drop = async (e) => {
 </template>
 <style lang="scss" scoped>
 .borderTop {
-  border-top: 1px solid #0078d4;
+  box-shadow: inset 0 1px 0 0 #0078d4;
 }
 
 .libraryArea {

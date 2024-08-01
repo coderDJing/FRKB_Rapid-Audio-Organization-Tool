@@ -1,7 +1,15 @@
 import { createVNode, render } from 'vue'
 import confirmDialog from './confirmDialog.vue'
 
-export default ({ title, content, confirmShow, textAlign, innerHeight, innerWidth }) => {
+export default ({
+  title,
+  content,
+  confirmShow,
+  textAlign,
+  innerHeight,
+  innerWidth,
+  confirmHotkey
+}) => {
   return new Promise((resolve, reject) => {
     const div = document.createElement('div')
     div.setAttribute('class', 'dialog')
@@ -24,6 +32,7 @@ export default ({ title, content, confirmShow, textAlign, innerHeight, innerWidt
       textAlign,
       innerHeight,
       innerWidth,
+      confirmHotkey,
       confirmCallback,
       cancelCallback
     })

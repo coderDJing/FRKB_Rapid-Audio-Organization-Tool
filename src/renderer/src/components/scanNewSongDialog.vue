@@ -68,9 +68,9 @@ const flashBorder = (flashAreaName) => {
 }
 
 const songListSelected = ref('')
-
+const selectSongListDialogShow = ref(false)
 const clickChooseSongList = () => {
-  runtime.selectSongListDialogShow = true
+  selectSongListDialogShow.value = true
 }
 let songListSelectedPath = ''
 let importingSongListUUID = ''
@@ -88,11 +88,11 @@ const selectSongListDialogConfirm = (uuid) => {
   let songListSelectedPathArr = libraryUtils.findDirPathByUuid(runtime.libraryTree, uuid).split('/')
   songListSelectedPathArr.shift()
   songListSelected.value = songListSelectedPathArr.join('\\')
-  runtime.selectSongListDialogShow = false
+  selectSongListDialogShow.value = false
 }
 
 const confirm = () => {
-  if (!folderPathVal.value) {
+  if (folderPathVal.value.length === 0) {
     if (!flashArea.value) {
       flashBorder('folderPathVal')
     }
@@ -290,11 +290,11 @@ const hint2IconMouseout = () => {
     </div>
   </div>
   <selectSongListDialog
-    v-if="runtime.selectSongListDialogShow"
+    v-if="selectSongListDialogShow"
     @confirm="selectSongListDialogConfirm"
     @cancel="
       () => {
-        runtime.selectSongListDialogShow = false
+        selectSongListDialogShow = false
       }
     "
   />
