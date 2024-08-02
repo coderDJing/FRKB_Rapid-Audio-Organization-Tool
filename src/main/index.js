@@ -210,23 +210,30 @@ function createWindow() {
     mainWindow.webContents.send('addSongFingerprintFinished', contentArr)
   })
 
-  ipcMain.handle('moveSongToDir', async (e, src, dest) => {
-    let targetPath = join(__dirname, dest, src.match(/[^\\]+$/)[0])
-    let isExist = await fs.pathExists(targetPath)
-    if (isExist) {
-      let counter = 1
-      let baseName = path.basename(targetPath, path.extname(targetPath))
-      let extension = path.extname(targetPath)
-      let directory = path.dirname(targetPath)
-      let newFileName = `${baseName} (${counter})${extension}`
-      while (await fs.pathExists(join(directory, newFileName))) {
-        counter++
-        newFileName = `${baseName} (${counter})${extension}`
+  ipcMain.handle('moveSongsToDir', async (e, srcs, dest) => {
+    const moveSongToDir = async (src, dest) => {
+      let targetPath = join(__dirname, dest, src.match(/[^\\]+$/)[0])
+      let isExist = await fs.pathExists(targetPath)
+      if (isExist) {
+        let counter = 1
+        let baseName = path.basename(targetPath, path.extname(targetPath))
+        let extension = path.extname(targetPath)
+        let directory = path.dirname(targetPath)
+        let newFileName = `${baseName} (${counter})${extension}`
+        while (await fs.pathExists(join(directory, newFileName))) {
+          counter++
+          newFileName = `${baseName} (${counter})${extension}`
+        }
+        fs.move(src, join(directory, newFileName))
+      } else {
+        fs.move(src, targetPath)
       }
-      fs.move(src, join(directory, newFileName))
-    } else {
-      fs.move(src, targetPath)
     }
+    const promises = []
+    for (let src of srcs) {
+      promises.push(moveSongToDir(src, dest))
+    }
+    await Promise.all(promises)
     return
   })
 
