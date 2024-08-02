@@ -245,6 +245,14 @@ const menuButtonClick = async (item) => {
         'delSongs',
         JSON.parse(JSON.stringify(selectedSongFilePath.value))
       )
+      let delSongs = songInfoArr.value.filter(
+        (item) => selectedSongFilePath.value.indexOf(item.filePath) !== -1
+      )
+      for (let item of delSongs) {
+        if (item.coverUrl) {
+          URL.revokeObjectURL(item.coverUrl)
+        }
+      }
       songInfoArr.value = songInfoArr.value.filter(
         (item) => selectedSongFilePath.value.indexOf(item.filePath) === -1
       )
@@ -264,7 +272,7 @@ const playingSongFilePath = ref('')
 
 watch(
   () => runtime.playingData.playingSong,
-  () => {
+  async () => {
     if (runtime.playingData.playingSong === null) {
       playingSongFilePath.value = ''
     } else {
@@ -274,6 +282,16 @@ watch(
       runtime.selectedSongListUUID === runtime.playingData.playingSongListUUID &&
       runtime.playingData.playingSongListData.length !== songInfoArr.value.length
     ) {
+      for (let item of songInfoArr.value) {
+        URL.revokeObjectURL(item.coverUrl)
+      }
+      for (let item of runtime.playingData.playingSongListData) {
+        if (item.cover) {
+          let blob = new Blob([Uint8Array.from(item.cover.data)], { type: item.cover.format })
+          const blobUrl = URL.createObjectURL(blob)
+          item.coverUrl = blobUrl
+        }
+      }
       songInfoArr.value = runtime.playingData.playingSongListData
     }
   }
