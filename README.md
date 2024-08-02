@@ -88,6 +88,7 @@ $ pyinstaller .\src\analyseSongFingerprint.py --distpath=..\resources\pyScript\
 ### Install
 
 ```bash
+$ cd..
 $ pnpm install
 ```
 
