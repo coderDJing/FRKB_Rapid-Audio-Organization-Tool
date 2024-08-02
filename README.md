@@ -1,4 +1,4 @@
-# FRKB - 快速音频整理工具
+# FRKB - Rapid Audio Organization Tool
 
 ## English Version
 
@@ -32,6 +32,7 @@ We welcome contributions of all kinds! Whether you find a bug, have a feature re
 FRKB is licensed under the MIT License, which allows for broad use and modification of the software.
 
 ---
+# FRKB - 快速音频整理工具
 
 ## 中文版
 
