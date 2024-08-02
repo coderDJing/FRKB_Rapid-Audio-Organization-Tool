@@ -1,10 +1,11 @@
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, watch } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu.vue'
 import libraryItem from '@renderer/components/libraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import confirmDialog from '@renderer/components/confirmDialog.vue'
 import listIcon from '@renderer/assets/listIcon.png'
+import listIconBlue from '@renderer/assets/listIconBlue.png'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { v4 as uuidv4 } from 'uuid'
 import confirm from '@renderer/components/confirm.js'
@@ -585,6 +586,24 @@ const drop = async (e) => {
 }
 const indentWidth = ref(0)
 indentWidth.value = (libraryUtils.getDepthByUuid(runtime.libraryTree, props.uuid) - 2) * 10
+
+let isPlaying = ref(false)
+watch(
+  () => runtime.playingData.playingSongListUUID,
+  () => {
+    if (!runtime.playingData.playingSongListUUID) {
+      return
+    }
+    let uuids = libraryUtils.getAllUuids(
+      libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, props.uuid)
+    )
+    if (uuids.indexOf(runtime.playingData.playingSongListUUID) != -1) {
+      isPlaying.value = true
+    } else {
+      isPlaying.value = false
+    }
+  }
+)
 </script>
 <template>
   <div
@@ -607,7 +626,8 @@ indentWidth.value = (libraryUtils.getDepthByUuid(runtime.libraryTree, props.uuid
       selectedDir: props.uuid == runtime.selectedSongListUUID
     }"
   >
-    <div class="prefixIcon">
+    <!-- todo如果歌单正在播放中或文件夹中的歌单正在播放中，字体应为蓝色 -->
+    <div class="prefixIcon" :class="{ isPlaying: isPlaying }">
       <svg
         v-if="dirData.type == 'dir'"
         v-show="!dirChildShow"
@@ -641,11 +661,12 @@ indentWidth.value = (libraryUtils.getDepthByUuid(runtime.libraryTree, props.uuid
       <img
         v-if="dirData.type == 'songList' && runtime.importingSongListUUID != props.uuid"
         style="width: 13px; height: 13px"
-        :src="listIcon"
+        :src="isPlaying ? listIconBlue : listIcon"
       />
       <div
         v-if="dirData.type == 'songList' && runtime.importingSongListUUID == props.uuid"
         class="loading"
+        :class="{ isPlayingLoading: isPlaying }"
       ></div>
     </div>
     <div style="height: 23px; width: calc(100% - 20px)">
@@ -658,6 +679,7 @@ indentWidth.value = (libraryUtils.getDepthByUuid(runtime.libraryTree, props.uuid
           text-overflow: ellipsis;
           white-space: nowrap;
         "
+        :class="{ isPlaying: isPlaying }"
       >
         {{ dirData.dirName }}
       </div>
@@ -727,6 +749,12 @@ indentWidth.value = (libraryUtils.getDepthByUuid(runtime.libraryTree, props.uuid
   </scanNewSongDialog>
 </template>
 <style lang="scss" scoped>
+.isPlaying {
+  color: #0078d4 !important;
+}
+.isPlayingLoading {
+  border: 2px solid #0078d4 !important;
+}
 .loading {
   width: 8px;
   height: 8px;
