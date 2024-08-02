@@ -69,7 +69,7 @@ const menuButtonClick = async (item) => {
 }
 </script>
 <template>
-  <div class="title unselectable">FRKB - Better Music Library</div>
+  <div class="title unselectable">FRKB - Rapid Audio Organization Tool</div>
   <div class="titleComponent unselectable">
     <div
       style="
