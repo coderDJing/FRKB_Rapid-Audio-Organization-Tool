@@ -45,7 +45,7 @@ const folderPathDisplay = computed(() => {
   return str.join(',')
 })
 const confirm = () => {
-  if (!folderPathVal.value) {
+  if (folderPathVal.value.length === 0) {
     if (!flashArea.value) {
       flashBorder('folderPathVal')
     }
