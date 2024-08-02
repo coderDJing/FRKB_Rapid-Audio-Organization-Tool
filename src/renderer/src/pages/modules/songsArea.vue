@@ -7,6 +7,7 @@ import songAreaColRightClickMenu from '@renderer/components/songAreaColRightClic
 import hotkeys from 'hotkeys-js'
 import rightClickMenu from '@renderer/components/rightClickMenu.vue'
 import confirm from '@renderer/components/confirm.js'
+import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 let columnData = ref([])
 if (localStorage.getItem('songColumnData')) {
   columnData.value = JSON.parse(localStorage.getItem('songColumnData'))
@@ -226,7 +227,12 @@ const songClick = (event, song) => {
 }
 const songRightClickMenuShow = ref(false)
 const songRightClickEvent = ref({})
-const menuArr = ref([[{ menuName: '删除曲目' }]])
+const menuArr = ref([
+  [{ menuName: '导出' }],
+  [{ menuName: '移动到筛选库' }, { menuName: '移动到精选库' }],
+  [{ menuName: '删除曲目' }]
+])
+
 const songContextmenu = (event, song) => {
   if (selectedSongFilePath.value.indexOf(song.filePath) === -1) {
     selectedSongFilePath.value = [song.filePath]
@@ -234,6 +240,9 @@ const songContextmenu = (event, song) => {
   songRightClickEvent.value = event
   songRightClickMenuShow.value = true
 }
+
+const selectSongListDialogShow = ref(false)
+const selectSongListDialogLibraryName = ref('')
 const menuButtonClick = async (item) => {
   if (item.menuName === '删除曲目') {
     let res = await confirm({
@@ -265,9 +274,37 @@ const menuButtonClick = async (item) => {
       }
       selectedSongFilePath.value.length = 0
     }
+  } else if (item.menuName === '移动到精选库') {
+    selectSongListDialogLibraryName.value = '精选库'
+    selectSongListDialogShow.value = true
+  } else if (item.menuName === '移动到筛选库') {
+    selectSongListDialogLibraryName.value = '筛选库'
+    selectSongListDialogShow.value = true
+  } else if (item.menuName === '导出') {
+    //todo
   }
 }
-
+const selectSongListDialogConfirm = async (songListUUID) => {
+  selectSongListDialogShow.value = false
+  if (songListUUID === runtime.selectedSongListUUID) {
+    return
+  }
+  await window.electron.ipcRenderer.invoke(
+    'moveSongsToDir',
+    JSON.parse(JSON.stringify(selectedSongFilePath.value)),
+    libraryUtils.findDirPathByUuid(runtime.libraryTree, songListUUID)
+  )
+  let filteredSongInfoArr = songInfoArr.value.filter((item) => {
+    if (!selectedSongFilePath.value.includes(item.filePath)) {
+      return true
+    } else {
+      URL.revokeObjectURL(item.coverUrl)
+      return false
+    }
+  })
+  songInfoArr.value = filteredSongInfoArr
+  selectedSongFilePath.value.length = 0
+}
 const playingSongFilePath = ref('')
 
 watch(
@@ -411,6 +448,16 @@ hotkeys('ctrl+a, command+a', () => {
     :clickEvent="songRightClickEvent"
     @menuButtonClick="menuButtonClick"
   ></rightClickMenu>
+  <selectSongListDialog
+    v-if="selectSongListDialogShow"
+    :libraryName="selectSongListDialogLibraryName"
+    @confirm="selectSongListDialogConfirm"
+    @cancel="
+      () => {
+        selectSongListDialogShow = false
+      }
+    "
+  />
 </template>
 <style lang="scss" scoped>
 .selectedSong {

@@ -162,30 +162,36 @@ const moveToListLibrary = () => {
   </div>
   <transition name="fade">
     <div class="moreMenu unselectable" v-if="moreMenuShow">
-      <div class="menuButton">
-        <span>导出</span>
-      </div>
-      <div class="menuButton" @click="moveToListLibrary()">
-        <div><span>移动到筛选库</span></div>
-        <div style="display: flex; align-items: center">
-          <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" />
-          <span>Q</span>
+      <div style="padding: 5px 5px; border-bottom: 1px solid #454545">
+        <div class="menuButton">
+          <span>导出</span>
         </div>
       </div>
-      <div class="menuButton" @click="moveToLikeLibrary()">
-        <div>
-          <span>移动到精选库</span>
+      <div style="padding: 5px 5px; border-bottom: 1px solid #454545">
+        <div class="menuButton" @click="moveToListLibrary()">
+          <div><span>移动到筛选库</span></div>
+          <div style="display: flex; align-items: center">
+            <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" />
+            <span>Q</span>
+          </div>
         </div>
-        <div style="display: flex; align-items: center">
-          <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>E</span>
+        <div class="menuButton" @click="moveToLikeLibrary()">
+          <div>
+            <span>移动到精选库</span>
+          </div>
+          <div style="display: flex; align-items: center">
+            <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>E</span>
+          </div>
         </div>
       </div>
-      <div class="menuButton" @click="delSong()">
-        <div>
-          <span>删除曲目</span>
-        </div>
-        <div style="display: flex; align-items: center">
-          <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>F</span>
+      <div style="padding: 5px 5px">
+        <div class="menuButton" @click="delSong()">
+          <div>
+            <span>删除曲目</span>
+          </div>
+          <div style="display: flex; align-items: center">
+            <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>F</span>
+          </div>
         </div>
       </div>
     </div>
@@ -194,7 +200,7 @@ const moveToListLibrary = () => {
 <style lang="scss" scoped>
 .moreMenu {
   width: 200px;
-  height: 120px;
+  // height: 120px;
   background-color: #202020;
   position: absolute;
   border: 1px solid #424242;
@@ -202,7 +208,7 @@ const moveToListLibrary = () => {
   z-index: 99;
   bottom: 60px;
   left: 250px;
-  padding: 5px 5px;
+  // padding: 5px 5px;
   font-size: 14px;
 
   .menuButton {
