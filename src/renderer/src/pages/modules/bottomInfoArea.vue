@@ -22,7 +22,7 @@ window.electron.ipcRenderer.on('importFinished', async (event, contentArr) => {
     title: '导入完成',
     content: contentArr,
     textAlign: 'left',
-    innerHeight: 250,
+    innerHeight: 280,
     innerWidth: 400,
     confirmShow: false
   })
