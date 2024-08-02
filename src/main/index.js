@@ -210,6 +210,26 @@ function createWindow() {
     mainWindow.webContents.send('addSongFingerprintFinished', contentArr)
   })
 
+  ipcMain.handle('moveSongToDir', async (e, src, dest) => {
+    let targetPath = join(__dirname, dest, src.match(/[^\\]+$/)[0])
+    let isExist = await fs.pathExists(targetPath)
+    if (isExist) {
+      let counter = 1
+      let baseName = path.basename(targetPath, path.extname(targetPath))
+      let extension = path.extname(targetPath)
+      let directory = path.dirname(targetPath)
+      let newFileName = `${baseName} (${counter})${extension}`
+      while (await fs.pathExists(join(directory, newFileName))) {
+        counter++
+        newFileName = `${baseName} (${counter})${extension}`
+      }
+      fs.move(src, join(directory, newFileName))
+    } else {
+      fs.move(src, targetPath)
+    }
+    return
+  })
+
   ipcMain.on('startImportSongs', async (e, formData, songListUUID) => {
     formData.songListPath = join(__dirname, formData.songListPath)
     mainWindow.webContents.send('progressSet', '扫描文件中', 0, 1)
@@ -237,9 +257,7 @@ function createWindow() {
         songFileUrls.length
       )
       for (let songFileUrl of songFileUrls) {
-        console.log(1)
         let targetPath = join(formData.songListPath, songFileUrl.match(/[^\\]+$/)[0])
-        console.log(2)
         let isExist = await fs.pathExists(targetPath)
         if (isExist) {
           let counter = 1
