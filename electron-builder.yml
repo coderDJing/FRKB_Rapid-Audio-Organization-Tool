@@ -1,5 +1,5 @@
 appId: com.electron.app
-productName: better-music-library
+productName: FRKB
 directories:
   buildResources: build
 files:
@@ -11,7 +11,7 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: better-music-library
+  executableName: FRKB
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
