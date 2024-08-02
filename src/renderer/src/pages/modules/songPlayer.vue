@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import WaveSurfer from 'wavesurfer.js'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import musicIcon from '@renderer/assets/musicIcon.png'
@@ -7,6 +7,7 @@ import playerControls from '../../components/playerControls.vue'
 import hotkeys from 'hotkeys-js'
 import confirm from '@renderer/components/confirm'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
+import libraryUtils from '@renderer/utils/libraryUtils.js'
 const runtime = useRuntimeStore()
 const waveform = ref(null)
 let wavesurferInstance = null
@@ -242,10 +243,35 @@ const moveToLikeLibrary = () => {
   selectSongListDialogConfirmHotkey.value = 'E'
   selectSongListDialogShow.value = true
 }
-const selectSongListDialogConfirm = (item) => {
+const selectSongListDialogConfirm = async (item) => {
   selectSongListDialogShow.value = false
-  //todo 移动到目标歌单 自动下一首 删除当前播放歌单中的这首歌 删除当前显示的list歌单中的这首歌
-  console.log(item)
+  if (item === runtime.playingData.playingSongListUUID) {
+    return
+  }
+  await window.electron.ipcRenderer.invoke(
+    'moveSongToDir',
+    runtime.playingData.playingSong.filePath,
+    libraryUtils.findDirPathByUuid(runtime.libraryTree, item)
+  )
+  let filePath = runtime.playingData.playingSong.filePath
+
+  let index = runtime.playingData.playingSongListData.findIndex((item) => {
+    return item.filePath === filePath
+  })
+  if (index === runtime.playingData.playingSongListData.length - 1) {
+    runtime.playingData.playingSongListData.splice(index, 1)
+    runtime.playingData.playingSong = null
+  } else {
+    runtime.playingData.playingSong = runtime.playingData.playingSongListData[index + 1]
+    runtime.playingData.playingSongListData.splice(index, 1)
+    window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
+  }
+  if (item === runtime.selectedSongListUUID) {
+    runtime.selectedSongListUUID = ''
+    nextTick(() => {
+      runtime.selectedSongListUUID = item
+    })
+  }
 }
 </script>
 <template>
