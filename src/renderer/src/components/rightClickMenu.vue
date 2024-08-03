@@ -3,6 +3,7 @@ import { watch, ref, onUnmounted, onMounted } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidv4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
+import utils from '../utils/utils'
 const uuid = uuidv4()
 const runtime = useRuntimeStore()
 
@@ -70,22 +71,21 @@ watch(
   }
 )
 onMounted(() => {
-  hotkeys('b', 'rightClickMenu', () => {
-    console.log(1)
+  hotkeys('up', uuid, () => {
     return false
+    //todo
   })
-  hotkeys('h', 'rightClickMenu', () => {
-    console.log(2)
+  hotkeys('down', uuid, () => {
     return false
+    //todo
   })
-  hotkeys.setScope('rightClickMenu')
+  utils.setHotkeysScpoe(runtime.hotkeysScopesHeap, uuid)
 })
 
 onUnmounted(() => {
-  hotkeys.deleteScope('rightClickMenu')
+  utils.delHotkeysScope(runtime.hotkeysScopesHeap, uuid)
 })
 //todo 快捷键上下和回车
-//todo 关闭菜单要emit cancel用来给上一级setScope用
 </script>
 <template>
   <div
