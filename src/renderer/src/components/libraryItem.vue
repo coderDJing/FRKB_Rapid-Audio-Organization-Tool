@@ -626,7 +626,6 @@ watch(
       selectedDir: props.uuid == runtime.selectedSongListUUID
     }"
   >
-    <!-- todo如果歌单正在播放中或文件夹中的歌单正在播放中，字体应为蓝色 -->
     <div class="prefixIcon" :class="{ isPlaying: isPlaying }">
       <svg
         v-if="dirData.type == 'dir'"
