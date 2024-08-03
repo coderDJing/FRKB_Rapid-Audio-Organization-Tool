@@ -114,7 +114,7 @@ window.electron.ipcRenderer.on('readedSongFile', (event, audioData) => {
 })
 
 onMounted(() => {
-  hotkeys('space', () => {
+  hotkeys('space', 'windowGlobal', () => {
     if (waveformShow.value) {
       if (wavesurferInstance.isPlaying()) {
         pause()
@@ -125,19 +125,19 @@ onMounted(() => {
     return false
   })
 
-  hotkeys('d', () => {
+  hotkeys('d', 'windowGlobal', () => {
     if (waveformShow.value) {
       fastForward()
     }
     return false
   })
-  hotkeys('a', () => {
+  hotkeys('a', 'windowGlobal', () => {
     if (waveformShow.value) {
       fastBackward()
     }
     return false
   })
-  hotkeys('s', () => {
+  hotkeys('s', 'windowGlobal', () => {
     if (runtime.selectSongListDialogShow) {
       return
     }
@@ -147,7 +147,7 @@ onMounted(() => {
     }
     return false
   })
-  hotkeys('w', () => {
+  hotkeys('w', 'windowGlobal', () => {
     if (runtime.selectSongListDialogShow) {
       return
     }
@@ -156,7 +156,7 @@ onMounted(() => {
     }
     return false
   })
-  hotkeys('F', () => {
+  hotkeys('F', 'windowGlobal', () => {
     if (showDelConfirm || runtime.confirmShow) {
       return
     }
@@ -166,13 +166,13 @@ onMounted(() => {
     delSong()
   })
 
-  hotkeys('q', () => {
+  hotkeys('q', 'windowGlobal', () => {
     if (waveformShow.value && !runtime.selectSongListDialogShow) {
       moveToListLibrary()
     }
   })
 
-  hotkeys('e', () => {
+  hotkeys('e', 'windowGlobal', () => {
     if (waveformShow.value && !runtime.selectSongListDialogShow) {
       moveToLikeLibrary()
     }

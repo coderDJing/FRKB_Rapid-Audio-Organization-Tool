@@ -344,7 +344,7 @@ const songDblClick = (song) => {
 }
 
 onMounted(() => {
-  hotkeys('ctrl+a, command+a', () => {
+  hotkeys('ctrl+a, command+a', 'windowGlobal', () => {
     selectedSongFilePath.value.length = 0
     for (let item of songInfoArr.value) {
       selectedSongFilePath.value.push(item.filePath)
