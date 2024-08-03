@@ -5,7 +5,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import musicIcon from '@renderer/assets/musicIcon.png'
 import playerControls from '../../components/playerControls.vue'
 import hotkeys from 'hotkeys-js'
-import confirm from '@renderer/components/confirm'
+import confirm from '@renderer/components/confirmDialog.js'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 const runtime = useRuntimeStore()

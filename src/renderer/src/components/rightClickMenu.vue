@@ -70,11 +70,13 @@ watch(
   }
 )
 onMounted(() => {
-  hotkeys('up', 'rightClickMenu', () => {
-    //todo
+  hotkeys('b', 'rightClickMenu', () => {
+    console.log(1)
+    return false
   })
-  hotkeys('down', 'rightClickMenu', () => {
-    //todo
+  hotkeys('h', 'rightClickMenu', () => {
+    console.log(2)
+    return false
   })
   hotkeys.setScope('rightClickMenu')
 })
