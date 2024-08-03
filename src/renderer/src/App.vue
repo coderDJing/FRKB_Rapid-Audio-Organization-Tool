@@ -5,7 +5,8 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import scanNewSongDialog from './components/scanNewSongDialog.vue'
 import bottomInfoArea from './pages/modules/bottomInfoArea.vue'
 import manualAddSongFingerprintDialog from './components/manualAddSongFingerprintDialog.vue'
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
+import hotkeys from 'hotkeys-js'
 
 const runtime = useRuntimeStore()
 
@@ -23,9 +24,15 @@ runtime.platform = detectPlatform()
 window.electron.ipcRenderer.on('layoutConfigReaded', (event, layoutConfig) => {
   runtime.layoutConfig = layoutConfig
 })
-
+const scanNewSongDialogLibraryName = ref('')
 const activeDialog = ref('')
+
 const openDialog = (item) => {
+  if (item === '筛选库 导入新曲目') {
+    scanNewSongDialogLibraryName.value = '筛选库'
+  } else if (item === '精选库 导入新曲目') {
+    scanNewSongDialogLibraryName.value = '精选库'
+  }
   activeDialog.value = item
 }
 const documentHandleClick = () => {
@@ -38,6 +45,27 @@ const getLibrary = async () => {
   runtime.libraryTree = await window.electron.ipcRenderer.invoke('getLibrary')
 }
 getLibrary()
+onMounted(() => {
+  hotkeys('alt+q', () => {
+    if (runtime.scanNewSongDialogShow || runtime.selectSongListDialogShow) {
+      return
+    }
+    openDialog('筛选库 导入新曲目')
+  })
+  hotkeys('alt+e', () => {
+    if (runtime.scanNewSongDialogShow || runtime.selectSongListDialogShow) {
+      return
+    }
+    openDialog('精选库 导入新曲目')
+  })
+  hotkeys('esc', () => {
+    runtime.activeMenuUUID = ''
+  })
+})
+
+window.electron.ipcRenderer.on('mainWindowBlur', async (event) => {
+  runtime.activeMenuUUID = ''
+})
 </script>
 <template>
   <div style="height: 100%; max-height: 100%; width: 100%; display: flex; flex-direction: column">
@@ -54,8 +82,9 @@ getLibrary()
     </div>
   </div>
   <scanNewSongDialog
-    v-if="activeDialog == '导入新曲目'"
+    v-if="activeDialog == '筛选库 导入新曲目' || activeDialog == '精选库 导入新曲目'"
     @cancel="activeDialog = ''"
+    :libraryName="scanNewSongDialogLibraryName"
   ></scanNewSongDialog>
   <manualAddSongFingerprintDialog
     v-if="activeDialog == '手动添加曲目指纹'"

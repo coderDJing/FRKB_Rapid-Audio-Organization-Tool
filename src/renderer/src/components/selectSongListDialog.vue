@@ -1,5 +1,5 @@
 <script setup>
-import { onUnmounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu.vue'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -21,6 +21,7 @@ const props = defineProps({
 })
 
 const runtime = useRuntimeStore()
+runtime.activeMenuUUID = ''
 runtime.selectSongListDialogShow = true
 let recentDialogSelectedSongListUUID = []
 let localStorageRecentDialogSelectedSongListUUID = localStorage.getItem(
@@ -33,31 +34,7 @@ let index = 0
 if (recentDialogSelectedSongListUUID.length !== 0) {
   runtime.dialogSelectedSongListUUID = recentDialogSelectedSongListUUID[index]
 }
-hotkeys('s', 'selectSongListDialog', () => {
-  if (recentDialogSelectedSongListUUID.length !== 0) {
-    index++
-    if (index === recentDialogSelectedSongListUUID.length) {
-      index = 0
-    }
-    runtime.dialogSelectedSongListUUID = recentDialogSelectedSongListUUID[index]
-  }
-})
-hotkeys('w', 'selectSongListDialog', () => {
-  if (recentDialogSelectedSongListUUID.length !== 0) {
-    index--
-    if (index === -1) {
-      index = recentDialogSelectedSongListUUID.length - 1
-    }
-    runtime.dialogSelectedSongListUUID = recentDialogSelectedSongListUUID[index]
-  }
-})
-hotkeys.setScope('selectSongListDialog')
-hotkeys(props.confirmHotkey === '↵' ? 'enter' : props.confirmHotkey, () => {
-  confirmHandle()
-})
-hotkeys('esc', () => {
-  cancel()
-})
+
 const recentSongListArr = ref([])
 let delRecentDialogSelectedSongListUUID = []
 watch(
@@ -235,6 +212,37 @@ const drop = async (e) => {
     return
   }
 }
+onMounted(() => {
+  hotkeys('s', 'selectSongListDialog', () => {
+    if (recentDialogSelectedSongListUUID.length !== 0) {
+      index++
+      if (index === recentDialogSelectedSongListUUID.length) {
+        index = 0
+      }
+      runtime.dialogSelectedSongListUUID = recentDialogSelectedSongListUUID[index]
+    }
+  })
+  hotkeys('w', 'selectSongListDialog', () => {
+    if (recentDialogSelectedSongListUUID.length !== 0) {
+      index--
+      if (index === -1) {
+        index = recentDialogSelectedSongListUUID.length - 1
+      }
+      runtime.dialogSelectedSongListUUID = recentDialogSelectedSongListUUID[index]
+    }
+  })
+  hotkeys(
+    props.confirmHotkey === '↵' ? 'enter' : props.confirmHotkey,
+    'selectSongListDialog',
+    () => {
+      confirmHandle()
+    }
+  )
+  hotkeys('Esc', 'selectSongListDialog', () => {
+    cancel()
+  })
+  hotkeys.setScope('selectSongListDialog')
+})
 onUnmounted(() => {
   hotkeys.deleteScope('selectSongListDialog')
   runtime.dialogSelectedSongListUUID = ''

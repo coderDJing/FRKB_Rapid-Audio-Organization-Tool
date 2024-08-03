@@ -35,13 +35,18 @@ window.electron.ipcRenderer.on('mainWin-max', (event, bool) => {
 })
 
 const fillColor = ref('#9d9d9d')
-
+//todo 兑现Alt+F H打开菜单，并定位在第一个 并且上下方向键选菜单 左右方向键切换菜单 回车选择菜单
+//todo 展开菜单后 hover可以打开其他菜单
 const menuArr = ref([
   {
     name: '文件(F)',
     show: false,
     subMenu: [
-      [{ name: '导入新曲目', shortcutKey: 'Ctrl+R' }, { name: '手动添加曲目指纹' }],
+      [
+        { name: '筛选库 导入新曲目', shortcutKey: 'Alt+Q' },
+        { name: '精选库 导入新曲目', shortcutKey: 'Alt+E' }
+      ],
+      [{ name: '手动添加曲目指纹' }],
       [{ name: '退出' }]
     ]
   },
@@ -55,7 +60,11 @@ const menuClick = (item) => {
   item.show = true
 }
 const menuButtonClick = async (item) => {
-  if (item.name === '导入新曲目' || item.name === '手动添加曲目指纹') {
+  if (
+    item.name === '筛选库 导入新曲目' ||
+    item.name === '精选库 导入新曲目' ||
+    item.name === '手动添加曲目指纹'
+  ) {
     if (runtime.isProgressing) {
       await confirm({
         title: '导入',

@@ -1,10 +1,11 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted, onMounted } from 'vue'
 import singleCheckbox from './singleCheckbox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import selectSongListDialog from './selectSongListDialog.vue'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import hintIcon from '@renderer/assets/hint.png'
+import hotkeys from 'hotkeys-js'
 
 const props = defineProps({
   songListUuid: {
@@ -17,6 +18,9 @@ const props = defineProps({
 })
 
 const runtime = useRuntimeStore()
+runtime.scanNewSongDialogShow = true
+
+runtime.activeMenuUUID = ''
 const folderPathVal = ref([]) //文件夹路径
 let clickChooseDirFlag = false
 const clickChooseDir = async () => {
@@ -93,6 +97,7 @@ if (props.songListUuid) {
 }
 
 const selectSongListDialogConfirm = (uuid) => {
+  hotkeys.setScope('scanNewSongDialog')
   importingSongListUUID = uuid
   songListSelectedPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, uuid)
   let songListSelectedPathArr = libraryUtils.findDirPathByUuid(runtime.libraryTree, uuid).split('/')
@@ -157,6 +162,20 @@ const hint2IconMouseout = () => {
   clearTimeout(hint2hoverTimer)
   hint2Show.value = false
 }
+onMounted(() => {
+  hotkeys('enter', 'scanNewSongDialog', () => {
+    confirm()
+  })
+  hotkeys('Esc', 'scanNewSongDialog', () => {
+    cancel()
+  })
+  hotkeys.setScope('scanNewSongDialog')
+})
+
+onUnmounted(() => {
+  hotkeys.deleteScope('scanNewSongDialog')
+  runtime.scanNewSongDialogShow = false
+})
 </script>
 <template>
   <div class="dialog unselectable">
@@ -172,7 +191,7 @@ const hint2IconMouseout = () => {
     >
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
-          <span style="font-weight: bold">导入新曲目</span>
+          <span style="font-weight: bold">{{ props.libraryName }} 导入新曲目</span>
         </div>
         <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
           <div style="display: flex">
@@ -229,6 +248,7 @@ const hint2IconMouseout = () => {
                 style="width: 15px; height: 15px"
                 @mouseover="hint1IconMouseover()"
                 @mouseout="hint1IconMouseout()"
+                :draggable="false"
               />
               <transition name="fade">
                 <div
@@ -264,6 +284,7 @@ const hint2IconMouseout = () => {
                 style="width: 15px; height: 15px"
                 @mouseover="hint2IconMouseover()"
                 @mouseout="hint2IconMouseout()"
+                :draggable="false"
               />
               <transition name="fade">
                 <div
@@ -294,18 +315,25 @@ const hint2IconMouseout = () => {
       </div>
 
       <div style="display: flex; justify-content: center; padding-bottom: 10px">
-        <div class="button" style="margin-right: 10px" @click="confirm()">确定</div>
-        <div class="button" @click="cancel()">取消</div>
+        <div
+          class="button"
+          style="margin-right: 10px; width: 60px; text-align: center"
+          @click="confirm()"
+        >
+          确定 ↵
+        </div>
+        <div class="button" @click="cancel()" style="width: 60px; text-align: center">取消 Esc</div>
       </div>
     </div>
   </div>
   <selectSongListDialog
     v-if="selectSongListDialogShow"
-    :libraryName="'精选库'"
+    :libraryName="props.libraryName"
     @confirm="selectSongListDialogConfirm"
     @cancel="
       () => {
         selectSongListDialogShow = false
+        hotkeys.setScope('scanNewSongDialog')
       }
     "
   />

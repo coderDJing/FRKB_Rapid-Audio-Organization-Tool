@@ -113,16 +113,72 @@ window.electron.ipcRenderer.on('readedSongFile', (event, audioData) => {
   }
 })
 
-hotkeys('space', () => {
-  if (waveformShow.value) {
-    if (wavesurferInstance.isPlaying()) {
-      pause()
-    } else {
-      play()
+onMounted(() => {
+  hotkeys('space', () => {
+    if (waveformShow.value) {
+      if (wavesurferInstance.isPlaying()) {
+        pause()
+      } else {
+        play()
+      }
     }
-  }
-  return false
+    return false
+  })
+
+  hotkeys('d', () => {
+    if (waveformShow.value) {
+      fastForward()
+    }
+    return false
+  })
+  hotkeys('a', () => {
+    if (waveformShow.value) {
+      fastBackward()
+    }
+    return false
+  })
+  hotkeys('s', () => {
+    if (runtime.selectSongListDialogShow) {
+      return
+    }
+
+    if (waveformShow.value) {
+      nextSong()
+    }
+    return false
+  })
+  hotkeys('w', () => {
+    if (runtime.selectSongListDialogShow) {
+      return
+    }
+    if (waveformShow.value) {
+      previousSong()
+    }
+    return false
+  })
+  hotkeys('F', () => {
+    if (showDelConfirm || runtime.confirmShow) {
+      return
+    }
+
+    runtime.activeMenuUUID = ''
+    showDelConfirm = true
+    delSong()
+  })
+
+  hotkeys('q', () => {
+    if (waveformShow.value && !runtime.selectSongListDialogShow) {
+      moveToListLibrary()
+    }
+  })
+
+  hotkeys('e', () => {
+    if (waveformShow.value && !runtime.selectSongListDialogShow) {
+      moveToLikeLibrary()
+    }
+  })
 })
+
 const play = () => {
   wavesurferInstance.play()
 }
@@ -130,35 +186,14 @@ const pause = () => {
   wavesurferInstance.pause()
 }
 
-hotkeys('d', () => {
-  if (waveformShow.value) {
-    fastForward()
-  }
-  return false
-})
-
 const fastForward = () => {
   wavesurferInstance.skip(10)
 }
 
-hotkeys('a', () => {
-  if (waveformShow.value) {
-    fastBackward()
-  }
-  return false
-})
 const fastBackward = () => {
   wavesurferInstance.skip(-5)
 }
-hotkeys('s', () => {
-  if (runtime.selectSongListDialogShow) {
-    return
-  }
-  if (waveformShow.value) {
-    nextSong()
-  }
-  return false
-})
+
 const nextSong = () => {
   let index = runtime.playingData.playingSongListData.findIndex((item) => {
     return item.filePath === runtime.playingData.playingSong.filePath
@@ -169,15 +204,7 @@ const nextSong = () => {
   runtime.playingData.playingSong = runtime.playingData.playingSongListData[index + 1]
   window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
 }
-hotkeys('w', () => {
-  if (runtime.selectSongListDialogShow) {
-    return
-  }
-  if (waveformShow.value) {
-    previousSong()
-  }
-  return false
-})
+
 const previousSong = () => {
   let index = runtime.playingData.playingSongListData.findIndex((item) => {
     return item.filePath === runtime.playingData.playingSong.filePath
@@ -189,14 +216,7 @@ const previousSong = () => {
   window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
 }
 let showDelConfirm = false
-hotkeys('F', () => {
-  if (showDelConfirm || runtime.confirmShow) {
-    return
-  }
-  runtime.activeMenuUUID = ''
-  showDelConfirm = true
-  delSong()
-})
+
 const delSong = async () => {
   let res = await confirm({
     title: '删除',
@@ -223,21 +243,13 @@ const delSong = async () => {
 const selectSongListDialogLibraryName = ref('筛选库')
 const selectSongListDialogConfirmHotkey = ref('E')
 const selectSongListDialogShow = ref(false)
-hotkeys('q', () => {
-  if (waveformShow.value && !runtime.selectSongListDialogShow) {
-    moveToListLibrary()
-  }
-})
+
 const moveToListLibrary = () => {
   selectSongListDialogLibraryName.value = '筛选库'
   selectSongListDialogConfirmHotkey.value = 'Q'
   selectSongListDialogShow.value = true
 }
-hotkeys('e', () => {
-  if (waveformShow.value && !runtime.selectSongListDialogShow) {
-    moveToLikeLibrary()
-  }
-})
+
 const moveToLikeLibrary = () => {
   selectSongListDialogLibraryName.value = '精选库'
   selectSongListDialogConfirmHotkey.value = 'E'
