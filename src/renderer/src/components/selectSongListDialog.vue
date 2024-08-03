@@ -8,7 +8,8 @@ import { v4 as uuidv4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog.js'
 import hotkeys from 'hotkeys-js'
 import listIcon from '@renderer/assets/listIcon.png'
-
+import utils from '../utils/utils'
+const uuid = uuidv4()
 const props = defineProps({
   confirmHotkey: {
     type: String,
@@ -213,7 +214,7 @@ const drop = async (e) => {
   }
 }
 onMounted(() => {
-  hotkeys('s', 'selectSongListDialog', () => {
+  hotkeys('s', uuid, () => {
     if (recentDialogSelectedSongListUUID.length !== 0) {
       index++
       if (index === recentDialogSelectedSongListUUID.length) {
@@ -222,7 +223,7 @@ onMounted(() => {
       runtime.dialogSelectedSongListUUID = recentDialogSelectedSongListUUID[index]
     }
   })
-  hotkeys('w', 'selectSongListDialog', () => {
+  hotkeys('w', uuid, () => {
     if (recentDialogSelectedSongListUUID.length !== 0) {
       index--
       if (index === -1) {
@@ -231,20 +232,16 @@ onMounted(() => {
       runtime.dialogSelectedSongListUUID = recentDialogSelectedSongListUUID[index]
     }
   })
-  hotkeys(
-    props.confirmHotkey === '↵' ? 'enter' : props.confirmHotkey,
-    'selectSongListDialog',
-    () => {
-      confirmHandle()
-    }
-  )
-  hotkeys('Esc', 'selectSongListDialog', () => {
+  hotkeys(props.confirmHotkey === '↵' ? 'enter' : props.confirmHotkey, uuid, () => {
+    confirmHandle()
+  })
+  hotkeys('Esc', uuid, () => {
     cancel()
   })
-  hotkeys.setScope('selectSongListDialog')
+  utils.setHotkeysScpoe(runtime.hotkeysScopesHeap, uuid)
 })
 onUnmounted(() => {
-  hotkeys.deleteScope('selectSongListDialog')
+  hotkeys.deleteScope(runtime.hotkeysScopesHeap, uuid)
   runtime.dialogSelectedSongListUUID = ''
   runtime.selectSongListDialogShow = false
 })

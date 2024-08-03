@@ -5,7 +5,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import scanNewSongDialog from './components/scanNewSongDialog.vue'
 import bottomInfoArea from './pages/modules/bottomInfoArea.vue'
 import manualAddSongFingerprintDialog from './components/manualAddSongFingerprintDialog.vue'
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import hotkeys from 'hotkeys-js'
 
 const runtime = useRuntimeStore()
@@ -46,13 +46,13 @@ const getLibrary = async () => {
 }
 getLibrary()
 onMounted(() => {
-  hotkeys('alt+q', () => {
+  hotkeys('alt+q', 'windowGlobal', () => {
     if (runtime.scanNewSongDialogShow || runtime.selectSongListDialogShow) {
       return
     }
     openDialog('筛选库 导入新曲目')
   })
-  hotkeys('alt+e', () => {
+  hotkeys('alt+e', 'windowGlobal', () => {
     if (runtime.scanNewSongDialogShow || runtime.selectSongListDialogShow) {
       return
     }
@@ -61,8 +61,8 @@ onMounted(() => {
   hotkeys('esc', () => {
     runtime.activeMenuUUID = ''
   })
+  hotkeys.setScope('windowGlobal')
 })
-
 window.electron.ipcRenderer.on('mainWindowBlur', async (event) => {
   runtime.activeMenuUUID = ''
 })

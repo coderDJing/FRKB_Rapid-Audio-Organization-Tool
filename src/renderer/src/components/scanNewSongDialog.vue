@@ -6,7 +6,9 @@ import selectSongListDialog from './selectSongListDialog.vue'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import hintIcon from '@renderer/assets/hint.png'
 import hotkeys from 'hotkeys-js'
-
+import { v4 as uuidv4 } from 'uuid'
+import utils from '../utils/utils'
+const uuid = uuidv4()
 const props = defineProps({
   songListUuid: {
     type: String
@@ -97,7 +99,6 @@ if (props.songListUuid) {
 }
 
 const selectSongListDialogConfirm = (uuid) => {
-  hotkeys.setScope('scanNewSongDialog')
   importingSongListUUID = uuid
   songListSelectedPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, uuid)
   let songListSelectedPathArr = libraryUtils.findDirPathByUuid(runtime.libraryTree, uuid).split('/')
@@ -163,17 +164,17 @@ const hint2IconMouseout = () => {
   hint2Show.value = false
 }
 onMounted(() => {
-  hotkeys('enter', 'scanNewSongDialog', () => {
+  hotkeys('enter', uuid, () => {
     confirm()
   })
-  hotkeys('Esc', 'scanNewSongDialog', () => {
+  hotkeys('Esc', uuid, () => {
     cancel()
   })
-  hotkeys.setScope('scanNewSongDialog')
+  utils.setHotkeysScpoe(runtime.hotkeysScopesHeap, uuid)
 })
 
 onUnmounted(() => {
-  hotkeys.deleteScope('scanNewSongDialog')
+  utils.delHotkeysScope(runtime.hotkeysScopesHeap, uuid)
   runtime.scanNewSongDialogShow = false
 })
 </script>
@@ -333,7 +334,6 @@ onUnmounted(() => {
     @cancel="
       () => {
         selectSongListDialogShow = false
-        hotkeys.setScope('scanNewSongDialog')
       }
     "
   />
