@@ -6,7 +6,7 @@ import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
 const uuid = uuidv4()
 const runtime = useRuntimeStore()
-
+//todo需要把rightClickMenu改成指令式
 const emits = defineEmits(['menuButtonClick', 'update:modelValue'])
 watch(
   () => runtime.activeMenuUUID,
