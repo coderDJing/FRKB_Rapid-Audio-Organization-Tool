@@ -456,6 +456,9 @@ function createWindow() {
     mainWindow.webContents.send('importFinished', contentArr, songListUUID)
     return
   })
+  mainWindow.on('blur', () => {
+    mainWindow.webContents.send('mainWindowBlur')
+  })
 }
 
 ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
