@@ -1,6 +1,6 @@
 <script setup>
 import hotkeys from 'hotkeys-js'
-import { onUnmounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 const runtime = useRuntimeStore()
 const props = defineProps({
@@ -50,17 +50,22 @@ const cancel = () => {
     props.cancelCallback()
   }
 }
-hotkeys(props.confirmHotkey === '↵' ? 'enter' : props.confirmHotkey, () => {
-  if (props.confirmShow) {
-    confirm()
-  }
-})
 
-hotkeys('esc', () => {
-  cancel()
+onMounted(() => {
+  hotkeys(props.confirmHotkey === '↵' ? 'enter' : props.confirmHotkey, 'confirmDialog', () => {
+    if (props.confirmShow) {
+      confirm()
+    }
+  })
+
+  hotkeys('Esc', 'confirmDialog', () => {
+    cancel()
+  })
+  hotkeys.setScope('confirmDialog')
 })
 runtime.confirmShow = true
 onUnmounted(() => {
+  hotkeys.deleteScope('confirmDialog')
   runtime.confirmShow = false
 })
 </script>

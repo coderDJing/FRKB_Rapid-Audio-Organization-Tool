@@ -1,5 +1,5 @@
 <script setup>
-import { watch, ref, nextTick, onUnmounted, computed } from 'vue'
+import { watch, ref, nextTick, onUnmounted, computed, onMounted } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { vDraggable } from 'vue-draggable-plus'
@@ -343,12 +343,14 @@ const songDblClick = (song) => {
   window.electron.ipcRenderer.send('readSongFile', song.filePath)
 }
 
-hotkeys('ctrl+a, command+a', () => {
-  selectedSongFilePath.value.length = 0
-  for (let item of songInfoArr.value) {
-    selectedSongFilePath.value.push(item.filePath)
-  }
-  return false
+onMounted(() => {
+  hotkeys('ctrl+a, command+a', () => {
+    selectedSongFilePath.value.length = 0
+    for (let item of songInfoArr.value) {
+      selectedSongFilePath.value.push(item.filePath)
+    }
+    return false
+  })
 })
 </script>
 <template>

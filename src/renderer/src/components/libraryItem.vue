@@ -691,7 +691,7 @@ watch(
           :class="{ myInputRedBorder: inputHintShow }"
           @blur="inputBlurHandle"
           @keydown.enter="inputKeyDownEnter"
-          @keydown.esc="inputKeyDownEsc"
+          @keydown.Esc="inputKeyDownEsc"
           @click.stop="() => {}"
           @contextmenu.stop="() => {}"
           @input="myInputHandleInput"
@@ -708,7 +708,7 @@ watch(
           :class="{ myInputRedBorder: renameInputHintShow }"
           @blur="renameInputBlurHandle"
           @keydown.enter="renameInputKeyDownEnter"
-          @keydown.esc="renameInputKeyDownEsc"
+          @keydown.Esc="renameInputKeyDownEsc"
           @click.stop="() => {}"
           @contextmenu.stop="() => {}"
           @input="renameMyInputHandleInput"
@@ -745,6 +745,7 @@ watch(
     v-if="importSongsDialogShow"
     @cancel="importSongsDialogShow = false"
     :songListUuid="props.uuid"
+    :libraryName="props.libraryName"
   >
   </scanNewSongDialog>
 </template>
