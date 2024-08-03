@@ -3,11 +3,10 @@ import { ref, nextTick, watch } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu.vue'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import confirmDialog from '@renderer/components/confirmDialog.vue'
 import listIcon from '@renderer/assets/listIcon.png'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { v4 as uuidv4 } from 'uuid'
-import confirm from '@renderer/components/confirm.js'
+import confirm from '@renderer/components/confirmDialog.js'
 
 const props = defineProps({
   uuid: {
@@ -128,11 +127,44 @@ const menuButtonClick = async (item, e) => {
     await nextTick()
     myRenameInput.value.focus()
   } else if (item.menuName == '删除') {
-    confirmDialogContent.value = [
-      dirData.type == 'dir' ? '确认删除此文件夹吗？' : '确认删除此歌单吗？',
-      '(曲目将在磁盘上被删除，但声音指纹依然会保留)'
-    ]
-    confirmDialogShow.value = true
+    let res = await confirm({
+      title: '删除',
+      content: [
+        dirData.type == 'dir' ? '确认删除此文件夹吗？' : '确认删除此歌单吗？',
+        '(曲目将在磁盘上被删除，但声音指纹依然会保留)'
+      ]
+    })
+    if (res === 'confirm') {
+      let uuids = libraryUtils.getAllUuids(
+        libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, props.uuid)
+      )
+
+      if (uuids.indexOf(runtime.selectedSongListUUID) !== -1) {
+        runtime.selectedSongListUUID = ''
+      }
+      if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
+        runtime.playingData.playingSongListData = []
+        runtime.playingData.playingSong = null
+      }
+      const path = libraryUtils.findDirPathByUuid(runtime.libraryTree, props.uuid)
+      await window.electron.ipcRenderer.invoke('delDir', path)
+      await window.electron.ipcRenderer.invoke(
+        'updateOrderAfterNum',
+        libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid),
+        dirData.order
+      )
+      let deleteIndex = null
+      for (let index in fatherDirData.children) {
+        if (fatherDirData.children[index] == dirData) {
+          deleteIndex = index
+          continue
+        }
+        if (fatherDirData.children[index].order > dirData.order) {
+          fatherDirData.children[index].order--
+        }
+      }
+      fatherDirData.children.splice(deleteIndex, 1)
+    }
   }
 }
 
@@ -228,47 +260,6 @@ const renameMyInputHandleInput = (e) => {
       renameInputHintShow.value = false
     }
   }
-}
-
-//----------------------------------------
-//------删除功能-------------------------
-const confirmDialogShow = ref(false)
-const confirmDialogContent = ref([])
-const deleteConfirm = async () => {
-  let uuids = libraryUtils.getAllUuids(
-    libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, props.uuid)
-  )
-
-  if (uuids.indexOf(runtime.selectedSongListUUID) !== -1) {
-    runtime.selectedSongListUUID = ''
-  }
-  if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
-    runtime.playingData.playingSongListData = []
-    runtime.playingData.playingSong = null
-  }
-  const path = libraryUtils.findDirPathByUuid(runtime.libraryTree, props.uuid)
-  await window.electron.ipcRenderer.invoke('delDir', path)
-  await window.electron.ipcRenderer.invoke(
-    'updateOrderAfterNum',
-    libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid),
-    dirData.order
-  )
-  let deleteIndex = null
-  for (let index in fatherDirData.children) {
-    if (fatherDirData.children[index] == dirData) {
-      deleteIndex = index
-      continue
-    }
-    if (fatherDirData.children[index].order > dirData.order) {
-      fatherDirData.children[index].order--
-    }
-  }
-  fatherDirData.children.splice(deleteIndex, 1)
-  deleteCancel()
-}
-const deleteCancel = () => {
-  confirmDialogContent.value = []
-  confirmDialogShow.value = false
 }
 //------------------------------------
 
@@ -693,13 +684,6 @@ indentWidth.value = (libraryUtils.getDepthByUuid(runtime.libraryTree, props.uuid
     :clickEvent="clickEvent"
     @menuButtonClick="menuButtonClick"
   ></rightClickMenu>
-  <confirmDialog
-    v-if="confirmDialogShow"
-    title="删除"
-    :content="confirmDialogContent"
-    @confirm="deleteConfirm"
-    @cancel="deleteCancel"
-  />
 </template>
 <style lang="scss" scoped>
 .selectedDir {

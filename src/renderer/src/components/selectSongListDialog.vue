@@ -5,7 +5,7 @@ import dialogLibraryItem from '@renderer/components/dialogLibraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { v4 as uuidv4 } from 'uuid'
-import confirm from '@renderer/components/confirm.js'
+import confirm from '@renderer/components/confirmDialog.js'
 import hotkeys from 'hotkeys-js'
 import listIcon from '@renderer/assets/listIcon.png'
 
