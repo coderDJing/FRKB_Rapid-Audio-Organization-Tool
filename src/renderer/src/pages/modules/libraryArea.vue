@@ -5,7 +5,7 @@ import libraryItem from '@renderer/components/libraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { v4 as uuidv4 } from 'uuid'
-import confirm from '@renderer/components/confirm.js'
+import confirm from '@renderer/components/confirmDialog.js'
 const runtime = useRuntimeStore()
 const props = defineProps({
   uuid: {

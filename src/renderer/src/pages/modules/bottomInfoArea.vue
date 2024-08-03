@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue'
-import confirm from '@renderer/components/confirm.js'
+import confirm from '@renderer/components/confirmDialog.js'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 
 const runtime = useRuntimeStore()

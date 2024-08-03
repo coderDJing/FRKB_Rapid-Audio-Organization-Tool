@@ -3,12 +3,11 @@ import { ref, nextTick, watch } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu.vue'
 import libraryItem from '@renderer/components/libraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import confirmDialog from '@renderer/components/confirmDialog.vue'
 import listIcon from '@renderer/assets/listIcon.png'
 import listIconBlue from '@renderer/assets/listIconBlue.png'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { v4 as uuidv4 } from 'uuid'
-import confirm from '@renderer/components/confirm.js'
+import confirm from '@renderer/components/confirmDialog.js'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog.vue'
 
 const props = defineProps({
@@ -127,11 +126,44 @@ const menuButtonClick = async (item, e) => {
     await nextTick()
     myRenameInput.value.focus()
   } else if (item.menuName == '删除') {
-    confirmDialogContent.value = [
-      dirData.type == 'dir' ? '确认删除此文件夹吗？' : '确认删除此歌单吗？',
-      '(曲目将在磁盘上被删除，但声音指纹依然会保留)'
-    ]
-    confirmDialogShow.value = true
+    let res = await confirm({
+      title: '删除',
+      content: [
+        dirData.type == 'dir' ? '确认删除此文件夹吗？' : '确认删除此歌单吗？',
+        '(曲目将在磁盘上被删除，但声音指纹依然会保留)'
+      ]
+    })
+    if (res === 'confirm') {
+      let uuids = libraryUtils.getAllUuids(
+        libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, props.uuid)
+      )
+
+      if (uuids.indexOf(runtime.selectedSongListUUID) !== -1) {
+        runtime.selectedSongListUUID = ''
+      }
+      if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
+        runtime.playingData.playingSongListData = []
+        runtime.playingData.playingSong = null
+      }
+      const path = libraryUtils.findDirPathByUuid(runtime.libraryTree, props.uuid)
+      await window.electron.ipcRenderer.invoke('delDir', path)
+      await window.electron.ipcRenderer.invoke(
+        'updateOrderAfterNum',
+        libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid),
+        dirData.order
+      )
+      let deleteIndex = null
+      for (let index in fatherDirData.children) {
+        if (fatherDirData.children[index] == dirData) {
+          deleteIndex = index
+          continue
+        }
+        if (fatherDirData.children[index].order > dirData.order) {
+          fatherDirData.children[index].order--
+        }
+      }
+      fatherDirData.children.splice(deleteIndex, 1)
+    }
   } else if (item.menuName == '导入曲目') {
     if (runtime.isProgressing) {
       await confirm({
@@ -248,46 +280,6 @@ const renameMyInputHandleInput = (e) => {
 }
 
 //----------------------------------------
-//------删除功能-------------------------
-const confirmDialogShow = ref(false)
-const confirmDialogContent = ref([])
-const deleteConfirm = async () => {
-  let uuids = libraryUtils.getAllUuids(
-    libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, props.uuid)
-  )
-
-  if (uuids.indexOf(runtime.selectedSongListUUID) !== -1) {
-    runtime.selectedSongListUUID = ''
-  }
-  if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
-    runtime.playingData.playingSongListData = []
-    runtime.playingData.playingSong = null
-  }
-  const path = libraryUtils.findDirPathByUuid(runtime.libraryTree, props.uuid)
-  await window.electron.ipcRenderer.invoke('delDir', path)
-  await window.electron.ipcRenderer.invoke(
-    'updateOrderAfterNum',
-    libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid),
-    dirData.order
-  )
-  let deleteIndex = null
-  for (let index in fatherDirData.children) {
-    if (fatherDirData.children[index] == dirData) {
-      deleteIndex = index
-      continue
-    }
-    if (fatherDirData.children[index].order > dirData.order) {
-      fatherDirData.children[index].order--
-    }
-  }
-  fatherDirData.children.splice(deleteIndex, 1)
-  deleteCancel()
-}
-const deleteCancel = () => {
-  confirmDialogContent.value = []
-  confirmDialogShow.value = false
-}
-//------------------------------------
 
 const dragstart = (e) => {
   runtime.dragItemData = dirData
@@ -733,13 +725,6 @@ watch(
     :clickEvent="clickEvent"
     @menuButtonClick="menuButtonClick"
   ></rightClickMenu>
-  <confirmDialog
-    v-if="confirmDialogShow"
-    title="删除"
-    :content="confirmDialogContent"
-    @confirm="deleteConfirm"
-    @cancel="deleteCancel"
-  />
   <scanNewSongDialog
     v-if="importSongsDialogShow"
     @cancel="importSongsDialogShow = false"
@@ -752,9 +737,11 @@ watch(
 .isPlaying {
   color: #0078d4 !important;
 }
+
 .isPlayingLoading {
   border: 2px solid #0078d4 !important;
 }
+
 .loading {
   width: 8px;
   height: 8px;

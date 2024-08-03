@@ -6,7 +6,7 @@ import logo from '@renderer/assets/logo.png'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { ref } from 'vue'
 import menuComponent from './menu.vue'
-import confirm from '@renderer/components/confirm.js'
+import confirm from '@renderer/components/confirmDialog.js'
 
 const emit = defineEmits(['openDialog'])
 const toggleMaximize = () => {

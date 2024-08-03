@@ -6,7 +6,7 @@ import { vDraggable } from 'vue-draggable-plus'
 import songAreaColRightClickMenu from '@renderer/components/songAreaColRightClickMenu.vue'
 import hotkeys from 'hotkeys-js'
 import rightClickMenu from '@renderer/components/rightClickMenu.vue'
-import confirm from '@renderer/components/confirm.js'
+import confirm from '@renderer/components/confirmDialog.js'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 let columnData = ref([])
 if (localStorage.getItem('songColumnData')) {
