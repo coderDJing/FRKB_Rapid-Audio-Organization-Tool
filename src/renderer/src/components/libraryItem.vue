@@ -1,6 +1,6 @@
 <script setup>
 import { ref, nextTick, watch } from 'vue'
-import rightClickMenu from '@renderer/components/rightClickMenu.vue'
+import rightClickMenu from '@renderer/components/rightClickMenu.js'
 import libraryItem from '@renderer/components/libraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import listIcon from '@renderer/assets/listIcon.png'
@@ -101,95 +101,8 @@ if (dirData.dirName == '') {
 }
 const importSongsDialogShow = ref(false)
 const exportSongsDialogShow = ref(false)
-const menuButtonClick = async (item, e) => {
-  if (item.menuName == '新建歌单') {
-    dirChildRendered.value = true
-    dirChildShow.value = true
-
-    dirData.children.unshift({
-      uuid: uuidv4(),
-      dirName: '',
-      type: 'songList'
-    })
-  } else if (item.menuName == '新建文件夹') {
-    dirChildRendered.value = true
-    dirChildShow.value = true
-
-    dirData.children.unshift({
-      uuid: uuidv4(),
-      dirName: '',
-      type: 'dir'
-    })
-  } else if (item.menuName == '重命名') {
-    renameDivShow.value = true
-    renameDivValue.value = dirData.dirName
-    await nextTick()
-    myRenameInput.value.focus()
-  } else if (item.menuName == '删除') {
-    let res = await confirm({
-      title: '删除',
-      content: [
-        dirData.type == 'dir' ? '确认删除此文件夹吗？' : '确认删除此歌单吗？',
-        '(曲目将在磁盘上被删除，但声音指纹依然会保留)'
-      ]
-    })
-    if (res === 'confirm') {
-      let uuids = libraryUtils.getAllUuids(
-        libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, props.uuid)
-      )
-
-      if (uuids.indexOf(runtime.selectedSongListUUID) !== -1) {
-        runtime.selectedSongListUUID = ''
-      }
-      if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
-        runtime.playingData.playingSongListData = []
-        runtime.playingData.playingSong = null
-      }
-      const path = libraryUtils.findDirPathByUuid(runtime.libraryTree, props.uuid)
-      await window.electron.ipcRenderer.invoke('delDir', path)
-      await window.electron.ipcRenderer.invoke(
-        'updateOrderAfterNum',
-        libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid),
-        dirData.order
-      )
-      let deleteIndex = null
-      for (let index in fatherDirData.children) {
-        if (fatherDirData.children[index] == dirData) {
-          deleteIndex = index
-          continue
-        }
-        if (fatherDirData.children[index].order > dirData.order) {
-          fatherDirData.children[index].order--
-        }
-      }
-      fatherDirData.children.splice(deleteIndex, 1)
-    }
-  } else if (item.menuName == '导入曲目') {
-    if (runtime.isProgressing) {
-      await confirm({
-        title: '导入',
-        content: ['请等待当前导入任务完成'],
-        confirmShow: false
-      })
-      return
-    }
-    importSongsDialogShow.value = true
-  } else if (item.menuName == '导出曲目') {
-    if (runtime.isProgressing) {
-      await confirm({
-        title: '导入',
-        content: ['请等待当前导入任务完成'],
-        confirmShow: false
-      })
-      return
-    }
-    exportSongsDialogShow.value = true
-    //todo 完成导出曲目对话框
-  }
-}
 
 const rightClickMenuShow = ref(false)
-const clickEvent = ref({})
 const menuArr = ref(
   dirData.type == 'dir'
     ? [
@@ -201,9 +114,96 @@ const menuArr = ref(
         [{ menuName: '重命名' }, { menuName: '删除' }]
       ]
 )
-const contextmenuEvent = (event) => {
-  clickEvent.value = event
+const contextmenuEvent = async (event) => {
   rightClickMenuShow.value = true
+  let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
+  rightClickMenuShow.value = false
+  if (result !== 'cancel') {
+    if (result.menuName == '新建歌单') {
+      dirChildRendered.value = true
+      dirChildShow.value = true
+
+      dirData.children.unshift({
+        uuid: uuidv4(),
+        dirName: '',
+        type: 'songList'
+      })
+    } else if (result.menuName == '新建文件夹') {
+      dirChildRendered.value = true
+      dirChildShow.value = true
+
+      dirData.children.unshift({
+        uuid: uuidv4(),
+        dirName: '',
+        type: 'dir'
+      })
+    } else if (result.menuName == '重命名') {
+      renameDivShow.value = true
+      renameDivValue.value = dirData.dirName
+      await nextTick()
+      myRenameInput.value.focus()
+    } else if (result.menuName == '删除') {
+      let res = await confirm({
+        title: '删除',
+        content: [
+          dirData.type == 'dir' ? '确认删除此文件夹吗？' : '确认删除此歌单吗？',
+          '(曲目将在磁盘上被删除，但声音指纹依然会保留)'
+        ]
+      })
+      if (res === 'confirm') {
+        let uuids = libraryUtils.getAllUuids(
+          libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, props.uuid)
+        )
+
+        if (uuids.indexOf(runtime.selectedSongListUUID) !== -1) {
+          runtime.selectedSongListUUID = ''
+        }
+        if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
+          runtime.playingData.playingSongListData = []
+          runtime.playingData.playingSong = null
+        }
+        const path = libraryUtils.findDirPathByUuid(runtime.libraryTree, props.uuid)
+        await window.electron.ipcRenderer.invoke('delDir', path)
+        await window.electron.ipcRenderer.invoke(
+          'updateOrderAfterNum',
+          libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid),
+          dirData.order
+        )
+        let deleteIndex = null
+        for (let index in fatherDirData.children) {
+          if (fatherDirData.children[index] == dirData) {
+            deleteIndex = index
+            continue
+          }
+          if (fatherDirData.children[index].order > dirData.order) {
+            fatherDirData.children[index].order--
+          }
+        }
+        fatherDirData.children.splice(deleteIndex, 1)
+      }
+    } else if (result.menuName == '导入曲目') {
+      if (runtime.isProgressing) {
+        await confirm({
+          title: '导入',
+          content: ['请等待当前导入任务完成'],
+          confirmShow: false
+        })
+        return
+      }
+      importSongsDialogShow.value = true
+    } else if (result.menuName == '导出曲目') {
+      if (runtime.isProgressing) {
+        await confirm({
+          title: '导入',
+          content: ['请等待当前导入任务完成'],
+          confirmShow: false
+        })
+        return
+      }
+      exportSongsDialogShow.value = true
+      //todo 完成导出曲目对话框
+    }
+  }
 }
 
 const dirChildShow = ref(false)
@@ -719,12 +719,6 @@ watch(
       <libraryItem :uuid="item.uuid" :libraryName="props.libraryName" />
     </template>
   </div>
-  <rightClickMenu
-    v-model="rightClickMenuShow"
-    :menuArr="menuArr"
-    :clickEvent="clickEvent"
-    @menuButtonClick="menuButtonClick"
-  ></rightClickMenu>
   <scanNewSongDialog
     v-if="importSongsDialogShow"
     @cancel="importSongsDialogShow = false"
