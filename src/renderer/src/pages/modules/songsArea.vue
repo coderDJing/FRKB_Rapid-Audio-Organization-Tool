@@ -5,9 +5,9 @@ import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { vDraggable } from 'vue-draggable-plus'
 import songAreaColRightClickMenu from '@renderer/components/songAreaColRightClickMenu.vue'
 import hotkeys from 'hotkeys-js'
-import rightClickMenu from '@renderer/components/rightClickMenu.vue'
 import confirm from '@renderer/components/confirmDialog.js'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
+import rightClickMenu from '../../components/rightClickMenu.js'
 let columnData = ref([])
 if (localStorage.getItem('songColumnData')) {
   columnData.value = JSON.parse(localStorage.getItem('songColumnData'))
@@ -225,65 +225,67 @@ const songClick = (event, song) => {
     selectedSongFilePath.value = [song.filePath]
   }
 }
-const songRightClickMenuShow = ref(false)
-const songRightClickEvent = ref({})
+
 const menuArr = ref([
   [{ menuName: '导出' }],
   [{ menuName: '移动到筛选库' }, { menuName: '移动到精选库' }],
   [{ menuName: '删除曲目' }]
 ])
 
-const songContextmenu = (event, song) => {
+const songContextmenu = async (event, song) => {
   if (selectedSongFilePath.value.indexOf(song.filePath) === -1) {
     selectedSongFilePath.value = [song.filePath]
   }
-  songRightClickEvent.value = event
-  songRightClickMenuShow.value = true
+  let result = await rightClickMenu({
+    menuArr: menuArr.value,
+    clickEvent: event
+  })
+  if (result !== 'cancel') {
+    if (result.menuName === '删除曲目') {
+      let res = await confirm({
+        title: '删除',
+        content: ['确定删除选中的曲目吗', '（曲目将在磁盘上被删除，但声音指纹依然会保留）']
+      })
+      if (res === 'confirm') {
+        window.electron.ipcRenderer.send(
+          'delSongs',
+          JSON.parse(JSON.stringify(selectedSongFilePath.value))
+        )
+        let delSongs = songInfoArr.value.filter(
+          (item) => selectedSongFilePath.value.indexOf(item.filePath) !== -1
+        )
+        for (let item of delSongs) {
+          if (item.coverUrl) {
+            URL.revokeObjectURL(item.coverUrl)
+          }
+        }
+        songInfoArr.value = songInfoArr.value.filter(
+          (item) => selectedSongFilePath.value.indexOf(item.filePath) === -1
+        )
+        runtime.playingData.playingSongListData = songInfoArr.value
+        if (
+          runtime.playingData.playingSong &&
+          selectedSongFilePath.value.indexOf(runtime.playingData.playingSong.filePath) !== -1
+        ) {
+          runtime.playingData.playingSong = null
+        }
+        selectedSongFilePath.value.length = 0
+      }
+    } else if (result.menuName === '移动到精选库') {
+      selectSongListDialogLibraryName.value = '精选库'
+      selectSongListDialogShow.value = true
+    } else if (result.menuName === '移动到筛选库') {
+      selectSongListDialogLibraryName.value = '筛选库'
+      selectSongListDialogShow.value = true
+    } else if (result.menuName === '导出') {
+      //todo
+    }
+  }
 }
 
 const selectSongListDialogShow = ref(false)
 const selectSongListDialogLibraryName = ref('')
-const menuButtonClick = async (item) => {
-  if (item.menuName === '删除曲目') {
-    let res = await confirm({
-      title: '删除',
-      content: ['确定删除选中的曲目吗', '（曲目将在磁盘上被删除，但声音指纹依然会保留）']
-    })
-    if (res === 'confirm') {
-      window.electron.ipcRenderer.send(
-        'delSongs',
-        JSON.parse(JSON.stringify(selectedSongFilePath.value))
-      )
-      let delSongs = songInfoArr.value.filter(
-        (item) => selectedSongFilePath.value.indexOf(item.filePath) !== -1
-      )
-      for (let item of delSongs) {
-        if (item.coverUrl) {
-          URL.revokeObjectURL(item.coverUrl)
-        }
-      }
-      songInfoArr.value = songInfoArr.value.filter(
-        (item) => selectedSongFilePath.value.indexOf(item.filePath) === -1
-      )
-      runtime.playingData.playingSongListData = songInfoArr.value
-      if (
-        runtime.playingData.playingSong &&
-        selectedSongFilePath.value.indexOf(runtime.playingData.playingSong.filePath) !== -1
-      ) {
-        runtime.playingData.playingSong = null
-      }
-      selectedSongFilePath.value.length = 0
-    }
-  } else if (item.menuName === '移动到精选库') {
-    selectSongListDialogLibraryName.value = '精选库'
-    selectSongListDialogShow.value = true
-  } else if (item.menuName === '移动到筛选库') {
-    selectSongListDialogLibraryName.value = '筛选库'
-    selectSongListDialogShow.value = true
-  } else if (item.menuName === '导出') {
-    //todo
-  }
-}
+
 const selectSongListDialogConfirm = async (songListUUID) => {
   selectSongListDialogShow.value = false
   if (songListUUID === runtime.selectedSongListUUID) {
@@ -444,12 +446,6 @@ onMounted(() => {
     :columnData="columnData"
     @colMenuHandleClick="colMenuHandleClick"
   />
-  <rightClickMenu
-    v-model="songRightClickMenuShow"
-    :menuArr="menuArr"
-    :clickEvent="songRightClickEvent"
-    @menuButtonClick="menuButtonClick"
-  ></rightClickMenu>
   <selectSongListDialog
     v-if="selectSongListDialogShow"
     :libraryName="selectSongListDialogLibraryName"

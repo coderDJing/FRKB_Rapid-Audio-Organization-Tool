@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted, onUnmounted, ref, watch } from 'vue'
-import rightClickMenu from '@renderer/components/rightClickMenu.vue'
+import rightClickMenu from '@renderer/components/rightClickMenu.js'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
@@ -81,27 +81,23 @@ const iconMouseout = () => {
   collapseButtonHintShow.value = false
 }
 
-const rightClickMenuShow = ref(false)
-const clickEvent = ref({})
 const menuArr = ref([[{ menuName: '新建歌单' }, { menuName: '新建文件夹' }]])
-const contextmenuEvent = (event) => {
-  clickEvent.value = event
-  rightClickMenuShow.value = true
-}
-
-const menuButtonClick = async (item, e) => {
-  if (item.menuName == '新建歌单') {
-    libraryData.children.unshift({
-      uuid: uuidv4(),
-      type: 'songList',
-      dirName: ''
-    })
-  } else if (item.menuName == '新建文件夹') {
-    libraryData.children.unshift({
-      uuid: uuidv4(),
-      type: 'dir',
-      dirName: ''
-    })
+const contextmenuEvent = async (event) => {
+  let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
+  if (result !== 'cancel') {
+    if (result.menuName == '新建歌单') {
+      libraryData.children.unshift({
+        uuid: uuidv4(),
+        type: 'songList',
+        dirName: ''
+      })
+    } else if (result.menuName == '新建文件夹') {
+      libraryData.children.unshift({
+        uuid: uuidv4(),
+        type: 'dir',
+        dirName: ''
+      })
+    }
   }
 }
 
@@ -241,7 +237,7 @@ onMounted(() => {
   utils.setHotkeysScpoe(runtime.hotkeysScopesHeap, uuid)
 })
 onUnmounted(() => {
-  hotkeys.deleteScope(runtime.hotkeysScopesHeap, uuid)
+  utils.delHotkeysScope(runtime.hotkeysScopesHeap, uuid)
   runtime.dialogSelectedSongListUUID = ''
   runtime.selectSongListDialogShow = false
 })
@@ -399,13 +395,6 @@ const cancel = () => {
       </div>
     </div>
   </div>
-  <rightClickMenu
-    v-model="rightClickMenuShow"
-    :menuArr="menuArr"
-    :clickEvent="clickEvent"
-    style="z-index: 99"
-    @menuButtonClick="menuButtonClick"
-  ></rightClickMenu>
 </template>
 <style lang="scss" scoped>
 .recentLibraryItem {
