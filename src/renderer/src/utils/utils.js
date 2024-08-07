@@ -10,7 +10,7 @@ const setHotkeysScpoe = (hotkeysScopesHeap, scope) => {
 //hotkeysScopesHeap为runtime.hotkeysScopesHeap
 const delHotkeysScope = (hotkeysScopesHeap, scope) => {
   hotkeys.deleteScope(scope)
-  hotkeysScopesHeap.pop()
+  hotkeysScopesHeap.splice(hotkeysScopesHeap.indexOf(scope), 1)
   hotkeys.setScope(hotkeysScopesHeap[hotkeysScopesHeap.length - 1])
   console.log('delHotkeysScope', hotkeys.getScope())
 }

@@ -7,6 +7,7 @@ import bottomInfoArea from './pages/modules/bottomInfoArea.vue'
 import manualAddSongFingerprintDialog from './components/manualAddSongFingerprintDialog.vue'
 import { onMounted, ref, watch } from 'vue'
 import hotkeys from 'hotkeys-js'
+import utils from './utils/utils'
 
 const runtime = useRuntimeStore()
 
@@ -61,7 +62,7 @@ onMounted(() => {
   hotkeys('esc', () => {
     runtime.activeMenuUUID = ''
   })
-  hotkeys.setScope('windowGlobal')
+  utils.setHotkeysScpoe(runtime.hotkeysScopesHeap, 'windowGlobal')
 })
 window.electron.ipcRenderer.on('mainWindowBlur', async (event) => {
   runtime.activeMenuUUID = ''

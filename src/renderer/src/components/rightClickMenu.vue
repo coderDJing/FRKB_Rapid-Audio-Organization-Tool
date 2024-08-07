@@ -6,70 +6,57 @@ import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
 const uuid = uuidv4()
 const runtime = useRuntimeStore()
-//todo需要把rightClickMenu改成指令式
-const emits = defineEmits(['menuButtonClick', 'update:modelValue'])
-watch(
-  () => runtime.activeMenuUUID,
-  (val) => {
-    if (val !== uuid) {
-      emits('update:modelValue', false)
-    }
-  }
-)
+runtime.activeMenuUUID = uuid
 const props = defineProps({
   menuArr: {
     type: Array,
     required: true
   },
-  modelValue: {
-    type: Boolean,
-    required: true
-  },
   clickEvent: {
     type: Object,
     required: true
+  },
+  confirmCallback: {
+    type: Function
+  },
+  cancelCallback: {
+    type: Function
   }
 })
-
 watch(
-  () => props.modelValue,
-  () => {
-    if (props.modelValue == true) {
-      runtime.activeMenuUUID = uuid
+  () => runtime.activeMenuUUID,
+  (val) => {
+    if (val !== uuid) {
+      props.cancelCallback()
     }
   }
 )
-const menuButtonClick = (item) => {
-  runtime.activeMenuUUID = ''
-  emits('menuButtonClick', item, props.clickEvent)
-}
-
 let positionTop = ref(0)
 let positionLeft = ref(0)
-watch(
-  () => props.clickEvent,
-  () => {
-    let windowWidth = window.innerWidth
-    let windowHeight = window.innerHeight
-    let clickX = props.clickEvent.clientX
-    let clickY = props.clickEvent.clientY
-    positionLeft.value = clickX
-    positionTop.value = clickY
+let windowWidth = window.innerWidth
+let windowHeight = window.innerHeight
+let clickX = props.clickEvent.clientX
+let clickY = props.clickEvent.clientY
+positionLeft.value = clickX
+positionTop.value = clickY
 
-    let itemCount = 0
-    for (let arr of props.menuArr) {
-      itemCount = itemCount + arr.length
-    }
-    let divHeight = props.menuArr.length * 10 + itemCount * 28 + (props.menuArr.length - 1) + 5
-    let divWidth = 255
-    if (clickY + divHeight > windowHeight) {
-      positionTop.value = clickY - (clickY + divHeight - windowHeight)
-    }
-    if (clickX + divWidth > windowWidth) {
-      positionLeft.value = clickX - (clickX + divWidth - windowWidth)
-    }
-  }
-)
+let itemCount = 0
+for (let arr of props.menuArr) {
+  itemCount = itemCount + arr.length
+}
+let divHeight = props.menuArr.length * 10 + itemCount * 28 + (props.menuArr.length - 1) + 5
+let divWidth = 255
+if (clickY + divHeight > windowHeight) {
+  positionTop.value = clickY - (clickY + divHeight - windowHeight)
+}
+if (clickX + divWidth > windowWidth) {
+  positionLeft.value = clickX - (clickX + divWidth - windowWidth)
+}
+const menuButtonClick = (item) => {
+  runtime.activeMenuUUID = ''
+  props.confirmCallback(item)
+}
+
 onMounted(() => {
   hotkeys('up', uuid, () => {
     return false
@@ -89,9 +76,9 @@ onUnmounted(() => {
 </script>
 <template>
   <div
-    v-if="props.modelValue"
     class="menu unselectable"
     :style="{ top: positionTop + 'px', left: positionLeft + 'px' }"
+    style="z-index: 99"
     @click.stop="() => {}"
   >
     <div v-for="item of props.menuArr" class="menuGroup">
@@ -125,6 +112,7 @@ onUnmounted(() => {
       justify-content: space-between;
       padding: 5px 20px;
       border-radius: 5px;
+      color: #cccccc;
 
       &:hover {
         background-color: #0078d4;
