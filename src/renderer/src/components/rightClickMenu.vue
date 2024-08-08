@@ -56,13 +56,23 @@ const menuButtonClick = (item) => {
   runtime.activeMenuUUID = ''
   props.confirmCallback(item)
 }
-
+const hoverIndex = ref(-1)
+const mouseover = (item) => {
+  //todo 有问题
+  hoverIndex.value = props.menuArr.indexOf(item)
+  console.log(hoverIndex.value)
+}
+const mouseleave = () => {
+  hoverIndex.value = - 1
+}
 onMounted(() => {
   hotkeys('up', uuid, () => {
+    console.log('up')
     return false
     //todo
   })
   hotkeys('down', uuid, () => {
+    console.log('down')
     return false
     //todo
   })
@@ -75,19 +85,12 @@ onUnmounted(() => {
 //todo 快捷键上下和回车
 </script>
 <template>
-  <div
-    class="menu unselectable"
-    :style="{ top: positionTop + 'px', left: positionLeft + 'px' }"
-    style="z-index: 99"
-    @click.stop="() => {}"
-  >
+  <div class="menu unselectable" :style="{ top: positionTop + 'px', left: positionLeft + 'px' }" style="z-index: 99"
+    @click.stop="() => { }" @mouseleave.stop="mouseleave()">
     <div v-for="item of props.menuArr" class="menuGroup">
-      <div
-        v-for="button of item"
-        class="menuButton"
-        @click="menuButtonClick(button)"
-        @contextmenu="menuButtonClick(button)"
-      >
+      <div v-for="button of item" class="menuButton" @click="menuButtonClick(button)"
+        :class="{ 'menuButtonOver': hoverIndex === props.menuArr.indexOf(item) }" @mouseover.stop="mouseover(button)"
+        @contextmenu="menuButtonClick(button)">
         <span>{{ button.menuName }}</span>
         <span>{{ button.shortcutKey }}</span>
       </div>
@@ -114,10 +117,15 @@ onUnmounted(() => {
       border-radius: 5px;
       color: #cccccc;
 
-      &:hover {
-        background-color: #0078d4;
-        color: white;
-      }
+      // &:hover {
+      //   background-color: #0078d4;
+      //   color: white;
+      // }
+    }
+
+    .menuButtonOver {
+      background-color: #0078d4;
+      color: white;
     }
   }
 
