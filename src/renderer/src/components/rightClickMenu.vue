@@ -75,7 +75,10 @@ onMounted(() => {
   })
   hotkeys('down,s', uuid, () => {
     let menuArr = props.menuArr.flat(1)
-    if (Object.keys(hoverItem.value).length === 0 || menuArr.indexOf(hoverItem.value) === menuArr.length - 1) {
+    if (
+      Object.keys(hoverItem.value).length === 0 ||
+      menuArr.indexOf(hoverItem.value) === menuArr.length - 1
+    ) {
       hoverItem.value = menuArr[0]
     } else {
       hoverItem.value = menuArr[menuArr.indexOf(hoverItem.value) + 1]
@@ -94,12 +97,22 @@ onUnmounted(() => {
 })
 </script>
 <template>
-  <div class="menu unselectable" :style="{ top: positionTop + 'px', left: positionLeft + 'px' }" style="z-index: 99"
-    @click.stop="() => { }" @mouseleave.stop="mouseleave()">
+  <div
+    class="menu unselectable"
+    :style="{ top: positionTop + 'px', left: positionLeft + 'px' }"
+    style="z-index: 99"
+    @click.stop="() => {}"
+    @mouseleave.stop="mouseleave()"
+  >
     <div v-for="item of props.menuArr" class="menuGroup">
-      <div v-for="button of item" class="menuButton" @click="menuButtonClick(button)"
-        :class="{ 'menuButtonOver': hoverItem.menuName === button.menuName }" @mouseover.stop="mouseover(button)"
-        @contextmenu="menuButtonClick(button)">
+      <div
+        v-for="button of item"
+        class="menuButton"
+        @click="menuButtonClick(button)"
+        :class="{ menuButtonOver: hoverItem.menuName === button.menuName }"
+        @mouseover.stop="mouseover(button)"
+        @contextmenu="menuButtonClick(button)"
+      >
         <span>{{ button.menuName }}</span>
         <span>{{ button.shortcutKey }}</span>
       </div>
