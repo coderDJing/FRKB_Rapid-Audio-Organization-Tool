@@ -6,7 +6,8 @@ import {
   updateTargetDirSubdirOrder,
   getLibrary,
   collectFilesWithExtensions,
-  executeScript
+  executeScript,
+  moveOrCopyItemWithCheckIsExist
 } from './utils.js'
 import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset'
 import analyseSongFingerprintPyScriptUrl from '../../resources/pyScript/analyseSongFingerprint/analyseSongFingerprint.exe?commonjs-external&asset'
@@ -210,24 +211,22 @@ function createWindow() {
     mainWindow.webContents.send('addSongFingerprintFinished', contentArr)
   })
 
+  ipcMain.handle('exportSongsToDir', async (e, folderPathVal, deleteSongsAfterExport, songs) => {
+    const promises = []
+    for (let item of songs) {
+      let targetPath = folderPathVal + '\\' + item.filePath.match(/[^\\]+$/)[0]
+      promises.push(
+        moveOrCopyItemWithCheckIsExist(item.filePath, targetPath, deleteSongsAfterExport)
+      )
+    }
+    await Promise.all(promises)
+    return
+  })
+
   ipcMain.handle('moveSongsToDir', async (e, srcs, dest) => {
     const moveSongToDir = async (src, dest) => {
       let targetPath = join(__dirname, dest, src.match(/[^\\]+$/)[0])
-      let isExist = await fs.pathExists(targetPath)
-      if (isExist) {
-        let counter = 1
-        let baseName = path.basename(targetPath, path.extname(targetPath))
-        let extension = path.extname(targetPath)
-        let directory = path.dirname(targetPath)
-        let newFileName = `${baseName} (${counter})${extension}`
-        while (await fs.pathExists(join(directory, newFileName))) {
-          counter++
-          newFileName = `${baseName} (${counter})${extension}`
-        }
-        fs.move(src, join(directory, newFileName))
-      } else {
-        fs.move(src, targetPath)
-      }
+      await moveOrCopyItemWithCheckIsExist(src, targetPath, true)
     }
     const promises = []
     for (let src of srcs) {
@@ -265,29 +264,7 @@ function createWindow() {
       )
       for (let songFileUrl of songFileUrls) {
         let targetPath = join(formData.songListPath, songFileUrl.match(/[^\\]+$/)[0])
-        let isExist = await fs.pathExists(targetPath)
-        if (isExist) {
-          let counter = 1
-          let baseName = path.basename(targetPath, path.extname(targetPath))
-          let extension = path.extname(targetPath)
-          let directory = path.dirname(targetPath)
-          let newFileName = `${baseName} (${counter})${extension}`
-          while (await fs.pathExists(join(directory, newFileName))) {
-            counter++
-            newFileName = `${baseName} (${counter})${extension}`
-          }
-          if (formData.isDeleteSourceFile) {
-            fs.move(songFileUrl, join(directory, newFileName))
-          } else {
-            fs.copy(songFileUrl, join(directory, newFileName))
-          }
-        } else {
-          if (formData.isDeleteSourceFile) {
-            fs.move(songFileUrl, targetPath)
-          } else {
-            fs.copy(songFileUrl, targetPath)
-          }
-        }
+        await moveOrCopyItemWithCheckIsExist(songFileUrl, targetPath, formData.isDeleteSourceFile)
         processNum++
         mainWindow.webContents.send(
           'progressSet',
@@ -365,29 +342,7 @@ function createWindow() {
           songFingerprintList.push(item.md5_hash)
         }
         let targetPath = join(formData.songListPath, item.path.match(/[^\\]+$/)[0])
-        let isExist = await fs.pathExists(targetPath)
-        if (isExist) {
-          let counter = 1
-          let baseName = path.basename(targetPath, path.extname(targetPath))
-          let extension = path.extname(targetPath)
-          let directory = path.dirname(targetPath)
-          let newFileName = `${baseName} (${counter})${extension}`
-          while (await fs.pathExists(join(directory, newFileName))) {
-            counter++
-            newFileName = `${baseName} (${counter})${extension}`
-          }
-          if (formData.isDeleteSourceFile) {
-            fs.move(item.path, join(directory, newFileName))
-          } else {
-            fs.copy(item.path, join(directory, newFileName))
-          }
-        } else {
-          if (formData.isDeleteSourceFile) {
-            fs.move(item.path, targetPath)
-          } else {
-            fs.copy(item.path, targetPath)
-          }
-        }
+        await moveOrCopyItemWithCheckIsExist(item.path, targetPath, formData.isDeleteSourceFile)
         processNum++
         mainWindow.webContents.send(
           'progressSet',
