@@ -56,25 +56,35 @@ const menuButtonClick = (item) => {
   runtime.activeMenuUUID = ''
   props.confirmCallback(item)
 }
-const hoverIndex = ref(-1)
+const hoverItem = ref({})
 const mouseover = (item) => {
-  //todo 有问题
-  hoverIndex.value = props.menuArr.indexOf(item)
-  console.log(hoverIndex.value)
+  hoverItem.value = item
 }
 const mouseleave = () => {
-  hoverIndex.value = - 1
+  hoverItem.value = {}
 }
 onMounted(() => {
-  hotkeys('up', uuid, () => {
-    console.log('up')
+  hotkeys('up,w', uuid, () => {
+    let menuArr = props.menuArr.flat(1)
+    if (Object.keys(hoverItem.value).length === 0 || menuArr.indexOf(hoverItem.value) === 0) {
+      hoverItem.value = menuArr[menuArr.length - 1]
+    } else {
+      hoverItem.value = menuArr[menuArr.indexOf(hoverItem.value) - 1]
+    }
     return false
-    //todo
   })
-  hotkeys('down', uuid, () => {
-    console.log('down')
+  hotkeys('down,s', uuid, () => {
+    let menuArr = props.menuArr.flat(1)
+    if (Object.keys(hoverItem.value).length === 0 || menuArr.indexOf(hoverItem.value) === menuArr.length - 1) {
+      hoverItem.value = menuArr[0]
+    } else {
+      hoverItem.value = menuArr[menuArr.indexOf(hoverItem.value) + 1]
+    }
     return false
-    //todo
+  })
+  hotkeys('enter,e', uuid, () => {
+    runtime.activeMenuUUID = ''
+    props.confirmCallback(hoverItem.value)
   })
   utils.setHotkeysScpoe(runtime.hotkeysScopesHeap, uuid)
 })
@@ -82,14 +92,13 @@ onMounted(() => {
 onUnmounted(() => {
   utils.delHotkeysScope(runtime.hotkeysScopesHeap, uuid)
 })
-//todo 快捷键上下和回车
 </script>
 <template>
   <div class="menu unselectable" :style="{ top: positionTop + 'px', left: positionLeft + 'px' }" style="z-index: 99"
     @click.stop="() => { }" @mouseleave.stop="mouseleave()">
     <div v-for="item of props.menuArr" class="menuGroup">
       <div v-for="button of item" class="menuButton" @click="menuButtonClick(button)"
-        :class="{ 'menuButtonOver': hoverIndex === props.menuArr.indexOf(item) }" @mouseover.stop="mouseover(button)"
+        :class="{ 'menuButtonOver': hoverItem.menuName === button.menuName }" @mouseover.stop="mouseover(button)"
         @contextmenu="menuButtonClick(button)">
         <span>{{ button.menuName }}</span>
         <span>{{ button.shortcutKey }}</span>
