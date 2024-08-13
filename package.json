@@ -22,6 +22,7 @@
     "@electron-toolkit/utils": "^3.0.0",
     "fs-extra": "^11.2.0",
     "hotkeys-js": "^3.13.7",
+    "iconv-lite": "^0.6.3",
     "music-metadata": "^9.0.1",
     "pinia": "^2.1.7",
     "sass": "^1.77.6",
