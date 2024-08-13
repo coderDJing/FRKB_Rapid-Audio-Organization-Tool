@@ -1,9 +1,5 @@
 lockfileVersion: '6.0'
 
-settings:
-  autoInstallPeers: true
-  excludeLinksFromLockfile: false
-
 dependencies:
   '@electron-toolkit/preload':
     specifier: ^3.0.1
@@ -17,6 +13,9 @@ dependencies:
   hotkeys-js:
     specifier: ^3.13.7
     version: 3.13.7
+  iconv-lite:
+    specifier: ^0.6.3
+    version: 0.6.3
   music-metadata:
     specifier: ^9.0.1
     version: 9.0.1
@@ -2477,7 +2476,6 @@ packages:
     engines: {node: '>=0.10.0'}
     dependencies:
       safer-buffer: 2.1.2
-    dev: true
 
   /ieee754@1.2.1:
     resolution: {integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==}
@@ -3195,7 +3193,6 @@ packages:
 
   /safer-buffer@2.1.2:
     resolution: {integrity: sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==}
-    dev: true
 
   /sanitize-filename@1.6.3:
     resolution: {integrity: sha512-y/52Mcy7aw3gRm7IrcGDFx/bCk4AhRh2eI9luHOQM86nZsqwiRkkq2GekHXBBD+SmPidc8i2PqtYZl+pWJ8Oeg==}
@@ -3741,3 +3738,7 @@ packages:
       compress-commons: 4.1.2
       readable-stream: 3.6.2
     dev: true
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false

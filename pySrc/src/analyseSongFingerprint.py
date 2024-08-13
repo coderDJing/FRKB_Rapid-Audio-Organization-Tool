@@ -4,7 +4,9 @@ import librosa
 import hashlib
 import os
 import multiprocessing
+import io
 
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="gb18030")
 folderPaths = sys.argv[1]
 extensions = sys.argv[2].split(",")
 

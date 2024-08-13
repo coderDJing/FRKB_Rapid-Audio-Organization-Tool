@@ -44,7 +44,7 @@ const menuArr = ref([
     subMenu: [
       [
         { name: '筛选库 导入新曲目', shortcutKey: 'Alt+Q' },
-        { name: '精选库 导入新曲目', shortcutKey: 'Alt+E' }//todo 再加一个导出导入声音指纹库
+        { name: '精选库 导入新曲目', shortcutKey: 'Alt+E' } //todo 再加一个导出导入声音指纹库
       ],
       [{ name: '手动添加曲目指纹' }],
       [{ name: '退出' }]

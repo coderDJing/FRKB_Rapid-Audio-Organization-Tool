@@ -1,7 +1,7 @@
 import { join } from 'path'
 const fs = require('fs-extra')
 const path = require('path')
-
+const iconv = require('iconv-lite')
 async function getdirsDescriptionJson(dirPath, dirs) {
   const jsons = await Promise.all(
     dirs.map(async (dir) => {
@@ -111,12 +111,14 @@ export function executeScript(exePath, args, end) {
     let stderrData = ''
 
     child.stdout.on('data', (data) => {
-      stdoutData = stdoutData + data.toString()
+      let iconvData = iconv.decode(data, 'gb18030')
+      stdoutData = stdoutData + iconvData
       end()
     })
 
     child.stderr.on('data', (data) => {
-      stderrData += data.toString()
+      let iconvData = iconv.decode(data, 'gb18030')
+      stderrData += iconvData
     })
 
     child.on('error', (err) => {
