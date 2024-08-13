@@ -283,7 +283,37 @@ const songContextmenu = async (event, song) => {
       if (result !== 'cancel') {
         let folderPathVal = result.folderPathVal
         let deleteSongsAfterExport = result.deleteSongsAfterExport
-        //todo
+        let songs = songInfoArr.value.filter(
+          (item) => selectedSongFilePath.value.indexOf(item.filePath) !== -1
+        )
+        await window.electron.ipcRenderer.invoke(
+          'exportSongsToDir',
+          folderPathVal,
+          deleteSongsAfterExport,
+          JSON.parse(JSON.stringify(songs))
+        )
+        if (deleteSongsAfterExport) {
+          for (let item of songs) {
+            if (item.coverUrl) {
+              URL.revokeObjectURL(item.coverUrl)
+            }
+          }
+          songInfoArr.value = songInfoArr.value.filter(
+            (item) => selectedSongFilePath.value.indexOf(item.filePath) === -1
+          )
+          selectedSongFilePath.value = []
+          if (runtime.selectedSongListUUID === runtime.playingData.playingSongListUUID) {
+            runtime.playingData.playingSongListData = songInfoArr.value
+
+            if (
+              runtime.playingData.playingSongListData.filter(
+                (item) => item.filePath === runtime.playingData.playingSong.filePath
+              ).length === 0
+            ) {
+              runtime.playingData.playingSong = null
+            }
+          }
+        }
       }
     }
   }
