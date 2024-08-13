@@ -231,6 +231,7 @@ onUnmounted(() => {
                 v-model="runtime.layoutConfig.scanNewSongDialog.isDeleteSourceFile"
                 @change="isDeleteSourceFileChange"
               />
+              <!-- todo改成localstorage -->
             </div>
           </div>
           <div style="margin-top: 10px; display: flex">

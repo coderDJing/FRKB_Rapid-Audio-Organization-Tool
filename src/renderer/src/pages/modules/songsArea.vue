@@ -8,6 +8,7 @@ import hotkeys from 'hotkeys-js'
 import confirm from '@renderer/components/confirmDialog.js'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import rightClickMenu from '../../components/rightClickMenu.js'
+import exportDialog from '../../components/exportDialog.js'
 let columnData = ref([])
 if (localStorage.getItem('songColumnData')) {
   columnData.value = JSON.parse(localStorage.getItem('songColumnData'))
@@ -81,7 +82,7 @@ const openSongList = async () => {
     }
   }
   songInfoArr.value = []
-  await nextTick(() => {})
+  await nextTick(() => { })
 
   let songListPath = libraryUtils.findDirPathByUuid(
     runtime.libraryTree,
@@ -278,7 +279,12 @@ const songContextmenu = async (event, song) => {
       selectSongListDialogLibraryName.value = '筛选库'
       selectSongListDialogShow.value = true
     } else if (result.menuName === '导出') {
-      //todo
+      let result = await exportDialog('曲目')
+      if (result !== 'cancel') {
+        let folderPathVal = result.folderPathVal
+        let deleteSongsAfterExport = result.deleteSongsAfterExport
+        //todo
+      }
     }
   }
 }
@@ -356,21 +362,13 @@ onMounted(() => {
 })
 </script>
 <template>
-  <div
-    v-show="loadingShow"
-    style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center"
-  >
+  <div v-show="loadingShow"
+    style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center">
     <div class="loading"></div>
   </div>
-  <div
-    style="height: 100%; width: 100%; overflow: auto"
-    v-if="runtime.selectedSongListUUID && songInfoArr.length != 0"
-    @click="selectedSongFilePath.length = 0"
-  >
-    <div
-      @contextmenu.stop="contextmenuEvent"
-      class="songItem lightBackground"
-      style="position: sticky; top: 0"
+  <div style="height: 100%; width: 100%; overflow: auto" v-if="runtime.selectedSongListUUID && songInfoArr.length != 0"
+    @click="selectedSongFilePath.length = 0">
+    <div @contextmenu.stop="contextmenuEvent" class="songItem lightBackground" style="position: sticky; top: 0"
       v-draggable="[
         columnData,
         {
@@ -378,57 +376,36 @@ onMounted(() => {
           direction: 'horizontal',
           onUpdate
         }
-      ]"
-    >
-      <div
-        class="coverDiv lightBackground unselectable"
-        v-for="col of columnDataArr"
-        :key="col.key"
+      ]">
+      <div class="coverDiv lightBackground unselectable" v-for="col of columnDataArr" :key="col.key"
         :class="{ coverDiv: col.key == 'coverUrl', titleDiv: col.key != 'coverUrl' }"
-        :style="'width:' + col.width + 'px'"
-        style="
+        :style="'width:' + col.width + 'px'" style="
           border-right: 1px solid #000000;
           padding-left: 10px;
           box-sizing: border-box;
           display: flex;
-        "
-      >
+        ">
         <div style="flex-grow: 1; overflow: hidden">
           <div style="width: 0; white-space: nowrap">{{ col.columnName }}</div>
         </div>
-        <div
-          v-if="col.key !== 'coverUrl'"
-          style="width: 5px; cursor: e-resize"
-          @mousedown="startResize($event, col)"
-        ></div>
+        <div v-if="col.key !== 'coverUrl'" style="width: 5px; cursor: e-resize" @mousedown="startResize($event, col)">
+        </div>
       </div>
     </div>
     <div>
-      <div
-        v-for="(item, index) of songInfoArr"
-        :key="item.filePath"
-        class="songItem unselectable"
-        @click.stop="songClick($event, item)"
-        @contextmenu.stop="songContextmenu($event, item)"
-        @dblclick.stop="songDblClick(item)"
-      >
-        <div
-          :class="{
-            lightBackground: index % 2 === 1 && selectedSongFilePath.indexOf(item.filePath) === -1,
-            darkBackground: index % 2 === 0 && selectedSongFilePath.indexOf(item.filePath) === -1,
-            selectedSong: selectedSongFilePath.indexOf(item.filePath) !== -1,
-            playingSong: item.filePath === playingSongFilePath
-          }"
-          style="display: flex"
-        >
+      <div v-for="(item, index) of songInfoArr" :key="item.filePath" class="songItem unselectable"
+        @click.stop="songClick($event, item)" @contextmenu.stop="songContextmenu($event, item)"
+        @dblclick.stop="songDblClick(item)">
+        <div :class="{
+          lightBackground: index % 2 === 1 && selectedSongFilePath.indexOf(item.filePath) === -1,
+          darkBackground: index % 2 === 0 && selectedSongFilePath.indexOf(item.filePath) === -1,
+          selectedSong: selectedSongFilePath.indexOf(item.filePath) !== -1,
+          playingSong: item.filePath === playingSongFilePath
+        }" style="display: flex">
           <template v-for="col of columnDataArr" :key="col.key">
             <template v-if="col.show">
-              <div
-                v-if="col.key == 'coverUrl'"
-                class="coverDiv"
-                style="overflow: hidden"
-                :style="'width:' + col.width + 'px'"
-              >
+              <div v-if="col.key == 'coverUrl'" class="coverDiv" style="overflow: hidden"
+                :style="'width:' + col.width + 'px'">
                 <img :src="item.coverUrl" class="unselectable" />
               </div>
               <div v-else class="titleDiv" :style="'width:' + col.width + 'px'">
@@ -440,22 +417,13 @@ onMounted(() => {
       </div>
     </div>
   </div>
-  <songAreaColRightClickMenu
-    v-model="colRightClickMenuShow"
-    :clickEvent="colRightClickEvent"
-    :columnData="columnData"
-    @colMenuHandleClick="colMenuHandleClick"
-  />
-  <selectSongListDialog
-    v-if="selectSongListDialogShow"
-    :libraryName="selectSongListDialogLibraryName"
-    @confirm="selectSongListDialogConfirm"
-    @cancel="
-      () => {
-        selectSongListDialogShow = false
-      }
-    "
-  />
+  <songAreaColRightClickMenu v-model="colRightClickMenuShow" :clickEvent="colRightClickEvent" :columnData="columnData"
+    @colMenuHandleClick="colMenuHandleClick" />
+  <selectSongListDialog v-if="selectSongListDialogShow" :libraryName="selectSongListDialogLibraryName"
+    @confirm="selectSongListDialogConfirm" @cancel="() => {
+      selectSongListDialogShow = false
+    }
+      " />
 </template>
 <style lang="scss" scoped>
 .selectedSong {
@@ -540,6 +508,7 @@ onMounted(() => {
 }
 
 @keyframes rectangle {
+
   0%,
   80%,
   100% {
