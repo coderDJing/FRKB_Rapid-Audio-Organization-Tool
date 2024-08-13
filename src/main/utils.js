@@ -153,3 +153,29 @@ export function executeScript(exePath, args, end) {
     })
   })
 }
+
+export async function moveOrCopyItemWithCheckIsExist(src, targetPath, isMove) {
+  let isExist = await fs.pathExists(targetPath)
+  if (isExist) {
+    let counter = 1
+    let baseName = path.basename(targetPath, path.extname(targetPath))
+    let extension = path.extname(targetPath)
+    let directory = path.dirname(targetPath)
+    let newFileName = `${baseName} (${counter})${extension}`
+    while (await fs.pathExists(join(directory, newFileName))) {
+      counter++
+      newFileName = `${baseName} (${counter})${extension}`
+    }
+    if (isMove) {
+      fs.move(src, join(directory, newFileName))
+    } else {
+      fs.copy(src, join(directory, newFileName))
+    }
+  } else {
+    if (isMove) {
+      fs.move(src, targetPath)
+    } else {
+      fs.copy(src, targetPath)
+    }
+  }
+}
