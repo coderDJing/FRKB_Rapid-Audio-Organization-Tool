@@ -191,10 +191,10 @@ function createWindow() {
     let contentArr = [
       '文件夹下共扫描' + songFileUrls.length + '首曲目',
       '比对声音指纹去除' +
-        (songFileUrls.length -
-          removeDuplicatesFingerprintResults.length -
-          fingerprintErrorResults.length) +
-        '首重复曲目',
+      (songFileUrls.length -
+        removeDuplicatesFingerprintResults.length -
+        fingerprintErrorResults.length) +
+      '首重复曲目',
       '本次声音指纹库新增' + removeDuplicatesFingerprintResults.length + '声音指纹',
       '声音指纹库现有' + songFingerprintList.length + '声音指纹'
     ]
@@ -203,8 +203,8 @@ function createWindow() {
         1,
         0,
         '其中' +
-          fingerprintErrorResults.length +
-          '首曲目尝试分析失败，通常由于文件内容损坏或传输过程发生错误'
+        fingerprintErrorResults.length +
+        '首曲目尝试分析失败，通常由于文件内容损坏或传输过程发生错误'
       )
     }
     mainWindow.webContents.send('addSongFingerprintFinished', contentArr)
@@ -429,8 +429,8 @@ function createWindow() {
     ) {
       contentArr.push(
         '其中' +
-          fingerprintErrorResults.length +
-          '首曲目尝试分析失败，通常由于文件内容损坏或传输过程发生错误'
+        fingerprintErrorResults.length +
+        '首曲目尝试分析失败，通常由于文件内容损坏或传输过程发生错误'
       )
     }
     contentArr.push('歌单共导入' + importSongsCount + '首曲目')
@@ -587,9 +587,9 @@ ipcMain.handle('updateTargetDirSubdirOrderAdd', async (e, dirPath) => {
   await updateTargetDirSubdirOrder(join(__dirname, dirPath), 0, 'after', 'plus')
 })
 
-ipcMain.handle('select-folder', async (event) => {
+ipcMain.handle('select-folder', async (event, multiSelections = true) => {
   const result = await dialog.showOpenDialog({
-    properties: ['openDirectory', 'multiSelections']
+    properties: multiSelections ? ['openDirectory', 'multiSelections'] : ['openDirectory']
   })
   if (result.canceled) {
     return null
