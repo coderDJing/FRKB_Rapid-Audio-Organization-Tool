@@ -68,6 +68,12 @@ const confirm = () => {
     }
     return
   }
+  localStorage.setItem(
+    'exportDialog',
+    JSON.stringify({
+      deleteSongsAfterExport: deleteSongsAfterExport.value
+    })
+  )
   props.confirmCallback({
     folderPathVal: folderPathVal.value,
     deleteSongsAfterExport: deleteSongsAfterExport.value
@@ -75,7 +81,13 @@ const confirm = () => {
 }
 
 const cancel = () => {
-  props.cancel()
+  localStorage.setItem(
+    'exportDialog',
+    JSON.stringify({
+      deleteSongsAfterExport: deleteSongsAfterExport.value
+    })
+  )
+  props.cancelCallback()
 }
 
 onMounted(() => {
