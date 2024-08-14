@@ -1,1 +1,6 @@
-{"libraryAreaWidth":184,"isMaxMainWin":false,"scanNewSongDialog":{"isDeleteSourceFile":false,"isDeleteSourceDir":false,"isComparisonSongFingerprint":true,"isPushSongFingerprintLibrary":true},"mainWindowWidth":900,"mainWindowHeight":600}
+{
+  "libraryAreaWidth": 184,
+  "isMaxMainWin": false,
+  "mainWindowWidth": 900,
+  "mainWindowHeight": 600
+}
