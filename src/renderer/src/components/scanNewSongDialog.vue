@@ -19,6 +19,27 @@ const props = defineProps({
   }
 })
 
+const settingData = ref({})
+let localStorageData = localStorage.getItem('scanNewSongDialog')
+if (localStorageData == null) {
+  localStorage.setItem(
+    'scanNewSongDialog',
+    JSON.stringify({
+      isDeleteSourceFile: true,
+      isComparisonSongFingerprint: true,
+      isPushSongFingerprintLibrary: true
+    })
+  )
+  settingData.value = {
+    isDeleteSourceFile: true,
+    isComparisonSongFingerprint: true,
+    isPushSongFingerprintLibrary: true
+  }
+} else {
+  localStorageData = JSON.parse(localStorageData)
+  settingData.value = localStorageData
+}
+
 const runtime = useRuntimeStore()
 runtime.scanNewSongDialogShow = true
 
@@ -48,23 +69,6 @@ const folderPathDisplay = computed(() => {
   }
   return str.join(',')
 })
-const runtimeLayoutConfigChanged = () => {
-  window.electron.ipcRenderer.send('layoutConfigChanged', JSON.stringify(runtime.layoutConfig))
-}
-
-const isDeleteSourceFileChange = (bool) => {
-  if (bool == false && runtime.layoutConfig.scanNewSongDialog.isDeleteSourceDir == true) {
-    runtime.layoutConfig.scanNewSongDialog.isDeleteSourceDir = false
-  }
-  runtimeLayoutConfigChanged()
-}
-
-const isDeleteSourceDirChange = (bool) => {
-  if (bool) {
-    runtime.layoutConfig.scanNewSongDialog.isDeleteSourceFile = true
-  }
-  runtimeLayoutConfigChanged()
-}
 
 const emits = defineEmits(['cancel'])
 
@@ -127,18 +131,16 @@ const confirm = () => {
     {
       folderPath: JSON.parse(JSON.stringify(folderPathVal.value)),
       songListPath: songListSelectedPath,
-      isDeleteSourceFile: runtime.layoutConfig.scanNewSongDialog.isDeleteSourceFile,
-      isDeleteSourceDir: runtime.layoutConfig.scanNewSongDialog.isDeleteSourceDir,
-      isComparisonSongFingerprint:
-        runtime.layoutConfig.scanNewSongDialog.isComparisonSongFingerprint,
-      isPushSongFingerprintLibrary:
-        runtime.layoutConfig.scanNewSongDialog.isPushSongFingerprintLibrary
+      isDeleteSourceFile: settingData.value.isDeleteSourceFile,
+      isComparisonSongFingerprint: settingData.value.isComparisonSongFingerprint,
+      isPushSongFingerprintLibrary: settingData.value.isPushSongFingerprintLibrary
     },
     importingSongListUUID
   )
   cancel()
 }
 const cancel = () => {
+  localStorage.setItem('scanNewSongDialog', JSON.stringify(settingData.value))
   emits('cancel')
 }
 let hint1hoverTimer = null
@@ -227,11 +229,7 @@ onUnmounted(() => {
               <span>导入后删除原文件：</span>
             </div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
-              <singleCheckbox
-                v-model="runtime.layoutConfig.scanNewSongDialog.isDeleteSourceFile"
-                @change="isDeleteSourceFileChange"
-              />
-              <!-- todo 改成localstorage -->
+              <singleCheckbox v-model="settingData.isDeleteSourceFile" />
             </div>
           </div>
           <div style="margin-top: 10px; display: flex">
@@ -239,10 +237,7 @@ onUnmounted(() => {
               <span>比对声音指纹去重：</span>
             </div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
-              <singleCheckbox
-                v-model="runtime.layoutConfig.scanNewSongDialog.isComparisonSongFingerprint"
-                @change="runtimeLayoutConfigChanged()"
-              />
+              <singleCheckbox v-model="settingData.isComparisonSongFingerprint" />
             </div>
             <div style="height: 21px; display: flex; align-items: center; padding-left: 3px">
               <img
@@ -275,10 +270,7 @@ onUnmounted(() => {
               <span>加入声音指纹库：</span>
             </div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
-              <singleCheckbox
-                v-model="runtime.layoutConfig.scanNewSongDialog.isPushSongFingerprintLibrary"
-                @change="runtimeLayoutConfigChanged()"
-              />
+              <singleCheckbox v-model="settingData.isPushSongFingerprintLibrary" />
             </div>
             <div style="height: 21px; display: flex; align-items: center; padding-left: 3px">
               <img
@@ -306,13 +298,6 @@ onUnmounted(() => {
               </transition>
             </div>
           </div>
-          <!-- <div style="margin-top: 10px; display: flex">
-            <div class="formLabel" style="width: 130px"><span>导入后删除文件夹：</span></div>
-            <div style="width: 21px; height: 21px; display: flex; align-items: center">
-              <singleCheckbox v-model="runtime.layoutConfig.scanNewSongDialog.isDeleteSourceDir"
-                @change="isDeleteSourceDirChange" />
-            </div>
-          </div> -->
         </div>
       </div>
 
