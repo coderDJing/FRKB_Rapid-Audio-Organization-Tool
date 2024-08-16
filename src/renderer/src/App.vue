@@ -48,15 +48,9 @@ const getLibrary = async () => {
 getLibrary()
 onMounted(() => {
   hotkeys('alt+q', 'windowGlobal', () => {
-    if (runtime.scanNewSongDialogShow || runtime.selectSongListDialogShow) {
-      return
-    }
     openDialog('筛选库 导入新曲目')
   })
   hotkeys('alt+e', 'windowGlobal', () => {
-    if (runtime.scanNewSongDialogShow || runtime.selectSongListDialogShow) {
-      return
-    }
     openDialog('精选库 导入新曲目')
   })
   hotkeys('esc', () => {

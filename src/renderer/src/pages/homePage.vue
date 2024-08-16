@@ -5,6 +5,7 @@ import songsArea from './modules/songsArea.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { onUnmounted, ref } from 'vue'
 import songPlayer from './modules/songPlayer.vue'
+import dropIntoDialog from '../components/dropIntoDialog.js'
 const runtime = useRuntimeStore()
 let startX = 0
 let isResizing = false
@@ -75,7 +76,7 @@ const librarySelectedChange = (item) => {
 }
 let dragOverSongsArea = ref(false)
 const dragover = (e) => {
-  if (runtime.dragItemData !== null) {
+  if (runtime.dragItemData !== null || !runtime.selectedSongListUUID) {
     e.dataTransfer.dropEffect = 'none'
     return
   }
@@ -83,21 +84,38 @@ const dragover = (e) => {
   dragOverSongsArea.value = true
 }
 const dragleave = (e) => {
-  if (runtime.dragItemData !== null) {
+  if (runtime.dragItemData !== null || !runtime.selectedSongListUUID) {
     e.dataTransfer.dropEffect = 'none'
     return
   }
   dragOverSongsArea.value = false
 }
 
-const drop = (e) => {
-  if (runtime.dragItemData !== null) {
+const drop = async (e) => {
+  if (runtime.dragItemData !== null || !runtime.selectedSongListUUID) {
     e.dataTransfer.dropEffect = 'none'
     return
   }
   dragOverSongsArea.value = false
-  //todo外部拖动导入
-  console.log(e.dataTransfer.files)
+  let files = e.dataTransfer.files
+  let result = await dropIntoDialog({
+    songListUuid: runtime.selectedSongListUUID,
+    libraryName: librarySelected.value
+  })
+  let filePaths = []
+  for (let item of files) {
+    filePaths.push(item.path)
+  }
+  runtime.importingSongListUUID = result.importingSongListUUID
+  runtime.isProgressing = true
+  window.electron.ipcRenderer.send('startImportDragSongs', {
+    filePaths: filePaths,
+    songListPath: result.songListPath,
+    isDeleteSourceFile: result.isDeleteSourceFile,
+    isComparisonSongFingerprint: result.isComparisonSongFingerprint,
+    isPushSongFingerprintLibrary: result.isPushSongFingerprintLibrary
+  })
+  //todo
 }
 </script>
 <template>
@@ -129,7 +147,8 @@ const drop = (e) => {
           :class="{ dragBarHovered: isHovered }"
         ></div>
         <div
-          style="flex: 1; background-color: #181818"
+          style="flex: 1; background-color: #181818; border: 1px solid transparent"
+          :class="{ songsAreaDragHoverBorder: dragOverSongsArea }"
           @dragover.stop.prevent="dragover"
           @dragleave.stop="dragleave"
           @drop.stop.prevent="drop"
@@ -151,5 +170,9 @@ const drop = (e) => {
 
 .dragBarHovered {
   background-color: #0078d4;
+}
+
+.songsAreaDragHoverBorder {
+  border: 1px solid #0078d4 !important;
 }
 </style>

@@ -7,12 +7,19 @@ const runtime = useRuntimeStore()
 const barTitle = ref('')
 const barNowNum = ref(0)
 const barTotal = ref(0)
-window.electron.ipcRenderer.on('progressSet', (event, title, nowNum, total) => {
+const noNum = ref(false)
+window.electron.ipcRenderer.on('progressSet', (event, title, nowNum, total, noNumFlag) => {
   barTitle.value = title
+  if (noNumFlag) {
+    noNum.value = true
+  } else {
+    noNum.value = false
+  }
   barNowNum.value = nowNum
   barTotal.value = total
   if (nowNum == total) {
     barTitle.value = ''
+    noNum.value = false
   }
 })
 window.electron.ipcRenderer.on('importFinished', async (event, contentArr) => {
@@ -56,8 +63,7 @@ window.electron.ipcRenderer.on('addSongFingerprintFinished', async (event, conte
       style="width: fit-content; font-size: 10px; height: 19px; line-height: 19px; padding: 0 5px"
     >
       {{ barTitle }}
-      {{ barNowNum }} /
-      {{ barTotal }}
+      <span v-show="!noNum">{{ barNowNum }} / {{ barTotal }}</span>
     </div>
     <div class="container" v-if="barTitle">
       <div class="progress">
