@@ -9,6 +9,7 @@ import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { v4 as uuidv4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog.js'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog.vue'
+import exportDialog from '@renderer/components/exportDialog.js'
 
 const props = defineProps({
   uuid: {
@@ -100,7 +101,6 @@ if (dirData.dirName == '') {
   })
 }
 const importSongsDialogShow = ref(false)
-const exportSongsDialogShow = ref(false)
 
 const rightClickMenuShow = ref(false)
 const menuArr = ref(
@@ -159,6 +159,7 @@ const contextmenuEvent = async (event) => {
           runtime.selectedSongListUUID = ''
         }
         if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
+          runtime.playingData.playingSongListUUID = ''
           runtime.playingData.playingSongListData = []
           runtime.playingData.playingSong = null
         }
@@ -200,8 +201,28 @@ const contextmenuEvent = async (event) => {
         })
         return
       }
-      exportSongsDialogShow.value = true
-      //todo 完成导出曲目对话框
+      let result = await exportDialog({ title: '曲目' })
+      if (result !== 'cancel') {
+        let folderPathVal = result.folderPathVal
+        let deleteSongsAfterExport = result.deleteSongsAfterExport
+        let dirPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, props.uuid)
+        await window.electron.ipcRenderer.invoke(
+          'exportSongListToDir',
+          folderPathVal,
+          deleteSongsAfterExport,
+          dirPath
+        )
+        if (deleteSongsAfterExport) {
+          if (runtime.selectedSongListUUID === props.uuid) {
+            runtime.selectedSongListUUID = ''
+          }
+          if (runtime.playingData.playingSongListUUID === props.uuid) {
+            runtime.playingData.playingSongListUUID = ''
+            runtime.playingData.playingSongListData = []
+            runtime.playingData.playingSong = null
+          }
+        }
+      }
     }
   }
 }
@@ -455,6 +476,15 @@ const drop = async (e) => {
         libraryUtils.findDirPathByUuid(runtime.libraryTree, dirData.uuid),
         JSON.stringify(dirData.children)
       )
+      let flatUUID = libraryUtils.getAllUuids(runtime.libraryTree, runtime.dragItemData.uuid)
+      if (flatUUID.indexOf(runtime.selectedSongListUUID) != -1) {
+        runtime.selectedSongListUUID = ''
+      }
+      if (flatUUID.indexOf(runtime.playingData.playingSongListUUID) != -1) {
+        runtime.playingData.playingSongListUUID = ''
+        runtime.playingData.playingSongListData = []
+        runtime.playingData.playingSong = null
+      }
       return
     } else if (approach == 'top' || approach == 'bottom') {
       let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(
@@ -538,6 +568,15 @@ const drop = async (e) => {
               JSON.stringify(dragItemDataFather.children)
             )
           }
+          let flatUUID = libraryUtils.getAllUuids(runtime.libraryTree, runtime.dragItemData.uuid)
+          if (flatUUID.indexOf(runtime.selectedSongListUUID) != -1) {
+            runtime.selectedSongListUUID = ''
+          }
+          if (flatUUID.indexOf(runtime.playingData.playingSongListUUID) != -1) {
+            runtime.playingData.playingSongListUUID = ''
+            runtime.playingData.playingSongListData = []
+            runtime.playingData.playingSong = null
+          }
           return
         }
         await window.electron.ipcRenderer.invoke(
@@ -568,6 +607,15 @@ const drop = async (e) => {
           libraryUtils.findDirPathByUuid(runtime.libraryTree, fatherDirData.uuid),
           JSON.stringify(fatherDirData.children)
         )
+        let flatUUID = libraryUtils.getAllUuids(runtime.libraryTree, runtime.dragItemData.uuid)
+        if (flatUUID.indexOf(runtime.selectedSongListUUID) != -1) {
+          runtime.selectedSongListUUID = ''
+        }
+        if (flatUUID.indexOf(runtime.playingData.playingSongListUUID) != -1) {
+          runtime.playingData.playingSongListUUID = ''
+          runtime.playingData.playingSongListData = []
+          runtime.playingData.playingSong = null
+        }
         return
       }
     }
@@ -584,6 +632,7 @@ watch(
   () => runtime.playingData.playingSongListUUID,
   () => {
     if (!runtime.playingData.playingSongListUUID) {
+      isPlaying.value = false
       return
     }
     let uuids = libraryUtils.getAllUuids(

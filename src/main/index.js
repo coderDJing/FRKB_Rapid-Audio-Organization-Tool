@@ -211,6 +211,48 @@ function createWindow() {
     mainWindow.webContents.send('addSongFingerprintFinished', contentArr)
   })
 
+  ipcMain.handle(
+    'exportSongListToDir',
+    async (e, folderPathVal, deleteSongsAfterExport, dirPath) => {
+      let scanPath = join(__dirname, dirPath)
+      let songFileUrls = await collectFilesWithExtensions(scanPath, ['.mp3', '.wav', '.flac'])
+      let folderName = dirPath.split('/')[dirPath.split('/').length - 1]
+      async function findUniqueFolder(inputFolderPath) {
+        let parts = path.parse(inputFolderPath)
+        // 获取不包含文件名的路径部分
+        let dirPath = parts.dir
+        // 获取文件夹名（不包含路径分隔符）
+        let folderName = parts.name
+        // 构造基础检查路径
+        let baseCheckPath = path.join(dirPath, folderName)
+        if (await fs.pathExists(baseCheckPath)) {
+          let count = 1
+          let newFolderPath
+          do {
+            newFolderPath = path.join(dirPath, `${folderName}(${count})`)
+            count++
+          } while (await fs.pathExists(newFolderPath))
+          return newFolderPath
+        }
+        return inputFolderPath
+      }
+      let targetPath = await findUniqueFolder(folderPathVal + '\\' + folderName)
+      await fs.ensureDir(targetPath)
+      const promises = []
+      for (let item of songFileUrls) {
+        promises.push(
+          moveOrCopyItemWithCheckIsExist(
+            item,
+            targetPath + '\\' + item.match(/[^\\]+$/)[0],
+            deleteSongsAfterExport
+          )
+        )
+      }
+      await Promise.all(promises)
+      return
+    }
+  )
+
   ipcMain.handle('exportSongsToDir', async (e, folderPathVal, deleteSongsAfterExport, songs) => {
     const promises = []
     for (let item of songs) {

@@ -164,18 +164,20 @@ export async function moveOrCopyItemWithCheckIsExist(src, targetPath, isMove) {
     let newFileName = `${baseName} (${counter})${extension}`
     while (await fs.pathExists(join(directory, newFileName))) {
       counter++
-      newFileName = `${baseName} (${counter})${extension}`
+      newFileName = `${baseName}(${counter})${extension}`
     }
     if (isMove) {
       fs.move(src, join(directory, newFileName))
     } else {
       fs.copy(src, join(directory, newFileName))
     }
+    return join(directory, newFileName)
   } else {
     if (isMove) {
       fs.move(src, targetPath)
     } else {
       fs.copy(src, targetPath)
     }
+    return targetPath
   }
 }
