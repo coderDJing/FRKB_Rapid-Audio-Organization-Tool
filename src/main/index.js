@@ -306,7 +306,7 @@ function createWindow() {
     audioFiles = res.flat(1)
     songFileUrls = songFileUrls.concat(audioFiles)
     mainWindow.webContents.send('progressSet', '扫描文件中', 1, 1, true)
-    if (audioFiles.length === 0) {
+    if (songFileUrls.length === 0) {
       //todo 如果一个文件都没扫描到
       return
     }
