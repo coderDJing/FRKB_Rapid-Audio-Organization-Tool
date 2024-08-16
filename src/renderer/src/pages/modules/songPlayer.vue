@@ -71,6 +71,33 @@ onMounted(() => {
     wavesurferInstance.on('play', () => {
       playerControlsRef.value.setPlayingValue(true)
     })
+    wavesurferInstance.on('error', async (error) => {
+      if (error === undefined) {
+        return
+      }
+      let filePath = runtime.playingData.playingSong.filePath
+      let res = await confirm({
+        title: '错误',
+        content: ['该文件无法播放，是否直接删除', '（文件内容不是音频或文件已损坏）'],
+        confirmHotkey: 'E'
+      })
+      if (res !== 'cancel') {
+        window.electron.ipcRenderer.send('delSongs', [filePath])
+        let index = runtime.playingData.playingSongListData.findIndex((item) => {
+          return item.filePath === filePath
+        })
+        if (index === runtime.playingData.playingSongListData.length - 1) {
+          runtime.playingData.playingSongListData.splice(index, 1)
+          runtime.playingData.playingSong = null
+        } else {
+          runtime.playingData.playingSong = runtime.playingData.playingSongListData[index + 1]
+          runtime.playingData.playingSongListData.splice(index, 1)
+          window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
+        }
+      } else {
+        nextSong()
+      }
+    })
   }
 })
 watch(
