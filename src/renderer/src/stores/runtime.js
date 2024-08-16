@@ -15,7 +15,6 @@ export const useRuntimeStore = defineStore('runtime', {
       },
       dragItemData: null,
       libraryTree: {},
-      scanNewSongDialogShow: false, //全局是否有导入新曲目Dialog正在展示
       selectSongListDialogShow: false, //全局是否有歌单选择器正在展示
       dialogSelectedSongListUUID: '', //dialog中被选中的歌单UUID
       selectedSongListUUID: '', //被选中的歌单UUID

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onUnmounted, onMounted } from 'vue'
+import { ref, onUnmounted, onMounted } from 'vue'
 import singleCheckbox from './singleCheckbox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import selectSongListDialog from './selectSongListDialog.vue'
@@ -16,6 +16,12 @@ const props = defineProps({
   libraryName: {
     type: String,
     default: '筛选库'
+  },
+  confirmCallback: {
+    type: Function
+  },
+  cancelCallback: {
+    type: Function
   }
 })
 
@@ -43,31 +49,6 @@ if (localStorageData == null) {
 const runtime = useRuntimeStore()
 
 runtime.activeMenuUUID = ''
-const folderPathVal = ref([]) //文件夹路径
-let clickChooseDirFlag = false
-const clickChooseDir = async () => {
-  if (clickChooseDirFlag) {
-    return
-  }
-  clickChooseDirFlag = true
-  const folderPath = await window.electron.ipcRenderer.invoke('select-folder')
-  clickChooseDirFlag = false
-  if (folderPath) {
-    folderPathVal.value = folderPath
-  }
-}
-
-const folderPathDisplay = computed(() => {
-  let newPaths = folderPathVal.value.map((path) => {
-    let parts = path.split('\\')
-    return parts[parts.length - 1]
-  })
-  let str = []
-  for (let item of newPaths) {
-    str.push('"' + item + '"')
-  }
-  return str.join(',')
-})
 
 const emits = defineEmits(['cancel'])
 
@@ -111,36 +92,23 @@ const selectSongListDialogConfirm = (uuid) => {
 }
 
 const confirm = () => {
-  if (folderPathVal.value.length === 0) {
-    if (!flashArea.value) {
-      flashBorder('folderPathVal')
-    }
-    return
-  }
   if (!songListSelected.value) {
     if (!flashArea.value) {
       flashBorder('songListPathVal')
     }
     return
   }
-  runtime.importingSongListUUID = importingSongListUUID
-  runtime.isProgressing = true
-  window.electron.ipcRenderer.send(
-    'startImportSongs',
-    {
-      folderPath: JSON.parse(JSON.stringify(folderPathVal.value)),
-      songListPath: songListSelectedPath,
-      isDeleteSourceFile: settingData.value.isDeleteSourceFile,
-      isComparisonSongFingerprint: settingData.value.isComparisonSongFingerprint,
-      isPushSongFingerprintLibrary: settingData.value.isPushSongFingerprintLibrary
-    },
-    importingSongListUUID
-  )
-  cancel()
+  props.confirmCallback({
+    importingSongListUUID: importingSongListUUID,
+    songListPath: songListSelectedPath,
+    isDeleteSourceFile: settingData.value.isDeleteSourceFile,
+    isComparisonSongFingerprint: settingData.value.isComparisonSongFingerprint,
+    isPushSongFingerprintLibrary: settingData.value.isPushSongFingerprintLibrary
+  })
 }
 const cancel = () => {
   localStorage.setItem('scanNewSongDialog', JSON.stringify(settingData.value))
-  emits('cancel')
+  props.cancelCallback()
 }
 let hint1hoverTimer = null
 let hint1Show = ref(false)
@@ -195,19 +163,6 @@ onUnmounted(() => {
           <span style="font-weight: bold">{{ props.libraryName }} 导入新曲目</span>
         </div>
         <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
-          <div style="display: flex">
-            <div class="formLabel"><span>选择文件夹：</span></div>
-            <div style="width: 310px">
-              <div
-                class="chooseDirDiv flashing-border"
-                @click="clickChooseDir()"
-                :title="folderPathDisplay"
-                :class="{ 'is-flashing': flashArea == 'folderPathVal' }"
-              >
-                {{ folderPathDisplay }}
-              </div>
-            </div>
-          </div>
           <div style="margin-top: 10px; display: flex">
             <div class="formLabel"><span>选择歌单：</span></div>
 
