@@ -27,11 +27,13 @@ def find_files_in_multiple_directories(folderPaths, extensions):
     directories = folderPaths.split("|")
     # 遍历每个目录
     for directory in directories:
-        # todo 判断directory是不是一个文件，如果它本身实际上是一个文件，直接放到all_matched_files里
-
-        # 调用 find_files_with_extension 函数并收集结果
-        matched_files = find_files_with_extension(directory, extensions)
-        all_matched_files.extend(matched_files)
+        if os.path.isfile(directory):
+            # 判断directory是不是一个文件，如果它本身实际上是一个文件，直接放到all_matched_files里
+            all_matched_files.append(directory)
+        else:
+            # 调用 find_files_with_extension 函数并收集结果
+            matched_files = find_files_with_extension(directory, extensions)
+            all_matched_files.extend(matched_files)
     return all_matched_files
 
 
