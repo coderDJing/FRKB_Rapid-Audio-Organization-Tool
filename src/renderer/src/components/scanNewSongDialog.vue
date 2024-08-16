@@ -136,6 +136,7 @@ const confirm = () => {
     },
     importingSongListUUID
   )
+  localStorage.setItem('scanNewSongDialog', JSON.stringify(settingData.value))
   cancel()
 }
 const cancel = () => {

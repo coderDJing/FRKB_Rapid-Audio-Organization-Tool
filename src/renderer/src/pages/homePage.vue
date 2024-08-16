@@ -102,6 +102,9 @@ const drop = async (e) => {
     songListUuid: runtime.selectedSongListUUID,
     libraryName: librarySelected.value
   })
+  if (result === 'cancel') {
+    return
+  }
   let filePaths = []
   for (let item of files) {
     filePaths.push(item.path)
@@ -113,9 +116,9 @@ const drop = async (e) => {
     songListPath: result.songListPath,
     isDeleteSourceFile: result.isDeleteSourceFile,
     isComparisonSongFingerprint: result.isComparisonSongFingerprint,
-    isPushSongFingerprintLibrary: result.isPushSongFingerprintLibrary
+    isPushSongFingerprintLibrary: result.isPushSongFingerprintLibrary,
+    songListUUID: result.importingSongListUUID
   })
-  //todo
 }
 </script>
 <template>

@@ -98,6 +98,7 @@ const confirm = () => {
     }
     return
   }
+  localStorage.setItem('scanNewSongDialog', JSON.stringify(settingData.value))
   props.confirmCallback({
     importingSongListUUID: importingSongListUUID,
     songListPath: songListSelectedPath,

@@ -386,6 +386,7 @@ const approachCenterEnd = () => {
 }
 const drop = async (e) => {
   if (runtime.dragItemData === null) {
+    // todo 直接拖拽文件进歌单item
     e.dataTransfer.dropEffect = 'none'
     return
   }
