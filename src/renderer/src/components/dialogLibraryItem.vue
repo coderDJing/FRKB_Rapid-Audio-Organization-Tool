@@ -156,6 +156,7 @@ const contextmenuEvent = async (event) => {
           runtime.selectedSongListUUID = ''
         }
         if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
+          runtime.playingData.playingSongListUUID = ''
           runtime.playingData.playingSongListData = []
           runtime.playingData.playingSong = null
         }

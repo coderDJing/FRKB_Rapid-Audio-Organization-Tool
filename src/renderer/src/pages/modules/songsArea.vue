@@ -279,7 +279,7 @@ const songContextmenu = async (event, song) => {
       selectSongListDialogLibraryName.value = '筛选库'
       selectSongListDialogShow.value = true
     } else if (result.menuName === '导出') {
-      let result = await exportDialog('曲目')
+      let result = await exportDialog({ title: '曲目' })
       if (result !== 'cancel') {
         let folderPathVal = result.folderPathVal
         let deleteSongsAfterExport = result.deleteSongsAfterExport
