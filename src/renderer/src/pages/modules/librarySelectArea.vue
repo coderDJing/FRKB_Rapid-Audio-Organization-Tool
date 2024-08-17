@@ -42,6 +42,7 @@ const clickIcon = (item) => {
 const clickButtomIcon = (item) => {
   if (item.name == 'setting') {
     //todo 音频文件的格式选择
+    //todo 语言的选择
     return
   }
 }
