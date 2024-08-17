@@ -11,10 +11,6 @@ import listIcon from '@renderer/assets/listIcon.png'
 import utils from '../utils/utils'
 const uuid = uuidv4()
 const props = defineProps({
-  confirmHotkey: {
-    type: String,
-    default: '↵'
-  },
   libraryName: {
     type: String,
     default: '筛选库'
@@ -228,7 +224,7 @@ onMounted(() => {
       runtime.dialogSelectedSongListUUID = recentDialogSelectedSongListUUID[index]
     }
   })
-  hotkeys(props.confirmHotkey === '↵' ? 'enter' : props.confirmHotkey, uuid, () => {
+  hotkeys('E', uuid, () => {
     confirmHandle()
   })
   hotkeys('Esc', uuid, () => {
@@ -389,7 +385,7 @@ const cancel = () => {
           style="margin-right: 10px; width: 60px; text-align: center"
           @click="confirmHandle()"
         >
-          确定 {{ props.confirmHotkey }}
+          确定 E
         </div>
         <div class="button" style="width: 60px; text-align: center" @click="cancel()">取消 Esc</div>
       </div>
