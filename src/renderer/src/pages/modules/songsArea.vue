@@ -390,6 +390,7 @@ onMounted(() => {
     return false
   })
 })
+//todo 下一首时如果正在播放的歌曲的div不在视口内，应自动滚动
 </script>
 <template>
   <div

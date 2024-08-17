@@ -307,7 +307,7 @@ function createWindow() {
     songFileUrls = songFileUrls.concat(audioFiles)
     mainWindow.webContents.send('progressSet', '扫描文件中', 1, 1, true)
     if (songFileUrls.length === 0) {
-      //todo 如果一个文件都没扫描到
+      mainWindow.webContents.send('importFinished', ['未扫描到音频文件'], formData.songListUUID)
       return
     }
     let processNum = 0
@@ -492,7 +492,10 @@ function createWindow() {
     let res = await Promise.all(promises)
     songFileUrls = res.flat(1)
     mainWindow.webContents.send('progressSet', '扫描文件中', 1, 1, true)
-    //todo 如果一个文件都没扫描到
+    if (songFileUrls.length === 0) {
+      mainWindow.webContents.send('importFinished', ['未扫描到音频文件'], songListUUID)
+      return
+    }
     let processNum = 0
     let fingerprintResults = []
     let fingerprintErrorResults = []
