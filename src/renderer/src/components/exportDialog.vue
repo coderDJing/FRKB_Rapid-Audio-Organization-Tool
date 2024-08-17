@@ -91,7 +91,7 @@ const cancel = () => {
 }
 
 onMounted(() => {
-  hotkeys('e,enter', uuid, () => {
+  hotkeys('E', uuid, () => {
     confirm()
     return false
   })
@@ -146,7 +146,7 @@ onUnmounted(() => {
         </div>
       </div>
       <div style="display: flex; justify-content: center; padding-bottom: 10px">
-        <div class="button" style="margin-right: 10px" @click="confirm()">确定 ↵</div>
+        <div class="button" style="margin-right: 10px" @click="confirm()">确定 E</div>
         <div class="button" @click="cancel()">取消 Esc</div>
       </div>
     </div>

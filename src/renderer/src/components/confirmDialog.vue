@@ -29,10 +29,6 @@ const props = defineProps({
     type: Number,
     default: 300
   },
-  confirmHotkey: {
-    type: String,
-    default: '↵'
-  },
   confirmCallback: {
     type: Function
   },
@@ -55,7 +51,7 @@ const cancel = () => {
 }
 
 onMounted(() => {
-  hotkeys(props.confirmHotkey === '↵' ? 'enter' : props.confirmHotkey, uuid, () => {
+  hotkeys('E', uuid, () => {
     if (props.confirmShow) {
       confirm()
     }
@@ -99,7 +95,7 @@ onUnmounted(() => {
           style="margin-right: 10px; width: 60px; text-align: center"
           @click="confirm()"
         >
-          确定 {{ props.confirmHotkey }}
+          确定 E
         </div>
         <div class="button" style="width: 60px; text-align: center" @click="cancel()">取消 Esc</div>
       </div>

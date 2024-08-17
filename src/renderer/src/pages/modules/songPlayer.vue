@@ -78,8 +78,7 @@ onMounted(() => {
       let filePath = runtime.playingData.playingSong.filePath
       let res = await confirm({
         title: '错误',
-        content: ['该文件无法播放，是否直接删除', '（文件内容不是音频或文件已损坏）'],
-        confirmHotkey: 'E'
+        content: ['该文件无法播放，是否直接删除', '（文件内容不是音频或文件已损坏）']
       })
       if (res !== 'cancel') {
         window.electron.ipcRenderer.send('delSongs', [filePath])
@@ -106,6 +105,7 @@ watch(
     if (runtime.playingData.playingSong === null) {
       waveformShow.value = false
       wavesurferInstance.empty()
+      runtime.playingData.playingSongListUUID = ''
     }
   }
 )
@@ -247,8 +247,7 @@ let showDelConfirm = false
 const delSong = async () => {
   let res = await confirm({
     title: '删除',
-    content: ['确定删除选中的曲目吗', '（曲目将在磁盘上被删除，但声音指纹依然会保留）'],
-    confirmHotkey: 'F'
+    content: ['确定删除选中的曲目吗', '（曲目将在磁盘上被删除，但声音指纹依然会保留）']
   })
   showDelConfirm = false
   if (res === 'confirm') {
@@ -268,18 +267,15 @@ const delSong = async () => {
   }
 }
 const selectSongListDialogLibraryName = ref('筛选库')
-const selectSongListDialogConfirmHotkey = ref('E')
 const selectSongListDialogShow = ref(false)
 
 const moveToListLibrary = () => {
   selectSongListDialogLibraryName.value = '筛选库'
-  selectSongListDialogConfirmHotkey.value = 'Q'
   selectSongListDialogShow.value = true
 }
 
 const moveToLikeLibrary = () => {
   selectSongListDialogLibraryName.value = '精选库'
-  selectSongListDialogConfirmHotkey.value = 'E'
   selectSongListDialogShow.value = true
 }
 const selectSongListDialogConfirm = async (item) => {
@@ -390,7 +386,6 @@ const selectSongListDialogConfirm = async (item) => {
   <selectSongListDialog
     v-if="selectSongListDialogShow"
     :libraryName="selectSongListDialogLibraryName"
-    :confirmHotkey="selectSongListDialogConfirmHotkey"
     @confirm="selectSongListDialogConfirm"
     @cancel="
       () => {

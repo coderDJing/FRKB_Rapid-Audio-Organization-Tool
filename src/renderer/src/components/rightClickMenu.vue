@@ -64,7 +64,7 @@ const mouseleave = () => {
   hoverItem.value = {}
 }
 onMounted(() => {
-  hotkeys('up,w', uuid, () => {
+  hotkeys('w', uuid, () => {
     let menuArr = props.menuArr.flat(1)
     if (Object.keys(hoverItem.value).length === 0 || menuArr.indexOf(hoverItem.value) === 0) {
       hoverItem.value = menuArr[menuArr.length - 1]
@@ -73,7 +73,7 @@ onMounted(() => {
     }
     return false
   })
-  hotkeys('down,s', uuid, () => {
+  hotkeys('s', uuid, () => {
     let menuArr = props.menuArr.flat(1)
     if (
       Object.keys(hoverItem.value).length === 0 ||
@@ -85,7 +85,7 @@ onMounted(() => {
     }
     return false
   })
-  hotkeys('enter,e', uuid, () => {
+  hotkeys('E', uuid, () => {
     runtime.activeMenuUUID = ''
     props.confirmCallback(hoverItem.value)
   })
