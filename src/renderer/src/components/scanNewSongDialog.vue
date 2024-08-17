@@ -166,7 +166,7 @@ const hint2IconMouseout = () => {
   hint2Show.value = false
 }
 onMounted(() => {
-  hotkeys('enter', uuid, () => {
+  hotkeys('E', uuid, () => {
     confirm()
   })
   hotkeys('Esc', uuid, () => {
@@ -306,7 +306,7 @@ onUnmounted(() => {
           style="margin-right: 10px; width: 60px; text-align: center"
           @click="confirm()"
         >
-          确定 ↵
+          确定 E
         </div>
         <div class="button" @click="cancel()" style="width: 60px; text-align: center">取消 Esc</div>
       </div>
