@@ -352,6 +352,12 @@ watch(
       playingSongFilePath.value = ''
     } else {
       playingSongFilePath.value = runtime.playingData.playingSong.filePath
+      if (runtime.selectedSongListUUID === runtime.playingData.playingSongListUUID) {
+        nextTick(() => {
+          let playingDom = document.querySelector('.playingSong')
+          playingDom.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        })
+      }
     }
     if (
       runtime.selectedSongListUUID === runtime.playingData.playingSongListUUID &&
