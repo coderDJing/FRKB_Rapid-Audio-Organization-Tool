@@ -1,6 +1,10 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import { v4 as uuidv4 } from 'uuid'
+import hotkeys from 'hotkeys-js'
+import utils from '../utils/utils'
+const uuid = uuidv4()
 const runtime = useRuntimeStore()
 const emits = defineEmits(['cancel'])
 
@@ -61,6 +65,19 @@ const confirm = () => {
 const cancel = () => {
   emits('cancel')
 }
+onMounted(() => {
+  hotkeys('E', uuid, () => {
+    confirm()
+  })
+  hotkeys('Esc', uuid, () => {
+    cancel()
+  })
+  utils.setHotkeysScpoe(runtime.hotkeysScopesHeap, uuid)
+})
+
+onUnmounted(() => {
+  utils.delHotkeysScope(runtime.hotkeysScopesHeap, uuid)
+})
 </script>
 
 <template>
@@ -99,8 +116,14 @@ const cancel = () => {
         </div>
       </div>
       <div style="display: flex; justify-content: center; padding-bottom: 10px">
-        <div class="button" style="margin-right: 10px" @click="confirm()">确定</div>
-        <div class="button" @click="cancel()">取消</div>
+        <div
+          class="button"
+          style="margin-right: 10px; width: 60px; text-align: center"
+          @click="confirm()"
+        >
+          确定 E
+        </div>
+        <div class="button" style="width: 60px; text-align: center" @click="cancel()">取消 Esc</div>
       </div>
     </div>
   </div>
