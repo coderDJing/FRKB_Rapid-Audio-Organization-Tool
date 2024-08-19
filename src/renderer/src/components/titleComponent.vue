@@ -44,16 +44,24 @@ const menuArr = ref([
     subMenu: [
       [
         { name: '筛选库 导入新曲目', shortcutKey: 'Alt+Q' },
-        { name: '精选库 导入新曲目', shortcutKey: 'Alt+E' } //todo 再加一个导出导入声音指纹库
+        { name: '精选库 导入新曲目', shortcutKey: 'Alt+E' }
       ],
       [{ name: '手动添加曲目指纹' }],
       [{ name: '退出' }]
     ]
   },
   {
+    name: '迁移(G)',
+    show: false,
+    subMenu: [
+      [{ name: '导出曲目指纹库文件' }, { name: '导入曲目指纹库文件' }],
+      [{ name: '导出迁移文件' }, { name: '导入迁移文件' }]
+    ]
+  },
+  {
     name: '帮助(H)',
     show: false,
-    subMenu: [[{ name: '使用说明' }, { name: '关于' }]]
+    subMenu: [[{ name: '使用说明', shortcutKey: 'F1' }, { name: '关于' }]]
   }
 ])
 const menuClick = (item) => {
@@ -63,7 +71,11 @@ const menuButtonClick = async (item) => {
   if (
     item.name === '筛选库 导入新曲目' ||
     item.name === '精选库 导入新曲目' ||
-    item.name === '手动添加曲目指纹'
+    item.name === '手动添加曲目指纹' ||
+    item.name === '导出曲目指纹库文件' ||
+    item.name === '导入曲目指纹库文件' ||
+    item.name === '导出迁移文件' ||
+    item.name === '导入迁移文件'
   ) {
     if (runtime.isProgressing) {
       await confirm({

@@ -7,7 +7,8 @@ import {
   getLibrary,
   collectFilesWithExtensions,
   executeScript,
-  moveOrCopyItemWithCheckIsExist
+  moveOrCopyItemWithCheckIsExist,
+  getCurrentTimeYYYYMMDDHHMMSSSSS
 } from './utils.js'
 import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset'
 import analyseSongFingerprintPyScriptUrl from '../../resources/pyScript/analyseSongFingerprint/analyseSongFingerprint.exe?commonjs-external&asset'
@@ -143,7 +144,13 @@ function createWindow() {
     let file = await fs.readFile(filePath)
     mainWindow.webContents.send('readedSongFile', file)
   })
-
+  ipcMain.handle('exportSongFingerprint', async (e, folderPath) => {
+    console.log(folderPath)
+    await fs.copy(
+      join(__dirname, 'songFingerprint', 'songFingerprint.json'),
+      folderPath + '\\songFingerprint' + getCurrentTimeYYYYMMDDHHMMSSSSS() + '.json'
+    )
+  })
   ipcMain.on('addSongFingerprint', async (e, folderPath) => {
     mainWindow.webContents.send('progressSet', '扫描文件中', 0, 1, true)
     let songFileUrls = []
