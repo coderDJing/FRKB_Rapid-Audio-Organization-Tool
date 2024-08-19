@@ -124,7 +124,7 @@ onUnmounted(() => {
         <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
           <div style="display: flex">
             <div class="formLabel"><span>导出到文件夹：</span></div>
-            <div style="flex-grow: 1">
+            <div style="width: 310px">
               <div
                 class="chooseDirDiv flashing-border"
                 @click="clickChooseDir()"
@@ -162,7 +162,7 @@ onUnmounted(() => {
   overflow: hidden;
   word-break: break-all;
   white-space: nowrap;
-  max-width: 100%;
+  width: calc(100% - 5px);
   font-size: 14px;
   padding-left: 5px;
 }

@@ -5,9 +5,10 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import scanNewSongDialog from './components/scanNewSongDialog.vue'
 import bottomInfoArea from './pages/modules/bottomInfoArea.vue'
 import manualAddSongFingerprintDialog from './components/manualAddSongFingerprintDialog.vue'
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, ref } from 'vue'
 import hotkeys from 'hotkeys-js'
 import utils from './utils/utils'
+import exportSongFingerprintDialog from './components/exportSongFingerprintDialog.vue'
 
 const runtime = useRuntimeStore()
 
@@ -85,6 +86,16 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (event) => {
     v-if="activeDialog == '手动添加曲目指纹'"
     @cancel="activeDialog = ''"
   />
+  <exportSongFingerprintDialog
+    v-if="activeDialog == '导出曲目指纹库文件'"
+    @cancel="activeDialog = ''"
+  />
+  <!-- todo 导入曲目指纹库文件 -->
+  <!-- todo 退出 -->
+  <!-- todo 导出迁移文件 -->
+  <!-- todo 导入迁移文件 -->
+  <!-- todo 使用说明 -->
+  <!-- todo 关于 -->
 </template>
 <style lang="scss">
 #app {
