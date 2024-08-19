@@ -182,6 +182,7 @@ const drop = async (e) => {
   <div class="content" @contextmenu.stop="contextmenuEvent">
     <div class="unselectable libraryTitle">
       <span>{{ libraryData.dirName }}</span>
+      <!-- todo还有个导出整个库的按钮 -->
       <div style="display: flex; justify-content: center; align-items: center">
         <div
           class="collapseButton"
@@ -204,7 +205,6 @@ const drop = async (e) => {
             />
           </svg>
         </div>
-        <!-- todo还有个导出整个库的按钮 -->
         <transition name="fade">
           <div
             class="bubbleBox"

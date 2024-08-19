@@ -20,8 +20,8 @@ const toggleMinimize = () => {
 const toggleClose = async () => {
   if (runtime.isProgressing) {
     await confirm({
-      title: '导入',
-      content: ['请等待当前导入任务完成'],
+      title: '退出',
+      content: ['请等待当前任务执行结束'],
       confirmShow: false
     })
     return

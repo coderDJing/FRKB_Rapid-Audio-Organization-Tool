@@ -14,6 +14,9 @@ import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?common
 import analyseSongFingerprintPyScriptUrl from '../../resources/pyScript/analyseSongFingerprint/analyseSongFingerprint.exe?commonjs-external&asset'
 import { v4 as uuidv4 } from 'uuid'
 
+const { updateElectronApp } = require('update-electron-app')
+updateElectronApp() //todo 自动升级功能待测试
+
 const fs = require('fs-extra')
 const path = require('path')
 
