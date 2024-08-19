@@ -396,6 +396,8 @@ onMounted(() => {
     return false
   })
 })
+
+//todo 拖拽文件出窗口
 </script>
 <template>
   <div

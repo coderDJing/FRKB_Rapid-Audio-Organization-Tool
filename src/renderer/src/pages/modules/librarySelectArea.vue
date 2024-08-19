@@ -7,7 +7,7 @@ import settingGrey from '@renderer/assets/setting-grey.png'
 import settingWhite from '@renderer/assets/setting-white.png'
 import { ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-
+import settingDialog from '@renderer/components/settingDialog.vue'
 const emit = defineEmits(['librarySelectedChange'])
 const iconArr = ref([
   {
@@ -39,10 +39,14 @@ const clickIcon = (item) => {
   selectedIcon.value = item
   selectedIcon.value.src = selectedIcon.value.white
 }
+
+const settingDialogShow = ref(false)
 const clickButtomIcon = (item) => {
-  if (item.name == 'setting') {
+  if (item.name == '设置') {
+    settingDialogShow.value = true
     //todo 音频文件的格式选择
     //todo 语言的选择
+    //todo 清除曲目指纹库
     return
   }
 }
@@ -142,6 +146,7 @@ const libraryHandleClick = (item) => {
         </div>
       </div>
     </div>
+    <settingDialog v-if="settingDialogShow" @cancel="settingDialogShow = false" />
   </div>
 </template>
 <style lang="scss" scoped>
