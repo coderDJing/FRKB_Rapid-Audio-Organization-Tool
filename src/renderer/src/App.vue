@@ -9,6 +9,7 @@ import { onMounted, ref } from 'vue'
 import hotkeys from 'hotkeys-js'
 import utils from './utils/utils'
 import exportSongFingerprintDialog from './components/exportSongFingerprintDialog.vue'
+import importSongFingerprintDialog from './components/importSongFingerprintDialog.vue'
 
 const runtime = useRuntimeStore()
 
@@ -90,7 +91,10 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (event) => {
     v-if="activeDialog == '导出曲目指纹库文件'"
     @cancel="activeDialog = ''"
   />
-  <!-- todo 导入曲目指纹库文件 -->
+  <importSongFingerprintDialog
+    v-if="activeDialog == '导入曲目指纹库文件'"
+    @cancel="activeDialog = ''"
+  />
   <!-- todo 退出 -->
   <!-- todo 导出迁移文件 -->
   <!-- todo 导入迁移文件 -->

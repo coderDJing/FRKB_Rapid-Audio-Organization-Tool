@@ -145,11 +145,17 @@ function createWindow() {
     mainWindow.webContents.send('readedSongFile', file)
   })
   ipcMain.handle('exportSongFingerprint', async (e, folderPath) => {
-    console.log(folderPath)
     await fs.copy(
       join(__dirname, 'songFingerprint', 'songFingerprint.json'),
       folderPath + '\\songFingerprint' + getCurrentTimeYYYYMMDDHHMMSSSSS() + '.json'
     )
+  })
+  ipcMain.handle('importSongFingerprint', async (e, filePath) => {
+    let json = await fs.readJSON(filePath)
+    songFingerprintList = songFingerprintList.concat(json)
+    songFingerprintList = [...new Set(songFingerprintList)]
+    fs.outputJSON(join(__dirname, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
+    return
   })
   ipcMain.on('addSongFingerprint', async (e, folderPath) => {
     mainWindow.webContents.send('progressSet', '扫描文件中', 0, 1, true)
@@ -813,6 +819,31 @@ ipcMain.handle('select-folder', async (event, multiSelections = true) => {
     return null
   }
   return result.filePaths
+})
+
+ipcMain.handle('select-songFingerprintFile', async (event) => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'JSON', extensions: ['json'] }]
+  })
+  if (result.canceled) {
+    return null
+  }
+  try {
+    let json = await fs.readJSON(result.filePaths[0])
+    if (Array.isArray(json)) {
+      for (let item of json) {
+        if (typeof item !== 'string') {
+          return 'error'
+        }
+      }
+      return result.filePaths
+    } else {
+      return 'error'
+    }
+  } catch (error) {
+    return 'error'
+  }
 })
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
