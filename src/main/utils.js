@@ -181,3 +181,26 @@ export async function moveOrCopyItemWithCheckIsExist(src, targetPath, isMove) {
     return targetPath
   }
 }
+
+export function getCurrentTimeYYYYMMDDHHMMSSSSS() {
+  var now = new Date()
+
+  var year = now.getFullYear()
+  var month = now.getMonth() + 1 // 月份是从0开始的
+  var day = now.getDate()
+  var hour = now.getHours()
+  var minute = now.getMinutes()
+  var second = now.getSeconds()
+  var millisecond = now.getMilliseconds()
+
+  // 格式化月份、‌日期、‌小时、‌分钟、‌秒和毫秒
+  month = month < 10 ? '0' + month : month
+  day = day < 10 ? '0' + day : day
+  hour = hour < 10 ? '0' + hour : hour
+  minute = minute < 10 ? '0' + minute : minute
+  second = second < 10 ? '0' + second : second
+  millisecond =
+    millisecond < 100 ? (millisecond < 10 ? '00' + millisecond : '0' + millisecond) : millisecond
+
+  return year + '' + month + '' + day + '' + hour + '' + minute + '' + second + '' + millisecond
+}

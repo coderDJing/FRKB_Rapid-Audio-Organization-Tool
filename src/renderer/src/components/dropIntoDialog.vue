@@ -288,7 +288,7 @@ onUnmounted(() => {
   overflow: hidden;
   word-break: break-all;
   white-space: nowrap;
-  max-width: 100%;
+  width: calc(100% - 5px);
   font-size: 14px;
   padding-left: 5px;
 }

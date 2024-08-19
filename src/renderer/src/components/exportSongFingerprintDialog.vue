@@ -30,7 +30,7 @@ const clickChooseDir = async () => {
     return
   }
   clickChooseDirFlag = true
-  const folderPath = await window.electron.ipcRenderer.invoke('select-folder')
+  const folderPath = await window.electron.ipcRenderer.invoke('select-folder', false)
   clickChooseDirFlag = false
   if (folderPath) {
     folderPathVal.value = folderPath
@@ -48,18 +48,14 @@ const folderPathDisplay = computed(() => {
   }
   return str.join(',')
 })
-const confirm = () => {
+const confirm = async () => {
   if (folderPathVal.value.length === 0) {
     if (!flashArea.value) {
       flashBorder('folderPathVal')
     }
     return
   }
-  runtime.isProgressing = true
-  window.electron.ipcRenderer.send(
-    'addSongFingerprint',
-    JSON.parse(JSON.stringify(folderPathVal.value))
-  )
+  await window.electron.ipcRenderer.invoke('exportSongFingerprint', folderPathVal.value[0])
   cancel()
 }
 const cancel = () => {
@@ -94,12 +90,12 @@ onUnmounted(() => {
     >
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
-          <span style="font-weight: bold">手动添加曲目指纹</span>
+          <span style="font-weight: bold">导出曲目指纹库</span>
         </div>
         <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
           <div style="display: flex">
-            <div class="formLabel"><span>选择文件夹：</span></div>
-            <div style="width: 310px">
+            <div class="formLabel"><span>导出到：</span></div>
+            <div style="width: 340px">
               <div
                 class="chooseDirDiv flashing-border"
                 @click="clickChooseDir()"
@@ -111,7 +107,7 @@ onUnmounted(() => {
             </div>
           </div>
           <div style="padding-top: 40px; font-size: 12px; display: flex">
-            仅对目标文件夹及其子文件夹下的所有音频文件进行声音指纹分析，并且仅将分析结果入库，不会改动目标文件夹下的任何文件内容和结构
+            导出后的文件可在其他设备中的FRKB选择"导入曲目指纹库文件"，进行导入合并
           </div>
         </div>
       </div>
@@ -138,14 +134,14 @@ onUnmounted(() => {
   overflow: hidden;
   word-break: break-all;
   white-space: nowrap;
-  max-width: calc(100% - 5px);
+  max-width: 100%;
   font-size: 14px;
   padding-left: 5px;
 }
 
 .formLabel {
-  width: 100px;
-  min-width: 100px;
+  width: 70px;
+  min-width: 70px;
   text-align: left;
   font-size: 14px;
 }
