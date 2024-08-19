@@ -5,6 +5,10 @@
   "main": "./out/main/index.js",
   "author": "example.com",
   "homepage": "https://electron-vite.org",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool.git"
+  },
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
@@ -26,6 +30,7 @@
     "music-metadata": "^9.0.1",
     "pinia": "^2.1.7",
     "sass": "^1.77.6",
+    "update-electron-app": "^3.0.0",
     "uuid": "^10.0.0",
     "vue-draggable-plus": "^0.5.2",
     "wavesurfer.js": "^7.8.2"

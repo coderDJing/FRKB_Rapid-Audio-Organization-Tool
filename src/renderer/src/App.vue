@@ -10,6 +10,7 @@ import hotkeys from 'hotkeys-js'
 import utils from './utils/utils'
 import exportSongFingerprintDialog from './components/exportSongFingerprintDialog.vue'
 import importSongFingerprintDialog from './components/importSongFingerprintDialog.vue'
+import confirm from '@renderer/components/confirmDialog.js'
 
 const runtime = useRuntimeStore()
 
@@ -30,11 +31,23 @@ window.electron.ipcRenderer.on('layoutConfigReaded', (event, layoutConfig) => {
 const scanNewSongDialogLibraryName = ref('')
 const activeDialog = ref('')
 
-const openDialog = (item) => {
+const openDialog = async (item) => {
   if (item === '筛选库 导入新曲目') {
     scanNewSongDialogLibraryName.value = '筛选库'
   } else if (item === '精选库 导入新曲目') {
     scanNewSongDialogLibraryName.value = '精选库'
+  }
+  if (item === '退出') {
+    if (runtime.isProgressing === true) {
+      await confirm({
+        title: '退出',
+        content: ['请等待当前任务执行结束'],
+        confirmShow: false
+      })
+      return
+    } else {
+      window.electron.ipcRenderer.send('toggle-close')
+    }
   }
   activeDialog.value = item
 }
@@ -54,6 +67,18 @@ onMounted(() => {
   })
   hotkeys('alt+e', 'windowGlobal', () => {
     openDialog('精选库 导入新曲目')
+  })
+  hotkeys('alt+F4', async () => {
+    if (runtime.isProgressing === true) {
+      await confirm({
+        title: '退出',
+        content: ['请等待当前任务执行结束'],
+        confirmShow: false
+      })
+    } else {
+      window.electron.ipcRenderer.send('toggle-close')
+    }
+    return false
   })
   hotkeys('esc', () => {
     runtime.activeMenuUUID = ''
@@ -95,7 +120,6 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (event) => {
     v-if="activeDialog == '导入曲目指纹库文件'"
     @cancel="activeDialog = ''"
   />
-  <!-- todo 退出 -->
   <!-- todo 导出迁移文件 -->
   <!-- todo 导入迁移文件 -->
   <!-- todo 使用说明 -->
