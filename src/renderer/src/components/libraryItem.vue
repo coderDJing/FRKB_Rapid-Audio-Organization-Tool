@@ -186,7 +186,7 @@ const contextmenuEvent = async (event) => {
       if (runtime.isProgressing) {
         await confirm({
           title: '导入',
-          content: ['请等待当前导入任务完成'],
+          content: ['请等待当前任务执行结束'],
           confirmShow: false
         })
         return
@@ -196,7 +196,7 @@ const contextmenuEvent = async (event) => {
       if (runtime.isProgressing) {
         await confirm({
           title: '导入',
-          content: ['请等待当前导入任务完成'],
+          content: ['请等待当前任务执行结束'],
           confirmShow: false
         })
         return
