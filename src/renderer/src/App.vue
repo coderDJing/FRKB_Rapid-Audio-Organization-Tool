@@ -88,6 +88,14 @@ onMounted(() => {
 window.electron.ipcRenderer.on('mainWindowBlur', async (event) => {
   runtime.activeMenuUUID = ''
 })
+
+let settingFormData = localStorage.getItem('setting')
+
+if (settingFormData === null) {
+  let userLang = navigator.language || navigator.userLanguage;
+
+  localStorage.setItem('setting', JSON.stringify({ language: userLang }))
+}
 </script>
 <template>
   <div style="height: 100%; max-height: 100%; width: 100%; display: flex; flex-direction: column">
@@ -97,29 +105,15 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (event) => {
     <div style="height: calc(100% - 55px)">
       <homePage />
     </div>
-    <div
-      style="height: 20px; width: 100%; background-color: #181818; border-top: 1px solid #2b2b2b"
-    >
+    <div style="height: 20px; width: 100%; background-color: #181818; border-top: 1px solid #2b2b2b">
       <bottomInfoArea />
     </div>
   </div>
-  <scanNewSongDialog
-    v-if="activeDialog == '筛选库 导入新曲目' || activeDialog == '精选库 导入新曲目'"
-    @cancel="activeDialog = ''"
-    :libraryName="scanNewSongDialogLibraryName"
-  ></scanNewSongDialog>
-  <manualAddSongFingerprintDialog
-    v-if="activeDialog == '手动添加曲目指纹'"
-    @cancel="activeDialog = ''"
-  />
-  <exportSongFingerprintDialog
-    v-if="activeDialog == '导出曲目指纹库文件'"
-    @cancel="activeDialog = ''"
-  />
-  <importSongFingerprintDialog
-    v-if="activeDialog == '导入曲目指纹库文件'"
-    @cancel="activeDialog = ''"
-  />
+  <scanNewSongDialog v-if="activeDialog == '筛选库 导入新曲目' || activeDialog == '精选库 导入新曲目'" @cancel="activeDialog = ''"
+    :libraryName="scanNewSongDialogLibraryName"></scanNewSongDialog>
+  <manualAddSongFingerprintDialog v-if="activeDialog == '手动添加曲目指纹'" @cancel="activeDialog = ''" />
+  <exportSongFingerprintDialog v-if="activeDialog == '导出曲目指纹库文件'" @cancel="activeDialog = ''" />
+  <importSongFingerprintDialog v-if="activeDialog == '导入曲目指纹库文件'" @cancel="activeDialog = ''" />
   <!-- todo 导出迁移文件 -->
   <!-- todo 导入迁移文件 -->
   <!-- todo 使用说明 -->

@@ -2,6 +2,8 @@
 import { watch } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidv4 } from 'uuid'
+import { useI18n } from 'vue-i18n'
+const { tm } = useI18n()
 const uuid = uuidv4()
 const runtime = useRuntimeStore()
 
@@ -38,15 +40,11 @@ const menuButtonClick = (item) => {
 }
 </script>
 <template>
-  <div class="menu" v-if="props.modelValue" @click.stop="() => {}">
+  <div class="menu" v-if="props.modelValue" @click.stop="() => { }">
     <div v-for="item of props.menuArr" class="menuGroup">
-      <div
-        v-for="button of item"
-        class="menuButton"
-        @click="menuButtonClick(button)"
-        @contextmenu="menuButtonClick(button)"
-      >
-        <span>{{ button.name }}</span>
+      <div v-for="button of item" class="menuButton" @click="menuButtonClick(button)"
+        @contextmenu="menuButtonClick(button)">
+        <span>{{ tm(button.name) }}</span>
         <span>{{ button.shortcutKey }}</span>
       </div>
     </div>
@@ -58,7 +56,7 @@ const menuButtonClick = (item) => {
   background-color: #1f1f1f;
   border: 1px solid #454545;
   font-size: 14px;
-  width: 250px;
+  width: 310px;
   border-radius: 5px;
 
   .menuGroup {
