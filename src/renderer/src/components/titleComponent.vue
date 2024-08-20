@@ -7,6 +7,8 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { ref } from 'vue'
 import menuComponent from './menu.vue'
 import confirm from '@renderer/components/confirmDialog.js'
+import { useI18n } from 'vue-i18n'
+const { tm } = useI18n()
 
 const emit = defineEmits(['openDialog'])
 const toggleMaximize = () => {
@@ -79,8 +81,8 @@ const menuButtonClick = async (item) => {
   ) {
     if (runtime.isProgressing) {
       await confirm({
-        title: '导入',
-        content: ['请等待当前导入任务完成'],
+        title: tm('导入'),
+        content: [tm('请等待当前导入任务完成')],
         confirmShow: false
       })
       return
@@ -92,24 +94,18 @@ const menuButtonClick = async (item) => {
 <template>
   <div class="title unselectable">FRKB - Rapid Audio Organization Tool</div>
   <div class="titleComponent unselectable">
-    <div
-      style="
+    <div style="
         z-index: 1;
         padding-left: 10px;
         display: flex;
         justify-content: center;
         align-items: center;
-      "
-    >
+      ">
       <img :src="logo" style="width: 22px" />
     </div>
     <div style="z-index: 1; padding-left: 5px" v-for="item in menuArr" :key="item.name">
-      <div class="functionButton" @click.stop="menuClick(item)">{{ item.name }}</div>
-      <menuComponent
-        :menuArr="item.subMenu"
-        v-model="item.show"
-        @menuButtonClick="menuButtonClick"
-      ></menuComponent>
+      <div class="functionButton" @click.stop="menuClick(item)">{{ tm(item.name) }}</div>
+      <menuComponent :menuArr="item.subMenu" v-model="item.show" @menuButtonClick="menuButtonClick"></menuComponent>
     </div>
     <div class="canDrag" style="flex-grow: 1; height: 35px; z-index: 1"></div>
     <div style="display: flex; z-index: 1">
@@ -119,24 +115,11 @@ const menuButtonClick = async (item) => {
       <div class="rightIcon" @click="toggleMaximize()">
         <img :src="runtime.isWindowMaximized ? chromeRestore : chromeMaximize" :draggable="false" />
       </div>
-      <div
-        class="rightIcon closeIcon"
-        @mouseover="fillColor = '#ffffff'"
-        @mouseout="fillColor = '#9d9d9d'"
-        @click="toggleClose()"
-      >
-        <svg
-          width="15"
-          height="15"
-          viewBox="0 0 15 15"
-          xmlns="http://www.w3.org/2000/svg"
-          :fill="fillColor"
-        >
-          <path
-            fill-rule="evenodd"
-            clip-rule="evenodd"
-            d="M7.116 8l-4.558 4.558.884.884L8 8.884l4.558 4.558.884-.884L8.884 8l4.558-4.558-.884-.884L8 7.116 3.442 2.558l-.884.884L7.116 8z"
-          />
+      <div class="rightIcon closeIcon" @mouseover="fillColor = '#ffffff'" @mouseout="fillColor = '#9d9d9d'"
+        @click="toggleClose()">
+        <svg width="15" height="15" viewBox="0 0 15 15" xmlns="http://www.w3.org/2000/svg" :fill="fillColor">
+          <path fill-rule="evenodd" clip-rule="evenodd"
+            d="M7.116 8l-4.558 4.558.884.884L8 8.884l4.558 4.558.884-.884L8.884 8l4.558-4.558-.884-.884L8 7.116 3.442 2.558l-.884.884L7.116 8z" />
         </svg>
       </div>
     </div>
