@@ -26,13 +26,16 @@ let settingFormData = ref(JSON.parse(localStorage.getItem('setting')))
 </script>
 <template>
   <div class="dialog unselectable">
-    <div style="
+    <div
+      style="
         width: 60vw;
         height: 70vh;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
-      " class="inner">
+      "
+      class="inner"
+    >
       <div style="height: 100%; display: flex; flex-direction: column">
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
           <span style="font-weight: bold">设置</span>

@@ -50,14 +50,14 @@ onUnmounted(() => {
       style="position: absolute; bottom: 55px"
       :style="[{ left: props.left + 'px' }]"
     >
-      <span>{{ props.title }}</span>
+      <span>{{ $t(props.title) }}</span>
       <div><img :src="shortcutIcon" :draggable="false" />{{ props.shortcut }}</div>
     </div>
   </transition>
 </template>
 <style lang="scss" scoped>
 .bubbleBox {
-  width: 100px;
+  width: 120px;
   height: 22px;
   line-height: 22px;
   text-align: center;

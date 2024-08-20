@@ -40,11 +40,15 @@ const menuButtonClick = (item) => {
 }
 </script>
 <template>
-  <div class="menu" v-if="props.modelValue" @click.stop="() => { }">
+  <div class="menu" v-if="props.modelValue" @click.stop="() => {}">
     <div v-for="item of props.menuArr" class="menuGroup">
-      <div v-for="button of item" class="menuButton" @click="menuButtonClick(button)"
-        @contextmenu="menuButtonClick(button)">
-        <span>{{ tm(button.name) }}</span>
+      <div
+        v-for="button of item"
+        class="menuButton"
+        @click="menuButtonClick(button)"
+        @contextmenu="menuButtonClick(button)"
+      >
+        <span>{{ $t(button.name) }}</span>
         <span>{{ button.shortcutKey }}</span>
       </div>
     </div>
