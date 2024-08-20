@@ -319,7 +319,7 @@ const cancel = () => {
               v-if="collapseButtonHintShow"
               style="position: absolute; top: 70px"
             >
-              折叠文件夹
+              {{ $t('折叠文件夹') }}
             </div>
           </transition>
         </div>
