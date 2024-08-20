@@ -77,7 +77,7 @@ onUnmounted(() => {
     >
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
-          <span style="font-weight: bold">{{ props.title }}</span>
+          <span style="font-weight: bold">{{ $t(props.title) }}</span>
         </div>
         <div style="padding-left: 20px; padding-right: 20px">
           <div

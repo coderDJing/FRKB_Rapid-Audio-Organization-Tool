@@ -1,20 +1,17 @@
 import { createApp } from 'vue'
 import { createI18n } from 'vue-i18n'
-import enUS from './language/en-US'
-import zhCN from './language/zh-CN'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import './styles/main.scss'
+import messages from '@intlify/unplugin-vue-i18n/messages'
 
-
+console.log(messages)
 const i18n = createI18n({
   legacy: false,
   globalInjection: true,
-  locale: "enUS",//todo
+  locale: 'enUS', //todo
   // locale: "zhCN",
-  messages: {
-    enUS, zhCN
-  },
+  messages
 })
 const pinia = createPinia()
 const app = createApp(App)
