@@ -4,6 +4,14 @@ import { onMounted, onUnmounted } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import utils from '../utils/utils'
 import { v4 as uuidv4 } from 'uuid'
+import { createI18n } from 'vue-i18n'
+import messages from '@intlify/unplugin-vue-i18n/messages'
+const i18n = createI18n({
+  legacy: false,
+  locale: 'enUS', //todo
+  // locale: "zhCN",
+  messages
+})
 const uuid = uuidv4()
 const runtime = useRuntimeStore()
 const props = defineProps({
@@ -77,7 +85,7 @@ onUnmounted(() => {
     >
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
-          <span style="font-weight: bold">{{ $t(props.title) }}</span>
+          <span style="font-weight: bold">{{ i18n.global.t(props.title) }}</span>
         </div>
         <div style="padding-left: 20px; padding-right: 20px">
           <div
@@ -92,12 +100,14 @@ onUnmounted(() => {
       <div v-if="confirmShow" style="display: flex; justify-content: center; padding-bottom: 10px">
         <div
           class="button"
-          style="margin-right: 10px; width: 60px; text-align: center"
+          style="margin-right: 10px; width: 90px; text-align: center"
           @click="confirm()"
         >
-          确定 E
+          {{ i18n.global.t('确定') }} (E)
         </div>
-        <div class="button" style="width: 60px; text-align: center" @click="cancel()">取消 Esc</div>
+        <div class="button" style="width: 90px; text-align: center" @click="cancel()">
+          {{ i18n.global.t('取消') }} (Esc)
+        </div>
       </div>
       <div v-if="!confirmShow" style="display: flex; justify-content: center; padding-bottom: 10px">
         <div class="button" @click="cancel()">关闭 Esc</div>

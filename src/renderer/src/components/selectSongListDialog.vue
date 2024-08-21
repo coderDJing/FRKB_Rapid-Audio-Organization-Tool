@@ -290,7 +290,7 @@ const cancel = () => {
   <div class="dialog unselectable">
     <div class="content inner" @contextmenu.stop="contextmenuEvent">
       <div class="unselectable libraryTitle">
-        <span>{{ libraryData.dirName }}</span>
+        <span>{{ $t(libraryData.dirName) }}</span>
         <div style="display: flex; justify-content: center; align-items: center">
           <div
             class="collapseButton"
@@ -330,7 +330,9 @@ const cancel = () => {
         v-if="libraryData.children.length"
       >
         <template v-if="recentSongListArr.length > 0">
-          <div style="padding-left: 5px"><span style="font-size: 14px">最近使用</span></div>
+          <div style="padding-left: 5px">
+            <span style="font-size: 14px">{{ $t('最近使用') }}</span>
+          </div>
           <div style="width: 100%; background-color: #8c8c8c; height: 1px"></div>
           <div
             v-for="item of recentSongListArr"
@@ -377,17 +379,19 @@ const cancel = () => {
           align-items: center;
         "
       >
-        <span style="font-size: 12px; color: #8c8c8c">右键新建歌单</span>
+        <span style="font-size: 12px; color: #8c8c8c">{{ $t('右键新建歌单') }}</span>
       </div>
       <div style="display: flex; justify-content: center; padding-bottom: 10px">
         <div
           class="button"
-          style="margin-right: 10px; width: 60px; text-align: center"
+          style="margin-right: 10px; width: 90px; text-align: center"
           @click="confirmHandle()"
         >
-          确定 E
+          {{ $t('确定') }} (E)
         </div>
-        <div class="button" style="width: 60px; text-align: center" @click="cancel()">取消 Esc</div>
+        <div class="button" style="width: 90px; text-align: center" @click="cancel()">
+          {{ $t('取消') }} (Esc)
+        </div>
       </div>
     </div>
   </div>

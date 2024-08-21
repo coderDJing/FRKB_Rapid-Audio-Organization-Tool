@@ -228,7 +228,7 @@ const songClick = (event, song) => {
 }
 
 const menuArr = ref([
-  [{ menuName: '导出' }],
+  [{ menuName: '导出曲目' }],
   [{ menuName: '移动到筛选库' }, { menuName: '移动到精选库' }],
   [{ menuName: '删除曲目' }]
 ])
@@ -278,7 +278,7 @@ const songContextmenu = async (event, song) => {
     } else if (result.menuName === '移动到筛选库') {
       selectSongListDialogLibraryName.value = '筛选库'
       selectSongListDialogShow.value = true
-    } else if (result.menuName === '导出') {
+    } else if (result.menuName === '导出曲目') {
       let result = await exportDialog({ title: '曲目' })
       if (result !== 'cancel') {
         let folderPathVal = result.folderPathVal
@@ -438,7 +438,7 @@ onMounted(() => {
         "
       >
         <div style="flex-grow: 1; overflow: hidden">
-          <div style="width: 0; white-space: nowrap">{{ col.columnName }}</div>
+          <div style="width: 0; white-space: nowrap">{{ $t(col.columnName) }}</div>
         </div>
         <div
           v-if="col.key !== 'coverUrl'"
