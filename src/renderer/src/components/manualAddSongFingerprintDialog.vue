@@ -94,11 +94,13 @@ onUnmounted(() => {
     >
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
-          <span style="font-weight: bold">手动添加曲目指纹</span>
+          <span style="font-weight: bold">{{ $t('手动添加曲目指纹') }}</span>
         </div>
         <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
           <div style="display: flex">
-            <div class="formLabel"><span>选择文件夹：</span></div>
+            <div class="formLabel">
+              <span>{{ $t('选择文件夹') }}：</span>
+            </div>
             <div style="width: 310px">
               <div
                 class="chooseDirDiv flashing-border"
@@ -111,19 +113,25 @@ onUnmounted(() => {
             </div>
           </div>
           <div style="padding-top: 40px; font-size: 12px; display: flex">
-            仅对目标文件夹及其子文件夹下的所有音频文件进行声音指纹分析，并且仅将分析结果入库，不会改动目标文件夹下的任何文件内容和结构
+            {{
+              $t(
+                '仅对目标文件夹及其子文件夹下的所有音频文件进行声音指纹分析，并且仅将分析结果入库，不会改动目标文件夹下的任何文件内容和结构'
+              )
+            }}
           </div>
         </div>
       </div>
       <div style="display: flex; justify-content: center; padding-bottom: 10px">
         <div
           class="button"
-          style="margin-right: 10px; width: 60px; text-align: center"
+          style="margin-right: 10px; width: 90px; text-align: center"
           @click="confirm()"
         >
-          确定 E
+          {{ $t('确定') }} (E)
         </div>
-        <div class="button" style="width: 60px; text-align: center" @click="cancel()">取消 Esc</div>
+        <div class="button" style="width: 90px; text-align: center" @click="cancel()">
+          {{ $t('取消') }} (Esc)
+        </div>
       </div>
     </div>
   </div>

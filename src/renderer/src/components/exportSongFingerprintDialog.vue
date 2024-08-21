@@ -114,12 +114,14 @@ onUnmounted(() => {
       <div style="display: flex; justify-content: center; padding-bottom: 10px">
         <div
           class="button"
-          style="margin-right: 10px; width: 60px; text-align: center"
+          style="margin-right: 10px; width: 90px; text-align: center"
           @click="confirm()"
         >
-          确定 E
+          {{ $t('确定') }} (E)
         </div>
-        <div class="button" style="width: 60px; text-align: center" @click="cancel()">取消 Esc</div>
+        <div class="button" style="width: 90px; text-align: center" @click="cancel()">
+          {{ $t('取消') }} (Esc)
+        </div>
       </div>
     </div>
   </div>
