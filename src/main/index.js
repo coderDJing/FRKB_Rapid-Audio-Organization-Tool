@@ -55,8 +55,8 @@ function createWindow() {
   const mainWindow = new BrowserWindow({
     width: layoutConfig.mainWindowWidth, //默认应为900
     height: layoutConfig.mainWindowHeight, //默认应为600
-    minWidth: 500,
-    minHeight: 300,
+    minWidth: 900,
+    minHeight: 600,
     frame: false,
     transparent: false,
     show: false,

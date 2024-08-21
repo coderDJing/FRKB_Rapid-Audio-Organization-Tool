@@ -181,7 +181,7 @@ const drop = async (e) => {
 <template>
   <div class="content" @contextmenu.stop="contextmenuEvent">
     <div class="unselectable libraryTitle">
-      <span>{{ libraryData.dirName }}</span>
+      <span>{{ $t(libraryData.dirName) }}</span>
       <!-- todo还有个导出整个库的按钮 -->
       <div style="display: flex; justify-content: center; align-items: center">
         <div
@@ -211,7 +211,7 @@ const drop = async (e) => {
             v-if="collapseButtonHintShow"
             style="position: absolute; top: 70px"
           >
-            折叠文件夹
+            {{ $t('折叠文件夹') }}
           </div>
         </transition>
       </div>
@@ -238,7 +238,7 @@ const drop = async (e) => {
       v-else
       style="height: 100%; width: 100%; display: flex; justify-content: center; align-items: center"
     >
-      <span style="font-size: 12px; color: #8c8c8c">右键新建歌单</span>
+      <span style="font-size: 12px; color: #8c8c8c">{{ $t('右键新建歌单') }}</span>
     </div>
   </div>
 </template>
