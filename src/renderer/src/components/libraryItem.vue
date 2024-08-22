@@ -10,7 +10,8 @@ import { v4 as uuidv4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog.js'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog.vue'
 import exportDialog from '@renderer/components/exportDialog.js'
-
+import main from '../main'
+const { t } = main.i18n.global
 const props = defineProps({
   uuid: {
     type: String,
@@ -25,7 +26,7 @@ let dirData = libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, props.uuid)
 let fatherDirData = libraryUtils.getFatherLibraryTreeByUUID(runtime.libraryTree, props.uuid)
 const myInputHandleInput = (e) => {
   if (operationInputValue.value == '') {
-    inputHintText.value = '必须提供歌单或文件夹名。'
+    inputHintText.value = t('必须提供歌单或文件夹名。')
     inputHintShow.value = true
   } else {
     let exists = fatherDirData.children.some((obj) => obj.dirName == operationInputValue.value)

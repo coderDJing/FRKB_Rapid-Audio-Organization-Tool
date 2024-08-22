@@ -13,9 +13,12 @@ const i18n = createI18n({
   // locale: "zhCN",
   messages
 })
+
 const pinia = createPinia()
 const app = createApp(App)
 
 app.use(i18n)
 app.use(pinia)
 app.mount('#app')
+
+export default { i18n }

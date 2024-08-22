@@ -4,14 +4,8 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidv4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
-import { createI18n } from 'vue-i18n'
-import messages from '@intlify/unplugin-vue-i18n/messages'
-const i18n = createI18n({
-  legacy: false,
-  locale: 'enUS', //todo
-  // locale: "zhCN",
-  messages
-})
+import main from '../main'
+const { t } = main.i18n.global
 const uuid = uuidv4()
 const runtime = useRuntimeStore()
 runtime.activeMenuUUID = uuid
@@ -121,7 +115,7 @@ onUnmounted(() => {
         @mouseover.stop="mouseover(button)"
         @contextmenu="menuButtonClick(button)"
       >
-        <span>{{ i18n.global.t(button.menuName) }}</span>
+        <span>{{ t(button.menuName) }}</span>
         <span>{{ button.shortcutKey }}</span>
       </div>
     </div>
