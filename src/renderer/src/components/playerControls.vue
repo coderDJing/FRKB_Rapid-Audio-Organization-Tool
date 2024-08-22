@@ -31,7 +31,8 @@ const emits = defineEmits([
   'previousSong',
   'delSong',
   'moveToLikeLibrary',
-  'moveToListLibrary'
+  'moveToListLibrary',
+  'exportTrack'
 ])
 
 const setPlayingValue = (value) => {
@@ -120,6 +121,9 @@ const moveToLikeLibrary = () => {
 const moveToListLibrary = () => {
   emits('moveToListLibrary')
 }
+const exportTrack = () => {
+  emits('exportTrack')
+}
 </script>
 <template>
   <div
@@ -162,9 +166,8 @@ const moveToListLibrary = () => {
   </div>
   <transition name="fade">
     <div class="moreMenu unselectable" v-if="moreMenuShow">
-      <!-- todo 导出曲目没做 -->
       <div style="padding: 5px 5px; border-bottom: 1px solid #454545">
-        <div class="menuButton">
+        <div class="menuButton" @click="exportTrack()">
           <span>{{ $t('导出曲目') }}</span>
         </div>
       </div>

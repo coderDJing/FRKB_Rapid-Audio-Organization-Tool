@@ -8,6 +8,7 @@ import hotkeys from 'hotkeys-js'
 import confirm from '@renderer/components/confirmDialog.js'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
+import exportDialog from '@renderer/components/exportDialog.js'
 const runtime = useRuntimeStore()
 const waveform = ref(null)
 let wavesurferInstance = null
@@ -320,6 +321,37 @@ const selectSongListDialogConfirm = async (item) => {
     })
   }
 }
+
+const exportTrack = async () => {
+  let result = await exportDialog({ title: '曲目' })
+  if (result !== 'cancel') {
+    let folderPathVal = result.folderPathVal
+    let deleteSongsAfterExport = result.deleteSongsAfterExport
+    await window.electron.ipcRenderer.invoke(
+      'exportSongsToDir',
+      folderPathVal,
+      deleteSongsAfterExport,
+      JSON.parse(JSON.stringify([runtime.playingData.playingSong]))
+    )
+    if (deleteSongsAfterExport) {
+      let filePath = runtime.playingData.playingSong.filePath
+      if (runtime.playingData.playingSong.coverUrl) {
+        URL.revokeObjectURL(runtime.playingData.playingSong.coverUrl)
+      }
+      let index = runtime.playingData.playingSongListData.findIndex((item) => {
+        return item.filePath === filePath
+      })
+      if (index === runtime.playingData.playingSongListData.length - 1) {
+        runtime.playingData.playingSongListData.splice(index, 1)
+        runtime.playingData.playingSong = null
+      } else {
+        runtime.playingData.playingSong = runtime.playingData.playingSongListData[index + 1]
+        runtime.playingData.playingSongListData.splice(index, 1)
+        window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
+      }
+    }
+  }
+}
 </script>
 <template>
   <div
@@ -385,6 +417,7 @@ const selectSongListDialogConfirm = async (item) => {
         @delSong="delSong"
         @moveToListLibrary="moveToListLibrary"
         @moveToLikeLibrary="moveToLikeLibrary"
+        @exportTrack="exportTrack"
       />
     </div>
     <div style="flex-grow: 1" class="unselectable">
