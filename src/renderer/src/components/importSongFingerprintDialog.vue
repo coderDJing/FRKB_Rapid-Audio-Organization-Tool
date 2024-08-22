@@ -1,12 +1,10 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidv4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
 import confirm from '@renderer/components/confirmDialog.js'
 const uuid = uuidv4()
-const runtime = useRuntimeStore()
 const emits = defineEmits(['cancel'])
 
 const flashArea = ref('') // 控制动画是否正在播放
@@ -82,11 +80,11 @@ onMounted(() => {
   hotkeys('Esc', uuid, () => {
     cancel()
   })
-  utils.setHotkeysScpoe(runtime.hotkeysScopesHeap, uuid)
+  utils.setHotkeysScpoe(uuid)
 })
 
 onUnmounted(() => {
-  utils.delHotkeysScope(runtime.hotkeysScopesHeap, uuid)
+  utils.delHotkeysScope(uuid)
 })
 </script>
 

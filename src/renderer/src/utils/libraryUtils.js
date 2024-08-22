@@ -1,5 +1,8 @@
+import { useRuntimeStore } from '@renderer/stores/runtime'
 //根据UUID寻找LibraryTree中对应的对象的父级对象
-export const getFatherLibraryTreeByUUID = (data, targetUuid) => {
+export const getFatherLibraryTreeByUUID = (targetUuid) => {
+  const runtime = useRuntimeStore()
+  let data = runtime.libraryTree
   // 定义一个辅助函数来递归搜索子对象
   function searchChildren(children, targetUuid, parent = null) {
     for (let i = 0; i < children.length; i++) {
@@ -25,7 +28,11 @@ export const getFatherLibraryTreeByUUID = (data, targetUuid) => {
 }
 
 //根据UUID寻找LibraryTree中对应的对象
-export const getLibraryTreeByUUID = (libraryTree, uuid) => {
+export const getLibraryTreeByUUID = (uuid, libraryTree) => {
+  if (libraryTree === undefined) {
+    const runtime = useRuntimeStore()
+    libraryTree = runtime.libraryTree
+  }
   // 如果当前对象就是要找的对象，直接返回
   if (libraryTree.uuid === uuid) {
     return libraryTree
@@ -35,7 +42,7 @@ export const getLibraryTreeByUUID = (libraryTree, uuid) => {
   if (libraryTree.children && libraryTree.children.length > 0) {
     for (let i = 0; i < libraryTree.children.length; i++) {
       // 递归调用函数
-      const found = getLibraryTreeByUUID(libraryTree.children[i], uuid)
+      const found = getLibraryTreeByUUID(uuid, libraryTree.children[i])
       if (found) {
         return found // 如果在子对象中找到了，就返回
       }
@@ -46,7 +53,11 @@ export const getLibraryTreeByUUID = (libraryTree, uuid) => {
 }
 
 //根据UUID寻找LibraryTree中对应的对象的路径
-export const findDirPathByUuid = (data, targetUuid, path = '') => {
+export const findDirPathByUuid = (targetUuid, path = '', data) => {
+  if (data === undefined) {
+    const runtime = useRuntimeStore()
+    data = runtime.libraryTree
+  }
   // 如果当前对象的uuid就是要找的uuid，返回当前路径
   if (data.uuid === targetUuid) {
     return path + (path ? '/' : '') + data.dirName // 加上根目录的dirName（如果有的话）
@@ -57,9 +68,9 @@ export const findDirPathByUuid = (data, targetUuid, path = '') => {
     for (let i = 0; i < data.children.length; i++) {
       // 递归调用函数，并传递当前路径加上当前dirName
       const foundPath = findDirPathByUuid(
-        data.children[i],
         targetUuid,
-        path + (path ? '/' : '') + data.dirName
+        path + (path ? '/' : '') + data.dirName,
+        data.children[i]
       )
       if (foundPath) {
         return foundPath // 如果在子对象中找到了，就返回完整的路径
@@ -87,19 +98,25 @@ export const reOrderChildren = (children) => {
   }
 }
 
-export const isDragItemInDirChildren = (children, targetUUID) => {
+export const isDragItemInDirChildren = (targetUUID, children) => {
+  if (children === undefined) {
+    const runtime = useRuntimeStore()
+    children = runtime.dragItemData.children
+  }
   for (const child of children) {
     if (child.uuid === targetUUID) {
       return true
     }
-    if (isDragItemInDirChildren(child.children, targetUUID)) {
+    if (isDragItemInDirChildren(targetUUID, child.children)) {
       return true
     }
   }
   return false
 }
 
-export function getDepthByUuid(data, targetUuid) {
+export function getDepthByUuid(targetUuid) {
+  const runtime = useRuntimeStore()
+  let data = runtime.libraryTree
   // 递归函数，用于遍历JSON对象并计算深度
   function traverse(node, depth = 0) {
     // 如果当前节点的UUID与目标UUID匹配，返回当前深度

@@ -63,11 +63,11 @@ onMounted(() => {
   hotkeys('Esc', uuid, () => {
     cancel()
   })
-  utils.setHotkeysScpoe(runtime.hotkeysScopesHeap, uuid)
+  utils.setHotkeysScpoe(uuid)
 })
 runtime.confirmShow = true
 onUnmounted(() => {
-  utils.delHotkeysScope(runtime.hotkeysScopesHeap, uuid)
+  utils.delHotkeysScope(uuid)
   runtime.confirmShow = false
 })
 </script>

@@ -4,7 +4,6 @@ import hotkeys from 'hotkeys-js'
 import { v4 as uuidv4 } from 'uuid'
 import utils from '../utils/utils'
 import { ref, onUnmounted, onMounted } from 'vue'
-import { useRuntimeStore } from '@renderer/stores/runtime'
 import main from '../main'
 const { t } = main.i18n.global
 const uuid = uuidv4()
@@ -20,7 +19,6 @@ const props = defineProps({
     type: Function
   }
 })
-const runtime = useRuntimeStore()
 const flashArea = ref('') // 控制动画是否正在播放
 
 // 模拟闪烁三次的逻辑（使用 setTimeout）
@@ -101,10 +99,10 @@ onMounted(() => {
     cancel()
     return false
   })
-  utils.setHotkeysScpoe(runtime.hotkeysScopesHeap, uuid)
+  utils.setHotkeysScpoe(uuid)
 })
 onUnmounted(() => {
-  utils.delHotkeysScope(runtime.hotkeysScopesHeap, uuid)
+  utils.delHotkeysScope(uuid)
 })
 </script>
 <template>
