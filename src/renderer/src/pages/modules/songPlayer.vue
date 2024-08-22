@@ -299,7 +299,7 @@ const selectSongListDialogConfirm = async (item) => {
   await window.electron.ipcRenderer.invoke(
     'moveSongsToDir',
     [runtime.playingData.playingSong.filePath],
-    libraryUtils.findDirPathByUuid(runtime.libraryTree, item)
+    libraryUtils.findDirPathByUuid(item)
   )
   let filePath = runtime.playingData.playingSong.filePath
 

@@ -84,10 +84,7 @@ const openSongList = async () => {
   songInfoArr.value = []
   await nextTick(() => {})
 
-  let songListPath = libraryUtils.findDirPathByUuid(
-    runtime.libraryTree,
-    runtime.selectedSongListUUID
-  )
+  let songListPath = libraryUtils.findDirPathByUuid(runtime.selectedSongListUUID)
   loadingShow.value = false
   let loadingSetTimeout = setTimeout(() => {
     loadingShow.value = true
@@ -330,7 +327,7 @@ const selectSongListDialogConfirm = async (songListUUID) => {
   await window.electron.ipcRenderer.invoke(
     'moveSongsToDir',
     JSON.parse(JSON.stringify(selectedSongFilePath.value)),
-    libraryUtils.findDirPathByUuid(runtime.libraryTree, songListUUID)
+    libraryUtils.findDirPathByUuid(songListUUID)
   )
   let filteredSongInfoArr = songInfoArr.value.filter((item) => {
     if (!selectedSongFilePath.value.includes(item.filePath)) {

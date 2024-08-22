@@ -40,7 +40,7 @@ watch(
     recentSongListArr.value = []
     delRecentDialogSelectedSongListUUID = []
     for (let uuid of recentDialogSelectedSongListUUID) {
-      let obj = libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, uuid)
+      let obj = libraryUtils.getLibraryTreeByUUID(uuid)
       if (obj === null) {
         delRecentDialogSelectedSongListUUID.push(uuid)
       }
@@ -64,7 +64,7 @@ watch(
 let filtrateLibraryUUID = runtime.libraryTree.children.find(
   (element) => element.type === 'library' && element.dirName == props.libraryName
 ).uuid
-let libraryData = libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, filtrateLibraryUUID)
+let libraryData = libraryUtils.getLibraryTreeByUUID(filtrateLibraryUUID)
 let hoverTimer = null
 let collapseButtonHintShow = ref(false)
 const iconMouseover = () => {
@@ -115,10 +115,7 @@ const dragleave = (e) => {
 }
 const drop = async (e) => {
   dragApproach.value = ''
-  let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(
-    runtime.libraryTree,
-    runtime.dragItemData.uuid
-  )
+  let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(runtime.dragItemData.uuid)
   if (dragItemDataFather.uuid == filtrateLibraryUUID) {
     if (libraryData.children[libraryData.children.length - 1].uuid == runtime.dragItemData.uuid) {
       return
@@ -132,7 +129,7 @@ const drop = async (e) => {
     libraryUtils.reOrderChildren(libraryData.children)
     await window.electron.ipcRenderer.invoke(
       'reOrderSubDir',
-      libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid),
+      libraryUtils.findDirPathByUuid(libraryData.uuid),
       JSON.stringify(libraryData.children)
     )
     return
@@ -152,12 +149,12 @@ const drop = async (e) => {
         ]
       })
       if (res == 'confirm') {
-        let targetPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, existingItem.uuid)
+        let targetPath = libraryUtils.findDirPathByUuid(existingItem.uuid)
         await window.electron.ipcRenderer.invoke('delDir', targetPath)
         await window.electron.ipcRenderer.invoke(
           'moveToDirSample',
-          libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid),
-          libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid)
+          libraryUtils.findDirPathByUuid(runtime.dragItemData.uuid),
+          libraryUtils.findDirPathByUuid(libraryData.uuid)
         )
         libraryData.children.splice(libraryData.children.indexOf(existingItem), 1)
         let removedElement = dragItemDataFather.children.splice(
@@ -167,14 +164,14 @@ const drop = async (e) => {
         libraryUtils.reOrderChildren(dragItemDataFather.children)
         await window.electron.ipcRenderer.invoke(
           'reOrderSubDir',
-          libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid),
+          libraryUtils.findDirPathByUuid(dragItemDataFather.uuid),
           JSON.stringify(dragItemDataFather.children)
         )
         libraryData.children.push(removedElement)
         libraryUtils.reOrderChildren(libraryData.children)
         await window.electron.ipcRenderer.invoke(
           'reOrderSubDir',
-          libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid),
+          libraryUtils.findDirPathByUuid(libraryData.uuid),
           JSON.stringify(libraryData.children)
         )
       }
@@ -182,8 +179,8 @@ const drop = async (e) => {
     }
     await window.electron.ipcRenderer.invoke(
       'moveToDirSample',
-      libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid),
-      libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid)
+      libraryUtils.findDirPathByUuid(runtime.dragItemData.uuid),
+      libraryUtils.findDirPathByUuid(libraryData.uuid)
     )
     let removedElement = dragItemDataFather.children.splice(
       dragItemDataFather.children.indexOf(runtime.dragItemData),
@@ -192,14 +189,14 @@ const drop = async (e) => {
     libraryUtils.reOrderChildren(dragItemDataFather.children)
     await window.electron.ipcRenderer.invoke(
       'reOrderSubDir',
-      libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid),
+      libraryUtils.findDirPathByUuid(dragItemDataFather.uuid),
       JSON.stringify(dragItemDataFather.children)
     )
     libraryData.children.push(removedElement)
     libraryUtils.reOrderChildren(libraryData.children)
     await window.electron.ipcRenderer.invoke(
       'reOrderSubDir',
-      libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid),
+      libraryUtils.findDirPathByUuid(libraryData.uuid),
       JSON.stringify(libraryData.children)
     )
     return
@@ -230,10 +227,10 @@ onMounted(() => {
   hotkeys('Esc', uuid, () => {
     cancel()
   })
-  utils.setHotkeysScpoe(runtime.hotkeysScopesHeap, uuid)
+  utils.setHotkeysScpoe(uuid)
 })
 onUnmounted(() => {
-  utils.delHotkeysScope(runtime.hotkeysScopesHeap, uuid)
+  utils.delHotkeysScope(uuid)
   runtime.dialogSelectedSongListUUID = ''
   runtime.selectSongListDialogShow = false
 })
@@ -254,8 +251,7 @@ const flashBorder = (flashAreaName) => {
 const confirmHandle = () => {
   if (
     runtime.dialogSelectedSongListUUID === '' ||
-    libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, runtime.dialogSelectedSongListUUID) ===
-      null
+    libraryUtils.getLibraryTreeByUUID(runtime.dialogSelectedSongListUUID) === null
   ) {
     if (!flashArea.value) {
       flashBorder('selectSongList')

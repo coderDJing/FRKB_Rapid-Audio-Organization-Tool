@@ -3,8 +3,6 @@ import { ref, onUnmounted, onMounted } from 'vue'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidv4 } from 'uuid'
 import utils from '../utils/utils'
-import { useRuntimeStore } from '@renderer/stores/runtime'
-const runtime = useRuntimeStore()
 const uuid = uuidv4()
 const emits = defineEmits(['cancel'])
 const cancel = () => {
@@ -15,11 +13,11 @@ onMounted(() => {
   hotkeys('Esc', uuid, () => {
     cancel()
   })
-  utils.setHotkeysScpoe(runtime.hotkeysScopesHeap, uuid)
+  utils.setHotkeysScpoe(uuid)
 })
 
 onUnmounted(() => {
-  utils.delHotkeysScope(runtime.hotkeysScopesHeap, uuid)
+  utils.delHotkeysScope(uuid)
 })
 let settingFormData = ref(JSON.parse(localStorage.getItem('setting')))
 //todo
