@@ -5,14 +5,8 @@ import { v4 as uuidv4 } from 'uuid'
 import utils from '../utils/utils'
 import { ref, onUnmounted, onMounted } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import { createI18n } from 'vue-i18n'
-import messages from '@intlify/unplugin-vue-i18n/messages'
-const i18n = createI18n({
-  legacy: false,
-  locale: 'enUS', //todo
-  // locale: "zhCN",
-  messages
-})
+import main from '../main'
+const { t } = main.i18n.global
 const uuid = uuidv4()
 const props = defineProps({
   title: {
@@ -154,10 +148,8 @@ onUnmounted(() => {
         </div>
       </div>
       <div style="display: flex; justify-content: center; padding-bottom: 10px">
-        <div class="button" style="margin-right: 10px" @click="confirm()">
-          {{ i18n.global.t('确定') }} (E)
-        </div>
-        <div class="button" @click="cancel()">{{ i18n.global.t('取消') }} (Esc)</div>
+        <div class="button" style="margin-right: 10px" @click="confirm()">{{ t('确定') }} (E)</div>
+        <div class="button" @click="cancel()">{{ t('取消') }} (Esc)</div>
       </div>
     </div>
   </div>

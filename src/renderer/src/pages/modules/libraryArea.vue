@@ -48,8 +48,6 @@ const contextmenuEvent = async (event) => {
 
 const collapseButtonHandleClick = async () => {
   window.electron.ipcRenderer.send('collapseButtonHandleClick', libraryData.dirName)
-  console.log(runtime.libraryTree)
-  console.log(JSON.stringify(runtime.libraryTree))
 }
 
 const dragApproach = ref('')
