@@ -13,7 +13,7 @@ const props = defineProps({
     required: true
   }
 })
-let libraryData = libraryUtils.getLibraryTreeByUUID(runtime.libraryTree, props.uuid)
+let libraryData = libraryUtils.getLibraryTreeByUUID(props.uuid)
 let hoverTimer = null
 let collapseButtonHintShow = ref(false)
 const iconMouseover = () => {
@@ -81,10 +81,7 @@ const drop = async (e) => {
   }
   try {
     dragApproach.value = ''
-    let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(
-      runtime.libraryTree,
-      runtime.dragItemData.uuid
-    )
+    let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(runtime.dragItemData.uuid)
     if (dragItemDataFather.uuid == props.uuid) {
       if (libraryData.children[libraryData.children.length - 1].uuid == runtime.dragItemData.uuid) {
         return
@@ -98,7 +95,7 @@ const drop = async (e) => {
       libraryUtils.reOrderChildren(libraryData.children)
       await window.electron.ipcRenderer.invoke(
         'reOrderSubDir',
-        libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid),
+        libraryUtils.findDirPathByUuid(libraryData.uuid),
         JSON.stringify(libraryData.children)
       )
       return
@@ -118,12 +115,12 @@ const drop = async (e) => {
           ]
         })
         if (res == 'confirm') {
-          let targetPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, existingItem.uuid)
+          let targetPath = libraryUtils.findDirPathByUuid(existingItem.uuid)
           await window.electron.ipcRenderer.invoke('delDir', targetPath)
           await window.electron.ipcRenderer.invoke(
             'moveToDirSample',
-            libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid),
-            libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid)
+            libraryUtils.findDirPathByUuid(runtime.dragItemData.uuid),
+            libraryUtils.findDirPathByUuid(libraryData.uuid)
           )
           libraryData.children.splice(libraryData.children.indexOf(existingItem), 1)
           let removedElement = dragItemDataFather.children.splice(
@@ -133,14 +130,14 @@ const drop = async (e) => {
           libraryUtils.reOrderChildren(dragItemDataFather.children)
           await window.electron.ipcRenderer.invoke(
             'reOrderSubDir',
-            libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid),
+            libraryUtils.findDirPathByUuid(dragItemDataFather.uuid),
             JSON.stringify(dragItemDataFather.children)
           )
           libraryData.children.push(removedElement)
           libraryUtils.reOrderChildren(libraryData.children)
           await window.electron.ipcRenderer.invoke(
             'reOrderSubDir',
-            libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid),
+            libraryUtils.findDirPathByUuid(libraryData.uuid),
             JSON.stringify(libraryData.children)
           )
         }
@@ -148,8 +145,8 @@ const drop = async (e) => {
       }
       await window.electron.ipcRenderer.invoke(
         'moveToDirSample',
-        libraryUtils.findDirPathByUuid(runtime.libraryTree, runtime.dragItemData.uuid),
-        libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid)
+        libraryUtils.findDirPathByUuid(runtime.dragItemData.uuid),
+        libraryUtils.findDirPathByUuid(libraryData.uuid)
       )
       let removedElement = dragItemDataFather.children.splice(
         dragItemDataFather.children.indexOf(runtime.dragItemData),
@@ -158,14 +155,14 @@ const drop = async (e) => {
       libraryUtils.reOrderChildren(dragItemDataFather.children)
       await window.electron.ipcRenderer.invoke(
         'reOrderSubDir',
-        libraryUtils.findDirPathByUuid(runtime.libraryTree, dragItemDataFather.uuid),
+        libraryUtils.findDirPathByUuid(dragItemDataFather.uuid),
         JSON.stringify(dragItemDataFather.children)
       )
       libraryData.children.push(removedElement)
       libraryUtils.reOrderChildren(libraryData.children)
       await window.electron.ipcRenderer.invoke(
         'reOrderSubDir',
-        libraryUtils.findDirPathByUuid(runtime.libraryTree, libraryData.uuid),
+        libraryUtils.findDirPathByUuid(libraryData.uuid),
         JSON.stringify(libraryData.children)
       )
       return

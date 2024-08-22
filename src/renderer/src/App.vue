@@ -83,7 +83,7 @@ onMounted(() => {
   hotkeys('esc', () => {
     runtime.activeMenuUUID = ''
   })
-  utils.setHotkeysScpoe(runtime.hotkeysScopesHeap, 'windowGlobal')
+  utils.setHotkeysScpoe('windowGlobal')
 })
 window.electron.ipcRenderer.on('mainWindowBlur', async (event) => {
   runtime.activeMenuUUID = ''

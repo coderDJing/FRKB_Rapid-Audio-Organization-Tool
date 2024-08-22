@@ -76,7 +76,7 @@ let songListSelectedPath = ''
 let importingSongListUUID = ''
 if (props.songListUuid) {
   importingSongListUUID = props.songListUuid
-  songListSelectedPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, props.songListUuid)
+  songListSelectedPath = libraryUtils.findDirPathByUuid(props.songListUuid)
   let songListSelectedPathArr = songListSelectedPath.split('/')
   songListSelectedPathArr.shift()
   songListSelected.value = songListSelectedPathArr.join('\\')
@@ -84,8 +84,8 @@ if (props.songListUuid) {
 
 const selectSongListDialogConfirm = (uuid) => {
   importingSongListUUID = uuid
-  songListSelectedPath = libraryUtils.findDirPathByUuid(runtime.libraryTree, uuid)
-  let songListSelectedPathArr = libraryUtils.findDirPathByUuid(runtime.libraryTree, uuid).split('/')
+  songListSelectedPath = libraryUtils.findDirPathByUuid(uuid)
+  let songListSelectedPathArr = libraryUtils.findDirPathByUuid(uuid).split('/')
   songListSelectedPathArr.shift()
   songListSelected.value = songListSelectedPathArr.join('\\')
   selectSongListDialogShow.value = false
@@ -140,11 +140,11 @@ onMounted(() => {
   hotkeys('Esc', uuid, () => {
     cancel()
   })
-  utils.setHotkeysScpoe(runtime.hotkeysScopesHeap, uuid)
+  utils.setHotkeysScpoe(uuid)
 })
 
 onUnmounted(() => {
-  utils.delHotkeysScope(runtime.hotkeysScopesHeap, uuid)
+  utils.delHotkeysScope(uuid)
 })
 </script>
 <template>

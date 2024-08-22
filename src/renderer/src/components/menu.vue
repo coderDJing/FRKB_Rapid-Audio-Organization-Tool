@@ -2,8 +2,7 @@
 import { watch } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidv4 } from 'uuid'
-import { useI18n } from 'vue-i18n'
-const { tm } = useI18n()
+
 const uuid = uuidv4()
 const runtime = useRuntimeStore()
 
