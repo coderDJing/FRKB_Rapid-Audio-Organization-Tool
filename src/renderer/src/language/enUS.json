@@ -57,5 +57,6 @@
   "仅对目标文件夹及其子文件夹下的所有音频文件进行声音指纹分析，并且仅将分析结果入库，不会改动目标文件夹下的任何文件内容和结构": "Only perform audio fingerprint analysis on all audio files in the target folder and its subfolders, and store the analysis results in the database, without modifying any file content or structure in the target folder.",
   "导入曲目": "Import tracks",
   "重命名": "Rename",
-  "必须提供歌单或文件夹名。": "You must provide the playlist or folder name."
+  "必须提供歌单或文件夹名。": "You must provide the playlist or folder name.",
+  "分析声音指纹初始化": "Initializing audio fingerprint analysis"
 }

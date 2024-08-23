@@ -1,4 +1,14 @@
-import { join } from 'path'
+import { app } from 'electron'
+import { join, dirname } from 'path'
+
+let exeDir = ''
+if (app.isPackaged) {
+  let exePath = app.getPath('exe')
+  exeDir = dirname(exePath)
+} else {
+  exeDir = __dirname
+}
+
 const fs = require('fs-extra')
 const path = require('path')
 const iconv = require('iconv-lite')
@@ -21,7 +31,7 @@ async function getdirsDescriptionJson(dirPath, dirs) {
 
 //获取整个库的树结构
 export async function getLibrary() {
-  const dirPath = join(__dirname, 'library')
+  const dirPath = join(exeDir, 'library')
   const rootDescriptionJson = await fs.readJSON(join(dirPath, 'description.json'))
   const entries = await fs.readdir(dirPath, { withFileTypes: true })
   const dirs = entries.filter((entry) => entry.isDirectory())
@@ -104,7 +114,8 @@ const { spawn } = require('child_process')
 export function executeScript(exePath, args, end) {
   return new Promise((resolve, reject) => {
     const child = spawn(exePath, args, {
-      stdio: ['inherit', 'pipe', 'pipe'] // 继承stdin，pipe stdout和stderr到Node.js
+      stdio: ['inherit', 'pipe', 'pipe'], // 继承stdin，pipe stdout和stderr到Node.js
+      windowsHide: true
     })
 
     let stdoutData = ''
