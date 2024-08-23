@@ -26,11 +26,11 @@ const props = defineProps({
   },
   innerHeight: {
     type: Number,
-    default: 180
+    default: 220
   },
   innerWidth: {
     type: Number,
-    default: 300
+    default: 400
   },
   confirmCallback: {
     type: Function

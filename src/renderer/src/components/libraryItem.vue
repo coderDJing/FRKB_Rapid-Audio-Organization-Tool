@@ -32,7 +32,7 @@ const myInputHandleInput = (e) => {
     let exists = fatherDirData.children.some((obj) => obj.dirName == operationInputValue.value)
     if (exists) {
       inputHintText.value =
-        '此位置已存在歌单或文件夹' + operationInputValue.value + '。请选择其他名称'
+        t('此位置已存在歌单或文件夹') + operationInputValue.value + t('。请选择其他名称')
       inputHintShow.value = true
     } else {
       inputHintShow.value = false
@@ -42,7 +42,7 @@ const myInputHandleInput = (e) => {
 
 const inputKeyDownEnter = () => {
   if (operationInputValue.value == '') {
-    inputHintText.value = '必须提供歌单或文件夹名。'
+    inputHintText.value = t('必须提供歌单或文件夹名。')
     inputHintShow.value = true
     return
   }
@@ -147,8 +147,8 @@ const contextmenuEvent = async (event) => {
       let res = await confirm({
         title: '删除',
         content: [
-          dirData.type == 'dir' ? '确认删除此文件夹吗？' : '确认删除此歌单吗？',
-          '(曲目将在磁盘上被删除，但声音指纹依然会保留)'
+          dirData.type == 'dir' ? t('确认删除此文件夹吗？') : t('确认删除此歌单吗？'),
+          t('(曲目将在磁盘上被删除，但声音指纹依然会保留)')
         ]
       })
       if (res === 'confirm') {
@@ -183,6 +183,7 @@ const contextmenuEvent = async (event) => {
       }
     } else if (result.menuName == '导入曲目') {
       if (runtime.isProgressing) {
+        //todo 继续翻译
         await confirm({
           title: '导入',
           content: ['请等待当前任务执行结束'],

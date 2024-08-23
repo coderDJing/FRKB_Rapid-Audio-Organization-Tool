@@ -8,6 +8,8 @@ import hintIcon from '@renderer/assets/hint.png'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidv4 } from 'uuid'
 import utils from '../utils/utils'
+import main from '../main'
+const { t } = main.i18n.global
 const uuid = uuidv4()
 const props = defineProps({
   songListUuid: {
@@ -167,13 +169,15 @@ const songListSelectedDisplay = computed(() => {
     >
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
-          <span style="font-weight: bold">{{ props.libraryName }} 导入新曲目</span>
+          <span style="font-weight: bold">{{ t(props.libraryName) }} {{ t('导入新曲目') }}</span>
         </div>
         <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
           <div style="margin-top: 10px; display: flex">
-            <div class="formLabel"><span>选择歌单：</span></div>
+            <div class="formLabel">
+              <span>{{ t('选择歌单') }}：</span>
+            </div>
 
-            <div style="width: 310px">
+            <div style="width: 300px">
               <div
                 class="chooseDirDiv flashing-border"
                 @click="clickChooseSongList()"
@@ -185,16 +189,16 @@ const songListSelectedDisplay = computed(() => {
             </div>
           </div>
           <div style="margin-top: 30px; display: flex">
-            <div class="formLabel" style="width: 130px; text-align: right">
-              <span>导入后删除原文件：</span>
+            <div class="formLabel" style="width: 200px; text-align: right">
+              <span>{{ t('导入后删除原文件') }}：</span>
             </div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
               <singleCheckbox v-model="settingData.isDeleteSourceFile" />
             </div>
           </div>
           <div style="margin-top: 10px; display: flex">
-            <div class="formLabel" style="width: 130px; text-align: right">
-              <span>比对声音指纹去重：</span>
+            <div class="formLabel" style="width: 200px; text-align: right">
+              <span>{{ t('比对声音指纹去重') }}：</span>
             </div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
               <singleCheckbox v-model="settingData.isComparisonSongFingerprint" />
@@ -213,21 +217,25 @@ const songListSelectedDisplay = computed(() => {
                   v-if="hint1Show"
                   style="
                     position: absolute;
-                    height: 66px;
+                    height: 135px;
                     width: 200px;
                     margin-left: 20px;
                     margin-top: 50px;
                     text-align: left;
                   "
                 >
-                  将对所有导入过并加入声音指纹库的曲目进行比对，重复的曲目将不会被导入，哪怕它曾经已被删除
+                  {{
+                    t(
+                      '将对所有导入过并加入声音指纹库的曲目进行比对，重复的曲目将不会被导入，哪怕它曾经已被删除'
+                    )
+                  }}
                 </div>
               </transition>
             </div>
           </div>
           <div style="margin-top: 10px; display: flex">
-            <div class="formLabel" style="width: 130px; text-align: right">
-              <span>加入声音指纹库：</span>
+            <div class="formLabel" style="width: 200px; text-align: right">
+              <span>{{ t('加入声音指纹库') }}：</span>
             </div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
               <singleCheckbox v-model="settingData.isPushSongFingerprintLibrary" />
@@ -246,14 +254,18 @@ const songListSelectedDisplay = computed(() => {
                   v-if="hint2Show"
                   style="
                     position: absolute;
-                    height: 88px;
+                    height: 180px;
                     width: 200px;
                     margin-left: 20px;
                     margin-top: 50px;
                     text-align: left;
                   "
                 >
-                  将导入的曲目根据曲目内容本身进行声音指纹分析，并将分析结果永久入库，供去重比对使用，哪怕曲目本身已经被删除分析结果仍会存在
+                  {{
+                    t(
+                      '将导入的曲目根据曲目内容本身进行声音指纹分析，并将分析结果永久入库，供去重比对使用，哪怕曲目本身已经被删除分析结果仍会存在'
+                    )
+                  }}
                 </div>
               </transition>
             </div>
@@ -267,10 +279,10 @@ const songListSelectedDisplay = computed(() => {
           style="margin-right: 10px; width: 90px; text-align: center"
           @click="confirm()"
         >
-          {{ $t('确定') }} (E)
+          {{ t('确定') }} (E)
         </div>
         <div class="button" @click="cancel()" style="width: 90px; text-align: center">
-          {{ $t('取消') }} (Esc)
+          {{ t('取消') }} (Esc)
         </div>
       </div>
     </div>
@@ -302,8 +314,8 @@ const songListSelectedDisplay = computed(() => {
 }
 
 .formLabel {
-  width: 100px;
-  min-width: 100px;
+  width: 110px;
+  min-width: 110px;
   text-align: left;
   font-size: 14px;
 }

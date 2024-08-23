@@ -1,4 +1,5 @@
 {
+  "快速音频整理工具": "Rapid Audio Organization Tool",
   "文件(F)": "File(F)",
   "迁移(G)": "Migration(G)",
   "帮助(H)": "Help(H)",
@@ -60,5 +61,16 @@
   "必须提供歌单或文件夹名。": "You must provide the playlist or folder name.",
   "分析声音指纹初始化": "Initializing audio fingerprint analysis",
   "关闭": "Close",
-  "语言": "Language"
+  "语言": "Language",
+  "导入新曲目": "Import new tracks",
+  "导出": "Export",
+  "曲目": "Tracks",
+  "导出到文件夹": "Export to Folder",
+  "导出后删除曲目": "Delete original after exporting",
+  "。": ".",
+  "此位置已存在歌单或文件夹": "A playlist or folder named ",
+  "。请选择其他名称": " already exists at this location. Please choose a different name.",
+  "确认删除此文件夹吗？": "Are you sure you want to delete this folder?",
+  "确认删除此歌单吗？": "Are you sure you want to delete this songlist?",
+  "(曲目将在磁盘上被删除，但声音指纹依然会保留)": "(The track will be deleted from the disk, but the audio fingerprint will still be retained.)"
 }
