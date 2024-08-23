@@ -3,6 +3,9 @@ import { ref, onUnmounted, onMounted } from 'vue'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidv4 } from 'uuid'
 import utils from '../utils/utils'
+import { useRuntimeStore } from '@renderer/stores/runtime'
+import { useI18n } from 'vue-i18n'
+const runtime = useRuntimeStore()
 const uuid = uuidv4()
 const emits = defineEmits(['cancel'])
 const cancel = () => {
@@ -19,7 +22,16 @@ onMounted(() => {
 onUnmounted(() => {
   utils.delHotkeysScope(uuid)
 })
-let settingFormData = ref(JSON.parse(localStorage.getItem('setting')))
+
+const { locale, t } = useI18n()
+const languageChanged = async () => {
+  locale.value = runtime.setting.language
+  await window.electron.ipcRenderer.invoke(
+    'setSetting',
+    JSON.parse(JSON.stringify(runtime.setting))
+  )
+}
+
 //todo
 </script>
 <template>
@@ -39,17 +51,17 @@ let settingFormData = ref(JSON.parse(localStorage.getItem('setting')))
           <span style="font-weight: bold">设置</span>
         </div>
         <div style="padding: 20px; font-size: 14px; flex-grow: 1; overflow-y: scroll">
-          <div>语言：</div>
-          <div>
-            <select v-model="settingFormData.language">
-              <option value="zh-CN">简体中文</option>
-              <option value="en-US">English</option>
+          <div>{{ $t('语言') }}：</div>
+          <div style="margin-top: 10px">
+            <select v-model="runtime.setting.language" @change="languageChanged">
+              <option value="zhCN">简体中文</option>
+              <option value="enUS">English</option>
             </select>
           </div>
           <!-- todo -->
         </div>
         <div style="display: flex; justify-content: center; padding-bottom: 10px; height: 30px">
-          <div class="button" @click="cancel()">关闭 Esc</div>
+          <div class="button" @click="cancel()">{{ $t('关闭') }} (Esc)</div>
         </div>
       </div>
     </div>

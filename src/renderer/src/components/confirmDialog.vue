@@ -105,7 +105,7 @@ onUnmounted(() => {
         </div>
       </div>
       <div v-if="!confirmShow" style="display: flex; justify-content: center; padding-bottom: 10px">
-        <div class="button" @click="cancel()">关闭 Esc</div>
+        <div class="button" @click="cancel()">{{ t('关闭') }} (Esc)</div>
       </div>
     </div>
   </div>
