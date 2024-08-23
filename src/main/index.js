@@ -11,6 +11,7 @@ import {
   getCurrentTimeYYYYMMDDHHMMSSSSS
 } from './utils.js'
 import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset&asarUnpack'
+import settingConfigFileUrl from '../../resources/config/settingConfig.json?commonjs-external&asset&asarUnpack'
 import analyseSongFingerprintPyScriptUrl from '../../resources/pyScript/analyseSongFingerprint/analyseSongFingerprint.exe?commonjs-external&asset&asarUnpack'
 import { v4 as uuidv4 } from 'uuid'
 import enUsUrl from '../renderer/src/language/enUS.json?commonjs-external&asset'
@@ -42,6 +43,7 @@ updateElectronApp() //todo 自动升级功能待测试
 const fs = require('fs-extra')
 
 let layoutConfig = fs.readJSONSync(layoutConfigFileUrl)
+let settingConfig = fs.readJSONSync(settingConfigFileUrl)
 let enUS = fs.readJSONSync(enUsUrl)
 let zhCN = fs.readJSONSync(zhCNUrl)
 let languageDict = {
@@ -49,7 +51,7 @@ let languageDict = {
   zhCN
 }
 function t(str) {
-  return languageDict[layoutConfig.language][str]
+  return languageDict[settingConfig.language][str]
 }
 let songFingerprintList = []
 const libraryInit = async () => {
@@ -311,6 +313,13 @@ function createWindow() {
     return
   })
 
+  ipcMain.handle('getSetting', () => {
+    return settingConfig
+  })
+  ipcMain.handle('setSetting', (e, setting) => {
+    settingConfig = setting
+    fs.outputJson(settingConfigFileUrl, setting)
+  })
   ipcMain.handle('moveSongsToDir', async (e, srcs, dest) => {
     const moveSongToDir = async (src, dest) => {
       let targetPath = join(exeDir, dest, src.match(/[^\\]+$/)[0])
@@ -324,6 +333,9 @@ function createWindow() {
     return
   })
 
+  ipcMain.on('outputLog', (e, logMsg) => {
+    log.error(logMsg)
+  })
   ipcMain.on('startImportDragSongs', async (e, formData) => {
     let songFileUrls = []
     let dirArr = []

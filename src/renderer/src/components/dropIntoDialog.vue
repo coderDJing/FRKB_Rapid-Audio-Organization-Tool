@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onUnmounted, onMounted } from 'vue'
+import { ref, onUnmounted, onMounted, computed } from 'vue'
 import singleCheckbox from './singleCheckbox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import selectSongListDialog from './selectSongListDialog.vue'
@@ -146,6 +146,12 @@ onMounted(() => {
 onUnmounted(() => {
   utils.delHotkeysScope(uuid)
 })
+
+const songListSelectedDisplay = computed(() => {
+  let arr = songListSelected.value.split('\\')
+  arr[0] = t(arr[0])
+  return arr.join('\\')
+})
 </script>
 <template>
   <div class="dialog unselectable">
@@ -171,10 +177,10 @@ onUnmounted(() => {
               <div
                 class="chooseDirDiv flashing-border"
                 @click="clickChooseSongList()"
-                :title="songListSelected"
+                :title="songListSelectedDisplay"
                 :class="{ 'is-flashing': flashArea == 'songListPathVal' }"
               >
-                {{ songListSelected }}
+                {{ songListSelectedDisplay }}
               </div>
             </div>
           </div>

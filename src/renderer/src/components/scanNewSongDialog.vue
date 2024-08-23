@@ -8,6 +8,8 @@ import hintIcon from '@renderer/assets/hint.png'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidv4 } from 'uuid'
 import utils from '../utils/utils'
+import main from '../main'
+const { t } = main.i18n.global
 const uuid = uuidv4()
 const props = defineProps({
   songListUuid: {
@@ -67,6 +69,12 @@ const folderPathDisplay = computed(() => {
     str.push('"' + item + '"')
   }
   return str.join(',')
+})
+
+const songListSelectedDisplay = computed(() => {
+  let arr = songListSelected.value.split('\\')
+  arr[0] = t(arr[0])
+  return arr.join('\\')
 })
 
 const emits = defineEmits(['cancel'])
@@ -220,10 +228,10 @@ onUnmounted(() => {
               <div
                 class="chooseDirDiv flashing-border"
                 @click="clickChooseSongList()"
-                :title="songListSelected"
+                :title="songListSelectedDisplay"
                 :class="{ 'is-flashing': flashArea == 'songListPathVal' }"
               >
-                {{ songListSelected }}
+                {{ songListSelectedDisplay }}
               </div>
             </div>
           </div>
