@@ -12,6 +12,11 @@ import exportSongFingerprintDialog from './components/exportSongFingerprintDialo
 import importSongFingerprintDialog from './components/importSongFingerprintDialog.vue'
 import confirm from '@renderer/components/confirmDialog.js'
 
+window.addEventListener('error', (event) => {
+  console.error('Global error captured:', event.message)
+  // 可以在这里进行错误的上报或处理
+  //todo 错误信息写入log
+})
 const runtime = useRuntimeStore()
 
 const detectPlatform = () => {
