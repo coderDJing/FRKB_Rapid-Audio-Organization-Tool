@@ -119,12 +119,14 @@ onUnmounted(() => {
     >
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
-          <span style="font-weight: bold">{{ props.title }}导出</span>
+          <span style="font-weight: bold">{{ t(props.title) }} {{ t('导出') }}</span>
         </div>
         <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
           <div style="display: flex">
-            <div class="formLabel"><span>导出到文件夹：</span></div>
-            <div style="width: 310px">
+            <div class="formLabel">
+              <span>{{ t('导出到文件夹') }}：</span>
+            </div>
+            <div style="width: 290px">
               <div
                 class="chooseDirDiv flashing-border"
                 @click="clickChooseDir()"
@@ -136,8 +138,8 @@ onUnmounted(() => {
             </div>
           </div>
           <div style="margin-top: 30px; display: flex">
-            <div class="formLabel" style="width: 112px; text-align: right">
-              <span>导出后删除曲目：</span>
+            <div class="formLabel" style="width: 200px; text-align: right">
+              <span>{{ t('导出后删除曲目') }}：</span>
             </div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
               <singleCheckbox v-model="deleteSongsAfterExport" />
@@ -168,8 +170,8 @@ onUnmounted(() => {
 }
 
 .formLabel {
-  width: 100px;
-  min-width: 100px;
+  width: 120px;
+  min-width: 120px;
   text-align: left;
   font-size: 14px;
 }
