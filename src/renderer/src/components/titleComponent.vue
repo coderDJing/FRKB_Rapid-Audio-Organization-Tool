@@ -90,7 +90,7 @@ const menuButtonClick = async (item) => {
 }
 </script>
 <template>
-  <div class="title unselectable">FRKB - Rapid Audio Organization Tool</div>
+  <div class="title unselectable">FRKB - {{ $t('快速音频整理工具') }}</div>
   <div class="titleComponent unselectable">
     <div
       style="
