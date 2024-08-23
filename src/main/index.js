@@ -1,5 +1,5 @@
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
-import { join } from 'path'
+import { join, dirname } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import {
@@ -10,17 +10,47 @@ import {
   moveOrCopyItemWithCheckIsExist,
   getCurrentTimeYYYYMMDDHHMMSSSSS
 } from './utils.js'
-import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset'
-import analyseSongFingerprintPyScriptUrl from '../../resources/pyScript/analyseSongFingerprint/analyseSongFingerprint.exe?commonjs-external&asset'
+import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset&asarUnpack'
+import analyseSongFingerprintPyScriptUrl from '../../resources/pyScript/analyseSongFingerprint/analyseSongFingerprint.exe?commonjs-external&asset&asarUnpack'
 import { v4 as uuidv4 } from 'uuid'
+import enUsUrl from '../renderer/src/language/enUS.json?commonjs-external&asset'
+import zhCNUrl from '../renderer/src/language/zhCN.json?commonjs-external&asset'
+let exeDir = ''
+if (app.isPackaged) {
+  let exePath = app.getPath('exe')
+  exeDir = dirname(exePath)
+} else {
+  exeDir = __dirname
+}
+
+const log = require('electron-log')
+log.transports.file.level = 'debug' // 设置日志级别
+log.transports.file.format = '{y}-{m}-{d} {h}:{i}:{s}.{ms} {text}' // 自定义日志格式
+log.transports.file.maxSize = 5 * 1024 * 1024 // 设置日志文件的最大大小，‌例如5MB
+log.transports.file.resolvePathFn = () => join(exeDir, 'log.txt') // 指定日志文件的存储路径
+process.on('uncaughtException', (error) => {
+  log.error(error)
+})
+
+process.on('unhandledRejection', (reason, promise) => {
+  log.error('Unhandled Rejection at:', promise, 'reason:', reason)
+})
 
 const { updateElectronApp } = require('update-electron-app')
 updateElectronApp() //todo 自动升级功能待测试
 
 const fs = require('fs-extra')
-const path = require('path')
 
 let layoutConfig = fs.readJSONSync(layoutConfigFileUrl)
+let enUS = fs.readJSONSync(enUsUrl)
+let zhCN = fs.readJSONSync(zhCNUrl)
+let languageDict = {
+  enUS,
+  zhCN
+}
+function t(str) {
+  return languageDict[layoutConfig.language][str]
+}
 let songFingerprintList = []
 const libraryInit = async () => {
   let rootDescription = {
@@ -29,7 +59,7 @@ const libraryInit = async () => {
     dirName: 'library',
     order: 1
   }
-  await fs.outputJson(join(__dirname, 'library', 'description.json'), rootDescription)
+  await fs.outputJson(join(exeDir, 'library', 'description.json'), rootDescription)
   const makeLibrary = async (libraryPath, libraryName, order) => {
     let description = {
       uuid: uuidv4(),
@@ -39,15 +69,15 @@ const libraryInit = async () => {
     }
     await fs.outputJson(join(libraryPath, 'description.json'), description)
   }
-  await makeLibrary(join(__dirname, 'library/筛选库'), '筛选库', 1)
-  await makeLibrary(join(__dirname, 'library/精选库'), '精选库', 2)
-  await fs.outputJSON(join(__dirname, 'songFingerprint', 'songFingerprint.json'), [])
+  await makeLibrary(join(exeDir, 'library/筛选库'), '筛选库', 1)
+  await makeLibrary(join(exeDir, 'library/精选库'), '精选库', 2)
+  await fs.outputJSON(join(exeDir, 'songFingerprint', 'songFingerprint.json'), [])
 }
-let isLibraryExist = fs.pathExistsSync(join(__dirname, 'library', 'description.json'))
+let isLibraryExist = fs.pathExistsSync(join(exeDir, 'library', 'description.json'))
 if (!isLibraryExist) {
   libraryInit()
 } else {
-  songFingerprintList = fs.readJSONSync(join(__dirname, 'songFingerprint', 'songFingerprint.json'))
+  songFingerprintList = fs.readJSONSync(join(exeDir, 'songFingerprint', 'songFingerprint.json'))
 }
 
 function createWindow() {
@@ -149,7 +179,7 @@ function createWindow() {
   })
   ipcMain.handle('exportSongFingerprint', async (e, folderPath) => {
     await fs.copy(
-      join(__dirname, 'songFingerprint', 'songFingerprint.json'),
+      join(exeDir, 'songFingerprint', 'songFingerprint.json'),
       folderPath + '\\songFingerprint' + getCurrentTimeYYYYMMDDHHMMSSSSS() + '.json'
     )
   })
@@ -157,7 +187,7 @@ function createWindow() {
     let json = await fs.readJSON(filePath)
     songFingerprintList = songFingerprintList.concat(json)
     songFingerprintList = [...new Set(songFingerprintList)]
-    fs.outputJSON(join(__dirname, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
+    fs.outputJSON(join(exeDir, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
     return
   })
   ipcMain.on('addSongFingerprint', async (e, folderPath) => {
@@ -175,7 +205,7 @@ function createWindow() {
     let fingerprintErrorResults = []
     mainWindow.webContents.send(
       'progressSet',
-      '分析声音指纹初始化',
+      t('分析声音指纹初始化'),
       processNum,
       songFileUrls.length
     )
@@ -204,7 +234,7 @@ function createWindow() {
     }
     let removeDuplicatesFingerprintResults = Array.from(map.values())
     songFingerprintList = songFingerprintList.concat(removeDuplicatesFingerprintResults)
-    fs.outputJSON(join(__dirname, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
+    fs.outputJSON(join(exeDir, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
     let contentArr = [
       '文件夹下共扫描' + songFileUrls.length + '首曲目',
       '比对声音指纹去除' +
@@ -230,7 +260,7 @@ function createWindow() {
   ipcMain.handle(
     'exportSongListToDir',
     async (e, folderPathVal, deleteSongsAfterExport, dirPath) => {
-      let scanPath = join(__dirname, dirPath)
+      let scanPath = join(exeDir, dirPath)
       let songFileUrls = await collectFilesWithExtensions(scanPath, ['.mp3', '.wav', '.flac'])
       let folderName = dirPath.split('/')[dirPath.split('/').length - 1]
       async function findUniqueFolder(inputFolderPath) {
@@ -283,7 +313,7 @@ function createWindow() {
 
   ipcMain.handle('moveSongsToDir', async (e, srcs, dest) => {
     const moveSongToDir = async (src, dest) => {
-      let targetPath = join(__dirname, dest, src.match(/[^\\]+$/)[0])
+      let targetPath = join(exeDir, dest, src.match(/[^\\]+$/)[0])
       await moveOrCopyItemWithCheckIsExist(src, targetPath, true)
     }
     const promises = []
@@ -342,7 +372,7 @@ function createWindow() {
         songFileUrls.length
       )
       for (let songFileUrl of songFileUrls) {
-        let targetPath = join(__dirname, formData.songListPath, songFileUrl.match(/[^\\]+$/)[0])
+        let targetPath = join(exeDir, formData.songListPath, songFileUrl.match(/[^\\]+$/)[0])
         await moveOrCopyItemWithCheckIsExist(songFileUrl, targetPath, formData.isDeleteSourceFile)
         processNum++
         mainWindow.webContents.send(
@@ -357,7 +387,7 @@ function createWindow() {
     async function analyseSongFingerprint() {
       mainWindow.webContents.send(
         'progressSet',
-        '分析声音指纹初始化',
+        t('分析声音指纹初始化'),
         processNum,
         songFileUrls.length,
         true
@@ -427,7 +457,7 @@ function createWindow() {
         if (formData.isPushSongFingerprintLibrary) {
           songFingerprintList.push(item.md5_hash)
         }
-        let targetPath = join(__dirname, formData.songListPath, item.path.match(/[^\\]+$/)[0])
+        let targetPath = join(exeDir, formData.songListPath, item.path.match(/[^\\]+$/)[0])
         await moveOrCopyItemWithCheckIsExist(item.path, targetPath, formData.isDeleteSourceFile)
         processNum++
         mainWindow.webContents.send(
@@ -447,10 +477,7 @@ function createWindow() {
         }
       }
       if (formData.isPushSongFingerprintLibrary) {
-        fs.outputJSON(
-          join(__dirname, 'songFingerprint', 'songFingerprint.json'),
-          songFingerprintList
-        )
+        fs.outputJSON(join(exeDir, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
       }
     } else if (!formData.isComparisonSongFingerprint && formData.isPushSongFingerprintLibrary) {
       //不比对声音指纹，仅加入指纹库
@@ -460,7 +487,7 @@ function createWindow() {
           songFingerprintList.push(item.md5_hash)
         }
       }
-      fs.outputJSON(join(__dirname, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
+      fs.outputJSON(join(exeDir, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
       await moveSong()
     }
     let contentArr = ['文件夹下共扫描' + songFileUrls.length + '首曲目']
@@ -498,7 +525,7 @@ function createWindow() {
     return
   })
   ipcMain.on('startImportSongs', async (e, formData, songListUUID) => {
-    formData.songListPath = join(__dirname, formData.songListPath)
+    formData.songListPath = join(exeDir, formData.songListPath)
     mainWindow.webContents.send('progressSet', '扫描文件中', 0, 1, true)
     let songFileUrls = []
     const promises = []
@@ -543,7 +570,7 @@ function createWindow() {
     async function analyseSongFingerprint() {
       mainWindow.webContents.send(
         'progressSet',
-        '分析声音指纹初始化',
+        t('分析声音指纹初始化'),
         processNum,
         songFileUrls.length,
         true
@@ -633,10 +660,7 @@ function createWindow() {
         }
       }
       if (formData.isPushSongFingerprintLibrary) {
-        fs.outputJSON(
-          join(__dirname, 'songFingerprint', 'songFingerprint.json'),
-          songFingerprintList
-        )
+        fs.outputJSON(join(exeDir, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
       }
     } else if (!formData.isComparisonSongFingerprint && formData.isPushSongFingerprintLibrary) {
       //不比对声音指纹，仅加入指纹库
@@ -646,7 +670,7 @@ function createWindow() {
           songFingerprintList.push(item.md5_hash)
         }
       }
-      fs.outputJSON(join(__dirname, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
+      fs.outputJSON(join(exeDir, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
       await moveSong()
     }
     let contentArr = ['文件夹下共扫描' + songFileUrls.length + '首曲目']
@@ -689,8 +713,8 @@ function createWindow() {
 }
 
 ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
-  const srcFullPath = join(__dirname, src)
-  const destDir = join(__dirname, dest)
+  const srcFullPath = join(exeDir, src)
+  const destDir = join(exeDir, dest)
   const destFileName = path.basename(srcFullPath)
   const destFullPath = join(destDir, destFileName)
   if (isExist) {
@@ -722,7 +746,7 @@ ipcMain.on('delSongs', async (e, songFilePaths) => {
 })
 
 ipcMain.handle('scanSongList', async (e, songListPath, songListUUID) => {
-  let scanPath = join(__dirname, songListPath)
+  let scanPath = join(exeDir, songListPath)
   const mm = await import('music-metadata')
   let songInfoArr = []
   let songFileUrls = await collectFilesWithExtensions(scanPath, ['.mp3', '.wav', '.flac'])
@@ -758,8 +782,8 @@ ipcMain.handle('scanSongList', async (e, songListPath, songListUUID) => {
 })
 
 ipcMain.handle('moveToDirSample', async (e, src, dest) => {
-  const srcFullPath = join(__dirname, src)
-  const destDir = join(__dirname, dest)
+  const srcFullPath = join(exeDir, src)
+  const destDir = join(exeDir, dest)
   const destFileName = path.basename(srcFullPath)
   const destFullPath = join(destDir, destFileName)
   await fs.move(srcFullPath, destFullPath)
@@ -768,7 +792,7 @@ ipcMain.handle('reOrderSubDir', async (e, targetPath, subDirArrJson) => {
   let subDirArr = JSON.parse(subDirArrJson)
   const promises = []
   const changeOrder = async (item) => {
-    let jsonPath = join(__dirname, targetPath, item.dirName, 'description.json')
+    let jsonPath = join(exeDir, targetPath, item.dirName, 'description.json')
     let json = await fs.readJSON(jsonPath)
     if (json.order != item.order) {
       json.order = item.order
@@ -787,31 +811,31 @@ ipcMain.handle('getLibrary', async () => {
 })
 
 ipcMain.handle('renameDir', async (e, newName, dirPath) => {
-  let descriptionPath = join(__dirname, join(dirPath, 'description.json'))
+  let descriptionPath = join(exeDir, join(dirPath, 'description.json'))
   let descriptionJson = await fs.readJSON(descriptionPath)
   descriptionJson.dirName = newName
   await fs.outputJson(descriptionPath, descriptionJson)
   await fs.rename(
-    join(__dirname, dirPath),
-    join(__dirname, dirPath.slice(0, dirPath.lastIndexOf('/') + 1) + newName)
+    join(exeDir, dirPath),
+    join(exeDir, dirPath.slice(0, dirPath.lastIndexOf('/') + 1) + newName)
   )
 })
 ipcMain.handle('updateOrderAfterNum', async (e, targetPath, order) => {
-  await updateTargetDirSubdirOrder(join(__dirname, targetPath), order, 'after', 'minus')
+  await updateTargetDirSubdirOrder(join(exeDir, targetPath), order, 'after', 'minus')
 })
 
 ipcMain.handle('delDir', async (e, targetPath) => {
-  await fs.remove(join(__dirname, targetPath))
+  await fs.remove(join(exeDir, targetPath))
 })
 
 ipcMain.handle('mkDir', async (e, descriptionJson, dirPath) => {
-  await updateTargetDirSubdirOrder(join(__dirname, dirPath), 0, 'after', 'plus')
-  let targetPath = join(__dirname, dirPath, descriptionJson.dirName)
+  await updateTargetDirSubdirOrder(join(exeDir, dirPath), 0, 'after', 'plus')
+  let targetPath = join(exeDir, dirPath, descriptionJson.dirName)
   await fs.outputJson(join(targetPath, 'description.json'), descriptionJson)
 })
 
 ipcMain.handle('updateTargetDirSubdirOrderAdd', async (e, dirPath) => {
-  await updateTargetDirSubdirOrder(join(__dirname, dirPath), 0, 'after', 'plus')
+  await updateTargetDirSubdirOrder(join(exeDir, dirPath), 0, 'after', 'plus')
 })
 
 ipcMain.handle('select-folder', async (event, multiSelections = true) => {
