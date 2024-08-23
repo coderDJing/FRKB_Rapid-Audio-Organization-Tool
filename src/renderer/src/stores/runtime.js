@@ -27,7 +27,8 @@ export const useRuntimeStore = defineStore('runtime', {
         playingSongListData: [] //正在播放的歌单的曲目数组
       },
       confirmShow: false, //是否有确认框正在显示
-      hotkeysScopesHeap: [] //hotkeys-js的scope组成的堆栈，始终setScope数组的最后一项
+      hotkeysScopesHeap: [], //hotkeys-js的scope组成的堆栈，始终setScope数组的最后一项
+      setting: {} //设置
     }
   }
 })

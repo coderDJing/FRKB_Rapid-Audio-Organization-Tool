@@ -58,5 +58,7 @@
   "导入曲目": "Import tracks",
   "重命名": "Rename",
   "必须提供歌单或文件夹名。": "You must provide the playlist or folder name.",
-  "分析声音指纹初始化": "Initializing audio fingerprint analysis"
+  "分析声音指纹初始化": "Initializing audio fingerprint analysis",
+  "关闭": "Close",
+  "语言": "Language"
 }
