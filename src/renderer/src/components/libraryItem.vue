@@ -183,10 +183,9 @@ const contextmenuEvent = async (event) => {
       }
     } else if (result.menuName == '导入曲目') {
       if (runtime.isProgressing) {
-        //todo 继续翻译
         await confirm({
-          title: '导入',
-          content: ['请等待当前任务执行结束'],
+          title: t('导入'),
+          content: [t('请等待当前任务执行结束')],
           confirmShow: false
         })
         return
@@ -195,8 +194,8 @@ const contextmenuEvent = async (event) => {
     } else if (result.menuName == '导出曲目') {
       if (runtime.isProgressing) {
         await confirm({
-          title: '导入',
-          content: ['请等待当前任务执行结束'],
+          title: t('导入'),
+          content: [t('请等待当前任务执行结束')],
           confirmShow: false
         })
         return
@@ -271,7 +270,7 @@ const renameInputBlurHandle = async () => {
 }
 const renameInputKeyDownEnter = () => {
   if (renameDivValue.value == '') {
-    renameInputHintText.value = '必须提供歌单或文件夹名。'
+    renameInputHintText.value = t('必须提供歌单或文件夹名。')
     renameInputHintShow.value = true
     return
   }
@@ -286,13 +285,13 @@ const renameInputKeyDownEsc = () => {
 }
 const renameMyInputHandleInput = (e) => {
   if (renameDivValue.value == '') {
-    renameInputHintText.value = '必须提供歌单或文件夹名。'
+    renameInputHintText.value = t('必须提供歌单或文件夹名。')
     renameInputHintShow.value = true
   } else {
     let exists = fatherDirData.children.some((obj) => obj.dirName == renameDivValue.value)
     if (exists) {
       renameInputHintText.value =
-        '此位置已存在歌单或文件夹' + renameDivValue.value + '。请选择其他名称'
+        t('此位置已存在歌单或文件夹') + renameDivValue.value + t('。请选择其他名称')
       renameInputHintShow.value = true
     } else {
       renameInputHintShow.value = false
@@ -420,9 +419,9 @@ const drop = async (e) => {
         let res = await confirm({
           title: '移动',
           content: [
-            '目标文件夹下已存在："' + runtime.dragItemData.dirName + '"',
-            '是否继续执行替换',
-            '（被替换的歌单或文件夹将被删除）'
+            t('目标文件夹下已存在："') + runtime.dragItemData.dirName + t('"'),
+            t('是否继续执行替换'),
+            t('（被替换的歌单或文件夹将被删除）')
           ]
         })
         if (res == 'confirm') {
@@ -520,9 +519,9 @@ const drop = async (e) => {
           let res = await confirm({
             title: '移动',
             content: [
-              '目标文件夹下已存在："' + runtime.dragItemData.dirName + '"',
-              '是否继续执行替换',
-              '（被替换的歌单或文件夹将被删除）'
+              t('目标文件夹下已存在："') + runtime.dragItemData.dirName + t('"'),
+              t('是否继续执行替换'),
+              t('（被替换的歌单或文件夹将被删除）')
             ]
           })
           if (res == 'confirm') {
@@ -761,6 +760,7 @@ watch(
       <libraryItem :uuid="item.uuid" :libraryName="props.libraryName" />
     </template>
   </div>
+  <!-- todo 这里有个bug，如果在这个scanNewSongDialog的dom的里面的歌单选择dialog里操作这个librayItem的dom移动，会造成本librayItem的重新渲染，也就导致了下面这个scanNewSongDialog的消失 -->
   <scanNewSongDialog
     v-if="importSongsDialogShow"
     @cancel="importSongsDialogShow = false"

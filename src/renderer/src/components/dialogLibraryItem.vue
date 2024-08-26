@@ -1,5 +1,5 @@
 <script setup>
-import { ref, nextTick, watch } from 'vue'
+import { ref, nextTick } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu.js'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -7,7 +7,8 @@ import listIcon from '@renderer/assets/listIcon.png'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { v4 as uuidv4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog.js'
-
+import main from '../main'
+const { t } = main.i18n.global
 const props = defineProps({
   uuid: {
     type: String,
@@ -26,13 +27,13 @@ let dirData = libraryUtils.getLibraryTreeByUUID(props.uuid)
 let fatherDirData = libraryUtils.getFatherLibraryTreeByUUID(props.uuid)
 const myInputHandleInput = (e) => {
   if (operationInputValue.value == '') {
-    inputHintText.value = '必须提供歌单或文件夹名。'
+    inputHintText.value = t('必须提供歌单或文件夹名。')
     inputHintShow.value = true
   } else {
     let exists = fatherDirData.children.some((obj) => obj.dirName == operationInputValue.value)
     if (exists) {
       inputHintText.value =
-        '此位置已存在歌单或文件夹' + operationInputValue.value + '。请选择其他名称'
+        t('此位置已存在歌单或文件夹') + operationInputValue.value + t('。请选择其他名称')
       inputHintShow.value = true
     } else {
       inputHintShow.value = false
@@ -42,7 +43,7 @@ const myInputHandleInput = (e) => {
 
 const inputKeyDownEnter = () => {
   if (operationInputValue.value == '') {
-    inputHintText.value = '必须提供歌单或文件夹名。'
+    inputHintText.value = t('必须提供歌单或文件夹名。')
     inputHintShow.value = true
     return
   }
@@ -143,8 +144,8 @@ const contextmenuEvent = async (event) => {
       let res = await confirm({
         title: '删除',
         content: [
-          dirData.type == 'dir' ? '确认删除此文件夹吗？' : '确认删除此歌单吗？',
-          '(曲目将在磁盘上被删除，但声音指纹依然会保留)'
+          dirData.type == 'dir' ? t('确认删除此文件夹吗？') : t('确认删除此歌单吗？'),
+          t('(曲目将在磁盘上被删除，但声音指纹依然会保留)')
         ]
       })
       if (res === 'confirm') {
@@ -231,7 +232,7 @@ const renameInputBlurHandle = async () => {
 }
 const renameInputKeyDownEnter = () => {
   if (renameDivValue.value == '') {
-    renameInputHintText.value = '必须提供歌单或文件夹名。'
+    renameInputHintText.value = t('必须提供歌单或文件夹名。')
     renameInputHintShow.value = true
     return
   }
@@ -246,13 +247,13 @@ const renameInputKeyDownEsc = () => {
 }
 const renameMyInputHandleInput = (e) => {
   if (renameDivValue.value == '') {
-    renameInputHintText.value = '必须提供歌单或文件夹名。'
+    renameInputHintText.value = t('必须提供歌单或文件夹名。')
     renameInputHintShow.value = true
   } else {
     let exists = fatherDirData.children.some((obj) => obj.dirName == renameDivValue.value)
     if (exists) {
       renameInputHintText.value =
-        '此位置已存在歌单或文件夹' + renameDivValue.value + '。请选择其他名称'
+        t('此位置已存在歌单或文件夹') + renameDivValue.value + t('。请选择其他名称')
       renameInputHintShow.value = true
     } else {
       renameInputHintShow.value = false
@@ -378,9 +379,9 @@ const drop = async (e) => {
         let res = await confirm({
           title: '移动',
           content: [
-            '目标文件夹下已存在："' + runtime.dragItemData.dirName + '"',
-            '是否继续执行替换',
-            '（被替换的歌单或文件夹将被删除）'
+            t('目标文件夹下已存在："') + runtime.dragItemData.dirName + t('"'),
+            t('是否继续执行替换'),
+            t('（被替换的歌单或文件夹将被删除）')
           ]
         })
         if (res == 'confirm') {
@@ -426,6 +427,17 @@ const drop = async (e) => {
         libraryUtils.findDirPathByUuid(dirData.uuid),
         JSON.stringify(dirData.children)
       )
+      let flatUUID = libraryUtils.getAllUuids(
+        libraryUtils.getLibraryTreeByUUID(runtime.dragItemData.uuid)
+      )
+      if (flatUUID.indexOf(runtime.selectedSongListUUID) != -1) {
+        runtime.selectedSongListUUID = ''
+      }
+      if (flatUUID.indexOf(runtime.playingData.playingSongListUUID) != -1) {
+        runtime.playingData.playingSongListUUID = ''
+        runtime.playingData.playingSongListData = []
+        runtime.playingData.playingSong = null
+      }
       return
     } else if (approach == 'top' || approach == 'bottom') {
       let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(runtime.dragItemData.uuid)
@@ -467,9 +479,9 @@ const drop = async (e) => {
           let res = await confirm({
             title: '移动',
             content: [
-              '目标文件夹下已存在："' + runtime.dragItemData.dirName + '"',
-              '是否继续执行替换',
-              '（被替换的歌单或文件夹将被删除）'
+              t('目标文件夹下已存在："') + runtime.dragItemData.dirName + t('"'),
+              t('是否继续执行替换'),
+              t('（被替换的歌单或文件夹将被删除）')
             ]
           })
           if (res == 'confirm') {
@@ -506,6 +518,17 @@ const drop = async (e) => {
               JSON.stringify(dragItemDataFather.children)
             )
           }
+          let flatUUID = libraryUtils.getAllUuids(
+            libraryUtils.getLibraryTreeByUUID(runtime.dragItemData.uuid)
+          )
+          if (flatUUID.indexOf(runtime.selectedSongListUUID) != -1) {
+            runtime.selectedSongListUUID = ''
+          }
+          if (flatUUID.indexOf(runtime.playingData.playingSongListUUID) != -1) {
+            runtime.playingData.playingSongListUUID = ''
+            runtime.playingData.playingSongListData = []
+            runtime.playingData.playingSong = null
+          }
           return
         }
         await window.electron.ipcRenderer.invoke(
@@ -536,6 +559,17 @@ const drop = async (e) => {
           libraryUtils.findDirPathByUuid(fatherDirData.uuid),
           JSON.stringify(fatherDirData.children)
         )
+        let flatUUID = libraryUtils.getAllUuids(
+          libraryUtils.getLibraryTreeByUUID(runtime.dragItemData.uuid)
+        )
+        if (flatUUID.indexOf(runtime.selectedSongListUUID) != -1) {
+          runtime.selectedSongListUUID = ''
+        }
+        if (flatUUID.indexOf(runtime.playingData.playingSongListUUID) != -1) {
+          runtime.playingData.playingSongListUUID = ''
+          runtime.playingData.playingSongListData = []
+          runtime.playingData.playingSong = null
+        }
         return
       }
     }
