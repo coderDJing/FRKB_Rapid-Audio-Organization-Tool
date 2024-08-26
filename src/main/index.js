@@ -16,6 +16,9 @@ import analyseSongFingerprintPyScriptUrl from '../../resources/pyScript/analyseS
 import { v4 as uuidv4 } from 'uuid'
 import enUsUrl from '../renderer/src/language/enUS.json?commonjs-external&asset'
 import zhCNUrl from '../renderer/src/language/zhCN.json?commonjs-external&asset'
+
+const path = require('path')
+
 let exeDir = ''
 if (app.isPackaged) {
   let exePath = app.getPath('exe')
