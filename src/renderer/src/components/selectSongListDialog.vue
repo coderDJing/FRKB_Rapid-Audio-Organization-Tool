@@ -9,6 +9,8 @@ import confirm from '@renderer/components/confirmDialog.js'
 import hotkeys from 'hotkeys-js'
 import listIcon from '@renderer/assets/listIcon.png'
 import utils from '../utils/utils'
+import main from '../main'
+const { t } = main.i18n.global
 const uuid = uuidv4()
 const props = defineProps({
   libraryName: {
@@ -286,7 +288,7 @@ const cancel = () => {
   <div class="dialog unselectable">
     <div class="content inner" @contextmenu.stop="contextmenuEvent">
       <div class="unselectable libraryTitle">
-        <span>{{ $t(libraryData.dirName) }}</span>
+        <span>{{ t(libraryData.dirName) }}</span>
         <div style="display: flex; justify-content: center; align-items: center">
           <div
             class="collapseButton"
@@ -315,7 +317,7 @@ const cancel = () => {
               v-if="collapseButtonHintShow"
               style="position: absolute; top: 70px"
             >
-              {{ $t('折叠文件夹') }}
+              {{ t('折叠文件夹') }}
             </div>
           </transition>
         </div>
@@ -327,7 +329,7 @@ const cancel = () => {
       >
         <template v-if="recentSongListArr.length > 0">
           <div style="padding-left: 5px">
-            <span style="font-size: 14px">{{ $t('最近使用') }}</span>
+            <span style="font-size: 14px">{{ t('最近使用') }}</span>
           </div>
           <div style="width: 100%; background-color: #8c8c8c; height: 1px"></div>
           <div
@@ -375,7 +377,7 @@ const cancel = () => {
           align-items: center;
         "
       >
-        <span style="font-size: 12px; color: #8c8c8c">{{ $t('右键新建歌单') }}</span>
+        <span style="font-size: 12px; color: #8c8c8c">{{ t('右键新建歌单') }}</span>
       </div>
       <div style="display: flex; justify-content: center; padding-bottom: 10px">
         <div
@@ -383,10 +385,10 @@ const cancel = () => {
           style="margin-right: 10px; width: 90px; text-align: center"
           @click="confirmHandle()"
         >
-          {{ $t('确定') }} (E)
+          {{ t('确定') }} (E)
         </div>
         <div class="button" style="width: 90px; text-align: center" @click="cancel()">
-          {{ $t('取消') }} (Esc)
+          {{ t('取消') }} (Esc)
         </div>
       </div>
     </div>

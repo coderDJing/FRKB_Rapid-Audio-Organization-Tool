@@ -28,15 +28,9 @@ runtime.platform = detectPlatform()
 window.electron.ipcRenderer.on('layoutConfigReaded', (event, layoutConfig) => {
   runtime.layoutConfig = layoutConfig
 })
-const scanNewSongDialogLibraryName = ref('')
 const activeDialog = ref('')
 
 const openDialog = async (item) => {
-  if (item === '筛选库 导入新曲目') {
-    scanNewSongDialogLibraryName.value = '筛选库'
-  } else if (item === '精选库 导入新曲目') {
-    scanNewSongDialogLibraryName.value = '精选库'
-  }
   if (item === '退出') {
     if (runtime.isProgressing === true) {
       await confirm({
@@ -103,11 +97,6 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (event) => {
       <bottomInfoArea />
     </div>
   </div>
-  <scanNewSongDialog
-    v-if="activeDialog == '筛选库 导入新曲目' || activeDialog == '精选库 导入新曲目'"
-    @cancel="activeDialog = ''"
-    :libraryName="scanNewSongDialogLibraryName"
-  ></scanNewSongDialog>
   <manualAddSongFingerprintDialog
     v-if="activeDialog == '手动添加曲目指纹'"
     @cancel="activeDialog = ''"
