@@ -8,7 +8,7 @@ import { ref } from 'vue'
 import menuComponent from './menu.vue'
 import confirm from '@renderer/components/confirmDialog.js'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog.js'
-
+import { t } from '@renderer/utils/translate.js'
 const emit = defineEmits(['openDialog'])
 const toggleMaximize = () => {
   window.electron.ipcRenderer.send('toggle-maximize')
@@ -98,7 +98,7 @@ const menuButtonClick = async (item) => {
 }
 </script>
 <template>
-  <div class="title unselectable">FRKB - {{ $t('快速音频整理工具') }}</div>
+  <div class="title unselectable">FRKB - {{ t('快速音频整理工具') }}</div>
   <div class="titleComponent unselectable">
     <div
       style="
@@ -112,7 +112,7 @@ const menuButtonClick = async (item) => {
       <img :src="logo" style="width: 22px" />
     </div>
     <div style="z-index: 1; padding-left: 5px" v-for="item in menuArr" :key="item.name">
-      <div class="functionButton" @click.stop="menuClick(item)">{{ $t(item.name) }}</div>
+      <div class="functionButton" @click.stop="menuClick(item)">{{ t(item.name) }}</div>
       <menuComponent
         :menuArr="item.subMenu"
         v-model="item.show"

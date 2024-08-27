@@ -1,9 +1,7 @@
 import { createApp } from 'vue'
-import { createI18n } from 'vue-i18n'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import './styles/main.scss'
-import messages from '@intlify/unplugin-vue-i18n/messages'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 
 const pinia = createPinia()
@@ -30,16 +28,4 @@ if (!runtime.setting.language) {
   )
 }
 
-const i18n = createI18n({
-  legacy: false,
-  globalInjection: true,
-  locale: runtime.setting.language,
-  // locale: "zhCN",
-  messages
-})
-
-app.use(i18n)
-
 app.mount('#app')
-
-export default { i18n }

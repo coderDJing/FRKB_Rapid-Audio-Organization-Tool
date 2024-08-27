@@ -91,5 +91,15 @@
   "删除重复曲目": "Deleting duplicate tracks",
   "歌单共导入曲目：": "Total tracks imported to the playlist: ",
   "未添加声音指纹：": "Audio fingerprints not added: ",
-  "（因为已存在于声音指纹库中）": " (already exist in the sound fingerprint library)"
+  "（因为已存在于声音指纹库中）": " (already exist in the sound fingerprint library)",
+  "设置": "Setting",
+  "导出到": "Export to",
+  "导出后的文件可在其他设备中的FRKB选择\"导入曲目指纹库文件\"，进行导入合并": "The exported file can be imported and merged by selecting 'Import track fingerprint database file‌' in FRKB on other devices.",
+  "不是有效的曲目指纹库文件": "This is not a valid track fingerprint database file.",
+  "选择指纹库文件": "Select fingerprint database file",
+  "导入后新的曲目指纹库将和旧的曲目指纹库进行合并": "After importing, the new track fingerprint library will be merged with the old one.",
+  "确定删除选中的曲目吗": "Are you sure to delete the selected tracks?",
+  "（曲目将在磁盘上被删除，但声音指纹依然会保留）": "(The tracks will be deleted from the disk, but the audio fingerprints will still be retained)",
+  "该文件无法播放，是否直接删除": "This file cannot be played. Would you like to delete it directly?",
+  "（文件内容不是音频或文件已损坏）": "(The file content is not audio or the file is corrupted)"
 }

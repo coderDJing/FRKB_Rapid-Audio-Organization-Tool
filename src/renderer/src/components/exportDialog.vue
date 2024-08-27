@@ -4,8 +4,7 @@ import hotkeys from 'hotkeys-js'
 import { v4 as uuidv4 } from 'uuid'
 import utils from '../utils/utils'
 import { ref, onUnmounted, onMounted } from 'vue'
-import main from '../main'
-const { t } = main.i18n.global
+import { t } from '@renderer/utils/translate.js'
 const uuid = uuidv4()
 const props = defineProps({
   title: {
