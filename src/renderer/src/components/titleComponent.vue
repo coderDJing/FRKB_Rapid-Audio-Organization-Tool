@@ -68,60 +68,50 @@ const menuArr = ref([
 const menuClick = (item) => {
   item.show = true
 }
-
 const menuButtonClick = async (item) => {
-  const importActions = [
-    '筛选库 导入新曲目',
-    '精选库 导入新曲目',
-    '手动添加曲目指纹',
-    '导出曲目指纹库文件',
-    '导入曲目指纹库文件',
-    '导出迁移文件',
-    '导入迁移文件'
-  ]
-
-  if (!importActions.includes(item.name)) {
-    emit('openDialog', item.name)
-    return
+  if (
+    item.name === '筛选库 导入新曲目' ||
+    item.name === '精选库 导入新曲目' ||
+    item.name === '手动添加曲目指纹' ||
+    item.name === '导出曲目指纹库文件' ||
+    item.name === '导入曲目指纹库文件' ||
+    item.name === '导出迁移文件' ||
+    item.name === '导入迁移文件'
+  ) {
+    if (runtime.isProgressing) {
+      await confirm({
+        title: '导入',
+        content: ['请等待当前导入任务完成'],
+        confirmShow: false
+      })
+      return
+    }
+    if (item.name === '筛选库 导入新曲目') {
+      await scanNewSongDialog({ libraryName: '筛选库', songListUuid: '' })
+      return
+    } else if (item.name === '精选库 导入新曲目') {
+      await scanNewSongDialog({ libraryName: '精选库', songListUuid: '' })
+      return
+    }
   }
-
-  if (runtime.isProgressing) {
-    await confirm({
-      title: '导入',
-      content: ['请等待当前导入任务完成'],
-      confirmShow: false
-    })
-    return
-  }
-
-  if (item.name.startsWith('筛选库')) {
-    await scanNewSongDialog({ libraryName: '筛选库', songListUuid: '' })
-  } else if (item.name.startsWith('精选库')) {
-    await scanNewSongDialog({ libraryName: '精选库', songListUuid: '' })
-  }
+  emit('openDialog', item.name)
 }
 </script>
 <template>
   <div class="title unselectable">FRKB - {{ $t('快速音频整理工具') }}</div>
   <div class="titleComponent unselectable">
-    <div
-      style="
+    <div style="
         z-index: 1;
         padding-left: 10px;
         display: flex;
         justify-content: center;
         align-items: center;
-      "
-    >
+      ">
       <img :src="logo" style="width: 22px" />
     </div>
     <div style="z-index: 1; padding-left: 5px" v-for="item in menuArr" :key="item.name">
       <div class="functionButton" @click.stop="menuClick(item)">{{ $t(item.name) }}</div>
-      <menuComponent
-        :menuArr="item.subMenu"
-        v-model="item.show"
-        @menuButtonClick="menuButtonClick"
-      ></menuComponent>
+      <menuComponent :menuArr="item.subMenu" v-model="item.show" @menuButtonClick="menuButtonClick"></menuComponent>
     </div>
     <div class="canDrag" style="flex-grow: 1; height: 35px; z-index: 1"></div>
     <div style="display: flex; z-index: 1">
@@ -131,24 +121,11 @@ const menuButtonClick = async (item) => {
       <div class="rightIcon" @click="toggleMaximize()">
         <img :src="runtime.isWindowMaximized ? chromeRestore : chromeMaximize" :draggable="false" />
       </div>
-      <div
-        class="rightIcon closeIcon"
-        @mouseover="fillColor = '#ffffff'"
-        @mouseout="fillColor = '#9d9d9d'"
-        @click="toggleClose()"
-      >
-        <svg
-          width="15"
-          height="15"
-          viewBox="0 0 15 15"
-          xmlns="http://www.w3.org/2000/svg"
-          :fill="fillColor"
-        >
-          <path
-            fill-rule="evenodd"
-            clip-rule="evenodd"
-            d="M7.116 8l-4.558 4.558.884.884L8 8.884l4.558 4.558.884-.884L8.884 8l4.558-4.558-.884-.884L8 7.116 3.442 2.558l-.884.884L7.116 8z"
-          />
+      <div class="rightIcon closeIcon" @mouseover="fillColor = '#ffffff'" @mouseout="fillColor = '#9d9d9d'"
+        @click="toggleClose()">
+        <svg width="15" height="15" viewBox="0 0 15 15" xmlns="http://www.w3.org/2000/svg" :fill="fillColor">
+          <path fill-rule="evenodd" clip-rule="evenodd"
+            d="M7.116 8l-4.558 4.558.884.884L8 8.884l4.558 4.558.884-.884L8.884 8l4.558-4.558-.884-.884L8 7.116 3.442 2.558l-.884.884L7.116 8z" />
         </svg>
       </div>
     </div>
