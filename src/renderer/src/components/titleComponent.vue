@@ -7,6 +7,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { ref } from 'vue'
 import menuComponent from './menu.vue'
 import confirm from '@renderer/components/confirmDialog.js'
+import scanNewSongDialog from '@renderer/components/scanNewSongDialog.js'
 
 const emit = defineEmits(['openDialog'])
 const toggleMaximize = () => {
@@ -67,26 +68,37 @@ const menuArr = ref([
 const menuClick = (item) => {
   item.show = true
 }
+
 const menuButtonClick = async (item) => {
-  if (
-    item.name === '筛选库 导入新曲目' ||
-    item.name === '精选库 导入新曲目' ||
-    item.name === '手动添加曲目指纹' ||
-    item.name === '导出曲目指纹库文件' ||
-    item.name === '导入曲目指纹库文件' ||
-    item.name === '导出迁移文件' ||
-    item.name === '导入迁移文件'
-  ) {
-    if (runtime.isProgressing) {
-      await confirm({
-        title: '导入',
-        content: ['请等待当前导入任务完成'],
-        confirmShow: false
-      })
-      return
-    }
+  const importActions = [
+    '筛选库 导入新曲目',
+    '精选库 导入新曲目',
+    '手动添加曲目指纹',
+    '导出曲目指纹库文件',
+    '导入曲目指纹库文件',
+    '导出迁移文件',
+    '导入迁移文件'
+  ]
+
+  if (!importActions.includes(item.name)) {
+    emit('openDialog', item.name)
+    return
   }
-  emit('openDialog', item.name)
+
+  if (runtime.isProgressing) {
+    await confirm({
+      title: '导入',
+      content: ['请等待当前导入任务完成'],
+      confirmShow: false
+    })
+    return
+  }
+
+  if (item.name.startsWith('筛选库')) {
+    await scanNewSongDialog({ libraryName: '筛选库', songListUuid: '' })
+  } else if (item.name.startsWith('精选库')) {
+    await scanNewSongDialog({ libraryName: '精选库', songListUuid: '' })
+  }
 }
 </script>
 <template>

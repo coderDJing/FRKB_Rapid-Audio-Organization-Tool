@@ -76,6 +76,5 @@
   "目标文件夹下已存在：\"": "'",
   "\"": "'",
   "是否继续执行替换": "already exists in the target folder. Continue with replacement?",
-  "（被替换的歌单或文件夹将被删除）": "(The playlist or folder being replaced will be deleted.)",
-  "": ""
+  "（被替换的歌单或文件夹将被删除）": "(The playlist or folder being replaced will be deleted.)"
 }

@@ -8,7 +8,7 @@ import listIconBlue from '@renderer/assets/listIconBlue.png'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { v4 as uuidv4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog.js'
-import scanNewSongDialog from '@renderer/components/scanNewSongDialog.vue'
+import scanNewSongDialog from '@renderer/components/scanNewSongDialog.js'
 import exportDialog from '@renderer/components/exportDialog.js'
 import main from '../main'
 const { t } = main.i18n.global
@@ -101,7 +101,6 @@ if (dirData.dirName == '') {
     myInput.value.focus()
   })
 }
-const importSongsDialogShow = ref(false)
 
 const rightClickMenuShow = ref(false)
 const menuArr = ref(
@@ -190,7 +189,7 @@ const contextmenuEvent = async (event) => {
         })
         return
       }
-      importSongsDialogShow.value = true
+      await scanNewSongDialog({ libraryName: props.libraryName, songListUuid: props.uuid })
     } else if (result.menuName == '导出曲目') {
       if (runtime.isProgressing) {
         await confirm({
@@ -760,14 +759,6 @@ watch(
       <libraryItem :uuid="item.uuid" :libraryName="props.libraryName" />
     </template>
   </div>
-  <!-- todo 这里有个bug，如果在这个scanNewSongDialog的dom的里面的歌单选择dialog里操作这个librayItem的dom移动，会造成本librayItem的重新渲染，也就导致了下面这个scanNewSongDialog的消失 -->
-  <scanNewSongDialog
-    v-if="importSongsDialogShow"
-    @cancel="importSongsDialogShow = false"
-    :songListUuid="props.uuid"
-    :libraryName="props.libraryName"
-  >
-  </scanNewSongDialog>
 </template>
 <style lang="scss" scoped>
 .isPlaying {
