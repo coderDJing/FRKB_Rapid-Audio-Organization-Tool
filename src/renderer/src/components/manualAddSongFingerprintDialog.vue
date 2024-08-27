@@ -4,6 +4,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidv4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
+import { t } from '@renderer/utils/translate.js'
 const uuid = uuidv4()
 const runtime = useRuntimeStore()
 const emits = defineEmits(['cancel'])
@@ -94,12 +95,12 @@ onUnmounted(() => {
     >
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
-          <span style="font-weight: bold">{{ $t('手动添加曲目指纹') }}</span>
+          <span style="font-weight: bold">{{ t('手动添加曲目指纹') }}</span>
         </div>
         <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
           <div style="display: flex">
             <div class="formLabel">
-              <span>{{ $t('选择文件夹') }}：</span>
+              <span>{{ t('选择文件夹') }}：</span>
             </div>
             <div style="width: 310px">
               <div
@@ -114,7 +115,7 @@ onUnmounted(() => {
           </div>
           <div style="padding-top: 40px; font-size: 12px; display: flex">
             {{
-              $t(
+              t(
                 '仅对目标文件夹及其子文件夹下的所有音频文件进行声音指纹分析，并且仅将分析结果入库，不会改动目标文件夹下的任何文件内容和结构'
               )
             }}
@@ -127,10 +128,10 @@ onUnmounted(() => {
           style="margin-right: 10px; width: 90px; text-align: center"
           @click="confirm()"
         >
-          {{ $t('确定') }} (E)
+          {{ t('确定') }} (E)
         </div>
         <div class="button" style="width: 90px; text-align: center" @click="cancel()">
-          {{ $t('取消') }} (Esc)
+          {{ t('取消') }} (Esc)
         </div>
       </div>
     </div>

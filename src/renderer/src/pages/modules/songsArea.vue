@@ -9,6 +9,7 @@ import confirm from '@renderer/components/confirmDialog.js'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import rightClickMenu from '../../components/rightClickMenu.js'
 import exportDialog from '../../components/exportDialog.js'
+import { t } from '@renderer/utils/translate.js'
 let columnData = ref([])
 if (localStorage.getItem('songColumnData')) {
   columnData.value = JSON.parse(localStorage.getItem('songColumnData'))
@@ -242,7 +243,7 @@ const songContextmenu = async (event, song) => {
     if (result.menuName === '删除曲目') {
       let res = await confirm({
         title: '删除',
-        content: ['确定删除选中的曲目吗', '（曲目将在磁盘上被删除，但声音指纹依然会保留）']
+        content: [t('确定删除选中的曲目吗'), t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')]
       })
       if (res === 'confirm') {
         window.electron.ipcRenderer.send(
@@ -435,7 +436,7 @@ onMounted(() => {
         "
       >
         <div style="flex-grow: 1; overflow: hidden">
-          <div style="width: 0; white-space: nowrap">{{ $t(col.columnName) }}</div>
+          <div style="width: 0; white-space: nowrap">{{ t(col.columnName) }}</div>
         </div>
         <div
           v-if="col.key !== 'coverUrl'"

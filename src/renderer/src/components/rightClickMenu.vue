@@ -4,8 +4,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidv4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
-import main from '../main'
-const { t } = main.i18n.global
+import { t } from '@renderer/utils/translate.js'
 const uuid = uuidv4()
 const runtime = useRuntimeStore()
 runtime.activeMenuUUID = uuid

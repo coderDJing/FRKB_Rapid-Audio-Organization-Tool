@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
+import { t } from '@renderer/utils/translate.js'
 const uuid = uuidv4()
 const emits = defineEmits(['cancel'])
 
@@ -88,11 +89,13 @@ onUnmounted(() => {
     >
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
-          <span style="font-weight: bold">导出曲目指纹库文件</span>
+          <span style="font-weight: bold">{{ t('导出曲目指纹库文件') }}</span>
         </div>
         <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
           <div style="display: flex">
-            <div class="formLabel"><span>导出到：</span></div>
+            <div class="formLabel">
+              <span>{{ t('导出到') }}：</span>
+            </div>
             <div style="width: 340px">
               <div
                 class="chooseDirDiv flashing-border"
@@ -105,7 +108,7 @@ onUnmounted(() => {
             </div>
           </div>
           <div style="padding-top: 40px; font-size: 12px; display: flex">
-            导出后的文件可在其他设备中的FRKB选择"导入曲目指纹库文件"，进行导入合并
+            {{ t('导出后的文件可在其他设备中的FRKB选择"导入曲目指纹库文件"，进行导入合并') }}
           </div>
         </div>
       </div>
@@ -115,10 +118,10 @@ onUnmounted(() => {
           style="margin-right: 10px; width: 90px; text-align: center"
           @click="confirm()"
         >
-          {{ $t('确定') }} (E)
+          {{ t('确定') }} (E)
         </div>
         <div class="button" style="width: 90px; text-align: center" @click="cancel()">
-          {{ $t('取消') }} (Esc)
+          {{ t('取消') }} (Esc)
         </div>
       </div>
     </div>

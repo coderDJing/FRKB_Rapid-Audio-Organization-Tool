@@ -9,8 +9,7 @@ import confirm from '@renderer/components/confirmDialog.js'
 import hotkeys from 'hotkeys-js'
 import listIcon from '@renderer/assets/listIcon.png'
 import utils from '../utils/utils'
-import main from '../main'
-const { t } = main.i18n.global
+import { t } from '@renderer/utils/translate.js'
 const uuid = uuidv4()
 const props = defineProps({
   libraryName: {
@@ -145,9 +144,9 @@ const drop = async (e) => {
       let res = await confirm({
         title: '移动',
         content: [
-          '目标文件夹下已存在："' + runtime.dragItemData.dirName + '"',
-          '是否继续执行替换',
-          '（被替换的歌单或文件夹将被删除）'
+          t('目标文件夹下已存在："') + runtime.dragItemData.dirName + t('"'),
+          t('是否继续执行替换'),
+          t('（被替换的歌单或文件夹将被删除）')
         ]
       })
       if (res == 'confirm') {

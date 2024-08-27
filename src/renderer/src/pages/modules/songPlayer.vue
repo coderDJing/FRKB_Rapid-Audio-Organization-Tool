@@ -9,6 +9,8 @@ import confirm from '@renderer/components/confirmDialog.js'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import exportDialog from '@renderer/components/exportDialog.js'
+import { t } from '@renderer/utils/translate.js'
+
 const runtime = useRuntimeStore()
 const waveform = ref(null)
 let wavesurferInstance = null
@@ -79,7 +81,7 @@ onMounted(() => {
       let filePath = runtime.playingData.playingSong.filePath
       let res = await confirm({
         title: '错误',
-        content: ['该文件无法播放，是否直接删除', '（文件内容不是音频或文件已损坏）']
+        content: [t('该文件无法播放，是否直接删除'), t('（文件内容不是音频或文件已损坏）')]
       })
       if (res !== 'cancel') {
         window.electron.ipcRenderer.send('delSongs', [filePath])
@@ -260,7 +262,7 @@ let showDelConfirm = false
 const delSong = async () => {
   let res = await confirm({
     title: '删除',
-    content: ['确定删除选中的曲目吗', '（曲目将在磁盘上被删除，但声音指纹依然会保留）']
+    content: [t('确定删除选中的曲目吗'), t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')]
   })
   showDelConfirm = false
   if (res === 'confirm') {

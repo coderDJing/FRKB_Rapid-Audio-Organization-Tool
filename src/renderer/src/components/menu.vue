@@ -2,7 +2,7 @@
 import { watch } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidv4 } from 'uuid'
-
+import { t } from '@renderer/utils/translate.js'
 const uuid = uuidv4()
 const runtime = useRuntimeStore()
 
@@ -47,7 +47,7 @@ const menuButtonClick = (item) => {
         @click="menuButtonClick(button)"
         @contextmenu="menuButtonClick(button)"
       >
-        <span>{{ $t(button.name) }}</span>
+        <span>{{ t(button.name) }}</span>
         <span>{{ button.shortcutKey }}</span>
       </div>
     </div>

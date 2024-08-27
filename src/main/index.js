@@ -764,6 +764,10 @@ ipcMain.on('delSongs', async (e, songFilePaths) => {
   await Promise.all(promises)
 })
 
+ipcMain.handle('getLanguageDict', () => {
+  return languageDict
+})
+
 ipcMain.handle('scanSongList', async (e, songListPath, songListUUID) => {
   let scanPath = join(exeDir, songListPath)
   const mm = await import('music-metadata')
