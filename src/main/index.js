@@ -520,7 +520,6 @@ function createWindow() {
           t('（通常由于文件内容损坏或传输过程发生错误）')
       )
     }
-    //todo 翻译
     contentArr.push(t('歌单共导入曲目：') + importSongsCount)
     if (formData.isComparisonSongFingerprint) {
       contentArr.push(t('比对声音指纹去除重复曲目：') + delList.length)
