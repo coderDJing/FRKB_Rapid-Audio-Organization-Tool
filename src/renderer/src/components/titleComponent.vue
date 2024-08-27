@@ -100,18 +100,24 @@ const menuButtonClick = async (item) => {
 <template>
   <div class="title unselectable">FRKB - {{ $t('快速音频整理工具') }}</div>
   <div class="titleComponent unselectable">
-    <div style="
+    <div
+      style="
         z-index: 1;
         padding-left: 10px;
         display: flex;
         justify-content: center;
         align-items: center;
-      ">
+      "
+    >
       <img :src="logo" style="width: 22px" />
     </div>
     <div style="z-index: 1; padding-left: 5px" v-for="item in menuArr" :key="item.name">
       <div class="functionButton" @click.stop="menuClick(item)">{{ $t(item.name) }}</div>
-      <menuComponent :menuArr="item.subMenu" v-model="item.show" @menuButtonClick="menuButtonClick"></menuComponent>
+      <menuComponent
+        :menuArr="item.subMenu"
+        v-model="item.show"
+        @menuButtonClick="menuButtonClick"
+      ></menuComponent>
     </div>
     <div class="canDrag" style="flex-grow: 1; height: 35px; z-index: 1"></div>
     <div style="display: flex; z-index: 1">
@@ -121,11 +127,24 @@ const menuButtonClick = async (item) => {
       <div class="rightIcon" @click="toggleMaximize()">
         <img :src="runtime.isWindowMaximized ? chromeRestore : chromeMaximize" :draggable="false" />
       </div>
-      <div class="rightIcon closeIcon" @mouseover="fillColor = '#ffffff'" @mouseout="fillColor = '#9d9d9d'"
-        @click="toggleClose()">
-        <svg width="15" height="15" viewBox="0 0 15 15" xmlns="http://www.w3.org/2000/svg" :fill="fillColor">
-          <path fill-rule="evenodd" clip-rule="evenodd"
-            d="M7.116 8l-4.558 4.558.884.884L8 8.884l4.558 4.558.884-.884L8.884 8l4.558-4.558-.884-.884L8 7.116 3.442 2.558l-.884.884L7.116 8z" />
+      <div
+        class="rightIcon closeIcon"
+        @mouseover="fillColor = '#ffffff'"
+        @mouseout="fillColor = '#9d9d9d'"
+        @click="toggleClose()"
+      >
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 15 15"
+          xmlns="http://www.w3.org/2000/svg"
+          :fill="fillColor"
+        >
+          <path
+            fill-rule="evenodd"
+            clip-rule="evenodd"
+            d="M7.116 8l-4.558 4.558.884.884L8 8.884l4.558 4.558.884-.884L8.884 8l4.558-4.558-.884-.884L8 7.116 3.442 2.558l-.884.884L7.116 8z"
+          />
         </svg>
       </div>
     </div>
