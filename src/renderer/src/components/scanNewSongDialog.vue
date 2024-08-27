@@ -12,12 +12,18 @@ import main from '../main'
 const { t } = main.i18n.global
 const uuid = uuidv4()
 const props = defineProps({
-  songListUuid: {
-    type: String
-  },
   libraryName: {
     type: String,
     default: '筛选库'
+  },
+  songListUuid: {
+    type: String
+  },
+  confirmCallback: {
+    type: Function
+  },
+  cancelCallback: {
+    type: Function
   }
 })
 
@@ -73,7 +79,9 @@ const folderPathDisplay = computed(() => {
 
 const songListSelectedDisplay = computed(() => {
   let arr = songListSelected.value.split('\\')
-  arr[0] = t(arr[0])
+  if (arr[0]) {
+    arr[0] = t(arr[0])
+  }
   return arr.join('\\')
 })
 
@@ -145,11 +153,11 @@ const confirm = () => {
     importingSongListUUID
   )
   localStorage.setItem('scanNewSongDialog', JSON.stringify(settingData.value))
-  cancel()
+  props.confirmCallback()
 }
 const cancel = () => {
   localStorage.setItem('scanNewSongDialog', JSON.stringify(settingData.value))
-  emits('cancel')
+  props.cancelCallback()
 }
 let hint1hoverTimer = null
 let hint1Show = ref(false)
@@ -201,12 +209,12 @@ onUnmounted(() => {
     >
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
-          <span style="font-weight: bold">{{ $t(props.libraryName + ' 导入新曲目') }}</span>
+          <span style="font-weight: bold">{{ t(props.libraryName + ' 导入新曲目') }}</span>
         </div>
         <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
           <div style="display: flex">
             <div class="formLabel">
-              <span>{{ $t('选择文件夹') }}：</span>
+              <span>{{ t('选择文件夹') }}：</span>
             </div>
             <div style="width: 300px">
               <div
@@ -221,7 +229,7 @@ onUnmounted(() => {
           </div>
           <div style="margin-top: 10px; display: flex">
             <div class="formLabel">
-              <span>{{ $t('选择歌单') }}：</span>
+              <span>{{ t('选择歌单') }}：</span>
             </div>
 
             <div style="width: 300px">
@@ -237,7 +245,7 @@ onUnmounted(() => {
           </div>
           <div style="margin-top: 30px; display: flex">
             <div class="formLabel" style="width: 200px; text-align: right">
-              <span>{{ $t('导入后删除原文件') }}：</span>
+              <span>{{ t('导入后删除原文件') }}：</span>
             </div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
               <singleCheckbox v-model="settingData.isDeleteSourceFile" />
@@ -245,7 +253,7 @@ onUnmounted(() => {
           </div>
           <div style="margin-top: 10px; display: flex">
             <div class="formLabel" style="width: 200px; text-align: right">
-              <span>{{ $t('比对声音指纹去重') }}：</span>
+              <span>{{ t('比对声音指纹去重') }}：</span>
             </div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
               <singleCheckbox v-model="settingData.isComparisonSongFingerprint" />
@@ -272,7 +280,7 @@ onUnmounted(() => {
                   "
                 >
                   {{
-                    $t(
+                    t(
                       '将对所有导入过并加入声音指纹库的曲目进行比对，重复的曲目将不会被导入，哪怕它曾经已被删除'
                     )
                   }}
@@ -282,7 +290,7 @@ onUnmounted(() => {
           </div>
           <div style="margin-top: 10px; display: flex">
             <div class="formLabel" style="width: 200px; text-align: right">
-              <span>{{ $t('加入声音指纹库') }}：</span>
+              <span>{{ t('加入声音指纹库') }}：</span>
             </div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
               <singleCheckbox v-model="settingData.isPushSongFingerprintLibrary" />
@@ -309,7 +317,7 @@ onUnmounted(() => {
                   "
                 >
                   {{
-                    $t(
+                    t(
                       '将导入的曲目根据曲目内容本身进行声音指纹分析，并将分析结果永久入库，供去重比对使用，哪怕曲目本身已经被删除分析结果仍会存在'
                     )
                   }}
@@ -326,10 +334,10 @@ onUnmounted(() => {
           style="margin-right: 10px; width: 90px; text-align: center"
           @click="confirm()"
         >
-          {{ $t('确定') }} (E)
+          {{ t('确定') }} (E)
         </div>
         <div class="button" @click="cancel()" style="width: 90px; text-align: center">
-          {{ $t('取消') }} (Esc)
+          {{ t('取消') }} (Esc)
         </div>
       </div>
     </div>
