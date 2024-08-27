@@ -143,8 +143,8 @@ onUnmounted(() => {
 }
 
 .formLabel {
-  width: 70px;
-  min-width: 70px;
+  width: 80px;
+  min-width: 80px;
   text-align: left;
   font-size: 14px;
 }
