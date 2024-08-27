@@ -11,6 +11,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import shortcutIcon from '@renderer/assets/shortcutIcon.png'
+import { t } from '@renderer/utils/translate.js'
 const uuid = uuidv4()
 const runtime = useRuntimeStore()
 const playing = ref(true)
@@ -168,13 +169,13 @@ const exportTrack = () => {
     <div class="moreMenu unselectable" v-if="moreMenuShow">
       <div style="padding: 5px 5px; border-bottom: 1px solid #454545">
         <div class="menuButton" @click="exportTrack()">
-          <span>{{ $t('导出曲目') }}</span>
+          <span>{{ t('导出曲目') }}</span>
         </div>
       </div>
       <div style="padding: 5px 5px; border-bottom: 1px solid #454545">
         <div class="menuButton" @click="moveToListLibrary()">
           <div>
-            <span>{{ $t('移动到筛选库') }}</span>
+            <span>{{ t('移动到筛选库') }}</span>
           </div>
           <div style="display: flex; align-items: center">
             <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" />
@@ -183,7 +184,7 @@ const exportTrack = () => {
         </div>
         <div class="menuButton" @click="moveToLikeLibrary()">
           <div>
-            <span>{{ $t('移动到精选库') }}</span>
+            <span>{{ t('移动到精选库') }}</span>
           </div>
           <div style="display: flex; align-items: center">
             <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>E</span>
@@ -193,7 +194,7 @@ const exportTrack = () => {
       <div style="padding: 5px 5px">
         <div class="menuButton" @click="delSong()">
           <div>
-            <span>{{ $t('删除曲目') }} </span>
+            <span>{{ t('删除曲目') }} </span>
           </div>
           <div style="display: flex; align-items: center">
             <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>F</span>

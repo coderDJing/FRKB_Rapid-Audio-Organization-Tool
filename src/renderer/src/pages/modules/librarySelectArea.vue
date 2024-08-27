@@ -8,6 +8,7 @@ import settingWhite from '@renderer/assets/setting-white.png'
 import { ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import settingDialog from '@renderer/components/settingDialog.vue'
+import { t } from '@renderer/utils/translate.js'
 const emit = defineEmits(['librarySelectedChange'])
 const iconArr = ref([
   {
@@ -109,7 +110,7 @@ const libraryHandleClick = (item) => {
           <img :src="item.src" draggable="false" />
           <transition name="fade">
             <div class="bubbleBox" v-if="item.showAlt" style="position: absolute; left: 50px">
-              {{ $t(item.name) }}
+              {{ t(item.name) }}
             </div>
           </transition>
         </div>
@@ -140,7 +141,7 @@ const libraryHandleClick = (item) => {
           <img :src="item.src" draggable="false" />
           <transition name="fade">
             <div class="bubbleBox" v-if="item.showAlt" style="position: absolute; left: 50px">
-              {{ item.name }}
+              {{ t(item.name) }}
             </div>
           </transition>
         </div>

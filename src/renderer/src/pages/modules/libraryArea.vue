@@ -6,6 +6,7 @@ import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { v4 as uuidv4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog.js'
 import rightClickMenu from '../../components/rightClickMenu.js'
+import { t } from '@renderer/utils/translate.js'
 const runtime = useRuntimeStore()
 const props = defineProps({
   uuid: {
@@ -109,9 +110,9 @@ const drop = async (e) => {
         let res = await confirm({
           title: '移动',
           content: [
-            '目标文件夹下已存在："' + runtime.dragItemData.dirName + '"',
-            '是否继续执行替换',
-            '（被替换的歌单或文件夹将被删除）'
+            t('目标文件夹下已存在："') + runtime.dragItemData.dirName + t('"'),
+            t('是否继续执行替换'),
+            t('（被替换的歌单或文件夹将被删除）')
           ]
         })
         if (res == 'confirm') {
@@ -176,7 +177,7 @@ const drop = async (e) => {
 <template>
   <div class="content" @contextmenu.stop="contextmenuEvent">
     <div class="unselectable libraryTitle">
-      <span>{{ $t(libraryData.dirName) }}</span>
+      <span>{{ t(libraryData.dirName) }}</span>
       <!-- todo还有个导出整个库的按钮 -->
       <div style="display: flex; justify-content: center; align-items: center">
         <div
@@ -206,7 +207,7 @@ const drop = async (e) => {
             v-if="collapseButtonHintShow"
             style="position: absolute; top: 70px"
           >
-            {{ $t('折叠文件夹') }}
+            {{ t('折叠文件夹') }}
           </div>
         </transition>
       </div>
@@ -233,7 +234,7 @@ const drop = async (e) => {
       v-else
       style="height: 100%; width: 100%; display: flex; justify-content: center; align-items: center"
     >
-      <span style="font-size: 12px; color: #8c8c8c">{{ $t('右键新建歌单') }}</span>
+      <span style="font-size: 12px; color: #8c8c8c">{{ t('右键新建歌单') }}</span>
     </div>
   </div>
 </template>

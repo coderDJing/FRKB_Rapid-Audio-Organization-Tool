@@ -10,8 +10,7 @@ import { v4 as uuidv4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog.js'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog.js'
 import exportDialog from '@renderer/components/exportDialog.js'
-import main from '../main'
-const { t } = main.i18n.global
+import { t } from '@renderer/utils/translate.js'
 const props = defineProps({
   uuid: {
     type: String,
