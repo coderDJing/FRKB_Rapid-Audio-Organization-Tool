@@ -76,5 +76,20 @@
   "目标文件夹下已存在：\"": "'",
   "\"": "'",
   "是否继续执行替换": "already exists in the target folder. Continue with replacement?",
-  "（被替换的歌单或文件夹将被删除）": "(The playlist or folder being replaced will be deleted.)"
+  "（被替换的歌单或文件夹将被删除）": "(The playlist or folder being replaced will be deleted.)",
+  "扫描文件中": "Scanning files",
+  "分析声音指纹中": "Analyzing audio fingerprints",
+  "文件夹下共扫描曲目：": "Total tracks scanned under the folder: ",
+  "比对声音指纹去除重复曲目：": "Removed duplicate tracks by comparing audio fingerprints: ",
+  "声音指纹库新增：": "New additions to the audio fingerprint library: ",
+  "声音指纹库现有：": "Current count in the audio fingerprint library: ",
+  "尝试分析失败：": "Failed analysis attempts: ",
+  "（通常由于文件内容损坏或传输过程发生错误）": " (usually due to corrupted file content or errors during transmission)",
+  "未扫描到音频文件": "Audio files not scanned.",
+  "移动曲目": "Moving tracks",
+  "复制曲目": "Copying tracks",
+  "删除重复曲目": "Deleting duplicate tracks",
+  "歌单共导入曲目：": "Total tracks imported to the playlist: ",
+  "未添加声音指纹：": "Audio fingerprints not added: ",
+  "（因为已存在于声音指纹库中）": " (already exist in the sound fingerprint library)"
 }
