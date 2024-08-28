@@ -1,8 +1,4 @@
 {
   "language": "",
-  "audioExt": [
-    ".mp3",
-    ".wav",
-    ".flac"
-  ]
+  "audioExt": [".mp3", ".wav", ".flac"]
 }
