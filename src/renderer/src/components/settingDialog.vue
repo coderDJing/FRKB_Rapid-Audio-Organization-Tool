@@ -1,10 +1,11 @@
 <script setup>
-import { onUnmounted, onMounted } from 'vue'
+import { onUnmounted, onMounted, ref } from 'vue'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidv4 } from 'uuid'
 import utils from '../utils/utils'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate.js'
+import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 const runtime = useRuntimeStore()
 const uuid = uuidv4()
 const emits = defineEmits(['cancel'])
@@ -30,7 +31,24 @@ const languageChanged = async () => {
   )
 }
 
-//todo
+const audioExt = ref({
+  mp3: runtime.setting.audioExt.indexOf('.mp3') != -1,
+  wav: runtime.setting.audioExt.indexOf('.wav') != -1,
+  flac: runtime.setting.audioExt.indexOf('.flac') != -1
+})
+const extChange = async () => {
+  let audioExtArr = []
+  for (let key in audioExt.value) {
+    if (audioExt.value[key]) {
+      audioExtArr.push('.' + key)
+    }
+  }
+  runtime.setting.audioExt = audioExtArr
+  await window.electron.ipcRenderer.invoke(
+    'setSetting',
+    JSON.parse(JSON.stringify(runtime.setting))
+  )
+}
 </script>
 <template>
   <div class="dialog unselectable">
@@ -46,7 +64,7 @@ const languageChanged = async () => {
     >
       <div style="height: 100%; display: flex; flex-direction: column">
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
-          <span style="font-weight: bold">设置</span>
+          <span style="font-weight: bold">{{ t('设置') }}</span>
         </div>
         <div style="padding: 20px; font-size: 14px; flex-grow: 1; overflow-y: scroll">
           <div>{{ t('语言') }}：</div>
@@ -55,6 +73,15 @@ const languageChanged = async () => {
               <option value="zhCN">简体中文</option>
               <option value="enUS">English</option>
             </select>
+          </div>
+          <div style="margin-top: 20px">{{ t('扫描音频格式') }}：</div>
+          <div style="margin-top: 10px; display: flex">
+            <span style="margin-right: 10px">.mp3</span>
+            <singleCheckbox v-model="audioExt.mp3" @change="extChange()" />
+            <span style="margin-right: 10px; margin-left: 10px">.wav</span>
+            <singleCheckbox v-model="audioExt.wav" @change="extChange()" />
+            <span style="margin-right: 10px; margin-left: 10px">.flac</span>
+            <singleCheckbox v-model="audioExt.flac" @change="extChange()" />
           </div>
           <!-- todo -->
         </div>
