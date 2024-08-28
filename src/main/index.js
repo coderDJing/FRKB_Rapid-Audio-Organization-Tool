@@ -103,7 +103,10 @@ function createWindow() {
       sandbox: false
     }
   })
-  mainWindow.openDevTools() //todo del
+  if (!app.isPackaged) {
+    mainWindow.openDevTools()
+  }
+
   mainWindow.on('ready-to-show', () => {
     if (layoutConfig.isMaxMainWin) {
       mainWindow.maximize()
@@ -730,6 +733,11 @@ function createWindow() {
     mainWindow.webContents.send('mainWindowBlur')
   })
 }
+
+ipcMain.handle('clearTracksFingerprintLibrary', (e) => {
+  songFingerprintList = []
+  fs.outputJSON(join(exeDir, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
+})
 
 ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
   const srcFullPath = join(exeDir, src)

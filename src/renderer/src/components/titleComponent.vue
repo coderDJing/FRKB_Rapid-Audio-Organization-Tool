@@ -36,7 +36,7 @@ window.electron.ipcRenderer.on('mainWin-max', (event, bool) => {
 })
 
 const fillColor = ref('#9d9d9d')
-//todo 兑现Alt+F H打开菜单，并定位在第一个 并且上下方向键选菜单 左右方向键切换菜单 回车选择菜单
+//todo 兑现Alt+F H打开菜单，并定位在第一个 并且上下方向键选菜单 左右方向键切换菜单 E选择菜单
 //todo 展开菜单后 hover可以打开其他菜单
 const menuArr = ref([
   {
@@ -55,8 +55,8 @@ const menuArr = ref([
     name: '迁移(G)',
     show: false,
     subMenu: [
-      [{ name: '导出曲目指纹库文件' }, { name: '导入曲目指纹库文件' }],
-      [{ name: '导出迁移文件' }, { name: '导入迁移文件' }]
+      [{ name: '导出曲目指纹库文件' }, { name: '导入曲目指纹库文件' }]
+      // [{ name: '导出迁移文件' }, { name: '导入迁移文件' }]
     ]
   },
   {

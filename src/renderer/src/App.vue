@@ -2,7 +2,6 @@
 import homePage from './pages/homePage.vue'
 import titleComponent from './components/titleComponent.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import scanNewSongDialog from './components/scanNewSongDialog.vue'
 import bottomInfoArea from './pages/modules/bottomInfoArea.vue'
 import manualAddSongFingerprintDialog from './components/manualAddSongFingerprintDialog.vue'
 import { onMounted, ref } from 'vue'
@@ -109,8 +108,6 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (event) => {
     v-if="activeDialog == '导入曲目指纹库文件'"
     @cancel="activeDialog = ''"
   />
-  <!-- todo 导出迁移文件 -->
-  <!-- todo 导入迁移文件 -->
   <!-- todo 使用说明 -->
   <!-- todo 关于 -->
 </template>

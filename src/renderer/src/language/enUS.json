@@ -102,5 +102,10 @@
   "（曲目将在磁盘上被删除，但声音指纹依然会保留）": "(The tracks will be deleted from the disk, but the audio fingerprints will still be retained)",
   "该文件无法播放，是否直接删除": "This file cannot be played. Would you like to delete it directly?",
   "（文件内容不是音频或文件已损坏）": "(The file content is not audio or the file is corrupted)",
-  "扫描音频格式": "Scan Audio Formats"
+  "扫描音频格式": "Scan Audio Formats",
+  "清除曲目指纹库": "Clear track fingerprint library",
+  "清除": "Clear",
+  "警告": "Warning",
+  "确定要清除当前曲目指纹库吗？": "Are you sure you want to clear the current track fingerprint database?",
+  "清除完成": "Clear completed"
 }
