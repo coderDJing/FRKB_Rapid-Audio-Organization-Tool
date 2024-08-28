@@ -110,7 +110,7 @@ onUnmounted(() => {
             <div class="formLabel">
               <span>{{ t('选择指纹库文件') }}：</span>
             </div>
-            <div style="width: 200px">
+            <div style="flex-grow: 1">
               <div
                 class="chooseDirDiv flashing-border"
                 @click="clickChooseDir()"
@@ -157,8 +157,8 @@ onUnmounted(() => {
 }
 
 .formLabel {
-  width: 205px;
-  min-width: 205px;
+  //width: 205px;
+  //min-width: 205px;
   text-align: left;
   font-size: 14px;
 }

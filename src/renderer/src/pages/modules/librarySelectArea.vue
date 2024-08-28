@@ -45,8 +45,6 @@ const settingDialogShow = ref(false)
 const clickButtomIcon = (item) => {
   if (item.name == '设置') {
     settingDialogShow.value = true
-    //todo 音频文件的格式选择
-    //todo 语言的选择
     //todo 清除曲目指纹库
     return
   }
