@@ -101,5 +101,6 @@
   "确定删除选中的曲目吗": "Are you sure to delete the selected tracks?",
   "（曲目将在磁盘上被删除，但声音指纹依然会保留）": "(The tracks will be deleted from the disk, but the audio fingerprints will still be retained)",
   "该文件无法播放，是否直接删除": "This file cannot be played. Would you like to delete it directly?",
-  "（文件内容不是音频或文件已损坏）": "(The file content is not audio or the file is corrupted)"
+  "（文件内容不是音频或文件已损坏）": "(The file content is not audio or the file is corrupted)",
+  "扫描音频格式": "Scan Audio Formats"
 }

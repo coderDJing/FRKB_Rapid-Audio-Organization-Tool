@@ -200,7 +200,7 @@ function createWindow() {
     let songFileUrls = []
     const promises = []
     for (let item of folderPath) {
-      promises.push(collectFilesWithExtensions(item, ['.mp3', '.wav', '.flac']))
+      promises.push(collectFilesWithExtensions(item, settingConfig.audioExt))
     }
     let res = await Promise.all(promises)
     songFileUrls = res.flat(1)
@@ -225,7 +225,7 @@ function createWindow() {
     }
     let { result, errorResult } = await executeScript(
       analyseSongFingerprintPyScriptUrl,
-      [folderPath.join('|'), ['.mp3', '.wav', '.flac'].join(',')],
+      [folderPath.join('|'), settingConfig.audioExt.join(',')],
       endHandle
     )
     mainWindow.webContents.send(
@@ -270,7 +270,7 @@ function createWindow() {
     'exportSongListToDir',
     async (e, folderPathVal, deleteSongsAfterExport, dirPath) => {
       let scanPath = join(exeDir, dirPath)
-      let songFileUrls = await collectFilesWithExtensions(scanPath, ['.mp3', '.wav', '.flac'])
+      let songFileUrls = await collectFilesWithExtensions(scanPath, settingConfig.audioExt)
       let folderName = dirPath.split('/')[dirPath.split('/').length - 1]
       async function findUniqueFolder(inputFolderPath) {
         let parts = path.parse(inputFolderPath)
@@ -354,7 +354,7 @@ function createWindow() {
           dirArr.push(p)
         } else if (stats.isFile()) {
           const ext = path.extname(p).toLowerCase()
-          if (['.mp3', '.wav', '.flac'].includes(ext)) {
+          if (settingConfig.audioExt.includes(ext)) {
             songFileUrls.push(p)
           }
         }
@@ -365,7 +365,7 @@ function createWindow() {
     let audioFiles = []
     const promises = []
     for (let item of dirArr) {
-      promises.push(collectFilesWithExtensions(item, ['.mp3', '.wav', '.flac']))
+      promises.push(collectFilesWithExtensions(item, settingConfig.audioExt))
     }
     let res = await Promise.all(promises)
     audioFiles = res.flat(1)
@@ -424,7 +424,7 @@ function createWindow() {
       }
       let { result, errorResult } = await executeScript(
         analyseSongFingerprintPyScriptUrl,
-        [songFileUrls.join('|'), ['.mp3', '.wav', '.flac'].join(',')],
+        [songFileUrls.join('|'), settingConfig.audioExt.join(',')],
         endHandle
       )
       mainWindow.webContents.send(
@@ -549,7 +549,7 @@ function createWindow() {
     let songFileUrls = []
     const promises = []
     for (let item of formData.folderPath) {
-      promises.push(collectFilesWithExtensions(item, ['.mp3', '.wav', '.flac']))
+      promises.push(collectFilesWithExtensions(item, settingConfig.audioExt))
     }
     let res = await Promise.all(promises)
     songFileUrls = res.flat(1)
@@ -607,7 +607,7 @@ function createWindow() {
       }
       let { result, errorResult } = await executeScript(
         analyseSongFingerprintPyScriptUrl,
-        [formData.folderPath.join('|'), ['.mp3', '.wav', '.flac'].join(',')],
+        [formData.folderPath.join('|'), settingConfig.audioExt.join(',')],
         endHandle
       )
       mainWindow.webContents.send(
@@ -772,7 +772,7 @@ ipcMain.handle('scanSongList', async (e, songListPath, songListUUID) => {
   let scanPath = join(exeDir, songListPath)
   const mm = await import('music-metadata')
   let songInfoArr = []
-  let songFileUrls = await collectFilesWithExtensions(scanPath, ['.mp3', '.wav', '.flac'])
+  let songFileUrls = await collectFilesWithExtensions(scanPath, settingConfig.audioExt)
 
   function convertSecondsToMinutesSeconds(seconds) {
     const minutes = Math.floor(seconds / 60)
