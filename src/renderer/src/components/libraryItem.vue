@@ -305,7 +305,8 @@ const dragstart = (e) => {
 const dragApproach = ref('')
 const dragover = (e) => {
   if (runtime.dragItemData === null) {
-    e.dataTransfer.dropEffect = 'none'
+    //todo 外部拖入文件到歌单list item 样式
+    e.dataTransfer.dropEffect = 'move'
     return
   }
   e.dataTransfer.dropEffect = 'move'
@@ -334,7 +335,8 @@ const dragover = (e) => {
 }
 const dragenter = (e) => {
   if (runtime.dragItemData === null) {
-    e.dataTransfer.dropEffect = 'none'
+    //todo 外部拖入文件到歌单list item 样式
+    e.dataTransfer.dropEffect = 'move'
     return
   }
   e.dataTransfer.dropEffect = 'move'
@@ -362,7 +364,8 @@ const dragenter = (e) => {
 }
 const dragleave = (e) => {
   if (runtime.dragItemData === null) {
-    e.dataTransfer.dropEffect = 'none'
+    //todo 外部拖入文件到歌单list item 样式
+    e.dataTransfer.dropEffect = 'move'
     return
   }
   dragApproach.value = ''
@@ -380,8 +383,9 @@ const approachCenterEnd = () => {
 }
 const drop = async (e) => {
   if (runtime.dragItemData === null) {
-    // todo 直接拖拽文件进歌单item
-    e.dataTransfer.dropEffect = 'none'
+    //todo 外部拖入文件到歌单list item
+    debugger
+    e.dataTransfer.dropEffect = 'move'
     return
   }
   try {
