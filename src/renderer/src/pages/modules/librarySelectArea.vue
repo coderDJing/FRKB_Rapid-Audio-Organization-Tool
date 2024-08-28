@@ -45,7 +45,6 @@ const settingDialogShow = ref(false)
 const clickButtomIcon = (item) => {
   if (item.name == '设置') {
     settingDialogShow.value = true
-    //todo 清除曲目指纹库
     return
   }
 }

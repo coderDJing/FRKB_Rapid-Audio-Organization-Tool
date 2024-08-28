@@ -6,6 +6,7 @@ import utils from '../utils/utils'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate.js'
 import singleCheckbox from '@renderer/components/singleCheckbox.vue'
+import confirm from '@renderer/components/confirmDialog.js'
 const runtime = useRuntimeStore()
 const uuid = uuidv4()
 const emits = defineEmits(['cancel'])
@@ -36,7 +37,19 @@ const audioExt = ref({
   wav: runtime.setting.audioExt.indexOf('.wav') != -1,
   flac: runtime.setting.audioExt.indexOf('.flac') != -1
 })
+
+let audioExtOld = JSON.parse(JSON.stringify(audioExt.value))
 const extChange = async () => {
+  if (runtime.isProgressing) {
+    audioExt.value = { ...audioExtOld }
+    await confirm({
+      title: '设置',
+      content: [t('请等待当前任务执行结束')],
+      confirmShow: false
+    })
+    return
+  }
+  audioExtOld = JSON.parse(JSON.stringify(audioExt.value))
   let audioExtArr = []
   for (let key in audioExt.value) {
     if (audioExt.value[key]) {
@@ -48,6 +61,28 @@ const extChange = async () => {
     'setSetting',
     JSON.parse(JSON.stringify(runtime.setting))
   )
+}
+const clearTracksFingerprintLibrary = async () => {
+  if (runtime.isProgressing) {
+    await confirm({
+      title: '设置',
+      content: [t('请等待当前任务执行结束')],
+      confirmShow: false
+    })
+    return
+  }
+  let res = await confirm({
+    title: '警告',
+    content: [t('确定要清除当前曲目指纹库吗？')]
+  })
+  if (res === 'confirm') {
+    await window.electron.ipcRenderer.invoke('clearTracksFingerprintLibrary')
+    await confirm({
+      title: '设置',
+      content: [t('清除完成')],
+      confirmShow: false
+    })
+  }
 }
 </script>
 <template>
@@ -83,7 +118,16 @@ const extChange = async () => {
             <span style="margin-right: 10px; margin-left: 10px">.flac</span>
             <singleCheckbox v-model="audioExt.flac" @change="extChange()" />
           </div>
-          <!-- todo -->
+          <div style="margin-top: 20px">{{ t('清除曲目指纹库') }}：</div>
+          <div style="margin-top: 10px">
+            <div
+              class="dangerButton"
+              style="width: 90px; text-align: center"
+              @click="clearTracksFingerprintLibrary()"
+            >
+              {{ t('清除') }}
+            </div>
+          </div>
         </div>
         <div style="display: flex; justify-content: center; padding-bottom: 10px; height: 30px">
           <div class="button" @click="cancel()">{{ t('关闭') }} (Esc)</div>
@@ -92,7 +136,21 @@ const extChange = async () => {
     </div>
   </div>
 </template>
-<style lang="scss">
+<style lang="scss" scoped>
+.dangerButton {
+  height: 25px;
+  line-height: 25px;
+  padding: 0 10px;
+  border-radius: 5px;
+  background-color: #2d2e2e;
+  font-size: 14px;
+
+  &:hover {
+    color: white;
+    background-color: #e81123;
+  }
+}
+
 select {
   border: 0px solid #313131;
   background-color: #313131;
