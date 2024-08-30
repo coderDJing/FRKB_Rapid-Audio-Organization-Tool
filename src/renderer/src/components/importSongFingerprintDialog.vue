@@ -107,11 +107,12 @@ onUnmounted(() => {
         </div>
         <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
           <div style="display: flex">
-            <div class="formLabel">
+            <div class="formLabel" style="white-space: nowrap">
               <span>{{ t('选择指纹库文件') }}：</span>
             </div>
-            <div style="flex-grow: 1">
+            <div style="flex-grow: 1; overflow: hidden">
               <div
+                style="max-width: 100%; min-width: 100%"
                 class="chooseDirDiv flashing-border"
                 @click="clickChooseDir()"
                 :title="folderPathDisplay"
