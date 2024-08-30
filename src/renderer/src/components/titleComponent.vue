@@ -9,6 +9,7 @@ import menuComponent from './menu.vue'
 import confirm from '@renderer/components/confirmDialog.js'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog.js'
 import { t } from '@renderer/utils/translate.js'
+import hotkeys from 'hotkeys-js'
 const emit = defineEmits(['openDialog'])
 const toggleMaximize = () => {
   window.electron.ipcRenderer.send('toggle-maximize')
@@ -36,7 +37,6 @@ window.electron.ipcRenderer.on('mainWin-max', (event, bool) => {
 })
 
 const fillColor = ref('#9d9d9d')
-//todo 兑现Alt+F H打开菜单，并定位在第一个 并且上下方向键选菜单 左右方向键切换菜单 E选择菜单
 //todo 展开菜单后 hover可以打开其他菜单
 const menuArr = ref([
   {
@@ -65,6 +65,30 @@ const menuArr = ref([
     subMenu: [[{ name: '使用说明', shortcutKey: 'F1' }, { name: '关于' }]]
   }
 ])
+hotkeys('alt+f', 'windowGlobal', () => {
+  menuArr.value.forEach((item) => {
+    if (item.name === '文件(F)') {
+      item.show = true
+      return
+    }
+  })
+})
+hotkeys('alt+g', 'windowGlobal', () => {
+  menuArr.value.forEach((item) => {
+    if (item.name === '迁移(G)') {
+      item.show = true
+      return
+    }
+  })
+})
+hotkeys('alt+h', 'windowGlobal', () => {
+  menuArr.value.forEach((item) => {
+    if (item.name === '帮助(H)') {
+      item.show = true
+      return
+    }
+  })
+})
 const menuClick = (item) => {
   item.show = true
 }
@@ -96,6 +120,24 @@ const menuButtonClick = async (item) => {
   }
   emit('openDialog', item.name)
 }
+
+const switchMenu = (direction, menuName) => {
+  let index = menuArr.value.findIndex((item) => item.name === menuName)
+  if (direction === 'next') {
+    if (menuArr.value.length - 1 === index) {
+      index = 0
+    } else {
+      index++
+    }
+  } else if (direction === 'prev') {
+    if (index === 0) {
+      index = menuArr.value.length - 1
+    } else {
+      index--
+    }
+  }
+  menuArr.value[index].show = true
+}
 </script>
 <template>
   <div class="title unselectable">FRKB - {{ t('快速音频整理工具') }}</div>
@@ -115,8 +157,10 @@ const menuButtonClick = async (item) => {
       <div class="functionButton" @click.stop="menuClick(item)">{{ t(item.name) }}</div>
       <menuComponent
         :menuArr="item.subMenu"
+        :menuName="item.name"
         v-model="item.show"
         @menuButtonClick="menuButtonClick"
+        @switchMenu="switchMenu"
       ></menuComponent>
     </div>
     <div class="canDrag" style="flex-grow: 1; height: 35px; z-index: 1"></div>
