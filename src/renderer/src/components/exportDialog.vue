@@ -137,10 +137,10 @@ onUnmounted(() => {
             </div>
           </div>
           <div style="margin-top: 30px; display: flex">
-            <div class="formLabel" style="width: 200px; text-align: right">
+            <div class="formLabel" style="text-align: right">
               <span>{{ t('导出后删除曲目') }}：</span>
             </div>
-            <div style="width: 21px; height: 21px; display: flex; align-items: center">
+            <div style="flex: 1; width: 21px; height: 21px; display: flex; align-items: center">
               <singleCheckbox v-model="deleteSongsAfterExport" />
             </div>
           </div>
@@ -169,8 +169,6 @@ onUnmounted(() => {
 }
 
 .formLabel {
-  width: 120px;
-  min-width: 120px;
   text-align: left;
   font-size: 14px;
 }
