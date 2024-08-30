@@ -1,6 +1,6 @@
 {
   "name": "frkb",
-  "version": "0.1.0-beta",
+  "version": "1.0.0-beta.0",
   "description": "An Electron application with Vue",
   "main": "./out/main/index.js",
   "author": "example.com",
