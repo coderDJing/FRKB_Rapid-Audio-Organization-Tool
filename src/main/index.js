@@ -819,20 +819,17 @@ ipcMain.handle('moveToDirSample', async (e, src, dest) => {
   const destFullPath = join(destDir, destFileName)
   await fs.move(srcFullPath, destFullPath)
 })
+
 ipcMain.handle('reOrderSubDir', async (e, targetPath, subDirArrJson) => {
-  let subDirArr = JSON.parse(subDirArrJson)
-  const promises = []
-  const changeOrder = async (item) => {
-    let jsonPath = join(exeDir, targetPath, item.dirName, 'description.json')
-    let json = await fs.readJSON(jsonPath)
-    if (json.order != item.order) {
+  const subDirArr = JSON.parse(subDirArrJson)
+  const promises = subDirArr.map(async (item) => {
+    const jsonPath = join(exeDir, targetPath, item.dirName, 'description.json')
+    const json = await fs.readJSON(jsonPath)
+    if (json.order !== item.order) {
       json.order = item.order
       await fs.outputJSON(jsonPath, json)
     }
-  }
-  for (let item of subDirArr) {
-    promises.push(changeOrder(item))
-  }
+  })
   await Promise.all(promises)
 })
 
@@ -888,17 +885,12 @@ ipcMain.handle('select-songFingerprintFile', async (event) => {
     return null
   }
   try {
-    let json = await fs.readJSON(result.filePaths[0])
-    if (Array.isArray(json)) {
-      for (let item of json) {
-        if (typeof item !== 'string') {
-          return 'error'
-        }
-      }
-      return result.filePaths
-    } else {
-      return 'error'
+    const filePath = result.filePaths[0]
+    const json = await fs.readJSON(filePath)
+    if (Array.isArray(json) && json.every((item) => typeof item === 'string')) {
+      return [filePath]
     }
+    return 'error'
   } catch (error) {
     return 'error'
   }
