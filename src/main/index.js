@@ -84,10 +84,10 @@ if (!isLibraryExist) {
 } else {
   songFingerprintList = fs.readJSONSync(join(exeDir, 'songFingerprint', 'songFingerprint.json'))
 }
-
+let mainWindow = null
 function createWindow() {
   // Create the browser window.
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: layoutConfig.mainWindowWidth, //默认应为900
     height: layoutConfig.mainWindowHeight, //默认应为600
     minWidth: 900,
@@ -104,20 +104,6 @@ function createWindow() {
     }
   })
 
-  let shouldQuit = app.makeSingleInstance(function (commandLine, workingDirectory) {
-    // 当另一个实例运行的时候，这里将会被调用，我们需要激活应用的窗口
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.focus()
-    }
-    return true
-  })
-
-  // 这个实例是多余的实例，需要退出
-  if (shouldQuit) {
-    app.quit()
-    return
-  }
   if (!app.isPackaged) {
     mainWindow.openDevTools()
   }
@@ -910,12 +896,25 @@ ipcMain.handle('select-songFingerprintFile', async (event) => {
     return 'error'
   }
 })
+
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+}
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
   // Set app user model id for windows
-  electronApp.setAppUserModelId('com.electron')
+  electronApp.setAppUserModelId('frkb.coderDjing')
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.
