@@ -11,6 +11,7 @@ import confirm from '@renderer/components/confirmDialog.js'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog.js'
 import exportDialog from '@renderer/components/exportDialog.js'
 import { t } from '@renderer/utils/translate.js'
+import dropIntoDialog from '../components/dropIntoDialog.js'
 const props = defineProps({
   uuid: {
     type: String,
@@ -305,7 +306,11 @@ const dragstart = (e) => {
 const dragApproach = ref('')
 const dragover = (e) => {
   if (runtime.dragItemData === null) {
-    //todo 外部拖入文件到歌单list item 样式
+    if (dirData.type === 'dir') {
+      e.dataTransfer.dropEffect = 'none'
+      return
+    }
+    dragApproach.value = 'center'
     e.dataTransfer.dropEffect = 'move'
     return
   }
@@ -335,7 +340,11 @@ const dragover = (e) => {
 }
 const dragenter = (e) => {
   if (runtime.dragItemData === null) {
-    //todo 外部拖入文件到歌单list item 样式
+    if (dirData.type === 'dir') {
+      e.dataTransfer.dropEffect = 'none'
+      return
+    }
+    dragApproach.value = 'center'
     e.dataTransfer.dropEffect = 'move'
     return
   }
@@ -363,11 +372,6 @@ const dragenter = (e) => {
   }
 }
 const dragleave = (e) => {
-  if (runtime.dragItemData === null) {
-    //todo 外部拖入文件到歌单list item 样式
-    e.dataTransfer.dropEffect = 'move'
-    return
-  }
   dragApproach.value = ''
 }
 
@@ -383,9 +387,30 @@ const approachCenterEnd = () => {
 }
 const drop = async (e) => {
   if (runtime.dragItemData === null) {
-    //todo 外部拖入文件到歌单list item
-    debugger
     e.dataTransfer.dropEffect = 'move'
+    dragApproach.value = ''
+    let files = e.dataTransfer.files
+    let result = await dropIntoDialog({
+      songListUuid: props.uuid,
+      libraryName: props.libraryName
+    })
+    if (result === 'cancel') {
+      return
+    }
+    let filePaths = []
+    for (let item of files) {
+      filePaths.push(item.path)
+    }
+    runtime.importingSongListUUID = result.importingSongListUUID
+    runtime.isProgressing = true
+    window.electron.ipcRenderer.send('startImportDragSongs', {
+      filePaths: filePaths,
+      songListPath: result.songListPath,
+      isDeleteSourceFile: result.isDeleteSourceFile,
+      isComparisonSongFingerprint: result.isComparisonSongFingerprint,
+      isPushSongFingerprintLibrary: result.isPushSongFingerprintLibrary,
+      songListUUID: result.importingSongListUUID
+    })
     return
   }
   try {
@@ -650,7 +675,7 @@ watch(
     @dragover.stop.prevent="dragover"
     @dragstart.stop="dragstart"
     @dragenter.stop.prevent="dragenter"
-    @drop.stop="drop"
+    @drop.stop.prevent="drop"
     @dragleave.stop="dragleave"
     :draggable="dirData.dirName && !renameDivShow ? true : false"
     :class="{
