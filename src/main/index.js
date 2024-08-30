@@ -103,6 +103,21 @@ function createWindow() {
       sandbox: false
     }
   })
+
+  let shouldQuit = app.makeSingleInstance(function (commandLine, workingDirectory) {
+    // 当另一个实例运行的时候，这里将会被调用，我们需要激活应用的窗口
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+    return true
+  })
+
+  // 这个实例是多余的实例，需要退出
+  if (shouldQuit) {
+    app.quit()
+    return
+  }
   if (!app.isPackaged) {
     mainWindow.openDevTools()
   }
