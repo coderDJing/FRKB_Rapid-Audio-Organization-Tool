@@ -37,7 +37,7 @@ window.electron.ipcRenderer.on('mainWin-max', (event, bool) => {
 })
 
 const fillColor = ref('#9d9d9d')
-//todo 展开菜单后 hover可以打开其他菜单
+
 const menuArr = ref([
   {
     name: '文件(F)',
@@ -138,6 +138,12 @@ const switchMenu = (direction, menuName) => {
   }
   menuArr.value[index].show = true
 }
+const titleMenuButtonMouseEnter = (item) => {
+  if (menuArr.value.findIndex((item) => item.show === true) === -1) {
+    return
+  }
+  item.show = true
+}
 </script>
 <template>
   <div class="title unselectable">FRKB - {{ t('快速音频整理工具') }}</div>
@@ -154,7 +160,14 @@ const switchMenu = (direction, menuName) => {
       <img :src="logo" style="width: 22px" />
     </div>
     <div style="z-index: 1; padding-left: 5px" v-for="item in menuArr" :key="item.name">
-      <div class="functionButton" @click.stop="menuClick(item)">{{ t(item.name) }}</div>
+      <div
+        class="functionButton"
+        :class="{ functionButtonHover: item.show }"
+        @click.stop="menuClick(item)"
+        @mouseenter="titleMenuButtonMouseEnter(item)"
+      >
+        {{ t(item.name) }}
+      </div>
       <menuComponent
         :menuArr="item.subMenu"
         :menuName="item.name"
@@ -205,6 +218,10 @@ const switchMenu = (direction, menuName) => {
 }
 
 .functionButton:hover {
+  background-color: #2d2e2e;
+}
+
+.functionButtonHover {
   background-color: #2d2e2e;
 }
 
