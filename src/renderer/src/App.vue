@@ -10,7 +10,7 @@ import utils from './utils/utils'
 import exportSongFingerprintDialog from './components/exportSongFingerprintDialog.vue'
 import importSongFingerprintDialog from './components/importSongFingerprintDialog.vue'
 import confirm from '@renderer/components/confirmDialog.js'
-
+import { t } from '@renderer/utils/translate.js'
 const runtime = useRuntimeStore()
 
 const detectPlatform = () => {
@@ -30,11 +30,20 @@ window.electron.ipcRenderer.on('layoutConfigReaded', (event, layoutConfig) => {
 const activeDialog = ref('')
 
 const openDialog = async (item) => {
+  if (item === '使用说明' || item === '关于') {
+    //todo
+    await confirm({
+      title: item,
+      content: [t('beta测试版本暂不开放 ' + item)],
+      confirmShow: false
+    })
+    return
+  }
   if (item === '退出') {
     if (runtime.isProgressing === true) {
       await confirm({
         title: '退出',
-        content: ['请等待当前任务执行结束'],
+        content: [t('请等待当前任务执行结束')],
         confirmShow: false
       })
       return
@@ -55,6 +64,9 @@ const getLibrary = async () => {
 }
 getLibrary()
 onMounted(() => {
+  hotkeys('F1', 'windowGlobal', () => {
+    openDialog('使用说明')
+  })
   hotkeys('alt+q', 'windowGlobal', () => {
     openDialog('筛选库 导入新曲目')
   })
