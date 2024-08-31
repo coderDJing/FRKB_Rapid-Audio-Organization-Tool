@@ -249,9 +249,9 @@ function createWindow() {
     let contentArr = [
       t('文件夹下共扫描曲目：') + songFileUrls.length,
       t('比对声音指纹去除重复曲目：') +
-        (songFileUrls.length -
-          removeDuplicatesFingerprintResults.length -
-          fingerprintErrorResults.length),
+      (songFileUrls.length -
+        removeDuplicatesFingerprintResults.length -
+        fingerprintErrorResults.length),
       t('声音指纹库新增：') + removeDuplicatesFingerprintResults.length,
       t('声音指纹库现有：') + songFingerprintList.length
     ]
@@ -260,8 +260,8 @@ function createWindow() {
         1,
         0,
         t('尝试分析失败：') +
-          fingerprintErrorResults.length +
-          t('（通常由于文件内容损坏或传输过程发生错误）')
+        fingerprintErrorResults.length +
+        t('（通常由于文件内容损坏或传输过程发生错误）')
       )
     }
     mainWindow.webContents.send('addSongFingerprintFinished', contentArr)
@@ -517,8 +517,8 @@ function createWindow() {
     ) {
       contentArr.push(
         t('尝试分析失败：') +
-          fingerprintErrorResults.length +
-          t('（通常由于文件内容损坏或传输过程发生错误）')
+        fingerprintErrorResults.length +
+        t('（通常由于文件内容损坏或传输过程发生错误）')
       )
     }
     contentArr.push(t('歌单共导入曲目：') + importSongsCount)
@@ -700,8 +700,8 @@ function createWindow() {
     ) {
       contentArr.push(
         t('尝试分析失败：') +
-          fingerprintErrorResults.length +
-          t('（通常由于文件内容损坏或传输过程发生错误）')
+        fingerprintErrorResults.length +
+        t('（通常由于文件内容损坏或传输过程发生错误）')
       )
     }
     contentArr.push(t('歌单共导入曲目：') + importSongsCount)
@@ -943,7 +943,6 @@ autoUpdater.on('update-not-available', (info) => {
 
 autoUpdater.on('error', (err) => {
   log.error('autoUpdater', 'error', err)
-  // sendStatusToWindow('Error in auto-updater. ' + err)
 })
 
 autoUpdater.on('download-progress', (progressObj) => {
@@ -951,7 +950,6 @@ autoUpdater.on('download-progress', (progressObj) => {
   // let log_message = 'Download speed: ' + progressObj.bytesPerSecond
   // log_message = log_message + ' - Downloaded ' + progressObj.percent + '%'
   // log_message = log_message + ' (' + progressObj.transferred + '/' + progressObj.total + ')'
-  // sendStatusToWindow(log_message)
 })
 
 autoUpdater.on('update-downloaded', (info) => {
@@ -962,10 +960,7 @@ autoUpdater.on('update-downloaded', (info) => {
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
-  console.log('window-all-closed')
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  app.quit()
 })
 
 // In this file you can include the rest of your app"s specific main process
