@@ -1,4 +1,4 @@
-appId: com.electron.app
+appId: com.frkbByCoderDjing.app
 productName: FRKB
 directories:
   buildResources: build
@@ -12,8 +12,12 @@ asarUnpack:
   - resources/**
 win:
   executableName: FRKB
+  requestedExecutionLevel: 'requireAdministrator'
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
+  oneClick: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-${version}-${platform}-${arch}.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
@@ -38,7 +42,11 @@ appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
 publish:
-  provider: generic
-  url: https://example.com/auto-updates
+  provider: github
+  owner: 'coderDjing'
+  repo: 'FRKB_Rapid-Audio-Organization-Tool'
+releaseInfo:
+  releaseNotes: |
+    for test update 1.0.0-beta.4
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
