@@ -16,7 +16,7 @@ import analyseSongFingerprintPyScriptUrl from '../../resources/pyScript/analyseS
 import { v4 as uuidv4 } from 'uuid'
 import enUsUrl from '../renderer/src/language/enUS.json?commonjs-external&asset'
 import zhCNUrl from '../renderer/src/language/zhCN.json?commonjs-external&asset'
-
+const { autoUpdater } = require('electron-updater')
 const path = require('path')
 
 let exeDir = ''
@@ -39,9 +39,6 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason, promise) => {
   log.error('Unhandled Rejection at:', promise, 'reason:', reason)
 })
-
-const { updateElectronApp } = require('update-electron-app')
-updateElectronApp() //todo 自动升级功能待测试
 
 const fs = require('fs-extra')
 
@@ -924,7 +921,7 @@ app.whenReady().then(() => {
   })
 
   createWindow()
-
+  autoUpdater.checkForUpdatesAndNotify()
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
@@ -932,6 +929,35 @@ app.whenReady().then(() => {
   })
 })
 
+autoUpdater.on('checking-for-update', () => {
+  log.error('autoUpdater', 'checking-for-update')
+})
+
+autoUpdater.on('update-available', (info) => {
+  log.error('autoUpdater', 'update-available', info)
+})
+
+autoUpdater.on('update-not-available', (info) => {
+  log.error('autoUpdater', 'update-not-available', info)
+})
+
+autoUpdater.on('error', (err) => {
+  log.error('autoUpdater', 'error', err)
+  // sendStatusToWindow('Error in auto-updater. ' + err)
+})
+
+autoUpdater.on('download-progress', (progressObj) => {
+  log.error('autoUpdater', 'download-progress', progressObj)
+  // let log_message = 'Download speed: ' + progressObj.bytesPerSecond
+  // log_message = log_message + ' - Downloaded ' + progressObj.percent + '%'
+  // log_message = log_message + ' (' + progressObj.transferred + '/' + progressObj.total + ')'
+  // sendStatusToWindow(log_message)
+})
+
+autoUpdater.on('update-downloaded', (info) => {
+  log.error('autoUpdater', 'update-downloaded', info)
+  // sendStatusToWindow('Update downloaded')
+})
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
