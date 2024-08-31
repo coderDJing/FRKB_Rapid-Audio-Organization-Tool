@@ -18,7 +18,7 @@ import enUsUrl from '../renderer/src/language/enUS.json?commonjs-external&asset'
 import zhCNUrl from '../renderer/src/language/zhCN.json?commonjs-external&asset'
 const { autoUpdater } = require('electron-updater')
 const path = require('path')
-
+//todo 用户数据的文件夹不应该在本地，应该是用户自行设置，在本地的话会导致重新安装或者升级新版本导致卸载旧版本的时候用户数据被删掉
 let exeDir = ''
 if (app.isPackaged) {
   let exePath = app.getPath('exe')
@@ -930,22 +930,27 @@ app.whenReady().then(() => {
 })
 
 autoUpdater.on('checking-for-update', () => {
+  //todo 更新相关逻辑
   log.error('autoUpdater', 'checking-for-update')
 })
 
 autoUpdater.on('update-available', (info) => {
+  //todo 更新相关逻辑
   log.error('autoUpdater', 'update-available', info)
 })
 
 autoUpdater.on('update-not-available', (info) => {
+  //todo 更新相关逻辑
   log.error('autoUpdater', 'update-not-available', info)
 })
 
 autoUpdater.on('error', (err) => {
+  //todo 更新相关逻辑
   log.error('autoUpdater', 'error', err)
 })
 
 autoUpdater.on('download-progress', (progressObj) => {
+  //todo 更新相关逻辑
   log.error('autoUpdater', 'download-progress', progressObj)
   // let log_message = 'Download speed: ' + progressObj.bytesPerSecond
   // log_message = log_message + ' - Downloaded ' + progressObj.percent + '%'
@@ -953,6 +958,7 @@ autoUpdater.on('download-progress', (progressObj) => {
 })
 
 autoUpdater.on('update-downloaded', (info) => {
+  //todo 更新相关逻辑
   log.error('autoUpdater', 'update-downloaded', info)
   // sendStatusToWindow('Update downloaded')
 })
