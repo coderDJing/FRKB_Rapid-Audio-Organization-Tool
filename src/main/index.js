@@ -249,9 +249,9 @@ function createWindow() {
     let contentArr = [
       t('文件夹下共扫描曲目：') + songFileUrls.length,
       t('比对声音指纹去除重复曲目：') +
-      (songFileUrls.length -
-        removeDuplicatesFingerprintResults.length -
-        fingerprintErrorResults.length),
+        (songFileUrls.length -
+          removeDuplicatesFingerprintResults.length -
+          fingerprintErrorResults.length),
       t('声音指纹库新增：') + removeDuplicatesFingerprintResults.length,
       t('声音指纹库现有：') + songFingerprintList.length
     ]
@@ -260,8 +260,8 @@ function createWindow() {
         1,
         0,
         t('尝试分析失败：') +
-        fingerprintErrorResults.length +
-        t('（通常由于文件内容损坏或传输过程发生错误）')
+          fingerprintErrorResults.length +
+          t('（通常由于文件内容损坏或传输过程发生错误）')
       )
     }
     mainWindow.webContents.send('addSongFingerprintFinished', contentArr)
@@ -517,8 +517,8 @@ function createWindow() {
     ) {
       contentArr.push(
         t('尝试分析失败：') +
-        fingerprintErrorResults.length +
-        t('（通常由于文件内容损坏或传输过程发生错误）')
+          fingerprintErrorResults.length +
+          t('（通常由于文件内容损坏或传输过程发生错误）')
       )
     }
     contentArr.push(t('歌单共导入曲目：') + importSongsCount)
@@ -700,8 +700,8 @@ function createWindow() {
     ) {
       contentArr.push(
         t('尝试分析失败：') +
-        fingerprintErrorResults.length +
-        t('（通常由于文件内容损坏或传输过程发生错误）')
+          fingerprintErrorResults.length +
+          t('（通常由于文件内容损坏或传输过程发生错误）')
       )
     }
     contentArr.push(t('歌单共导入曲目：') + importSongsCount)
@@ -921,7 +921,10 @@ app.whenReady().then(() => {
   })
 
   createWindow()
-  autoUpdater.checkForUpdatesAndNotify()
+
+  //todo
+  autoUpdater.checkForUpdates()
+  // autoUpdater.checkForUpdatesAndNotify()
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
