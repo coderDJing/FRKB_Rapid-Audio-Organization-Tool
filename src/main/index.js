@@ -10,14 +10,30 @@ import {
   moveOrCopyItemWithCheckIsExist,
   getCurrentTimeYYYYMMDDHHMMSSSSS
 } from './utils.js'
-import layoutConfigFileUrl from '../../resources/config/layoutConfig.json?commonjs-external&asset&asarUnpack'
-import settingConfigFileUrl from '../../resources/config/settingConfig.json?commonjs-external&asset&asarUnpack'
 import analyseSongFingerprintPyScriptUrl from '../../resources/pyScript/analyseSongFingerprint/analyseSongFingerprint.exe?commonjs-external&asset&asarUnpack'
 import { v4 as uuidv4 } from 'uuid'
 import enUsUrl from '../renderer/src/language/enUS.json?commonjs-external&asset'
 import zhCNUrl from '../renderer/src/language/zhCN.json?commonjs-external&asset'
 const { autoUpdater } = require('electron-updater')
 const path = require('path')
+const fs = require('fs-extra')
+
+const userDataDir = app.getPath('userData')
+let layoutConfigFileUrl = join(userDataDir, 'config', 'layoutConfig.json')
+let settingConfigFileUrl = join(userDataDir, 'config', 'settingConfig.json')
+if (!fs.pathExistsSync(layoutConfigFileUrl)) {
+  fs.outputJsonSync(layoutConfigFileUrl, {
+    libraryAreaWidth: 175,
+    isMaxMainWin: false,
+    mainWindowWidth: 900,
+    mainWindowHeight: 600
+  })
+  fs.outputJsonSync(settingConfigFileUrl, {
+    language: '',
+    audioExt: ['.mp3', '.wav', '.flac']
+  })
+}
+
 //todo 用户数据的文件夹不应该在本地，应该是用户自行设置，在本地的话会导致重新安装或者升级新版本导致卸载旧版本的时候用户数据被删掉
 let exeDir = ''
 if (app.isPackaged) {
@@ -39,8 +55,6 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason, promise) => {
   log.error('Unhandled Rejection at:', promise, 'reason:', reason)
 })
-
-const fs = require('fs-extra')
 
 let layoutConfig = fs.readJSONSync(layoutConfigFileUrl)
 let settingConfig = fs.readJSONSync(settingConfigFileUrl)
@@ -919,7 +933,6 @@ app.whenReady().then(() => {
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
-
   createWindow()
 
   //todo
