@@ -39,6 +39,14 @@ const createWindow = () => {
   databaseInitWindow.on('ready-to-show', () => {
     databaseInitWindow.show()
   })
+
+  ipcMain.on('databaseInitWindow-toggle-close', () => {
+    app.exit()
+  })
+  databaseInitWindow.on('closed', () => {
+    ipcMain.removeHandler('databaseInitWindow-toggle-close')
+    databaseInitWindow = null
+  })
 }
 
 export default {

@@ -88,7 +88,7 @@
 }
 
 .flashing-border {
-  border: 1px solid transparent;
+  box-shadow: inset 0 0 0 1px transparent;
   /* 初始边框为透明，以便动画从透明到#0078d4 */
   transition: border-color 0.2s ease;
   /* 过渡效果使边框颜色变化更平滑 */
@@ -102,13 +102,13 @@
 @keyframes flash {
   0%,
   100% {
-    border-color: transparent;
+    box-shadow: inset 0 0 0 1px transparent;
   }
 
   /* 开始和结束都是透明 */
   33.33%,
   66.66% {
-    border-color: #0078d4;
+    box-shadow: inset 0 0 0 1px #0078d4;
   }
 
   /* 在1/3和2/3的时间点显示边框 */

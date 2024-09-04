@@ -15,17 +15,4 @@ app.use(pinia)
 const runtime = useRuntimeStore()
 runtime.setting = await window.electron.ipcRenderer.invoke('getSetting')
 
-if (!runtime.setting.language) {
-  let userLang = navigator.language || navigator.userLanguage
-  if (userLang !== 'zh-CN') {
-    runtime.setting.language = 'enUS'
-  } else {
-    runtime.setting.language = 'zhCN'
-  }
-  await window.electron.ipcRenderer.invoke(
-    'setSetting',
-    JSON.parse(JSON.stringify(runtime.setting))
-  )
-}
-
 app.mount('#app')
