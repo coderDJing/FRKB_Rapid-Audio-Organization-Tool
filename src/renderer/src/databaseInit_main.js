@@ -1,22 +1,31 @@
 import { createApp } from 'vue'
+import { createPinia } from 'pinia'
 import App from './DatabaseInit.vue'
 import './styles/main.scss'
+import { useRuntimeStore } from '@renderer/stores/runtime'
+
+const pinia = createPinia()
 const app = createApp(App)
 
 app.config.errorHandler = (err) => {
   window.electron.ipcRenderer.send('outputLog', `VUE全局错误捕获: ${err.stack}`)
   console.error(`VUE全局错误捕获: ${err.stack}`)
 }
+app.use(pinia)
+const runtime = useRuntimeStore()
+runtime.setting = await window.electron.ipcRenderer.invoke('getSetting')
 
-let setting = await window.electron.ipcRenderer.invoke('getSetting')
-if (!setting.language) {
+if (!runtime.setting.language) {
   let userLang = navigator.language || navigator.userLanguage
   if (userLang !== 'zh-CN') {
-    setting.language = 'enUS'
+    runtime.setting.language = 'enUS'
   } else {
-    setting.language = 'zhCN'
+    runtime.setting.language = 'zhCN'
   }
-  await window.electron.ipcRenderer.invoke('setSetting', JSON.parse(JSON.stringify(setting)))
+  await window.electron.ipcRenderer.invoke(
+    'setSetting',
+    JSON.parse(JSON.stringify(runtime.setting))
+  )
 }
 
 app.mount('#app')
