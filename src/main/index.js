@@ -49,7 +49,12 @@ if (!gotTheLock) {
     }
   })
 }
-
+let enUS = fs.readJSONSync(url.enUsUrl)
+let zhCN = fs.readJSONSync(url.zhCNUrl)
+let languageDict = {
+  enUS,
+  zhCN
+}
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('frkb.coderDjing')
   app.on('browser-window-created', (_, window) => {
@@ -91,12 +96,6 @@ ipcMain.on('outputLog', (e, logMsg) => {
 //   exeDir = __dirname
 // }
 
-// let enUS = fs.readJSONSync(enUsUrl)
-// let zhCN = fs.readJSONSync(zhCNUrl)
-// let languageDict = {
-//   enUS,
-//   zhCN
-// }
 // function t(str) {
 //   return languageDict[settingConfig.language][str]
 // }

@@ -13,6 +13,7 @@ const createWindow = () => {
     transparent: false,
     show: false,
     backgroundColor: '#181818',
+    maximizable: false,
 
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
