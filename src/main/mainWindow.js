@@ -15,6 +15,7 @@ const fs = require('fs-extra')
 
 let mainWindow = null
 function createWindow(layoutConfig, settingConfig) {
+  //todo
   let exeDir = ''
   if (app.isPackaged) {
     let exePath = app.getPath('exe')
@@ -661,5 +662,6 @@ function createWindow(layoutConfig, settingConfig) {
 }
 
 export default {
-  instance: mainWindow
+  instance: mainWindow,
+  createWindow
 }
