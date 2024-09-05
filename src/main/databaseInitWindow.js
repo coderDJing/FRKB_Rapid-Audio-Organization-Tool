@@ -1,14 +1,16 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { v4 as uuidv4 } from 'uuid'
+const fs = require('fs-extra')
 const path = require('path')
 let databaseInitWindow = null
 
 const createWindow = () => {
   databaseInitWindow = new BrowserWindow({
     resizable: false,
-    width: 400,
-    height: 200,
+    width: 500,
+    height: 300,
     frame: false,
     transparent: false,
     show: false,
@@ -41,10 +43,45 @@ const createWindow = () => {
   })
 
   ipcMain.on('databaseInitWindow-toggle-close', () => {
-    app.exit()
+    databaseInitWindow.close()
+    app.quit()
+  })
+  ipcMain.handle('databaseInitWindow-InitDataBase', async (e, dirPath) => {
+    let rootDescription = {
+      uuid: uuidv4(),
+      type: 'root',
+      dirName: 'library',
+      order: 1
+    }
+    await fs.outputJson(path.join(dirPath, 'library', 'description.json'), rootDescription)
+    const makeLibrary = async (libraryPath, libraryName, order) => {
+      let description = {
+        uuid: uuidv4(),
+        type: 'library',
+        dirName: libraryName,
+        order: order
+      }
+      await fs.outputJson(path.join(libraryPath, 'description.json'), description)
+    }
+    await makeLibrary(path.join(dirPath, 'library/筛选库'), '筛选库', 1)
+    await makeLibrary(path.join(dirPath, 'library/精选库'), '精选库', 2)
+
+    if (fs.pathExistsSync(path.join(dirPath, 'songFingerprint', 'songFingerprint.json'))) {
+      const json = await fs.readJSON(path.join(dirPath, 'songFingerprint', 'songFingerprint.json'))
+      if (Array.isArray(json) && json.every((item) => typeof item === 'string')) {
+      } else {
+        await fs.outputJSON(path.join(dirPath, 'songFingerprint', 'songFingerprint.json'), [])
+      }
+    } else {
+      await fs.outputJSON(path.join(dirPath, 'songFingerprint', 'songFingerprint.json'), [])
+    }
+    databaseInitWindow.close()
+    app.relaunch()
+    app.quit()
   })
   databaseInitWindow.on('closed', () => {
     ipcMain.removeHandler('databaseInitWindow-toggle-close')
+    ipcMain.removeHandler('databaseInitWindow-InitDataBase')
     databaseInitWindow = null
   })
 }

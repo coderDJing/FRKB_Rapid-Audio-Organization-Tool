@@ -28,11 +28,12 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
   })
   fs.outputJsonSync(url.settingConfigFileUrl, {
     language: '',
-    audioExt: ['.mp3', '.wav', '.flac']
+    audioExt: ['.mp3', '.wav', '.flac'],
+    databaseUrl: 'D:\\FRKB\\FRKB_database'
   })
 }
 
-// let layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
+let layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
 let settingConfig = fs.readJSONSync(url.settingConfigFileUrl)
 const gotTheLock = app.requestSingleInstanceLock()
 
@@ -41,10 +42,14 @@ if (!gotTheLock) {
 } else {
   app.on('second-instance', (event, commandLine, workingDirectory) => {
     if (databaseInitWindow.instance) {
-      if (databaseInitWindow.instance.isMinimized()) mainWindow.instance.restore()
+      if (databaseInitWindow.instance.isMinimized()) {
+        databaseInitWindow.instance.restore()
+      }
       databaseInitWindow.instance.focus()
     } else if (mainWindow.instance) {
-      if (mainWindow.instance.isMinimized()) mainWindow.instance.restore()
+      if (mainWindow.instance.isMinimized()) {
+        mainWindow.instance.restore()
+      }
       mainWindow.instance.focus()
     }
   })
@@ -60,8 +65,12 @@ app.whenReady().then(() => {
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
-  console.log(settingConfig)
-  databaseInitWindow.createWindow()
+  if (!settingConfig.databaseUrl || !fs.pathExistsSync(settingConfig.databaseUrl)) {
+    databaseInitWindow.createWindow()
+  } else {
+    mainWindow.createWindow(layoutConfig, settingConfig)
+  }
+
   // app.on('activate', function () {
   //   // On macOS it's common to re-create a window in the app when the
   //   // dock icon is clicked and there are no other windows open.
@@ -70,6 +79,7 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  ipcMain.removeAllListeners()
   app.quit()
 })
 
@@ -100,28 +110,7 @@ ipcMain.on('outputLog', (e, logMsg) => {
 //   return languageDict[settingConfig.language][str]
 // }
 // let songFingerprintList = []
-// const libraryInit = async () => {
-//   let rootDescription = {
-//     uuid: uuidv4(),
-//     type: 'root',
-//     dirName: 'library',
-//     order: 1
-//   }
-//   await fs.outputJson(join(exeDir, 'library', 'description.json'), rootDescription)
-//   const makeLibrary = async (libraryPath, libraryName, order) => {
-//     let description = {
-//       uuid: uuidv4(),
-//       type: 'library',
-//       dirName: libraryName,
-//       order: order
-//     }
-//     await fs.outputJson(join(libraryPath, 'description.json'), description)
-//   }
-//   await makeLibrary(join(exeDir, 'library/筛选库'), '筛选库', 1)
-//   await makeLibrary(join(exeDir, 'library/精选库'), '精选库', 2)
-//   await fs.outputJSON(join(exeDir, 'songFingerprint', 'songFingerprint.json'), [])
-// }
-// let isLibraryExist = fs.pathExistsSync(join(exeDir, 'library', 'description.json'))
+
 // if (!isLibraryExist) {
 //   libraryInit()
 // } else {
