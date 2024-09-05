@@ -4,6 +4,8 @@ import { t } from '@renderer/utils/translate.js'
 import { v4 as uuidv4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import utils from './utils/utils'
+import { useRuntimeStore } from '@renderer/stores/runtime'
+const runtime = useRuntimeStore()
 const uuid = uuidv4()
 const flashArea = ref('') // 控制动画是否正在播放
 
@@ -32,13 +34,22 @@ const clickChooseDir = async () => {
     folderPathVal.value = folderPath[0]
   }
 }
-const confirm = () => {
+const confirm = async () => {
   if (folderPathVal.value.length === 0) {
     if (!flashArea.value) {
       flashBorder('folderPathVal')
     }
     return
   }
+  runtime.setting.databaseUrl = folderPathVal.value + '\\FRKB_database'
+  await window.electron.ipcRenderer.invoke(
+    'setSetting',
+    JSON.parse(JSON.stringify(runtime.setting))
+  )
+  await window.electron.ipcRenderer.invoke(
+    'databaseInitWindow-InitDataBase',
+    runtime.setting.databaseUrl
+  )
 }
 const cancel = () => {
   window.electron.ipcRenderer.send('databaseInitWindow-toggle-close')
@@ -71,7 +82,7 @@ onUnmounted(() => {
         t('首次启动请选择数据存储位置')
       }}</span>
     </div>
-    <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px; height: 100px">
+    <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px; height: 200px">
       <div style="display: flex">
         <div class="formLabel">
           <span>{{ t('选择文件夹') }}：</span>
@@ -86,6 +97,12 @@ onUnmounted(() => {
             {{ folderPathVal }}
           </div>
         </div>
+      </div>
+      <div style="padding-top: 30px; font-size: 12px; display: flex">
+        {{ t('用户的曲目及曲目指纹信息将储存在此处，请确保此文件夹有足够空间') }}
+      </div>
+      <div style="padding-top: 10px; font-size: 12px; display: flex">
+        {{ t('如果目标文件夹下已经存在FRKB数据库文件夹，‌那么将会直接使用已有的数据库内容') }}
       </div>
     </div>
     <div style="display: flex; justify-content: center; padding-bottom: 10px">
