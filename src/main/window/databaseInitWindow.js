@@ -1,6 +1,6 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
-import icon from '../../resources/icon.png?asset'
+import icon from '../../../resources/icon.png?asset'
 import { v4 as uuidv4 } from 'uuid'
 const fs = require('fs-extra')
 const path = require('path')
@@ -76,6 +76,7 @@ const createWindow = () => {
       await fs.outputJSON(path.join(dirPath, 'songFingerprint', 'songFingerprint.json'), [])
     }
     databaseInitWindow.close()
+    //todo 没必要重启
     app.relaunch()
     app.quit()
   })
