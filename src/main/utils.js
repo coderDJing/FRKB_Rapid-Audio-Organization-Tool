@@ -1,13 +1,4 @@
-import { app } from 'electron'
-import { join, dirname } from 'path'
-
-let exeDir = ''
-if (app.isPackaged) {
-  let exePath = app.getPath('exe')
-  exeDir = dirname(exePath)
-} else {
-  exeDir = __dirname
-}
+import store from './store.js'
 
 const fs = require('fs-extra')
 const path = require('path')
@@ -15,9 +6,9 @@ const iconv = require('iconv-lite')
 async function getdirsDescriptionJson(dirPath, dirs) {
   const jsons = await Promise.all(
     dirs.map(async (dir) => {
-      const filePath = join(dirPath, dir.name, 'description.json')
+      const filePath = path.join(dirPath, dir.name, 'description.json')
       const json = await fs.readJSON(filePath)
-      const subDirPath = join(dirPath, dir.name)
+      const subDirPath = path.join(dirPath, dir.name)
       const subEntries = await fs.readdir(subDirPath, { withFileTypes: true })
       const subDirs = subEntries.filter((entry) => entry.isDirectory())
       const subJsons = await getdirsDescriptionJson(subDirPath, subDirs)
@@ -31,8 +22,8 @@ async function getdirsDescriptionJson(dirPath, dirs) {
 
 //获取整个库的树结构
 export async function getLibrary() {
-  const dirPath = join(exeDir, 'library')
-  const rootDescriptionJson = await fs.readJSON(join(dirPath, 'description.json'))
+  const dirPath = path.join(store.databaseDir, 'library')
+  const rootDescriptionJson = await fs.readJSON(path.join(dirPath, 'description.json'))
   const entries = await fs.readdir(dirPath, { withFileTypes: true })
   const dirs = entries.filter((entry) => entry.isDirectory())
   const dirsDescriptionJson = await getdirsDescriptionJson(dirPath, dirs)
@@ -62,8 +53,8 @@ export const updateTargetDirSubdirOrder = async (dirPath, orderNum, direction, o
     const dirs = subdirs.filter((dirent) => dirent.isDirectory())
     const promises = []
     for (const dirent of dirs) {
-      const subdirPath = join(dirPath, dirent.name)
-      const descriptionJsonPath = join(subdirPath, 'description.json')
+      const subdirPath = path.join(dirPath, dirent.name)
+      const descriptionJsonPath = path.join(subdirPath, 'description.json')
       let description = await fs.readJSON(descriptionJsonPath)
       if (direction == 'before') {
         if (description.order < orderNum) {
@@ -173,16 +164,16 @@ export async function moveOrCopyItemWithCheckIsExist(src, targetPath, isMove) {
     let extension = path.extname(targetPath)
     let directory = path.dirname(targetPath)
     let newFileName = `${baseName} (${counter})${extension}`
-    while (await fs.pathExists(join(directory, newFileName))) {
+    while (await fs.pathExists(path.join(directory, newFileName))) {
       counter++
       newFileName = `${baseName}(${counter})${extension}`
     }
     if (isMove) {
-      fs.move(src, join(directory, newFileName))
+      fs.move(src, path.join(directory, newFileName))
     } else {
-      fs.copy(src, join(directory, newFileName))
+      fs.copy(src, path.join(directory, newFileName))
     }
-    return join(directory, newFileName)
+    return path.join(directory, newFileName)
   } else {
     if (isMove) {
       fs.move(src, targetPath)
