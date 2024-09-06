@@ -1,32 +1,25 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
-import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
-import icon from '../../resources/icon.png?asset'
+import icon from '../../../resources/icon.png?asset'
 import {
   collectFilesWithExtensions,
   executeScript,
   moveOrCopyItemWithCheckIsExist,
   getCurrentTimeYYYYMMDDHHMMSSSSS
-} from './utils.js'
-import analyseSongFingerprintPyScriptUrl from '../../resources/pyScript/analyseSongFingerprint/analyseSongFingerprint.exe?commonjs-external&asset&asarUnpack'
+} from '../utils.js'
+import analyseSongFingerprintPyScriptUrl from '../../../resources/pyScript/analyseSongFingerprint/analyseSongFingerprint.exe?commonjs-external&asset&asarUnpack'
+import { t } from '../translate.js'
+import store from '../store.js'
 
 const path = require('path')
 const fs = require('fs-extra')
 
 let mainWindow = null
-function createWindow(layoutConfig, settingConfig) {
-  //todo
-  let exeDir = ''
-  if (app.isPackaged) {
-    let exePath = app.getPath('exe')
-    exeDir = dirname(exePath)
-  } else {
-    exeDir = __dirname
-  }
+function createWindow() {
   // Create the browser window.
   mainWindow = new BrowserWindow({
-    width: layoutConfig.mainWindowWidth, //默认应为900
-    height: layoutConfig.mainWindowHeight, //默认应为600
+    width: store.layoutConfig.mainWindowWidth, //默认应为900
+    height: store.layoutConfig.mainWindowHeight, //默认应为600
     minWidth: 900,
     minHeight: 600,
     frame: false,
@@ -36,7 +29,7 @@ function createWindow(layoutConfig, settingConfig) {
 
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: path.join(__dirname, '../preload/index.js'),
       sandbox: false
     }
   })
@@ -46,7 +39,7 @@ function createWindow(layoutConfig, settingConfig) {
   }
 
   mainWindow.on('ready-to-show', () => {
-    if (layoutConfig.isMaxMainWin) {
+    if (store.layoutConfig.isMaxMainWin) {
       mainWindow.maximize()
     }
     mainWindow.show()
@@ -62,7 +55,7 @@ function createWindow(layoutConfig, settingConfig) {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
 
   mainWindow.webContents.on('did-finish-load', () => {
@@ -71,12 +64,9 @@ function createWindow(layoutConfig, settingConfig) {
     } else {
       mainWindow.webContents.send('mainWin-max', false)
     }
-    mainWindow.webContents.send('layoutConfigReaded', layoutConfig)
+    mainWindow.webContents.send('layoutConfigReaded', store.layoutConfig)
   })
 
-  ipcMain.on('layoutConfigChanged', (e, layoutConfig) => {
-    fs.outputJson(layoutConfigFileUrl, JSON.parse(layoutConfig))
-  })
   mainWindow.on('maximize', () => {
     mainWindow.webContents.send('mainWin-max', true)
   })
@@ -84,8 +74,8 @@ function createWindow(layoutConfig, settingConfig) {
     mainWindow.webContents.send('mainWin-max', false)
   })
 
-  let mainWindowWidth = layoutConfig.mainWindowWidth
-  let mainWindowHeight = layoutConfig.mainWindowHeight
+  let mainWindowWidth = store.layoutConfig.mainWindowWidth
+  let mainWindowHeight = store.layoutConfig.mainWindowHeight
   mainWindow.on('resized', (e) => {
     let size = mainWindow.getSize()
     mainWindowWidth = size[0]
@@ -98,7 +88,9 @@ function createWindow(layoutConfig, settingConfig) {
       mainWindow.maximize()
     }
   })
-
+  ipcMain.on('layoutConfigChanged', (e, layoutConfig) => {
+    fs.outputJson(layoutConfigFileUrl, JSON.parse(layoutConfig))
+  })
   ipcMain.on('toggle-minimize', () => {
     mainWindow.minimize()
   })
@@ -125,15 +117,18 @@ function createWindow(layoutConfig, settingConfig) {
   })
   ipcMain.handle('exportSongFingerprint', async (e, folderPath) => {
     await fs.copy(
-      join(exeDir, 'songFingerprint', 'songFingerprint.json'),
+      path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json'),
       folderPath + '\\songFingerprint' + getCurrentTimeYYYYMMDDHHMMSSSSS() + '.json'
     )
   })
   ipcMain.handle('importSongFingerprint', async (e, filePath) => {
     let json = await fs.readJSON(filePath)
-    songFingerprintList = songFingerprintList.concat(json)
-    songFingerprintList = [...new Set(songFingerprintList)]
-    fs.outputJSON(join(exeDir, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
+    store.songFingerprintList = store.songFingerprintList.concat(json)
+    store.songFingerprintList = [...new Set(store.songFingerprintList)]
+    fs.outputJSON(
+      path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json'),
+      store.songFingerprintList
+    )
     return
   })
   ipcMain.on('addSongFingerprint', async (e, folderPath) => {
@@ -141,7 +136,7 @@ function createWindow(layoutConfig, settingConfig) {
     let songFileUrls = []
     const promises = []
     for (let item of folderPath) {
-      promises.push(collectFilesWithExtensions(item, settingConfig.audioExt))
+      promises.push(collectFilesWithExtensions(item, store.settingConfig.audioExt))
     }
     let res = await Promise.all(promises)
     songFileUrls = res.flat(1)
@@ -166,7 +161,7 @@ function createWindow(layoutConfig, settingConfig) {
     }
     let { result, errorResult } = await executeScript(
       analyseSongFingerprintPyScriptUrl,
-      [folderPath.join('|'), settingConfig.audioExt.join(',')],
+      [folderPath.join('|'), store.settingConfig.audioExt.join(',')],
       endHandle
     )
     mainWindow.webContents.send(
@@ -179,13 +174,16 @@ function createWindow(layoutConfig, settingConfig) {
     fingerprintErrorResults = errorResult
     let map = new Map()
     for (let item of fingerprintResults) {
-      if (songFingerprintList.indexOf(item.md5_hash) === -1) {
+      if (store.songFingerprintList.indexOf(item.md5_hash) === -1) {
         map.set(item.md5_hash, item.md5_hash)
       }
     }
     let removeDuplicatesFingerprintResults = Array.from(map.values())
-    songFingerprintList = songFingerprintList.concat(removeDuplicatesFingerprintResults)
-    fs.outputJSON(join(exeDir, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
+    store.songFingerprintList = store.songFingerprintList.concat(removeDuplicatesFingerprintResults)
+    fs.outputJSON(
+      path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json'),
+      store.songFingerprintList
+    )
     let contentArr = [
       t('文件夹下共扫描曲目：') + songFileUrls.length,
       t('比对声音指纹去除重复曲目：') +
@@ -193,7 +191,7 @@ function createWindow(layoutConfig, settingConfig) {
           removeDuplicatesFingerprintResults.length -
           fingerprintErrorResults.length),
       t('声音指纹库新增：') + removeDuplicatesFingerprintResults.length,
-      t('声音指纹库现有：') + songFingerprintList.length
+      t('声音指纹库现有：') + store.songFingerprintList.length
     ]
     if (fingerprintErrorResults.length) {
       contentArr.splice(
@@ -210,8 +208,8 @@ function createWindow(layoutConfig, settingConfig) {
   ipcMain.handle(
     'exportSongListToDir',
     async (e, folderPathVal, deleteSongsAfterExport, dirPath) => {
-      let scanPath = join(exeDir, dirPath)
-      let songFileUrls = await collectFilesWithExtensions(scanPath, settingConfig.audioExt)
+      let scanPath = join(store.databaseDir, dirPath)
+      let songFileUrls = await collectFilesWithExtensions(scanPath, store.settingConfig.audioExt)
       let folderName = dirPath.split('/')[dirPath.split('/').length - 1]
       async function findUniqueFolder(inputFolderPath) {
         let parts = path.parse(inputFolderPath)
@@ -263,7 +261,7 @@ function createWindow(layoutConfig, settingConfig) {
 
   ipcMain.handle('moveSongsToDir', async (e, srcs, dest) => {
     const moveSongToDir = async (src, dest) => {
-      let targetPath = join(exeDir, dest, src.match(/[^\\]+$/)[0])
+      let targetPath = path.join(store.databaseDir, dest, src.match(/[^\\]+$/)[0])
       await moveOrCopyItemWithCheckIsExist(src, targetPath, true)
     }
     const promises = []
@@ -284,7 +282,7 @@ function createWindow(layoutConfig, settingConfig) {
           dirArr.push(p)
         } else if (stats.isFile()) {
           const ext = path.extname(p).toLowerCase()
-          if (settingConfig.audioExt.includes(ext)) {
+          if (store.settingConfig.audioExt.includes(ext)) {
             songFileUrls.push(p)
           }
         }
@@ -295,7 +293,7 @@ function createWindow(layoutConfig, settingConfig) {
     let audioFiles = []
     const promises = []
     for (let item of dirArr) {
-      promises.push(collectFilesWithExtensions(item, settingConfig.audioExt))
+      promises.push(collectFilesWithExtensions(item, store.settingConfig.audioExt))
     }
     let res = await Promise.all(promises)
     audioFiles = res.flat(1)
@@ -309,7 +307,7 @@ function createWindow(layoutConfig, settingConfig) {
     let fingerprintResults = []
     let fingerprintErrorResults = []
     let delList = []
-    let songFingerprintListLengthBefore = songFingerprintList.length
+    let songFingerprintListLengthBefore = store.songFingerprintList.length
     let importSongsCount = 0
     async function moveSong() {
       importSongsCount = songFileUrls.length
@@ -321,7 +319,11 @@ function createWindow(layoutConfig, settingConfig) {
         songFileUrls.length
       )
       for (let songFileUrl of songFileUrls) {
-        let targetPath = join(exeDir, formData.songListPath, songFileUrl.match(/[^\\]+$/)[0])
+        let targetPath = path.join(
+          store.databaseDir,
+          formData.songListPath,
+          songFileUrl.match(/[^\\]+$/)[0]
+        )
         await moveOrCopyItemWithCheckIsExist(songFileUrl, targetPath, formData.isDeleteSourceFile)
         processNum++
         mainWindow.webContents.send(
@@ -354,7 +356,7 @@ function createWindow(layoutConfig, settingConfig) {
       }
       let { result, errorResult } = await executeScript(
         analyseSongFingerprintPyScriptUrl,
-        [songFileUrls.join('|'), settingConfig.audioExt.join(',')],
+        [songFileUrls.join('|'), store.settingConfig.audioExt.join(',')],
         endHandle
       )
       mainWindow.webContents.send(
@@ -376,7 +378,7 @@ function createWindow(layoutConfig, settingConfig) {
 
       let toBeRemoveDuplicates = []
       for (let item of fingerprintResults) {
-        if (songFingerprintList.indexOf(item.md5_hash) != -1) {
+        if (store.songFingerprintList.indexOf(item.md5_hash) != -1) {
           delList.push(item.path)
         } else {
           toBeRemoveDuplicates.push(item)
@@ -404,9 +406,13 @@ function createWindow(layoutConfig, settingConfig) {
       importSongsCount = toBeDealSongs.length
       for (let item of toBeDealSongs) {
         if (formData.isPushSongFingerprintLibrary) {
-          songFingerprintList.push(item.md5_hash)
+          store.songFingerprintList.push(item.md5_hash)
         }
-        let targetPath = join(exeDir, formData.songListPath, item.path.match(/[^\\]+$/)[0])
+        let targetPath = path.join(
+          store.databaseDir,
+          formData.songListPath,
+          item.path.match(/[^\\]+$/)[0]
+        )
         await moveOrCopyItemWithCheckIsExist(item.path, targetPath, formData.isDeleteSourceFile)
         processNum++
         mainWindow.webContents.send(
@@ -426,17 +432,23 @@ function createWindow(layoutConfig, settingConfig) {
         }
       }
       if (formData.isPushSongFingerprintLibrary) {
-        fs.outputJSON(join(exeDir, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
+        fs.outputJSON(
+          path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json'),
+          store.songFingerprintList
+        )
       }
     } else if (!formData.isComparisonSongFingerprint && formData.isPushSongFingerprintLibrary) {
       //不比对声音指纹，仅加入指纹库
       await analyseSongFingerprint()
       for (let item of fingerprintResults) {
-        if (songFingerprintList.indexOf(item.md5_hash) == -1) {
-          songFingerprintList.push(item.md5_hash)
+        if (store.songFingerprintList.indexOf(item.md5_hash) == -1) {
+          store.songFingerprintList.push(item.md5_hash)
         }
       }
-      fs.outputJSON(join(exeDir, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
+      fs.outputJSON(
+        path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json'),
+        store.songFingerprintList
+      )
       await moveSong()
     }
     let contentArr = [t('文件夹下共扫描曲目：') + songFileUrls.length]
@@ -456,30 +468,32 @@ function createWindow(layoutConfig, settingConfig) {
     }
     if (formData.isPushSongFingerprintLibrary) {
       contentArr.push(
-        t('声音指纹库新增：') + (songFingerprintList.length - songFingerprintListLengthBefore)
+        t('声音指纹库新增：') + (store.songFingerprintList.length - songFingerprintListLengthBefore)
       )
       if (
         !formData.isComparisonSongFingerprint &&
-        fingerprintResults.length != songFingerprintList.length - songFingerprintListLengthBefore
+        fingerprintResults.length !=
+          store.songFingerprintList.length - songFingerprintListLengthBefore
       ) {
         let notPushFingerprintLibraryCount =
-          fingerprintResults.length - (songFingerprintList.length - songFingerprintListLengthBefore)
+          fingerprintResults.length -
+          (store.songFingerprintList.length - songFingerprintListLengthBefore)
         contentArr.push(
           t('未添加声音指纹：') + notPushFingerprintLibraryCount + t('（因为已存在于声音指纹库中）')
         )
       }
     }
-    contentArr.push(t('声音指纹库现有：') + songFingerprintList.length)
+    contentArr.push(t('声音指纹库现有：') + store.songFingerprintList.length)
     mainWindow.webContents.send('importFinished', contentArr, formData.songListUUID)
     return
   })
   ipcMain.on('startImportSongs', async (e, formData, songListUUID) => {
-    formData.songListPath = join(exeDir, formData.songListPath)
+    formData.songListPath = path.join(store.databaseDir, formData.songListPath)
     mainWindow.webContents.send('progressSet', t('扫描文件中'), 0, 1, true)
     let songFileUrls = []
     const promises = []
     for (let item of formData.folderPath) {
-      promises.push(collectFilesWithExtensions(item, settingConfig.audioExt))
+      promises.push(collectFilesWithExtensions(item, store.settingConfig.audioExt))
     }
     let res = await Promise.all(promises)
     songFileUrls = res.flat(1)
@@ -492,7 +506,7 @@ function createWindow(layoutConfig, settingConfig) {
     let fingerprintResults = []
     let fingerprintErrorResults = []
     let delList = []
-    let songFingerprintListLengthBefore = songFingerprintList.length
+    let songFingerprintListLengthBefore = store.songFingerprintList.length
     let importSongsCount = 0
     async function moveSong() {
       importSongsCount = songFileUrls.length
@@ -504,7 +518,7 @@ function createWindow(layoutConfig, settingConfig) {
         songFileUrls.length
       )
       for (let songFileUrl of songFileUrls) {
-        let targetPath = join(formData.songListPath, songFileUrl.match(/[^\\]+$/)[0])
+        let targetPath = path.join(formData.songListPath, songFileUrl.match(/[^\\]+$/)[0])
         await moveOrCopyItemWithCheckIsExist(songFileUrl, targetPath, formData.isDeleteSourceFile)
         processNum++
         mainWindow.webContents.send(
@@ -537,7 +551,7 @@ function createWindow(layoutConfig, settingConfig) {
       }
       let { result, errorResult } = await executeScript(
         analyseSongFingerprintPyScriptUrl,
-        [formData.folderPath.join('|'), settingConfig.audioExt.join(',')],
+        [formData.folderPath.join('|'), store.settingConfig.audioExt.join(',')],
         endHandle
       )
       mainWindow.webContents.send(
@@ -559,7 +573,7 @@ function createWindow(layoutConfig, settingConfig) {
 
       let toBeRemoveDuplicates = []
       for (let item of fingerprintResults) {
-        if (songFingerprintList.indexOf(item.md5_hash) != -1) {
+        if (store.songFingerprintList.indexOf(item.md5_hash) != -1) {
           delList.push(item.path)
         } else {
           toBeRemoveDuplicates.push(item)
@@ -587,9 +601,9 @@ function createWindow(layoutConfig, settingConfig) {
       importSongsCount = toBeDealSongs.length
       for (let item of toBeDealSongs) {
         if (formData.isPushSongFingerprintLibrary) {
-          songFingerprintList.push(item.md5_hash)
+          store.songFingerprintList.push(item.md5_hash)
         }
-        let targetPath = join(formData.songListPath, item.path.match(/[^\\]+$/)[0])
+        let targetPath = path.join(formData.songListPath, item.path.match(/[^\\]+$/)[0])
         await moveOrCopyItemWithCheckIsExist(item.path, targetPath, formData.isDeleteSourceFile)
         processNum++
         mainWindow.webContents.send(
@@ -609,17 +623,23 @@ function createWindow(layoutConfig, settingConfig) {
         }
       }
       if (formData.isPushSongFingerprintLibrary) {
-        fs.outputJSON(join(exeDir, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
+        fs.outputJSON(
+          path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json'),
+          store.songFingerprintList
+        )
       }
     } else if (!formData.isComparisonSongFingerprint && formData.isPushSongFingerprintLibrary) {
       //不比对声音指纹，仅加入指纹库
       await analyseSongFingerprint()
       for (let item of fingerprintResults) {
-        if (songFingerprintList.indexOf(item.md5_hash) == -1) {
-          songFingerprintList.push(item.md5_hash)
+        if (store.songFingerprintList.indexOf(item.md5_hash) == -1) {
+          store.songFingerprintList.push(item.md5_hash)
         }
       }
-      fs.outputJSON(join(exeDir, 'songFingerprint', 'songFingerprint.json'), songFingerprintList)
+      fs.outputJSON(
+        path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json'),
+        store.songFingerprintList
+      )
       await moveSong()
     }
     let contentArr = [t('文件夹下共扫描曲目：') + songFileUrls.length]
@@ -639,20 +659,22 @@ function createWindow(layoutConfig, settingConfig) {
     }
     if (formData.isPushSongFingerprintLibrary) {
       contentArr.push(
-        t('声音指纹库新增：') + (songFingerprintList.length - songFingerprintListLengthBefore)
+        t('声音指纹库新增：') + (store.songFingerprintList.length - songFingerprintListLengthBefore)
       )
       if (
         !formData.isComparisonSongFingerprint &&
-        fingerprintResults.length != songFingerprintList.length - songFingerprintListLengthBefore
+        fingerprintResults.length !=
+          store.songFingerprintList.length - songFingerprintListLengthBefore
       ) {
         let notPushFingerprintLibraryCount =
-          fingerprintResults.length - (songFingerprintList.length - songFingerprintListLengthBefore)
+          fingerprintResults.length -
+          (store.songFingerprintList.length - songFingerprintListLengthBefore)
         contentArr.push(
           t('未添加声音指纹：') + notPushFingerprintLibraryCount + t('（因为已存在于声音指纹库中）')
         )
       }
     }
-    contentArr.push(t('声音指纹库现有：') + songFingerprintList.length)
+    contentArr.push(t('声音指纹库现有：') + store.songFingerprintList.length)
     mainWindow.webContents.send('importFinished', contentArr, songListUUID)
     return
   })
