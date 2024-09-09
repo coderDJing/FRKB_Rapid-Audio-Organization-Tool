@@ -1,7 +1,11 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { updateTargetDirSubdirOrder, getLibrary, collectFilesWithExtensions } from './utils.js'
-
+import {
+  updateTargetDirSubdirOrder,
+  getLibrary,
+  collectFilesWithExtensions,
+  getCurrentTimeYYYYMMDDHHMMSSSSS
+} from './utils.js'
 import { log } from './log.js'
 import url from './url.js'
 import mainWindow from './window/mainWindow.js'
@@ -260,4 +264,88 @@ ipcMain.handle('select-songFingerprintFile', async (event) => {
   } catch (error) {
     return 'error'
   }
+})
+
+ipcMain.on('layoutConfigChanged', (e, layoutConfig) => {
+  fs.outputJson(url.layoutConfigFileUrl, JSON.parse(layoutConfig))
+})
+
+ipcMain.handle('exportSongFingerprint', async (e, folderPath) => {
+  await fs.copy(
+    path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json'),
+    folderPath + '\\songFingerprint' + getCurrentTimeYYYYMMDDHHMMSSSSS() + '.json'
+  )
+})
+
+ipcMain.handle('importSongFingerprint', async (e, filePath) => {
+  let json = await fs.readJSON(filePath)
+  store.songFingerprintList = store.songFingerprintList.concat(json)
+  store.songFingerprintList = [...new Set(store.songFingerprintList)]
+  fs.outputJSON(
+    path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json'),
+    store.songFingerprintList
+  )
+  return
+})
+
+ipcMain.handle('exportSongListToDir', async (e, folderPathVal, deleteSongsAfterExport, dirPath) => {
+  let scanPath = join(store.databaseDir, dirPath)
+  let songFileUrls = await collectFilesWithExtensions(scanPath, store.settingConfig.audioExt)
+  let folderName = dirPath.split('/')[dirPath.split('/').length - 1]
+  async function findUniqueFolder(inputFolderPath) {
+    let parts = path.parse(inputFolderPath)
+    // 获取不包含文件名的路径部分
+    let dirPath = parts.dir
+    // 获取文件夹名（不包含路径分隔符）
+    let folderName = parts.name
+    // 构造基础检查路径
+    let baseCheckPath = path.join(dirPath, folderName)
+    if (await fs.pathExists(baseCheckPath)) {
+      let count = 1
+      let newFolderPath
+      do {
+        newFolderPath = path.join(dirPath, `${folderName}(${count})`)
+        count++
+      } while (await fs.pathExists(newFolderPath))
+      return newFolderPath
+    }
+    return inputFolderPath
+  }
+  let targetPath = await findUniqueFolder(folderPathVal + '\\' + folderName)
+  await fs.ensureDir(targetPath)
+  const promises = []
+  for (let item of songFileUrls) {
+    promises.push(
+      moveOrCopyItemWithCheckIsExist(
+        item,
+        targetPath + '\\' + item.match(/[^\\]+$/)[0],
+        deleteSongsAfterExport
+      )
+    )
+  }
+  await Promise.all(promises)
+  return
+})
+
+ipcMain.handle('exportSongsToDir', async (e, folderPathVal, deleteSongsAfterExport, songs) => {
+  const promises = []
+  for (let item of songs) {
+    let targetPath = folderPathVal + '\\' + item.filePath.match(/[^\\]+$/)[0]
+    promises.push(moveOrCopyItemWithCheckIsExist(item.filePath, targetPath, deleteSongsAfterExport))
+  }
+  await Promise.all(promises)
+  return
+})
+
+ipcMain.handle('moveSongsToDir', async (e, srcs, dest) => {
+  const moveSongToDir = async (src, dest) => {
+    let targetPath = path.join(store.databaseDir, dest, src.match(/[^\\]+$/)[0])
+    await moveOrCopyItemWithCheckIsExist(src, targetPath, true)
+  }
+  const promises = []
+  for (let src of srcs) {
+    promises.push(moveSongToDir(src, dest))
+  }
+  await Promise.all(promises)
+  return
 })
