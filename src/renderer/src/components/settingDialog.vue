@@ -7,6 +7,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate.js'
 import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 import confirm from '@renderer/components/confirmDialog.js'
+import globalCallShortcutDialog from './globalCallShortcutDialog.js'
 const runtime = useRuntimeStore()
 const uuid = uuidv4()
 const emits = defineEmits(['cancel'])
@@ -84,6 +85,10 @@ const clearTracksFingerprintLibrary = async () => {
     })
   }
 }
+
+const globalCallShortcutHandle = async () => {
+  await globalCallShortcutDialog()
+}
 </script>
 <template>
   <div class="dialog unselectable">
@@ -117,6 +122,16 @@ const clearTracksFingerprintLibrary = async () => {
             <singleCheckbox v-model="audioExt.wav" @change="extChange()" />
             <span style="margin-right: 10px; margin-left: 10px">.flac</span>
             <singleCheckbox v-model="audioExt.flac" @change="extChange()" />
+          </div>
+          <div style="margin-top: 20px">{{ t('聚焦/最小化 FRKB 窗口快捷键') }}：</div>
+          <div style="margin-top: 10px">
+            <div
+              class="chooseDirDiv"
+              @click="globalCallShortcutHandle()"
+              :title="runtime.setting.globalCallShortcut"
+            >
+              {{ runtime.setting.globalCallShortcut }}
+            </div>
           </div>
           <div style="margin-top: 20px">{{ t('清除曲目指纹库') }}：</div>
           <div style="margin-top: 10px">
@@ -167,5 +182,19 @@ option {
   padding: 5px;
   background-color: #1f1f1f;
   color: #cccccc;
+}
+
+.chooseDirDiv {
+  height: 25px;
+  line-height: 25px;
+  background-color: #313131;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  word-break: break-all;
+  white-space: nowrap;
+  width: 200px;
+  font-size: 14px;
+  padding-left: 5px;
 }
 </style>

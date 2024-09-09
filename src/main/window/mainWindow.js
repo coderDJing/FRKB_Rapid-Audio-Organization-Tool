@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, globalShortcut } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
 import {
@@ -43,6 +43,16 @@ function createWindow() {
       mainWindow.maximize()
     }
     mainWindow.show()
+    globalShortcut.register(store.settingConfig.globalCallShortcut, () => {
+      if (!mainWindow.isFocused()) {
+        if (mainWindow.isMinimized()) {
+          mainWindow.restore()
+        }
+        mainWindow.focus()
+      } else {
+        mainWindow.minimize()
+      }
+    })
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -80,6 +90,23 @@ function createWindow() {
     let size = mainWindow.getSize()
     mainWindowWidth = size[0]
     mainWindowHeight = size[1]
+  })
+
+  mainWindow.on('blur', () => {
+    mainWindow.webContents.send('mainWindowBlur')
+  })
+  mainWindow.on('closed', () => {
+    ipcMain.removeHandler('toggle-maximize')
+    ipcMain.removeHandler('toggle-minimize')
+    ipcMain.removeHandler('toggle-close')
+    ipcMain.removeHandler('collapseButtonHandleClick')
+    ipcMain.removeHandler('readSongFile')
+    ipcMain.removeHandler('addSongFingerprint')
+    ipcMain.removeHandler('startImportDragSongs')
+    ipcMain.removeHandler('startImportSongs')
+    ipcMain.removeHandler('changeGlobalShortcut')
+    globalShortcut.unregister(store.settingConfig.globalCallShortcut)
+    mainWindow = null
   })
   ipcMain.on('toggle-maximize', () => {
     if (mainWindow.isMaximized()) {
@@ -338,8 +365,8 @@ function createWindow() {
     ) {
       contentArr.push(
         t('尝试分析失败：') +
-        fingerprintErrorResults.length +
-        t('（通常由于文件内容损坏或传输过程发生错误）')
+          fingerprintErrorResults.length +
+          t('（通常由于文件内容损坏或传输过程发生错误）')
       )
     }
     contentArr.push(t('歌单共导入曲目：') + importSongsCount)
@@ -353,7 +380,7 @@ function createWindow() {
       if (
         !formData.isComparisonSongFingerprint &&
         fingerprintResults.length !==
-        store.songFingerprintList.length - songFingerprintListLengthBefore
+          store.songFingerprintList.length - songFingerprintListLengthBefore
       ) {
         let notPushFingerprintLibraryCount =
           fingerprintResults.length -
@@ -374,19 +401,25 @@ function createWindow() {
   ipcMain.on('startImportSongs', async (e, formData, songListUUID) => {
     await importSongsHandler(e, formData, songListUUID)
   })
-  mainWindow.on('blur', () => {
-    mainWindow.webContents.send('mainWindowBlur')
-  })
-  mainWindow.on('closed', () => {
-    ipcMain.removeHandler('toggle-maximize')
-    ipcMain.removeHandler('toggle-minimize')
-    ipcMain.removeHandler('toggle-close')
-    ipcMain.removeHandler('collapseButtonHandleClick')
-    ipcMain.removeHandler('readSongFile')
-    ipcMain.removeHandler('addSongFingerprint')
-    ipcMain.removeHandler('startImportDragSongs')
-    ipcMain.removeHandler('startImportSongs')
-    mainWindow = null
+
+  ipcMain.handle('changeGlobalShortcut', (e, shortCutValue) => {
+    let ret = globalShortcut.register(shortCutValue, () => {
+      if (!mainWindow.isFocused()) {
+        if (mainWindow.isMinimized()) {
+          mainWindow.restore()
+        }
+        mainWindow.focus()
+      } else {
+        mainWindow.minimize()
+      }
+    })
+    if (!ret) {
+      return false
+    }
+    globalShortcut.unregister(store.settingConfig.globalCallShortcut)
+    store.settingConfig.globalCallShortcut = shortCutValue
+    fs.outputJson(url.settingConfigFileUrl, store.settingConfig)
+    return true
   })
 }
 
