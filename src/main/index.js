@@ -16,6 +16,7 @@ import store from './store.js'
 import './update.js'
 const path = require('path')
 const fs = require('fs-extra')
+const platform = process.platform
 if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
   fs.outputJsonSync(url.layoutConfigFileUrl, {
     libraryAreaWidth: 175,
@@ -26,7 +27,9 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
   fs.outputJsonSync(url.settingConfigFileUrl, {
     language: is.dev ? 'zhCN' : '',
     audioExt: ['.mp3', '.wav', '.flac'],
-    databaseUrl: is.dev ? 'D:\\FRKB\\FRKB_database' : ''
+    databaseUrl: is.dev ? 'D:\\FRKB\\FRKB_database' : '',
+    globalCallShortcut:
+      platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : ''
   })
 }
 
@@ -88,7 +91,6 @@ app.on('window-all-closed', () => {
   ipcMain.removeAllListeners()
   app.quit()
 })
-
 
 ipcMain.handle('getLanguageDict', () => {
   return languageDict
