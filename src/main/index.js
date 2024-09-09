@@ -11,7 +11,9 @@ import url from './url.js'
 import mainWindow from './window/mainWindow.js'
 import databaseInitWindow from './window/databaseInitWindow.js'
 import { languageDict } from './translate.js'
+import { is } from '@electron-toolkit/utils'
 import store from './store.js'
+import './update.js'
 const path = require('path')
 const fs = require('fs-extra')
 if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
@@ -22,9 +24,9 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
     mainWindowHeight: 600
   })
   fs.outputJsonSync(url.settingConfigFileUrl, {
-    language: 'zhCN', //todo 初始为空
+    language: is.dev ? 'zhCN' : '',
     audioExt: ['.mp3', '.wav', '.flac'],
-    databaseUrl: 'D:\\FRKB\\FRKB_database' //todo 初始为空
+    databaseUrl: is.dev ? 'D:\\FRKB\\FRKB_database' : ''
   })
 }
 
@@ -86,6 +88,8 @@ app.on('window-all-closed', () => {
   ipcMain.removeAllListeners()
   app.quit()
 })
+
+
 ipcMain.handle('getLanguageDict', () => {
   return languageDict
 })
