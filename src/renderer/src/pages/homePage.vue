@@ -76,7 +76,7 @@ const librarySelectedChange = (item) => {
 }
 let dragOverSongsArea = ref(false)
 const dragover = (e) => {
-  if (runtime.dragItemData !== null || !runtime.selectedSongListUUID) {
+  if (runtime.dragItemData !== null || !runtime.songsArea.songListUUID) {
     e.dataTransfer.dropEffect = 'none'
     return
   }
@@ -88,7 +88,7 @@ const dragover = (e) => {
   dragOverSongsArea.value = true
 }
 const dragleave = (e) => {
-  if (runtime.dragItemData !== null || !runtime.selectedSongListUUID) {
+  if (runtime.dragItemData !== null || !runtime.songsArea.songListUUID) {
     e.dataTransfer.dropEffect = 'none'
     return
   }
@@ -100,7 +100,7 @@ const dragleave = (e) => {
 }
 
 const drop = async (e) => {
-  if (runtime.dragItemData !== null || !runtime.selectedSongListUUID) {
+  if (runtime.dragItemData !== null || !runtime.songsArea.songListUUID) {
     e.dataTransfer.dropEffect = 'none'
     return
   }
@@ -111,7 +111,7 @@ const drop = async (e) => {
   dragOverSongsArea.value = false
   let files = e.dataTransfer.files
   let result = await dropIntoDialog({
-    songListUuid: runtime.selectedSongListUUID,
+    songListUuid: runtime.songsArea.songListUUID,
     libraryName: librarySelected.value
   })
   if (result === 'cancel') {

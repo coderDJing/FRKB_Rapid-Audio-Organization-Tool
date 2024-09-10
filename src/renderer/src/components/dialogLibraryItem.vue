@@ -150,8 +150,8 @@ const contextmenuEvent = async (event) => {
       if (res === 'confirm') {
         let uuids = libraryUtils.getAllUuids(libraryUtils.getLibraryTreeByUUID(props.uuid))
 
-        if (uuids.indexOf(runtime.selectedSongListUUID) !== -1) {
-          runtime.selectedSongListUUID = ''
+        if (uuids.indexOf(runtime.songsArea.songListUUID) !== -1) {
+          runtime.songsArea.songListUUID = ''
         }
         if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
           runtime.playingData.playingSongListUUID = ''
@@ -429,8 +429,8 @@ const drop = async (e) => {
       let flatUUID = libraryUtils.getAllUuids(
         libraryUtils.getLibraryTreeByUUID(runtime.dragItemData.uuid)
       )
-      if (flatUUID.indexOf(runtime.selectedSongListUUID) != -1) {
-        runtime.selectedSongListUUID = ''
+      if (flatUUID.indexOf(runtime.songsArea.songListUUID) != -1) {
+        runtime.songsArea.songListUUID = ''
       }
       if (flatUUID.indexOf(runtime.playingData.playingSongListUUID) != -1) {
         runtime.playingData.playingSongListUUID = ''
@@ -520,8 +520,8 @@ const drop = async (e) => {
           let flatUUID = libraryUtils.getAllUuids(
             libraryUtils.getLibraryTreeByUUID(runtime.dragItemData.uuid)
           )
-          if (flatUUID.indexOf(runtime.selectedSongListUUID) != -1) {
-            runtime.selectedSongListUUID = ''
+          if (flatUUID.indexOf(runtime.songsArea.songListUUID) != -1) {
+            runtime.songsArea.songListUUID = ''
           }
           if (flatUUID.indexOf(runtime.playingData.playingSongListUUID) != -1) {
             runtime.playingData.playingSongListUUID = ''
@@ -561,8 +561,8 @@ const drop = async (e) => {
         let flatUUID = libraryUtils.getAllUuids(
           libraryUtils.getLibraryTreeByUUID(runtime.dragItemData.uuid)
         )
-        if (flatUUID.indexOf(runtime.selectedSongListUUID) != -1) {
-          runtime.selectedSongListUUID = ''
+        if (flatUUID.indexOf(runtime.songsArea.songListUUID) != -1) {
+          runtime.songsArea.songListUUID = ''
         }
         if (flatUUID.indexOf(runtime.playingData.playingSongListUUID) != -1) {
           runtime.playingData.playingSongListUUID = ''

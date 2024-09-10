@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 export const useRuntimeStore = defineStore('runtime', {
   state: () => {
     return {
-      platform: '', //使用平台//暂时没用
+      platform: '', //使用平台
       isWindowMaximized: null,
       libraryAreaSelected: 'listLibrary',
       activeMenuUUID: '',
@@ -17,7 +17,9 @@ export const useRuntimeStore = defineStore('runtime', {
       libraryTree: {},
       selectSongListDialogShow: false, //全局是否有歌单选择器正在展示
       dialogSelectedSongListUUID: '', //dialog中被选中的歌单UUID
-      selectedSongListUUID: '', //被选中的歌单UUID
+      songsArea: {
+        songListUUID: '', //被选中的歌单UUID
+      },
       importingSongListUUID: '', //正在执行导入中的歌单
       isProgressing: false, //正在执行某计算或IO任务
       playingData: {
