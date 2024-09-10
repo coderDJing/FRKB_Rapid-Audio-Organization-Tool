@@ -14,6 +14,52 @@ import { languageDict } from './translate.js'
 import { is } from '@electron-toolkit/utils'
 import store from './store.js'
 import './update.js'
+
+// const net = require('net')
+// const socketClient = new net.Socket()
+// socketClient.connect(14736, '127.0.0.1', async () => {
+//   let songFileUrls = await collectFilesWithExtensions('C:\\Users\\Trl\\Desktop\\song\\Nonameleft Living Like This Chart', store.settingConfig.audioExt)
+//   function splitStringByBytes(str, chunkSize = 1000) {
+//     const chunks = [];
+//     let index = 0;
+//     let currentChunkLength = 0;
+//     let currentChunkBuffer = Buffer.alloc(0);
+//     while (index < str.length) {
+//       const charBuffer = Buffer.from(str.slice(index, index + 1), 'utf8');
+//       const charLength = charBuffer.length;
+
+//       if (currentChunkLength + charLength > chunkSize) {
+//         chunks.push(currentChunkBuffer);
+//         currentChunkBuffer = charBuffer;
+//         currentChunkLength = charLength;
+//       } else {
+//         currentChunkBuffer = Buffer.concat([currentChunkBuffer, charBuffer]);
+//         currentChunkLength += charLength;
+//       }
+
+//       index++;
+//     }
+//     if (currentChunkLength > 0) {
+//       chunks.push(currentChunkBuffer);
+//     }
+//     return chunks;
+//   }
+//   const chunks = splitStringByBytes(songFileUrls.join('|'))
+//   for (let chunk of chunks) {
+//     socketClient.write(chunk)
+//   }
+// })
+// socketClient.on('data', (data) => {
+//   console.log(data.toString())
+// })
+// socketClient.on('error', (err) => {
+//   console.log(err)
+//   socketClient.destroy()
+// })
+// socketClient.on('close', () => {
+//   console.log('Connection closed');
+// })
+
 const path = require('path')
 const fs = require('fs-extra')
 const platform = process.platform
@@ -27,7 +73,7 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
   fs.outputJsonSync(url.settingConfigFileUrl, {
     language: is.dev ? 'zhCN' : '',
     audioExt: ['.mp3', '.wav', '.flac'],
-    databaseUrl: is.dev ? 'D:\\FRKB\\FRKB_database' : '',
+    databaseUrl: is.dev ? 'C:\\Users\\Trl\\Desktop\\FRKB\\FRKB_database' : '',
     globalCallShortcut:
       platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : ''
   })
