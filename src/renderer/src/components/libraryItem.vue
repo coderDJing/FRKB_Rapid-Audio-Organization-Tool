@@ -264,10 +264,26 @@ const renameInputBlurHandle = async () => {
     libraryUtils.findDirPathByUuid(props.uuid)
   )
   if (dirData.uuid === runtime.songsArea.songListUUID) {
-    //todo
+    for (let item of runtime.songsArea.songInfoArr) {
+      let arr = item.filePath.split('\\')
+      arr[arr.length - 2] = renameDivValue.value
+      item.filePath = arr.join('\\')
+    }
+    for (let index in runtime.songsArea.selectedSongFilePath) {
+      let arr = runtime.songsArea.selectedSongFilePath[index].split('\\')
+      arr[arr.length - 2] = renameDivValue.value
+      runtime.songsArea.selectedSongFilePath[index] = arr.join('\\')
+    }
   }
   if (dirData.uuid === runtime.playingData.playingSongListUUID) {
-    //todo
+    let arr = runtime.playingData.playingSong.filePath.split('\\')
+    arr[arr.length - 2] = renameDivValue.value
+    runtime.playingData.playingSong.filePath = arr.join('\\')
+    for (let item of runtime.playingData.playingSongListData) {
+      let arr = item.filePath.split('\\')
+      arr[arr.length - 2] = renameDivValue.value
+      item.filePath = arr.join('\\')
+    }
   }
   dirData.dirName = renameDivValue.value
   renameDivValue.value = ''
