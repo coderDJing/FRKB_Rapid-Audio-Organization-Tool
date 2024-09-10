@@ -67,12 +67,7 @@ onMounted(() => {
   hotkeys('F1', 'windowGlobal', () => {
     openDialog('使用说明')
   })
-  hotkeys('alt+q', 'windowGlobal', () => {
-    openDialog('筛选库 导入新曲目')
-  })
-  hotkeys('alt+e', 'windowGlobal', () => {
-    openDialog('精选库 导入新曲目')
-  })
+
   hotkeys('alt+F4', async () => {
     if (runtime.isProgressing === true) {
       await confirm({

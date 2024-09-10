@@ -89,6 +89,15 @@ hotkeys('alt+h', 'windowGlobal', () => {
     }
   })
 })
+
+hotkeys('alt+q', 'windowGlobal', async () => {
+  await scanNewSongDialog({ libraryName: '筛选库', songListUuid: '' })
+  return
+})
+hotkeys('alt+e', 'windowGlobal', async () => {
+  await scanNewSongDialog({ libraryName: '精选库', songListUuid: '' })
+  return
+})
 const menuClick = (item) => {
   item.show = true
 }
