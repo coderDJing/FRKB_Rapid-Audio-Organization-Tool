@@ -19,6 +19,8 @@ export const useRuntimeStore = defineStore('runtime', {
       dialogSelectedSongListUUID: '', //dialog中被选中的歌单UUID
       songsArea: {
         songListUUID: '', //被选中的歌单UUID
+        songInfoArr: [], //歌单内容
+        selectedSongFilePath: [] //歌单内选中的歌曲条目
       },
       importingSongListUUID: '', //正在执行导入中的歌单
       isProgressing: false, //正在执行某计算或IO任务
