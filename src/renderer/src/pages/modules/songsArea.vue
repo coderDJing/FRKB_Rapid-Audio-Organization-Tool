@@ -85,7 +85,7 @@ const openSongList = async () => {
   songInfoArr.value = []
   await nextTick(() => {})
 
-  let songListPath = libraryUtils.findDirPathByUuid(runtime.selectedSongListUUID)
+  let songListPath = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
   loadingShow.value = false
   let loadingSetTimeout = setTimeout(() => {
     loadingShow.value = true
@@ -93,11 +93,11 @@ const openSongList = async () => {
   let { scanData, songListUUID } = await window.electron.ipcRenderer.invoke(
     'scanSongList',
     songListPath,
-    runtime.selectedSongListUUID
+    runtime.songsArea.songListUUID
   )
   clearTimeout(loadingSetTimeout)
   loadingShow.value = false
-  if (songListUUID != runtime.selectedSongListUUID) {
+  if (songListUUID != runtime.songsArea.songListUUID) {
     return
   }
 
@@ -111,10 +111,10 @@ const openSongList = async () => {
   songInfoArr.value = scanData
 }
 watch(
-  () => runtime.selectedSongListUUID,
+  () => runtime.songsArea.songListUUID,
   async () => {
     selectedSongFilePath.value.length = 0
-    if (runtime.selectedSongListUUID) {
+    if (runtime.songsArea.songListUUID) {
       await openSongList()
     } else {
       for (let item of songInfoArr.value) {
@@ -128,7 +128,7 @@ watch(
 )
 
 window.electron.ipcRenderer.on('importFinished', async (event, contentArr, songListUUID) => {
-  if (songListUUID == runtime.selectedSongListUUID) {
+  if (songListUUID == runtime.songsArea.songListUUID) {
     setTimeout(async () => {
       await openSongList()
     }, 1000)
@@ -300,7 +300,7 @@ const songContextmenu = async (event, song) => {
             (item) => selectedSongFilePath.value.indexOf(item.filePath) === -1
           )
           selectedSongFilePath.value = []
-          if (runtime.selectedSongListUUID === runtime.playingData.playingSongListUUID) {
+          if (runtime.songsArea.songListUUID === runtime.playingData.playingSongListUUID) {
             runtime.playingData.playingSongListData = songInfoArr.value
 
             if (
@@ -322,7 +322,7 @@ const selectSongListDialogLibraryName = ref('')
 
 const selectSongListDialogConfirm = async (songListUUID) => {
   selectSongListDialogShow.value = false
-  if (songListUUID === runtime.selectedSongListUUID) {
+  if (songListUUID === runtime.songsArea.songListUUID) {
     return
   }
   await window.electron.ipcRenderer.invoke(
@@ -350,7 +350,7 @@ watch(
       playingSongFilePath.value = ''
     } else {
       playingSongFilePath.value = runtime.playingData.playingSong.filePath
-      if (runtime.selectedSongListUUID === runtime.playingData.playingSongListUUID) {
+      if (runtime.songsArea.songListUUID === runtime.playingData.playingSongListUUID) {
         nextTick(() => {
           let playingDom = document.querySelector('.playingSong')
           playingDom.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -358,7 +358,7 @@ watch(
       }
     }
     if (
-      runtime.selectedSongListUUID === runtime.playingData.playingSongListUUID &&
+      runtime.songsArea.songListUUID === runtime.playingData.playingSongListUUID &&
       runtime.playingData.playingSongListData.length !== songInfoArr.value.length
     ) {
       for (let item of songInfoArr.value) {
@@ -380,7 +380,7 @@ const songDblClick = (song) => {
   playingSongFilePath.value = song.filePath
   selectedSongFilePath.value = []
   runtime.playingData.playingSong = song
-  runtime.playingData.playingSongListUUID = runtime.selectedSongListUUID
+  runtime.playingData.playingSongListUUID = runtime.songsArea.songListUUID
   runtime.playingData.playingSongListData = songInfoArr.value
   window.electron.ipcRenderer.send('readSongFile', song.filePath)
 }
@@ -406,7 +406,7 @@ onMounted(() => {
   </div>
   <div
     style="height: 100%; width: 100%; overflow: auto"
-    v-if="runtime.selectedSongListUUID && songInfoArr.length != 0"
+    v-if="runtime.songsArea.songListUUID && songInfoArr.length != 0"
     @click="selectedSongFilePath.length = 0"
   >
     <div

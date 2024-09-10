@@ -316,10 +316,10 @@ const selectSongListDialogConfirm = async (item) => {
     runtime.playingData.playingSongListData.splice(index, 1)
     window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
   }
-  if (item === runtime.selectedSongListUUID) {
-    runtime.selectedSongListUUID = ''
+  if (item === runtime.songsArea.songListUUID) {
+    runtime.songsArea.songListUUID = ''
     nextTick(() => {
-      runtime.selectedSongListUUID = item
+      runtime.songsArea.songListUUID = item
     })
   }
 }
