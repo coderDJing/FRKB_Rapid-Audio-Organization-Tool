@@ -2,6 +2,8 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
 import { v4 as uuidv4 } from 'uuid'
+import mainWindow from './mainWindow.js'
+import store from '../store.js'
 const fs = require('fs-extra')
 const path = require('path')
 let databaseInitWindow = null
@@ -76,9 +78,11 @@ const createWindow = () => {
       await fs.outputJSON(path.join(dirPath, 'songFingerprint', 'songFingerprint.json'), [])
     }
     databaseInitWindow.close()
-    //todo 没必要重启
-    app.relaunch()
-    app.quit()
+    store.databaseDir = store.settingConfig.databaseUrl
+    store.songFingerprintList = fs.readJSONSync(
+      path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json')
+    )
+    mainWindow.createWindow()
   })
   databaseInitWindow.on('closed', () => {
     ipcMain.removeHandler('databaseInitWindow-toggle-close')
