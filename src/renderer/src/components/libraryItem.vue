@@ -310,6 +310,10 @@ const dragover = (e) => {
       e.dataTransfer.dropEffect = 'none'
       return
     }
+    if (e.dataTransfer.files.length === 0) {
+      e.dataTransfer.dropEffect = 'none'
+      return
+    }
     dragApproach.value = 'center'
     e.dataTransfer.dropEffect = 'move'
     return
@@ -341,6 +345,10 @@ const dragover = (e) => {
 const dragenter = (e) => {
   if (runtime.dragItemData === null) {
     if (dirData.type === 'dir') {
+      e.dataTransfer.dropEffect = 'none'
+      return
+    }
+    if (e.dataTransfer.files.length === 0) {
       e.dataTransfer.dropEffect = 'none'
       return
     }
