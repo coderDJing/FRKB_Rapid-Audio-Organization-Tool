@@ -330,7 +330,9 @@ const cancel = () => {
           <div style="padding-left: 5px">
             <span style="font-size: 14px">{{ t('最近使用') }}</span>
           </div>
-          <div style="width: 100%; background-color: #8c8c8c; height: 1px"></div>
+          <div style="width: 100%; background-color: #8c8c8c; height: 1px">
+            <div style="height: 1px"></div>
+          </div>
           <div
             v-for="item of recentSongListArr"
             :key="item.uuid"
@@ -346,7 +348,9 @@ const cancel = () => {
               {{ item.dirName }}
             </div>
           </div>
-          <div style="width: 100%; background-color: #8c8c8c; height: 1px"></div>
+          <div style="width: 100%; background-color: #8c8c8c; height: 1px">
+            <div style="height: 1px"></div>
+          </div>
         </template>
         <template v-for="item of libraryData.children" :key="item.uuid">
           <dialogLibraryItem
@@ -356,7 +360,7 @@ const cancel = () => {
           />
         </template>
         <div
-          style="flex-grow: 1"
+          style="flex-grow: 1; min-height: 30px"
           @dragover.stop.prevent="dragover"
           @dragenter.stop.prevent="dragenter"
           @drop.stop="drop"

@@ -45,7 +45,7 @@ let itemCount = 0
 for (let arr of props.menuArr) {
   itemCount = itemCount + arr.length
 }
-let divHeight = props.menuArr.length * 10 + itemCount * 28 + (props.menuArr.length - 1) + 5
+let divHeight = props.menuArr.length * 10 + itemCount * 29 + (props.menuArr.length - 1) + 5
 let divWidth = 255
 if (clickY + divHeight > windowHeight) {
   positionTop.value = clickY - (clickY + divHeight - windowHeight)
