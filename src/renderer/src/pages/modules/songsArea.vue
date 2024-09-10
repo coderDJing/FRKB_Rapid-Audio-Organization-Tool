@@ -73,16 +73,15 @@ if (localStorage.getItem('songColumnData')) {
 }
 
 const runtime = useRuntimeStore()
-let songInfoArr = ref([])
 let loadingShow = ref(false)
 
 const openSongList = async () => {
-  for (let item of songInfoArr.value) {
+  for (let item of runtime.songsArea.songInfoArr) {
     if (item.coverUrl) {
       URL.revokeObjectURL(item.coverUrl)
     }
   }
-  songInfoArr.value = []
+  runtime.songsArea.songInfoArr = []
   await nextTick(() => {})
 
   let songListPath = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
@@ -108,21 +107,21 @@ const openSongList = async () => {
       item.coverUrl = blobUrl
     }
   }
-  songInfoArr.value = scanData
+  runtime.songsArea.songInfoArr = scanData
 }
 watch(
   () => runtime.songsArea.songListUUID,
   async () => {
-    selectedSongFilePath.value.length = 0
+    runtime.songsArea.selectedSongFilePath.length = 0
     if (runtime.songsArea.songListUUID) {
       await openSongList()
     } else {
-      for (let item of songInfoArr.value) {
+      for (let item of runtime.songsArea.songInfoArr) {
         if (item.coverUrl) {
           URL.revokeObjectURL(item.coverUrl)
         }
       }
-      songInfoArr.value = []
+      runtime.songsArea.songInfoArr = []
     }
   }
 )
@@ -188,40 +187,42 @@ const colMenuHandleClick = (item) => {
 let columnDataArr = computed(() => {
   return columnData.value.filter((item) => item.show)
 })
-const selectedSongFilePath = ref([])
 const songClick = (event, song) => {
   runtime.activeMenuUUID = ''
   if (event.ctrlKey) {
-    let index = selectedSongFilePath.value.indexOf(song.filePath)
+    let index = runtime.songsArea.selectedSongFilePath.indexOf(song.filePath)
     if (index !== -1) {
-      selectedSongFilePath.value.splice(index, 1)
+      runtime.songsArea.selectedSongFilePath.splice(index, 1)
     } else {
-      selectedSongFilePath.value.push(song.filePath)
+      runtime.songsArea.selectedSongFilePath.push(song.filePath)
     }
   } else if (event.shiftKey) {
     let lastClickSongFilePath = null
-    if (selectedSongFilePath.value.length) {
-      lastClickSongFilePath = selectedSongFilePath.value[selectedSongFilePath.value.length - 1]
+    if (runtime.songsArea.selectedSongFilePath.length) {
+      lastClickSongFilePath =
+        runtime.songsArea.selectedSongFilePath[runtime.songsArea.selectedSongFilePath.length - 1]
     }
     let lastClickSongIndex = 0
     if (lastClickSongFilePath) {
-      lastClickSongIndex = songInfoArr.value.findIndex(
+      lastClickSongIndex = runtime.songsArea.songInfoArr.findIndex(
         (item) => item.filePath === lastClickSongFilePath
       )
     }
 
-    let clickSongIndex = songInfoArr.value.findIndex((item) => item.filePath === song.filePath)
-    let sliceArr = songInfoArr.value.slice(
+    let clickSongIndex = runtime.songsArea.songInfoArr.findIndex(
+      (item) => item.filePath === song.filePath
+    )
+    let sliceArr = runtime.songsArea.songInfoArr.slice(
       Math.min(lastClickSongIndex, clickSongIndex),
       Math.max(lastClickSongIndex, clickSongIndex) + 1
     )
     for (let item of sliceArr) {
-      if (selectedSongFilePath.value.indexOf(item.filePath) === -1) {
-        selectedSongFilePath.value.push(item.filePath)
+      if (runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) === -1) {
+        runtime.songsArea.selectedSongFilePath.push(item.filePath)
       }
     }
   } else {
-    selectedSongFilePath.value = [song.filePath]
+    runtime.songsArea.selectedSongFilePath = [song.filePath]
   }
 }
 
@@ -232,8 +233,8 @@ const menuArr = ref([
 ])
 
 const songContextmenu = async (event, song) => {
-  if (selectedSongFilePath.value.indexOf(song.filePath) === -1) {
-    selectedSongFilePath.value = [song.filePath]
+  if (runtime.songsArea.selectedSongFilePath.indexOf(song.filePath) === -1) {
+    runtime.songsArea.selectedSongFilePath = [song.filePath]
   }
   let result = await rightClickMenu({
     menuArr: menuArr.value,
@@ -248,27 +249,29 @@ const songContextmenu = async (event, song) => {
       if (res === 'confirm') {
         window.electron.ipcRenderer.send(
           'delSongs',
-          JSON.parse(JSON.stringify(selectedSongFilePath.value))
+          JSON.parse(JSON.stringify(runtime.songsArea.selectedSongFilePath))
         )
-        let delSongs = songInfoArr.value.filter(
-          (item) => selectedSongFilePath.value.indexOf(item.filePath) !== -1
+        let delSongs = runtime.songsArea.songInfoArr.filter(
+          (item) => runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) !== -1
         )
         for (let item of delSongs) {
           if (item.coverUrl) {
             URL.revokeObjectURL(item.coverUrl)
           }
         }
-        songInfoArr.value = songInfoArr.value.filter(
-          (item) => selectedSongFilePath.value.indexOf(item.filePath) === -1
+        runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
+          (item) => runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) === -1
         )
-        runtime.playingData.playingSongListData = songInfoArr.value
+        runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
         if (
           runtime.playingData.playingSong &&
-          selectedSongFilePath.value.indexOf(runtime.playingData.playingSong.filePath) !== -1
+          runtime.songsArea.selectedSongFilePath.indexOf(
+            runtime.playingData.playingSong.filePath
+          ) !== -1
         ) {
           runtime.playingData.playingSong = null
         }
-        selectedSongFilePath.value.length = 0
+        runtime.songsArea.selectedSongFilePath.length = 0
       }
     } else if (result.menuName === '移动到精选库') {
       selectSongListDialogLibraryName.value = '精选库'
@@ -281,8 +284,8 @@ const songContextmenu = async (event, song) => {
       if (result !== 'cancel') {
         let folderPathVal = result.folderPathVal
         let deleteSongsAfterExport = result.deleteSongsAfterExport
-        let songs = songInfoArr.value.filter(
-          (item) => selectedSongFilePath.value.indexOf(item.filePath) !== -1
+        let songs = runtime.songsArea.songInfoArr.filter(
+          (item) => runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) !== -1
         )
         await window.electron.ipcRenderer.invoke(
           'exportSongsToDir',
@@ -296,12 +299,12 @@ const songContextmenu = async (event, song) => {
               URL.revokeObjectURL(item.coverUrl)
             }
           }
-          songInfoArr.value = songInfoArr.value.filter(
-            (item) => selectedSongFilePath.value.indexOf(item.filePath) === -1
+          runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
+            (item) => runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) === -1
           )
-          selectedSongFilePath.value = []
+          runtime.songsArea.selectedSongFilePath = []
           if (runtime.songsArea.songListUUID === runtime.playingData.playingSongListUUID) {
-            runtime.playingData.playingSongListData = songInfoArr.value
+            runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
 
             if (
               runtime.playingData.playingSongListData.filter(
@@ -327,29 +330,25 @@ const selectSongListDialogConfirm = async (songListUUID) => {
   }
   await window.electron.ipcRenderer.invoke(
     'moveSongsToDir',
-    JSON.parse(JSON.stringify(selectedSongFilePath.value)),
+    JSON.parse(JSON.stringify(runtime.songsArea.selectedSongFilePath)),
     libraryUtils.findDirPathByUuid(songListUUID)
   )
-  let filteredSongInfoArr = songInfoArr.value.filter((item) => {
-    if (!selectedSongFilePath.value.includes(item.filePath)) {
+  let filteredSongInfoArr = runtime.songsArea.songInfoArr.filter((item) => {
+    if (!runtime.songsArea.selectedSongFilePath.includes(item.filePath)) {
       return true
     } else {
       URL.revokeObjectURL(item.coverUrl)
       return false
     }
   })
-  songInfoArr.value = filteredSongInfoArr
-  selectedSongFilePath.value.length = 0
+  runtime.songsArea.songInfoArr = filteredSongInfoArr
+  runtime.songsArea.selectedSongFilePath.length = 0
 }
-const playingSongFilePath = ref('')
 
 watch(
   () => runtime.playingData.playingSong,
   async () => {
-    if (runtime.playingData.playingSong === null) {
-      playingSongFilePath.value = ''
-    } else {
-      playingSongFilePath.value = runtime.playingData.playingSong.filePath
+    if (runtime.playingData.playingSong !== null) {
       if (runtime.songsArea.songListUUID === runtime.playingData.playingSongListUUID) {
         nextTick(() => {
           let playingDom = document.querySelector('.playingSong')
@@ -359,9 +358,9 @@ watch(
     }
     if (
       runtime.songsArea.songListUUID === runtime.playingData.playingSongListUUID &&
-      runtime.playingData.playingSongListData.length !== songInfoArr.value.length
+      runtime.playingData.playingSongListData.length !== runtime.songsArea.songInfoArr.length
     ) {
-      for (let item of songInfoArr.value) {
+      for (let item of runtime.songsArea.songInfoArr) {
         URL.revokeObjectURL(item.coverUrl)
       }
       for (let item of runtime.playingData.playingSongListData) {
@@ -371,25 +370,25 @@ watch(
           item.coverUrl = blobUrl
         }
       }
-      songInfoArr.value = runtime.playingData.playingSongListData
+      runtime.songsArea.songInfoArr = runtime.playingData.playingSongListData
     }
   }
 )
 const songDblClick = (song) => {
   runtime.activeMenuUUID = ''
-  playingSongFilePath.value = song.filePath
-  selectedSongFilePath.value = []
+
+  runtime.songsArea.selectedSongFilePath = []
   runtime.playingData.playingSong = song
   runtime.playingData.playingSongListUUID = runtime.songsArea.songListUUID
-  runtime.playingData.playingSongListData = songInfoArr.value
+  runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
   window.electron.ipcRenderer.send('readSongFile', song.filePath)
 }
 
 onMounted(() => {
   hotkeys('ctrl+a, command+a', 'windowGlobal', () => {
-    selectedSongFilePath.value.length = 0
-    for (let item of songInfoArr.value) {
-      selectedSongFilePath.value.push(item.filePath)
+    runtime.songsArea.selectedSongFilePath.length = 0
+    for (let item of runtime.songsArea.songInfoArr) {
+      runtime.songsArea.selectedSongFilePath.push(item.filePath)
     }
     return false
   })
@@ -406,7 +405,7 @@ onMounted(() => {
   </div>
   <div
     style="height: 100%; width: 100%; overflow: auto"
-    v-if="runtime.songsArea.songListUUID && songInfoArr.length != 0"
+    v-if="runtime.songsArea.songListUUID && runtime.songsArea.songInfoArr.length != 0"
     @click="selectedSongFilePath.length = 0"
   >
     <div
@@ -447,7 +446,7 @@ onMounted(() => {
     </div>
     <div>
       <div
-        v-for="(item, index) of songInfoArr"
+        v-for="(item, index) of runtime.songsArea.songInfoArr"
         :key="item.filePath"
         class="songItem unselectable"
         @click.stop="songClick($event, item)"
@@ -456,10 +455,14 @@ onMounted(() => {
       >
         <div
           :class="{
-            lightBackground: index % 2 === 1 && selectedSongFilePath.indexOf(item.filePath) === -1,
-            darkBackground: index % 2 === 0 && selectedSongFilePath.indexOf(item.filePath) === -1,
-            selectedSong: selectedSongFilePath.indexOf(item.filePath) !== -1,
-            playingSong: item.filePath === playingSongFilePath
+            lightBackground:
+              index % 2 === 1 &&
+              runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) === -1,
+            darkBackground:
+              index % 2 === 0 &&
+              runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) === -1,
+            selectedSong: runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) !== -1,
+            playingSong: item.filePath === runtime.playingData.playingSong?.filePath
           }"
           style="display: flex"
         >
