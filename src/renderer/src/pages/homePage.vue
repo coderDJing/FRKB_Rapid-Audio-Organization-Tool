@@ -80,6 +80,10 @@ const dragover = (e) => {
     e.dataTransfer.dropEffect = 'none'
     return
   }
+  if (e.dataTransfer.files.length === 0) {
+    e.dataTransfer.dropEffect = 'none'
+    return
+  }
   e.dataTransfer.dropEffect = 'move'
   dragOverSongsArea.value = true
 }
@@ -88,11 +92,19 @@ const dragleave = (e) => {
     e.dataTransfer.dropEffect = 'none'
     return
   }
+  if (e.dataTransfer.files.length === 0) {
+    e.dataTransfer.dropEffect = 'none'
+    return
+  }
   dragOverSongsArea.value = false
 }
 
 const drop = async (e) => {
   if (runtime.dragItemData !== null || !runtime.selectedSongListUUID) {
+    e.dataTransfer.dropEffect = 'none'
+    return
+  }
+  if (e.dataTransfer.files.length === 0) {
     e.dataTransfer.dropEffect = 'none'
     return
   }
