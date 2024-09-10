@@ -153,8 +153,8 @@ const contextmenuEvent = async (event) => {
       if (res === 'confirm') {
         let uuids = libraryUtils.getAllUuids(libraryUtils.getLibraryTreeByUUID(props.uuid))
 
-        if (uuids.indexOf(runtime.selectedSongListUUID) !== -1) {
-          runtime.selectedSongListUUID = ''
+        if (uuids.indexOf(runtime.songsArea.songListUUID) !== -1) {
+          runtime.songsArea.songListUUID = ''
         }
         if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
           runtime.playingData.playingSongListUUID = ''
@@ -211,8 +211,8 @@ const contextmenuEvent = async (event) => {
           dirPath
         )
         if (deleteSongsAfterExport) {
-          if (runtime.selectedSongListUUID === props.uuid) {
-            runtime.selectedSongListUUID = ''
+          if (runtime.songsArea.songListUUID === props.uuid) {
+            runtime.songsArea.songListUUID = ''
           }
           if (runtime.playingData.playingSongListUUID === props.uuid) {
             runtime.playingData.playingSongListUUID = ''
@@ -230,7 +230,7 @@ const dirChildRendered = ref(false)
 const dirHandleClick = async () => {
   runtime.activeMenuUUID = ''
   if (dirData.type == 'songList') {
-    runtime.selectedSongListUUID = props.uuid
+    runtime.songsArea.songListUUID = props.uuid
   } else {
     dirChildRendered.value = true
     dirChildShow.value = !dirChildShow.value
@@ -263,6 +263,12 @@ const renameInputBlurHandle = async () => {
     renameDivValue.value,
     libraryUtils.findDirPathByUuid(props.uuid)
   )
+  if (dirData.uuid === runtime.songsArea.songListUUID) {
+    //todo
+  }
+  if (dirData.uuid === runtime.playingData.playingSongListUUID) {
+    //todo
+  }
   dirData.dirName = renameDivValue.value
   renameDivValue.value = ''
   renameDivShow.value = false
@@ -505,8 +511,8 @@ const drop = async (e) => {
       let flatUUID = libraryUtils.getAllUuids(
         libraryUtils.getLibraryTreeByUUID(runtime.dragItemData.uuid)
       )
-      if (flatUUID.indexOf(runtime.selectedSongListUUID) != -1) {
-        runtime.selectedSongListUUID = ''
+      if (flatUUID.indexOf(runtime.songsArea.songListUUID) != -1) {
+        runtime.songsArea.songListUUID = ''
       }
       if (flatUUID.indexOf(runtime.playingData.playingSongListUUID) != -1) {
         runtime.playingData.playingSongListUUID = ''
@@ -596,8 +602,8 @@ const drop = async (e) => {
           let flatUUID = libraryUtils.getAllUuids(
             libraryUtils.getLibraryTreeByUUID(runtime.dragItemData.uuid)
           )
-          if (flatUUID.indexOf(runtime.selectedSongListUUID) != -1) {
-            runtime.selectedSongListUUID = ''
+          if (flatUUID.indexOf(runtime.songsArea.songListUUID) != -1) {
+            runtime.songsArea.songListUUID = ''
           }
           if (flatUUID.indexOf(runtime.playingData.playingSongListUUID) != -1) {
             runtime.playingData.playingSongListUUID = ''
@@ -637,8 +643,8 @@ const drop = async (e) => {
         let flatUUID = libraryUtils.getAllUuids(
           libraryUtils.getLibraryTreeByUUID(runtime.dragItemData.uuid)
         )
-        if (flatUUID.indexOf(runtime.selectedSongListUUID) != -1) {
-          runtime.selectedSongListUUID = ''
+        if (flatUUID.indexOf(runtime.songsArea.songListUUID) != -1) {
+          runtime.songsArea.songListUUID = ''
         }
         if (flatUUID.indexOf(runtime.playingData.playingSongListUUID) != -1) {
           runtime.playingData.playingSongListUUID = ''
@@ -692,7 +698,7 @@ watch(
       borderTop: dragApproach == 'top',
       borderBottom: dragApproach == 'bottom',
       borderCenter: dragApproach == 'center',
-      selectedDir: props.uuid == runtime.selectedSongListUUID
+      selectedDir: props.uuid == runtime.songsArea.songListUUID
     }"
   >
     <div class="prefixIcon" :class="{ isPlaying: isPlaying }">
