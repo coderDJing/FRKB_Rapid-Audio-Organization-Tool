@@ -1,3 +1,4 @@
+##已废弃 改为使用 analyseSong.py
 import sys
 import numpy as np
 import librosa
