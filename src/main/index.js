@@ -14,51 +14,88 @@ import { languageDict } from './translate.js'
 import { is } from '@electron-toolkit/utils'
 import store from './store.js'
 import './update.js'
+const { spawn } = require('child_process')
+const child = spawn(url.analyseSongPyScriptUrl, {
+  stdio: ['inherit', 'pipe', 'pipe'], // 继承stdin，pipe stdout和stderr到Node.js
+  windowsHide: true
+})
 
-// const net = require('net')
-// const socketClient = new net.Socket()
-// socketClient.connect(14736, '127.0.0.1', async () => {
-//   let songFileUrls = await collectFilesWithExtensions('C:\\Users\\Trl\\Desktop\\song\\Nonameleft Living Like This Chart', store.settingConfig.audioExt)
-//   function splitStringByBytes(str, chunkSize = 1000) {
-//     const chunks = [];
-//     let index = 0;
-//     let currentChunkLength = 0;
-//     let currentChunkBuffer = Buffer.alloc(0);
-//     while (index < str.length) {
-//       const charBuffer = Buffer.from(str.slice(index, index + 1), 'utf8');
-//       const charLength = charBuffer.length;
+child.stdout.on('data', (data) => {
+  try {
+    const parsedData = JSON.parse(data.toString());
+    if (parsedData.port) {
+      store.analyseSongPort = parsedData.port;
+    } else {
+      log.error(data.toString());
+    }
+  } catch (error) {
+    log.error(data.toString());
+  }
+});
 
-//       if (currentChunkLength + charLength > chunkSize) {
-//         chunks.push(currentChunkBuffer);
-//         currentChunkBuffer = charBuffer;
-//         currentChunkLength = charLength;
-//       } else {
-//         currentChunkBuffer = Buffer.concat([currentChunkBuffer, charBuffer]);
-//         currentChunkLength += charLength;
+child.stderr.on('data', (data) => {
+  log.error(data.toString())
+})
+
+child.on('error', (err) => {
+  log.error(err)
+})
+
+child.on('close', (code) => {
+  log.error(code)
+})
+
+// setTimeout(() => {
+//   console.log(1111)
+//   const net = require('net')
+//   const socketClient = new net.Socket()
+
+//   socketClient.connect(store.analyseSongPort, '127.0.0.1', async () => {
+//     let songFileUrls = await collectFilesWithExtensions(
+//       'C:\\Users\\coder\\Desktop\\song\\Mihai Popoviciu August Chart 2024',
+//       store.settingConfig.audioExt
+//     )
+//     function splitStringByBytes(str, chunkSize = 1000) {
+//       const chunks = []
+//       let index = 0
+//       let currentChunkLength = 0
+//       let currentChunkBuffer = Buffer.alloc(0)
+//       while (index < str.length) {
+//         const charBuffer = Buffer.from(str.slice(index, index + 1), 'utf8')
+//         const charLength = charBuffer.length
+
+//         if (currentChunkLength + charLength > chunkSize) {
+//           chunks.push(currentChunkBuffer)
+//           currentChunkBuffer = charBuffer
+//           currentChunkLength = charLength
+//         } else {
+//           currentChunkBuffer = Buffer.concat([currentChunkBuffer, charBuffer])
+//           currentChunkLength += charLength
+//         }
+
+//         index++
 //       }
-
-//       index++;
+//       if (currentChunkLength > 0) {
+//         chunks.push(currentChunkBuffer)
+//       }
+//       return chunks
 //     }
-//     if (currentChunkLength > 0) {
-//       chunks.push(currentChunkBuffer);
+//     const chunks = splitStringByBytes(songFileUrls.join('|'))
+//     for (let chunk of chunks) {
+//       socketClient.write(chunk)
 //     }
-//     return chunks;
-//   }
-//   const chunks = splitStringByBytes(songFileUrls.join('|'))
-//   for (let chunk of chunks) {
-//     socketClient.write(chunk)
-//   }
-// })
-// socketClient.on('data', (data) => {
-//   console.log(data.toString())
-// })
-// socketClient.on('error', (err) => {
-//   console.log(err)
-//   socketClient.destroy()
-// })
-// socketClient.on('close', () => {
-//   console.log('Connection closed');
-// })
+//   })
+//   socketClient.on('data', (data) => {
+//     console.log(data.toString())
+//   })
+//   socketClient.on('error', (err) => {
+//     console.log(err)
+//     socketClient.destroy()
+//   })
+//   socketClient.on('close', () => {
+//     console.log('Connection closed')
+//   })
+// }, 5000)
 
 const path = require('path')
 const fs = require('fs-extra')

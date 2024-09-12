@@ -6,7 +6,7 @@ import {
   executeScript,
   moveOrCopyItemWithCheckIsExist
 } from '../utils.js'
-import analyseSongFingerprintPyScriptUrl from '../../../resources/pyScript/analyseSongFingerprint/analyseSongFingerprint.exe?commonjs-external&asset&asarUnpack'
+// import analyseSongFingerprintPyScriptUrl from '../../../resources/pyScript/analyseSongFingerprint/analyseSongFingerprint.exe?commonjs-external&asset&asarUnpack'
 import { t } from '../translate.js'
 import store from '../store.js'
 import url from '../url.js'
@@ -161,7 +161,7 @@ function createWindow() {
     const endHandle = () => sendProgress('分析声音指纹中', ++processNum, songFileUrls.length)
     const { result: fingerprintResults, errorResult: fingerprintErrorResults } =
       await executeScript(
-        analyseSongFingerprintPyScriptUrl,
+        url.analyseSongPyScriptUrl,
         [folderPath.join('|'), store.settingConfig.audioExt.join(',')],
         endHandle
       )
@@ -274,7 +274,7 @@ function createWindow() {
         ? [songFileUrls.join('|')]
         : [formData.folderPath.join('|')]
       let { result, errorResult } = await executeScript(
-        analyseSongFingerprintPyScriptUrl,
+        url.analyseSongPyScriptUrl,
         [...scriptArgs, store.settingConfig.audioExt.join(',')],
         endHandle
       )
