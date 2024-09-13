@@ -1,13 +1,14 @@
 import socket
 import multiprocessing
 import numpy as np
+from multiprocessing import Manager
 import librosa
 import hashlib
 import json
 import random
 
 
-def analyze_song(file_path, conn):
+def analyze_song(file_path, conn, lock):
     try:
         # 读取音频文件
         y, sr = librosa.load(file_path, sr=None)
@@ -35,12 +36,18 @@ def analyze_song(file_path, conn):
                 "bpm": round(float(tempo), 2),
             }
         )
-        conn.send(message.encode("utf-8"))
+
+        # 使用锁来确保并发安全
+        with lock:
+            conn.send(message.encode("utf-8"))
     except Exception as e:
         message = json.dumps(
             {"md5_hash": "error", "file_path": file_path, "bpm": "error"}
         )
-        conn.send(message.encode("utf-8"))
+
+        # 使用锁来确保并发安全
+        with lock:
+            conn.send(message.encode("utf-8"))
 
 
 def bind_socket(frkbSocket, port):
@@ -61,6 +68,9 @@ def main():
 
     frkbSocket.listen(1)
 
+    manager = Manager()
+    lock = manager.Lock()  # 创建一个锁对象
+
     while True:
         conn, address = frkbSocket.accept()
         total_data = bytes()
@@ -76,8 +86,12 @@ def main():
         # 获取CPU核数
         num_processes = multiprocessing.cpu_count()
         # 创建一个进程池，进程数为CPU核数
-        with multiprocessing.Pool(processes=num_processes) as pool:
-            pool.starmap(analyze_song, [(file_path, conn) for file_path in songArr])
+        with multiprocessing.Pool(
+            processes=num_processes, initializer=lambda: manager
+        ) as pool:
+            pool.starmap(
+                analyze_song, [(file_path, conn, lock) for file_path in songArr]
+            )
             pool.close()  # 显式关闭进程池
             pool.join()  # 等待所有子进程结束
         # 关闭连接
