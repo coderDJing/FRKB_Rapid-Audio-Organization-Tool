@@ -4,7 +4,8 @@ import icon from '../../../resources/icon.png?asset'
 import {
   collectFilesWithExtensions,
   executeScript,
-  moveOrCopyItemWithCheckIsExist
+  moveOrCopyItemWithCheckIsExist,
+  getSongsAnalyseResult
 } from '../utils.js'
 // import analyseSongFingerprintPyScriptUrl from '../../../resources/pyScript/analyseSongFingerprint/analyseSongFingerprint.exe?commonjs-external&asset&asarUnpack'
 import { t } from '../translate.js'
@@ -158,17 +159,16 @@ function createWindow() {
     // 分析声音指纹
     let processNum = 0
     sendProgress('分析声音指纹初始化', processNum, songFileUrls.length)
-    const endHandle = () => sendProgress('分析声音指纹中', ++processNum, songFileUrls.length)
-    const { result: fingerprintResults, errorResult: fingerprintErrorResults } =
-      await executeScript(
-        url.analyseSongPyScriptUrl,
-        [folderPath.join('|'), store.settingConfig.audioExt.join(',')],
-        endHandle
-      )
+    const { songsAnalyseResult, errorSongsAnalyseResult } = await getSongsAnalyseResult(
+      songFileUrls,
+      (resultLength) => {
+        sendProgress('分析声音指纹中', resultLength, songFileUrls.length)
+      }
+    )
     sendProgress('分析声音指纹中', songFileUrls.length, songFileUrls.length)
 
     // 去重处理
-    const uniqueFingerprints = new Set(fingerprintResults.map((item) => item.md5_hash))
+    const uniqueFingerprints = new Set(songsAnalyseResult.map((item) => item.md5_hash))
     const removeDuplicatesFingerprintResults = [...uniqueFingerprints]
     store.songFingerprintList = [
       ...new Set([...store.songFingerprintList, ...removeDuplicatesFingerprintResults])
@@ -180,19 +180,19 @@ function createWindow() {
       store.songFingerprintList
     )
 
-    // 构建反馈信息
+    // 构建反馈信息//todo 反馈信息有问题
     const contentArr = [
       `${t('文件夹下共扫描曲目：')} ${songFileUrls.length}`,
-      `${t('比对声音指纹去除重复曲目：')} ${songFileUrls.length - removeDuplicatesFingerprintResults.length - fingerprintErrorResults.length}`,
+      `${t('比对声音指纹去除重复曲目：')} ${songFileUrls.length - removeDuplicatesFingerprintResults.length - errorSongsAnalyseResult.length}`,
       `${t('声音指纹库新增：')} ${removeDuplicatesFingerprintResults.length}`,
       `${t('声音指纹库现有：')} ${store.songFingerprintList.length}`
     ]
 
-    if (fingerprintErrorResults.length) {
+    if (errorSongsAnalyseResult.length) {
       contentArr.splice(
         1,
         0,
-        `${t('尝试分析失败：')} ${fingerprintErrorResults.length} ${t('（通常由于文件内容损坏或传输过程发生错误）')}`
+        `${t('尝试分析失败：')} ${errorSongsAnalyseResult.length} ${t('（通常由于文件内容损坏或传输过程发生错误）')}`
       )
     }
 

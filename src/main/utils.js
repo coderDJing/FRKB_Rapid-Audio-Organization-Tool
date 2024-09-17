@@ -3,6 +3,115 @@ import store from './store.js'
 const fs = require('fs-extra')
 const path = require('path')
 const iconv = require('iconv-lite')
+
+function parseJsonStrings(inputString) {
+  // 定义一个正则表达式来匹配 JSON 对象
+  const jsonPattern = /(\{.*?\})/g
+
+  // 匹配所有的 JSON 对象
+  let matches = inputString.match(jsonPattern)
+
+  // 如果没有匹配到任何 JSON 对象，直接返回原始字符串
+  if (!matches) {
+    return inputString
+  }
+
+  // 解析每个 JSON 对象
+  const result = []
+  for (let match of matches) {
+    try {
+      const parsedObj = JSON.parse(match)
+      result.push(parsedObj)
+    } catch (error) {
+      // 如果解析失败，返回原始字符串
+      return inputString
+    }
+  }
+
+  // 如果所有 JSON 对象都解析成功，返回结果数组
+  return result
+}
+
+// 分割字符串为多个字节块的函数
+function splitStringByBytes(str, chunkSize = 1024) {
+  const chunks = []
+  let index = 0
+  let currentChunkLength = 0
+  let currentChunkBuffer = Buffer.alloc(0)
+  while (index < str.length) {
+    const charBuffer = Buffer.from(str.slice(index, index + 1), 'utf8')
+    const charLength = charBuffer.length
+
+    if (currentChunkLength + charLength > chunkSize) {
+      chunks.push(currentChunkBuffer)
+      currentChunkBuffer = charBuffer
+      currentChunkLength = charLength
+    } else {
+      currentChunkBuffer = Buffer.concat([currentChunkBuffer, charBuffer])
+      currentChunkLength += charLength
+    }
+
+    index++
+  }
+  if (currentChunkLength > 0) {
+    chunks.push(currentChunkBuffer)
+  }
+  return chunks
+}
+export async function getSongsAnalyseResult(songFilePaths, processFunc) {
+  let songFileUrls = songFilePaths
+
+  const chunks = splitStringByBytes(songFileUrls.join('|'))
+
+  return new Promise((resolve, reject) => {
+    const net = require('net')
+    const socketClient = new net.Socket()
+    function writeNextChunk() {
+      if (chunks.length > 0) {
+        const chunk = chunks.shift()
+        if (socketClient.write(chunk)) {
+          writeNextChunk() // 如果写入成功，继续写入下一个块
+        } else {
+          socketClient.once('drain', writeNextChunk) // 等待 drain 事件
+        }
+      } else {
+        socketClient.end()
+      }
+    }
+    let songsAnalyseResult = []
+    let errorSongsAnalyseResult = []
+
+    socketClient.connect(store.analyseSongPort, '127.0.0.1', () => {
+      writeNextChunk()
+    })
+    socketClient.on('data', (data) => {
+      let md5s = parseJsonStrings(data.toString())
+      if (!Array.isArray(md5s)) {
+        console.log(data.toString())
+      } else {
+        for (let item of md5s) {
+          if (item.md5_hash === 'error') {
+            errorSongsAnalyseResult.push(item)
+          } else {
+            songsAnalyseResult.push(item)
+          }
+        }
+      }
+      processFunc(songsAnalyseResult.length + errorSongsAnalyseResult.length)
+    })
+
+    socketClient.on('error', (err) => {
+      console.log(err.toString())
+      reject(err) // 拒绝 Promise 当发生错误时
+      socketClient.destroy()
+    })
+
+    socketClient.on('close', () => {
+      console.log('socketClient closed')
+      resolve({ songsAnalyseResult, errorSongsAnalyseResult }) // 解决 Promise 当连接关闭时
+    })
+  })
+}
 async function getdirsDescriptionJson(dirPath, dirs) {
   const jsons = await Promise.all(
     dirs.map(async (dir) => {
