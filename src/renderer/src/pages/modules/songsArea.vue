@@ -406,7 +406,7 @@ onMounted(() => {
   <div
     style="height: 100%; width: 100%; overflow: auto"
     v-if="runtime.songsArea.songListUUID && runtime.songsArea.songInfoArr.length != 0"
-    @click="selectedSongFilePath.length = 0"
+    @click="runtime.songsArea.selectedSongFilePath.length = 0"
   >
     <div
       @contextmenu.stop="contextmenuEvent"
