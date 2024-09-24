@@ -170,6 +170,7 @@ function createWindow() {
     // 去重处理
     const uniqueFingerprints = new Set(songsAnalyseResult.map((item) => item.md5_hash))
     const removeDuplicatesFingerprintResults = [...uniqueFingerprints]
+    let beforeSongFingerprintListLength = store.songFingerprintList.length
     store.songFingerprintList = [
       ...new Set([...store.songFingerprintList, ...removeDuplicatesFingerprintResults])
     ]
@@ -180,11 +181,11 @@ function createWindow() {
       store.songFingerprintList
     )
 
-    // 构建反馈信息//todo 反馈信息有问题
+    // 构建反馈信息
     const contentArr = [
       `${t('文件夹下共扫描曲目：')} ${songFileUrls.length}`,
-      `${t('比对声音指纹去除重复曲目：')} ${songFileUrls.length - removeDuplicatesFingerprintResults.length - errorSongsAnalyseResult.length}`,
-      `${t('声音指纹库新增：')} ${removeDuplicatesFingerprintResults.length}`,
+      `${t('比对声音指纹去除重复曲目：')} ${songFileUrls.length - (store.songFingerprintList.length - beforeSongFingerprintListLength) - errorSongsAnalyseResult.length}`,
+      `${t('声音指纹库新增：')} ${store.songFingerprintList.length - beforeSongFingerprintListLength}`,
       `${t('声音指纹库现有：')} ${store.songFingerprintList.length}`
     ]
 
@@ -270,9 +271,11 @@ function createWindow() {
         processNum++
         sendProgress(t('分析声音指纹中'), processNum, songFileUrls.length, false)
       }
+      //todo 改造
       let scriptArgs = formData.filePaths
         ? [songFileUrls.join('|')]
         : [formData.folderPath.join('|')]
+      //todo 改造
       let { result, errorResult } = await executeScript(
         url.analyseSongPyScriptUrl,
         [...scriptArgs, store.settingConfig.audioExt.join(',')],
@@ -394,10 +397,11 @@ function createWindow() {
     mainWindow.webContents.send('importFinished', contentArr, songListUUID || formData.songListUUID)
   }
 
+  //todo 分析逻辑改造
   ipcMain.on('startImportDragSongs', async (e, formData) => {
     await importSongsHandler(e, formData)
   })
-
+  //todo 分析逻辑改造
   ipcMain.on('startImportSongs', async (e, formData, songListUUID) => {
     await importSongsHandler(e, formData, songListUUID)
   })
