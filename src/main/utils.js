@@ -58,6 +58,42 @@ function splitStringByBytes(str, chunkSize = 1024) {
   }
   return chunks
 }
+
+export async function exitSongsAnalyseServie() {
+  const chunks = splitStringByBytes('exit')
+  return new Promise((resolve, reject) => {
+    const net = require('net')
+    const socketClient = new net.Socket()
+    function writeNextChunk() {
+      if (chunks.length > 0) {
+        const chunk = chunks.shift()
+        if (socketClient.write(chunk)) {
+          writeNextChunk() // 如果写入成功，继续写入下一个块
+        } else {
+          socketClient.once('drain', writeNextChunk) // 等待 drain 事件
+        }
+      } else {
+        socketClient.end()
+      }
+    }
+
+    socketClient.connect(store.analyseSongPort, '127.0.0.1', () => {
+      writeNextChunk()
+    })
+    socketClient.on('data', (data) => {})
+
+    socketClient.on('error', (err) => {
+      console.log(err.toString())
+      reject(err) // 拒绝 Promise 当发生错误时
+      socketClient.destroy()
+    })
+
+    socketClient.on('close', () => {
+      console.log('socketClient closed')
+      resolve('exited') // 解决 Promise 当连接关闭时
+    })
+  })
+}
 export async function getSongsAnalyseResult(songFilePaths, processFunc) {
   let songFileUrls = songFilePaths
 
