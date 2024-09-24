@@ -1,9 +1,3 @@
-Main functions completed
-The Beta 0 version has been officially released, and we sincerely invite you to try it out. If you encounter any issues during the trial, please do not hesitate to provide us with your feedback. Additionally, you can find the log.txt file in the software's root directory, which records any error information. Please kindly send us this log file as well, so that we can promptly make improvements.
-
-主要功能开发完成
-Beta 0版本已正式发布，‌诚邀您进行试用。‌在试用过程中，‌如遇任何问题，‌敬请不吝赐教，‌将您的反馈告知我们。‌同时，‌您可在软件根目录下找到log.txt文件，‌其中记录了软件的错误信息，‌烦请一并反馈，‌以便我们及时改进
-
 # FRKB - Rapid Audio Organization Tool
 
 ## English Version
