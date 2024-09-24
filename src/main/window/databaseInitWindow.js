@@ -46,7 +46,6 @@ const createWindow = () => {
 
   ipcMain.on('databaseInitWindow-toggle-close', () => {
     databaseInitWindow.close()
-    app.quit()
   })
   ipcMain.handle('databaseInitWindow-InitDataBase', async (e, dirPath) => {
     let rootDescription = {
