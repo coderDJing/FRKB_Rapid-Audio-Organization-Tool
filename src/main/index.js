@@ -14,6 +14,28 @@ import { languageDict } from './translate.js'
 import { is } from '@electron-toolkit/utils'
 import store from './store.js'
 import './update.js'
+
+const gotTheLock = app.requestSingleInstanceLock()
+
+if (!gotTheLock) {
+  process.kill(child.pid)
+  app.quit()
+} else {
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    if (databaseInitWindow.instance) {
+      if (databaseInitWindow.instance.isMinimized()) {
+        databaseInitWindow.instance.restore()
+      }
+      databaseInitWindow.instance.focus()
+    } else if (mainWindow.instance) {
+      if (mainWindow.instance.isMinimized()) {
+        mainWindow.instance.restore()
+      }
+      mainWindow.instance.focus()
+    }
+  })
+}
+//todo 主进程退出 子进程没有正常退出 待解决
 const { spawn } = require('child_process')
 const child = spawn(url.analyseSongPyScriptUrl, {
   stdio: ['inherit', 'pipe', 'pipe'], // 继承stdin，pipe stdout和stderr到Node.js
@@ -58,7 +80,7 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
   fs.outputJsonSync(url.settingConfigFileUrl, {
     language: is.dev ? 'zhCN' : '',
     audioExt: ['.mp3', '.wav', '.flac'],
-    databaseUrl: is.dev ? 'C:\\Users\\Trl\\Desktop\\FRKB\\FRKB_database' : '',
+    databaseUrl: is.dev ? 'D:\\FRKB\\FRKB_database' : '',
     globalCallShortcut:
       platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : ''
   })
@@ -66,25 +88,7 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
 
 store.layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
 store.settingConfig = fs.readJSONSync(url.settingConfigFileUrl)
-const gotTheLock = app.requestSingleInstanceLock()
 
-if (!gotTheLock) {
-  app.quit()
-} else {
-  app.on('second-instance', (event, commandLine, workingDirectory) => {
-    if (databaseInitWindow.instance) {
-      if (databaseInitWindow.instance.isMinimized()) {
-        databaseInitWindow.instance.restore()
-      }
-      databaseInitWindow.instance.focus()
-    } else if (mainWindow.instance) {
-      if (mainWindow.instance.isMinimized()) {
-        mainWindow.instance.restore()
-      }
-      mainWindow.instance.focus()
-    }
-  })
-}
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('frkb.coderDjing')
@@ -120,6 +124,8 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   ipcMain.removeAllListeners()
+  console.log(111)
+  process.kill(child.pid)
   app.quit()
 })
 

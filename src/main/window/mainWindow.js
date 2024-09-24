@@ -131,7 +131,7 @@ function createWindow() {
     layoutConfig.mainWindowWidth = mainWindowWidth
     layoutConfig.mainWindowHeight = mainWindowHeight
     await fs.outputJson(url.layoutConfigFileUrl, layoutConfig)
-    app.exit()
+    mainWindow.close()
   })
   ipcMain.on('collapseButtonHandleClick', (e, libraryName) => {
     mainWindow.webContents.send('collapseButtonHandleClick', libraryName)
