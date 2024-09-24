@@ -72,6 +72,9 @@ def main():
                 break
 
         # 解码并分割数据
+        if total_data.decode("utf-8") == "exit":
+            conn.close()
+            break
         songArr = total_data.decode("utf-8").split("|")
         # print(songArr, flush=True)
 

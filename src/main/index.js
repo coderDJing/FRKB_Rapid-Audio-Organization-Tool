@@ -4,7 +4,8 @@ import {
   updateTargetDirSubdirOrder,
   getLibrary,
   collectFilesWithExtensions,
-  getCurrentTimeYYYYMMDDHHMMSSSSS
+  getCurrentTimeYYYYMMDDHHMMSSSSS,
+  exitSongsAnalyseServie
 } from './utils.js'
 import { log } from './log.js'
 import url from './url.js'
@@ -18,7 +19,6 @@ import './update.js'
 const gotTheLock = app.requestSingleInstanceLock()
 
 if (!gotTheLock) {
-  process.kill(child.pid)
   app.quit()
 } else {
   app.on('second-instance', (event, commandLine, workingDirectory) => {
@@ -35,7 +35,6 @@ if (!gotTheLock) {
     }
   })
 }
-//todo 主进程退出 子进程没有正常退出 待解决
 const { spawn } = require('child_process')
 const child = spawn(url.analyseSongPyScriptUrl, {
   stdio: ['inherit', 'pipe', 'pipe'], // 继承stdin，pipe stdout和stderr到Node.js
@@ -89,7 +88,6 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
 store.layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
 store.settingConfig = fs.readJSONSync(url.settingConfigFileUrl)
 
-
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('frkb.coderDjing')
   app.on('browser-window-created', (_, window) => {
@@ -122,10 +120,9 @@ app.whenReady().then(() => {
   })
 })
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
   ipcMain.removeAllListeners()
-  console.log(111)
-  process.kill(child.pid)
+  await exitSongsAnalyseServie()
   app.quit()
 })
 
