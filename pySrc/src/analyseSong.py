@@ -73,7 +73,7 @@ def main():
 
         # 解码并分割数据
         songArr = total_data.decode("utf-8").split("|")
-        print(songArr, flush=True)
+        # print(songArr, flush=True)
 
         # 获取CPU核数
         num_processes = multiprocessing.cpu_count()
