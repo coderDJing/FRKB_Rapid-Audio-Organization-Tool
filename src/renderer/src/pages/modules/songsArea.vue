@@ -393,7 +393,12 @@ onMounted(() => {
     return false
   })
 })
-
+const onStart = (e) => {
+  runtime.dragTableHeader = true
+}
+const onEnd = (e) => {
+  runtime.dragTableHeader = false
+}
 //todo 拖拽文件出窗口
 </script>
 <template>
@@ -417,7 +422,9 @@ onMounted(() => {
         {
           animation: 150,
           direction: 'horizontal',
-          onUpdate
+          onUpdate,
+          onStart,
+          onEnd
         }
       ]"
     >

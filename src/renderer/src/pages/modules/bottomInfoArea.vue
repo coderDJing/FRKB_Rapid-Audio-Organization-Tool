@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import confirm from '@renderer/components/confirmDialog.js'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-
+import { t } from '@renderer/utils/translate.js'
 const runtime = useRuntimeStore()
 const barTitle = ref('')
 const barNowNum = ref(0)
@@ -26,7 +26,7 @@ window.electron.ipcRenderer.on('importFinished', async (event, contentArr) => {
   runtime.isProgressing = false
   runtime.importingSongListUUID = ''
   await confirm({
-    title: '导入完成',
+    title: '完成',
     content: contentArr,
     textAlign: 'left',
     innerHeight: 280,
@@ -38,9 +38,20 @@ window.electron.ipcRenderer.on('importFinished', async (event, contentArr) => {
 window.electron.ipcRenderer.on('addSongFingerprintFinished', async (event, contentArr) => {
   runtime.isProgressing = false
   await confirm({
-    title: '添加完成',
+    title: '完成',
     content: contentArr,
     textAlign: 'left',
+    innerHeight: 250,
+    innerWidth: 400,
+    confirmShow: false
+  })
+})
+window.electron.ipcRenderer.on('noAudioFileWasScanned', async (event) => {
+  runtime.isProgressing = false
+  await confirm({
+    title: '完成',
+    content: [`${t('未扫描到音频文件')}`],
+    textAlign: 'center',
     innerHeight: 250,
     innerWidth: 400,
     confirmShow: false

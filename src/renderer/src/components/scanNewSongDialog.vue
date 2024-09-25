@@ -140,17 +140,14 @@ const confirm = () => {
   }
   runtime.importingSongListUUID = importingSongListUUID
   runtime.isProgressing = true
-  window.electron.ipcRenderer.send(
-    'startImportSongs',
-    {
-      folderPath: JSON.parse(JSON.stringify(folderPathVal.value)),
-      songListPath: songListSelectedPath,
-      isDeleteSourceFile: settingData.value.isDeleteSourceFile,
-      isComparisonSongFingerprint: settingData.value.isComparisonSongFingerprint,
-      isPushSongFingerprintLibrary: settingData.value.isPushSongFingerprintLibrary
-    },
-    importingSongListUUID
-  )
+  window.electron.ipcRenderer.send('startImportSongs', {
+    folderPath: JSON.parse(JSON.stringify(folderPathVal.value)),
+    songListPath: songListSelectedPath,
+    isDeleteSourceFile: settingData.value.isDeleteSourceFile,
+    isComparisonSongFingerprint: settingData.value.isComparisonSongFingerprint,
+    isPushSongFingerprintLibrary: settingData.value.isPushSongFingerprintLibrary,
+    songListUUID: importingSongListUUID
+  })
   localStorage.setItem('scanNewSongDialog', JSON.stringify(settingData.value))
   props.confirmCallback()
 }

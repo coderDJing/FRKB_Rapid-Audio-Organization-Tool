@@ -76,11 +76,12 @@ const librarySelectedChange = (item) => {
 }
 let dragOverSongsArea = ref(false)
 const dragover = (e) => {
+  console.log(e.dataTransfer.files)
   if (runtime.dragItemData !== null || !runtime.songsArea.songListUUID) {
     e.dataTransfer.dropEffect = 'none'
     return
   }
-  if (e.dataTransfer.files.length === 0) {
+  if (runtime.dragTableHeader) {
     e.dataTransfer.dropEffect = 'none'
     return
   }
@@ -92,7 +93,7 @@ const dragleave = (e) => {
     e.dataTransfer.dropEffect = 'none'
     return
   }
-  if (e.dataTransfer.files.length === 0) {
+  if (runtime.dragTableHeader) {
     e.dataTransfer.dropEffect = 'none'
     return
   }
@@ -104,7 +105,7 @@ const drop = async (e) => {
     e.dataTransfer.dropEffect = 'none'
     return
   }
-  if (e.dataTransfer.files.length === 0) {
+  if (runtime.dragTableHeader) {
     e.dataTransfer.dropEffect = 'none'
     return
   }
@@ -123,7 +124,7 @@ const drop = async (e) => {
   }
   runtime.importingSongListUUID = result.importingSongListUUID
   runtime.isProgressing = true
-  window.electron.ipcRenderer.send('startImportDragSongs', {
+  window.electron.ipcRenderer.send('startImportSongs', {
     filePaths: filePaths,
     songListPath: result.songListPath,
     isDeleteSourceFile: result.isDeleteSourceFile,
