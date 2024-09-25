@@ -332,7 +332,7 @@ const dragover = (e) => {
       e.dataTransfer.dropEffect = 'none'
       return
     }
-    if (e.dataTransfer.files.length === 0) {
+    if (runtime.dragTableHeader) {
       e.dataTransfer.dropEffect = 'none'
       return
     }
@@ -370,7 +370,7 @@ const dragenter = (e) => {
       e.dataTransfer.dropEffect = 'none'
       return
     }
-    if (e.dataTransfer.files.length === 0) {
+    if (runtime.dragTableHeader) {
       e.dataTransfer.dropEffect = 'none'
       return
     }
@@ -433,7 +433,7 @@ const drop = async (e) => {
     }
     runtime.importingSongListUUID = result.importingSongListUUID
     runtime.isProgressing = true
-    window.electron.ipcRenderer.send('startImportDragSongs', {
+    window.electron.ipcRenderer.send('startImportSongs', {
       filePaths: filePaths,
       songListPath: result.songListPath,
       isDeleteSourceFile: result.isDeleteSourceFile,

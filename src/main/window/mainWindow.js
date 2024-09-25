@@ -103,7 +103,6 @@ function createWindow() {
     ipcMain.removeHandler('collapseButtonHandleClick')
     ipcMain.removeHandler('readSongFile')
     ipcMain.removeHandler('addSongFingerprint')
-    ipcMain.removeHandler('startImportDragSongs')
     ipcMain.removeHandler('startImportSongs')
     ipcMain.removeHandler('changeGlobalShortcut')
     globalShortcut.unregister(store.settingConfig.globalCallShortcut)
@@ -155,7 +154,10 @@ function createWindow() {
       )
     ).flat()
     sendProgress('扫描文件中', 1, 1)
-
+    if (songFileUrls.length === 0) {
+      mainWindow.webContents.send('noAudioFileWasScanned')
+      return
+    }
     // 分析声音指纹
     let processNum = 0
     sendProgress('分析声音指纹初始化', processNum, songFileUrls.length)
@@ -398,12 +400,30 @@ function createWindow() {
   }
 
   //todo 分析逻辑改造
-  ipcMain.on('startImportDragSongs', async (e, formData) => {
+  ipcMain.on('startImportSongs', async (e, formData) => {
+    const sendProgress = (message, current, total, isInitial = false) => {
+      mainWindow.webContents.send('progressSet', t(message), current, total, isInitial)
+    }
+    sendProgress('扫描文件中', 0, 1, true)
+    const filePaths = formData.filePaths || formData.folderPath
+    let songFileUrls = []
+
+    songFileUrls = (
+      await Promise.all(
+        filePaths.map((item) => collectFilesWithExtensions(item, store.settingConfig.audioExt))
+      )
+    ).flat()
+
+    sendProgress('扫描文件中', 1, 1)
+    if (songFileUrls.length === 0) {
+      mainWindow.webContents.send('noAudioFileWasScanned')
+      return
+    }
+
+
+    //todo 没写完
+    return
     await importSongsHandler(e, formData)
-  })
-  //todo 分析逻辑改造
-  ipcMain.on('startImportSongs', async (e, formData, songListUUID) => {
-    await importSongsHandler(e, formData, songListUUID)
   })
 
   ipcMain.handle('changeGlobalShortcut', (e, shortCutValue) => {

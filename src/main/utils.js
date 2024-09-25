@@ -219,6 +219,15 @@ export const updateTargetDirSubdirOrder = async (dirPath, orderNum, direction, o
 
 export const collectFilesWithExtensions = async (dir, extensions = []) => {
   try {
+    const stats = await fs.stat(dir)
+    if (stats.isFile()) {
+      const ext = path.extname(dir).toLowerCase()
+      if (extensions.includes(ext)) {
+        return [dir]
+      } else {
+        return []
+      }
+    }
     let files = []
 
     // 读取目录中的文件和子目录
