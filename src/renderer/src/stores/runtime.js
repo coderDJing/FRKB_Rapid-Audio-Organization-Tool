@@ -14,6 +14,7 @@ export const useRuntimeStore = defineStore('runtime', {
         mainWindowHeight: 600 //上次关闭前窗口化时的高
       },
       dragItemData: null,
+      dragTableHeader: false, //是否正在拖拽表头
       libraryTree: {},
       selectSongListDialogShow: false, //全局是否有歌单选择器正在展示
       dialogSelectedSongListUUID: '', //dialog中被选中的歌单UUID

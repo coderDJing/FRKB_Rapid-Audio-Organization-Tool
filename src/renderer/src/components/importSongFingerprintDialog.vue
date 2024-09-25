@@ -66,7 +66,7 @@ const handleConfirm = async () => {
   await window.electron.ipcRenderer.invoke('importSongFingerprint', folderPathVal.value[0])
   await confirm({
     title: '成功',
-    content: ['导入完成'],
+    content: [t('导入完成')],
     confirmShow: false
   })
   cancel()

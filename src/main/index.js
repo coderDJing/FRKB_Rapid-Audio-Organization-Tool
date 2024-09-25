@@ -35,6 +35,7 @@ if (!gotTheLock) {
     }
   })
 }
+//todo 判断一下上次的后端python有没有关闭,没有关闭发一下信号关一下
 const { spawn } = require('child_process')
 const child = spawn(url.analyseSongPyScriptUrl, {
   stdio: ['inherit', 'pipe', 'pipe'], // 继承stdin，pipe stdout和stderr到Node.js
