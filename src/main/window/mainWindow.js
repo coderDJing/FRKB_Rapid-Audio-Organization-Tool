@@ -9,6 +9,7 @@ import {
 import { t } from '../translate.js'
 import store from '../store.js'
 import url from '../url.js'
+import updateWindow from './updateWindow.js'
 
 const path = require('path')
 const fs = require('fs-extra')
@@ -94,17 +95,7 @@ function createWindow() {
   mainWindow.on('blur', () => {
     mainWindow.webContents.send('mainWindowBlur')
   })
-  mainWindow.on('closed', () => {
-    ipcMain.removeHandler('toggle-maximize')
-    ipcMain.removeHandler('toggle-minimize')
-    ipcMain.removeHandler('toggle-close')
-    ipcMain.removeHandler('readSongFile')
-    ipcMain.removeHandler('addSongFingerprint')
-    ipcMain.removeHandler('startImportSongs')
-    ipcMain.removeHandler('changeGlobalShortcut')
-    globalShortcut.unregister(store.settingConfig.globalCallShortcut)
-    mainWindow = null
-  })
+
   ipcMain.on('toggle-maximize', () => {
     if (mainWindow.isMaximized()) {
       mainWindow.unmaximize()
@@ -339,9 +330,35 @@ function createWindow() {
     fs.outputJson(url.settingConfigFileUrl, store.settingConfig)
     return true
   })
+
+  ipcMain.on('checkForUpdates', () => {
+    if (updateWindow.instance === null) {
+      updateWindow.createWindow()
+    } else {
+      if (updateWindow.instance.isMinimized()) {
+        updateWindow.instance.restore()
+      }
+      updateWindow.instance.focus()
+    }
+  })
+
+  mainWindow.on('closed', () => {
+    ipcMain.removeHandler('toggle-maximize')
+    ipcMain.removeHandler('toggle-minimize')
+    ipcMain.removeHandler('toggle-close')
+    ipcMain.removeHandler('readSongFile')
+    ipcMain.removeHandler('addSongFingerprint')
+    ipcMain.removeHandler('startImportSongs')
+    ipcMain.removeHandler('changeGlobalShortcut')
+    ipcMain.removeHandler('checkForUpdates')
+    globalShortcut.unregister(store.settingConfig.globalCallShortcut)
+    mainWindow = null
+  })
 }
 
 export default {
-  instance: mainWindow,
+  get instance() {
+    return mainWindow
+  },
   createWindow
 }
