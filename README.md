@@ -82,6 +82,7 @@ An Electron application with Vue
 ```bash
 $ cd pySrc
 $ poetry install
+$ poetry shell
 $ pyinstaller .\src\analyseSongFingerprint.py --distpath=..\resources\pyScript\
 ```
 
