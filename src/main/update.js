@@ -20,7 +20,6 @@ autoUpdater.on('update-not-available', (info) => {
 })
 
 autoUpdater.on('error', (err) => {
-  //todo 更新相关逻辑
   log.error('autoUpdater', 'error', err)
 })
 
