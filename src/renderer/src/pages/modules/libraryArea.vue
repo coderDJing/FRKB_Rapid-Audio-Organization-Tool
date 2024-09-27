@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog.js'
 import rightClickMenu from '../../components/rightClickMenu.js'
 import { t } from '@renderer/utils/translate.js'
+import emitter from '../../utils/mitt.js'
 const runtime = useRuntimeStore()
 const props = defineProps({
   uuid: {
@@ -48,7 +49,7 @@ const contextmenuEvent = async (event) => {
 }
 
 const collapseButtonHandleClick = async () => {
-  window.electron.ipcRenderer.send('collapseButtonHandleClick', libraryData.dirName)
+  emitter.emit('collapseButtonHandleClick', libraryData.dirName)
 }
 
 const dragApproach = ref('')

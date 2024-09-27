@@ -12,6 +12,7 @@ import scanNewSongDialog from '@renderer/components/scanNewSongDialog.js'
 import exportDialog from '@renderer/components/exportDialog.js'
 import { t } from '@renderer/utils/translate.js'
 import dropIntoDialog from '../components/dropIntoDialog.js'
+import emitter from '../utils/mitt.js'
 const props = defineProps({
   uuid: {
     type: String,
@@ -237,11 +238,12 @@ const dirHandleClick = async () => {
   }
 }
 
-window.electron.ipcRenderer.on('collapseButtonHandleClick', (event, libraryName) => {
+emitter.on('collapseButtonHandleClick', (libraryName) => {
   if (libraryName == props.libraryName) {
     dirChildShow.value = false
   }
 })
+
 //----重命名功能--------------------------------------
 const renameDivShow = ref(false)
 const renameDivValue = ref('')

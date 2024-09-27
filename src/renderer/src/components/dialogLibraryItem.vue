@@ -8,6 +8,7 @@ import libraryUtils from '@renderer/utils/libraryUtils.js'
 import { v4 as uuidv4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog.js'
 import { t } from '@renderer/utils/translate.js'
+import emitter from '../utils/mitt'
 const props = defineProps({
   uuid: {
     type: String,
@@ -199,7 +200,7 @@ const dirHandleDblClick = () => {
   }
 }
 
-window.electron.ipcRenderer.on('collapseButtonHandleClick', (event, libraryName) => {
+emitter.on('collapseButtonHandleClick', (libraryName) => {
   if (libraryName == props.libraryName) {
     dirChildShow.value = false
   }
