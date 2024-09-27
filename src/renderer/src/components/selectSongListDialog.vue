@@ -10,6 +10,7 @@ import hotkeys from 'hotkeys-js'
 import listIcon from '@renderer/assets/listIcon.png'
 import utils from '../utils/utils'
 import { t } from '@renderer/utils/translate.js'
+import emitter from '../utils/mitt'
 const uuid = uuidv4()
 const props = defineProps({
   libraryName: {
@@ -99,7 +100,7 @@ const contextmenuEvent = async (event) => {
 }
 
 const collapseButtonHandleClick = async () => {
-  window.electron.ipcRenderer.send('collapseButtonHandleClick', libraryData.dirName + 'Dialog')
+  emitter.emit('collapseButtonHandleClick', libraryData.dirName + 'Dialog')
 }
 
 const dragApproach = ref('')
