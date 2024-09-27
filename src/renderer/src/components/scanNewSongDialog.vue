@@ -249,7 +249,7 @@ onUnmounted(() => {
           </div>
           <div style="margin-top: 10px; display: flex">
             <div class="formLabel" style="width: 200px; text-align: right">
-              <span>{{ t('比对声音指纹去重') }}：</span>
+              <span>{{ t('比对声音库指纹去重') }}：</span>
             </div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
               <singleCheckbox v-model="settingData.isComparisonSongFingerprint" />

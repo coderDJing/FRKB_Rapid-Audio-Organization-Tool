@@ -221,7 +221,7 @@ const drop = async (e) => {
         />
       </template>
       <div
-        style="flex-grow: 1"
+        style="flex-grow: 1; min-height: 30px"
         @dragover.stop.prevent="dragover"
         @dragenter.stop.prevent="dragenter"
         @drop.stop="drop"
