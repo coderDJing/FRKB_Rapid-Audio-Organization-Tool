@@ -117,5 +117,6 @@
   "聚焦/最小化 FRKB 窗口快捷键": "Shortcut for focusing/minimizing the FRKB window",
   "请直接在键盘上输入新的快捷键": "Enter new shortcut directly.",
   "快捷键设置失败，可能是由于冲突或错误": "Failed to set shortcut, possibly due to conflict or error.",
-  "请尝试其他组合": "Please try other shortcut combinations."
+  "请尝试其他组合": "Please try other shortcut combinations.",
+  "检查更新": "Check for updates"
 }

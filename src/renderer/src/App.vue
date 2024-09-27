@@ -39,6 +39,9 @@ const openDialog = async (item) => {
     })
     return
   }
+  if (item === '检查更新') {
+    window.electron.ipcRenderer.send('checkForUpdates')
+  }
   if (item === '退出') {
     if (runtime.isProgressing === true) {
       await confirm({
