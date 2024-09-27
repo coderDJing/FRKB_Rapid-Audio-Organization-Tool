@@ -24,30 +24,30 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
-    "electron-log": "^5.1.7",
-    "electron-updater": "^6.2.1",
+    "electron-log": "^5.2.0",
+    "electron-updater": "^6.3.4",
     "fs-extra": "^11.2.0",
     "hotkeys-js": "^3.13.7",
     "mitt": "^3.0.1",
-    "music-metadata": "^9.0.1",
-    "pinia": "^2.1.7",
-    "sass": "^1.77.6",
+    "music-metadata": "^9.0.3",
+    "pinia": "^2.2.2",
+    "sass": "^1.79.3",
     "uuid": "^10.0.0",
-    "vue-draggable-plus": "^0.5.2",
-    "wavesurfer.js": "^7.8.2"
+    "vue-draggable-plus": "^0.5.3",
+    "wavesurfer.js": "^7.8.6"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config": "^1.0.2",
-    "@rushstack/eslint-patch": "^1.10.3",
-    "@vitejs/plugin-vue": "^5.0.5",
+    "@rushstack/eslint-patch": "^1.10.4",
+    "@vitejs/plugin-vue": "^5.1.4",
     "@vue/eslint-config-prettier": "^9.0.0",
-    "electron": "^31.0.2",
+    "electron": "^31.6.0",
     "electron-builder": "^24.13.3",
     "electron-vite": "^2.3.0",
-    "eslint": "^8.57.0",
-    "eslint-plugin-vue": "^9.26.0",
-    "prettier": "^3.3.2",
-    "vite": "^5.3.1",
-    "vue": "^3.4.30"
+    "eslint": "^8.57.1",
+    "eslint-plugin-vue": "^9.28.0",
+    "prettier": "^3.3.3",
+    "vite": "^5.4.8",
+    "vue": "^3.5.9"
   }
 }

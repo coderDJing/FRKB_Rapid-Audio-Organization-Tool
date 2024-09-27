@@ -166,7 +166,7 @@ const titleMenuButtonMouseEnter = (item) => {
         align-items: center;
       "
     >
-      <img :src="logo" style="width: 22px" />
+      <img :src="logo" style="width: 22px" :draggable="false" />
     </div>
     <div style="z-index: 1; padding-left: 5px" v-for="item in menuArr" :key="item.name">
       <div
