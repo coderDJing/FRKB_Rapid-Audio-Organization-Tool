@@ -98,7 +98,6 @@ function createWindow() {
     ipcMain.removeHandler('toggle-maximize')
     ipcMain.removeHandler('toggle-minimize')
     ipcMain.removeHandler('toggle-close')
-    ipcMain.removeHandler('collapseButtonHandleClick')
     ipcMain.removeHandler('readSongFile')
     ipcMain.removeHandler('addSongFingerprint')
     ipcMain.removeHandler('startImportSongs')
@@ -129,10 +128,6 @@ function createWindow() {
     layoutConfig.mainWindowHeight = mainWindowHeight
     await fs.outputJson(url.layoutConfigFileUrl, layoutConfig)
     mainWindow.close()
-  })
-  //todo 不应该使用node来转发，意义不大还报警告
-  ipcMain.on('collapseButtonHandleClick', (e, libraryName) => {
-    mainWindow.webContents.send('collapseButtonHandleClick', libraryName)
   })
 
   ipcMain.on('readSongFile', async (e, filePath) => {
