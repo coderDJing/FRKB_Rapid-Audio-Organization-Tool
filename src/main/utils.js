@@ -2,7 +2,6 @@ import store from './store.js'
 
 const fs = require('fs-extra')
 const path = require('path')
-const iconv = require('iconv-lite')
 
 function parseJsonStrings(inputString) {
   // 定义一个正则表达式来匹配 JSON 对象
@@ -253,61 +252,6 @@ export const collectFilesWithExtensions = async (dir, extensions = []) => {
   } catch (error) {
     console.log(error)
   }
-}
-
-const { spawn } = require('child_process')
-export function executeScript(exePath, args, end) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(exePath, args, {
-      stdio: ['inherit', 'pipe', 'pipe'], // 继承stdin，pipe stdout和stderr到Node.js
-      windowsHide: true
-    })
-
-    let stdoutData = ''
-    let stderrData = ''
-
-    child.stdout.on('data', (data) => {
-      let iconvData = iconv.decode(data, 'gb18030')
-      stdoutData = stdoutData + iconvData
-      end()
-    })
-
-    child.stderr.on('data', (data) => {
-      let iconvData = iconv.decode(data, 'gb18030')
-      stderrData += iconvData
-    })
-
-    child.on('error', (err) => {
-      reject(err)
-    })
-
-    child.on('close', (code) => {
-      if (code === 0) {
-        let dataArr = stdoutData.split('||')
-        if (dataArr.length > 1) {
-          dataArr.pop()
-        }
-        let result = []
-        let errorResult = []
-        for (let item of dataArr) {
-          if (item.split('|')[0].replace(/\r\n/g, '') === 'error') {
-            errorResult.push({
-              path: item.split('|')[1]
-            })
-          } else {
-            result.push({
-              md5_hash: item.split('|')[0].replace(/\r\n/g, ''),
-              path: item.split('|')[1]
-            })
-          }
-        }
-        resolve({ result, errorResult })
-      } else {
-        // 非零退出码通常表示错误
-        reject(new Error(`子进程退出，退出代码：${code}\n${stderrData}`))
-      }
-    })
-  })
 }
 
 export async function moveOrCopyItemWithCheckIsExist(src, targetPath, isMove) {

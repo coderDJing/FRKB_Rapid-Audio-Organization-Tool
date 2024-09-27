@@ -48,6 +48,7 @@ window.electron.ipcRenderer.on('addSongFingerprintFinished', async (event, conte
 })
 window.electron.ipcRenderer.on('noAudioFileWasScanned', async (event) => {
   runtime.isProgressing = false
+  runtime.importingSongListUUID = ''
   await confirm({
     title: '完成',
     content: [`${t('未扫描到音频文件')}`],
