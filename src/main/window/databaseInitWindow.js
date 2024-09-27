@@ -91,6 +91,8 @@ const createWindow = () => {
 }
 
 export default {
-  instance: databaseInitWindow,
+  get instance() {
+    return databaseInitWindow
+  },
   createWindow
 }

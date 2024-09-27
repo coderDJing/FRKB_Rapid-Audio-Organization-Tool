@@ -20,7 +20,8 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: path.resolve(__dirname, 'src/renderer/', 'index.html'),
-          databaseInit: path.resolve(__dirname, 'src/renderer/', 'databaseInit.html')
+          databaseInit: path.resolve(__dirname, 'src/renderer/', 'databaseInit.html'),
+          update: path.resolve(__dirname, 'src/renderer/', 'update.html')
         }
       }
     }
