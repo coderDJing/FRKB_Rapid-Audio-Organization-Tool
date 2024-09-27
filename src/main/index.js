@@ -5,7 +5,8 @@ import {
   getLibrary,
   collectFilesWithExtensions,
   getCurrentTimeYYYYMMDDHHMMSSSSS,
-  exitSongsAnalyseServie
+  exitSongsAnalyseServie,
+  moveOrCopyItemWithCheckIsExist
 } from './utils.js'
 import { log } from './log.js'
 import url from './url.js'
