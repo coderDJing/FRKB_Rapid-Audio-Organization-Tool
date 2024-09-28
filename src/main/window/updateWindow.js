@@ -1,6 +1,8 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
+import { log } from '../log.js'
+const { autoUpdater } = require('electron-updater')
 const path = require('path')
 let updateWindow = null
 
@@ -39,9 +41,45 @@ const createWindow = () => {
 
   updateWindow.on('ready-to-show', () => {
     updateWindow.show()
+    autoUpdater.autoDownload = false
+    autoUpdater.checkForUpdates()
+
+    autoUpdater.on('update-available', (info) => {
+      updateWindow.webContents.send('newVersion', info)
+    })
+
+    autoUpdater.on('update-not-available', (info) => {
+      updateWindow.webContents.send('isLatestVersion', info.version)
+    })
+
+    autoUpdater.on('error', (err) => {
+      updateWindow.webContents.send('isError')
+      log.error('autoUpdater', 'error', err)
+    })
+
+    autoUpdater.on('download-progress', (progressObj) => {
+      updateWindow.webContents.send('updateProgress', progressObj)
+    })
+
+    autoUpdater.on('update-downloaded', (info) => {
+      updateWindow.webContents.send('updateDownloaded')
+    })
+  })
+  ipcMain.on('updateWindow-startDownload', async () => {
+    autoUpdater.downloadUpdate()
+  })
+
+  ipcMain.on('updateWindow-toggle-close', async () => {
+    updateWindow?.close()
+  })
+
+  ipcMain.on('updateWindow-toggle-minimize', () => {
+    updateWindow.minimize()
   })
 
   updateWindow.on('closed', () => {
+    ipcMain.removeHandler('updateWindow-toggle-close')
+    ipcMain.removeHandler('updateWindow-toggle-minimize')
     updateWindow = null
   })
 }

@@ -10,7 +10,6 @@ import { t } from '../translate.js'
 import store from '../store.js'
 import url from '../url.js'
 import updateWindow from './updateWindow.js'
-
 const path = require('path')
 const fs = require('fs-extra')
 
@@ -118,7 +117,7 @@ function createWindow() {
     layoutConfig.mainWindowWidth = mainWindowWidth
     layoutConfig.mainWindowHeight = mainWindowHeight
     await fs.outputJson(url.layoutConfigFileUrl, layoutConfig)
-    mainWindow.close()
+    mainWindow?.close()
   })
 
   ipcMain.on('readSongFile', async (e, filePath) => {
@@ -352,6 +351,7 @@ function createWindow() {
     ipcMain.removeHandler('changeGlobalShortcut')
     ipcMain.removeHandler('checkForUpdates')
     globalShortcut.unregister(store.settingConfig.globalCallShortcut)
+    updateWindow?.instance?.close()
     mainWindow = null
   })
 }
