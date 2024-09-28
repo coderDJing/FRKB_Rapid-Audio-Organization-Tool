@@ -15,7 +15,6 @@ import databaseInitWindow from './window/databaseInitWindow.js'
 import { languageDict } from './translate.js'
 import { is } from '@electron-toolkit/utils'
 import store from './store.js'
-import './update.js'
 
 const gotTheLock = app.requestSingleInstanceLock()
 
