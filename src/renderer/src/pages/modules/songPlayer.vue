@@ -123,6 +123,7 @@ onUnmounted(() => {
 const songInfoShow = ref(false)
 const coverBlobUrl = ref('')
 window.electron.ipcRenderer.on('readedSongFile', (event, audioData) => {
+  //todo: 优化
   const uint8Buffer = Uint8Array.from(audioData)
   const blob = new Blob([uint8Buffer])
   waveformShow.value = true
