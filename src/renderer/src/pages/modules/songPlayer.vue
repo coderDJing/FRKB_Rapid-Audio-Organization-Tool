@@ -224,7 +224,7 @@ const fastBackward = () => {
   wavesurferInstance.skip(-5)
 }
 
-// let nextSongDebounceTimeout = null;
+let nextSongDebounceTimeout = null
 const nextSong = () => {
   let index = runtime.playingData.playingSongListData.findIndex((item) => {
     return item.filePath === runtime.playingData.playingSong.filePath
@@ -233,15 +233,15 @@ const nextSong = () => {
     return
   }
   runtime.playingData.playingSong = runtime.playingData.playingSongListData[index + 1]
-  // if (nextSongDebounceTimeout !== null) {
-  //   clearTimeout(nextSongDebounceTimeout);
-  // }
-  // nextSongDebounceTimeout = setTimeout(() => {
-  window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
-  // }, 300)
+  if (nextSongDebounceTimeout !== null) {
+    clearTimeout(nextSongDebounceTimeout)
+  }
+  nextSongDebounceTimeout = setTimeout(() => {
+    window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
+  }, 300)
 }
 
-// let previousSongDebounceTimeout = null;
+let previousSongDebounceTimeout = null
 const previousSong = () => {
   let index = runtime.playingData.playingSongListData.findIndex((item) => {
     return item.filePath === runtime.playingData.playingSong.filePath
@@ -250,12 +250,12 @@ const previousSong = () => {
     return
   }
   runtime.playingData.playingSong = runtime.playingData.playingSongListData[index - 1]
-  // if (previousSongDebounceTimeout !== null) {
-  //   clearTimeout(previousSongDebounceTimeout);
-  // }
-  // previousSongDebounceTimeout = setTimeout(() => {
-  window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
-  // }, 300)
+  if (previousSongDebounceTimeout !== null) {
+    clearTimeout(previousSongDebounceTimeout)
+  }
+  previousSongDebounceTimeout = setTimeout(() => {
+    window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
+  }, 300)
 }
 let showDelConfirm = false
 
