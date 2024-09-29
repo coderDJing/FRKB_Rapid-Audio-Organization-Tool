@@ -10,6 +10,8 @@ import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import libraryUtils from '@renderer/utils/libraryUtils.js'
 import exportDialog from '@renderer/components/exportDialog.js'
 import { t } from '@renderer/utils/translate.js'
+import * as realtimeBpm from 'realtime-bpm-analyzer'
+import bubbleBox from '@renderer/components/bubbleBox.vue'
 
 const runtime = useRuntimeStore()
 const waveform = ref(null)
@@ -122,6 +124,8 @@ onUnmounted(() => {
 
 const songInfoShow = ref(false)
 const coverBlobUrl = ref('')
+const audioContext = new AudioContext()
+const bpm = ref('')
 window.electron.ipcRenderer.on('readedSongFile', async (event, audioData) => {
   const uint8Buffer = audioData
   const blob = new Blob([uint8Buffer])
@@ -140,7 +144,13 @@ window.electron.ipcRenderer.on('readedSongFile', async (event, audioData) => {
     coverBlobUrl.value = ''
   }
   waveformShow.value = true
+  bpm.value = ''
   await wavesurferInstance.loadBlob(blob)
+  const arrayBuffer = uint8Buffer.buffer
+  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+  realtimeBpm.analyzeFullBuffer(audioBuffer).then((topCandidates) => {
+    bpm.value = topCandidates[0].tempo
+  })
 })
 
 onMounted(() => {
@@ -224,7 +234,7 @@ const fastBackward = () => {
   wavesurferInstance.skip(-5)
 }
 
-let nextSongDebounceTimeout = null
+// let nextSongDebounceTimeout = null
 const nextSong = () => {
   let index = runtime.playingData.playingSongListData.findIndex((item) => {
     return item.filePath === runtime.playingData.playingSong.filePath
@@ -233,15 +243,15 @@ const nextSong = () => {
     return
   }
   runtime.playingData.playingSong = runtime.playingData.playingSongListData[index + 1]
-  if (nextSongDebounceTimeout !== null) {
-    clearTimeout(nextSongDebounceTimeout)
-  }
+  // if (nextSongDebounceTimeout !== null) {
+  //   clearTimeout(nextSongDebounceTimeout)
+  // }
   // nextSongDebounceTimeout = setTimeout(() => {
   window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
   // }, 300)
 }
 
-let previousSongDebounceTimeout = null
+// let previousSongDebounceTimeout = null
 const previousSong = () => {
   let index = runtime.playingData.playingSongListData.findIndex((item) => {
     return item.filePath === runtime.playingData.playingSong.filePath
@@ -250,9 +260,9 @@ const previousSong = () => {
     return
   }
   runtime.playingData.playingSong = runtime.playingData.playingSongListData[index - 1]
-  if (previousSongDebounceTimeout !== null) {
-    clearTimeout(previousSongDebounceTimeout)
-  }
+  // if (previousSongDebounceTimeout !== null) {
+  //   clearTimeout(previousSongDebounceTimeout)
+  // }
   // previousSongDebounceTimeout = setTimeout(() => {
   window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
   // }, 300)
@@ -354,6 +364,8 @@ const exportTrack = async () => {
     }
   }
 }
+
+const bpmDomRef = ref(null)
 </script>
 <template>
   <div
@@ -422,6 +434,7 @@ const exportTrack = async () => {
         @exportTrack="exportTrack"
       />
     </div>
+
     <div style="flex-grow: 1" class="unselectable">
       <div id="waveform" ref="waveform" v-show="waveformShow">
         <div id="time">0:00</div>
@@ -429,6 +442,22 @@ const exportTrack = async () => {
         <div id="hover"></div>
       </div>
     </div>
+    <div
+      class="unselectable"
+      ref="bpmDomRef"
+      style="
+        width: 50px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 16px;
+        font-weight: bold;
+      "
+      v-show="waveformShow"
+    >
+      {{ bpm }}
+    </div>
+    <bubbleBox :dom="bpmDomRef" title="BPM" :right="1" :width="60" />
   </div>
   <selectSongListDialog
     v-if="selectSongListDialogShow"

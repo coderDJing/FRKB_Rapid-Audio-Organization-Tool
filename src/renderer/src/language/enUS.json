@@ -128,5 +128,6 @@
   "开始更新": "Start update",
   "正在下载更新": "Downloading update",
   "下载完成，FRKB 将在重启后自动更新。": "Download completed. FRKB will automatically update after restart.",
-  "更新已下载，FRKB将在下次启动时自动升级": "Update has been downloaded. FRKB will automatically upgrade on the next startup."
+  "更新已下载，FRKB将在下次启动时自动升级": "Update has been downloaded. FRKB will automatically upgrade on the next startup.",
+  "BPM": "BPM"
 }
