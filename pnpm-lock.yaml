@@ -16,6 +16,9 @@ dependencies:
   fs-extra:
     specifier: ^11.2.0
     version: 11.2.0
+  fswin:
+    specifier: ^3.24.829
+    version: 3.24.829
   hotkeys-js:
     specifier: ^3.13.7
     version: 3.13.7
@@ -2286,6 +2289,11 @@ packages:
     requiresBuild: true
     dev: true
     optional: true
+
+  /fswin@3.24.829:
+    resolution: {integrity: sha512-t3KHDNSMHbUzjpzb35c+27dGMLcE5gXvYZ4to5BITvCvPr3dZvX41VUzgEMQ8mVozbn5uiQ9p61/cQVLDEy+ag==}
+    engines: {node: '>= 8.0'}
+    dev: false
 
   /function-bind@1.1.2:
     resolution: {integrity: sha512-7XHNxH7qX9xG5mIwxkhumTox/MIRNcOgDrxWsMt2pAr23WHp6MrRlN7FBSFpCpr+oVO0F744iUgR82nJMfG2SA==}
