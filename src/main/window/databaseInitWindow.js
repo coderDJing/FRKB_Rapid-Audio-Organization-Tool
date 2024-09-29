@@ -50,34 +50,38 @@ const createWindow = () => {
     databaseInitWindow.close()
   })
   ipcMain.handle('databaseInitWindow-InitDataBase', async (e, dirPath) => {
-    let rootDescription = {
-      uuid: uuidv4(),
-      type: 'root',
-      dirName: 'library',
-      order: 1
-    }
-    await fs.outputJson(path.join(dirPath, 'library', '.description.json'), rootDescription)
-    if (os.platform() === 'win32') {
-      await fswin.setAttributes(
-        path.join(dirPath, 'library', '.description.json'),
-        { IS_HIDDEN: true },
-        () => {}
-      )
-    }
-    const makeLibrary = async (libraryPath, libraryName, order) => {
-      let description = {
+    if (!fs.pathExistsSync(path.join(dirPath, 'library', '.description.json'))) {
+      let rootDescription = {
         uuid: uuidv4(),
-        type: 'library',
-        dirName: libraryName,
-        order: order
+        type: 'root',
+        dirName: 'library',
+        order: 1
       }
-      await fs.outputJson(path.join(libraryPath, '.description.json'), description)
+      await fs.outputJson(path.join(dirPath, 'library', '.description.json'), rootDescription)
       if (os.platform() === 'win32') {
         await fswin.setAttributes(
-          path.join(libraryPath, '.description.json'),
+          path.join(dirPath, 'library', '.description.json'),
           { IS_HIDDEN: true },
           () => {}
         )
+      }
+    }
+    const makeLibrary = async (libraryPath, libraryName, order) => {
+      if (!fs.pathExistsSync(path.join(libraryPath, '.description.json'))) {
+        let description = {
+          uuid: uuidv4(),
+          type: 'library',
+          dirName: libraryName,
+          order: order
+        }
+        await fs.outputJson(path.join(libraryPath, '.description.json'), description)
+        if (os.platform() === 'win32') {
+          await fswin.setAttributes(
+            path.join(libraryPath, '.description.json'),
+            { IS_HIDDEN: true },
+            () => {}
+          )
+        }
       }
     }
     await makeLibrary(path.join(dirPath, 'library/筛选库'), '筛选库', 1)
