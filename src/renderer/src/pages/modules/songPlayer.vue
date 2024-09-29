@@ -122,12 +122,9 @@ onUnmounted(() => {
 
 const songInfoShow = ref(false)
 const coverBlobUrl = ref('')
-window.electron.ipcRenderer.on('readedSongFile', (event, audioData) => {
-  //todo: 优化
-  const uint8Buffer = Uint8Array.from(audioData)
+window.electron.ipcRenderer.on('readedSongFile', async (event, audioData) => {
+  const uint8Buffer = audioData
   const blob = new Blob([uint8Buffer])
-  waveformShow.value = true
-  wavesurferInstance.loadBlob(blob)
   if (runtime.playingData.playingSong.cover) {
     if (coverBlobUrl.value) {
       URL.revokeObjectURL(coverBlobUrl.value)
@@ -142,6 +139,8 @@ window.electron.ipcRenderer.on('readedSongFile', (event, audioData) => {
     }
     coverBlobUrl.value = ''
   }
+  waveformShow.value = true
+  await wavesurferInstance.loadBlob(blob)
 })
 
 onMounted(() => {
@@ -237,9 +236,9 @@ const nextSong = () => {
   if (nextSongDebounceTimeout !== null) {
     clearTimeout(nextSongDebounceTimeout)
   }
-  nextSongDebounceTimeout = setTimeout(() => {
-    window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
-  }, 300)
+  // nextSongDebounceTimeout = setTimeout(() => {
+  window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
+  // }, 300)
 }
 
 let previousSongDebounceTimeout = null
@@ -254,9 +253,9 @@ const previousSong = () => {
   if (previousSongDebounceTimeout !== null) {
     clearTimeout(previousSongDebounceTimeout)
   }
-  previousSongDebounceTimeout = setTimeout(() => {
-    window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
-  }, 300)
+  // previousSongDebounceTimeout = setTimeout(() => {
+  window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
+  // }, 300)
 }
 let showDelConfirm = false
 
