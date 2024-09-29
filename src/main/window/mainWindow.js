@@ -122,7 +122,8 @@ function createWindow() {
 
   ipcMain.on('readSongFile', async (e, filePath) => {
     let file = await fs.readFile(filePath)
-    mainWindow.webContents.send('readedSongFile', file)
+    const uint8Buffer = Uint8Array.from(file)
+    mainWindow.webContents.send('readedSongFile', uint8Buffer)
   })
   const sendProgress = (message, current, total, isInitial = false) => {
     mainWindow?.webContents.send('progressSet', t(message), current, total, isInitial)
