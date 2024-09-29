@@ -1,7 +1,7 @@
 node_modules
 dist
 out
-build
+# build
 .DS_Store
 resources/pyScript/
 *.log*
