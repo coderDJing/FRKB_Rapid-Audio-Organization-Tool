@@ -20,7 +20,9 @@ nsis:
   artifactName: ${productName}-${version}-${platform}-${arch}.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
-  createDesktopShortcut: always
+  createDesktopShortcut: 'always'
+  installerIcon: 'build/icon.ico'
+  uninstallerIcon: 'build/icon.ico'
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
