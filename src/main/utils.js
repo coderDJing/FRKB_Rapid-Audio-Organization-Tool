@@ -150,7 +150,7 @@ export async function getSongsAnalyseResult(songFilePaths, processFunc) {
 async function getdirsDescriptionJson(dirPath, dirs) {
   const jsons = await Promise.all(
     dirs.map(async (dir) => {
-      const filePath = path.join(dirPath, dir.name, 'description.json')
+      const filePath = path.join(dirPath, dir.name, '.description.json')
       const json = await fs.readJSON(filePath)
       const subDirPath = path.join(dirPath, dir.name)
       const subEntries = await fs.readdir(subDirPath, { withFileTypes: true })
@@ -167,7 +167,7 @@ async function getdirsDescriptionJson(dirPath, dirs) {
 //获取整个库的树结构
 export async function getLibrary() {
   const dirPath = path.join(store.databaseDir, 'library')
-  const rootDescriptionJson = await fs.readJSON(path.join(dirPath, 'description.json'))
+  const rootDescriptionJson = await fs.readJSON(path.join(dirPath, '.description.json'))
   const entries = await fs.readdir(dirPath, { withFileTypes: true })
   const dirs = entries.filter((entry) => entry.isDirectory())
   const dirsDescriptionJson = await getdirsDescriptionJson(dirPath, dirs)
@@ -175,7 +175,7 @@ export async function getLibrary() {
   return rootDescriptionJson
 }
 
-// 异步函数，用于读取和更新 description.json 文件中的 order 属性
+// 异步函数，用于读取和更新 .description.json 文件中的 order 属性
 async function updateOrderInFile(filePath, type) {
   try {
     const jsonObj = await fs.readJSON(filePath)
@@ -190,7 +190,7 @@ async function updateOrderInFile(filePath, type) {
   }
 }
 
-// 异步函数，用于遍历目录并处理 description.json 文件中的order小于参数orderNum时+1 direction='before'||'after' operation='plus'||'minus'
+// 异步函数，用于遍历目录并处理 .description.json 文件中的order小于参数orderNum时+1 direction='before'||'after' operation='plus'||'minus'
 export const updateTargetDirSubdirOrder = async (dirPath, orderNum, direction, operation) => {
   try {
     const subdirs = await fs.readdir(dirPath, { withFileTypes: true })
@@ -198,7 +198,7 @@ export const updateTargetDirSubdirOrder = async (dirPath, orderNum, direction, o
     const promises = []
     for (const dirent of dirs) {
       const subdirPath = path.join(dirPath, dirent.name)
-      const descriptionJsonPath = path.join(subdirPath, 'description.json')
+      const descriptionJsonPath = path.join(subdirPath, '.description.json')
       let description = await fs.readJSON(descriptionJsonPath)
       if (direction == 'before') {
         if (description.order < orderNum) {

@@ -6,6 +6,8 @@ import mainWindow from './mainWindow.js'
 import store from '../store.js'
 const fs = require('fs-extra')
 const path = require('path')
+const os = require('os')
+const fswin = require('fswin')
 let databaseInitWindow = null
 
 const createWindow = () => {
@@ -54,7 +56,14 @@ const createWindow = () => {
       dirName: 'library',
       order: 1
     }
-    await fs.outputJson(path.join(dirPath, 'library', 'description.json'), rootDescription)
+    await fs.outputJson(path.join(dirPath, 'library', '.description.json'), rootDescription)
+    if (os.platform() === 'win32') {
+      await fswin.setAttributes(
+        path.join(dirPath, 'library', '.description.json'),
+        { IS_HIDDEN: true },
+        () => {}
+      )
+    }
     const makeLibrary = async (libraryPath, libraryName, order) => {
       let description = {
         uuid: uuidv4(),
@@ -62,7 +71,14 @@ const createWindow = () => {
         dirName: libraryName,
         order: order
       }
-      await fs.outputJson(path.join(libraryPath, 'description.json'), description)
+      await fs.outputJson(path.join(libraryPath, '.description.json'), description)
+      if (os.platform() === 'win32') {
+        await fswin.setAttributes(
+          path.join(libraryPath, '.description.json'),
+          { IS_HIDDEN: true },
+          () => {}
+        )
+      }
     }
     await makeLibrary(path.join(dirPath, 'library/筛选库'), '筛选库', 1)
     await makeLibrary(path.join(dirPath, 'library/精选库'), '精选库', 2)
