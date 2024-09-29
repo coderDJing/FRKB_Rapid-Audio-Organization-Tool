@@ -14,6 +14,12 @@ const props = defineProps({
   },
   left: {
     type: Number
+  },
+  right: {
+    type: Number
+  },
+  width: {
+    type: Number
   }
 })
 
@@ -49,10 +55,19 @@ onUnmounted(() => {
       class="bubbleBox"
       v-if="show"
       style="position: absolute; bottom: 55px"
-      :style="[{ left: props.left + 'px' }]"
+      :style="[
+        {
+          left: props.left ? props.left + 'px' : undefined,
+          justifyContent: !props.shortcut ? 'center' : 'space-between',
+          right: props.right ? props.right + 'px' : undefined,
+          width: props.width ? props.width + 'px' : '120px'
+        }
+      ]"
     >
       <span>{{ t(props.title) }}</span>
-      <div><img :src="shortcutIcon" :draggable="false" />{{ props.shortcut }}</div>
+      <div v-if="props.shortcut">
+        <img :src="shortcutIcon" :draggable="false" />{{ props.shortcut }}
+      </div>
     </div>
   </transition>
 </template>
