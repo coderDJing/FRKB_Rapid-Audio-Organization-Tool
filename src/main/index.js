@@ -69,6 +69,8 @@ child.on('close', (code) => {
 
 const path = require('path')
 const fs = require('fs-extra')
+const fswin = require('fswin')
+const os = require('os')
 const platform = process.platform
 if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
   fs.outputJsonSync(url.layoutConfigFileUrl, {
@@ -80,7 +82,7 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
   fs.outputJsonSync(url.settingConfigFileUrl, {
     language: is.dev ? 'zhCN' : '',
     audioExt: ['.mp3', '.wav', '.flac'],
-    databaseUrl: is.dev ? 'D:\\FRKB\\FRKB_database' : '',
+    databaseUrl: '',
     globalCallShortcut:
       platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : ''
   })
@@ -155,22 +157,36 @@ ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
   const destFileName = path.basename(srcFullPath)
   const destFullPath = path.join(destDir, destFileName)
   if (isExist) {
-    let oldJson = await fs.readJSON(path.join(destDir, 'description.json'))
+    let oldJson = await fs.readJSON(path.join(destDir, '.description.json'))
     await updateTargetDirSubdirOrder(destDir, oldJson.order, 'before', 'plus')
     await fs.move(srcFullPath, destFullPath, { overwrite: true })
-    let json = await fs.readJSON(path.join(destFullPath, 'description.json'))
+    let json = await fs.readJSON(path.join(destFullPath, '.description.json'))
     let originalOrder = json.order
     json.order = 1
-    await fs.outputJSON(path.join(destFullPath, 'description.json'), json)
+    await fs.outputJSON(path.join(destFullPath, '.description.json'), json)
+    if (os.platform() === 'win32') {
+      await fswin.setAttributes(
+        path.join(destFullPath, '.description.json'),
+        { IS_HIDDEN: true },
+        () => {}
+      )
+    }
     const srcDir = path.dirname(srcFullPath)
     await updateTargetDirSubdirOrder(srcDir, originalOrder, 'after', 'minus')
   } else {
     await updateTargetDirSubdirOrder(destDir, 0, 'after', 'plus')
     await fs.move(srcFullPath, destFullPath, { overwrite: true })
-    let json = await fs.readJSON(path.join(destFullPath, 'description.json'))
+    let json = await fs.readJSON(path.join(destFullPath, '.description.json'))
     let originalOrder = json.order
     json.order = 1
-    await fs.outputJSON(path.join(destFullPath, 'description.json'), json)
+    await fs.outputJSON(path.join(destFullPath, '.description.json'), json)
+    if (os.platform() === 'win32') {
+      await fswin.setAttributes(
+        path.join(destFullPath, '.description.json'),
+        { IS_HIDDEN: true },
+        () => {}
+      )
+    }
     await updateTargetDirSubdirOrder(path.dirname(srcFullPath), originalOrder, 'after', 'minus')
   }
 })
@@ -229,11 +245,14 @@ ipcMain.handle('moveToDirSample', async (e, src, dest) => {
 ipcMain.handle('reOrderSubDir', async (e, targetPath, subDirArrJson) => {
   const subDirArr = JSON.parse(subDirArrJson)
   const promises = subDirArr.map(async (item) => {
-    const jsonPath = path.join(store.databaseDir, targetPath, item.dirName, 'description.json')
+    const jsonPath = path.join(store.databaseDir, targetPath, item.dirName, '.description.json')
     const json = await fs.readJSON(jsonPath)
     if (json.order !== item.order) {
       json.order = item.order
       await fs.outputJSON(jsonPath, json)
+      if (os.platform() === 'win32') {
+        await fswin.setAttributes(jsonPath, { IS_HIDDEN: true }, () => {})
+      }
     }
   })
   await Promise.all(promises)
@@ -245,10 +264,13 @@ ipcMain.handle('getLibrary', async () => {
 })
 
 ipcMain.handle('renameDir', async (e, newName, dirPath) => {
-  let descriptionPath = path.join(store.databaseDir, path.join(dirPath, 'description.json'))
+  let descriptionPath = path.join(store.databaseDir, path.join(dirPath, '.description.json'))
   let descriptionJson = await fs.readJSON(descriptionPath)
   descriptionJson.dirName = newName
   await fs.outputJson(descriptionPath, descriptionJson)
+  if (os.platform() === 'win32') {
+    await fswin.setAttributes(descriptionPath, { IS_HIDDEN: true }, () => {})
+  }
   await fs.rename(
     path.join(store.databaseDir, dirPath),
     path.join(store.databaseDir, dirPath.slice(0, dirPath.lastIndexOf('/') + 1) + newName)
@@ -270,7 +292,14 @@ ipcMain.handle('delDir', async (e, targetPath) => {
 ipcMain.handle('mkDir', async (e, descriptionJson, dirPath) => {
   await updateTargetDirSubdirOrder(path.join(store.databaseDir, dirPath), 0, 'after', 'plus')
   let targetPath = path.join(store.databaseDir, dirPath, descriptionJson.dirName)
-  await fs.outputJson(path.join(targetPath, 'description.json'), descriptionJson)
+  await fs.outputJson(path.join(targetPath, '.description.json'), descriptionJson)
+  if (os.platform() === 'win32') {
+    await fswin.setAttributes(
+      path.join(targetPath, '.description.json'),
+      { IS_HIDDEN: true },
+      () => {}
+    )
+  }
 })
 
 ipcMain.handle('updateTargetDirSubdirOrderAdd', async (e, dirPath) => {
