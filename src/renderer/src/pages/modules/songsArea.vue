@@ -493,7 +493,7 @@ const onEnd = (e) => {
     </div>
   </div>
   <div
-    v-show="runtime.songsArea.songInfoArr.length === 0"
+    v-show="runtime.songsArea.songListUUID && runtime.songsArea.songInfoArr.length === 0"
     style="
       height: 100%;
       width: 100%;
@@ -506,9 +506,9 @@ const onEnd = (e) => {
       flex-direction: column;
     "
   >
-    <div style="font-size: 16px; color: #999999">{{ '暂无曲目' }}</div>
-    <div style="font-size: 12px; color: #999999; margin-top: 10px">
-      {{ '导入曲目到歌单中，或通过拖拽文件夹或音频文件进行导入。' }}
+    <div style="font-size: 16px; color: #999999" class="unselectable">{{ t('暂无曲目') }}</div>
+    <div style="font-size: 12px; color: #999999; margin-top: 10px" class="unselectable">
+      {{ t('导入曲目到歌单中，或通过拖拽文件夹或音频文件进行导入。') }}
     </div>
   </div>
   <songAreaColRightClickMenu
