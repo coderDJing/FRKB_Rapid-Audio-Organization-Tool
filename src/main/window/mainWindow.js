@@ -342,6 +342,10 @@ function createWindow() {
     }
   })
 
+  ipcMain.on('openFileExplorer', (e, targetPath) => {
+    shell.openPath(path.join(store.databaseDir, targetPath))
+  })
+
   mainWindow.on('closed', () => {
     ipcMain.removeHandler('toggle-maximize')
     ipcMain.removeHandler('toggle-minimize')
@@ -351,6 +355,7 @@ function createWindow() {
     ipcMain.removeHandler('startImportSongs')
     ipcMain.removeHandler('changeGlobalShortcut')
     ipcMain.removeHandler('checkForUpdates')
+    ipcMain.removeHandler('openFileExplorer')
     globalShortcut.unregister(store.settingConfig.globalCallShortcut)
     updateWindow?.instance?.close()
     mainWindow = null

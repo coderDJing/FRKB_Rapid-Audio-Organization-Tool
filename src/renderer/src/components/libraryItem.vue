@@ -112,7 +112,8 @@ const menuArr = ref(
       ]
     : [
         [{ menuName: '导入曲目' }, { menuName: '导出曲目' }],
-        [{ menuName: '重命名' }, { menuName: '删除' }]
+        [{ menuName: '重命名' }, { menuName: '删除' }],
+        [{ menuName: '在文件资源管理器中显示' }]
       ]
 )
 const contextmenuEvent = async (event) => {
@@ -222,6 +223,11 @@ const contextmenuEvent = async (event) => {
           }
         }
       }
+    } else if (result.menuName == '在文件资源管理器中显示') {
+      window.electron.ipcRenderer.send(
+        'openFileExplorer',
+        libraryUtils.findDirPathByUuid(props.uuid)
+      )
     }
   }
 }
