@@ -409,7 +409,7 @@ const onEnd = (e) => {
     <div class="loading"></div>
   </div>
   <div
-    style="height: 100%; width: 100%; overflow: auto; position: relative; z-index: 2"
+    style="height: 100%; width: 100%; overflow: auto"
     v-if="runtime.songsArea.songListUUID"
     @click="runtime.songsArea.selectedSongFilePath.length = 0"
   >
@@ -491,26 +491,26 @@ const onEnd = (e) => {
         </div>
       </div>
     </div>
-  </div>
-  <div
-    v-show="runtime.songsArea.songListUUID && runtime.songsArea.songInfoArr.length === 0"
-    style="
-      height: 100%;
-      width: 100%;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      position: relative;
-      top: -100%;
-      z-index: 1;
-      flex-direction: column;
-    "
-  >
-    <div style="font-size: 16px; color: #999999" class="unselectable">{{ t('暂无曲目') }}</div>
-    <div style="font-size: 12px; color: #999999; margin-top: 10px" class="unselectable">
-      {{ t('导入曲目到歌单中，或通过拖拽文件夹或音频文件进行导入。') }}
+    <div
+      v-show="runtime.songsArea.songListUUID && runtime.songsArea.songInfoArr.length === 0"
+      style="
+        height: 80%;
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-direction: column;
+        position: sticky;
+        left: 0;
+      "
+    >
+      <div style="font-size: 16px; color: #999999" class="unselectable">{{ t('暂无曲目') }}</div>
+      <div style="font-size: 12px; color: #999999; margin-top: 10px" class="unselectable">
+        {{ t('导入曲目到歌单中，或通过拖拽文件夹或音频文件进行导入。') }}
+      </div>
     </div>
   </div>
+
   <songAreaColRightClickMenu
     v-model="colRightClickMenuShow"
     :clickEvent="colRightClickEvent"
