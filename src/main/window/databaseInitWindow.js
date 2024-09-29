@@ -4,10 +4,9 @@ import icon from '../../../resources/icon.png?asset'
 import { v4 as uuidv4 } from 'uuid'
 import mainWindow from './mainWindow.js'
 import store from '../store.js'
+import { operateHiddenFile } from '../utils.js'
 const fs = require('fs-extra')
 const path = require('path')
-const os = require('os')
-const fswin = require('fswin')
 let databaseInitWindow = null
 
 const createWindow = () => {
@@ -57,14 +56,9 @@ const createWindow = () => {
         dirName: 'library',
         order: 1
       }
-      await fs.outputJson(path.join(dirPath, 'library', '.description.json'), rootDescription)
-      if (os.platform() === 'win32') {
-        await fswin.setAttributes(
-          path.join(dirPath, 'library', '.description.json'),
-          { IS_HIDDEN: true },
-          () => {}
-        )
-      }
+      await operateHiddenFile(path.join(dirPath, 'library', '.description.json'), async () => {
+        await fs.outputJson(path.join(dirPath, 'library', '.description.json'), rootDescription)
+      })
     }
     const makeLibrary = async (libraryPath, libraryName, order) => {
       if (!fs.pathExistsSync(path.join(libraryPath, '.description.json'))) {
@@ -74,14 +68,9 @@ const createWindow = () => {
           dirName: libraryName,
           order: order
         }
-        await fs.outputJson(path.join(libraryPath, '.description.json'), description)
-        if (os.platform() === 'win32') {
-          await fswin.setAttributes(
-            path.join(libraryPath, '.description.json'),
-            { IS_HIDDEN: true },
-            () => {}
-          )
-        }
+        await operateHiddenFile(path.join(libraryPath, '.description.json'), async () => {
+          await fs.outputJson(path.join(libraryPath, '.description.json'), description)
+        })
       }
     }
     await makeLibrary(path.join(dirPath, 'library/筛选库'), '筛选库', 1)

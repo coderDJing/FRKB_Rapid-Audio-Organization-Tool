@@ -2,7 +2,8 @@ import store from './store.js'
 
 const fs = require('fs-extra')
 const path = require('path')
-
+const fswin = require('fswin')
+const os = require('os')
 function parseJsonStrings(inputString) {
   // 定义一个正则表达式来匹配 JSON 对象
   const jsonPattern = /(\{.*?\})/g
@@ -184,12 +185,28 @@ async function updateOrderInFile(filePath, type) {
     } else if (type == 'plus') {
       jsonObj.order++
     }
-    await fs.outputJson(filePath, jsonObj)
+    operateHiddenFile(filePath, async () => {
+      await fs.outputJson(filePath, jsonObj)
+    })
   } catch (error) {
     console.error(`Error updating ${filePath}:`, error)
   }
 }
-
+export const operateHiddenFile = async (filePath, operateFunction) => {
+  if (fs.pathExistsSync(filePath)) {
+    if (os.platform() === 'win32') {
+      await fswin.setAttributes(path.join(filePath), { IS_HIDDEN: false }, () => {})
+    }
+  }
+  if (operateFunction && operateFunction.constructor.name === 'AsyncFunction') {
+    await operateFunction()
+  } else {
+    operateFunction()
+  }
+  if (os.platform() === 'win32') {
+    await fswin.setAttributes(path.join(filePath), { IS_HIDDEN: true }, () => {})
+  }
+}
 // 异步函数，用于遍历目录并处理 .description.json 文件中的order小于参数orderNum时+1 direction='before'||'after' operation='plus'||'minus'
 export const updateTargetDirSubdirOrder = async (dirPath, orderNum, direction, operation) => {
   try {
