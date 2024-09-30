@@ -410,7 +410,7 @@ const onEnd = (e) => {
   </div>
   <div
     style="height: 100%; width: 100%; overflow: auto"
-    v-if="runtime.songsArea.songListUUID"
+    v-if="runtime.songsArea.songListUUID && !loadingShow"
     @click="runtime.songsArea.selectedSongFilePath.length = 0"
   >
     <div
