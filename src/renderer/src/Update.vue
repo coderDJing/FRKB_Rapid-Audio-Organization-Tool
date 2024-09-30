@@ -89,7 +89,7 @@ window.electron.ipcRenderer.on('updateDownloaded', (event) => {
             align-items: center;
           "
         >
-          <img :src="logo" style="width: 22px" :draggable="false" />
+          <img :src="logo" style="width: 20px" :draggable="false" />
         </div>
 
         <div class="canDrag" style="flex-grow: 1; height: 35px; z-index: 1"></div>
