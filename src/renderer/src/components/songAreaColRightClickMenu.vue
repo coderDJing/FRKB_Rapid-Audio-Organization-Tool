@@ -3,6 +3,7 @@ import { watch, ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidv4 } from 'uuid'
 import tickIcon from '@renderer/assets/tickIcon.png'
+import { t } from '@renderer/utils/translate.js'
 const uuid = uuidv4()
 const runtime = useRuntimeStore()
 
@@ -88,7 +89,7 @@ watch(
           <img v-if="item.show" :src="tickIcon" style="width: 16px" />
         </div>
         <div style="margin-left: 10px">
-          <span>{{ item.columnName }}</span>
+          <span>{{ t(item.columnName) }}</span>
         </div>
       </div>
     </div>
