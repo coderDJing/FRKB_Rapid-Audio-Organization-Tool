@@ -3,7 +3,6 @@
  <h2 align="center">FRKB</h2>
  <p align="center">Rapid Audio Organization Tool</p>
 </p>
-# FRKB - Rapid Audio Organization Tool
 
 ## English Version
 
