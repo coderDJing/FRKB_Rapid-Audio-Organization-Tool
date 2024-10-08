@@ -1,3 +1,8 @@
+<p align="center">
+ <img width="100px" src="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/build/icon.png?raw=true" align="center" alt="GitHub Readme Stats" />
+ <h2 align="center">FRKB</h2>
+ <p align="center">Rapid Audio Organization Tool</p>
+</p>
 # FRKB - Rapid Audio Organization Tool
 
 ## English Version
