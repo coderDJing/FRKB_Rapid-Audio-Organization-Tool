@@ -76,7 +76,6 @@ const librarySelectedChange = (item) => {
 }
 let dragOverSongsArea = ref(false)
 const dragover = (e) => {
-  console.log(e.dataTransfer.files)
   if (runtime.dragItemData !== null || !runtime.songsArea.songListUUID) {
     e.dataTransfer.dropEffect = 'none'
     return
