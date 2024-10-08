@@ -12,7 +12,7 @@ asarUnpack:
   - resources/**
 win:
   executableName: FRKB
-  requestedExecutionLevel: 'requireAdministrator'
+  # requestedExecutionLevel: 'requireAdministrator'
 nsis:
   oneClick: false
   allowElevation: true
