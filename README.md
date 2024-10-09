@@ -12,6 +12,11 @@
   <img alt="FRKB in action" src="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/screenshot/softwareScreenshot.png?raw=true">
 </p>
 
+### How to use
+1. Download from [releases](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases)
+2. Run the downloaded installer to install.
+3. Launch the tool using the desktop shortcut.
+
 ### Introduction
 
 **FRKB** is a cross-platform desktop software, currently under active development, designed specifically for audio professionals like DJs to quickly organize their audio files. Built with Vue.js for the frontend, Electron for cross-platform compatibility, and Python for backend processing, FRKB operates entirely offline, requiring no internet connection or external services.
