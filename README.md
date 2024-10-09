@@ -7,11 +7,10 @@
 [![GitHub commit activity](https://img.shields.io/github/commit-activity/m/coderDJing/FRKB_Rapid-Audio-Organization-Tool)](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/commits/master)
 [![GitHub Releases](https://img.shields.io/github/downloads/coderDJing/FRKB_Rapid-Audio-Organization-Tool/latest/total?logo=github)](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases)
 
-
-
-
-
-## English Version
+## FRKB
+<p align="center">
+  <img alt="FRKB in action" src="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/screenshot/softwareScreenshot.png?raw=true">
+</p>
 
 ### Introduction
 
@@ -43,6 +42,7 @@ We welcome contributions of all kinds! Whether you find a bug, have a feature re
 FRKB is licensed under the MIT License, which allows for broad use and modification of the software.
 
 ---
+
 # FRKB - 快速音频整理工具
 
 ## 中文版
@@ -76,9 +76,6 @@ FRKB目前仍在开发中，我们不断致力于改进其功能、性能和稳�
 
 FRKB遵循MIT许可证，允许广泛使用和修改软件。
 
-
-
-
 # electron-app
 
 An Electron application with Vue
@@ -90,24 +87,25 @@ An Electron application with Vue
 ## Project Setup
 
 ### Compile Python
+
 ```bash
-$ cd pySrc
-$ poetry install
-$ poetry shell
-$ pyinstaller .\src\analyseSongFingerprint.py --distpath=..\resources\pyScript\
+cd pySrc
+poetry install
+poetry shell
+pyinstaller .\src\analyseSongFingerprint.py --distpath=..\resources\pyScript\
 ```
 
 ### Install
 
 ```bash
-$ cd..
-$ pnpm install
+cd..
+pnpm install
 ```
 
 ### Development
 
 ```bash
-$ pnpm dev
+pnpm dev
 ```
 
 ### Build
