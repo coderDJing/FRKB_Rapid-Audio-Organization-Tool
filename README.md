@@ -3,7 +3,7 @@
  <h2 align="center">FRKB</h2>
  <p align="center">Rapid Audio Organization Tool</p>
 </p>
-
+[![Anurag's GitHub stats](https://github-readme-stats.vercel.app/api?username=coderDjing)](https://github.com/anuraghazra/github-readme-stats)
 ## English Version
 
 ### Introduction
