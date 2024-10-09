@@ -3,8 +3,13 @@
  <h2 align="center">FRKB</h2>
  <p align="center">Rapid Audio Organization Tool</p>
 </p>
+<p align="center">
+
 [![GitHub commit activity](https://img.shields.io/github/commit-activity/m/coderDJing/FRKB_Rapid-Audio-Organization-Tool)](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/commits/master)
 [![GitHub Releases](https://img.shields.io/github/downloads/coderDJing/FRKB_Rapid-Audio-Organization-Tool/latest/total?logo=github)](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases)
+
+</p>
+
 
 
 ## English Version
