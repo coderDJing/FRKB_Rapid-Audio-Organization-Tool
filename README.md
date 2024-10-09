@@ -3,7 +3,7 @@
  <h2 align="center">FRKB</h2>
  <p align="center">Rapid Audio Organization Tool</p>
 </p>
-<div style="text-align: center;">
+<div style="display: flex;justify-content: center;">
 
 [![GitHub commit activity](https://img.shields.io/github/commit-activity/m/coderDJing/FRKB_Rapid-Audio-Organization-Tool)](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/commits/master)
 
