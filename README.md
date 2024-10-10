@@ -10,12 +10,12 @@
 <p align="center">
   <a href="/README.md">English</a>
   ·
-  <a href="/readme/README_CN.md">Simplified Chinese</a>
+  <a href="/readme/README_CN.md">简体中文</a>
 </p>
 
 ## FRKB
 <p align="center">
-  <img alt="FRKB in action" src="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/screenshot/softwareScreenshot_en.png?raw=true">
+  <img alt="FRKB in action" src="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/screenshot/softwareScreenshot.png?raw=true">
 </p>
 
 ### How to Use
