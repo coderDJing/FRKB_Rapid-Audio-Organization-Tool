@@ -1,13 +1,13 @@
 <p align="center">
- <img width="100px" src="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/build/icon.png?raw=true" align="center" alt="FRKB" />
+ <img width="100px" src="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/build/icon.png?raw=true" align="center" alt="GitHub Readme Stats" />
  <h2 align="center">FRKB</h2>
- <p align="center">Rapid Audio Organization Tool</p>
+ <p align="center">快速音频整理工具</p>
 </p>
 
 [![GitHub commit activity](https://img.shields.io/github/commit-activity/m/coderDJing/FRKB_Rapid-Audio-Organization-Tool)](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/commits/master)
 [![GitHub Releases](https://img.shields.io/github/downloads/coderDJing/FRKB_Rapid-Audio-Organization-Tool/latest/total?logo=github)](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases)
 
- <p align="center">
+<p align="center">
   <a href="/README.md">English</a>
     ·
   <a href="/readme/README_CN.md">简体中文</a>
@@ -18,48 +18,13 @@
   <img alt="FRKB in action" src="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/screenshot/softwareScreenshot.png?raw=true">
 </p>
 
-### How to use
-1. Download from [releases](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases)
-2. Run the downloaded installer to install.
-3. Launch the tool using the desktop shortcut.
+### 如何使用
+1. 在 [releases](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases) 页面下载最新版本
+2. 运行安装文件安装到电脑上
+3. 在桌面快捷方式启动FRKB
 
-### Project Background
-As a DJ, I frequently need to organize large numbers of music files. However, existing audio file management software often falls short. Many require excessive mouse operations, leading to shoulder and neck pain. Others have poorly designed shortcuts that do not conform to ergonomic principles. Additionally, some only manage file references, leaving the actual file manager cluttered and disorganized. Furthermore, I often end up downloading duplicate songs, which wastes time during the selection process. Therefore, I decided to develop a more user-friendly software solution to address these issues.
-
-### Introduction
-
-**FRKB** is a cross-platform desktop software, currently under active development, designed specifically for audio professionals like DJs to quickly organize their audio files. Built with Vue.js for the frontend, Electron for cross-platform compatibility, and Python for backend processing, FRKB operates entirely offline, requiring no internet connection or external services.
-
-### Key Features
-
-- **Standalone & Portable**: Run FRKB without installation, and easily transfer your database to your mobile devices for on-the-go access.
-- **Sound Fingerprinting for Duplicates Elimination**: Identify and exclude duplicate tracks from your library to maintain a clean and efficient collection.
-- **Waveform Visualization & Ergonomic Shortcuts**: Preview tracks with waveform displays and streamline your organization workflow with intuitive keyboard shortcuts.
-- **Direct File Management**: When adding tracks, FRKB directly incorporates the files into your library, ensuring that changes made are reflected in your file system for an instant "what you see is what you get" experience.
-
-### Development Status
-
-FRKB is still in development, and we're constantly working to improve its features, performance, and stability. Keep an eye out for updates and future releases.
-
-### Quick Start
-
-- **Download**: Grab the latest version from our [releases page].
-- **Run**: Execute the appropriate executable file for your operating system.
-- **Organize**: Start organizing your audio files with FRKB's powerful features.
-
-### Contributing
-
-We welcome contributions of all kinds! Whether you find a bug, have a feature request, or want to contribute code, feel free to open an issue or submit a pull request.
-
-### License
-
-FRKB is licensed under the MIT License, which allows for broad use and modification of the software.
-
----
-
-# FRKB - 快速音频整理工具
-
-## 中文版
+### 项目背景
+作为一名DJ，我日常需要整理大量的歌曲文件。然而，市面上现有的音频文件整理软件往往不尽如人意，要么需要过多的鼠标操作，导致肩颈不适；要么快捷键设计不合理，不符合人体工学；要么仅对音频文件进行引用整理，在文件管理器中仍然显得杂乱无章。此外，我还经常遇到下载重复歌曲的问题，这使得筛选过程变得冗长且低效。因此，我决定自己开发一款顺手的软件来解决这些问题。
 
 ### 简介
 
