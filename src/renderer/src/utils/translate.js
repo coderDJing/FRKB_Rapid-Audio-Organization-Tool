@@ -1,11 +1,21 @@
 import { useRuntimeStore } from '@renderer/stores/runtime'
 let languageDict = await window.electron.ipcRenderer.invoke('getLanguageDict')
-export function t(text) {
+export function t(text, index) {
   const runtime = useRuntimeStore()
-  if (languageDict[runtime.setting.language][text] === undefined) {
-    throw new Error('语言字典:' + runtime.setting.language + '未找到"' + text + '"映射')
+  const lang = runtime.setting.language
+  if (lang === 'zhCN') {
+    return text
   }
-  return languageDict[runtime.setting.language][text]
+  const translation = languageDict[lang]?.[text]
+  if (Array.isArray(translation) && index === undefined) {
+    index = 0
+  }
+
+  if (translation === undefined) {
+    throw new Error(`语言字典: ${lang} 未找到"${text}"映射`)
+  }
+
+  return index !== undefined ? translation[index] : translation
 }
 
 export const translate = {
