@@ -118,7 +118,8 @@
   "请直接在键盘上输入新的快捷键": "Enter new shortcut directly.",
   "快捷键设置失败，可能是由于冲突或错误": "Failed to set shortcut, possibly due to conflict or error.",
   "请尝试其他组合": "Please try other shortcut combinations.",
-  "检查更新": "Check for updates",
+  "检查更新": ["Check for updates", "Check updates"],
+  "暂不更新": "Not Now",
   "没有可用的更新": "No updates available",
   "当前版本": "Current version:",
   "发现新版本": "New version found:",
@@ -132,5 +133,7 @@
   "BPM": "BPM",
   "在文件资源管理器中显示": "Show in File Explorer",
   "暂无曲目": "No tracks",
-  "导入曲目到歌单中，或通过拖拽文件夹或音频文件进行导入。": "Import tracks into a playlist, or import by dragging folders or audio files."
+  "导入曲目到歌单中，或通过拖拽文件夹或音频文件进行导入。": "Import tracks into a playlist, or import by dragging folders or audio files.",
+  "发现新版本！": "New version found !",
+  "七日内不再检查": "Do Not Check for Updates for 7 Days"
 }
