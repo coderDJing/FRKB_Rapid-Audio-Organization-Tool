@@ -357,7 +357,6 @@ function createWindow() {
     ipcMain.removeHandler('checkForUpdates')
     ipcMain.removeHandler('openFileExplorer')
     globalShortcut.unregister(store.settingConfig.globalCallShortcut)
-    updateWindow?.instance?.close()
     mainWindow = null
   })
 }
