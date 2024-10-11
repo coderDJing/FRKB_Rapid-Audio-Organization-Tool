@@ -16,6 +16,8 @@ import databaseInitWindow from './window/databaseInitWindow.js'
 import { languageDict } from './translate.js'
 import { is } from '@electron-toolkit/utils'
 import store from './store.js'
+import foundNewVersionWindow from './window/foundNewVersionWindow.js'
+import updateWindow from './window/updateWindow.js'
 
 const gotTheLock = app.requestSingleInstanceLock()
 
@@ -104,6 +106,20 @@ app.whenReady().then(() => {
     )
     mainWindow.createWindow()
   }
+  const { autoUpdater } = require('electron-updater')
+  autoUpdater.autoDownload = false
+  if (store.settingConfig.nextCheckUpdateTime) {
+    if (new Date() > new Date(store.settingConfig.nextCheckUpdateTime)) {
+      autoUpdater.checkForUpdates()
+    }
+  } else {
+    autoUpdater.checkForUpdates()
+  }
+  autoUpdater.on('update-available', (info) => {
+    if (updateWindow.instance === null) {
+      foundNewVersionWindow.createWindow()
+    }
+  })
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
