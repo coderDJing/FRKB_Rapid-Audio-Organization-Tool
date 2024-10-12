@@ -64,7 +64,7 @@ pnpm install
 ### Development Mode
 
 ```bash
-pnpm dev
+pnpm run dev
 ```
 
 ### Building
