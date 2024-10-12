@@ -68,7 +68,7 @@ pnpm install
 ### 开发模式
 
 ```bash
-pnpm dev
+pnpm run dev
 ```
 
 ### 构建
