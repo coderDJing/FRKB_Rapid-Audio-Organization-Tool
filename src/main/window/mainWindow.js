@@ -10,6 +10,7 @@ import { t } from '../translate.js'
 import store from '../store.js'
 import url from '../url.js'
 import updateWindow from './updateWindow.js'
+import databaseInitWindow from './databaseInitWindow.js'
 const path = require('path')
 const fs = require('fs-extra')
 
@@ -346,6 +347,20 @@ function createWindow() {
     shell.openPath(path.join(store.databaseDir, targetPath))
   })
 
+  ipcMain.handle('reSelectLibrary', async (e) => {
+    databaseInitWindow.createWindow()
+    let layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
+    if (mainWindow.isMaximized()) {
+      layoutConfig.isMaxMainWin = true
+    } else {
+      layoutConfig.isMaxMainWin = false
+    }
+    layoutConfig.mainWindowWidth = mainWindowWidth
+    layoutConfig.mainWindowHeight = mainWindowHeight
+    await fs.outputJson(url.layoutConfigFileUrl, layoutConfig)
+    mainWindow?.close()
+  })
+
   mainWindow.on('closed', () => {
     ipcMain.removeHandler('toggle-maximize')
     ipcMain.removeHandler('toggle-minimize')
@@ -356,6 +371,7 @@ function createWindow() {
     ipcMain.removeHandler('changeGlobalShortcut')
     ipcMain.removeHandler('checkForUpdates')
     ipcMain.removeHandler('openFileExplorer')
+    ipcMain.removeHandler('reSelectLibrary')
     globalShortcut.unregister(store.settingConfig.globalCallShortcut)
     mainWindow = null
   })

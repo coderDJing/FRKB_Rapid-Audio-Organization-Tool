@@ -89,6 +89,32 @@ const clearTracksFingerprintLibrary = async () => {
 const globalCallShortcutHandle = async () => {
   await globalCallShortcutDialog()
 }
+
+const reSelectLibrary = async () => {
+  if (runtime.isProgressing) {
+    await confirm({
+      title: '设置',
+      content: [t('请等待当前任务执行结束')],
+      confirmShow: false
+    })
+    return
+  }
+  let res = await confirm({
+    title: '提示',
+    content: [
+      t('当前使用的数据库文件夹仍保留在原位置，可手动删除或重新选择继续使用。'),
+      t('确认重新选择数据库所在位置？')
+    ],
+    confirmShow: true
+  })
+  if (res === 'confirm') {
+    await window.electron.ipcRenderer.invoke(
+      'setSetting',
+      JSON.parse(JSON.stringify(runtime.setting))
+    )
+    await window.electron.ipcRenderer.invoke('reSelectLibrary')
+  }
+}
 </script>
 <template>
   <div class="dialog unselectable">
@@ -131,6 +157,12 @@ const globalCallShortcutHandle = async () => {
               :title="runtime.setting.globalCallShortcut"
             >
               {{ runtime.setting.globalCallShortcut }}
+            </div>
+          </div>
+          <div style="margin-top: 20px">{{ t('重新选择数据库所在位置') }}：</div>
+          <div style="margin-top: 10px">
+            <div class="button" style="width: 90px; text-align: center" @click="reSelectLibrary()">
+              {{ t('重新选择') }}
             </div>
           </div>
           <div style="margin-top: 20px">{{ t('清除曲目指纹库') }}：</div>
