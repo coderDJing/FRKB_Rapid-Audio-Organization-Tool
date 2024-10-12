@@ -81,7 +81,7 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
     mainWindowHeight: 600
   })
   fs.outputJsonSync(url.settingConfigFileUrl, {
-    language: is.dev ? 'zhCN' : '',
+    language: is.dev ? 'enUS' : '',
     audioExt: ['.mp3', '.wav', '.flac'],
     databaseUrl: '',
     globalCallShortcut:

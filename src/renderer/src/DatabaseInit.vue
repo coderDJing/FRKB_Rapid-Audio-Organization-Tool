@@ -79,7 +79,7 @@ onUnmounted(() => {
       class="canDrag"
     >
       <span style="font-weight: bold" class="title unselectable">{{
-        t('首次启动请选择数据存储位置')
+        t('请选择数据存储位置')
       }}</span>
     </div>
     <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px; height: 200px">
