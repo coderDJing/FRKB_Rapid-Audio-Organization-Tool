@@ -8,9 +8,9 @@ import {
   exitSongsAnalyseServie,
   moveOrCopyItemWithCheckIsExist,
   operateHiddenFile
-} from './utils.js'
-import { log } from './log.js'
-import url from './url.js'
+} from './utils'
+import { log } from './log'
+import url from './url'
 import mainWindow from './window/mainWindow.js'
 import databaseInitWindow from './window/databaseInitWindow.js'
 import { languageDict } from './translate.js'
@@ -116,9 +116,9 @@ app.whenReady().then(() => {
     autoUpdater.checkForUpdates()
   }
   interface UpdateInfo {
-    version: string;
-    downloadUrl: string;
-    releaseNotes?: string;
+    version: string
+    downloadUrl: string
+    releaseNotes?: string
   }
   autoUpdater.on('update-available', (info: UpdateInfo) => {
     if (updateWindow.instance === null) {

@@ -1,10 +1,10 @@
-import store from './store.ts'
+import store from './store'
 
 const fs = require('fs-extra')
 const path = require('path')
 const fswin = require('fswin')
 const os = require('os')
-function parseJsonStrings(inputString) {
+function parseJsonStrings(inputString: string) {
   // 定义一个正则表达式来匹配 JSON 对象
   const jsonPattern = /(\{.*?\})/g
 
@@ -33,7 +33,7 @@ function parseJsonStrings(inputString) {
 }
 
 // 分割字符串为多个字节块的函数
-function splitStringByBytes(str, chunkSize = 1024) {
+function splitStringByBytes(str: string, chunkSize = 1024) {
   const chunks = []
   let index = 0
   let currentChunkLength = 0
@@ -80,9 +80,9 @@ export async function exitSongsAnalyseServie() {
     socketClient.connect(store.analyseSongPort, '127.0.0.1', () => {
       writeNextChunk()
     })
-    socketClient.on('data', (data) => {})
+    socketClient.on('data', (data: Buffer) => {})
 
-    socketClient.on('error', (err) => {
+    socketClient.on('error', (err: Error) => {
       console.log(err.toString())
       reject(err) // 拒绝 Promise 当发生错误时
       socketClient.destroy()
@@ -94,7 +94,12 @@ export async function exitSongsAnalyseServie() {
     })
   })
 }
-export async function getSongsAnalyseResult(songFilePaths, processFunc) {
+
+type md5 = {
+  md5_hash: string
+  file_path: string
+}
+export async function getSongsAnalyseResult(songFilePaths: string[], processFunc: Function) {
   let songFileUrls = songFilePaths
 
   const chunks = splitStringByBytes(songFileUrls.join('|'))
@@ -114,14 +119,15 @@ export async function getSongsAnalyseResult(songFilePaths, processFunc) {
         socketClient.end()
       }
     }
-    let songsAnalyseResult = []
-    let errorSongsAnalyseResult = []
+
+    let songsAnalyseResult: md5[] = []
+    let errorSongsAnalyseResult: md5[] = []
 
     socketClient.connect(store.analyseSongPort, '127.0.0.1', () => {
       writeNextChunk()
     })
-    socketClient.on('data', (data) => {
-      let md5s = parseJsonStrings(data.toString())
+    socketClient.on('data', (data: Buffer) => {
+      let md5s: string | md5[] = parseJsonStrings(data.toString())
       if (!Array.isArray(md5s)) {
         console.log(data.toString())
       } else {
@@ -136,7 +142,7 @@ export async function getSongsAnalyseResult(songFilePaths, processFunc) {
       processFunc(songsAnalyseResult.length + errorSongsAnalyseResult.length)
     })
 
-    socketClient.on('error', (err) => {
+    socketClient.on('error', (err: Error) => {
       console.log(err.toString())
       reject(err) // 拒绝 Promise 当发生错误时
       socketClient.destroy()
@@ -148,7 +154,7 @@ export async function getSongsAnalyseResult(songFilePaths, processFunc) {
     })
   })
 }
-async function getdirsDescriptionJson(dirPath, dirs) {
+async function getdirsDescriptionJson(dirPath: string, dirs) {
   const jsons = await Promise.all(
     dirs.map(async (dir) => {
       const filePath = path.join(dirPath, dir.name, '.description.json')
@@ -177,7 +183,7 @@ export async function getLibrary() {
 }
 
 // 异步函数，用于读取和更新 .description.json 文件中的 order 属性
-async function updateOrderInFile(filePath, type) {
+async function updateOrderInFile(filePath: string, type: 'minus' | 'plus') {
   try {
     const jsonObj = await fs.readJSON(filePath)
     if (type == 'minus') {
@@ -192,7 +198,7 @@ async function updateOrderInFile(filePath, type) {
     console.error(`Error updating ${filePath}:`, error)
   }
 }
-export const operateHiddenFile = async (filePath, operateFunction) => {
+export const operateHiddenFile = async (filePath: string, operateFunction: Function) => {
   if (fs.pathExistsSync(filePath)) {
     if (os.platform() === 'win32') {
       await fswin.setAttributes(path.join(filePath), { IS_HIDDEN: false }, () => {})
@@ -208,7 +214,12 @@ export const operateHiddenFile = async (filePath, operateFunction) => {
   }
 }
 // 异步函数，用于遍历目录并处理 .description.json 文件中的order小于参数orderNum时+1 direction='before'||'after' operation='plus'||'minus'
-export const updateTargetDirSubdirOrder = async (dirPath, orderNum, direction, operation) => {
+export const updateTargetDirSubdirOrder = async (
+  dirPath: string,
+  orderNum: number,
+  direction: 'before' | 'after',
+  operation: 'plus' | 'minus'
+) => {
   try {
     const subdirs = await fs.readdir(dirPath, { withFileTypes: true })
     const dirs = subdirs.filter((dirent) => dirent.isDirectory())
@@ -232,7 +243,7 @@ export const updateTargetDirSubdirOrder = async (dirPath, orderNum, direction, o
     console.error(`Error traversing directory ${dirPath}:`, error)
   }
 }
-
+//todo
 export const collectFilesWithExtensions = async (dir, extensions = []) => {
   try {
     const stats = await fs.stat(dir)
@@ -271,7 +282,11 @@ export const collectFilesWithExtensions = async (dir, extensions = []) => {
   }
 }
 
-export async function moveOrCopyItemWithCheckIsExist(src, targetPath, isMove) {
+export async function moveOrCopyItemWithCheckIsExist(
+  src: string,
+  targetPath: string,
+  isMove: boolean
+) {
   let isExist = await fs.pathExists(targetPath)
   if (isExist) {
     let counter = 1
@@ -300,24 +315,38 @@ export async function moveOrCopyItemWithCheckIsExist(src, targetPath, isMove) {
 }
 
 export function getCurrentTimeYYYYMMDDHHMMSSSSS() {
-  var now = new Date()
+  let now = new Date()
 
-  var year = now.getFullYear()
-  var month = now.getMonth() + 1 // 月份是从0开始的
-  var day = now.getDate()
-  var hour = now.getHours()
-  var minute = now.getMinutes()
-  var second = now.getSeconds()
-  var millisecond = now.getMilliseconds()
+  let year = now.getFullYear()
+  let month = now.getMonth() + 1 // 月份是从0开始的
+  let day = now.getDate()
+  let hour = now.getHours()
+  let minute = now.getMinutes()
+  let second = now.getSeconds()
+  let millisecond = now.getMilliseconds()
 
   // 格式化月份、‌日期、‌小时、‌分钟、‌秒和毫秒
-  month = month < 10 ? '0' + month : month
-  day = day < 10 ? '0' + day : day
-  hour = hour < 10 ? '0' + hour : hour
-  minute = minute < 10 ? '0' + minute : minute
-  second = second < 10 ? '0' + second : second
-  millisecond =
+  let monthStr = month < 10 ? '0' + month : month
+  let dayStr = day < 10 ? '0' + day : day
+  let hourStr = hour < 10 ? '0' + hour : hour
+  let minuteStr = minute < 10 ? '0' + minute : minute
+  let secondStr = second < 10 ? '0' + second : second
+  let millisecondStr =
     millisecond < 100 ? (millisecond < 10 ? '00' + millisecond : '0' + millisecond) : millisecond
 
-  return year + '' + month + '' + day + '' + hour + '' + minute + '' + second + '' + millisecond
+  return (
+    year +
+    '' +
+    monthStr +
+    '' +
+    dayStr +
+    '' +
+    hourStr +
+    '' +
+    minuteStr +
+    '' +
+    secondStr +
+    '' +
+    millisecondStr
+  )
 }

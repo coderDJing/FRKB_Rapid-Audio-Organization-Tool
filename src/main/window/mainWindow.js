@@ -5,10 +5,10 @@ import {
   collectFilesWithExtensions,
   moveOrCopyItemWithCheckIsExist,
   getSongsAnalyseResult
-} from '../utils.js'
-import { t } from '../translate.js'
+} from '../utils'
+import { t } from '../translate'
 import store from '../store.ts'
-import url from '../url.js'
+import url from '../url'
 import updateWindow from './updateWindow.js'
 import databaseInitWindow from './databaseInitWindow.js'
 const path = require('path')
