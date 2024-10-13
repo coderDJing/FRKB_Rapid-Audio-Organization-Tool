@@ -1,5 +1,5 @@
 import url from './url.js'
-import store from './store.js'
+import store from './store.ts'
 const fs = require('fs-extra')
 
 let enUS = fs.readJSONSync(url.enUsUrl)
