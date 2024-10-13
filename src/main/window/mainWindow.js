@@ -7,7 +7,7 @@ import {
   getSongsAnalyseResult
 } from '../utils.js'
 import { t } from '../translate.js'
-import store from '../store.js'
+import store from '../store.ts'
 import url from '../url.js'
 import updateWindow from './updateWindow.js'
 import databaseInitWindow from './databaseInitWindow.js'

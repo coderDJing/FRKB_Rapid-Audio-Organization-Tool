@@ -15,7 +15,7 @@ import mainWindow from './window/mainWindow.js'
 import databaseInitWindow from './window/databaseInitWindow.js'
 import { languageDict } from './translate.js'
 import { is } from '@electron-toolkit/utils'
-import store from './store.js'
+import store from './store'
 import foundNewVersionWindow from './window/foundNewVersionWindow.js'
 import updateWindow from './window/updateWindow.js'
 
@@ -45,7 +45,7 @@ const child = spawn(url.analyseSongPyScriptUrl, {
   windowsHide: true
 })
 
-child.stdout.on('data', (data) => {
+child.stdout.on('data', (data: Buffer) => {
   try {
     const parsedData = JSON.parse(data.toString())
     if (parsedData.port) {
@@ -58,15 +58,15 @@ child.stdout.on('data', (data) => {
   }
 })
 
-child.stderr.on('data', (data) => {
+child.stderr.on('data', (data: Buffer) => {
   log.error(data.toString())
 })
 
-child.on('error', (err) => {
+child.on('error', (err: Error) => {
   log.error(err)
 })
 
-child.on('close', (code) => {
+child.on('close', (code: number) => {
   log.error(code)
 })
 
@@ -115,7 +115,12 @@ app.whenReady().then(() => {
   } else {
     autoUpdater.checkForUpdates()
   }
-  autoUpdater.on('update-available', (info) => {
+  interface UpdateInfo {
+    version: string;
+    downloadUrl: string;
+    releaseNotes?: string;
+  }
+  autoUpdater.on('update-available', (info: UpdateInfo) => {
     if (updateWindow.instance === null) {
       foundNewVersionWindow.createWindow()
     }
@@ -195,7 +200,7 @@ ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
     await updateTargetDirSubdirOrder(path.dirname(srcFullPath), originalOrder, 'after', 'minus')
   }
 })
-ipcMain.on('delSongs', async (e, songFilePaths) => {
+ipcMain.on('delSongs', async (e, songFilePaths: string[]) => {
   const promises = []
   for (let item of songFilePaths) {
     promises.push(fs.remove(item))
@@ -209,7 +214,7 @@ ipcMain.handle('scanSongList', async (e, songListPath, songListUUID) => {
   let songInfoArr = []
   let songFileUrls = await collectFilesWithExtensions(scanPath, store.settingConfig.audioExt)
 
-  function convertSecondsToMinutesSeconds(seconds) {
+  function convertSecondsToMinutesSeconds(seconds: number) {
     const minutes = Math.floor(seconds / 60)
     const remainingSeconds = seconds % 60
 
@@ -247,9 +252,9 @@ ipcMain.handle('moveToDirSample', async (e, src, dest) => {
   await fs.move(srcFullPath, destFullPath)
 })
 
-ipcMain.handle('reOrderSubDir', async (e, targetPath, subDirArrJson) => {
+ipcMain.handle('reOrderSubDir', async (e, targetPath: string, subDirArrJson: string) => {
   const subDirArr = JSON.parse(subDirArrJson)
-  const promises = subDirArr.map(async (item) => {
+  const promises = subDirArr.map(async (item: IDir) => {
     const jsonPath = path.join(store.databaseDir, targetPath, item.dirName, '.description.json')
     const json = await fs.readJSON(jsonPath)
     if (json.order !== item.order) {
@@ -345,10 +350,10 @@ ipcMain.handle('exportSongFingerprint', async (e, folderPath) => {
   )
 })
 
-ipcMain.handle('importSongFingerprint', async (e, filePath) => {
-  let json = await fs.readJSON(filePath)
+ipcMain.handle('importSongFingerprint', async (e, filePath: string) => {
+  let json: string[] = await fs.readJSON(filePath)
   store.songFingerprintList = store.songFingerprintList.concat(json)
-  store.songFingerprintList = [...new Set(store.songFingerprintList)]
+  store.songFingerprintList = Array.from(new Set(store.songFingerprintList))
   fs.outputJSON(
     path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json'),
     store.songFingerprintList
@@ -357,10 +362,10 @@ ipcMain.handle('importSongFingerprint', async (e, filePath) => {
 })
 
 ipcMain.handle('exportSongListToDir', async (e, folderPathVal, deleteSongsAfterExport, dirPath) => {
-  let scanPath = join(store.databaseDir, dirPath)
+  let scanPath = path.join(store.databaseDir, dirPath)
   let songFileUrls = await collectFilesWithExtensions(scanPath, store.settingConfig.audioExt)
   let folderName = dirPath.split('/')[dirPath.split('/').length - 1]
-  async function findUniqueFolder(inputFolderPath) {
+  async function findUniqueFolder(inputFolderPath: string) {
     let parts = path.parse(inputFolderPath)
     // 获取不包含文件名的路径部分
     let dirPath = parts.dir
@@ -406,7 +411,7 @@ ipcMain.handle('exportSongsToDir', async (e, folderPathVal, deleteSongsAfterExpo
 })
 
 ipcMain.handle('moveSongsToDir', async (e, srcs, dest) => {
-  const moveSongToDir = async (src, dest) => {
+  const moveSongToDir = async (src: string, dest: string) => {
     let targetPath = path.join(store.databaseDir, dest, src.match(/[^\\]+$/)[0])
     await moveOrCopyItemWithCheckIsExist(src, targetPath, true)
   }
