@@ -1,7 +1,10 @@
 import { app } from 'electron'
 import enUsUrl from '../renderer/src/language/enUS.json?commonjs-external&asset'
-import analyseSongPyScriptUrl from '../../resources/pyScript/analyseSong/analyseSong.exe?commonjs-external&asset&asarUnpack'
+
 const path = require('path')
+const analyseSongPyScriptUrl = path
+  .join(__dirname, '../../resources/pyScript/analyseSong/analyseSong.exe')
+  .replace('app.asar', 'app.asar.unpacked')
 let userDataDir = ''
 if (app.isPackaged) {
   userDataDir = app.getPath('userData')

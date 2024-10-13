@@ -63,9 +63,15 @@ importers:
       '@types/electron':
         specifier: ^1.6.10
         version: 1.6.10
+      '@types/fs-extra':
+        specifier: ^11.0.4
+        version: 11.0.4
+      '@types/node':
+        specifier: ^22.7.5
+        version: 22.7.5
       '@vitejs/plugin-vue':
         specifier: ^5.1.4
-        version: 5.1.4(vite@5.4.8(@types/node@20.14.7)(sass@1.79.3))(vue@3.5.9(typescript@5.5.2))
+        version: 5.1.4(vite@5.4.8(@types/node@22.7.5)(sass@1.79.3))(vue@3.5.9(typescript@5.5.2))
       '@vue/eslint-config-prettier':
         specifier: ^9.0.0
         version: 9.0.0(eslint@8.57.1)(prettier@3.3.3)
@@ -77,7 +83,7 @@ importers:
         version: 24.13.3(electron-builder-squirrel-windows@24.13.3(dmg-builder@24.13.3))
       electron-vite:
         specifier: ^2.3.0
-        version: 2.3.0(vite@5.4.8(@types/node@20.14.7)(sass@1.79.3))
+        version: 2.3.0(vite@5.4.8(@types/node@22.7.5)(sass@1.79.3))
       eslint:
         specifier: ^8.57.1
         version: 8.57.1
@@ -92,7 +98,7 @@ importers:
         version: 6.0.1
       vite:
         specifier: ^5.4.8
-        version: 5.4.8(@types/node@20.14.7)(sass@1.79.3)
+        version: 5.4.8(@types/node@22.7.5)(sass@1.79.3)
       vue:
         specifier: ^3.5.9
         version: 3.5.9(typescript@5.5.2)
@@ -602,11 +608,17 @@ packages:
   '@types/estree@1.0.6':
     resolution: {integrity: sha512-AYnb1nQyY49te+VRAVgmzfcgjYS91mY5P0TKUDCLEM+gNnA+3T6rWITXRLYCpahpqSQbN5cE+gHpnPyXjHWxcw==}
 
+  '@types/fs-extra@11.0.4':
+    resolution: {integrity: sha512-yTbItCNreRooED33qjunPthRcSjERP1r4MqCZc7wv0u2sUkzTFp45tgUfS5+r7FrZPdmCCNflLhVSP/o+SemsQ==}
+
   '@types/fs-extra@9.0.13':
     resolution: {integrity: sha512-nEnwB++1u5lVDM2UI4c1+5R+FYaKfaAzS4OococimjVm3nQw3TuzH5UNsocrcTBbhnerblyHj4A49qXbIiZdpA==}
 
   '@types/http-cache-semantics@4.0.4':
     resolution: {integrity: sha512-1m0bIFVc7eJWyve9S0RnuRgcQqF/Xd5QsUZAZeQFr1Q3/p9JWoQQEqmVy+DPTNpGXwhgIetAoYF8JSc33q29QA==}
+
+  '@types/jsonfile@6.1.4':
+    resolution: {integrity: sha512-D5qGUYwjvnNNextdU59/+fI+spnwtTFmyQP0h+PfIOSkNfpU6AOICUOkm4i0OnSk+NyjdPJrxCDro0sJsWlRpQ==}
 
   '@types/keyv@3.1.4':
     resolution: {integrity: sha512-BQ5aZNSCpj7D6K2ksrRCTmKRLEpnPvWDiLPfoGyhZ++8YtiK9d/3DBKPJgry359X/P1PfruyYwvnvwFjuEiEIg==}
@@ -616,6 +628,9 @@ packages:
 
   '@types/node@20.14.7':
     resolution: {integrity: sha512-uTr2m2IbJJucF3KUxgnGOZvYbN0QgkGyWxG6973HCpMYFy2KfcgYuIwkJQMQkt1VbBMlvWRbpshFTLxnxCZjKQ==}
+
+  '@types/node@22.7.5':
+    resolution: {integrity: sha512-jML7s2NAzMWc//QSJ1a3prpk78cOPchGvXJsC3C6R6PSMoooztvRVQEz89gmBTBY1SPMaqo5teB4uNHPdetShQ==}
 
   '@types/plist@3.0.5':
     resolution: {integrity: sha512-E6OCaRmAe4WDmWNsL/9RMqdkkzDCY1etutkflWk4c+AcjDU07Pcz1fQwTX0TQz+Pxqn9i4L1TU3UFpjnrcDgxA==}
@@ -2052,6 +2067,9 @@ packages:
   undici-types@5.26.5:
     resolution: {integrity: sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA==}
 
+  undici-types@6.19.8:
+    resolution: {integrity: sha512-ve2KP6f/JnbPBFyobGHuerC9g1FYGn/F8n1LWTwNxCEzd6IfqTwUQcNXgEtmmQ6DlRrC1hrSrBnCZPokRrDHjw==}
+
   universalify@0.1.2:
     resolution: {integrity: sha512-rBJeI5CXAlmy1pV+617WB9J63U6XcazHHF2f2dbJix4XzpUF0RS3Zbj0FGIOCAva5P/d/GBOYaACQ1w+0azUkg==}
     engines: {node: '>= 4.0.0'}
@@ -2665,7 +2683,7 @@ snapshots:
     dependencies:
       '@types/http-cache-semantics': 4.0.4
       '@types/keyv': 3.1.4
-      '@types/node': 20.14.7
+      '@types/node': 22.7.5
       '@types/responselike': 1.0.3
 
   '@types/debug@4.1.12':
@@ -2680,15 +2698,24 @@ snapshots:
 
   '@types/estree@1.0.6': {}
 
+  '@types/fs-extra@11.0.4':
+    dependencies:
+      '@types/jsonfile': 6.1.4
+      '@types/node': 22.7.5
+
   '@types/fs-extra@9.0.13':
     dependencies:
-      '@types/node': 20.14.7
+      '@types/node': 22.7.5
 
   '@types/http-cache-semantics@4.0.4': {}
 
+  '@types/jsonfile@6.1.4':
+    dependencies:
+      '@types/node': 22.7.5
+
   '@types/keyv@3.1.4':
     dependencies:
-      '@types/node': 20.14.7
+      '@types/node': 22.7.5
 
   '@types/ms@0.7.34': {}
 
@@ -2696,15 +2723,19 @@ snapshots:
     dependencies:
       undici-types: 5.26.5
 
+  '@types/node@22.7.5':
+    dependencies:
+      undici-types: 6.19.8
+
   '@types/plist@3.0.5':
     dependencies:
-      '@types/node': 20.14.7
+      '@types/node': 22.7.5
       xmlbuilder: 15.1.1
     optional: true
 
   '@types/responselike@1.0.3':
     dependencies:
-      '@types/node': 20.14.7
+      '@types/node': 22.7.5
 
   '@types/sortablejs@1.15.8': {}
 
@@ -2713,14 +2744,14 @@ snapshots:
 
   '@types/yauzl@2.10.3':
     dependencies:
-      '@types/node': 20.14.7
+      '@types/node': 22.7.5
     optional: true
 
   '@ungap/structured-clone@1.2.0': {}
 
-  '@vitejs/plugin-vue@5.1.4(vite@5.4.8(@types/node@20.14.7)(sass@1.79.3))(vue@3.5.9(typescript@5.5.2))':
+  '@vitejs/plugin-vue@5.1.4(vite@5.4.8(@types/node@22.7.5)(sass@1.79.3))(vue@3.5.9(typescript@5.5.2))':
     dependencies:
-      vite: 5.4.8(@types/node@20.14.7)(sass@1.79.3)
+      vite: 5.4.8(@types/node@22.7.5)(sass@1.79.3)
       vue: 3.5.9(typescript@5.5.2)
 
   '@vue/compiler-core@3.5.9':
@@ -3250,7 +3281,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron-vite@2.3.0(vite@5.4.8(@types/node@20.14.7)(sass@1.79.3)):
+  electron-vite@2.3.0(vite@5.4.8(@types/node@22.7.5)(sass@1.79.3)):
     dependencies:
       '@babel/core': 7.24.7
       '@babel/plugin-transform-arrow-functions': 7.24.7(@babel/core@7.24.7)
@@ -3258,7 +3289,7 @@ snapshots:
       esbuild: 0.21.5
       magic-string: 0.30.10
       picocolors: 1.0.1
-      vite: 5.4.8(@types/node@20.14.7)(sass@1.79.3)
+      vite: 5.4.8(@types/node@22.7.5)(sass@1.79.3)
     transitivePeerDependencies:
       - supports-color
 
@@ -4309,6 +4340,8 @@ snapshots:
 
   undici-types@5.26.5: {}
 
+  undici-types@6.19.8: {}
+
   universalify@0.1.2: {}
 
   universalify@2.0.1: {}
@@ -4336,13 +4369,13 @@ snapshots:
       extsprintf: 1.4.1
     optional: true
 
-  vite@5.4.8(@types/node@20.14.7)(sass@1.79.3):
+  vite@5.4.8(@types/node@22.7.5)(sass@1.79.3):
     dependencies:
       esbuild: 0.21.5
       postcss: 8.4.47
       rollup: 4.22.5
     optionalDependencies:
-      '@types/node': 20.14.7
+      '@types/node': 22.7.5
       fsevents: 2.3.3
       sass: 1.79.3
 

@@ -3,7 +3,7 @@ let languageDict = await window.electron.ipcRenderer.invoke('getLanguageDict')
 export function t(text, index) {
   const runtime = useRuntimeStore()
   const lang = runtime.setting.language
-  if (lang === 'zhCN') {
+  if (lang === 'zhCN' || lang === '') {
     return text
   }
   const translation = languageDict[lang]?.[text]

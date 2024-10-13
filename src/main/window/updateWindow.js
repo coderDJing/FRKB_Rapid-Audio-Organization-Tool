@@ -1,7 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
-import { log } from '../log.js'
+import { log } from '../log'
 const { autoUpdater } = require('electron-updater')
 const path = require('path')
 let updateWindow = null
