@@ -1,4 +1,4 @@
-import url from './url.js'
+import url from './url'
 const path = require('path')
 export const log = require('electron-log')
 
