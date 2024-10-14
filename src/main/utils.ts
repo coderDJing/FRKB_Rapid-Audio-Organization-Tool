@@ -1,9 +1,9 @@
 import store from './store'
 
-const fs = require('fs-extra')
-const path = require('path')
-const fswin = require('fswin')
-const os = require('os')
+import fs = require('fs-extra')
+import path = require('path')
+import fswin = require('fswin')
+import os = require('os')
 function parseJsonStrings(inputString: string) {
   // 定义一个正则表达式来匹配 JSON 对象
   const jsonPattern = /(\{.*?\})/g
@@ -154,7 +154,7 @@ export async function getSongsAnalyseResult(songFilePaths: string[], processFunc
     })
   })
 }
-async function getdirsDescriptionJson(dirPath: string, dirs) {
+async function getdirsDescriptionJson(dirPath: string, dirs: fs.Dirent[]) {
   const jsons = await Promise.all(
     dirs.map(async (dir) => {
       const filePath = path.join(dirPath, dir.name, '.description.json')
@@ -244,7 +244,7 @@ export const updateTargetDirSubdirOrder = async (
   }
 }
 //todo
-export const collectFilesWithExtensions = async (dir, extensions = []) => {
+export const collectFilesWithExtensions = async (dir: string, extensions: string[] = []) => {
   try {
     const stats = await fs.stat(dir)
     if (stats.isFile()) {
@@ -255,7 +255,7 @@ export const collectFilesWithExtensions = async (dir, extensions = []) => {
         return []
       }
     }
-    let files = []
+    let files: string[] = []
 
     // 读取目录中的文件和子目录
     const directoryEntries = await fs.readdir(dir, { withFileTypes: true })
@@ -279,6 +279,8 @@ export const collectFilesWithExtensions = async (dir, extensions = []) => {
     return files
   } catch (error) {
     console.log(error)
+  } finally {
+    return []
   }
 }
 

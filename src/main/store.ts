@@ -16,7 +16,13 @@ type ISettingConfig = {
   globalCallShortcut: string
   nextCheckUpdateTime: number
 }
-let settingConfig: ISettingConfig | null = null //设置config
+let settingConfig: ISettingConfig = {
+  language: '',
+  audioExt: [],
+  databaseUrl: '',
+  globalCallShortcut: '',
+  nextCheckUpdateTime: 0
+} //设置config
 let analyseSongPort: string = ''
 export default {
   songFingerprintList,

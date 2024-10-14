@@ -1,6 +1,9 @@
 {
     "compilerOptions": {
         "noImplicitAny": true,
-        "types": ["electron-vite/node"]
+        "strictNullChecks": true,
+        "types": [
+            "electron-vite/node"
+        ]
     }
 }
