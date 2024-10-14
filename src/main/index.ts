@@ -70,8 +70,8 @@ child.on('close', (code: number) => {
   log.error(code)
 })
 
-const path = require('path')
-const fs = require('fs-extra')
+import path = require('path')
+import fs = require('fs-extra')
 const platform = process.platform
 if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
   fs.outputJsonSync(url.layoutConfigFileUrl, {
@@ -234,7 +234,9 @@ ipcMain.handle('scanSongList', async (e, songListPath, songListUUID) => {
       title: metadata.common?.title,
       artist: metadata.common?.artist,
       album: metadata.common?.album,
-      duration: convertSecondsToMinutesSeconds(Math.round(metadata.format.duration)), //时长
+      duration: convertSecondsToMinutesSeconds(
+        metadata.format.duration === undefined ? 0 : Math.round(metadata.format.duration)
+      ), //时长
       genre: metadata.common?.genre?.[0],
       label: metadata.common?.label?.[0],
       bitrate: metadata.format?.bitrate, //比特率
@@ -388,13 +390,12 @@ ipcMain.handle('exportSongListToDir', async (e, folderPathVal, deleteSongsAfterE
   await fs.ensureDir(targetPath)
   const promises = []
   for (let item of songFileUrls) {
-    promises.push(
-      moveOrCopyItemWithCheckIsExist(
-        item,
-        targetPath + '\\' + item.match(/[^\\]+$/)[0],
-        deleteSongsAfterExport
+    const matches = item.match(/[^\\]+$/)
+    if (Array.isArray(matches) && matches.length > 0) {
+      promises.push(
+        moveOrCopyItemWithCheckIsExist(item, targetPath + '\\' + matches[0], deleteSongsAfterExport)
       )
-    )
+    }
   }
   await Promise.all(promises)
   return
@@ -412,8 +413,11 @@ ipcMain.handle('exportSongsToDir', async (e, folderPathVal, deleteSongsAfterExpo
 
 ipcMain.handle('moveSongsToDir', async (e, srcs, dest) => {
   const moveSongToDir = async (src: string, dest: string) => {
-    let targetPath = path.join(store.databaseDir, dest, src.match(/[^\\]+$/)[0])
-    await moveOrCopyItemWithCheckIsExist(src, targetPath, true)
+    const matches = src.match(/[^\\]+$/)
+    if (Array.isArray(matches) && matches.length > 0) {
+      let targetPath = path.join(store.databaseDir, dest, matches[0])
+      await moveOrCopyItemWithCheckIsExist(src, targetPath, true)
+    }
   }
   const promises = []
   for (let src of srcs) {

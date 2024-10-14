@@ -3,7 +3,7 @@ import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
 import { v4 as uuidv4 } from 'uuid'
 import mainWindow from './mainWindow.js'
-import store from '../store.ts'
+import store from '../store'
 import { operateHiddenFile } from '../utils'
 const fs = require('fs-extra')
 const path = require('path')

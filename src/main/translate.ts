@@ -1,6 +1,6 @@
 import url from './url'
 import store from './store'
-const fs = require('fs-extra')
+import fs = require('fs-extra')
 
 export let languageDict = {
   enUS: fs.readJSONSync(url.enUsUrl)

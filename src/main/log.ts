@@ -1,6 +1,6 @@
 import url from './url'
-const path = require('path')
-export const log = require('electron-log')
+import path = require('path')
+export import log = require('electron-log')
 
 log.transports.file.level = 'debug' // 设置日志级别
 log.transports.file.format = '{y}-{m}-{d} {h}:{i}:{s}.{ms} {text}' // 自定义日志格式
