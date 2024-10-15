@@ -6,7 +6,7 @@ export let languageDict = {
   enUS: fs.readJSONSync(url.enUsUrl)
 }
 
-export function t(str: string, index: number | undefined) {
+export function t(str: string, index?: number) {
   if (store.settingConfig.language === 'zhCN' || store.settingConfig.language === '') {
     return str
   }

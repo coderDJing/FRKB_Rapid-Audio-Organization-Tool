@@ -11,7 +11,7 @@ import {
 } from './utils'
 import { log } from './log'
 import url from './url'
-import mainWindow from './window/mainWindow.js'
+import mainWindow from './window/mainWindow'
 import databaseInitWindow from './window/databaseInitWindow.js'
 import { languageDict } from './translate.js'
 import { is } from '@electron-toolkit/utils'

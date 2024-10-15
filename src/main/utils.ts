@@ -99,7 +99,15 @@ type md5 = {
   md5_hash: string
   file_path: string
 }
-export async function getSongsAnalyseResult(songFilePaths: string[], processFunc: Function) {
+interface SongsAnalyseResult {
+  songsAnalyseResult: md5[]
+  errorSongsAnalyseResult: md5[]
+}
+
+export async function getSongsAnalyseResult(
+  songFilePaths: string[],
+  processFunc: Function
+): Promise<SongsAnalyseResult> {
   let songFileUrls = songFilePaths
 
   const chunks = splitStringByBytes(songFileUrls.join('|'))
