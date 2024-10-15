@@ -14,7 +14,7 @@ import databaseInitWindow from './databaseInitWindow.js'
 const path = require('path')
 const fs = require('fs-extra')
 
-let mainWindow = null
+let mainWindow: BrowserWindow | null = null
 function createWindow() {
   // Create the browser window.
   mainWindow = new BrowserWindow({
@@ -35,20 +35,20 @@ function createWindow() {
   })
 
   if (!app.isPackaged) {
-    mainWindow.openDevTools()
+    mainWindow.webContents.openDevTools()
   }
 
   mainWindow.on('ready-to-show', () => {
     if (store.layoutConfig.isMaxMainWin) {
-      mainWindow.maximize()
+      mainWindow?.maximize()
     }
-    mainWindow.show()
+    mainWindow?.show()
     globalShortcut.register(store.settingConfig.globalCallShortcut, () => {
-      if (!mainWindow.isFocused()) {
-        if (mainWindow.isMinimized()) {
+      if (!mainWindow?.isFocused()) {
+        if (mainWindow?.isMinimized()) {
           mainWindow.restore()
         }
-        mainWindow.focus()
+        mainWindow?.focus()
       } else {
         mainWindow.minimize()
       }
@@ -69,48 +69,50 @@ function createWindow() {
   }
 
   mainWindow.webContents.on('did-finish-load', () => {
-    if (mainWindow.isMaximized()) {
+    if (mainWindow?.isMaximized()) {
       mainWindow.webContents.send('mainWin-max', true)
     } else {
-      mainWindow.webContents.send('mainWin-max', false)
+      mainWindow?.webContents.send('mainWin-max', false)
     }
-    mainWindow.webContents.send('layoutConfigReaded', store.layoutConfig)
+    mainWindow?.webContents.send('layoutConfigReaded', store.layoutConfig)
   })
 
   mainWindow.on('maximize', () => {
-    mainWindow.webContents.send('mainWin-max', true)
+    mainWindow?.webContents.send('mainWin-max', true)
   })
   mainWindow.on('unmaximize', () => {
-    mainWindow.webContents.send('mainWin-max', false)
+    mainWindow?.webContents.send('mainWin-max', false)
   })
 
   let mainWindowWidth = store.layoutConfig.mainWindowWidth
   let mainWindowHeight = store.layoutConfig.mainWindowHeight
-  mainWindow.on('resized', (e) => {
-    let size = mainWindow.getSize()
-    mainWindowWidth = size[0]
-    mainWindowHeight = size[1]
+  mainWindow.on('resized', () => {
+    let size = mainWindow?.getSize()
+    if (size) {
+      mainWindowWidth = size[0]
+      mainWindowHeight = size[1]
+    }
   })
 
   mainWindow.on('blur', () => {
-    mainWindow.webContents.send('mainWindowBlur')
+    mainWindow?.webContents.send('mainWindowBlur')
   })
 
   ipcMain.on('toggle-maximize', () => {
-    if (mainWindow.isMaximized()) {
+    if (mainWindow?.isMaximized()) {
       mainWindow.unmaximize()
     } else {
-      mainWindow.maximize()
+      mainWindow?.maximize()
     }
   })
 
   ipcMain.on('toggle-minimize', () => {
-    mainWindow.minimize()
+    mainWindow?.minimize()
   })
 
   ipcMain.on('toggle-close', async () => {
     let layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
-    if (mainWindow.isMaximized()) {
+    if (mainWindow?.isMaximized()) {
       layoutConfig.isMaxMainWin = true
     } else {
       layoutConfig.isMaxMainWin = false
@@ -124,12 +126,12 @@ function createWindow() {
   ipcMain.on('readSongFile', async (e, filePath) => {
     let file = await fs.readFile(filePath)
     const uint8Buffer = Uint8Array.from(file)
-    mainWindow.webContents.send('readedSongFile', uint8Buffer)
+    mainWindow?.webContents.send('readedSongFile', uint8Buffer)
   })
-  const sendProgress = (message, current, total, isInitial = false) => {
+  const sendProgress = (message: string, current: number, total: number, isInitial = false) => {
     mainWindow?.webContents.send('progressSet', t(message), current, total, isInitial)
   }
-  ipcMain.on('addSongFingerprint', async (e, folderPath) => {
+  ipcMain.on('addSongFingerprint', async (e, folderPath: string[]) => {
     // 扫描文件
     sendProgress('扫描文件中', 0, 1, true)
     const songFileUrls = (
@@ -139,7 +141,7 @@ function createWindow() {
     ).flat()
     sendProgress('扫描文件中', 1, 1)
     if (songFileUrls.length === 0) {
-      mainWindow.webContents.send('noAudioFileWasScanned')
+      mainWindow?.webContents.send('noAudioFileWasScanned')
       return
     }
     // 分析声音指纹
@@ -147,7 +149,7 @@ function createWindow() {
     sendProgress('分析声音指纹初始化', 0, songFileUrls.length)
     const { songsAnalyseResult, errorSongsAnalyseResult } = await getSongsAnalyseResult(
       songFileUrls,
-      (resultLength) => {
+      (resultLength: number) => {
         sendProgress('分析声音指纹中', resultLength, songFileUrls.length)
       }
     )
@@ -155,7 +157,7 @@ function createWindow() {
 
     // 去重处理
     const uniqueFingerprints = new Set(songsAnalyseResult.map((item) => item.md5_hash))
-    const removeDuplicatesFingerprintResults = [...uniqueFingerprints]
+    const removeDuplicatesFingerprintResults = Array.from(uniqueFingerprints)
     let beforeSongFingerprintListLength = store.songFingerprintList.length
     store.songFingerprintList = [
       ...new Set([...store.songFingerprintList, ...removeDuplicatesFingerprintResults])
@@ -183,7 +185,7 @@ function createWindow() {
       )
     }
 
-    mainWindow.webContents.send('addSongFingerprintFinished', contentArr)
+    mainWindow?.webContents.send('addSongFingerprintFinished', contentArr)
   })
 
   ipcMain.on('startImportSongs', async (e, formData) => {
@@ -196,7 +198,7 @@ function createWindow() {
     ).flat()
     sendProgress('扫描文件中', 1, 1, true)
     if (songFileUrls.length === 0) {
-      mainWindow.webContents.send('noAudioFileWasScanned')
+      mainWindow?.webContents.send('noAudioFileWasScanned')
       return
     }
 
@@ -211,7 +213,7 @@ function createWindow() {
     if (isComparisonSongFingerprint || isPushSongFingerprintLibrary) {
       sendProgress('分析声音指纹初始化', 0, songFileUrls.length)
 
-      let analyseResult = await getSongsAnalyseResult(songFileUrls, (resultLength) =>
+      let analyseResult = await getSongsAnalyseResult(songFileUrls, (resultLength: number) =>
         sendProgress('分析声音指纹中', resultLength, songFileUrls.length)
       )
       songsAnalyseResult = analyseResult.songsAnalyseResult
@@ -310,15 +312,15 @@ function createWindow() {
       t('声音指纹库现有：') + store.songFingerprintList.length
     ]
 
-    mainWindow.webContents.send('importFinished', contentArr, formData.songListUUID)
+    mainWindow?.webContents.send('importFinished', contentArr, formData.songListUUID)
   })
   ipcMain.handle('changeGlobalShortcut', (e, shortCutValue) => {
     let ret = globalShortcut.register(shortCutValue, () => {
-      if (!mainWindow.isFocused()) {
-        if (mainWindow.isMinimized()) {
+      if (!mainWindow?.isFocused()) {
+        if (mainWindow?.isMinimized()) {
           mainWindow.restore()
         }
-        mainWindow.focus()
+        mainWindow?.focus()
       } else {
         mainWindow.minimize()
       }
@@ -350,7 +352,7 @@ function createWindow() {
   ipcMain.handle('reSelectLibrary', async (e) => {
     databaseInitWindow.createWindow()
     let layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
-    if (mainWindow.isMaximized()) {
+    if (mainWindow?.isMaximized()) {
       layoutConfig.isMaxMainWin = true
     } else {
       layoutConfig.isMaxMainWin = false
