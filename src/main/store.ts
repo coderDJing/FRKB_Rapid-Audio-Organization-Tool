@@ -7,7 +7,12 @@ type ILayoutConfig = {
   mainWindowWidth: number
   mainWindowHeight: number
 }
-let layoutConfig: ILayoutConfig | null = null //界面布局config
+let layoutConfig: ILayoutConfig = {
+  libraryAreaWidth: 175,
+  isMaxMainWin: false,
+  mainWindowWidth: 900,
+  mainWindowHeight: 600
+} //界面布局config
 
 type ISettingConfig = {
   language: '' | 'enUS' | 'zhCN'
