@@ -4,6 +4,7 @@ import fs = require('fs-extra')
 import path = require('path')
 import fswin = require('fswin')
 import os = require('os')
+import net = require('net')
 function parseJsonStrings(inputString: string) {
   // 定义一个正则表达式来匹配 JSON 对象
   const jsonPattern = /(\{.*?\})/g
@@ -62,22 +63,23 @@ function splitStringByBytes(str: string, chunkSize = 1024) {
 export async function exitSongsAnalyseServie() {
   const chunks = splitStringByBytes('exit')
   return new Promise((resolve, reject) => {
-    const net = require('net')
     const socketClient = new net.Socket()
     function writeNextChunk() {
       if (chunks.length > 0) {
         const chunk = chunks.shift()
-        if (socketClient.write(chunk)) {
-          writeNextChunk() // 如果写入成功，继续写入下一个块
-        } else {
-          socketClient.once('drain', writeNextChunk) // 等待 drain 事件
+        if (chunk) {
+          if (socketClient.write(chunk)) {
+            writeNextChunk() // 如果写入成功，继续写入下一个块
+          } else {
+            socketClient.once('drain', writeNextChunk) // 等待 drain 事件
+          }
         }
       } else {
         socketClient.end()
       }
     }
 
-    socketClient.connect(store.analyseSongPort, '127.0.0.1', () => {
+    socketClient.connect(Number(store.analyseSongPort), '127.0.0.1', () => {
       writeNextChunk()
     })
     socketClient.on('data', (data: Buffer) => {})
@@ -95,10 +97,6 @@ export async function exitSongsAnalyseServie() {
   })
 }
 
-type md5 = {
-  md5_hash: string
-  file_path: string
-}
 interface SongsAnalyseResult {
   songsAnalyseResult: md5[]
   errorSongsAnalyseResult: md5[]
@@ -113,15 +111,16 @@ export async function getSongsAnalyseResult(
   const chunks = splitStringByBytes(songFileUrls.join('|'))
 
   return new Promise((resolve, reject) => {
-    const net = require('net')
     const socketClient = new net.Socket()
     function writeNextChunk() {
       if (chunks.length > 0) {
         const chunk = chunks.shift()
-        if (socketClient.write(chunk)) {
-          writeNextChunk() // 如果写入成功，继续写入下一个块
-        } else {
-          socketClient.once('drain', writeNextChunk) // 等待 drain 事件
+        if (chunk) {
+          if (socketClient.write(chunk)) {
+            writeNextChunk() // 如果写入成功，继续写入下一个块
+          } else {
+            socketClient.once('drain', writeNextChunk) // 等待 drain 事件
+          }
         }
       } else {
         socketClient.end()
@@ -131,7 +130,7 @@ export async function getSongsAnalyseResult(
     let songsAnalyseResult: md5[] = []
     let errorSongsAnalyseResult: md5[] = []
 
-    socketClient.connect(store.analyseSongPort, '127.0.0.1', () => {
+    socketClient.connect(Number(store.analyseSongPort), '127.0.0.1', () => {
       writeNextChunk()
     })
     socketClient.on('data', (data: Buffer) => {

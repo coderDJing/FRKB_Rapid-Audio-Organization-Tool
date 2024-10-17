@@ -2,9 +2,10 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
 import { log } from '../log'
-const { autoUpdater } = require('electron-updater')
-const path = require('path')
-let updateWindow = null
+import electronUpdater = require('electron-updater')
+import path = require('path')
+const autoUpdater = electronUpdater.autoUpdater
+let updateWindow: BrowserWindow | null = null
 
 const createWindow = () => {
   updateWindow = new BrowserWindow({
@@ -25,7 +26,7 @@ const createWindow = () => {
   })
 
   if (!app.isPackaged) {
-    updateWindow.openDevTools()
+    updateWindow.webContents.openDevTools()
   }
 
   updateWindow.webContents.setWindowOpenHandler((details) => {
@@ -40,29 +41,29 @@ const createWindow = () => {
   }
 
   updateWindow.on('ready-to-show', () => {
-    updateWindow.show()
+    updateWindow?.show()
     autoUpdater.autoDownload = false
     autoUpdater.checkForUpdates()
 
     autoUpdater.on('update-available', (info) => {
-      updateWindow.webContents.send('newVersion', info)
+      updateWindow?.webContents.send('newVersion', info)
     })
 
     autoUpdater.on('update-not-available', (info) => {
-      updateWindow.webContents.send('isLatestVersion', info.version)
+      updateWindow?.webContents.send('isLatestVersion', info.version)
     })
 
     autoUpdater.on('error', (err) => {
-      updateWindow.webContents.send('isError')
+      updateWindow?.webContents.send('isError')
       log.error('autoUpdater', 'error', err)
     })
 
     autoUpdater.on('download-progress', (progressObj) => {
-      updateWindow.webContents.send('updateProgress', progressObj)
+      updateWindow?.webContents.send('updateProgress', progressObj)
     })
 
     autoUpdater.on('update-downloaded', (info) => {
-      updateWindow.webContents.send('updateDownloaded')
+      updateWindow?.webContents.send('updateDownloaded')
     })
   })
   ipcMain.on('updateWindow-startDownload', async () => {
@@ -74,7 +75,7 @@ const createWindow = () => {
   })
 
   ipcMain.on('updateWindow-toggle-minimize', () => {
-    updateWindow.minimize()
+    updateWindow?.minimize()
   })
 
   updateWindow.on('closed', () => {
