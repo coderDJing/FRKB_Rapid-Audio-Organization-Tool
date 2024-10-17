@@ -2,12 +2,12 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
 import { v4 as uuidv4 } from 'uuid'
-import mainWindow from './mainWindow.js'
+import mainWindow from './mainWindow'
 import store from '../store'
 import { operateHiddenFile } from '../utils'
-const fs = require('fs-extra')
-const path = require('path')
-let databaseInitWindow = null
+import fs = require('fs-extra')
+import path = require('path')
+let databaseInitWindow: BrowserWindow | null = null
 
 const createWindow = () => {
   databaseInitWindow = new BrowserWindow({
@@ -27,7 +27,7 @@ const createWindow = () => {
     }
   })
   if (!app.isPackaged) {
-    databaseInitWindow.openDevTools()
+    databaseInitWindow.webContents.openDevTools()
   }
 
   databaseInitWindow.webContents.setWindowOpenHandler((details) => {
@@ -42,11 +42,11 @@ const createWindow = () => {
   }
 
   databaseInitWindow.on('ready-to-show', () => {
-    databaseInitWindow.show()
+    databaseInitWindow?.show()
   })
 
   ipcMain.on('databaseInitWindow-toggle-close', () => {
-    databaseInitWindow.close()
+    databaseInitWindow?.close()
   })
   ipcMain.handle('databaseInitWindow-InitDataBase', async (e, dirPath) => {
     if (!fs.pathExistsSync(path.join(dirPath, 'library', '.description.json'))) {
@@ -60,7 +60,7 @@ const createWindow = () => {
         await fs.outputJson(path.join(dirPath, 'library', '.description.json'), rootDescription)
       })
     }
-    const makeLibrary = async (libraryPath, libraryName, order) => {
+    const makeLibrary = async (libraryPath: string, libraryName: string, order: number) => {
       if (!fs.pathExistsSync(path.join(libraryPath, '.description.json'))) {
         let description = {
           uuid: uuidv4(),
@@ -85,7 +85,7 @@ const createWindow = () => {
     } else {
       await fs.outputJSON(path.join(dirPath, 'songFingerprint', 'songFingerprint.json'), [])
     }
-    databaseInitWindow.close()
+    databaseInitWindow?.close()
     store.databaseDir = store.settingConfig.databaseUrl
     store.songFingerprintList = fs.readJSONSync(
       path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json')

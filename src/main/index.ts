@@ -12,12 +12,13 @@ import {
 import { log } from './log'
 import url from './url'
 import mainWindow from './window/mainWindow'
-import databaseInitWindow from './window/databaseInitWindow.js'
+import databaseInitWindow from './window/databaseInitWindow'
 import { languageDict } from './translate.js'
 import { is } from '@electron-toolkit/utils'
 import store from './store'
-import foundNewVersionWindow from './window/foundNewVersionWindow.js'
-import updateWindow from './window/updateWindow.js'
+import foundNewVersionWindow from './window/foundNewVersionWindow'
+import updateWindow from './window/updateWindow'
+import electronUpdater = require('electron-updater')
 
 const gotTheLock = app.requestSingleInstanceLock()
 
@@ -39,7 +40,8 @@ if (!gotTheLock) {
   })
 }
 
-const { spawn } = require('child_process')
+import child_process = require('child_process')
+const spawn = child_process.spawn
 const child = spawn(url.analyseSongPyScriptUrl, {
   stdio: ['inherit', 'pipe', 'pipe'], // 继承stdin，pipe stdout和stderr到Node.js
   windowsHide: true
@@ -106,7 +108,8 @@ app.whenReady().then(() => {
     )
     mainWindow.createWindow()
   }
-  const { autoUpdater } = require('electron-updater')
+
+  const autoUpdater = electronUpdater.autoUpdater
   autoUpdater.autoDownload = false
   if (store.settingConfig.nextCheckUpdateTime) {
     if (new Date() > new Date(store.settingConfig.nextCheckUpdateTime)) {
@@ -115,12 +118,7 @@ app.whenReady().then(() => {
   } else {
     autoUpdater.checkForUpdates()
   }
-  interface UpdateInfo {
-    version: string
-    downloadUrl: string
-    releaseNotes?: string
-  }
-  autoUpdater.on('update-available', (info: UpdateInfo) => {
+  autoUpdater.on('update-available', (info) => {
     if (updateWindow.instance === null) {
       foundNewVersionWindow.createWindow()
     }

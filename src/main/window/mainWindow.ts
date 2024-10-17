@@ -9,10 +9,10 @@ import {
 import { t } from '../translate'
 import store from '../store'
 import url from '../url'
-import updateWindow from './updateWindow.js'
-import databaseInitWindow from './databaseInitWindow.js'
-const path = require('path')
-const fs = require('fs-extra')
+import updateWindow from './updateWindow'
+import databaseInitWindow from './databaseInitWindow'
+import path = require('path')
+import fs = require('fs-extra')
 
 let mainWindow: BrowserWindow | null = null
 function createWindow() {
@@ -159,9 +159,9 @@ function createWindow() {
     const uniqueFingerprints = new Set(songsAnalyseResult.map((item) => item.md5_hash))
     const removeDuplicatesFingerprintResults = Array.from(uniqueFingerprints)
     let beforeSongFingerprintListLength = store.songFingerprintList.length
-    store.songFingerprintList = [
-      ...new Set([...store.songFingerprintList, ...removeDuplicatesFingerprintResults])
-    ]
+    store.songFingerprintList = Array.from(
+      new Set([...store.songFingerprintList, ...removeDuplicatesFingerprintResults])
+    )
 
     // 保存结果
     fs.outputJSON(
@@ -188,9 +188,21 @@ function createWindow() {
     mainWindow?.webContents.send('addSongFingerprintFinished', contentArr)
   })
 
-  ipcMain.on('startImportSongs', async (e, formData) => {
+  type ImportSongsFormData = {
+    filePaths?: string[]
+    folderPath?: string[]
+    songListPath: string
+    isDeleteSourceFile: boolean
+    isComparisonSongFingerprint: boolean
+    isPushSongFingerprintLibrary: boolean
+    songListUUID: string
+  }
+  ipcMain.on('startImportSongs', async (e, formData: ImportSongsFormData) => {
     sendProgress('扫描文件中', 0, 1, true)
-    const filePaths = formData.filePaths || formData.folderPath
+    let filePaths = formData.filePaths || formData.folderPath
+    if (filePaths === undefined) {
+      filePaths = []
+    }
     let songFileUrls = (
       await Promise.all(
         filePaths.map((item) => collectFilesWithExtensions(item, store.settingConfig.audioExt))
@@ -202,13 +214,14 @@ function createWindow() {
       return
     }
 
-    songFileUrls = [...new Set(songFileUrls)]
+    songFileUrls = Array.from(new Set(songFileUrls))
     let { isComparisonSongFingerprint, isPushSongFingerprintLibrary, isDeleteSourceFile } = formData
     let songFingerprintListLengthBefore = store.songFingerprintList.length
     let toBeDealSongs = []
-    let delList = []
-    let songsAnalyseResult = []
-    let errorSongsAnalyseResult = []
+    let delList: string[] = []
+
+    let songsAnalyseResult: md5[] = []
+    let errorSongsAnalyseResult: md5[] = []
     let alreadyExistInSongFingerprintList = new Set()
     if (isComparisonSongFingerprint || isPushSongFingerprintLibrary) {
       sendProgress('分析声音指纹初始化', 0, songFileUrls.length)
@@ -216,6 +229,7 @@ function createWindow() {
       let analyseResult = await getSongsAnalyseResult(songFileUrls, (resultLength: number) =>
         sendProgress('分析声音指纹中', resultLength, songFileUrls.length)
       )
+
       songsAnalyseResult = analyseResult.songsAnalyseResult
       errorSongsAnalyseResult = analyseResult.errorSongsAnalyseResult
       sendProgress('分析声音指纹中', songFileUrls.length, songFileUrls.length)
@@ -231,7 +245,7 @@ function createWindow() {
             return false
           })
           .map((song) => song.file_path)
-        let duplicates = []
+        let duplicates: string[] = []
         songsAnalyseResult
           .filter((song) => !delList.includes(song.file_path))
           .forEach((song) => {
@@ -250,7 +264,7 @@ function createWindow() {
           })
         }
 
-        toBeDealSongs = [...uniqueSongs.values()]
+        toBeDealSongs = Array.from(uniqueSongs.values())
       } else if (isPushSongFingerprintLibrary) {
         toBeDealSongs = songsAnalyseResult
       }

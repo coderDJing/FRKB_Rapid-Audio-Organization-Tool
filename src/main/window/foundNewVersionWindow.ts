@@ -2,8 +2,8 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
 import updateWindow from './updateWindow.js'
-const path = require('path')
-let foundNewVersionWindow = null
+import path = require('path')
+let foundNewVersionWindow: BrowserWindow | null = null
 
 const createWindow = () => {
   foundNewVersionWindow = new BrowserWindow({
@@ -24,7 +24,7 @@ const createWindow = () => {
   })
 
   if (!app.isPackaged) {
-    foundNewVersionWindow.openDevTools()
+    foundNewVersionWindow.webContents.openDevTools()
   }
 
   foundNewVersionWindow.webContents.setWindowOpenHandler((details) => {
@@ -39,7 +39,7 @@ const createWindow = () => {
   }
 
   foundNewVersionWindow.on('ready-to-show', () => {
-    foundNewVersionWindow.show()
+    foundNewVersionWindow?.show()
   })
 
   ipcMain.on('foundNewVersionWindow-toggle-close', async () => {
@@ -47,7 +47,7 @@ const createWindow = () => {
   })
 
   ipcMain.on('foundNewVersionWindow-toggle-minimize', () => {
-    foundNewVersionWindow.minimize()
+    foundNewVersionWindow?.minimize()
   })
 
   ipcMain.handle('foundNewVersionWindow-checkForUpdates', () => {
