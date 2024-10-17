@@ -19,6 +19,7 @@ import store from './store'
 import foundNewVersionWindow from './window/foundNewVersionWindow'
 import updateWindow from './window/updateWindow'
 import electronUpdater = require('electron-updater')
+import { IDir } from '../types/globals'
 
 const gotTheLock = app.requestSingleInstanceLock()
 
