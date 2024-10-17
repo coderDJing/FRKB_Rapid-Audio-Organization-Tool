@@ -1,10 +1,11 @@
 import store from './store'
-
+import { md5 } from '../types/globals'
 import fs = require('fs-extra')
 import path = require('path')
 import fswin = require('fswin')
 import os = require('os')
 import net = require('net')
+
 function parseJsonStrings(inputString: string) {
   // 定义一个正则表达式来匹配 JSON 对象
   const jsonPattern = /(\{.*?\})/g

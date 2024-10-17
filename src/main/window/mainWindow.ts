@@ -13,6 +13,7 @@ import updateWindow from './updateWindow'
 import databaseInitWindow from './databaseInitWindow'
 import path = require('path')
 import fs = require('fs-extra')
+import { md5 } from '../../types/globals'
 
 let mainWindow: BrowserWindow | null = null
 function createWindow() {
@@ -29,7 +30,7 @@ function createWindow() {
 
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
-      preload: path.join(__dirname, '../preload/index.js'),
+      preload: path.join(__dirname, '../preload/index'),
       sandbox: false
     }
   })
