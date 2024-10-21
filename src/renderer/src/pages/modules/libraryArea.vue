@@ -169,10 +169,7 @@ const drop = async (e) => {
       )
       return
     }
-  } catch (error) {
-  } finally {
-    runtime.dragItemData = null
-  }
+  } catch (error) {}
 }
 </script>
 <template>

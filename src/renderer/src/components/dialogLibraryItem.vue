@@ -595,10 +595,7 @@ const drop = async (e) => {
         return
       }
     }
-  } catch (error) {
-  } finally {
-    runtime.dragItemData = null
-  }
+  } catch (error) {}
 }
 const indentWidth = ref(0)
 indentWidth.value = (libraryUtils.getDepthByUuid(props.uuid) - 2) * 10

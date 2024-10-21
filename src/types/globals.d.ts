@@ -15,9 +15,9 @@ type md5 = {
 
 declare global {
   interface Window {
-    electron: ElectronAPI;
-    api: {};
+    electron: ElectronAPI
+    api: {}
   }
 }
 
-export { md5, IDir };
+export { md5, IDir }

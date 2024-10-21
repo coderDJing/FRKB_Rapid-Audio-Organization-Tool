@@ -680,8 +680,6 @@ const drop = async (e) => {
     }
   } catch (error) {
     throw error
-  } finally {
-    runtime.dragItemData = null
   }
 }
 const indentWidth = ref(0)
