@@ -253,6 +253,7 @@ export const updateTargetDirSubdirOrder = async (
 }
 //todo
 export const collectFilesWithExtensions = async (dir: string, extensions: string[] = []) => {
+  let files: string[] = []
   try {
     const stats = await fs.stat(dir)
     if (stats.isFile()) {
@@ -263,7 +264,6 @@ export const collectFilesWithExtensions = async (dir: string, extensions: string
         return []
       }
     }
-    let files: string[] = []
 
     // 读取目录中的文件和子目录
     const directoryEntries = await fs.readdir(dir, { withFileTypes: true })
@@ -288,7 +288,7 @@ export const collectFilesWithExtensions = async (dir: string, extensions: string
   } catch (error) {
     console.log(error)
   } finally {
-    return []
+    return files
   }
 }
 
