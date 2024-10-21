@@ -258,10 +258,10 @@ function createWindow() {
           })
         delList = delList.concat(duplicates)
         if (isDeleteSourceFile) {
-          sendProgress(t('删除重复曲目'), 0, delList.length)
+          sendProgress('删除重复曲目', 0, delList.length)
           delList.forEach((item, index) => {
             fs.remove(item)
-            sendProgress(t('删除重复曲目'), index + 1, delList.length)
+            sendProgress('删除重复曲目', index + 1, delList.length)
           })
         }
 
@@ -287,11 +287,7 @@ function createWindow() {
         targetPath,
         isDeleteSourceFile
       )
-      sendProgress(
-        isDeleteSourceFile ? t('移动曲目') : t('复制曲目'),
-        index + 1,
-        toBeDealSongs.length
-      )
+      sendProgress(isDeleteSourceFile ? '移动曲目' : '复制曲目', index + 1, toBeDealSongs.length)
     })
 
     if (isPushSongFingerprintLibrary) {
