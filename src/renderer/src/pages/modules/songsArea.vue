@@ -1,7 +1,7 @@
 <script setup>
 import { watch, ref, nextTick, onUnmounted, computed, onMounted } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import libraryUtils from '@renderer/utils/libraryUtils.js'
+import libraryUtils from '@renderer/utils/libraryUtils'
 import { vDraggable } from 'vue-draggable-plus'
 import songAreaColRightClickMenu from '@renderer/components/songAreaColRightClickMenu.vue'
 import hotkeys from 'hotkeys-js'
