@@ -5,14 +5,14 @@ import libraryItem from '@renderer/components/libraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import listIcon from '@renderer/assets/listIcon.png'
 import listIconBlue from '@renderer/assets/listIconBlue.png'
-import libraryUtils from '@renderer/utils/libraryUtils.js'
+import libraryUtils from '@renderer/utils/libraryUtils'
 import { v4 as uuidv4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog.js'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog.js'
 import exportDialog from '@renderer/components/exportDialog.js'
 import { t } from '@renderer/utils/translate.js'
 import dropIntoDialog from '../components/dropIntoDialog.js'
-import emitter from '../utils/mitt.js'
+import emitter from '../utils/mitt'
 const props = defineProps({
   uuid: {
     type: String,

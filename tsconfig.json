@@ -1,9 +1,15 @@
 {
-    "compilerOptions": {
-        "noImplicitAny": true,
-        "strictNullChecks": true,
-        "types": [
-            "electron-vite/node"
-        ]
+  "compilerOptions": {
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "types": [
+      "electron-vite/node"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@renderer/*": [
+        "./src/renderer/src/*"
+      ]
     }
+  }
 }
