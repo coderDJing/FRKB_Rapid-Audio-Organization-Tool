@@ -1,5 +1,5 @@
 import store from './store'
-import { md5 } from '../types/globals'
+import { IDir, md5 } from '../types/globals'
 import fs = require('fs-extra')
 import path = require('path')
 import fswin = require('fswin')
@@ -166,7 +166,7 @@ async function getdirsDescriptionJson(dirPath: string, dirs: fs.Dirent[]) {
   const jsons = await Promise.all(
     dirs.map(async (dir) => {
       const filePath = path.join(dirPath, dir.name, '.description.json')
-      const json = await fs.readJSON(filePath)
+      const json: IDir = await fs.readJSON(filePath)
       const subDirPath = path.join(dirPath, dir.name)
       const subEntries = await fs.readdir(subDirPath, { withFileTypes: true })
       const subDirs = subEntries.filter((entry) => entry.isDirectory())
@@ -182,7 +182,7 @@ async function getdirsDescriptionJson(dirPath: string, dirs: fs.Dirent[]) {
 //获取整个库的树结构
 export async function getLibrary() {
   const dirPath = path.join(store.databaseDir, 'library')
-  const rootDescriptionJson = await fs.readJSON(path.join(dirPath, '.description.json'))
+  const rootDescriptionJson: IDir = await fs.readJSON(path.join(dirPath, '.description.json'))
   const entries = await fs.readdir(dirPath, { withFileTypes: true })
   const dirs = entries.filter((entry) => entry.isDirectory())
   const dirsDescriptionJson = await getdirsDescriptionJson(dirPath, dirs)

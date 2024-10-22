@@ -19,7 +19,7 @@ import store from './store'
 import foundNewVersionWindow from './window/foundNewVersionWindow'
 import updateWindow from './window/updateWindow'
 import electronUpdater = require('electron-updater')
-import { IDir } from '../types/globals'
+import { IDir, ISongInfo } from '../types/globals'
 
 const gotTheLock = app.requestSingleInstanceLock()
 
@@ -207,10 +207,10 @@ ipcMain.on('delSongs', async (e, songFilePaths: string[]) => {
   await Promise.all(promises)
 })
 
-ipcMain.handle('scanSongList', async (e, songListPath, songListUUID) => {
+ipcMain.handle('scanSongList', async (e, songListPath: string, songListUUID: string) => {
   let scanPath = path.join(store.databaseDir, songListPath)
   const mm = await import('music-metadata')
-  let songInfoArr = []
+  let songInfoArr: ISongInfo[] = []
   let songFileUrls = await collectFilesWithExtensions(scanPath, store.settingConfig.audioExt)
 
   function convertSecondsToMinutesSeconds(seconds: number) {

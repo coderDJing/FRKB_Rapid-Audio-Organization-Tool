@@ -1,11 +1,13 @@
 /// <reference types="electron-vite/node" />
 import { ElectronAPI } from '@electron-toolkit/preload'
+import { IPicture } from 'music-metadata'
 
 declare interface IDir {
   uuid: string
   type: 'root' | 'library' | 'dir' | 'songList'
   dirName: string
   order: number
+  children?: IDir[]
 }
 
 type md5 = {
@@ -20,4 +22,32 @@ declare global {
   }
 }
 
-export { md5, IDir }
+interface ISongInfo {
+  filePath: string
+  cover: IPicture | null
+  title: string | undefined
+  artist: string | undefined
+  album: string | undefined
+  duration: string
+  genre: string | undefined
+  label: string | undefined
+  bitrate: number | undefined
+  container: string | undefined
+}
+
+interface ILayoutConfig {
+  libraryAreaWidth: number
+  isMaxMainWin: boolean
+  mainWindowWidth: number
+  mainWindowHeight: number
+}
+
+interface ISettingConfig {
+  language: '' | 'enUS' | 'zhCN'
+  audioExt: string[]
+  databaseUrl: string
+  globalCallShortcut: string
+  nextCheckUpdateTime: number
+}
+
+export { md5, IDir, ISongInfo, ILayoutConfig, ISettingConfig }

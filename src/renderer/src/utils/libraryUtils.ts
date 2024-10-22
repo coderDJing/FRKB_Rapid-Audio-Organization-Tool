@@ -1,10 +1,12 @@
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import { IDir } from 'src/types/globals'
 //根据UUID寻找LibraryTree中对应的对象的父级对象
-export const getFatherLibraryTreeByUUID = (targetUuid) => {
+export const getFatherLibraryTreeByUUID = (targetUuid: string) => {
   const runtime = useRuntimeStore()
   let data = runtime.libraryTree
   // 定义一个辅助函数来递归搜索子对象
-  function searchChildren(children, targetUuid, parent = null) {
+
+  function searchChildren(children: IDir[], targetUuid: string, parent: IDir): IDir | null {
     for (let i = 0; i < children.length; i++) {
       const child = children[i]
 
@@ -23,12 +25,16 @@ export const getFatherLibraryTreeByUUID = (targetUuid) => {
     }
     return null // 没有找到
   }
-  // 调用辅助函数开始搜索
-  return searchChildren(data.children, targetUuid, data) // 初始调用时，parent 为根对象本身
+  if (data.children) {
+    // 调用辅助函数开始搜索
+    return searchChildren(data.children, targetUuid, data) // 初始调用时，parent 为根对象本身
+  } else {
+    return null
+  }
 }
 
 //根据UUID寻找LibraryTree中对应的对象
-export const getLibraryTreeByUUID = (uuid, libraryTree) => {
+export const getLibraryTreeByUUID = (uuid: string, libraryTree?: IDir): IDir | null => {
   if (libraryTree === undefined) {
     const runtime = useRuntimeStore()
     libraryTree = runtime.libraryTree
@@ -53,7 +59,11 @@ export const getLibraryTreeByUUID = (uuid, libraryTree) => {
 }
 
 //根据UUID寻找LibraryTree中对应的对象的路径
-export const findDirPathByUuid = (targetUuid, path = '', data) => {
+export const findDirPathByUuid = (
+  targetUuid: string,
+  path: string = '',
+  data?: IDir
+): null | string => {
   if (data === undefined) {
     const runtime = useRuntimeStore()
     data = runtime.libraryTree
@@ -81,27 +91,16 @@ export const findDirPathByUuid = (targetUuid, path = '', data) => {
   // 如果没有找到，返回null
   return null
 }
-export const sortByOrder = (array) => {
-  array.sort((a, b) => {
-    if (a.order < b.order) {
-      return -1
-    }
-    if (a.order > b.order) {
-      return 1
-    }
-    return 0
-  })
-}
-export const reOrderChildren = (children) => {
+export const reOrderChildren = (children: IDir[]) => {
   for (let index in children) {
     children[index].order = Number(index) + 1
   }
 }
 
-export const isDragItemInDirChildren = (targetUUID, children) => {
+export const isDragItemInDirChildren = (targetUUID: string, children?: IDir[]) => {
   if (children === undefined) {
     const runtime = useRuntimeStore()
-    children = runtime.dragItemData.children
+    children = runtime.dragItemData?.children ?? []
   }
   for (const child of children) {
     if (child.uuid === targetUUID) {
@@ -114,7 +113,7 @@ export const isDragItemInDirChildren = (targetUUID, children) => {
   return false
 }
 
-export function getDepthByUuid(targetUuid) {
+export function getDepthByUuid(targetUuid: string) {
   const runtime = useRuntimeStore()
   let data = runtime.libraryTree
   // 递归函数，用于遍历JSON对象并计算深度
@@ -161,7 +160,6 @@ export const libraryUtils = {
   getFatherLibraryTreeByUUID,
   getLibraryTreeByUUID,
   findDirPathByUuid,
-  sortByOrder,
   reOrderChildren,
   isDragItemInDirChildren,
   getDepthByUuid,

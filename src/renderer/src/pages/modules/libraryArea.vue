@@ -2,12 +2,12 @@
 import { ref } from 'vue'
 import libraryItem from '@renderer/components/libraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import libraryUtils from '@renderer/utils/libraryUtils.js'
+import libraryUtils from '@renderer/utils/libraryUtils'
 import { v4 as uuidv4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog.js'
 import rightClickMenu from '../../components/rightClickMenu.js'
 import { t } from '@renderer/utils/translate.js'
-import emitter from '../../utils/mitt.js'
+import emitter from '../../utils/mitt'
 const runtime = useRuntimeStore()
 const props = defineProps({
   uuid: {

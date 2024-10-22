@@ -1,11 +1,38 @@
 import { defineStore } from 'pinia'
-
+import { IDir, ILayoutConfig, ISettingConfig, ISongInfo } from 'src/types/globals'
+interface Runtime {
+  platform: string
+  isWindowMaximized: boolean | null
+  libraryAreaSelected: '筛选库' | '精选库'
+  activeMenuUUID: string
+  layoutConfig: ILayoutConfig
+  dragItemData: null | IDir
+  dragTableHeader: boolean
+  libraryTree: IDir
+  selectSongListDialogShow: boolean
+  dialogSelectedSongListUUID: string
+  songsArea: {
+    songListUUID: string
+    songInfoArr: ISongInfo[]
+    selectedSongFilePath: string[]
+  }
+  importingSongListUUID: string
+  isProgressing: boolean
+  playingData: {
+    playingSong: null | ISongInfo
+    playingSongListUUID: string
+    playingSongListData: ISongInfo[]
+  }
+  confirmShow: boolean
+  hotkeysScopesHeap: string[]
+  setting: ISettingConfig
+}
 export const useRuntimeStore = defineStore('runtime', {
-  state: () => {
+  state: (): Runtime => {
     return {
       platform: '', //使用平台
       isWindowMaximized: null,
-      libraryAreaSelected: 'listLibrary',
+      libraryAreaSelected: '筛选库',
       activeMenuUUID: '',
       layoutConfig: {
         libraryAreaWidth: 200,
@@ -15,7 +42,12 @@ export const useRuntimeStore = defineStore('runtime', {
       },
       dragItemData: null,
       dragTableHeader: false, //是否正在拖拽表头
-      libraryTree: {},
+      libraryTree: {
+        uuid: '',
+        type: 'root',
+        dirName: 'library',
+        order: 1
+      },
       selectSongListDialogShow: false, //全局是否有歌单选择器正在展示
       dialogSelectedSongListUUID: '', //dialog中被选中的歌单UUID
       songsArea: {
@@ -33,7 +65,13 @@ export const useRuntimeStore = defineStore('runtime', {
       },
       confirmShow: false, //是否有确认框正在显示
       hotkeysScopesHeap: [], //hotkeys-js的scope组成的堆栈，始终setScope数组的最后一项
-      setting: {} //设置
+      setting: {
+        language: '',
+        audioExt: [],
+        databaseUrl: '',
+        globalCallShortcut: '',
+        nextCheckUpdateTime: 0
+      } //设置
     }
   }
 })
