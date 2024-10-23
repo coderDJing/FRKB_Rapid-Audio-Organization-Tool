@@ -1,7 +1,7 @@
 <script setup>
 import shortcutIcon from '@renderer/assets/shortcutIcon.png'
 import { watch, onUnmounted, ref } from 'vue'
-import { t } from '@renderer/utils/translate.js'
+import { t } from '@renderer/utils/translate'
 const props = defineProps({
   dom: {
     type: Object

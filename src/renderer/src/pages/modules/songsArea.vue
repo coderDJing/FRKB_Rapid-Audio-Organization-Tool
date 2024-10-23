@@ -9,7 +9,7 @@ import confirm from '@renderer/components/confirmDialog.js'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import rightClickMenu from '../../components/rightClickMenu.js'
 import exportDialog from '../../components/exportDialog.js'
-import { t } from '@renderer/utils/translate.js'
+import { t } from '@renderer/utils/translate'
 let columnData = ref([])
 if (localStorage.getItem('songColumnData')) {
   columnData.value = JSON.parse(localStorage.getItem('songColumnData'))

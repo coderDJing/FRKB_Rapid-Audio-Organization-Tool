@@ -9,7 +9,7 @@ import confirm from '@renderer/components/confirmDialog.js'
 import hotkeys from 'hotkeys-js'
 import listIcon from '@renderer/assets/listIcon.png'
 import utils from '../utils/utils'
-import { t } from '@renderer/utils/translate.js'
+import { t } from '@renderer/utils/translate'
 import emitter from '../utils/mitt'
 const uuid = uuidv4()
 const props = defineProps({

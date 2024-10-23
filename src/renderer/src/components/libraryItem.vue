@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog.js'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog.js'
 import exportDialog from '@renderer/components/exportDialog.js'
-import { t } from '@renderer/utils/translate.js'
+import { t } from '@renderer/utils/translate'
 import dropIntoDialog from '../components/dropIntoDialog.js'
 import emitter from '../utils/mitt'
 const props = defineProps({

@@ -1,8 +1,8 @@
-<script setup>
+<script setup lang="ts">
 import chromeMiniimize from '@renderer/assets/chrome-minimize.svg'
 import logo from '@renderer/assets/logo.png'
 import { ref } from 'vue'
-import { t } from '@renderer/utils/translate.js'
+import { t } from '@renderer/utils/translate'
 const fillColor = ref('#9d9d9d')
 
 const toggleMinimize = () => {

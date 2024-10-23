@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import homePage from './pages/homePage.vue'
 import titleComponent from './components/titleComponent.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -10,17 +10,19 @@ import utils from './utils/utils'
 import exportSongFingerprintDialog from './components/exportSongFingerprintDialog.vue'
 import importSongFingerprintDialog from './components/importSongFingerprintDialog.vue'
 import confirm from '@renderer/components/confirmDialog.js'
-import { t } from '@renderer/utils/translate.js'
+import { t } from '@renderer/utils/translate'
 const runtime = useRuntimeStore()
 
 const detectPlatform = () => {
-  const userAgent = navigator.userAgent || navigator.vendor || window.opera
+  const userAgent = navigator.userAgent
   if (/Mac/i.test(userAgent)) {
     return 'Mac'
   } else if (/Windows/i.test(userAgent)) {
     return 'Windows'
   } else if (/Linux/i.test(userAgent)) {
     return 'Linux'
+  } else {
+    return 'Unknown'
   }
 }
 runtime.platform = detectPlatform()
@@ -29,7 +31,7 @@ window.electron.ipcRenderer.on('layoutConfigReaded', (event, layoutConfig) => {
 })
 const activeDialog = ref('')
 
-const openDialog = async (item) => {
+const openDialog = async (item: string) => {
   if (item === '使用说明' || item === '关于') {
     //todo
     await confirm({
@@ -71,7 +73,7 @@ onMounted(() => {
     openDialog('使用说明')
   })
 
-  hotkeys('alt+F4', async () => {
+  const handleAltF4 = async () => {
     if (runtime.isProgressing === true) {
       await confirm({
         title: '退出',
@@ -81,6 +83,9 @@ onMounted(() => {
     } else {
       window.electron.ipcRenderer.send('toggle-close')
     }
+  }
+  hotkeys('alt+F4', () => {
+    handleAltF4()
     return false
   })
   hotkeys('esc', () => {

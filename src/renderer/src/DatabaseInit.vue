@@ -1,6 +1,6 @@
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { t } from '@renderer/utils/translate.js'
+import { t } from '@renderer/utils/translate'
 import { v4 as uuidv4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import utils from './utils/utils'
@@ -10,7 +10,7 @@ const uuid = uuidv4()
 const flashArea = ref('') // 控制动画是否正在播放
 
 // 模拟闪烁三次的逻辑（使用 setTimeout）
-const flashBorder = (flashAreaName) => {
+const flashBorder = (flashAreaName: string) => {
   flashArea.value = flashAreaName
   let count = 0
   const interval = setInterval(() => {

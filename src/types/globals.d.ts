@@ -50,4 +50,10 @@ interface ISettingConfig {
   nextCheckUpdateTime: number
 }
 
-export { md5, IDir, ISongInfo, ILayoutConfig, ISettingConfig }
+interface ILanguageDict {
+  [key: string]: {
+    [key: string]: string | string[]
+  }
+}
+
+export { md5, IDir, ISongInfo, ILayoutConfig, ISettingConfig, ILanguageDict }
