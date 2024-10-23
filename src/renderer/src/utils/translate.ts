@@ -1,6 +1,15 @@
 import { useRuntimeStore } from '@renderer/stores/runtime'
-let languageDict = await window.electron.ipcRenderer.invoke('getLanguageDict')
-export function t(text, index) {
+import { ILanguageDict } from 'src/types/globals'
+
+let languageDict: ILanguageDict = {}
+async function getLanguageDict() {
+  return await window.electron.ipcRenderer.invoke('getLanguageDict')
+}
+getLanguageDict().then((dict) => {
+  languageDict = dict
+})
+
+export function t(text: string, index?: number) {
   const runtime = useRuntimeStore()
   const lang = runtime.setting.language
   if (lang === 'zhCN' || lang === '') {

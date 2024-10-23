@@ -4,7 +4,7 @@ import { onMounted, onUnmounted } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import utils from '../utils/utils'
 import { v4 as uuidv4 } from 'uuid'
-import { t } from '@renderer/utils/translate.js'
+import { t } from '@renderer/utils/translate'
 
 const uuid = uuidv4()
 const runtime = useRuntimeStore()

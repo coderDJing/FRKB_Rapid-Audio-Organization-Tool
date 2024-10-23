@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
-import { t } from '@renderer/utils/translate.js'
+import { t } from '@renderer/utils/translate'
 const uuid = uuidv4()
 const emits = defineEmits(['cancel'])
 

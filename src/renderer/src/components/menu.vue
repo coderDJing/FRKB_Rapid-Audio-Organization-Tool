@@ -2,7 +2,7 @@
 import { watch, ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidv4 } from 'uuid'
-import { t } from '@renderer/utils/translate.js'
+import { t } from '@renderer/utils/translate'
 import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
 const uuid = uuidv4()

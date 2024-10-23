@@ -8,7 +8,7 @@ import { ref } from 'vue'
 import menuComponent from './menu.vue'
 import confirm from '@renderer/components/confirmDialog.js'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog.js'
-import { t } from '@renderer/utils/translate.js'
+import { t } from '@renderer/utils/translate'
 import hotkeys from 'hotkeys-js'
 const emit = defineEmits(['openDialog'])
 const toggleMaximize = () => {
