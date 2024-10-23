@@ -28,7 +28,8 @@ export default defineConfig({
         input: {
           index: path.resolve(__dirname, 'src/renderer/', 'index.html'),
           databaseInit: path.resolve(__dirname, 'src/renderer/', 'databaseInit.html'),
-          update: path.resolve(__dirname, 'src/renderer/', 'update.html')
+          update: path.resolve(__dirname, 'src/renderer/', 'update.html'),
+          foundNewVersion: path.resolve(__dirname, 'src/renderer/', 'foundNewVersion.html')
         }
       }
     }
