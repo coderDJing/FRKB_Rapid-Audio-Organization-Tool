@@ -7,7 +7,7 @@ import listIcon from '@renderer/assets/listIcon.png'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { v4 as uuidv4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog.js'
-import { t } from '@renderer/utils/translate.js'
+import { t } from '@renderer/utils/translate'
 import emitter from '../utils/mitt'
 const props = defineProps({
   uuid: {

@@ -117,7 +117,7 @@ export function getDepthByUuid(targetUuid: string) {
   const runtime = useRuntimeStore()
   let data = runtime.libraryTree
   // 递归函数，用于遍历JSON对象并计算深度
-  function traverse(node, depth = 0) {
+  function traverse(node: IDir, depth = 0): number | undefined {
     // 如果当前节点的UUID与目标UUID匹配，返回当前深度
     if (node.uuid === targetUuid) {
       return depth
@@ -143,9 +143,9 @@ export function getDepthByUuid(targetUuid: string) {
   return traverse(data)
 }
 //获取平铺的所有子UUID（包括自己）
-export function getAllUuids(data) {
-  const uuids = []
-  function traverse(node) {
+export function getAllUuids(data: IDir) {
+  const uuids: string[] = []
+  function traverse(node: IDir) {
     uuids.push(node.uuid)
     if (node.children && node.children.length > 0) {
       node.children.forEach((child) => {

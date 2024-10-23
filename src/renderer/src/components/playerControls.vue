@@ -11,7 +11,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import shortcutIcon from '@renderer/assets/shortcutIcon.png'
-import { t } from '@renderer/utils/translate.js'
+import { t } from '@renderer/utils/translate'
 const uuid = uuidv4()
 const runtime = useRuntimeStore()
 const playing = ref(true)

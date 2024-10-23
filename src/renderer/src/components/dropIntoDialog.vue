@@ -8,7 +8,7 @@ import hintIcon from '@renderer/assets/hint.png'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidv4 } from 'uuid'
 import utils from '../utils/utils'
-import { t } from '@renderer/utils/translate.js'
+import { t } from '@renderer/utils/translate'
 const uuid = uuidv4()
 const props = defineProps({
   songListUuid: {

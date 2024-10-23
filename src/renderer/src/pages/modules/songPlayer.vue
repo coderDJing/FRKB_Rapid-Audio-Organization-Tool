@@ -9,7 +9,7 @@ import confirm from '@renderer/components/confirmDialog.js'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import exportDialog from '@renderer/components/exportDialog.js'
-import { t } from '@renderer/utils/translate.js'
+import { t } from '@renderer/utils/translate'
 import * as realtimeBpm from 'realtime-bpm-analyzer'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 

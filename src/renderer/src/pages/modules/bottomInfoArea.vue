@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import confirm from '@renderer/components/confirmDialog.js'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import { t } from '@renderer/utils/translate.js'
+import { t } from '@renderer/utils/translate'
 const runtime = useRuntimeStore()
 const barTitle = ref('')
 const barNowNum = ref(0)

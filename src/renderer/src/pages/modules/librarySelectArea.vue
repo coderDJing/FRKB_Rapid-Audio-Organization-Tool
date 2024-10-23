@@ -8,7 +8,7 @@ import settingWhite from '@renderer/assets/setting-white.png'
 import { ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import settingDialog from '@renderer/components/settingDialog.vue'
-import { t } from '@renderer/utils/translate.js'
+import { t } from '@renderer/utils/translate'
 const emit = defineEmits(['librarySelectedChange'])
 const iconArr = ref([
   {
