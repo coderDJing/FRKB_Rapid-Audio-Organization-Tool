@@ -9,7 +9,7 @@ import hotkeys from 'hotkeys-js'
 import utils from './utils/utils'
 import exportSongFingerprintDialog from './components/exportSongFingerprintDialog.vue'
 import importSongFingerprintDialog from './components/importSongFingerprintDialog.vue'
-import confirm from '@renderer/components/confirmDialog.js'
+import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 const runtime = useRuntimeStore()
 

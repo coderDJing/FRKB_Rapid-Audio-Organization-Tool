@@ -23,8 +23,12 @@ export function t(text: string, index?: number) {
   if (translation === undefined) {
     throw new Error(`语言字典: ${lang} 未找到"${text}"映射`)
   }
-
-  return index !== undefined ? translation[index] : translation
+  let returnValue = index !== undefined ? translation[index] : translation
+  if (typeof returnValue === 'string') {
+    return returnValue
+  } else {
+    throw new Error(`语言字典: ${lang} "${text}"映射值类型错误`)
+  }
 }
 
 export const translate = {

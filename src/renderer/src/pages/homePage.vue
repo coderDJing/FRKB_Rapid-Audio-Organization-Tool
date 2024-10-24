@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import librarySelectArea from './modules/librarySelectArea.vue'
 import libraryArea from './modules/libraryArea.vue'
 import songsArea from './modules/songsArea.vue'

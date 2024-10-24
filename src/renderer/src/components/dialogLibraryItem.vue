@@ -1,12 +1,12 @@
-<script setup>
-import { ref, nextTick } from 'vue'
-import rightClickMenu from '@renderer/components/rightClickMenu.js'
+<script setup lang="ts">
+import { ref, nextTick, useTemplateRef } from 'vue'
+import rightClickMenu from '@renderer/components/rightClickMenu'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import listIcon from '@renderer/assets/listIcon.png'
+import listIcon from '@renderer/assets/listIcon.png?asset'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { v4 as uuidv4 } from 'uuid'
-import confirm from '@renderer/components/confirmDialog.js'
+import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 import emitter from '../utils/mitt'
 const props = defineProps({
@@ -25,18 +25,20 @@ const props = defineProps({
 const runtime = useRuntimeStore()
 let dirData = libraryUtils.getLibraryTreeByUUID(props.uuid)
 let fatherDirData = libraryUtils.getFatherLibraryTreeByUUID(props.uuid)
-const myInputHandleInput = (e) => {
+const myInputHandleInput = () => {
   if (operationInputValue.value == '') {
     inputHintText.value = t('必须提供歌单或文件夹名。')
     inputHintShow.value = true
   } else {
-    let exists = fatherDirData.children.some((obj) => obj.dirName == operationInputValue.value)
-    if (exists) {
-      inputHintText.value =
-        t('此位置已存在歌单或文件夹') + operationInputValue.value + t('。请选择其他名称')
-      inputHintShow.value = true
-    } else {
-      inputHintShow.value = false
+    if (fatherDirData !== null && fatherDirData.children) {
+      let exists = fatherDirData.children.some((obj) => obj.dirName == operationInputValue.value)
+      if (exists) {
+        inputHintText.value =
+          t('此位置已存在歌单或文件夹') + operationInputValue.value + t('。请选择其他名称')
+        inputHintShow.value = true
+      } else {
+        inputHintShow.value = false
+      }
     }
   }
 }
@@ -50,7 +52,7 @@ const inputKeyDownEnter = () => {
   if (inputHintShow.value) {
     return
   }
-  myInput.value.blur()
+  myInput.value?.blur()
 }
 
 const inputKeyDownEsc = () => {
@@ -61,8 +63,8 @@ const inputKeyDownEsc = () => {
 const inputHintText = ref('')
 const inputBlurHandle = async () => {
   if (inputHintShow.value || operationInputValue.value == '') {
-    if (dirData.dirName == '') {
-      if (fatherDirData.children[0]?.dirName == '') {
+    if (dirData && dirData.dirName == '') {
+      if (fatherDirData && fatherDirData.children && fatherDirData.children[0]?.dirName == '') {
         fatherDirData.children.shift()
       }
     }
@@ -71,48 +73,54 @@ const inputBlurHandle = async () => {
     return
   }
 
-  await window.electron.ipcRenderer.invoke(
-    'mkDir',
-    {
-      uuid: dirData.uuid,
-      type: dirData.type == 'dir' ? 'dir' : 'songList',
-      dirName: operationInputValue.value,
-      order: 1
-    },
-    libraryUtils.findDirPathByUuid(props.uuid)
-  )
-
-  for (let item of fatherDirData.children) {
-    if (item.order) {
-      item.order++
+  if (dirData) {
+    await window.electron.ipcRenderer.invoke(
+      'mkDir',
+      {
+        uuid: dirData.uuid,
+        type: dirData.type == 'dir' ? 'dir' : 'songList',
+        dirName: operationInputValue.value,
+        order: 1
+      },
+      libraryUtils.findDirPathByUuid(props.uuid)
+    )
+  }
+  if (fatherDirData?.children) {
+    for (let item of fatherDirData.children) {
+      if (item.order) {
+        item.order++
+      }
     }
   }
-  dirData.dirName = operationInputValue.value
-  dirData.order = 1
-  dirData.children = []
+  if (dirData) {
+    dirData.dirName = operationInputValue.value
+    dirData.order = 1
+    dirData.children = []
+  }
   operationInputValue.value = ''
 }
 let operationInputValue = ref('')
 
 const inputHintShow = ref(false)
 
-const myInput = ref(null)
-if (dirData.dirName == '') {
+const myInput = useTemplateRef('myInput')
+if (dirData && dirData.dirName == '') {
   nextTick(() => {
-    myInput.value.focus()
+    myInput.value?.focus()
   })
 }
 
 const rightClickMenuShow = ref(false)
 const menuArr = ref(
-  dirData.type == 'dir'
+  dirData?.type == 'dir'
     ? [
         [{ menuName: '新建歌单' }, { menuName: '新建文件夹' }],
         [{ menuName: '重命名' }, { menuName: '删除' }]
       ]
     : [[{ menuName: '重命名' }, { menuName: '删除' }]]
 )
-const contextmenuEvent = async (event) => {
+//TSTODO
+const contextmenuEvent = async (event: MouseEvent) => {
   rightClickMenuShow.value = true
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
   rightClickMenuShow.value = false

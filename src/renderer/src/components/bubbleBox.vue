@@ -1,13 +1,15 @@
-<script setup>
-import shortcutIcon from '@renderer/assets/shortcutIcon.png'
+<script setup lang="ts">
+import shortcutIcon from '@renderer/assets/shortcutIcon.png?asset'
 import { watch, onUnmounted, ref } from 'vue'
 import { t } from '@renderer/utils/translate'
 const props = defineProps({
   dom: {
-    type: Object
+    type: HTMLElement,
+    default: null
   },
   title: {
-    type: String
+    type: String,
+    default: ''
   },
   shortcut: {
     type: String
@@ -23,7 +25,7 @@ const props = defineProps({
   }
 })
 
-let hoverTimer = null
+let hoverTimer: NodeJS.Timeout
 let show = ref(false)
 const mouseover = () => {
   hoverTimer = setTimeout(() => {

@@ -1,11 +1,11 @@
 <script setup>
 import { onMounted, onUnmounted, ref, watch } from 'vue'
-import rightClickMenu from '@renderer/components/rightClickMenu.js'
+import rightClickMenu from '@renderer/components/rightClickMenu'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { v4 as uuidv4 } from 'uuid'
-import confirm from '@renderer/components/confirmDialog.js'
+import confirm from '@renderer/components/confirmDialog'
 import hotkeys from 'hotkeys-js'
 import listIcon from '@renderer/assets/listIcon.png'
 import utils from '../utils/utils'

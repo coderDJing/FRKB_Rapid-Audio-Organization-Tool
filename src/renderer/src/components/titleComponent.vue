@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import chromeMaximize from '@renderer/assets/chrome-maximize.svg'
 import chromeRestore from '@renderer/assets/chrome-restore.svg'
 import chromeMiniimize from '@renderer/assets/chrome-minimize.svg'
@@ -6,7 +6,7 @@ import logo from '@renderer/assets/logo.png'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { ref } from 'vue'
 import menuComponent from './menu.vue'
-import confirm from '@renderer/components/confirmDialog.js'
+import confirm from '@renderer/components/confirmDialog'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog.js'
 import { t } from '@renderer/utils/translate'
 import hotkeys from 'hotkeys-js'
