@@ -6,7 +6,7 @@ import utils from '../utils/utils'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate'
 import singleCheckbox from '@renderer/components/singleCheckbox.vue'
-import confirm from '@renderer/components/confirmDialog.js'
+import confirm from '@renderer/components/confirmDialog'
 import globalCallShortcutDialog from './globalCallShortcutDialog.js'
 const runtime = useRuntimeStore()
 const uuid = uuidv4()

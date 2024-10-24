@@ -5,7 +5,7 @@ import utils from '../utils/utils'
 import { ref, onUnmounted, onMounted } from 'vue'
 import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import confirmDialog from '@renderer/components/confirmDialog.js'
+import confirmDialog from '@renderer/components/confirmDialog'
 const uuid = uuidv4()
 const props = defineProps({
   confirmCallback: {

@@ -18,5 +18,10 @@ export function t(str: string, index?: number) {
   if (translation === undefined) {
     throw new Error(`语言字典: ${store.settingConfig.language} 未找到"${str}"映射`)
   }
-  return index !== undefined ? translation[index] : translation
+  let returnValue = index !== undefined ? translation[index] : translation
+  if (typeof returnValue === 'string') {
+    return returnValue
+  } else {
+    throw new Error(`语言字典: ${store.settingConfig.language} "${str}"映射值类型错误`)
+  }
 }

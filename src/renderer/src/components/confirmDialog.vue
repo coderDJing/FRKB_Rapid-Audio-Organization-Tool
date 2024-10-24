@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import hotkeys from 'hotkeys-js'
 import { onMounted, onUnmounted } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -10,7 +10,8 @@ const uuid = uuidv4()
 const runtime = useRuntimeStore()
 const props = defineProps({
   title: {
-    type: String
+    type: String,
+    default: ''
   },
   content: {
     type: Array
