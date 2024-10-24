@@ -1,6 +1,6 @@
-<script setup>
-import chromeMiniimize from '@renderer/assets/chrome-minimize.svg'
-import logo from '@renderer/assets/logo.png'
+<script setup lang="ts">
+import chromeMiniimize from '@renderer/assets/chrome-minimize.svg?asset'
+import logo from '@renderer/assets/logo.png?asset'
 import { ref } from 'vue'
 import { t } from '@renderer/utils/translate'
 import singleCheckbox from './components/singleCheckbox.vue'

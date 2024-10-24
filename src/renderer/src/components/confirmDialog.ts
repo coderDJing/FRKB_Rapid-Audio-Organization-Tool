@@ -1,8 +1,17 @@
 import { createVNode, render } from 'vue'
 import confirmDialog from './confirmDialog.vue'
 
-export default ({ title, content, confirmShow, textAlign, innerHeight, innerWidth }) => {
-  return new Promise((resolve, reject) => {
+interface DialogOptions {
+  title: string
+  content: string[]
+  confirmShow?: boolean
+  textAlign?: string
+  innerHeight?: number
+  innerWidth?: number
+}
+
+export default (options: DialogOptions) => {
+  return new Promise<string>((resolve, reject) => {
     const div = document.createElement('div')
     div.setAttribute('class', 'dialog')
     document.body.appendChild(div)
@@ -18,12 +27,7 @@ export default ({ title, content, confirmShow, textAlign, innerHeight, innerWidt
       resolve('cancel')
     }
     const vnode = createVNode(confirmDialog, {
-      title,
-      content,
-      confirmShow,
-      textAlign,
-      innerHeight,
-      innerWidth,
+      ...options,
       confirmCallback,
       cancelCallback
     })

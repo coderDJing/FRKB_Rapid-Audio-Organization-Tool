@@ -2,7 +2,7 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import { IPicture } from 'music-metadata'
 
-declare interface IDir {
+interface IDir {
   uuid: string
   type: 'root' | 'library' | 'dir' | 'songList'
   dirName: string
@@ -47,7 +47,7 @@ interface ISettingConfig {
   audioExt: string[]
   databaseUrl: string
   globalCallShortcut: string
-  nextCheckUpdateTime: number
+  nextCheckUpdateTime: string
 }
 
 interface ILanguageDict {

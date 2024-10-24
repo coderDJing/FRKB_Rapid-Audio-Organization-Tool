@@ -15,7 +15,7 @@ let settingConfig: ISettingConfig = {
   audioExt: [],
   databaseUrl: '',
   globalCallShortcut: '',
-  nextCheckUpdateTime: 0
+  nextCheckUpdateTime: ''
 } //设置config
 let analyseSongPort: string = ''
 export default {

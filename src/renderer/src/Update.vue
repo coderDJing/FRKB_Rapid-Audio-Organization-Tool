@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import chromeMiniimize from '@renderer/assets/chrome-minimize.svg'
-import logo from '@renderer/assets/logo.png'
+import chromeMiniimize from '@renderer/assets/chrome-minimize.svg?asset'
+import logo from '@renderer/assets/logo.png?asset'
 import { ref } from 'vue'
 import { t } from '@renderer/utils/translate'
+import { UpdateInfo } from 'electron-updater'
 const fillColor = ref('#9d9d9d')
 
 const toggleMinimize = () => {
@@ -21,8 +22,14 @@ window.electron.ipcRenderer.once('isLatestVersion', (event, version) => {
   state.value = 'isLatest'
 })
 
-let newVersionInfo = ref({})
-window.electron.ipcRenderer.once('newVersion', (event, versionInfo) => {
+let newVersionInfo = ref<UpdateInfo>({
+  version: '',
+  files: [],
+  path: '',
+  sha512: '',
+  releaseDate: ''
+})
+window.electron.ipcRenderer.once('newVersion', (event, versionInfo: UpdateInfo) => {
   newVersionInfo.value = versionInfo
   state.value = 'isNewVersion'
 })
@@ -31,7 +38,7 @@ window.electron.ipcRenderer.once('isError', (event) => {
   state.value = 'isError'
 })
 
-function convertISOToCustomFormat(isoString) {
+function convertISOToCustomFormat(isoString: string) {
   const date = new Date(isoString)
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -55,7 +62,7 @@ window.electron.ipcRenderer.on('updateProgress', (event, progressObj) => {
   state.value = 'isUpdateProgress'
 })
 
-function convertBytesToUnits(bytesPerSecond) {
+function convertBytesToUnits(bytesPerSecond: number) {
   const units = ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s']
   let unitIndex = 0
   let convertedValue = bytesPerSecond
