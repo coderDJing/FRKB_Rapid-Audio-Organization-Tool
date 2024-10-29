@@ -1,11 +1,11 @@
 <script setup>
 import singleCheckbox from './singleCheckbox.vue'
 import hotkeys from 'hotkeys-js'
-import { v4 as uuidv4 } from 'uuid'
+import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'
 import { ref, onUnmounted, onMounted } from 'vue'
 import { t } from '@renderer/utils/translate'
-const uuid = uuidv4()
+const uuid = uuidV4()
 const props = defineProps({
   title: {
     type: String,

@@ -6,7 +6,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import listIcon from '@renderer/assets/listIcon.png'
 import listIconBlue from '@renderer/assets/listIconBlue.png'
 import libraryUtils from '@renderer/utils/libraryUtils'
-import { v4 as uuidv4 } from 'uuid'
+import { v4 as uuidV4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog.js'
 import exportDialog from '@renderer/components/exportDialog.js'
@@ -126,7 +126,7 @@ const contextmenuEvent = async (event) => {
       dirChildShow.value = true
 
       dirData.children.unshift({
-        uuid: uuidv4(),
+        uuid: uuidV4(),
         dirName: '',
         type: 'songList'
       })
@@ -135,7 +135,7 @@ const contextmenuEvent = async (event) => {
       dirChildShow.value = true
 
       dirData.children.unshift({
-        uuid: uuidv4(),
+        uuid: uuidV4(),
         dirName: '',
         type: 'dir'
       })

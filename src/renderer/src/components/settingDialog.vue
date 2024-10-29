@@ -1,7 +1,7 @@
 <script setup>
 import { onUnmounted, onMounted, ref } from 'vue'
 import hotkeys from 'hotkeys-js'
-import { v4 as uuidv4 } from 'uuid'
+import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate'
@@ -9,7 +9,7 @@ import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 import confirm from '@renderer/components/confirmDialog'
 import globalCallShortcutDialog from './globalCallShortcutDialog.js'
 const runtime = useRuntimeStore()
-const uuid = uuidv4()
+const uuid = uuidV4()
 const emits = defineEmits(['cancel'])
 const cancel = () => {
   emits('cancel')

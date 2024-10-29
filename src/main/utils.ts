@@ -176,7 +176,10 @@ async function getdirsDescriptionJson(dirPath: string, dirs: fs.Dirent[]) {
     })
   )
 
-  return jsons.sort((a, b) => a.order - b.order)
+  return jsons.sort((a, b) => {
+    if (a.order === undefined || b.order === undefined) return 0
+    return a.order - b.order
+  })
 }
 
 //获取整个库的树结构
@@ -251,7 +254,6 @@ export const updateTargetDirSubdirOrder = async (
     console.error(`Error traversing directory ${dirPath}:`, error)
   }
 }
-//todo
 export const collectFilesWithExtensions = async (dir: string, extensions: string[] = []) => {
   let files: string[] = []
   try {
