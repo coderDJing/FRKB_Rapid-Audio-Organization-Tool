@@ -1,12 +1,12 @@
 <script setup>
 import hotkeys from 'hotkeys-js'
-import { v4 as uuidv4 } from 'uuid'
+import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'
 import { ref, onUnmounted, onMounted } from 'vue'
 import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import confirmDialog from '@renderer/components/confirmDialog'
-const uuid = uuidv4()
+const uuid = uuidV4()
 const props = defineProps({
   confirmCallback: {
     type: Function

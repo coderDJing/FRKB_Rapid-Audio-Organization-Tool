@@ -1,10 +1,10 @@
 <script setup>
 import { watch, ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import { v4 as uuidv4 } from 'uuid'
+import { v4 as uuidV4 } from 'uuid'
 import tickIcon from '@renderer/assets/tickIcon.png'
 import { t } from '@renderer/utils/translate'
-const uuid = uuidv4()
+const uuid = uuidV4()
 const runtime = useRuntimeStore()
 
 const emits = defineEmits(['update:modelValue', 'colMenuHandleClick'])

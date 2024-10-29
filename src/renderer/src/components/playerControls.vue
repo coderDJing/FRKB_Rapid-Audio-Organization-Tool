@@ -7,12 +7,12 @@ import fastForward from '@renderer/assets/fastForward.png'
 import nextSong from '@renderer/assets/nextSong.png'
 import more from '@renderer/assets/more.png'
 import { ref, onUnmounted, watch } from 'vue'
-import { v4 as uuidv4 } from 'uuid'
+import { v4 as uuidV4 } from 'uuid'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import shortcutIcon from '@renderer/assets/shortcutIcon.png'
 import { t } from '@renderer/utils/translate'
-const uuid = uuidv4()
+const uuid = uuidV4()
 const runtime = useRuntimeStore()
 const playing = ref(true)
 watch(

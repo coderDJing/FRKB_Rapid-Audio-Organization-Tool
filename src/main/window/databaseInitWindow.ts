@@ -1,7 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
-import { v4 as uuidv4 } from 'uuid'
+import { v4 as uuidV4 } from 'uuid'
 import mainWindow from './mainWindow'
 import store from '../store'
 import { operateHiddenFile } from '../utils'
@@ -51,7 +51,7 @@ const createWindow = () => {
   ipcMain.handle('databaseInitWindow-InitDataBase', async (e, dirPath) => {
     if (!fs.pathExistsSync(path.join(dirPath, 'library', '.description.json'))) {
       let rootDescription = {
-        uuid: uuidv4(),
+        uuid: uuidV4(),
         type: 'root',
         dirName: 'library',
         order: 1
@@ -63,7 +63,7 @@ const createWindow = () => {
     const makeLibrary = async (libraryPath: string, libraryName: string, order: number) => {
       if (!fs.pathExistsSync(path.join(libraryPath, '.description.json'))) {
         let description = {
-          uuid: uuidv4(),
+          uuid: uuidV4(),
           type: 'library',
           dirName: libraryName,
           order: order

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { v4 as uuidv4 } from 'uuid'
+import { v4 as uuidV4 } from 'uuid'
 import { ref, watch } from 'vue'
 
-const uuid = uuidv4()
+const uuid = uuidV4()
 const props = defineProps({
   modelValue: {
     type: Boolean || undefined,
