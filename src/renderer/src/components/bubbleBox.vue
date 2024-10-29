@@ -2,6 +2,7 @@
 import shortcutIcon from '@renderer/assets/shortcutIcon.png?asset'
 import { watch, onUnmounted, ref } from 'vue'
 import { t } from '@renderer/utils/translate'
+
 const props = defineProps({
   dom: {
     type: HTMLElement,
@@ -68,7 +69,7 @@ onUnmounted(() => {
     >
       <span>{{ t(props.title) }}</span>
       <div v-if="props.shortcut">
-        <img :src="shortcutIcon" :draggable="false" />{{ props.shortcut }}
+        <img :src="shortcutIcon" :draggable="false" alt="" />{{ props.shortcut }}
       </div>
     </div>
   </transition>

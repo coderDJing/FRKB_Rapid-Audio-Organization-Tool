@@ -4,14 +4,14 @@ import rightClickMenu from '@renderer/components/rightClickMenu'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
-import { v4 as uuidv4 } from 'uuid'
+import { v4 as uuidV4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog'
 import hotkeys from 'hotkeys-js'
 import listIcon from '@renderer/assets/listIcon.png'
 import utils from '../utils/utils'
 import { t } from '@renderer/utils/translate'
 import emitter from '../utils/mitt'
-const uuid = uuidv4()
+const uuid = uuidV4()
 const props = defineProps({
   libraryName: {
     type: String,
@@ -85,13 +85,13 @@ const contextmenuEvent = async (event) => {
   if (result !== 'cancel') {
     if (result.menuName == '新建歌单') {
       libraryData.children.unshift({
-        uuid: uuidv4(),
+        uuid: uuidV4(),
         type: 'songList',
         dirName: ''
       })
     } else if (result.menuName == '新建文件夹') {
       libraryData.children.unshift({
-        uuid: uuidv4(),
+        uuid: uuidV4(),
         type: 'dir',
         dirName: ''
       })

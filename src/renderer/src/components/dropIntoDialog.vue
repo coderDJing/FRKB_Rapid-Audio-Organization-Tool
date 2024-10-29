@@ -6,10 +6,10 @@ import selectSongListDialog from './selectSongListDialog.vue'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import hintIcon from '@renderer/assets/hint.png'
 import hotkeys from 'hotkeys-js'
-import { v4 as uuidv4 } from 'uuid'
+import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'
 import { t } from '@renderer/utils/translate'
-const uuid = uuidv4()
+const uuid = uuidV4()
 const props = defineProps({
   songListUuid: {
     type: String

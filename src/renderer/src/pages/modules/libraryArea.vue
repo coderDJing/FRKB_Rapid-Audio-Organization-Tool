@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import libraryItem from '@renderer/components/libraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
-import { v4 as uuidv4 } from 'uuid'
+import { v4 as uuidV4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog'
 import rightClickMenu from '../../components/rightClickMenu'
 import { t } from '@renderer/utils/translate'
@@ -34,13 +34,13 @@ const contextmenuEvent = async (event) => {
   if (result !== 'cancel') {
     if (result.menuName == '新建歌单') {
       libraryData.children.unshift({
-        uuid: uuidv4(),
+        uuid: uuidV4(),
         type: 'songList',
         dirName: ''
       })
     } else if (result.menuName == '新建文件夹') {
       libraryData.children.unshift({
-        uuid: uuidv4(),
+        uuid: uuidV4(),
         type: 'dir',
         dirName: ''
       })

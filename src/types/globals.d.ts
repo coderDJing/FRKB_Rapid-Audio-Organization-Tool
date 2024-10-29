@@ -6,7 +6,7 @@ interface IDir {
   uuid: string
   type: 'root' | 'library' | 'dir' | 'songList'
   dirName: string
-  order: number
+  order?: number
   children?: IDir[]
 }
 
@@ -55,5 +55,8 @@ interface ILanguageDict {
     [key: string]: string | string[]
   }
 }
-
-export { md5, IDir, ISongInfo, ILayoutConfig, ISettingConfig, ILanguageDict }
+interface IMenu {
+  menuName: string
+  shortcutKey?: string
+}
+export { md5, IDir, ISongInfo, ILayoutConfig, ISettingConfig, ILanguageDict, IMenu }

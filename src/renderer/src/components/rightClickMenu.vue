@@ -1,16 +1,19 @@
-<script setup>
-import { watch, ref, onUnmounted, onMounted } from 'vue'
+<script setup lang="ts">
+import { watch, ref, onUnmounted, onMounted, PropType } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import { v4 as uuidv4 } from 'uuid'
+import { v4 as uuidV4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
 import { t } from '@renderer/utils/translate'
-const uuid = uuidv4()
+import { IMenu } from 'src/types/globals'
+
+const uuid = uuidV4()
 const runtime = useRuntimeStore()
 runtime.activeMenuUUID = uuid
+
 const props = defineProps({
   menuArr: {
-    type: Array,
+    type: Array as PropType<IMenu[][]>,
     required: true
   },
   clickEvent: {
@@ -18,10 +21,12 @@ const props = defineProps({
     required: true
   },
   confirmCallback: {
-    type: Function
+    type: Function,
+    required: true
   },
   cancelCallback: {
-    type: Function
+    type: Function,
+    required: true
   }
 })
 watch(
@@ -53,21 +58,21 @@ if (clickY + divHeight > windowHeight) {
 if (clickX + divWidth > windowWidth) {
   positionLeft.value = clickX - (clickX + divWidth - windowWidth)
 }
-const menuButtonClick = (item) => {
+const menuButtonClick = (item: IMenu) => {
   runtime.activeMenuUUID = ''
   props.confirmCallback(item)
 }
-const hoverItem = ref({})
-const mouseover = (item) => {
+const hoverItem = ref<IMenu | null>(null)
+const mouseover = (item: IMenu) => {
   hoverItem.value = item
 }
 const mouseleave = () => {
-  hoverItem.value = {}
+  hoverItem.value = null
 }
 onMounted(() => {
   hotkeys('w', uuid, () => {
     let menuArr = props.menuArr.flat(1)
-    if (Object.keys(hoverItem.value).length === 0 || menuArr.indexOf(hoverItem.value) === 0) {
+    if (hoverItem.value === null || menuArr.indexOf(hoverItem.value) === 0) {
       hoverItem.value = menuArr[menuArr.length - 1]
     } else {
       hoverItem.value = menuArr[menuArr.indexOf(hoverItem.value) - 1]
@@ -76,10 +81,7 @@ onMounted(() => {
   })
   hotkeys('s', uuid, () => {
     let menuArr = props.menuArr.flat(1)
-    if (
-      Object.keys(hoverItem.value).length === 0 ||
-      menuArr.indexOf(hoverItem.value) === menuArr.length - 1
-    ) {
+    if (hoverItem.value === null || menuArr.indexOf(hoverItem.value) === menuArr.length - 1) {
       hoverItem.value = menuArr[0]
     } else {
       hoverItem.value = menuArr[menuArr.indexOf(hoverItem.value) + 1]
@@ -110,7 +112,9 @@ onUnmounted(() => {
         v-for="button of item"
         class="menuButton"
         @click="menuButtonClick(button)"
-        :class="{ menuButtonOver: hoverItem.menuName === button.menuName }"
+        :class="{
+          menuButtonOver: hoverItem === null ? false : hoverItem.menuName === button.menuName
+        }"
         @mouseover.stop="mouseover(button)"
         @contextmenu="menuButtonClick(button)"
       >
@@ -153,7 +157,7 @@ onUnmounted(() => {
   }
 
   .menuGroup:last-child {
-    border-bottom: 0px;
+    border-bottom: 0;
   }
 }
 </style>
