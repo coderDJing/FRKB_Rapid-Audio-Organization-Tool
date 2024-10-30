@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import singleCheckbox from './singleCheckbox.vue'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
@@ -12,16 +12,18 @@ const props = defineProps({
     default: ''
   },
   confirmCallback: {
-    type: Function
+    type: Function,
+    required: true
   },
   cancelCallback: {
-    type: Function
+    type: Function,
+    required: true
   }
 })
 const flashArea = ref('') // 控制动画是否正在播放
 
 // 模拟闪烁三次的逻辑（使用 setTimeout）
-const flashBorder = (flashAreaName) => {
+const flashBorder = (flashAreaName: string) => {
   flashArea.value = flashAreaName
   let count = 0
   const interval = setInterval(() => {
@@ -56,8 +58,8 @@ if (localStorageData === null) {
   )
   deleteSongsAfterExport.value = true
 } else {
-  localStorageData = JSON.parse(localStorageData)
-  deleteSongsAfterExport.value = localStorageData.deleteSongsAfterExport
+  const parsedLocalStorageData = JSON.parse(localStorageData) as { deleteSongsAfterExport: boolean }
+  deleteSongsAfterExport.value = parsedLocalStorageData.deleteSongsAfterExport
 }
 
 const confirm = () => {
