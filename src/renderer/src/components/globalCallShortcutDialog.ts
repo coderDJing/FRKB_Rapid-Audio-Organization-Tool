@@ -1,15 +1,15 @@
 import { createVNode, render } from 'vue'
-import exportDialog from './exportDialog.vue'
+import globalCallShortcutDialog from './globalCallShortcutDialog.vue'
 
-export default ({ title }) => {
+export default () => {
   return new Promise((resolve, reject) => {
     const div = document.createElement('div')
     document.body.appendChild(div)
 
-    const confirmCallback = (data) => {
+    const confirmCallback = () => {
       render(null, div)
       div.remove()
-      resolve(data)
+      resolve('success')
     }
 
     const cancelCallback = () => {
@@ -17,8 +17,7 @@ export default ({ title }) => {
       div.remove()
       resolve('cancel')
     }
-    const vnode = createVNode(exportDialog, {
-      title,
+    const vnode = createVNode(globalCallShortcutDialog, {
       confirmCallback,
       cancelCallback
     })

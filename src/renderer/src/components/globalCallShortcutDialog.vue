@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'
@@ -9,10 +9,12 @@ import confirmDialog from '@renderer/components/confirmDialog'
 const uuid = uuidV4()
 const props = defineProps({
   confirmCallback: {
-    type: Function
+    type: Function,
+    required: true
   },
   cancelCallback: {
-    type: Function
+    type: Function,
+    required: true
   }
 })
 const runtime = useRuntimeStore()
@@ -44,7 +46,7 @@ const confirm = async () => {
 const cancel = () => {
   props.cancelCallback()
 }
-function isLetterOrDigitOrF1ToF12(event) {
+function isLetterOrDigitOrF1ToF12(event: KeyboardEvent) {
   const keyCode = event.keyCode
 
   // 判断是否为字母
@@ -65,7 +67,7 @@ function isLetterOrDigitOrF1ToF12(event) {
   // 其他情况返回 false
   return false
 }
-function handleKeyDown(event) {
+function handleKeyDown(event: KeyboardEvent) {
   const key = event.key
   if (!isLetterOrDigitOrF1ToF12(event)) {
     return

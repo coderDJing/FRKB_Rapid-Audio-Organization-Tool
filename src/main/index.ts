@@ -310,7 +310,7 @@ ipcMain.handle('updateTargetDirSubdirOrderAdd', async (e, dirPath) => {
   await updateTargetDirSubdirOrder(path.join(store.databaseDir, dirPath), 0, 'after', 'plus')
 })
 
-ipcMain.handle('select-folder', async (event, multiSelections = true) => {
+ipcMain.handle('select-folder', async (event, multiSelections: boolean = true) => {
   const result = await dialog.showOpenDialog({
     properties: multiSelections ? ['openDirectory', 'multiSelections'] : ['openDirectory']
   })

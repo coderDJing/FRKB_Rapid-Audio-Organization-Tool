@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem.vue'

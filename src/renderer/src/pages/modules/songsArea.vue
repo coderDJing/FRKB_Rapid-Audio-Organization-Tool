@@ -8,7 +8,7 @@ import hotkeys from 'hotkeys-js'
 import confirm from '@renderer/components/confirmDialog'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import rightClickMenu from '../../components/rightClickMenu'
-import exportDialog from '../../components/exportDialog.js'
+import exportDialog from '../../components/exportDialog'
 import { t } from '@renderer/utils/translate'
 let columnData = ref([])
 if (localStorage.getItem('songColumnData')) {

@@ -1,17 +1,17 @@
-<script setup>
+<script setup lang="ts">
 import { ref, nextTick, watch } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import libraryItem from '@renderer/components/libraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import listIcon from '@renderer/assets/listIcon.png'
-import listIconBlue from '@renderer/assets/listIconBlue.png'
+import listIcon from '@renderer/assets/listIcon.png?asset'
+import listIconBlue from '@renderer/assets/listIconBlue.png?asset'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { v4 as uuidV4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog'
-import scanNewSongDialog from '@renderer/components/scanNewSongDialog.js'
-import exportDialog from '@renderer/components/exportDialog.js'
+import scanNewSongDialog from '@renderer/components/scanNewSongDialog'
+import exportDialog from '@renderer/components/exportDialog'
 import { t } from '@renderer/utils/translate'
-import dropIntoDialog from '../components/dropIntoDialog.js'
+import dropIntoDialog from '../components/dropIntoDialog'
 import emitter from '../utils/mitt'
 const props = defineProps({
   uuid: {
@@ -25,6 +25,7 @@ const props = defineProps({
 const runtime = useRuntimeStore()
 let dirData = libraryUtils.getLibraryTreeByUUID(props.uuid)
 let fatherDirData = libraryUtils.getFatherLibraryTreeByUUID(props.uuid)
+//todo
 const myInputHandleInput = (e) => {
   if (operationInputValue.value == '') {
     inputHintText.value = t('必须提供歌单或文件夹名。')

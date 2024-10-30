@@ -1,10 +1,10 @@
-<script setup>
+<script setup lang="ts">
 import { ref, onUnmounted, onMounted, computed } from 'vue'
 import singleCheckbox from './singleCheckbox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import selectSongListDialog from './selectSongListDialog.vue'
 import libraryUtils from '@renderer/utils/libraryUtils'
-import hintIcon from '@renderer/assets/hint.png'
+import hintIcon from '@renderer/assets/hint.png?asset'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'
@@ -19,14 +19,24 @@ const props = defineProps({
     default: '筛选库'
   },
   confirmCallback: {
-    type: Function
+    type: Function,
+    required: true
   },
   cancelCallback: {
-    type: Function
+    type: Function,
+    required: true
   }
 })
-
-const settingData = ref({})
+type SettingData = {
+  isDeleteSourceFile: boolean
+  isComparisonSongFingerprint: boolean
+  isPushSongFingerprintLibrary: boolean
+}
+const settingData = ref<SettingData>({
+  isDeleteSourceFile: true,
+  isComparisonSongFingerprint: true,
+  isPushSongFingerprintLibrary: true
+})
 let localStorageData = localStorage.getItem('scanNewSongDialog')
 if (localStorageData == null) {
   localStorage.setItem(
@@ -37,15 +47,14 @@ if (localStorageData == null) {
       isPushSongFingerprintLibrary: true
     })
   )
-  settingData.value = {
+  localStorageData = JSON.stringify({
     isDeleteSourceFile: true,
     isComparisonSongFingerprint: true,
     isPushSongFingerprintLibrary: true
-  }
-} else {
-  localStorageData = JSON.parse(localStorageData)
-  settingData.value = localStorageData
+  })
 }
+const parsedLocalStorageData = JSON.parse(localStorageData) as SettingData
+settingData.value = parsedLocalStorageData
 
 const runtime = useRuntimeStore()
 
@@ -56,7 +65,7 @@ const emits = defineEmits(['cancel'])
 const flashArea = ref('') // 控制动画是否正在播放
 
 // 模拟闪烁三次的逻辑（使用 setTimeout）
-const flashBorder = (flashAreaName) => {
+const flashBorder = (flashAreaName: string) => {
   flashArea.value = flashAreaName
   let count = 0
   const interval = setInterval(() => {
@@ -77,16 +86,24 @@ let songListSelectedPath = ''
 let importingSongListUUID = ''
 if (props.songListUuid) {
   importingSongListUUID = props.songListUuid
-  songListSelectedPath = libraryUtils.findDirPathByUuid(props.songListUuid)
+  let dirPath = libraryUtils.findDirPathByUuid(props.songListUuid)
+  if (dirPath === null) {
+    throw new Error(`dirPath error: ${JSON.stringify(dirPath)}`)
+  }
+  songListSelectedPath = dirPath
   let songListSelectedPathArr = songListSelectedPath.split('/')
   songListSelectedPathArr.shift()
   songListSelected.value = songListSelectedPathArr.join('\\')
 }
 
-const selectSongListDialogConfirm = (uuid) => {
+const selectSongListDialogConfirm = (uuid: string) => {
   importingSongListUUID = uuid
-  songListSelectedPath = libraryUtils.findDirPathByUuid(uuid)
-  let songListSelectedPathArr = libraryUtils.findDirPathByUuid(uuid).split('/')
+  let dirPath = libraryUtils.findDirPathByUuid(uuid)
+  if (dirPath === null) {
+    throw new Error(`dirPath error: ${JSON.stringify(dirPath)}`)
+  }
+  songListSelectedPath = dirPath
+  let songListSelectedPathArr = dirPath.split('/')
   songListSelectedPathArr.shift()
   songListSelected.value = songListSelectedPathArr.join('\\')
   selectSongListDialogShow.value = false
@@ -112,7 +129,7 @@ const cancel = () => {
   localStorage.setItem('scanNewSongDialog', JSON.stringify(settingData.value))
   props.cancelCallback()
 }
-let hint1hoverTimer = null
+let hint1hoverTimer: NodeJS.Timeout
 let hint1Show = ref(false)
 const hint1IconMouseover = () => {
   hint1hoverTimer = setTimeout(() => {
@@ -123,7 +140,7 @@ const hint1IconMouseout = () => {
   clearTimeout(hint1hoverTimer)
   hint1Show.value = false
 }
-let hint2hoverTimer = null
+let hint2hoverTimer: NodeJS.Timeout
 let hint2Show = ref(false)
 const hint2IconMouseover = () => {
   hint2hoverTimer = setTimeout(() => {

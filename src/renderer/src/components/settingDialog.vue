@@ -7,7 +7,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate'
 import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 import confirm from '@renderer/components/confirmDialog'
-import globalCallShortcutDialog from './globalCallShortcutDialog.js'
+import globalCallShortcutDialog from './globalCallShortcutDialog'
 const runtime = useRuntimeStore()
 const uuid = uuidV4()
 const emits = defineEmits(['cancel'])
