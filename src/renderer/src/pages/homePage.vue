@@ -5,7 +5,7 @@ import songsArea from './modules/songsArea.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { onUnmounted, ref } from 'vue'
 import songPlayer from './modules/songPlayer.vue'
-import dropIntoDialog from '../components/dropIntoDialog.js'
+import dropIntoDialog from '../components/dropIntoDialog'
 const runtime = useRuntimeStore()
 let startX = 0
 let isResizing = false

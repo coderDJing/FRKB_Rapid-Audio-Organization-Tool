@@ -13,7 +13,7 @@ import updateWindow from './updateWindow'
 import databaseInitWindow from './databaseInitWindow'
 import path = require('path')
 import fs = require('fs-extra')
-import { md5 } from '../../types/globals'
+import { IImportSongsFormData, md5 } from '../../types/globals'
 
 let mainWindow: BrowserWindow | null = null
 function createWindow() {
@@ -189,16 +189,7 @@ function createWindow() {
     mainWindow?.webContents.send('addSongFingerprintFinished', contentArr)
   })
 
-  type ImportSongsFormData = {
-    filePaths?: string[]
-    folderPath?: string[]
-    songListPath: string
-    isDeleteSourceFile: boolean
-    isComparisonSongFingerprint: boolean
-    isPushSongFingerprintLibrary: boolean
-    songListUUID: string
-  }
-  ipcMain.on('startImportSongs', async (e, formData: ImportSongsFormData) => {
+  ipcMain.on('startImportSongs', async (e, formData: IImportSongsFormData) => {
     sendProgress('扫描文件中', 0, 1, true)
     let filePaths = formData.filePaths || formData.folderPath
     if (filePaths === undefined) {

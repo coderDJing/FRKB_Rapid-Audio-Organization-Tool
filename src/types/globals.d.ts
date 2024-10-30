@@ -59,4 +59,23 @@ interface IMenu {
   menuName: string
   shortcutKey?: string
 }
-export { md5, IDir, ISongInfo, ILayoutConfig, ISettingConfig, ILanguageDict, IMenu }
+
+interface IImportSongsFormData {
+  filePaths?: string[]
+  folderPath?: string[]
+  songListPath: string
+  isDeleteSourceFile: boolean
+  isComparisonSongFingerprint: boolean
+  isPushSongFingerprintLibrary: boolean
+  songListUUID: string
+}
+export {
+  md5,
+  IDir,
+  ISongInfo,
+  ILayoutConfig,
+  ISettingConfig,
+  ILanguageDict,
+  IMenu,
+  IImportSongsFormData
+}

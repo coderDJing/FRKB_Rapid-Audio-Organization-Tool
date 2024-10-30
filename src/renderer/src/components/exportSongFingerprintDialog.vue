@@ -10,7 +10,7 @@ const emits = defineEmits(['cancel'])
 const flashArea = ref('') // 控制动画是否正在播放
 
 // 模拟闪烁三次的逻辑（使用 setTimeout）
-const flashBorder = (flashAreaName) => {
+const flashBorder = (flashAreaName: string) => {
   flashArea.value = flashAreaName
   let count = 0
   const interval = setInterval(() => {
@@ -22,14 +22,16 @@ const flashBorder = (flashAreaName) => {
   }, 500) // 每次闪烁间隔 500 毫秒
 }
 
-const folderPathVal = ref([]) //文件夹路径
+const folderPathVal = ref<string[]>([]) //文件夹路径
 let clickChooseDirFlag = false
 const clickChooseDir = async () => {
   if (clickChooseDirFlag) {
     return
   }
   clickChooseDirFlag = true
-  const folderPath = await window.electron.ipcRenderer.invoke('select-folder', false)
+  const folderPath = (await window.electron.ipcRenderer.invoke('select-folder', false)) as
+    | string[]
+    | null
   clickChooseDirFlag = false
   if (folderPath) {
     folderPathVal.value = folderPath

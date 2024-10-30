@@ -24,6 +24,9 @@ const props = defineProps({
 })
 const runtime = useRuntimeStore()
 let dirData = libraryUtils.getLibraryTreeByUUID(props.uuid)
+if (dirData === null) {
+  throw new Error(`dirData error: ${JSON.stringify(dirData)}`)
+}
 let fatherDirData = libraryUtils.getFatherLibraryTreeByUUID(props.uuid)
 const myInputHandleInput = () => {
   if (operationInputValue.value == '') {
@@ -120,9 +123,6 @@ const menuArr = ref(
     : [[{ menuName: '重命名' }, { menuName: '删除' }]]
 )
 const contextmenuEvent = async (event: MouseEvent) => {
-  if (dirData === null) {
-    return
-  }
   rightClickMenuShow.value = true
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
   rightClickMenuShow.value = false
@@ -205,9 +205,6 @@ const contextmenuEvent = async (event: MouseEvent) => {
 const dirChildShow = ref(false)
 const dirChildRendered = ref(false)
 const dirHandleClick = () => {
-  if (dirData === null) {
-    throw new Error(`dirData error: ${JSON.stringify(dirData)}`)
-  }
   runtime.activeMenuUUID = ''
   if (dirData.type == 'songList') {
     runtime.dialogSelectedSongListUUID = props.uuid
@@ -218,9 +215,6 @@ const dirHandleClick = () => {
 }
 const emits = defineEmits(['dblClickSongList'])
 const dirHandleDblClick = () => {
-  if (dirData === null) {
-    throw new Error(`dirData error: ${JSON.stringify(dirData)}`)
-  }
   if (dirData.type == 'songList') {
     emits('dblClickSongList')
   }
@@ -238,9 +232,6 @@ const myRenameInput = useTemplateRef('myRenameInput')
 const renameInputHintShow = ref(false)
 const renameInputHintText = ref('')
 const renameInputBlurHandle = async () => {
-  if (dirData === null) {
-    throw new Error(`dirData error: ${JSON.stringify(dirData)}`)
-  }
   if (
     renameInputHintShow.value ||
     renameDivValue.value == '' ||
@@ -327,9 +318,6 @@ const dragover = (e: DragEvent) => {
   if (e.dataTransfer === null) {
     throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
   }
-  if (dirData === null) {
-    throw new Error(`dirData error: ${JSON.stringify(dirData)}`)
-  }
   if (runtime.dragItemData === null) {
     e.dataTransfer.dropEffect = 'none'
     return
@@ -361,9 +349,6 @@ const dragover = (e: DragEvent) => {
 const dragenter = (e: DragEvent) => {
   if (e.dataTransfer === null) {
     throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
-  }
-  if (dirData === null) {
-    throw new Error(`dirData error: ${JSON.stringify(dirData)}`)
   }
   if (runtime.dragItemData === null) {
     e.dataTransfer.dropEffect = 'none'
@@ -404,7 +389,7 @@ const dragleave = (e: DragEvent) => {
 }
 
 const approachCenterEnd = () => {
-  if (dirData === null || dirData.children === undefined) {
+  if (dirData.children === undefined) {
     throw new Error(`dirData error: ${JSON.stringify(dirData)}`)
   }
   if (runtime.dragItemData === null || runtime.dragItemData.order === undefined) {
@@ -428,12 +413,15 @@ const drop = async (e: DragEvent) => {
   if (e.dataTransfer === null) {
     throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
   }
-  if (dirData === null || dirData.children === undefined) {
+  if (dirData.children === undefined || dirData.order === undefined) {
     throw new Error(`dirData error: ${JSON.stringify(dirData)}`)
   }
   if (runtime.dragItemData === null) {
     e.dataTransfer.dropEffect = 'none'
     return
+  }
+  if (runtime.dragItemData.order === undefined) {
+    throw new Error(`runtime.dragItemData error: ${JSON.stringify(runtime.dragItemData)}`)
   }
   try {
     let approach = dragApproach.value
@@ -463,10 +451,9 @@ const drop = async (e: DragEvent) => {
         )
         return
       }
-      //todo
       const existingItem = dirData.children.find((item) => {
         return (
-          item.dirName === runtime.dragItemData.dirName && item.uuid !== runtime.dragItemData.uuid
+          item.dirName === runtime.dragItemData?.dirName && item.uuid !== runtime.dragItemData.uuid
         )
       })
       if (existingItem) {
@@ -486,12 +473,17 @@ const drop = async (e: DragEvent) => {
             true
           )
           let oldOrder = existingItem.order
+          if (oldOrder === undefined) {
+            throw new Error(`oldOrder error: ${JSON.stringify(oldOrder)}`)
+          }
           dirData.children.splice(dirData.children.indexOf(existingItem), 1)
           for (let item of dirData.children) {
-            if (item.order < oldOrder) {
-              item.order++
-            } else {
-              break
+            if (item.order) {
+              if (item.order < oldOrder) {
+                item.order++
+              } else {
+                break
+              }
             }
           }
           approachCenterEnd()
@@ -499,6 +491,9 @@ const drop = async (e: DragEvent) => {
         return
       }
       let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(runtime.dragItemData.uuid)
+      if (dragItemDataFather === null || dragItemDataFather.children === undefined) {
+        throw new Error(`dragItemDataFather error: ${JSON.stringify(dragItemDataFather)}`)
+      }
       await window.electron.ipcRenderer.invoke(
         'moveToDirSample',
         libraryUtils.findDirPathByUuid(runtime.dragItemData.uuid),
@@ -521,9 +516,11 @@ const drop = async (e: DragEvent) => {
         libraryUtils.findDirPathByUuid(dirData.uuid),
         JSON.stringify(dirData.children)
       )
-      let flatUUID = libraryUtils.getAllUuids(
-        libraryUtils.getLibraryTreeByUUID(runtime.dragItemData.uuid)
-      )
+      let libraryTree = libraryUtils.getLibraryTreeByUUID(runtime.dragItemData.uuid)
+      if (libraryTree === null) {
+        throw new Error(`libraryTree error: ${JSON.stringify(libraryTree)}`)
+      }
+      let flatUUID = libraryUtils.getAllUuids(libraryTree)
       if (flatUUID.indexOf(runtime.songsArea.songListUUID) != -1) {
         runtime.songsArea.songListUUID = ''
       }
@@ -535,6 +532,9 @@ const drop = async (e: DragEvent) => {
       return
     } else if (approach == 'top' || approach == 'bottom') {
       let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(runtime.dragItemData.uuid)
+      if (fatherDirData?.children === undefined) {
+        throw new Error(`fatherDirData error: ${JSON.stringify(fatherDirData)}`)
+      }
       if (dragItemDataFather == fatherDirData) {
         // 两个dir在同一目录下
         if (approach == 'top' && dirData.order - runtime.dragItemData.order == 1) {
@@ -566,7 +566,8 @@ const drop = async (e: DragEvent) => {
         // 两个dir不在同一目录下
         const existingItem = fatherDirData.children.find((item) => {
           return (
-            item.dirName === runtime.dragItemData.dirName && item.uuid !== runtime.dragItemData.uuid
+            item.dirName === runtime.dragItemData?.dirName &&
+            item.uuid !== runtime.dragItemData.uuid
           )
         })
         if (existingItem) {
@@ -601,6 +602,9 @@ const drop = async (e: DragEvent) => {
               libraryUtils.findDirPathByUuid(fatherDirData.uuid),
               JSON.stringify(fatherDirData.children)
             )
+            if (dragItemDataFather === null || dragItemDataFather.children === undefined) {
+              throw new Error(`dragItemDataFather error: ${JSON.stringify(dragItemDataFather)}`)
+            }
             dragItemDataFather.children.splice(
               dragItemDataFather.children.indexOf(runtime.dragItemData),
               1
@@ -612,9 +616,11 @@ const drop = async (e: DragEvent) => {
               JSON.stringify(dragItemDataFather.children)
             )
           }
-          let flatUUID = libraryUtils.getAllUuids(
-            libraryUtils.getLibraryTreeByUUID(runtime.dragItemData.uuid)
-          )
+          let libraryTree = libraryUtils.getLibraryTreeByUUID(runtime.dragItemData.uuid)
+          if (libraryTree === null) {
+            throw new Error(`libraryTree error: ${JSON.stringify(libraryTree)}`)
+          }
+          let flatUUID = libraryUtils.getAllUuids(libraryTree)
           if (flatUUID.indexOf(runtime.songsArea.songListUUID) != -1) {
             runtime.songsArea.songListUUID = ''
           }
@@ -630,6 +636,9 @@ const drop = async (e: DragEvent) => {
           libraryUtils.findDirPathByUuid(runtime.dragItemData.uuid),
           libraryUtils.findDirPathByUuid(fatherDirData.uuid)
         )
+        if (dragItemDataFather === null || dragItemDataFather.children === undefined) {
+          throw new Error(`dragItemDataFather error: ${JSON.stringify(dragItemDataFather)}`)
+        }
         let removedElement = dragItemDataFather.children.splice(
           dragItemDataFather.children.indexOf(runtime.dragItemData),
           1
@@ -653,9 +662,11 @@ const drop = async (e: DragEvent) => {
           libraryUtils.findDirPathByUuid(fatherDirData.uuid),
           JSON.stringify(fatherDirData.children)
         )
-        let flatUUID = libraryUtils.getAllUuids(
-          libraryUtils.getLibraryTreeByUUID(runtime.dragItemData.uuid)
-        )
+        let libraryTree = libraryUtils.getLibraryTreeByUUID(runtime.dragItemData.uuid)
+        if (libraryTree === null) {
+          throw new Error(`libraryTree error: ${JSON.stringify(libraryTree)}`)
+        }
+        let flatUUID = libraryUtils.getAllUuids(libraryTree)
         if (flatUUID.indexOf(runtime.songsArea.songListUUID) != -1) {
           runtime.songsArea.songListUUID = ''
         }
@@ -670,7 +681,11 @@ const drop = async (e: DragEvent) => {
   } catch (error) {}
 }
 const indentWidth = ref(0)
-indentWidth.value = (libraryUtils.getDepthByUuid(props.uuid) - 2) * 10
+let depth = libraryUtils.getDepthByUuid(props.uuid)
+if (depth === undefined) {
+  throw new Error(`depth error: ${JSON.stringify(depth)}`)
+}
+indentWidth.value = (depth - 2) * 10
 </script>
 <template>
   <div

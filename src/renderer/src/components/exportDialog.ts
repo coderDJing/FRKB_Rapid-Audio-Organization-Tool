@@ -1,15 +1,15 @@
 import { createVNode, render } from 'vue'
-import dropIntoDialog from './dropIntoDialog.vue'
+import exportDialog from './exportDialog.vue'
 
-export default ({ songListUuid, libraryName }) => {
+export default ({ title }: { title: string }) => {
   return new Promise((resolve, reject) => {
     const div = document.createElement('div')
     document.body.appendChild(div)
 
-    const confirmCallback = (result) => {
+    const confirmCallback = (data: { folderPathVal: string; deleteSongsAfterExport: boolean }) => {
       render(null, div)
       div.remove()
-      resolve(result)
+      resolve(data)
     }
 
     const cancelCallback = () => {
@@ -17,9 +17,8 @@ export default ({ songListUuid, libraryName }) => {
       div.remove()
       resolve('cancel')
     }
-    const vnode = createVNode(dropIntoDialog, {
-      songListUuid,
-      libraryName,
+    const vnode = createVNode(exportDialog, {
+      title,
       confirmCallback,
       cancelCallback
     })

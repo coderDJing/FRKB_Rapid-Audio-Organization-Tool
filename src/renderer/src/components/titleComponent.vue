@@ -7,7 +7,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { ref } from 'vue'
 import menuComponent from './menu.vue'
 import confirm from '@renderer/components/confirmDialog'
-import scanNewSongDialog from '@renderer/components/scanNewSongDialog.js'
+import scanNewSongDialog from '@renderer/components/scanNewSongDialog'
 import { t } from '@renderer/utils/translate'
 import hotkeys from 'hotkeys-js'
 const emit = defineEmits(['openDialog'])
