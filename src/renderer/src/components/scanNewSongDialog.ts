@@ -1,11 +1,10 @@
 import { createVNode, render } from 'vue'
 import scanNewSongDialog from './scanNewSongDialog.vue'
-
-export default ({ libraryName, songListUuid }) => {
+export default ({ libraryName, songListUuid }: { libraryName: string; songListUuid: string }) => {
   return new Promise((resolve, reject) => {
     const div = document.createElement('div')
     document.body.appendChild(div)
-    const confirmCallback = (item) => {
+    const confirmCallback = () => {
       render(null, div)
       div.remove()
       resolve('confirm')
