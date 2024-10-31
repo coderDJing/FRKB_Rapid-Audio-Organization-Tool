@@ -1,16 +1,16 @@
-<script setup>
-import previousSong from '@renderer/assets/previousSong.png'
-import fastBackward from '@renderer/assets/fastBackward.png'
-import play from '@renderer/assets/play.png'
-import pause from '@renderer/assets/pause.png'
-import fastForward from '@renderer/assets/fastForward.png'
-import nextSong from '@renderer/assets/nextSong.png'
-import more from '@renderer/assets/more.png'
-import { ref, onUnmounted, watch } from 'vue'
+<script setup lang="ts">
+import previousSong from '@renderer/assets/previousSong.png?asset'
+import fastBackward from '@renderer/assets/fastBackward.png?asset'
+import play from '@renderer/assets/play.png?asset'
+import pause from '@renderer/assets/pause.png?asset'
+import fastForward from '@renderer/assets/fastForward.png?asset'
+import nextSong from '@renderer/assets/nextSong.png?asset'
+import more from '@renderer/assets/more.png?asset'
+import { ref, onUnmounted, watch, useTemplateRef } from 'vue'
 import { v4 as uuidV4 } from 'uuid'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
-import shortcutIcon from '@renderer/assets/shortcutIcon.png'
+import shortcutIcon from '@renderer/assets/shortcutIcon.png?asset'
 import { t } from '@renderer/utils/translate'
 const uuid = uuidV4()
 const runtime = useRuntimeStore()
@@ -36,7 +36,7 @@ const emits = defineEmits([
   'exportTrack'
 ])
 
-const setPlayingValue = (value) => {
+const setPlayingValue = (value: boolean) => {
   playing.value = value
 }
 
@@ -50,7 +50,7 @@ const handlePlay = () => {
   emits('play')
 }
 
-let fastForwardInterval = null
+let fastForwardInterval: NodeJS.Timeout
 const handleFastForwardMouseup = () => {
   clearInterval(fastForwardInterval)
   document.removeEventListener('mouseup', handleFastForwardMouseup)
@@ -63,7 +63,7 @@ const handleFastForward = () => {
   document.addEventListener('mouseup', handleFastForwardMouseup)
 }
 
-let fastBackwardInterval = null
+let fastBackwardInterval: NodeJS.Timeout
 const handleFastBackwardMouseup = () => {
   clearInterval(fastBackwardInterval)
   document.removeEventListener('mouseup', handleFastBackwardMouseup)
@@ -104,12 +104,12 @@ const handelMoreClick = () => {
   moreMenuShow.value = true
 }
 
-const previousSongRef = ref(null)
-const fastBackwardRef = ref(null)
-const playRef = ref(null)
-const pauseRef = ref(null)
-const fastForwardRef = ref(null)
-const nextSongRef = ref(null)
+const previousSongRef = useTemplateRef('previousSongRef')
+const fastBackwardRef = useTemplateRef('fastBackwardRef')
+const playRef = useTemplateRef('playRef')
+const pauseRef = useTemplateRef('pauseRef')
+const fastForwardRef = useTemplateRef('fastForwardRef')
+const nextSongRef = useTemplateRef('nextSongRef')
 
 const delSong = () => {
   emits('delSong')
@@ -140,27 +140,27 @@ const exportTrack = () => {
     <div ref="previousSongRef" class="buttonIcon" @click="handlePreviousSong()">
       <img :src="previousSong" draggable="false" />
     </div>
-    <bubbleBox :dom="previousSongRef" title="上一首" shortcut="W" :left="60" />
+    <bubbleBox :dom="previousSongRef || undefined" title="上一首" shortcut="W" :left="60" />
     <div ref="fastBackwardRef" class="buttonIcon" @mousedown="handleFastBackward()">
       <img :src="fastBackward" draggable="false" />
     </div>
-    <bubbleBox :dom="fastBackwardRef" title="快退" shortcut="A" :left="100" />
+    <bubbleBox :dom="fastBackwardRef || undefined" title="快退" shortcut="A" :left="100" />
     <div ref="playRef" class="buttonIcon" v-show="!playing" @click="handlePlay()">
       <img :src="play" draggable="false" />
     </div>
-    <bubbleBox :dom="playRef" title="播放" shortcut="Space" :left="150" />
+    <bubbleBox :dom="playRef || undefined" title="播放" shortcut="Space" :left="150" />
     <div ref="pauseRef" class="buttonIcon" v-show="playing" @click="handlePause()">
       <img :src="pause" draggable="false" />
     </div>
-    <bubbleBox :dom="pauseRef" title="暂停" shortcut="Space" :left="150" />
+    <bubbleBox :dom="pauseRef || undefined" title="暂停" shortcut="Space" :left="150" />
     <div ref="fastForwardRef" class="buttonIcon" @mousedown="handleFastForward()">
       <img :src="fastForward" draggable="false" />
     </div>
-    <bubbleBox :dom="fastForwardRef" title="快进" shortcut="D" :left="190" />
+    <bubbleBox :dom="fastForwardRef || undefined" title="快进" shortcut="D" :left="190" />
     <div ref="nextSongRef" class="buttonIcon" @click="handleNextSong()">
       <img :src="nextSong" draggable="false" />
     </div>
-    <bubbleBox :dom="nextSongRef" title="下一首" shortcut="S" :left="230" />
+    <bubbleBox :dom="nextSongRef || undefined" title="下一首" shortcut="S" :left="230" />
     <div class="buttonIcon" @click.stop="handelMoreClick()">
       <img :src="more" draggable="false" />
     </div>
