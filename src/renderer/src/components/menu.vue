@@ -1,5 +1,5 @@
-<script setup>
-import { watch, ref } from 'vue'
+<script setup lang="ts">
+import { watch, ref, PropType } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidV4 } from 'uuid'
 import { t } from '@renderer/utils/translate'
@@ -19,7 +19,7 @@ watch(
 )
 const props = defineProps({
   menuArr: {
-    type: Array,
+    type: Array as PropType<{ name: string; shortcutKey?: string }[][]>,
     required: true
   },
   modelValue: {
@@ -91,7 +91,7 @@ watch(
   }
 )
 
-const menuButtonClick = (item) => {
+const menuButtonClick = (item: { name: string; shortcutKey?: string }) => {
   runtime.activeMenuUUID = ''
   emits('menuButtonClick', item)
 }

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import chromeMaximize from '@renderer/assets/chrome-maximize.svg'
-import chromeRestore from '@renderer/assets/chrome-restore.svg'
-import chromeMiniimize from '@renderer/assets/chrome-minimize.svg'
-import logo from '@renderer/assets/logo.png'
+import chromeMaximize from '@renderer/assets/chrome-maximize.svg?asset'
+import chromeRestore from '@renderer/assets/chrome-restore.svg?asset'
+import chromeMiniimize from '@renderer/assets/chrome-minimize.svg?asset'
+import logo from '@renderer/assets/logo.png?asset'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { ref } from 'vue'
 import menuComponent from './menu.vue'

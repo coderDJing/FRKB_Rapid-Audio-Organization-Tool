@@ -1,10 +1,10 @@
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onUnmounted, onMounted } from 'vue'
 import singleCheckbox from './singleCheckbox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import selectSongListDialog from './selectSongListDialog.vue'
 import libraryUtils from '@renderer/utils/libraryUtils'
-import hintIcon from '@renderer/assets/hint.png'
+import hintIcon from '@renderer/assets/hint.png?asset'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'
@@ -19,10 +19,12 @@ const props = defineProps({
     type: String
   },
   confirmCallback: {
-    type: Function
+    type: Function,
+    required: true
   },
   cancelCallback: {
-    type: Function
+    type: Function,
+    required: true
   }
 })
 
@@ -46,7 +48,7 @@ if (localStorageData == null) {
   localStorageData = JSON.parse(localStorageData)
   settingData.value = localStorageData
 }
-
+//todo
 const runtime = useRuntimeStore()
 
 runtime.activeMenuUUID = ''
