@@ -1,18 +1,23 @@
 import { createVNode, render } from 'vue'
 import dropIntoDialog from './dropIntoDialog.vue'
-import { IImportSongsFormData } from 'src/types/globals'
 
 interface IArgs {
   songListUuid: string
   libraryName: string
 }
-
-export default ({ songListUuid, libraryName }: IArgs) => {
+interface IResult {
+  importingSongListUUID: string
+  songListPath: string
+  isDeleteSourceFile: boolean
+  isComparisonSongFingerprint: boolean
+  isPushSongFingerprintLibrary: boolean
+}
+export default ({ songListUuid, libraryName }: IArgs): Promise<IResult | 'cancel'> => {
   return new Promise((resolve, reject) => {
     const div = document.createElement('div')
     document.body.appendChild(div)
 
-    const confirmCallback = (result: IImportSongsFormData) => {
+    const confirmCallback = (result: IResult) => {
       render(null, div)
       div.remove()
       resolve(result)
