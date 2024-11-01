@@ -1,8 +1,8 @@
-<script setup>
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted, watch, nextTick, useTemplateRef } from 'vue'
 import WaveSurfer from 'wavesurfer.js'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import musicIcon from '@renderer/assets/musicIcon.png'
+import musicIcon from '@renderer/assets/musicIcon.png?asset'
 import playerControls from '../../components/playerControls.vue'
 import hotkeys from 'hotkeys-js'
 import confirm from '@renderer/components/confirmDialog'
@@ -14,14 +14,17 @@ import * as realtimeBpm from 'realtime-bpm-analyzer'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 
 const runtime = useRuntimeStore()
-const waveform = ref(null)
-let wavesurferInstance = null
+const waveform = useTemplateRef('waveform')
+let wavesurferInstance: WaveSurfer | null = null
 
 const canvas = document.createElement('canvas')
 canvas.height = 50
 const ctx = canvas.getContext('2d')
 
 // Define the waveform gradient
+if (ctx === null) {
+  throw new Error('ctx is null')
+}
 const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
 gradient.addColorStop(0, '#cccccc') // Top color
 gradient.addColorStop(1, '#cccccc') // Bottom color
@@ -31,9 +34,12 @@ progressGradient.addColorStop(0, '#0078d4') // Top color
 progressGradient.addColorStop(1, '#0078d4') // Bottom color
 const waveformShow = ref(false)
 
-const playerControlsRef = ref(null)
+const playerControlsRef = useTemplateRef('playerControlsRef')
 onMounted(() => {
   // 初始化 WaveSurfer 实例
+  if (waveform.value === null) {
+    throw new Error('waveform is null')
+  }
   wavesurferInstance = WaveSurfer.create({
     container: waveform.value,
     waveColor: gradient,
@@ -45,15 +51,22 @@ onMounted(() => {
   })
 
   // Hover effect
+  // Hover effect
   {
-    const hover = document.querySelector('#hover')
-    const waveform = document.querySelector('#waveform')
+    const hover = document.querySelector<HTMLElement>('#hover')
+    if (hover === null) {
+      throw new Error('hover is null')
+    }
+    const waveform = document.querySelector<HTMLElement>('#waveform')
+    if (waveform === null) {
+      throw new Error('waveform is null')
+    }
     waveform.addEventListener('pointermove', (e) => (hover.style.width = `${e.offsetX}px`))
   }
 
   // Current time & duration
   {
-    const formatTime = (seconds) => {
+    const formatTime = (seconds: number) => {
       const minutes = Math.floor(seconds / 60)
       const secondsRemainder = Math.round(seconds) % 60
       const paddedSeconds = `0${secondsRemainder}`.slice(-2)
@@ -61,7 +74,13 @@ onMounted(() => {
     }
 
     const timeEl = document.querySelector('#time')
+    if (timeEl === null) {
+      throw new Error('timeEl is null')
+    }
     const durationEl = document.querySelector('#duration')
+    if (durationEl === null) {
+      throw new Error('durationEl is null')
+    }
     wavesurferInstance.on('decode', (duration) => (durationEl.textContent = formatTime(duration)))
     wavesurferInstance.on(
       'timeupdate',
@@ -71,14 +90,17 @@ onMounted(() => {
       console.log('finish')
     })
     wavesurferInstance.on('pause', () => {
-      playerControlsRef.value.setPlayingValue(false)
+      playerControlsRef.value?.setPlayingValue(false)
     })
     wavesurferInstance.on('play', () => {
-      playerControlsRef.value.setPlayingValue(true)
+      playerControlsRef.value?.setPlayingValue(true)
     })
     wavesurferInstance.on('error', async (error) => {
       if (error === undefined) {
         return
+      }
+      if (runtime.playingData.playingSong === null) {
+        throw new Error('playingData.playingSong is null')
       }
       let filePath = runtime.playingData.playingSong.filePath
       let res = await confirm({
@@ -109,7 +131,7 @@ watch(
   () => {
     if (runtime.playingData.playingSong === null) {
       waveformShow.value = false
-      wavesurferInstance.empty()
+      wavesurferInstance?.empty()
       runtime.playingData.playingSongListUUID = ''
     }
   }
@@ -125,10 +147,13 @@ onUnmounted(() => {
 const songInfoShow = ref(false)
 const coverBlobUrl = ref('')
 const audioContext = new AudioContext()
-const bpm = ref('')
+const bpm = ref<number | string>('')
 window.electron.ipcRenderer.on('readedSongFile', async (event, audioData) => {
   const uint8Buffer = audioData
   const blob = new Blob([uint8Buffer])
+  if (runtime.playingData.playingSong === null) {
+    throw new Error('playingData.playingSong is null')
+  }
   if (runtime.playingData.playingSong.cover) {
     if (coverBlobUrl.value) {
       URL.revokeObjectURL(coverBlobUrl.value)
@@ -145,7 +170,7 @@ window.electron.ipcRenderer.on('readedSongFile', async (event, audioData) => {
   }
   waveformShow.value = true
   bpm.value = ''
-  await wavesurferInstance.loadBlob(blob)
+  await wavesurferInstance?.loadBlob(blob)
   const arrayBuffer = uint8Buffer.buffer
   const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
   realtimeBpm.analyzeFullBuffer(audioBuffer).then((topCandidates) => {
@@ -156,7 +181,7 @@ window.electron.ipcRenderer.on('readedSongFile', async (event, audioData) => {
 onMounted(() => {
   hotkeys('space', 'windowGlobal', () => {
     if (waveformShow.value) {
-      if (wavesurferInstance.isPlaying()) {
+      if (wavesurferInstance?.isPlaying()) {
         pause()
       } else {
         play()
@@ -220,24 +245,27 @@ onMounted(() => {
 })
 
 const play = () => {
-  wavesurferInstance.play()
+  wavesurferInstance?.play()
 }
 const pause = () => {
-  wavesurferInstance.pause()
+  wavesurferInstance?.pause()
 }
 
 const fastForward = () => {
-  wavesurferInstance.skip(10)
+  wavesurferInstance?.skip(10)
 }
 
 const fastBackward = () => {
-  wavesurferInstance.skip(-5)
+  wavesurferInstance?.skip(-5)
 }
 
 // let nextSongDebounceTimeout = null
 const nextSong = () => {
+  if (runtime.playingData.playingSong === null) {
+    throw new Error('playingData.playingSong is null')
+  }
   let index = runtime.playingData.playingSongListData.findIndex((item) => {
-    return item.filePath === runtime.playingData.playingSong.filePath
+    return item.filePath === runtime.playingData.playingSong?.filePath
   })
   if (index === runtime.playingData.playingSongListData.length - 1) {
     return
@@ -253,8 +281,11 @@ const nextSong = () => {
 
 // let previousSongDebounceTimeout = null
 const previousSong = () => {
+  if (runtime.playingData.playingSong === null) {
+    throw new Error('playingData.playingSong is null')
+  }
   let index = runtime.playingData.playingSongListData.findIndex((item) => {
-    return item.filePath === runtime.playingData.playingSong.filePath
+    return item.filePath === runtime.playingData.playingSong?.filePath
   })
   if (index === 0) {
     return
@@ -276,6 +307,9 @@ const delSong = async () => {
   })
   showDelConfirm = false
   if (res === 'confirm') {
+    if (runtime.playingData.playingSong === null) {
+      throw new Error('playingData.playingSong is null')
+    }
     let filePath = runtime.playingData.playingSong.filePath
     window.electron.ipcRenderer.send('delSongs', [filePath])
     let index = runtime.playingData.playingSongListData.findIndex((item) => {
@@ -303,6 +337,7 @@ const moveToLikeLibrary = () => {
   selectSongListDialogLibraryName.value = '精选库'
   selectSongListDialogShow.value = true
 }
+//todo
 const selectSongListDialogConfirm = async (item) => {
   selectSongListDialogShow.value = false
   if (item === runtime.playingData.playingSongListUUID) {
@@ -365,7 +400,7 @@ const exportTrack = async () => {
   }
 }
 
-const bpmDomRef = ref(null)
+const bpmDomRef = useTemplateRef('bpmDomRef')
 </script>
 <template>
   <div
@@ -457,7 +492,7 @@ const bpmDomRef = ref(null)
     >
       {{ bpm }}
     </div>
-    <bubbleBox :dom="bpmDomRef" title="BPM" :right="1" :width="60" />
+    <bubbleBox :dom="bpmDomRef || undefined" title="BPM" :right="1" :width="60" />
   </div>
   <selectSongListDialog
     v-if="selectSongListDialogShow"

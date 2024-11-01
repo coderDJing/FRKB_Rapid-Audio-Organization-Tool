@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { watch, ref, nextTick, onUnmounted, computed, onMounted } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
@@ -10,7 +10,9 @@ import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import rightClickMenu from '../../components/rightClickMenu'
 import exportDialog from '../../components/exportDialog'
 import { t } from '@renderer/utils/translate'
-let columnData = ref([])
+import { ISongsAreaColumn } from 'src/types/globals'
+
+let columnData = ref<ISongsAreaColumn[]>([])
 if (localStorage.getItem('songColumnData')) {
   columnData.value = JSON.parse(localStorage.getItem('songColumnData'))
 } else {
