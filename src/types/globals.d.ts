@@ -69,6 +69,13 @@ interface IImportSongsFormData {
   isPushSongFingerprintLibrary: boolean
   songListUUID: string
 }
+
+interface ISongsAreaColumn {
+  columnName: string
+  key: string
+  show: boolean
+  width: number
+}
 export {
   md5,
   IDir,
@@ -77,5 +84,6 @@ export {
   ISettingConfig,
   ILanguageDict,
   IMenu,
-  IImportSongsFormData
+  IImportSongsFormData,
+  ISongsAreaColumn
 }

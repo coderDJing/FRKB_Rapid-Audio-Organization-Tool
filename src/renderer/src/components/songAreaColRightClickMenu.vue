@@ -1,9 +1,10 @@
-<script setup>
-import { watch, ref } from 'vue'
+<script setup lang="ts">
+import { watch, ref, PropType } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidV4 } from 'uuid'
-import tickIcon from '@renderer/assets/tickIcon.png'
+import tickIcon from '@renderer/assets/tickIcon.png?asset'
 import { t } from '@renderer/utils/translate'
+import { ISongsAreaColumn } from 'src/types/globals'
 const uuid = uuidV4()
 const runtime = useRuntimeStore()
 
@@ -18,7 +19,7 @@ watch(
 )
 const props = defineProps({
   columnData: {
-    type: Array,
+    type: Array as PropType<ISongsAreaColumn[]>,
     required: true
   },
   modelValue: {
@@ -39,7 +40,7 @@ watch(
     }
   }
 )
-const menuButtonClick = (item) => {
+const menuButtonClick = (item: ISongsAreaColumn) => {
   if (props.columnData.filter((col) => col.show).length == 1 && item.show) {
     return
   }

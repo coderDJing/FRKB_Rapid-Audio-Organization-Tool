@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { onUnmounted, onMounted, ref } from 'vue'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
@@ -33,13 +33,18 @@ const languageChanged = async () => {
   )
 }
 
-const audioExt = ref({
+type AudioExt = {
+  mp3: boolean
+  wav: boolean
+  flac: boolean
+}
+const audioExt = ref<AudioExt>({
   mp3: runtime.setting.audioExt.indexOf('.mp3') != -1,
   wav: runtime.setting.audioExt.indexOf('.wav') != -1,
   flac: runtime.setting.audioExt.indexOf('.flac') != -1
 })
 
-let audioExtOld = JSON.parse(JSON.stringify(audioExt.value))
+let audioExtOld = JSON.parse(JSON.stringify(audioExt.value)) as AudioExt
 const extChange = async () => {
   if (runtime.isProgressing) {
     audioExt.value = { ...audioExtOld }
@@ -53,8 +58,10 @@ const extChange = async () => {
   audioExtOld = JSON.parse(JSON.stringify(audioExt.value))
   let audioExtArr = []
   for (let key in audioExt.value) {
-    if (audioExt.value[key]) {
-      audioExtArr.push('.' + key)
+    if (['mp3', 'wav', 'flac'].includes(key as 'mp3' | 'wav' | 'flac')) {
+      if (audioExt.value[key as 'mp3' | 'wav' | 'flac']) {
+        audioExtArr.push('.' + key)
+      }
     }
   }
   runtime.setting.audioExt = audioExtArr

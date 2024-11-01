@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue'
 import libraryItem from '@renderer/components/libraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -16,7 +16,10 @@ const props = defineProps({
   }
 })
 let libraryData = libraryUtils.getLibraryTreeByUUID(props.uuid)
-let hoverTimer = null
+if (libraryData === null) {
+  throw new Error(`libraryData error: ${JSON.stringify(libraryData)}`)
+}
+let hoverTimer: NodeJS.Timeout
 let collapseButtonHintShow = ref(false)
 const iconMouseover = () => {
   hoverTimer = setTimeout(() => {
@@ -29,17 +32,17 @@ const iconMouseout = () => {
 }
 
 const menuArr = ref([[{ menuName: '新建歌单' }, { menuName: '新建文件夹' }]])
-const contextmenuEvent = async (event) => {
+const contextmenuEvent = async (event: MouseEvent) => {
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
   if (result !== 'cancel') {
     if (result.menuName == '新建歌单') {
-      libraryData.children.unshift({
+      libraryData.children?.unshift({
         uuid: uuidV4(),
         type: 'songList',
         dirName: ''
       })
     } else if (result.menuName == '新建文件夹') {
-      libraryData.children.unshift({
+      libraryData.children?.unshift({
         uuid: uuidV4(),
         type: 'dir',
         dirName: ''
@@ -53,7 +56,10 @@ const collapseButtonHandleClick = async () => {
 }
 
 const dragApproach = ref('')
-const dragover = (e) => {
+const dragover = (e: DragEvent) => {
+  if (e.dataTransfer === null) {
+    throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
+  }
   if (runtime.dragItemData === null) {
     e.dataTransfer.dropEffect = 'none'
     return
@@ -61,7 +67,10 @@ const dragover = (e) => {
   e.dataTransfer.dropEffect = 'move'
   dragApproach.value = 'top'
 }
-const dragenter = (e) => {
+const dragenter = (e: DragEvent) => {
+  if (e.dataTransfer === null) {
+    throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
+  }
   if (runtime.dragItemData === null) {
     e.dataTransfer.dropEffect = 'none'
     return
@@ -69,21 +78,33 @@ const dragenter = (e) => {
   e.dataTransfer.dropEffect = 'move'
   dragApproach.value = 'top'
 }
-const dragleave = (e) => {
+const dragleave = (e: DragEvent) => {
   if (runtime.dragItemData === null) {
+    if (e.dataTransfer === null) {
+      throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
+    }
     e.dataTransfer.dropEffect = 'none'
     return
   }
   dragApproach.value = ''
 }
-const drop = async (e) => {
+const drop = async (e: DragEvent) => {
   if (runtime.dragItemData === null) {
+    if (e.dataTransfer === null) {
+      throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
+    }
     e.dataTransfer.dropEffect = 'none'
     return
   }
   try {
     dragApproach.value = ''
     let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(runtime.dragItemData.uuid)
+    if (dragItemDataFather === null) {
+      throw new Error('dragItemDataFather is null')
+    }
+    if (libraryData.children === undefined) {
+      throw new Error('libraryData.children is undefined')
+    }
     if (dragItemDataFather.uuid == props.uuid) {
       if (libraryData.children[libraryData.children.length - 1].uuid == runtime.dragItemData.uuid) {
         return
@@ -102,11 +123,19 @@ const drop = async (e) => {
       )
       return
     } else {
+      if (runtime.dragItemData === null) {
+        throw new Error('runtime.dragItemData is null')
+      }
       const existingItem = libraryData.children.find((item) => {
         return (
-          item.dirName === runtime.dragItemData.dirName && item.uuid !== runtime.dragItemData.uuid
+          item.dirName === runtime.dragItemData?.dirName && item.uuid !== runtime.dragItemData.uuid
         )
       })
+      if (dragItemDataFather.children === undefined) {
+        throw new Error(
+          `dragItemDataFather.children error: ${JSON.stringify(dragItemDataFather.children)}`
+        )
+      }
       if (existingItem) {
         let res = await confirm({
           title: '移动',
@@ -210,7 +239,7 @@ const drop = async (e) => {
         </transition>
       </div>
     </div>
-    <div class="unselectable libraryArea" v-if="libraryData.children.length">
+    <div class="unselectable libraryArea" v-if="libraryData.children?.length">
       <template v-for="item of libraryData.children" :key="item.uuid">
         <libraryItem
           :uuid="item.uuid"

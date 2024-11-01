@@ -37,8 +37,15 @@ window.electron.ipcRenderer.on('mainWin-max', (event, bool) => {
 })
 
 const fillColor = ref('#9d9d9d')
+type MenuItem = { name: string; shortcutKey?: string }
 
-const menuArr = ref([
+type Menu = {
+  name: string
+  show: boolean
+  subMenu: MenuItem[][]
+}
+
+const menuArr = ref<Menu[]>([
   {
     name: '文件(F)',
     show: false,
@@ -90,18 +97,21 @@ hotkeys('alt+h', 'windowGlobal', () => {
   })
 })
 
-hotkeys('alt+q', 'windowGlobal', async () => {
-  await scanNewSongDialog({ libraryName: '筛选库', songListUuid: '' })
-  return
+hotkeys('alt+q', 'windowGlobal', () => {
+  ;(async () => {
+    await scanNewSongDialog({ libraryName: '筛选库', songListUuid: '' })
+  })()
 })
-hotkeys('alt+e', 'windowGlobal', async () => {
-  await scanNewSongDialog({ libraryName: '精选库', songListUuid: '' })
-  return
+
+hotkeys('alt+e', 'windowGlobal', () => {
+  ;(async () => {
+    await scanNewSongDialog({ libraryName: '精选库', songListUuid: '' })
+  })()
 })
-const menuClick = (item) => {
+const menuClick = (item: Menu) => {
   item.show = true
 }
-const menuButtonClick = async (item) => {
+const menuButtonClick = async (item: MenuItem) => {
   if (
     item.name === '筛选库 导入新曲目' ||
     item.name === '精选库 导入新曲目' ||
@@ -130,7 +140,7 @@ const menuButtonClick = async (item) => {
   emit('openDialog', item.name)
 }
 
-const switchMenu = (direction, menuName) => {
+const switchMenu = (direction: 'next' | 'prev', menuName: string) => {
   let index = menuArr.value.findIndex((item) => item.name === menuName)
   if (direction === 'next') {
     if (menuArr.value.length - 1 === index) {
@@ -147,7 +157,7 @@ const switchMenu = (direction, menuName) => {
   }
   menuArr.value[index].show = true
 }
-const titleMenuButtonMouseEnter = (item) => {
+const titleMenuButtonMouseEnter = (item: Menu) => {
   if (menuArr.value.findIndex((item) => item.show === true) === -1) {
     return
   }
