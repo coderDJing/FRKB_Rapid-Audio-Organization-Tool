@@ -1,16 +1,23 @@
-<script setup>
-import listGrey from '@renderer/assets/list-grey.png'
-import listWhite from '@renderer/assets/list-white.png'
-import likeGrey from '@renderer/assets/like-grey.png'
-import likeWhite from '@renderer/assets/like-white.png'
-import settingGrey from '@renderer/assets/setting-grey.png'
-import settingWhite from '@renderer/assets/setting-white.png'
+<script setup lang="ts">
+import listGrey from '@renderer/assets/list-grey.png?asset'
+import listWhite from '@renderer/assets/list-white.png?asset'
+import likeGrey from '@renderer/assets/like-grey.png?asset'
+import likeWhite from '@renderer/assets/like-white.png?asset'
+import settingGrey from '@renderer/assets/setting-grey.png?asset'
+import settingWhite from '@renderer/assets/setting-white.png?asset'
 import { ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import settingDialog from '@renderer/components/settingDialog.vue'
 import { t } from '@renderer/utils/translate'
 const emit = defineEmits(['librarySelectedChange'])
-const iconArr = ref([
+type Icon = {
+  name: '筛选库' | '精选库'
+  grey: string
+  white: string
+  src: string
+  showAlt: boolean
+}
+const iconArr = ref<Icon[]>([
   {
     name: '筛选库',
     grey: listGrey,
@@ -31,7 +38,7 @@ const selectedIcon = ref(iconArr.value[0])
 selectedIcon.value.src = selectedIcon.value.white
 
 const runtime = useRuntimeStore()
-const clickIcon = (item) => {
+const clickIcon = (item: Icon) => {
   if (item.name == selectedIcon.value.name) {
     return
   }
@@ -42,14 +49,14 @@ const clickIcon = (item) => {
 }
 
 const settingDialogShow = ref(false)
-const clickButtomIcon = (item) => {
+const clickButtomIcon = (item: ButtomIcon) => {
   if (item.name == '设置') {
     settingDialogShow.value = true
     return
   }
 }
-let hoverTimer = null
-const iconMouseover = (item) => {
+let hoverTimer: NodeJS.Timeout
+const iconMouseover = (item: Icon | ButtomIcon) => {
   if (selectedIcon.value != item) {
     item.src = item.white
   }
@@ -57,15 +64,21 @@ const iconMouseover = (item) => {
     item.showAlt = true
   }, 500)
 }
-const iconMouseout = (item) => {
+const iconMouseout = (item: Icon | ButtomIcon) => {
   clearTimeout(hoverTimer)
   if (selectedIcon.value != item) {
     item.src = item.grey
   }
   item.showAlt = false
 }
-
-const buttomIconArr = ref([
+type ButtomIcon = {
+  name: '设置'
+  grey: string
+  white: string
+  src: string
+  showAlt: boolean
+}
+const buttomIconArr = ref<ButtomIcon[]>([
   {
     name: '设置',
     grey: settingGrey,
@@ -75,7 +88,7 @@ const buttomIconArr = ref([
   }
 ])
 
-const libraryHandleClick = (item) => {
+const libraryHandleClick = (item: Icon) => {
   emit('librarySelectedChange', item)
 }
 </script>
@@ -122,10 +135,7 @@ const libraryHandleClick = (item) => {
         @mouseover="iconMouseover(item)"
         @mouseout="iconMouseout(item)"
       >
-        <div
-          style="width: 2px; height: 100%"
-          :style="{ backgroundColor: item.name == selectedIcon.name ? '#0078d4' : '' }"
-        ></div>
+        <div style="width: 2px; height: 100%"></div>
         <div
           style="
             flex-grow: 1;

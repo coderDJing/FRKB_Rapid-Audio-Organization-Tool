@@ -7,10 +7,11 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import { v4 as uuidV4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog'
 import hotkeys from 'hotkeys-js'
-import listIcon from '@renderer/assets/listIcon.png'
+import listIcon from '@renderer/assets/listIcon.png?asset'
 import utils from '../utils/utils'
 import { t } from '@renderer/utils/translate'
 import emitter from '../utils/mitt'
+import { IDir } from 'src/types/globals'
 const uuid = uuidV4()
 const props = defineProps({
   libraryName: {
@@ -22,7 +23,7 @@ const props = defineProps({
 const runtime = useRuntimeStore()
 runtime.activeMenuUUID = ''
 runtime.selectSongListDialogShow = true
-let recentDialogSelectedSongListUUID = []
+let recentDialogSelectedSongListUUID: string[] = []
 let localStorageRecentDialogSelectedSongListUUID = localStorage.getItem(
   'recentDialogSelectedSongListUUID' + props.libraryName
 )
@@ -34,8 +35,8 @@ if (recentDialogSelectedSongListUUID.length !== 0) {
   runtime.dialogSelectedSongListUUID = recentDialogSelectedSongListUUID[index]
 }
 
-const recentSongListArr = ref([])
-let delRecentDialogSelectedSongListUUID = []
+const recentSongListArr = ref<IDir[]>([])
+let delRecentDialogSelectedSongListUUID: string[] = []
 watch(
   () => runtime.libraryTree,
   () => {
@@ -63,11 +64,20 @@ watch(
   { deep: true, immediate: true }
 )
 
-let filtrateLibraryUUID = runtime.libraryTree.children.find(
-  (element) => element.type === 'library' && element.dirName == props.libraryName
-).uuid
+let filtrateLibraryUUID: string | undefined
+if (runtime.libraryTree && runtime.libraryTree.children) {
+  filtrateLibraryUUID = runtime.libraryTree.children.find(
+    (element) => element.type === 'library' && element.dirName === props.libraryName
+  )?.uuid
+}
+if (filtrateLibraryUUID === undefined) {
+  throw new Error(`filtrateLibraryUUID error: ${JSON.stringify(filtrateLibraryUUID)}`)
+}
 let libraryData = libraryUtils.getLibraryTreeByUUID(filtrateLibraryUUID)
-let hoverTimer = null
+if (libraryData === null) {
+  throw new Error(`libraryData error: ${JSON.stringify(libraryData)}`)
+}
+let hoverTimer: NodeJS.Timeout
 let collapseButtonHintShow = ref(false)
 const iconMouseover = () => {
   hoverTimer = setTimeout(() => {
@@ -80,17 +90,17 @@ const iconMouseout = () => {
 }
 
 const menuArr = ref([[{ menuName: '新建歌单' }, { menuName: '新建文件夹' }]])
-const contextmenuEvent = async (event) => {
+const contextmenuEvent = async (event: MouseEvent) => {
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
   if (result !== 'cancel') {
     if (result.menuName == '新建歌单') {
-      libraryData.children.unshift({
+      libraryData.children?.unshift({
         uuid: uuidV4(),
         type: 'songList',
         dirName: ''
       })
     } else if (result.menuName == '新建文件夹') {
-      libraryData.children.unshift({
+      libraryData.children?.unshift({
         uuid: uuidV4(),
         type: 'dir',
         dirName: ''
@@ -104,20 +114,35 @@ const collapseButtonHandleClick = async () => {
 }
 
 const dragApproach = ref('')
-const dragover = (e) => {
+const dragover = (e: DragEvent) => {
+  if (e.dataTransfer === null) {
+    throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
+  }
   e.dataTransfer.dropEffect = 'move'
   dragApproach.value = 'top'
 }
-const dragenter = (e) => {
+const dragenter = (e: DragEvent) => {
+  if (e.dataTransfer === null) {
+    throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
+  }
   e.dataTransfer.dropEffect = 'move'
   dragApproach.value = 'top'
 }
-const dragleave = (e) => {
+const dragleave = () => {
   dragApproach.value = ''
 }
-const drop = async (e) => {
+const drop = async () => {
   dragApproach.value = ''
+  if (runtime.dragItemData === null) {
+    throw new Error(`runtime.dragItemData error: ${JSON.stringify(runtime.dragItemData)}`)
+  }
   let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(runtime.dragItemData.uuid)
+  if (dragItemDataFather === null || dragItemDataFather.children === undefined) {
+    throw new Error(`dragItemDataFather error: ${JSON.stringify(dragItemDataFather)}`)
+  }
+  if (libraryData.children === undefined) {
+    throw new Error(`libraryData.children error: ${JSON.stringify(libraryData.children)}`)
+  }
   if (dragItemDataFather.uuid == filtrateLibraryUUID) {
     if (libraryData.children[libraryData.children.length - 1].uuid == runtime.dragItemData.uuid) {
       return
@@ -138,7 +163,7 @@ const drop = async (e) => {
   } else {
     const existingItem = libraryData.children.find((item) => {
       return (
-        item.dirName === runtime.dragItemData.dirName && item.uuid !== runtime.dragItemData.uuid
+        item.dirName === runtime.dragItemData?.dirName && item.uuid !== runtime.dragItemData.uuid
       )
     })
     if (existingItem) {
@@ -239,7 +264,7 @@ onUnmounted(() => {
 
 const flashArea = ref('') // 控制动画是否正在播放
 // 模拟闪烁三次的逻辑（使用 setTimeout）
-const flashBorder = (flashAreaName) => {
+const flashBorder = (flashAreaName: string) => {
   flashArea.value = flashAreaName
   let count = 0
   const interval = setInterval(() => {
@@ -325,7 +350,7 @@ const cancel = () => {
       <div
         class="unselectable libraryArea flashing-border"
         :class="{ 'is-flashing': flashArea == 'selectSongList' }"
-        v-if="libraryData.children.length"
+        v-if="libraryData.children?.length"
       >
         <template v-if="recentSongListArr.length > 0">
           <div style="padding-left: 5px">
