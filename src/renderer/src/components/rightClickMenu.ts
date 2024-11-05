@@ -1,5 +1,5 @@
 import { createVNode, render } from 'vue'
-import rightClickMenu from './rightClickMenu'
+import rightClickMenu from './rightClickMenu.vue'
 import { IMenu } from 'src/types/globals'
 
 interface IArgs {
