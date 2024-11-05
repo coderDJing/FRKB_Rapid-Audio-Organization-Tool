@@ -1,5 +1,5 @@
 import { createVNode, render } from 'vue'
-import dropIntoDialog from './dropIntoDialog'
+import dropIntoDialog from './dropIntoDialog.vue'
 
 interface IArgs {
   songListUuid: string

@@ -1,5 +1,5 @@
 import { createVNode, render } from 'vue'
-import globalCallShortcutDialog from './globalCallShortcutDialog'
+import globalCallShortcutDialog from './globalCallShortcutDialog.vue'
 
 export default () => {
   return new Promise((resolve, reject) => {
