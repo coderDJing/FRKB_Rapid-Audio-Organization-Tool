@@ -1,5 +1,5 @@
 import { createVNode, render } from 'vue'
-import exportDialog from './exportDialog.vue'
+import exportDialog from './exportDialog'
 
 export default ({
   title

@@ -33,6 +33,7 @@ interface ISongInfo {
   label: string | undefined
   bitrate: number | undefined
   container: string | undefined
+  coverUrl?: string
 }
 
 interface ILayoutConfig {
@@ -76,6 +77,14 @@ interface ISongsAreaColumn {
   show: boolean
   width: number
 }
+
+type Icon = {
+  name: '筛选库' | '精选库'
+  grey: string
+  white: string
+  src: string
+  showAlt: boolean
+}
 export {
   md5,
   IDir,
@@ -85,5 +94,6 @@ export {
   ILanguageDict,
   IMenu,
   IImportSongsFormData,
-  ISongsAreaColumn
+  ISongsAreaColumn,
+  Icon
 }

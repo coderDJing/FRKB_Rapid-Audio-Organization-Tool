@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { watch, ref, nextTick, onUnmounted, computed, onMounted } from 'vue'
+import { watch, ref, nextTick, computed, onMounted, Ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
-import { vDraggable } from 'vue-draggable-plus'
+import { RefOrValue, UseDraggableOptions, vDraggable } from 'vue-draggable-plus'
 import songAreaColRightClickMenu from '@renderer/components/songAreaColRightClickMenu.vue'
 import hotkeys from 'hotkeys-js'
 import confirm from '@renderer/components/confirmDialog'
@@ -10,11 +10,11 @@ import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import rightClickMenu from '../../components/rightClickMenu'
 import exportDialog from '../../components/exportDialog'
 import { t } from '@renderer/utils/translate'
-import { ISongsAreaColumn } from 'src/types/globals'
+import { ISongInfo, ISongsAreaColumn } from 'src/types/globals'
 
 let columnData = ref<ISongsAreaColumn[]>([])
 if (localStorage.getItem('songColumnData')) {
-  columnData.value = JSON.parse(localStorage.getItem('songColumnData'))
+  columnData.value = JSON.parse(localStorage.getItem('songColumnData') || '[]')
 } else {
   columnData.value = [
     {
@@ -140,10 +140,10 @@ function onUpdate() {
 }
 
 let startX = 0
-let resizingCol = null
+let resizingCol: ISongsAreaColumn
 let isResizing = false
 let initWidth = 0
-function startResize(e, col) {
+function startResize(e: MouseEvent, col: ISongsAreaColumn) {
   if (col.key === 'coverUrl') {
     return
   }
@@ -156,7 +156,7 @@ function startResize(e, col) {
   document.addEventListener('mouseup', stopResize)
 }
 
-function resize(e) {
+function resize(e: MouseEvent) {
   if (!isResizing) return
   const deltaX = e.clientX - startX
   const newWidth = Math.max(50, initWidth + deltaX) // 设置最小宽度
@@ -172,12 +172,12 @@ function stopResize() {
 
 const colRightClickMenuShow = ref(false)
 const colRightClickEvent = ref({})
-const contextmenuEvent = (event) => {
+const contextmenuEvent = (event: MouseEvent) => {
   colRightClickEvent.value = event
   colRightClickMenuShow.value = true
 }
 
-const colMenuHandleClick = (item) => {
+const colMenuHandleClick = (item: ISongsAreaColumn) => {
   for (let col of columnData.value) {
     if (col.key === item.key) {
       col.show = !col.show
@@ -189,7 +189,7 @@ const colMenuHandleClick = (item) => {
 let columnDataArr = computed(() => {
   return columnData.value.filter((item) => item.show)
 })
-const songClick = (event, song) => {
+const songClick = (event: MouseEvent, song: ISongInfo) => {
   runtime.activeMenuUUID = ''
   if (event.ctrlKey) {
     let index = runtime.songsArea.selectedSongFilePath.indexOf(song.filePath)
@@ -234,7 +234,7 @@ const menuArr = ref([
   [{ menuName: '删除曲目' }]
 ])
 
-const songContextmenu = async (event, song) => {
+const songContextmenu = async (event: MouseEvent, song: ISongInfo) => {
   if (runtime.songsArea.selectedSongFilePath.indexOf(song.filePath) === -1) {
     runtime.songsArea.selectedSongFilePath = [song.filePath]
   }
@@ -310,7 +310,7 @@ const songContextmenu = async (event, song) => {
 
             if (
               runtime.playingData.playingSongListData.filter(
-                (item) => item.filePath === runtime.playingData.playingSong.filePath
+                (item) => item.filePath === runtime.playingData.playingSong?.filePath
               ).length === 0
             ) {
               runtime.playingData.playingSong = null
@@ -325,7 +325,7 @@ const songContextmenu = async (event, song) => {
 const selectSongListDialogShow = ref(false)
 const selectSongListDialogLibraryName = ref('')
 
-const selectSongListDialogConfirm = async (songListUUID) => {
+const selectSongListDialogConfirm = async (songListUUID: string) => {
   selectSongListDialogShow.value = false
   if (songListUUID === runtime.songsArea.songListUUID) {
     return
@@ -339,7 +339,9 @@ const selectSongListDialogConfirm = async (songListUUID) => {
     if (!runtime.songsArea.selectedSongFilePath.includes(item.filePath)) {
       return true
     } else {
-      URL.revokeObjectURL(item.coverUrl)
+      if (item.coverUrl) {
+        URL.revokeObjectURL(item.coverUrl)
+      }
       return false
     }
   })
@@ -354,7 +356,9 @@ watch(
       if (runtime.songsArea.songListUUID === runtime.playingData.playingSongListUUID) {
         nextTick(() => {
           let playingDom = document.querySelector('.playingSong')
-          playingDom.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          if (playingDom) {
+            playingDom.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          }
         })
       }
     }
@@ -363,7 +367,9 @@ watch(
       runtime.playingData.playingSongListData.length !== runtime.songsArea.songInfoArr.length
     ) {
       for (let item of runtime.songsArea.songInfoArr) {
-        URL.revokeObjectURL(item.coverUrl)
+        if (item.coverUrl) {
+          URL.revokeObjectURL(item.coverUrl)
+        }
       }
       for (let item of runtime.playingData.playingSongListData) {
         if (item.cover) {
@@ -376,7 +382,7 @@ watch(
     }
   }
 )
-const songDblClick = (song) => {
+const songDblClick = (song: ISongInfo) => {
   runtime.activeMenuUUID = ''
 
   runtime.songsArea.selectedSongFilePath = []
@@ -395,12 +401,24 @@ onMounted(() => {
     return false
   })
 })
-const onStart = (e) => {
+const onStart = () => {
   runtime.dragTableHeader = true
 }
-const onEnd = (e) => {
+const onEnd = () => {
   runtime.dragTableHeader = false
 }
+
+type VDraggableBinding = [list: Ref<any[]>, options?: RefOrValue<UseDraggableOptions<any>>]
+let vDraggableData: VDraggableBinding = [
+  columnData,
+  {
+    animation: 150,
+    direction: 'horizontal',
+    onUpdate,
+    onStart,
+    onEnd
+  }
+]
 //todo 拖拽文件出窗口
 </script>
 <template>
@@ -419,16 +437,7 @@ const onEnd = (e) => {
       @contextmenu.stop="contextmenuEvent"
       class="songItem lightBackground"
       style="position: sticky; top: 0"
-      v-draggable="[
-        columnData,
-        {
-          animation: 150,
-          direction: 'horizontal',
-          onUpdate,
-          onStart,
-          onEnd
-        }
-      ]"
+      v-draggable="vDraggableData"
     >
       <div
         class="coverDiv lightBackground unselectable"
@@ -486,7 +495,7 @@ const onEnd = (e) => {
                 <img :src="item.coverUrl" class="unselectable" />
               </div>
               <div v-else class="titleDiv" :style="'width:' + col.width + 'px'">
-                {{ item[col.key] }}
+                {{ item[col.key as keyof ISongInfo] }}
               </div>
             </template>
           </template>

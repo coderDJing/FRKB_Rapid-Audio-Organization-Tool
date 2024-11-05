@@ -337,11 +337,14 @@ const moveToLikeLibrary = () => {
   selectSongListDialogLibraryName.value = '精选库'
   selectSongListDialogShow.value = true
 }
-//todo
-const selectSongListDialogConfirm = async (item) => {
+
+const selectSongListDialogConfirm = async (item: string) => {
   selectSongListDialogShow.value = false
   if (item === runtime.playingData.playingSongListUUID) {
     return
+  }
+  if (runtime.playingData.playingSong === null) {
+    throw new Error('playingData.playingSong is null')
   }
   await window.electron.ipcRenderer.invoke(
     'moveSongsToDir',
@@ -381,6 +384,9 @@ const exportTrack = async () => {
       JSON.parse(JSON.stringify([runtime.playingData.playingSong]))
     )
     if (deleteSongsAfterExport) {
+      if (runtime.playingData.playingSong === null) {
+        throw new Error('playingData.playingSong is null')
+      }
       let filePath = runtime.playingData.playingSong.filePath
       if (runtime.playingData.playingSong.coverUrl) {
         URL.revokeObjectURL(runtime.playingData.playingSong.coverUrl)
@@ -441,16 +447,16 @@ const bpmDomRef = useTemplateRef('bpmDomRef')
           <img v-else :src="musicIcon" style="width: 48px; height: 48px" draggable="false" />
         </div>
         <div style="font-size: 14px" class="info">
-          {{ runtime.playingData.playingSong.title }}
+          {{ runtime.playingData.playingSong?.title }}
         </div>
         <div style="font-size: 12px" class="info">
-          {{ runtime.playingData.playingSong.artist }}
+          {{ runtime.playingData.playingSong?.artist }}
         </div>
         <div style="font-size: 10px" class="info">
-          {{ runtime.playingData.playingSong.album }}
+          {{ runtime.playingData.playingSong?.album }}
         </div>
         <div style="font-size: 10px" class="info">
-          {{ runtime.playingData.playingSong.label }}
+          {{ runtime.playingData.playingSong?.label }}
         </div>
       </div>
     </transition>
