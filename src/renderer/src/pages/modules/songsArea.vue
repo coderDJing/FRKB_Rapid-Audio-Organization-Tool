@@ -90,6 +90,7 @@ const openSongList = async () => {
   await nextTick(() => {})
 
   let songListPath = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
+  //todo 如果文件夹打开失败，提示不存在歌单等等提示
   loadingShow.value = false
   let loadingSetTimeout = setTimeout(() => {
     loadingShow.value = true
