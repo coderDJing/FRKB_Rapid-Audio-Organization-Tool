@@ -9,14 +9,9 @@ import { ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import settingDialog from '@renderer/components/settingDialog.vue'
 import { t } from '@renderer/utils/translate'
+import { Icon } from 'src/types/globals'
 const emit = defineEmits(['librarySelectedChange'])
-type Icon = {
-  name: '筛选库' | '精选库'
-  grey: string
-  white: string
-  src: string
-  showAlt: boolean
-}
+
 const iconArr = ref<Icon[]>([
   {
     name: '筛选库',

@@ -6,11 +6,12 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { onUnmounted, ref } from 'vue'
 import songPlayer from './modules/songPlayer.vue'
 import dropIntoDialog from '../components/dropIntoDialog'
+import { Icon } from 'src/types/globals'
 const runtime = useRuntimeStore()
 let startX = 0
 let isResizing = false
 const isHovered = ref(false)
-let hoverTimeout
+let hoverTimeout: NodeJS.Timeout
 
 const handleMouseEnter = () => {
   // 清除之前的定时器，以防用户频繁移动鼠标进出 div
@@ -30,7 +31,7 @@ const handleMouseLeave = () => {
     isHovered.value = false
   }
 }
-function startResize(e) {
+function startResize(e: MouseEvent) {
   e.preventDefault && e.preventDefault()
   isResizing = true
   isHovered.value = true
@@ -39,7 +40,7 @@ function startResize(e) {
   document.addEventListener('mouseup', stopResize)
 }
 
-function resize(e) {
+function resize(e: MouseEvent) {
   if (!isResizing) return
   const deltaX = e.clientX - startX
   const newWidth = Math.max(150, runtime.layoutConfig.libraryAreaWidth + deltaX) // 设置最小宽度
@@ -68,14 +69,17 @@ onUnmounted(() => {
 })
 
 let librarySelected = ref('筛选库')
-const librarySelectedChange = (item) => {
+const librarySelectedChange = (item: Icon) => {
   if (item.name == librarySelected.value) {
     return
   }
   librarySelected.value = item.name
 }
 let dragOverSongsArea = ref(false)
-const dragover = (e) => {
+const dragover = (e: DragEvent) => {
+  if (e.dataTransfer === null) {
+    throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
+  }
   if (runtime.dragItemData !== null || !runtime.songsArea.songListUUID) {
     e.dataTransfer.dropEffect = 'none'
     return
@@ -87,7 +91,10 @@ const dragover = (e) => {
   e.dataTransfer.dropEffect = 'move'
   dragOverSongsArea.value = true
 }
-const dragleave = (e) => {
+const dragleave = (e: DragEvent) => {
+  if (e.dataTransfer === null) {
+    throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
+  }
   if (runtime.dragItemData !== null || !runtime.songsArea.songListUUID) {
     e.dataTransfer.dropEffect = 'none'
     return
@@ -99,7 +106,10 @@ const dragleave = (e) => {
   dragOverSongsArea.value = false
 }
 
-const drop = async (e) => {
+const drop = async (e: DragEvent) => {
+  if (e.dataTransfer === null) {
+    throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
+  }
   if (runtime.dragItemData !== null || !runtime.songsArea.songListUUID) {
     e.dataTransfer.dropEffect = 'none'
     return
@@ -109,7 +119,7 @@ const drop = async (e) => {
     return
   }
   dragOverSongsArea.value = false
-  let files = e.dataTransfer.files
+  let files = Array.from(e.dataTransfer.files)
   let result = await dropIntoDialog({
     songListUuid: runtime.songsArea.songListUUID,
     libraryName: librarySelected.value
