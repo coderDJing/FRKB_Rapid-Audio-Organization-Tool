@@ -1,5 +1,5 @@
 import { createVNode, render } from 'vue'
-import scanNewSongDialog from './scanNewSongDialog'
+import scanNewSongDialog from './scanNewSongDialog.vue'
 export default ({ libraryName, songListUuid }: { libraryName: string; songListUuid: string }) => {
   return new Promise((resolve, reject) => {
     const div = document.createElement('div')
