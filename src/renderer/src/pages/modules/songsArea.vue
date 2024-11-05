@@ -77,13 +77,16 @@ if (localStorage.getItem('songColumnData')) {
 const runtime = useRuntimeStore()
 let loadingShow = ref(false)
 
+const isRequesting = ref<boolean>(false)
 const openSongList = async () => {
   for (let item of runtime.songsArea.songInfoArr) {
     if (item.coverUrl) {
       URL.revokeObjectURL(item.coverUrl)
     }
   }
+  isRequesting.value = true
   runtime.songsArea.songInfoArr = []
+
   await nextTick(() => {})
 
   let songListPath = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
@@ -96,6 +99,7 @@ const openSongList = async () => {
     songListPath,
     runtime.songsArea.songListUUID
   )
+  isRequesting.value = false
   clearTimeout(loadingSetTimeout)
   loadingShow.value = false
   if (songListUUID != runtime.songsArea.songListUUID) {
@@ -503,7 +507,11 @@ let vDraggableData: VDraggableBinding = [
       </div>
     </div>
     <div
-      v-show="runtime.songsArea.songListUUID && runtime.songsArea.songInfoArr.length === 0"
+      v-show="
+        !isRequesting &&
+        runtime.songsArea.songListUUID &&
+        runtime.songsArea.songInfoArr.length === 0
+      "
       style="
         height: 80%;
         width: 100%;
