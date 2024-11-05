@@ -1,5 +1,5 @@
 import { createVNode, render } from 'vue'
-import confirmDialog from './confirmDialog.vue'
+import confirmDialog from './confirmDialog'
 
 interface DialogOptions {
   title: string
