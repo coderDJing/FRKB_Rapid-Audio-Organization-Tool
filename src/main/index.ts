@@ -207,6 +207,10 @@ ipcMain.on('delSongs', async (e, songFilePaths: string[]) => {
   await Promise.all(promises)
 })
 
+ipcMain.handle('pathExists', async (e, targetPath: string) => {
+  return await fs.pathExists(path.join(store.databaseDir, targetPath))
+})
+
 ipcMain.handle('scanSongList', async (e, songListPath: string, songListUUID: string) => {
   let scanPath = path.join(store.databaseDir, songListPath)
   const mm = await import('music-metadata')
