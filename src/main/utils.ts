@@ -165,20 +165,29 @@ export async function getSongsAnalyseResult(
 async function getdirsDescriptionJson(dirPath: string, dirs: fs.Dirent[]) {
   const jsons = await Promise.all(
     dirs.map(async (dir) => {
-      const filePath = path.join(dirPath, dir.name, '.description.json')
-      let descriptionJson = await fs.readJSON(filePath)
-      descriptionJson.dirName = dir.name
-      const json: IDir = descriptionJson
-      const subDirPath = path.join(dirPath, dir.name)
-      const subEntries = await fs.readdir(subDirPath, { withFileTypes: true })
-      const subDirs = subEntries.filter((entry) => entry.isDirectory())
-      const subJsons = await getdirsDescriptionJson(subDirPath, subDirs)
-      json.children = subJsons
-      return json
+      try {
+        const filePath = path.join(dirPath, dir.name, '.description.json')
+        let descriptionJson = await fs.readJSON(filePath)
+        descriptionJson.dirName = dir.name
+        let types = ['root', 'library', 'dir', 'songList']
+        if (descriptionJson.uuid && descriptionJson.type && types.includes(descriptionJson.type)) {
+          const json: IDir = descriptionJson
+          const subDirPath = path.join(dirPath, dir.name)
+          const subEntries = await fs.readdir(subDirPath, { withFileTypes: true })
+          const subDirs = subEntries.filter((entry) => entry.isDirectory())
+          const subJsons = await getdirsDescriptionJson(subDirPath, subDirs)
+          json.children = subJsons
+          return json
+        } else {
+          return null
+        }
+      } catch (e) {
+        return null
+      }
     })
   )
-
-  return jsons.sort((a, b) => {
+  const filteredJsons = jsons.filter((json) => json !== null) as IDir[]
+  return filteredJsons.sort((a, b) => {
     if (a.order === undefined || b.order === undefined) return 0
     return a.order - b.order
   })
@@ -242,15 +251,25 @@ export const updateTargetDirSubdirOrder = async (
     for (const dirent of dirs) {
       const subdirPath = path.join(dirPath, dirent.name)
       const descriptionJsonPath = path.join(subdirPath, '.description.json')
-      let description = await fs.readJSON(descriptionJsonPath)
-      if (direction == 'before') {
-        if (description.order < orderNum) {
-          promises.push(updateOrderInFile(descriptionJsonPath, operation))
+      let description
+      try {
+        description = await fs.readJSON(descriptionJsonPath)
+        let types = ['root', 'library', 'dir', 'songList']
+        if (description.uuid && description.type && types.includes(description.type)) {
+          if (direction == 'before') {
+            if (description.order < orderNum) {
+              promises.push(updateOrderInFile(descriptionJsonPath, operation))
+            }
+          } else if (direction == 'after') {
+            if (description.order > orderNum) {
+              promises.push(updateOrderInFile(descriptionJsonPath, operation))
+            }
+          }
+        } else {
+          continue
         }
-      } else if (direction == 'after') {
-        if (description.order > orderNum) {
-          promises.push(updateOrderInFile(descriptionJsonPath, operation))
-        }
+      } catch (error) {
+        continue
       }
     }
     await Promise.all(promises)
