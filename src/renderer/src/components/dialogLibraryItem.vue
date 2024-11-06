@@ -9,6 +9,7 @@ import { v4 as uuidV4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 import emitter from '../utils/mitt'
+import { c } from 'vite/dist/node/types.d-aGj9QkWt'
 const props = defineProps({
   uuid: {
     type: String,
@@ -122,6 +123,45 @@ const menuArr = ref(
       ]
     : [[{ menuName: '重命名' }, { menuName: '删除' }]]
 )
+const deleteDir = async () => {
+  let libraryTree = libraryUtils.getLibraryTreeByUUID(props.uuid)
+  if (fatherDirData === null || fatherDirData.children === undefined) {
+    throw new Error(`fatherDirData error: ${JSON.stringify(fatherDirData)}`)
+  }
+  if (libraryTree === null) {
+    throw new Error(`libraryTree error: ${JSON.stringify(libraryTree)}`)
+  }
+  let uuids = libraryUtils.getAllUuids(libraryTree)
+
+  if (uuids.indexOf(runtime.songsArea.songListUUID) !== -1) {
+    runtime.songsArea.songListUUID = ''
+  }
+  if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
+    runtime.playingData.playingSongListUUID = ''
+    runtime.playingData.playingSongListData = []
+    runtime.playingData.playingSong = null
+  }
+  const path = libraryUtils.findDirPathByUuid(props.uuid)
+  await window.electron.ipcRenderer.invoke('delDir', path)
+  await window.electron.ipcRenderer.invoke(
+    'updateOrderAfterNum',
+    libraryUtils.findDirPathByUuid(fatherDirData.uuid),
+    dirData.order
+  )
+  let deleteIndex = null
+  for (let index in fatherDirData.children) {
+    if (fatherDirData.children[index] == dirData) {
+      deleteIndex = index
+      continue
+    }
+    if (fatherDirData.children[index].order && dirData.order) {
+      if (fatherDirData.children[index].order > dirData.order) {
+        fatherDirData.children[index].order--
+      }
+    }
+  }
+  fatherDirData.children.splice(Number(deleteIndex), 1)
+}
 const contextmenuEvent = async (event: MouseEvent) => {
   rightClickMenuShow.value = true
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
@@ -160,43 +200,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
         ]
       })
       if (res === 'confirm') {
-        let libraryTree = libraryUtils.getLibraryTreeByUUID(props.uuid)
-        if (fatherDirData === null || fatherDirData.children === undefined) {
-          throw new Error(`fatherDirData error: ${JSON.stringify(fatherDirData)}`)
-        }
-        if (libraryTree === null) {
-          throw new Error(`libraryTree error: ${JSON.stringify(libraryTree)}`)
-        }
-        let uuids = libraryUtils.getAllUuids(libraryTree)
-
-        if (uuids.indexOf(runtime.songsArea.songListUUID) !== -1) {
-          runtime.songsArea.songListUUID = ''
-        }
-        if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
-          runtime.playingData.playingSongListUUID = ''
-          runtime.playingData.playingSongListData = []
-          runtime.playingData.playingSong = null
-        }
-        const path = libraryUtils.findDirPathByUuid(props.uuid)
-        await window.electron.ipcRenderer.invoke('delDir', path)
-        await window.electron.ipcRenderer.invoke(
-          'updateOrderAfterNum',
-          libraryUtils.findDirPathByUuid(fatherDirData.uuid),
-          dirData.order
-        )
-        let deleteIndex = null
-        for (let index in fatherDirData.children) {
-          if (fatherDirData.children[index] == dirData) {
-            deleteIndex = index
-            continue
-          }
-          if (fatherDirData.children[index].order && dirData.order) {
-            if (fatherDirData.children[index].order > dirData.order) {
-              fatherDirData.children[index].order--
-            }
-          }
-        }
-        fatherDirData.children.splice(Number(deleteIndex), 1)
+        deleteDir()
       }
     }
   }
@@ -204,8 +208,19 @@ const contextmenuEvent = async (event: MouseEvent) => {
 
 const dirChildShow = ref(false)
 const dirChildRendered = ref(false)
-const dirHandleClick = () => {
+const dirHandleClick = async () => {
   runtime.activeMenuUUID = ''
+  let songListPath = libraryUtils.findDirPathByUuid(props.uuid)
+  let isSongListPathExist = await window.electron.ipcRenderer.invoke('pathExists', songListPath)
+  if (!isSongListPathExist) {
+    await confirm({
+      title: '错误',
+      content: [t('此歌单/文件夹在磁盘中不存在，可能已被手动删除')],
+      confirmShow: false
+    })
+    deleteDir()
+    return
+  }
   if (dirData.type == 'songList') {
     runtime.dialogSelectedSongListUUID = props.uuid
   } else {
