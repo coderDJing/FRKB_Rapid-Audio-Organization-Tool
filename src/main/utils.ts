@@ -166,7 +166,9 @@ async function getdirsDescriptionJson(dirPath: string, dirs: fs.Dirent[]) {
   const jsons = await Promise.all(
     dirs.map(async (dir) => {
       const filePath = path.join(dirPath, dir.name, '.description.json')
-      const json: IDir = await fs.readJSON(filePath)
+      let descriptionJson = await fs.readJSON(filePath)
+      descriptionJson.dirName = dir.name
+      const json: IDir = descriptionJson
       const subDirPath = path.join(dirPath, dir.name)
       const subEntries = await fs.readdir(subDirPath, { withFileTypes: true })
       const subDirs = subEntries.filter((entry) => entry.isDirectory())
@@ -185,7 +187,9 @@ async function getdirsDescriptionJson(dirPath: string, dirs: fs.Dirent[]) {
 //获取整个库的树结构
 export async function getLibrary() {
   const dirPath = path.join(store.databaseDir, 'library')
-  const rootDescriptionJson: IDir = await fs.readJSON(path.join(dirPath, '.description.json'))
+  let descriptionJson = await fs.readJSON(path.join(dirPath, '.description.json'))
+  descriptionJson.dirName = 'library'
+  const rootDescriptionJson: IDir = descriptionJson
   const entries = await fs.readdir(dirPath, { withFileTypes: true })
   const dirs = entries.filter((entry) => entry.isDirectory())
   const dirsDescriptionJson = await getdirsDescriptionJson(dirPath, dirs)
