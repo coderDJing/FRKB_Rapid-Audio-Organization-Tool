@@ -53,19 +53,17 @@ const createWindow = () => {
       let rootDescription = {
         uuid: uuidV4(),
         type: 'root',
-        dirName: 'library',
         order: 1
       }
       await operateHiddenFile(path.join(dirPath, 'library', '.description.json'), async () => {
         await fs.outputJson(path.join(dirPath, 'library', '.description.json'), rootDescription)
       })
     }
-    const makeLibrary = async (libraryPath: string, libraryName: string, order: number) => {
+    const makeLibrary = async (libraryPath: string, order: number) => {
       if (!fs.pathExistsSync(path.join(libraryPath, '.description.json'))) {
         let description = {
           uuid: uuidV4(),
           type: 'library',
-          dirName: libraryName,
           order: order
         }
         await operateHiddenFile(path.join(libraryPath, '.description.json'), async () => {
@@ -73,8 +71,8 @@ const createWindow = () => {
         })
       }
     }
-    await makeLibrary(path.join(dirPath, 'library/筛选库'), '筛选库', 1)
-    await makeLibrary(path.join(dirPath, 'library/精选库'), '精选库', 2)
+    await makeLibrary(path.join(dirPath, 'library/筛选库'), 1)
+    await makeLibrary(path.join(dirPath, 'library/精选库'), 2)
 
     if (fs.pathExistsSync(path.join(dirPath, 'songFingerprint', 'songFingerprint.json'))) {
       const json = await fs.readJSON(path.join(dirPath, 'songFingerprint', 'songFingerprint.json'))

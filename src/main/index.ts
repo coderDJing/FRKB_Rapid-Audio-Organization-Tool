@@ -278,12 +278,6 @@ ipcMain.handle('getLibrary', async () => {
 })
 
 ipcMain.handle('renameDir', async (e, newName, dirPath) => {
-  let descriptionPath = path.join(store.databaseDir, path.join(dirPath, '.description.json'))
-  let descriptionJson = await fs.readJSON(descriptionPath)
-  descriptionJson.dirName = newName
-  await operateHiddenFile(descriptionPath, async () => {
-    await fs.outputJSON(descriptionPath, descriptionJson)
-  })
   await fs.rename(
     path.join(store.databaseDir, dirPath),
     path.join(store.databaseDir, dirPath.slice(0, dirPath.lastIndexOf('/') + 1) + newName)
@@ -306,6 +300,7 @@ ipcMain.handle('mkDir', async (e, descriptionJson, dirPath) => {
   await updateTargetDirSubdirOrder(path.join(store.databaseDir, dirPath), 0, 'after', 'plus')
   let targetPath = path.join(store.databaseDir, dirPath, descriptionJson.dirName)
   await operateHiddenFile(path.join(targetPath, '.description.json'), async () => {
+    descriptionJson.dirName = undefined
     await fs.outputJson(path.join(targetPath, '.description.json'), descriptionJson)
   })
 })
