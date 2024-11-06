@@ -207,8 +207,18 @@ ipcMain.on('delSongs', async (e, songFilePaths: string[]) => {
   await Promise.all(promises)
 })
 
-ipcMain.handle('pathExists', async (e, targetPath: string) => {
-  return await fs.pathExists(path.join(store.databaseDir, targetPath))
+ipcMain.handle('dirPathExists', async (e, targetPath: string) => {
+  const filePath = path.join(store.databaseDir, targetPath, '.description.json')
+  try {
+    let descriptionJson = await fs.readJSON(filePath)
+    let types = ['root', 'library', 'dir', 'songList']
+    if (descriptionJson.uuid && descriptionJson.type && types.includes(descriptionJson.type)) {
+      return true
+    }
+  } catch (e) {
+    return false
+  }
+  return false
 })
 
 ipcMain.handle('scanSongList', async (e, songListPath: string, songListUUID: string) => {
