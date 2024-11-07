@@ -281,6 +281,7 @@ export const collectFilesWithExtensions = async (dir: string, extensions: string
   let files: string[] = []
   try {
     const stats = await fs.stat(dir)
+
     if (stats.isFile()) {
       const ext = path.extname(dir).toLowerCase()
       if (extensions.includes(ext)) {
@@ -311,9 +312,7 @@ export const collectFilesWithExtensions = async (dir: string, extensions: string
 
     return files
   } catch (error) {
-    console.log(error)
-  } finally {
-    return files
+    return []
   }
 }
 
