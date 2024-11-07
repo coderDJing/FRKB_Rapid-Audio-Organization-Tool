@@ -77,7 +77,7 @@ onMounted(() => {
     if (runtime.isProgressing === true) {
       await confirm({
         title: '退出',
-        content: ['请等待当前任务执行结束'],
+        content: [t('请等待当前任务执行结束')],
         confirmShow: false
       })
     } else {
