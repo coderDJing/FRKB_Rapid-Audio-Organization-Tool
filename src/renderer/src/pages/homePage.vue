@@ -7,6 +7,9 @@ import { onUnmounted, ref } from 'vue'
 import songPlayer from './modules/songPlayer.vue'
 import dropIntoDialog from '../components/dropIntoDialog'
 import { Icon } from 'src/types/globals'
+import libraryUtils from '@renderer/utils/libraryUtils'
+import confirm from '@renderer/components/confirmDialog'
+import { t } from '@renderer/utils/translate'
 const runtime = useRuntimeStore()
 let startX = 0
 let isResizing = false
@@ -119,7 +122,59 @@ const drop = async (e: DragEvent) => {
     return
   }
   dragOverSongsArea.value = false
+
   let files = Array.from(e.dataTransfer.files)
+
+  let songListPath = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
+  let isSongListPathExist = await window.electron.ipcRenderer.invoke('dirPathExists', songListPath)
+  if (!isSongListPathExist) {
+    await confirm({
+      title: '错误',
+      content: [t('此歌单/文件夹在磁盘中不存在，可能已被手动删除')],
+      confirmShow: false
+    })
+    let libraryTree = libraryUtils.getLibraryTreeByUUID(runtime.songsArea.songListUUID)
+    if (libraryTree === null) {
+      throw new Error(`libraryTree error: ${JSON.stringify(libraryTree)}`)
+    }
+    let fatherDirData = libraryUtils.getFatherLibraryTreeByUUID(runtime.songsArea.songListUUID)
+    const path = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
+    if (fatherDirData === null) {
+      throw new Error(`fatherDirData error: ${JSON.stringify(fatherDirData)}`)
+    }
+    let uuids = libraryUtils.getAllUuids(libraryTree)
+    if (uuids.indexOf(runtime.songsArea.songListUUID) !== -1) {
+      runtime.songsArea.songListUUID = ''
+    }
+    if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
+      runtime.playingData.playingSongListUUID = ''
+      runtime.playingData.playingSongListData = []
+      runtime.playingData.playingSong = null
+    }
+    await window.electron.ipcRenderer.invoke('delDir', path)
+    await window.electron.ipcRenderer.invoke(
+      'updateOrderAfterNum',
+      libraryUtils.findDirPathByUuid(fatherDirData.uuid),
+      libraryTree.order
+    )
+    let deleteIndex
+    if (fatherDirData.children === undefined) {
+      throw new Error(`fatherDirData.children error: ${JSON.stringify(fatherDirData.children)}`)
+    }
+    for (let index in fatherDirData.children) {
+      if (fatherDirData.children[index] == libraryTree) {
+        deleteIndex = index
+        continue
+      }
+      if (fatherDirData.children[index].order && libraryTree.order) {
+        if (fatherDirData.children[index].order > libraryTree.order) {
+          fatherDirData.children[index].order--
+        }
+      }
+    }
+    fatherDirData.children.splice(Number(deleteIndex), 1)
+    return
+  }
   let result = await dropIntoDialog({
     songListUuid: runtime.songsArea.songListUUID,
     libraryName: librarySelected.value
