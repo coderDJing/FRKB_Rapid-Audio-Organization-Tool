@@ -374,7 +374,19 @@ const renameMyInputHandleInput = () => {
 
 //----------------------------------------
 
-const dragstart = () => {
+const dragstart = async (event: DragEvent) => {
+  let songListPath = libraryUtils.findDirPathByUuid(props.uuid)
+  let isSongListPathExist = await window.electron.ipcRenderer.invoke('dirPathExists', songListPath)
+  if (!isSongListPathExist) {
+    event.preventDefault()
+    await confirm({
+      title: '错误',
+      content: [t('此歌单/文件夹在磁盘中不存在，可能已被手动删除')],
+      confirmShow: false
+    })
+    deleteDir()
+    return
+  }
   runtime.dragItemData = dirData
 }
 const dragApproach = ref('')
@@ -485,6 +497,18 @@ const approachCenterEnd = () => {
   dragItemDataFather.children.splice(dragItemDataFather.children.indexOf(runtime.dragItemData), 1)
 }
 const drop = async (e: DragEvent) => {
+  let songListPath = libraryUtils.findDirPathByUuid(props.uuid)
+  let isSongListPathExist = await window.electron.ipcRenderer.invoke('dirPathExists', songListPath)
+  if (!isSongListPathExist) {
+    e.preventDefault()
+    await confirm({
+      title: '错误',
+      content: [t('此歌单/文件夹在磁盘中不存在，可能已被手动删除')],
+      confirmShow: false
+    })
+    deleteDir()
+    return
+  }
   if (e.dataTransfer === null) {
     throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
   }
