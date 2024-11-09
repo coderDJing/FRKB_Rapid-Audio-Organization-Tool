@@ -9,7 +9,7 @@ import fs = require('fs-extra')
 import path = require('path')
 let databaseInitWindow: BrowserWindow | null = null
 
-const createWindow = () => {
+const createWindow = ({ needErrorHint = false } = {}) => {
   databaseInitWindow = new BrowserWindow({
     resizable: false,
     width: 500,
@@ -43,22 +43,27 @@ const createWindow = () => {
 
   databaseInitWindow.on('ready-to-show', () => {
     databaseInitWindow?.show()
+    if (needErrorHint) {
+      databaseInitWindow?.webContents.send(
+        'databaseInitWindow-showErrorHint',
+        store.settingConfig.databaseUrl
+      )
+    }
   })
 
   ipcMain.on('databaseInitWindow-toggle-close', () => {
     databaseInitWindow?.close()
   })
   ipcMain.handle('databaseInitWindow-InitDataBase', async (e, dirPath) => {
-    if (!fs.pathExistsSync(path.join(dirPath, 'library', '.description.json'))) {
-      let rootDescription = {
-        uuid: uuidV4(),
-        type: 'root',
-        order: 1
-      }
-      await operateHiddenFile(path.join(dirPath, 'library', '.description.json'), async () => {
-        await fs.outputJson(path.join(dirPath, 'library', '.description.json'), rootDescription)
-      })
+    let rootDescription = {
+      uuid: uuidV4(),
+      type: 'root',
+      order: 1
     }
+    await operateHiddenFile(path.join(dirPath, 'library', '.description.json'), async () => {
+      await fs.outputJson(path.join(dirPath, 'library', '.description.json'), rootDescription)
+    })
+
     const makeLibrary = async (libraryPath: string, order: number) => {
       if (!fs.pathExistsSync(path.join(libraryPath, '.description.json'))) {
         let description = {
