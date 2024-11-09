@@ -5,6 +5,7 @@ import { v4 as uuidV4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import utils from './utils/utils'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import confirm from '@renderer/components/confirmDialog'
 const runtime = useRuntimeStore()
 const uuid = uuidV4()
 const flashArea = ref('') // 控制动画是否正在播放
@@ -34,7 +35,7 @@ const clickChooseDir = async () => {
     folderPathVal.value = folderPath[0]
   }
 }
-const confirm = async () => {
+const submitConfirm = async () => {
   if (folderPathVal.value.length === 0) {
     if (!flashArea.value) {
       flashBorder('folderPathVal')
@@ -56,7 +57,7 @@ const cancel = () => {
 }
 onMounted(() => {
   hotkeys('E', uuid, () => {
-    confirm()
+    submitConfirm()
   })
   hotkeys('Esc', uuid, () => {
     cancel()
@@ -66,6 +67,20 @@ onMounted(() => {
 
 onUnmounted(() => {
   utils.delHotkeysScope(uuid)
+})
+
+window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event, databaseUrl) => {
+  await confirm({
+    title: '错误',
+    content: [
+      databaseUrl,
+      t('位于此位置的数据库已无法读取'),
+      t(
+        '数据库可能已被移动或其必要文件结构已损坏。如果确认数据库未被移动，重新选择此位置将尝试修复数据库。'
+      )
+    ],
+    confirmShow: false
+  })
 })
 </script>
 
@@ -109,7 +124,7 @@ onUnmounted(() => {
       <div
         class="button"
         style="margin-right: 10px; width: 90px; text-align: center"
-        @click="confirm()"
+        @click="submitConfirm()"
       >
         {{ t('确定') }} (E)
       </div>
