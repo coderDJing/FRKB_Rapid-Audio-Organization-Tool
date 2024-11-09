@@ -141,5 +141,7 @@
   "导入曲目到歌单中，或通过拖拽文件夹或音频文件进行导入。": "Import tracks into a playlist, or import by dragging folders or audio files.",
   "发现新版本！": "New version found !",
   "七日内不再检查": "Do Not Check for Updates for 7 Days",
-  "此歌单/文件夹在磁盘中不存在，可能已被手动删除": "This playlist/folder does not exist on disk, it may have been manually deleted."
+  "此歌单/文件夹在磁盘中不存在，可能已被手动删除": "This playlist/folder does not exist on disk, it may have been manually deleted.",
+  "位于此位置的数据库已无法读取": "The database located at this location cannot be read.",
+  "数据库可能已被移动或其必要文件结构已损坏。如果确认数据库未被移动，重新选择此位置将尝试修复数据库。": "The database may have been moved or its necessary file structure may be damaged. If you are certain that the database has not been moved, selecting this location again will attempt to repair the database."
 }

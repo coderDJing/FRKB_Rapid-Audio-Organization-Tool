@@ -94,20 +94,55 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
 
 store.layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
 store.settingConfig = fs.readJSONSync(url.settingConfigFileUrl)
+if (is.dev) {
+  store.settingConfig.databaseUrl = 'C:\\Users\\trl\\Desktop\\FRKB_database'
+}
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('frkb.coderDjing')
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
-  if (!store.settingConfig.databaseUrl || !fs.pathExistsSync(store.settingConfig.databaseUrl)) {
+  if (!store.settingConfig.databaseUrl) {
     databaseInitWindow.createWindow()
   } else {
-    store.databaseDir = store.settingConfig.databaseUrl
-    store.songFingerprintList = fs.readJSONSync(
-      path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json')
-    )
-    mainWindow.createWindow()
+    try {
+      let libraryJson = fs.readJSONSync(
+        path.join(store.settingConfig.databaseUrl, 'library', '.description.json')
+      )
+      let filterLibraryJson = fs.readJSONSync(
+        path.join(store.settingConfig.databaseUrl, 'library', '精选库', '.description.json')
+      )
+      let curatedLibraryJson = fs.readJSONSync(
+        path.join(store.settingConfig.databaseUrl, 'library', '筛选库', '.description.json')
+      )
+      if (
+        libraryJson.uuid &&
+        libraryJson.type === 'root' &&
+        filterLibraryJson.uuid &&
+        filterLibraryJson.type === 'library' &&
+        curatedLibraryJson.uuid &&
+        curatedLibraryJson.type === 'library'
+      ) {
+        let songFingerprintListJson = fs.readJSONSync(
+          path.join(store.settingConfig.databaseUrl, 'songFingerprint', 'songFingerprint.json')
+        )
+        if (
+          !Array.isArray(songFingerprintListJson) ||
+          songFingerprintListJson.some((item) => typeof item !== 'string')
+        ) {
+          databaseInitWindow.createWindow({ needErrorHint: true })
+        } else {
+          store.databaseDir = store.settingConfig.databaseUrl
+          store.songFingerprintList = songFingerprintListJson
+          mainWindow.createWindow()
+        }
+      } else {
+        databaseInitWindow.createWindow({ needErrorHint: true })
+      }
+    } catch (error) {
+      databaseInitWindow.createWindow({ needErrorHint: true })
+    }
   }
 
   const autoUpdater = electronUpdater.autoUpdater
@@ -129,14 +164,41 @@ app.whenReady().then(() => {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) {
-      if (!store.settingConfig.databaseUrl || !fs.pathExistsSync(store.settingConfig.databaseUrl)) {
+      if (!store.settingConfig.databaseUrl) {
         databaseInitWindow.createWindow()
       } else {
-        store.databaseDir = store.settingConfig.databaseUrl
-        store.songFingerprintList = fs.readJSONSync(
-          path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json')
-        )
-        mainWindow.createWindow()
+        try {
+          let filterLibraryJson = fs.readJSONSync(
+            path.join(store.settingConfig.databaseUrl, 'library', '精选库', '.description.json')
+          )
+          let curatedLibraryJson = fs.readJSONSync(
+            path.join(store.settingConfig.databaseUrl, 'library', '筛选库', '.description.json')
+          )
+          if (
+            filterLibraryJson.uuid &&
+            filterLibraryJson.type === 'library' &&
+            curatedLibraryJson.uuid &&
+            curatedLibraryJson.type === 'library'
+          ) {
+            let songFingerprintListJson = fs.readJSONSync(
+              path.join(store.settingConfig.databaseUrl, 'songFingerprint', 'songFingerprint.json')
+            )
+            if (
+              !Array.isArray(songFingerprintListJson) ||
+              songFingerprintListJson.some((item) => typeof item !== 'string')
+            ) {
+              databaseInitWindow.createWindow({ needErrorHint: true })
+            } else {
+              store.databaseDir = store.settingConfig.databaseUrl
+              store.songFingerprintList = songFingerprintListJson
+              mainWindow.createWindow()
+            }
+          } else {
+            databaseInitWindow.createWindow({ needErrorHint: true })
+          }
+        } catch (error) {
+          databaseInitWindow.createWindow({ needErrorHint: true })
+        }
       }
     }
   })
