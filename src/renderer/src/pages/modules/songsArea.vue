@@ -236,7 +236,7 @@ const songClick = (event: MouseEvent, song: ISongInfo) => {
 const menuArr = ref([
   [{ menuName: '导出曲目' }],
   [{ menuName: '移动到筛选库' }, { menuName: '移动到精选库' }],
-  [{ menuName: '删除曲目' }]
+  [{ menuName: '删除曲目' }, { menuName: '删除上方所有曲目' }]
 ])
 
 const songContextmenu = async (event: MouseEvent, song: ISongInfo) => {
@@ -248,7 +248,44 @@ const songContextmenu = async (event: MouseEvent, song: ISongInfo) => {
     clickEvent: event
   })
   if (result !== 'cancel') {
-    if (result.menuName === '删除曲目') {
+    if (result.menuName === '删除上方所有曲目') {
+      let res = await confirm({
+        title: '删除',
+        content: [
+          t('确定删除此曲目上方的所有曲目吗'),
+          t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')
+        ]
+      })
+      if (res === 'confirm') {
+        let delSongs = []
+        for (let item of runtime.songsArea.songInfoArr) {
+          if (item.filePath === song.filePath) {
+            break
+          }
+          if (item.coverUrl) {
+            URL.revokeObjectURL(item.coverUrl)
+          }
+          delSongs.push(item.filePath)
+        }
+        if (delSongs.length === 0) {
+          return
+        }
+        window.electron.ipcRenderer.send(
+          'delSongs',
+          JSON.parse(JSON.stringify(runtime.songsArea.selectedSongFilePath))
+        )
+        runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
+          (song) => !delSongs.includes(song.filePath)
+        )
+        runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+        if (
+          runtime.playingData.playingSong &&
+          delSongs.indexOf(runtime.playingData.playingSong.filePath) !== -1
+        ) {
+          runtime.playingData.playingSong = null
+        }
+      }
+    } else if (result.menuName === '删除曲目') {
       let res = await confirm({
         title: '删除',
         content: [t('确定删除选中的曲目吗'), t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')]
