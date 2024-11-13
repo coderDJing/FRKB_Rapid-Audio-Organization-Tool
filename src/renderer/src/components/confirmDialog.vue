@@ -54,7 +54,7 @@ const cancel = () => {
 }
 
 onMounted(() => {
-  hotkeys('E', uuid, () => {
+  hotkeys('E,Enter', uuid, () => {
     if (props.confirmShow) {
       confirm()
     }

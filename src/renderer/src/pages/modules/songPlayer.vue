@@ -180,65 +180,88 @@ window.electron.ipcRenderer.on('readedSongFile', async (event, audioData) => {
 
 onMounted(() => {
   hotkeys('space', 'windowGlobal', () => {
-    if (waveformShow.value) {
-      if (wavesurferInstance?.isPlaying()) {
-        pause()
-      } else {
-        play()
-      }
+    if (!waveformShow.value) {
+      return
+    }
+    if (wavesurferInstance?.isPlaying()) {
+      pause()
+    } else {
+      play()
     }
     return false
   })
 
-  hotkeys('d', 'windowGlobal', () => {
-    if (waveformShow.value) {
-      fastForward()
+  hotkeys('d,right', 'windowGlobal', () => {
+    if (!waveformShow.value) {
+      return
     }
+
+    fastForward()
+
     return false
   })
-  hotkeys('a', 'windowGlobal', () => {
-    if (waveformShow.value) {
-      fastBackward()
+  hotkeys('a,left', 'windowGlobal', () => {
+    if (!waveformShow.value) {
+      return
     }
+
+    fastBackward()
+
     return false
   })
-  hotkeys('s', 'windowGlobal', () => {
+  hotkeys('s,down', 'windowGlobal', () => {
+    if (!waveformShow.value) {
+      return
+    }
     if (runtime.selectSongListDialogShow) {
       return
     }
 
-    if (waveformShow.value) {
-      nextSong()
-    }
+    nextSong()
+
     return false
   })
-  hotkeys('w', 'windowGlobal', () => {
+  hotkeys('w,up', 'windowGlobal', () => {
+    if (!waveformShow.value) {
+      return
+    }
     if (runtime.selectSongListDialogShow) {
       return
     }
-    if (waveformShow.value) {
-      previousSong()
-    }
+
+    previousSong()
+
     return false
   })
-  hotkeys('F', 'windowGlobal', () => {
+  hotkeys('F,delete', 'windowGlobal', (keyEvent) => {
+    if (!waveformShow.value) {
+      return
+    }
+    if (keyEvent.code === 'Delete' && runtime.songsArea.selectedSongFilePath.length > 0) {
+      return
+    }
     if (showDelConfirm || runtime.confirmShow) {
       return
     }
-
     runtime.activeMenuUUID = ''
     showDelConfirm = true
     delSong()
   })
 
   hotkeys('q', 'windowGlobal', () => {
-    if (waveformShow.value && !runtime.selectSongListDialogShow) {
+    if (!waveformShow.value) {
+      return
+    }
+    if (!runtime.selectSongListDialogShow) {
       moveToListLibrary()
     }
   })
 
   hotkeys('e', 'windowGlobal', () => {
-    if (waveformShow.value && !runtime.selectSongListDialogShow) {
+    if (!waveformShow.value) {
+      return
+    }
+    if (!runtime.selectSongListDialogShow) {
       moveToLikeLibrary()
     }
   })
@@ -303,7 +326,7 @@ let showDelConfirm = false
 const delSong = async () => {
   let res = await confirm({
     title: '删除',
-    content: [t('确定删除选中的曲目吗'), t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')]
+    content: [t('确定删除正在播放的曲目吗'), t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')]
   })
   showDelConfirm = false
   if (res === 'confirm') {
