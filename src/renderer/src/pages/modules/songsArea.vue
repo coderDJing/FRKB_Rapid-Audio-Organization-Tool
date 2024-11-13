@@ -10,7 +10,7 @@ import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import rightClickMenu from '../../components/rightClickMenu'
 import exportDialog from '../../components/exportDialog'
 import { t } from '@renderer/utils/translate'
-import { ISongInfo, ISongsAreaColumn } from 'src/types/globals'
+import { IMenu, ISongInfo, ISongsAreaColumn } from 'src/types/globals'
 
 let columnData = ref<ISongsAreaColumn[]>([])
 if (localStorage.getItem('songColumnData')) {
@@ -233,10 +233,10 @@ const songClick = (event: MouseEvent, song: ISongInfo) => {
   }
 }
 
-const menuArr = ref([
+const menuArr = ref<IMenu[][]>([
   [{ menuName: '导出曲目' }],
   [{ menuName: '移动到筛选库' }, { menuName: '移动到精选库' }],
-  [{ menuName: '删除曲目' }, { menuName: '删除上方所有曲目' }]
+  [{ menuName: '删除曲目', shortcutKey: 'Delete' }, { menuName: '删除上方所有曲目' }]
 ])
 
 const songContextmenu = async (event: MouseEvent, song: ISongInfo) => {
@@ -286,37 +286,7 @@ const songContextmenu = async (event: MouseEvent, song: ISongInfo) => {
         }
       }
     } else if (result.menuName === '删除曲目') {
-      let res = await confirm({
-        title: '删除',
-        content: [t('确定删除选中的曲目吗'), t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')]
-      })
-      if (res === 'confirm') {
-        window.electron.ipcRenderer.send(
-          'delSongs',
-          JSON.parse(JSON.stringify(runtime.songsArea.selectedSongFilePath))
-        )
-        let delSongs = runtime.songsArea.songInfoArr.filter(
-          (item) => runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) !== -1
-        )
-        for (let item of delSongs) {
-          if (item.coverUrl) {
-            URL.revokeObjectURL(item.coverUrl)
-          }
-        }
-        runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
-          (item) => runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) === -1
-        )
-        runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
-        if (
-          runtime.playingData.playingSong &&
-          runtime.songsArea.selectedSongFilePath.indexOf(
-            runtime.playingData.playingSong.filePath
-          ) !== -1
-        ) {
-          runtime.playingData.playingSong = null
-        }
-        runtime.songsArea.selectedSongFilePath.length = 0
-      }
+      deleteSong()
     } else if (result.menuName === '移动到精选库') {
       selectSongListDialogLibraryName.value = '精选库'
       selectSongListDialogShow.value = true
@@ -433,6 +403,38 @@ const songDblClick = (song: ISongInfo) => {
   runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
   window.electron.ipcRenderer.send('readSongFile', song.filePath)
 }
+const deleteSong = async () => {
+  let res = await confirm({
+    title: '删除',
+    content: [t('确定删除选中的曲目吗'), t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')]
+  })
+  if (res === 'confirm') {
+    window.electron.ipcRenderer.send(
+      'delSongs',
+      JSON.parse(JSON.stringify(runtime.songsArea.selectedSongFilePath))
+    )
+    let delSongs = runtime.songsArea.songInfoArr.filter(
+      (item) => runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) !== -1
+    )
+    for (let item of delSongs) {
+      if (item.coverUrl) {
+        URL.revokeObjectURL(item.coverUrl)
+      }
+    }
+    runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
+      (item) => runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) === -1
+    )
+    runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+    if (
+      runtime.playingData.playingSong &&
+      runtime.songsArea.selectedSongFilePath.indexOf(runtime.playingData.playingSong.filePath) !==
+        -1
+    ) {
+      runtime.playingData.playingSong = null
+    }
+    runtime.songsArea.selectedSongFilePath.length = 0
+  }
+}
 
 onMounted(() => {
   hotkeys('ctrl+a, command+a', 'windowGlobal', () => {
@@ -440,6 +442,13 @@ onMounted(() => {
     for (let item of runtime.songsArea.songInfoArr) {
       runtime.songsArea.selectedSongFilePath.push(item.filePath)
     }
+    return false
+  })
+  hotkeys('delete', 'windowGlobal', () => {
+    if (runtime.songsArea.selectedSongFilePath.length === 0) {
+      return false
+    }
+    deleteSong()
     return false
   })
 })
