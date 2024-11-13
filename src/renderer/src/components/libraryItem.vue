@@ -49,7 +49,7 @@ const myInputHandleInput = () => {
 }
 
 const inputKeyDownEnter = () => {
-  if (operationInputValue.value == '') {
+  if (operationInputValue.value === '') {
     inputHintText.value = t('必须提供歌单或文件夹名。')
     inputHintShow.value = true
     return
@@ -70,9 +70,9 @@ const inputBlurHandle = async () => {
   if (fatherDirData.children === undefined) {
     throw new Error(`fatherDirData.children error: ${JSON.stringify(fatherDirData.children)}`)
   }
-  if (inputHintShow.value || operationInputValue.value == '') {
-    if (dirData.dirName == '') {
-      if (fatherDirData.children[0]?.dirName == '') {
+  if (inputHintShow.value || operationInputValue.value === '') {
+    if (dirData.dirName === '') {
+      if (fatherDirData.children[0]?.dirName === '') {
         fatherDirData.children.shift()
       }
     }
@@ -85,7 +85,7 @@ const inputBlurHandle = async () => {
     'mkDir',
     {
       uuid: dirData.uuid,
-      type: dirData.type == 'dir' ? 'dir' : 'songList',
+      type: dirData.type === 'dir' ? 'dir' : 'songList',
       dirName: operationInputValue.value,
       order: 1
     },
@@ -107,7 +107,7 @@ let operationInputValue = ref('')
 const inputHintShow = ref(false)
 
 const myInput = useTemplateRef('myInput')
-if (dirData.dirName == '') {
+if (dirData.dirName === '') {
   nextTick(() => {
     myInput.value?.focus()
   })
@@ -115,14 +115,14 @@ if (dirData.dirName == '') {
 
 const rightClickMenuShow = ref(false)
 const menuArr = ref(
-  dirData.type == 'dir'
+  dirData.type === 'dir'
     ? [
         [{ menuName: '新建歌单' }, { menuName: '新建文件夹' }],
         [{ menuName: '重命名' }, { menuName: '删除' }]
       ]
     : [
         [{ menuName: '导入曲目' }, { menuName: '导出曲目' }],
-        [{ menuName: '重命名' }, { menuName: '删除' }],
+        [{ menuName: '重命名' }, { menuName: '删除歌单' }, { menuName: '清空歌单' }],
         [{ menuName: '在文件资源管理器中显示' }]
       ]
 )
@@ -181,7 +181,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
   rightClickMenuShow.value = false
   if (result !== 'cancel') {
-    if (result.menuName == '新建歌单') {
+    if (result.menuName === '新建歌单') {
       dirChildRendered.value = true
       dirChildShow.value = true
 
@@ -190,7 +190,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
         dirName: '',
         type: 'songList'
       })
-    } else if (result.menuName == '新建文件夹') {
+    } else if (result.menuName === '新建文件夹') {
       dirChildRendered.value = true
       dirChildShow.value = true
 
@@ -199,23 +199,36 @@ const contextmenuEvent = async (event: MouseEvent) => {
         dirName: '',
         type: 'dir'
       })
-    } else if (result.menuName == '重命名') {
+    } else if (result.menuName === '重命名') {
       renameDivShow.value = true
       renameDivValue.value = dirData.dirName
       await nextTick()
       myRenameInput.value?.focus()
-    } else if (result.menuName == '删除') {
+    } else if (result.menuName === '删除' || result.menuName === '删除歌单') {
       let res = await confirm({
         title: '删除',
         content: [
-          dirData.type == 'dir' ? t('确认删除此文件夹吗？') : t('确认删除此歌单吗？'),
+          dirData.type === 'dir' ? t('确认删除此文件夹吗？') : t('确认删除此歌单吗？'),
           t('(曲目将在磁盘上被删除，但声音指纹依然会保留)')
         ]
       })
       if (res === 'confirm') {
         deleteDir()
       }
-    } else if (result.menuName == '导入曲目') {
+    } else if (result.menuName === '清空歌单') {
+      let res = await confirm({
+        title: '删除',
+        content: [t('确认清空此歌单吗？'), t('(曲目将在磁盘上被删除，但声音指纹依然会保留)')]
+      })
+      if (res === 'confirm') {
+        let dirPath = libraryUtils.findDirPathByUuid(props.uuid)
+        await window.electron.ipcRenderer.invoke('emptyDir', dirPath)
+        if (runtime.songsArea.songListUUID === props.uuid) {
+          runtime.playingData.playingSongListData = []
+          runtime.playingData.playingSong = null
+        }
+      }
+    } else if (result.menuName === '导入曲目') {
       if (runtime.isProgressing) {
         await confirm({
           title: t('导入'),
@@ -225,7 +238,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
         return
       }
       await scanNewSongDialog({ libraryName: props.libraryName, songListUuid: props.uuid })
-    } else if (result.menuName == '导出曲目') {
+    } else if (result.menuName === '导出曲目') {
       if (runtime.isProgressing) {
         await confirm({
           title: t('导入'),
