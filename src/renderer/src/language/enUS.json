@@ -145,5 +145,6 @@
   "位于此位置的数据库已无法读取": "The database located at this location cannot be read.",
   "数据库可能已被移动或其必要文件结构已损坏。如果确认数据库未被移动，重新选择此位置将尝试修复数据库。": "The database may have been moved or its necessary file structure may be damaged. If you are certain that the database has not been moved, selecting this location again will attempt to repair the database.",
   "删除上方所有曲目": "Delete all tracks above",
-  "确定删除此曲目上方的所有曲目吗": "Are you sure to delete all tracks above this track?"
+  "确定删除此曲目上方的所有曲目吗": "Are you sure to delete all tracks above this track?",
+  "确定删除正在播放的曲目吗": "Are you sure to delete the currently playing track?"
 }
