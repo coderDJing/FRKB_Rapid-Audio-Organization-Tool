@@ -365,6 +365,14 @@ function createWindow() {
     mainWindow?.close()
   })
 
+  ipcMain.handle('emptyDir', async (e, targetPath) => {
+    let songFileUrls = await collectFilesWithExtensions(
+      path.join(store.databaseDir, targetPath),
+      store.settingConfig.audioExt
+    )
+    await Promise.all(songFileUrls.map((item) => fs.remove(item)))
+  })
+
   mainWindow.on('closed', () => {
     ipcMain.removeHandler('toggle-maximize')
     ipcMain.removeHandler('toggle-minimize')
@@ -376,6 +384,7 @@ function createWindow() {
     ipcMain.removeHandler('checkForUpdates')
     ipcMain.removeHandler('openFileExplorer')
     ipcMain.removeHandler('reSelectLibrary')
+    ipcMain.removeHandler('emptyDir')
     globalShortcut.unregister(store.settingConfig.globalCallShortcut)
     mainWindow = null
   })
