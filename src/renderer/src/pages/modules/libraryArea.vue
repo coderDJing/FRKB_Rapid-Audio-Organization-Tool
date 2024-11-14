@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import libraryItem from '@renderer/components/libraryItem.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
@@ -16,9 +16,17 @@ const props = defineProps({
   }
 })
 let libraryData = libraryUtils.getLibraryTreeByUUID(props.uuid)
+
 if (libraryData === null) {
   throw new Error(`libraryData error: ${JSON.stringify(libraryData)}`)
 }
+const showHint = computed(() => {
+  const children = libraryData.children
+  const hasSpecialChild = children?.some((child) =>
+    ['filterLibrarySonglistDemo1', 'curatedLibrarySonglistDemo1'].includes(child.uuid)
+  )
+  return !children?.length || (children?.length === 1 && hasSpecialChild)
+})
 let hoverTimer: NodeJS.Timeout
 let collapseButtonHintShow = ref(false)
 const iconMouseover = () => {
@@ -239,7 +247,7 @@ const drop = async (e: DragEvent) => {
         </transition>
       </div>
     </div>
-    <div class="unselectable libraryArea" v-if="libraryData.children?.length">
+    <div class="unselectable libraryArea">
       <template v-for="item of libraryData.children" :key="item.uuid">
         <libraryItem
           :uuid="item.uuid"
@@ -248,20 +256,25 @@ const drop = async (e: DragEvent) => {
         />
       </template>
       <div
-        style="flex-grow: 1; min-height: 30px"
+        style="
+          flex-grow: 1;
+          min-height: 30px;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        "
         @dragover.stop.prevent="dragover"
         @dragenter.stop.prevent="dragenter"
         @drop.stop="drop"
         @dragleave.stop="dragleave"
         :class="{ borderTop: dragApproach == 'top' }"
-      ></div>
-    </div>
-    <div
-      class="unselectable"
-      v-else
-      style="height: 100%; width: 100%; display: flex; justify-content: center; align-items: center"
-    >
-      <span style="font-size: 12px; color: #8c8c8c">{{ t('右键新建歌单') }}</span>
+      >
+        <span
+          style="font-size: 12px; color: #8c8c8c; position: absolute; bottom: 50vh"
+          v-show="showHint"
+          >{{ t('右键新建歌单') }}</span
+        >
+      </div>
     </div>
   </div>
 </template>
