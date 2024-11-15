@@ -49,6 +49,7 @@ interface ISettingConfig {
   databaseUrl: string
   globalCallShortcut: string
   nextCheckUpdateTime: string
+  hiddenPlayControlArea: boolean
 }
 
 interface ILanguageDict {

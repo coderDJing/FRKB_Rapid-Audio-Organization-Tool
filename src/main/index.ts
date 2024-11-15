@@ -19,7 +19,7 @@ import store from './store'
 import foundNewVersionWindow from './window/foundNewVersionWindow'
 import updateWindow from './window/updateWindow'
 import electronUpdater = require('electron-updater')
-import { IDir, ISongInfo } from '../types/globals'
+import { IDir, ISettingConfig, ISongInfo } from '../types/globals'
 
 const gotTheLock = app.requestSingleInstanceLock()
 
@@ -88,7 +88,8 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
     audioExt: ['.mp3', '.wav', '.flac'],
     databaseUrl: '',
     globalCallShortcut:
-      platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : ''
+      platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
+    hiddenPlayControlArea: false
   })
 }
 

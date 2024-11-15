@@ -147,6 +147,10 @@ const reSelectLibrary = async () => {
               <option value="enUS">English</option>
             </select>
           </div>
+          <div style="margin-top: 20px">{{ t('隐藏播放控制区域，显示更长的波形图') }}：</div>
+          <div style="margin-top: 10px">
+            <singleCheckbox v-model="runtime.setting.hiddenPlayControlArea" @change="extChange()" />
+          </div>
           <div style="margin-top: 20px">{{ t('扫描音频格式') }}：</div>
           <div style="margin-top: 10px; display: flex">
             <span style="margin-right: 10px">.mp3</span>

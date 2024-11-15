@@ -149,5 +149,6 @@
   "确定删除正在播放的曲目吗": "Are you sure to delete the currently playing track?",
   "删除歌单": "Delete playlist",
   "清空歌单": "Empty playlist",
-  "确认清空此歌单吗？": "Are you sure to empty this playlist?"
+  "确认清空此歌单吗？": "Are you sure to empty this playlist?",
+  "隐藏播放控制区域，显示更长的波形图": "Hide the play control area, showing a longer waveform"
 }
