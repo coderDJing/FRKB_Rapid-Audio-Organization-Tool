@@ -483,8 +483,12 @@ const bpmDomRef = useTemplateRef('bpmDomRef')
         </div>
       </div>
     </transition>
-    <div style="width: 260px" v-show="waveformShow">
+    <div
+      :style="{ width: runtime.setting.hiddenPlayControlArea ? '15px' : '260px' }"
+      v-show="waveformShow"
+    >
       <playerControls
+        v-if="!runtime.setting.hiddenPlayControlArea"
         ref="playerControlsRef"
         @pause="pause"
         @play="play"
