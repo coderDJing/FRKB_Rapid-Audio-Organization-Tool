@@ -70,7 +70,8 @@ export const useRuntimeStore = defineStore('runtime', {
         audioExt: [],
         databaseUrl: '',
         globalCallShortcut: '',
-        nextCheckUpdateTime: ''
+        nextCheckUpdateTime: '',
+        hiddenPlayControlArea: false
       } //设置
     }
   }
