@@ -77,6 +77,7 @@ interface ISongsAreaColumn {
   key: string
   show: boolean
   width: number
+  order?: 'asc' | 'desc'
 }
 
 type Icon = {

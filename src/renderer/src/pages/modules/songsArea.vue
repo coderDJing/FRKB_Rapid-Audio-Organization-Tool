@@ -11,10 +11,22 @@ import rightClickMenu from '../../components/rightClickMenu'
 import exportDialog from '../../components/exportDialog'
 import { t } from '@renderer/utils/translate'
 import { IMenu, ISongInfo, ISongsAreaColumn } from 'src/types/globals'
+import ascendingOrder from '@renderer/assets/ascending-order.png?asset'
+import descendingOrder from '@renderer/assets/descending-order.png?asset'
 
 let columnData = ref<ISongsAreaColumn[]>([])
 if (localStorage.getItem('songColumnData')) {
-  columnData.value = JSON.parse(localStorage.getItem('songColumnData') || '[]')
+  let localColumnData = JSON.parse(localStorage.getItem('songColumnData') || '[]')
+  let hasOrder = localColumnData.some((col: ISongsAreaColumn) => col.order !== undefined)
+  if (!hasOrder) {
+    localColumnData = localColumnData.map((col: ISongsAreaColumn) => {
+      if (col.key === 'artist') {
+        return { ...col, order: 'asc' }
+      }
+      return col
+    })
+  }
+  columnData.value = localColumnData
 } else {
   columnData.value = [
     {
@@ -33,7 +45,8 @@ if (localStorage.getItem('songColumnData')) {
       columnName: '表演者',
       key: 'artist',
       show: true,
-      width: 200
+      width: 200,
+      order: 'asc'
     },
     {
       columnName: '时长',
@@ -114,7 +127,19 @@ const openSongList = async () => {
       item.coverUrl = blobUrl
     }
   }
-  runtime.songsArea.songInfoArr = scanData
+  for (let col of columnData.value) {
+    if (col.order) {
+      runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
+        scanData,
+        col.key as keyof ISongInfo,
+        col.order
+      )
+      if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+        runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+      }
+      break
+    }
+  }
 }
 watch(
   () => runtime.songsArea.songListUUID,
@@ -148,12 +173,16 @@ let startX = 0
 let resizingCol: ISongsAreaColumn
 let isResizing = false
 let initWidth = 0
+
+let isResizeClick = false
 function startResize(e: MouseEvent, col: ISongsAreaColumn) {
   if (col.key === 'coverUrl') {
     return
   }
-  e.preventDefault && e.preventDefault()
+  e.stopPropagation()
+  e.preventDefault()
   isResizing = true
+  isResizeClick = true
   startX = e.clientX
   resizingCol = col
   initWidth = col.width
@@ -162,17 +191,24 @@ function startResize(e: MouseEvent, col: ISongsAreaColumn) {
 }
 
 function resize(e: MouseEvent) {
+  e.stopPropagation()
+  e.preventDefault()
   if (!isResizing) return
   const deltaX = e.clientX - startX
   const newWidth = Math.max(50, initWidth + deltaX) // 设置最小宽度
   resizingCol.width = newWidth
 }
 
-function stopResize() {
+function stopResize(e: MouseEvent) {
+  e.stopPropagation()
+  e.preventDefault()
   isResizing = false
   document.removeEventListener('mousemove', resize)
   document.removeEventListener('mouseup', stopResize)
   onUpdate()
+  setTimeout(() => {
+    isResizeClick = false
+  }, 0)
 }
 
 const colRightClickMenuShow = ref(false)
@@ -470,6 +506,44 @@ let vDraggableData: VDraggableBinding = [
     onEnd
   }
 ]
+function sortArrayByProperty<T>(array: T[], property: keyof T, order: 'asc' | 'desc' = 'asc'): T[] {
+  const collator = new Intl.Collator('zh-CN', {
+    numeric: true, // 启用数字排序
+    sensitivity: 'base' // 不区分大小写
+  })
+
+  return [...array].sort((a, b) => {
+    const valueA = String(a[property] || '')
+    const valueB = String(b[property] || '')
+
+    return order === 'asc' ? collator.compare(valueA, valueB) : collator.compare(valueB, valueA)
+  })
+}
+const colMenuClick = (col: ISongsAreaColumn) => {
+  if (isResizeClick) {
+    return
+  }
+  if (col.key === 'coverUrl') {
+    return
+  }
+
+  for (let item of columnData.value) {
+    if (item.key !== col.key) {
+      item.order = undefined
+    }
+  }
+  col.order = col.order === 'asc' ? 'desc' : 'asc'
+  onUpdate()
+  runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
+    runtime.songsArea.songInfoArr,
+    col.key as keyof ISongInfo,
+    col.order
+  )
+  if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+    runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+  }
+}
+
 //todo 拖拽文件出窗口
 </script>
 <template>
@@ -502,9 +576,24 @@ let vDraggableData: VDraggableBinding = [
           box-sizing: border-box;
           display: flex;
         "
+        @click="colMenuClick(col)"
       >
         <div style="flex-grow: 1; overflow: hidden">
-          <div style="width: 0; white-space: nowrap">{{ t(col.columnName) }}</div>
+          <div
+            style="width: 0; white-space: nowrap; display: flex; align-items: center"
+            :style="{ color: col.order ? '#0078d4' : '#cccccc' }"
+          >
+            {{ t(col.columnName)
+            }}<img
+              :src="ascendingOrder"
+              style="width: 20px; height: 20px"
+              v-show="col.order === 'asc'"
+            /><img
+              :src="descendingOrder"
+              style="width: 20px; height: 20px"
+              v-show="col.order === 'desc'"
+            />
+          </div>
         </div>
         <div
           v-if="col.key !== 'coverUrl'"
