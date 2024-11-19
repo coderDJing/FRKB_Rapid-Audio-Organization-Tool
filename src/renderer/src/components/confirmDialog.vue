@@ -37,6 +37,10 @@ const props = defineProps({
   },
   cancelCallback: {
     type: Function
+  },
+  canCopyText: {
+    type: Boolean,
+    default: false
   }
 })
 const emits = defineEmits(['confirm', 'cancel'])
@@ -82,7 +86,7 @@ onUnmounted(() => {
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
           <span style="font-weight: bold">{{ t(props.title) }}</span>
         </div>
-        <div style="padding-left: 20px; padding-right: 20px">
+        <div style="padding-left: 20px; padding-right: 20px" :class="{ selectable: canCopyText }">
           <div
             v-for="item of props.content"
             style="margin-top: 10px"
