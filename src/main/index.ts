@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import {
   updateTargetDirSubdirOrder,
@@ -19,7 +19,7 @@ import store from './store'
 import foundNewVersionWindow from './window/foundNewVersionWindow'
 import updateWindow from './window/updateWindow'
 import electronUpdater = require('electron-updater')
-import { IDir, ISettingConfig, ISongInfo } from '../types/globals'
+import { IDir, ISongInfo } from '../types/globals'
 
 const gotTheLock = app.requestSingleInstanceLock()
 
@@ -223,6 +223,10 @@ ipcMain.handle('setSetting', (e, setting) => {
 })
 ipcMain.on('outputLog', (e, logMsg) => {
   log.error(logMsg)
+})
+
+ipcMain.on('openLocalBrowser', (e, url) => {
+  shell.openExternal(url)
 })
 
 ipcMain.handle('clearTracksFingerprintLibrary', (e) => {

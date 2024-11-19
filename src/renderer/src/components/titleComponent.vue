@@ -69,7 +69,7 @@ const menuArr = ref<Menu[]>([
   {
     name: '帮助(H)',
     show: false,
-    subMenu: [[{ name: '使用说明', shortcutKey: 'F1' }, { name: '检查更新' }, { name: '关于' }]]
+    subMenu: [[{ name: '访问 GitHub', shortcutKey: 'F1' }, { name: '检查更新' }, { name: '关于' }]]
   }
 ])
 hotkeys('alt+f', 'windowGlobal', () => {

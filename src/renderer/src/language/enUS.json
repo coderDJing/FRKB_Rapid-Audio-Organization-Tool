@@ -7,8 +7,6 @@
   "确认重新选择数据库所在位置？": "Are you sure you want to select the data storage location again?",
   "用户的曲目及曲目指纹信息将储存在此处，请确保此文件夹有足够空间": "User tracks and track fingerprints will be stored here. Please ensure that this folder has enough space.",
   "如果目标文件夹下已经存在FRKB数据库文件夹，‌那么将会直接使用已有的数据库内容": "If the FRKB database folder already exists under the target folder, the existing database content will be used directly.",
-  "beta测试版本暂不开放 使用说明": "Beta version does not provide access to the User Guide.",
-  "beta测试版本暂不开放 关于": "Beta version does not provide access to the About.",
   "快速音频整理工具": "Rapid Audio Organization Tool",
   "文件(F)": "File(F)",
   "迁移(G)": "Migration(G)",
@@ -21,7 +19,7 @@
   "导入曲目指纹库文件": "Import track fingerprint database file‌",
   "导出迁移文件": "Export migrating file",
   "导入迁移文件": "Import migrating file",
-  "使用说明": "User Guide",
+  "访问 GitHub": "Visit GitHub",
   "关于": "About",
   "导入": "Import",
   "请等待当前任务执行结束": "Please wait for the current task to complete‌",
@@ -150,5 +148,7 @@
   "删除歌单": "Delete playlist",
   "清空歌单": "Empty playlist",
   "确认清空此歌单吗？": "Are you sure to empty this playlist?",
-  "隐藏播放控制区域，显示更长的波形图": "Hide the play control area, showing a longer waveform"
+  "隐藏播放控制区域，显示更长的波形图": "Hide the play control area, showing a longer waveform",
+  "作者 Coder '程序猿/DJ'": "Author: Coder 'Programmer/DJ'",
+  "对FRKB有任何建议或Booking我演出: jinlingwuyanzu@qq.com": "Any suggestions for FRKB or bookings me for DJing: jinlingwuyanzu@qq.com"
 }
