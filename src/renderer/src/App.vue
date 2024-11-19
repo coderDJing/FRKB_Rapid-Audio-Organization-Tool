@@ -11,6 +11,8 @@ import exportSongFingerprintDialog from './components/exportSongFingerprintDialo
 import importSongFingerprintDialog from './components/importSongFingerprintDialog.vue'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
+import pkg from '../../../package.json?asset'
+
 const runtime = useRuntimeStore()
 
 const detectPlatform = () => {
@@ -32,14 +34,23 @@ window.electron.ipcRenderer.on('layoutConfigReaded', (event, layoutConfig) => {
 const activeDialog = ref('')
 
 const openDialog = async (item: string) => {
-  if (item === '使用说明' || item === '关于') {
-    //todo
+  if (item === '关于') {
     await confirm({
-      title: item,
-      content: [t('beta测试版本暂不开放 ' + item)],
-      confirmShow: false
+      title: '关于',
+      content: [
+        t('当前版本') + ' ' + (pkg as any).version,
+        t("作者 Coder '程序猿/DJ'"),
+        t('对FRKB有任何建议或Booking我演出: jinlingwuyanzu@qq.com')
+      ],
+      confirmShow: false,
+      canCopyText: true
     })
-    return
+  }
+  if (item === '访问 GitHub') {
+    window.electron.ipcRenderer.send(
+      'openLocalBrowser',
+      'https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool'
+    )
   }
   if (item === '检查更新') {
     window.electron.ipcRenderer.send('checkForUpdates')
@@ -70,7 +81,7 @@ const getLibrary = async () => {
 getLibrary()
 onMounted(() => {
   hotkeys('F1', 'windowGlobal', () => {
-    openDialog('使用说明')
+    openDialog('访问 GitHub')
   })
 
   const handleAltF4 = async () => {
@@ -123,8 +134,6 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (event) => {
     v-if="activeDialog == '导入曲目指纹库文件'"
     @cancel="activeDialog = ''"
   />
-  <!-- todo 使用说明 -->
-  <!-- todo 关于 -->
 </template>
 <style lang="scss">
 #app {

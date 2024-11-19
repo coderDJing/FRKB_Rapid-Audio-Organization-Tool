@@ -8,6 +8,7 @@ interface DialogOptions {
   textAlign?: string
   innerHeight?: number
   innerWidth?: number
+  canCopyText?: boolean
 }
 
 export default (options: DialogOptions) => {

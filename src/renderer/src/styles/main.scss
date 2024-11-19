@@ -7,6 +7,12 @@
   /* Standard syntax */
 }
 
+.selectable {
+  -webkit-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+
 .canDrag {
   -webkit-app-region: drag;
 }
