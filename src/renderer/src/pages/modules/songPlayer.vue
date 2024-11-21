@@ -275,11 +275,11 @@ const pause = () => {
 }
 
 const fastForward = () => {
-  wavesurferInstance?.skip(10)
+  wavesurferInstance?.skip(runtime.setting.fastForwardTime)
 }
 
 const fastBackward = () => {
-  wavesurferInstance?.skip(-5)
+  wavesurferInstance?.skip(runtime.setting.fastBackwardTime)
 }
 
 // let nextSongDebounceTimeout = null

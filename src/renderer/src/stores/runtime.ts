@@ -71,7 +71,9 @@ export const useRuntimeStore = defineStore('runtime', {
         databaseUrl: '',
         globalCallShortcut: '',
         nextCheckUpdateTime: '',
-        hiddenPlayControlArea: false
+        hiddenPlayControlArea: false,
+        fastForwardTime: 10,
+        fastBackwardTime: -5
       } //设置
     }
   }
