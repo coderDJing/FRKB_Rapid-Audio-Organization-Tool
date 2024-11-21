@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch, ref, nextTick, computed, onMounted, Ref } from 'vue'
+import { watch, ref, nextTick, computed, onMounted, Ref, useTemplateRef } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { RefOrValue, UseDraggableOptions, vDraggable } from 'vue-draggable-plus'
@@ -275,6 +275,7 @@ const menuArr = ref<IMenu[][]>([
   [{ menuName: '删除曲目', shortcutKey: 'Delete' }, { menuName: '删除上方所有曲目' }]
 ])
 
+const songsAreaRef = useTemplateRef('songsAreaRef')
 const songContextmenu = async (event: MouseEvent, song: ISongInfo) => {
   if (runtime.songsArea.selectedSongFilePath.indexOf(song.filePath) === -1) {
     runtime.songsArea.selectedSongFilePath = [song.filePath]
@@ -320,6 +321,10 @@ const songContextmenu = async (event: MouseEvent, song: ISongInfo) => {
         ) {
           runtime.playingData.playingSong = null
         }
+        songsAreaRef.value?.scrollTo({
+          top: 0,
+          behavior: 'smooth'
+        })
       }
     } else if (result.menuName === '删除曲目') {
       deleteSong()
@@ -554,6 +559,7 @@ const colMenuClick = (col: ISongsAreaColumn) => {
     <div class="loading"></div>
   </div>
   <div
+    ref="songsAreaRef"
     style="height: 100%; width: 100%; overflow: auto"
     v-if="runtime.songsArea.songListUUID && !loadingShow"
     @click="runtime.songsArea.selectedSongFilePath.length = 0"
