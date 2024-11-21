@@ -26,7 +26,7 @@ onUnmounted(() => {
   utils.delHotkeysScope(uuid)
 })
 
-const languageChanged = async () => {
+const setSetting = async () => {
   await window.electron.ipcRenderer.invoke(
     'setSetting',
     JSON.parse(JSON.stringify(runtime.setting))
@@ -65,10 +65,7 @@ const extChange = async () => {
     }
   }
   runtime.setting.audioExt = audioExtArr
-  await window.electron.ipcRenderer.invoke(
-    'setSetting',
-    JSON.parse(JSON.stringify(runtime.setting))
-  )
+  setSetting()
 }
 const clearTracksFingerprintLibrary = async () => {
   if (runtime.isProgressing) {
@@ -115,12 +112,16 @@ const reSelectLibrary = async () => {
     confirmShow: true
   })
   if (res === 'confirm') {
-    await window.electron.ipcRenderer.invoke(
-      'setSetting',
-      JSON.parse(JSON.stringify(runtime.setting))
-    )
+    setSetting()
     await window.electron.ipcRenderer.invoke('reSelectLibrary')
   }
+}
+
+if (!runtime.setting.fastForwardTime) {
+  runtime.setting.fastForwardTime = 10
+}
+if (!runtime.setting.fastBackwardTime) {
+  runtime.setting.fastBackwardTime = -5
 }
 </script>
 <template>
@@ -142,7 +143,7 @@ const reSelectLibrary = async () => {
         <div style="padding: 20px; font-size: 14px; flex-grow: 1; overflow-y: scroll">
           <div>{{ t('语言') }}：</div>
           <div style="margin-top: 10px">
-            <select v-model="runtime.setting.language" @change="languageChanged">
+            <select v-model="runtime.setting.language" @change="setSetting">
               <option value="zhCN">简体中文</option>
               <option value="enUS">English</option>
             </select>
@@ -170,6 +171,42 @@ const reSelectLibrary = async () => {
               {{ runtime.setting.globalCallShortcut }}
             </div>
           </div>
+          <div style="margin-top: 20px">{{ t('快进时长') }}：</div>
+          <div style="margin-top: 10px">
+            <input
+              class="myInput"
+              v-model="runtime.setting.fastForwardTime"
+              type="number"
+              min="1"
+              step="1"
+              @input="
+                runtime.setting.fastForwardTime = Math.max(
+                  1,
+                  Math.floor(Number(runtime.setting.fastForwardTime))
+                )
+              "
+              @blur="setSetting()"
+            />
+            {{ t('秒') }}
+          </div>
+          <div style="margin-top: 20px">{{ t('快退时长') }}：</div>
+          <div style="margin-top: 10px">
+            <input
+              class="myInput"
+              v-model="runtime.setting.fastBackwardTime"
+              type="number"
+              max="-1"
+              step="1"
+              @input="
+                runtime.setting.fastBackwardTime = Math.min(
+                  -1,
+                  Math.floor(Number(runtime.setting.fastBackwardTime))
+                )
+              "
+              @blur="setSetting()"
+            />
+            {{ t('秒') }}
+          </div>
           <div style="margin-top: 20px">{{ t('重新选择数据库所在位置') }}：</div>
           <div style="margin-top: 10px">
             <div class="button" style="width: 90px; text-align: center" @click="reSelectLibrary()">
@@ -195,6 +232,15 @@ const reSelectLibrary = async () => {
   </div>
 </template>
 <style lang="scss" scoped>
+.myInput {
+  width: 50px;
+  height: 19px;
+  background-color: #313131;
+  border: 1px solid #313131;
+  outline: none;
+  color: #cccccc;
+}
+
 .dangerButton {
   height: 25px;
   line-height: 25px;

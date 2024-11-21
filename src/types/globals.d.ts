@@ -50,6 +50,8 @@ interface ISettingConfig {
   globalCallShortcut: string
   nextCheckUpdateTime: string
   hiddenPlayControlArea: boolean
+  fastForwardTime: number
+  fastBackwardTime: number
 }
 
 interface ILanguageDict {
