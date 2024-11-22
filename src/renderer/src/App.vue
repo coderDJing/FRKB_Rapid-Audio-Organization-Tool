@@ -95,6 +95,10 @@ onMounted(() => {
       window.electron.ipcRenderer.send('toggle-close')
     }
   }
+  hotkeys('command+q', () => {
+    handleAltF4()
+    return false
+  })
   hotkeys('alt+F4', () => {
     handleAltF4()
     return false
