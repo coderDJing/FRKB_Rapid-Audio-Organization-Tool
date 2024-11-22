@@ -295,7 +295,7 @@ const dirHandleClick = async () => {
   }
   if (dirData.type == 'songList') {
     if (runtime.songsArea.songListUUID === props.uuid) {
-      runtime.songsArea.songListUUID = ''  
+      runtime.songsArea.songListUUID = ''
       return
     }
     runtime.songsArea.songListUUID = props.uuid
