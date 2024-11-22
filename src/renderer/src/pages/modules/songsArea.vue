@@ -307,10 +307,7 @@ const songContextmenu = async (event: MouseEvent, song: ISongInfo) => {
         if (delSongs.length === 0) {
           return
         }
-        window.electron.ipcRenderer.send(
-          'delSongs',
-          JSON.parse(JSON.stringify(runtime.songsArea.selectedSongFilePath))
-        )
+        window.electron.ipcRenderer.send('delSongs', JSON.parse(JSON.stringify(delSongs)))
         runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
           (song) => !delSongs.includes(song.filePath)
         )
