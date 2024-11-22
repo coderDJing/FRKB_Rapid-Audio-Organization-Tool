@@ -550,6 +550,29 @@ const colMenuClick = (col: ISongsAreaColumn) => {
 </script>
 <template>
   <div
+    v-show="!loadingShow && !runtime.songsArea.songListUUID"
+    class="unselectable"
+    style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center"
+  >
+    <div>
+      <div style="display: flex">
+        <div class="keyboardButton">Q</div>
+        <div class="keyboardButton" style="margin-left: 3px">W</div>
+        <div class="keyboardButton" style="margin-left: 3px">E</div>
+      </div>
+      <div style="display: flex; margin-top: 3px">
+        <div class="keyboardButton" style="margin-left: 15px">A</div>
+        <div class="keyboardButton" style="margin-left: 3px">S</div>
+        <div class="keyboardButton" style="margin-left: 3px">D</div>
+        <div class="keyboardButton" style="margin-left: 3px">F</div>
+      </div>
+      <div style="display: flex; margin-top: 20px">
+        <div class="keyboardButton" style="margin-left: 20px; width: 200px">Space</div>
+      </div>
+      //todo
+    </div>
+  </div>
+  <div
     v-show="loadingShow"
     style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center"
   >
@@ -687,6 +710,21 @@ const colMenuClick = (col: ISongsAreaColumn) => {
   />
 </template>
 <style lang="scss" scoped>
+.keyboardButton {
+  border: 2px solid #ccc;
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  line-height: 40px;
+  text-align: center;
+  font-weight: bold;
+  font-size: 18px;
+  &:hover {
+    border: 2px solid #fff;
+    color: #fff;
+  }
+}
+
 .selectedSong {
   background-color: #37373d;
 }
