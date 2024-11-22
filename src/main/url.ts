@@ -2,8 +2,13 @@ import { app } from 'electron'
 import enUsUrl from '../renderer/src/language/enUS.json?commonjs-external&asset'
 
 import path = require('path')
+
 const analyseSongPyScriptUrl = path
-  .join(__dirname, '../../resources/pyScript/analyseSong/analyseSong.exe')
+  .join(
+    __dirname,
+    '../../resources/pyScript/analyseSong/analyseSong' +
+      (process.platform === 'darwin' ? '' : '.exe')
+  )
   .replace('app.asar', 'app.asar.unpacked')
 let userDataDir = ''
 if (app.isPackaged) {

@@ -84,20 +84,23 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
     mainWindowHeight: 600
   })
   fs.outputJsonSync(url.settingConfigFileUrl, {
+    platform: platform,
     language: is.dev ? 'enUS' : '',
     audioExt: ['.mp3', '.wav', '.flac'],
     databaseUrl: '',
     globalCallShortcut:
       platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
-    hiddenPlayControlArea: false
+    hiddenPlayControlArea: false,
+    fastForwardTime: 10,
+    fastBackwardTime: -5
   })
 }
 
 store.layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
 store.settingConfig = fs.readJSONSync(url.settingConfigFileUrl)
-if (is.dev) {
-  store.settingConfig.databaseUrl = 'C:\\Users\\trl\\Desktop\\FRKB_database'
-}
+// if (is.dev) {
+//   store.settingConfig.databaseUrl = 'C:\\Users\\trl\\Desktop\\FRKB_database'
+// }
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('frkb.coderDjing')

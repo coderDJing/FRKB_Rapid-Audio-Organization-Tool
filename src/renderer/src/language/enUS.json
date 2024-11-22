@@ -42,7 +42,7 @@
   "选择文件夹": "‌Select Folder",
   "选择歌单": "Select Playlist‌",
   "导入后删除原文件": "Delete original after importing",
-  "比对声音库指纹去重": "Deduplicate audio fingerprints",
+  "比对声音指纹库去重": "Deduplicate audio fingerprints",
   "加入声音指纹库": "Add to fingerprints library",
   "将对所有导入过并加入声音指纹库的曲目进行比对，重复的曲目将不会被导入，哪怕它曾经已被删除": "All tracks that have been imported and added to the audio fingerprint library will be compared, and duplicate tracks will not be imported, even if they have been deleted previously.",
   "将导入的曲目根据曲目内容本身进行声音指纹分析，并将分析结果永久入库，供去重比对使用，哪怕曲目本身已经被删除分析结果仍会存在": "The imported tracks will be analyzed for audio fingerprints based on their content, and the analysis results will be permanently stored in the database for deduplication comparison, even if the tracks themselves have been deleted, the analysis results will still exist.",
