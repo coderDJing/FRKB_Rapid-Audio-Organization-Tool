@@ -294,6 +294,10 @@ const dirHandleClick = async () => {
     return
   }
   if (dirData.type == 'songList') {
+    if (runtime.songsArea.songListUUID === props.uuid) {
+      runtime.songsArea.songListUUID = ''  
+      return
+    }
     runtime.songsArea.songListUUID = props.uuid
   } else {
     dirChildRendered.value = true
