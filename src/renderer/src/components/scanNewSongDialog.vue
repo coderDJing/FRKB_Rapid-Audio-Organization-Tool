@@ -257,7 +257,7 @@ onUnmounted(() => {
             </div>
           </div>
           <div style="margin-top: 30px; display: flex">
-            <div class="formLabel" style="width: 200px; text-align: right">
+            <div class="formLabel settingLabel">
               <span>{{ t('导入后删除原文件') }}：</span>
             </div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
@@ -265,8 +265,8 @@ onUnmounted(() => {
             </div>
           </div>
           <div style="margin-top: 10px; display: flex">
-            <div class="formLabel" style="width: 200px; text-align: right">
-              <span>{{ t('比对声音库指纹去重') }}：</span>
+            <div class="formLabel settingLabel">
+              <span>{{ t('比对声音指纹库去重') }}：</span>
             </div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
               <singleCheckbox v-model="settingData.isComparisonSongFingerprint" />
@@ -302,7 +302,7 @@ onUnmounted(() => {
             </div>
           </div>
           <div style="margin-top: 10px; display: flex">
-            <div class="formLabel" style="width: 200px; text-align: right">
+            <div class="formLabel settingLabel">
               <span>{{ t('加入声音指纹库') }}：</span>
             </div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
@@ -386,5 +386,11 @@ onUnmounted(() => {
   min-width: 110px;
   text-align: left;
   font-size: 14px;
+}
+
+.settingLabel {
+  width: fit-content;
+  min-width: 150px;
+  text-align: right;
 }
 </style>
