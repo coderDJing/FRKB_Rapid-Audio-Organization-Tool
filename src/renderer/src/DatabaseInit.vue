@@ -42,7 +42,9 @@ const submitConfirm = async () => {
     }
     return
   }
-  runtime.setting.databaseUrl = folderPathVal.value + '\\FRKB_database'
+  runtime.setting.databaseUrl =
+    folderPathVal.value +
+    (runtime.setting.platform === 'win32' ? '\\FRKB_database' : '/FRKB_database')
   await window.electron.ipcRenderer.invoke(
     'setSetting',
     JSON.parse(JSON.stringify(runtime.setting))

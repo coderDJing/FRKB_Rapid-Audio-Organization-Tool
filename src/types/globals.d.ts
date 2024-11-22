@@ -44,6 +44,7 @@ interface ILayoutConfig {
 }
 
 interface ISettingConfig {
+  platform: 'win32' | 'darwin'
   language: '' | 'enUS' | 'zhCN'
   audioExt: string[]
   databaseUrl: string

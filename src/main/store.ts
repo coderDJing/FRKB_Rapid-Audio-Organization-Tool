@@ -11,12 +11,15 @@ let layoutConfig: ILayoutConfig = {
 } //界面布局config
 
 let settingConfig: ISettingConfig = {
+  platform: 'win32',
   language: '',
   audioExt: [],
   databaseUrl: '',
   globalCallShortcut: '',
   nextCheckUpdateTime: '',
-  hiddenPlayControlArea: false
+  hiddenPlayControlArea: false,
+  fastForwardTime: 10,
+  fastBackwardTime: -5
 } //设置config
 let analyseSongPort: string = ''
 export default {
