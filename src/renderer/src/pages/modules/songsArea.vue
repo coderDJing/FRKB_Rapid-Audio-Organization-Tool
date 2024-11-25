@@ -549,7 +549,7 @@ const colMenuClick = (col: ISongsAreaColumn) => {
 //todo 拖拽文件出窗口
 </script>
 <template>
-  <div
+  <!-- <div
     v-show="!loadingShow && !runtime.songsArea.songListUUID"
     class="unselectable"
     style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center"
@@ -571,7 +571,7 @@ const colMenuClick = (col: ISongsAreaColumn) => {
       </div>
       //todo
     </div>
-  </div>
+  </div> -->
   <div
     v-show="loadingShow"
     style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center"
