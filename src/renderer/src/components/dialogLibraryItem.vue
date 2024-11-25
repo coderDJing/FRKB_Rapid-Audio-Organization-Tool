@@ -9,7 +9,6 @@ import { v4 as uuidV4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 import emitter from '../utils/mitt'
-import { c } from 'vite/dist/node/types.d-aGj9QkWt'
 const props = defineProps({
   uuid: {
     type: String,
