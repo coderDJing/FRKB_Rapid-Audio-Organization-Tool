@@ -11,7 +11,7 @@ import listIcon from '@renderer/assets/listIcon.png?asset'
 import utils from '../utils/utils'
 import { t } from '@renderer/utils/translate'
 import emitter from '../utils/mitt'
-import { IDir } from 'src/types/globals'
+import type { IDir } from 'src/types/globals'
 const uuid = uuidV4()
 const props = defineProps({
   libraryName: {

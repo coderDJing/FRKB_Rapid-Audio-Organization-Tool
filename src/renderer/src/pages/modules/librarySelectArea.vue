@@ -9,7 +9,7 @@ import { ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import settingDialog from '@renderer/components/settingDialog.vue'
 import { t } from '@renderer/utils/translate'
-import { Icon } from 'src/types/globals'
+import { Icon } from '../../../../types/globals'
 const emit = defineEmits(['librarySelectedChange'])
 
 const iconArr = ref<Icon[]>([

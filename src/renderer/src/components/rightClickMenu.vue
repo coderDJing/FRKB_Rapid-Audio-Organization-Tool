@@ -5,7 +5,7 @@ import { v4 as uuidV4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
 import { t } from '@renderer/utils/translate'
-import { IMenu } from 'src/types/globals'
+import { IMenu } from '../../../types/globals'
 
 const uuid = uuidV4()
 const runtime = useRuntimeStore()
