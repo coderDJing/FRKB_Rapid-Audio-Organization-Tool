@@ -10,7 +10,7 @@ import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import rightClickMenu from '../../components/rightClickMenu'
 import exportDialog from '../../components/exportDialog'
 import { t } from '@renderer/utils/translate'
-import { IMenu, ISongInfo, ISongsAreaColumn } from 'src/types/globals'
+import { IMenu, ISongInfo, ISongsAreaColumn } from '../../../../types/globals'
 import ascendingOrder from '@renderer/assets/ascending-order.png?asset'
 import descendingOrder from '@renderer/assets/descending-order.png?asset'
 
