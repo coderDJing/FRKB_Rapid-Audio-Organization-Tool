@@ -280,6 +280,11 @@ function createWindow() {
       )
       sendProgress(isDeleteSourceFile ? '移动曲目' : '复制曲目', index + 1, toBeDealSongs.length)
     })
+    sendProgress(
+      isDeleteSourceFile ? '移动曲目' : '复制曲目',
+      toBeDealSongs.length,
+      toBeDealSongs.length
+    )
 
     if (isPushSongFingerprintLibrary) {
       fs.outputJSON(
