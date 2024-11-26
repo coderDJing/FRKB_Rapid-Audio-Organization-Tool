@@ -514,6 +514,8 @@ const approachCenterEnd = () => {
   dragItemDataFather.children.splice(dragItemDataFather.children.indexOf(runtime.dragItemData), 1)
 }
 const drop = async (e: DragEvent) => {
+  const filesCopy = Array.from(e.dataTransfer?.files || [])
+
   let songListPath = libraryUtils.findDirPathByUuid(props.uuid)
   let isSongListPathExist = await window.electron.ipcRenderer.invoke('dirPathExists', songListPath)
   if (!isSongListPathExist) {
@@ -532,7 +534,7 @@ const drop = async (e: DragEvent) => {
   if (runtime.dragItemData === null) {
     e.dataTransfer.dropEffect = 'move'
     dragApproach.value = ''
-    let files = Array.from(e.dataTransfer.files)
+    let files = Array.from(filesCopy)
     let result = await dropIntoDialog({
       songListUuid: props.uuid,
       libraryName: props.libraryName
