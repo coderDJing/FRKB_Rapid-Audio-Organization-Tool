@@ -20,7 +20,7 @@ import foundNewVersionWindow from './window/foundNewVersionWindow'
 import updateWindow from './window/updateWindow'
 import electronUpdater = require('electron-updater')
 import { IDir, ISongInfo } from '../types/globals'
-import AudioFeatureExtractor from './mfccTest'
+// import AudioFeatureExtractor from './mfccTest'
 
 const gotTheLock = app.requestSingleInstanceLock()
 
@@ -507,34 +507,34 @@ ipcMain.handle('moveSongsToDir', async (e, srcs, dest) => {
 })
 
 
-async function mainTest() {
-  const extractor = new AudioFeatureExtractor({
-    windowSize: 2048,
-    hopSize: 1024,
-    numberOfMFCCCoefficients: 13
-  });
+// async function mainTest() {
+//   const extractor = new AudioFeatureExtractor({
+//     windowSize: 2048,
+//     hopSize: 1024,
+//     numberOfMFCCCoefficients: 13
+//   });
 
-  try {
-    // 测试不同格式
-    const files = [
-      'E:\\test.mp3'
-      // 'path/to/audio.wav',
-      // 'path/to/audio.flac'
-    ];
+//   try {
+//     // 测试不同格式
+//     const files = [
+//       'E:\\test.mp3'
+//       // 'path/to/audio.wav',
+//       // 'path/to/audio.flac'
+//     ];
 
-    for (const file of files) {
-      const result = await extractor.extractMFCC(file);
-      // console.log(result)
-      // 计算统计特征
-      const statistics = extractor.calculate_MFCC_Statistics(result.mfcc);
+//     for (const file of files) {
+//       const result = await extractor.extractMFCC(file);
+//       // console.log(result)
+//       // 计算统计特征
+//       const statistics = extractor.calculate_MFCC_Statistics(result.mfcc);
 
-      // 输出结果
-      console.log('MFCC statistics:', statistics);
-    }
+//       // 输出结果
+//       console.log('MFCC statistics:', statistics);
+//     }
 
-  } catch (error) {
-    console.error('Error in main:', error);
-  }
-}
+//   } catch (error) {
+//     console.error('Error in main:', error);
+//   }
+// }
 
-mainTest()
+// mainTest()
