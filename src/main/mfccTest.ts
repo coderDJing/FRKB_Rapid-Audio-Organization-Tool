@@ -8,12 +8,14 @@ class AudioFeatureExtractor {
   sampleRate: number
   numberOfMFCCCoefficients: number
 
-  constructor(options: {
-    windowSize?: number
-    hopSize?: number
-    sampleRate?: number
-    numberOfMFCCCoefficients?: number
-  } = {}) {
+  constructor(
+    options: {
+      windowSize?: number
+      hopSize?: number
+      sampleRate?: number
+      numberOfMFCCCoefficients?: number
+    } = {}
+  ) {
     this.windowSize = options.windowSize || 2048
     this.hopSize = options.hopSize || 1024
     this.sampleRate = options.sampleRate || 44100
@@ -64,7 +66,6 @@ class AudioFeatureExtractor {
           numberOfChannels: audioBuffer.numberOfChannels
         }
       }
-
     } catch (error) {
       console.error('Error extracting MFCC:', error)
       throw error

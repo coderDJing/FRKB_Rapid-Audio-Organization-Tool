@@ -506,7 +506,6 @@ ipcMain.handle('moveSongsToDir', async (e, srcs, dest) => {
   return
 })
 
-
 // async function mainTest() {
 //   const extractor = new AudioFeatureExtractor({
 //     windowSize: 2048,
