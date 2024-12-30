@@ -1,10 +1,10 @@
 {
-  "name": "rust_src",
+  "name": "rust_package",
   "version": "0.0.0",
   "main": "index.js",
   "types": "index.d.ts",
   "napi": {
-    "name": "rust_src",
+    "name": "rust_package",
     "triples": {
       "additional": [
         "aarch64-apple-darwin"

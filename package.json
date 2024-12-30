@@ -39,7 +39,8 @@
     "sass": "^1.79.3",
     "uuid": "^10.0.0",
     "vue-draggable-plus": "^0.5.3",
-    "wavesurfer.js": "^7.8.6"
+    "wavesurfer.js": "^7.8.6",
+    "rust_package": "./rust_package"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config": "^1.0.2",
