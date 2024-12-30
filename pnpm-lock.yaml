@@ -47,6 +47,9 @@ importers:
       realtime-bpm-analyzer:
         specifier: ^4.0.2
         version: 4.0.2
+      rust_package:
+        specifier: ./rust_package
+        version: link:rust_package
       sass:
         specifier: ^1.79.3
         version: 1.81.0
