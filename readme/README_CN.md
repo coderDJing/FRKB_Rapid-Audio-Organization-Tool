@@ -1,3 +1,6 @@
+FRKB声音指纹技术重要通知
+
+FRKB软件的声音指纹技术即将迎来重大变革。此次改动后，声音指纹分析系统与之前版本的声音指纹分析系统不兼容。为避免造成不必要的困扰，请用户耐心等待重大更新后再使用本软件。在此期间，建议您暂时不要使用当前版本。感谢您的理解与支持。
 <p align="center">
  <img width="100px" src="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/build/icon.png?raw=true" align="center" alt="GitHub Readme Stats" />
  <h2 align="center">FRKB</h2>
