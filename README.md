@@ -1,3 +1,6 @@
+Notice of FRKB Voiceprint Technology update
+
+The voiceprint technology of FRKB software is about to undergo significant changes. After this modification, the voiceprint analysis system will be incompatible with previous versions of the voiceprint analysis system. To avoid any potential issues, users are kindly requested to wait for the major update before using the software. During this period, it is recommended that you refrain from using the current version. Thank you for your understanding and support.
 <p align="center">
   <img width="100px" src="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/build/icon.png?raw=true" alt="GitHub Readme Stats" />
   <h2 align="center">FRKB</h2>
