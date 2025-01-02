@@ -73,4 +73,4 @@ $ pnpm build:mac
 ```
 
 # Backlog
-<a href="../backlog.md">backlog.md</a>
+<a href="./backlog.md">backlog.md</a>
