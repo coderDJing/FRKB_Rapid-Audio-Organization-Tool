@@ -75,3 +75,6 @@ $ pnpm build:win
 $ pnpm build:mac
 
 ```
+
+# 计划开发的功能清单
+<a href="../backlog.md">backlog.md</a>
