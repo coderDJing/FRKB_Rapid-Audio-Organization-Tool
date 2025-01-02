@@ -52,15 +52,6 @@ FRKB遵循MIT许可证，允许广泛使用和修改软件。
 
 # 如何开发
 
-### 编译Python
-
-```bash
-cd pySrc
-poetry install
-poetry shell
-pyinstaller .\src\analyseSong.py --distpath=..\resources\pyScript\
-```
-
 ### 安装依赖
 
 ```bash
@@ -83,6 +74,4 @@ $ pnpm build:win
 # For macOS
 $ pnpm build:mac
 
-# For Linux
-$ pnpm build:linux
 ```

@@ -24,4 +24,7 @@ export interface AudioFileResult {
  */
 export declare function getAudioDecodeMd5(filePaths: Array<string>): Array<AudioFileResult>
 /** 带进度回调的异步音频处理 */
-export declare function getAudioDecodeMd5WithProgress(filePaths: Array<string>, callback?: (err: Error | null, arg: ProcessProgress) => any | undefined | null): Promise<Array<AudioFileResult>>
+export declare function getAudioDecodeMd5WithProgress(
+  filePaths: Array<string>,
+  callback?: (err: Error | null, arg: ProcessProgress) => any | undefined | null
+): Promise<Array<AudioFileResult>>
