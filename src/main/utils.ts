@@ -4,99 +4,7 @@ import fs = require('fs-extra')
 import path = require('path')
 import fswin = require('fswin')
 import os = require('os')
-import net = require('net')
-
-function parseJsonStrings(inputString: string) {
-  // 定义一个正则表达式来匹配 JSON 对象
-  const jsonPattern = /(\{.*?\})/g
-
-  // 匹配所有的 JSON 对象
-  let matches = inputString.match(jsonPattern)
-
-  // 如果没有匹配到任何 JSON 对象，直接返回原始字符串
-  if (!matches) {
-    return inputString
-  }
-
-  // 解析每个 JSON 对象
-  const result = []
-  for (let match of matches) {
-    try {
-      const parsedObj = JSON.parse(match)
-      result.push(parsedObj)
-    } catch (error) {
-      // 如果解析失败，返回原始字符串
-      return inputString
-    }
-  }
-
-  // 如果所有 JSON 对象都解析成功，返回结果数组
-  return result
-}
-
-// 分割字符串为多个字节块的函数
-function splitStringByBytes(str: string, chunkSize = 1024) {
-  const chunks = []
-  let index = 0
-  let currentChunkLength = 0
-  let currentChunkBuffer = Buffer.alloc(0)
-  while (index < str.length) {
-    const charBuffer = Buffer.from(str.slice(index, index + 1), 'utf8')
-    const charLength = charBuffer.length
-
-    if (currentChunkLength + charLength > chunkSize) {
-      chunks.push(currentChunkBuffer)
-      currentChunkBuffer = charBuffer
-      currentChunkLength = charLength
-    } else {
-      currentChunkBuffer = Buffer.concat([currentChunkBuffer, charBuffer])
-      currentChunkLength += charLength
-    }
-
-    index++
-  }
-  if (currentChunkLength > 0) {
-    chunks.push(currentChunkBuffer)
-  }
-  return chunks
-}
-
-export async function exitSongsAnalyseServie() {
-  const chunks = splitStringByBytes('exit')
-  return new Promise((resolve, reject) => {
-    const socketClient = new net.Socket()
-    function writeNextChunk() {
-      if (chunks.length > 0) {
-        const chunk = chunks.shift()
-        if (chunk) {
-          if (socketClient.write(chunk)) {
-            writeNextChunk() // 如果写入成功，继续写入下一个块
-          } else {
-            socketClient.once('drain', writeNextChunk) // 等待 drain 事件
-          }
-        }
-      } else {
-        socketClient.end()
-      }
-    }
-
-    socketClient.connect(Number(store.analyseSongPort), '127.0.0.1', () => {
-      writeNextChunk()
-    })
-    socketClient.on('data', (data: Buffer) => {})
-
-    socketClient.on('error', (err: Error) => {
-      console.log(err.toString())
-      reject(err) // 拒绝 Promise 当发生错误时
-      socketClient.destroy()
-    })
-
-    socketClient.on('close', () => {
-      console.log('socketClient closed')
-      resolve('exited') // 解决 Promise 当连接关闭时
-    })
-  })
-}
+import { getAudioDecodeMd5WithProgress, ProcessProgress } from 'rust_package'
 
 interface SongsAnalyseResult {
   songsAnalyseResult: md5[]
@@ -107,60 +15,28 @@ export async function getSongsAnalyseResult(
   songFilePaths: string[],
   processFunc: Function
 ): Promise<SongsAnalyseResult> {
-  let songFileUrls = songFilePaths
-
-  const chunks = splitStringByBytes(songFileUrls.join('|'))
-
-  return new Promise((resolve, reject) => {
-    const socketClient = new net.Socket()
-    function writeNextChunk() {
-      if (chunks.length > 0) {
-        const chunk = chunks.shift()
-        if (chunk) {
-          if (socketClient.write(chunk)) {
-            writeNextChunk() // 如果写入成功，继续写入下一个块
-          } else {
-            socketClient.once('drain', writeNextChunk) // 等待 drain 事件
-          }
-        }
-      } else {
-        socketClient.end()
-      }
+  function progressCallback(err: Error | null, progress: ProcessProgress) {
+    if (!err && progress) {
+      processFunc(progress.processed)
     }
-
-    let songsAnalyseResult: md5[] = []
-    let errorSongsAnalyseResult: md5[] = []
-
-    socketClient.connect(Number(store.analyseSongPort), '127.0.0.1', () => {
-      writeNextChunk()
-    })
-    socketClient.on('data', (data: Buffer) => {
-      let md5s: string | md5[] = parseJsonStrings(data.toString())
-      if (!Array.isArray(md5s)) {
-        console.log(data.toString())
-      } else {
-        for (let item of md5s) {
-          if (item.md5_hash === 'error') {
-            errorSongsAnalyseResult.push(item)
-          } else {
-            songsAnalyseResult.push(item)
-          }
-        }
-      }
-      processFunc(songsAnalyseResult.length + errorSongsAnalyseResult.length)
-    })
-
-    socketClient.on('error', (err: Error) => {
-      console.log(err.toString())
-      reject(err) // 拒绝 Promise 当发生错误时
-      socketClient.destroy()
-    })
-
-    socketClient.on('close', () => {
-      console.log('socketClient closed')
-      resolve({ songsAnalyseResult, errorSongsAnalyseResult }) // 解决 Promise 当连接关闭时
-    })
-  })
+  }
+  const results = await getAudioDecodeMd5WithProgress(songFilePaths, progressCallback)
+  let songsAnalyseResult: md5[] = []
+  let errorSongsAnalyseResult: md5[] = []
+  for (let item of results) {
+    if (item.md5Hash === 'error') {
+      errorSongsAnalyseResult.push({
+        md5_hash: item.md5Hash,
+        file_path: item.filePath
+      })
+    } else {
+      songsAnalyseResult.push({
+        md5_hash: item.md5Hash,
+        file_path: item.filePath
+      })
+    }
+  }
+  return { songsAnalyseResult, errorSongsAnalyseResult }
 }
 async function getdirsDescriptionJson(dirPath: string, dirs: fs.Dirent[]) {
   const jsons = await Promise.all(

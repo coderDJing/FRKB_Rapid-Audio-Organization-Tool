@@ -5,7 +5,6 @@ import {
   getLibrary,
   collectFilesWithExtensions,
   getCurrentTimeYYYYMMDDHHMMSSSSS,
-  exitSongsAnalyseServie,
   moveOrCopyItemWithCheckIsExist,
   operateHiddenFile
 } from './utils'
@@ -41,38 +40,6 @@ if (!gotTheLock) {
     }
   })
 }
-
-import child_process = require('child_process')
-const spawn = child_process.spawn
-const child = spawn(url.analyseSongPyScriptUrl, {
-  stdio: ['inherit', 'pipe', 'pipe'], // 继承stdin，pipe stdout和stderr到Node.js
-  windowsHide: true
-})
-
-child.stdout.on('data', (data: Buffer) => {
-  try {
-    const parsedData = JSON.parse(data.toString())
-    if (parsedData.port) {
-      store.analyseSongPort = parsedData.port
-    } else {
-      log.error(data.toString())
-    }
-  } catch (error) {
-    log.error(data.toString())
-  }
-})
-
-child.stderr.on('data', (data: Buffer) => {
-  log.error(data.toString())
-})
-
-child.on('error', (err: Error) => {
-  log.error(err)
-})
-
-child.on('close', (code: number) => {
-  log.error(code)
-})
 
 import path = require('path')
 import fs = require('fs-extra')
@@ -211,7 +178,6 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', async () => {
   ipcMain.removeAllListeners()
-  await exitSongsAnalyseServie()
   app.quit()
 })
 
