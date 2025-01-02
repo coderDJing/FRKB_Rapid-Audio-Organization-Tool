@@ -48,15 +48,6 @@ FRKB follows the MIT license, allowing extensive use and modification of the sof
 
 # Development
 
-### Compiling Python
-
-```bash
-cd pySrc
-poetry install
-poetry shell
-pyinstaller .\src\analyseSongFingerprint.py --distpath=..\resources\pyScript\
-```
-
 ### Installing Dependencies
 
 ```bash
@@ -79,6 +70,4 @@ $ pnpm build:win
 # For macOS
 $ pnpm build:mac
 
-# For Linux
-$ pnpm build:linux
 ```
