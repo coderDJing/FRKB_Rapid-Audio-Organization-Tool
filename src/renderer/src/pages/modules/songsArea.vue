@@ -554,7 +554,7 @@ const colMenuClick = (col: ISongsAreaColumn) => {
     class="unselectable"
     style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center"
   >
-    <div>
+    <!-- <div>
       <div style="display: flex">
         <div class="keyboardButton">Q</div>
         <div class="keyboardButton" style="margin-left: 3px">W</div>
@@ -570,7 +570,7 @@ const colMenuClick = (col: ISongsAreaColumn) => {
         <div class="keyboardButton" style="margin-left: 20px; width: 200px">Space</div>
       </div>
       //todo
-    </div>
+    </div> -->
   </div>
   <div
     v-show="loadingShow"
