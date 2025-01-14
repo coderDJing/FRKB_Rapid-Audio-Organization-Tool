@@ -7,6 +7,7 @@ import store from '../store'
 import { operateHiddenFile } from '../utils'
 import fs = require('fs-extra')
 import path = require('path')
+import foundOldVersionDatabaseWindow from './foundOldVersionDatabaseWindow'
 let databaseInitWindow: BrowserWindow | null = null
 
 const createWindow = ({ needErrorHint = false } = {}) => {
@@ -55,6 +56,11 @@ const createWindow = ({ needErrorHint = false } = {}) => {
     databaseInitWindow?.close()
   })
   ipcMain.handle('databaseInitWindow-InitDataBase', async (e, dirPath) => {
+    if (fs.pathExistsSync(path.join(dirPath, 'songFingerprint', 'songFingerprint.json'))) {
+      databaseInitWindow?.close()
+      foundOldVersionDatabaseWindow.createWindow()
+      return
+    }
     let rootDescription = {
       uuid: uuidV4(),
       type: 'root',
@@ -155,19 +161,21 @@ const createWindow = ({ needErrorHint = false } = {}) => {
       )
     }
 
-    if (fs.pathExistsSync(path.join(dirPath, 'songFingerprint', 'songFingerprint.json'))) {
-      const json = await fs.readJSON(path.join(dirPath, 'songFingerprint', 'songFingerprint.json'))
+    if (fs.pathExistsSync(path.join(dirPath, 'songFingerprint', 'songFingerprintV2.json'))) {
+      const json = await fs.readJSON(
+        path.join(dirPath, 'songFingerprint', 'songFingerprintV2.json')
+      )
       if (Array.isArray(json) && json.every((item) => typeof item === 'string')) {
       } else {
-        await fs.outputJSON(path.join(dirPath, 'songFingerprint', 'songFingerprint.json'), [])
+        await fs.outputJSON(path.join(dirPath, 'songFingerprint', 'songFingerprintV2.json'), [])
       }
     } else {
-      await fs.outputJSON(path.join(dirPath, 'songFingerprint', 'songFingerprint.json'), [])
+      await fs.outputJSON(path.join(dirPath, 'songFingerprint', 'songFingerprintV2.json'), [])
     }
     databaseInitWindow?.close()
     store.databaseDir = store.settingConfig.databaseUrl
     store.songFingerprintList = fs.readJSONSync(
-      path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json')
+      path.join(store.databaseDir, 'songFingerprint', 'songFingerprintV2.json')
     )
     mainWindow.createWindow()
   })

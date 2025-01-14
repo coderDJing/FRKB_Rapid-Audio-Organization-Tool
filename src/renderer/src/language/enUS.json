@@ -153,5 +153,8 @@
   "对FRKB有任何建议或Booking我演出: jinlingwuyanzu@qq.com": "Any suggestions for FRKB or bookings me for DJing: jinlingwuyanzu@qq.com",
   "秒": "Seconds",
   "快进时长": "Fast Forward Time",
-  "快退时长": "Fast Backward Time"
+  "快退时长": "Fast Backward Time",
+  "发现旧版本数据库": "Found old version database",
+  "检测到旧版本数据库，旧版本数据库将不再支持，是否将数据库升级为新版本？": "Detected old version database, the old version database will no longer be supported. Do you want to upgrade the database to the new version?",
+  "升级后的数据库将保持原有的音频内容，但将清空旧的音频指纹数据，你可能需要重新扫描音频文件的指纹，升级后指纹分析性能将获得巨量提升": "The upgraded database will retain the original audio content, but will clear the old audio fingerprint data. You may need to rescan the audio files, and the fingerprint analysis performance will be significantly improved after upgrading."
 }
