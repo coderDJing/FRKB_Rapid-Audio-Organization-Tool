@@ -12,6 +12,7 @@ import { log } from './log'
 import url from './url'
 import mainWindow from './window/mainWindow'
 import databaseInitWindow from './window/databaseInitWindow'
+import foundOldVersionDatabaseWindow from './window/foundOldVersionDatabaseWindow'
 import { languageDict } from './translate'
 import { is } from '@electron-toolkit/utils'
 import store from './store'
@@ -66,9 +67,9 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
 
 store.layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
 store.settingConfig = fs.readJSONSync(url.settingConfigFileUrl)
-// if (is.dev) {
-//   store.settingConfig.databaseUrl = 'C:\\Users\\trl\\Desktop\\FRKB_database'
-// }
+if (is.dev) {
+  // store.settingConfig.databaseUrl = 'C:\\Users\\trl\\Desktop\\FRKB_database'
+}
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('frkb.coderDjing')
@@ -96,8 +97,17 @@ app.whenReady().then(() => {
         curatedLibraryJson.uuid &&
         curatedLibraryJson.type === 'library'
       ) {
+        if (
+          fs.pathExistsSync(
+            path.join(store.settingConfig.databaseUrl, 'songFingerprint', 'songFingerprint.json')
+          )
+        ) {
+          foundOldVersionDatabaseWindow.createWindow()
+          return
+        }
+
         let songFingerprintListJson = fs.readJSONSync(
-          path.join(store.settingConfig.databaseUrl, 'songFingerprint', 'songFingerprint.json')
+          path.join(store.settingConfig.databaseUrl, 'songFingerprint', 'songFingerprintV2.json')
         )
         if (
           !Array.isArray(songFingerprintListJson) ||
@@ -153,7 +163,11 @@ app.whenReady().then(() => {
             curatedLibraryJson.type === 'library'
           ) {
             let songFingerprintListJson = fs.readJSONSync(
-              path.join(store.settingConfig.databaseUrl, 'songFingerprint', 'songFingerprint.json')
+              path.join(
+                store.settingConfig.databaseUrl,
+                'songFingerprint',
+                'songFingerprintV2.json'
+              )
             )
             if (
               !Array.isArray(songFingerprintListJson) ||
@@ -202,7 +216,7 @@ ipcMain.on('openLocalBrowser', (e, url) => {
 ipcMain.handle('clearTracksFingerprintLibrary', (e) => {
   store.songFingerprintList = []
   fs.outputJSON(
-    path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json'),
+    path.join(store.databaseDir, 'songFingerprint', 'songFingerprintV2.json'),
     store.songFingerprintList
   )
 })
@@ -392,7 +406,7 @@ ipcMain.on('layoutConfigChanged', (e, layoutConfig) => {
 
 ipcMain.handle('exportSongFingerprint', async (e, folderPath) => {
   await fs.copy(
-    path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json'),
+    path.join(store.databaseDir, 'songFingerprint', 'songFingerprintV2.json'),
     folderPath + '\\songFingerprint' + getCurrentTimeYYYYMMDDHHMMSSSSS() + '.json'
   )
 })
@@ -402,7 +416,7 @@ ipcMain.handle('importSongFingerprint', async (e, filePath: string) => {
   store.songFingerprintList = store.songFingerprintList.concat(json)
   store.songFingerprintList = Array.from(new Set(store.songFingerprintList))
   fs.outputJSON(
-    path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json'),
+    path.join(store.databaseDir, 'songFingerprint', 'songFingerprintV2.json'),
     store.songFingerprintList
   )
   return
