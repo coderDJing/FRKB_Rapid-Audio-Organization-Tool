@@ -15,7 +15,7 @@ const toggleClose = async () => {
   )
   window.electron.ipcRenderer.send('foundOldVersionDatabaseWindow-toggle-close')
 }
-
+//确认升级
 const confirmUpdate = async () => {
   window.electron.ipcRenderer.send(
     'foundOldVersionDatabaseWindow-confirmUpdate',

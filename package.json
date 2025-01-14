@@ -20,7 +20,9 @@
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run clean && npm run build && electron-builder --win",
     "build:mac": "npm run clean && npm run build && electron-builder --mac",
-    "build:linux": "npm run clean && npm run build && electron-builder --linux"
+    "build:linux": "npm run clean && npm run build && electron-builder --linux",
+    "lint-staged": "lint-staged",
+    "prepare": "husky"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
@@ -36,11 +38,11 @@
     "music-metadata": "^9.0.3",
     "pinia": "^2.2.2",
     "realtime-bpm-analyzer": "^4.0.2",
+    "rust_package": "./rust_package",
     "sass": "^1.79.3",
     "uuid": "^10.0.0",
     "vue-draggable-plus": "^0.5.3",
-    "wavesurfer.js": "^7.8.6",
-    "rust_package": "./rust_package"
+    "wavesurfer.js": "^7.8.6"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config": "^1.0.2",
@@ -56,9 +58,16 @@
     "electron-vite": "^2.3.0",
     "eslint": "^8.57.1",
     "eslint-plugin-vue": "^9.28.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.3.0",
     "prettier": "^3.3.3",
     "rimraf": "^6.0.1",
     "vite": "^5.4.11",
     "vue": "^3.5.9"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,vue,css,scss,less,json}": [
+      "prettier --write"
+    ]
   }
 }
