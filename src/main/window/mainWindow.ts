@@ -166,7 +166,7 @@ function createWindow() {
 
     // 保存结果
     fs.outputJSON(
-      path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json'),
+      path.join(store.databaseDir, 'songFingerprint', 'songFingerprintV2.json'),
       store.songFingerprintList
     )
 
@@ -288,7 +288,7 @@ function createWindow() {
 
     if (isPushSongFingerprintLibrary) {
       fs.outputJSON(
-        path.join(store.databaseDir, 'songFingerprint', 'songFingerprint.json'),
+        path.join(store.databaseDir, 'songFingerprint', 'songFingerprintV2.json'),
         store.songFingerprintList
       )
     }

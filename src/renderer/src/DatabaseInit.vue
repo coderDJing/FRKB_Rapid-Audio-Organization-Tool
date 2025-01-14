@@ -42,9 +42,16 @@ const submitConfirm = async () => {
     }
     return
   }
+
+  // 检查选择的路径是否已经以 FRKB_database 结尾
+  const separator = runtime.setting.platform === 'win32' ? '\\' : '/'
+  const folderName = folderPathVal.value.split(separator).pop()
+
   runtime.setting.databaseUrl =
-    folderPathVal.value +
-    (runtime.setting.platform === 'win32' ? '\\FRKB_database' : '/FRKB_database')
+    folderName === 'FRKB_database'
+      ? folderPathVal.value
+      : folderPathVal.value + separator + 'FRKB_database'
+
   await window.electron.ipcRenderer.invoke(
     'setSetting',
     JSON.parse(JSON.stringify(runtime.setting))
