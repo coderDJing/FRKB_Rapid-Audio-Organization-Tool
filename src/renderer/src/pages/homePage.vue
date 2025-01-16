@@ -3,7 +3,7 @@ import librarySelectArea from './modules/librarySelectArea.vue'
 import libraryArea from './modules/libraryArea.vue'
 import songsArea from './modules/songsArea.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import { onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import songPlayer from './modules/songPlayer.vue'
 import dropIntoDialog from '../components/dropIntoDialog'
 import { Icon } from '../../../types/globals'
@@ -46,7 +46,15 @@ function startResize(e: MouseEvent) {
 function resize(e: MouseEvent) {
   if (!isResizing) return
   const deltaX = e.clientX - startX
-  const newWidth = Math.max(150, runtime.layoutConfig.libraryAreaWidth + deltaX) // 设置最小宽度
+
+  // 获取窗口宽度
+  const windowWidth = window.innerWidth
+
+  const maxWidth = windowWidth - 100
+
+  // 新宽度需要在最小值150和最大值之间
+  const newWidth = Math.min(maxWidth, Math.max(150, runtime.layoutConfig.libraryAreaWidth + deltaX))
+
   if (runtime.layoutConfig.libraryAreaWidth + deltaX < 50) {
     runtime.layoutConfig.libraryAreaWidth = 0
   }
@@ -64,8 +72,23 @@ function stopResize() {
   window.electron.ipcRenderer.send('layoutConfigChanged', JSON.stringify(runtime.layoutConfig))
 }
 
+const adjustLibraryWidth = () => {
+  const windowWidth = window.innerWidth
+  const maxWidth = windowWidth - 100
+
+  // 如果当前宽度超过最大允许宽度，才进行调整
+  if (runtime.layoutConfig.libraryAreaWidth > maxWidth) {
+    runtime.layoutConfig.libraryAreaWidth = maxWidth
+    window.electron.ipcRenderer.send('layoutConfigChanged', JSON.stringify(runtime.layoutConfig))
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('resize', adjustLibraryWidth)
+})
+
 onUnmounted(() => {
-  // 如果需要，可以在这里添加组件卸载时的清理逻辑
+  window.removeEventListener('resize', adjustLibraryWidth)
   document.removeEventListener('mousemove', resize)
   document.removeEventListener('mouseup', stopResize)
   clearTimeout(hoverTimeout)
@@ -199,13 +222,13 @@ const drop = async (e: DragEvent) => {
 }
 </script>
 <template>
-  <div style="display: flex; height: 100%">
+  <div style="display: flex; height: 100%; min-width: 0; overflow: hidden">
     <librarySelectArea
       @librarySelectedChange="librarySelectedChange"
       style="flex-shrink: 0"
     ></librarySelectArea>
-    <div style="flex-grow: 1">
-      <div style="display: flex; height: calc(100% - 51px)">
+    <div style="flex-grow: 1; min-width: 0; overflow: hidden">
+      <div style="display: flex; height: calc(100% - 51px); min-width: 0; overflow: hidden">
         <div
           style="width: 200px; border-right: 1px solid #2b2b2b; flex-shrink: 0"
           :style="'width:' + runtime.layoutConfig.libraryAreaWidth + 'px'"
@@ -227,13 +250,19 @@ const drop = async (e: DragEvent) => {
           :class="{ dragBarHovered: isHovered }"
         ></div>
         <div
-          style="flex: 1; background-color: #181818; border: 1px solid transparent"
+          style="
+            flex: 1;
+            background-color: #181818;
+            border: 1px solid transparent;
+            min-width: 0;
+            overflow: hidden;
+          "
           :class="{ songsAreaDragHoverBorder: dragOverSongsArea }"
           @dragover.stop.prevent="dragover"
           @dragleave.stop="dragleave"
           @drop.stop.prevent="drop"
         >
-          <songsArea />
+          <songsArea style="width: 100%; height: 100%; min-width: 0" />
         </div>
       </div>
       <div style="height: 50px; border-top: 1px solid #2b2b2b">

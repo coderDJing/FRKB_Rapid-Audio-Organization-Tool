@@ -17,89 +17,109 @@ const globalShortcut = computed(() => {
 
 <template>
   <div class="welcome-container">
-    <img
-      :src="welcomeLogo"
-      width="250"
-      height="250"
-      alt=""
-      class="unselectable"
-      draggable="false"
-    />
-    <div class="shortcuts">
-      <dl>
-        <dt>{{ t('播放 / 暂停') }}</dt>
-        <dd>
-          <div class="monaco-keybinding">
-            <span class="monaco-keybinding-key">Space</span>
-          </div>
-        </dd>
-      </dl>
-      <dl>
-        <dt>{{ t('上一首 / 下一首') }}</dt>
-        <dd>
-          <div class="monaco-keybinding">
-            <span class="monaco-keybinding-key">W / S</span>
-            <span class="easter-egg">( ↑ / ↓ )</span>
-          </div>
-        </dd>
-      </dl>
-      <dl>
-        <dt>{{ t('快进 / 快退') }}</dt>
-        <dd>
-          <div class="monaco-keybinding">
-            <span class="monaco-keybinding-key">D / A</span>
-            <span class="easter-egg">( ← / → )</span>
-          </div>
-        </dd>
-      </dl>
-      <dl>
-        <dt>{{ t('移动至筛选库 / 精选库') }}</dt>
-        <dd>
-          <div class="monaco-keybinding">
-            <span class="monaco-keybinding-key">Q / E</span>
-          </div>
-        </dd>
-      </dl>
-      <dl>
-        <dt>{{ t('删除') }}</dt>
-        <dd>
-          <div class="monaco-keybinding">
-            <span class="monaco-keybinding-key">F</span>
-            <span class="easter-egg">( Delete )</span>
-          </div>
-        </dd>
-      </dl>
-      <dl>
-        <dt>{{ t('呼出 / 隐藏') }}</dt>
-        <dd>
-          <div class="monaco-keybinding">
-            <template v-for="(item, index) in globalShortcut" :key="index">
-              <span class="monaco-keybinding-key">{{ item.key }}</span>
-              <span
-                v-if="index !== globalShortcut.length - 1"
-                class="monaco-keybinding-key-separator"
-                >+</span
-              >
-            </template>
-          </div>
-        </dd>
-      </dl>
+    <div class="welcome-content">
+      <img
+        :src="welcomeLogo"
+        width="250"
+        height="250"
+        alt=""
+        class="unselectable welcome-logo"
+        draggable="false"
+      />
+      <div class="shortcuts">
+        <dl>
+          <dt>{{ t('播放 / 暂停') }}</dt>
+          <dd>
+            <div class="monaco-keybinding">
+              <span class="monaco-keybinding-key">Space</span>
+            </div>
+          </dd>
+        </dl>
+        <dl>
+          <dt>{{ t('上一首 / 下一首') }}</dt>
+          <dd>
+            <div class="monaco-keybinding">
+              <span class="monaco-keybinding-key">W / S</span>
+              <span class="easter-egg">( ↑ / ↓ )</span>
+            </div>
+          </dd>
+        </dl>
+        <dl>
+          <dt>{{ t('快进 / 快退') }}</dt>
+          <dd>
+            <div class="monaco-keybinding">
+              <span class="monaco-keybinding-key">D / A</span>
+              <span class="easter-egg">( ← / → )</span>
+            </div>
+          </dd>
+        </dl>
+        <dl>
+          <dt>{{ t('移动至筛选库 / 精选库') }}</dt>
+          <dd>
+            <div class="monaco-keybinding">
+              <span class="monaco-keybinding-key">Q / E</span>
+            </div>
+          </dd>
+        </dl>
+        <dl>
+          <dt>{{ t('删除') }}</dt>
+          <dd>
+            <div class="monaco-keybinding">
+              <span class="monaco-keybinding-key">F</span>
+              <span class="easter-egg">( Delete )</span>
+            </div>
+          </dd>
+        </dl>
+        <dl>
+          <dt>{{ t('呼出 / 隐藏') }}</dt>
+          <dd>
+            <div class="monaco-keybinding">
+              <template v-for="(item, index) in globalShortcut" :key="index">
+                <span class="monaco-keybinding-key">{{ item.key }}</span>
+                <span
+                  v-if="index !== globalShortcut.length - 1"
+                  class="monaco-keybinding-key-separator"
+                  >+</span
+                >
+              </template>
+            </div>
+          </dd>
+        </dl>
+      </div>
     </div>
   </div>
 </template>
 
 <style lang="scss" scoped>
 .welcome-container {
+  width: 430px;
+  padding: 20px;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 20px;
   color: #727272;
+  flex-shrink: 0;
+}
+
+.welcome-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #727272;
+  width: 430px;
+  flex-shrink: 0;
+}
+
+.welcome-logo {
+  width: 250px;
+  height: 250px;
+  flex-shrink: 0;
+  margin-bottom: 20px;
 }
 
 .shortcuts {
   width: 100%;
-  max-width: 460px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -109,9 +129,8 @@ dl {
   margin: 0 0 8px;
   padding: 0;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  white-space: nowrap;
+  min-width: 0;
 
   &:last-child {
     margin-bottom: 0;
@@ -122,19 +141,26 @@ dt {
   font-size: 14px;
   text-align: right;
   width: 220px;
-  margin-right: 10px;
+  padding-right: 10px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  white-space: normal;
+  line-height: 1.4;
 }
 
 dd {
   margin: 0;
   text-align: left;
   width: 160px;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .monaco-keybinding {
   display: flex;
   align-items: center;
   position: relative;
+  min-width: 0;
 
   .easter-egg {
     margin-left: 8px;
@@ -142,6 +168,7 @@ dd {
     font-size: 11px;
     opacity: 0;
     transition: opacity 0.3s ease;
+    white-space: nowrap;
   }
 
   &:hover {
@@ -162,6 +189,7 @@ dd {
   min-width: 14px;
   text-align: center;
   color: #a9a9a9;
+  white-space: nowrap;
 }
 
 .monaco-keybinding-key-separator {

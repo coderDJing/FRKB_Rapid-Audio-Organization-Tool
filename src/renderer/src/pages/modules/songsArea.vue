@@ -571,149 +571,150 @@ const colMenuClick = (col: ISongsAreaColumn) => {
 //todo 拖拽文件出窗口
 </script>
 <template>
-  <div
-    v-show="!loadingShow && !runtime.songsArea.songListUUID"
-    class="unselectable"
-    style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center"
-  >
-    <welcomePage />
-  </div>
-  <div
-    v-show="loadingShow"
-    style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center"
-  >
-    <div class="loading"></div>
-  </div>
-  <div
-    ref="songsAreaRef"
-    style="height: 100%; width: 100%; overflow: auto"
-    v-if="runtime.songsArea.songListUUID && !loadingShow"
-    @click="runtime.songsArea.selectedSongFilePath.length = 0"
-  >
+  <div style="width: 100%; height: 100%; min-width: 0; overflow: hidden; position: relative">
     <div
-      @contextmenu.stop="contextmenuEvent"
-      class="songItem lightBackground"
-      style="position: sticky; top: 0"
-      v-draggable="vDraggableData"
+      v-show="!loadingShow && !runtime.songsArea.songListUUID"
+      class="unselectable welcomeContainer"
+    >
+      <welcomePage />
+    </div>
+    <div
+      v-show="loadingShow"
+      style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center"
+    >
+      <div class="loading"></div>
+    </div>
+    <div
+      ref="songsAreaRef"
+      style="height: 100%; width: 100%; overflow: auto"
+      v-if="runtime.songsArea.songListUUID && !loadingShow"
+      @click="runtime.songsArea.selectedSongFilePath.length = 0"
     >
       <div
-        class="coverDiv lightBackground unselectable"
-        v-for="col of columnDataArr"
-        :key="col.key"
-        :class="{ coverDiv: col.key == 'coverUrl', titleDiv: col.key != 'coverUrl' }"
-        :style="'width:' + col.width + 'px'"
-        style="
-          border-right: 1px solid #000000;
-          padding-left: 10px;
-          box-sizing: border-box;
-          display: flex;
-        "
-        @click="colMenuClick(col)"
+        @contextmenu.stop="contextmenuEvent"
+        class="songItem lightBackground"
+        style="position: sticky; top: 0"
+        v-draggable="vDraggableData"
       >
-        <div style="flex-grow: 1; overflow: hidden">
+        <div
+          class="coverDiv lightBackground unselectable"
+          v-for="col of columnDataArr"
+          :key="col.key"
+          :class="{ coverDiv: col.key == 'coverUrl', titleDiv: col.key != 'coverUrl' }"
+          :style="'width:' + col.width + 'px'"
+          style="
+            border-right: 1px solid #000000;
+            padding-left: 10px;
+            box-sizing: border-box;
+            display: flex;
+          "
+          @click="colMenuClick(col)"
+        >
+          <div style="flex-grow: 1; overflow: hidden">
+            <div
+              style="width: 0; white-space: nowrap; display: flex; align-items: center"
+              :style="{ color: col.order ? '#0078d4' : '#cccccc' }"
+            >
+              {{ t(col.columnName)
+              }}<img
+                :src="ascendingOrder"
+                style="width: 20px; height: 20px"
+                v-show="col.order === 'asc'"
+              /><img
+                :src="descendingOrder"
+                style="width: 20px; height: 20px"
+                v-show="col.order === 'desc'"
+              />
+            </div>
+          </div>
           <div
-            style="width: 0; white-space: nowrap; display: flex; align-items: center"
-            :style="{ color: col.order ? '#0078d4' : '#cccccc' }"
+            v-if="col.key !== 'coverUrl'"
+            style="width: 5px; cursor: e-resize"
+            @mousedown="startResize($event, col)"
+          ></div>
+        </div>
+      </div>
+      <div v-show="runtime.songsArea.songInfoArr.length != 0">
+        <div
+          v-for="(item, index) of runtime.songsArea.songInfoArr"
+          :key="item.filePath"
+          class="songItem unselectable"
+          @click.stop="songClick($event, item)"
+          @contextmenu.stop="songContextmenu($event, item)"
+          @dblclick.stop="songDblClick(item)"
+        >
+          <div
+            :class="{
+              lightBackground:
+                index % 2 === 1 &&
+                runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) === -1,
+              darkBackground:
+                index % 2 === 0 &&
+                runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) === -1,
+              selectedSong: runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) !== -1,
+              playingSong: item.filePath === runtime.playingData.playingSong?.filePath
+            }"
+            style="display: flex"
           >
-            {{ t(col.columnName)
-            }}<img
-              :src="ascendingOrder"
-              style="width: 20px; height: 20px"
-              v-show="col.order === 'asc'"
-            /><img
-              :src="descendingOrder"
-              style="width: 20px; height: 20px"
-              v-show="col.order === 'desc'"
-            />
+            <template v-for="col of columnDataArr" :key="col.key">
+              <template v-if="col.show">
+                <div
+                  v-if="col.key == 'coverUrl'"
+                  class="coverDiv"
+                  style="overflow: hidden"
+                  :style="'width:' + col.width + 'px'"
+                >
+                  <img :src="item.coverUrl" class="unselectable" />
+                </div>
+                <div v-else class="titleDiv" :style="'width:' + col.width + 'px'">
+                  {{ item[col.key as keyof ISongInfo] }}
+                </div>
+              </template>
+            </template>
           </div>
         </div>
-        <div
-          v-if="col.key !== 'coverUrl'"
-          style="width: 5px; cursor: e-resize"
-          @mousedown="startResize($event, col)"
-        ></div>
       </div>
-    </div>
-    <div v-show="runtime.songsArea.songInfoArr.length != 0">
       <div
-        v-for="(item, index) of runtime.songsArea.songInfoArr"
-        :key="item.filePath"
-        class="songItem unselectable"
-        @click.stop="songClick($event, item)"
-        @contextmenu.stop="songContextmenu($event, item)"
-        @dblclick.stop="songDblClick(item)"
+        v-show="
+          !isRequesting &&
+          runtime.songsArea.songListUUID &&
+          runtime.songsArea.songInfoArr.length === 0
+        "
+        style="
+          height: 80%;
+          width: 100%;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          flex-direction: column;
+          position: sticky;
+          left: 0;
+        "
       >
-        <div
-          :class="{
-            lightBackground:
-              index % 2 === 1 &&
-              runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) === -1,
-            darkBackground:
-              index % 2 === 0 &&
-              runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) === -1,
-            selectedSong: runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) !== -1,
-            playingSong: item.filePath === runtime.playingData.playingSong?.filePath
-          }"
-          style="display: flex"
-        >
-          <template v-for="col of columnDataArr" :key="col.key">
-            <template v-if="col.show">
-              <div
-                v-if="col.key == 'coverUrl'"
-                class="coverDiv"
-                style="overflow: hidden"
-                :style="'width:' + col.width + 'px'"
-              >
-                <img :src="item.coverUrl" class="unselectable" />
-              </div>
-              <div v-else class="titleDiv" :style="'width:' + col.width + 'px'">
-                {{ item[col.key as keyof ISongInfo] }}
-              </div>
-            </template>
-          </template>
+        <div style="font-size: 16px; color: #999999" class="unselectable">{{ t('暂无曲目') }}</div>
+        <div style="font-size: 12px; color: #999999; margin-top: 10px" class="unselectable">
+          {{ t('导入曲目到歌单中，或通过拖拽文件夹或音频文件进行导入。') }}
         </div>
       </div>
     </div>
-    <div
-      v-show="
-        !isRequesting &&
-        runtime.songsArea.songListUUID &&
-        runtime.songsArea.songInfoArr.length === 0
-      "
-      style="
-        height: 80%;
-        width: 100%;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        flex-direction: column;
-        position: sticky;
-        left: 0;
-      "
-    >
-      <div style="font-size: 16px; color: #999999" class="unselectable">{{ t('暂无曲目') }}</div>
-      <div style="font-size: 12px; color: #999999; margin-top: 10px" class="unselectable">
-        {{ t('导入曲目到歌单中，或通过拖拽文件夹或音频文件进行导入。') }}
-      </div>
-    </div>
-  </div>
 
-  <songAreaColRightClickMenu
-    v-model="colRightClickMenuShow"
-    :clickEvent="colRightClickEvent"
-    :columnData="columnData"
-    @colMenuHandleClick="colMenuHandleClick"
-  />
-  <selectSongListDialog
-    v-if="selectSongListDialogShow"
-    :libraryName="selectSongListDialogLibraryName"
-    @confirm="selectSongListDialogConfirm"
-    @cancel="
-      () => {
-        selectSongListDialogShow = false
-      }
-    "
-  />
+    <songAreaColRightClickMenu
+      v-model="colRightClickMenuShow"
+      :clickEvent="colRightClickEvent"
+      :columnData="columnData"
+      @colMenuHandleClick="colMenuHandleClick"
+    />
+    <selectSongListDialog
+      v-if="selectSongListDialogShow"
+      :libraryName="selectSongListDialogLibraryName"
+      @confirm="selectSongListDialogConfirm"
+      @cancel="
+        () => {
+          selectSongListDialogShow = false
+        }
+      "
+    />
+  </div>
 </template>
 <style lang="scss" scoped>
 .selectedSong {
@@ -809,5 +810,17 @@ const colMenuClick = (col: ISongsAreaColumn) => {
     height: 30px;
     box-shadow: 0 -20px #cccccc;
   }
+}
+
+.welcomeContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 430px;
 }
 </style>
