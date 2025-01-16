@@ -2,157 +2,179 @@
 import { watch, ref, nextTick, computed, onMounted, Ref, useTemplateRef } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
-import { RefOrValue, UseDraggableOptions, vDraggable } from 'vue-draggable-plus'
-import songAreaColRightClickMenu from '@renderer/components/songAreaColRightClickMenu.vue'
+import { UseDraggableOptions, vDraggable } from 'vue-draggable-plus'
 import hotkeys from 'hotkeys-js'
+import { t } from '@renderer/utils/translate'
+import { IMenu, ISongInfo, ISongsAreaColumn } from '../../../../types/globals'
+
+// 组件导入
+import songAreaColRightClickMenu from '@renderer/components/songAreaColRightClickMenu.vue'
 import confirm from '@renderer/components/confirmDialog'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import rightClickMenu from '../../components/rightClickMenu'
 import exportDialog from '../../components/exportDialog'
-import { t } from '@renderer/utils/translate'
-import { IMenu, ISongInfo, ISongsAreaColumn } from '../../../../types/globals'
+import welcomePage from '@renderer/components/welcomePage.vue'
+
+// 资源导入
 import ascendingOrder from '@renderer/assets/ascending-order.png?asset'
 import descendingOrder from '@renderer/assets/descending-order.png?asset'
-
-let columnData = ref<ISongsAreaColumn[]>([])
-if (localStorage.getItem('songColumnData')) {
-  let localColumnData = JSON.parse(localStorage.getItem('songColumnData') || '[]')
-  let hasOrder = localColumnData.some((col: ISongsAreaColumn) => col.order !== undefined)
-  if (!hasOrder) {
-    localColumnData = localColumnData.map((col: ISongsAreaColumn) => {
-      if (col.key === 'artist') {
-        return { ...col, order: 'asc' }
-      }
-      return col
-    })
+const defaultColumns: ISongsAreaColumn[] = [
+  {
+    columnName: '专辑封面',
+    key: 'coverUrl',
+    show: true,
+    width: 100
+  },
+  {
+    columnName: '曲目标题',
+    key: 'title',
+    show: true,
+    width: 250
+  },
+  {
+    columnName: '表演者',
+    key: 'artist',
+    show: true,
+    width: 200,
+    order: 'asc'
+  },
+  {
+    columnName: '时长',
+    key: 'duration',
+    show: true,
+    width: 100
+  },
+  {
+    columnName: '专辑',
+    key: 'album',
+    show: true,
+    width: 200
+  },
+  {
+    columnName: '风格',
+    key: 'genre',
+    show: true,
+    width: 200
+  },
+  {
+    columnName: '唱片公司',
+    key: 'label',
+    show: true,
+    width: 200
+  },
+  {
+    columnName: '比特率',
+    key: 'bitrate',
+    show: true,
+    width: 200
+  },
+  {
+    columnName: '编码格式',
+    key: 'container',
+    show: true,
+    width: 200
   }
-  columnData.value = localColumnData
-} else {
-  columnData.value = [
-    {
-      columnName: '专辑封面',
-      key: 'coverUrl',
-      show: true,
-      width: 100
-    },
-    {
-      columnName: '曲目标题',
-      key: 'title',
-      show: true,
-      width: 250
-    },
-    {
-      columnName: '表演者',
-      key: 'artist',
-      show: true,
-      width: 200,
-      order: 'asc'
-    },
-    {
-      columnName: '时长',
-      key: 'duration',
-      show: true,
-      width: 100
-    },
-    {
-      columnName: '专辑',
-      key: 'album',
-      show: true,
-      width: 200
-    },
-    {
-      columnName: '风格',
-      key: 'genre',
-      show: true,
-      width: 200
-    },
-    {
-      columnName: '唱片公司',
-      key: 'label',
-      show: true,
-      width: 200
-    },
-    {
-      columnName: '比特率',
-      key: 'bitrate',
-      show: true,
-      width: 200
-    },
-    {
-      columnName: '编码格式',
-      key: 'container',
-      show: true,
-      width: 200
+]
+
+const columnData = ref<ISongsAreaColumn[]>(
+  (() => {
+    const savedData = localStorage.getItem('songColumnData')
+    if (!savedData) {
+      return defaultColumns
     }
-  ]
-}
+
+    const parsedData = JSON.parse(savedData)
+    const hasOrder = parsedData.some((col: ISongsAreaColumn) => col.order !== undefined)
+
+    if (hasOrder) {
+      return parsedData
+    }
+
+    return parsedData.map((col: ISongsAreaColumn) =>
+      col.key === 'artist' ? { ...col, order: 'asc' } : col
+    )
+  })()
+)
 
 const runtime = useRuntimeStore()
 let loadingShow = ref(false)
 
 const isRequesting = ref<boolean>(false)
 const openSongList = async () => {
-  for (let item of runtime.songsArea.songInfoArr) {
+  // 清理现有歌曲列表的封面URL
+  runtime.songsArea.songInfoArr.forEach((item) => {
     if (item.coverUrl) {
       URL.revokeObjectURL(item.coverUrl)
     }
-  }
+  })
+
   isRequesting.value = true
   runtime.songsArea.songInfoArr = []
+  await nextTick()
 
-  await nextTick(() => {})
+  const songListPath = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
 
-  let songListPath = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
-
+  // 处理加载状态
   loadingShow.value = false
-  let loadingSetTimeout = setTimeout(() => {
+  const loadingSetTimeout = setTimeout(() => {
     loadingShow.value = true
   }, 100)
-  let { scanData, songListUUID } = await window.electron.ipcRenderer.invoke(
-    'scanSongList',
-    songListPath,
-    runtime.songsArea.songListUUID
-  )
-  isRequesting.value = false
-  clearTimeout(loadingSetTimeout)
-  loadingShow.value = false
-  if (songListUUID != runtime.songsArea.songListUUID) {
-    return
-  }
 
-  for (let item of scanData) {
-    if (item.cover) {
-      let blob = new Blob([Uint8Array.from(item.cover.data)], { type: item.cover.format })
-      const blobUrl = URL.createObjectURL(blob)
-      item.coverUrl = blobUrl
+  try {
+    // 扫描歌单
+    const { scanData, songListUUID } = await window.electron.ipcRenderer.invoke(
+      'scanSongList',
+      songListPath,
+      runtime.songsArea.songListUUID
+    )
+
+    if (songListUUID !== runtime.songsArea.songListUUID) {
+      return
     }
-  }
-  for (let col of columnData.value) {
-    if (col.order) {
+
+    // 处理歌曲封面
+    scanData.forEach((item: ISongInfo) => {
+      if (item.cover) {
+        const blob = new Blob([Uint8Array.from(item.cover.data)], { type: item.cover.format })
+        item.coverUrl = URL.createObjectURL(blob)
+      }
+    })
+
+    // 根据排序规则处理数据
+    const sortedCol = columnData.value.find((col) => col.order)
+    if (sortedCol) {
       runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
         scanData,
-        col.key as keyof ISongInfo,
-        col.order
+        sortedCol.key as keyof ISongInfo,
+        sortedCol.order
       )
+
       if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
         runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
       }
-      break
     }
+  } finally {
+    isRequesting.value = false
+    clearTimeout(loadingSetTimeout)
+    loadingShow.value = false
   }
 }
 watch(
   () => runtime.songsArea.songListUUID,
-  async () => {
+  async (newUUID) => {
+    // 清空选中歌曲
     runtime.songsArea.selectedSongFilePath.length = 0
-    if (runtime.songsArea.songListUUID) {
+
+    if (newUUID) {
+      // 有歌单UUID时打开歌单
       await openSongList()
     } else {
-      for (let item of runtime.songsArea.songInfoArr) {
+      // 无歌单UUID时清理资源
+      runtime.songsArea.songInfoArr.forEach((item) => {
         if (item.coverUrl) {
           URL.revokeObjectURL(item.coverUrl)
         }
-      }
+      })
       runtime.songsArea.songInfoArr = []
     }
   }
@@ -497,7 +519,7 @@ const onEnd = () => {
   runtime.dragTableHeader = false
 }
 
-type VDraggableBinding = [list: Ref<any[]>, options?: RefOrValue<UseDraggableOptions<any>>]
+type VDraggableBinding = [list: Ref<any[]>, options?: UseDraggableOptions<any>]
 let vDraggableData: VDraggableBinding = [
   columnData,
   {
@@ -554,23 +576,7 @@ const colMenuClick = (col: ISongsAreaColumn) => {
     class="unselectable"
     style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center"
   >
-    <!-- <div>
-      <div style="display: flex">
-        <div class="keyboardButton">Q</div>
-        <div class="keyboardButton" style="margin-left: 3px">W</div>
-        <div class="keyboardButton" style="margin-left: 3px">E</div>
-      </div>
-      <div style="display: flex; margin-top: 3px">
-        <div class="keyboardButton" style="margin-left: 15px">A</div>
-        <div class="keyboardButton" style="margin-left: 3px">S</div>
-        <div class="keyboardButton" style="margin-left: 3px">D</div>
-        <div class="keyboardButton" style="margin-left: 3px">F</div>
-      </div>
-      <div style="display: flex; margin-top: 20px">
-        <div class="keyboardButton" style="margin-left: 20px; width: 200px">Space</div>
-      </div>
-      //todo
-    </div> -->
+    <welcomePage />
   </div>
   <div
     v-show="loadingShow"
@@ -710,21 +716,6 @@ const colMenuClick = (col: ISongsAreaColumn) => {
   />
 </template>
 <style lang="scss" scoped>
-.keyboardButton {
-  border: 2px solid #ccc;
-  border-radius: 8px;
-  width: 40px;
-  height: 40px;
-  line-height: 40px;
-  text-align: center;
-  font-weight: bold;
-  font-size: 18px;
-  &:hover {
-    border: 2px solid #fff;
-    color: #fff;
-  }
-}
-
 .selectedSong {
   background-color: #37373d;
 }
