@@ -156,5 +156,10 @@
   "快退时长": "Fast Backward Time",
   "发现旧版本数据库": "Found old version database",
   "检测到旧版本数据库，旧版本数据库将不再支持，是否将数据库升级为新版本？": "Detected old version database, the old version database will no longer be supported. Do you want to upgrade the database to the new version?",
-  "升级后的数据库将保持原有的音频内容，但将清空旧的音频指纹数据，你可能需要重新扫描音频文件的指纹，升级后指纹分析性能将获得巨量提升": "The upgraded database will retain the original audio content, but will clear the old audio fingerprint data. You may need to rescan the audio files, and the fingerprint analysis performance will be significantly improved after upgrading."
+  "升级后的数据库将保持原有的音频内容，但将清空旧的音频指纹数据，你可能需要重新扫描音频文件的指纹，升级后指纹分析性能将获得巨量提升": "The upgraded database will retain the original audio content, but will clear the old audio fingerprint data. You may need to rescan the audio files, and the fingerprint analysis performance will be significantly improved after upgrading.",
+  "播放 / 暂停": "Play / Pause",
+  "上一首 / 下一首": "Previous / Next",
+  "快进 / 快退": "Fast Forward / Backward",
+  "移动至筛选库 / 精选库": "Move to Filter / Curated Library",
+  "呼出 / 隐藏": "Show / Hide"
 }
