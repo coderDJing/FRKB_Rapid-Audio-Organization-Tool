@@ -115,7 +115,6 @@ const globalShortcut = computed(() => {
   width: 250px;
   height: 250px;
   flex-shrink: 0;
-  margin-bottom: 20px;
 }
 
 .shortcuts {
