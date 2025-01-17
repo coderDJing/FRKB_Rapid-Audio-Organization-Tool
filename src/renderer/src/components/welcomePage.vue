@@ -45,10 +45,10 @@ const globalShortcut = computed(() => {
           </dd>
         </dl>
         <dl>
-          <dt>{{ t('快进 / 快退') }}</dt>
+          <dt>{{ t('快退 / 快进') }}</dt>
           <dd>
             <div class="monaco-keybinding">
-              <span class="monaco-keybinding-key">D / A</span>
+              <span class="monaco-keybinding-key">A / D</span>
               <span class="easter-egg">( ← / → )</span>
             </div>
           </dd>
@@ -189,6 +189,7 @@ dd {
   text-align: center;
   color: #a9a9a9;
   white-space: nowrap;
+  width: 30px;
 }
 
 .monaco-keybinding-key-separator {
