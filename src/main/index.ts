@@ -89,13 +89,18 @@ app.whenReady().then(() => {
       let curatedLibraryJson = fs.readJSONSync(
         path.join(store.settingConfig.databaseUrl, 'library', '筛选库', '.description.json')
       )
+      let recycleBinJson = fs.readJSONSync(
+        path.join(store.settingConfig.databaseUrl, 'library', '回收站', '.description.json')
+      )
       if (
         libraryJson.uuid &&
         libraryJson.type === 'root' &&
         filterLibraryJson.uuid &&
         filterLibraryJson.type === 'library' &&
         curatedLibraryJson.uuid &&
-        curatedLibraryJson.type === 'library'
+        curatedLibraryJson.type === 'library' &&
+        recycleBinJson.uuid &&
+        recycleBinJson.type === 'library'
       ) {
         if (
           fs.pathExistsSync(
@@ -251,25 +256,32 @@ ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
   }
 })
 ipcMain.on('delSongs', async (e, songFilePaths: string[]) => {
+  let recycleBinTargetDir = path.join(
+    path.join(store.databaseDir, 'library', '回收站', getCurrentTimeYYYYMMDDHHMMSSSSS())
+  )
+  fs.ensureDirSync(recycleBinTargetDir)
   const promises = []
   for (let item of songFilePaths) {
-    promises.push(fs.remove(item))
+    promises.push(fs.move(item, path.join(recycleBinTargetDir, path.basename(item))))
   }
+
+  //todo 回收站
   await Promise.all(promises)
 })
 
 ipcMain.handle('dirPathExists', async (e, targetPath: string) => {
-  const filePath = path.join(store.databaseDir, targetPath, '.description.json')
   try {
-    let descriptionJson = await fs.readJSON(filePath)
-    let types = ['root', 'library', 'dir', 'songList']
-    if (descriptionJson.uuid && descriptionJson.type && types.includes(descriptionJson.type)) {
-      return true
-    }
-  } catch (e) {
+    const filePath = path.join(store.databaseDir, targetPath, '.description.json')
+    const descriptionJson = await fs.readJSON(filePath)
+    const validTypes = ['root', 'library', 'dir', 'songList']
+    return !!(
+      descriptionJson.uuid &&
+      descriptionJson.type &&
+      validTypes.includes(descriptionJson.type)
+    )
+  } catch {
     return false
   }
-  return false
 })
 
 ipcMain.handle('scanSongList', async (e, songListPath: string, songListUUID: string) => {
@@ -355,6 +367,7 @@ ipcMain.handle('updateOrderAfterNum', async (e, targetPath, order) => {
 
 ipcMain.handle('delDir', async (e, targetPath) => {
   await fs.remove(path.join(store.databaseDir, targetPath))
+  //todo 回收站
 })
 
 ipcMain.handle('mkDir', async (e, descriptionJson, dirPath) => {

@@ -5,6 +5,8 @@ import likeGrey from '@renderer/assets/like-grey.png?asset'
 import likeWhite from '@renderer/assets/like-white.png?asset'
 import settingGrey from '@renderer/assets/setting-grey.png?asset'
 import settingWhite from '@renderer/assets/setting-white.png?asset'
+import trashGrey from '@renderer/assets/trash-grey.png?asset'
+import trashWhite from '@renderer/assets/trash-white.png?asset'
 import { ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import settingDialog from '@renderer/components/settingDialog.vue'
@@ -25,6 +27,13 @@ const iconArr = ref<Icon[]>([
     grey: likeGrey,
     white: likeWhite,
     src: likeGrey,
+    showAlt: false
+  },
+  {
+    name: '回收站',
+    grey: trashGrey,
+    white: trashWhite,
+    src: trashGrey,
     showAlt: false
   }
 ])
@@ -47,7 +56,6 @@ const settingDialogShow = ref(false)
 const clickButtomIcon = (item: ButtomIcon) => {
   if (item.name == '设置') {
     settingDialogShow.value = true
-    return
   }
 }
 let hoverTimer: NodeJS.Timeout

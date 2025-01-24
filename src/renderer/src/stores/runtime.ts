@@ -3,7 +3,7 @@ import { IDir, ILayoutConfig, ISettingConfig, ISongInfo } from 'src/types/global
 interface Runtime {
   platform: string
   isWindowMaximized: boolean | null
-  libraryAreaSelected: '筛选库' | '精选库'
+  libraryAreaSelected: '筛选库' | '精选库' | '回收站'
   activeMenuUUID: string
   layoutConfig: ILayoutConfig
   dragItemData: null | IDir

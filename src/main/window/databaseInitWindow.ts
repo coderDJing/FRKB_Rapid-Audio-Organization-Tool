@@ -84,8 +84,10 @@ const createWindow = ({ needErrorHint = false } = {}) => {
     }
     let filterLibraryPath = path.join(dirPath, 'library/筛选库')
     let curatedLibraryPath = path.join(dirPath, 'library/精选库')
+    let recycleBinPath = path.join(dirPath, 'library/回收站')
     await makeLibrary(filterLibraryPath, 1)
     await makeLibrary(curatedLibraryPath, 2)
+    await makeLibrary(recycleBinPath, 3)
 
     function hasSubdirectories(targetPath: fs.PathLike) {
       try {
