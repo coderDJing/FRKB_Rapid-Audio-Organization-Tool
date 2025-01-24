@@ -383,6 +383,7 @@ function createWindow() {
       store.settingConfig.audioExt
     )
     await Promise.all(songFileUrls.map((item) => fs.remove(item)))
+    //todo 回收站
   })
 
   mainWindow.on('closed', () => {
