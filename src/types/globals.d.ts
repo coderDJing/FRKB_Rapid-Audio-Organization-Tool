@@ -84,7 +84,7 @@ interface ISongsAreaColumn {
 }
 
 type Icon = {
-  name: '筛选库' | '精选库'
+  name: '筛选库' | '精选库' | '回收站'
   grey: string
   white: string
   src: string
