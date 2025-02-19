@@ -13,6 +13,7 @@ import exportDialog from '@renderer/components/exportDialog'
 import { t } from '@renderer/utils/translate'
 import dropIntoDialog from '../components/dropIntoDialog'
 import emitter from '../utils/mitt'
+import { getCurrentTimeDirName } from '@renderer/utils/utils'
 const props = defineProps({
   uuid: {
     type: String,
@@ -142,7 +143,7 @@ const deleteDir = async () => {
     runtime.playingData.playingSong = null
   }
   const path = libraryUtils.findDirPathByUuid(props.uuid)
-  await window.electron.ipcRenderer.invoke('delDir', path)
+  await window.electron.ipcRenderer.invoke('delDir', path, getCurrentTimeDirName())
   await window.electron.ipcRenderer.invoke(
     'updateOrderAfterNum',
     libraryUtils.findDirPathByUuid(fatherDirData.uuid),
@@ -177,6 +178,9 @@ const contextmenuEvent = async (event: MouseEvent) => {
     deleteDir()
     return
   }
+  if (runtime.libraryAreaSelected === '回收站') {
+    menuArr.value = [[{ menuName: '彻底删除' }]]
+  }
   rightClickMenuShow.value = true
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
   rightClickMenuShow.value = false
@@ -205,28 +209,13 @@ const contextmenuEvent = async (event: MouseEvent) => {
       await nextTick()
       myRenameInput.value?.focus()
     } else if (result.menuName === '删除' || result.menuName === '删除歌单') {
-      let res = await confirm({
-        title: '删除',
-        content: [
-          dirData.type === 'dir' ? t('确认删除此文件夹吗？') : t('确认删除此歌单吗？'),
-          t('(曲目将在磁盘上被删除，但声音指纹依然会保留)')
-        ]
-      })
-      if (res === 'confirm') {
-        deleteDir()
-      }
+      deleteDir()
     } else if (result.menuName === '清空歌单') {
-      let res = await confirm({
-        title: '删除',
-        content: [t('确认清空此歌单吗？'), t('(曲目将在磁盘上被删除，但声音指纹依然会保留)')]
-      })
-      if (res === 'confirm') {
-        let dirPath = libraryUtils.findDirPathByUuid(props.uuid)
-        await window.electron.ipcRenderer.invoke('emptyDir', dirPath)
-        if (runtime.songsArea.songListUUID === props.uuid) {
-          runtime.playingData.playingSongListData = []
-          runtime.playingData.playingSong = null
-        }
+      let dirPath = libraryUtils.findDirPathByUuid(props.uuid)
+      await window.electron.ipcRenderer.invoke('emptyDir', dirPath, getCurrentTimeDirName())
+      if (runtime.songsArea.songListUUID === props.uuid) {
+        runtime.playingData.playingSongListData = []
+        runtime.playingData.playingSong = null
       }
     } else if (result.menuName === '导入曲目') {
       if (runtime.isProgressing) {
@@ -269,11 +258,41 @@ const contextmenuEvent = async (event: MouseEvent) => {
           }
         }
       }
-    } else if (result.menuName == '在文件资源管理器中显示') {
+    } else if (result.menuName === '在文件资源管理器中显示') {
       window.electron.ipcRenderer.send(
         'openFileExplorer',
         libraryUtils.findDirPathByUuid(props.uuid)
       )
+    } else if (result.menuName === '彻底删除') {
+      let res = await confirm({
+        title: '删除',
+        content: [t('确认彻底删除吗？'), t('(曲目将在磁盘上被删除，但声音指纹依然会保留)')]
+      })
+      if (res === 'confirm') {
+        window.electron.ipcRenderer.invoke(
+          'permanentlyDelDir',
+          libraryUtils.findDirPathByUuid(props.uuid)
+        )
+        const recycleBin = runtime.libraryTree.children?.find((item) => item.dirName === '回收站')
+        const index = recycleBin?.children?.findIndex((item) => item.uuid === props.uuid)
+        if (index !== undefined && index !== -1 && recycleBin?.children) {
+          recycleBin.children.splice(index, 1)
+        }
+        if (runtime.playingData.playingSongListUUID === props.uuid) {
+          runtime.playingData.playingSongListUUID = ''
+          runtime.playingData.playingSongListData = []
+          runtime.playingData.playingSong = null
+        }
+        if (runtime.songsArea.songListUUID === props.uuid) {
+          runtime.songsArea.selectedSongFilePath.length = 0
+          runtime.songsArea.songInfoArr.forEach((item) => {
+            if (item.coverUrl) {
+              URL.revokeObjectURL(item.coverUrl)
+            }
+          })
+          runtime.songsArea.songInfoArr = []
+        }
+      }
     }
   }
 }
@@ -731,7 +750,7 @@ const drop = async (e: DragEvent) => {
             }
             let targetPath = libraryUtils.findDirPathByUuid(existingItem.uuid)
 
-            await window.electron.ipcRenderer.invoke('delDir', targetPath)
+            await window.electron.ipcRenderer.invoke('delDir', targetPath, getCurrentTimeDirName())
             fatherDirData.children.splice(
               approach == 'top'
                 ? fatherDirData.children.indexOf(dirData)

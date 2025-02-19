@@ -10,6 +10,7 @@ import { Icon } from '../../../types/globals'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
+import { getCurrentTimeDirName } from '@renderer/utils/utils'
 const runtime = useRuntimeStore()
 let startX = 0
 let isResizing = false
@@ -174,7 +175,7 @@ const drop = async (e: DragEvent) => {
       runtime.playingData.playingSongListData = []
       runtime.playingData.playingSong = null
     }
-    await window.electron.ipcRenderer.invoke('delDir', path)
+    await window.electron.ipcRenderer.invoke('delDir', path, getCurrentTimeDirName())
     await window.electron.ipcRenderer.invoke(
       'updateOrderAfterNum',
       libraryUtils.findDirPathByUuid(fatherDirData.uuid),

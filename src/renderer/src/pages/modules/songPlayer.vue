@@ -12,6 +12,7 @@ import exportDialog from '@renderer/components/exportDialog'
 import { t } from '@renderer/utils/translate'
 import * as realtimeBpm from 'realtime-bpm-analyzer'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import { getCurrentTimeDirName } from '@renderer/utils/utils'
 
 const runtime = useRuntimeStore()
 const waveform = useTemplateRef('waveform')
@@ -86,9 +87,7 @@ onMounted(() => {
       'timeupdate',
       (currentTime) => (timeEl.textContent = formatTime(currentTime))
     )
-    wavesurferInstance.on('finish', () => {
-      console.log('finish')
-    })
+    wavesurferInstance.on('finish', () => {})
     wavesurferInstance.on('pause', () => {
       playerControlsRef.value?.setPlayingValue(false)
     })
@@ -108,7 +107,7 @@ onMounted(() => {
         content: [t('该文件无法播放，是否直接删除'), t('（文件内容不是音频或文件已损坏）')]
       })
       if (res !== 'cancel') {
-        window.electron.ipcRenderer.send('delSongs', [filePath])
+        window.electron.ipcRenderer.send('delSongs', [filePath], getCurrentTimeDirName())
         let index = runtime.playingData.playingSongListData.findIndex((item) => {
           return item.filePath === filePath
         })
@@ -324,28 +323,45 @@ const previousSong = () => {
 let showDelConfirm = false
 
 const delSong = async () => {
-  let res = await confirm({
-    title: '删除',
-    content: [t('确定删除正在播放的曲目吗'), t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')]
-  })
-  showDelConfirm = false
-  if (res === 'confirm') {
-    if (runtime.playingData.playingSong === null) {
-      throw new Error('playingData.playingSong is null')
-    }
-    let filePath = runtime.playingData.playingSong.filePath
-    window.electron.ipcRenderer.send('delSongs', [filePath])
-    let index = runtime.playingData.playingSongListData.findIndex((item) => {
-      return item.filePath === filePath
+  if (runtime.playingData.playingSong === null) {
+    throw new Error('playingData.playingSong is null')
+  }
+
+  const filePath = runtime.playingData.playingSong.filePath
+  const isInRecycleBin = runtime.libraryTree.children
+    ?.find((item) => item.dirName === '回收站')
+    ?.children?.find((item) => item.uuid === runtime.playingData.playingSongListUUID)
+
+  if (isInRecycleBin) {
+    const res = await confirm({
+      title: '删除',
+      content: [
+        t('确定彻底删除正在播放的曲目吗'),
+        t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')
+      ]
     })
-    if (index === runtime.playingData.playingSongListData.length - 1) {
-      runtime.playingData.playingSongListData.splice(index, 1)
-      runtime.playingData.playingSong = null
-    } else {
-      runtime.playingData.playingSong = runtime.playingData.playingSongListData[index + 1]
-      runtime.playingData.playingSongListData.splice(index, 1)
-      window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
+    showDelConfirm = false
+
+    if (res !== 'confirm') {
+      return
     }
+    window.electron.ipcRenderer.invoke('permanentlyDelSongs', [filePath])
+  } else {
+    showDelConfirm = false
+    window.electron.ipcRenderer.send('delSongs', [filePath], getCurrentTimeDirName())
+  }
+
+  const index = runtime.playingData.playingSongListData.findIndex(
+    (item) => item.filePath === filePath
+  )
+
+  runtime.playingData.playingSongListData.splice(index, 1)
+
+  if (index === runtime.playingData.playingSongListData.length) {
+    runtime.playingData.playingSong = null
+  } else {
+    runtime.playingData.playingSong = runtime.playingData.playingSongListData[index]
+    window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
   }
 }
 const selectSongListDialogLibraryName = ref('筛选库')

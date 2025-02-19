@@ -14,6 +14,8 @@ import databaseInitWindow from './databaseInitWindow'
 import path = require('path')
 import fs = require('fs-extra')
 import { IImportSongsFormData, md5 } from '../../types/globals'
+import { v4 as uuidV4 } from 'uuid'
+import { operateHiddenFile } from '../utils'
 
 let mainWindow: BrowserWindow | null = null
 function createWindow() {
@@ -377,13 +379,62 @@ function createWindow() {
     mainWindow?.close()
   })
 
-  ipcMain.handle('emptyDir', async (e, targetPath) => {
+  ipcMain.handle('emptyDir', async (e, targetPath: string, dirName: string) => {
+    const recycleBinTargetDir = path.join(store.databaseDir, 'library', '回收站', dirName)
+
     let songFileUrls = await collectFilesWithExtensions(
       path.join(store.databaseDir, targetPath),
       store.settingConfig.audioExt
     )
-    await Promise.all(songFileUrls.map((item) => fs.remove(item)))
-    //todo 回收站
+
+    if (songFileUrls.length > 0) {
+      const promises = songFileUrls.map((srcPath) => {
+        const destPath = path.join(recycleBinTargetDir, path.basename(srcPath))
+        return fs.move(srcPath, destPath)
+      })
+
+      await Promise.all(promises)
+
+      let descriptionJson = {
+        uuid: uuidV4(),
+        type: 'songList',
+        order: Date.now()
+      }
+
+      await operateHiddenFile(path.join(recycleBinTargetDir, '.description.json'), async () => {
+        fs.outputJSON(path.join(recycleBinTargetDir, '.description.json'), descriptionJson)
+      })
+
+      if (mainWindow) {
+        mainWindow.webContents.send('delSongsSuccess', {
+          dirName,
+          ...descriptionJson
+        })
+      }
+    }
+  })
+
+  ipcMain.handle('emptyRecycleBin', async (_e) => {
+    let recycleBinPath = path.join(store.databaseDir, 'library', '回收站')
+    try {
+      const recycleBinDirs = await fs.readdir(recycleBinPath)
+
+      const deletePromises = recycleBinDirs.map(async (dir) => {
+        const dirPath = path.join(recycleBinPath, dir)
+        const stat = await fs.stat(dirPath)
+
+        if (stat.isDirectory()) {
+          return fs.remove(dirPath)
+        }
+      })
+      await Promise.all(deletePromises)
+    } catch (error) {
+      console.error('清空回收站失败:', error)
+    }
+  })
+
+  ipcMain.handle('permanentlyDelDir', async (e, dirPath: string) => {
+    await fs.remove(path.join(store.databaseDir, dirPath))
   })
 
   mainWindow.on('closed', () => {
@@ -398,6 +449,8 @@ function createWindow() {
     ipcMain.removeHandler('openFileExplorer')
     ipcMain.removeHandler('reSelectLibrary')
     ipcMain.removeHandler('emptyDir')
+    ipcMain.removeHandler('emptyRecycleBin')
+    ipcMain.removeHandler('permanentlyDelDir')
     globalShortcut.unregister(store.settingConfig.globalCallShortcut)
     mainWindow = null
   })

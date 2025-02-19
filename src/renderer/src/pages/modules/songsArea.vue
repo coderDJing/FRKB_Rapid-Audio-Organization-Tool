@@ -18,6 +18,7 @@ import welcomePage from '@renderer/components/welcomePage.vue'
 // 资源导入
 import ascendingOrder from '@renderer/assets/ascending-order.png?asset'
 import descendingOrder from '@renderer/assets/descending-order.png?asset'
+import { getCurrentTimeDirName } from '@renderer/utils/utils'
 const defaultColumns: ISongsAreaColumn[] = [
   {
     columnName: '专辑封面',
@@ -308,43 +309,64 @@ const songContextmenu = async (event: MouseEvent, song: ISongInfo) => {
   })
   if (result !== 'cancel') {
     if (result.menuName === '删除上方所有曲目') {
-      let res = await confirm({
-        title: '删除',
-        content: [
-          t('确定删除此曲目上方的所有曲目吗'),
-          t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')
-        ]
-      })
-      if (res === 'confirm') {
-        let delSongs = []
-        for (let item of runtime.songsArea.songInfoArr) {
-          if (item.filePath === song.filePath) {
-            break
-          }
-          if (item.coverUrl) {
-            URL.revokeObjectURL(item.coverUrl)
-          }
-          delSongs.push(item.filePath)
+      let delSongs = []
+      for (let item of runtime.songsArea.songInfoArr) {
+        if (item.filePath === song.filePath) {
+          break
         }
-        if (delSongs.length === 0) {
+        if (item.coverUrl) {
+          URL.revokeObjectURL(item.coverUrl)
+        }
+        delSongs.push(item.filePath)
+      }
+      if (delSongs.length === 0) {
+        return
+      }
+
+      const isInRecycleBin = runtime.libraryTree.children
+        ?.find((item) => item.dirName === '回收站')
+        ?.children?.find((item) => item.uuid === runtime.songsArea.songListUUID)
+
+      if (isInRecycleBin) {
+        let res = await confirm({
+          title: '删除',
+          content: [
+            t('确定彻底删除此曲目上方的所有曲目吗'),
+            t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')
+          ]
+        })
+        if (res !== 'confirm') {
           return
         }
-        window.electron.ipcRenderer.send('delSongs', JSON.parse(JSON.stringify(delSongs)))
-        runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
-          (song) => !delSongs.includes(song.filePath)
-        )
-        runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
-        if (
-          runtime.playingData.playingSong &&
-          delSongs.indexOf(runtime.playingData.playingSong.filePath) !== -1
-        ) {
-          runtime.playingData.playingSong = null
-        }
-        songsAreaRef.value?.scrollTo({
-          top: 0,
-          behavior: 'smooth'
-        })
       }
+
+      if (isInRecycleBin) {
+        window.electron.ipcRenderer.invoke(
+          'permanentlyDelSongs',
+          JSON.parse(JSON.stringify(delSongs))
+        )
+      } else {
+        window.electron.ipcRenderer.send(
+          'delSongs',
+          JSON.parse(JSON.stringify(delSongs)),
+          getCurrentTimeDirName()
+        )
+      }
+
+      runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
+        (song) => !delSongs.includes(song.filePath)
+      )
+      runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+      if (
+        runtime.playingData.playingSong &&
+        delSongs.indexOf(runtime.playingData.playingSong.filePath) !== -1
+      ) {
+        runtime.playingData.playingSong = null
+      }
+      songsAreaRef.value?.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      })
     } else if (result.menuName === '删除曲目') {
       deleteSong()
     } else if (result.menuName === '移动到精选库') {
@@ -464,15 +486,33 @@ const songDblClick = (song: ISongInfo) => {
   window.electron.ipcRenderer.send('readSongFile', song.filePath)
 }
 const deleteSong = async () => {
-  let res = await confirm({
-    title: '删除',
-    content: [t('确定删除选中的曲目吗'), t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')]
-  })
-  if (res === 'confirm') {
-    window.electron.ipcRenderer.send(
-      'delSongs',
-      JSON.parse(JSON.stringify(runtime.songsArea.selectedSongFilePath))
-    )
+  const isInRecycleBin = runtime.libraryTree.children
+    ?.find((item) => item.dirName === '回收站')
+    ?.children?.find((item) => item.uuid === runtime.songsArea.songListUUID)
+
+  let shouldDelete = true
+  if (isInRecycleBin) {
+    let res = await confirm({
+      title: '删除',
+      content: [t('确定彻底删除选中的曲目吗'), t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')]
+    })
+    shouldDelete = res === 'confirm'
+  }
+
+  if (shouldDelete) {
+    if (isInRecycleBin) {
+      window.electron.ipcRenderer.invoke(
+        'permanentlyDelSongs',
+        JSON.parse(JSON.stringify(runtime.songsArea.selectedSongFilePath))
+      )
+    } else {
+      window.electron.ipcRenderer.send(
+        'delSongs',
+        JSON.parse(JSON.stringify(runtime.songsArea.selectedSongFilePath)),
+        getCurrentTimeDirName()
+      )
+    }
+
     let delSongs = runtime.songsArea.songInfoArr.filter(
       (item) => runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) !== -1
     )

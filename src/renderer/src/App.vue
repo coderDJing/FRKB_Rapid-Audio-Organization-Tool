@@ -108,8 +108,13 @@ onMounted(() => {
   })
   utils.setHotkeysScpoe('windowGlobal')
 })
-window.electron.ipcRenderer.on('mainWindowBlur', async (event) => {
+window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
   runtime.activeMenuUUID = ''
+})
+window.electron.ipcRenderer.on('delSongsSuccess', (_event, recycleBinNewDirDescriptionJson) => {
+  runtime.libraryTree.children
+    ?.find((item) => item.dirName === '回收站')
+    ?.children?.push(recycleBinNewDirDescriptionJson)
 })
 </script>
 <template>
