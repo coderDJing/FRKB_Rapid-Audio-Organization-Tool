@@ -26,9 +26,6 @@ importers:
       fs-extra:
         specifier: ^11.2.0
         version: 11.2.0
-      fswin:
-        specifier: ^3.24.829
-        version: 3.24.829
       hotkeys-js:
         specifier: ^3.13.7
         version: 3.13.7
@@ -1476,10 +1473,6 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
-
-  fswin@3.24.829:
-    resolution: {integrity: sha512-t3KHDNSMHbUzjpzb35c+27dGMLcE5gXvYZ4to5BITvCvPr3dZvX41VUzgEMQ8mVozbn5uiQ9p61/cQVLDEy+ag==}
-    engines: {node: '>= 8.0'}
 
   function-bind@1.1.2:
     resolution: {integrity: sha512-7XHNxH7qX9xG5mIwxkhumTox/MIRNcOgDrxWsMt2pAr23WHp6MrRlN7FBSFpCpr+oVO0F744iUgR82nJMfG2SA==}
@@ -4073,8 +4066,6 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
-
-  fswin@3.24.829: {}
 
   function-bind@1.1.2: {}
 

@@ -8,7 +8,7 @@ import { v4 as uuidV4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog'
 import hotkeys from 'hotkeys-js'
 import listIcon from '@renderer/assets/listIcon.png?asset'
-import utils from '../utils/utils'
+import utils, { getCurrentTimeDirName } from '../utils/utils'
 import { t } from '@renderer/utils/translate'
 import emitter from '../utils/mitt'
 import type { IDir } from 'src/types/globals'
@@ -177,7 +177,7 @@ const drop = async () => {
       })
       if (res == 'confirm') {
         let targetPath = libraryUtils.findDirPathByUuid(existingItem.uuid)
-        await window.electron.ipcRenderer.invoke('delDir', targetPath)
+        await window.electron.ipcRenderer.invoke('delDir', targetPath, getCurrentTimeDirName())
         await window.electron.ipcRenderer.invoke(
           'moveToDirSample',
           libraryUtils.findDirPathByUuid(runtime.dragItemData.uuid),
