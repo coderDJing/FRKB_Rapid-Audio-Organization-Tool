@@ -2,7 +2,6 @@ import store from './store'
 import { IDir, md5 } from '../types/globals'
 import fs = require('fs-extra')
 import path = require('path')
-import fswin = require('fswin')
 import os = require('os')
 import { getAudioDecodeMd5WithProgress, ProcessProgress } from 'rust_package'
 
@@ -99,18 +98,33 @@ async function updateOrderInFile(filePath: string, type: 'minus' | 'plus') {
   }
 }
 export const operateHiddenFile = async (filePath: string, operateFunction: Function) => {
-  if (fs.pathExistsSync(filePath)) {
-    if (os.platform() === 'win32') {
-      await fswin.setAttributes(path.join(filePath), { IS_HIDDEN: false }, () => {})
-    }
-  }
-  if (operateFunction && operateFunction.constructor.name === 'AsyncFunction') {
-    await operateFunction()
-  } else {
-    operateFunction()
-  }
   if (os.platform() === 'win32') {
-    await fswin.setAttributes(path.join(filePath), { IS_HIDDEN: true }, () => {})
+    const { exec } = require('child_process')
+    const { promisify } = require('util')
+    const execAsync = promisify(exec)
+
+    try {
+      // 先移除隐藏属性
+      await execAsync(`attrib -h "${filePath}"`)
+
+      // 执行文件操作
+      if (operateFunction && operateFunction.constructor.name === 'AsyncFunction') {
+        await operateFunction()
+      } else {
+        operateFunction()
+      }
+      await execAsync(`attrib +h "${filePath}"`)
+    } catch (error) {
+      console.error('Error in operateHiddenFile:', error)
+      throw error
+    }
+  } else {
+    // 非 Windows 系统直接执行操作
+    if (operateFunction && operateFunction.constructor.name === 'AsyncFunction') {
+      await operateFunction()
+    } else {
+      operateFunction()
+    }
   }
 }
 // 异步函数，用于遍历目录并处理 .description.json 文件中的order小于参数orderNum时+1 direction='before'||'after' operation='plus'||'minus'

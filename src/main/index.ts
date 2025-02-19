@@ -20,6 +20,7 @@ import foundNewVersionWindow from './window/foundNewVersionWindow'
 import updateWindow from './window/updateWindow'
 import electronUpdater = require('electron-updater')
 import { IDir, ISongInfo } from '../types/globals'
+import { v4 as uuidV4 } from 'uuid'
 // import AudioFeatureExtractor from './mfccTest'
 
 const gotTheLock = app.requestSingleInstanceLock()
@@ -255,17 +256,34 @@ ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
     await updateTargetDirSubdirOrder(path.dirname(srcFullPath), originalOrder, 'after', 'minus')
   }
 })
-ipcMain.on('delSongs', async (e, songFilePaths: string[]) => {
-  let recycleBinTargetDir = path.join(
-    path.join(store.databaseDir, 'library', '回收站', getCurrentTimeYYYYMMDDHHMMSSSSS())
-  )
+ipcMain.on('delSongs', async (e, songFilePaths: string[], dirName: string) => {
+  let recycleBinTargetDir = path.join(store.databaseDir, 'library', '回收站', dirName)
   fs.ensureDirSync(recycleBinTargetDir)
   const promises = []
   for (let item of songFilePaths) {
     promises.push(fs.move(item, path.join(recycleBinTargetDir, path.basename(item))))
   }
-
-  //todo 回收站
+  await Promise.all(promises)
+  let descriptionJson = {
+    uuid: uuidV4(),
+    type: 'songList',
+    order: Date.now()
+  }
+  await operateHiddenFile(path.join(recycleBinTargetDir, '.description.json'), async () => {
+    fs.outputJSON(path.join(recycleBinTargetDir, '.description.json'), descriptionJson)
+  })
+  if (mainWindow.instance) {
+    mainWindow.instance.webContents.send('delSongsSuccess', {
+      dirName,
+      ...descriptionJson
+    })
+  }
+})
+ipcMain.handle('permanentlyDelSongs', async (e, songFilePaths: string[]) => {
+  const promises = []
+  for (let item of songFilePaths) {
+    promises.push(fs.remove(item))
+  }
   await Promise.all(promises)
 })
 
@@ -365,9 +383,39 @@ ipcMain.handle('updateOrderAfterNum', async (e, targetPath, order) => {
   )
 })
 
-ipcMain.handle('delDir', async (e, targetPath) => {
-  await fs.remove(path.join(store.databaseDir, targetPath))
-  //todo 回收站
+ipcMain.handle('delDir', async (e, targetPath, dirName: string) => {
+  let dirPath = path.join(store.databaseDir, targetPath)
+  const recycleBinTargetDir = path.join(store.databaseDir, 'library', '回收站', dirName)
+
+  // 读取目录内容
+  const items = await fs.readdir(dirPath)
+  const promises = []
+  // 遍历并移动文件/文件夹
+  for (const item of items) {
+    if (item !== '.description.json') {
+      const srcPath = path.join(dirPath, item)
+      const destPath = path.join(recycleBinTargetDir, item)
+      promises.push(fs.move(srcPath, destPath))
+    }
+  }
+  await Promise.all(promises)
+  await fs.remove(dirPath)
+  if (promises.length > 0) {
+    let descriptionJson = {
+      uuid: uuidV4(),
+      type: 'songList',
+      order: Date.now()
+    }
+    await operateHiddenFile(path.join(recycleBinTargetDir, '.description.json'), async () => {
+      fs.outputJSON(path.join(recycleBinTargetDir, '.description.json'), descriptionJson)
+    })
+    if (mainWindow.instance) {
+      mainWindow.instance.webContents.send('delSongsSuccess', {
+        dirName,
+        ...descriptionJson
+      })
+    }
+  }
 })
 
 ipcMain.handle('mkDir', async (e, descriptionJson, dirPath) => {

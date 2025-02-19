@@ -8,6 +8,8 @@ import confirm from '@renderer/components/confirmDialog'
 import rightClickMenu from '../../components/rightClickMenu'
 import { t } from '@renderer/utils/translate'
 import emitter from '../../utils/mitt'
+import { getCurrentTimeDirName } from '@renderer/utils/utils'
+import emptyRecycleBin from '@renderer/assets/empty-recycleBin.png?asset'
 const runtime = useRuntimeStore()
 const props = defineProps({
   uuid: {
@@ -29,18 +31,52 @@ const showHint = computed(() => {
 })
 let hoverTimer: NodeJS.Timeout
 let collapseButtonHintShow = ref(false)
-const iconMouseover = () => {
+let emptyRecycleBinHintShow = ref(false)
+const iconMouseover = (iconName: string) => {
   hoverTimer = setTimeout(() => {
-    collapseButtonHintShow.value = true
+    if (iconName == 'collapseButton') {
+      collapseButtonHintShow.value = true
+    } else if (iconName == 'emptyRecycleBin') {
+      emptyRecycleBinHintShow.value = true
+    }
   }, 500)
 }
-const iconMouseout = () => {
+const iconMouseout = (iconName: string) => {
   clearTimeout(hoverTimer)
-  collapseButtonHintShow.value = false
+  if (iconName == 'collapseButton') {
+    collapseButtonHintShow.value = false
+  } else if (iconName == 'emptyRecycleBin') {
+    emptyRecycleBinHintShow.value = false
+  }
+}
+
+const emptyRecycleBinHandleClick = async () => {
+  let res = await confirm({
+    title: '清空回收站',
+    content: [t('确认清空回收站吗？'), t('(曲目将在磁盘上被删除，但声音指纹依然会保留)')]
+  })
+  if (res !== 'confirm') {
+    return
+  }
+  let recycleBinDirs = runtime.libraryTree.children?.find((item) => {
+    return item.dirName === '回收站'
+  })
+  if (recycleBinDirs?.children?.length !== 0) {
+    await window.electron.ipcRenderer.invoke('emptyRecycleBin')
+    const recycleBin = runtime.libraryTree.children?.find((item) => item.dirName === '回收站')
+    if (recycleBin) {
+      recycleBin.children = []
+    }
+  }
 }
 
 const menuArr = ref([[{ menuName: '新建歌单' }, { menuName: '新建文件夹' }]])
 const contextmenuEvent = async (event: MouseEvent) => {
+  if (runtime.libraryAreaSelected === '回收站') {
+    menuArr.value = [[{ menuName: '清空回收站' }]]
+  } else {
+    menuArr.value = [[{ menuName: '新建歌单' }, { menuName: '新建文件夹' }]]
+  }
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
   if (result !== 'cancel') {
     if (result.menuName == '新建歌单') {
@@ -55,12 +91,15 @@ const contextmenuEvent = async (event: MouseEvent) => {
         type: 'dir',
         dirName: ''
       })
+    } else if (result.menuName == '清空回收站') {
+      emptyRecycleBinHandleClick()
     }
   }
 }
 
 const collapseButtonHandleClick = async () => {
   emitter.emit('collapseButtonHandleClick', libraryData.dirName)
+  console.log(runtime)
 }
 
 const dragApproach = ref('')
@@ -155,7 +194,7 @@ const drop = async (e: DragEvent) => {
         })
         if (res == 'confirm') {
           let targetPath = libraryUtils.findDirPathByUuid(existingItem.uuid)
-          await window.electron.ipcRenderer.invoke('delDir', targetPath)
+          await window.electron.ipcRenderer.invoke('delDir', targetPath, getCurrentTimeDirName())
           await window.electron.ipcRenderer.invoke(
             'moveToDirSample',
             libraryUtils.findDirPathByUuid(runtime.dragItemData.uuid),
@@ -217,8 +256,17 @@ const drop = async (e: DragEvent) => {
       <div style="display: flex; justify-content: center; align-items: center">
         <div
           class="collapseButton"
-          @mouseover="iconMouseover()"
-          @mouseout="iconMouseout()"
+          @mouseover="iconMouseover('emptyRecycleBin')"
+          @mouseout="iconMouseout('emptyRecycleBin')"
+          v-show="runtime.libraryAreaSelected === '回收站'"
+          @click="emptyRecycleBinHandleClick()"
+        >
+          <img :src="emptyRecycleBin" style="width: 16px; height: 16px" draggable="false" />
+        </div>
+        <div
+          class="collapseButton"
+          @mouseover="iconMouseover('collapseButton')"
+          @mouseout="iconMouseout('collapseButton')"
           @click="collapseButtonHandleClick()"
         >
           <svg
@@ -243,6 +291,15 @@ const drop = async (e: DragEvent) => {
             style="position: absolute; top: 70px"
           >
             {{ t('折叠文件夹') }}
+          </div>
+        </transition>
+        <transition name="fade">
+          <div
+            class="bubbleBox"
+            v-if="emptyRecycleBinHintShow"
+            style="position: absolute; top: 70px"
+          >
+            {{ t('清空回收站') }}
           </div>
         </transition>
       </div>
@@ -272,8 +329,9 @@ const drop = async (e: DragEvent) => {
         <span
           style="font-size: 12px; color: #8c8c8c; position: absolute; bottom: 50vh"
           v-show="showHint"
-          >{{ t('右键新建歌单') }}</span
         >
+          {{ runtime.libraryAreaSelected === '回收站' ? t('暂无删除记录') : t('右键新建歌单') }}
+        </span>
       </div>
     </div>
   </div>

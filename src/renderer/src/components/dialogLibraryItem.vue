@@ -9,6 +9,7 @@ import { v4 as uuidV4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 import emitter from '../utils/mitt'
+import { getCurrentTimeDirName } from '@renderer/utils/utils'
 const props = defineProps({
   uuid: {
     type: String,
@@ -141,7 +142,7 @@ const deleteDir = async () => {
     runtime.playingData.playingSong = null
   }
   const path = libraryUtils.findDirPathByUuid(props.uuid)
-  await window.electron.ipcRenderer.invoke('delDir', path)
+  await window.electron.ipcRenderer.invoke('delDir', path, getCurrentTimeDirName())
   await window.electron.ipcRenderer.invoke(
     'updateOrderAfterNum',
     libraryUtils.findDirPathByUuid(fatherDirData.uuid),
@@ -202,16 +203,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
       await nextTick()
       myRenameInput.value?.focus()
     } else if (result.menuName == '删除') {
-      let res = await confirm({
-        title: '删除',
-        content: [
-          dirData.type == 'dir' ? t('确认删除此文件夹吗？') : t('确认删除此歌单吗？'),
-          t('(曲目将在磁盘上被删除，但声音指纹依然会保留)')
-        ]
-      })
-      if (res === 'confirm') {
-        deleteDir()
-      }
+      deleteDir()
     }
   }
 }
@@ -631,7 +623,7 @@ const drop = async (e: DragEvent) => {
           if (res == 'confirm') {
             let targetPath = libraryUtils.findDirPathByUuid(existingItem.uuid)
 
-            await window.electron.ipcRenderer.invoke('delDir', targetPath)
+            await window.electron.ipcRenderer.invoke('delDir', targetPath, getCurrentTimeDirName())
             fatherDirData.children.splice(
               approach == 'top'
                 ? fatherDirData.children.indexOf(dirData)
