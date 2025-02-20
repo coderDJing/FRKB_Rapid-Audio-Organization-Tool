@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, nextTick, watch, useTemplateRef } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu'
-import libraryItem from '@renderer/components/libraryItem.vue'
+import libraryItem from '@renderer/components/libraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import listIcon from '@renderer/assets/listIcon.png?asset'
 import listIconBlue from '@renderer/assets/listIconBlue.png?asset'
@@ -11,9 +11,16 @@ import confirm from '@renderer/components/confirmDialog'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog'
 import exportDialog from '@renderer/components/exportDialog'
 import { t } from '@renderer/utils/translate'
-import dropIntoDialog from '../components/dropIntoDialog'
-import emitter from '../utils/mitt'
+import emitter from '../../utils/mitt'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
+import {
+  handleDragStart,
+  handleDragOver,
+  handleDragEnter,
+  handleDragLeave,
+  handleDrop
+} from './dragUtils'
+import { reactive } from 'vue'
 const props = defineProps({
   uuid: {
     type: String,
@@ -410,443 +417,69 @@ const renameMyInputHandleInput = () => {
 
 //----------------------------------------
 
-const dragstart = async (event: DragEvent) => {
-  let songListPath = libraryUtils.findDirPathByUuid(props.uuid)
-  let isSongListPathExist = await window.electron.ipcRenderer.invoke('dirPathExists', songListPath)
-  if (!isSongListPathExist) {
-    event.preventDefault()
-    await confirm({
-      title: '错误',
-      content: [t('此歌单/文件夹在磁盘中不存在，可能已被手动删除')],
-      confirmShow: false
-    })
-    deleteDir()
-    return
-  }
-  runtime.dragItemData = dirData
-}
 const dragApproach = ref('')
-const dragover = (e: DragEvent) => {
-  if (e.dataTransfer === null) {
-    throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
-  }
-  if (runtime.dragItemData === null) {
-    if (dirData.type === 'dir') {
-      e.dataTransfer.dropEffect = 'none'
-      return
-    }
-    if (runtime.dragTableHeader) {
-      e.dataTransfer.dropEffect = 'none'
-      return
-    }
-    dragApproach.value = 'center'
-    e.dataTransfer.dropEffect = 'move'
-    return
-  }
-  e.dataTransfer.dropEffect = 'move'
-  if (runtime.dragItemData == dirData) {
-    return
-  }
+const dragState = reactive({
+  dragApproach: ''
+})
 
-  if (libraryUtils.isDragItemInDirChildren(dirData.uuid)) {
-    return
+watch(
+  () => dragState.dragApproach,
+  (newVal) => {
+    dragApproach.value = newVal
   }
-  if (dirData.type == 'songList') {
-    if (e.offsetY <= 12) {
-      dragApproach.value = 'top'
-    } else {
-      dragApproach.value = 'bottom'
-    }
-  } else {
-    if (e.offsetY <= 8) {
-      dragApproach.value = 'top'
-    } else if (e.offsetY > 8 && e.offsetY < 16) {
-      dragApproach.value = 'center'
-    } else {
-      dragApproach.value = 'bottom'
-    }
-  }
-}
-const dragenter = (e: DragEvent) => {
-  if (e.dataTransfer === null) {
-    throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
-  }
-  if (runtime.dragItemData === null) {
-    if (dirData.type === 'dir') {
-      e.dataTransfer.dropEffect = 'none'
-      return
-    }
-    if (runtime.dragTableHeader) {
-      e.dataTransfer.dropEffect = 'none'
-      return
-    }
-    dragApproach.value = 'center'
-    e.dataTransfer.dropEffect = 'move'
-    return
-  }
-  e.dataTransfer.dropEffect = 'move'
-  if (runtime.dragItemData == dirData) {
-    return
-  }
-  if (libraryUtils.isDragItemInDirChildren(dirData.uuid)) {
-    return
-  }
-  if (dirData.type == 'songList') {
-    if (e.offsetY <= 12) {
-      dragApproach.value = 'top'
-    } else {
-      dragApproach.value = 'bottom'
-    }
-  } else {
-    if (e.offsetY <= 8) {
-      dragApproach.value = 'top'
-    } else if (e.offsetY > 8 && e.offsetY < 16) {
-      dragApproach.value = 'center'
-    } else {
-      dragApproach.value = 'bottom'
-    }
-  }
-}
-const dragleave = () => {
-  dragApproach.value = ''
-}
+)
 
-const approachCenterEnd = () => {
-  if (dirData.children === undefined) {
-    throw new Error(`dirData.children error: ${JSON.stringify(dirData.children)}`)
-  }
-  if (runtime.dragItemData === null) {
-    throw new Error(`runtime.dragItemData error: ${JSON.stringify(runtime.dragItemData)}`)
-  }
-  dirData.children.unshift({ ...runtime.dragItemData, order: 1 })
-  let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(runtime.dragItemData.uuid)
-  if (dragItemDataFather === null || dragItemDataFather.children === undefined) {
-    throw new Error(`dragItemDataFather error: ${JSON.stringify(dragItemDataFather)}`)
-  }
-  for (let item of dragItemDataFather.children) {
-    if (item.order && runtime.dragItemData.order) {
-      if (item.order > runtime.dragItemData.order) {
-        item.order--
-      }
-    }
-  }
-  dragItemDataFather.children.splice(dragItemDataFather.children.indexOf(runtime.dragItemData), 1)
-}
-const drop = async (e: DragEvent) => {
-  const filesCopy = Array.from(e.dataTransfer?.files || [])
-
-  let songListPath = libraryUtils.findDirPathByUuid(props.uuid)
-  let isSongListPathExist = await window.electron.ipcRenderer.invoke('dirPathExists', songListPath)
-  if (!isSongListPathExist) {
-    e.preventDefault()
-    await confirm({
-      title: '错误',
-      content: [t('此歌单/文件夹在磁盘中不存在，可能已被手动删除')],
-      confirmShow: false
-    })
+const dragstart = async (event: DragEvent) => {
+  const shouldDelete = await handleDragStart(event, props.uuid)
+  if (shouldDelete) {
     deleteDir()
+  }
+  event.target?.addEventListener(
+    'dragend',
+    () => {
+      runtime.dragItemData = null
+    },
+    { once: true }
+  )
+}
+
+const dragover = (e: DragEvent) => {
+  if (runtime.libraryAreaSelected === '回收站') {
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'none'
+    }
     return
   }
-  if (e.dataTransfer === null) {
-    throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
-  }
-  if (runtime.dragItemData === null) {
-    e.dataTransfer.dropEffect = 'move'
-    dragApproach.value = ''
-    let files = Array.from(filesCopy)
-    let result = await dropIntoDialog({
-      songListUuid: props.uuid,
-      libraryName: props.libraryName
-    })
-    if (result === 'cancel') {
-      return
+  handleDragOver(e, dirData, dragState)
+}
+
+const dragenter = (e: DragEvent) => {
+  if (runtime.libraryAreaSelected === '回收站') {
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'none'
     }
-    let filePaths = []
-    for (let item of files) {
-      filePaths.push(item.path)
-    }
-    runtime.importingSongListUUID = result.importingSongListUUID
-    runtime.isProgressing = true
-    window.electron.ipcRenderer.send('startImportSongs', {
-      filePaths: filePaths,
-      songListPath: result.songListPath,
-      isDeleteSourceFile: result.isDeleteSourceFile,
-      isComparisonSongFingerprint: result.isComparisonSongFingerprint,
-      isPushSongFingerprintLibrary: result.isPushSongFingerprintLibrary,
-      songListUUID: result.importingSongListUUID
-    })
     return
   }
-  try {
-    let approach = dragApproach.value
-    dragApproach.value = ''
-    if (runtime.dragItemData == dirData) {
-      return
-    }
-    if (libraryUtils.isDragItemInDirChildren(dirData.uuid)) {
-      return
-    }
-    if (approach == 'center') {
-      if (dirData.children === undefined) {
-        throw new Error(`dirData.children error: ${JSON.stringify(dirData.children)}`)
-      }
-      if (
-        libraryUtils.getFatherLibraryTreeByUUID(runtime.dragItemData.uuid)?.uuid == dirData.uuid
-      ) {
-        let removedElement = dirData.children?.splice(
-          dirData.children.indexOf(runtime.dragItemData),
-          1
-        )[0]
-        if (removedElement === undefined) {
-          throw new Error(`removedElement error: ${JSON.stringify(removedElement)}`)
-        }
-        dirData.children?.unshift(removedElement)
+  handleDragEnter(e, dirData, dragState)
+}
 
-        libraryUtils.reOrderChildren(dirData.children)
-        await window.electron.ipcRenderer.invoke(
-          'reOrderSubDir',
-          libraryUtils.findDirPathByUuid(dirData.uuid),
-          JSON.stringify(dirData.children)
-        )
-        return
-      }
-      const existingItem = dirData.children.find((item) => {
-        return (
-          item.dirName === runtime.dragItemData?.dirName && item.uuid !== runtime.dragItemData.uuid
-        )
-      })
-      if (existingItem) {
-        let res = await confirm({
-          title: '移动',
-          content: [
-            t('目标文件夹下已存在："') + runtime.dragItemData.dirName + t('"'),
-            t('是否继续执行替换'),
-            t('（被替换的歌单或文件夹将被删除）')
-          ]
-        })
-        if (res == 'confirm') {
-          await window.electron.ipcRenderer.invoke(
-            'moveInDir',
-            libraryUtils.findDirPathByUuid(runtime.dragItemData.uuid),
-            libraryUtils.findDirPathByUuid(dirData.uuid),
-            true
-          )
-          let oldOrder = existingItem.order
-          dirData.children.splice(dirData.children.indexOf(existingItem), 1)
-          for (let item of dirData.children) {
-            if (item.order && oldOrder) {
-              if (item.order < oldOrder) {
-                item.order++
-              } else {
-                break
-              }
-            }
-          }
-          approachCenterEnd()
-        }
-        return
-      }
-      let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(runtime.dragItemData.uuid)
-      if (dragItemDataFather === null || dragItemDataFather.children === undefined) {
-        throw new Error(`dragItemDataFather error: ${JSON.stringify(dragItemDataFather)}`)
-      }
-      await window.electron.ipcRenderer.invoke(
-        'moveToDirSample',
-        libraryUtils.findDirPathByUuid(runtime.dragItemData.uuid),
-        libraryUtils.findDirPathByUuid(dirData.uuid)
-      )
-      let removedElement = dragItemDataFather.children.splice(
-        dragItemDataFather.children.indexOf(runtime.dragItemData),
-        1
-      )[0]
-      libraryUtils.reOrderChildren(dragItemDataFather.children)
-      await window.electron.ipcRenderer.invoke(
-        'reOrderSubDir',
-        libraryUtils.findDirPathByUuid(dragItemDataFather.uuid),
-        JSON.stringify(dragItemDataFather.children)
-      )
-      dirData.children.unshift(removedElement)
-      libraryUtils.reOrderChildren(dirData.children)
-      await window.electron.ipcRenderer.invoke(
-        'reOrderSubDir',
-        libraryUtils.findDirPathByUuid(dirData.uuid),
-        JSON.stringify(dirData.children)
-      )
-      let libraryTree = libraryUtils.getLibraryTreeByUUID(runtime.dragItemData.uuid)
-      if (libraryTree === null) {
-        throw new Error(`libraryTree error: ${JSON.stringify(libraryTree)}`)
-      }
-      let flatUUID = libraryUtils.getAllUuids(libraryTree)
-      if (flatUUID.indexOf(runtime.songsArea.songListUUID) != -1) {
-        runtime.songsArea.songListUUID = ''
-      }
-      if (flatUUID.indexOf(runtime.playingData.playingSongListUUID) != -1) {
-        runtime.playingData.playingSongListUUID = ''
-        runtime.playingData.playingSongListData = []
-        runtime.playingData.playingSong = null
-      }
-      return
-    } else if (approach == 'top' || approach == 'bottom') {
-      let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(runtime.dragItemData.uuid)
-      if (dragItemDataFather == fatherDirData) {
-        if (dirData.order === undefined) {
-          throw new Error(`order error: ${JSON.stringify(dirData)}`)
-        }
-        if (runtime.dragItemData.order === undefined) {
-          throw new Error(`order error: ${JSON.stringify(runtime.dragItemData)}`)
-        }
-        if (fatherDirData.children === undefined) {
-          throw new Error(`fatherDirData.children error: ${JSON.stringify(fatherDirData.children)}`)
-        }
-        // 两个dir在同一目录下
-        if (approach == 'top' && dirData.order - runtime.dragItemData.order == 1) {
-          return
-        }
-        if (approach == 'bottom' && runtime.dragItemData.order - dirData.order == 1) {
-          return
-        }
-        let removedElement = fatherDirData.children.splice(
-          fatherDirData.children.indexOf(runtime.dragItemData),
-          1
-        )[0]
-        fatherDirData.children.splice(
-          approach == 'top'
-            ? fatherDirData.children.indexOf(dirData)
-            : fatherDirData.children.indexOf(dirData) + 1,
-          0,
-          removedElement
-        )
-        libraryUtils.reOrderChildren(fatherDirData.children)
+const dragleave = () => {
+  if (runtime.libraryAreaSelected === '回收站') {
+    return
+  }
+  handleDragLeave(dragState)
+}
 
-        await window.electron.ipcRenderer.invoke(
-          'reOrderSubDir',
-          libraryUtils.findDirPathByUuid(fatherDirData.uuid),
-          JSON.stringify(fatherDirData.children)
-        )
-        return
-      } else {
-        if (fatherDirData.children === undefined) {
-          throw new Error(`fatherDirData.children error: ${JSON.stringify(fatherDirData.children)}`)
-        }
-        // 两个dir不在同一目录下
-        const existingItem = fatherDirData.children.find((item) => {
-          return (
-            item.dirName === runtime.dragItemData?.dirName &&
-            item.uuid !== runtime.dragItemData.uuid
-          )
-        })
-        if (existingItem) {
-          let res = await confirm({
-            title: '移动',
-            content: [
-              t('目标文件夹下已存在："') + runtime.dragItemData.dirName + t('"'),
-              t('是否继续执行替换'),
-              t('（被替换的歌单或文件夹将被删除）')
-            ]
-          })
-          if (res == 'confirm') {
-            if (dragItemDataFather === null || dragItemDataFather.children === undefined) {
-              throw new Error(`dragItemDataFather error: ${JSON.stringify(dragItemDataFather)}`)
-            }
-            let targetPath = libraryUtils.findDirPathByUuid(existingItem.uuid)
-
-            await window.electron.ipcRenderer.invoke('delDir', targetPath, getCurrentTimeDirName())
-            fatherDirData.children.splice(
-              approach == 'top'
-                ? fatherDirData.children.indexOf(dirData)
-                : fatherDirData.children.indexOf(dirData) + 1,
-              0,
-              runtime.dragItemData
-            )
-            fatherDirData.children.splice(fatherDirData.children.indexOf(existingItem), 1)
-            libraryUtils.reOrderChildren(fatherDirData.children)
-            await window.electron.ipcRenderer.invoke(
-              'moveToDirSample',
-              libraryUtils.findDirPathByUuid(runtime.dragItemData.uuid),
-              libraryUtils.findDirPathByUuid(fatherDirData.uuid)
-            )
-            await window.electron.ipcRenderer.invoke(
-              'reOrderSubDir',
-              libraryUtils.findDirPathByUuid(fatherDirData.uuid),
-              JSON.stringify(fatherDirData.children)
-            )
-            dragItemDataFather.children.splice(
-              dragItemDataFather.children.indexOf(runtime.dragItemData),
-              1
-            )
-            libraryUtils.reOrderChildren(dragItemDataFather.children)
-            await window.electron.ipcRenderer.invoke(
-              'reOrderSubDir',
-              libraryUtils.findDirPathByUuid(dragItemDataFather.uuid),
-              JSON.stringify(dragItemDataFather.children)
-            )
-          }
-          let libraryTree = libraryUtils.getLibraryTreeByUUID(runtime.dragItemData.uuid)
-          if (libraryTree === null) {
-            throw new Error(`libraryTree error: ${JSON.stringify(libraryTree)}`)
-          }
-          let flatUUID = libraryUtils.getAllUuids(libraryTree)
-          if (flatUUID.indexOf(runtime.songsArea.songListUUID) != -1) {
-            runtime.songsArea.songListUUID = ''
-          }
-          if (flatUUID.indexOf(runtime.playingData.playingSongListUUID) != -1) {
-            runtime.playingData.playingSongListUUID = ''
-            runtime.playingData.playingSongListData = []
-            runtime.playingData.playingSong = null
-          }
-          return
-        }
-        await window.electron.ipcRenderer.invoke(
-          'moveToDirSample',
-          libraryUtils.findDirPathByUuid(runtime.dragItemData.uuid),
-          libraryUtils.findDirPathByUuid(fatherDirData.uuid)
-        )
-        if (dragItemDataFather === null || dragItemDataFather.children === undefined) {
-          throw new Error(`dragItemDataFather error: ${JSON.stringify(dragItemDataFather)}`)
-        }
-        let removedElement = dragItemDataFather.children.splice(
-          dragItemDataFather.children.indexOf(runtime.dragItemData),
-          1
-        )[0]
-        fatherDirData.children.splice(
-          approach == 'top'
-            ? fatherDirData.children.indexOf(dirData)
-            : fatherDirData.children.indexOf(dirData) + 1,
-          0,
-          removedElement
-        )
-        libraryUtils.reOrderChildren(dragItemDataFather.children)
-        await window.electron.ipcRenderer.invoke(
-          'reOrderSubDir',
-          libraryUtils.findDirPathByUuid(dragItemDataFather.uuid),
-          JSON.stringify(dragItemDataFather.children)
-        )
-        libraryUtils.reOrderChildren(fatherDirData.children)
-        await window.electron.ipcRenderer.invoke(
-          'reOrderSubDir',
-          libraryUtils.findDirPathByUuid(fatherDirData.uuid),
-          JSON.stringify(fatherDirData.children)
-        )
-        let libraryTree = libraryUtils.getLibraryTreeByUUID(runtime.dragItemData.uuid)
-        if (libraryTree === null) {
-          throw new Error(`libraryTree error: ${JSON.stringify(libraryTree)}`)
-        }
-        let flatUUID = libraryUtils.getAllUuids(libraryTree)
-        if (flatUUID.indexOf(runtime.songsArea.songListUUID) != -1) {
-          runtime.songsArea.songListUUID = ''
-        }
-        if (flatUUID.indexOf(runtime.playingData.playingSongListUUID) != -1) {
-          runtime.playingData.playingSongListUUID = ''
-          runtime.playingData.playingSongListData = []
-          runtime.playingData.playingSong = null
-        }
-        return
-      }
-    }
-  } catch (error) {
-    throw error
+const drop = async (e: DragEvent) => {
+  if (runtime.libraryAreaSelected === '回收站') {
+    return
+  }
+  const shouldDelete = await handleDrop(e, dirData, dragState, fatherDirData)
+  if (shouldDelete) {
+    deleteDir()
   }
 }
+
 const indentWidth = ref(0)
 let depth = libraryUtils.getDepthByUuid(props.uuid)
 if (depth === undefined) {
@@ -887,7 +520,9 @@ watch(
     @dragenter.stop.prevent="dragenter"
     @drop.stop.prevent="drop"
     @dragleave.stop="dragleave"
-    :draggable="dirData.dirName && !renameDivShow ? true : false"
+    :draggable="
+      dirData.dirName && !renameDivShow && runtime.libraryAreaSelected !== '回收站' ? true : false
+    "
     :class="{
       rightClickBorder: rightClickMenuShow,
       borderTop: dragApproach == 'top',
