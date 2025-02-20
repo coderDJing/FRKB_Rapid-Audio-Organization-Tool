@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import libraryItem from '@renderer/components/libraryItem.vue'
+import libraryItem from '@renderer/components/libraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { v4 as uuidV4 } from 'uuid'
@@ -104,43 +104,66 @@ const collapseButtonHandleClick = async () => {
 
 const dragApproach = ref('')
 const dragover = (e: DragEvent) => {
+  if (runtime.libraryAreaSelected === '回收站') {
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'none'
+    }
+    return
+  }
   if (e.dataTransfer === null) {
     throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
   }
   if (runtime.dragItemData === null) {
     e.dataTransfer.dropEffect = 'none'
+    runtime.dragItemData = null
     return
   }
   e.dataTransfer.dropEffect = 'move'
   dragApproach.value = 'top'
 }
 const dragenter = (e: DragEvent) => {
+  if (runtime.libraryAreaSelected === '回收站') {
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'none'
+    }
+    return
+  }
   if (e.dataTransfer === null) {
     throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
   }
   if (runtime.dragItemData === null) {
     e.dataTransfer.dropEffect = 'none'
+    runtime.dragItemData = null
     return
   }
   e.dataTransfer.dropEffect = 'move'
   dragApproach.value = 'top'
 }
 const dragleave = (e: DragEvent) => {
+  if (runtime.libraryAreaSelected === '回收站') {
+    return
+  }
   if (runtime.dragItemData === null) {
     if (e.dataTransfer === null) {
       throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
     }
     e.dataTransfer.dropEffect = 'none'
+    runtime.dragItemData = null
     return
   }
   dragApproach.value = ''
 }
 const drop = async (e: DragEvent) => {
+  if (runtime.libraryAreaSelected === '回收站') {
+    runtime.dragItemData = null
+    return
+  }
   if (runtime.dragItemData === null) {
     if (e.dataTransfer === null) {
       throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
     }
     e.dataTransfer.dropEffect = 'none'
+    runtime.dragItemData = null
     return
   }
   try {
@@ -154,6 +177,7 @@ const drop = async (e: DragEvent) => {
     }
     if (dragItemDataFather.uuid == props.uuid) {
       if (libraryData.children[libraryData.children.length - 1].uuid == runtime.dragItemData.uuid) {
+        runtime.dragItemData = null
         return
       }
       //同一层级仅调换位置
@@ -168,6 +192,7 @@ const drop = async (e: DragEvent) => {
         libraryUtils.findDirPathByUuid(libraryData.uuid),
         JSON.stringify(libraryData.children)
       )
+      runtime.dragItemData = null
       return
     } else {
       if (runtime.dragItemData === null) {
@@ -219,6 +244,7 @@ const drop = async (e: DragEvent) => {
             JSON.stringify(libraryData.children)
           )
         }
+        runtime.dragItemData = null
         return
       }
       await window.electron.ipcRenderer.invoke(
@@ -243,9 +269,12 @@ const drop = async (e: DragEvent) => {
         libraryUtils.findDirPathByUuid(libraryData.uuid),
         JSON.stringify(libraryData.children)
       )
+      runtime.dragItemData = null
       return
     }
-  } catch (error) {}
+  } catch (error) {
+    runtime.dragItemData = null
+  }
 }
 </script>
 <template>
