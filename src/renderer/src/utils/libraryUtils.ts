@@ -59,11 +59,7 @@ export const getLibraryTreeByUUID = (uuid: string, libraryTree?: IDir): IDir | n
 }
 
 //根据UUID寻找LibraryTree中对应的对象的路径
-export const findDirPathByUuid = (
-  targetUuid: string,
-  path: string = '',
-  data?: IDir
-): null | string => {
+export const findDirPathByUuid = (targetUuid: string, path: string = '', data?: IDir): string => {
   if (data === undefined) {
     const runtime = useRuntimeStore()
     data = runtime.libraryTree
@@ -88,8 +84,8 @@ export const findDirPathByUuid = (
     }
   }
 
-  // 如果没有找到，返回null
-  return null
+  // 如果没有找到，返回空字符串
+  return ''
 }
 export const reOrderChildren = (children: IDir[]) => {
   for (let index in children) {
