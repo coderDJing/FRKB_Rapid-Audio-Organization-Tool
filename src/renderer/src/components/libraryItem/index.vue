@@ -18,7 +18,8 @@ import {
   handleDragOver,
   handleDragEnter,
   handleDragLeave,
-  handleDrop
+  handleDrop,
+  type DragState
 } from './dragUtils'
 import { reactive } from 'vue'
 const props = defineProps({
@@ -32,11 +33,14 @@ const props = defineProps({
   }
 })
 const runtime = useRuntimeStore()
+
 let dirData = libraryUtils.getLibraryTreeByUUID(props.uuid)
+
 if (dirData === null) {
   throw new Error(`dirData error: ${JSON.stringify(dirData)}`)
 }
 let fatherDirData = libraryUtils.getFatherLibraryTreeByUUID(props.uuid)
+
 if (fatherDirData === null) {
   throw new Error(`fatherDirData error: ${JSON.stringify(fatherDirData)}`)
 }
@@ -418,7 +422,7 @@ const renameMyInputHandleInput = () => {
 //----------------------------------------
 
 const dragApproach = ref('')
-const dragState = reactive({
+const dragState = reactive<DragState>({
   dragApproach: ''
 })
 
