@@ -68,8 +68,112 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
 
 store.layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
 store.settingConfig = fs.readJSONSync(url.settingConfigFileUrl)
-if (is.dev) {
-  // store.settingConfig.databaseUrl = 'C:\\Users\\trl\\Desktop\\FRKB_database'
+if (is.dev && platform === 'win32') {
+  store.settingConfig.databaseUrl = 'C:\\Users\\trl\\Desktop\\FRKB_database'
+  // 在dev环境下每次启动时重新初始化数据库
+  if (fs.pathExistsSync(store.settingConfig.databaseUrl)) {
+    fs.removeSync(store.settingConfig.databaseUrl)
+  }
+  // 使用databaseInitWindow中的初始化逻辑
+  let rootDescription = {
+    uuid: uuidV4(),
+    type: 'root',
+    order: 1
+  }
+  fs.ensureDirSync(path.join(store.settingConfig.databaseUrl, 'library'))
+  fs.outputJsonSync(
+    path.join(store.settingConfig.databaseUrl, 'library', '.description.json'),
+    rootDescription
+  )
+
+  const makeLibrary = async (libraryPath: string, order: number) => {
+    let description = {
+      uuid: uuidV4(),
+      type: 'library',
+      order: order
+    }
+    fs.ensureDirSync(libraryPath)
+    fs.outputJsonSync(path.join(libraryPath, '.description.json'), description)
+  }
+
+  let filterLibraryPath = path.join(store.settingConfig.databaseUrl, 'library/筛选库')
+  let curatedLibraryPath = path.join(store.settingConfig.databaseUrl, 'library/精选库')
+  let recycleBinPath = path.join(store.settingConfig.databaseUrl, 'library/回收站')
+
+  makeLibrary(filterLibraryPath, 1)
+  makeLibrary(curatedLibraryPath, 2)
+  makeLibrary(recycleBinPath, 3)
+
+  // 创建示例歌单和歌曲
+  fs.ensureDirSync(path.join(filterLibraryPath, 'House'))
+  fs.outputJsonSync(path.join(filterLibraryPath, 'House', '.description.json'), {
+    uuid: 'filterLibrarySonglistDemo1',
+    type: 'songList',
+    order: 1
+  })
+
+  const filterLibrarySonglistSongDemo1 = path
+    .join(
+      __dirname,
+      '../../resources/demoMusic/Oden & Fatzo, Poppy Baskcomb - Tell Me What You Want (Extended Mix).mp3'
+    )
+    .replace('app.asar', 'app.asar.unpacked')
+  const filterLibrarySonglistSongDemo2 = path
+    .join(__dirname, '../../resources/demoMusic/War - Low Rider (Kyle Watson Remix).mp3')
+    .replace('app.asar', 'app.asar.unpacked')
+
+  if (fs.pathExistsSync(filterLibrarySonglistSongDemo1)) {
+    fs.copySync(
+      filterLibrarySonglistSongDemo1,
+      path.join(
+        filterLibraryPath,
+        'House',
+        'Oden & Fatzo, Poppy Baskcomb - Tell Me What You Want (Extended Mix).mp3'
+      )
+    )
+  }
+  if (fs.pathExistsSync(filterLibrarySonglistSongDemo2)) {
+    fs.copySync(
+      filterLibrarySonglistSongDemo2,
+      path.join(filterLibraryPath, 'House', 'War - Low Rider (Kyle Watson Remix).mp3')
+    )
+  }
+
+  fs.ensureDirSync(path.join(curatedLibraryPath, 'House Nice'))
+  fs.outputJsonSync(path.join(curatedLibraryPath, 'House Nice', '.description.json'), {
+    uuid: 'curatedLibrarySonglistDemo1',
+    type: 'songList',
+    order: 1
+  })
+
+  const curatedLibrarySonglistSongDemo1 = path
+    .join(
+      __dirname,
+      '../../resources/demoMusic/Armand Van Helden - I Want Your Soul (AVH Rework).mp3'
+    )
+    .replace('app.asar', 'app.asar.unpacked')
+
+  if (fs.pathExistsSync(curatedLibrarySonglistSongDemo1)) {
+    fs.copySync(
+      curatedLibrarySonglistSongDemo1,
+      path.join(
+        curatedLibraryPath,
+        'House Nice',
+        'Armand Van Helden - I Want Your Soul (AVH Rework).mp3'
+      )
+    )
+  }
+
+  // 初始化指纹数据
+  fs.ensureDirSync(path.join(store.settingConfig.databaseUrl, 'songFingerprint'))
+  fs.outputJsonSync(
+    path.join(store.settingConfig.databaseUrl, 'songFingerprint', 'songFingerprintV2.json'),
+    []
+  )
+
+  // 更新store
+  store.databaseDir = store.settingConfig.databaseUrl
+  store.songFingerprintList = []
 }
 
 app.whenReady().then(() => {
@@ -361,6 +465,14 @@ ipcMain.handle('reOrderSubDir', async (e, targetPath: string, subDirArrJson: str
     }
   })
   await Promise.all(promises)
+})
+
+// 更新目录的 description.json 文件
+ipcMain.handle('updateDirDescription', async (e, dirPath: string, descriptionJson: string) => {
+  const jsonPath = path.join(store.databaseDir, dirPath, '.description.json')
+  await operateHiddenFile(jsonPath, async () => {
+    await fs.outputJSON(jsonPath, JSON.parse(descriptionJson))
+  })
 })
 
 ipcMain.handle('getLibrary', async () => {
