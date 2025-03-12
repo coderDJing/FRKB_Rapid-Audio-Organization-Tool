@@ -69,7 +69,7 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
 store.layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
 store.settingConfig = fs.readJSONSync(url.settingConfigFileUrl)
 if (is.dev && platform === 'win32') {
-  store.settingConfig.databaseUrl = 'C:\\Users\\trl\\Desktop\\FRKB_database'
+  // store.settingConfig.databaseUrl = 'C:\\Users\\renlu\\Desktop\\FRKB_database'
   // 在dev环境下每次启动时重新初始化数据库
   if (fs.pathExistsSync(store.settingConfig.databaseUrl)) {
     fs.removeSync(store.settingConfig.databaseUrl)
