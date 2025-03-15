@@ -68,8 +68,10 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
 
 store.layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
 store.settingConfig = fs.readJSONSync(url.settingConfigFileUrl)
-if (is.dev && platform === 'win32') {
-  // store.settingConfig.databaseUrl = 'C:\\Users\\renlu\\Desktop\\FRKB_database'
+let devInitDatabaseFunction = () => {
+  if (!fs.pathExistsSync(store.settingConfig.databaseUrl)) {
+    return
+  }
   // 在dev环境下每次启动时重新初始化数据库
   if (fs.pathExistsSync(store.settingConfig.databaseUrl)) {
     fs.removeSync(store.settingConfig.databaseUrl)
@@ -174,6 +176,11 @@ if (is.dev && platform === 'win32') {
   // 更新store
   store.databaseDir = store.settingConfig.databaseUrl
   store.songFingerprintList = []
+  console.log('devInitDatabase')
+}
+if (is.dev && platform === 'win32') {
+  store.settingConfig.databaseUrl = 'C:\\Users\\Trl\\Desktop\\FRKBDATA\\FRKB_database'
+  devInitDatabaseFunction()
 }
 
 app.whenReady().then(() => {
