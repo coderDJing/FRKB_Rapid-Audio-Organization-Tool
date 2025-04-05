@@ -162,26 +162,15 @@ const drop = async (e: DragEvent) => {
       throw new Error(`libraryTree error: ${JSON.stringify(libraryTree)}`)
     }
     let fatherDirData = libraryUtils.getFatherLibraryTreeByUUID(runtime.songsArea.songListUUID)
-    const path = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
+    // const path = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
     if (fatherDirData === null) {
       throw new Error(`fatherDirData error: ${JSON.stringify(fatherDirData)}`)
     }
-    let uuids = libraryUtils.getAllUuids(libraryTree)
-    if (uuids.indexOf(runtime.songsArea.songListUUID) !== -1) {
-      runtime.songsArea.songListUUID = ''
+    let songListItem = libraryUtils.getLibraryTreeByUUID(runtime.songsArea.songListUUID)
+    if (songListItem === null) {
+      throw new Error(`songListItem error: ${JSON.stringify(songListItem)}`)
     }
-    if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
-      runtime.playingData.playingSongListUUID = ''
-      runtime.playingData.playingSongListData = []
-      runtime.playingData.playingSong = null
-    }
-    //todo
-    await window.electron.ipcRenderer.invoke('delDir', path, getCurrentTimeDirName())
-    await window.electron.ipcRenderer.invoke(
-      'updateOrderAfterNum',
-      libraryUtils.findDirPathByUuid(fatherDirData.uuid),
-      libraryTree.order
-    )
+    libraryUtils.updatePlayingState(songListItem)
     let deleteIndex
     if (fatherDirData.children === undefined) {
       throw new Error(`fatherDirData.children error: ${JSON.stringify(fatherDirData.children)}`)
@@ -198,6 +187,7 @@ const drop = async (e: DragEvent) => {
       }
     }
     fatherDirData.children.splice(Number(deleteIndex), 1)
+    libraryUtils.diffLibraryTreeExecuteFileOperation()
     return
   }
   let result = await dropIntoDialog({
