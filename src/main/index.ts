@@ -487,12 +487,6 @@ ipcMain.handle('getLibrary', async () => {
   return library
 })
 
-ipcMain.handle('renameDir', async (e, newName, dirPath) => {
-  await fs.rename(
-    path.join(store.databaseDir, dirPath),
-    path.join(store.databaseDir, dirPath.slice(0, dirPath.lastIndexOf('/') + 1) + newName)
-  )
-})
 ipcMain.handle('updateOrderAfterNum', async (e, targetPath, order) => {
   await updateTargetDirSubdirOrder(
     path.join(store.databaseDir, targetPath),
