@@ -81,22 +81,6 @@ export async function getLibrary() {
   return rootDescriptionJson
 }
 
-// 异步函数，用于读取和更新 .description.json 文件中的 order 属性
-async function updateOrderInFile(filePath: string, type: 'minus' | 'plus') {
-  try {
-    const jsonObj = await fs.readJSON(filePath)
-    if (type == 'minus') {
-      jsonObj.order--
-    } else if (type == 'plus') {
-      jsonObj.order++
-    }
-    operateHiddenFile(filePath, async () => {
-      await fs.outputJson(filePath, jsonObj)
-    })
-  } catch (error) {
-    console.error(`Error updating ${filePath}:`, error)
-  }
-}
 export const operateHiddenFile = async (filePath: string, operateFunction: Function) => {
   if (os.platform() === 'win32') {
     const { exec } = require('child_process')
@@ -127,46 +111,7 @@ export const operateHiddenFile = async (filePath: string, operateFunction: Funct
     }
   }
 }
-// 异步函数，用于遍历目录并处理 .description.json 文件中的order小于参数orderNum时+1 direction='before'||'after' operation='plus'||'minus'
-export const updateTargetDirSubdirOrder = async (
-  dirPath: string,
-  orderNum: number,
-  direction: 'before' | 'after',
-  operation: 'plus' | 'minus'
-) => {
-  try {
-    const subdirs = await fs.readdir(dirPath, { withFileTypes: true })
-    const dirs = subdirs.filter((dirent) => dirent.isDirectory())
-    const promises = []
-    for (const dirent of dirs) {
-      const subdirPath = path.join(dirPath, dirent.name)
-      const descriptionJsonPath = path.join(subdirPath, '.description.json')
-      let description
-      try {
-        description = await fs.readJSON(descriptionJsonPath)
-        let types = ['root', 'library', 'dir', 'songList']
-        if (description.uuid && description.type && types.includes(description.type)) {
-          if (direction == 'before') {
-            if (description.order < orderNum) {
-              promises.push(updateOrderInFile(descriptionJsonPath, operation))
-            }
-          } else if (direction == 'after') {
-            if (description.order > orderNum) {
-              promises.push(updateOrderInFile(descriptionJsonPath, operation))
-            }
-          }
-        } else {
-          continue
-        }
-      } catch (error) {
-        continue
-      }
-    }
-    await Promise.all(promises)
-  } catch (error) {
-    console.error(`Error traversing directory ${dirPath}:`, error)
-  }
-}
+
 export const collectFilesWithExtensions = async (dir: string, extensions: string[] = []) => {
   let files: string[] = []
   try {
