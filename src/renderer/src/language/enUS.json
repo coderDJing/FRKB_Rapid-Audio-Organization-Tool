@@ -164,5 +164,6 @@
   "清空回收站": "Empty Recycle Bin",
   "暂无删除记录": "No deletion records",
   "彻底删除": "Permanently delete",
-  "确认清空回收站吗？": "Are you sure to empty the recycle bin?"
+  "确认清空回收站吗？": "Are you sure to empty the recycle bin?",
+  "名称不能包含以下字符: < > : \" / \\ | ? * 或控制字符": "Name cannot contain the following characters: < > : \" / \\ | ? * or control characters"
 }

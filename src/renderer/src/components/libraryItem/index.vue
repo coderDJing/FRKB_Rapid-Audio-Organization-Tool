@@ -45,28 +45,35 @@ if (fatherDirData === null) {
   throw new Error(`fatherDirData error: ${JSON.stringify(fatherDirData)}`)
 }
 const myInputHandleInput = () => {
-  if (operationInputValue.value == '') {
-    inputHintText.value = t('必须提供歌单或文件夹名。')
-    inputHintShow.value = true
+  const newName = operationInputValue.value
+  const invalidCharsRegex = /[<>:"/\\|?*\u0000-\u001F]/
+  let hintShouldShow = false
+  let hintText = ''
+
+  if (newName === '') {
+    hintText = t('必须提供歌单或文件夹名。')
+    hintShouldShow = true
+  } else if (invalidCharsRegex.test(newName)) {
+    hintText = t('名称不能包含以下字符: < > : " / \\ | ? * 或控制字符')
+    hintShouldShow = true
   } else {
-    let exists = fatherDirData.children?.some((obj) => obj.dirName == operationInputValue.value)
+    const exists = fatherDirData.children?.some((obj) => obj.dirName === newName)
     if (exists) {
-      inputHintText.value =
-        t('此位置已存在歌单或文件夹') + operationInputValue.value + t('。请选择其他名称')
-      inputHintShow.value = true
-    } else {
-      inputHintShow.value = false
+      hintText = t('此位置已存在歌单或文件夹') + newName + t('。请选择其他名称')
+      hintShouldShow = true
     }
   }
+
+  inputHintText.value = hintText
+  inputHintShow.value = hintShouldShow
 }
 
 const inputKeyDownEnter = () => {
-  if (operationInputValue.value === '') {
-    inputHintText.value = t('必须提供歌单或文件夹名。')
-    inputHintShow.value = true
-    return
-  }
-  if (inputHintShow.value) {
+  if (inputHintShow.value || operationInputValue.value === '') {
+    if (!inputHintShow.value) {
+      inputHintText.value = t('必须提供歌单或文件夹名。')
+      inputHintShow.value = true
+    }
     return
   }
   myInput.value?.blur()
@@ -74,6 +81,7 @@ const inputKeyDownEnter = () => {
 
 const inputKeyDownEsc = () => {
   operationInputValue.value = ''
+  inputHintShow.value = false
   inputBlurHandle()
 }
 
@@ -380,19 +388,29 @@ const renameInputKeyDownEsc = () => {
   renameInputBlurHandle()
 }
 const renameMyInputHandleInput = () => {
-  if (renameDivValue.value == '') {
-    renameInputHintText.value = t('必须提供歌单或文件夹名。')
-    renameInputHintShow.value = true
+  const newName = renameDivValue.value
+  const invalidCharsRegex = /[<>:"/\\|?*\u0000-\u001F]/
+  let hintShouldShow = false
+  let hintText = ''
+
+  if (newName === '') {
+    hintText = t('必须提供歌单或文件夹名。')
+    hintShouldShow = true
+  } else if (invalidCharsRegex.test(newName)) {
+    hintText = t('名称不能包含以下字符: < > : " / \\ | ? * 或控制字符')
+    hintShouldShow = true
   } else {
-    let exists = fatherDirData.children?.some((obj) => obj.dirName == renameDivValue.value)
+    const exists = fatherDirData.children?.some(
+      (obj) => obj.dirName === newName && obj.uuid !== props.uuid
+    )
     if (exists) {
-      renameInputHintText.value =
-        t('此位置已存在歌单或文件夹') + renameDivValue.value + t('。请选择其他名称')
-      renameInputHintShow.value = true
-    } else {
-      renameInputHintShow.value = false
+      hintText = t('此位置已存在歌单或文件夹') + newName + t('。请选择其他名称')
+      hintShouldShow = true
     }
   }
+
+  renameInputHintText.value = hintText
+  renameInputHintShow.value = hintShouldShow
 }
 
 //----------------------------------------
