@@ -9,6 +9,7 @@ interface Runtime {
   dragItemData: null | IDir
   dragTableHeader: boolean
   libraryTree: IDir
+  oldLibraryTree: IDir
   selectSongListDialogShow: boolean
   dialogSelectedSongListUUID: string
   songsArea: {
@@ -43,6 +44,12 @@ export const useRuntimeStore = defineStore('runtime', {
       dragItemData: null,
       dragTableHeader: false, //是否正在拖拽表头
       libraryTree: {
+        uuid: '',
+        type: 'root',
+        dirName: 'library',
+        order: 1
+      },
+      oldLibraryTree: {
         uuid: '',
         type: 'root',
         dirName: 'library',

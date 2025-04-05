@@ -16,6 +16,7 @@ import fs = require('fs-extra')
 import { IImportSongsFormData, md5 } from '../../types/globals'
 import { v4 as uuidV4 } from 'uuid'
 import { operateHiddenFile } from '../utils'
+import { FileSystemOperation } from '@renderer/utils/diffLibraryTree'
 
 let mainWindow: BrowserWindow | null = null
 function createWindow() {
@@ -433,8 +434,95 @@ function createWindow() {
     }
   })
 
-  ipcMain.handle('permanentlyDelDir', async (e, dirPath: string) => {
-    await fs.remove(path.join(store.databaseDir, dirPath))
+  ipcMain.handle('operateFileSystemChange', async (e, operateArray: FileSystemOperation[]) => {
+    try {
+      console.log('ipc operateFileSystem:', operateArray)
+      for (let item of operateArray) {
+        if (item.type === 'create') {
+          await operateHiddenFile(
+            path.join(store.databaseDir, item.path, '.description.json'),
+            async () => {
+              fs.outputJSON(path.join(store.databaseDir, item.path, '.description.json'), {
+                uuid: item.uuid,
+                type: item.nodeType,
+                order: item.order
+              })
+            }
+          )
+        } else if (item.type === 'reorder') {
+          await operateHiddenFile(
+            path.join(store.databaseDir, item.path, '.description.json'),
+            async () => {
+              fs.outputJSON(path.join(store.databaseDir, item.path, '.description.json'), {
+                uuid: item.uuid,
+                type: item.nodeType,
+                order: item.order
+              })
+            }
+          )
+        } else if (item.type === 'rename') {
+          await fs.rename(
+            path.join(store.databaseDir, item.path),
+            path.join(
+              store.databaseDir,
+              item.path.slice(0, item.path.lastIndexOf('/') + 1) + item.newName
+            )
+          )
+        } else if (item.type === 'delete' && item.recycleBinDir) {
+          let dirPath = path.join(store.databaseDir, item.path)
+          const recycleBinTargetDir = path.join(
+            store.databaseDir,
+            'library',
+            '回收站',
+            item.recycleBinDir.dirName
+          )
+
+          // 读取目录内容
+          const items = await fs.readdir(dirPath)
+          const promises = []
+          // 遍历并移动文件/文件夹
+          for (const item of items) {
+            if (item !== '.description.json') {
+              const srcPath = path.join(dirPath, item)
+              const destPath = path.join(recycleBinTargetDir, item)
+              promises.push(fs.move(srcPath, destPath))
+            }
+          }
+          await Promise.all(promises)
+          await fs.remove(dirPath)
+          if (promises.length > 0) {
+            let descriptionJson = {
+              uuid: item.recycleBinDir.uuid,
+              type: 'songList',
+              order: item.recycleBinDir.order
+            }
+            await operateHiddenFile(
+              path.join(recycleBinTargetDir, '.description.json'),
+              async () => {
+                fs.outputJSON(path.join(recycleBinTargetDir, '.description.json'), descriptionJson)
+              }
+            )
+          }
+        } else if (item.type === 'permanentlyDelete') {
+          await fs.remove(path.join(store.databaseDir, item.path))
+        } else if (item.type === 'move') {
+          const srcFullPath = path.join(store.databaseDir, item.path)
+          const destFullPath = path.join(store.databaseDir, item.newPath as string)
+          await fs.move(srcFullPath, destFullPath)
+          await operateHiddenFile(path.join(destFullPath, '.description.json'), async () => {
+            fs.outputJSON(path.join(destFullPath, '.description.json'), {
+              uuid: item.uuid,
+              type: item.nodeType,
+              order: item.order
+            })
+          })
+        }
+      }
+      return true
+    } catch (error) {
+      console.error('operateFileSystemChange error:', error)
+      return false
+    }
   })
 
   mainWindow.on('closed', () => {
@@ -450,7 +538,6 @@ function createWindow() {
     ipcMain.removeHandler('reSelectLibrary')
     ipcMain.removeHandler('emptyDir')
     ipcMain.removeHandler('emptyRecycleBin')
-    ipcMain.removeHandler('permanentlyDelDir')
     globalShortcut.unregister(store.settingConfig.globalCallShortcut)
     mainWindow = null
   })

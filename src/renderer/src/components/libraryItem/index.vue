@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick, watch, useTemplateRef } from 'vue'
+import { ref, nextTick, watch, useTemplateRef, computed } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import libraryItem from '@renderer/components/libraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -20,7 +20,7 @@ import {
   handleDragLeave,
   handleDrop,
   type DragState
-} from './dragUtils'
+} from '../../utils/dragUtils'
 import { reactive } from 'vue'
 const props = defineProps({
   uuid: {
@@ -92,18 +92,6 @@ const inputBlurHandle = async () => {
     inputHintShow.value = false
     return
   }
-
-  await window.electron.ipcRenderer.invoke(
-    'mkDir',
-    {
-      uuid: dirData.uuid,
-      type: dirData.type === 'dir' ? 'dir' : 'songList',
-      dirName: operationInputValue.value,
-      order: 1
-    },
-    libraryUtils.findDirPathByUuid(props.uuid)
-  )
-
   for (let item of fatherDirData.children) {
     if (item.order) {
       item.order++
@@ -113,6 +101,7 @@ const inputBlurHandle = async () => {
   dirData.order = 1
   dirData.children = []
   operationInputValue.value = ''
+  await libraryUtils.diffLibraryTreeExecuteFileOperation()
 }
 let operationInputValue = ref('')
 
@@ -153,13 +142,6 @@ const deleteDir = async () => {
     runtime.playingData.playingSongListData = []
     runtime.playingData.playingSong = null
   }
-  const path = libraryUtils.findDirPathByUuid(props.uuid)
-  await window.electron.ipcRenderer.invoke('delDir', path, getCurrentTimeDirName())
-  await window.electron.ipcRenderer.invoke(
-    'updateOrderAfterNum',
-    libraryUtils.findDirPathByUuid(fatherDirData.uuid),
-    dirData.order
-  )
   let deleteIndex
   if (fatherDirData.children === undefined) {
     throw new Error(`fatherDirData.children error: ${JSON.stringify(fatherDirData.children)}`)
@@ -176,6 +158,7 @@ const deleteDir = async () => {
     }
   }
   fatherDirData.children.splice(Number(deleteIndex), 1)
+  await libraryUtils.diffLibraryTreeExecuteFileOperation()
 }
 const contextmenuEvent = async (event: MouseEvent) => {
   let songListPath = libraryUtils.findDirPathByUuid(props.uuid)
@@ -280,10 +263,6 @@ const contextmenuEvent = async (event: MouseEvent) => {
         content: [t('确认彻底删除吗？'), t('(曲目将在磁盘上被删除，但声音指纹依然会保留)')]
       })
       if (res === 'confirm') {
-        window.electron.ipcRenderer.invoke(
-          'permanentlyDelDir',
-          libraryUtils.findDirPathByUuid(props.uuid)
-        )
         const recycleBin = runtime.libraryTree.children?.find((item) => item.dirName === '回收站')
         const index = recycleBin?.children?.findIndex((item) => item.uuid === props.uuid)
         if (index !== undefined && index !== -1 && recycleBin?.children) {
@@ -303,6 +282,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
           })
           runtime.songsArea.songInfoArr = []
         }
+        await libraryUtils.diffLibraryTreeExecuteFileOperation()
       }
     }
   }
@@ -357,11 +337,6 @@ const renameInputBlurHandle = async () => {
     renameDivShow.value = false
     return
   }
-  await window.electron.ipcRenderer.invoke(
-    'renameDir',
-    renameDivValue.value,
-    libraryUtils.findDirPathByUuid(props.uuid)
-  )
   if (dirData.uuid === runtime.songsArea.songListUUID) {
     for (let item of runtime.songsArea.songInfoArr) {
       let arr = item.filePath.split('\\')
@@ -387,6 +362,7 @@ const renameInputBlurHandle = async () => {
   dirData.dirName = renameDivValue.value
   renameDivValue.value = ''
   renameDivShow.value = false
+  await libraryUtils.diffLibraryTreeExecuteFileOperation()
 }
 const renameInputKeyDownEnter = () => {
   if (renameDivValue.value == '') {
@@ -511,6 +487,17 @@ watch(
     }
   }
 )
+
+const displayDirName = computed(() => {
+  if (runtime.libraryAreaSelected === '回收站' && dirData.dirName) {
+    // 匹配形如 2025-04-01_15-03-45 的格式
+    const match = dirData.dirName.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})$/)
+    if (match) {
+      return `${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}:${match[6]}`
+    }
+  }
+  return dirData.dirName
+})
 </script>
 <template>
   <div
@@ -589,7 +576,7 @@ watch(
         "
         :class="{ isPlaying: isPlaying }"
       >
-        {{ dirData.dirName }}
+        {{ displayDirName }}
       </div>
       <div v-if="!dirData.dirName">
         <input

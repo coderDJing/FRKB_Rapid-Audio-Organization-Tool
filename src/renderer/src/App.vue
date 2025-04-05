@@ -77,6 +77,7 @@ document.addEventListener('contextmenu', documentHandleClick)
 
 const getLibrary = async () => {
   runtime.libraryTree = await window.electron.ipcRenderer.invoke('getLibrary')
+  runtime.oldLibraryTree = JSON.parse(JSON.stringify(runtime.libraryTree))
 }
 getLibrary()
 onMounted(() => {
