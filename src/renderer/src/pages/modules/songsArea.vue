@@ -744,16 +744,18 @@ const colMenuClick = (col: ISongsAreaColumn) => {
       :columnData="columnData"
       @colMenuHandleClick="colMenuHandleClick"
     />
-    <selectSongListDialog
-      v-if="selectSongListDialogShow"
-      :libraryName="selectSongListDialogLibraryName"
-      @confirm="selectSongListDialogConfirm"
-      @cancel="
-        () => {
-          selectSongListDialogShow = false
-        }
-      "
-    />
+    <Teleport to="body">
+      <selectSongListDialog
+        v-if="selectSongListDialogShow"
+        :libraryName="selectSongListDialogLibraryName"
+        @confirm="selectSongListDialogConfirm"
+        @cancel="
+          () => {
+            selectSongListDialogShow = false
+          }
+        "
+      />
+    </Teleport>
   </div>
 </template>
 <style lang="scss" scoped>
