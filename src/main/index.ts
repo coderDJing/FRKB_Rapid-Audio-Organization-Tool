@@ -1,7 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import {
-  updateTargetDirSubdirOrder,
   getLibrary,
   collectFilesWithExtensions,
   getCurrentTimeYYYYMMDDHHMMSSSSS,
@@ -19,7 +18,7 @@ import store from './store'
 import foundNewVersionWindow from './window/foundNewVersionWindow'
 import updateWindow from './window/updateWindow'
 import electronUpdater = require('electron-updater')
-import { IDir, ISongInfo } from '../types/globals'
+import { ISongInfo } from '../types/globals'
 import { v4 as uuidV4 } from 'uuid'
 // import AudioFeatureExtractor from './mfccTest'
 
@@ -179,7 +178,7 @@ let devInitDatabaseFunction = () => {
   console.log('devInitDatabase')
 }
 if (is.dev && platform === 'win32') {
-  store.settingConfig.databaseUrl = 'C:\\Users\\renlu\\Desktop\\FRKB_database'
+  store.settingConfig.databaseUrl = 'C:\\Users\\Trl\\Desktop\\FRKBDATA\\FRKB_database'
   devInitDatabaseFunction()
 }
 
@@ -338,35 +337,6 @@ ipcMain.handle('clearTracksFingerprintLibrary', (e) => {
   )
 })
 
-ipcMain.handle('moveInDir', async (e, src, dest, isExist) => {
-  const srcFullPath = path.join(store.databaseDir, src)
-  const destDir = path.join(store.databaseDir, dest)
-  const destFileName = path.basename(srcFullPath)
-  const destFullPath = path.join(destDir, destFileName)
-  if (isExist) {
-    let oldJson = await fs.readJSON(path.join(destDir, '.description.json'))
-    await updateTargetDirSubdirOrder(destDir, oldJson.order, 'before', 'plus')
-    await fs.move(srcFullPath, destFullPath, { overwrite: true })
-    let json = await fs.readJSON(path.join(destFullPath, '.description.json'))
-    let originalOrder = json.order
-    json.order = 1
-    await operateHiddenFile(path.join(destFullPath, '.description.json'), async () => {
-      await fs.outputJSON(path.join(destFullPath, '.description.json'), json)
-    })
-    const srcDir = path.dirname(srcFullPath)
-    await updateTargetDirSubdirOrder(srcDir, originalOrder, 'after', 'minus')
-  } else {
-    await updateTargetDirSubdirOrder(destDir, 0, 'after', 'plus')
-    await fs.move(srcFullPath, destFullPath, { overwrite: true })
-    let json = await fs.readJSON(path.join(destFullPath, '.description.json'))
-    let originalOrder = json.order
-    json.order = 1
-    await operateHiddenFile(path.join(destFullPath, '.description.json'), async () => {
-      await fs.outputJSON(path.join(destFullPath, '.description.json'), json)
-    })
-    await updateTargetDirSubdirOrder(path.dirname(srcFullPath), originalOrder, 'after', 'minus')
-  }
-})
 ipcMain.on('delSongs', async (e, songFilePaths: string[], dirName: string) => {
   let recycleBinTargetDir = path.join(store.databaseDir, 'library', '回收站', dirName)
   fs.ensureDirSync(recycleBinTargetDir)
@@ -451,97 +421,9 @@ ipcMain.handle('scanSongList', async (e, songListPath: string, songListUUID: str
   return { scanData: songInfoArr, songListUUID }
 })
 
-ipcMain.handle('moveToDirSample', async (e, src, dest) => {
-  const srcFullPath = path.join(store.databaseDir, src)
-  const destDir = path.join(store.databaseDir, dest)
-  const destFileName = path.basename(srcFullPath)
-  const destFullPath = path.join(destDir, destFileName)
-  await fs.move(srcFullPath, destFullPath)
-})
-
-ipcMain.handle('reOrderSubDir', async (e, targetPath: string, subDirArrJson: string) => {
-  const subDirArr = JSON.parse(subDirArrJson)
-  const promises = subDirArr.map(async (item: IDir) => {
-    const jsonPath = path.join(store.databaseDir, targetPath, item.dirName, '.description.json')
-    const json = await fs.readJSON(jsonPath)
-    if (json.order !== item.order) {
-      json.order = item.order
-      await operateHiddenFile(jsonPath, async () => {
-        await fs.outputJSON(jsonPath, json)
-      })
-    }
-  })
-  await Promise.all(promises)
-})
-
-// 更新目录的 description.json 文件
-ipcMain.handle('updateDirDescription', async (e, dirPath: string, descriptionJson: string) => {
-  const jsonPath = path.join(store.databaseDir, dirPath, '.description.json')
-  await operateHiddenFile(jsonPath, async () => {
-    await fs.outputJSON(jsonPath, JSON.parse(descriptionJson))
-  })
-})
-
 ipcMain.handle('getLibrary', async () => {
   const library = await getLibrary()
   return library
-})
-
-ipcMain.handle('updateOrderAfterNum', async (e, targetPath, order) => {
-  await updateTargetDirSubdirOrder(
-    path.join(store.databaseDir, targetPath),
-    order,
-    'after',
-    'minus'
-  )
-})
-
-ipcMain.handle('delDir', async (e, targetPath, dirName: string) => {
-  let dirPath = path.join(store.databaseDir, targetPath)
-  const recycleBinTargetDir = path.join(store.databaseDir, 'library', '回收站', dirName)
-
-  // 读取目录内容
-  const items = await fs.readdir(dirPath)
-  const promises = []
-  // 遍历并移动文件/文件夹
-  for (const item of items) {
-    if (item !== '.description.json') {
-      const srcPath = path.join(dirPath, item)
-      const destPath = path.join(recycleBinTargetDir, item)
-      promises.push(fs.move(srcPath, destPath))
-    }
-  }
-  await Promise.all(promises)
-  await fs.remove(dirPath)
-  if (promises.length > 0) {
-    let descriptionJson = {
-      uuid: uuidV4(),
-      type: 'songList',
-      order: Date.now()
-    }
-    await operateHiddenFile(path.join(recycleBinTargetDir, '.description.json'), async () => {
-      fs.outputJSON(path.join(recycleBinTargetDir, '.description.json'), descriptionJson)
-    })
-    if (mainWindow.instance) {
-      mainWindow.instance.webContents.send('delSongsSuccess', {
-        dirName,
-        ...descriptionJson
-      })
-    }
-  }
-})
-
-ipcMain.handle('mkDir', async (e, descriptionJson, dirPath) => {
-  await updateTargetDirSubdirOrder(path.join(store.databaseDir, dirPath), 0, 'after', 'plus')
-  let targetPath = path.join(store.databaseDir, dirPath, descriptionJson.dirName)
-  await operateHiddenFile(path.join(targetPath, '.description.json'), async () => {
-    descriptionJson.dirName = undefined
-    await fs.outputJson(path.join(targetPath, '.description.json'), descriptionJson)
-  })
-})
-
-ipcMain.handle('updateTargetDirSubdirOrderAdd', async (e, dirPath) => {
-  await updateTargetDirSubdirOrder(path.join(store.databaseDir, dirPath), 0, 'after', 'plus')
 })
 
 ipcMain.handle('select-folder', async (event, multiSelections: boolean = true) => {
