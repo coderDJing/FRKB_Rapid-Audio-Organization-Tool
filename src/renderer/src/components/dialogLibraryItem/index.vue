@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick, useTemplateRef } from 'vue'
+import { ref, nextTick, useTemplateRef, reactive } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -10,7 +10,14 @@ import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 import emitter from '../../utils/mitt'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
-import * as dragUtils from './dragUtils'
+import {
+  handleDragStart,
+  handleDragOver,
+  handleDragEnter,
+  handleDragLeave,
+  handleDrop,
+  type DragState
+} from '../../utils/dragUtils'
 const props = defineProps({
   uuid: {
     type: String,
@@ -35,15 +42,14 @@ const myInputHandleInput = () => {
     inputHintText.value = t('必须提供歌单或文件夹名。')
     inputHintShow.value = true
   } else {
-    if (fatherDirData !== null && fatherDirData.children) {
-      let exists = fatherDirData.children.some((obj) => obj.dirName == operationInputValue.value)
-      if (exists) {
-        inputHintText.value =
-          t('此位置已存在歌单或文件夹') + operationInputValue.value + t('。请选择其他名称')
-        inputHintShow.value = true
-      } else {
-        inputHintShow.value = false
-      }
+    if (!fatherDirData) return
+    let exists = fatherDirData.children?.some((obj) => obj.dirName == operationInputValue.value)
+    if (exists) {
+      inputHintText.value =
+        t('此位置已存在歌单或文件夹') + operationInputValue.value + t('。请选择其他名称')
+      inputHintShow.value = true
+    } else {
+      inputHintShow.value = false
     }
   }
 }
@@ -78,31 +84,24 @@ const inputBlurHandle = async () => {
     return
   }
 
-  if (dirData) {
-    await window.electron.ipcRenderer.invoke(
-      'mkDir',
-      {
-        uuid: dirData.uuid,
-        type: dirData.type == 'dir' ? 'dir' : 'songList',
-        dirName: operationInputValue.value,
-        order: 1
-      },
-      libraryUtils.findDirPathByUuid(props.uuid)
-    )
+  if (!fatherDirData) return
+  if (fatherDirData.children === undefined) {
+    throw new Error(`fatherDirData.children error: ${JSON.stringify(fatherDirData.children)}`)
   }
-  if (fatherDirData?.children) {
+
+  if (dirData) {
     for (let item of fatherDirData.children) {
       if (item.order) {
         item.order++
       }
     }
-  }
-  if (dirData) {
     dirData.dirName = operationInputValue.value
     dirData.order = 1
     dirData.children = []
+    operationInputValue.value = ''
+
+    await libraryUtils.diffLibraryTreeExecuteFileOperation()
   }
-  operationInputValue.value = ''
 }
 let operationInputValue = ref('')
 
@@ -122,34 +121,43 @@ const menuArr = ref(
         [{ menuName: '新建歌单' }, { menuName: '新建文件夹' }],
         [{ menuName: '重命名' }, { menuName: '删除' }]
       ]
-    : [[{ menuName: '重命名' }, { menuName: '删除' }]]
+    : [[{ menuName: '重命名' }, { menuName: '删除歌单' }]]
 )
 const deleteDir = async () => {
   let libraryTree = libraryUtils.getLibraryTreeByUUID(props.uuid)
-  if (fatherDirData === null || fatherDirData.children === undefined) {
-    throw new Error(`fatherDirData error: ${JSON.stringify(fatherDirData)}`)
-  }
   if (libraryTree === null) {
     throw new Error(`libraryTree error: ${JSON.stringify(libraryTree)}`)
   }
-  let uuids = libraryUtils.getAllUuids(libraryTree)
 
+  // --- Add logic to update songsArea and playingData ---
+  let uuids = libraryUtils.getAllUuids(libraryTree) // Get all UUIDs within the item being deleted
+
+  // If the deleted item or its children contain the currently viewed songlist
   if (uuids.indexOf(runtime.songsArea.songListUUID) !== -1) {
-    runtime.songsArea.songListUUID = ''
+    runtime.songsArea.songListUUID = '' // Clear the currently viewed songlist
+    // Optionally clear other related states like selectedSongFilePath, songInfoArr if necessary
+    runtime.songsArea.selectedSongFilePath.length = 0
+    runtime.songsArea.songInfoArr.forEach((item) => {
+      if (item.coverUrl) {
+        URL.revokeObjectURL(item.coverUrl)
+      }
+    })
+    runtime.songsArea.songInfoArr = []
   }
+  // If the deleted item or its children contain the currently playing songlist
   if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
-    runtime.playingData.playingSongListUUID = ''
-    runtime.playingData.playingSongListData = []
-    runtime.playingData.playingSong = null
+    runtime.playingData.playingSongListUUID = '' // Clear playing songlist UUID
+    runtime.playingData.playingSongListData = [] // Clear playing list data
+    runtime.playingData.playingSong = null // Clear the currently playing song
   }
-  const path = libraryUtils.findDirPathByUuid(props.uuid)
-  await window.electron.ipcRenderer.invoke('delDir', path, getCurrentTimeDirName())
-  await window.electron.ipcRenderer.invoke(
-    'updateOrderAfterNum',
-    libraryUtils.findDirPathByUuid(fatherDirData.uuid),
-    dirData.order
-  )
-  let deleteIndex = null
+  // --- End added logic ---
+
+  if (!fatherDirData) return
+
+  let deleteIndex
+  if (fatherDirData.children === undefined) {
+    throw new Error(`fatherDirData.children error: ${JSON.stringify(fatherDirData.children)}`)
+  }
   for (let index in fatherDirData.children) {
     if (fatherDirData.children[index] == dirData) {
       deleteIndex = index
@@ -162,6 +170,7 @@ const deleteDir = async () => {
     }
   }
   fatherDirData.children.splice(Number(deleteIndex), 1)
+  await libraryUtils.diffLibraryTreeExecuteFileOperation()
 }
 const contextmenuEvent = async (event: MouseEvent) => {
   let songListPath = libraryUtils.findDirPathByUuid(props.uuid)
@@ -199,11 +208,10 @@ const contextmenuEvent = async (event: MouseEvent) => {
       })
     } else if (result.menuName == '重命名') {
       renameDivShow.value = true
-
       renameDivValue.value = dirData.dirName
       await nextTick()
       myRenameInput.value?.focus()
-    } else if (result.menuName == '删除') {
+    } else if (result.menuName === '删除' || result.menuName === '删除歌单') {
       deleteDir()
     }
   }
@@ -259,11 +267,9 @@ const renameInputBlurHandle = async () => {
     renameDivShow.value = false
     return
   }
-  await window.electron.ipcRenderer.invoke(
-    'renameDir',
-    renameDivValue.value,
-    libraryUtils.findDirPathByUuid(props.uuid)
-  )
+
+  // --- Add missing updates for songsArea and playingData paths ---
+  // If renaming the currently viewed songlist in songsArea (less likely in dialog, but for consistency)
   if (dirData.uuid === runtime.songsArea.songListUUID) {
     for (let item of runtime.songsArea.songInfoArr) {
       let arr = item.filePath.split('\\')
@@ -276,6 +282,7 @@ const renameInputBlurHandle = async () => {
       runtime.songsArea.selectedSongFilePath[index] = arr.join('\\')
     }
   }
+  // If renaming the currently playing songlist
   if (
     dirData.uuid === runtime.playingData.playingSongListUUID &&
     runtime.playingData.playingSong !== null
@@ -289,9 +296,14 @@ const renameInputBlurHandle = async () => {
       item.filePath = arr.join('\\')
     }
   }
+  // --- End added updates ---
+
+  // Update name in memory first
   dirData.dirName = renameDivValue.value
   renameDivValue.value = ''
   renameDivShow.value = false
+
+  await libraryUtils.diffLibraryTreeExecuteFileOperation()
 }
 const renameInputKeyDownEnter = () => {
   if (renameDivValue.value == '') {
@@ -313,10 +325,8 @@ const renameMyInputHandleInput = () => {
     renameInputHintText.value = t('必须提供歌单或文件夹名。')
     renameInputHintShow.value = true
   } else {
-    if (fatherDirData === null || fatherDirData.children === undefined) {
-      throw new Error(`fatherDirData error: ${JSON.stringify(fatherDirData)}`)
-    }
-    let exists = fatherDirData.children.some((obj) => obj.dirName == renameDivValue.value)
+    if (!fatherDirData) return
+    let exists = fatherDirData.children?.some((obj) => obj.dirName == renameDivValue.value)
     if (exists) {
       renameInputHintText.value =
         t('此位置已存在歌单或文件夹') + renameDivValue.value + t('。请选择其他名称')
@@ -328,11 +338,12 @@ const renameMyInputHandleInput = () => {
 }
 //------------------------------------
 
+const dragState = reactive<DragState>({
+  dragApproach: ''
+})
+
 const dragstart = async (event: DragEvent) => {
-  const shouldDelete = await dragUtils.handleDragStart(event, dirData)
-  if (shouldDelete) {
-    deleteDir()
-  }
+  await handleDragStart(event, props.uuid)
   event.target?.addEventListener(
     'dragend',
     () => {
@@ -342,35 +353,20 @@ const dragstart = async (event: DragEvent) => {
   )
 }
 
-const dragApproach = ref('')
 const dragover = (e: DragEvent) => {
-  dragApproach.value = dragUtils.handleDragOver(e, dirData)
+  handleDragOver(e, dirData, dragState)
 }
 
 const dragenter = (e: DragEvent) => {
-  dragApproach.value = dragUtils.handleDragEnter(e, dirData)
+  handleDragEnter(e, dirData, dragState)
 }
 
-const dragleave = (e: DragEvent) => {
-  dragApproach.value = dragUtils.handleDragLeave(e)
+const dragleave = () => {
+  handleDragLeave(dragState)
 }
 
 const drop = async (e: DragEvent) => {
-  let songListPath = libraryUtils.findDirPathByUuid(props.uuid)
-  let isSongListPathExist = await window.electron.ipcRenderer.invoke('dirPathExists', songListPath)
-  if (!isSongListPathExist) {
-    e.preventDefault()
-    runtime.dragItemData = null
-    await confirm({
-      title: '错误',
-      content: [t('此歌单/文件夹在磁盘中不存在，可能已被手动删除')],
-      confirmShow: false
-    })
-    deleteDir()
-    return
-  }
-  await dragUtils.handleDrop(e, dirData, fatherDirData, dragApproach.value)
-  dragApproach.value = ''
+  await handleDrop(e, dirData, dragState, fatherDirData)
 }
 
 const indentWidth = ref(0)
@@ -387,7 +383,7 @@ indentWidth.value = (depth - 2) * 10
     :style="'padding-left:' + (props.needPaddingLeft ? indentWidth : 0) + 'px'"
     @contextmenu.stop="contextmenuEvent"
     @click.stop="dirHandleClick()"
-    @dblclick.stop="dirHandleDblClick()"
+    @dblclick="dirHandleDblClick()"
     @dragover.stop.prevent="dragover"
     @dragstart.stop="dragstart"
     @dragenter.stop.prevent="dragenter"
@@ -396,9 +392,9 @@ indentWidth.value = (depth - 2) * 10
     :draggable="dirData.dirName && !renameDivShow ? true : false"
     :class="{
       rightClickBorder: rightClickMenuShow,
-      borderTop: dragApproach == 'top',
-      borderBottom: dragApproach == 'bottom',
-      borderCenter: dragApproach == 'center',
+      borderTop: dragState.dragApproach == 'top',
+      borderBottom: dragState.dragApproach == 'bottom',
+      borderCenter: dragState.dragApproach == 'center',
       selectedDir: props.uuid == runtime.dialogSelectedSongListUUID
     }"
   >

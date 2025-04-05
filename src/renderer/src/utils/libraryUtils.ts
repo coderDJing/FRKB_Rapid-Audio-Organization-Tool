@@ -1,5 +1,27 @@
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { IDir } from 'src/types/globals'
+import { calculateFileSystemOperations } from './diffLibraryTree'
+
+export const diffLibraryTreeExecuteFileOperation = async () => {
+  const runtime = useRuntimeStore()
+  const operations = calculateFileSystemOperations(runtime.oldLibraryTree, runtime.libraryTree)
+  console.log('文件操作:', operations)
+  await window.electron.ipcRenderer.invoke('operateFileSystemChange', operations)
+  for (let item of operations) {
+    if (item.type === 'delete' && item.recycleBinDir) {
+      runtime.libraryTree.children
+        ?.find((item) => item.dirName === '回收站')
+        ?.children?.push({
+          uuid: item.recycleBinDir.uuid,
+          dirName: item.recycleBinDir.dirName,
+          type: item.recycleBinDir.type,
+          order: item.recycleBinDir.order
+        })
+    }
+  }
+  runtime.oldLibraryTree = JSON.parse(JSON.stringify(runtime.libraryTree))
+}
+
 //根据UUID寻找LibraryTree中对应的对象的父级对象
 export const getFatherLibraryTreeByUUID = (targetUuid: string) => {
   const runtime = useRuntimeStore()
@@ -152,6 +174,29 @@ export function getAllUuids(data: IDir) {
   traverse(data)
   return uuids
 }
+
+// 更新播放状态
+export function updatePlayingState(itemData: IDir): void {
+  try {
+    const runtime = useRuntimeStore()
+    // 不需要查找当前的树，因为可能已被移除，直接使用传入的数据
+    const flatUUID = libraryUtils.getAllUuids(itemData)
+
+    // 更新当前选中的歌单
+    if (flatUUID.includes(runtime.songsArea.songListUUID)) {
+      runtime.songsArea.songListUUID = ''
+    }
+
+    // 更新正在播放的歌单
+    if (flatUUID.includes(runtime.playingData.playingSongListUUID)) {
+      runtime.playingData.playingSongListUUID = ''
+      runtime.playingData.playingSongListData = []
+      runtime.playingData.playingSong = null
+    }
+  } catch (error) {
+    console.error('Failed to update playing state:', error)
+  }
+}
 export const libraryUtils = {
   getFatherLibraryTreeByUUID,
   getLibraryTreeByUUID,
@@ -159,6 +204,8 @@ export const libraryUtils = {
   reOrderChildren,
   isDragItemInDirChildren,
   getDepthByUuid,
-  getAllUuids
+  getAllUuids,
+  diffLibraryTreeExecuteFileOperation,
+  updatePlayingState
 }
 export default libraryUtils

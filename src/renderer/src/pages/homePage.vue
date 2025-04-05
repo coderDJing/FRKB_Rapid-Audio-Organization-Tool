@@ -175,6 +175,7 @@ const drop = async (e: DragEvent) => {
       runtime.playingData.playingSongListData = []
       runtime.playingData.playingSong = null
     }
+    //todo
     await window.electron.ipcRenderer.invoke('delDir', path, getCurrentTimeDirName())
     await window.electron.ipcRenderer.invoke(
       'updateOrderAfterNum',
