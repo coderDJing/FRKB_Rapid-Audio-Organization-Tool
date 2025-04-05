@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch, computed, ComputedRef } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -12,6 +12,8 @@ import utils, { getCurrentTimeDirName } from '../utils/utils'
 import { t } from '@renderer/utils/translate'
 import emitter from '../utils/mitt'
 import type { IDir } from 'src/types/globals'
+import { handleLibraryAreaEmptySpaceDrop } from '../utils/dragUtils'
+
 const uuid = uuidV4()
 const props = defineProps({
   libraryName: {
@@ -64,19 +66,23 @@ watch(
   { deep: true, immediate: true }
 )
 
-let filtrateLibraryUUID: string | undefined
-if (runtime.libraryTree && runtime.libraryTree.children) {
-  filtrateLibraryUUID = runtime.libraryTree.children.find(
-    (element) => element.type === 'library' && element.dirName === props.libraryName
-  )?.uuid
-}
-if (filtrateLibraryUUID === undefined) {
-  throw new Error(`filtrateLibraryUUID error: ${JSON.stringify(filtrateLibraryUUID)}`)
-}
-let libraryData = libraryUtils.getLibraryTreeByUUID(filtrateLibraryUUID)
-if (libraryData === null) {
-  throw new Error(`libraryData error: ${JSON.stringify(libraryData)}`)
-}
+const libraryData: ComputedRef<IDir> = computed(() => {
+  let filtrateLibraryUUID: string | undefined
+  if (runtime.libraryTree && runtime.libraryTree.children) {
+    filtrateLibraryUUID = runtime.libraryTree.children.find(
+      (element) => element.type === 'library' && element.dirName === props.libraryName
+    )?.uuid
+  }
+  if (filtrateLibraryUUID === undefined) {
+    throw new Error(`filtrateLibraryUUID error for libraryName ${props.libraryName}`)
+  }
+  let data = libraryUtils.getLibraryTreeByUUID(filtrateLibraryUUID)
+  if (data === null) {
+    throw new Error(`libraryData error: could not find library with UUID ${filtrateLibraryUUID}`)
+  }
+  return data
+})
+
 let hoverTimer: NodeJS.Timeout
 let collapseButtonHintShow = ref(false)
 const iconMouseover = () => {
@@ -91,16 +97,17 @@ const iconMouseout = () => {
 
 const menuArr = ref([[{ menuName: '新建歌单' }, { menuName: '新建文件夹' }]])
 const contextmenuEvent = async (event: MouseEvent) => {
+  if (!libraryData.value) return
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
   if (result !== 'cancel') {
     if (result.menuName == '新建歌单') {
-      libraryData.children?.unshift({
+      libraryData.value.children?.unshift({
         uuid: uuidV4(),
         type: 'songList',
         dirName: ''
       })
     } else if (result.menuName == '新建文件夹') {
-      libraryData.children?.unshift({
+      libraryData.value.children?.unshift({
         uuid: uuidV4(),
         type: 'dir',
         dirName: ''
@@ -110,10 +117,10 @@ const contextmenuEvent = async (event: MouseEvent) => {
 }
 
 const collapseButtonHandleClick = async () => {
-  emitter.emit('collapseButtonHandleClick', libraryData.dirName + 'Dialog')
+  if (!libraryData.value) return
+  emitter.emit('collapseButtonHandleClick', libraryData.value.dirName + 'Dialog')
 }
 
-const dragApproach = ref('')
 const dragover = (e: DragEvent) => {
   if (e.dataTransfer === null) {
     throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
@@ -123,7 +130,6 @@ const dragover = (e: DragEvent) => {
     return
   }
   e.dataTransfer.dropEffect = 'move'
-  dragApproach.value = 'top'
 }
 const dragenter = (e: DragEvent) => {
   if (e.dataTransfer === null) {
@@ -134,131 +140,21 @@ const dragenter = (e: DragEvent) => {
     return
   }
   e.dataTransfer.dropEffect = 'move'
-  dragApproach.value = 'top'
 }
 const dragleave = () => {
   if (runtime.dragItemData === null) {
     return
   }
-  dragApproach.value = ''
 }
 const drop = async () => {
-  dragApproach.value = ''
-  if (runtime.dragItemData === null) {
+  if (runtime.dragItemData === null || !libraryData.value) {
     return
   }
   try {
-    let dragItemDataFather = libraryUtils.getFatherLibraryTreeByUUID(runtime.dragItemData.uuid)
-    if (dragItemDataFather === null || dragItemDataFather.children === undefined) {
-      throw new Error(`dragItemDataFather error: ${JSON.stringify(dragItemDataFather)}`)
-    }
-    if (libraryData.children === undefined) {
-      throw new Error(`libraryData.children error: ${JSON.stringify(libraryData.children)}`)
-    }
-
-    // 检查源文件是否存在
-    let sourcePath = libraryUtils.findDirPathByUuid(runtime.dragItemData.uuid)
-    let isSourcePathExist = await window.electron.ipcRenderer.invoke('dirPathExists', sourcePath)
-    if (!isSourcePathExist) {
-      runtime.dragItemData = null
-      await confirm({
-        title: '错误',
-        content: [t('此歌单/文件夹在磁盘中不存在，可能已被手动删除')],
-        confirmShow: false
-      })
-      return
-    }
-
-    if (dragItemDataFather.uuid == filtrateLibraryUUID) {
-      if (libraryData.children[libraryData.children.length - 1].uuid == runtime.dragItemData.uuid) {
-        runtime.dragItemData = null
-        return
-      }
-      //同一层级仅调换位置
-      let removedElement = libraryData.children.splice(
-        libraryData.children.indexOf(runtime.dragItemData),
-        1
-      )[0]
-      libraryData.children.push(removedElement)
-      libraryUtils.reOrderChildren(libraryData.children)
-      await window.electron.ipcRenderer.invoke(
-        'reOrderSubDir',
-        libraryUtils.findDirPathByUuid(libraryData.uuid),
-        JSON.stringify(libraryData.children)
-      )
-      runtime.dragItemData = null
-      return
-    } else {
-      const existingItem = libraryData.children.find((item) => {
-        return (
-          item.dirName === runtime.dragItemData?.dirName && item.uuid !== runtime.dragItemData.uuid
-        )
-      })
-      if (existingItem) {
-        let res = await confirm({
-          title: '移动',
-          content: [
-            t('目标文件夹下已存在："') + runtime.dragItemData.dirName + t('"'),
-            t('是否继续执行替换'),
-            t('（被替换的歌单或文件夹将被删除）')
-          ]
-        })
-        if (res == 'confirm') {
-          let targetPath = libraryUtils.findDirPathByUuid(existingItem.uuid)
-          await window.electron.ipcRenderer.invoke('delDir', targetPath, getCurrentTimeDirName())
-          await window.electron.ipcRenderer.invoke(
-            'moveToDirSample',
-            libraryUtils.findDirPathByUuid(runtime.dragItemData.uuid),
-            libraryUtils.findDirPathByUuid(libraryData.uuid)
-          )
-          libraryData.children.splice(libraryData.children.indexOf(existingItem), 1)
-          let removedElement = dragItemDataFather.children.splice(
-            dragItemDataFather.children.indexOf(runtime.dragItemData),
-            1
-          )[0]
-          libraryUtils.reOrderChildren(dragItemDataFather.children)
-          await window.electron.ipcRenderer.invoke(
-            'reOrderSubDir',
-            libraryUtils.findDirPathByUuid(dragItemDataFather.uuid),
-            JSON.stringify(dragItemDataFather.children)
-          )
-          libraryData.children.push(removedElement)
-          libraryUtils.reOrderChildren(libraryData.children)
-          await window.electron.ipcRenderer.invoke(
-            'reOrderSubDir',
-            libraryUtils.findDirPathByUuid(libraryData.uuid),
-            JSON.stringify(libraryData.children)
-          )
-        }
-        runtime.dragItemData = null
-        return
-      }
-      await window.electron.ipcRenderer.invoke(
-        'moveToDirSample',
-        libraryUtils.findDirPathByUuid(runtime.dragItemData.uuid),
-        libraryUtils.findDirPathByUuid(libraryData.uuid)
-      )
-      let removedElement = dragItemDataFather.children.splice(
-        dragItemDataFather.children.indexOf(runtime.dragItemData),
-        1
-      )[0]
-      libraryUtils.reOrderChildren(dragItemDataFather.children)
-      await window.electron.ipcRenderer.invoke(
-        'reOrderSubDir',
-        libraryUtils.findDirPathByUuid(dragItemDataFather.uuid),
-        JSON.stringify(dragItemDataFather.children)
-      )
-      libraryData.children.push(removedElement)
-      libraryUtils.reOrderChildren(libraryData.children)
-      await window.electron.ipcRenderer.invoke(
-        'reOrderSubDir',
-        libraryUtils.findDirPathByUuid(libraryData.uuid),
-        JSON.stringify(libraryData.children)
-      )
-      runtime.dragItemData = null
-      return
-    }
+    const handled = await handleLibraryAreaEmptySpaceDrop(runtime.dragItemData, libraryData.value)
   } catch (error) {
+    console.error('Drop operation failed:', error)
+  } finally {
     runtime.dragItemData = null
   }
 }
@@ -295,8 +191,7 @@ onUnmounted(() => {
   runtime.selectSongListDialogShow = false
 })
 
-const flashArea = ref('') // 控制动画是否正在播放
-// 模拟闪烁三次的逻辑（使用 setTimeout）
+const flashArea = ref('')
 const flashBorder = (flashAreaName: string) => {
   flashArea.value = flashAreaName
   let count = 0
@@ -304,9 +199,9 @@ const flashBorder = (flashAreaName: string) => {
     count++
     if (count >= 3) {
       clearInterval(interval)
-      flashArea.value = '' // 动画结束，不再闪烁
+      flashArea.value = ''
     }
-  }, 500) // 每次闪烁间隔 500 毫秒
+  }, 500)
 }
 const confirmHandle = () => {
   if (
@@ -345,7 +240,7 @@ const cancel = () => {
 <template>
   <div class="dialog unselectable">
     <div class="content inner" @contextmenu.stop="contextmenuEvent">
-      <div class="unselectable libraryTitle">
+      <div class="unselectable libraryTitle" v-if="libraryData">
         <span>{{ t(libraryData.dirName) }}</span>
         <div style="display: flex; justify-content: center; align-items: center">
           <div
@@ -383,7 +278,7 @@ const cancel = () => {
       <div
         class="unselectable libraryArea flashing-border"
         :class="{ 'is-flashing': flashArea == 'selectSongList' }"
-        v-if="libraryData.children?.length"
+        v-if="libraryData?.children?.length"
       >
         <template v-if="recentSongListArr.length > 0">
           <div style="padding-left: 5px">
@@ -411,7 +306,7 @@ const cancel = () => {
             <div style="height: 1px"></div>
           </div>
         </template>
-        <template v-for="item of libraryData.children" :key="item.uuid">
+        <template v-for="item of libraryData?.children" :key="item.uuid">
           <dialogLibraryItem
             :uuid="item.uuid"
             :libraryName="libraryData.dirName + 'Dialog'"
@@ -424,7 +319,6 @@ const cancel = () => {
           @dragenter.stop.prevent="dragenter"
           @drop.stop="drop"
           @dragleave.stop="dragleave"
-          :class="{ borderTop: dragApproach == 'top' }"
         ></div>
       </div>
       <div
@@ -475,10 +369,6 @@ const cancel = () => {
   &:hover {
     background-color: #37373d !important;
   }
-}
-
-.borderTop {
-  box-shadow: inset 0 1px 0 0 #0078d4;
 }
 
 .libraryArea {
