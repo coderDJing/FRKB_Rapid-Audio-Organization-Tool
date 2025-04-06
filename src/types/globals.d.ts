@@ -1,5 +1,6 @@
 /// <reference types="electron-vite/node" />
 import { ElectronAPI } from '@electron-toolkit/preload'
+import { PreloadApi } from '../preload/index'
 import { IPicture } from 'music-metadata'
 
 interface IDir {
@@ -18,7 +19,7 @@ type md5 = {
 declare global {
   interface Window {
     electron: ElectronAPI
-    api: {}
+    api: PreloadApi
   }
 }
 

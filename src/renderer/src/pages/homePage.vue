@@ -146,8 +146,10 @@ const drop = async (e: DragEvent) => {
     return
   }
   dragOverSongsArea.value = false
-
-  let files = Array.from(e.dataTransfer.files)
+  const filePaths = []
+  for (let item of Array.from(e.dataTransfer.files)) {
+    filePaths.push(window.api.showFilesPath(item))
+  }
 
   let songListPath = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
   let isSongListPathExist = await window.electron.ipcRenderer.invoke('dirPathExists', songListPath)
@@ -162,7 +164,6 @@ const drop = async (e: DragEvent) => {
       throw new Error(`libraryTree error: ${JSON.stringify(libraryTree)}`)
     }
     let fatherDirData = libraryUtils.getFatherLibraryTreeByUUID(runtime.songsArea.songListUUID)
-    // const path = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
     if (fatherDirData === null) {
       throw new Error(`fatherDirData error: ${JSON.stringify(fatherDirData)}`)
     }
@@ -196,10 +197,6 @@ const drop = async (e: DragEvent) => {
   })
   if (result === 'cancel') {
     return
-  }
-  let filePaths = []
-  for (let item of files) {
-    filePaths.push(item.path)
   }
   runtime.importingSongListUUID = result.importingSongListUUID
   runtime.isProgressing = true
