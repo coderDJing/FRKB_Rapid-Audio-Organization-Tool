@@ -21,6 +21,12 @@ import descendingOrder from '@renderer/assets/descending-order.png?asset'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
 const defaultColumns: ISongsAreaColumn[] = [
   {
+    columnName: '序号',
+    key: 'index',
+    show: true,
+    width: 60
+  },
+  {
     columnName: '专辑封面',
     key: 'coverUrl',
     show: true,
@@ -587,7 +593,7 @@ const colMenuClick = (col: ISongsAreaColumn) => {
   if (isResizeClick) {
     return
   }
-  if (col.key === 'coverUrl') {
+  if (col.key === 'coverUrl' || col.key === 'index') {
     return
   }
 
@@ -705,6 +711,13 @@ const colMenuClick = (col: ISongsAreaColumn) => {
                   :style="'width:' + col.width + 'px'"
                 >
                   <img :src="item.coverUrl" class="unselectable" />
+                </div>
+                <div
+                  v-else-if="col.key == 'index'"
+                  class="titleDiv"
+                  :style="'width:' + col.width + 'px'"
+                >
+                  {{ index + 1 }}
                 </div>
                 <div v-else class="titleDiv" :style="'width:' + col.width + 'px'">
                   {{ item[col.key as keyof ISongInfo] }}

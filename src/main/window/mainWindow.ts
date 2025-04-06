@@ -210,6 +210,7 @@ function createWindow() {
         filePaths.map((item) => collectFilesWithExtensions(item, store.settingConfig.audioExt))
       )
     ).flat()
+    console.log('songFileUrls', songFileUrls)
     sendProgress('扫描文件中', 1, 1, true)
     if (songFileUrls.length === 0) {
       mainWindow?.webContents.send('noAudioFileWasScanned')

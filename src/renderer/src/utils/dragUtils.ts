@@ -419,7 +419,10 @@ export const handleDrop = async (
       }
     } else if (e.dataTransfer?.files.length && dirData.type === 'songList') {
       // 处理外部文件拖入
-      let files = Array.from(e.dataTransfer.files)
+      const filePaths = []
+      for (let item of Array.from(e.dataTransfer.files)) {
+        filePaths.push(window.api.showFilesPath(item))
+      }
       let result = await dropIntoDialog({
         songListUuid: dirData.uuid,
         libraryName: runtime.libraryAreaSelected
@@ -431,11 +434,6 @@ export const handleDrop = async (
 
       runtime.importingSongListUUID = result.importingSongListUUID
       runtime.isProgressing = true
-      let filePaths = []
-
-      for (let item of files) {
-        filePaths.push(item.path)
-      }
 
       window.electron.ipcRenderer.send('startImportSongs', {
         filePaths: filePaths,
