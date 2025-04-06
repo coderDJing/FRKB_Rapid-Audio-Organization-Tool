@@ -3,7 +3,7 @@ import librarySelectArea from './modules/librarySelectArea.vue'
 import libraryArea from './modules/libraryArea.vue'
 import songsArea from './modules/songsArea.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, computed } from 'vue'
 import songPlayer from './modules/songPlayer.vue'
 import dropIntoDialog from '../components/dropIntoDialog'
 import { Icon } from '../../../types/globals'
@@ -16,6 +16,11 @@ let startX = 0
 let isResizing = false
 const isHovered = ref(false)
 let hoverTimeout: NodeJS.Timeout
+
+// 计算 dragBar 的 left 样式
+const dragBarLeft = computed(() => {
+  return runtime.layoutConfig.libraryAreaWidth + 'px'
+})
 
 const handleMouseEnter = () => {
   // 清除之前的定时器，以防用户频繁移动鼠标进出 div
@@ -217,9 +222,17 @@ const drop = async (e: DragEvent) => {
       style="flex-shrink: 0"
     ></librarySelectArea>
     <div style="flex-grow: 1; min-width: 0; overflow: hidden">
-      <div style="display: flex; height: calc(100% - 51px); min-width: 0; overflow: hidden">
+      <div
+        style="
+          display: flex;
+          height: calc(100% - 51px);
+          min-width: 0;
+          overflow: hidden;
+          position: relative;
+        "
+      >
         <div
-          style="width: 200px; border-right: 1px solid #2b2b2b; flex-shrink: 0"
+          style="border-right: 1px solid #2b2b2b; flex-shrink: 0"
           :style="'width:' + runtime.layoutConfig.libraryAreaWidth + 'px'"
         >
           <div
@@ -231,9 +244,9 @@ const drop = async (e: DragEvent) => {
           </div>
         </div>
         <div
-          style="width: 4px; cursor: ew-resize; height: calc(100%); flex-shrink: 0"
-          @mousedown="startResize"
           class="dragBar"
+          :style="{ left: dragBarLeft }"
+          @mousedown="startResize"
           @mouseenter="handleMouseEnter"
           @mouseleave="handleMouseLeave"
           :class="{ dragBarHovered: isHovered }"
@@ -262,12 +275,34 @@ const drop = async (e: DragEvent) => {
 </template>
 <style lang="scss" scoped>
 .dragBar {
-  background-color: transparent;
-  transition: background-color 0.2s ease;
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 8px; /* 触发区域宽度 */
+  cursor: ew-resize;
+  transform: translateX(-50%); /* 将 8px 的触发区域居中在 left 位置 */
+  z-index: 10; /* 确保它在其他内容之上 */
+  background-color: transparent; /* 确保触发区域不可见 */
 }
 
-.dragBarHovered {
-  background-color: #0078d4;
+.dragBar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%; /* 相对于 dragBar 居中 */
+  transform: translateX(-50%); /* 精确居中 */
+  width: 4px; /* 宽度始终为 4px */
+  height: 100%;
+  background-color: #0078d4; /* 指示器颜色 */
+  opacity: 0; /* 初始透明度为 0 */
+  transition: opacity 0.2s ease; /* 过渡效果应用在透明度上 */
+  pointer-events: none; /* 伪元素不应捕获事件 */
+}
+
+/* 当 dragBar 悬停或拖动时，显示伪元素 */
+.dragBar.dragBarHovered::before {
+  opacity: 1; /* 透明度变为 1 */
+  /* width: 4px;  不再需要修改宽度 */
 }
 
 .songsAreaDragHoverBorder {
