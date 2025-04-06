@@ -261,7 +261,7 @@ const drop = async (e: DragEvent) => {
       >
         <span
           style="font-size: 12px; color: #8c8c8c; position: absolute; bottom: 50vh"
-          v-show="showHint"
+          v-show="showHint && runtime.layoutConfig.libraryAreaWidth !== 0"
         >
           {{ runtime.libraryAreaSelected === '回收站' ? t('暂无删除记录') : t('右键新建歌单') }}
         </span>
