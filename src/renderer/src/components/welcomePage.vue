@@ -201,10 +201,4 @@ dd {
   user-select: none;
   -webkit-user-drag: none;
 }
-
-.easter-egg {
-  margin-left: 8px;
-  color: #fff;
-  font-size: 11px;
-}
 </style>
