@@ -26,8 +26,8 @@ const props = defineProps({
     type: Boolean,
     required: true
   },
-  clickEvent: {
-    type: Object,
+  clickPosition: {
+    type: Object as PropType<{ x: number; y: number }>,
     required: true
   }
 })
@@ -50,22 +50,10 @@ const menuButtonClick = (item: ISongsAreaColumn) => {
 let positionTop = ref(0)
 let positionLeft = ref(0)
 watch(
-  () => props.clickEvent,
-  () => {
-    let windowWidth = window.innerWidth
-    let windowHeight = window.innerHeight
-    let clickX = props.clickEvent.clientX
-    let clickY = props.clickEvent.clientY
-    positionLeft.value = clickX
-    positionTop.value = clickY
-    let divHeight = props.columnData.length * 40
-    let divWidth = 255
-    if (clickY + divHeight > windowHeight) {
-      positionTop.value = clickY - (clickY + divHeight - windowHeight)
-    }
-    if (clickX + divWidth > windowWidth) {
-      positionLeft.value = clickX - (clickX + divWidth - windowWidth)
-    }
+  () => props.clickPosition,
+  (newPosition) => {
+    positionLeft.value = newPosition.x
+    positionTop.value = newPosition.y
   }
 )
 </script>
