@@ -223,7 +223,7 @@ const drop = async (e: DragEvent) => {
           <div
             class="bubbleBox"
             v-if="collapseButtonHintShow"
-            style="position: absolute; top: 70px; z-index: 10"
+            style="position: absolute; top: 30px; z-index: 10; transform: translateX(60%)"
           >
             {{ t('折叠文件夹') }}
           </div>
@@ -232,7 +232,7 @@ const drop = async (e: DragEvent) => {
           <div
             class="bubbleBox"
             v-if="emptyRecycleBinHintShow"
-            style="position: absolute; top: 70px; z-index: 10"
+            style="position: absolute; top: 30px; z-index: 10; transform: translateX(40%)"
           >
             {{ t('清空回收站') }}
           </div>
