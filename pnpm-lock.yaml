@@ -38,6 +38,12 @@ importers:
       music-metadata:
         specifier: ^9.0.3
         version: 9.0.3
+      overlayscrollbars:
+        specifier: ^2.11.1
+        version: 2.11.1
+      overlayscrollbars-vue:
+        specifier: ^0.5.9
+        version: 0.5.9(overlayscrollbars@2.11.1)(vue@3.5.13(typescript@5.8.2))
       pinia:
         specifier: ^2.2.2
         version: 2.3.1(typescript@5.8.2)(vue@3.5.13(typescript@5.8.2))
@@ -2523,6 +2529,15 @@ packages:
   ora@5.4.1:
     resolution: {integrity: sha512-5b6Y85tPxZZ7QytO+BQzysW31HJku27cRIlkbAXaNx+BdcVi+LlRFmVXzeF6a7JCwJpyw5c4b+YSVImQIrBpuQ==}
     engines: {node: '>=10'}
+
+  overlayscrollbars-vue@0.5.9:
+    resolution: {integrity: sha512-zZEcsb6llnKaRwXTP44E4RrmwuH+eAi70mgCdiiPwcPBE2H99Vs2V0q7sWnEanqU3462ch38e4SmIMnuH906DQ==}
+    peerDependencies:
+      overlayscrollbars: ^2.0.0
+      vue: ^3.2.25
+
+  overlayscrollbars@2.11.1:
+    resolution: {integrity: sha512-kogaNaBTIizRenQ2GTzt2cpkEH9B0nUBXseRxqQblH/YicJ3TaWuvn8E5TXPPfJCVoHYSgBYZzzva40kCERKHg==}
 
   p-cancelable@2.1.1:
     resolution: {integrity: sha512-BZOr3nRQHOntUjTrH8+Lh54smKHoHyur8We1V8DSMVrl5A2malOOwuJRnKRDjSnkoeBh4at6BwEnb5I7Jl31wg==}
@@ -5792,6 +5807,13 @@ snapshots:
       log-symbols: 4.1.0
       strip-ansi: 6.0.1
       wcwidth: 1.0.1
+
+  overlayscrollbars-vue@0.5.9(overlayscrollbars@2.11.1)(vue@3.5.13(typescript@5.8.2)):
+    dependencies:
+      overlayscrollbars: 2.11.1
+      vue: 3.5.13(typescript@5.8.2)
+
+  overlayscrollbars@2.11.1: {}
 
   p-cancelable@2.1.1: {}
 

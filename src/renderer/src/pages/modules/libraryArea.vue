@@ -10,6 +10,8 @@ import { t } from '@renderer/utils/translate'
 import emitter from '../../utils/mitt'
 import emptyRecycleBin from '@renderer/assets/empty-recycleBin.png?asset'
 import { handleLibraryAreaEmptySpaceDrop } from '@renderer/utils/dragUtils'
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
+
 const runtime = useRuntimeStore()
 const props = defineProps({
   uuid: {
@@ -238,34 +240,51 @@ const drop = async (e: DragEvent) => {
       </div>
     </div>
     <div class="unselectable libraryArea">
-      <template v-for="item of libraryData.children" :key="item.uuid">
-        <libraryItem
-          :uuid="item.uuid"
-          :libraryName="libraryData.dirName"
-          v-if="!(runtime.selectSongListDialogShow && !item.dirName)"
-        />
-      </template>
-      <div
-        style="
-          flex-grow: 1;
-          min-height: 30px;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-        "
-        @dragover.stop.prevent="dragover"
-        @dragenter.stop.prevent="dragenter"
-        @drop.stop="drop"
-        @dragleave.stop="dragleave"
-        :class="{ borderTop: dragApproach == 'top' }"
+      <OverlayScrollbarsComponent
+        :options="{
+          scrollbars: {
+            autoHide: 'leave',
+            autoHideDelay: 50,
+            clickScroll: true
+          },
+          overflow: {
+            x: 'hidden',
+            y: 'scroll'
+          }
+        }"
+        element="div"
+        style="height: 100%; width: 100%"
+        defer
       >
-        <span
-          style="font-size: 12px; color: #8c8c8c; position: absolute; bottom: 50vh"
-          v-show="showHint && runtime.layoutConfig.libraryAreaWidth !== 0"
+        <template v-for="item of libraryData.children" :key="item.uuid">
+          <libraryItem
+            :uuid="item.uuid"
+            :libraryName="libraryData.dirName"
+            v-if="!(runtime.selectSongListDialogShow && !item.dirName)"
+          />
+        </template>
+        <div
+          style="
+            flex-grow: 1;
+            min-height: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+          "
+          @dragover.stop.prevent="dragover"
+          @dragenter.stop.prevent="dragenter"
+          @drop.stop="drop"
+          @dragleave.stop="dragleave"
+          :class="{ borderTop: dragApproach == 'top' }"
         >
-          {{ runtime.libraryAreaSelected === '回收站' ? t('暂无删除记录') : t('右键新建歌单') }}
-        </span>
-      </div>
+          <span
+            style="font-size: 12px; color: #8c8c8c; position: absolute; bottom: 50vh"
+            v-show="showHint && runtime.layoutConfig.libraryAreaWidth !== 0"
+          >
+            {{ runtime.libraryAreaSelected === '回收站' ? t('暂无删除记录') : t('右键新建歌单') }}
+          </span>
+        </div>
+      </OverlayScrollbarsComponent>
     </div>
   </div>
 </template>
@@ -278,14 +297,8 @@ const drop = async (e: DragEvent) => {
   height: calc(100% - 35px);
   max-height: calc(100% - 35px);
   width: 100%;
-  overflow-y: hidden;
-  overflow-x: hidden;
   display: flex;
   flex-direction: column;
-
-  &:hover {
-    overflow-y: auto;
-  }
 }
 
 .content {
