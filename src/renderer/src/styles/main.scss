@@ -71,26 +71,63 @@
   }
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.2);
-
-  &:hover {
-    cursor: pointer;
-    background-color: rgba(255, 255, 255, 0.3);
-  }
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-corner {
-  background: transparent;
+.os-scrollbar {
+  // 滚动条的大小
+  --os-size: 6px;
+  /* 改为 6px */
+  // 滚动条的垂直于轴的内边距(水平:padding-y, 垂直:padding-x)
+  --os-padding-perpendicular: 0px;
+  /* 通常设为 0 */
+  // 滚动条的轴向内边距(水平:padding-x, 垂直:padding-y)
+  --os-padding-axis: 0px;
+  /* 通常设为 0 */
+  // 滚动条轨道的边框圆角
+  --os-track-border-radius: 0px;
+  // 滚动条轨道的背景色
+  --os-track-bg: transparent;
+  /* 确保透明 */
+  // 滚动条轨道悬停时的背景色
+  --os-track-bg-hover: transparent;
+  /* 确保透明 */
+  // 滚动条轨道激活时的背景色
+  --os-track-bg-active: transparent;
+  /* 确保透明 */
+  // 滚动条轨道的边框
+  --os-track-border: none;
+  // 滚动条轨道悬停时的边框
+  --os-track-border-hover: none;
+  // 滚动条轨道激活时的边框
+  --os-track-border-active: none;
+  // 滚动条滑块的边框圆角
+  --os-handle-border-radius: 0px;
+  /* 设置为 3px 圆角 */
+  // 滚动条滑块的背景色
+  --os-handle-bg: rgba(255, 255, 255, 0.2);
+  /* 目标背景色 */
+  // 滚动条滑块悬停时的背景色
+  --os-handle-bg-hover: rgba(255, 255, 255, 0.3);
+  /* 目标悬停背景色 */
+  // 滚动条滑块激活时的背景色
+  --os-handle-bg-active: rgba(255, 255, 255, 0.4);
+  /* 可以设置一个激活颜色 */
+  // 滚动条滑块的边框
+  --os-handle-border: none;
+  // 滚动条滑块悬停时的边框
+  --os-handle-border-hover: none;
+  // 滚动条滑块激活时的边框
+  --os-handle-border-active: none;
+  // 滚动条滑块的最小尺寸
+  --os-handle-min-size: none; // 保持默认或按需调整
+  // 滚动条滑块的最大尺寸
+  --os-handle-max-size: none;
+  // 滚动条滑块垂直于轴的尺寸(水平:高度, 垂直:宽度)
+  --os-handle-perpendicular-size: 100%; // 保持默认
+  // 滚动条滑块悬停时垂直于轴的尺寸(水平:高度, 垂直:宽度)
+  --os-handle-perpendicular-size-hover: 100%; // 保持默认
+  // 滚动条滑块激活时垂直于轴的尺寸(水平:高度, 垂直:宽度)
+  --os-handle-perpendicular-size-active: 100%; // 保持默认
+  // 增加滚动条滑块的交互区域偏移量
+  --os-handle-interactive-area-offset: 0; // 保持默认
 }
 
 .flashing-border {

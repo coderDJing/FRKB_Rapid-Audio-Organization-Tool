@@ -13,6 +13,7 @@ import { t } from '@renderer/utils/translate'
 import emitter from '../utils/mitt'
 import type { IDir } from 'src/types/globals'
 import { handleLibraryAreaEmptySpaceDrop } from '../utils/dragUtils'
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 
 const uuid = uuidV4()
 const props = defineProps({
@@ -280,61 +281,80 @@ const cancel = () => {
         :class="{ 'is-flashing': flashArea == 'selectSongList' }"
         v-if="libraryData?.children?.length"
       >
-        <template v-if="recentSongListArr.length > 0">
-          <div style="padding-left: 5px">
-            <span style="font-size: 14px">{{ t('最近使用') }}</span>
-          </div>
-          <div style="width: 100%; background-color: #8c8c8c; height: 1px">
-            <div style="height: 1px"></div>
-          </div>
+        <OverlayScrollbarsComponent
+          :options="{
+            scrollbars: {
+              autoHide: 'leave',
+              autoHideDelay: 50,
+              clickScroll: true
+            },
+            overflow: {
+              x: 'hidden',
+              y: 'scroll'
+            }
+          }"
+          element="div"
+          style="height: 100%; width: 100%"
+          defer
+        >
+          <template v-if="recentSongListArr.length > 0">
+            <div style="padding-left: 5px">
+              <span style="font-size: 14px">{{ t('最近使用') }}</span>
+            </div>
+            <div style="width: 100%; background-color: #8c8c8c; height: 1px">
+              <div style="height: 1px"></div>
+            </div>
+            <div
+              v-for="item of recentSongListArr"
+              :key="item.uuid"
+              @click="runtime.dialogSelectedSongListUUID = item.uuid"
+              @dblclick="confirmHandle()"
+              :class="{ selectedDir: item.uuid == runtime.dialogSelectedSongListUUID }"
+              class="recentLibraryItem"
+            >
+              <div style="width: 20px; justify-content: center; align-items: center; display: flex">
+                <img style="width: 13px; height: 13px" :src="listIcon" />
+              </div>
+              <div>
+                {{ item.dirName }}
+              </div>
+            </div>
+            <div style="width: 100%; background-color: #8c8c8c; height: 1px">
+              <div style="height: 1px"></div>
+            </div>
+          </template>
+          <template v-for="item of libraryData?.children" :key="item.uuid">
+            <dialogLibraryItem
+              :uuid="item.uuid"
+              :libraryName="libraryData.dirName + 'Dialog'"
+              @dblClickSongList="confirmHandle()"
+            />
+          </template>
           <div
-            v-for="item of recentSongListArr"
-            :key="item.uuid"
-            @click="runtime.dialogSelectedSongListUUID = item.uuid"
-            @dblclick="confirmHandle()"
-            :class="{ selectedDir: item.uuid == runtime.dialogSelectedSongListUUID }"
-            class="recentLibraryItem"
-          >
-            <div style="width: 20px; justify-content: center; align-items: center; display: flex">
-              <img style="width: 13px; height: 13px" :src="listIcon" />
-            </div>
-            <div>
-              {{ item.dirName }}
-            </div>
-          </div>
-          <div style="width: 100%; background-color: #8c8c8c; height: 1px">
-            <div style="height: 1px"></div>
-          </div>
-        </template>
-        <template v-for="item of libraryData?.children" :key="item.uuid">
-          <dialogLibraryItem
-            :uuid="item.uuid"
-            :libraryName="libraryData.dirName + 'Dialog'"
-            @dblClickSongList="confirmHandle()"
-          />
-        </template>
-        <div
-          style="flex-grow: 1; min-height: 30px"
-          @dragover.stop.prevent="dragover"
-          @dragenter.stop.prevent="dragenter"
-          @drop.stop="drop"
-          @dragleave.stop="dragleave"
-        ></div>
+            style="flex-grow: 1; min-height: 30px"
+            @dragover.stop.prevent="dragover"
+            @dragenter.stop.prevent="dragenter"
+            @drop.stop="drop"
+            @dragleave.stop="dragleave"
+          ></div>
+        </OverlayScrollbarsComponent>
       </div>
       <div
         class="unselectable flashing-border"
         :class="{ 'is-flashing': flashArea == 'selectSongList' }"
         v-else
         style="
-          height: 100%;
           max-width: 300px;
           display: flex;
           justify-content: center;
           align-items: center;
+          flex-grow: 1;
+          min-height: 0;
         "
       >
         <span style="font-size: 12px; color: #8c8c8c">{{ t('右键新建歌单') }}</span>
       </div>
+
       <div style="display: flex; justify-content: center; padding-bottom: 10px">
         <div
           class="button"
@@ -372,17 +392,12 @@ const cancel = () => {
 }
 
 .libraryArea {
-  height: 500px;
   max-width: 300px;
-  overflow-y: hidden;
-  overflow-x: hidden;
   scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
-
-  &:hover {
-    overflow-y: auto;
-  }
+  flex-grow: 1;
+  min-height: 0; // 防止内容过多时溢出 flex 容器
 }
 
 .content {

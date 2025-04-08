@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
+import 'overlayscrollbars/overlayscrollbars.css'
 import './styles/main.scss'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 

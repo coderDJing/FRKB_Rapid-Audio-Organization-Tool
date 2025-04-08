@@ -35,6 +35,8 @@
     "meyda": "^5.6.3",
     "mitt": "^3.0.1",
     "music-metadata": "^9.0.3",
+    "overlayscrollbars": "^2.11.1",
+    "overlayscrollbars-vue": "^0.5.9",
     "pinia": "^2.2.2",
     "realtime-bpm-analyzer": "^4.0.2",
     "rust_package": "./rust_package",
