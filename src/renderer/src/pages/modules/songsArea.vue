@@ -633,6 +633,7 @@ const colMenuClick = (col: ISongsAreaColumn) => {
       <div class="loading"></div>
     </div>
     <OverlayScrollbarsComponent
+      v-if="runtime.songsArea.songListUUID && !loadingShow"
       :options="{
         scrollbars: {
           autoHide: 'leave',
@@ -651,7 +652,6 @@ const colMenuClick = (col: ISongsAreaColumn) => {
       <div
         ref="songsAreaRef"
         style="height: 100%; width: 100%"
-        v-if="runtime.songsArea.songListUUID && !loadingShow"
         @click="runtime.songsArea.selectedSongFilePath.length = 0"
       >
         <div
