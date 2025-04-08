@@ -8,6 +8,7 @@ import { t } from '@renderer/utils/translate'
 import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 import confirm from '@renderer/components/confirmDialog'
 import globalCallShortcutDialog from './globalCallShortcutDialog'
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 const runtime = useRuntimeStore()
 const uuid = uuidV4()
 const emits = defineEmits(['cancel'])
@@ -140,90 +141,114 @@ if (!runtime.setting.fastBackwardTime) {
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
           <span style="font-weight: bold">{{ t('设置') }}</span>
         </div>
-        <div style="padding: 20px; font-size: 14px; flex-grow: 1; overflow-y: scroll">
-          <div>{{ t('语言') }}：</div>
-          <div style="margin-top: 10px">
-            <select v-model="runtime.setting.language" @change="setSetting">
-              <option value="zhCN">简体中文</option>
-              <option value="enUS">English</option>
-            </select>
-          </div>
-          <div style="margin-top: 20px">{{ t('隐藏播放控制区域，显示更长的波形图') }}：</div>
-          <div style="margin-top: 10px">
-            <singleCheckbox v-model="runtime.setting.hiddenPlayControlArea" @change="extChange()" />
-          </div>
-          <div style="margin-top: 20px">{{ t('扫描音频格式') }}：</div>
-          <div style="margin-top: 10px; display: flex">
-            <span style="margin-right: 10px">.mp3</span>
-            <singleCheckbox v-model="audioExt.mp3" @change="extChange()" />
-            <span style="margin-right: 10px; margin-left: 10px">.wav</span>
-            <singleCheckbox v-model="audioExt.wav" @change="extChange()" />
-            <span style="margin-right: 10px; margin-left: 10px">.flac</span>
-            <singleCheckbox v-model="audioExt.flac" @change="extChange()" />
-          </div>
-          <div style="margin-top: 20px">{{ t('聚焦/最小化 FRKB 窗口快捷键') }}：</div>
-          <div style="margin-top: 10px">
-            <div
-              class="chooseDirDiv"
-              @click="globalCallShortcutHandle()"
-              :title="runtime.setting.globalCallShortcut"
-            >
-              {{ runtime.setting.globalCallShortcut }}
+        <OverlayScrollbarsComponent
+          :options="{
+            scrollbars: {
+              autoHide: 'leave',
+              autoHideDelay: 50,
+              clickScroll: true
+            },
+            overflow: {
+              x: 'hidden',
+              y: 'scroll'
+            }
+          }"
+          element="div"
+          style="height: 100%; width: 100%"
+          defer
+        >
+          <div style="padding: 20px; font-size: 14px; flex-grow: 1">
+            <div>{{ t('语言') }}：</div>
+            <div style="margin-top: 10px">
+              <select v-model="runtime.setting.language" @change="setSetting">
+                <option value="zhCN">简体中文</option>
+                <option value="enUS">English</option>
+              </select>
+            </div>
+            <div style="margin-top: 20px">{{ t('隐藏播放控制区域，显示更长的波形图') }}：</div>
+            <div style="margin-top: 10px">
+              <singleCheckbox
+                v-model="runtime.setting.hiddenPlayControlArea"
+                @change="extChange()"
+              />
+            </div>
+            <div style="margin-top: 20px">{{ t('扫描音频格式') }}：</div>
+            <div style="margin-top: 10px; display: flex">
+              <span style="margin-right: 10px">.mp3</span>
+              <singleCheckbox v-model="audioExt.mp3" @change="extChange()" />
+              <span style="margin-right: 10px; margin-left: 10px">.wav</span>
+              <singleCheckbox v-model="audioExt.wav" @change="extChange()" />
+              <span style="margin-right: 10px; margin-left: 10px">.flac</span>
+              <singleCheckbox v-model="audioExt.flac" @change="extChange()" />
+            </div>
+            <div style="margin-top: 20px">{{ t('聚焦/最小化 FRKB 窗口快捷键') }}：</div>
+            <div style="margin-top: 10px">
+              <div
+                class="chooseDirDiv"
+                @click="globalCallShortcutHandle()"
+                :title="runtime.setting.globalCallShortcut"
+              >
+                {{ runtime.setting.globalCallShortcut }}
+              </div>
+            </div>
+            <div style="margin-top: 20px">{{ t('快进时长') }}：</div>
+            <div style="margin-top: 10px">
+              <input
+                class="myInput"
+                v-model="runtime.setting.fastForwardTime"
+                type="number"
+                min="1"
+                step="1"
+                @input="
+                  runtime.setting.fastForwardTime = Math.max(
+                    1,
+                    Math.floor(Number(runtime.setting.fastForwardTime))
+                  )
+                "
+                @blur="setSetting()"
+              />
+              {{ t('秒') }}
+            </div>
+            <div style="margin-top: 20px">{{ t('快退时长') }}：</div>
+            <div style="margin-top: 10px">
+              <input
+                class="myInput"
+                v-model="runtime.setting.fastBackwardTime"
+                type="number"
+                max="-1"
+                step="1"
+                @input="
+                  runtime.setting.fastBackwardTime = Math.min(
+                    -1,
+                    Math.floor(Number(runtime.setting.fastBackwardTime))
+                  )
+                "
+                @blur="setSetting()"
+              />
+              {{ t('秒') }}
+            </div>
+            <div style="margin-top: 20px">{{ t('重新选择数据库所在位置') }}：</div>
+            <div style="margin-top: 10px">
+              <div
+                class="button"
+                style="width: 90px; text-align: center"
+                @click="reSelectLibrary()"
+              >
+                {{ t('重新选择') }}
+              </div>
+            </div>
+            <div style="margin-top: 20px">{{ t('清除曲目指纹库') }}：</div>
+            <div style="margin-top: 10px">
+              <div
+                class="dangerButton"
+                style="width: 90px; text-align: center"
+                @click="clearTracksFingerprintLibrary()"
+              >
+                {{ t('清除') }}
+              </div>
             </div>
           </div>
-          <div style="margin-top: 20px">{{ t('快进时长') }}：</div>
-          <div style="margin-top: 10px">
-            <input
-              class="myInput"
-              v-model="runtime.setting.fastForwardTime"
-              type="number"
-              min="1"
-              step="1"
-              @input="
-                runtime.setting.fastForwardTime = Math.max(
-                  1,
-                  Math.floor(Number(runtime.setting.fastForwardTime))
-                )
-              "
-              @blur="setSetting()"
-            />
-            {{ t('秒') }}
-          </div>
-          <div style="margin-top: 20px">{{ t('快退时长') }}：</div>
-          <div style="margin-top: 10px">
-            <input
-              class="myInput"
-              v-model="runtime.setting.fastBackwardTime"
-              type="number"
-              max="-1"
-              step="1"
-              @input="
-                runtime.setting.fastBackwardTime = Math.min(
-                  -1,
-                  Math.floor(Number(runtime.setting.fastBackwardTime))
-                )
-              "
-              @blur="setSetting()"
-            />
-            {{ t('秒') }}
-          </div>
-          <div style="margin-top: 20px">{{ t('重新选择数据库所在位置') }}：</div>
-          <div style="margin-top: 10px">
-            <div class="button" style="width: 90px; text-align: center" @click="reSelectLibrary()">
-              {{ t('重新选择') }}
-            </div>
-          </div>
-          <div style="margin-top: 20px">{{ t('清除曲目指纹库') }}：</div>
-          <div style="margin-top: 10px">
-            <div
-              class="dangerButton"
-              style="width: 90px; text-align: center"
-              @click="clearTracksFingerprintLibrary()"
-            >
-              {{ t('清除') }}
-            </div>
-          </div>
-        </div>
+        </OverlayScrollbarsComponent>
         <div style="display: flex; justify-content: center; padding-bottom: 10px; height: 30px">
           <div class="button" @click="cancel()">{{ t('关闭') }} (Esc)</div>
         </div>
