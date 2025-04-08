@@ -122,7 +122,11 @@ const libraryHandleClick = (item: Icon) => {
         >
           <img :src="item.src" draggable="false" />
           <transition name="fade">
-            <div class="bubbleBox" v-if="item.showAlt" style="position: absolute; left: 50px">
+            <div
+              class="bubbleBox"
+              v-if="item.showAlt"
+              style="position: absolute; left: 45px; z-index: 10"
+            >
               {{ t(item.name) }}
             </div>
           </transition>

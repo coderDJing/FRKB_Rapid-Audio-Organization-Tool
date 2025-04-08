@@ -269,7 +269,7 @@ const cancel = () => {
             <div
               class="bubbleBox"
               v-if="collapseButtonHintShow"
-              style="position: absolute; top: 70px"
+              style="position: absolute; top: 70px; transform: translateX(60%)"
             >
               {{ t('折叠文件夹') }}
             </div>
