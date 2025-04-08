@@ -280,7 +280,6 @@ const drop = async (e: DragEvent) => {
   width: 100%;
   overflow-y: hidden;
   overflow-x: hidden;
-  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
 
