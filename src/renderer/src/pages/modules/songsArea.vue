@@ -243,10 +243,43 @@ function stopResize(e: MouseEvent) {
 }
 
 const colRightClickMenuShow = ref(false)
-const colRightClickEvent = ref({})
+const colRightClickEvent = ref({ x: 0, y: 0 })
 const contextmenuEvent = (event: MouseEvent) => {
-  colRightClickEvent.value = event
-  colRightClickMenuShow.value = true
+  if (songsAreaRef.value) {
+    const parentRect = songsAreaRef.value.getBoundingClientRect()
+    const absoluteX = event.clientX
+    const absoluteY = event.clientY
+
+    // Estimate menu dimensions (using your previous estimates)
+    const menuHeightEstimate = columnData.value.length * 40
+    const menuWidthEstimate = 255
+
+    let adjustedAbsoluteX = absoluteX
+    let adjustedAbsoluteY = absoluteY
+
+    // Boundary checks using absolute coordinates and window dimensions
+    const windowWidth = window.innerWidth
+    const windowHeight = window.innerHeight
+
+    // Apply your original adjustment logic
+    if (absoluteY + menuHeightEstimate > windowHeight) {
+      adjustedAbsoluteY = absoluteY - (absoluteY + menuHeightEstimate - windowHeight)
+    }
+    if (absoluteX + menuWidthEstimate > windowWidth) {
+      adjustedAbsoluteX = absoluteX - (absoluteX + menuWidthEstimate - windowWidth)
+    }
+
+    // Convert adjusted absolute coordinates back to relative coordinates
+    const adjustedRelativeX = adjustedAbsoluteX - parentRect.left
+    const adjustedRelativeY = adjustedAbsoluteY - parentRect.top
+
+    colRightClickEvent.value = { x: adjustedRelativeX, y: adjustedRelativeY }
+    colRightClickMenuShow.value = true
+  } else {
+    // Fallback: Use original absolute coordinates, no relative conversion or adjustment possible
+    colRightClickEvent.value = { x: event.clientX, y: event.clientY }
+    colRightClickMenuShow.value = true
+  }
 }
 
 const colMenuHandleClick = (item: ISongsAreaColumn) => {
@@ -646,7 +679,7 @@ const colMenuClick = (col: ISongsAreaColumn) => {
         }
       }"
       element="div"
-      style="height: 100%; width: 100%"
+      style="height: 100%; width: 100%; position: relative"
       defer
     >
       <div
@@ -774,7 +807,7 @@ const colMenuClick = (col: ISongsAreaColumn) => {
 
     <songAreaColRightClickMenu
       v-model="colRightClickMenuShow"
-      :clickEvent="colRightClickEvent"
+      :clickPosition="colRightClickEvent"
       :columnData="columnData"
       @colMenuHandleClick="colMenuHandleClick"
     />
