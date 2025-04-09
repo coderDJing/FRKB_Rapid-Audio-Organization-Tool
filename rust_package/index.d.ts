@@ -10,11 +10,11 @@ export interface ProcessProgress {
 }
 /** 音频文件处理结果 */
 export interface AudioFileResult {
-  md5Hash: string
+  sha256Hash: string
   filePath: string
 }
 /**
- * 计算音频文件的解码后的 MD5 哈希值
+ * 计算音频文件的 SHA256 哈希值
  *
  * # 参数
  * * `file_paths` - 音频文件路径数组
@@ -22,9 +22,6 @@ export interface AudioFileResult {
  * # 返回值
  * * 包含每个文件哈希值和路径的结果数组
  */
-export declare function getAudioDecodeMd5(filePaths: Array<string>): Array<AudioFileResult>
+export declare function calculateAudioHashes(filePaths: Array<string>): Array<AudioFileResult>
 /** 带进度回调的异步音频处理 */
-export declare function getAudioDecodeMd5WithProgress(
-  filePaths: Array<string>,
-  callback?: (err: Error | null, arg: ProcessProgress) => any | undefined | null
-): Promise<Array<AudioFileResult>>
+export declare function calculateAudioHashesWithProgress(filePaths: Array<string>, callback?: (err: Error | null, arg: ProcessProgress) => any | undefined | null): Promise<Array<AudioFileResult>>

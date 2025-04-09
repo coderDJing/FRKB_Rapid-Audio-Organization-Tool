@@ -12,7 +12,7 @@ interface IDir {
 }
 
 type md5 = {
-  md5_hash: string
+  sha256_Hash: string
   file_path: string
 }
 

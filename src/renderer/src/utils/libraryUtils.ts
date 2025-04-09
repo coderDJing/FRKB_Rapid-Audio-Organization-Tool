@@ -5,7 +5,6 @@ import { calculateFileSystemOperations } from './diffLibraryTree'
 export const diffLibraryTreeExecuteFileOperation = async () => {
   const runtime = useRuntimeStore()
   const operations = calculateFileSystemOperations(runtime.oldLibraryTree, runtime.libraryTree)
-  console.log('文件操作:', operations)
   await window.electron.ipcRenderer.invoke('operateFileSystemChange', operations)
   for (let item of operations) {
     if (item.type === 'delete' && item.recycleBinDir) {
