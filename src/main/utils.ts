@@ -3,7 +3,7 @@ import { IDir, md5 } from '../types/globals'
 import fs = require('fs-extra')
 import path = require('path')
 import os = require('os')
-import { getAudioDecodeMd5WithProgress, ProcessProgress } from 'rust_package'
+import { calculateAudioHashesWithProgress, ProcessProgress } from 'rust_package'
 
 interface SongsAnalyseResult {
   songsAnalyseResult: md5[]
@@ -19,18 +19,18 @@ export async function getSongsAnalyseResult(
       processFunc(progress.processed)
     }
   }
-  const results = await getAudioDecodeMd5WithProgress(songFilePaths, progressCallback)
+  const results = await calculateAudioHashesWithProgress(songFilePaths, progressCallback)
   let songsAnalyseResult: md5[] = []
   let errorSongsAnalyseResult: md5[] = []
   for (let item of results) {
-    if (item.md5Hash === 'error') {
+    if (item.sha256Hash === 'error') {
       errorSongsAnalyseResult.push({
-        md5_hash: item.md5Hash,
+        sha256_Hash: item.sha256Hash,
         file_path: item.filePath
       })
     } else {
       songsAnalyseResult.push({
-        md5_hash: item.md5Hash,
+        sha256_Hash: item.sha256Hash,
         file_path: item.filePath
       })
     }

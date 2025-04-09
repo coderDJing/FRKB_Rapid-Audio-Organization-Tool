@@ -1,5 +1,5 @@
 //! 音频文件处理模块
-//! 提供音频文件解码和计算MD5哈希值的功能
+//! 提供音频文件解码和计算 SHA256 哈希值的功能
 
 // 启用所有 clippy lint 检查
 #![deny(clippy::all)]
@@ -15,7 +15,6 @@ use std::sync::Arc;
 use num_cpus;
 use parking_lot::Mutex;
 use rayon::prelude::*;
-use rayon::ThreadPoolBuilder;
 
 // Node.js 绑定
 use napi::bindgen_prelude::*;
@@ -49,7 +48,7 @@ pub struct ProcessProgress {
 #[napi(object)]
 #[derive(Debug)]
 pub struct AudioFileResult {
-  pub md5_hash: String,
+  pub sha256_hash: String,
   pub file_path: String,
 }
 
@@ -61,7 +60,7 @@ pub struct AudioProcessTask {
 
 // ===== 公共 API =====
 
-/// 计算音频文件的解码后的 MD5 哈希值
+/// 计算音频文件的 SHA256 哈希值
 ///
 /// # 参数
 /// * `file_paths` - 音频文件路径数组
@@ -69,23 +68,17 @@ pub struct AudioProcessTask {
 /// # 返回值
 /// * 包含每个文件哈希值和路径的结果数组
 #[napi]
-pub fn get_audio_decode_md5(file_paths: Vec<String>) -> Vec<AudioFileResult> {
-  // 配置线程池使用所有可用CPU核心
-  ThreadPoolBuilder::new()
-    .num_threads(num_cpus::get())
-    .build_global()
-    .unwrap();
-
+pub fn calculate_audio_hashes(file_paths: Vec<String>) -> Vec<AudioFileResult> {
   // 并行处理所有文件
   file_paths
     .par_iter()
-    .map(|path| process_single_file(path))
+    .map(|path| calculate_audio_hash_for_file(path))
     .collect::<Vec<AudioFileResult>>()
 }
 
 /// 带进度回调的异步音频处理
 #[napi]
-pub async fn get_audio_decode_md5_with_progress(
+pub async fn calculate_audio_hashes_with_progress(
   file_paths: Vec<String>,
   callback: Option<ThreadsafeFunction<ProcessProgress>>,
 ) -> napi::Result<Vec<AudioFileResult>> {
@@ -114,12 +107,6 @@ impl Task for AudioProcessTask {
       (self.file_paths.len() / ideal_chunks.min(cpu_count * 2)).max(1)
     };
 
-    // 配置线程池
-    ThreadPoolBuilder::new()
-      .num_threads(num_cpus::get())
-      .build_global()
-      .unwrap();
-
     if let Some(ref callback) = self.callback {
       let callback = callback.clone();
       // 使用自适应的工作窃取调度
@@ -131,7 +118,7 @@ impl Task for AudioProcessTask {
           s.spawn(move |_| {
             let mut local_results = Vec::with_capacity(chunk.len());
             for path in chunk {
-              let result = process_single_file(path);
+              let result = calculate_audio_hash_for_file(path);
               let current = processed.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
 
               // 回调进度信息
@@ -150,7 +137,7 @@ impl Task for AudioProcessTask {
     } else {
       // 无回调时直接并行处理
       self.file_paths.par_iter().for_each(|path| {
-        let result = process_single_file(path);
+        let result = calculate_audio_hash_for_file(path);
         results.lock().push(result);
       });
     }
@@ -165,13 +152,13 @@ impl Task for AudioProcessTask {
 
 // ===== 内部辅助函数 =====
 
-/// 处理单个音频文件
-fn process_single_file(path: &str) -> AudioFileResult {
+/// 处理单个音频文件并计算 SHA256 哈希
+fn calculate_audio_hash_for_file(path: &str) -> AudioFileResult {
   let path = Path::new(path);
 
   // 错误结果生成器
   let error_result = || AudioFileResult {
-    md5_hash: "error".to_string(),
+    sha256_hash: "error".to_string(),
     file_path: path.to_string_lossy().to_string(),
   };
 
@@ -223,7 +210,7 @@ fn process_single_file(path: &str) -> AudioFileResult {
   let hash = hex::encode(context.finish());
 
   AudioFileResult {
-    md5_hash: hash,
+    sha256_hash: hash,
     file_path: path.to_string_lossy().to_string(),
   }
 }

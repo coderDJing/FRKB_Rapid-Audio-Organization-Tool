@@ -164,10 +164,9 @@ function createWindow() {
         sendProgress('分析声音指纹中', resultLength, songFileUrls.length)
       }
     )
-    sendProgress('分析声音指纹中', songFileUrls.length, songFileUrls.length)
 
     // 去重处理
-    const uniqueFingerprints = new Set(songsAnalyseResult.map((item) => item.md5_hash))
+    const uniqueFingerprints = new Set(songsAnalyseResult.map((item) => item.sha256_Hash))
     const removeDuplicatesFingerprintResults = Array.from(uniqueFingerprints)
     let beforeSongFingerprintListLength = store.songFingerprintList.length
     store.songFingerprintList = Array.from(
@@ -210,7 +209,6 @@ function createWindow() {
         filePaths.map((item) => collectFilesWithExtensions(item, store.settingConfig.audioExt))
       )
     ).flat()
-    console.log('songFileUrls', songFileUrls)
     sendProgress('扫描文件中', 1, 1, true)
     if (songFileUrls.length === 0) {
       mainWindow?.webContents.send('noAudioFileWasScanned')
@@ -235,14 +233,13 @@ function createWindow() {
 
       songsAnalyseResult = analyseResult.songsAnalyseResult
       errorSongsAnalyseResult = analyseResult.errorSongsAnalyseResult
-      sendProgress('分析声音指纹中', songFileUrls.length, songFileUrls.length)
 
       if (isComparisonSongFingerprint) {
         const uniqueSongs = new Map()
         delList = songsAnalyseResult
           .filter((song) => {
-            if (store.songFingerprintList.includes(song.md5_hash)) {
-              alreadyExistInSongFingerprintList.add(song.md5_hash)
+            if (store.songFingerprintList.includes(song.sha256_Hash)) {
+              alreadyExistInSongFingerprintList.add(song.sha256_Hash)
               return true
             }
             return false
@@ -252,18 +249,20 @@ function createWindow() {
         songsAnalyseResult
           .filter((song) => !delList.includes(song.file_path))
           .forEach((song) => {
-            if (uniqueSongs.has(song.md5_hash)) {
+            if (uniqueSongs.has(song.sha256_Hash)) {
               duplicates.push(song.file_path)
             } else {
-              uniqueSongs.set(song.md5_hash, song)
+              uniqueSongs.set(song.sha256_Hash, song)
             }
           })
         delList = delList.concat(duplicates)
         if (isDeleteSourceFile) {
           sendProgress('删除重复曲目', 0, delList.length)
+          let delIndex = 0
           delList.forEach((item, index) => {
             fs.remove(item)
-            sendProgress('删除重复曲目', index + 1, delList.length)
+            delIndex++
+            sendProgress('删除重复曲目', delIndex, delList.length)
           })
         }
 
@@ -274,9 +273,10 @@ function createWindow() {
     } else {
       toBeDealSongs = songFileUrls
     }
+    let moveIndex = 0
     toBeDealSongs.forEach(async (item, index) => {
-      if (isPushSongFingerprintLibrary && !store.songFingerprintList.includes(item.md5_hash)) {
-        store.songFingerprintList.push(item.md5_hash)
+      if (isPushSongFingerprintLibrary && !store.songFingerprintList.includes(item.sha256_Hash)) {
+        store.songFingerprintList.push(item.sha256_Hash)
       }
 
       const targetPath = path.join(
@@ -289,13 +289,9 @@ function createWindow() {
         targetPath,
         isDeleteSourceFile
       )
-      sendProgress(isDeleteSourceFile ? '移动曲目' : '复制曲目', index + 1, toBeDealSongs.length)
+      moveIndex++
+      sendProgress(isDeleteSourceFile ? '移动曲目' : '复制曲目', moveIndex, toBeDealSongs.length)
     })
-    sendProgress(
-      isDeleteSourceFile ? '移动曲目' : '复制曲目',
-      toBeDealSongs.length,
-      toBeDealSongs.length
-    )
 
     if (isPushSongFingerprintLibrary) {
       fs.outputJSON(
@@ -437,7 +433,6 @@ function createWindow() {
 
   ipcMain.handle('operateFileSystemChange', async (e, operateArray: FileSystemOperation[]) => {
     try {
-      console.log('ipc operateFileSystem:', operateArray)
       for (let item of operateArray) {
         if (item.type === 'create') {
           await operateHiddenFile(

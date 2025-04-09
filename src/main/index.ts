@@ -178,7 +178,7 @@ let devInitDatabaseFunction = () => {
   console.log('devInitDatabase')
 }
 if (is.dev && platform === 'win32') {
-  store.settingConfig.databaseUrl = 'C:\\Users\\Trl\\Desktop\\FRKBDATA\\FRKB_database'
+  store.settingConfig.databaseUrl = 'C:\\Users\\renlu\\Desktop\\FRKB_database'
   devInitDatabaseFunction()
 }
 
