@@ -182,7 +182,7 @@ if (is.dev && platform === 'win32') {
   devInitDatabaseFunction()
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   electronApp.setAppUserModelId('frkb.coderDjing')
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -191,6 +191,7 @@ app.whenReady().then(() => {
     databaseInitWindow.createWindow()
   } else {
     try {
+      // 检查核心库描述文件
       let libraryJson = fs.readJSONSync(
         path.join(store.settingConfig.databaseUrl, 'library', '.description.json')
       )
@@ -200,19 +201,39 @@ app.whenReady().then(() => {
       let curatedLibraryJson = fs.readJSONSync(
         path.join(store.settingConfig.databaseUrl, 'library', '筛选库', '.description.json')
       )
-      let recycleBinJson = fs.readJSONSync(
-        path.join(store.settingConfig.databaseUrl, 'library', '回收站', '.description.json')
-      )
+
       if (
-        libraryJson.uuid &&
-        libraryJson.type === 'root' &&
-        filterLibraryJson.uuid &&
-        filterLibraryJson.type === 'library' &&
-        curatedLibraryJson.uuid &&
-        curatedLibraryJson.type === 'library' &&
-        recycleBinJson.uuid &&
-        recycleBinJson.type === 'library'
+        !(libraryJson.uuid && libraryJson.type === 'root') ||
+        !(filterLibraryJson.uuid && filterLibraryJson.type === 'library') ||
+        !(curatedLibraryJson.uuid && curatedLibraryJson.type === 'library')
       ) {
+        // 核心库有问题，显示初始化窗口并提示错误
+        databaseInitWindow.createWindow({ needErrorHint: true })
+      } else {
+        // 核心库正常，检查回收站
+        try {
+          let recycleBinJson = fs.readJSONSync(
+            path.join(store.settingConfig.databaseUrl, 'library', '回收站', '.description.json')
+          )
+          if (!(recycleBinJson.uuid && recycleBinJson.type === 'library')) {
+            throw new Error('Invalid recycle bin description') // 抛出错误以触发创建
+          }
+        } catch (recycleBinError) {
+          // 回收站有问题或不存在，静默创建
+          const recycleBinPath = path.join(store.settingConfig.databaseUrl, 'library/回收站')
+          const description = {
+            uuid: uuidV4(),
+            type: 'library',
+            order: 3 // 默认顺序为3
+          }
+          await fs.ensureDir(recycleBinPath) // 确保目录存在
+          // 使用 operateHiddenFile 写入隐藏文件，如果项目中有此模式
+          await operateHiddenFile(path.join(recycleBinPath, '.description.json'), async () => {
+            await fs.outputJson(path.join(recycleBinPath, '.description.json'), description)
+          })
+        }
+
+        // 检查旧版本数据库标识
         if (
           fs.pathExistsSync(
             path.join(store.settingConfig.databaseUrl, 'songFingerprint', 'songFingerprint.json')
@@ -222,6 +243,7 @@ app.whenReady().then(() => {
           return
         }
 
+        // 检查并加载指纹数据
         let songFingerprintListJson = fs.readJSONSync(
           path.join(store.settingConfig.databaseUrl, 'songFingerprint', 'songFingerprintV2.json')
         )
@@ -229,16 +251,17 @@ app.whenReady().then(() => {
           !Array.isArray(songFingerprintListJson) ||
           songFingerprintListJson.some((item) => typeof item !== 'string')
         ) {
+          // 指纹文件格式错误，也显示初始化窗口
           databaseInitWindow.createWindow({ needErrorHint: true })
         } else {
+          // 一切正常，加载主窗口
           store.databaseDir = store.settingConfig.databaseUrl
           store.songFingerprintList = songFingerprintListJson
           mainWindow.createWindow()
         }
-      } else {
-        databaseInitWindow.createWindow({ needErrorHint: true })
       }
     } catch (error) {
+      // 捕获读取核心库文件时的错误
       databaseInitWindow.createWindow({ needErrorHint: true })
     }
   }
@@ -258,7 +281,7 @@ app.whenReady().then(() => {
     }
   })
 
-  app.on('activate', function () {
+  app.on('activate', async function () {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -266,18 +289,60 @@ app.whenReady().then(() => {
         databaseInitWindow.createWindow()
       } else {
         try {
+          // 检查核心库描述文件 (与 whenReady 逻辑类似)
+          let libraryJson = fs.readJSONSync(
+            path.join(store.settingConfig.databaseUrl, 'library', '.description.json')
+          )
           let filterLibraryJson = fs.readJSONSync(
             path.join(store.settingConfig.databaseUrl, 'library', '精选库', '.description.json')
           )
           let curatedLibraryJson = fs.readJSONSync(
             path.join(store.settingConfig.databaseUrl, 'library', '筛选库', '.description.json')
           )
+
           if (
-            filterLibraryJson.uuid &&
-            filterLibraryJson.type === 'library' &&
-            curatedLibraryJson.uuid &&
-            curatedLibraryJson.type === 'library'
+            !(libraryJson.uuid && libraryJson.type === 'root') ||
+            !(filterLibraryJson.uuid && filterLibraryJson.type === 'library') ||
+            !(curatedLibraryJson.uuid && curatedLibraryJson.type === 'library')
           ) {
+            databaseInitWindow.createWindow({ needErrorHint: true })
+          } else {
+            // 核心库正常，检查回收站 (与 whenReady 逻辑类似)
+            try {
+              let recycleBinJson = fs.readJSONSync(
+                path.join(store.settingConfig.databaseUrl, 'library', '回收站', '.description.json')
+              )
+              if (!(recycleBinJson.uuid && recycleBinJson.type === 'library')) {
+                throw new Error('Invalid recycle bin description')
+              }
+            } catch (recycleBinError) {
+              const recycleBinPath = path.join(store.settingConfig.databaseUrl, 'library/回收站')
+              const description = {
+                uuid: uuidV4(),
+                type: 'library',
+                order: 3
+              }
+              await fs.ensureDir(recycleBinPath)
+              await operateHiddenFile(path.join(recycleBinPath, '.description.json'), async () => {
+                await fs.outputJson(path.join(recycleBinPath, '.description.json'), description)
+              })
+            }
+
+            // 检查旧版本数据库标识 (与 whenReady 逻辑类似)
+            if (
+              fs.pathExistsSync(
+                path.join(
+                  store.settingConfig.databaseUrl,
+                  'songFingerprint',
+                  'songFingerprint.json'
+                )
+              )
+            ) {
+              foundOldVersionDatabaseWindow.createWindow()
+              return
+            }
+
+            // 检查并加载指纹数据 (与 whenReady 逻辑类似)
             let songFingerprintListJson = fs.readJSONSync(
               path.join(
                 store.settingConfig.databaseUrl,
@@ -295,8 +360,6 @@ app.whenReady().then(() => {
               store.songFingerprintList = songFingerprintListJson
               mainWindow.createWindow()
             }
-          } else {
-            databaseInitWindow.createWindow({ needErrorHint: true })
           }
         } catch (error) {
           databaseInitWindow.createWindow({ needErrorHint: true })
