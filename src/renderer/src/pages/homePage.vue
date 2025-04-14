@@ -306,6 +306,21 @@ const drop = async (e: DragEvent) => {
 }
 
 .songsAreaDragHoverBorder {
-  border: 1px solid #0078d4 !important;
+  /* 移除默认边框样式 */
+  border-color: transparent !important;
+  position: relative !important;
+}
+
+/* 添加伪元素来创建永远位于顶层的边框 */
+.songsAreaDragHoverBorder::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border: 1px solid #0078d4;
+  pointer-events: none; /* 不影响鼠标事件 */
+  z-index: 1000; /* 确保在所有内容之上 */
 }
 </style>
