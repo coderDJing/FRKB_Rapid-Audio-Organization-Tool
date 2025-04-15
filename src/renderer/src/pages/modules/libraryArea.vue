@@ -24,6 +24,15 @@ let libraryData = libraryUtils.getLibraryTreeByUUID(props.uuid)
 if (libraryData === null) {
   throw new Error(`libraryData error: ${JSON.stringify(libraryData)}`)
 }
+
+const displayedChildren = computed(() => {
+  if (runtime.libraryAreaSelected === '回收站' && libraryData.children) {
+    // 创建一个倒序副本，不改变原数组
+    return [...libraryData.children].reverse()
+  }
+  return libraryData.children
+})
+
 const showHint = computed(() => {
   const children = libraryData.children
   const hasSpecialChild = children?.some((child) =>
@@ -256,7 +265,7 @@ const drop = async (e: DragEvent) => {
         style="height: 100%; width: 100%"
         defer
       >
-        <template v-for="item of libraryData.children" :key="item.uuid">
+        <template v-for="item of displayedChildren" :key="item.uuid">
           <libraryItem
             :uuid="item.uuid"
             :libraryName="libraryData.dirName"
