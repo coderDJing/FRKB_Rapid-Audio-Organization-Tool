@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch, ref, onUnmounted, onMounted, PropType } from 'vue'
+import { watch, ref, onUnmounted, onMounted, PropType, nextTick } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidV4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
@@ -29,6 +29,9 @@ const props = defineProps({
     required: true
   }
 })
+
+const menuRef = ref<HTMLDivElement | null>(null)
+
 watch(
   () => runtime.activeMenuUUID,
   (val) => {
@@ -37,27 +40,13 @@ watch(
     }
   }
 )
+
 let positionTop = ref(0)
 let positionLeft = ref(0)
-let windowWidth = window.innerWidth
-let windowHeight = window.innerHeight
-let clickX = props.clickEvent.clientX
-let clickY = props.clickEvent.clientY
-positionLeft.value = clickX
-positionTop.value = clickY
 
-let itemCount = 0
-for (let arr of props.menuArr) {
-  itemCount = itemCount + arr.length
-}
-let divHeight = props.menuArr.length * 10 + itemCount * 29 + (props.menuArr.length - 1) + 5
-let divWidth = 255
-if (clickY + divHeight > windowHeight) {
-  positionTop.value = clickY - (clickY + divHeight - windowHeight)
-}
-if (clickX + divWidth > windowWidth) {
-  positionLeft.value = clickX - (clickX + divWidth - windowWidth)
-}
+positionTop.value = -9999
+positionLeft.value = -9999
+
 const menuButtonClick = (item: IMenu) => {
   runtime.activeMenuUUID = ''
   props.confirmCallback(item)
@@ -70,6 +59,39 @@ const mouseleave = () => {
   hoverItem.value = null
 }
 onMounted(() => {
+  nextTick(() => {
+    if (!menuRef.value) return
+
+    const menuElement = menuRef.value
+    const divHeight = menuElement.offsetHeight
+    const divWidth = menuElement.offsetWidth
+
+    let windowWidth = window.innerWidth
+    let windowHeight = window.innerHeight
+    let clickX = props.clickEvent.clientX
+    let clickY = props.clickEvent.clientY
+
+    let finalTop = clickY
+    let finalLeft = clickX
+
+    if (clickY + divHeight > windowHeight) {
+      finalTop = clickY - divHeight
+      if (finalTop < 0) {
+        finalTop = 0
+      }
+    }
+
+    if (clickX + divWidth > windowWidth) {
+      finalLeft = clickX - divWidth
+      if (finalLeft < 0) {
+        finalLeft = 0
+      }
+    }
+
+    positionTop.value = finalTop
+    positionLeft.value = finalLeft
+  })
+
   hotkeys('w', uuid, () => {
     let menuArr = props.menuArr.flat(1)
     if (hoverItem.value === null || menuArr.indexOf(hoverItem.value) === 0) {
@@ -101,9 +123,10 @@ onUnmounted(() => {
 </script>
 <template>
   <div
+    ref="menuRef"
     class="menu unselectable"
     :style="{ top: positionTop + 'px', left: positionLeft + 'px' }"
-    style="z-index: 99"
+    style="z-index: 99; position: absolute"
     @click.stop="() => {}"
     @mouseleave.stop="mouseleave()"
   >
