@@ -21,6 +21,56 @@ import descendingOrder from '@renderer/assets/descending-order.png?asset'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
 
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
+
+// 用于标识当前有效的封面加载任务
+const coverLoadTaskId = ref(0)
+// 用于跟踪当前列表的封面是否已全部加载完成
+const coversLoadCompleted = ref(false)
+
+// 定义异步分批处理封面的函数 (使用 requestAnimationFrame)
+// 返回 Promise<boolean> 指示任务是否完整完成 (true) 或被取消 (false)
+async function processCoversInBatchesRAF(
+  data: ISongInfo[],
+  currentTaskId: number,
+  batchSize = 1
+): Promise<boolean> {
+  // 检查启动时的任务 ID 是否仍然有效
+  if (coverLoadTaskId.value !== currentTaskId) {
+    // 如果 ID 已改变，则此任务作废，直接返回
+    return false // 被取消
+  }
+
+  for (let i = 0; i < data.length; i += batchSize) {
+    // 在循环开始时再次检查，以防在 await 期间 ID 变化后循环继续
+    if (coverLoadTaskId.value !== currentTaskId) {
+      return false // 被取消
+    }
+
+    const batch = data.slice(i, i + batchSize)
+    batch.forEach((item: ISongInfo) => {
+      // 检查是否有封面数据且尚未创建 URL
+      if (item.cover && !item.coverUrl) {
+        try {
+          const blob = new Blob([Uint8Array.from(item.cover.data)], { type: item.cover.format })
+          item.coverUrl = URL.createObjectURL(blob)
+        } catch (error) {
+          console.error('Error creating blob URL for item:', item.filePath, error)
+        }
+      }
+    })
+
+    // 处理完一个批次后，等待下一帧
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+
+    // 在下一帧开始前，再次检查任务 ID 是否仍然有效
+    if (coverLoadTaskId.value !== currentTaskId) {
+      return false // 被取消
+    }
+  }
+  // 任务正常完成
+  return true // 完整完成
+}
+
 const defaultColumns: ISongsAreaColumn[] = [
   {
     columnName: '序号',
@@ -116,6 +166,9 @@ const openSongList = async () => {
       URL.revokeObjectURL(item.coverUrl)
     }
   })
+  // --- 取消旧任务并重置完成状态 ---
+  coverLoadTaskId.value++
+  coversLoadCompleted.value = false // 新列表加载，重置完成状态
 
   isRequesting.value = true
   runtime.songsArea.songInfoArr = []
@@ -141,31 +194,40 @@ const openSongList = async () => {
       return
     }
 
-    // 处理歌曲封面
-    scanData.forEach((item: ISongInfo) => {
-      if (item.cover) {
-        const blob = new Blob([Uint8Array.from(item.cover.data)], { type: item.cover.format })
-        item.coverUrl = URL.createObjectURL(blob)
-      }
-    })
-
-    // 根据排序规则处理数据
+    // 根据排序规则处理数据，并将结果赋值给响应式数组
     const sortedCol = columnData.value.find((col) => col.order)
     if (sortedCol) {
+      // 注意：这里先对 scanData 排序，再赋值给响应式数组
       runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
-        scanData,
+        scanData, // 使用原始 scanData 进行排序
         sortedCol.key as keyof ISongInfo,
         sortedCol.order
       )
-
-      if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-        runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
-      }
+    } else {
+      // 没有排序规则，直接赋值
+      runtime.songsArea.songInfoArr = scanData
     }
+
+    // 如果当前播放列表是正在打开的列表，也更新播放列表数据引用
+    if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+      runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+    }
+
+    // --- 启动新的封面加载任务，并设置完成回调 ---
+    // 传递当前的 taskId
+    processCoversInBatchesRAF(runtime.songsArea.songInfoArr, coverLoadTaskId.value).then(
+      (completed) => {
+        // 只有当这个任务确实完成了（没有中途被新的任务取消）才标记为完成
+        if (completed) {
+          coversLoadCompleted.value = true
+        }
+      }
+    )
   } finally {
     isRequesting.value = false
     clearTimeout(loadingSetTimeout)
     loadingShow.value = false
+    runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
   }
 }
 watch(
@@ -639,13 +701,33 @@ const colMenuClick = (col: ISongsAreaColumn) => {
   }
   col.order = col.order === 'asc' ? 'desc' : 'asc'
   onUpdate()
+
+  // 排序并更新响应式数组
   runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
-    runtime.songsArea.songInfoArr,
+    runtime.songsArea.songInfoArr, // 对当前数组排序
     col.key as keyof ISongInfo,
     col.order
   )
+  // 更新播放列表数据引用（如果需要）
   if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
     runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+  }
+
+  // --- 如果封面尚未完全加载，则取消旧任务并启动新的封面加载任务 ---
+  if (!coversLoadCompleted.value) {
+    coverLoadTaskId.value++ // 增加任务 ID，使旧任务（如果有）失效
+    // 重置完成状态，因为我们启动了新任务
+    coversLoadCompleted.value = false
+    // 传递当前的 taskId 和更新后的数组引用，并设置完成回调
+    processCoversInBatchesRAF(runtime.songsArea.songInfoArr, coverLoadTaskId.value).then(
+      (completed) => {
+        if (completed) {
+          coversLoadCompleted.value = true
+        }
+      }
+    )
+  } else {
+    // 无需操作，因为封面已经加载完毕
   }
 }
 
