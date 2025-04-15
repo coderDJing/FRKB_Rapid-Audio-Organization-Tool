@@ -138,20 +138,66 @@ const defaultColumns: ISongsAreaColumn[] = [
 const columnData = ref<ISongsAreaColumn[]>(
   (() => {
     const savedData = localStorage.getItem('songColumnData')
+    let finalColumns: ISongsAreaColumn[]
+
     if (!savedData) {
-      return defaultColumns
+      // --- 情况 1: 没有本地存储，直接使用默认值 ---
+      finalColumns = JSON.parse(JSON.stringify(defaultColumns)) // 使用深拷贝以防修改默认值
+    } else {
+      // --- 情况 2: 有本地存储，进行合并 ---
+      try {
+        const parsedData: ISongsAreaColumn[] = JSON.parse(savedData)
+        const savedColumnsMap = new Map(parsedData.map((col) => [col.key, col]))
+
+        // 1. 以 defaultColumns 为基础进行合并
+        finalColumns = defaultColumns.map((defaultCol) => {
+          const savedCol = savedColumnsMap.get(defaultCol.key)
+          if (savedCol) {
+            // 如果本地存储中有此列，合并设置
+            // 保留默认列的所有键，但用保存的值覆盖 show, width, order
+            // 注意：要检查 savedCol 中属性是否存在，避免 undefined 覆盖默认值
+            return {
+              ...defaultCol, // 包含默认列的所有属性（如 columnName, key）
+              show: savedCol.show !== undefined ? savedCol.show : defaultCol.show,
+              width: savedCol.width !== undefined ? savedCol.width : defaultCol.width,
+              order: savedCol.order // 如果保存的有 order，则使用，否则为 undefined
+            }
+          } else {
+            // 如果本地存储中没有此列（例如新添加的列），使用默认列（深拷贝）
+            return JSON.parse(JSON.stringify(defaultCol))
+          }
+        })
+
+        // 2. 处理本地存储中有，但 defaultColumns 中已移除的列
+        // 如果需要清理掉旧版本遗留的、新版本已废弃的列，可以在这里过滤
+        finalColumns = finalColumns.filter((col) => defaultColumns.some((dc) => dc.key === col.key))
+      } catch (error) {
+        console.error('解析本地存储的 songColumnData 出错，将使用默认列配置:', error)
+        // 解析出错，也回退到默认配置
+        finalColumns = JSON.parse(JSON.stringify(defaultColumns))
+      }
     }
 
-    const parsedData = JSON.parse(savedData)
-    const hasOrder = parsedData.some((col: ISongsAreaColumn) => col.order !== undefined)
-
-    if (hasOrder) {
-      return parsedData
+    // --- 确保至少有一个默认排序列（如果用户没有设置任何排序列） ---
+    // 检查合并后的 finalColumns 是否没有任何列设置了 order
+    const hasOrderAfterMerge = finalColumns.some((col) => col.order !== undefined)
+    if (!hasOrderAfterMerge) {
+      // 如果没有任何列排序，并且 'duration' 列存在，则默认给 'duration' 升序
+      const durationColIndex = finalColumns.findIndex((col) => col.key === 'duration')
+      if (durationColIndex !== -1) {
+        finalColumns[durationColIndex] = { ...finalColumns[durationColIndex], order: 'asc' }
+      }
+      // 如果 'duration' 列不存在，可以考虑给其他列如 'title' 设置默认排序 (这里保留，以防万一)
+      else {
+        const titleColIndex = finalColumns.findIndex((col) => col.key === 'title')
+        if (titleColIndex !== -1) {
+          finalColumns[titleColIndex] = { ...finalColumns[titleColIndex], order: 'asc' }
+        }
+      }
     }
 
-    return parsedData.map((col: ISongsAreaColumn) =>
-      col.key === 'artist' ? { ...col, order: 'asc' } : col
-    )
+    // --- 返回最终的列配置 ---
+    return finalColumns
   })()
 )
 
