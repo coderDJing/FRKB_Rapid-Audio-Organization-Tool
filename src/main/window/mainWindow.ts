@@ -431,39 +431,101 @@ function createWindow() {
     }
   })
 
+  // 辅助函数：检查目录是否有效为空（递归检查是否包含音频文件）
+  async function isDirectoryEffectivelyEmpty(
+    dirPath: string,
+    audioExtensions: string[]
+  ): Promise<boolean> {
+    try {
+      // 首先检查路径是否存在
+      if (!(await fs.pathExists(dirPath))) {
+        return true // 不存在的目录视为空
+      }
+      const items = await fs.readdir(dirPath, { withFileTypes: true })
+      for (const item of items) {
+        const fullPath = path.join(dirPath, item.name)
+        if (item.isFile()) {
+          // 检查是否为音频文件
+          const lowerExt = path.extname(item.name).toLowerCase()
+          if (audioExtensions.includes(lowerExt)) {
+            return false // 发现音频文件，非空
+          }
+          // 忽略 .description.json 和其他非音频文件
+        } else if (item.isDirectory()) {
+          // 递归检查子目录
+          if (!(await isDirectoryEffectivelyEmpty(fullPath, audioExtensions))) {
+            return false // 在子目录中发现音频文件
+          }
+        }
+      }
+      return true // 未发现音频文件
+    } catch (error) {
+      console.error(`Error checking directory emptiness for ${dirPath}:`, error)
+      // 如果发生错误（例如权限问题），保守地认为它非空
+      // 但如果是 ENOENT（文件不存在），则视为空
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return true
+      }
+      return false
+    }
+  }
+
   ipcMain.handle('operateFileSystemChange', async (e, operateArray: FileSystemOperation[]) => {
+    const results = []
     try {
       for (let item of operateArray) {
+        let operationStatus = 'processed' // Default status
+        let recycleBinInfo = null
+
         if (item.type === 'create') {
-          await operateHiddenFile(
-            path.join(store.databaseDir, item.path, '.description.json'),
-            async () => {
-              fs.outputJSON(path.join(store.databaseDir, item.path, '.description.json'), {
-                uuid: item.uuid,
-                type: item.nodeType,
-                order: item.order
-              })
-            }
-          )
+          const createPath = path.join(store.databaseDir, item.path)
+          await operateHiddenFile(path.join(createPath, '.description.json'), async () => {
+            await fs.ensureDir(path.dirname(createPath))
+            await fs.ensureDir(createPath)
+            await fs.outputJSON(path.join(createPath, '.description.json'), {
+              uuid: item.uuid,
+              type: item.nodeType,
+              order: item.order
+            })
+          })
+          operationStatus = 'created'
         } else if (item.type === 'reorder') {
           await operateHiddenFile(
             path.join(store.databaseDir, item.path, '.description.json'),
             async () => {
-              fs.outputJSON(path.join(store.databaseDir, item.path, '.description.json'), {
+              let existingData = {}
+              try {
+                existingData = await fs.readJson(
+                  path.join(store.databaseDir, item.path, '.description.json')
+                )
+              } catch (readError) {
+                console.warn(
+                  `Could not read existing description for reorder: ${item.path}`,
+                  readError
+                )
+              }
+              await fs.outputJSON(path.join(store.databaseDir, item.path, '.description.json'), {
+                ...existingData,
                 uuid: item.uuid,
                 type: item.nodeType,
                 order: item.order
               })
             }
           )
+          operationStatus = 'reordered'
         } else if (item.type === 'rename') {
-          await fs.rename(
-            path.join(store.databaseDir, item.path),
-            path.join(
-              store.databaseDir,
-              item.path.slice(0, item.path.lastIndexOf('/') + 1) + item.newName
-            )
+          const oldFullPath = path.join(store.databaseDir, item.path)
+          const newFullPath = path.join(
+            store.databaseDir,
+            item.path.slice(0, item.path.lastIndexOf('/') + 1) + item.newName
           )
+          if (await fs.pathExists(oldFullPath)) {
+            await fs.rename(oldFullPath, newFullPath)
+            operationStatus = 'renamed'
+          } else {
+            console.warn(`Rename source path not found: ${oldFullPath}`)
+            operationStatus = 'rename_failed_source_not_found'
+          }
         } else if (item.type === 'delete' && item.recycleBinDir) {
           let dirPath = path.join(store.databaseDir, item.path)
           const recycleBinTargetDir = path.join(
@@ -473,51 +535,105 @@ function createWindow() {
             item.recycleBinDir.dirName
           )
 
-          // 读取目录内容
-          const items = await fs.readdir(dirPath)
-          const promises = []
-          // 遍历并移动文件/文件夹
-          for (const item of items) {
-            if (item !== '.description.json') {
-              const srcPath = path.join(dirPath, item)
-              const destPath = path.join(recycleBinTargetDir, item)
-              promises.push(fs.move(srcPath, destPath))
-            }
-          }
-          await Promise.all(promises)
-          await fs.remove(dirPath)
-          if (promises.length > 0) {
-            let descriptionJson = {
-              uuid: item.recycleBinDir.uuid,
-              type: 'songList',
-              order: item.recycleBinDir.order
-            }
-            await operateHiddenFile(
-              path.join(recycleBinTargetDir, '.description.json'),
-              async () => {
-                fs.outputJSON(path.join(recycleBinTargetDir, '.description.json'), descriptionJson)
+          // 检查目录是否有效为空
+          const isEmpty = await isDirectoryEffectivelyEmpty(dirPath, store.settingConfig.audioExt)
+
+          if (isEmpty) {
+            // 目录为空，直接永久删除
+            await fs.remove(dirPath)
+            console.log(`Directory ${item.path} is effectively empty, removed permanently.`)
+            operationStatus = 'removed'
+          } else {
+            // 目录非空，移动到回收站
+            try {
+              // 确保回收站目标目录存在
+              await fs.ensureDir(recycleBinTargetDir)
+              // 读取源目录所有内容
+              const itemsToMove = await fs.readdir(dirPath)
+              const promises = []
+              for (const dirItem of itemsToMove) {
+                // 不移动根目录下的 .description.json 文件本身
+                if (dirItem !== '.description.json') {
+                  const srcPath = path.join(dirPath, dirItem)
+                  const destPath = path.join(recycleBinTargetDir, dirItem)
+                  // 移动文件或文件夹，允许覆盖
+                  promises.push(fs.move(srcPath, destPath, { overwrite: true }))
+                }
               }
-            )
+              // 等待所有移动操作完成
+              await Promise.all(promises)
+              // 移动完成后删除空的源目录（此时应该只剩 .description.json 或完全为空）
+              await fs.remove(dirPath)
+
+              // 创建回收站描述文件 (.description.json)
+              let descriptionJson = {
+                uuid: item.recycleBinDir.uuid,
+                type: item.recycleBinDir.type, // 应为 'songList'
+                order: item.recycleBinDir.order
+              }
+              await operateHiddenFile(
+                path.join(recycleBinTargetDir, '.description.json'),
+                async () => {
+                  await fs.outputJSON(
+                    path.join(recycleBinTargetDir, '.description.json'),
+                    descriptionJson
+                  )
+                }
+              )
+              operationStatus = 'recycled'
+              recycleBinInfo = item.recycleBinDir // 存储回收站信息以返回
+            } catch (moveError) {
+              console.error(`Error moving ${item.path} to recycle bin:`, moveError)
+              // 尝试清理：如果移动失败，仍然尝试删除原始目录
+              await fs.remove(dirPath).catch((cleanupError) => {
+                console.error(
+                  `Failed to cleanup original directory ${dirPath} after move error:`,
+                  cleanupError
+                )
+              })
+              operationStatus = 'recycle_failed'
+            }
           }
         } else if (item.type === 'permanentlyDelete') {
           await fs.remove(path.join(store.databaseDir, item.path))
+          operationStatus = 'permanently_deleted'
         } else if (item.type === 'move') {
           const srcFullPath = path.join(store.databaseDir, item.path)
           const destFullPath = path.join(store.databaseDir, item.newPath as string)
-          await fs.move(srcFullPath, destFullPath)
-          await operateHiddenFile(path.join(destFullPath, '.description.json'), async () => {
-            fs.outputJSON(path.join(destFullPath, '.description.json'), {
-              uuid: item.uuid,
-              type: item.nodeType,
-              order: item.order
+
+          if (await fs.pathExists(srcFullPath)) {
+            await fs.ensureDir(path.dirname(destFullPath))
+            await fs.move(srcFullPath, destFullPath, { overwrite: true })
+            await operateHiddenFile(path.join(destFullPath, '.description.json'), async () => {
+              let existingData = {}
+              try {
+                existingData = await fs.readJson(path.join(destFullPath, '.description.json'))
+              } catch (readError) {
+                console.warn(
+                  `Could not read existing description for move dest: ${destFullPath}`,
+                  readError
+                )
+              }
+              await fs.outputJSON(path.join(destFullPath, '.description.json'), {
+                ...existingData,
+                uuid: item.uuid,
+                type: item.nodeType,
+                order: item.order
+              })
             })
-          })
+            operationStatus = 'moved'
+          } else {
+            console.warn(`Move source path not found: ${srcFullPath}`)
+            operationStatus = 'move_failed_source_not_found'
+          }
         }
+
+        results.push({ uuid: item.uuid, status: operationStatus, recycleBinDir: recycleBinInfo })
       }
-      return true
+      return { success: true, details: results }
     } catch (error) {
       console.error('operateFileSystemChange error:', error)
-      return false
+      return { success: false, error: (error as Error).message, details: results }
     }
   })
 
@@ -534,6 +650,7 @@ function createWindow() {
     ipcMain.removeHandler('reSelectLibrary')
     ipcMain.removeHandler('emptyDir')
     ipcMain.removeHandler('emptyRecycleBin')
+    ipcMain.removeHandler('operateFileSystemChange')
     globalShortcut.unregister(store.settingConfig.globalCallShortcut)
     mainWindow = null
   })
