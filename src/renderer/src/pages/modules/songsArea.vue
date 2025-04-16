@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { watch, ref, nextTick, computed, onMounted, Ref, useTemplateRef } from 'vue'
+import {
+  watch,
+  ref,
+  nextTick,
+  computed,
+  onMounted,
+  Ref,
+  useTemplateRef,
+  ComponentInternalInstance
+} from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { UseDraggableOptions, vDraggable } from 'vue-draggable-plus'
@@ -21,6 +30,9 @@ import descendingOrder from '@renderer/assets/descending-order.png?asset'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
 
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
+
+// 类型定义，以便正确引用 OverlayScrollbarsComponent 实例
+type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
 
 // 用于标识当前有效的封面加载任务
 const coverLoadTaskId = ref(0)
@@ -352,9 +364,15 @@ function stopResize(e: MouseEvent) {
 
 const colRightClickMenuShow = ref(false)
 const colRightClickEvent = ref({ x: 0, y: 0 })
+
+// 将 songsAreaRef 的类型显式定义为 OverlayScrollbarsComponentRef
+const songsAreaRef = useTemplateRef<OverlayScrollbarsComponentRef>('songsAreaRef')
+
 const contextmenuEvent = (event: MouseEvent) => {
-  if (songsAreaRef.value) {
-    const parentRect = songsAreaRef.value.getBoundingClientRect()
+  // 尝试通过 OverlayScrollbars 实例获取 host 元素的边界
+  const hostElement = songsAreaRef.value?.osInstance()?.elements().host
+  if (hostElement) {
+    const parentRect = hostElement.getBoundingClientRect()
     const absoluteX = event.clientX
     const absoluteY = event.clientY
 
@@ -447,7 +465,6 @@ const menuArr = ref<IMenu[][]>([
   [{ menuName: '删除曲目', shortcutKey: 'Delete' }, { menuName: '删除上方所有曲目' }]
 ])
 
-const songsAreaRef = useTemplateRef('songsAreaRef')
 const songContextmenu = async (event: MouseEvent, song: ISongInfo) => {
   if (runtime.songsArea.selectedSongFilePath.indexOf(song.filePath) === -1) {
     runtime.songsArea.selectedSongFilePath = [song.filePath]
@@ -512,9 +529,15 @@ const songContextmenu = async (event: MouseEvent, song: ISongInfo) => {
       ) {
         runtime.playingData.playingSong = null
       }
-      songsAreaRef.value?.scrollTo({
-        top: 0,
-        behavior: 'smooth'
+      // 使用 OverlayScrollbars viewport 的原生 scrollTo 方法
+      nextTick(() => {
+        // 确保在 DOM 更新后执行
+        const viewport = songsAreaRef.value?.osInstance()?.elements().viewport
+        if (viewport) {
+          viewport.scrollTo({ top: 0, behavior: 'smooth' })
+        } else {
+          console.warn('OverlayScrollbars viewport element not available.')
+        }
       })
     } else if (result.menuName === '删除曲目') {
       deleteSong()
@@ -780,7 +803,17 @@ const colMenuClick = (col: ISongsAreaColumn) => {
 //todo 拖拽文件出窗口
 </script>
 <template>
-  <div style="width: 100%; height: 100%; min-width: 0; overflow: hidden; position: relative">
+  <div
+    style="
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    "
+  >
     <div
       v-show="!loadingShow && !runtime.songsArea.songListUUID"
       class="unselectable welcomeContainer"
@@ -793,6 +826,61 @@ const colMenuClick = (col: ISongsAreaColumn) => {
     >
       <div class="loading"></div>
     </div>
+
+    <!-- 将表头移到 OverlayScrollbarsComponent 外部 -->
+    <div
+      v-if="runtime.songsArea.songListUUID && !loadingShow"
+      @contextmenu.stop="contextmenuEvent"
+      class="songItem lightBackground"
+      style="
+        position: sticky;
+        top: 0;
+        z-index: 10; /* 确保表头在上方 */
+        flex-shrink: 0; /* 防止表头被压缩 */
+      "
+      v-draggable="vDraggableData"
+    >
+      <div
+        class="coverDiv lightBackground unselectable"
+        v-for="col of columnDataArr"
+        :key="col.key"
+        :class="{ coverDiv: col.key == 'coverUrl', titleDiv: col.key != 'coverUrl' }"
+        :style="'width:' + col.width + 'px'"
+        style="
+          border-right: 1px solid #2b2b2b; /* 使用深色边框 */
+          padding-left: 10px;
+          box-sizing: border-box;
+          display: flex;
+          border-bottom: 1px solid #2b2b2b; /* 添加底边框 */
+        "
+        @click="colMenuClick(col)"
+      >
+        <div style="flex-grow: 1; overflow: hidden">
+          <div
+            style="width: 0; white-space: nowrap; display: flex; align-items: center"
+            :style="{ color: col.order ? '#0078d4' : '#cccccc' }"
+          >
+            {{ t(col.columnName)
+            }}<img
+              :src="ascendingOrder"
+              style="width: 20px; height: 20px"
+              v-show="col.order === 'asc'"
+            /><img
+              :src="descendingOrder"
+              style="width: 20px; height: 20px"
+              v-show="col.order === 'desc'"
+            />
+          </div>
+        </div>
+        <div
+          v-if="col.key !== 'coverUrl'"
+          style="width: 5px; cursor: e-resize"
+          @mousedown="startResize($event, col)"
+        ></div>
+      </div>
+    </div>
+
+    <!-- OverlayScrollbarsComponent 只包裹可滚动内容 -->
     <OverlayScrollbarsComponent
       v-if="runtime.songsArea.songListUUID && !loadingShow"
       :options="{
@@ -807,128 +895,81 @@ const colMenuClick = (col: ISongsAreaColumn) => {
         }
       }"
       element="div"
-      style="height: 100%; width: 100%; position: relative"
+      style="flex-grow: 1; /* 占据剩余空间 */ position: relative; height: 0; /* 配合 flex-grow */"
       defer
+      ref="songsAreaRef"
+      @click="runtime.songsArea.selectedSongFilePath.length = 0"
     >
-      <div
-        ref="songsAreaRef"
-        style="height: 100%; width: 100%"
-        @click="runtime.songsArea.selectedSongFilePath.length = 0"
-      >
+      <div v-show="runtime.songsArea.songInfoArr.length != 0">
         <div
-          @contextmenu.stop="contextmenuEvent"
-          class="songItem lightBackground"
-          style="position: sticky; top: 0"
-          v-draggable="vDraggableData"
+          v-for="(item, index) of runtime.songsArea.songInfoArr"
+          :key="item.filePath"
+          class="songItem unselectable"
+          @click.stop="songClick($event, item)"
+          @contextmenu.stop="songContextmenu($event, item)"
+          @dblclick.stop="songDblClick(item)"
         >
           <div
-            class="coverDiv lightBackground unselectable"
-            v-for="col of columnDataArr"
-            :key="col.key"
-            :class="{ coverDiv: col.key == 'coverUrl', titleDiv: col.key != 'coverUrl' }"
-            :style="'width:' + col.width + 'px'"
-            style="
-              border-right: 1px solid #000000;
-              padding-left: 10px;
-              box-sizing: border-box;
-              display: flex;
-            "
-            @click="colMenuClick(col)"
+            :class="{
+              lightBackground:
+                index % 2 === 1 &&
+                runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) === -1,
+              darkBackground:
+                index % 2 === 0 &&
+                runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) === -1,
+              selectedSong: runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) !== -1,
+              playingSong: item.filePath === runtime.playingData.playingSong?.filePath
+            }"
+            style="display: flex"
           >
-            <div style="flex-grow: 1; overflow: hidden">
-              <div
-                style="width: 0; white-space: nowrap; display: flex; align-items: center"
-                :style="{ color: col.order ? '#0078d4' : '#cccccc' }"
-              >
-                {{ t(col.columnName)
-                }}<img
-                  :src="ascendingOrder"
-                  style="width: 20px; height: 20px"
-                  v-show="col.order === 'asc'"
-                /><img
-                  :src="descendingOrder"
-                  style="width: 20px; height: 20px"
-                  v-show="col.order === 'desc'"
-                />
-              </div>
-            </div>
-            <div
-              v-if="col.key !== 'coverUrl'"
-              style="width: 5px; cursor: e-resize"
-              @mousedown="startResize($event, col)"
-            ></div>
-          </div>
-        </div>
-        <div v-show="runtime.songsArea.songInfoArr.length != 0">
-          <div
-            v-for="(item, index) of runtime.songsArea.songInfoArr"
-            :key="item.filePath"
-            class="songItem unselectable"
-            @click.stop="songClick($event, item)"
-            @contextmenu.stop="songContextmenu($event, item)"
-            @dblclick.stop="songDblClick(item)"
-          >
-            <div
-              :class="{
-                lightBackground:
-                  index % 2 === 1 &&
-                  runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) === -1,
-                darkBackground:
-                  index % 2 === 0 &&
-                  runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) === -1,
-                selectedSong: runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) !== -1,
-                playingSong: item.filePath === runtime.playingData.playingSong?.filePath
-              }"
-              style="display: flex"
-            >
-              <template v-for="col of columnDataArr" :key="col.key">
-                <template v-if="col.show">
-                  <div
-                    v-if="col.key == 'coverUrl'"
-                    class="coverDiv"
-                    style="overflow: hidden"
-                    :style="'width:' + col.width + 'px'"
-                  >
-                    <img :src="item.coverUrl" class="unselectable" />
-                  </div>
-                  <div
-                    v-else-if="col.key == 'index'"
-                    class="titleDiv"
-                    :style="'width:' + col.width + 'px'"
-                  >
-                    {{ index + 1 }}
-                  </div>
-                  <div v-else class="titleDiv" :style="'width:' + col.width + 'px'">
-                    {{ item[col.key as keyof ISongInfo] }}
-                  </div>
-                </template>
+            <template v-for="col of columnDataArr" :key="col.key">
+              <template v-if="col.show">
+                <div
+                  v-if="col.key == 'coverUrl'"
+                  class="coverDiv"
+                  style="overflow: hidden"
+                  :style="'width:' + col.width + 'px'"
+                >
+                  <img :src="item.coverUrl" class="unselectable" />
+                </div>
+                <div
+                  v-else-if="col.key == 'index'"
+                  class="titleDiv"
+                  :style="'width:' + col.width + 'px'"
+                >
+                  {{ index + 1 }}
+                </div>
+                <div v-else class="titleDiv" :style="'width:' + col.width + 'px'">
+                  {{ item[col.key as keyof ISongInfo] }}
+                </div>
               </template>
-            </div>
+            </template>
           </div>
         </div>
-        <div
-          v-show="
-            !isRequesting &&
-            runtime.songsArea.songListUUID &&
-            runtime.songsArea.songInfoArr.length === 0
-          "
-          style="
-            height: 80%;
-            width: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-            position: sticky;
-            left: 0;
-          "
-        >
-          <div style="font-size: 16px; color: #999999" class="unselectable">
-            {{ t('暂无曲目') }}
-          </div>
-          <div style="font-size: 12px; color: #999999; margin-top: 10px" class="unselectable">
-            {{ t('导入曲目到歌单中，或通过拖拽文件夹或音频文件进行导入。') }}
-          </div>
+      </div>
+      <div
+        v-show="
+          !isRequesting &&
+          runtime.songsArea.songListUUID &&
+          runtime.songsArea.songInfoArr.length === 0
+        "
+        style="
+          /* height: 80%; 移除固定高度百分比 */
+          min-height: 200px; /* 保证最小高度 */
+          width: 100%;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          flex-direction: column;
+          /* position: sticky; 移除 sticky */
+          left: 0;
+        "
+      >
+        <div style="font-size: 16px; color: #999999" class="unselectable">
+          {{ t('暂无曲目') }}
+        </div>
+        <div style="font-size: 12px; color: #999999; margin-top: 10px" class="unselectable">
+          {{ t('导入曲目到歌单中，或通过拖拽文件夹或音频文件进行导入。') }}
         </div>
       </div>
     </OverlayScrollbarsComponent>
@@ -967,7 +1008,7 @@ const colMenuClick = (col: ISongsAreaColumn) => {
   height: 29px;
   line-height: 30px;
   border-right: 1px solid #2b2b2b;
-  border-bottom: 1px solid #2b2b2b;
+  /* border-bottom: 1px solid #2b2b2b; 移除这里的 bottom border */
 
   img {
     width: 100%;
@@ -980,6 +1021,7 @@ const colMenuClick = (col: ISongsAreaColumn) => {
   padding-left: 10px;
   box-sizing: border-box;
   border-right: 1px solid #2b2b2b;
+  /* border-bottom: 1px solid #2b2b2b; 移除这里的 bottom border */
   white-space: nowrap;
   overflow: hidden;
 }
