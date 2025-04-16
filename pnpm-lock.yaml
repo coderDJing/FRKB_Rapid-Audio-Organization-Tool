@@ -63,8 +63,8 @@ importers:
         specifier: ^0.5.3
         version: 0.5.6(@types/sortablejs@1.15.8)
       wavesurfer.js:
-        specifier: ^7.8.6
-        version: 7.9.1
+        specifier: ^7.9.4
+        version: 7.9.4
     devDependencies:
       '@electron-toolkit/eslint-config-prettier':
         specifier: 3.0.0
@@ -3152,8 +3152,8 @@ packages:
   wav@1.0.2:
     resolution: {integrity: sha512-viHtz3cDd/Tcr/HbNqzQCofKdF6kWUymH9LGDdskfWFoIy/HJ+RTihgjEcHfnsy1PO4e9B+y4HwgTwMrByquhg==}
 
-  wavesurfer.js@7.9.1:
-    resolution: {integrity: sha512-+pG8X9c9BrfAW8KR54OPzZcAj/57sOL08He/tc6/7Mt6NCX3IfDFwexQxXVTILggGZUOUk7tFKfny32yGrysKA==}
+  wavesurfer.js@7.9.4:
+    resolution: {integrity: sha512-ahOMvrOKo5jULNnXq8Ske8v/ZStoNNTDjYohvgLNerUFuh+6fJSt7wlxFesEXmnlcTnjMy5/tIzhn9KusjO6bg==}
 
   wcwidth@1.0.1:
     resolution: {integrity: sha512-XHPEwS0q6TaxcvG85+8EYkbiCux2XtWG2mkc47Ng2A77BQu9+DqIOJldST4HgPkuea7dvKSj5VgX3P1d4rW8Tg==}
@@ -6398,7 +6398,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  wavesurfer.js@7.9.1: {}
+  wavesurfer.js@7.9.4: {}
 
   wcwidth@1.0.1:
     dependencies:
