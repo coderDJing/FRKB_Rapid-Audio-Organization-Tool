@@ -913,7 +913,8 @@ const colMenuClick = (col: ISongsAreaColumn) => {
                   style="overflow: hidden"
                   :style="'width:' + col.width + 'px'"
                 >
-                  <img :src="item.coverUrl" class="unselectable" />
+                  <img v-if="item.coverUrl" :src="item.coverUrl" class="unselectable" />
+                  <div v-else class="cover-placeholder"></div>
                 </div>
                 <div
                   v-else-if="col.key == 'index'"
@@ -1010,6 +1011,11 @@ const colMenuClick = (col: ISongsAreaColumn) => {
     /* 控制图片缩放方式 */
     display: block;
     /* 移除图片下方可能的空隙 */
+  }
+
+  .cover-placeholder {
+    width: 100%;
+    height: 100%;
   }
 }
 
