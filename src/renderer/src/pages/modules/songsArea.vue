@@ -803,17 +803,7 @@ const colMenuClick = (col: ISongsAreaColumn) => {
 //todo 拖拽文件出窗口
 </script>
 <template>
-  <div
-    style="
-      width: 100%;
-      height: 100%;
-      min-width: 0;
-      overflow: hidden;
-      position: relative;
-      display: flex;
-      flex-direction: column;
-    "
-  >
+  <div style="width: 100%; height: 100%; min-width: 0; overflow: hidden; position: relative">
     <div
       v-show="!loadingShow && !runtime.songsArea.songListUUID"
       class="unselectable welcomeContainer"
@@ -827,60 +817,6 @@ const colMenuClick = (col: ISongsAreaColumn) => {
       <div class="loading"></div>
     </div>
 
-    <!-- 将表头移到 OverlayScrollbarsComponent 外部 -->
-    <div
-      v-if="runtime.songsArea.songListUUID && !loadingShow"
-      @contextmenu.stop="contextmenuEvent"
-      class="songItem lightBackground"
-      style="
-        position: sticky;
-        top: 0;
-        z-index: 10; /* 确保表头在上方 */
-        flex-shrink: 0; /* 防止表头被压缩 */
-      "
-      v-draggable="vDraggableData"
-    >
-      <div
-        class="coverDiv lightBackground unselectable"
-        v-for="col of columnDataArr"
-        :key="col.key"
-        :class="{ coverDiv: col.key == 'coverUrl', titleDiv: col.key != 'coverUrl' }"
-        :style="'width:' + col.width + 'px'"
-        style="
-          border-right: 1px solid #2b2b2b; /* 使用深色边框 */
-          padding-left: 10px;
-          box-sizing: border-box;
-          display: flex;
-          border-bottom: 1px solid #2b2b2b; /* 添加底边框 */
-        "
-        @click="colMenuClick(col)"
-      >
-        <div style="flex-grow: 1; overflow: hidden">
-          <div
-            style="width: 0; white-space: nowrap; display: flex; align-items: center"
-            :style="{ color: col.order ? '#0078d4' : '#cccccc' }"
-          >
-            {{ t(col.columnName)
-            }}<img
-              :src="ascendingOrder"
-              style="width: 20px; height: 20px"
-              v-show="col.order === 'asc'"
-            /><img
-              :src="descendingOrder"
-              style="width: 20px; height: 20px"
-              v-show="col.order === 'desc'"
-            />
-          </div>
-        </div>
-        <div
-          v-if="col.key !== 'coverUrl'"
-          style="width: 5px; cursor: e-resize"
-          @mousedown="startResize($event, col)"
-        ></div>
-      </div>
-    </div>
-
-    <!-- OverlayScrollbarsComponent 只包裹可滚动内容 -->
     <OverlayScrollbarsComponent
       v-if="runtime.songsArea.songListUUID && !loadingShow"
       :options="{
@@ -895,11 +831,58 @@ const colMenuClick = (col: ISongsAreaColumn) => {
         }
       }"
       element="div"
-      style="flex-grow: 1; /* 占据剩余空间 */ position: relative; height: 0; /* 配合 flex-grow */"
+      style="height: 100%; width: 100%; position: relative"
       defer
       ref="songsAreaRef"
       @click="runtime.songsArea.selectedSongFilePath.length = 0"
     >
+      <div
+        @contextmenu.stop="contextmenuEvent"
+        class="songItem lightBackground"
+        style="
+          position: sticky;
+          top: 0;
+          z-index: 10;
+          background-color: #191919;
+          border-bottom: 1px solid #2b2b2b;
+        "
+        v-draggable="vDraggableData"
+      >
+        <div
+          class="coverDiv lightBackground unselectable"
+          v-for="col of columnDataArr"
+          :key="col.key"
+          :class="{ coverDiv: col.key == 'coverUrl', titleDiv: col.key != 'coverUrl' }"
+          :style="'width:' + col.width + 'px'"
+          style="padding-left: 10px; box-sizing: border-box; display: flex; align-items: center"
+          @click="colMenuClick(col)"
+        >
+          <div style="flex-grow: 1; overflow: hidden">
+            <div
+              style="width: 0; white-space: nowrap; display: flex; align-items: center"
+              :style="{ color: col.order ? '#0078d4' : '#cccccc' }"
+            >
+              {{ t(col.columnName)
+              }}<img
+                :src="ascendingOrder"
+                style="width: 20px; height: 20px"
+                v-show="col.order === 'asc'"
+              /><img
+                :src="descendingOrder"
+                style="width: 20px; height: 20px"
+                v-show="col.order === 'desc'"
+              />
+            </div>
+          </div>
+          <div
+            v-if="col.key !== 'coverUrl'"
+            style="width: 5px; cursor: e-resize; flex-shrink: 0; height: 100%"
+            @mousedown="startResize($event, col)"
+          ></div>
+        </div>
+      </div>
+
+      <!-- Scrollable Content -->
       <div v-show="runtime.songsArea.songInfoArr.length != 0">
         <div
           v-for="(item, index) of runtime.songsArea.songInfoArr"
@@ -947,6 +930,7 @@ const colMenuClick = (col: ISongsAreaColumn) => {
           </div>
         </div>
       </div>
+      <!-- Empty State (现在也在滚动容器内) -->
       <div
         v-show="
           !isRequesting &&
@@ -954,15 +938,18 @@ const colMenuClick = (col: ISongsAreaColumn) => {
           runtime.songsArea.songInfoArr.length === 0
         "
         style="
-          /* height: 80%; 移除固定高度百分比 */
-          min-height: 200px; /* 保证最小高度 */
+          /* 可能需要调整空状态样式，因为它现在在滚动区内 */
+          min-height: 200px;
           width: 100%;
           display: flex;
           justify-content: center;
           align-items: center;
           flex-direction: column;
-          /* position: sticky; 移除 sticky */
-          left: 0;
+          /* 考虑是否需要绝对定位或特定内边距来使其居中 */
+          position: absolute; /* 让它脱离文档流，尝试居中 */
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
         "
       >
         <div style="font-size: 16px; color: #999999" class="unselectable">
@@ -1005,25 +992,44 @@ const colMenuClick = (col: ISongsAreaColumn) => {
 }
 
 .coverDiv {
-  height: 29px;
-  line-height: 30px;
+  height: 30px;
+  /* 统一高度 */
+  box-sizing: border-box;
+  /* 统一盒模型 */
   border-right: 1px solid #2b2b2b;
-  /* border-bottom: 1px solid #2b2b2b; 移除这里的 bottom border */
+  /* 确保右边框 */
+  border-bottom: 1px solid #2b2b2b;
+  /* 数据单元格需要底部边框 */
+  /* 注意：这里不添加 padding-left，让图片填充 */
 
   img {
     width: 100%;
+    height: 100%;
+    /* 让图片填充高度 */
+    object-fit: cover;
+    /* 控制图片缩放方式 */
+    display: block;
+    /* 移除图片下方可能的空隙 */
   }
 }
 
 .titleDiv {
   height: 30px;
-  line-height: 30px;
+  /* 统一高度 */
   padding-left: 10px;
+  /* 保留内边距 */
   box-sizing: border-box;
+  /* 统一盒模型 */
   border-right: 1px solid #2b2b2b;
-  /* border-bottom: 1px solid #2b2b2b; 移除这里的 bottom border */
+  /* 确保右边框 */
+  border-bottom: 1px solid #2b2b2b;
+  /* 数据单元格需要底部边框 */
   white-space: nowrap;
   overflow: hidden;
+  display: flex;
+  /* 使用 flex 垂直居中文本 */
+  align-items: center;
+  /* 使用 flex 垂直居中文本 */
 }
 
 .songItem {
