@@ -21,7 +21,8 @@ const createWindow = () => {
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: path.join(__dirname, '../preload/index'),
-      sandbox: false
+      sandbox: false,
+      backgroundThrottling: false
     }
   })
   if (!app.isPackaged) {
