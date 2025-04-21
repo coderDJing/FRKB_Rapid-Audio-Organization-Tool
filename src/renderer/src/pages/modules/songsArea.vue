@@ -913,7 +913,12 @@ const colMenuClick = (col: ISongsAreaColumn) => {
                   style="overflow: hidden"
                   :style="'width:' + col.width + 'px'"
                 >
-                  <img v-if="item.coverUrl" :src="item.coverUrl" class="unselectable" />
+                  <img
+                    v-if="item.coverUrl"
+                    :src="item.coverUrl"
+                    class="unselectable"
+                    draggable="false"
+                  />
                   <div v-else class="cover-placeholder"></div>
                 </div>
                 <div
