@@ -123,8 +123,14 @@ const isValidDrop = (
 
 // 处理拖拽悬停
 export const handleDragOver = (e: DragEvent, dirData: IDir | null, dragState: DragState): void => {
-  if (!dirData) return
   const runtime = useRuntimeStore()
+  // 如果正在拖动表头，则不允许放置并重置状态
+  if (runtime.dragTableHeader) {
+    e.dataTransfer!.dropEffect = 'none'
+    dragState.dragApproach = ''
+    return
+  }
+  if (!dirData) return
 
   // 重置状态
   dragState.dragApproach = ''
@@ -155,6 +161,11 @@ export const handleDragOver = (e: DragEvent, dirData: IDir | null, dragState: Dr
 
 // 处理拖拽进入
 export const handleDragEnter = (e: DragEvent, dirData: IDir | null, dragState: DragState): void => {
+  const runtime = useRuntimeStore()
+  // 如果正在拖动表头，则直接返回
+  if (runtime.dragTableHeader) {
+    return
+  }
   if (!dirData) return
   handleDragOver(e, dirData, dragState)
 }
@@ -271,8 +282,13 @@ export const handleDrop = async (
   dragState: DragState,
   fatherDirData: IDir | null
 ): Promise<boolean> => {
-  if (!dirData || !fatherDirData) return false
   const runtime = useRuntimeStore()
+  // 如果正在拖动表头，则阻止放置
+  if (runtime.dragTableHeader) {
+    dragState.dragApproach = '' // 确保状态被重置
+    return false
+  }
+  if (!dirData || !fatherDirData) return false
   const approach = dragState.dragApproach
   dragState.dragApproach = ''
 
