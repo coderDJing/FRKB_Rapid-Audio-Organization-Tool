@@ -18,6 +18,7 @@ let settingConfig: ISettingConfig = {
   globalCallShortcut: '',
   nextCheckUpdateTime: '',
   hiddenPlayControlArea: false,
+  autoPlayNextSong: false,
   fastForwardTime: 10,
   fastBackwardTime: -5,
   autoScrollToCurrentSong: true

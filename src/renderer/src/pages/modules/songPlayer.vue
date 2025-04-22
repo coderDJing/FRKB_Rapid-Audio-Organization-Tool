@@ -87,7 +87,11 @@ onMounted(() => {
       'timeupdate',
       (currentTime) => (timeEl.textContent = formatTime(currentTime))
     )
-    wavesurferInstance.on('finish', () => {})
+    wavesurferInstance.on('finish', () => {
+      if (runtime.setting.autoPlayNextSong) {
+        nextSong()
+      }
+    })
     wavesurferInstance.on('pause', () => {
       playerControlsRef.value?.setPlayingValue(false)
     })

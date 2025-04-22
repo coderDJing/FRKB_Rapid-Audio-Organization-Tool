@@ -125,6 +125,9 @@ const moveToListLibrary = () => {
 const exportTrack = () => {
   emits('exportTrack')
 }
+const showInFileExplorer = () => {
+  window.electron.ipcRenderer.send('show-item-in-folder', runtime.playingData.playingSong?.filePath)
+}
 </script>
 <template>
   <div
@@ -191,7 +194,7 @@ const exportTrack = () => {
           </div>
         </div>
       </div>
-      <div style="padding: 5px 5px">
+      <div style="padding: 5px 5px; border-bottom: 1px solid #454545">
         <div class="menuButton" @click="delSong()">
           <div>
             <span>{{ t('删除曲目') }} </span>
@@ -199,6 +202,11 @@ const exportTrack = () => {
           <div style="display: flex; align-items: center">
             <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>F</span>
           </div>
+        </div>
+      </div>
+      <div style="padding: 5px 5px">
+        <div class="menuButton" @click="showInFileExplorer()">
+          <span>{{ t('在文件资源浏览器中显示') }}</span>
         </div>
       </div>
     </div>

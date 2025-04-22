@@ -52,6 +52,7 @@ interface ISettingConfig {
   globalCallShortcut: string
   nextCheckUpdateTime: string
   hiddenPlayControlArea: boolean
+  autoPlayNextSong: boolean
   fastForwardTime: number
   fastBackwardTime: number
   autoScrollToCurrentSong: boolean
