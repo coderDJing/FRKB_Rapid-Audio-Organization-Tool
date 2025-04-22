@@ -61,7 +61,8 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
       platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
     hiddenPlayControlArea: false,
     fastForwardTime: 10,
-    fastBackwardTime: -5
+    fastBackwardTime: -5,
+    autoScrollToCurrentSong: true
   })
 }
 

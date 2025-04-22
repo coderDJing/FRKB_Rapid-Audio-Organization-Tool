@@ -54,6 +54,7 @@ interface ISettingConfig {
   hiddenPlayControlArea: boolean
   fastForwardTime: number
   fastBackwardTime: number
+  autoScrollToCurrentSong: boolean
 }
 
 interface ILanguageDict {

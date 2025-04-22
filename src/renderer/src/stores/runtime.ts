@@ -81,7 +81,8 @@ export const useRuntimeStore = defineStore('runtime', {
         nextCheckUpdateTime: '',
         hiddenPlayControlArea: false,
         fastForwardTime: 10,
-        fastBackwardTime: -5
+        fastBackwardTime: -5,
+        autoScrollToCurrentSong: true
       } //设置
     }
   }

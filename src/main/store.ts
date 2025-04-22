@@ -19,7 +19,8 @@ let settingConfig: ISettingConfig = {
   nextCheckUpdateTime: '',
   hiddenPlayControlArea: false,
   fastForwardTime: 10,
-  fastBackwardTime: -5
+  fastBackwardTime: -5,
+  autoScrollToCurrentSong: true
 } //设置config
 let analyseSongPort: string = ''
 export default {

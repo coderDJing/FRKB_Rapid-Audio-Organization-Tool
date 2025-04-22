@@ -621,14 +621,16 @@ const selectSongListDialogConfirm = async (songListUUID: string) => {
 watch(
   () => runtime.playingData.playingSong,
   async () => {
-    if (runtime.playingData.playingSong !== null) {
-      if (runtime.songsArea.songListUUID === runtime.playingData.playingSongListUUID) {
-        nextTick(() => {
-          let playingDom = document.querySelector('.playingSong')
-          if (playingDom) {
-            playingDom.scrollIntoView({ behavior: 'smooth', block: 'center' })
-          }
-        })
+    if (runtime.setting.autoScrollToCurrentSong) {
+      if (runtime.playingData.playingSong !== null) {
+        if (runtime.songsArea.songListUUID === runtime.playingData.playingSongListUUID) {
+          nextTick(() => {
+            let playingDom = document.querySelector('.playingSong')
+            if (playingDom) {
+              playingDom.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            }
+          })
+        }
       }
     }
     if (
