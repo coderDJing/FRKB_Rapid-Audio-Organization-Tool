@@ -462,7 +462,8 @@ const songClick = (event: MouseEvent, song: ISongInfo) => {
 const menuArr = ref<IMenu[][]>([
   [{ menuName: '导出曲目' }],
   [{ menuName: '移动到筛选库' }, { menuName: '移动到精选库' }],
-  [{ menuName: '删除曲目', shortcutKey: 'Delete' }, { menuName: '删除上方所有曲目' }]
+  [{ menuName: '删除曲目', shortcutKey: 'Delete' }, { menuName: '删除上方所有曲目' }],
+  [{ menuName: '在文件资源浏览器中显示' }]
 ])
 
 const songContextmenu = async (event: MouseEvent, song: ISongInfo) => {
@@ -584,6 +585,8 @@ const songContextmenu = async (event: MouseEvent, song: ISongInfo) => {
           }
         }
       }
+    } else if (result.menuName === '在文件资源浏览器中显示') {
+      window.electron.ipcRenderer.send('show-item-in-folder', song.filePath)
     }
   }
 }
