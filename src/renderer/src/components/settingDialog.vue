@@ -227,6 +227,15 @@ if (!runtime.setting.fastBackwardTime) {
               />
               {{ t('秒') }}
             </div>
+            <div style="margin-top: 20px">
+              {{ t('切换歌曲时，自动滚动列表将当前歌曲置于视图中央') }}：
+            </div>
+            <div style="margin-top: 10px">
+              <singleCheckbox
+                v-model="runtime.setting.autoScrollToCurrentSong"
+                @change="extChange()"
+              />
+            </div>
             <div style="margin-top: 20px">{{ t('重新选择数据库所在位置') }}：</div>
             <div style="margin-top: 10px">
               <div
