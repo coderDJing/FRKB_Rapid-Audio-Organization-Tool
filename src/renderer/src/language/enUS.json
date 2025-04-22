@@ -168,5 +168,6 @@
   "名称不能包含以下字符: < > : \" / \\ | ? * 或控制字符": "Name cannot contain the following characters: < > : \" / \\ | ? * or control characters",
   "序号": "Index",
   "在文件资源浏览器中显示": "Show in File Explorer",
-  "切换歌曲时，自动滚动列表将当前歌曲置于视图中央": "Auto-center current song in list"
+  "切换歌曲时，自动滚动列表将当前歌曲置于视图中央": "Auto-center current song in list",
+  "自动播放下一曲": "Auto play next song"
 }

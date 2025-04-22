@@ -643,19 +643,24 @@ function createWindow() {
   })
 
   mainWindow.on('closed', () => {
-    ipcMain.removeHandler('toggle-maximize')
-    ipcMain.removeHandler('toggle-minimize')
-    ipcMain.removeHandler('toggle-close')
-    ipcMain.removeHandler('readSongFile')
-    ipcMain.removeHandler('addSongFingerprint')
-    ipcMain.removeHandler('startImportSongs')
+    // 使用 ipcMain.on 注册的事件
+    ipcMain.removeAllListeners('toggle-maximize')
+    ipcMain.removeAllListeners('toggle-minimize')
+    ipcMain.removeAllListeners('toggle-close')
+    ipcMain.removeAllListeners('readSongFile')
+    ipcMain.removeAllListeners('addSongFingerprint')
+    ipcMain.removeAllListeners('startImportSongs')
+    ipcMain.removeAllListeners('checkForUpdates')
+    ipcMain.removeAllListeners('openFileExplorer')
+    ipcMain.removeAllListeners('show-item-in-folder')
+
+    // 使用 ipcMain.handle 注册的事件
     ipcMain.removeHandler('changeGlobalShortcut')
-    ipcMain.removeHandler('checkForUpdates')
-    ipcMain.removeHandler('openFileExplorer')
     ipcMain.removeHandler('reSelectLibrary')
     ipcMain.removeHandler('emptyDir')
     ipcMain.removeHandler('emptyRecycleBin')
     ipcMain.removeHandler('operateFileSystemChange')
+
     globalShortcut.unregister(store.settingConfig.globalCallShortcut)
     mainWindow = null
   })

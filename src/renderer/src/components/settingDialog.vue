@@ -165,6 +165,10 @@ if (!runtime.setting.fastBackwardTime) {
                 <option value="enUS">English</option>
               </select>
             </div>
+            <div style="margin-top: 20px">{{ t('自动播放下一曲') }}：</div>
+            <div style="margin-top: 10px">
+              <singleCheckbox v-model="runtime.setting.autoPlayNextSong" @change="extChange()" />
+            </div>
             <div style="margin-top: 20px">{{ t('隐藏播放控制区域，显示更长的波形图') }}：</div>
             <div style="margin-top: 10px">
               <singleCheckbox
