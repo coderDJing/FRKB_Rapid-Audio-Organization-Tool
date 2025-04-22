@@ -638,6 +638,10 @@ function createWindow() {
     }
   })
 
+  ipcMain.on('show-item-in-folder', (e, filePath: string) => {
+    shell.showItemInFolder(filePath)
+  })
+
   mainWindow.on('closed', () => {
     ipcMain.removeHandler('toggle-maximize')
     ipcMain.removeHandler('toggle-minimize')
