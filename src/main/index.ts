@@ -60,6 +60,7 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
     globalCallShortcut:
       platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
     hiddenPlayControlArea: false,
+    autoPlayNextSong: false,
     fastForwardTime: 10,
     fastBackwardTime: -5,
     autoScrollToCurrentSong: true
