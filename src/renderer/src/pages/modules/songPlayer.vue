@@ -41,17 +41,17 @@ onMounted(() => {
   if (waveform.value === null) {
     throw new Error('waveform is null')
   }
+
   wavesurferInstance = WaveSurfer.create({
     container: waveform.value,
     waveColor: gradient,
     progressColor: progressGradient,
     barWidth: 2,
-    autoplay: true,
+    autoplay: false,
     // barAlign: 'bottom',
     height: 40
   })
 
-  // Hover effect
   // Hover effect
   {
     const hover = document.querySelector<HTMLElement>('#hover')
@@ -83,10 +83,9 @@ onMounted(() => {
       throw new Error('durationEl is null')
     }
     wavesurferInstance.on('decode', (duration) => (durationEl.textContent = formatTime(duration)))
-    wavesurferInstance.on(
-      'timeupdate',
-      (currentTime) => (timeEl.textContent = formatTime(currentTime))
-    )
+    wavesurferInstance.on('timeupdate', (currentTime) => {
+      return (timeEl.textContent = formatTime(currentTime))
+    })
     wavesurferInstance.on('finish', () => {
       if (runtime.setting.autoPlayNextSong) {
         nextSong()
@@ -174,6 +173,8 @@ window.electron.ipcRenderer.on('readedSongFile', async (event, audioData) => {
   waveformShow.value = true
   bpm.value = ''
   await wavesurferInstance?.loadBlob(blob)
+  play()
+
   const arrayBuffer = uint8Buffer.buffer
   const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
   realtimeBpm.analyzeFullBuffer(audioBuffer).then((topCandidates) => {
@@ -268,6 +269,20 @@ onMounted(() => {
       moveToLikeLibrary()
     }
   })
+
+  // 可能需要延迟获取宽度，等待 wavesurfer 渲染完成
+  setTimeout(updateWaveformWidth, 500) // 简单的延迟，或者监听 wavesurfer 的 ready 事件更好
+  window.addEventListener('resize', updateWaveformWidth) // 监听窗口大小变化
+
+  // 如果 wavesurferInstance 已经创建，监听其 ready 事件
+  if (wavesurferInstance) {
+    wavesurferInstance.on('ready', () => {
+      updateWaveformWidth()
+      // 可以在这里再同步一次百分比，确保初始值正确
+      startHandleLeftPercent.value = runtime.setting.startPlayPercent ?? 0
+      endHandleLeftPercent.value = runtime.setting.endPlayPercent ?? 100
+    })
+  }
 })
 
 const play = () => {
@@ -285,7 +300,6 @@ const fastBackward = () => {
   wavesurferInstance?.skip(runtime.setting.fastBackwardTime)
 }
 
-// let nextSongDebounceTimeout = null
 const nextSong = () => {
   if (runtime.playingData.playingSong === null) {
     throw new Error('playingData.playingSong is null')
@@ -297,15 +311,9 @@ const nextSong = () => {
     return
   }
   runtime.playingData.playingSong = runtime.playingData.playingSongListData[index + 1]
-  // if (nextSongDebounceTimeout !== null) {
-  //   clearTimeout(nextSongDebounceTimeout)
-  // }
-  // nextSongDebounceTimeout = setTimeout(() => {
   window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
-  // }, 300)
 }
 
-// let previousSongDebounceTimeout = null
 const previousSong = () => {
   if (runtime.playingData.playingSong === null) {
     throw new Error('playingData.playingSong is null')
@@ -317,12 +325,7 @@ const previousSong = () => {
     return
   }
   runtime.playingData.playingSong = runtime.playingData.playingSongListData[index - 1]
-  // if (previousSongDebounceTimeout !== null) {
-  //   clearTimeout(previousSongDebounceTimeout)
-  // }
-  // previousSongDebounceTimeout = setTimeout(() => {
   window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
-  // }, 300)
 }
 let showDelConfirm = false
 
@@ -450,6 +453,116 @@ const exportTrack = async () => {
 }
 
 const bpmDomRef = useTemplateRef('bpmDomRef')
+
+// 手动把手位置状态
+const startHandleRef = useTemplateRef<HTMLDivElement>('startHandleRef') // 获取 DOM 引用
+const endHandleRef = useTemplateRef<HTMLDivElement>('endHandleRef') // 获取 DOM 引用
+const startHandleLeftPercent = ref(0) // 初始为 0%
+const endHandleLeftPercent = ref(100) // 初始为 100%
+
+// --- 拖拽逻辑状态 ---
+const isDraggingStart = ref(false)
+const isDraggingEnd = ref(false)
+const dragStartX = ref(0)
+const waveformContainerWidth = ref(0)
+const startPercentAtDragStart = ref(0)
+const endPercentAtDragStart = ref(0)
+
+// --- 拖拽处理函数 ---
+
+// 获取波形容器宽度 (需要在 onMounted 和窗口 resize 时更新)
+const updateWaveformWidth = () => {
+  const waveformEl = wavesurferInstance?.getWrapper()
+  if (waveformEl) {
+    waveformContainerWidth.value = waveformEl.clientWidth
+  } else {
+    waveformContainerWidth.value = 0 // 重置以防万一
+  }
+}
+
+// 全局 mousemove 处理
+const handleGlobalMouseMove = (event: MouseEvent) => {
+  if (!isDraggingStart.value && !isDraggingEnd.value) return
+  if (waveformContainerWidth.value <= 0) {
+    return
+  }
+
+  const currentX = event.clientX
+  const deltaX = currentX - dragStartX.value
+  const deltaPercent = (deltaX / waveformContainerWidth.value) * 100
+
+  if (isDraggingStart.value) {
+    let newStartPercent = startPercentAtDragStart.value + deltaPercent
+    newStartPercent = Math.max(0, newStartPercent)
+    // 确保不小于结束把手位置减去 1%
+    newStartPercent = Math.min((runtime.setting.endPlayPercent ?? 100) - 1, newStartPercent)
+    runtime.setting.startPlayPercent = newStartPercent
+  } else if (isDraggingEnd.value) {
+    let newEndPercent = endPercentAtDragStart.value + deltaPercent
+    // 确保不小于起始把手位置加上 1%
+    newEndPercent = Math.max((runtime.setting.startPlayPercent ?? 0) + 1, newEndPercent)
+    newEndPercent = Math.min(100, newEndPercent)
+    runtime.setting.endPlayPercent = newEndPercent
+  }
+}
+
+// 全局 mouseup 处理
+const handleGlobalMouseUp = () => {
+  if (isDraggingStart.value || isDraggingEnd.value) {
+    isDraggingStart.value = false
+    isDraggingEnd.value = false
+    window.removeEventListener('mousemove', handleGlobalMouseMove)
+    window.removeEventListener('mouseup', handleGlobalMouseUp)
+  }
+}
+
+// 把手 mousedown 处理
+const handleMouseDown = (event: MouseEvent, handleType: 'start' | 'end') => {
+  event.preventDefault()
+  event.stopPropagation()
+
+  updateWaveformWidth() // 确保获取最新宽度
+  if (waveformContainerWidth.value <= 0) {
+    return
+  }
+
+  dragStartX.value = event.clientX
+  startPercentAtDragStart.value = runtime.setting.startPlayPercent ?? 0
+  endPercentAtDragStart.value = runtime.setting.endPlayPercent ?? 100
+
+  if (handleType === 'start') {
+    isDraggingStart.value = true
+  } else {
+    isDraggingEnd.value = true
+  }
+
+  window.addEventListener('mousemove', handleGlobalMouseMove)
+  window.addEventListener('mouseup', handleGlobalMouseUp)
+}
+
+// 监听 setting 百分比变化，更新把手位置
+watch(
+  () => [runtime.setting.startPlayPercent, runtime.setting.endPlayPercent],
+  ([start, end]) => {
+    startHandleLeftPercent.value = start ?? 0
+    endHandleLeftPercent.value = end ?? 100
+  },
+  { immediate: true }
+) // immediate: true 确保初始加载时也执行一次
+
+// 当波形图显示/隐藏时，也同步一次状态（或根据需要处理）
+watch(waveformShow, (isVisible) => {
+  if (isVisible) {
+    nextTick(() => {
+      // 确保 DOM 更新后再获取宽度
+      updateWaveformWidth()
+      startHandleLeftPercent.value = runtime.setting.startPlayPercent ?? 0
+      endHandleLeftPercent.value = runtime.setting.endPlayPercent ?? 100
+    })
+  } else {
+    // 可选：隐藏时重置或保持状态
+  }
+})
 </script>
 <template>
   <div
@@ -523,12 +636,26 @@ const bpmDomRef = useTemplateRef('bpmDomRef')
       />
     </div>
 
-    <div style="flex-grow: 1" class="unselectable">
+    <div style="flex-grow: 1; position: relative" class="unselectable">
       <div id="waveform" ref="waveform" v-show="waveformShow">
         <div id="time">0:00</div>
         <div id="duration">0:00</div>
         <div id="hover"></div>
       </div>
+      <div
+        v-show="waveformShow && runtime.setting.enablePlaybackRange"
+        class="manual-handle start-handle"
+        ref="startHandleRef"
+        :style="{ left: startHandleLeftPercent + '%' }"
+        @mousedown="(event) => handleMouseDown(event, 'start')"
+      ></div>
+      <div
+        v-show="waveformShow && runtime.setting.enablePlaybackRange"
+        class="manual-handle end-handle"
+        ref="endHandleRef"
+        :style="{ left: endHandleLeftPercent + '%' }"
+        @mousedown="(event) => handleMouseDown(event, 'end')"
+      ></div>
     </div>
     <div
       class="unselectable"
@@ -647,5 +774,57 @@ const bpmDomRef = useTemplateRef('bpmDomRef')
 
 #duration {
   right: 0;
+}
+
+.manual-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  cursor: default;
+  z-index: 12;
+}
+
+.manual-handle::before,
+.manual-handle::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background-color: currentColor;
+  cursor: ew-resize;
+  opacity: 0.9;
+}
+
+.manual-handle::before {
+  top: 0;
+}
+.manual-handle::after {
+  bottom: 0;
+}
+
+.start-handle {
+  color: #2ecc71;
+  background-color: #2ecc71;
+}
+.start-handle::before,
+.start-handle::after {
+  right: 50%;
+}
+
+.end-handle {
+  color: #e74c3c;
+  background-color: #e74c3c;
+}
+.end-handle::before,
+.end-handle::after {
+  left: 50%;
+}
+
+.manual-handle:hover::before,
+.manual-handle:hover::after,
+.manual-handle.dragging::before,
+.manual-handle.dragging::after {
+  opacity: 1;
 }
 </style>
