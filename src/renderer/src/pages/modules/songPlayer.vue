@@ -83,10 +83,41 @@ onMounted(() => {
       throw new Error('durationEl is null')
     }
     wavesurferInstance.on('decode', (duration) => (durationEl.textContent = formatTime(duration)))
+
+    let previousTime = 0 // 用于跟踪上一次的时间
+    const jumpThreshold = 0.5 // 定义时间跳跃的阈值（秒）
+
     wavesurferInstance.on('timeupdate', (currentTime) => {
-      return (timeEl.textContent = formatTime(currentTime))
+      // 更新时间显示
+      timeEl.textContent = formatTime(currentTime)
+      const deltaTime = currentTime - previousTime
+
+      // 处理播放范围结束逻辑
+      if (runtime.setting.enablePlaybackRange && wavesurferInstance) {
+        const duration = wavesurferInstance.getDuration()
+        // 确保 endPlayPercent 有值，默认为 100
+        const endPercent = runtime.setting.endPlayPercent ?? 100
+        const endTime = (duration * endPercent) / 100
+
+        // 检查是否自然播放到达或超过了结束点（通过 deltaTime 判断是否为大跳跃）
+        if (
+          currentTime >= endTime &&
+          previousTime < endTime &&
+          wavesurferInstance.isPlaying() &&
+          deltaTime < jumpThreshold
+        ) {
+          if (runtime.setting.autoPlayNextSong) {
+            nextSong()
+          } else {
+            wavesurferInstance.pause()
+          }
+        }
+      }
+      // 更新 previousTime
+      previousTime = currentTime
     })
     wavesurferInstance.on('finish', () => {
+      // 当音频播放到物理末尾时，检查是否需要自动播放下一首
       if (runtime.setting.autoPlayNextSong) {
         nextSong()
       }
@@ -173,7 +204,17 @@ window.electron.ipcRenderer.on('readedSongFile', async (event, audioData) => {
   waveformShow.value = true
   bpm.value = ''
   await wavesurferInstance?.loadBlob(blob)
-  play()
+
+  // 根据设置决定播放起点
+  if (runtime.setting.enablePlaybackRange && wavesurferInstance) {
+    const duration = wavesurferInstance.getDuration()
+    // 确保 startPlayPercent 有值，默认为 0
+    const startPercent = runtime.setting.startPlayPercent ?? 0
+    const startTime = (duration * startPercent) / 100
+    wavesurferInstance.play(startTime)
+  } else {
+    wavesurferInstance?.play() // 从头播放
+  }
 
   const arrayBuffer = uint8Buffer.buffer
   const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
@@ -506,6 +547,14 @@ const handleGlobalMouseMove = (event: MouseEvent) => {
   }
 }
 
+// --- 新增：保存设置函数 ---
+const setSetting = async () => {
+  await window.electron.ipcRenderer.invoke(
+    'setSetting',
+    JSON.parse(JSON.stringify(runtime.setting))
+  )
+}
+
 // 全局 mouseup 处理
 const handleGlobalMouseUp = () => {
   if (isDraggingStart.value || isDraggingEnd.value) {
@@ -513,6 +562,9 @@ const handleGlobalMouseUp = () => {
     isDraggingEnd.value = false
     window.removeEventListener('mousemove', handleGlobalMouseMove)
     window.removeEventListener('mouseup', handleGlobalMouseUp)
+
+    // 拖拽结束后保存设置
+    setSetting()
   }
 }
 
