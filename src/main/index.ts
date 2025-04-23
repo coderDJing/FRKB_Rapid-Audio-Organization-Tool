@@ -61,14 +61,64 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
       platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
     hiddenPlayControlArea: false,
     autoPlayNextSong: false,
+    startPlayPercent: 0,
+    endPlayPercent: 100,
     fastForwardTime: 10,
     fastBackwardTime: -5,
-    autoScrollToCurrentSong: true
+    autoScrollToCurrentSong: true,
+    enablePlaybackRange: false
   })
 }
 
+// 定义默认设置结构
+const defaultSettings = {
+  platform: (platform === 'darwin' ? 'darwin' : 'win32') as 'darwin' | 'win32',
+  language: (is.dev ? 'enUS' : '') as '' | 'enUS' | 'zhCN',
+  audioExt: ['.mp3', '.wav', '.flac'],
+  databaseUrl: '',
+  globalCallShortcut:
+    platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
+  hiddenPlayControlArea: false,
+  autoPlayNextSong: false,
+  startPlayPercent: 0,
+  endPlayPercent: 100,
+  fastForwardTime: 10,
+  fastBackwardTime: -5,
+  autoScrollToCurrentSong: true,
+  enablePlaybackRange: false,
+  nextCheckUpdateTime: ''
+}
+
 store.layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
-store.settingConfig = fs.readJSONSync(url.settingConfigFileUrl)
+
+// 加载并合并设置
+let loadedSettings = {}
+if (fs.pathExistsSync(url.settingConfigFileUrl)) {
+  try {
+    loadedSettings = fs.readJSONSync(url.settingConfigFileUrl)
+  } catch (error) {
+    log.error('读取设置文件错误，将使用默认设置:', error)
+    // 处理潜在的 JSON 解析错误，回退到默认值
+    loadedSettings = {} // 或者你可以选择保留 defaultSettings
+  }
+} else {
+  // 如果文件不存在（虽然前面的逻辑会创建它，但为了健壮性加上）
+  log.info('设置文件不存在，将创建并使用默认设置。')
+  fs.outputJsonSync(url.settingConfigFileUrl, defaultSettings) // 确保写入
+  loadedSettings = defaultSettings // 使用默认设置继续
+}
+
+// 合并默认设置与加载的设置，确保所有键都存在
+// 加载的设置会覆盖默认值（如果存在）
+const finalSettings = { ...defaultSettings, ...loadedSettings }
+
+// 更新 store
+store.settingConfig = finalSettings
+
+// 将可能更新的设置持久化回文件
+// 确保即使文件最初不存在，或者读取出错时，最终也会写入一个有效的配置文件
+fs.outputJsonSync(url.settingConfigFileUrl, finalSettings)
+
 let devInitDatabaseFunction = () => {
   if (!fs.pathExistsSync(store.settingConfig.databaseUrl)) {
     return
