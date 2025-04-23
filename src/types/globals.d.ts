@@ -53,9 +53,12 @@ interface ISettingConfig {
   nextCheckUpdateTime: string
   hiddenPlayControlArea: boolean
   autoPlayNextSong: boolean
+  startPlayPercent: number
+  endPlayPercent: number
   fastForwardTime: number
   fastBackwardTime: number
   autoScrollToCurrentSong: boolean
+  enablePlaybackRange: boolean
 }
 
 interface ILanguageDict {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onUnmounted, onMounted, ref } from 'vue'
+import { onUnmounted, onMounted, ref, computed, watch } from 'vue'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'
@@ -12,7 +12,21 @@ import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 const runtime = useRuntimeStore()
 const uuid = uuidV4()
 const emits = defineEmits(['cancel'])
-const cancel = () => {
+
+// 假设 runtime.setting 中已有或需要添加 enablePlaybackRange
+if (runtime.setting.enablePlaybackRange === undefined) {
+  runtime.setting.enablePlaybackRange = false // 默认禁用
+}
+// 假设 runtime.setting 中已有 startPlayPercent 和 endPlayPercent 用于 songPlayer
+if (runtime.setting.startPlayPercent === undefined) {
+  runtime.setting.startPlayPercent = 0
+}
+if (runtime.setting.endPlayPercent === undefined) {
+  runtime.setting.endPlayPercent = 100
+}
+
+// 修改后的 cancel 函数 - 移除了范围验证和保存
+const cancel = async () => {
   emits('cancel')
 }
 
@@ -66,7 +80,7 @@ const extChange = async () => {
     }
   }
   runtime.setting.audioExt = audioExtArr
-  setSetting()
+  setSetting() // 确保所有设置更改都调用 setSetting
 }
 const clearTracksFingerprintLibrary = async () => {
   if (runtime.isProgressing) {
@@ -117,13 +131,6 @@ const reSelectLibrary = async () => {
     await window.electron.ipcRenderer.invoke('reSelectLibrary')
   }
 }
-
-if (!runtime.setting.fastForwardTime) {
-  runtime.setting.fastForwardTime = 10
-}
-if (!runtime.setting.fastBackwardTime) {
-  runtime.setting.fastBackwardTime = -5
-}
 </script>
 <template>
   <div class="dialog unselectable">
@@ -167,13 +174,13 @@ if (!runtime.setting.fastBackwardTime) {
             </div>
             <div style="margin-top: 20px">{{ t('自动播放下一曲') }}：</div>
             <div style="margin-top: 10px">
-              <singleCheckbox v-model="runtime.setting.autoPlayNextSong" @change="extChange()" />
+              <singleCheckbox v-model="runtime.setting.autoPlayNextSong" @change="setSetting()" />
             </div>
             <div style="margin-top: 20px">{{ t('隐藏播放控制区域，显示更长的波形图') }}：</div>
             <div style="margin-top: 10px">
               <singleCheckbox
                 v-model="runtime.setting.hiddenPlayControlArea"
-                @change="extChange()"
+                @change="setSetting()"
               />
             </div>
             <div style="margin-top: 20px">{{ t('扫描音频格式') }}：</div>
@@ -206,7 +213,7 @@ if (!runtime.setting.fastBackwardTime) {
                 @input="
                   runtime.setting.fastForwardTime = Math.max(
                     1,
-                    Math.floor(Number(runtime.setting.fastForwardTime))
+                    Math.floor(Number(runtime.setting.fastForwardTime || 1)) // 处理可能为 null 或 undefined 的情况
                   )
                 "
                 @blur="setSetting()"
@@ -224,12 +231,19 @@ if (!runtime.setting.fastBackwardTime) {
                 @input="
                   runtime.setting.fastBackwardTime = Math.min(
                     -1,
-                    Math.floor(Number(runtime.setting.fastBackwardTime))
+                    Math.floor(Number(runtime.setting.fastBackwardTime || -1)) // 处理可能为 null 或 undefined 的情况
                   )
                 "
                 @blur="setSetting()"
               />
               {{ t('秒') }}
+            </div>
+            <div style="margin-top: 20px">{{ t('启用区间播放') }}：</div>
+            <div style="margin-top: 10px">
+              <singleCheckbox
+                v-model="runtime.setting.enablePlaybackRange"
+                @change="setSetting()"
+              />
             </div>
             <div style="margin-top: 20px">
               {{ t('切换歌曲时，自动滚动列表将当前歌曲置于视图中央') }}：
@@ -237,7 +251,7 @@ if (!runtime.setting.fastBackwardTime) {
             <div style="margin-top: 10px">
               <singleCheckbox
                 v-model="runtime.setting.autoScrollToCurrentSong"
-                @change="extChange()"
+                @change="setSetting()"
               />
             </div>
             <div style="margin-top: 20px">{{ t('重新选择数据库所在位置') }}：</div>
@@ -263,7 +277,7 @@ if (!runtime.setting.fastBackwardTime) {
           </div>
         </OverlayScrollbarsComponent>
         <div style="display: flex; justify-content: center; padding-bottom: 10px; height: 30px">
-          <div class="button" @click="cancel()">{{ t('关闭') }} (Esc)</div>
+          <div class="button" @click="cancel">{{ t('关闭') }} (Esc)</div>
         </div>
       </div>
     </div>
