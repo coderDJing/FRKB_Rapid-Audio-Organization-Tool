@@ -176,6 +176,13 @@ const reSelectLibrary = async () => {
             <div style="margin-top: 10px">
               <singleCheckbox v-model="runtime.setting.autoPlayNextSong" @change="setSetting()" />
             </div>
+            <div style="margin-top: 20px">{{ t('启用区间播放') }}：</div>
+            <div style="margin-top: 10px">
+              <singleCheckbox
+                v-model="runtime.setting.enablePlaybackRange"
+                @change="setSetting()"
+              />
+            </div>
             <div style="margin-top: 20px">{{ t('隐藏播放控制区域，显示更长的波形图') }}：</div>
             <div style="margin-top: 10px">
               <singleCheckbox
@@ -237,13 +244,6 @@ const reSelectLibrary = async () => {
                 @blur="setSetting()"
               />
               {{ t('秒') }}
-            </div>
-            <div style="margin-top: 20px">{{ t('启用区间播放') }}：</div>
-            <div style="margin-top: 10px">
-              <singleCheckbox
-                v-model="runtime.setting.enablePlaybackRange"
-                @change="setSetting()"
-              />
             </div>
             <div style="margin-top: 20px">
               {{ t('切换歌曲时，自动滚动列表将当前歌曲置于视图中央') }}：
