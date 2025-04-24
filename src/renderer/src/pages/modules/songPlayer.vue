@@ -29,6 +29,18 @@ let preloadTimerId: any = null
 let currentLoadRequestId = 0
 let currentPreloadRequestId = 0
 
+// 添加一个标志来管理正在进行的文件操作和错误处理状态
+let isFileOperationInProgress = false
+let errorDialogShowing = false
+let pendingFileOperation: null | {
+  type: 'delete' | 'move'
+  filePath: string
+  data: any
+} = null
+
+// 新增：用于精确忽略 empty() 调用的错误
+let ignoreNextEmptyError = false
+
 const canvas = document.createElement('canvas')
 canvas.height = 50
 const ctx = canvas.getContext('2d')
@@ -66,60 +78,86 @@ const cancelPreloadTimer = () => {
       preloadedBlob = null
       preloadedSongFilePath = null
     } catch (e) {
-      console.warn('取消预加载失败:', e)
+      console.error('取消预加载失败:', e) // 保留 Error
     }
   }
 }
 
-// 修改 handleSongLoadError 以取消定时器
+// 修改 handleSongLoadError，只处理意外错误，不进行列表操作
 const handleSongLoadError = async (filePath: string | null, isPreload: boolean) => {
-  console.error(`Error loading ${isPreload ? 'preload' : 'main'} song: ${filePath}`)
+  console.error(`Error loading ${isPreload ? 'preload' : 'main'} song: ${filePath}`) // 保留 Error
+
+  // 跳过空文件路径、正在进行文件操作或已有错误对话框的情况
+  if (!filePath || isFileOperationInProgress || errorDialogShowing) {
+    return
+  }
+
+  // 预加载错误只记录不处理
   if (isPreload) {
     isPreloading = false
     isPreloadReady = false
     preloadedBlob = null
     preloadedSongFilePath = null
-  } else {
-    cancelPreloadTimer()
-    waveformShow.value = false
+    return
+  }
+
+  // 防止重复触发
+  errorDialogShowing = true
+  const localFilePath = filePath // 保存当前处理的文件路径副本
+
+  try {
+    // 尝试暂停播放，但不清空，避免触发 media error 4
+    if (wavesurferInstance && wavesurferInstance.isPlaying()) {
+      wavesurferInstance.pause()
+    }
+    waveformShow.value = false // 隐藏波形图
     bpm.value = 'N/A'
-    wavesurferInstance?.empty()
-    if (!filePath) return
+
+    // 显示错误对话框
     let res = await confirm({
       title: '错误',
       content: [t('该文件无法播放，是否直接删除'), t('（文件内容不是音频或文件已损坏）')]
     })
-    const originalIndex = runtime.playingData.playingSongListData.findIndex(
-      (item) => item.filePath === filePath
-    )
-    if (res !== 'cancel') {
-      window.electron.ipcRenderer.send('delSongs', [filePath], getCurrentTimeDirName())
-      if (originalIndex !== -1) {
-        runtime.playingData.playingSongListData.splice(originalIndex, 1)
+
+    // 如果用户确认删除
+    if (res === 'confirm') {
+      // 注意：这里只发送删除命令，不修改当前列表状态
+      // 列表状态由 delSong 或 selectSongListDialogConfirm 管理
+      // 或者需要一个独立的机制来处理这里的删除对列表的影响
+      // 为避免复杂性，暂时只发送删除命令
+      window.electron.ipcRenderer.send('delSongs', [localFilePath], getCurrentTimeDirName())
+
+      // 从当前播放列表中找到并移除（如果存在）
+      // 这一步是为了防止错误处理后，文件已被删除但列表未更新
+      const errorIndex = runtime.playingData.playingSongListData.findIndex(
+        (item) => item.filePath === localFilePath
+      )
+      if (errorIndex !== -1) {
+        runtime.playingData.playingSongListData.splice(errorIndex, 1)
+      }
+
+      // 如果删除的是当前正在尝试播放的歌曲，则清空播放状态
+      if (runtime.playingData.playingSong?.filePath === localFilePath) {
+        isInternalSongChange.value = true
+        runtime.playingData.playingSong = null
+        runtime.playingData.playingSongListUUID = ''
+        if (wavesurferInstance) wavesurferInstance.empty() // 清空播放器
       }
     } else {
-      if (originalIndex !== -1) {
-        runtime.playingData.playingSongListData.splice(originalIndex, 1)
+      // 如果用户取消，并且错误发生在当前歌曲上，也需要清空状态
+      if (runtime.playingData.playingSong?.filePath === localFilePath) {
+        isInternalSongChange.value = true
+        runtime.playingData.playingSong = null
+        runtime.playingData.playingSongListUUID = ''
+        if (wavesurferInstance) wavesurferInstance.empty() // 清空播放器
+        waveformShow.value = false // 确保波形图隐藏
       }
     }
-    let nextIndex = -1
-    if (originalIndex !== -1 && runtime.playingData.playingSongListData.length > 0) {
-      nextIndex = Math.min(originalIndex, runtime.playingData.playingSongListData.length - 1)
-    }
-    if (nextIndex !== -1) {
-      const nextSongToPlay = runtime.playingData.playingSongListData[nextIndex]
-      isInternalSongChange.value = true
-      runtime.playingData.playingSong = nextSongToPlay
-      requestLoadSong(nextSongToPlay.filePath)
-    } else {
-      isInternalSongChange.value = true
-      runtime.playingData.playingSong = null
-      runtime.playingData.playingSongListUUID = ''
-      waveformShow.value = false
-      wavesurferInstance?.empty()
-      preloadWavesurferInstance?.destroy()
-      preloadWavesurferInstance = null
-    }
+  } catch (e) {
+    console.error('handleSongLoadError 内部发生错误:', e) // 保留 Error
+  } finally {
+    // 重置错误对话框显示标志
+    errorDialogShowing = false
   }
 }
 
@@ -136,7 +174,7 @@ const createWaveSurferInstance = (container: HTMLDivElement): WaveSurfer => {
 
 onMounted(() => {
   if (!waveform.value) {
-    console.error('Main waveform container not found!')
+    console.error('Main waveform container not found!') // 保留 Error
     return
   }
   wavesurferInstance = createWaveSurferInstance(waveform.value)
@@ -228,9 +266,49 @@ onMounted(() => {
       }, 3000)
     })
 
+    // 修改错误事件处理，增加 ignoreNextEmptyError 逻辑
     wavesurferInstance.on('error', async (error) => {
-      // 从 error 对象获取信息可能不可靠，依赖当前状态
-      await handleSongLoadError(runtime.playingData.playingSong?.filePath ?? null, false)
+      // @ts-ignore - 尝试获取错误码
+      const errorCode = error?.code
+
+      // **新增：精确忽略来自 empty() 的 MediaError code 4**
+      if (errorCode === 4 && ignoreNextEmptyError) {
+        ignoreNextEmptyError = false // 重置标志
+        return
+      }
+
+      // 如果正在进行文件操作并且是预期的 MediaError code 4，则忽略
+      // (保留此检查作为后备，尽管上面的检查更精确)
+      if (isFileOperationInProgress && errorCode === 4) {
+        return
+      }
+
+      if (isFileOperationInProgress) {
+        return
+      }
+
+      // 从错误对象获取更多信息（如果可能）
+      console.error('WaveSurfer错误:', error) // 保留 Error
+      try {
+        // @ts-ignore - 尝试获取原始错误
+        console.error('错误详情:', error?.originalError || error) // 保留 Error
+      } catch (e) {
+        // 忽略可能的类型错误
+      }
+
+      // 获取当前文件路径，如果不存在则传递 null
+      const currentPath = runtime.playingData.playingSong?.filePath ?? null
+      // 注意：不再直接调用 handleSongLoadError 来避免弹窗
+      // await handleSongLoadError(currentPath, false);
+      // 如果真的发生意外错误，考虑是否需要不同的处理方式，例如仅记录日志或显示一个不可交互的提示
+      console.error(`发生未处理的播放器错误，歌曲路径: ${currentPath}`) // 保留 Error
+      // 可以选择在这里清空播放器状态，如果需要的话
+      // isInternalSongChange.value = true;
+      // runtime.playingData.playingSong = null;
+      // runtime.playingData.playingSongListUUID = '';
+      // waveformShow.value = false;
+      // bpm.value = 'N/A';
+      // if (wavesurferInstance) wavesurferInstance.empty();
     })
 
     // --- 预加载实例事件监听 (移到 preloadNextSong 内部首次创建时) ---
@@ -251,9 +329,6 @@ onMounted(() => {
         // 调用 handleLoadBlob 时传递请求ID
         handleLoadBlob(new Blob([audioData]), filePath, requestId || currentLoadRequestId)
       } else {
-        console.warn(
-          `收到与当前不匹配的歌曲数据: ${filePath}, 当前: ${runtime.playingData.playingSong?.filePath}`
-        )
       }
     }
   )
@@ -267,7 +342,6 @@ onMounted(() => {
 
       // 检查预加载实例是否仍然存在
       if (!preloadWavesurferInstance) {
-        console.warn(`收到预加载数据但预加载实例已被销毁: ${filePath}`)
         return
       }
 
@@ -279,17 +353,13 @@ onMounted(() => {
           if (isPreloading && preloadWavesurferInstance && filePath === preloadedSongFilePath) {
             preloadWavesurferInstance.loadBlob(preloadedBlob)
           } else {
-            console.warn(`预加载状态已变更，取消加载: ${filePath}`)
             preloadedBlob = null
           }
         } catch (error) {
-          console.error(`预加载音频数据处理错误:`, error)
+          console.error(`预加载音频数据处理错误:`, error) // 保留 Error
           handleSongLoadError(filePath, true)
         }
       } else {
-        console.warn(
-          `收到预加载数据与期望路径不匹配: 收到=${filePath}, 期望=${preloadedSongFilePath}`
-        )
       }
     }
   )
@@ -303,7 +373,7 @@ onMounted(() => {
         return
       }
 
-      console.error(`预加载歌曲失败: ${filePath}, 错误: ${errorMessage}`)
+      console.error(`预加载歌曲失败: ${filePath}, 错误: ${errorMessage}`) // 保留 Error
       if (filePath === preloadedSongFilePath) {
         handleSongLoadError(filePath, true)
       }
@@ -319,7 +389,7 @@ onMounted(() => {
         return
       }
 
-      console.error(`加载歌曲失败: ${filePath}, 错误: ${errorMessage}`)
+      console.error(`加载歌曲失败: ${filePath}, 错误: ${errorMessage}`) // 保留 Error
       handleSongLoadError(filePath, false)
     }
   )
@@ -422,7 +492,7 @@ onMounted(() => {
   }
 })
 
-// 修改 watch 以处理手动切换到预加载歌曲的情况
+// 修改 watch 以处理 newSong === null 的情况
 watch(
   () => runtime.playingData.playingSong,
   (newSong, oldSong) => {
@@ -434,17 +504,28 @@ watch(
     cancelPreloadTimer()
 
     if (newSong === null) {
+      // **修改：在调用 empty() 前设置标志**
+      if (wavesurferInstance) {
+        ignoreNextEmptyError = true
+        wavesurferInstance.empty()
+      }
       waveformShow.value = false
-      wavesurferInstance?.empty()
-      preloadWavesurferInstance?.destroy()
-      preloadWavesurferInstance = null
+      // **移除多余的 empty() 调用**
+      // wavesurferInstance?.empty()
+
+      if (preloadWavesurferInstance) {
+        preloadWavesurferInstance.destroy()
+        preloadWavesurferInstance = null
+      }
       runtime.playingData.playingSongListUUID = ''
       preloadedBlob = null
       preloadedSongFilePath = null
       isPreloading = false
       isPreloadReady = false
+      bpm.value = '' // 清空BPM
     } else if (newSong?.filePath !== oldSong?.filePath) {
-      // 仅处理手动切换
+      // 仅处理手动切换 或 内部切换后需要加载新歌的情况
+
       if (newSong.filePath === preloadedSongFilePath && isPreloadReady && preloadedBlob) {
         const blobToLoad = preloadedBlob
 
@@ -452,16 +533,21 @@ watch(
         preloadedSongFilePath = null
         isPreloading = false
         isPreloadReady = false
-        preloadWavesurferInstance?.destroy()
-        preloadWavesurferInstance = null
-        handleLoadBlob(blobToLoad, newSong.filePath, currentLoadRequestId)
+        if (preloadWavesurferInstance) {
+          preloadWavesurferInstance.destroy()
+          preloadWavesurferInstance = null
+        }
+        // **修改：确保 requestId 传递正确**
+        handleLoadBlob(blobToLoad, newSong.filePath, currentLoadRequestId) // 这里需要确认是否应该用 currentLoadRequestId 还是生成新的
       } else {
         isPreloading = false
         isPreloadReady = false
         preloadedBlob = null
         preloadedSongFilePath = null
-        preloadWavesurferInstance?.destroy()
-        preloadWavesurferInstance = null
+        if (preloadWavesurferInstance) {
+          preloadWavesurferInstance.destroy()
+          preloadWavesurferInstance = null
+        }
         requestLoadSong(newSong.filePath)
       }
     }
@@ -492,13 +578,21 @@ const bpm = ref<number | string>('')
 
 // 修改 requestLoadSong 以添加请求ID
 const requestLoadSong = (filePath: string) => {
+  // 如果正在进行文件操作，不加载新的歌曲
+  if (isFileOperationInProgress) {
+    return
+  }
+
   cancelPreloadTimer()
   isPreloading = false
   isPreloadReady = false
   preloadedBlob = null
   preloadedSongFilePath = null
-  preloadWavesurferInstance?.destroy()
-  preloadWavesurferInstance = null
+
+  if (preloadWavesurferInstance) {
+    preloadWavesurferInstance.destroy()
+    preloadWavesurferInstance = null
+  }
 
   // 生成新的请求ID
   currentLoadRequestId++
@@ -513,9 +607,6 @@ const handleLoadBlob = async (blob: Blob, filePath: string, requestId: number) =
   }
 
   if (!wavesurferInstance || runtime.playingData.playingSong?.filePath !== filePath) {
-    console.warn(
-      `调用了错误的歌曲或实例为空. 期望: ${runtime.playingData.playingSong?.filePath}, 收到: ${filePath}`
-    )
     return
   }
 
@@ -547,7 +638,6 @@ const handleLoadBlob = async (blob: Blob, filePath: string, requestId: number) =
 
     // 确保当前播放的仍然是期望播放的歌曲
     if (runtime.playingData.playingSong?.filePath !== filePath) {
-      console.warn('歌曲已更改，取消播放')
       return
     }
 
@@ -562,7 +652,7 @@ const handleLoadBlob = async (blob: Blob, filePath: string, requestId: number) =
       }
     } catch (playError: any) {
       if (playError.name === 'AbortError') {
-        console.info('播放被中断，可能是因为快速切换歌曲')
+        console.info('播放被中断，可能是因为快速切换歌曲') // 保留 Info
       } else {
         throw playError
       }
@@ -581,27 +671,27 @@ const handleLoadBlob = async (blob: Blob, filePath: string, requestId: number) =
               }
             })
           } catch (decodeError) {
-            console.error('Error decoding audio data for BPM:', decodeError)
+            console.error('Error decoding audio data for BPM:', decodeError) // 保留 Error
             if (runtime.playingData.playingSong?.filePath === filePath) {
               bpm.value = 'N/A'
             }
           }
         })
         .catch((bufferError) => {
-          console.error('Error getting array buffer from blob for BPM:', bufferError)
+          console.error('Error getting array buffer from blob for BPM:', bufferError) // 保留 Error
           if (runtime.playingData.playingSong?.filePath === filePath) {
             bpm.value = 'N/A'
           }
         })
     } catch (e) {
-      console.error('Error initiating BPM analysis:', e)
+      console.error('Error initiating BPM analysis:', e) // 保留 Error
       if (runtime.playingData.playingSong?.filePath === filePath) {
         bpm.value = 'N/A'
       }
     }
     // --- End BPM Analysis ---
   } catch (loadError) {
-    console.error(`Error loading blob or starting playback for ${filePath}:`, loadError)
+    console.error(`Error loading blob or starting playback for ${filePath}:`, loadError) // 保留 Error
     if ((loadError as any)?.name !== 'AbortError') {
       await handleSongLoadError(filePath, false)
     }
@@ -639,7 +729,7 @@ const preloadNextSong = () => {
     try {
       preloadWavesurferInstance.destroy()
     } catch (e) {
-      console.warn('Error destroying previous preload instance:', e)
+      console.error('Error destroying previous preload instance:', e) // 保留 Error
     }
     preloadWavesurferInstance = null // 明确设为 null
   }
@@ -669,13 +759,10 @@ const preloadNextSong = () => {
         isPreloading = false
         isPreloadReady = true
       } else {
-        console.warn(
-          `预加载歌曲就绪事件与期望不匹配: ${preloadedSongFilePath}, 期望: ${nextSongFilePath}`
-        )
       }
     })
     preloadWavesurferInstance.on('error', (error) => {
-      console.error('预加载Wavesurfer错误:', error, preloadedSongFilePath)
+      console.error('预加载Wavesurfer错误:', error, preloadedSongFilePath) // 保留 Error
       if (preloadedSongFilePath === nextSongFilePath) {
         handleSongLoadError(preloadedSongFilePath, true)
       }
@@ -684,7 +771,7 @@ const preloadNextSong = () => {
     // 发送预加载请求，包含请求ID
     window.electron.ipcRenderer.send('readNextSongFile', nextSongFilePath, requestId)
   } catch (createError) {
-    console.error('Error creating preload wavesurfer instance:', createError)
+    console.error('Error creating preload wavesurfer instance:', createError) // 保留 Error
     preloadWavesurferInstance = null
     isPreloading = false
     preloadedSongFilePath = null // 重置路径
@@ -783,102 +870,127 @@ const previousSong = () => {
 }
 let showDelConfirm = false
 
+// 修改 delSong 函数，设置 ignoreNextEmptyError
 const delSong = async () => {
-  cancelPreloadTimer()
-  if (runtime.playingData.playingSong === null) {
-    console.error('Cannot delete, playingData.playingSong is null')
+  if (isFileOperationInProgress || !runtime.playingData.playingSong) {
     return
   }
 
-  const filePath = runtime.playingData.playingSong.filePath
-  const currentSongListUUID = runtime.playingData.playingSongListUUID
-  const currentList = runtime.playingData.playingSongListData // 保存当前列表引用
-  const currentIndex = currentList.findIndex((item) => item.filePath === filePath)
+  isFileOperationInProgress = true
+  const filePathToDelete = runtime.playingData.playingSong.filePath
 
-  if (currentIndex === -1) {
-    console.error('Song to delete not found in the playing list.')
-    return // 如果在列表中找不到，则不继续
-  }
+  try {
+    cancelPreloadTimer()
 
-  const isInRecycleBin = runtime.libraryTree.children
-    ?.find((item) => item.dirName === '回收站')
-    ?.children?.find((item) => item.uuid === currentSongListUUID)
+    const currentSongListUUID = runtime.playingData.playingSongListUUID
+    const currentList = runtime.playingData.playingSongListData
+    const currentIndex = currentList.findIndex((item) => item.filePath === filePathToDelete)
 
-  let performDelete = false
-  let permanently = false
-
-  if (isInRecycleBin) {
-    const res = await confirm({
-      title: '删除',
-      content: [
-        t('确定彻底删除正在播放的曲目吗'),
-        t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')
-      ]
-    })
-    showDelConfirm = false
-    if (res === 'confirm') {
-      performDelete = true
-      permanently = true
+    if (currentIndex === -1) {
+      console.error(`[delSong] 未找到要删除的歌曲: ${filePathToDelete}`) // 保留 Error
+      isFileOperationInProgress = false
+      return
     }
-  } else {
-    // 移动到回收站前确认
-    const res = await confirm({
-      title: '移至回收站',
-      content: ['确定将正在播放的曲目移至回收站吗？']
-    })
-    showDelConfirm = false
-    if (res === 'confirm') {
+
+    const isInRecycleBin = runtime.libraryTree.children
+      ?.find((item) => item.dirName === '回收站')
+      ?.children?.find((item) => item.uuid === currentSongListUUID)
+
+    let performDelete = false
+    let permanently = false
+
+    // --- 用户确认逻辑 (保持不变) ---
+    if (isInRecycleBin) {
+      const res = await confirm({
+        title: '删除',
+        content: [
+          t('确定彻底删除正在播放的曲目吗'),
+          t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')
+        ]
+      })
+      showDelConfirm = false
+      if (res === 'confirm') {
+        performDelete = true
+        permanently = true
+      }
+    } else {
+      showDelConfirm = false
       performDelete = true
       permanently = false
-    } else {
-      performDelete = false
     }
-  }
+    // --- 用户确认逻辑结束 ---
 
-  if (!performDelete) {
-    return
-  }
+    if (!performDelete) {
+      isFileOperationInProgress = false
+      return
+    }
 
-  // 清理播放器状态
-  wavesurferInstance?.stop()
-  wavesurferInstance?.empty()
-  waveformShow.value = false
-  bpm.value = ''
-  // 清理预加载状态 (加检查)
-  preloadedBlob = null
-  preloadedSongFilePath = null
-  isPreloading = false
-  isPreloadReady = false
-  preloadWavesurferInstance?.destroy()
+    // 1. 停止播放并准备清空播放器
+    if (wavesurferInstance) {
+      if (wavesurferInstance.isPlaying()) {
+        wavesurferInstance.pause()
+      }
 
-  // 从 Pinia 的列表中移除当前歌曲 (使用之前保存的引用和索引)
-  currentList.splice(currentIndex, 1)
+      ignoreNextEmptyError = true // 设置标志
 
-  // 确定下一首要播放的歌曲 (如果列表还有歌)
-  let nextPlayingSong = null
-  if (currentList.length > 0) {
-    const nextIndex = Math.min(currentIndex, currentList.length - 1)
-    nextPlayingSong = currentList[nextIndex]
-  }
+      wavesurferInstance.empty()
+    }
+    waveformShow.value = false
+    bpm.value = ''
 
-  // 更新 Pinia store 中的当前歌曲
-  runtime.playingData.playingSong = nextPlayingSong
+    // 清理预加载 (保持不变)
+    preloadedBlob = null
+    preloadedSongFilePath = null
+    isPreloading = false
+    isPreloadReady = false
+    if (preloadWavesurferInstance) {
+      preloadWavesurferInstance.destroy()
+      preloadWavesurferInstance = null
+    }
 
-  // 执行文件删除操作
-  if (permanently) {
-    window.electron.ipcRenderer.invoke('permanentlyDelSongs', [filePath])
-  } else {
-    window.electron.ipcRenderer.send('delSongs', [filePath], getCurrentTimeDirName())
-  }
+    // 2. 从列表中移除当前歌曲
 
-  // 如果删除了歌曲后还有歌曲，则加载下一首
-  if (nextPlayingSong) {
-    requestLoadSong(nextPlayingSong.filePath)
-  } else {
-    // 没有歌曲了，确保播放器是空的
-    runtime.playingData.playingSongListUUID = '' // 清空列表 UUID
+    currentList.splice(currentIndex, 1)
+
+    // 3. 确定下一首歌曲
+    let nextPlayingSong = null
+    if (currentList.length > 0) {
+      const nextIndex = Math.min(currentIndex, currentList.length - 1)
+      nextPlayingSong = currentList[nextIndex]
+    } else {
+    }
+
+    // 4. 更新 Pinia 状态
+
+    isInternalSongChange.value = true
+    runtime.playingData.playingSong = nextPlayingSong
+
+    // 5. 执行文件删除
+
+    const deletePromise = permanently
+      ? window.electron.ipcRenderer.invoke('permanentlyDelSongs', [filePathToDelete])
+      : window.electron.ipcRenderer.send('delSongs', [filePathToDelete], getCurrentTimeDirName())
+    await Promise.resolve(deletePromise)
+
+    // 6. 准备加载下一首
+    await nextTick()
+
+    if (nextPlayingSong) {
+      isFileOperationInProgress = false
+
+      requestLoadSong(nextPlayingSong.filePath)
+    } else {
+      runtime.playingData.playingSongListUUID = ''
+
+      isFileOperationInProgress = false
+    }
+  } catch (error) {
+    console.error(`[delSong] 删除歌曲过程中发生错误 (${filePathToDelete}):`, error) // 保留 Error
+    ignoreNextEmptyError = false // 出错时也重置标志
+    isFileOperationInProgress = false
   }
 }
+
 const selectSongListDialogLibraryName = ref('筛选库')
 const selectSongListDialogShow = ref(false)
 
@@ -892,79 +1004,113 @@ const moveToLikeLibrary = () => {
   selectSongListDialogShow.value = true
 }
 
+// 修改 selectSongListDialogConfirm 函数，设置 ignoreNextEmptyError
 const selectSongListDialogConfirm = async (item: string) => {
-  cancelPreloadTimer()
-  selectSongListDialogShow.value = false
-  if (!runtime.playingData.playingSong) {
-    console.error('Cannot move, playing song data is null.')
+  if (isFileOperationInProgress || !runtime.playingData.playingSong) {
     return
   }
   if (item === runtime.playingData.playingSongListUUID) {
     return
   }
 
-  const filePath = runtime.playingData.playingSong.filePath
+  isFileOperationInProgress = true
+  const filePathToMove = runtime.playingData.playingSong.filePath
   const targetDirPath = libraryUtils.findDirPathByUuid(item)
-  const currentList = runtime.playingData.playingSongListData // 保存列表引用
-  const currentIndex = currentList.findIndex((song) => song.filePath === filePath)
 
   if (!targetDirPath) {
-    console.error(`Target directory path not found for UUID: ${item}`)
+    console.error(`[moveSong] 未找到目标目录路径: ${item}`) // 保留 Error
+    isFileOperationInProgress = false
     return
   }
 
-  if (currentIndex === -1) {
-    console.error('Song to move not found in the playing list.')
-    return // 如果在列表中找不到，则不继续
-  }
-
-  // 清理播放器和预加载状态
-  wavesurferInstance?.stop()
-  wavesurferInstance?.empty()
-  waveformShow.value = false
-  bpm.value = ''
-  preloadedBlob = null
-  preloadedSongFilePath = null
-  isPreloading = false
-  isPreloadReady = false
-  preloadWavesurferInstance?.destroy() // 检查 null
-
-  // ... 后续移动和切换逻辑 ...
-  currentList.splice(currentIndex, 1)
-  // 确定下一首要播放的歌曲 (如果列表还有歌)
-  let nextPlayingSong = null
-  if (currentList.length > 0) {
-    const nextIndex = Math.min(currentIndex, currentList.length - 1)
-    nextPlayingSong = currentList[nextIndex]
-  }
-  // 更新 Pinia store 中的当前歌曲
-  runtime.playingData.playingSong = nextPlayingSong
-  // 执行移动操作
   try {
-    await window.electron.ipcRenderer.invoke('moveSongsToDir', [filePath], targetDirPath)
+    cancelPreloadTimer()
+    selectSongListDialogShow.value = false
+
+    const currentList = runtime.playingData.playingSongListData
+    const currentIndex = currentList.findIndex((song) => song.filePath === filePathToMove)
+
+    if (currentIndex === -1) {
+      console.error(`[moveSong] 未找到要移动的歌曲: ${filePathToMove}`) // 保留 Error
+      isFileOperationInProgress = false
+      return
+    }
+
+    // 1. 停止播放并准备清空播放器
+    if (wavesurferInstance) {
+      if (wavesurferInstance.isPlaying()) {
+        wavesurferInstance.pause()
+      }
+
+      ignoreNextEmptyError = true // 设置标志
+
+      wavesurferInstance.empty()
+    }
+    waveformShow.value = false
+    bpm.value = ''
+
+    // 清理预加载 (保持不变)
+    preloadedBlob = null
+    preloadedSongFilePath = null
+    isPreloading = false
+    isPreloadReady = false
+    if (preloadWavesurferInstance) {
+      preloadWavesurferInstance.destroy()
+      preloadWavesurferInstance = null
+    }
+
+    // 2. 从列表中移除当前歌曲
+
+    currentList.splice(currentIndex, 1)
+
+    // 3. 确定下一首歌曲
+    let nextPlayingSong = null
+    if (currentList.length > 0) {
+      const nextIndex = Math.min(currentIndex, currentList.length - 1)
+      nextPlayingSong = currentList[nextIndex]
+    } else {
+    }
+
+    // 4. 更新 Pinia 状态
+
+    isInternalSongChange.value = true
+    runtime.playingData.playingSong = nextPlayingSong
+
+    // 5. 执行文件移动
+
+    await window.electron.ipcRenderer.invoke('moveSongsToDir', [filePathToMove], targetDirPath)
+
+    // 6. 刷新列表显示
     if (item === runtime.songsArea.songListUUID) {
       runtime.songsArea.songListUUID = ''
-      nextTick(() => {
+      await nextTick(() => {
         runtime.songsArea.songListUUID = item
       })
     }
-    // 如果移动后列表还有歌曲，则加载下一首
+
+    // 7. 准备加载下一首
+    await nextTick()
+
     if (nextPlayingSong) {
+      isFileOperationInProgress = false
+
       requestLoadSong(nextPlayingSong.filePath)
     } else {
-      // 没有歌曲了，确保播放器是空的
-      runtime.playingData.playingSongListUUID = '' // 清空列表 UUID
+      runtime.playingData.playingSongListUUID = ''
+
+      isFileOperationInProgress = false
     }
   } catch (error) {
-    console.error(`Error moving song ${filePath}:`, error)
-    runtime.playingData.playingSong = null
+    console.error(`[moveSong] 移动歌曲过程中发生错误 (${filePathToMove}):`, error) // 保留 Error
+    ignoreNextEmptyError = false // 出错时也重置标志
+    isFileOperationInProgress = false
   }
 }
 
 const exportTrack = async () => {
   cancelPreloadTimer()
   if (!runtime.playingData.playingSong) {
-    console.error('Cannot export, no song is playing.')
+    console.error('Cannot export, no song is playing.') // 保留 Error
     return
   }
   let result = await exportDialog({ title: '曲目' })
@@ -1009,7 +1155,7 @@ const exportTrack = async () => {
         }
       }
     } catch (error) {
-      console.error('Error exporting track:', error)
+      console.error('Error exporting track:', error) // 保留 Error
     }
   }
 }
@@ -1302,7 +1448,8 @@ watch(waveformShow, (isVisible) => {
   cursor: pointer;
   position: relative;
   /* 确保主波形图有高度 */
-  min-height: 40px; /* 或者等于 wavesurfer 的 height */
+  min-height: 40px;
+  /* 或者等于 wavesurfer 的 height */
 }
 
 .songCover {
@@ -1372,6 +1519,7 @@ watch(waveformShow, (isVisible) => {
 .manual-handle::before {
   top: 0;
 }
+
 .manual-handle::after {
   bottom: 0;
 }
@@ -1380,6 +1528,7 @@ watch(waveformShow, (isVisible) => {
   color: #2ecc71;
   background-color: #2ecc71;
 }
+
 .start-handle::before,
 .start-handle::after {
   right: 50%;
@@ -1389,6 +1538,7 @@ watch(waveformShow, (isVisible) => {
   color: #e74c3c;
   background-color: #e74c3c;
 }
+
 .end-handle::before,
 .end-handle::after {
   left: 50%;
