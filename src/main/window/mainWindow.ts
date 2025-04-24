@@ -135,11 +135,40 @@ function createWindow() {
     mainWindow?.close()
   })
 
-  ipcMain.on('readSongFile', async (e, filePath) => {
-    let file = await fs.readFile(filePath)
-    const uint8Buffer = Uint8Array.from(file)
-    mainWindow?.webContents.send('readedSongFile', uint8Buffer)
+  ipcMain.on('readSongFile', async (e, filePath, requestId) => {
+    try {
+      let file = await fs.readFile(filePath)
+      const uint8Buffer = Uint8Array.from(file)
+      mainWindow?.webContents.send('readedSongFile', uint8Buffer, filePath, requestId)
+    } catch (error) {
+      console.error(`读取歌曲文件失败 ${filePath}:`, error)
+      mainWindow?.webContents.send(
+        'readSongFileError',
+        filePath,
+        (error as Error).message,
+        requestId
+      )
+    }
   })
+
+  // 处理预加载文件请求
+  ipcMain.on('readNextSongFile', async (e, filePath, requestId) => {
+    try {
+      let file = await fs.readFile(filePath)
+      const uint8Buffer = Uint8Array.from(file)
+      // 使用不同的事件名发送回渲染进程
+      mainWindow?.webContents.send('readedNextSongFile', uint8Buffer, filePath, requestId)
+    } catch (error) {
+      console.error(`读取预加载歌曲文件失败 ${filePath}:`, error)
+      mainWindow?.webContents.send(
+        'readNextSongFileError',
+        filePath,
+        (error as Error).message,
+        requestId
+      )
+    }
+  })
+
   const sendProgress = (message: string, current: number, total: number, isInitial = false) => {
     mainWindow?.webContents.send('progressSet', t(message), current, total, isInitial)
   }
@@ -280,11 +309,15 @@ function createWindow() {
         store.songFingerprintList.push(item.sha256_Hash)
       }
 
-      const targetPath = path.join(
-        store.databaseDir,
-        formData.songListPath,
-        item.file_path ? item.file_path.match(/[^\\]+$/)[0] : item.match(/[^\\]+$/)[0]
-      )
+      // 修复正则表达式中的反斜杠转义，并处理可能的 null 结果
+      const matchResult = item.file_path
+        ? item.file_path.match(/[^\\/]+$/)
+        : typeof item === 'string'
+          ? item.match(/[^\\/]+$/)
+          : null
+      const filename = matchResult ? matchResult[0] : 'unknown_file' // 提供一个备用文件名
+
+      const targetPath = path.join(store.databaseDir, formData.songListPath, filename)
       await moveOrCopyItemWithCheckIsExist(
         item.file_path ? item.file_path : item,
         targetPath,
@@ -648,6 +681,7 @@ function createWindow() {
     ipcMain.removeAllListeners('toggle-minimize')
     ipcMain.removeAllListeners('toggle-close')
     ipcMain.removeAllListeners('readSongFile')
+    ipcMain.removeAllListeners('readNextSongFile') // 清理新的 listener
     ipcMain.removeAllListeners('addSongFingerprint')
     ipcMain.removeAllListeners('startImportSongs')
     ipcMain.removeAllListeners('checkForUpdates')

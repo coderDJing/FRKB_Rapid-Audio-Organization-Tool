@@ -15,8 +15,19 @@ import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
 
 const runtime = useRuntimeStore()
-const waveform = useTemplateRef('waveform')
+const waveform = useTemplateRef<HTMLDivElement>('waveform')
+const preloadWaveform = useTemplateRef<HTMLDivElement>('preloadWaveform')
+
 let wavesurferInstance: WaveSurfer | null = null
+let preloadWavesurferInstance: WaveSurfer | null = null
+let preloadedBlob: Blob | null = null
+let preloadedSongFilePath: string | null = null
+let isPreloading = false
+let isPreloadReady = false
+let isInternalSongChange = ref(false)
+let preloadTimerId: any = null
+let currentLoadRequestId = 0
+let currentPreloadRequestId = 0
 
 const canvas = document.createElement('canvas')
 canvas.height = 50
@@ -36,33 +47,112 @@ progressGradient.addColorStop(1, '#0078d4') // Bottom color
 const waveformShow = ref(false)
 
 const playerControlsRef = useTemplateRef('playerControlsRef')
-onMounted(() => {
-  // 初始化 WaveSurfer 实例
-  if (waveform.value === null) {
-    throw new Error('waveform is null')
+
+// 修改 cancelPreloadTimer 以更全面地重置预加载状态
+const cancelPreloadTimer = () => {
+  if (preloadTimerId !== null) {
+    clearTimeout(preloadTimerId)
+    preloadTimerId = null
   }
 
-  wavesurferInstance = WaveSurfer.create({
-    container: waveform.value,
+  // 检查是否在进行预加载，如果是，则取消
+  if (isPreloading && preloadWavesurferInstance) {
+    try {
+      // 使用正确的API取消预加载
+      preloadWavesurferInstance.destroy()
+      preloadWavesurferInstance = null
+      isPreloading = false
+      isPreloadReady = false
+      preloadedBlob = null
+      preloadedSongFilePath = null
+    } catch (e) {
+      console.warn('取消预加载失败:', e)
+    }
+  }
+}
+
+// 修改 handleSongLoadError 以取消定时器
+const handleSongLoadError = async (filePath: string | null, isPreload: boolean) => {
+  console.error(`Error loading ${isPreload ? 'preload' : 'main'} song: ${filePath}`)
+  if (isPreload) {
+    isPreloading = false
+    isPreloadReady = false
+    preloadedBlob = null
+    preloadedSongFilePath = null
+  } else {
+    cancelPreloadTimer()
+    waveformShow.value = false
+    bpm.value = 'N/A'
+    wavesurferInstance?.empty()
+    if (!filePath) return
+    let res = await confirm({
+      title: '错误',
+      content: [t('该文件无法播放，是否直接删除'), t('（文件内容不是音频或文件已损坏）')]
+    })
+    const originalIndex = runtime.playingData.playingSongListData.findIndex(
+      (item) => item.filePath === filePath
+    )
+    if (res !== 'cancel') {
+      window.electron.ipcRenderer.send('delSongs', [filePath], getCurrentTimeDirName())
+      if (originalIndex !== -1) {
+        runtime.playingData.playingSongListData.splice(originalIndex, 1)
+      }
+    } else {
+      if (originalIndex !== -1) {
+        runtime.playingData.playingSongListData.splice(originalIndex, 1)
+      }
+    }
+    let nextIndex = -1
+    if (originalIndex !== -1 && runtime.playingData.playingSongListData.length > 0) {
+      nextIndex = Math.min(originalIndex, runtime.playingData.playingSongListData.length - 1)
+    }
+    if (nextIndex !== -1) {
+      const nextSongToPlay = runtime.playingData.playingSongListData[nextIndex]
+      isInternalSongChange.value = true
+      runtime.playingData.playingSong = nextSongToPlay
+      requestLoadSong(nextSongToPlay.filePath)
+    } else {
+      isInternalSongChange.value = true
+      runtime.playingData.playingSong = null
+      runtime.playingData.playingSongListUUID = ''
+      waveformShow.value = false
+      wavesurferInstance?.empty()
+      preloadWavesurferInstance?.destroy()
+      preloadWavesurferInstance = null
+    }
+  }
+}
+
+const createWaveSurferInstance = (container: HTMLDivElement): WaveSurfer => {
+  return WaveSurfer.create({
+    container: container,
     waveColor: gradient,
     progressColor: progressGradient,
     barWidth: 2,
     autoplay: false,
-    // barAlign: 'bottom',
     height: 40
   })
+}
 
+onMounted(() => {
+  if (!waveform.value) {
+    console.error('Main waveform container not found!')
+    return
+  }
+  wavesurferInstance = createWaveSurferInstance(waveform.value)
+
+  // --- 主实例事件监听 ---
   // Hover effect
   {
     const hover = document.querySelector<HTMLElement>('#hover')
     if (hover === null) {
       throw new Error('hover is null')
     }
-    const waveform = document.querySelector<HTMLElement>('#waveform')
-    if (waveform === null) {
+    const waveformEl = waveform.value
+    if (waveformEl === null) {
       throw new Error('waveform is null')
     }
-    waveform.addEventListener('pointermove', (e) => (hover.style.width = `${e.offsetX}px`))
+    waveformEl.addEventListener('pointermove', (e) => (hover.style.width = `${e.offsetX}px`))
   }
 
   // Current time & duration
@@ -106,7 +196,9 @@ onMounted(() => {
           wavesurferInstance.isPlaying() &&
           deltaTime < jumpThreshold
         ) {
+          // eslint-disable-next-line @typescript-eslint/no-use-before-define
           if (runtime.setting.autoPlayNextSong) {
+            // eslint-disable-next-line @typescript-eslint/no-use-before-define
             nextSong()
           } else {
             wavesurferInstance.pause()
@@ -117,113 +209,122 @@ onMounted(() => {
       previousTime = currentTime
     })
     wavesurferInstance.on('finish', () => {
-      // 当音频播放到物理末尾时，检查是否需要自动播放下一首
+      cancelPreloadTimer()
       if (runtime.setting.autoPlayNextSong) {
+        // eslint-disable-next-line @typescript-eslint/no-use-before-define
         nextSong()
       }
     })
     wavesurferInstance.on('pause', () => {
+      cancelPreloadTimer()
       playerControlsRef.value?.setPlayingValue(false)
     })
     wavesurferInstance.on('play', () => {
       playerControlsRef.value?.setPlayingValue(true)
+      cancelPreloadTimer()
+      preloadTimerId = setTimeout(() => {
+        preloadNextSong()
+        preloadTimerId = null
+      }, 3000)
     })
+
     wavesurferInstance.on('error', async (error) => {
-      if (error === undefined) {
+      // 从 error 对象获取信息可能不可靠，依赖当前状态
+      await handleSongLoadError(runtime.playingData.playingSong?.filePath ?? null, false)
+    })
+
+    // --- 预加载实例事件监听 (移到 preloadNextSong 内部首次创建时) ---
+    // preloadWavesurferInstance.on('ready', () => { ... });
+    // preloadWavesurferInstance.on('error', (error) => { ... });
+  }
+  // 注册 IPC 监听器 (保持不变)
+  window.electron.ipcRenderer.on(
+    'readedSongFile',
+    (event, audioData: Uint8Array, filePath: string, requestId?: number) => {
+      // 检查请求ID是否匹配当前最新请求
+      if (requestId && requestId !== currentLoadRequestId) {
         return
       }
-      if (runtime.playingData.playingSong === null) {
-        throw new Error('playingData.playingSong is null')
+
+      // 确保这是对当前请求歌曲的响应
+      if (filePath === runtime.playingData.playingSong?.filePath) {
+        // 调用 handleLoadBlob 时传递请求ID
+        handleLoadBlob(new Blob([audioData]), filePath, requestId || currentLoadRequestId)
+      } else {
+        console.warn(
+          `收到与当前不匹配的歌曲数据: ${filePath}, 当前: ${runtime.playingData.playingSong?.filePath}`
+        )
       }
-      let filePath = runtime.playingData.playingSong.filePath
-      let res = await confirm({
-        title: '错误',
-        content: [t('该文件无法播放，是否直接删除'), t('（文件内容不是音频或文件已损坏）')]
-      })
-      if (res !== 'cancel') {
-        window.electron.ipcRenderer.send('delSongs', [filePath], getCurrentTimeDirName())
-        let index = runtime.playingData.playingSongListData.findIndex((item) => {
-          return item.filePath === filePath
-        })
-        if (index === runtime.playingData.playingSongListData.length - 1) {
-          runtime.playingData.playingSongListData.splice(index, 1)
-          runtime.playingData.playingSong = null
-        } else {
-          runtime.playingData.playingSong = runtime.playingData.playingSongListData[index + 1]
-          runtime.playingData.playingSongListData.splice(index, 1)
-          window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
+    }
+  )
+  window.electron.ipcRenderer.on(
+    'readedNextSongFile',
+    (event, audioData: Uint8Array, filePath: string, requestId?: number) => {
+      // 检查请求ID是否匹配当前最新预加载请求
+      if (requestId && requestId !== currentPreloadRequestId) {
+        return
+      }
+
+      // 检查预加载实例是否仍然存在
+      if (!preloadWavesurferInstance) {
+        console.warn(`收到预加载数据但预加载实例已被销毁: ${filePath}`)
+        return
+      }
+
+      // 检查路径是否匹配
+      if (filePath === preloadedSongFilePath) {
+        try {
+          preloadedBlob = new Blob([audioData])
+          // 确保这个文件的预加载没有被取消
+          if (isPreloading && preloadWavesurferInstance && filePath === preloadedSongFilePath) {
+            preloadWavesurferInstance.loadBlob(preloadedBlob)
+          } else {
+            console.warn(`预加载状态已变更，取消加载: ${filePath}`)
+            preloadedBlob = null
+          }
+        } catch (error) {
+          console.error(`预加载音频数据处理错误:`, error)
+          handleSongLoadError(filePath, true)
         }
       } else {
-        nextSong()
+        console.warn(
+          `收到预加载数据与期望路径不匹配: 收到=${filePath}, 期望=${preloadedSongFilePath}`
+        )
       }
-    })
-  }
-})
-watch(
-  () => runtime.playingData.playingSong,
-  () => {
-    if (runtime.playingData.playingSong === null) {
-      waveformShow.value = false
-      wavesurferInstance?.empty()
-      runtime.playingData.playingSongListUUID = ''
     }
-  }
-)
-onUnmounted(() => {
-  // 组件卸载时销毁 WaveSurfer 实例
-  if (wavesurferInstance) {
-    wavesurferInstance.destroy()
-    wavesurferInstance = null
-  }
-})
+  )
 
-const songInfoShow = ref(false)
-const coverBlobUrl = ref('')
-const audioContext = new AudioContext()
-const bpm = ref<number | string>('')
-window.electron.ipcRenderer.on('readedSongFile', async (event, audioData) => {
-  const uint8Buffer = audioData
-  const blob = new Blob([uint8Buffer])
-  if (runtime.playingData.playingSong === null) {
-    throw new Error('playingData.playingSong is null')
-  }
-  if (runtime.playingData.playingSong.cover) {
-    if (coverBlobUrl.value) {
-      URL.revokeObjectURL(coverBlobUrl.value)
+  // 添加预加载错误处理监听器
+  window.electron.ipcRenderer.on(
+    'readNextSongFileError',
+    (event, filePath: string, errorMessage: string, requestId?: number) => {
+      // 检查请求ID是否匹配当前最新预加载请求
+      if (requestId && requestId !== currentPreloadRequestId) {
+        return
+      }
+
+      console.error(`预加载歌曲失败: ${filePath}, 错误: ${errorMessage}`)
+      if (filePath === preloadedSongFilePath) {
+        handleSongLoadError(filePath, true)
+      }
     }
-    let coverBlob = new Blob([Uint8Array.from(runtime.playingData.playingSong.cover.data)], {
-      type: runtime.playingData.playingSong.cover.format
-    })
-    coverBlobUrl.value = URL.createObjectURL(coverBlob)
-  } else {
-    if (coverBlobUrl.value) {
-      URL.revokeObjectURL(coverBlobUrl.value)
+  )
+
+  // 为主歌曲加载添加错误处理
+  window.electron.ipcRenderer.on(
+    'readSongFileError',
+    (event, filePath: string, errorMessage: string, requestId?: number) => {
+      // 检查请求ID是否匹配当前最新加载请求
+      if (requestId && requestId !== currentLoadRequestId) {
+        return
+      }
+
+      console.error(`加载歌曲失败: ${filePath}, 错误: ${errorMessage}`)
+      handleSongLoadError(filePath, false)
     }
-    coverBlobUrl.value = ''
-  }
-  waveformShow.value = true
-  bpm.value = ''
-  await wavesurferInstance?.loadBlob(blob)
+  )
 
-  // 根据设置决定播放起点
-  if (runtime.setting.enablePlaybackRange && wavesurferInstance) {
-    const duration = wavesurferInstance.getDuration()
-    // 确保 startPlayPercent 有值，默认为 0
-    const startPercent = runtime.setting.startPlayPercent ?? 0
-    const startTime = (duration * startPercent) / 100
-    wavesurferInstance.play(startTime)
-  } else {
-    wavesurferInstance?.play() // 从头播放
-  }
-
-  const arrayBuffer = uint8Buffer.buffer
-  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
-  realtimeBpm.analyzeFullBuffer(audioBuffer).then((topCandidates) => {
-    bpm.value = topCandidates[0].tempo
-  })
-})
-
-onMounted(() => {
+  // 注册其他 listeners... (hotkeys, resize, etc.)
   hotkeys('space', 'windowGlobal', () => {
     if (!waveformShow.value) {
       return
@@ -240,7 +341,6 @@ onMounted(() => {
     if (!waveformShow.value) {
       return
     }
-
     fastForward()
 
     return false
@@ -249,7 +349,6 @@ onMounted(() => {
     if (!waveformShow.value) {
       return
     }
-
     fastBackward()
 
     return false
@@ -261,7 +360,6 @@ onMounted(() => {
     if (runtime.selectSongListDialogShow) {
       return
     }
-
     nextSong()
 
     return false
@@ -273,7 +371,6 @@ onMounted(() => {
     if (runtime.selectSongListDialogShow) {
       return
     }
-
     previousSong()
 
     return false
@@ -312,19 +409,288 @@ onMounted(() => {
   })
 
   // 可能需要延迟获取宽度，等待 wavesurfer 渲染完成
-  setTimeout(updateWaveformWidth, 500) // 简单的延迟，或者监听 wavesurfer 的 ready 事件更好
-  window.addEventListener('resize', updateWaveformWidth) // 监听窗口大小变化
+  setTimeout(updateWaveformWidth, 500)
+  window.addEventListener('resize', updateWaveformWidth)
 
   // 如果 wavesurferInstance 已经创建，监听其 ready 事件
   if (wavesurferInstance) {
     wavesurferInstance.on('ready', () => {
       updateWaveformWidth()
-      // 可以在这里再同步一次百分比，确保初始值正确
       startHandleLeftPercent.value = runtime.setting.startPlayPercent ?? 0
       endHandleLeftPercent.value = runtime.setting.endPlayPercent ?? 100
     })
   }
 })
+
+// 修改 watch 以处理手动切换到预加载歌曲的情况
+watch(
+  () => runtime.playingData.playingSong,
+  (newSong, oldSong) => {
+    if (isInternalSongChange.value) {
+      isInternalSongChange.value = false
+      return
+    }
+
+    cancelPreloadTimer()
+
+    if (newSong === null) {
+      waveformShow.value = false
+      wavesurferInstance?.empty()
+      preloadWavesurferInstance?.destroy()
+      preloadWavesurferInstance = null
+      runtime.playingData.playingSongListUUID = ''
+      preloadedBlob = null
+      preloadedSongFilePath = null
+      isPreloading = false
+      isPreloadReady = false
+    } else if (newSong?.filePath !== oldSong?.filePath) {
+      // 仅处理手动切换
+      if (newSong.filePath === preloadedSongFilePath && isPreloadReady && preloadedBlob) {
+        const blobToLoad = preloadedBlob
+
+        preloadedBlob = null
+        preloadedSongFilePath = null
+        isPreloading = false
+        isPreloadReady = false
+        preloadWavesurferInstance?.destroy()
+        preloadWavesurferInstance = null
+        handleLoadBlob(blobToLoad, newSong.filePath, currentLoadRequestId)
+      } else {
+        isPreloading = false
+        isPreloadReady = false
+        preloadedBlob = null
+        preloadedSongFilePath = null
+        preloadWavesurferInstance?.destroy()
+        preloadWavesurferInstance = null
+        requestLoadSong(newSong.filePath)
+      }
+    }
+  }
+)
+onUnmounted(() => {
+  cancelPreloadTimer()
+  if (wavesurferInstance) {
+    wavesurferInstance.destroy()
+    wavesurferInstance = null
+  }
+  if (preloadWavesurferInstance) {
+    preloadWavesurferInstance.destroy()
+    preloadWavesurferInstance = null
+  }
+  window.electron.ipcRenderer.removeAllListeners('readedSongFile')
+  window.electron.ipcRenderer.removeAllListeners('readedNextSongFile')
+  window.electron.ipcRenderer.removeAllListeners('readNextSongFileError')
+  window.electron.ipcRenderer.removeAllListeners('readSongFileError')
+  window.removeEventListener('resize', updateWaveformWidth)
+  hotkeys.unbind()
+})
+
+const songInfoShow = ref(false)
+const coverBlobUrl = ref('')
+const audioContext = new AudioContext()
+const bpm = ref<number | string>('')
+
+// 修改 requestLoadSong 以添加请求ID
+const requestLoadSong = (filePath: string) => {
+  cancelPreloadTimer()
+  isPreloading = false
+  isPreloadReady = false
+  preloadedBlob = null
+  preloadedSongFilePath = null
+  preloadWavesurferInstance?.destroy()
+  preloadWavesurferInstance = null
+
+  // 生成新的请求ID
+  currentLoadRequestId++
+  window.electron.ipcRenderer.send('readSongFile', filePath, currentLoadRequestId)
+}
+
+// 修改 handleLoadBlob 以接收和使用请求ID
+const handleLoadBlob = async (blob: Blob, filePath: string, requestId: number) => {
+  // 检查请求ID是否仍然是最新的
+  if (requestId !== currentLoadRequestId) {
+    return
+  }
+
+  if (!wavesurferInstance || runtime.playingData.playingSong?.filePath !== filePath) {
+    console.warn(
+      `调用了错误的歌曲或实例为空. 期望: ${runtime.playingData.playingSong?.filePath}, 收到: ${filePath}`
+    )
+    return
+  }
+
+  // 更新歌曲信息和封面
+  if (runtime.playingData.playingSong.cover) {
+    if (coverBlobUrl.value) {
+      URL.revokeObjectURL(coverBlobUrl.value)
+    }
+    let coverBlob = new Blob([Uint8Array.from(runtime.playingData.playingSong.cover.data)], {
+      type: runtime.playingData.playingSong.cover.format
+    })
+    coverBlobUrl.value = URL.createObjectURL(coverBlob)
+  } else {
+    if (coverBlobUrl.value) {
+      URL.revokeObjectURL(coverBlobUrl.value)
+    }
+    coverBlobUrl.value = ''
+  }
+  waveformShow.value = true
+  bpm.value = ''
+  try {
+    // 先加载音频
+    await wavesurferInstance.loadBlob(blob)
+
+    // 检查请求ID是否仍然是最新的
+    if (requestId !== currentLoadRequestId) {
+      return
+    }
+
+    // 确保当前播放的仍然是期望播放的歌曲
+    if (runtime.playingData.playingSong?.filePath !== filePath) {
+      console.warn('歌曲已更改，取消播放')
+      return
+    }
+
+    try {
+      if (runtime.setting.enablePlaybackRange && wavesurferInstance) {
+        const duration = wavesurferInstance.getDuration()
+        const startPercent = runtime.setting.startPlayPercent ?? 0
+        const startTime = (duration * startPercent) / 100
+        wavesurferInstance.play(startTime)
+      } else {
+        wavesurferInstance?.play()
+      }
+    } catch (playError: any) {
+      if (playError.name === 'AbortError') {
+        console.info('播放被中断，可能是因为快速切换歌曲')
+      } else {
+        throw playError
+      }
+    }
+
+    // --- BPM Analysis (remains the same, wrapped in its own try...catch) ---
+    try {
+      blob
+        .arrayBuffer()
+        .then(async (arrayBuffer) => {
+          try {
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+            realtimeBpm.analyzeFullBuffer(audioBuffer).then((topCandidates) => {
+              if (runtime.playingData.playingSong?.filePath === filePath) {
+                bpm.value = topCandidates[0].tempo
+              }
+            })
+          } catch (decodeError) {
+            console.error('Error decoding audio data for BPM:', decodeError)
+            if (runtime.playingData.playingSong?.filePath === filePath) {
+              bpm.value = 'N/A'
+            }
+          }
+        })
+        .catch((bufferError) => {
+          console.error('Error getting array buffer from blob for BPM:', bufferError)
+          if (runtime.playingData.playingSong?.filePath === filePath) {
+            bpm.value = 'N/A'
+          }
+        })
+    } catch (e) {
+      console.error('Error initiating BPM analysis:', e)
+      if (runtime.playingData.playingSong?.filePath === filePath) {
+        bpm.value = 'N/A'
+      }
+    }
+    // --- End BPM Analysis ---
+  } catch (loadError) {
+    console.error(`Error loading blob or starting playback for ${filePath}:`, loadError)
+    if ((loadError as any)?.name !== 'AbortError') {
+      await handleSongLoadError(filePath, false)
+    }
+  }
+}
+
+// 修改 preloadNextSong 以添加请求ID
+const preloadNextSong = () => {
+  // 基本条件检查 (保持不变)
+  if (isPreloading || !runtime.playingData.playingSong || !preloadWaveform.value) return
+
+  // 查找下一首歌 (保持不变)
+  const currentIndex = runtime.playingData.playingSongListData.findIndex(
+    (item) => item.filePath === runtime.playingData.playingSong?.filePath
+  )
+  if (currentIndex === -1 || currentIndex >= runtime.playingData.playingSongListData.length - 1) {
+    return
+  }
+  const nextSongToPreload = runtime.playingData.playingSongListData[currentIndex + 1]
+  if (!nextSongToPreload?.filePath) {
+    return
+  }
+  const nextSongFilePath = nextSongToPreload.filePath
+
+  // 检查是否需要预加载 (保持不变)
+  if (nextSongFilePath === preloadedSongFilePath && isPreloadReady) {
+    return
+  }
+  if (nextSongFilePath === preloadedSongFilePath && isPreloading) {
+    return
+  }
+
+  // --- 销毁旧的预加载实例 (如果存在) ---
+  if (preloadWavesurferInstance) {
+    try {
+      preloadWavesurferInstance.destroy()
+    } catch (e) {
+      console.warn('Error destroying previous preload instance:', e)
+    }
+    preloadWavesurferInstance = null // 明确设为 null
+  }
+
+  // --- 创建新的预加载实例 ---
+  if (!preloadWaveform.value) {
+    // 再次检查，以防万一
+    return
+  }
+  try {
+    preloadWavesurferInstance = createWaveSurferInstance(preloadWaveform.value)
+
+    // 先设置预加载文件路径，确保监听器能正确引用
+    preloadedSongFilePath = nextSongFilePath
+    isPreloading = true
+    isPreloadReady = false
+    preloadedBlob = null
+
+    // 生成新的预加载请求ID
+    currentPreloadRequestId++
+    const requestId = currentPreloadRequestId
+
+    // **为新实例添加监听器**
+    preloadWavesurferInstance.on('ready', () => {
+      // 检查当前预加载的文件是否仍然是我们期望的
+      if (preloadedSongFilePath === nextSongFilePath && preloadWavesurferInstance) {
+        isPreloading = false
+        isPreloadReady = true
+      } else {
+        console.warn(
+          `预加载歌曲就绪事件与期望不匹配: ${preloadedSongFilePath}, 期望: ${nextSongFilePath}`
+        )
+      }
+    })
+    preloadWavesurferInstance.on('error', (error) => {
+      console.error('预加载Wavesurfer错误:', error, preloadedSongFilePath)
+      if (preloadedSongFilePath === nextSongFilePath) {
+        handleSongLoadError(preloadedSongFilePath, true)
+      }
+    })
+
+    // 发送预加载请求，包含请求ID
+    window.electron.ipcRenderer.send('readNextSongFile', nextSongFilePath, requestId)
+  } catch (createError) {
+    console.error('Error creating preload wavesurfer instance:', createError)
+    preloadWavesurferInstance = null
+    isPreloading = false
+    preloadedSongFilePath = null // 重置路径
+    return
+  }
+}
 
 const play = () => {
   wavesurferInstance?.play()
@@ -342,43 +708,104 @@ const fastBackward = () => {
 }
 
 const nextSong = () => {
-  if (runtime.playingData.playingSong === null) {
-    throw new Error('playingData.playingSong is null')
-  }
-  let index = runtime.playingData.playingSongListData.findIndex((item) => {
-    return item.filePath === runtime.playingData.playingSong?.filePath
-  })
-  if (index === runtime.playingData.playingSongListData.length - 1) {
+  cancelPreloadTimer()
+  if (!runtime.playingData.playingSong) return
+  const currentIndex = runtime.playingData.playingSongListData.findIndex(
+    (item) => item.filePath === runtime.playingData.playingSong?.filePath
+  )
+  if (currentIndex === -1 || currentIndex >= runtime.playingData.playingSongListData.length - 1) {
     return
   }
-  runtime.playingData.playingSong = runtime.playingData.playingSongListData[index + 1]
-  window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
+  const nextIndex = currentIndex + 1
+  const nextSongData = runtime.playingData.playingSongListData[nextIndex]
+  if (!nextSongData) return
+  const nextSongFilePath = nextSongData.filePath
+
+  if (wavesurferInstance?.isPlaying()) {
+    wavesurferInstance.stop()
+  }
+
+  if (preloadedSongFilePath === nextSongFilePath && preloadedBlob && isPreloadReady) {
+    const blobToLoad = preloadedBlob
+    isInternalSongChange.value = true
+    runtime.playingData.playingSong = nextSongData
+    preloadedBlob = null
+    preloadedSongFilePath = null
+    isPreloading = false
+    isPreloadReady = false
+    preloadWavesurferInstance?.destroy()
+    preloadWavesurferInstance = null
+    handleLoadBlob(blobToLoad, nextSongFilePath, currentLoadRequestId)
+  } else {
+    preloadedBlob = null
+    preloadedSongFilePath = null
+    isPreloading = false
+    isPreloadReady = false
+    preloadWavesurferInstance?.destroy()
+    preloadWavesurferInstance = null
+    isInternalSongChange.value = true
+    runtime.playingData.playingSong = nextSongData
+    requestLoadSong(nextSongFilePath)
+  }
 }
 
 const previousSong = () => {
-  if (runtime.playingData.playingSong === null) {
-    throw new Error('playingData.playingSong is null')
-  }
-  let index = runtime.playingData.playingSongListData.findIndex((item) => {
-    return item.filePath === runtime.playingData.playingSong?.filePath
-  })
-  if (index === 0) {
+  cancelPreloadTimer()
+  if (!runtime.playingData.playingSong) return
+
+  const currentIndex = runtime.playingData.playingSongListData.findIndex(
+    (item) => item.filePath === runtime.playingData.playingSong?.filePath
+  )
+  if (currentIndex <= 0) {
     return
   }
-  runtime.playingData.playingSong = runtime.playingData.playingSongListData[index - 1]
-  window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
+
+  const prevIndex = currentIndex - 1
+  const prevSongData = runtime.playingData.playingSongListData[prevIndex]
+  if (!prevSongData) return
+
+  const prevSongFilePath = prevSongData.filePath
+
+  if (wavesurferInstance?.isPlaying()) {
+    wavesurferInstance.stop()
+  }
+
+  // 清理预加载状态
+  preloadedBlob = null
+  preloadedSongFilePath = null
+  isPreloading = false
+  isPreloadReady = false
+  preloadWavesurferInstance?.destroy()
+  preloadWavesurferInstance = null
+  isInternalSongChange.value = true
+  runtime.playingData.playingSong = prevSongData
+  requestLoadSong(prevSongFilePath)
 }
 let showDelConfirm = false
 
 const delSong = async () => {
+  cancelPreloadTimer()
   if (runtime.playingData.playingSong === null) {
-    throw new Error('playingData.playingSong is null')
+    console.error('Cannot delete, playingData.playingSong is null')
+    return
   }
 
   const filePath = runtime.playingData.playingSong.filePath
+  const currentSongListUUID = runtime.playingData.playingSongListUUID
+  const currentList = runtime.playingData.playingSongListData // 保存当前列表引用
+  const currentIndex = currentList.findIndex((item) => item.filePath === filePath)
+
+  if (currentIndex === -1) {
+    console.error('Song to delete not found in the playing list.')
+    return // 如果在列表中找不到，则不继续
+  }
+
   const isInRecycleBin = runtime.libraryTree.children
     ?.find((item) => item.dirName === '回收站')
-    ?.children?.find((item) => item.uuid === runtime.playingData.playingSongListUUID)
+    ?.children?.find((item) => item.uuid === currentSongListUUID)
+
+  let performDelete = false
+  let permanently = false
 
   if (isInRecycleBin) {
     const res = await confirm({
@@ -389,27 +816,67 @@ const delSong = async () => {
       ]
     })
     showDelConfirm = false
-
-    if (res !== 'confirm') {
-      return
+    if (res === 'confirm') {
+      performDelete = true
+      permanently = true
     }
+  } else {
+    // 移动到回收站前确认
+    const res = await confirm({
+      title: '移至回收站',
+      content: ['确定将正在播放的曲目移至回收站吗？']
+    })
+    showDelConfirm = false
+    if (res === 'confirm') {
+      performDelete = true
+      permanently = false
+    } else {
+      performDelete = false
+    }
+  }
+
+  if (!performDelete) {
+    return
+  }
+
+  // 清理播放器状态
+  wavesurferInstance?.stop()
+  wavesurferInstance?.empty()
+  waveformShow.value = false
+  bpm.value = ''
+  // 清理预加载状态 (加检查)
+  preloadedBlob = null
+  preloadedSongFilePath = null
+  isPreloading = false
+  isPreloadReady = false
+  preloadWavesurferInstance?.destroy()
+
+  // 从 Pinia 的列表中移除当前歌曲 (使用之前保存的引用和索引)
+  currentList.splice(currentIndex, 1)
+
+  // 确定下一首要播放的歌曲 (如果列表还有歌)
+  let nextPlayingSong = null
+  if (currentList.length > 0) {
+    const nextIndex = Math.min(currentIndex, currentList.length - 1)
+    nextPlayingSong = currentList[nextIndex]
+  }
+
+  // 更新 Pinia store 中的当前歌曲
+  runtime.playingData.playingSong = nextPlayingSong
+
+  // 执行文件删除操作
+  if (permanently) {
     window.electron.ipcRenderer.invoke('permanentlyDelSongs', [filePath])
   } else {
-    showDelConfirm = false
     window.electron.ipcRenderer.send('delSongs', [filePath], getCurrentTimeDirName())
   }
 
-  const index = runtime.playingData.playingSongListData.findIndex(
-    (item) => item.filePath === filePath
-  )
-
-  runtime.playingData.playingSongListData.splice(index, 1)
-
-  if (index === runtime.playingData.playingSongListData.length) {
-    runtime.playingData.playingSong = null
+  // 如果删除了歌曲后还有歌曲，则加载下一首
+  if (nextPlayingSong) {
+    requestLoadSong(nextPlayingSong.filePath)
   } else {
-    runtime.playingData.playingSong = runtime.playingData.playingSongListData[index]
-    window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
+    // 没有歌曲了，确保播放器是空的
+    runtime.playingData.playingSongListUUID = '' // 清空列表 UUID
   }
 }
 const selectSongListDialogLibraryName = ref('筛选库')
@@ -426,69 +893,123 @@ const moveToLikeLibrary = () => {
 }
 
 const selectSongListDialogConfirm = async (item: string) => {
+  cancelPreloadTimer()
   selectSongListDialogShow.value = false
+  if (!runtime.playingData.playingSong) {
+    console.error('Cannot move, playing song data is null.')
+    return
+  }
   if (item === runtime.playingData.playingSongListUUID) {
     return
   }
-  if (runtime.playingData.playingSong === null) {
-    throw new Error('playingData.playingSong is null')
-  }
-  await window.electron.ipcRenderer.invoke(
-    'moveSongsToDir',
-    [runtime.playingData.playingSong.filePath],
-    libraryUtils.findDirPathByUuid(item)
-  )
-  let filePath = runtime.playingData.playingSong.filePath
 
-  let index = runtime.playingData.playingSongListData.findIndex((item) => {
-    return item.filePath === filePath
-  })
-  if (index === runtime.playingData.playingSongListData.length - 1) {
-    runtime.playingData.playingSongListData.splice(index, 1)
-    runtime.playingData.playingSong = null
-  } else {
-    runtime.playingData.playingSong = runtime.playingData.playingSongListData[index + 1]
-    runtime.playingData.playingSongListData.splice(index, 1)
-    window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
+  const filePath = runtime.playingData.playingSong.filePath
+  const targetDirPath = libraryUtils.findDirPathByUuid(item)
+  const currentList = runtime.playingData.playingSongListData // 保存列表引用
+  const currentIndex = currentList.findIndex((song) => song.filePath === filePath)
+
+  if (!targetDirPath) {
+    console.error(`Target directory path not found for UUID: ${item}`)
+    return
   }
-  if (item === runtime.songsArea.songListUUID) {
-    runtime.songsArea.songListUUID = ''
-    nextTick(() => {
-      runtime.songsArea.songListUUID = item
-    })
+
+  if (currentIndex === -1) {
+    console.error('Song to move not found in the playing list.')
+    return // 如果在列表中找不到，则不继续
+  }
+
+  // 清理播放器和预加载状态
+  wavesurferInstance?.stop()
+  wavesurferInstance?.empty()
+  waveformShow.value = false
+  bpm.value = ''
+  preloadedBlob = null
+  preloadedSongFilePath = null
+  isPreloading = false
+  isPreloadReady = false
+  preloadWavesurferInstance?.destroy() // 检查 null
+
+  // ... 后续移动和切换逻辑 ...
+  currentList.splice(currentIndex, 1)
+  // 确定下一首要播放的歌曲 (如果列表还有歌)
+  let nextPlayingSong = null
+  if (currentList.length > 0) {
+    const nextIndex = Math.min(currentIndex, currentList.length - 1)
+    nextPlayingSong = currentList[nextIndex]
+  }
+  // 更新 Pinia store 中的当前歌曲
+  runtime.playingData.playingSong = nextPlayingSong
+  // 执行移动操作
+  try {
+    await window.electron.ipcRenderer.invoke('moveSongsToDir', [filePath], targetDirPath)
+    if (item === runtime.songsArea.songListUUID) {
+      runtime.songsArea.songListUUID = ''
+      nextTick(() => {
+        runtime.songsArea.songListUUID = item
+      })
+    }
+    // 如果移动后列表还有歌曲，则加载下一首
+    if (nextPlayingSong) {
+      requestLoadSong(nextPlayingSong.filePath)
+    } else {
+      // 没有歌曲了，确保播放器是空的
+      runtime.playingData.playingSongListUUID = '' // 清空列表 UUID
+    }
+  } catch (error) {
+    console.error(`Error moving song ${filePath}:`, error)
+    runtime.playingData.playingSong = null
   }
 }
 
 const exportTrack = async () => {
+  cancelPreloadTimer()
+  if (!runtime.playingData.playingSong) {
+    console.error('Cannot export, no song is playing.')
+    return
+  }
   let result = await exportDialog({ title: '曲目' })
   if (result !== 'cancel') {
     let folderPathVal = result.folderPathVal
     let deleteSongsAfterExport = result.deleteSongsAfterExport
-    await window.electron.ipcRenderer.invoke(
-      'exportSongsToDir',
-      folderPathVal,
-      deleteSongsAfterExport,
-      JSON.parse(JSON.stringify([runtime.playingData.playingSong]))
-    )
-    if (deleteSongsAfterExport) {
-      if (runtime.playingData.playingSong === null) {
-        throw new Error('playingData.playingSong is null')
+    const songToExport = JSON.parse(JSON.stringify(runtime.playingData.playingSong)) // 传递副本
+    const filePath = songToExport.filePath // 保存文件路径
+    const currentList = runtime.playingData.playingSongListData // 保存列表引用
+    const currentIndex = currentList.findIndex((item) => item.filePath === filePath)
+
+    try {
+      await window.electron.ipcRenderer.invoke(
+        'exportSongsToDir',
+        folderPathVal,
+        deleteSongsAfterExport,
+        [songToExport] // 传递包含副本的数组
+      )
+      if (deleteSongsAfterExport) {
+        if (currentIndex !== -1) {
+          wavesurferInstance?.stop()
+          wavesurferInstance?.empty()
+          waveformShow.value = false
+          bpm.value = ''
+          preloadedBlob = null
+          preloadedSongFilePath = null
+          isPreloading = false
+          isPreloadReady = false
+          preloadWavesurferInstance?.destroy()
+          currentList.splice(currentIndex, 1)
+          let nextPlayingSong = null
+          if (currentList.length > 0) {
+            const nextIndex = Math.min(currentIndex, currentList.length - 1)
+            nextPlayingSong = currentList[nextIndex]
+          }
+          runtime.playingData.playingSong = nextPlayingSong
+          if (nextPlayingSong) {
+            requestLoadSong(nextPlayingSong.filePath)
+          } else {
+            runtime.playingData.playingSongListUUID = ''
+          }
+        }
       }
-      let filePath = runtime.playingData.playingSong.filePath
-      if (runtime.playingData.playingSong.coverUrl) {
-        URL.revokeObjectURL(runtime.playingData.playingSong.coverUrl)
-      }
-      let index = runtime.playingData.playingSongListData.findIndex((item) => {
-        return item.filePath === filePath
-      })
-      if (index === runtime.playingData.playingSongListData.length - 1) {
-        runtime.playingData.playingSongListData.splice(index, 1)
-        runtime.playingData.playingSong = null
-      } else {
-        runtime.playingData.playingSong = runtime.playingData.playingSongListData[index + 1]
-        runtime.playingData.playingSongListData.splice(index, 1)
-        window.electron.ipcRenderer.send('readSongFile', runtime.playingData.playingSong.filePath)
-      }
+    } catch (error) {
+      console.error('Error exporting track:', error)
     }
   }
 }
@@ -523,11 +1044,7 @@ const updateWaveformWidth = () => {
 
 // 全局 mousemove 处理
 const handleGlobalMouseMove = (event: MouseEvent) => {
-  if (!isDraggingStart.value && !isDraggingEnd.value) return
-  if (waveformContainerWidth.value <= 0) {
-    return
-  }
-
+  if ((!isDraggingStart.value && !isDraggingEnd.value) || waveformContainerWidth.value <= 0) return
   const currentX = event.clientX
   const deltaX = currentX - dragStartX.value
   const deltaPercent = (deltaX / waveformContainerWidth.value) * 100
@@ -535,12 +1052,10 @@ const handleGlobalMouseMove = (event: MouseEvent) => {
   if (isDraggingStart.value) {
     let newStartPercent = startPercentAtDragStart.value + deltaPercent
     newStartPercent = Math.max(0, newStartPercent)
-    // 确保不小于结束把手位置减去 1%
     newStartPercent = Math.min((runtime.setting.endPlayPercent ?? 100) - 1, newStartPercent)
     runtime.setting.startPlayPercent = newStartPercent
   } else if (isDraggingEnd.value) {
     let newEndPercent = endPercentAtDragStart.value + deltaPercent
-    // 确保不小于起始把手位置加上 1%
     newEndPercent = Math.max((runtime.setting.startPlayPercent ?? 0) + 1, newEndPercent)
     newEndPercent = Math.min(100, newEndPercent)
     runtime.setting.endPlayPercent = newEndPercent
@@ -599,8 +1114,8 @@ watch(
     startHandleLeftPercent.value = start ?? 0
     endHandleLeftPercent.value = end ?? 100
   },
-  { immediate: true }
-) // immediate: true 确保初始加载时也执行一次
+  { immediate: true } // immediate: true 确保初始加载时也执行一次
+)
 
 // 当波形图显示/隐藏时，也同步一次状态（或根据需要处理）
 watch(waveformShow, (isVisible) => {
@@ -689,11 +1204,15 @@ watch(waveformShow, (isVisible) => {
     </div>
 
     <div style="flex-grow: 1; position: relative" class="unselectable">
+      <!-- 主波形容器 -->
       <div id="waveform" ref="waveform" v-show="waveformShow">
         <div id="time">0:00</div>
         <div id="duration">0:00</div>
         <div id="hover"></div>
       </div>
+      <!-- 隐藏的预加载波形容器 -->
+      <div id="preload-waveform" ref="preloadWaveform" style="display: none"></div>
+
       <div
         v-show="waveformShow && runtime.setting.enablePlaybackRange"
         class="manual-handle start-handle"
@@ -782,6 +1301,8 @@ watch(waveformShow, (isVisible) => {
 #waveform {
   cursor: pointer;
   position: relative;
+  /* 确保主波形图有高度 */
+  min-height: 40px; /* 或者等于 wavesurfer 的 height */
 }
 
 .songCover {
