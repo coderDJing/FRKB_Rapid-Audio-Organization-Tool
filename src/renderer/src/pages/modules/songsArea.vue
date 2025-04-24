@@ -660,7 +660,7 @@ const songDblClick = (song: ISongInfo) => {
   runtime.playingData.playingSong = song
   runtime.playingData.playingSongListUUID = runtime.songsArea.songListUUID
   runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
-  window.electron.ipcRenderer.send('readSongFile', song.filePath)
+  window.electron.ipcRenderer.send('readSongFile', song.filePath, 0)
 }
 const deleteSong = async () => {
   const isInRecycleBin = runtime.libraryTree.children
