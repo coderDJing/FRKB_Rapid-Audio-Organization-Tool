@@ -11,7 +11,6 @@ import { t } from '@renderer/utils/translate'
 // 定义 usePlayerControls 的参数类型
 interface UsePlayerControlsOptions {
   wavesurferInstance: Ref<WaveSurfer | null>
-  preloadWavesurferInstance: Ref<WaveSurfer | null>
   runtime: ReturnType<typeof useRuntimeStore>
   bpm: Ref<number | string>
   waveformShow: Ref<boolean>
@@ -20,18 +19,18 @@ interface UsePlayerControlsOptions {
   isInternalSongChange: Ref<boolean>
   requestLoadSong: (filePath: string) => void
   handleLoadBlob: (blob: Blob, filePath: string, requestId: number) => Promise<void>
-  cancelPreloadTimer: () => void
+  cancelPreloadTimer: (reason?: string) => void
   currentLoadRequestId: Ref<number>
   preloadedBlob: Ref<Blob | null>
   preloadedSongFilePath: Ref<string | null>
   isPreloading: Ref<boolean>
   isPreloadReady: Ref<boolean>
   ignoreNextEmptyError: Ref<boolean>
+  clearReadyPreloadState: () => void
 }
 
 export function usePlayerControlsLogic({
   wavesurferInstance,
-  preloadWavesurferInstance,
   runtime,
   bpm,
   waveformShow,
@@ -46,7 +45,8 @@ export function usePlayerControlsLogic({
   preloadedSongFilePath,
   isPreloading,
   isPreloadReady,
-  ignoreNextEmptyError
+  ignoreNextEmptyError,
+  clearReadyPreloadState
 }: UsePlayerControlsOptions) {
   const isFileOperationInProgress = ref(false)
 
@@ -75,7 +75,7 @@ export function usePlayerControlsLogic({
   }
 
   const nextSong = () => {
-    cancelPreloadTimer()
+    cancelPreloadTimer('nextSong start')
     if (!runtime.playingData.playingSong) return
     const currentIndex = runtime.playingData.playingSongListData.findIndex(
       (item) => item.filePath === runtime.playingData.playingSong?.filePath
@@ -99,7 +99,6 @@ export function usePlayerControlsLogic({
       isPreloadReady.value
     ) {
       // 命中预加载
-      console.log('[NextSong] 切歌: 使用预加载数据 -', nextSongFilePath) // 添加日志
       const blobToLoad = preloadedBlob.value
       isInternalSongChange.value = true // 标记内部切换
       runtime.playingData.playingSong = nextSongData
@@ -108,20 +107,15 @@ export function usePlayerControlsLogic({
       preloadedSongFilePath.value = null
       isPreloading.value = false
       isPreloadReady.value = false
-      preloadWavesurferInstance.value?.destroy()
-      preloadWavesurferInstance.value = null
       // 加载 blob
       handleLoadBlob(blobToLoad, nextSongFilePath, currentLoadRequestId.value)
     } else {
       // 未命中预加载或预加载未就绪
-      console.log('[NextSong] 切歌: 未使用预加载，直接加载 -', nextSongFilePath) // 添加日志
       // 清理预加载状态（以防万一）
       preloadedBlob.value = null
       preloadedSongFilePath.value = null
       isPreloading.value = false
       isPreloadReady.value = false
-      preloadWavesurferInstance.value?.destroy()
-      preloadWavesurferInstance.value = null
       // 设置内部切换并请求加载
       isInternalSongChange.value = true // 标记内部切换
       runtime.playingData.playingSong = nextSongData
@@ -130,7 +124,7 @@ export function usePlayerControlsLogic({
   }
 
   const previousSong = () => {
-    cancelPreloadTimer()
+    cancelPreloadTimer('previousSong start')
     if (!runtime.playingData.playingSong) return
 
     const currentIndex = runtime.playingData.playingSongListData.findIndex(
@@ -156,11 +150,11 @@ export function usePlayerControlsLogic({
     preloadedSongFilePath.value = null
     isPreloading.value = false
     isPreloadReady.value = false
-    preloadWavesurferInstance.value?.destroy()
-    preloadWavesurferInstance.value = null
+    // 设置内部切换并请求加载
     isInternalSongChange.value = true // 标记内部切换
     runtime.playingData.playingSong = prevSongData
     requestLoadSong(prevSongFilePath)
+    clearReadyPreloadState()
   }
 
   const delSong = async () => {
@@ -172,7 +166,7 @@ export function usePlayerControlsLogic({
     const filePathToDelete = runtime.playingData.playingSong.filePath
 
     try {
-      cancelPreloadTimer()
+      cancelPreloadTimer('delSong start')
 
       const currentSongListUUID = runtime.playingData.playingSongListUUID
       const currentList = runtime.playingData.playingSongListData
@@ -233,10 +227,6 @@ export function usePlayerControlsLogic({
       preloadedSongFilePath.value = null
       isPreloading.value = false
       isPreloadReady.value = false
-      if (preloadWavesurferInstance.value) {
-        preloadWavesurferInstance.value.destroy()
-        preloadWavesurferInstance.value = null
-      }
 
       // 从当前播放列表中移除歌曲
       currentList.splice(currentIndex, 1)
@@ -272,6 +262,7 @@ export function usePlayerControlsLogic({
         runtime.playingData.playingSongListUUID = ''
         isFileOperationInProgress.value = false // 允许后续操作
       }
+      clearReadyPreloadState()
     } catch (error) {
       console.error(`[delSong] 删除歌曲过程中发生错误 (${filePathToDelete}):`, error)
       // 出错时也应该重置标志，以防万一
@@ -311,7 +302,7 @@ export function usePlayerControlsLogic({
     }
 
     try {
-      cancelPreloadTimer() // 取消预加载
+      cancelPreloadTimer('handleMoveSong start')
       selectSongListDialogShow.value = false // 关闭对话框
 
       const currentList = runtime.playingData.playingSongListData
@@ -340,10 +331,6 @@ export function usePlayerControlsLogic({
       preloadedSongFilePath.value = null
       isPreloading.value = false
       isPreloadReady.value = false
-      if (preloadWavesurferInstance.value) {
-        preloadWavesurferInstance.value.destroy()
-        preloadWavesurferInstance.value = null
-      }
 
       // 从当前播放列表中移除歌曲
       currentList.splice(currentIndex, 1)
@@ -384,6 +371,7 @@ export function usePlayerControlsLogic({
         runtime.playingData.playingSongListUUID = ''
         isFileOperationInProgress.value = false // 允许后续操作
       }
+      clearReadyPreloadState()
     } catch (error) {
       console.error(`[moveSong] 移动歌曲过程中发生错误 (${filePathToMove}):`, error)
       // 出错时也应该重置标志
@@ -393,7 +381,7 @@ export function usePlayerControlsLogic({
   }
 
   const exportTrack = async () => {
-    cancelPreloadTimer() // 取消预加载
+    cancelPreloadTimer('exportTrack start') // 取消预加载
     if (!runtime.playingData.playingSong) {
       console.error('无法导出，没有歌曲正在播放。')
       return
@@ -434,8 +422,6 @@ export function usePlayerControlsLogic({
             preloadedSongFilePath.value = null
             isPreloading.value = false
             isPreloadReady.value = false
-            preloadWavesurferInstance.value?.destroy()
-            preloadWavesurferInstance.value = null
 
             // 从列表中删除
             currentList.splice(currentIndex, 1)
@@ -457,6 +443,9 @@ export function usePlayerControlsLogic({
             } else {
               runtime.playingData.playingSongListUUID = ''
             }
+
+            // 清理预加载
+            clearReadyPreloadState()
           }
         }
       } catch (error) {
