@@ -708,6 +708,7 @@ const playerActions = usePlayerControlsLogic({
   currentLoadRequestId,
   preloadedBlob,
   preloadedSongFilePath,
+  preloadedBpm,
   isPreloading,
   isPreloadReady,
   ignoreNextEmptyError,
