@@ -18,11 +18,17 @@ interface UsePlayerControlsOptions {
   selectSongListDialogLibraryName: Ref<string>
   isInternalSongChange: Ref<boolean>
   requestLoadSong: (filePath: string) => void
-  handleLoadBlob: (blob: Blob, filePath: string, requestId: number) => Promise<void>
+  handleLoadBlob: (
+    blob: Blob,
+    filePath: string,
+    requestId: number,
+    preloadedBpmValue?: number | string | null // 保持可选，因为watch调用时传了，但非预加载时不传
+  ) => Promise<void>
   cancelPreloadTimer: (reason?: string) => void
   currentLoadRequestId: Ref<number>
   preloadedBlob: Ref<Blob | null>
   preloadedSongFilePath: Ref<string | null>
+  preloadedBpm: Ref<number | string | null> // 确保 preloadedBpm 可用
   isPreloading: Ref<boolean>
   isPreloadReady: Ref<boolean>
   ignoreNextEmptyError: Ref<boolean>
@@ -43,6 +49,7 @@ export function usePlayerControlsLogic({
   currentLoadRequestId,
   preloadedBlob,
   preloadedSongFilePath,
+  preloadedBpm, // 确保 preloadedBpm 被解构
   isPreloading,
   isPreloadReady,
   ignoreNextEmptyError,
@@ -71,7 +78,8 @@ export function usePlayerControlsLogic({
 
   const fastBackward = () => {
     // 注意：wavesurfer 的 skip 方法接受正数表示前进，负数表示后退
-    wavesurferInstance.value?.skip(-runtime.setting.fastBackwardTime)
+    // 直接使用已经是负数的 fastBackwardTime
+    wavesurferInstance.value?.skip(runtime.setting.fastBackwardTime)
   }
 
   const nextSong = () => {
@@ -100,6 +108,7 @@ export function usePlayerControlsLogic({
     ) {
       // 命中预加载
       const blobToLoad = preloadedBlob.value
+      const bpmValueToUse = preloadedBpm.value // <-- 获取预加载的 BPM
       isInternalSongChange.value = true // 标记内部切换
       runtime.playingData.playingSong = nextSongData
       // 清理预加载状态
@@ -107,8 +116,8 @@ export function usePlayerControlsLogic({
       preloadedSongFilePath.value = null
       isPreloading.value = false
       isPreloadReady.value = false
-      // 加载 blob
-      handleLoadBlob(blobToLoad, nextSongFilePath, currentLoadRequestId.value)
+      // 加载 blob，并传递预加载的 BPM
+      handleLoadBlob(blobToLoad, nextSongFilePath, currentLoadRequestId.value, bpmValueToUse) // <-- 传递 BPM
     } else {
       // 未命中预加载或预加载未就绪
       // 清理预加载状态（以防万一）
@@ -119,6 +128,8 @@ export function usePlayerControlsLogic({
       // 设置内部切换并请求加载
       isInternalSongChange.value = true // 标记内部切换
       runtime.playingData.playingSong = nextSongData
+      // 注意：这里调用 requestLoadSong，它内部会调用 handleLoadBlob（在 IPC 返回后），
+      // 并且不会传递 preloadedBpmValue，这是符合预期的
       requestLoadSong(nextSongFilePath)
     }
   }
