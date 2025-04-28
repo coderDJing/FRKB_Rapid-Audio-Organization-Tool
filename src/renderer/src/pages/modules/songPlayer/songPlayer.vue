@@ -238,17 +238,7 @@ const attachEventListeners = (targetInstance: WaveSurfer) => {
   targetInstance.on('finish', () => {
     cancelPreloadTimer()
     if (runtime.setting.autoPlayNextSong) {
-      // 确保 finish 事件不会与 timeupdate 区间结束冲突
-      // （理论上 timeupdate 会先触发，但加个判断更保险）
-      // 如果是区间播放结束，这里可能不需要再调用 nextSong
-      // 但如果不是区间播放，或者区间设置到100%，则 finish 应该触发
-      const duration = targetInstance.getDuration()
-      const endPercent = runtime.setting.endPlayPercent ?? 100
-      const endTime = (duration * endPercent) / 100
-      // 只有当结束百分比接近100%时，finish 才负责播放下一首
-      if (Math.abs(endTime - duration) < 0.1) {
-        playerActions.nextSong()
-      }
+      playerActions.nextSong()
     }
   })
 
