@@ -233,27 +233,65 @@ export function usePlayerControlsLogic({
       waveformShow.value = false
       bpm.value = '' // 清空 BPM 显示
 
-      // 清理预加载状态
-      preloadedBlob.value = null
-      preloadedSongFilePath.value = null
-      isPreloading.value = false
-      isPreloadReady.value = false
-
       // 从当前播放列表中移除歌曲
       currentList.splice(currentIndex, 1)
 
       // 确定下一首要播放的歌曲
       let nextPlayingSong: ISongInfo | null = null
+      let nextPlayingSongPath: string | null = null
       if (currentList.length > 0) {
         const nextIndex = Math.min(currentIndex, currentList.length - 1) // 如果删除的是最后一首，则播放新的最后一首
         nextPlayingSong = currentList[nextIndex]
-      } else {
-        // 列表为空
+        nextPlayingSongPath = nextPlayingSong?.filePath ?? null
       }
 
-      // 更新当前播放歌曲状态
-      isInternalSongChange.value = true // 标记内部切换
-      runtime.playingData.playingSong = nextPlayingSong
+      // 检查预加载是否命中
+      if (
+        nextPlayingSongPath &&
+        isPreloadReady.value &&
+        preloadedSongFilePath.value === nextPlayingSongPath &&
+        preloadedBlob.value
+      ) {
+        // 命中预加载
+        const blobToLoad = preloadedBlob.value
+        const bpmValueToUse = preloadedBpm.value
+        isInternalSongChange.value = true // 标记内部切换
+        runtime.playingData.playingSong = nextPlayingSong // 更新当前播放歌曲
+
+        // 先加载 Blob，加载完成后清理预加载状态
+        handleLoadBlob(
+          blobToLoad,
+          nextPlayingSongPath,
+          currentLoadRequestId.value,
+          bpmValueToUse
+        ).finally(() => {
+          // 清理预加载状态 (放在 finally 确保执行)
+          preloadedBlob.value = null
+          preloadedSongFilePath.value = null
+          isPreloading.value = false // 确保 isPreloading 也重置
+          isPreloadReady.value = false
+        })
+      } else {
+        // 未命中预加载 或 列表已空
+        // 清理预加载状态
+        preloadedBlob.value = null
+        preloadedSongFilePath.value = null
+        isPreloading.value = false
+        isPreloadReady.value = false
+
+        if (nextPlayingSong) {
+          // 列表未空，但未命中预加载，请求加载
+          isInternalSongChange.value = true
+          runtime.playingData.playingSong = nextPlayingSong
+          requestLoadSong(nextPlayingSong.filePath)
+        } else {
+          // 列表已空
+          isInternalSongChange.value = true
+          runtime.playingData.playingSong = null
+          runtime.playingData.playingSongListUUID = '' // 清空播放列表 UUID
+          waveformShow.value = false // 确保波形图隐藏
+        }
+      }
 
       // 执行删除操作（移动到回收站或彻底删除）
       const deletePromise = permanently
@@ -262,18 +300,6 @@ export function usePlayerControlsLogic({
       await Promise.resolve(deletePromise) // 等待删除操作完成
 
       await nextTick() // 等待 DOM 更新
-
-      // 如果有下一首歌，加载它
-      if (nextPlayingSong) {
-        isFileOperationInProgress.value = false // 允许后续操作
-        // 在这里不应再次设置 isInternalSongChange.value = false，因为它是由外部 watch 触发的
-        requestLoadSong(nextPlayingSong.filePath)
-      } else {
-        // 如果列表空了，清空播放列表 UUID
-        runtime.playingData.playingSongListUUID = ''
-        isFileOperationInProgress.value = false // 允许后续操作
-      }
-      clearReadyPreloadState()
     } catch (error) {
       console.error(`[delSong] 删除歌曲过程中发生错误 (${filePathToDelete}):`, error)
       // 出错时也应该重置标志，以防万一
@@ -337,52 +363,78 @@ export function usePlayerControlsLogic({
       waveformShow.value = false
       bpm.value = '' // 清空 BPM
 
-      // 清理预加载状态
-      preloadedBlob.value = null
-      preloadedSongFilePath.value = null
-      isPreloading.value = false
-      isPreloadReady.value = false
-
       // 从当前播放列表中移除歌曲
       currentList.splice(currentIndex, 1)
 
       // 确定下一首要播放的歌曲
       let nextPlayingSong: ISongInfo | null = null
+      let nextPlayingSongPath: string | null = null
       if (currentList.length > 0) {
         const nextIndex = Math.min(currentIndex, currentList.length - 1)
         nextPlayingSong = currentList[nextIndex]
+        nextPlayingSongPath = nextPlayingSong?.filePath ?? null
       } else {
         // 列表为空
       }
 
-      // 更新当前播放歌曲状态
-      isInternalSongChange.value = true // 标记内部切换
-      runtime.playingData.playingSong = nextPlayingSong
-
-      // 执行移动操作
+      // 先执行移动操作，因为这可能会影响状态或触发其他事件
       await window.electron.ipcRenderer.invoke('moveSongsToDir', [filePathToMove], targetDirPath)
 
       // 如果移动的目标列表是当前歌曲区域显示的列表，则需要刷新歌曲区域
       if (targetListUuid === runtime.songsArea.songListUUID) {
-        // 强制刷新歌曲区域列表
         const currentSongsAreaUUID = runtime.songsArea.songListUUID
         runtime.songsArea.songListUUID = '' // 先设置为空
         await nextTick() // 等待DOM更新或其他异步操作
         runtime.songsArea.songListUUID = currentSongsAreaUUID // 再设置回来，触发更新
       }
-
       await nextTick() // 等待可能的其他更新
 
-      // 如果有下一首歌，加载它
-      if (nextPlayingSong) {
-        isFileOperationInProgress.value = false // 允许后续操作
-        requestLoadSong(nextPlayingSong.filePath)
+      // 现在检查预加载并确定如何加载下一首
+      if (
+        nextPlayingSongPath &&
+        isPreloadReady.value &&
+        preloadedSongFilePath.value === nextPlayingSongPath &&
+        preloadedBlob.value
+      ) {
+        // 命中预加载
+        const blobToLoad = preloadedBlob.value
+        const bpmValueToUse = preloadedBpm.value
+        isInternalSongChange.value = true
+        runtime.playingData.playingSong = nextPlayingSong
+
+        handleLoadBlob(
+          blobToLoad,
+          nextPlayingSongPath,
+          currentLoadRequestId.value,
+          bpmValueToUse
+        ).finally(() => {
+          preloadedBlob.value = null
+          preloadedSongFilePath.value = null
+          isPreloading.value = false
+          isPreloadReady.value = false
+          isFileOperationInProgress.value = false // 操作完成
+        })
       } else {
-        // 如果列表空了，清空播放列表 UUID
-        runtime.playingData.playingSongListUUID = ''
-        isFileOperationInProgress.value = false // 允许后续操作
+        // 未命中预加载 或 列表已空
+        preloadedBlob.value = null
+        preloadedSongFilePath.value = null
+        isPreloading.value = false
+        isPreloadReady.value = false
+
+        if (nextPlayingSong) {
+          // 列表未空，但未命中预加载，请求加载
+          isInternalSongChange.value = true
+          runtime.playingData.playingSong = nextPlayingSong
+          requestLoadSong(nextPlayingSong.filePath)
+          isFileOperationInProgress.value = false // 操作完成
+        } else {
+          // 列表已空
+          isInternalSongChange.value = true
+          runtime.playingData.playingSong = null
+          runtime.playingData.playingSongListUUID = '' // 清空播放列表 UUID
+          isFileOperationInProgress.value = false // 操作完成
+        }
       }
-      clearReadyPreloadState()
     } catch (error) {
       console.error(`[moveSong] 移动歌曲过程中发生错误 (${filePathToMove}):`, error)
       // 出错时也应该重置标志
