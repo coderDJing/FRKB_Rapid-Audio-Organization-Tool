@@ -31,8 +31,9 @@ As a DJ, I frequently need to organize large numbers of music files. However, ex
 
 ### Core Features
 - **Portable**: Easily transfer the database to mobile devices for on-the-go use.
-- **Audio Fingerprint Deduplication**: Identify and exclude duplicate tracks using audio fingerprint technology, providing prompts during import to keep your music collection clean and efficient.
+- **Song Deduplication**: Identify and exclude duplicate tracks in the music library using the SHA256 algorithm (ignoring metadata such as cover art, title, artist, etc.), providing prompts during the import phase to keep your music collection clean and efficient.
 - **Ergonomic Shortcuts**: Ergonomically designed shortcuts that allow most operations to be performed with the left hand, making the organization process smoother and more efficient.
+- **Selectable Playback Range**: Often, you only need to listen to a specific part of an audio track for screening. This feature allows you to set a start and end point for playback.
 - **Direct File Management**: When adding tracks, FRKB directly manages the audio files themselves, ensuring that the organization results are immediately reflected in the computer's folders, achieving a "what you see is what you get" effect.
 - **Waveform Visualization**: Provides audio waveform display.
 - **BPM Analysis**: Displays BPM information.
@@ -45,10 +46,18 @@ FRKB follows the MIT license, allowing extensive use and modification of the sof
 
 # Development
 
+### Compile Rust
+
+```bash
+pnpm add -g @napi-rs/cli
+cd ./rust_package
+napi build --platform --release
+```
+
 ### Installing Dependencies
 
 ```bash
-cd..
+cd ..
 pnpm install
 ```
 
