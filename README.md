@@ -37,6 +37,7 @@ As a DJ, I frequently need to organize large numbers of music files. However, ex
 - **Direct File Management**: When adding tracks, FRKB directly manages the audio files themselves, ensuring that the organization results are immediately reflected in the computer's folders, achieving a "what you see is what you get" effect.
 - **Waveform Visualization**: Provides audio waveform display.
 - **BPM Analysis**: Displays BPM information.
+- **Recycle Bin**: Features a recycle bin, ensuring that accidentally deleted files aren't permanently lost, a common issue with other software.
 
 ### Contributions
 Contributions of all kinds are welcome! Whether reporting issues, suggesting features, or contributing code, feel free to open an issue or submit a pull request.
