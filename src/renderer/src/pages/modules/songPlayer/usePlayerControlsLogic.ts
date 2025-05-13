@@ -58,17 +58,38 @@ export function usePlayerControlsLogic({
   const isFileOperationInProgress = ref(false)
 
   const play = () => {
-    wavesurferInstance.value?.play()
+    if (!wavesurferInstance.value) return
+
+    // 检查wavesurfer实例是否已加载音频
+    try {
+      // 如果getDuration返回0或NaN，表示没有加载音频
+      const duration = wavesurferInstance.value.getDuration()
+      if (!duration) {
+        return
+      }
+      wavesurferInstance.value.play()
+    } catch (error) {
+      // 播放出错时静默失败
+      // 不抛出错误，静默失败
+    }
   }
+
   const pause = () => {
     wavesurferInstance.value?.pause()
   }
 
   const togglePlayPause = () => {
-    if (wavesurferInstance.value?.isPlaying()) {
-      pause()
-    } else {
-      play()
+    if (!wavesurferInstance.value) return
+
+    try {
+      if (wavesurferInstance.value.isPlaying()) {
+        pause()
+      } else {
+        play()
+      }
+    } catch (error) {
+      // 出错时尝试恢复到安全状态
+      wavesurferInstance.value.pause()
     }
   }
 
@@ -96,9 +117,23 @@ export function usePlayerControlsLogic({
     if (!nextSongData) return
     const nextSongFilePath = nextSongData.filePath
 
-    if (wavesurferInstance.value?.isPlaying()) {
-      wavesurferInstance.value.stop()
+    // 每次切换歌曲时，强制清空wavesurfer实例，确保不受先前加载的影响
+    if (wavesurferInstance.value) {
+      // 先暂停播放
+      if (wavesurferInstance.value.isPlaying()) {
+        wavesurferInstance.value.pause()
+      }
+
+      // 设置标志忽略empty触发的错误
+      ignoreNextEmptyError.value = true
+
+      // 清空实例，强制重置内部状态
+      wavesurferInstance.value.empty()
     }
+
+    // 重要：在开始加载前先更新UI状态
+    isInternalSongChange.value = true // 标记内部切换
+    runtime.playingData.playingSong = nextSongData
 
     // 检查预加载是否命中
     if (
@@ -108,28 +143,28 @@ export function usePlayerControlsLogic({
     ) {
       // 命中预加载
       const blobToLoad = preloadedBlob.value
-      const bpmValueToUse = preloadedBpm.value // <-- 获取预加载的 BPM
-      isInternalSongChange.value = true // 标记内部切换
-      runtime.playingData.playingSong = nextSongData
+      const bpmValueToUse = preloadedBpm.value
+
       // 清理预加载状态
       preloadedBlob.value = null
       preloadedSongFilePath.value = null
       isPreloading.value = false
       isPreloadReady.value = false
+
+      // 每次获取新ID，确保请求是最新的
+      currentLoadRequestId.value++
       // 加载 blob，并传递预加载的 BPM
-      handleLoadBlob(blobToLoad, nextSongFilePath, currentLoadRequestId.value, bpmValueToUse) // <-- 传递 BPM
+      handleLoadBlob(blobToLoad, nextSongFilePath, currentLoadRequestId.value, bpmValueToUse)
     } else {
       // 未命中预加载或预加载未就绪
-      // 清理预加载状态（以防万一）
+
+      // 清理预加载状态
       preloadedBlob.value = null
       preloadedSongFilePath.value = null
       isPreloading.value = false
       isPreloadReady.value = false
-      // 设置内部切换并请求加载
-      isInternalSongChange.value = true // 标记内部切换
-      runtime.playingData.playingSong = nextSongData
-      // 注意：这里调用 requestLoadSong，它内部会调用 handleLoadBlob（在 IPC 返回后），
-      // 并且不会传递 preloadedBpmValue，这是符合预期的
+
+      // 请求加载新歌曲
       requestLoadSong(nextSongFilePath)
     }
   }
@@ -152,8 +187,18 @@ export function usePlayerControlsLogic({
 
     const prevSongFilePath = prevSongData.filePath
 
-    if (wavesurferInstance.value?.isPlaying()) {
-      wavesurferInstance.value.stop()
+    // 每次切换歌曲时，强制清空wavesurfer实例
+    if (wavesurferInstance.value) {
+      // 先暂停播放
+      if (wavesurferInstance.value.isPlaying()) {
+        wavesurferInstance.value.pause()
+      }
+
+      // 设置标志忽略empty触发的错误
+      ignoreNextEmptyError.value = true
+
+      // 清空实例，强制重置内部状态
+      wavesurferInstance.value.empty()
     }
 
     // 切换到上一首时，总是重新加载，不使用预加载
