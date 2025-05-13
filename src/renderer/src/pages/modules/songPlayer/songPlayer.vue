@@ -26,7 +26,6 @@ import { usePlayerControlsLogic } from './usePlayerControlsLogic'
 
 const runtime = useRuntimeStore()
 const waveform = useTemplateRef<HTMLDivElement>('waveform')
-const preloadWaveform = useTemplateRef<HTMLDivElement>('preloadWaveform')
 
 const wavesurferInstance = shallowRef<WaveSurfer | null>(null)
 const preloadedBlob = ref<Blob | null>(null)
@@ -251,22 +250,17 @@ const attachEventListeners = (targetInstance: WaveSurfer) => {
     playerControlsRef.value?.setPlayingValue(true)
     cancelPreloadTimer()
 
-    if (targetInstance === wavesurferInstance.value) {
-      preloadTimerId = setTimeout(() => {
-        const timerId = preloadTimerId
-        preloadNextSong()
-        if (preloadTimerId === timerId) {
-          preloadTimerId = null
-        }
-      }, 3000)
-    } else {
-    }
+    preloadTimerId = setTimeout(() => {
+      const timerId = preloadTimerId
+      preloadNextSong()
+      if (preloadTimerId === timerId) {
+        preloadTimerId = null
+      }
+    }, 3000)
   })
 
   targetInstance.on('ready', () => {
-    if (targetInstance === wavesurferInstance.value) {
-      updateParentWaveformWidth()
-    }
+    updateParentWaveformWidth()
   })
 
   targetInstance.on('error', async (error: any) => {
@@ -288,7 +282,7 @@ const attachEventListeners = (targetInstance: WaveSurfer) => {
     console.error(`发生未处理的播放器错误，歌曲路径: ${currentPath}`)
 
     if (errorCode !== 4) {
-      await handleSongLoadError(currentPath, targetInstance !== wavesurferInstance.value)
+      await handleSongLoadError(currentPath, false)
     }
   })
 }
@@ -330,6 +324,7 @@ onMounted(() => {
         return
       }
 
+      // 验证此时UI显示的歌曲与返回的文件路径是否匹配
       if (filePath === runtime.playingData.playingSong?.filePath) {
         handleLoadBlob(new Blob([audioData]), filePath, requestId || currentLoadRequestId.value)
       } else {
@@ -437,9 +432,8 @@ watch(
       cancelPreloadTimer()
       clearReadyPreloadState()
       if (wavesurferInstance.value) {
-        detachEventListeners(wavesurferInstance.value)
-        wavesurferInstance.value.destroy()
-        wavesurferInstance.value = null
+        ignoreNextEmptyError.value = true // 设置标志来忽略空src错误
+        wavesurferInstance.value.empty()
       }
       waveformShow.value = false
       runtime.playingData.playingSongListUUID = ''
@@ -447,44 +441,20 @@ watch(
     } else if (newSong?.filePath !== oldSong?.filePath) {
       const newPath = newSong.filePath
       if (isPreloadReady.value && newPath === preloadedSongFilePath.value && preloadedBlob.value) {
+        // 命中预加载，使用预加载的数据和BPM
         const blobToLoad = preloadedBlob.value
         const bpmValueToUse = preloadedBpm.value
 
+        // 清理预加载状态
         clearReadyPreloadState()
 
-        const previousMainInstance = wavesurferInstance.value
-        if (previousMainInstance) {
-          detachEventListeners(previousMainInstance)
-          previousMainInstance.destroy()
-        }
-        if (!waveform.value) {
-          console.error(
-            '[Watch Preload Hit] Main waveform container missing! Cannot create new instance.'
-          )
-          return
-        }
-        wavesurferInstance.value = createWaveSurferInstance(waveform.value)
-        attachEventListeners(wavesurferInstance.value)
-
+        // 使用当前实例加载预加载的数据
         currentLoadRequestId.value++
         handleLoadBlob(blobToLoad, newPath, currentLoadRequestId.value, bpmValueToUse)
       } else {
+        // 未命中预加载，请求加载歌曲
         cancelPreloadTimer()
         clearReadyPreloadState()
-
-        if (!wavesurferInstance.value && waveform.value) {
-          wavesurferInstance.value = createWaveSurferInstance(waveform.value)
-          attachEventListeners(wavesurferInstance.value)
-        } else if (!wavesurferInstance.value) {
-          console.error(
-            '[Watch Preload Miss] Cannot request load: Main instance and container missing!'
-          )
-          return
-        } else {
-          // Main instance exists, may need re-attaching listeners if something went wrong?
-          // For now, assume it's okay and just request new load.
-        }
-
         requestLoadSong(newPath)
       }
     }
@@ -512,8 +482,29 @@ const bpm = ref<number | string>('')
 
 const requestLoadSong = (filePath: string) => {
   cancelPreloadTimer()
-  currentLoadRequestId.value++
-  window.electron.ipcRenderer.send('readSongFile', filePath, currentLoadRequestId.value)
+
+  // 重置加载状态标志，使后续加载请求可以被处理
+  isLoadingBlob.value = false
+
+  // 每次切换歌曲时，强制清空wavesurfer实例，确保不受先前加载的影响
+  if (wavesurferInstance.value) {
+    // 先暂停播放
+    if (wavesurferInstance.value.isPlaying()) {
+      wavesurferInstance.value.pause()
+    }
+
+    // 设置标志忽略empty触发的错误
+    ignoreNextEmptyError.value = true
+
+    // 清空实例，强制重置内部状态
+    wavesurferInstance.value.empty()
+  }
+
+  // 增加一个控制台日志以帮助调试
+  const newRequestId = currentLoadRequestId.value + 1
+
+  currentLoadRequestId.value = newRequestId
+  window.electron.ipcRenderer.send('readSongFile', filePath, newRequestId)
 }
 
 const handleLoadBlob = async (
@@ -522,11 +513,13 @@ const handleLoadBlob = async (
   requestId: number,
   preloadedBpmValue?: number | string | null
 ) => {
-  if (isLoadingBlob.value) {
+  // 立即检查请求ID是否匹配当前最新ID
+  if (requestId !== currentLoadRequestId.value) {
     return
   }
 
-  if (requestId !== currentLoadRequestId.value) {
+  // 防止重入
+  if (isLoadingBlob.value) {
     return
   }
 
@@ -562,10 +555,14 @@ const handleLoadBlob = async (
     isLoadingBlob.value = true
     await wavesurferInstance.value.loadBlob(blob)
 
-    if (
-      requestId !== currentLoadRequestId.value ||
-      runtime.playingData.playingSong?.filePath !== filePath
-    ) {
+    // 再次检查是否仍然是当前需要的请求
+    if (requestId !== currentLoadRequestId.value) {
+      isLoadingBlob.value = false
+      return
+    }
+
+    // 检查文件路径是否仍然匹配
+    if (runtime.playingData.playingSong?.filePath !== filePath) {
       isLoadingBlob.value = false
       return
     }
@@ -620,6 +617,15 @@ const handleLoadBlob = async (
     }
 
     try {
+      // 记录即将播放的文件信息，用于最终确认
+      const fileToPlay = filePath
+      const reqIdToPlay = requestId
+
+      // 最终确认这是最新请求
+      if (reqIdToPlay !== currentLoadRequestId.value) {
+        return
+      }
+
       if (runtime.setting.enablePlaybackRange && wavesurferInstance.value) {
         const duration = wavesurferInstance.value.getDuration()
         const startPercent = runtime.setting.startPlayPercent ?? 0
@@ -632,15 +638,28 @@ const handleLoadBlob = async (
       if (playError.name === 'AbortError') {
         console.info('播放被中断，可能是因为快速切换歌曲')
       } else {
+        console.error(`[handleLoadBlob] 播放错误:`, playError)
         throw playError
       }
     }
   } catch (loadError) {
     console.error(`Error loading blob or starting playback for ${filePath}:`, loadError)
-    if ((loadError as any)?.name !== 'AbortError') {
+
+    // 如果是NotSupportedError错误，这可能是因为wavesurfer实例被清空了
+    if ((loadError as any)?.name === 'NotSupportedError') {
+      // 检查ID是否仍然匹配
+      if (requestId !== currentLoadRequestId.value) {
+        // 请求已过期，忽略错误
+      } else {
+        // 如果ID仍然匹配，则不做进一步处理
+        // 这里不直接调用requestLoadSong，避免递归
+      }
+    } else if ((loadError as any)?.name !== 'AbortError') {
+      // 其他非中止错误
       await handleSongLoadError(filePath, false)
     }
   } finally {
+    // 无论成功失败都确保重置加载状态
     isLoadingBlob.value = false
   }
 }
@@ -822,7 +841,6 @@ usePlayerHotkeys(hotkeyActions, playerState, runtime)
         <div id="duration">0:00</div>
         <div id="hover"></div>
       </div>
-      <div id="preload-waveform" ref="preloadWaveform" style="display: none"></div>
 
       <PlaybackRangeHandles
         v-model:modelValueStart="runtime.setting.startPlayPercent"
