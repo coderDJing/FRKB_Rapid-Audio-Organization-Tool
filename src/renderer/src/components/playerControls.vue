@@ -116,11 +116,11 @@ const delSong = () => {
 }
 
 const moveToLikeLibrary = () => {
-  emits('moveToLikeLibrary')
+  emits('moveToLikeLibrary', runtime.playingData.playingSong)
 }
 
 const moveToListLibrary = () => {
-  emits('moveToListLibrary')
+  emits('moveToListLibrary', runtime.playingData.playingSong)
 }
 const exportTrack = () => {
   emits('exportTrack')

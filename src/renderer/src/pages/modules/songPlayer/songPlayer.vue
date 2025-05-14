@@ -829,8 +829,8 @@ usePlayerHotkeys(hotkeyActions, playerState, runtime)
         @nextSong="playerActions.nextSong"
         @previousSong="playerActions.previousSong"
         @delSong="playerActions.delSong"
-        @moveToListLibrary="playerActions.moveToListLibrary"
-        @moveToLikeLibrary="playerActions.moveToLikeLibrary"
+        @moveToListLibrary="(song) => playerActions.moveToListLibrary(song)"
+        @moveToLikeLibrary="(song) => playerActions.moveToLikeLibrary(song)"
         @exportTrack="playerActions.exportTrack"
       />
     </div>
