@@ -117,7 +117,7 @@
   // 滚动条滑块激活时的边框
   --os-handle-border-active: none !important;
   // 滚动条滑块的最小尺寸
-  --os-handle-min-size: none !important; // 保持默认或按需调整
+  --os-handle-min-size: 50px !important; // 保持默认或按需调整
   // 滚动条滑块的最大尺寸
   --os-handle-max-size: none !important;
   // 滚动条滑块垂直于轴的尺寸(水平:高度, 垂直:宽度)
