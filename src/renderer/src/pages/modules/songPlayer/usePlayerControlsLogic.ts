@@ -56,6 +56,7 @@ export function usePlayerControlsLogic({
   clearReadyPreloadState
 }: UsePlayerControlsOptions) {
   const isFileOperationInProgress = ref(false)
+  const songToMoveRef = ref<ISongInfo | null>(null)
 
   const play = () => {
     if (!wavesurferInstance.value) return
@@ -353,29 +354,47 @@ export function usePlayerControlsLogic({
     }
   }
 
-  const moveToListLibrary = () => {
+  const moveToListLibrary = (song?: ISongInfo) => {
+    // 保存当前要移动的歌曲（如果提供了参数，使用参数；否则使用当前播放的歌曲）
+    songToMoveRef.value = song || runtime.playingData.playingSong
+
     selectSongListDialogLibraryName.value = '筛选库'
     selectSongListDialogShow.value = true
   }
 
-  const moveToLikeLibrary = () => {
+  const moveToLikeLibrary = (song?: ISongInfo) => {
+    // 保存当前要移动的歌曲（如果提供了参数，使用参数；否则使用当前播放的歌曲）
+    songToMoveRef.value = song || runtime.playingData.playingSong
+
     selectSongListDialogLibraryName.value = '精选库'
     selectSongListDialogShow.value = true
   }
 
   // 这个函数在 usePlayerControlsLogic 内部使用，不需要导出
   const handleMoveSong = async (targetListUuid: string) => {
-    if (isFileOperationInProgress.value || !runtime.playingData.playingSong) {
+    if (isFileOperationInProgress.value) {
       return
     }
+
+    // 使用存储的歌曲信息或当前播放的歌曲
+    const songToMove = songToMoveRef.value || runtime.playingData.playingSong
+    if (!songToMove) {
+      return
+    }
+
     if (targetListUuid === runtime.playingData.playingSongListUUID) {
       // 移动到当前列表，无需操作
+      // 重置存储的歌曲信息
+      songToMoveRef.value = null
       return
     }
 
     isFileOperationInProgress.value = true
-    const filePathToMove = runtime.playingData.playingSong.filePath
+    const filePathToMove = songToMove.filePath
     const targetDirPath = libraryUtils.findDirPathByUuid(targetListUuid)
+
+    // 重置存储的歌曲信息
+    songToMoveRef.value = null
 
     if (!targetDirPath) {
       console.error(`[moveSong] 未找到目标目录路径: ${targetListUuid}`)
