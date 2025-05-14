@@ -9,7 +9,6 @@ import { v4 as uuidV4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 import emitter from '../../utils/mitt'
-import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import {
   handleDragStart,
   handleDragOver,
