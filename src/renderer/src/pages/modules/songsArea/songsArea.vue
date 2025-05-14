@@ -1,0 +1,671 @@
+<script setup lang="ts">
+import { watch, ref, nextTick, computed, onMounted, useTemplateRef } from 'vue'
+import { useRuntimeStore } from '@renderer/stores/runtime'
+import libraryUtils from '@renderer/utils/libraryUtils'
+import hotkeys from 'hotkeys-js'
+import { t } from '@renderer/utils/translate'
+import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
+
+// 组件导入
+import confirm from '@renderer/components/confirmDialog'
+import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
+import welcomePage from '@renderer/components/welcomePage.vue'
+import SongListHeader from './SongListHeader.vue'
+import SongListRows from './SongListRows.vue'
+import ColumnHeaderContextMenu from './ColumnHeaderContextMenu.vue'
+import { getCurrentTimeDirName } from '@renderer/utils/utils'
+
+// Composable import
+import {
+  useSongItemContextMenu,
+  OpenDialogAction
+} from '@renderer/pages/modules/songsArea/composables/useSongItemContextMenu'
+import { useCoverLoader } from '@renderer/pages/modules/songsArea/composables/useCoverLoader'
+import {
+  useSelectAndMoveSongs,
+  MoveSongsLibraryName
+} from '@renderer/pages/modules/songsArea/composables/useSelectAndMoveSongs'
+
+// 资源导入
+import ascendingOrder from '@renderer/assets/ascending-order.png?asset'
+import descendingOrder from '@renderer/assets/descending-order.png?asset'
+
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
+
+// 类型定义，以便正确引用 OverlayScrollbarsComponent 实例
+type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
+
+const runtime = useRuntimeStore()
+const songsAreaRef = useTemplateRef<OverlayScrollbarsComponentRef>('songsAreaRef')
+
+// Initialize composables
+const { showAndHandleSongContextMenu } = useSongItemContextMenu(songsAreaRef)
+const { coversLoadCompleted, startNewCoverLoadSession, loadCoversInBatches } = useCoverLoader()
+const {
+  isDialogVisible: isSelectSongListDialogVisible,
+  targetLibraryName: selectSongListDialogTargetLibraryName,
+  initiateMoveSongs,
+  handleMoveSongsConfirm,
+  handleDialogCancel
+} = useSelectAndMoveSongs()
+
+const defaultColumns: ISongsAreaColumn[] = [
+  {
+    columnName: '序号',
+    key: 'index',
+    show: true,
+    width: 60
+  },
+  {
+    columnName: '专辑封面',
+    key: 'coverUrl',
+    show: true,
+    width: 100
+  },
+  {
+    columnName: '曲目标题',
+    key: 'title',
+    show: true,
+    width: 250
+  },
+  {
+    columnName: '表演者',
+    key: 'artist',
+    show: true,
+    width: 200,
+    order: 'asc'
+  },
+  {
+    columnName: '时长',
+    key: 'duration',
+    show: true,
+    width: 100
+  },
+  {
+    columnName: '专辑',
+    key: 'album',
+    show: true,
+    width: 200
+  },
+  {
+    columnName: '风格',
+    key: 'genre',
+    show: true,
+    width: 200
+  },
+  {
+    columnName: '唱片公司',
+    key: 'label',
+    show: true,
+    width: 200
+  },
+  {
+    columnName: '比特率',
+    key: 'bitrate',
+    show: true,
+    width: 200
+  },
+  {
+    columnName: '编码格式',
+    key: 'container',
+    show: true,
+    width: 200
+  }
+]
+
+const columnData = ref<ISongsAreaColumn[]>(
+  (() => {
+    const savedData = localStorage.getItem('songColumnData')
+    let finalColumns: ISongsAreaColumn[]
+
+    if (!savedData) {
+      // --- 情况 1: 没有本地存储，直接使用默认值 ---
+      finalColumns = JSON.parse(JSON.stringify(defaultColumns)) // 使用深拷贝以防修改默认值
+    } else {
+      // --- 情况 2: 有本地存储，进行合并 ---
+      try {
+        const parsedData: ISongsAreaColumn[] = JSON.parse(savedData)
+        const savedColumnsMap = new Map(parsedData.map((col) => [col.key, col]))
+
+        // 1. 以 defaultColumns 为基础进行合并
+        finalColumns = defaultColumns.map((defaultCol) => {
+          const savedCol = savedColumnsMap.get(defaultCol.key)
+          if (savedCol) {
+            // 如果本地存储中有此列，合并设置
+            // 保留默认列的所有键，但用保存的值覆盖 show, width, order
+            // 注意：要检查 savedCol 中属性是否存在，避免 undefined 覆盖默认值
+            return {
+              ...defaultCol, // 包含默认列的所有属性（如 columnName, key）
+              show: savedCol.show !== undefined ? savedCol.show : defaultCol.show,
+              width: savedCol.width !== undefined ? savedCol.width : defaultCol.width,
+              order: savedCol.order // 如果保存的有 order，则使用，否则为 undefined
+            }
+          } else {
+            // 如果本地存储中没有此列（例如新添加的列），使用默认列（深拷贝）
+            return JSON.parse(JSON.stringify(defaultCol))
+          }
+        })
+
+        // 2. 处理本地存储中有，但 defaultColumns 中已移除的列
+        // 如果需要清理掉旧版本遗留的、新版本已废弃的列，可以在这里过滤
+        finalColumns = finalColumns.filter((col) => defaultColumns.some((dc) => dc.key === col.key))
+      } catch (error) {
+        console.error('解析本地存储的 songColumnData 出错，将使用默认列配置:', error)
+        // 解析出错，也回退到默认配置
+        finalColumns = JSON.parse(JSON.stringify(defaultColumns))
+      }
+    }
+
+    // --- 确保至少有一个默认排序列（如果用户没有设置任何排序列） ---
+    // 检查合并后的 finalColumns 是否没有任何列设置了 order
+    const hasOrderAfterMerge = finalColumns.some((col) => col.order !== undefined)
+    if (!hasOrderAfterMerge) {
+      // 如果没有任何列排序，并且 'duration' 列存在，则默认给 'duration' 升序
+      const durationColIndex = finalColumns.findIndex((col) => col.key === 'duration')
+      if (durationColIndex !== -1) {
+        finalColumns[durationColIndex] = { ...finalColumns[durationColIndex], order: 'asc' }
+      }
+      // 如果 'duration' 列不存在，可以考虑给其他列如 'title' 设置默认排序 (这里保留，以防万一)
+      else {
+        const titleColIndex = finalColumns.findIndex((col) => col.key === 'title')
+        if (titleColIndex !== -1) {
+          finalColumns[titleColIndex] = { ...finalColumns[titleColIndex], order: 'asc' }
+        }
+      }
+    }
+
+    // --- 返回最终的列配置 ---
+    return finalColumns
+  })()
+)
+
+let loadingShow = ref(false)
+const isRequesting = ref<boolean>(false)
+
+const openSongList = async () => {
+  runtime.songsArea.songInfoArr.forEach((item) => {
+    if (item.coverUrl) {
+      URL.revokeObjectURL(item.coverUrl)
+    }
+  })
+  const newTaskId = startNewCoverLoadSession()
+
+  isRequesting.value = true
+  runtime.songsArea.songInfoArr = []
+  await nextTick()
+
+  const songListPath = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
+
+  // 处理加载状态
+  loadingShow.value = false
+  const loadingSetTimeout = setTimeout(() => {
+    loadingShow.value = true
+  }, 100)
+
+  try {
+    // 扫描歌单
+    const { scanData, songListUUID } = await window.electron.ipcRenderer.invoke(
+      'scanSongList',
+      songListPath,
+      runtime.songsArea.songListUUID
+    )
+
+    if (songListUUID !== runtime.songsArea.songListUUID) {
+      return
+    }
+
+    // 根据排序规则处理数据，并将结果赋值给响应式数组
+    const sortedCol = columnData.value.find((col) => col.order)
+    if (sortedCol) {
+      // 注意：这里先对 scanData 排序，再赋值给响应式数组
+      runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
+        scanData, // 使用原始 scanData 进行排序
+        sortedCol.key as keyof ISongInfo,
+        sortedCol.order
+      )
+    } else {
+      // 没有排序规则，直接赋值
+      runtime.songsArea.songInfoArr = scanData
+    }
+
+    // 如果当前播放列表是正在打开的列表，也更新播放列表数据引用
+    if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+      runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+    }
+
+    // --- 启动新的封面加载任务，并设置完成回调 ---
+    // 传递当前的 taskId
+    loadCoversInBatches(runtime.songsArea.songInfoArr, newTaskId)
+  } finally {
+    isRequesting.value = false
+    clearTimeout(loadingSetTimeout)
+    loadingShow.value = false
+  }
+}
+watch(
+  () => runtime.songsArea.songListUUID,
+  async (newUUID) => {
+    // 清空选中歌曲
+    runtime.songsArea.selectedSongFilePath.length = 0
+
+    if (newUUID) {
+      // 有歌单UUID时打开歌单
+      await openSongList()
+    } else {
+      // 无歌单UUID时清理资源
+      runtime.songsArea.songInfoArr.forEach((item) => {
+        if (item.coverUrl) {
+          URL.revokeObjectURL(item.coverUrl)
+        }
+      })
+      runtime.songsArea.songInfoArr = []
+    }
+  }
+)
+
+window.electron.ipcRenderer.on('importFinished', async (event, contentArr, songListUUID) => {
+  if (songListUUID == runtime.songsArea.songListUUID) {
+    setTimeout(async () => {
+      await openSongList()
+    }, 1000)
+  }
+})
+
+// --- 父组件中用于持久化列数据的方法 ---
+const persistColumnData = () => {
+  localStorage.setItem('songColumnData', JSON.stringify(columnData.value))
+}
+
+// --- 处理来自 SongListHeader 的列更新 ---
+const handleColumnsUpdate = (newColumns: ISongsAreaColumn[]) => {
+  columnData.value = newColumns
+  persistColumnData() // 更新本地存储
+}
+
+const colRightClickMenuShow = ref(false)
+const triggeringColContextEvent = ref<MouseEvent | null>(null)
+
+const contextmenuEvent = (event: MouseEvent) => {
+  triggeringColContextEvent.value = event
+  colRightClickMenuShow.value = true
+}
+
+const handleToggleColumnVisibility = (columnKey: string) => {
+  const columnIndex = columnData.value.findIndex((col) => col.key === columnKey)
+  if (columnIndex !== -1) {
+    // Create a new array with the toggled show state for reactivity
+    const newColumns = columnData.value.map((col, index) => {
+      if (index === columnIndex) {
+        return { ...col, show: !col.show }
+      }
+      return col
+    })
+    columnData.value = newColumns
+    persistColumnData()
+  }
+}
+
+let columnDataArr = computed(() => {
+  return columnData.value.filter((item) => item.show)
+})
+const songClick = (event: MouseEvent, song: ISongInfo) => {
+  runtime.activeMenuUUID = ''
+  if (event.ctrlKey) {
+    let index = runtime.songsArea.selectedSongFilePath.indexOf(song.filePath)
+    if (index !== -1) {
+      runtime.songsArea.selectedSongFilePath.splice(index, 1)
+    } else {
+      runtime.songsArea.selectedSongFilePath.push(song.filePath)
+    }
+  } else if (event.shiftKey) {
+    let lastClickSongFilePath = null
+    if (runtime.songsArea.selectedSongFilePath.length) {
+      lastClickSongFilePath =
+        runtime.songsArea.selectedSongFilePath[runtime.songsArea.selectedSongFilePath.length - 1]
+    }
+    let lastClickSongIndex = 0
+    if (lastClickSongFilePath) {
+      lastClickSongIndex = runtime.songsArea.songInfoArr.findIndex(
+        (item) => item.filePath === lastClickSongFilePath
+      )
+    }
+
+    let clickSongIndex = runtime.songsArea.songInfoArr.findIndex(
+      (item) => item.filePath === song.filePath
+    )
+    let sliceArr = runtime.songsArea.songInfoArr.slice(
+      Math.min(lastClickSongIndex, clickSongIndex),
+      Math.max(lastClickSongIndex, clickSongIndex) + 1
+    )
+    for (let item of sliceArr) {
+      if (runtime.songsArea.selectedSongFilePath.indexOf(item.filePath) === -1) {
+        runtime.songsArea.selectedSongFilePath.push(item.filePath)
+      }
+    }
+  } else {
+    runtime.songsArea.selectedSongFilePath = [song.filePath]
+  }
+}
+
+const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) => {
+  const result = await showAndHandleSongContextMenu(event, song)
+  if (result && result.action === 'openSelectSongListDialog') {
+    initiateMoveSongs(result.libraryName as MoveSongsLibraryName)
+  }
+}
+
+const songDblClick = (song: ISongInfo) => {
+  runtime.activeMenuUUID = ''
+  runtime.songsArea.selectedSongFilePath = []
+  runtime.playingData.playingSong = song
+  runtime.playingData.playingSongListUUID = runtime.songsArea.songListUUID
+  runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+  window.electron.ipcRenderer.send('readSongFile', song.filePath, 0)
+}
+const handleDeleteKey = async () => {
+  const selectedPaths = JSON.parse(JSON.stringify(runtime.songsArea.selectedSongFilePath))
+  if (!selectedPaths.length) return false
+
+  const isInRecycleBin = runtime.libraryTree.children
+    ?.find((item) => item.dirName === '回收站')
+    ?.children?.find((item) => item.uuid === runtime.songsArea.songListUUID)
+
+  let shouldDelete = true
+  if (isInRecycleBin) {
+    let res = await confirm({
+      title: '删除',
+      content: [t('确定彻底删除选中的曲目吗'), t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')]
+    })
+    shouldDelete = res === 'confirm'
+  }
+
+  if (shouldDelete) {
+    if (isInRecycleBin) {
+      window.electron.ipcRenderer.invoke('permanentlyDelSongs', selectedPaths)
+    } else {
+      window.electron.ipcRenderer.send(
+        'delSongs',
+        selectedPaths,
+        getCurrentTimeDirName() // Directly use imported function
+      )
+    }
+
+    let delSongsFromStore = runtime.songsArea.songInfoArr.filter((item) =>
+      selectedPaths.includes(item.filePath)
+    )
+    for (let item of delSongsFromStore) {
+      if (item.coverUrl) {
+        URL.revokeObjectURL(item.coverUrl)
+      }
+    }
+    runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
+      (item) => !selectedPaths.includes(item.filePath)
+    )
+    if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+      runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+    }
+    if (
+      runtime.playingData.playingSong &&
+      selectedPaths.includes(runtime.playingData.playingSong.filePath)
+    ) {
+      runtime.playingData.playingSong = null
+    }
+    runtime.songsArea.selectedSongFilePath.length = 0
+  }
+  return false // Prevent default browser behavior for Delete key
+}
+
+onMounted(() => {
+  hotkeys('ctrl+a, command+a', 'windowGlobal', () => {
+    runtime.songsArea.selectedSongFilePath.length = 0
+    for (let item of runtime.songsArea.songInfoArr) {
+      runtime.songsArea.selectedSongFilePath.push(item.filePath)
+    }
+    return false
+  })
+  hotkeys('delete', 'windowGlobal', () => {
+    handleDeleteKey()
+    return false
+  })
+})
+
+function sortArrayByProperty<T>(array: T[], property: keyof T, order: 'asc' | 'desc' = 'asc'): T[] {
+  const collator = new Intl.Collator('zh-CN', {
+    numeric: true, // 启用数字排序
+    sensitivity: 'base' // 不区分大小写
+  })
+
+  return [...array].sort((a, b) => {
+    const valueA = String(a[property] || '')
+    const valueB = String(b[property] || '')
+
+    return order === 'asc' ? collator.compare(valueA, valueB) : collator.compare(valueB, valueA)
+  })
+}
+const colMenuClick = (col: ISongsAreaColumn) => {
+  if (col.key === 'coverUrl' || col.key === 'index') {
+    return
+  }
+
+  const newColumnData = columnData.value.map((item) => {
+    if (item.key !== col.key) {
+      return { ...item, order: undefined }
+    }
+    // Toggle order for the clicked column
+    const newOrderForItem = item.order === 'asc' ? 'desc' : item.order === 'desc' ? 'asc' : 'asc' // Default to asc if undefined
+    return { ...item, order: newOrderForItem as 'asc' | 'desc' }
+  })
+  columnData.value = newColumnData
+  persistColumnData()
+
+  // Get the new order of the clicked column for sorting
+  const clickedColNewOrder = newColumnData.find((c) => c.key === col.key)?.order
+
+  if (clickedColNewOrder) {
+    // Ensure it's 'asc' or 'desc'
+    runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
+      runtime.songsArea.songInfoArr,
+      col.key as keyof ISongInfo, // Use the key from the original clicked column object
+      clickedColNewOrder // Use its new order from the updated array
+    )
+
+    if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+      runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+    }
+
+    if (!coversLoadCompleted.value) {
+      const newTaskId = startNewCoverLoadSession()
+      loadCoversInBatches(runtime.songsArea.songInfoArr, newTaskId)
+    }
+  } else {
+    // This case (clickedColNewOrder is undefined) should not happen for sortable columns
+    // because the map logic above assigns 'asc' or 'desc'.
+    console.warn(
+      'Clicked column new order is undefined after map, this should not happen for sortable columns:',
+      col.key
+    )
+  }
+}
+
+// --- 新增计算属性给 SongListRows ---
+const playingSongFilePathForRows = computed(() => runtime.playingData.playingSong?.filePath)
+const shouldShowEmptyState = computed(() => {
+  return (
+    !isRequesting.value &&
+    runtime.songsArea.songListUUID &&
+    runtime.songsArea.songInfoArr.length === 0
+  )
+})
+// --- END 新增计算属性 ---
+</script>
+<template>
+  <div style="width: 100%; height: 100%; min-width: 0; overflow: hidden; position: relative">
+    <div
+      v-show="!loadingShow && !runtime.songsArea.songListUUID"
+      class="unselectable welcomeContainer"
+    >
+      <welcomePage />
+    </div>
+    <div
+      v-show="loadingShow"
+      style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center"
+    >
+      <div class="loading"></div>
+    </div>
+
+    <OverlayScrollbarsComponent
+      v-if="runtime.songsArea.songListUUID && !loadingShow"
+      :options="{
+        scrollbars: {
+          autoHide: 'leave',
+          autoHideDelay: 50,
+          clickScroll: true
+        },
+        overflow: {
+          x: 'scroll',
+          y: 'scroll'
+        }
+      }"
+      element="div"
+      style="height: 100%; width: 100%; position: relative"
+      defer
+      ref="songsAreaRef"
+      @click="runtime.songsArea.selectedSongFilePath.length = 0"
+    >
+      <SongListHeader
+        :columns="columnData"
+        :t="t"
+        :ascendingOrder="ascendingOrder"
+        :descendingOrder="descendingOrder"
+        @update:columns="handleColumnsUpdate"
+        @column-click="colMenuClick"
+        @header-contextmenu="contextmenuEvent"
+        @drag-start="runtime.dragTableHeader = true"
+        @drag-end="runtime.dragTableHeader = false"
+      />
+
+      <!-- 使用 SongListRows 组件渲染歌曲列表 -->
+      <SongListRows
+        v-if="runtime.songsArea.songInfoArr.length > 0"
+        :songs="runtime.songsArea.songInfoArr"
+        :visibleColumns="columnDataArr"
+        :selectedSongFilePaths="runtime.songsArea.selectedSongFilePath"
+        :playingSongFilePath="playingSongFilePathForRows"
+        @song-click="songClick"
+        @song-contextmenu="handleSongContextMenuEvent"
+        @song-dblclick="songDblClick"
+      />
+
+      <!-- Empty State: 如果没有歌曲且满足特定条件 (shouldShowEmptyState) -->
+      <div
+        v-else-if="shouldShowEmptyState"
+        class="songs-area-empty-state unselectable"
+        style="
+          min-height: 200px;
+          width: 100%;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          flex-direction: column;
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+        "
+      >
+        <div style="font-size: 16px; color: #999999">
+          {{ t('暂无曲目') }}
+        </div>
+        <div style="font-size: 12px; color: #999999; margin-top: 10px">
+          {{ t('导入曲目到歌单中，或通过拖拽文件夹或音频文件进行导入。') }}
+        </div>
+      </div>
+    </OverlayScrollbarsComponent>
+
+    <ColumnHeaderContextMenu
+      v-model="colRightClickMenuShow"
+      :targetEvent="triggeringColContextEvent"
+      :columns="columnData"
+      :scrollHostElement="songsAreaRef?.osInstance()?.elements().host"
+      @toggle-column-visibility="handleToggleColumnVisibility"
+    />
+    <Teleport to="body">
+      <selectSongListDialog
+        v-if="isSelectSongListDialogVisible"
+        :libraryName="selectSongListDialogTargetLibraryName"
+        @confirm="handleMoveSongsConfirm"
+        @cancel="handleDialogCancel"
+      />
+    </Teleport>
+  </div>
+</template>
+<style lang="scss" scoped>
+.loading {
+  display: block;
+  position: relative;
+  width: 6px;
+  height: 10px;
+
+  animation: rectangle infinite 1s ease-in-out -0.2s;
+
+  background-color: #cccccc;
+}
+
+.loading:before,
+.loading:after {
+  position: absolute;
+  width: 6px;
+  height: 10px;
+  content: '';
+  background-color: #cccccc;
+}
+
+.loading:before {
+  left: -14px;
+
+  animation: rectangle infinite 1s ease-in-out -0.4s;
+}
+
+.loading:after {
+  right: -14px;
+
+  animation: rectangle infinite 1s ease-in-out;
+}
+
+@keyframes rectangle {
+  0%,
+  80%,
+  100% {
+    height: 20px;
+    box-shadow: 0 0 #cccccc;
+  }
+
+  40% {
+    height: 30px;
+    box-shadow: 0 -20px #cccccc;
+  }
+}
+
+.welcomeContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 430px;
+}
+
+/* 为新的空状态容器添加一个类名，以便将来可能需要的特定样式 */
+.songs-area-empty-state {
+  /* Styles for empty state are mostly inline, but class is good for targeting */
+  &.unselectable {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+}
+</style>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import librarySelectArea from './modules/librarySelectArea.vue'
 import libraryArea from './modules/libraryArea.vue'
-import songsArea from './modules/songsArea.vue'
+import songsArea from './modules/songsArea/songsArea.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { onMounted, onUnmounted, ref, computed } from 'vue'
 import songPlayer from './modules/songPlayer/songPlayer.vue'
