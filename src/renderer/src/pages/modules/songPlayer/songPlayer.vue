@@ -8,7 +8,8 @@ import {
   computed,
   readonly,
   toRef,
-  shallowRef
+  shallowRef,
+  nextTick
 } from 'vue'
 import WaveSurfer from 'wavesurfer.js'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -162,9 +163,9 @@ const createWaveSurferInstance = (container: HTMLDivElement): WaveSurfer => {
 }
 
 const updateParentWaveformWidth = () => {
-  const wrapper = wavesurferInstance.value?.getWrapper()
-  if (wrapper) {
-    waveformContainerWidth.value = wrapper.clientWidth
+  const waveformEl = waveform.value
+  if (waveformEl && waveformShow.value && waveformEl.offsetParent !== null) {
+    waveformContainerWidth.value = waveformEl.clientWidth
   } else {
     waveformContainerWidth.value = 0
   }
@@ -762,6 +763,16 @@ const playerState = {
 }
 
 usePlayerHotkeys(hotkeyActions, playerState, runtime)
+
+watch(
+  () => runtime.setting.hiddenPlayControlArea,
+  async (newValue, oldValue) => {
+    if (newValue !== oldValue && waveformShow.value && wavesurferInstance.value) {
+      await nextTick()
+      updateParentWaveformWidth()
+    }
+  }
+)
 </script>
 <template>
   <div
