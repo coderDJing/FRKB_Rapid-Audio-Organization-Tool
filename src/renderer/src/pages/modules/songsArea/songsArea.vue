@@ -511,6 +511,56 @@ const colMenuClick = (col: ISongsAreaColumn) => {
 
 // --- 新增计算属性给 SongListRows ---
 const playingSongFilePathForRows = computed(() => runtime.playingData.playingSong?.filePath)
+
+// 新增：监听当前播放歌曲的变化，并滚动到视图
+watch(
+  () => runtime.playingData.playingSong,
+  (newSong, oldSong) => {
+    if (
+      runtime.setting.autoScrollToCurrentSong &&
+      newSong &&
+      newSong.filePath !== oldSong?.filePath &&
+      songsAreaRef.value
+    ) {
+      nextTick(() => {
+        const scrollInstance = songsAreaRef.value?.osInstance()
+        if (scrollInstance) {
+          // SongListRows.vue 会给当前播放的歌曲行添加 .playingSong 类
+          // 我们需要找到 .song-row-item 元素，因为 .song-row-content 可能不是直接的子元素。
+          // 假设每个 song-row-item 包含一个 .song-row-content.playingSong
+          // 或者更准确地说，SongListRows.vue 中，.playingSong 类是加在 .song-row-content 上的。
+          // 我们需要滚动的是 .song-row-item
+          const viewportElement = scrollInstance.elements().viewport
+          // filePath 是唯一的，可以用来构造一个更精确的 data-attribute selector
+          // 但目前 SongListRows.vue 并没有添加这样的 attribute。
+          // 使用 .playingSong 类是最直接的方式，因为它是由 playingSongFilePathForRows 决定的。
+
+          // 查找具有 .playingSong 类的 .song-row-content 元素
+          const playingSongContentElement = viewportElement.querySelector(
+            '.song-row-content.playingSong'
+          )
+
+          if (playingSongContentElement) {
+            // 从 .song-row-content 向上找到父级的 .song-row-item
+            const playingSongRowItem = playingSongContentElement.closest(
+              '.song-row-item'
+            ) as HTMLElement
+            if (playingSongRowItem) {
+              playingSongRowItem.scrollIntoView({ block: 'center', behavior: 'smooth' })
+            } else {
+              console.warn('Could not find parent .song-row-item for .playingSong element.')
+            }
+          } else {
+            // console.warn('Playing song element not found in viewport for scrolling.')
+            // This might happen if the song list is not the current playing list, which is fine.
+          }
+        }
+      })
+    }
+  },
+  { deep: true } // deep might not be necessary if only filePath matters, but playingSong is an object.
+)
+
 const shouldShowEmptyState = computed(() => {
   return (
     !isRequesting.value &&
