@@ -37,6 +37,7 @@ type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsCompon
 
 const runtime = useRuntimeStore()
 const songsAreaRef = useTemplateRef<OverlayScrollbarsComponentRef>('songsAreaRef')
+const originalSongInfoArr = ref<ISongInfo[]>([]) // 新增 ref 存储原始歌曲数据
 
 // Initialize composables
 const { showAndHandleSongContextMenu } = useSongItemContextMenu(songsAreaRef)
@@ -192,6 +193,7 @@ const openSongList = async () => {
 
   isRequesting.value = true
   runtime.songsArea.songInfoArr = []
+  originalSongInfoArr.value = [] // 清空原始数据
   await nextTick()
 
   const songListPath = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
@@ -214,18 +216,20 @@ const openSongList = async () => {
       return
     }
 
+    originalSongInfoArr.value = scanData // 存储原始数据
+
     // 根据排序规则处理数据，并将结果赋值给响应式数组
     const sortedCol = columnData.value.find((col) => col.order)
     if (sortedCol) {
-      // 注意：这里先对 scanData 排序，再赋值给响应式数组
+      // 注意：这里对 originalSongInfoArr.value 的副本进行排序
       runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
-        scanData, // 使用原始 scanData 进行排序
+        [...originalSongInfoArr.value], // 使用原始数据的副本进行排序
         sortedCol.key as keyof ISongInfo,
         sortedCol.order
       )
     } else {
-      // 没有排序规则，直接赋值
-      runtime.songsArea.songInfoArr = scanData
+      // 没有排序规则，直接使用原始数据的副本
+      runtime.songsArea.songInfoArr = [...originalSongInfoArr.value]
     }
 
     // 如果当前播放列表是正在打开的列表，也更新播放列表数据引用
@@ -259,6 +263,7 @@ watch(
         }
       })
       runtime.songsArea.songInfoArr = []
+      originalSongInfoArr.value = [] // 清空原始数据
     }
   }
 )
@@ -390,17 +395,34 @@ const handleDeleteKey = async () => {
       )
     }
 
-    let delSongsFromStore = runtime.songsArea.songInfoArr.filter((item) =>
+    // 释放被删除歌曲的封面 URL
+    const songsToDeleteFromOriginal = originalSongInfoArr.value.filter((item) =>
       selectedPaths.includes(item.filePath)
     )
-    for (let item of delSongsFromStore) {
+    for (let item of songsToDeleteFromOriginal) {
       if (item.coverUrl) {
         URL.revokeObjectURL(item.coverUrl)
       }
     }
-    runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
+
+    // 1. 从 originalSongInfoArr 中过滤掉已删除的歌曲
+    originalSongInfoArr.value = originalSongInfoArr.value.filter(
       (item) => !selectedPaths.includes(item.filePath)
     )
+
+    // 2. 根据当前的排序规则，重新排序 originalSongInfoArr 并更新 runtime.songsArea.songInfoArr
+    const sortedCol = columnData.value.find((col) => col.order)
+    if (sortedCol) {
+      runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
+        [...originalSongInfoArr.value], // 使用更新后的原始数据副本进行排序
+        sortedCol.key as keyof ISongInfo,
+        sortedCol.order
+      )
+    } else {
+      // 如果没有排序规则，直接使用过滤后的原始数据副本
+      runtime.songsArea.songInfoArr = [...originalSongInfoArr.value]
+    }
+
     if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
       runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
     }
@@ -464,7 +486,7 @@ const colMenuClick = (col: ISongsAreaColumn) => {
   if (clickedColNewOrder) {
     // Ensure it's 'asc' or 'desc'
     runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
-      runtime.songsArea.songInfoArr,
+      [...originalSongInfoArr.value], // 使用原始数据的副本进行排序
       col.key as keyof ISongInfo, // Use the key from the original clicked column object
       clickedColNewOrder // Use its new order from the updated array
     )
