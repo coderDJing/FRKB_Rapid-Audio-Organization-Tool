@@ -71,6 +71,14 @@ const globalShortcut = computed(() => {
           </dd>
         </dl>
         <dl>
+          <dt>{{ t('区间播放') }}</dt>
+          <dd>
+            <div class="monaco-keybinding">
+              <span class="monaco-keybinding-key">R</span>
+            </div>
+          </dd>
+        </dl>
+        <dl>
           <dt>{{ t('呼出 / 隐藏') }}</dt>
           <dd>
             <div class="monaco-keybinding">
