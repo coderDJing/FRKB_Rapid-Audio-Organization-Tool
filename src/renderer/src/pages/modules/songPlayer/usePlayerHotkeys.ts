@@ -95,6 +95,15 @@ export function usePlayerHotkeys(
       actions.previousSong()
     })
 
+    hotkeys('r', scope, (event) => {
+      event.preventDefault()
+      if (!state.waveformShow.value || state.selectSongListDialogShow.value) {
+        return
+      }
+      runtime.setting.enablePlaybackRange = !runtime.setting.enablePlaybackRange
+      window.electron.ipcRenderer.invoke('setSetting', JSON.parse(JSON.stringify(runtime.setting)))
+    })
+
     const deleteHandler: KeyHandler = (event, handler) => {
       event.preventDefault()
       if (!state.waveformShow.value) {
