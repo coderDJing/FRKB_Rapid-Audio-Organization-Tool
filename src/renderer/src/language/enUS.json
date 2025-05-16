@@ -171,5 +171,6 @@
   "切换歌曲时，自动滚动列表将当前歌曲置于视图中央": "Auto-center current song in list",
   "自动播放下一曲": "Auto play next song",
   "启用区间播放": "Enable playback range",
-  "结束位置必须大于开始位置": "End position must be greater than start position"
+  "结束位置必须大于开始位置": "End position must be greater than start position",
+  "区间播放": "Playback range"
 }
