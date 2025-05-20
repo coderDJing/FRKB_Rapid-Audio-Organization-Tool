@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, PropType } from 'vue'
+import { ref, computed, PropType, watch } from 'vue'
 import { ISongsAreaColumn } from '../../../../../types/globals' // Corrected path
 import { UseDraggableOptions, vDraggable } from 'vue-draggable-plus'
 
@@ -35,10 +35,26 @@ const emit = defineEmits<{
   (e: 'drag-end'): void
 }>()
 
-// 计算显示的列
-const columnDataArr = computed(() => {
-  return props.columns.filter((item) => item.show)
-})
+// 创建一个 ref 来存储可见的、可拖拽的列
+const draggableVisibleColumns = ref<ISongsAreaColumn[]>([])
+const draggableInstanceKey = ref(0) // 新增：用于强制重新渲染 draggable 容器的 key
+
+// 监听 props.columns 的变化，以更新 draggableVisibleColumns
+watch(
+  () => props.columns,
+  (newFullColumns) => {
+    // console.log('[SongListHeader] WATCH props.columns changed.');
+    draggableVisibleColumns.value = newFullColumns.filter((item) => item.show)
+    draggableInstanceKey.value++ // 关键：当可见列数据源可能改变实例时，更新 key
+    // console.log('[SongListHeader] WATCH draggableVisibleColumns updated, new key:', draggableInstanceKey.value);
+  },
+  { immediate: true, deep: true } // immediate 确保初始加载，deep 监听 show 属性等变化
+)
+
+// 计算显示的列 (v-for 现在将使用 draggableVisibleColumns)
+// const columnDataArr = computed(() => { // 旧的计算属性，不再直接用于 v-for
+//   return props.columns.filter((item) => item.show)
+// })
 
 // 列宽调整逻辑
 let startX = 0
@@ -105,17 +121,42 @@ const onEndDraggable = () => {
 }
 
 // v-draggable 的数据和选项
-// vue-draggable-plus 会直接修改传入的 list (即 props.columns)
-// 因此，在 onUpdate 回调中，我们需要 emit('update:columns', [...props.columns])
-// 以通知父组件数组已被修改（通过创建一个新的数组引用）
+// vue-draggable-plus 会直接修改传入的 list (即 draggableVisibleColumns.value)
 const vDraggableData = computed<VDraggableBinding>(() => [
-  props.columns, // 将 props.columns 直接传递给 v-draggable
+  draggableVisibleColumns.value, // 将 draggableVisibleColumns.value 直接传递给 v-draggable
   {
     animation: 150,
     direction: 'horizontal',
     onUpdate: () => {
-      // 当列顺序通过拖拽更新后，发出 columns 更新事件
-      emit('update:columns', [...props.columns])
+      // 当列顺序通过拖拽更新后 (draggableVisibleColumns.value 已被修改)
+      // 我们需要根据 draggableVisibleColumns.value (新的可见列顺序)
+      // 和 props.columns (原始完整列表，用于获取隐藏列)
+      // 来重建完整的列顺序
+      // console.log('[SongListHeader] ON_UPDATE triggered.');
+      const newOrderedVisibleColumns = draggableVisibleColumns.value
+      const reconstructedFullList: ISongsAreaColumn[] = []
+      let currentVisibleIdx = 0
+
+      for (const originalCol of props.columns) {
+        if (originalCol.show) {
+          // 这个 "槽位" 在原始结构中是给可见列的
+          // 用 newOrderedVisibleColumns 中的下一个列来填充它
+          if (currentVisibleIdx < newOrderedVisibleColumns.length) {
+            reconstructedFullList.push(newOrderedVisibleColumns[currentVisibleIdx])
+            currentVisibleIdx++
+          } else {
+            // 如果 newOrderedVisibleColumns 中的列已用完，这表示状态不一致
+            // 这不应该发生，如果计数正确的话
+            // console.error('在重建列表时，可见列计数不匹配')
+            // 作为回退，可以添加原始列，但这可能不是期望的行为
+            // reconstructedFullList.push(originalCol);
+          }
+        } else {
+          // 这个 "槽位" 是给隐藏列的，保留它
+          reconstructedFullList.push(originalCol)
+        }
+      }
+      emit('update:columns', reconstructedFullList)
     },
     onStart: onStartDraggable,
     onEnd: onEndDraggable
@@ -147,11 +188,12 @@ const handleContextMenu = (event: MouseEvent) => {
       background-color: #191919; /* 与 lightBackground 一致，确保背景 */
       border-bottom: 1px solid #2b2b2b;
     "
+    :key="draggableInstanceKey"
     v-draggable="vDraggableData"
   >
     <div
       class="unselectable header-column"
-      v-for="col of columnDataArr"
+      v-for="col of draggableVisibleColumns"
       :key="col.key"
       :class="[
         'lightBackground',
