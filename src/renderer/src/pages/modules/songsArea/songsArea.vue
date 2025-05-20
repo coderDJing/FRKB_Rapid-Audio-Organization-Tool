@@ -16,15 +16,9 @@ import ColumnHeaderContextMenu from './ColumnHeaderContextMenu.vue'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
 
 // Composable import
-import {
-  useSongItemContextMenu,
-  OpenDialogAction
-} from '@renderer/pages/modules/songsArea/composables/useSongItemContextMenu'
+import { useSongItemContextMenu } from '@renderer/pages/modules/songsArea/composables/useSongItemContextMenu'
 import { useCoverLoader } from '@renderer/pages/modules/songsArea/composables/useCoverLoader'
-import {
-  useSelectAndMoveSongs,
-  MoveSongsLibraryName
-} from '@renderer/pages/modules/songsArea/composables/useSelectAndMoveSongs'
+import { useSelectAndMoveSongs } from '@renderer/pages/modules/songsArea/composables/useSelectAndMoveSongs'
 
 // 资源导入
 import ascendingOrder from '@renderer/assets/ascending-order.png?asset'
@@ -353,10 +347,70 @@ const songClick = (event: MouseEvent, song: ISongInfo) => {
 }
 
 const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) => {
+  // showAndHandleSongContextMenu 返回 Promise<OpenDialogAction | null>
+  // OpenDialogAction 定义为: { action: 'openSelectSongListDialog', libraryName: '精选库' | '筛选库' }
+  // 它也可能处理删除并直接修改 runtime.songsArea.songInfoArr，但不返回特定action。
+  // 为了解决 originalSongInfoArr 不同步的问题，理想情况下，
+  // useSongItemContextMenu.ts 中的删除操作应该返回一个包含已删除路径的 action。
+  // 例如: { action: 'CONTEXT_MENU_SONGS_DELETED', paths: string[] }
+
   const result = await showAndHandleSongContextMenu(event, song)
-  if (result && result.action === 'openSelectSongListDialog') {
-    initiateMoveSongs(result.libraryName as MoveSongsLibraryName)
+
+  if (result) {
+    // 处理移动歌曲到其他列表的对话框请求
+    if (result.action === 'openSelectSongListDialog') {
+      // result 类型符合 OpenDialogAction 接口
+      initiateMoveSongs(result.libraryName)
+    }
+    // 处理来自右键菜单的歌曲移除操作 (删除、导出后删除等)
+    else if (result.action === 'songsRemoved') {
+      // 此时 result 类型应符合 SongsRemovedAction 接口: { action: 'songsRemoved', paths: string[] }
+      const pathsToRemove = result.paths // 直接使用 result.paths，因为类型已明确
+      if (Array.isArray(pathsToRemove) && pathsToRemove.length > 0) {
+        console.log('[songsArea] Songs removed by context menu, paths:', pathsToRemove)
+        // 1. 从 originalSongInfoArr 中过滤掉已移除的歌曲
+        originalSongInfoArr.value = originalSongInfoArr.value.filter(
+          (item) => !pathsToRemove.includes(item.filePath)
+        )
+
+        // 2. 确保 runtime.songsArea.songInfoArr 与更新后的 originalSongInfoArr 同步
+        // (useSongItemContextMenu 已经修改了 runtime.songsArea.songInfoArr，
+        // 但这里的目的是基于 *最新的* originalSongInfoArr 和排序规则重新生成它，
+        // 以确保排序基准和显示列表的一致性)
+        const sortedCol = columnData.value.find((col) => col.order)
+        if (sortedCol) {
+          runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
+            [...originalSongInfoArr.value], // 使用更新后的原始数据副本
+            sortedCol.key as keyof ISongInfo,
+            sortedCol.order
+          )
+        } else {
+          runtime.songsArea.songInfoArr = [...originalSongInfoArr.value]
+        }
+
+        // 3. 更新播放列表
+        if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+          runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+        }
+
+        // 4. 如果正在播放的歌曲被移除了
+        if (
+          runtime.playingData.playingSong &&
+          pathsToRemove.includes(runtime.playingData.playingSong.filePath)
+        ) {
+          runtime.playingData.playingSong = null
+        }
+
+        // 5. 从当前选择中移除已删除的歌曲 (useSongItemContextMenu 可能已经处理了部分)
+        // 为确保一致性，再次进行过滤
+        runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
+          (path) => !pathsToRemove.includes(path)
+        )
+      }
+    }
+    // 其他可能的 action 处理...
   }
+  // 如果 result 是 null，或者 action 不匹配任何已知处理，则不执行任何操作
 }
 
 const songDblClick = (song: ISongInfo) => {
@@ -561,6 +615,56 @@ watch(
   { deep: true } // deep might not be necessary if only filePath matters, but playingSong is an object.
 )
 
+// 新增：处理移动歌曲对话框确认后的逻辑
+async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
+  // 捕获在调用 composable 之前选中的歌曲路径
+  // 这些是实际将被移动的歌曲
+  const pathsEffectivelyMoved = [...runtime.songsArea.selectedSongFilePath]
+
+  if (pathsEffectivelyMoved.length === 0) {
+    // 如果没有选中的歌曲，让 composable 的 handleMoveSongsConfirm 处理（它可能会直接关闭对话框或不做任何事）
+    await handleMoveSongsConfirm(targetSongListUuid)
+    return
+  }
+
+  // 调用 composable 中的函数来执行移动操作 (IPC, 关闭对话框, 清空选择等)
+  // handleMoveSongsConfirm 应该会处理 isDialogVisible 和 selectedSongFilePath
+  await handleMoveSongsConfirm(targetSongListUuid)
+
+  // IPC 调用完成后，我们用 pathsEffectivelyMoved 来更新本地的 originalSongInfoArr
+  // 1. 从 originalSongInfoArr 中过滤掉已移动的歌曲
+  originalSongInfoArr.value = originalSongInfoArr.value.filter(
+    (song) => !pathsEffectivelyMoved.includes(song.filePath)
+  )
+
+  // 2. 根据当前的排序规则，重新排序 originalSongInfoArr 并更新 runtime.songsArea.songInfoArr
+  const sortedCol = columnData.value.find((col) => col.order)
+  if (sortedCol) {
+    runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
+      [...originalSongInfoArr.value], // 使用更新后的原始数据副本进行排序
+      sortedCol.key as keyof ISongInfo,
+      sortedCol.order
+    )
+  } else {
+    // 如果没有排序规则，直接使用过滤后的原始数据副本
+    runtime.songsArea.songInfoArr = [...originalSongInfoArr.value]
+  }
+
+  // 3. 更新播放列表（如果当前歌单是播放歌单）
+  if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+    runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+  }
+
+  // 4. 如果正在播放的歌曲被移动了，也需要处理
+  if (
+    runtime.playingData.playingSong &&
+    pathsEffectivelyMoved.includes(runtime.playingData.playingSong.filePath)
+  ) {
+    runtime.playingData.playingSong = null // 或者可以设置为播放下一首等逻辑
+  }
+  // runtime.songsArea.selectedSongFilePath 应该已经被 handleMoveSongsConfirm (composable内部) 清空了
+}
+
 const shouldShowEmptyState = computed(() => {
   return (
     !isRequesting.value &&
@@ -665,7 +769,7 @@ const shouldShowEmptyState = computed(() => {
       <selectSongListDialog
         v-if="isSelectSongListDialogVisible"
         :libraryName="selectSongListDialogTargetLibraryName"
-        @confirm="handleMoveSongsConfirm"
+        @confirm="onMoveSongsDialogConfirmed"
         @cancel="handleDialogCancel"
       />
     </Teleport>
