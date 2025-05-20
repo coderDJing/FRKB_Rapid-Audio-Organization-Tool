@@ -351,7 +351,6 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
       // 此时 result 类型应符合 SongsRemovedAction 接口: { action: 'songsRemoved', paths: string[] }
       const pathsToRemove = result.paths
       if (Array.isArray(pathsToRemove) && pathsToRemove.length > 0) {
-        console.log('[songsArea] Songs removed by context menu, paths:', pathsToRemove)
         originalSongInfoArr.value = originalSongInfoArr.value.filter(
           (item) => !pathsToRemove.includes(item.filePath)
         )
