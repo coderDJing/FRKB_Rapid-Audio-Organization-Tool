@@ -10,7 +10,6 @@ import { Icon } from '../../../types/globals'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
-import { getCurrentTimeDirName } from '@renderer/utils/utils'
 const runtime = useRuntimeStore()
 let startX = 0
 let isResizing = false
