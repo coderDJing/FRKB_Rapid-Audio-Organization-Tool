@@ -14,6 +14,12 @@ export interface OpenDialogAction {
   libraryName: '精选库' | '筛选库'
 }
 
+// 新增：用于表示歌曲被右键菜单操作移除的返回类型
+export interface SongsRemovedAction {
+  action: 'songsRemoved'
+  paths: string[]
+}
+
 export function useSongItemContextMenu(
   // runtimeStore: ReturnType<typeof useRuntimeStore>, // Passed implicitly via direct import for now
   songsAreaHostElementRef: Ref<InstanceType<typeof OverlayScrollbarsComponent> | null> // For scrolling
@@ -30,7 +36,7 @@ export function useSongItemContextMenu(
   const showAndHandleSongContextMenu = async (
     event: MouseEvent,
     song: ISongInfo
-  ): Promise<OpenDialogAction | null> => {
+  ): Promise<OpenDialogAction | SongsRemovedAction | null> => {
     if (runtime.songsArea.selectedSongFilePath.indexOf(song.filePath) === -1) {
       runtime.songsArea.selectedSongFilePath = [song.filePath]
     }
@@ -102,12 +108,9 @@ export function useSongItemContextMenu(
             )
           }
         })
-        break
+        return { action: 'songsRemoved', paths: delSongs }
       }
       case '删除曲目':
-        // This case relies on the deleteSong function which is currently in songsArea.vue
-        // For now, we can replicate its core logic or emit an event for parent to handle.
-        // Let\'s try to replicate its core logic here, assuming `deleteSong` primarily deals with selected songs.
         {
           const selectedPaths = JSON.parse(JSON.stringify(runtime.songsArea.selectedSongFilePath))
           if (!selectedPaths.length) return null
@@ -154,6 +157,7 @@ export function useSongItemContextMenu(
               runtime.playingData.playingSong = null
             }
             runtime.songsArea.selectedSongFilePath.length = 0
+            return { action: 'songsRemoved', paths: selectedPaths }
           }
         }
         break
@@ -165,34 +169,39 @@ export function useSongItemContextMenu(
         const exportResult = await exportDialog({ title: '曲目' })
         if (exportResult !== 'cancel') {
           const { folderPathVal, deleteSongsAfterExport } = exportResult
-          const songsToExport = runtime.songsArea.songInfoArr.filter((item) =>
-            runtime.songsArea.selectedSongFilePath.includes(item.filePath)
+          const songsToExportFilePaths = [...runtime.songsArea.selectedSongFilePath]
+
+          const songsToExportObjects = runtime.songsArea.songInfoArr.filter((item) =>
+            songsToExportFilePaths.includes(item.filePath)
           )
+
           await window.electron.ipcRenderer.invoke(
             'exportSongsToDir',
             folderPathVal,
             deleteSongsAfterExport,
-            JSON.parse(JSON.stringify(songsToExport))
+            JSON.parse(JSON.stringify(songsToExportObjects))
           )
-          if (deleteSongsAfterExport) {
-            for (const item of songsToExport) {
-              if (item.coverUrl) URL.revokeObjectURL(item.coverUrl)
+          if (deleteSongsAfterExport && songsToExportFilePaths.length > 0) {
+            for (const songObj of songsToExportObjects) {
+              if (songObj.coverUrl) URL.revokeObjectURL(songObj.coverUrl)
             }
             runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
-              (item) => !runtime.songsArea.selectedSongFilePath.includes(item.filePath)
+              (item) => !songsToExportFilePaths.includes(item.filePath)
             )
-            runtime.songsArea.selectedSongFilePath = []
+            runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
+              (path) => !songsToExportFilePaths.includes(path)
+            )
+
             if (runtime.songsArea.songListUUID === runtime.playingData.playingSongListUUID) {
               runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
               if (
                 runtime.playingData.playingSong &&
-                !runtime.playingData.playingSongListData.some(
-                  (item) => item.filePath === runtime.playingData.playingSong?.filePath
-                )
+                songsToExportFilePaths.includes(runtime.playingData.playingSong.filePath)
               ) {
                 runtime.playingData.playingSong = null
               }
             }
+            return { action: 'songsRemoved', paths: songsToExportFilePaths }
           }
         }
         break
