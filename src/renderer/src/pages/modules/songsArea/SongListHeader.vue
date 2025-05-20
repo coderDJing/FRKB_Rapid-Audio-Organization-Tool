@@ -43,18 +43,11 @@ const draggableInstanceKey = ref(0) // 新增：用于强制重新渲染 draggab
 watch(
   () => props.columns,
   (newFullColumns) => {
-    // console.log('[SongListHeader] WATCH props.columns changed.');
     draggableVisibleColumns.value = newFullColumns.filter((item) => item.show)
     draggableInstanceKey.value++ // 关键：当可见列数据源可能改变实例时，更新 key
-    // console.log('[SongListHeader] WATCH draggableVisibleColumns updated, new key:', draggableInstanceKey.value);
   },
   { immediate: true, deep: true } // immediate 确保初始加载，deep 监听 show 属性等变化
 )
-
-// 计算显示的列 (v-for 现在将使用 draggableVisibleColumns)
-// const columnDataArr = computed(() => { // 旧的计算属性，不再直接用于 v-for
-//   return props.columns.filter((item) => item.show)
-// })
 
 // 列宽调整逻辑
 let startX = 0
@@ -132,7 +125,6 @@ const vDraggableData = computed<VDraggableBinding>(() => [
       // 我们需要根据 draggableVisibleColumns.value (新的可见列顺序)
       // 和 props.columns (原始完整列表，用于获取隐藏列)
       // 来重建完整的列顺序
-      // console.log('[SongListHeader] ON_UPDATE triggered.');
       const newOrderedVisibleColumns = draggableVisibleColumns.value
       const reconstructedFullList: ISongsAreaColumn[] = []
       let currentVisibleIdx = 0
@@ -145,11 +137,6 @@ const vDraggableData = computed<VDraggableBinding>(() => [
             reconstructedFullList.push(newOrderedVisibleColumns[currentVisibleIdx])
             currentVisibleIdx++
           } else {
-            // 如果 newOrderedVisibleColumns 中的列已用完，这表示状态不一致
-            // 这不应该发生，如果计数正确的话
-            // console.error('在重建列表时，可见列计数不匹配')
-            // 作为回退，可以添加原始列，但这可能不是期望的行为
-            // reconstructedFullList.push(originalCol);
           }
         } else {
           // 这个 "槽位" 是给隐藏列的，保留它
@@ -242,7 +229,8 @@ const handleContextMenu = (event: MouseEvent) => {
 
 .header-column {
   // 表头中的每一列
-  flex-shrink: 0; /* 确保列不会收缩 */
+  flex-shrink: 0;
+  /* 确保列不会收缩 */
   /* 其他通过 :class 和 :style 动态应用 */
 }
 
@@ -253,7 +241,8 @@ const handleContextMenu = (event: MouseEvent) => {
 /* coverDiv 和 titleDiv 的基础样式 */
 .coverDiv,
 .titleDiv {
-  height: 100%; /* 占满父容器高度 */
+  height: 100%;
+  /* 占满父容器高度 */
   box-sizing: border-box;
   border-right: 1px solid #2b2b2b;
   /* padding-left 和其他在 template 中通过 style 属性设置 */

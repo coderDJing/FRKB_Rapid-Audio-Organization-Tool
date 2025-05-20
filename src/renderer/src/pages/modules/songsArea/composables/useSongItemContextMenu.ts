@@ -50,13 +50,25 @@ export function useSongItemContextMenu(
 
     switch (result.menuName) {
       case '删除上方所有曲目': {
-        const delSongs: string[] = []
-        for (const item of runtime.songsArea.songInfoArr) {
-          if (item.filePath === song.filePath) break
-          if (item.coverUrl) URL.revokeObjectURL(item.coverUrl)
-          delSongs.push(item.filePath)
+        const currentSongInfoArrSnapshot = [...runtime.songsArea.songInfoArr]
+        const songIndex = currentSongInfoArrSnapshot.findIndex(
+          (item) => item.filePath === song.filePath
+        )
+
+        if (songIndex === -1) {
+          console.warn('Target song for "删除上方所有曲目" not found in current song list.')
+          return null
         }
-        if (delSongs.length === 0) return null
+
+        if (songIndex === 0) {
+          // 没有曲目在当前曲目之上
+          return null
+        }
+
+        const songsToRemoveInfo = currentSongInfoArrSnapshot.slice(0, songIndex)
+        const delPaths = songsToRemoveInfo.map((s) => s.filePath)
+
+        if (delPaths.length === 0) return null
 
         const isInRecycleBin = runtime.libraryTree.children
           ?.find((item) => item.dirName === '回收站')
@@ -72,29 +84,29 @@ export function useSongItemContextMenu(
           })
           if (res !== 'confirm') return null
         }
+        // 如果不在回收站，则默认移入回收站，不需要额外确认（保持原逻辑）
 
-        if (isInRecycleBin) {
-          window.electron.ipcRenderer.invoke(
-            'permanentlyDelSongs',
-            JSON.parse(JSON.stringify(delSongs))
-          )
-        } else {
-          window.electron.ipcRenderer.send(
-            'delSongs',
-            JSON.parse(JSON.stringify(delSongs)),
-            getCurrentTimeDirName()
-          )
+        // 在IPC调用前处理封面URL
+        for (const sInfo of songsToRemoveInfo) {
+          if (sInfo.coverUrl) {
+            URL.revokeObjectURL(sInfo.coverUrl)
+          }
         }
 
-        runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
-          (s) => !delSongs.includes(s.filePath)
-        )
+        if (isInRecycleBin) {
+          window.electron.ipcRenderer.invoke('permanentlyDelSongs', delPaths)
+        } else {
+          window.electron.ipcRenderer.send('delSongs', delPaths, getCurrentTimeDirName())
+        }
+
+        runtime.songsArea.songInfoArr = currentSongInfoArrSnapshot.slice(songIndex)
+
         if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-          runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+          runtime.playingData.playingSongListData = [...runtime.songsArea.songInfoArr]
         }
         if (
           runtime.playingData.playingSong &&
-          delSongs.includes(runtime.playingData.playingSong.filePath)
+          delPaths.includes(runtime.playingData.playingSong.filePath)
         ) {
           runtime.playingData.playingSong = null
         }
@@ -108,12 +120,12 @@ export function useSongItemContextMenu(
             )
           }
         })
-        return { action: 'songsRemoved', paths: delSongs }
+        return { action: 'songsRemoved', paths: delPaths }
       }
       case '删除曲目':
         {
-          const selectedPaths = JSON.parse(JSON.stringify(runtime.songsArea.selectedSongFilePath))
-          if (!selectedPaths.length) return null
+          const currentSelectedPaths = [...runtime.songsArea.selectedSongFilePath] // 快照
+          if (!currentSelectedPaths.length) return null
 
           const isInRecycleBin = runtime.libraryTree.children
             ?.find((item) => item.dirName === '回收站')
@@ -132,32 +144,39 @@ export function useSongItemContextMenu(
           }
 
           if (shouldDelete) {
-            if (isInRecycleBin) {
-              window.electron.ipcRenderer.invoke('permanentlyDelSongs', selectedPaths)
-            } else {
-              window.electron.ipcRenderer.send('delSongs', selectedPaths, getCurrentTimeDirName())
-            }
-
-            const songsToDeleteFromStore = runtime.songsArea.songInfoArr.filter((item) =>
-              selectedPaths.includes(item.filePath)
+            const currentSongInfoArrSnapshot = [...runtime.songsArea.songInfoArr]
+            const songsActuallyBeingDeleted = currentSongInfoArrSnapshot.filter((item) =>
+              currentSelectedPaths.includes(item.filePath)
             )
-            for (const item of songsToDeleteFromStore) {
+
+            for (const item of songsActuallyBeingDeleted) {
               if (item.coverUrl) URL.revokeObjectURL(item.coverUrl)
             }
-            runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
-              (item) => !selectedPaths.includes(item.filePath)
+
+            if (isInRecycleBin) {
+              window.electron.ipcRenderer.invoke('permanentlyDelSongs', currentSelectedPaths)
+            } else {
+              window.electron.ipcRenderer.send(
+                'delSongs',
+                currentSelectedPaths,
+                getCurrentTimeDirName()
+              )
+            }
+
+            runtime.songsArea.songInfoArr = currentSongInfoArrSnapshot.filter(
+              (item) => !currentSelectedPaths.includes(item.filePath)
             )
             if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-              runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+              runtime.playingData.playingSongListData = [...runtime.songsArea.songInfoArr]
             }
             if (
               runtime.playingData.playingSong &&
-              selectedPaths.includes(runtime.playingData.playingSong.filePath)
+              currentSelectedPaths.includes(runtime.playingData.playingSong.filePath)
             ) {
               runtime.playingData.playingSong = null
             }
             runtime.songsArea.selectedSongFilePath.length = 0
-            return { action: 'songsRemoved', paths: selectedPaths }
+            return { action: 'songsRemoved', paths: currentSelectedPaths }
           }
         }
         break
