@@ -575,7 +575,6 @@ function createWindow() {
           if (isEmpty) {
             // 目录为空，直接永久删除
             await fs.remove(dirPath)
-            console.log(`Directory ${item.path} is effectively empty, removed permanently.`)
             operationStatus = 'removed'
           } else {
             // 目录非空，移动到回收站
