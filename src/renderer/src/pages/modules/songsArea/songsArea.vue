@@ -31,7 +31,7 @@ type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsCompon
 
 const runtime = useRuntimeStore()
 const songsAreaRef = useTemplateRef<OverlayScrollbarsComponentRef>('songsAreaRef')
-const originalSongInfoArr = ref<ISongInfo[]>([]) // 新增 ref 存储原始歌曲数据
+const originalSongInfoArr = ref<ISongInfo[]>([])
 
 // Initialize composables
 const { showAndHandleSongContextMenu } = useSongItemContextMenu(songsAreaRef)
@@ -115,7 +115,7 @@ const columnData = ref<ISongsAreaColumn[]>(
 
     if (!savedData) {
       // --- 情况 1: 没有本地存储，直接使用默认值 ---
-      finalColumns = JSON.parse(JSON.stringify(defaultColumns)) // 使用深拷贝以防修改默认值
+      finalColumns = JSON.parse(JSON.stringify(defaultColumns))
     } else {
       // --- 情况 2: 有本地存储，进行合并 ---
       try {
@@ -126,17 +126,14 @@ const columnData = ref<ISongsAreaColumn[]>(
         finalColumns = defaultColumns.map((defaultCol) => {
           const savedCol = savedColumnsMap.get(defaultCol.key)
           if (savedCol) {
-            // 如果本地存储中有此列，合并设置
-            // 保留默认列的所有键，但用保存的值覆盖 show, width, order
             // 注意：要检查 savedCol 中属性是否存在，避免 undefined 覆盖默认值
             return {
-              ...defaultCol, // 包含默认列的所有属性（如 columnName, key）
+              ...defaultCol,
               show: savedCol.show !== undefined ? savedCol.show : defaultCol.show,
               width: savedCol.width !== undefined ? savedCol.width : defaultCol.width,
-              order: savedCol.order // 如果保存的有 order，则使用，否则为 undefined
+              order: savedCol.order
             }
           } else {
-            // 如果本地存储中没有此列（例如新添加的列），使用默认列（深拷贝）
             return JSON.parse(JSON.stringify(defaultCol))
           }
         })
@@ -146,22 +143,18 @@ const columnData = ref<ISongsAreaColumn[]>(
         finalColumns = finalColumns.filter((col) => defaultColumns.some((dc) => dc.key === col.key))
       } catch (error) {
         console.error('解析本地存储的 songColumnData 出错，将使用默认列配置:', error)
-        // 解析出错，也回退到默认配置
         finalColumns = JSON.parse(JSON.stringify(defaultColumns))
       }
     }
 
     // --- 确保至少有一个默认排序列（如果用户没有设置任何排序列） ---
-    // 检查合并后的 finalColumns 是否没有任何列设置了 order
     const hasOrderAfterMerge = finalColumns.some((col) => col.order !== undefined)
     if (!hasOrderAfterMerge) {
-      // 如果没有任何列排序，并且 'duration' 列存在，则默认给 'duration' 升序
       const durationColIndex = finalColumns.findIndex((col) => col.key === 'duration')
       if (durationColIndex !== -1) {
         finalColumns[durationColIndex] = { ...finalColumns[durationColIndex], order: 'asc' }
-      }
-      // 如果 'duration' 列不存在，可以考虑给其他列如 'title' 设置默认排序 (这里保留，以防万一)
-      else {
+        // 如果 'duration' 列不存在，可以考虑给其他列如 'title' 设置默认排序 (这里保留，以防万一)
+      } else {
         const titleColIndex = finalColumns.findIndex((col) => col.key === 'title')
         if (titleColIndex !== -1) {
           finalColumns[titleColIndex] = { ...finalColumns[titleColIndex], order: 'asc' }
@@ -187,19 +180,17 @@ const openSongList = async () => {
 
   isRequesting.value = true
   runtime.songsArea.songInfoArr = []
-  originalSongInfoArr.value = [] // 清空原始数据
+  originalSongInfoArr.value = []
   await nextTick()
 
   const songListPath = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
 
-  // 处理加载状态
   loadingShow.value = false
   const loadingSetTimeout = setTimeout(() => {
     loadingShow.value = true
   }, 100)
 
   try {
-    // 扫描歌单
     const { scanData, songListUUID } = await window.electron.ipcRenderer.invoke(
       'scanSongList',
       songListPath,
@@ -210,29 +201,25 @@ const openSongList = async () => {
       return
     }
 
-    originalSongInfoArr.value = scanData // 存储原始数据
+    originalSongInfoArr.value = scanData
 
-    // 根据排序规则处理数据，并将结果赋值给响应式数组
     const sortedCol = columnData.value.find((col) => col.order)
     if (sortedCol) {
       // 注意：这里对 originalSongInfoArr.value 的副本进行排序
       runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
-        [...originalSongInfoArr.value], // 使用原始数据的副本进行排序
+        [...originalSongInfoArr.value],
         sortedCol.key as keyof ISongInfo,
         sortedCol.order
       )
     } else {
-      // 没有排序规则，直接使用原始数据的副本
       runtime.songsArea.songInfoArr = [...originalSongInfoArr.value]
     }
 
-    // 如果当前播放列表是正在打开的列表，也更新播放列表数据引用
     if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
       runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
     }
 
     // --- 启动新的封面加载任务，并设置完成回调 ---
-    // 传递当前的 taskId
     loadCoversInBatches(runtime.songsArea.songInfoArr, newTaskId)
   } finally {
     isRequesting.value = false
@@ -243,21 +230,18 @@ const openSongList = async () => {
 watch(
   () => runtime.songsArea.songListUUID,
   async (newUUID) => {
-    // 清空选中歌曲
     runtime.songsArea.selectedSongFilePath.length = 0
 
     if (newUUID) {
-      // 有歌单UUID时打开歌单
       await openSongList()
     } else {
-      // 无歌单UUID时清理资源
       runtime.songsArea.songInfoArr.forEach((item) => {
         if (item.coverUrl) {
           URL.revokeObjectURL(item.coverUrl)
         }
       })
       runtime.songsArea.songInfoArr = []
-      originalSongInfoArr.value = [] // 清空原始数据
+      originalSongInfoArr.value = []
     }
   }
 )
@@ -278,7 +262,7 @@ const persistColumnData = () => {
 // --- 处理来自 SongListHeader 的列更新 ---
 const handleColumnsUpdate = (newColumns: ISongsAreaColumn[]) => {
   columnData.value = newColumns
-  persistColumnData() // 更新本地存储
+  persistColumnData()
 }
 
 const colRightClickMenuShow = ref(false)
@@ -365,10 +349,9 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
     // 处理来自右键菜单的歌曲移除操作 (删除、导出后删除等)
     else if (result.action === 'songsRemoved') {
       // 此时 result 类型应符合 SongsRemovedAction 接口: { action: 'songsRemoved', paths: string[] }
-      const pathsToRemove = result.paths // 直接使用 result.paths，因为类型已明确
+      const pathsToRemove = result.paths
       if (Array.isArray(pathsToRemove) && pathsToRemove.length > 0) {
         console.log('[songsArea] Songs removed by context menu, paths:', pathsToRemove)
-        // 1. 从 originalSongInfoArr 中过滤掉已移除的歌曲
         originalSongInfoArr.value = originalSongInfoArr.value.filter(
           (item) => !pathsToRemove.includes(item.filePath)
         )
@@ -380,7 +363,7 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
         const sortedCol = columnData.value.find((col) => col.order)
         if (sortedCol) {
           runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
-            [...originalSongInfoArr.value], // 使用更新后的原始数据副本
+            [...originalSongInfoArr.value],
             sortedCol.key as keyof ISongInfo,
             sortedCol.order
           )
@@ -388,12 +371,10 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
           runtime.songsArea.songInfoArr = [...originalSongInfoArr.value]
         }
 
-        // 3. 更新播放列表
         if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
           runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
         }
 
-        // 4. 如果正在播放的歌曲被移除了
         if (
           runtime.playingData.playingSong &&
           pathsToRemove.includes(runtime.playingData.playingSong.filePath)
@@ -442,14 +423,9 @@ const handleDeleteKey = async () => {
     if (isInRecycleBin) {
       window.electron.ipcRenderer.invoke('permanentlyDelSongs', selectedPaths)
     } else {
-      window.electron.ipcRenderer.send(
-        'delSongs',
-        selectedPaths,
-        getCurrentTimeDirName() // Directly use imported function
-      )
+      window.electron.ipcRenderer.send('delSongs', selectedPaths, getCurrentTimeDirName())
     }
 
-    // 释放被删除歌曲的封面 URL
     const songsToDeleteFromOriginal = originalSongInfoArr.value.filter((item) =>
       selectedPaths.includes(item.filePath)
     )
@@ -459,7 +435,6 @@ const handleDeleteKey = async () => {
       }
     }
 
-    // 1. 从 originalSongInfoArr 中过滤掉已删除的歌曲
     originalSongInfoArr.value = originalSongInfoArr.value.filter(
       (item) => !selectedPaths.includes(item.filePath)
     )
@@ -468,12 +443,11 @@ const handleDeleteKey = async () => {
     const sortedCol = columnData.value.find((col) => col.order)
     if (sortedCol) {
       runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
-        [...originalSongInfoArr.value], // 使用更新后的原始数据副本进行排序
+        [...originalSongInfoArr.value],
         sortedCol.key as keyof ISongInfo,
         sortedCol.order
       )
     } else {
-      // 如果没有排序规则，直接使用过滤后的原始数据副本
       runtime.songsArea.songInfoArr = [...originalSongInfoArr.value]
     }
 
@@ -527,7 +501,6 @@ const colMenuClick = (col: ISongsAreaColumn) => {
     if (item.key !== col.key) {
       return { ...item, order: undefined }
     }
-    // Toggle order for the clicked column
     const newOrderForItem = item.order === 'asc' ? 'desc' : item.order === 'desc' ? 'asc' : 'asc' // Default to asc if undefined
     return { ...item, order: newOrderForItem as 'asc' | 'desc' }
   })
@@ -540,7 +513,7 @@ const colMenuClick = (col: ISongsAreaColumn) => {
   if (clickedColNewOrder) {
     // Ensure it's 'asc' or 'desc'
     runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
-      [...originalSongInfoArr.value], // 使用原始数据的副本进行排序
+      [...originalSongInfoArr.value],
       col.key as keyof ISongInfo, // Use the key from the original clicked column object
       clickedColNewOrder // Use its new order from the updated array
     )
@@ -589,25 +562,20 @@ watch(
           // 但目前 SongListRows.vue 并没有添加这样的 attribute。
           // 使用 .playingSong 类是最直接的方式，因为它是由 playingSongFilePathForRows 决定的。
 
-          // 查找具有 .playingSong 类的 .song-row-content 元素
           const playingSongContentElement = viewportElement.querySelector(
             '.song-row-content.playingSong'
           )
 
           if (playingSongContentElement) {
-            // 从 .song-row-content 向上找到父级的 .song-row-item
             const playingSongRowItem = playingSongContentElement.closest(
               '.song-row-item'
             ) as HTMLElement
             if (playingSongRowItem) {
               playingSongRowItem.scrollIntoView({ block: 'center', behavior: 'smooth' })
-            } else {
-              console.warn('Could not find parent .song-row-item for .playingSong element.')
             }
-          } else {
-            // console.warn('Playing song element not found in viewport for scrolling.')
-            // This might happen if the song list is not the current playing list, which is fine.
           }
+          // Playing song element might not be found if the song list is not the current playing list,
+          // or if the song list has just changed and the DOM hasn't updated yet. This is acceptable.
         }
       })
     }
@@ -617,8 +585,6 @@ watch(
 
 // 新增：处理移动歌曲对话框确认后的逻辑
 async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
-  // 捕获在调用 composable 之前选中的歌曲路径
-  // 这些是实际将被移动的歌曲
   const pathsEffectivelyMoved = [...runtime.songsArea.selectedSongFilePath]
 
   if (pathsEffectivelyMoved.length === 0) {
@@ -632,7 +598,6 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
   await handleMoveSongsConfirm(targetSongListUuid)
 
   // IPC 调用完成后，我们用 pathsEffectivelyMoved 来更新本地的 originalSongInfoArr
-  // 1. 从 originalSongInfoArr 中过滤掉已移动的歌曲
   originalSongInfoArr.value = originalSongInfoArr.value.filter(
     (song) => !pathsEffectivelyMoved.includes(song.filePath)
   )
@@ -641,21 +606,18 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
   const sortedCol = columnData.value.find((col) => col.order)
   if (sortedCol) {
     runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
-      [...originalSongInfoArr.value], // 使用更新后的原始数据副本进行排序
+      [...originalSongInfoArr.value],
       sortedCol.key as keyof ISongInfo,
       sortedCol.order
     )
   } else {
-    // 如果没有排序规则，直接使用过滤后的原始数据副本
     runtime.songsArea.songInfoArr = [...originalSongInfoArr.value]
   }
 
-  // 3. 更新播放列表（如果当前歌单是播放歌单）
   if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
     runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
   }
 
-  // 4. 如果正在播放的歌曲被移动了，也需要处理
   if (
     runtime.playingData.playingSong &&
     pathsEffectivelyMoved.includes(runtime.playingData.playingSong.filePath)
