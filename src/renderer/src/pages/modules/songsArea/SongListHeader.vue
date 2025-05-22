@@ -23,6 +23,10 @@ const props = defineProps({
   descendingOrder: {
     type: String,
     required: true
+  },
+  totalWidth: {
+    type: Number,
+    required: true
   }
 })
 
@@ -168,13 +172,14 @@ const handleContextMenu = (event: MouseEvent) => {
   <div
     @contextmenu.stop="handleContextMenu"
     class="songListHeader songItem lightBackground"
-    style="
-      position: sticky;
-      top: 0;
-      z-index: 10;
-      background-color: #191919; /* 与 lightBackground 一致，确保背景 */
-      border-bottom: 1px solid #2b2b2b;
-    "
+    :style="{
+      position: 'sticky',
+      top: '0',
+      'z-index': '10',
+      'background-color': '#191919',
+      'border-bottom': '1px solid #2b2b2b',
+      'min-width': totalWidth + 'px'
+    }"
     :key="draggableInstanceKey"
     v-draggable="vDraggableData"
   >
