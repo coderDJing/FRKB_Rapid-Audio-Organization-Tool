@@ -50,13 +50,6 @@ export function useSongItemContextMenu(
 
     switch (result.menuName) {
       case '删除上方所有曲目': {
-        console.log('[ContextMenu] "删除上方所有曲目" Action Start')
-        console.log('[ContextMenu] Clicked song filePath:', song.filePath)
-        console.log(
-          '[ContextMenu] Initial runtime.songsArea.songInfoArr paths:',
-          runtime.songsArea.songInfoArr.map((s) => s.filePath)
-        )
-
         // 1. 基于当前状态和右键的歌曲，确定要删除的歌曲信息和路径 (delPaths)
         const initialSongInfoArrSnapshot = [...runtime.songsArea.songInfoArr]
         const songIndex = initialSongInfoArrSnapshot.findIndex(
@@ -64,22 +57,16 @@ export function useSongItemContextMenu(
         )
 
         if (songIndex === -1) {
-          console.warn(
-            '[ContextMenu] Target song for "删除上方所有曲目" not found in current song list.'
-          )
           return null
         }
         if (songIndex === 0) {
-          console.log('[ContextMenu] No songs above the clicked song.')
           return null // 没有曲目在当前曲目之上
         }
 
         const songsToRemoveInfoBasedOnSnapshot = initialSongInfoArrSnapshot.slice(0, songIndex)
         const delPaths = songsToRemoveInfoBasedOnSnapshot.map((s) => s.filePath)
-        console.log('[ContextMenu] Calculated delPaths:', JSON.stringify(delPaths))
 
         if (delPaths.length === 0) {
-          console.log('[ContextMenu] Calculated delPaths is empty, no action taken.')
           return null
         }
 
@@ -97,7 +84,6 @@ export function useSongItemContextMenu(
             ]
           })
           if (res !== 'confirm') {
-            console.log('[ContextMenu] User cancelled deletion from recycle bin.')
             return null
           }
         }
@@ -110,68 +96,27 @@ export function useSongItemContextMenu(
         }
 
         // 4. IPC 调用执行文件删除
-        console.log(
-          '[ContextMenu] About to call IPC for deletion. delPaths:',
-          JSON.stringify(delPaths)
-        )
         if (isInRecycleBin) {
           await window.electron.ipcRenderer.invoke('permanentlyDelSongs', [...delPaths])
-          console.log('[ContextMenu] IPC "permanentlyDelSongs" invoked.')
         } else {
           window.electron.ipcRenderer.send('delSongs', [...delPaths], getCurrentTimeDirName())
-          console.log('[ContextMenu] IPC "delSongs" sent.')
         }
-
-        // 5. 更新Store中的歌曲列表 (基于当前最新的songInfoArr进行过滤) -  移除此处的直接修改
-        // console.log(
-        //   '[ContextMenu] Before filtering/splicing runtime.songsArea.songInfoArr paths:',
-        //   runtime.songsArea.songInfoArr.map((s) => s.filePath)
-        // );
-        // const songsToKeepUpper = runtime.songsArea.songInfoArr.filter(
-        //   (s) => !delPaths.includes(s.filePath)
-        // );
-        // runtime.songsArea.songInfoArr.splice(0, runtime.songsArea.songInfoArr.length, ...songsToKeepUpper);
-
-        // console.log(
-        //   '[ContextMenu] After filtering/splicing runtime.songsArea.songInfoArr paths:',
-        //   runtime.songsArea.songInfoArr.map((s) => s.filePath)
-        // );
-
-        // 6. 更新播放列表和当前播放歌曲 (如果受影响) - 也应由父组件处理或基于父组件更新后的store状态
-        // if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-        //   runtime.playingData.playingSongListData = [...runtime.songsArea.songInfoArr];
-        // }
-        // if (
-        //   runtime.playingData.playingSong &&
-        //   delPaths.includes(runtime.playingData.playingSong.filePath)
-        // ) {
-        //   runtime.playingData.playingSong = null;
-        // }
 
         // 7. UI 操作 (滚动到顶部)
         nextTick(() => {
           const viewport = songsAreaHostElementRef.value?.osInstance()?.elements().viewport
           if (viewport) {
             viewport.scrollTo({ top: 0, behavior: 'smooth' })
-          } else {
-            console.warn(
-              '[ContextMenu] OverlayScrollbars viewport element not available for scrolling in composable.'
-            )
           }
         })
-        console.log(
-          '[ContextMenu] "删除上方所有曲目" Action End. Returning paths:',
-          JSON.stringify(delPaths)
-        )
         return { action: 'songsRemoved', paths: delPaths }
       }
       case '删除曲目':
         {
-          // 1. 确定要删除的路径 (currentSelectedPaths)
           const currentSelectedPaths = [...runtime.songsArea.selectedSongFilePath]
+
           if (!currentSelectedPaths.length) return null
 
-          // 2. 用户确认 (如果需要)
           const isInRecycleBin = runtime.libraryTree.children
             ?.find((item) => item.dirName === '回收站')
             ?.children?.find((item) => item.uuid === runtime.songsArea.songListUUID)
@@ -189,7 +134,6 @@ export function useSongItemContextMenu(
           }
 
           if (shouldDelete) {
-            // 3. 识别待删除的歌曲对象以释放封面URL (基于当前快照)
             const songsActuallyBeingDeletedBasedOnSnapshot = runtime.songsArea.songInfoArr.filter(
               (item) => currentSelectedPaths.includes(item.filePath)
             )
@@ -197,7 +141,6 @@ export function useSongItemContextMenu(
               if (item.coverUrl) URL.revokeObjectURL(item.coverUrl)
             }
 
-            // 4. IPC 调用执行文件删除
             if (isInRecycleBin) {
               await window.electron.ipcRenderer.invoke('permanentlyDelSongs', [
                 ...currentSelectedPaths
@@ -210,24 +153,7 @@ export function useSongItemContextMenu(
               )
             }
 
-            // 5. 更新Store中的歌曲列表 (基于当前最新的songInfoArr进行过滤) - 移除此处的直接修改
-            // const songsToKeepSelected = runtime.songsArea.songInfoArr.filter(
-            //   (item) => !currentSelectedPaths.includes(item.filePath)
-            // );
-            // runtime.songsArea.songInfoArr.splice(0, runtime.songsArea.songInfoArr.length, ...songsToKeepSelected);
-
-            // 6. 更新播放列表和当前播放歌曲 (如果受影响) - 也应由父组件处理
-            // if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-            //   runtime.playingData.playingSongListData = [...runtime.songsArea.songInfoArr];
-            // }
-            // if (
-            //   runtime.playingData.playingSong &&
-            //   currentSelectedPaths.includes(runtime.playingData.playingSong.filePath)
-            // ) {
-            //   runtime.playingData.playingSong = null;
-            // }
-            // runtime.songsArea.selectedSongFilePath.length = 0; // 清空选择 - 这个可以保留，或者也移到父组件
-            runtime.songsArea.selectedSongFilePath.length = 0 // 保留清空选中，因为这是右键操作的一部分预期行为
+            runtime.songsArea.selectedSongFilePath.length = 0
             return { action: 'songsRemoved', paths: currentSelectedPaths }
           }
         }

@@ -18,6 +18,10 @@ defineProps({
   playingSongFilePath: {
     type: String as PropType<string | undefined>,
     default: undefined
+  },
+  totalWidth: {
+    type: Number,
+    required: true
   }
 })
 
@@ -47,6 +51,7 @@ defineEmits<{
           selectedSong: selectedSongFilePaths.includes(song.filePath),
           playingSong: song.filePath === playingSongFilePath
         }"
+        :style="{ 'min-width': totalWidth + 'px' }"
       >
         <template v-for="col in visibleColumns" :key="col.key">
           <div
