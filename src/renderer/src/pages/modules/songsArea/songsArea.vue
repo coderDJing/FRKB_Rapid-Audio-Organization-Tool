@@ -288,9 +288,18 @@ const handleToggleColumnVisibility = (columnKey: string) => {
   }
 }
 
-let columnDataArr = computed(() => {
+const columnDataArr = computed(() => {
   return columnData.value.filter((item) => item.show)
 })
+
+const totalColumnsWidth = computed(() => {
+  // 确保至少有一个基础宽度，例如，如果没有列，则为0，或者是一个最小的默认值
+  if (!columnDataArr.value || columnDataArr.value.length === 0) {
+    return 0 // 或者一个合适的最小宽度
+  }
+  return columnDataArr.value.reduce((sum, col) => sum + (col.width || 0), 0)
+})
+
 const songClick = (event: MouseEvent, song: ISongInfo) => {
   runtime.activeMenuUUID = ''
   if (event.ctrlKey) {
@@ -348,32 +357,28 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
     }
     // 处理来自右键菜单的歌曲移除操作 (删除、导出后删除等)
     else if (result.action === 'songsRemoved') {
-      // 此时 result 类型应符合 SongsRemovedAction 接口: { action: 'songsRemoved', paths: string[] }
       const pathsToRemove = result.paths
+
       if (Array.isArray(pathsToRemove) && pathsToRemove.length > 0) {
+        // const originalPathsBeforeFilter = runtime.songsArea.songInfoArr.map(s => s.filePath);
+
+        // 1. 从 originalSongInfoArr (原始顺序的源) 中移除歌曲
+        // const initialOriginalCount = originalSongInfoArr.value.length;
         originalSongInfoArr.value = originalSongInfoArr.value.filter(
           (item) => !pathsToRemove.includes(item.filePath)
         )
 
-        // 2. 确保 runtime.songsArea.songInfoArr 与更新后的 originalSongInfoArr 同步
-        // (useSongItemContextMenu 已经修改了 runtime.songsArea.songInfoArr，
-        // 但这里的目的是基于 *最新的* originalSongInfoArr 和排序规则重新生成它，
-        // 以确保排序基准和显示列表的一致性)
-        const sortedCol = columnData.value.find((col) => col.order)
-        if (sortedCol) {
-          runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
-            [...originalSongInfoArr.value],
-            sortedCol.key as keyof ISongInfo,
-            sortedCol.order
-          )
-        } else {
-          runtime.songsArea.songInfoArr = [...originalSongInfoArr.value]
-        }
+        // 2. 从 runtime.songsArea.songInfoArr (当前显示的、可能已排序的列表) 中移除歌曲
+        // const initialRuntimeCount = runtime.songsArea.songInfoArr.length;
+        const newRuntimeSongInfoArr = runtime.songsArea.songInfoArr.filter(
+          (item) => !pathsToRemove.includes(item.filePath)
+        )
+        runtime.songsArea.songInfoArr = newRuntimeSongInfoArr
 
+        // 3. 更新播放列表和当前播放歌曲 (如果受影响)
         if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-          runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+          runtime.playingData.playingSongListData = [...runtime.songsArea.songInfoArr] // 使用更新后的 runtime.songsArea.songInfoArr
         }
-
         if (
           runtime.playingData.playingSong &&
           pathsToRemove.includes(runtime.playingData.playingSong.filePath)
@@ -381,8 +386,7 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
           runtime.playingData.playingSong = null
         }
 
-        // 5. 从当前选择中移除已删除的歌曲 (useSongItemContextMenu 可能已经处理了部分)
-        // 为确保一致性，再次进行过滤
+        // 4. 从当前选择中移除已删除的歌曲
         runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
           (path) => !pathsToRemove.includes(path)
         )
@@ -674,6 +678,7 @@ const shouldShowEmptyState = computed(() => {
         :t="t"
         :ascendingOrder="ascendingOrder"
         :descendingOrder="descendingOrder"
+        :total-width="totalColumnsWidth"
         @update:columns="handleColumnsUpdate"
         @column-click="colMenuClick"
         @header-contextmenu="contextmenuEvent"
@@ -688,6 +693,7 @@ const shouldShowEmptyState = computed(() => {
         :visibleColumns="columnDataArr"
         :selectedSongFilePaths="runtime.songsArea.selectedSongFilePath"
         :playingSongFilePath="playingSongFilePathForRows"
+        :total-width="totalColumnsWidth"
         @song-click="songClick"
         @song-contextmenu="handleSongContextMenuEvent"
         @song-dblclick="songDblClick"
