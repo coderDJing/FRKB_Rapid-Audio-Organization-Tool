@@ -219,138 +219,149 @@ export function usePlayerControlsLogic({
       return
     }
 
-    isFileOperationInProgress.value = true
-    const filePathToDelete = runtime.playingData.playingSong.filePath
-
     try {
-      cancelPreloadTimer('delSong start')
+      // New outer try
+      isFileOperationInProgress.value = true
+      const filePathToDelete = runtime.playingData.playingSong.filePath
 
-      const currentSongListUUID = runtime.playingData.playingSongListUUID
-      const currentList = runtime.playingData.playingSongListData
-      const currentIndex = currentList.findIndex((item) => item.filePath === filePathToDelete)
+      try {
+        // Existing inner try
+        cancelPreloadTimer('delSong start')
 
-      if (currentIndex === -1) {
-        console.error(`[delSong] 未找到要删除的歌曲: ${filePathToDelete}`)
-        isFileOperationInProgress.value = false
-        return
-      }
+        const currentSongListUUID = runtime.playingData.playingSongListUUID
+        const currentList = runtime.playingData.playingSongListData
+        const currentIndex = currentList.findIndex((item) => item.filePath === filePathToDelete)
 
-      // 检查是否在回收站
-      const isInRecycleBin = runtime.libraryTree.children
-        ?.find((item) => item.dirName === '回收站')
-        ?.children?.find((item) => item.uuid === currentSongListUUID)
+        if (currentIndex === -1) {
+          console.error(`[delSong] 未找到要删除的歌曲: ${filePathToDelete}`)
+          // isFileOperationInProgress.value = false; // Now handled by outer finally
+          return
+        }
 
-      let performDelete = false
-      let permanently = false
+        // 检查是否在回收站
+        const isInRecycleBin = runtime.libraryTree.children
+          ?.find((item) => item.dirName === '回收站')
+          ?.children?.find((item) => item.uuid === currentSongListUUID)
 
-      if (isInRecycleBin) {
-        // 在回收站，询问是否彻底删除
-        const res = await confirm({
-          title: '删除',
-          content: [
-            t('确定彻底删除正在播放的曲目吗'),
-            t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')
-          ]
-        })
-        if (res === 'confirm') {
+        let performDelete = false
+        let permanently = false
+
+        if (isInRecycleBin) {
+          // 在回收站，询问是否彻底删除
+          const res = await confirm({
+            title: '删除',
+            content: [
+              t('确定彻底删除正在播放的曲目吗'),
+              t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')
+            ]
+          })
+          if (res === 'confirm') {
+            performDelete = true
+            permanently = true
+          }
+        } else {
+          // 不在回收站，直接移动到回收站
           performDelete = true
-          permanently = true
+          permanently = false
         }
-      } else {
-        // 不在回收站，直接移动到回收站
-        performDelete = true
-        permanently = false
-      }
 
-      if (!performDelete) {
-        isFileOperationInProgress.value = false
-        return // 用户取消操作
-      }
-
-      // 停止播放并清空播放器
-      if (wavesurferInstance.value) {
-        if (wavesurferInstance.value.isPlaying()) {
-          wavesurferInstance.value.pause() // 使用 pause 而不是 stop 避免潜在问题
+        if (!performDelete) {
+          // isFileOperationInProgress.value = false; // Now handled by outer finally
+          return // 用户取消操作
         }
-        // 在调用 empty 之前设置标志
-        ignoreNextEmptyError.value = true
-        wavesurferInstance.value.empty()
-      }
-      waveformShow.value = false
-      bpm.value = '' // 清空 BPM 显示
 
-      // 从当前播放列表中移除歌曲
-      currentList.splice(currentIndex, 1)
+        // 停止播放并清空播放器
+        if (wavesurferInstance.value) {
+          if (wavesurferInstance.value.isPlaying()) {
+            wavesurferInstance.value.pause() // 使用 pause 而不是 stop 避免潜在问题
+          }
+          // 在调用 empty 之前设置标志
+          ignoreNextEmptyError.value = true
+          wavesurferInstance.value.empty()
+        }
+        waveformShow.value = false
+        bpm.value = '' // 清空 BPM 显示
 
-      // 确定下一首要播放的歌曲
-      let nextPlayingSong: ISongInfo | null = null
-      let nextPlayingSongPath: string | null = null
-      if (currentList.length > 0) {
-        const nextIndex = Math.min(currentIndex, currentList.length - 1) // 如果删除的是最后一首，则播放新的最后一首
-        nextPlayingSong = currentList[nextIndex]
-        nextPlayingSongPath = nextPlayingSong?.filePath ?? null
-      }
+        // 从当前播放列表中移除歌曲
+        currentList.splice(currentIndex, 1)
 
-      // 检查预加载是否命中
-      if (
-        nextPlayingSongPath &&
-        isPreloadReady.value &&
-        preloadedSongFilePath.value === nextPlayingSongPath &&
-        preloadedBlob.value
-      ) {
-        // 命中预加载
-        const blobToLoad = preloadedBlob.value
-        const bpmValueToUse = preloadedBpm.value
-        isInternalSongChange.value = true // 标记内部切换
-        runtime.playingData.playingSong = nextPlayingSong // 更新当前播放歌曲
+        // 确定下一首要播放的歌曲
+        let nextPlayingSong: ISongInfo | null = null
+        let nextPlayingSongPath: string | null = null
+        if (currentList.length > 0) {
+          const nextIndex = Math.min(currentIndex, currentList.length - 1) // 如果删除的是最后一首，则播放新的最后一首
+          nextPlayingSong = currentList[nextIndex]
+          nextPlayingSongPath = nextPlayingSong?.filePath ?? null
+        }
 
-        // 先加载 Blob，加载完成后清理预加载状态
-        handleLoadBlob(
-          blobToLoad,
-          nextPlayingSongPath,
-          currentLoadRequestId.value,
-          bpmValueToUse
-        ).finally(() => {
-          // 清理预加载状态 (放在 finally 确保执行)
+        // 检查预加载是否命中
+        if (
+          nextPlayingSongPath &&
+          isPreloadReady.value &&
+          preloadedSongFilePath.value === nextPlayingSongPath &&
+          preloadedBlob.value
+        ) {
+          // 命中预加载
+          const blobToLoad = preloadedBlob.value
+          const bpmValueToUse = preloadedBpm.value
+          isInternalSongChange.value = true // 标记内部切换
+          runtime.playingData.playingSong = nextPlayingSong // 更新当前播放歌曲
+
+          // 先加载 Blob，加载完成后清理预加载状态
+          handleLoadBlob(
+            blobToLoad,
+            nextPlayingSongPath,
+            currentLoadRequestId.value,
+            bpmValueToUse
+          ).finally(() => {
+            // 清理预加载状态 (放在 finally 确保执行)
+            preloadedBlob.value = null
+            preloadedSongFilePath.value = null
+            isPreloading.value = false // 确保 isPreloading 也重置
+            isPreloadReady.value = false
+          })
+        } else {
+          // 未命中预加载 或 列表已空
+          // 清理预加载状态
           preloadedBlob.value = null
           preloadedSongFilePath.value = null
-          isPreloading.value = false // 确保 isPreloading 也重置
+          isPreloading.value = false
           isPreloadReady.value = false
-        })
-      } else {
-        // 未命中预加载 或 列表已空
-        // 清理预加载状态
-        preloadedBlob.value = null
-        preloadedSongFilePath.value = null
-        isPreloading.value = false
-        isPreloadReady.value = false
 
-        if (nextPlayingSong) {
-          // 列表未空，但未命中预加载，请求加载
-          isInternalSongChange.value = true
-          runtime.playingData.playingSong = nextPlayingSong
-          requestLoadSong(nextPlayingSong.filePath)
-        } else {
-          // 列表已空
-          isInternalSongChange.value = true
-          runtime.playingData.playingSong = null
-          runtime.playingData.playingSongListUUID = '' // 清空播放列表 UUID
-          waveformShow.value = false // 确保波形图隐藏
+          if (nextPlayingSong) {
+            // 列表未空，但未命中预加载，请求加载
+            isInternalSongChange.value = true
+            runtime.playingData.playingSong = nextPlayingSong
+            requestLoadSong(nextPlayingSong.filePath)
+          } else {
+            // 列表已空
+            isInternalSongChange.value = true
+            runtime.playingData.playingSong = null
+            runtime.playingData.playingSongListUUID = '' // 清空播放列表 UUID
+            waveformShow.value = false // 确保波形图隐藏
+          }
         }
+
+        // 执行删除操作（移动到回收站或彻底删除）
+        const deletePromise = permanently
+          ? window.electron.ipcRenderer.invoke('permanentlyDelSongs', [filePathToDelete])
+          : window.electron.ipcRenderer.send(
+              'delSongs',
+              [filePathToDelete],
+              getCurrentTimeDirName()
+            )
+        await Promise.resolve(deletePromise) // 等待删除操作完成
+
+        await nextTick() // 等待 DOM 更新
+      } catch (error) {
+        console.error(`[delSong] 删除歌曲过程中发生错误 (${filePathToDelete}):`, error)
+        // 出错时也应该重置标志，以防万一
+        ignoreNextEmptyError.value = false
+        // isFileOperationInProgress.value = false; // Now handled by outer finally
       }
-
-      // 执行删除操作（移动到回收站或彻底删除）
-      const deletePromise = permanently
-        ? window.electron.ipcRenderer.invoke('permanentlyDelSongs', [filePathToDelete])
-        : window.electron.ipcRenderer.send('delSongs', [filePathToDelete], getCurrentTimeDirName())
-      await Promise.resolve(deletePromise) // 等待删除操作完成
-
-      await nextTick() // 等待 DOM 更新
-    } catch (error) {
-      console.error(`[delSong] 删除歌曲过程中发生错误 (${filePathToDelete}):`, error)
-      // 出错时也应该重置标志，以防万一
-      ignoreNextEmptyError.value = false
-      isFileOperationInProgress.value = false // 允许后续操作
+    } finally {
+      // New outer finally
+      isFileOperationInProgress.value = false
     }
   }
 
@@ -397,7 +408,9 @@ export function usePlayerControlsLogic({
     songToMoveRef.value = null
 
     if (!targetDirPath) {
-      console.error(`[moveSong] 未找到目标目录路径: ${targetListUuid}`)
+      console.error(
+        `[usePlayerControlsLogic] handleMoveSong: 未找到目标目录路径: ${targetListUuid}`
+      )
       isFileOperationInProgress.value = false
       return
     }
@@ -410,7 +423,9 @@ export function usePlayerControlsLogic({
       const currentIndex = currentList.findIndex((song) => song.filePath === filePathToMove)
 
       if (currentIndex === -1) {
-        console.error(`[moveSong] 未找到要移动的歌曲: ${filePathToMove}`)
+        console.error(
+          `[usePlayerControlsLogic] handleMoveSong: 未找到要移动的歌曲: ${filePathToMove}`
+        )
         isFileOperationInProgress.value = false
         return
       }
@@ -500,7 +515,10 @@ export function usePlayerControlsLogic({
         }
       }
     } catch (error) {
-      console.error(`[moveSong] 移动歌曲过程中发生错误 (${filePathToMove}):`, error)
+      console.error(
+        `[usePlayerControlsLogic] handleMoveSong: 移动歌曲过程中发生错误 (${filePathToMove}):`,
+        error
+      )
       // 出错时也应该重置标志
       ignoreNextEmptyError.value = false
       isFileOperationInProgress.value = false // 允许后续操作
