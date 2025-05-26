@@ -246,6 +246,18 @@ watch(
   }
 )
 
+// 监听 songInfoArr 的变化，同步更新 originalSongInfoArr
+watch(
+  () => runtime.songsArea.songInfoArr,
+  (newSongInfoArr) => {
+    // 如果 songInfoArr 被清空（比如清空歌单操作），同步清空 originalSongInfoArr
+    if (newSongInfoArr.length === 0) {
+      originalSongInfoArr.value = []
+    }
+  },
+  { deep: true }
+)
+
 window.electron.ipcRenderer.on('importFinished', async (event, contentArr, songListUUID) => {
   if (songListUUID == runtime.songsArea.songListUUID) {
     setTimeout(async () => {
