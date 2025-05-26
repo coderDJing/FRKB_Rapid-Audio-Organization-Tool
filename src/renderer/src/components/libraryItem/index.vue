@@ -216,8 +216,18 @@ const contextmenuEvent = async (event: MouseEvent) => {
       let dirPath = libraryUtils.findDirPathByUuid(props.uuid)
       await window.electron.ipcRenderer.invoke('emptyDir', dirPath, getCurrentTimeDirName())
       if (runtime.songsArea.songListUUID === props.uuid) {
+        // 清空播放相关数据
         runtime.playingData.playingSongListData = []
         runtime.playingData.playingSong = null
+
+        // 清空歌曲列表界面数据
+        runtime.songsArea.selectedSongFilePath.length = 0
+        runtime.songsArea.songInfoArr.forEach((item) => {
+          if (item.coverUrl) {
+            URL.revokeObjectURL(item.coverUrl)
+          }
+        })
+        runtime.songsArea.songInfoArr = []
       }
     } else if (result.menuName === '导入曲目') {
       if (runtime.isProgressing) {
