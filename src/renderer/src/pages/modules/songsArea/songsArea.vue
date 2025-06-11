@@ -114,36 +114,59 @@ const columnData = ref<ISongsAreaColumn[]>(
     let finalColumns: ISongsAreaColumn[]
 
     if (!savedData) {
-      // --- 情况 1: 没有本地存储，直接使用默认值 ---
+      // --- 情况 1: 没有本地存储，直接使用默认值深拷贝副本 ---
       finalColumns = JSON.parse(JSON.stringify(defaultColumns))
     } else {
       // --- 情况 2: 有本地存储，进行合并 ---
       try {
-        const parsedData: ISongsAreaColumn[] = JSON.parse(savedData)
-        const savedColumnsMap = new Map(parsedData.map((col) => [col.key, col]))
+        const parsedSavedColumns: ISongsAreaColumn[] = JSON.parse(savedData)
+        const defaultColumnsMap = new Map(defaultColumns.map((col) => [col.key, col]))
 
-        // 1. 以 defaultColumns 为基础进行合并
-        finalColumns = defaultColumns.map((defaultCol) => {
-          const savedCol = savedColumnsMap.get(defaultCol.key)
-          if (savedCol) {
-            // 注意：要检查 savedCol 中属性是否存在，避免 undefined 覆盖默认值
-            return {
-              ...defaultCol,
-              show: savedCol.show !== undefined ? savedCol.show : defaultCol.show,
-              width: savedCol.width !== undefined ? savedCol.width : defaultCol.width,
-              order: savedCol.order
+        // 1. 以 localStorage 中保存的顺序为基础
+        finalColumns = parsedSavedColumns
+          .map((savedCol) => {
+            const defaultCol = defaultColumnsMap.get(savedCol.key)
+            if (defaultCol) {
+              // 如果默认配置中还存在该列，则合并属性
+              // savedCol 的属性优先，但要确保核心属性来自 defaultCol 以防存储数据不完整或过时
+              const mergedCol = {
+                ...defaultCol, // 以默认列为基础，确保 columnName 等核心属性是最新的
+                // show 和 width 优先用 savedCol 的 (如果存在)
+                show: savedCol.show !== undefined ? savedCol.show : defaultCol.show,
+                width: savedCol.width !== undefined ? savedCol.width : defaultCol.width,
+                // order 的特殊处理:
+                // 如果 savedCol 中明确有 order 属性值 (asc/desc), 则使用它。
+                // 如果 savedCol 中没有 order 属性 (JSON.stringify 会移除 undefined 的键),
+                // 则此列的 order 应该是 undefined，不应从 defaultCol 继承默认排序。
+                order: savedCol.hasOwnProperty('order') ? savedCol.order : undefined,
+                // 确保 key 和 columnName 来自最新的 defaultColumns，而不是可能过时的 localStorage
+                key: defaultCol.key,
+                columnName: defaultCol.columnName
+              }
+              return mergedCol
             }
-          } else {
-            return JSON.parse(JSON.stringify(defaultCol))
+            // 如果 defaultColumns 中已不存在此列 (旧版本残留)，则标记以便后续过滤或直接在此处排除
+            return null
+          })
+          .filter((col) => col !== null) as ISongsAreaColumn[]
+
+        // 2. 添加 defaultColumns 中新增的、但 localStorage 中没有的列
+        defaultColumns.forEach((defaultCol) => {
+          if (!finalColumns.some((fc) => fc.key === defaultCol.key)) {
+            finalColumns.push(JSON.parse(JSON.stringify(defaultCol))) // 添加新列的深拷贝副本
           }
         })
 
-        // 2. 处理本地存储中有，但 defaultColumns 中已移除的列
-        // 如果需要清理掉旧版本遗留的、新版本已废弃的列，可以在这里过滤
-        finalColumns = finalColumns.filter((col) => defaultColumns.some((dc) => dc.key === col.key))
+        // 3. 确保最终的列只包含当前 defaultColumns 中定义的 key (移除在 localStorage 中但已在 defaultColumns 中废弃的列)
+        // 这一步在步骤1的 filter(col => col !== null) 以及对 defaultCol 的依赖已经间接处理了
+        // 如果需要更严格的基于 defaultColumns 的 key 过滤，可以再次执行：
+        finalColumns = finalColumns.filter((fc) => defaultColumnsMap.has(fc.key))
       } catch (error) {
-        console.error('解析本地存储的 songColumnData 出错，将使用默认列配置:', error)
-        finalColumns = JSON.parse(JSON.stringify(defaultColumns))
+        console.error(
+          '解析本地存储的 songColumnData 出错或合并时发生错误，将使用默认列配置:',
+          error
+        )
+        finalColumns = JSON.parse(JSON.stringify(defaultColumns)) // 出错则回退到默认深拷贝副本
       }
     }
 
@@ -650,6 +673,50 @@ const shouldShowEmptyState = computed(() => {
   )
 })
 // --- END 新增计算属性 ---
+
+// 新增 watch 来同步 songsArea 和 playingData.playingSongListData
+watch(
+  () => runtime.playingData.playingSongListData,
+  (newPlayingListData, oldPlayingListData) => {
+    const currentSongsAreaListUUID = runtime.songsArea.songListUUID
+    const currentPlayingListUUID = runtime.playingData.playingSongListUUID
+
+    // 仅当 songsArea 显示的是当前播放列表时才进行同步
+    if (currentSongsAreaListUUID && currentSongsAreaListUUID === currentPlayingListUUID) {
+      const songsInArea = runtime.songsArea.songInfoArr
+      if (!songsInArea || songsInArea.length === 0) return
+
+      const areaFilePaths = new Set(songsInArea.map((s) => s.filePath))
+      const playingListFilePaths = new Set((newPlayingListData || []).map((s) => s.filePath))
+
+      const pathsToRemove: string[] = []
+      areaFilePaths.forEach((filePath) => {
+        if (!playingListFilePaths.has(filePath)) {
+          pathsToRemove.push(filePath)
+        }
+      })
+
+      if (pathsToRemove.length > 0) {
+        // console.log(
+        //   `[songsArea Watch Sync] Player action removed songs: ${pathsToRemove.join(', ')}. Updating songsArea.`
+        // )
+
+        originalSongInfoArr.value = originalSongInfoArr.value.filter(
+          (item) => !pathsToRemove.includes(item.filePath)
+        )
+
+        runtime.songsArea.songInfoArr = songsInArea.filter(
+          (item) => !pathsToRemove.includes(item.filePath)
+        )
+
+        runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
+          (path) => !pathsToRemove.includes(path)
+        )
+      }
+    }
+  },
+  { deep: true } // 使用 deep watch 以便检测数组内部元素的更改或数组自身的替换
+)
 </script>
 <template>
   <div style="width: 100%; height: 100%; min-width: 0; overflow: hidden; position: relative">
