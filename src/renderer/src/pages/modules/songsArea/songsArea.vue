@@ -19,6 +19,8 @@ import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import { useSongItemContextMenu } from '@renderer/pages/modules/songsArea/composables/useSongItemContextMenu'
 import { useCoverLoader } from '@renderer/pages/modules/songsArea/composables/useCoverLoader'
 import { useSelectAndMoveSongs } from '@renderer/pages/modules/songsArea/composables/useSelectAndMoveSongs'
+import { useDragSongs } from '@renderer/pages/modules/songsArea/composables/useDragSongs'
+import emitter from '@renderer/utils/mitt'
 
 // 资源导入
 import ascendingOrder from '@renderer/assets/ascending-order.png?asset'
@@ -43,6 +45,7 @@ const {
   handleMoveSongsConfirm,
   handleDialogCancel
 } = useSelectAndMoveSongs()
+const { isDragging, startDragSongs, endDragSongs, handleDropToSongList } = useDragSongs()
 
 const defaultColumns: ISongsAreaColumn[] = [
   {
@@ -286,6 +289,51 @@ window.electron.ipcRenderer.on('importFinished', async (event, contentArr, songL
     setTimeout(async () => {
       await openSongList()
     }, 1000)
+  }
+})
+
+// 监听歌曲拖拽移动事件
+emitter.on('songsMovedByDrag', (movedSongPaths: string[]) => {
+  if (Array.isArray(movedSongPaths) && movedSongPaths.length > 0) {
+    // 从 originalSongInfoArr 中移除歌曲
+    const songsToRemove = originalSongInfoArr.value.filter((song) =>
+      movedSongPaths.includes(song.filePath)
+    )
+
+    // 释放封面 URL
+    songsToRemove.forEach((song) => {
+      if (song.coverUrl) {
+        URL.revokeObjectURL(song.coverUrl)
+      }
+    })
+
+    // 更新 originalSongInfoArr
+    originalSongInfoArr.value = originalSongInfoArr.value.filter(
+      (song) => !movedSongPaths.includes(song.filePath)
+    )
+
+    // 更新 runtime.songsArea.songInfoArr
+    runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
+      (song) => !movedSongPaths.includes(song.filePath)
+    )
+
+    // 如果当前播放列表是被修改的列表，更新播放数据
+    if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+      runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+
+      // 如果当前播放的歌曲是被移动的歌曲之一，停止播放
+      if (
+        runtime.playingData.playingSong &&
+        movedSongPaths.includes(runtime.playingData.playingSong.filePath)
+      ) {
+        runtime.playingData.playingSong = null
+      }
+    }
+
+    // 清空选中状态
+    runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
+      (path) => !movedSongPaths.includes(path)
+    )
   }
 })
 
@@ -674,6 +722,38 @@ const shouldShowEmptyState = computed(() => {
 })
 // --- END 新增计算属性 ---
 
+// 拖拽相关函数
+const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
+  if (!runtime.songsArea.songListUUID) return
+
+  // 确保拖拽的歌曲在选中列表中
+  const isSelected = runtime.songsArea.selectedSongFilePath.includes(song.filePath)
+
+  if (!isSelected || runtime.songsArea.selectedSongFilePath.length === 0) {
+    // 如果这首歌没有被选中，或者没有选中任何歌曲，就选中这首歌
+    runtime.songsArea.selectedSongFilePath = [song.filePath]
+  }
+
+  startDragSongs(song, runtime.libraryAreaSelected, runtime.songsArea.songListUUID)
+
+  // 设置拖拽数据
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData(
+      'application/x-song-drag',
+      JSON.stringify({
+        type: 'song',
+        sourceLibraryName: runtime.libraryAreaSelected,
+        sourceSongListUUID: runtime.songsArea.songListUUID
+      })
+    )
+  }
+}
+
+const handleSongDragEnd = (event: DragEvent) => {
+  endDragSongs()
+}
+
 // 新增 watch 来同步 songsArea 和 playingData.playingSongListData
 watch(
   () => runtime.playingData.playingSongListData,
@@ -697,10 +777,6 @@ watch(
       })
 
       if (pathsToRemove.length > 0) {
-        // console.log(
-        //   `[songsArea Watch Sync] Player action removed songs: ${pathsToRemove.join(', ')}. Updating songsArea.`
-        // )
-
         originalSongInfoArr.value = originalSongInfoArr.value.filter(
           (item) => !pathsToRemove.includes(item.filePath)
         )
@@ -773,9 +849,13 @@ watch(
         :selectedSongFilePaths="runtime.songsArea.selectedSongFilePath"
         :playingSongFilePath="playingSongFilePathForRows"
         :total-width="totalColumnsWidth"
+        :sourceLibraryName="runtime.libraryAreaSelected"
+        :sourceSongListUUID="runtime.songsArea.songListUUID"
         @song-click="songClick"
         @song-contextmenu="handleSongContextMenuEvent"
         @song-dblclick="songDblClick"
+        @song-dragstart="handleSongDragStart"
+        @song-dragend="handleSongDragEnd"
       />
 
       <!-- Empty State: 如果没有歌曲且满足特定条件 (shouldShowEmptyState) -->

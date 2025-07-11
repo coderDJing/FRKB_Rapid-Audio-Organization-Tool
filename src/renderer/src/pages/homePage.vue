@@ -111,6 +111,13 @@ const dragover = (e: DragEvent) => {
   if (e.dataTransfer === null) {
     throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
   }
+
+  // 如果是歌曲拖拽，忽略处理
+  const isSongDrag = e.dataTransfer.types?.includes('application/x-song-drag')
+  if (isSongDrag) {
+    return
+  }
+
   if (runtime.dragItemData !== null || !runtime.songsArea.songListUUID) {
     e.dataTransfer.dropEffect = 'none'
     return
@@ -126,6 +133,13 @@ const dragleave = (e: DragEvent) => {
   if (e.dataTransfer === null) {
     throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
   }
+
+  // 如果是歌曲拖拽，忽略处理
+  const isSongDrag = e.dataTransfer.types?.includes('application/x-song-drag')
+  if (isSongDrag) {
+    return
+  }
+
   if (runtime.dragItemData !== null || !runtime.songsArea.songListUUID) {
     e.dataTransfer.dropEffect = 'none'
     return
@@ -141,6 +155,13 @@ const drop = async (e: DragEvent) => {
   if (e.dataTransfer === null) {
     throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
   }
+
+  // 如果是歌曲拖拽，忽略处理
+  const isSongDrag = e.dataTransfer.types?.includes('application/x-song-drag')
+  if (isSongDrag) {
+    return
+  }
+
   if (runtime.dragItemData !== null || !runtime.songsArea.songListUUID) {
     e.dataTransfer.dropEffect = 'none'
     return

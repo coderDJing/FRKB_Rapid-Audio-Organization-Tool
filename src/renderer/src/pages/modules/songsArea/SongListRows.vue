@@ -22,6 +22,15 @@ defineProps({
   totalWidth: {
     type: Number,
     required: true
+  },
+  // 新增：拖拽相关的props
+  sourceLibraryName: {
+    type: String,
+    required: true
+  },
+  sourceSongListUUID: {
+    type: String,
+    required: true
   }
 })
 
@@ -29,6 +38,9 @@ defineEmits<{
   (e: 'song-click', event: MouseEvent, song: ISongInfo): void
   (e: 'song-contextmenu', event: MouseEvent, song: ISongInfo): void
   (e: 'song-dblclick', song: ISongInfo): void
+  // 新增：拖拽相关的事件
+  (e: 'song-dragstart', event: DragEvent, song: ISongInfo): void
+  (e: 'song-dragend', event: DragEvent): void
 }>()
 </script>
 
@@ -39,9 +51,12 @@ defineEmits<{
       v-for="(song, index) in songs"
       :key="song.filePath"
       class="song-row-item unselectable"
+      :draggable="true"
       @click.stop="$emit('song-click', $event, song)"
       @contextmenu.stop="$emit('song-contextmenu', $event, song)"
       @dblclick.stop="$emit('song-dblclick', song)"
+      @dragstart.stop="$emit('song-dragstart', $event, song)"
+      @dragend.stop="$emit('song-dragend', $event)"
     >
       <div
         class="song-row-content"
@@ -81,7 +96,7 @@ defineEmits<{
 <style lang="scss" scoped>
 .song-row-item {
   font-size: 14px;
-  // Any specific styles for the outer clickable wrapper of a row (if needed beyond events)
+  cursor: pointer;
 }
 
 .song-row-content {
