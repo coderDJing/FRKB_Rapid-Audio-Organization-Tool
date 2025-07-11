@@ -230,9 +230,9 @@ let devInitDatabaseFunction = () => {
   console.log('devInitDatabase')
 }
 if (is.dev && platform === 'win32') {
-  store.settingConfig.databaseUrl = 'D:\\FRKB_database'
-  // store.settingConfig.databaseUrl = 'C:\\Users\\renlu\\Desktop\\FRKB_database'
-  // devInitDatabaseFunction()
+  // store.settingConfig.databaseUrl = 'D:\\FRKB_database'
+  store.settingConfig.databaseUrl = 'C:\\Users\\renlu\\Desktop\\FRKB_database'
+  devInitDatabaseFunction()
 }
 
 app.whenReady().then(async () => {
@@ -451,6 +451,10 @@ ipcMain.handle('clearTracksFingerprintLibrary', (e) => {
     path.join(store.databaseDir, 'songFingerprint', 'songFingerprintV2.json'),
     store.songFingerprintList
   )
+})
+
+ipcMain.handle('getSongFingerprintListLength', () => {
+  return store.songFingerprintList.length
 })
 
 ipcMain.on('delSongs', async (e, songFilePaths: string[], dirName: string) => {
