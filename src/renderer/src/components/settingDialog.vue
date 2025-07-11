@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onUnmounted, onMounted, ref, computed, watch } from 'vue'
+import { onUnmounted, onMounted, ref } from 'vue'
+import hintIcon from '@renderer/assets/hint.png?asset'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'
@@ -12,6 +13,20 @@ import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 const runtime = useRuntimeStore()
 const uuid = uuidV4()
 const emits = defineEmits(['cancel'])
+
+// 响应式的指纹库长度数据
+const songFingerprintListLength = ref(0)
+
+// 获取指纹库长度
+const getSongFingerprintListLength = async () => {
+  try {
+    const length = await window.electron.ipcRenderer.invoke('getSongFingerprintListLength')
+    songFingerprintListLength.value = length
+  } catch (error) {
+    console.error('获取指纹库长度失败:', error)
+    songFingerprintListLength.value = 0
+  }
+}
 
 // 假设 runtime.setting 中已有或需要添加 enablePlaybackRange
 if (runtime.setting.enablePlaybackRange === undefined) {
@@ -35,6 +50,8 @@ onMounted(() => {
     cancel()
   })
   utils.setHotkeysScpoe(uuid)
+  // 获取指纹库长度
+  getSongFingerprintListLength()
 })
 
 onUnmounted(() => {
@@ -97,6 +114,8 @@ const clearTracksFingerprintLibrary = async () => {
   })
   if (res === 'confirm') {
     await window.electron.ipcRenderer.invoke('clearTracksFingerprintLibrary')
+    // 清除后更新指纹库长度
+    await getSongFingerprintListLength()
     await confirm({
       title: '设置',
       content: [t('清除完成')],
@@ -130,6 +149,17 @@ const reSelectLibrary = async () => {
     setSetting()
     await window.electron.ipcRenderer.invoke('reSelectLibrary')
   }
+}
+let hint1hoverTimer: NodeJS.Timeout
+let hint1Show = ref(false)
+const hint1IconMouseover = () => {
+  hint1hoverTimer = setTimeout(() => {
+    hint1Show.value = true
+  }, 500)
+}
+const hint1IconMouseout = () => {
+  clearTimeout(hint1hoverTimer)
+  hint1Show.value = false
 }
 </script>
 <template>
@@ -264,7 +294,32 @@ const reSelectLibrary = async () => {
                 {{ t('重新选择') }}
               </div>
             </div>
-            <div style="margin-top: 20px">{{ t('清除曲目指纹库') }}：</div>
+            <div style="margin-top: 20px">
+              {{ t('清除曲目指纹库') }}：
+              <img
+                :src="hintIcon"
+                style="width: 15px; height: 15px; margin-top: 5px"
+                @mouseover="hint1IconMouseover()"
+                @mouseout="hint1IconMouseout()"
+                :draggable="false"
+              />
+              <transition name="fade">
+                <div
+                  class="bubbleBox"
+                  v-if="hint1Show"
+                  style="
+                    position: absolute;
+                    height: 45px;
+                    width: 180px;
+                    margin-left: 150px;
+                    margin-top: -70px;
+                    text-align: left;
+                  "
+                >
+                  {{ t('曲目指纹库中目前有 ') + songFingerprintListLength + t(' 首曲目') }}
+                </div>
+              </transition>
+            </div>
             <div style="margin-top: 10px">
               <div
                 class="dangerButton"
