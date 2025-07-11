@@ -42,6 +42,7 @@ const selectedIcon = ref(iconArr.value[0])
 selectedIcon.value.src = selectedIcon.value.white
 
 const runtime = useRuntimeStore()
+
 const clickIcon = (item: Icon) => {
   if (item.name == selectedIcon.value.name) {
     return
@@ -94,6 +95,19 @@ const buttomIconArr = ref<ButtomIcon[]>([
 const libraryHandleClick = (item: Icon) => {
   emit('librarySelectedChange', item)
 }
+
+// 拖拽时的库切换逻辑
+const iconDragEnter = (event: DragEvent, item: Icon) => {
+  // 检查是否是歌曲拖拽
+  const isSongDrag = event.dataTransfer?.types?.includes('application/x-song-drag')
+
+  if (isSongDrag && item.name !== selectedIcon.value.name) {
+    // 当拖拽歌曲时，自动切换到对应的库
+    clickIcon(item)
+    // 同时触发库切换事件，通知父组件更新
+    libraryHandleClick(item)
+  }
+}
 </script>
 <template>
   <div class="librarySelectArea unselectable">
@@ -105,6 +119,7 @@ const libraryHandleClick = (item: Icon) => {
         @click="clickIcon(item)"
         @mouseover="iconMouseover(item)"
         @mouseout="iconMouseout(item)"
+        @dragenter="iconDragEnter($event, item)"
       >
         <div
           style="width: 2px; height: 100%"
