@@ -22,6 +22,7 @@ import {
   type DragState
 } from '../../utils/dragUtils'
 import { reactive } from 'vue'
+import { useDragSongs } from '@renderer/pages/modules/songsArea/composables/useDragSongs'
 const props = defineProps({
   uuid: {
     type: String,
@@ -33,6 +34,7 @@ const props = defineProps({
   }
 })
 const runtime = useRuntimeStore()
+const { handleDropToSongList } = useDragSongs()
 
 let dirData = libraryUtils.getLibraryTreeByUUID(props.uuid)
 
@@ -458,6 +460,33 @@ const dragover = (e: DragEvent) => {
     }
     return
   }
+
+  // 检查是否是歌曲拖拽
+  const isSongDrag = e.dataTransfer?.types?.includes('application/x-song-drag')
+
+  // 如果是歌曲拖拽且目标是歌单，显示拖拽反馈
+  if (isSongDrag && dirData.type === 'songList') {
+    // 检查目标歌单是否在回收站中
+    const isInRecycleBin = runtime.libraryTree.children
+      ?.find((item) => item.dirName === '回收站')
+      ?.children?.some((child) => child.uuid === props.uuid)
+
+    if (isInRecycleBin) {
+      // 如果目标歌单在回收站中，不允许拖拽
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'none'
+      }
+      return
+    }
+
+    e.preventDefault()
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move'
+    }
+    dragState.dragApproach = 'center'
+    return
+  }
+
   handleDragOver(e, dirData, dragState)
 }
 
@@ -468,6 +497,30 @@ const dragenter = (e: DragEvent) => {
     }
     return
   }
+
+  // 检查是否是歌曲拖拽
+  const isSongDrag = e.dataTransfer?.types?.includes('application/x-song-drag')
+
+  // 如果是歌曲拖拽且目标是歌单，显示拖拽反馈
+  if (isSongDrag && dirData.type === 'songList') {
+    // 检查目标歌单是否在回收站中
+    const isInRecycleBin = runtime.libraryTree.children
+      ?.find((item) => item.dirName === '回收站')
+      ?.children?.some((child) => child.uuid === props.uuid)
+
+    if (isInRecycleBin) {
+      // 如果目标歌单在回收站中，不允许拖拽
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'none'
+      }
+      return
+    }
+
+    e.preventDefault()
+    dragState.dragApproach = 'center'
+    return
+  }
+
   handleDragEnter(e, dirData, dragState)
 }
 
@@ -482,6 +535,35 @@ const drop = async (e: DragEvent) => {
   if (runtime.libraryAreaSelected === '回收站') {
     return
   }
+
+  // 检查是否是歌曲拖拽
+  const isSongDrag = e.dataTransfer?.types?.includes('application/x-song-drag')
+
+  if (isSongDrag && dirData.type === 'songList') {
+    // 检查目标歌单是否在回收站中
+    const isInRecycleBin = runtime.libraryTree.children
+      ?.find((item) => item.dirName === '回收站')
+      ?.children?.some((child) => child.uuid === props.uuid)
+
+    if (isInRecycleBin) {
+      // 如果目标歌单在回收站中，不允许拖拽，直接返回
+      dragState.dragApproach = ''
+      return
+    }
+
+    e.preventDefault()
+    const movedSongPaths = await handleDropToSongList(props.uuid, runtime.libraryAreaSelected)
+    dragState.dragApproach = ''
+
+    // 如果有歌曲被移动，发送消息给 songsArea 更新数据
+    if (movedSongPaths.length > 0) {
+      // 通过 mitt 发送事件
+      emitter.emit('songsMovedByDrag', movedSongPaths)
+    }
+    return
+  }
+
+  // 处理原有的目录/歌单拖拽逻辑
   const shouldDelete = await handleDrop(e, dirData, dragState, fatherDirData)
   if (shouldDelete) {
     deleteDir()
