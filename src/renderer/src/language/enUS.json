@@ -172,5 +172,7 @@
   "自动播放下一曲": "Auto play next song",
   "启用区间播放": "Enable playback range",
   "结束位置必须大于开始位置": "End position must be greater than start position",
-  "区间播放": "Playback range"
+  "区间播放": "Playback range",
+  "曲目指纹库中目前有 ": "There are currently ",
+  " 首曲目": " tracks in the track fingerprint library"
 }
