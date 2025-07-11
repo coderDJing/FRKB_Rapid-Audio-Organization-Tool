@@ -24,6 +24,7 @@ import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import PlaybackRangeHandles from './PlaybackRangeHandles.vue'
 import { usePlayerHotkeys } from './usePlayerHotkeys'
 import { usePlayerControlsLogic } from './usePlayerControlsLogic'
+import rightClickMenu from '@renderer/components/rightClickMenu'
 
 const runtime = useRuntimeStore()
 const waveform = useTemplateRef<HTMLDivElement>('waveform')
@@ -704,6 +705,100 @@ const preloadNextSong = () => {
 const selectSongListDialogLibraryName = ref('筛选库')
 const selectSongListDialogShow = ref(false)
 
+// 控制是否显示右键菜单，用于禁用封面弹窗的mouseleave
+const isShowingContextMenu = ref(false)
+
+// 保存右键时的封面快照，避免歌曲切换时下载错误的封面
+const contextMenuCoverSnapshot = ref<{
+  blobUrl: string
+  songTitle: string
+  artist: string
+  format: string
+} | null>(null)
+
+// 处理封面弹窗的鼠标离开事件
+const handleSongInfoMouseLeave = () => {
+  // 如果正在显示右键菜单，则不关闭弹窗
+  if (isShowingContextMenu.value) {
+    return
+  }
+  songInfoShow.value = false
+}
+
+// 右键菜单相关
+const showCoverContextMenu = async (event: MouseEvent) => {
+  // 只在有封面时显示菜单
+  if (!runtime.playingData.playingSong?.cover || !coverBlobUrl.value) {
+    return
+  }
+
+  // 使用 setTimeout 让菜单在下一个事件循环中创建
+  // 这样全局的 contextmenu 处理器会先执行（清空旧菜单），然后再创建新菜单
+  setTimeout(async () => {
+    isShowingContextMenu.value = true
+
+    // 保存当前封面的快照，避免菜单显示期间歌曲切换导致下载错误的封面
+    const currentSong = runtime.playingData.playingSong
+    if (currentSong?.cover && coverBlobUrl.value) {
+      contextMenuCoverSnapshot.value = {
+        blobUrl: coverBlobUrl.value,
+        songTitle: currentSong.title || t('未知曲目'),
+        artist: currentSong.artist || t('未知艺术家'),
+        format: currentSong.cover.format || 'image/jpeg'
+      }
+    }
+
+    const menuArr = [
+      [
+        {
+          menuName: '封面另存为',
+          shortcutKey: ''
+        }
+      ]
+    ]
+
+    const result = await rightClickMenu({ menuArr, clickEvent: event })
+
+    isShowingContextMenu.value = false
+
+    if (result !== 'cancel' && result.menuName === '封面另存为') {
+      saveCoverAs()
+    }
+
+    // 清理快照
+    contextMenuCoverSnapshot.value = null
+  }, 0)
+}
+
+const saveCoverAs = () => {
+  // 使用保存的快照数据，而不是当前的数据
+  if (!contextMenuCoverSnapshot.value) {
+    return
+  }
+
+  const snapshot = contextMenuCoverSnapshot.value
+
+  // 根据格式确定文件扩展名
+  let extension = 'jpg'
+  if (snapshot.format) {
+    if (snapshot.format.includes('png')) {
+      extension = 'png'
+    } else if (snapshot.format.includes('jpeg') || snapshot.format.includes('jpg')) {
+      extension = 'jpg'
+    }
+  }
+
+  const suggestedName = `${snapshot.artist} - ${snapshot.songTitle}.${extension}`
+
+  // 创建临时的下载链接
+  const link = document.createElement('a')
+  link.href = snapshot.blobUrl
+  link.download = suggestedName
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+}
+
 const playerActions = usePlayerControlsLogic({
   wavesurferInstance,
   runtime,
@@ -802,8 +897,8 @@ watch(
       </div>
     </div>
     <transition name="fade">
-      <div v-if="songInfoShow" @mouseleave="songInfoShow = false" class="songInfo">
-        <div class="cover unselectable">
+      <div v-if="songInfoShow" @mouseleave="handleSongInfoMouseLeave" class="songInfo">
+        <div class="cover unselectable" @contextmenu.prevent="showCoverContextMenu">
           <img
             v-if="coverBlobUrl"
             :src="coverBlobUrl"

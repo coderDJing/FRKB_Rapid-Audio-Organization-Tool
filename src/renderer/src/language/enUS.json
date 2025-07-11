@@ -174,5 +174,8 @@
   "结束位置必须大于开始位置": "End position must be greater than start position",
   "区间播放": "Playback range",
   "曲目指纹库中目前有 ": "There are currently ",
-  " 首曲目": " tracks in the track fingerprint library"
+  " 首曲目": " tracks in the track fingerprint library",
+  "封面另存为": "Save Cover As",
+  "未知曲目": "Unknown Track",
+  "未知艺术家": "Unknown Artist"
 }
