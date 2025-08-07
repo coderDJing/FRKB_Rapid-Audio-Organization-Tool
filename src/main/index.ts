@@ -523,10 +523,16 @@ ipcMain.handle('scanSongList', async (e, songListPath: string, songListUUID: str
   for (let url of songFileUrls) {
     let metadata = await mm.parseFile(url)
     let cover = mm.selectCover(metadata.common.picture)
+    // 如果title为空或空字符串，使用文件名（包含扩展名）作为标题
+    const title =
+      metadata.common?.title && metadata.common.title.trim() !== ''
+        ? metadata.common.title
+        : path.basename(url)
+
     songInfoArr.push({
       filePath: url,
       cover: cover,
-      title: metadata.common?.title,
+      title: title,
       artist: metadata.common?.artist,
       album: metadata.common?.album,
       duration: convertSecondsToMinutesSeconds(
