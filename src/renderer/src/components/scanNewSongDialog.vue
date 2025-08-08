@@ -371,7 +371,7 @@ onUnmounted(() => {
   width: calc(100% - 5px);
   height: 100%;
   background-color: #313131;
-  cursor: pointer;
+
   text-overflow: ellipsis;
   overflow: hidden;
   word-break: break-all;

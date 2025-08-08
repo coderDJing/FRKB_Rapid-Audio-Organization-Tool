@@ -335,7 +335,7 @@ const drop = async (e: DragEvent) => {
       display: flex;
       justify-content: center;
       align-items: center;
-      cursor: pointer;
+
       border-radius: 5px;
 
       &:hover {

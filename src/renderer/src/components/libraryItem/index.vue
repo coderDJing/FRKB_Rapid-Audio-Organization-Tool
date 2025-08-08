@@ -612,7 +612,7 @@ const displayDirName = computed(() => {
 <template>
   <div
     class="mainBody"
-    style="display: flex; cursor: pointer; box-sizing: border-box"
+    style="display: flex; box-sizing: border-box"
     :style="'padding-left:' + indentWidth + 'px'"
     @contextmenu.stop="contextmenuEvent"
     @click.stop="dirHandleClick()"

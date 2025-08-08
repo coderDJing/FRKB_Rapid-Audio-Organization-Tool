@@ -205,7 +205,6 @@ const iconDragEnter = (event: DragEvent, item: Icon) => {
     display: flex;
     justify-content: center;
     align-items: center;
-    cursor: pointer;
 
     img {
       width: 25px;
