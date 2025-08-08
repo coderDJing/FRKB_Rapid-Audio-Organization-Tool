@@ -19,7 +19,7 @@ import confirm from '@renderer/components/confirmDialog'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import { t } from '@renderer/utils/translate'
 import * as realtimeBpm from 'realtime-bpm-analyzer'
-import bubbleBox from '@renderer/components/bubbleBox.vue'
+import BpmTap from './BpmTap.vue'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import PlaybackRangeHandles from './PlaybackRangeHandles.vue'
 import { usePlayerHotkeys } from './usePlayerHotkeys'
@@ -831,7 +831,7 @@ const selectSongListDialogConfirm = async (item: string) => {
   await playerActions.handleMoveSong(item)
 }
 
-const bpmDomRef = useTemplateRef('bpmDomRef')
+// 移除旧的 bpmDomRef（由 BpmTap 组件内部管理）
 
 const setSetting = async () => {
   await window.electron.ipcRenderer.invoke(
@@ -964,22 +964,7 @@ watch(
         @dragEnd="setSetting"
       />
     </div>
-    <div
-      class="unselectable"
-      ref="bpmDomRef"
-      style="
-        width: 50px;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        font-size: 16px;
-        font-weight: bold;
-      "
-      v-show="waveformShow"
-    >
-      {{ bpm }}
-    </div>
-    <bubbleBox :dom="bpmDomRef || undefined" title="BPM" :right="1" :width="60" />
+    <BpmTap :bpm="bpm" :waveformShow="waveformShow" />
   </div>
   <selectSongListDialog
     v-if="selectSongListDialogShow"
