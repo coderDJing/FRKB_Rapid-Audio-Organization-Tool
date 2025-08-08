@@ -384,7 +384,7 @@ option {
   height: 25px;
   line-height: 25px;
   background-color: #313131;
-  cursor: pointer;
+
   text-overflow: ellipsis;
   overflow: hidden;
   word-break: break-all;

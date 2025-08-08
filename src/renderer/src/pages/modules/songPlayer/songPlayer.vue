@@ -1020,7 +1020,6 @@ watch(
 }
 
 #waveform {
-  cursor: pointer;
   position: relative;
   min-height: 40px;
 }

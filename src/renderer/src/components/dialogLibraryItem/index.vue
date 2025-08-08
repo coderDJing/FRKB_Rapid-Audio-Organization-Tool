@@ -401,7 +401,7 @@ indentWidth.value = (depth - 2) * 10
 <template>
   <div
     class="mainBody"
-    style="display: flex; cursor: pointer; box-sizing: border-box"
+    style="display: flex; box-sizing: border-box"
     :style="'padding-left:' + (props.needPaddingLeft ? indentWidth : 0) + 'px'"
     @contextmenu.stop="contextmenuEvent"
     @click.stop="dirHandleClick()"

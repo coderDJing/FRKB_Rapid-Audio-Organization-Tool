@@ -231,7 +231,7 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
   height: 22px;
   line-height: 22px;
   padding: 0 5px;
-  cursor: pointer;
+
   font-size: 12px;
   border-radius: 5px;
 }
