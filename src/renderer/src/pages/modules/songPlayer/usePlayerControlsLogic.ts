@@ -7,6 +7,7 @@ import exportDialog from '@renderer/components/exportDialog'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import { t } from '@renderer/utils/translate'
+import emitter from '@renderer/utils/mitt'
 
 // 定义 usePlayerControls 的参数类型
 interface UsePlayerControlsOptions {
@@ -350,7 +351,13 @@ export function usePlayerControlsLogic({
               [filePathToDelete],
               getCurrentTimeDirName()
             )
-        await Promise.resolve(deletePromise) // 等待删除操作完成
+        await Promise.resolve(deletePromise)
+
+        // 广播删除，保证当前 songsArea 若显示同一歌单可同步移除
+        emitter.emit('songsRemoved', {
+          listUUID: runtime.playingData.playingSongListUUID,
+          paths: [filePathToDelete]
+        })
 
         await nextTick() // 等待 DOM 更新
       } catch (error) {

@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
+import emitter from '@renderer/utils/mitt'
 // ISongInfo might not be directly needed here unless we manipulate song data deeply
 // but runtime store interaction will involve it indirectly.
 
@@ -69,6 +70,12 @@ export function useSelectAndMoveSongs() {
     }
 
     runtime.songsArea.selectedSongFilePath.length = 0 // Clear selection
+
+    // 通知全局，保证 songsArea 与其他视图收到统一的移除事件
+    emitter.emit('songsRemoved', {
+      listUUID: runtime.songsArea.songListUUID,
+      paths: selectedPaths
+    })
   }
 
   const handleDialogCancel = () => {
