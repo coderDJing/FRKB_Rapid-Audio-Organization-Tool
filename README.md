@@ -42,7 +42,7 @@ As a DJ, I frequently need to organize large numbers of music files. However, ex
 - **Selectable Playback Range**: Often, you only need to listen to a specific part of an audio track for screening. This feature allows you to set a start and end point for playback.
 - **Direct File Management**: When adding tracks, FRKB directly manages the audio files themselves, ensuring that the organization results are immediately reflected in the computer's folders, achieving a "what you see is what you get" effect.
 - **Waveform Visualization**: Provides audio waveform display.
-- **BPM Analysis**: Displays BPM information.
+- **BPM Analysis & Tap Tempo**: Displays BPM information. Left-click the BPM to tap tempo (calculated to 1 decimal place). When the BPM is manually tapped, it is highlighted in `#0078d4`. Right-click to restore the system-analyzed BPM. Tooltip: "Tap beat (LMB) / Reset (RMB)".
 - **Recycle Bin**: Features a recycle bin, ensuring that accidentally deleted files aren't permanently lost, a common issue with other software.
 
 ### Contributions
