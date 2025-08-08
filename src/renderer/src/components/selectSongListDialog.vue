@@ -373,7 +373,7 @@ const cancel = () => {
 <style lang="scss" scoped>
 .recentLibraryItem {
   display: flex;
-  cursor: pointer;
+
   height: 23px;
   align-items: center;
   font-size: 13px;
@@ -426,7 +426,7 @@ const cancel = () => {
       display: flex;
       justify-content: center;
       align-items: center;
-      cursor: pointer;
+
       border-radius: 5px;
 
       &:hover {

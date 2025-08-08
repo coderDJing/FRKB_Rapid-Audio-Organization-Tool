@@ -256,7 +256,6 @@ const showInFileExplorer = () => {
     display: flex;
     justify-content: center;
     align-items: center;
-    cursor: pointer;
 
     &:hover {
       filter: contrast(200%) drop-shadow(0px 0px 10px #fff);

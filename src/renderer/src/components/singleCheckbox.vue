@@ -56,7 +56,6 @@ input[type='checkbox'] {
 }
 
 .checkBox label {
-  cursor: pointer;
   position: absolute;
   width: 18px;
   height: 18px;

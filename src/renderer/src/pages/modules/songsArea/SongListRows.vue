@@ -96,7 +96,6 @@ defineEmits<{
 <style lang="scss" scoped>
 .song-row-item {
   font-size: 14px;
-  cursor: pointer;
 }
 
 .song-row-content {
