@@ -307,6 +307,46 @@ emitter.on('songsMovedByDrag', (movedSongPaths: string[]) => {
       }
     })
 
+    // 监听全局删除事件，确保当前列表的 original 与显示列表同步移除，避免后续基于 original 重建时“复活”已删除条目
+    emitter.on(
+      'songsRemoved',
+      (payload: { listUUID: string; paths: string[] } | { paths: string[] }) => {
+        const pathsToRemove = Array.isArray((payload as any).paths) ? (payload as any).paths : []
+        const listUUID = (payload as any).listUUID
+
+        if (!pathsToRemove.length) return
+
+        // 仅当事件针对当前正在浏览的歌单，才更新界面数据
+        if (listUUID && listUUID !== runtime.songsArea.songListUUID) return
+
+        // 从 original 中删除
+        originalSongInfoArr.value = originalSongInfoArr.value.filter(
+          (song) => !pathsToRemove.includes(song.filePath)
+        )
+
+        // 从显示列表中删除
+        runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
+          (song) => !pathsToRemove.includes(song.filePath)
+        )
+
+        // 同步播放数据（如果当前播放列表即为该歌单）
+        if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+          runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+          if (
+            runtime.playingData.playingSong &&
+            pathsToRemove.includes(runtime.playingData.playingSong.filePath)
+          ) {
+            runtime.playingData.playingSong = null
+          }
+        }
+
+        // 从当前选择中移除已删除的歌曲
+        runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
+          (path) => !pathsToRemove.includes(path)
+        )
+      }
+    )
+
     // 更新 originalSongInfoArr
     originalSongInfoArr.value = originalSongInfoArr.value.filter(
       (song) => !movedSongPaths.includes(song.filePath)

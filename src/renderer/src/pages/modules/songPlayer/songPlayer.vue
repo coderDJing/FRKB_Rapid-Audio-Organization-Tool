@@ -25,6 +25,7 @@ import PlaybackRangeHandles from './PlaybackRangeHandles.vue'
 import { usePlayerHotkeys } from './usePlayerHotkeys'
 import { usePlayerControlsLogic } from './usePlayerControlsLogic'
 import rightClickMenu from '@renderer/components/rightClickMenu'
+import emitter from '@renderer/utils/mitt'
 
 const runtime = useRuntimeStore()
 const waveform = useTemplateRef<HTMLDivElement>('waveform')
@@ -136,6 +137,12 @@ const handleSongLoadError = async (filePath: string | null, isPreload: boolean) 
         runtime.playingData.playingSongListUUID = ''
         if (wavesurferInstance.value) wavesurferInstance.value.empty()
       }
+
+      // 广播删除，确保当前 songsArea 若正显示该列表可同步移除数据，避免后续“复活”
+      emitter.emit('songsRemoved', {
+        listUUID: runtime.playingData.playingSongListUUID,
+        paths: [localFilePath]
+      })
     } else {
       if (runtime.playingData.playingSong?.filePath === localFilePath) {
         isInternalSongChange.value = true
