@@ -177,5 +177,6 @@
   " 首曲目": " tracks in the track fingerprint library",
   "封面另存为": "Save Cover As",
   "未知曲目": "Unknown Track",
-  "未知艺术家": "Unknown Artist"
+  "未知艺术家": "Unknown Artist",
+  "左键节拍点按 / 右键恢复": "Tap beat (LMB) / Reset (RMB)"
 }
