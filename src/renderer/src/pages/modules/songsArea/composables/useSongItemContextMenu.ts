@@ -7,6 +7,7 @@ import rightClickMenu from '@renderer/components/rightClickMenu' // Assuming it\
 import confirm from '@renderer/components/confirmDialog'
 import exportDialog from '@renderer/components/exportDialog'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
+import emitter from '@renderer/utils/mitt'
 
 // Type for the return value when a dialog needs to be opened by the parent
 export interface OpenDialogAction {
@@ -109,6 +110,8 @@ export function useSongItemContextMenu(
             viewport.scrollTo({ top: 0, behavior: 'smooth' })
           }
         })
+        // 通知全局，保证其他视图也能同步（包含当前 songsArea 监听的统一删除处理）
+        emitter.emit('songsRemoved', { listUUID: runtime.songsArea.songListUUID, paths: delPaths })
         return { action: 'songsRemoved', paths: delPaths }
       }
       case '删除曲目':
@@ -154,6 +157,10 @@ export function useSongItemContextMenu(
             }
 
             runtime.songsArea.selectedSongFilePath.length = 0
+            emitter.emit('songsRemoved', {
+              listUUID: runtime.songsArea.songListUUID,
+              paths: currentSelectedPaths
+            })
             return { action: 'songsRemoved', paths: currentSelectedPaths }
           }
         }
@@ -198,6 +205,10 @@ export function useSongItemContextMenu(
                 runtime.playingData.playingSong = null
               }
             }
+            emitter.emit('songsRemoved', {
+              listUUID: runtime.songsArea.songListUUID,
+              paths: songsToExportFilePaths
+            })
             return { action: 'songsRemoved', paths: songsToExportFilePaths }
           }
         }
