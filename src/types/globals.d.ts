@@ -59,6 +59,7 @@ interface ISettingConfig {
   fastBackwardTime: number
   autoScrollToCurrentSong: boolean
   enablePlaybackRange: boolean
+  recentDialogSelectedSongListMaxCount: number
 }
 
 interface ILanguageDict {

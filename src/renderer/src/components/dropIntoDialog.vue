@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onUnmounted, onMounted, computed } from 'vue'
+import { ref, onUnmounted, onMounted, computed, useTemplateRef } from 'vue'
 import singleCheckbox from './singleCheckbox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import selectSongListDialog from './selectSongListDialog.vue'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import hintIcon from '@renderer/assets/hint.png?asset'
+import bubbleBox from '@renderer/components/bubbleBox.vue'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'
@@ -129,28 +130,8 @@ const cancel = () => {
   localStorage.setItem('scanNewSongDialog', JSON.stringify(settingData.value))
   props.cancelCallback()
 }
-let hint1hoverTimer: NodeJS.Timeout
-let hint1Show = ref(false)
-const hint1IconMouseover = () => {
-  hint1hoverTimer = setTimeout(() => {
-    hint1Show.value = true
-  }, 500)
-}
-const hint1IconMouseout = () => {
-  clearTimeout(hint1hoverTimer)
-  hint1Show.value = false
-}
-let hint2hoverTimer: NodeJS.Timeout
-let hint2Show = ref(false)
-const hint2IconMouseover = () => {
-  hint2hoverTimer = setTimeout(() => {
-    hint2Show.value = true
-  }, 500)
-}
-const hint2IconMouseout = () => {
-  clearTimeout(hint2hoverTimer)
-  hint2Show.value = false
-}
+const hint1Ref = useTemplateRef<HTMLImageElement>('hint1Ref')
+const hint2Ref = useTemplateRef<HTMLImageElement>('hint2Ref')
 onMounted(() => {
   hotkeys('E', uuid, () => {
     confirm()
@@ -221,32 +202,20 @@ const songListSelectedDisplay = computed(() => {
             </div>
             <div style="height: 21px; display: flex; align-items: center; padding-left: 3px">
               <img
+                ref="hint1Ref"
                 :src="hintIcon"
                 style="width: 15px; height: 15px"
-                @mouseover="hint1IconMouseover()"
-                @mouseout="hint1IconMouseout()"
                 :draggable="false"
               />
-              <transition name="fade">
-                <div
-                  class="bubbleBox"
-                  v-if="hint1Show"
-                  style="
-                    position: absolute;
-                    height: 135px;
-                    width: 200px;
-                    margin-left: 20px;
-                    margin-top: 50px;
-                    text-align: left;
-                  "
-                >
-                  {{
-                    t(
-                      '将对所有导入过并加入声音指纹库的曲目进行比对，重复的曲目将不会被导入，哪怕它曾经已被删除'
-                    )
-                  }}
-                </div>
-              </transition>
+              <bubbleBox
+                :dom="hint1Ref || undefined"
+                :title="
+                  t(
+                    '将对所有导入过并加入声音指纹库的曲目进行比对，重复的曲目将不会被导入，哪怕它曾经已被删除'
+                  )
+                "
+                :maxWidth="220"
+              />
             </div>
           </div>
           <div style="margin-top: 10px; display: flex">
@@ -258,32 +227,20 @@ const songListSelectedDisplay = computed(() => {
             </div>
             <div style="height: 21px; display: flex; align-items: center; padding-left: 3px">
               <img
+                ref="hint2Ref"
                 :src="hintIcon"
                 style="width: 15px; height: 15px"
-                @mouseover="hint2IconMouseover()"
-                @mouseout="hint2IconMouseout()"
                 :draggable="false"
               />
-              <transition name="fade">
-                <div
-                  class="bubbleBox"
-                  v-if="hint2Show"
-                  style="
-                    position: absolute;
-                    height: 180px;
-                    width: 200px;
-                    margin-left: 20px;
-                    margin-top: 50px;
-                    text-align: left;
-                  "
-                >
-                  {{
-                    t(
-                      '将导入的曲目根据曲目内容本身进行声音指纹分析，并将分析结果永久入库，供去重比对使用，哪怕曲目本身已经被删除分析结果仍会存在'
-                    )
-                  }}
-                </div>
-              </transition>
+              <bubbleBox
+                :dom="hint2Ref || undefined"
+                :title="
+                  t(
+                    '将导入的曲目根据曲目内容本身进行声音指纹分析，并将分析结果永久入库，供去重比对使用，哪怕曲目本身已经被删除分析结果仍会存在'
+                  )
+                "
+                :maxWidth="240"
+              />
             </div>
           </div>
         </div>

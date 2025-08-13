@@ -86,7 +86,8 @@ export const useRuntimeStore = defineStore('runtime', {
         fastForwardTime: 10,
         fastBackwardTime: -5,
         autoScrollToCurrentSong: true,
-        enablePlaybackRange: false
+        enablePlaybackRange: false,
+        recentDialogSelectedSongListMaxCount: 10
       } //设置
     }
   }
