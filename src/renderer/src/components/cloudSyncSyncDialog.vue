@@ -98,6 +98,11 @@ const handleError = async (_e: any, err: any) => {
   }
 }
 
+const closeSummaryAndCancel = () => {
+  summary.value = null
+  emits('cancel')
+}
+
 const formatDurationSec = (ms: number) => {
   const seconds = ms / 1000
   if (seconds >= 10) return String(Math.round(seconds))
@@ -259,13 +264,7 @@ onUnmounted(() => {
         </div>
       </div>
       <div class="actions">
-        <div
-          class="button"
-          @click="
-            summary = null
-            $emit('cancel')
-          "
-        >
+        <div class="button" @click="closeSummaryAndCancel">
           {{ t('关闭') }}
         </div>
       </div>
