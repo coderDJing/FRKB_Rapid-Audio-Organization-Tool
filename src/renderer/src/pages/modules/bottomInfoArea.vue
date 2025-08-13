@@ -22,18 +22,28 @@ window.electron.ipcRenderer.on('progressSet', (event, title, nowNum, total, noNu
     noNum.value = false
   }
 })
-window.electron.ipcRenderer.on('importFinished', async (event, contentArr) => {
-  runtime.isProgressing = false
-  runtime.importingSongListUUID = ''
-  await confirm({
-    title: '完成',
-    content: contentArr,
-    textAlign: 'left',
-    innerHeight: 280,
-    innerWidth: 400,
-    confirmShow: false
-  })
-})
+window.electron.ipcRenderer.on(
+  'importFinished',
+  async (event, contentArr, _songListUUID, importSummary) => {
+    runtime.isProgressing = false
+    runtime.importingSongListUUID = ''
+    if (importSummary && typeof importSummary === 'object') {
+      const openImportSummary = (await import('@renderer/components/importFinishedSummaryDialog'))
+        .default
+      await openImportSummary(importSummary)
+    } else {
+      // 回退到旧的文案数组
+      await confirm({
+        title: '完成',
+        content: contentArr,
+        textAlign: 'left',
+        innerHeight: 280,
+        innerWidth: 400,
+        confirmShow: false
+      })
+    }
+  }
+)
 
 window.electron.ipcRenderer.on('addSongFingerprintFinished', async (event, contentArr) => {
   runtime.isProgressing = false

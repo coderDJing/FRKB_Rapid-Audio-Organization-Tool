@@ -8,6 +8,7 @@ import {
   operateHiddenFile
 } from './utils'
 import { log } from './log'
+import './cloudSync'
 import url from './url'
 import mainWindow from './window/mainWindow'
 import databaseInitWindow from './window/databaseInitWindow'
@@ -66,7 +67,8 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
     fastForwardTime: 10,
     fastBackwardTime: -5,
     autoScrollToCurrentSong: true,
-    enablePlaybackRange: false
+    enablePlaybackRange: false,
+    recentDialogSelectedSongListMaxCount: 10
   })
 }
 
@@ -86,6 +88,7 @@ const defaultSettings = {
   fastBackwardTime: -5,
   autoScrollToCurrentSong: true,
   enablePlaybackRange: false,
+  recentDialogSelectedSongListMaxCount: 10,
   nextCheckUpdateTime: ''
 }
 
@@ -95,6 +98,8 @@ store.layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
 let loadedSettings = {}
 if (fs.pathExistsSync(url.settingConfigFileUrl)) {
   try {
+    const startAt = Date.now()
+    let addedToServerTotal = 0
     loadedSettings = fs.readJSONSync(url.settingConfigFileUrl)
   } catch (error) {
     log.error('读取设置文件错误，将使用默认设置:', error)
@@ -232,7 +237,7 @@ let devInitDatabaseFunction = () => {
 if (is.dev && platform === 'win32') {
   // store.settingConfig.databaseUrl = 'D:\\FRKB_database'
   store.settingConfig.databaseUrl = 'C:\\Users\\renlu\\Desktop\\FRKB_database'
-  devInitDatabaseFunction()
+  // devInitDatabaseFunction()
 }
 
 app.whenReady().then(async () => {
@@ -445,12 +450,27 @@ ipcMain.on('openLocalBrowser', (e, url) => {
   shell.openExternal(url)
 })
 
-ipcMain.handle('clearTracksFingerprintLibrary', (e) => {
-  store.songFingerprintList = []
-  fs.outputJSON(
-    path.join(store.databaseDir, 'songFingerprint', 'songFingerprintV2.json'),
-    store.songFingerprintList
-  )
+ipcMain.handle('clearTracksFingerprintLibrary', async (_e) => {
+  try {
+    if (!store.databaseDir) {
+      return { success: false, message: '尚未配置数据库位置' }
+    }
+    const dir = path.join(store.databaseDir, 'songFingerprint')
+    const file = path.join(dir, 'songFingerprintV2.json')
+    await fs.ensureDir(dir)
+    store.songFingerprintList = []
+    if (await fs.pathExists(file)) {
+      await operateHiddenFile(file, async () => {
+        await fs.outputJSON(file, store.songFingerprintList)
+      })
+    } else {
+      await fs.outputJSON(file, store.songFingerprintList)
+    }
+    return { success: true }
+  } catch (error: any) {
+    log.error('clearTracksFingerprintLibrary failed', error)
+    return { success: false, message: String(error?.message || error) }
+  }
 })
 
 ipcMain.handle('getSongFingerprintListLength', () => {
@@ -587,8 +607,9 @@ ipcMain.on('layoutConfigChanged', (e, layoutConfig) => {
 })
 
 ipcMain.handle('exportSongFingerprint', async (e, folderPath) => {
+  const file = path.join(store.databaseDir, 'songFingerprint', 'songFingerprintV2.json')
   await fs.copy(
-    path.join(store.databaseDir, 'songFingerprint', 'songFingerprintV2.json'),
+    file,
     folderPath + '\\songFingerprint' + getCurrentTimeYYYYMMDDHHMMSSSSS() + '.json'
   )
 })
@@ -597,10 +618,16 @@ ipcMain.handle('importSongFingerprint', async (e, filePath: string) => {
   let json: string[] = await fs.readJSON(filePath)
   store.songFingerprintList = store.songFingerprintList.concat(json)
   store.songFingerprintList = Array.from(new Set(store.songFingerprintList))
-  fs.outputJSON(
-    path.join(store.databaseDir, 'songFingerprint', 'songFingerprintV2.json'),
-    store.songFingerprintList
-  )
+  const dir = path.join(store.databaseDir, 'songFingerprint')
+  const file = path.join(dir, 'songFingerprintV2.json')
+  await fs.ensureDir(dir)
+  if (await fs.pathExists(file)) {
+    await operateHiddenFile(file, async () => {
+      await fs.outputJSON(file, store.songFingerprintList)
+    })
+  } else {
+    await fs.outputJSON(file, store.songFingerprintList)
+  }
   return
 })
 

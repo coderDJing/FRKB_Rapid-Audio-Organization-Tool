@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch, computed, ComputedRef } from 'vue'
+import { onMounted, onUnmounted, ref, watch, computed, ComputedRef, useTemplateRef } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -10,6 +10,7 @@ import hotkeys from 'hotkeys-js'
 import listIcon from '@renderer/assets/listIcon.png?asset'
 import utils, { getCurrentTimeDirName } from '../utils/utils'
 import { t } from '@renderer/utils/translate'
+import bubbleBox from '@renderer/components/bubbleBox.vue'
 import emitter from '../utils/mitt'
 import type { IDir } from 'src/types/globals'
 import { handleLibraryAreaEmptySpaceDrop } from '../utils/dragUtils'
@@ -32,6 +33,15 @@ let localStorageRecentDialogSelectedSongListUUID = localStorage.getItem(
 )
 if (localStorageRecentDialogSelectedSongListUUID) {
   recentDialogSelectedSongListUUID = JSON.parse(localStorageRecentDialogSelectedSongListUUID)
+  // 按设置的最大缓存数量裁剪本地缓存
+  const maxCount = runtime.setting.recentDialogSelectedSongListMaxCount ?? 10
+  if (recentDialogSelectedSongListUUID.length > maxCount) {
+    recentDialogSelectedSongListUUID = recentDialogSelectedSongListUUID.slice(0, maxCount)
+    localStorage.setItem(
+      'recentDialogSelectedSongListUUID' + props.libraryName,
+      JSON.stringify(recentDialogSelectedSongListUUID)
+    )
+  }
 }
 let index = 0
 if (recentDialogSelectedSongListUUID.length !== 0) {
@@ -84,17 +94,7 @@ const libraryData: ComputedRef<IDir> = computed(() => {
   return data
 })
 
-let hoverTimer: NodeJS.Timeout
-let collapseButtonHintShow = ref(false)
-const iconMouseover = () => {
-  hoverTimer = setTimeout(() => {
-    collapseButtonHintShow.value = true
-  }, 500)
-}
-const iconMouseout = () => {
-  clearTimeout(hoverTimer)
-  collapseButtonHintShow.value = false
-}
+const collapseButtonRef = useTemplateRef<HTMLDivElement>('collapseButtonRef')
 
 const menuArr = ref([[{ menuName: '新建歌单' }, { menuName: '新建文件夹' }]])
 const contextmenuEvent = async (event: MouseEvent) => {
@@ -215,7 +215,8 @@ const confirmHandle = () => {
   } else {
     if (recentDialogSelectedSongListUUID.indexOf(runtime.dialogSelectedSongListUUID) === -1) {
       recentDialogSelectedSongListUUID.unshift(runtime.dialogSelectedSongListUUID)
-      if (recentDialogSelectedSongListUUID.length > 10) {
+      const maxCount = runtime.setting.recentDialogSelectedSongListMaxCount ?? 10
+      while (recentDialogSelectedSongListUUID.length > maxCount) {
         recentDialogSelectedSongListUUID.pop()
       }
     } else {
@@ -225,6 +226,10 @@ const confirmHandle = () => {
           1
         )[0]
       )
+      const maxCount = runtime.setting.recentDialogSelectedSongListMaxCount ?? 10
+      while (recentDialogSelectedSongListUUID.length > maxCount) {
+        recentDialogSelectedSongListUUID.pop()
+      }
     }
     localStorage.setItem(
       'recentDialogSelectedSongListUUID' + props.libraryName,
@@ -244,12 +249,7 @@ const cancel = () => {
       <div class="unselectable libraryTitle" v-if="libraryData">
         <span>{{ t(libraryData.dirName) }}</span>
         <div style="display: flex; justify-content: center; align-items: center">
-          <div
-            class="collapseButton"
-            @mouseover="iconMouseover()"
-            @mouseout="iconMouseout()"
-            @click="collapseButtonHandleClick()"
-          >
+          <div ref="collapseButtonRef" class="collapseButton" @click="collapseButtonHandleClick()">
             <svg
               width="16"
               height="16"
@@ -265,15 +265,7 @@ const cancel = () => {
               />
             </svg>
           </div>
-          <transition name="fade">
-            <div
-              class="bubbleBox"
-              v-if="collapseButtonHintShow"
-              style="position: absolute; top: 70px; transform: translateX(60%)"
-            >
-              {{ t('折叠文件夹') }}
-            </div>
-          </transition>
+          <bubbleBox :dom="collapseButtonRef || undefined" :title="t('折叠文件夹')" />
         </div>
       </div>
       <div

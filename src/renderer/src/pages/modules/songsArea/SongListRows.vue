@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { PropType } from 'vue'
+import { PropType, reactive } from 'vue'
 import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
+import type { ComponentPublicInstance } from 'vue'
+import bubbleBox from '@renderer/components/bubbleBox.vue'
 
 defineProps({
   songs: {
@@ -42,6 +44,21 @@ defineEmits<{
   (e: 'song-dragstart', event: DragEvent, song: ISongInfo): void
   (e: 'song-dragend', event: DragEvent): void
 }>()
+
+// 记录每个单元格 DOM，用于气泡锚定
+const cellRefMap = reactive<Record<string, HTMLElement | null>>({})
+const getCellKey = (song: ISongInfo, colKey: string) => `${song.filePath}__${colKey}`
+const setCellRef = (key: string, el: Element | ComponentPublicInstance | null) => {
+  let dom: HTMLElement | null = null
+  if (el) {
+    if (el instanceof HTMLElement) {
+      dom = el
+    } else if ((el as any).$el instanceof HTMLElement) {
+      dom = (el as any).$el as HTMLElement
+    }
+  }
+  cellRefMap[key] = dom
+}
 </script>
 
 <template>
@@ -84,8 +101,18 @@ defineEmits<{
           >
             {{ index + 1 }}
           </div>
-          <div v-else class="cell-title" :style="{ width: col.width + 'px' }">
+          <div
+            v-else
+            class="cell-title"
+            :style="{ width: col.width + 'px' }"
+            :ref="(el) => setCellRef(getCellKey(song, col.key), el)"
+          >
             {{ song[col.key as keyof ISongInfo] }}
+            <bubbleBox
+              :dom="cellRefMap[getCellKey(song, col.key)] || undefined"
+              :title="String((song as any)[col.key] ?? '')"
+              :only-when-overflow="true"
+            />
           </div>
         </template>
       </div>

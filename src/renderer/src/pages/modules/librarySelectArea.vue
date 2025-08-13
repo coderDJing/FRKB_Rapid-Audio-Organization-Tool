@@ -7,9 +7,11 @@ import settingGrey from '@renderer/assets/setting-grey.png?asset'
 import settingWhite from '@renderer/assets/setting-white.png?asset'
 import trashGrey from '@renderer/assets/trash-grey.png?asset'
 import trashWhite from '@renderer/assets/trash-white.png?asset'
-import { ref } from 'vue'
+import { ref, reactive } from 'vue'
+import type { ComponentPublicInstance } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import settingDialog from '@renderer/components/settingDialog.vue'
+import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { t } from '@renderer/utils/translate'
 import { Icon } from '../../../../types/globals'
 const emit = defineEmits(['librarySelectedChange'])
@@ -59,21 +61,27 @@ const clickButtomIcon = (item: ButtomIcon) => {
     settingDialogShow.value = true
   }
 }
-let hoverTimer: NodeJS.Timeout
+const iconRefMap = reactive<Record<string, HTMLElement | null>>({})
+const setIconRef = (name: string, el: Element | ComponentPublicInstance | null) => {
+  let dom: HTMLElement | null = null
+  if (el) {
+    if (el instanceof HTMLElement) {
+      dom = el
+    } else if ((el as any).$el instanceof HTMLElement) {
+      dom = (el as any).$el as HTMLElement
+    }
+  }
+  iconRefMap[name] = dom
+}
 const iconMouseover = (item: Icon | ButtomIcon) => {
   if (selectedIcon.value != item) {
     item.src = item.white
   }
-  hoverTimer = setTimeout(() => {
-    item.showAlt = true
-  }, 500)
 }
 const iconMouseout = (item: Icon | ButtomIcon) => {
-  clearTimeout(hoverTimer)
   if (selectedIcon.value != item) {
     item.src = item.grey
   }
-  item.showAlt = false
 }
 type ButtomIcon = {
   name: '设置'
@@ -135,16 +143,8 @@ const iconDragEnter = (event: DragEvent, item: Icon) => {
           "
           @click="libraryHandleClick(item)"
         >
-          <img :src="item.src" draggable="false" />
-          <transition name="fade">
-            <div
-              class="bubbleBox"
-              v-if="item.showAlt"
-              style="position: absolute; left: 45px; z-index: 10"
-            >
-              {{ t(item.name) }}
-            </div>
-          </transition>
+          <img :src="item.src" draggable="false" :ref="(el) => setIconRef(item.name, el)" />
+          <bubbleBox :dom="iconRefMap[item.name] || undefined" :title="t(item.name)" />
         </div>
       </div>
     </div>
@@ -167,12 +167,8 @@ const iconDragEnter = (event: DragEvent, item: Icon) => {
             align-items: center;
           "
         >
-          <img :src="item.src" draggable="false" />
-          <transition name="fade">
-            <div class="bubbleBox" v-if="item.showAlt" style="position: absolute; left: 50px">
-              {{ t(item.name) }}
-            </div>
-          </transition>
+          <img :src="item.src" draggable="false" :ref="(el) => setIconRef(item.name, el)" />
+          <bubbleBox :dom="iconRefMap[item.name] || undefined" :title="t(item.name)" />
         </div>
       </div>
     </div>

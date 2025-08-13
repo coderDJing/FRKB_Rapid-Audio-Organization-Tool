@@ -115,8 +115,7 @@ const resetManual = () => {
     :dom="bpmDomRef || undefined"
     title="BPM"
     :shortcut="t('左键节拍点按 / 右键恢复')"
-    :right="5"
-    :width="250"
+    :maxWidth="250"
   />
 </template>
 

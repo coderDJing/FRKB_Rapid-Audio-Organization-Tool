@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onUnmounted, onMounted, ref } from 'vue'
+import { onUnmounted, onMounted, ref, useTemplateRef } from 'vue'
 import hintIcon from '@renderer/assets/hint.png?asset'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
@@ -10,6 +10,7 @@ import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 import confirm from '@renderer/components/confirmDialog'
 import globalCallShortcutDialog from './globalCallShortcutDialog'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
+import bubbleBox from '@renderer/components/bubbleBox.vue'
 const runtime = useRuntimeStore()
 const uuid = uuidV4()
 const emits = defineEmits(['cancel'])
@@ -39,6 +40,10 @@ if (runtime.setting.startPlayPercent === undefined) {
 if (runtime.setting.endPlayPercent === undefined) {
   runtime.setting.endPlayPercent = 100
 }
+// 最近使用歌单缓存数量默认值
+if (runtime.setting.recentDialogSelectedSongListMaxCount === undefined) {
+  runtime.setting.recentDialogSelectedSongListMaxCount = 10
+}
 
 // 修改后的 cancel 函数 - 移除了范围验证和保存
 const cancel = async () => {
@@ -63,6 +68,31 @@ const setSetting = async () => {
     'setSetting',
     JSON.parse(JSON.stringify(runtime.setting))
   )
+}
+
+// 更新“最近使用歌单缓存数量”并按需截断本地缓存
+const updateRecentDialogCacheMaxCount = async () => {
+  runtime.setting.recentDialogSelectedSongListMaxCount = Math.max(
+    0,
+    Math.floor(Number(runtime.setting.recentDialogSelectedSongListMaxCount || 0))
+  )
+  const maxCount = runtime.setting.recentDialogSelectedSongListMaxCount
+  const keys = ['筛选库', '精选库']
+  for (const name of keys) {
+    const key = 'recentDialogSelectedSongListUUID' + name
+    const raw = localStorage.getItem(key)
+    if (!raw) continue
+    try {
+      let arr: string[] = JSON.parse(raw)
+      if (Array.isArray(arr) && arr.length > maxCount) {
+        arr = arr.slice(0, maxCount)
+        localStorage.setItem(key, JSON.stringify(arr))
+      }
+    } catch (e) {
+      // ignore broken cache
+    }
+  }
+  await setSetting()
 }
 
 type AudioExt = {
@@ -108,19 +138,34 @@ const clearTracksFingerprintLibrary = async () => {
     })
     return
   }
-  let res = await confirm({
+  let resConfirm = await confirm({
     title: '警告',
     content: [t('确定要清除当前曲目指纹库吗？')]
   })
-  if (res === 'confirm') {
-    await window.electron.ipcRenderer.invoke('clearTracksFingerprintLibrary')
-    // 清除后更新指纹库长度
-    await getSongFingerprintListLength()
-    await confirm({
-      title: '设置',
-      content: [t('清除完成')],
-      confirmShow: false
-    })
+  if (resConfirm === 'confirm') {
+    try {
+      const result = await window.electron.ipcRenderer.invoke('clearTracksFingerprintLibrary')
+      if (result && result.success) {
+        await getSongFingerprintListLength()
+        await confirm({
+          title: '设置',
+          content: [t('清除完成')],
+          confirmShow: false
+        })
+      } else {
+        await confirm({
+          title: '设置',
+          content: [t('清除失败'), String(result?.message || '')],
+          confirmShow: false
+        })
+      }
+    } catch (error) {
+      await confirm({
+        title: '设置',
+        content: [t('清除失败'), String((error as any)?.message || '')],
+        confirmShow: false
+      })
+    }
   }
 }
 
@@ -150,17 +195,7 @@ const reSelectLibrary = async () => {
     await window.electron.ipcRenderer.invoke('reSelectLibrary')
   }
 }
-let hint1hoverTimer: NodeJS.Timeout
-let hint1Show = ref(false)
-const hint1IconMouseover = () => {
-  hint1hoverTimer = setTimeout(() => {
-    hint1Show.value = true
-  }, 500)
-}
-const hint1IconMouseout = () => {
-  clearTimeout(hint1hoverTimer)
-  hint1Show.value = false
-}
+const hint1Ref = useTemplateRef<HTMLImageElement>('hint1Ref')
 </script>
 <template>
   <div class="dialog unselectable">
@@ -284,6 +319,23 @@ const hint1IconMouseout = () => {
                 @change="setSetting()"
               />
             </div>
+            <div style="margin-top: 20px">{{ t('最近使用歌单缓存数量') }}：</div>
+            <div style="margin-top: 10px">
+              <input
+                class="myInput"
+                v-model="runtime.setting.recentDialogSelectedSongListMaxCount"
+                type="number"
+                min="0"
+                step="1"
+                @input="
+                  runtime.setting.recentDialogSelectedSongListMaxCount = Math.max(
+                    0,
+                    Math.floor(Number(runtime.setting.recentDialogSelectedSongListMaxCount || 0))
+                  )
+                "
+                @blur="updateRecentDialogCacheMaxCount()"
+              />
+            </div>
             <div style="margin-top: 20px">{{ t('重新选择数据库所在位置') }}：</div>
             <div style="margin-top: 10px">
               <div
@@ -297,28 +349,16 @@ const hint1IconMouseout = () => {
             <div style="margin-top: 20px">
               {{ t('清除曲目指纹库') }}：
               <img
+                ref="hint1Ref"
                 :src="hintIcon"
                 style="width: 15px; height: 15px; margin-top: 5px"
-                @mouseover="hint1IconMouseover()"
-                @mouseout="hint1IconMouseout()"
                 :draggable="false"
               />
-              <transition name="fade">
-                <div
-                  class="bubbleBox"
-                  v-if="hint1Show"
-                  style="
-                    position: absolute;
-                    height: 45px;
-                    width: 180px;
-                    margin-left: 150px;
-                    margin-top: -70px;
-                    text-align: left;
-                  "
-                >
-                  {{ t('曲目指纹库中目前有 ') + songFingerprintListLength + t(' 首曲目') }}
-                </div>
-              </transition>
+              <bubbleBox
+                :dom="hint1Ref || undefined"
+                :title="t('曲目指纹库中目前有 ') + songFingerprintListLength + t(' 首曲目')"
+                :maxWidth="220"
+              />
             </div>
             <div style="margin-top: 10px">
               <div

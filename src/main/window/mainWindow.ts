@@ -229,6 +229,7 @@ function createWindow() {
   })
 
   ipcMain.on('startImportSongs', async (e, formData: IImportSongsFormData) => {
+    const importStartAt = Date.now()
     sendProgress('扫描文件中', 0, 1, true)
     let filePaths = formData.filePaths || formData.folderPath
     if (filePaths === undefined) {
@@ -333,6 +334,7 @@ function createWindow() {
         store.songFingerprintList
       )
     }
+    const importEndAt = Date.now()
     const contentArr = [
       t('文件夹下共扫描曲目：') + songFileUrls.length,
       ...(errorSongsAnalyseResult.length
@@ -360,7 +362,28 @@ function createWindow() {
       t('声音指纹库现有：') + store.songFingerprintList.length
     ]
 
-    mainWindow?.webContents.send('importFinished', contentArr, formData.songListUUID)
+    // 固定结构的导入结果对象（供新对话框使用）
+    const importSummary = {
+      startAt: new Date(importStartAt).toISOString(),
+      endAt: new Date(importEndAt).toISOString(),
+      durationMs: importEndAt - importStartAt,
+      scannedCount: songFileUrls.length,
+      analyzeFailedCount: errorSongsAnalyseResult.length,
+      importedToPlaylistCount: toBeDealSongs.length,
+      duplicatesRemovedCount: isComparisonSongFingerprint ? delList.length : 0,
+      fingerprintAddedCount: isPushSongFingerprintLibrary
+        ? store.songFingerprintList.length - songFingerprintListLengthBefore
+        : 0,
+      fingerprintAlreadyExistingCount: isPushSongFingerprintLibrary
+        ? alreadyExistInSongFingerprintList.size
+        : 0,
+      fingerprintTotalBefore: songFingerprintListLengthBefore,
+      fingerprintTotalAfter: store.songFingerprintList.length,
+      isComparisonSongFingerprint,
+      isPushSongFingerprintLibrary
+    }
+
+    mainWindow?.webContents.send('importFinished', contentArr, formData.songListUUID, importSummary)
   })
   ipcMain.handle('changeGlobalShortcut', (e, shortCutValue) => {
     let ret = globalShortcut.register(shortCutValue, () => {
