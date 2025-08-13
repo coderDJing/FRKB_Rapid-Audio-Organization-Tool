@@ -20,15 +20,24 @@ export function t(text: string, index?: number) {
     index = 0
   }
 
+  // 兜底：若未找到翻译或类型不正确，则直接返回原文，避免打断交互
   if (translation === undefined) {
-    throw new Error(`语言字典: ${lang} 未找到"${text}"映射`)
+    try {
+      // 轻量告警方便定位缺失 key，但不影响用户操作
+      // eslint-disable-next-line no-console
+      console.warn(`[i18n] Missing translation for "${text}" in ${lang}; fallback to original`)
+    } catch (_) {}
+    return text
   }
-  let returnValue = index !== undefined ? translation[index] : translation
+  const returnValue = index !== undefined ? (translation as any)[index] : translation
   if (typeof returnValue === 'string') {
     return returnValue
-  } else {
-    throw new Error(`语言字典: ${lang} "${text}"映射值类型错误`)
   }
+  try {
+    // eslint-disable-next-line no-console
+    console.warn(`[i18n] Invalid translation type for "${text}" in ${lang}; fallback to original`)
+  } catch (_) {}
+  return text
 }
 
 export const translate = {
