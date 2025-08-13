@@ -98,8 +98,6 @@ store.layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
 let loadedSettings = {}
 if (fs.pathExistsSync(url.settingConfigFileUrl)) {
   try {
-    const startAt = Date.now()
-    let addedToServerTotal = 0
     loadedSettings = fs.readJSONSync(url.settingConfigFileUrl)
   } catch (error) {
     log.error('读取设置文件错误，将使用默认设置:', error)
@@ -237,7 +235,7 @@ let devInitDatabaseFunction = () => {
 if (is.dev && platform === 'win32') {
   // store.settingConfig.databaseUrl = 'D:\\FRKB_database'
   store.settingConfig.databaseUrl = 'C:\\Users\\renlu\\Desktop\\FRKB_database'
-  // devInitDatabaseFunction()
+  devInitDatabaseFunction()
 }
 
 app.whenReady().then(async () => {
