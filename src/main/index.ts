@@ -106,7 +106,6 @@ if (fs.pathExistsSync(url.settingConfigFileUrl)) {
   }
 } else {
   // 如果文件不存在（虽然前面的逻辑会创建它，但为了健壮性加上）
-  log.info('设置文件不存在，将创建并使用默认设置。')
   fs.outputJsonSync(url.settingConfigFileUrl, defaultSettings) // 确保写入
   loadedSettings = defaultSettings // 使用默认设置继续
 }
