@@ -12,6 +12,8 @@ import importSongFingerprintDialog from './components/importSongFingerprintDialo
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 import pkg from '../../../package.json?asset'
+import cloudSyncSettingsDialog from './components/cloudSyncSettingsDialog.vue'
+import cloudSyncSyncDialog from './components/cloudSyncSyncDialog.vue'
 
 const runtime = useRuntimeStore()
 
@@ -67,6 +69,14 @@ const openDialog = async (item: string) => {
       window.electron.ipcRenderer.send('toggle-close')
     }
   }
+  if (item === '云同步设置') {
+    activeDialog.value = item
+    return
+  }
+  if (item === '同步曲目指纹库') {
+    activeDialog.value = item
+    return
+  }
   activeDialog.value = item
 }
 const documentHandleClick = () => {
@@ -109,6 +119,19 @@ onMounted(() => {
   })
   utils.setHotkeysScpoe('windowGlobal')
 })
+// 供子组件触发打开对话框（例如同步面板引导打开设置）
+window.addEventListener('openDialogFromChild', (e: any) => {
+  const detail = e?.detail
+  if (typeof detail === 'string') {
+    openDialog(detail)
+  }
+})
+// 云同步状态驱动全局进行中标记，禁用指纹库相关操作
+window.electron.ipcRenderer.on('cloudSync/state', (_e, state) => {
+  if (state === 'syncing') runtime.isProgressing = true
+  if (state === 'success' || state === 'failed' || state === 'cancelled')
+    runtime.isProgressing = false
+})
 window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
   runtime.activeMenuUUID = ''
 })
@@ -144,6 +167,8 @@ window.electron.ipcRenderer.on('delSongsSuccess', (_event, recycleBinNewDirDescr
     v-if="activeDialog == '导入曲目指纹库文件'"
     @cancel="activeDialog = ''"
   />
+  <cloudSyncSettingsDialog v-if="activeDialog == '云同步设置'" @cancel="activeDialog = ''" />
+  <cloudSyncSyncDialog v-if="activeDialog == '同步曲目指纹库'" @cancel="activeDialog = ''" />
 </template>
 <style lang="scss">
 #app {

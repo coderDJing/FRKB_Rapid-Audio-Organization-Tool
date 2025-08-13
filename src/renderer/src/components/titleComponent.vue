@@ -67,6 +67,11 @@ const menuArr = ref<Menu[]>([
     ]
   },
   {
+    name: '云同步(C)',
+    show: false,
+    subMenu: [[{ name: '同步曲目指纹库' }], [{ name: '云同步设置' }]]
+  },
+  {
     name: '帮助(H)',
     show: false,
     subMenu: [[{ name: '访问 GitHub', shortcutKey: 'F1' }, { name: '检查更新' }, { name: '关于' }]]
@@ -83,6 +88,14 @@ hotkeys('alt+f', 'windowGlobal', () => {
 hotkeys('alt+g', 'windowGlobal', () => {
   menuArr.value.forEach((item) => {
     if (item.name === '迁移(G)') {
+      item.show = true
+      return
+    }
+  })
+})
+hotkeys('alt+c', 'windowGlobal', () => {
+  menuArr.value.forEach((item) => {
+    if (item.name === '云同步(C)') {
       item.show = true
       return
     }

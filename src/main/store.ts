@@ -24,7 +24,8 @@ let settingConfig: ISettingConfig = {
   fastForwardTime: 10,
   fastBackwardTime: -5,
   autoScrollToCurrentSong: true,
-  enablePlaybackRange: false
+  enablePlaybackRange: false,
+  recentDialogSelectedSongListMaxCount: 10
 } //设置config
 let analyseSongPort: string = ''
 export default {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, useTemplateRef } from 'vue'
 import libraryItem from '@renderer/components/libraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
@@ -11,6 +11,7 @@ import emitter from '../../utils/mitt'
 import emptyRecycleBin from '@renderer/assets/empty-recycleBin.png?asset'
 import { handleLibraryAreaEmptySpaceDrop } from '@renderer/utils/dragUtils'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
+import bubbleBox from '@renderer/components/bubbleBox.vue'
 
 const runtime = useRuntimeStore()
 const props = defineProps({
@@ -40,26 +41,8 @@ const showHint = computed(() => {
   )
   return !children?.length || (children?.length === 1 && hasSpecialChild)
 })
-let hoverTimer: NodeJS.Timeout
-let collapseButtonHintShow = ref(false)
-let emptyRecycleBinHintShow = ref(false)
-const iconMouseover = (iconName: string) => {
-  hoverTimer = setTimeout(() => {
-    if (iconName == 'collapseButton') {
-      collapseButtonHintShow.value = true
-    } else if (iconName == 'emptyRecycleBin') {
-      emptyRecycleBinHintShow.value = true
-    }
-  }, 500)
-}
-const iconMouseout = (iconName: string) => {
-  clearTimeout(hoverTimer)
-  if (iconName == 'collapseButton') {
-    collapseButtonHintShow.value = false
-  } else if (iconName == 'emptyRecycleBin') {
-    emptyRecycleBinHintShow.value = false
-  }
-}
+const collapseButtonRef = useTemplateRef<HTMLDivElement>('collapseButtonRef')
+const emptyRecycleRef = useTemplateRef<HTMLDivElement>('emptyRecycleRef')
 
 const emptyRecycleBinHandleClick = async () => {
   let res = await confirm({
@@ -199,20 +182,14 @@ const drop = async (e: DragEvent) => {
       <!-- todo还有个导出整个库的按钮 -->
       <div style="display: flex; justify-content: center; align-items: center">
         <div
+          ref="emptyRecycleRef"
           class="collapseButton"
-          @mouseover="iconMouseover('emptyRecycleBin')"
-          @mouseout="iconMouseout('emptyRecycleBin')"
           v-show="runtime.libraryAreaSelected === '回收站'"
           @click="emptyRecycleBinHandleClick()"
         >
           <img :src="emptyRecycleBin" style="width: 16px; height: 16px" draggable="false" />
         </div>
-        <div
-          class="collapseButton"
-          @mouseover="iconMouseover('collapseButton')"
-          @mouseout="iconMouseout('collapseButton')"
-          @click="collapseButtonHandleClick()"
-        >
+        <div ref="collapseButtonRef" class="collapseButton" @click="collapseButtonHandleClick()">
           <svg
             width="16"
             height="16"
@@ -228,24 +205,8 @@ const drop = async (e: DragEvent) => {
             />
           </svg>
         </div>
-        <transition name="fade">
-          <div
-            class="bubbleBox"
-            v-if="collapseButtonHintShow"
-            style="position: absolute; top: 30px; z-index: 10; transform: translateX(60%)"
-          >
-            {{ t('折叠文件夹') }}
-          </div>
-        </transition>
-        <transition name="fade">
-          <div
-            class="bubbleBox"
-            v-if="emptyRecycleBinHintShow"
-            style="position: absolute; top: 30px; z-index: 10; transform: translateX(40%)"
-          >
-            {{ t('清空回收站') }}
-          </div>
-        </transition>
+        <bubbleBox :dom="collapseButtonRef || undefined" :title="t('折叠文件夹')" />
+        <bubbleBox :dom="emptyRecycleRef || undefined" :title="t('清空回收站')" />
       </div>
     </div>
     <div class="unselectable libraryArea">

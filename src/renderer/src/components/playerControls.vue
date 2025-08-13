@@ -143,27 +143,27 @@ const showInFileExplorer = () => {
     <div ref="previousSongRef" class="buttonIcon" @click="handlePreviousSong()">
       <img :src="previousSong" draggable="false" />
     </div>
-    <bubbleBox :dom="previousSongRef || undefined" title="上一首" shortcut="W" :left="60" />
+    <bubbleBox :dom="previousSongRef || undefined" :title="t('上一首')" shortcut="W" />
     <div ref="fastBackwardRef" class="buttonIcon" @mousedown="handleFastBackward()">
       <img :src="fastBackward" draggable="false" />
     </div>
-    <bubbleBox :dom="fastBackwardRef || undefined" title="快退" shortcut="A" :left="100" />
+    <bubbleBox :dom="fastBackwardRef || undefined" :title="t('快退')" shortcut="A" />
     <div ref="playRef" class="buttonIcon" v-show="!playing" @click="handlePlay()">
       <img :src="play" draggable="false" />
     </div>
-    <bubbleBox :dom="playRef || undefined" title="播放" shortcut="Space" :left="150" />
+    <bubbleBox :dom="playRef || undefined" :title="t('播放')" shortcut="Space" />
     <div ref="pauseRef" class="buttonIcon" v-show="playing" @click="handlePause()">
       <img :src="pause" draggable="false" />
     </div>
-    <bubbleBox :dom="pauseRef || undefined" title="暂停" shortcut="Space" :left="150" />
+    <bubbleBox :dom="pauseRef || undefined" :title="t('暂停')" shortcut="Space" />
     <div ref="fastForwardRef" class="buttonIcon" @mousedown="handleFastForward()">
       <img :src="fastForward" draggable="false" />
     </div>
-    <bubbleBox :dom="fastForwardRef || undefined" title="快进" shortcut="D" :left="190" />
+    <bubbleBox :dom="fastForwardRef || undefined" :title="t('快进')" shortcut="D" />
     <div ref="nextSongRef" class="buttonIcon" @click="handleNextSong()">
       <img :src="nextSong" draggable="false" />
     </div>
-    <bubbleBox :dom="nextSongRef || undefined" title="下一首" shortcut="S" :left="230" />
+    <bubbleBox :dom="nextSongRef || undefined" :title="t('下一首')" shortcut="S" />
     <div class="buttonIcon" @click.stop="handelMoreClick()">
       <img :src="more" draggable="false" />
     </div>
