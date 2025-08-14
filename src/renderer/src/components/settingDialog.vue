@@ -361,7 +361,7 @@ const hint1Ref = useTemplateRef<HTMLImageElement>('hint1Ref')
                 style="width: 90px; text-align: center"
                 @click="clearTracksFingerprintLibrary()"
               >
-                {{ t('fingerprints.clear') }}
+                {{ t('fingerprints.clearShort') }}
               </div>
             </div>
           </div>

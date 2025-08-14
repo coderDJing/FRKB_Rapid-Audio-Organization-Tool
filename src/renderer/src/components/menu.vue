@@ -43,27 +43,27 @@ watch(
       hotkeys('w', uuid, () => {
         let menuArr = props.menuArr.flat(1)
         if (selectedMenuButton.value === '') {
-          selectedMenuButton.value = menuArr[menuArr.length - 1].name
+          selectedMenuButton.value = getButtonKey(menuArr[menuArr.length - 1])
           return
         }
-        let index = menuArr.findIndex((item) => item.name === selectedMenuButton.value)
+        let index = menuArr.findIndex((item) => getButtonKey(item) === selectedMenuButton.value)
         if (index === 0) {
-          selectedMenuButton.value = menuArr[menuArr.length - 1].name
+          selectedMenuButton.value = getButtonKey(menuArr[menuArr.length - 1])
         } else {
-          selectedMenuButton.value = menuArr[index - 1].name
+          selectedMenuButton.value = getButtonKey(menuArr[index - 1])
         }
       })
       hotkeys('s', uuid, () => {
         let menuArr = props.menuArr.flat(1)
         if (selectedMenuButton.value === '') {
-          selectedMenuButton.value = menuArr[0].name
+          selectedMenuButton.value = getButtonKey(menuArr[0])
           return
         }
-        let index = menuArr.findIndex((item) => item.name === selectedMenuButton.value)
+        let index = menuArr.findIndex((item) => getButtonKey(item) === selectedMenuButton.value)
         if (index === menuArr.length - 1) {
-          selectedMenuButton.value = menuArr[0].name
+          selectedMenuButton.value = getButtonKey(menuArr[0])
         } else {
-          selectedMenuButton.value = menuArr[index + 1].name
+          selectedMenuButton.value = getButtonKey(menuArr[index + 1])
         }
       })
       hotkeys('e', uuid, () => {
@@ -72,7 +72,7 @@ watch(
         }
         let menuArr = props.menuArr.flat(1)
         for (let button of menuArr) {
-          if (button.name === selectedMenuButton.value) {
+          if (getButtonKey(button) === selectedMenuButton.value) {
             menuButtonClick(button)
             break
           }
