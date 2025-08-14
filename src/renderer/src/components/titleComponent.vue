@@ -59,13 +59,13 @@ const menuArr = ref<Menu[]>([
         {
           name: 'library.importNewTracks',
           shortcutKey: 'Alt+Q',
-          i18nParams: { libraryType: t('library.filter') },
+          i18nParams: { libraryTypeKey: 'library.filter' },
           action: 'import-new-filter'
         },
         {
           name: 'library.importNewTracks',
           shortcutKey: 'Alt+E',
-          i18nParams: { libraryType: t('library.curated') },
+          i18nParams: { libraryTypeKey: 'library.curated' },
           action: 'import-new-curated'
         }
       ],
