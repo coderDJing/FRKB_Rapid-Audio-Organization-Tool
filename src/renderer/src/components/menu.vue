@@ -99,6 +99,11 @@ const menuButtonClick = (item: { name: string; shortcutKey?: string; action?: st
   emits('menuButtonClick', item)
 }
 const selectedMenuButton = ref('')
+
+// 生成菜单项唯一键，避免同名项同时高亮
+function getButtonKey(button: { name: string; shortcutKey?: string; action?: string }) {
+  return `${button.name}|${button.shortcutKey || ''}|${button.action || ''}`
+}
 </script>
 <template>
   <div class="menu" v-if="props.modelValue" @click.stop="() => {}">
@@ -115,15 +120,24 @@ const selectedMenuButton = ref('')
         v-for="button of item"
         class="menuButton"
         @click="menuButtonClick(button)"
-        :class="{ menuButtonHover: selectedMenuButton === button.name }"
+        :class="{ menuButtonHover: selectedMenuButton === getButtonKey(button) }"
         @mouseenter="
           () => {
-            selectedMenuButton = button.name
+            selectedMenuButton = getButtonKey(button)
           }
         "
         @contextmenu="menuButtonClick(button)"
       >
-        <span>{{ t(button.name as any, (button as any).i18nParams) }}</span>
+        <span>
+          {{
+            t(
+              button.name as any,
+              (button as any).i18nParams?.libraryTypeKey
+                ? { libraryType: t((button as any).i18nParams.libraryTypeKey) }
+                : (button as any).i18nParams
+            )
+          }}
+        </span>
         <span>{{ button.shortcutKey }}</span>
       </div>
     </div>
