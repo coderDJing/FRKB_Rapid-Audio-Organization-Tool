@@ -56,11 +56,7 @@ onUnmounted(() => {
         {{ t('database.oldVersionWarning') }}
       </div>
       <div style="padding-top: 10px; font-size: 12px; display: flex; justify-content: center">
-        {{
-          t(
-            '升级后的数据库将保持原有的音频内容，但将清空旧的音频指纹数据，你可能需要重新扫描音频文件的指纹，升级后指纹分析性能将获得巨量提升'
-          )
-        }}
+        {{ t('database.upgradeInfo') }}
       </div>
     </div>
     <div style="display: flex; justify-content: center; padding-bottom: 10px">
