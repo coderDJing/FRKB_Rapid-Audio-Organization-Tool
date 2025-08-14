@@ -253,5 +253,9 @@
   "封面另存为": "Save Cover As",
   "未知曲目": "Unknown Track",
   "未知艺术家": "Unknown Artist",
-  "左键节拍点按 / 右键恢复": "Tap beat (LMB) / Reset (RMB)"
+  "左键节拍点按 / 右键恢复": "Tap beat (LMB) / Reset (RMB)",
+  "建议在 ": "Please start again in ",
+  " 秒后再次发起同步": " seconds",
+  "温馨提示：5 分钟内已累计 8 次同步，本次为第 9 次。为避免触发限制，": "Kind reminder: 8 syncs in the last 5 minutes. This is the 9th. To avoid rate limiting, ",
+  "温馨提示：5 分钟内已累计 9 次同步，本次为第 10 次。": "Kind reminder: 9 syncs in the last 5 minutes. This is the 10th. "
 }

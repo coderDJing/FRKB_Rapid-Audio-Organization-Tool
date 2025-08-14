@@ -70,13 +70,40 @@ const handleState = (_e: any, state: string) => {
 const isNoticePromptOpen = ref(false)
 const handleNotice = (_e: any, payload: any) => {
   if (isNoticePromptOpen.value) return
-  const msg = payload?.message || ''
-  if (!msg) return
+  let contentMsg = ''
+  if (payload?.code === 'rate_limit_warning') {
+    const retryAfterMs = Math.max(
+      0,
+      Number(payload?.retryAfterMs || payload?.details?.retryAfterMs || 0)
+    )
+    const seconds = Math.ceil(retryAfterMs / 1000)
+    const currentInWindow = Number(payload?.currentInWindow || 0)
+    if (currentInWindow === 8) {
+      const prefix = t('温馨提示：5 分钟内已累计 8 次同步，本次为第 9 次。为避免触发限制，')
+      const beforeNum = t('建议在 ')
+      const afterNum = t(' 秒后再次发起同步')
+      contentMsg = `${prefix}${beforeNum}${seconds}${afterNum}`
+    } else if (currentInWindow === 9) {
+      const prefix = t('温馨提示：5 分钟内已累计 9 次同步，本次为第 10 次。')
+      const beforeNum = t('建议在 ')
+      const afterNum = t(' 秒后再次发起同步')
+      contentMsg = `${prefix}${beforeNum}${seconds}${afterNum}`
+    } else {
+      // 兜底
+      const beforeNum = t('建议在 ')
+      const afterNum = t(' 秒后再次发起同步')
+      contentMsg = `${beforeNum}${seconds}${afterNum}`
+    }
+  } else {
+    const msg = payload?.message || ''
+    if (!msg) return
+    contentMsg = t(msg)
+  }
   isNoticePromptOpen.value = true
   // 先关闭同步面板
   emits('cancel')
   // 同时弹出提示对话框（非阻塞）
-  void confirm({ title: '提示', content: [t(msg)], confirmShow: false })
+  void confirm({ title: '提示', content: [contentMsg], confirmShow: false })
 }
 const handleProgress = (_e: any, p: any) => {
   phase.value = p.phase
@@ -91,6 +118,15 @@ const handleError = async (_e: any, err: any) => {
   if (isErrorPromptOpen.value) return
   isErrorPromptOpen.value = true
   try {
+    const code = err?.error?.code || ''
+    if (code === 'RATE_LIMITED' && err?.error?.scope === 'sync_start') {
+      const retryAfterMs = Math.max(0, Number(err?.error?.retryAfterMs || 0))
+      const seconds = Math.ceil(retryAfterMs / 1000)
+      const message = `操作过于频繁，请在 ${seconds} 秒后再次发起同步`
+      logMsg.value = t(message)
+      await confirm({ title: '提示', content: [logMsg.value], confirmShow: false })
+      return
+    }
     logMsg.value = t(err?.message || 'error')
     await confirm({ title: '错误', content: [logMsg.value], confirmShow: false })
   } finally {
