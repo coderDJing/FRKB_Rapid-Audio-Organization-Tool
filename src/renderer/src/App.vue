@@ -36,7 +36,18 @@ window.electron.ipcRenderer.on('layoutConfigReaded', (event, layoutConfig) => {
 const activeDialog = ref('')
 
 const openDialog = async (item: string) => {
-  if (item === '关于' || item === 'menu.about') {
+  // 统一将中文项映射为 i18n 键，避免不同语言下判断不一致
+  if (item === '关于') item = 'menu.about'
+  if (item === '访问 GitHub') item = 'menu.visitGithub'
+  if (item === '检查更新') item = 'menu.checkUpdate'
+  if (item === '退出') item = 'menu.exit'
+  if (item === '云同步设置') item = 'cloudSync.settings'
+  if (item === '同步曲目指纹库') item = 'cloudSync.syncFingerprints'
+  if (item === '手动添加曲目指纹') item = 'fingerprints.manualAdd'
+  if (item === '导出曲目指纹库文件') item = 'fingerprints.exportDatabase'
+  if (item === '导入曲目指纹库文件') item = 'fingerprints.importDatabase'
+
+  if (item === 'menu.about') {
     await confirm({
       title: t('menu.about'),
       content: [
@@ -48,16 +59,16 @@ const openDialog = async (item: string) => {
       canCopyText: true
     })
   }
-  if (item === '访问 GitHub' || item === 'menu.visitGithub') {
+  if (item === 'menu.visitGithub') {
     window.electron.ipcRenderer.send(
       'openLocalBrowser',
       'https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool'
     )
   }
-  if (item === '检查更新' || item === 'menu.checkUpdate') {
+  if (item === 'menu.checkUpdate') {
     window.electron.ipcRenderer.send('checkForUpdates')
   }
-  if (item === '退出' || item === 'menu.exit') {
+  if (item === 'menu.exit') {
     if (runtime.isProgressing === true) {
       await confirm({
         title: t('common.exit'),
@@ -69,11 +80,11 @@ const openDialog = async (item: string) => {
       window.electron.ipcRenderer.send('toggle-close')
     }
   }
-  if (item === '云同步设置' || item === 'cloudSync.settings') {
+  if (item === 'cloudSync.settings') {
     activeDialog.value = item
     return
   }
-  if (item === '同步曲目指纹库' || item === 'cloudSync.syncFingerprints') {
+  if (item === 'cloudSync.syncFingerprints') {
     activeDialog.value = item
     return
   }
@@ -156,19 +167,25 @@ window.electron.ipcRenderer.on('delSongsSuccess', (_event, recycleBinNewDirDescr
     </div>
   </div>
   <manualAddSongFingerprintDialog
-    v-if="activeDialog == '手动添加曲目指纹'"
+    v-if="activeDialog == 'fingerprints.manualAdd'"
     @cancel="activeDialog = ''"
   />
   <exportSongFingerprintDialog
-    v-if="activeDialog == '导出曲目指纹库文件'"
+    v-if="activeDialog == 'fingerprints.exportDatabase'"
     @cancel="activeDialog = ''"
   />
   <importSongFingerprintDialog
-    v-if="activeDialog == '导入曲目指纹库文件'"
+    v-if="activeDialog == 'fingerprints.importDatabase'"
     @cancel="activeDialog = ''"
   />
-  <cloudSyncSettingsDialog v-if="activeDialog == '云同步设置'" @cancel="activeDialog = ''" />
-  <cloudSyncSyncDialog v-if="activeDialog == '同步曲目指纹库'" @cancel="activeDialog = ''" />
+  <cloudSyncSettingsDialog
+    v-if="activeDialog == 'cloudSync.settings'"
+    @cancel="activeDialog = ''"
+  />
+  <cloudSyncSyncDialog
+    v-if="activeDialog == 'cloudSync.syncFingerprints'"
+    @cancel="activeDialog = ''"
+  />
 </template>
 <style lang="scss">
 #app {

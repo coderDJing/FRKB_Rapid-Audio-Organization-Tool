@@ -201,6 +201,7 @@
     "analyzeInit": "分析声音指纹初始化",
     "scanFormats": "扫描音频格式",
     "clear": "清除曲目指纹库",
+    "clearShort": "清除",
     "confirmClear": "确定要清除当前曲目指纹库吗？",
     "clearCompleted": "清除完成",
     "clearFailed": "清除失败",
