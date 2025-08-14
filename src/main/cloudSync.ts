@@ -106,14 +106,14 @@ ipcMain.handle('cloudSync/config/save', async (_e, payload: { userKey: string })
     }
     const error = String(json?.error || '').toUpperCase()
     if (error === 'INVALID_USER_KEY' || error === 'USER_KEY_NOT_FOUND') {
-      return { success: false, message: 'userKey 无效或未授权' }
+      return { success: false, message: 'cloudSync.errors.keyInvalid' }
     }
     if (error === 'USER_KEY_INACTIVE' || json?.data?.isActive === false) {
-      return { success: false, message: 'userKey 已被禁用' }
+      return { success: false, message: 'cloudSync.errors.keyDisabled' }
     }
-    return { success: false, message: '无法连接云同步服务' }
+    return { success: false, message: 'cloudSync.errors.cannotConnect' }
   } catch (_err) {
-    return { success: false, message: '无法连接云同步服务' }
+    return { success: false, message: 'cloudSync.errors.cannotConnect' }
   }
 })
 
@@ -141,18 +141,18 @@ ipcMain.handle('cloudSync/testConnectivity', async (_e, payload: { userKey: stri
   try {
     const json = await validateUserKeyRequest(payload?.userKey || '')
     if (json?.success === true && json?.data?.isActive === true) {
-      return { success: true, message: '连通成功' }
+      return { success: true, message: 'cloudSync.connectivityOk' }
     }
     const error = String(json?.error || '').toUpperCase()
     if (error === 'INVALID_USER_KEY' || error === 'USER_KEY_NOT_FOUND') {
-      return { success: false, message: 'userKey 无效或未授权' }
+      return { success: false, message: 'cloudSync.errors.keyInvalid' }
     }
     if (error === 'USER_KEY_INACTIVE' || json?.data?.isActive === false) {
-      return { success: false, message: 'userKey 已被禁用' }
+      return { success: false, message: 'cloudSync.errors.keyDisabled' }
     }
-    return { success: false, message: '无法连接云同步服务' }
+    return { success: false, message: 'cloudSync.errors.cannotConnect' }
   } catch (_err) {
-    return { success: false, message: '无法连接云同步服务' }
+    return { success: false, message: 'cloudSync.errors.cannotConnect' }
   }
 })
 
@@ -281,10 +281,10 @@ ipcMain.handle('cloudSync/start', async () => {
         const errorCode = String(valid?.error || 'INVALID_USER_KEY').toUpperCase()
         const msg =
           errorCode === 'USER_KEY_INACTIVE'
-            ? 'userKey 已被禁用'
+            ? 'cloudSync.errors.keyDisabled'
             : errorCode === 'USER_KEY_NOT_FOUND' || errorCode === 'INVALID_USER_KEY'
-              ? 'userKey 无效或未授权'
-              : '无法连接云同步服务'
+              ? 'cloudSync.errors.keyInvalid'
+              : 'cloudSync.errors.cannotConnect'
         // 仅错误场景记录日志（包含请求参数与返回结果）
         log.error('[cloudSync] /validate-user-key error', {
           request: {
@@ -305,7 +305,7 @@ ipcMain.handle('cloudSync/start', async () => {
         },
         error: _e
       })
-      sendError('无法连接云同步服务', { error: 'NETWORK' })
+      sendError('cloudSync.errors.cannotConnect', { error: 'NETWORK' })
       sendState('failed')
       return 'failed'
     }
@@ -361,7 +361,9 @@ ipcMain.handle('cloudSync/start', async () => {
       await wait(120)
       sendProgress('finalizing', 100)
       if (mainWindow.instance) {
-        mainWindow.instance.webContents.send('cloudSync/notice', { message: '已是最新，无需同步' })
+        mainWindow.instance.webContents.send('cloudSync/notice', {
+          message: 'cloudSync.errors.alreadyLatest'
+        })
       }
       sendState('success')
       return 'success'
@@ -778,7 +780,7 @@ ipcMain.handle('cloudSync/start', async () => {
         code === 'ETIMEDOUT' ||
         code === 'EAI_AGAIN'
       if (isNetwork) {
-        return '无法连接云同步服务'
+        return 'cloudSync.errors.cannotConnect'
       }
       return `同步失败：${rawMsg || '未知错误'}`
     })()
