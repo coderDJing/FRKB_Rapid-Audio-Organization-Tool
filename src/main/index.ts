@@ -13,7 +13,6 @@ import url from './url'
 import mainWindow from './window/mainWindow'
 import databaseInitWindow from './window/databaseInitWindow'
 import foundOldVersionDatabaseWindow from './window/foundOldVersionDatabaseWindow'
-import { languageDict } from './translate'
 import { is } from '@electron-toolkit/utils'
 import store from './store'
 import foundNewVersionWindow from './window/foundNewVersionWindow'
@@ -429,9 +428,7 @@ app.on('window-all-closed', async () => {
   app.quit()
 })
 
-ipcMain.handle('getLanguageDict', () => {
-  return languageDict
-})
+// 语言字典将不再通过主进程下发，渲染进程使用 vue-i18n 自行管理
 ipcMain.handle('getSetting', () => {
   return store.settingConfig
 })

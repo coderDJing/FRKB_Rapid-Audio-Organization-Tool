@@ -22,8 +22,8 @@ const toggleMinimize = () => {
 const toggleClose = async () => {
   if (runtime.isProgressing) {
     await confirm({
-      title: '退出',
-      content: [t('请等待当前任务执行结束')],
+      title: t('common.exit'),
+      content: [t('import.waitForTask')],
       confirmShow: false
     })
     return
@@ -37,7 +37,12 @@ window.electron.ipcRenderer.on('mainWin-max', (event, bool) => {
 })
 
 const fillColor = ref('#9d9d9d')
-type MenuItem = { name: string; shortcutKey?: string }
+type MenuItem = {
+  name: string
+  shortcutKey?: string
+  i18nParams?: Record<string, any>
+  action?: string
+}
 
 type Menu = {
   name: string
@@ -47,39 +52,52 @@ type Menu = {
 
 const menuArr = ref<Menu[]>([
   {
-    name: '文件(F)',
+    name: 'menu.file',
     show: false,
     subMenu: [
       [
-        { name: '筛选库 导入新曲目', shortcutKey: 'Alt+Q' },
-        { name: '精选库 导入新曲目', shortcutKey: 'Alt+E' }
+        {
+          name: 'library.importNewTracks',
+          shortcutKey: 'Alt+Q',
+          i18nParams: { libraryType: t('library.filter') },
+          action: 'import-new-filter'
+        },
+        {
+          name: 'library.importNewTracks',
+          shortcutKey: 'Alt+E',
+          i18nParams: { libraryType: t('library.curated') },
+          action: 'import-new-curated'
+        }
       ],
-      [{ name: '手动添加曲目指纹' }],
-      [{ name: '退出' }]
+      [{ name: 'fingerprints.manualAdd', action: 'manual-add-fingerprint' }],
+      [{ name: 'menu.exit', action: 'exit' }]
     ]
   },
   {
-    name: '迁移(G)',
+    name: 'menu.migration',
+    show: false,
+    subMenu: [[{ name: 'fingerprints.exportDatabase' }, { name: 'fingerprints.importDatabase' }]]
+  },
+  {
+    name: 'menu.cloudSync',
+    show: false,
+    subMenu: [[{ name: 'cloudSync.syncFingerprints' }], [{ name: 'cloudSync.settings' }]]
+  },
+  {
+    name: 'menu.help',
     show: false,
     subMenu: [
-      [{ name: '导出曲目指纹库文件' }, { name: '导入曲目指纹库文件' }]
-      // [{ name: '导出迁移文件' }, { name: '导入迁移文件' }]
+      [
+        { name: 'menu.visitGithub', shortcutKey: 'F1' },
+        { name: 'menu.checkUpdate' },
+        { name: 'menu.about' }
+      ]
     ]
-  },
-  {
-    name: '云同步(C)',
-    show: false,
-    subMenu: [[{ name: '同步曲目指纹库' }], [{ name: '云同步设置' }]]
-  },
-  {
-    name: '帮助(H)',
-    show: false,
-    subMenu: [[{ name: '访问 GitHub', shortcutKey: 'F1' }, { name: '检查更新' }, { name: '关于' }]]
   }
 ])
 hotkeys('alt+f', 'windowGlobal', () => {
   menuArr.value.forEach((item) => {
-    if (item.name === '文件(F)') {
+    if (item.name === 'menu.file') {
       item.show = true
       return
     }
@@ -87,7 +105,7 @@ hotkeys('alt+f', 'windowGlobal', () => {
 })
 hotkeys('alt+g', 'windowGlobal', () => {
   menuArr.value.forEach((item) => {
-    if (item.name === '迁移(G)') {
+    if (item.name === 'menu.migration') {
       item.show = true
       return
     }
@@ -95,7 +113,7 @@ hotkeys('alt+g', 'windowGlobal', () => {
 })
 hotkeys('alt+c', 'windowGlobal', () => {
   menuArr.value.forEach((item) => {
-    if (item.name === '云同步(C)') {
+    if (item.name === 'menu.cloudSync') {
       item.show = true
       return
     }
@@ -103,7 +121,7 @@ hotkeys('alt+c', 'windowGlobal', () => {
 })
 hotkeys('alt+h', 'windowGlobal', () => {
   menuArr.value.forEach((item) => {
-    if (item.name === '帮助(H)') {
+    if (item.name === 'menu.help') {
       item.show = true
       return
     }
@@ -126,26 +144,23 @@ const menuClick = (item: Menu) => {
 }
 const menuButtonClick = async (item: MenuItem) => {
   if (
-    item.name === '筛选库 导入新曲目' ||
-    item.name === '精选库 导入新曲目' ||
-    item.name === '手动添加曲目指纹' ||
-    item.name === '导出曲目指纹库文件' ||
-    item.name === '导入曲目指纹库文件' ||
-    item.name === '导出迁移文件' ||
-    item.name === '导入迁移文件'
+    item.name === 'library.importNewTracks' ||
+    item.name === 'fingerprints.manualAdd' ||
+    item.name === 'fingerprints.exportDatabase' ||
+    item.name === 'fingerprints.importDatabase'
   ) {
     if (runtime.isProgressing) {
       await confirm({
-        title: '导入',
-        content: [t('请等待当前导入任务完成')],
+        title: t('dialog.hint'),
+        content: [t('import.waitForTask')],
         confirmShow: false
       })
       return
     }
-    if (item.name === '筛选库 导入新曲目') {
+    if (item.action === 'import-new-filter') {
       await scanNewSongDialog({ libraryName: '筛选库', songListUuid: '' })
       return
-    } else if (item.name === '精选库 导入新曲目') {
+    } else if (item.action === 'import-new-curated') {
       await scanNewSongDialog({ libraryName: '精选库', songListUuid: '' })
       return
     }
@@ -178,7 +193,7 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
 }
 </script>
 <template>
-  <div class="title unselectable">FRKB - {{ t('快速音频整理工具') }}</div>
+  <div class="title unselectable">FRKB - {{ t('app.name') }}</div>
   <div class="titleComponent unselectable">
     <div
       style="

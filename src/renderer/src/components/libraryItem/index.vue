@@ -53,15 +53,15 @@ const myInputHandleInput = () => {
   let hintText = ''
 
   if (newName === '') {
-    hintText = t('必须提供歌单或文件夹名。')
+    hintText = t('library.nameRequired')
     hintShouldShow = true
   } else if (invalidCharsRegex.test(newName)) {
-    hintText = t('名称不能包含以下字符: < > : " / \\ | ? * 或控制字符')
+    hintText = t('library.nameInvalidChars')
     hintShouldShow = true
   } else {
     const exists = fatherDirData.children?.some((obj) => obj.dirName === newName)
     if (exists) {
-      hintText = t('此位置已存在歌单或文件夹') + newName + t('。请选择其他名称')
+      hintText = t('library.nameAlreadyExists', { name: newName })
       hintShouldShow = true
     }
   }
@@ -73,7 +73,7 @@ const myInputHandleInput = () => {
 const inputKeyDownEnter = () => {
   if (inputHintShow.value || operationInputValue.value === '') {
     if (!inputHintShow.value) {
-      inputHintText.value = t('必须提供歌单或文件夹名。')
+      inputHintText.value = t('library.nameRequired')
       inputHintShow.value = true
     }
     return
@@ -128,13 +128,17 @@ const rightClickMenuShow = ref(false)
 const menuArr = ref(
   dirData.type === 'dir'
     ? [
-        [{ menuName: '新建歌单' }, { menuName: '新建文件夹' }],
-        [{ menuName: '重命名' }, { menuName: '删除' }]
+        [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }],
+        [{ menuName: 'common.rename' }, { menuName: 'common.delete' }]
       ]
     : [
-        [{ menuName: '导入曲目' }, { menuName: '导出曲目' }],
-        [{ menuName: '重命名' }, { menuName: '删除歌单' }, { menuName: '清空歌单' }],
-        [{ menuName: '在文件资源管理器中显示' }]
+        [{ menuName: 'tracks.importTracks' }, { menuName: 'tracks.exportTracks' }],
+        [
+          { menuName: 'common.rename' },
+          { menuName: 'playlist.deletePlaylist' },
+          { menuName: 'playlist.emptyPlaylist' }
+        ],
+        [{ menuName: 'tracks.showInFileExplorer' }]
       ]
 )
 const deleteDir = async () => {
@@ -175,21 +179,21 @@ const contextmenuEvent = async (event: MouseEvent) => {
   let isSongListPathExist = await window.electron.ipcRenderer.invoke('dirPathExists', songListPath)
   if (!isSongListPathExist) {
     await confirm({
-      title: '错误',
-      content: [t('此歌单/文件夹在磁盘中不存在，可能已被手动删除')],
+      title: t('common.error'),
+      content: [t('library.notExistOnDisk')],
       confirmShow: false
     })
     deleteDir()
     return
   }
   if (runtime.libraryAreaSelected === '回收站') {
-    menuArr.value = [[{ menuName: '彻底删除' }]]
+    menuArr.value = [[{ menuName: 'recycleBin.permanentlyDelete' }]]
   }
   rightClickMenuShow.value = true
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
   rightClickMenuShow.value = false
   if (result !== 'cancel') {
-    if (result.menuName === '新建歌单') {
+    if (result.menuName === 'library.createPlaylist') {
       dirChildRendered.value = true
       dirChildShow.value = true
 
@@ -198,7 +202,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
         dirName: '',
         type: 'songList'
       })
-    } else if (result.menuName === '新建文件夹') {
+    } else if (result.menuName === 'library.createFolder') {
       dirChildRendered.value = true
       dirChildShow.value = true
 
@@ -207,14 +211,17 @@ const contextmenuEvent = async (event: MouseEvent) => {
         dirName: '',
         type: 'dir'
       })
-    } else if (result.menuName === '重命名') {
+    } else if (result.menuName === 'common.rename') {
       renameDivShow.value = true
       renameDivValue.value = dirData.dirName
       await nextTick()
       myRenameInput.value?.focus()
-    } else if (result.menuName === '删除' || result.menuName === '删除歌单') {
+    } else if (
+      result.menuName === 'common.delete' ||
+      result.menuName === 'playlist.deletePlaylist'
+    ) {
       deleteDir()
-    } else if (result.menuName === '清空歌单') {
+    } else if (result.menuName === 'playlist.emptyPlaylist') {
       let dirPath = libraryUtils.findDirPathByUuid(props.uuid)
       await window.electron.ipcRenderer.invoke('emptyDir', dirPath, getCurrentTimeDirName())
       if (runtime.songsArea.songListUUID === props.uuid) {
@@ -231,26 +238,26 @@ const contextmenuEvent = async (event: MouseEvent) => {
         })
         runtime.songsArea.songInfoArr = []
       }
-    } else if (result.menuName === '导入曲目') {
+    } else if (result.menuName === 'tracks.importTracks') {
       if (runtime.isProgressing) {
         await confirm({
-          title: t('导入'),
-          content: [t('请等待当前任务执行结束')],
+          title: t('dialog.hint'),
+          content: [t('import.waitForTask')],
           confirmShow: false
         })
         return
       }
       await scanNewSongDialog({ libraryName: props.libraryName, songListUuid: props.uuid })
-    } else if (result.menuName === '导出曲目') {
+    } else if (result.menuName === 'tracks.exportTracks') {
       if (runtime.isProgressing) {
         await confirm({
-          title: t('导入'),
-          content: [t('请等待当前任务执行结束')],
+          title: t('dialog.hint'),
+          content: [t('import.waitForTask')],
           confirmShow: false
         })
         return
       }
-      let result = await exportDialog({ title: '曲目' })
+      let result = await exportDialog({ title: 'tracks.title' })
       if (result !== 'cancel') {
         let folderPathVal = result.folderPathVal
         let deleteSongsAfterExport = result.deleteSongsAfterExport
@@ -272,15 +279,15 @@ const contextmenuEvent = async (event: MouseEvent) => {
           }
         }
       }
-    } else if (result.menuName === '在文件资源管理器中显示') {
+    } else if (result.menuName === 'tracks.showInFileExplorer') {
       window.electron.ipcRenderer.send(
         'openFileExplorer',
         libraryUtils.findDirPathByUuid(props.uuid)
       )
-    } else if (result.menuName === '彻底删除') {
+    } else if (result.menuName === 'recycleBin.permanentlyDelete') {
       let res = await confirm({
-        title: '删除',
-        content: [t('确认彻底删除吗？'), t('(曲目将在磁盘上被删除，但声音指纹依然会保留)')]
+        title: t('common.delete'),
+        content: [t('tracks.confirmDelete'), t('tracks.deleteHint')]
       })
       if (res === 'confirm') {
         const recycleBin = runtime.libraryTree.children?.find((item) => item.dirName === '回收站')
@@ -316,8 +323,8 @@ const dirHandleClick = async () => {
   let isSongListPathExist = await window.electron.ipcRenderer.invoke('dirPathExists', songListPath)
   if (!isSongListPathExist) {
     await confirm({
-      title: '错误',
-      content: [t('此歌单/文件夹在磁盘中不存在，可能已被手动删除')],
+      title: t('common.error'),
+      content: [t('library.notExistOnDisk')],
       confirmShow: false
     })
     deleteDir()
@@ -386,7 +393,7 @@ const renameInputBlurHandle = async () => {
 }
 const renameInputKeyDownEnter = () => {
   if (renameDivValue.value == '') {
-    renameInputHintText.value = t('必须提供歌单或文件夹名。')
+    renameInputHintText.value = t('library.nameRequired')
     renameInputHintShow.value = true
     return
   }
@@ -406,17 +413,17 @@ const renameMyInputHandleInput = () => {
   let hintText = ''
 
   if (newName === '') {
-    hintText = t('必须提供歌单或文件夹名。')
+    hintText = t('library.nameRequired')
     hintShouldShow = true
   } else if (invalidCharsRegex.test(newName)) {
-    hintText = t('名称不能包含以下字符: < > : " / \\ | ? * 或控制字符')
+    hintText = t('library.nameInvalidChars')
     hintShouldShow = true
   } else {
     const exists = fatherDirData.children?.some(
       (obj) => obj.dirName === newName && obj.uuid !== props.uuid
     )
     if (exists) {
-      hintText = t('此位置已存在歌单或文件夹') + newName + t('。请选择其他名称')
+      hintText = t('library.nameAlreadyExists', { name: newName })
       hintShouldShow = true
     }
   }

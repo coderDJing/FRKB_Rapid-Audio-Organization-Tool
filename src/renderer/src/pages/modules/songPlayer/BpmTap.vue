@@ -114,7 +114,7 @@ const resetManual = () => {
   <bubbleBox
     :dom="bpmDomRef || undefined"
     title="BPM"
-    :shortcut="t('左键节拍点按 / 右键恢复')"
+    :shortcut="t('player.tapBeat')"
     :maxWidth="250"
   />
 </template>

@@ -36,32 +36,32 @@ window.electron.ipcRenderer.on('layoutConfigReaded', (event, layoutConfig) => {
 const activeDialog = ref('')
 
 const openDialog = async (item: string) => {
-  if (item === '关于') {
+  if (item === '关于' || item === 'menu.about') {
     await confirm({
-      title: '关于',
+      title: t('menu.about'),
       content: [
-        t('当前版本') + ' ' + (pkg as any).version,
-        t("作者 Coder '程序猿/DJ'"),
-        t('对FRKB有任何建议或Booking我演出: jinlingwuyanzu@qq.com')
+        t('update.currentVersion') + ' ' + (pkg as any).version,
+        t('about.author'),
+        t('about.contact')
       ],
       confirmShow: false,
       canCopyText: true
     })
   }
-  if (item === '访问 GitHub') {
+  if (item === '访问 GitHub' || item === 'menu.visitGithub') {
     window.electron.ipcRenderer.send(
       'openLocalBrowser',
       'https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool'
     )
   }
-  if (item === '检查更新') {
+  if (item === '检查更新' || item === 'menu.checkUpdate') {
     window.electron.ipcRenderer.send('checkForUpdates')
   }
-  if (item === '退出') {
+  if (item === '退出' || item === 'menu.exit') {
     if (runtime.isProgressing === true) {
       await confirm({
-        title: '退出',
-        content: [t('请等待当前任务执行结束')],
+        title: t('common.exit'),
+        content: [t('import.waitForTask')],
         confirmShow: false
       })
       return
@@ -69,11 +69,11 @@ const openDialog = async (item: string) => {
       window.electron.ipcRenderer.send('toggle-close')
     }
   }
-  if (item === '云同步设置') {
+  if (item === '云同步设置' || item === 'cloudSync.settings') {
     activeDialog.value = item
     return
   }
-  if (item === '同步曲目指纹库') {
+  if (item === '同步曲目指纹库' || item === 'cloudSync.syncFingerprints') {
     activeDialog.value = item
     return
   }
@@ -92,14 +92,14 @@ const getLibrary = async () => {
 getLibrary()
 onMounted(() => {
   hotkeys('F1', 'windowGlobal', () => {
-    openDialog('访问 GitHub')
+    openDialog('menu.visitGithub')
   })
 
   const handleAltF4 = async () => {
     if (runtime.isProgressing === true) {
       await confirm({
-        title: '退出',
-        content: [t('请等待当前任务执行结束')],
+        title: t('common.exit'),
+        content: [t('import.waitForTask')],
         confirmShow: false
       })
     } else {

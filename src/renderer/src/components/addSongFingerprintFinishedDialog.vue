@@ -9,14 +9,10 @@ const props = defineProps<{
     durationMs: number
     scannedCount: number
     analyzeFailedCount: number
-    importedToPlaylistCount: number
     duplicatesRemovedCount: number
     fingerprintAddedCount: number
-    fingerprintAlreadyExistingCount: number
     fingerprintTotalBefore: number
     fingerprintTotalAfter: number
-    isComparisonSongFingerprint: boolean
-    isPushSongFingerprintLibrary: boolean
   } | null
 }>()
 const emits = defineEmits(['close'])
@@ -26,23 +22,19 @@ const formatDurationSec = (ms: number) => {
   if (seconds >= 10) return String(Math.round(seconds))
   return String(Math.round(seconds * 10) / 10)
 }
-
-const hasFingerprintSection = computed(() => {
-  return !!props.summary && props.summary.isPushSongFingerprintLibrary === true
-})
 </script>
 
 <template>
   <div class="dialog unselectable">
     <div class="inner">
-      <div class="title">{{ t('import.completed') }}</div>
+      <div class="title">{{ t('fingerprints.updateCompleted') }}</div>
       <div class="stats">
         <div class="section">
           <div class="section-title">{{ t('import.overview') }}</div>
           <div class="chips">
-            <div class="chip">
-              <div class="num">{{ summary?.importedToPlaylistCount || 0 }}</div>
-              <div class="cap">{{ t('import.importedToPlaylist') }}</div>
+            <div class="chip" :class="{ success: (summary?.fingerprintAddedCount || 0) > 0 }">
+              <div class="num">{{ summary?.fingerprintAddedCount || 0 }}</div>
+              <div class="cap">{{ t('import.newFingerprints') }}</div>
             </div>
             <div class="chip">
               <div class="num">{{ summary?.duplicatesRemovedCount || 0 }}</div>
@@ -58,20 +50,7 @@ const hasFingerprintSection = computed(() => {
             </div>
           </div>
         </div>
-        <div class="section" v-if="hasFingerprintSection">
-          <div class="section-title">{{ t('import.fingerprintChanges') }}</div>
-          <div class="chips">
-            <div class="chip" :class="{ success: (summary?.fingerprintAddedCount || 0) > 0 }">
-              <div class="num">{{ summary?.fingerprintAddedCount || 0 }}</div>
-              <div class="cap">{{ t('import.newFingerprints') }}</div>
-            </div>
-            <div class="chip">
-              <div class="num">{{ summary?.fingerprintAlreadyExistingCount || 0 }}</div>
-              <div class="cap">{{ t('import.alreadyExists') }}</div>
-            </div>
-          </div>
-        </div>
-        <div class="section" v-if="hasFingerprintSection">
+        <div class="section">
           <div class="section-title">{{ t('import.totalFingerprints') }}</div>
           <div class="section-body">
             <span class="count-pair">
@@ -137,23 +116,6 @@ const hasFingerprintSection = computed(() => {
   flex-wrap: wrap;
   gap: 10px;
 }
-.row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.row .label {
-  width: 90px;
-  min-width: 90px;
-  text-align: right;
-  color: #bdbdbd;
-}
-.row .value {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
 .chips {
   display: flex;
   gap: 12px;
@@ -185,14 +147,6 @@ const hasFingerprintSection = computed(() => {
 }
 .chip.success .num {
   color: #9fe870;
-}
-.big {
-  font-size: 14px;
-  color: #e5e5e5;
-  font-weight: 600;
-}
-.muted {
-  color: #a8a8a8;
 }
 .count-pair {
   display: inline-flex;

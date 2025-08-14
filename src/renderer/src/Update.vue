@@ -85,7 +85,7 @@ window.electron.ipcRenderer.on('updateDownloaded', (event) => {
     class="unselectable"
   >
     <div>
-      <div class="title unselectable">{{ t('检查更新') }}</div>
+      <div class="title unselectable">{{ t('menu.checkUpdate') }}</div>
       <div class="titleComponent unselectable">
         <div
           style="
@@ -149,8 +149,8 @@ window.electron.ipcRenderer.on('updateDownloaded', (event) => {
         flex-direction: column;
       "
     >
-      <div>{{ t('没有可用的更新') }}</div>
-      <div style="margin-top: 15px">{{ t('当前版本') }} {{ latestVersion }}</div>
+      <div>{{ t('update.noUpdatesAvailable') }}</div>
+      <div style="margin-top: 15px">{{ t('update.currentVersion') }} {{ latestVersion }}</div>
     </div>
     <div
       v-else-if="state === 'isError'"
@@ -162,11 +162,11 @@ window.electron.ipcRenderer.on('updateDownloaded', (event) => {
         flex-direction: column;
       "
     >
-      <div>{{ t('更新失败') }}</div>
+      <div>{{ t('update.updateFailed') }}</div>
       <div
         style="margin-top: 15px; max-width: 80%; word-wrap: break-word; overflow-wrap: break-word"
       >
-        {{ t('可能由于网络连接问题，请检查您的网络连接或尝试使用代理服务器。') }}
+        {{ t('update.networkIssue') }}
       </div>
     </div>
     <div
@@ -179,12 +179,12 @@ window.electron.ipcRenderer.on('updateDownloaded', (event) => {
         flex-direction: column;
       "
     >
-      <div>{{ t('发现新版本') }} {{ newVersionInfo.version }}</div>
+      <div>{{ t('update.newVersion') }} {{ newVersionInfo.version }}</div>
       <div style="margin-top: 15px">
-        {{ t('发布日期') }} {{ convertISOToCustomFormat(newVersionInfo.releaseDate) }}
+        {{ t('update.releaseDate') }} {{ convertISOToCustomFormat(newVersionInfo.releaseDate) }}
       </div>
       <div style="margin-top: 20px; display: flex; justify-content: center">
-        <div class="button" @click="startDownload()">{{ t('开始更新') }}</div>
+        <div class="button" @click="startDownload()">{{ t('update.startUpdate') }}</div>
       </div>
     </div>
     <div
@@ -197,7 +197,9 @@ window.electron.ipcRenderer.on('updateDownloaded', (event) => {
         flex-direction: column;
       "
     >
-      <div>{{ t('正在下载更新') }} {{ convertBytesToUnits(progress.bytesPerSecond) }}</div>
+      <div>
+        {{ t('update.downloadingUpdate') }} {{ convertBytesToUnits(progress.bytesPerSecond) }}
+      </div>
       <div style="width: 90%; margin-top: 15px; border: 1px solid #ccc; position: relative">
         <div
           :style="{ width: progress.percent.toFixed(2) + '%' }"
@@ -229,7 +231,7 @@ window.electron.ipcRenderer.on('updateDownloaded', (event) => {
       "
     >
       <div style="max-width: 80%; word-wrap: break-word; overflow-wrap: break-word">
-        {{ t('更新已下载，FRKB将在下次启动时自动升级') }}
+        {{ t('update.updateDownloaded') }}
       </div>
     </div>
   </div>

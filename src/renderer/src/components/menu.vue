@@ -19,7 +19,10 @@ watch(
 )
 const props = defineProps({
   menuArr: {
-    type: Array as PropType<{ name: string; shortcutKey?: string }[][]>,
+    // 支持 i18n 参数与动作标识
+    type: Array as PropType<
+      { name: string; shortcutKey?: string; i18nParams?: Record<string, any>; action?: string }[][]
+    >,
     required: true
   },
   modelValue: {
@@ -91,7 +94,7 @@ watch(
   }
 )
 
-const menuButtonClick = (item: { name: string; shortcutKey?: string }) => {
+const menuButtonClick = (item: { name: string; shortcutKey?: string; action?: string }) => {
   runtime.activeMenuUUID = ''
   emits('menuButtonClick', item)
 }
@@ -120,7 +123,7 @@ const selectedMenuButton = ref('')
         "
         @contextmenu="menuButtonClick(button)"
       >
-        <span>{{ t(button.name) }}</span>
+        <span>{{ t(button.name as any, (button as any).i18nParams) }}</span>
         <span>{{ button.shortcutKey }}</span>
       </div>
     </div>
