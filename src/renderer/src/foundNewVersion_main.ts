@@ -1,8 +1,9 @@
-import { createApp } from 'vue'
+import { createApp, watch } from 'vue'
 import { createPinia } from 'pinia'
 import App from './FoundNewVersion.vue'
 import './styles/main.scss'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import { i18n } from '@renderer/i18n'
 
 const pinia = createPinia()
 const app = createApp(App)
@@ -13,10 +14,25 @@ app.config.errorHandler = (err: Error) => {
 }
 
 app.use(pinia)
+app.use(i18n)
 
 async function initializeApp() {
   const runtime = useRuntimeStore()
   runtime.setting = await window.electron.ipcRenderer.invoke('getSetting')
+  // 根据设置更新i18n语言
+  const { setLocale } = await import('@renderer/i18n')
+  if (runtime.setting.language === 'enUS') {
+    setLocale('en-US')
+  } else {
+    setLocale('zh-CN')
+  }
+  // 监听设置中的语言变更，实时应用到 i18n
+  watch(
+    () => runtime.setting.language,
+    (lang) => {
+      i18n.global.locale.value = lang === 'enUS' ? 'en-US' : 'zh-CN'
+    }
+  )
   app.mount('#app')
 }
 
