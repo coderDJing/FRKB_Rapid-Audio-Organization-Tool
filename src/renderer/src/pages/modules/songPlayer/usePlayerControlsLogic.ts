@@ -250,11 +250,8 @@ export function usePlayerControlsLogic({
         if (isInRecycleBin) {
           // 在回收站，询问是否彻底删除
           const res = await confirm({
-            title: '删除',
-            content: [
-              t('确定彻底删除正在播放的曲目吗'),
-              t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')
-            ]
+            title: t('common.delete'),
+            content: [t('tracks.confirmDeletePlaying'), t('tracks.deleteHint')]
           })
           if (res === 'confirm') {
             performDelete = true
@@ -540,7 +537,7 @@ export function usePlayerControlsLogic({
     }
 
     // 弹出导出对话框
-    let result = await exportDialog({ title: '曲目' })
+    let result = await exportDialog({ title: 'tracks.title' })
     if (result !== 'cancel') {
       let folderPathVal = result.folderPathVal
       let deleteSongsAfterExport = result.deleteSongsAfterExport

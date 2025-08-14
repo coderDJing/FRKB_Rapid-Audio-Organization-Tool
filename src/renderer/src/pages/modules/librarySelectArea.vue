@@ -22,22 +22,26 @@ const iconArr = ref<Icon[]>([
     grey: listGrey,
     white: listWhite,
     src: listGrey,
-    showAlt: false
-  },
+    showAlt: false,
+    // i18n key for tooltip
+    i18nKey: 'library.filter'
+  } as any,
   {
     name: '精选库',
     grey: likeGrey,
     white: likeWhite,
     src: likeGrey,
-    showAlt: false
-  },
+    showAlt: false,
+    i18nKey: 'library.curated'
+  } as any,
   {
     name: '回收站',
     grey: trashGrey,
     white: trashWhite,
     src: trashGrey,
-    showAlt: false
-  }
+    showAlt: false,
+    i18nKey: 'recycleBin.recycleBin'
+  } as any
 ])
 
 const selectedIcon = ref(iconArr.value[0])
@@ -89,6 +93,7 @@ type ButtomIcon = {
   white: string
   src: string
   showAlt: boolean
+  i18nKey?: string
 }
 const buttomIconArr = ref<ButtomIcon[]>([
   {
@@ -96,7 +101,8 @@ const buttomIconArr = ref<ButtomIcon[]>([
     grey: settingGrey,
     white: settingWhite,
     src: settingGrey,
-    showAlt: false
+    showAlt: false,
+    i18nKey: 'common.setting'
   }
 ])
 
@@ -144,7 +150,10 @@ const iconDragEnter = (event: DragEvent, item: Icon) => {
           @click="libraryHandleClick(item)"
         >
           <img :src="item.src" draggable="false" :ref="(el) => setIconRef(item.name, el)" />
-          <bubbleBox :dom="iconRefMap[item.name] || undefined" :title="t(item.name)" />
+          <bubbleBox
+            :dom="iconRefMap[item.name] || undefined"
+            :title="t((item as any).i18nKey || item.name)"
+          />
         </div>
       </div>
     </div>
@@ -168,7 +177,10 @@ const iconDragEnter = (event: DragEvent, item: Icon) => {
           "
         >
           <img :src="item.src" draggable="false" :ref="(el) => setIconRef(item.name, el)" />
-          <bubbleBox :dom="iconRefMap[item.name] || undefined" :title="t(item.name)" />
+          <bubbleBox
+            :dom="iconRefMap[item.name] || undefined"
+            :title="t(item.i18nKey || 'common.setting')"
+          />
         </div>
       </div>
     </div>

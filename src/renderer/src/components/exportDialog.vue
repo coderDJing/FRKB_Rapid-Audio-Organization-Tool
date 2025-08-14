@@ -120,12 +120,12 @@ onUnmounted(() => {
     >
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
-          <span style="font-weight: bold">{{ t(props.title) }} {{ t('导出') }}</span>
+          <span style="font-weight: bold">{{ t(props.title) }} {{ t('export.exportTo') }}</span>
         </div>
         <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
           <div style="display: flex">
             <div class="formLabel">
-              <span>{{ t('导出到文件夹') }}：</span>
+              <span>{{ t('tracks.exportToFolder') }}：</span>
             </div>
             <div style="width: 290px">
               <div
@@ -140,7 +140,7 @@ onUnmounted(() => {
           </div>
           <div style="margin-top: 30px; display: flex">
             <div class="formLabel" style="text-align: right">
-              <span>{{ t('导出后删除曲目') }}：</span>
+              <span>{{ t('tracks.deleteAfterExport') }}：</span>
             </div>
             <div style="flex: 1; width: 21px; height: 21px; display: flex; align-items: center">
               <singleCheckbox v-model="deleteSongsAfterExport" />
@@ -149,8 +149,10 @@ onUnmounted(() => {
         </div>
       </div>
       <div style="display: flex; justify-content: center; padding-bottom: 10px">
-        <div class="button" style="margin-right: 10px" @click="confirm()">{{ t('确定') }} (E)</div>
-        <div class="button" @click="cancel()">{{ t('取消') }} (Esc)</div>
+        <div class="button" style="margin-right: 10px" @click="confirm()">
+          {{ t('common.confirm') }} (E)
+        </div>
+        <div class="button" @click="cancel()">{{ t('common.cancel') }} (Esc)</div>
       </div>
     </div>
   </div>

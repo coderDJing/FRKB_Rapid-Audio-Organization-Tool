@@ -49,62 +49,62 @@ const { isDragging, startDragSongs, endDragSongs, handleDropToSongList } = useDr
 
 const defaultColumns: ISongsAreaColumn[] = [
   {
-    columnName: '序号',
+    columnName: 'columns.index',
     key: 'index',
     show: true,
     width: 60
   },
   {
-    columnName: '专辑封面',
+    columnName: 'columns.cover',
     key: 'coverUrl',
     show: true,
     width: 100
   },
   {
-    columnName: '曲目标题',
+    columnName: 'columns.title',
     key: 'title',
     show: true,
     width: 250
   },
   {
-    columnName: '表演者',
+    columnName: 'columns.artist',
     key: 'artist',
     show: true,
     width: 200,
     order: 'asc'
   },
   {
-    columnName: '时长',
+    columnName: 'columns.duration',
     key: 'duration',
     show: true,
     width: 100
   },
   {
-    columnName: '专辑',
+    columnName: 'columns.album',
     key: 'album',
     show: true,
     width: 200
   },
   {
-    columnName: '风格',
+    columnName: 'columns.genre',
     key: 'genre',
     show: true,
     width: 200
   },
   {
-    columnName: '唱片公司',
+    columnName: 'columns.label',
     key: 'label',
     show: true,
     width: 200
   },
   {
-    columnName: '比特率',
+    columnName: 'columns.bitrate',
     key: 'bitrate',
     show: true,
     width: 200
   },
   {
-    columnName: '编码格式',
+    columnName: 'columns.format',
     key: 'container',
     show: true,
     width: 200
@@ -539,8 +539,8 @@ const handleDeleteKey = async () => {
   let shouldDelete = true
   if (isInRecycleBin) {
     let res = await confirm({
-      title: '删除',
-      content: [t('确定彻底删除选中的曲目吗'), t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')]
+      title: t('common.delete'),
+      content: [t('tracks.confirmDeleteSelected'), t('tracks.deleteHint')]
     })
     shouldDelete = res === 'confirm'
   }
@@ -916,10 +916,10 @@ watch(
         "
       >
         <div style="font-size: 16px; color: #999999">
-          {{ t('暂无曲目') }}
+          {{ t('tracks.noTracks') }}
         </div>
         <div style="font-size: 12px; color: #999999; margin-top: 10px">
-          {{ t('导入曲目到歌单中，或通过拖拽文件夹或音频文件进行导入。') }}
+          {{ t('tracks.noTracksHint') }}
         </div>
       </div>
     </OverlayScrollbarsComponent>

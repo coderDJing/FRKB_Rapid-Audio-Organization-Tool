@@ -117,8 +117,8 @@ const handleSongLoadError = async (filePath: string | null, isPreload: boolean) 
     bpm.value = 'N/A'
 
     let res = await confirm({
-      title: '错误',
-      content: [t('该文件无法播放，是否直接删除'), t('（文件内容不是音频或文件已损坏）')]
+      title: t('common.error'),
+      content: [t('tracks.cannotPlay'), t('tracks.cannotPlayHint')]
     })
 
     if (res === 'confirm') {
@@ -749,8 +749,8 @@ const showCoverContextMenu = async (event: MouseEvent) => {
     if (currentSong?.cover && coverBlobUrl.value) {
       contextMenuCoverSnapshot.value = {
         blobUrl: coverBlobUrl.value,
-        songTitle: currentSong.title || t('未知曲目'),
-        artist: currentSong.artist || t('未知艺术家'),
+        songTitle: currentSong.title || t('tracks.unknownTrack'),
+        artist: currentSong.artist || t('tracks.unknownArtist'),
         format: currentSong.cover.format || 'image/jpeg'
       }
     }
@@ -758,7 +758,7 @@ const showCoverContextMenu = async (event: MouseEvent) => {
     const menuArr = [
       [
         {
-          menuName: '封面另存为',
+          menuName: 'tracks.saveCoverAs',
           shortcutKey: ''
         }
       ]
@@ -768,7 +768,7 @@ const showCoverContextMenu = async (event: MouseEvent) => {
 
     isShowingContextMenu.value = false
 
-    if (result !== 'cancel' && result.menuName === '封面另存为') {
+    if (result !== 'cancel' && result.menuName === 'tracks.saveCoverAs') {
       saveCoverAs()
     }
 

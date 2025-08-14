@@ -95,12 +95,12 @@ onUnmounted(() => {
     >
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
-          <span style="font-weight: bold">{{ t('手动添加曲目指纹') }}</span>
+          <span style="font-weight: bold">{{ t('fingerprints.manualAdd') }}</span>
         </div>
         <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
           <div style="display: flex">
             <div class="formLabel">
-              <span>{{ t('选择文件夹') }}：</span>
+              <span>{{ t('database.selectLocation') }}：</span>
             </div>
             <div style="width: 310px">
               <div
@@ -114,11 +114,7 @@ onUnmounted(() => {
             </div>
           </div>
           <div style="padding-top: 40px; font-size: 12px; display: flex">
-            {{
-              t(
-                '仅对目标文件夹及其子文件夹下的所有音频文件进行声音指纹分析，并且仅将分析结果入库，不会改动目标文件夹下的任何文件内容和结构'
-              )
-            }}
+            {{ t('fingerprints.analysisHint') }}
           </div>
         </div>
       </div>
@@ -128,10 +124,10 @@ onUnmounted(() => {
           style="margin-right: 10px; width: 90px; text-align: center"
           @click="confirm()"
         >
-          {{ t('确定') }} (E)
+          {{ t('common.confirm') }} (E)
         </div>
         <div class="button" style="width: 90px; text-align: center" @click="cancel()">
-          {{ t('取消') }} (Esc)
+          {{ t('common.cancel') }} (Esc)
         </div>
       </div>
     </div>

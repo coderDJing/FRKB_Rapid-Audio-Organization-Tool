@@ -111,8 +111,8 @@ const extChange = async () => {
   if (runtime.isProgressing) {
     audioExt.value = { ...audioExtOld }
     await confirm({
-      title: '设置',
-      content: [t('请等待当前任务执行结束')],
+      title: t('common.setting'),
+      content: [t('import.waitForTask')],
       confirmShow: false
     })
     return
@@ -132,15 +132,15 @@ const extChange = async () => {
 const clearTracksFingerprintLibrary = async () => {
   if (runtime.isProgressing) {
     await confirm({
-      title: '设置',
-      content: [t('请等待当前任务执行结束')],
+      title: t('common.setting'),
+      content: [t('import.waitForTask')],
       confirmShow: false
     })
     return
   }
   let resConfirm = await confirm({
-    title: '警告',
-    content: [t('确定要清除当前曲目指纹库吗？')]
+    title: t('common.warning'),
+    content: [t('fingerprints.confirmClear')]
   })
   if (resConfirm === 'confirm') {
     try {
@@ -148,21 +148,21 @@ const clearTracksFingerprintLibrary = async () => {
       if (result && result.success) {
         await getSongFingerprintListLength()
         await confirm({
-          title: '设置',
-          content: [t('清除完成')],
+          title: t('common.setting'),
+          content: [t('fingerprints.clearCompleted')],
           confirmShow: false
         })
       } else {
         await confirm({
-          title: '设置',
-          content: [t('清除失败'), String(result?.message || '')],
+          title: t('common.setting'),
+          content: [t('fingerprints.clearFailed'), String(result?.message || '')],
           confirmShow: false
         })
       }
     } catch (error) {
       await confirm({
-        title: '设置',
-        content: [t('清除失败'), String((error as any)?.message || '')],
+        title: t('common.setting'),
+        content: [t('fingerprints.clearFailed'), String((error as any)?.message || '')],
         confirmShow: false
       })
     }
@@ -176,18 +176,15 @@ const globalCallShortcutHandle = async () => {
 const reSelectLibrary = async () => {
   if (runtime.isProgressing) {
     await confirm({
-      title: '设置',
-      content: [t('请等待当前任务执行结束')],
+      title: t('common.setting'),
+      content: [t('import.waitForTask')],
       confirmShow: false
     })
     return
   }
   let res = await confirm({
-    title: '提示',
-    content: [
-      t('当前使用的数据库文件夹仍保留在原位置，可手动删除或重新选择继续使用。'),
-      t('确认重新选择数据库所在位置？')
-    ],
+    title: t('dialog.hint'),
+    content: [t('database.locationRetain'), t('database.reselectConfirm')],
     confirmShow: true
   })
   if (res === 'confirm') {
@@ -211,7 +208,7 @@ const hint1Ref = useTemplateRef<HTMLImageElement>('hint1Ref')
     >
       <div style="height: 100%; display: flex; flex-direction: column">
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
-          <span style="font-weight: bold">{{ t('设置') }}</span>
+          <span style="font-weight: bold">{{ t('common.setting') }}</span>
         </div>
         <OverlayScrollbarsComponent
           :options="{
@@ -230,32 +227,32 @@ const hint1Ref = useTemplateRef<HTMLImageElement>('hint1Ref')
           defer
         >
           <div style="padding: 20px; font-size: 14px; flex-grow: 1">
-            <div>{{ t('语言') }}：</div>
+            <div>{{ t('common.language') }}：</div>
             <div style="margin-top: 10px">
               <select v-model="runtime.setting.language" @change="setSetting">
                 <option value="zhCN">简体中文</option>
                 <option value="enUS">English</option>
               </select>
             </div>
-            <div style="margin-top: 20px">{{ t('自动播放下一曲') }}：</div>
+            <div style="margin-top: 20px">{{ t('player.autoPlayNext') }}：</div>
             <div style="margin-top: 10px">
               <singleCheckbox v-model="runtime.setting.autoPlayNextSong" @change="setSetting()" />
             </div>
-            <div style="margin-top: 20px">{{ t('启用区间播放') }}：</div>
+            <div style="margin-top: 20px">{{ t('player.enablePlaybackRange') }}：</div>
             <div style="margin-top: 10px">
               <singleCheckbox
                 v-model="runtime.setting.enablePlaybackRange"
                 @change="setSetting()"
               />
             </div>
-            <div style="margin-top: 20px">{{ t('隐藏播放控制区域，显示更长的波形图') }}：</div>
+            <div style="margin-top: 20px">{{ t('player.hideControlsShowWaveform') }}：</div>
             <div style="margin-top: 10px">
               <singleCheckbox
                 v-model="runtime.setting.hiddenPlayControlArea"
                 @change="setSetting()"
               />
             </div>
-            <div style="margin-top: 20px">{{ t('扫描音频格式') }}：</div>
+            <div style="margin-top: 20px">{{ t('fingerprints.scanFormats') }}：</div>
             <div style="margin-top: 10px; display: flex">
               <span style="margin-right: 10px">.mp3</span>
               <singleCheckbox v-model="audioExt.mp3" @change="extChange()" />
@@ -264,7 +261,7 @@ const hint1Ref = useTemplateRef<HTMLImageElement>('hint1Ref')
               <span style="margin-right: 10px; margin-left: 10px">.flac</span>
               <singleCheckbox v-model="audioExt.flac" @change="extChange()" />
             </div>
-            <div style="margin-top: 20px">{{ t('聚焦/最小化 FRKB 窗口快捷键') }}：</div>
+            <div style="margin-top: 20px">{{ t('shortcuts.globalCallShortcut') }}：</div>
             <div style="margin-top: 10px">
               <div
                 class="chooseDirDiv"
@@ -274,7 +271,7 @@ const hint1Ref = useTemplateRef<HTMLImageElement>('hint1Ref')
                 {{ runtime.setting.globalCallShortcut }}
               </div>
             </div>
-            <div style="margin-top: 20px">{{ t('快进时长') }}：</div>
+            <div style="margin-top: 20px">{{ t('player.fastForwardTime') }}：</div>
             <div style="margin-top: 10px">
               <input
                 class="myInput"
@@ -290,9 +287,9 @@ const hint1Ref = useTemplateRef<HTMLImageElement>('hint1Ref')
                 "
                 @blur="setSetting()"
               />
-              {{ t('秒') }}
+              {{ t('player.seconds') }}
             </div>
-            <div style="margin-top: 20px">{{ t('快退时长') }}：</div>
+            <div style="margin-top: 20px">{{ t('player.fastBackwardTime') }}：</div>
             <div style="margin-top: 10px">
               <input
                 class="myInput"
@@ -308,18 +305,16 @@ const hint1Ref = useTemplateRef<HTMLImageElement>('hint1Ref')
                 "
                 @blur="setSetting()"
               />
-              {{ t('秒') }}
+              {{ t('player.seconds') }}
             </div>
-            <div style="margin-top: 20px">
-              {{ t('切换歌曲时，自动滚动列表将当前歌曲置于视图中央') }}：
-            </div>
+            <div style="margin-top: 20px">{{ t('player.autoCenterSong') }}：</div>
             <div style="margin-top: 10px">
               <singleCheckbox
                 v-model="runtime.setting.autoScrollToCurrentSong"
                 @change="setSetting()"
               />
             </div>
-            <div style="margin-top: 20px">{{ t('最近使用歌单缓存数量') }}：</div>
+            <div style="margin-top: 20px">{{ t('player.recentPlaylistCache') }}：</div>
             <div style="margin-top: 10px">
               <input
                 class="myInput"
@@ -336,18 +331,18 @@ const hint1Ref = useTemplateRef<HTMLImageElement>('hint1Ref')
                 @blur="updateRecentDialogCacheMaxCount()"
               />
             </div>
-            <div style="margin-top: 20px">{{ t('重新选择数据库所在位置') }}：</div>
+            <div style="margin-top: 20px">{{ t('database.reselectLocation') }}：</div>
             <div style="margin-top: 10px">
               <div
                 class="button"
                 style="width: 90px; text-align: center"
                 @click="reSelectLibrary()"
               >
-                {{ t('重新选择') }}
+                {{ t('dialog.reselect') }}
               </div>
             </div>
             <div style="margin-top: 20px">
-              {{ t('清除曲目指纹库') }}：
+              {{ t('fingerprints.clear') }}：
               <img
                 ref="hint1Ref"
                 :src="hintIcon"
@@ -356,7 +351,7 @@ const hint1Ref = useTemplateRef<HTMLImageElement>('hint1Ref')
               />
               <bubbleBox
                 :dom="hint1Ref || undefined"
-                :title="t('曲目指纹库中目前有 ') + songFingerprintListLength + t(' 首曲目')"
+                :title="t('fingerprints.currentCount', { count: songFingerprintListLength })"
                 :maxWidth="220"
               />
             </div>
@@ -366,13 +361,13 @@ const hint1Ref = useTemplateRef<HTMLImageElement>('hint1Ref')
                 style="width: 90px; text-align: center"
                 @click="clearTracksFingerprintLibrary()"
               >
-                {{ t('清除') }}
+                {{ t('fingerprints.clear') }}
               </div>
             </div>
           </div>
         </OverlayScrollbarsComponent>
         <div style="display: flex; justify-content: center; padding-bottom: 10px; height: 30px">
-          <div class="button" @click="cancel">{{ t('关闭') }} (Esc)</div>
+          <div class="button" @click="cancel">{{ t('common.close') }} (Esc)</div>
         </div>
       </div>
     </div>
