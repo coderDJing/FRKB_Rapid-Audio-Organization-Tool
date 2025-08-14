@@ -9,7 +9,7 @@ import bubbleBox from '@renderer/components/bubbleBox.vue'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'
-import { t } from '@renderer/utils/translate'
+import { t, toLibraryDisplayName } from '@renderer/utils/translate'
 const uuid = uuidV4()
 const props = defineProps({
   songListUuid: {
@@ -148,7 +148,7 @@ onUnmounted(() => {
 
 const songListSelectedDisplay = computed(() => {
   let arr = songListSelected.value.split('\\')
-  arr[0] = t(arr[0])
+  arr[0] = toLibraryDisplayName(arr[0])
   return arr.join('\\')
 })
 </script>
@@ -166,12 +166,14 @@ const songListSelectedDisplay = computed(() => {
     >
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
-          <span style="font-weight: bold">{{ t(props.libraryName) }} {{ t('导入新曲目') }}</span>
+          <span style="font-weight: bold">{{
+            t('library.importNewTracks', { libraryType: t(props.libraryName) })
+          }}</span>
         </div>
         <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
           <div style="margin-top: 10px; display: flex">
             <div class="formLabel">
-              <span>{{ t('选择歌单') }}：</span>
+              <span>{{ t('library.selectPlaylist') }}：</span>
             </div>
 
             <div style="width: 300px">
@@ -187,7 +189,7 @@ const songListSelectedDisplay = computed(() => {
           </div>
           <div style="margin-top: 30px; display: flex">
             <div class="formLabel settingLabel">
-              <span>{{ t('导入后删除原文件') }}：</span>
+              <span>{{ t('library.deleteAfterImport') }}：</span>
             </div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
               <singleCheckbox v-model="settingData.isDeleteSourceFile" />
@@ -195,7 +197,7 @@ const songListSelectedDisplay = computed(() => {
           </div>
           <div style="margin-top: 10px; display: flex">
             <div class="formLabel settingLabel">
-              <span>{{ t('比对声音指纹库去重') }}：</span>
+              <span>{{ t('library.deduplicateFingerprints') }}：</span>
             </div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
               <singleCheckbox v-model="settingData.isComparisonSongFingerprint" />
@@ -209,18 +211,14 @@ const songListSelectedDisplay = computed(() => {
               />
               <bubbleBox
                 :dom="hint1Ref || undefined"
-                :title="
-                  t(
-                    '将对所有导入过并加入声音指纹库的曲目进行比对，重复的曲目将不会被导入，哪怕它曾经已被删除'
-                  )
-                "
+                :title="t('library.deduplicateHint')"
                 :maxWidth="220"
               />
             </div>
           </div>
           <div style="margin-top: 10px; display: flex">
             <div class="formLabel settingLabel">
-              <span>{{ t('加入声音指纹库') }}：</span>
+              <span>{{ t('library.addToFingerprintLibrary') }}：</span>
             </div>
             <div style="width: 21px; height: 21px; display: flex; align-items: center">
               <singleCheckbox v-model="settingData.isPushSongFingerprintLibrary" />
@@ -234,11 +232,7 @@ const songListSelectedDisplay = computed(() => {
               />
               <bubbleBox
                 :dom="hint2Ref || undefined"
-                :title="
-                  t(
-                    '将导入的曲目根据曲目内容本身进行声音指纹分析，并将分析结果永久入库，供去重比对使用，哪怕曲目本身已经被删除分析结果仍会存在'
-                  )
-                "
+                :title="t('library.fingerprintHint')"
                 :maxWidth="240"
               />
             </div>
@@ -252,10 +246,10 @@ const songListSelectedDisplay = computed(() => {
           style="margin-right: 10px; width: 90px; text-align: center"
           @click="confirm()"
         >
-          {{ t('确定') }} (E)
+          {{ t('common.confirm') }} (E)
         </div>
         <div class="button" @click="cancel()" style="width: 90px; text-align: center">
-          {{ t('取消') }} (Esc)
+          {{ t('common.cancel') }} (Esc)
         </div>
       </div>
     </div>

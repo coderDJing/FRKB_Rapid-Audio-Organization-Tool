@@ -80,14 +80,8 @@ onUnmounted(() => {
 
 window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event, databaseUrl) => {
   await confirm({
-    title: '错误',
-    content: [
-      databaseUrl,
-      t('位于此位置的数据库已无法读取'),
-      t(
-        '数据库可能已被移动或其必要文件结构已损坏。如果确认数据库未被移动，重新选择此位置将尝试修复数据库。'
-      )
-    ],
+    title: t('common.error'),
+    content: [databaseUrl, t('database.cannotRead'), t('database.possibleDamage')],
     confirmShow: false
   })
 })
@@ -103,13 +97,13 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
       class="canDrag"
     >
       <span style="font-weight: bold" class="title unselectable">{{
-        t('请选择数据存储位置')
+        t('database.selectLocation')
       }}</span>
     </div>
     <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px; height: 200px">
       <div style="display: flex">
         <div class="formLabel">
-          <span>{{ t('选择文件夹') }}：</span>
+          <span>{{ t('library.selectFolder') }}：</span>
         </div>
         <div style="flex-grow: 1; overflow: hidden">
           <div
@@ -123,10 +117,10 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
         </div>
       </div>
       <div style="padding-top: 30px; font-size: 12px; display: flex">
-        {{ t('用户的曲目及曲目指纹信息将储存在此处，请确保此文件夹有足够空间') }}
+        {{ t('database.storageHint') }}
       </div>
       <div style="padding-top: 10px; font-size: 12px; display: flex">
-        {{ t('如果目标文件夹下已经存在FRKB数据库文件夹，‌那么将会直接使用已有的数据库内容') }}
+        {{ t('database.existingHint') }}
       </div>
     </div>
     <div style="display: flex; justify-content: center; padding-bottom: 10px">
@@ -135,10 +129,10 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
         style="margin-right: 10px; width: 90px; text-align: center"
         @click="submitConfirm()"
       >
-        {{ t('确定') }} (E)
+        {{ t('common.confirm') }} (E)
       </div>
       <div class="button" style="width: 90px; text-align: center" @click="cancel()">
-        {{ t('退出') }} (Esc)
+        {{ t('menu.exit') }} (Esc)
       </div>
     </div>
   </div>

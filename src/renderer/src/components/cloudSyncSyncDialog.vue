@@ -3,10 +3,12 @@ import { onMounted, onUnmounted, ref, computed } from 'vue'
 import { v4 as uuidV4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import utils from '@renderer/utils/utils'
-import { t } from '@renderer/utils/translate'
+import { useI18n } from '@renderer/composables/useI18n'
 import confirm from '@renderer/components/confirmDialog'
 const emits = defineEmits(['cancel'])
 const uuid = uuidV4()
+
+const { t } = useI18n()
 
 const configured = ref<boolean | null>(null)
 const syncing = ref(false)
@@ -19,12 +21,12 @@ const summary = ref<any | null>(null)
 const progressDetails = ref<any>({})
 
 const stages = [
-  { key: 'checking', label: '检查中' },
-  { key: 'diffing', label: '比对中' },
-  { key: 'analyzing', label: '分析中' },
-  { key: 'pulling', label: '拉取中' },
-  { key: 'committing', label: '提交中' },
-  { key: 'finalizing', label: '收尾' }
+  { key: 'checking', label: 'cloudSync.phases.checking' },
+  { key: 'diffing', label: 'cloudSync.phases.diffing' },
+  { key: 'analyzing', label: 'cloudSync.phases.analyzing' },
+  { key: 'pulling', label: 'cloudSync.phases.pulling' },
+  { key: 'committing', label: 'cloudSync.phases.committing' },
+  { key: 'finalizing', label: 'cloudSync.phases.finalizing' }
 ]
 const phaseIndexMap: Record<string, number> = stages.reduce(
   (acc, s, i) => {
@@ -38,11 +40,11 @@ const currentPhaseIndex = computed(() => phaseIndexMap[phase.value] ?? -1)
 const startSync = async () => {
   const res = await window.electron.ipcRenderer.invoke('cloudSync/start')
   if (res === 'not_configured') {
-    logMsg.value = t('尚未配置云同步，将打开设置面板')
+    logMsg.value = t('cloudSync.notConfiguredHint')
     window.setTimeout(() => {
       emits('cancel')
       window.setTimeout(() => {
-        const evt = new CustomEvent('openDialogFromChild', { detail: '云同步设置' })
+        const evt = new CustomEvent('openDialogFromChild', { detail: 'cloudSync.settings' })
         window.dispatchEvent(evt)
       }, 50)
     }, 300)
@@ -79,20 +81,12 @@ const handleNotice = (_e: any, payload: any) => {
     const seconds = Math.ceil(retryAfterMs / 1000)
     const currentInWindow = Number(payload?.currentInWindow || 0)
     if (currentInWindow === 8) {
-      const prefix = t('温馨提示：5 分钟内已累计 8 次同步，本次为第 9 次。为避免触发限制，')
-      const beforeNum = t('建议在 ')
-      const afterNum = t(' 秒后再次发起同步')
-      contentMsg = `${prefix}${beforeNum}${seconds}${afterNum}`
+      contentMsg = t('cloudSync.errors.rateLimitWarning8', { seconds })
     } else if (currentInWindow === 9) {
-      const prefix = t('温馨提示：5 分钟内已累计 9 次同步，本次为第 10 次。')
-      const beforeNum = t('建议在 ')
-      const afterNum = t(' 秒后再次发起同步')
-      contentMsg = `${prefix}${beforeNum}${seconds}${afterNum}`
+      contentMsg = t('cloudSync.errors.rateLimitWarning9', { seconds })
     } else {
       // 兜底
-      const beforeNum = t('建议在 ')
-      const afterNum = t(' 秒后再次发起同步')
-      contentMsg = `${beforeNum}${seconds}${afterNum}`
+      contentMsg = t('cloudSync.errors.rateLimit', { seconds })
     }
   } else {
     const msg = payload?.message || ''
@@ -103,7 +97,7 @@ const handleNotice = (_e: any, payload: any) => {
   // 先关闭同步面板
   emits('cancel')
   // 同时弹出提示对话框（非阻塞）
-  void confirm({ title: '提示', content: [contentMsg], confirmShow: false })
+  void confirm({ title: 'dialog.hint', content: [contentMsg], confirmShow: false })
 }
 const handleProgress = (_e: any, p: any) => {
   phase.value = p.phase
@@ -122,13 +116,13 @@ const handleError = async (_e: any, err: any) => {
     if (code === 'RATE_LIMITED' && err?.error?.scope === 'sync_start') {
       const retryAfterMs = Math.max(0, Number(err?.error?.retryAfterMs || 0))
       const seconds = Math.ceil(retryAfterMs / 1000)
-      const message = `操作过于频繁，请在 ${seconds} 秒后再次发起同步`
-      logMsg.value = t(message)
-      await confirm({ title: '提示', content: [logMsg.value], confirmShow: false })
+      const message = t('cloudSync.errors.sensitiveOperationTooFrequent')
+      logMsg.value = `${message}`
+      await confirm({ title: t('dialog.hint'), content: [logMsg.value], confirmShow: false })
       return
     }
     logMsg.value = t(err?.message || 'error')
-    await confirm({ title: '错误', content: [logMsg.value], confirmShow: false })
+    await confirm({ title: t('common.error'), content: [logMsg.value], confirmShow: false })
   } finally {
     isErrorPromptOpen.value = false
   }
@@ -178,8 +172,8 @@ onUnmounted(() => {
 <template>
   <div class="dialog unselectable">
     <div class="inner">
-      <div class="title">{{ t('同步曲目指纹库') }}</div>
-      <div v-if="configured === false" class="hint">{{ t('尚未配置云同步') }}</div>
+      <div class="title">{{ t('cloudSync.syncFingerprints') }}</div>
+      <div v-if="configured === false" class="hint">{{ t('cloudSync.notConfigured') }}</div>
       <div class="stages">
         <div
           class="stage"
@@ -200,17 +194,17 @@ onUnmounted(() => {
         </div>
         <div class="progress-details">
           <template v-if="phase === 'checking'">
-            <span>{{ t('客户端数量') }}: {{ progressDetails.clientCount ?? '-' }}</span>
+            <span>{{ t('cloudSync.clientCount') }}: {{ progressDetails.clientCount ?? '-' }}</span>
             <span class="sep">|</span>
-            <span>{{ t('服务端数量') }}: {{ progressDetails.serverCount ?? '-' }}</span>
+            <span>{{ t('cloudSync.serverCount') }}: {{ progressDetails.serverCount ?? '-' }}</span>
           </template>
           <template v-else-if="phase === 'diffing'">
-            <span>{{ t('待上传') }}: {{ progressDetails.toAddCount ?? 0 }}</span>
+            <span>{{ t('cloudSync.toUpload') }}: {{ progressDetails.toAddCount ?? 0 }}</span>
           </template>
           <template v-else-if="phase === 'pulling'">
-            <span>{{ t('已拉取页') }}: {{ progressDetails.pulledPages ?? 0 }}</span>
+            <span>{{ t('cloudSync.pulledPages') }}: {{ progressDetails.pulledPages ?? 0 }}</span>
             <span class="sep">/</span>
-            <span>{{ t('总页数') }}: {{ progressDetails.totalPages ?? 0 }}</span>
+            <span>{{ t('cloudSync.totalPages') }}: {{ progressDetails.totalPages ?? 0 }}</span>
           </template>
         </div>
       </div>
@@ -227,14 +221,14 @@ onUnmounted(() => {
           "
           @click="startSync"
         >
-          {{ t('开始同步') }}
+          {{ t('cloudSync.startSync') }}
         </div>
         <div
           class="button"
           style="width: 90px; text-align: center; height: 25px; line-height: 25px"
           @click="$emit('cancel')"
         >
-          {{ t('关闭') }} (Esc)
+          {{ t('common.close') }} (Esc)
         </div>
       </div>
       <div class="log" v-if="logMsg">{{ logMsg }}</div>
@@ -242,30 +236,32 @@ onUnmounted(() => {
   </div>
   <div class="dialog unselectable" v-if="summary">
     <div class="inner">
-      <div class="title">{{ t('同步完成') }}</div>
+      <div class="title">{{ t('cloudSync.syncCompleted') }}</div>
       <div class="stats">
         <div class="section">
-          <div class="section-title">{{ t('结果概览') }}</div>
+          <div class="section-title">{{ t('cloudSync.overview') }}</div>
           <div class="chips">
             <div class="chip" :class="{ success: (summary.addedToServerCount || 0) > 0 }">
               <div class="num">{{ summary.addedToServerCount }}</div>
-              <div class="cap">{{ t('上行新增') }}</div>
+              <div class="cap">{{ t('cloudSync.uploadedNew') }}</div>
             </div>
             <div class="chip" :class="{ success: (summary.pulledToClientCount || 0) > 0 }">
               <div class="num">{{ summary.pulledToClientCount }}</div>
-              <div class="cap">{{ t('下行拉取') }}</div>
+              <div class="cap">{{ t('cloudSync.pulledNew') }}</div>
             </div>
             <div class="chip">
               <div class="num">{{ formatDurationSec(summary.durationMs) }}</div>
-              <div class="cap">{{ t('耗时') }} ({{ t('秒') }})</div>
+              <div class="cap">{{ t('cloudSync.duration') }} ({{ t('player.seconds') }})</div>
             </div>
           </div>
         </div>
         <div class="section">
-          <div class="section-title">{{ t('总量变化') }}</div>
+          <div class="section-title">{{ t('cloudSync.totalChanges') }}</div>
           <div class="section-body">
             <span class="count-pair">
-              <span class="count-text">{{ t('客户端') }}: {{ summary.clientInitialCount }}</span>
+              <span class="count-text"
+                >{{ t('cloudSync.clientCount') }}: {{ summary.clientInitialCount }}</span
+              >
               <span class="arrow" aria-hidden="true">
                 <svg viewBox="0 0 24 24">
                   <path
@@ -281,7 +277,9 @@ onUnmounted(() => {
               <span class="count-text">{{ summary.totalClientCountAfter }}</span>
             </span>
             <span class="count-pair" style="margin-left: 16px">
-              <span class="count-text">{{ t('服务端') }}: {{ summary.serverInitialCount }}</span>
+              <span class="count-text"
+                >{{ t('cloudSync.serverCount') }}: {{ summary.serverInitialCount }}</span
+              >
               <span class="arrow" aria-hidden="true">
                 <svg viewBox="0 0 24 24">
                   <path
@@ -301,7 +299,7 @@ onUnmounted(() => {
       </div>
       <div class="actions">
         <div class="button" @click="closeSummaryAndCancel">
-          {{ t('关闭') }}
+          {{ t('common.close') }}
         </div>
       </div>
     </div>

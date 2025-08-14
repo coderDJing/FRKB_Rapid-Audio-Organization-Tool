@@ -6,7 +6,7 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import { v4 as uuidV4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog'
 import rightClickMenu from '../../components/rightClickMenu'
-import { t } from '@renderer/utils/translate'
+import { t, toLibraryDisplayName } from '@renderer/utils/translate'
 import emitter from '../../utils/mitt'
 import emptyRecycleBin from '@renderer/assets/empty-recycleBin.png?asset'
 import { handleLibraryAreaEmptySpaceDrop } from '@renderer/utils/dragUtils'
@@ -44,10 +44,13 @@ const showHint = computed(() => {
 const collapseButtonRef = useTemplateRef<HTMLDivElement>('collapseButtonRef')
 const emptyRecycleRef = useTemplateRef<HTMLDivElement>('emptyRecycleRef')
 
+// 将核心库名称映射为 i18n key，仅用于显示
+const libraryTitleText = computed(() => toLibraryDisplayName(libraryData.dirName))
+
 const emptyRecycleBinHandleClick = async () => {
   let res = await confirm({
-    title: '清空回收站',
-    content: [t('确认清空回收站吗？'), t('(曲目将在磁盘上被删除，但声音指纹依然会保留)')]
+    title: t('recycleBin.emptyRecycleBin'),
+    content: [t('recycleBin.confirmEmpty'), t('tracks.deleteHint')]
   })
   if (res !== 'confirm') {
     return
@@ -64,28 +67,30 @@ const emptyRecycleBinHandleClick = async () => {
   }
 }
 
-const menuArr = ref([[{ menuName: '新建歌单' }, { menuName: '新建文件夹' }]])
+const menuArr = ref([
+  [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]
+])
 const contextmenuEvent = async (event: MouseEvent) => {
   if (runtime.libraryAreaSelected === '回收站') {
-    menuArr.value = [[{ menuName: '清空回收站' }]]
+    menuArr.value = [[{ menuName: 'recycleBin.emptyRecycleBin' }]]
   } else {
-    menuArr.value = [[{ menuName: '新建歌单' }, { menuName: '新建文件夹' }]]
+    menuArr.value = [[{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]]
   }
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
   if (result !== 'cancel') {
-    if (result.menuName == '新建歌单') {
+    if (result.menuName == 'library.createPlaylist') {
       libraryData.children?.unshift({
         uuid: uuidV4(),
         type: 'songList',
         dirName: ''
       })
-    } else if (result.menuName == '新建文件夹') {
+    } else if (result.menuName == 'library.createFolder') {
       libraryData.children?.unshift({
         uuid: uuidV4(),
         type: 'dir',
         dirName: ''
       })
-    } else if (result.menuName == '清空回收站') {
+    } else if (result.menuName == 'recycleBin.emptyRecycleBin') {
       emptyRecycleBinHandleClick()
     }
   }
@@ -178,7 +183,7 @@ const drop = async (e: DragEvent) => {
 <template>
   <div class="content" @contextmenu.stop="contextmenuEvent">
     <div class="unselectable libraryTitle">
-      <span>{{ t(libraryData.dirName) }}</span>
+      <span>{{ libraryTitleText }}</span>
       <!-- todo还有个导出整个库的按钮 -->
       <div style="display: flex; justify-content: center; align-items: center">
         <div
@@ -205,8 +210,8 @@ const drop = async (e: DragEvent) => {
             />
           </svg>
         </div>
-        <bubbleBox :dom="collapseButtonRef || undefined" :title="t('折叠文件夹')" />
-        <bubbleBox :dom="emptyRecycleRef || undefined" :title="t('清空回收站')" />
+        <bubbleBox :dom="collapseButtonRef || undefined" :title="t('playlist.collapsibleFolder')" />
+        <bubbleBox :dom="emptyRecycleRef || undefined" :title="t('recycleBin.emptyRecycleBin')" />
       </div>
     </div>
     <div class="unselectable libraryArea">
@@ -251,7 +256,11 @@ const drop = async (e: DragEvent) => {
             style="font-size: 12px; color: #8c8c8c; position: absolute; bottom: 50vh"
             v-show="showHint && runtime.layoutConfig.libraryAreaWidth !== 0"
           >
-            {{ runtime.libraryAreaSelected === '回收站' ? t('暂无删除记录') : t('右键新建歌单') }}
+            {{
+              runtime.libraryAreaSelected === '回收站'
+                ? t('recycleBin.noDeletionRecords')
+                : t('library.rightClickToCreate')
+            }}
           </span>
         </div>
       </OverlayScrollbarsComponent>

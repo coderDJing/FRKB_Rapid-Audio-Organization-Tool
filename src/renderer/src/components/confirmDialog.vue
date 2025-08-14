@@ -84,7 +84,7 @@ onUnmounted(() => {
     >
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
-          <span style="font-weight: bold">{{ t(props.title) }}</span>
+          <span style="font-weight: bold">{{ props.title }}</span>
         </div>
         <div style="padding-left: 20px; padding-right: 20px" :class="{ selectable: canCopyText }">
           <div
@@ -102,14 +102,14 @@ onUnmounted(() => {
           style="margin-right: 10px; width: 90px; text-align: center"
           @click="confirm()"
         >
-          {{ t('确定') }} (E)
+          {{ t('common.confirm') }} (E)
         </div>
         <div class="button" style="width: 90px; text-align: center" @click="cancel()">
-          {{ t('取消') }} (Esc)
+          {{ t('common.cancel') }} (Esc)
         </div>
       </div>
       <div v-if="!confirmShow" style="display: flex; justify-content: center; padding-bottom: 10px">
-        <div class="button" @click="cancel()">{{ t('关闭') }} (Esc)</div>
+        <div class="button" @click="cancel()">{{ t('common.close') }} (Esc)</div>
       </div>
     </div>
   </div>

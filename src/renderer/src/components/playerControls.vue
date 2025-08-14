@@ -143,27 +143,27 @@ const showInFileExplorer = () => {
     <div ref="previousSongRef" class="buttonIcon" @click="handlePreviousSong()">
       <img :src="previousSong" draggable="false" />
     </div>
-    <bubbleBox :dom="previousSongRef || undefined" :title="t('上一首')" shortcut="W" />
+    <bubbleBox :dom="previousSongRef || undefined" :title="t('player.previous')" shortcut="W" />
     <div ref="fastBackwardRef" class="buttonIcon" @mousedown="handleFastBackward()">
       <img :src="fastBackward" draggable="false" />
     </div>
-    <bubbleBox :dom="fastBackwardRef || undefined" :title="t('快退')" shortcut="A" />
+    <bubbleBox :dom="fastBackwardRef || undefined" :title="t('player.fastBackward')" shortcut="A" />
     <div ref="playRef" class="buttonIcon" v-show="!playing" @click="handlePlay()">
       <img :src="play" draggable="false" />
     </div>
-    <bubbleBox :dom="playRef || undefined" :title="t('播放')" shortcut="Space" />
+    <bubbleBox :dom="playRef || undefined" :title="t('player.play')" shortcut="Space" />
     <div ref="pauseRef" class="buttonIcon" v-show="playing" @click="handlePause()">
       <img :src="pause" draggable="false" />
     </div>
-    <bubbleBox :dom="pauseRef || undefined" :title="t('暂停')" shortcut="Space" />
+    <bubbleBox :dom="pauseRef || undefined" :title="t('player.pause')" shortcut="Space" />
     <div ref="fastForwardRef" class="buttonIcon" @mousedown="handleFastForward()">
       <img :src="fastForward" draggable="false" />
     </div>
-    <bubbleBox :dom="fastForwardRef || undefined" :title="t('快进')" shortcut="D" />
+    <bubbleBox :dom="fastForwardRef || undefined" :title="t('player.fastForward')" shortcut="D" />
     <div ref="nextSongRef" class="buttonIcon" @click="handleNextSong()">
       <img :src="nextSong" draggable="false" />
     </div>
-    <bubbleBox :dom="nextSongRef || undefined" :title="t('下一首')" shortcut="S" />
+    <bubbleBox :dom="nextSongRef || undefined" :title="t('player.next')" shortcut="S" />
     <div class="buttonIcon" @click.stop="handelMoreClick()">
       <img :src="more" draggable="false" />
     </div>
@@ -172,13 +172,13 @@ const showInFileExplorer = () => {
     <div class="moreMenu unselectable" v-if="moreMenuShow">
       <div style="padding: 5px 5px; border-bottom: 1px solid #454545">
         <div class="menuButton" @click="exportTrack()">
-          <span>{{ t('导出曲目') }}</span>
+          <span>{{ t('tracks.exportTracks') }}</span>
         </div>
       </div>
       <div style="padding: 5px 5px; border-bottom: 1px solid #454545">
         <div class="menuButton" @click="moveToListLibrary()">
           <div>
-            <span>{{ t('移动到筛选库') }}</span>
+            <span>{{ t('library.moveToFilter') }}</span>
           </div>
           <div style="display: flex; align-items: center">
             <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" />
@@ -187,7 +187,7 @@ const showInFileExplorer = () => {
         </div>
         <div class="menuButton" @click="moveToLikeLibrary()">
           <div>
-            <span>{{ t('移动到精选库') }}</span>
+            <span>{{ t('library.moveToCurated') }}</span>
           </div>
           <div style="display: flex; align-items: center">
             <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>E</span>
@@ -197,7 +197,7 @@ const showInFileExplorer = () => {
       <div style="padding: 5px 5px; border-bottom: 1px solid #454545">
         <div class="menuButton" @click="delSong()">
           <div>
-            <span>{{ t('删除曲目') }} </span>
+            <span>{{ t('tracks.deleteTracks') }} </span>
           </div>
           <div style="display: flex; align-items: center">
             <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>F</span>
@@ -206,7 +206,7 @@ const showInFileExplorer = () => {
       </div>
       <div style="padding: 5px 5px">
         <div class="menuButton" @click="showInFileExplorer()">
-          <span>{{ t('在文件资源浏览器中显示') }}</span>
+          <span>{{ t('tracks.showInFileExplorer') }}</span>
         </div>
       </div>
     </div>

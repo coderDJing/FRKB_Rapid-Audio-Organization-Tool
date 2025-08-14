@@ -28,10 +28,13 @@ export function useSongItemContextMenu(
   const runtime = useRuntimeStore() // Use the store directly
 
   const menuArr: Ref<IMenu[][]> = ref([
-    [{ menuName: '导出曲目' }],
-    [{ menuName: '移动到筛选库' }, { menuName: '移动到精选库' }],
-    [{ menuName: '删除曲目', shortcutKey: 'Delete' }, { menuName: '删除上方所有曲目' }],
-    [{ menuName: '在文件资源浏览器中显示' }]
+    [{ menuName: 'tracks.exportTracks' }],
+    [{ menuName: 'library.moveToFilter' }, { menuName: 'library.moveToCurated' }],
+    [
+      { menuName: 'tracks.deleteTracks', shortcutKey: 'Delete' },
+      { menuName: 'tracks.deleteAllAbove' }
+    ],
+    [{ menuName: 'tracks.showInFileExplorer' }]
   ])
 
   const showAndHandleSongContextMenu = async (
@@ -50,7 +53,7 @@ export function useSongItemContextMenu(
     if (result === 'cancel') return null
 
     switch (result.menuName) {
-      case '删除上方所有曲目': {
+      case 'tracks.deleteAllAbove': {
         // 1. 基于当前状态和右键的歌曲，确定要删除的歌曲信息和路径 (delPaths)
         const initialSongInfoArrSnapshot = [...runtime.songsArea.songInfoArr]
         const songIndex = initialSongInfoArrSnapshot.findIndex(
@@ -78,11 +81,8 @@ export function useSongItemContextMenu(
 
         if (isInRecycleBin) {
           const res = await confirm({
-            title: '删除',
-            content: [
-              t('确定彻底删除此曲目上方的所有曲目吗'),
-              t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')
-            ]
+            title: t('common.delete'),
+            content: [t('tracks.confirmDeleteAllAbove'), t('tracks.deleteHint')]
           })
           if (res !== 'confirm') {
             return null
@@ -114,7 +114,7 @@ export function useSongItemContextMenu(
         emitter.emit('songsRemoved', { listUUID: runtime.songsArea.songListUUID, paths: delPaths })
         return { action: 'songsRemoved', paths: delPaths }
       }
-      case '删除曲目':
+      case 'tracks.deleteTracks':
         {
           const currentSelectedPaths = [...runtime.songsArea.selectedSongFilePath]
 
@@ -127,11 +127,8 @@ export function useSongItemContextMenu(
           let shouldDelete = true
           if (isInRecycleBin) {
             const res = await confirm({
-              title: '删除',
-              content: [
-                t('确定彻底删除选中的曲目吗'),
-                t('（曲目将在磁盘上被删除，但声音指纹依然会保留）')
-              ]
+              title: t('common.delete'),
+              content: [t('tracks.confirmDeleteSelected'), t('tracks.deleteHint')]
             })
             shouldDelete = res === 'confirm'
           }
@@ -165,12 +162,12 @@ export function useSongItemContextMenu(
           }
         }
         break
-      case '移动到精选库':
+      case 'library.moveToCurated':
         return { action: 'openSelectSongListDialog', libraryName: '精选库' }
-      case '移动到筛选库':
+      case 'library.moveToFilter':
         return { action: 'openSelectSongListDialog', libraryName: '筛选库' }
-      case '导出曲目': {
-        const exportResult = await exportDialog({ title: '曲目' })
+      case 'tracks.exportTracks': {
+        const exportResult = await exportDialog({ title: 'tracks.title' })
         if (exportResult !== 'cancel') {
           const { folderPathVal, deleteSongsAfterExport } = exportResult
           const songsToExportFilePaths = [...runtime.songsArea.selectedSongFilePath]
@@ -214,7 +211,7 @@ export function useSongItemContextMenu(
         }
         break
       }
-      case '在文件资源浏览器中显示':
+      case 'tracks.showInFileExplorer':
         window.electron.ipcRenderer.send('show-item-in-folder', song.filePath)
         break
     }

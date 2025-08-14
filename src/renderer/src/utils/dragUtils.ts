@@ -20,8 +20,8 @@ export const handleDragStart = async (event: DragEvent, uuid: string): Promise<b
     if (!exists) {
       event.preventDefault()
       await confirm({
-        title: '错误',
-        content: [t('此歌单/文件夹在磁盘中不存在，可能已被手动删除')],
+        title: t('common.error'),
+        content: [t('library.notExistOnDisk')],
         confirmShow: false
       })
 
@@ -311,11 +311,10 @@ export const handleDrop = async (
         // 处理同名文件冲突
         if (existingItem) {
           const shouldReplace = await confirm({
-            title: '移动',
+            title: t('common.move'),
             content: [
-              t('目标文件夹下已存在："') + dragItemData.dirName + t('"'),
-              t('是否继续执行替换'),
-              t('（被替换的歌单或文件夹将被删除）')
+              t('tracks.fileExistsReplace', { name: dragItemData.dirName }),
+              t('tracks.replaceHint')
             ]
           })
 
@@ -355,11 +354,10 @@ export const handleDrop = async (
         // 处理同名文件冲突
         if (existingItem) {
           const shouldReplace = await confirm({
-            title: '移动',
+            title: t('common.move'),
             content: [
-              t('目标文件夹下已存在："') + dragItemData.dirName + t('"'),
-              t('是否继续执行替换'),
-              t('（被替换的歌单或文件夹将被删除）')
+              t('tracks.fileExistsReplace', { name: dragItemData.dirName }),
+              t('tracks.replaceHint')
             ]
           })
 
@@ -528,11 +526,10 @@ export async function handleLibraryAreaEmptySpaceDrop(
       if (existingItem) {
         // 处理同名冲突
         const shouldReplace = await confirm({
-          title: '移动',
+          title: t('common.move'),
           content: [
-            t('目标文件夹下已存在："') + dragItemData.dirName + t('"'),
-            t('是否继续执行替换'),
-            t('（被替换的歌单或文件夹将被删除）')
+            t('tracks.fileExistsReplace', { name: dragItemData.dirName }),
+            t('tracks.replaceHint')
           ]
         })
 

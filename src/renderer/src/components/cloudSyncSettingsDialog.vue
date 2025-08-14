@@ -38,7 +38,10 @@ const clickSave = async () => {
       emits('cancel')
     } else {
       // 显示内联错误
-      connectivity.value = { success: false, message: res?.message || '连通失败' }
+      connectivity.value = {
+        success: false,
+        message: res?.message || 'cloudSync.connectivityFailed'
+      }
     }
   } finally {
     saving.value = false
@@ -72,17 +75,17 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
 <template>
   <div class="dialog unselectable">
     <div class="inner">
-      <div class="title">{{ t('云同步设置') }}</div>
+      <div class="title">{{ t('cloudSync.settings') }}</div>
       <div class="form">
         <div class="row">
-          <div class="label">{{ t('同步密钥 userKey') }}</div>
+          <div class="label">{{ t('cloudSync.userKey') }}</div>
           <input v-model="userKey" class="input" placeholder="uuid-v4" style="max-width: 100%" />
         </div>
         <div class="row" style="position: relative">
-          <div class="label">{{ t('申请/找回密钥联系邮箱') }}</div>
+          <div class="label">{{ t('cloudSync.applyEmailHint') }}</div>
           <div class="value" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
             <span>jinlingwuyanzu@qq.com</span>
-            <span class="link" @click="clickCopyEmail">{{ t('复制邮箱') }}</span>
+            <span class="link" @click="clickCopyEmail">{{ t('cloudSync.copyEmail') }}</span>
             <img
               ref="emailHintIconRef"
               :src="hintIcon"
@@ -91,17 +94,21 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
             />
             <bubbleBox
               :dom="emailHintIconRef || undefined"
-              :title="t('请用英文或中文发邮件申请或找回你的userKey')"
+              :title="t('cloudSync.applyEmailInstruction')"
               :maxWidth="320"
             />
           </div>
         </div>
         <div class="row">
-          <div class="label">{{ t('连通性') }}</div>
+          <div class="label">{{ t('cloudSync.connectivity') }}</div>
           <div class="value">
-            <span v-if="connectivity === null">{{ t('未测试') }}</span>
-            <span v-else-if="connectivity.success" class="success">{{ t('连通成功') }}</span>
-            <span v-else class="error">{{ t(connectivity.message || '连通失败') }}</span>
+            <span v-if="connectivity === null">{{ t('cloudSync.notTested') }}</span>
+            <span v-else-if="connectivity.success" class="success">{{
+              t('cloudSync.connectivityOk')
+            }}</span>
+            <span v-else class="error">{{
+              t(connectivity.message || 'cloudSync.connectivityFailed')
+            }}</span>
           </div>
         </div>
       </div>
@@ -117,7 +124,7 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
           "
           @click="clickTest"
         >
-          {{ t('测试') }} (T)
+          {{ t('cloudSync.testConnectivity') }} (T)
         </div>
         <div
           class="button"
@@ -130,14 +137,14 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
           "
           @click="clickSave"
         >
-          {{ t('保存') }} (E)
+          {{ t('common.save') }} (E)
         </div>
         <div
           class="button"
           style="width: 120px; text-align: center; height: 25px; line-height: 25px"
           @click="$emit('cancel')"
         >
-          {{ t('取消') }} (Esc)
+          {{ t('common.cancel') }} (Esc)
         </div>
       </div>
     </div>

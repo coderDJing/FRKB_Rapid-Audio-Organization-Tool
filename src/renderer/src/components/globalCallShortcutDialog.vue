@@ -31,10 +31,10 @@ const confirm = async () => {
       props.confirmCallback()
     } else {
       await confirmDialog({
-        title: '错误',
+        title: t('common.error'),
         innerWidth: 350,
         innerHeight: 200,
-        content: [t('快捷键设置失败，可能是由于冲突或错误'), t('请尝试其他组合')],
+        content: [t('shortcuts.shortcutSetFailed'), t('shortcuts.tryOtherCombinations')],
         confirmShow: false
       })
     }
@@ -113,15 +113,17 @@ onUnmounted(() => {
     >
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
-          <span style="font-weight: bold">{{ t('请直接在键盘上输入新的快捷键') }}</span>
+          <span style="font-weight: bold">{{ t('shortcuts.enterNewShortcut') }}</span>
         </div>
         <div style="width: 100%; height: 100px; line-height: 100px; text-align: center">
           {{ shortcutValue }}
         </div>
       </div>
       <div style="display: flex; justify-content: center; padding-bottom: 10px">
-        <div class="button" style="margin-right: 10px" @click="confirm()">{{ t('确定') }} (E)</div>
-        <div class="button" @click="cancel()">{{ t('取消') }} (Esc)</div>
+        <div class="button" style="margin-right: 10px" @click="confirm()">
+          {{ t('common.confirm') }} (E)
+        </div>
+        <div class="button" @click="cancel()">{{ t('common.cancel') }} (Esc)</div>
       </div>
     </div>
   </div>

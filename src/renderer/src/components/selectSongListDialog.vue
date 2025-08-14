@@ -9,7 +9,7 @@ import confirm from '@renderer/components/confirmDialog'
 import hotkeys from 'hotkeys-js'
 import listIcon from '@renderer/assets/listIcon.png?asset'
 import utils, { getCurrentTimeDirName } from '../utils/utils'
-import { t } from '@renderer/utils/translate'
+import { t, toLibraryDisplayName } from '@renderer/utils/translate'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import emitter from '../utils/mitt'
 import type { IDir } from 'src/types/globals'
@@ -96,18 +96,22 @@ const libraryData: ComputedRef<IDir> = computed(() => {
 
 const collapseButtonRef = useTemplateRef<HTMLDivElement>('collapseButtonRef')
 
-const menuArr = ref([[{ menuName: '新建歌单' }, { menuName: '新建文件夹' }]])
+const libraryTitleText = computed(() => toLibraryDisplayName(libraryData.value.dirName))
+
+const menuArr = ref([
+  [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]
+])
 const contextmenuEvent = async (event: MouseEvent) => {
   if (!libraryData.value) return
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
   if (result !== 'cancel') {
-    if (result.menuName == '新建歌单') {
+    if (result.menuName == 'library.createPlaylist') {
       libraryData.value.children?.unshift({
         uuid: uuidV4(),
         type: 'songList',
         dirName: ''
       })
-    } else if (result.menuName == '新建文件夹') {
+    } else if (result.menuName == 'library.createFolder') {
       libraryData.value.children?.unshift({
         uuid: uuidV4(),
         type: 'dir',
@@ -247,7 +251,7 @@ const cancel = () => {
   <div class="dialog unselectable">
     <div class="content inner" @contextmenu.stop="contextmenuEvent">
       <div class="unselectable libraryTitle" v-if="libraryData">
-        <span>{{ t(libraryData.dirName) }}</span>
+        <span>{{ libraryTitleText }}</span>
         <div style="display: flex; justify-content: center; align-items: center">
           <div ref="collapseButtonRef" class="collapseButton" @click="collapseButtonHandleClick()">
             <svg
@@ -265,7 +269,10 @@ const cancel = () => {
               />
             </svg>
           </div>
-          <bubbleBox :dom="collapseButtonRef || undefined" :title="t('折叠文件夹')" />
+          <bubbleBox
+            :dom="collapseButtonRef || undefined"
+            :title="t('playlist.collapsibleFolder')"
+          />
         </div>
       </div>
       <div
@@ -291,7 +298,7 @@ const cancel = () => {
         >
           <template v-if="recentSongListArr.length > 0">
             <div style="padding-left: 5px">
-              <span style="font-size: 14px">{{ t('最近使用') }}</span>
+              <span style="font-size: 14px">{{ t('library.recentlyUsed') }}</span>
             </div>
             <div style="width: 100%; background-color: #8c8c8c; height: 1px">
               <div style="height: 1px"></div>
@@ -344,7 +351,7 @@ const cancel = () => {
           min-height: 0;
         "
       >
-        <span style="font-size: 12px; color: #8c8c8c">{{ t('右键新建歌单') }}</span>
+        <span style="font-size: 12px; color: #8c8c8c">{{ t('library.rightClickToCreate') }}</span>
       </div>
 
       <div style="display: flex; justify-content: center; padding-bottom: 10px">
@@ -353,10 +360,10 @@ const cancel = () => {
           style="margin-right: 10px; width: 90px; text-align: center"
           @click="confirmHandle()"
         >
-          {{ t('确定') }} (E)
+          {{ t('common.confirm') }} (E)
         </div>
         <div class="button" style="width: 90px; text-align: center" @click="cancel()">
-          {{ t('取消') }} (Esc)
+          {{ t('common.cancel') }} (Esc)
         </div>
       </div>
     </div>

@@ -28,7 +28,7 @@ const globalShortcut = computed(() => {
       />
       <div class="shortcuts">
         <dl>
-          <dt>{{ t('播放 / 暂停') }}</dt>
+          <dt>{{ t('player.playPause') }}</dt>
           <dd>
             <div class="monaco-keybinding">
               <span class="monaco-keybinding-key">Space</span>
@@ -36,7 +36,7 @@ const globalShortcut = computed(() => {
           </dd>
         </dl>
         <dl>
-          <dt>{{ t('上一首 / 下一首') }}</dt>
+          <dt>{{ t('player.previousNext') }}</dt>
           <dd>
             <div class="monaco-keybinding">
               <span class="monaco-keybinding-key">W / S</span>
@@ -45,7 +45,7 @@ const globalShortcut = computed(() => {
           </dd>
         </dl>
         <dl>
-          <dt>{{ t('快退 / 快进') }}</dt>
+          <dt>{{ t('player.fastBackwardForward') }}</dt>
           <dd>
             <div class="monaco-keybinding">
               <span class="monaco-keybinding-key">A / D</span>
@@ -54,7 +54,7 @@ const globalShortcut = computed(() => {
           </dd>
         </dl>
         <dl>
-          <dt>{{ t('移动至筛选库 / 精选库') }}</dt>
+          <dt>{{ t('player.moveToLibraries') }}</dt>
           <dd>
             <div class="monaco-keybinding">
               <span class="monaco-keybinding-key">Q / E</span>
@@ -62,7 +62,7 @@ const globalShortcut = computed(() => {
           </dd>
         </dl>
         <dl>
-          <dt>{{ t('删除') }}</dt>
+          <dt>{{ t('common.delete') }}</dt>
           <dd>
             <div class="monaco-keybinding">
               <span class="monaco-keybinding-key">F</span>
@@ -71,7 +71,7 @@ const globalShortcut = computed(() => {
           </dd>
         </dl>
         <dl>
-          <dt>{{ t('区间播放') }}</dt>
+          <dt>{{ t('player.playbackRange') }}</dt>
           <dd>
             <div class="monaco-keybinding">
               <span class="monaco-keybinding-key">R</span>
@@ -79,7 +79,7 @@ const globalShortcut = computed(() => {
           </dd>
         </dl>
         <dl>
-          <dt>{{ t('呼出 / 隐藏') }}</dt>
+          <dt>{{ t('player.showHide') }}</dt>
           <dd>
             <div class="monaco-keybinding">
               <template v-for="(item, index) in globalShortcut" :key="index">

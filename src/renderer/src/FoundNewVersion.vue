@@ -38,7 +38,7 @@ const checkNow = async () => {
     class="unselectable"
   >
     <div>
-      <div class="title unselectable">{{ t('发现新版本！') }}</div>
+      <div class="title unselectable">{{ t('update.newVersionFound') }}</div>
       <div class="titleComponent unselectable">
         <div
           style="
@@ -91,20 +91,20 @@ const checkNow = async () => {
     >
       <div style="display: flex; justify-content: center">
         <div class="button" style="width: 110px; text-align: center" @click="checkNow()">
-          {{ t('检查更新', 1) }}
+          {{ t('menu.checkUpdate') }}
         </div>
         <div
           class="button"
           style="width: 110px; text-align: center; margin-left: 15px"
           @click="toggleClose()"
         >
-          {{ t('暂不更新') }}
+          {{ t('update.notNow') }}
         </div>
       </div>
       <div>
         <div style="margin-top: 30px; display: flex">
           <div class="formLabel" style="text-align: right">
-            <span>{{ t('七日内不再检查') }}：</span>
+            <span>{{ t('update.doNotCheckFor7Days') }}：</span>
           </div>
           <div style="flex: 1; width: 21px; height: 21px; display: flex; align-items: center">
             <singleCheckbox v-model="notCheckIn7Days" />

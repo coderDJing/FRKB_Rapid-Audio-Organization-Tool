@@ -9,7 +9,7 @@ const barNowNum = ref(0)
 const barTotal = ref(0)
 const noNum = ref(false)
 window.electron.ipcRenderer.on('progressSet', (event, title, nowNum, total, noNumFlag) => {
-  barTitle.value = title
+  barTitle.value = t(title as any)
   if (noNumFlag) {
     noNum.value = true
   } else {
@@ -22,46 +22,27 @@ window.electron.ipcRenderer.on('progressSet', (event, title, nowNum, total, noNu
     noNum.value = false
   }
 })
-window.electron.ipcRenderer.on(
-  'importFinished',
-  async (event, contentArr, _songListUUID, importSummary) => {
-    runtime.isProgressing = false
-    runtime.importingSongListUUID = ''
-    if (importSummary && typeof importSummary === 'object') {
-      const openImportSummary = (await import('@renderer/components/importFinishedSummaryDialog'))
-        .default
-      await openImportSummary(importSummary)
-    } else {
-      // 回退到旧的文案数组
-      await confirm({
-        title: '完成',
-        content: contentArr,
-        textAlign: 'left',
-        innerHeight: 280,
-        innerWidth: 400,
-        confirmShow: false
-      })
-    }
-  }
-)
-
-window.electron.ipcRenderer.on('addSongFingerprintFinished', async (event, contentArr) => {
+window.electron.ipcRenderer.on('importFinished', async (event, _songListUUID, importSummary) => {
   runtime.isProgressing = false
-  await confirm({
-    title: '完成',
-    content: contentArr,
-    textAlign: 'left',
-    innerHeight: 250,
-    innerWidth: 400,
-    confirmShow: false
-  })
+  runtime.importingSongListUUID = ''
+  const openImportSummary = (await import('@renderer/components/importFinishedSummaryDialog'))
+    .default
+  await openImportSummary(importSummary)
+})
+
+window.electron.ipcRenderer.on('addSongFingerprintFinished', async (event, fingerprintSummary) => {
+  runtime.isProgressing = false
+  const openFingerprintSummary = (
+    await import('@renderer/components/addSongFingerprintFinishedDialog')
+  ).default
+  await openFingerprintSummary(fingerprintSummary)
 })
 window.electron.ipcRenderer.on('noAudioFileWasScanned', async (event) => {
   runtime.isProgressing = false
   runtime.importingSongListUUID = ''
   await confirm({
-    title: '完成',
-    content: [`${t('未扫描到音频文件')}`],
+    title: t('common.finished'),
+    content: [t('fingerprints.noAudioFilesFound')],
     textAlign: 'center',
     innerHeight: 250,
     innerWidth: 400,

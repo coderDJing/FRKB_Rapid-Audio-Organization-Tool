@@ -45,15 +45,15 @@ const myInputHandleInput = () => {
   if (!fatherDirData) return // Keep existing null check
 
   if (newName === '') {
-    hintText = t('必须提供歌单或文件夹名。')
+    hintText = t('library.nameRequired')
     hintShouldShow = true
   } else if (invalidCharsRegex.test(newName)) {
-    hintText = t('名称不能包含以下字符: < > : " / \\ | ? * 或控制字符')
+    hintText = t('library.nameInvalidChars')
     hintShouldShow = true
   } else {
     const exists = fatherDirData.children?.some((obj) => obj.dirName === newName)
     if (exists) {
-      hintText = t('此位置已存在歌单或文件夹') + newName + t('。请选择其他名称')
+      hintText = t('library.nameAlreadyExists', { name: newName })
       hintShouldShow = true
     }
   }
@@ -66,7 +66,7 @@ const inputKeyDownEnter = () => {
   // Rely on inputHintShow which is now correctly updated
   if (inputHintShow.value || operationInputValue.value === '') {
     if (!inputHintShow.value) {
-      inputHintText.value = t('必须提供歌单或文件夹名。')
+      inputHintText.value = t('library.nameRequired')
       inputHintShow.value = true
     }
     return
@@ -186,8 +186,8 @@ const contextmenuEvent = async (event: MouseEvent) => {
   let isSongListPathExist = await window.electron.ipcRenderer.invoke('dirPathExists', songListPath)
   if (!isSongListPathExist) {
     await confirm({
-      title: '错误',
-      content: [t('此歌单/文件夹在磁盘中不存在，可能已被手动删除')],
+      title: t('common.error'),
+      content: [t('library.notExistOnDisk')],
       confirmShow: false
     })
     deleteDir()
@@ -234,8 +234,8 @@ const dirHandleClick = async () => {
   let isSongListPathExist = await window.electron.ipcRenderer.invoke('dirPathExists', songListPath)
   if (!isSongListPathExist) {
     await confirm({
-      title: '错误',
-      content: [t('此歌单/文件夹在磁盘中不存在，可能已被手动删除')],
+      title: t('common.error'),
+      content: [t('library.notExistOnDisk')],
       confirmShow: false
     })
     deleteDir()
@@ -318,7 +318,7 @@ const renameInputKeyDownEnter = () => {
   // Rely on renameInputHintShow which is now correctly updated
   if (renameInputHintShow.value || renameDivValue.value === '') {
     if (!renameInputHintShow.value) {
-      renameInputHintText.value = t('必须提供歌单或文件夹名。')
+      renameInputHintText.value = t('library.nameRequired')
       renameInputHintShow.value = true
     }
     return
@@ -339,10 +339,10 @@ const renameMyInputHandleInput = () => {
   if (!fatherDirData) return // Keep existing null check
 
   if (newName === '') {
-    hintText = t('必须提供歌单或文件夹名。')
+    hintText = t('library.nameRequired')
     hintShouldShow = true
   } else if (invalidCharsRegex.test(newName)) {
-    hintText = t('名称不能包含以下字符: < > : " / \\ | ? * 或控制字符')
+    hintText = t('library.nameInvalidChars')
     hintShouldShow = true
   } else {
     // Check if the new name exists AND it's not the original name of this item
@@ -350,7 +350,7 @@ const renameMyInputHandleInput = () => {
       (obj) => obj.dirName === newName && obj.uuid !== props.uuid
     )
     if (exists) {
-      hintText = t('此位置已存在歌单或文件夹') + newName + t('。请选择其他名称')
+      hintText = t('library.nameAlreadyExists', { name: newName })
       hintShouldShow = true
     }
   }

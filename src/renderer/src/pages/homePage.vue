@@ -180,8 +180,8 @@ const drop = async (e: DragEvent) => {
   let isSongListPathExist = await window.electron.ipcRenderer.invoke('dirPathExists', songListPath)
   if (!isSongListPathExist) {
     await confirm({
-      title: '错误',
-      content: [t('此歌单/文件夹在磁盘中不存在，可能已被手动删除')],
+      title: t('common.error'),
+      content: [t('library.notExistOnDisk')],
       confirmShow: false
     })
     let libraryTree = libraryUtils.getLibraryTreeByUUID(runtime.songsArea.songListUUID)

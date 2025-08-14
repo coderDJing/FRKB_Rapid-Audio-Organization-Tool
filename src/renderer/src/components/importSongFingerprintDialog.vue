@@ -38,8 +38,8 @@ const clickChooseDir = async () => {
   if (folderPath) {
     if (folderPath === 'error') {
       await confirm({
-        title: '错误',
-        content: [t('不是有效的曲目指纹库文件')],
+        title: t('common.error'),
+        content: [t('fingerprints.notValidFile')],
         confirmShow: false
       })
     } else {
@@ -68,8 +68,8 @@ const handleConfirm = async () => {
   }
   await window.electron.ipcRenderer.invoke('importSongFingerprint', folderPathVal.value[0])
   await confirm({
-    title: '成功',
-    content: [t('导入完成')],
+    title: t('common.success'),
+    content: [t('import.completed')],
     confirmShow: false
   })
   cancel()
@@ -106,12 +106,12 @@ onUnmounted(() => {
     >
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
-          <span style="font-weight: bold">{{ t('导入曲目指纹库文件') }}</span>
+          <span style="font-weight: bold">{{ t('fingerprints.importDatabase') }}</span>
         </div>
         <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
           <div style="display: flex">
             <div class="formLabel" style="white-space: nowrap">
-              <span>{{ t('选择指纹库文件') }}：</span>
+              <span>{{ t('fingerprints.selectDatabaseFile') }}：</span>
             </div>
             <div style="flex-grow: 1; overflow: hidden">
               <div
@@ -126,7 +126,7 @@ onUnmounted(() => {
             </div>
           </div>
           <div style="padding-top: 40px; font-size: 12px; display: flex">
-            {{ t('导入后新的曲目指纹库将和旧的曲目指纹库进行合并') }}
+            {{ t('fingerprints.importMergeHint') }}
           </div>
         </div>
       </div>
@@ -136,10 +136,10 @@ onUnmounted(() => {
           style="margin-right: 10px; width: 90px; text-align: center"
           @click="handleConfirm()"
         >
-          {{ t('确定') }} (E)
+          {{ t('common.confirm') }} (E)
         </div>
         <div class="button" style="width: 90px; text-align: center" @click="cancel()">
-          {{ t('取消') }} (Esc)
+          {{ t('common.cancel') }} (Esc)
         </div>
       </div>
     </div>

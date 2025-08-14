@@ -47,11 +47,13 @@ onUnmounted(() => {
       style="text-align: center; height: 30px; line-height: 30px; font-size: 14px"
       class="canDrag"
     >
-      <span style="font-weight: bold" class="title unselectable">{{ t('发现旧版本数据库') }}</span>
+      <span style="font-weight: bold" class="title unselectable">{{
+        t('database.oldVersionFound')
+      }}</span>
     </div>
     <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px; height: 200px">
       <div style="padding-top: 30px; font-size: 12px; display: flex; justify-content: center">
-        {{ t('检测到旧版本数据库，旧版本数据库将不再支持，是否将数据库升级为新版本？') }}
+        {{ t('database.oldVersionWarning') }}
       </div>
       <div style="padding-top: 10px; font-size: 12px; display: flex; justify-content: center">
         {{
@@ -67,10 +69,10 @@ onUnmounted(() => {
         style="margin-right: 10px; width: 90px; text-align: center"
         @click="confirmUpdate()"
       >
-        {{ t('确定') }} (E)
+        {{ t('common.confirm') }} (E)
       </div>
       <div class="button" style="width: 90px; text-align: center" @click="toggleClose()">
-        {{ t('退出') }} (Esc)
+        {{ t('menu.exit') }} (Esc)
       </div>
     </div>
   </div>
