@@ -53,7 +53,7 @@ const openDialog = async (item: string) => {
       content: [
         t('update.currentVersion') + ' ' + (pkg as any).version,
         t('about.author'),
-        t('about.contact')
+        t('about.contact', { email: 'jinlingwuyanzu@qq.com' })
       ],
       confirmShow: false,
       canCopyText: true
