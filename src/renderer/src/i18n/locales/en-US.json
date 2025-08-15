@@ -200,6 +200,7 @@
     "updateCompleted": "Fingerprint library updated",
     "analyzeInit": "Initializing analysis",
     "scanFormats": "Scan formats",
+    "scanLocation": "Scan location",
     "clear": "Clear fingerprint library",
     "clearShort": "Clear",
     "confirmClear": "Clear current fingerprint database?",
@@ -219,6 +220,7 @@
   },
   "import": {
     "completed": "Import done",
+    "overview": "Overview",
     "importedToPlaylist": "Imported to playlist",
     "removedSkippedDuplicates": "Removed/Skipped duplicates",
     "analysisFailed": "Analysis failed",

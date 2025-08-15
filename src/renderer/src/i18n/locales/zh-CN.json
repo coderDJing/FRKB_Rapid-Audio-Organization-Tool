@@ -200,6 +200,7 @@
     "updateCompleted": "指纹库更新完成",
     "analyzeInit": "分析声音指纹初始化",
     "scanFormats": "扫描音频格式",
+    "scanLocation": "扫描位置",
     "clear": "清除曲目指纹库",
     "clearShort": "清除",
     "confirmClear": "确定要清除当前曲目指纹库吗？",
@@ -219,6 +220,7 @@
   },
   "import": {
     "completed": "导入完成",
+    "overview": "结果概览",
     "importedToPlaylist": "导入到歌单",
     "removedSkippedDuplicates": "去重删除/跳过",
     "analysisFailed": "分析失败",

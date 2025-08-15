@@ -100,7 +100,7 @@ onUnmounted(() => {
         <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
           <div style="display: flex">
             <div class="formLabel">
-              <span>{{ t('database.selectLocation') }}：</span>
+              <span>{{ t('fingerprints.scanLocation') }}：</span>
             </div>
             <div style="width: 310px">
               <div
