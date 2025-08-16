@@ -92,6 +92,7 @@
       "alreadyLatest": "已是最新，无需同步",
       "tooFrequent": "同步请求过于频繁，请稍后再试",
       "sensitiveOperationTooFrequent": "敏感操作请求过于频繁，请稍后再试",
+      "pullDiffPageFailed": "分页拉取差异数据失败",
       "sessionNotExist": "差异会话不存在或已过期",
       "keyMismatch": "当前 userKey 与会话不匹配",
       "requestTooLarge": "请求体大小超过限制（最大10MB）",
