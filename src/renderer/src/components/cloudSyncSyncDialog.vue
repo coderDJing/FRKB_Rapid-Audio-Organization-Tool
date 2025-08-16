@@ -97,7 +97,7 @@ const handleNotice = (_e: any, payload: any) => {
   // 先关闭同步面板
   emits('cancel')
   // 同时弹出提示对话框（非阻塞）
-  void confirm({ title: 'dialog.hint', content: [contentMsg], confirmShow: false })
+  void confirm({ title: t('dialog.hint'), content: [contentMsg], confirmShow: false })
 }
 const handleProgress = (_e: any, p: any) => {
   phase.value = p.phase
@@ -370,6 +370,7 @@ onUnmounted(() => {
   background: linear-gradient(90deg, #3a7afe, #4da3ff);
   background-size: 200% 100%;
   animation: slideBg 2.2s linear infinite;
+  transition: width 0.3s ease-in-out;
 }
 .fill::after {
   content: '';
