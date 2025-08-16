@@ -284,8 +284,8 @@ watch(
   { deep: true }
 )
 
-window.electron.ipcRenderer.on('importFinished', async (event, contentArr, songListUUID) => {
-  if (songListUUID == runtime.songsArea.songListUUID) {
+window.electron.ipcRenderer.on('importFinished', async (event, songListUUID, _importSummary) => {
+  if (songListUUID === runtime.songsArea.songListUUID) {
     setTimeout(async () => {
       await openSongList()
     }, 1000)

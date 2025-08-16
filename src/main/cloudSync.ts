@@ -52,6 +52,38 @@ function markSyncStarted() {
   syncStartTimestamps.push(Date.now())
 }
 
+// 将后端错误结构标准化为前端 i18n key（避免直接透传中文 message）
+function mapBackendErrorToI18nKey(payload: any): string {
+  const error = String(payload?.error || '').toUpperCase()
+  switch (error) {
+    case 'INVALID_API_KEY':
+      return 'cloudSync.errors.cannotConnect'
+    case 'INVALID_USER_KEY':
+    case 'USER_KEY_NOT_FOUND':
+      return 'cloudSync.errors.keyInvalid'
+    case 'USER_KEY_INACTIVE':
+      return 'cloudSync.errors.keyDisabled'
+    case 'DIFF_SESSION_NOT_FOUND':
+      return 'cloudSync.errors.sessionNotExist'
+    case 'DIFF_SESSION_USER_MISMATCH':
+      return 'cloudSync.errors.keyMismatch'
+    case 'REQUEST_TOO_LARGE':
+      return 'cloudSync.errors.requestTooLarge'
+    case 'VALIDATION_ERROR':
+      return 'cloudSync.errors.validationFailed'
+    case 'SYNC_RATE_LIMIT_EXCEEDED':
+    case 'RATE_LIMIT_EXCEEDED':
+      return 'cloudSync.errors.tooFrequent'
+    case 'STRICT_RATE_LIMIT_EXCEEDED':
+      return 'cloudSync.errors.sensitiveOperationTooFrequent'
+  }
+  const backendMsg = String(payload?.message || '')
+  if (backendMsg.includes('请求参数验证失败')) return 'cloudSync.errors.validationFailed'
+  if (backendMsg.includes('分页拉取差异数据失败')) return 'cloudSync.errors.pullDiffPageFailed'
+  if (backendMsg.includes('请求体大小超过限制')) return 'cloudSync.errors.requestTooLarge'
+  return 'cloudSync.errors.validationFailed'
+}
+
 async function validateUserKeyRequest(userKeyRaw: string) {
   const userKey = (userKeyRaw || '').trim()
   const requestBody = { userKey }
@@ -347,7 +379,7 @@ ipcMain.handle('cloudSync/start', async () => {
         status: checkRes.status,
         response: checkJson
       })
-      sendError(checkJson?.message || 'check failed', checkJson)
+      sendError(mapBackendErrorToI18nKey(checkJson), checkJson)
       sendState('failed')
       return 'failed'
     }
@@ -432,7 +464,7 @@ ipcMain.handle('cloudSync/start', async () => {
           status: diffRes.status,
           response: diffJson
         })
-        sendError(diffJson?.message || 'bidirectional-diff failed', diffJson)
+        sendError(mapBackendErrorToI18nKey(diffJson), diffJson)
         sendState('failed')
         return 'failed'
       }
@@ -451,10 +483,7 @@ ipcMain.handle('cloudSync/start', async () => {
     }
     const uploadList = Array.from(new Set(toAdd))
     // 3) analyze-diff
-    const clientForAnalyze =
-      clientFingerprints.length > 0
-        ? clientFingerprints
-        : ['0000000000000000000000000000000000000000000000000000000000000000']
+    const clientForAnalyze = clientFingerprints
     if (is.dev) {
       log.info('[cloudSync] /analyze-diff request', {
         url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/analyze-diff`,
@@ -500,7 +529,7 @@ ipcMain.handle('cloudSync/start', async () => {
         status: analyzeRes.status,
         response: analyzeJson
       })
-      sendError(analyzeJson?.message || 'analyze-diff failed', analyzeJson)
+      sendError(mapBackendErrorToI18nKey(analyzeJson), analyzeJson)
       sendState('failed')
       return 'failed'
     }
@@ -596,7 +625,7 @@ ipcMain.handle('cloudSync/start', async () => {
               status: retryAnalyze.status,
               response: retryAnalyzeJson
             })
-            sendError(retryAnalyzeJson?.message || 'analyze-diff failed (retry)', retryAnalyzeJson)
+            sendError(mapBackendErrorToI18nKey(retryAnalyzeJson), retryAnalyzeJson)
             sendState('failed')
             return 'failed'
           }
@@ -611,7 +640,7 @@ ipcMain.handle('cloudSync/start', async () => {
           status: pageRes.status,
           response: pageJson
         })
-        sendError(pageJson?.message || 'pull-diff-page failed', pageJson)
+        sendError(mapBackendErrorToI18nKey(pageJson), pageJson)
         sendState('failed')
         return 'failed'
       }
@@ -649,9 +678,7 @@ ipcMain.handle('cloudSync/start', async () => {
       if (is.dev) {
         log.info('[cloudSync] /add response', { status: addRes.status, json: addJson })
       }
-      // 最新后端返回顶层字段
-      const addedCount = toNumber(addJson?.insertedCount)
-      const duplicateCount = toNumber(addJson?.duplicateCount)
+      const addedCount = toNumber(addJson?.addedCount)
       if (!addJson?.success) {
         log.error('[cloudSync] /add error', {
           request: {
@@ -661,7 +688,7 @@ ipcMain.handle('cloudSync/start', async () => {
           status: addRes.status,
           response: addJson
         })
-        sendError(addJson?.message || 'add failed', addJson)
+        sendError(mapBackendErrorToI18nKey(addJson), addJson)
         sendState('failed')
         return 'failed'
       }
@@ -779,10 +806,8 @@ ipcMain.handle('cloudSync/start', async () => {
         code === 'ENOTFOUND' ||
         code === 'ETIMEDOUT' ||
         code === 'EAI_AGAIN'
-      if (isNetwork) {
-        return 'cloudSync.errors.cannotConnect'
-      }
-      return `同步失败：${rawMsg || '未知错误'}`
+      if (isNetwork) return 'cloudSync.errors.cannotConnect'
+      return 'common.error'
     })()
     // 捕获到的最终错误需记录
     log.error('[cloudSync] sync failed', { error: e, message: msg })

@@ -92,6 +92,7 @@
       "alreadyLatest": "Up to date",
       "tooFrequent": "Too frequent. Try later.",
       "sensitiveOperationTooFrequent": "Sensitive ops too frequent. Try later.",
+      "pullDiffPageFailed": "Failed to pull diff page",
       "sessionNotExist": "Session missing or expired",
       "keyMismatch": "userKey mismatch",
       "requestTooLarge": "Body too large (max 10MB)",
