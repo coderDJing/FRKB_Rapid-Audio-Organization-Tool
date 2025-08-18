@@ -15,7 +15,8 @@
     "finished": "Done",
     "test": "Test",
     "rename": "Rename",
-    "language": "Language"
+    "language": "Language",
+    "exit": "Exit"
   },
   "app": {
     "name": "Rapid Audio Organization Tool"

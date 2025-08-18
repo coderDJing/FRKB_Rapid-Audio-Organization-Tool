@@ -51,8 +51,16 @@ window.electron.ipcRenderer.on('noAudioFileWasScanned', async (event) => {
 })
 </script>
 <template>
-  <div style="width: 100%; height: 100%; display: flex" v-if="barTitle">
-    <div style="display: flex; justify-content: center; align-items: center; padding-left: 5px">
+  <div style="width: 100%; height: 100%; display: flex; align-items: center" v-if="barTitle">
+    <div
+      style="
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding-left: 5px;
+        height: 20px;
+      "
+    >
       <div class="loading">
         <div></div>
         <div></div>
@@ -63,7 +71,7 @@ window.electron.ipcRenderer.on('noAudioFileWasScanned', async (event) => {
     </div>
     <div
       v-if="barTitle"
-      style="width: fit-content; font-size: 10px; height: 19px; line-height: 19px; padding: 0 5px"
+      style="width: fit-content; font-size: 10px; height: 20px; line-height: 20px; padding: 0 5px"
     >
       {{ barTitle }}
       <span v-show="!noNum">{{ barNowNum }} / {{ barTotal }}</span>
@@ -192,15 +200,81 @@ window.electron.ipcRenderer.on('noAudioFileWasScanned', async (event) => {
 }
 
 .progress {
-  height: 100%;
+  height: 20px;
   display: flex;
   align-items: center;
+  position: relative;
 }
 
 .progress-bar {
+  position: absolute;
+  top: 7px;
+  left: 0;
   height: 5px;
-  background-color: #0078d4;
-  // border-radius: 4px;
-  // width: 100%;
+  background: linear-gradient(90deg, #3a7afe, #4da3ff);
+  background-size: 200% 100%;
+  animation: slideBg 3s linear infinite;
+  border-radius: 3px;
+  overflow: hidden;
+  will-change: background-position, width;
+}
+
+.progress-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.12) 0 8px,
+    rgba(255, 255, 255, 0.04) 8px 16px
+  );
+  mix-blend-mode: overlay;
+  animation: moveStripes 2s linear infinite;
+  will-change: background-position;
+}
+
+.progress-bar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.25) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: translateX(-100%);
+  animation: shine 3.6s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes slideBg {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes moveStripes {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 100px 0;
+  }
+}
+
+@keyframes shine {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 </style>
