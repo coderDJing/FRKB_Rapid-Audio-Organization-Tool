@@ -360,7 +360,7 @@ onUnmounted(() => {
   position: relative;
   height: 10px;
   background: #1f1f1f;
-  border-radius: 6px;
+  border-radius: 3px;
   overflow: hidden;
   border: 1px solid #2c2c2c;
 }
@@ -525,7 +525,7 @@ onUnmounted(() => {
   min-width: 96px;
   padding: 8px 10px;
   border: 1px solid #2c2c2c;
-  border-radius: 6px;
+  border-radius: 3px;
   background: #202020;
   display: inline-flex;
   flex-direction: column;
