@@ -15,7 +15,8 @@
     "finished": "完成",
     "test": "测试",
     "rename": "重命名",
-    "language": "语言"
+    "language": "语言",
+    "exit": "退出"
   },
   "app": {
     "name": "快速音频整理工具"
