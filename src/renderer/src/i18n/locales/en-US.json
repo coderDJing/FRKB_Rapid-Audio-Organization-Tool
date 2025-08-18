@@ -135,6 +135,7 @@
     "title": "Tracks",
     "noTracks": "No tracks",
     "noTracksHint": "Drop folders or audio files to import.",
+    "importTracks": "Import",
     "exportTracks": "Export",
     "deleteTracks": "Delete",
     "movingTracks": "Moving...",

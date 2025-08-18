@@ -1,5 +1,5 @@
 import { createVNode, render } from 'vue'
-import scanNewSongDialog from './scanNewSongDialog.vue'
+import ImportTracksDialogBase from './ImportTracksDialogBase.vue'
 export default ({ libraryName, songListUuid }: { libraryName: string; songListUuid: string }) => {
   return new Promise((resolve, reject) => {
     const div = document.createElement('div')
@@ -15,7 +15,8 @@ export default ({ libraryName, songListUuid }: { libraryName: string; songListUu
       div.remove()
       resolve('cancel')
     }
-    const vnode = createVNode(scanNewSongDialog, {
+    const vnode = createVNode(ImportTracksDialogBase, {
+      mode: 'scan',
       libraryName,
       songListUuid,
       confirmCallback,

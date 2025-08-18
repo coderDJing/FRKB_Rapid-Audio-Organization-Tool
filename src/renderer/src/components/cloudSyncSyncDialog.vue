@@ -440,6 +440,9 @@ onUnmounted(() => {
   text-align: center;
   font-size: 11px;
   color: #a8a8a8;
+  height: 16px;
+  line-height: 16px;
+  white-space: nowrap;
 }
 .progress-details .sep {
   margin: 0 6px;
