@@ -1,5 +1,5 @@
 import { createVNode, render } from 'vue'
-import dropIntoDialog from './dropIntoDialog.vue'
+import ImportTracksDialogBase from './ImportTracksDialogBase.vue'
 
 interface IArgs {
   songListUuid: string
@@ -28,7 +28,8 @@ export default ({ songListUuid, libraryName }: IArgs): Promise<IResult | 'cancel
       div.remove()
       resolve('cancel')
     }
-    const vnode = createVNode(dropIntoDialog, {
+    const vnode = createVNode(ImportTracksDialogBase, {
+      mode: 'drop',
       songListUuid,
       libraryName,
       confirmCallback,

@@ -135,6 +135,7 @@
     "title": "曲目",
     "noTracks": "暂无曲目",
     "noTracksHint": "导入曲目到歌单中，或通过拖拽文件夹或音频文件进行导入。",
+    "importTracks": "导入曲目",
     "exportTracks": "导出曲目",
     "deleteTracks": "删除曲目",
     "movingTracks": "移动曲目",
