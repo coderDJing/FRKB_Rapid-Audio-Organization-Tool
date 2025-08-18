@@ -27,6 +27,8 @@ const props = defineProps({
 const runtime = useRuntimeStore()
 runtime.activeMenuUUID = ''
 runtime.selectSongListDialogShow = true
+// 选择区域，提前声明，便于初始化时设为 recent
+const selectedArea = ref<'recent' | 'tree' | ''>('')
 let recentDialogSelectedSongListUUID: string[] = []
 let localStorageRecentDialogSelectedSongListUUID = localStorage.getItem(
   'recentDialogSelectedSongListUUID' + props.libraryName
@@ -46,6 +48,7 @@ if (localStorageRecentDialogSelectedSongListUUID) {
 let index = 0
 if (recentDialogSelectedSongListUUID.length !== 0) {
   runtime.dialogSelectedSongListUUID = recentDialogSelectedSongListUUID[index]
+  selectedArea.value = 'recent'
 }
 
 const recentSongListArr = ref<IDir[]>([])
@@ -93,6 +96,75 @@ const libraryData: ComputedRef<IDir> = computed(() => {
   }
   return data
 })
+
+// 扁平化当前库下的全部歌单（不关心折叠状态）
+const allSongListArr = computed<IDir[]>(() => {
+  const result: IDir[] = []
+  const traverse = (node?: IDir) => {
+    if (!node) return
+    if (node.type === 'songList') {
+      result.push(node)
+    }
+    if (node.children && node.children.length) {
+      for (const child of node.children) traverse(child)
+    }
+  }
+  traverse(libraryData.value)
+  return result
+})
+
+// 组合“最近使用歌单”+“全部歌单”（保留重复项，便于在两个区域都可停留）
+type NavItem = { uuid: string; area: 'recent' | 'tree' }
+const combinedNavList = computed<NavItem[]>(() => {
+  const list: NavItem[] = []
+  for (const item of recentSongListArr.value) list.push({ uuid: item.uuid, area: 'recent' })
+  for (const item of allSongListArr.value) list.push({ uuid: item.uuid, area: 'tree' })
+  return list
+})
+
+// 当前选择所在区域，用于避免重复高亮（已提前声明）
+
+// 当前在组合列表中的索引
+const navIndex = ref<number>(-1)
+const syncNavIndexByUUID = () => {
+  const list = combinedNavList.value || []
+  if (!runtime.dialogSelectedSongListUUID) {
+    navIndex.value = -1
+    return
+  }
+  // 优先匹配当前区域的索引
+  let idx = list.findIndex(
+    (x) => x.uuid === runtime.dialogSelectedSongListUUID && x.area === selectedArea.value
+  )
+  if (idx < 0) {
+    // 若当前区域不存在该项，则退回到第一个匹配项
+    idx = list.findIndex((x) => x.uuid === runtime.dialogSelectedSongListUUID)
+  }
+  navIndex.value = idx
+}
+
+watch(
+  () => [combinedNavList.value.length, runtime.dialogSelectedSongListUUID],
+  () => {
+    syncNavIndexByUUID()
+  },
+  { immediate: true }
+)
+
+// 当没有“最近使用”时，初始高亮定位到“全部歌单”的第一个
+watch(
+  () => allSongListArr.value.length,
+  (len) => {
+    if (len > 0 && runtime.dialogSelectedSongListUUID === '') {
+      runtime.dialogSelectedSongListUUID = allSongListArr.value[0].uuid
+      selectedArea.value = 'tree'
+      syncNavIndexByUUID()
+    }
+  },
+  { immediate: true }
+)
+
+// libraryData 已提前定义
 
 const collapseButtonRef = useTemplateRef<HTMLDivElement>('collapseButtonRef')
 
@@ -165,22 +237,22 @@ const drop = async () => {
 }
 onMounted(() => {
   hotkeys('s', uuid, () => {
-    if (recentDialogSelectedSongListUUID.length !== 0) {
-      index++
-      if (index === recentDialogSelectedSongListUUID.length) {
-        index = 0
-      }
-      runtime.dialogSelectedSongListUUID = recentDialogSelectedSongListUUID[index]
-    }
+    const list = combinedNavList.value || []
+    if (list.length === 0) return
+    if (navIndex.value < 0) navIndex.value = 0
+    else navIndex.value = (navIndex.value + 1) % list.length
+    const target = list[navIndex.value]
+    selectedArea.value = target.area
+    runtime.dialogSelectedSongListUUID = target.uuid
   })
   hotkeys('w', uuid, () => {
-    if (recentDialogSelectedSongListUUID.length !== 0) {
-      index--
-      if (index === -1) {
-        index = recentDialogSelectedSongListUUID.length - 1
-      }
-      runtime.dialogSelectedSongListUUID = recentDialogSelectedSongListUUID[index]
-    }
+    const list = combinedNavList.value || []
+    if (list.length === 0) return
+    if (navIndex.value < 0) navIndex.value = 0
+    else navIndex.value = (navIndex.value - 1 + list.length) % list.length
+    const target = list[navIndex.value]
+    selectedArea.value = target.area
+    runtime.dialogSelectedSongListUUID = target.uuid
   })
   hotkeys('E', uuid, () => {
     confirmHandle()
@@ -246,6 +318,31 @@ const emits = defineEmits(['cancel', 'confirm'])
 const cancel = () => {
   emits('cancel')
 }
+
+// 依据选择的 UUID 判定当前高亮区域（用户通过鼠标点击树或最近区时生效）
+watch(
+  () => runtime.dialogSelectedSongListUUID,
+  (val) => {
+    if (!val) {
+      selectedArea.value = ''
+      navIndex.value = -1
+      return
+    }
+    const inRecent = recentSongListArr.value.some((x) => x.uuid === val)
+    const inTree = allSongListArr.value.some((x) => x.uuid === val)
+    if (inRecent && inTree) {
+      // 两边都有时，保留当前区域；若无区域则默认 recent
+      if (!selectedArea.value) selectedArea.value = 'recent'
+    } else if (inRecent) {
+      selectedArea.value = 'recent'
+    } else if (inTree) {
+      selectedArea.value = 'tree'
+    } else {
+      selectedArea.value = ''
+    }
+    syncNavIndexByUUID()
+  }
+)
 </script>
 <template>
   <div class="dialog unselectable">
@@ -306,9 +403,12 @@ const cancel = () => {
             <div
               v-for="item of recentSongListArr"
               :key="item.uuid"
-              @click="runtime.dialogSelectedSongListUUID = item.uuid"
+              @click="((runtime.dialogSelectedSongListUUID = item.uuid), (selectedArea = 'recent'))"
               @dblclick="confirmHandle()"
-              :class="{ selectedDir: item.uuid == runtime.dialogSelectedSongListUUID }"
+              :class="{
+                selectedDir:
+                  selectedArea === 'recent' && item.uuid == runtime.dialogSelectedSongListUUID
+              }"
               class="recentLibraryItem"
             >
               <div style="width: 20px; justify-content: center; align-items: center; display: flex">
@@ -326,7 +426,9 @@ const cancel = () => {
             <dialogLibraryItem
               :uuid="item.uuid"
               :libraryName="libraryData.dirName + 'Dialog'"
+              :suppressHighlight="selectedArea === 'recent'"
               @dblClickSongList="confirmHandle()"
+              @markTreeSelected="selectedArea = 'tree'"
             />
           </template>
           <div

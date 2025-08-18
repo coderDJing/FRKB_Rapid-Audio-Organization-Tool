@@ -28,6 +28,11 @@ const props = defineProps({
   needPaddingLeft: {
     type: Boolean,
     default: true
+  },
+  // 当父组件需要控制“避免与最近使用区重复高亮”时，传入 true
+  suppressHighlight: {
+    type: Boolean,
+    default: false
   }
 })
 const runtime = useRuntimeStore()
@@ -243,12 +248,13 @@ const dirHandleClick = async () => {
   }
   if (dirData.type == 'songList') {
     runtime.dialogSelectedSongListUUID = props.uuid
+    emits('markTreeSelected')
   } else {
     dirChildRendered.value = true
     dirChildShow.value = !dirChildShow.value
   }
 }
-const emits = defineEmits(['dblClickSongList'])
+const emits = defineEmits(['dblClickSongList', 'markTreeSelected'])
 const dirHandleDblClick = () => {
   if (dirData.type == 'songList') {
     emits('dblClickSongList')
@@ -417,7 +423,7 @@ indentWidth.value = (depth - 2) * 10
       borderTop: dragState.dragApproach == 'top',
       borderBottom: dragState.dragApproach == 'bottom',
       borderCenter: dragState.dragApproach == 'center',
-      selectedDir: props.uuid == runtime.dialogSelectedSongListUUID
+      selectedDir: !props.suppressHighlight && props.uuid == runtime.dialogSelectedSongListUUID
     }"
   >
     <div class="prefixIcon">
@@ -511,6 +517,8 @@ indentWidth.value = (depth - 2) * 10
       <dialogLibraryItem
         :uuid="item.uuid"
         :libraryName="props.libraryName"
+        :suppressHighlight="props.suppressHighlight"
+        @markTreeSelected="emits('markTreeSelected')"
         @dblClickSongList="emits('dblClickSongList')"
       />
     </template>
