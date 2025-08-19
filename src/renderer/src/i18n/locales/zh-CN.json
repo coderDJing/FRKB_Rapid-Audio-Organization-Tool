@@ -4,6 +4,7 @@
     "cancel": "取消",
     "save": "保存",
     "close": "关闭",
+    "input": "输入",
     "delete": "删除",
     "move": "移动",
     "export": "导出",
@@ -49,6 +50,7 @@
     "settings": "云同步设置",
     "notConfigured": "尚未配置云同步",
     "notConfiguredHint": "尚未配置云同步，将打开设置面板",
+    "needUserKeyBeforeDanger": "执行该危险操作前需要先设置 userKey。已为你打开云同步设置。",
     "userKey": "同步密钥 userKey",
     "applyEmail": "申请密钥邮箱",
     "applyEmailHint": "申请/找回密钥联系邮箱",
@@ -107,6 +109,13 @@
       "rateLimit": "建议在 {seconds} 秒后再次发起同步",
       "rateLimitWarning8": "温馨提示：5 分钟内已累计 8 次同步，本次为第 9 次。为避免触发限制，建议在 {seconds} 秒后再次发起同步",
       "rateLimitWarning9": "温馨提示：5 分钟内已累计 9 次同步，本次为第 10 次。建议在 {seconds} 秒后再次发起同步"
+    },
+    "reset": {
+      "sectionTitle": "清除云端指纹库",
+      "title": "危险操作：重置云端指纹库",
+      "description": "该操作将清除云端与当前 userKey 关联的全部指纹与元数据（不影响使用统计）。此操作不可撤销，请谨慎执行。请输入 DELETE 以继续。",
+      "short": "清除云端指纹库",
+      "success": "云端指纹库已清除"
     }
   },
   "library": {

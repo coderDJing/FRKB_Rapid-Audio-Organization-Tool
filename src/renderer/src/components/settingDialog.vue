@@ -9,6 +9,7 @@ import { t } from '@renderer/utils/translate'
 import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 import confirm from '@renderer/components/confirmDialog'
 import globalCallShortcutDialog from './globalCallShortcutDialog'
+import dangerConfirmWithInput from './dangerConfirmWithInputDialog'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 const runtime = useRuntimeStore()
@@ -193,6 +194,58 @@ const reSelectLibrary = async () => {
   }
 }
 const hint1Ref = useTemplateRef<HTMLImageElement>('hint1Ref')
+
+// 清除云端指纹库
+const clearCloudFingerprints = async () => {
+  if (runtime.isProgressing) {
+    await confirm({
+      title: t('common.setting'),
+      content: [t('import.waitForTask')],
+      confirmShow: false
+    })
+    return
+  }
+  const cfg = await window.electron.ipcRenderer.invoke('cloudSync/config/get')
+  const userKey = cfg?.userKey || ''
+  if (!userKey) {
+    emits('cancel')
+    window.dispatchEvent(new CustomEvent('openDialogFromChild', { detail: 'cloudSync.settings' }))
+    await confirm({
+      title: t('cloudSync.settings'),
+      content: [t('cloudSync.needUserKeyBeforeDanger')],
+      confirmShow: false
+    })
+    return
+  }
+  const danger = await dangerConfirmWithInput({
+    title: t('cloudSync.reset.title'),
+    description: t('cloudSync.reset.description'),
+    confirmKeyword: 'DELETE',
+    placeholder: 'DELETE'
+  })
+  if (danger === 'cancel') return
+  try {
+    const res = await window.electron.ipcRenderer.invoke('cloudSync/resetUserData', {
+      notes: 'reset from client'
+    })
+    if (res?.success) {
+      await confirm({
+        title: t('common.success'),
+        content: [t('cloudSync.reset.success')],
+        confirmShow: false
+      })
+    } else {
+      const msgKey = res?.message || 'common.error'
+      await confirm({ title: t('common.error'), content: [t(msgKey)], confirmShow: false })
+    }
+  } catch (e: any) {
+    await confirm({
+      title: t('common.error'),
+      content: [t('cloudSync.errors.cannotConnect')],
+      confirmShow: false
+    })
+  }
+}
 </script>
 <template>
   <div class="dialog unselectable">
@@ -360,6 +413,16 @@ const hint1Ref = useTemplateRef<HTMLImageElement>('hint1Ref')
                 class="dangerButton"
                 style="width: 90px; text-align: center"
                 @click="clearTracksFingerprintLibrary()"
+              >
+                {{ t('fingerprints.clearShort') }}
+              </div>
+            </div>
+            <div style="margin-top: 20px">{{ t('cloudSync.reset.sectionTitle') }}：</div>
+            <div style="margin-top: 10px">
+              <div
+                class="dangerButton"
+                style="width: 90px; text-align: center"
+                @click="clearCloudFingerprints()"
               >
                 {{ t('fingerprints.clearShort') }}
               </div>

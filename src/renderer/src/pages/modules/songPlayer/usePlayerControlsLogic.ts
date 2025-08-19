@@ -58,6 +58,8 @@ export function usePlayerControlsLogic({
 }: UsePlayerControlsOptions) {
   const isFileOperationInProgress = ref(false)
   const songToMoveRef = ref<ISongInfo | null>(null)
+  // 记录当前歌曲已因快进触发过“下一首”，避免长按多次触发连续跳歌
+  const lastNextTriggeredSongPath = ref<string | null>(null)
 
   const play = () => {
     if (!wavesurferInstance.value) return
@@ -96,7 +98,59 @@ export function usePlayerControlsLogic({
   }
 
   const fastForward = () => {
-    wavesurferInstance.value?.skip(runtime.setting.fastForwardTime)
+    const ws = wavesurferInstance.value
+    if (!ws) return
+
+    const duration = ws.getDuration()
+    if (!duration || Number.isNaN(duration)) return
+
+    const currentSongPath = runtime.playingData.playingSong?.filePath ?? null
+    const skipAmount = runtime.setting.fastForwardTime
+
+    // 是否存在下一首
+    let hasNextSong = false
+    if (runtime.playingData.playingSong && runtime.playingData.playingSongListData?.length) {
+      const currentIndex = runtime.playingData.playingSongListData.findIndex(
+        (item) => item.filePath === runtime.playingData.playingSong?.filePath
+      )
+      hasNextSong =
+        currentIndex !== -1 && currentIndex < runtime.playingData.playingSongListData.length - 1
+    }
+
+    // 无论是否启用播放区间，这里的快进越界判断一律以整曲末尾为准
+    const endTime = duration
+
+    // 获取当前时间，判断这次快进后是否会越界
+    // wavesurfer v7 提供 getCurrentTime
+    const currentTime = (ws as any).getCurrentTime ? (ws as any).getCurrentTime() : 0
+    const targetTime = currentTime + skipAmount
+
+    // 允许少量误差，避免浮点问题
+    const epsilon = 0.01
+
+    if (targetTime >= endTime - epsilon) {
+      // 将到达末尾
+      if (runtime.setting.autoPlayNextSong && hasNextSong) {
+        // 防止长按重复触发多次“下一首”导致连跳
+        if (lastNextTriggeredSongPath.value !== currentSongPath) {
+          lastNextTriggeredSongPath.value = currentSongPath
+          nextSong()
+        }
+      } else {
+        // 未开启自动播放下一首时，停在末尾
+        try {
+          // 对齐到整曲末尾
+          if (typeof (ws as any).seekTo === 'function') {
+            ;(ws as any).seekTo(1)
+          }
+        } catch {}
+        ws.pause()
+      }
+      return
+    }
+
+    // 未越界则正常快进
+    ws.skip(skipAmount)
   }
 
   const fastBackward = () => {
@@ -106,6 +160,8 @@ export function usePlayerControlsLogic({
   }
 
   const nextSong = () => {
+    // 重置一次性触发标记
+    lastNextTriggeredSongPath.value = null
     cancelPreloadTimer('nextSong start')
     if (!runtime.playingData.playingSong) return
     const currentIndex = runtime.playingData.playingSongListData.findIndex(
@@ -172,6 +228,8 @@ export function usePlayerControlsLogic({
   }
 
   const previousSong = () => {
+    // 重置一次性触发标记
+    lastNextTriggeredSongPath.value = null
     cancelPreloadTimer('previousSong start')
     if (!runtime.playingData.playingSong) return
 
