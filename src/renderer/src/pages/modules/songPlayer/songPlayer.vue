@@ -266,10 +266,15 @@ const attachEventListeners = (targetInstance: WaveSurfer) => {
         preloadTimerId = null
       }
     }, 3000)
+
+    // 真正开始播放后才认为播放器就绪
+    runtime.playerReady = true
+    runtime.isSwitchingSong = false
   })
 
   targetInstance.on('ready', () => {
     updateParentWaveformWidth()
+    // ready 触发较早，延迟到真正开始播放后再标记就绪
   })
 
   targetInstance.on('error', async (error: any) => {
@@ -423,6 +428,7 @@ onMounted(() => {
   if (wavesurferInstance.value) {
     wavesurferInstance.value.on('ready', () => {
       updateParentWaveformWidth()
+      // 不在 ready 时置为就绪，避免过早放开快进
     })
   }
 
@@ -477,6 +483,7 @@ onUnmounted(() => {
     wavesurferInstance.value.destroy()
     wavesurferInstance.value = null
   }
+  runtime.playerReady = false
   window.electron.ipcRenderer.removeAllListeners('readedSongFile')
   window.electron.ipcRenderer.removeAllListeners('readedNextSongFile')
   window.electron.ipcRenderer.removeAllListeners('readNextSongFileError')
@@ -508,6 +515,9 @@ const requestLoadSong = (filePath: string) => {
     // 清空实例，强制重置内部状态
     wavesurferInstance.value.empty()
   }
+
+  // 新的歌曲开始加载前，标记播放器未就绪，防止快进触发
+  runtime.playerReady = false
 
   // 增加一个控制台日志以帮助调试
   const newRequestId = currentLoadRequestId.value + 1

@@ -71,6 +71,8 @@ export function usePlayerHotkeys(
       actions.fastForward()
     })
 
+    // 移除对快进抑制状态的依赖（改由 playerReady 门槛控制）
+
     hotkeys('a,left', scope, (event) => {
       event.preventDefault()
       if (!state.waveformShow.value) {
