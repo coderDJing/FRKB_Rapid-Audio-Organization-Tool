@@ -126,6 +126,51 @@ ipcMain.handle('cloudSync/config/get', () => {
   return { userKey: storedUserKey }
 })
 
+// 重置用户云端数据（不重置使用统计）
+ipcMain.handle('cloudSync/resetUserData', async (_e, payload: { notes?: string }) => {
+  try {
+    const userKey = (cloudSyncConfig.userKey || '').trim()
+    if (!userKey) {
+      return { success: false, message: 'cloudSync.notConfigured' }
+    }
+    const body: any = { userKey }
+    if (payload && typeof payload.notes === 'string' && payload.notes.trim()) {
+      body.notes = payload.notes.trim()
+    }
+    if (is.dev) {
+      log.info('[cloudSync] /reset request', {
+        url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/reset`,
+        headers: {
+          Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body
+      })
+    }
+    const res = await limitedFetch(`${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/reset`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    })
+    const json = await res.json()
+    if (is.dev) {
+      log.info('[cloudSync] /reset response', { status: res.status, json })
+    }
+    if (json?.success === true) {
+      return { success: true, data: json }
+    }
+    // 失败：按后端错误码映射提示
+    const messageKey = mapBackendErrorToI18nKey(json)
+    return { success: false, message: messageKey, error: json }
+  } catch (e) {
+    log.error('[cloudSync] /reset failed', e)
+    return { success: false, message: 'cloudSync.errors.cannotConnect' }
+  }
+})
+
 ipcMain.handle('cloudSync/config/save', async (_e, payload: { userKey: string }) => {
   const userKey = (payload?.userKey || '').trim()
   try {
