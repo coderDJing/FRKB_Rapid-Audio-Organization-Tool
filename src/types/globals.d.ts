@@ -60,6 +60,10 @@ interface ISettingConfig {
   autoScrollToCurrentSong: boolean
   enablePlaybackRange: boolean
   recentDialogSelectedSongListMaxCount: number
+  // 错误日志上报设置
+  enableErrorReport: boolean
+  errorReportUsageMsSinceLastSuccess: number
+  errorReportRetryMsSinceLastFailure: number // -1 表示当前无失败等待窗口
 }
 
 interface ILanguageDict {

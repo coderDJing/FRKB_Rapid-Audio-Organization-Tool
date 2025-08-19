@@ -296,5 +296,8 @@
   "about": {
     "author": "Author: Coder 'Programmer/DJ'",
     "contact": "Feedback or DJ booking: {email}"
+  },
+  "errorReport": {
+    "enable": "Enable error log reporting"
   }
 }

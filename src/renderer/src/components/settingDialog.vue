@@ -45,6 +45,16 @@ if (runtime.setting.endPlayPercent === undefined) {
 if (runtime.setting.recentDialogSelectedSongListMaxCount === undefined) {
   runtime.setting.recentDialogSelectedSongListMaxCount = 10
 }
+// 错误日志上报默认值
+if ((runtime as any).setting.enableErrorReport === undefined) {
+  ;(runtime as any).setting.enableErrorReport = true
+}
+if ((runtime as any).setting.errorReportUsageMsSinceLastSuccess === undefined) {
+  ;(runtime as any).setting.errorReportUsageMsSinceLastSuccess = 0
+}
+if ((runtime as any).setting.errorReportRetryMsSinceLastFailure === undefined) {
+  ;(runtime as any).setting.errorReportRetryMsSinceLastFailure = -1
+}
 
 // 修改后的 cancel 函数 - 移除了范围验证和保存
 const cancel = async () => {
@@ -426,6 +436,13 @@ const clearCloudFingerprints = async () => {
               >
                 {{ t('fingerprints.clearShort') }}
               </div>
+            </div>
+            <div style="margin-top: 20px">{{ t('errorReport.enable') }}：</div>
+            <div style="margin-top: 10px">
+              <singleCheckbox
+                v-model="(runtime as any).setting.enableErrorReport"
+                @change="setSetting()"
+              />
             </div>
           </div>
         </OverlayScrollbarsComponent>
