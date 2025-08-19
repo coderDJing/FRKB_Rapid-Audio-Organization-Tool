@@ -204,6 +204,7 @@ const reSelectLibrary = async () => {
   }
 }
 const hint1Ref = useTemplateRef<HTMLImageElement>('hint1Ref')
+const hintErrorReportRef = useTemplateRef<HTMLImageElement>('hintErrorReportRef')
 
 // 清除云端指纹库
 const clearCloudFingerprints = async () => {
@@ -437,7 +438,20 @@ const clearCloudFingerprints = async () => {
                 {{ t('fingerprints.clearShort') }}
               </div>
             </div>
-            <div style="margin-top: 20px">{{ t('errorReport.enable') }}：</div>
+            <div style="margin-top: 20px">
+              {{ t('errorReport.enable') }}：
+              <img
+                ref="hintErrorReportRef"
+                :src="hintIcon"
+                style="width: 15px; height: 15px; margin-top: 5px"
+                :draggable="false"
+              />
+              <bubbleBox
+                :dom="hintErrorReportRef || undefined"
+                :title="t('errorReport.hint')"
+                :maxWidth="260"
+              />
+            </div>
             <div style="margin-top: 10px">
               <singleCheckbox
                 v-model="(runtime as any).setting.enableErrorReport"
