@@ -9,6 +9,7 @@ import {
 } from './utils'
 import { log } from './log'
 import './cloudSync'
+import errorReport from './errorReport'
 import url from './url'
 import mainWindow from './window/mainWindow'
 import databaseInitWindow from './window/databaseInitWindow'
@@ -88,7 +89,11 @@ const defaultSettings = {
   autoScrollToCurrentSong: true,
   enablePlaybackRange: false,
   recentDialogSelectedSongListMaxCount: 10,
-  nextCheckUpdateTime: ''
+  nextCheckUpdateTime: '',
+  // 错误日志上报默认配置
+  enableErrorReport: true,
+  errorReportUsageMsSinceLastSuccess: 0,
+  errorReportRetryMsSinceLastFailure: -1
 }
 
 store.layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
@@ -119,6 +124,13 @@ store.settingConfig = finalSettings
 // 将可能更新的设置持久化回文件
 // 确保即使文件最初不存在，或者读取出错时，最终也会写入一个有效的配置文件
 fs.outputJsonSync(url.settingConfigFileUrl, finalSettings)
+
+// 初始化错误日志上报调度
+try {
+  errorReport.setup()
+} catch (e) {
+  log.error('初始化错误日志上报失败', e)
+}
 
 let devInitDatabaseFunction = () => {
   if (!fs.pathExistsSync(store.settingConfig.databaseUrl)) {
