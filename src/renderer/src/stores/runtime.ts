@@ -27,6 +27,10 @@ interface Runtime {
   confirmShow: boolean
   hotkeysScopesHeap: string[]
   setting: ISettingConfig
+  // 播放器是否已加载并就绪（用于快进等操作的前置条件）
+  playerReady: boolean
+  // 是否处于切歌流程中（从发起切歌到新歌开始播放之前）
+  isSwitchingSong: boolean
 }
 export const useRuntimeStore = defineStore('runtime', {
   state: (): Runtime => {
@@ -91,7 +95,9 @@ export const useRuntimeStore = defineStore('runtime', {
         enableErrorReport: true,
         errorReportUsageMsSinceLastSuccess: 0,
         errorReportRetryMsSinceLastFailure: -1
-      } //设置
+      }, //设置
+      playerReady: false,
+      isSwitchingSong: false
     }
   }
 })
