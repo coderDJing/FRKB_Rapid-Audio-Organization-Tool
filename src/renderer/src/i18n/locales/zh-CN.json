@@ -298,6 +298,7 @@
     "contact": "对FRKB有任何建议或Booking我演出: {email}"
   },
   "errorReport": {
-    "enable": "启用错误日志上报"
+    "enable": "启用错误日志上报",
+    "hint": "仅上传程序崩溃等报错信息，不包含任何用户数据"
   }
 }
