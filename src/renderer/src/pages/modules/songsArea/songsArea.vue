@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch, ref, nextTick, computed, onMounted, useTemplateRef } from 'vue'
+import { watch, ref, nextTick, computed, onMounted, onUnmounted, useTemplateRef } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import hotkeys from 'hotkeys-js'
@@ -292,89 +292,87 @@ window.electron.ipcRenderer.on('importFinished', async (event, songListUUID, _im
   }
 })
 
-// 监听歌曲拖拽移动事件
-emitter.on('songsMovedByDrag', (movedSongPaths: string[]) => {
-  if (Array.isArray(movedSongPaths) && movedSongPaths.length > 0) {
-    // 从 originalSongInfoArr 中移除歌曲
-    const songsToRemove = originalSongInfoArr.value.filter((song) =>
-      movedSongPaths.includes(song.filePath)
-    )
+// 全局事件处理函数（保持稳定引用，便于卸载时 off）
+const onSongsRemoved = (payload: { listUUID?: string; paths: string[] } | { paths: string[] }) => {
+  const pathsToRemove = Array.isArray((payload as any).paths) ? (payload as any).paths : []
+  const listUUID = (payload as any).listUUID
 
-    // 释放封面 URL
-    songsToRemove.forEach((song) => {
-      if (song.coverUrl) {
-        URL.revokeObjectURL(song.coverUrl)
-      }
-    })
+  if (!pathsToRemove.length) return
+  if (listUUID && listUUID !== runtime.songsArea.songListUUID) return
 
-    // 监听全局删除事件，确保当前列表的 original 与显示列表同步移除，避免后续基于 original 重建时“复活”已删除条目
-    emitter.on(
-      'songsRemoved',
-      (payload: { listUUID: string; paths: string[] } | { paths: string[] }) => {
-        const pathsToRemove = Array.isArray((payload as any).paths) ? (payload as any).paths : []
-        const listUUID = (payload as any).listUUID
+  // 从 original 中删除
+  originalSongInfoArr.value = originalSongInfoArr.value.filter(
+    (song) => !pathsToRemove.includes(song.filePath)
+  )
 
-        if (!pathsToRemove.length) return
+  // 从显示列表中删除
+  runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
+    (song) => !pathsToRemove.includes(song.filePath)
+  )
 
-        // 仅当事件针对当前正在浏览的歌单，才更新界面数据
-        if (listUUID && listUUID !== runtime.songsArea.songListUUID) return
-
-        // 从 original 中删除
-        originalSongInfoArr.value = originalSongInfoArr.value.filter(
-          (song) => !pathsToRemove.includes(song.filePath)
-        )
-
-        // 从显示列表中删除
-        runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
-          (song) => !pathsToRemove.includes(song.filePath)
-        )
-
-        // 同步播放数据（如果当前播放列表即为该歌单）
-        if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-          runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
-          if (
-            runtime.playingData.playingSong &&
-            pathsToRemove.includes(runtime.playingData.playingSong.filePath)
-          ) {
-            runtime.playingData.playingSong = null
-          }
-        }
-
-        // 从当前选择中移除已删除的歌曲
-        runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
-          (path) => !pathsToRemove.includes(path)
-        )
-      }
-    )
-
-    // 更新 originalSongInfoArr
-    originalSongInfoArr.value = originalSongInfoArr.value.filter(
-      (song) => !movedSongPaths.includes(song.filePath)
-    )
-
-    // 更新 runtime.songsArea.songInfoArr
-    runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
-      (song) => !movedSongPaths.includes(song.filePath)
-    )
-
-    // 如果当前播放列表是被修改的列表，更新播放数据
-    if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-      runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
-
-      // 如果当前播放的歌曲是被移动的歌曲之一，停止播放
-      if (
-        runtime.playingData.playingSong &&
-        movedSongPaths.includes(runtime.playingData.playingSong.filePath)
-      ) {
-        runtime.playingData.playingSong = null
-      }
+  // 同步播放数据（如果当前播放列表即为该歌单）
+  if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+    runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+    if (
+      runtime.playingData.playingSong &&
+      pathsToRemove.includes(runtime.playingData.playingSong.filePath)
+    ) {
+      runtime.playingData.playingSong = null
     }
-
-    // 清空选中状态
-    runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
-      (path) => !movedSongPaths.includes(path)
-    )
   }
+
+  // 从当前选择中移除已删除的歌曲
+  runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
+    (path) => !pathsToRemove.includes(path)
+  )
+}
+
+const onSongsMovedByDrag = (movedSongPaths: string[]) => {
+  if (!Array.isArray(movedSongPaths) || movedSongPaths.length === 0) return
+
+  // 从 originalSongInfoArr 中移除歌曲并释放封面 URL
+  const songsToRemove = originalSongInfoArr.value.filter((song) =>
+    movedSongPaths.includes(song.filePath)
+  )
+  songsToRemove.forEach((song) => {
+    if (song.coverUrl) {
+      URL.revokeObjectURL(song.coverUrl)
+    }
+  })
+
+  // 更新 originalSongInfoArr 与显示列表
+  originalSongInfoArr.value = originalSongInfoArr.value.filter(
+    (song) => !movedSongPaths.includes(song.filePath)
+  )
+  runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
+    (song) => !movedSongPaths.includes(song.filePath)
+  )
+
+  // 如果当前播放列表是被修改的列表，更新播放数据
+  if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+    runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+    if (
+      runtime.playingData.playingSong &&
+      movedSongPaths.includes(runtime.playingData.playingSong.filePath)
+    ) {
+      runtime.playingData.playingSong = null
+    }
+  }
+
+  // 清空选中状态中的对应项
+  runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
+    (path) => !movedSongPaths.includes(path)
+  )
+}
+
+onMounted(() => {
+  emitter.on('songsRemoved', onSongsRemoved)
+  emitter.on('songsMovedByDrag', onSongsMovedByDrag)
+})
+
+onUnmounted(() => {
+  emitter.off('songsRemoved', onSongsRemoved)
+  emitter.off('songsMovedByDrag', onSongsMovedByDrag)
 })
 
 // --- 父组件中用于持久化列数据的方法 ---
@@ -526,7 +524,6 @@ const songDblClick = (song: ISongInfo) => {
   runtime.playingData.playingSong = song
   runtime.playingData.playingSongListUUID = runtime.songsArea.songListUUID
   runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
-  window.electron.ipcRenderer.send('readSongFile', song.filePath, 0)
 }
 const handleDeleteKey = async () => {
   const selectedPaths = JSON.parse(JSON.stringify(runtime.songsArea.selectedSongFilePath))

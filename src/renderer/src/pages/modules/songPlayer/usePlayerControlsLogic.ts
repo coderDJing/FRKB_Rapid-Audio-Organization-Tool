@@ -103,9 +103,6 @@ export function usePlayerControlsLogic({
     // 必须等播放器就绪后才允许快进，否则直接返回
     // 若处于切歌流程或未就绪，直接阻止
     if (runtime.isSwitchingSong || !runtime.playerReady) {
-      console.log(
-        `[fastForward] 阻止：${runtime.isSwitchingSong ? '切歌中 isSwitchingSong=true' : 'playerReady=false'}`
-      )
       return
     }
 
@@ -139,13 +136,11 @@ export function usePlayerControlsLogic({
     const epsilon = 0.01
 
     if (targetTime >= endTime - epsilon) {
-      console.log('[fastForward] 越界到末尾')
       // 将到达末尾
       if (runtime.setting.autoPlayNextSong && hasNextSong) {
         // 在调用切歌前，先设置为未就绪，确保后续快进被阻止
         runtime.playerReady = false
         runtime.isSwitchingSong = true
-        console.log('[fastForward] 自动播放下一首：预置 playerReady=false')
         // 冷却逻辑已移除
         nextSong()
       } else {
@@ -157,7 +152,6 @@ export function usePlayerControlsLogic({
           }
         } catch {}
         ws.pause()
-        console.log('[fastForward] 未开启自动播放下一首或无下一首：对齐末尾并暂停')
       }
       return
     }
@@ -176,7 +170,6 @@ export function usePlayerControlsLogic({
     // 切歌开始，标记未就绪，阻止快进再次触发
     runtime.playerReady = false
     runtime.isSwitchingSong = true
-    console.log('[nextSong] 开始切歌 -> playerReady=false')
     cancelPreloadTimer('nextSong start')
     if (!runtime.playingData.playingSong) return
     const currentIndex = runtime.playingData.playingSongListData.findIndex(
@@ -246,7 +239,6 @@ export function usePlayerControlsLogic({
     // 切歌开始，标记未就绪，阻止快进再次触发
     runtime.playerReady = false
     runtime.isSwitchingSong = true
-    console.log('[previousSong] 开始切歌 -> playerReady=false')
     cancelPreloadTimer('previousSong start')
     if (!runtime.playingData.playingSong) return
 
