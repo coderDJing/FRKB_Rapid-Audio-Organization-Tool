@@ -17,7 +17,9 @@
     "test": "测试",
     "rename": "重命名",
     "language": "语言",
-    "exit": "退出"
+    "exit": "退出",
+    "retry": "重试",
+    "skip": "跳过"
   },
   "app": {
     "name": "快速音频整理工具"
@@ -300,5 +302,10 @@
   "errorReport": {
     "enable": "启用错误日志上报",
     "hint": "仅上传程序崩溃等报错信息，不包含任何用户数据"
+  },
+  "errors": {
+    "diskFullTitle": "磁盘空间不足",
+
+    "diskFullInterruptedHint": "可用空间不足。已完成 {done} 项，待处理 {pending} 项。释放空间后可重试，或跳过剩余任务。"
   }
 }

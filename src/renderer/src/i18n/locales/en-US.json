@@ -17,7 +17,9 @@
     "test": "Test",
     "rename": "Rename",
     "language": "Language",
-    "exit": "Exit"
+    "exit": "Exit",
+    "retry": "Retry",
+    "skip": "Skip"
   },
   "app": {
     "name": "Rapid Audio Organization Tool"
@@ -300,5 +302,10 @@
   "errorReport": {
     "enable": "Enable error log reporting",
     "hint": "Only crash and error logs are uploaded. No user data is included."
+  },
+  "errors": {
+    "diskFullTitle": "Disk space low",
+    "diskFullHint": "",
+    "diskFullInterruptedHint": "Insufficient space. Completed {done}, pending {pending}. Free space then retry or skip the rest."
   }
 }

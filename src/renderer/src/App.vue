@@ -14,6 +14,7 @@ import { t } from '@renderer/utils/translate'
 import pkg from '../../../package.json?asset'
 import cloudSyncSettingsDialog from './components/cloudSyncSettingsDialog.vue'
 import cloudSyncSyncDialog from './components/cloudSyncSyncDialog.vue'
+import FileOpInterruptedDialog from './components/fileOpInterruptedDialog.vue'
 
 const runtime = useRuntimeStore()
 
@@ -34,6 +35,22 @@ window.electron.ipcRenderer.on('layoutConfigReaded', (event, layoutConfig) => {
   runtime.layoutConfig = layoutConfig
 })
 const activeDialog = ref('')
+const fileOpDialogVisible = ref(false)
+const fileOpContext = ref('')
+const fileOpDone = ref(0)
+const fileOpRunning = ref(0)
+const fileOpPending = ref(0)
+const fileOpBatchId = ref('')
+const fileOpSuccessSoFar = ref(0)
+const fileOpFailedSoFar = ref(0)
+
+const sendFileOpControl = (action: 'resume' | 'cancel') => {
+  fileOpDialogVisible.value = false
+  ;(window as any).electron.ipcRenderer.send('file-op-control', {
+    batchId: fileOpBatchId.value,
+    action
+  })
+}
 
 const openDialog = async (item: string) => {
   // 统一将中文项映射为 i18n 键，避免不同语言下判断不一致
@@ -129,6 +146,20 @@ onMounted(() => {
     runtime.activeMenuUUID = ''
   })
   utils.setHotkeysScpoe('windowGlobal')
+  // 不再显示“结束后的汇总提示”
+  // 监听批处理被中断（等待用户选择 继续/取消）
+  window.electron.ipcRenderer.on('file-op-interrupted', async (_e, payload) => {
+    try {
+      fileOpDialogVisible.value = true
+      fileOpContext.value = payload?.context || ''
+      fileOpSuccessSoFar.value = payload?.successSoFar || 0
+      fileOpFailedSoFar.value = payload?.failedSoFar || 0
+      fileOpDone.value = fileOpSuccessSoFar.value + fileOpFailedSoFar.value
+      fileOpRunning.value = payload?.running || 0
+      fileOpPending.value = payload?.pending || 0
+      fileOpBatchId.value = payload?.batchId || ''
+    } catch (_err) {}
+  })
 })
 // 供子组件触发打开对话框（例如同步面板引导打开设置）
 window.addEventListener('openDialogFromChild', (e: any) => {
@@ -185,6 +216,17 @@ window.electron.ipcRenderer.on('delSongsSuccess', (_event, recycleBinNewDirDescr
   <cloudSyncSyncDialog
     v-if="activeDialog == 'cloudSync.syncFingerprints'"
     @cancel="activeDialog = ''"
+  />
+  <FileOpInterruptedDialog
+    :visible="fileOpDialogVisible"
+    :context="fileOpContext"
+    :done="fileOpDone"
+    :running="fileOpRunning"
+    :pending="fileOpPending"
+    :success-so-far="fileOpSuccessSoFar"
+    :failed-so-far="fileOpFailedSoFar"
+    @resume="sendFileOpControl('resume')"
+    @cancel="sendFileOpControl('cancel')"
   />
 </template>
 <style lang="scss">
