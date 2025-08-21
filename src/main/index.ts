@@ -23,6 +23,12 @@ import { ISongInfo } from '../types/globals'
 import { v4 as uuidV4 } from 'uuid'
 // import AudioFeatureExtractor from './mfccTest'
 
+const initDevDatabase = false
+const dev_DB = 'C:\\Users\\renlu\\Desktop\\FRKB_database'
+const my_real_DB = 'D:\\FRKB_database'
+// 需要切换时，将下一行改为 my_real_DB
+let devDatabase = dev_DB
+
 const gotTheLock = app.requestSingleInstanceLock()
 
 if (!gotTheLock) {
@@ -243,9 +249,13 @@ let devInitDatabaseFunction = () => {
   console.log('devInitDatabase')
 }
 if (is.dev && platform === 'win32') {
-  // store.settingConfig.databaseUrl = 'D:\\FRKB_database'
-  store.settingConfig.databaseUrl = 'C:\\Users\\renlu\\Desktop\\FRKB_database'
-  devInitDatabaseFunction()
+  store.settingConfig.databaseUrl = devDatabase
+  if (initDevDatabase) {
+    if (devDatabase !== my_real_DB) {
+      // 做一个保险，防止误操作把我真实数据库删了
+      devInitDatabaseFunction()
+    }
+  }
 }
 
 app.whenReady().then(async () => {
