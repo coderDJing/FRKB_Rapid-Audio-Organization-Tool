@@ -4,7 +4,9 @@ import icon from '../../../resources/icon.png?asset'
 import {
   collectFilesWithExtensions,
   moveOrCopyItemWithCheckIsExist,
-  getSongsAnalyseResult
+  getSongsAnalyseResult,
+  runWithConcurrency,
+  waitForUserDecision
 } from '../utils'
 import store from '../store'
 import url from '../url'
@@ -309,39 +311,59 @@ function createWindow() {
     } else {
       toBeDealSongs = songFileUrls
     }
-    let moveIndex = 0
-    toBeDealSongs.forEach(async (item, index) => {
-      if (isPushSongFingerprintLibrary && !store.songFingerprintList.includes(item.sha256_Hash)) {
-        store.songFingerprintList.push(item.sha256_Hash)
-      }
-
-      // 修复正则表达式中的反斜杠转义，并处理可能的 null 结果
+    const tasks: Array<() => Promise<any>> = []
+    const fingerprintsToAdd: string[] = []
+    for (const item of toBeDealSongs) {
       const matchResult = item.file_path
         ? item.file_path.match(/[^\\/]+$/)
         : typeof item === 'string'
           ? item.match(/[^\\/]+$/)
           : null
-      const filename = matchResult ? matchResult[0] : 'unknown_file' // 提供一个备用文件名
-
+      const filename = matchResult ? matchResult[0] : 'unknown_file'
       const targetPath = path.join(store.databaseDir, formData.songListPath, filename)
-      await moveOrCopyItemWithCheckIsExist(
-        item.file_path ? item.file_path : item,
-        targetPath,
-        isDeleteSourceFile
-      )
-      moveIndex++
-      sendProgress(
-        isDeleteSourceFile ? 'tracks.movingTracks' : 'tracks.copyingTracks',
-        moveIndex,
-        toBeDealSongs.length
-      )
+      const srcPath = item.file_path ? item.file_path : (item as unknown as string)
+      const sha = (item as any)?.sha256_Hash as string | undefined
+      tasks.push(async () => {
+        await moveOrCopyItemWithCheckIsExist(srcPath, targetPath, isDeleteSourceFile)
+        if (isPushSongFingerprintLibrary && sha) {
+          fingerprintsToAdd.push(sha)
+        }
+      })
+    }
+
+    const batchId = `import_${Date.now()}`
+    const { success, failed, hasENOSPC, skipped } = await runWithConcurrency(tasks, {
+      concurrency: 16,
+      onProgress: (done, total) =>
+        sendProgress(
+          isDeleteSourceFile ? 'tracks.movingTracks' : 'tracks.copyingTracks',
+          done,
+          total
+        ),
+      stopOnENOSPC: true,
+      onInterrupted: async (payload) =>
+        waitForUserDecision(mainWindow, batchId, 'importSongs', payload)
     })
 
-    if (isPushSongFingerprintLibrary) {
-      fs.outputJSON(
-        path.join(store.databaseDir, 'songFingerprint', 'songFingerprintV2.json'),
-        store.songFingerprintList
+    // 强制结束时将进度条推满，避免 UI 悬挂
+    sendProgress(
+      isDeleteSourceFile ? 'tracks.movingTracks' : 'tracks.copyingTracks',
+      tasks.length,
+      tasks.length
+    )
+
+    if (isPushSongFingerprintLibrary && fingerprintsToAdd.length > 0) {
+      const uniqueToAdd = Array.from(new Set(fingerprintsToAdd))
+      const beforeLen = store.songFingerprintList.length
+      store.songFingerprintList = Array.from(
+        new Set([...store.songFingerprintList, ...uniqueToAdd])
       )
+      if (store.songFingerprintList.length !== beforeLen) {
+        fs.outputJSON(
+          path.join(store.databaseDir, 'songFingerprint', 'songFingerprintV2.json'),
+          store.songFingerprintList
+        )
+      }
     }
     const importEndAt = Date.now()
 
@@ -352,11 +374,9 @@ function createWindow() {
       durationMs: importEndAt - importStartAt,
       scannedCount: songFileUrls.length,
       analyzeFailedCount: errorSongsAnalyseResult.length,
-      importedToPlaylistCount: toBeDealSongs.length,
+      importedToPlaylistCount: success,
       duplicatesRemovedCount: isComparisonSongFingerprint ? delList.length : 0,
-      fingerprintAddedCount: isPushSongFingerprintLibrary
-        ? store.songFingerprintList.length - songFingerprintListLengthBefore
-        : 0,
+      fingerprintAddedCount: isPushSongFingerprintLibrary ? fingerprintsToAdd.length : 0,
       fingerprintAlreadyExistingCount: isPushSongFingerprintLibrary
         ? alreadyExistInSongFingerprintList.size
         : 0,
@@ -367,6 +387,17 @@ function createWindow() {
     }
 
     mainWindow?.webContents.send('importFinished', formData.songListUUID, importSummary)
+    if (hasENOSPC) {
+      mainWindow?.webContents.send('file-batch-summary', {
+        context: 'importSongs',
+        total: tasks.length,
+        success,
+        failed,
+        hasENOSPC,
+        skipped,
+        errorSamples: []
+      })
+    }
   })
   ipcMain.handle('changeGlobalShortcut', (e, shortCutValue) => {
     let ret = globalShortcut.register(shortCutValue, () => {
@@ -426,12 +457,18 @@ function createWindow() {
     )
 
     if (songFileUrls.length > 0) {
-      const promises = songFileUrls.map((srcPath) => {
+      const tasks: Array<() => Promise<any>> = songFileUrls.map((srcPath) => {
         const destPath = path.join(recycleBinTargetDir, path.basename(srcPath))
-        return fs.move(srcPath, destPath)
+        return () => fs.move(srcPath, destPath)
       })
 
-      await Promise.all(promises)
+      const batchId = `emptyDir_${Date.now()}`
+      const { success, failed, hasENOSPC, skipped } = await runWithConcurrency(tasks, {
+        concurrency: 16,
+        stopOnENOSPC: true,
+        onInterrupted: async (payload) =>
+          waitForUserDecision(mainWindow, batchId, 'emptyDir', payload)
+      })
 
       let descriptionJson = {
         uuid: uuidV4(),
@@ -448,6 +485,17 @@ function createWindow() {
           dirName,
           ...descriptionJson
         })
+        if (hasENOSPC) {
+          mainWindow.webContents.send('file-batch-summary', {
+            context: 'emptyDir',
+            total: tasks.length,
+            success,
+            failed,
+            hasENOSPC,
+            skipped,
+            errorSamples: []
+          })
+        }
       }
     }
   })
@@ -589,20 +637,28 @@ function createWindow() {
               await fs.ensureDir(recycleBinTargetDir)
               // 读取源目录所有内容
               const itemsToMove = await fs.readdir(dirPath)
-              const promises = []
+              const tasks: Array<() => Promise<any>> = []
               for (const dirItem of itemsToMove) {
                 // 不移动根目录下的 .description.json 文件本身
                 if (dirItem !== '.description.json') {
                   const srcPath = path.join(dirPath, dirItem)
                   const destPath = path.join(recycleBinTargetDir, dirItem)
                   // 移动文件或文件夹，允许覆盖
-                  promises.push(fs.move(srcPath, destPath, { overwrite: true }))
+                  tasks.push(() => fs.move(srcPath, destPath, { overwrite: true }))
                 }
               }
               // 等待所有移动操作完成
-              await Promise.all(promises)
+              const batchId = `recycleMove_${Date.now()}`
+              const { success, failed, hasENOSPC, skipped } = await runWithConcurrency(tasks, {
+                concurrency: 16,
+                stopOnENOSPC: true,
+                onInterrupted: async (payload) =>
+                  waitForUserDecision(mainWindow, batchId, 'recycleMove', payload)
+              })
               // 移动完成后删除空的源目录（此时应该只剩 .description.json 或完全为空）
-              await fs.remove(dirPath)
+              if (failed === 0) {
+                await fs.remove(dirPath)
+              }
 
               // 创建回收站描述文件 (.description.json)
               let descriptionJson = {
@@ -621,6 +677,17 @@ function createWindow() {
               )
               operationStatus = 'recycled'
               recycleBinInfo = item.recycleBinDir // 存储回收站信息以返回
+              if (hasENOSPC && mainWindow) {
+                mainWindow.webContents.send('file-batch-summary', {
+                  context: 'recycleMove',
+                  total: tasks.length,
+                  success,
+                  failed,
+                  hasENOSPC,
+                  skipped,
+                  errorSamples: []
+                })
+              }
             } catch (moveError) {
               console.error(`Error moving ${item.path} to recycle bin:`, moveError)
               // 尝试清理：如果移动失败，仍然尝试删除原始目录

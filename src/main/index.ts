@@ -5,7 +5,9 @@ import {
   collectFilesWithExtensions,
   getCurrentTimeYYYYMMDDHHMMSSSSS,
   moveOrCopyItemWithCheckIsExist,
-  operateHiddenFile
+  operateHiddenFile,
+  runWithConcurrency,
+  waitForUserDecision
 } from './utils'
 import { log } from './log'
 import './cloudSync'
@@ -23,7 +25,7 @@ import { ISongInfo } from '../types/globals'
 import { v4 as uuidV4 } from 'uuid'
 // import AudioFeatureExtractor from './mfccTest'
 
-const initDevDatabase = false
+const initDevDatabase = true
 const dev_DB = 'C:\\Users\\renlu\\Desktop\\FRKB_database'
 const my_real_DB = 'D:\\FRKB_database'
 // 需要切换时，将下一行改为 my_real_DB
@@ -496,11 +498,37 @@ ipcMain.handle('getSongFingerprintListLength', () => {
 ipcMain.on('delSongs', async (e, songFilePaths: string[], dirName: string) => {
   let recycleBinTargetDir = path.join(store.databaseDir, 'library', '回收站', dirName)
   fs.ensureDirSync(recycleBinTargetDir)
-  const promises = []
+  const tasks: Array<() => Promise<any>> = []
   for (let item of songFilePaths) {
-    promises.push(fs.move(item, path.join(recycleBinTargetDir, path.basename(item))))
+    const dest = path.join(recycleBinTargetDir, path.basename(item))
+    tasks.push(() => fs.move(item, dest))
   }
-  await Promise.all(promises)
+  const batchId = `delSongs_${Date.now()}`
+  const { success, failed, hasENOSPC, skipped, results } = await runWithConcurrency(tasks, {
+    concurrency: 16,
+    stopOnENOSPC: true,
+    onInterrupted: async (payload) =>
+      waitForUserDecision(mainWindow.instance ?? null, batchId, 'delSongs', payload)
+  })
+  if (hasENOSPC && mainWindow.instance) {
+    mainWindow.instance.webContents.send('file-batch-summary', {
+      context: 'delSongs',
+      total: tasks.length,
+      success,
+      failed,
+      hasENOSPC,
+      skipped,
+      errorSamples: results
+        .map((r, i) =>
+          r instanceof Error ? { code: (r as any).code, message: r.message, index: i } : null
+        )
+        .filter(Boolean)
+        .slice(0, 3)
+    })
+  }
+  if (failed > 0) {
+    throw new Error('delSongs failed')
+  }
   let descriptionJson = {
     uuid: uuidV4(),
     type: 'songList',
@@ -672,42 +700,143 @@ ipcMain.handle('exportSongListToDir', async (e, folderPathVal, deleteSongsAfterE
   }
   let targetPath = await findUniqueFolder(folderPathVal + '\\' + folderName)
   await fs.ensureDir(targetPath)
-  const promises = []
+  const tasks: Array<() => Promise<any>> = []
   for (let item of songFileUrls) {
     const matches = item.match(/[^\\]+$/)
     if (Array.isArray(matches) && matches.length > 0) {
-      promises.push(
-        moveOrCopyItemWithCheckIsExist(item, targetPath + '\\' + matches[0], deleteSongsAfterExport)
-      )
+      const dest = targetPath + '\\' + matches[0]
+      tasks.push(() => moveOrCopyItemWithCheckIsExist(item, dest, deleteSongsAfterExport))
     }
   }
-  await Promise.all(promises)
+  const batchId = `exportSongList_${Date.now()}`
+  const { success, failed, hasENOSPC, skipped, results } = await runWithConcurrency(tasks, {
+    concurrency: 16,
+    stopOnENOSPC: true,
+    onInterrupted: async (payload) =>
+      waitForUserDecision(mainWindow.instance ?? null, batchId, 'exportSongList', payload)
+  })
+  if (hasENOSPC && mainWindow.instance) {
+    mainWindow.instance.webContents.send('file-batch-summary', {
+      context: 'exportSongList',
+      total: tasks.length,
+      success,
+      failed,
+      hasENOSPC,
+      skipped,
+      errorSamples: results
+        .map((r, i) =>
+          r instanceof Error ? { code: (r as any).code, message: r.message, index: i } : null
+        )
+        .filter(Boolean)
+        .slice(0, 3)
+    })
+  }
+  // 推满进度，避免 UI 悬挂
+  if (mainWindow.instance) {
+    mainWindow.instance.webContents.send(
+      'progressSet',
+      'tracks.copyingTracks',
+      tasks.length,
+      tasks.length,
+      false
+    )
+  }
+  if (failed > 0) {
+    throw new Error('exportSongListToDir failed')
+  }
   return
 })
 
 ipcMain.handle('exportSongsToDir', async (e, folderPathVal, deleteSongsAfterExport, songs) => {
-  const promises = []
+  const tasks: Array<() => Promise<any>> = []
   for (let item of songs) {
     let targetPath = folderPathVal + '\\' + item.filePath.match(/[^\\]+$/)[0]
-    promises.push(moveOrCopyItemWithCheckIsExist(item.filePath, targetPath, deleteSongsAfterExport))
+    tasks.push(() =>
+      moveOrCopyItemWithCheckIsExist(item.filePath, targetPath, deleteSongsAfterExport)
+    )
   }
-  await Promise.all(promises)
+  const batchId = `exportSongs_${Date.now()}`
+  const { success, failed, hasENOSPC, skipped, results } = await runWithConcurrency(tasks, {
+    concurrency: 16,
+    stopOnENOSPC: true,
+    onInterrupted: async (payload) =>
+      waitForUserDecision(mainWindow.instance ?? null, batchId, 'exportSongs', payload)
+  })
+  if (hasENOSPC && mainWindow.instance) {
+    mainWindow.instance.webContents.send('file-batch-summary', {
+      context: 'exportSongs',
+      total: tasks.length,
+      success,
+      failed,
+      hasENOSPC,
+      skipped,
+      errorSamples: results
+        .map((r, i) =>
+          r instanceof Error ? { code: (r as any).code, message: r.message, index: i } : null
+        )
+        .filter(Boolean)
+        .slice(0, 3)
+    })
+  }
+  if (mainWindow.instance) {
+    mainWindow.instance.webContents.send(
+      'progressSet',
+      'tracks.copyingTracks',
+      tasks.length,
+      tasks.length,
+      false
+    )
+  }
+  if (failed > 0) {
+    throw new Error('exportSongsToDir failed')
+  }
   return
 })
 
 ipcMain.handle('moveSongsToDir', async (e, srcs, dest) => {
-  const moveSongToDir = async (src: string, dest: string) => {
+  const tasks: Array<() => Promise<any>> = []
+  for (let src of srcs) {
     const matches = src.match(/[^\\]+$/)
     if (Array.isArray(matches) && matches.length > 0) {
-      let targetPath = path.join(store.databaseDir, dest, matches[0])
-      await moveOrCopyItemWithCheckIsExist(src, targetPath, true)
+      const targetPath = path.join(store.databaseDir, dest, matches[0])
+      tasks.push(() => moveOrCopyItemWithCheckIsExist(src, targetPath, true))
     }
   }
-  const promises = []
-  for (let src of srcs) {
-    promises.push(moveSongToDir(src, dest))
+  const batchId = `moveSongs_${Date.now()}`
+  const { success, failed, hasENOSPC, skipped, results } = await runWithConcurrency(tasks, {
+    concurrency: 16,
+    stopOnENOSPC: true,
+    onInterrupted: async (payload) =>
+      waitForUserDecision(mainWindow.instance ?? null, batchId, 'moveSongs', payload)
+  })
+  if (hasENOSPC && mainWindow.instance) {
+    mainWindow.instance.webContents.send('file-batch-summary', {
+      context: 'moveSongs',
+      total: tasks.length,
+      success,
+      failed,
+      hasENOSPC,
+      skipped,
+      errorSamples: results
+        .map((r, i) =>
+          r instanceof Error ? { code: (r as any).code, message: r.message, index: i } : null
+        )
+        .filter(Boolean)
+        .slice(0, 3)
+    })
   }
-  await Promise.all(promises)
+  if (mainWindow.instance) {
+    mainWindow.instance.webContents.send(
+      'progressSet',
+      'tracks.movingTracks',
+      tasks.length,
+      tasks.length,
+      false
+    )
+  }
+  if (failed > 0) {
+    throw new Error('moveSongsToDir failed')
+  }
   return
 })
 

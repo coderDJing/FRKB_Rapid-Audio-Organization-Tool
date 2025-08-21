@@ -4,6 +4,7 @@ import fs = require('fs-extra')
 import path = require('path')
 import os = require('os')
 import { calculateAudioHashesWithProgress, ProcessProgress } from 'rust_package'
+import { BrowserWindow, ipcMain } from 'electron'
 
 interface SongsAnalyseResult {
   songsAnalyseResult: md5[]
@@ -168,19 +169,207 @@ export async function moveOrCopyItemWithCheckIsExist(
       newFileName = `${baseName}(${counter})${extension}`
     }
     if (isMove) {
-      fs.move(src, path.join(directory, newFileName))
+      await fs.move(src, path.join(directory, newFileName))
     } else {
-      fs.copy(src, path.join(directory, newFileName))
+      await fs.copy(src, path.join(directory, newFileName))
     }
     return path.join(directory, newFileName)
   } else {
     if (isMove) {
-      fs.move(src, targetPath)
+      await fs.move(src, targetPath)
     } else {
-      fs.copy(src, targetPath)
+      await fs.copy(src, targetPath)
     }
     return targetPath
   }
+}
+
+export function isENOSPCError(error: any): boolean {
+  try {
+    const code = (error && (error as any).code) || ''
+    const message = (error && (error as any).message) || ''
+    return (
+      String(code).toUpperCase() === 'ENOSPC' || /no space left on device/i.test(String(message))
+    )
+  } catch (_e) {
+    return false
+  }
+}
+
+type InterruptedDecision = 'resume' | 'cancel'
+
+export async function runWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  options: {
+    concurrency?: number
+    onProgress?: (done: number, total: number) => void
+    onInterrupted?: (payload: {
+      total: number
+      done: number
+      running: number
+      pending: number
+      successSoFar: number
+      failedSoFar: number
+    }) => Promise<InterruptedDecision>
+    stopOnENOSPC?: boolean
+  } = {}
+): Promise<{
+  results: Array<T | Error>
+  success: number
+  failed: number
+  hasENOSPC: boolean
+  skipped: number
+}> {
+  const concurrency = Math.max(1, Math.min(16, options.concurrency ?? 16))
+  const total = tasks.length
+  const results: Array<T | Error> = new Array(total)
+  let nextIndex = 0
+  let inFlight = 0
+  let completed = 0
+  let hasENOSPC = false
+  let interrupted = false
+  let cancelled = false
+  let skipped = 0
+
+  const retryQueue: number[] = []
+
+  // gate 用于在中断时阻塞调度；resume/cancel 后放行
+  let gateResolve: (() => void) | null = null
+  let gate: Promise<void> | null = null
+  const closeGate = () => {
+    if (gateResolve) gateResolve()
+    gateResolve = null
+    gate = null
+  }
+  const openGate = () => {
+    if (!gate) {
+      gate = new Promise<void>((resolve) => {
+        gateResolve = resolve
+      })
+    }
+  }
+
+  const getNextTaskIndex = async (): Promise<number | null> => {
+    // 若取消，停止调度
+    if (cancelled) return null
+    // 中断时阻塞，直到 resume/cancel
+    if (interrupted && gate) {
+      await gate
+      if (cancelled) return null
+    }
+    if (retryQueue.length > 0) {
+      return retryQueue.shift() as number
+    }
+    if (nextIndex < total) {
+      const idx = nextIndex
+      nextIndex++
+      return idx
+    }
+    return null
+  }
+
+  async function handleENOSPC(idx: number, err: any) {
+    hasENOSPC = true
+    // 记录待重试
+    retryQueue.push(idx)
+    if (options.stopOnENOSPC !== false) {
+      // 首次进入中断
+      if (!interrupted) {
+        interrupted = true
+        openGate()
+        if (typeof options.onInterrupted === 'function') {
+          const successSoFar = results.filter(
+            (r) => r !== undefined && !(r instanceof Error)
+          ).length
+          const failedSoFar = results.filter((r) => r instanceof Error).length
+          const decision = await options.onInterrupted({
+            total,
+            done: completed,
+            running: inFlight,
+            pending: total - completed - inFlight,
+            successSoFar,
+            failedSoFar
+          })
+          if (decision === 'resume') {
+            interrupted = false
+            closeGate()
+          } else {
+            cancelled = true
+            // 统计剩余未开始的任务为 skipped（包括重试队列 + 未派发）
+            const remaining = total - completed - inFlight
+            skipped += remaining
+            closeGate()
+          }
+        }
+      }
+    }
+  }
+
+  async function worker() {
+    while (true) {
+      const idx = await getNextTaskIndex()
+      if (idx === null) break
+      inFlight++
+      try {
+        const val = await tasks[idx]()
+        // 成功：若无返回值也要标记成功，避免统计为 0
+        results[idx] = val === undefined ? (true as any) : val
+        completed++
+        if (options.onProgress) options.onProgress(completed, total)
+      } catch (err: any) {
+        if (isENOSPCError(err)) {
+          await handleENOSPC(idx, err)
+          // ENOSPC 情况下不计入完成，等待重试或取消
+          if (cancelled) {
+            // 取消时，本次失败计入失败
+            results[idx] = err instanceof Error ? err : new Error(String(err))
+            completed++
+            if (options.onProgress) options.onProgress(completed, total)
+          }
+        } else {
+          // 非 ENOSPC 失败，立即记入结果
+          results[idx] = err instanceof Error ? err : new Error(String(err))
+          completed++
+          if (options.onProgress) options.onProgress(completed, total)
+        }
+      } finally {
+        inFlight--
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, total) }, () => worker())
+  await Promise.all(workers)
+
+  const failed = results.filter((r) => r instanceof Error).length
+  const success = results.filter((r) => r !== undefined && !(r instanceof Error)).length
+  return { results, success, failed, hasENOSPC, skipped }
+}
+
+// ===== 用户交互：等待渲染层对中断批处理的决策（resume / cancel） =====
+const fileOpControllers = new Map<string, (decision: InterruptedDecision) => void>()
+let fileOpIpcRegistered = false
+
+export function waitForUserDecision(
+  win: BrowserWindow | null,
+  batchId: string,
+  context: string,
+  payload: { total: number; done: number; running: number; pending: number }
+): Promise<InterruptedDecision> {
+  if (!fileOpIpcRegistered) {
+    ipcMain.on('file-op-control', (_e, data: { batchId: string; action: InterruptedDecision }) => {
+      const resolve = fileOpControllers.get(data?.batchId)
+      if (resolve) {
+        resolve(data.action)
+        fileOpControllers.delete(data.batchId)
+      }
+    })
+    fileOpIpcRegistered = true
+  }
+  return new Promise<InterruptedDecision>((resolve) => {
+    fileOpControllers.set(batchId, resolve)
+    win?.webContents.send('file-op-interrupted', { batchId, context, ...payload })
+  })
 }
 
 export function getCurrentTimeYYYYMMDDHHMMSSSSS() {
