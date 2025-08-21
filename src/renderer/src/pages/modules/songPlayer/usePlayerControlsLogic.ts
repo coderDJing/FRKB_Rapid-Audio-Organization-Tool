@@ -56,6 +56,12 @@ export function usePlayerControlsLogic({
   ignoreNextEmptyError,
   clearReadyPreloadState
 }: UsePlayerControlsOptions) {
+  // 精简持久化日志工具
+  const persistLog = (msg: string) => {
+    try {
+      window.electron?.ipcRenderer?.send('outputLog', `[Player] ${msg}`)
+    } catch {}
+  }
   const isFileOperationInProgress = ref(false)
   const songToMoveRef = ref<ISongInfo | null>(null)
   // 取消长按抑制方案，改由 playerReady 门槛保障
@@ -182,6 +188,7 @@ export function usePlayerControlsLogic({
     const nextSongData = runtime.playingData.playingSongListData[nextIndex]
     if (!nextSongData) return
     const nextSongFilePath = nextSongData.filePath
+    const name = (nextSongFilePath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
 
     // 每次切换歌曲时，强制清空wavesurfer实例，确保不受先前加载的影响
     if (wavesurferInstance.value) {
@@ -210,6 +217,7 @@ export function usePlayerControlsLogic({
       // 命中预加载
       const blobToLoad = preloadedBlob.value
       const bpmValueToUse = preloadedBpm.value
+      persistLog(`NEXT preloadedHit=1 song=${name}`)
 
       // 清理预加载状态
       preloadedBlob.value = null
@@ -231,6 +239,7 @@ export function usePlayerControlsLogic({
       isPreloadReady.value = false
 
       // 请求加载新歌曲
+      persistLog(`NEXT preloadedHit=0 song=${name} requestId=${currentLoadRequestId.value}`)
       requestLoadSong(nextSongFilePath)
     }
   }
@@ -255,6 +264,7 @@ export function usePlayerControlsLogic({
     if (!prevSongData) return
 
     const prevSongFilePath = prevSongData.filePath
+    const name = (prevSongFilePath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
 
     // 每次切换歌曲时，强制清空wavesurfer实例
     if (wavesurferInstance.value) {
@@ -278,6 +288,7 @@ export function usePlayerControlsLogic({
     // 设置内部切换并请求加载
     isInternalSongChange.value = true // 标记内部切换
     runtime.playingData.playingSong = prevSongData
+    persistLog(`PREVIOUS song=${name} requestId=${currentLoadRequestId.value}`)
     requestLoadSong(prevSongFilePath)
     clearReadyPreloadState()
   }
@@ -371,6 +382,8 @@ export function usePlayerControlsLogic({
           const bpmValueToUse = preloadedBpm.value
           isInternalSongChange.value = true // 标记内部切换
           runtime.playingData.playingSong = nextPlayingSong // 更新当前播放歌曲
+          const name = (nextPlayingSongPath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
+          persistLog(`DELETE_NEXT preloadedHit=1 song=${name}`)
 
           // 先加载 Blob，加载完成后清理预加载状态
           handleLoadBlob(
@@ -397,6 +410,10 @@ export function usePlayerControlsLogic({
             // 列表未空，但未命中预加载，请求加载
             isInternalSongChange.value = true
             runtime.playingData.playingSong = nextPlayingSong
+            const name = (nextPlayingSong.filePath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
+            persistLog(
+              `DELETE_NEXT preloadedHit=0 song=${name} requestId=${currentLoadRequestId.value}`
+            )
             requestLoadSong(nextPlayingSong.filePath)
           } else {
             // 列表已空
@@ -551,6 +568,8 @@ export function usePlayerControlsLogic({
         const bpmValueToUse = preloadedBpm.value
         isInternalSongChange.value = true
         runtime.playingData.playingSong = nextPlayingSong
+        const name = (nextPlayingSongPath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
+        persistLog(`MOVE_NEXT preloadedHit=1 song=${name}`)
 
         handleLoadBlob(
           blobToLoad,
@@ -575,6 +594,10 @@ export function usePlayerControlsLogic({
           // 列表未空，但未命中预加载，请求加载
           isInternalSongChange.value = true
           runtime.playingData.playingSong = nextPlayingSong
+          const name = (nextPlayingSong.filePath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
+          persistLog(
+            `MOVE_NEXT preloadedHit=0 song=${name} requestId=${currentLoadRequestId.value}`
+          )
           requestLoadSong(nextPlayingSong.filePath)
           isFileOperationInProgress.value = false // 操作完成
         } else {
