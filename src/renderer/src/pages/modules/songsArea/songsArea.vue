@@ -14,6 +14,7 @@ import SongListHeader from './SongListHeader.vue'
 import SongListRows from './SongListRows.vue'
 import ColumnHeaderContextMenu from './ColumnHeaderContextMenu.vue'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
+import { ENABLE_TROUBLESHOOT_LOGS } from '@renderer/utils/debugFlags'
 
 // Composable import
 import { useSongItemContextMenu } from '@renderer/pages/modules/songsArea/composables/useSongItemContextMenu'
@@ -38,8 +39,10 @@ const originalSongInfoArr = ref<ISongInfo[]>([])
 // 精简持久化日志工具
 const persistLog = (msg: string) => {
   try {
-    // 渲染进程转发到主进程写 log.txt
-    window.electron?.ipcRenderer?.send('outputLog', `[SongsArea] ${msg}`)
+    if (ENABLE_TROUBLESHOOT_LOGS) {
+      // 渲染进程转发到主进程写 log.txt
+      window.electron?.ipcRenderer?.send('outputLog', `[SongsArea] ${msg}`)
+    }
   } catch {}
 }
 

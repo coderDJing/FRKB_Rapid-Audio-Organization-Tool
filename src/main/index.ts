@@ -251,13 +251,13 @@ let devInitDatabaseFunction = () => {
   console.log('devInitDatabase')
 }
 if (is.dev && platform === 'win32') {
-  store.settingConfig.databaseUrl = devDatabase
-  if (initDevDatabase) {
-    if (devDatabase !== my_real_DB) {
-      // 做一个保险，防止误操作把我真实数据库删了
-      devInitDatabaseFunction()
-    }
-  }
+  // store.settingConfig.databaseUrl = devDatabase
+  // if (initDevDatabase) {
+  //   if (devDatabase !== my_real_DB) {
+  //     // 做一个保险，防止误操作把我真实数据库删了
+  //     devInitDatabaseFunction()
+  //   }
+  // }
 }
 
 app.whenReady().then(async () => {
