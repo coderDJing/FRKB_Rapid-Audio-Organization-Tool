@@ -26,6 +26,7 @@ import { usePlayerHotkeys } from './usePlayerHotkeys'
 import { usePlayerControlsLogic } from './usePlayerControlsLogic'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import emitter from '@renderer/utils/mitt'
+import { ENABLE_TROUBLESHOOT_LOGS } from '@renderer/utils/debugFlags'
 
 const runtime = useRuntimeStore()
 const waveform = useTemplateRef<HTMLDivElement>('waveform')
@@ -49,7 +50,9 @@ const ignoreNextEmptyError = ref(false)
 // 精简持久化日志工具（写入主进程 log.txt）
 const persistLog = (msg: string) => {
   try {
-    window.electron?.ipcRenderer?.send('outputLog', `[Player] ${msg}`)
+    if (ENABLE_TROUBLESHOOT_LOGS) {
+      window.electron?.ipcRenderer?.send('outputLog', `[Player] ${msg}`)
+    }
   } catch {}
 }
 

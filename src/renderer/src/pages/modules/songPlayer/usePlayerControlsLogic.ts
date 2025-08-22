@@ -8,6 +8,7 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import { t } from '@renderer/utils/translate'
 import emitter from '@renderer/utils/mitt'
+import { ENABLE_TROUBLESHOOT_LOGS } from '@renderer/utils/debugFlags'
 
 // 定义 usePlayerControls 的参数类型
 interface UsePlayerControlsOptions {
@@ -59,7 +60,9 @@ export function usePlayerControlsLogic({
   // 精简持久化日志工具
   const persistLog = (msg: string) => {
     try {
-      window.electron?.ipcRenderer?.send('outputLog', `[Player] ${msg}`)
+      if (ENABLE_TROUBLESHOOT_LOGS) {
+        window.electron?.ipcRenderer?.send('outputLog', `[Player] ${msg}`)
+      }
     } catch {}
   }
   const isFileOperationInProgress = ref(false)
