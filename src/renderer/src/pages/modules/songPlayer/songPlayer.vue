@@ -26,7 +26,6 @@ import { usePlayerHotkeys } from './usePlayerHotkeys'
 import { usePlayerControlsLogic } from './usePlayerControlsLogic'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import emitter from '@renderer/utils/mitt'
-import { ENABLE_TROUBLESHOOT_LOGS } from '@renderer/utils/debugFlags'
 
 const runtime = useRuntimeStore()
 const waveform = useTemplateRef<HTMLDivElement>('waveform')
@@ -47,14 +46,7 @@ const isLoadingBlob = ref(false) // Flag to prevent re-entrancy
 let errorDialogShowing = false
 const ignoreNextEmptyError = ref(false)
 
-// 精简持久化日志工具（写入主进程 log.txt）
-const persistLog = (msg: string) => {
-  try {
-    if (ENABLE_TROUBLESHOOT_LOGS) {
-      window.electron?.ipcRenderer?.send('outputLog', `[Player] ${msg}`)
-    }
-  } catch {}
-}
+// 调试日志已清理
 
 const canvas = document.createElement('canvas')
 canvas.height = 50
@@ -346,22 +338,17 @@ onMounted(() => {
     (event, audioData: Uint8Array, filePath: string, requestId?: number) => {
       if (requestId && requestId !== currentLoadRequestId.value) {
         const name = (filePath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
-        persistLog(
-          `READ_MAIN_IGNORED reason=requestId_mismatch req=${requestId} cur=${currentLoadRequestId.value} song=${name}`
-        )
         return
       }
 
       // 验证此时UI显示的歌曲与返回的文件路径是否匹配
       if (filePath === runtime.playingData.playingSong?.filePath) {
         const name = (filePath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
-        persistLog(`READ_MAIN_OK requestId=${requestId || currentLoadRequestId.value} song=${name}`)
         handleLoadBlob(new Blob([audioData]), filePath, requestId || currentLoadRequestId.value)
       } else {
         const name = (filePath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
         const cur = runtime.playingData.playingSong?.filePath || 'N/A'
         const curName = (cur.match(/[^\\/]+$/) || [])[0] || cur
-        persistLog(`READ_MAIN_IGNORED reason=path_mismatch song=${name} cur=${curName}`)
       }
     }
   )
@@ -404,7 +391,6 @@ onMounted(() => {
           isPreloading.value = false
           isPreloadReady.value = true
           const name = (filePath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
-          persistLog(`READ_PRELOAD_OK requestId=${requestId} song=${name}`)
         } else {
           preloadedBlob.value = null
         }
@@ -431,9 +417,6 @@ onMounted(() => {
       console.error(`预加载歌曲失败: ${filePath}, 错误: ${errorMessage}`)
       if (filePath === preloadedSongFilePath.value) {
         const name = (filePath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
-        persistLog(
-          `READ_PRELOAD_ERR requestId=${requestId} song=${name} msg=${(errorMessage || '').slice(0, 120)}`
-        )
         handleSongLoadError(filePath, true)
       }
     }
@@ -448,9 +431,6 @@ onMounted(() => {
 
       console.error(`加载歌曲失败: ${filePath}, 错误: ${errorMessage}`)
       const name = (filePath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
-      persistLog(
-        `READ_MAIN_ERR requestId=${requestId} song=${name} msg=${(errorMessage || '').slice(0, 120)}`
-      )
       handleSongLoadError(filePath, false)
     }
   )
