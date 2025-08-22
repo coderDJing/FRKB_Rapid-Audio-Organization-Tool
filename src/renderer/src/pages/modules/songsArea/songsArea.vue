@@ -14,7 +14,6 @@ import SongListHeader from './SongListHeader.vue'
 import SongListRows from './SongListRows.vue'
 import ColumnHeaderContextMenu from './ColumnHeaderContextMenu.vue'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
-import { ENABLE_TROUBLESHOOT_LOGS } from '@renderer/utils/debugFlags'
 
 // Composable import
 import { useSongItemContextMenu } from '@renderer/pages/modules/songsArea/composables/useSongItemContextMenu'
@@ -35,16 +34,6 @@ type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsCompon
 const runtime = useRuntimeStore()
 const songsAreaRef = useTemplateRef<OverlayScrollbarsComponentRef>('songsAreaRef')
 const originalSongInfoArr = ref<ISongInfo[]>([])
-
-// 精简持久化日志工具
-const persistLog = (msg: string) => {
-  try {
-    if (ENABLE_TROUBLESHOOT_LOGS) {
-      // 渲染进程转发到主进程写 log.txt
-      window.electron?.ipcRenderer?.send('outputLog', `[SongsArea] ${msg}`)
-    }
-  } catch {}
-}
 
 // Initialize composables
 const { showAndHandleSongContextMenu } = useSongItemContextMenu(songsAreaRef)
@@ -211,9 +200,7 @@ const openSongList = async () => {
   const prevOriginalLen = originalSongInfoArr.value.length
   const prevRuntimeLen = runtime.songsArea.songInfoArr.length
   const sortedColBefore = columnData.value.find((c) => c.order)
-  persistLog(
-    `OPEN_LIST_START uuid=${runtime.songsArea.songListUUID} prevOriginal=${prevOriginalLen} prevRuntime=${prevRuntimeLen} sort=${sortedColBefore ? `${sortedColBefore.key}:${sortedColBefore.order}` : 'none'}`
-  )
+
   runtime.songsArea.songInfoArr.forEach((item) => {
     if (item.coverUrl) {
       URL.revokeObjectURL(item.coverUrl)
@@ -264,9 +251,6 @@ const openSongList = async () => {
 
     // --- 启动新的封面加载任务，并设置完成回调 ---
     loadCoversInBatches(runtime.songsArea.songInfoArr, newTaskId)
-    persistLog(
-      `OPEN_LIST_DONE uuid=${runtime.songsArea.songListUUID} scan=${scanData.length} original=${originalSongInfoArr.value.length} runtime=${runtime.songsArea.songInfoArr.length}`
-    )
   } finally {
     isRequesting.value = false
     clearTimeout(loadingSetTimeout)
@@ -279,7 +263,6 @@ watch(
     runtime.songsArea.selectedSongFilePath.length = 0
 
     if (newUUID) {
-      persistLog(`LIST_UUID_CHANGED new=${newUUID}`)
       await openSongList()
     } else {
       runtime.songsArea.songInfoArr.forEach((item) => {
@@ -289,7 +272,6 @@ watch(
       })
       runtime.songsArea.songInfoArr = []
       originalSongInfoArr.value = []
-      persistLog(`LIST_CLEARED`)
     }
   }
 )
@@ -334,10 +316,6 @@ const onSongsRemoved = (payload: { listUUID?: string; paths: string[] } | { path
     (song) => !pathsToRemove.includes(song.filePath)
   )
 
-  persistLog(
-    `EVENT_songsRemoved currentUUID=${runtime.songsArea.songListUUID} payloadUUID=${listUUID || 'none'} removeCount=${pathsToRemove.length} original ${beforeOriginal}->${originalSongInfoArr.value.length} runtime ${beforeRuntime}->${runtime.songsArea.songInfoArr.length}`
-  )
-
   // 同步播放数据（如果当前播放列表即为该歌单）
   if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
     runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
@@ -376,10 +354,6 @@ const onSongsMovedByDrag = (movedSongPaths: string[]) => {
   )
   runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
     (song) => !movedSongPaths.includes(song.filePath)
-  )
-
-  persistLog(
-    `EVENT_songsMovedByDrag uuid=${runtime.songsArea.songListUUID} movedCount=${movedSongPaths.length} original ${beforeOriginal}->${originalSongInfoArr.value.length} runtime ${beforeRuntime}->${runtime.songsArea.songInfoArr.length}`
   )
 
   // 如果当前播放列表是被修改的列表，更新播放数据
@@ -530,10 +504,6 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
         )
         runtime.songsArea.songInfoArr = newRuntimeSongInfoArr
 
-        persistLog(
-          `CONTEXT_MENU_REMOVE uuid=${runtime.songsArea.songListUUID} removeCount=${pathsToRemove.length} original ${beforeOriginal}->${originalSongInfoArr.value.length} runtime ${beforeRuntime}->${runtime.songsArea.songInfoArr.length}`
-        )
-
         // 3. 更新播放列表和当前播放歌曲 (如果受影响)
         if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
           runtime.playingData.playingSongListData = [...runtime.songsArea.songInfoArr] // 使用更新后的 runtime.songsArea.songInfoArr
@@ -562,11 +532,6 @@ const songDblClick = (song: ISongInfo) => {
   runtime.playingData.playingSong = song
   runtime.playingData.playingSongListUUID = runtime.songsArea.songListUUID
   runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
-  const m = song.filePath?.match(/[^\\/]+$/)
-  const name = m ? m[0] : 'unknown'
-  persistLog(
-    `DBLCLICK uuid=${runtime.songsArea.songListUUID} song=${name} listSize=${runtime.songsArea.songInfoArr.length}`
-  )
 }
 const handleDeleteKey = async () => {
   const selectedPaths = JSON.parse(JSON.stringify(runtime.songsArea.selectedSongFilePath))
@@ -591,9 +556,6 @@ const handleDeleteKey = async () => {
     } else {
       window.electron.ipcRenderer.send('delSongs', selectedPaths, getCurrentTimeDirName())
     }
-    persistLog(
-      `DELETE_KEY uuid=${runtime.songsArea.songListUUID} selected=${selectedPaths.length} inRecycleBin=${!!isInRecycleBin}`
-    )
 
     const songsToDeleteFromOriginal = originalSongInfoArr.value.filter((item) =>
       selectedPaths.includes(item.filePath)
@@ -680,9 +642,6 @@ const colMenuClick = (col: ISongsAreaColumn) => {
   const clickedColNewOrder = newColumnData.find((c) => c.key === col.key)?.order
 
   if (clickedColNewOrder) {
-    persistLog(
-      `SORT key=${col.key} order=${clickedColNewOrder} listSize=${originalSongInfoArr.value.length}`
-    )
     // Ensure it's 'asc' or 'desc'
     runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
       [...originalSongInfoArr.value],
@@ -770,9 +729,6 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
   await handleMoveSongsConfirm(targetSongListUuid)
   // 不在此处直接重建 original/runtime，避免与全局 events（songsRemoved）重复或打架导致“复活”
   // 仅记录日志，列表更新完全交给事件流处理
-  persistLog(
-    `MOVE_DIALOG_CONFIRMED uuid=${runtime.songsArea.songListUUID} moved=${pathsEffectivelyMoved.length}`
-  )
   // runtime.songsArea.selectedSongFilePath 应该已经被 handleMoveSongsConfirm (composable内部) 清空了
 }
 
@@ -840,9 +796,6 @@ watch(
       })
 
       if (pathsToRemove.length > 0) {
-        persistLog(
-          `SYNC_PLAYING_LIST uuid=${runtime.songsArea.songListUUID} removeCount=${pathsToRemove.length}`
-        )
         originalSongInfoArr.value = originalSongInfoArr.value.filter(
           (item) => !pathsToRemove.includes(item.filePath)
         )
