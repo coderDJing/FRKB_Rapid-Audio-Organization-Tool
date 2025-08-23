@@ -6,7 +6,9 @@ import {
   moveOrCopyItemWithCheckIsExist,
   getSongsAnalyseResult,
   runWithConcurrency,
-  waitForUserDecision
+  waitForUserDecision,
+  getCoreFsDirName,
+  mapRendererPathToFsPath
 } from '../utils'
 import store from '../store'
 import url from '../url'
@@ -14,6 +16,7 @@ import updateWindow from './updateWindow'
 import databaseInitWindow from './databaseInitWindow'
 import path = require('path')
 import fs = require('fs-extra')
+import FingerprintStore from '../fingerprintStore'
 import { IImportSongsFormData, md5 } from '../../types/globals'
 import { v4 as uuidV4 } from 'uuid'
 import { operateHiddenFile } from '../utils'
@@ -205,11 +208,8 @@ function createWindow() {
       new Set([...store.songFingerprintList, ...removeDuplicatesFingerprintResults])
     )
 
-    // 保存结果
-    fs.outputJSON(
-      path.join(store.databaseDir, 'songFingerprint', 'songFingerprintV2.json'),
-      store.songFingerprintList
-    )
+    // 保存结果（多版本+指针，原子切换）
+    await FingerprintStore.saveList(store.songFingerprintList)
 
     const fingerprintEndAt = Date.now()
 
@@ -359,10 +359,7 @@ function createWindow() {
         new Set([...store.songFingerprintList, ...uniqueToAdd])
       )
       if (store.songFingerprintList.length !== beforeLen) {
-        fs.outputJSON(
-          path.join(store.databaseDir, 'songFingerprint', 'songFingerprintV2.json'),
-          store.songFingerprintList
-        )
+        await FingerprintStore.saveList(store.songFingerprintList)
       }
     }
     const importEndAt = Date.now()
@@ -449,10 +446,15 @@ function createWindow() {
   })
 
   ipcMain.handle('emptyDir', async (e, targetPath: string, dirName: string) => {
-    const recycleBinTargetDir = path.join(store.databaseDir, 'library', '回收站', dirName)
+    const recycleBinTargetDir = path.join(
+      store.databaseDir,
+      'library',
+      getCoreFsDirName('RecycleBin'),
+      dirName
+    )
 
     let songFileUrls = await collectFilesWithExtensions(
-      path.join(store.databaseDir, targetPath),
+      path.join(store.databaseDir, mapRendererPathToFsPath(targetPath)),
       store.settingConfig.audioExt
     )
 
@@ -501,7 +503,7 @@ function createWindow() {
   })
 
   ipcMain.handle('emptyRecycleBin', async (_e) => {
-    let recycleBinPath = path.join(store.databaseDir, 'library', '回收站')
+    let recycleBinPath = path.join(store.databaseDir, 'library', getCoreFsDirName('RecycleBin'))
     try {
       const recycleBinDirs = await fs.readdir(recycleBinPath)
 

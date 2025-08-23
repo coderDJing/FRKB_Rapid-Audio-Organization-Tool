@@ -303,9 +303,6 @@ const onSongsRemoved = (payload: { listUUID?: string; paths: string[] } | { path
 
   if (!pathsToRemove.length) return
   if (listUUID && listUUID !== runtime.songsArea.songListUUID) return
-
-  const beforeOriginal = originalSongInfoArr.value.length
-  const beforeRuntime = runtime.songsArea.songInfoArr.length
   // 从 original 中删除
   originalSongInfoArr.value = originalSongInfoArr.value.filter(
     (song) => !pathsToRemove.includes(song.filePath)
@@ -347,8 +344,6 @@ const onSongsMovedByDrag = (movedSongPaths: string[]) => {
   })
 
   // 更新 originalSongInfoArr 与显示列表
-  const beforeOriginal = originalSongInfoArr.value.length
-  const beforeRuntime = runtime.songsArea.songInfoArr.length
   originalSongInfoArr.value = originalSongInfoArr.value.filter(
     (song) => !movedSongPaths.includes(song.filePath)
   )
@@ -469,15 +464,7 @@ const songClick = (event: MouseEvent, song: ISongInfo) => {
 }
 
 const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) => {
-  // showAndHandleSongContextMenu 返回 Promise<OpenDialogAction | null>
-  // OpenDialogAction 定义为: { action: 'openSelectSongListDialog', libraryName: '精选库' | '筛选库' }
-  // 它也可能处理删除并直接修改 runtime.songsArea.songInfoArr，但不返回特定action。
-  // 为了解决 originalSongInfoArr 不同步的问题，理想情况下，
-  // useSongItemContextMenu.ts 中的删除操作应该返回一个包含已删除路径的 action。
-  // 例如: { action: 'CONTEXT_MENU_SONGS_DELETED', paths: string[] }
-
   const result = await showAndHandleSongContextMenu(event, song)
-
   if (result) {
     // 处理移动歌曲到其他列表的对话框请求
     if (result.action === 'openSelectSongListDialog') {
@@ -489,16 +476,12 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
       const pathsToRemove = result.paths
 
       if (Array.isArray(pathsToRemove) && pathsToRemove.length > 0) {
-        // const originalPathsBeforeFilter = runtime.songsArea.songInfoArr.map(s => s.filePath);
-
         // 1. 从 originalSongInfoArr (原始顺序的源) 中移除歌曲
-        const beforeOriginal = originalSongInfoArr.value.length
         originalSongInfoArr.value = originalSongInfoArr.value.filter(
           (item) => !pathsToRemove.includes(item.filePath)
         )
 
         // 2. 从 runtime.songsArea.songInfoArr (当前显示的、可能已排序的列表) 中移除歌曲
-        const beforeRuntime = runtime.songsArea.songInfoArr.length
         const newRuntimeSongInfoArr = runtime.songsArea.songInfoArr.filter(
           (item) => !pathsToRemove.includes(item.filePath)
         )
@@ -538,7 +521,7 @@ const handleDeleteKey = async () => {
   if (!selectedPaths.length) return false
 
   const isInRecycleBin = runtime.libraryTree.children
-    ?.find((item) => item.dirName === '回收站')
+    ?.find((item) => item.dirName === 'RecycleBin')
     ?.children?.find((item) => item.uuid === runtime.songsArea.songListUUID)
 
   let shouldDelete = true

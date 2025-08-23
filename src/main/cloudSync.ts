@@ -1,10 +1,9 @@
 import { ipcMain } from 'electron'
 import fs = require('fs-extra')
-import path = require('path')
 import { is } from '@electron-toolkit/utils'
 import store from './store'
 import url from './url'
-import { operateHiddenFile } from './utils'
+import FingerprintStore from './fingerprintStore'
 import { log } from './log'
 import mainWindow from './window/mainWindow'
 
@@ -747,16 +746,9 @@ ipcMain.handle('cloudSync/start', async () => {
       sendProgress('committing', 85)
     }
 
-    // 本地原子替换（直接写入 SHA256 指纹库文件）
-    const fingerprintFile = path.join(
-      store.databaseDir,
-      'songFingerprint',
-      'songFingerprintV2.json'
-    )
+    // 本地保存（多版本+指针，原子切换）
     const mergedList = Array.from(mergedSet)
-    await operateHiddenFile(fingerprintFile, async () => {
-      await fs.outputJSON(fingerprintFile, mergedList)
-    })
+    await FingerprintStore.saveList(mergedList)
 
     // 6) 提交后复查 /check
     sendProgress('finalizing', 93)

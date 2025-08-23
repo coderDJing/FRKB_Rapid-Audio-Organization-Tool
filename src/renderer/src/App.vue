@@ -179,7 +179,7 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
 })
 window.electron.ipcRenderer.on('delSongsSuccess', (_event, recycleBinNewDirDescriptionJson) => {
   runtime.libraryTree.children
-    ?.find((item) => item.dirName === '回收站')
+    ?.find((item) => item.dirName === 'RecycleBin')
     ?.children?.push(recycleBinNewDirDescriptionJson)
 })
 </script>

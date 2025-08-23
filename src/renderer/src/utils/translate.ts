@@ -2,9 +2,9 @@ import { i18n } from '@renderer/i18n'
 
 // 核心库中文名 -> i18n key 的集中映射
 export const LIBRARY_NAME_TO_I18N_KEY: Record<string, string> = {
-  筛选库: 'library.filter',
-  精选库: 'library.curated',
-  回收站: 'recycleBin.recycleBin'
+  FilterLibrary: 'library.filter',
+  CuratedLibrary: 'library.curated',
+  RecycleBin: 'recycleBin.recycleBin'
 }
 
 // 仅用于将核心库名转为展示文本（遵循正常 i18n）

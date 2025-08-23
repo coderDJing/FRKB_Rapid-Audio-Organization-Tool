@@ -18,7 +18,7 @@ const emit = defineEmits(['librarySelectedChange'])
 
 const iconArr = ref<Icon[]>([
   {
-    name: '筛选库',
+    name: 'FilterLibrary',
     grey: listGrey,
     white: listWhite,
     src: listGrey,
@@ -27,7 +27,7 @@ const iconArr = ref<Icon[]>([
     i18nKey: 'library.filter'
   } as any,
   {
-    name: '精选库',
+    name: 'CuratedLibrary',
     grey: likeGrey,
     white: likeWhite,
     src: likeGrey,
@@ -35,7 +35,7 @@ const iconArr = ref<Icon[]>([
     i18nKey: 'library.curated'
   } as any,
   {
-    name: '回收站',
+    name: 'RecycleBin',
     grey: trashGrey,
     white: trashWhite,
     src: trashGrey,

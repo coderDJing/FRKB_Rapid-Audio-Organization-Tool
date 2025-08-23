@@ -7,15 +7,24 @@ import {
   moveOrCopyItemWithCheckIsExist,
   operateHiddenFile,
   runWithConcurrency,
-  waitForUserDecision
+  waitForUserDecision,
+  getCoreFsDirName,
+  mapRendererPathToFsPath
 } from './utils'
 import { log } from './log'
 import './cloudSync'
 import errorReport from './errorReport'
 import url from './url'
+import { initDatabaseStructure } from './initDatabase'
+import {
+  healAndPrepare,
+  loadList,
+  saveList,
+  exportSnapshot,
+  importFromJsonFile
+} from './fingerprintStore'
 import mainWindow from './window/mainWindow'
 import databaseInitWindow from './window/databaseInitWindow'
-import foundOldVersionDatabaseWindow from './window/foundOldVersionDatabaseWindow'
 import { is } from '@electron-toolkit/utils'
 import store from './store'
 import foundNewVersionWindow from './window/foundNewVersionWindow'
@@ -25,7 +34,7 @@ import { ISongInfo } from '../types/globals'
 import { v4 as uuidV4 } from 'uuid'
 // import AudioFeatureExtractor from './mfccTest'
 
-const initDevDatabase = true
+const initDevDatabase = false
 const dev_DB = 'C:\\Users\\renlu\\Desktop\\FRKB_database'
 const my_real_DB = 'D:\\FRKB_database'
 // 需要切换时，将下一行改为 my_real_DB
@@ -36,7 +45,7 @@ const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
   app.quit()
 } else {
-  app.on('second-instance', (event, commandLine, workingDirectory) => {
+  app.on('second-instance', (_event, _commandLine, _workingDirectory) => {
     if (databaseInitWindow.instance) {
       if (databaseInitWindow.instance.isMinimized()) {
         databaseInitWindow.instance.restore()
@@ -140,122 +149,27 @@ try {
   log.error('初始化错误日志上报失败', e)
 }
 
-let devInitDatabaseFunction = () => {
+let devInitDatabaseFunction = async () => {
   if (!fs.pathExistsSync(store.settingConfig.databaseUrl)) {
     return
   }
-  // 在dev环境下每次启动时重新初始化数据库
+  // 在 dev 环境下每次启动时重新初始化数据库
   if (fs.pathExistsSync(store.settingConfig.databaseUrl)) {
     fs.removeSync(store.settingConfig.databaseUrl)
   }
-  // 使用databaseInitWindow中的初始化逻辑
-  let rootDescription = {
-    uuid: uuidV4(),
-    type: 'root',
-    order: 1
-  }
-  fs.ensureDirSync(path.join(store.settingConfig.databaseUrl, 'library'))
-  fs.outputJsonSync(
-    path.join(store.settingConfig.databaseUrl, 'library', '.description.json'),
-    rootDescription
-  )
-
-  const makeLibrary = async (libraryPath: string, order: number) => {
-    let description = {
-      uuid: uuidV4(),
-      type: 'library',
-      order: order
-    }
-    fs.ensureDirSync(libraryPath)
-    fs.outputJsonSync(path.join(libraryPath, '.description.json'), description)
-  }
-
-  let filterLibraryPath = path.join(store.settingConfig.databaseUrl, 'library/筛选库')
-  let curatedLibraryPath = path.join(store.settingConfig.databaseUrl, 'library/精选库')
-  let recycleBinPath = path.join(store.settingConfig.databaseUrl, 'library/回收站')
-
-  makeLibrary(filterLibraryPath, 1)
-  makeLibrary(curatedLibraryPath, 2)
-  makeLibrary(recycleBinPath, 3)
-
-  // 创建示例歌单和歌曲
-  fs.ensureDirSync(path.join(filterLibraryPath, 'House'))
-  fs.outputJsonSync(path.join(filterLibraryPath, 'House', '.description.json'), {
-    uuid: 'filterLibrarySonglistDemo1',
-    type: 'songList',
-    order: 1
-  })
-
-  const filterLibrarySonglistSongDemo1 = path
-    .join(
-      __dirname,
-      '../../resources/demoMusic/Oden & Fatzo, Poppy Baskcomb - Tell Me What You Want (Extended Mix).mp3'
-    )
-    .replace('app.asar', 'app.asar.unpacked')
-  const filterLibrarySonglistSongDemo2 = path
-    .join(__dirname, '../../resources/demoMusic/War - Low Rider (Kyle Watson Remix).mp3')
-    .replace('app.asar', 'app.asar.unpacked')
-
-  if (fs.pathExistsSync(filterLibrarySonglistSongDemo1)) {
-    fs.copySync(
-      filterLibrarySonglistSongDemo1,
-      path.join(
-        filterLibraryPath,
-        'House',
-        'Oden & Fatzo, Poppy Baskcomb - Tell Me What You Want (Extended Mix).mp3'
-      )
-    )
-  }
-  if (fs.pathExistsSync(filterLibrarySonglistSongDemo2)) {
-    fs.copySync(
-      filterLibrarySonglistSongDemo2,
-      path.join(filterLibraryPath, 'House', 'War - Low Rider (Kyle Watson Remix).mp3')
-    )
-  }
-
-  fs.ensureDirSync(path.join(curatedLibraryPath, 'House Nice'))
-  fs.outputJsonSync(path.join(curatedLibraryPath, 'House Nice', '.description.json'), {
-    uuid: 'curatedLibrarySonglistDemo1',
-    type: 'songList',
-    order: 1
-  })
-
-  const curatedLibrarySonglistSongDemo1 = path
-    .join(
-      __dirname,
-      '../../resources/demoMusic/Armand Van Helden - I Want Your Soul (AVH Rework).mp3'
-    )
-    .replace('app.asar', 'app.asar.unpacked')
-
-  if (fs.pathExistsSync(curatedLibrarySonglistSongDemo1)) {
-    fs.copySync(
-      curatedLibrarySonglistSongDemo1,
-      path.join(
-        curatedLibraryPath,
-        'House Nice',
-        'Armand Van Helden - I Want Your Soul (AVH Rework).mp3'
-      )
-    )
-  }
-
-  // 初始化指纹数据
-  fs.ensureDirSync(path.join(store.settingConfig.databaseUrl, 'songFingerprint'))
-  fs.outputJsonSync(
-    path.join(store.settingConfig.databaseUrl, 'songFingerprint', 'songFingerprintV2.json'),
-    []
-  )
-
-  // 更新store
+  await initDatabaseStructure(store.settingConfig.databaseUrl)
+  // 指纹列表使用新方案初始化为空版本
   store.databaseDir = store.settingConfig.databaseUrl
   store.songFingerprintList = []
-  console.log('devInitDatabase')
+  await saveList([])
+  console.log('devInitDatabase (new scheme)')
 }
 if (is.dev && platform === 'win32') {
   // store.settingConfig.databaseUrl = devDatabase
   // if (initDevDatabase) {
   //   if (devDatabase !== my_real_DB) {
   //     // 做一个保险，防止误操作把我真实数据库删了
-  //     devInitDatabaseFunction()
+  //     void devInitDatabaseFunction()
   //   }
   // }
 }
@@ -268,78 +182,27 @@ app.whenReady().then(async () => {
   if (!store.settingConfig.databaseUrl) {
     databaseInitWindow.createWindow()
   } else {
+    // 若数据库根路径不存在，则视为“数据库不存在”，直接进入初始化界面并提示
     try {
-      // 检查核心库描述文件
-      let libraryJson = fs.readJSONSync(
-        path.join(store.settingConfig.databaseUrl, 'library', '.description.json')
-      )
-      let filterLibraryJson = fs.readJSONSync(
-        path.join(store.settingConfig.databaseUrl, 'library', '精选库', '.description.json')
-      )
-      let curatedLibraryJson = fs.readJSONSync(
-        path.join(store.settingConfig.databaseUrl, 'library', '筛选库', '.description.json')
-      )
-
-      if (
-        !(libraryJson.uuid && libraryJson.type === 'root') ||
-        !(filterLibraryJson.uuid && filterLibraryJson.type === 'library') ||
-        !(curatedLibraryJson.uuid && curatedLibraryJson.type === 'library')
-      ) {
-        // 核心库有问题，显示初始化窗口并提示错误
+      const exists = fs.pathExistsSync(store.settingConfig.databaseUrl)
+      if (!exists) {
         databaseInitWindow.createWindow({ needErrorHint: true })
-      } else {
-        // 核心库正常，检查回收站
-        try {
-          let recycleBinJson = fs.readJSONSync(
-            path.join(store.settingConfig.databaseUrl, 'library', '回收站', '.description.json')
-          )
-          if (!(recycleBinJson.uuid && recycleBinJson.type === 'library')) {
-            throw new Error('Invalid recycle bin description') // 抛出错误以触发创建
-          }
-        } catch (recycleBinError) {
-          // 回收站有问题或不存在，静默创建
-          const recycleBinPath = path.join(store.settingConfig.databaseUrl, 'library/回收站')
-          const description = {
-            uuid: uuidV4(),
-            type: 'library',
-            order: 3 // 默认顺序为3
-          }
-          await fs.ensureDir(recycleBinPath) // 确保目录存在
-          // 使用 operateHiddenFile 写入隐藏文件，如果项目中有此模式
-          await operateHiddenFile(path.join(recycleBinPath, '.description.json'), async () => {
-            await fs.outputJson(path.join(recycleBinPath, '.description.json'), description)
-          })
-        }
-
-        // 检查旧版本数据库标识
-        if (
-          fs.pathExistsSync(
-            path.join(store.settingConfig.databaseUrl, 'songFingerprint', 'songFingerprint.json')
-          )
-        ) {
-          foundOldVersionDatabaseWindow.createWindow()
-          return
-        }
-
-        // 检查并加载指纹数据
-        let songFingerprintListJson = fs.readJSONSync(
-          path.join(store.settingConfig.databaseUrl, 'songFingerprint', 'songFingerprintV2.json')
-        )
-        if (
-          !Array.isArray(songFingerprintListJson) ||
-          songFingerprintListJson.some((item) => typeof item !== 'string')
-        ) {
-          // 指纹文件格式错误，也显示初始化窗口
-          databaseInitWindow.createWindow({ needErrorHint: true })
-        } else {
-          // 一切正常，加载主窗口
-          store.databaseDir = store.settingConfig.databaseUrl
-          store.songFingerprintList = songFingerprintListJson
-          mainWindow.createWindow()
-        }
+        return
       }
-    } catch (error) {
-      // 捕获读取核心库文件时的错误
+    } catch (_e) {
+      databaseInitWindow.createWindow({ needErrorHint: true })
+      return
+    }
+    try {
+      // 统一复用初始化（幂等）：创建/修复库结构
+      await initDatabaseStructure(store.settingConfig.databaseUrl, { createSamples: false })
+      // 指纹：前置修复并加载（多版本+指针）
+      await healAndPrepare()
+      const list = await loadList()
+      store.databaseDir = store.settingConfig.databaseUrl
+      store.songFingerprintList = Array.isArray(list) ? list : []
+      mainWindow.createWindow()
+    } catch (_e) {
       databaseInitWindow.createWindow({ needErrorHint: true })
     }
   }
@@ -366,80 +229,25 @@ app.whenReady().then(async () => {
       if (!store.settingConfig.databaseUrl) {
         databaseInitWindow.createWindow()
       } else {
+        // 若数据库根路径不存在，则进入初始化界面并提示
         try {
-          // 检查核心库描述文件 (与 whenReady 逻辑类似)
-          let libraryJson = fs.readJSONSync(
-            path.join(store.settingConfig.databaseUrl, 'library', '.description.json')
-          )
-          let filterLibraryJson = fs.readJSONSync(
-            path.join(store.settingConfig.databaseUrl, 'library', '精选库', '.description.json')
-          )
-          let curatedLibraryJson = fs.readJSONSync(
-            path.join(store.settingConfig.databaseUrl, 'library', '筛选库', '.description.json')
-          )
-
-          if (
-            !(libraryJson.uuid && libraryJson.type === 'root') ||
-            !(filterLibraryJson.uuid && filterLibraryJson.type === 'library') ||
-            !(curatedLibraryJson.uuid && curatedLibraryJson.type === 'library')
-          ) {
+          const exists = fs.pathExistsSync(store.settingConfig.databaseUrl)
+          if (!exists) {
             databaseInitWindow.createWindow({ needErrorHint: true })
-          } else {
-            // 核心库正常，检查回收站 (与 whenReady 逻辑类似)
-            try {
-              let recycleBinJson = fs.readJSONSync(
-                path.join(store.settingConfig.databaseUrl, 'library', '回收站', '.description.json')
-              )
-              if (!(recycleBinJson.uuid && recycleBinJson.type === 'library')) {
-                throw new Error('Invalid recycle bin description')
-              }
-            } catch (recycleBinError) {
-              const recycleBinPath = path.join(store.settingConfig.databaseUrl, 'library/回收站')
-              const description = {
-                uuid: uuidV4(),
-                type: 'library',
-                order: 3
-              }
-              await fs.ensureDir(recycleBinPath)
-              await operateHiddenFile(path.join(recycleBinPath, '.description.json'), async () => {
-                await fs.outputJson(path.join(recycleBinPath, '.description.json'), description)
-              })
-            }
-
-            // 检查旧版本数据库标识 (与 whenReady 逻辑类似)
-            if (
-              fs.pathExistsSync(
-                path.join(
-                  store.settingConfig.databaseUrl,
-                  'songFingerprint',
-                  'songFingerprint.json'
-                )
-              )
-            ) {
-              foundOldVersionDatabaseWindow.createWindow()
-              return
-            }
-
-            // 检查并加载指纹数据 (与 whenReady 逻辑类似)
-            let songFingerprintListJson = fs.readJSONSync(
-              path.join(
-                store.settingConfig.databaseUrl,
-                'songFingerprint',
-                'songFingerprintV2.json'
-              )
-            )
-            if (
-              !Array.isArray(songFingerprintListJson) ||
-              songFingerprintListJson.some((item) => typeof item !== 'string')
-            ) {
-              databaseInitWindow.createWindow({ needErrorHint: true })
-            } else {
-              store.databaseDir = store.settingConfig.databaseUrl
-              store.songFingerprintList = songFingerprintListJson
-              mainWindow.createWindow()
-            }
+            return
           }
-        } catch (error) {
+        } catch (_e) {
+          databaseInitWindow.createWindow({ needErrorHint: true })
+          return
+        }
+        try {
+          await initDatabaseStructure(store.settingConfig.databaseUrl, { createSamples: false })
+          await healAndPrepare()
+          const list = await loadList()
+          store.databaseDir = store.settingConfig.databaseUrl
+          store.songFingerprintList = Array.isArray(list) ? list : []
+          mainWindow.createWindow()
+        } catch (_e) {
           databaseInitWindow.createWindow({ needErrorHint: true })
         }
       }
@@ -473,17 +281,8 @@ ipcMain.handle('clearTracksFingerprintLibrary', async (_e) => {
     if (!store.databaseDir) {
       return { success: false, message: '尚未配置数据库位置' }
     }
-    const dir = path.join(store.databaseDir, 'songFingerprint')
-    const file = path.join(dir, 'songFingerprintV2.json')
-    await fs.ensureDir(dir)
     store.songFingerprintList = []
-    if (await fs.pathExists(file)) {
-      await operateHiddenFile(file, async () => {
-        await fs.outputJSON(file, store.songFingerprintList)
-      })
-    } else {
-      await fs.outputJSON(file, store.songFingerprintList)
-    }
+    await saveList(store.songFingerprintList)
     return { success: true }
   } catch (error: any) {
     log.error('clearTracksFingerprintLibrary failed', error)
@@ -496,7 +295,12 @@ ipcMain.handle('getSongFingerprintListLength', () => {
 })
 
 ipcMain.on('delSongs', async (e, songFilePaths: string[], dirName: string) => {
-  let recycleBinTargetDir = path.join(store.databaseDir, 'library', '回收站', dirName)
+  let recycleBinTargetDir = path.join(
+    store.databaseDir,
+    'library',
+    getCoreFsDirName('RecycleBin'),
+    dirName
+  )
   fs.ensureDirSync(recycleBinTargetDir)
   const tasks: Array<() => Promise<any>> = []
   for (let item of songFilePaths) {
@@ -554,7 +358,11 @@ ipcMain.handle('permanentlyDelSongs', async (e, songFilePaths: string[]) => {
 
 ipcMain.handle('dirPathExists', async (e, targetPath: string) => {
   try {
-    const filePath = path.join(store.databaseDir, targetPath, '.description.json')
+    const filePath = path.join(
+      store.databaseDir,
+      mapRendererPathToFsPath(targetPath),
+      '.description.json'
+    )
     const descriptionJson = await fs.readJSON(filePath)
     const validTypes = ['root', 'library', 'dir', 'songList']
     return !!(
@@ -568,7 +376,7 @@ ipcMain.handle('dirPathExists', async (e, targetPath: string) => {
 })
 
 ipcMain.handle('scanSongList', async (e, songListPath: string, songListUUID: string) => {
-  let scanPath = path.join(store.databaseDir, songListPath)
+  let scanPath = path.join(store.databaseDir, mapRendererPathToFsPath(songListPath))
   const mm = await import('music-metadata')
   let songInfoArr: ISongInfo[] = []
   let songFileUrls = await collectFilesWithExtensions(scanPath, store.settingConfig.audioExt)
@@ -651,32 +459,21 @@ ipcMain.on('layoutConfigChanged', (e, layoutConfig) => {
 })
 
 ipcMain.handle('exportSongFingerprint', async (e, folderPath) => {
-  const file = path.join(store.databaseDir, 'songFingerprint', 'songFingerprintV2.json')
-  await fs.copy(
-    file,
-    folderPath + '\\songFingerprint' + getCurrentTimeYYYYMMDDHHMMSSSSS() + '.json'
+  const toPath = path.join(
+    folderPath,
+    'songFingerprint' + getCurrentTimeYYYYMMDDHHMMSSSSS() + '.json'
   )
+  await exportSnapshot(toPath, store.songFingerprintList || [])
 })
 
 ipcMain.handle('importSongFingerprint', async (e, filePath: string) => {
-  let json: string[] = await fs.readJSON(filePath)
-  store.songFingerprintList = store.songFingerprintList.concat(json)
-  store.songFingerprintList = Array.from(new Set(store.songFingerprintList))
-  const dir = path.join(store.databaseDir, 'songFingerprint')
-  const file = path.join(dir, 'songFingerprintV2.json')
-  await fs.ensureDir(dir)
-  if (await fs.pathExists(file)) {
-    await operateHiddenFile(file, async () => {
-      await fs.outputJSON(file, store.songFingerprintList)
-    })
-  } else {
-    await fs.outputJSON(file, store.songFingerprintList)
-  }
+  const merged = await importFromJsonFile(filePath)
+  store.songFingerprintList = merged
   return
 })
 
 ipcMain.handle('exportSongListToDir', async (e, folderPathVal, deleteSongsAfterExport, dirPath) => {
-  let scanPath = path.join(store.databaseDir, dirPath)
+  let scanPath = path.join(store.databaseDir, mapRendererPathToFsPath(dirPath))
   let songFileUrls = await collectFilesWithExtensions(scanPath, store.settingConfig.audioExt)
   let folderName = dirPath.split('/')[dirPath.split('/').length - 1]
   async function findUniqueFolder(inputFolderPath: string) {
@@ -798,7 +595,7 @@ ipcMain.handle('moveSongsToDir', async (e, srcs, dest) => {
   for (let src of srcs) {
     const matches = src.match(/[^\\]+$/)
     if (Array.isArray(matches) && matches.length > 0) {
-      const targetPath = path.join(store.databaseDir, dest, matches[0])
+      const targetPath = path.join(store.databaseDir, mapRendererPathToFsPath(dest), matches[0])
       tasks.push(() => moveOrCopyItemWithCheckIsExist(src, targetPath, true))
     }
   }
