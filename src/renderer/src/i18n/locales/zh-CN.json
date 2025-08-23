@@ -38,14 +38,11 @@
     "selectLocation": "请选择数据存储位置",
     "reselectLocation": "重新选择数据库所在位置",
     "reselectConfirm": "确认重新选择数据库所在位置？",
-    "storageHint": "用户的曲目及曲目指纹信息将储存在此处，请确保此文件夹有足够空间",
-    "existingHint": "如果目标文件夹下已经存在FRKB数据库文件夹，‌那么将会直接使用已有的数据库内容",
+    "storageHint": "用户的曲目及曲目指纹信息将储存在此处（数据库文件夹名应为 FRKB_database），请确保该文件夹有足够空间",
+    "existingHint": "如果目标文件夹下已经存在 FRKB 数据库文件夹（名称为 FRKB_database），那么将会直接使用已有的数据库内容",
     "locationRetain": "当前使用的数据库文件夹仍保留在原位置，可手动删除或重新选择继续使用。",
-    "cannotRead": "位于此位置的数据库已无法读取",
-    "possibleDamage": "数据库可能已被移动或其必要文件结构已损坏。如果确认数据库未被移动，重新选择此位置将尝试修复数据库。",
-    "oldVersionFound": "发现旧版本数据库",
-    "oldVersionWarning": "检测到旧版本数据库，旧版本数据库将不再支持，是否将数据库升级为新版本？",
-    "upgradeInfo": "升级后的数据库将保持原有的音频内容，但将清空旧的音频指纹数据，你可能需要重新扫描音频文件的指纹，升级后指纹分析性能将获得巨量提升"
+    "cannotRead": "此路径下未检测到 FRKB 数据库，或该路径不可用",
+    "possibleDamage": "请选择一个已存在的 FRKB 数据库（文件夹名为 FRKB_database），或重新选择此位置以建立一个新的数据库。"
   },
   "cloudSync": {
     "syncFingerprints": "同步曲目指纹库",

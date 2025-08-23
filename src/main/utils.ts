@@ -11,6 +11,83 @@ interface SongsAnalyseResult {
   errorSongsAnalyseResult: md5[]
 }
 
+// ===== 核心库英文/中文名称映射与路径解析 =====
+const CORE_EN_TO_CN: Record<string, string> = {
+  FilterLibrary: '筛选库',
+  CuratedLibrary: '精选库',
+  RecycleBin: '回收站'
+}
+const CORE_KEYS = Object.keys(CORE_EN_TO_CN) as Array<
+  'FilterLibrary' | 'CuratedLibrary' | 'RecycleBin'
+>
+// 运行期：英文名 -> 实际物理目录名（优先英文，若重命名失败则回退中文）
+const coreEnToFsName: Record<string, string> = {
+  FilterLibrary: 'FilterLibrary',
+  CuratedLibrary: 'CuratedLibrary',
+  RecycleBin: 'RecycleBin'
+}
+
+export async function ensureEnglishCoreLibraries(dbRootDir: string): Promise<void> {
+  const base = path.join(dbRootDir, 'library')
+  await fs.ensureDir(base)
+  for (const enName of CORE_KEYS) {
+    const cnName = CORE_EN_TO_CN[enName]
+    const enPath = path.join(base, enName)
+    const cnPath = path.join(base, cnName)
+    const enExists = await fs.pathExists(enPath)
+    const cnExists = await fs.pathExists(cnPath)
+    try {
+      if (enExists) {
+        coreEnToFsName[enName] = enName
+      } else if (cnExists) {
+        // 尝试将中文目录重命名为英文
+        try {
+          await fs.rename(cnPath, enPath)
+          coreEnToFsName[enName] = enName
+        } catch (_e) {
+          // 重命名失败，回退使用中文目录名，后续重试
+          coreEnToFsName[enName] = cnName
+          // 确保目标英文目录占位以便后续创建（不强制）
+          // 不创建，避免与中文并存造成歧义
+        }
+      } else {
+        // 两者都不存在，创建英文目录及描述文件
+        await fs.ensureDir(enPath)
+        const descPath = path.join(enPath, '.description.json')
+        if (!(await fs.pathExists(descPath))) {
+          await operateHiddenFile(descPath, async () => {
+            await fs.outputJson(descPath, {
+              uuid: require('uuid').v4(),
+              type: 'library',
+              order: enName === 'FilterLibrary' ? 1 : enName === 'CuratedLibrary' ? 2 : 3
+            })
+          })
+        }
+        coreEnToFsName[enName] = enName
+      }
+    } catch (_err) {
+      // 任一异常时，保守回退到中文
+      coreEnToFsName[enName] = cnExists ? cnName : enName
+    }
+  }
+}
+
+export function getCoreFsDirName(
+  enName: 'FilterLibrary' | 'CuratedLibrary' | 'RecycleBin'
+): string {
+  return coreEnToFsName[enName] || enName
+}
+
+export function mapRendererPathToFsPath(rendererPath: string): string {
+  // 将渲染层路径中的英文核心库名替换为实际物理目录名
+  let p = rendererPath
+  for (const enName of CORE_KEYS) {
+    const fsName = getCoreFsDirName(enName)
+    p = p.replace(new RegExp(`(^|/)${enName}(/|$)`), `$1${fsName}$2`)
+  }
+  return p
+}
+
 export async function getSongsAnalyseResult(
   songFilePaths: string[],
   processFunc: Function
@@ -53,6 +130,16 @@ async function getdirsDescriptionJson(dirPath: string, dirs: fs.Dirent[]) {
           const subDirs = subEntries.filter((entry) => entry.isDirectory())
           const subJsons = await getdirsDescriptionJson(subDirPath, subDirs)
           json.children = subJsons
+          // 若为核心库层级，统一将显示名规范为英文（渲染层接收英文）
+          if (json.type === 'library') {
+            for (const enName of CORE_KEYS) {
+              const cnName = CORE_EN_TO_CN[enName]
+              if (json.dirName === enName || json.dirName === cnName) {
+                json.dirName = enName
+                break
+              }
+            }
+          }
           return json
         } else {
           return null
@@ -72,6 +159,8 @@ async function getdirsDescriptionJson(dirPath: string, dirs: fs.Dirent[]) {
 //获取整个库的树结构
 export async function getLibrary() {
   const dirPath = path.join(store.databaseDir, 'library')
+  // 先确保核心库英文化（若失败则回退中文），同时建立英文->FS 名的映射
+  await ensureEnglishCoreLibraries(store.databaseDir)
   let descriptionJson = await fs.readJSON(path.join(dirPath, '.description.json'))
   descriptionJson.dirName = 'library'
   const rootDescriptionJson: IDir = descriptionJson

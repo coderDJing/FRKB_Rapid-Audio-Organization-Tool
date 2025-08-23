@@ -186,7 +186,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
     deleteDir()
     return
   }
-  if (runtime.libraryAreaSelected === '回收站') {
+  if (runtime.libraryAreaSelected === 'RecycleBin') {
     menuArr.value = [[{ menuName: 'recycleBin.permanentlyDelete' }]]
   }
   rightClickMenuShow.value = true
@@ -290,7 +290,9 @@ const contextmenuEvent = async (event: MouseEvent) => {
         content: [t('tracks.confirmDelete'), t('tracks.deleteHint')]
       })
       if (res === 'confirm') {
-        const recycleBin = runtime.libraryTree.children?.find((item) => item.dirName === '回收站')
+        const recycleBin = runtime.libraryTree.children?.find(
+          (item) => item.dirName === 'RecycleBin'
+        )
         const index = recycleBin?.children?.findIndex((item) => item.uuid === props.uuid)
         if (index !== undefined && index !== -1 && recycleBin?.children) {
           recycleBin.children.splice(index, 1)
@@ -461,7 +463,7 @@ const dragstart = async (event: DragEvent) => {
 }
 
 const dragover = (e: DragEvent) => {
-  if (runtime.libraryAreaSelected === '回收站') {
+  if (runtime.libraryAreaSelected === 'RecycleBin') {
     if (e.dataTransfer) {
       e.dataTransfer.dropEffect = 'none'
     }
@@ -475,7 +477,7 @@ const dragover = (e: DragEvent) => {
   if (isSongDrag && dirData.type === 'songList') {
     // 检查目标歌单是否在回收站中
     const isInRecycleBin = runtime.libraryTree.children
-      ?.find((item) => item.dirName === '回收站')
+      ?.find((item) => item.dirName === 'RecycleBin')
       ?.children?.some((child) => child.uuid === props.uuid)
 
     if (isInRecycleBin) {
@@ -498,7 +500,7 @@ const dragover = (e: DragEvent) => {
 }
 
 const dragenter = (e: DragEvent) => {
-  if (runtime.libraryAreaSelected === '回收站') {
+  if (runtime.libraryAreaSelected === 'RecycleBin') {
     if (e.dataTransfer) {
       e.dataTransfer.dropEffect = 'none'
     }
@@ -512,7 +514,7 @@ const dragenter = (e: DragEvent) => {
   if (isSongDrag && dirData.type === 'songList') {
     // 检查目标歌单是否在回收站中
     const isInRecycleBin = runtime.libraryTree.children
-      ?.find((item) => item.dirName === '回收站')
+      ?.find((item) => item.dirName === 'RecycleBin')
       ?.children?.some((child) => child.uuid === props.uuid)
 
     if (isInRecycleBin) {
@@ -532,14 +534,14 @@ const dragenter = (e: DragEvent) => {
 }
 
 const dragleave = () => {
-  if (runtime.libraryAreaSelected === '回收站') {
+  if (runtime.libraryAreaSelected === 'RecycleBin') {
     return
   }
   handleDragLeave(dragState)
 }
 
 const drop = async (e: DragEvent) => {
-  if (runtime.libraryAreaSelected === '回收站') {
+  if (runtime.libraryAreaSelected === 'RecycleBin') {
     return
   }
 
@@ -549,7 +551,7 @@ const drop = async (e: DragEvent) => {
   if (isSongDrag && dirData.type === 'songList') {
     // 检查目标歌单是否在回收站中
     const isInRecycleBin = runtime.libraryTree.children
-      ?.find((item) => item.dirName === '回收站')
+      ?.find((item) => item.dirName === 'RecycleBin')
       ?.children?.some((child) => child.uuid === props.uuid)
 
     if (isInRecycleBin) {
@@ -606,7 +608,7 @@ watch(
 )
 
 const displayDirName = computed(() => {
-  if (runtime.libraryAreaSelected === '回收站' && dirData.dirName) {
+  if (runtime.libraryAreaSelected === 'RecycleBin' && dirData.dirName) {
     // 匹配形如 2025-04-01_15-03-45 的格式
     const match = dirData.dirName.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})$/)
     if (match) {
@@ -629,7 +631,9 @@ const displayDirName = computed(() => {
     @drop.stop.prevent="drop"
     @dragleave.stop="dragleave"
     :draggable="
-      dirData.dirName && !renameDivShow && runtime.libraryAreaSelected !== '回收站' ? true : false
+      dirData.dirName && !renameDivShow && runtime.libraryAreaSelected !== 'RecycleBin'
+        ? true
+        : false
     "
     :class="{
       rightClickBorder: rightClickMenuShow,

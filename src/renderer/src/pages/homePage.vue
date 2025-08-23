@@ -99,7 +99,7 @@ onUnmounted(() => {
   clearTimeout(hoverTimeout)
 })
 
-let librarySelected = ref('筛选库')
+let librarySelected = ref('FilterLibrary')
 const librarySelectedChange = (item: Icon) => {
   if (item.name == librarySelected.value) {
     return

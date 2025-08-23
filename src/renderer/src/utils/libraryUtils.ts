@@ -18,7 +18,9 @@ export const diffLibraryTreeExecuteFileOperation = async () => {
 
   // 3. 处理返回结果并更新 UI
   if (result.success && result.details) {
-    const recycleBinNode = runtime.libraryTree.children?.find((item) => item.dirName === '回收站')
+    const recycleBinNode = runtime.libraryTree.children?.find(
+      (item) => item.dirName === 'RecycleBin'
+    )
 
     if (recycleBinNode && !recycleBinNode.children) {
       recycleBinNode.children = [] // 确保回收站子数组存在

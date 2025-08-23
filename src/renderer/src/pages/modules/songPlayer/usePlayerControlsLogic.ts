@@ -313,7 +313,7 @@ export function usePlayerControlsLogic({
 
         // 检查是否在回收站
         const isInRecycleBin = runtime.libraryTree.children
-          ?.find((item) => item.dirName === '回收站')
+          ?.find((item) => item.dirName === 'RecycleBin')
           ?.children?.find((item) => item.uuid === currentSongListUUID)
 
         let performDelete = false
@@ -448,7 +448,7 @@ export function usePlayerControlsLogic({
     // 保存当前要移动的歌曲（如果提供了参数，使用参数；否则使用当前播放的歌曲）
     songToMoveRef.value = song || runtime.playingData.playingSong
 
-    selectSongListDialogLibraryName.value = '筛选库'
+    selectSongListDialogLibraryName.value = 'FilterLibrary'
     selectSongListDialogShow.value = true
   }
 
@@ -456,7 +456,7 @@ export function usePlayerControlsLogic({
     // 保存当前要移动的歌曲（如果提供了参数，使用参数；否则使用当前播放的歌曲）
     songToMoveRef.value = song || runtime.playingData.playingSong
 
-    selectSongListDialogLibraryName.value = '精选库'
+    selectSongListDialogLibraryName.value = 'CuratedLibrary'
     selectSongListDialogShow.value = true
   }
 

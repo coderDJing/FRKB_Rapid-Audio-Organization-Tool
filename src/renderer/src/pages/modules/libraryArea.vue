@@ -27,7 +27,7 @@ if (libraryData === null) {
 }
 
 const displayedChildren = computed(() => {
-  if (runtime.libraryAreaSelected === '回收站' && libraryData.children) {
+  if (runtime.libraryAreaSelected === 'RecycleBin' && libraryData.children) {
     // 创建一个倒序副本，不改变原数组
     return [...libraryData.children].reverse()
   }
@@ -56,11 +56,11 @@ const emptyRecycleBinHandleClick = async () => {
     return
   }
   let recycleBinDirs = runtime.libraryTree.children?.find((item) => {
-    return item.dirName === '回收站'
+    return item.dirName === 'RecycleBin'
   })
   if (recycleBinDirs?.children?.length !== 0) {
     await window.electron.ipcRenderer.invoke('emptyRecycleBin')
-    const recycleBin = runtime.libraryTree.children?.find((item) => item.dirName === '回收站')
+    const recycleBin = runtime.libraryTree.children?.find((item) => item.dirName === 'RecycleBin')
     if (recycleBin) {
       recycleBin.children = []
     }
@@ -71,7 +71,7 @@ const menuArr = ref([
   [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]
 ])
 const contextmenuEvent = async (event: MouseEvent) => {
-  if (runtime.libraryAreaSelected === '回收站') {
+  if (runtime.libraryAreaSelected === 'RecycleBin') {
     menuArr.value = [[{ menuName: 'recycleBin.emptyRecycleBin' }]]
   } else {
     menuArr.value = [[{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]]
@@ -103,7 +103,7 @@ const collapseButtonHandleClick = async () => {
 
 const dragApproach = ref('')
 const dragover = (e: DragEvent) => {
-  if (runtime.libraryAreaSelected === '回收站') {
+  if (runtime.libraryAreaSelected === 'RecycleBin') {
     if (e.dataTransfer) {
       e.dataTransfer.dropEffect = 'none'
     }
@@ -121,7 +121,7 @@ const dragover = (e: DragEvent) => {
   dragApproach.value = 'top'
 }
 const dragenter = (e: DragEvent) => {
-  if (runtime.libraryAreaSelected === '回收站') {
+  if (runtime.libraryAreaSelected === 'RecycleBin') {
     if (e.dataTransfer) {
       e.dataTransfer.dropEffect = 'none'
     }
@@ -139,7 +139,7 @@ const dragenter = (e: DragEvent) => {
   dragApproach.value = 'top'
 }
 const dragleave = (e: DragEvent) => {
-  if (runtime.libraryAreaSelected === '回收站') {
+  if (runtime.libraryAreaSelected === 'RecycleBin') {
     return
   }
   if (runtime.dragItemData === null) {
@@ -153,7 +153,7 @@ const dragleave = (e: DragEvent) => {
   dragApproach.value = ''
 }
 const drop = async (e: DragEvent) => {
-  if (runtime.libraryAreaSelected === '回收站') {
+  if (runtime.libraryAreaSelected === 'RecycleBin') {
     runtime.dragItemData = null
     return
   }
@@ -189,7 +189,7 @@ const drop = async (e: DragEvent) => {
         <div
           ref="emptyRecycleRef"
           class="collapseButton"
-          v-show="runtime.libraryAreaSelected === '回收站'"
+          v-show="runtime.libraryAreaSelected === 'RecycleBin'"
           @click="emptyRecycleBinHandleClick()"
         >
           <img :src="emptyRecycleBin" style="width: 16px; height: 16px" draggable="false" />
@@ -257,7 +257,7 @@ const drop = async (e: DragEvent) => {
             v-show="showHint && runtime.layoutConfig.libraryAreaWidth !== 0"
           >
             {{
-              runtime.libraryAreaSelected === '回收站'
+              runtime.libraryAreaSelected === 'RecycleBin'
                 ? t('recycleBin.noDeletionRecords')
                 : t('library.rightClickToCreate')
             }}

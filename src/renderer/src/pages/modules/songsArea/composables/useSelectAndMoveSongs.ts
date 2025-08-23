@@ -5,7 +5,7 @@ import emitter from '@renderer/utils/mitt'
 // ISongInfo might not be directly needed here unless we manipulate song data deeply
 // but runtime store interaction will involve it indirectly.
 
-export type MoveSongsLibraryName = '精选库' | '筛选库'
+export type MoveSongsLibraryName = 'CuratedLibrary' | 'FilterLibrary'
 
 export function useSelectAndMoveSongs() {
   const runtime = useRuntimeStore()
@@ -13,10 +13,6 @@ export function useSelectAndMoveSongs() {
   const isDialogVisible = ref(false)
   const targetLibraryName = ref<MoveSongsLibraryName | ''>('')
 
-  /**
-   * Initiates the process of moving songs by showing the dialog.
-   * @param libraryName - The target library ('精选库' or '筛选库').
-   */
   const initiateMoveSongs = (libraryName: MoveSongsLibraryName) => {
     targetLibraryName.value = libraryName
     isDialogVisible.value = true
