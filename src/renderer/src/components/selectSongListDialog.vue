@@ -20,7 +20,7 @@ const uuid = uuidV4()
 const props = defineProps({
   libraryName: {
     type: String,
-    default: '筛选库'
+    default: 'FilterLibrary'
   }
 })
 

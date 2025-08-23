@@ -3,7 +3,7 @@ import { IDir, ILayoutConfig, ISettingConfig, ISongInfo } from 'src/types/global
 interface Runtime {
   platform: string
   isWindowMaximized: boolean | null
-  libraryAreaSelected: '筛选库' | '精选库' | '回收站'
+  libraryAreaSelected: 'FilterLibrary' | 'CuratedLibrary' | 'RecycleBin'
   activeMenuUUID: string
   layoutConfig: ILayoutConfig
   dragItemData: null | IDir
@@ -37,7 +37,7 @@ export const useRuntimeStore = defineStore('runtime', {
     return {
       platform: '', //使用平台
       isWindowMaximized: null,
-      libraryAreaSelected: '筛选库',
+      libraryAreaSelected: 'FilterLibrary',
       activeMenuUUID: '',
       layoutConfig: {
         libraryAreaWidth: 200,

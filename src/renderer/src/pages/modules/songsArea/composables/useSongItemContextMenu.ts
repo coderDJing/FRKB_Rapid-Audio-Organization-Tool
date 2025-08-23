@@ -12,7 +12,7 @@ import emitter from '@renderer/utils/mitt'
 // Type for the return value when a dialog needs to be opened by the parent
 export interface OpenDialogAction {
   action: 'openSelectSongListDialog'
-  libraryName: '精选库' | '筛选库'
+  libraryName: 'CuratedLibrary' | 'FilterLibrary'
 }
 
 // 新增：用于表示歌曲被右键菜单操作移除的返回类型
@@ -76,7 +76,7 @@ export function useSongItemContextMenu(
 
         // 2. 用户确认 (如果需要)
         const isInRecycleBin = runtime.libraryTree.children
-          ?.find((item) => item.dirName === '回收站')
+          ?.find((item) => item.dirName === 'RecycleBin')
           ?.children?.find((item) => item.uuid === runtime.songsArea.songListUUID)
 
         if (isInRecycleBin) {
@@ -121,7 +121,7 @@ export function useSongItemContextMenu(
           if (!currentSelectedPaths.length) return null
 
           const isInRecycleBin = runtime.libraryTree.children
-            ?.find((item) => item.dirName === '回收站')
+            ?.find((item) => item.dirName === 'RecycleBin')
             ?.children?.find((item) => item.uuid === runtime.songsArea.songListUUID)
 
           let shouldDelete = true
@@ -163,9 +163,9 @@ export function useSongItemContextMenu(
         }
         break
       case 'library.moveToCurated':
-        return { action: 'openSelectSongListDialog', libraryName: '精选库' }
+        return { action: 'openSelectSongListDialog', libraryName: 'CuratedLibrary' }
       case 'library.moveToFilter':
-        return { action: 'openSelectSongListDialog', libraryName: '筛选库' }
+        return { action: 'openSelectSongListDialog', libraryName: 'FilterLibrary' }
       case 'tracks.exportTracks': {
         const exportResult = await exportDialog({ title: 'tracks.title' })
         if (exportResult !== 'cancel') {

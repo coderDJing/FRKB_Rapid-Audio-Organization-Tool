@@ -729,7 +729,7 @@ const preloadNextSong = () => {
   window.electron.ipcRenderer.send('readNextSongFile', nextSongFilePath, requestId)
 }
 
-const selectSongListDialogLibraryName = ref('筛选库')
+const selectSongListDialogLibraryName = ref('FilterLibrary')
 const selectSongListDialogShow = ref(false)
 
 // 控制是否显示右键菜单，用于禁用封面弹窗的mouseleave

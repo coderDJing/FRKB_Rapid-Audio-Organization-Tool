@@ -27,7 +27,7 @@ export function calculateFileSystemOperations(oldTree: IDir, newTree: IDir): Fil
 
   // 检查路径是否在回收站节点下
   function isInTrash(path: string): boolean {
-    return path.startsWith('library/回收站')
+    return path.startsWith('library/RecycleBin')
   }
 
   // 预处理：构建UUID到路径的映射

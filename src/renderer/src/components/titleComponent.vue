@@ -130,13 +130,13 @@ hotkeys('alt+h', 'windowGlobal', () => {
 
 hotkeys('alt+q', 'windowGlobal', () => {
   ;(async () => {
-    await scanNewSongDialog({ libraryName: '筛选库', songListUuid: '' })
+    await scanNewSongDialog({ libraryName: 'FilterLibrary', songListUuid: '' })
   })()
 })
 
 hotkeys('alt+e', 'windowGlobal', () => {
   ;(async () => {
-    await scanNewSongDialog({ libraryName: '精选库', songListUuid: '' })
+    await scanNewSongDialog({ libraryName: 'CuratedLibrary', songListUuid: '' })
   })()
 })
 const menuClick = (item: Menu) => {
@@ -158,10 +158,10 @@ const menuButtonClick = async (item: MenuItem) => {
       return
     }
     if (item.action === 'import-new-filter') {
-      await scanNewSongDialog({ libraryName: '筛选库', songListUuid: '' })
+      await scanNewSongDialog({ libraryName: 'FilterLibrary', songListUuid: '' })
       return
     } else if (item.action === 'import-new-curated') {
-      await scanNewSongDialog({ libraryName: '精选库', songListUuid: '' })
+      await scanNewSongDialog({ libraryName: 'CuratedLibrary', songListUuid: '' })
       return
     }
   }

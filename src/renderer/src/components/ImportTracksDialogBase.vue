@@ -16,7 +16,7 @@ type Mode = 'scan' | 'drop'
 const uuid = uuidV4()
 const props = defineProps({
   mode: { type: String as () => Mode, required: true },
-  libraryName: { type: String, default: '筛选库' },
+  libraryName: { type: String, default: 'FilterLibrary' },
   songListUuid: { type: String },
   confirmCallback: { type: Function, required: true },
   cancelCallback: { type: Function, required: true }

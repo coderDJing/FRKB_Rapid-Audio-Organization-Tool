@@ -88,7 +88,7 @@ const updateRecentDialogCacheMaxCount = async () => {
     Math.floor(Number(runtime.setting.recentDialogSelectedSongListMaxCount || 0))
   )
   const maxCount = runtime.setting.recentDialogSelectedSongListMaxCount
-  const keys = ['筛选库', '精选库']
+  const keys = ['FilterLibrary', 'CuratedLibrary']
   for (const name of keys) {
     const key = 'recentDialogSelectedSongListUUID' + name
     const raw = localStorage.getItem(key)
