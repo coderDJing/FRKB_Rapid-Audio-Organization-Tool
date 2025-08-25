@@ -8,7 +8,8 @@ import {
   runWithConcurrency,
   waitForUserDecision,
   getCoreFsDirName,
-  mapRendererPathToFsPath
+  mapRendererPathToFsPath,
+  getCurrentTimeYYYYMMDDHHMMSSSSS
 } from '../utils'
 import store from '../store'
 import url from '../url'
@@ -294,14 +295,64 @@ function createWindow() {
             }
           })
         delList = delList.concat(duplicates)
-        if (isDeleteSourceFile) {
-          sendProgress('tracks.deletingDuplicates', 0, delList.length)
-          let delIndex = 0
-          delList.forEach((item, index) => {
-            fs.remove(item)
-            delIndex++
-            sendProgress('tracks.deletingDuplicates', delIndex, delList.length)
+        if (isDeleteSourceFile && delList.length > 0) {
+          // 将重复文件移动到软件内回收站，而不是直接删除
+          // 使用与渲染层一致的目录名格式：YYYY-MM-DD_HH-MM-SS
+          const now = new Date()
+          const pad2 = (n: number) => (n < 10 ? '0' + n : '' + n)
+          const dirName = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(
+            now.getDate()
+          )}_${pad2(now.getHours())}-${pad2(now.getMinutes())}-${pad2(now.getSeconds())}`
+          const recycleBinTargetDir = path.join(
+            store.databaseDir,
+            'library',
+            getCoreFsDirName('RecycleBin'),
+            dirName
+          )
+          fs.ensureDirSync(recycleBinTargetDir)
+
+          const tasks: Array<() => Promise<any>> = []
+          for (let srcPath of delList) {
+            const dest = path.join(recycleBinTargetDir, path.basename(srcPath))
+            tasks.push(() => fs.move(srcPath, dest))
+          }
+
+          const batchId = `import_recycle_duplicates_${Date.now()}`
+          const { success, failed, hasENOSPC, skipped } = await runWithConcurrency(tasks, {
+            concurrency: 16,
+            onProgress: (done, total) => sendProgress('tracks.recyclingDuplicates', done, total),
+            stopOnENOSPC: true,
+            onInterrupted: async (payload) =>
+              waitForUserDecision(mainWindow, batchId, 'recycleDuplicatesOnImport', payload)
           })
+
+          // 写入回收站目录描述文件，供 UI 展示
+          const descriptionJson = {
+            uuid: uuidV4(),
+            type: 'songList',
+            order: Date.now()
+          }
+          await operateHiddenFile(path.join(recycleBinTargetDir, '.description.json'), async () => {
+            fs.outputJSON(path.join(recycleBinTargetDir, '.description.json'), descriptionJson)
+          })
+
+          if (mainWindow) {
+            mainWindow.webContents.send('delSongsSuccess', {
+              dirName,
+              ...descriptionJson
+            })
+            if (hasENOSPC) {
+              mainWindow.webContents.send('file-batch-summary', {
+                context: 'recycleDuplicatesOnImport',
+                total: tasks.length,
+                success,
+                failed,
+                hasENOSPC,
+                skipped,
+                errorSamples: []
+              })
+            }
+          }
         }
 
         toBeDealSongs = Array.from(uniqueSongs.values())
