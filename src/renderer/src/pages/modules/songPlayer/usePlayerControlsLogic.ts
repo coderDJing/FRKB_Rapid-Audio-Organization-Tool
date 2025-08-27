@@ -179,8 +179,15 @@ export function usePlayerControlsLogic({
     if (currentIndex === -1 || currentIndex >= runtime.playingData.playingSongListData.length - 1) {
       return
     }
-    const nextIndex = currentIndex + 1
-    const nextSongData = runtime.playingData.playingSongListData[nextIndex]
+    // 向后寻找下一个非 AIFF 可播放曲目
+    let nextIndex = currentIndex + 1
+    let nextSongData = runtime.playingData.playingSongListData[nextIndex]
+    while (nextSongData) {
+      const p = (nextSongData.filePath || '').toLowerCase()
+      if (!(p.endsWith('.aif') || p.endsWith('.aiff'))) break
+      nextIndex++
+      nextSongData = runtime.playingData.playingSongListData[nextIndex]
+    }
     if (!nextSongData) return
     const nextSongFilePath = nextSongData.filePath
     const name = (nextSongFilePath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
@@ -253,11 +260,21 @@ export function usePlayerControlsLogic({
       return
     }
 
-    const prevIndex = currentIndex - 1
-    const prevSongData = runtime.playingData.playingSongListData[prevIndex]
-    if (!prevSongData) return
+    // 向前寻找上一个非 AIFF 可播放曲目
+    let prevIndex = currentIndex - 1
+    let prevCandidate: ISongInfo | null = null
+    while (prevIndex >= 0) {
+      const cand = runtime.playingData.playingSongListData[prevIndex]
+      const p = (cand?.filePath || '').toLowerCase()
+      if (cand && !(p.endsWith('.aif') || p.endsWith('.aiff'))) {
+        prevCandidate = cand
+        break
+      }
+      prevIndex--
+    }
+    if (!prevCandidate) return
 
-    const prevSongFilePath = prevSongData.filePath
+    const prevSongFilePath = prevCandidate.filePath
     const name = (prevSongFilePath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
 
     // 每次切换歌曲时，强制清空wavesurfer实例
@@ -281,7 +298,7 @@ export function usePlayerControlsLogic({
     isPreloadReady.value = false
     // 设置内部切换并请求加载
     isInternalSongChange.value = true // 标记内部切换
-    runtime.playingData.playingSong = prevSongData
+    runtime.playingData.playingSong = prevCandidate
 
     requestLoadSong(prevSongFilePath)
     clearReadyPreloadState()

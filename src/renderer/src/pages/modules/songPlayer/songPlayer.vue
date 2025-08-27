@@ -507,6 +507,12 @@ const audioContext = new AudioContext()
 const bpm = ref<number | string>('')
 
 const requestLoadSong = (filePath: string) => {
+  const lower = (filePath || '').toLowerCase()
+  if (lower.endsWith('.aif') || lower.endsWith('.aiff')) {
+    // 遇到 AIFF：直接跳过，不发起读取，不弹窗（非双击场景）
+    // 调用内部“下一首”动作由上层控制逻辑处理，这里仅返回
+    return
+  }
   cancelPreloadTimer()
 
   // 重置加载状态标志，使后续加载请求可以被处理
@@ -704,7 +710,15 @@ const preloadNextSong = () => {
   if (currentIndex === -1 || currentIndex >= runtime.playingData.playingSongListData.length - 1) {
     return
   }
-  const nextSongToPreload = runtime.playingData.playingSongListData[currentIndex + 1]
+  // 连续向后查找第一个可播放的非 AIFF 曲目作为预加载目标
+  let scanIndex = currentIndex + 1
+  let nextSongToPreload = runtime.playingData.playingSongListData[scanIndex]
+  while (nextSongToPreload) {
+    const p = (nextSongToPreload.filePath || '').toLowerCase()
+    if (!(p.endsWith('.aif') || p.endsWith('.aiff'))) break
+    scanIndex++
+    nextSongToPreload = runtime.playingData.playingSongListData[scanIndex]
+  }
   if (!nextSongToPreload?.filePath) {
     console.error('[Preload] Error: Next song data found but file path is missing.')
     return
