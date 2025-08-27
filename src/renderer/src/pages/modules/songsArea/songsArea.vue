@@ -509,7 +509,17 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
   // 如果 result 是 null，或者 action 不匹配任何已知处理，则不执行任何操作
 }
 
-const songDblClick = (song: ISongInfo) => {
+const songDblClick = async (song: ISongInfo) => {
+  const lower = (song.filePath || '').toLowerCase()
+  if (lower.endsWith('.aif') || lower.endsWith('.aiff')) {
+    await confirm({
+      title: t('dialog.hint'),
+      content: [t('player.aiffNotSupported')],
+      confirmShow: false
+    })
+    return
+  }
+
   runtime.activeMenuUUID = ''
   runtime.songsArea.selectedSongFilePath = []
   runtime.playingData.playingSong = song

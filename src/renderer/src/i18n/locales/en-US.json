@@ -222,7 +222,8 @@
     "enablePlaybackRange": "Enable range",
     "playbackRange": "Range",
     "endMustBeGreater": "End must be after start",
-    "tapBeat": "Tap (LMB) / Reset (RMB)"
+    "tapBeat": "Tap (LMB) / Reset (RMB)",
+    "aiffNotSupported": "AIFF/AIF format is not supported for playback"
   },
   "fingerprints": {
     "manualAdd": "Add fingerprint manually",

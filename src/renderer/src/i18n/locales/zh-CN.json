@@ -222,7 +222,8 @@
     "enablePlaybackRange": "启用区间播放",
     "playbackRange": "区间播放",
     "endMustBeGreater": "结束位置必须大于开始位置",
-    "tapBeat": "左键节拍点按 / 右键恢复"
+    "tapBeat": "左键节拍点按 / 右键恢复",
+    "aiffNotSupported": "当前格式（AIFF/AIF）不支持播放"
   },
   "fingerprints": {
     "manualAdd": "手动添加曲目指纹",

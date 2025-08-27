@@ -82,7 +82,7 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
   fs.outputJsonSync(url.settingConfigFileUrl, {
     platform: platform,
     language: is.dev ? 'zhCN' : '',
-    audioExt: ['.mp3', '.wav', '.flac'],
+    audioExt: ['.mp3', '.wav', '.flac', '.aif', '.aiff'],
     databaseUrl: '',
     globalCallShortcut:
       platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
@@ -102,7 +102,7 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
 const defaultSettings = {
   platform: (platform === 'darwin' ? 'darwin' : 'win32') as 'darwin' | 'win32',
   language: (is.dev ? 'zhCN' : '') as '' | 'enUS' | 'zhCN',
-  audioExt: ['.mp3', '.wav', '.flac'],
+  audioExt: ['.mp3', '.wav', '.flac', '.aif', '.aiff'],
   databaseUrl: '',
   globalCallShortcut:
     platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',

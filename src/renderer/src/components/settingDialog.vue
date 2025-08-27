@@ -110,11 +110,15 @@ type AudioExt = {
   mp3: boolean
   wav: boolean
   flac: boolean
+  aif: boolean
+  aiff: boolean
 }
 const audioExt = ref<AudioExt>({
   mp3: runtime.setting.audioExt.indexOf('.mp3') != -1,
   wav: runtime.setting.audioExt.indexOf('.wav') != -1,
-  flac: runtime.setting.audioExt.indexOf('.flac') != -1
+  flac: runtime.setting.audioExt.indexOf('.flac') != -1,
+  aif: runtime.setting.audioExt.indexOf('.aif') != -1,
+  aiff: runtime.setting.audioExt.indexOf('.aiff') != -1
 })
 
 let audioExtOld = JSON.parse(JSON.stringify(audioExt.value)) as AudioExt
@@ -131,8 +135,8 @@ const extChange = async () => {
   audioExtOld = JSON.parse(JSON.stringify(audioExt.value))
   let audioExtArr = []
   for (let key in audioExt.value) {
-    if (['mp3', 'wav', 'flac'].includes(key as 'mp3' | 'wav' | 'flac')) {
-      if (audioExt.value[key as 'mp3' | 'wav' | 'flac']) {
+    if (['mp3', 'wav', 'flac', 'aif', 'aiff'].includes(key as any)) {
+      if ((audioExt.value as any)[key]) {
         audioExtArr.push('.' + key)
       }
     }
@@ -324,6 +328,10 @@ const clearCloudFingerprints = async () => {
               <singleCheckbox v-model="audioExt.wav" @change="extChange()" />
               <span style="margin-right: 10px; margin-left: 10px">.flac</span>
               <singleCheckbox v-model="audioExt.flac" @change="extChange()" />
+              <span style="margin-right: 10px; margin-left: 10px">.aif</span>
+              <singleCheckbox v-model="audioExt.aif" @change="extChange()" />
+              <span style="margin-right: 10px; margin-left: 10px">.aiff</span>
+              <singleCheckbox v-model="audioExt.aiff" @change="extChange()" />
             </div>
             <div style="margin-top: 20px">{{ t('shortcuts.globalCallShortcut') }}：</div>
             <div style="margin-top: 10px">
