@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { t } from '@renderer/utils/translate'
 import { v4 as uuidV4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import utils from './utils/utils'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import confirm from '@renderer/components/confirmDialog'
+import choice from '@renderer/components/choiceDialog'
 const runtime = useRuntimeStore()
 const uuid = uuidV4()
 const flashArea = ref('') // 控制动画是否正在播放
@@ -22,7 +23,26 @@ const flashBorder = (flashAreaName: string) => {
     }
   }, 500) // 每次闪烁间隔 500 毫秒
 }
-const folderPathVal = ref('') //文件夹路径
+
+// Tab 状态：create | existing
+const activeTab = ref<'create' | 'existing'>('create')
+
+// 新建库：父路径与子文件夹名
+const folderPathVal = ref('')
+const dbName = ref('')
+const sep = computed(() => (runtime.setting.platform === 'win32' ? '\\' : '/'))
+const targetDir = computed(() =>
+  folderPathVal.value && dbName.value.trim()
+    ? folderPathVal.value.replace(/[\\/]+$/, '') + sep.value + dbName.value.trim()
+    : ''
+)
+
+// 基于系统是否隐藏扩展名，动态生成需要提示的清单文件名
+const windowsHideExt = ref(false)
+const manifestDisplayName = computed(() =>
+  windowsHideExt.value ? 'FRKB.database' : 'FRKB.database.frkbdb'
+)
+
 let clickChooseDirFlag = false
 const clickChooseDir = async () => {
   if (clickChooseDirFlag) {
@@ -32,39 +52,221 @@ const clickChooseDir = async () => {
   const folderPath = await window.electron.ipcRenderer.invoke('select-folder', false)
   clickChooseDirFlag = false
   if (folderPath) {
-    folderPathVal.value = folderPath[0]
+    // 向上探测：若父路径位于库内则三选项
+    const selected = folderPath[0]
+    let root: string | null = null
+    try {
+      root = await window.electron.ipcRenderer.invoke('find-db-root-upwards', selected)
+    } catch {}
+    if (root) {
+      const key = await choice({
+        title: t('common.warning'),
+        content: [t('database.parentIsInsideDb')],
+        options: [
+          { key: 'enter', label: t('database.enterExisting') },
+          { key: 'reset', label: t('database.resetRebuild') },
+          { key: 'cancel', label: t('common.cancel') }
+        ],
+        innerHeight: 220,
+        innerWidth: 520
+      })
+      if (key === 'enter') {
+        runtime.setting.databaseUrl = root
+        await window.electron.ipcRenderer.invoke(
+          'setSetting',
+          JSON.parse(JSON.stringify(runtime.setting))
+        )
+        await window.electron.ipcRenderer.invoke(
+          'databaseInitWindow-InitDataBase',
+          runtime.setting.databaseUrl,
+          { createSamples: false }
+        )
+      } else if (key === 'reset') {
+        runtime.setting.databaseUrl = root
+        await window.electron.ipcRenderer.invoke(
+          'setSetting',
+          JSON.parse(JSON.stringify(runtime.setting))
+        )
+        await window.electron.ipcRenderer.invoke(
+          'databaseInitWindow-InitDataBase',
+          runtime.setting.databaseUrl,
+          { createSamples: true, reset: true }
+        )
+      }
+      return
+    }
+    folderPathVal.value = selected
   }
 }
-const submitConfirm = async () => {
-  if (folderPathVal.value.length === 0) {
-    if (!flashArea.value) {
-      flashBorder('folderPathVal')
-    }
+
+const clickChooseExistingDb = async () => {
+  const result = await window.electron.ipcRenderer.invoke('select-existing-database-file')
+  if (!result) return
+  if (result === 'error') {
+    await confirm({
+      title: t('common.error'),
+      content: [t('database.invalidManifestFile')],
+      confirmShow: false
+    })
     return
   }
-
-  // 检查选择的路径是否已经以 FRKB_database 结尾
-  const separator = runtime.setting.platform === 'win32' ? '\\' : '/'
-  const folderName = folderPathVal.value.split(separator).pop()
-
-  runtime.setting.databaseUrl =
-    folderName === 'FRKB_database'
-      ? folderPathVal.value
-      : folderPathVal.value + separator + 'FRKB_database'
-
+  runtime.setting.databaseUrl = result.rootDir
   await window.electron.ipcRenderer.invoke(
     'setSetting',
     JSON.parse(JSON.stringify(runtime.setting))
   )
   await window.electron.ipcRenderer.invoke(
     'databaseInitWindow-InitDataBase',
-    runtime.setting.databaseUrl
+    runtime.setting.databaseUrl,
+    { createSamples: false }
+  )
+}
+
+const submitConfirm = async () => {
+  if (activeTab.value !== 'create') {
+    return
+  }
+  if (folderPathVal.value.length === 0) {
+    if (!flashArea.value) {
+      flashBorder('folderPathVal')
+    }
+    return
+  }
+  if (dbName.value.trim().length === 0) {
+    if (!flashArea.value) {
+      flashBorder('dbName')
+    }
+    return
+  }
+
+  // 再次检查：父路径是否处于某库内部
+  try {
+    const root = await window.electron.ipcRenderer.invoke(
+      'find-db-root-upwards',
+      folderPathVal.value
+    )
+    if (root) {
+      const key = await choice({
+        title: t('common.warning'),
+        content: [t('database.parentIsInsideDb')],
+        options: [
+          { key: 'enter', label: t('database.enterExisting') },
+          { key: 'reset', label: t('database.resetRebuild') },
+          { key: 'cancel', label: t('common.cancel') }
+        ],
+        innerHeight: 220,
+        innerWidth: 520
+      })
+      if (key === 'enter') {
+        runtime.setting.databaseUrl = root
+        await window.electron.ipcRenderer.invoke(
+          'setSetting',
+          JSON.parse(JSON.stringify(runtime.setting))
+        )
+        await window.electron.ipcRenderer.invoke(
+          'databaseInitWindow-InitDataBase',
+          runtime.setting.databaseUrl,
+          { createSamples: false }
+        )
+      } else if (key === 'reset') {
+        runtime.setting.databaseUrl = root
+        await window.electron.ipcRenderer.invoke(
+          'setSetting',
+          JSON.parse(JSON.stringify(runtime.setting))
+        )
+        await window.electron.ipcRenderer.invoke(
+          'databaseInitWindow-InitDataBase',
+          runtime.setting.databaseUrl,
+          { createSamples: true, reset: true }
+        )
+      }
+      return
+    }
+  } catch {}
+
+  const dirForCreate = targetDir.value
+  if (!dirForCreate) return
+
+  // 探测目标子目录状态
+  let probe: { hasManifest: boolean; isLegacy: boolean; isEmpty: boolean } = {
+    hasManifest: false,
+    isLegacy: false,
+    isEmpty: false
+  }
+  try {
+    probe = await window.electron.ipcRenderer.invoke('probe-database-dir', dirForCreate)
+  } catch {}
+
+  if (probe.hasManifest) {
+    const key = await choice({
+      title: t('common.warning'),
+      content: [t('database.dirHasDatabase'), t('database.dirHasDatabaseOptions')],
+      options: [
+        { key: 'enter', label: t('database.enterExisting') },
+        { key: 'reset', label: t('database.resetRebuild') },
+        { key: 'cancel', label: t('common.cancel') }
+      ],
+      innerHeight: 220,
+      innerWidth: 520
+    })
+    if (key === 'enter') {
+      runtime.setting.databaseUrl = dirForCreate
+      await window.electron.ipcRenderer.invoke(
+        'setSetting',
+        JSON.parse(JSON.stringify(runtime.setting))
+      )
+      await window.electron.ipcRenderer.invoke(
+        'databaseInitWindow-InitDataBase',
+        runtime.setting.databaseUrl,
+        { createSamples: false }
+      )
+      return
+    } else if (key === 'reset') {
+      runtime.setting.databaseUrl = dirForCreate
+      await window.electron.ipcRenderer.invoke(
+        'setSetting',
+        JSON.parse(JSON.stringify(runtime.setting))
+      )
+      await window.electron.ipcRenderer.invoke(
+        'databaseInitWindow-InitDataBase',
+        runtime.setting.databaseUrl,
+        { createSamples: true, reset: true }
+      )
+      return
+    }
+    return
+  }
+
+  if (probe.isLegacy) {
+    runtime.setting.databaseUrl = dirForCreate
+    await window.electron.ipcRenderer.invoke(
+      'setSetting',
+      JSON.parse(JSON.stringify(runtime.setting))
+    )
+    await window.electron.ipcRenderer.invoke(
+      'databaseInitWindow-InitDataBase',
+      runtime.setting.databaseUrl,
+      { createSamples: false }
+    )
+    return
+  }
+
+  // 不存在或为空：正常新建
+  runtime.setting.databaseUrl = dirForCreate
+  await window.electron.ipcRenderer.invoke(
+    'setSetting',
+    JSON.parse(JSON.stringify(runtime.setting))
+  )
+  await window.electron.ipcRenderer.invoke(
+    'databaseInitWindow-InitDataBase',
+    runtime.setting.databaseUrl,
+    { createSamples: true }
   )
 }
 const cancel = () => {
   window.electron.ipcRenderer.send('databaseInitWindow-toggle-close')
 }
-onMounted(() => {
+onMounted(async () => {
   hotkeys('E', uuid, () => {
     submitConfirm()
   })
@@ -72,6 +274,10 @@ onMounted(() => {
     cancel()
   })
   utils.setHotkeysScpoe(uuid)
+  try {
+    const hidden = await window.electron.ipcRenderer.invoke('get-windows-hide-ext')
+    windowsHideExt.value = !!hidden
+  } catch {}
 })
 
 onUnmounted(() => {
@@ -89,7 +295,14 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
 
 <template>
   <div
-    style="height: 100%; max-height: 100%; width: 100%; display: flex; flex-direction: column"
+    style="
+      height: 100%;
+      max-height: 100%;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    "
     class="unselectable"
   >
     <div
@@ -100,38 +313,89 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
         t('database.selectLocation')
       }}</span>
     </div>
-    <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px; height: 200px">
-      <div style="display: flex">
-        <div class="formLabel">
-          <span>{{ t('library.selectFolder') }}：</span>
+
+    <div style="padding: 10px 20px 0 20px">
+      <div class="tabs">
+        <div class="tab" :class="{ active: activeTab === 'create' }" @click="activeTab = 'create'">
+          {{ t('database.createNewDb') }}
         </div>
-        <div style="flex-grow: 1; overflow: hidden">
+        <div
+          class="tab"
+          :class="{ active: activeTab === 'existing' }"
+          @click="activeTab = 'existing'"
+        >
+          {{ t('database.chooseExistingDb') }}
+        </div>
+      </div>
+    </div>
+
+    <div
+      style="
+        padding: 12px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        flex: 1;
+        overflow: hidden;
+      "
+    >
+      <template v-if="activeTab === 'existing'">
+        <div class="field">
+          <div class="fieldLabel">{{ t('database.chooseExistingDb') }}</div>
+          <div>
+            <div
+              class="button"
+              style="display: inline-block; text-align: center; padding: 0 12px"
+              @click="clickChooseExistingDb()"
+            >
+              {{ t('database.pickManifestFile') }}
+            </div>
+          </div>
+        </div>
+        <div class="helper">
+          {{ t('database.initHintExisting', { manifestName: manifestDisplayName }) }}
+        </div>
+      </template>
+
+      <template v-else>
+        <div class="field">
+          <div class="fieldLabel">{{ t('database.createNewDb') }}</div>
           <div
             class="chooseDirDiv flashing-border"
             @click="clickChooseDir()"
             :title="folderPathVal"
             :class="{ 'is-flashing': flashArea == 'folderPathVal' }"
+            style="width: 100%"
           >
-            {{ folderPathVal }}
+            {{ folderPathVal || t('database.pickFolder') }}
           </div>
         </div>
-      </div>
-      <div style="padding-top: 30px; font-size: 12px; display: flex">
-        {{ t('database.storageHint') }}
-      </div>
-      <div style="padding-top: 10px; font-size: 12px; display: flex">
-        {{ t('database.existingHint') }}
-      </div>
+        <div class="field">
+          <div class="fieldLabel">{{ t('database.inputDbName') }}</div>
+          <div>
+            <input
+              v-model="dbName"
+              class="nameInput flashing-border"
+              :class="{ 'is-flashing': flashArea == 'dbName' }"
+              :placeholder="t('database.inputDbNamePlaceholder')"
+              style="width: 100%"
+            />
+          </div>
+        </div>
+        <div class="helper">{{ t('database.initHintCreate') }}</div>
+      </template>
     </div>
-    <div style="display: flex; justify-content: center; padding-bottom: 10px">
+
+    <div style="display: flex; justify-content: center; padding: 10px 0 12px 0; gap: 10px">
       <div
+        v-if="activeTab === 'create'"
         class="button"
-        style="margin-right: 10px; width: 90px; text-align: center"
+        style="width: 120px; text-align: center"
         @click="submitConfirm()"
       >
         {{ t('common.confirm') }} (E)
       </div>
-      <div class="button" style="width: 90px; text-align: center" @click="cancel()">
+      <div class="button" style="width: 120px; text-align: center" @click="cancel()">
         {{ t('menu.exit') }} (Esc)
       </div>
     </div>
@@ -153,9 +417,42 @@ body {
   background-color: #1f1f1f;
 }
 
+.tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid #2a2a2a;
+}
+.tab {
+  padding: 6px 12px;
+  cursor: pointer;
+  color: #bbbbbb;
+}
+.tab.active {
+  color: #ffffff;
+  border-bottom: 2px solid #ffffff;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fieldLabel {
+  font-size: 12px;
+  color: #bbbbbb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.helper {
+  font-size: 12px;
+  color: #bbbbbb;
+}
+
 .chooseDirDiv {
-  height: 100%;
+  height: 28px;
   background-color: #313131;
+  box-sizing: border-box;
 
   text-overflow: ellipsis;
   overflow: hidden;
@@ -163,12 +460,20 @@ body {
   white-space: nowrap;
   font-size: 14px;
   padding-left: 5px;
+  line-height: 28px;
 }
 
-.formLabel {
-  width: 110px;
-  min-width: 110px;
-  text-align: left;
+.nameInput {
+  height: 28px;
+  line-height: 28px;
+  background-color: #313131;
+  border: 0;
+  outline: none;
+  color: #cccccc;
+  box-sizing: border-box;
+  padding: 0 0 0 5px;
   font-size: 14px;
+  -webkit-appearance: none;
+  appearance: none;
 }
 </style>
