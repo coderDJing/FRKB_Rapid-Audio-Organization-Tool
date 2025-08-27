@@ -187,7 +187,28 @@ const contextmenuEvent = async (event: MouseEvent) => {
     return
   }
   if (runtime.libraryAreaSelected === 'RecycleBin') {
-    menuArr.value = [[{ menuName: 'recycleBin.permanentlyDelete' }]]
+    // 回收站中的歌单右键：显示在资源管理器中 + 分隔线 + 彻底删除
+    menuArr.value = [
+      [{ menuName: 'recycleBin.permanentlyDelete' }],
+      [{ menuName: 'tracks.showInFileExplorer' }]
+    ]
+  } else {
+    // 非回收站：恢复默认菜单，避免受上次覆盖影响
+    menuArr.value =
+      dirData.type === 'dir'
+        ? [
+            [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }],
+            [{ menuName: 'common.rename' }, { menuName: 'common.delete' }]
+          ]
+        : [
+            [{ menuName: 'tracks.importTracks' }, { menuName: 'tracks.exportTracks' }],
+            [
+              { menuName: 'common.rename' },
+              { menuName: 'playlist.deletePlaylist' },
+              { menuName: 'playlist.emptyPlaylist' }
+            ],
+            [{ menuName: 'tracks.showInFileExplorer' }]
+          ]
   }
   rightClickMenuShow.value = true
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
