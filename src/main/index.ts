@@ -30,6 +30,13 @@ import store from './store'
 import foundNewVersionWindow from './window/foundNewVersionWindow'
 import updateWindow from './window/updateWindow'
 import electronUpdater = require('electron-updater')
+import {
+  readManifestFile,
+  getManifestPath,
+  MANIFEST_FILE_NAME,
+  looksLikeLegacyStructure
+} from './databaseManifest'
+import { execFile } from 'child_process'
 import { ISongInfo } from '../types/globals'
 import { v4 as uuidV4 } from 'uuid'
 // import AudioFeatureExtractor from './mfccTest'
@@ -72,7 +79,7 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
   })
   fs.outputJsonSync(url.settingConfigFileUrl, {
     platform: platform,
-    language: is.dev ? 'enUS' : '',
+    language: is.dev ? 'zhCN' : '',
     audioExt: ['.mp3', '.wav', '.flac'],
     databaseUrl: '',
     globalCallShortcut:
@@ -92,7 +99,7 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
 // 定义默认设置结构
 const defaultSettings = {
   platform: (platform === 'darwin' ? 'darwin' : 'win32') as 'darwin' | 'win32',
-  language: (is.dev ? 'enUS' : '') as '' | 'enUS' | 'zhCN',
+  language: (is.dev ? 'zhCN' : '') as '' | 'enUS' | 'zhCN',
   audioExt: ['.mp3', '.wav', '.flac'],
   databaseUrl: '',
   globalCallShortcut:
@@ -432,6 +439,95 @@ ipcMain.handle('select-folder', async (event, multiSelections: boolean = true) =
     return null
   }
   return result.filePaths
+})
+
+ipcMain.handle('select-existing-database-file', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'FRKB.database', extensions: ['frkbdb'] }]
+  })
+  if (result.canceled) return null
+  const filePath = result.filePaths[0]
+  try {
+    if (path.basename(filePath) !== MANIFEST_FILE_NAME) {
+      return 'error'
+    }
+    await readManifestFile(filePath)
+    return { filePath, rootDir: path.dirname(filePath), fileName: MANIFEST_FILE_NAME }
+  } catch (_e) {
+    return 'error'
+  }
+})
+
+ipcMain.handle('check-database-manifest-exists', async (_e, dirPath: string) => {
+  try {
+    const target = path.join(dirPath, MANIFEST_FILE_NAME)
+    return await fs.pathExists(target)
+  } catch (_e) {
+    return false
+  }
+})
+
+ipcMain.handle('probe-database-dir', async (_e, dirPath: string) => {
+  try {
+    const manifestPath = path.join(dirPath, MANIFEST_FILE_NAME)
+    const hasManifest = await fs.pathExists(manifestPath)
+    let isEmpty = false
+    const exists = await fs.pathExists(dirPath)
+    if (!exists) {
+      return { hasManifest: false, isLegacy: false, isEmpty: true }
+    }
+    try {
+      const items = await fs.readdir(dirPath)
+      isEmpty = items.length === 0
+    } catch {}
+    const isLegacy = hasManifest ? false : await looksLikeLegacyStructure(dirPath)
+    return { hasManifest, isLegacy, isEmpty }
+  } catch (_e) {
+    return { hasManifest: false, isLegacy: false, isEmpty: false }
+  }
+})
+
+ipcMain.handle('find-db-root-upwards', async (_e, startDir: string) => {
+  try {
+    let current = startDir
+    // 保护：最多向上 30 层，避免死循环
+    for (let i = 0; i < 30; i++) {
+      const manifestPath = path.join(current, MANIFEST_FILE_NAME)
+      if (await fs.pathExists(manifestPath)) {
+        return current
+      }
+      const parent = path.dirname(current)
+      if (!parent || parent === current) break
+      current = parent
+    }
+    return null
+  } catch (_e) {
+    return null
+  }
+})
+
+ipcMain.handle('get-windows-hide-ext', async () => {
+  if (process.platform !== 'win32') return false
+  return await new Promise<boolean>((resolve) => {
+    execFile(
+      'reg',
+      [
+        'query',
+        'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced',
+        '/v',
+        'HideFileExt'
+      ],
+      { windowsHide: true },
+      (err, stdout) => {
+        if (err) return resolve(false)
+        const match = stdout.match(/HideFileExt\s+REG_DWORD\s+0x([0-9a-fA-F]+)/)
+        if (!match) return resolve(false)
+        const val = parseInt(match[1], 16)
+        resolve(val === 1)
+      }
+    )
+  })
 })
 
 ipcMain.handle('select-songFingerprintFile', async (event) => {
