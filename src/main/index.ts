@@ -34,7 +34,9 @@ import {
   readManifestFile,
   getManifestPath,
   MANIFEST_FILE_NAME,
-  looksLikeLegacyStructure
+  looksLikeLegacyStructure,
+  ensureManifestForLegacy,
+  writeManifest
 } from './databaseManifest'
 import { execFile } from 'child_process'
 import { ISongInfo } from '../types/globals'
@@ -203,6 +205,16 @@ app.whenReady().then(async () => {
     try {
       // 统一复用初始化（幂等）：创建/修复库结构
       await initDatabaseStructure(store.settingConfig.databaseUrl, { createSamples: false })
+      // 补齐/验证声明文件（旧库静默生成）
+      try {
+        const legacy = await ensureManifestForLegacy(
+          store.settingConfig.databaseUrl,
+          app.getVersion()
+        )
+        if (!legacy) {
+          await writeManifest(store.settingConfig.databaseUrl, app.getVersion())
+        }
+      } catch {}
       // 指纹：前置修复并加载（多版本+指针）
       await healAndPrepare()
       const list = await loadList()
@@ -249,6 +261,16 @@ app.whenReady().then(async () => {
         }
         try {
           await initDatabaseStructure(store.settingConfig.databaseUrl, { createSamples: false })
+          // 补齐/验证声明文件（旧库静默生成）
+          try {
+            const legacy = await ensureManifestForLegacy(
+              store.settingConfig.databaseUrl,
+              app.getVersion()
+            )
+            if (!legacy) {
+              await writeManifest(store.settingConfig.databaseUrl, app.getVersion())
+            }
+          } catch {}
           await healAndPrepare()
           const list = await loadList()
           store.databaseDir = store.settingConfig.databaseUrl
