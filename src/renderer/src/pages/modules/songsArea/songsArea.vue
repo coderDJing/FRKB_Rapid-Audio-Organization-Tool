@@ -14,6 +14,7 @@ import SongListHeader from './SongListHeader.vue'
 import SongListRows from './SongListRows.vue'
 import ColumnHeaderContextMenu from './ColumnHeaderContextMenu.vue'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
+import { MIN_WIDTH_BY_KEY } from './minWidth'
 
 // Composable import
 import { useSongItemContextMenu } from '@renderer/pages/modules/songsArea/composables/useSongItemContextMenu'
@@ -47,69 +48,76 @@ const {
 } = useSelectAndMoveSongs()
 const { isDragging, startDragSongs, endDragSongs, handleDropToSongList } = useDragSongs()
 
-const defaultColumns: ISongsAreaColumn[] = [
+// 统一额外初始宽度：在最小值基础上增加 40
+const INIT_EXTRA_WIDTH = 40
+
+// 基础列定义（不包含 width），避免写死无意义的宽度数字
+const baseColumns: Omit<ISongsAreaColumn, 'width'>[] = [
   {
     columnName: 'columns.index',
     key: 'index',
-    show: true,
-    width: 60
+    show: true
   },
   {
     columnName: 'columns.cover',
     key: 'coverUrl',
-    show: true,
-    width: 100
+    show: true
   },
   {
     columnName: 'columns.title',
     key: 'title',
     show: true,
-    width: 250
+    filterType: 'text'
   },
   {
     columnName: 'columns.artist',
     key: 'artist',
     show: true,
-    width: 200,
+    filterType: 'text',
     order: 'asc'
   },
   {
     columnName: 'columns.duration',
     key: 'duration',
     show: true,
-    width: 100
+    filterType: 'duration'
   },
   {
     columnName: 'columns.album',
     key: 'album',
     show: true,
-    width: 200
+    filterType: 'text'
   },
   {
     columnName: 'columns.genre',
     key: 'genre',
     show: true,
-    width: 200
+    filterType: 'text'
   },
   {
     columnName: 'columns.label',
     key: 'label',
     show: true,
-    width: 200
+    filterType: 'text'
   },
   {
     columnName: 'columns.bitrate',
     key: 'bitrate',
-    show: true,
-    width: 200
+    show: true
   },
   {
     columnName: 'columns.format',
     key: 'container',
     show: true,
-    width: 200
+    filterType: 'text'
   }
 ]
+
+// 通过最小宽度映射 + 40 生成实际的默认列（带 width）
+const defaultColumns: ISongsAreaColumn[] = baseColumns.map((col) => ({
+  ...col,
+  width: (MIN_WIDTH_BY_KEY[col.key] ?? 0) + INIT_EXTRA_WIDTH
+}))
 
 const columnData = ref<ISongsAreaColumn[]>(
   (() => {
@@ -144,7 +152,16 @@ const columnData = ref<ISongsAreaColumn[]>(
                 order: savedCol.hasOwnProperty('order') ? savedCol.order : undefined,
                 // 确保 key 和 columnName 来自最新的 defaultColumns，而不是可能过时的 localStorage
                 key: defaultCol.key,
-                columnName: defaultCol.columnName
+                columnName: defaultCol.columnName,
+                filterType: defaultCol.filterType,
+                // 是否保留筛选条件取决于设置项 persistSongFilters
+                filterActive:
+                  (runtime.setting.persistSongFilters ? savedCol.filterActive : false) ?? false,
+                filterValue: runtime.setting.persistSongFilters ? savedCol.filterValue : undefined,
+                filterOp: runtime.setting.persistSongFilters ? savedCol.filterOp : undefined,
+                filterDuration: runtime.setting.persistSongFilters
+                  ? savedCol.filterDuration
+                  : undefined
               }
               return mergedCol
             }
@@ -153,10 +170,10 @@ const columnData = ref<ISongsAreaColumn[]>(
           })
           .filter((col) => col !== null) as ISongsAreaColumn[]
 
-        // 2. 添加 defaultColumns 中新增的、但 localStorage 中没有的列
+        // 2. 添加 defaultColumns 中新增的、但 localStorage 中没有的列（defaultColumns 已带宽度）
         defaultColumns.forEach((defaultCol) => {
           if (!finalColumns.some((fc) => fc.key === defaultCol.key)) {
-            finalColumns.push(JSON.parse(JSON.stringify(defaultCol))) // 添加新列的深拷贝副本
+            finalColumns.push(JSON.parse(JSON.stringify(defaultCol)))
           }
         })
 
@@ -187,6 +204,15 @@ const columnData = ref<ISongsAreaColumn[]>(
         }
       }
     }
+
+    // --- 应用最小列宽校正（只提升到最小值，不降低；保证旧记忆不会小于最小宽度）---
+    finalColumns = finalColumns.map((col) => {
+      const minWidth = MIN_WIDTH_BY_KEY[col.key] ?? col.width
+      if (col.width < minWidth) {
+        return { ...col, width: minWidth }
+      }
+      return col
+    })
 
     // --- 返回最终的列配置 ---
     return finalColumns
@@ -233,17 +259,8 @@ const openSongList = async () => {
 
     originalSongInfoArr.value = scanData
 
-    const sortedCol = columnData.value.find((col) => col.order)
-    if (sortedCol) {
-      // 注意：这里对 originalSongInfoArr.value 的副本进行排序
-      runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
-        [...originalSongInfoArr.value],
-        sortedCol.key as keyof ISongInfo,
-        sortedCol.order
-      )
-    } else {
-      runtime.songsArea.songInfoArr = [...originalSongInfoArr.value]
-    }
+    // 初次加载后应用筛选与排序
+    applyFiltersAndSorting()
 
     if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
       runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
@@ -276,17 +293,8 @@ watch(
   }
 )
 
-// 监听 songInfoArr 的变化，同步更新 originalSongInfoArr
-watch(
-  () => runtime.songsArea.songInfoArr,
-  (newSongInfoArr) => {
-    // 如果 songInfoArr 被清空（比如清空歌单操作），同步清空 originalSongInfoArr
-    if (newSongInfoArr.length === 0) {
-      originalSongInfoArr.value = []
-    }
-  },
-  { deep: true }
-)
+// 注意：不再通过监听 runtime.songsArea.songInfoArr 来清空 originalSongInfoArr，
+// 以避免在筛选/列变更导致的临时空列表时误将原始数据清除。
 
 window.electron.ipcRenderer.on('importFinished', async (event, songListUUID, _importSummary) => {
   if (songListUUID === runtime.songsArea.songListUUID) {
@@ -387,6 +395,9 @@ const persistColumnData = () => {
 const handleColumnsUpdate = (newColumns: ISongsAreaColumn[]) => {
   columnData.value = newColumns
   persistColumnData()
+  // 应用筛选并清空选择
+  applyFiltersAndSorting()
+  runtime.songsArea.selectedSongFilePath.length = 0
 }
 
 const colRightClickMenuShow = ref(false)
@@ -616,6 +627,56 @@ function sortArrayByProperty<T>(array: T[], property: keyof T, order: 'asc' | 'd
     return order === 'asc' ? collator.compare(valueA, valueB) : collator.compare(valueB, valueA)
   })
 }
+
+// --- 工具：解析 MM:SS 为秒 ---
+function parseDurationToSeconds(mmss: string): number {
+  if (!mmss || typeof mmss !== 'string') return NaN
+  const parts = mmss.split(':')
+  if (parts.length !== 2) return NaN
+  const m = Number(parts[0])
+  const s = Number(parts[1])
+  if (Number.isNaN(m) || Number.isNaN(s)) return NaN
+  return m * 60 + s
+}
+
+// --- 根据列筛选过滤并按当前排序排序 ---
+function applyFiltersAndSorting() {
+  // 从 original 过滤
+  let filtered = [...originalSongInfoArr.value]
+
+  for (const col of columnData.value) {
+    if (!col.filterActive) continue
+    if (col.filterType === 'text' && col.filterValue && col.key) {
+      const keyword = String(col.filterValue).toLowerCase()
+      filtered = filtered.filter((song) => {
+        const value = String((song as any)[col.key] ?? '').toLowerCase()
+        return value.includes(keyword)
+      })
+    } else if (col.filterType === 'duration' && col.filterOp && col.filterDuration) {
+      const target = parseDurationToSeconds(col.filterDuration)
+      filtered = filtered.filter((song) => {
+        const dur = parseDurationToSeconds(String((song as any)['duration'] ?? ''))
+        if (Number.isNaN(dur) || Number.isNaN(target)) return false
+        if (col.filterOp === 'eq') return dur === target
+        if (col.filterOp === 'gte') return dur >= target
+        if (col.filterOp === 'lte') return dur <= target
+        return true
+      })
+    }
+  }
+
+  // 排序
+  const sortedCol = columnData.value.find((c) => c.order)
+  if (sortedCol) {
+    filtered = sortArrayByProperty<ISongInfo>(
+      filtered,
+      sortedCol.key as keyof ISongInfo,
+      sortedCol.order
+    )
+  }
+
+  runtime.songsArea.songInfoArr = filtered
+}
 const colMenuClick = (col: ISongsAreaColumn) => {
   if (col.key === 'coverUrl' || col.key === 'index') {
     return
@@ -732,6 +793,8 @@ const shouldShowEmptyState = computed(() => {
     runtime.songsArea.songInfoArr.length === 0
   )
 })
+// 是否存在任意激活的筛选条件
+const hasActiveFilter = computed(() => columnData.value.some((c) => !!c.filterActive))
 // --- END 新增计算属性 ---
 
 // 拖拽相关函数
@@ -869,32 +932,19 @@ watch(
         @song-dragstart="handleSongDragStart"
         @song-dragend="handleSongDragEnd"
       />
+    </OverlayScrollbarsComponent>
 
-      <!-- Empty State: 如果没有歌曲且满足特定条件 (shouldShowEmptyState) -->
-      <div
-        v-else-if="shouldShowEmptyState"
-        class="songs-area-empty-state unselectable"
-        style="
-          min-height: 200px;
-          width: 100%;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          flex-direction: column;
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-        "
-      >
-        <div style="font-size: 16px; color: #999999">
-          {{ t('tracks.noTracks') }}
+    <!-- Empty State Overlay: 独立于滚动内容，始终居中在可视区域 -->
+    <div v-if="shouldShowEmptyState && !loadingShow" class="songs-area-empty-overlay unselectable">
+      <div class="empty-box">
+        <div class="title">
+          {{ hasActiveFilter ? t('filters.noResults') : t('tracks.noTracks') }}
         </div>
-        <div style="font-size: 12px; color: #999999; margin-top: 10px">
-          {{ t('tracks.noTracksHint') }}
+        <div class="hint">
+          {{ hasActiveFilter ? t('filters.noResultsHint') : t('tracks.noTracksHint') }}
         </div>
       </div>
-    </OverlayScrollbarsComponent>
+    </div>
 
     <ColumnHeaderContextMenu
       v-model="colRightClickMenuShow"
@@ -981,5 +1031,32 @@ watch(
     -ms-user-select: none;
     user-select: none;
   }
+}
+
+/* 新的空态覆盖层，固定在可视区域中央，不受横向滚动影响 */
+.songs-area-empty-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.songs-area-empty-overlay .empty-box {
+  min-height: 120px;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.songs-area-empty-overlay .title {
+  font-size: 16px;
+  color: #999999;
+}
+.songs-area-empty-overlay .hint {
+  font-size: 12px;
+  color: #999999;
+  margin-top: 10px;
 }
 </style>

@@ -323,5 +323,18 @@
     "diskFullTitle": "磁盘空间不足",
 
     "diskFullInterruptedHint": "可用空间不足。已完成 {done} 项，待处理 {pending} 项。释放空间后可重试，或跳过剩余任务。"
+  },
+  "filters": {
+    "filterByText": "按文本筛选（包含匹配）",
+    "filterByDuration": "按时长筛选",
+    "equals": "等于",
+    "greaterOrEqual": "大于等于",
+    "lessOrEqual": "小于等于",
+    "keywordPlaceholder": "请输入关键词",
+    "clearThisColumn": "清空本列",
+    "durationPlaceholder": "MM:SS",
+    "noResults": "未找到符合筛选条件的曲目",
+    "noResultsHint": "可尝试放宽条件或清空筛选。",
+    "persistFiltersAfterRestart": "重新启动保留筛选条件"
   }
 }

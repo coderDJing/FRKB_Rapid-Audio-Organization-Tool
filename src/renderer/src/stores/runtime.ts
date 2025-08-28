@@ -94,7 +94,8 @@ export const useRuntimeStore = defineStore('runtime', {
         recentDialogSelectedSongListMaxCount: 10,
         enableErrorReport: true,
         errorReportUsageMsSinceLastSuccess: 0,
-        errorReportRetryMsSinceLastFailure: -1
+        errorReportRetryMsSinceLastFailure: -1,
+        persistSongFilters: false
       }, //设置
       playerReady: false,
       isSwitchingSong: false
