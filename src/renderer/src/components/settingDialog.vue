@@ -56,6 +56,11 @@ if ((runtime as any).setting.errorReportRetryMsSinceLastFailure === undefined) {
   ;(runtime as any).setting.errorReportRetryMsSinceLastFailure = -1
 }
 
+// 是否在重启后保留曲目筛选条件：默认不保留
+if ((runtime as any).setting.persistSongFilters === undefined) {
+  ;(runtime as any).setting.persistSongFilters = false
+}
+
 // 修改后的 cancel 函数 - 移除了范围验证和保存
 const cancel = async () => {
   emits('cancel')
@@ -401,6 +406,13 @@ const clearCloudFingerprints = async () => {
                   )
                 "
                 @blur="updateRecentDialogCacheMaxCount()"
+              />
+            </div>
+            <div style="margin-top: 20px">{{ t('filters.persistFiltersAfterRestart') }}：</div>
+            <div style="margin-top: 10px">
+              <singleCheckbox
+                v-model="(runtime as any).setting.persistSongFilters"
+                @change="setSetting()"
               />
             </div>
             <div style="margin-top: 20px">{{ t('database.reselectLocation') }}：</div>

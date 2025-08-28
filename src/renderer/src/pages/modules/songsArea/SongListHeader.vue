@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, PropType, watch } from 'vue'
 import { ISongsAreaColumn } from '../../../../../types/globals' // Corrected path
+import filterIcon from '@renderer/assets/filterIcon.png?asset'
+import filterIconBlue from '@renderer/assets/filterIconBlue.png?asset'
 import { UseDraggableOptions, vDraggable } from 'vue-draggable-plus'
+import { MIN_WIDTH_BY_KEY } from './minWidth'
+import filterDialog from '@renderer/components/filterDialog.vue'
 
 // 类型定义
 type VDraggableBinding = [list: ISongsAreaColumn[], options?: UseDraggableOptions<ISongsAreaColumn>]
@@ -80,7 +84,8 @@ const resize = (e: MouseEvent) => {
   e.preventDefault()
   if (!isResizing || !resizingColInternal) return
   const deltaX = e.clientX - startX
-  const newWidth = Math.max(50, initWidth + deltaX) // 设置最小宽度
+  const minWidth = MIN_WIDTH_BY_KEY[resizingColInternal.key] ?? 50
+  const newWidth = Math.max(minWidth, initWidth + deltaX) // 约束最小宽度
 
   // 直接修改列对象（它是 props.columns 中的一个引用）的宽度
   // vue-draggable-plus 也期望直接操作这个数组
@@ -162,6 +167,96 @@ const handleColumnClick = (col: ISongsAreaColumn) => {
   emit('column-click', col)
 }
 
+// 弹窗状态与临时输入
+const filterActiveKey = ref<string>('')
+const tempText = ref<string>('')
+const tempOp = ref<'eq' | 'gte' | 'lte'>('gte')
+const tempDuration = ref<string>('00:00')
+
+// 打开筛选弹窗
+function handleFilterIconClick(e: MouseEvent, col: ISongsAreaColumn) {
+  e.stopPropagation() // 不触发排序
+  filterActiveKey.value = col.key
+  if (col.filterType === 'text') {
+    tempText.value = col.filterValue || ''
+  } else if (col.filterType === 'duration') {
+    tempOp.value = col.filterOp || 'gte'
+    tempDuration.value = col.filterDuration || '00:00'
+  }
+}
+
+function closeFilterDialog() {
+  filterActiveKey.value = ''
+}
+
+// 规范 MM:SS（仅保留数字与冒号，自动补零）
+function normalizeMmSs(input: string): string {
+  if (!input) return '00:00'
+  const parts = String(input).split(':')
+  let m = 0
+  let s = 0
+  if (parts.length >= 1) m = Number((parts[0] || '').replace(/\D/g, '')) || 0
+  if (parts.length >= 2) s = Number((parts[1] || '').replace(/\D/g, '')) || 0
+  if (s > 59) s = 59
+  const mm = String(m).padStart(2, '0')
+  const ss = String(s).padStart(2, '0')
+  return `${mm}:${ss}`
+}
+
+function applyFilterConfirm(target: ISongsAreaColumn) {
+  const newColumns = props.columns.map((c) => {
+    if (c.key !== target.key) return c
+    const next = { ...c }
+    if (c.filterType === 'text') {
+      next.filterValue = tempText.value.trim()
+      next.filterActive = !!next.filterValue
+      next.filterOp = undefined
+      next.filterDuration = undefined
+    } else if (c.filterType === 'duration') {
+      next.filterOp = tempOp.value
+      next.filterDuration = normalizeMmSs(tempDuration.value)
+      next.filterActive = !!next.filterDuration
+      next.filterValue = undefined
+    }
+    return next
+  })
+  emit('update:columns', newColumns)
+  closeFilterDialog()
+}
+
+function clearFilter(target: ISongsAreaColumn) {
+  const newColumns = props.columns.map((c) => {
+    if (c.key !== target.key) return c
+    return {
+      ...c,
+      filterActive: false,
+      filterValue: undefined,
+      filterOp: undefined,
+      filterDuration: undefined
+    }
+  })
+  emit('update:columns', newColumns)
+  closeFilterDialog()
+}
+
+// 生成悬浮在筛选图标上的提示文案（仅在激活时显示有意义的内容）
+function getFilterTooltip(col: ISongsAreaColumn): string {
+  if (!col.filterActive) return ''
+  if (col.filterType === 'text') {
+    return `${props.t('filters.filterByText')}: "${col.filterValue || ''}"`
+  }
+  if (col.filterType === 'duration') {
+    const op =
+      col.filterOp === 'eq'
+        ? props.t('filters.equals')
+        : col.filterOp === 'gte'
+          ? props.t('filters.greaterOrEqual')
+          : props.t('filters.lessOrEqual')
+    return `${props.t('filters.filterByDuration')}: ${op} ${col.filterDuration || ''}`
+  }
+  return ''
+}
+
 // 处理表头区域的右键菜单事件
 const handleContextMenu = (event: MouseEvent) => {
   emit('header-contextmenu', event)
@@ -192,12 +287,19 @@ const handleContextMenu = (event: MouseEvent) => {
         { coverDiv: col.key == 'coverUrl', titleDiv: col.key != 'coverUrl' }
       ]"
       :style="'width:' + col.width + 'px'"
-      style="padding-left: 10px; box-sizing: border-box; display: flex; align-items: center"
-      @click="handleColumnClick(col)"
+      style="
+        padding-left: 10px;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        position: relative;
+      "
     >
       <div style="flex-grow: 1; overflow: hidden; display: flex; align-items: center">
+        <!-- 收窄排序触发区域：仅文字与其右侧少量空白响应点击 -->
         <div
-          style="white-space: nowrap; display: flex; align-items: center"
+          @click.stop="handleColumnClick(col)"
+          style="white-space: nowrap; display: inline-flex; align-items: center; padding-right: 8px"
           :style="{ color: col.order ? '#0078d4' : '#cccccc' }"
         >
           {{ t(col.columnName) }}
@@ -213,6 +315,38 @@ const handleContextMenu = (event: MouseEvent) => {
           />
         </div>
       </div>
+      <!-- 筛选图标：靠右对齐、垂直居中，固定 20×20，不触发排序 -->
+      <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px">
+        <img
+          v-if="col.key !== 'coverUrl' && col.key !== 'index' && col.filterType"
+          :src="col.filterActive ? filterIconBlue : filterIcon"
+          style="width: 20px; height: 20px; margin-right: 12px; cursor: pointer"
+          :title="getFilterTooltip(col)"
+          @click.stop="(e) => handleFilterIconClick(e, col)"
+        />
+      </div>
+      <Teleport to="body">
+        <filterDialog
+          v-if="filterActiveKey === col.key && col.filterType"
+          :type="col.filterType as any"
+          :initText="tempText"
+          :initOp="tempOp"
+          :initDuration="tempDuration"
+          @confirm="
+            (payload) => {
+              if (payload.type === 'text') {
+                tempText = (payload as any).text
+              } else {
+                tempOp = (payload as any).op
+                tempDuration = (payload as any).duration
+              }
+              applyFilterConfirm(col)
+            }
+          "
+          @clear="() => clearFilter(col)"
+          @cancel="closeFilterDialog"
+        />
+      </Teleport>
       <div
         v-if="col.key !== 'coverUrl'"
         class="resize-handle"
@@ -254,7 +388,8 @@ const handleContextMenu = (event: MouseEvent) => {
 }
 
 .titleDiv {
-  /* white-space 和 overflow 由内部 div 控制 */
+  /* 表头标题单元格：占位以便后续扩展；保持非空以通过 linter */
+  line-height: 30px;
 }
 
 .unselectable {
@@ -265,10 +400,87 @@ const handleContextMenu = (event: MouseEvent) => {
 }
 
 .resize-handle {
-  /* 确保此元素在其他内容之上以便于拖动，如果需要 */
-  // position: relative;
-  // z-index: 1;
+  /* 右侧拖拽手柄样式补充，避免空规则 */
+  background: transparent;
 }
 
 /* 如果需要，可以从 songsArea.vue 复制其他相关样式，例如 .unselectable */
+
+.filter-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.filter-modal {
+  min-width: 360px;
+  max-width: 520px;
+  background: #1f1f1f;
+  border: 1px solid #2b2b2b;
+  border-radius: 8px;
+  padding: 16px 16px 12px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55);
+}
+.filter-title {
+  color: #cfcfcf;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.filter-input {
+  width: 100%;
+  height: 28px;
+  border-radius: 4px;
+  border: 1px solid #3a3a3a;
+  background: #121212;
+  color: #eaeaea;
+  padding: 0 8px;
+  outline: none;
+}
+.op-group {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: #d0d0d0;
+}
+.op-item input {
+  margin-right: 4px;
+}
+.quick-set {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
+.tag {
+  height: 24px;
+  border: 1px solid #3a3a3a;
+  background: #191919;
+  color: #cfcfcf;
+  border-radius: 4px;
+  padding: 0 8px;
+}
+.btns {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.btns .primary {
+  background: #0078d4;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  height: 28px;
+  padding: 0 10px;
+}
+.btns .danger {
+  background: #2a2a2a;
+  color: #ff7b7b;
+  border: 1px solid #4a2a2a;
+  border-radius: 4px;
+  height: 28px;
+  padding: 0 10px;
+}
 </style>
