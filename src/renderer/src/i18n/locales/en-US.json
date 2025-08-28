@@ -323,5 +323,18 @@
     "diskFullTitle": "Disk space low",
     "diskFullHint": "",
     "diskFullInterruptedHint": "Insufficient space. Completed {done}, pending {pending}. Free space then retry or skip the rest."
+  },
+  "filters": {
+    "filterByText": "Filter by text (contains)",
+    "filterByDuration": "Filter by duration",
+    "equals": "Equals",
+    "greaterOrEqual": "Greater or equal",
+    "lessOrEqual": "Less or equal",
+    "keywordPlaceholder": "Please enter keyword",
+    "clearThisColumn": "Clear column",
+    "durationPlaceholder": "MM:SS",
+    "noResults": "No results for current filters",
+    "noResultsHint": "Try widening conditions or clear filters.",
+    "persistFiltersAfterRestart": "Keep filter conditions after restart"
   }
 }
