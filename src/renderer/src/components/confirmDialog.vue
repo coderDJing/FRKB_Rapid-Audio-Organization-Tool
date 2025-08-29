@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import hotkeys from 'hotkeys-js'
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, computed } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import utils from '../utils/utils'
 import { v4 as uuidV4 } from 'uuid'
@@ -57,6 +57,17 @@ const cancel = () => {
   }
 }
 
+// 计算容器样式：
+// - 当传入 innerHeight 且 > 0 时，使用固定高度
+// - 否则根据内容自适应，并限制最大高度避免溢出屏幕
+const innerStyle = computed(() => {
+  const heightPart =
+    props.innerHeight && props.innerHeight > 0
+      ? `height:${props.innerHeight}px;`
+      : 'max-height:70vh;'
+  return `${heightPart}width:${props.innerWidth}px;`
+})
+
 onMounted(() => {
   hotkeys('E,Enter', uuid, () => {
     if (props.confirmShow) {
@@ -80,13 +91,16 @@ onUnmounted(() => {
     <div
       style="display: flex; flex-direction: column; justify-content: space-between"
       class="inner"
-      :style="'height:' + innerHeight + 'px;' + 'width:' + innerWidth + 'px;'"
+      :style="innerStyle"
     >
       <div>
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
           <span style="font-weight: bold">{{ props.title }}</span>
         </div>
-        <div style="padding-left: 20px; padding-right: 20px" :class="{ selectable: canCopyText }">
+        <div
+          style="padding-left: 20px; padding-right: 20px; overflow-y: auto; flex: 1 1 auto"
+          :class="{ selectable: canCopyText }"
+        >
           <div
             v-for="item of props.content"
             style="margin-top: 10px"

@@ -5,12 +5,14 @@ import hotkeys from 'hotkeys-js'
 import utils from '@renderer/utils/utils'
 import { t } from '@renderer/utils/translate'
 import hintIcon from '@renderer/assets/hint.png?asset'
+import { CONTACT_EMAIL } from '../constants/app'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 const emits = defineEmits(['cancel'])
 const uuid = uuidV4()
 
 const userKey = ref('')
 const connectivity = ref<null | { success: boolean; message?: string }>(null)
+const limitInfo = ref<null | { success: boolean; limit?: number; message?: string }>(null)
 const testing = ref(false)
 const saving = ref(false)
 
@@ -22,6 +24,8 @@ const clickTest = async () => {
       userKey: userKey.value
     })
     connectivity.value = res
+    // 连通成功后直接使用返回的 limit（后端已支持）
+    limitInfo.value = res?.success ? { success: true, limit: Number(res?.limit) } : null
   } finally {
     testing.value = false
   }
@@ -49,7 +53,7 @@ const clickSave = async () => {
 }
 
 const clickCopyEmail = async () => {
-  await navigator.clipboard.writeText('jinlingwuyanzu@qq.com')
+  await navigator.clipboard.writeText(CONTACT_EMAIL)
 }
 // 提示气泡：申请/找回说明（统一到 bubbleBox）
 const emailHintIconRef = useTemplateRef<HTMLImageElement>('emailHintIconRef')
@@ -84,7 +88,7 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
         <div class="row" style="position: relative">
           <div class="label">{{ t('cloudSync.applyEmailHint') }}</div>
           <div class="value" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
-            <span>jinlingwuyanzu@qq.com</span>
+            <span>{{ CONTACT_EMAIL }}</span>
             <span class="link" @click="clickCopyEmail">{{ t('cloudSync.copyEmail') }}</span>
             <img
               ref="emailHintIconRef"
@@ -103,9 +107,13 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
           <div class="label">{{ t('cloudSync.connectivity') }}</div>
           <div class="value">
             <span v-if="connectivity === null">{{ t('cloudSync.notTested') }}</span>
-            <span v-else-if="connectivity.success" class="success">{{
-              t('cloudSync.connectivityOk')
-            }}</span>
+            <span v-else-if="connectivity.success" class="success">
+              {{ t('cloudSync.connectivityOk') }}
+              <template v-if="limitInfo && typeof limitInfo.limit === 'number'">
+                <span class="sep">|</span>
+                <span class="muted">{{ t('cloudSync.limit') }}: {{ limitInfo.limit }}</span>
+              </template>
+            </span>
             <span v-else class="error">{{
               t(connectivity.message || 'cloudSync.connectivityFailed')
             }}</span>
@@ -200,6 +208,13 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
   gap: 8px;
   color: #d0d0d0;
   flex-wrap: wrap;
+}
+.value .sep {
+  margin: 0 6px;
+  color: #5a5a5a;
+}
+.value .muted {
+  color: #a8a8a8;
 }
 .link {
   color: #4da3ff;
