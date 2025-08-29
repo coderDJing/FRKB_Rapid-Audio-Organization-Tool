@@ -94,7 +94,8 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
     fastBackwardTime: -5,
     autoScrollToCurrentSong: true,
     enablePlaybackRange: false,
-    recentDialogSelectedSongListMaxCount: 10
+    recentDialogSelectedSongListMaxCount: 10,
+    persistSongFilters: false
   })
 }
 
@@ -115,6 +116,7 @@ const defaultSettings = {
   autoScrollToCurrentSong: true,
   enablePlaybackRange: false,
   recentDialogSelectedSongListMaxCount: 10,
+  persistSongFilters: false,
   nextCheckUpdateTime: '',
   // 错误日志上报默认配置
   enableErrorReport: true,
@@ -143,6 +145,30 @@ if (fs.pathExistsSync(url.settingConfigFileUrl)) {
 // 合并默认设置与加载的设置，确保所有键都存在
 // 加载的设置会覆盖默认值（如果存在）
 const finalSettings = { ...defaultSettings, ...loadedSettings }
+
+// 一次性迁移：默认勾选 .aif / .aiff（升级老版本时补齐），并写入迁移标记
+try {
+  const migrated = (loadedSettings as any)?.migratedAudioExtAiffAif === true
+  if (!migrated) {
+    const arr = Array.isArray((finalSettings as any).audioExt)
+      ? ((finalSettings as any).audioExt as string[])
+      : []
+    const set = new Set(arr.map((e) => String(e || '').toLowerCase()))
+    let changed = false
+    if (!set.has('.aif')) {
+      arr.push('.aif')
+      changed = true
+    }
+    if (!set.has('.aiff')) {
+      arr.push('.aiff')
+      changed = true
+    }
+    ;(finalSettings as any).audioExt = arr
+    ;(finalSettings as any).migratedAudioExtAiffAif = true
+  }
+} catch (_e) {
+  // 忽略迁移异常，保持既有行为
+}
 
 // 更新 store
 store.settingConfig = finalSettings
