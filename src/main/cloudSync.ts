@@ -75,6 +75,8 @@ function mapBackendErrorToI18nKey(payload: any): string {
       return 'cloudSync.errors.tooFrequent'
     case 'STRICT_RATE_LIMIT_EXCEEDED':
       return 'cloudSync.errors.sensitiveOperationTooFrequent'
+    case 'FINGERPRINT_LIMIT_EXCEEDED':
+      return 'cloudSync.errors.limitExceeded'
   }
   const backendMsg = String(payload?.message || '')
   if (backendMsg.includes('请求参数验证失败')) return 'cloudSync.errors.validationFailed'
@@ -217,7 +219,12 @@ ipcMain.handle('cloudSync/testConnectivity', async (_e, payload: { userKey: stri
   try {
     const json = await validateUserKeyRequest(payload?.userKey || '')
     if (json?.success === true && json?.data?.isActive === true) {
-      return { success: true, message: 'cloudSync.connectivityOk' }
+      const limitNum = Number(json?.limit)
+      return {
+        success: true,
+        message: 'cloudSync.connectivityOk',
+        limit: Number.isFinite(limitNum) ? limitNum : undefined
+      }
     }
     const error = String(json?.error || '').toUpperCase()
     if (error === 'INVALID_USER_KEY' || error === 'USER_KEY_NOT_FOUND') {
@@ -231,6 +238,9 @@ ipcMain.handle('cloudSync/testConnectivity', async (_e, payload: { userKey: stri
     return { success: false, message: 'cloudSync.errors.cannotConnect' }
   }
 })
+
+// 仅获取当前 userKey 的配额上限（通过 /check 读取 limit 字段），不进入同步流程
+// 不再需要独立的 fetchLimit，后端已在 validate-user-key 返回 limit
 
 ipcMain.handle('cloudSync/start', async () => {
   // 频控：限制 5 分钟内最多 10 次同步启动
@@ -342,6 +352,8 @@ ipcMain.handle('cloudSync/start', async () => {
       const n = Number(v)
       return Number.isFinite(n) ? n : fallback
     }
+    // 服务器端为当前 userKey 设置的上限（来自 /check）
+    let serverLimit: number | null = null
     // 不再掩码敏感信息，应用户要求完整打印
 
     // 读取本地集合（存储为 SHA256，小写、去重），后端接口已统一为 64hex SHA256
@@ -430,8 +442,31 @@ ipcMain.handle('cloudSync/start', async () => {
     // 最新后端返回顶层字段
     const serverCount = toNumber(checkJson?.serverCount)
     const clientCount = toNumber(checkJson?.clientCount)
+    const limitFromServer = toNumber(checkJson?.limit, 0)
+    if (Number.isFinite(limitFromServer) && limitFromServer > 0) {
+      serverLimit = limitFromServer
+    }
     const needSync = checkJson?.needSync === true
     sendProgress('checking', 5, { clientCount, serverCount })
+    // 配额上限预检查：若客户端集合数量已大于上限，直接终止
+    if (serverLimit && clientCount > serverLimit) {
+      log.error('[cloudSync] limit exceeded on /check precheck', {
+        limit: serverLimit,
+        clientCount,
+        serverCount
+      })
+      sendError('cloudSync.errors.limitExceededOnCheck', {
+        code: 'FINGERPRINT_LIMIT_EXCEEDED',
+        details: {
+          phase: 'check',
+          limit: serverLimit,
+          clientCount,
+          serverCount
+        }
+      })
+      sendState('failed')
+      return 'failed'
+    }
     if (!needSync) {
       sendProgress('finalizing', 90)
       await wait(120)
@@ -696,6 +731,31 @@ ipcMain.handle('cloudSync/start', async () => {
     }
 
     // 5) commit：先 /add 再本地原子替换
+    // 在提交到服务端之前进行本地上限预估
+    if (serverLimit && serverLimit > 0) {
+      const uniqueNewCount = uploadList.length
+      const allowedAddCount = Math.max(0, serverLimit - serverCount)
+      if (serverCount + uniqueNewCount > serverLimit) {
+        log.error('[cloudSync] pre-add limit exceeded', {
+          limit: serverLimit,
+          currentCount: serverCount,
+          uniqueNewCount,
+          allowedAddCount
+        })
+        sendError('cloudSync.errors.limitExceeded', {
+          code: 'FINGERPRINT_LIMIT_EXCEEDED',
+          details: {
+            phase: 'batch_add',
+            limit: serverLimit,
+            currentCount: serverCount,
+            uniqueNewCount,
+            allowedAddCount
+          }
+        })
+        sendState('failed')
+        return 'failed'
+      }
+    }
     sendProgress('committing', 78)
     let committedCount = 0
     for (let i = 0; i < uploadList.length; i += batchSize) {

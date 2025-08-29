@@ -76,6 +76,7 @@
     "testConnectivity": "Test",
     "notTested": "Not tested",
     "connectivityOk": "Connected",
+    "limit": "Quota limit",
     "connectivityFailed": "Failed",
     "startSync": "Sync",
     "syncCompleted": "Done",
@@ -124,7 +125,28 @@
       "retrying": "Retrying...",
       "rateLimit": "Retry in {seconds}s",
       "rateLimitWarning8": "FYI: 8 syncs in 5 min. This is 9th. To avoid rate limiting, retry in {seconds}s",
-      "rateLimitWarning9": "FYI: 9 syncs in 5 min. This is 10th. Retry in {seconds}s"
+      "rateLimitWarning9": "FYI: 9 syncs in 5 min. This is 10th. Retry in {seconds}s",
+      "limitExceeded": "Server fingerprint quota exceeded (limit: {limit}). Sync aborted.",
+      "limitExceededOnCheck": "Would exceed server fingerprint quota (limit: {limit}). Sync aborted.",
+      "limit": {
+        "limit": "Quota limit",
+        "currentServerCount": "Current on server",
+        "requestedAddCount": "Requested to add",
+        "allowedAddCount": "Allowed to add",
+        "phase": "Phase",
+        "clientCount": "Client count",
+        "serverTotal": "Server total",
+        "clientTotal": "Client total",
+        "pendingAdd": "Pending add",
+        "finalTotal": "Final total",
+        "contactToIncreaseLimit": "To increase quota, please contact: {email}",
+        "summary": {
+          "check": "Local {client} / Server {server}",
+          "bidirectional": "Server {current} + Add {add} (Allowed {allowed})",
+          "analyze": "Final total {final} would exceed the limit",
+          "batchAdd": "Current {current} + Add {add} (Allowed {allowed})"
+        }
+      }
     },
     "reset": {
       "sectionTitle": "Clear cloud fingerprints",
