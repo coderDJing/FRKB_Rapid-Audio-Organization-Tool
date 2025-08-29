@@ -76,6 +76,7 @@
     "testConnectivity": "测试连通性",
     "notTested": "未测试",
     "connectivityOk": "连通成功",
+    "limit": "配额上限",
     "connectivityFailed": "连通失败",
     "startSync": "开始同步",
     "syncCompleted": "同步完成",
@@ -124,7 +125,29 @@
       "retrying": "正在重试...",
       "rateLimit": "建议在 {seconds} 秒后再次发起同步",
       "rateLimitWarning8": "温馨提示：5 分钟内已累计 8 次同步，本次为第 9 次。为避免触发限制，建议在 {seconds} 秒后再次发起同步",
-      "rateLimitWarning9": "温馨提示：5 分钟内已累计 9 次同步，本次为第 10 次。建议在 {seconds} 秒后再次发起同步"
+      "rateLimitWarning9": "温馨提示：5 分钟内已累计 9 次同步，本次为第 10 次。建议在 {seconds} 秒后再次发起同步",
+      "limitExceeded": "超出服务端配额上限（上限：{limit}），已中止同步",
+      "limitExceededOnCheck": "将会超出服务端配额上限（上限：{limit}），已中止同步",
+      "limit": {
+        "limit": "配额上限",
+        "currentServerCount": "当前服务端数量",
+        "requestedAddCount": "尝试新增数量",
+        "allowedAddCount": "允许新增数量",
+        "phase": "阶段",
+        "clientCount": "客户端数量",
+        "serverTotal": "服务端总量",
+        "clientTotal": "客户端总量",
+        "pendingAdd": "待新增数量",
+        "finalTotal": "最终总量",
+        "willExceedHint": "本次同步将超过配额上限，已中止。",
+        "contactToIncreaseLimit": "如需提高配额上限，请联系：{email}",
+        "summary": {
+          "check": "本地 {client} / 服务端 {server}",
+          "bidirectional": "服务端 {current} + 本次新增 {add}（允许 {allowed}）",
+          "analyze": "同步后总量 {final} 将超过上限",
+          "batchAdd": "当前 {current} + 本次新增 {add}（允许 {allowed}）"
+        }
+      }
     },
     "reset": {
       "sectionTitle": "清除云端指纹库",

@@ -5,6 +5,7 @@ import hotkeys from 'hotkeys-js'
 import utils from '@renderer/utils/utils'
 import { useI18n } from '@renderer/composables/useI18n'
 import confirm from '@renderer/components/confirmDialog'
+import { CONTACT_EMAIL } from '../constants/app'
 const emits = defineEmits(['cancel'])
 const uuid = uuidV4()
 
@@ -112,13 +113,63 @@ const handleError = async (_e: any, err: any) => {
   if (isErrorPromptOpen.value) return
   isErrorPromptOpen.value = true
   try {
-    const code = err?.error?.code || ''
+    const code = (err?.error?.code || err?.error?.error || '').toString().toUpperCase()
     if (code === 'RATE_LIMITED' && err?.error?.scope === 'sync_start') {
       const retryAfterMs = Math.max(0, Number(err?.error?.retryAfterMs || 0))
       const seconds = Math.ceil(retryAfterMs / 1000)
       const message = t('cloudSync.errors.sensitiveOperationTooFrequent')
       logMsg.value = `${message}`
       await confirm({ title: t('dialog.hint'), content: [logMsg.value], confirmShow: false })
+      return
+    }
+    if (code === 'FINGERPRINT_LIMIT_EXCEEDED') {
+      const details = err?.error?.details || {}
+      const limitNum = Number(details?.limit)
+      // 第一行固定使用“本次同步将超过配额上限，已中止。”
+      const baseMsg = t('cloudSync.errors.limit.willExceedHint')
+      const phase = String(details?.phase || '')
+      // 计算摘要行
+      let summary = ''
+      if (phase === 'check') {
+        summary = t('cloudSync.errors.limit.summary.check', {
+          limit: Number.isFinite(limitNum) ? limitNum : '-',
+          client: Number(details?.clientCount) || '-',
+          server: Number(details?.serverCount) || '-'
+        })
+      } else if (phase === 'bidirectional_diff') {
+        summary = t('cloudSync.errors.limit.summary.bidirectional', {
+          limit: Number.isFinite(limitNum) ? limitNum : '-',
+          current: Number(details?.currentServerCount) || '-',
+          add: Number(details?.requestedAddCount) || '-',
+          allowed: Number(details?.allowedAddCount) || '-'
+        })
+      } else if (phase === 'analyze_diff') {
+        summary = t('cloudSync.errors.limit.summary.analyze', {
+          limit: Number.isFinite(limitNum) ? limitNum : '-',
+          final: Number(details?.finalTotal) || '-'
+        })
+      } else if (phase === 'batch_add') {
+        summary = t('cloudSync.errors.limit.summary.batchAdd', {
+          limit: Number.isFinite(limitNum) ? limitNum : '-',
+          current: Number(details?.currentCount) || '-',
+          add: Number(details?.uniqueNewCount) || '-',
+          allowed: Number(details?.allowedAddCount) || '-'
+        })
+      } else {
+        summary = t('cloudSync.errors.limit.summary.batchAdd', {
+          limit: Number.isFinite(limitNum) ? limitNum : '-',
+          current: Number(details?.currentServerCount || details?.currentCount) || '-',
+          add: Number(details?.requestedAddCount || details?.uniqueNewCount) || '-',
+          allowed: Number(details?.allowedAddCount) || '-'
+        })
+      }
+      // 三行：主文案 + 摘要 + 联系邮箱
+      const lines = [
+        baseMsg,
+        summary || t('cloudSync.errors.limit.willExceedHint'),
+        t('cloudSync.errors.limit.contactToIncreaseLimit', { email: CONTACT_EMAIL })
+      ]
+      await confirm({ title: t('common.error'), content: lines, confirmShow: false })
       return
     }
     logMsg.value = t(err?.message || 'error')
