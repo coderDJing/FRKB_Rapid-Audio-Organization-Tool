@@ -21,6 +21,30 @@
   -webkit-app-region: no-drag;
 }
 
+html,
+body,
+#app {
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'SF Pro Text',
+    'SF Pro Display',
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Noto Sans CJK SC',
+    'Microsoft YaHei',
+    'Source Han Sans SC',
+    'Apple Color Emoji',
+    'Segoe UI Emoji',
+    'Noto Color Emoji',
+    sans-serif;
+}
+
 .dialog {
   width: 100vw;
   height: 100vh;
@@ -33,9 +57,6 @@
   z-index: 99;
   background-color: rgba(0, 0, 0, 0.3);
   color: #cccccc;
-  font-family: Avenir, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
   color: #cccccc;
 
   .inner {
