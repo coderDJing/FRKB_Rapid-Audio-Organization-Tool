@@ -31,10 +31,11 @@ function createWindow() {
     height: store.layoutConfig.mainWindowHeight, //默认应为600
     minWidth: 900,
     minHeight: 600,
-    frame: false,
+    frame: process.platform === 'darwin' ? true : false,
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     transparent: false,
     show: false,
-    backgroundColor: '#181818',
+    backgroundColor: '#000000',
 
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
@@ -43,6 +44,13 @@ function createWindow() {
       backgroundThrottling: false
     }
   })
+
+  // macOS：强制深色标题栏/外观
+  if (process.platform === 'darwin') {
+    try {
+      mainWindow.setVibrancy('under-window')
+    } catch {}
+  }
 
   if (!app.isPackaged) {
     mainWindow.webContents.openDevTools()

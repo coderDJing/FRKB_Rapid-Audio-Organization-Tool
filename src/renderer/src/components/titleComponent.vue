@@ -196,6 +196,7 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
   <div class="title unselectable">FRKB - {{ t('app.name') }}</div>
   <div class="titleComponent unselectable">
     <div
+      v-if="runtime.platform !== 'Mac'"
       style="
         z-index: 1;
         padding-left: 10px;
@@ -206,25 +207,27 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
     >
       <img :src="logo" style="width: 20px" :draggable="false" />
     </div>
-    <div style="z-index: 1; padding-left: 5px" v-for="item in menuArr" :key="item.name">
-      <div
-        class="functionButton"
-        :class="{ functionButtonHover: item.show }"
-        @click.stop="menuClick(item)"
-        @mouseenter="titleMenuButtonMouseEnter(item)"
-      >
-        {{ t(item.name) }}
+    <template v-if="runtime.platform !== 'Mac'">
+      <div style="z-index: 1; padding-left: 5px" v-for="item in menuArr" :key="item.name">
+        <div
+          class="functionButton"
+          :class="{ functionButtonHover: item.show }"
+          @click.stop="menuClick(item)"
+          @mouseenter="titleMenuButtonMouseEnter(item)"
+        >
+          {{ t(item.name) }}
+        </div>
+        <menuComponent
+          :menuArr="item.subMenu"
+          :menuName="item.name"
+          v-model="item.show"
+          @menuButtonClick="menuButtonClick"
+          @switchMenu="switchMenu"
+        ></menuComponent>
       </div>
-      <menuComponent
-        :menuArr="item.subMenu"
-        :menuName="item.name"
-        v-model="item.show"
-        @menuButtonClick="menuButtonClick"
-        @switchMenu="switchMenu"
-      ></menuComponent>
-    </div>
+    </template>
     <div class="canDrag" style="flex-grow: 1; height: 35px; z-index: 1"></div>
-    <div style="display: flex; z-index: 1">
+    <div v-if="runtime.platform !== 'Mac'" style="display: flex; z-index: 1">
       <div class="rightIcon" @click="toggleMinimize()">
         <img :src="chromeMiniimize" :draggable="false" />
       </div>
