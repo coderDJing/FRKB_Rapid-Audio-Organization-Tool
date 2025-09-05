@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import homePage from './pages/homePage.vue'
 import titleComponent from './components/titleComponent.vue'
+import scanNewSongDialog from '@renderer/components/scanNewSongDialog'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import bottomInfoArea from './pages/modules/bottomInfoArea.vue'
 import manualAddSongFingerprintDialog from './components/manualAddSongFingerprintDialog.vue'
@@ -146,6 +147,32 @@ onMounted(() => {
     runtime.activeMenuUUID = ''
   })
   utils.setHotkeysScpoe('windowGlobal')
+  // 通过 Tray 菜单触发
+  window.electron.ipcRenderer.on('openDialogFromTray', async (_e, key: string) => {
+    await openDialog(key)
+  })
+  window.electron.ipcRenderer.on('tray-action', async (_e, action: string) => {
+    if (action === 'import-new-filter') {
+      await scanNewSongDialog({ libraryName: 'FilterLibrary', songListUuid: '' })
+      return
+    }
+    if (action === 'import-new-curated') {
+      await scanNewSongDialog({ libraryName: 'CuratedLibrary', songListUuid: '' })
+      return
+    }
+    if (action === 'exit') {
+      if (runtime.isProgressing === true) {
+        await confirm({
+          title: t('common.exit'),
+          content: [t('import.waitForTask')],
+          confirmShow: false
+        })
+        return
+      }
+      window.electron.ipcRenderer.send('toggle-close')
+      return
+    }
+  })
   // 不再显示“结束后的汇总提示”
   // 监听批处理被中断（等待用户选择 继续/取消）
   window.electron.ipcRenderer.on('file-op-interrupted', async (_e, payload) => {

@@ -81,9 +81,9 @@ const globalShortcut = computed(() => {
         <dl>
           <dt>{{ t('player.showHide') }}</dt>
           <dd>
-            <div class="monaco-keybinding">
+            <div class="monaco-keybinding" style="min-width: 250px">
               <template v-for="(item, index) in globalShortcut" :key="index">
-                <span class="monaco-keybinding-key">{{ item.key }}</span>
+                <span class="monaco-keybinding-key" style="width: 50px">{{ item.key }}</span>
                 <span
                   v-if="index !== globalShortcut.length - 1"
                   class="monaco-keybinding-key-separator"
