@@ -1,4 +1,16 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, IpcMainInvokeEvent } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  shell,
+  IpcMainInvokeEvent,
+  Menu,
+  nativeImage,
+  nativeTheme
+} from 'electron'
+import zhCNLocale from '../renderer/src/i18n/locales/zh-CN.json'
+import enUSLocale from '../renderer/src/i18n/locales/en-US.json'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import {
   getLibrary,
@@ -72,6 +84,7 @@ if (!gotTheLock) {
 import path = require('path')
 import fs = require('fs-extra')
 const platform = process.platform
+// 不再使用 Tray，改用应用菜单
 if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
   fs.outputJsonSync(url.layoutConfigFileUrl, {
     libraryAreaWidth: 175,
@@ -211,9 +224,166 @@ if (is.dev && platform === 'win32') {
 
 app.whenReady().then(async () => {
   electronApp.setAppUserModelId('frkb.coderDjing')
+  // 设置应用显示名称为 FRKB（影响菜单栏左上角 App 菜单标题）
+  try {
+    app.setName('FRKB')
+  } catch {}
+  if (process.platform === 'darwin') {
+    nativeTheme.themeSource = 'dark'
+  }
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
+  // macOS：构建两套菜单，并根据聚焦窗口切换
+  if (process.platform === 'darwin') {
+    try {
+      const MESSAGES: Record<'zh-CN' | 'en-US', any> = {
+        'zh-CN': zhCNLocale as any,
+        'en-US': enUSLocale as any
+      }
+      const getCurrentLocaleId = (): 'zh-CN' | 'en-US' =>
+        (store.settingConfig as any)?.language === 'enUS' ? 'en-US' : 'zh-CN'
+      const tMenu = (key: string): string => {
+        const localeId = getCurrentLocaleId()
+        const parts = key.split('.')
+        let cur: any = MESSAGES[localeId]
+        for (const p of parts) {
+          if (cur && typeof cur === 'object' && p in cur) cur = cur[p]
+          else return key
+        }
+        return typeof cur === 'string' ? cur : key
+      }
+      const sanitizeLabelForMac = (label: string): string => {
+        if (process.platform !== 'darwin') return label
+        // 移除尾部的 (F)/(H)/(C) 或全角（F）等助记符
+        return label.replace(/\s*(\([A-Za-z]\)|（[A-Za-z]）)/g, '')
+      }
+      const labelImportTo = (libraryKey: 'library.filter' | 'library.curated') => {
+        const tpl = tMenu('library.importNewTracks')
+        const lib = tMenu(libraryKey)
+        return tpl.replace('{libraryType}', lib)
+      }
+      const buildAppOnlyMenu = () =>
+        Menu.buildFromTemplate([
+          {
+            label: 'FRKB',
+            submenu: [
+              { role: 'hide', label: '隐藏 FRKB' },
+              { role: 'hideOthers', label: '隐藏其他' },
+              { role: 'unhide', label: '显示全部' },
+              { type: 'separator' },
+              { role: 'quit', label: '退出 FRKB' }
+            ]
+          }
+        ])
+      const buildFullMenu = () =>
+        Menu.buildFromTemplate([
+          // 顶栏
+          {
+            label: 'FRKB',
+            submenu: [
+              { role: 'hide', label: '隐藏 FRKB' },
+              { role: 'hideOthers', label: '隐藏其他' },
+              { role: 'unhide', label: '显示全部' },
+              { type: 'separator' },
+              { role: 'quit', label: '退出 FRKB' }
+            ]
+          },
+          {
+            label: sanitizeLabelForMac(tMenu('menu.file')),
+            submenu: [
+              {
+                label: labelImportTo('library.filter'),
+                click: () =>
+                  mainWindow.instance?.webContents.send('tray-action', 'import-new-filter')
+              },
+              {
+                label: labelImportTo('library.curated'),
+                click: () =>
+                  mainWindow.instance?.webContents.send('tray-action', 'import-new-curated')
+              },
+              { type: 'separator' },
+              {
+                label: tMenu('fingerprints.manualAdd'),
+                click: () =>
+                  mainWindow.instance?.webContents.send(
+                    'openDialogFromTray',
+                    'fingerprints.manualAdd'
+                  )
+              }
+            ]
+          },
+          {
+            label: sanitizeLabelForMac(tMenu('menu.migration')),
+            submenu: [
+              {
+                label: tMenu('fingerprints.exportDatabase'),
+                click: () =>
+                  mainWindow.instance?.webContents.send(
+                    'openDialogFromTray',
+                    'fingerprints.exportDatabase'
+                  )
+              },
+              {
+                label: tMenu('fingerprints.importDatabase'),
+                click: () =>
+                  mainWindow.instance?.webContents.send(
+                    'openDialogFromTray',
+                    'fingerprints.importDatabase'
+                  )
+              }
+            ]
+          },
+          {
+            label: sanitizeLabelForMac(tMenu('menu.cloudSync')),
+            submenu: [
+              {
+                label: tMenu('cloudSync.syncFingerprints'),
+                click: () =>
+                  mainWindow.instance?.webContents.send(
+                    'openDialogFromTray',
+                    'cloudSync.syncFingerprints'
+                  )
+              },
+              {
+                label: tMenu('cloudSync.settings'),
+                click: () =>
+                  mainWindow.instance?.webContents.send('openDialogFromTray', 'cloudSync.settings')
+              }
+            ]
+          },
+          {
+            label: sanitizeLabelForMac(tMenu('menu.help')),
+            submenu: [
+              {
+                label: tMenu('menu.visitGithub'),
+                click: () =>
+                  mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.visitGithub')
+              },
+              {
+                label: tMenu('menu.checkUpdate'),
+                click: () =>
+                  mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.checkUpdate')
+              },
+              {
+                label: tMenu('menu.about'),
+                click: () =>
+                  mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.about')
+              }
+            ]
+          }
+        ])
+      // 初始：非主窗口可能先出现（数据库初始化），仅显示 FRKB
+      Menu.setApplicationMenu(buildAppOnlyMenu())
+      app.on('browser-window-focus', (_e, win) => {
+        if (win && mainWindow.instance && win.id === mainWindow.instance.id) {
+          Menu.setApplicationMenu(buildFullMenu())
+        } else {
+          Menu.setApplicationMenu(buildAppOnlyMenu())
+        }
+      })
+    } catch {}
+  }
   if (!store.settingConfig.databaseUrl) {
     databaseInitWindow.createWindow()
   } else {
@@ -322,6 +492,157 @@ ipcMain.handle('getSetting', () => {
 ipcMain.handle('setSetting', (e, setting) => {
   store.settingConfig = setting
   fs.outputJson(url.settingConfigFileUrl, setting)
+  // 语言切换时（macOS）重建菜单
+  if (process.platform === 'darwin') {
+    try {
+      const MESSAGES: Record<'zh-CN' | 'en-US', any> = {
+        'zh-CN': zhCNLocale as any,
+        'en-US': enUSLocale as any
+      }
+      const getCurrentLocaleId = (): 'zh-CN' | 'en-US' =>
+        (store.settingConfig as any)?.language === 'enUS' ? 'en-US' : 'zh-CN'
+      const tMenu = (key: string): string => {
+        const localeId = getCurrentLocaleId()
+        const parts = key.split('.')
+        let cur: any = MESSAGES[localeId]
+        for (const p of parts) {
+          if (cur && typeof cur === 'object' && p in cur) cur = cur[p]
+          else return key
+        }
+        return typeof cur === 'string' ? cur : key
+      }
+      const sanitizeLabelForMac = (label: string): string => {
+        // 去除 (F)/(H)/(C) 或全角（F）等助记符
+        return label.replace(/\s*(\([A-Za-z]\)|（[A-Za-z]）)/g, '')
+      }
+      const labelImportTo = (libraryKey: 'library.filter' | 'library.curated') => {
+        const tpl = tMenu('library.importNewTracks')
+        const lib = tMenu(libraryKey)
+        return tpl.replace('{libraryType}', lib)
+      }
+      const buildAppOnlyMenu = () =>
+        Menu.buildFromTemplate([
+          {
+            label: 'FRKB',
+            submenu: [
+              { role: 'hide', label: getCurrentLocaleId() === 'en-US' ? 'Hide FRKB' : '隐藏 FRKB' },
+              {
+                role: 'hideOthers',
+                label: getCurrentLocaleId() === 'en-US' ? 'Hide Others' : '隐藏其他'
+              },
+              { role: 'unhide', label: getCurrentLocaleId() === 'en-US' ? 'Show All' : '显示全部' },
+              { type: 'separator' },
+              { role: 'quit', label: getCurrentLocaleId() === 'en-US' ? 'Quit FRKB' : '退出 FRKB' }
+            ]
+          }
+        ])
+      const buildFullMenu = () =>
+        Menu.buildFromTemplate([
+          {
+            label: 'FRKB',
+            submenu: [
+              { role: 'hide', label: getCurrentLocaleId() === 'en-US' ? 'Hide FRKB' : '隐藏 FRKB' },
+              {
+                role: 'hideOthers',
+                label: getCurrentLocaleId() === 'en-US' ? 'Hide Others' : '隐藏其他'
+              },
+              { role: 'unhide', label: getCurrentLocaleId() === 'en-US' ? 'Show All' : '显示全部' },
+              { type: 'separator' },
+              { role: 'quit', label: getCurrentLocaleId() === 'en-US' ? 'Quit FRKB' : '退出 FRKB' }
+            ]
+          },
+          {
+            label: sanitizeLabelForMac(tMenu('menu.file')),
+            submenu: [
+              {
+                label: labelImportTo('library.filter'),
+                click: () =>
+                  mainWindow.instance?.webContents.send('tray-action', 'import-new-filter')
+              },
+              {
+                label: labelImportTo('library.curated'),
+                click: () =>
+                  mainWindow.instance?.webContents.send('tray-action', 'import-new-curated')
+              },
+              { type: 'separator' },
+              {
+                label: tMenu('fingerprints.manualAdd'),
+                click: () =>
+                  mainWindow.instance?.webContents.send(
+                    'openDialogFromTray',
+                    'fingerprints.manualAdd'
+                  )
+              }
+            ]
+          },
+          {
+            label: sanitizeLabelForMac(tMenu('menu.migration')),
+            submenu: [
+              {
+                label: tMenu('fingerprints.exportDatabase'),
+                click: () =>
+                  mainWindow.instance?.webContents.send(
+                    'openDialogFromTray',
+                    'fingerprints.exportDatabase'
+                  )
+              },
+              {
+                label: tMenu('fingerprints.importDatabase'),
+                click: () =>
+                  mainWindow.instance?.webContents.send(
+                    'openDialogFromTray',
+                    'fingerprints.importDatabase'
+                  )
+              }
+            ]
+          },
+          {
+            label: sanitizeLabelForMac(tMenu('menu.cloudSync')),
+            submenu: [
+              {
+                label: tMenu('cloudSync.syncFingerprints'),
+                click: () =>
+                  mainWindow.instance?.webContents.send(
+                    'openDialogFromTray',
+                    'cloudSync.syncFingerprints'
+                  )
+              },
+              {
+                label: tMenu('cloudSync.settings'),
+                click: () =>
+                  mainWindow.instance?.webContents.send('openDialogFromTray', 'cloudSync.settings')
+              }
+            ]
+          },
+          {
+            label: sanitizeLabelForMac(tMenu('menu.help')),
+            submenu: [
+              {
+                label: tMenu('menu.visitGithub'),
+                click: () =>
+                  mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.visitGithub')
+              },
+              {
+                label: tMenu('menu.checkUpdate'),
+                click: () =>
+                  mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.checkUpdate')
+              },
+              {
+                label: tMenu('menu.about'),
+                click: () =>
+                  mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.about')
+              }
+            ]
+          }
+        ])
+      const focused = BrowserWindow.getFocusedWindow()
+      if (focused && mainWindow.instance && focused.id === mainWindow.instance.id) {
+        Menu.setApplicationMenu(buildFullMenu())
+      } else {
+        Menu.setApplicationMenu(buildAppOnlyMenu())
+      }
+    } catch {}
+  }
 })
 ipcMain.on('outputLog', (e, logMsg) => {
   log.error(logMsg)

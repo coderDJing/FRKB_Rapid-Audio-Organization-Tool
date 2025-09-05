@@ -10,10 +10,11 @@ const createWindow = () => {
     resizable: false,
     width: 300,
     height: 200,
-    frame: false,
+    frame: process.platform === 'darwin' ? true : false,
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     transparent: false,
     show: false,
-    backgroundColor: '#181818',
+    backgroundColor: '#000000',
     maximizable: false,
 
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -23,6 +24,15 @@ const createWindow = () => {
       backgroundThrottling: false
     }
   })
+
+  if (process.platform === 'darwin') {
+    try {
+      foundNewVersionWindow.setVibrancy('under-window')
+    } catch {}
+    try {
+      ;(foundNewVersionWindow as any).setVisualEffectMaterial?.('under-window')
+    } catch {}
+  }
 
   if (!app.isPackaged) {
     foundNewVersionWindow.webContents.openDevTools()

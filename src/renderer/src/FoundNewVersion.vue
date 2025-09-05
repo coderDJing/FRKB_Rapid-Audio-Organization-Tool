@@ -53,7 +53,7 @@ const checkNow = async () => {
         </div>
 
         <div class="canDrag" style="flex-grow: 1; height: 35px; z-index: 1"></div>
-        <div style="display: flex; z-index: 1">
+        <div v-if="navigator.userAgent.includes('Mac') === false" style="display: flex; z-index: 1">
           <div class="rightIcon" @click="toggleMinimize()">
             <img :src="chromeMiniimize" :draggable="false" />
           </div>

@@ -17,10 +17,11 @@ const createWindow = ({ needErrorHint = false } = {}) => {
     resizable: false,
     width: 640,
     height: 380,
-    frame: false,
+    frame: process.platform === 'darwin' ? true : false,
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     transparent: false,
     show: false,
-    backgroundColor: '#181818',
+    backgroundColor: '#000000',
     maximizable: false,
 
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -30,6 +31,15 @@ const createWindow = ({ needErrorHint = false } = {}) => {
       backgroundThrottling: false
     }
   })
+
+  if (process.platform === 'darwin') {
+    try {
+      databaseInitWindow.setVibrancy('under-window')
+    } catch {}
+    try {
+      ;(databaseInitWindow as any).setVisualEffectMaterial?.('under-window')
+    } catch {}
+  }
   if (!app.isPackaged) {
     databaseInitWindow.webContents.openDevTools()
   }
