@@ -403,9 +403,6 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
 </template>
 <style lang="scss">
 #app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
   color: #cccccc;
   background-color: #181818;
   width: 100vw;

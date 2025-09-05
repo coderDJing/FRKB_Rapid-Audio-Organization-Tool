@@ -19,6 +19,14 @@ app.use(i18n)
 async function initializeApp() {
   const runtime = useRuntimeStore()
   runtime.setting = await window.electron.ipcRenderer.invoke('getSetting')
+  // macOS 下为根容器增加 is-mac 类，用于样式细节覆盖
+  try {
+    const isMac = /Mac/i.test(navigator.userAgent)
+    if (isMac) {
+      const rootEl = document.getElementById('app')
+      if (rootEl) rootEl.classList.add('is-mac')
+    }
+  } catch {}
 
   if (!runtime.setting.language) {
     let userLang = navigator.language
