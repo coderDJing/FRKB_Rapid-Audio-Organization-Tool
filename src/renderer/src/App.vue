@@ -57,13 +57,16 @@ const openDialog = async (item: string) => {
   if (item === '导入曲目指纹库文件') item = 'fingerprints.importDatabase'
 
   if (item === 'menu.about') {
+    const version = String((pkg as any).version || '')
+    const isPrerelease = version.includes('-')
+    const content: string[] = []
+    content.push(t('update.currentVersion') + ' ' + version)
+    if (isPrerelease) content.push(t('about.prereleaseHint'))
+    content.push(t('about.author'))
+    content.push(t('about.contact', { email: 'jinlingwuyanzu@qq.com' }))
     await confirm({
       title: t('menu.about'),
-      content: [
-        t('update.currentVersion') + ' ' + (pkg as any).version,
-        t('about.author'),
-        t('about.contact', { email: 'jinlingwuyanzu@qq.com' })
-      ],
+      content,
       confirmShow: false,
       canCopyText: true
     })
