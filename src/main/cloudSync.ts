@@ -8,9 +8,11 @@ import { log } from './log'
 import mainWindow from './window/mainWindow'
 
 const CLOUD_SYNC = {
-  BASE_URL: is.dev ? 'http://localhost:3001' : 'http://106.54.200.160:3001',
+  BASE_URL: is.dev
+    ? process.env.CLOUD_SYNC_BASE_URL_DEV || 'http://localhost:3001'
+    : process.env.CLOUD_SYNC_BASE_URL_PROD || '',
   PREFIX: '/frkbapi/v1/fingerprint-sync',
-  API_SECRET_KEY: 'FRKB_73726add-497c-4c30-b340-ba3b94e9788d'
+  API_SECRET_KEY: process.env.CLOUD_SYNC_API_SECRET_KEY || ''
 }
 
 const DEV_DEFAULT_USER_KEY = '5de44d53-6236-4df6-84ab-382ac0717bc0'
