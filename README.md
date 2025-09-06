@@ -53,6 +53,7 @@ As a DJ, I frequently need to organize large numbers of music files. However, ex
 - **Cloud Sync (fingerprints)**: Bidirectional sync of local track fingerprints (SHA256) with the cloud, including diff analysis, paginated pulls, and batched uploads, with quota and rate limiting (up to 10 sync starts within 5 minutes). Entry: system tray → Cloud Sync.
 - **Internationalization (i18n)**: Built-in Chinese (`zh-CN`) and English (`en-US`) language packs.
 - **Save Cover Image**: Right-click the enlarged cover to save the image locally.
+- **Format Support**: MP3/WAV/FLAC/AIF/AIFF
 
 ### Contributions
 Contributions of all kinds are welcome! Whether reporting issues, suggesting features, or contributing code, feel free to open an issue or submit a pull request.
