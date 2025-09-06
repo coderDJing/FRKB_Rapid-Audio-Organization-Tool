@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            arch: x64
+            rust_target: x86_64-pc-windows-msvc
+            eb_args: --win --x64
+          - os: macos-latest
+            arch: x64
+            rust_target: x86_64-apple-darwin
+            eb_args: --mac --x64
+          - os: macos-latest
+            arch: arm64
+            rust_target: aarch64-apple-darwin
+            eb_args: --mac --arm64
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Build Rust N-API (rust_package)
+        working-directory: rust_package
+        run: npx --yes @napi-rs/cli@2.18.4 build --platform --release --target ${{ matrix.rust_target }}
+
+      - name: Build (vite)
+        env:
+          CLOUD_SYNC_BASE_URL_PROD: ${{ secrets.CLOUD_SYNC_BASE_URL_PROD }}
+          CLOUD_SYNC_API_SECRET_KEY: ${{ secrets.CLOUD_SYNC_API_SECRET_KEY }}
+        run: pnpm build
+
+      - name: Package & Publish (electron-builder)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder ${{ matrix.eb_args }} --publish always
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ runner.os }}-${{ matrix.arch }}-artifacts
+          path: dist/**
+
+

@@ -425,18 +425,21 @@ app.whenReady().then(async () => {
 
   const autoUpdater = electronUpdater.autoUpdater
   autoUpdater.autoDownload = false
-  if (store.settingConfig.nextCheckUpdateTime) {
-    if (new Date() > new Date(store.settingConfig.nextCheckUpdateTime)) {
+  const isPrerelease = app.getVersion().includes('-')
+  if (!isPrerelease) {
+    if (store.settingConfig.nextCheckUpdateTime) {
+      if (new Date() > new Date(store.settingConfig.nextCheckUpdateTime)) {
+        autoUpdater.checkForUpdates()
+      }
+    } else {
       autoUpdater.checkForUpdates()
     }
-  } else {
-    autoUpdater.checkForUpdates()
+    autoUpdater.on('update-available', (info) => {
+      if (updateWindow.instance === null) {
+        foundNewVersionWindow.createWindow()
+      }
+    })
   }
-  autoUpdater.on('update-available', (info) => {
-    if (updateWindow.instance === null) {
-      foundNewVersionWindow.createWindow()
-    }
-  })
 
   app.on('activate', async function () {
     // On macOS it's common to re-create a window in the app when the

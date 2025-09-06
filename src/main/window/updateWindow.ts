@@ -54,13 +54,18 @@ const createWindow = () => {
   updateWindow.on('ready-to-show', () => {
     updateWindow?.show()
     autoUpdater.autoDownload = false
-    autoUpdater.checkForUpdates()
+    const isPrerelease = app.getVersion().includes('-')
+    if (!isPrerelease) {
+      autoUpdater.checkForUpdates()
+    }
 
     autoUpdater.on('update-available', (info) => {
+      if (app.getVersion().includes('-')) return
       updateWindow?.webContents.send('newVersion', info)
     })
 
     autoUpdater.on('update-not-available', (info) => {
+      if (app.getVersion().includes('-')) return
       updateWindow?.webContents.send('isLatestVersion', info.version)
     })
 
