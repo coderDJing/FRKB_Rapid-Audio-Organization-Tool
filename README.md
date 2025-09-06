@@ -35,6 +35,11 @@ As a DJ, I frequently need to organize large numbers of music files. However, ex
 ### Introduction
 **FRKB** is a cross-platform desktop application designed for audio professionals (such as DJs). The current beta version is compatible with Windows and will be adapted for macOS once stable. It is still under active development.
 
+### System Requirements
+
+- Windows 10 or later (x64)
+- macOS 12 or later
+
 ### Core Features
 - **Portable**: Easily transfer the database to mobile devices for on-the-go use.
 - **Song Deduplication**: Identify and exclude duplicate tracks in the music library using the SHA256 algorithm (ignoring metadata such as cover art, title, artist, etc.), providing prompts during the import phase to keep your music collection clean and efficient.
@@ -44,6 +49,10 @@ As a DJ, I frequently need to organize large numbers of music files. However, ex
 - **Waveform Visualization**: Provides audio waveform display.
 - **BPM Analysis & Tap Tempo**: Displays BPM information. Left-click the BPM to tap tempo (calculated to 1 decimal place). When the BPM is manually tapped, it is highlighted in `#0078d4`. Right-click to restore the system-analyzed BPM. Tooltip: "Tap beat (LMB) / Reset (RMB)".
 - **Recycle Bin**: Features a recycle bin, ensuring that accidentally deleted files aren't permanently lost, a common issue with other software.
+
+- **Cloud Sync (fingerprints)**: Bidirectional sync of local track fingerprints (SHA256) with the cloud, including diff analysis, paginated pulls, and batched uploads, with quota and rate limiting (up to 10 sync starts within 5 minutes). Entry: system tray → Cloud Sync.
+- **Internationalization (i18n)**: Built-in Chinese (`zh-CN`) and English (`en-US`) language packs.
+- **Save Cover Image**: Right-click the enlarged cover to save the image locally.
 
 ### Contributions
 Contributions of all kinds are welcome! Whether reporting issues, suggesting features, or contributing code, feel free to open an issue or submit a pull request.
@@ -87,3 +96,6 @@ $ pnpm build:mac
 
 # Backlog
 <a href="./backlog.md">backlog.md</a>
+
+### Cloud Sync Backend Project
+- `FRKB-API` (cloud sync server): [https://github.com/coderDJing/FRKB-API](https://github.com/coderDJing/FRKB-API)
