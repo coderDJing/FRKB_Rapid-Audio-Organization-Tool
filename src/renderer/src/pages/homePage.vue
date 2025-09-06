@@ -298,30 +298,42 @@ const drop = async (e: DragEvent) => {
   position: absolute;
   top: 0;
   height: 100%;
-  width: 8px; /* 触发区域宽度 */
+  width: 8px;
+  /* 触发区域宽度 */
   cursor: ew-resize;
-  transform: translateX(-50%); /* 将 8px 的触发区域居中在 left 位置 */
-  z-index: 10; /* 确保它在其他内容之上 */
-  background-color: transparent; /* 确保触发区域不可见 */
+  transform: translateX(-50%);
+  /* 将 8px 的触发区域居中在 left 位置 */
+  z-index: 10;
+  /* 确保它在其他内容之上 */
+  background-color: transparent;
+  /* 确保触发区域不可见 */
 }
 
 .dragBar::before {
   content: '';
   position: absolute;
   top: 0;
-  left: 50%; /* 相对于 dragBar 居中 */
-  transform: translateX(-50%); /* 精确居中 */
-  width: 4px; /* 宽度始终为 4px */
+  left: 50%;
+  /* 相对于 dragBar 居中 */
+  transform: translateX(-50%);
+  /* 精确居中 */
+  width: 4px;
+  /* 宽度始终为 4px */
   height: 100%;
-  background-color: #0078d4; /* 指示器颜色 */
-  opacity: 0; /* 初始透明度为 0 */
-  transition: opacity 0.2s ease; /* 过渡效果应用在透明度上 */
-  pointer-events: none; /* 伪元素不应捕获事件 */
+  background-color: #0078d4;
+  /* 指示器颜色 */
+  opacity: 0;
+  /* 初始透明度为 0 */
+  transition: opacity 0.2s ease;
+  /* 过渡效果应用在透明度上 */
+  pointer-events: none;
+  /* 伪元素不应捕获事件 */
 }
 
 /* 当 dragBar 悬停或拖动时，显示伪元素 */
 .dragBar.dragBarHovered::before {
-  opacity: 1; /* 透明度变为 1 */
+  opacity: 1;
+  /* 透明度变为 1 */
   /* width: 4px;  不再需要修改宽度 */
 }
 
@@ -337,10 +349,12 @@ const drop = async (e: DragEvent) => {
   position: absolute;
   top: 0;
   left: 0;
-  right: 0;
+  right: 2px;
   bottom: 0;
   border: 1px solid #0078d4;
-  pointer-events: none; /* 不影响鼠标事件 */
-  z-index: 1000; /* 确保在所有内容之上 */
+  pointer-events: none;
+  /* 不影响鼠标事件 */
+  z-index: 1000;
+  /* 确保在所有内容之上 */
 }
 </style>
