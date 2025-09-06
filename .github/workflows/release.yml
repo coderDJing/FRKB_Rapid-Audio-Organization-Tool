@@ -115,8 +115,8 @@ jobs:
           CLOUD_SYNC_API_SECRET_KEY: ${{ secrets.CLOUD_SYNC_API_SECRET_KEY }}
         run: pnpm build
 
-      - name: Package macOS (both arch, no publish)
-        run: npx electron-builder --mac --x64 --arm64 --publish never
+      - name: Package macOS (universal, no publish)
+        run: npx electron-builder --mac universal --publish never
 
       - name: Upload dist artifacts (macOS)
         uses: actions/upload-artifact@v4
@@ -124,11 +124,12 @@ jobs:
         with:
           name: mac-artifacts
           path: |
-            dist/FRKB-*-mac-x64.dmg
-            dist/FRKB-*-mac-arm64.dmg
+            dist/FRKB-*-mac-universal.dmg
             dist/latest-mac.yml
-            dist/*.zip
+            dist/FRKB-*-mac-universal.zip
+            dist/FRKB-*-mac-universal.zip.blockmap
             dist/*.blockmap
+            dist/*.zip
 
   release:
     needs: [build_win, build_mac]
@@ -148,8 +149,7 @@ jobs:
         with:
           files: |
             artifacts/FRKB-*-win32-x64.exe
-            artifacts/FRKB-*-mac-x64.dmg
-            artifacts/FRKB-*-mac-arm64.dmg
+            artifacts/FRKB-*-mac-universal.dmg
             artifacts/latest.yml
             artifacts/latest-mac.yml
             artifacts/*.zip
