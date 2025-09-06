@@ -21,8 +21,7 @@ const initializeApp = async () => {
   runtime.setting = await window.electron.ipcRenderer.invoke('getSetting')
   // macOS 下为根容器增加 is-mac 类，用于样式细节覆盖
   try {
-    const isMac = /Mac/i.test(navigator.userAgent)
-    if (isMac) {
+    if (runtime.setting.platform === 'darwin') {
       const rootEl = document.getElementById('app')
       if (rootEl) rootEl.classList.add('is-mac')
     }
