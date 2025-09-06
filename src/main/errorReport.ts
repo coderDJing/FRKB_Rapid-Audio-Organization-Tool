@@ -12,9 +12,11 @@ const RETRY_THRESHOLD_MS = 60 * 60 * 1000
 const TICK_MS = 5000
 
 const ERROR_API = {
-  BASE_URL: is.dev ? 'http://localhost:3001' : 'http://106.54.200.160:3001',
+  BASE_URL: is.dev
+    ? process.env.CLOUD_SYNC_BASE_URL_DEV || 'http://localhost:3001'
+    : process.env.CLOUD_SYNC_BASE_URL_PROD || '',
   PATH: '/frkbapi/v1/error-report/upload',
-  API_SECRET_KEY: 'FRKB_73726add-497c-4c30-b340-ba3b94e9788d'
+  API_SECRET_KEY: process.env.CLOUD_SYNC_API_SECRET_KEY || ''
 }
 
 let timer: NodeJS.Timeout | null = null
