@@ -345,7 +345,7 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
           <div>
             <div
               class="button"
-              style="display: inline-block; text-align: center; padding: 0 12px"
+              style="display: inline-block; text-align: center; padding: 0 12px; font-size: 12px"
               @click="clickChooseExistingDb()"
             >
               {{ t('database.pickManifestFile') }}
@@ -408,7 +408,6 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
   width: 100vw;
   height: 100vh;
 }
-
 body {
   margin: 0px;
   background-color: #1f1f1f;
@@ -423,10 +422,12 @@ body {
   padding: 6px 12px;
   cursor: pointer;
   color: #bbbbbb;
+  font-size: 12px;
 }
 .tab.active {
   color: #ffffff;
   border-bottom: 2px solid #ffffff;
+  font-size: 12px;
 }
 
 .field {
@@ -455,7 +456,7 @@ body {
   overflow: hidden;
   word-break: break-all;
   white-space: nowrap;
-  font-size: 14px;
+  font-size: 12px;
   padding-left: 5px;
   line-height: 28px;
 }
@@ -469,7 +470,7 @@ body {
   color: #cccccc;
   box-sizing: border-box;
   padding: 0 0 0 5px;
-  font-size: 14px;
+  font-size: 12px;
   -webkit-appearance: none;
   appearance: none;
 }
