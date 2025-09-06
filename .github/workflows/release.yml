@@ -108,7 +108,6 @@ jobs:
         run: |
           npx --yes @napi-rs/cli@2.18.4 build --platform --release --target x86_64-apple-darwin
           npx --yes @napi-rs/cli@2.18.4 build --platform --release --target aarch64-apple-darwin
-          npx --yes @napi-rs/cli@2.18.4 universal
 
       - name: Build (vite)
         env:
