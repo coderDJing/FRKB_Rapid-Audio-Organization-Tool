@@ -18,20 +18,11 @@ import cloudSyncSyncDialog from './components/cloudSyncSyncDialog.vue'
 import FileOpInterruptedDialog from './components/fileOpInterruptedDialog.vue'
 
 const runtime = useRuntimeStore()
-
-const detectPlatform = () => {
-  const userAgent = navigator.userAgent
-  if (/Mac/i.test(userAgent)) {
-    return 'Mac'
-  } else if (/Windows/i.test(userAgent)) {
-    return 'Windows'
-  } else if (/Linux/i.test(userAgent)) {
-    return 'Linux'
-  } else {
-    return 'Unknown'
-  }
+// 使用全局设置中的平台标记进行映射，避免依赖 userAgent
+{
+  const p = runtime.setting?.platform
+  runtime.platform = p === 'darwin' ? 'Mac' : p === 'win32' ? 'Windows' : 'Unknown'
 }
-runtime.platform = detectPlatform()
 window.electron.ipcRenderer.on('layoutConfigReaded', (event, layoutConfig) => {
   runtime.layoutConfig = layoutConfig
 })
