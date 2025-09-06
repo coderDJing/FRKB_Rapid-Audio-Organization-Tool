@@ -55,18 +55,32 @@ const createWindow = () => {
     updateWindow?.show()
     autoUpdater.autoDownload = false
     const isPrerelease = app.getVersion().includes('-')
-    if (!isPrerelease) {
-      autoUpdater.checkForUpdates()
-    }
+    try {
+      ;(autoUpdater as any).allowPrerelease = isPrerelease
+    } catch {}
+    autoUpdater.checkForUpdates()
 
     autoUpdater.on('update-available', (info) => {
-      if (app.getVersion().includes('-')) return
+      const currentIsPrerelease = app.getVersion().includes('-')
+      const remoteIsPrerelease = !!(
+        info &&
+        typeof (info as any).version === 'string' &&
+        (info as any).version.includes('-')
+      )
+      if (currentIsPrerelease !== remoteIsPrerelease) return
       updateWindow?.webContents.send('newVersion', info)
     })
 
     autoUpdater.on('update-not-available', (info) => {
-      if (app.getVersion().includes('-')) return
-      updateWindow?.webContents.send('isLatestVersion', info.version)
+      // 当同轨道无更新，才提示“已是最新版本”
+      const currentIsPrerelease = app.getVersion().includes('-')
+      const remoteVersion = (info as any)?.version as string | undefined
+      const remoteIsPrerelease = !!(remoteVersion && remoteVersion.includes('-'))
+      if (remoteVersion && currentIsPrerelease === remoteIsPrerelease) {
+        updateWindow?.webContents.send('isLatestVersion', info.version)
+      } else if (!remoteVersion) {
+        updateWindow?.webContents.send('isLatestVersion', app.getVersion())
+      }
     })
 
     autoUpdater.on('error', (err) => {
