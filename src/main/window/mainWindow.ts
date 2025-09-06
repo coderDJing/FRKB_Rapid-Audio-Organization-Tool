@@ -680,7 +680,7 @@ function createWindow() {
           const recycleBinTargetDir = path.join(
             store.databaseDir,
             'library',
-            '回收站',
+            getCoreFsDirName('RecycleBin'),
             item.recycleBinDir.dirName
           )
 
