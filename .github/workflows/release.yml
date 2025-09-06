@@ -61,10 +61,8 @@ jobs:
           CLOUD_SYNC_API_SECRET_KEY: ${{ secrets.CLOUD_SYNC_API_SECRET_KEY }}
         run: pnpm build
 
-      - name: Package & Publish (electron-builder)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder ${{ matrix.eb_args }} --publish always
+      - name: Package (electron-builder, no publish)
+        run: npx electron-builder ${{ matrix.eb_args }} --publish never
 
       - name: Upload dist artifacts
         uses: actions/upload-artifact@v4
@@ -73,4 +71,25 @@ jobs:
           name: ${{ runner.os }}-${{ matrix.arch }}-artifacts
           path: dist/**
 
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
 
+      - name: Show downloaded files
+        run: ls -R artifacts | cat
+
+      - name: Create/Update GitHub Release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/*
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
