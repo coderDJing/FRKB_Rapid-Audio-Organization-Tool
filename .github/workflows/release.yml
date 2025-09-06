@@ -124,7 +124,7 @@ jobs:
         with:
           name: mac-artifacts
           path: |
-            dist/FRKB-*-mac-universal.dmg
+            dist/*.dmg
             dist/latest-mac.yml
             dist/FRKB-*-mac-universal.zip
             dist/FRKB-*-mac-universal.zip.blockmap
@@ -149,7 +149,7 @@ jobs:
         with:
           files: |
             artifacts/FRKB-*-win32-x64.exe
-            artifacts/FRKB-*-mac-universal.dmg
+            artifacts/*.dmg
             artifacts/latest.yml
             artifacts/latest-mac.yml
             artifacts/*.zip
