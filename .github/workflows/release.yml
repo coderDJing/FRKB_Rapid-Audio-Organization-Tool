@@ -116,7 +116,7 @@ jobs:
         run: pnpm build
 
       - name: Package macOS (universal, no publish)
-        run: npx electron-builder --mac universal --publish never
+        run: npx electron-builder --mac --universal --publish never
 
       - name: Upload dist artifacts (macOS)
         uses: actions/upload-artifact@v4
