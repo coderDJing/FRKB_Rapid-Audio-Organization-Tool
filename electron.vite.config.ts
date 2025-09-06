@@ -3,10 +3,32 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin()],
+    define: {
+      'process.env.CLOUD_SYNC_BASE_URL_DEV': JSON.stringify(
+        process.env.CLOUD_SYNC_BASE_URL_DEV || ''
+      ),
+      'process.env.CLOUD_SYNC_BASE_URL_PROD': JSON.stringify(
+        process.env.CLOUD_SYNC_BASE_URL_PROD || ''
+      ),
+      'process.env.CLOUD_SYNC_API_SECRET_KEY': JSON.stringify(
+        process.env.CLOUD_SYNC_API_SECRET_KEY || ''
+      )
+    }
   },
   preload: {
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin()],
+    define: {
+      'process.env.CLOUD_SYNC_BASE_URL_DEV': JSON.stringify(
+        process.env.CLOUD_SYNC_BASE_URL_DEV || ''
+      ),
+      'process.env.CLOUD_SYNC_BASE_URL_PROD': JSON.stringify(
+        process.env.CLOUD_SYNC_BASE_URL_PROD || ''
+      ),
+      'process.env.CLOUD_SYNC_API_SECRET_KEY': JSON.stringify(
+        process.env.CLOUD_SYNC_API_SECRET_KEY || ''
+      )
+    }
   },
   renderer: {
     css: {
