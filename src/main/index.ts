@@ -426,20 +426,34 @@ app.whenReady().then(async () => {
   const autoUpdater = electronUpdater.autoUpdater
   autoUpdater.autoDownload = false
   const isPrerelease = app.getVersion().includes('-')
-  if (!isPrerelease) {
-    if (store.settingConfig.nextCheckUpdateTime) {
-      if (new Date() > new Date(store.settingConfig.nextCheckUpdateTime)) {
-        autoUpdater.checkForUpdates()
-      }
-    } else {
+  // 预发布轨道仅更新到预发布；稳定轨道仅更新到稳定
+  try {
+    ;(autoUpdater as any).allowPrerelease = isPrerelease
+  } catch {}
+
+  if (store.settingConfig.nextCheckUpdateTime) {
+    if (new Date() > new Date(store.settingConfig.nextCheckUpdateTime)) {
       autoUpdater.checkForUpdates()
     }
-    autoUpdater.on('update-available', (info) => {
-      if (updateWindow.instance === null) {
-        foundNewVersionWindow.createWindow()
-      }
-    })
+  } else {
+    autoUpdater.checkForUpdates()
   }
+
+  autoUpdater.on('update-available', (info) => {
+    const currentIsPrerelease = app.getVersion().includes('-')
+    const remoteIsPrerelease = !!(
+      info &&
+      typeof (info as any).version === 'string' &&
+      (info as any).version.includes('-')
+    )
+    // 只允许同轨道更新：预发布→预发布；稳定→稳定
+    if (currentIsPrerelease !== remoteIsPrerelease) {
+      return
+    }
+    if (updateWindow.instance === null) {
+      foundNewVersionWindow.createWindow()
+    }
+  })
 
   app.on('activate', async function () {
     // On macOS it's common to re-create a window in the app when the
