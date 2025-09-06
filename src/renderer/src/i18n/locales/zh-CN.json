@@ -336,7 +336,8 @@
   },
   "about": {
     "author": "作者 Coder '程序猿/DJ'",
-    "contact": "对FRKB有任何建议或Booking我演出: {email}"
+    "contact": "对FRKB有任何建议或Booking我演出: {email}",
+    "prereleaseHint": "当前为预发布版本，可能不稳定。请谨慎使用或下载正式版。"
   },
   "errorReport": {
     "enable": "启用错误日志上报",
