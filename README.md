@@ -33,7 +33,7 @@
 As a DJ, I frequently need to organize large numbers of music files. However, existing audio file management software often falls short. Many require excessive mouse operations, leading to shoulder and neck pain. Others have poorly designed shortcuts that do not conform to ergonomic principles. Additionally, some only manage file references, leaving the actual file manager cluttered and disorganized. Furthermore, I often end up downloading duplicate songs, which wastes time during the selection process. Therefore, I decided to develop a more user-friendly software solution to address these issues.The ultimate goal of this project is to incorporate AI models that will learn users' classification behavior patterns and automatically categorize songs into libraries, which will save me God knows how much time.
 
 ### Introduction
-**FRKB** is a cross-platform desktop application designed for audio professionals (such as DJs). The current beta version is compatible with Windows and will be adapted for macOS once stable. It is still under active development.
+**FRKB** is a cross-platform desktop audio screening tool designed for audio professionals such as DJs. It supports both Windows and macOS platforms, with the official version 1.0.0 already released and ongoing active updates.
 
 ### System Requirements
 
