@@ -335,7 +335,8 @@
   },
   "about": {
     "author": "Author: Coder 'Programmer/DJ'",
-    "contact": "Feedback or DJ booking: {email}"
+    "contact": "Feedback or DJ booking: {email}",
+    "prereleaseHint": "This is a pre-release build. May be unstable. Please use with caution or download the stable version."
   },
   "errorReport": {
     "enable": "Enable error log reporting",
