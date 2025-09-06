@@ -4,6 +4,7 @@ import logo from '@renderer/assets/logo.png?asset'
 import { ref } from 'vue'
 import { t } from '@renderer/utils/translate'
 import { UpdateInfo } from 'electron-updater'
+import { useRuntimeStore } from '@renderer/stores/runtime'
 const fillColor = ref('#9d9d9d')
 
 const toggleMinimize = () => {
@@ -78,6 +79,8 @@ function convertBytesToUnits(bytesPerSecond: number) {
 window.electron.ipcRenderer.on('updateDownloaded', (event) => {
   state.value = 'isUpdateDownloaded'
 })
+
+const runtime = useRuntimeStore()
 </script>
 <template>
   <div
@@ -100,7 +103,7 @@ window.electron.ipcRenderer.on('updateDownloaded', (event) => {
         </div>
 
         <div class="canDrag" style="flex-grow: 1; height: 35px; z-index: 1"></div>
-        <div v-if="navigator.userAgent.includes('Mac') === false" style="display: flex; z-index: 1">
+        <div v-if="runtime.setting.platform !== 'darwin'" style="display: flex; z-index: 1">
           <div class="rightIcon" @click="toggleMinimize()">
             <img :src="chromeMiniimize" :draggable="false" />
           </div>
