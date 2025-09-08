@@ -49,10 +49,10 @@ As a DJ, I frequently need to organize large numbers of music files. However, ex
 - **Waveform Visualization**: Provides audio waveform display.
 - **BPM Analysis & Tap Tempo**: Displays BPM information. Left-click the BPM to tap tempo (calculated to 1 decimal place). When the BPM is manually tapped, it is highlighted in `#0078d4`. Right-click to restore the system-analyzed BPM. Tooltip: "Tap beat (LMB) / Reset (RMB)".
 - **Recycle Bin**: Features a recycle bin, ensuring that accidentally deleted files aren't permanently lost, a common issue with other software.
-
 - **Cloud Sync (fingerprints)**: Bidirectional sync of local track fingerprints (SHA256) with the cloud, including diff analysis, paginated pulls, and batched uploads, with quota and rate limiting (up to 10 sync starts within 5 minutes). Entry: system tray → Cloud Sync.
 - **Internationalization (i18n)**: Built-in Chinese (`zh-CN`) and English (`en-US`) language packs.
 - **Save Cover Image**: Right-click the enlarged cover to save the image locally.
+- **Song Filtering**: Supports filtering the song list by multiple dimensions such as title, artist, album, duration, and format.
 - **Format Support**: MP3/WAV/FLAC/AIF/AIFF
 
 ### Contributions
