@@ -6,7 +6,7 @@ import pause from '@renderer/assets/pause.png?asset'
 import fastForward from '@renderer/assets/fastForward.png?asset'
 import nextSong from '@renderer/assets/nextSong.png?asset'
 import more from '@renderer/assets/more.png?asset'
-import { ref, onUnmounted, watch, useTemplateRef } from 'vue'
+import { ref, onUnmounted, watch, useTemplateRef, onMounted, computed } from 'vue'
 import { v4 as uuidV4 } from 'uuid'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
@@ -128,6 +128,138 @@ const exportTrack = () => {
 const showInFileExplorer = () => {
   window.electron.ipcRenderer.send('show-item-in-folder', runtime.playingData.playingSong?.filePath)
 }
+
+// ---------------- 系统媒体会话（Media Session API）集成 ----------------
+// 目标：启用系统的 上一首/下一首/播放/暂停 按钮，并同步元数据和播放状态
+let artworkUrl: string = ''
+
+const hasPrev = computed(() => {
+  const list = runtime.playingData.playingSongListData
+  const cur = runtime.playingData.playingSong?.filePath
+  if (!cur) return false
+  const idx = list.findIndex((i) => i.filePath === cur)
+  return idx > 0
+})
+
+const hasNext = computed(() => {
+  const list = runtime.playingData.playingSongListData
+  const cur = runtime.playingData.playingSong?.filePath
+  if (!cur) return false
+  const idx = list.findIndex((i) => i.filePath === cur)
+  return idx !== -1 && idx < list.length - 1
+})
+
+const revokeArtworkUrl = () => {
+  if (artworkUrl) {
+    try {
+      URL.revokeObjectURL(artworkUrl)
+    } catch (_) {
+      /* ignore */
+    }
+    artworkUrl = ''
+  }
+}
+
+const updateMediaSessionMetadata = () => {
+  // 有些平台不支持 Media Session
+  // @ts-ignore
+  if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return
+  const song = runtime.playingData.playingSong
+  // @ts-ignore
+  const mediaSession = navigator.mediaSession as MediaSession
+
+  revokeArtworkUrl()
+
+  let artwork: Array<{ src: string; sizes?: string; type?: string }> | undefined
+  try {
+    if (song?.cover?.data && song?.cover?.format) {
+      const blob = new Blob([Uint8Array.from(song.cover.data)], { type: song.cover.format })
+      artworkUrl = URL.createObjectURL(blob)
+      artwork = [
+        {
+          src: artworkUrl,
+          sizes: '512x512',
+          type: song.cover.format
+        }
+      ]
+    }
+  } catch (_) {
+    // 忽略封面生成异常
+  }
+
+  // @ts-ignore
+  mediaSession.metadata = new window.MediaMetadata({
+    title: song?.title || t('tracks.unknownTrack'),
+    artist: song?.artist || t('tracks.unknownArtist'),
+    album: song?.album || '',
+    artwork
+  })
+}
+
+const updatePlaybackState = () => {
+  // @ts-ignore
+  if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return
+  // @ts-ignore
+  navigator.mediaSession.playbackState = playing.value ? 'playing' : 'paused'
+}
+
+const updateActionHandlers = () => {
+  // @ts-ignore
+  if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return
+  // @ts-ignore
+  const ms = navigator.mediaSession as MediaSession
+
+  ms.setActionHandler('play', () => {
+    if (!playing.value) emits('play')
+  })
+  ms.setActionHandler('pause', () => {
+    if (playing.value) emits('pause')
+  })
+
+  ms.setActionHandler('previoustrack', hasPrev.value ? () => emits('previousSong') : null)
+  ms.setActionHandler('nexttrack', hasNext.value ? () => emits('nextSong') : null)
+}
+
+onMounted(() => {
+  updateMediaSessionMetadata()
+  updatePlaybackState()
+  updateActionHandlers()
+})
+
+watch(
+  () => runtime.playingData.playingSong,
+  () => {
+    updateMediaSessionMetadata()
+    updateActionHandlers()
+  }
+)
+
+watch([hasPrev, hasNext], () => {
+  updateActionHandlers()
+})
+
+watch(playing, () => {
+  updatePlaybackState()
+})
+
+onUnmounted(() => {
+  // @ts-ignore
+  if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+    // @ts-ignore
+    const ms = navigator.mediaSession as MediaSession
+    ms.setActionHandler('play', null)
+    ms.setActionHandler('pause', null)
+    ms.setActionHandler('previoustrack', null)
+    ms.setActionHandler('nexttrack', null)
+    // 清理元数据可选
+    // @ts-ignore
+    try {
+      navigator.mediaSession.metadata = null as any
+    } catch (_) {}
+  }
+  revokeArtworkUrl()
+})
+// ---------------- End 媒体会话集成 ----------------
 </script>
 <template>
   <div
