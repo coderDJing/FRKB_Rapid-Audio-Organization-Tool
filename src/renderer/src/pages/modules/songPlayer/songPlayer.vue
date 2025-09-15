@@ -331,6 +331,14 @@ onMounted(() => {
   }
   wavesurferInstance.value = createWaveSurferInstance(waveform.value)
 
+  // 应用持久化音量（默认 0.8）
+  try {
+    const s = localStorage.getItem('frkb_volume')
+    let v = s !== null ? parseFloat(s) : NaN
+    if (!(v >= 0 && v <= 1)) v = 0.8
+    wavesurferInstance.value.setVolume?.(v)
+  } catch (_) {}
+
   attachEventListeners(wavesurferInstance.value)
 
   window.electron.ipcRenderer.on(
@@ -344,7 +352,11 @@ onMounted(() => {
       // 验证此时UI显示的歌曲与返回的文件路径是否匹配
       if (filePath === runtime.playingData.playingSong?.filePath) {
         const name = (filePath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
-        handleLoadBlob(new Blob([audioData]), filePath, requestId || currentLoadRequestId.value)
+        const ab = audioData.buffer.slice(
+          audioData.byteOffset,
+          audioData.byteOffset + audioData.byteLength
+        ) as ArrayBuffer
+        handleLoadBlob(new Blob([ab]), filePath, requestId || currentLoadRequestId.value)
       } else {
         const name = (filePath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
         const cur = runtime.playingData.playingSong?.filePath || 'N/A'
@@ -363,7 +375,11 @@ onMounted(() => {
         return
       }
 
-      const blob = new Blob([audioData])
+      const ab = audioData.buffer.slice(
+        audioData.byteOffset,
+        audioData.byteOffset + audioData.byteLength
+      ) as ArrayBuffer
+      const blob = new Blob([ab])
       preloadedBlob.value = blob
 
       try {
@@ -979,6 +995,13 @@ watch(
         @moveToListLibrary="(song) => playerActions.moveToListLibrary(song)"
         @moveToLikeLibrary="(song) => playerActions.moveToLikeLibrary(song)"
         @exportTrack="playerActions.exportTrack"
+        @setVolume="
+          (v) => {
+            try {
+              wavesurferInstance?.setVolume?.(v)
+            } catch (_) {}
+          }
+        "
       />
     </div>
 
