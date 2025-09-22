@@ -4,7 +4,7 @@ import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
 import type { ComponentPublicInstance } from 'vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 
-defineProps({
+const props = defineProps({
   songs: {
     type: Array as PropType<ISongInfo[]>,
     required: true
@@ -36,13 +36,14 @@ defineProps({
   }
 })
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'song-click', event: MouseEvent, song: ISongInfo): void
   (e: 'song-contextmenu', event: MouseEvent, song: ISongInfo): void
   (e: 'song-dblclick', song: ISongInfo): void
   // 新增：拖拽相关的事件
   (e: 'song-dragstart', event: DragEvent, song: ISongInfo): void
   (e: 'song-dragend', event: DragEvent): void
+  (e: 'rows-rendered', count: number): void
 }>()
 
 // 记录每个单元格 DOM，用于气泡锚定
@@ -59,19 +60,71 @@ const setCellRef = (key: string, el: Element | ComponentPublicInstance | null) =
   }
   cellRefMap[key] = dom
 }
+
+// 渲染完成观测：当 songs 变化后，等待一帧统计行数并上报
+import { nextTick, watch, ref as vRef, onMounted } from 'vue'
+const rowsRoot = vRef<HTMLElement | null>(null)
+const renderCountForBubbles = vRef(0)
+onMounted(() => {
+  setTimeout(() => (renderCountForBubbles.value = 1), 1000)
+})
+watch(
+  () => props.songs.map((s) => s.filePath).join('|'),
+  async () => {
+    await nextTick()
+    requestAnimationFrame(() => {
+      try {
+        const host = rowsRoot.value
+        const count = host ? host.querySelectorAll('.song-row-item').length : 0
+        emit('rows-rendered', count)
+      } catch {
+        emit('rows-rendered', 0)
+      }
+    })
+  }
+)
+
+// 事件委托，减少每行 addEventListener 带来的开销
+const onRowsClick = (e: MouseEvent) => {
+  e.stopPropagation()
+  const row = (e.target as HTMLElement)?.closest('.song-row-item') as HTMLElement | null
+  if (!row) return
+  const fp = row.dataset.filepath
+  const song = props.songs.find((s) => s.filePath === fp)
+  if (song) emit('song-click', e, song)
+}
+const onRowsContextmenu = (e: MouseEvent) => {
+  e.stopPropagation()
+  const row = (e.target as HTMLElement)?.closest('.song-row-item') as HTMLElement | null
+  if (!row) return
+  const fp = row.dataset.filepath
+  const song = props.songs.find((s) => s.filePath === fp)
+  if (song) emit('song-contextmenu', e, song)
+}
+const onRowsDblclick = (e: MouseEvent) => {
+  e.stopPropagation()
+  const row = (e.target as HTMLElement)?.closest('.song-row-item') as HTMLElement | null
+  if (!row) return
+  const fp = row.dataset.filepath
+  const song = props.songs.find((s) => s.filePath === fp)
+  if (song) emit('song-dblclick', song)
+}
 </script>
 
 <template>
-  <div>
+  <div
+    ref="rowsRoot"
+    @click="onRowsClick"
+    @contextmenu.prevent="onRowsContextmenu"
+    @dblclick="onRowsDblclick"
+  >
     <!-- Outer wrapper for all song rows -->
     <div
       v-for="(song, index) in songs"
       :key="song.filePath"
       class="song-row-item unselectable"
+      :data-filepath="song.filePath"
       :draggable="true"
-      @click.stop="$emit('song-click', $event, song)"
-      @contextmenu.stop="$emit('song-contextmenu', $event, song)"
-      @dblclick.stop="$emit('song-dblclick', song)"
       @dragstart.stop="$emit('song-dragstart', $event, song)"
       @dragend.stop="$emit('song-dragend', $event)"
     >
@@ -86,19 +139,7 @@ const setCellRef = (key: string, el: Element | ComponentPublicInstance | null) =
         :style="{ 'min-width': totalWidth + 'px' }"
       >
         <template v-for="col in visibleColumns" :key="col.key">
-          <div
-            v-if="col.key === 'coverUrl'"
-            class="cell-cover"
-            :style="{ width: col.width + 'px' }"
-          >
-            <img v-if="song.coverUrl" :src="song.coverUrl" class="unselectable" draggable="false" />
-            <div v-else class="cover-placeholder"></div>
-          </div>
-          <div
-            v-else-if="col.key === 'index'"
-            class="cell-title"
-            :style="{ width: col.width + 'px' }"
-          >
+          <div v-if="col.key === 'index'" class="cell-title" :style="{ width: col.width + 'px' }">
             {{ index + 1 }}
           </div>
           <div
@@ -109,6 +150,7 @@ const setCellRef = (key: string, el: Element | ComponentPublicInstance | null) =
           >
             {{ song[col.key as keyof ISongInfo] }}
             <bubbleBox
+              v-if="renderCountForBubbles"
               :dom="cellRefMap[getCellKey(song, col.key)] || undefined"
               :title="String((song as any)[col.key] ?? '')"
               :only-when-overflow="true"
@@ -144,39 +186,18 @@ const setCellRef = (key: string, el: Element | ComponentPublicInstance | null) =
   }
 }
 
-.cell-cover,
 .cell-title {
-  height: 100%; // Fill the row height
+  height: 100%;
   box-sizing: border-box;
   border-right: 1px solid #2b2b2b;
   border-bottom: 1px solid #2b2b2b;
-  display: flex; // For vertical centering in title cells
-  align-items: center; // For vertical centering in title cells
+  display: flex;
+  align-items: center;
   flex-shrink: 0;
-}
-
-.cell-cover {
-  overflow: hidden; // Ensure cover image respects bounds
-  padding-left: 0; // Covers usually don't have left padding
-
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block; // Remove potential space below image
-  }
-  .cover-placeholder {
-    width: 100%;
-    height: 100%;
-    // background-color: #2a2a2a; // Optional: placeholder background
-  }
-}
-
-.cell-title {
   padding-left: 10px;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis; // Added for better text handling
+  text-overflow: ellipsis;
 }
 
 .unselectable {

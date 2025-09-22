@@ -34,7 +34,6 @@ interface ISongInfo {
   label: string | undefined
   bitrate: number | undefined
   container: string | undefined
-  coverUrl?: string
 }
 
 interface ILayoutConfig {
