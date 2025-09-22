@@ -93,6 +93,30 @@ const clearReadyPreloadState = () => {
   }
 }
 
+const coverBlobUrl = ref('')
+const setCoverByIPC = async (filePath: string) => {
+  try {
+    const cover = await window.electron.ipcRenderer.invoke('getSongCover', filePath)
+    if (cover && cover.data && filePath === runtime.playingData.playingSong?.filePath) {
+      if (coverBlobUrl.value) URL.revokeObjectURL(coverBlobUrl.value)
+      const blob = new Blob([new Uint8Array(cover.data).buffer], {
+        type: cover.format || 'image/jpeg'
+      })
+      coverBlobUrl.value = URL.createObjectURL(blob)
+    } else {
+      if (coverBlobUrl.value) {
+        URL.revokeObjectURL(coverBlobUrl.value)
+        coverBlobUrl.value = ''
+      }
+    }
+  } catch (_) {
+    if (coverBlobUrl.value) {
+      URL.revokeObjectURL(coverBlobUrl.value)
+      coverBlobUrl.value = ''
+    }
+  }
+}
+
 const handleSongLoadError = async (filePath: string | null, isPreload: boolean) => {
   console.error(`Error loading ${isPreload ? 'preload' : 'main'} song: ${filePath}`)
 
@@ -481,6 +505,8 @@ watch(
       bpm.value = ''
     } else if (newSong?.filePath !== oldSong?.filePath) {
       const newPath = newSong.filePath
+      // 播放时异步获取封面
+      setCoverByIPC(newPath)
       if (isPreloadReady.value && newPath === preloadedSongFilePath.value && preloadedBlob.value) {
         // 命中预加载，使用预加载的数据和BPM
         const blobToLoad = preloadedBlob.value
@@ -515,10 +541,10 @@ onUnmounted(() => {
   window.electron.ipcRenderer.removeAllListeners('readNextSongFileError')
   window.electron.ipcRenderer.removeAllListeners('readSongFileError')
   window.removeEventListener('resize', updateParentWaveformWidth)
+  if (coverBlobUrl.value) URL.revokeObjectURL(coverBlobUrl.value)
 })
 
 const songInfoShow = ref(false)
-const coverBlobUrl = ref('')
 const audioContext = new AudioContext()
 const bpm = ref<number | string>('')
 
@@ -578,20 +604,9 @@ const handleLoadBlob = async (
     return
   }
 
-  if (runtime.playingData.playingSong.cover) {
-    if (coverBlobUrl.value) {
-      URL.revokeObjectURL(coverBlobUrl.value)
-    }
-    let coverBlob = new Blob([Uint8Array.from(runtime.playingData.playingSong.cover.data)], {
-      type: runtime.playingData.playingSong.cover.format
-    })
-    coverBlobUrl.value = URL.createObjectURL(coverBlob)
-  } else {
-    if (coverBlobUrl.value) {
-      URL.revokeObjectURL(coverBlobUrl.value)
-    }
-    coverBlobUrl.value = ''
-  }
+  // 播放时异步获取封面（覆盖之前可能的 URL）
+  setCoverByIPC(filePath)
+
   waveformShow.value = true
   let bpmValueAssigned = false
 
@@ -785,7 +800,7 @@ const handleSongInfoMouseLeave = () => {
 // 右键菜单相关
 const showCoverContextMenu = async (event: MouseEvent) => {
   // 只在有封面时显示菜单
-  if (!runtime.playingData.playingSong?.cover || !coverBlobUrl.value) {
+  if (!coverBlobUrl.value) {
     return
   }
 
@@ -796,12 +811,12 @@ const showCoverContextMenu = async (event: MouseEvent) => {
 
     // 保存当前封面的快照，避免菜单显示期间歌曲切换导致下载错误的封面
     const currentSong = runtime.playingData.playingSong
-    if (currentSong?.cover && coverBlobUrl.value) {
+    if (currentSong && coverBlobUrl.value) {
       contextMenuCoverSnapshot.value = {
         blobUrl: coverBlobUrl.value,
         songTitle: currentSong.title || t('tracks.unknownTrack'),
         artist: currentSong.artist || t('tracks.unknownArtist'),
-        format: currentSong.cover.format || 'image/jpeg'
+        format: 'image/jpeg'
       }
     }
 

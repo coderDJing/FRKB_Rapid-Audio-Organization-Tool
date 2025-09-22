@@ -252,11 +252,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
 
         // 清空歌曲列表界面数据
         runtime.songsArea.selectedSongFilePath.length = 0
-        runtime.songsArea.songInfoArr.forEach((item) => {
-          if (item.coverUrl) {
-            URL.revokeObjectURL(item.coverUrl)
-          }
-        })
+        // 列表不再使用封面 URL
         runtime.songsArea.songInfoArr = []
       }
     } else if (result.menuName === 'tracks.importTracks') {
@@ -325,11 +321,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
         }
         if (runtime.songsArea.songListUUID === props.uuid) {
           runtime.songsArea.selectedSongFilePath.length = 0
-          runtime.songsArea.songInfoArr.forEach((item) => {
-            if (item.coverUrl) {
-              URL.revokeObjectURL(item.coverUrl)
-            }
-          })
+          // 列表不再使用封面 URL
           runtime.songsArea.songInfoArr = []
         }
         await libraryUtils.diffLibraryTreeExecuteFileOperation()
@@ -341,6 +333,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
 const dirChildShow = ref(false)
 const dirChildRendered = ref(false)
 const dirHandleClick = async () => {
+  const t0 = performance.now()
   runtime.activeMenuUUID = ''
   let songListPath = libraryUtils.findDirPathByUuid(props.uuid)
   let isSongListPathExist = await window.electron.ipcRenderer.invoke('dirPathExists', songListPath)
@@ -356,12 +349,30 @@ const dirHandleClick = async () => {
   if (dirData.type == 'songList') {
     if (runtime.songsArea.songListUUID === props.uuid) {
       runtime.songsArea.songListUUID = ''
+      window.electron.ipcRenderer.send('perfLog', {
+        scope: 'clickPlaylist',
+        action: 'collapseSamePlaylist',
+        uuid: props.uuid,
+        ms: Math.round(performance.now() - t0)
+      })
       return
     }
     runtime.songsArea.songListUUID = props.uuid
+    window.electron.ipcRenderer.send('perfLog', {
+      scope: 'clickPlaylist',
+      action: 'openPlaylist',
+      uuid: props.uuid,
+      ms: Math.round(performance.now() - t0)
+    })
   } else {
     dirChildRendered.value = true
     dirChildShow.value = !dirChildShow.value
+    window.electron.ipcRenderer.send('perfLog', {
+      scope: 'clickFolder',
+      uuid: props.uuid,
+      show: dirChildShow.value,
+      ms: Math.round(performance.now() - t0)
+    })
   }
 }
 

@@ -65,9 +65,6 @@ let initWidth = 0
 const isResizeClick = ref(false) // 用于防止调整大小时触发单击
 
 const startResize = (e: MouseEvent, col: ISongsAreaColumn) => {
-  if (col.key === 'coverUrl') {
-    return
-  }
   e.stopPropagation()
   e.preventDefault()
   isResizing = true
@@ -282,10 +279,7 @@ const handleContextMenu = (event: MouseEvent) => {
       class="unselectable header-column"
       v-for="col of draggableVisibleColumns"
       :key="col.key"
-      :class="[
-        'lightBackground',
-        { coverDiv: col.key == 'coverUrl', titleDiv: col.key != 'coverUrl' }
-      ]"
+      :class="['lightBackground', 'titleDiv']"
       :style="'width:' + col.width + 'px'"
       style="
         padding-left: 10px;
@@ -318,7 +312,7 @@ const handleContextMenu = (event: MouseEvent) => {
       <!-- 筛选图标：靠右对齐、垂直居中，固定 20×20，不触发排序 -->
       <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px">
         <img
-          v-if="col.key !== 'coverUrl' && col.key !== 'index' && col.filterType"
+          v-if="col.key !== 'index' && col.filterType"
           :src="col.filterActive ? filterIconBlue : filterIcon"
           style="width: 20px; height: 20px; margin-right: 12px; cursor: pointer"
           :title="getFilterTooltip(col)"
@@ -348,7 +342,6 @@ const handleContextMenu = (event: MouseEvent) => {
         />
       </Teleport>
       <div
-        v-if="col.key !== 'coverUrl'"
         class="resize-handle"
         style="width: 5px; cursor: e-resize; flex-shrink: 0; height: 100%"
         @mousedown.stop="startResize($event, col)"

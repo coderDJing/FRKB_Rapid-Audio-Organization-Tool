@@ -3,7 +3,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { ISongInfo, IMenu } from '../../../../../../types/globals' // Corrected path
 import { t } from '@renderer/utils/translate'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
-import rightClickMenu from '@renderer/components/rightClickMenu' // Assuming it\'s a default export or easily callable
+import rightClickMenu from '@renderer/components/rightClickMenu' // Assuming it's a default export or easily callable
 import confirm from '@renderer/components/confirmDialog'
 import exportDialog from '@renderer/components/exportDialog'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
@@ -89,12 +89,7 @@ export function useSongItemContextMenu(
           }
         }
 
-        // 3. 释放封面URL (基于快照中识别的待删除歌曲对象)
-        for (const sInfo of songsToRemoveInfoBasedOnSnapshot) {
-          if (sInfo.coverUrl) {
-            URL.revokeObjectURL(sInfo.coverUrl)
-          }
-        }
+        // 列表不再使用封面 URL，无需回收
 
         // 4. IPC 调用执行文件删除
         if (isInRecycleBin) {
@@ -137,9 +132,7 @@ export function useSongItemContextMenu(
             const songsActuallyBeingDeletedBasedOnSnapshot = runtime.songsArea.songInfoArr.filter(
               (item) => currentSelectedPaths.includes(item.filePath)
             )
-            for (const item of songsActuallyBeingDeletedBasedOnSnapshot) {
-              if (item.coverUrl) URL.revokeObjectURL(item.coverUrl)
-            }
+            // 列表不再使用封面 URL
 
             if (isInRecycleBin) {
               await window.electron.ipcRenderer.invoke('permanentlyDelSongs', [
@@ -183,9 +176,6 @@ export function useSongItemContextMenu(
             JSON.parse(JSON.stringify(songsToExportObjects))
           )
           if (deleteSongsAfterExport && songsToExportFilePaths.length > 0) {
-            for (const songObj of songsToExportObjects) {
-              if (songObj.coverUrl) URL.revokeObjectURL(songObj.coverUrl)
-            }
             runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
               (item) => !songsToExportFilePaths.includes(item.filePath)
             )
@@ -220,6 +210,6 @@ export function useSongItemContextMenu(
 
   return {
     showAndHandleSongContextMenu
-    // menuArr is not returned as it\'s internal to the composable now
+    // menuArr is not returned as it's internal to the composable now
   }
 }

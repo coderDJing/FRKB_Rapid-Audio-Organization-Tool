@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { watch, ref, nextTick, computed, onMounted, onUnmounted, useTemplateRef } from 'vue'
+import {
+  watch,
+  ref,
+  shallowRef,
+  nextTick,
+  computed,
+  onMounted,
+  onUnmounted,
+  useTemplateRef,
+  markRaw
+} from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import hotkeys from 'hotkeys-js'
@@ -18,7 +28,6 @@ import { MIN_WIDTH_BY_KEY } from './minWidth'
 
 // Composable import
 import { useSongItemContextMenu } from '@renderer/pages/modules/songsArea/composables/useSongItemContextMenu'
-import { useCoverLoader } from '@renderer/pages/modules/songsArea/composables/useCoverLoader'
 import { useSelectAndMoveSongs } from '@renderer/pages/modules/songsArea/composables/useSelectAndMoveSongs'
 import { useDragSongs } from '@renderer/pages/modules/songsArea/composables/useDragSongs'
 import emitter from '@renderer/utils/mitt'
@@ -34,11 +43,17 @@ type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsCompon
 
 const runtime = useRuntimeStore()
 const songsAreaRef = useTemplateRef<OverlayScrollbarsComponentRef>('songsAreaRef')
-const originalSongInfoArr = ref<ISongInfo[]>([])
+// 使用浅响应+markRaw，避免为上千行数据创建深层 Proxy，降低 flushJobs 峰值
+const originalSongInfoArr = shallowRef<ISongInfo[]>([])
+
+// 渐进式渲染：限制首屏渲染数量，逐帧扩容，避免一次性挂载上千行
+const renderCount = ref(0)
+const visibleSongs = computed(() =>
+  runtime.songsArea.songInfoArr.slice(0, Math.max(0, renderCount.value))
+)
 
 // Initialize composables
 const { showAndHandleSongContextMenu } = useSongItemContextMenu(songsAreaRef)
-const { coversLoadCompleted, startNewCoverLoadSession, loadCoversInBatches } = useCoverLoader()
 const {
   isDialogVisible: isSelectSongListDialogVisible,
   targetLibraryName: selectSongListDialogTargetLibraryName,
@@ -58,11 +73,7 @@ const baseColumns: Omit<ISongsAreaColumn, 'width'>[] = [
     key: 'index',
     show: true
   },
-  {
-    columnName: 'columns.cover',
-    key: 'coverUrl',
-    show: true
-  },
+
   {
     columnName: 'columns.title',
     key: 'title',
@@ -223,16 +234,12 @@ let loadingShow = ref(false)
 const isRequesting = ref<boolean>(false)
 
 const openSongList = async () => {
+  const perfStartAll = performance.now()
   const prevOriginalLen = originalSongInfoArr.value.length
   const prevRuntimeLen = runtime.songsArea.songInfoArr.length
   const sortedColBefore = columnData.value.find((c) => c.order)
 
-  runtime.songsArea.songInfoArr.forEach((item) => {
-    if (item.coverUrl) {
-      URL.revokeObjectURL(item.coverUrl)
-    }
-  })
-  const newTaskId = startNewCoverLoadSession()
+  // 列表不再显示封面
 
   isRequesting.value = true
   runtime.songsArea.songInfoArr = []
@@ -246,8 +253,14 @@ const openSongList = async () => {
     loadingShow.value = true
   }, 100)
 
+  let perfInvokeStart = 0
   try {
-    const { scanData, songListUUID } = await window.electron.ipcRenderer.invoke(
+    perfInvokeStart = performance.now()
+    const {
+      scanData,
+      songListUUID,
+      perf: mainPerf
+    } = await window.electron.ipcRenderer.invoke(
       'scanSongList',
       songListPath,
       runtime.songsArea.songListUUID
@@ -257,17 +270,94 @@ const openSongList = async () => {
       return
     }
 
-    originalSongInfoArr.value = scanData
+    const perfAfterIPC = performance.now()
+    const perfAssignStart = performance.now()
+    // 避免深代理：整表标记为非响应
+    originalSongInfoArr.value = markRaw(scanData)
 
     // 初次加载后应用筛选与排序
     applyFiltersAndSorting()
+    const perfAfterFilterSort = performance.now()
 
     if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
       runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
     }
 
-    // --- 启动新的封面加载任务，并设置完成回调 ---
-    loadCoversInBatches(runtime.songsArea.songInfoArr, newTaskId)
+    // 列表不再显示封面
+
+    // 渐进式渲染启动：先渲染少量行，随后逐帧扩容
+    const totalRows = runtime.songsArea.songInfoArr.length
+    const INITIAL_ROWS = 60
+    const CHUNK_ROWS = 120
+    renderCount.value = Math.min(totalRows, INITIAL_ROWS)
+    await nextTick()
+    ;(() => {
+      const step = () => {
+        if (renderCount.value >= totalRows) return
+        renderCount.value = Math.min(renderCount.value + CHUNK_ROWS, totalRows)
+        requestAnimationFrame(step)
+      }
+      requestAnimationFrame(step)
+    })()
+
+    // 追加：等待 DOM 刷新 + 行元素稳定，尽可能接近“渲染完成”
+    const perfBeforeDomFlush = performance.now()
+    await nextTick()
+    const perfAfterDomFlush = performance.now()
+
+    const getRowsCount = (): number => {
+      try {
+        const vp = songsAreaRef.value?.osInstance()?.elements().viewport as HTMLElement | undefined
+        if (vp) {
+          // 仅统计可视区域内且已插入的行
+          return vp.querySelectorAll('.song-row-item').length
+        }
+        return document.querySelectorAll('.song-row-item').length
+      } catch {
+        return 0
+      }
+    }
+    const waitRowsStable = async (timeoutMs = 4000) => {
+      const start = performance.now()
+      let last = -1
+      let stableFrames = 0
+      while (performance.now() - start < timeoutMs) {
+        await new Promise((r) => requestAnimationFrame(r))
+        const cur = getRowsCount()
+        if (cur === last) stableFrames++
+        else stableFrames = 0
+        last = cur
+        if (cur > 0 && stableFrames >= 2) {
+          return { rowsRendered: cur, renderWaitMs: performance.now() - start }
+        }
+      }
+      return { rowsRendered: Math.max(last, 0), renderWaitMs: performance.now() - start }
+    }
+    const renderWaitStart = performance.now()
+    const { rowsRendered, renderWaitMs } = await waitRowsStable(8000)
+    const perfAfterPaint = performance.now()
+
+    const perfEndAll = performance.now()
+    // 上报渲染端阶段耗时
+    window.electron.ipcRenderer.send('perfLog', {
+      scope: 'openSongList',
+      songListUUID: runtime.songsArea.songListUUID,
+      ms: {
+        all: Math.round(perfEndAll - perfStartAll),
+        beforeInvoke: Math.round(performance.now() - perfStartAll),
+        ipcRoundtrip: Math.round(perfAfterIPC - perfInvokeStart),
+        assignOriginal: Math.round(perfAfterFilterSort - perfAssignStart),
+        filterAndSort: Math.round(perfAfterFilterSort - perfAssignStart),
+        domFlushed: Math.round(perfAfterDomFlush - perfBeforeDomFlush),
+        paintedSinceAssign: Math.round(perfAfterPaint - perfAssignStart),
+        renderWait: Math.round(renderWaitMs)
+      },
+      render: {
+        expectedRows: runtime.songsArea.songInfoArr.length,
+        rowsRendered
+      },
+      mainPerf
+    })
   } finally {
     isRequesting.value = false
     clearTimeout(loadingSetTimeout)
@@ -282,11 +372,6 @@ watch(
     if (newUUID) {
       await openSongList()
     } else {
-      runtime.songsArea.songInfoArr.forEach((item) => {
-        if (item.coverUrl) {
-          URL.revokeObjectURL(item.coverUrl)
-        }
-      })
       runtime.songsArea.songInfoArr = []
       originalSongInfoArr.value = []
     }
@@ -339,15 +424,7 @@ const onSongsRemoved = (payload: { listUUID?: string; paths: string[] } | { path
 const onSongsMovedByDrag = (movedSongPaths: string[]) => {
   if (!Array.isArray(movedSongPaths) || movedSongPaths.length === 0) return
 
-  // 从 originalSongInfoArr 中移除歌曲并释放封面 URL
-  const songsToRemove = originalSongInfoArr.value.filter((song) =>
-    movedSongPaths.includes(song.filePath)
-  )
-  songsToRemove.forEach((song) => {
-    if (song.coverUrl) {
-      URL.revokeObjectURL(song.coverUrl)
-    }
-  })
+  // 从 originalSongInfoArr 中移除歌曲
 
   // 更新 originalSongInfoArr
   originalSongInfoArr.value = originalSongInfoArr.value.filter(
@@ -431,6 +508,19 @@ const totalColumnsWidth = computed(() => {
   }
   return columnDataArr.value.reduce((sum, col) => sum + (col.width || 0), 0)
 })
+
+// 模板内避免直接访问 window，提取为方法
+const logRowsRendered = (count: number) => {
+  try {
+    window.electron.ipcRenderer.send('perfLog', {
+      scope: 'rowsRendered',
+      songListUUID: runtime.songsArea.songListUUID,
+      rendered: count,
+      expected: runtime.songsArea.songInfoArr.length,
+      ts: Date.now()
+    })
+  } catch {}
+}
 
 const songClick = (event: MouseEvent, song: ISongInfo) => {
   runtime.activeMenuUUID = ''
@@ -558,15 +648,6 @@ const handleDeleteKey = async () => {
       window.electron.ipcRenderer.send('delSongs', selectedPaths, getCurrentTimeDirName())
     }
 
-    const songsToDeleteFromOriginal = originalSongInfoArr.value.filter((item) =>
-      selectedPaths.includes(item.filePath)
-    )
-    for (let item of songsToDeleteFromOriginal) {
-      if (item.coverUrl) {
-        URL.revokeObjectURL(item.coverUrl)
-      }
-    }
-
     originalSongInfoArr.value = originalSongInfoArr.value.filter(
       (item) => !selectedPaths.includes(item.filePath)
     )
@@ -666,7 +747,7 @@ function applyFiltersAndSorting() {
   runtime.songsArea.songInfoArr = filtered
 }
 const colMenuClick = (col: ISongsAreaColumn) => {
-  if (col.key === 'coverUrl' || col.key === 'index') {
+  if (col.key === 'index') {
     return
   }
 
@@ -687,10 +768,7 @@ const colMenuClick = (col: ISongsAreaColumn) => {
     runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
   }
 
-  if (!coversLoadCompleted.value) {
-    const newTaskId = startNewCoverLoadSession()
-    loadCoversInBatches(runtime.songsArea.songInfoArr, newTaskId)
-  }
+  // 列表不再处理封面加载
 }
 
 // --- 新增计算属性给 SongListRows ---
@@ -891,7 +969,7 @@ watch(
       <!-- 使用 SongListRows 组件渲染歌曲列表 -->
       <SongListRows
         v-if="runtime.songsArea.songInfoArr.length > 0"
-        :songs="runtime.songsArea.songInfoArr"
+        :songs="visibleSongs"
         :visibleColumns="columnDataArr"
         :selectedSongFilePaths="runtime.songsArea.selectedSongFilePath"
         :playingSongFilePath="playingSongFilePathForRows"
@@ -903,6 +981,7 @@ watch(
         @song-dblclick="songDblClick"
         @song-dragstart="handleSongDragStart"
         @song-dragend="handleSongDragEnd"
+        @rows-rendered="logRowsRendered"
       />
     </OverlayScrollbarsComponent>
 
