@@ -36,17 +36,7 @@ export function useCoverLoader() {
         return false // Cancelled
       }
 
-      const batch = data.slice(i, i + batchSize)
-      batch.forEach((item: ISongInfo) => {
-        if (item.cover && !item.coverUrl) {
-          try {
-            const blob = new Blob([Uint8Array.from(item.cover.data)], { type: item.cover.format })
-            item.coverUrl = URL.createObjectURL(blob)
-          } catch (error) {
-            console.error('Error creating blob URL for item:', item.filePath, error)
-          }
-        }
-      })
+      // 列表中不再显示封面，跳过封面处理
 
       await new Promise((resolve) => requestAnimationFrame(resolve))
 

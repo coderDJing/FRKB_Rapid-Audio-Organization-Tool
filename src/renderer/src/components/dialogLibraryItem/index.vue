@@ -151,11 +151,6 @@ const deleteDir = async () => {
     runtime.songsArea.songListUUID = '' // Clear the currently viewed songlist
     // Optionally clear other related states like selectedSongFilePath, songInfoArr if necessary
     runtime.songsArea.selectedSongFilePath.length = 0
-    runtime.songsArea.songInfoArr.forEach((item) => {
-      if (item.coverUrl) {
-        URL.revokeObjectURL(item.coverUrl)
-      }
-    })
     runtime.songsArea.songInfoArr = []
   }
   // If the deleted item or its children contain the currently playing songlist

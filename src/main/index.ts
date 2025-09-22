@@ -666,6 +666,15 @@ ipcMain.on('outputLog', (e, logMsg) => {
   log.error(logMsg)
 })
 
+// 性能日志通道：渲染端上报性能数据，主进程写入日志文件
+ipcMain.on('perfLog', (_e, payload) => {
+  try {
+    log.info('[perf]', typeof payload === 'string' ? payload : JSON.stringify(payload))
+  } catch {
+    // ignore
+  }
+})
+
 ipcMain.on('openLocalBrowser', (e, url) => {
   shell.openExternal(url)
 })
@@ -770,47 +779,93 @@ ipcMain.handle('dirPathExists', async (e, targetPath: string) => {
 })
 
 ipcMain.handle('scanSongList', async (e, songListPath: string, songListUUID: string) => {
+  const perfAllStart = Date.now()
   let scanPath = path.join(store.databaseDir, mapRendererPathToFsPath(songListPath))
+  const perfListStart = Date.now()
   const mm = await import('music-metadata')
   let songInfoArr: ISongInfo[] = []
   let songFileUrls = await collectFilesWithExtensions(scanPath, store.settingConfig.audioExt)
+  const perfListEnd = Date.now()
 
   function convertSecondsToMinutesSeconds(seconds: number) {
     const minutes = Math.floor(seconds / 60)
     const remainingSeconds = seconds % 60
-
-    // 使用 padStart 方法确保分钟和秒数都是两位数
     const minutesStr = minutes.toString().padStart(2, '0')
     const secondsStr = remainingSeconds.toString().padStart(2, '0')
-
-    // 返回格式为 "MM:SS" 的字符串
     return `${minutesStr}:${secondsStr}`
   }
-  for (let url of songFileUrls) {
-    let metadata = await mm.parseFile(url)
-    let cover = mm.selectCover(metadata.common.picture)
-    // 如果title为空或空字符串，使用文件名（包含扩展名）作为标题
-    const title =
-      metadata.common?.title && metadata.common.title.trim() !== ''
-        ? metadata.common.title
-        : path.basename(url)
 
-    songInfoArr.push({
-      filePath: url,
-      cover: cover,
-      title: title,
-      artist: metadata.common?.artist,
-      album: metadata.common?.album,
-      duration: convertSecondsToMinutesSeconds(
-        metadata.format.duration === undefined ? 0 : Math.round(metadata.format.duration)
-      ), //时长
-      genre: metadata.common?.genre?.[0],
-      label: metadata.common?.label?.[0],
-      bitrate: metadata.format?.bitrate, //比特率
-      container: metadata.format?.container //编码格式
-    })
+  const perfParseStart = Date.now()
+  const tasks: Array<() => Promise<any>> = songFileUrls.map((url) => async () => {
+    try {
+      const metadata = await mm.parseFile(url)
+      const title =
+        metadata.common?.title && metadata.common.title.trim() !== ''
+          ? metadata.common.title
+          : path.basename(url)
+      return {
+        filePath: url,
+        cover: null,
+        title,
+        artist: metadata.common?.artist,
+        album: metadata.common?.album,
+        duration: convertSecondsToMinutesSeconds(
+          metadata.format.duration === undefined ? 0 : Math.round(metadata.format.duration)
+        ),
+        genre: metadata.common?.genre?.[0],
+        label: metadata.common?.label?.[0],
+        bitrate: metadata.format?.bitrate,
+        container: metadata.format?.container
+      } as ISongInfo
+    } catch (_e) {
+      // 单文件失败：跳过
+      return new Error('parse-failed')
+    }
+  })
+  const { results, success, failed } = await runWithConcurrency(tasks, { concurrency: 8 })
+  songInfoArr = results.filter((r) => r && !(r instanceof Error))
+  const perfParseEnd = Date.now()
+
+  const perfAllEnd = Date.now()
+  try {
+    log.info(
+      '[perf] scanSongList',
+      JSON.stringify({
+        songListUUID,
+        counts: { files: songFileUrls.length, items: songInfoArr.length, success, failed },
+        ms: {
+          listFiles: perfListEnd - perfListStart,
+          parseMetadata: perfParseEnd - perfParseStart,
+          total: perfAllEnd - perfAllStart
+        }
+      })
+    )
+  } catch {}
+  return {
+    scanData: songInfoArr,
+    songListUUID,
+    perf: {
+      listFilesMs: perfListEnd - perfListStart,
+      parseMetadataMs: perfParseEnd - perfParseStart,
+      totalMs: perfAllEnd - perfAllStart,
+      filesCount: songFileUrls.length,
+      successCount: success,
+      failedCount: failed
+    }
   }
-  return { scanData: songInfoArr, songListUUID }
+})
+
+// 新增：按需获取单曲封面（在播放时调用）
+ipcMain.handle('getSongCover', async (_e, filePath: string) => {
+  try {
+    const mm = await import('music-metadata')
+    const metadata = await mm.parseFile(filePath)
+    const cover = mm.selectCover(metadata.common.picture)
+    if (!cover) return null
+    return { format: cover.format, data: Buffer.from(cover.data) }
+  } catch (err) {
+    return null
+  }
 })
 
 ipcMain.handle('getLibrary', async () => {
