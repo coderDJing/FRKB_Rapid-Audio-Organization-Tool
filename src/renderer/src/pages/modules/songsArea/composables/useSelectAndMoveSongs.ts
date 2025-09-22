@@ -39,33 +39,9 @@ export function useSelectAndMoveSongs() {
       libraryUtils.findDirPathByUuid(targetSongListUUID)
     )
 
-    // Create a new array for songInfoArr after filtering
-    const newSongInfoArr = runtime.songsArea.songInfoArr.filter((item) => {
-      if (!selectedPaths.includes(item.filePath)) {
-        return true
-      } else {
-        // Revoke object URL for songs being removed from the current list
-        if (item.coverUrl) {
-          URL.revokeObjectURL(item.coverUrl)
-        }
-        return false
-      }
-    })
-    runtime.songsArea.songInfoArr = newSongInfoArr
-
-    // If the current playing list is the one being modified, update its data reference
-    if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-      runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
-      // Also, if the currently playing song was one of the moved songs, set it to null
-      if (
-        runtime.playingData.playingSong &&
-        selectedPaths.includes(runtime.playingData.playingSong.filePath)
-      ) {
-        runtime.playingData.playingSong = null
-      }
-    }
-
-    runtime.songsArea.selectedSongFilePath.length = 0 // Clear selection
+    // 不在此处直接修改 original 或 runtime.songsArea.songInfoArr，
+    // 统一通过全局事件在 songsArea.vue 中处理，避免与排序/筛选链路竞态。
+    runtime.songsArea.selectedSongFilePath.length = 0 // 清空选择
 
     // 通知全局，保证 songsArea 与其他视图收到统一的移除事件
     emitter.emit('songsRemoved', {

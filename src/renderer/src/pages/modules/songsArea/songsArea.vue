@@ -316,10 +316,8 @@ const onSongsRemoved = (payload: { listUUID?: string; paths: string[] } | { path
     (song) => !pathsToRemove.includes(song.filePath)
   )
 
-  // 从显示列表中删除
-  runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
-    (song) => !pathsToRemove.includes(song.filePath)
-  )
+  // 统一通过筛选与排序重建显示列表，避免直接操作 runtime 列表导致与排序链路打架
+  applyFiltersAndSorting()
 
   // 同步播放数据（如果当前播放列表即为该歌单）
   if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
@@ -351,13 +349,12 @@ const onSongsMovedByDrag = (movedSongPaths: string[]) => {
     }
   })
 
-  // 更新 originalSongInfoArr 与显示列表
+  // 更新 originalSongInfoArr
   originalSongInfoArr.value = originalSongInfoArr.value.filter(
     (song) => !movedSongPaths.includes(song.filePath)
   )
-  runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
-    (song) => !movedSongPaths.includes(song.filePath)
-  )
+  // 统一通过筛选与排序重建显示列表
+  applyFiltersAndSorting()
 
   // 如果当前播放列表是被修改的列表，更新播放数据
   if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
@@ -574,17 +571,8 @@ const handleDeleteKey = async () => {
       (item) => !selectedPaths.includes(item.filePath)
     )
 
-    // 2. 根据当前的排序规则，重新排序 originalSongInfoArr 并更新 runtime.songsArea.songInfoArr
-    const sortedCol = columnData.value.find((col) => col.order)
-    if (sortedCol) {
-      runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
-        [...originalSongInfoArr.value],
-        sortedCol.key as keyof ISongInfo,
-        sortedCol.order
-      )
-    } else {
-      runtime.songsArea.songInfoArr = [...originalSongInfoArr.value]
-    }
+    // 统一通过筛选与排序函数重建显示列表，避免直接从 original 拷贝导致“复活”
+    applyFiltersAndSorting()
 
     if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
       runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
@@ -692,32 +680,16 @@ const colMenuClick = (col: ISongsAreaColumn) => {
   columnData.value = newColumnData
   persistColumnData()
 
-  // Get the new order of the clicked column for sorting
-  const clickedColNewOrder = newColumnData.find((c) => c.key === col.key)?.order
+  // 统一通过筛选与排序函数重建显示数据，避免直接从 original 拷贝导致“复活”
+  applyFiltersAndSorting()
 
-  if (clickedColNewOrder) {
-    // Ensure it's 'asc' or 'desc'
-    runtime.songsArea.songInfoArr = sortArrayByProperty<ISongInfo>(
-      [...originalSongInfoArr.value],
-      col.key as keyof ISongInfo, // Use the key from the original clicked column object
-      clickedColNewOrder // Use its new order from the updated array
-    )
+  if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+    runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+  }
 
-    if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-      runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
-    }
-
-    if (!coversLoadCompleted.value) {
-      const newTaskId = startNewCoverLoadSession()
-      loadCoversInBatches(runtime.songsArea.songInfoArr, newTaskId)
-    }
-  } else {
-    // This case (clickedColNewOrder is undefined) should not happen for sortable columns
-    // because the map logic above assigns 'asc' or 'desc'.
-    console.warn(
-      'Clicked column new order is undefined after map, this should not happen for sortable columns:',
-      col.key
-    )
+  if (!coversLoadCompleted.value) {
+    const newTaskId = startNewCoverLoadSession()
+    loadCoversInBatches(runtime.songsArea.songInfoArr, newTaskId)
   }
 }
 
