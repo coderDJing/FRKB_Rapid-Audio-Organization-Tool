@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PropType, reactive } from 'vue'
+import { PropType, reactive, markRaw } from 'vue'
 import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
 import type { ComponentPublicInstance } from 'vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
@@ -46,8 +46,8 @@ const emit = defineEmits<{
   (e: 'rows-rendered', count: number): void
 }>()
 
-// 记录每个单元格 DOM，用于气泡锚定
-const cellRefMap = reactive<Record<string, HTMLElement | null>>({})
+// 记录每个单元格 DOM，用于气泡锚定（非响应，减少依赖跟踪）
+const cellRefMap = markRaw({} as Record<string, HTMLElement | null>)
 const getCellKey = (song: ISongInfo, colKey: string) => `${song.filePath}__${colKey}`
 const setCellRef = (key: string, el: Element | ComponentPublicInstance | null) => {
   let dom: HTMLElement | null = null
@@ -62,27 +62,11 @@ const setCellRef = (key: string, el: Element | ComponentPublicInstance | null) =
 }
 
 // 渲染完成观测：当 songs 变化后，等待一帧统计行数并上报
-import { nextTick, watch, ref as vRef, onMounted } from 'vue'
+import { nextTick, watch, ref as vRef } from 'vue'
 const rowsRoot = vRef<HTMLElement | null>(null)
-const renderCountForBubbles = vRef(0)
-onMounted(() => {
-  setTimeout(() => (renderCountForBubbles.value = 1), 1000)
-})
-watch(
-  () => props.songs.map((s) => s.filePath).join('|'),
-  async () => {
-    await nextTick()
-    requestAnimationFrame(() => {
-      try {
-        const host = rowsRoot.value
-        const count = host ? host.querySelectorAll('.song-row-item').length : 0
-        emit('rows-rendered', count)
-      } catch {
-        emit('rows-rendered', 0)
-      }
-    })
-  }
-)
+// 按需展示气泡：仅在鼠标悬停的单元格渲染 bubbleBox，避免批量挂载
+const hoveredCellKey = vRef<string | null>(null)
+// 移除 rows 渲染观测，避免大 DOM 遍历
 
 // 事件委托，减少每行 addEventListener 带来的开销
 const onRowsClick = (e: MouseEvent) => {
@@ -109,6 +93,16 @@ const onRowsDblclick = (e: MouseEvent) => {
   const song = props.songs.find((s) => s.filePath === fp)
   if (song) emit('song-dblclick', song)
 }
+
+const onRowsMouseOver = (e: MouseEvent) => {
+  const cell = (e.target as HTMLElement)?.closest('.cell-title') as HTMLElement | null
+  if (!cell) return
+  const key = cell.dataset.key
+  if (key) hoveredCellKey.value = key
+}
+const onRowsMouseLeave = () => {
+  hoveredCellKey.value = null
+}
 </script>
 
 <template>
@@ -117,6 +111,8 @@ const onRowsDblclick = (e: MouseEvent) => {
     @click="onRowsClick"
     @contextmenu.prevent="onRowsContextmenu"
     @dblclick="onRowsDblclick"
+    @mouseover="onRowsMouseOver"
+    @mouseleave="onRowsMouseLeave"
   >
     <!-- Outer wrapper for all song rows -->
     <div
@@ -147,10 +143,11 @@ const onRowsDblclick = (e: MouseEvent) => {
             class="cell-title"
             :style="{ width: col.width + 'px' }"
             :ref="(el) => setCellRef(getCellKey(song, col.key), el)"
+            :data-key="getCellKey(song, col.key)"
           >
             {{ song[col.key as keyof ISongInfo] }}
             <bubbleBox
-              v-if="renderCountForBubbles"
+              v-if="hoveredCellKey === getCellKey(song, col.key)"
               :dom="cellRefMap[getCellKey(song, col.key)] || undefined"
               :title="String((song as any)[col.key] ?? '')"
               :only-when-overflow="true"
@@ -170,6 +167,7 @@ const onRowsDblclick = (e: MouseEvent) => {
 .song-row-content {
   display: flex;
   height: 30px; // Standard row height
+  contain: content;
 
   &.lightBackground {
     background-color: #191919;
