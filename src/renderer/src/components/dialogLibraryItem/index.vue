@@ -115,6 +115,15 @@ const inputBlurHandle = async () => {
     operationInputValue.value = ''
 
     await libraryUtils.diffLibraryTreeExecuteFileOperation()
+    // 命名完成并写盘成功后，再在对话框中高亮该歌单（不触发双击）
+    if (dirData.type === 'songList') {
+      runtime.dialogSelectedSongListUUID = dirData.uuid
+      emits('markTreeSelected')
+    }
+    // 清除创建中标记
+    if (runtime.creatingSongListUUID === dirData.uuid) {
+      runtime.creatingSongListUUID = ''
+    }
   }
 }
 let operationInputValue = ref('')
@@ -200,13 +209,15 @@ const contextmenuEvent = async (event: MouseEvent) => {
     if (result.menuName == '新建歌单') {
       dirChildRendered.value = true
       dirChildShow.value = true
+      const newUuid = uuidV4()
       if (dirData.children) {
         dirData.children.unshift({
-          uuid: uuidV4(),
+          uuid: newUuid,
           dirName: '',
           type: 'songList'
         })
       }
+      // 不在此时标记“创建中”，等待命名确认开始写盘时再标记
     } else if (result.menuName == '新建文件夹') {
       dirChildRendered.value = true
       dirChildShow.value = true
@@ -452,7 +463,15 @@ indentWidth.value = (depth - 2) * 10
           d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"
         />
       </svg>
-      <img v-if="dirData.type == 'songList'" style="width: 13px; height: 13px" :src="listIcon" />
+      <img
+        v-if="dirData.type == 'songList' && runtime.creatingSongListUUID !== props.uuid"
+        style="width: 13px; height: 13px"
+        :src="listIcon"
+      />
+      <div
+        v-if="dirData.type == 'songList' && runtime.creatingSongListUUID === props.uuid"
+        class="loading"
+      ></div>
     </div>
     <div style="height: 23px; width: calc(100% - 20px)">
       <div
@@ -587,5 +606,24 @@ indentWidth.value = (depth - 2) * 10
   display: flex;
   justify-content: center;
   align-items: center;
+}
+
+.loading {
+  width: 8px;
+  height: 8px;
+  border: 2px solid #cccccc;
+  border-top-color: transparent;
+  border-radius: 100%;
+  animation: circle infinite 0.75s linear;
+}
+
+@keyframes circle {
+  0% {
+    transform: rotate(0);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
 }
 </style>

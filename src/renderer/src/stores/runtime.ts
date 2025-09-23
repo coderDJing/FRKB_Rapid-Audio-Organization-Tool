@@ -31,6 +31,8 @@ interface Runtime {
   playerReady: boolean
   // 是否处于切歌流程中（从发起切歌到新歌开始播放之前）
   isSwitchingSong: boolean
+  // 正在创建中的歌单 UUID（用于 UI 微动效）
+  creatingSongListUUID: string
 }
 export const useRuntimeStore = defineStore('runtime', {
   state: (): Runtime => {
@@ -67,6 +69,7 @@ export const useRuntimeStore = defineStore('runtime', {
         selectedSongFilePath: [] //歌单内选中的歌曲条目
       },
       importingSongListUUID: '', //正在执行导入中的歌单
+      creatingSongListUUID: '', //正在创建中的歌单（用于微动效）
       isProgressing: false, //正在执行某计算或IO任务
       playingData: {
         //播放器相关

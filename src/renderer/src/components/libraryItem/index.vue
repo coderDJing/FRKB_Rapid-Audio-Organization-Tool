@@ -111,7 +111,19 @@ const inputBlurHandle = async () => {
   dirData.order = 1
   dirData.children = []
   operationInputValue.value = ''
+  // 从开始写盘到完成期间，展示“创建中”动效
+  if (dirData.type === 'songList') {
+    runtime.creatingSongListUUID = dirData.uuid
+  }
   await libraryUtils.diffLibraryTreeExecuteFileOperation()
+  // 命名完成并写盘成功后，再进入该歌单（仅当新建的是歌单而非文件夹）
+  if (dirData.type === 'songList') {
+    runtime.songsArea.songListUUID = dirData.uuid
+  }
+  // 清除创建中标记
+  if (runtime.creatingSongListUUID === dirData.uuid) {
+    runtime.creatingSongListUUID = ''
+  }
 }
 let operationInputValue = ref('')
 
@@ -218,11 +230,14 @@ const contextmenuEvent = async (event: MouseEvent) => {
       dirChildRendered.value = true
       dirChildShow.value = true
 
+      const newUuid = uuidV4()
       dirData.children?.unshift({
-        uuid: uuidV4(),
+        uuid: newUuid,
         dirName: '',
         type: 'songList'
       })
+      // 新建后自动进入该歌单（等效单击，不触发双击）
+      runtime.songsArea.songListUUID = newUuid
     } else if (result.menuName === 'library.createFolder') {
       dirChildRendered.value = true
       dirChildShow.value = true
@@ -690,10 +705,19 @@ const displayDirName = computed(() => {
         />
       </svg>
       <img
-        v-if="dirData.type == 'songList' && runtime.importingSongListUUID != props.uuid"
+        v-if="
+          dirData.type == 'songList' &&
+          runtime.importingSongListUUID != props.uuid &&
+          runtime.creatingSongListUUID !== props.uuid
+        "
         style="width: 13px; height: 13px"
         :src="isPlaying ? listIconBlue : listIcon"
       />
+      <div
+        v-if="dirData.type == 'songList' && runtime.creatingSongListUUID === props.uuid"
+        class="loading"
+        :class="{ isPlayingLoading: isPlaying }"
+      ></div>
       <div
         v-if="dirData.type == 'songList' && runtime.importingSongListUUID == props.uuid"
         class="loading"
