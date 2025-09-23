@@ -287,8 +287,8 @@ const openSongList = async () => {
 
     // 渐进式渲染启动：先渲染少量行，随后逐帧扩容
     const totalRows = runtime.songsArea.songInfoArr.length
-    const INITIAL_ROWS = 60
-    const CHUNK_ROWS = 120
+    const INITIAL_ROWS = 40
+    const CHUNK_ROWS = 80
     renderCount.value = Math.min(totalRows, INITIAL_ROWS)
     await nextTick()
     ;(() => {
@@ -300,64 +300,13 @@ const openSongList = async () => {
       requestAnimationFrame(step)
     })()
 
-    // 追加：等待 DOM 刷新 + 行元素稳定，尽可能接近“渲染完成”
+    // 追加：等待 DOM 刷新 + 一帧绘制（轻量，不长时间占用主线程）
     const perfBeforeDomFlush = performance.now()
     await nextTick()
-    const perfAfterDomFlush = performance.now()
-
-    const getRowsCount = (): number => {
-      try {
-        const vp = songsAreaRef.value?.osInstance()?.elements().viewport as HTMLElement | undefined
-        if (vp) {
-          // 仅统计可视区域内且已插入的行
-          return vp.querySelectorAll('.song-row-item').length
-        }
-        return document.querySelectorAll('.song-row-item').length
-      } catch {
-        return 0
-      }
-    }
-    const waitRowsStable = async (timeoutMs = 4000) => {
-      const start = performance.now()
-      let last = -1
-      let stableFrames = 0
-      while (performance.now() - start < timeoutMs) {
-        await new Promise((r) => requestAnimationFrame(r))
-        const cur = getRowsCount()
-        if (cur === last) stableFrames++
-        else stableFrames = 0
-        last = cur
-        if (cur > 0 && stableFrames >= 2) {
-          return { rowsRendered: cur, renderWaitMs: performance.now() - start }
-        }
-      }
-      return { rowsRendered: Math.max(last, 0), renderWaitMs: performance.now() - start }
-    }
-    const renderWaitStart = performance.now()
-    const { rowsRendered, renderWaitMs } = await waitRowsStable(8000)
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
     const perfAfterPaint = performance.now()
 
-    const perfEndAll = performance.now()
-    // 上报渲染端阶段耗时
-    window.electron.ipcRenderer.send('perfLog', {
-      scope: 'openSongList',
-      songListUUID: runtime.songsArea.songListUUID,
-      ms: {
-        all: Math.round(perfEndAll - perfStartAll),
-        beforeInvoke: Math.round(performance.now() - perfStartAll),
-        ipcRoundtrip: Math.round(perfAfterIPC - perfInvokeStart),
-        assignOriginal: Math.round(perfAfterFilterSort - perfAssignStart),
-        filterAndSort: Math.round(perfAfterFilterSort - perfAssignStart),
-        domFlushed: Math.round(perfAfterDomFlush - perfBeforeDomFlush),
-        paintedSinceAssign: Math.round(perfAfterPaint - perfAssignStart),
-        renderWait: Math.round(renderWaitMs)
-      },
-      render: {
-        expectedRows: runtime.songsArea.songInfoArr.length,
-        rowsRendered
-      },
-      mainPerf
-    })
+    // 结束
   } finally {
     isRequesting.value = false
     clearTimeout(loadingSetTimeout)
@@ -981,7 +930,6 @@ watch(
         @song-dblclick="songDblClick"
         @song-dragstart="handleSongDragStart"
         @song-dragend="handleSongDragEnd"
-        @rows-rendered="logRowsRendered"
       />
     </OverlayScrollbarsComponent>
 

@@ -666,15 +666,6 @@ ipcMain.on('outputLog', (e, logMsg) => {
   log.error(logMsg)
 })
 
-// 性能日志通道：渲染端上报性能数据，主进程写入日志文件
-ipcMain.on('perfLog', (_e, payload) => {
-  try {
-    log.info('[perf]', typeof payload === 'string' ? payload : JSON.stringify(payload))
-  } catch {
-    // ignore
-  }
-})
-
 ipcMain.on('openLocalBrowser', (e, url) => {
   shell.openExternal(url)
 })
@@ -787,6 +778,50 @@ ipcMain.handle('scanSongList', async (e, songListPath: string, songListUUID: str
   let songFileUrls = await collectFilesWithExtensions(scanPath, store.settingConfig.audioExt)
   const perfListEnd = Date.now()
 
+  // --- 缓存：.songs.cache.json 按文件 size/mtime 命中 ---
+  type CacheEntry = {
+    size: number
+    mtimeMs: number
+    info: ISongInfo
+  }
+  const cacheFile = path.join(scanPath, '.songs.cache.json')
+  let cacheMap = new Map<string, CacheEntry>()
+  try {
+    if (await fs.pathExists(cacheFile)) {
+      const json = await fs.readJSON(cacheFile)
+      if (json && typeof json === 'object') {
+        const entries = (json.entries || {}) as Record<string, CacheEntry>
+        for (const [k, v] of Object.entries(entries)) {
+          if (v && typeof v.size === 'number' && typeof v.mtimeMs === 'number' && v.info) {
+            cacheMap.set(k, v)
+          }
+        }
+      }
+    }
+  } catch {}
+
+  const perfCacheCheckStart = Date.now()
+  const filesStatList: Array<{ file: string; size: number; mtimeMs: number }> = []
+  for (const file of songFileUrls) {
+    try {
+      const st = await fs.stat(file)
+      filesStatList.push({ file, size: st.size, mtimeMs: st.mtimeMs })
+    } catch {
+      // ignore stat error
+    }
+  }
+  const cachedInfos: ISongInfo[] = []
+  const filesToParse: string[] = []
+  for (const it of filesStatList) {
+    const c = cacheMap.get(it.file)
+    if (c && c.size === it.size && Math.abs(c.mtimeMs - it.mtimeMs) < 1) {
+      cachedInfos.push(c.info)
+    } else {
+      filesToParse.push(it.file)
+    }
+  }
+  const perfCacheCheckEnd = Date.now()
+
   function convertSecondsToMinutesSeconds(seconds: number) {
     const minutes = Math.floor(seconds / 60)
     const remainingSeconds = seconds % 60
@@ -796,7 +831,7 @@ ipcMain.handle('scanSongList', async (e, songListPath: string, songListUUID: str
   }
 
   const perfParseStart = Date.now()
-  const tasks: Array<() => Promise<any>> = songFileUrls.map((url) => async () => {
+  const tasks: Array<() => Promise<any>> = filesToParse.map((url) => async () => {
     try {
       const metadata = await mm.parseFile(url)
       const title =
@@ -823,34 +858,37 @@ ipcMain.handle('scanSongList', async (e, songListPath: string, songListUUID: str
     }
   })
   const { results, success, failed } = await runWithConcurrency(tasks, { concurrency: 8 })
-  songInfoArr = results.filter((r) => r && !(r instanceof Error))
+  const parsedInfos: ISongInfo[] = results.filter((r) => r && !(r instanceof Error))
+  songInfoArr = [...cachedInfos, ...parsedInfos]
   const perfParseEnd = Date.now()
 
-  const perfAllEnd = Date.now()
+  // 回写缓存：仅包含当前存在的文件
   try {
-    log.info(
-      '[perf] scanSongList',
-      JSON.stringify({
-        songListUUID,
-        counts: { files: songFileUrls.length, items: songInfoArr.length, success, failed },
-        ms: {
-          listFiles: perfListEnd - perfListStart,
-          parseMetadata: perfParseEnd - perfParseStart,
-          total: perfAllEnd - perfAllStart
-        }
-      })
-    )
+    const newEntries: Record<string, CacheEntry> = {}
+    const infoMap = new Map<string, ISongInfo>()
+    for (const info of songInfoArr) infoMap.set(info.filePath, info)
+    for (const st of filesStatList) {
+      const info = infoMap.get(st.file)
+      if (info) newEntries[st.file] = { size: st.size, mtimeMs: st.mtimeMs, info }
+    }
+    await fs.writeJSON(cacheFile, { entries: newEntries })
   } catch {}
+
+  const perfAllEnd = Date.now()
+  // 移除冗余性能日志输出
   return {
     scanData: songInfoArr,
     songListUUID,
     perf: {
       listFilesMs: perfListEnd - perfListStart,
+      cacheCheckMs: perfCacheCheckEnd - perfCacheCheckStart,
       parseMetadataMs: perfParseEnd - perfParseStart,
       totalMs: perfAllEnd - perfAllStart,
       filesCount: songFileUrls.length,
       successCount: success,
-      failedCount: failed
+      failedCount: failed,
+      cacheHits: cachedInfos.length,
+      parsedCount: parsedInfos.length
     }
   }
 })

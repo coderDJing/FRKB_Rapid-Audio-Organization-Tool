@@ -349,30 +349,13 @@ const dirHandleClick = async () => {
   if (dirData.type == 'songList') {
     if (runtime.songsArea.songListUUID === props.uuid) {
       runtime.songsArea.songListUUID = ''
-      window.electron.ipcRenderer.send('perfLog', {
-        scope: 'clickPlaylist',
-        action: 'collapseSamePlaylist',
-        uuid: props.uuid,
-        ms: Math.round(performance.now() - t0)
-      })
+
       return
     }
     runtime.songsArea.songListUUID = props.uuid
-    window.electron.ipcRenderer.send('perfLog', {
-      scope: 'clickPlaylist',
-      action: 'openPlaylist',
-      uuid: props.uuid,
-      ms: Math.round(performance.now() - t0)
-    })
   } else {
     dirChildRendered.value = true
     dirChildShow.value = !dirChildShow.value
-    window.electron.ipcRenderer.send('perfLog', {
-      scope: 'clickFolder',
-      uuid: props.uuid,
-      show: dirChildShow.value,
-      ms: Math.round(performance.now() - t0)
-    })
   }
 }
 
