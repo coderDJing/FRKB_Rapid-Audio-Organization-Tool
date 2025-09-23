@@ -176,15 +176,11 @@ export function useSongItemContextMenu(
             JSON.parse(JSON.stringify(songsToExportObjects))
           )
           if (deleteSongsAfterExport && songsToExportFilePaths.length > 0) {
-            runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.filter(
-              (item) => !songsToExportFilePaths.includes(item.filePath)
-            )
+            // 不直接修改显示列表，仅广播，由 songsArea.vue 统一处理 original + applyFiltersAndSorting
             runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
               (path) => !songsToExportFilePaths.includes(path)
             )
-
             if (runtime.songsArea.songListUUID === runtime.playingData.playingSongListUUID) {
-              runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
               if (
                 runtime.playingData.playingSong &&
                 songsToExportFilePaths.includes(runtime.playingData.playingSong.filePath)

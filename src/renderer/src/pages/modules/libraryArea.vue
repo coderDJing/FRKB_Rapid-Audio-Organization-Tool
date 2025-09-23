@@ -79,11 +79,13 @@ const contextmenuEvent = async (event: MouseEvent) => {
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
   if (result !== 'cancel') {
     if (result.menuName == 'library.createPlaylist') {
+      const newUuid = uuidV4()
       libraryData.children?.unshift({
-        uuid: uuidV4(),
+        uuid: newUuid,
         type: 'songList',
         dirName: ''
       })
+      // 不在此时标记“创建中”，等待命名确认开始写盘时再标记
     } else if (result.menuName == 'library.createFolder') {
       libraryData.children?.unshift({
         uuid: uuidV4(),

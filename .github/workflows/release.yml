@@ -54,7 +54,7 @@ jobs:
         run: pnpm build
 
       - name: Package (electron-builder, no publish)
-        run: npx electron-builder --win --x64 --publish never
+        run: npx electron-builder --win --x64 --publish never ${{ contains(github.ref_name, '-') && '-c.publish.channel=rc' || '' }}
 
       - name: Upload dist artifacts (Windows)
         uses: actions/upload-artifact@v4
@@ -64,7 +64,7 @@ jobs:
           path: |
             dist/FRKB-*-win32-x64.exe
             dist/*.blockmap
-            dist/latest.yml
+            dist/*.yml
 
   build_mac:
     runs-on: macos-latest
@@ -116,7 +116,7 @@ jobs:
         run: pnpm build
 
       - name: Package macOS (universal, no publish)
-        run: npx electron-builder --mac --universal --publish never
+        run: npx electron-builder --mac --universal --publish never ${{ contains(github.ref_name, '-') && '-c.publish.channel=rc' || '' }}
 
       - name: Upload dist artifacts (macOS)
         uses: actions/upload-artifact@v4
@@ -125,7 +125,7 @@ jobs:
           name: mac-artifacts
           path: |
             dist/*.dmg
-            dist/latest-mac.yml
+            dist/*.yml
             dist/FRKB-*-mac-universal.zip
             dist/FRKB-*-mac-universal.zip.blockmap
             dist/*.blockmap
@@ -150,8 +150,7 @@ jobs:
           files: |
             artifacts/FRKB-*-win32-x64.exe
             artifacts/*.dmg
-            artifacts/latest.yml
-            artifacts/latest-mac.yml
+            artifacts/*.yml
             artifacts/*.zip
             artifacts/*.blockmap
           draft: false
