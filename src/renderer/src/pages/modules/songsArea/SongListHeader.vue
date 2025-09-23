@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, PropType, watch } from 'vue'
+import { ref, computed, PropType, watch, onMounted } from 'vue'
 import { ISongsAreaColumn } from '../../../../../types/globals' // Corrected path
 import filterIcon from '@renderer/assets/filterIcon.png?asset'
 import filterIconBlue from '@renderer/assets/filterIconBlue.png?asset'
@@ -57,12 +57,44 @@ watch(
   { immediate: true, deep: true } // immediate 确保初始加载，deep 监听 show 属性等变化
 )
 
+// CSS 变量工具：将列宽与总宽写入同一滚动宿主，拖动中仅写 CSS 变量，结束再持久化
+const headerRoot = ref<HTMLElement | null>(null)
+function getHostEl(): HTMLElement | null {
+  const root = headerRoot.value
+  if (!root) return null
+  const host = root.closest('.os-host') as HTMLElement | null
+  return host || root.parentElement || document.body
+}
+function setColVar(key: string, px: number) {
+  const host = getHostEl()
+  if (!host) return
+  host.style.setProperty(`--songs-col-${key}`, `${px}px`)
+}
+function setTotalVar(px: number) {
+  const host = getHostEl()
+  if (!host) return
+  host.style.setProperty(`--songs-total-width`, `${px}px`)
+}
+function syncCssVarsFromColumns() {
+  const visible = props.columns.filter((c) => c.show)
+  let total = 0
+  for (const c of visible) {
+    const w = Math.max(MIN_WIDTH_BY_KEY[c.key] ?? 50, c.width)
+    setColVar(c.key, w)
+    total += w
+  }
+  setTotalVar(total)
+}
+
 // 列宽调整逻辑
 let startX = 0
 let resizingColInternal: ISongsAreaColumn | null = null // 使用 internal 后缀避免与 props 中的命名冲突
 let isResizing = false
 let initWidth = 0
+let initTotalWidth = 0
 const isResizeClick = ref(false) // 用于防止调整大小时触发单击
+let rafId = 0
+let lastFrameWidth = -1
 
 const startResize = (e: MouseEvent, col: ISongsAreaColumn) => {
   e.stopPropagation()
@@ -72,6 +104,8 @@ const startResize = (e: MouseEvent, col: ISongsAreaColumn) => {
   startX = e.clientX
   resizingColInternal = col
   initWidth = col.width
+  // 初始总宽
+  initTotalWidth = props.columns.filter((c) => c.show).reduce((sum, c) => sum + (c.width || 0), 0)
   document.addEventListener('mousemove', resize)
   document.addEventListener('mouseup', stopResize)
 }
@@ -84,11 +118,16 @@ const resize = (e: MouseEvent) => {
   const minWidth = MIN_WIDTH_BY_KEY[resizingColInternal.key] ?? 50
   const newWidth = Math.max(minWidth, initWidth + deltaX) // 约束最小宽度
 
-  // 直接修改列对象（它是 props.columns 中的一个引用）的宽度
-  // vue-draggable-plus 也期望直接操作这个数组
-  resizingColInternal.width = newWidth
-  // 调整大小时，不需要立即发出 update:columns，因为拖拽库可能在操作同一个数组
-  // stopResize 时会统一发出
+  // 拖动中：仅更新 CSS 变量，不改动响应式数据
+  if (newWidth !== lastFrameWidth) {
+    cancelAnimationFrame(rafId)
+    rafId = requestAnimationFrame(() => {
+      setColVar(resizingColInternal!.key, newWidth)
+      const total = initTotalWidth + (newWidth - initWidth)
+      setTotalVar(total)
+      lastFrameWidth = newWidth
+    })
+  }
 }
 
 const stopResize = (e: MouseEvent) => {
@@ -101,7 +140,19 @@ const stopResize = (e: MouseEvent) => {
 
   // 在调整大小结束后，发出 columns 更新事件
   // 使用 [...props.columns] 创建一个新数组的浅拷贝以触发父组件的响应性
-  emit('update:columns', [...props.columns])
+  if (resizingColInternal) {
+    const finalWidth = lastFrameWidth > 0 ? lastFrameWidth : initWidth
+    const minWidth = MIN_WIDTH_BY_KEY[resizingColInternal.key] ?? 50
+    const safeWidth = Math.max(minWidth, finalWidth)
+    const updated = props.columns.map((c) =>
+      c.key === resizingColInternal!.key ? { ...c, width: safeWidth } : c
+    )
+    emit('update:columns', updated)
+    // 同步一次 CSS 变量，避免父级回写前闪动
+    syncCssVarsFromColumns()
+  } else {
+    emit('update:columns', [...props.columns])
+  }
 
   setTimeout(() => {
     isResizeClick.value = false
@@ -155,6 +206,17 @@ const vDraggableData = computed<VDraggableBinding>(() => [
     onEnd: onEndDraggable
   }
 ])
+onMounted(() => {
+  syncCssVarsFromColumns()
+})
+watch(
+  () => props.columns,
+  () => {
+    // 列变化（顺序/显示/宽度）时，同步 CSS 变量
+    syncCssVarsFromColumns()
+  },
+  { deep: true }
+)
 
 // 处理列头点击事件（用于排序）
 const handleColumnClick = (col: ISongsAreaColumn) => {
@@ -262,6 +324,7 @@ const handleContextMenu = (event: MouseEvent) => {
 
 <template>
   <div
+    ref="headerRoot"
     @contextmenu.stop="handleContextMenu"
     class="songListHeader songItem lightBackground"
     :style="{
@@ -270,7 +333,7 @@ const handleContextMenu = (event: MouseEvent) => {
       'z-index': '10',
       'background-color': '#191919',
       'border-bottom': '1px solid #2b2b2b',
-      'min-width': totalWidth + 'px'
+      'min-width': `var(--songs-total-width, ${totalWidth}px)`
     }"
     :key="draggableInstanceKey"
     v-draggable="vDraggableData"
@@ -280,7 +343,7 @@ const handleContextMenu = (event: MouseEvent) => {
       v-for="col of draggableVisibleColumns"
       :key="col.key"
       :class="['lightBackground', 'titleDiv']"
-      :style="'width:' + col.width + 'px'"
+      :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
       style="
         padding-left: 10px;
         box-sizing: border-box;

@@ -178,11 +178,15 @@ const contextmenuEvent = async (event: MouseEvent) => {
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
   if (result !== 'cancel') {
     if (result.menuName == 'library.createPlaylist') {
+      const newUuid = uuidV4()
       libraryData.value.children?.unshift({
-        uuid: uuidV4(),
+        uuid: newUuid,
         type: 'songList',
         dirName: ''
       })
+      // 新建后在对话框中仅定位高亮，不触发双击
+      runtime.dialogSelectedSongListUUID = newUuid
+      selectedArea.value = 'tree'
     } else if (result.menuName == 'library.createFolder') {
       libraryData.value.children?.unshift({
         uuid: uuidV4(),

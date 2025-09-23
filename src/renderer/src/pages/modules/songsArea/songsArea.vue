@@ -523,20 +523,16 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
       const pathsToRemove = result.paths
 
       if (Array.isArray(pathsToRemove) && pathsToRemove.length > 0) {
-        // 1. 从 originalSongInfoArr (原始顺序的源) 中移除歌曲
+        // 仅更新 original，然后统一按筛选与排序重建显示，避免与排序/筛选链路打架
         originalSongInfoArr.value = originalSongInfoArr.value.filter(
           (item) => !pathsToRemove.includes(item.filePath)
         )
 
-        // 2. 从 runtime.songsArea.songInfoArr (当前显示的、可能已排序的列表) 中移除歌曲
-        const newRuntimeSongInfoArr = runtime.songsArea.songInfoArr.filter(
-          (item) => !pathsToRemove.includes(item.filePath)
-        )
-        runtime.songsArea.songInfoArr = newRuntimeSongInfoArr
+        applyFiltersAndSorting()
 
-        // 3. 更新播放列表和当前播放歌曲 (如果受影响)
+        // 更新播放状态（若受影响）
         if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-          runtime.playingData.playingSongListData = [...runtime.songsArea.songInfoArr] // 使用更新后的 runtime.songsArea.songInfoArr
+          runtime.playingData.playingSongListData = [...runtime.songsArea.songInfoArr]
         }
         if (
           runtime.playingData.playingSong &&
@@ -545,7 +541,7 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
           runtime.playingData.playingSong = null
         }
 
-        // 4. 从当前选择中移除已删除的歌曲
+        // 从当前选择中移除已删除的歌曲
         runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
           (path) => !pathsToRemove.includes(path)
         )
@@ -723,6 +719,30 @@ const colMenuClick = (col: ISongsAreaColumn) => {
 // --- 新增计算属性给 SongListRows ---
 const playingSongFilePathForRows = computed(() => runtime.playingData.playingSong?.filePath)
 
+// 父级采样 OverlayScrollbars viewport 的滚动与视口高度，传入子组件，避免子组件对 DOM 结构适配差异
+const externalScrollTop = ref(0)
+const externalViewportHeight = ref(0)
+let parentRafId = 0
+function startParentRafSampler() {
+  cancelAnimationFrame(parentRafId)
+  const tick = () => {
+    const vp = songsAreaRef.value?.osInstance()?.elements().viewport as HTMLElement | undefined
+    if (vp) {
+      externalScrollTop.value = vp.scrollTop
+      externalViewportHeight.value = vp.clientHeight
+    }
+    parentRafId = requestAnimationFrame(tick)
+  }
+  parentRafId = requestAnimationFrame(tick)
+}
+onMounted(() => {
+  // 覆盖 defer 情况：下一帧再启动，直到有实例
+  startParentRafSampler()
+})
+onUnmounted(() => {
+  cancelAnimationFrame(parentRafId)
+})
+
 // 新增：监听当前播放歌曲的变化，并滚动到视图
 watch(
   () => runtime.playingData.playingSong,
@@ -735,31 +755,22 @@ watch(
     ) {
       nextTick(() => {
         const scrollInstance = songsAreaRef.value?.osInstance()
-        if (scrollInstance) {
-          // SongListRows.vue 会给当前播放的歌曲行添加 .playingSong 类
-          // 我们需要找到 .song-row-item 元素，因为 .song-row-content 可能不是直接的子元素。
-          // 假设每个 song-row-item 包含一个 .song-row-content.playingSong
-          // 或者更准确地说，SongListRows.vue 中，.playingSong 类是加在 .song-row-content 上的。
-          // 我们需要滚动的是 .song-row-item
-          const viewportElement = scrollInstance.elements().viewport
-          // filePath 是唯一的，可以用来构造一个更精确的 data-attribute selector
-          // 但目前 SongListRows.vue 并没有添加这样的 attribute。
-          // 使用 .playingSong 类是最直接的方式，因为它是由 playingSongFilePathForRows 决定的。
+        const viewportElement = scrollInstance?.elements().viewport as HTMLElement | undefined
+        if (!viewportElement) return
 
-          const playingSongContentElement = viewportElement.querySelector(
-            '.song-row-content.playingSong'
-          )
-
-          if (playingSongContentElement) {
-            const playingSongRowItem = playingSongContentElement.closest(
-              '.song-row-item'
-            ) as HTMLElement
-            if (playingSongRowItem) {
-              playingSongRowItem.scrollIntoView({ block: 'center', behavior: 'smooth' })
-            }
+        // 虚拟滚动下，目标行可能未在 DOM 中，改为按行号计算 scrollTop
+        const ROW_HEIGHT = 30
+        const index = runtime.songsArea.songInfoArr.findIndex(
+          (s) => s.filePath === newSong.filePath
+        )
+        if (index >= 0) {
+          const targetTop = index * ROW_HEIGHT
+          const centerTop = Math.max(0, targetTop - viewportElement.clientHeight / 2)
+          try {
+            viewportElement.scrollTo({ top: centerTop, behavior: 'smooth' })
+          } catch {
+            viewportElement.scrollTop = centerTop
           }
-          // Playing song element might not be found if the song list is not the current playing list,
-          // or if the song list has just changed and the DOM hasn't updated yet. This is acceptable.
         }
       })
     }
@@ -851,13 +862,12 @@ watch(
       })
 
       if (pathsToRemove.length > 0) {
+        // 仅修改 original，随后统一重建显示列表，避免与排序/筛选链路打架
         originalSongInfoArr.value = originalSongInfoArr.value.filter(
           (item) => !pathsToRemove.includes(item.filePath)
         )
 
-        runtime.songsArea.songInfoArr = songsInArea.filter(
-          (item) => !pathsToRemove.includes(item.filePath)
-        )
+        applyFiltersAndSorting()
 
         runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
           (path) => !pathsToRemove.includes(path)
@@ -918,13 +928,16 @@ watch(
       <!-- 使用 SongListRows 组件渲染歌曲列表 -->
       <SongListRows
         v-if="runtime.songsArea.songInfoArr.length > 0"
-        :songs="visibleSongs"
+        :songs="runtime.songsArea.songInfoArr"
         :visibleColumns="columnDataArr"
         :selectedSongFilePaths="runtime.songsArea.selectedSongFilePath"
         :playingSongFilePath="playingSongFilePathForRows"
         :total-width="totalColumnsWidth"
         :sourceLibraryName="runtime.libraryAreaSelected"
         :sourceSongListUUID="runtime.songsArea.songListUUID"
+        :scroll-host-element="songsAreaRef?.osInstance()?.elements().viewport"
+        :external-scroll-top="externalScrollTop"
+        :external-viewport-height="externalViewportHeight"
         @song-click="songClick"
         @song-contextmenu="handleSongContextMenuEvent"
         @song-dblclick="songDblClick"
