@@ -1,7 +1,5 @@
 import 'dotenv/config'
-import { app, BrowserWindow, ipcMain, dialog, shell, Menu, nativeTheme } from 'electron'
-import zhCNLocale from '../renderer/src/i18n/locales/zh-CN.json'
-import enUSLocale from '../renderer/src/i18n/locales/en-US.json'
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import {
   getLibrary,
@@ -18,14 +16,8 @@ import { log } from './log'
 import './cloudSync'
 import errorReport from './errorReport'
 import url from './url'
+import { saveList, exportSnapshot, importFromJsonFile } from './fingerprintStore'
 import { initDatabaseStructure } from './initDatabase'
-import {
-  healAndPrepare,
-  loadList,
-  saveList,
-  exportSnapshot,
-  importFromJsonFile
-} from './fingerprintStore'
 import mainWindow from './window/mainWindow'
 import databaseInitWindow from './window/databaseInitWindow'
 import { is } from '@electron-toolkit/utils'
@@ -33,15 +25,17 @@ import store from './store'
 import foundNewVersionWindow from './window/foundNewVersionWindow'
 import updateWindow from './window/updateWindow'
 import electronUpdater = require('electron-updater')
-import {
-  readManifestFile,
-  MANIFEST_FILE_NAME,
-  looksLikeLegacyStructure,
-  ensureManifestForLegacy,
-  writeManifest
-} from './databaseManifest'
+import { readManifestFile, MANIFEST_FILE_NAME, looksLikeLegacyStructure } from './databaseManifest'
+import { setupMacMenus, rebuildMacMenusForCurrentFocus } from './menu/macMenu'
+import { prepareAndOpenMainWindow } from './bootstrap/prepareDatabase'
 import { execFile } from 'child_process'
 import { ISongInfo } from '../types/globals'
+import { scanSongList as svcScanSongList } from './services/scanSongs'
+import {
+  getSongCover as svcGetSongCover,
+  getSongCoverThumb as svcGetSongCoverThumb,
+  sweepSongListCovers as svcSweepSongListCovers
+} from './services/covers'
 import { v4 as uuidV4 } from 'uuid'
 // import AudioFeatureExtractor from './mfccTest'
 
@@ -224,244 +218,63 @@ app.whenReady().then(async () => {
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
-  // macOS：构建两套菜单，并根据聚焦窗口切换
+  // macOS：交由模块化方法统一处理菜单
   if (process.platform === 'darwin') {
-    try {
-      const MESSAGES: Record<'zh-CN' | 'en-US', any> = {
-        'zh-CN': zhCNLocale as any,
-        'en-US': enUSLocale as any
-      }
-      const getCurrentLocaleId = (): 'zh-CN' | 'en-US' =>
-        (store.settingConfig as any)?.language === 'enUS' ? 'en-US' : 'zh-CN'
-      const tMenu = (key: string): string => {
-        const localeId = getCurrentLocaleId()
-        const parts = key.split('.')
-        let cur: any = MESSAGES[localeId]
-        for (const p of parts) {
-          if (cur && typeof cur === 'object' && p in cur) cur = cur[p]
-          else return key
-        }
-        return typeof cur === 'string' ? cur : key
-      }
-      const sanitizeLabelForMac = (label: string): string => {
-        if (process.platform !== 'darwin') return label
-        // 移除尾部的 (F)/(H)/(C) 或全角（F）等助记符
-        return label.replace(/\s*(\([A-Za-z]\)|（[A-Za-z]）)/g, '')
-      }
-      const labelImportTo = (libraryKey: 'library.filter' | 'library.curated') => {
-        const tpl = tMenu('library.importNewTracks')
-        const lib = tMenu(libraryKey)
-        return tpl.replace('{libraryType}', lib)
-      }
-      const buildAppOnlyMenu = () =>
-        Menu.buildFromTemplate([
-          {
-            label: 'FRKB',
-            submenu: [
-              { role: 'hide', label: '隐藏 FRKB' },
-              { role: 'hideOthers', label: '隐藏其他' },
-              { role: 'unhide', label: '显示全部' },
-              { type: 'separator' },
-              { role: 'quit', label: '退出 FRKB' }
-            ]
-          }
-        ])
-      const buildFullMenu = () =>
-        Menu.buildFromTemplate([
-          // 顶栏
-          {
-            label: 'FRKB',
-            submenu: [
-              { role: 'hide', label: '隐藏 FRKB' },
-              { role: 'hideOthers', label: '隐藏其他' },
-              { role: 'unhide', label: '显示全部' },
-              { type: 'separator' },
-              { role: 'quit', label: '退出 FRKB' }
-            ]
-          },
-          {
-            label: sanitizeLabelForMac(tMenu('menu.file')),
-            submenu: [
-              {
-                label: labelImportTo('library.filter'),
-                click: () =>
-                  mainWindow.instance?.webContents.send('tray-action', 'import-new-filter')
-              },
-              {
-                label: labelImportTo('library.curated'),
-                click: () =>
-                  mainWindow.instance?.webContents.send('tray-action', 'import-new-curated')
-              },
-              { type: 'separator' },
-              {
-                label: tMenu('fingerprints.manualAdd'),
-                click: () =>
-                  mainWindow.instance?.webContents.send(
-                    'openDialogFromTray',
-                    'fingerprints.manualAdd'
-                  )
-              }
-            ]
-          },
-          {
-            label: sanitizeLabelForMac(tMenu('menu.migration')),
-            submenu: [
-              {
-                label: tMenu('fingerprints.exportDatabase'),
-                click: () =>
-                  mainWindow.instance?.webContents.send(
-                    'openDialogFromTray',
-                    'fingerprints.exportDatabase'
-                  )
-              },
-              {
-                label: tMenu('fingerprints.importDatabase'),
-                click: () =>
-                  mainWindow.instance?.webContents.send(
-                    'openDialogFromTray',
-                    'fingerprints.importDatabase'
-                  )
-              }
-            ]
-          },
-          {
-            label: sanitizeLabelForMac(tMenu('menu.cloudSync')),
-            submenu: [
-              {
-                label: tMenu('cloudSync.syncFingerprints'),
-                click: () =>
-                  mainWindow.instance?.webContents.send(
-                    'openDialogFromTray',
-                    'cloudSync.syncFingerprints'
-                  )
-              },
-              {
-                label: tMenu('cloudSync.settings'),
-                click: () =>
-                  mainWindow.instance?.webContents.send('openDialogFromTray', 'cloudSync.settings')
-              }
-            ]
-          },
-          {
-            label: sanitizeLabelForMac(tMenu('menu.help')),
-            submenu: [
-              {
-                label: tMenu('menu.visitGithub'),
-                click: () =>
-                  mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.visitGithub')
-              },
-              {
-                label: tMenu('menu.checkUpdate'),
-                click: () =>
-                  mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.checkUpdate')
-              },
-              {
-                label: tMenu('menu.about'),
-                click: () =>
-                  mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.about')
-              }
-            ]
-          }
-        ])
-      // 初始：非主窗口可能先出现（数据库初始化），仅显示 FRKB
-      Menu.setApplicationMenu(buildAppOnlyMenu())
-      app.on('browser-window-focus', (_e, win) => {
-        if (win && mainWindow.instance && win.id === mainWindow.instance.id) {
-          Menu.setApplicationMenu(buildFullMenu())
-        } else {
-          Menu.setApplicationMenu(buildAppOnlyMenu())
-        }
-      })
-    } catch {}
+    setupMacMenus()
   }
-  if (!store.settingConfig.databaseUrl) {
-    databaseInitWindow.createWindow()
-  } else {
-    // 若数据库根路径不存在，则视为“数据库不存在”，直接进入初始化界面并提示
-    try {
-      const exists = fs.pathExistsSync(store.settingConfig.databaseUrl)
-      if (!exists) {
-        databaseInitWindow.createWindow({ needErrorHint: true })
-        return
-      }
-    } catch (_e) {
-      databaseInitWindow.createWindow({ needErrorHint: true })
-      return
-    }
-    try {
-      // 统一复用初始化（幂等）：创建/修复库结构
-      await initDatabaseStructure(store.settingConfig.databaseUrl, { createSamples: false })
-      // 补齐/验证声明文件（旧库静默生成）
-      try {
-        const legacy = await ensureManifestForLegacy(
-          store.settingConfig.databaseUrl,
-          app.getVersion()
-        )
-        if (!legacy) {
-          await writeManifest(store.settingConfig.databaseUrl, app.getVersion())
-        }
-      } catch {}
-      // 指纹：前置修复并加载（多版本+指针）
-      await healAndPrepare()
-      const list = await loadList()
-      store.databaseDir = store.settingConfig.databaseUrl
-      store.songFingerprintList = Array.isArray(list) ? list : []
-      mainWindow.createWindow()
-      // 应用启动后，延迟对所有歌单目录做一次全量 sweep（保证重启后也能清理空歌单残留封面）
-      try {
-        setTimeout(async () => {
-          const libRoot = path.join(store.databaseDir, 'library')
-          const walk = async (dir: string) => {
-            try {
-              const entries = await fs.readdir(dir, { withFileTypes: true })
-              for (const ent of entries) {
-                const full = path.join(dir, ent.name)
-                if (ent.isDirectory()) {
-                  // 若存在 .frkb_covers，则读取索引，空引用直接清理
-                  const coversDir = path.join(full, '.frkb_covers')
-                  const indexPath = path.join(coversDir, '.index.json')
-                  if (await fs.pathExists(indexPath)) {
-                    try {
-                      const idx = await fs.readJSON(indexPath)
-                      const hashToFiles = idx?.hashToFiles || {}
-                      const hashToExt = idx?.hashToExt || {}
-                      let removed = 0
-                      for (const h of Object.keys(hashToFiles)) {
-                        const arr = hashToFiles[h]
-                        if (!Array.isArray(arr) || arr.length === 0) {
-                          const ext = hashToExt[h] || '.jpg'
-                          const p = path.join(coversDir, `${h}${ext}`)
-                          try {
-                            if (await fs.pathExists(p)) {
-                              await fs.remove(p)
-                              removed++
-                            }
-                          } catch {}
-                          delete hashToFiles[h]
-                          delete hashToExt[h]
+  // 数据库准备与主窗口：统一调用幂等流程
+  await prepareAndOpenMainWindow()
+  // 应用启动后，延迟对所有歌单目录做一次全量 sweep（保证重启后也能清理空歌单残留封面）
+  try {
+    setTimeout(async () => {
+      if (!store.databaseDir) return
+      const libRoot = path.join(store.databaseDir, 'library')
+      const walk = async (dir: string) => {
+        try {
+          const entries = await fs.readdir(dir, { withFileTypes: true })
+          for (const ent of entries) {
+            const full = path.join(dir, ent.name)
+            if (ent.isDirectory()) {
+              const coversDir = path.join(full, '.frkb_covers')
+              const indexPath = path.join(coversDir, '.index.json')
+              if (await fs.pathExists(indexPath)) {
+                try {
+                  const idx = await fs.readJSON(indexPath)
+                  const hashToFiles = idx?.hashToFiles || {}
+                  const hashToExt = idx?.hashToExt || {}
+                  let removed = 0
+                  for (const h of Object.keys(hashToFiles)) {
+                    const arr = hashToFiles[h]
+                    if (!Array.isArray(arr) || arr.length === 0) {
+                      const ext = hashToExt[h] || '.jpg'
+                      const p = path.join(coversDir, `${h}${ext}`)
+                      try {
+                        if (await fs.pathExists(p)) {
+                          await fs.remove(p)
+                          removed++
                         }
-                      }
-                      if (removed > 0) {
-                        await fs.writeJSON(indexPath, {
-                          fileToHash: idx?.fileToHash || {},
-                          hashToFiles,
-                          hashToExt
-                        })
-                      }
-                    } catch {}
+                      } catch {}
+                      delete hashToFiles[h]
+                      delete hashToExt[h]
+                    }
                   }
-                  await walk(full)
-                }
+                  if (removed > 0) {
+                    await fs.writeJSON(indexPath, {
+                      fileToHash: idx?.fileToHash || {},
+                      hashToFiles,
+                      hashToExt
+                    })
+                  }
+                } catch {}
               }
-            } catch {}
+              await walk(full)
+            }
           }
-          await walk(libRoot)
-        }, 2000)
-      } catch {}
-    } catch (_e) {
-      databaseInitWindow.createWindow({ needErrorHint: true })
-    }
-  }
+        } catch {}
+      }
+      await walk(libRoot)
+    }, 2000)
+  } catch {}
 
   const autoUpdater = electronUpdater.autoUpdater
   autoUpdater.autoDownload = false
@@ -506,41 +319,7 @@ app.whenReady().then(async () => {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) {
-      if (!store.settingConfig.databaseUrl) {
-        databaseInitWindow.createWindow()
-      } else {
-        // 若数据库根路径不存在，则进入初始化界面并提示
-        try {
-          const exists = fs.pathExistsSync(store.settingConfig.databaseUrl)
-          if (!exists) {
-            databaseInitWindow.createWindow({ needErrorHint: true })
-            return
-          }
-        } catch (_e) {
-          databaseInitWindow.createWindow({ needErrorHint: true })
-          return
-        }
-        try {
-          await initDatabaseStructure(store.settingConfig.databaseUrl, { createSamples: false })
-          // 补齐/验证声明文件（旧库静默生成）
-          try {
-            const legacy = await ensureManifestForLegacy(
-              store.settingConfig.databaseUrl,
-              app.getVersion()
-            )
-            if (!legacy) {
-              await writeManifest(store.settingConfig.databaseUrl, app.getVersion())
-            }
-          } catch {}
-          await healAndPrepare()
-          const list = await loadList()
-          store.databaseDir = store.settingConfig.databaseUrl
-          store.songFingerprintList = Array.isArray(list) ? list : []
-          mainWindow.createWindow()
-        } catch (_e) {
-          databaseInitWindow.createWindow({ needErrorHint: true })
-        }
-      }
+      await prepareAndOpenMainWindow()
     }
   })
 })
@@ -559,154 +338,7 @@ ipcMain.handle('setSetting', (e, setting) => {
   fs.outputJson(url.settingConfigFileUrl, setting)
   // 语言切换时（macOS）重建菜单
   if (process.platform === 'darwin') {
-    try {
-      const MESSAGES: Record<'zh-CN' | 'en-US', any> = {
-        'zh-CN': zhCNLocale as any,
-        'en-US': enUSLocale as any
-      }
-      const getCurrentLocaleId = (): 'zh-CN' | 'en-US' =>
-        (store.settingConfig as any)?.language === 'enUS' ? 'en-US' : 'zh-CN'
-      const tMenu = (key: string): string => {
-        const localeId = getCurrentLocaleId()
-        const parts = key.split('.')
-        let cur: any = MESSAGES[localeId]
-        for (const p of parts) {
-          if (cur && typeof cur === 'object' && p in cur) cur = cur[p]
-          else return key
-        }
-        return typeof cur === 'string' ? cur : key
-      }
-      const sanitizeLabelForMac = (label: string): string => {
-        // 去除 (F)/(H)/(C) 或全角（F）等助记符
-        return label.replace(/\s*(\([A-Za-z]\)|（[A-Za-z]）)/g, '')
-      }
-      const labelImportTo = (libraryKey: 'library.filter' | 'library.curated') => {
-        const tpl = tMenu('library.importNewTracks')
-        const lib = tMenu(libraryKey)
-        return tpl.replace('{libraryType}', lib)
-      }
-      const buildAppOnlyMenu = () =>
-        Menu.buildFromTemplate([
-          {
-            label: 'FRKB',
-            submenu: [
-              { role: 'hide', label: getCurrentLocaleId() === 'en-US' ? 'Hide FRKB' : '隐藏 FRKB' },
-              {
-                role: 'hideOthers',
-                label: getCurrentLocaleId() === 'en-US' ? 'Hide Others' : '隐藏其他'
-              },
-              { role: 'unhide', label: getCurrentLocaleId() === 'en-US' ? 'Show All' : '显示全部' },
-              { type: 'separator' },
-              { role: 'quit', label: getCurrentLocaleId() === 'en-US' ? 'Quit FRKB' : '退出 FRKB' }
-            ]
-          }
-        ])
-      const buildFullMenu = () =>
-        Menu.buildFromTemplate([
-          {
-            label: 'FRKB',
-            submenu: [
-              { role: 'hide', label: getCurrentLocaleId() === 'en-US' ? 'Hide FRKB' : '隐藏 FRKB' },
-              {
-                role: 'hideOthers',
-                label: getCurrentLocaleId() === 'en-US' ? 'Hide Others' : '隐藏其他'
-              },
-              { role: 'unhide', label: getCurrentLocaleId() === 'en-US' ? 'Show All' : '显示全部' },
-              { type: 'separator' },
-              { role: 'quit', label: getCurrentLocaleId() === 'en-US' ? 'Quit FRKB' : '退出 FRKB' }
-            ]
-          },
-          {
-            label: sanitizeLabelForMac(tMenu('menu.file')),
-            submenu: [
-              {
-                label: labelImportTo('library.filter'),
-                click: () =>
-                  mainWindow.instance?.webContents.send('tray-action', 'import-new-filter')
-              },
-              {
-                label: labelImportTo('library.curated'),
-                click: () =>
-                  mainWindow.instance?.webContents.send('tray-action', 'import-new-curated')
-              },
-              { type: 'separator' },
-              {
-                label: tMenu('fingerprints.manualAdd'),
-                click: () =>
-                  mainWindow.instance?.webContents.send(
-                    'openDialogFromTray',
-                    'fingerprints.manualAdd'
-                  )
-              }
-            ]
-          },
-          {
-            label: sanitizeLabelForMac(tMenu('menu.migration')),
-            submenu: [
-              {
-                label: tMenu('fingerprints.exportDatabase'),
-                click: () =>
-                  mainWindow.instance?.webContents.send(
-                    'openDialogFromTray',
-                    'fingerprints.exportDatabase'
-                  )
-              },
-              {
-                label: tMenu('fingerprints.importDatabase'),
-                click: () =>
-                  mainWindow.instance?.webContents.send(
-                    'openDialogFromTray',
-                    'fingerprints.importDatabase'
-                  )
-              }
-            ]
-          },
-          {
-            label: sanitizeLabelForMac(tMenu('menu.cloudSync')),
-            submenu: [
-              {
-                label: tMenu('cloudSync.syncFingerprints'),
-                click: () =>
-                  mainWindow.instance?.webContents.send(
-                    'openDialogFromTray',
-                    'cloudSync.syncFingerprints'
-                  )
-              },
-              {
-                label: tMenu('cloudSync.settings'),
-                click: () =>
-                  mainWindow.instance?.webContents.send('openDialogFromTray', 'cloudSync.settings')
-              }
-            ]
-          },
-          {
-            label: sanitizeLabelForMac(tMenu('menu.help')),
-            submenu: [
-              {
-                label: tMenu('menu.visitGithub'),
-                click: () =>
-                  mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.visitGithub')
-              },
-              {
-                label: tMenu('menu.checkUpdate'),
-                click: () =>
-                  mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.checkUpdate')
-              },
-              {
-                label: tMenu('menu.about'),
-                click: () =>
-                  mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.about')
-              }
-            ]
-          }
-        ])
-      const focused = BrowserWindow.getFocusedWindow()
-      if (focused && mainWindow.instance && focused.id === mainWindow.instance.id) {
-        Menu.setApplicationMenu(buildFullMenu())
-      } else {
-        Menu.setApplicationMenu(buildAppOnlyMenu())
-      }
-    } catch {}
+    rebuildMacMenusForCurrentFocus()
   }
 })
 ipcMain.on('outputLog', (e, logMsg) => {
@@ -817,330 +449,20 @@ ipcMain.handle('dirPathExists', async (e, targetPath: string) => {
 })
 
 ipcMain.handle('scanSongList', async (e, songListPath: string, songListUUID: string) => {
-  const perfAllStart = Date.now()
-  let scanPath = path.join(store.databaseDir, mapRendererPathToFsPath(songListPath))
-  const perfListStart = Date.now()
-  const mm = await import('music-metadata')
-  let songInfoArr: ISongInfo[] = []
-  let songFileUrls = await collectFilesWithExtensions(scanPath, store.settingConfig.audioExt)
-  const perfListEnd = Date.now()
-
-  // --- 缓存：.songs.cache.json 按文件 size/mtime 命中 ---
-  type CacheEntry = {
-    size: number
-    mtimeMs: number
-    info: ISongInfo
-  }
-  const cacheFile = path.join(scanPath, '.songs.cache.json')
-  let cacheMap = new Map<string, CacheEntry>()
-  try {
-    if (await fs.pathExists(cacheFile)) {
-      const json = await fs.readJSON(cacheFile)
-      if (json && typeof json === 'object') {
-        const entries = (json.entries || {}) as Record<string, CacheEntry>
-        for (const [k, v] of Object.entries(entries)) {
-          if (v && typeof v.size === 'number' && typeof v.mtimeMs === 'number' && v.info) {
-            cacheMap.set(k, v)
-          }
-        }
-      }
-    }
-  } catch {}
-
-  const perfCacheCheckStart = Date.now()
-  const filesStatList: Array<{ file: string; size: number; mtimeMs: number }> = []
-  for (const file of songFileUrls) {
-    try {
-      const st = await fs.stat(file)
-      filesStatList.push({ file, size: st.size, mtimeMs: st.mtimeMs })
-    } catch {
-      // ignore stat error
-    }
-  }
-  const cachedInfos: ISongInfo[] = []
-  const filesToParse: string[] = []
-  for (const it of filesStatList) {
-    const c = cacheMap.get(it.file)
-    if (c && c.size === it.size && Math.abs(c.mtimeMs - it.mtimeMs) < 1) {
-      cachedInfos.push(c.info)
-    } else {
-      filesToParse.push(it.file)
-    }
-  }
-  const perfCacheCheckEnd = Date.now()
-
-  function convertSecondsToMinutesSeconds(seconds: number) {
-    const minutes = Math.floor(seconds / 60)
-    const remainingSeconds = seconds % 60
-    const minutesStr = minutes.toString().padStart(2, '0')
-    const secondsStr = remainingSeconds.toString().padStart(2, '0')
-    return `${minutesStr}:${secondsStr}`
-  }
-
-  const perfParseStart = Date.now()
-  const tasks: Array<() => Promise<any>> = filesToParse.map((url) => async () => {
-    try {
-      const metadata = await mm.parseFile(url)
-      const title =
-        metadata.common?.title && metadata.common.title.trim() !== ''
-          ? metadata.common.title
-          : path.basename(url)
-      return {
-        filePath: url,
-        cover: null,
-        title,
-        artist: metadata.common?.artist,
-        album: metadata.common?.album,
-        duration: convertSecondsToMinutesSeconds(
-          metadata.format.duration === undefined ? 0 : Math.round(metadata.format.duration)
-        ),
-        genre: metadata.common?.genre?.[0],
-        label: metadata.common?.label?.[0],
-        bitrate: metadata.format?.bitrate,
-        container: metadata.format?.container
-      } as ISongInfo
-    } catch (_e) {
-      // 单文件失败：跳过
-      return new Error('parse-failed')
-    }
-  })
-  const { results, success, failed } = await runWithConcurrency(tasks, { concurrency: 8 })
-  const parsedInfos: ISongInfo[] = results.filter((r) => r && !(r instanceof Error))
-  songInfoArr = [...cachedInfos, ...parsedInfos]
-  const perfParseEnd = Date.now()
-
-  // 回写缓存：仅包含当前存在的文件
-  try {
-    const newEntries: Record<string, CacheEntry> = {}
-    const infoMap = new Map<string, ISongInfo>()
-    for (const info of songInfoArr) infoMap.set(info.filePath, info)
-    for (const st of filesStatList) {
-      const info = infoMap.get(st.file)
-      if (info) newEntries[st.file] = { size: st.size, mtimeMs: st.mtimeMs, info }
-    }
-    await fs.writeJSON(cacheFile, { entries: newEntries })
-    // 使用统一封装设置隐藏
-    await operateHiddenFile(cacheFile, async () => {})
-  } catch {}
-
-  const perfAllEnd = Date.now()
-  // 移除冗余性能日志输出
-  return {
-    scanData: songInfoArr,
-    songListUUID,
-    perf: {
-      listFilesMs: perfListEnd - perfListStart,
-      cacheCheckMs: perfCacheCheckEnd - perfCacheCheckStart,
-      parseMetadataMs: perfParseEnd - perfParseStart,
-      totalMs: perfAllEnd - perfAllStart,
-      filesCount: songFileUrls.length,
-      successCount: success,
-      failedCount: failed,
-      cacheHits: cachedInfos.length,
-      parsedCount: parsedInfos.length
-    }
-  }
+  const scanPath = path.join(store.databaseDir, mapRendererPathToFsPath(songListPath))
+  return await svcScanSongList(scanPath, store.settingConfig.audioExt, songListUUID)
 })
 
 // 新增：按需获取单曲封面（在播放时调用）
 ipcMain.handle('getSongCover', async (_e, filePath: string) => {
-  try {
-    const mm = await import('music-metadata')
-    const metadata = await mm.parseFile(filePath)
-    const cover = mm.selectCover(metadata.common.picture)
-    if (!cover) return null
-    return { format: cover.format, data: Buffer.from(cover.data) }
-  } catch (err) {
-    return null
-  }
+  return await svcGetSongCover(filePath)
 })
 
 // 新增：返回封面缩略图文件URL（按需生成并缓存到磁盘）。目前不做重采样，仅写入嵌入图原始数据，后续可接入 sharp 生成固定尺寸。
 ipcMain.handle(
   'getSongCoverThumb',
   async (_e, filePath: string, size: number = 48, listRootDir?: string | null) => {
-    try {
-      // Windows: 辅助函数设置隐藏属性
-      const setHidden = async (targetPath: string) => {
-        try {
-          if (process.platform !== 'win32') return
-          const { exec } = await import('child_process')
-          const { promisify } = await import('util')
-          const execAsync = promisify(exec)
-          await execAsync(`attrib +h "${targetPath}"`)
-        } catch {}
-      }
-      const mm = await import('music-metadata')
-      const { pathToFileURL } = await import('url')
-      const crypto = await import('crypto')
-      const stat = await fs.stat(filePath)
-
-      // 封面缓存目录：仅允许放在“具体歌单目录/.frkb_covers”下；未提供则不落盘，仅返回 dataUrl
-      // 接收来自渲染层的路径，可能是相对路径（以 library 树相对路径表示）
-      let resolvedRoot: string | null = null
-      if (listRootDir && typeof listRootDir === 'string' && listRootDir.length > 0) {
-        let input = listRootDir
-        // Windows 平台下，渲染层可能传入以 '/library/...' 开头的“相对库路径”，不能按 OS 绝对路径处理
-        if (process.platform === 'win32' && /^\//.test(input)) {
-          input = input.replace(/^\/+/, '') // 去掉前导 '/'
-        }
-        if (path.isAbsolute(input)) {
-          // 现在的绝对路径才是真正 OS 级别的绝对路径
-          resolvedRoot = input
-        } else {
-          // 视为库相对路径，映射核心库实际目录名后再拼到数据库根目录
-          const mapped = mapRendererPathToFsPath(input)
-          resolvedRoot = path.join(store.databaseDir, mapped)
-        }
-      }
-      const isAbs = !!(resolvedRoot && path.isAbsolute(resolvedRoot))
-      const exists = isAbs ? await fs.pathExists(resolvedRoot as string) : false
-      const useDiskCache = isAbs && exists
-      const coversDir = useDiskCache ? path.join(resolvedRoot as string, '.frkb_covers') : null
-      if (useDiskCache && coversDir) {
-        await fs.ensureDir(coversDir)
-        // 使用统一封装，确保目录设置为隐藏
-        await operateHiddenFile(coversDir, async () => {})
-      }
-
-      // 引入索引：.frkb_covers/.index.json 记录 filePath<->imageHash 与 hash->ext
-      type CoverIndex = {
-        fileToHash: Record<string, string>
-        hashToFiles: Record<string, string[]>
-        hashToExt: Record<string, string>
-      }
-      const indexPath = useDiskCache && coversDir ? path.join(coversDir, '.index.json') : null
-      const loadIndex = async (): Promise<CoverIndex> => {
-        if (!indexPath) return { fileToHash: {}, hashToFiles: {}, hashToExt: {} }
-        try {
-          const json = await fs.readJSON(indexPath)
-          return {
-            fileToHash: json?.fileToHash || {},
-            hashToFiles: json?.hashToFiles || {},
-            hashToExt: json?.hashToExt || {}
-          }
-        } catch {
-          return { fileToHash: {}, hashToFiles: {}, hashToExt: {} }
-        }
-      }
-      const saveIndex = async (idx: CoverIndex) => {
-        if (!indexPath) return
-        try {
-          await fs.writeJSON(indexPath, idx)
-        } catch {}
-      }
-      const ensureArrHas = (arr: string[], v: string) => {
-        if (arr.indexOf(v) === -1) arr.push(v)
-        return arr
-      }
-      const mimeFromExt = (ext: string) =>
-        ext === '.png'
-          ? 'image/png'
-          : ext === '.webp'
-            ? 'image/webp'
-            : ext === '.gif'
-              ? 'image/gif'
-              : ext === '.bmp'
-                ? 'image/bmp'
-                : 'image/jpeg'
-      const extFromMime = (mime: string) => {
-        const lower = (mime || '').toLowerCase()
-        if (lower.includes('png')) return '.png'
-        if (lower.includes('webp')) return '.webp'
-        if (lower.includes('gif')) return '.gif'
-        if (lower.includes('bmp')) return '.bmp'
-        return '.jpg'
-      }
-
-      // 优先命中索引
-      if (useDiskCache && coversDir) {
-        const idx = await loadIndex()
-        const known = idx.fileToHash[filePath]
-        if (known) {
-          const ext = idx.hashToExt[known] || '.jpg'
-          const p = path.join(coversDir, `${known}${ext}`)
-          if (await fs.pathExists(p)) {
-            const st0 = await fs.stat(p)
-            if (st0.size > 0) {
-              const data = await fs.readFile(p)
-              const mime = mimeFromExt(ext)
-              const dataUrl = `data:${mime};base64,${data.toString('base64')}`
-              return { format: mime, data, dataUrl }
-            }
-          }
-        }
-      }
-
-      // 解析嵌入封面
-      let format = 'image/jpeg'
-      let data: Buffer | null = null
-      try {
-        const metadata = await mm.parseFile(filePath)
-        const cover = mm.selectCover(metadata.common.picture)
-        if (!cover) {
-          return null
-        }
-        format = cover.format || 'image/jpeg'
-        // 兼容 Buffer / Uint8Array / Array<number> / TypedArray / DataView
-        const raw: any = cover.data as any
-        if (Buffer.isBuffer(raw)) {
-          data = raw
-        } else if (raw instanceof Uint8Array) {
-          data = Buffer.from(raw)
-        } else if (Array.isArray(raw)) {
-          data = Buffer.from(raw)
-        } else if (raw && raw.buffer && typeof raw.byteLength === 'number') {
-          // 其他 TypedArray / DataView
-          try {
-            const view = new Uint8Array(raw.buffer, raw.byteOffset || 0, raw.byteLength)
-            data = Buffer.from(view)
-          } catch {
-            data = null
-          }
-        } else if (raw && raw.data && Array.isArray(raw.data)) {
-          data = Buffer.from(raw.data)
-        } else {
-          data = null
-        }
-      } catch (_err: any) {
-        return null
-      }
-
-      if (!data || data.length === 0) {
-        return null
-      }
-
-      // 基于内容生成哈希，避免增殖
-      const imageHash = crypto.createHash('sha1').update(data).digest('hex')
-      const ext = extFromMime(format)
-
-      const mime = format || 'image/jpeg'
-      const dataUrl = `data:${mime};base64,${data.toString('base64')}`
-      // 若允许磁盘缓存，落盘一份；否则仅返回内存 dataUrl
-      if (useDiskCache && coversDir) {
-        const targetPath = path.join(coversDir, `${imageHash}${ext}`)
-        const tmp = `${targetPath}.tmp_${Date.now()}`
-        try {
-          await fs.writeFile(tmp, data)
-          await fs.move(tmp, targetPath, { overwrite: true })
-          // 使用统一封装为封面文件设置隐藏
-          await operateHiddenFile(targetPath, async () => {})
-          const idx = await loadIndex()
-          idx.fileToHash[filePath] = imageHash
-          idx.hashToFiles[imageHash] = ensureArrHas(idx.hashToFiles[imageHash] || [], filePath)
-          idx.hashToExt[imageHash] = ext
-          await saveIndex(idx)
-        } catch {
-        } finally {
-          try {
-            if (await fs.pathExists(tmp)) await fs.remove(tmp)
-          } catch {}
-        }
-      }
-      return { format: mime, data, dataUrl }
-    } catch (err: any) {
-      return null
-    }
+    return await svcGetSongCoverThumb(filePath, size, listRootDir)
   }
 )
 
@@ -1148,86 +470,7 @@ ipcMain.handle(
 ipcMain.handle(
   'sweepSongListCovers',
   async (_e, listRootDir: string, currentFilePaths: string[]) => {
-    try {
-      if (!listRootDir || typeof listRootDir !== 'string') return { removed: 0 }
-      let input = listRootDir
-      if (process.platform === 'win32' && /^\//.test(input)) input = input.replace(/^\/+/, '')
-      const mapped = path.isAbsolute(input) ? input : mapRendererPathToFsPath(input)
-      const resolvedRoot = path.isAbsolute(mapped) ? mapped : path.join(store.databaseDir, mapped)
-      const coversDir = path.join(resolvedRoot, '.frkb_covers')
-      // 移除清扫日志
-      if (!(await fs.pathExists(coversDir))) return { removed: 0 }
-
-      const indexPath = path.join(coversDir, '.index.json')
-      let idx: any = { fileToHash: {}, hashToFiles: {}, hashToExt: {} }
-      try {
-        const json = await fs.readJSON(indexPath)
-        idx.fileToHash = json?.fileToHash || {}
-        idx.hashToFiles = json?.hashToFiles || {}
-        idx.hashToExt = json?.hashToExt || {}
-      } catch {}
-
-      const alive = new Set(currentFilePaths || [])
-      // 移除 fileToHash 中不在 alive 的映射，并更新 hashToFiles
-      for (const fp of Object.keys(idx.fileToHash)) {
-        if (!alive.has(fp)) {
-          const h = idx.fileToHash[fp]
-          delete idx.fileToHash[fp]
-          if (Array.isArray(idx.hashToFiles[h])) {
-            idx.hashToFiles[h] = idx.hashToFiles[h].filter((x: string) => x !== fp)
-          }
-        }
-      }
-      // 删除无引用的 hash 文件（先按索引，再兜底扫描）
-      let removed = 0
-      const liveHashes = new Set<string>()
-      for (const h of Object.keys(idx.hashToFiles)) {
-        const arr = idx.hashToFiles[h]
-        if (Array.isArray(arr) && arr.length > 0) liveHashes.add(h)
-      }
-      for (const h of Object.keys(idx.hashToFiles)) {
-        const arr = idx.hashToFiles[h]
-        if (!Array.isArray(arr) || arr.length === 0) {
-          const ext = idx.hashToExt[h] || '.jpg'
-          const p = path.join(coversDir, `${h}${ext}`)
-          try {
-            if (await fs.pathExists(p)) {
-              await fs.remove(p)
-              removed++
-            }
-          } catch {}
-          delete idx.hashToFiles[h]
-          delete idx.hashToExt[h]
-        }
-      }
-      // 兜底：目录扫描，删除索引外的孤儿文件和遗留 tmp
-      try {
-        const entries = await fs.readdir(coversDir)
-        const imgRegex = /^[a-f0-9]{40}\.(jpg|png|webp|gif|bmp)$/i
-        for (const name of entries) {
-          const full = path.join(coversDir, name)
-          if (name.includes('.tmp_')) {
-            try {
-              await fs.remove(full)
-            } catch {}
-            continue
-          }
-          if (!imgRegex.test(name)) continue
-          const hash = name.slice(0, 40).toLowerCase()
-          if (!liveHashes.has(hash)) {
-            try {
-              await fs.remove(full)
-              removed++
-            } catch {}
-          }
-        }
-      } catch {}
-
-      await fs.writeJSON(indexPath, idx)
-      return { removed }
-    } catch {
-      return { removed: 0 }
-    }
+    return await svcSweepSongListCovers(listRootDir, currentFilePaths)
   }
 )
 
