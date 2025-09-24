@@ -348,7 +348,6 @@ const contextmenuEvent = async (event: MouseEvent) => {
 const dirChildShow = ref(false)
 const dirChildRendered = ref(false)
 const dirHandleClick = async () => {
-  const t0 = performance.now()
   runtime.activeMenuUUID = ''
   let songListPath = libraryUtils.findDirPathByUuid(props.uuid)
   let isSongListPathExist = await window.electron.ipcRenderer.invoke('dirPathExists', songListPath)

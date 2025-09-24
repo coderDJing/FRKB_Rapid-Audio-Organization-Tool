@@ -37,6 +37,7 @@ import ascendingOrder from '@renderer/assets/ascending-order.png?asset'
 import descendingOrder from '@renderer/assets/descending-order.png?asset'
 
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
+import { v4 as uuidV4 } from 'uuid'
 
 // 类型定义，以便正确引用 OverlayScrollbarsComponent 实例
 type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
@@ -68,6 +69,11 @@ const INIT_EXTRA_WIDTH = 40
 
 // 基础列定义（不包含 width），避免写死无意义的宽度数字
 const baseColumns: Omit<ISongsAreaColumn, 'width'>[] = [
+  {
+    columnName: 'columns.cover',
+    key: 'cover',
+    show: true
+  },
   {
     columnName: 'columns.index',
     key: 'index',
@@ -233,8 +239,10 @@ const columnData = ref<ISongsAreaColumn[]>(
 let loadingShow = ref(false)
 const isRequesting = ref<boolean>(false)
 
+// 删除后台预热与会话ID
+
 const openSongList = async () => {
-  const perfStartAll = performance.now()
+  // 移除性能测量日志
   const prevOriginalLen = originalSongInfoArr.value.length
   const prevRuntimeLen = runtime.songsArea.songInfoArr.length
   const sortedColBefore = columnData.value.find((c) => c.order)
@@ -255,7 +263,8 @@ const openSongList = async () => {
 
   let perfInvokeStart = 0
   try {
-    perfInvokeStart = performance.now()
+    // 移除会话ID
+
     const {
       scanData,
       songListUUID,
@@ -270,14 +279,13 @@ const openSongList = async () => {
       return
     }
 
-    const perfAfterIPC = performance.now()
-    const perfAssignStart = performance.now()
     // 避免深代理：整表标记为非响应
     originalSongInfoArr.value = markRaw(scanData)
 
     // 初次加载后应用筛选与排序
     applyFiltersAndSorting()
-    const perfAfterFilterSort = performance.now()
+
+    // 移除封面会话日志
 
     if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
       runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
@@ -301,16 +309,26 @@ const openSongList = async () => {
     })()
 
     // 追加：等待 DOM 刷新 + 一帧绘制（轻量，不长时间占用主线程）
-    const perfBeforeDomFlush = performance.now()
+
     await nextTick()
     await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
-    const perfAfterPaint = performance.now()
+
+    // 歌单封面索引清理：根据当前曲目集合，精准清除无引用封面（异步、不阻塞UI）
+    try {
+      // 传相对库路径，主进程会拼接 store.databaseDir
+      const listRootDir = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID) || ''
+      const currentPaths = runtime.songsArea.songInfoArr.map((s) => s.filePath)
+      setTimeout(() => {
+        window.electron.ipcRenderer.invoke('sweepSongListCovers', listRootDir, currentPaths)
+      }, 0)
+    } catch {}
 
     // 结束
   } finally {
     isRequesting.value = false
     clearTimeout(loadingSetTimeout)
     loadingShow.value = false
+    // 移除封面会话日志
   }
 }
 watch(
@@ -368,6 +386,9 @@ const onSongsRemoved = (payload: { listUUID?: string; paths: string[] } | { path
   runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
     (path) => !pathsToRemove.includes(path)
   )
+
+  // 调度一次封面清理
+  scheduleSweepCovers()
 }
 
 const onSongsMovedByDrag = (movedSongPaths: string[]) => {
@@ -381,6 +402,9 @@ const onSongsMovedByDrag = (movedSongPaths: string[]) => {
   )
   // 统一通过筛选与排序重建显示列表
   applyFiltersAndSorting()
+
+  // 调度一次封面清理（根据当前列表实际引用）
+  scheduleSweepCovers()
 
   // 如果当前播放列表是被修改的列表，更新播放数据
   if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
@@ -412,6 +436,19 @@ onUnmounted(() => {
 // --- 父组件中用于持久化列数据的方法 ---
 const persistColumnData = () => {
   localStorage.setItem('songColumnData', JSON.stringify(columnData.value))
+}
+
+// 统一封面清理调度：根据当前歌单实际 filePath 集合触发 sweep（防抖，避免频发）
+let sweepTimer: any = null
+function scheduleSweepCovers() {
+  clearTimeout(sweepTimer)
+  sweepTimer = setTimeout(() => {
+    try {
+      const listRootDir = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID) || ''
+      const currentPaths = runtime.songsArea.songInfoArr.map((s) => s.filePath)
+      window.electron.ipcRenderer.invoke('sweepSongListCovers', listRootDir, currentPaths)
+    } catch {}
+  }, 300)
 }
 
 // --- 处理来自 SongListHeader 的列更新 ---
@@ -458,18 +495,7 @@ const totalColumnsWidth = computed(() => {
   return columnDataArr.value.reduce((sum, col) => sum + (col.width || 0), 0)
 })
 
-// 模板内避免直接访问 window，提取为方法
-const logRowsRendered = (count: number) => {
-  try {
-    window.electron.ipcRenderer.send('perfLog', {
-      scope: 'rowsRendered',
-      songListUUID: runtime.songsArea.songListUUID,
-      rendered: count,
-      expected: runtime.songsArea.songInfoArr.length,
-      ts: Date.now()
-    })
-  } catch {}
-}
+// 移除残留的 perfLog
 
 const songClick = (event: MouseEvent, song: ISongInfo) => {
   runtime.activeMenuUUID = ''
@@ -600,6 +626,9 @@ const handleDeleteKey = async () => {
     // 统一通过筛选与排序函数重建显示列表，避免直接从 original 拷贝导致“复活”
     applyFiltersAndSorting()
 
+    // 调度一次封面清理（根据当前列表实际引用）
+    scheduleSweepCovers()
+
     if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
       runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
     }
@@ -692,7 +721,8 @@ function applyFiltersAndSorting() {
   runtime.songsArea.songInfoArr = filtered
 }
 const colMenuClick = (col: ISongsAreaColumn) => {
-  if (col.key === 'index') {
+  // 序号与封面列不可排序
+  if (col.key === 'index' || col.key === 'cover') {
     return
   }
 
@@ -703,7 +733,8 @@ const colMenuClick = (col: ISongsAreaColumn) => {
     const newOrderForItem = item.order === 'asc' ? 'desc' : item.order === 'desc' ? 'asc' : 'asc' // Default to asc if undefined
     return { ...item, order: newOrderForItem as 'asc' | 'desc' }
   })
-  columnData.value = newColumnData
+  // 强制清除封面列的排序状态
+  columnData.value = newColumnData.map((c) => (c.key === 'cover' ? { ...c, order: undefined } : c))
   persistColumnData()
 
   // 统一通过筛选与排序函数重建显示数据，避免直接从 original 拷贝导致“复活”
@@ -938,6 +969,7 @@ watch(
         :scroll-host-element="songsAreaRef?.osInstance()?.elements().viewport"
         :external-scroll-top="externalScrollTop"
         :external-viewport-height="externalViewportHeight"
+        :song-list-root-dir="libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID) || ''"
         @song-click="songClick"
         @song-contextmenu="handleSongContextMenuEvent"
         @song-dblclick="songDblClick"

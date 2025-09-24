@@ -171,33 +171,42 @@ export async function getLibrary() {
   return rootDescriptionJson
 }
 
-export const operateHiddenFile = async (filePath: string, operateFunction: Function) => {
-  if (os.platform() === 'win32') {
-    const { exec } = require('child_process')
-    const { promisify } = require('util')
-    const execAsync = promisify(exec)
+export const operateHiddenFile = async (
+  filePath: string,
+  operateFunction: () => Promise<any> | any
+) => {
+  // 统一 await，无论传入同步/异步
+  const run = async () => await Promise.resolve(operateFunction())
 
+  if (os.platform() !== 'win32') {
+    // 非 Windows：直接运行
+    return run()
+  }
+
+  const { exec } = require('child_process')
+  const { promisify } = require('util')
+  const execAsync = promisify(exec)
+
+  // 独立处理 attrib 错误，避免覆盖业务异常
+  const tryExec = async (cmd: string) => {
     try {
-      // 先移除隐藏属性
-      await execAsync(`attrib -h "${filePath}"`)
-
-      // 执行文件操作
-      if (operateFunction && operateFunction.constructor.name === 'AsyncFunction') {
-        await operateFunction()
-      } else {
-        operateFunction()
-      }
-      await execAsync(`attrib +h "${filePath}"`)
-    } catch (error) {
-      console.error('Error in operateHiddenFile:', error)
-      throw error
+      await execAsync(cmd)
+    } catch {
+      // 静默忽略 attrib 失败（可能：文件不存在、被移动、权限受限）
     }
-  } else {
-    // 非 Windows 系统直接执行操作
-    if (operateFunction && operateFunction.constructor.name === 'AsyncFunction') {
-      await operateFunction()
-    } else {
-      operateFunction()
+  }
+
+  // 若存在则去隐藏，再执行业务，最后若存在则设隐藏
+  const existedBefore = await fs.pathExists(filePath)
+  if (existedBefore) {
+    await tryExec(`attrib -h "${filePath}"`)
+  }
+  try {
+    await run()
+  } finally {
+    const existsAfter = await fs.pathExists(filePath)
+    if (existsAfter) {
+      await tryExec(`attrib +h "${filePath}"`)
     }
   }
 }
