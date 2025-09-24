@@ -97,6 +97,8 @@ let rafId = 0
 let lastFrameWidth = -1
 
 const startResize = (e: MouseEvent, col: ISongsAreaColumn) => {
+  // 封面列禁止调整宽度
+  if (col.key === 'cover') return
   e.stopPropagation()
   e.preventDefault()
   isResizing = true
@@ -405,6 +407,7 @@ const handleContextMenu = (event: MouseEvent) => {
         />
       </Teleport>
       <div
+        v-if="col.key !== 'cover'"
         class="resize-handle"
         style="width: 5px; cursor: e-resize; flex-shrink: 0; height: 100%"
         @mousedown.stop="startResize($event, col)"

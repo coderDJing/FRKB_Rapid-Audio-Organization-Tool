@@ -1,15 +1,5 @@
 import 'dotenv/config'
-import {
-  app,
-  BrowserWindow,
-  ipcMain,
-  dialog,
-  shell,
-  IpcMainInvokeEvent,
-  Menu,
-  nativeImage,
-  nativeTheme
-} from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, Menu, nativeTheme } from 'electron'
 import zhCNLocale from '../renderer/src/i18n/locales/zh-CN.json'
 import enUSLocale from '../renderer/src/i18n/locales/en-US.json'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
@@ -45,7 +35,6 @@ import updateWindow from './window/updateWindow'
 import electronUpdater = require('electron-updater')
 import {
   readManifestFile,
-  getManifestPath,
   MANIFEST_FILE_NAME,
   looksLikeLegacyStructure,
   ensureManifestForLegacy,
@@ -418,6 +407,57 @@ app.whenReady().then(async () => {
       store.databaseDir = store.settingConfig.databaseUrl
       store.songFingerprintList = Array.isArray(list) ? list : []
       mainWindow.createWindow()
+      // 应用启动后，延迟对所有歌单目录做一次全量 sweep（保证重启后也能清理空歌单残留封面）
+      try {
+        setTimeout(async () => {
+          const libRoot = path.join(store.databaseDir, 'library')
+          const walk = async (dir: string) => {
+            try {
+              const entries = await fs.readdir(dir, { withFileTypes: true })
+              for (const ent of entries) {
+                const full = path.join(dir, ent.name)
+                if (ent.isDirectory()) {
+                  // 若存在 .frkb_covers，则读取索引，空引用直接清理
+                  const coversDir = path.join(full, '.frkb_covers')
+                  const indexPath = path.join(coversDir, '.index.json')
+                  if (await fs.pathExists(indexPath)) {
+                    try {
+                      const idx = await fs.readJSON(indexPath)
+                      const hashToFiles = idx?.hashToFiles || {}
+                      const hashToExt = idx?.hashToExt || {}
+                      let removed = 0
+                      for (const h of Object.keys(hashToFiles)) {
+                        const arr = hashToFiles[h]
+                        if (!Array.isArray(arr) || arr.length === 0) {
+                          const ext = hashToExt[h] || '.jpg'
+                          const p = path.join(coversDir, `${h}${ext}`)
+                          try {
+                            if (await fs.pathExists(p)) {
+                              await fs.remove(p)
+                              removed++
+                            }
+                          } catch {}
+                          delete hashToFiles[h]
+                          delete hashToExt[h]
+                        }
+                      }
+                      if (removed > 0) {
+                        await fs.writeJSON(indexPath, {
+                          fileToHash: idx?.fileToHash || {},
+                          hashToFiles,
+                          hashToExt
+                        })
+                      }
+                    } catch {}
+                  }
+                  await walk(full)
+                }
+              }
+            } catch {}
+          }
+          await walk(libRoot)
+        }, 2000)
+      } catch {}
     } catch (_e) {
       databaseInitWindow.createWindow({ needErrorHint: true })
     }
@@ -879,6 +919,8 @@ ipcMain.handle('scanSongList', async (e, songListPath: string, songListUUID: str
       if (info) newEntries[st.file] = { size: st.size, mtimeMs: st.mtimeMs, info }
     }
     await fs.writeJSON(cacheFile, { entries: newEntries })
+    // 使用统一封装设置隐藏
+    await operateHiddenFile(cacheFile, async () => {})
   } catch {}
 
   const perfAllEnd = Date.now()
@@ -912,6 +954,282 @@ ipcMain.handle('getSongCover', async (_e, filePath: string) => {
     return null
   }
 })
+
+// 新增：返回封面缩略图文件URL（按需生成并缓存到磁盘）。目前不做重采样，仅写入嵌入图原始数据，后续可接入 sharp 生成固定尺寸。
+ipcMain.handle(
+  'getSongCoverThumb',
+  async (_e, filePath: string, size: number = 48, listRootDir?: string | null) => {
+    try {
+      // Windows: 辅助函数设置隐藏属性
+      const setHidden = async (targetPath: string) => {
+        try {
+          if (process.platform !== 'win32') return
+          const { exec } = await import('child_process')
+          const { promisify } = await import('util')
+          const execAsync = promisify(exec)
+          await execAsync(`attrib +h "${targetPath}"`)
+        } catch {}
+      }
+      const mm = await import('music-metadata')
+      const { pathToFileURL } = await import('url')
+      const crypto = await import('crypto')
+      const stat = await fs.stat(filePath)
+
+      // 封面缓存目录：仅允许放在“具体歌单目录/.frkb_covers”下；未提供则不落盘，仅返回 dataUrl
+      // 接收来自渲染层的路径，可能是相对路径（以 library 树相对路径表示）
+      let resolvedRoot: string | null = null
+      if (listRootDir && typeof listRootDir === 'string' && listRootDir.length > 0) {
+        let input = listRootDir
+        // Windows 平台下，渲染层可能传入以 '/library/...' 开头的“相对库路径”，不能按 OS 绝对路径处理
+        if (process.platform === 'win32' && /^\//.test(input)) {
+          input = input.replace(/^\/+/, '') // 去掉前导 '/'
+        }
+        if (path.isAbsolute(input)) {
+          // 现在的绝对路径才是真正 OS 级别的绝对路径
+          resolvedRoot = input
+        } else {
+          // 视为库相对路径，映射核心库实际目录名后再拼到数据库根目录
+          const mapped = mapRendererPathToFsPath(input)
+          resolvedRoot = path.join(store.databaseDir, mapped)
+        }
+      }
+      const isAbs = !!(resolvedRoot && path.isAbsolute(resolvedRoot))
+      const exists = isAbs ? await fs.pathExists(resolvedRoot as string) : false
+      const useDiskCache = isAbs && exists
+      const coversDir = useDiskCache ? path.join(resolvedRoot as string, '.frkb_covers') : null
+      if (useDiskCache && coversDir) {
+        await fs.ensureDir(coversDir)
+        // 使用统一封装，确保目录设置为隐藏
+        await operateHiddenFile(coversDir, async () => {})
+      }
+
+      // 引入索引：.frkb_covers/.index.json 记录 filePath<->imageHash 与 hash->ext
+      type CoverIndex = {
+        fileToHash: Record<string, string>
+        hashToFiles: Record<string, string[]>
+        hashToExt: Record<string, string>
+      }
+      const indexPath = useDiskCache && coversDir ? path.join(coversDir, '.index.json') : null
+      const loadIndex = async (): Promise<CoverIndex> => {
+        if (!indexPath) return { fileToHash: {}, hashToFiles: {}, hashToExt: {} }
+        try {
+          const json = await fs.readJSON(indexPath)
+          return {
+            fileToHash: json?.fileToHash || {},
+            hashToFiles: json?.hashToFiles || {},
+            hashToExt: json?.hashToExt || {}
+          }
+        } catch {
+          return { fileToHash: {}, hashToFiles: {}, hashToExt: {} }
+        }
+      }
+      const saveIndex = async (idx: CoverIndex) => {
+        if (!indexPath) return
+        try {
+          await fs.writeJSON(indexPath, idx)
+        } catch {}
+      }
+      const ensureArrHas = (arr: string[], v: string) => {
+        if (arr.indexOf(v) === -1) arr.push(v)
+        return arr
+      }
+      const mimeFromExt = (ext: string) =>
+        ext === '.png'
+          ? 'image/png'
+          : ext === '.webp'
+            ? 'image/webp'
+            : ext === '.gif'
+              ? 'image/gif'
+              : ext === '.bmp'
+                ? 'image/bmp'
+                : 'image/jpeg'
+      const extFromMime = (mime: string) => {
+        const lower = (mime || '').toLowerCase()
+        if (lower.includes('png')) return '.png'
+        if (lower.includes('webp')) return '.webp'
+        if (lower.includes('gif')) return '.gif'
+        if (lower.includes('bmp')) return '.bmp'
+        return '.jpg'
+      }
+
+      // 优先命中索引
+      if (useDiskCache && coversDir) {
+        const idx = await loadIndex()
+        const known = idx.fileToHash[filePath]
+        if (known) {
+          const ext = idx.hashToExt[known] || '.jpg'
+          const p = path.join(coversDir, `${known}${ext}`)
+          if (await fs.pathExists(p)) {
+            const st0 = await fs.stat(p)
+            if (st0.size > 0) {
+              const data = await fs.readFile(p)
+              const mime = mimeFromExt(ext)
+              const dataUrl = `data:${mime};base64,${data.toString('base64')}`
+              return { format: mime, data, dataUrl }
+            }
+          }
+        }
+      }
+
+      // 解析嵌入封面
+      let format = 'image/jpeg'
+      let data: Buffer | null = null
+      try {
+        const metadata = await mm.parseFile(filePath)
+        const cover = mm.selectCover(metadata.common.picture)
+        if (!cover) {
+          return null
+        }
+        format = cover.format || 'image/jpeg'
+        // 兼容 Buffer / Uint8Array / Array<number> / TypedArray / DataView
+        const raw: any = cover.data as any
+        if (Buffer.isBuffer(raw)) {
+          data = raw
+        } else if (raw instanceof Uint8Array) {
+          data = Buffer.from(raw)
+        } else if (Array.isArray(raw)) {
+          data = Buffer.from(raw)
+        } else if (raw && raw.buffer && typeof raw.byteLength === 'number') {
+          // 其他 TypedArray / DataView
+          try {
+            const view = new Uint8Array(raw.buffer, raw.byteOffset || 0, raw.byteLength)
+            data = Buffer.from(view)
+          } catch {
+            data = null
+          }
+        } else if (raw && raw.data && Array.isArray(raw.data)) {
+          data = Buffer.from(raw.data)
+        } else {
+          data = null
+        }
+      } catch (_err: any) {
+        return null
+      }
+
+      if (!data || data.length === 0) {
+        return null
+      }
+
+      // 基于内容生成哈希，避免增殖
+      const imageHash = crypto.createHash('sha1').update(data).digest('hex')
+      const ext = extFromMime(format)
+
+      const mime = format || 'image/jpeg'
+      const dataUrl = `data:${mime};base64,${data.toString('base64')}`
+      // 若允许磁盘缓存，落盘一份；否则仅返回内存 dataUrl
+      if (useDiskCache && coversDir) {
+        const targetPath = path.join(coversDir, `${imageHash}${ext}`)
+        const tmp = `${targetPath}.tmp_${Date.now()}`
+        try {
+          await fs.writeFile(tmp, data)
+          await fs.move(tmp, targetPath, { overwrite: true })
+          // 使用统一封装为封面文件设置隐藏
+          await operateHiddenFile(targetPath, async () => {})
+          const idx = await loadIndex()
+          idx.fileToHash[filePath] = imageHash
+          idx.hashToFiles[imageHash] = ensureArrHas(idx.hashToFiles[imageHash] || [], filePath)
+          idx.hashToExt[imageHash] = ext
+          await saveIndex(idx)
+        } catch {
+        } finally {
+          try {
+            if (await fs.pathExists(tmp)) await fs.remove(tmp)
+          } catch {}
+        }
+      }
+      return { format: mime, data, dataUrl }
+    } catch (err: any) {
+      return null
+    }
+  }
+)
+
+// 标记清除：根据当前歌单实际曲目引用清理无引用封面
+ipcMain.handle(
+  'sweepSongListCovers',
+  async (_e, listRootDir: string, currentFilePaths: string[]) => {
+    try {
+      if (!listRootDir || typeof listRootDir !== 'string') return { removed: 0 }
+      let input = listRootDir
+      if (process.platform === 'win32' && /^\//.test(input)) input = input.replace(/^\/+/, '')
+      const mapped = path.isAbsolute(input) ? input : mapRendererPathToFsPath(input)
+      const resolvedRoot = path.isAbsolute(mapped) ? mapped : path.join(store.databaseDir, mapped)
+      const coversDir = path.join(resolvedRoot, '.frkb_covers')
+      // 移除清扫日志
+      if (!(await fs.pathExists(coversDir))) return { removed: 0 }
+
+      const indexPath = path.join(coversDir, '.index.json')
+      let idx: any = { fileToHash: {}, hashToFiles: {}, hashToExt: {} }
+      try {
+        const json = await fs.readJSON(indexPath)
+        idx.fileToHash = json?.fileToHash || {}
+        idx.hashToFiles = json?.hashToFiles || {}
+        idx.hashToExt = json?.hashToExt || {}
+      } catch {}
+
+      const alive = new Set(currentFilePaths || [])
+      // 移除 fileToHash 中不在 alive 的映射，并更新 hashToFiles
+      for (const fp of Object.keys(idx.fileToHash)) {
+        if (!alive.has(fp)) {
+          const h = idx.fileToHash[fp]
+          delete idx.fileToHash[fp]
+          if (Array.isArray(idx.hashToFiles[h])) {
+            idx.hashToFiles[h] = idx.hashToFiles[h].filter((x: string) => x !== fp)
+          }
+        }
+      }
+      // 删除无引用的 hash 文件（先按索引，再兜底扫描）
+      let removed = 0
+      const liveHashes = new Set<string>()
+      for (const h of Object.keys(idx.hashToFiles)) {
+        const arr = idx.hashToFiles[h]
+        if (Array.isArray(arr) && arr.length > 0) liveHashes.add(h)
+      }
+      for (const h of Object.keys(idx.hashToFiles)) {
+        const arr = idx.hashToFiles[h]
+        if (!Array.isArray(arr) || arr.length === 0) {
+          const ext = idx.hashToExt[h] || '.jpg'
+          const p = path.join(coversDir, `${h}${ext}`)
+          try {
+            if (await fs.pathExists(p)) {
+              await fs.remove(p)
+              removed++
+            }
+          } catch {}
+          delete idx.hashToFiles[h]
+          delete idx.hashToExt[h]
+        }
+      }
+      // 兜底：目录扫描，删除索引外的孤儿文件和遗留 tmp
+      try {
+        const entries = await fs.readdir(coversDir)
+        const imgRegex = /^[a-f0-9]{40}\.(jpg|png|webp|gif|bmp)$/i
+        for (const name of entries) {
+          const full = path.join(coversDir, name)
+          if (name.includes('.tmp_')) {
+            try {
+              await fs.remove(full)
+            } catch {}
+            continue
+          }
+          if (!imgRegex.test(name)) continue
+          const hash = name.slice(0, 40).toLowerCase()
+          if (!liveHashes.has(hash)) {
+            try {
+              await fs.remove(full)
+              removed++
+            } catch {}
+          }
+        }
+      } catch {}
+
+      await fs.writeJSON(indexPath, idx)
+      return { removed }
+    } catch {
+      return { removed: 0 }
+    }
+  }
+)
 
 ipcMain.handle('getLibrary', async () => {
   const library = await getLibrary()
