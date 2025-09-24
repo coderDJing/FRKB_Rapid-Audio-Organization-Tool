@@ -47,6 +47,11 @@ const props = defineProps({
   externalViewportHeight: {
     type: Number as PropType<number | undefined>,
     default: undefined
+  },
+  // 歌单根目录（用于在主进程将缩略图缓存到该目录下）
+  songListRootDir: {
+    type: String as PropType<string | undefined>,
+    default: undefined
   }
 })
 
@@ -139,7 +144,7 @@ function detectScrollCarrier(): { el: HTMLElement | null; height: number; top: n
   if (viewportEl) candidates.push(viewportEl)
   if (vp && !candidates.includes(vp)) candidates.push(vp)
   if (content && !candidates.includes(content)) candidates.push(content)
-  if (host && !candidates.includes(host)) candidates.push(host)
+  if (host && !candidates.includes(host)) candidates.push(host as HTMLElement)
   for (const el of candidates) {
     const h = el.clientHeight
     const sh = el.scrollHeight
@@ -149,7 +154,7 @@ function detectScrollCarrier(): { el: HTMLElement | null; height: number; top: n
   }
   // 兜底
   return {
-    el: viewportEl || vp || content || (host as HTMLElement | null),
+    el: (viewportEl || vp || content || (host as HTMLElement | null)) as HTMLElement | null,
     height:
       (viewportEl || vp || content || (host as HTMLElement | null))?.clientHeight ||
       window.innerHeight,
@@ -229,6 +234,8 @@ onMounted(() => {
   nextTick(() => {
     if (!viewportEl) attachListeners()
   })
+  // 首屏预取
+  primePrefetchWindow()
 })
 
 onUnmounted(() => {
@@ -272,6 +279,10 @@ const visibleSongsWithIndex = computed(() => {
   return out
 })
 
+// （迁移至封面缓存与预取函数定义之后）
+
+// 预取移动至封面缓存定义之后，避免初始化顺序问题
+
 // 事件委托，减少每行 addEventListener 带来的开销
 const onRowsClick = (e: MouseEvent) => {
   e.stopPropagation()
@@ -307,6 +318,112 @@ const onRowsMouseOver = (e: MouseEvent) => {
 const onRowsMouseLeave = () => {
   hoveredCellKey.value = null
 }
+
+// --- 封面懒加载（有限并发 + 非响应式缓存） ---
+const coverUrlCache = markRaw(new Map<string, string | null>()) // filePath -> blob url
+const inflight = markRaw(new Map<string, Promise<string | null>>())
+let running = 0
+const MAX_CONCURRENCY = 12
+const pendingQueue: Array<() => void> = []
+const coversTick = vRef(0) // 轻量信号：封面就绪时触发一次性重渲染
+function fetchCoverUrl(filePath: string): Promise<string | null> {
+  if (!filePath) return Promise.resolve(null)
+  const cached = coverUrlCache.get(filePath)
+  if (cached !== undefined) return Promise.resolve(cached)
+  const inq = inflight.get(filePath)
+  if (inq) return inq
+  const task = new Promise<string | null>((resolve) => {
+    const run = async () => {
+      try {
+        const resp = (await window.electron.ipcRenderer.invoke(
+          'getSongCoverThumb',
+          filePath,
+          48,
+          props.songListRootDir
+        )) as { format: string; data?: Uint8Array | { data: number[] }; dataUrl?: string } | null
+        if (resp && (resp as any).dataUrl) {
+          const url = (resp as any).dataUrl as string
+          coverUrlCache.set(filePath, url)
+          coversTick.value++
+          resolve(url)
+        } else if (resp && (resp as any).data) {
+          const raw: any = (resp as any).data
+          const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw.data || raw)
+          const blob = new Blob([bytes.buffer], { type: (resp as any).format || 'image/jpeg' })
+          const url = URL.createObjectURL(blob)
+          coverUrlCache.set(filePath, url)
+          coversTick.value++
+          resolve(url)
+        } else {
+          coverUrlCache.set(filePath, null)
+          coversTick.value++
+          resolve(null)
+        }
+      } catch {
+        coverUrlCache.set(filePath, null)
+        coversTick.value++
+        resolve(null)
+      } finally {
+        inflight.delete(filePath)
+        running--
+        pump()
+      }
+    }
+    // 避免重复入队
+    const alreadyQueued = pendingQueue.findIndex((fn: any) => (fn as any).__fp === filePath) !== -1
+    if (!alreadyQueued) {
+      ;(run as any).__fp = filePath
+      pendingQueue.push(run)
+    }
+    pump()
+  })
+  inflight.set(filePath, task)
+  return task
+}
+
+function getCoverUrl(filePath: string): string | null | undefined {
+  return coverUrlCache.get(filePath)
+}
+
+function pump() {
+  while (running < MAX_CONCURRENCY && pendingQueue.length > 0) {
+    const fn = pendingQueue.shift()!
+    running++
+    fn()
+  }
+}
+
+function onImgError(filePath: string) {
+  coverUrlCache.set(filePath, null)
+  coversTick.value++
+}
+
+// 预取当前可视窗口内的封面（避免首屏空白）——放到缓存定义之后
+function primePrefetchWindow() {
+  const arr = props.songs || []
+  // 预取范围：当前窗口前后一屏，提升首屏与轻滚动命中率
+  const prefetchStart = Math.max(0, startIndex.value - visibleCount.value)
+  const prefetchEnd = Math.min(arr.length, endIndex.value + visibleCount.value)
+  for (let i = prefetchStart; i < prefetchEnd; i++) {
+    const fp = arr[i]?.filePath
+    if (fp && !coverUrlCache.has(fp)) fetchCoverUrl(fp)
+  }
+}
+
+// 在所有依赖（computed + 缓存 + 函数）都已初始化后再注册预取 watchers
+watch(
+  () => visibleSongsWithIndex.value.map((v) => v.song?.filePath).join('|'),
+  () => {
+    primePrefetchWindow()
+  },
+  { immediate: true }
+)
+
+watch(
+  () => [startIndex.value, endIndex.value, props.songs?.length] as const,
+  () => primePrefetchWindow(),
+  { deep: false }
+)
 </script>
 
 <template>
@@ -349,6 +466,23 @@ const onRowsMouseLeave = () => {
                 :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
               >
                 {{ item.idx + 1 }}
+              </div>
+              <div
+                v-else-if="col.key === 'cover'"
+                class="cell-cover"
+                :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
+              >
+                <div class="cover-wrapper" :data-ct="coversTick">
+                  <img
+                    v-if="getCoverUrl(item.song.filePath)"
+                    :src="getCoverUrl(item.song.filePath) as string"
+                    alt="cover"
+                    decoding="async"
+                    :key="getCoverUrl(item.song.filePath) || item.song.filePath + '-ph'"
+                    @error="onImgError(item.song.filePath)"
+                  />
+                  <div v-else class="cover-skeleton"></div>
+                </div>
               </div>
               <div
                 v-else
@@ -410,6 +544,37 @@ const onRowsMouseLeave = () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.cell-cover {
+  height: 100%;
+  box-sizing: border-box;
+  border-right: 1px solid #2b2b2b;
+  border-bottom: 1px solid #2b2b2b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cover-wrapper {
+  width: 100%;
+  height: 100%;
+  overflow: hidden; // 多余部分被遮挡
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cover-wrapper img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; // 占满宽高
+  display: block;
+}
+.cover-skeleton {
+  width: 100%;
+  height: 100%;
+  // background: #333;
 }
 
 .unselectable {
