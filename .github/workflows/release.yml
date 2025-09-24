@@ -56,10 +56,7 @@ jobs:
       - name: Package (electron-builder, no publish)
         run: npx electron-builder --win --x64 --publish never
 
-      - name: Duplicate update YAML to rc (Windows, prerelease)
-        if: contains(github.ref_name, '-')
-        run: |
-          if (Test-Path dist/latest.yml) { Copy-Item dist/latest.yml dist/rc.yml }
+      # 不再复制 rc.yml，严格遵循 GitHub provider 读取 latest.yml / latest-mac.yml
 
       - name: Upload dist artifacts (Windows)
         uses: actions/upload-artifact@v4
@@ -123,11 +120,7 @@ jobs:
       - name: Package macOS (universal, no publish)
         run: npx electron-builder --mac --universal --publish never
 
-      - name: Duplicate update YAML to rc (macOS, prerelease)
-        if: contains(github.ref_name, '-')
-        run: |
-          if [ -f dist/latest-mac.yml ]; then cp dist/latest-mac.yml dist/rc-mac.yml; fi
-          if [ -f dist/latest.yml ]; then cp dist/latest.yml dist/rc.yml; fi
+      # 不再复制 rc.yml / rc-mac.yml，保持标准文件名
 
       - name: Upload dist artifacts (macOS)
         uses: actions/upload-artifact@v4

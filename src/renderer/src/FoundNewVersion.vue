@@ -10,16 +10,16 @@ const fillColor = ref('#9d9d9d')
 const toggleMinimize = () => {
   window.electron.ipcRenderer.send('foundNewVersionWindow-toggle-minimize')
 }
-function getSevenDaysLater() {
+function getSevenDaysLaterISO() {
   const currentDate = new Date()
   const sevenDaysLater = new Date(currentDate.getTime() + 7 * 24 * 60 * 60 * 1000)
-  return sevenDaysLater.toLocaleDateString()
+  return sevenDaysLater.toISOString()
 }
 const notCheckIn7Days = ref(false)
 const runtime = useRuntimeStore()
 const toggleClose = async () => {
   if (notCheckIn7Days.value) {
-    runtime.setting.nextCheckUpdateTime = getSevenDaysLater()
+    runtime.setting.nextCheckUpdateTime = getSevenDaysLaterISO()
     await window.electron.ipcRenderer.invoke(
       'setSetting',
       JSON.parse(JSON.stringify(runtime.setting))
