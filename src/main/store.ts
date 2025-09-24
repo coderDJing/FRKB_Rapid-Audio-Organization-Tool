@@ -29,7 +29,8 @@ let settingConfig: ISettingConfig = {
   // 错误日志上报默认配置
   enableErrorReport: true,
   errorReportUsageMsSinceLastSuccess: 0,
-  errorReportRetryMsSinceLastFailure: -1
+  errorReportRetryMsSinceLastFailure: -1,
+  persistSongFilters: false
 } //设置config
 let analyseSongPort: string = ''
 export default {
