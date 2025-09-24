@@ -54,7 +54,12 @@ jobs:
         run: pnpm build
 
       - name: Package (electron-builder, no publish)
-        run: npx electron-builder --win --x64 --publish never ${{ contains(github.ref_name, '-') && '-c.publish.channel=rc' || '' }}
+        run: npx electron-builder --win --x64 --publish never
+
+      - name: Rename update YAML to rc (Windows, prerelease)
+        if: contains(github.ref_name, '-')
+        run: |
+          if (Test-Path dist/latest.yml) { Move-Item dist/latest.yml dist/rc.yml }
 
       - name: Upload dist artifacts (Windows)
         uses: actions/upload-artifact@v4
@@ -116,7 +121,13 @@ jobs:
         run: pnpm build
 
       - name: Package macOS (universal, no publish)
-        run: npx electron-builder --mac --universal --publish never ${{ contains(github.ref_name, '-') && '-c.publish.channel=rc' || '' }}
+        run: npx electron-builder --mac --universal --publish never
+
+      - name: Rename update YAML to rc (macOS, prerelease)
+        if: contains(github.ref_name, '-')
+        run: |
+          if [ -f dist/latest-mac.yml ]; then mv dist/latest-mac.yml dist/rc-mac.yml; fi
+          if [ -f dist/latest.yml ]; then mv dist/latest.yml dist/rc.yml; fi
 
       - name: Upload dist artifacts (macOS)
         uses: actions/upload-artifact@v4
