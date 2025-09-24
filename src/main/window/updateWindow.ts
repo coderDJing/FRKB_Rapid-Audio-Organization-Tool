@@ -54,9 +54,15 @@ const createWindow = () => {
   updateWindow.on('ready-to-show', () => {
     updateWindow?.show()
     autoUpdater.autoDownload = false
-    const isPrerelease = app.getVersion().includes('-')
+    const versionString = app.getVersion()
+    const isPrerelease = versionString.includes('-')
     try {
       ;(autoUpdater as any).allowPrerelease = isPrerelease
+    } catch {}
+    try {
+      if (isPrerelease && /-rc[.-]/i.test(versionString)) {
+        ;(autoUpdater as any).channel = 'rc'
+      }
     } catch {}
     autoUpdater.checkForUpdates()
 

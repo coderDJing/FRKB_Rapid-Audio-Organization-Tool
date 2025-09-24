@@ -425,10 +425,17 @@ app.whenReady().then(async () => {
 
   const autoUpdater = electronUpdater.autoUpdater
   autoUpdater.autoDownload = false
-  const isPrerelease = app.getVersion().includes('-')
+  const versionString = app.getVersion()
+  const isPrerelease = versionString.includes('-')
   // 预发布轨道仅更新到预发布；稳定轨道仅更新到稳定
   try {
     ;(autoUpdater as any).allowPrerelease = isPrerelease
+  } catch {}
+  // 若为 rc 预发布，固定通道为 rc，对应 CI 已产出 rc.yml / rc-mac.yml
+  try {
+    if (isPrerelease && /-rc[.-]/i.test(versionString)) {
+      ;(autoUpdater as any).channel = 'rc'
+    }
   } catch {}
 
   if (store.settingConfig.nextCheckUpdateTime) {
