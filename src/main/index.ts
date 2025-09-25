@@ -114,6 +114,7 @@ const defaultSettings = {
   enablePlaybackRange: false,
   recentDialogSelectedSongListMaxCount: 10,
   persistSongFilters: false,
+  showPlaylistTrackCount: true,
   nextCheckUpdateTime: '',
   // 错误日志上报默认配置
   enableErrorReport: true,
@@ -451,6 +452,17 @@ ipcMain.handle('dirPathExists', async (e, targetPath: string) => {
 ipcMain.handle('scanSongList', async (e, songListPath: string, songListUUID: string) => {
   const scanPath = path.join(store.databaseDir, mapRendererPathToFsPath(songListPath))
   return await svcScanSongList(scanPath, store.settingConfig.audioExt, songListUUID)
+})
+
+// 获取歌单曲目数量（快速计数，不解析元数据）
+ipcMain.handle('getSongListTrackCount', async (_e, songListPath: string) => {
+  try {
+    const scanPath = path.join(store.databaseDir, mapRendererPathToFsPath(songListPath))
+    const files = await collectFilesWithExtensions(scanPath, store.settingConfig.audioExt)
+    return Array.isArray(files) ? files.length : 0
+  } catch (_e) {
+    return 0
+  }
 })
 
 // 新增：按需获取单曲封面（在播放时调用）

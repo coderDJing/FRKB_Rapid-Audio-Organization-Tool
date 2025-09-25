@@ -30,6 +30,7 @@ export function useSelectAndMoveSongs() {
       return
     }
 
+    const sourceSongListUUID = runtime.songsArea.songListUUID
     const selectedPaths = JSON.parse(JSON.stringify(runtime.songsArea.selectedSongFilePath))
     if (!selectedPaths.length) return
 
@@ -48,6 +49,12 @@ export function useSelectAndMoveSongs() {
       listUUID: runtime.songsArea.songListUUID,
       paths: selectedPaths
     })
+
+    // 同步通知源/目标歌单数量刷新
+    try {
+      const affected = [sourceSongListUUID, targetSongListUUID].filter(Boolean)
+      emitter.emit('playlistContentChanged', { uuids: affected })
+    } catch {}
   }
 
   const handleDialogCancel = () => {

@@ -415,6 +415,13 @@ const clearCloudFingerprints = async () => {
                 @change="setSetting()"
               />
             </div>
+            <div style="margin-top: 20px">{{ t('settings.showPlaylistTrackCount') }}：</div>
+            <div style="margin-top: 10px">
+              <singleCheckbox
+                v-model="(runtime as any).setting.showPlaylistTrackCount"
+                @change="setSetting()"
+              />
+            </div>
             <div style="margin-top: 20px">{{ t('database.reselectLocation') }}：</div>
             <div style="margin-top: 10px">
               <div

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick, watch, useTemplateRef, computed } from 'vue'
+import { ref, nextTick, watch, useTemplateRef, computed, onMounted } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import libraryItem from '@renderer/components/libraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -373,7 +373,7 @@ const dirHandleClick = async () => {
   }
 }
 
-emitter.on('collapseButtonHandleClick', (libraryName) => {
+emitter.on('collapseButtonHandleClick', (libraryName: string) => {
   if (libraryName == props.libraryName) {
     dirChildShow.value = false
   }
@@ -636,16 +636,79 @@ watch(
   }
 )
 
+// 歌单曲目数量缓存（避免每次渲染都请求）
+const trackCount = ref<number | null>(null)
+let fetchingCount = false
+async function ensureTrackCount() {
+  if (!runtime.setting.showPlaylistTrackCount) return
+  if (fetchingCount) return
+  if (!dirData || dirData.type !== 'songList') return
+  try {
+    fetchingCount = true
+    const songListPath = libraryUtils.findDirPathByUuid(props.uuid)
+    const count = await window.electron.ipcRenderer.invoke('getSongListTrackCount', songListPath)
+    trackCount.value = typeof count === 'number' ? count : 0
+  } catch {
+    trackCount.value = 0
+  } finally {
+    fetchingCount = false
+  }
+}
+
+onMounted(() => {
+  ensureTrackCount()
+})
+
+// 200ms 去抖 + 去重刷新
+let debounceTimer: any = null
+const pendingSet = new Set<string>()
+emitter.on('playlistContentChanged', (payload: any) => {
+  try {
+    const uuids: string[] = (payload?.uuids || []).filter(Boolean)
+    for (const u of uuids) pendingSet.add(u)
+    clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(() => {
+      if (pendingSet.has(props.uuid)) {
+        // 若当前歌单正打开，优先用内存长度
+        if (runtime.songsArea.songListUUID === props.uuid) {
+          trackCount.value = runtime.songsArea.songInfoArr.length
+        } else {
+          ensureTrackCount()
+        }
+      }
+      pendingSet.clear()
+    }, 200)
+  } catch {}
+})
+
+watch(
+  () => [runtime.setting.showPlaylistTrackCount, dirData?.dirName],
+  () => {
+    if (runtime.setting.showPlaylistTrackCount) ensureTrackCount()
+  }
+)
+
 const displayDirName = computed(() => {
-  if (runtime.libraryAreaSelected === 'RecycleBin' && dirData.dirName) {
-    // 匹配形如 2025-04-01_15-03-45 的格式
-    const match = dirData.dirName.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})$/)
+  const d = dirData
+  if (!d) return ''
+  if (runtime.libraryAreaSelected === 'RecycleBin' && d.dirName) {
+    const match = d.dirName.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})$/)
     if (match) {
       return `${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}:${match[6]}`
     }
   }
-  return dirData.dirName
+  if (
+    d.type === 'songList' &&
+    runtime.setting.showPlaylistTrackCount &&
+    trackCount.value !== null
+  ) {
+    return d.dirName
+  }
+  return d.dirName
 })
+
+// 供模板使用的名称（不带数量）
+const nameForDisplay = computed(() => displayDirName.value)
 </script>
 <template>
   <div
@@ -726,16 +789,21 @@ const displayDirName = computed(() => {
     <div style="height: 23px; width: calc(100% - 20px)">
       <div
         v-if="dirData.dirName && !renameDivShow"
-        style="
-          line-height: 23px;
-          font-size: 13px;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        "
+        class="nameRow"
         :class="{ isPlaying: isPlaying }"
       >
-        {{ displayDirName }}
+        <span class="nameText">{{ nameForDisplay }}</span>
+        <span
+          v-if="
+            dirData.type === 'songList' &&
+            runtime.setting.showPlaylistTrackCount &&
+            trackCount !== null
+          "
+          class="countBadge"
+          :class="{ isPlaying: isPlaying }"
+          :title="t('tracks.title')"
+          >{{ trackCount }}</span
+        >
       </div>
       <div v-if="!dirData.dirName">
         <input
@@ -784,6 +852,45 @@ const displayDirName = computed(() => {
   </div>
 </template>
 <style lang="scss" scoped>
+.nameRow {
+  line-height: 23px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 8px; // 右侧留白，避免贴边
+  position: relative; // 让徽标绝对定位不受省略号影响
+}
+
+.nameText {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 48px; // 为绝对定位的徽标预留空间
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.countBadge {
+  min-width: 18px;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  background-color: #2d2e2e;
+  color: #a0a0a0;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.isPlaying.countBadge {
+  background-color: #0b4f7d;
+  color: #ffffff;
+}
 .isPlaying {
   color: #0078d4 !important;
 }

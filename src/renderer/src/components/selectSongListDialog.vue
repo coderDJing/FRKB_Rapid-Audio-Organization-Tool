@@ -52,6 +52,8 @@ if (recentDialogSelectedSongListUUID.length !== 0) {
 }
 
 const recentSongListArr = ref<IDir[]>([])
+// 最近使用歌单的曲目数量缓存
+const recentCounts = ref<Record<string, number>>({})
 let delRecentDialogSelectedSongListUUID: string[] = []
 watch(
   () => runtime.libraryTree,
@@ -65,6 +67,14 @@ watch(
       }
       if (obj) {
         recentSongListArr.value.push(obj)
+        // 异步刷新数量
+        if ((runtime as any).setting.showPlaylistTrackCount && obj.type === 'songList') {
+          const path = libraryUtils.findDirPathByUuid(obj.uuid)
+          window.electron.ipcRenderer
+            .invoke('getSongListTrackCount', path)
+            .then((n: number) => (recentCounts.value[obj.uuid] = n || 0))
+            .catch(() => (recentCounts.value[obj.uuid] = 0))
+        }
       }
     }
     if (delRecentDialogSelectedSongListUUID.length !== 0) {
@@ -418,8 +428,11 @@ watch(
               <div style="width: 20px; justify-content: center; align-items: center; display: flex">
                 <img style="width: 13px; height: 13px" :src="listIcon" />
               </div>
-              <div>
-                {{ item.dirName }}
+              <div class="nameRow">
+                <span class="nameText">{{ item.dirName }}</span>
+                <span v-if="(runtime as any).setting.showPlaylistTrackCount" class="countBadge">{{
+                  recentCounts[item.uuid] ?? 0
+                }}</span>
               </div>
             </div>
             <div style="width: 100%; background-color: #8c8c8c; height: 1px">
@@ -486,6 +499,38 @@ watch(
   &:hover {
     background-color: #2a2d2e;
   }
+}
+
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 8px;
+  width: 100%;
+  position: relative;
+}
+.nameText {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 48px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.countBadge {
+  min-width: 18px;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  background-color: #2d2e2e;
+  color: #a0a0a0;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .selectedDir {
