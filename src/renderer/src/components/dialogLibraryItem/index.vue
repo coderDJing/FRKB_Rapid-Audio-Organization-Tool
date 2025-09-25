@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick, useTemplateRef, reactive, onMounted } from 'vue'
+import { ref, nextTick, useTemplateRef, reactive, onMounted, watch } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -131,6 +131,7 @@ let operationInputValue = ref('')
 const inputHintShow = ref(false)
 
 const myInput = useTemplateRef('myInput')
+const rowEl = useTemplateRef('rowEl')
 if (dirData && dirData.dirName == '') {
   nextTick(() => {
     myInput.value?.focus()
@@ -431,6 +432,13 @@ async function ensureTrackCount() {
 
 onMounted(() => {
   ensureTrackCount()
+  if (runtime.dialogSelectedSongListUUID === props.uuid) {
+    nextTick(() => {
+      try {
+        ;(rowEl.value as any)?.scrollIntoView?.({ block: 'nearest' })
+      } catch {}
+    })
+  }
 })
 
 // 200ms 去抖 + 去重刷新（对话框）
@@ -450,10 +458,24 @@ emitter.on('playlistContentChanged', (payload: any) => {
     }, 200)
   } catch {}
 })
+
+// 选中项变化时，若当前组件对应项被选中，使其滚动到可视区域内（对话框）
+watch(
+  () => runtime.dialogSelectedSongListUUID,
+  async (newVal) => {
+    if (newVal === props.uuid) {
+      await nextTick()
+      try {
+        ;(rowEl.value as any)?.scrollIntoView?.({ block: 'nearest' })
+      } catch {}
+    }
+  }
+)
 </script>
 <template>
   <div
     class="mainBody"
+    ref="rowEl"
     style="display: flex; box-sizing: border-box"
     :style="'padding-left:' + (props.needPaddingLeft ? indentWidth : 0) + 'px'"
     @contextmenu.stop="contextmenuEvent"
