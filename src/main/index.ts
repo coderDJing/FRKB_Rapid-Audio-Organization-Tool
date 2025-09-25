@@ -661,9 +661,30 @@ ipcMain.handle('exportSongListToDir', async (e, folderPathVal, deleteSongsAfterE
       tasks.push(() => moveOrCopyItemWithCheckIsExist(item, dest, deleteSongsAfterExport))
     }
   }
+  // 初始进度：0/总数
+  if (mainWindow.instance) {
+    mainWindow.instance.webContents.send(
+      'progressSet',
+      'tracks.copyingTracks',
+      0,
+      tasks.length,
+      false
+    )
+  }
   const batchId = `exportSongList_${Date.now()}`
   const { success, failed, hasENOSPC, skipped, results } = await runWithConcurrency(tasks, {
     concurrency: 16,
+    onProgress: (done, total) => {
+      if (mainWindow.instance) {
+        mainWindow.instance.webContents.send(
+          'progressSet',
+          'tracks.copyingTracks',
+          done,
+          total,
+          false
+        )
+      }
+    },
     stopOnENOSPC: true,
     onInterrupted: async (payload) =>
       waitForUserDecision(mainWindow.instance ?? null, batchId, 'exportSongList', payload)
@@ -708,9 +729,30 @@ ipcMain.handle('exportSongsToDir', async (e, folderPathVal, deleteSongsAfterExpo
       moveOrCopyItemWithCheckIsExist(item.filePath, targetPath, deleteSongsAfterExport)
     )
   }
+  // 初始进度：0/总数
+  if (mainWindow.instance) {
+    mainWindow.instance.webContents.send(
+      'progressSet',
+      'tracks.copyingTracks',
+      0,
+      tasks.length,
+      false
+    )
+  }
   const batchId = `exportSongs_${Date.now()}`
   const { success, failed, hasENOSPC, skipped, results } = await runWithConcurrency(tasks, {
     concurrency: 16,
+    onProgress: (done, total) => {
+      if (mainWindow.instance) {
+        mainWindow.instance.webContents.send(
+          'progressSet',
+          'tracks.copyingTracks',
+          done,
+          total,
+          false
+        )
+      }
+    },
     stopOnENOSPC: true,
     onInterrupted: async (payload) =>
       waitForUserDecision(mainWindow.instance ?? null, batchId, 'exportSongs', payload)
@@ -755,9 +797,30 @@ ipcMain.handle('moveSongsToDir', async (e, srcs, dest) => {
       tasks.push(() => moveOrCopyItemWithCheckIsExist(src, targetPath, true))
     }
   }
+  // 初始进度：0/总数
+  if (mainWindow.instance) {
+    mainWindow.instance.webContents.send(
+      'progressSet',
+      'tracks.movingTracks',
+      0,
+      tasks.length,
+      false
+    )
+  }
   const batchId = `moveSongs_${Date.now()}`
   const { success, failed, hasENOSPC, skipped, results } = await runWithConcurrency(tasks, {
     concurrency: 16,
+    onProgress: (done, total) => {
+      if (mainWindow.instance) {
+        mainWindow.instance.webContents.send(
+          'progressSet',
+          'tracks.movingTracks',
+          done,
+          total,
+          false
+        )
+      }
+    },
     stopOnENOSPC: true,
     onInterrupted: async (payload) =>
       waitForUserDecision(mainWindow.instance ?? null, batchId, 'moveSongs', payload)
