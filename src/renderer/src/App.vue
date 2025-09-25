@@ -16,6 +16,7 @@ import pkg from '../../../package.json?asset'
 import cloudSyncSettingsDialog from './components/cloudSyncSettingsDialog.vue'
 import cloudSyncSyncDialog from './components/cloudSyncSyncDialog.vue'
 import FileOpInterruptedDialog from './components/fileOpInterruptedDialog.vue'
+import emitter from './utils/mitt'
 
 const runtime = useRuntimeStore()
 // 使用全局设置中的平台标记进行映射，避免依赖 userAgent
@@ -140,6 +141,31 @@ onMounted(() => {
   hotkeys('esc', () => {
     runtime.activeMenuUUID = ''
   })
+  // F2/Enter 触发重命名（Windows: F2；Mac: Enter）
+  const triggerRename = () => {
+    try {
+      if (runtime.selectSongListDialogShow) {
+        const uuid = runtime.dialogSelectedSongListUUID
+        if (uuid) emitter.emit('dialog/trigger-rename', uuid)
+        return
+      }
+      const uuid = runtime.songsArea.songListUUID
+      if (uuid) emitter.emit('libraryArea/trigger-rename', uuid)
+    } catch {}
+  }
+  if (runtime.platform === 'Mac') {
+    hotkeys('enter', 'windowGlobal', (e) => {
+      e.preventDefault()
+      triggerRename()
+      return false
+    })
+  } else {
+    hotkeys('f2', 'windowGlobal', (e) => {
+      e.preventDefault()
+      triggerRename()
+      return false
+    })
+  }
   utils.setHotkeysScpoe('windowGlobal')
   // 通过 Tray 菜单触发
   window.electron.ipcRenderer.on('openDialogFromTray', async (_e, key: string) => {

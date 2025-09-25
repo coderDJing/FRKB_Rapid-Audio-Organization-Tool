@@ -371,6 +371,18 @@ const renameMyInputHandleInput = () => {
   renameInputHintText.value = hintText
   renameInputHintShow.value = hintShouldShow
 }
+
+// 监听对话框重命名触发（无需先点击，直接对高亮项生效）
+emitter.on('dialog/trigger-rename', async (targetUuid: string) => {
+  try {
+    if (targetUuid !== props.uuid) return
+    if (!dirData?.dirName) return
+    renameDivShow.value = true
+    renameDivValue.value = dirData.dirName
+    await nextTick()
+    myRenameInput.value?.focus()
+  } catch {}
+})
 //------------------------------------
 
 const dragState = reactive<DragState>({

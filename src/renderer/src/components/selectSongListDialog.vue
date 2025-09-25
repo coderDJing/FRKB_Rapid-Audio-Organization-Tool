@@ -277,6 +277,26 @@ onMounted(() => {
     selectedArea.value = target.area
     runtime.dialogSelectedSongListUUID = target.uuid
   })
+  // 在对话框的 scope 内按平台绑定重命名（Win=F2，Mac=Enter）
+  if (runtime.platform === 'Mac') {
+    hotkeys('enter', uuid, (e) => {
+      try {
+        e.preventDefault()
+        const target = runtime.dialogSelectedSongListUUID
+        if (target) emitter.emit('dialog/trigger-rename', target)
+        return false
+      } catch {}
+    })
+  } else {
+    hotkeys('f2', uuid, (e) => {
+      try {
+        e.preventDefault()
+        const target = runtime.dialogSelectedSongListUUID
+        if (target) emitter.emit('dialog/trigger-rename', target)
+        return false
+      } catch {}
+    })
+  }
   hotkeys('E', uuid, () => {
     confirmHandle()
   })
