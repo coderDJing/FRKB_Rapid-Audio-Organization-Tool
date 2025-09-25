@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch, computed, ComputedRef, useTemplateRef } from 'vue'
+import {
+  onMounted,
+  onUnmounted,
+  ref,
+  watch,
+  computed,
+  ComputedRef,
+  useTemplateRef,
+  nextTick
+} from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -357,6 +366,34 @@ watch(
     syncNavIndexByUUID()
   }
 )
+
+// --- 保持选中项可见：对“最近使用”区域进行滚动 ---
+// 记录最近区每一行元素的引用
+const recentRowRefs = new Map<string, HTMLElement>()
+const setRecentRowRef = (uuid: string, el: HTMLElement | null) => {
+  if (el) recentRowRefs.set(uuid, el)
+  else recentRowRefs.delete(uuid)
+}
+
+// 当选中项或区域变化时，如果处于“recent”区域，滚动到可见
+watch(
+  [
+    () => runtime.dialogSelectedSongListUUID,
+    () => selectedArea.value,
+    () => recentSongListArr.value.length
+  ],
+  async () => {
+    if (selectedArea.value === 'recent' && runtime.dialogSelectedSongListUUID) {
+      await nextTick()
+      try {
+        recentRowRefs
+          .get(runtime.dialogSelectedSongListUUID)
+          ?.scrollIntoView?.({ block: 'nearest' })
+      } catch {}
+    }
+  },
+  { immediate: true }
+)
 </script>
 <template>
   <div class="dialog unselectable">
@@ -417,6 +454,7 @@ watch(
             <div
               v-for="item of recentSongListArr"
               :key="item.uuid"
+              :ref="(el: any) => setRecentRowRef(item.uuid, el)"
               @click="((runtime.dialogSelectedSongListUUID = item.uuid), (selectedArea = 'recent'))"
               @dblclick="confirmHandle()"
               :class="{
