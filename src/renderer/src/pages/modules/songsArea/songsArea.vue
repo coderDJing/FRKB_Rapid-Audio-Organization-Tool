@@ -643,6 +643,74 @@ const handleDeleteKey = async () => {
   return false // Prevent default browser behavior for Delete key
 }
 
+// --- 键盘 Shift 组合选择：Home / End / PageUp / PageDown ---
+function getAnchorIndex(): number {
+  const list = runtime.songsArea.songInfoArr
+  if (!list || list.length === 0) return -1
+
+  let anchorPath: string | null = null
+  if (runtime.songsArea.selectedSongFilePath.length > 0) {
+    anchorPath =
+      runtime.songsArea.selectedSongFilePath[runtime.songsArea.selectedSongFilePath.length - 1]
+  } else if (
+    runtime.playingData.playingSong &&
+    list.some((s) => s.filePath === runtime.playingData.playingSong!.filePath)
+  ) {
+    anchorPath = runtime.playingData.playingSong!.filePath
+  } else {
+    anchorPath = list[0].filePath
+  }
+
+  return list.findIndex((s) => s.filePath === anchorPath)
+}
+
+function addRangeSelection(startIndex: number, endIndex: number) {
+  const list = runtime.songsArea.songInfoArr
+  if (!list || list.length === 0) return
+  const from = Math.max(0, Math.min(startIndex, endIndex))
+  const to = Math.min(list.length - 1, Math.max(startIndex, endIndex))
+  for (let i = from; i <= to; i++) {
+    const p = list[i].filePath
+    if (!runtime.songsArea.selectedSongFilePath.includes(p)) {
+      runtime.songsArea.selectedSongFilePath.push(p)
+    }
+  }
+}
+
+function handleShiftHome() {
+  const anchor = getAnchorIndex()
+  if (anchor < 0) return false
+  addRangeSelection(0, anchor)
+  return false
+}
+
+function handleShiftEnd() {
+  const anchor = getAnchorIndex()
+  if (anchor < 0) return false
+  addRangeSelection(anchor, runtime.songsArea.songInfoArr.length - 1)
+  return false
+}
+
+function handleShiftPageUp() {
+  const anchor = getAnchorIndex()
+  if (anchor < 0) return false
+  const ROW_HEIGHT = 30
+  const page = Math.max(1, Math.floor((externalViewportHeight.value || 0) / ROW_HEIGHT) - 1)
+  const target = Math.max(0, anchor - page)
+  addRangeSelection(target, anchor)
+  return false
+}
+
+function handleShiftPageDown() {
+  const anchor = getAnchorIndex()
+  if (anchor < 0) return false
+  const ROW_HEIGHT = 30
+  const page = Math.max(1, Math.floor((externalViewportHeight.value || 0) / ROW_HEIGHT) - 1)
+  const target = Math.min(runtime.songsArea.songInfoArr.length - 1, anchor + page)
+  addRangeSelection(anchor, target)
+  return false
+}
+
 onMounted(() => {
   hotkeys('ctrl+a, command+a', 'windowGlobal', () => {
     runtime.songsArea.selectedSongFilePath.length = 0
@@ -655,6 +723,30 @@ onMounted(() => {
     handleDeleteKey()
     return false
   })
+  // 新增：Shift 组合快捷键
+  hotkeys('shift+home', 'windowGlobal', () => {
+    handleShiftHome()
+    return false
+  })
+  hotkeys('shift+end', 'windowGlobal', () => {
+    handleShiftEnd()
+    return false
+  })
+  hotkeys('shift+pageup', 'windowGlobal', () => {
+    handleShiftPageUp()
+    return false
+  })
+  hotkeys('shift+pagedown', 'windowGlobal', () => {
+    handleShiftPageDown()
+    return false
+  })
+})
+
+onUnmounted(() => {
+  hotkeys.unbind('shift+home', 'windowGlobal')
+  hotkeys.unbind('shift+end', 'windowGlobal')
+  hotkeys.unbind('shift+pageup', 'windowGlobal')
+  hotkeys.unbind('shift+pagedown', 'windowGlobal')
 })
 
 function sortArrayByProperty<T>(array: T[], property: keyof T, order: 'asc' | 'desc' = 'asc'): T[] {

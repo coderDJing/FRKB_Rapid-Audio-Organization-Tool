@@ -3,8 +3,6 @@
 
 直接操纵rkb的sqlite数据库
 
-需要shift+home shift+end  shift+pageup shift+pagedown快捷键
-
 扫描声音指纹应该可以又选文件夹 又选单个文件，如果windows自带的资源管理器不好用，我们可以自己开发一个
 
 歌单选择区应该也可以全选或shift选择
