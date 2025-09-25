@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick, useTemplateRef, reactive } from 'vue'
+import { ref, nextTick, useTemplateRef, reactive, onMounted } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -409,6 +409,47 @@ if (depth === undefined) {
   throw new Error(`depth error: ${JSON.stringify(depth)}`)
 }
 indentWidth.value = (depth - 2) * 10
+
+// 歌单曲目数量（对话框）
+const trackCount = ref<number | null>(null)
+let fetchingCount = false
+async function ensureTrackCount() {
+  if (!(runtime as any).setting.showPlaylistTrackCount) return
+  if (fetchingCount) return
+  if (dirData?.type !== 'songList') return
+  try {
+    fetchingCount = true
+    const songListPath = libraryUtils.findDirPathByUuid(props.uuid)
+    const count = await window.electron.ipcRenderer.invoke('getSongListTrackCount', songListPath)
+    trackCount.value = typeof count === 'number' ? count : 0
+  } catch {
+    trackCount.value = 0
+  } finally {
+    fetchingCount = false
+  }
+}
+
+onMounted(() => {
+  ensureTrackCount()
+})
+
+// 200ms 去抖 + 去重刷新（对话框）
+let debounceTimer: any = null
+const pendingSet = new Set<string>()
+emitter.on('playlistContentChanged', (payload: any) => {
+  try {
+    const uuids: string[] = (payload?.uuids || []).filter(Boolean)
+    for (const u of uuids) pendingSet.add(u)
+    clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(() => {
+      if (pendingSet.has(props.uuid)) {
+        // 对话框里若当前即为打开/高亮的歌单，也可以不经 IPC。此处直接刷一次即可。
+        ensureTrackCount()
+      }
+      pendingSet.clear()
+    }, 200)
+  } catch {}
+})
 </script>
 <template>
   <div
@@ -474,17 +515,18 @@ indentWidth.value = (depth - 2) * 10
       ></div>
     </div>
     <div style="height: 23px; width: calc(100% - 20px)">
-      <div
-        v-if="dirData.dirName && !renameDivShow"
-        style="
-          line-height: 23px;
-          font-size: 13px;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        "
-      >
-        {{ dirData.dirName }}
+      <div v-if="dirData.dirName && !renameDivShow" class="nameRow">
+        <span class="nameText">{{ dirData.dirName }}</span>
+        <span
+          v-if="
+            dirData.type === 'songList' &&
+            (runtime as any).setting.showPlaylistTrackCount &&
+            trackCount !== null
+          "
+          class="countBadge"
+          :title="t('tracks.title')"
+          >{{ trackCount }}</span
+        >
       </div>
       <div v-if="!dirData.dirName">
         <input
@@ -539,6 +581,40 @@ indentWidth.value = (depth - 2) * 10
   </div>
 </template>
 <style lang="scss" scoped>
+.nameRow {
+  line-height: 23px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 8px;
+  position: relative;
+}
+
+.nameText {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 48px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.countBadge {
+  min-width: 18px;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  background-color: #2d2e2e;
+  color: #a0a0a0;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
 .selectedDir {
   background-color: #37373d;
 

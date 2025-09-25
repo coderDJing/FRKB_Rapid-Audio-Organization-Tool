@@ -360,5 +360,8 @@
     "noResults": "未找到符合筛选条件的曲目",
     "noResultsHint": "可尝试放宽条件或清空筛选。",
     "persistFiltersAfterRestart": "重新启动保留筛选条件"
+  },
+  "settings": {
+    "showPlaylistTrackCount": "在歌单名称后显示曲目数量"
   }
 }
