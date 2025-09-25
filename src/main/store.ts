@@ -30,7 +30,8 @@ let settingConfig: ISettingConfig = {
   enableErrorReport: true,
   errorReportUsageMsSinceLastSuccess: 0,
   errorReportRetryMsSinceLastFailure: -1,
-  persistSongFilters: false
+  persistSongFilters: false,
+  showPlaylistTrackCount: true
 } //设置config
 let analyseSongPort: string = ''
 export default {

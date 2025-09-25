@@ -2,6 +2,7 @@ import { ref, computed } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { ISongInfo } from '../../../../../../types/globals'
+import emitter from '@renderer/utils/mitt'
 
 export interface DragSongData {
   songFilePaths: string[]
@@ -90,6 +91,12 @@ export function useDragSongs() {
 
     // 调用移动歌曲的 IPC，确保所有参数都是可序列化的
     await window.electron.ipcRenderer.invoke('moveSongsToDir', selectedSongFilePaths, targetDirPath)
+
+    // 广播：源/目标歌单内容发生变化（用于刷新数量）
+    try {
+      const affected = [sourceSongListUUID, targetSongListUUID].filter(Boolean)
+      emitter.emit('playlistContentChanged', { uuids: affected })
+    } catch {}
 
     return selectedSongFilePaths
   }

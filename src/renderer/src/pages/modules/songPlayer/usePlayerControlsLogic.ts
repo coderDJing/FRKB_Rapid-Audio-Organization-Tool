@@ -447,6 +447,7 @@ export function usePlayerControlsLogic({
           listUUID: runtime.playingData.playingSongListUUID,
           paths: [filePathToDelete]
         })
+        emitter.emit('playlistContentChanged', { uuids: [runtime.playingData.playingSongListUUID] })
 
         await nextTick() // 等待 DOM 更新
       } catch (error) {
@@ -554,6 +555,11 @@ export function usePlayerControlsLogic({
 
       // 先执行移动操作，因为这可能会影响状态或触发其他事件
       await window.electron.ipcRenderer.invoke('moveSongsToDir', [filePathToMove], targetDirPath)
+
+      // 广播源/目标歌单变化
+      emitter.emit('playlistContentChanged', {
+        uuids: [runtime.playingData.playingSongListUUID, targetListUuid].filter(Boolean)
+      })
 
       // 如果移动的目标列表是当前歌曲区域显示的列表，则需要刷新歌曲区域
       if (targetListUuid === runtime.songsArea.songListUUID) {

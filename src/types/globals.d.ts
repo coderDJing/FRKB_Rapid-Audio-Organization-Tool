@@ -65,6 +65,8 @@ interface ISettingConfig {
   errorReportRetryMsSinceLastFailure: number // -1 表示当前无失败等待窗口
   // 是否在重启后保留“曲目筛选条件”（默认不保留）
   persistSongFilters: boolean
+  // 是否在歌单名称后显示曲目数量
+  showPlaylistTrackCount: boolean
   // 迁移标记：是否已将 .aif/.aiff 默认加入 audioExt（避免重复覆盖用户选择）
   migratedAudioExtAiffAif?: boolean
 }

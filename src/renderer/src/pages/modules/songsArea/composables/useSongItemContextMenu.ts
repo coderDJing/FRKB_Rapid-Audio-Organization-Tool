@@ -107,6 +107,7 @@ export function useSongItemContextMenu(
         })
         // 通知全局，保证其他视图也能同步（包含当前 songsArea 监听的统一删除处理）
         emitter.emit('songsRemoved', { listUUID: runtime.songsArea.songListUUID, paths: delPaths })
+        emitter.emit('playlistContentChanged', { uuids: [runtime.songsArea.songListUUID] })
         return { action: 'songsRemoved', paths: delPaths }
       }
       case 'tracks.deleteTracks':
@@ -151,6 +152,7 @@ export function useSongItemContextMenu(
               listUUID: runtime.songsArea.songListUUID,
               paths: currentSelectedPaths
             })
+            emitter.emit('playlistContentChanged', { uuids: [runtime.songsArea.songListUUID] })
             return { action: 'songsRemoved', paths: currentSelectedPaths }
           }
         }
@@ -192,6 +194,7 @@ export function useSongItemContextMenu(
               listUUID: runtime.songsArea.songListUUID,
               paths: songsToExportFilePaths
             })
+            emitter.emit('playlistContentChanged', { uuids: [runtime.songsArea.songListUUID] })
             return { action: 'songsRemoved', paths: songsToExportFilePaths }
           }
         }
