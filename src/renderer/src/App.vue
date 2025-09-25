@@ -213,7 +213,14 @@ window.electron.ipcRenderer.on('delSongsSuccess', (_event, recycleBinNewDirDescr
       <homePage />
     </div>
     <div
-      style="height: 20px; width: 100%; background-color: #181818; border-top: 1px solid #2b2b2b"
+      style="
+        height: 20px;
+        width: 100%;
+        background-color: #181818;
+        border-top: 1px solid #2b2b2b;
+        box-sizing: border-box;
+        overflow: hidden;
+      "
     >
       <bottomInfoArea />
     </div>
@@ -254,7 +261,7 @@ window.electron.ipcRenderer.on('delSongsSuccess', (_event, recycleBinNewDirDescr
 #app {
   color: #cccccc;
   background-color: #181818;
-  width: 100vw;
+  width: 100%;
   height: 100vh;
 }
 

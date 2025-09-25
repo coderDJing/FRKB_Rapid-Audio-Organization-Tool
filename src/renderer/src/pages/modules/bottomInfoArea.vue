@@ -51,34 +51,38 @@ window.electron.ipcRenderer.on('noAudioFileWasScanned', async (event) => {
 })
 </script>
 <template>
-  <div style="width: 100%; height: 100%; display: flex; align-items: center" v-if="barTitle">
-    <div
-      style="
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        padding-left: 5px;
-        height: 20px;
-      "
-    >
-      <div class="loading">
-        <div></div>
-        <div></div>
-        <div></div>
-        <div></div>
-        <div></div>
+  <div class="bottom-info-area">
+    <div v-if="barTitle" style="width: 100%; display: flex; align-items: center">
+      <div
+        style="
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          padding-left: 5px;
+          height: 20px;
+        "
+      >
+        <div class="loading">
+          <div></div>
+          <div></div>
+          <div></div>
+          <div></div>
+          <div></div>
+        </div>
       </div>
-    </div>
-    <div
-      v-if="barTitle"
-      style="width: fit-content; font-size: 10px; height: 20px; line-height: 20px; padding: 0 5px"
-    >
-      {{ barTitle }}
-      <span v-show="!noNum">{{ barNowNum }} / {{ barTotal }}</span>
-    </div>
-    <div class="container" v-if="barTitle">
-      <div class="progress">
-        <div class="progress-bar" :style="'width:' + (barNowNum / barTotal) * 100 + '%'"></div>
+      <div
+        style="width: fit-content; font-size: 10px; height: 20px; line-height: 20px; padding: 0 5px"
+      >
+        {{ barTitle }}
+        <span v-show="!noNum">{{ barNowNum }} / {{ barTotal }}</span>
+      </div>
+      <div class="container">
+        <div class="progress">
+          <div
+            class="progress-bar"
+            :style="'width:' + (barTotal ? (barNowNum / barTotal) * 100 : 0) + '%'"
+          ></div>
+        </div>
       </div>
     </div>
   </div>
@@ -276,5 +280,13 @@ window.electron.ipcRenderer.on('noAudioFileWasScanned', async (event) => {
   100% {
     transform: translateX(100%);
   }
+}
+
+.bottom-info-area {
+  width: 100%;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
 }
 </style>
