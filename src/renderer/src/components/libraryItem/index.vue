@@ -463,6 +463,19 @@ const renameMyInputHandleInput = () => {
   renameInputHintShow.value = hintShouldShow
 }
 
+// 监听全局重命名触发（仅当自己是当前选中项时）
+emitter.on('libraryArea/trigger-rename', async (targetUuid: string) => {
+  try {
+    if (targetUuid !== props.uuid) return
+    // 仅歌单/文件夹可重命名，且需要已有名称（避免与“新建未命名”冲突）
+    if (!dirData?.dirName) return
+    renameDivShow.value = true
+    renameDivValue.value = dirData.dirName
+    await nextTick()
+    myRenameInput.value?.focus()
+  } catch {}
+})
+
 //----------------------------------------
 
 const dragApproach = ref('')
