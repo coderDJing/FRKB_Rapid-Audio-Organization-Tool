@@ -55,15 +55,31 @@ const emptyRecycleBinHandleClick = async () => {
   if (res !== 'confirm') {
     return
   }
-  let recycleBinDirs = runtime.libraryTree.children?.find((item) => {
-    return item.dirName === 'RecycleBin'
-  })
-  if (recycleBinDirs?.children?.length !== 0) {
-    await window.electron.ipcRenderer.invoke('emptyRecycleBin')
-    const recycleBin = runtime.libraryTree.children?.find((item) => item.dirName === 'RecycleBin')
-    if (recycleBin) {
-      recycleBin.children = []
-    }
+  const recycleBin = runtime.libraryTree.children?.find((item) => item.dirName === 'RecycleBin')
+  const recycleChildren = recycleBin?.children || []
+  if (recycleChildren.length === 0) return
+
+  await window.electron.ipcRenderer.invoke('emptyRecycleBin')
+
+  const recycleUUIDs = new Set(recycleChildren.map((c) => c.uuid))
+
+  // 若当前打开的是回收站中的歌单，则关闭
+  if (recycleUUIDs.has(runtime.songsArea.songListUUID)) {
+    runtime.songsArea.songListUUID = ''
+    runtime.songsArea.selectedSongFilePath.length = 0
+    runtime.songsArea.songInfoArr = []
+  }
+
+  // 若当前正在播放来自回收站的歌单，则停止播放并清空播放列表
+  if (recycleUUIDs.has(runtime.playingData.playingSongListUUID)) {
+    runtime.playingData.playingSong = null
+    runtime.playingData.playingSongListUUID = ''
+    runtime.playingData.playingSongListData = []
+  }
+
+  // 清空回收站 UI 节点
+  if (recycleBin) {
+    recycleBin.children = []
   }
 }
 
