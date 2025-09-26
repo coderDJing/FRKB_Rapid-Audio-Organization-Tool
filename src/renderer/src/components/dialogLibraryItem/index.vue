@@ -444,6 +444,8 @@ async function ensureTrackCount() {
 
 onMounted(() => {
   ensureTrackCount()
+  // 当父组件要求抑制高亮（通常表示当前在“最近使用”区域高亮）时，避免树区自动滚动
+  if (props.suppressHighlight) return
   if (runtime.dialogSelectedSongListUUID === props.uuid) {
     nextTick(() => {
       try {
@@ -472,9 +474,11 @@ emitter.on('playlistContentChanged', (payload: any) => {
 })
 
 // 选中项变化时，若当前组件对应项被选中，使其滚动到可视区域内（对话框）
+// 当 suppressHighlight 为 true（近期区高亮）时，不在树区触发自动滚动
 watch(
-  () => runtime.dialogSelectedSongListUUID,
-  async (newVal) => {
+  () => [runtime.dialogSelectedSongListUUID, props.suppressHighlight] as const,
+  async ([newVal, suppress]) => {
+    if (suppress) return
     if (newVal === props.uuid) {
       await nextTick()
       try {
