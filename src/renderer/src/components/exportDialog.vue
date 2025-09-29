@@ -159,17 +159,15 @@ onUnmounted(() => {
 </template>
 <style lang="scss" scoped>
 .chooseDirDiv {
-  width: calc(100% - 5px);
+  width: 100%;
   height: 100%;
   background-color: #313131;
-
   text-overflow: ellipsis;
   overflow: hidden;
-  word-break: break-all;
   white-space: nowrap;
-  width: calc(100% - 5px);
   font-size: 14px;
   padding-left: 5px;
+  border-radius: 3px;
 }
 
 .formLabel {

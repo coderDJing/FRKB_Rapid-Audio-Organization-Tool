@@ -84,6 +84,7 @@ interface IMenu {
 interface IImportSongsFormData {
   filePaths?: string[]
   folderPath?: string[]
+  selectedPaths?: string[]
   songListPath: string
   isDeleteSourceFile: boolean
   isComparisonSongFingerprint: boolean

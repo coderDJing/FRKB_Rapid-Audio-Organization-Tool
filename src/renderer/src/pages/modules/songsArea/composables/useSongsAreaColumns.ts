@@ -151,6 +151,10 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
 
   // --- 根据列筛选过滤并按当前排序排序 ---
   function applyFiltersAndSorting() {
+    console.log('[SongsArea] APPLY_START', {
+      originalLen: originalSongInfoArr.value.length,
+      sortedCol: columnData.value.find((c) => c.order)?.key
+    })
     let filtered = [...originalSongInfoArr.value]
 
     for (const col of columnData.value) {
@@ -184,6 +188,10 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     }
 
     runtime.songsArea.songInfoArr = filtered
+    console.log('[SongsArea] APPLY_DONE', {
+      runtimeLen: runtime.songsArea.songInfoArr.length,
+      example: runtime.songsArea.songInfoArr.slice(0, 3).map((s) => s.filePath)
+    })
   }
 
   // --- 列更新 ---
@@ -219,6 +227,11 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
   // --- 列头排序点击 ---
   const colMenuClick = (col: ISongsAreaColumn) => {
     if (col.key === 'index' || col.key === 'cover') return
+
+    console.log('[SongsArea] SORT', {
+      key: col.key,
+      newOrder: columnData.value.find((item) => item.key === col.key)?.order
+    })
 
     const newColumnData = columnData.value.map((item) => {
       if (item.key !== col.key) {

@@ -247,15 +247,27 @@ function createWindow() {
   ipcMain.on('startImportSongs', async (e, formData: IImportSongsFormData) => {
     const importStartAt = Date.now()
     sendProgress('fingerprints.scanningFiles', 0, 1, true)
-    let filePaths = formData.filePaths || formData.folderPath
+    let filePaths = formData.selectedPaths || formData.filePaths || formData.folderPath
     if (filePaths === undefined) {
       filePaths = []
     }
-    let songFileUrls = (
-      await Promise.all(
-        filePaths.map((item) => collectFilesWithExtensions(item, store.settingConfig.audioExt))
-      )
-    ).flat()
+    let songFileUrls: string[] = []
+
+    // 处理混合的文件和文件夹路径
+    for (const filePath of filePaths) {
+      const stats = await fs.stat(filePath)
+      if (stats.isFile()) {
+        // 单个文件
+        const ext = path.extname(filePath).toLowerCase()
+        if (store.settingConfig.audioExt.includes(ext)) {
+          songFileUrls.push(filePath)
+        }
+      } else if (stats.isDirectory()) {
+        // 文件夹
+        const files = await collectFilesWithExtensions(filePath, store.settingConfig.audioExt)
+        songFileUrls = songFileUrls.concat(files)
+      }
+    }
     sendProgress('fingerprints.scanningFiles', 1, 1, true)
     if (songFileUrls.length === 0) {
       mainWindow?.webContents.send('noAudioFileWasScanned')

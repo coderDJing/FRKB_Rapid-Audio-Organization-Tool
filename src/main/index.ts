@@ -67,6 +67,7 @@ if (!gotTheLock) {
 
 import path = require('path')
 import fs = require('fs-extra')
+import os = require('os')
 const platform = process.platform
 // 不再使用 Tray，改用应用菜单
 if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
@@ -449,9 +450,17 @@ ipcMain.handle('dirPathExists', async (e, targetPath: string) => {
   }
 })
 
-ipcMain.handle('scanSongList', async (e, songListPath: string, songListUUID: string) => {
-  const scanPath = path.join(store.databaseDir, mapRendererPathToFsPath(songListPath))
-  return await svcScanSongList(scanPath, store.settingConfig.audioExt, songListUUID)
+ipcMain.handle('scanSongList', async (e, songListPath: string | string[], songListUUID: string) => {
+  if (typeof songListPath === 'string') {
+    const scanPath = path.join(store.databaseDir, mapRendererPathToFsPath(songListPath))
+    return await svcScanSongList(scanPath, store.settingConfig.audioExt, songListUUID)
+  } else {
+    // 处理数组情况
+    const scanPaths = songListPath.map((p) =>
+      path.join(store.databaseDir, mapRendererPathToFsPath(p))
+    )
+    return await svcScanSongList(scanPaths, store.settingConfig.audioExt, songListUUID)
+  }
 })
 
 // 获取歌单曲目数量（快速计数，不解析元数据）
@@ -499,6 +508,187 @@ ipcMain.handle('select-folder', async (event, multiSelections: boolean = true) =
     return null
   }
   return result.filePaths
+})
+
+ipcMain.handle('get-user-home', async () => {
+  return os.homedir()
+})
+
+ipcMain.handle('get-drives', async () => {
+  try {
+    const { exec } = require('child_process')
+    const { promisify } = require('util')
+    const execAsync = promisify(exec)
+
+    if (process.platform === 'win32') {
+      // Windows: 使用更可靠的方式获取驱动器信息
+      try {
+        // 首先尝试使用 PowerShell (如果可用)
+        const { stdout: psStdout } = await execAsync(
+          'powershell -command "Get-WmiObject Win32_LogicalDisk | Select-Object DeviceID, Size, FreeSpace | ConvertTo-Json"'
+        )
+        const drivesData = JSON.parse(psStdout)
+        const drives = drivesData.map((drive: any) => ({
+          name: drive.DeviceID,
+          path: drive.DeviceID,
+          type: 'drive',
+          size: parseInt(drive.Size) || 0,
+          freeSpace: parseInt(drive.FreeSpace) || 0
+        }))
+        return drives.filter((drive: any) => drive.name)
+      } catch (psError) {
+        // 如果 PowerShell 失败，回退到 wmic
+        console.log('PowerShell failed, falling back to wmic:', psError)
+        const { stdout } = await execAsync('wmic logicaldisk get name,size,freespace')
+        const lines = stdout.split('\n').slice(1) // 跳过标题行
+        const drives = lines
+          .filter((line: string) => line.trim() && /^[A-Z]:\s+\d+\s+\d+$/.test(line.trim()))
+          .map((line: string) => {
+            const parts = line.trim().split(/\s+/)
+            // 确保正确解析：name, size, freeSpace
+            const name = parts[0] || ''
+            const sizeStr = parts[1] || '0'
+            const freeSpaceStr = parts[2] || '0'
+
+            return {
+              name: name,
+              path: name, // 驱动器路径就是名称本身，如 "C:"
+              type: 'drive',
+              size: parseInt(sizeStr) || 0,
+              freeSpace: parseInt(freeSpaceStr) || 0
+            }
+          })
+          .filter((drive: any) => drive.name) // 过滤掉空名称的驱动器
+        return drives
+      }
+    } else if (process.platform === 'darwin') {
+      // macOS: 列出 /Volumes 目录
+      const volumes = await fs.readdir('/Volumes')
+      const drives = volumes.map((volume) => ({
+        name: volume,
+        path: `/Volumes/${volume}`,
+        type: 'drive'
+      }))
+      return drives
+    } else {
+      // Linux: 列出挂载点
+      const { stdout } = await execAsync('lsblk -o NAME,MOUNTPOINT -n -l')
+      const lines: string[] = stdout.split('\n')
+      const drives = lines
+        .filter((line: string) => line.trim() && line.includes('/'))
+        .map((line: string) => {
+          const parts = line.trim().split(/\s+/)
+          return {
+            name: parts[0],
+            path: parts[1],
+            type: 'drive'
+          }
+        })
+      return drives
+    }
+  } catch (wmicError) {
+    // 如果 PowerShell 和 wmic 都失败了，尝试使用 Node.js fs 模块
+    console.log('Both PowerShell and wmic failed, trying fs.readdir:', wmicError)
+    try {
+      // 尝试读取根目录下的所有驱动器
+      const rootItems = await fs.readdir('C:/') // 至少有一个C盘
+      const drives = []
+
+      // 检查常见的驱动器字母
+      const driveLetters = [
+        'A',
+        'B',
+        'C',
+        'D',
+        'E',
+        'F',
+        'G',
+        'H',
+        'I',
+        'J',
+        'K',
+        'L',
+        'M',
+        'N',
+        'O',
+        'P',
+        'Q',
+        'R',
+        'S',
+        'T',
+        'U',
+        'V',
+        'W',
+        'X',
+        'Y',
+        'Z'
+      ]
+
+      for (const letter of driveLetters) {
+        const drivePath = `${letter}:`
+        try {
+          // 对于驱动器，我们需要检查它是否真的存在且可访问
+          const stats = await fs.stat(drivePath)
+          if (stats.isDirectory()) {
+            drives.push({
+              name: drivePath,
+              path: drivePath,
+              type: 'drive',
+              size: 0,
+              freeSpace: 0
+            })
+          }
+        } catch {
+          // 驱动器不存在，跳过
+        }
+      }
+
+      return drives
+    } catch (fsError) {
+      console.error('All drive detection methods failed:', fsError)
+      return []
+    }
+  }
+})
+
+ipcMain.handle('read-directory', async (event, dirPath: string) => {
+  try {
+    // 确保路径格式正确，特殊处理驱动器路径
+    let normalizedPath: string
+    if (dirPath.match(/^[A-Z]:$/i)) {
+      // 驱动器路径，直接使用，不进行resolve
+      normalizedPath = dirPath + '/'
+    } else {
+      // 普通路径，进行resolve
+      normalizedPath = path.resolve(dirPath).replace(/\\/g, '/')
+    }
+
+    const items = await fs.readdir(normalizedPath, { withFileTypes: true })
+    const result = await Promise.all(
+      items.map(async (item) => {
+        const itemPath = path.join(normalizedPath, item.name)
+        let size = 0
+        if (item.isFile()) {
+          try {
+            const stats = await fs.stat(itemPath)
+            size = stats.size
+          } catch {
+            size = 0
+          }
+        }
+        return {
+          name: item.name,
+          path: itemPath,
+          isDirectory: item.isDirectory(),
+          isFile: item.isFile(),
+          size
+        }
+      })
+    )
+    return result
+  } catch (error) {
+    throw new Error(`无法读取目录 ${dirPath}: ${error}`)
+  }
 })
 
 ipcMain.handle('select-existing-database-file', async () => {

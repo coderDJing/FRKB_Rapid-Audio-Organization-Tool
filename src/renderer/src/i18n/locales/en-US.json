@@ -141,10 +141,10 @@
         "finalTotal": "Final total",
         "contactToIncreaseLimit": "To increase quota, please contact: {email}",
         "summary": {
-          "check": "Local {client} / Server {server}",
-          "bidirectional": "Server {current} + Add {add} (Allowed {allowed})",
+          "check": "Local {0} / Server {1}",
+          "bidirectional": "Server {0} + Add {1} (Allowed {2})",
           "analyze": "Final total {final} would exceed the limit",
-          "batchAdd": "Current {current} + Add {add} (Allowed {allowed})"
+          "batchAdd": "Current {0} + Add {1} (Allowed {2})"
         }
       }
     },
@@ -168,6 +168,8 @@
     "importNewTracks": "Import to {libraryType}",
     "importTracks": "Import",
     "selectFolder": "‌Select Folder",
+    "selectFilesAndFolders": "Select Files and Folders",
+    "clickToSelect": "Click to Select",
     "selectPlaylist": "Select Playlist‌",
     "deleteAfterImport": "Delete after import",
     "deduplicateFingerprints": "Deduplicate fingerprints",
@@ -345,7 +347,7 @@
   "errors": {
     "diskFullTitle": "Disk space low",
     "diskFullHint": "",
-    "diskFullInterruptedHint": "Insufficient space. Completed {done}, pending {pending}. Free space then retry or skip the rest."
+    "diskFullInterruptedHint": "Insufficient space. Completed {0}, pending {1}. Free space then retry or skip the rest."
   },
   "filters": {
     "filterByText": "Filter by text (contains)",
@@ -362,5 +364,28 @@
   },
   "settings": {
     "showPlaylistTrackCount": "Show track count after playlist name"
+  },
+  "fileSelector": {
+    "title": "Select Files and Folders",
+    "searchPlaceholder": "Search files and folders...",
+    "loading": "Loading...",
+    "selectedItems": "Selected Items",
+    "files": "{count} files",
+    "folders": "{count} folders",
+    "clear": "Clear",
+    "clearAll": "Clear All",
+    "helpText": "Click to select/deselect items, double-click folders to navigate, Enter to confirm, Esc to cancel",
+    "navigateUp": "Back",
+    "name": "Name",
+    "size": "Size",
+    "type": "Type",
+    "folder": "Folder",
+    "filesSelected": "{count} files selected",
+    "foldersSelected": "{count} folders selected",
+    "moreItems": "{count} more items",
+    "noSelection": "No items selected",
+    "selectItems": "Select {count} items",
+    "desktop": "Desktop",
+    "rootLabel": "Drives"
   }
 }

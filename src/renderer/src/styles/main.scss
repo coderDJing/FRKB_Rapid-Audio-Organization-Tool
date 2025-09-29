@@ -204,3 +204,13 @@ body,
 .fade-leave-to {
   opacity: 0;
 }
+
+/* 全局路径选择框样式 */
+.chooseDirDiv {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 3px;
+}
