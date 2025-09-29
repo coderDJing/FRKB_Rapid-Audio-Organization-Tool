@@ -50,6 +50,11 @@ export function useSelectAndMoveSongs() {
       paths: selectedPaths
     })
 
+    console.log('[SongsArea] MOVE_DIALOG_CONFIRMED', {
+      fromList: runtime.songsArea.songListUUID,
+      moved: selectedPaths.length
+    })
+
     // 同步通知源/目标歌单数量刷新
     try {
       const affected = [sourceSongListUUID, targetSongListUUID].filter(Boolean)
