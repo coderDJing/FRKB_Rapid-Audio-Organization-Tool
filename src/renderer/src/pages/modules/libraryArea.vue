@@ -236,14 +236,14 @@ const drop = async (e: DragEvent) => {
       <OverlayScrollbarsComponent
         :options="{
           scrollbars: {
-            autoHide: 'leave',
+            autoHide: 'leave' as const,
             autoHideDelay: 50,
             clickScroll: true
-          },
+          } as const,
           overflow: {
             x: 'hidden',
             y: 'scroll'
-          }
+          } as const
         }"
         element="div"
         style="height: 100%; width: 100%"

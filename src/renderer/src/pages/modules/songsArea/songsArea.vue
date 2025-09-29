@@ -255,14 +255,14 @@ const handleSongDragEnd = (event: DragEvent) => {
       v-if="runtime.songsArea.songListUUID && !loadingShow"
       :options="{
         scrollbars: {
-          autoHide: 'leave',
+          autoHide: 'leave' as const,
           autoHideDelay: 50,
           clickScroll: true
-        },
+        } as const,
         overflow: {
           x: 'scroll',
           y: 'scroll'
-        }
+        } as const
       }"
       element="div"
       style="height: 100%; width: 100%; position: relative"

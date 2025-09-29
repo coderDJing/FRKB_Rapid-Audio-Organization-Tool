@@ -27,6 +27,11 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     const pathsToRemove = Array.isArray((payload as any).paths) ? (payload as any).paths : []
     const listUUID = (payload as any).listUUID
 
+    console.log('[SongsArea] EVENT_songsRemoved', {
+      listUUID,
+      removeCount: pathsToRemove.length
+    })
+
     if (!pathsToRemove.length) return
     if (listUUID && listUUID !== runtime.songsArea.songListUUID) return
 

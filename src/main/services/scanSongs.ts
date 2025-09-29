@@ -5,7 +5,7 @@ import { ISongInfo } from '../../types/globals'
 
 // 扫描歌单目录，带 .songs.cache.json 缓存
 export async function scanSongList(
-  scanPath: string,
+  scanPath: string | string[],
   audioExt: string[],
   songListUUID: string
 ): Promise<{
@@ -27,7 +27,24 @@ export async function scanSongList(
   const perfListStart = Date.now()
   const mm = await import('music-metadata')
   let songInfoArr: ISongInfo[] = []
-  let songFileUrls = await collectFilesWithExtensions(scanPath, audioExt)
+  let songFileUrls: string[] = []
+
+  // 处理混合的文件和文件夹路径
+  const pathsToScan = Array.isArray(scanPath) ? scanPath : [scanPath]
+  for (const filePath of pathsToScan) {
+    const stats = await fs.stat(filePath)
+    if (stats.isFile()) {
+      // 单个文件
+      const ext = path.extname(filePath).toLowerCase()
+      if (audioExt.includes(ext)) {
+        songFileUrls.push(filePath)
+      }
+    } else if (stats.isDirectory()) {
+      // 文件夹
+      const files = await collectFilesWithExtensions(filePath, audioExt)
+      songFileUrls = songFileUrls.concat(files)
+    }
+  }
   const perfListEnd = Date.now()
 
   // 缓存结构

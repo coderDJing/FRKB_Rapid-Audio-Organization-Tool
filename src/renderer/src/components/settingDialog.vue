@@ -286,14 +286,14 @@ const clearCloudFingerprints = async () => {
         <OverlayScrollbarsComponent
           :options="{
             scrollbars: {
-              autoHide: 'leave',
+              autoHide: 'leave' as const,
               autoHideDelay: 50,
               clickScroll: true
-            },
+            } as const,
             overflow: {
               x: 'hidden',
               y: 'scroll'
-            }
+            } as const
           }"
           element="div"
           style="height: 100%; width: 100%"
@@ -540,10 +540,8 @@ option {
   height: 25px;
   line-height: 25px;
   background-color: #313131;
-
   text-overflow: ellipsis;
   overflow: hidden;
-  word-break: break-all;
   white-space: nowrap;
   width: 200px;
   font-size: 14px;

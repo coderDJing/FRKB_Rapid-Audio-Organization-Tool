@@ -6,6 +6,7 @@ import selectSongListDialog from './selectSongListDialog.vue'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import hintIcon from '@renderer/assets/hint.png?asset'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import customFileSelector from './customFileSelector.vue'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'
@@ -54,22 +55,65 @@ settingData.value = parsedLocalStorageData
 const runtime = useRuntimeStore()
 runtime.activeMenuUUID = ''
 
-const folderPathVal = ref<string[]>([]) // 仅 scan 模式下使用
+// 保存选中的路径到sessionStorage（会话级记忆）
+const saveSelectedPaths = () => {
+  try {
+    sessionStorage.setItem('importDialog_selectedPaths', JSON.stringify(selectedPaths.value))
+  } catch {
+    // 忽略存储错误
+  }
+}
+
+// 加载选中的路径从sessionStorage（会话级记忆）
+const loadSelectedPaths = () => {
+  try {
+    const saved = sessionStorage.getItem('importDialog_selectedPaths')
+    return saved ? JSON.parse(saved) : []
+  } catch {
+    return []
+  }
+}
+
+// 清空会话级选中的路径
+const clearSelectedPaths = () => {
+  try {
+    sessionStorage.removeItem('importDialog_selectedPaths')
+  } catch {
+    // 忽略存储错误
+  }
+}
+
+const selectedPaths = ref<string[]>([]) // 选中的文件和文件夹路径
+
+// 加载之前保存的选中路径
+selectedPaths.value = loadSelectedPaths()
+const customFileSelectorVisible = ref(false)
 let clickChooseDirFlag = false
 const clickChooseDir = async () => {
   if (clickChooseDirFlag || props.mode !== 'scan') return
   clickChooseDirFlag = true
-  const folderPath = await window.electron.ipcRenderer.invoke('select-folder')
+  customFileSelectorVisible.value = true
   clickChooseDirFlag = false
-  if (folderPath) {
-    folderPathVal.value = folderPath
-  }
 }
 
-const folderPathDisplay = computed(() => {
-  let newPaths = folderPathVal.value.map((path) => {
-    let parts = path.split('\\')
-    return parts[parts.length - 1] ? parts[parts.length - 1] : parts[parts.length - 2]
+const onFileSelectorConfirm = (paths: string[]) => {
+  // 合并新选择的路径（去重）
+  const existingPaths = new Set(selectedPaths.value)
+  const newPaths = paths.filter((path) => !existingPaths.has(path))
+  selectedPaths.value = [...selectedPaths.value, ...newPaths]
+  saveSelectedPaths() // 保存选中的路径
+  customFileSelectorVisible.value = false
+}
+
+const onFileSelectorCancel = () => {
+  customFileSelectorVisible.value = false
+}
+
+const selectedPathsDisplay = computed(() => {
+  if (selectedPaths.value.length === 0) return ''
+  let newPaths = selectedPaths.value.map((path) => {
+    let parts = path.split(/[/\\]/)
+    return parts[parts.length - 1] || parts[parts.length - 2] || path
   })
   let str = [] as string[]
   for (let item of newPaths) {
@@ -133,8 +177,8 @@ const songListSelectedDisplay = computed(() => {
 
 const confirm = () => {
   if (props.mode === 'scan') {
-    if (folderPathVal.value.length === 0) {
-      if (!flashArea.value) flashBorder('folderPathVal')
+    if (selectedPaths.value.length === 0) {
+      if (!flashArea.value) flashBorder('selectedPaths')
       return
     }
   }
@@ -147,7 +191,7 @@ const confirm = () => {
     runtime.importingSongListUUID = importingSongListUUID
     runtime.isProgressing = true
     window.electron.ipcRenderer.send('startImportSongs', {
-      folderPath: JSON.parse(JSON.stringify(folderPathVal.value)),
+      selectedPaths: JSON.parse(JSON.stringify(selectedPaths.value)),
       songListPath: songListSelectedPath,
       isDeleteSourceFile: settingData.value.isDeleteSourceFile,
       isComparisonSongFingerprint: settingData.value.isComparisonSongFingerprint,
@@ -155,6 +199,9 @@ const confirm = () => {
       songListUUID: importingSongListUUID
     })
     localStorage.setItem('scanNewSongDialog', JSON.stringify(settingData.value))
+    // 清除已选中的路径，为下次使用做准备
+    selectedPaths.value = []
+    clearSelectedPaths() // 清空会话级选中的路径
     ;(props.confirmCallback as Function)()
   } else if (props.mode === 'drop') {
     localStorage.setItem('scanNewSongDialog', JSON.stringify(settingData.value))
@@ -170,6 +217,8 @@ const confirm = () => {
 
 const cancel = () => {
   localStorage.setItem('scanNewSongDialog', JSON.stringify(settingData.value))
+  // 清空会话级选中的路径
+  clearSelectedPaths()
   ;(props.cancelCallback as Function)()
 }
 
@@ -187,13 +236,17 @@ onMounted(() => {
 
 onUnmounted(() => {
   utils.delHotkeysScope(uuid)
+  // 组件销毁时保存选中的路径
+  if (selectedPaths.value.length > 0) {
+    saveSelectedPaths()
+  }
 })
 </script>
 <template>
   <div class="dialog unselectable">
     <div
       style="
-        width: 450px;
+        width: 500px;
         height: 300px;
         display: flex;
         flex-direction: column;
@@ -211,17 +264,16 @@ onUnmounted(() => {
           <div class="settingsTable">
             <div v-if="props.mode === 'scan'" class="settingsRow">
               <div class="settingLabel">
-                <span>{{ t('library.selectFolder') }}：</span>
+                <span>{{ t('library.selectFilesAndFolders') }}：</span>
               </div>
               <div class="settingCell">
                 <div
                   class="chooseDirDiv flashing-border"
-                  style="width: 100%"
                   @click="clickChooseDir()"
-                  :title="folderPathDisplay"
-                  :class="{ 'is-flashing': flashArea == 'folderPathVal' }"
+                  :title="selectedPathsDisplay"
+                  :class="{ 'is-flashing': flashArea == 'selectedPaths' }"
                 >
-                  {{ folderPathDisplay }}
+                  {{ selectedPathsDisplay || t('library.clickToSelect') }}
                 </div>
               </div>
             </div>
@@ -232,7 +284,6 @@ onUnmounted(() => {
               <div class="settingCell">
                 <div
                   class="chooseDirDiv flashing-border"
-                  style="width: 100%"
                   @click="clickChooseSongList()"
                   :title="songListSelectedDisplay"
                   :class="{ 'is-flashing': flashArea == 'songListPathVal' }"
@@ -352,20 +403,28 @@ onUnmounted(() => {
       }
     "
   />
+
+  <customFileSelector
+    v-model:visible="customFileSelectorVisible"
+    :multiSelect="true"
+    :allowMixedSelection="true"
+    :initialSelectedPaths="selectedPaths"
+    @confirm="onFileSelectorConfirm"
+    @cancel="onFileSelectorCancel"
+  />
 </template>
 <style lang="scss" scoped>
 .chooseDirDiv {
-  width: calc(100% - 5px);
+  width: 100%;
   height: 20px;
   background-color: #313131;
   text-overflow: ellipsis;
   overflow: hidden;
-  word-break: break-all;
   white-space: nowrap;
-  width: calc(100% - 5px);
   font-size: 14px;
   padding-left: 5px;
   line-height: 20px;
+  border-radius: 3px;
 }
 
 .formLabel {

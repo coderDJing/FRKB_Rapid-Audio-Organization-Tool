@@ -142,10 +142,10 @@
         "willExceedHint": "本次同步将超过配额上限，已中止。",
         "contactToIncreaseLimit": "如需提高配额上限，请联系：{email}",
         "summary": {
-          "check": "本地 {client} / 服务端 {server}",
-          "bidirectional": "服务端 {current} + 本次新增 {add}（允许 {allowed}）",
+          "check": "本地 {0} / 服务端 {1}",
+          "bidirectional": "服务端 {0} + 本次新增 {1}（允许 {2}）",
           "analyze": "同步后总量 {final} 将超过上限",
-          "batchAdd": "当前 {current} + 本次新增 {add}（允许 {allowed}）"
+          "batchAdd": "当前 {0} + 本次新增 {1}（允许 {2}）"
         }
       }
     },
@@ -169,6 +169,8 @@
     "importNewTracks": "{libraryType} 导入新曲目",
     "importTracks": "导入曲目",
     "selectFolder": "选择文件夹",
+    "selectFilesAndFolders": "选择文件和文件夹",
+    "clickToSelect": "点击选择",
     "selectPlaylist": "选择歌单",
     "deleteAfterImport": "导入后删除原文件",
     "deduplicateFingerprints": "比对声音指纹库去重",
@@ -346,7 +348,7 @@
   "errors": {
     "diskFullTitle": "磁盘空间不足",
 
-    "diskFullInterruptedHint": "可用空间不足。已完成 {done} 项，待处理 {pending} 项。释放空间后可重试，或跳过剩余任务。"
+    "diskFullInterruptedHint": "可用空间不足。已完成 {0} 项，待处理 {1} 项。释放空间后可重试，或跳过剩余任务。"
   },
   "filters": {
     "filterByText": "按文本筛选（包含匹配）",
@@ -363,5 +365,28 @@
   },
   "settings": {
     "showPlaylistTrackCount": "在歌单名称后显示曲目数量"
+  },
+  "fileSelector": {
+    "title": "选择文件和文件夹",
+    "searchPlaceholder": "搜索文件和文件夹...",
+    "loading": "正在加载...",
+    "selectedItems": "已选择项目",
+    "files": "{count}个文件",
+    "folders": "{count}个文件夹",
+    "clear": "清空",
+    "clearAll": "清空",
+    "helpText": "点击项目选择/取消选择，双击文件夹导航，Enter确认，Esc取消",
+    "navigateUp": "返回上一级",
+    "name": "名称",
+    "size": "大小",
+    "type": "类型",
+    "folder": "文件夹",
+    "filesSelected": "已选择{count}个文件",
+    "foldersSelected": "已选择{count}个文件夹",
+    "moreItems": "还有{count}项",
+    "noSelection": "未选择任何项目",
+    "selectItems": "选择{count}项",
+    "desktop": "桌面",
+    "rootLabel": "驱动器"
   }
 }
