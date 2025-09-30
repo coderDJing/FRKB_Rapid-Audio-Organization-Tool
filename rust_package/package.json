@@ -32,5 +32,11 @@
     "universal": "napi universal",
     "version": "napi version"
   },
+  "files": [
+    "index.js",
+    "*.node",
+    "npm",
+    "libs"
+  ],
   "packageManager": "yarn@4.6.0"
 }

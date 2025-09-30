@@ -15,6 +15,10 @@ import utils from '../utils/utils'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
+import audioFileIcon from '@renderer/assets/audioFile.png?asset'
+import folderIcon from '@renderer/assets/folder.png?asset'
+import desktopIcon from '@renderer/assets/desktop.png?asset'
+import diskIcon from '@renderer/assets/disk.png?asset'
 
 // 从设置中获取支持的音频文件扩展名
 const getAudioExtensions = () => {
@@ -123,14 +127,12 @@ const searchInputRef = ref<HTMLInputElement>()
 // 当前选中的项目在文件树中的引用，用于快速更新
 const selectedItemRefs = ref<Map<string, FileSystemItem>>(new Map())
 
-const pendingSelectionItem = ref<FileSystemItem | null>(null)
-
 const selectionModifiers = ref<SelectionModifiers>({ shift: false, ctrlOrMeta: false })
 
 const updateSelectionModifiers = (event: KeyboardEvent | MouseEvent) => {
   selectionModifiers.value = {
-    shift: event.shiftKey,
-    ctrlOrMeta: event.ctrlKey || event.metaKey
+    shift: !!event.shiftKey,
+    ctrlOrMeta: !!(event.ctrlKey || (event as KeyboardEvent | undefined)?.metaKey)
   }
 }
 
@@ -138,7 +140,106 @@ const clearSelectionModifiers = () => {
   selectionModifiers.value = { shift: false, ctrlOrMeta: false }
 }
 
-const lastSelectedIndex = ref<number | null>(null)
+const DIRECTORY_CLICK_DELAY = 200
+let directorySelectionTimer: ReturnType<typeof setTimeout> | null = null
+let pendingDirectorySelection: {
+  item: FileSystemItem
+  modifiers: SelectionModifiers
+} | null = null
+
+const getModifiersFromEvent = (event?: MouseEvent | KeyboardEvent): SelectionModifiers => ({
+  shift: !!event?.shiftKey,
+  ctrlOrMeta: !!(event?.ctrlKey || (event as KeyboardEvent | undefined)?.metaKey)
+})
+
+const clearPendingDirectorySelection = () => {
+  if (directorySelectionTimer) {
+    clearTimeout(directorySelectionTimer)
+    directorySelectionTimer = null
+  }
+  pendingDirectorySelection = null
+}
+
+const lastActiveIndex = ref<number | null>(null)
+const anchorIndex = ref<number | null>(null)
+
+const setActiveIndexAndFocus = (index: number) => {
+  lastActiveIndex.value = index
+  anchorIndex.value = index
+
+  nextTick(() => {
+    adjustScrollToItem(index)
+  })
+}
+
+const adjustScrollToItem = (index: number) => {
+  const container = fileListRef.value
+  if (!container) return
+  const item = container.querySelector<HTMLElement>(`.file-item[data-index="${index}"]`)
+  if (item) {
+    item.scrollIntoView({ block: 'nearest' })
+  }
+}
+
+const createSelectedItem = (item: FileSystemItem): SelectedItem => ({
+  id: uuidV4(),
+  name: item.name,
+  path: item.path,
+  type: item.type,
+  size: item.size
+})
+
+const addSelection = (item: FileSystemItem, options?: { skipRange?: boolean }) => {
+  if (selectedItems.value.some((selected) => selected.path === item.path)) return
+
+  selectedItems.value.push(createSelectedItem(item))
+  selectedItemRefs.value.set(item.path, item)
+  item.isSelected = true
+
+  if (!options?.skipRange) {
+    setActiveIndexAndFocus(findItemIndex(item))
+  }
+}
+
+const removeSelectionInternal = (path: string, options?: { skipRange?: boolean }) => {
+  const existingIndex = selectedItems.value.findIndex((selected) => selected.path === path)
+  if (existingIndex === -1) return
+
+  selectedItems.value.splice(existingIndex, 1)
+
+  const treeItem = selectedItemRefs.value.get(path)
+  if (treeItem) {
+    treeItem.isSelected = false
+  }
+  selectedItemRefs.value.delete(path)
+
+  if (!options?.skipRange) {
+    if (selectedItems.value.length === 0) {
+      lastActiveIndex.value = null
+      anchorIndex.value = null
+      return
+    }
+
+    const fallbackPath = selectedItems.value[selectedItems.value.length - 1]?.path
+    if (fallbackPath) {
+      const fallbackItem = selectedItemRefs.value.get(fallbackPath)
+      if (fallbackItem) {
+        const idx = findItemIndex(fallbackItem)
+        if (idx >= 0) {
+          lastActiveIndex.value = idx
+          anchorIndex.value = idx
+          adjustScrollToItem(idx)
+          return
+        }
+      }
+    }
+
+    lastActiveIndex.value = null
+    anchorIndex.value = null
+  }
+}
+
+const removeSelectionByPath = (path: string) => removeSelectionInternal(path)
 
 const getFlatItems = () => filteredTree.value
 
@@ -157,9 +258,6 @@ const clearSelectionInternal = () => {
   selectedItems.value = []
   selectedItemRefs.value.clear()
 }
-
-const DIRECTORY_CLICK_DELAY = 180
-let directoryClickTimer: ReturnType<typeof setTimeout> | null = null
 
 // 滚动条配置
 const scrollbarOptions = {
@@ -415,33 +513,10 @@ const toggleDirectorySelectionState = (
   select: boolean,
   options?: { skipRange?: boolean }
 ) => {
-  const existingIndex = selectedItems.value.findIndex((selected) => selected.path === item.path)
-  const isSelected = existingIndex >= 0
-
-  if (select && !isSelected) {
-    const selectedItem: SelectedItem = {
-      id: uuidV4(),
-      name: item.name,
-      path: item.path,
-      type: item.type,
-      size: item.size
-    }
-
-    selectedItems.value.push(selectedItem)
-    item.isSelected = true
-    selectedItemRefs.value.set(item.path, item)
-
-    if (!options?.skipRange) {
-      lastSelectedIndex.value = findItemIndex(item)
-    }
-  } else if (!select && isSelected) {
-    selectedItems.value.splice(existingIndex, 1)
-    item.isSelected = false
-    selectedItemRefs.value.delete(item.path)
-
-    if (!options?.skipRange && lastSelectedIndex.value === existingIndex) {
-      lastSelectedIndex.value = null
-    }
+  if (select) {
+    addSelection(item, options)
+  } else {
+    removeSelectionInternal(item.path, options)
   }
 }
 
@@ -453,23 +528,25 @@ const handleItemClick = (item: FileSystemItem, event?: MouseEvent) => {
     clearSelectionModifiers()
   }
 
-  if (item.type === 'directory') {
-    pendingSelectionItem.value = item
-    if (directoryClickTimer) {
-      clearTimeout(directoryClickTimer)
-      directoryClickTimer = null
-    }
-
-    directoryClickTimer = setTimeout(() => {
-      if (pendingSelectionItem.value === item) {
-        toggleSelectionForItem(item, !item.isSelected)
-      }
-      pendingSelectionItem.value = null
-      directoryClickTimer = null
-    }, DIRECTORY_CLICK_DELAY)
-  } else {
-    toggleItemSelection(item, selectionModifiers.value)
+  if (event && event.button !== 0) {
+    return
   }
+
+  const modifiers = selectionModifiers.value
+
+  if (item.type === 'directory') {
+    clearPendingDirectorySelection()
+    pendingDirectorySelection = { item, modifiers }
+    directorySelectionTimer = setTimeout(() => {
+      if (pendingDirectorySelection?.item === item) {
+        toggleItemSelection(item, modifiers)
+      }
+      clearPendingDirectorySelection()
+    }, DIRECTORY_CLICK_DELAY)
+    return
+  }
+
+  toggleItemSelection(item, modifiers)
 }
 
 // 处理项目双击（用于导航）
@@ -478,13 +555,12 @@ const handleItemDoubleClick = async (item: FileSystemItem, event?: MouseEvent) =
 
   if (item.type !== 'directory') return
 
-  if (directoryClickTimer) {
-    clearTimeout(directoryClickTimer)
-    directoryClickTimer = null
-  }
+  clearPendingDirectorySelection()
 
-  pendingSelectionItem.value = null
-  toggleDirectorySelectionState(item, false)
+  const wasSelected = item.isSelected
+  if (wasSelected) {
+    removeSelectionInternal(item.path)
+  }
 
   await navigateTo(item)
 }
@@ -543,30 +619,36 @@ const toggleItemSelection = (
     }
   }
 
-  if (modifiers.shift && lastSelectedIndex.value !== null) {
-    // 范围选择
-    const start = Math.min(lastSelectedIndex.value, currentIndex)
-    const end = Math.max(lastSelectedIndex.value, currentIndex)
+  if (modifiers.shift && anchorIndex.value !== null) {
+    const start = Math.min(anchorIndex.value, currentIndex)
+    const end = Math.max(anchorIndex.value, currentIndex)
+
     clearSelectionInternal()
+
     for (let i = start; i <= end; i++) {
       const rangeItem = items[i]
       toggleSelectionForItem(rangeItem, true, { skipRange: true })
     }
-    lastSelectedIndex.value = currentIndex
+
+    setActiveIndexAndFocus(currentIndex)
     return
   }
 
   if (modifiers.ctrlOrMeta) {
-    // 切换当前项
-    toggleSelectionForItem(item, !item.isSelected)
-    lastSelectedIndex.value = currentIndex
+    if (item.isSelected) {
+      removeSelectionInternal(item.path)
+    } else {
+      addSelection(item)
+    }
+    anchorIndex.value = findItemIndex(item)
+    lastActiveIndex.value = anchorIndex.value
     return
   }
 
   // 默认单选
   clearSelectionInternal()
-  toggleSelectionForItem(item, true)
-  lastSelectedIndex.value = currentIndex
+  addSelection(item)
+  setActiveIndexAndFocus(currentIndex)
 }
 
 const toggleSelectionForItem = (
@@ -574,56 +656,18 @@ const toggleSelectionForItem = (
   select: boolean,
   options?: { skipRange?: boolean }
 ) => {
-  if (item.type === 'directory') {
-    toggleDirectorySelectionState(item, select, options)
+  if (select) {
+    addSelection(item, options)
   } else {
-    toggleFileSelection(item, select, options)
-  }
-}
-
-const toggleFileSelection = (
-  item: FileSystemItem,
-  select: boolean,
-  options?: { skipRange?: boolean }
-) => {
-  const existingIndex = selectedItems.value.findIndex((selected) => selected.path === item.path)
-  const isSelected = existingIndex >= 0
-
-  if (select && !isSelected) {
-    addFileSelection(item, options)
-  } else if (!select && isSelected) {
-    selectedItems.value.splice(existingIndex, 1)
-    item.isSelected = false
-    selectedItemRefs.value.delete(item.path)
-
-    if (!options?.skipRange && existingIndex === lastSelectedIndex.value) {
-      lastSelectedIndex.value = null
-    }
-  }
-}
-
-const addFileSelection = (item: FileSystemItem, options?: { skipRange?: boolean }) => {
-  const selectedItem: SelectedItem = {
-    id: uuidV4(),
-    name: item.name,
-    path: item.path,
-    type: item.type,
-    size: item.size
-  }
-
-  selectedItems.value.push(selectedItem)
-  item.isSelected = true
-  selectedItemRefs.value.set(item.path, item)
-
-  if (!options?.skipRange) {
-    lastSelectedIndex.value = findItemIndex(item)
+    removeSelectionInternal(item.path, options)
   }
 }
 
 // 清除所有选择
 const clearSelection = () => {
   clearSelectionInternal()
-  lastSelectedIndex.value = null
+  lastActiveIndex.value = null
+  anchorIndex.value = null
 }
 
 // 导航到上级目录
@@ -679,25 +723,23 @@ const isDrive = (item: FileSystemItem) => {
 
 // 获取项目图标
 const getItemIcon = (item: FileSystemItem) => {
-  // 驱动器图标
-  if (isDrive(item)) {
-    return item.name.includes(':') ? '💿' : '📁'
+  if ((item as any).isSpecial) {
+    return desktopIcon
   }
 
   if (item.type === 'directory') {
-    return item.isExpanded ? '📁' : '📂'
+    if (isDrive(item)) {
+      return diskIcon
+    }
+    return folderIcon
   }
 
   const ext = '.' + item.name.split('.').pop()?.toLowerCase()
-  const iconMap: Record<string, string> = {
-    '.mp3': '🎵',
-    '.wav': '🎵',
-    '.flac': '🎵',
-    '.aif': '🎵',
-    '.aiff': '🎵'
+  if (getAudioExtensions().includes(ext)) {
+    return audioFileIcon
   }
 
-  return iconMap[ext] || '📄'
+  return audioFileIcon
 }
 
 // 确认选择
@@ -742,7 +784,7 @@ const handleKeyDown = (event: KeyboardEvent) => {
   if (items.length === 0) return
 
   const currentIndex =
-    lastSelectedIndex.value ??
+    lastActiveIndex.value ??
     (selectedItems.value.length > 0
       ? findItemIndex(
           selectedItems.value[selectedItems.value.length - 1] as unknown as FileSystemItem
@@ -780,7 +822,7 @@ const handleKeyDown = (event: KeyboardEvent) => {
         clearSelectionInternal()
         items.forEach((item) => toggleSelectionForItem(item, true, { skipRange: true }))
         event.preventDefault()
-        lastSelectedIndex.value = items.length - 1
+        lastActiveIndex.value = items.length - 1
       }
       return
     case 'Escape':
@@ -798,7 +840,7 @@ const handleKeyDown = (event: KeyboardEvent) => {
 
   if (items[newIndex]) {
     const targetItem = items[newIndex]
-    if (event.shiftKey && lastSelectedIndex.value !== null) {
+    if (event.shiftKey && lastActiveIndex.value !== null) {
       toggleItemSelection(targetItem, { shift: true, ctrlOrMeta: event.ctrlKey || event.metaKey })
     } else {
       toggleItemSelection(targetItem, { shift: false, ctrlOrMeta: event.ctrlKey || event.metaKey })
@@ -886,7 +928,7 @@ onUnmounted(() => {
             class="file-list"
             defer
           >
-            <div v-for="item in filteredTree" :key="item.path" class="file-item-wrapper">
+            <div v-for="(item, index) in filteredTree" :key="item.path" class="file-item-wrapper">
               <div
                 class="file-item"
                 :class="{
@@ -894,10 +936,14 @@ onUnmounted(() => {
                   'is-file': item.type === 'file',
                   'is-selected': item.isSelected
                 }"
+                :data-index="findItemIndex(item)"
+                :data-path="item.path"
                 @click="handleItemClick(item, $event)"
                 @dblclick="item.type === 'directory' ? handleItemDoubleClick(item, $event) : null"
               >
-                <div class="item-icon">{{ getItemIcon(item) }}</div>
+                <div class="item-icon">
+                  <img :src="getItemIcon(item)" alt="" />
+                </div>
                 <div class="item-name-wrapper">
                   <div class="item-name" :title="item.name">{{ item.name }}</div>
                 </div>
@@ -953,17 +999,14 @@ onUnmounted(() => {
             defer
           >
             <div v-for="item in selectedItems" :key="item.id" class="selected-item">
-              <div class="selected-icon">{{ getItemIcon(item as any) }}</div>
+              <div class="selected-icon">
+                <img :src="getItemIcon(item as any)" alt="" />
+              </div>
               <div class="selected-info">
                 <div class="selected-name" :title="item.name">{{ item.name }}</div>
                 <div class="selected-path" :title="item.path">{{ item.path }}</div>
               </div>
-              <button
-                @click="toggleItemSelection(selectedItemRefs.get(item.path)!)"
-                class="remove-btn"
-              >
-                ×
-              </button>
+              <button @click="removeSelectionByPath(item.path)" class="remove-btn">×</button>
             </div>
           </OverlayScrollbarsComponent>
 
@@ -1194,6 +1237,14 @@ onUnmounted(() => {
         text-align: center;
         margin-right: 8px;
         font-size: 14px;
+
+        img {
+          width: 18px;
+          height: 18px;
+          object-fit: contain;
+          display: block;
+          filter: brightness(0.85);
+        }
       }
 
       .item-name-wrapper {
@@ -1312,12 +1363,21 @@ onUnmounted(() => {
       border: 1px solid #333333;
       border-radius: 3px;
       cursor: default;
+      gap: 4px;
 
       .selected-icon {
         flex: 0 0 16px;
         text-align: center;
         margin-right: 6px;
         font-size: 12px;
+
+        img {
+          width: 16px;
+          height: 16px;
+          object-fit: contain;
+          display: block;
+          filter: brightness(0.85);
+        }
       }
 
       .selected-info {
@@ -1343,18 +1403,22 @@ onUnmounted(() => {
       }
 
       .remove-btn {
-        flex: 0 0 16px;
+        flex: 0 0 auto;
         background: none;
         border: none;
         color: #dc3545;
         cursor: pointer;
-        font-size: 14px;
-        padding: 1px;
-        border-radius: 2px;
-        transition: background-color 0.2s;
+        font-size: 12px;
+        padding: 0;
+        width: 16px;
+        height: 16px;
+        border-radius: 3px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
 
         &:hover {
-          background: #3d2828;
+          color: #ff6b81;
         }
       }
     }

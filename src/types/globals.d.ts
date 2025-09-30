@@ -14,6 +14,17 @@ interface IDir {
 type md5 = {
   sha256_Hash: string
   file_path: string
+  fingerprint?: string
+  fingerprint_hash?: string
+  format_ext?: string
+  quality_label?: string
+  bitrate?: number
+  sample_rate?: number
+  bit_depth?: number
+  channels?: number
+  duration_seconds?: number
+  file_size?: number
+  error?: string
 }
 
 declare global {
