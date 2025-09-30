@@ -101,16 +101,25 @@ export async function getSongsAnalyseResult(
   let songsAnalyseResult: md5[] = []
   let errorSongsAnalyseResult: md5[] = []
   for (let item of results) {
+    const common = {
+      sha256_Hash: item.sha256Hash,
+      file_path: item.filePath,
+      fingerprint: item.fingerprint,
+      fingerprint_hash: item.fingerprintHash,
+      format_ext: item.formatExt,
+      quality_label: item.qualityLabel,
+      bitrate: item.bitrate,
+      sample_rate: item.sampleRate,
+      bit_depth: item.bitDepth,
+      channels: item.channels,
+      duration_seconds: item.durationSeconds,
+      file_size: item.fileSize,
+      error: item.error
+    }
     if (item.sha256Hash === 'error') {
-      errorSongsAnalyseResult.push({
-        sha256_Hash: item.sha256Hash,
-        file_path: item.filePath
-      })
+      errorSongsAnalyseResult.push(common)
     } else {
-      songsAnalyseResult.push({
-        sha256_Hash: item.sha256Hash,
-        file_path: item.filePath
-      })
+      songsAnalyseResult.push(common)
     }
   }
   return { songsAnalyseResult, errorSongsAnalyseResult }

@@ -17,6 +17,9 @@ importers:
       audio-decode:
         specifier: ^2.2.2
         version: 2.2.2
+      dotenv:
+        specifier: ^16.4.5
+        version: 16.4.7
       electron-log:
         specifier: ^5.2.0
         version: 5.3.2

@@ -1260,9 +1260,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"rust_src@workspace:.":
+"rust_package@workspace:.":
   version: 0.0.0-use.local
-  resolution: "rust_src@workspace:."
+  resolution: "rust_package@workspace:."
   dependencies:
     "@napi-rs/cli": "npm:^2.18.4"
     ava: "npm:^6.0.1"

@@ -209,6 +209,24 @@ function createWindow() {
       }
     )
 
+    if (is.dev) {
+      console.log('[Fingerprint][DEV] ===============================')
+      songsAnalyseResult.forEach((item) => {
+        console.log('[Fingerprint][DEV] SUCCESS', item)
+      })
+      errorSongsAnalyseResult.forEach((item) => {
+        console.log('[Fingerprint][DEV] FAILURE', item)
+      })
+      console.log('[Fingerprint][DEV] 分析完成：', {
+        scannedCount: songFileUrls.length,
+        successCount: songsAnalyseResult.length,
+        failCount: errorSongsAnalyseResult.length
+      })
+      console.log('[Fingerprint][DEV] 后续指纹库操作已跳过 (development mode)')
+      console.log('[Fingerprint][DEV] ===============================')
+      return
+    }
+
     // 去重处理
     const uniqueFingerprints = new Set(songsAnalyseResult.map((item) => item.sha256_Hash))
     const removeDuplicatesFingerprintResults = Array.from(uniqueFingerprints)
@@ -292,6 +310,24 @@ function createWindow() {
 
       songsAnalyseResult = analyseResult.songsAnalyseResult
       errorSongsAnalyseResult = analyseResult.errorSongsAnalyseResult
+
+      if (is.dev) {
+        console.log('[Import][DEV] ===============================')
+        songsAnalyseResult.forEach((item) => {
+          console.log('[Import][DEV] SUCCESS', item)
+        })
+        errorSongsAnalyseResult.forEach((item) => {
+          console.log('[Import][DEV] FAILURE', item)
+        })
+        console.log('[Import][DEV] 分析完成：', {
+          scannedCount: songFileUrls.length,
+          successCount: songsAnalyseResult.length,
+          failCount: errorSongsAnalyseResult.length
+        })
+        console.log('[Import][DEV] 后续指纹库操作已跳过 (development mode)')
+        console.log('[Import][DEV] ===============================')
+        return
+      }
 
       if (isComparisonSongFingerprint) {
         const uniqueSongs = new Map()
