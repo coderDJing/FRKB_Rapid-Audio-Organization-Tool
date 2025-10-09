@@ -88,6 +88,8 @@ export function mapRendererPathToFsPath(rendererPath: string): string {
   return p
 }
 
+// 指纹比较与阈值逻辑已移除（当前仅使用音频内容哈希判重）
+
 export async function getSongsAnalyseResult(
   songFilePaths: string[],
   processFunc: Function
@@ -98,30 +100,38 @@ export async function getSongsAnalyseResult(
     }
   }
   const results = await calculateAudioHashesWithProgress(songFilePaths, progressCallback)
-  let songsAnalyseResult: md5[] = []
-  let errorSongsAnalyseResult: md5[] = []
+  const existingHashes = new Set(store.songFingerprintList)
+
+  const songsAnalyseResult: md5[] = []
+  const errorSongsAnalyseResult: md5[] = []
+
   for (let item of results) {
-    const common = {
+    const common: md5 = {
       sha256_Hash: item.sha256Hash,
       file_path: item.filePath,
-      fingerprint: item.fingerprint,
-      fingerprint_hash: item.fingerprintHash,
-      format_ext: item.formatExt,
-      quality_label: item.qualityLabel,
-      bitrate: item.bitrate,
-      sample_rate: item.sampleRate,
-      bit_depth: item.bitDepth,
-      channels: item.channels,
-      duration_seconds: item.durationSeconds,
-      file_size: item.fileSize,
+      // 仅保留必要字段
       error: item.error
     }
+
     if (item.sha256Hash === 'error') {
       errorSongsAnalyseResult.push(common)
-    } else {
-      songsAnalyseResult.push(common)
+      continue
     }
+
+    let likelyDuplicate = false
+
+    // 1. SHA256 直接判重复
+    if (store.songFingerprintList.includes(common.sha256_Hash)) {
+      likelyDuplicate = true
+    }
+
+    // 指纹 hash 与相似度判定分支已移除
+
+    // 重复标记字段已移除（仅保留布尔含义于外层流程）
+
+    songsAnalyseResult.push(common)
   }
+
   return { songsAnalyseResult, errorSongsAnalyseResult }
 }
 async function getdirsDescriptionJson(dirPath: string, dirs: fs.Dirent[]) {

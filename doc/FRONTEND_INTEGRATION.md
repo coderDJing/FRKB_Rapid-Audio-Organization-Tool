@@ -460,7 +460,6 @@ async function syncAll(userKey: string, clientFingerprints: string[]) {
 - `Retry-After`: 建议重试等待秒数（当 429 时）
 
 如需更多示例或 SDK 封装，请告知使用语言与框架，我们将补充示例代码与错误处理模板。
-
 - 成功: `{ success: true, data }`
 - 失败: `{ success: false, error, message, details?, timestamp, requestId? }`
 - **常见错误码**:
@@ -668,3 +667,4 @@ async function syncAll(userKey: string, clientFingerprints: string[]) {
 - `Retry-After`: 建议重试等待秒数（当 429 时）
 
 如需更多示例或 SDK 封装，请告知使用语言与框架，我们将补充示例代码与错误处理模板。
+

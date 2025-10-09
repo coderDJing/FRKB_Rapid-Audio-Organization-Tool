@@ -10,31 +10,11 @@ export interface ProcessProgress {
 }
 /** 音频文件处理结果 */
 export interface AudioFileResult {
-  /** 整个文件的 SHA256，用于二进制级去重 */
+  /** 整个文件的 SHA256（标准化 PCM 内容哈希），用于去重 */
   sha256Hash: string
   /** 原始文件路径 */
   filePath: string
-  /** 基于 Chromaprint 的声纹标识 */
-  fingerprint?: string
-  /** 将声纹再做 SHA256 摘要，便于快速比对 */
-  fingerprintHash?: string
-  /** 文件扩展名（统一小写） */
-  formatExt?: string
-  /** 根据编码参数生成的可读质量标签 */
-  qualityLabel?: string
-  /** 平均码率（单位 bps） */
-  bitrate?: number
-  /** 采样率（Hz） */
-  sampleRate?: number
-  /** 位深（bit） */
-  bitDepth?: number
-  /** 声道数量 */
-  channels?: number
-  /** 音频时长（秒） */
-  durationSeconds?: number
-  /** 文件大小（字节） */
-  fileSize?: number
-  /** 错误描述（当声纹或质量分析失败时） */
+  /** 错误描述（当分析失败时） */
   error?: string
 }
 /**
