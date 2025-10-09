@@ -413,9 +413,18 @@ ipcMain.on('delSongs', async (e, songFilePaths: string[], dirName: string) => {
     type: 'songList',
     order: Date.now()
   }
-  await operateHiddenFile(path.join(recycleBinTargetDir, '.description.json'), async () => {
-    fs.outputJSON(path.join(recycleBinTargetDir, '.description.json'), descriptionJson)
+  const descPath = path.join(recycleBinTargetDir, '.description.json')
+  await operateHiddenFile(descPath, async () => {
+    // 若已存在则跳过写入，避免同一分钟多次覆盖 uuid
+    if (!(await fs.pathExists(descPath))) {
+      await fs.outputJSON(descPath, descriptionJson)
+    }
   })
+  // 发送前优先读取已存在的描述，确保 uuid 一致，避免同名多节点
+  try {
+    const existing = await fs.readJSON(descPath)
+    descriptionJson = { ...descriptionJson, ...existing }
+  } catch {}
   if (mainWindow.instance) {
     mainWindow.instance.webContents.send('delSongsSuccess', {
       dirName,

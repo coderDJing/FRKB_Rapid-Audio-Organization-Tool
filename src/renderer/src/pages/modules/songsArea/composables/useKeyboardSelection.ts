@@ -4,6 +4,7 @@ import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import type { ISongInfo } from '../../../../../../types/globals'
+import emitter from '@renderer/utils/mitt'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
 
 interface UseKeyboardSelectionParams {
@@ -80,6 +81,12 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
 
       runtime.songsArea.selectedSongFilePath.length = 0
       scheduleSweepCovers()
+      // 兜底：通知库区刷新当前歌单（包含回收站内删除与普通歌单删除）
+      try {
+        if (runtime.songsArea.songListUUID) {
+          emitter.emit('playlistContentChanged', { uuids: [runtime.songsArea.songListUUID] })
+        }
+      } catch {}
     }
     return false
   }

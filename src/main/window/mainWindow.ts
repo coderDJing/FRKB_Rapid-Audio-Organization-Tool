@@ -321,12 +321,12 @@ function createWindow() {
         delList = delList.concat(duplicates)
         if (isDeleteSourceFile && delList.length > 0) {
           // 将重复文件移动到软件内回收站，而不是直接删除
-          // 使用与渲染层一致的目录名格式：YYYY-MM-DD_HH-MM-SS
+          // 目录名按分钟聚合：YYYY-MM-DD_HH-MM（与渲染层一致）
           const now = new Date()
           const pad2 = (n: number) => (n < 10 ? '0' + n : '' + n)
           const dirName = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(
             now.getDate()
-          )}_${pad2(now.getHours())}-${pad2(now.getMinutes())}-${pad2(now.getSeconds())}`
+          )}_${pad2(now.getHours())}-${pad2(now.getMinutes())}`
           const recycleBinTargetDir = path.join(
             store.databaseDir,
             'library',
@@ -357,7 +357,13 @@ function createWindow() {
             order: Date.now()
           }
           await operateHiddenFile(path.join(recycleBinTargetDir, '.description.json'), async () => {
-            fs.outputJSON(path.join(recycleBinTargetDir, '.description.json'), descriptionJson)
+            // 若已存在则不重复写入，避免同一分钟多次覆盖 uuid
+            if (!(await fs.pathExists(path.join(recycleBinTargetDir, '.description.json')))) {
+              await fs.outputJSON(
+                path.join(recycleBinTargetDir, '.description.json'),
+                descriptionJson
+              )
+            }
           })
 
           if (mainWindow) {
