@@ -1,6 +1,6 @@
 import { ILayoutConfig, ISettingConfig } from 'src/types/globals'
 
-let songFingerprintList: string[] = [] //声音指纹列表
+let songFingerprintList: string[] = [] //声音指纹列表（基于音频内容哈希）
 let databaseDir: string = '' //数据库目录
 
 let layoutConfig: ILayoutConfig = {

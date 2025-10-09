@@ -97,7 +97,16 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     if (songListUUID === runtime.songsArea.songListUUID) {
       setTimeout(async () => {
         await openSongList()
+        // 通知库侧刷新歌单曲目数量徽标
+        try {
+          emitter.emit('playlistContentChanged', { uuids: [songListUUID] })
+        } catch {}
       }, 1000)
+    } else {
+      // 非当前打开歌单：也通知刷新数量（避免徽标不变）
+      try {
+        emitter.emit('playlistContentChanged', { uuids: [songListUUID] })
+      } catch {}
     }
   })
 
