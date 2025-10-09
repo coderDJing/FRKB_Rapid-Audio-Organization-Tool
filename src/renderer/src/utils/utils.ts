@@ -21,16 +21,14 @@ export function getCurrentTimeDirName() {
   let day = now.getDate()
   let hour = now.getHours()
   let minute = now.getMinutes()
-  let second = now.getSeconds()
 
   // 格式化为两位数
   let monthStr = month < 10 ? '0' + month : month
   let dayStr = day < 10 ? '0' + day : day
   let hourStr = hour < 10 ? '0' + hour : hour
   let minuteStr = minute < 10 ? '0' + minute : minute
-  let secondStr = second < 10 ? '0' + second : second
-
-  return `${year}-${monthStr}-${dayStr}_${hourStr}-${minuteStr}-${secondStr}`
+  // 目录名按分钟聚合：同一分钟内的删除操作归入同一文件夹
+  return `${year}-${monthStr}-${dayStr}_${hourStr}-${minuteStr}`
 }
 
 export default {

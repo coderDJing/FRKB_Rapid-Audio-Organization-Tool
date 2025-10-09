@@ -1,6 +1,7 @@
 import { onMounted, onUnmounted, Ref, ref } from 'vue'
 import hotkeys, { KeyHandler } from 'hotkeys-js'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import emitter from '@renderer/utils/mitt'
 
 // 使用 ReturnType 获取 useRuntimeStore 的返回类型，模拟 Store 类型
 type RuntimeStoreType = ReturnType<typeof useRuntimeStore>
@@ -128,6 +129,13 @@ export function usePlayerHotkeys(
       // 注意：这意味着 internalShowDelConfirm 可能在 delSong 完成前就变回 false
       // 如果需要精确控制，delSong 需要提供回调或返回 Promise 让这里能处理
       actions.delSong()
+      // 兜底：触发一次歌单内容变更事件，确保徽标数量刷新
+      try {
+        const uid = (runtime as any).playingData?.playingSongListUUID
+        if (uid) {
+          emitter.emit('playlistContentChanged', { uuids: [uid] })
+        }
+      } catch {}
       // 立即或稍后重置标记，取决于 delSong 的行为
       // 简单的处理是假设 delSong 会处理后续状态
       internalShowDelConfirm.value = false // 暂时立即重置
