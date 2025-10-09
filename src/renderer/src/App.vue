@@ -225,9 +225,20 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
   runtime.activeMenuUUID = ''
 })
 window.electron.ipcRenderer.on('delSongsSuccess', (_event, recycleBinNewDirDescriptionJson) => {
-  runtime.libraryTree.children
-    ?.find((item) => item.dirName === 'RecycleBin')
-    ?.children?.push(recycleBinNewDirDescriptionJson)
+  const recycle = runtime.libraryTree.children?.find((item) => item.dirName === 'RecycleBin')
+  const children = recycle?.children
+  if (!children) return
+  const existing = children.find((c) => c.dirName === recycleBinNewDirDescriptionJson.dirName)
+  if (existing) {
+    try {
+      emitter.emit('playlistContentChanged', { uuids: [existing.uuid] })
+    } catch {}
+    return
+  }
+  children.push(recycleBinNewDirDescriptionJson)
+  try {
+    emitter.emit('playlistContentChanged', { uuids: [recycleBinNewDirDescriptionJson.uuid] })
+  } catch {}
 })
 </script>
 <template>

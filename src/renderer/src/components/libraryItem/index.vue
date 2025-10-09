@@ -705,9 +705,14 @@ const displayDirName = computed(() => {
   const d = dirData
   if (!d) return ''
   if (runtime.libraryAreaSelected === 'RecycleBin' && d.dirName) {
-    const match = d.dirName.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})$/)
-    if (match) {
-      return `${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}:${match[6]}`
+    // 支持分钟格式（无秒）与历史秒级格式
+    const matchMinute = d.dirName.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})$/)
+    if (matchMinute) {
+      return `${matchMinute[1]}-${matchMinute[2]}-${matchMinute[3]} ${matchMinute[4]}:${matchMinute[5]}`
+    }
+    const matchSecond = d.dirName.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})$/)
+    if (matchSecond) {
+      return `${matchSecond[1]}-${matchSecond[2]}-${matchSecond[3]} ${matchSecond[4]}:${matchSecond[5]}:${matchSecond[6]}`
     }
   }
   if (
