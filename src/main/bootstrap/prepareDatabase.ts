@@ -42,7 +42,9 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
     } catch {}
     // 指纹仓：修复并加载
     await healAndPrepare()
-    const list = await loadList()
+    // 根据设置的模式加载对应列表
+    const mode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
+    const list = await loadList(mode)
     store.databaseDir = store.settingConfig.databaseUrl
     store.songFingerprintList = Array.isArray(list) ? list : []
     // 创建主窗口

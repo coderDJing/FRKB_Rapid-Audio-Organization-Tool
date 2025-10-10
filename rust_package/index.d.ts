@@ -10,7 +10,7 @@ export interface ProcessProgress {
 }
 /** 音频文件处理结果 */
 export interface AudioFileResult {
-  /** 整个文件的 SHA256（标准化 PCM 内容哈希），用于去重 */
+  /** 整个文件的 SHA256（当前为标准化 PCM 内容哈希），用于去重 */
   sha256Hash: string
   /** 原始文件路径 */
   filePath: string
@@ -29,3 +29,7 @@ export interface AudioFileResult {
 export declare function calculateAudioHashes(filePaths: Array<string>): Array<AudioFileResult>
 /** 带进度回调的异步音频处理 */
 export declare function calculateAudioHashesWithProgress(filePaths: Array<string>, callback?: (err: Error | null, arg: ProcessProgress) => any | undefined | null): Promise<Array<AudioFileResult>>
+/** 计算整文件 SHA256（不解码，速度快；与 PCM 内容哈希互不兼容） */
+export declare function calculateFileHashes(filePaths: Array<string>): Array<AudioFileResult>
+/** 计算整文件 SHA256（带进度） */
+export declare function calculateFileHashesWithProgress(filePaths: Array<string>, callback?: (err: Error | null, arg: ProcessProgress) => any | undefined | null): Promise<Array<AudioFileResult>>

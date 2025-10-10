@@ -220,7 +220,10 @@ function createWindow() {
     )
 
     // 保存结果（多版本+指针，原子切换）
-    await FingerprintStore.saveList(store.songFingerprintList)
+    await FingerprintStore.saveList(
+      store.songFingerprintList,
+      ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
+    )
 
     const fingerprintEndAt = Date.now()
 
@@ -240,7 +243,8 @@ function createWindow() {
       duplicatesRemovedCount: duplicatesRemovedCount,
       fingerprintAddedCount: store.songFingerprintList.length - beforeSongFingerprintListLength,
       fingerprintTotalBefore: beforeSongFingerprintListLength,
-      fingerprintTotalAfter: store.songFingerprintList.length
+      fingerprintTotalAfter: store.songFingerprintList.length,
+      fingerprintMode: ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
     }
 
     mainWindow?.webContents.send('addSongFingerprintFinished', fingerprintSummary)
@@ -440,7 +444,10 @@ function createWindow() {
         new Set([...store.songFingerprintList, ...uniqueToAdd])
       )
       if (store.songFingerprintList.length !== beforeLen) {
-        await FingerprintStore.saveList(store.songFingerprintList)
+        await FingerprintStore.saveList(
+          store.songFingerprintList,
+          ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
+        )
       }
     }
     const importEndAt = Date.now()
@@ -461,7 +468,8 @@ function createWindow() {
       fingerprintTotalBefore: songFingerprintListLengthBefore,
       fingerprintTotalAfter: store.songFingerprintList.length,
       isComparisonSongFingerprint,
-      isPushSongFingerprintLibrary
+      isPushSongFingerprintLibrary,
+      fingerprintMode: ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
     }
 
     mainWindow?.webContents.send('importFinished', formData.songListUUID, importSummary)

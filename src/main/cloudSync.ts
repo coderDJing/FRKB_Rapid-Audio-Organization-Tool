@@ -126,7 +126,9 @@ ipcMain.handle('cloudSync/config/get', () => {
   } else {
     cloudSyncConfig.userKey = storedUserKey
   }
-  return { userKey: storedUserKey }
+  // 同步当前指纹模式给渲染层
+  const mode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
+  return { userKey: storedUserKey, mode }
 })
 
 // 重置用户云端数据（不重置使用统计）
@@ -360,6 +362,7 @@ ipcMain.handle('cloudSync/start', async () => {
 
     // 读取本地集合（存储为 SHA256，小写、去重），后端接口已统一为 64hex SHA256
     const crypto = await import('crypto')
+    // 选择当前模式的本地集合
     const clientFingerprints = Array.from(
       new Set<string>((store.songFingerprintList || []).map((m) => String(m).toLowerCase()))
     )
@@ -402,6 +405,7 @@ ipcMain.handle('cloudSync/start', async () => {
 
     // 1) /check（集合哈希：小写、升序、无分隔符；空数组等价于 sha256('')）
     const hash = calculateCollectionHashForSet(crypto, clientFingerprints)
+    const mode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
     if (is.dev) {
       log.info('[cloudSync] /check request', {
         url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/check`,
@@ -409,7 +413,7 @@ ipcMain.handle('cloudSync/start', async () => {
           Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
           'Content-Type': 'application/json'
         },
-        body: { userKey: cloudSyncConfig.userKey, count: clientFingerprints.length, hash }
+        body: { userKey: cloudSyncConfig.userKey, count: clientFingerprints.length, hash, mode }
       })
     }
     const checkRes = await limitedFetch(`${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/check`, {
@@ -421,7 +425,8 @@ ipcMain.handle('cloudSync/start', async () => {
       body: JSON.stringify({
         userKey: cloudSyncConfig.userKey,
         count: clientFingerprints.length,
-        hash
+        hash,
+        mode
       })
     })
     const checkJson = await checkRes.json()
@@ -502,7 +507,8 @@ ipcMain.handle('cloudSync/start', async () => {
             userKey: cloudSyncConfig.userKey,
             clientFingerprints: batch,
             batchIndex: Math.floor(i / batchSize),
-            batchSize
+            batchSize,
+            mode
           }
         })
       }
@@ -518,7 +524,8 @@ ipcMain.handle('cloudSync/start', async () => {
             userKey: cloudSyncConfig.userKey,
             clientFingerprints: batch,
             batchIndex: Math.floor(i / batchSize),
-            batchSize
+            batchSize,
+            mode
           })
         }
       )
@@ -572,7 +579,7 @@ ipcMain.handle('cloudSync/start', async () => {
           Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
           'Content-Type': 'application/json'
         },
-        body: { userKey: cloudSyncConfig.userKey, clientFingerprints: clientForAnalyze }
+        body: { userKey: cloudSyncConfig.userKey, clientFingerprints: clientForAnalyze, mode }
       })
     }
     const analyzeRes = await limitedFetch(
@@ -585,7 +592,8 @@ ipcMain.handle('cloudSync/start', async () => {
         },
         body: JSON.stringify({
           userKey: cloudSyncConfig.userKey,
-          clientFingerprints: clientForAnalyze
+          clientFingerprints: clientForAnalyze,
+          mode
         })
       }
     )
@@ -631,7 +639,7 @@ ipcMain.handle('cloudSync/start', async () => {
             Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
             'Content-Type': 'application/json'
           },
-          body: { userKey: cloudSyncConfig.userKey, diffSessionId, pageIndex: page }
+          body: { userKey: cloudSyncConfig.userKey, diffSessionId, pageIndex: page, mode }
         })
       }
       const pageRes = await limitedFetch(
@@ -645,7 +653,8 @@ ipcMain.handle('cloudSync/start', async () => {
           body: JSON.stringify({
             userKey: cloudSyncConfig.userKey,
             diffSessionId,
-            pageIndex: page
+            pageIndex: page,
+            mode
           })
         }
       )
@@ -769,7 +778,7 @@ ipcMain.handle('cloudSync/start', async () => {
             Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
             'Content-Type': 'application/json'
           },
-          body: { userKey: cloudSyncConfig.userKey, addFingerprints: slice }
+          body: { userKey: cloudSyncConfig.userKey, addFingerprints: slice, mode }
         })
       }
       const addRes = await limitedFetch(`${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/add`, {
@@ -778,7 +787,7 @@ ipcMain.handle('cloudSync/start', async () => {
           Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ userKey: cloudSyncConfig.userKey, addFingerprints: slice })
+        body: JSON.stringify({ userKey: cloudSyncConfig.userKey, addFingerprints: slice, mode })
       })
       const addJson = await addRes.json()
       if (is.dev) {
@@ -825,7 +834,12 @@ ipcMain.handle('cloudSync/start', async () => {
             Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
             'Content-Type': 'application/json'
           },
-          body: { userKey: cloudSyncConfig.userKey, count: mergedList.length, hash: verifyHash }
+          body: {
+            userKey: cloudSyncConfig.userKey,
+            count: mergedList.length,
+            hash: verifyHash,
+            mode
+          }
         })
       }
       const verifyRes = await limitedFetch(`${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/check`, {
@@ -837,7 +851,8 @@ ipcMain.handle('cloudSync/start', async () => {
         body: JSON.stringify({
           userKey: cloudSyncConfig.userKey,
           count: mergedList.length,
-          hash: verifyHash
+          hash: verifyHash,
+          mode
         })
       })
       const verifyJson = await verifyRes.json()

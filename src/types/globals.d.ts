@@ -72,6 +72,10 @@ interface ISettingConfig {
   showPlaylistTrackCount: boolean
   // 迁移标记：是否已将 .aif/.aiff 默认加入 audioExt（避免重复覆盖用户选择）
   migratedAudioExtAiffAif?: boolean
+  // 指纹模式：pcm（解码后内容哈希）或 file（整文件哈希）
+  fingerprintMode?: 'pcm' | 'file'
+  // 云同步用户 Key（由设置页配置）
+  cloudSyncUserKey?: string
 }
 
 interface ILanguageDict {
