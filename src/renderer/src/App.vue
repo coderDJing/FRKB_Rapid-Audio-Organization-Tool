@@ -207,6 +207,29 @@ onMounted(() => {
       fileOpBatchId.value = payload?.batchId || ''
     } catch (_err) {}
   })
+
+  // 全局同步：当有 songsRemoved 事件触发时，若针对当前播放歌单，则同步清理播放列表快照
+  emitter.on('songsRemoved', (payload: any) => {
+    try {
+      const paths: string[] = Array.isArray(payload?.paths) ? payload.paths : []
+      const listUUID: string | undefined = payload?.listUUID
+      if (!paths.length) return
+      if (listUUID && listUUID !== runtime.playingData.playingSongListUUID) return
+
+      // 过滤当前播放列表数据中的已删除项
+      runtime.playingData.playingSongListData = (
+        runtime.playingData.playingSongListData || []
+      ).filter((s: any) => !paths.includes(s.filePath))
+
+      // 若当前播放的歌曲被删除，清空当前播放
+      if (
+        runtime.playingData.playingSong &&
+        paths.includes(runtime.playingData.playingSong.filePath)
+      ) {
+        runtime.playingData.playingSong = null
+      }
+    } catch {}
+  })
 })
 // 供子组件触发打开对话框（例如同步面板引导打开设置）
 window.addEventListener('openDialogFromChild', (e: any) => {

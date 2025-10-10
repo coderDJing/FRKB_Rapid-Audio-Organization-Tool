@@ -443,11 +443,12 @@ export function usePlayerControlsLogic({
         await Promise.resolve(deletePromise)
 
         // 广播删除，保证当前 songsArea 若显示同一歌单可同步移除
+        const listUuidAtDeleteStart = currentSongListUUID
         emitter.emit('songsRemoved', {
-          listUUID: runtime.playingData.playingSongListUUID,
+          listUUID: listUuidAtDeleteStart,
           paths: [filePathToDelete]
         })
-        emitter.emit('playlistContentChanged', { uuids: [runtime.playingData.playingSongListUUID] })
+        emitter.emit('playlistContentChanged', { uuids: [listUuidAtDeleteStart] })
 
         await nextTick() // 等待 DOM 更新
       } catch (error) {
