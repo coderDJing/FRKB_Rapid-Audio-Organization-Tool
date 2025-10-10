@@ -187,6 +187,16 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
       )
     }
 
+    // 防御性去重：以 filePath 为键去重，避免竞态下重复条目影响渲染与选择
+    const seen = new Set<string>()
+    filtered = filtered.filter((item) => {
+      const p = (item as any)?.filePath
+      if (!p) return false
+      if (seen.has(p)) return false
+      seen.add(p)
+      return true
+    })
+
     runtime.songsArea.songInfoArr = filtered
     console.log('[SongsArea] APPLY_DONE', {
       runtimeLen: runtime.songsArea.songInfoArr.length,
