@@ -3,7 +3,11 @@ import { IDir, md5 } from '../types/globals'
 import fs = require('fs-extra')
 import path = require('path')
 import os = require('os')
-import { calculateAudioHashesWithProgress, ProcessProgress } from 'rust_package'
+import {
+  calculateAudioHashesWithProgress,
+  calculateFileHashesWithProgress,
+  ProcessProgress
+} from 'rust_package'
 import { BrowserWindow, ipcMain } from 'electron'
 
 interface SongsAnalyseResult {
@@ -99,7 +103,14 @@ export async function getSongsAnalyseResult(
       processFunc(progress.processed)
     }
   }
-  const results = await calculateAudioHashesWithProgress(songFilePaths, progressCallback)
+  // 根据 fingerprintMode 决定调用哪种分析器（暂时仅 PCM，稍后加入整文件哈希）
+  const mode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
+  let results: any[]
+  if (mode === 'file') {
+    results = await calculateFileHashesWithProgress(songFilePaths, progressCallback)
+  } else {
+    results = await calculateAudioHashesWithProgress(songFilePaths, progressCallback)
+  }
   const existingHashes = new Set(store.songFingerprintList)
 
   const songsAnalyseResult: md5[] = []

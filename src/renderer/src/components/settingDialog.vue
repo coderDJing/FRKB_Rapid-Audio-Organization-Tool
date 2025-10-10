@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onUnmounted, onMounted, ref, useTemplateRef } from 'vue'
+import { onUnmounted, onMounted, ref, useTemplateRef, reactive } from 'vue'
 import hintIcon from '@renderer/assets/hint.png?asset'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
@@ -12,6 +12,7 @@ import globalCallShortcutDialog from './globalCallShortcutDialog'
 import dangerConfirmWithInput from './dangerConfirmWithInputDialog'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
 const runtime = useRuntimeStore()
 const uuid = uuidV4()
 const emits = defineEmits(['cancel'])
@@ -84,6 +85,7 @@ const setSetting = async () => {
     'setSetting',
     JSON.parse(JSON.stringify(runtime.setting))
   )
+  await getSongFingerprintListLength()
 }
 
 // 更新“最近使用歌单缓存数量”并按需截断本地缓存
@@ -214,6 +216,22 @@ const reSelectLibrary = async () => {
 }
 const hint1Ref = useTemplateRef<HTMLImageElement>('hint1Ref')
 const hintErrorReportRef = useTemplateRef<HTMLImageElement>('hintErrorReportRef')
+
+// 指纹模式选项的 hint 图标引用
+const fpModeHintRefs = reactive<Record<string, HTMLImageElement | null>>({})
+function setFpModeHintRef(value: string, el: HTMLImageElement | null) {
+  if (el) fpModeHintRefs[value] = el
+}
+
+// 切换指纹模式时的提示
+const onFingerprintModeChange = async () => {
+  await confirm({
+    title: t('fingerprints.mode'),
+    content: [t('fingerprints.modeIncompatibleWarning')],
+    confirmShow: false
+  })
+  await setSetting()
+}
 
 // 清除云端指纹库
 const clearCloudFingerprints = async () => {
@@ -463,6 +481,40 @@ const clearCloudFingerprints = async () => {
                 @click="clearCloudFingerprints()"
               >
                 {{ t('fingerprints.clearShort') }}
+              </div>
+            </div>
+            <div style="margin-top: 20px">{{ t('fingerprints.mode') }}：</div>
+            <div style="margin-top: 10px">
+              <singleRadioGroup
+                name="fpMode"
+                :options="[
+                  { label: t('fingerprints.modePCM'), value: 'pcm' },
+                  { label: t('fingerprints.modeFile'), value: 'file' }
+                ]"
+                v-model="(runtime as any).setting.fingerprintMode as any"
+                @change="onFingerprintModeChange()"
+              >
+                <template #option="{ opt }">
+                  <span class="label">{{ opt.label }}</span>
+                  <img
+                    :ref="(el: any) => setFpModeHintRef(opt.value, el)"
+                    :src="hintIcon"
+                    style="width: 14px; height: 14px; margin-left: 6px"
+                    :draggable="false"
+                  />
+                  <bubbleBox
+                    :dom="(fpModeHintRefs[opt.value] || undefined) as any"
+                    :title="
+                      opt.value === 'pcm'
+                        ? t('fingerprints.modePCMHint')
+                        : t('fingerprints.modeFileHint')
+                    "
+                    :maxWidth="360"
+                  />
+                </template>
+              </singleRadioGroup>
+              <div style="margin-top: 8px; font-size: 12px; color: #999">
+                {{ t('fingerprints.modeIncompatibleWarning') }}
               </div>
             </div>
             <div style="margin-top: 20px">

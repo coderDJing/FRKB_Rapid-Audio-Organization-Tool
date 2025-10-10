@@ -120,7 +120,11 @@ const defaultSettings = {
   // 错误日志上报默认配置
   enableErrorReport: true,
   errorReportUsageMsSinceLastSuccess: 0,
-  errorReportRetryMsSinceLastFailure: -1
+  errorReportRetryMsSinceLastFailure: -1,
+  // 指纹模式：默认使用 PCM 内容哈希；如检测到旧库会在后续流程强制切为 file
+  fingerprintMode: 'pcm',
+  // 云同步用户 Key（可为空，由设置页配置）
+  cloudSyncUserKey: ''
 }
 
 store.layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
@@ -335,9 +339,19 @@ app.on('window-all-closed', async () => {
 ipcMain.handle('getSetting', () => {
   return store.settingConfig
 })
-ipcMain.handle('setSetting', (e, setting) => {
+ipcMain.handle('setSetting', async (e, setting) => {
+  const prevMode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
   store.settingConfig = setting
-  fs.outputJson(url.settingConfigFileUrl, setting)
+  await fs.outputJson(url.settingConfigFileUrl, setting)
+  // 指纹模式切换：即时切换内存列表并按新模式加载
+  try {
+    const nextMode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
+    if (nextMode !== prevMode) {
+      const FingerprintStore = require('./fingerprintStore')
+      const list = await FingerprintStore.loadList(nextMode)
+      store.songFingerprintList = Array.isArray(list) ? list : []
+    }
+  } catch {}
   // 语言切换时（macOS）重建菜单
   if (process.platform === 'darwin') {
     rebuildMacMenusForCurrentFocus()

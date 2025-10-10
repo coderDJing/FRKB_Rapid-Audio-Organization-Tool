@@ -16,7 +16,7 @@ const createWindow = ({ needErrorHint = false } = {}) => {
   databaseInitWindow = new BrowserWindow({
     resizable: false,
     width: 640,
-    height: 380,
+    height: 430,
     frame: process.platform === 'darwin' ? true : false,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     transparent: false,
@@ -70,7 +70,11 @@ const createWindow = ({ needErrorHint = false } = {}) => {
   })
   ipcMain.handle(
     'databaseInitWindow-InitDataBase',
-    async (e, dirPath: string, options?: { createSamples?: boolean; reset?: boolean }) => {
+    async (
+      e,
+      dirPath: string,
+      options?: { createSamples?: boolean; reset?: boolean; fingerprintMode?: 'pcm' | 'file' }
+    ) => {
       // 发现旧版 V1 指纹文件则直接删除（不再兼容）
       try {
         const v1 = path.join(dirPath, 'songFingerprint', 'songFingerprint.json')
@@ -92,6 +96,15 @@ const createWindow = ({ needErrorHint = false } = {}) => {
         } catch {}
       }
 
+      // 持久化首次选择的指纹模式（若传入）
+      try {
+        if (options?.fingerprintMode === 'pcm' || options?.fingerprintMode === 'file') {
+          ;(store as any).settingConfig.fingerprintMode = options.fingerprintMode
+          const url = require('../url').default
+          await fs.outputJson(url.settingConfigFileUrl, (store as any).settingConfig)
+        }
+      } catch {}
+
       await initDatabaseStructure(dirPath, { createSamples: options?.createSamples !== false })
 
       // 确保声明文件存在（新建或旧库静默生成）；reset 模式下总是重写
@@ -109,7 +122,8 @@ const createWindow = ({ needErrorHint = false } = {}) => {
       // 使用 FingerprintStore：前置修复 + 首次建立版本与指针
       store.databaseDir = dirPath
       await FingerprintStore.healAndPrepare()
-      const list = await FingerprintStore.loadList()
+      const mode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
+      const list = await FingerprintStore.loadList(mode)
       store.songFingerprintList = Array.isArray(list) ? list : []
       databaseInitWindow?.close()
       mainWindow.createWindow()

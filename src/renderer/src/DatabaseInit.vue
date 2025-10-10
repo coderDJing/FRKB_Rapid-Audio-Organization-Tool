@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, useTemplateRef, reactive } from 'vue'
 import { t } from '@renderer/utils/translate'
 import { v4 as uuidV4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
@@ -7,6 +7,9 @@ import utils from './utils/utils'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import confirm from '@renderer/components/confirmDialog'
 import choice from '@renderer/components/choiceDialog'
+import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
+import bubbleBox from '@renderer/components/bubbleBox.vue'
+import hintIcon from '@renderer/assets/hint.png?asset'
 const runtime = useRuntimeStore()
 const uuid = uuidV4()
 const flashArea = ref('') // 控制动画是否正在播放
@@ -42,6 +45,14 @@ const windowsHideExt = ref(false)
 const manifestDisplayName = computed(() =>
   windowsHideExt.value ? 'FRKB.database' : 'FRKB.database.frkbdb'
 )
+
+// 必选：指纹模式（'pcm' | 'file'），默认为空，用户必须选择
+const fingerprintMode = ref<'pcm' | 'file' | ''>('')
+// 单选项级别的 hint 绑定：为每个选项的图标保存一个 ref
+const optionHintRefs = reactive<Record<string, HTMLImageElement | null>>({})
+function setOptionHintRef(value: string, el: HTMLImageElement | null) {
+  if (el) optionHintRefs[value] = el
+}
 
 let clickChooseDirFlag = false
 const clickChooseDir = async () => {
@@ -135,6 +146,12 @@ const submitConfirm = async () => {
   if (dbName.value.trim().length === 0) {
     if (!flashArea.value) {
       flashBorder('dbName')
+    }
+    return
+  }
+  if (!fingerprintMode.value) {
+    if (!flashArea.value) {
+      flashBorder('fingerprintMode')
     }
     return
   }
@@ -246,7 +263,7 @@ const submitConfirm = async () => {
     await window.electron.ipcRenderer.invoke(
       'databaseInitWindow-InitDataBase',
       runtime.setting.databaseUrl,
-      { createSamples: false }
+      { createSamples: false, fingerprintMode: (fingerprintMode.value || 'file') as any }
     )
     return
   }
@@ -260,7 +277,7 @@ const submitConfirm = async () => {
   await window.electron.ipcRenderer.invoke(
     'databaseInitWindow-InitDataBase',
     runtime.setting.databaseUrl,
-    { createSamples: true }
+    { createSamples: true, fingerprintMode: fingerprintMode.value as any }
   )
 }
 const cancel = () => {
@@ -306,7 +323,7 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
     class="unselectable"
   >
     <div
-      style="text-align: center; height: 30px; line-height: 30px; font-size: 14px"
+      style="text-align: center; height: 30px; line-height: 30px; font-size: 15px"
       class="canDrag"
     >
       <span style="font-weight: bold" class="title unselectable">{{
@@ -334,14 +351,15 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
         padding: 12px 20px;
         display: flex;
         flex-direction: column;
-        gap: 14px;
+        gap: 16px;
         flex: 1;
         overflow: hidden;
+        font-size: 14px;
       "
     >
       <template v-if="activeTab === 'existing'">
         <div class="field">
-          <div class="fieldLabel">{{ t('database.chooseExistingDb') }}</div>
+          <div class="fieldLabel" style="font-size: 14px">{{ t('database.chooseExistingDb') }}</div>
           <div>
             <div
               class="button"
@@ -359,7 +377,7 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
 
       <template v-else>
         <div class="field">
-          <div class="fieldLabel">{{ t('database.createNewDb') }}</div>
+          <div class="fieldLabel" style="font-size: 14px">{{ t('database.createNewDb') }}</div>
           <div
             class="chooseDirDiv flashing-border"
             @click="clickChooseDir()"
@@ -371,7 +389,7 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
           </div>
         </div>
         <div class="field">
-          <div class="fieldLabel">{{ t('database.inputDbName') }}</div>
+          <div class="fieldLabel" style="font-size: 14px">{{ t('database.inputDbName') }}</div>
           <div>
             <input
               v-model="dbName"
@@ -383,6 +401,46 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
           </div>
         </div>
         <div class="helper">{{ t('database.initHintCreate') }}</div>
+        <div
+          class="field flashing-border"
+          :class="{ 'is-flashing': flashArea == 'fingerprintMode' }"
+          style="border-radius: 4px"
+        >
+          <div class="fieldLabel" style="display: flex; align-items: center; gap: 6px">
+            <span>{{ t('fingerprints.mode') }}</span>
+          </div>
+          <singleRadioGroup
+            :options="[
+              { label: t('fingerprints.modePCM'), value: 'pcm' },
+              { label: t('fingerprints.modeFile'), value: 'file' }
+            ]"
+            v-model="fingerprintMode as any"
+            name="fpModeInit"
+            :optionFontSize="12"
+          >
+            <template #option="{ opt }">
+              <span class="label">{{ opt.label }}</span>
+              <img
+                :ref="(el: any) => setOptionHintRef(opt.value, el)"
+                :src="hintIcon"
+                style="width: 14px; height: 14px; margin-left: 6px"
+                :draggable="false"
+              />
+              <bubbleBox
+                :dom="(optionHintRefs[opt.value] || undefined) as any"
+                :title="
+                  opt.value === 'pcm'
+                    ? t('fingerprints.modePCMHint')
+                    : t('fingerprints.modeFileHint')
+                "
+                :maxWidth="360"
+              />
+            </template>
+          </singleRadioGroup>
+          <div class="helper" style="font-size: 11px; color: #999">
+            {{ t('fingerprints.modeIncompatibleWarning') }}
+          </div>
+        </div>
       </template>
     </div>
 
@@ -408,6 +466,7 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
   width: 100vw;
   height: 100vh;
 }
+
 body {
   margin: 0px;
   background-color: #1f1f1f;
@@ -418,12 +477,14 @@ body {
   gap: 8px;
   border-bottom: 1px solid #2a2a2a;
 }
+
 .tab {
   padding: 6px 12px;
   cursor: pointer;
   color: #bbbbbb;
   font-size: 12px;
 }
+
 .tab.active {
   color: #ffffff;
   border-bottom: 2px solid #ffffff;
@@ -435,16 +496,17 @@ body {
   flex-direction: column;
   gap: 6px;
 }
+
 .fieldLabel {
-  font-size: 12px;
   color: #bbbbbb;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .helper {
-  font-size: 12px;
-  color: #bbbbbb;
+  font-size: 11px;
+  color: #999;
 }
 
 .chooseDirDiv {
@@ -473,5 +535,58 @@ body {
   font-size: 12px;
   -webkit-appearance: none;
   appearance: none;
+}
+
+/* 复用筛选弹窗的单选样式，保持一致视觉 */
+.radio-group {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 10px;
+  color: #cccccc;
+}
+
+.radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.radio input[type='radio'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.radio .dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid #3a3a3a;
+  background: transparent;
+  position: relative;
+  transition: all 0.15s ease;
+}
+
+.radio .dot::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: #0078d4;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.radio input[type='radio']:checked + .dot::after {
+  opacity: 1;
+}
+
+.radio:hover .dot {
+  border-color: #5a5a5a;
+  background: rgba(255, 255, 255, 0.02);
 }
 </style>

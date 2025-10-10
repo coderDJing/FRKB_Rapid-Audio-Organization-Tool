@@ -14,6 +14,8 @@ const DATA_PREFIX = 'songFingerprintV2_'
 const META_FILE = 'latest.meta'
 const HEAL_MARK = '.fingerprint_healed'
 
+type FingerprintMode = 'pcm' | 'file'
+
 // 简单串行化队列，确保同一时间仅一次写入
 let writeQueue: Promise<any> = Promise.resolve()
 function enqueue<T>(task: () => Promise<T>): Promise<T> {
@@ -21,12 +23,17 @@ function enqueue<T>(task: () => Promise<T>): Promise<T> {
   return writeQueue
 }
 
-function getDir(): string {
-  return path.join(store.databaseDir || store.settingConfig?.databaseUrl || '', 'songFingerprint')
+function getDir(mode?: FingerprintMode): string {
+  const base = path.join(
+    store.databaseDir || store.settingConfig?.databaseUrl || '',
+    'songFingerprint'
+  )
+  const sub = mode === 'file' ? 'file' : 'pcm'
+  return path.join(base, sub)
 }
 
-async function ensureDir(): Promise<string> {
-  const dir = getDir()
+async function ensureDir(mode?: FingerprintMode): Promise<string> {
+  const dir = getDir(mode)
   await fs.ensureDir(dir)
   return dir
 }
@@ -129,41 +136,36 @@ async function selectLatestFile(dir: string, candidates: string[]): Promise<stri
 }
 
 export async function healAndPrepare(): Promise<void> {
-  const dir = await ensureDir()
-  const mark = path.join(dir, HEAL_MARK)
-  if (await fs.pathExists(mark)) return
-
-  // 移除旧版 V1 指纹文件（不再兼容）
+  // 旧库静默清理：若检测到根目录下旧结构，清空旧文件；模式由 UI 选择/设置项决定
   try {
-    const v1 = path.join(dir, 'songFingerprint.json')
-    if (await fs.pathExists(v1)) {
-      await fs.remove(v1)
+    const base = path.join(
+      store.databaseDir || store.settingConfig?.databaseUrl || '',
+      'songFingerprint'
+    )
+    const legacyV1 = path.join(base, 'songFingerprint.json')
+    const legacyV2 = path.join(base, 'songFingerprintV2.json')
+    if (await fs.pathExists(legacyV1)) {
+      await fs.remove(legacyV1)
+    }
+    if (await fs.pathExists(legacyV2)) {
+      try {
+        if (await isHiddenWindows(legacyV2)) await unhideWindows(legacyV2)
+      } catch {}
+      await fs.remove(legacyV2)
     }
   } catch {}
 
-  // 若旧文件存在且被隐藏，先去隐藏
-  const legacy = path.join(dir, 'songFingerprintV2.json')
-  if (await fs.pathExists(legacy)) {
-    if (await isHiddenWindows(legacy)) {
-      await unhideWindows(legacy)
-    }
-  }
+  const dir = await ensureDir((store as any).settingConfig?.fingerprintMode || 'pcm')
+  const mark = path.join(dir, HEAL_MARK)
+  if (await fs.pathExists(mark)) return
+
+  // 目录层面的遗留文件清理已在上方完成，这里仅做当前子目录的首次初始化
 
   // 若无版本文件与指针，则从旧文件或空数组落第一个版本，并建立指针
   const versions = await listVersionFiles(dir)
   const metaPath = path.join(dir, META_FILE)
   if (versions.length === 0 || !(await fs.pathExists(metaPath))) {
     let list: string[] = []
-    try {
-      if (await fs.pathExists(legacy)) {
-        const json = await fs.readJSON(legacy)
-        if (Array.isArray(json) && json.every((m: any) => typeof m === 'string')) {
-          list = json
-        }
-      }
-    } catch {
-      list = []
-    }
     const fileName = `${DATA_PREFIX}${getCurrentTimeYYYYMMDDHHMMSSSSS()}_${uuidV4()}.json`
     const dest = path.join(dir, fileName)
     await writeJSONAtomic(dest, list)
@@ -173,8 +175,8 @@ export async function healAndPrepare(): Promise<void> {
   await fs.outputFile(mark, 'ok')
 }
 
-export async function loadList(): Promise<string[]> {
-  const dir = await ensureDir()
+export async function loadList(mode?: FingerprintMode): Promise<string[]> {
+  const dir = await ensureDir(mode)
   const metaPath = path.join(dir, META_FILE)
   try {
     if (await fs.pathExists(metaPath)) {
@@ -229,8 +231,8 @@ async function cleanupOldVersions(dir: string, keep: number = 5): Promise<void> 
   }
 }
 
-export async function saveList(list: string[]): Promise<void> {
-  const dir = await ensureDir()
+export async function saveList(list: string[], mode?: FingerprintMode): Promise<void> {
+  const dir = await ensureDir(mode)
   return enqueue(async () => {
     const fileName = `${DATA_PREFIX}${getCurrentTimeYYYYMMDDHHMMSSSSS()}_${uuidV4()}.json`
     const dest = path.join(dir, fileName)

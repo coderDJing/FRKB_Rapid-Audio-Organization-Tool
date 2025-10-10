@@ -10,6 +10,7 @@
 use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 
 // 并行处理
 use num_cpus;
@@ -119,6 +120,63 @@ pub async fn calculate_audio_hashes_with_progress(
   task.compute()
 }
 
+/// 计算整文件 SHA256（不解码，速度快；与 PCM 内容哈希互不兼容）
+#[napi]
+pub fn calculate_file_hashes(file_paths: Vec<String>) -> Vec<AudioFileResult> {
+  file_paths
+    .par_iter()
+    .map(|path| calculate_file_hash_for_file(path))
+    .collect::<Vec<AudioFileResult>>()
+}
+
+/// 计算整文件 SHA256（带进度）
+#[napi]
+pub async fn calculate_file_hashes_with_progress(
+  file_paths: Vec<String>,
+  callback: Option<ThreadsafeFunction<ProcessProgress>>,
+) -> napi::Result<Vec<AudioFileResult>> {
+  let total = file_paths.len() as i32;
+  let results = Arc::new(Mutex::new(Vec::with_capacity(file_paths.len())));
+  let processed = Arc::new(std::sync::atomic::AtomicI32::new(0));
+
+  // 计算分块大小（与音频版本保持一致的策略）
+  let chunk_size = {
+    let cpu_count = num_cpus::get();
+    let ideal_chunks = (file_paths.len() / 10).max(1);
+    (file_paths.len() / ideal_chunks.min(cpu_count * 2)).max(1)
+  };
+
+  if let Some(callback) = callback {
+    let callback = callback.clone();
+    rayon::scope(|s| {
+      for chunk in file_paths.chunks(chunk_size) {
+        let results = Arc::clone(&results);
+        let callback = callback.clone();
+        let processed = Arc::clone(&processed);
+        s.spawn(move |_| {
+          let mut local_results = Vec::with_capacity(chunk.len());
+          for path in chunk {
+            let result = calculate_file_hash_for_file(path);
+            let current = processed.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+            let progress = ProcessProgress { processed: current, total };
+            callback.call(Ok(progress), ThreadsafeFunctionCallMode::Blocking);
+            local_results.push(result);
+          }
+          results.lock().extend(local_results);
+        });
+      }
+    });
+  } else {
+    // 无回调时直接并行处理
+    file_paths.par_iter().for_each(|path| {
+      let result = calculate_file_hash_for_file(path);
+      results.lock().push(result);
+    });
+  }
+
+  Ok(Arc::try_unwrap(results).unwrap().into_inner())
+}
+
 // compare_fingerprints 已移除
 
 // ===== 任务实现 =====
@@ -214,10 +272,39 @@ fn calculate_audio_hash_for_file(path: &str) -> AudioFileResult {
     Err(_) => return AudioFileResult::error(path, "探测音频格式失败"),
   };
 
-  if let Err(err) = extract_audio_features(probed.format, &mut result) {
-    result.error = Some(err.to_string());
+  // 防御：捕获内部 panic，避免单个文件导致整个并行任务挂起
+  match catch_unwind(AssertUnwindSafe(|| extract_audio_features(probed.format, &mut result))) {
+    Ok(Ok(())) => {}
+    Ok(Err(err)) => {
+      result.error = Some(err.to_string());
+    }
+    Err(_) => {
+      result.error = Some("内部音频解码错误（panic）".to_string());
+    }
   }
 
+  result
+}
+
+/// 单文件整文件 SHA256 计算
+fn calculate_file_hash_for_file(path: &str) -> AudioFileResult {
+  let p = Path::new(path);
+  let mut result = AudioFileResult::with_path(p);
+  use std::io::Read;
+  let mut file = match std::fs::File::open(p) {
+    Ok(f) => f,
+    Err(_) => return AudioFileResult::error(p, "打开文件失败"),
+  };
+  let mut ctx = Context::new(&SHA256);
+  let mut buf = vec![0u8; 1024 * 1024 * 2]; // 2MB buffer
+  loop {
+    match file.read(&mut buf) {
+      Ok(0) => break,
+      Ok(n) => ctx.update(&buf[..n]),
+      Err(_) => return AudioFileResult::error(p, "读取文件失败"),
+    }
+  }
+  result.sha256_hash = hex::encode(ctx.finish());
   result
 }
 
@@ -246,8 +333,9 @@ fn extract_audio_features(
   let mut decoder = build_decoder(&codec_params)?;
   // 声纹路径已移除
 
-  // 预留初始缓冲，减少第一次扩容开销（按 4096 帧起步）
-  let mut sample_buffer = SampleBuffer::<i16>::new(4096, SignalSpec::new(sample_rate, channel_map));
+  // 延迟创建 SampleBuffer，确保与首个解码帧的 spec 严格一致
+  let mut sample_buffer: Option<SampleBuffer<i16>> = None;
+  let mut current_spec: Option<SignalSpec> = None;
 
   let mut _total_frames: u64 = 0;
   // 基于解码后的 PCM 样本计算内容哈希
@@ -257,16 +345,30 @@ fn extract_audio_features(
     match decoder.decode(&packet) {
       Ok(audio_buf) => {
         let frame_count = audio_buf.frames();
-        if sample_buffer.capacity() < frame_count {
-          // 使用下一幂次作为新容量，降低频繁扩容
-          let new_cap_frames = (frame_count.next_power_of_two() as u64).max(frame_count as u64);
-          sample_buffer = SampleBuffer::new(new_cap_frames, *audio_buf.spec());
+
+        // 若尚未创建或 spec 变化/容量不足，则重建缓冲
+        let want_spec = *audio_buf.spec();
+        let cap_insufficient = sample_buffer
+          .as_ref()
+          .map(|b| b.capacity() < frame_count)
+          .unwrap_or(true);
+        let spec_changed = current_spec
+          .map(|s| s.channels != want_spec.channels || s.rate != want_spec.rate)
+          .unwrap_or(true);
+        let need_recreate = cap_insufficient || spec_changed;
+
+        if need_recreate {
+          // 使用下一幂次容量，避免频繁扩容
+          let required = frame_count.next_power_of_two().max(frame_count);
+          sample_buffer = Some(SampleBuffer::new(required as u64, want_spec));
+          current_spec = Some(want_spec);
         }
-        sample_buffer.copy_interleaved_ref(audio_buf);
-        // 声纹计算已移除
+
+        let sbuf = sample_buffer.as_mut().unwrap();
+        sbuf.copy_interleaved_ref(audio_buf);
 
         // 将解码后的 i16 PCM 样本（交错）追加到哈希器
-        let samples_i16: &[i16] = sample_buffer.samples();
+        let samples_i16: &[i16] = sbuf.samples();
         pcm_hasher.update(cast_slice(samples_i16));
 
         _total_frames += frame_count as u64;
