@@ -19,7 +19,8 @@
     "language": "Language",
     "exit": "Exit",
     "retry": "Retry",
-    "skip": "Skip"
+    "skip": "Skip",
+    "required": "Required"
   },
   "app": {
     "name": "Rapid Audio Organization Tool"
@@ -51,6 +52,7 @@
     "inputDbNamePlaceholder": "Name for display",
     "initHintExisting": "In the file picker, select the {manifestName} file to enter the existing database.",
     "initHintCreate": "Select a folder and enter the database name. A subfolder with that name will be created as the database.",
+    "selectFingerprintModeRequired": "Please choose a fingerprint mode (PCM content hash or File hash)",
     "invalidManifestFile": "Not a valid FRKB database manifest",
     "dirHasDatabase": "The selected folder already contains a database.",
     "dirHasDatabaseOptions": "Confirm: enter as existing; Cancel: choose to reset to a brand-new database.",
@@ -270,6 +272,12 @@
     "scanningFiles": "Scanning files",
     "analyzingFingerprints": "Analyzing fingerprints",
     "analysisHint": "Analyze all audio in folder/subfolders; store results only; no file changes.",
+    "mode": "Track fingerprint analysis mode",
+    "modePCM": "Content-based",
+    "modeFile": "File-based",
+    "modePCMHint": "Ignores covers/title/artist etc. Slower.",
+    "modeFileHint": "Calculates on whole file. Fastest but cannot ignore noise; same song with different covers will be treated as different.",
+    "modeIncompatibleWarning": "Two fingerprint libraries are fully isolated and do not interoperate; switching only affects future analysis and won't migrate/merge history.",
     "noAudioFilesFound": "No audio files found."
   },
   "import": {
