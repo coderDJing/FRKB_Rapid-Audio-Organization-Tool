@@ -153,6 +153,25 @@ export async function healAndPrepare(): Promise<void> {
       } catch {}
       await fs.remove(legacyV2)
     }
+
+    // 进一步清理：根目录下旧版 V2 残留（不再使用的版本化文件与指针/标记）
+    // 仅清理 base 根目录，保留 pcm/ 与 file/ 子目录内的现行文件
+    try {
+      const names = await fs.readdir(base)
+      for (const name of names) {
+        const full = path.join(base, name)
+        const stat = await fs.stat(full).catch(() => null)
+        if (!stat || !stat.isFile()) continue
+        const isLegacyMark = name === HEAL_MARK || name === META_FILE
+        const isLegacyV2File = name.startsWith(DATA_PREFIX) && name.endsWith('.json')
+        if (isLegacyMark || isLegacyV2File) {
+          try {
+            if (await isHiddenWindows(full)) await unhideWindows(full)
+          } catch {}
+          await fs.remove(full).catch(() => {})
+        }
+      }
+    } catch {}
   } catch {}
 
   const dir = await ensureDir((store as any).settingConfig?.fingerprintMode || 'pcm')

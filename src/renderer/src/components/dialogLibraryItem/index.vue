@@ -119,6 +119,10 @@ const inputBlurHandle = async () => {
     if (dirData.type === 'songList') {
       runtime.dialogSelectedSongListUUID = dirData.uuid
       emits('markTreeSelected')
+      // 命名完成后刷新曲目数量显示（此时目录已存在）
+      try {
+        await ensureTrackCount()
+      } catch {}
     }
     // 清除创建中标记
     if (runtime.creatingSongListUUID === dirData.uuid) {
@@ -430,6 +434,11 @@ async function ensureTrackCount() {
   if (!(runtime as any).setting.showPlaylistTrackCount) return
   if (fetchingCount) return
   if (dirData?.type !== 'songList') return
+  // 未命名的临时歌单没有真实目录，避免把父目录当作歌单目录而统计成总数
+  if (!dirData?.dirName) {
+    trackCount.value = null
+    return
+  }
   try {
     fetchingCount = true
     const songListPath = libraryUtils.findDirPathByUuid(props.uuid)
