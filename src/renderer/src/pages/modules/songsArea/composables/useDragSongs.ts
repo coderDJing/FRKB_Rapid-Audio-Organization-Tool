@@ -98,6 +98,17 @@ export function useDragSongs() {
       emitter.emit('playlistContentChanged', { uuids: affected })
     } catch {}
 
+    // 广播：源歌单移除这些歌曲，确保当前视图（若显示源歌单或其筛选结果）能及时剔除并重建
+    try {
+      const normalizePath = (p: string | undefined | null) =>
+        (p || '').replace(/\//g, '\\').toLowerCase()
+      const normalized = selectedSongFilePaths.map((p) => normalizePath(p))
+      emitter.emit('songsRemoved', {
+        listUUID: sourceSongListUUID,
+        paths: normalized
+      })
+    } catch {}
+
     return selectedSongFilePaths
   }
 
