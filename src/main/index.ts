@@ -30,6 +30,7 @@ import { setupMacMenus, rebuildMacMenusForCurrentFocus } from './menu/macMenu'
 import { prepareAndOpenMainWindow } from './bootstrap/prepareDatabase'
 import { execFile } from 'child_process'
 import { ISongInfo } from '../types/globals'
+import type { ISettingConfig } from '../types/globals'
 import { scanSongList as svcScanSongList } from './services/scanSongs'
 import {
   getSongCover as svcGetSongCover,
@@ -122,7 +123,7 @@ const defaultSettings = {
   errorReportUsageMsSinceLastSuccess: 0,
   errorReportRetryMsSinceLastFailure: -1,
   // 指纹模式：默认使用 PCM 内容哈希；如检测到旧库会在后续流程强制切为 file
-  fingerprintMode: 'pcm',
+  fingerprintMode: 'pcm' as 'pcm',
   // 云同步用户 Key（可为空，由设置页配置）
   cloudSyncUserKey: ''
 }
@@ -147,7 +148,10 @@ if (fs.pathExistsSync(url.settingConfigFileUrl)) {
 
 // 合并默认设置与加载的设置，确保所有键都存在
 // 加载的设置会覆盖默认值（如果存在）
-const finalSettings = { ...defaultSettings, ...loadedSettings }
+const finalSettings: ISettingConfig = {
+  ...defaultSettings,
+  ...(loadedSettings as Partial<ISettingConfig>)
+}
 
 // 一次性迁移：默认勾选 .aif / .aiff（升级老版本时补齐），并写入迁移标记
 try {

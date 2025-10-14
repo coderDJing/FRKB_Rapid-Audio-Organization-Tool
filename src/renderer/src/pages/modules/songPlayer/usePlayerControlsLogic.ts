@@ -562,6 +562,18 @@ export function usePlayerControlsLogic({
         uuids: [runtime.playingData.playingSongListUUID, targetListUuid].filter(Boolean)
       })
 
+      // 广播删除（从源列表移除当前播放歌曲），确保 songsArea 能同步剔除并重建
+      try {
+        const listUuidAtMoveStart = runtime.playingData.playingSongListUUID
+        const normalizePath = (p: string | undefined | null) =>
+          (p || '').replace(/\//g, '\\').toLowerCase()
+        const normalizedPath = normalizePath(filePathToMove)
+        emitter.emit('songsRemoved', {
+          listUUID: listUuidAtMoveStart,
+          paths: [normalizedPath]
+        })
+      } catch {}
+
       // 如果移动的目标列表是当前歌曲区域显示的列表，则需要刷新歌曲区域
       if (targetListUuid === runtime.songsArea.songListUUID) {
         const currentSongsAreaUUID = runtime.songsArea.songListUUID

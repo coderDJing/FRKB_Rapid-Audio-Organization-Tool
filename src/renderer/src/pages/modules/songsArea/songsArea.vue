@@ -186,9 +186,27 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
   // 调用 composable 中的函数来执行移动操作 (IPC, 关闭对话框, 清空选择等)
   // handleMoveSongsConfirm 应该会处理 isDialogVisible 和 selectedSongFilePath
   await handleMoveSongsConfirm(targetSongListUuid)
-  // 不在此处直接重建 original/runtime，避免与全局 events（songsRemoved）重复或打架导致“复活”
-  // 仅记录日志，列表更新完全交给事件流处理
-  // runtime.songsArea.selectedSongFilePath 应该已经被 handleMoveSongsConfirm (composable内部) 清空了
+  // 本地同步移除：基于移动前的路径快照，立即从 original 中剔除并统一重建，避免偶发事件竞态导致“复活”
+  if (pathsEffectivelyMoved.length > 0) {
+    const normalizePath = (p: string | undefined | null) =>
+      (p || '').replace(/\//g, '\\').toLowerCase()
+    const movedSet = new Set(pathsEffectivelyMoved.map((p) => normalizePath(p)))
+    originalSongInfoArr.value = originalSongInfoArr.value.filter(
+      (item) => !movedSet.has(normalizePath(item.filePath))
+    )
+    applyFiltersAndSorting()
+
+    // 若当前播放列表即为当前视图，同步快照（与其他删除路径保持一致）
+    if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+      runtime.playingData.playingSongListData = [...runtime.songsArea.songInfoArr]
+      if (
+        runtime.playingData.playingSong &&
+        pathsEffectivelyMoved.includes(runtime.playingData.playingSong.filePath)
+      ) {
+        runtime.playingData.playingSong = null
+      }
+    }
+  }
 }
 
 const shouldShowEmptyState = computed(() => {

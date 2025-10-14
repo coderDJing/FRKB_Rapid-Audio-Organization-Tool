@@ -24,19 +24,24 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
   const onSongsRemoved = (
     payload: { listUUID?: string; paths: string[] } | { paths: string[] }
   ) => {
-    const pathsToRemove = Array.isArray((payload as any).paths) ? (payload as any).paths : []
+    const pathsToRemove: string[] = Array.isArray((payload as any).paths)
+      ? ((payload as any).paths as string[])
+      : []
+    const normalizePath = (p: string | undefined | null) =>
+      (p || '').replace(/\//g, '\\').toLowerCase()
     const listUUID = (payload as any).listUUID
-
-    console.log('[SongsArea] EVENT_songsRemoved', {
-      listUUID,
-      removeCount: pathsToRemove.length
-    })
+    const normalizedSet = new Set<string>(pathsToRemove.map((p: string) => normalizePath(p)))
+    const hasIntersection = originalSongInfoArr.value.some((s) =>
+      normalizedSet.has(normalizePath(s.filePath))
+    )
+    const currentListUUID = runtime.songsArea.songListUUID
 
     if (!pathsToRemove.length) return
-    if (listUUID && listUUID !== runtime.songsArea.songListUUID) return
+    // 任意视图：仅在当前列表与要移除的路径存在交集时才更新，避免误删与不必要重建
+    if (!hasIntersection) return
 
     originalSongInfoArr.value = originalSongInfoArr.value.filter(
-      (song) => !pathsToRemove.includes(song.filePath)
+      (song) => !normalizedSet.has(normalizePath(song.filePath))
     )
 
     applyFiltersAndSorting()
