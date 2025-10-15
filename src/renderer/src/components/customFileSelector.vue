@@ -503,6 +503,17 @@ const loadDirectory = async (dirPath: string) => {
 
     fileTree.value = treeItems
     expandedPaths.value.add(dirPath)
+
+    // 回显：将已选中的路径映射到当前目录树
+    if (selectedItems.value.length > 0) {
+      const selectedPathSet = new Set(selectedItems.value.map((s) => s.path))
+      for (const node of fileTree.value) {
+        if (selectedPathSet.has(node.path)) {
+          node.isSelected = true
+          selectedItemRefs.value.set(node.path, node)
+        }
+      }
+    }
   } catch (error) {
     console.error('加载目录失败:', error)
   }
@@ -556,11 +567,6 @@ const handleItemDoubleClick = async (item: FileSystemItem, event?: MouseEvent) =
   if (item.type !== 'directory') return
 
   clearPendingDirectorySelection()
-
-  const wasSelected = item.isSelected
-  if (wasSelected) {
-    removeSelectionInternal(item.path)
-  }
 
   await navigateTo(item)
 }
@@ -645,10 +651,20 @@ const toggleItemSelection = (
     return
   }
 
-  // 默认单选
-  clearSelectionInternal()
-  addSelection(item)
-  setActiveIndexAndFocus(currentIndex)
+  // 无修饰键：根据 multiSelect 决定是累加切换还是单选
+  if (props.multiSelect) {
+    if (item.isSelected) {
+      removeSelectionInternal(item.path)
+    } else {
+      addSelection(item)
+    }
+    anchorIndex.value = currentIndex
+    lastActiveIndex.value = currentIndex
+  } else {
+    clearSelectionInternal()
+    addSelection(item)
+    setActiveIndexAndFocus(currentIndex)
+  }
 }
 
 const toggleSelectionForItem = (
