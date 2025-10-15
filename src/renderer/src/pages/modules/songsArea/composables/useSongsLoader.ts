@@ -3,6 +3,7 @@ import type { ShallowRef } from 'vue'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import type { ISongInfo } from '../../../../../../types/globals'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
+import emitter from '@renderer/utils/mitt'
 
 interface UseSongsLoaderParams {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -46,6 +47,11 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
 
       // 初次加载后应用筛选与排序
       applyFiltersAndSorting()
+
+      // 加载完成后通知歌单计数可能已变化（例如系统中有文件被手动删除）
+      try {
+        emitter.emit('playlistContentChanged', { uuids: [runtime.songsArea.songListUUID] })
+      } catch {}
 
       // 同步播放列表数据
       if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
