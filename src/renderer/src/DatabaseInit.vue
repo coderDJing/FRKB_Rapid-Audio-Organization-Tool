@@ -401,42 +401,50 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
           </div>
         </div>
         <div class="helper">{{ t('database.initHintCreate') }}</div>
-        <div
-          class="field flashing-border"
-          :class="{ 'is-flashing': flashArea == 'fingerprintMode' }"
-          style="border-radius: 4px"
-        >
+        <div class="field" style="border-radius: 4px">
           <div class="fieldLabel" style="display: flex; align-items: center; gap: 6px">
             <span>{{ t('fingerprints.mode') }}</span>
           </div>
-          <singleRadioGroup
-            :options="[
-              { label: t('fingerprints.modePCM'), value: 'pcm' },
-              { label: t('fingerprints.modeFile'), value: 'file' }
-            ]"
-            v-model="fingerprintMode as any"
-            name="fpModeInit"
-            :optionFontSize="12"
+          <div
+            class="flashing-border"
+            :class="{ 'is-flashing': flashArea == 'fingerprintMode' }"
+            style="
+              border-radius: 4px;
+              padding-top: 6px;
+              padding-bottom: 0px;
+              padding-left: 8px;
+              padding-right: 8px;
+            "
           >
-            <template #option="{ opt }">
-              <span class="label">{{ opt.label }}</span>
-              <img
-                :ref="(el: any) => setOptionHintRef(opt.value, el)"
-                :src="hintIcon"
-                style="width: 14px; height: 14px; margin-left: 6px"
-                :draggable="false"
-              />
-              <bubbleBox
-                :dom="(optionHintRefs[opt.value] || undefined) as any"
-                :title="
-                  opt.value === 'pcm'
-                    ? t('fingerprints.modePCMHint')
-                    : t('fingerprints.modeFileHint')
-                "
-                :maxWidth="360"
-              />
-            </template>
-          </singleRadioGroup>
+            <singleRadioGroup
+              :options="[
+                { label: t('fingerprints.modePCM'), value: 'pcm' },
+                { label: t('fingerprints.modeFile'), value: 'file' }
+              ]"
+              v-model="fingerprintMode as any"
+              name="fpModeInit"
+              :optionFontSize="12"
+            >
+              <template #option="{ opt }">
+                <span class="label">{{ opt.label }}</span>
+                <img
+                  :ref="(el: any) => setOptionHintRef(opt.value, el)"
+                  :src="hintIcon"
+                  style="width: 14px; height: 14px; margin-left: 6px"
+                  :draggable="false"
+                />
+                <bubbleBox
+                  :dom="(optionHintRefs[opt.value] || undefined) as any"
+                  :title="
+                    opt.value === 'pcm'
+                      ? t('fingerprints.modePCMHint')
+                      : t('fingerprints.modeFileHint')
+                  "
+                  :maxWidth="360"
+                />
+              </template>
+            </singleRadioGroup>
+          </div>
           <div class="helper" style="font-size: 11px; color: #999">
             {{ t('fingerprints.modeIncompatibleWarning') }}
           </div>
