@@ -31,6 +31,11 @@ const props = defineProps({
   libraryName: {
     type: String,
     required: true
+  },
+  // 歌单筛选关键词（仅匹配歌单名）
+  filterText: {
+    type: [String, Object],
+    default: ''
   }
 })
 const runtime = useRuntimeStore()
@@ -727,6 +732,37 @@ const displayDirName = computed(() => {
 
 // 供模板使用的名称（不带数量）
 const nameForDisplay = computed(() => displayDirName.value)
+
+// --- 筛选：仅歌单名匹配 + 自动展开包含匹配歌单的文件夹 ---
+const keyword = computed(() =>
+  String((props as any).filterText || '')
+    .trim()
+    .toLowerCase()
+)
+const matchesSelf = computed(() => {
+  if (!keyword.value) return true
+  return dirData?.type === 'songList' && dirData?.dirName?.toLowerCase().includes(keyword.value)
+})
+function hasMatchingDescendant(node?: any): boolean {
+  if (!keyword.value) return true
+  if (!node?.children) return false
+  for (const c of node.children) {
+    if (c.type === 'songList' && c.dirName?.toLowerCase().includes(keyword.value)) return true
+    if (c.type === 'dir' && hasMatchingDescendant(c)) return true
+  }
+  return false
+}
+const shouldShow = computed(() => {
+  if (!keyword.value) return true
+  return matchesSelf.value || hasMatchingDescendant(dirData)
+})
+watch(keyword, () => {
+  if (!keyword.value) return
+  if (dirData?.type === 'dir' && hasMatchingDescendant(dirData)) {
+    dirChildRendered.value = true
+    dirChildShow.value = true
+  }
+})
 </script>
 <template>
   <div
@@ -740,6 +776,7 @@ const nameForDisplay = computed(() => displayDirName.value)
     @dragenter.stop.prevent="dragenter"
     @drop.stop.prevent="drop"
     @dragleave.stop="dragleave"
+    v-show="shouldShow"
     :draggable="
       dirData.dirName && !renameDivShow && runtime.libraryAreaSelected !== 'RecycleBin'
         ? true
@@ -865,7 +902,11 @@ const nameForDisplay = computed(() => displayDirName.value)
     style="width: 100%; box-sizing: border-box"
   >
     <template v-for="item of dirData.children" :key="item.uuid">
-      <libraryItem :uuid="item.uuid" :libraryName="props.libraryName" />
+      <libraryItem
+        :uuid="item.uuid"
+        :libraryName="props.libraryName"
+        :filterText="(props as any).filterText"
+      />
     </template>
   </div>
 </template>

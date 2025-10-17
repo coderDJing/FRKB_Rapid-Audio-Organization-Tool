@@ -330,7 +330,8 @@
   "playlist": {
     "deletePlaylist": "Delete playlist",
     "emptyPlaylist": "Empty playlist",
-    "collapsibleFolder": "Collapsible folder"
+    "collapsibleFolder": "Collapsible folder",
+    "searchPlaylists": "Search playlists..."
   },
   "recycleBin": {
     "recycleBin": "Recycle Bin",
