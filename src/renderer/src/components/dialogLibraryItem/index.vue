@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick, useTemplateRef, reactive, onMounted, watch } from 'vue'
+import { ref, nextTick, useTemplateRef, reactive, onMounted, watch, computed } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -33,6 +33,11 @@ const props = defineProps({
   suppressHighlight: {
     type: Boolean,
     default: false
+  },
+  // 歌单筛选关键词（仅匹配歌单名）
+  filterText: {
+    type: [String, Object],
+    default: ''
   }
 })
 const runtime = useRuntimeStore()
@@ -482,6 +487,37 @@ emitter.on('playlistContentChanged', (payload: any) => {
   } catch {}
 })
 
+// --- 筛选：仅歌单名匹配 + 自动展开包含匹配歌单的文件夹（对话框树） ---
+const keyword = computed(() =>
+  String((props as any).filterText || '')
+    .trim()
+    .toLowerCase()
+)
+const matchesSelf = computed(() => {
+  if (!keyword.value) return true
+  return dirData?.type === 'songList' && dirData?.dirName?.toLowerCase().includes(keyword.value)
+})
+function hasMatchingDescendant(node?: any): boolean {
+  if (!keyword.value) return true
+  if (!node?.children) return false
+  for (const c of node.children) {
+    if (c.type === 'songList' && c.dirName?.toLowerCase().includes(keyword.value)) return true
+    if (c.type === 'dir' && hasMatchingDescendant(c)) return true
+  }
+  return false
+}
+const shouldShow = computed(() => {
+  if (!keyword.value) return true
+  return matchesSelf.value || hasMatchingDescendant(dirData)
+})
+watch(keyword, () => {
+  if (!keyword.value) return
+  if (dirData?.type === 'dir' && hasMatchingDescendant(dirData)) {
+    dirChildRendered.value = true
+    dirChildShow.value = true
+  }
+})
+
 // 选中项变化时，若当前组件对应项被选中，使其滚动到可视区域内（对话框）
 // 当 suppressHighlight 为 true（近期区高亮）时，不在树区触发自动滚动
 watch(
@@ -511,6 +547,7 @@ watch(
     @dragenter.stop.prevent="dragenter"
     @drop.stop="drop"
     @dragleave.stop="dragleave"
+    v-show="shouldShow"
     :draggable="dirData.dirName && !renameDivShow ? true : false"
     :class="{
       rightClickBorder: rightClickMenuShow,
@@ -620,6 +657,7 @@ watch(
       <dialogLibraryItem
         :uuid="item.uuid"
         :libraryName="props.libraryName"
+        :filterText="(props as any).filterText"
         :suppressHighlight="props.suppressHighlight"
         @markTreeSelected="emits('markTreeSelected')"
         @dblClickSongList="emits('dblClickSongList')"
