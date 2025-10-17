@@ -26,7 +26,7 @@ const getAudioExtensions = () => {
   return runtime.setting.audioExt || ['.mp3', '.wav', '.flac', '.aif', '.aiff']
 }
 
-// 路径记忆相关（长期保存，跨会话持久化）
+// 恢复：仅记忆“上次浏览路径”（跨会话），不记忆选中项
 const PATH_STORAGE_KEY = 'fileSelector_lastPath'
 const getLastUsedPath = (): string => {
   try {
@@ -39,14 +39,6 @@ const getLastUsedPath = (): string => {
 const saveLastUsedPath = (path: string) => {
   try {
     localStorage.setItem(PATH_STORAGE_KEY, path)
-  } catch {
-    // 忽略存储错误
-  }
-}
-
-const clearSessionSelections = () => {
-  try {
-    sessionStorage.removeItem('importDialog_selectedPaths')
   } catch {
     // 忽略存储错误
   }
@@ -337,12 +329,7 @@ watch(
       // 如果有初始选中的路径，标记它们为选中状态
       if (props.initialSelectedPaths.length > 0) {
         await markInitialSelections()
-      } else {
-        // 尝试从会话存储中恢复选中的项目
-        await restoreSessionSelections()
       }
-      await nextTick()
-      searchInputRef.value?.focus()
     }
   }
 )
@@ -419,7 +406,6 @@ const loadDrives = async () => {
     // 将桌面选项放在驱动器列表的开头
     fileTree.value = [desktopItem, ...driveItems]
     currentPath.value = '' // 根级别
-    saveLastUsedPath('') // 保存根级别路径
   } catch (error) {
     console.error('加载驱动器列表失败:', error)
     throw error
@@ -443,29 +429,43 @@ const getDesktopPath = (userHome: string): string => {
 }
 
 // 标记初始选中的项目
+// 目标：即使当前目录树不包含这些路径，也要在“已选择项目”面板中显示；
+// 若后续加载到包含这些路径的目录，再映射并高亮树节点。
 const markInitialSelections = async () => {
-  for (const selectedPath of props.initialSelectedPaths) {
-    // 在文件树中找到对应的项目并标记为选中
-    const markItemSelected = (items: FileSystemItem[]) => {
-      for (const item of items) {
-        if (item.path === selectedPath) {
-          item.isSelected = true
-          selectedItems.value.push({
-            id: uuidV4(),
-            name: item.name,
-            path: item.path,
-            type: item.type,
-            size: item.size
-          })
-          selectedItemRefs.value.set(item.path, item)
-          break
-        }
-        if (item.children) {
-          markItemSelected(item.children)
-        }
-      }
+  const ensureSelectedItem = (path: string) => {
+    const exists = selectedItems.value.some((s) => s.path === path)
+    if (!exists) {
+      const parts = path.split(/[/\\]/)
+      const name = parts[parts.length - 1] || path
+      selectedItems.value.push({
+        id: uuidV4(),
+        name,
+        path,
+        // 类型在未加载节点前不可知，这里仅用于展示；当节点出现时会被树节点状态覆盖
+        type: 'file',
+        size: 0
+      })
     }
-    markItemSelected(fileTree.value)
+  }
+
+  const tryMarkOnTree = (path: string) => {
+    const dfs = (items: FileSystemItem[]) => {
+      for (const item of items) {
+        if (item.path === path) {
+          item.isSelected = true
+          selectedItemRefs.value.set(item.path, item)
+          return true
+        }
+        if (item.children && dfs(item.children)) return true
+      }
+      return false
+    }
+    dfs(fileTree.value)
+  }
+
+  for (const p of props.initialSelectedPaths) {
+    ensureSelectedItem(p)
+    tryMarkOnTree(p)
   }
 }
 
@@ -504,15 +504,21 @@ const loadDirectory = async (dirPath: string) => {
     fileTree.value = treeItems
     expandedPaths.value.add(dirPath)
 
-    // 回显：将已选中的路径映射到当前目录树
+    // 回显：将已选中的路径映射到当前目录树（即使“已选择项目”中项目来自其他目录，也保持面板展示）
     if (selectedItems.value.length > 0) {
       const selectedPathSet = new Set(selectedItems.value.map((s) => s.path))
-      for (const node of fileTree.value) {
-        if (selectedPathSet.has(node.path)) {
-          node.isSelected = true
-          selectedItemRefs.value.set(node.path, node)
+      const mapTree = (nodes: FileSystemItem[]) => {
+        for (const node of nodes) {
+          if (selectedPathSet.has(node.path)) {
+            node.isSelected = true
+            selectedItemRefs.value.set(node.path, node)
+          }
+          if (node.children && node.children.length > 0) {
+            mapTree(node.children)
+          }
         }
       }
+      mapTree(fileTree.value)
     }
   } catch (error) {
     console.error('加载目录失败:', error)
@@ -758,15 +764,9 @@ const getItemIcon = (item: FileSystemItem) => {
   return audioFileIcon
 }
 
-// 确认选择
+// 确认选择（允许 0 项，父组件可用空数组清空已选）
 const confirm = () => {
-  if (selectedItems.value.length === 0) return
-
   const result = selectedItems.value.map((item) => item.path)
-  // 保存当前路径
-  if (currentPath.value) {
-    saveLastUsedPath(currentPath.value)
-  }
   emit('confirm', result)
   close()
 }
@@ -786,8 +786,6 @@ const close = () => {
   if (currentPath.value) {
     saveLastUsedPath(currentPath.value)
   }
-  // 清空会话级选中的项目
-  clearSessionSelections()
 }
 
 const modalRef = ref<HTMLDivElement | null>(null)
@@ -879,13 +877,11 @@ onMounted(() => {
   const modalEl = modalRef.value
   modalEl?.addEventListener('keydown', handleKeyDown)
 
-  hotkeys('Escape', uuid, () => {
+  hotkeys('Esc', uuid, () => {
     cancel()
   })
-  hotkeys('Enter', uuid, () => {
-    if (selectedItems.value.length > 0) {
-      confirm()
-    }
+  hotkeys('E', uuid, () => {
+    confirm()
   })
   utils.setHotkeysScpoe(uuid)
 })
@@ -1034,11 +1030,17 @@ onUnmounted(() => {
 
       <!-- 底部操作区 -->
       <div class="action-bar">
-        <div class="action-buttons">
-          <button @click="cancel" class="cancel-btn">{{ t('common.cancel') }}</button>
-          <button @click="confirm" :disabled="selectedItems.length === 0" class="confirm-btn">
-            {{ t('fileSelector.selectItems', { count: selectedCount }) }}
-          </button>
+        <div class="action-buttons import-dialog-style">
+          <div
+            class="button"
+            style="margin-right: 10px; width: 90px; text-align: center"
+            @click="confirm"
+          >
+            {{ t('common.confirm') }} (E)
+          </div>
+          <div class="button" @click="cancel" style="width: 90px; text-align: center">
+            {{ t('common.cancel') }} (Esc)
+          </div>
         </div>
       </div>
     </div>
@@ -1063,6 +1065,7 @@ onUnmounted(() => {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   user-select: none;
   -webkit-user-select: none;
+  color: #cccccc; // 与导入对话框文字颜色一致
 }
 
 .file-selector-content {
@@ -1084,7 +1087,8 @@ onUnmounted(() => {
   .path-breadcrumb {
     display: flex;
     align-items: center;
-    flex: 1;
+    flex: 1 1 auto;
+    min-width: 0; // 允许内容收缩，避免把右侧搜索框挤出
     font-size: 12px;
     color: #cccccc;
     gap: 8px;
@@ -1128,6 +1132,8 @@ onUnmounted(() => {
   }
 
   .path-search {
+    flex: 0 0 auto; // 固定宽度区域，不随父容器收缩
+    flex-shrink: 0;
     .search-input {
       width: 160px;
       height: 25px;
