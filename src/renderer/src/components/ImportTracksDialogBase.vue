@@ -55,38 +55,9 @@ settingData.value = parsedLocalStorageData
 const runtime = useRuntimeStore()
 runtime.activeMenuUUID = ''
 
-// 保存选中的路径到sessionStorage（会话级记忆）
-const saveSelectedPaths = () => {
-  try {
-    sessionStorage.setItem('importDialog_selectedPaths', JSON.stringify(selectedPaths.value))
-  } catch {
-    // 忽略存储错误
-  }
-}
-
-// 加载选中的路径从sessionStorage（会话级记忆）
-const loadSelectedPaths = () => {
-  try {
-    const saved = sessionStorage.getItem('importDialog_selectedPaths')
-    return saved ? JSON.parse(saved) : []
-  } catch {
-    return []
-  }
-}
-
-// 清空会话级选中的路径
-const clearSelectedPaths = () => {
-  try {
-    sessionStorage.removeItem('importDialog_selectedPaths')
-  } catch {
-    // 忽略存储错误
-  }
-}
-
 const selectedPaths = ref<string[]>([]) // 选中的文件和文件夹路径
 
-// 加载之前保存的选中路径
-selectedPaths.value = loadSelectedPaths()
+// 取消记忆选中路径功能：不再从会话或本地存储中恢复
 const customFileSelectorVisible = ref(false)
 let clickChooseDirFlag = false
 const clickChooseDir = async () => {
@@ -97,11 +68,15 @@ const clickChooseDir = async () => {
 }
 
 const onFileSelectorConfirm = (paths: string[]) => {
-  // 合并新选择的路径（去重）
-  const existingPaths = new Set(selectedPaths.value)
-  const newPaths = paths.filter((path) => !existingPaths.has(path))
-  selectedPaths.value = [...selectedPaths.value, ...newPaths]
-  saveSelectedPaths() // 保存选中的路径
+  if (paths.length === 0) {
+    // 允许 0 项确认：清空已选
+    selectedPaths.value = []
+  } else {
+    // 合并新选择的路径（去重）
+    const existingPaths = new Set(selectedPaths.value)
+    const newPaths = paths.filter((path) => !existingPaths.has(path))
+    selectedPaths.value = [...selectedPaths.value, ...newPaths]
+  }
   customFileSelectorVisible.value = false
 }
 
@@ -201,7 +176,6 @@ const confirm = () => {
     localStorage.setItem('scanNewSongDialog', JSON.stringify(settingData.value))
     // 清除已选中的路径，为下次使用做准备
     selectedPaths.value = []
-    clearSelectedPaths() // 清空会话级选中的路径
     ;(props.confirmCallback as Function)()
   } else if (props.mode === 'drop') {
     localStorage.setItem('scanNewSongDialog', JSON.stringify(settingData.value))
@@ -217,8 +191,8 @@ const confirm = () => {
 
 const cancel = () => {
   localStorage.setItem('scanNewSongDialog', JSON.stringify(settingData.value))
-  // 清空会话级选中的路径
-  clearSelectedPaths()
+  // 取消时清空当前已选，确保下次新打开为空
+  selectedPaths.value = []
   ;(props.cancelCallback as Function)()
 }
 
@@ -238,10 +212,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   utils.delHotkeysScope(uuid)
-  // 组件销毁时保存选中的路径
-  if (selectedPaths.value.length > 0) {
-    saveSelectedPaths()
-  }
 })
 </script>
 <template>
