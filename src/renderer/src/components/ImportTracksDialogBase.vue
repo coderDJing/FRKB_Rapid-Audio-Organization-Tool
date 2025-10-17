@@ -457,6 +457,15 @@ onUnmounted(() => {
   border-spacing: 0 10px;
 }
 
+/* 仅对第一组表格（选择路径/歌单）启用固定布局与固定标签列宽，避免改变其他区域视觉布局 */
+.settingsTable:first-of-type {
+  table-layout: fixed;
+}
+
+.settingsTable:first-of-type .settingLabel {
+  width: 126px;
+}
+
 .settingsRow {
   display: table-row;
 }
@@ -466,5 +475,6 @@ onUnmounted(() => {
   width: 100%;
   height: 20px;
   vertical-align: middle;
+  overflow: hidden; /* 避免内容撑开表格，配合子元素省略号 */
 }
 </style>
