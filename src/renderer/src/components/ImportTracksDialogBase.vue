@@ -224,6 +224,8 @@ const cancel = () => {
 
 const hint1Ref = useTemplateRef<HTMLImageElement>('hint1Ref')
 const hint2Ref = useTemplateRef<HTMLImageElement>('hint2Ref')
+const fileSelectRef = useTemplateRef<HTMLDivElement>('fileSelectRef')
+const songListSelectRef = useTemplateRef<HTMLDivElement>('songListSelectRef')
 onMounted(() => {
   hotkeys('E', uuid, () => {
     confirm()
@@ -268,13 +270,18 @@ onUnmounted(() => {
               </div>
               <div class="settingCell">
                 <div
+                  ref="fileSelectRef"
                   class="chooseDirDiv flashing-border"
                   @click="clickChooseDir()"
-                  :title="selectedPathsDisplay"
                   :class="{ 'is-flashing': flashArea == 'selectedPaths' }"
                 >
                   {{ selectedPathsDisplay || t('library.clickToSelect') }}
                 </div>
+                <bubbleBox
+                  :dom="fileSelectRef || undefined"
+                  :title="selectedPathsDisplay || t('library.clickToSelect')"
+                  :maxWidth="320"
+                />
               </div>
             </div>
             <div class="settingsRow">
@@ -283,13 +290,18 @@ onUnmounted(() => {
               </div>
               <div class="settingCell">
                 <div
+                  ref="songListSelectRef"
                   class="chooseDirDiv flashing-border"
                   @click="clickChooseSongList()"
-                  :title="songListSelectedDisplay"
                   :class="{ 'is-flashing': flashArea == 'songListPathVal' }"
                 >
                   {{ songListSelectedDisplay }}
                 </div>
+                <bubbleBox
+                  :dom="songListSelectRef || undefined"
+                  :title="songListSelectedDisplay || t('library.clickToSelect')"
+                  :maxWidth="320"
+                />
               </div>
             </div>
           </div>
