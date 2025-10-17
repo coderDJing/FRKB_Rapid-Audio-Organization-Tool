@@ -83,6 +83,9 @@ const emptyRecycleBinHandleClick = async () => {
   }
 }
 
+// 歌单筛选关键词（仅匹配歌单名）
+const playlistSearch = ref('')
+
 const menuArr = ref([
   [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]
 ])
@@ -232,6 +235,14 @@ const drop = async (e: DragEvent) => {
         <bubbleBox :dom="emptyRecycleRef || undefined" :title="t('recycleBin.emptyRecycleBin')" />
       </div>
     </div>
+    <!-- 顶部筛选输入框 -->
+    <div class="librarySearchWrapper">
+      <input
+        v-model="playlistSearch"
+        class="searchInput"
+        :placeholder="t('playlist.searchPlaylists')"
+      />
+    </div>
     <div class="unselectable libraryArea">
       <OverlayScrollbarsComponent
         :options="{
@@ -253,6 +264,7 @@ const drop = async (e: DragEvent) => {
           <libraryItem
             :uuid="item.uuid"
             :libraryName="libraryData.dirName"
+            :filterText="playlistSearch"
             v-if="!(runtime.selectSongListDialogShow && !item.dirName)"
           />
         </template>
@@ -331,6 +343,26 @@ const drop = async (e: DragEvent) => {
       }
     }
   }
+}
+
+.librarySearchWrapper {
+  padding: 6px 5px 6px 5px;
+  background-color: #181818;
+}
+
+.searchInput {
+  width: 100%;
+  height: 22px;
+  line-height: 22px;
+  background-color: #202020;
+  border: 1px solid #424242;
+  outline: none;
+  color: #cccccc;
+  border-radius: 2px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  font-size: 12px;
+  font-weight: normal;
 }
 
 .bubbleBox {
