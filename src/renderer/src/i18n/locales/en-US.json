@@ -372,7 +372,13 @@
     "persistFiltersAfterRestart": "Keep filter conditions after restart"
   },
   "settings": {
-    "showPlaylistTrackCount": "Show track count after playlist name"
+    "showPlaylistTrackCount": "Show track count after playlist name",
+    "songListBubble": {
+      "title": "Track row bubble tooltip",
+      "overflowOnly": "Show only when text is truncated",
+      "always": "Always show on hover",
+      "hint": "Controls how tooltips show in track lists"
+    }
   },
   "fileSelector": {
     "title": "Select Files and Folders",
