@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { PropType, reactive, markRaw } from 'vue'
+import { useRuntimeStore } from '@renderer/stores/runtime'
 import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
 import type { ComponentPublicInstance } from 'vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
@@ -83,6 +84,8 @@ const setCellRef = (key: string, el: Element | ComponentPublicInstance | null) =
 // 渲染完成观测：当 songs 变化后，等待一帧统计行数并上报
 import { nextTick, watch, ref as vRef, computed, onMounted, onUnmounted } from 'vue'
 const rowsRoot = vRef<HTMLElement | null>(null)
+const runtime = useRuntimeStore()
+const onlyWhenOverflowComputed = computed(() => !(runtime.setting as any)?.songListBubbleAlways)
 // 按需展示气泡：仅在鼠标悬停的单元格渲染 bubbleBox，避免批量挂载
 const hoveredCellKey = vRef<string | null>(null)
 // 移除 rows 渲染观测，避免大 DOM 遍历
@@ -315,7 +318,12 @@ const onRowsMouseOver = (e: MouseEvent) => {
   const key = cell.dataset.key
   if (key) hoveredCellKey.value = key
 }
-const onRowsMouseLeave = () => {
+const onRowsMouseLeave = (e: MouseEvent) => {
+  const rt = (e && (e.relatedTarget as HTMLElement | null)) || null
+  // 若移入了气泡框（teleport 到 body，具有 .frkb-bubble 类），不要清空 hovered 状态
+  if (rt && typeof rt.closest === 'function' && rt.closest('.frkb-bubble')) {
+    return
+  }
   hoveredCellKey.value = null
 }
 
@@ -496,7 +504,7 @@ watch(
                   v-if="hoveredCellKey === getCellKey(item.song, col.key)"
                   :dom="cellRefMap[getCellKey(item.song, col.key)] || undefined"
                   :title="String((item.song as any)[col.key] ?? '')"
-                  :only-when-overflow="true"
+                  :only-when-overflow="onlyWhenOverflowComputed"
                 />
               </div>
             </template>
