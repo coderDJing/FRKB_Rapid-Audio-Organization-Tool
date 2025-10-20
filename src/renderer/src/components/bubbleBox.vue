@@ -99,11 +99,14 @@ function clearTimers() {
   }
 }
 
-function onAnchorMouseEnter() {
+function onAnchorMouseEnter(e: MouseEvent) {
   if (hideTimer.value) {
     clearTimeout(hideTimer.value)
     hideTimer.value = null
   }
+  // 记录进入时的鼠标坐标，避免延时期间位置偏差
+  mouseX.value = e.clientX
+  mouseY.value = e.clientY
   if (hoverTimer.value) clearTimeout(hoverTimer.value)
   hoverTimer.value = setTimeout(async () => {
     // 若要求仅在文本溢出时显示，则进行判断
@@ -117,25 +120,36 @@ function onAnchorMouseEnter() {
     visible.value = true
     await nextTick()
     updatePosition()
+    // 再次确保隐藏计时器被清理，防止竞态
+    if (hideTimer.value) {
+      clearTimeout(hideTimer.value)
+      hideTimer.value = null
+    }
   }, props.showDelay)
 }
 
-function onAnchorMouseLeave() {
+function onAnchorMouseLeave(e: MouseEvent) {
   if (hoverTimer.value) {
     clearTimeout(hoverTimer.value)
     hoverTimer.value = null
   }
   if (hideTimer.value) clearTimeout(hideTimer.value)
+  const rt = (e && (e.relatedTarget as Node | null)) || null
+  // 若移入的是气泡本身或其子元素，则不触发隐藏
+  if (rt && bubbleEl.value && bubbleEl.value.contains(rt)) {
+    return
+  }
   hideTimer.value = setTimeout(() => {
     visible.value = false
   }, props.hideDelay)
 }
 
 function onAnchorMouseMove(e: MouseEvent) {
-  if (!props.followMouse) return
+  // 总是记录最新鼠标位置
   mouseX.value = e.clientX
   mouseY.value = e.clientY
-  if (visible.value) updatePosition()
+  // 仅在需要跟随且已显示时才实时更新
+  if (props.followMouse && visible.value) updatePosition()
 }
 
 function onBubbleMouseEnter() {
@@ -161,7 +175,7 @@ function getBoundaryRect(): DOMRect {
 
 function getAnchorBasePoint() {
   const boundary = getBoundaryRect()
-  if (props.followMouse && mouseX.value !== null && mouseY.value !== null) {
+  if (mouseX.value !== null && mouseY.value !== null) {
     return { x: mouseX.value, y: mouseY.value, boundary }
   }
   if (props.dom) {
@@ -204,10 +218,12 @@ function updatePosition() {
   let finalTop = 0
   let finalLeft = 0
   let placed = false
+  // 若锚点来自鼠标，则消除额外偏移，避免鼠标与气泡之间出现可见间隙
+  const effectiveOffset = mouseX.value !== null && mouseY.value !== null ? 0 : props.offset
 
   for (const c of candidates) {
-    const t = c.v === 'bottom' ? y + props.offset : y - h - props.offset
-    const l = c.h === 'right' ? x + props.offset : x - w - props.offset
+    const t = c.v === 'bottom' ? y + effectiveOffset : y - h - effectiveOffset
+    const l = c.h === 'right' ? x + effectiveOffset : x - w - effectiveOffset
     const fits =
       t >= boundary.top && l >= boundary.left && t + h <= boundary.bottom && l + w <= boundary.right
     if (fits) {
@@ -222,8 +238,8 @@ function updatePosition() {
     // 若都不完全适配，则对当前优先方向进行 clamp
     const v = verticalOrder[0] as V
     const hDir = horizontalOrder[0] as H
-    const t = v === 'bottom' ? y + props.offset : y - h - props.offset
-    const l = hDir === 'right' ? x + props.offset : x - w - props.offset
+    const t = v === 'bottom' ? y + effectiveOffset : y - h - effectiveOffset
+    const l = hDir === 'right' ? x + effectiveOffset : x - w - effectiveOffset
     finalTop = clamp(t, boundary.top, boundary.bottom - h)
     finalLeft = clamp(l, boundary.left, boundary.right - w)
   }
@@ -274,7 +290,7 @@ onUnmounted(() => {
       <div
         v-if="visible"
         ref="bubbleEl"
-        class="frkb-bubble unselectable"
+        class="frkb-bubble"
         :style="{
           top: topPx + 'px',
           left: leftPx + 'px',
@@ -313,6 +329,7 @@ onUnmounted(() => {
   line-height: 1.4;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   pointer-events: auto;
+  user-select: text;
 }
 
 .frkb-bubble-row {

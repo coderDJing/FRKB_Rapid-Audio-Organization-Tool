@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onUnmounted, onMounted, ref, useTemplateRef, reactive } from 'vue'
+import { onUnmounted, onMounted, ref, useTemplateRef, reactive, computed } from 'vue'
 import hintIcon from '@renderer/assets/hint.png?asset'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
@@ -61,6 +61,21 @@ if ((runtime as any).setting.errorReportRetryMsSinceLastFailure === undefined) {
 if ((runtime as any).setting.persistSongFilters === undefined) {
   ;(runtime as any).setting.persistSongFilters = false
 }
+
+// 歌单行气泡提示显示策略：默认仅在文字被截断时显示（false）
+if ((runtime as any).setting.songListBubbleAlways === undefined) {
+  ;(runtime as any).setting.songListBubbleAlways = false
+}
+
+// 将布尔设置映射为单选值（与指纹模式类似的布局与交互）
+const songListBubbleMode = computed<'overflowOnly' | 'always'>({
+  get() {
+    return (runtime as any).setting.songListBubbleAlways ? 'always' : 'overflowOnly'
+  },
+  set(v) {
+    ;(runtime as any).setting.songListBubbleAlways = v === 'always'
+  }
+})
 
 // 修改后的 cancel 函数 - 移除了范围验证和保存
 const cancel = async () => {
@@ -439,6 +454,26 @@ const clearCloudFingerprints = async () => {
                 v-model="(runtime as any).setting.showPlaylistTrackCount"
                 @change="setSetting()"
               />
+            </div>
+            <div style="margin-top: 20px">{{ t('settings.songListBubble.title') }}：</div>
+            <div style="margin-top: 10px">
+              <singleRadioGroup
+                name="songListBubble"
+                :options="[
+                  { label: t('settings.songListBubble.overflowOnly'), value: 'overflowOnly' },
+                  { label: t('settings.songListBubble.always'), value: 'always' }
+                ]"
+                v-model="songListBubbleMode as any"
+                :optionFontSize="12"
+                @change="setSetting()"
+              >
+                <template #option="{ opt }">
+                  <span class="label">{{ opt.label }}</span>
+                </template>
+              </singleRadioGroup>
+              <div style="margin-top: 6px; font-size: 12px; color: #999">
+                {{ t('settings.songListBubble.hint') }}
+              </div>
             </div>
             <div style="margin-top: 20px">{{ t('database.reselectLocation') }}：</div>
             <div style="margin-top: 10px">
