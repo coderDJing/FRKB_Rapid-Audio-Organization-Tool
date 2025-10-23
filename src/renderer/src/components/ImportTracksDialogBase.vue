@@ -11,6 +11,7 @@ import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'
 import { t, toLibraryDisplayName } from '@renderer/utils/translate'
+import { i18n } from '@renderer/i18n'
 
 type Mode = 'scan' | 'drop'
 
@@ -150,6 +151,9 @@ const songListSelectedDisplay = computed(() => {
   return arr.join('\\')
 })
 
+const isEnglishLocale = computed(() => (i18n.global as any).locale.value === 'en-US')
+const labelWidth = computed(() => (isEnglishLocale.value ? '142px' : '126px'))
+
 const confirm = () => {
   if (props.mode === 'scan') {
     if (selectedPaths.value.length === 0) {
@@ -235,7 +239,7 @@ onUnmounted(() => {
         <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
           <div class="settingsTable">
             <div v-if="props.mode === 'scan'" class="settingsRow">
-              <div class="settingLabel">
+              <div class="settingLabel" :style="{ width: labelWidth }">
                 <span>{{ t('library.selectFilesAndFolders') }}：</span>
               </div>
               <div class="settingCell">
@@ -255,7 +259,7 @@ onUnmounted(() => {
               </div>
             </div>
             <div class="settingsRow">
-              <div class="settingLabel">
+              <div class="settingLabel" :style="{ width: labelWidth }">
                 <span>{{ t('library.selectPlaylist') }}：</span>
               </div>
               <div class="settingCell">
