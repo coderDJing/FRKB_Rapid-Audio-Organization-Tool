@@ -21,7 +21,7 @@
 
 ## FRKB
 <p align="center">
-  <img alt="FRKB in action" src="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/screenshot/softwareScreenshot_cn.png?raw=true">
+  <img alt="FRKB in action" src="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/screenshot/softwareScreenshot_cn.webp?raw=true">
 </p>
 
 ### 如何使用
