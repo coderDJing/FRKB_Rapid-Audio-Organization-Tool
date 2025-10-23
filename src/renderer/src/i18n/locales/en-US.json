@@ -170,7 +170,7 @@
     "importNewTracks": "Import to {libraryType}",
     "importTracks": "Import",
     "selectFolder": "‌Select Folder",
-    "selectFilesAndFolders": "Select Files and Folders",
+    "selectFilesAndFolders": "Select Files/Folders",
     "clickToSelect": "Click to Select",
     "selectPlaylist": "Select Playlist‌",
     "deleteAfterImport": "Delete after import",
@@ -381,8 +381,8 @@
     }
   },
   "fileSelector": {
-    "title": "Select Files and Folders",
-    "searchPlaceholder": "Search files and folders...",
+    "title": "Select Files/Folders",
+    "searchPlaceholder": "Search files/folders...",
     "loading": "Loading...",
     "selectedItems": "Selected Items",
     "files": "{count} files",
