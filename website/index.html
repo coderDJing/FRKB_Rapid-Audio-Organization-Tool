@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="FRKB - 内容感知去重与所见即所得的音频整理器。键盘优先的人机工学；真实文件层级一目了然。" />
+    <title>FRKB</title>
+    <link rel="preload" href="./styles.css" as="style" />
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="icon" href="./assets/icon.webp" type="image/webp" />
+</head>
+
+<body>
+    <nav class="nav">
+        <div class="container nav-inner">
+            <a class="brand" href="#" style="font-size: 20px;"><img src="./assets/icon.webp" alt="FRKB"
+                    style="width: 30px; height: 30px;" /> FRKB</a>
+            <div class="nav-left">
+                <a href="#features" data-i18n="nav.features">特性</a>
+                <a href="#faq" data-i18n="nav.faq">FAQ</a>
+            </div>
+            <div class="nav-right">
+                <a href="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool" target="_blank"
+                    rel="noopener noreferrer">GitHub</a>
+                <button id="themeToggle" aria-label="theme">
+                    <svg class="icon icon-sun" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true">
+                        <path d="M925.184 543.232c17.92 0 31.744-14.336 31.744-31.744s-14.336-32.256-31.744-32.256H896c-2.56-29.696-8.192-58.88-17.408-86.528l27.136-11.264c16.384-6.656 24.064-25.6 17.408-41.984-6.656-16.384-25.6-24.064-41.984-17.408l-27.136 11.264c-13.312-25.6-29.696-49.664-48.128-71.68l20.48-20.48c12.288-12.288 12.288-32.768 0-45.056-12.288-12.288-32.768-12.288-45.056 0l-20.48 20.48c-22.528-18.944-47.104-35.328-73.216-49.152l11.264-27.136c6.656-16.384-1.024-34.816-17.408-41.984-16.384-6.656-34.816 1.024-41.984 17.408l-11.264 27.136c-27.136-8.704-55.296-14.336-84.992-16.384V97.28c0-17.92-14.336-32.256-31.744-32.256s-32.256 14.336-32.256 32.256v29.184c-30.208 2.56-59.392 8.192-86.528 16.896l-11.264-27.136c-6.656-16.384-25.6-24.064-41.984-17.408-16.384 6.656-24.064 25.6-17.408 41.984l11.264 27.136c-25.6 13.312-49.664 29.696-71.68 48.128l-20.48-20.48c-12.288-12.288-32.768-12.288-45.056 0-12.288 12.288-12.288 32.768 0 45.056l20.48 20.48c-18.944 22.528-35.328 47.104-49.152 73.216l-27.136-11.264c-16.384-6.656-34.816 1.024-41.984 17.408-6.656 16.384 1.024 34.816 17.408 41.984l27.136 11.264c-8.704 27.136-14.336 55.296-16.384 84.992H97.28c-17.92 0-32.256 14.336-32.256 32.256s14.336 31.744 32.256 31.744h29.184c2.56 29.696 8.192 58.88 17.408 86.528l-27.136 11.264c-16.384 6.656-24.064 25.6-17.408 41.984 5.12 12.288 16.896 19.456 29.696 19.456 4.096 0 8.192-1.024 12.288-2.56l27.136-11.264c13.312 25.6 29.696 49.664 48.128 71.68l-20.48 20.48c-12.288 12.288-12.288 32.768 0 45.056 6.144 6.144 14.336 9.216 22.528 9.216s16.384-3.072 22.528-9.216l20.48-20.48c22.528 18.944 47.104 35.328 73.216 49.152l-11.264 27.136c-6.656 16.384 1.024 34.816 17.408 41.984 4.096 1.536 8.192 2.56 12.288 2.56 12.8 0 24.576-7.68 29.696-19.968l11.264-27.136c27.136 8.704 55.296 14.336 84.992 16.384v29.184c0 17.92 14.336 31.744 32.256 31.744s31.744-14.336 31.744-31.744v-29.184c29.696-2.56 58.88-8.192 86.528-17.408l11.264 27.136c5.12 12.288 16.896 19.456 29.696 19.456 4.096 0 8.192-1.024 12.288-2.56 16.384-6.656 24.064-25.6 17.408-41.984l-11.264-27.136c25.6-13.312 49.664-29.696 71.68-48.128l20.48 20.48c6.144 6.144 14.336 9.216 22.528 9.216s16.384-3.072 22.528-9.216c12.288-12.288 12.288-32.768 0-45.056l-20.48-20.48c18.944-22.528 35.328-47.104 49.152-73.216l27.136 11.264c4.096 1.536 8.192 2.56 12.288 2.56 12.8 0 24.576-7.68 29.696-19.968 6.656-16.384-1.024-34.816-17.408-41.984l-27.136-11.264c8.704-27.136 14.336-55.296 16.384-84.992h29.184z m-414.208 289.792c-177.664 0-322.048-144.384-322.048-322.048s144.384-322.048 322.048-322.048 322.048 144.384 322.048 322.048-144.384 322.048-322.048 322.048z" fill="currentColor"></path>
+                    </svg>
+                    <svg class="icon icon-moon" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="20" height="20" aria-hidden="true">
+                        <path d="M696.832 215.552c98.816 62.976 162.304 173.056 162.304 294.912 0 192.512-156.672 349.184-349.184 349.184-121.856 0-232.448-63.488-294.912-162.816h5.12c263.168 0 477.184-214.016 477.184-477.184-0.512-1.536-0.512-3.072-0.512-4.096m-78.336-103.936c9.216 34.304 14.336 70.656 14.336 108.032 0 228.352-184.832 413.184-413.184 413.184-37.376 0-73.728-5.12-108.544-14.336 47.616 175.616 207.872 305.152 398.848 305.152 228.352 0 413.184-184.832 413.184-413.184 0-190.976-129.024-351.232-304.64-398.848z" fill="currentColor"></path>
+                    </svg>
+                </button>
+                <button id="langToggle" aria-label="language">ZH</button>
+            </div>
+        </div>
+    </nav>
+
+
+
+    <header class="hero">
+        <div class="container hero-inner">
+            <div class="hero-copy">
+                <span style="font-size: 74px; font-weight: bold; white-space: pre-line;" data-i18n="hero.title">符合人机工学的<br />开源音频快速整理工具</span>
+                <div class="cta" style="margin-top: 40px;">
+                    <div id="ctaSkeleton" class="cta-skeleton">
+                        <div class="sk-card">
+                            <div class="sk-btn"></div>
+                            <div class="sk-btn small"></div>
+                            <div class="sk-link"></div>
+                        </div>
+                    </div>
+                    <div class="cta-panel" style="display:none;">
+                        <a id="heroWin" class="download-btn" href="#" rel="nofollow" style="display:none"><span class="label">下载FRKB (Windows)</span></a>
+                        <a id="heroMac" class="download-btn" href="#" rel="nofollow" style="display:none"><span class="label">Download for macOS</span></a>
+                        <div class="cta-more">
+                            <a id="togglePlatform" href="#" role="button" aria-label="切换平台" data-i18n="cta.toggle">其他平台</a>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="hero-media">
+                <div class="hero-frame">
+                    <img id="heroImg" class="hero-img" src="./assets/softwareScreenshot_cn.webp" alt="FRKB 主界面"
+                        width="900" height="600" />
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main>
+
+        <section id="features" class="section features">
+            <div class="container">
+                <h2 data-i18n="features.title">核心特性</h2>
+                <div class="grid">
+                    <div class="card">
+                        <h3 data-i18n="features.core.keyboard">键盘优先的人机工学：大幅减少鼠标移动与点击，高频操作触手可及</h3>
+                        <img class="shot" src="./assets/shortcutKey_cn.webp" alt="keyboard-first" loading="lazy" />
+                    </div>
+                    <div class="card">
+                        <h3 data-i18n="features.core.dedup">内容感知去重（忽略元信息）：基于音频特征识别重复，导入时即时提示</h3>
+                        <img class="shot" src="./assets/import_cn.webp" alt="content-aware dedup" loading="lazy" />
+                    </div>
+                    <div class="card">
+                        <h3 data-i18n="features.core.wysiwyg">所见即所得的文件映射：界面分组/目录即真实磁盘层级，重命名/移动即刻生效</h3>
+                        <img class="shot" src="./assets/mappingRelation_cn.webp" alt="wysiwyg mapping" loading="lazy" />
+                    </div>
+                    <div class="card">
+                        <h3 data-i18n="features.extra.crossOpen">跨平台与开源透明：Windows / macOS，欢迎检视与贡献</h3>
+                        <img class="shot" src="./assets/openSource _cn.webp" alt="cross platform" loading="lazy" />
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="faq" class="section faq">
+            <div class="container">
+                <h2 data-i18n="faq.title">常见问题</h2>
+                <div class="faq-list">
+                    <details>
+                        <summary data-i18n="faq.q1.0">如何选择安装包？</summary>
+                        <p data-i18n="faq.q1.1">根据你的系统选择 Windows 或 macOS。</p>
+                    </details>
+                    <details>
+                        <summary data-i18n="faq.q2.0">支持哪些格式？</summary>
+                        <p data-i18n="faq.q2.1">mp3、flac、wav、aff、aiff。</p>
+                    </details>
+                    <details>
+                        <summary data-i18n="faq.q3.0">如何升级到新版本？</summary>
+                        <p data-i18n="faq.q3.1">应用支持自动在线升级；无需手动下载。</p>
+                    </details>
+                    <details>
+                        <summary data-i18n="faq.q4.0">开源协议与贡献？</summary>
+                        <p data-i18n="faq.q4.1">请在 GitHub 查看 License 与贡献指南。</p>
+                    </details>
+                </div>
+            </div>
+        </section>
+
+        <section class="section open">
+            <div class="container">
+                <h2 data-i18n="open.title">开源</h2>
+                <p class="muted" data-i18n="open.content">本项目开源，欢迎反馈与贡献。</p>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <small>© FRKB Project. <a href="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool"
+                    target="_blank" rel="noopener noreferrer">GitHub</a></small>
+        </div>
+    </footer>
+
+    <!-- Image Modal -->
+    <div id="imgModal" class="img-modal" role="dialog" aria-modal="true" aria-label="image preview">
+        <div class="img-modal__inner">
+            <img id="imgModalImg" src="" alt="preview" />
+        </div>
+    </div>
+
+    <script src="./app.js" defer></script>
+</body>
+
+</html>
