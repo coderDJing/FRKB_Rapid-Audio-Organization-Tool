@@ -4,14 +4,34 @@ let LATEST_VERSION = ''
 // 主题状态
 const THEME = { current: 'dark' }
 
+// 站点根路径，保证在 /website/、/website/zh/、/website/en/ 下均能正确引用资源
+function getSiteBase() {
+  try {
+    let p = location.pathname
+    p = p.replace(/index\.html$/i, '')
+    p = p.replace(/\/(zh|en)\/$/i, '/')
+    if (!p.endsWith('/')) p += '/'
+    return p
+  } catch {
+    return '/'
+  }
+}
+const SITE_BASE = getSiteBase()
+
 function getInitialLang() {
+  // 1) 优先按路径 /zh 或 /en
+  const path = location.pathname.toLowerCase()
+  if (/\/zh\//.test(path)) return 'zh'
+  if (/\/en\//.test(path)) return 'en'
+  // 2) 其次本地存储
   const saved = localStorage.getItem('lang')
   if (saved === 'en' || saved === 'zh') return saved
+  // 3) 最后根据浏览器首选项
   return /^zh/i.test(navigator.language) ? 'zh' : 'en'
 }
 
 async function loadI18n(lang) {
-  const res = await fetch(`./i18n/${lang}.json`)
+  const res = await fetch(`${SITE_BASE}i18n/${lang}.json`)
   if (!res.ok) return // 不兜底
   I18N.dict = await res.json()
   I18N.current = lang
@@ -74,8 +94,8 @@ async function initI18n() {
   if (img) {
     img.src =
       I18N.current === 'zh'
-        ? './assets/softwareScreenshot_cn.webp'
-        : './assets/softwareScreenshot.webp'
+        ? `${SITE_BASE}assets/softwareScreenshot_cn.webp`
+        : `${SITE_BASE}assets/softwareScreenshot.webp`
     img.alt = I18N.current === 'zh' ? 'FRKB 主界面' : 'FRKB main UI'
   }
   const langToggle = document.getElementById('langToggle')
@@ -89,8 +109,8 @@ async function initI18n() {
       if (img) {
         img.src =
           I18N.current === 'zh'
-            ? './assets/softwareScreenshot_cn.webp'
-            : './assets/softwareScreenshot.webp'
+            ? `${SITE_BASE}assets/softwareScreenshot_cn.webp`
+            : `${SITE_BASE}assets/softwareScreenshot.webp`
         img.alt = I18N.current === 'zh' ? 'FRKB 主界面' : 'FRKB main UI'
       }
     })
@@ -238,6 +258,31 @@ async function initDownloadButtons() {
 
 // 启动
 ;(async function main() {
+  // 根路径语言自动跳转（避免记录历史）
+  try {
+    const path = location.pathname
+    const isLangPath = /\/(zh|en)\//i.test(path)
+    const isIndex = /index\.html$/i.test(path)
+    const base = (() => {
+      let p = path.replace(/index\.html$/i, '')
+      // /xxx/zh/ 或 /xxx/en/ => /xxx/
+      p = p.replace(/\/(zh|en)\/$/i, '/')
+      if (!p.endsWith('/')) p += '/'
+      return p
+    })()
+    const isRoot = !isLangPath && (path === base || isIndex)
+    const skip = /(?:[?&])no?redirect=1/i.test(location.search)
+    if (isRoot && !skip) {
+      const saved = localStorage.getItem('lang')
+      const lang =
+        saved === 'en' || saved === 'zh' ? saved : /^zh/i.test(navigator.language) ? 'zh' : 'en'
+      const target = lang === 'zh' ? 'zh/' : 'en/'
+      const url = location.origin + base + target
+      if (location.href !== url) {
+        return void location.replace(url)
+      }
+    }
+  } catch {}
   // 主题优先应用，避免首次闪烁
   try {
     initTheme()
@@ -249,9 +294,59 @@ async function initDownloadButtons() {
   const img = document.getElementById('heroImg')
   if (img) {
     const useZh = (I18N?.current || 'zh') === 'zh'
-    img.src = useZh ? './assets/softwareScreenshot_cn.webp' : './assets/softwareScreenshot.webp'
+    img.src = useZh
+      ? `${SITE_BASE}assets/softwareScreenshot_cn.webp`
+      : `${SITE_BASE}assets/softwareScreenshot.webp`
     img.alt = useZh ? 'FRKB 主界面' : 'FRKB main UI'
   }
+  // 同步 <html lang> 与 <title>、社交卡片文案
+  try {
+    const html = document.documentElement
+    html.setAttribute('lang', I18N.current === 'zh' ? 'zh-CN' : 'en')
+    const titleEl = document.getElementById('pageTitle')
+    if (titleEl) {
+      titleEl.textContent =
+        I18N.current === 'zh' ? 'FRKB - 开源音频快速整理工具' : 'FRKB - Fast audio organizer'
+    }
+    const descZh =
+      'FRKB - 内容感知去重与所见即所得的音频整理器。键盘优先的人机工学；真实文件层级一目了然。'
+    const descEn =
+      'FRKB - Content-aware dedup and WYSIWYG audio organizer. Keyboard-first ergonomics; true disk hierarchy at a glance.'
+    const desc = I18N.current === 'zh' ? descZh : descEn
+    const setMeta = (sel, val) => {
+      const m = document.querySelector(sel)
+      if (m && val) m.setAttribute('content', val)
+    }
+    setMeta('meta[name="description"]', desc)
+    setMeta('meta[property="og:title"]', titleEl ? titleEl.textContent : 'FRKB')
+    setMeta('meta[property="og:description"]', desc)
+    setMeta('meta[name="twitter:title"]', titleEl ? titleEl.textContent : 'FRKB')
+    setMeta('meta[name="twitter:description"]', desc)
+    // 随语言切换社交分享图片（中文/英文截图）
+    const ogImg = document.querySelector('meta[property="og:image"]')
+    const twImg = document.querySelector('meta[name="twitter:image"]')
+    const imgUrl =
+      I18N.current === 'zh'
+        ? 'https://coderDJing.github.io/FRKB_Rapid-Audio-Organization-Tool/assets/softwareScreenshot_cn.webp'
+        : 'https://coderDJing.github.io/FRKB_Rapid-Audio-Organization-Tool/assets/softwareScreenshot.webp'
+    if (ogImg) ogImg.setAttribute('content', imgUrl)
+    if (twImg) twImg.setAttribute('content', imgUrl)
+    // 规范化 canonical 为绝对地址（GitHub Pages），并按语言切换路径
+    const canonical = document.querySelector('link[rel="canonical"]')
+    if (canonical) {
+      const base = 'https://coderDJing.github.io/FRKB_Rapid-Audio-Organization-Tool/'
+      const href = I18N.current === 'zh' ? base + 'zh/' : base + 'en/'
+      canonical.setAttribute('href', href)
+      const ogUrl = document.querySelector('meta[property="og:url"]')
+      if (ogUrl) ogUrl.setAttribute('content', href)
+      const xdef = document.querySelector('link[rel="alternate"][hreflang="x-default"]')
+      const zh = document.querySelector('link[rel="alternate"][hreflang="zh-CN"]')
+      const en = document.querySelector('link[rel="alternate"][hreflang="en"]')
+      if (xdef) xdef.setAttribute('href', base)
+      if (zh) zh.setAttribute('href', base + 'zh/')
+      if (en) en.setAttribute('href', base + 'en/')
+    }
+  } catch {}
   await initDownloadButtons()
 
   // 绑定图片预览（主图与特性图）
@@ -280,4 +375,35 @@ async function initDownloadButtons() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeModal()
   })
+
+  // 滚动进入动画（IntersectionObserver）
+  try {
+    const prefersReduced =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (!prefersReduced && 'IntersectionObserver' in window) {
+      const elements = Array.from(document.querySelectorAll('.reveal'))
+      if (elements.length) {
+        const observer = new IntersectionObserver(
+          (entries, obs) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                entry.target.classList.add('is-visible')
+                obs.unobserve(entry.target)
+              }
+            })
+          },
+          { root: null, rootMargin: '0px 0px -10% 0px', threshold: 0.15 }
+        )
+        elements.forEach((el, idx) => {
+          // 交错动画
+          el.style.transitionDelay = `${Math.min(idx * 60, 360)}ms`
+          observer.observe(el)
+        })
+      }
+    } else {
+      // 无动画偏好：直接显示
+      document.querySelectorAll('.reveal').forEach((el) => el.classList.add('is-visible'))
+    }
+  } catch {}
 })()
