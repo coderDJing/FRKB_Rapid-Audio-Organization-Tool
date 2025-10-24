@@ -25,7 +25,9 @@
 </p>
 
 ### How to Use
-1. Download the latest version from the [releases](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases) page.
+1. Download from the website or the [Releases](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases):
+   - Website: https://coderDJing.github.io/FRKB_Rapid-Audio-Organization-Tool/
+   - Or go to Releases and pick your platform (Windows/macOS)
 2. Run the installer to install on your computer.
 3. Launch FRKB from the desktop shortcut.
 
