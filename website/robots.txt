@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://coderDJing.github.io/FRKB_Rapid-Audio-Organization-Tool/sitemap.xml
+

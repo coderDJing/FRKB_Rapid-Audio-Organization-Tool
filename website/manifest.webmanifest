@@ -1,0 +1,12 @@
+{
+  "name": "FRKB",
+  "short_name": "FRKB",
+  "start_url": "/FRKB_Rapid-Audio-Organization-Tool/",
+  "display": "standalone",
+  "background_color": "#0e1116",
+  "theme_color": "#0e1116",
+  "icons": [
+    { "src": "./assets/icon.webp", "sizes": "256x256", "type": "image/webp" }
+  ]
+}
+
