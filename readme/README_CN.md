@@ -25,9 +25,11 @@
 </p>
 
 ### 如何使用
-1. 在 [releases](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases) 页面下载最新版本
+1. 前往官网或 Releases 下载最新版本：
+   - 官网：https://coderDJing.github.io/FRKB_Rapid-Audio-Organization-Tool/
+   - 或到 Releases 按系统选择安装包（Windows/macOS）
 2. 运行安装文件安装到电脑上
-3. 在桌面快捷方式启动FRKB
+3. 在桌面快捷方式启动 FRKB
 
 ### 项目背景
 作为一名DJ，我日常需要整理大量的歌曲文件。然而，市面上现有的音频文件整理软件往往不尽如人意，要么需要过多的鼠标操作，导致肩颈不适；要么快捷键设计不合理，不符合人体工学；要么仅对音频文件进行引用整理，在文件管理器中仍然显得杂乱无章。此外，我还经常遇到下载重复歌曲的问题，这使得筛选过程变得冗长且低效。因此，我决定自己开发一款顺手的软件来解决这些问题。项目的最终目标是引入AI模型，在学习用户的分类行为习惯后，帮助用户自动进行分类入库，天知道这会节省我多少时间。
