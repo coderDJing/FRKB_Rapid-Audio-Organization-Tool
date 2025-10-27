@@ -89,6 +89,7 @@ const menuArr = ref<Menu[]>([
     subMenu: [
       [
         { name: 'menu.visitGithub', shortcutKey: 'F1' },
+        { name: 'menu.visitWebsite' },
         { name: 'menu.checkUpdate' },
         { name: 'menu.about' }
       ]

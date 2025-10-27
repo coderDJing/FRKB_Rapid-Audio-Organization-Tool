@@ -49,6 +49,7 @@ const openDialog = async (item: string) => {
   // 统一将中文项映射为 i18n 键，避免不同语言下判断不一致
   if (item === '关于') item = 'menu.about'
   if (item === '访问 GitHub') item = 'menu.visitGithub'
+  if (item === '访问官网') item = 'menu.visitWebsite'
   if (item === '检查更新') item = 'menu.checkUpdate'
   if (item === '退出') item = 'menu.exit'
   if (item === '云同步设置') item = 'cloudSync.settings'
@@ -76,6 +77,12 @@ const openDialog = async (item: string) => {
     window.electron.ipcRenderer.send(
       'openLocalBrowser',
       'https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool'
+    )
+  }
+  if (item === 'menu.visitWebsite') {
+    window.electron.ipcRenderer.send(
+      'openLocalBrowser',
+      'https://coderDJing.github.io/FRKB_Rapid-Audio-Organization-Tool/'
     )
   }
   if (item === 'menu.checkUpdate') {

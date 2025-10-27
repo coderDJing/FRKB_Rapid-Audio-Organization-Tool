@@ -32,6 +32,7 @@
     "cloudSync": "Sync(C)",
     "exit": "Exit",
     "visitGithub": "GitHub",
+    "visitWebsite": "Website",
     "about": "About",
     "checkUpdate": "Check Updates"
   },
