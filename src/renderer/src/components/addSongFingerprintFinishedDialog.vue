@@ -153,12 +153,14 @@ const formatDurationSec = (ms: number) => {
   align-items: center;
   line-height: 14px;
   height: 14px;
+  color: var(--text);
 }
 .count-pair > .count-text {
   display: inline-flex;
   align-items: center;
   line-height: 14px;
   height: 14px;
+  color: var(--text);
 }
 .arrow {
   display: inline-flex;
