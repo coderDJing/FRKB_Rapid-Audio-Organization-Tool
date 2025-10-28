@@ -111,14 +111,14 @@ const hasFingerprintSection = computed(() => {
 .title {
   text-align: center;
   font-weight: bold;
-  color: #e5e5e5;
+  color: var(--text);
 }
 .stats {
   display: flex;
   flex-direction: column;
   gap: 12px;
   font-size: 12px;
-  color: #d0d0d0;
+  color: var(--text);
 }
 .section {
   display: flex;
@@ -127,7 +127,7 @@ const hasFingerprintSection = computed(() => {
 }
 .section-title {
   font-size: 13px;
-  color: #d0d0d0;
+  color: var(--text);
   font-weight: 700;
   letter-spacing: 0.2px;
 }
@@ -146,7 +146,7 @@ const hasFingerprintSection = computed(() => {
   width: 90px;
   min-width: 90px;
   text-align: right;
-  color: #bdbdbd;
+  color: var(--text-weak);
 }
 .row .value {
   display: flex;
@@ -162,22 +162,22 @@ const hasFingerprintSection = computed(() => {
 .chip {
   min-width: 96px;
   padding: 8px 10px;
-  border: 1px solid #2c2c2c;
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: #202020;
+  background: var(--bg-elev);
   display: inline-flex;
   flex-direction: column;
   align-items: center;
 }
 .chip .num {
   font-size: 18px;
-  color: #e5e5e5;
+  color: var(--text);
   font-weight: 700;
   line-height: 1;
 }
 .chip .cap {
   font-size: 11px;
-  color: #a8a8a8;
+  color: var(--text-weak);
   margin-top: 4px;
 }
 .chip.danger .num {
@@ -188,11 +188,11 @@ const hasFingerprintSection = computed(() => {
 }
 .big {
   font-size: 14px;
-  color: #e5e5e5;
+  color: var(--text);
   font-weight: 600;
 }
 .muted {
-  color: #a8a8a8;
+  color: var(--text-weak);
 }
 .count-pair {
   display: inline-flex;
