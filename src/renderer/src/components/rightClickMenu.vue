@@ -110,7 +110,7 @@ onMounted(() => {
     }
     return false
   })
-  hotkeys('E', uuid, () => {
+  hotkeys('E,Enter', uuid, () => {
     runtime.activeMenuUUID = ''
     props.confirmCallback(hoverItem.value)
   })

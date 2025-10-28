@@ -284,7 +284,7 @@ const cancel = () => {
   window.electron.ipcRenderer.send('databaseInitWindow-toggle-close')
 }
 onMounted(async () => {
-  hotkeys('E', uuid, () => {
+  hotkeys('E,Enter', uuid, () => {
     submitConfirm()
   })
   hotkeys('Esc', uuid, () => {

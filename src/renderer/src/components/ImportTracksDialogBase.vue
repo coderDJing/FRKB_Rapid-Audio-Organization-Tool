@@ -205,7 +205,7 @@ const hint2Ref = useTemplateRef<HTMLImageElement>('hint2Ref')
 const fileSelectRef = useTemplateRef<HTMLDivElement>('fileSelectRef')
 const songListSelectRef = useTemplateRef<HTMLDivElement>('songListSelectRef')
 onMounted(() => {
-  hotkeys('E', uuid, () => {
+  hotkeys('E,Enter', uuid, () => {
     confirm()
   })
   hotkeys('Esc', uuid, () => {
