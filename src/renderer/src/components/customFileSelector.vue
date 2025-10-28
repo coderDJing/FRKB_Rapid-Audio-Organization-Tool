@@ -880,7 +880,7 @@ onMounted(() => {
   hotkeys('Esc', uuid, () => {
     cancel()
   })
-  hotkeys('E', uuid, () => {
+  hotkeys('E,Enter', uuid, () => {
     confirm()
   })
   utils.setHotkeysScpoe(uuid)

@@ -92,7 +92,7 @@ const cancel = () => {
 }
 
 onMounted(() => {
-  hotkeys('E', uuid, () => {
+  hotkeys('E,Enter', uuid, () => {
     confirm()
     return false
   })

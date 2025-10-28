@@ -83,7 +83,7 @@ function handleKeyDown(event: KeyboardEvent) {
   shortcutValue.value = modifiers.join('+') + (modifiers.length ? '+' : '') + key.toUpperCase()
 }
 onMounted(() => {
-  hotkeys('E', uuid, () => {
+  hotkeys('E,Enter', uuid, () => {
     confirm()
     return false
   })
