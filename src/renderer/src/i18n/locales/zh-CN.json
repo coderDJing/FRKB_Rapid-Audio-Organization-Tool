@@ -333,7 +333,8 @@
     "deletePlaylist": "删除歌单",
     "emptyPlaylist": "清空歌单",
     "collapsibleFolder": "折叠文件夹",
-    "searchPlaylists": "搜索歌单..."
+    "searchPlaylists": "搜索歌单...",
+    "createNow": "立即创建"
   },
   "recycleBin": {
     "recycleBin": "回收站",

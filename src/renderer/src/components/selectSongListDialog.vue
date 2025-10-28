@@ -223,6 +223,46 @@ const collapseButtonHandleClick = async () => {
 
 // 歌单筛选关键词（仅匹配歌单名）
 const playlistSearch = ref('')
+// 是否显示“立即创建”按钮：当存在关键字，且当前库内没有一个歌单名称与之完全匹配时显示
+const exactMatchExists = computed(() => {
+  const keyword = String(playlistSearch.value || '')
+    .trim()
+    .toLowerCase()
+  if (!keyword) return true
+  return allSongListArr.value.some((x) => (x.dirName || '').toLowerCase() === keyword)
+})
+const showCreateNow = computed(() => {
+  const keyword = String(playlistSearch.value || '').trim()
+  return !!keyword && !exactMatchExists.value
+})
+
+// 立即以关键字作为名称在根层级创建歌单，并置顶；在对话框中仅高亮不触发确认
+const createNow = async () => {
+  if (!libraryData.value) return
+  const name = String(playlistSearch.value || '').trim()
+  if (!name) return
+  const newUuid = uuidV4()
+  // 先提升已有 order，再插入新项到首位
+  for (let item of libraryData.value.children || []) {
+    if (item.order) item.order++
+  }
+  libraryData.value.children = libraryData.value.children || []
+  libraryData.value.children.unshift({
+    uuid: newUuid,
+    type: 'songList',
+    dirName: name,
+    order: 1,
+    children: []
+  } as IDir)
+  try {
+    await libraryUtils.diffLibraryTreeExecuteFileOperation()
+  } catch {}
+  // 在选择对话框内：高亮但不触发双击确认
+  runtime.dialogSelectedSongListUUID = newUuid
+  selectedArea.value = 'tree'
+  // 创建完成后清空搜索
+  playlistSearch.value = ''
+}
 
 const dragover = (e: DragEvent) => {
   if (e.dataTransfer === null) {
@@ -437,11 +477,40 @@ watch(
       </div>
       <!-- 顶部筛选输入框 -->
       <div class="librarySearchWrapper">
-        <input
-          v-model="playlistSearch"
-          class="searchInput"
-          :placeholder="t('playlist.searchPlaylists')"
-        />
+        <div class="searchRow">
+          <div class="searchInputWrapper">
+            <input
+              v-model="playlistSearch"
+              class="searchInput"
+              :placeholder="t('playlist.searchPlaylists')"
+            />
+            <div
+              class="clearBtn"
+              v-show="String(playlistSearch || '').length"
+              @click="playlistSearch = ''"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 12 12"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                shape-rendering="geometricPrecision"
+              >
+                <path
+                  d="M3 3 L9 9 M9 3 L3 9"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  vector-effect="non-scaling-stroke"
+                />
+              </svg>
+            </div>
+          </div>
+          <div v-if="showCreateNow" class="createNowBtn" @click="createNow">
+            {{ t('playlist.createNow') }}
+          </div>
+        </div>
       </div>
       <div
         class="unselectable libraryArea flashing-border"
@@ -670,6 +739,70 @@ watch(
   box-sizing: border-box;
   font-size: 12px;
   font-weight: normal;
+
+  &:hover {
+    background-color: var(--hover);
+    border-color: var(--accent);
+  }
+}
+
+// 当鼠标悬停在输入框容器（包括清空按钮）时，也应用输入框的 hover 效果
+.searchInputWrapper:hover .searchInput {
+  background-color: var(--hover);
+  border-color: var(--accent);
+}
+
+.searchRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.searchRow .searchInput {
+  flex: 1 1 auto;
+  width: 100%;
+}
+
+.searchInputWrapper {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.searchInputWrapper .searchInput {
+  width: 100%;
+  padding-right: 24px; // 为清空按钮预留空间
+}
+
+.clearBtn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-weak);
+  cursor: pointer;
+  z-index: 1;
+}
+
+.createNowBtn {
+  height: 22px;
+  line-height: 22px;
+  padding: 0 8px;
+  font-size: 12px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  box-sizing: border-box;
+  background-color: var(--bg-elev);
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap; // 禁止换行
+  flex-shrink: 0; // 不因空间不足被压缩
 
   &:hover {
     background-color: var(--hover);
