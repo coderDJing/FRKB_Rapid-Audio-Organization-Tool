@@ -333,8 +333,8 @@ const handleContextMenu = (event: MouseEvent) => {
       position: 'sticky',
       top: '0',
       'z-index': '10',
-      'background-color': '#191919',
-      'border-bottom': '1px solid #2b2b2b',
+      'background-color': 'var(--bg-elev)',
+      'border-bottom': '1px solid var(--border)',
       'min-width': `var(--songs-total-width, ${totalWidth}px)`
     }"
     :key="draggableInstanceKey"
@@ -359,7 +359,7 @@ const handleContextMenu = (event: MouseEvent) => {
         <div
           @click.stop="handleColumnClick(col)"
           style="white-space: nowrap; display: inline-flex; align-items: center; padding-right: 8px"
-          :style="{ color: col.order ? '#0078d4' : '#cccccc' }"
+          :style="{ color: col.order ? 'var(--accent)' : 'var(--text)' }"
         >
           {{ t(col.columnName) }}
           <img
@@ -433,7 +433,7 @@ const handleContextMenu = (event: MouseEvent) => {
 }
 
 .lightBackground {
-  background-color: #191919;
+  background-color: var(--bg-elev);
 }
 
 /* coverDiv 和 titleDiv 的基础样式 */
@@ -442,7 +442,7 @@ const handleContextMenu = (event: MouseEvent) => {
   height: 100%;
   /* 占满父容器高度 */
   box-sizing: border-box;
-  border-right: 1px solid #2b2b2b;
+  border-right: 1px solid var(--border);
   /* padding-left 和其他在 template 中通过 style 属性设置 */
 }
 
@@ -477,14 +477,14 @@ const handleContextMenu = (event: MouseEvent) => {
 .filter-modal {
   min-width: 360px;
   max-width: 520px;
-  background: #1f1f1f;
-  border: 1px solid #2b2b2b;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 16px 16px 12px;
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55);
 }
 .filter-title {
-  color: #cfcfcf;
+  color: var(--text);
   font-size: 12px;
   margin-bottom: 8px;
 }
@@ -492,9 +492,9 @@ const handleContextMenu = (event: MouseEvent) => {
   width: 100%;
   height: 28px;
   border-radius: 4px;
-  border: 1px solid #3a3a3a;
-  background: #121212;
-  color: #eaeaea;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
   padding: 0 8px;
   outline: none;
 }
@@ -502,7 +502,7 @@ const handleContextMenu = (event: MouseEvent) => {
   display: flex;
   gap: 12px;
   margin-bottom: 8px;
-  color: #d0d0d0;
+  color: var(--text);
 }
 .op-item input {
   margin-right: 4px;
@@ -514,9 +514,9 @@ const handleContextMenu = (event: MouseEvent) => {
 }
 .tag {
   height: 24px;
-  border: 1px solid #3a3a3a;
-  background: #191919;
-  color: #cfcfcf;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text);
   border-radius: 4px;
   padding: 0 8px;
 }
@@ -527,17 +527,17 @@ const handleContextMenu = (event: MouseEvent) => {
   margin-top: 12px;
 }
 .btns .primary {
-  background: #0078d4;
-  color: #fff;
+  background: var(--accent);
+  color: #ffffff;
   border: none;
   border-radius: 4px;
   height: 28px;
   padding: 0 10px;
 }
 .btns .danger {
-  background: #2a2a2a;
+  background: var(--bg-elev);
   color: #ff7b7b;
-  border: 1px solid #4a2a2a;
+  border: 1px solid var(--border);
   border-radius: 4px;
   height: 28px;
   padding: 0 10px;

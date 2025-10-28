@@ -137,7 +137,9 @@ onUnmounted(() => {
 .chooseDirDiv {
   width: calc(100% - 5px);
   height: 100%;
-  background-color: #313131;
+  background-color: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--text);
 
   text-overflow: ellipsis;
   overflow: hidden;
@@ -146,6 +148,12 @@ onUnmounted(() => {
   max-width: calc(100% - 5px);
   font-size: 14px;
   padding-left: 5px;
+  border-radius: 3px;
+  box-sizing: border-box;
+  &:hover {
+    background-color: var(--hover);
+    border-color: var(--accent);
+  }
 }
 
 .formLabel {

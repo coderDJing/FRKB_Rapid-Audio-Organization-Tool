@@ -87,12 +87,8 @@ const menuArr = ref<Menu[]>([
     name: 'menu.help',
     show: false,
     subMenu: [
-      [
-        { name: 'menu.visitGithub', shortcutKey: 'F1' },
-        { name: 'menu.visitWebsite' },
-        { name: 'menu.checkUpdate' },
-        { name: 'menu.about' }
-      ]
+      [{ name: 'menu.visitGithub', shortcutKey: 'F1' }, { name: 'menu.visitWebsite' }],
+      [{ name: 'menu.checkUpdate' }, { name: 'menu.about' }]
     ]
   }
 ])
@@ -206,7 +202,7 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
         align-items: center;
       "
     >
-      <img :src="logo" style="width: 20px" :draggable="false" />
+      <img :src="logo" style="width: 20px" :draggable="false" class="theme-icon" />
     </div>
     <template v-if="runtime.platform !== 'Mac'">
       <div style="z-index: 1; padding-left: 5px" v-for="item in menuArr" :key="item.name">
@@ -269,11 +265,11 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
 }
 
 .functionButton:hover {
-  background-color: #2d2e2e;
+  background-color: var(--hover);
 }
 
 .functionButtonHover {
-  background-color: #2d2e2e;
+  background-color: var(--hover);
 }
 
 .title {
@@ -283,10 +279,10 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: #181818;
+  background-color: var(--bg);
   z-index: 0;
   font-size: 13px;
-  border-bottom: 1px solid #424242;
+  border-bottom: 1px solid var(--border);
 }
 
 .titleComponent {
@@ -308,7 +304,7 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
   }
 
   .rightIcon:hover {
-    background-color: #373737;
+    background-color: var(--hover);
   }
 
   .closeIcon:hover {

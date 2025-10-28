@@ -146,14 +146,14 @@ function getButtonKey(button: { name: string; shortcutKey?: string; action?: str
 <style lang="scss" scoped>
 .menu {
   position: absolute;
-  background-color: #1f1f1f;
-  border: 1px solid #454545;
+  background-color: var(--bg-elev);
+  border: 1px solid var(--border);
   font-size: 14px;
   width: 310px;
   border-radius: 5px;
 
   .menuGroup {
-    border-bottom: 1px solid #454545;
+    border-bottom: 1px solid var(--border);
     padding: 5px 5px;
 
     .menuButton {
@@ -164,8 +164,8 @@ function getButtonKey(button: { name: string; shortcutKey?: string; action?: str
     }
 
     .menuButtonHover {
-      background-color: #0078d4;
-      color: white;
+      background-color: var(--accent);
+      color: #ffffff;
     }
   }
 

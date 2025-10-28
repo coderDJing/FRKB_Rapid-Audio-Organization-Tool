@@ -404,5 +404,11 @@
     "selectItems": "选择{count}项",
     "desktop": "桌面",
     "rootLabel": "驱动器"
+  },
+  "theme": {
+    "mode": "主题模式",
+    "system": "跟随系统",
+    "light": "日间模式",
+    "dark": "夜间模式"
   }
 }

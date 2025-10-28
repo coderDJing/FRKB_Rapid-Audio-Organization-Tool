@@ -134,6 +134,12 @@ const buildFullMenu = () =>
             mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.visitGithub')
         },
         {
+          label: tMenu('menu.visitWebsite'),
+          click: () =>
+            mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.visitWebsite')
+        },
+        { type: 'separator' },
+        {
           label: tMenu('menu.checkUpdate'),
           click: () =>
             mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.checkUpdate')

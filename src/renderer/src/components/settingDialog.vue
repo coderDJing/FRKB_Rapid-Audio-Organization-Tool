@@ -333,7 +333,15 @@ const clearCloudFingerprints = async () => {
           defer
         >
           <div style="padding: 20px; font-size: 14px; flex-grow: 1">
-            <div>{{ t('common.language') }}：</div>
+            <div>{{ t('theme.mode') }}：</div>
+            <div style="margin-top: 10px">
+              <select v-model="(runtime as any).setting.themeMode" @change="setSetting">
+                <option value="system">{{ t('theme.system') }}</option>
+                <option value="light">{{ t('theme.light') }}</option>
+                <option value="dark">{{ t('theme.dark') }}</option>
+              </select>
+            </div>
+            <div style="margin-top: 20px">{{ t('common.language') }}：</div>
             <div style="margin-top: 10px">
               <select v-model="runtime.setting.language" @change="setSetting">
                 <option value="zhCN">简体中文</option>
@@ -492,6 +500,7 @@ const clearCloudFingerprints = async () => {
                 :src="hintIcon"
                 style="width: 15px; height: 15px; margin-top: 5px"
                 :draggable="false"
+                class="theme-icon"
               />
               <bubbleBox
                 :dom="hint1Ref || undefined"
@@ -559,6 +568,7 @@ const clearCloudFingerprints = async () => {
                 :src="hintIcon"
                 style="width: 15px; height: 15px; margin-top: 5px"
                 :draggable="false"
+                class="theme-icon"
               />
               <bubbleBox
                 :dom="hintErrorReportRef || undefined"
@@ -585,10 +595,17 @@ const clearCloudFingerprints = async () => {
 .myInput {
   width: 50px;
   height: 19px;
-  background-color: #313131;
-  border: 1px solid #313131;
+  background-color: var(--bg-elev);
+  border: 1px solid var(--border);
   outline: none;
-  color: #cccccc;
+  color: var(--text);
+  border-radius: 3px;
+  padding: 0 6px;
+
+  &:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.25);
+  }
 }
 
 .dangerButton {
@@ -596,42 +613,55 @@ const clearCloudFingerprints = async () => {
   line-height: 25px;
   padding: 0 10px;
   border-radius: 5px;
-  background-color: #2d2e2e;
+  background-color: var(--hover);
+  border: 1px solid var(--border);
   font-size: 14px;
 
   &:hover {
-    color: white;
+    color: #ffffff;
     background-color: #e81123;
   }
 }
 
 select {
-  border: 0px solid #313131;
-  background-color: #313131;
-  color: #cccccc;
+  border: 1px solid var(--border);
+  background-color: var(--bg-elev);
+  color: var(--text);
   font-size: 14px;
   width: 200px;
   height: 25px;
   padding-left: 5px;
   outline: none;
+
+  &:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.25);
+  }
 }
 
 /* 美化选项内容 */
 option {
   padding: 5px;
-  background-color: #1f1f1f;
-  color: #cccccc;
+  background-color: var(--bg-elev);
+  color: var(--text);
 }
 
 .chooseDirDiv {
   height: 25px;
   line-height: 25px;
-  background-color: #313131;
+  background-color: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--text);
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
   width: 200px;
   font-size: 14px;
   padding-left: 5px;
+  box-sizing: border-box;
+  &:hover {
+    background-color: var(--hover);
+    border-color: var(--accent);
+  }
 }
 </style>

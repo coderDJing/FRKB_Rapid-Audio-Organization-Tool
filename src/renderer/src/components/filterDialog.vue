@@ -84,7 +84,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="dialog unselectable" style="font-size: 14px; color: #cccccc">
+  <div class="dialog unselectable" style="font-size: 14px; color: var(--text)">
     <div
       class="inner"
       style="
@@ -161,18 +161,26 @@ onUnmounted(() => {
 .filter-input {
   height: 28px;
   border-radius: 4px;
-  border: 1px solid #3a3a3a;
-  background: #121212;
-  color: #eaeaea;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text);
   padding: 0 8px;
   box-sizing: border-box; /* 防止 width:100% 加上边框后溢出，保证左右视觉边距一致 */
   outline: none;
+
+  &::placeholder {
+    color: var(--text-weak);
+  }
+  &:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.25);
+  }
 }
 .radio-group {
   display: flex;
   gap: 16px;
   margin-bottom: 10px;
-  color: #cccccc;
+  color: var(--text);
 }
 .radio {
   display: inline-flex;
@@ -193,7 +201,7 @@ onUnmounted(() => {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 1px solid #3a3a3a; /* 外圈边框保留 */
+  border: 1px solid var(--border); /* 外圈边框保留 */
   background: transparent; /* 外圈无填充色 */
   position: relative;
   transition: all 0.15s ease;
@@ -203,7 +211,7 @@ onUnmounted(() => {
   position: absolute;
   inset: 4px; /* 内圈更小 */
   border-radius: 50%;
-  background: #0078d4; /* 内圈蓝色 */
+  background: var(--accent); /* 内圈蓝色 */
   opacity: 0;
   transition: opacity 0.12s ease;
 }
@@ -211,31 +219,35 @@ onUnmounted(() => {
   opacity: 1; /* 勾选时显示蓝色内圈 */
 }
 .radio:hover .dot {
-  border-color: #5a5a5a; /* hover 时外圈边框微亮 */
-  background: rgba(255, 255, 255, 0.02);
+  border-color: var(--text-weak);
+  background: rgba(0, 0, 0, 0.02);
 }
 .tag {
   height: 24px;
   line-height: 24px;
   padding: 0 8px;
-  border: 1px solid #3a3a3a;
-  background: #191919;
-  color: #cfcfcf;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text);
   border-radius: 4px;
   cursor: pointer;
+
+  &:hover {
+    background: var(--hover);
+  }
 }
 .button {
   height: 25px;
   line-height: 25px;
   padding: 0 10px;
   border-radius: 5px;
-  background-color: #2d2e2e;
+  background-color: var(--hover);
   font-size: 14px;
   user-select: none;
   cursor: pointer;
   &:hover {
     color: #ffffff;
-    background-color: #3a3a3a;
+    background-color: var(--accent);
   }
 }
 .dangerButton {
@@ -243,7 +255,7 @@ onUnmounted(() => {
   line-height: 25px;
   padding: 0 10px;
   border-radius: 5px;
-  background-color: #2d2e2e;
+  background-color: var(--hover);
   font-size: 14px;
   user-select: none;
   cursor: pointer;
