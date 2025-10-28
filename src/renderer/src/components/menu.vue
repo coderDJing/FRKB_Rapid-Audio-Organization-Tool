@@ -66,7 +66,7 @@ watch(
           selectedMenuButton.value = getButtonKey(menuArr[index + 1])
         }
       })
-      hotkeys('e', uuid, () => {
+      hotkeys('e,enter', uuid, () => {
         if (selectedMenuButton.value === '') {
           return
         }

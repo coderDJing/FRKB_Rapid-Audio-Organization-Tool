@@ -61,7 +61,7 @@ const emailHintIconRef = useTemplateRef<HTMLImageElement>('emailHintIconRef')
 onMounted(async () => {
   const cfg = await window.electron.ipcRenderer.invoke('cloudSync/config/get')
   userKey.value = cfg?.userKey || ''
-  hotkeys('E', uuid, () => {
+  hotkeys('E,Enter', uuid, () => {
     void clickSave()
   })
   hotkeys('T', uuid, () => {

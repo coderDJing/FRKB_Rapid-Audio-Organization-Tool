@@ -67,7 +67,7 @@ const cancel = () => {
   emits('cancel')
 }
 onMounted(() => {
-  hotkeys('E', uuid, () => {
+  hotkeys('E,Enter', uuid, () => {
     confirm()
   })
   hotkeys('Esc', uuid, () => {
