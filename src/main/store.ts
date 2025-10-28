@@ -13,6 +13,7 @@ let layoutConfig: ILayoutConfig = {
 let settingConfig: ISettingConfig = {
   platform: 'win32',
   language: '',
+  themeMode: 'system',
   audioExt: [],
   databaseUrl: '',
   globalCallShortcut: '',

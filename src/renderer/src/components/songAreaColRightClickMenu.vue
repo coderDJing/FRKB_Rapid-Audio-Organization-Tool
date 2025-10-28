@@ -75,7 +75,7 @@ watch(
             align-items: center;
           "
         >
-          <img v-if="item.show" :src="tickIcon" style="width: 16px" />
+          <img v-if="item.show" :src="tickIcon" style="width: 16px" class="theme-icon" />
         </div>
         <div style="margin-left: 10px">
           <span>{{ t(item.columnName) }}</span>
@@ -87,14 +87,15 @@ watch(
 <style lang="scss" scoped>
 .menu {
   position: absolute;
-  background-color: #1f1f1f;
-  border: 1px solid #454545;
+  background-color: var(--bg-elev);
+  border: 1px solid var(--border);
   font-size: 14px;
   width: 250px;
   border-radius: 5px;
+  z-index: 10010; // 高于全局 .dialog(9999)
 
   .menuGroup {
-    border-bottom: 1px solid #454545;
+    border-bottom: 1px solid var(--border);
     padding: 5px 5px;
 
     .menuButton {
@@ -103,8 +104,8 @@ watch(
       border-radius: 5px;
 
       &:hover {
-        background-color: #0078d4;
-        color: white;
+        background-color: var(--accent);
+        color: #ffffff;
       }
     }
   }

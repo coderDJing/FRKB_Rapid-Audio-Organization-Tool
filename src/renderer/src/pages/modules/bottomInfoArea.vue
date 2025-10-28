@@ -97,7 +97,7 @@ window.electron.ipcRenderer.on('noAudioFileWasScanned', async (event) => {
 .loading {
   display: block;
   font-size: 0;
-  color: #cccccc;
+  color: var(--text);
 }
 
 .loading.la-dark {

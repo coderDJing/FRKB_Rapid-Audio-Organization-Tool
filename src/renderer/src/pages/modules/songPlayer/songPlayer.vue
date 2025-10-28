@@ -347,14 +347,15 @@ watch(
 .songInfo {
   width: 300px;
   height: 370px;
-  background-color: #202020;
+  background-color: var(--bg-elev);
   position: absolute;
   bottom: 25px;
   left: 50px;
-  border: 1px solid #424242;
+  border: 1px solid var(--border);
   border-radius: 3px;
   padding-top: 10px;
-  z-index: 99;
+  z-index: 10010;
+  color: var(--text);
 
   .cover {
     width: 100%;

@@ -592,6 +592,7 @@ watch(
         v-if="dirData.type == 'songList' && runtime.creatingSongListUUID !== props.uuid"
         style="width: 13px; height: 13px"
         :src="listIcon"
+        class="songlist-icon"
       />
       <div
         v-if="dirData.type == 'songList' && runtime.creatingSongListUUID === props.uuid"
@@ -693,50 +694,50 @@ watch(
   font-size: 11px;
   line-height: 16px;
   text-align: center;
-  background-color: #2d2e2e;
-  color: #a0a0a0;
+  background-color: var(--hover);
+  color: var(--text-weak);
   position: absolute;
   right: 8px;
   top: 50%;
   transform: translateY(-50%);
 }
 .selectedDir {
-  background-color: #37373d;
+  background-color: var(--hover);
 
   &:hover {
-    background-color: #37373d !important;
+    background-color: var(--hover) !important;
   }
 }
 
 .mainBody {
   &:hover {
-    background-color: #2a2d2e;
+    background-color: var(--hover);
   }
 }
 
 .borderTop {
-  box-shadow: inset 0 1px 0 0 #0078d4;
+  box-shadow: inset 0 1px 0 0 var(--accent);
 }
 
 .borderBottom {
-  box-shadow: inset 0 -1px 0 0 #0078d4;
+  box-shadow: inset 0 -1px 0 0 var(--accent);
 }
 
 .borderCenter {
-  box-shadow: inset 0 0 0 1px #0078d4;
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .rightClickBorder {
-  box-shadow: inset 0 0 0 1px #0078d4;
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .myInput {
   width: calc(100% - 6px);
   height: 19px;
-  background-color: #313131;
-  border: 1px solid #086bb7;
+  background-color: var(--bg-elev);
+  border: 1px solid var(--border);
   outline: none;
-  color: #cccccc;
+  color: var(--text);
 }
 
 .myInputRedBorder {
@@ -760,7 +761,7 @@ watch(
 }
 
 .prefixIcon {
-  color: #cccccc;
+  color: var(--text);
   width: 20px;
   min-width: 20px;
   height: 23px;
@@ -772,7 +773,7 @@ watch(
 .loading {
   width: 8px;
   height: 8px;
-  border: 2px solid #cccccc;
+  border: 2px solid var(--text);
   border-top-color: transparent;
   border-radius: 100%;
   animation: circle infinite 0.75s linear;

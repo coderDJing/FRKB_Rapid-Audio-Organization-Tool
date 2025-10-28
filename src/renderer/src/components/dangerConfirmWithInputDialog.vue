@@ -86,11 +86,17 @@ onUnmounted(() => {
 .dangerInput {
   height: 25px;
   line-height: 25px;
-  background-color: #313131;
-  border: 1px solid #313131;
+  background-color: var(--bg-elev);
+  border: 1px solid var(--border);
   outline: none;
-  color: #cccccc;
+  color: var(--text);
   padding: 0 6px;
+  border-radius: 3px;
+
+  &:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.25);
+  }
 }
 .button.disabled {
   opacity: 0.5;

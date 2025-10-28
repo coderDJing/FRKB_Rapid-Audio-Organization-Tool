@@ -829,6 +829,7 @@ watch(keyword, () => {
         "
         style="width: 13px; height: 13px"
         :src="isPlaying ? listIconBlue : listIcon"
+        :class="!isPlaying ? 'songlist-icon' : ''"
       />
       <div
         v-if="dirData.type == 'songList' && runtime.creatingSongListUUID === props.uuid"
@@ -938,8 +939,8 @@ watch(keyword, () => {
   font-size: 11px;
   line-height: 16px;
   text-align: center;
-  background-color: #2d2e2e;
-  color: #a0a0a0;
+  background-color: var(--hover);
+  color: var(--text-weak);
   position: absolute;
   right: 8px;
   top: 50%;
@@ -947,21 +948,21 @@ watch(keyword, () => {
 }
 
 .isPlaying.countBadge {
-  background-color: #0b4f7d;
-  color: #ffffff;
+  background-color: var(--accent);
+  color: #ffffff !important;
 }
 .isPlaying {
-  color: #0078d4 !important;
+  color: var(--accent) !important;
 }
 
 .isPlayingLoading {
-  border: 2px solid #0078d4 !important;
+  border: 2px solid var(--accent) !important;
 }
 
 .loading {
   width: 8px;
   height: 8px;
-  border: 2px solid #cccccc;
+  border: 2px solid var(--text);
   border-top-color: transparent;
   border-radius: 100%;
   animation: circle infinite 0.75s linear;
@@ -979,42 +980,42 @@ watch(keyword, () => {
 }
 
 .selectedDir {
-  background-color: #37373d;
+  background-color: var(--hover);
 
   &:hover {
-    background-color: #37373d !important;
+    background-color: var(--hover) !important;
   }
 }
 
 .mainBody {
   &:hover {
-    background-color: #2a2d2e;
+    background-color: var(--hover);
   }
 }
 
 .borderTop {
-  box-shadow: inset 0 1px 0 0 #0078d4;
+  box-shadow: inset 0 1px 0 0 var(--accent);
 }
 
 .borderBottom {
-  box-shadow: inset 0 -1px 0 0 #0078d4;
+  box-shadow: inset 0 -1px 0 0 var(--accent);
 }
 
 .borderCenter {
-  box-shadow: inset 0 0 0 1px #0078d4;
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .rightClickBorder {
-  box-shadow: inset 0 0 0 1px #0078d4;
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .myInput {
   width: calc(100% - 6px);
   height: 19px;
-  background-color: #313131;
-  border: 1px solid #086bb7;
+  background-color: var(--bg-elev);
+  border: 1px solid var(--border);
   outline: none;
-  color: #cccccc;
+  color: var(--text);
 }
 
 .myInputRedBorder {
@@ -1038,7 +1039,7 @@ watch(keyword, () => {
 }
 
 .prefixIcon {
-  color: #cccccc;
+  color: var(--text);
   width: 20px;
   min-width: 20px;
   height: 23px;

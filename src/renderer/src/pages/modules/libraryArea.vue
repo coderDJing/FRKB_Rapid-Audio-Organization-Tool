@@ -213,7 +213,12 @@ const drop = async (e: DragEvent) => {
           v-show="runtime.libraryAreaSelected === 'RecycleBin'"
           @click="emptyRecycleBinHandleClick()"
         >
-          <img :src="emptyRecycleBin" style="width: 16px; height: 16px" draggable="false" />
+          <img
+            :src="emptyRecycleBin"
+            style="width: 16px; height: 16px"
+            draggable="false"
+            class="theme-icon"
+          />
         </div>
         <div ref="collapseButtonRef" class="collapseButton" @click="collapseButtonHandleClick()">
           <svg
@@ -299,7 +304,7 @@ const drop = async (e: DragEvent) => {
 </template>
 <style lang="scss" scoped>
 .borderTop {
-  box-shadow: inset 0 1px 0 0 #0078d4;
+  box-shadow: inset 0 1px 0 0 var(--accent);
 }
 
 .libraryArea {
@@ -315,7 +320,7 @@ const drop = async (e: DragEvent) => {
   width: 100%;
   display: flex;
   flex-grow: 1;
-  background-color: #181818;
+  background-color: var(--bg);
   overflow: hidden;
   flex-direction: column;
 
@@ -329,7 +334,7 @@ const drop = async (e: DragEvent) => {
     justify-content: space-between;
 
     .collapseButton {
-      color: #cccccc;
+      color: var(--text);
       width: 20px;
       height: 20px;
       display: flex;
@@ -339,7 +344,7 @@ const drop = async (e: DragEvent) => {
       border-radius: 5px;
 
       &:hover {
-        background-color: #2d2e2e;
+        background-color: var(--hover);
       }
     }
   }
@@ -347,22 +352,27 @@ const drop = async (e: DragEvent) => {
 
 .librarySearchWrapper {
   padding: 6px 5px 6px 5px;
-  background-color: #181818;
+  background-color: var(--bg);
 }
 
 .searchInput {
   width: 100%;
   height: 22px;
   line-height: 22px;
-  background-color: #202020;
-  border: 1px solid #424242;
+  background-color: var(--bg-elev);
+  border: 1px solid var(--border);
   outline: none;
-  color: #cccccc;
+  color: var(--text);
   border-radius: 2px;
   padding: 0 8px;
   box-sizing: border-box;
   font-size: 12px;
   font-weight: normal;
+
+  &:hover {
+    background-color: var(--hover);
+    border-color: var(--accent);
+  }
 }
 
 .bubbleBox {
@@ -371,9 +381,9 @@ const drop = async (e: DragEvent) => {
   text-align: center;
   position: relative;
   border-radius: 3px;
-  border: 1px solid #424242;
+  border: 1px solid var(--border);
   font-size: 12px;
-  background-color: #202020;
+  background-color: var(--bg-elev);
   padding: 0 10px;
   font-weight: normal;
 }

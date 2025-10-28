@@ -59,7 +59,7 @@ const optionFontSizeVar = computed(() => {
   display: flex;
   flex-direction: column; /* 强制竖排 */
   gap: 10px;
-  color: #cccccc;
+  color: var(--text);
 }
 .radio {
   display: inline-flex;
@@ -68,6 +68,11 @@ const optionFontSizeVar = computed(() => {
   cursor: default; /* 不显示小手 */
   user-select: none;
   font-size: var(--radio-option-font-size, 14px);
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 .radio input[type='radio'] {
   appearance: none;
@@ -80,7 +85,7 @@ const optionFontSizeVar = computed(() => {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 1px solid #3a3a3a;
+  border: 1px solid var(--border);
   background: transparent;
   position: relative;
   transition: all 0.15s ease;
@@ -90,16 +95,21 @@ const optionFontSizeVar = computed(() => {
   position: absolute;
   inset: 4px;
   border-radius: 50%;
-  background: #0078d4;
+  background: var(--accent);
   opacity: 0;
   transition: opacity 0.12s ease;
 }
 .radio input[type='radio']:checked + .dot::after {
   opacity: 1;
 }
+.radio input[type='radio']:checked + .dot {
+  border-color: var(--accent);
+}
 .radio:hover .dot {
-  /* 仍可轻微高亮，若不需要可移除 */
-  border-color: #5a5a5a;
+  border-color: var(--accent);
+}
+.radio:hover .label {
+  color: var(--accent);
 }
 .radio .label {
   line-height: 16px;

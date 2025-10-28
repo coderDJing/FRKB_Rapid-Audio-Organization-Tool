@@ -283,8 +283,8 @@ window.electron.ipcRenderer.on('delSongsSuccess', (_event, recycleBinNewDirDescr
       style="
         height: 20px;
         width: 100%;
-        background-color: #181818;
-        border-top: 1px solid #2b2b2b;
+        background-color: var(--bg);
+        border-top: 1px solid var(--border);
         box-sizing: border-box;
         overflow: hidden;
       "
@@ -326,14 +326,14 @@ window.electron.ipcRenderer.on('delSongsSuccess', (_event, recycleBinNewDirDescr
 </template>
 <style lang="scss">
 #app {
-  color: #cccccc;
-  background-color: #181818;
+  color: var(--text);
+  background-color: var(--bg);
   width: 100%;
   height: 100vh;
 }
 
 body {
   margin: 0px;
-  background-color: #1f1f1f;
+  background-color: var(--bg-elev);
 }
 </style>

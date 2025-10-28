@@ -46,6 +46,8 @@ const my_real_DB = 'D:\\FRKB_database'
 // 需要切换时，将下一行改为 my_real_DB
 let devDatabase = dev_DB
 
+// 主题：默认按设置文件（首次为 system），不再强制日间模式
+
 const gotTheLock = app.requestSingleInstanceLock()
 
 if (!gotTheLock) {
@@ -81,6 +83,7 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
   fs.outputJsonSync(url.settingConfigFileUrl, {
     platform: platform,
     language: is.dev ? 'zhCN' : '',
+    themeMode: 'system',
     audioExt: ['.mp3', '.wav', '.flac', '.aif', '.aiff'],
     databaseUrl: '',
     globalCallShortcut:
@@ -102,6 +105,7 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
 const defaultSettings = {
   platform: (platform === 'darwin' ? 'darwin' : 'win32') as 'darwin' | 'win32',
   language: (is.dev ? 'zhCN' : '') as '' | 'enUS' | 'zhCN',
+  themeMode: 'system' as 'system' | 'light' | 'dark',
   audioExt: ['.mp3', '.wav', '.flac', '.aif', '.aiff'],
   databaseUrl: '',
   globalCallShortcut:
@@ -216,15 +220,38 @@ if (is.dev && platform === 'win32') {
   // }
 }
 
+// 根据设置应用主题，并在 system 模式下广播一次当前状态
+function applyThemeFromSettings() {
+  try {
+    const mode = ((store as any).settingConfig?.themeMode || 'system') as
+      | 'system'
+      | 'light'
+      | 'dark'
+    nativeTheme.themeSource = mode
+  } catch {}
+}
+function broadcastSystemThemeIfNeeded() {
+  try {
+    const mode = ((store as any).settingConfig?.themeMode || 'system') as
+      | 'system'
+      | 'light'
+      | 'dark'
+    if (mode === 'system' && mainWindow.instance) {
+      mainWindow.instance.webContents.send('theme/system-updated', {
+        isDark: nativeTheme.shouldUseDarkColors
+      })
+    }
+  } catch {}
+}
+
 app.whenReady().then(async () => {
   electronApp.setAppUserModelId('frkb.coderDjing')
   // 设置应用显示名称为 FRKB（影响菜单栏左上角 App 菜单标题）
   try {
     app.setName('FRKB')
   } catch {}
-  if (process.platform === 'darwin') {
-    nativeTheme.themeSource = 'dark'
-  }
+  // 启动即按设置应用主题
+  applyThemeFromSettings()
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
@@ -234,6 +261,14 @@ app.whenReady().then(async () => {
   }
   // 数据库准备与主窗口：统一调用幂等流程
   await prepareAndOpenMainWindow()
+  // 初次创建窗口后，若为跟随系统，广播一次当前主题
+  broadcastSystemThemeIfNeeded()
+  // 在系统主题变化时（仅 system 模式关注）广播更新
+  try {
+    nativeTheme.on('updated', () => {
+      broadcastSystemThemeIfNeeded()
+    })
+  } catch {}
   // 应用启动后，延迟对所有歌单目录做一次全量 sweep（保证重启后也能清理空歌单残留封面）
   try {
     setTimeout(async () => {
@@ -347,6 +382,11 @@ ipcMain.handle('setSetting', async (e, setting) => {
   const prevMode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
   store.settingConfig = setting
   await fs.outputJson(url.settingConfigFileUrl, setting)
+  // 主题切换：应用到 nativeTheme，并在 system 模式下广播
+  try {
+    applyThemeFromSettings()
+    broadcastSystemThemeIfNeeded()
+  } catch {}
   // 指纹模式切换：即时切换内存列表并按新模式加载
   try {
     const nextMode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'

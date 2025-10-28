@@ -321,6 +321,7 @@ onUnmounted(() => {
                     :src="hintIcon"
                     style="width: 15px; height: 15px"
                     :draggable="false"
+                    class="theme-icon"
                   />
                   <bubbleBox
                     :dom="hint1Ref || undefined"
@@ -352,6 +353,7 @@ onUnmounted(() => {
                     :src="hintIcon"
                     style="width: 15px; height: 15px"
                     :draggable="false"
+                    class="theme-icon"
                   />
                   <bubbleBox
                     :dom="hint2Ref || undefined"
@@ -403,7 +405,7 @@ onUnmounted(() => {
 .chooseDirDiv {
   width: 100%;
   height: 20px;
-  background-color: #313131;
+  background-color: var(--bg-elev);
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
@@ -411,6 +413,13 @@ onUnmounted(() => {
   padding-left: 5px;
   line-height: 20px;
   border-radius: 3px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  box-sizing: border-box;
+  &:hover {
+    background-color: var(--hover);
+    border-color: var(--accent);
+  }
 }
 
 .formLabel {

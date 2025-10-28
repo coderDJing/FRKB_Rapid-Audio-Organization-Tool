@@ -416,12 +416,12 @@ onUnmounted(() => {
   </div>
   <transition name="fade">
     <div class="moreMenu unselectable" v-if="moreMenuShow">
-      <div style="padding: 5px 5px; border-bottom: 1px solid #454545">
+      <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
         <div class="menuButton" @click="exportTrack()">
           <span>{{ t('tracks.exportTracks') }}</span>
         </div>
       </div>
-      <div style="padding: 5px 5px; border-bottom: 1px solid #454545">
+      <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
         <div class="menuButton" @click="moveToListLibrary()">
           <div>
             <span>{{ t('library.moveToFilter') }}</span>
@@ -440,7 +440,7 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
-      <div style="padding: 5px 5px; border-bottom: 1px solid #454545">
+      <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
         <div class="menuButton" @click="delSong()">
           <div>
             <span>{{ t('tracks.deleteTracks') }} </span>
@@ -461,16 +461,15 @@ onUnmounted(() => {
 <style lang="scss" scoped>
 .moreMenu {
   width: 250px;
-  // height: 120px;
-  background-color: #202020;
+  background-color: var(--bg-elev);
   position: absolute;
-  border: 1px solid #424242;
+  border: 1px solid var(--border);
   border-radius: 3px;
-  z-index: 99;
+  z-index: 10010;
   bottom: 60px;
   left: 250px;
-  // padding: 5px 5px;
   font-size: 14px;
+  color: var(--text);
 
   .menuButton {
     display: flex;
@@ -479,8 +478,8 @@ onUnmounted(() => {
     border-radius: 5px;
 
     &:hover {
-      background-color: #0078d4;
-      color: white;
+      background-color: var(--accent);
+      color: #ffffff;
     }
   }
 }
@@ -504,7 +503,7 @@ onUnmounted(() => {
     align-items: center;
 
     &:hover {
-      filter: contrast(200%) drop-shadow(0px 0px 10px #fff);
+      filter: contrast(120%) drop-shadow(0px 0px 6px var(--text));
     }
   }
 
@@ -526,8 +525,8 @@ img {
   transform: translateX(-50%);
   width: 32px;
   height: 120px;
-  background-color: #202020;
-  border: 1px solid #424242;
+  background-color: var(--bg-elev);
+  border: 1px solid var(--border);
   border-radius: 6px;
   display: flex;
   align-items: center;
@@ -542,7 +541,7 @@ img {
   position: relative;
   width: 6px;
   height: 100%;
-  background: #2e2e2e;
+  background: var(--border);
   border-radius: 4px;
   cursor: pointer;
   filter: none;
@@ -553,7 +552,17 @@ img {
   left: 0;
   bottom: 0;
   width: 100%;
-  background: #0078d4;
+  background: var(--accent);
   border-radius: 4px;
+}
+
+/* 浅色主题下：去掉阴影，用纯黑作为 hover 高亮（适用于白色 PNG 图标） */
+.theme-light .playerControls {
+  .buttonIcon:hover {
+    filter: none;
+  }
+  .buttonIcon:hover img {
+    filter: grayscale(1) brightness(0);
+  }
 }
 </style>
