@@ -432,6 +432,7 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
                   :src="hintIcon"
                   style="width: 14px; height: 14px; margin-left: 6px"
                   :draggable="false"
+                  class="theme-icon"
                 />
                 <bubbleBox
                   :dom="(optionHintRefs[opt.value] || undefined) as any"
@@ -445,7 +446,7 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
               </template>
             </singleRadioGroup>
           </div>
-          <div class="helper" style="font-size: 11px; color: #999">
+          <div class="helper" style="font-size: 11px; color: var(--text-weak)">
             {{ t('fingerprints.modeIncompatibleWarning') }}
           </div>
         </div>
@@ -469,33 +470,33 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
 </template>
 <style lang="scss">
 #app {
-  color: #cccccc;
-  background-color: #181818;
+  color: var(--text);
+  background-color: var(--bg);
   width: 100vw;
   height: 100vh;
 }
 
 body {
   margin: 0px;
-  background-color: #1f1f1f;
+  background-color: var(--bg-elev);
 }
 
 .tabs {
   display: flex;
   gap: 8px;
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--border);
 }
 
 .tab {
   padding: 6px 12px;
   cursor: pointer;
-  color: #bbbbbb;
+  color: var(--text-weak);
   font-size: 12px;
 }
 
 .tab.active {
-  color: #ffffff;
-  border-bottom: 2px solid #ffffff;
+  color: var(--accent);
+  border-bottom: 2px solid var(--accent);
   font-size: 12px;
 }
 
@@ -506,7 +507,7 @@ body {
 }
 
 .fieldLabel {
-  color: #bbbbbb;
+  color: var(--text-weak);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -514,12 +515,12 @@ body {
 
 .helper {
   font-size: 11px;
-  color: #999;
+  color: var(--text-weak);
 }
 
 .chooseDirDiv {
   height: 28px;
-  background-color: #313131;
+  background-color: var(--bg-elev);
   box-sizing: border-box;
 
   text-overflow: ellipsis;
@@ -529,20 +530,38 @@ body {
   font-size: 12px;
   padding-left: 5px;
   line-height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+
+  &:hover {
+    background-color: var(--hover);
+    border-color: var(--accent);
+  }
 }
 
 .nameInput {
   height: 28px;
   line-height: 28px;
-  background-color: #313131;
-  border: 0;
+  background-color: var(--bg-elev);
+  border: 1px solid var(--border);
   outline: none;
-  color: #cccccc;
+  color: var(--text);
   box-sizing: border-box;
   padding: 0 0 0 5px;
   font-size: 12px;
   -webkit-appearance: none;
   appearance: none;
+  border-radius: 3px;
+
+  &::placeholder {
+    color: var(--text-weak);
+  }
+
+  &:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.25);
+  }
 }
 
 /* 复用筛选弹窗的单选样式，保持一致视觉 */
@@ -550,7 +569,7 @@ body {
   display: flex;
   gap: 16px;
   margin-bottom: 10px;
-  color: #cccccc;
+  color: var(--text);
 }
 
 .radio {
@@ -573,7 +592,7 @@ body {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 1px solid #3a3a3a;
+  border: 1px solid var(--border);
   background: transparent;
   position: relative;
   transition: all 0.15s ease;
@@ -584,7 +603,7 @@ body {
   position: absolute;
   inset: 4px;
   border-radius: 50%;
-  background: #0078d4;
+  background: var(--accent);
   opacity: 0;
   transition: opacity 0.12s ease;
 }
@@ -594,7 +613,7 @@ body {
 }
 
 .radio:hover .dot {
-  border-color: #5a5a5a;
-  background: rgba(255, 255, 255, 0.02);
+  border-color: var(--border);
+  background: rgba(0, 0, 0, 0.02);
 }
 </style>

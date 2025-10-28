@@ -403,5 +403,11 @@
     "selectItems": "Select {count} items",
     "desktop": "Desktop",
     "rootLabel": "Drives"
+  },
+  "theme": {
+    "mode": "Theme mode",
+    "system": "Follow system",
+    "light": "Light",
+    "dark": "Dark"
   }
 }

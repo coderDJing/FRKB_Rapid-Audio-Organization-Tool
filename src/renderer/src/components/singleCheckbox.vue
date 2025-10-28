@@ -52,7 +52,9 @@ input[type='checkbox'] {
   position: relative;
   width: 18px;
   height: 18px;
-  background: #313131;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 3px;
 }
 
 .checkBox label {
@@ -61,7 +63,8 @@ input[type='checkbox'] {
   height: 18px;
   top: 0;
   left: 0;
-  background: #313131;
+  background: var(--bg-elev);
+  border-radius: 3px;
 }
 
 .checkBox label:after {
@@ -74,7 +77,7 @@ input[type='checkbox'] {
   background: transparent;
   top: 2px;
   left: 3px;
-  border: 1px solid white;
+  border: 1px solid var(--accent);
   border-top: none;
   border-right: none;
 

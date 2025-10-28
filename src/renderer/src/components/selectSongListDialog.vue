@@ -479,7 +479,7 @@ watch(
             <div style="padding-left: 5px">
               <span style="font-size: 14px">{{ t('library.recentlyUsed') }}</span>
             </div>
-            <div style="width: 100%; background-color: #8c8c8c; height: 1px">
+            <div style="width: 100%; background-color: var(--border); height: 1px">
               <div style="height: 1px"></div>
             </div>
             <div
@@ -500,7 +500,7 @@ watch(
               class="recentLibraryItem"
             >
               <div style="width: 20px; justify-content: center; align-items: center; display: flex">
-                <img style="width: 13px; height: 13px" :src="listIcon" />
+                <img class="songlist-icon" style="width: 13px; height: 13px" :src="listIcon" />
               </div>
               <div class="nameRow">
                 <span class="nameText">{{ item.dirName }}</span>
@@ -509,7 +509,7 @@ watch(
                 }}</span>
               </div>
             </div>
-            <div style="width: 100%; background-color: #8c8c8c; height: 1px">
+            <div style="width: 100%; background-color: var(--border); height: 1px">
               <div style="height: 1px"></div>
             </div>
           </template>
@@ -545,7 +545,9 @@ watch(
           min-height: 0;
         "
       >
-        <span style="font-size: 12px; color: #8c8c8c">{{ t('library.rightClickToCreate') }}</span>
+        <span style="font-size: 12px; color: var(--text-weak)">{{
+          t('library.rightClickToCreate')
+        }}</span>
       </div>
 
       <div style="display: flex; justify-content: center; padding-bottom: 10px">
@@ -572,7 +574,7 @@ watch(
   font-size: 13px;
 
   &:hover {
-    background-color: #2a2d2e;
+    background-color: var(--hover);
   }
 }
 
@@ -600,8 +602,8 @@ watch(
   font-size: 11px;
   line-height: 16px;
   text-align: center;
-  background-color: #2d2e2e;
-  color: #a0a0a0;
+  background-color: var(--hover);
+  color: var(--text-weak);
   position: absolute;
   right: 8px;
   top: 50%;
@@ -609,10 +611,10 @@ watch(
 }
 
 .selectedDir {
-  background-color: #37373d;
+  background-color: var(--hover);
 
   &:hover {
-    background-color: #37373d !important;
+    background-color: var(--hover) !important;
   }
 }
 
@@ -631,7 +633,7 @@ watch(
   max-width: 300px;
   display: flex;
   flex-grow: 1;
-  background-color: #181818;
+  background-color: var(--bg);
   overflow: hidden;
   flex-direction: column;
 
@@ -645,7 +647,7 @@ watch(
     justify-content: space-between;
 
     .collapseButton {
-      color: #cccccc;
+      color: var(--text);
       width: 20px;
       height: 20px;
       display: flex;
@@ -655,7 +657,7 @@ watch(
       border-radius: 5px;
 
       &:hover {
-        background-color: #2d2e2e;
+        background-color: var(--hover);
       }
     }
   }
@@ -663,22 +665,27 @@ watch(
 
 .librarySearchWrapper {
   padding: 6px 5px 6px 5px;
-  background-color: #181818;
+  background-color: var(--bg);
 }
 
 .searchInput {
   width: 100%;
   height: 22px;
   line-height: 22px;
-  background-color: #202020;
-  border: 1px solid #424242;
+  background-color: var(--bg-elev);
+  border: 1px solid var(--border);
   outline: none;
-  color: #cccccc;
+  color: var(--text);
   border-radius: 2px;
   padding: 0 8px;
   box-sizing: border-box;
   font-size: 12px;
   font-weight: normal;
+
+  &:hover {
+    background-color: var(--hover);
+    border-color: var(--accent);
+  }
 }
 
 .bubbleBox {
@@ -687,9 +694,9 @@ watch(
   text-align: center;
   position: relative;
   border-radius: 3px;
-  border: 1px solid #424242;
+  border: 1px solid var(--border);
   font-size: 12px;
-  background-color: #202020;
+  background-color: var(--bg-elev);
   padding: 0 10px;
   font-weight: normal;
 }

@@ -252,7 +252,7 @@ const drop = async (e: DragEvent) => {
         "
       >
         <div
-          style="border-right: 1px solid #2b2b2b; flex-shrink: 0"
+          style="border-right: 1px solid var(--border); flex-shrink: 0"
           :style="'width:' + runtime.layoutConfig.libraryAreaWidth + 'px'"
         >
           <div
@@ -274,7 +274,7 @@ const drop = async (e: DragEvent) => {
         <div
           style="
             flex: 1;
-            background-color: #181818;
+            background-color: var(--bg);
             border: 1px solid transparent;
             min-width: 0;
             overflow: hidden;
@@ -287,7 +287,7 @@ const drop = async (e: DragEvent) => {
           <songsArea style="width: 100%; height: 100%; min-width: 0" />
         </div>
       </div>
-      <div style="height: 50px; border-top: 1px solid #2b2b2b">
+      <div style="height: 50px; border-top: 1px solid var(--border)">
         <songPlayer />
       </div>
     </div>

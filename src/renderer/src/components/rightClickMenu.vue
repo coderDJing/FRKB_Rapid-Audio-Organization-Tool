@@ -126,7 +126,6 @@ onUnmounted(() => {
     ref="menuRef"
     class="menu unselectable"
     :style="{ top: positionTop + 'px', left: positionLeft + 'px' }"
-    style="z-index: 99; position: absolute"
     @click.stop="() => {}"
     @mouseleave.stop="mouseleave()"
   >
@@ -150,14 +149,15 @@ onUnmounted(() => {
 <style lang="scss" scoped>
 .menu {
   position: absolute;
-  background-color: #1f1f1f;
-  border: 1px solid #454545;
+  background-color: var(--bg-elev);
+  border: 1px solid var(--border);
   font-size: 14px;
   width: 250px;
   border-radius: 5px;
+  z-index: 10060; // 高于 .dialog(9999) 与 .frkb-bubble(10050) 与封面弹框(10010)
 
   .menuGroup {
-    border-bottom: 1px solid #454545;
+    border-bottom: 1px solid var(--border);
     padding: 5px 5px;
 
     .menuButton {
@@ -165,17 +165,17 @@ onUnmounted(() => {
       justify-content: space-between;
       padding: 5px 20px;
       border-radius: 5px;
-      color: #cccccc;
+      color: var(--text);
 
-      // &:hover {
-      //   background-color: #0078d4;
-      //   color: white;
-      // }
+      &:hover {
+        background-color: var(--accent);
+        color: #ffffff;
+      }
     }
 
     .menuButtonOver {
-      background-color: #0078d4;
-      color: white;
+      background-color: var(--accent);
+      color: #ffffff;
     }
   }
 

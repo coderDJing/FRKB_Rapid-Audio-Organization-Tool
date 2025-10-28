@@ -526,16 +526,16 @@ watch(
   contain: content;
 
   &.lightBackground {
-    background-color: #191919;
+    background-color: var(--bg-elev);
   }
   &.darkBackground {
-    background-color: #000000;
+    background-color: var(--bg);
   }
   &.selectedSong {
-    background-color: #37373d;
+    background-color: var(--hover);
   }
   &.playingSong {
-    color: #0078d4 !important;
+    color: var(--accent) !important;
     font-weight: bold;
   }
 }
@@ -543,8 +543,8 @@ watch(
 .cell-title {
   height: 100%;
   box-sizing: border-box;
-  border-right: 1px solid #2b2b2b;
-  border-bottom: 1px solid #2b2b2b;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   flex-shrink: 0;
@@ -557,8 +557,8 @@ watch(
 .cell-cover {
   height: 100%;
   box-sizing: border-box;
-  border-right: 1px solid #2b2b2b;
-  border-bottom: 1px solid #2b2b2b;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: center;

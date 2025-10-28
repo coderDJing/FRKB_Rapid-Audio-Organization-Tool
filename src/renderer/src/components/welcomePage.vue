@@ -23,7 +23,7 @@ const globalShortcut = computed(() => {
         width="250"
         height="250"
         alt=""
-        class="unselectable welcome-logo"
+        class="unselectable welcome-logo theme-icon"
         draggable="false"
       />
       <div class="shortcuts">
@@ -106,7 +106,7 @@ const globalShortcut = computed(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  color: #727272;
+  color: var(--text-weak);
   flex-shrink: 0;
 }
 
@@ -114,7 +114,7 @@ const globalShortcut = computed(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  color: #727272;
+  color: var(--text-weak);
   width: 430px;
   flex-shrink: 0;
 }
@@ -171,7 +171,7 @@ dd {
 
   .easter-egg {
     margin-left: 8px;
-    color: #fff;
+    color: var(--text);
     font-size: 11px;
     opacity: 0;
     transition: opacity 0.3s ease;
@@ -187,22 +187,22 @@ dd {
 
 .monaco-keybinding-key {
   padding: 4px 8px;
-  background-color: #3c3c3c;
-  border: 1px solid #3c3c3c;
-  border-bottom-color: #1e1e1e;
-  box-shadow: inset 0 -1px 0 #1e1e1e;
+  background-color: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-bottom-color: var(--border);
+  box-shadow: inset 0 -1px 0 var(--border);
   border-radius: 3px;
   font-size: 11px;
   min-width: 14px;
   text-align: center;
-  color: #a9a9a9;
+  color: var(--text-weak);
   white-space: nowrap;
   width: 30px;
 }
 
 .monaco-keybinding-key-separator {
   padding: 0 4px;
-  color: #a9a9a9;
+  color: var(--text-weak);
 }
 
 .unselectable {

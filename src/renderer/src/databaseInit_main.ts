@@ -19,10 +19,49 @@ app.use(i18n)
 async function initializeApp() {
   const runtime = useRuntimeStore()
   runtime.setting = await window.electron.ipcRenderer.invoke('getSetting')
+  // 主题：根据设置为根容器添加 theme-light/theme-dark 类
+  const rootEl = document.getElementById('app')
+  const prefersDarkMedia = window.matchMedia
+    ? window.matchMedia('(prefers-color-scheme: dark)')
+    : (null as any)
+  const getSystemDark = () => {
+    try {
+      return !!prefersDarkMedia?.matches
+    } catch {
+      return false
+    }
+  }
+  const applyThemeClass = (mode: 'system' | 'light' | 'dark', isSystemDark?: boolean) => {
+    try {
+      const htmlEl = document.documentElement
+      const bodyEl = document.body
+      if (rootEl) rootEl.classList.remove('theme-dark', 'theme-light')
+      htmlEl.classList.remove('theme-dark', 'theme-light')
+      bodyEl.classList.remove('theme-dark', 'theme-light')
+      const effectiveDark = mode === 'dark' || (mode === 'system' && !!isSystemDark)
+      const themeClass = effectiveDark ? 'theme-dark' : 'theme-light'
+      if (rootEl) rootEl.classList.add(themeClass)
+      htmlEl.classList.add(themeClass)
+      bodyEl.classList.add(themeClass)
+    } catch {}
+  }
+  // 首次启动按设置（默认 system）或用户选择
+  applyThemeClass(((runtime.setting as any).themeMode || 'system') as any, getSystemDark())
+  // 监听设置变更与系统主题变更
+  try {
+    watch(
+      () => (runtime.setting as any).themeMode,
+      (mode: 'system' | 'light' | 'dark') => applyThemeClass(mode || 'system', getSystemDark())
+    )
+    prefersDarkMedia?.addEventListener?.('change', (e: MediaQueryListEvent) => {
+      if (((runtime.setting as any).themeMode || 'system') === 'system') {
+        applyThemeClass('system', !!e.matches)
+      }
+    })
+  } catch {}
   // macOS 下为根容器增加 is-mac 类，用于样式细节覆盖
   try {
     if (runtime.setting.platform === 'darwin') {
-      const rootEl = document.getElementById('app')
       if (rootEl) rootEl.classList.add('is-mac')
     }
   } catch {}

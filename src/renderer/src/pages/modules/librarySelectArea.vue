@@ -137,7 +137,7 @@ const iconDragEnter = (event: DragEvent, item: Icon) => {
       >
         <div
           style="width: 2px; height: 100%"
-          :style="{ backgroundColor: item.name == selectedIcon.name ? '#0078d4' : '' }"
+          :style="{ backgroundColor: item.name == selectedIcon.name ? 'var(--accent)' : '' }"
         ></div>
         <div
           style="
@@ -149,7 +149,12 @@ const iconDragEnter = (event: DragEvent, item: Icon) => {
           "
           @click="libraryHandleClick(item)"
         >
-          <img :src="item.src" draggable="false" :ref="(el) => setIconRef(item.name, el)" />
+          <img
+            :src="item.src"
+            draggable="false"
+            :ref="(el) => setIconRef(item.name, el)"
+            :class="{ 'theme-icon': item.src === item.white }"
+          />
           <bubbleBox
             :dom="iconRefMap[item.name] || undefined"
             :title="t((item as any).i18nKey || item.name)"
@@ -176,7 +181,12 @@ const iconDragEnter = (event: DragEvent, item: Icon) => {
             align-items: center;
           "
         >
-          <img :src="item.src" draggable="false" :ref="(el) => setIconRef(item.name, el)" />
+          <img
+            :src="item.src"
+            draggable="false"
+            :ref="(el) => setIconRef(item.name, el)"
+            :class="{ 'theme-icon': item.src === item.white }"
+          />
           <bubbleBox
             :dom="iconRefMap[item.name] || undefined"
             :title="t(item.i18nKey || 'common.setting')"
@@ -191,8 +201,8 @@ const iconDragEnter = (event: DragEvent, item: Icon) => {
 .librarySelectArea {
   height: 100%;
   width: 45px;
-  border-right: 1px solid #2b2b2b;
-  background-color: #181818;
+  border-right: 1px solid var(--border);
+  background-color: var(--bg);
   display: flex;
   justify-content: space-between;
   flex-direction: column;
@@ -226,9 +236,9 @@ const iconDragEnter = (event: DragEvent, item: Icon) => {
     text-align: center;
     position: relative;
     border-radius: 3px;
-    border: 1px solid #424242;
+    border: 1px solid var(--border);
     font-size: 12px;
-    background-color: #202020;
+    background-color: var(--bg-elev);
     padding: 0 10px;
   }
 
@@ -241,7 +251,7 @@ const iconDragEnter = (event: DragEvent, item: Icon) => {
     left: -5px;
     border-top: 5px solid transparent;
     border-bottom: 5px solid transparent;
-    border-right: 5px solid #424242;
+    border-right: 5px solid var(--border);
   }
 }
 </style>

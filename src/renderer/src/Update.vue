@@ -99,7 +99,7 @@ const runtime = useRuntimeStore()
             align-items: center;
           "
         >
-          <img :src="logo" style="width: 20px" :draggable="false" />
+          <img :src="logo" style="width: 20px" :draggable="false" class="theme-icon" />
         </div>
 
         <div class="canDrag" style="flex-grow: 1; height: 35px; z-index: 1"></div>
@@ -246,25 +246,25 @@ const runtime = useRuntimeStore()
   line-height: 25px;
   padding: 0 10px;
   border-radius: 5px;
-  background-color: #2d2e2e;
+  background-color: var(--hover);
   font-size: 14px;
 
   &:hover {
-    color: white;
-    background-color: #0078d4;
+    color: #ffffff;
+    background-color: var(--accent);
   }
 }
 
 #app {
-  color: #cccccc;
-  background-color: #181818;
+  color: var(--text);
+  background-color: var(--bg);
   width: 100vw;
   height: 100vh;
 }
 
 body {
   margin: 0px;
-  background-color: #1f1f1f;
+  background-color: var(--bg-elev);
 }
 
 .title {
@@ -274,10 +274,10 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: #181818;
+  background-color: var(--bg);
   z-index: 0;
   font-size: 13px;
-  border-bottom: 1px solid #424242;
+  border-bottom: 1px solid var(--border);
 }
 
 .titleComponent {
@@ -299,7 +299,7 @@ body {
   }
 
   .rightIcon:hover {
-    background-color: #373737;
+    background-color: var(--hover);
   }
 
   .closeIcon:hover {
@@ -310,7 +310,7 @@ body {
 .loading {
   width: 60px;
   height: 60px;
-  border: 5px solid #cccccc;
+  border: 5px solid var(--text);
   border-top-color: transparent;
   border-radius: 100%;
   animation: circle infinite 0.75s linear;

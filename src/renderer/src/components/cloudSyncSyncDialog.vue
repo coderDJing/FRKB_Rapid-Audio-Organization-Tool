@@ -367,7 +367,7 @@ onUnmounted(() => {
 .title {
   text-align: center;
   font-weight: bold;
-  color: #e5e5e5;
+  color: var(--text);
 }
 .stages {
   display: flex;
@@ -385,21 +385,21 @@ onUnmounted(() => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #3a3a3a;
+  background: var(--border);
 }
 .stage .label {
   font-size: 11px;
-  color: #bdbdbd;
+  color: var(--text-weak);
   white-space: nowrap;
 }
 .stage.active {
   opacity: 1;
 }
 .stage.active .dot {
-  background: #4da3ff;
+  background: var(--accent);
 }
 .stage.current .dot {
-  background: #3a7afe;
+  background: var(--accent);
 }
 
 .progress {
@@ -410,10 +410,10 @@ onUnmounted(() => {
 .bar {
   position: relative;
   height: 10px;
-  background: #1f1f1f;
+  background: var(--bg-elev);
   border-radius: 3px;
   overflow: hidden;
-  border: 1px solid #2c2c2c;
+  border: 1px solid var(--border);
 }
 .fill {
   position: relative;
@@ -453,7 +453,7 @@ onUnmounted(() => {
   top: 50%;
   transform: translateY(-50%);
   font-size: 10px;
-  color: #e5e5e5;
+  color: var(--text);
 }
 @keyframes slideBg {
   0% {
@@ -485,19 +485,19 @@ onUnmounted(() => {
 .phase {
   text-align: center;
   font-size: 12px;
-  color: #cfcfcf;
+  color: var(--text-weak);
 }
 .progress-details {
   text-align: center;
   font-size: 11px;
-  color: #a8a8a8;
+  color: var(--text-weak);
   height: 16px;
   line-height: 16px;
   white-space: nowrap;
 }
 .progress-details .sep {
   margin: 0 6px;
-  color: #5a5a5a;
+  color: var(--text-weak);
 }
 .actions {
   display: flex;
@@ -511,27 +511,27 @@ onUnmounted(() => {
 }
 .hint {
   text-align: center;
-  color: #ffcc66;
+  color: var(--text);
   font-size: 12px;
 }
 .log {
   text-align: center;
   font-size: 12px;
-  color: #aaa;
+  color: var(--text-weak);
 }
 .report {
   display: flex;
   flex-direction: column;
   gap: 4px;
   font-size: 12px;
-  color: #d0d0d0;
+  color: var(--text);
 }
 .stats {
   display: flex;
   flex-direction: column;
   gap: 12px;
   font-size: 12px;
-  color: #d0d0d0;
+  color: var(--text);
 }
 .row {
   display: flex;
@@ -542,7 +542,7 @@ onUnmounted(() => {
   width: 90px;
   min-width: 90px;
   text-align: right;
-  color: #bdbdbd;
+  color: var(--text-weak);
 }
 .row .value {
   display: flex;
@@ -575,22 +575,22 @@ onUnmounted(() => {
 .chip {
   min-width: 96px;
   padding: 8px 10px;
-  border: 1px solid #2c2c2c;
+  border: 1px solid var(--border);
   border-radius: 3px;
-  background: #202020;
+  background: var(--bg-elev);
   display: inline-flex;
   flex-direction: column;
   align-items: center;
 }
 .chip .num {
   font-size: 18px;
-  color: #e5e5e5;
+  color: var(--text);
   font-weight: 700;
   line-height: 1;
 }
 .chip .cap {
   font-size: 11px;
-  color: #a8a8a8;
+  color: var(--text-weak);
   margin-top: 4px;
 }
 .chip.success .num {
@@ -650,14 +650,14 @@ onUnmounted(() => {
 }
 .big {
   font-size: 14px;
-  color: #e5e5e5;
+  color: var(--text);
   font-weight: 600;
 }
 .muted {
-  color: #a8a8a8;
+  color: var(--text-weak);
 }
 .link {
-  color: #4da3ff;
+  color: var(--accent);
   cursor: pointer;
   user-select: none;
 }

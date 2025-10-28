@@ -95,6 +95,7 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
               :src="hintIcon"
               style="width: 14px; height: 14px; margin-top: 2px"
               :draggable="false"
+              class="theme-icon"
             />
             <bubbleBox
               :dom="emailHintIconRef || undefined"
@@ -170,7 +171,7 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
 .title {
   text-align: center;
   font-weight: bold;
-  color: #e5e5e5;
+  color: var(--text);
 }
 .form {
   display: flex;
@@ -186,38 +187,42 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
 .label {
   font-size: 12px;
   text-align: left;
-  color: #bdbdbd;
+  color: var(--text-weak);
   line-height: 1.3;
   word-break: break-word;
 }
 .input {
   width: 100%;
-  background: #202020;
-  border: 1px solid #2c2c2c;
-  color: #e0e0e0;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--text);
   padding: 6px 8px;
   border-radius: 4px;
 }
+.input::placeholder {
+  color: var(--text-weak);
+}
 .input:focus {
   outline: none;
-  border-color: #3a7afe;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.25);
 }
 .value {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #d0d0d0;
+  color: var(--text);
   flex-wrap: wrap;
 }
 .value .sep {
   margin: 0 6px;
-  color: #5a5a5a;
+  color: var(--text-weak);
 }
 .value .muted {
-  color: #a8a8a8;
+  color: var(--text-weak);
 }
 .link {
-  color: #4da3ff;
+  color: var(--accent);
   cursor: pointer;
 }
 .actions {
@@ -227,9 +232,9 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
   padding-top: 12px;
 }
 .error {
-  color: #ff6b6b;
+  color: #e81123;
 }
 .success {
-  color: #9fe870;
+  color: #107c10;
 }
 </style>

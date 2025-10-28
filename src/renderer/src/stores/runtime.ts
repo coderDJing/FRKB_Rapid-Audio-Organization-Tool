@@ -82,6 +82,7 @@ export const useRuntimeStore = defineStore('runtime', {
       setting: {
         platform: 'win32',
         language: '',
+        themeMode: 'system',
         audioExt: [],
         databaseUrl: '',
         globalCallShortcut: '',

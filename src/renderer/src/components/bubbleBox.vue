@@ -58,7 +58,7 @@ const props = defineProps({
   // 层级
   zIndex: {
     type: Number,
-    default: 200
+    default: 10050
   },
   // 仅当锚点元素内容发生溢出（如被省略号遮挡）时才显示气泡
   onlyWhenOverflow: {
@@ -320,9 +320,9 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .frkb-bubble {
   position: fixed;
-  background-color: #202020;
-  color: #d0d0d0;
-  border: 1px solid #424242;
+  background-color: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 6px 10px;
   font-size: 12px;
