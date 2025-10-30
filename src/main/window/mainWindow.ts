@@ -533,6 +533,20 @@ function createWindow() {
     }
     const importEndAt = Date.now()
 
+    // 计算指纹实际新增与已存在数量：
+    // - 实际新增 = 指纹库导入后总量 - 导入前总量（净增）
+    // - 尝试添加（去重后）= 本次准备写入指纹的唯一数量
+    // - 已存在 = 尝试添加 - 实际新增
+    const attemptedUniqueToAdd = isPushSongFingerprintLibrary
+      ? Array.from(new Set(fingerprintsToAdd)).length
+      : 0
+    const actualAddedCount = isPushSongFingerprintLibrary
+      ? Math.max(0, store.songFingerprintList.length - songFingerprintListLengthBefore)
+      : 0
+    const alreadyExistingCount = isPushSongFingerprintLibrary
+      ? Math.max(0, attemptedUniqueToAdd - actualAddedCount)
+      : 0
+
     // 构建导入结果摘要对象
     const importSummary = {
       startAt: new Date(importStartAt).toISOString(),
@@ -542,10 +556,8 @@ function createWindow() {
       analyzeFailedCount: errorSongsAnalyseResult.length,
       importedToPlaylistCount: success,
       duplicatesRemovedCount: dedupMode !== 'none' ? delList.length : 0,
-      fingerprintAddedCount: isPushSongFingerprintLibrary ? fingerprintsToAdd.length : 0,
-      fingerprintAlreadyExistingCount: isPushSongFingerprintLibrary
-        ? alreadyExistInSongFingerprintList.size
-        : 0,
+      fingerprintAddedCount: actualAddedCount,
+      fingerprintAlreadyExistingCount: alreadyExistingCount,
       fingerprintTotalBefore: songFingerprintListLengthBefore,
       fingerprintTotalAfter: store.songFingerprintList.length,
       isComparisonSongFingerprint: dedupMode !== 'none',
