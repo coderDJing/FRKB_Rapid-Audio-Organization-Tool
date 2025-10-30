@@ -11,6 +11,7 @@ interface IResult {
   isDeleteSourceFile: boolean
   isComparisonSongFingerprint: boolean
   isPushSongFingerprintLibrary: boolean
+  deduplicateMode: 'library' | 'batch'
 }
 export default ({ songListUuid, libraryName }: IArgs): Promise<IResult | 'cancel'> => {
   return new Promise((resolve, reject) => {
