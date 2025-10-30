@@ -98,6 +98,7 @@ interface IImportSongsFormData {
   isDeleteSourceFile: boolean
   isComparisonSongFingerprint: boolean
   isPushSongFingerprintLibrary: boolean
+  deduplicateMode?: 'library' | 'batch' | 'none'
   songListUUID: string
 }
 

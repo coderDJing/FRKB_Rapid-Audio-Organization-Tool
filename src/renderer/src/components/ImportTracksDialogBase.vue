@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted, onMounted, useTemplateRef } from 'vue'
+import { ref, computed, onUnmounted, onMounted, useTemplateRef, reactive } from 'vue'
 import singleCheckbox from './singleCheckbox.vue'
+import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import selectSongListDialog from './selectSongListDialog.vue'
 import libraryUtils from '@renderer/utils/libraryUtils'
@@ -28,11 +29,13 @@ type SettingData = {
   isDeleteSourceFile: boolean
   isComparisonSongFingerprint: boolean
   isPushSongFingerprintLibrary: boolean
+  deduplicateMode: 'library' | 'batch' | 'none'
 }
 const settingData = ref<SettingData>({
   isDeleteSourceFile: true,
   isComparisonSongFingerprint: true,
-  isPushSongFingerprintLibrary: true
+  isPushSongFingerprintLibrary: true,
+  deduplicateMode: 'library'
 })
 let localStorageData = localStorage.getItem('scanNewSongDialog')
 if (localStorageData == null) {
@@ -41,17 +44,26 @@ if (localStorageData == null) {
     JSON.stringify({
       isDeleteSourceFile: true,
       isComparisonSongFingerprint: true,
-      isPushSongFingerprintLibrary: true
+      isPushSongFingerprintLibrary: true,
+      deduplicateMode: 'library'
     })
   )
   localStorageData = JSON.stringify({
     isDeleteSourceFile: true,
     isComparisonSongFingerprint: true,
-    isPushSongFingerprintLibrary: true
+    isPushSongFingerprintLibrary: true,
+    deduplicateMode: 'library'
   })
 }
-const parsedLocalStorageData = JSON.parse(localStorageData) as SettingData
-settingData.value = parsedLocalStorageData
+const parsedLocalStorageData = JSON.parse(localStorageData) as Partial<SettingData>
+settingData.value = {
+  isDeleteSourceFile: parsedLocalStorageData.isDeleteSourceFile ?? true,
+  isComparisonSongFingerprint: parsedLocalStorageData.isComparisonSongFingerprint ?? true,
+  isPushSongFingerprintLibrary: parsedLocalStorageData.isPushSongFingerprintLibrary ?? true,
+  deduplicateMode:
+    parsedLocalStorageData.deduplicateMode ??
+    ((parsedLocalStorageData.isComparisonSongFingerprint ?? true) ? 'library' : 'none')
+}
 
 const runtime = useRuntimeStore()
 runtime.activeMenuUUID = ''
@@ -173,8 +185,9 @@ const confirm = () => {
       selectedPaths: JSON.parse(JSON.stringify(selectedPaths.value)),
       songListPath: songListSelectedPath,
       isDeleteSourceFile: settingData.value.isDeleteSourceFile,
-      isComparisonSongFingerprint: settingData.value.isComparisonSongFingerprint,
+      isComparisonSongFingerprint: settingData.value.deduplicateMode === 'library',
       isPushSongFingerprintLibrary: settingData.value.isPushSongFingerprintLibrary,
+      deduplicateMode: settingData.value.deduplicateMode,
       songListUUID: importingSongListUUID
     })
     localStorage.setItem('scanNewSongDialog', JSON.stringify(settingData.value))
@@ -187,8 +200,9 @@ const confirm = () => {
       importingSongListUUID: importingSongListUUID,
       songListPath: songListSelectedPath,
       isDeleteSourceFile: settingData.value.isDeleteSourceFile,
-      isComparisonSongFingerprint: settingData.value.isComparisonSongFingerprint,
-      isPushSongFingerprintLibrary: settingData.value.isPushSongFingerprintLibrary
+      isComparisonSongFingerprint: settingData.value.deduplicateMode === 'library',
+      isPushSongFingerprintLibrary: settingData.value.isPushSongFingerprintLibrary,
+      deduplicateMode: settingData.value.deduplicateMode
     })
   }
 }
@@ -200,8 +214,12 @@ const cancel = () => {
   ;(props.cancelCallback as Function)()
 }
 
-const hint1Ref = useTemplateRef<HTMLImageElement>('hint1Ref')
 const hint2Ref = useTemplateRef<HTMLImageElement>('hint2Ref')
+// 为单选项的 hint 采用映射存储，避免动态 ref 失效
+const dedupOptionHintRefs = reactive<Record<string, HTMLImageElement | null>>({})
+function setDedupOptionHintRef(value: string, el: HTMLImageElement | null) {
+  if (el) dedupOptionHintRefs[value] = el
+}
 const fileSelectRef = useTemplateRef<HTMLDivElement>('fileSelectRef')
 const songListSelectRef = useTemplateRef<HTMLDivElement>('songListSelectRef')
 onMounted(() => {
@@ -223,7 +241,7 @@ onUnmounted(() => {
     <div
       style="
         width: 500px;
-        height: 300px;
+        height: 510px;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
@@ -236,133 +254,99 @@ onUnmounted(() => {
             t('library.importNewTracks', { libraryType: toLibraryDisplayName(props.libraryName) })
           }}</span>
         </div>
-        <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
-          <div class="settingsTable">
-            <div v-if="props.mode === 'scan'" class="settingsRow">
-              <div class="settingLabel" :style="{ width: labelWidth }">
-                <span>{{ t('library.selectFilesAndFolders') }}：</span>
+        <div style="padding: 20px; font-size: 14px">
+          <template v-if="props.mode === 'scan'">
+            <div>{{ t('library.selectFilesAndFolders') }}：</div>
+            <div style="margin-top: 10px">
+              <div
+                ref="fileSelectRef"
+                class="chooseDirDiv flashing-border"
+                @click="clickChooseDir()"
+                :class="{ 'is-flashing': flashArea == 'selectedPaths' }"
+              >
+                {{ selectedPathsDisplay || t('library.clickToSelect') }}
               </div>
-              <div class="settingCell">
-                <div
-                  ref="fileSelectRef"
-                  class="chooseDirDiv flashing-border"
-                  @click="clickChooseDir()"
-                  :class="{ 'is-flashing': flashArea == 'selectedPaths' }"
-                >
-                  {{ selectedPathsDisplay || t('library.clickToSelect') }}
-                </div>
-                <bubbleBox
-                  :dom="fileSelectRef || undefined"
-                  :title="selectedPathsDisplay || t('library.clickToSelect')"
-                  :maxWidth="320"
-                />
-              </div>
+              <bubbleBox
+                :dom="fileSelectRef || undefined"
+                :title="selectedPathsDisplay || t('library.clickToSelect')"
+                :maxWidth="320"
+              />
             </div>
-            <div class="settingsRow">
-              <div class="settingLabel" :style="{ width: labelWidth }">
-                <span>{{ t('library.selectPlaylist') }}：</span>
-              </div>
-              <div class="settingCell">
-                <div
-                  ref="songListSelectRef"
-                  class="chooseDirDiv flashing-border"
-                  @click="clickChooseSongList()"
-                  :class="{ 'is-flashing': flashArea == 'songListPathVal' }"
-                >
-                  {{ songListSelectedDisplay }}
-                </div>
-                <bubbleBox
-                  :dom="songListSelectRef || undefined"
-                  :title="songListSelectedDisplay || t('library.clickToSelect')"
-                  :maxWidth="320"
-                />
-              </div>
+          </template>
+
+          <div style="margin-top: 20px">{{ t('library.selectPlaylist') }}：</div>
+          <div style="margin-top: 10px">
+            <div
+              ref="songListSelectRef"
+              class="chooseDirDiv flashing-border"
+              @click="clickChooseSongList()"
+              :class="{ 'is-flashing': flashArea == 'songListPathVal' }"
+            >
+              {{ songListSelectedDisplay || t('library.clickToSelect') }}
             </div>
+            <bubbleBox
+              :dom="songListSelectRef || undefined"
+              :title="songListSelectedDisplay || t('library.clickToSelect')"
+              :maxWidth="320"
+            />
           </div>
 
-          <div class="settingsTable" style="margin-top: 10px">
-            <div class="settingsRow">
-              <div class="settingLabel">
-                <span>{{ t('library.deleteAfterImport') }}：</span>
-              </div>
-              <div class="settingCell">
-                <div
-                  style="
-                    width: 20px;
-                    height: 20px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                  "
-                >
-                  <singleCheckbox v-model="settingData.isDeleteSourceFile" />
-                </div>
-              </div>
-            </div>
-            <div class="settingsRow">
-              <div class="settingLabel">
-                <span>{{ t('library.deduplicateFingerprints') }}：</span>
-              </div>
-              <div class="settingCell" style="display: flex; align-items: center">
-                <div
-                  style="
-                    width: 20px;
-                    height: 20px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                  "
-                >
-                  <singleCheckbox v-model="settingData.isComparisonSongFingerprint" />
-                </div>
-                <div style="height: 20px; display: flex; align-items: center; padding-left: 3px">
+          <div style="margin-top: 20px">{{ t('library.deleteAfterImport') }}：</div>
+          <div style="margin-top: 10px">
+            <singleCheckbox v-model="settingData.isDeleteSourceFile" />
+          </div>
+
+          <div style="margin-top: 20px">{{ t('library.addToFingerprintLibrary') }}：</div>
+          <div style="margin-top: 10px; display: inline-flex; align-items: center; gap: 6px">
+            <singleCheckbox v-model="settingData.isPushSongFingerprintLibrary" />
+            <img
+              ref="hint2Ref"
+              :src="hintIcon"
+              style="width: 15px; height: 15px"
+              :draggable="false"
+              class="theme-icon"
+            />
+            <bubbleBox
+              :dom="hint2Ref || undefined"
+              :title="t('library.fingerprintHint')"
+              :maxWidth="240"
+            />
+          </div>
+
+          <div style="margin-top: 20px">{{ t('library.deduplicateMode') }}：</div>
+          <div style="margin-top: 10px">
+            <singleRadioGroup
+              :options="[
+                { label: t('library.deduplicateModeLibrary'), value: 'library' },
+                { label: t('library.deduplicateModeBatch'), value: 'batch' },
+                { label: t('library.deduplicateModeNone'), value: 'none' }
+              ]"
+              v-model="settingData.deduplicateMode as any"
+              name="dedupMode"
+              :optionFontSize="12"
+            >
+              <template #option="{ opt }">
+                <span class="label">{{ opt.label }}</span>
+                <template v-if="opt.value !== 'none'">
                   <img
-                    ref="hint1Ref"
+                    :ref="(el: any) => setDedupOptionHintRef(opt.value, el)"
                     :src="hintIcon"
-                    style="width: 15px; height: 15px"
+                    style="width: 14px; height: 14px; margin-left: 6px"
                     :draggable="false"
                     class="theme-icon"
                   />
                   <bubbleBox
-                    :dom="hint1Ref || undefined"
-                    :title="t('library.deduplicateHint')"
-                    :maxWidth="220"
+                    :dom="(dedupOptionHintRefs[opt.value] || undefined) as any"
+                    :title="
+                      opt.value === 'library'
+                        ? t('library.deduplicateHint')
+                        : t('library.deduplicateBatchHint')
+                    "
+                    :maxWidth="320"
                   />
-                </div>
-              </div>
-            </div>
-            <div class="settingsRow">
-              <div class="settingLabel">
-                <span>{{ t('library.addToFingerprintLibrary') }}：</span>
-              </div>
-              <div class="settingCell" style="display: flex; align-items: center">
-                <div
-                  style="
-                    width: 20px;
-                    height: 20px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                  "
-                >
-                  <singleCheckbox v-model="settingData.isPushSongFingerprintLibrary" />
-                </div>
-                <div style="height: 20px; display: flex; align-items: center; padding-left: 3px">
-                  <img
-                    ref="hint2Ref"
-                    :src="hintIcon"
-                    style="width: 15px; height: 15px"
-                    :draggable="false"
-                    class="theme-icon"
-                  />
-                  <bubbleBox
-                    :dom="hint2Ref || undefined"
-                    :title="t('library.fingerprintHint')"
-                    :maxWidth="240"
-                  />
-                </div>
-              </div>
-            </div>
+                </template>
+              </template>
+            </singleRadioGroup>
           </div>
         </div>
       </div>
@@ -404,14 +388,14 @@ onUnmounted(() => {
 <style lang="scss" scoped>
 .chooseDirDiv {
   width: 100%;
-  height: 20px;
+  height: 25px;
   background-color: var(--bg-elev);
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
   font-size: 14px;
   padding-left: 5px;
-  line-height: 20px;
+  line-height: 25px;
   border-radius: 3px;
   border: 1px solid var(--border);
   color: var(--text);

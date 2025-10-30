@@ -455,6 +455,7 @@ export const handleDrop = async (
         isDeleteSourceFile: result.isDeleteSourceFile,
         isComparisonSongFingerprint: result.isComparisonSongFingerprint,
         isPushSongFingerprintLibrary: result.isPushSongFingerprintLibrary,
+        deduplicateMode: result.deduplicateMode,
         songListUUID: result.importingSongListUUID
       })
     }
