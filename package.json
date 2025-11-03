@@ -1,6 +1,6 @@
 {
   "name": "frkb",
-  "version": "1.0.7-rc.202511041110",
+  "version": "1.0.7-rc.202511031133",
   "description": "Rapid Audio Organization Tool",
   "main": "./out/main/index.js",
   "author": "CoderDJing",
@@ -17,9 +17,8 @@
       }
     ],
     "mac": {
-      "x64ArchFiles": [
-        "Contents/Resources/ffmpeg/darwin-x64/**"
-      ]
+      "singleArchFiles": "Contents/Resources/ffmpeg/**",
+      "x64ArchFiles": "Contents/Resources/ffmpeg/darwin-x64/**"
     }
   },
   "scripts": {
