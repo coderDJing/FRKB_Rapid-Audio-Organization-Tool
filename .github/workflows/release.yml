@@ -122,38 +122,33 @@ jobs:
           set -e
           mkdir -p vendor/ffmpeg/darwin-arm64 vendor/ffmpeg/darwin-x64
           
-          # Arm64 ffmpeg via brew (native)
+          # 使用 Homebrew 安装 arm64 版本 (native on arm64 runner)
           brew update
           brew install ffmpeg
           install -m 755 "$(brew --prefix)/bin/ffmpeg" vendor/ffmpeg/darwin-arm64/ffmpeg
           
-          # Install Rosetta for x64 support
-          softwareupdate --install-rosetta --agree-to-license || true
+          # 从 ffmpeg.org 官方下载 x64 版本
+          # 使用 evermeet.cx 的静态构建 (可靠的 macOS FFmpeg 静态构建源)
+          curl -L "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip" -o ffmpeg-x64.zip
+          unzip -q ffmpeg-x64.zip
           
-          # Try to use x64 Homebrew under Rosetta
-          if [ -x "/usr/local/bin/brew" ]; then
-            arch -x86_64 /usr/local/bin/brew update || true
-            arch -x86_64 /usr/local/bin/brew install ffmpeg || true
-            if [ -x "/usr/local/bin/ffmpeg" ]; then
-              install -m 755 "/usr/local/bin/ffmpeg" vendor/ffmpeg/darwin-x64/ffmpeg || true
-            else
-              # Fallback: try brew --prefix
-              X64_PREFIX=$(arch -x86_64 /usr/local/bin/brew --prefix 2>/dev/null || echo "/usr/local")
-              if [ -x "$X64_PREFIX/bin/ffmpeg" ]; then
-                install -m 755 "$X64_PREFIX/bin/ffmpeg" vendor/ffmpeg/darwin-x64/ffmpeg || true
-              fi
-            fi
+          # 确保是 x64 架构 (evermeet.cx 提供的是 x64 版本)
+          if file ffmpeg | grep -q "x86_64"; then
+            install -m 755 ffmpeg vendor/ffmpeg/darwin-x64/ffmpeg
+          else
+            echo "ERROR: Downloaded ffmpeg is not x64 architecture"
+            file ffmpeg
+            exit 1
           fi
           
-          # Final fallback: if x64 ffmpeg still missing, copy arm64 (build will pass, but Intel 机器不可执行)
-          if [ ! -f vendor/ffmpeg/darwin-x64/ffmpeg ]; then
-            echo "WARN: x64 ffmpeg not found, falling back to arm64 copy (runtime on Intel mac will fail)."
-            install -m 755 vendor/ffmpeg/darwin-arm64/ffmpeg vendor/ffmpeg/darwin-x64/ffmpeg
-          fi
+          # 清理临时文件
+          rm -f ffmpeg ffmpeg-x64.zip
           
-          # Verify
-          file vendor/ffmpeg/darwin-arm64/ffmpeg || true
-          file vendor/ffmpeg/darwin-x64/ffmpeg || true
+          # 验证两个二进制文件
+          echo "=== arm64 binary ==="
+          file vendor/ffmpeg/darwin-arm64/ffmpeg
+          echo "=== x64 binary ==="
+          file vendor/ffmpeg/darwin-x64/ffmpeg
 
       - name: Build Rust N-API for mac (both arch)
         working-directory: rust_package
