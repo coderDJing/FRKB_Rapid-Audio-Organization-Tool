@@ -276,17 +276,15 @@ window.electron.ipcRenderer.on('delSongsSuccess', (_event, recycleBinNewDirDescr
     <div style="height: 35px">
       <titleComponent @openDialog="openDialog" />
     </div>
-    <div style="height: calc(100% - 55px)">
+    <div style="flex: 1 1 auto; min-height: 0">
       <homePage />
     </div>
     <div
       style="
-        height: 20px;
         width: 100%;
         background-color: var(--bg);
         border-top: 1px solid var(--border);
         box-sizing: border-box;
-        overflow: hidden;
       "
     >
       <bottomInfoArea />

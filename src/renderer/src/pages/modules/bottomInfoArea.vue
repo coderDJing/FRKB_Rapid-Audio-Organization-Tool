@@ -1,42 +1,151 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import confirm from '@renderer/components/confirmDialog'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate'
 const runtime = useRuntimeStore()
-const barTitle = ref('')
-const barNowNum = ref(0)
-const barTotal = ref(0)
-const noNum = ref(false)
-window.electron.ipcRenderer.on('progressSet', (event, title, nowNum, total, noNumFlag) => {
-  barTitle.value = t(title as any)
-  if (noNumFlag) {
-    noNum.value = true
-  } else {
-    noNum.value = false
-  }
-  barNowNum.value = nowNum
-  barTotal.value = total
-  if (nowNum == total) {
-    barTitle.value = ''
-    noNum.value = false
-  }
-})
-window.electron.ipcRenderer.on('importFinished', async (event, _songListUUID, importSummary) => {
-  runtime.isProgressing = false
-  runtime.importingSongListUUID = ''
-  const openImportSummary = (await import('@renderer/components/importFinishedSummaryDialog'))
-    .default
-  await openImportSummary(importSummary)
-})
 
-window.electron.ipcRenderer.on('addSongFingerprintFinished', async (event, fingerprintSummary) => {
-  runtime.isProgressing = false
-  const openFingerprintSummary = (
-    await import('@renderer/components/addSongFingerprintFinishedDialog')
-  ).default
-  await openFingerprintSummary(fingerprintSummary)
+type Task = {
+  id: string // group id
+  titleKey: string // latest phase key
+  title: string
+  now: number
+  total: number
+  noNum: boolean
+  startedAt: number
+  lastUpdateAt: number
+  removing?: boolean
+}
+const tasks = ref<Task[]>([])
+// 组件内部通过 CSS 控制显隐（empty => display:none），无需向上层发事件
+
+function getGroupId(titleKey: string): string {
+  if (typeof titleKey !== 'string') return String(titleKey)
+  if (titleKey.startsWith('fingerprints.')) return 'import'
+  if (titleKey.startsWith('tracks.')) return 'import'
+  return String(titleKey)
+}
+
+function upsertTask(titleKey: string, nowNum: number, total: number, noNumFlag?: boolean) {
+  const id = getGroupId(titleKey)
+  const idx = tasks.value.findIndex((t) => t.id === id)
+  if (idx === -1) {
+    tasks.value.push({
+      id,
+      titleKey,
+      title: t(titleKey as any),
+      now: nowNum,
+      total,
+      noNum: !!noNumFlag,
+      startedAt: Date.now(),
+      lastUpdateAt: Date.now()
+    })
+  } else {
+    const task = tasks.value[idx]
+    task.titleKey = titleKey
+    task.title = t(titleKey as any)
+    task.now = nowNum
+    task.total = total
+    task.noNum = !!noNumFlag
+    task.lastUpdateAt = Date.now()
+  }
+  // 完成后延迟移除
+  if (nowNum >= total && total > 0) {
+    const task = tasks.value.find((t) => t.id === id)
+    if (task && !task.removing) {
+      task.removing = true
+      setTimeout(() => {
+        tasks.value = tasks.value.filter((t) => t.id !== id)
+      }, 1500)
+    }
+  }
+}
+
+window.electron.ipcRenderer.on('progressSet', (_event, arg1, arg2, arg3, arg4) => {
+  if (arg1 && typeof arg1 === 'object') {
+    const payload = arg1 as any
+    const id = String(payload.id || '')
+    const titleKey = String(payload.titleKey || '')
+    const nowNum = Number(payload.now || 0)
+    const total = Number(payload.total || 0)
+    const noNumFlag = !!payload.isInitial
+    if (id && titleKey) {
+      // 直接以 id 作为分组键；覆盖阶段
+      const idx = tasks.value.findIndex((t) => t.id === id)
+      if (idx === -1) {
+        tasks.value.push({
+          id,
+          titleKey,
+          title: t(titleKey as any),
+          now: nowNum,
+          total,
+          noNum: noNumFlag,
+          startedAt: Date.now(),
+          lastUpdateAt: Date.now()
+        })
+      } else {
+        const task = tasks.value[idx]
+        task.titleKey = titleKey
+        task.title = t(titleKey as any)
+        task.now = nowNum
+        task.total = total
+        task.noNum = noNumFlag
+        task.lastUpdateAt = Date.now()
+      }
+      // 仅对非 import/fingerprint/convert 类任务启用“自动移除”（这些任务有独立完成事件来清理）
+      const canAutoRemove = !/^import_|^fingerprints_|^convert_/i.test(id)
+      if (canAutoRemove && nowNum >= total && total > 0) {
+        const task = tasks.value.find((t) => t.id === id)
+        if (task && !task.removing) {
+          task.removing = true
+          setTimeout(() => {
+            tasks.value = tasks.value.filter((t) => t.id !== id)
+          }, 1500)
+        }
+      }
+      return
+    }
+  }
+  // 兼容旧签名
+  const titleKey = arg1
+  const nowNum = arg2
+  const total = arg3
+  const noNumFlag = arg4
+  upsertTask(String(titleKey), Number(nowNum) || 0, Number(total) || 0, !!noNumFlag)
 })
+window.electron.ipcRenderer.on(
+  'importFinished',
+  async (event, _songListUUID, importSummary, progressId?: string) => {
+    runtime.isProgressing = false
+    runtime.importingSongListUUID = ''
+    // 有 progressId 则按 id 清理；否则清理整组 import
+    if (progressId) {
+      tasks.value = tasks.value.filter((t) => t.id !== String(progressId))
+    } else {
+      tasks.value = tasks.value.filter((t) => t.id !== 'import')
+    }
+    const openImportSummary = (await import('@renderer/components/importFinishedSummaryDialog'))
+      .default
+    await openImportSummary(importSummary)
+  }
+)
+
+window.electron.ipcRenderer.on(
+  'addSongFingerprintFinished',
+  async (event, fingerprintSummary, progressId?: string) => {
+    runtime.isProgressing = false
+    // 清理导入/指纹相关进度行
+    if (progressId) {
+      tasks.value = tasks.value.filter((t) => t.id !== String(progressId))
+    } else {
+      tasks.value = tasks.value.filter((t) => t.id !== 'import')
+    }
+    const openFingerprintSummary = (
+      await import('@renderer/components/addSongFingerprintFinishedDialog')
+    ).default
+    await openFingerprintSummary(fingerprintSummary)
+  }
+)
 window.electron.ipcRenderer.on('noAudioFileWasScanned', async (event) => {
   runtime.isProgressing = false
   runtime.importingSongListUUID = ''
@@ -49,19 +158,24 @@ window.electron.ipcRenderer.on('noAudioFileWasScanned', async (event) => {
     confirmShow: false
   })
 })
+
+// 音频转换完成摘要弹窗（简要）
+window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
+  // 清理转换进度行
+  const doneId = String(payload?.jobId || '')
+  if (doneId) {
+    tasks.value = tasks.value.filter((t) => t.id !== doneId)
+  } else {
+    tasks.value = tasks.value.filter((t) => t.id !== 'audio.convert')
+  }
+  const openSummary = (await import('@renderer/components/conversionFinishedSummaryDialog')).default
+  await openSummary(payload?.summary || null)
+})
 </script>
 <template>
-  <div class="bottom-info-area">
-    <div v-if="barTitle" style="width: 100%; display: flex; align-items: center">
-      <div
-        style="
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          padding-left: 5px;
-          height: 20px;
-        "
-      >
+  <div class="bottom-info-area" :class="{ empty: tasks.length === 0 }">
+    <div v-for="task in tasks" :key="task.id" class="task-row">
+      <div class="spinner">
         <div class="loading">
           <div></div>
           <div></div>
@@ -70,18 +184,16 @@ window.electron.ipcRenderer.on('noAudioFileWasScanned', async (event) => {
           <div></div>
         </div>
       </div>
-      <div
-        style="width: fit-content; font-size: 10px; height: 20px; line-height: 20px; padding: 0 5px"
-      >
-        {{ barTitle }}
-        <span v-show="!noNum">{{ barNowNum }} / {{ barTotal }}</span>
+      <div class="label">
+        {{ task.title }}
+        <span v-show="!task.noNum">{{ task.now }} / {{ task.total }}</span>
       </div>
       <div class="container">
         <div class="progress">
           <div
             class="progress-bar"
-            :style="'width:' + (barTotal ? (barNowNum / barTotal) * 100 : 0) + '%'"
-          ></div>
+            :style="'width:' + (task.total ? (task.now / task.total) * 100 : 0) + '%'"
+          />
         </div>
       </div>
     </div>
@@ -284,9 +396,31 @@ window.electron.ipcRenderer.on('noAudioFileWasScanned', async (event) => {
 
 .bottom-info-area {
   width: 100%;
-  height: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 0;
+}
+.bottom-info-area.empty {
+  padding: 0;
+  display: none;
+}
+.task-row {
+  width: 100%;
   display: flex;
   align-items: center;
-  overflow: hidden;
+}
+.spinner {
+  display: flex;
+  align-items: center;
+  padding-left: 5px;
+  height: 20px;
+}
+.label {
+  width: fit-content;
+  font-size: 10px;
+  height: 20px;
+  line-height: 20px;
+  padding: 0 5px;
 }
 </style>

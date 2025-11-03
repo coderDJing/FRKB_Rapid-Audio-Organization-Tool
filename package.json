@@ -1,6 +1,6 @@
 {
   "name": "frkb",
-  "version": "1.0.7-rc.202510291649",
+  "version": "1.0.7-rc.202511031010",
   "description": "Rapid Audio Organization Tool",
   "main": "./out/main/index.js",
   "author": "CoderDJing",
@@ -8,6 +8,14 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool.git"
+  },
+  "build": {
+    "extraResources": [
+      {
+        "from": "vendor/ffmpeg",
+        "to": "ffmpeg"
+      }
+    ]
   },
   "scripts": {
     "format": "prettier --write .",

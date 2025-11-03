@@ -22,6 +22,7 @@ import { IImportSongsFormData, md5 } from '../../types/globals'
 import { v4 as uuidV4 } from 'uuid'
 import { operateHiddenFile } from '../utils'
 import { FileSystemOperation } from '@renderer/utils/diffLibraryTree'
+import { startAudioConversion, cancelAudioConversion } from '../services/audioConversion'
 
 let mainWindow: BrowserWindow | null = null
 function createWindow() {
@@ -182,30 +183,67 @@ function createWindow() {
     }
   })
 
-  const sendProgress = (message: string, current: number, total: number, isInitial = false) => {
-    mainWindow?.webContents.send('progressSet', message, current, total, isInitial)
+  const sendProgress = (
+    payloadOrTitle: any,
+    current?: number,
+    total?: number,
+    isInitial = false,
+    id?: string
+  ) => {
+    if (payloadOrTitle && typeof payloadOrTitle === 'object') {
+      mainWindow?.webContents.send('progressSet', payloadOrTitle)
+      return
+    }
+    if (id) {
+      mainWindow?.webContents.send('progressSet', {
+        id,
+        titleKey: String(payloadOrTitle || ''),
+        now: Number(current) || 0,
+        total: Number(total) || 0,
+        isInitial: !!isInitial
+      })
+      return
+    }
+    mainWindow?.webContents.send('progressSet', payloadOrTitle, current, total, isInitial)
   }
   ipcMain.on('addSongFingerprint', async (e, folderPath: string[]) => {
+    const progressId = `fingerprints_${Date.now()}`
     const fingerprintStartAt = Date.now()
     // 扫描文件
-    sendProgress('fingerprints.scanningFiles', 0, 1, true)
+    sendProgress({
+      id: progressId,
+      titleKey: 'fingerprints.scanningFiles',
+      now: 0,
+      total: 1,
+      isInitial: true
+    })
     const songFileUrls = (
       await Promise.all(
         folderPath.map((item) => collectFilesWithExtensions(item, store.settingConfig.audioExt))
       )
     ).flat()
-    sendProgress('fingerprints.scanningFiles', 1, 1)
+    sendProgress({ id: progressId, titleKey: 'fingerprints.scanningFiles', now: 1, total: 1 })
     if (songFileUrls.length === 0) {
       mainWindow?.webContents.send('noAudioFileWasScanned')
       return
     }
     // 分析声音指纹
 
-    sendProgress('fingerprints.analyzeInit', 0, songFileUrls.length)
+    sendProgress({
+      id: progressId,
+      titleKey: 'fingerprints.analyzeInit',
+      now: 0,
+      total: songFileUrls.length
+    })
     const { songsAnalyseResult, errorSongsAnalyseResult } = await getSongsAnalyseResult(
       songFileUrls,
       (resultLength: number) => {
-        sendProgress('fingerprints.analyzingFingerprints', resultLength, songFileUrls.length)
+        sendProgress({
+          id: progressId,
+          titleKey: 'fingerprints.analyzingFingerprints',
+          now: resultLength,
+          total: songFileUrls.length
+        })
       }
     )
 
@@ -247,12 +285,13 @@ function createWindow() {
       fingerprintMode: ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
     }
 
-    mainWindow?.webContents.send('addSongFingerprintFinished', fingerprintSummary)
+    mainWindow?.webContents.send('addSongFingerprintFinished', fingerprintSummary, progressId)
   })
 
   ipcMain.on('startImportSongs', async (e, formData: IImportSongsFormData) => {
     const importStartAt = Date.now()
-    sendProgress('fingerprints.scanningFiles', 0, 1, true)
+    const progressId = `import_${Date.now()}`
+    sendProgress('fingerprints.scanningFiles', 0, 1, true, progressId)
     let filePaths = formData.selectedPaths || formData.filePaths || formData.folderPath
     if (filePaths === undefined) {
       filePaths = []
@@ -274,7 +313,7 @@ function createWindow() {
         songFileUrls = songFileUrls.concat(files)
       }
     }
-    sendProgress('fingerprints.scanningFiles', 1, 1, true)
+    sendProgress('fingerprints.scanningFiles', 1, 1, true, progressId)
     if (songFileUrls.length === 0) {
       mainWindow?.webContents.send('noAudioFileWasScanned')
       return
@@ -298,10 +337,16 @@ function createWindow() {
     let errorSongsAnalyseResult: md5[] = []
     let alreadyExistInSongFingerprintList = new Set()
     if (needAnalyze) {
-      sendProgress('fingerprints.analyzeInit', 0, songFileUrls.length)
+      sendProgress('fingerprints.analyzeInit', 0, songFileUrls.length, false, progressId)
 
       let analyseResult = await getSongsAnalyseResult(songFileUrls, (resultLength: number) =>
-        sendProgress('fingerprints.analyzingFingerprints', resultLength, songFileUrls.length)
+        sendProgress(
+          'fingerprints.analyzingFingerprints',
+          resultLength,
+          songFileUrls.length,
+          false,
+          progressId
+        )
       )
 
       songsAnalyseResult = analyseResult.songsAnalyseResult
@@ -354,7 +399,8 @@ function createWindow() {
           const batchId = `import_recycle_duplicates_${Date.now()}`
           const { success, failed, hasENOSPC, skipped } = await runWithConcurrency(tasks, {
             concurrency: 16,
-            onProgress: (done, total) => sendProgress('tracks.recyclingDuplicates', done, total),
+            onProgress: (done, total) =>
+              sendProgress('tracks.recyclingDuplicates', done, total, false, progressId),
             stopOnENOSPC: true,
             onInterrupted: async (payload) =>
               waitForUserDecision(mainWindow, batchId, 'recycleDuplicatesOnImport', payload)
@@ -431,7 +477,8 @@ function createWindow() {
           const batchId = `import_recycle_duplicates_${Date.now()}`
           const { success, failed, hasENOSPC, skipped } = await runWithConcurrency(tasks, {
             concurrency: 16,
-            onProgress: (done, total) => sendProgress('tracks.recyclingDuplicates', done, total),
+            onProgress: (done, total) =>
+              sendProgress('tracks.recyclingDuplicates', done, total, false, progressId),
             stopOnENOSPC: true,
             onInterrupted: async (payload) =>
               waitForUserDecision(mainWindow, batchId, 'recycleDuplicatesOnImport', payload)
@@ -504,7 +551,9 @@ function createWindow() {
         sendProgress(
           isDeleteSourceFile ? 'tracks.movingTracks' : 'tracks.copyingTracks',
           done,
-          total
+          total,
+          false,
+          progressId
         ),
       stopOnENOSPC: true,
       onInterrupted: async (payload) =>
@@ -515,7 +564,9 @@ function createWindow() {
     sendProgress(
       isDeleteSourceFile ? 'tracks.movingTracks' : 'tracks.copyingTracks',
       tasks.length,
-      tasks.length
+      tasks.length,
+      false,
+      progressId
     )
 
     if (isPushSongFingerprintLibrary && fingerprintsToAdd.length > 0) {
@@ -565,7 +616,7 @@ function createWindow() {
       fingerprintMode: ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
     }
 
-    mainWindow?.webContents.send('importFinished', formData.songListUUID, importSummary)
+    mainWindow?.webContents.send('importFinished', formData.songListUUID, importSummary, progressId)
     if (hasENOSPC) {
       mainWindow?.webContents.send('file-batch-summary', {
         context: 'importSongs',
@@ -929,6 +980,14 @@ function createWindow() {
 
   ipcMain.on('show-item-in-folder', (e, filePath: string) => {
     shell.showItemInFolder(filePath)
+  })
+
+  // 音频转换：开始/取消（零安装，随包 ffmpeg）
+  ipcMain.handle('audio:convert:start', async (_e, payload) => {
+    return await startAudioConversion(mainWindow, payload)
+  })
+  ipcMain.on('audio:convert:cancel', (_e, jobId: string) => {
+    cancelAudioConversion(jobId)
   })
 
   mainWindow.on('closed', () => {

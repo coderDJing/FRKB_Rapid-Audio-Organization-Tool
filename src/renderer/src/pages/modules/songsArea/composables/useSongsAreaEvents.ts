@@ -115,6 +115,24 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     }
   })
 
+  // 转换完成后重新打开歌单
+  window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
+    const listUUID = payload?.songListUUID
+    if (!listUUID) return
+    if (listUUID === runtime.songsArea.songListUUID) {
+      setTimeout(async () => {
+        await openSongList()
+        try {
+          emitter.emit('playlistContentChanged', { uuids: [listUUID] })
+        } catch {}
+      }, 300)
+    } else {
+      try {
+        emitter.emit('playlistContentChanged', { uuids: [listUUID] })
+      } catch {}
+    }
+  })
+
   // 切换歌单时刷新列表
   watch(
     () => runtime.songsArea.songListUUID,
