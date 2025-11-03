@@ -18,13 +18,8 @@ module.exports = async function (context) {
     console.log(`[afterPack] exists(${ffmpegUniversalPath}) = ${exists}`)
     if (!exists) return
 
-    // 仅在 x64 构建中移除通用 ffmpeg，确保该文件只出现在一个架构内
-    if (isX64) {
-      await fs.remove(ffmpegUniversalPath)
-      console.log(`[afterPack] removed universal ffmpeg from x64 build: ${ffmpegUniversalPath}`)
-    } else {
-      console.log(`[afterPack] keep universal ffmpeg in arm64 build: ${ffmpegUniversalPath}`)
-    }
+    // 不再删除，保证两个架构的包在相同路径存在相同文件，配合 singleArchFiles 合并
+    console.log(`[afterPack] keep universal ffmpeg in ${isX64 ? 'x64' : isArm64 ? 'arm64' : String(context.arch)} build: ${ffmpegUniversalPath}`)
   } catch (err) {
     console.error('[afterPack] error while handling ffmpeg:', err)
     throw err
