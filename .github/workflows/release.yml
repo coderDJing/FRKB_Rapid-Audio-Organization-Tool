@@ -127,28 +127,59 @@ jobs:
           brew install ffmpeg
           install -m 755 "$(brew --prefix)/bin/ffmpeg" vendor/ffmpeg/darwin-arm64/ffmpeg
           
-          # 从 ffmpeg.org 官方下载 x64 版本
-          # 使用 evermeet.cx 的静态构建 (可靠的 macOS FFmpeg 静态构建源)
-          curl -L "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip" -o ffmpeg-x64.zip
-          unzip -q ffmpeg-x64.zip
+          # 从多个源尝试下载 x64 版本
+          X64_DOWNLOADED=false
           
-          # 确保是 x64 架构 (evermeet.cx 提供的是 x64 版本)
-          if file ffmpeg | grep -q "x86_64"; then
-            install -m 755 ffmpeg vendor/ffmpeg/darwin-x64/ffmpeg
-          else
-            echo "ERROR: Downloaded ffmpeg is not x64 architecture"
-            file ffmpeg
-            exit 1
+          # 方案1: 尝试 ffbinaries.com
+          echo "Trying to download x64 ffmpeg from ffbinaries..."
+          if curl -L "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v4.4.1/ffmpeg-4.4.1-osx-64.zip" -o ffmpeg-x64.zip && [ -f ffmpeg-x64.zip ]; then
+            unzip -q ffmpeg-x64.zip -d ffmpeg-x64-temp || true
+            if [ -f ffmpeg-x64-temp/ffmpeg ] && file ffmpeg-x64-temp/ffmpeg | grep -q "x86_64"; then
+              install -m 755 ffmpeg-x64-temp/ffmpeg vendor/ffmpeg/darwin-x64/ffmpeg
+              X64_DOWNLOADED=true
+              echo "✓ Successfully downloaded x64 ffmpeg from ffbinaries"
+            fi
+            rm -rf ffmpeg-x64-temp ffmpeg-x64.zip
           fi
           
-          # 清理临时文件
-          rm -f ffmpeg ffmpeg-x64.zip
+          # 方案2: 如果方案1失败,尝试从 npm ffmpeg-static 提取
+          if [ "$X64_DOWNLOADED" = false ]; then
+            echo "Trying to extract x64 ffmpeg from npm package..."
+            mkdir -p ffmpeg-npm-temp
+            cd ffmpeg-npm-temp
+            # 临时安装 ffmpeg-static 并指定 x64 架构
+            FFMPEG_PLATFORM=darwin FFMPEG_ARCH=x64 npm install --no-save ffmpeg-static@5.2.0 || true
+            if [ -f node_modules/ffmpeg-static/ffmpeg ] && file node_modules/ffmpeg-static/ffmpeg | grep -q "x86_64"; then
+              install -m 755 node_modules/ffmpeg-static/ffmpeg ../vendor/ffmpeg/darwin-x64/ffmpeg
+              X64_DOWNLOADED=true
+              echo "✓ Successfully extracted x64 ffmpeg from npm"
+            fi
+            cd ..
+            rm -rf ffmpeg-npm-temp
+          fi
+          
+          # 验证是否成功获取 x64 版本
+          if [ "$X64_DOWNLOADED" = false ]; then
+            echo "ERROR: Failed to download x64 ffmpeg from all sources"
+            exit 1
+          fi
           
           # 验证两个二进制文件
           echo "=== arm64 binary ==="
           file vendor/ffmpeg/darwin-arm64/ffmpeg
+          ls -lh vendor/ffmpeg/darwin-arm64/ffmpeg
+          
           echo "=== x64 binary ==="
           file vendor/ffmpeg/darwin-x64/ffmpeg
+          ls -lh vendor/ffmpeg/darwin-x64/ffmpeg
+          
+          # 比较两个文件是否相同 (应该不同)
+          if cmp -s vendor/ffmpeg/darwin-arm64/ffmpeg vendor/ffmpeg/darwin-x64/ffmpeg; then
+            echo "ERROR: arm64 and x64 binaries are identical!"
+            exit 1
+          else
+            echo "✓ Confirmed: arm64 and x64 binaries are different"
+          fi
 
       - name: Build Rust N-API for mac (both arch)
         working-directory: rust_package
