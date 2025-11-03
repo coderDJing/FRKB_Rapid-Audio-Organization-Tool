@@ -12,9 +12,16 @@ export function resolveBundledFfmpegPath(): string {
   const ffmpegRoot = path.join(base, 'ffmpeg')
 
   if (platform === 'darwin') {
-    const universalPath = path.join(ffmpegRoot, 'darwin-universal', exe)
-    if (fs.pathExistsSync(universalPath)) {
-      return universalPath
+    const candidateOrder = [
+      path.join(ffmpegRoot, 'darwin', exe),
+      path.join(ffmpegRoot, 'darwin-universal', exe),
+      path.join(ffmpegRoot, 'darwin-arm64', exe),
+      path.join(ffmpegRoot, 'darwin-x64', exe)
+    ]
+    for (const candidate of candidateOrder) {
+      if (fs.pathExistsSync(candidate)) {
+        return candidate
+      }
     }
   }
 

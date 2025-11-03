@@ -120,7 +120,7 @@ jobs:
       - name: Prepare FFmpeg (macOS both arch)
         run: |
           set -euxo pipefail
-          mkdir -p vendor/ffmpeg/darwin-arm64 vendor/ffmpeg/darwin-x64 vendor/ffmpeg/darwin-universal
+          mkdir -p vendor/ffmpeg/darwin-arm64 vendor/ffmpeg/darwin-x64 vendor/ffmpeg/darwin
           
           echo "=== Host uname ==="
           uname -a
@@ -198,20 +198,20 @@ jobs:
           shasum -a 256 vendor/ffmpeg/darwin-x64/ffmpeg || true
           lipo -archs vendor/ffmpeg/darwin-x64/ffmpeg || true
           
-          # 生成通用二进制
+          # 生成通用二进制并放入固定目录
           echo "Creating universal ffmpeg via lipo"
-          lipo -create -output vendor/ffmpeg/darwin-universal/ffmpeg \
+          lipo -create -output vendor/ffmpeg/darwin/ffmpeg \
             vendor/ffmpeg/darwin-arm64/ffmpeg \
             vendor/ffmpeg/darwin-x64/ffmpeg
-          chmod +x vendor/ffmpeg/darwin-universal/ffmpeg
+          chmod +x vendor/ffmpeg/darwin/ffmpeg
           
           echo "=== Universal binary ==="
-          file vendor/ffmpeg/darwin-universal/ffmpeg
-          ls -lh vendor/ffmpeg/darwin-universal/ffmpeg
-          shasum -a 256 vendor/ffmpeg/darwin-universal/ffmpeg || true
-          lipo -archs vendor/ffmpeg/darwin-universal/ffmpeg || true
+          file vendor/ffmpeg/darwin/ffmpeg
+          ls -lh vendor/ffmpeg/darwin/ffmpeg
+          shasum -a 256 vendor/ffmpeg/darwin/ffmpeg || true
+          lipo -archs vendor/ffmpeg/darwin/ffmpeg || true
           
-          # 清理单架构副本，避免被打包
+          # 清理单架构副本
           rm -rf vendor/ffmpeg/darwin-arm64 vendor/ffmpeg/darwin-x64
           
           echo "Listing vendor/ffmpeg directory"
