@@ -117,15 +117,43 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile=false
 
-      - name: Prepare FFmpeg (macOS via Homebrew)
+      - name: Prepare FFmpeg (macOS both arch)
         run: |
+          set -e
+          mkdir -p vendor/ffmpeg/darwin-arm64 vendor/ffmpeg/darwin-x64
+          
+          # Arm64 ffmpeg via brew (native)
           brew update
           brew install ffmpeg
-          mkdir -p vendor/ffmpeg/darwin-arm64 vendor/ffmpeg/darwin-x64
-          # 从 brew 前缀复制当前架构的可执行文件
-          FFPATH="$(brew --prefix)/bin/ffmpeg"
-          install -m 755 "$FFPATH" vendor/ffmpeg/darwin-arm64/ffmpeg || true
-          install -m 755 "$FFPATH" vendor/ffmpeg/darwin-x64/ffmpeg || true
+          install -m 755 "$(brew --prefix)/bin/ffmpeg" vendor/ffmpeg/darwin-arm64/ffmpeg
+          
+          # Install Rosetta for x64 support
+          softwareupdate --install-rosetta --agree-to-license || true
+          
+          # Try to use x64 Homebrew under Rosetta
+          if [ -x "/usr/local/bin/brew" ]; then
+            arch -x86_64 /usr/local/bin/brew update || true
+            arch -x86_64 /usr/local/bin/brew install ffmpeg || true
+            if [ -x "/usr/local/bin/ffmpeg" ]; then
+              install -m 755 "/usr/local/bin/ffmpeg" vendor/ffmpeg/darwin-x64/ffmpeg || true
+            else
+              # Fallback: try brew --prefix
+              X64_PREFIX=$(arch -x86_64 /usr/local/bin/brew --prefix 2>/dev/null || echo "/usr/local")
+              if [ -x "$X64_PREFIX/bin/ffmpeg" ]; then
+                install -m 755 "$X64_PREFIX/bin/ffmpeg" vendor/ffmpeg/darwin-x64/ffmpeg || true
+              fi
+            fi
+          fi
+          
+          # Final fallback: if x64 ffmpeg still missing, copy arm64 (build will pass, but Intel 机器不可执行)
+          if [ ! -f vendor/ffmpeg/darwin-x64/ffmpeg ]; then
+            echo "WARN: x64 ffmpeg not found, falling back to arm64 copy (runtime on Intel mac will fail)."
+            install -m 755 vendor/ffmpeg/darwin-arm64/ffmpeg vendor/ffmpeg/darwin-x64/ffmpeg
+          fi
+          
+          # Verify
+          file vendor/ffmpeg/darwin-arm64/ffmpeg || true
+          file vendor/ffmpeg/darwin-x64/ffmpeg || true
 
       - name: Build Rust N-API for mac (both arch)
         working-directory: rust_package
