@@ -76,7 +76,7 @@ jobs:
         with:
           name: win-artifacts
           path: |
-            dist/FRKB-*-win32-x64.exe
+            dist/*.exe
             dist/*.blockmap
             dist/*.yml
 
@@ -266,7 +266,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/FRKB-*-win32-x64.exe
+            artifacts/*.exe
             artifacts/*.dmg
             artifacts/*.yml
             artifacts/*.zip
