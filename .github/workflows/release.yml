@@ -120,7 +120,7 @@ jobs:
       - name: Prepare FFmpeg (macOS both arch)
         run: |
           set -euxo pipefail
-          mkdir -p vendor/ffmpeg/darwin-arm64 vendor/ffmpeg/darwin-x64
+          mkdir -p vendor/ffmpeg/darwin-arm64 vendor/ffmpeg/darwin-x64 vendor/ffmpeg/darwin-universal
           
           echo "=== Host uname ==="
           uname -a
@@ -185,26 +185,34 @@ jobs:
             exit 1
           fi
           
-          # 验证两个二进制文件
-          echo "=== arm64 binary ==="
+          # 输出原始二进制信息
+          echo "=== Raw arm64 binary ==="
           file vendor/ffmpeg/darwin-arm64/ffmpeg
           ls -lh vendor/ffmpeg/darwin-arm64/ffmpeg
           shasum -a 256 vendor/ffmpeg/darwin-arm64/ffmpeg || true
           lipo -archs vendor/ffmpeg/darwin-arm64/ffmpeg || true
           
-          echo "=== x64 binary ==="
+          echo "=== Raw x64 binary ==="
           file vendor/ffmpeg/darwin-x64/ffmpeg
           ls -lh vendor/ffmpeg/darwin-x64/ffmpeg
           shasum -a 256 vendor/ffmpeg/darwin-x64/ffmpeg || true
           lipo -archs vendor/ffmpeg/darwin-x64/ffmpeg || true
           
-          # 比较两个文件是否相同 (应该不同)
-          if cmp -s vendor/ffmpeg/darwin-arm64/ffmpeg vendor/ffmpeg/darwin-x64/ffmpeg; then
-            echo "ERROR: arm64 and x64 binaries are identical!"
-            exit 1
-          else
-            echo "✓ Confirmed: arm64 and x64 binaries are different"
-          fi
+          # 生成通用二进制
+          echo "Creating universal ffmpeg via lipo"
+          lipo -create -output vendor/ffmpeg/darwin-universal/ffmpeg \
+            vendor/ffmpeg/darwin-arm64/ffmpeg \
+            vendor/ffmpeg/darwin-x64/ffmpeg
+          chmod +x vendor/ffmpeg/darwin-universal/ffmpeg
+          
+          echo "=== Universal binary ==="
+          file vendor/ffmpeg/darwin-universal/ffmpeg
+          ls -lh vendor/ffmpeg/darwin-universal/ffmpeg
+          shasum -a 256 vendor/ffmpeg/darwin-universal/ffmpeg || true
+          lipo -archs vendor/ffmpeg/darwin-universal/ffmpeg || true
+          
+          # 清理单架构副本，避免被打包
+          rm -rf vendor/ffmpeg/darwin-arm64 vendor/ffmpeg/darwin-x64
           
           echo "Listing vendor/ffmpeg directory"
           find vendor/ffmpeg -maxdepth 2 -type f -exec ls -l {} \;
