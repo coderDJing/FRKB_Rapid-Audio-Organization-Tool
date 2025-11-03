@@ -119,13 +119,20 @@ jobs:
 
       - name: Prepare FFmpeg (macOS both arch)
         run: |
-          set -e
+          set -euxo pipefail
           mkdir -p vendor/ffmpeg/darwin-arm64 vendor/ffmpeg/darwin-x64
           
+          echo "=== Host uname ==="
+          uname -a
+          sw_vers
+          
           # 使用 Homebrew 安装 arm64 版本 (native on arm64 runner)
+          echo "Installing arm64 ffmpeg via Homebrew"
           brew update
           brew install ffmpeg
-          install -m 755 "$(brew --prefix)/bin/ffmpeg" vendor/ffmpeg/darwin-arm64/ffmpeg
+          ARM64_FFMPEG_PATH="$(brew --prefix)/bin/ffmpeg"
+          file "$ARM64_FFMPEG_PATH"
+          install -m 755 "$ARM64_FFMPEG_PATH" vendor/ffmpeg/darwin-arm64/ffmpeg
           
           # 从多个源尝试下载 x64 版本
           X64_DOWNLOADED=false
@@ -134,10 +141,17 @@ jobs:
           echo "Trying to download x64 ffmpeg from ffbinaries..."
           if curl -L "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v4.4.1/ffmpeg-4.4.1-osx-64.zip" -o ffmpeg-x64.zip && [ -f ffmpeg-x64.zip ]; then
             unzip -q ffmpeg-x64.zip -d ffmpeg-x64-temp || true
-            if [ -f ffmpeg-x64-temp/ffmpeg ] && file ffmpeg-x64-temp/ffmpeg | grep -q "x86_64"; then
-              install -m 755 ffmpeg-x64-temp/ffmpeg vendor/ffmpeg/darwin-x64/ffmpeg
-              X64_DOWNLOADED=true
-              echo "✓ Successfully downloaded x64 ffmpeg from ffbinaries"
+            if [ -f ffmpeg-x64-temp/ffmpeg ]; then
+              file ffmpeg-x64-temp/ffmpeg
+              if file ffmpeg-x64-temp/ffmpeg | grep -q "x86_64"; then
+                install -m 755 ffmpeg-x64-temp/ffmpeg vendor/ffmpeg/darwin-x64/ffmpeg
+                X64_DOWNLOADED=true
+                echo "✓ Successfully downloaded x64 ffmpeg from ffbinaries"
+              else
+                echo "ffbinaries artifact is not x86_64"
+              fi
+            else
+              echo "ffbinaries archive missing ffmpeg binary"
             fi
             rm -rf ffmpeg-x64-temp ffmpeg-x64.zip
           fi
@@ -146,21 +160,28 @@ jobs:
           if [ "$X64_DOWNLOADED" = false ]; then
             echo "Trying to extract x64 ffmpeg from npm package..."
             mkdir -p ffmpeg-npm-temp
-            cd ffmpeg-npm-temp
+            pushd ffmpeg-npm-temp
             # 临时安装 ffmpeg-static 并指定 x64 架构
             FFMPEG_PLATFORM=darwin FFMPEG_ARCH=x64 npm install --no-save ffmpeg-static@5.2.0 || true
-            if [ -f node_modules/ffmpeg-static/ffmpeg ] && file node_modules/ffmpeg-static/ffmpeg | grep -q "x86_64"; then
-              install -m 755 node_modules/ffmpeg-static/ffmpeg ../vendor/ffmpeg/darwin-x64/ffmpeg
-              X64_DOWNLOADED=true
-              echo "✓ Successfully extracted x64 ffmpeg from npm"
+            if [ -f node_modules/ffmpeg-static/ffmpeg ]; then
+              file node_modules/ffmpeg-static/ffmpeg
+              if file node_modules/ffmpeg-static/ffmpeg | grep -q "x86_64"; then
+                install -m 755 node_modules/ffmpeg-static/ffmpeg ../vendor/ffmpeg/darwin-x64/ffmpeg
+                X64_DOWNLOADED=true
+                echo "✓ Successfully extracted x64 ffmpeg from npm"
+              else
+                echo "npm ffmpeg-static artifact is not x86_64"
+              fi
+            else
+              echo "npm ffmpeg-static did not produce ffmpeg binary"
             fi
-            cd ..
+            popd
             rm -rf ffmpeg-npm-temp
           fi
           
           # 验证是否成功获取 x64 版本
           if [ "$X64_DOWNLOADED" = false ]; then
-            echo "ERROR: Failed to download x64 ffmpeg from all sources"
+            echo "ERROR: Failed to obtain x64 ffmpeg from all sources"
             exit 1
           fi
           
@@ -168,10 +189,14 @@ jobs:
           echo "=== arm64 binary ==="
           file vendor/ffmpeg/darwin-arm64/ffmpeg
           ls -lh vendor/ffmpeg/darwin-arm64/ffmpeg
+          shasum -a 256 vendor/ffmpeg/darwin-arm64/ffmpeg || true
+          lipo -archs vendor/ffmpeg/darwin-arm64/ffmpeg || true
           
           echo "=== x64 binary ==="
           file vendor/ffmpeg/darwin-x64/ffmpeg
           ls -lh vendor/ffmpeg/darwin-x64/ffmpeg
+          shasum -a 256 vendor/ffmpeg/darwin-x64/ffmpeg || true
+          lipo -archs vendor/ffmpeg/darwin-x64/ffmpeg || true
           
           # 比较两个文件是否相同 (应该不同)
           if cmp -s vendor/ffmpeg/darwin-arm64/ffmpeg vendor/ffmpeg/darwin-x64/ffmpeg; then
@@ -180,6 +205,9 @@ jobs:
           else
             echo "✓ Confirmed: arm64 and x64 binaries are different"
           fi
+          
+          echo "Listing vendor/ffmpeg directory"
+          find vendor/ffmpeg -maxdepth 2 -type f -exec ls -l {} \;
 
       - name: Build Rust N-API for mac (both arch)
         working-directory: rust_package
