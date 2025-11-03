@@ -230,6 +230,8 @@ jobs:
         run: pnpm build
 
       - name: Package macOS (universal, no publish)
+        env:
+          DEBUG: electron-builder
         run: npx electron-builder --mac --universal --publish never
 
       # 不再复制 rc.yml / rc-mac.yml，保持标准文件名
