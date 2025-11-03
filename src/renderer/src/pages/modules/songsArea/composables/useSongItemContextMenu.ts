@@ -34,7 +34,8 @@ export function useSongItemContextMenu(
       { menuName: 'tracks.deleteTracks', shortcutKey: 'Delete' },
       { menuName: 'tracks.deleteAllAbove' }
     ],
-    [{ menuName: 'tracks.showInFileExplorer' }]
+    [{ menuName: 'tracks.showInFileExplorer' }],
+    [{ menuName: 'tracks.convertFormat' }]
   ])
 
   const showAndHandleSongContextMenu = async (
@@ -53,6 +54,33 @@ export function useSongItemContextMenu(
     if (result === 'cancel') return null
 
     switch (result.menuName) {
+      case 'tracks.convertFormat': {
+        // 打开转换对话框并获取选项
+        const { default: openConvertDialog } = await import(
+          '@renderer/components/audioConvertDialog'
+        )
+        const files = [...runtime.songsArea.selectedSongFilePath]
+        const extsSet = new Set(
+          files
+            .map((p) => (p || '').toLowerCase())
+            .map((p) => p.match(/\.[^\\\/\.]+$/)?.[0] || '')
+            .filter((e) => ['.mp3', '.wav', '.flac', '.aif', '.aiff'].includes(e))
+        )
+        const sourceExts = Array.from(extsSet)
+        const dialogResult: any = await openConvertDialog({ sourceExts })
+        if (dialogResult && dialogResult !== 'cancel') {
+          try {
+            await window.electron.ipcRenderer.invoke('audio:convert:start', {
+              files,
+              options: dialogResult,
+              songListUUID: runtime.songsArea.songListUUID
+            })
+          } catch (e) {
+            // 忽略错误，由主进程统一上报
+          }
+        }
+        return null
+      }
       case 'tracks.deleteAllAbove': {
         // 1. 基于当前状态和右键的歌曲，确定要删除的歌曲信息和路径 (delPaths)
         const initialSongInfoArrSnapshot = [...runtime.songsArea.songInfoArr]

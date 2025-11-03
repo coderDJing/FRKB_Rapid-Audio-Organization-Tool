@@ -219,7 +219,24 @@
     "unknownArtist": "未知艺术家",
     "showInExplorer": "在文件资源管理器中显示",
     "showInFileExplorer": "在文件资源浏览器中显示",
-    "saveCoverAs": "封面另存为"
+    "saveCoverAs": "封面另存为",
+    "convertFormat": "转换格式"
+  },
+  "convert": {
+    "title": "转换格式",
+    "completed": "转换完成",
+    "targetFormat": "目标格式",
+    "strategy": "输出策略",
+    "newFile": "生成新文件",
+    "replaceOriginal": "替换原文件",
+    "preserveMetadata": "保留元数据",
+    "addFingerprint": "将新文件指纹加入指纹库",
+    "converted": "成功转换",
+    "skippedSameFormat": "同格式跳过",
+    "failed": "失败",
+    "createdNew": "新文件（重命名）",
+    "replaced": "替换覆盖",
+    "backupCount": ""
   },
   "columns": {
     "cover": "专辑封面",
@@ -258,6 +275,9 @@
     "endMustBeGreater": "结束位置必须大于开始位置",
     "tapBeat": "左键节拍点按 / 右键恢复",
     "aiffNotSupported": "当前格式（AIFF/AIF）不支持播放"
+  },
+  "audio": {
+    "convert": "转换格式"
   },
   "fingerprints": {
     "manualAdd": "手动添加曲目指纹",

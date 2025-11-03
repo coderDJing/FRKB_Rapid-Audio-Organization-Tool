@@ -78,6 +78,19 @@ interface ISettingConfig {
   fingerprintMode?: 'pcm' | 'file'
   // 云同步用户 Key（由设置页配置）
   cloudSyncUserKey?: string
+  // 音频转换默认项（记住用户上次选择）
+  convertDefaults?: {
+    targetFormat: 'mp3' | 'flac' | 'wav' | 'aif' | 'aiff'
+    bitrateKbps?: number
+    sampleRate?: 44100 | 48000
+    channels?: 1 | 2
+    preserveMetadata?: boolean
+    normalize?: boolean
+    strategy: 'new_file' | 'replace'
+    overwrite?: boolean
+    backupOnReplace?: boolean
+    addFingerprint?: boolean
+  }
 }
 
 interface ILanguageDict {
