@@ -43,6 +43,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile=false
 
+      - name: Prepare FFmpeg (Windows)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path vendor/ffmpeg/win32-x64 | Out-Null
+          $url = 'https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip'
+          Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip
+          Expand-Archive -Path ffmpeg.zip -DestinationPath ffmpeg_unzip -Force
+          $ff = (Get-ChildItem -Recurse -Filter ffmpeg.exe ffmpeg_unzip | Select-Object -First 1).FullName
+          Copy-Item -Path $ff -Destination vendor/ffmpeg/win32-x64/ffmpeg.exe -Force
+          Remove-Item ffmpeg.zip -Force
+          Remove-Item ffmpeg_unzip -Recurse -Force
+
       - name: Build Rust N-API (rust_package)
         working-directory: rust_package
         run: npx --yes @napi-rs/cli@2.18.4 build --platform --release --target x86_64-pc-windows-msvc
@@ -104,6 +116,16 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile=false
+
+      - name: Prepare FFmpeg (macOS via Homebrew)
+        run: |
+          brew update
+          brew install ffmpeg
+          mkdir -p vendor/ffmpeg/darwin-arm64 vendor/ffmpeg/darwin-x64
+          # 从 brew 前缀复制当前架构的可执行文件
+          FFPATH="$(brew --prefix)/bin/ffmpeg"
+          install -m 755 "$FFPATH" vendor/ffmpeg/darwin-arm64/ffmpeg || true
+          install -m 755 "$FFPATH" vendor/ffmpeg/darwin-x64/ffmpeg || true
 
       - name: Build Rust N-API for mac (both arch)
         working-directory: rust_package

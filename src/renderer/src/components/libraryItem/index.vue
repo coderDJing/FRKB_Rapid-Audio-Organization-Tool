@@ -207,7 +207,8 @@ const contextmenuEvent = async (event: MouseEvent) => {
     // 回收站中的歌单右键：显示在资源管理器中 + 分隔线 + 彻底删除
     menuArr.value = [
       [{ menuName: 'recycleBin.permanentlyDelete' }],
-      [{ menuName: 'tracks.showInFileExplorer' }]
+      [{ menuName: 'tracks.showInFileExplorer' }],
+      [{ menuName: 'tracks.convertFormat' }]
     ]
   } else {
     // 非回收站：恢复默认菜单，避免受上次覆盖影响
@@ -224,7 +225,8 @@ const contextmenuEvent = async (event: MouseEvent) => {
               { menuName: 'playlist.deletePlaylist' },
               { menuName: 'playlist.emptyPlaylist' }
             ],
-            [{ menuName: 'tracks.showInFileExplorer' }]
+            [{ menuName: 'tracks.showInFileExplorer' }],
+            [{ menuName: 'tracks.convertFormat' }]
           ]
   }
   rightClickMenuShow.value = true
@@ -321,6 +323,34 @@ const contextmenuEvent = async (event: MouseEvent) => {
         'openFileExplorer',
         libraryUtils.findDirPathByUuid(props.uuid)
       )
+    } else if (result.menuName === 'tracks.convertFormat') {
+      try {
+        const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
+        const scan = await window.electron.ipcRenderer.invoke('scanSongList', dirPath, props.uuid)
+        const files: string[] = Array.isArray(scan?.scanData)
+          ? scan.scanData.map((s: any) => s.filePath).filter(Boolean)
+          : []
+        if (files.length === 0) return
+        const sourceExts = Array.from(
+          new Set(
+            files
+              .map((p) => (p || '').toLowerCase())
+              .map((p) => p.match(/\.[^\\\/\.]+$/)?.[0] || '')
+              .filter((e) => ['.mp3', '.wav', '.flac', '.aif', '.aiff'].includes(e))
+          )
+        )
+        const { default: openConvertDialog } = await import(
+          '@renderer/components/audioConvertDialog'
+        )
+        const dialogResult: any = await openConvertDialog({ sourceExts })
+        if (dialogResult && dialogResult !== 'cancel') {
+          await window.electron.ipcRenderer.invoke('audio:convert:start', {
+            files,
+            options: dialogResult,
+            songListUUID: props.uuid
+          })
+        }
+      } catch {}
     } else if (result.menuName === 'recycleBin.permanentlyDelete') {
       let res = await confirm({
         title: t('common.delete'),

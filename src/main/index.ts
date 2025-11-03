@@ -129,7 +129,20 @@ const defaultSettings = {
   // 指纹模式：默认使用 PCM 内容哈希；如检测到旧库会在后续流程强制切为 file
   fingerprintMode: 'pcm' as 'pcm',
   // 云同步用户 Key（可为空，由设置页配置）
-  cloudSyncUserKey: ''
+  cloudSyncUserKey: '',
+  // 转码默认值（首次默认 MP3，新文件、不覆盖、保留元数据）
+  convertDefaults: {
+    targetFormat: 'mp3',
+    bitrateKbps: 320,
+    sampleRate: 44100,
+    channels: 2,
+    preserveMetadata: true,
+    normalize: false,
+    strategy: 'new_file',
+    overwrite: false,
+    backupOnReplace: true,
+    addFingerprint: false
+  }
 }
 
 store.layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
@@ -918,28 +931,27 @@ ipcMain.handle('exportSongListToDir', async (e, folderPathVal, deleteSongsAfterE
       tasks.push(() => moveOrCopyItemWithCheckIsExist(item, dest, deleteSongsAfterExport))
     }
   }
-  // 初始进度：0/总数
-  if (mainWindow.instance) {
-    mainWindow.instance.webContents.send(
-      'progressSet',
-      'tracks.copyingTracks',
-      0,
-      tasks.length,
-      false
-    )
-  }
   const batchId = `exportSongList_${Date.now()}`
+  // 初始进度：0/总数（对象事件，带 id）
+  if (mainWindow.instance) {
+    mainWindow.instance.webContents.send('progressSet', {
+      id: batchId,
+      titleKey: 'tracks.copyingTracks',
+      now: 0,
+      total: tasks.length,
+      isInitial: true
+    })
+  }
   const { success, failed, hasENOSPC, skipped, results } = await runWithConcurrency(tasks, {
     concurrency: 16,
     onProgress: (done, total) => {
       if (mainWindow.instance) {
-        mainWindow.instance.webContents.send(
-          'progressSet',
-          'tracks.copyingTracks',
-          done,
-          total,
-          false
-        )
+        mainWindow.instance.webContents.send('progressSet', {
+          id: batchId,
+          titleKey: 'tracks.copyingTracks',
+          now: done,
+          total
+        })
       }
     },
     stopOnENOSPC: true,
@@ -964,13 +976,12 @@ ipcMain.handle('exportSongListToDir', async (e, folderPathVal, deleteSongsAfterE
   }
   // 推满进度，避免 UI 悬挂
   if (mainWindow.instance) {
-    mainWindow.instance.webContents.send(
-      'progressSet',
-      'tracks.copyingTracks',
-      tasks.length,
-      tasks.length,
-      false
-    )
+    mainWindow.instance.webContents.send('progressSet', {
+      id: batchId,
+      titleKey: 'tracks.copyingTracks',
+      now: tasks.length,
+      total: tasks.length
+    })
   }
   if (failed > 0) {
     throw new Error('exportSongListToDir failed')
@@ -986,28 +997,27 @@ ipcMain.handle('exportSongsToDir', async (e, folderPathVal, deleteSongsAfterExpo
       moveOrCopyItemWithCheckIsExist(item.filePath, targetPath, deleteSongsAfterExport)
     )
   }
+  const batchId = `exportSongs_${Date.now()}`
   // 初始进度：0/总数
   if (mainWindow.instance) {
-    mainWindow.instance.webContents.send(
-      'progressSet',
-      'tracks.copyingTracks',
-      0,
-      tasks.length,
-      false
-    )
+    mainWindow.instance.webContents.send('progressSet', {
+      id: batchId,
+      titleKey: 'tracks.copyingTracks',
+      now: 0,
+      total: tasks.length,
+      isInitial: true
+    })
   }
-  const batchId = `exportSongs_${Date.now()}`
   const { success, failed, hasENOSPC, skipped, results } = await runWithConcurrency(tasks, {
     concurrency: 16,
     onProgress: (done, total) => {
       if (mainWindow.instance) {
-        mainWindow.instance.webContents.send(
-          'progressSet',
-          'tracks.copyingTracks',
-          done,
-          total,
-          false
-        )
+        mainWindow.instance.webContents.send('progressSet', {
+          id: batchId,
+          titleKey: 'tracks.copyingTracks',
+          now: done,
+          total
+        })
       }
     },
     stopOnENOSPC: true,
@@ -1031,13 +1041,12 @@ ipcMain.handle('exportSongsToDir', async (e, folderPathVal, deleteSongsAfterExpo
     })
   }
   if (mainWindow.instance) {
-    mainWindow.instance.webContents.send(
-      'progressSet',
-      'tracks.copyingTracks',
-      tasks.length,
-      tasks.length,
-      false
-    )
+    mainWindow.instance.webContents.send('progressSet', {
+      id: batchId,
+      titleKey: 'tracks.copyingTracks',
+      now: tasks.length,
+      total: tasks.length
+    })
   }
   if (failed > 0) {
     throw new Error('exportSongsToDir failed')
@@ -1054,28 +1063,27 @@ ipcMain.handle('moveSongsToDir', async (e, srcs, dest) => {
       tasks.push(() => moveOrCopyItemWithCheckIsExist(src, targetPath, true))
     }
   }
+  const batchId = `moveSongs_${Date.now()}`
   // 初始进度：0/总数
   if (mainWindow.instance) {
-    mainWindow.instance.webContents.send(
-      'progressSet',
-      'tracks.movingTracks',
-      0,
-      tasks.length,
-      false
-    )
+    mainWindow.instance.webContents.send('progressSet', {
+      id: batchId,
+      titleKey: 'tracks.movingTracks',
+      now: 0,
+      total: tasks.length,
+      isInitial: true
+    })
   }
-  const batchId = `moveSongs_${Date.now()}`
   const { success, failed, hasENOSPC, skipped, results } = await runWithConcurrency(tasks, {
     concurrency: 16,
     onProgress: (done, total) => {
       if (mainWindow.instance) {
-        mainWindow.instance.webContents.send(
-          'progressSet',
-          'tracks.movingTracks',
-          done,
-          total,
-          false
-        )
+        mainWindow.instance.webContents.send('progressSet', {
+          id: batchId,
+          titleKey: 'tracks.movingTracks',
+          now: done,
+          total
+        })
       }
     },
     stopOnENOSPC: true,
@@ -1099,13 +1107,12 @@ ipcMain.handle('moveSongsToDir', async (e, srcs, dest) => {
     })
   }
   if (mainWindow.instance) {
-    mainWindow.instance.webContents.send(
-      'progressSet',
-      'tracks.movingTracks',
-      tasks.length,
-      tasks.length,
-      false
-    )
+    mainWindow.instance.webContents.send('progressSet', {
+      id: batchId,
+      titleKey: 'tracks.movingTracks',
+      now: tasks.length,
+      total: tasks.length
+    })
   }
   if (failed > 0) {
     throw new Error('moveSongsToDir failed')
