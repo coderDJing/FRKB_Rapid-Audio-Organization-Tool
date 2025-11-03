@@ -17,14 +17,9 @@
       }
     ],
     "mac": {
-      "universalApp": {
-        "x64ArchFiles": [
-          "Contents/Resources/ffmpeg/darwin-x64/**"
-        ],
-        "arm64ArchFiles": [
-          "Contents/Resources/ffmpeg/darwin-arm64/**"
-        ]
-      }
+      "x64ArchFiles": [
+        "Contents/Resources/ffmpeg/darwin-x64/**"
+      ]
     }
   },
   "scripts": {
