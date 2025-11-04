@@ -1061,6 +1061,7 @@ watch(keyword, () => {
     border-right: 1px solid #be1100;
     border-left: 1px solid #be1100;
     border-bottom: 1px solid #be1100;
+    color: #ffffff;
     font-size: 12px;
     padding-left: 5px;
     position: relative;
