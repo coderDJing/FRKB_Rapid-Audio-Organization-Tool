@@ -1,6 +1,6 @@
 {
   "name": "frkb",
-  "version": "1.0.7-rc.202511050005",
+  "version": "1.0.7-rc.202511050006",
   "description": "Rapid Audio Organization Tool",
   "main": "./out/main/index.js",
   "author": "CoderDJing",
@@ -24,7 +24,11 @@
       "executableName": "FRKB"
     },
     "nsis": {
-      "uninstallDisplayName": "FRKB"
+      "uninstallDisplayName": "FRKB",
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true
     },
     "mac": {
       "x64ArchFiles": "Contents/Resources/ffmpeg/darwin/ffmpeg",
