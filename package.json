@@ -1,6 +1,6 @@
 {
   "name": "frkb",
-  "version": "1.0.7-rc.202511050001",
+  "version": "1.0.7-rc.202511050002",
   "description": "Rapid Audio Organization Tool",
   "main": "./out/main/index.js",
   "author": "CoderDJing",
@@ -16,16 +16,20 @@
         "to": "ffmpeg"
       }
     ],
-    "afterPack": "./build/afterPack.cjs",
+    "appId": "com.electron.frkb",
+    "productName": "FRKB",
+    "productFilename": "FRKB",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "win": {
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "executableName": "FRKB"
     },
     "nsis": {
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "uninstallDisplayName": "FRKB"
     },
     "mac": {
-      "x64ArchFiles": "Contents/Resources/ffmpeg/darwin/ffmpeg",
+      "singleArchFiles": "Contents/Resources/ffmpeg/darwin/ffmpeg",
       "artifactName": "${productName}-${version}-universal.${ext}"
     }
   },
