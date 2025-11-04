@@ -426,16 +426,15 @@ onUnmounted(() => {
           <div>
             <span>{{ t('library.moveToFilter') }}</span>
           </div>
-          <div style="display: flex; align-items: center">
-            <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" />
-            <span>Q</span>
+          <div class="shortcut" style="display: flex; align-items: center">
+            <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>Q</span>
           </div>
         </div>
         <div class="menuButton" @click="moveToLikeLibrary()">
           <div>
             <span>{{ t('library.moveToCurated') }}</span>
           </div>
-          <div style="display: flex; align-items: center">
+          <div class="shortcut" style="display: flex; align-items: center">
             <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>E</span>
           </div>
         </div>
@@ -445,7 +444,7 @@ onUnmounted(() => {
           <div>
             <span>{{ t('tracks.deleteTracks') }} </span>
           </div>
-          <div style="display: flex; align-items: center">
+          <div class="shortcut" style="display: flex; align-items: center">
             <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>F</span>
           </div>
         </div>
@@ -481,6 +480,19 @@ onUnmounted(() => {
       background-color: var(--accent);
       color: #ffffff;
     }
+  }
+
+  /* 右侧快捷键容器：始终将内容贴右，字母固定宽度，避免不同字符宽度造成图标水平抖动 */
+  .menuButton .shortcut {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+  .menuButton .shortcut span {
+    display: inline-block;
+    width: 1.5ch; /* 约等于一个数字字符宽，足够容纳 Q/E/F 等 */
+    text-align: center; /* 居中，保证不同字符的视觉中心一致 */
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
   }
 }
 
