@@ -5,10 +5,10 @@
 - 支持 mac 通用（universal）构建：一个 `.app` 同时原生支持 x64 与 arm64。
 
 ### electron-builder 25.1.8 的关键点
-- 仅支持以下（与当前问题相关）的字段：
-  - `mac.x64ArchFiles`: string | null
-  - `mac.singleArchFiles`: string | null
-- 不支持：`mac.arm64ArchFiles`（此前尝试会触发“未知属性”报错）。
+- 与通用（universal）合并相关的稳定字段：
+  - `mac.x64ArchFiles`: string | null（建议使用）
+  - `mac.singleArchFiles`: string | null（在 25.1.8 的实际合并判定中可能被忽略，不推荐）
+- 不支持：`mac.arm64ArchFiles`（配置会触发“未知属性”报错）。
 - 通用合并规则（核心）：
   - electron-builder 会先分别打出 x64 与 arm64 两个 `.app`，随后逐文件对比并在相同路径的 Mach-O 上做“胖二进制”合并。
   - 若两个 `.app` 的 Mach-O 文件集合（路径+数量）不一致，会报：
@@ -42,9 +42,9 @@
            { "from": "vendor/ffmpeg", "to": "ffmpeg" }
          ],
          "mac": {
-           "x64ArchFiles": "Contents/Resources/ffmpeg/darwin/ffmpeg"
-           // 说明：也可用 singleArchFiles 指向同一路径，两者二选一；
-           // 重点是：当同一路径的文件在两个包中一致时，需通过其中一个字段声明覆盖规则。
+          "x64ArchFiles": "Contents/Resources/ffmpeg/darwin/ffmpeg"
+          // 说明：25.1.8 实测 universal 合并阶段只对 x64ArchFiles 进行规则匹配；
+          // singleArchFiles 在该版本可能不生效，建议统一使用 x64ArchFiles。
          }
        }
      }
@@ -89,7 +89,7 @@
 
 ### 最终建议（TL;DR）
 1) CI 拉下两个架构的 FFmpeg → 用 `lipo` 合成通用二进制 → 仅保留 `vendor/ffmpeg/darwin/ffmpeg`。
-2) `extraResources` 打包进应用；配置 `mac.x64ArchFiles`（或 `singleArchFiles`）指向 `Contents/Resources/ffmpeg/darwin/ffmpeg`。
+2) `extraResources` 打包进应用；配置 `mac.x64ArchFiles` 指向 `Contents/Resources/ffmpeg/darwin/ffmpeg`（25.1.8 不建议使用 singleArchFiles）。
 3) 运行时优先使用 `darwin/ffmpeg`；保留多级回退，兼容老包与开发态。
 4) 打开 `DEBUG=electron-builder` 并打印 `file/lipo/shasum/cmp`，一眼看出问题所在。
 
