@@ -100,6 +100,12 @@
   - `build.appId` 与 `build.productName` 必须稳定且不要随版本变化；
   - `win.executableName` 固定（例如 `FRKB`），避免安装目录或可执行文件名随版本改变；
   - 卸载显示名请配置在 `nsis.uninstallDisplayName`，不要写在 `win` 下。
+  - 若你希望“用户可自选目录，并且后续自动更新覆盖到同一路径”，推荐：
+    - `nsis.oneClick = false`
+    - `nsis.allowToChangeInstallationDirectory = true`
+    - `nsis.perMachine = true`（静默更新需管理员权限去写入自定义的系统目录，如 `Program Files` 或其他盘符下的受限目录）
+    - `nsis.allowElevation = true`
+    - 保持 `appId`、`productName`、`win.executableName` 稳定不变，静默更新会读取卸载注册表中的 `InstallLocation`，沿用上次安装目录。
 
 - 命名与 latest.yml 对齐，避免 404：
   - 统一用连字符（`-`）而非空格或点号拼接文件名；
@@ -111,6 +117,15 @@
   - 不支持 `win.uninstallDisplayName`：应当写在 `nsis.uninstallDisplayName`；
   - `mac.arm64ArchFiles` 不存在，仅有 `mac.x64ArchFiles | mac.singleArchFiles` 二选一；
   - 可使用 `mac.singleArchFiles: "Contents/Resources/ffmpeg/darwin/ffmpeg"` 标记“两个架构相同文件”的合并规则。
+
+#### 旧版“自选安装目录”导致的双安装（原因与处理）
+- 症状：老版本允许用户选择安装目录（如 `D:\\Program Files\\FRKB`），升级到新版本后，自动更新静默安装到了默认的用户目录（`%LOCALAPPDATA%\\Programs\\FRKB`），出现两份应用并存。
+- 原因：NSIS 自动更新为静默一键安装，无法复用历史“自定义目录”；若启用 `allowToChangeInstallationDirectory`，自动更新即不可用或不会覆盖到自定义路径。
+ - 处理建议（允许自选目录的前提下）：
+   - 将后续版本切换为上述配置（oneClick=false、allowToChangeInstallationDirectory=true、perMachine=true、allowElevation=true）。
+   - 之后的静默更新会沿用卸载注册表中的 `InstallLocation`，覆盖到之前的自定义目录。
+   - 若曾经发过“按用户目录”的 oneClick 版本导致并存，可提示用户卸载那份“用户目录安装”。
+   - 可在应用启动时探测重复安装并提示（同时查询 `HKLM` 与 `HKCU` 的 `_is1` 卸载项）。
 
 - 推荐最小可行配置示例：
   ```json
