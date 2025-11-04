@@ -94,3 +94,44 @@
 4) 打开 `DEBUG=electron-builder` 并打印 `file/lipo/shasum/cmp`，一眼看出问题所在。
 
 
+### Windows 覆盖安装与自动更新命名（electron-builder 25.1.8）
+
+- 保持安装覆盖的关键：
+  - `build.appId` 与 `build.productName` 必须稳定且不要随版本变化；
+  - `win.executableName` 固定（例如 `FRKB`），避免安装目录或可执行文件名随版本改变；
+  - 卸载显示名请配置在 `nsis.uninstallDisplayName`，不要写在 `win` 下。
+
+- 命名与 latest.yml 对齐，避免 404：
+  - 统一用连字符（`-`）而非空格或点号拼接文件名；
+  - 根级 `artifactName` 及平台级 `win.artifactName`/`mac.artifactName` 要与预期下载 URL 完全一致；
+  - 否则旧客户端根据 `latest.yml` 指向 `frkb-Setup-...exe`，而仓库里实际文件若是 `frkb.Setup...exe` 或带空格，会导致 404。
+
+- 版本 25.1.8 的配置限制（容易踩坑）：
+  - 不支持 `productFilename`（顶层字段）：配置后会直接校验失败；
+  - 不支持 `win.uninstallDisplayName`：应当写在 `nsis.uninstallDisplayName`；
+  - `mac.arm64ArchFiles` 不存在，仅有 `mac.x64ArchFiles | mac.singleArchFiles` 二选一；
+  - 可使用 `mac.singleArchFiles: "Contents/Resources/ffmpeg/darwin/ffmpeg"` 标记“两个架构相同文件”的合并规则。
+
+- 推荐最小可行配置示例：
+  ```json
+  {
+    "build": {
+      "appId": "com.electron.frkb",
+      "productName": "FRKB",
+      "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+      "win": {
+        "artifactName": "${productName}-Setup-${version}.${ext}",
+        "executableName": "FRKB"
+      },
+      "nsis": {
+        "uninstallDisplayName": "FRKB"
+      },
+      "mac": {
+        "singleArchFiles": "Contents/Resources/ffmpeg/darwin/ffmpeg",
+        "artifactName": "${productName}-${version}-universal.${ext}"
+      }
+    }
+  }
+  ```
+
+
