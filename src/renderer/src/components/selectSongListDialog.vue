@@ -162,6 +162,29 @@ const syncNavIndexByUUID = () => {
   navIndex.value = idx
 }
 
+// 统一的上下移动处理，供热键与输入框箭头键共用
+const moveSelection = (direction: 1 | -1) => {
+  const list = combinedNavList.value || []
+  if (list.length === 0) return
+  if (navIndex.value < 0) navIndex.value = 0
+  else navIndex.value = (navIndex.value + direction + list.length) % list.length
+  const target = list[navIndex.value]
+  selectedArea.value = target.area
+  runtime.dialogSelectedSongListUUID = target.uuid
+}
+const handleMoveDown = (e?: KeyboardEvent) => {
+  try {
+    e?.preventDefault?.()
+  } catch {}
+  moveSelection(1)
+}
+const handleMoveUp = (e?: KeyboardEvent) => {
+  try {
+    e?.preventDefault?.()
+  } catch {}
+  moveSelection(-1)
+}
+
 watch(
   () => [combinedNavList.value.length, runtime.dialogSelectedSongListUUID],
   () => {
@@ -303,22 +326,17 @@ const drop = async () => {
 }
 onMounted(() => {
   hotkeys('s', uuid, () => {
-    const list = combinedNavList.value || []
-    if (list.length === 0) return
-    if (navIndex.value < 0) navIndex.value = 0
-    else navIndex.value = (navIndex.value + 1) % list.length
-    const target = list[navIndex.value]
-    selectedArea.value = target.area
-    runtime.dialogSelectedSongListUUID = target.uuid
+    handleMoveDown()
   })
   hotkeys('w', uuid, () => {
-    const list = combinedNavList.value || []
-    if (list.length === 0) return
-    if (navIndex.value < 0) navIndex.value = 0
-    else navIndex.value = (navIndex.value - 1 + list.length) % list.length
-    const target = list[navIndex.value]
-    selectedArea.value = target.area
-    runtime.dialogSelectedSongListUUID = target.uuid
+    handleMoveUp()
+  })
+  // 兼容上下方向键
+  hotkeys('down', uuid, (e) => {
+    handleMoveDown(e as any)
+  })
+  hotkeys('up', uuid, (e) => {
+    handleMoveUp(e as any)
   })
   // 在对话框内统一使用 F2 触发重命名，避免与 Enter 确认冲突
   hotkeys('f2', uuid, (e) => {
@@ -482,6 +500,8 @@ watch(
             <input
               v-model="playlistSearch"
               class="searchInput"
+              @keydown.down.prevent="handleMoveDown"
+              @keydown.up.prevent="handleMoveUp"
               :placeholder="t('playlist.searchPlaylists')"
             />
             <div
