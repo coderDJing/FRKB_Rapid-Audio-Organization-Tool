@@ -155,7 +155,9 @@ const menuArr = ref(
           { menuName: 'playlist.deletePlaylist' },
           { menuName: 'playlist.emptyPlaylist' }
         ],
-        [{ menuName: 'tracks.showInFileExplorer' }]
+        [{ menuName: 'tracks.showInFileExplorer' }],
+        [{ menuName: 'playlist.fingerprintDeduplicate' }],
+        [{ menuName: 'tracks.convertFormat' }]
       ]
 )
 const deleteDir = async () => {
@@ -226,6 +228,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
               { menuName: 'playlist.emptyPlaylist' }
             ],
             [{ menuName: 'tracks.showInFileExplorer' }],
+            [{ menuName: 'playlist.fingerprintDeduplicate' }],
             [{ menuName: 'tracks.convertFormat' }]
           ]
   }
@@ -351,6 +354,79 @@ const contextmenuEvent = async (event: MouseEvent) => {
           })
         }
       } catch {}
+    } else if (result.menuName === 'playlist.fingerprintDeduplicate') {
+      if (runtime.isProgressing) {
+        await confirm({
+          title: t('dialog.hint'),
+          content: [t('import.waitForTask')],
+          confirmShow: false
+        })
+        return
+      }
+      const confirmResult = await confirm({
+        title: t('playlist.deduplicateConfirmTitle'),
+        content: [t('playlist.deduplicateConfirm')]
+      })
+      if (confirmResult !== 'confirm') {
+        return
+      }
+
+      runtime.isProgressing = true
+      const songListPath = libraryUtils.findDirPathByUuid(props.uuid)
+      const progressId = `playlist_dedup_${Date.now()}`
+      const normalizePath = (p: string | undefined | null) =>
+        (p || '').replace(/\//g, '\\').toLowerCase()
+      try {
+        const summary: any = await window.electron.ipcRenderer.invoke(
+          'deduplicateSongListByFingerprint',
+          {
+            songListPath,
+            progressId
+          }
+        )
+        const removedRaw: string[] = Array.isArray(summary?.removedFilePaths)
+          ? summary.removedFilePaths.filter(Boolean)
+          : []
+        const removedNormalized = removedRaw.map((p) => normalizePath(p)).filter(Boolean)
+
+        if (removedNormalized.length > 0) {
+          emitter.emit('songsRemoved', { listUUID: props.uuid, paths: removedNormalized })
+        }
+        try {
+          emitter.emit('playlistContentChanged', { uuids: [props.uuid] })
+        } catch {}
+
+        const modeLabel =
+          summary?.fingerprintMode === 'file'
+            ? t('fingerprints.modeFile')
+            : t('fingerprints.modePCM')
+        const feedbackLines = [
+          t('playlist.deduplicateRemovedCount', { n: removedRaw.length }),
+          t('playlist.deduplicateModeUsed', { mode: modeLabel })
+        ]
+        if (summary?.analyzeFailedCount) {
+          feedbackLines.push(t('import.analysisFailedCount', { count: summary.analyzeFailedCount }))
+        }
+        if (summary?.scannedCount !== undefined) {
+          feedbackLines.unshift(
+            t('playlist.deduplicateScannedCount', { n: summary.scannedCount || 0 })
+          )
+        }
+        await confirm({
+          title: t('playlist.deduplicateFinished'),
+          content: feedbackLines,
+          confirmShow: false
+        })
+      } catch (error: any) {
+        const message = error?.message ? String(error.message) : '发生未知错误'
+        await confirm({
+          title: t('common.error'),
+          content: [message],
+          confirmShow: false
+        })
+      } finally {
+        runtime.isProgressing = false
+      }
     } else if (result.menuName === 'recycleBin.permanentlyDelete') {
       let res = await confirm({
         title: t('common.delete'),
