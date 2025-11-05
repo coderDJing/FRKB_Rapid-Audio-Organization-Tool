@@ -1,5 +1,6 @@
 import { createVNode, render } from 'vue'
 import globalCallShortcutDialog from './globalCallShortcutDialog.vue'
+import { attachAppContext } from '@renderer/utils/appContext'
 
 export default () => {
   return new Promise((resolve, reject) => {
@@ -21,6 +22,7 @@ export default () => {
       confirmCallback,
       cancelCallback
     })
+    attachAppContext(vnode)
     render(vnode, div)
   })
 }

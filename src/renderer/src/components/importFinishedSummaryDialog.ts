@@ -1,5 +1,6 @@
 import { createVNode, render } from 'vue'
 import ImportFinishedSummaryDialog from './importFinishedSummaryDialog.vue'
+import { attachAppContext } from '@renderer/utils/appContext'
 
 export interface ImportSummary {
   startAt: string
@@ -29,6 +30,7 @@ export default (summary: ImportSummary) => {
       resolve()
     }
     const vnode = createVNode(ImportFinishedSummaryDialog, { summary, onClose })
+    attachAppContext(vnode)
     render(vnode, div)
   })
 }

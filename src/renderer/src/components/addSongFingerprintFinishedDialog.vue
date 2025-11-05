@@ -26,8 +26,8 @@ const formatDurationSec = (ms: number) => {
 
 <template>
   <div class="dialog unselectable">
-    <div class="inner">
-      <div class="title">{{ t('fingerprints.updateCompleted') }}</div>
+    <div class="inner" v-dialog-drag="'.dialog-title'">
+      <div class="title dialog-title">{{ t('fingerprints.updateCompleted') }}</div>
       <div class="stats">
         <div class="section">
           <div class="section-title">{{ t('import.overview') }}</div>

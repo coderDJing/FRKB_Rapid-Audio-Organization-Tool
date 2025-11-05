@@ -100,9 +100,13 @@ onUnmounted(() => {
         justify-content: space-between;
       "
       class="inner"
+      v-dialog-drag="'.dialog-title'"
     >
       <div>
-        <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
+        <div
+          class="dialog-title"
+          style="text-align: center; height: 30px; line-height: 30px; font-size: 14px"
+        >
           <span style="font-weight: bold">{{ t('fingerprints.manualAdd') }}</span>
         </div>
         <div style="padding: 20px; font-size: 14px">

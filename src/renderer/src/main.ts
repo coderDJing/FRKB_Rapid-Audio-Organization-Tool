@@ -5,9 +5,12 @@ import 'overlayscrollbars/overlayscrollbars.css'
 import './styles/main.scss'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { i18n } from '@renderer/i18n'
+import dialogDrag from './directives/dialogDrag'
 
 const pinia = createPinia()
 const app = createApp(App)
+
+app.directive('dialog-drag', dialogDrag)
 
 app.config.errorHandler = (err: Error) => {
   window.electron.ipcRenderer.send('outputLog', `VUE全局错误捕获: ${err.stack}`)
@@ -15,6 +18,7 @@ app.config.errorHandler = (err: Error) => {
 }
 app.use(pinia)
 app.use(i18n)
+;(window as any).__FRKB_APP_CONTEXT__ = app._context
 const initializeApp = async () => {
   const runtime = useRuntimeStore()
   runtime.setting = await window.electron.ipcRenderer.invoke('getSetting')
