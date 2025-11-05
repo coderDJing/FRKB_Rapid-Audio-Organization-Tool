@@ -1,5 +1,6 @@
 import { createVNode, render } from 'vue'
 import DangerConfirm from './dangerConfirmWithInputDialog.vue'
+import { attachAppContext } from '@renderer/utils/appContext'
 
 interface DangerConfirmOptions {
   title: string
@@ -32,6 +33,7 @@ export default (options: DangerConfirmOptions) => {
       onConfirm,
       onCancel
     })
+    attachAppContext(vnode)
     render(vnode, div)
   })
 }

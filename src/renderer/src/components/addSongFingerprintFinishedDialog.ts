@@ -1,5 +1,6 @@
 import { createVNode, render } from 'vue'
 import AddSongFingerprintFinishedDialog from './addSongFingerprintFinishedDialog.vue'
+import { attachAppContext } from '@renderer/utils/appContext'
 
 export interface FingerprintSummary {
   startAt: string
@@ -25,6 +26,7 @@ export default (summary: FingerprintSummary) => {
       resolve()
     }
     const vnode = createVNode(AddSongFingerprintFinishedDialog, { summary, onClose })
+    attachAppContext(vnode)
     render(vnode, div)
   })
 }

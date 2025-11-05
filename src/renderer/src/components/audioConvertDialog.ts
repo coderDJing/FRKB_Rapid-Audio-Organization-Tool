@@ -1,5 +1,6 @@
 import { createVNode, render } from 'vue'
 import AudioConvertDialogVue from './audioConvertDialog.vue'
+import { attachAppContext } from '@renderer/utils/appContext'
 
 export default (args: { sourceExts?: string[] }) => {
   return new Promise((resolve) => {
@@ -20,6 +21,7 @@ export default (args: { sourceExts?: string[] }) => {
       cancelCallback,
       sourceExts: args?.sourceExts || []
     })
+    attachAppContext(vnode)
     render(vnode, div)
   })
 }

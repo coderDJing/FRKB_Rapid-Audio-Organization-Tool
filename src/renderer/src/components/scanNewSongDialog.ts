@@ -1,5 +1,6 @@
 import { createVNode, render } from 'vue'
 import ImportTracksDialogBase from './ImportTracksDialogBase.vue'
+import { attachAppContext } from '@renderer/utils/appContext'
 export default ({ libraryName, songListUuid }: { libraryName: string; songListUuid: string }) => {
   return new Promise((resolve, reject) => {
     const div = document.createElement('div')
@@ -22,6 +23,7 @@ export default ({ libraryName, songListUuid }: { libraryName: string; songListUu
       confirmCallback,
       cancelCallback
     })
+    attachAppContext(vnode)
     render(vnode, div)
   })
 }

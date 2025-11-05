@@ -222,8 +222,8 @@ onUnmounted(() => {
 
 <template>
   <div class="dialog unselectable">
-    <div class="inner">
-      <div class="title">{{ t('cloudSync.syncFingerprints') }}</div>
+    <div class="inner" v-dialog-drag="'.dialog-title'">
+      <div class="title dialog-title">{{ t('cloudSync.syncFingerprints') }}</div>
       <div v-if="configured === false" class="hint">{{ t('cloudSync.notConfigured') }}</div>
       <div class="stages">
         <div
@@ -286,8 +286,8 @@ onUnmounted(() => {
     </div>
   </div>
   <div class="dialog unselectable" v-if="summary">
-    <div class="inner">
-      <div class="title">{{ t('cloudSync.syncCompleted') }}</div>
+    <div class="inner" v-dialog-drag="'.dialog-title'">
+      <div class="title dialog-title">{{ t('cloudSync.syncCompleted') }}</div>
       <div class="stats">
         <div class="section">
           <div class="section-title">{{ t('cloudSync.overview') }}</div>

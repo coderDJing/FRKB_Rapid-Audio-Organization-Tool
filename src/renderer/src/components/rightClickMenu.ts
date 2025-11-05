@@ -1,5 +1,6 @@
 import { createVNode, render } from 'vue'
 import rightClickMenu from './rightClickMenu.vue'
+import { attachAppContext } from '@renderer/utils/appContext'
 import { IMenu } from 'src/types/globals'
 
 interface IArgs {
@@ -28,6 +29,7 @@ export default ({ menuArr, clickEvent }: IArgs): Promise<IMenu | 'cancel'> => {
       confirmCallback,
       cancelCallback
     })
+    attachAppContext(vnode)
     render(vnode, div)
   })
 }

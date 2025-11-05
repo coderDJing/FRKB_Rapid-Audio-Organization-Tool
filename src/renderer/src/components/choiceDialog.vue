@@ -36,14 +36,18 @@ onUnmounted(() => {
 })
 </script>
 <template>
-  <div class="dialog unselectable" style="position: absolute; font-size: 14px">
+  <div class="dialog unselectable" style="font-size: 14px">
     <div
       class="inner"
+      v-dialog-drag="'.dialog-title'"
       :style="'height:' + (innerHeight || 220) + 'px;' + 'width:' + (innerWidth || 460) + 'px;'"
       style="display: flex; flex-direction: column; justify-content: space-between"
     >
       <div>
-        <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
+        <div
+          class="dialog-title"
+          style="text-align: center; height: 30px; line-height: 30px; font-size: 14px"
+        >
           <span style="font-weight: bold">{{ props.title }}</span>
         </div>
         <div style="padding-left: 20px; padding-right: 20px">

@@ -1,5 +1,6 @@
 import { createVNode, render } from 'vue'
 import exportDialog from './exportDialog.vue'
+import { attachAppContext } from '@renderer/utils/appContext'
 
 export default ({
   title
@@ -26,6 +27,7 @@ export default ({
       confirmCallback,
       cancelCallback
     })
+    attachAppContext(vnode)
     render(vnode, div)
   })
 }

@@ -23,8 +23,8 @@ const totalDone = computed(() => props.done)
 
 <template>
   <div v-if="props.visible" class="dialog unselectable">
-    <div class="inner">
-      <div class="title">{{ t('errors.diskFullTitle') }}</div>
+    <div class="inner" v-dialog-drag="'.dialog-title'">
+      <div class="title dialog-title">{{ t('errors.diskFullTitle') }}</div>
       <div class="content">
         <div style="margin-top: 6px">
           {{ t('errors.diskFullInterruptedHint', { done: totalDone, pending: pendingAll }) }}
