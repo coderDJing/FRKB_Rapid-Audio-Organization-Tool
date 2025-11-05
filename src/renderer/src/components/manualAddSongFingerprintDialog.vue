@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, useTemplateRef } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidV4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
 import { t } from '@renderer/utils/translate'
+import bubbleBox from '@renderer/components/bubbleBox.vue'
 const uuid = uuidV4()
 const runtime = useRuntimeStore()
 const emits = defineEmits(['cancel'])
@@ -49,6 +50,13 @@ const folderPathDisplay = computed(() => {
   }
   return str.join(',')
 })
+const folderPathDisplayWithPlaceholder = computed(() => {
+  return folderPathDisplay.value || t('library.clickToSelect')
+})
+const folderPathTooltip = computed(() => {
+  return folderPathDisplay.value || t('library.clickToSelect')
+})
+const chooseDirRef = useTemplateRef<HTMLDivElement>('chooseDirRef')
 const confirm = () => {
   if (folderPathVal.value.length === 0) {
     if (!flashArea.value) {
@@ -85,8 +93,8 @@ onUnmounted(() => {
   <div class="dialog unselectable">
     <div
       style="
-        width: 450px;
-        height: 300px;
+        width: 500px;
+        height: 320px;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
@@ -97,23 +105,24 @@ onUnmounted(() => {
         <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
           <span style="font-weight: bold">{{ t('fingerprints.manualAdd') }}</span>
         </div>
-        <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
-          <div style="display: flex">
-            <div class="formLabel">
-              <span>{{ t('fingerprints.scanLocation') }}：</span>
+        <div style="padding: 20px; font-size: 14px">
+          <div>{{ t('fingerprints.scanLocation') }}：</div>
+          <div style="margin-top: 10px">
+            <div
+              ref="chooseDirRef"
+              class="chooseDirDiv flashing-border"
+              @click="clickChooseDir()"
+              :class="{ 'is-flashing': flashArea == 'folderPathVal' }"
+            >
+              {{ folderPathDisplayWithPlaceholder }}
             </div>
-            <div style="width: 310px">
-              <div
-                class="chooseDirDiv flashing-border"
-                @click="clickChooseDir()"
-                :title="folderPathDisplay"
-                :class="{ 'is-flashing': flashArea == 'folderPathVal' }"
-              >
-                {{ folderPathDisplay }}
-              </div>
-            </div>
+            <bubbleBox
+              :dom="chooseDirRef || undefined"
+              :title="folderPathTooltip"
+              :maxWidth="320"
+            />
           </div>
-          <div style="padding-top: 40px; font-size: 12px; display: flex">
+          <div style="margin-top: 20px; font-size: 12px; color: #999">
             {{ t('fingerprints.analysisHint') }}
           </div>
         </div>
@@ -135,31 +144,24 @@ onUnmounted(() => {
 </template>
 <style lang="scss" scoped>
 .chooseDirDiv {
-  width: calc(100% - 5px);
-  height: 100%;
+  width: 100%;
+  height: 25px;
   background-color: var(--bg-elev);
   border: 1px solid var(--border);
   color: var(--text);
-
   text-overflow: ellipsis;
   overflow: hidden;
   word-break: break-all;
   white-space: nowrap;
-  max-width: calc(100% - 5px);
+  max-width: 100%;
   font-size: 14px;
   padding-left: 5px;
   border-radius: 3px;
   box-sizing: border-box;
+  line-height: 25px;
   &:hover {
     background-color: var(--hover);
     border-color: var(--accent);
   }
-}
-
-.formLabel {
-  width: 100px;
-  min-width: 100px;
-  text-align: left;
-  font-size: 14px;
 }
 </style>
