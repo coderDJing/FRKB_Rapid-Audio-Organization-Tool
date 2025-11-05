@@ -1,5 +1,6 @@
 import { createVNode, render } from 'vue'
 import ImportTracksDialogBase from './ImportTracksDialogBase.vue'
+import { attachAppContext } from '@renderer/utils/appContext'
 
 interface IArgs {
   songListUuid: string
@@ -36,6 +37,7 @@ export default ({ songListUuid, libraryName }: IArgs): Promise<IResult | 'cancel
       confirmCallback,
       cancelCallback
     })
+    attachAppContext(vnode)
     render(vnode, div)
   })
 }

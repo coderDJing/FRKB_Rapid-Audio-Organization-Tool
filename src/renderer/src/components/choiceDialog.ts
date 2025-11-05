@@ -1,5 +1,6 @@
 import { createVNode, render } from 'vue'
 import ChoiceDialog from './choiceDialog.vue'
+import { attachAppContext } from '@renderer/utils/appContext'
 
 export interface ChoiceOption {
   key: string
@@ -28,6 +29,7 @@ export default (options: {
       ...options,
       onSelect
     })
+    attachAppContext(vnode)
     render(vnode, div)
   })
 }

@@ -84,7 +84,7 @@ body,
 .dialog {
   width: 100vw;
   height: 100vh;
-  position: absolute;
+  position: fixed;
   top: 0px;
   left: 0px;
   display: flex;
@@ -93,6 +93,8 @@ body,
   z-index: 9999;
   background-color: rgba(0, 0, 0, 0.45);
   color: var(--text);
+  overflow: hidden;
+  overscroll-behavior: contain;
 
   .inner {
     border: 1px solid var(--border);
@@ -100,6 +102,12 @@ body,
     border-radius: 5px;
     box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
   }
+}
+
+.dialog-title {
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
 }
 
 .disableButton {

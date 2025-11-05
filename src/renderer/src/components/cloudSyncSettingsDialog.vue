@@ -78,8 +78,8 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
 
 <template>
   <div class="dialog unselectable">
-    <div class="inner">
-      <div class="title">{{ t('cloudSync.settings') }}</div>
+    <div class="inner" v-dialog-drag="'.dialog-title'">
+      <div class="title dialog-title">{{ t('cloudSync.settings') }}</div>
       <div class="form">
         <div class="row">
           <div class="label">{{ t('cloudSync.userKey') }}</div>

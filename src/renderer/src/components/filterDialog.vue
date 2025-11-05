@@ -87,6 +87,7 @@ onUnmounted(() => {
   <div class="dialog unselectable" style="font-size: 14px; color: var(--text)">
     <div
       class="inner"
+      v-dialog-drag="'.dialog-title'"
       style="
         width: 420px;
         min-height: 240px;
@@ -96,7 +97,10 @@ onUnmounted(() => {
       "
     >
       <div>
-        <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
+        <div
+          class="dialog-title"
+          style="text-align: center; height: 30px; line-height: 30px; font-size: 14px"
+        >
           <span style="font-weight: bold">{{
             props.type === 'text' ? t('filters.filterByText') : t('filters.filterByDuration')
           }}</span>

@@ -1,5 +1,6 @@
 import { createVNode, render } from 'vue'
 import confirmDialog from './confirmDialog.vue'
+import { attachAppContext } from '@renderer/utils/appContext'
 
 interface DialogOptions {
   title: string
@@ -32,6 +33,7 @@ export default (options: DialogOptions) => {
       confirmCallback,
       cancelCallback
     })
+    attachAppContext(vnode)
     render(vnode, div)
   })
 }

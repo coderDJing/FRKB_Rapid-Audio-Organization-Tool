@@ -311,9 +311,13 @@ const clearCloudFingerprints = async () => {
         justify-content: space-between;
       "
       class="inner"
+      v-dialog-drag="'.dialog-title'"
     >
       <div style="height: 100%; display: flex; flex-direction: column">
-        <div style="text-align: center; height: 30px; line-height: 30px; font-size: 14px">
+        <div
+          class="dialog-title"
+          style="text-align: center; height: 30px; line-height: 30px; font-size: 14px"
+        >
           <span style="font-weight: bold">{{ t('common.setting') }}</span>
         </div>
         <OverlayScrollbarsComponent

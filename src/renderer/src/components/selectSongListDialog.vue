@@ -467,11 +467,16 @@ watch(
 </script>
 <template>
   <div class="dialog unselectable">
-    <div class="content inner" @contextmenu.stop="contextmenuEvent">
-      <div class="unselectable libraryTitle" v-if="libraryData">
+    <div class="content inner" v-dialog-drag="'.dialog-title'" @contextmenu.stop="contextmenuEvent">
+      <div class="unselectable libraryTitle dialog-title" v-if="libraryData">
         <span>{{ libraryTitleText }}</span>
         <div style="display: flex; justify-content: center; align-items: center">
-          <div ref="collapseButtonRef" class="collapseButton" @click="collapseButtonHandleClick()">
+          <div
+            ref="collapseButtonRef"
+            class="collapseButton"
+            data-dialog-drag-ignore="true"
+            @click="collapseButtonHandleClick()"
+          >
             <svg
               width="16"
               height="16"
