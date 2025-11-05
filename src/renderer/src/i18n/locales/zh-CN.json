@@ -360,7 +360,19 @@
     "emptyPlaylist": "清空歌单",
     "collapsibleFolder": "折叠文件夹",
     "searchPlaylists": "搜索歌单...",
-    "createNow": "立即创建"
+    "createNow": "立即创建",
+    "fingerprintDeduplicate": "指纹去重",
+    "deduplicateConfirmTitle": "去重确认",
+    "deduplicateConfirm": "将按当前指纹模式（内容哈希/整文件哈希）分析该歌单，并把重复项移至回收站。是否继续？",
+    "deduplicateFinished": "去重完成",
+    "deduplicateScannedCount": "本次分析曲目：{n} 首",
+    "deduplicateRemovedCount": "移至回收站的重复项：{n} 个",
+    "deduplicateModeUsed": "本次使用的指纹模式：{mode}",
+    "deduplicateProgressScanning": "扫描歌单内音频",
+    "deduplicateProgressAnalyzing": "分析指纹去重",
+    "deduplicateProgressRemoving": "移除重复曲目",
+    "deduplicateProgressFinished": "指纹去重完成",
+    "deduplicateProgressFailed": "指纹去重失败"
   },
   "recycleBin": {
     "recycleBin": "回收站",
