@@ -21,6 +21,12 @@ export interface SongsRemovedAction {
   paths: string[]
 }
 
+export interface MetadataUpdatedAction {
+  action: 'metadataUpdated'
+  song: ISongInfo
+  oldFilePath?: string
+}
+
 export function useSongItemContextMenu(
   // runtimeStore: ReturnType<typeof useRuntimeStore>, // Passed implicitly via direct import for now
   songsAreaHostElementRef: Ref<InstanceType<typeof OverlayScrollbarsComponent> | null> // For scrolling
@@ -35,13 +41,13 @@ export function useSongItemContextMenu(
       { menuName: 'tracks.deleteAllAbove' }
     ],
     [{ menuName: 'tracks.showInFileExplorer' }],
-    [{ menuName: 'tracks.convertFormat' }]
+    [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.editMetadata' }]
   ])
 
   const showAndHandleSongContextMenu = async (
     event: MouseEvent,
     song: ISongInfo
-  ): Promise<OpenDialogAction | SongsRemovedAction | null> => {
+  ): Promise<OpenDialogAction | SongsRemovedAction | MetadataUpdatedAction | null> => {
     if (runtime.songsArea.selectedSongFilePath.indexOf(song.filePath) === -1) {
       runtime.songsArea.selectedSongFilePath = [song.filePath]
     }
@@ -54,6 +60,22 @@ export function useSongItemContextMenu(
     if (result === 'cancel') return null
 
     switch (result.menuName) {
+      case 'tracks.editMetadata': {
+        const { default: openEditMetadataDialog } = await import(
+          '@renderer/components/editMetadataDialog'
+        )
+        const dialogResult = await openEditMetadataDialog({
+          filePath: song.filePath
+        })
+        if (dialogResult && dialogResult !== 'cancel') {
+          return {
+            action: 'metadataUpdated',
+            song: dialogResult.updatedSongInfo,
+            oldFilePath: dialogResult.oldFilePath
+          }
+        }
+        return null
+      }
       case 'tracks.convertFormat': {
         // 打开转换对话框并获取选项
         const { default: openConvertDialog } = await import(
