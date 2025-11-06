@@ -208,7 +208,7 @@ watch(
       bpm.value = ''
     } else if (newSong?.filePath !== oldSong?.filePath) {
       const newPath = newSong.filePath
-      setCoverByIPC(newPath)
+      setCoverByIPC(newPath, 'song-changed')
       if (isPreloadReady.value && newPath === preloadedSongFilePath.value && preloadedBlob.value) {
         const blobToLoad = preloadedBlob.value
         const bpmValueToUse = preloadedBpm.value
@@ -220,6 +220,8 @@ watch(
         clearReadyPreloadState()
         requestLoadSong(newPath)
       }
+    } else if (newSong && oldSong && newSong !== oldSong && newSong.filePath === oldSong.filePath) {
+      setCoverByIPC(newSong.filePath, 'metadata-updated-watch')
     }
   }
 )

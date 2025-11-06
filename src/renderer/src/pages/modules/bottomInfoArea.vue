@@ -400,10 +400,19 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   flex-direction: column;
   gap: 4px;
   padding: 2px 0;
+  overflow: hidden;
+  max-height: 400px;
+  opacity: 1;
+  transition:
+    max-height 0.3s ease,
+    padding 0.3s ease,
+    opacity 0.2s ease;
 }
 .bottom-info-area.empty {
+  max-height: 0;
+  opacity: 0;
   padding: 0;
-  display: none;
+  pointer-events: none;
 }
 .task-row {
   width: 100%;

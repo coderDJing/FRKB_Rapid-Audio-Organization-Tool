@@ -3,6 +3,8 @@ import type WaveSurfer from 'wavesurfer.js'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import emitter from '@renderer/utils/mitt'
+import libraryUtils from '@renderer/utils/libraryUtils'
 
 export function useCover(runtime: ReturnType<typeof useRuntimeStore>) {
   const coverBlobUrl = ref('')
@@ -20,7 +22,7 @@ export function useCover(runtime: ReturnType<typeof useRuntimeStore>) {
     coverBlobUrl.value = ''
   }
 
-  const setCoverByIPC = async (filePath: string) => {
+  const setCoverByIPC = async (filePath: string, reason: string = 'unknown') => {
     try {
       const cover = await window.electron.ipcRenderer.invoke('getSongCover', filePath)
       if (cover && cover.data && filePath === runtime.playingData.playingSong?.filePath) {
@@ -30,10 +32,47 @@ export function useCover(runtime: ReturnType<typeof useRuntimeStore>) {
         })
         coverBlobUrl.value = URL.createObjectURL(blob)
       } else {
+        const coverMatchesPlaying = filePath === runtime.playingData.playingSong?.filePath
+        if (coverMatchesPlaying) {
+          await fetchCoverFromCache(filePath, reason)
+        } else {
+          disposeCoverUrl()
+        }
+      }
+    } catch (error) {
+      await fetchCoverFromCache(filePath, reason + '-error')
+    }
+  }
+
+  const fetchCoverFromCache = async (filePath: string, reason: string) => {
+    try {
+      const songListUUID = runtime.playingData.playingSongListUUID
+      const rootDir = songListUUID ? libraryUtils.findDirPathByUuid(songListUUID) : undefined
+      const thumb = await window.electron.ipcRenderer.invoke(
+        'getSongCoverThumb',
+        filePath,
+        256,
+        rootDir || ''
+      )
+      if (thumb && thumb.data && filePath === runtime.playingData.playingSong?.filePath) {
+        if (coverBlobUrl.value) URL.revokeObjectURL(coverBlobUrl.value)
+        const blob = new Blob([new Uint8Array(thumb.data).buffer], {
+          type: thumb.format || 'image/jpeg'
+        })
+        coverBlobUrl.value = URL.createObjectURL(blob)
+      } else {
         disposeCoverUrl()
       }
-    } catch (_) {
+    } catch (cacheError) {
       disposeCoverUrl()
+    }
+  }
+
+  const handleSongMetadataUpdated = (payload: { filePath?: string }) => {
+    const filePath = payload?.filePath
+    if (!filePath) return
+    if (runtime.playingData.playingSong?.filePath === filePath) {
+      setCoverByIPC(filePath, 'metadata-updated')
     }
   }
 
@@ -88,7 +127,10 @@ export function useCover(runtime: ReturnType<typeof useRuntimeStore>) {
 
   onUnmounted(() => {
     disposeCoverUrl()
+    emitter.off('songMetadataUpdated', handleSongMetadataUpdated)
   })
+
+  emitter.on('songMetadataUpdated', handleSongMetadataUpdated)
 
   return {
     coverBlobUrl,

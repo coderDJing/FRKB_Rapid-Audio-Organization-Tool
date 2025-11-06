@@ -39,6 +39,56 @@ interface ISongInfo {
   container: string | undefined
 }
 
+// 曲目完整元数据明细，用于编辑界面展示
+interface ITrackMetadataDetail {
+  filePath: string
+  fileName: string
+  fileExtension: string
+  title?: string
+  artist?: string
+  album?: string
+  albumArtist?: string
+  trackNo?: number | null
+  trackTotal?: number | null
+  discNo?: number | null
+  discTotal?: number | null
+  year?: string
+  genre?: string
+  composer?: string
+  lyricist?: string
+  label?: string
+  isrc?: string
+  comment?: string
+  lyrics?: string
+  cover?: {
+    dataUrl: string
+    format?: string
+  } | null
+}
+
+// 元数据更新请求结构
+interface ITrackMetadataUpdatePayload {
+  filePath: string
+  newBaseName?: string
+  title?: string
+  artist?: string
+  album?: string
+  albumArtist?: string
+  trackNo?: number | null
+  trackTotal?: number | null
+  discNo?: number | null
+  discTotal?: number | null
+  year?: string
+  genre?: string
+  composer?: string
+  lyricist?: string
+  label?: string
+  isrc?: string
+  comment?: string
+  lyrics?: string
+  coverDataUrl?: string | null
+}
+
 interface ILayoutConfig {
   libraryAreaWidth: number
   isMaxMainWin: boolean
@@ -144,6 +194,8 @@ export {
   md5,
   IDir,
   ISongInfo,
+  ITrackMetadataDetail,
+  ITrackMetadataUpdatePayload,
   ILayoutConfig,
   ISettingConfig,
   ILanguageDict,

@@ -30,7 +30,7 @@ import { readManifestFile, MANIFEST_FILE_NAME, looksLikeLegacyStructure } from '
 import { setupMacMenus, rebuildMacMenusForCurrentFocus } from './menu/macMenu'
 import { prepareAndOpenMainWindow } from './bootstrap/prepareDatabase'
 import { execFile } from 'child_process'
-import { ISongInfo } from '../types/globals'
+import { ISongInfo, ITrackMetadataUpdatePayload } from '../types/globals'
 import type { ISettingConfig } from '../types/globals'
 import { scanSongList as svcScanSongList } from './services/scanSongs'
 import {
@@ -38,6 +38,10 @@ import {
   getSongCoverThumb as svcGetSongCoverThumb,
   sweepSongListCovers as svcSweepSongListCovers
 } from './services/covers'
+import {
+  readTrackMetadata as svcReadTrackMetadata,
+  updateTrackMetadata as svcUpdateTrackMetadata
+} from './services/metadataEditor'
 import { v4 as uuidV4 } from 'uuid'
 // import AudioFeatureExtractor from './mfccTest'
 
@@ -780,6 +784,31 @@ ipcMain.handle(
     return await svcSweepSongListCovers(listRootDir, currentFilePaths)
   }
 )
+
+ipcMain.handle('audio:metadata:get', async (_e, filePath: string) => {
+  return await svcReadTrackMetadata(filePath)
+})
+
+ipcMain.handle('audio:metadata:update', async (_e, payload: ITrackMetadataUpdatePayload) => {
+  try {
+    const result = await svcUpdateTrackMetadata(payload)
+    return {
+      success: true,
+      songInfo: result.songInfo,
+      detail: result.detail,
+      renamedFrom: result.renamedFrom
+    }
+  } catch (error: any) {
+    log.error('更新音频元数据失败', {
+      filePath: payload?.filePath,
+      error: error?.message || error
+    })
+    return {
+      success: false,
+      message: error?.message || 'metadata-update-failed'
+    }
+  }
+})
 
 ipcMain.handle('getLibrary', async () => {
   const library = await getLibrary()

@@ -270,6 +270,12 @@ const contextmenuEvent = async (event: MouseEvent) => {
     } else if (result.menuName === 'playlist.emptyPlaylist') {
       let dirPath = libraryUtils.findDirPathByUuid(props.uuid)
       await window.electron.ipcRenderer.invoke('emptyDir', dirPath, getCurrentTimeDirName())
+      if (dirData.type === 'songList' && runtime.setting.showPlaylistTrackCount) {
+        trackCount.value = 0
+      }
+      try {
+        emitter.emit('playlistContentChanged', { uuids: [props.uuid] })
+      } catch {}
       if (runtime.songsArea.songListUUID === props.uuid) {
         // 清空播放相关数据
         runtime.playingData.playingSongListData = []
