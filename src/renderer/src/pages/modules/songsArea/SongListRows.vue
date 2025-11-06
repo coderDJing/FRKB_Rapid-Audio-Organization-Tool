@@ -4,6 +4,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
 import type { ComponentPublicInstance } from 'vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import emitter from '@renderer/utils/mitt'
 
 const props = defineProps({
   songs: {
@@ -239,10 +240,12 @@ onMounted(() => {
   })
   // 首屏预取
   primePrefetchWindow()
+  emitter.on('songMetadataUpdated', handleSongMetadataUpdated)
 })
 
 onUnmounted(() => {
   detachListeners()
+  emitter.off('songMetadataUpdated', handleSongMetadataUpdated)
 })
 
 // 监听传入的 scrollHostElement 变化，及时重挂监听
@@ -404,6 +407,25 @@ function pump() {
 function onImgError(filePath: string) {
   coverUrlCache.set(filePath, null)
   coversTick.value++
+}
+
+function handleSongMetadataUpdated(payload: { filePath?: string; oldFilePath?: string }) {
+  const newPath = payload?.filePath
+  if (payload?.oldFilePath) {
+    coverUrlCache.delete(payload.oldFilePath)
+    inflight.delete(payload.oldFilePath)
+  }
+  if (!newPath) return
+  coverUrlCache.delete(newPath)
+  inflight.delete(newPath)
+  for (let i = pendingQueue.length - 1; i >= 0; i--) {
+    const queued = pendingQueue[i] as any
+    if (queued && (queued.__fp === newPath || queued.__fp === payload?.oldFilePath)) {
+      pendingQueue.splice(i, 1)
+    }
+  }
+  coversTick.value++
+  fetchCoverUrl(newPath)
 }
 
 // 预取当前可视窗口内的封面（避免首屏空白）——放到缓存定义之后

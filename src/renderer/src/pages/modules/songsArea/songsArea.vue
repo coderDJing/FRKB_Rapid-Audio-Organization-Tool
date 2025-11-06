@@ -2,6 +2,7 @@
 import { ref, shallowRef, computed, useTemplateRef } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
+import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
 import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
 
@@ -14,7 +15,10 @@ import SongListRows from './SongListRows.vue'
 import ColumnHeaderContextMenu from './ColumnHeaderContextMenu.vue'
 
 // Composable import
-import { useSongItemContextMenu } from '@renderer/pages/modules/songsArea/composables/useSongItemContextMenu'
+import {
+  useSongItemContextMenu,
+  type MetadataUpdatedAction
+} from '@renderer/pages/modules/songsArea/composables/useSongItemContextMenu'
 import { useSelectAndMoveSongs } from '@renderer/pages/modules/songsArea/composables/useSelectAndMoveSongs'
 import { useDragSongs } from '@renderer/pages/modules/songsArea/composables/useDragSongs'
 import { useSongsAreaColumns } from '@renderer/pages/modules/songsArea/composables/useSongsAreaColumns'
@@ -103,44 +107,95 @@ useSongsAreaEvents({
 
 const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) => {
   const result = await showAndHandleSongContextMenu(event, song)
-  if (result) {
-    // 处理移动歌曲到其他列表的对话框请求
-    if (result.action === 'openSelectSongListDialog') {
-      // result 类型符合 OpenDialogAction 接口
-      initiateMoveSongs(result.libraryName)
-    }
-    // 处理来自右键菜单的歌曲移除操作 (删除、导出后删除等)
-    else if (result.action === 'songsRemoved') {
-      const pathsToRemove = result.paths
+  if (!result) return
 
-      if (Array.isArray(pathsToRemove) && pathsToRemove.length > 0) {
-        // 仅更新 original，然后统一按筛选与排序重建显示，避免与排序/筛选链路打架
-        originalSongInfoArr.value = originalSongInfoArr.value.filter(
-          (item) => !pathsToRemove.includes(item.filePath)
-        )
-
-        applyFiltersAndSorting()
-
-        // 更新播放状态（若受影响）
-        if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-          runtime.playingData.playingSongListData = [...runtime.songsArea.songInfoArr]
-        }
-        if (
-          runtime.playingData.playingSong &&
-          pathsToRemove.includes(runtime.playingData.playingSong.filePath)
-        ) {
-          runtime.playingData.playingSong = null
-        }
-
-        // 从当前选择中移除已删除的歌曲
-        runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
-          (path) => !pathsToRemove.includes(path)
-        )
-      }
-    }
-    // 其他可能的 action 处理...
+  if (result.action === 'openSelectSongListDialog') {
+    initiateMoveSongs(result.libraryName)
+    return
   }
-  // 如果 result 是 null，或者 action 不匹配任何已知处理，则不执行任何操作
+
+  if (result.action === 'songsRemoved') {
+    const pathsToRemove = result.paths
+
+    if (Array.isArray(pathsToRemove) && pathsToRemove.length > 0) {
+      originalSongInfoArr.value = originalSongInfoArr.value.filter(
+        (item) => !pathsToRemove.includes(item.filePath)
+      )
+
+      applyFiltersAndSorting()
+
+      if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+        runtime.playingData.playingSongListData = [...runtime.songsArea.songInfoArr]
+      }
+      if (
+        runtime.playingData.playingSong &&
+        pathsToRemove.includes(runtime.playingData.playingSong.filePath)
+      ) {
+        runtime.playingData.playingSong = null
+      }
+
+      runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
+        (path) => !pathsToRemove.includes(path)
+      )
+    }
+    return
+  }
+
+  if (result.action === 'metadataUpdated') {
+    const updatedSong = result.song
+    const oldFilePath = result.oldFilePath ?? updatedSong.filePath
+    const arr = [...originalSongInfoArr.value]
+    let idx = arr.findIndex((item) => item.filePath === oldFilePath)
+    if (idx === -1) idx = arr.findIndex((item) => item.filePath === updatedSong.filePath)
+    if (idx !== -1) {
+      arr.splice(idx, 1, updatedSong)
+      originalSongInfoArr.value = arr
+      applyFiltersAndSorting()
+    }
+
+    runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.map((item) => {
+      if (item.filePath === oldFilePath) return { ...updatedSong }
+      if (item.filePath === updatedSong.filePath) return { ...item, ...updatedSong }
+      return item
+    })
+
+    runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.map((path) =>
+      path === oldFilePath ? updatedSong.filePath : path
+    )
+
+    if (
+      runtime.playingData.playingSong &&
+      (runtime.playingData.playingSong.filePath === updatedSong.filePath ||
+        runtime.playingData.playingSong.filePath === oldFilePath)
+    ) {
+      runtime.playingData.playingSong = {
+        ...runtime.playingData.playingSong,
+        ...updatedSong
+      }
+      runtime.playingData.playingSong.filePath = updatedSong.filePath
+    }
+
+    if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+      runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map(
+        (item) =>
+          item.filePath === oldFilePath || item.filePath === updatedSong.filePath
+            ? { ...item, ...updatedSong }
+            : item
+      )
+    }
+
+    try {
+      emitter.emit('playlistContentChanged', { uuids: [runtime.songsArea.songListUUID] })
+    } catch {}
+    try {
+      emitter.emit('songMetadataUpdated', {
+        filePath: updatedSong.filePath,
+        oldFilePath
+      })
+    } catch {}
+
+    scheduleSweepCovers()
+  }
 }
 
 const songDblClick = async (song: ISongInfo) => {

@@ -9,7 +9,22 @@ export async function getSongCover(
   try {
     const mm = await import('music-metadata')
     const metadata = await mm.parseFile(filePath)
-    const cover = mm.selectCover(metadata.common.picture)
+    let cover = mm.selectCover(metadata.common.picture)
+    if (!cover) {
+      const fsStat = await fs.stat(filePath)
+      const buffer = await fs.readFile(filePath)
+      const arr = await mm.parseBuffer(
+        buffer,
+        { mimeType: metadata.format?.mimetype },
+        {
+          fileInfo: {
+            mtime: fsStat.mtime,
+            size: fsStat.size
+          }
+        }
+      )
+      cover = mm.selectCover(arr.common.picture)
+    }
     if (!cover) return null
     return { format: cover.format, data: Buffer.from(cover.data as any) }
   } catch {
@@ -33,7 +48,7 @@ const mimeFromExt = (ext: string) =>
         : ext === '.bmp'
           ? 'image/bmp'
           : 'image/jpeg'
-const extFromMime = (mime: string) => {
+export const extFromMime = (mime: string) => {
   const lower = (mime || '').toLowerCase()
   if (lower.includes('png')) return '.png'
   if (lower.includes('webp')) return '.webp'
