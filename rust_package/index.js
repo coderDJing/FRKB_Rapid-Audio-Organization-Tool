@@ -310,9 +310,10 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { calculateAudioHashes, calculateAudioHashesWithProgress, calculateFileHashes, calculateFileHashesWithProgress } = nativeBinding
+const { calculateAudioHashes, calculateAudioHashesWithProgress, calculateFileHashes, calculateFileHashesWithProgress, decodeAudioFile } = nativeBinding
 
 module.exports.calculateAudioHashes = calculateAudioHashes
 module.exports.calculateAudioHashesWithProgress = calculateAudioHashesWithProgress
 module.exports.calculateFileHashes = calculateFileHashes
 module.exports.calculateFileHashesWithProgress = calculateFileHashesWithProgress
+module.exports.decodeAudioFile = decodeAudioFile

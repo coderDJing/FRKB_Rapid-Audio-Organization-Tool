@@ -86,7 +86,7 @@ export function useSongItemContextMenu(
           files
             .map((p) => (p || '').toLowerCase())
             .map((p) => p.match(/\.[^\\\/\.]+$/)?.[0] || '')
-            .filter((e) => ['.mp3', '.wav', '.flac', '.aif', '.aiff'].includes(e))
+            .filter((e) => runtime.setting.audioExt.includes(e))
         )
         const sourceExts = Array.from(extsSet)
         const dialogResult: any = await openConvertDialog({ sourceExts })

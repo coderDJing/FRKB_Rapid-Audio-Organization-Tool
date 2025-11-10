@@ -22,7 +22,11 @@ import { IImportSongsFormData, md5 } from '../../types/globals'
 import { v4 as uuidV4 } from 'uuid'
 import { operateHiddenFile } from '../utils'
 import { FileSystemOperation } from '@renderer/utils/diffLibraryTree'
-import { startAudioConversion, cancelAudioConversion } from '../services/audioConversion'
+import {
+  startAudioConversion,
+  cancelAudioConversion,
+  listAvailableTargetFormats
+} from '../services/audioConversion'
 
 let mainWindow: BrowserWindow | null = null
 function createWindow() {
@@ -151,11 +155,27 @@ function createWindow() {
 
   ipcMain.on('readSongFile', async (e, filePath, requestId) => {
     try {
-      let file = await fs.readFile(filePath)
-      const uint8Buffer = Uint8Array.from(file)
-      mainWindow?.webContents.send('readedSongFile', uint8Buffer, filePath, requestId)
+      const { decodeAudioFile } = require('rust_package')
+      const result = decodeAudioFile(filePath)
+
+      if (result.error) {
+        throw new Error(result.error)
+      }
+
+      // 发送 PCM 数据和元数据
+      mainWindow?.webContents.send(
+        'readedSongFile',
+        {
+          pcmData: result.pcmData,
+          sampleRate: result.sampleRate,
+          channels: result.channels,
+          totalFrames: result.totalFrames
+        },
+        filePath,
+        requestId
+      )
     } catch (error) {
-      console.error(`读取歌曲文件失败 ${filePath}:`, error)
+      console.error(`解码歌曲文件失败 ${filePath}:`, error)
       mainWindow?.webContents.send(
         'readSongFileError',
         filePath,
@@ -168,12 +188,27 @@ function createWindow() {
   // 处理预加载文件请求
   ipcMain.on('readNextSongFile', async (e, filePath, requestId) => {
     try {
-      let file = await fs.readFile(filePath)
-      const uint8Buffer = Uint8Array.from(file)
+      const { decodeAudioFile } = require('rust_package')
+      const result = decodeAudioFile(filePath)
+
+      if (result.error) {
+        throw new Error(result.error)
+      }
+
       // 使用不同的事件名发送回渲染进程
-      mainWindow?.webContents.send('readedNextSongFile', uint8Buffer, filePath, requestId)
+      mainWindow?.webContents.send(
+        'readedNextSongFile',
+        {
+          pcmData: result.pcmData,
+          sampleRate: result.sampleRate,
+          channels: result.channels,
+          totalFrames: result.totalFrames
+        },
+        filePath,
+        requestId
+      )
     } catch (error) {
-      console.error(`读取预加载歌曲文件失败 ${filePath}:`, error)
+      console.error(`解码预加载歌曲文件失败 ${filePath}:`, error)
       mainWindow?.webContents.send(
         'readNextSongFileError',
         filePath,
@@ -988,6 +1023,11 @@ function createWindow() {
   })
   ipcMain.on('audio:convert:cancel', (_e, jobId: string) => {
     cancelAudioConversion(jobId)
+  })
+
+  // 查询可用目标格式（按 FFmpeg 编码器过滤）
+  ipcMain.handle('audio:convert:list-target-formats', async () => {
+    return await listAvailableTargetFormats()
   })
 
   mainWindow.on('closed', () => {

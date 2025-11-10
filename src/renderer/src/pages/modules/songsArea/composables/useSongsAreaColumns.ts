@@ -19,6 +19,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     { columnName: 'columns.cover', key: 'cover', show: true },
     { columnName: 'columns.index', key: 'index', show: true },
     { columnName: 'columns.title', key: 'title', show: true, filterType: 'text' },
+    { columnName: 'columns.fileName', key: 'fileName', show: true, filterType: 'text' },
     {
       columnName: 'columns.artist',
       key: 'artist',
@@ -31,6 +32,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     { columnName: 'columns.genre', key: 'genre', show: true, filterType: 'text' },
     { columnName: 'columns.label', key: 'label', show: true, filterType: 'text' },
     { columnName: 'columns.bitrate', key: 'bitrate', show: true },
+    { columnName: 'columns.fileFormat', key: 'fileFormat', show: true, filterType: 'text' },
     { columnName: 'columns.format', key: 'container', show: true, filterType: 'text' }
   ]
 

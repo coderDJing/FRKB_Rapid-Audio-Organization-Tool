@@ -23,7 +23,29 @@ import diskIcon from '@renderer/assets/disk.png?asset'
 // 从设置中获取支持的音频文件扩展名
 const getAudioExtensions = () => {
   const runtime = useRuntimeStore()
-  return runtime.setting.audioExt || ['.mp3', '.wav', '.flac', '.aif', '.aiff']
+  return (
+    runtime.setting.audioExt || [
+      '.mp3',
+      '.wav',
+      '.flac',
+      '.aif',
+      '.aiff',
+      '.ogg',
+      '.opus',
+      '.aac',
+      '.m4a',
+      '.mp4',
+      '.wma',
+      '.ac3',
+      '.dts',
+      '.mka',
+      '.webm',
+      '.ape',
+      '.tak',
+      '.tta',
+      '.wv'
+    ]
+  )
 }
 
 // 恢复：仅记忆“上次浏览路径”（跨会话），不记忆选中项

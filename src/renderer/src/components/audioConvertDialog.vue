@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import { t } from '@renderer/utils/translate'
 import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
 import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
 import { v4 as uuidV4 } from 'uuid'
+import {
+  SUPPORTED_AUDIO_FORMATS,
+  type SupportedAudioFormat,
+  METADATA_PRESERVABLE_FORMATS
+} from '../../../shared/audioFormats'
 
 const props = defineProps<{
   confirmCallback?: (payload: any) => void
@@ -14,8 +19,11 @@ const props = defineProps<{
 }>()
 const uuid = uuidV4()
 
+const isSupportedAudioFormat = (fmt: string): fmt is SupportedAudioFormat =>
+  (SUPPORTED_AUDIO_FORMATS as readonly string[]).includes(fmt)
+
 type ConvertDefaults = {
-  targetFormat: 'mp3' | 'flac' | 'wav' | 'aif' | 'aiff'
+  targetFormat: SupportedAudioFormat
   bitrateKbps?: number
   sampleRate?: 44100 | 48000
   channels?: 1 | 2
@@ -27,13 +35,7 @@ type ConvertDefaults = {
   addFingerprint?: boolean
 }
 
-const supportedFormats = ref<Array<ConvertDefaults['targetFormat']>>([
-  'mp3',
-  'flac',
-  'wav',
-  'aif',
-  'aiff'
-])
+const supportedFormats = ref<SupportedAudioFormat[]>([])
 const form = ref<ConvertDefaults>({
   targetFormat: 'mp3',
   bitrateKbps: 320,
@@ -47,15 +49,9 @@ const form = ref<ConvertDefaults>({
   addFingerprint: false
 })
 
-// 当目标格式不是 MP3/FLAC 时，强制关闭“保留元数据”
-watch(
-  () => form.value.targetFormat,
-  (fmt) => {
-    if (fmt !== 'mp3' && fmt !== 'flac') {
-      form.value.preserveMetadata = false
-    }
-  }
-)
+// 依据容器/编码支持情况，尽量保留元数据；无法保留时 FFmpeg 会忽略
+const metadataCapableFormats = new Set<SupportedAudioFormat>(METADATA_PRESERVABLE_FORMATS)
+const showMetadataOption = computed(() => metadataCapableFormats.has(form.value.targetFormat))
 
 // 必填闪烁提示（参考项目其他弹窗）
 const flashArea = ref('')
@@ -84,26 +80,18 @@ onMounted(async () => {
 
   const setting = await window.electron.ipcRenderer.invoke('getSetting')
   try {
-    const audioExt: string[] = Array.isArray(setting?.audioExt) ? setting.audioExt : []
-    const set = new Set(audioExt.map((e) => String(e || '').toLowerCase()))
-    const map: Record<string, ConvertDefaults['targetFormat']> = {
-      '.mp3': 'mp3',
-      '.flac': 'flac',
-      '.wav': 'wav',
-      '.aif': 'aif',
-      '.aiff': 'aiff'
-    }
-    let allowed = (Object.keys(map) as Array<keyof typeof map>)
-      .filter((k) => set.has(k))
-      .map((k) => map[k])
-    if (allowed.length === 0) allowed = ['mp3', 'flac', 'wav']
+    // 询问主进程：FFmpeg 可编码的目标格式
+    const targetFormats: string[] = await window.electron.ipcRenderer.invoke(
+      'audio:convert:list-target-formats'
+    )
+    let allowed = targetFormats.filter(isSupportedAudioFormat)
 
     // 过滤与源相同的格式（简单化：移除所有所选文件扩展名对应的目标格式）
     const srcSet = new Set(
       (props.sourceExts || [])
         .map((e) => String(e || '').toLowerCase())
-        .map((e) => map[e])
-        .filter(Boolean) as Array<ConvertDefaults['targetFormat']>
+        .map((e) => e.replace(/^\./, ''))
+        .filter(Boolean) as Array<string>
     )
     let filtered = allowed
     if (srcSet.size === 1) {
@@ -118,9 +106,22 @@ onMounted(async () => {
       if (filtered.length === 0) filtered = allowed
     }
     supportedFormats.value = filtered
-  } catch {}
+  } catch (err) {
+    console.error('[AudioConvertDialog] list-target-formats failed:', err)
+  }
   if (setting?.convertDefaults) {
-    form.value = { ...form.value, ...setting.convertDefaults }
+    const persisted = setting.convertDefaults
+    const next: Partial<ConvertDefaults> = { ...persisted }
+    if (next.targetFormat && !isSupportedAudioFormat(next.targetFormat)) {
+      delete next.targetFormat
+    }
+    form.value = { ...form.value, ...next }
+  }
+  if (
+    supportedFormats.value.length > 0 &&
+    !supportedFormats.value.includes(form.value.targetFormat)
+  ) {
+    form.value.targetFormat = supportedFormats.value[0]
   }
 })
 
@@ -128,9 +129,19 @@ onUnmounted(() => {
   utils.delHotkeysScope(uuid)
 })
 
+watch(
+  () => form.value.targetFormat,
+  (fmt) => {
+    if (!metadataCapableFormats.has(fmt)) {
+      form.value.preserveMetadata = false
+    }
+  }
+)
+
 const confirm = async () => {
+  console.log('[AudioConvertDialog] confirm clicked', { targetFormat: form.value.targetFormat })
   // 校验：目标格式必选且在可选列表中
-  if (!supportedFormats.value.includes(form.value.targetFormat as any)) {
+  if (!supportedFormats.value.includes(form.value.targetFormat)) {
     if (!flashArea.value) flashBorder('targetFormat')
     return
   }
@@ -192,16 +203,10 @@ const cancel = () => props.cancelCallback?.()
             />
           </div>
 
-          <div
-            v-if="form.targetFormat === 'mp3' || form.targetFormat === 'flac'"
-            style="margin-top: 20px"
-          >
+          <div v-if="showMetadataOption" style="margin-top: 20px">
             {{ t('convert.preserveMetadata') }}：
           </div>
-          <div
-            v-if="form.targetFormat === 'mp3' || form.targetFormat === 'flac'"
-            style="margin-top: 10px"
-          >
+          <div v-if="showMetadataOption" style="margin-top: 10px">
             <singleCheckbox v-model="(form as any).preserveMetadata" />
           </div>
 

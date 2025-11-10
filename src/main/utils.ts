@@ -6,7 +6,8 @@ import os = require('os')
 import {
   calculateAudioHashesWithProgress,
   calculateFileHashesWithProgress,
-  ProcessProgress
+  ProcessProgress,
+  decodeAudioFile
 } from 'rust_package'
 import { BrowserWindow, ipcMain } from 'electron'
 

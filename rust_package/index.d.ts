@@ -17,6 +17,19 @@ export interface AudioFileResult {
   /** 错误描述（当分析失败时） */
   error?: string
 }
+/** 音频解码结果 */
+export interface DecodeAudioResult {
+  /** PCM 数据（Float32Array，交错格式） */
+  pcmData: Float32Array
+  /** 采样率 */
+  sampleRate: number
+  /** 声道数 */
+  channels: number
+  /** 总帧数 */
+  totalFrames: number
+  /** 错误描述（当解码失败时） */
+  error?: string
+}
 /**
  * 计算音频文件的 SHA256 哈希值，并生成声纹与质量标签
  *
@@ -33,3 +46,13 @@ export declare function calculateAudioHashesWithProgress(filePaths: Array<string
 export declare function calculateFileHashes(filePaths: Array<string>): Array<AudioFileResult>
 /** 计算整文件 SHA256（带进度） */
 export declare function calculateFileHashesWithProgress(filePaths: Array<string>, callback?: (err: Error | null, arg: ProcessProgress) => any | undefined | null): Promise<Array<AudioFileResult>>
+/**
+ * 解码音频文件为 PCM Float32Array
+ *
+ * # 参数
+ * * `file_path` - 音频文件路径
+ *
+ * # 返回值
+ * * 包含 PCM 数据和元数据的解码结果
+ */
+export declare function decodeAudioFile(filePath: string): DecodeAudioResult
