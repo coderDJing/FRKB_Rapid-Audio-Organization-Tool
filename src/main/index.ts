@@ -33,6 +33,7 @@ import { execFile } from 'child_process'
 import { ISongInfo, ITrackMetadataUpdatePayload } from '../types/globals'
 import type { ISettingConfig } from '../types/globals'
 import { scanSongList as svcScanSongList } from './services/scanSongs'
+import { resolveBundledFfmpegPath, ensureExecutableOnMac } from './ffmpeg'
 import {
   getSongCover as svcGetSongCover,
   getSongCoverThumb as svcGetSongCoverThumb,
@@ -77,6 +78,9 @@ import path = require('path')
 import fs = require('fs-extra')
 import os = require('os')
 const platform = process.platform
+const ffmpegPath = resolveBundledFfmpegPath()
+process.env.FRKB_FFMPEG_PATH = ffmpegPath
+void ensureExecutableOnMac(ffmpegPath)
 // 不再使用 Tray，改用应用菜单
 if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
   fs.outputJsonSync(url.layoutConfigFileUrl, {
@@ -89,7 +93,27 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
     platform: platform,
     language: is.dev ? 'zhCN' : '',
     themeMode: 'system',
-    audioExt: ['.mp3', '.wav', '.flac', '.aif', '.aiff'],
+    audioExt: [
+      '.mp3',
+      '.wav',
+      '.flac',
+      '.aif',
+      '.aiff',
+      '.ogg',
+      '.opus',
+      '.aac',
+      '.m4a',
+      '.mp4',
+      '.wma',
+      '.ac3',
+      '.dts',
+      '.mka',
+      '.webm',
+      '.ape',
+      '.tak',
+      '.tta',
+      '.wv'
+    ],
     databaseUrl: '',
     globalCallShortcut:
       platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
@@ -124,7 +148,27 @@ const defaultSettings = {
   platform: (platform === 'darwin' ? 'darwin' : 'win32') as 'darwin' | 'win32',
   language: (is.dev ? 'zhCN' : '') as '' | 'enUS' | 'zhCN',
   themeMode: 'system' as 'system' | 'light' | 'dark',
-  audioExt: ['.mp3', '.wav', '.flac', '.aif', '.aiff'],
+  audioExt: [
+    '.mp3',
+    '.wav',
+    '.flac',
+    '.aif',
+    '.aiff',
+    '.ogg',
+    '.opus',
+    '.aac',
+    '.m4a',
+    '.mp4',
+    '.wma',
+    '.ac3',
+    '.dts',
+    '.mka',
+    '.webm',
+    '.ape',
+    '.tak',
+    '.tta',
+    '.wv'
+  ],
   databaseUrl: '',
   globalCallShortcut:
     platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
@@ -177,25 +221,50 @@ const finalSettings: ISettingConfig = {
   ...(loadedSettings as Partial<ISettingConfig>)
 }
 
-// 一次性迁移：默认勾选 .aif / .aiff（升级老版本时补齐），并写入迁移标记
+// 一次性迁移：默认勾选所有格式（升级老版本时补齐），并写入迁移标记
 try {
-  const migrated = (loadedSettings as any)?.migratedAudioExtAiffAif === true
+  const migrated = (loadedSettings as any)?.migratedAudioExtAll === true
   if (!migrated) {
     const arr = Array.isArray((finalSettings as any).audioExt)
       ? ((finalSettings as any).audioExt as string[])
       : []
     const set = new Set(arr.map((e) => String(e || '').toLowerCase()))
+
+    // 所有支持的格式（Symphonia + FFmpeg 回退）
+    const allFormats = [
+      '.mp3',
+      '.wav',
+      '.flac',
+      '.aif',
+      '.aiff',
+      '.ogg',
+      '.opus',
+      '.aac',
+      '.m4a',
+      '.mp4',
+      '.wma',
+      '.ac3',
+      '.dts',
+      '.mka',
+      '.webm',
+      '.ape',
+      '.tak',
+      '.tta',
+      '.wv'
+    ]
+
     let changed = false
-    if (!set.has('.aif')) {
-      arr.push('.aif')
-      changed = true
+    for (const fmt of allFormats) {
+      if (!set.has(fmt.toLowerCase())) {
+        arr.push(fmt)
+        changed = true
+      }
     }
-    if (!set.has('.aiff')) {
-      arr.push('.aiff')
-      changed = true
+
+    if (changed) {
+      ;(finalSettings as any).audioExt = arr
+      ;(finalSettings as any).migratedAudioExtAll = true
     }
-    ;(finalSettings as any).audioExt = arr
-    ;(finalSettings as any).migratedAudioExtAiffAif = true
   }
 } catch (_e) {
   // 忽略迁移异常，保持既有行为

@@ -3,6 +3,11 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 export default defineConfig({
   main: {
+    resolve: {
+      alias: {
+        '@shared': resolve('src/shared')
+      }
+    },
     plugins: [externalizeDepsPlugin()],
     define: {
       'process.env.CLOUD_SYNC_BASE_URL_DEV': JSON.stringify(
@@ -17,6 +22,11 @@ export default defineConfig({
     }
   },
   preload: {
+    resolve: {
+      alias: {
+        '@shared': resolve('src/shared')
+      }
+    },
     plugins: [externalizeDepsPlugin()],
     define: {
       'process.env.CLOUD_SYNC_BASE_URL_DEV': JSON.stringify(
@@ -40,7 +50,8 @@ export default defineConfig({
     },
     resolve: {
       alias: {
-        '@renderer': resolve('src/renderer/src')
+        '@renderer': resolve('src/renderer/src'),
+        '@shared': resolve('src/shared')
       }
     },
     plugins: [vue()],

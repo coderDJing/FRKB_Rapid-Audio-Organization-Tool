@@ -1,20 +1,20 @@
 import { ref, onUnmounted, shallowRef } from 'vue'
-import type WaveSurfer from 'wavesurfer.js'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import emitter from '@renderer/utils/mitt'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import { WebAudioPlayer } from './webAudioPlayer'
 
 export function useSongLoader(params: {
   runtime: ReturnType<typeof useRuntimeStore>
-  wavesurferInstance: ReturnType<typeof shallowRef<WaveSurfer | null>>
+  audioPlayer: ReturnType<typeof shallowRef<WebAudioPlayer | null>>
   audioContext: AudioContext
   bpm: { value: number | string }
   waveformShow: { value: boolean }
   setCoverByIPC: (filePath: string) => void
 }) {
-  const { runtime, wavesurferInstance, audioContext, bpm, waveformShow, setCoverByIPC } = params
+  const { runtime, audioPlayer, audioContext, bpm, waveformShow, setCoverByIPC } = params
 
   const currentLoadRequestId = ref(0)
   const isLoadingBlob = ref(false)
@@ -30,8 +30,8 @@ export function useSongLoader(params: {
     const localFilePath = filePath
 
     try {
-      if (wavesurferInstance.value && wavesurferInstance.value.isPlaying()) {
-        wavesurferInstance.value.pause()
+      if (audioPlayer.value && audioPlayer.value.isPlaying()) {
+        audioPlayer.value.pause()
       }
       waveformShow.value = false
       bpm.value = 'N/A'
@@ -51,7 +51,7 @@ export function useSongLoader(params: {
         if (runtime.playingData.playingSong?.filePath === localFilePath) {
           runtime.playingData.playingSong = null
           runtime.playingData.playingSongListUUID = ''
-          if (wavesurferInstance.value) wavesurferInstance.value.empty()
+          if (audioPlayer.value) audioPlayer.value.empty()
         }
 
         emitter.emit('songsRemoved', {
@@ -62,7 +62,7 @@ export function useSongLoader(params: {
         if (runtime.playingData.playingSong?.filePath === localFilePath) {
           runtime.playingData.playingSong = null
           runtime.playingData.playingSongListUUID = ''
-          if (wavesurferInstance.value) wavesurferInstance.value.empty()
+          if (audioPlayer.value) audioPlayer.value.empty()
           waveformShow.value = false
         }
       }
@@ -74,16 +74,11 @@ export function useSongLoader(params: {
   }
 
   const requestLoadSong = (filePath: string) => {
-    const lower = (filePath || '').toLowerCase()
-    if (lower.endsWith('.aif') || lower.endsWith('.aiff')) {
-      return
-    }
-
     isLoadingBlob.value = false
-    if (wavesurferInstance.value) {
-      if (wavesurferInstance.value.isPlaying()) wavesurferInstance.value.pause()
+    if (audioPlayer.value) {
+      if (audioPlayer.value.isPlaying()) audioPlayer.value.pause()
       ignoreNextEmptyError.value = true
-      wavesurferInstance.value.empty()
+      audioPlayer.value.empty()
     }
 
     runtime.playerReady = false
@@ -93,15 +88,15 @@ export function useSongLoader(params: {
     window.electron.ipcRenderer.send('readSongFile', filePath, newRequestId)
   }
 
-  const handleLoadBlob = async (
-    blob: Blob,
+  const handleLoadPCM = async (
+    pcmData: { pcmData: Float32Array; sampleRate: number; channels: number; totalFrames: number },
     filePath: string,
     requestId: number,
     preloadedBpmValue?: number | string | null
   ) => {
     if (requestId !== currentLoadRequestId.value) return
     if (isLoadingBlob.value) return
-    if (!wavesurferInstance.value || runtime.playingData.playingSong?.filePath !== filePath) return
+    if (!audioPlayer.value || runtime.playingData.playingSong?.filePath !== filePath) return
 
     setCoverByIPC(filePath)
     waveformShow.value = true
@@ -115,7 +110,10 @@ export function useSongLoader(params: {
 
     try {
       isLoadingBlob.value = true
-      await wavesurferInstance.value.loadBlob(blob)
+
+      // 加载 PCM 数据到播放器
+      audioPlayer.value.loadPCM(pcmData.pcmData, pcmData.sampleRate, pcmData.channels)
+
       if (requestId !== currentLoadRequestId.value) {
         isLoadingBlob.value = false
         return
@@ -125,60 +123,59 @@ export function useSongLoader(params: {
         return
       }
 
+      // 计算 BPM（如果未预加载）
       if (!bpmValueAssigned) {
-        blob
-          .arrayBuffer()
-          .then(async (arrayBuffer) => {
-            if (
-              requestId !== currentLoadRequestId.value ||
-              runtime.playingData.playingSong?.filePath !== filePath
-            )
-              return
-            try {
-              const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
-              if (
-                requestId !== currentLoadRequestId.value ||
-                runtime.playingData.playingSong?.filePath !== filePath
-              )
-                return
-              const { analyzeFullBuffer } = await import('realtime-bpm-analyzer')
-              analyzeFullBuffer(audioBuffer).then((topCandidates: any[]) => {
-                if (
-                  requestId === currentLoadRequestId.value &&
-                  runtime.playingData.playingSong?.filePath === filePath
-                ) {
-                  bpm.value = topCandidates[0]?.tempo ?? 'N/A'
-                }
-              })
-            } catch (_) {
+        try {
+          // 从 PCM 数据创建 AudioBuffer 用于 BPM 分析
+          const audioBuffer = audioContext.createBuffer(
+            pcmData.channels,
+            pcmData.totalFrames,
+            pcmData.sampleRate
+          )
+
+          // 将交错 PCM 数据分离到各个声道
+          for (let ch = 0; ch < pcmData.channels; ch++) {
+            const channelData = audioBuffer.getChannelData(ch)
+            for (let i = 0; i < pcmData.totalFrames; i++) {
+              channelData[i] = pcmData.pcmData[i * pcmData.channels + ch]
+            }
+          }
+
+          if (
+            requestId === currentLoadRequestId.value &&
+            runtime.playingData.playingSong?.filePath === filePath
+          ) {
+            const { analyzeFullBuffer } = await import('realtime-bpm-analyzer')
+            analyzeFullBuffer(audioBuffer).then((topCandidates: any[]) => {
               if (
                 requestId === currentLoadRequestId.value &&
                 runtime.playingData.playingSong?.filePath === filePath
               ) {
-                bpm.value = 'N/A'
+                bpm.value = topCandidates[0]?.tempo ?? 'N/A'
               }
-            }
-          })
-          .catch(() => {
-            if (
-              requestId === currentLoadRequestId.value &&
-              runtime.playingData.playingSong?.filePath === filePath
-            ) {
-              bpm.value = 'N/A'
-            }
-          })
+            })
+          }
+        } catch (_) {
+          if (
+            requestId === currentLoadRequestId.value &&
+            runtime.playingData.playingSong?.filePath === filePath
+          ) {
+            bpm.value = 'N/A'
+          }
+        }
       }
 
+      // 开始播放
       try {
         const reqIdToPlay = requestId
         if (reqIdToPlay !== currentLoadRequestId.value) return
-        if (runtime.setting.enablePlaybackRange && wavesurferInstance.value) {
-          const duration = wavesurferInstance.value.getDuration()
+        if (runtime.setting.enablePlaybackRange && audioPlayer.value) {
+          const duration = audioPlayer.value.getDuration()
           const startPercent = runtime.setting.startPlayPercent ?? 0
           const startTime = (duration * startPercent) / 100
-          wavesurferInstance.value.play(startTime)
+          audioPlayer.value.play(startTime)
         } else {
-          wavesurferInstance.value?.play()
+          audioPlayer.value?.play()
         }
       } catch (playError: any) {
         if (playError?.name !== 'AbortError') {
@@ -196,17 +193,13 @@ export function useSongLoader(params: {
 
   const onReadedSongFile = (
     event: any,
-    audioData: Uint8Array,
+    pcmData: { pcmData: Float32Array; sampleRate: number; channels: number; totalFrames: number },
     filePath: string,
     requestId?: number
   ) => {
     if (requestId && requestId !== currentLoadRequestId.value) return
     if (filePath === runtime.playingData.playingSong?.filePath) {
-      const ab = audioData.buffer.slice(
-        audioData.byteOffset,
-        audioData.byteOffset + audioData.byteLength
-      ) as ArrayBuffer
-      handleLoadBlob(new Blob([ab]), filePath, requestId || currentLoadRequestId.value)
+      handleLoadPCM(pcmData, filePath, requestId || currentLoadRequestId.value)
     }
   }
 
@@ -233,7 +226,7 @@ export function useSongLoader(params: {
     isLoadingBlob,
     ignoreNextEmptyError,
     requestLoadSong,
-    handleLoadBlob,
+    handleLoadPCM,
     handleSongLoadError
   }
 }

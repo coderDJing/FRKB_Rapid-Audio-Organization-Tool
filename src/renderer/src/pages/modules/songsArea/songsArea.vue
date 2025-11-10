@@ -199,16 +199,6 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
 }
 
 const songDblClick = async (song: ISongInfo) => {
-  const lower = (song.filePath || '').toLowerCase()
-  if (lower.endsWith('.aif') || lower.endsWith('.aiff')) {
-    await confirm({
-      title: t('dialog.hint'),
-      content: [t('player.aiffNotSupported')],
-      confirmShow: false
-    })
-    return
-  }
-
   runtime.activeMenuUUID = ''
   runtime.songsArea.selectedSongFilePath = []
   runtime.playingData.playingSong = song

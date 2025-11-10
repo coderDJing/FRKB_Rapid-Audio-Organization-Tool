@@ -7,10 +7,32 @@ import store from '../store'
 import FingerprintStore from '../fingerprintStore'
 import { resolveBundledFfmpegPath, ensureExecutableOnMac } from '../ffmpeg'
 import { getCoreFsDirName, operateHiddenFile, runWithConcurrency } from '../utils'
+import {
+  SUPPORTED_AUDIO_FORMATS,
+  ENCODER_REQUIREMENTS,
+  type SupportedAudioFormat
+} from '../../shared/audioFormats'
 
 type ConvertJobOptions = {
   src: string
-  targetFormat: 'mp3' | 'flac' | 'wav' | 'aiff' | 'aif'
+  targetFormat:
+    | 'mp3'
+    | 'flac'
+    | 'wav'
+    | 'aiff'
+    | 'aif'
+    | 'ogg'
+    | 'opus'
+    | 'aac'
+    | 'm4a'
+    | 'mp4'
+    | 'wma'
+    | 'ac3'
+    | 'dts'
+    | 'mka'
+    | 'webm'
+    | 'wv'
+    | 'tta'
   bitrateKbps?: number
   sampleRate?: 44100 | 48000
   channels?: 1 | 2
@@ -72,6 +94,8 @@ function buildFfmpegArgs(src: string, dest: string, opts: ConvertJobOptions): st
   if (opts.sampleRate) args.push('-ar', String(opts.sampleRate))
   if (opts.channels) args.push('-ac', String(opts.channels))
   if (opts.normalize) args.push('-filter:a', 'loudnorm')
+  // 只处理音频流，忽略封面/视频附件
+  args.push('-map', '0:a:0', '-vn')
   if (opts.preserveMetadata) args.push('-map_metadata', '0')
   // 编码器与比特率
   switch (opts.targetFormat) {
@@ -92,10 +116,96 @@ function buildFfmpegArgs(src: string, dest: string, opts: ConvertJobOptions): st
     case 'aif':
       args.push('-c:a', 'pcm_s16be')
       break
+    case 'aac':
+      args.push('-c:a', 'aac')
+      if (opts.bitrateKbps) args.push('-b:a', `${opts.bitrateKbps}k`)
+      break
+    case 'm4a':
+    case 'mp4':
+      args.push('-c:a', 'aac')
+      if (opts.bitrateKbps) args.push('-b:a', `${opts.bitrateKbps}k`)
+      // m4a/mp4 容器
+      args.push('-movflags', '+use_metadata_tags')
+      break
+    case 'ogg':
+      // 选择 Vorbis 作为编码（更通用）
+      args.push('-c:a', 'libvorbis')
+      if (opts.bitrateKbps) args.push('-b:a', `${opts.bitrateKbps}k`)
+      break
+    case 'opus':
+      args.push('-c:a', 'libopus')
+      if (opts.bitrateKbps) args.push('-b:a', `${opts.bitrateKbps}k`)
+      break
+    case 'webm':
+      // WebM 使用 Opus
+      args.push('-ar', '48000')
+      if (!opts.channels) args.push('-ac', '2')
+      if (!opts.bitrateKbps) args.push('-b:a', '160k')
+      args.push('-c:a', 'libopus', '-f', 'webm', '-content_type', 'audio/webm')
+      if (opts.bitrateKbps) args.push('-b:a', `${opts.bitrateKbps}k`)
+      break
+    case 'mka':
+      // Matroska 容器采用 FLAC（无损，兼容性较好）
+      args.push('-c:a', 'flac', '-f', 'matroska')
+      break
+    case 'wma':
+      args.push('-c:a', 'wmav2')
+      if (opts.bitrateKbps) args.push('-b:a', `${opts.bitrateKbps}k`)
+      break
+    case 'ac3':
+      args.push('-c:a', 'ac3')
+      if (opts.bitrateKbps) args.push('-b:a', `${opts.bitrateKbps}k`)
+      break
+    case 'dts':
+      args.push('-c:a', 'dca')
+      if (opts.bitrateKbps) args.push('-b:a', `${opts.bitrateKbps}k`)
+      break
+    case 'wv':
+      args.push('-c:a', 'wavpack')
+      break
+    case 'tta':
+      args.push('-c:a', 'tta')
+      break
   }
   // 进度：简单采用 -hide_banner -nostats；百分比将按文件计数汇总，由 UI 侧显示
   args.push(dest)
   return args
+}
+
+// 列出当前 FFmpeg 可用的音频编码器，返回可作为目标格式的扩展集合
+export async function listAvailableTargetFormats(): Promise<SupportedAudioFormat[]> {
+  const ffmpegPath = resolveBundledFfmpegPath()
+  await ensureExecutableOnMac(ffmpegPath)
+  const out = child_process
+    .execFileSync(ffmpegPath, ['-hide_banner', '-encoders'], {
+      windowsHide: true
+    })
+    .toString()
+
+  const availableEncoders = new Set<string>()
+  for (const line of out.split(/\r?\n/)) {
+    if (!line || line.startsWith('Encoders:') || line.startsWith('------')) continue
+    const trimmed = line.trim()
+    if (!trimmed || !/^[AVS]/.test(trimmed)) continue
+    const parts = trimmed.split(/\s+/)
+    if (parts.length >= 2) {
+      availableEncoders.add(parts[1])
+    }
+  }
+
+  const uniqueFormats = new Set<SupportedAudioFormat>()
+  for (const fmt of SUPPORTED_AUDIO_FORMATS) {
+    const requirements = ENCODER_REQUIREMENTS[fmt] || []
+    if (
+      requirements.length === 0 ||
+      requirements.some((encoder) => availableEncoders.has(encoder))
+    ) {
+      uniqueFormats.add(fmt)
+    }
+  }
+
+  const result = SUPPORTED_AUDIO_FORMATS.filter((fmt) => uniqueFormats.has(fmt))
+  return result
 }
 
 export async function startAudioConversion(
@@ -129,6 +239,9 @@ export async function startAudioConversion(
   let skipped = 0
 
   const tasks: Array<() => Promise<void>> = files.map((src) => async () => {
+    let lastFfmpegArgs: string[] = []
+    let lastFfmpegStderr = ''
+    let tmpPaths: string[] = []
     try {
       // 同格式跳过（aif/aiff 互认为同类）
       const ext = path.extname(src).toLowerCase()
@@ -138,7 +251,19 @@ export async function startAudioConversion(
         (tgt === 'mp3' && ext === '.mp3') ||
         (tgt === 'flac' && ext === '.flac') ||
         (tgt === 'wav' && ext === '.wav') ||
-        ((tgt === 'aif' || tgt === 'aiff') && isAifFamily(ext))
+        ((tgt === 'aif' || tgt === 'aiff') && isAifFamily(ext)) ||
+        (tgt === 'ogg' && ext === '.ogg') ||
+        (tgt === 'opus' && ext === '.opus') ||
+        (tgt === 'aac' && ext === '.aac') ||
+        (tgt === 'm4a' && ext === '.m4a') ||
+        (tgt === 'mp4' && ext === '.mp4') ||
+        (tgt === 'wma' && ext === '.wma') ||
+        (tgt === 'ac3' && ext === '.ac3') ||
+        (tgt === 'dts' && ext === '.dts') ||
+        (tgt === 'mka' && ext === '.mka') ||
+        (tgt === 'webm' && ext === '.webm') ||
+        (tgt === 'wv' && ext === '.wv') ||
+        (tgt === 'tta' && ext === '.tta')
       if (sameFormat) {
         skipped += 1
         if (mainWindow) mainWindow.webContents.send('audio:convert:progress', { jobId })
@@ -158,18 +283,40 @@ export async function startAudioConversion(
             `.${path.basename(src)}.tmp.${options.targetFormat}`
           )
           const args = buildFfmpegArgs(src, tmp, options)
+          lastFfmpegArgs = args
+          tmpPaths.push(tmp)
+          console.log('[audioConversion] spawn ffmpeg', { src, tmp, dest, args })
           const child = child_process.spawn(ffmpegPath, args, { windowsHide: true })
           jobIdToChildren.set(jobId, child)
+          let stderrData = ''
+          child.stderr?.on('data', (chunk) => {
+            stderrData += chunk.toString()
+          })
           await new Promise<void>((resolve, reject) => {
-            child.on('error', reject)
-            child.on('exit', (code) =>
-              code === 0 ? resolve() : reject(new Error(`ffmpeg exit ${code}`))
-            )
+            child.on('error', (err) => {
+              lastFfmpegStderr = stderrData
+              console.error('[audioConversion] ffmpeg process error', {
+                src,
+                targetFormat: options.targetFormat,
+                error: err instanceof Error ? err.message : err
+              })
+              reject(err)
+            })
+            child.on('exit', (code) => {
+              console.log('[audioConversion] ffmpeg exit', { src, code, tmp })
+              if (code === 0) {
+                resolve()
+              } else {
+                lastFfmpegStderr = stderrData
+                reject(new Error(`ffmpeg exit ${code}`))
+              }
+            })
           })
           // 备份并覆盖
           const { descriptionJson } = await backupOriginalIfNeeded(src)
           backupCount += 1
           await fs.move(tmp, dest, { overwrite: true })
+          console.log('[audioConversion] moved tmp to dest', { tmp, dest })
           overwritten += 1
         } else {
           // 同格式重新编码直接覆盖：备份原文件，再输出到原路径
@@ -178,17 +325,39 @@ export async function startAudioConversion(
             `.${path.basename(src)}.tmp.${options.targetFormat}`
           )
           const args = buildFfmpegArgs(src, tmp, options)
+          lastFfmpegArgs = args
+          tmpPaths.push(tmp)
+          console.log('[audioConversion] spawn ffmpeg', { src, tmp, dest: src, args })
           const child = child_process.spawn(ffmpegPath, args, { windowsHide: true })
           jobIdToChildren.set(jobId, child)
+          let stderrData = ''
+          child.stderr?.on('data', (chunk) => {
+            stderrData += chunk.toString()
+          })
           await new Promise<void>((resolve, reject) => {
-            child.on('error', reject)
-            child.on('exit', (code) =>
-              code === 0 ? resolve() : reject(new Error(`ffmpeg exit ${code}`))
-            )
+            child.on('error', (err) => {
+              lastFfmpegStderr = stderrData
+              console.error('[audioConversion] ffmpeg process error', {
+                src,
+                targetFormat: options.targetFormat,
+                error: err instanceof Error ? err.message : err
+              })
+              reject(err)
+            })
+            child.on('exit', (code) => {
+              console.log('[audioConversion] ffmpeg exit', { src, code, tmp })
+              if (code === 0) {
+                resolve()
+              } else {
+                lastFfmpegStderr = stderrData
+                reject(new Error(`ffmpeg exit ${code}`))
+              }
+            })
           })
           await backupOriginalIfNeeded(src)
           backupCount += 1
           await fs.move(tmp, src, { overwrite: true })
+          console.log('[audioConversion] moved tmp to src', { tmp, dest: src })
           overwritten += 1
           dest = src
         }
@@ -199,15 +368,37 @@ export async function startAudioConversion(
           `.${path.basename(dest)}.tmp.${options.targetFormat}`
         )
         const args = buildFfmpegArgs(src, tmp, options)
+        lastFfmpegArgs = args
+        tmpPaths.push(tmp)
+        console.log('[audioConversion] spawn ffmpeg', { src, tmp, dest, args })
         const child = child_process.spawn(ffmpegPath, args, { windowsHide: true })
         jobIdToChildren.set(jobId, child)
+        let stderrData = ''
+        child.stderr?.on('data', (chunk) => {
+          stderrData += chunk.toString()
+        })
         await new Promise<void>((resolve, reject) => {
-          child.on('error', reject)
-          child.on('exit', (code) =>
-            code === 0 ? resolve() : reject(new Error(`ffmpeg exit ${code}`))
-          )
+          child.on('error', (err) => {
+            lastFfmpegStderr = stderrData
+            console.error('[audioConversion] ffmpeg process error', {
+              src,
+              targetFormat: options.targetFormat,
+              error: err instanceof Error ? err.message : err
+            })
+            reject(err)
+          })
+          child.on('exit', (code) => {
+            console.log('[audioConversion] ffmpeg exit', { src, code, tmp })
+            if (code === 0) {
+              resolve()
+            } else {
+              lastFfmpegStderr = stderrData
+              reject(new Error(`ffmpeg exit ${code}`))
+            }
+          })
         })
         await fs.move(tmp, dest, { overwrite: false })
+        console.log('[audioConversion] moved tmp to dest', { tmp, dest })
         renamed += 1
       }
 
@@ -232,9 +423,61 @@ export async function startAudioConversion(
       }
 
       success += 1
+
+      // 校验输出是否为空（或未生成）
+      try {
+        const outputPath =
+          options.strategy === 'new_file' ? dest : options.strategy === 'replace' ? dest : ''
+        if (outputPath) {
+          const stat = await fs.stat(outputPath)
+          if (!stat || stat.size === 0) {
+            throw new Error('converted file is empty')
+          }
+          console.log('[audioConversion] output file stat', {
+            outputPath,
+            size: stat.size
+          })
+        }
+      } catch (err) {
+        failed += 1
+        success -= 1
+        console.error('[audioConversion] output validation failed', {
+          src,
+          targetFormat: options.targetFormat,
+          error: err instanceof Error ? err.message : err
+        })
+        await Promise.all(
+          tmpPaths.map(async (tmpPath) => {
+            try {
+              await fs.remove(tmpPath)
+            } catch {}
+          })
+        )
+        if (options.strategy === 'new_file') {
+          try {
+            await fs.remove(dest)
+          } catch {}
+        }
+        if (mainWindow) mainWindow.webContents.send('audio:convert:progress', { jobId })
+        return
+      }
+
       if (mainWindow) mainWindow.webContents.send('audio:convert:progress', { jobId })
     } catch (e) {
       failed += 1
+      console.error('[audioConversion] convert failed', {
+        src,
+        targetFormat: options.targetFormat,
+        args: lastFfmpegArgs,
+        error: e instanceof Error ? e.message : e,
+        stderr: lastFfmpegStderr
+      })
+      // 清理临时文件
+      for (const tmpPath of tmpPaths) {
+        try {
+          await fs.remove(tmpPath)
+        } catch {}
+      }
       if (mainWindow) mainWindow.webContents.send('audio:convert:progress', { jobId })
     }
   })
