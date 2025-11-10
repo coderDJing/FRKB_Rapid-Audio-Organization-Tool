@@ -13,16 +13,9 @@ export async function getSongCover(
     if (!cover) {
       const fsStat = await fs.stat(filePath)
       const buffer = await fs.readFile(filePath)
-      const arr = await mm.parseBuffer(
-        buffer,
-        { mimeType: metadata.format?.mimetype },
-        {
-          fileInfo: {
-            mtime: fsStat.mtime,
-            size: fsStat.size
-          }
-        }
-      )
+      const arr = await mm.parseBuffer(buffer, {
+        size: fsStat.size
+      })
       cover = mm.selectCover(arr.common.picture)
     }
     if (!cover) return null

@@ -10,7 +10,12 @@ export function usePreloadNextSong(params: {
 
   const isPreloading = ref(false)
   const isPreloadReady = ref(false)
-  const preloadedBlob = ref<Blob | null>(null)
+  const preloadedBlob = ref<{
+    pcmData: Float32Array
+    sampleRate: number
+    channels: number
+    totalFrames: number
+  } | null>(null)
   const preloadedSongFilePath = ref<string | null>(null)
   const preloadedBpm = ref<number | string | null>(null)
   const currentPreloadRequestId = ref(0)
@@ -71,12 +76,6 @@ export function usePreloadNextSong(params: {
 
     let scanIndex = currentIndex + 1
     let nextSongToPreload = runtime.playingData.playingSongListData[scanIndex]
-    while (nextSongToPreload) {
-      const p = (nextSongToPreload.filePath || '').toLowerCase()
-      if (!(p.endsWith('.aif') || p.endsWith('.aiff'))) break
-      scanIndex++
-      nextSongToPreload = runtime.playingData.playingSongListData[scanIndex]
-    }
     if (!nextSongToPreload?.filePath) {
       return
     }
@@ -98,39 +97,40 @@ export function usePreloadNextSong(params: {
 
   const onReadedNextSongFile = async (
     event: any,
-    audioData: Uint8Array,
+    pcmData: { pcmData: Float32Array; sampleRate: number; channels: number; totalFrames: number },
     filePath: string,
     requestId?: number
   ) => {
     if (!requestId || requestId !== currentPreloadRequestId.value) return
     if (filePath !== preloadedSongFilePath.value) return
 
-    const ab = audioData.buffer.slice(
-      audioData.byteOffset,
-      audioData.byteOffset + audioData.byteLength
-    ) as ArrayBuffer
-    const blob = new Blob([ab])
-    preloadedBlob.value = blob
-
     try {
-      const arrayBuffer = await blob.arrayBuffer()
-      const decodedBuffer = await audioContext.decodeAudioData(arrayBuffer).catch((decodeError) => {
-        if (requestId === currentPreloadRequestId.value) {
-          handleSongLoadError(filePath)
-          clearReadyPreloadState()
+      // 从 PCM 数据创建 AudioBuffer
+      const audioBuffer = audioContext.createBuffer(
+        pcmData.channels,
+        pcmData.totalFrames,
+        pcmData.sampleRate
+      )
+
+      // 将交错 PCM 数据分离到各个声道
+      for (let ch = 0; ch < pcmData.channels; ch++) {
+        const channelData = audioBuffer.getChannelData(ch)
+        for (let i = 0; i < pcmData.totalFrames; i++) {
+          channelData[i] = pcmData.pcmData[i * pcmData.channels + ch]
         }
-        throw decodeError
-      })
+      }
+
+      const decodedBuffer = audioBuffer
 
       const topCandidates = await realtimeBpm.analyzeFullBuffer(decodedBuffer)
       const calculatedBpm = topCandidates[0]?.tempo
 
       if (requestId === currentPreloadRequestId.value) {
         preloadedBpm.value = calculatedBpm ?? 'N/A'
+        // 存储 PCM 数据用于后续播放
+        preloadedBlob.value = pcmData
         isPreloading.value = false
         isPreloadReady.value = true
-      } else {
-        preloadedBlob.value = null
       }
     } catch (error) {
       if (requestId === currentPreloadRequestId.value) {

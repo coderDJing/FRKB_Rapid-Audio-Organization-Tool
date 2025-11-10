@@ -28,6 +28,8 @@ declare global {
 
 interface ISongInfo {
   filePath: string
+  fileName: string
+  fileFormat: string
   cover: IPicture | null
   title: string | undefined
   artist: string | undefined
@@ -130,7 +132,24 @@ interface ISettingConfig {
   cloudSyncUserKey?: string
   // 音频转换默认项（记住用户上次选择）
   convertDefaults?: {
-    targetFormat: 'mp3' | 'flac' | 'wav' | 'aif' | 'aiff'
+    targetFormat:
+      | 'mp3'
+      | 'flac'
+      | 'wav'
+      | 'aif'
+      | 'aiff'
+      | 'ogg'
+      | 'opus'
+      | 'aac'
+      | 'm4a'
+      | 'mp4'
+      | 'wma'
+      | 'ac3'
+      | 'dts'
+      | 'mka'
+      | 'webm'
+      | 'wv'
+      | 'tta'
     bitrateKbps?: number
     sampleRate?: 44100 | 48000
     channels?: 1 | 2

@@ -70,7 +70,7 @@ importers:
         version: 9.14.5(vue@3.5.13(typescript@5.8.2))
       wavesurfer.js:
         specifier: ^7.9.4
-        version: 7.9.4
+        version: 7.11.1
     devDependencies:
       '@electron-toolkit/eslint-config-prettier':
         specifier: 3.0.0
@@ -3266,8 +3266,8 @@ packages:
   wav@1.0.2:
     resolution: {integrity: sha512-viHtz3cDd/Tcr/HbNqzQCofKdF6kWUymH9LGDdskfWFoIy/HJ+RTihgjEcHfnsy1PO4e9B+y4HwgTwMrByquhg==}
 
-  wavesurfer.js@7.9.4:
-    resolution: {integrity: sha512-ahOMvrOKo5jULNnXq8Ske8v/ZStoNNTDjYohvgLNerUFuh+6fJSt7wlxFesEXmnlcTnjMy5/tIzhn9KusjO6bg==}
+  wavesurfer.js@7.11.1:
+    resolution: {integrity: sha512-8Q+wwItpjJAlhQ7crQLtKwgfbqqczm5/wx+76K4PptP+MBAjB0OA78+A9OuLnULz/8GpAQ+fKM6s81DonEO0Sg==}
 
   wcwidth@1.0.1:
     resolution: {integrity: sha512-XHPEwS0q6TaxcvG85+8EYkbiCux2XtWG2mkc47Ng2A77BQu9+DqIOJldST4HgPkuea7dvKSj5VgX3P1d4rW8Tg==}
@@ -6638,7 +6638,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  wavesurfer.js@7.9.4: {}
+  wavesurfer.js@7.11.1: {}
 
   wcwidth@1.0.1:
     dependencies:

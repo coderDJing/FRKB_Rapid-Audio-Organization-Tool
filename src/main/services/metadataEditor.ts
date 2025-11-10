@@ -26,14 +26,24 @@ function buildSongInfo(filePath: string, metadata: any): ISongInfo {
     typeof durationSeconds === 'number' && durationSeconds >= 0
       ? convertSecondsToMinutesSeconds(Math.round(durationSeconds))
       : '00:00'
+  const baseName = path.basename(filePath)
+  const ext = path.extname(filePath)
+  const normalizedExt = ext ? ext.slice(1).toUpperCase() : ''
+  const fallbackFormat =
+    typeof metadata.format?.container === 'string' && metadata.format.container.trim() !== ''
+      ? metadata.format.container.trim().toUpperCase()
+      : ''
+  const fileFormat = normalizedExt || fallbackFormat
 
   return {
     filePath,
+    fileName: baseName,
+    fileFormat,
     cover: null,
     title:
       metadata.common?.title && metadata.common.title.trim() !== ''
         ? metadata.common.title
-        : path.basename(filePath),
+        : baseName,
     artist: metadata.common?.artist,
     album: metadata.common?.album,
     duration,

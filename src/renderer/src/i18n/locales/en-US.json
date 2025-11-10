@@ -268,12 +268,14 @@
   "columns": {
     "cover": "Cover",
     "title": "Title",
+    "fileName": "File Name",
     "artist": "Artist",
     "duration": "Duration",
     "album": "Album",
     "genre": "Genre",
     "label": "Label",
     "bitrate": "Bitrate",
+    "fileFormat": "File Format",
     "format": "Format",
     "bpm": "BPM",
     "index": "Index"

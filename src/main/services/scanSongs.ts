@@ -2,6 +2,7 @@ import path = require('path')
 import fs = require('fs-extra')
 import { collectFilesWithExtensions, operateHiddenFile, runWithConcurrency } from '../utils'
 import { ISongInfo } from '../../types/globals'
+import { SUPPORTED_AUDIO_FORMATS } from '../../shared/audioFormats'
 
 // 扫描歌单目录，带 .songs.cache.json 缓存
 export async function scanSongList(
@@ -28,6 +29,29 @@ export async function scanSongList(
   const mm = await import('music-metadata')
   let songInfoArr: ISongInfo[] = []
   let songFileUrls: string[] = []
+  const cleanedDirs = new Set<string>()
+
+  const cleanupConversionTempFiles = async (dir: string) => {
+    if (cleanedDirs.has(dir)) return
+    cleanedDirs.add(dir)
+    try {
+      const entries = await fs.readdir(dir, { withFileTypes: true })
+      for (const entry of entries) {
+        if (!entry.isFile()) continue
+        const name = entry.name
+        // 只处理我们生成的隐藏临时文件：以 '.' 开头，包含 '.tmp.'，且以支持的格式结尾
+        if (!name.startsWith('.') || !name.includes('.tmp.')) continue
+        const matched = SUPPORTED_AUDIO_FORMATS.find((fmt) =>
+          name.toLowerCase().endsWith(`.${fmt}`)
+        )
+        if (!matched) continue
+        const fullPath = path.join(dir, name)
+        try {
+          await fs.remove(fullPath)
+        } catch {}
+      }
+    } catch {}
+  }
 
   // 处理混合的文件和文件夹路径
   const pathsToScan = Array.isArray(scanPath) ? scanPath : [scanPath]
@@ -35,12 +59,14 @@ export async function scanSongList(
     const stats = await fs.stat(filePath)
     if (stats.isFile()) {
       // 单个文件
+      await cleanupConversionTempFiles(path.dirname(filePath))
       const ext = path.extname(filePath).toLowerCase()
       if (audioExt.includes(ext)) {
         songFileUrls.push(filePath)
       }
     } else if (stats.isDirectory()) {
       // 文件夹
+      await cleanupConversionTempFiles(filePath)
       const files = await collectFilesWithExtensions(filePath, audioExt)
       songFileUrls = songFileUrls.concat(files)
     }
@@ -53,21 +79,28 @@ export async function scanSongList(
     mtimeMs: number
     info: ISongInfo
   }
-  const cacheFile = path.join(scanPath, '.songs.cache.json')
+  const cacheBase =
+    typeof scanPath === 'string' ? scanPath : Array.isArray(scanPath) ? (scanPath[0] ?? '') : ''
+  const cacheFile =
+    cacheBase && (await fs.pathExists(cacheBase)) && (await fs.stat(cacheBase)).isDirectory()
+      ? path.join(cacheBase, '.songs.cache.json')
+      : ''
   let cacheMap = new Map<string, CacheEntry>()
-  try {
-    if (await fs.pathExists(cacheFile)) {
-      const json = await fs.readJSON(cacheFile)
-      if (json && typeof json === 'object') {
-        const entries = (json.entries || {}) as Record<string, CacheEntry>
-        for (const [k, v] of Object.entries(entries)) {
-          if (v && typeof v.size === 'number' && typeof v.mtimeMs === 'number' && v.info) {
-            cacheMap.set(k, v)
+  if (cacheFile) {
+    try {
+      if (await fs.pathExists(cacheFile)) {
+        const json = await fs.readJSON(cacheFile)
+        if (json && typeof json === 'object') {
+          const entries = (json.entries || {}) as Record<string, CacheEntry>
+          for (const [k, v] of Object.entries(entries)) {
+            if (v && typeof v.size === 'number' && typeof v.mtimeMs === 'number' && v.info) {
+              cacheMap.set(k, v)
+            }
           }
         }
       }
-    }
-  } catch {}
+    } catch {}
+  }
 
   const perfCacheCheckStart = Date.now()
   const filesStatList: Array<{ file: string; size: number; mtimeMs: number }> = []
@@ -84,7 +117,7 @@ export async function scanSongList(
   for (const it of filesStatList) {
     const c = cacheMap.get(it.file)
     if (c && c.size === it.size && Math.abs(c.mtimeMs - it.mtimeMs) < 1) {
-      cachedInfos.push(c.info)
+      cachedInfos.push(enrichSongInfo(c.info))
     } else {
       filesToParse.push(it.file)
     }
@@ -99,16 +132,51 @@ export async function scanSongList(
     return `${minutesStr}:${secondsStr}`
   }
 
+  function computeFileMeta(
+    filePath: string,
+    container?: string | null
+  ): { fileName: string; fileFormat: string } {
+    const baseName = path.basename(filePath)
+    const ext = path.extname(filePath)
+    const normalizedExt = ext ? ext.slice(1).toUpperCase() : ''
+    const fallbackFormat =
+      typeof container === 'string' && container.trim() !== '' ? container.trim().toUpperCase() : ''
+    return {
+      fileName: baseName,
+      fileFormat: normalizedExt || fallbackFormat
+    }
+  }
+
+  function enrichSongInfo(info: ISongInfo): ISongInfo {
+    const meta = computeFileMeta(info.filePath, info.container)
+    const fileName =
+      typeof info.fileName === 'string' && info.fileName.trim() !== ''
+        ? info.fileName
+        : meta.fileName
+    const fileFormat =
+      typeof info.fileFormat === 'string' && info.fileFormat.trim() !== ''
+        ? info.fileFormat.trim().toUpperCase()
+        : meta.fileFormat
+    return {
+      ...info,
+      fileName,
+      fileFormat
+    }
+  }
+
   const perfParseStart = Date.now()
   const tasks: Array<() => Promise<any>> = filesToParse.map((url) => async () => {
     try {
       const metadata = await mm.parseFile(url)
+      const meta = computeFileMeta(url, metadata.format?.container)
       const title =
         metadata.common?.title && metadata.common.title.trim() !== ''
           ? metadata.common.title
-          : path.basename(url)
+          : meta.fileName
       return {
         filePath: url,
+        fileName: meta.fileName,
+        fileFormat: meta.fileFormat,
         cover: null,
         title,
         artist: metadata.common?.artist,
@@ -126,22 +194,32 @@ export async function scanSongList(
     }
   })
   const { results, success, failed } = await runWithConcurrency(tasks, { concurrency: 8 })
-  const parsedInfos: ISongInfo[] = results.filter((r) => r && !(r instanceof Error))
+  const parsedInfos: ISongInfo[] = results
+    .filter((r) => r && !(r instanceof Error))
+    .map((info) => enrichSongInfo(info as ISongInfo))
   songInfoArr = [...cachedInfos, ...parsedInfos]
   const perfParseEnd = Date.now()
 
   // 回写缓存
-  try {
-    const newEntries: Record<string, CacheEntry> = {}
-    const infoMap = new Map<string, ISongInfo>()
-    for (const info of songInfoArr) infoMap.set(info.filePath, info)
-    for (const st of filesStatList) {
-      const info = infoMap.get(st.file)
-      if (info) newEntries[st.file] = { size: st.size, mtimeMs: st.mtimeMs, info }
-    }
-    await fs.writeJSON(cacheFile, { entries: newEntries })
-    await operateHiddenFile(cacheFile, async () => {})
-  } catch {}
+  if (cacheFile) {
+    try {
+      const newEntries: Record<string, CacheEntry> = {}
+      const infoMap = new Map<string, ISongInfo>()
+      for (const info of songInfoArr) infoMap.set(info.filePath, enrichSongInfo(info))
+      for (const st of filesStatList) {
+        const info = infoMap.get(st.file)
+        if (info) {
+          newEntries[st.file] = {
+            size: st.size,
+            mtimeMs: st.mtimeMs,
+            info: enrichSongInfo(info)
+          }
+        }
+      }
+      await fs.writeJSON(cacheFile, { entries: newEntries })
+      await operateHiddenFile(cacheFile, async () => {})
+    } catch {}
+  }
 
   const perfAllEnd = Date.now()
   return {

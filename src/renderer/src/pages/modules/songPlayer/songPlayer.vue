@@ -11,7 +11,7 @@ import {
   shallowRef,
   nextTick
 } from 'vue'
-import type WaveSurfer from 'wavesurfer.js'
+import { WebAudioPlayer } from './webAudioPlayer'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import musicIcon from '@renderer/assets/musicIcon.png?asset'
 import playerControls from '../../../components/playerControls.vue'
@@ -22,14 +22,16 @@ import { usePlayerHotkeys } from './usePlayerHotkeys'
 import { usePlayerControlsLogic } from './usePlayerControlsLogic'
 import { useCover } from './useCover'
 import { usePreloadNextSong } from './usePreloadNextSong'
-import { useSongLoader } from './useSongLoader'
-import { useWaveSurfer } from './useWaveSurfer'
+import { useWaveform } from './useWaveform'
 
 const runtime = useRuntimeStore()
 const waveform = useTemplateRef<HTMLDivElement>('waveform')
 const playerControlsRef = useTemplateRef('playerControlsRef')
+import { useSongLoader } from './useSongLoader'
 
-const wavesurferInstance = shallowRef<WaveSurfer | null>(null)
+// 预加载与 BPM 预计算
+const audioContext = new AudioContext()
+const audioPlayer = shallowRef<WebAudioPlayer | null>(null)
 const waveformShow = ref(false)
 const waveformContainerWidth = ref(0)
 const updateParentWaveformWidth = () => {
@@ -51,7 +53,6 @@ const {
 } = useCover(runtime)
 
 // 预加载与 BPM 预计算
-const audioContext = new AudioContext()
 const {
   isPreloading,
   isPreloadReady,
@@ -72,11 +73,11 @@ const {
   isLoadingBlob,
   ignoreNextEmptyError,
   requestLoadSong,
-  handleLoadBlob,
+  handleLoadPCM,
   handleSongLoadError
 } = useSongLoader({
   runtime,
-  wavesurferInstance,
+  audioPlayer,
   audioContext,
   bpm,
   waveformShow,
@@ -86,34 +87,127 @@ const {
 // 内部切歌标志
 const isInternalSongChange = ref(false)
 
-// WaveSurfer 实例与事件
-useWaveSurfer({
-  runtime,
-  waveformEl: waveform,
-  wavesurferInstance,
-  updateParentWaveformWidth,
-  onNextSong: () => playerActions.nextSong(),
-  schedulePreloadAfterPlay,
-  cancelPreloadTimer,
-  playerControlsRef,
-  onError: async (error: any) => {
-    const errorCode = error?.code
-    if (errorCode === 4 && ignoreNextEmptyError.value) {
-      ignoreNextEmptyError.value = false
-      return
-    }
-    const currentPath = runtime.playingData.playingSong?.filePath ?? null
-    if (errorCode !== 4) {
+// 初始化 WebAudioPlayer 和波形
+onMounted(() => {
+  audioPlayer.value = new WebAudioPlayer(audioContext)
+  let previousTime = 0
+  const jumpThreshold = 0.5
+
+  // 初始化波形
+  useWaveform({
+    waveformEl: waveform,
+    audioPlayer,
+    runtime,
+    updateParentWaveformWidth,
+    onNextSong: () => playerActions.nextSong(),
+    schedulePreloadAfterPlay,
+    cancelPreloadTimer,
+    playerControlsRef,
+    onError: async (error: any) => {
+      const currentPath = runtime.playingData.playingSong?.filePath ?? null
       await handleSongLoadError(currentPath, false)
     }
-  }
+  })
+
+  // 设置播放器事件监听
+  audioPlayer.value.on('play', () => {
+    playerControlsRef.value?.setPlayingValue?.(true)
+    cancelPreloadTimer()
+    schedulePreloadAfterPlay()
+    runtime.playerReady = true
+    runtime.isSwitchingSong = false
+    previousTime = audioPlayer.value?.getCurrentTime() ?? previousTime
+  })
+
+  audioPlayer.value.on('pause', () => {
+    cancelPreloadTimer()
+    playerControlsRef.value?.setPlayingValue?.(false)
+  })
+
+  audioPlayer.value.on('finish', () => {
+    cancelPreloadTimer()
+    if (runtime.setting.autoPlayNextSong) {
+      playerActions.nextSong()
+    }
+  })
+
+  audioPlayer.value.on('timeupdate', (currentTime: number) => {
+    const timeEl = document.querySelector('#time')
+    const durationEl = document.querySelector('#duration')
+    if (!timeEl || !durationEl) return
+
+    const formatTime = (seconds: number) => {
+      const minutes = Math.floor(seconds / 60)
+      const secondsRemainder = Math.round(seconds) % 60
+      const paddedSeconds = `0${secondsRemainder}`.slice(-2)
+      return `${minutes}:${paddedSeconds}`
+    }
+
+    ;(timeEl as HTMLElement).textContent = formatTime(currentTime)
+
+    if (runtime.setting.enablePlaybackRange && audioPlayer.value) {
+      const duration = audioPlayer.value.getDuration()
+      if (duration > 0) {
+        const endPercent = runtime.setting.endPlayPercent ?? 100
+        const endTime = (duration * endPercent) / 100
+        const deltaTime = currentTime - previousTime
+        if (
+          currentTime >= endTime &&
+          previousTime < endTime &&
+          audioPlayer.value.isPlaying() &&
+          deltaTime < jumpThreshold
+        ) {
+          if (runtime.setting.autoPlayNextSong) playerActions.nextSong()
+          else audioPlayer.value.pause()
+        }
+      }
+    }
+    previousTime = currentTime
+  })
+
+  audioPlayer.value.on('seeked', (seekTime: number) => {
+    previousTime = seekTime
+  })
+
+  audioPlayer.value.on('decode', (duration: number) => {
+    const durationEl = document.querySelector('#duration')
+    if (durationEl) {
+      const formatTime = (seconds: number) => {
+        const minutes = Math.floor(seconds / 60)
+        const secondsRemainder = Math.round(seconds) % 60
+        const paddedSeconds = `0${secondsRemainder}`.slice(-2)
+        return `${minutes}:${paddedSeconds}`
+      }
+      durationEl.textContent = formatTime(duration)
+      updateParentWaveformWidth()
+    }
+  })
+
+  audioPlayer.value.on('ready', () => {
+    updateParentWaveformWidth()
+  })
+
+  audioPlayer.value.on('error', async (error: any) => {
+    const currentPath = runtime.playingData.playingSong?.filePath ?? null
+    await handleSongLoadError(currentPath, false)
+  })
+
+  // 应用持久化音量（默认 0.8）
+  try {
+    const s = localStorage.getItem('frkb_volume')
+    let v = s !== null ? parseFloat(s) : NaN
+    if (!(v >= 0 && v <= 1)) v = 0.8
+    audioPlayer.value.setVolume(v)
+  } catch (_) {}
+
+  window.addEventListener('resize', updateParentWaveformWidth)
 })
 
 // 歌曲移动、删除、播放控制等统一动作
 const selectSongListDialogLibraryName = ref('FilterLibrary')
 const selectSongListDialogShow = ref(false)
 const playerActions = usePlayerControlsLogic({
-  wavesurferInstance,
+  audioPlayer,
   runtime,
   bpm,
   waveformShow,
@@ -121,7 +215,7 @@ const playerActions = usePlayerControlsLogic({
   selectSongListDialogLibraryName,
   isInternalSongChange,
   requestLoadSong,
-  handleLoadBlob,
+  handleLoadPCM,
   cancelPreloadTimer,
   currentLoadRequestId,
   preloadedBlob,
@@ -158,7 +252,7 @@ const hotkeyActions = {
   togglePlayPause: playerActions.togglePlayPause
 }
 
-const isPlaying = computed(() => wavesurferInstance.value?.isPlaying() ?? false)
+const isPlaying = computed(() => audioPlayer.value?.isPlaying() ?? false)
 const playerState = {
   waveformShow,
   selectSongListDialogShow,
@@ -170,20 +264,14 @@ const playerState = {
 usePlayerHotkeys(hotkeyActions, playerState, runtime)
 
 // 初始化与销毁
-onMounted(() => {
-  // 应用持久化音量（默认 0.8）
-  try {
-    const s = localStorage.getItem('frkb_volume')
-    let v = s !== null ? parseFloat(s) : NaN
-    if (!(v >= 0 && v <= 1)) v = 0.8
-    wavesurferInstance.value?.setVolume?.(v)
-  } catch (_) {}
-  window.addEventListener('resize', updateParentWaveformWidth)
-})
 
 onUnmounted(() => {
   cancelPreloadTimer()
   runtime.playerReady = false
+  if (audioPlayer.value) {
+    audioPlayer.value.destroy()
+    audioPlayer.value = null
+  }
   window.removeEventListener('resize', updateParentWaveformWidth)
 })
 
@@ -199,9 +287,9 @@ watch(
     if (newSong === null) {
       cancelPreloadTimer()
       clearReadyPreloadState()
-      if (wavesurferInstance.value) {
+      if (audioPlayer.value) {
         ignoreNextEmptyError.value = true
-        wavesurferInstance.value.empty()
+        audioPlayer.value.empty()
       }
       waveformShow.value = false
       runtime.playingData.playingSongListUUID = ''
@@ -214,7 +302,7 @@ watch(
         const bpmValueToUse = preloadedBpm.value
         clearReadyPreloadState()
         currentLoadRequestId.value++
-        handleLoadBlob(blobToLoad, newPath, currentLoadRequestId.value, bpmValueToUse)
+        handleLoadPCM(blobToLoad, newPath, currentLoadRequestId.value, bpmValueToUse)
       } else {
         cancelPreloadTimer()
         clearReadyPreloadState()
@@ -230,7 +318,7 @@ watch(
 watch(
   () => runtime.setting.hiddenPlayControlArea,
   async (newValue, oldValue) => {
-    if (newValue !== oldValue && waveformShow.value && wavesurferInstance.value) {
+    if (newValue !== oldValue && waveformShow.value && audioPlayer.value) {
       await nextTick()
       updateParentWaveformWidth()
     }
@@ -309,7 +397,7 @@ watch(
         @setVolume="
           (v) => {
             try {
-              wavesurferInstance?.setVolume?.(v)
+              audioPlayer?.setVolume?.(v)
             } catch (_) {}
           }
         "

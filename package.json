@@ -70,8 +70,7 @@
     "sass": "^1.79.3",
     "uuid": "^10.0.0",
     "vue-draggable-plus": "^0.5.3",
-    "vue-i18n": "9",
-    "wavesurfer.js": "^7.9.4"
+    "vue-i18n": "9"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "3.0.0",

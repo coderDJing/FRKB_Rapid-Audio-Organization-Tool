@@ -13,6 +13,7 @@ import dangerConfirmWithInput from './dangerConfirmWithInputDialog'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
+import { SUPPORTED_AUDIO_FORMATS } from '../../../shared/audioFormats'
 const runtime = useRuntimeStore()
 const uuid = uuidV4()
 const emits = defineEmits(['cancel'])
@@ -128,20 +129,17 @@ const updateRecentDialogCacheMaxCount = async () => {
   await setSetting()
 }
 
-type AudioExt = {
-  mp3: boolean
-  wav: boolean
-  flac: boolean
-  aif: boolean
-  aiff: boolean
-}
-const audioExt = ref<AudioExt>({
-  mp3: runtime.setting.audioExt.indexOf('.mp3') != -1,
-  wav: runtime.setting.audioExt.indexOf('.wav') != -1,
-  flac: runtime.setting.audioExt.indexOf('.flac') != -1,
-  aif: runtime.setting.audioExt.indexOf('.aif') != -1,
-  aiff: runtime.setting.audioExt.indexOf('.aiff') != -1
-})
+// 所有支持的格式列表
+const allFormats = SUPPORTED_AUDIO_FORMATS
+
+type AudioFormatKey = (typeof allFormats)[number]
+type AudioExt = Record<AudioFormatKey, boolean>
+
+const audioExt = ref<AudioExt>(
+  Object.fromEntries(
+    allFormats.map((fmt) => [fmt, runtime.setting.audioExt.includes(`.${fmt}`)])
+  ) as AudioExt
+)
 
 let audioExtOld = JSON.parse(JSON.stringify(audioExt.value)) as AudioExt
 const extChange = async () => {
@@ -155,16 +153,11 @@ const extChange = async () => {
     return
   }
   audioExtOld = JSON.parse(JSON.stringify(audioExt.value))
-  let audioExtArr = []
-  for (let key in audioExt.value) {
-    if (['mp3', 'wav', 'flac', 'aif', 'aiff'].includes(key as any)) {
-      if ((audioExt.value as any)[key]) {
-        audioExtArr.push('.' + key)
-      }
-    }
-  }
+  const audioExtArr = Object.entries(audioExt.value)
+    .filter(([, checked]) => checked)
+    .map(([fmt]) => `.${fmt}`)
   runtime.setting.audioExt = audioExtArr
-  setSetting() // 确保所有设置更改都调用 setSetting
+  setSetting()
 }
 const clearTracksFingerprintLibrary = async () => {
   if (runtime.isProgressing) {
@@ -371,17 +364,15 @@ const clearCloudFingerprints = async () => {
               />
             </div>
             <div style="margin-top: 20px">{{ t('fingerprints.scanFormats') }}：</div>
-            <div style="margin-top: 10px; display: flex">
-              <span style="margin-right: 10px">.mp3</span>
-              <singleCheckbox v-model="audioExt.mp3" @change="extChange()" />
-              <span style="margin-right: 10px; margin-left: 10px">.wav</span>
-              <singleCheckbox v-model="audioExt.wav" @change="extChange()" />
-              <span style="margin-right: 10px; margin-left: 10px">.flac</span>
-              <singleCheckbox v-model="audioExt.flac" @change="extChange()" />
-              <span style="margin-right: 10px; margin-left: 10px">.aif</span>
-              <singleCheckbox v-model="audioExt.aif" @change="extChange()" />
-              <span style="margin-right: 10px; margin-left: 10px">.aiff</span>
-              <singleCheckbox v-model="audioExt.aiff" @change="extChange()" />
+            <div style="margin-top: 10px">
+              <div style="display: flex; flex-wrap: wrap; gap: 10px">
+                <template v-for="fmt in allFormats" :key="fmt">
+                  <div style="display: flex; align-items: center">
+                    <span style="margin-right: 5px">.{{ fmt }}</span>
+                    <singleCheckbox v-model="(audioExt as any)[fmt]" @change="extChange()" />
+                  </div>
+                </template>
+              </div>
             </div>
             <div style="margin-top: 20px">{{ t('shortcuts.globalCallShortcut') }}：</div>
             <div style="margin-top: 10px">

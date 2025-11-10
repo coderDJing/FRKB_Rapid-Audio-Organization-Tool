@@ -285,12 +285,14 @@
   "columns": {
     "cover": "专辑封面",
     "title": "曲目标题",
+    "fileName": "文件名",
     "artist": "表演者",
     "duration": "时长",
     "album": "专辑",
     "genre": "风格",
     "label": "唱片公司",
     "bitrate": "比特率",
+    "fileFormat": "文件格式",
     "format": "编码格式",
     "bpm": "BPM",
     "index": "序号"
