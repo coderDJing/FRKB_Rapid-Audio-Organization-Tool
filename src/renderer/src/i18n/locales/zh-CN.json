@@ -274,6 +274,7 @@
     "newFile": "生成新文件",
     "replaceOriginal": "替换原文件",
     "preserveMetadata": "保留元数据",
+    "metadataHint": "我们会尽量保留标签，但部分格式可能天然不支持，勾选后若无效请知悉。",
     "addFingerprint": "将新文件指纹加入指纹库",
     "converted": "成功转换",
     "skippedSameFormat": "同格式跳过",

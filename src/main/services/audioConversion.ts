@@ -91,8 +91,16 @@ async function backupOriginalIfNeeded(src: string) {
 
 function buildFfmpegArgs(src: string, dest: string, opts: ConvertJobOptions): string[] {
   const args: string[] = ['-y', '-i', src]
-  if (opts.sampleRate) args.push('-ar', String(opts.sampleRate))
-  if (opts.channels) args.push('-ac', String(opts.channels))
+  let sampleRateApplied = false
+  let channelsApplied = false
+  const applySampleRate = (rate: number) => {
+    args.push('-ar', String(rate))
+    sampleRateApplied = true
+  }
+  const applyChannels = (count: number) => {
+    args.push('-ac', String(count))
+    channelsApplied = true
+  }
   if (opts.normalize) args.push('-filter:a', 'loudnorm')
   // 只处理音频流，忽略封面/视频附件
   args.push('-map', '0:a:0', '-vn')
@@ -123,6 +131,7 @@ function buildFfmpegArgs(src: string, dest: string, opts: ConvertJobOptions): st
     case 'm4a':
     case 'mp4':
       args.push('-c:a', 'aac')
+      if (!channelsApplied) applyChannels(2)
       if (opts.bitrateKbps) args.push('-b:a', `${opts.bitrateKbps}k`)
       // m4a/mp4 容器
       args.push('-movflags', '+use_metadata_tags')
@@ -133,13 +142,23 @@ function buildFfmpegArgs(src: string, dest: string, opts: ConvertJobOptions): st
       if (opts.bitrateKbps) args.push('-b:a', `${opts.bitrateKbps}k`)
       break
     case 'opus':
+      {
+        const OPUS_SUPPORTED_SAMPLE_RATES = new Set([48000, 24000, 16000, 12000, 8000])
+        const fallbackSampleRate = 48000
+        const desiredSampleRate =
+          opts.sampleRate && OPUS_SUPPORTED_SAMPLE_RATES.has(opts.sampleRate)
+            ? opts.sampleRate
+            : fallbackSampleRate
+        applySampleRate(desiredSampleRate)
+        applyChannels(opts.channels ?? 2)
+      }
       args.push('-c:a', 'libopus')
       if (opts.bitrateKbps) args.push('-b:a', `${opts.bitrateKbps}k`)
       break
     case 'webm':
       // WebM 使用 Opus
-      args.push('-ar', '48000')
-      if (!opts.channels) args.push('-ac', '2')
+      applySampleRate(48000)
+      if (!channelsApplied) applyChannels(2)
       if (!opts.bitrateKbps) args.push('-b:a', '160k')
       args.push('-c:a', 'libopus', '-f', 'webm', '-content_type', 'audio/webm')
       if (opts.bitrateKbps) args.push('-b:a', `${opts.bitrateKbps}k`)
@@ -150,6 +169,7 @@ function buildFfmpegArgs(src: string, dest: string, opts: ConvertJobOptions): st
       break
     case 'wma':
       args.push('-c:a', 'wmav2')
+      if (!channelsApplied) applyChannels(2)
       if (opts.bitrateKbps) args.push('-b:a', `${opts.bitrateKbps}k`)
       break
     case 'ac3':
@@ -157,8 +177,13 @@ function buildFfmpegArgs(src: string, dest: string, opts: ConvertJobOptions): st
       if (opts.bitrateKbps) args.push('-b:a', `${opts.bitrateKbps}k`)
       break
     case 'dts':
-      args.push('-c:a', 'dca')
-      if (opts.bitrateKbps) args.push('-b:a', `${opts.bitrateKbps}k`)
+      args.push('-c:a', 'dca', '-strict', '-2')
+      // DTS 的比特率通常固定在 768k/1536k：若未指定则给 768k
+      if (opts.bitrateKbps) {
+        args.push('-b:a', `${opts.bitrateKbps}k`)
+      } else {
+        args.push('-b:a', '768k')
+      }
       break
     case 'wv':
       args.push('-c:a', 'wavpack')
@@ -166,6 +191,12 @@ function buildFfmpegArgs(src: string, dest: string, opts: ConvertJobOptions): st
     case 'tta':
       args.push('-c:a', 'tta')
       break
+  }
+  if (!sampleRateApplied && opts.sampleRate) {
+    applySampleRate(opts.sampleRate)
+  }
+  if (!channelsApplied && opts.channels) {
+    applyChannels(opts.channels)
   }
   // 进度：简单采用 -hide_banner -nostats；百分比将按文件计数汇总，由 UI 侧显示
   args.push(dest)
@@ -200,6 +231,7 @@ export async function listAvailableTargetFormats(): Promise<SupportedAudioFormat
       requirements.length === 0 ||
       requirements.some((encoder) => availableEncoders.has(encoder))
     ) {
+      if (fmt === 'dts' && !availableEncoders.has('dca')) continue
       uniqueFormats.add(fmt)
     }
   }
@@ -226,7 +258,7 @@ export async function startAudioConversion(
         titleKey: 'audio.convert',
         now: 0,
         total: files.length,
-        isInitial: true
+        isInitial: files.length === 0
       })
     }
   } catch {}
@@ -285,7 +317,6 @@ export async function startAudioConversion(
           const args = buildFfmpegArgs(src, tmp, options)
           lastFfmpegArgs = args
           tmpPaths.push(tmp)
-          console.log('[audioConversion] spawn ffmpeg', { src, tmp, dest, args })
           const child = child_process.spawn(ffmpegPath, args, { windowsHide: true })
           jobIdToChildren.set(jobId, child)
           let stderrData = ''
@@ -295,15 +326,9 @@ export async function startAudioConversion(
           await new Promise<void>((resolve, reject) => {
             child.on('error', (err) => {
               lastFfmpegStderr = stderrData
-              console.error('[audioConversion] ffmpeg process error', {
-                src,
-                targetFormat: options.targetFormat,
-                error: err instanceof Error ? err.message : err
-              })
               reject(err)
             })
             child.on('exit', (code) => {
-              console.log('[audioConversion] ffmpeg exit', { src, code, tmp })
               if (code === 0) {
                 resolve()
               } else {
@@ -316,7 +341,6 @@ export async function startAudioConversion(
           const { descriptionJson } = await backupOriginalIfNeeded(src)
           backupCount += 1
           await fs.move(tmp, dest, { overwrite: true })
-          console.log('[audioConversion] moved tmp to dest', { tmp, dest })
           overwritten += 1
         } else {
           // 同格式重新编码直接覆盖：备份原文件，再输出到原路径
@@ -327,7 +351,6 @@ export async function startAudioConversion(
           const args = buildFfmpegArgs(src, tmp, options)
           lastFfmpegArgs = args
           tmpPaths.push(tmp)
-          console.log('[audioConversion] spawn ffmpeg', { src, tmp, dest: src, args })
           const child = child_process.spawn(ffmpegPath, args, { windowsHide: true })
           jobIdToChildren.set(jobId, child)
           let stderrData = ''
@@ -337,15 +360,9 @@ export async function startAudioConversion(
           await new Promise<void>((resolve, reject) => {
             child.on('error', (err) => {
               lastFfmpegStderr = stderrData
-              console.error('[audioConversion] ffmpeg process error', {
-                src,
-                targetFormat: options.targetFormat,
-                error: err instanceof Error ? err.message : err
-              })
               reject(err)
             })
             child.on('exit', (code) => {
-              console.log('[audioConversion] ffmpeg exit', { src, code, tmp })
               if (code === 0) {
                 resolve()
               } else {
@@ -357,7 +374,6 @@ export async function startAudioConversion(
           await backupOriginalIfNeeded(src)
           backupCount += 1
           await fs.move(tmp, src, { overwrite: true })
-          console.log('[audioConversion] moved tmp to src', { tmp, dest: src })
           overwritten += 1
           dest = src
         }
@@ -370,7 +386,6 @@ export async function startAudioConversion(
         const args = buildFfmpegArgs(src, tmp, options)
         lastFfmpegArgs = args
         tmpPaths.push(tmp)
-        console.log('[audioConversion] spawn ffmpeg', { src, tmp, dest, args })
         const child = child_process.spawn(ffmpegPath, args, { windowsHide: true })
         jobIdToChildren.set(jobId, child)
         let stderrData = ''
@@ -380,15 +395,13 @@ export async function startAudioConversion(
         await new Promise<void>((resolve, reject) => {
           child.on('error', (err) => {
             lastFfmpegStderr = stderrData
-            console.error('[audioConversion] ffmpeg process error', {
-              src,
-              targetFormat: options.targetFormat,
-              error: err instanceof Error ? err.message : err
-            })
+            reject(err)
+          })
+          child.on('error', (err) => {
+            lastFfmpegStderr = stderrData
             reject(err)
           })
           child.on('exit', (code) => {
-            console.log('[audioConversion] ffmpeg exit', { src, code, tmp })
             if (code === 0) {
               resolve()
             } else {
@@ -398,7 +411,6 @@ export async function startAudioConversion(
           })
         })
         await fs.move(tmp, dest, { overwrite: false })
-        console.log('[audioConversion] moved tmp to dest', { tmp, dest })
         renamed += 1
       }
 
@@ -433,19 +445,10 @@ export async function startAudioConversion(
           if (!stat || stat.size === 0) {
             throw new Error('converted file is empty')
           }
-          console.log('[audioConversion] output file stat', {
-            outputPath,
-            size: stat.size
-          })
         }
       } catch (err) {
         failed += 1
         success -= 1
-        console.error('[audioConversion] output validation failed', {
-          src,
-          targetFormat: options.targetFormat,
-          error: err instanceof Error ? err.message : err
-        })
         await Promise.all(
           tmpPaths.map(async (tmpPath) => {
             try {
@@ -465,13 +468,6 @@ export async function startAudioConversion(
       if (mainWindow) mainWindow.webContents.send('audio:convert:progress', { jobId })
     } catch (e) {
       failed += 1
-      console.error('[audioConversion] convert failed', {
-        src,
-        targetFormat: options.targetFormat,
-        args: lastFfmpegArgs,
-        error: e instanceof Error ? e.message : e,
-        stderr: lastFfmpegStderr
-      })
       // 清理临时文件
       for (const tmpPath of tmpPaths) {
         try {

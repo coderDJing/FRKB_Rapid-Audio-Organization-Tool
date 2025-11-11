@@ -165,7 +165,27 @@ export async function scanSongList(
   }
 
   const perfParseStart = Date.now()
+  const FALLBACK_ONLY_EXTS = new Set(['.ac3', '.dts', '.tak', '.tta'])
+
   const tasks: Array<() => Promise<any>> = filesToParse.map((url) => async () => {
+    const extLower = path.extname(url).toLowerCase()
+    if (FALLBACK_ONLY_EXTS.has(extLower)) {
+      const meta = computeFileMeta(url, extLower.slice(1))
+      return {
+        filePath: url,
+        fileName: meta.fileName,
+        fileFormat: meta.fileFormat,
+        cover: null,
+        title: meta.fileName,
+        artist: undefined,
+        album: undefined,
+        duration: '',
+        genre: undefined,
+        label: undefined,
+        bitrate: undefined,
+        container: meta.fileFormat
+      } as ISongInfo
+    }
     try {
       const metadata = await mm.parseFile(url)
       const meta = computeFileMeta(url, metadata.format?.container)
@@ -189,8 +209,22 @@ export async function scanSongList(
         bitrate: metadata.format?.bitrate,
         container: metadata.format?.container
       } as ISongInfo
-    } catch (_e) {
-      return new Error('parse-failed')
+    } catch (error) {
+      const meta = computeFileMeta(url, undefined)
+      return {
+        filePath: url,
+        fileName: meta.fileName,
+        fileFormat: meta.fileFormat,
+        cover: null,
+        title: meta.fileName,
+        artist: undefined,
+        album: undefined,
+        duration: '',
+        genre: undefined,
+        label: undefined,
+        bitrate: undefined,
+        container: meta.fileFormat
+      } as ISongInfo
     }
   })
   const { results, success, failed } = await runWithConcurrency(tasks, { concurrency: 8 })
