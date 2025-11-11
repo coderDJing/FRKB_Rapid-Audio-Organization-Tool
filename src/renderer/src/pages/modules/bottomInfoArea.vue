@@ -412,8 +412,10 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   flex-direction: column;
   gap: 4px;
   padding: 2px 0;
+  box-sizing: border-box;
   overflow: hidden;
   max-height: 400px;
+  min-height: 24px;
   opacity: 1;
   transition:
     max-height 0.3s ease,
@@ -421,9 +423,9 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
     opacity 0.2s ease;
 }
 .bottom-info-area.empty {
-  max-height: 0;
-  opacity: 0;
-  padding: 0;
+  max-height: 24px;
+  opacity: 1;
+  padding: 2px 0;
   pointer-events: none;
 }
 .task-row {
