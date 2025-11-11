@@ -55,7 +55,29 @@ As a DJ, I frequently need to organize large numbers of music files. However, ex
 - **Internationalization (i18n)**: Built-in Chinese (`zh-CN`) and English (`en-US`) language packs.
 - **Save Cover Image**: Right-click the enlarged cover to save the image locally.
 - **Song Filtering**: Supports filtering the song list by multiple dimensions such as title, artist, album, duration, and format.
-- **Format Support**: MP3/WAV/FLAC/AIF/AIFF
+- **Format Support & Conversion**:
+
+  | Format | Scan/Playback | Conversion |
+  | ------ | ------------- | ---------- |
+  | `MP3`  | ✅             | ✅          |
+  | `WAV`  | ✅             | ✅          |
+  | `FLAC` | ✅             | ✅          |
+  | `AIF`  | ✅             | ✅          |
+  | `AIFF` | ✅             | ✅          |
+  | `OGG`  | ✅             | ✅          |
+  | `OPUS` | ✅             | ✅          |
+  | `AAC`  | ✅             | ✅          |
+  | `M4A`  | ✅             | ✅          |
+  | `MP4`  | ✅             | ✅          |
+  | `WMA`  | ✅             | ✅          |
+  | `AC3`  | ✅             | ✅          |
+  | `DTS`  | ✅             | ✅          |
+  | `MKA`  | ✅             | ✅          |
+  | `WEBM` | ✅             | ✅          |
+  | `APE`  | ✅             | ✅          |
+  | `TAK`  | ✅             | ✅          |
+  | `TTA`  | ✅             | ✅          |
+  | `WV`   | ✅             | ✅          |
 
 ### Contributions
 Contributions of all kinds are welcome! Whether reporting issues, suggesting features, or contributing code, feel free to open an issue or submit a pull request.
