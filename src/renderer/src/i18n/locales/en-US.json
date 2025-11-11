@@ -280,6 +280,23 @@
     "bpm": "BPM",
     "index": "Index"
   },
+  "convert": {
+    "title": "Format conversion",
+    "completed": "Conversion completed",
+    "targetFormat": "Target format",
+    "strategy": "Output strategy",
+    "newFile": "Create new file",
+    "replaceOriginal": "Replace original file",
+    "preserveMetadata": "Preserve metadata",
+    "metadataHint": "We’ll try to keep the tags, but some formats simply don’t support metadata.",
+    "addFingerprint": "Add fingerprint of new file",
+    "converted": "Converted",
+    "skippedSameFormat": "Skipped (same format)",
+    "failed": "Failed",
+    "createdNew": "Created new file",
+    "replaced": "Replaced original",
+    "backupCount": ""
+  },
   "player": {
     "previous": "Previous",
     "fastBackward": "Rewind",

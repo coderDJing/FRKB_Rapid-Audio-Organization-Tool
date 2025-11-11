@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, useTemplateRef } from 'vue'
 import { t } from '@renderer/utils/translate'
 import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
 import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
 import { v4 as uuidV4 } from 'uuid'
+import bubbleBox from '@renderer/components/bubbleBox.vue'
+import hintIcon from '@renderer/assets/hint.png?asset'
 import {
   SUPPORTED_AUDIO_FORMATS,
   type SupportedAudioFormat,
@@ -51,7 +53,8 @@ const form = ref<ConvertDefaults>({
 
 // 依据容器/编码支持情况，尽量保留元数据；无法保留时 FFmpeg 会忽略
 const metadataCapableFormats = new Set<SupportedAudioFormat>(METADATA_PRESERVABLE_FORMATS)
-const showMetadataOption = computed(() => metadataCapableFormats.has(form.value.targetFormat))
+const metadataHint = computed(() => t('convert.metadataHint'))
+const metadataHintRef = useTemplateRef<HTMLImageElement>('metadataHintRef')
 
 // 必填闪烁提示（参考项目其他弹窗）
 const flashArea = ref('')
@@ -129,17 +132,7 @@ onUnmounted(() => {
   utils.delHotkeysScope(uuid)
 })
 
-watch(
-  () => form.value.targetFormat,
-  (fmt) => {
-    if (!metadataCapableFormats.has(fmt)) {
-      form.value.preserveMetadata = false
-    }
-  }
-)
-
 const confirm = async () => {
-  console.log('[AudioConvertDialog] confirm clicked', { targetFormat: form.value.targetFormat })
   // 校验：目标格式必选且在可选列表中
   if (!supportedFormats.value.includes(form.value.targetFormat)) {
     if (!flashArea.value) flashBorder('targetFormat')
@@ -203,10 +196,18 @@ const cancel = () => props.cancelCallback?.()
             />
           </div>
 
-          <div v-if="showMetadataOption" style="margin-top: 20px">
+          <div style="margin-top: 20px">
             {{ t('convert.preserveMetadata') }}：
+            <img
+              ref="metadataHintRef"
+              :src="hintIcon"
+              style="width: 15px; height: 15px; margin-left: 6px"
+              :draggable="false"
+              class="theme-icon"
+            />
+            <bubbleBox :dom="metadataHintRef || undefined" :title="metadataHint" :maxWidth="240" />
           </div>
-          <div v-if="showMetadataOption" style="margin-top: 10px">
+          <div style="margin-top: 10px">
             <singleCheckbox v-model="(form as any).preserveMetadata" />
           </div>
 

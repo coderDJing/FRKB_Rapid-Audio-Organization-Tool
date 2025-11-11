@@ -56,6 +56,7 @@ export const METADATA_PRESERVABLE_FORMATS: SupportedAudioFormat[] = [
   'm4a',
   'mp4',
   'wma',
+  'dts',
   'mka',
   'webm',
   'wv'

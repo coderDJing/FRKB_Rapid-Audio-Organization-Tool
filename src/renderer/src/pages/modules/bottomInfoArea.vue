@@ -56,7 +56,7 @@ function upsertTask(titleKey: string, nowNum: number, total: number, noNumFlag?:
       task.removing = true
       setTimeout(() => {
         tasks.value = tasks.value.filter((t) => t.id !== id)
-      }, 1500)
+      }, 500)
     }
   }
 }
@@ -163,10 +163,22 @@ window.electron.ipcRenderer.on('noAudioFileWasScanned', async (event) => {
 window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   // 清理转换进度行
   const doneId = String(payload?.jobId || '')
+  const scheduleRemoval = (id: string) => {
+    if (!id) return
+    const task = tasks.value.find((t) => t.id === id)
+    if (task && !task.removing) {
+      task.removing = true
+      setTimeout(() => {
+        tasks.value = tasks.value.filter((t) => t.id !== id)
+      }, 500)
+    } else if (!task) {
+      tasks.value = tasks.value.filter((t) => t.id !== id)
+    }
+  }
   if (doneId) {
-    tasks.value = tasks.value.filter((t) => t.id !== doneId)
+    scheduleRemoval(doneId)
   } else {
-    tasks.value = tasks.value.filter((t) => t.id !== 'audio.convert')
+    scheduleRemoval('audio.convert')
   }
   const openSummary = (await import('@renderer/components/conversionFinishedSummaryDialog')).default
   await openSummary(payload?.summary || null)
