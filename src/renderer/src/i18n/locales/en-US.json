@@ -31,10 +31,11 @@
     "help": "Help(H)",
     "cloudSync": "Sync(C)",
     "exit": "Exit",
-    "visitGithub": "GitHub",
-    "visitWebsite": "Website",
-    "about": "About",
-    "checkUpdate": "Check Updates"
+    "visitGithub": "Visit GitHub",
+    "visitWebsite": "Visit Website",
+    "checkUpdate": "Check for Update",
+    "whatsNew": "Release Notes",
+    "about": "About"
   },
   "database": {
     "selectLocation": "Set up database",
@@ -391,6 +392,13 @@
     "updateDownloaded": "Update downloaded. FRKB will upgrade next start.",
     "notNow": "Later",
     "doNotCheckFor7Days": "Pause checks for 7 days"
+  },
+  "whatsNew": {
+    "title": "FRKB Release Notes",
+    "subtitle": "Published: {date}",
+    "ok": "Got it",
+    "empty": "No release information available yet",
+    "noChangelog": "This release does not provide changelog details"
   },
   "shortcuts": {
     "globalCallShortcut": "Toggle FRKB focus/minimize",

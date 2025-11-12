@@ -35,6 +35,9 @@ importers:
       iconv-lite:
         specifier: ^0.6.3
         version: 0.6.3
+      marked:
+        specifier: ^17.0.0
+        version: 17.0.0
       meyda:
         specifier: ^5.6.3
         version: 5.6.3(rollup@4.35.0)
@@ -2392,6 +2395,11 @@ packages:
   make-fetch-happen@10.2.1:
     resolution: {integrity: sha512-NgOPbRiaQM10DYXvN3/hhGVI2M5MtITFryzBGxHM5p4wnFxsVCbxkrBrDsk+EZ5OB4jEOT7AjDxtdF+KVEFT7w==}
     engines: {node: ^12.13.0 || ^14.15.0 || >=16.0.0}
+
+  marked@17.0.0:
+    resolution: {integrity: sha512-KkDYEWEEiYJw/KC+DVm1zzlpMQSMIu6YRltkcCvwheCp8HWPXCk9JwOmHJKBlGfzcpzcIt6x3sMnTsRm/51oDg==}
+    engines: {node: '>= 20'}
+    hasBin: true
 
   matcher@3.0.0:
     resolution: {integrity: sha512-OkeDaAZ/bQCxeFAozM55PKcKU0yJMPGifLwV4Qgjitu+5MoAfSQN4lsLJeXZ1b8w0x+/Emda6MZgXS1jvsapng==}
@@ -5782,6 +5790,8 @@ snapshots:
     transitivePeerDependencies:
       - bluebird
       - supports-color
+
+  marked@17.0.0: {}
 
   matcher@3.0.0:
     dependencies:

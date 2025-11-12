@@ -52,7 +52,9 @@ let settingConfig: ISettingConfig = {
   errorReportUsageMsSinceLastSuccess: 0,
   errorReportRetryMsSinceLastFailure: -1,
   persistSongFilters: false,
-  showPlaylistTrackCount: true
+  showPlaylistTrackCount: true,
+  lastSeenWhatsNewVersion: '',
+  pendingWhatsNewForVersion: ''
 } //设置config
 let analyseSongPort: string = ''
 export default {

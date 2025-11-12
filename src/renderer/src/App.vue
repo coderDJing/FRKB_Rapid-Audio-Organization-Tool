@@ -51,6 +51,7 @@ const openDialog = async (item: string) => {
   if (item === '访问 GitHub') item = 'menu.visitGithub'
   if (item === '访问官网') item = 'menu.visitWebsite'
   if (item === '检查更新') item = 'menu.checkUpdate'
+  if (item === '更新日志') item = 'menu.whatsNew'
   if (item === '退出') item = 'menu.exit'
   if (item === '云同步设置') item = 'cloudSync.settings'
   if (item === '同步曲目指纹库') item = 'cloudSync.syncFingerprints'
@@ -87,6 +88,11 @@ const openDialog = async (item: string) => {
   }
   if (item === 'menu.checkUpdate') {
     window.electron.ipcRenderer.send('checkForUpdates')
+    return
+  }
+  if (item === 'menu.whatsNew') {
+    window.electron.ipcRenderer.send('showWhatsNew')
+    return
   }
   if (item === 'menu.exit') {
     if (runtime.isProgressing === true) {
