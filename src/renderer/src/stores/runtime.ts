@@ -120,7 +120,9 @@ export const useRuntimeStore = defineStore('runtime', {
         errorReportUsageMsSinceLastSuccess: 0,
         errorReportRetryMsSinceLastFailure: -1,
         persistSongFilters: false,
-        showPlaylistTrackCount: true
+        showPlaylistTrackCount: true,
+        lastSeenWhatsNewVersion: '',
+        pendingWhatsNewForVersion: ''
       }, //设置
       playerReady: false,
       isSwitchingSong: false

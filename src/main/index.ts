@@ -25,6 +25,7 @@ import { is } from '@electron-toolkit/utils'
 import store from './store'
 import foundNewVersionWindow from './window/foundNewVersionWindow'
 import updateWindow from './window/updateWindow'
+import whatsNewWindow, { type WhatsNewReleasePayload } from './window/whatsNewWindow'
 import electronUpdater = require('electron-updater')
 import { readManifestFile, MANIFEST_FILE_NAME, looksLikeLegacyStructure } from './databaseManifest'
 import { setupMacMenus, rebuildMacMenusForCurrentFocus } from './menu/macMenu'
@@ -193,8 +194,114 @@ const defaultSettings = {
   // 云同步用户 Key（可为空，由设置页配置）
   cloudSyncUserKey: '',
   // 转码默认值（首次默认 MP3，新文件、不覆盖、保留元数据）
-  convertDefaults: defaultConvertDefaults
+  convertDefaults: defaultConvertDefaults,
+  // “更新日志”弹窗记录字段
+  lastSeenWhatsNewVersion: '',
+  pendingWhatsNewForVersion: ''
 }
+
+const WHATS_NEW_RELEASE_URL =
+  'https://api.github.com/repos/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases/latest'
+
+type WhatsNewStatePatch = Partial<
+  Pick<ISettingConfig, 'lastSeenWhatsNewVersion' | 'pendingWhatsNewForVersion'>
+>
+
+const toSafeString = (val: unknown): string => {
+  if (typeof val === 'string') return val
+  return ''
+}
+
+async function persistWhatsNewState(patch: WhatsNewStatePatch) {
+  const nextSetting = {
+    ...store.settingConfig,
+    ...patch
+  }
+  store.settingConfig = nextSetting
+  try {
+    await fs.outputJson(url.settingConfigFileUrl, nextSetting)
+  } catch (error) {
+    log.error('[whatsNew] 持久化设置失败', error)
+  }
+}
+
+async function fetchLatestStableRelease(
+  currentVersion: string
+): Promise<WhatsNewReleasePayload | null> {
+  try {
+    const res = await fetch(WHATS_NEW_RELEASE_URL, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': `FRKB/${currentVersion}`
+      }
+    })
+    if (!res.ok) {
+      log.error('[whatsNew] 拉取 GitHub release 失败', { status: res.status })
+      return null
+    }
+    const data = await res.json()
+    const payload: WhatsNewReleasePayload = {
+      title: toSafeString(data?.name || data?.tag_name),
+      tagName: toSafeString(data?.tag_name),
+      body: toSafeString(data?.body),
+      publishedAt: toSafeString(data?.published_at),
+      htmlUrl: toSafeString(data?.html_url),
+      currentVersion
+    }
+    return payload
+  } catch (error) {
+    log.error('[whatsNew] 拉取 GitHub release 异常', error)
+    return null
+  }
+}
+
+async function maybeShowWhatsNew() {
+  const currentVersion = app.getVersion()
+  const lastSeen = toSafeString(store.settingConfig.lastSeenWhatsNewVersion)
+  const pending = toSafeString(store.settingConfig.pendingWhatsNewForVersion)
+
+  const shouldRetry = pending === currentVersion
+  const isFirstLaunchForVersion = lastSeen !== currentVersion
+  if (!shouldRetry && !isFirstLaunchForVersion) return
+
+  const release = await fetchLatestStableRelease(currentVersion)
+  if (!release) {
+    await persistWhatsNewState({ pendingWhatsNewForVersion: currentVersion })
+    return
+  }
+
+  await persistWhatsNewState({ pendingWhatsNewForVersion: '' })
+  whatsNewWindow.open(release)
+}
+
+ipcMain.on('whatsNew-acknowledge', async (_event, options?: { skipClose?: boolean }) => {
+  try {
+    const currentVersion = app.getVersion()
+    await persistWhatsNewState({
+      lastSeenWhatsNewVersion: currentVersion,
+      pendingWhatsNewForVersion: ''
+    })
+  } catch (error) {
+    log.error('[whatsNew] 记录已查看版本失败', error)
+  } finally {
+    if (!options?.skipClose) {
+      try {
+        whatsNewWindow.instance?.close()
+      } catch {}
+    }
+  }
+})
+
+ipcMain.on('showWhatsNew', async () => {
+  try {
+    const release = await fetchLatestStableRelease(app.getVersion())
+    if (release) {
+      whatsNewWindow.open(release)
+    }
+  } catch (error) {
+    log.error('[whatsNew] showWhatsNew 手动打开失败', error)
+  }
+})
 
 store.layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
 
@@ -350,6 +457,11 @@ app.whenReady().then(async () => {
   }
   // 数据库准备与主窗口：统一调用幂等流程
   await prepareAndOpenMainWindow()
+  setTimeout(() => {
+    maybeShowWhatsNew().catch((error) => {
+      log.error('[whatsNew] maybeShowWhatsNew 异常', error)
+    })
+  }, 1500)
   // 初次创建窗口后，若为跟随系统，广播一次当前主题
   broadcastSystemThemeIfNeeded()
   // 在系统主题变化时（仅 system 模式关注）广播更新
