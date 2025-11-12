@@ -3,6 +3,7 @@ import fs = require('fs-extra')
 import { collectFilesWithExtensions, operateHiddenFile, runWithConcurrency } from '../utils'
 import { ISongInfo } from '../../types/globals'
 import { SUPPORTED_AUDIO_FORMATS } from '../../shared/audioFormats'
+import { readWavRiffInfoWindows } from './wavRiffInfo'
 
 // 扫描歌单目录，带 .songs.cache.json 缓存
 export async function scanSongList(
@@ -189,22 +190,49 @@ export async function scanSongList(
     try {
       const metadata = await mm.parseFile(url)
       const meta = computeFileMeta(url, metadata.format?.container)
-      const title =
+      let title =
         metadata.common?.title && metadata.common.title.trim() !== ''
           ? metadata.common.title
           : meta.fileName
+      let artist = metadata.common?.artist
+      let album = metadata.common?.album
+      let genre = metadata.common?.genre?.[0]
+
+      // Windows + WAV：用 LIST/INFO 覆盖明显异常的 common 值（如 '0!0!0!' 或夹杂 \x00）
+      if (process.platform === 'win32' && extLower === '.wav') {
+        try {
+          const info = await readWavRiffInfoWindows(url)
+          if (info) {
+            const containsNull = (s: string | undefined) =>
+              typeof s === 'string' && s.includes('\x00')
+            const asciiOnly = (s: string | undefined) =>
+              typeof s === 'string' && /^[\x00-\x7F]+$/.test(s)
+            const prefer = (primary?: string, fallback?: string) => {
+              const p = typeof primary === 'string' ? primary.trim() : ''
+              const f = typeof fallback === 'string' ? fallback.trim() : ''
+              if (f && (!p || containsNull(primary) || asciiOnly(p))) return f
+              return p || f
+            }
+            title = prefer(title, info.title) || meta.fileName
+            artist = prefer(artist, info.artist)
+            album = prefer(album, info.album)
+            genre = genre && !containsNull(genre) ? genre : info.genre || genre
+          }
+        } catch {}
+      }
+
       return {
         filePath: url,
         fileName: meta.fileName,
         fileFormat: meta.fileFormat,
         cover: null,
         title,
-        artist: metadata.common?.artist,
-        album: metadata.common?.album,
+        artist,
+        album,
         duration: convertSecondsToMinutesSeconds(
           metadata.format.duration === undefined ? 0 : Math.round(metadata.format.duration)
         ),
-        genre: metadata.common?.genre?.[0],
+        genre,
         label: metadata.common?.label?.[0],
         bitrate: metadata.format?.bitrate,
         container: metadata.format?.container
@@ -232,6 +260,43 @@ export async function scanSongList(
     .filter((r) => r && !(r instanceof Error))
     .map((info) => enrichSongInfo(info as ISongInfo))
   songInfoArr = [...cachedInfos, ...parsedInfos]
+
+  // Windows 下 WAV：对缓存与新解析的结果做一次统一修正，避免列表残留 '0!0!0!' 或含 \x00 的值
+  if (process.platform === 'win32') {
+    const refined = await Promise.all(
+      songInfoArr.map(async (info) => {
+        try {
+          if (path.extname(info.filePath).toLowerCase() !== '.wav') return info
+          const suspicious = (s?: string) =>
+            typeof s === 'string' && (s.includes('\x00') || s === '0!0!0!')
+          const needFix =
+            suspicious(info.title) ||
+            suspicious(info.artist) ||
+            suspicious(info.album) ||
+            suspicious(info.genre)
+          if (!needFix) return info
+          const ri = await readWavRiffInfoWindows(info.filePath).catch(() => null)
+          if (!ri) return info
+          const pick = (primary?: string, fallback?: string) => {
+            const p = typeof primary === 'string' ? primary.trim() : ''
+            const f = typeof fallback === 'string' ? fallback.trim() : ''
+            if (!p || suspicious(p)) return f || p
+            return p
+          }
+          return {
+            ...info,
+            title: pick(info.title, ri.title) || info.title,
+            artist: pick(info.artist, ri.artist) || info.artist,
+            album: pick(info.album, ri.album) || info.album,
+            genre: pick(info.genre, ri.genre) || info.genre
+          }
+        } catch {
+          return info
+        }
+      })
+    )
+    songInfoArr = refined
+  }
   const perfParseEnd = Date.now()
 
   // 回写缓存

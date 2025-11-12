@@ -12,6 +12,7 @@ import {
   ENCODER_REQUIREMENTS,
   type SupportedAudioFormat
 } from '../../shared/audioFormats'
+import { writeWavRiffInfoWindows } from './wavRiffInfo'
 
 type ConvertJobOptions = {
   src: string
@@ -109,6 +110,8 @@ function buildFfmpegArgs(src: string, dest: string, opts: ConvertJobOptions): st
   switch (opts.targetFormat) {
     case 'mp3':
       args.push('-c:a', 'libmp3lame')
+      // 确保使用 ID3v2.3，避免中文乱码（ID3v1 不支持 Unicode）
+      args.push('-id3v2_version', '3')
       if (opts.bitrateKbps) args.push('-b:a', `${opts.bitrateKbps}k`)
       break
     case 'flac':
@@ -116,13 +119,25 @@ function buildFfmpegArgs(src: string, dest: string, opts: ConvertJobOptions): st
       break
     case 'wav':
       args.push('-c:a', 'pcm_s16le')
+      // WAV 默认 RIFF LIST/INFO 非 Unicode，改用 ID3v2.3
+      if (opts.preserveMetadata) {
+        args.push('-write_id3v2', '1', '-id3v2_version', '3')
+      }
       break
     case 'aiff':
       // AIFF 常用大端 PCM；如需与特定设备兼容可改成 pcm_s16le
       args.push('-c:a', 'pcm_s16be')
+      // AIFF 也启用 ID3v2.3 存储标签，保证中文
+      if (opts.preserveMetadata) {
+        args.push('-write_id3v2', '1', '-id3v2_version', '3')
+      }
       break
     case 'aif':
       args.push('-c:a', 'pcm_s16be')
+      // 与 AIFF 保持一致，启用 ID3v2.3
+      if (opts.preserveMetadata) {
+        args.push('-write_id3v2', '1', '-id3v2_version', '3')
+      }
       break
     case 'aac':
       args.push('-c:a', 'aac')
@@ -342,6 +357,37 @@ export async function startAudioConversion(
           backupCount += 1
           await fs.move(tmp, dest, { overwrite: true })
           overwritten += 1
+          // Windows: 追加 LIST/INFO（GBK）
+          try {
+            if (
+              process.platform === 'win32' &&
+              options.targetFormat === 'wav' &&
+              options.preserveMetadata
+            ) {
+              const mm = await import('music-metadata')
+              const meta = await mm.parseFile(src).catch(() => null)
+              const common = (meta as any)?.common || {}
+              await writeWavRiffInfoWindows(dest, {
+                title: typeof common.title === 'string' ? common.title : undefined,
+                artist: typeof common.artist === 'string' ? common.artist : undefined,
+                album: typeof common.album === 'string' ? common.album : undefined,
+                genre: Array.isArray(common.genre) ? common.genre[0] : common.genre,
+                date:
+                  typeof common.year === 'number'
+                    ? String(common.year)
+                    : typeof common.date === 'string'
+                      ? common.date
+                      : undefined,
+                comment: Array.isArray(common.comment)
+                  ? (common.comment.find((c: any) => typeof c === 'string' && c.trim() !== '') as
+                      | string
+                      | undefined)
+                  : typeof common.comment === 'string'
+                    ? common.comment
+                    : undefined
+              })
+            }
+          } catch {}
         } else {
           // 同格式重新编码直接覆盖：备份原文件，再输出到原路径
           const tmp = path.join(
@@ -374,8 +420,39 @@ export async function startAudioConversion(
           await backupOriginalIfNeeded(src)
           backupCount += 1
           await fs.move(tmp, src, { overwrite: true })
-          overwritten += 1
           dest = src
+          overwritten += 1
+          // Windows: 追加 LIST/INFO（GBK）
+          try {
+            if (
+              process.platform === 'win32' &&
+              options.targetFormat === 'wav' &&
+              options.preserveMetadata
+            ) {
+              const mm = await import('music-metadata')
+              const meta = await mm.parseFile(src).catch(() => null)
+              const common = (meta as any)?.common || {}
+              await writeWavRiffInfoWindows(dest, {
+                title: typeof common.title === 'string' ? common.title : undefined,
+                artist: typeof common.artist === 'string' ? common.artist : undefined,
+                album: typeof common.album === 'string' ? common.album : undefined,
+                genre: Array.isArray(common.genre) ? common.genre[0] : common.genre,
+                date:
+                  typeof common.year === 'number'
+                    ? String(common.year)
+                    : typeof common.date === 'string'
+                      ? common.date
+                      : undefined,
+                comment: Array.isArray(common.comment)
+                  ? (common.comment.find((c: any) => typeof c === 'string' && c.trim() !== '') as
+                      | string
+                      | undefined)
+                  : typeof common.comment === 'string'
+                    ? common.comment
+                    : undefined
+              })
+            }
+          } catch {}
         }
       } else {
         dest = buildNonConflictTarget(src, options.targetFormat)
@@ -411,6 +488,37 @@ export async function startAudioConversion(
           })
         })
         await fs.move(tmp, dest, { overwrite: false })
+        // Windows: 追加 LIST/INFO（GBK），兼容 foobar2000/资源管理器
+        try {
+          if (
+            process.platform === 'win32' &&
+            options.targetFormat === 'wav' &&
+            options.preserveMetadata
+          ) {
+            const mm = await import('music-metadata')
+            const meta = await mm.parseFile(src).catch(() => null)
+            const common = (meta as any)?.common || {}
+            await writeWavRiffInfoWindows(dest, {
+              title: typeof common.title === 'string' ? common.title : undefined,
+              artist: typeof common.artist === 'string' ? common.artist : undefined,
+              album: typeof common.album === 'string' ? common.album : undefined,
+              genre: Array.isArray(common.genre) ? common.genre[0] : common.genre,
+              date:
+                typeof common.year === 'number'
+                  ? String(common.year)
+                  : typeof common.date === 'string'
+                    ? common.date
+                    : undefined,
+              comment: Array.isArray(common.comment)
+                ? (common.comment.find((c: any) => typeof c === 'string' && c.trim() !== '') as
+                    | string
+                    | undefined)
+                : typeof common.comment === 'string'
+                  ? common.comment
+                  : undefined
+            })
+          }
+        } catch {}
         renamed += 1
       }
 
@@ -468,6 +576,27 @@ export async function startAudioConversion(
       if (mainWindow) mainWindow.webContents.send('audio:convert:progress', { jobId })
     } catch (e) {
       failed += 1
+      try {
+        // 记录 ffmpeg 失败的关键信息到控制台
+        const argsPreview = lastFfmpegArgs.join(' ')
+        const stderrPreview =
+          (lastFfmpegStderr || '').length > 4000
+            ? `${lastFfmpegStderr.slice(0, 4000)}...`
+            : lastFfmpegStderr
+        console.error('[audioConversion] ffmpeg 执行失败', {
+          src,
+          targetFormat: options.targetFormat,
+          preserveMetadata: options.preserveMetadata,
+          normalize: options.normalize,
+          sampleRate: options.sampleRate,
+          channels: options.channels,
+          bitrateKbps: options.bitrateKbps,
+          strategy: options.strategy,
+          ffmpegArgs: argsPreview,
+          ffmpegStderr: stderrPreview,
+          error: String((e as any)?.message || e)
+        })
+      } catch {}
       // 清理临时文件
       for (const tmpPath of tmpPaths) {
         try {
