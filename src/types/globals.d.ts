@@ -160,6 +160,10 @@ interface ISettingConfig {
     backupOnReplace?: boolean
     addFingerprint?: boolean
   }
+  // “更新日志”窗口记录：最后看到的版本号
+  lastSeenWhatsNewVersion?: string
+  // 若上次拉取失败，需要下次继续尝试的版本号
+  pendingWhatsNewForVersion?: string
 }
 
 interface ILanguageDict {

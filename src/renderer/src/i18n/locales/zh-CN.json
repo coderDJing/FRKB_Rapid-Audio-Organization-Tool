@@ -33,8 +33,9 @@
     "exit": "退出",
     "visitGithub": "访问 GitHub",
     "visitWebsite": "访问官网",
-    "about": "关于",
-    "checkUpdate": "检查更新"
+    "checkUpdate": "检查更新",
+    "whatsNew": "更新日志",
+    "about": "关于"
   },
   "database": {
     "selectLocation": "请选择数据存储位置",
@@ -395,6 +396,13 @@
     "updateDownloaded": "更新已下载，FRKB将在下次启动时自动升级",
     "notNow": "暂不更新",
     "doNotCheckFor7Days": "七日内不再检查"
+  },
+  "whatsNew": {
+    "title": "FRKB 更新日志",
+    "subtitle": "发布日期：{date}",
+    "ok": "我知道了",
+    "empty": "暂未获取到发布信息",
+    "noChangelog": "此版本未提供更新日志内容"
   },
   "shortcuts": {
     "globalCallShortcut": "聚焦/最小化 FRKB 窗口快捷键",

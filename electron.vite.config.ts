@@ -61,7 +61,8 @@ export default defineConfig({
           index: resolve(__dirname, 'src/renderer/', 'index.html'),
           databaseInit: resolve(__dirname, 'src/renderer/', 'databaseInit.html'),
           update: resolve(__dirname, 'src/renderer/', 'update.html'),
-          foundNewVersion: resolve(__dirname, 'src/renderer/', 'foundNewVersion.html')
+          foundNewVersion: resolve(__dirname, 'src/renderer/', 'foundNewVersion.html'),
+          whatsNew: resolve(__dirname, 'src/renderer/', 'whatsNew.html')
         }
       }
     }
