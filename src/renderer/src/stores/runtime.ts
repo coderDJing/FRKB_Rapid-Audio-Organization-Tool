@@ -116,6 +116,7 @@ export const useRuntimeStore = defineStore('runtime', {
         autoScrollToCurrentSong: true,
         enablePlaybackRange: false,
         recentDialogSelectedSongListMaxCount: 10,
+        audioOutputDeviceId: '',
         enableErrorReport: true,
         errorReportUsageMsSinceLastSuccess: 0,
         errorReportRetryMsSinceLastFailure: -1,

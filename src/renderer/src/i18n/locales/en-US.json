@@ -321,7 +321,14 @@
     "playbackRange": "Range",
     "endMustBeGreater": "End must be after start",
     "tapBeat": "Tap (LMB) / Reset (RMB)",
-    "aiffNotSupported": "AIFF/AIF format is not supported for playback"
+    "aiffNotSupported": "AIFF/AIF format is not supported for playback",
+    "audioOutputDevice": "Output device",
+    "audioOutputFollowSystem": "Follow system default",
+    "audioOutputDeviceUnknown": "Unnamed device",
+    "audioOutputDeviceUnavailable": "The selected output device is unavailable. Reverted to system default.",
+    "audioOutputNotSupported": "Output device switching is not supported in this environment.",
+    "audioOutputRefreshing": "Refreshing available output devices...",
+    "audioOutputRefreshFailed": "Failed to refresh output devices: {reason}"
   },
   "fingerprints": {
     "manualAdd": "Add fingerprint manually",
