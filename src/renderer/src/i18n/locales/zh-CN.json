@@ -322,7 +322,14 @@
     "playbackRange": "区间播放",
     "endMustBeGreater": "结束位置必须大于开始位置",
     "tapBeat": "左键节拍点按 / 右键恢复",
-    "aiffNotSupported": "当前格式（AIFF/AIF）不支持播放"
+    "aiffNotSupported": "当前格式（AIFF/AIF）不支持播放",
+    "audioOutputDevice": "输出设备",
+    "audioOutputFollowSystem": "跟随系统默认设备",
+    "audioOutputDeviceUnknown": "未命名设备",
+    "audioOutputDeviceUnavailable": "当前选择的输出设备不可用，已恢复为系统默认",
+    "audioOutputNotSupported": "当前环境不支持切换输出设备",
+    "audioOutputRefreshing": "正在刷新可用输出设备...",
+    "audioOutputRefreshFailed": "刷新输出设备失败：{reason}"
   },
   "audio": {
     "convert": "转换格式"
