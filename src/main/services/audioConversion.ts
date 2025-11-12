@@ -576,27 +576,6 @@ export async function startAudioConversion(
       if (mainWindow) mainWindow.webContents.send('audio:convert:progress', { jobId })
     } catch (e) {
       failed += 1
-      try {
-        // 记录 ffmpeg 失败的关键信息到控制台
-        const argsPreview = lastFfmpegArgs.join(' ')
-        const stderrPreview =
-          (lastFfmpegStderr || '').length > 4000
-            ? `${lastFfmpegStderr.slice(0, 4000)}...`
-            : lastFfmpegStderr
-        console.error('[audioConversion] ffmpeg 执行失败', {
-          src,
-          targetFormat: options.targetFormat,
-          preserveMetadata: options.preserveMetadata,
-          normalize: options.normalize,
-          sampleRate: options.sampleRate,
-          channels: options.channels,
-          bitrateKbps: options.bitrateKbps,
-          strategy: options.strategy,
-          ffmpegArgs: argsPreview,
-          ffmpegStderr: stderrPreview,
-          error: String((e as any)?.message || e)
-        })
-      } catch {}
       // 清理临时文件
       for (const tmpPath of tmpPaths) {
         try {

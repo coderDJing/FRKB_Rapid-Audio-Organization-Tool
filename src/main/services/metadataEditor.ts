@@ -243,32 +243,6 @@ export async function readTrackMetadata(filePath: string): Promise<ITrackMetadat
     // Windows 下 WAV：尝试用 GBK 读取 LIST/INFO，并与 ID3 合并显示（优先 ID3）
     if (process.platform === 'win32' && path.extname(filePath).toLowerCase() === '.wav') {
       try {
-        // 调试：打印 music-metadata 原始解析结果（摘取关键字段，避免日志过大）
-        try {
-          const nativeTypes = Object.keys((metadata as any)?.native || {})
-          const nativeSummary: Record<string, string[]> = {}
-          for (const t of nativeTypes) {
-            const arr = ((metadata as any).native?.[t] || []) as Array<{ id?: string }>
-            nativeSummary[t] = arr
-              .slice(0, 8)
-              .map((x) => String(x?.id || ''))
-              .filter(Boolean)
-          }
-          console.debug('[metadata][debug] WAV parse (music-metadata)', {
-            filePath,
-            common: {
-              title: (metadata as any)?.common?.title,
-              artist: (metadata as any)?.common?.artist,
-              album: (metadata as any)?.common?.album,
-              genre: (metadata as any)?.common?.genre,
-              date: (metadata as any)?.common?.date,
-              year: (metadata as any)?.common?.year,
-              comment: (metadata as any)?.common?.comment
-            },
-            nativeTypes,
-            nativeSummary
-          })
-        } catch {}
         const info = await readWavRiffInfoWindows(filePath)
         if (info) {
           // 优先采用 INFO（UTF-16/GBK）结果覆盖常见的错误解析（例如 '0!0!0!'）
@@ -302,33 +276,12 @@ export async function readTrackMetadata(filePath: string): Promise<ITrackMetadat
               )
             }
           }
-          // 调试：打印 INFO 解析与合并后的关键值
-          try {
-            console.debug('[metadata][debug] WAV INFO (GBK) & merged', {
-              info,
-              merged: {
-                title: (patched as any)?.common?.title,
-                artist: (patched as any)?.common?.artist,
-                album: (patched as any)?.common?.album,
-                genre: (patched as any)?.common?.genre,
-                date: (patched as any)?.common?.date,
-                comment: (patched as any)?.common?.comment
-              }
-            })
-          } catch {}
           return buildDetail(filePath, patched)
         }
       } catch {}
     }
     return buildDetail(filePath, metadata)
   } catch (err) {
-    try {
-      console.error('[metadata] 读取元数据失败', {
-        filePath,
-        ext: path.extname(filePath).toLowerCase(),
-        error: String((err as any)?.message || err)
-      })
-    } catch {}
     return null
   }
 }
@@ -465,8 +418,39 @@ export async function updateTrackMetadata(
     }
 
     const metadata = await parseMetadata(filePath)
+    // 构造返回给列表的简要信息时，也应用与读取时相同的 WAV INFO 合并逻辑，避免出现 '0!0!0!'
+    let songInfoMeta = metadata
+    if (process.platform === 'win32' && path.extname(filePath).toLowerCase() === '.wav') {
+      try {
+        const info = await readWavRiffInfoWindows(filePath)
+        if (info) {
+          const prefer = <T extends string | undefined>(primary: T, fallback: T): T => {
+            const p = typeof primary === 'string' ? primary.trim() : ''
+            const f = typeof fallback === 'string' ? fallback.trim() : ''
+            if (f && (!p || /^[\x00-\x7F]+$/.test(p))) return fallback as T
+            return primary
+          }
+          songInfoMeta = {
+            ...metadata,
+            common: {
+              ...metadata.common,
+              title: prefer((metadata as any)?.common?.title, info.title),
+              artist: prefer((metadata as any)?.common?.artist, info.artist),
+              album: prefer((metadata as any)?.common?.album, info.album),
+              genre:
+                Array.isArray((metadata as any)?.common?.genre) &&
+                (metadata as any).common.genre.length
+                  ? (metadata as any).common.genre
+                  : info.genre
+                    ? [info.genre]
+                    : (metadata as any)?.common?.genre
+            }
+          }
+        }
+      } catch {}
+    }
     return {
-      songInfo: buildSongInfo(filePath, metadata),
+      songInfo: buildSongInfo(filePath, songInfoMeta),
       detail: buildDetail(filePath, metadata),
       renamedFrom: originalFilePath === filePath ? undefined : originalFilePath
     }
