@@ -32,6 +32,8 @@ import { useSongLoader } from './useSongLoader'
 // 预加载与 BPM 预计算
 const audioContext = new AudioContext()
 const audioPlayer = shallowRef<WebAudioPlayer | null>(null)
+const AUDIO_FOLLOW_SYSTEM_ID = ''
+let pendingAudioOutputDeviceId = runtime.setting.audioOutputDeviceId || AUDIO_FOLLOW_SYSTEM_ID
 const waveformShow = ref(false)
 const waveformContainerWidth = ref(0)
 const updateParentWaveformWidth = () => {
@@ -90,6 +92,7 @@ const isInternalSongChange = ref(false)
 // 初始化 WebAudioPlayer 和波形
 onMounted(() => {
   audioPlayer.value = new WebAudioPlayer(audioContext)
+  void applyAudioOutputDevice(pendingAudioOutputDeviceId)
   let previousTime = 0
   const jumpThreshold = 0.5
 
@@ -238,6 +241,31 @@ const setSetting = async () => {
   )
 }
 
+const applyAudioOutputDevice = async (deviceId: string) => {
+  pendingAudioOutputDeviceId = deviceId
+  const playerInstance = audioPlayer.value
+  if (!playerInstance) {
+    return
+  }
+  try {
+    await playerInstance.setOutputDevice(deviceId)
+  } catch (error) {
+    console.warn('[player] 切换输出设备失败，已回退默认输出', error)
+    if (deviceId !== AUDIO_FOLLOW_SYSTEM_ID) {
+      pendingAudioOutputDeviceId = AUDIO_FOLLOW_SYSTEM_ID
+      if (runtime.setting.audioOutputDeviceId !== AUDIO_FOLLOW_SYSTEM_ID) {
+        runtime.setting.audioOutputDeviceId = AUDIO_FOLLOW_SYSTEM_ID
+        await setSetting()
+      }
+      try {
+        await playerInstance.setOutputDevice(AUDIO_FOLLOW_SYSTEM_ID)
+      } catch (_) {
+        // 回退默认输出失败时无需额外处理
+      }
+    }
+  }
+}
+
 // 热键
 const hotkeyActions = {
   play: playerActions.play,
@@ -262,6 +290,15 @@ const playerState = {
   isPlaying: readonly(isPlaying)
 }
 usePlayerHotkeys(hotkeyActions, playerState, runtime)
+
+watch(
+  () => runtime.setting.audioOutputDeviceId,
+  (newValue) => {
+    const nextId = newValue || AUDIO_FOLLOW_SYSTEM_ID
+    void applyAudioOutputDevice(nextId)
+  },
+  { immediate: true }
+)
 
 // 初始化与销毁
 

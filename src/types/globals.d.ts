@@ -116,6 +116,8 @@ interface ISettingConfig {
   autoScrollToCurrentSong: boolean
   enablePlaybackRange: boolean
   recentDialogSelectedSongListMaxCount: number
+  // 音频输出设备 ID，空字符串表示跟随系统默认设备
+  audioOutputDeviceId: string
   // 错误日志上报设置
   enableErrorReport: boolean
   errorReportUsageMsSinceLastSuccess: number

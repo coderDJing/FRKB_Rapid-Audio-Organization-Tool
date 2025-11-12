@@ -47,6 +47,7 @@ let settingConfig: ISettingConfig = {
   autoScrollToCurrentSong: true,
   enablePlaybackRange: false,
   recentDialogSelectedSongListMaxCount: 10,
+  audioOutputDeviceId: '',
   // 错误日志上报默认配置
   enableErrorReport: true,
   errorReportUsageMsSinceLastSuccess: 0,

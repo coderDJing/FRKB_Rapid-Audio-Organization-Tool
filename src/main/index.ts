@@ -182,6 +182,7 @@ const defaultSettings = {
   autoScrollToCurrentSong: true,
   enablePlaybackRange: false,
   recentDialogSelectedSongListMaxCount: 10,
+  audioOutputDeviceId: '',
   persistSongFilters: false,
   showPlaylistTrackCount: true,
   nextCheckUpdateTime: '',

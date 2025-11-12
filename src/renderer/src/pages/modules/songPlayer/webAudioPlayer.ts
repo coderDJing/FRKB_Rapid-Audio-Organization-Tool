@@ -23,6 +23,9 @@ export class WebAudioPlayer {
   private volume: number = 0.8
   private emitter = mitt<WebAudioPlayerEvents>()
   private suppressEndedCallback: boolean = false
+  private mediaStreamDestination: MediaStreamAudioDestinationNode | null = null
+  private outputAudioElement: HTMLAudioElement | null = null
+  private currentOutputDeviceId: string = ''
 
   constructor(audioContext: AudioContext) {
     this.audioContext = audioContext
@@ -246,6 +249,84 @@ export class WebAudioPlayer {
   destroy(): void {
     this.stopInternal()
     this.empty()
+    this.routeToSystemDestination()
     this.removeAllListeners()
+  }
+
+  async setOutputDevice(deviceId: string): Promise<void> {
+    const normalized = deviceId || ''
+    if (normalized === this.currentOutputDeviceId) {
+      return
+    }
+    if (!normalized) {
+      this.routeToSystemDestination()
+      this.currentOutputDeviceId = ''
+      return
+    }
+    const canSetSink = typeof (HTMLMediaElement.prototype as any)?.setSinkId === 'function'
+    if (!canSetSink) {
+      throw new Error('setSinkIdUnsupported')
+    }
+    try {
+      await this.routeToSpecificDevice(normalized)
+      this.currentOutputDeviceId = normalized
+    } catch (error) {
+      this.routeToSystemDestination()
+      this.currentOutputDeviceId = ''
+      throw error
+    }
+  }
+
+  private routeToSystemDestination(): void {
+    try {
+      this.gainNode.disconnect()
+    } catch (_) {}
+    this.gainNode.connect(this.audioContext.destination)
+    if (this.outputAudioElement) {
+      try {
+        this.outputAudioElement.pause()
+      } catch (_) {}
+      this.outputAudioElement.srcObject = null
+      this.outputAudioElement = null
+    }
+    if (this.mediaStreamDestination) {
+      try {
+        this.mediaStreamDestination.disconnect()
+      } catch (_) {}
+      this.mediaStreamDestination = null
+    }
+    this.currentOutputDeviceId = ''
+  }
+
+  private async routeToSpecificDevice(deviceId: string): Promise<void> {
+    if (!this.mediaStreamDestination) {
+      this.mediaStreamDestination = this.audioContext.createMediaStreamDestination()
+    }
+    try {
+      this.gainNode.disconnect()
+    } catch (_) {}
+    this.gainNode.connect(this.mediaStreamDestination)
+    if (!this.outputAudioElement) {
+      this.outputAudioElement = document.createElement('audio')
+      this.outputAudioElement.autoplay = true
+      this.outputAudioElement.muted = false
+      this.outputAudioElement.volume = 1
+      this.outputAudioElement.playsInline = true
+    }
+    const element = this.outputAudioElement
+    const stream = this.mediaStreamDestination.stream
+    if (element.srcObject !== stream) {
+      element.srcObject = stream
+    }
+    const sinkElement = element as any
+    if (typeof sinkElement.setSinkId !== 'function') {
+      throw new Error('setSinkIdUnsupported')
+    }
+    await sinkElement.setSinkId(deviceId)
+    try {
+      await element.play()
+    } catch (_) {
+      // 播放器可能处于暂停状态，忽略自动播放失败
+    }
   }
 }

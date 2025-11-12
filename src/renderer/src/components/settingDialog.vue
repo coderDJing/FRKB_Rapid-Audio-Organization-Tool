@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onUnmounted, onMounted, ref, useTemplateRef, reactive, computed } from 'vue'
+import { onUnmounted, onMounted, ref, useTemplateRef, reactive, computed, watch } from 'vue'
 import hintIcon from '@renderer/assets/hint.png?asset'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
@@ -68,6 +68,10 @@ if ((runtime as any).setting.songListBubbleAlways === undefined) {
   ;(runtime as any).setting.songListBubbleAlways = false
 }
 
+if (runtime.setting.audioOutputDeviceId === undefined) {
+  runtime.setting.audioOutputDeviceId = AUDIO_FOLLOW_SYSTEM_ID
+}
+
 // 将布尔设置映射为单选值（与指纹模式类似的布局与交互）
 const songListBubbleMode = computed<'overflowOnly' | 'always'>({
   get() {
@@ -77,6 +81,23 @@ const songListBubbleMode = computed<'overflowOnly' | 'always'>({
     ;(runtime as any).setting.songListBubbleAlways = v === 'always'
   }
 })
+
+type AudioOutputOption = {
+  deviceId: string
+  label: string
+}
+const AUDIO_FOLLOW_SYSTEM_ID = ''
+const audioOutputDevices = ref<AudioOutputOption[]>([])
+const isEnumeratingAudioOutputs = ref(false)
+const audioOutputError = ref<string | null>(null)
+const audioOutputSupported = computed(() => {
+  return (
+    typeof navigator !== 'undefined' &&
+    !!navigator.mediaDevices &&
+    typeof navigator.mediaDevices.enumerateDevices === 'function'
+  )
+})
+let cleanupAudioDeviceListener: (() => void) | null = null
 
 // 修改后的 cancel 函数 - 移除了范围验证和保存
 const cancel = async () => {
@@ -90,9 +111,42 @@ onMounted(() => {
   utils.setHotkeysScpoe(uuid)
   // 获取指纹库长度
   getSongFingerprintListLength()
+  if (audioOutputSupported.value && navigator.mediaDevices) {
+    const handleDeviceChange = () => {
+      void refreshAudioOutputDevices()
+    }
+    if (typeof navigator.mediaDevices.addEventListener === 'function') {
+      navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange)
+      cleanupAudioDeviceListener = () => {
+        navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange)
+      }
+    } else {
+      const previousHandler = navigator.mediaDevices.ondevicechange
+      navigator.mediaDevices.ondevicechange = handleDeviceChange
+      cleanupAudioDeviceListener = () => {
+        if (navigator.mediaDevices.ondevicechange === handleDeviceChange) {
+          navigator.mediaDevices.ondevicechange = previousHandler || null
+        } else if (!navigator.mediaDevices.ondevicechange && previousHandler) {
+          navigator.mediaDevices.ondevicechange = previousHandler
+        }
+      }
+    }
+    void refreshAudioOutputDevices()
+  } else {
+    audioOutputDevices.value = []
+    audioOutputError.value = t('player.audioOutputNotSupported')
+    if (runtime.setting.audioOutputDeviceId) {
+      runtime.setting.audioOutputDeviceId = AUDIO_FOLLOW_SYSTEM_ID
+      void setSetting()
+    }
+  }
 })
 
 onUnmounted(() => {
+  if (cleanupAudioDeviceListener) {
+    cleanupAudioDeviceListener()
+    cleanupAudioDeviceListener = null
+  }
   utils.delHotkeysScope(uuid)
 })
 
@@ -103,6 +157,57 @@ const setSetting = async () => {
   )
   await getSongFingerprintListLength()
 }
+
+const refreshAudioOutputDevices = async () => {
+  audioOutputError.value = null
+  if (!audioOutputSupported.value || !navigator.mediaDevices) {
+    audioOutputDevices.value = []
+    audioOutputError.value = t('player.audioOutputNotSupported')
+    if (runtime.setting.audioOutputDeviceId) {
+      runtime.setting.audioOutputDeviceId = AUDIO_FOLLOW_SYSTEM_ID
+      await setSetting()
+    }
+    return
+  }
+  isEnumeratingAudioOutputs.value = true
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    const outputs = devices.filter(
+      (device) => device.kind === 'audiooutput' && device.deviceId && device.deviceId !== 'default'
+    )
+    audioOutputDevices.value = outputs.map((device) => ({
+      deviceId: device.deviceId,
+      label: device.label
+    }))
+    const current = runtime.setting.audioOutputDeviceId || AUDIO_FOLLOW_SYSTEM_ID
+    if (current && !audioOutputDevices.value.some((device) => device.deviceId === current)) {
+      audioOutputError.value = t('player.audioOutputDeviceUnavailable')
+      runtime.setting.audioOutputDeviceId = AUDIO_FOLLOW_SYSTEM_ID
+      await setSetting()
+    }
+  } catch (error) {
+    const reason = String((error as any)?.message || error || '')
+    audioOutputError.value = t('player.audioOutputRefreshFailed', { reason })
+  } finally {
+    isEnumeratingAudioOutputs.value = false
+  }
+}
+
+const handleAudioOutputChange = async () => {
+  audioOutputError.value = null
+  runtime.setting.audioOutputDeviceId =
+    runtime.setting.audioOutputDeviceId || AUDIO_FOLLOW_SYSTEM_ID
+  await setSetting()
+}
+
+watch(
+  () => runtime.setting.language,
+  () => {
+    if (audioOutputSupported.value) {
+      void refreshAudioOutputDevices()
+    }
+  }
+)
 
 // 更新“最近使用歌单缓存数量”并按需截断本地缓存
 const updateRecentDialogCacheMaxCount = async () => {
@@ -344,6 +449,37 @@ const clearCloudFingerprints = async () => {
                 <option value="zhCN">简体中文</option>
                 <option value="enUS">English</option>
               </select>
+            </div>
+            <div style="margin-top: 20px">{{ t('player.audioOutputDevice') }}：</div>
+            <div style="margin-top: 10px">
+              <select
+                v-model="runtime.setting.audioOutputDeviceId"
+                @change="handleAudioOutputChange"
+                :disabled="!audioOutputSupported || isEnumeratingAudioOutputs"
+              >
+                <option :value="AUDIO_FOLLOW_SYSTEM_ID">
+                  {{ t('player.audioOutputFollowSystem') }}
+                </option>
+                <option
+                  v-for="(device, index) in audioOutputDevices"
+                  :key="device.deviceId || `audio-output-${index}`"
+                  :value="device.deviceId"
+                >
+                  {{ device.label || `${t('player.audioOutputDeviceUnknown')} ${index + 1}` }}
+                </option>
+              </select>
+              <div
+                v-if="isEnumeratingAudioOutputs"
+                style="margin-top: 6px; font-size: 12px; color: #999"
+              >
+                {{ t('player.audioOutputRefreshing') }}
+              </div>
+              <div
+                v-else-if="audioOutputError"
+                style="margin-top: 6px; font-size: 12px; color: #e81123"
+              >
+                {{ audioOutputError }}
+              </div>
             </div>
             <div style="margin-top: 20px">{{ t('player.autoPlayNext') }}：</div>
             <div style="margin-top: 10px">
