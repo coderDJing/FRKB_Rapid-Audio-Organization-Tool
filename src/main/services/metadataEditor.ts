@@ -6,6 +6,7 @@ import { v4 as uuidV4 } from 'uuid'
 import { resolveBundledFfmpegPath, ensureExecutableOnMac } from '../ffmpeg'
 import { ISongInfo, ITrackMetadataDetail, ITrackMetadataUpdatePayload } from '../../types/globals'
 import { extFromMime } from './covers'
+import { writeWavRiffInfoWindows, readWavRiffInfoWindows } from './wavRiffInfo'
 
 async function parseMetadata(filePath: string) {
   const mm = await import('music-metadata')
@@ -35,6 +36,17 @@ function buildSongInfo(filePath: string, metadata: any): ISongInfo {
       : ''
   const fileFormat = normalizedExt || fallbackFormat
 
+  const firstString = (arr: unknown): string | undefined => {
+    if (!Array.isArray(arr)) return undefined
+    for (const v of arr) {
+      if (typeof v === 'string') {
+        const t = v.trim()
+        if (t) return t
+      }
+    }
+    return undefined
+  }
+
   return {
     filePath,
     fileName: baseName,
@@ -47,12 +59,8 @@ function buildSongInfo(filePath: string, metadata: any): ISongInfo {
     artist: metadata.common?.artist,
     album: metadata.common?.album,
     duration,
-    genre: Array.isArray(metadata.common?.genre)
-      ? metadata.common.genre[0]
-      : metadata.common?.genre,
-    label: Array.isArray(metadata.common?.label)
-      ? metadata.common.label[0]
-      : metadata.common?.label,
+    genre: firstString(metadata.common?.genre),
+    label: firstString(metadata.common?.label),
     bitrate: metadata.format?.bitrate,
     container: metadata.format?.container
   }
@@ -80,34 +88,44 @@ function buildDetail(filePath: string, metadata: any): ITrackMetadataDetail {
   const nameWithoutExt = dotIndex >= 0 ? baseName.slice(0, dotIndex) : baseName
   const extension = dotIndex >= 0 ? baseName.slice(dotIndex) : ''
   const pictureSource = Array.isArray(metadata.common?.picture) ? metadata.common.picture[0] : null
+
+  const firstString = (arr: unknown): string | undefined => {
+    if (!Array.isArray(arr)) return undefined
+    for (const v of arr) {
+      if (typeof v === 'string') {
+        const t = v.trim()
+        if (t) return t
+      }
+    }
+    return undefined
+  }
+
   return {
     filePath,
     fileName: nameWithoutExt,
     fileExtension: extension,
-    title: metadata.common?.title,
-    artist: metadata.common?.artist,
-    album: metadata.common?.album,
+    title: typeof metadata.common?.title === 'string' ? metadata.common.title : undefined,
+    artist: typeof metadata.common?.artist === 'string' ? metadata.common.artist : undefined,
+    album: typeof metadata.common?.album === 'string' ? metadata.common.album : undefined,
     albumArtist: metadata.common?.albumartist,
     trackNo: metadata.common?.track?.no ?? undefined,
     trackTotal: metadata.common?.track?.of ?? undefined,
     discNo: metadata.common?.disk?.no ?? undefined,
     discTotal: metadata.common?.disk?.of ?? undefined,
     year: metadata.common?.year ? String(metadata.common.year) : metadata.common?.date,
-    genre: Array.isArray(metadata.common?.genre)
-      ? metadata.common.genre[0]
-      : metadata.common?.genre,
+    genre: firstString(metadata.common?.genre),
     composer: metadata.common?.composer,
     lyricist: metadata.common?.lyricist ?? metadata.common?.writer,
-    label: Array.isArray(metadata.common?.label)
-      ? metadata.common.label[0]
-      : metadata.common?.label,
+    label: firstString(metadata.common?.label),
     isrc: metadata.common?.isrc,
-    comment: Array.isArray(metadata.common?.comment)
-      ? metadata.common.comment.filter((c: string) => c && c.trim() !== '')[0]
-      : metadata.common?.comment,
+    comment: firstString(metadata.common?.comment),
     lyrics: Array.isArray(metadata.common?.lyrics)
-      ? metadata.common.lyrics.join('\n')
-      : metadata.common?.lyrics,
+      ? metadata.common.lyrics
+          .filter((x: unknown) => typeof x === 'string' && x.trim() !== '')
+          .join('\n')
+      : typeof metadata.common?.lyrics === 'string'
+        ? metadata.common.lyrics
+        : undefined,
     cover: convertCoverToDataUrl(pictureSource)
   }
 }
@@ -139,6 +157,11 @@ function buildFfmpegArgs(
 
   const ext = path.extname(filePath).toLowerCase()
   if (ext === '.mp3') {
+    args.push('-id3v2_version', '3')
+  }
+  if (ext === '.wav') {
+    // WAV 默认 RIFF LIST/INFO 非 Unicode，这里启用 ID3v2.3
+    args.push('-write_id3v2', '1')
     args.push('-id3v2_version', '3')
   }
   if (ext === '.aif' || ext === '.aiff') {
@@ -217,8 +240,95 @@ async function writeTempFile(buffer: Buffer, extension: string): Promise<string>
 export async function readTrackMetadata(filePath: string): Promise<ITrackMetadataDetail | null> {
   try {
     const metadata = await parseMetadata(filePath)
+    // Windows 下 WAV：尝试用 GBK 读取 LIST/INFO，并与 ID3 合并显示（优先 ID3）
+    if (process.platform === 'win32' && path.extname(filePath).toLowerCase() === '.wav') {
+      try {
+        // 调试：打印 music-metadata 原始解析结果（摘取关键字段，避免日志过大）
+        try {
+          const nativeTypes = Object.keys((metadata as any)?.native || {})
+          const nativeSummary: Record<string, string[]> = {}
+          for (const t of nativeTypes) {
+            const arr = ((metadata as any).native?.[t] || []) as Array<{ id?: string }>
+            nativeSummary[t] = arr
+              .slice(0, 8)
+              .map((x) => String(x?.id || ''))
+              .filter(Boolean)
+          }
+          console.debug('[metadata][debug] WAV parse (music-metadata)', {
+            filePath,
+            common: {
+              title: (metadata as any)?.common?.title,
+              artist: (metadata as any)?.common?.artist,
+              album: (metadata as any)?.common?.album,
+              genre: (metadata as any)?.common?.genre,
+              date: (metadata as any)?.common?.date,
+              year: (metadata as any)?.common?.year,
+              comment: (metadata as any)?.common?.comment
+            },
+            nativeTypes,
+            nativeSummary
+          })
+        } catch {}
+        const info = await readWavRiffInfoWindows(filePath)
+        if (info) {
+          // 优先采用 INFO（UTF-16/GBK）结果覆盖常见的错误解析（例如 '0!0!0!'）
+          const prefer = <T extends string | undefined>(primary: T, fallback: T): T => {
+            const p = typeof primary === 'string' ? primary.trim() : ''
+            const f = typeof fallback === 'string' ? fallback.trim() : ''
+            if (f && (!p || /^[\x00-\x7F]+$/.test(p))) return fallback as T
+            return primary
+          }
+          const patched = {
+            ...metadata,
+            common: {
+              ...metadata.common,
+              // 优先使用 INFO 的可读文本（如果 common 是 ASCII 垃圾）
+              title: prefer((metadata as any)?.common?.title, info.title),
+              artist: prefer((metadata as any)?.common?.artist, info.artist),
+              album: prefer((metadata as any)?.common?.album, info.album),
+              genre:
+                Array.isArray((metadata as any)?.common?.genre) &&
+                (metadata as any).common.genre.length
+                  ? (metadata as any).common.genre
+                  : info.genre
+                    ? [info.genre]
+                    : (metadata as any)?.common?.genre,
+              date: (metadata as any)?.common?.date ?? info.date,
+              comment: prefer(
+                Array.isArray((metadata as any)?.common?.comment)
+                  ? (metadata as any).common.comment[0]
+                  : (metadata as any)?.common?.comment,
+                info.comment
+              )
+            }
+          }
+          // 调试：打印 INFO 解析与合并后的关键值
+          try {
+            console.debug('[metadata][debug] WAV INFO (GBK) & merged', {
+              info,
+              merged: {
+                title: (patched as any)?.common?.title,
+                artist: (patched as any)?.common?.artist,
+                album: (patched as any)?.common?.album,
+                genre: (patched as any)?.common?.genre,
+                date: (patched as any)?.common?.date,
+                comment: (patched as any)?.common?.comment
+              }
+            })
+          } catch {}
+          return buildDetail(filePath, patched)
+        }
+      } catch {}
+    }
     return buildDetail(filePath, metadata)
-  } catch {
+  } catch (err) {
+    try {
+      console.error('[metadata] 读取元数据失败', {
+        filePath,
+        ext: path.extname(filePath).toLowerCase(),
+        error: String((err as any)?.message || err)
+      })
+    } catch {}
     return null
   }
 }
@@ -282,6 +392,20 @@ export async function updateTrackMetadata(
     })
 
     await fs.move(tempOutput, filePath, { overwrite: true })
+
+    // Windows: WAV 写入 LIST/INFO（GBK），与 ID3v2.3 同步
+    try {
+      if (process.platform === 'win32' && ext.toLowerCase() === '.wav') {
+        await writeWavRiffInfoWindows(filePath, {
+          title: payload.title,
+          artist: payload.artist,
+          album: payload.album,
+          genre: payload.genre,
+          date: payload.year,
+          comment: payload.comment
+        })
+      }
+    } catch {}
 
     // 如果没有提供新的封面但原文件包含封面，尝试从备份恢复
     if (!payload.coverDataUrl && originalMetadata) {
