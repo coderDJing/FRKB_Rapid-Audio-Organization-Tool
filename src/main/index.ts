@@ -119,6 +119,7 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
     globalCallShortcut:
       platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
     hiddenPlayControlArea: false,
+    waveformStyle: 'SoundCloud',
     autoPlayNextSong: false,
     startPlayPercent: 0,
     endPlayPercent: 100,
@@ -174,6 +175,7 @@ const defaultSettings = {
   globalCallShortcut:
     platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
   hiddenPlayControlArea: false,
+  waveformStyle: 'SoundCloud' as 'SoundCloud' | 'RGB',
   autoPlayNextSong: false,
   startPlayPercent: 0,
   endPlayPercent: 100,
@@ -258,6 +260,9 @@ async function fetchLatestStableRelease(
 
 async function maybeShowWhatsNew() {
   const currentVersion = app.getVersion()
+  if (is.dev || currentVersion.includes('-')) {
+    return
+  }
   const lastSeen = toSafeString(store.settingConfig.lastSeenWhatsNewVersion)
   const pending = toSafeString(store.settingConfig.pendingWhatsNewForVersion)
 

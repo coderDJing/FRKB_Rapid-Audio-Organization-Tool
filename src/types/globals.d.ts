@@ -108,6 +108,7 @@ interface ISettingConfig {
   globalCallShortcut: string
   nextCheckUpdateTime: string
   hiddenPlayControlArea: boolean
+  waveformStyle?: 'SoundCloud' | 'Fine' | 'RGB'
   autoPlayNextSong: boolean
   startPlayPercent: number
   endPlayPercent: number

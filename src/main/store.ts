@@ -39,6 +39,7 @@ let settingConfig: ISettingConfig = {
   globalCallShortcut: '',
   nextCheckUpdateTime: '',
   hiddenPlayControlArea: false,
+  waveformStyle: 'SoundCloud',
   autoPlayNextSong: false,
   startPlayPercent: 0,
   endPlayPercent: 100,
