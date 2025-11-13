@@ -201,9 +201,22 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
 const songDblClick = async (song: ISongInfo) => {
   runtime.activeMenuUUID = ''
   runtime.songsArea.selectedSongFilePath = []
-  runtime.playingData.playingSong = song
+
+  const normalizedSong = { ...song }
+  const isSameList = runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID
+  const isSameSong =
+    isSameList && runtime.playingData.playingSong?.filePath === normalizedSong.filePath
+
   runtime.playingData.playingSongListUUID = runtime.songsArea.songListUUID
   runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+
+  if (isSameSong && runtime.playingData.playingSong) {
+    runtime.playingData.playingSong = normalizedSong
+    emitter.emit('player/replay-current-song')
+    return
+  }
+
+  runtime.playingData.playingSong = normalizedSong
 }
 // 删除键处理由 useKeyboardSelection 绑定
 
