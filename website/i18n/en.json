@@ -16,13 +16,18 @@
       "wysiwyg": "WYSIWYG file mapping: UI groups/folders mirror the real disk hierarchy; rename/move applies instantly"
     },
     "extra": {
+      "waveform": "Multiple waveform views: SoundCloud classic, fine-grained waveform, and RGB three-band energy to spot transitions instantly",
+      "formats": "Wide format playback & conversion: Built-in FFmpeg pipeline covers 20+ DJ and archival formats with batch transcoding",
       "crossOpen": "Cross‑platform and open‑source: Windows / macOS; inspect and contribute"
     }
   },
   "faq": {
     "title": "FAQ",
     "q1": ["How to choose the installer?", "Pick Windows or macOS according to your system."],
-    "q2": ["What formats are supported?", "mp3, flac, wav, aff, aiff."],
+    "q2": [
+      "What formats are supported?",
+      "We cover mp3, wav, flac, aif/aiff, ogg, opus, aac, m4a, mp4, wma, ac3, dts, mka, webm, ape, tak, tta, wv, and more — play instantly and batch convert out of the box."
+    ],
     "q3": ["How do I upgrade?", "The app supports online auto‑updates; no manual download needed."],
     "q4": ["License & contributions?", "See License and contributing guide on GitHub."]
   },

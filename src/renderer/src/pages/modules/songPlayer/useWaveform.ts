@@ -37,7 +37,6 @@ export function useWaveform(params: {
   const WAVEFORM_STYLE_SOUND_CLOUD: WaveformStyle = 'SoundCloud'
   const WAVEFORM_STYLE_FINE: WaveformStyle = 'Fine'
   const WAVEFORM_STYLE_RGB: WaveformStyle = 'RGB'
-  const USE_HALF_WAVEFORM = true
   const RGB_BASE_ALPHA = 0.42
   const RGB_PROGRESS_ALPHA = 0.95
   const REKORDBOX_RGB_COLORS: Record<RGBWaveformBandKey, { r: number; g: number; b: number }> = {
@@ -83,8 +82,9 @@ export function useWaveform(params: {
     const offset = spacing > drawWidth ? (spacing - drawWidth) / 2 : 0
 
     const midY = height / 2
-    const baselineY = USE_HALF_WAVEFORM ? height : midY
-    const scaleY = USE_HALF_WAVEFORM ? baselineY : midY
+    const isHalf = useHalfWaveform()
+    const baselineY = isHalf ? height : midY
+    const scaleY = isHalf ? baselineY : midY
 
     const baseGradient = baseCtx.createLinearGradient(0, 0, 0, height)
     baseGradient.addColorStop(0, '#cccccc')
@@ -102,7 +102,7 @@ export function useWaveform(params: {
       const x = index * spacing + offset
       const clampedX = Math.max(0, Math.min(width - drawWidth, x))
 
-      if (USE_HALF_WAVEFORM) {
+      if (isHalf) {
         const amplitude = Math.max(Math.abs(min), Math.abs(max))
         const rectHeight = Math.max(1, amplitude * scaleY)
         const y = baselineY - rectHeight
@@ -128,6 +128,8 @@ export function useWaveform(params: {
         : WAVEFORM_STYLE_SOUND_CLOUD
     ) as WaveformStyle
   }
+
+  const useHalfWaveform = () => (runtime.setting?.waveformMode ?? 'half') !== 'full'
 
   const canvasContainer = document.createElement('div')
   canvasContainer.style.position = 'relative'
@@ -330,6 +332,7 @@ export function useWaveform(params: {
     const totalBars = Math.max(1, Math.floor(width / (barWidth + barGap)))
     const sampleStep = soundCloudMinMaxData.length / totalBars
     const maxSamplesPerBar = 24
+    const isHalf = useHalfWaveform()
     const midY = height / 2
     const baseGradient = baseCtx.createLinearGradient(0, 0, 0, height)
     baseGradient.addColorStop(0, '#cccccc')
@@ -339,8 +342,8 @@ export function useWaveform(params: {
     progressGradient.addColorStop(0, '#0078d4')
     progressGradient.addColorStop(1, '#0078d4')
 
-    const baselineY = USE_HALF_WAVEFORM ? height : midY
-    const scaleY = USE_HALF_WAVEFORM ? baselineY : midY
+    const baselineY = isHalf ? height : midY
+    const scaleY = isHalf ? baselineY : midY
 
     const bars: Array<{ x: number; y: number; rectHeight: number }> = []
 
@@ -368,7 +371,7 @@ export function useWaveform(params: {
 
       const x = barIndex * (barWidth + barGap)
 
-      if (USE_HALF_WAVEFORM) {
+      if (isHalf) {
         const amplitude = Math.max(Math.abs(min), Math.abs(max))
         const rectHeight = Math.max(1, amplitude * scaleY)
         const y = baselineY - rectHeight
@@ -412,8 +415,9 @@ export function useWaveform(params: {
     resizeCanvas(progressCanvas, progressCtx, width, height, pixelRatio)
 
     const centerY = height / 2
-    const baselineY = USE_HALF_WAVEFORM ? height : centerY
-    const baseAmplitude = USE_HALF_WAVEFORM ? height * 0.95 : centerY * 0.92
+    const isHalf = useHalfWaveform()
+    const baselineY = isHalf ? height : centerY
+    const baseAmplitude = isHalf ? height * 0.95 : centerY * 0.92
     const spacing = totalPoints > 0 ? width / totalPoints : width
     const gap = Math.min(barGap, spacing * 0.25)
     let drawWidth = spacing - gap
@@ -456,7 +460,7 @@ export function useWaveform(params: {
         const amplitudeRatio = Math.min(1, Math.pow(weightedEnergy, 0.6))
         const amplitudePx = amplitudeRatio * baseAmplitude
         const yTop = baselineY - amplitudePx
-        const height = Math.max(1, USE_HALF_WAVEFORM ? amplitudePx : amplitudePx * 2)
+        const height = Math.max(1, isHalf ? amplitudePx : amplitudePx * 2)
 
         const sumIntensity = lowIntensity + midIntensity + highIntensity
         const mixDivider = sumIntensity > 0 ? sumIntensity : 1
@@ -483,7 +487,7 @@ export function useWaveform(params: {
 
         const xPos = Math.max(0, Math.min(width - drawWidth, x))
         ctx.fillStyle = `rgb(${r}, ${g}, ${b})`
-        const drawY = USE_HALF_WAVEFORM ? yTop : centerY - amplitudePx
+        const drawY = isHalf ? yTop : centerY - amplitudePx
         ctx.fillRect(xPos, drawY, drawWidth, height)
       }
 
@@ -757,6 +761,13 @@ export function useWaveform(params: {
       if (audioPlayer.value && getWaveformStyle() === WAVEFORM_STYLE_RGB) {
         void audioPlayer.value.ensureRgbWaveform()
       }
+      updateWaveform()
+    }
+  )
+
+  watch(
+    () => runtime.setting?.waveformMode,
+    () => {
       updateWaveform()
     }
   )
