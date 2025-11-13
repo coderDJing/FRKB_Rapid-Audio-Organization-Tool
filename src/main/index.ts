@@ -120,6 +120,8 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
       platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
     hiddenPlayControlArea: false,
     waveformStyle: 'SoundCloud',
+    waveformMode: 'half',
+    waveformStyle: 'SoundCloud',
     autoPlayNextSong: false,
     startPlayPercent: 0,
     endPlayPercent: 100,
@@ -175,6 +177,8 @@ const defaultSettings = {
   globalCallShortcut:
     platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
   hiddenPlayControlArea: false,
+  waveformStyle: 'SoundCloud',
+  waveformMode: 'half',
   waveformStyle: 'SoundCloud' as 'SoundCloud' | 'RGB',
   autoPlayNextSong: false,
   startPlayPercent: 0,

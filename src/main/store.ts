@@ -40,6 +40,8 @@ let settingConfig: ISettingConfig = {
   nextCheckUpdateTime: '',
   hiddenPlayControlArea: false,
   waveformStyle: 'SoundCloud',
+  waveformMode: 'half',
+  waveformStyle: 'SoundCloud',
   autoPlayNextSong: false,
   startPlayPercent: 0,
   endPlayPercent: 100,
