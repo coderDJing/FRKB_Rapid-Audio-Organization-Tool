@@ -23,11 +23,12 @@ import { usePlayerControlsLogic } from './usePlayerControlsLogic'
 import { useCover } from './useCover'
 import { usePreloadNextSong } from './usePreloadNextSong'
 import { useWaveform } from './useWaveform'
+import emitter from '@renderer/utils/mitt'
+import { useSongLoader } from './useSongLoader'
 
 const runtime = useRuntimeStore()
 const waveform = useTemplateRef<HTMLDivElement>('waveform')
 const playerControlsRef = useTemplateRef('playerControlsRef')
-import { useSongLoader } from './useSongLoader'
 
 // 预加载与 BPM 预计算
 const audioContext = new AudioContext()
@@ -89,12 +90,39 @@ const {
 // 内部切歌标志
 const isInternalSongChange = ref(false)
 
+const handleReplayRequest = () => {
+  const playerInstance = audioPlayer.value
+  if (!playerInstance) return
+  if (!runtime.playingData.playingSong) return
+
+  const duration = playerInstance.getDuration()
+  if (!duration || Number.isNaN(duration)) return
+
+  const enableRange = runtime.setting.enablePlaybackRange
+  const startPercentRaw = enableRange ? (runtime.setting.startPlayPercent ?? 0) : 0
+  const startPercentNumber =
+    typeof startPercentRaw === 'number' ? startPercentRaw : parseFloat(String(startPercentRaw))
+  const safePercent = Number.isFinite(startPercentNumber) ? startPercentNumber : 0
+  const clampedPercent = Math.min(Math.max(safePercent, 0), 100)
+  const startTime = (duration * clampedPercent) / 100
+
+  const wasPlaying = playerInstance.isPlaying()
+  runtime.playerReady = false
+
+  playerInstance.seek(startTime)
+  if (!wasPlaying) {
+    playerInstance.play(startTime)
+  }
+}
+
 // 初始化 WebAudioPlayer 和波形
 onMounted(() => {
   audioPlayer.value = new WebAudioPlayer(audioContext)
   void applyAudioOutputDevice(pendingAudioOutputDeviceId)
   let previousTime = 0
   const jumpThreshold = 0.5
+
+  emitter.on('player/replay-current-song', handleReplayRequest)
 
   // 初始化波形
   useWaveform({
@@ -310,6 +338,7 @@ onUnmounted(() => {
     audioPlayer.value = null
   }
   window.removeEventListener('resize', updateParentWaveformWidth)
+  emitter.off('player/replay-current-song', handleReplayRequest)
 })
 
 // 切歌响应（含预加载命中）
