@@ -68,6 +68,8 @@ if ((runtime as any).setting.songListBubbleAlways === undefined) {
   ;(runtime as any).setting.songListBubbleAlways = false
 }
 
+const AUDIO_FOLLOW_SYSTEM_ID = ''
+
 if (runtime.setting.audioOutputDeviceId === undefined) {
   runtime.setting.audioOutputDeviceId = AUDIO_FOLLOW_SYSTEM_ID
 }
@@ -86,7 +88,6 @@ type AudioOutputOption = {
   deviceId: string
   label: string
 }
-const AUDIO_FOLLOW_SYSTEM_ID = ''
 const audioOutputDevices = ref<AudioOutputOption[]>([])
 const isEnumeratingAudioOutputs = ref(false)
 const audioOutputError = ref<string | null>(null)
@@ -498,6 +499,20 @@ const clearCloudFingerprints = async () => {
                 v-model="runtime.setting.hiddenPlayControlArea"
                 @change="setSetting()"
               />
+            </div>
+            <div style="margin-top: 20px">{{ t('player.waveformStyle') }}：</div>
+            <div style="margin-top: 10px">
+              <select v-model="(runtime as any).setting.waveformStyle" @change="setSetting">
+                <option value="SoundCloud">
+                  {{ t('player.waveformStyleSoundCloud') }}
+                </option>
+                <option value="Fine">
+                  {{ t('player.waveformStyleFine') }}
+                </option>
+                <option value="RGB">
+                  {{ t('player.waveformStyleRGB') }}
+                </option>
+              </select>
             </div>
             <div style="margin-top: 20px">{{ t('fingerprints.scanFormats') }}：</div>
             <div style="margin-top: 10px">

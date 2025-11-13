@@ -1,5 +1,22 @@
 import mitt from 'mitt'
 
+export type RGBWaveformBandKey = 'low' | 'mid' | 'high'
+
+export type WaveformStyle = 'SoundCloud' | 'Fine' | 'RGB'
+
+export type RGBWaveformBand = {
+  values: Float32Array
+  peak: number
+}
+
+export type RGBWaveformData = {
+  duration: number
+  sampleRate: number
+  step: number
+  bands: Record<RGBWaveformBandKey, RGBWaveformBand>
+  globalPeak: number
+}
+
 export type WebAudioPlayerEvents = {
   ready: undefined
   play: undefined
@@ -9,10 +26,29 @@ export type WebAudioPlayerEvents = {
   timeupdate: number
   decode: number
   error: any
+  rgbwaveformready: undefined
 } & Record<string, unknown>
+
+const RGB_WAVEFORM_POINTS_PER_SECOND = 800
+const LOWPASS_MAX_HZ = 250
+const HIGHPASS_MIN_HZ = 2000
+const FILTER_Q = 0.707
+const RGB_ENVELOPE_SMOOTHING = 0.65
+const RGB_BAND_WEIGHTS: Record<RGBWaveformBandKey, number> = {
+  low: 1,
+  mid: 1.15,
+  high: 1.35
+}
+
+type OfflineContextCtor = new (
+  numberOfChannels: number,
+  length: number,
+  sampleRate: number
+) => OfflineAudioContext
 
 export class WebAudioPlayer {
   public audioBuffer: AudioBuffer | null = null
+  public rgbWaveformData: RGBWaveformData | null = null
   private audioContext: AudioContext
   private sourceNode: AudioBufferSourceNode | null = null
   private gainNode: GainNode
@@ -26,6 +62,7 @@ export class WebAudioPlayer {
   private mediaStreamDestination: MediaStreamAudioDestinationNode | null = null
   private outputAudioElement: HTMLAudioElement | null = null
   private currentOutputDeviceId: string = ''
+  private rgbWaveformPromise: Promise<void> | null = null
 
   constructor(audioContext: AudioContext) {
     this.audioContext = audioContext
@@ -80,6 +117,8 @@ export class WebAudioPlayer {
   loadPCM(pcmData: Float32Array, sampleRate: number, channels: number): void {
     this.stopInternal()
     this.audioBuffer = null
+    this.rgbWaveformData = null
+    this.rgbWaveformPromise = null
 
     try {
       // 创建 AudioBuffer
@@ -96,6 +135,7 @@ export class WebAudioPlayer {
 
       const duration = this.audioBuffer.duration
       this.emit('decode', duration)
+      void this.ensureRgbWaveform(true)
       this.emit('ready')
     } catch (error) {
       this.emit('error', error)
@@ -233,6 +273,8 @@ export class WebAudioPlayer {
     this.audioBuffer = null
     this.pausedTime = 0
     this.startTime = 0
+    this.rgbWaveformData = null
+    this.rgbWaveformPromise = null
   }
 
   private startTimeUpdate(): void {
@@ -244,6 +286,180 @@ export class WebAudioPlayer {
       }
     }
     this.animationFrameId = requestAnimationFrame(update)
+  }
+
+  public ensureRgbWaveform(force = false): Promise<void> {
+    if (!this.audioBuffer) {
+      return Promise.resolve()
+    }
+    if (!force && this.rgbWaveformData) {
+      return Promise.resolve()
+    }
+    if (!force && this.rgbWaveformPromise) {
+      return this.rgbWaveformPromise
+    }
+
+    const buffer = this.audioBuffer
+    const promise = (async () => {
+      try {
+        const data = await this.generateRgbWaveform(buffer)
+        if (this.audioBuffer !== buffer) {
+          return
+        }
+        this.rgbWaveformData = data
+        if (data) {
+          this.emit('rgbwaveformready')
+        }
+      } catch (error) {
+        console.warn('[WebAudioPlayer] 生成 RGB 波形失败', error)
+        this.rgbWaveformData = null
+      }
+    })()
+
+    this.rgbWaveformPromise = promise
+    return promise.finally(() => {
+      if (this.rgbWaveformPromise === promise) {
+        this.rgbWaveformPromise = null
+      }
+    })
+  }
+
+  private async generateRgbWaveform(buffer: AudioBuffer): Promise<RGBWaveformData | null> {
+    if (!buffer.length) {
+      return null
+    }
+    const OfflineCtor: OfflineContextCtor | undefined = ((typeof window !== 'undefined'
+      ? (window as any).OfflineAudioContext
+      : undefined) ??
+      (typeof OfflineAudioContext !== 'undefined' ? OfflineAudioContext : undefined)) as
+      | OfflineContextCtor
+      | undefined
+    if (typeof OfflineCtor !== 'function') {
+      return null
+    }
+
+    const step = Math.max(1, Math.floor(buffer.sampleRate / RGB_WAVEFORM_POINTS_PER_SECOND))
+    const [low, mid, high] = await Promise.all([
+      this.renderBandEnvelope(buffer, 'low', step, OfflineCtor),
+      this.renderBandEnvelope(buffer, 'mid', step, OfflineCtor),
+      this.renderBandEnvelope(buffer, 'high', step, OfflineCtor)
+    ])
+
+    if (!low || !mid || !high) {
+      return null
+    }
+
+    const globalPeak = Math.max(low.peak, mid.peak, high.peak, 0.0001)
+
+    return {
+      duration: buffer.duration,
+      sampleRate: buffer.sampleRate,
+      step,
+      bands: {
+        low,
+        mid,
+        high
+      },
+      globalPeak
+    }
+  }
+
+  private async renderBandEnvelope(
+    buffer: AudioBuffer,
+    band: RGBWaveformBandKey,
+    step: number,
+    OfflineCtor: OfflineContextCtor
+  ): Promise<RGBWaveformBand | null> {
+    try {
+      const offlineCtx = new OfflineCtor(1, buffer.length, buffer.sampleRate)
+      const source = offlineCtx.createBufferSource()
+      const offlineBuffer = offlineCtx.createBuffer(1, buffer.length, buffer.sampleRate)
+      offlineBuffer.copyToChannel(buffer.getChannelData(0), 0, 0)
+      source.buffer = offlineBuffer
+      const { input, output } = this.createBandFilter(offlineCtx, band)
+      source.connect(input)
+      output.connect(offlineCtx.destination)
+      source.start(0)
+      const rendered = await offlineCtx.startRendering()
+      const channelData = rendered.getChannelData(0)
+      return this.downsampleBand(channelData, band, step)
+    } catch (error) {
+      console.warn(`[WebAudioPlayer] 渲染 ${band} 频段波形失败`, error)
+      return null
+    }
+  }
+
+  private createBandFilter(
+    context: BaseAudioContext,
+    band: RGBWaveformBandKey
+  ): { input: AudioNode; output: AudioNode } {
+    if (band === 'low') {
+      const lowpass = context.createBiquadFilter()
+      lowpass.type = 'lowpass'
+      lowpass.frequency.value = LOWPASS_MAX_HZ
+      lowpass.Q.value = FILTER_Q
+      return { input: lowpass, output: lowpass }
+    }
+    if (band === 'high') {
+      const highpass = context.createBiquadFilter()
+      highpass.type = 'highpass'
+      highpass.frequency.value = HIGHPASS_MIN_HZ
+      highpass.Q.value = FILTER_Q
+      return { input: highpass, output: highpass }
+    }
+
+    const highpass = context.createBiquadFilter()
+    highpass.type = 'highpass'
+    highpass.frequency.value = LOWPASS_MAX_HZ
+    highpass.Q.value = FILTER_Q
+
+    const lowpass = context.createBiquadFilter()
+    lowpass.type = 'lowpass'
+    lowpass.frequency.value = HIGHPASS_MIN_HZ
+    lowpass.Q.value = FILTER_Q
+
+    highpass.connect(lowpass)
+    return { input: highpass, output: lowpass }
+  }
+
+  private downsampleBand(
+    samples: Float32Array,
+    band: RGBWaveformBandKey,
+    step: number
+  ): RGBWaveformBand {
+    const length = Math.ceil(samples.length / step)
+    const values = new Float32Array(length)
+    let peak = 0
+    let previous = 0
+    const smoothingFactor = Math.max(0, Math.min(1, 1 - RGB_ENVELOPE_SMOOTHING))
+
+    for (let i = 0; i < length; i++) {
+      const start = i * step
+      const end = Math.min(start + step, samples.length)
+      let sumSquares = 0
+      let count = 0
+
+      for (let j = start; j < end; j++) {
+        const sample = samples[j]
+        sumSquares += sample * sample
+        count++
+      }
+
+      const rms = count > 0 ? Math.sqrt(sumSquares / count) : 0
+      const smoothed = i === 0 ? rms : previous + (rms - previous) * smoothingFactor
+      const weight = RGB_BAND_WEIGHTS[band] ?? 1
+      const value = smoothed * weight
+      values[i] = value
+      if (value > peak) {
+        peak = value
+      }
+      previous = smoothed
+    }
+
+    return {
+      values,
+      peak
+    }
   }
 
   destroy(): void {
@@ -311,7 +527,7 @@ export class WebAudioPlayer {
       this.outputAudioElement.autoplay = true
       this.outputAudioElement.muted = false
       this.outputAudioElement.volume = 1
-      this.outputAudioElement.playsInline = true
+      ;(this.outputAudioElement as any).playsInline = true
     }
     const element = this.outputAudioElement
     const stream = this.mediaStreamDestination.stream
