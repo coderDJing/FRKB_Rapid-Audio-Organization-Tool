@@ -74,6 +74,14 @@ if (runtime.setting.audioOutputDeviceId === undefined) {
   runtime.setting.audioOutputDeviceId = AUDIO_FOLLOW_SYSTEM_ID
 }
 
+if ((runtime as any).setting.waveformStyle === undefined) {
+  ;(runtime as any).setting.waveformStyle = 'SoundCloud'
+}
+
+if ((runtime as any).setting.waveformMode === undefined) {
+  ;(runtime as any).setting.waveformMode = 'half'
+}
+
 // 将布尔设置映射为单选值（与指纹模式类似的布局与交互）
 const songListBubbleMode = computed<'overflowOnly' | 'always'>({
   get() {
@@ -511,6 +519,17 @@ const clearCloudFingerprints = async () => {
                 </option>
                 <option value="RGB">
                   {{ t('player.waveformStyleRGB') }}
+                </option>
+              </select>
+            </div>
+            <div style="margin-top: 20px">{{ t('player.waveformMode') }}：</div>
+            <div style="margin-top: 10px">
+              <select v-model="(runtime as any).setting.waveformMode" @change="setSetting">
+                <option value="half">
+                  {{ t('player.waveformModeHalf') }}
+                </option>
+                <option value="full">
+                  {{ t('player.waveformModeFull') }}
                 </option>
               </select>
             </div>
