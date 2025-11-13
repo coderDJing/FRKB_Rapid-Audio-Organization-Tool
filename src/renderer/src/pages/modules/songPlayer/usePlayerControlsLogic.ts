@@ -552,7 +552,7 @@ export function usePlayerControlsLogic({
         runtime.playingData.playingSong = nextPlayingSong
         const name = (nextPlayingSongPath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
 
-        handleLoadBlob(
+        handleLoadPCM(
           blobToLoad,
           nextPlayingSongPath,
           currentLoadRequestId.value,
