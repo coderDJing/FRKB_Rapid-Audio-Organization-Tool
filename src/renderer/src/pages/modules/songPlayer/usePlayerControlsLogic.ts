@@ -133,17 +133,17 @@ export function usePlayerControlsLogic({
         runtime.isSwitchingSong = true
         nextSong()
       } else {
-        player.seek(endTime)
+        player.seek(endTime, true)
         player.pause()
       }
       return
     }
 
-    player.skip(skipAmount)
+    player.skip(skipAmount, true)
   }
 
   const fastBackward = () => {
-    audioPlayer.value?.skip(runtime.setting.fastBackwardTime)
+    audioPlayer.value?.skip(runtime.setting.fastBackwardTime, true)
   }
 
   const nextSong = () => {

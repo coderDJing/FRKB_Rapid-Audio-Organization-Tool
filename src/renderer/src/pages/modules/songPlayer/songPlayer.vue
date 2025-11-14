@@ -120,7 +120,24 @@ onMounted(() => {
   audioPlayer.value = new WebAudioPlayer(audioContext)
   void applyAudioOutputDevice(pendingAudioOutputDeviceId)
   let previousTime = 0
-  const jumpThreshold = 0.5
+  const rangeStopTolerance = 0.05
+  let manualSeekActive = false
+  let manualSeekResetTimer: number | null = null
+
+  const clearManualSeekTimer = () => {
+    if (manualSeekResetTimer !== null) {
+      window.clearTimeout(manualSeekResetTimer)
+      manualSeekResetTimer = null
+    }
+  }
+
+  const scheduleManualSeekReset = () => {
+    clearManualSeekTimer()
+    manualSeekResetTimer = window.setTimeout(() => {
+      manualSeekActive = false
+      manualSeekResetTimer = null
+    }, 400)
+  }
 
   emitter.on('player/replay-current-song', handleReplayRequest)
 
@@ -181,23 +198,35 @@ onMounted(() => {
       if (duration > 0) {
         const endPercent = runtime.setting.endPlayPercent ?? 100
         const endTime = (duration * endPercent) / 100
-        const deltaTime = currentTime - previousTime
-        if (
-          currentTime >= endTime &&
-          previousTime < endTime &&
-          audioPlayer.value.isPlaying() &&
-          deltaTime < jumpThreshold
-        ) {
-          if (runtime.setting.autoPlayNextSong) playerActions.nextSong()
-          else audioPlayer.value.pause()
+        const effectiveEnd = Math.max(endTime - rangeStopTolerance, 0)
+        const crossedEnd =
+          currentTime >= effectiveEnd &&
+          previousTime < effectiveEnd &&
+          audioPlayer.value.isPlaying()
+        if (crossedEnd) {
+          if (manualSeekActive) {
+            manualSeekActive = false
+            clearManualSeekTimer()
+          } else if (runtime.setting.autoPlayNextSong) {
+            playerActions.nextSong()
+          } else {
+            audioPlayer.value.pause()
+          }
         }
       }
     }
     previousTime = currentTime
   })
 
-  audioPlayer.value.on('seeked', (seekTime: number) => {
-    previousTime = seekTime
+  audioPlayer.value.on('seeked', ({ time, manual }) => {
+    previousTime = time
+    if (manual) {
+      manualSeekActive = true
+      scheduleManualSeekReset()
+    } else {
+      manualSeekActive = false
+      clearManualSeekTimer()
+    }
   })
 
   audioPlayer.value.on('decode', (duration: number) => {

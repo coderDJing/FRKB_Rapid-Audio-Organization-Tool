@@ -233,7 +233,7 @@ export function useWaveform(params: {
     if (!audioPlayer.value) return
     const duration = audioPlayer.value.getDuration()
     if (duration > 0 && Number.isFinite(duration)) {
-      audioPlayer.value.seek(duration * percent)
+      audioPlayer.value.seek(duration * percent, true)
     }
   }
 

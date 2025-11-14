@@ -17,12 +17,17 @@ export type RGBWaveformData = {
   globalPeak: number
 }
 
+export type SeekedEventPayload = {
+  time: number
+  manual: boolean
+}
+
 export type WebAudioPlayerEvents = {
   ready: undefined
   play: undefined
   pause: undefined
   finish: undefined
-  seeked: number
+  seeked: SeekedEventPayload
   timeupdate: number
   decode: number
   error: any
@@ -229,11 +234,14 @@ export class WebAudioPlayer {
     return this.volume
   }
 
-  seek(time: number): void {
+  seek(time: number, manual = false): void {
     const wasPlaying = this.isPlayingFlag
     this.pause()
     this.pausedTime = Math.max(0, Math.min(time, this.getDuration()))
-    this.emit('seeked', this.pausedTime)
+    this.emit('seeked', {
+      time: this.pausedTime,
+      manual
+    })
     if (wasPlaying) {
       this.play()
     } else {
@@ -241,10 +249,10 @@ export class WebAudioPlayer {
     }
   }
 
-  skip(seconds: number): void {
+  skip(seconds: number, manual = false): void {
     const currentTime = this.getCurrentTime()
     const newTime = Math.max(0, Math.min(currentTime + seconds, this.getDuration()))
-    this.seek(newTime)
+    this.seek(newTime, manual)
   }
 
   getCurrentTime(): number {
