@@ -1,5 +1,4 @@
 import { ref, onUnmounted } from 'vue'
-import type WaveSurfer from 'wavesurfer.js'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'

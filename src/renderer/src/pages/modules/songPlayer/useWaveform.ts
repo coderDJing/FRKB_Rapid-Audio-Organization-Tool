@@ -67,6 +67,8 @@ export function useWaveform(params: {
       return
     }
 
+    if (!baseCtx || !progressCtx) throw new Error('canvas context is null')
+
     const pixelRatio = window.devicePixelRatio || 1
     resizeCanvas(baseCanvas, baseCtx, width, height, pixelRatio)
     resizeCanvas(progressCanvas, progressCtx, width, height, pixelRatio)
