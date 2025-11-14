@@ -57,16 +57,15 @@ const {
 
 // 预加载与 BPM 预计算
 const {
-  isPreloading,
-  isPreloadReady,
-  preloadedBlob,
-  preloadedSongFilePath,
-  preloadedBpm,
   currentPreloadRequestId,
-  cancelPreloadTimer,
-  clearReadyPreloadState,
   schedulePreloadAfterPlay,
-  preloadNextSong
+  cancelPreloadTimer,
+  refreshPreloadWindow,
+  clearNextCaches,
+  clearAllCaches,
+  takePreloadedData,
+  rememberPlayback,
+  forgetCachesForFile
 } = usePreloadNextSong({ runtime, audioContext })
 
 // 加载/播放与错误处理
@@ -84,7 +83,8 @@ const {
   audioContext,
   bpm,
   waveformShow,
-  setCoverByIPC
+  setCoverByIPC,
+  onSongBuffered: rememberPlayback
 })
 
 // 内部切歌标志
@@ -278,13 +278,15 @@ const playerActions = usePlayerControlsLogic({
   handleLoadPCM,
   cancelPreloadTimer,
   currentLoadRequestId,
-  preloadedBlob,
-  preloadedSongFilePath,
-  preloadedBpm,
-  isPreloading,
-  isPreloadReady,
   ignoreNextEmptyError,
-  clearReadyPreloadState
+  preloadApi: {
+    takePreloadedData,
+    refreshPreloadWindow,
+    clearNextCaches,
+    clearAllCaches,
+    rememberPlayback,
+    forgetCachesForFile
+  }
 })
 
 const selectSongListDialogConfirm = async (item: string) => {
@@ -381,7 +383,7 @@ watch(
 
     if (newSong === null) {
       cancelPreloadTimer()
-      clearReadyPreloadState()
+      clearAllCaches()
       if (audioPlayer.value) {
         ignoreNextEmptyError.value = true
         audioPlayer.value.empty()
@@ -392,17 +394,21 @@ watch(
     } else if (newSong?.filePath !== oldSong?.filePath) {
       const newPath = newSong.filePath
       setCoverByIPC(newPath, 'song-changed')
-      if (isPreloadReady.value && newPath === preloadedSongFilePath.value && preloadedBlob.value) {
-        const blobToLoad = preloadedBlob.value
-        const bpmValueToUse = preloadedBpm.value
-        clearReadyPreloadState()
+      const preloadHit = takePreloadedData(newPath)
+      if (preloadHit) {
         currentLoadRequestId.value++
-        handleLoadPCM(blobToLoad, newPath, currentLoadRequestId.value, bpmValueToUse)
+        handleLoadPCM(
+          preloadHit.payload,
+          newPath,
+          currentLoadRequestId.value,
+          preloadHit.bpm ?? undefined
+        )
       } else {
         cancelPreloadTimer()
-        clearReadyPreloadState()
+        clearNextCaches()
         requestLoadSong(newPath)
       }
+      refreshPreloadWindow()
     } else if (newSong && oldSong && newSong !== oldSong && newSong.filePath === oldSong.filePath) {
       setCoverByIPC(newSong.filePath, 'metadata-updated-watch')
     }

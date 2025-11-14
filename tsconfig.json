@@ -4,6 +4,7 @@
     "esModuleInterop": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
+    "skipLibCheck": true,
     "types": [
       "electron-vite/node"
     ],

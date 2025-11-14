@@ -6,6 +6,13 @@ import emitter from '@renderer/utils/mitt'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { WebAudioPlayer } from './webAudioPlayer'
 
+type PcmPayload = {
+  pcmData: Float32Array
+  sampleRate: number
+  channels: number
+  totalFrames: number
+}
+
 export function useSongLoader(params: {
   runtime: ReturnType<typeof useRuntimeStore>
   audioPlayer: ReturnType<typeof shallowRef<WebAudioPlayer | null>>
@@ -13,8 +20,10 @@ export function useSongLoader(params: {
   bpm: { value: number | string }
   waveformShow: { value: boolean }
   setCoverByIPC: (filePath: string) => void
+  onSongBuffered?: (filePath: string, payload: PcmPayload, bpm: number | string | null) => void
 }) {
-  const { runtime, audioPlayer, audioContext, bpm, waveformShow, setCoverByIPC } = params
+  const { runtime, audioPlayer, audioContext, bpm, waveformShow, setCoverByIPC, onSongBuffered } =
+    params
 
   const currentLoadRequestId = ref(0)
   const isLoadingBlob = ref(false)
@@ -89,7 +98,7 @@ export function useSongLoader(params: {
   }
 
   const handleLoadPCM = async (
-    pcmData: { pcmData: Float32Array; sampleRate: number; channels: number; totalFrames: number },
+    pcmData: PcmPayload,
     filePath: string,
     requestId: number,
     preloadedBpmValue?: number | string | null
@@ -123,6 +132,8 @@ export function useSongLoader(params: {
         return
       }
 
+      onSongBuffered?.(filePath, pcmData, preloadedBpmValue ?? null)
+
       // 计算 BPM（如果未预加载）
       if (!bpmValueAssigned) {
         try {
@@ -151,7 +162,9 @@ export function useSongLoader(params: {
                 requestId === currentLoadRequestId.value &&
                 runtime.playingData.playingSong?.filePath === filePath
               ) {
-                bpm.value = topCandidates[0]?.tempo ?? 'N/A'
+                const analyzedBpm = topCandidates[0]?.tempo ?? 'N/A'
+                bpm.value = analyzedBpm
+                onSongBuffered?.(filePath, pcmData, analyzedBpm)
               }
             })
           }
@@ -161,6 +174,7 @@ export function useSongLoader(params: {
             runtime.playingData.playingSong?.filePath === filePath
           ) {
             bpm.value = 'N/A'
+            onSongBuffered?.(filePath, pcmData, 'N/A')
           }
         }
       }

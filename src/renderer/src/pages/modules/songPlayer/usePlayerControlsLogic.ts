@@ -9,6 +9,20 @@ import { t } from '@renderer/utils/translate'
 import emitter from '@renderer/utils/mitt'
 import { WebAudioPlayer } from './webAudioPlayer'
 
+type PcmPayload = {
+  pcmData: Float32Array
+  sampleRate: number
+  channels: number
+  totalFrames: number
+}
+
+type PreloadHit = {
+  source: 'next' | 'previous'
+  filePath: string
+  payload: PcmPayload
+  bpm: number | string | null
+} | null
+
 // 定义 usePlayerControls 的参数类型
 interface UsePlayerControlsOptions {
   audioPlayer: Ref<WebAudioPlayer | null>
@@ -20,25 +34,22 @@ interface UsePlayerControlsOptions {
   isInternalSongChange: Ref<boolean>
   requestLoadSong: (filePath: string) => void
   handleLoadPCM: (
-    pcmData: { pcmData: Float32Array; sampleRate: number; channels: number; totalFrames: number },
+    pcmData: PcmPayload,
     filePath: string,
     requestId: number,
     preloadedBpmValue?: number | string | null
   ) => Promise<void>
   cancelPreloadTimer: (reason?: string) => void
   currentLoadRequestId: Ref<number>
-  preloadedBlob: Ref<{
-    pcmData: Float32Array
-    sampleRate: number
-    channels: number
-    totalFrames: number
-  } | null>
-  preloadedSongFilePath: Ref<string | null>
-  preloadedBpm: Ref<number | string | null>
-  isPreloading: Ref<boolean>
-  isPreloadReady: Ref<boolean>
   ignoreNextEmptyError: Ref<boolean>
-  clearReadyPreloadState: () => void
+  preloadApi: {
+    takePreloadedData: (filePath: string) => PreloadHit
+    refreshPreloadWindow: () => void
+    clearNextCaches: () => void
+    clearAllCaches: () => void
+    rememberPlayback: (filePath: string, payload: PcmPayload, bpm: number | string | null) => void
+    forgetCachesForFile: (filePath: string) => void
+  }
 }
 
 export function usePlayerControlsLogic({
@@ -53,13 +64,8 @@ export function usePlayerControlsLogic({
   handleLoadPCM,
   cancelPreloadTimer,
   currentLoadRequestId,
-  preloadedBlob,
-  preloadedSongFilePath,
-  preloadedBpm,
-  isPreloading,
-  isPreloadReady,
   ignoreNextEmptyError,
-  clearReadyPreloadState
+  preloadApi
 }: UsePlayerControlsOptions) {
   // 调试日志已清理
   const isFileOperationInProgress = ref(false)
@@ -163,8 +169,6 @@ export function usePlayerControlsLogic({
     let nextSongData = runtime.playingData.playingSongListData[nextIndex]
     if (!nextSongData) return
     const nextSongFilePath = nextSongData.filePath
-    const name = (nextSongFilePath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
-
     // 每次切换歌曲时，强制清空播放器实例
     if (audioPlayer.value) {
       if (audioPlayer.value.isPlaying()) {
@@ -178,39 +182,19 @@ export function usePlayerControlsLogic({
     isInternalSongChange.value = true // 标记内部切换
     runtime.playingData.playingSong = nextSongData
 
-    // 检查预加载是否命中
-    if (
-      preloadedSongFilePath.value === nextSongFilePath &&
-      preloadedBlob.value &&
-      isPreloadReady.value
-    ) {
-      // 命中预加载
-      const blobToLoad = preloadedBlob.value
-      const bpmValueToUse = preloadedBpm.value
-
-      // 清理预加载状态
-      preloadedBlob.value = null
-      preloadedSongFilePath.value = null
-      isPreloading.value = false
-      isPreloadReady.value = false
-
-      // 每次获取新ID，确保请求是最新的
+    const preloadHit = preloadApi.takePreloadedData(nextSongFilePath)
+    if (preloadHit) {
       currentLoadRequestId.value++
-      // 加载 PCM 数据，并传递预加载的 BPM
-      handleLoadPCM(blobToLoad, nextSongFilePath, currentLoadRequestId.value, bpmValueToUse)
+      handleLoadPCM(
+        preloadHit.payload,
+        nextSongFilePath,
+        currentLoadRequestId.value,
+        preloadHit.bpm ?? undefined
+      )
     } else {
-      // 未命中预加载或预加载未就绪
-
-      // 清理预加载状态
-      preloadedBlob.value = null
-      preloadedSongFilePath.value = null
-      isPreloading.value = false
-      isPreloadReady.value = false
-
-      // 请求加载新歌曲
-
       requestLoadSong(nextSongFilePath)
     }
+    preloadApi.refreshPreloadWindow()
   }
 
   const previousSong = () => {
@@ -237,8 +221,6 @@ export function usePlayerControlsLogic({
     if (!prevCandidate) return
 
     const prevSongFilePath = prevCandidate.filePath
-    const name = (prevSongFilePath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
-
     // 每次切换歌曲时，强制清空播放器实例
     if (audioPlayer.value) {
       if (audioPlayer.value.isPlaying()) {
@@ -247,18 +229,23 @@ export function usePlayerControlsLogic({
       ignoreNextEmptyError.value = true
       audioPlayer.value.empty()
     }
-
-    // 切换到上一首时，总是重新加载，不使用预加载
-    preloadedBlob.value = null
-    preloadedSongFilePath.value = null
-    isPreloading.value = false
-    isPreloadReady.value = false
     // 设置内部切换并请求加载
     isInternalSongChange.value = true // 标记内部切换
     runtime.playingData.playingSong = prevCandidate
 
-    requestLoadSong(prevSongFilePath)
-    clearReadyPreloadState()
+    const preloadHit = preloadApi.takePreloadedData(prevSongFilePath)
+    if (preloadHit) {
+      currentLoadRequestId.value++
+      handleLoadPCM(
+        preloadHit.payload,
+        prevSongFilePath,
+        currentLoadRequestId.value,
+        preloadHit.bpm ?? undefined
+      )
+    } else {
+      requestLoadSong(prevSongFilePath)
+    }
+    preloadApi.refreshPreloadWindow()
   }
 
   const delSong = async () => {
@@ -276,6 +263,7 @@ export function usePlayerControlsLogic({
         cancelPreloadTimer('delSong start')
 
         const currentSongListUUID = runtime.playingData.playingSongListUUID
+        preloadApi.forgetCachesForFile(filePathToDelete)
         const currentList = runtime.playingData.playingSongListData
         const currentIndex = currentList.findIndex((item) => item.filePath === filePathToDelete)
 
@@ -337,55 +325,36 @@ export function usePlayerControlsLogic({
           nextPlayingSongPath = nextPlayingSong?.filePath ?? null
         }
 
-        // 检查预加载是否命中
-        if (
-          nextPlayingSongPath &&
-          isPreloadReady.value &&
-          preloadedSongFilePath.value === nextPlayingSongPath &&
-          preloadedBlob.value
-        ) {
-          // 命中预加载
-          const blobToLoad = preloadedBlob.value
-          const bpmValueToUse = preloadedBpm.value
+        let preloadHit: PreloadHit = null
+        if (nextPlayingSongPath) {
+          preloadHit = preloadApi.takePreloadedData(nextPlayingSongPath)
+        }
+
+        if (nextPlayingSongPath && preloadHit) {
           isInternalSongChange.value = true // 标记内部切换
           runtime.playingData.playingSong = nextPlayingSong // 更新当前播放歌曲
-          const name = (nextPlayingSongPath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
 
-          // 先加载 PCM 数据，加载完成后清理预加载状态
           handleLoadPCM(
-            blobToLoad,
+            preloadHit.payload,
             nextPlayingSongPath,
             currentLoadRequestId.value,
-            bpmValueToUse
+            preloadHit.bpm ?? undefined
           ).finally(() => {
-            // 清理预加载状态 (放在 finally 确保执行)
-            preloadedBlob.value = null
-            preloadedSongFilePath.value = null
-            isPreloading.value = false // 确保 isPreloading 也重置
-            isPreloadReady.value = false
+            preloadApi.refreshPreloadWindow()
           })
+        } else if (nextPlayingSong) {
+          // 列表未空，但未命中预加载
+          isInternalSongChange.value = true
+          runtime.playingData.playingSong = nextPlayingSong
+          requestLoadSong(nextPlayingSong.filePath)
+          preloadApi.refreshPreloadWindow()
         } else {
-          // 未命中预加载 或 列表已空
-          // 清理预加载状态
-          preloadedBlob.value = null
-          preloadedSongFilePath.value = null
-          isPreloading.value = false
-          isPreloadReady.value = false
-
-          if (nextPlayingSong) {
-            // 列表未空，但未命中预加载，请求加载
-            isInternalSongChange.value = true
-            runtime.playingData.playingSong = nextPlayingSong
-            const name = (nextPlayingSong.filePath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
-
-            requestLoadSong(nextPlayingSong.filePath)
-          } else {
-            // 列表已空
-            isInternalSongChange.value = true
-            runtime.playingData.playingSong = null
-            runtime.playingData.playingSongListUUID = '' // 清空播放列表 UUID
-            waveformShow.value = false // 确保波形图隐藏
-          }
+          // 列表已空
+          isInternalSongChange.value = true
+          runtime.playingData.playingSong = null
+          runtime.playingData.playingSongListUUID = '' // 清空播放列表 UUID
+          waveformShow.value = false // 确保波形图隐藏
+          preloadApi.clearAllCaches()
         }
 
         // 执行删除操作（移动到回收站或彻底删除）
@@ -505,9 +474,9 @@ export function usePlayerControlsLogic({
         const nextIndex = Math.min(currentIndex, currentList.length - 1)
         nextPlayingSong = currentList[nextIndex]
         nextPlayingSongPath = nextPlayingSong?.filePath ?? null
-      } else {
-        // 列表为空
       }
+
+      preloadApi.forgetCachesForFile(filePathToMove)
 
       // 先执行移动操作，因为这可能会影响状态或触发其他事件
       await window.electron.ipcRenderer.invoke('moveSongsToDir', [filePathToMove], targetDirPath)
@@ -539,54 +508,34 @@ export function usePlayerControlsLogic({
       await nextTick() // 等待可能的其他更新
 
       // 现在检查预加载并确定如何加载下一首
-      if (
-        nextPlayingSongPath &&
-        isPreloadReady.value &&
-        preloadedSongFilePath.value === nextPlayingSongPath &&
-        preloadedBlob.value
-      ) {
-        // 命中预加载
-        const blobToLoad = preloadedBlob.value
-        const bpmValueToUse = preloadedBpm.value
+      let preloadHit: PreloadHit = null
+      if (nextPlayingSongPath) {
+        preloadHit = preloadApi.takePreloadedData(nextPlayingSongPath)
+      }
+
+      if (nextPlayingSongPath && preloadHit) {
         isInternalSongChange.value = true
         runtime.playingData.playingSong = nextPlayingSong
-        const name = (nextPlayingSongPath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
-
-        handleLoadPCM(
-          blobToLoad,
+        await handleLoadPCM(
+          preloadHit.payload,
           nextPlayingSongPath,
           currentLoadRequestId.value,
-          bpmValueToUse
-        ).finally(() => {
-          preloadedBlob.value = null
-          preloadedSongFilePath.value = null
-          isPreloading.value = false
-          isPreloadReady.value = false
-          isFileOperationInProgress.value = false // 操作完成
-        })
+          preloadHit.bpm ?? undefined
+        )
+        preloadApi.refreshPreloadWindow()
+      } else if (nextPlayingSong) {
+        isInternalSongChange.value = true
+        runtime.playingData.playingSong = nextPlayingSong
+        requestLoadSong(nextPlayingSong.filePath)
+        preloadApi.refreshPreloadWindow()
       } else {
-        // 未命中预加载 或 列表已空
-        preloadedBlob.value = null
-        preloadedSongFilePath.value = null
-        isPreloading.value = false
-        isPreloadReady.value = false
-
-        if (nextPlayingSong) {
-          // 列表未空，但未命中预加载，请求加载
-          isInternalSongChange.value = true
-          runtime.playingData.playingSong = nextPlayingSong
-          const name = (nextPlayingSong.filePath?.match(/[^\\/]+$/) || [])[0] || 'unknown'
-
-          requestLoadSong(nextPlayingSong.filePath)
-          isFileOperationInProgress.value = false // 操作完成
-        } else {
-          // 列表已空
-          isInternalSongChange.value = true
-          runtime.playingData.playingSong = null
-          runtime.playingData.playingSongListUUID = '' // 清空播放列表 UUID
-          isFileOperationInProgress.value = false // 操作完成
-        }
+        isInternalSongChange.value = true
+        runtime.playingData.playingSong = null
+        runtime.playingData.playingSongListUUID = '' // 清空播放列表 UUID
+        preloadApi.clearAllCaches()
       }
+
+      isFileOperationInProgress.value = false
     } catch (error) {
       console.error(
         `[usePlayerControlsLogic] handleMoveSong: 移动歌曲过程中发生错误 (${filePathToMove}):`,
@@ -635,20 +584,19 @@ export function usePlayerControlsLogic({
             waveformShow.value = false
             bpm.value = ''
 
-            // 清理预加载
-            preloadedBlob.value = null
-            preloadedSongFilePath.value = null
-            isPreloading.value = false
-            isPreloadReady.value = false
-
             // 从列表中删除
+            preloadApi.forgetCachesForFile(filePath)
             currentList.splice(currentIndex, 1)
 
             // 确定下一首歌
             let nextPlayingSong: ISongInfo | null = null
+            let preloadHit: PreloadHit = null
             if (currentList.length > 0) {
               const nextIndex = Math.min(currentIndex, currentList.length - 1)
               nextPlayingSong = currentList[nextIndex]
+              if (nextPlayingSong?.filePath) {
+                preloadHit = preloadApi.takePreloadedData(nextPlayingSong.filePath)
+              }
             }
 
             // 更新播放状态
@@ -656,14 +604,21 @@ export function usePlayerControlsLogic({
             runtime.playingData.playingSong = nextPlayingSong
 
             // 加载下一首歌或清空列表
-            if (nextPlayingSong) {
+            if (nextPlayingSong && preloadHit) {
+              await handleLoadPCM(
+                preloadHit.payload,
+                nextPlayingSong.filePath,
+                currentLoadRequestId.value,
+                preloadHit.bpm ?? undefined
+              )
+              preloadApi.refreshPreloadWindow()
+            } else if (nextPlayingSong) {
               requestLoadSong(nextPlayingSong.filePath)
+              preloadApi.refreshPreloadWindow()
             } else {
               runtime.playingData.playingSongListUUID = ''
+              preloadApi.clearAllCaches()
             }
-
-            // 清理预加载
-            clearReadyPreloadState()
           }
         }
       } catch (error) {

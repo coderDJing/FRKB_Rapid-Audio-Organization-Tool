@@ -329,11 +329,15 @@ if (fs.pathExistsSync(url.settingConfigFileUrl)) {
   loadedSettings = defaultSettings // 使用默认设置继续
 }
 
-// 合并默认设置与加载的设置，确保所有键都存在
-// 加载的设置会覆盖默认值（如果存在）
-const finalSettings: ISettingConfig = {
+// 合并默认设置与加载的设置，确保所有键都存在，并对关键字段做类型收敛
+const mergedSettings = {
   ...defaultSettings,
   ...(loadedSettings as Partial<ISettingConfig>)
+}
+
+const finalSettings: ISettingConfig = {
+  ...mergedSettings,
+  waveformMode: mergedSettings.waveformMode === 'full' ? 'full' : 'half'
 }
 
 // 一次性迁移：默认勾选所有格式（升级老版本时补齐），并写入迁移标记
