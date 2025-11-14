@@ -1,9 +1,18 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
+import { i18n } from '@renderer/i18n'
 import confirm from '@renderer/components/confirmDialog'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate'
 const runtime = useRuntimeStore()
+
+const currentLocale = computed(() => i18n.global.locale.value)
+const totalDurationLabel = computed(() => t('bottomInfo.totalDurationLabel'))
+
+function formatDurationUnit(unit: 'day' | 'hour' | 'minute' | 'second', count: number): string {
+  const pluralKey = count === 1 ? 'one' : 'other'
+  return t(`bottomInfo.durationUnits.${unit}.${pluralKey}` as any, { count })
+}
 
 type Task = {
   id: string // group id
@@ -18,6 +27,37 @@ type Task = {
 }
 const tasks = ref<Task[]>([])
 // 组件内部通过 CSS 控制显隐（empty => display:none），无需向上层发事件
+
+const playlistTotalDaysHoursSeconds = computed(() => {
+  const list = (runtime.songsArea?.songInfoArr || []) as Array<{ duration?: string }>
+  let total = 0
+  for (const s of list) {
+    const mmss = String(s?.duration || '')
+    const parts = mmss.split(':')
+    if (parts.length === 2) {
+      const m = Number(parts[0])
+      const sec = Number(parts[1])
+      if (!Number.isNaN(m) && !Number.isNaN(sec)) {
+        total += m * 60 + sec
+      }
+    }
+  }
+  const days = Math.floor(total / 86400)
+  const afterDays = total % 86400
+  const hours = Math.floor(afterDays / 3600)
+  const afterHours = afterDays % 3600
+  const minutes = Math.floor(afterHours / 60)
+  const seconds = afterHours % 60
+  const joiner = currentLocale.value === 'zh-CN' ? '' : ' '
+  const segments: string[] = []
+  if (days > 0) {
+    segments.push(formatDurationUnit('day', days))
+  }
+  segments.push(formatDurationUnit('hour', hours))
+  segments.push(formatDurationUnit('minute', minutes))
+  segments.push(formatDurationUnit('second', seconds))
+  return segments.join(joiner)
+})
 
 function getGroupId(titleKey: string): string {
   if (typeof titleKey !== 'string') return String(titleKey)
@@ -208,6 +248,16 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
           />
         </div>
       </div>
+    </div>
+    <div
+      v-if="
+        tasks.length === 0 &&
+        runtime.songsArea.songListUUID &&
+        runtime.songsArea.songInfoArr.length > 0
+      "
+      class="total-row"
+    >
+      <div class="total-text">{{ totalDurationLabel }}{{ playlistTotalDaysHoursSeconds }}</div>
     </div>
   </div>
 </template>
@@ -445,5 +495,17 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   height: 20px;
   line-height: 20px;
   padding: 0 5px;
+}
+.total-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 8px;
+}
+.total-text {
+  font-size: 11px;
+  color: var(--text-weak);
+  white-space: nowrap;
 }
 </style>
