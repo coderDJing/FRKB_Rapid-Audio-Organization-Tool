@@ -17,6 +17,10 @@ export type RGBWaveformData = {
   globalPeak: number
 }
 
+type LoadPcmOptions = {
+  filePath?: string | null
+}
+
 export type SeekedEventPayload = {
   time: number
   manual: boolean
@@ -68,6 +72,11 @@ export class WebAudioPlayer {
   private outputAudioElement: HTMLAudioElement | null = null
   private currentOutputDeviceId: string = ''
   private rgbWaveformPromise: Promise<void> | null = null
+  private activeFilePath: string | null = null
+  private activeBufferBytes = 0
+  private waveformFilePath: string | null = null
+  private waveformBytes = 0
+  private waveformTaskFile: string | null = null
 
   constructor(audioContext: AudioContext) {
     this.audioContext = audioContext
@@ -119,15 +128,21 @@ export class WebAudioPlayer {
     }
   }
 
-  loadPCM(pcmData: Float32Array, sampleRate: number, channels: number): void {
+  loadPCM(
+    pcmData: Float32Array,
+    sampleRate: number,
+    channels: number,
+    options?: LoadPcmOptions
+  ): void {
     this.stopInternal()
+    this.releaseWaveformData()
+    this.releaseActiveBuffer('loadPCM:replace')
     this.audioBuffer = null
-    this.rgbWaveformData = null
     this.rgbWaveformPromise = null
 
     try {
       // 创建 AudioBuffer
-      const frameCount = pcmData.length / channels
+      const frameCount = Math.floor(pcmData.length / channels)
       this.audioBuffer = this.audioContext.createBuffer(channels, frameCount, sampleRate)
 
       // 将交错 PCM 数据分离到各个声道
@@ -139,8 +154,11 @@ export class WebAudioPlayer {
       }
 
       const duration = this.audioBuffer.duration
+      const bufferBytes = frameCount * channels * 4
+      const filePath = options?.filePath ?? null
+      this.activeFilePath = filePath
+      this.activeBufferBytes = bufferBytes
       this.emit('decode', duration)
-      void this.ensureRgbWaveform(true)
       this.emit('ready')
     } catch (error) {
       this.emit('error', error)
@@ -278,10 +296,11 @@ export class WebAudioPlayer {
 
   empty(): void {
     this.stopInternal()
+    this.releaseActiveBuffer('empty')
     this.audioBuffer = null
     this.pausedTime = 0
     this.startTime = 0
-    this.rgbWaveformData = null
+    this.releaseWaveformData()
     this.rgbWaveformPromise = null
   }
 
@@ -297,42 +316,91 @@ export class WebAudioPlayer {
   }
 
   public ensureRgbWaveform(force = false): Promise<void> {
-    if (!this.audioBuffer) {
+    if (!this.audioBuffer || !this.activeFilePath) {
       return Promise.resolve()
     }
     if (!force && this.rgbWaveformData) {
       return Promise.resolve()
+    }
+    if (this.rgbWaveformPromise) {
+      if (this.waveformTaskFile === this.activeFilePath) {
+        return this.rgbWaveformPromise
+      }
+      if (!force) {
+        return this.rgbWaveformPromise
+      }
     }
     if (!force && this.rgbWaveformPromise) {
       return this.rgbWaveformPromise
     }
 
     const buffer = this.audioBuffer
+    const filePath = this.activeFilePath
     const promise = (async () => {
       try {
-        const data = await this.generateRgbWaveform(buffer)
-        if (this.audioBuffer !== buffer) {
+        const data = await this.generateRgbWaveform(buffer, filePath)
+        if (this.audioBuffer !== buffer || this.activeFilePath !== filePath) {
           return
         }
-        this.rgbWaveformData = data
         if (data) {
+          this.rgbWaveformData = data
+          if (filePath) {
+            const waveformBytes = this.calculateWaveformBytes(data)
+            this.waveformFilePath = filePath
+            this.waveformBytes = waveformBytes
+          }
           this.emit('rgbwaveformready')
         }
       } catch (error) {
         console.warn('[WebAudioPlayer] 生成 RGB 波形失败', error)
-        this.rgbWaveformData = null
+        this.releaseWaveformData()
       }
     })()
 
+    this.waveformTaskFile = this.activeFilePath
     this.rgbWaveformPromise = promise
     return promise.finally(() => {
       if (this.rgbWaveformPromise === promise) {
         this.rgbWaveformPromise = null
+        this.waveformTaskFile = null
       }
     })
   }
 
-  private async generateRgbWaveform(buffer: AudioBuffer): Promise<RGBWaveformData | null> {
+  private releaseWaveformData(): void {
+    if (this.waveformFilePath) {
+      this.waveformFilePath = null
+      this.waveformBytes = 0
+    }
+    this.rgbWaveformData = null
+  }
+
+  private releaseActiveBuffer(reason: string): void {
+    void reason
+    if (!this.activeFilePath) {
+      this.activeBufferBytes = 0
+      return
+    }
+    this.activeFilePath = null
+    this.activeBufferBytes = 0
+  }
+
+  private calculateWaveformBytes(data: RGBWaveformData): number {
+    const bands: RGBWaveformBandKey[] = ['low', 'mid', 'high']
+    let total = 0
+    bands.forEach((band) => {
+      const values = data.bands[band]?.values
+      if (values) {
+        total += values.length * 4
+      }
+    })
+    return total
+  }
+
+  private async generateRgbWaveform(
+    buffer: AudioBuffer,
+    filePath: string | null
+  ): Promise<RGBWaveformData | null> {
     if (!buffer.length) {
       return null
     }
@@ -348,9 +416,9 @@ export class WebAudioPlayer {
 
     const step = Math.max(1, Math.floor(buffer.sampleRate / RGB_WAVEFORM_POINTS_PER_SECOND))
     const [low, mid, high] = await Promise.all([
-      this.renderBandEnvelope(buffer, 'low', step, OfflineCtor),
-      this.renderBandEnvelope(buffer, 'mid', step, OfflineCtor),
-      this.renderBandEnvelope(buffer, 'high', step, OfflineCtor)
+      this.renderBandEnvelope(buffer, 'low', step, OfflineCtor, filePath),
+      this.renderBandEnvelope(buffer, 'mid', step, OfflineCtor, filePath),
+      this.renderBandEnvelope(buffer, 'high', step, OfflineCtor, filePath)
     ])
 
     if (!low || !mid || !high) {
@@ -376,7 +444,8 @@ export class WebAudioPlayer {
     buffer: AudioBuffer,
     band: RGBWaveformBandKey,
     step: number,
-    OfflineCtor: OfflineContextCtor
+    OfflineCtor: OfflineContextCtor,
+    filePath: string | null
   ): Promise<RGBWaveformBand | null> {
     try {
       const offlineCtx = new OfflineCtor(1, buffer.length, buffer.sampleRate)
@@ -394,6 +463,7 @@ export class WebAudioPlayer {
     } catch (error) {
       console.warn(`[WebAudioPlayer] 渲染 ${band} 频段波形失败`, error)
       return null
+    } finally {
     }
   }
 

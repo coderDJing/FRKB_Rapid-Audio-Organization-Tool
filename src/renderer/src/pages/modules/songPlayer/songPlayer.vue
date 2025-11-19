@@ -31,7 +31,7 @@ const waveform = useTemplateRef<HTMLDivElement>('waveform')
 const playerControlsRef = useTemplateRef('playerControlsRef')
 
 // 预加载与 BPM 预计算
-const audioContext = new AudioContext()
+const audioContextRef = shallowRef<AudioContext | null>(new AudioContext())
 const audioPlayer = shallowRef<WebAudioPlayer | null>(null)
 const AUDIO_FOLLOW_SYSTEM_ID = ''
 let pendingAudioOutputDeviceId = runtime.setting.audioOutputDeviceId || AUDIO_FOLLOW_SYSTEM_ID
@@ -44,6 +44,164 @@ const updateParentWaveformWidth = () => {
   } else {
     waveformContainerWidth.value = 0
   }
+}
+
+let previousTime = 0
+const rangeStopTolerance = 0.05
+let manualSeekActive = false
+let manualSeekResetTimer: number | null = null
+let teardownPlayerEvents: (() => void) | null = null
+
+const clearManualSeekTimer = () => {
+  if (manualSeekResetTimer !== null) {
+    window.clearTimeout(manualSeekResetTimer)
+    manualSeekResetTimer = null
+  }
+}
+
+const scheduleManualSeekReset = () => {
+  clearManualSeekTimer()
+  manualSeekResetTimer = window.setTimeout(() => {
+    manualSeekActive = false
+    manualSeekResetTimer = null
+  }, 400)
+}
+
+const bindPlayerEvents = (player: WebAudioPlayer) => {
+  const disposers: Array<() => void> = []
+
+  const onPlay = () => {
+    playerControlsRef.value?.setPlayingValue?.(true)
+    cancelPreloadTimer()
+    schedulePreloadAfterPlay()
+    runtime.playerReady = true
+    runtime.isSwitchingSong = false
+    previousTime = player.getCurrentTime()
+  }
+  player.on('play', onPlay)
+  disposers.push(() => player.off('play', onPlay))
+
+  const onPause = () => {
+    cancelPreloadTimer()
+    playerControlsRef.value?.setPlayingValue?.(false)
+  }
+  player.on('pause', onPause)
+  disposers.push(() => player.off('pause', onPause))
+
+  const onFinish = () => {
+    cancelPreloadTimer()
+    if (runtime.setting.autoPlayNextSong) {
+      playerActions.nextSong()
+    }
+  }
+  player.on('finish', onFinish)
+  disposers.push(() => player.off('finish', onFinish))
+
+  const onTimeUpdate = (currentTime: number) => {
+    const timeEl = document.querySelector('#time')
+    const durationEl = document.querySelector('#duration')
+    if (!timeEl || !durationEl) return
+
+    const formatTime = (seconds: number) => {
+      const minutes = Math.floor(seconds / 60)
+      const secondsRemainder = Math.round(seconds) % 60
+      const paddedSeconds = `0${secondsRemainder}`.slice(-2)
+      return `${minutes}:${paddedSeconds}`
+    }
+
+    ;(timeEl as HTMLElement).textContent = formatTime(currentTime)
+
+    if (runtime.setting.enablePlaybackRange) {
+      const duration = player.getDuration()
+      if (duration > 0) {
+        const endPercent = runtime.setting.endPlayPercent ?? 100
+        const endTime = (duration * endPercent) / 100
+        const effectiveEnd = Math.max(endTime - rangeStopTolerance, 0)
+        const crossedEnd =
+          currentTime >= effectiveEnd && previousTime < effectiveEnd && player.isPlaying()
+        if (crossedEnd) {
+          if (manualSeekActive) {
+            manualSeekActive = false
+            clearManualSeekTimer()
+          } else if (runtime.setting.autoPlayNextSong) {
+            playerActions.nextSong()
+          } else {
+            player.pause()
+          }
+        }
+      }
+    }
+    previousTime = currentTime
+  }
+  player.on('timeupdate', onTimeUpdate)
+  disposers.push(() => player.off('timeupdate', onTimeUpdate))
+
+  const onSeeked = ({ time, manual }: { time: number; manual: boolean }) => {
+    previousTime = time
+    if (manual) {
+      manualSeekActive = true
+      scheduleManualSeekReset()
+    } else {
+      manualSeekActive = false
+      clearManualSeekTimer()
+    }
+  }
+  player.on('seeked', onSeeked)
+  disposers.push(() => player.off('seeked', onSeeked))
+
+  const onDecode = (duration: number) => {
+    const durationEl = document.querySelector('#duration')
+    if (durationEl) {
+      const formatTime = (seconds: number) => {
+        const minutes = Math.floor(seconds / 60)
+        const secondsRemainder = Math.round(seconds) % 60
+        const paddedSeconds = `0${secondsRemainder}`.slice(-2)
+        return `${minutes}:${paddedSeconds}`
+      }
+      durationEl.textContent = formatTime(duration)
+      updateParentWaveformWidth()
+    }
+  }
+  player.on('decode', onDecode)
+  disposers.push(() => player.off('decode', onDecode))
+
+  const onReady = () => {
+    updateParentWaveformWidth()
+  }
+  player.on('ready', onReady)
+  disposers.push(() => player.off('ready', onReady))
+
+  const onError = async (error: any) => {
+    const currentPath = runtime.playingData.playingSong?.filePath ?? null
+    await handleSongLoadError(currentPath, false)
+  }
+  player.on('error', onError)
+  disposers.push(() => player.off('error', onError))
+
+  return () => {
+    disposers.forEach((dispose) => {
+      try {
+        dispose()
+      } catch {}
+    })
+  }
+}
+
+const initAudioPlayer = () => {
+  if (teardownPlayerEvents) {
+    teardownPlayerEvents()
+    teardownPlayerEvents = null
+  }
+  if (audioPlayer.value) {
+    audioPlayer.value.destroy()
+  }
+  if (!audioContextRef.value) {
+    audioContextRef.value = new AudioContext()
+  }
+  const player = new WebAudioPlayer(audioContextRef.value as AudioContext)
+  audioPlayer.value = player
+  teardownPlayerEvents = bindPlayerEvents(player)
+  void applyAudioOutputDevice(pendingAudioOutputDeviceId)
 }
 
 // 封面与右键保存
@@ -66,7 +224,7 @@ const {
   takePreloadedData,
   rememberPlayback,
   forgetCachesForFile
-} = usePreloadNextSong({ runtime, audioContext })
+} = usePreloadNextSong({ runtime, audioContext: audioContextRef })
 
 // 加载/播放与错误处理
 const bpm = ref<number | string>('')
@@ -80,12 +238,16 @@ const {
 } = useSongLoader({
   runtime,
   audioPlayer,
-  audioContext,
+  audioContext: audioContextRef,
   bpm,
   waveformShow,
   setCoverByIPC,
   onSongBuffered: rememberPlayback
 })
+
+const requestSongWithRecreate = (filePath: string) => {
+  requestLoadSong(filePath)
+}
 
 // 内部切歌标志
 const isInternalSongChange = ref(false)
@@ -117,31 +279,9 @@ const handleReplayRequest = () => {
 
 // 初始化 WebAudioPlayer 和波形
 onMounted(() => {
-  audioPlayer.value = new WebAudioPlayer(audioContext)
-  void applyAudioOutputDevice(pendingAudioOutputDeviceId)
-  let previousTime = 0
-  const rangeStopTolerance = 0.05
-  let manualSeekActive = false
-  let manualSeekResetTimer: number | null = null
-
-  const clearManualSeekTimer = () => {
-    if (manualSeekResetTimer !== null) {
-      window.clearTimeout(manualSeekResetTimer)
-      manualSeekResetTimer = null
-    }
-  }
-
-  const scheduleManualSeekReset = () => {
-    clearManualSeekTimer()
-    manualSeekResetTimer = window.setTimeout(() => {
-      manualSeekActive = false
-      manualSeekResetTimer = null
-    }, 400)
-  }
-
+  initAudioPlayer()
   emitter.on('player/replay-current-song', handleReplayRequest)
 
-  // 初始化波形
   useWaveform({
     waveformEl: waveform,
     audioPlayer,
@@ -157,107 +297,11 @@ onMounted(() => {
     }
   })
 
-  // 设置播放器事件监听
-  audioPlayer.value.on('play', () => {
-    playerControlsRef.value?.setPlayingValue?.(true)
-    cancelPreloadTimer()
-    schedulePreloadAfterPlay()
-    runtime.playerReady = true
-    runtime.isSwitchingSong = false
-    previousTime = audioPlayer.value?.getCurrentTime() ?? previousTime
-  })
-
-  audioPlayer.value.on('pause', () => {
-    cancelPreloadTimer()
-    playerControlsRef.value?.setPlayingValue?.(false)
-  })
-
-  audioPlayer.value.on('finish', () => {
-    cancelPreloadTimer()
-    if (runtime.setting.autoPlayNextSong) {
-      playerActions.nextSong()
-    }
-  })
-
-  audioPlayer.value.on('timeupdate', (currentTime: number) => {
-    const timeEl = document.querySelector('#time')
-    const durationEl = document.querySelector('#duration')
-    if (!timeEl || !durationEl) return
-
-    const formatTime = (seconds: number) => {
-      const minutes = Math.floor(seconds / 60)
-      const secondsRemainder = Math.round(seconds) % 60
-      const paddedSeconds = `0${secondsRemainder}`.slice(-2)
-      return `${minutes}:${paddedSeconds}`
-    }
-
-    ;(timeEl as HTMLElement).textContent = formatTime(currentTime)
-
-    if (runtime.setting.enablePlaybackRange && audioPlayer.value) {
-      const duration = audioPlayer.value.getDuration()
-      if (duration > 0) {
-        const endPercent = runtime.setting.endPlayPercent ?? 100
-        const endTime = (duration * endPercent) / 100
-        const effectiveEnd = Math.max(endTime - rangeStopTolerance, 0)
-        const crossedEnd =
-          currentTime >= effectiveEnd &&
-          previousTime < effectiveEnd &&
-          audioPlayer.value.isPlaying()
-        if (crossedEnd) {
-          if (manualSeekActive) {
-            manualSeekActive = false
-            clearManualSeekTimer()
-          } else if (runtime.setting.autoPlayNextSong) {
-            playerActions.nextSong()
-          } else {
-            audioPlayer.value.pause()
-          }
-        }
-      }
-    }
-    previousTime = currentTime
-  })
-
-  audioPlayer.value.on('seeked', ({ time, manual }) => {
-    previousTime = time
-    if (manual) {
-      manualSeekActive = true
-      scheduleManualSeekReset()
-    } else {
-      manualSeekActive = false
-      clearManualSeekTimer()
-    }
-  })
-
-  audioPlayer.value.on('decode', (duration: number) => {
-    const durationEl = document.querySelector('#duration')
-    if (durationEl) {
-      const formatTime = (seconds: number) => {
-        const minutes = Math.floor(seconds / 60)
-        const secondsRemainder = Math.round(seconds) % 60
-        const paddedSeconds = `0${secondsRemainder}`.slice(-2)
-        return `${minutes}:${paddedSeconds}`
-      }
-      durationEl.textContent = formatTime(duration)
-      updateParentWaveformWidth()
-    }
-  })
-
-  audioPlayer.value.on('ready', () => {
-    updateParentWaveformWidth()
-  })
-
-  audioPlayer.value.on('error', async (error: any) => {
-    const currentPath = runtime.playingData.playingSong?.filePath ?? null
-    await handleSongLoadError(currentPath, false)
-  })
-
-  // 应用持久化音量（默认 0.8）
   try {
     const s = localStorage.getItem('frkb_volume')
     let v = s !== null ? parseFloat(s) : NaN
     if (!(v >= 0 && v <= 1)) v = 0.8
-    audioPlayer.value.setVolume(v)
+    audioPlayer.value?.setVolume(v)
   } catch (_) {}
 
   window.addEventListener('resize', updateParentWaveformWidth)
@@ -274,7 +318,7 @@ const playerActions = usePlayerControlsLogic({
   selectSongListDialogShow,
   selectSongListDialogLibraryName,
   isInternalSongChange,
-  requestLoadSong,
+  requestLoadSong: requestSongWithRecreate,
   handleLoadPCM,
   cancelPreloadTimer,
   currentLoadRequestId,
@@ -364,9 +408,18 @@ watch(
 onUnmounted(() => {
   cancelPreloadTimer()
   runtime.playerReady = false
+  clearManualSeekTimer()
+  if (teardownPlayerEvents) {
+    teardownPlayerEvents()
+    teardownPlayerEvents = null
+  }
   if (audioPlayer.value) {
     audioPlayer.value.destroy()
     audioPlayer.value = null
+  }
+  if (audioContextRef.value) {
+    void audioContextRef.value.close().catch(() => {})
+    audioContextRef.value = null
   }
   window.removeEventListener('resize', updateParentWaveformWidth)
   emitter.off('player/replay-current-song', handleReplayRequest)
@@ -393,7 +446,7 @@ watch(
       bpm.value = ''
     } else if (newSong?.filePath !== oldSong?.filePath) {
       const newPath = newSong.filePath
-      setCoverByIPC(newPath, 'song-changed')
+      setCoverByIPC(newPath)
       const preloadHit = takePreloadedData(newPath)
       if (preloadHit) {
         currentLoadRequestId.value++
@@ -406,11 +459,11 @@ watch(
       } else {
         cancelPreloadTimer()
         clearNextCaches()
-        requestLoadSong(newPath)
+        requestSongWithRecreate(newPath)
       }
       refreshPreloadWindow()
     } else if (newSong && oldSong && newSong !== oldSong && newSong.filePath === oldSong.filePath) {
-      setCoverByIPC(newSong.filePath, 'metadata-updated-watch')
+      setCoverByIPC(newSong.filePath)
     }
   }
 )

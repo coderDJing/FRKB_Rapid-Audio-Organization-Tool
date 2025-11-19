@@ -85,9 +85,9 @@
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-vue": "^5.1.4",
     "@vue/eslint-config-prettier": "^9.0.0",
-    "electron": "^34.2.0",
-    "electron-builder": "^25.1.8",
-    "electron-vite": "^3.0.0",
+    "electron": "^38.7.0",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^4.0.1",
     "eslint": "^9.20.1",
     "eslint-plugin-vue": "^9.32.0",
     "husky": "^9.1.7",
@@ -109,6 +109,9 @@
       "electron",
       "esbuild",
       "vue-demi"
-    ]
+    ],
+    "overrides": {
+      "node-abi": "4.24.0"
+    }
   }
 }
