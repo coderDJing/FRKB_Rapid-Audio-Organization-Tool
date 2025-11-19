@@ -19,8 +19,8 @@ export interface AudioFileResult {
 }
 /** 音频解码结果 */
 export interface DecodeAudioResult {
-  /** PCM 数据（Float32Array，交错格式） */
-  pcmData: Float32Array
+  /** PCM 数据（Buffer，内部为 f32 小端序，需在 JS 侧转为 Float32Array） */
+  pcmData: Buffer
   /** 采样率 */
   sampleRate: number
   /** 声道数 */

@@ -72,8 +72,8 @@ pub struct AudioFileResult {
 /// 音频解码结果
 #[napi(object)]
 pub struct DecodeAudioResult {
-  /// PCM 数据（Float32Array，交错格式）
-  pub pcm_data: Float32Array,
+  /// PCM 数据（Buffer，内部为 f32 小端序，需在 JS 侧转为 Float32Array）
+  pub pcm_data: Buffer,
   /// 采样率
   pub sample_rate: u32,
   /// 声道数
@@ -225,7 +225,7 @@ pub fn decode_audio_file(file_path: String) -> DecodeAudioResult {
     return match decode_with_ffmpeg(path) {
       Ok(result) => result,
       Err(ffmpeg_err) => DecodeAudioResult {
-        pcm_data: Float32Array::new(vec![]),
+        pcm_data: Buffer::from(vec![]),
         sample_rate: 0,
         channels: 0,
         total_frames: 0.0,
@@ -240,7 +240,7 @@ pub fn decode_audio_file(file_path: String) -> DecodeAudioResult {
     Err(symphonia_err) => match decode_with_ffmpeg(path) {
       Ok(result) => result,
       Err(ffmpeg_err) => DecodeAudioResult {
-        pcm_data: Float32Array::new(vec![]),
+        pcm_data: Buffer::from(vec![]),
         sample_rate: 0,
         channels: 0,
         total_frames: 0.0,
@@ -336,7 +336,7 @@ fn decode_audio_to_pcm(mut format: Box<dyn FormatReader>) -> napi::Result<Decode
   }
 
   Ok(DecodeAudioResult {
-    pcm_data: Float32Array::new(all_samples),
+    pcm_data: Buffer::from(cast_slice(&all_samples).to_vec()),
     sample_rate,
     channels,
     total_frames: total_frames as f64,
@@ -389,7 +389,7 @@ fn decode_with_ffmpeg(path: &Path) -> StdResult<DecodeAudioResult, String> {
     .collect();
 
   Ok(DecodeAudioResult {
-    pcm_data: Float32Array::new(pcm_f32),
+    pcm_data: Buffer::from(cast_slice(&pcm_f32).to_vec()),
     sample_rate: ffmpeg_pcm.sample_rate,
     channels: channels_u8,
     total_frames: ffmpeg_pcm.total_frames as f64,

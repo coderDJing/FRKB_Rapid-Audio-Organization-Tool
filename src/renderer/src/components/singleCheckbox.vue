@@ -31,21 +31,32 @@ function handleChange() {
 }
 </script>
 <template>
-  <div class="checkBox">
-    <input
-      class="sure"
-      type="checkbox"
-      v-model="value"
-      :value="true"
-      @change="handleChange"
-      :id="'checkBoxInput' + uuid"
-    />
-    <label :for="'checkBoxInput' + uuid"></label>
+  <div class="checkBoxContainer">
+    <div class="checkBox">
+      <input
+        class="sure"
+        type="checkbox"
+        v-model="value"
+        :value="true"
+        @change="handleChange"
+        :id="'checkBoxInput' + uuid"
+      />
+      <label class="box" :for="'checkBoxInput' + uuid"></label>
+    </div>
+    <label class="text" :for="'checkBoxInput' + uuid">
+      <slot />
+    </label>
   </div>
 </template>
 <style lang="scss" scoped>
 input[type='checkbox'] {
   visibility: hidden;
+}
+
+.checkBoxContainer {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .checkBox {
@@ -57,7 +68,7 @@ input[type='checkbox'] {
   border-radius: 3px;
 }
 
-.checkBox label {
+.checkBox .box {
   position: absolute;
   width: 18px;
   height: 18px;
@@ -67,7 +78,7 @@ input[type='checkbox'] {
   border-radius: 3px;
 }
 
-.checkBox label:after {
+.checkBox .box:after {
   opacity: 0;
   /*修改为0*/
   content: '';
@@ -88,11 +99,17 @@ input[type='checkbox'] {
   transform: rotate(-45deg);
 }
 
-.checkBox label:hover::after {
+.checkBox .box:hover::after {
   opacity: 0;
 }
 
-.checkBox input[type='checkbox']:checked + label:after {
+.checkBox input[type='checkbox']:checked + .box:after {
   opacity: 1;
+}
+
+.text {
+  cursor: pointer;
+  user-select: none;
+  color: var(--font-primary);
 }
 </style>
