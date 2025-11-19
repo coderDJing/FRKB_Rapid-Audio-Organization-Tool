@@ -28,6 +28,33 @@ import {
   listAvailableTargetFormats
 } from '../services/audioConversion'
 
+const clonePcmData = (pcmData: unknown): Float32Array => {
+  if (!pcmData) {
+    return new Float32Array(0)
+  }
+  if (pcmData instanceof Float32Array) {
+    return new Float32Array(pcmData)
+  }
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(pcmData)) {
+    const buffer = pcmData as Buffer
+    const view = new Float32Array(
+      buffer.buffer,
+      buffer.byteOffset,
+      Math.floor(buffer.byteLength / 4)
+    )
+    return new Float32Array(view)
+  }
+  if (pcmData instanceof Uint8Array) {
+    const view = new Float32Array(
+      pcmData.buffer,
+      pcmData.byteOffset,
+      Math.floor(pcmData.byteLength / 4)
+    )
+    return new Float32Array(view)
+  }
+  return new Float32Array(0)
+}
+
 let mainWindow: BrowserWindow | null = null
 function createWindow() {
   // Create the browser window.
@@ -162,18 +189,14 @@ function createWindow() {
         throw new Error(result.error)
       }
 
-      // 发送 PCM 数据和元数据
-      mainWindow?.webContents.send(
-        'readedSongFile',
-        {
-          pcmData: result.pcmData,
-          sampleRate: result.sampleRate,
-          channels: result.channels,
-          totalFrames: result.totalFrames
-        },
-        filePath,
-        requestId
-      )
+      const payload = {
+        pcmData: clonePcmData(result.pcmData),
+        sampleRate: result.sampleRate,
+        channels: result.channels,
+        totalFrames: result.totalFrames
+      }
+
+      mainWindow?.webContents.send('readedSongFile', payload, filePath, requestId)
     } catch (error) {
       console.error(`解码歌曲文件失败 ${filePath}:`, error)
       mainWindow?.webContents.send(
@@ -195,18 +218,14 @@ function createWindow() {
         throw new Error(result.error)
       }
 
-      // 使用不同的事件名发送回渲染进程
-      mainWindow?.webContents.send(
-        'readedNextSongFile',
-        {
-          pcmData: result.pcmData,
-          sampleRate: result.sampleRate,
-          channels: result.channels,
-          totalFrames: result.totalFrames
-        },
-        filePath,
-        requestId
-      )
+      const payload = {
+        pcmData: clonePcmData(result.pcmData),
+        sampleRate: result.sampleRate,
+        channels: result.channels,
+        totalFrames: result.totalFrames
+      }
+
+      mainWindow?.webContents.send('readedNextSongFile', payload, filePath, requestId)
     } catch (error) {
       console.error(`解码预加载歌曲文件失败 ${filePath}:`, error)
       mainWindow?.webContents.send(
@@ -1049,7 +1068,6 @@ function createWindow() {
     ipcMain.removeHandler('emptyDir')
     ipcMain.removeHandler('emptyRecycleBin')
     ipcMain.removeHandler('operateFileSystemChange')
-
     globalShortcut.unregister(store.settingConfig.globalCallShortcut)
     mainWindow = null
   })
