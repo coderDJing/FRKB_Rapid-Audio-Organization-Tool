@@ -17,53 +17,81 @@ export function useCover(runtime: ReturnType<typeof useRuntimeStore>) {
   } | null>(null)
 
   const disposeCoverUrl = () => {
-    if (coverBlobUrl.value) URL.revokeObjectURL(coverBlobUrl.value)
+    if (coverBlobUrl.value && coverBlobUrl.value.startsWith('blob:')) {
+      URL.revokeObjectURL(coverBlobUrl.value)
+    }
     coverBlobUrl.value = ''
   }
 
-  const setCoverByIPC = async (filePath: string, reason: string = 'unknown') => {
-    try {
-      const cover = await window.electron.ipcRenderer.invoke('getSongCover', filePath)
-      if (cover && cover.data && filePath === runtime.playingData.playingSong?.filePath) {
-        if (coverBlobUrl.value) URL.revokeObjectURL(coverBlobUrl.value)
-        const blob = new Blob([new Uint8Array(cover.data).buffer], {
-          type: cover.format || 'image/jpeg'
-        })
-        coverBlobUrl.value = URL.createObjectURL(blob)
-      } else {
-        const coverMatchesPlaying = filePath === runtime.playingData.playingSong?.filePath
-        if (coverMatchesPlaying) {
-          await fetchCoverFromCache(filePath, reason)
-        } else {
-          disposeCoverUrl()
-        }
-      }
-    } catch (error) {
-      await fetchCoverFromCache(filePath, reason + '-error')
+  const toUint8Array = (raw: unknown): Uint8Array | null => {
+    if (!raw) return null
+    if (raw instanceof Uint8Array) return raw
+    if (Array.isArray(raw)) return new Uint8Array(raw as number[])
+    if (typeof raw === 'object' && (raw as any).data && Array.isArray((raw as any).data)) {
+      return new Uint8Array((raw as any).data)
+    }
+    if (
+      typeof raw === 'object' &&
+      (raw as any).type === 'Buffer' &&
+      Array.isArray((raw as any).data)
+    ) {
+      return new Uint8Array((raw as any).data)
+    }
+    return null
+  }
+
+  const applyCoverBytes = (bytes: Uint8Array, format?: string) => {
+    disposeCoverUrl()
+    const cloned = bytes.slice()
+    const blob = new Blob([cloned], {
+      type: format || 'image/jpeg'
+    })
+    coverBlobUrl.value = URL.createObjectURL(blob)
+  }
+
+  const setCoverByIPC = async (filePath: string) => {
+    const preferLargerThumb = await fetchCoverFromCache(filePath, 512)
+    if (preferLargerThumb) return
+
+    const fallbackThumb = await fetchCoverFromCache(filePath, 256)
+    if (fallbackThumb) return
+
+    const stillCurrent = filePath === runtime.playingData.playingSong?.filePath
+    if (stillCurrent) {
+      disposeCoverUrl()
     }
   }
 
-  const fetchCoverFromCache = async (filePath: string, reason: string) => {
+  const fetchCoverFromCache = async (filePath: string, size: number = 256): Promise<boolean> => {
     try {
       const songListUUID = runtime.playingData.playingSongListUUID
       const rootDir = songListUUID ? libraryUtils.findDirPathByUuid(songListUUID) : undefined
       const thumb = await window.electron.ipcRenderer.invoke(
         'getSongCoverThumb',
         filePath,
-        256,
+        size,
         rootDir || ''
       )
-      if (thumb && thumb.data && filePath === runtime.playingData.playingSong?.filePath) {
-        if (coverBlobUrl.value) URL.revokeObjectURL(coverBlobUrl.value)
-        const blob = new Blob([new Uint8Array(thumb.data).buffer], {
-          type: thumb.format || 'image/jpeg'
-        })
-        coverBlobUrl.value = URL.createObjectURL(blob)
-      } else {
-        disposeCoverUrl()
+      if (!thumb || filePath !== runtime.playingData.playingSong?.filePath) {
+        return false
       }
+      if (thumb.data) {
+        const bytes = toUint8Array(thumb.data)
+        if (bytes && bytes.length > 0) {
+          applyCoverBytes(bytes, thumb.format)
+          return true
+        }
+      }
+      if (thumb.dataUrl && typeof thumb.dataUrl === 'string') {
+        disposeCoverUrl()
+        coverBlobUrl.value = thumb.dataUrl
+        return true
+      }
+      disposeCoverUrl()
+      return false
     } catch (cacheError) {
       disposeCoverUrl()
+      return false
     }
   }
 
@@ -71,7 +99,7 @@ export function useCover(runtime: ReturnType<typeof useRuntimeStore>) {
     const filePath = payload?.filePath
     if (!filePath) return
     if (runtime.playingData.playingSong?.filePath === filePath) {
-      setCoverByIPC(filePath, 'metadata-updated')
+      setCoverByIPC(filePath)
     }
   }
 

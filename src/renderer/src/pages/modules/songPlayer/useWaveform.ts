@@ -122,13 +122,14 @@ export function useWaveform(params: {
 
   const getWaveformStyle = (): WaveformStyle => {
     const style = runtime.setting?.waveformStyle
-    return (
+    if (
       style === WAVEFORM_STYLE_RGB ||
       style === WAVEFORM_STYLE_FINE ||
       style === WAVEFORM_STYLE_SOUND_CLOUD
-        ? style
-        : WAVEFORM_STYLE_SOUND_CLOUD
-    ) as WaveformStyle
+    ) {
+      return style
+    }
+    return WAVEFORM_STYLE_SOUND_CLOUD
   }
 
   const useHalfWaveform = () => (runtime.setting?.waveformMode ?? 'half') !== 'full'
@@ -579,7 +580,6 @@ export function useWaveform(params: {
       soundCloudMinMaxData[i] = { min, max }
     }
 
-    void player.ensureRgbWaveform()
     drawWaveform(true)
   }
 
