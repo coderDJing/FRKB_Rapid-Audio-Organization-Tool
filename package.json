@@ -1,6 +1,6 @@
 {
   "name": "frkb",
-  "version": "1.0.9-rc.202511191619",
+  "version": "1.0.9-rc.202511191704",
   "description": "Rapid Audio Organization Tool",
   "main": "./out/main/index.js",
   "author": "CoderDJing",
@@ -19,6 +19,11 @@
     "appId": "com.electron.frkb",
     "productName": "FRKB",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "files": [
+      "**/*",
+      "!rust_package/target{,/**/*}",
+      "!node_modules/rust_package/target{,/**/*}"
+    ],
     "win": {
       "artifactName": "${productName}-Setup-${version}.${ext}",
       "executableName": "FRKB"
