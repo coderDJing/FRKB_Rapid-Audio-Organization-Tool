@@ -134,7 +134,8 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
     autoScrollToCurrentSong: true,
     enablePlaybackRange: false,
     recentDialogSelectedSongListMaxCount: 10,
-    persistSongFilters: false
+    persistSongFilters: false,
+    enableExplorerContextMenu: platform === 'win32'
   })
 }
 
@@ -193,6 +194,7 @@ const defaultSettings = {
   recentDialogSelectedSongListMaxCount: 10,
   audioOutputDeviceId: '',
   persistSongFilters: false,
+  enableExplorerContextMenu: platform === 'win32',
   showPlaylistTrackCount: true,
   nextCheckUpdateTime: '',
   // 错误日志上报默认配置
@@ -345,6 +347,15 @@ const mergedSettings = {
 const finalSettings: ISettingConfig = {
   ...mergedSettings,
   waveformMode: mergedSettings.waveformMode === 'full' ? 'full' : 'half'
+}
+if (process.platform === 'win32') {
+  if (typeof (finalSettings as any).enableExplorerContextMenu !== 'boolean') {
+    ;(finalSettings as any).enableExplorerContextMenu = settingFileExisted
+      ? hasWindowsContextMenu()
+      : true
+  }
+} else {
+  ;(finalSettings as any).enableExplorerContextMenu = false
 }
 
 // 一次性迁移：默认勾选所有格式（升级老版本时补齐），并写入迁移标记
@@ -646,7 +657,13 @@ app.whenReady().then(async () => {
   applyThemeFromSettings()
   // 处理启动时通过文件关联传入的音频文件
   queueExternalAudioFiles(process.argv.slice(1))
-  await ensureWindowsContextMenu()
+  if (process.platform === 'win32') {
+    if ((store as any).settingConfig.enableExplorerContextMenu !== false) {
+      await ensureWindowsContextMenu()
+    } else {
+      await removeWindowsContextMenu()
+    }
+  }
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
     void processExternalOpenQueue()
@@ -782,6 +799,7 @@ ipcMain.handle('getSetting', () => {
   return store.settingConfig
 })
 ipcMain.handle('setSetting', async (e, setting) => {
+  const prevContextMenu = !!(store as any).settingConfig?.enableExplorerContextMenu
   const prevMode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
   store.settingConfig = setting
   await fs.outputJson(url.settingConfigFileUrl, setting)
@@ -802,6 +820,16 @@ ipcMain.handle('setSetting', async (e, setting) => {
   // 语言切换时（macOS）重建菜单
   if (process.platform === 'darwin') {
     rebuildMacMenusForCurrentFocus()
+  }
+  if (process.platform === 'win32') {
+    const nextContextMenu = !!(store as any).settingConfig?.enableExplorerContextMenu
+    if (nextContextMenu !== prevContextMenu) {
+      if (nextContextMenu) {
+        await ensureWindowsContextMenu()
+      } else {
+        await removeWindowsContextMenu()
+      }
+    }
   }
 })
 ipcMain.on('outputLog', (e, logMsg) => {
