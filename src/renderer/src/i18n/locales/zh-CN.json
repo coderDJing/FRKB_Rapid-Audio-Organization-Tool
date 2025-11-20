@@ -486,7 +486,6 @@
   },
   "errors": {
     "diskFullTitle": "磁盘空间不足",
-
     "diskFullInterruptedHint": "可用空间不足。已完成 {0} 项，待处理 {1} 项。释放空间后可重试，或跳过剩余任务。"
   },
   "filters": {
@@ -509,7 +508,8 @@
       "overflowOnly": "仅在文字被截断时显示",
       "always": "悬停时总是显示气泡",
       "hint": "影响歌单中文案悬停时的提示气泡显示规则"
-    }
+    },
+    "enableExplorerContextMenu": "资源管理器右键菜单“在 FRKB 中播放”"
   },
   "fileSelector": {
     "title": "选择文件和文件夹",

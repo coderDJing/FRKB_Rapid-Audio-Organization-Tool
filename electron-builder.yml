@@ -10,6 +10,30 @@ files:
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
 asarUnpack:
   - resources/**
+fileAssociations:
+  - ext:
+      - mp3
+      - wav
+      - flac
+      - aif
+      - aiff
+      - ogg
+      - opus
+      - aac
+      - m4a
+      - mp4
+      - wma
+      - ac3
+      - dts
+      - mka
+      - webm
+      - ape
+      - tak
+      - tta
+      - wv
+    name: FRKB Audio
+    description: Audio files supported by FRKB
+    role: Editor
 win:
   executableName: FRKB
   # requestedExecutionLevel: 'requireAdministrator'
@@ -23,6 +47,7 @@ nsis:
   createDesktopShortcut: 'always'
   installerIcon: 'build/icon.ico'
   uninstallerIcon: 'build/icon.ico'
+  include: build/installer.nsh
 mac:
   target:
     - dmg
