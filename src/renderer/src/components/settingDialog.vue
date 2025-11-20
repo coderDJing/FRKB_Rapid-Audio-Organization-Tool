@@ -62,6 +62,9 @@ if ((runtime as any).setting.errorReportRetryMsSinceLastFailure === undefined) {
 if ((runtime as any).setting.persistSongFilters === undefined) {
   ;(runtime as any).setting.persistSongFilters = false
 }
+if ((runtime as any).setting.enableExplorerContextMenu === undefined) {
+  ;(runtime as any).setting.enableExplorerContextMenu = false
+}
 
 // 歌单行气泡提示显示策略：默认仅在文字被截断时显示（false）
 if ((runtime as any).setting.songListBubbleAlways === undefined) {
@@ -69,6 +72,7 @@ if ((runtime as any).setting.songListBubbleAlways === undefined) {
 }
 
 const AUDIO_FOLLOW_SYSTEM_ID = ''
+const isWindowsPlatform = computed(() => runtime.setting.platform === 'win32')
 
 if (runtime.setting.audioOutputDeviceId === undefined) {
   runtime.setting.audioOutputDeviceId = AUDIO_FOLLOW_SYSTEM_ID
@@ -628,6 +632,15 @@ const clearCloudFingerprints = async () => {
                 @change="setSetting()"
               />
             </div>
+            <template v-if="isWindowsPlatform">
+              <div style="margin-top: 20px">{{ t('settings.enableExplorerContextMenu') }}</div>
+              <div style="margin-top: 10px">
+                <singleCheckbox
+                  v-model="(runtime as any).setting.enableExplorerContextMenu"
+                  @change="setSetting()"
+                />
+              </div>
+            </template>
             <div style="margin-top: 20px">{{ t('settings.songListBubble.title') }}：</div>
             <div style="margin-top: 10px">
               <singleRadioGroup

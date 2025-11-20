@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, useTemplateRef } from 'vue'
+import { ref, shallowRef, computed, useTemplateRef, onUnmounted } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
@@ -218,6 +218,7 @@ const songDblClick = async (song: ISongInfo) => {
 
   runtime.playingData.playingSong = normalizedSong
 }
+
 // 删除键处理由 useKeyboardSelection 绑定
 
 // 键盘 Shift 范围选择与快捷键绑定由 useKeyboardSelection 管理

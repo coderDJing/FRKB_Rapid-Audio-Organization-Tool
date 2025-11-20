@@ -11,6 +11,7 @@ import {
   shallowRef,
   nextTick
 } from 'vue'
+import type { ISongInfo } from 'src/types/globals'
 import { WebAudioPlayer } from './webAudioPlayer'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import musicIcon from '@renderer/assets/musicIcon.png?asset'
@@ -29,6 +30,51 @@ import { useSongLoader } from './useSongLoader'
 const runtime = useRuntimeStore()
 const waveform = useTemplateRef<HTMLDivElement>('waveform')
 const playerControlsRef = useTemplateRef('playerControlsRef')
+
+const EXTERNAL_PLAYLIST_UUID = '__external__playback__'
+const normalizeExternalPath = (p: string | null | undefined) =>
+  (p || '').replace(/\\/g, '/').toLowerCase()
+const createExternalSongInfo = (filePath: string): ISongInfo => {
+  const fileName = filePath.replace(/^.*[\\/]/, '')
+  const extMatch = fileName.match(/\.([^.]+)$/)
+  const ext = extMatch ? extMatch[1] : ''
+  const title = fileName.replace(/\.[^.]+$/, '')
+  return {
+    filePath,
+    fileName,
+    fileFormat: ext.toUpperCase(),
+    cover: null,
+    title,
+    artist: '',
+    album: '',
+    duration: '--:--',
+    genre: '',
+    label: '',
+    bitrate: undefined,
+    container: ext
+  }
+}
+const handleExternalOpenPlay = (payload: { paths?: string[] }) => {
+  const rawList = Array.isArray(payload?.paths) ? payload.paths : []
+  const normalized: string[] = []
+  const seen = new Set<string>()
+  for (const raw of rawList) {
+    if (!raw || typeof raw !== 'string') continue
+    const trimmed = raw.trim()
+    if (!trimmed) continue
+    const key = normalizeExternalPath(trimmed)
+    if (seen.has(key)) continue
+    seen.add(key)
+    normalized.push(trimmed)
+  }
+  if (normalized.length === 0) return
+  const queue = normalized.map((p) => createExternalSongInfo(p))
+  runtime.activeMenuUUID = ''
+  runtime.songsArea.selectedSongFilePath = []
+  runtime.playingData.playingSongListUUID = EXTERNAL_PLAYLIST_UUID
+  runtime.playingData.playingSongListData = queue
+  runtime.playingData.playingSong = queue[0]
+}
 
 // 预加载与 BPM 预计算
 const audioContextRef = shallowRef<AudioContext | null>(new AudioContext())
@@ -281,6 +327,7 @@ const handleReplayRequest = () => {
 onMounted(() => {
   initAudioPlayer()
   emitter.on('player/replay-current-song', handleReplayRequest)
+  emitter.on('external-open/play', handleExternalOpenPlay)
 
   useWaveform({
     waveformEl: waveform,
@@ -423,6 +470,7 @@ onUnmounted(() => {
   }
   window.removeEventListener('resize', updateParentWaveformWidth)
   emitter.off('player/replay-current-song', handleReplayRequest)
+  emitter.off('external-open/play', handleExternalOpenPlay)
 })
 
 // 切歌响应（含预加载命中）
