@@ -208,6 +208,11 @@ onMounted(() => {
   })
   // 不再显示“结束后的汇总提示”
   // 监听批处理被中断（等待用户选择 继续/取消）
+  window.electron.ipcRenderer.on('external-open/imported', (_e, payload) => {
+    try {
+      emitter.emit('external-open/play', payload)
+    } catch {}
+  })
   window.electron.ipcRenderer.on('file-op-interrupted', async (_e, payload) => {
     try {
       fileOpDialogVisible.value = true

@@ -505,7 +505,8 @@
       "overflowOnly": "Show only when text is truncated",
       "always": "Always show on hover",
       "hint": "Controls how tooltips show in track lists"
-    }
+    },
+    "enableExplorerContextMenu": "Explorer context menu: \"Play in FRKB\""
   },
   "fileSelector": {
     "title": "Select Files/Folders",

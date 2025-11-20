@@ -30,7 +30,7 @@ import electronUpdater = require('electron-updater')
 import { readManifestFile, MANIFEST_FILE_NAME, looksLikeLegacyStructure } from './databaseManifest'
 import { setupMacMenus, rebuildMacMenusForCurrentFocus } from './menu/macMenu'
 import { prepareAndOpenMainWindow } from './bootstrap/prepareDatabase'
-import { execFile } from 'child_process'
+import { execFile, execFileSync } from 'child_process'
 import { ISongInfo, ITrackMetadataUpdatePayload } from '../types/globals'
 import type { ISettingConfig } from '../types/globals'
 import { scanSongList as svcScanSongList } from './services/scanSongs'
@@ -61,6 +61,7 @@ if (!gotTheLock) {
   app.quit()
 } else {
   app.on('second-instance', (_event, _commandLine, _workingDirectory) => {
+    queueExternalAudioFiles(_commandLine)
     if (databaseInitWindow.instance) {
       if (databaseInitWindow.instance.isMinimized()) {
         databaseInitWindow.instance.restore()
@@ -74,6 +75,10 @@ if (!gotTheLock) {
     }
   })
 }
+app.on('open-file', (event, openedPath) => {
+  event.preventDefault()
+  queueExternalAudioFiles([openedPath])
+})
 
 import path = require('path')
 import fs = require('fs-extra')
@@ -313,9 +318,11 @@ ipcMain.on('showWhatsNew', async () => {
 
 store.layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
 
+const settingFileExisted = fs.pathExistsSync(url.settingConfigFileUrl)
+
 // 加载并合并设置
 let loadedSettings = {}
-if (fs.pathExistsSync(url.settingConfigFileUrl)) {
+if (settingFileExisted) {
   try {
     loadedSettings = fs.readJSONSync(url.settingConfigFileUrl)
   } catch (error) {
@@ -396,6 +403,152 @@ store.settingConfig = finalSettings
 // 确保即使文件最初不存在，或者读取出错时，最终也会写入一个有效的配置文件
 fs.outputJsonSync(url.settingConfigFileUrl, finalSettings)
 
+const WINDOWS_CONTEXT_MENU_REG_PATH = 'HKCU\\Software\\Classes\\*\\shell\\PlayWithFRKB'
+const WINDOWS_CONTEXT_COMMAND_REG_PATH = `${WINDOWS_CONTEXT_MENU_REG_PATH}\\command`
+const externalOpenQueue: string[] = []
+const externalOpenSeen = new Set<string>()
+let processingExternalOpen = false
+
+const normalizeExternalPathKey = (p: string): string => {
+  try {
+    const resolved = path.resolve(p)
+    return os.platform() === 'win32' ? resolved.toLowerCase() : resolved
+  } catch {
+    return os.platform() === 'win32' ? String(p || '').toLowerCase() : String(p || '')
+  }
+}
+
+const getAudioExtSet = (): Set<string> => {
+  try {
+    return new Set(
+      (store.settingConfig.audioExt || []).map((ext) => String(ext || '').toLowerCase())
+    )
+  } catch {
+    return new Set<string>()
+  }
+}
+
+const isSupportedAudioPath = (filePath: string): boolean => {
+  try {
+    const ext = path.extname(filePath || '').toLowerCase()
+    if (!getAudioExtSet().has(ext)) return false
+    return fs.pathExistsSync(filePath)
+  } catch {
+    return false
+  }
+}
+
+function collectSupportedAudioPaths(paths: string[]): string[] {
+  const accepted: string[] = []
+  for (const raw of paths || []) {
+    if (!raw || typeof raw !== 'string') continue
+    const normalized = path.resolve(String(raw).replace(/^"+|"+$/g, ''))
+    if (!isSupportedAudioPath(normalized)) continue
+    const key = normalizeExternalPathKey(normalized)
+    if (externalOpenSeen.has(key)) continue
+    externalOpenSeen.add(key)
+    accepted.push(normalized)
+  }
+  return accepted
+}
+
+function queueExternalAudioFiles(paths: string[]): void {
+  const accepted = collectSupportedAudioPaths(paths)
+  if (accepted.length === 0) return
+  externalOpenQueue.push(...accepted)
+  void processExternalOpenQueue()
+}
+
+type ExternalOpenPayload = {
+  paths: string[]
+}
+
+async function sendExternalOpenPayload(payload: ExternalOpenPayload): Promise<void> {
+  if (!mainWindow.instance) return
+  const wc = mainWindow.instance.webContents
+  if (wc.isLoading()) {
+    await new Promise<void>((resolve) => wc.once('did-finish-load', () => resolve()))
+  }
+  wc.send('external-open/imported', payload)
+}
+
+async function processExternalOpenQueue(): Promise<void> {
+  if (processingExternalOpen) return
+  if (!externalOpenQueue.length) return
+  if (!mainWindow.instance) return
+  processingExternalOpen = true
+  try {
+    const batch: string[] = []
+    while (externalOpenQueue.length > 0) {
+      const candidate = externalOpenQueue.shift()
+      if (!candidate) continue
+      const key = normalizeExternalPathKey(candidate)
+      externalOpenSeen.delete(key)
+      if (!isSupportedAudioPath(candidate)) continue
+      batch.push(candidate)
+    }
+    if (batch.length > 0) {
+      await sendExternalOpenPayload({ paths: batch })
+    }
+  } catch (error) {
+    log.error('处理外部音频打开队列失败', error)
+  } finally {
+    processingExternalOpen = false
+    if (externalOpenQueue.length > 0) {
+      void processExternalOpenQueue()
+    }
+  }
+}
+
+function runRegCommand(args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    execFile('reg', args, { windowsHide: true }, (error) => {
+      if (error) return reject(error)
+      resolve()
+    })
+  })
+}
+
+async function ensureWindowsContextMenu(): Promise<void> {
+  if (process.platform !== 'win32') return
+  const displayName = '在 FRKB 中播放'
+  const command = `"${process.execPath.replace(/"/g, '\\"')}" "%1"`
+  try {
+    await runRegCommand(['add', WINDOWS_CONTEXT_MENU_REG_PATH, '/ve', '/d', displayName, '/f'])
+    await runRegCommand([
+      'add',
+      WINDOWS_CONTEXT_MENU_REG_PATH,
+      '/v',
+      'Icon',
+      '/d',
+      process.execPath,
+      '/f'
+    ])
+    await runRegCommand(['add', WINDOWS_CONTEXT_COMMAND_REG_PATH, '/ve', '/d', command, '/f'])
+  } catch (error) {
+    log.error('注册 Windows 右键菜单失败', error)
+  }
+}
+
+async function removeWindowsContextMenu(): Promise<void> {
+  if (process.platform !== 'win32') return
+  try {
+    await runRegCommand(['delete', WINDOWS_CONTEXT_MENU_REG_PATH, '/f'])
+  } catch (error) {
+    log.error('删除 Windows 右键菜单失败', error)
+  }
+}
+
+function hasWindowsContextMenu(): boolean {
+  if (process.platform !== 'win32') return false
+  try {
+    execFileSync('reg', ['query', WINDOWS_CONTEXT_COMMAND_REG_PATH], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
+
 // 初始化错误日志上报调度
 try {
   errorReport.setup()
@@ -460,8 +613,12 @@ app.whenReady().then(async () => {
   } catch {}
   // 启动即按设置应用主题
   applyThemeFromSettings()
+  // 处理启动时通过文件关联传入的音频文件
+  queueExternalAudioFiles(process.argv.slice(1))
+  await ensureWindowsContextMenu()
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
+    void processExternalOpenQueue()
   })
   // macOS：交由模块化方法统一处理菜单
   if (process.platform === 'darwin') {
@@ -469,6 +626,7 @@ app.whenReady().then(async () => {
   }
   // 数据库准备与主窗口：统一调用幂等流程
   await prepareAndOpenMainWindow()
+  await processExternalOpenQueue()
   setTimeout(() => {
     maybeShowWhatsNew().catch((error) => {
       log.error('[whatsNew] maybeShowWhatsNew 异常', error)
@@ -578,6 +736,7 @@ app.whenReady().then(async () => {
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) {
       await prepareAndOpenMainWindow()
+      await processExternalOpenQueue()
     }
   })
 })
