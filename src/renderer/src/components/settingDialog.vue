@@ -63,7 +63,7 @@ if ((runtime as any).setting.persistSongFilters === undefined) {
   ;(runtime as any).setting.persistSongFilters = false
 }
 if ((runtime as any).setting.enableExplorerContextMenu === undefined) {
-  ;(runtime as any).setting.enableExplorerContextMenu = false
+  ;(runtime as any).setting.enableExplorerContextMenu = runtime.setting.platform === 'win32'
 }
 
 // 歌单行气泡提示显示策略：默认仅在文字被截断时显示（false）

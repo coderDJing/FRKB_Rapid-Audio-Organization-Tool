@@ -55,6 +55,7 @@ let settingConfig: ISettingConfig = {
   errorReportUsageMsSinceLastSuccess: 0,
   errorReportRetryMsSinceLastFailure: -1,
   persistSongFilters: false,
+  enableExplorerContextMenu: false,
   showPlaylistTrackCount: true,
   lastSeenWhatsNewVersion: '',
   pendingWhatsNewForVersion: ''
