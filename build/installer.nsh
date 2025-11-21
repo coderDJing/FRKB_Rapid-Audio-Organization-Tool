@@ -1,5 +1,3 @@
-!define FRKB_CTX_EXTS ".mp3" ".wav" ".flac" ".aif" ".aiff" ".ogg" ".opus" ".aac" ".m4a" ".mp4" ".wma" ".ac3" ".dts" ".mka" ".webm" ".ape" ".tak" ".tta" ".wv"
-
 !macro FrkbDeleteMenusForRoot ROOT
   DeleteRegKey ${ROOT} "Software\\Classes\\*\\shell\\PlayWithFRKB"
   DeleteRegKey ${ROOT} "Software\\Classes\\SystemFileAssociations\\.mp3\\shell\\PlayWithFRKB"
