@@ -17,6 +17,7 @@ const props = defineProps<{
     fingerprintTotalAfter: number
     isComparisonSongFingerprint: boolean
     isPushSongFingerprintLibrary: boolean
+    hideOverviewSection?: boolean
   } | null
 }>()
 const emits = defineEmits(['close'])
@@ -30,6 +31,11 @@ const formatDurationSec = (ms: number) => {
 const hasFingerprintSection = computed(() => {
   return !!props.summary && props.summary.isPushSongFingerprintLibrary === true
 })
+
+const showOverviewSection = computed(() => {
+  if (!props.summary) return false
+  return props.summary.hideOverviewSection !== true
+})
 </script>
 
 <template>
@@ -37,7 +43,7 @@ const hasFingerprintSection = computed(() => {
     <div class="inner" v-dialog-drag="'.dialog-title'">
       <div class="title dialog-title">{{ t('import.completed') }}</div>
       <div class="stats">
-        <div class="section">
+        <div class="section" v-if="showOverviewSection">
           <div class="section-title">{{ t('import.overview') }}</div>
           <div class="chips">
             <div class="chip">

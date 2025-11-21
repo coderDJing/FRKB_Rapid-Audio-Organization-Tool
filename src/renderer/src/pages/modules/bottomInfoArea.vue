@@ -186,6 +186,23 @@ window.electron.ipcRenderer.on(
     await openFingerprintSummary(fingerprintSummary)
   }
 )
+
+window.electron.ipcRenderer.on(
+  'fingerprints:addExistingFinished',
+  async (event, summary, progressId?: string) => {
+    runtime.isProgressing = false
+    if (progressId) {
+      tasks.value = tasks.value.filter((t) => t.id !== String(progressId))
+    } else {
+      tasks.value = tasks.value.filter((t) => t.id !== 'import')
+    }
+    const openImportSummary = (await import('@renderer/components/importFinishedSummaryDialog'))
+      .default
+    if (summary) {
+      await openImportSummary(summary)
+    }
+  }
+)
 window.electron.ipcRenderer.on('noAudioFileWasScanned', async (event) => {
   runtime.isProgressing = false
   runtime.importingSongListUUID = ''
