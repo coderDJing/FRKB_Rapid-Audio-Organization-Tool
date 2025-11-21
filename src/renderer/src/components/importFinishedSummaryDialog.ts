@@ -16,6 +16,7 @@ export interface ImportSummary {
   fingerprintTotalAfter: number
   isComparisonSongFingerprint: boolean
   isPushSongFingerprintLibrary: boolean
+  hideOverviewSection?: boolean
 }
 
 export default (summary: ImportSummary) => {

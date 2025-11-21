@@ -20,7 +20,8 @@
     "exit": "Exit",
     "retry": "Retry",
     "skip": "Skip",
-    "required": "Required"
+    "required": "Required",
+    "unknownError": "Unknown error"
   },
   "app": {
     "name": "Rapid Audio Organization Tool"
@@ -360,6 +361,7 @@
   },
   "fingerprints": {
     "manualAdd": "Add fingerprint manually",
+    "analyzeAndAdd": "Analyze fingerprints & add to library",
     "updateCompleted": "Fingerprint library updated",
     "analyzeInit": "Initializing analysis",
     "scanFormats": "Scan formats",
@@ -385,7 +387,10 @@
     "modePCMHint": "Ignores covers/title/artist etc. Slower.",
     "modeFileHint": "Calculates on whole file. Fastest but cannot ignore noise; same song with different covers will be treated as different.",
     "modeIncompatibleWarning": "Two fingerprint libraries are fully isolated and do not interoperate; switching only affects future analysis and won't migrate/merge history.",
-    "noAudioFilesFound": "No audio files found."
+    "noAudioFilesFound": "No audio files found.",
+    "noTracksSelected": "Select at least one track.",
+    "noEligibleTracks": "Selected items do not contain analyzable audio files.",
+    "noPlayingTrack": "No track is currently playing."
   },
   "import": {
     "completed": "Import done",

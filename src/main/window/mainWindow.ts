@@ -342,6 +342,133 @@ function createWindow() {
     mainWindow?.webContents.send('addSongFingerprintFinished', fingerprintSummary, progressId)
   })
 
+  ipcMain.handle('fingerprints:addExistingFromPaths', async (_event, payload) => {
+    const rawInput = Array.isArray(payload?.filePaths) ? (payload.filePaths as unknown[]) : []
+    const normalizedPaths: string[] = Array.from(
+      new Set(
+        rawInput
+          .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
+          .map((p) => path.normalize(p))
+      )
+    )
+    const audioExts = new Set(
+      (store.settingConfig?.audioExt || []).map((ext: string) => ext.toLowerCase())
+    )
+
+    const eligibilityResults = await Promise.all(
+      normalizedPaths.map(async (filePath) => {
+        try {
+          const stats = await fs.stat(filePath)
+          if (!stats.isFile()) return null
+          const ext = path.extname(filePath).toLowerCase()
+          if (!audioExts.has(ext)) return null
+          return filePath
+        } catch (error) {
+          return null
+        }
+      })
+    )
+    const eligiblePaths = eligibilityResults.filter((p): p is string => typeof p === 'string')
+    if (eligiblePaths.length === 0) {
+      throw new Error('NO_ELIGIBLE_AUDIO')
+    }
+
+    const progressId = `fingerprints_${Date.now()}`
+    const fingerprintStartAt = Date.now()
+
+    const finalize = (summary: any | null) => {
+      mainWindow?.webContents.send('fingerprints:addExistingFinished', summary, progressId)
+    }
+
+    sendProgress({
+      id: progressId,
+      titleKey: 'fingerprints.scanningFiles',
+      now: 0,
+      total: 1,
+      isInitial: true
+    })
+    sendProgress({
+      id: progressId,
+      titleKey: 'fingerprints.scanningFiles',
+      now: 1,
+      total: 1
+    })
+
+    try {
+      sendProgress({
+        id: progressId,
+        titleKey: 'fingerprints.analyzeInit',
+        now: 0,
+        total: eligiblePaths.length
+      })
+      const { songsAnalyseResult, errorSongsAnalyseResult } = await getSongsAnalyseResult(
+        eligiblePaths,
+        (resultLength: number) => {
+          sendProgress({
+            id: progressId,
+            titleKey: 'fingerprints.analyzingFingerprints',
+            now: resultLength,
+            total: eligiblePaths.length
+          })
+        }
+      )
+
+      const fingerprintMode =
+        ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
+      const beforeSongFingerprintListLength = store.songFingerprintList.length
+      const fingerprintSet = new Set(store.songFingerprintList)
+      const uniqueFingerprints = Array.from(
+        new Set(
+          songsAnalyseResult
+            .map((item) => item?.sha256_Hash)
+            .filter((sha): sha is string => typeof sha === 'string' && sha.length > 0)
+        )
+      )
+      let fingerprintAlreadyExistingCount = 0
+      for (const fingerprint of uniqueFingerprints) {
+        if (fingerprintSet.has(fingerprint)) {
+          fingerprintAlreadyExistingCount++
+        } else {
+          fingerprintSet.add(fingerprint)
+        }
+      }
+      store.songFingerprintList = Array.from(fingerprintSet)
+      await FingerprintStore.saveList(store.songFingerprintList, fingerprintMode)
+
+      const fingerprintEndAt = Date.now()
+
+      const fingerprintAddedCount =
+        store.songFingerprintList.length - beforeSongFingerprintListLength
+      const duplicatesRemovedCount = Math.max(
+        0,
+        songsAnalyseResult.length - uniqueFingerprints.length
+      )
+      const errorCount = Array.isArray(errorSongsAnalyseResult) ? errorSongsAnalyseResult.length : 0
+
+      const summary = {
+        startAt: new Date(fingerprintStartAt).toISOString(),
+        endAt: new Date(fingerprintEndAt).toISOString(),
+        durationMs: fingerprintEndAt - fingerprintStartAt,
+        scannedCount: eligiblePaths.length,
+        analyzeFailedCount: errorCount,
+        importedToPlaylistCount: 0,
+        duplicatesRemovedCount,
+        fingerprintAddedCount,
+        fingerprintAlreadyExistingCount,
+        fingerprintTotalBefore: beforeSongFingerprintListLength,
+        fingerprintTotalAfter: store.songFingerprintList.length,
+        isComparisonSongFingerprint: false,
+        isPushSongFingerprintLibrary: true,
+        hideOverviewSection: true
+      }
+      finalize(summary)
+      return { ok: true }
+    } catch (error) {
+      finalize(null)
+      throw error
+    }
+  })
+
   ipcMain.on('startImportSongs', async (e, formData: IImportSongsFormData) => {
     const importStartAt = Date.now()
     const progressId = `import_${Date.now()}`

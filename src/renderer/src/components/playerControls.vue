@@ -14,6 +14,8 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import shortcutIcon from '@renderer/assets/shortcutIcon.png?asset'
 import { t } from '@renderer/utils/translate'
+import confirm from '@renderer/components/confirmDialog'
+import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 const uuid = uuidV4()
 const runtime = useRuntimeStore()
 const playing = ref(true)
@@ -130,6 +132,21 @@ const exportTrack = () => {
 }
 const showInFileExplorer = () => {
   window.electron.ipcRenderer.send('show-item-in-folder', runtime.playingData.playingSong?.filePath)
+}
+
+const handleAnalyzeCurrentSongFingerprint = async () => {
+  const filePath = runtime.playingData.playingSong?.filePath
+  if (!filePath) {
+    await confirm({
+      title: t('dialog.hint'),
+      content: [t('fingerprints.noPlayingTrack')],
+      confirmShow: false
+    })
+    return
+  }
+  await analyzeFingerprintsForPaths([filePath], { origin: 'player' })
+  runtime.activeMenuUUID = ''
+  moreMenuShow.value = false
 }
 
 // ---------------- 音量控制 ----------------
@@ -452,6 +469,11 @@ onUnmounted(() => {
       <div style="padding: 5px 5px">
         <div class="menuButton" @click="showInFileExplorer()">
           <span>{{ t('tracks.showInFileExplorer') }}</span>
+        </div>
+      </div>
+      <div style="padding: 5px 5px; border-top: 1px solid var(--border)">
+        <div class="menuButton" @click="handleAnalyzeCurrentSongFingerprint()">
+          <span>{{ t('fingerprints.analyzeAndAdd') }}</span>
         </div>
       </div>
     </div>
