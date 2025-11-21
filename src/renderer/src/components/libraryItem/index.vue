@@ -23,6 +23,7 @@ import {
 } from '../../utils/dragUtils'
 import { reactive } from 'vue'
 import { useDragSongs } from '@renderer/pages/modules/songsArea/composables/useDragSongs'
+import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 const props = defineProps({
   uuid: {
     type: String,
@@ -157,7 +158,8 @@ const menuArr = ref(
         ],
         [{ menuName: 'tracks.showInFileExplorer' }],
         [{ menuName: 'playlist.fingerprintDeduplicate' }],
-        [{ menuName: 'tracks.convertFormat' }]
+        [{ menuName: 'tracks.convertFormat' }],
+        [{ menuName: 'fingerprints.analyzeAndAdd' }]
       ]
 )
 const deleteDir = async () => {
@@ -229,7 +231,8 @@ const contextmenuEvent = async (event: MouseEvent) => {
             ],
             [{ menuName: 'tracks.showInFileExplorer' }],
             [{ menuName: 'playlist.fingerprintDeduplicate' }],
-            [{ menuName: 'tracks.convertFormat' }]
+            [{ menuName: 'tracks.convertFormat' }],
+            [{ menuName: 'fingerprints.analyzeAndAdd' }]
           ]
   }
   rightClickMenuShow.value = true
@@ -360,6 +363,21 @@ const contextmenuEvent = async (event: MouseEvent) => {
           })
         }
       } catch {}
+    } else if (result.menuName === 'fingerprints.analyzeAndAdd') {
+      const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
+      const scan = await window.electron.ipcRenderer.invoke('scanSongList', dirPath, props.uuid)
+      const files: string[] = Array.isArray(scan?.scanData)
+        ? scan.scanData.map((s: any) => s.filePath).filter(Boolean)
+        : []
+      if (!files.length) {
+        await confirm({
+          title: t('dialog.hint'),
+          content: [t('fingerprints.noEligibleTracks')],
+          confirmShow: false
+        })
+        return
+      }
+      await analyzeFingerprintsForPaths(files, { origin: 'playlist' })
     } else if (result.menuName === 'playlist.fingerprintDeduplicate') {
       if (runtime.isProgressing) {
         await confirm({

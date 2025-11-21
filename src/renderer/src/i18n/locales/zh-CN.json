@@ -20,7 +20,8 @@
     "exit": "退出",
     "retry": "重试",
     "skip": "跳过",
-    "required": "必选"
+    "required": "必选",
+    "unknownError": "发生未知错误"
   },
   "app": {
     "name": "快速音频整理工具"
@@ -364,6 +365,7 @@
   },
   "fingerprints": {
     "manualAdd": "手动添加曲目指纹",
+    "analyzeAndAdd": "分析指纹并加入指纹库",
     "updateCompleted": "指纹库更新完成",
     "analyzeInit": "分析声音指纹初始化",
     "scanFormats": "扫描音频格式",
@@ -389,7 +391,10 @@
     "modePCMHint": "可以忽略封面/标题/作者等干扰信息，相对较慢",
     "modeFileHint": "仅对文件整体进行计算，速度最快，但无法忽略干扰信息；同一首歌但不同封面会被误认成两首完全不同的歌",
     "modeIncompatibleWarning": "两套指纹库完全隔离、互不共享；切换仅影响后续分析，不迁移/合并历史指纹。",
-    "noAudioFilesFound": "未扫描到音频文件"
+    "noAudioFilesFound": "未扫描到音频文件",
+    "noTracksSelected": "请选择至少一首曲目",
+    "noEligibleTracks": "所选项目中没有可分析的音频文件",
+    "noPlayingTrack": "当前没有正在播放的曲目"
   },
   "import": {
     "completed": "导入完成",

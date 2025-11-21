@@ -8,6 +8,7 @@ import confirm from '@renderer/components/confirmDialog'
 import exportDialog from '@renderer/components/exportDialog'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import emitter from '@renderer/utils/mitt'
+import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 
 // Type for the return value when a dialog needs to be opened by the parent
 export interface OpenDialogAction {
@@ -41,7 +42,8 @@ export function useSongItemContextMenu(
       { menuName: 'tracks.deleteAllAbove' }
     ],
     [{ menuName: 'tracks.showInFileExplorer' }],
-    [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.editMetadata' }]
+    [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.editMetadata' }],
+    [{ menuName: 'fingerprints.analyzeAndAdd' }]
   ])
 
   const showAndHandleSongContextMenu = async (
@@ -207,6 +209,11 @@ export function useSongItemContextMenu(
           }
         }
         break
+      case 'fingerprints.analyzeAndAdd': {
+        const files = [...runtime.songsArea.selectedSongFilePath]
+        await analyzeFingerprintsForPaths(files, { origin: 'selection' })
+        return null
+      }
       case 'library.moveToCurated':
         return { action: 'openSelectSongListDialog', libraryName: 'CuratedLibrary' }
       case 'library.moveToFilter':
