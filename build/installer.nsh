@@ -28,7 +28,7 @@
 loop_users:
   EnumRegKey $0 HKU "" $1
   StrCmp $0 "" done_users
-  ${FrkbDeleteMenusForRoot} HKU\\$0
+  !insertmacro FrkbDeleteMenusForRoot HKU\\$0
   IntOp $1 $1 + 1
   Goto loop_users
 done_users:
@@ -37,6 +37,6 @@ done_users:
 !macroend
 
 !macro customUnInstall
-  ${FrkbDeleteMenusForRoot} HKCU
-  ${FrkbDeleteMenusAllUsers}
+  !insertmacro FrkbDeleteMenusForRoot HKCU
+  !insertmacro FrkbDeleteMenusAllUsers
 !macroend
