@@ -110,8 +110,6 @@ watch(
       if (runtime.songsArea.songListUUID !== EXTERNAL_PLAYLIST_UUID) {
         runtime.songsArea.songListUUID = EXTERNAL_PLAYLIST_UUID
       }
-    } else if (runtime.songsArea.songListUUID === EXTERNAL_PLAYLIST_UUID) {
-      runtime.songsArea.songListUUID = ''
     }
   },
   { immediate: true }
