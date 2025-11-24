@@ -3,13 +3,15 @@ import librarySelectArea from './modules/librarySelectArea.vue'
 import libraryArea from './modules/libraryArea.vue'
 import songsArea from './modules/songsArea/songsArea.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import { onMounted, onUnmounted, ref, computed } from 'vue'
+import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
 import songPlayer from './modules/songPlayer/songPlayer.vue'
 import dropIntoDialog from '../components/dropIntoDialog'
 import { Icon } from '../../../types/globals'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
+import { appendExternalPlaylistFromPaths } from '@renderer/utils/externalPlaylist'
+import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 const runtime = useRuntimeStore()
 let startX = 0
 let isResizing = false
@@ -100,6 +102,13 @@ onUnmounted(() => {
 })
 
 let librarySelected = ref('FilterLibrary')
+watch(
+  () => runtime.libraryAreaSelected,
+  (val) => {
+    librarySelected.value = val
+  },
+  { immediate: true }
+)
 const librarySelectedChange = (item: Icon) => {
   if (item.name == librarySelected.value) {
     return
@@ -107,6 +116,7 @@ const librarySelectedChange = (item: Icon) => {
   librarySelected.value = item.name
 }
 let dragOverSongsArea = ref(false)
+const isExternalPlaylistView = computed(() => runtime.libraryAreaSelected === 'ExternalPlaylist')
 const dragover = (e: DragEvent) => {
   if (e.dataTransfer === null) {
     throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
@@ -115,6 +125,12 @@ const dragover = (e: DragEvent) => {
   // 如果是歌曲拖拽，忽略处理
   const isSongDrag = e.dataTransfer.types?.includes('application/x-song-drag')
   if (isSongDrag) {
+    return
+  }
+
+  if (isExternalPlaylistView.value) {
+    e.dataTransfer.dropEffect = 'copy'
+    dragOverSongsArea.value = true
     return
   }
 
@@ -140,6 +156,11 @@ const dragleave = (e: DragEvent) => {
     return
   }
 
+  if (isExternalPlaylistView.value) {
+    dragOverSongsArea.value = false
+    return
+  }
+
   if (runtime.dragItemData !== null || !runtime.songsArea.songListUUID) {
     e.dataTransfer.dropEffect = 'none'
     return
@@ -159,6 +180,25 @@ const drop = async (e: DragEvent) => {
   // 如果是歌曲拖拽，忽略处理
   const isSongDrag = e.dataTransfer.types?.includes('application/x-song-drag')
   if (isSongDrag) {
+    return
+  }
+
+  if (isExternalPlaylistView.value) {
+    dragOverSongsArea.value = false
+    const filePaths: string[] = []
+    for (let item of Array.from(e.dataTransfer.files)) {
+      const resolved = window.api.showFilesPath(item)
+      if (resolved) {
+        filePaths.push(resolved)
+      }
+    }
+    if (filePaths.length) {
+      try {
+        await appendExternalPlaylistFromPaths(filePaths)
+      } catch (error) {
+        console.error('[external-playlist] append failed', error)
+      }
+    }
     return
   }
 
@@ -253,6 +293,7 @@ const drop = async (e: DragEvent) => {
         "
       >
         <div
+          v-show="!isExternalPlaylistView"
           style="border-right: 1px solid var(--border); flex-shrink: 0"
           :style="'width:' + runtime.layoutConfig.libraryAreaWidth + 'px'"
         >
@@ -265,6 +306,7 @@ const drop = async (e: DragEvent) => {
           </div>
         </div>
         <div
+          v-show="!isExternalPlaylistView"
           class="dragBar"
           :style="{ left: dragBarLeft }"
           @mousedown="startResize"

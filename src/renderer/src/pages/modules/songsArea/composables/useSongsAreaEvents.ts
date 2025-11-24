@@ -1,8 +1,9 @@
-import { onMounted, onUnmounted, watch } from 'vue'
+import { onMounted, onUnmounted, watch, markRaw } from 'vue'
 import emitter from '@renderer/utils/mitt'
 import type { ShallowRef } from 'vue'
 import type { ISongInfo } from '../../../../../../types/globals'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
+import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 
 interface UseSongsAreaEventsParams {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -87,14 +88,24 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     )
   }
 
+  const onExternalPlaylistRefresh = () => {
+    if (runtime.songsArea.songListUUID !== EXTERNAL_PLAYLIST_UUID) return
+    const songs = runtime.externalPlaylist.songs || []
+    originalSongInfoArr.value = markRaw([...songs])
+    applyFiltersAndSorting()
+    scheduleSweepCovers()
+  }
+
   onMounted(() => {
     emitter.on('songsRemoved', onSongsRemoved)
     emitter.on('songsMovedByDrag', onSongsMovedByDrag)
+    emitter.on('external-playlist/refresh', onExternalPlaylistRefresh)
   })
 
   onUnmounted(() => {
     emitter.off('songsRemoved', onSongsRemoved)
     emitter.off('songsMovedByDrag', onSongsMovedByDrag)
+    emitter.off('external-playlist/refresh', onExternalPlaylistRefresh)
   })
 
   // 导入完成后重新打开歌单
@@ -139,7 +150,14 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     async (newUUID) => {
       runtime.songsArea.selectedSongFilePath.length = 0
       if (newUUID) {
-        await openSongList()
+        if (newUUID === EXTERNAL_PLAYLIST_UUID) {
+          const songs = runtime.externalPlaylist.songs || []
+          originalSongInfoArr.value = markRaw([...songs])
+          applyFiltersAndSorting()
+          scheduleSweepCovers()
+        } else {
+          await openSongList()
+        }
       } else {
         runtime.songsArea.songInfoArr = []
         originalSongInfoArr.value = []
