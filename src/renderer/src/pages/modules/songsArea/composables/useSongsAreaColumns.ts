@@ -154,6 +154,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
   // --- 根据列筛选过滤并按当前排序排序 ---
   function applyFiltersAndSorting() {
     let filtered = [...originalSongInfoArr.value]
+    runtime.songsArea.totalSongCount = filtered.length
     for (const col of columnData.value) {
       if (!col.filterActive) continue
       if (col.filterType === 'text' && col.filterValue && col.key) {

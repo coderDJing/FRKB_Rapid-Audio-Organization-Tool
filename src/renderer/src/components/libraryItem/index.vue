@@ -288,6 +288,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
         runtime.songsArea.selectedSongFilePath.length = 0
         // 列表不再使用封面 URL
         runtime.songsArea.songInfoArr = []
+        runtime.songsArea.totalSongCount = 0
       }
     } else if (result.menuName === 'tracks.importTracks') {
       if (runtime.isProgressing) {
@@ -473,6 +474,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
           runtime.songsArea.selectedSongFilePath.length = 0
           // 列表不再使用封面 URL
           runtime.songsArea.songInfoArr = []
+          runtime.songsArea.totalSongCount = 0
         }
         await libraryUtils.diffLibraryTreeExecuteFileOperation()
       }
@@ -819,7 +821,7 @@ emitter.on('playlistContentChanged', (payload: any) => {
       if (pendingSet.has(props.uuid)) {
         // 若当前歌单正打开，优先用内存长度
         if (runtime.songsArea.songListUUID === props.uuid) {
-          trackCount.value = runtime.songsArea.songInfoArr.length
+          trackCount.value = runtime.songsArea.totalSongCount
         } else {
           ensureTrackCount()
         }

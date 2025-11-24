@@ -24,6 +24,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
   const openSongList = async () => {
     isRequesting.value = true
     runtime.songsArea.songInfoArr = []
+    runtime.songsArea.totalSongCount = 0
     originalSongInfoArr.value = []
     await nextTick()
 

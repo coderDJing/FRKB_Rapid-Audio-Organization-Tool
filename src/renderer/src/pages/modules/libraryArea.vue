@@ -69,6 +69,7 @@ const emptyRecycleBinHandleClick = async () => {
     runtime.songsArea.songListUUID = ''
     runtime.songsArea.selectedSongFilePath.length = 0
     runtime.songsArea.songInfoArr = []
+    runtime.songsArea.totalSongCount = 0
   }
 
   // 若当前正在播放来自回收站的歌单，则停止播放并清空播放列表
