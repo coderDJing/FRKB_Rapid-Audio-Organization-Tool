@@ -160,6 +160,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
         }
       } else {
         runtime.songsArea.songInfoArr = []
+        runtime.songsArea.totalSongCount = 0
         originalSongInfoArr.value = []
       }
     }

@@ -17,6 +17,7 @@ interface Runtime {
   songsArea: {
     songListUUID: string
     songInfoArr: ISongInfo[]
+    totalSongCount: number
     selectedSongFilePath: string[]
   }
   importingSongListUUID: string
@@ -72,6 +73,7 @@ export const useRuntimeStore = defineStore('runtime', {
       songsArea: {
         songListUUID: '', //被选中的歌单UUID
         songInfoArr: [], //歌单内容
+        totalSongCount: 0,
         selectedSongFilePath: [] //歌单内选中的歌曲条目
       },
       importingSongListUUID: '', //正在执行导入中的歌单

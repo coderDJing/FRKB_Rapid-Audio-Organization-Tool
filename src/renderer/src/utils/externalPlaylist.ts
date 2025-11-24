@@ -60,6 +60,7 @@ const applyExternalSongs = (mode: ExternalPlaylistMode, songs: ISongInfo[]) => {
       if (runtime.songsArea.songListUUID === EXTERNAL_PLAYLIST_UUID) {
         runtime.songsArea.songListUUID = ''
         runtime.songsArea.songInfoArr = []
+        runtime.songsArea.totalSongCount = 0
         runtime.songsArea.selectedSongFilePath.length = 0
       }
     }

@@ -171,6 +171,7 @@ const deleteDir = async () => {
     // Optionally clear other related states like selectedSongFilePath, songInfoArr if necessary
     runtime.songsArea.selectedSongFilePath.length = 0
     runtime.songsArea.songInfoArr = []
+    runtime.songsArea.totalSongCount = 0
   }
   // If the deleted item or its children contain the currently playing songlist
   if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
