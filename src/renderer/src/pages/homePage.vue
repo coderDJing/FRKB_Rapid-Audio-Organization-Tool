@@ -106,6 +106,11 @@ watch(
   () => runtime.libraryAreaSelected,
   (val) => {
     librarySelected.value = val
+    if (val === 'ExternalPlaylist') {
+      if (runtime.songsArea.songListUUID !== EXTERNAL_PLAYLIST_UUID) {
+        runtime.songsArea.songListUUID = EXTERNAL_PLAYLIST_UUID
+      }
+    }
   },
   { immediate: true }
 )
