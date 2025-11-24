@@ -26,54 +26,25 @@ import { usePreloadNextSong } from './usePreloadNextSong'
 import { useWaveform } from './useWaveform'
 import emitter from '@renderer/utils/mitt'
 import { useSongLoader } from './useSongLoader'
+import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 
 const runtime = useRuntimeStore()
 const waveform = useTemplateRef<HTMLDivElement>('waveform')
 const playerControlsRef = useTemplateRef('playerControlsRef')
 
-const EXTERNAL_PLAYLIST_UUID = '__external__playback__'
-const normalizeExternalPath = (p: string | null | undefined) =>
-  (p || '').replace(/\\/g, '/').toLowerCase()
-const createExternalSongInfo = (filePath: string): ISongInfo => {
-  const fileName = filePath.replace(/^.*[\\/]/, '')
-  const extMatch = fileName.match(/\.([^.]+)$/)
-  const ext = extMatch ? extMatch[1] : ''
-  const title = fileName.replace(/\.[^.]+$/, '')
-  return {
-    filePath,
-    fileName,
-    fileFormat: ext.toUpperCase(),
-    cover: null,
-    title,
-    artist: '',
-    album: '',
-    duration: '--:--',
-    genre: '',
-    label: '',
-    bitrate: undefined,
-    container: ext
-  }
-}
-const handleExternalOpenPlay = (payload: { paths?: string[] }) => {
-  const rawList = Array.isArray(payload?.paths) ? payload.paths : []
-  const normalized: string[] = []
-  const seen = new Set<string>()
-  for (const raw of rawList) {
-    if (!raw || typeof raw !== 'string') continue
-    const trimmed = raw.trim()
-    if (!trimmed) continue
-    const key = normalizeExternalPath(trimmed)
-    if (seen.has(key)) continue
-    seen.add(key)
-    normalized.push(trimmed)
-  }
-  if (normalized.length === 0) return
-  const queue = normalized.map((p) => createExternalSongInfo(p))
+const handleExternalOpenPlay = (payload: { songs?: ISongInfo[]; startIndex?: number }) => {
+  const queue = Array.isArray(payload?.songs)
+    ? payload.songs.filter((item) => item && typeof item.filePath === 'string')
+    : []
+  if (!queue.length) return
+  const normalizedQueue = queue.map((song) => ({ ...song }))
+  const startIndexRaw = typeof payload?.startIndex === 'number' ? payload.startIndex : 0
+  const startIndex = Math.min(Math.max(startIndexRaw, 0), normalizedQueue.length - 1)
   runtime.activeMenuUUID = ''
   runtime.songsArea.selectedSongFilePath = []
   runtime.playingData.playingSongListUUID = EXTERNAL_PLAYLIST_UUID
-  runtime.playingData.playingSongListData = queue
-  runtime.playingData.playingSong = queue[0]
+  runtime.playingData.playingSongListData = normalizedQueue
+  runtime.playingData.playingSong = normalizedQueue[startIndex]
 }
 
 // 预加载与 BPM 预计算

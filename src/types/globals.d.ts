@@ -212,11 +212,12 @@ interface ISongsAreaColumn {
 }
 
 type Icon = {
-  name: 'FilterLibrary' | 'CuratedLibrary' | 'RecycleBin'
+  name: 'FilterLibrary' | 'CuratedLibrary' | 'RecycleBin' | 'ExternalPlaylist'
   grey: string
   white: string
   src: string
   showAlt: boolean
+  i18nKey?: string
 }
 export {
   md5,

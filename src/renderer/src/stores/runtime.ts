@@ -1,9 +1,11 @@
 import { defineStore } from 'pinia'
 import { IDir, ILayoutConfig, ISettingConfig, ISongInfo } from 'src/types/globals'
+type LibrarySelection = 'FilterLibrary' | 'CuratedLibrary' | 'RecycleBin' | 'ExternalPlaylist'
+
 interface Runtime {
   platform: string
   isWindowMaximized: boolean | null
-  libraryAreaSelected: 'FilterLibrary' | 'CuratedLibrary' | 'RecycleBin'
+  libraryAreaSelected: LibrarySelection
   activeMenuUUID: string
   layoutConfig: ILayoutConfig
   dragItemData: null | IDir
@@ -23,6 +25,10 @@ interface Runtime {
     playingSong: null | ISongInfo
     playingSongListUUID: string
     playingSongListData: ISongInfo[]
+  }
+  externalPlaylist: {
+    songs: ISongInfo[]
+    lastLibrarySelection: Exclude<LibrarySelection, 'ExternalPlaylist'>
   }
   confirmShow: boolean
   hotkeysScopesHeap: string[]
@@ -76,6 +82,10 @@ export const useRuntimeStore = defineStore('runtime', {
         playingSong: null, //正在播放的歌曲信息
         playingSongListUUID: '', //正在播放的歌单的UUID
         playingSongListData: [] //正在播放的歌单的曲目数组
+      },
+      externalPlaylist: {
+        songs: [],
+        lastLibrarySelection: 'FilterLibrary'
       },
       confirmShow: false, //是否有确认框正在显示
       hotkeysScopesHeap: [], //hotkeys-js的scope组成的堆栈，始终setScope数组的最后一项

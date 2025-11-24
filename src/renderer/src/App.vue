@@ -17,6 +17,7 @@ import cloudSyncSettingsDialog from './components/cloudSyncSettingsDialog.vue'
 import cloudSyncSyncDialog from './components/cloudSyncSyncDialog.vue'
 import FileOpInterruptedDialog from './components/fileOpInterruptedDialog.vue'
 import emitter from './utils/mitt'
+import { replaceExternalPlaylistFromPaths } from '@renderer/utils/externalPlaylist'
 
 const runtime = useRuntimeStore()
 // 使用全局设置中的平台标记进行映射，避免依赖 userAgent
@@ -208,10 +209,16 @@ onMounted(() => {
   })
   // 不再显示“结束后的汇总提示”
   // 监听批处理被中断（等待用户选择 继续/取消）
-  window.electron.ipcRenderer.on('external-open/imported', (_e, payload) => {
+  window.electron.ipcRenderer.on('external-open/imported', async (_e, payload) => {
     try {
-      emitter.emit('external-open/play', payload)
-    } catch {}
+      const rawPaths = Array.isArray(payload?.paths) ? payload.paths : []
+      const songs = await replaceExternalPlaylistFromPaths(rawPaths)
+      if (songs.length) {
+        emitter.emit('external-open/play', { songs, startIndex: 0 })
+      }
+    } catch (error) {
+      console.error('[external-open] failed to prepare playlist', error)
+    }
   })
   window.electron.ipcRenderer.on('file-op-interrupted', async (_e, payload) => {
     try {

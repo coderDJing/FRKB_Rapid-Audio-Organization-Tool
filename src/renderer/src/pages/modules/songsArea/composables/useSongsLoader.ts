@@ -4,6 +4,7 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import type { ISongInfo } from '../../../../../../types/globals'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
+import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 
 interface UseSongsLoaderParams {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -25,6 +26,15 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     runtime.songsArea.songInfoArr = []
     originalSongInfoArr.value = []
     await nextTick()
+
+    if (runtime.songsArea.songListUUID === EXTERNAL_PLAYLIST_UUID) {
+      const songs = runtime.externalPlaylist.songs || []
+      originalSongInfoArr.value = markRaw([...songs])
+      applyFiltersAndSorting()
+      isRequesting.value = false
+      loadingShow.value = false
+      return
+    }
 
     const songListPath = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
 
