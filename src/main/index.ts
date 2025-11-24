@@ -33,6 +33,7 @@ import { prepareAndOpenMainWindow } from './bootstrap/prepareDatabase'
 import { execFile, execFileSync } from 'child_process'
 import { ISongInfo, ITrackMetadataUpdatePayload } from '../types/globals'
 import type { ISettingConfig } from '../types/globals'
+import { EXTERNAL_PLAYLIST_UUID } from '../shared/externalPlayback'
 import { scanSongList as svcScanSongList } from './services/scanSongs'
 import { resolveBundledFfmpegPath, ensureExecutableOnMac } from './ffmpeg'
 import {
@@ -958,6 +959,28 @@ ipcMain.handle('scanSongList', async (e, songListPath: string | string[], songLi
       path.join(store.databaseDir, mapRendererPathToFsPath(p))
     )
     return await svcScanSongList(scanPaths, store.settingConfig.audioExt, songListUUID)
+  }
+})
+
+ipcMain.handle('externalPlaylist:scan', async (_e, rawPaths: string[]) => {
+  try {
+    const arr = Array.isArray(rawPaths) ? rawPaths : []
+    const normalized = Array.from(
+      new Set(
+        arr
+          .map((p) => (typeof p === 'string' ? p.trim() : ''))
+          .filter((p) => p.length > 0)
+          .map((p) => path.resolve(p))
+      )
+    )
+    const filtered = normalized.filter((p) => isSupportedAudioPath(p))
+    if (!filtered.length) {
+      return { scanData: [], songListUUID: EXTERNAL_PLAYLIST_UUID }
+    }
+    return await svcScanSongList(filtered, store.settingConfig.audioExt, EXTERNAL_PLAYLIST_UUID)
+  } catch (error) {
+    log.error('externalPlaylist:scan failed', error)
+    return { scanData: [], songListUUID: EXTERNAL_PLAYLIST_UUID }
   }
 })
 

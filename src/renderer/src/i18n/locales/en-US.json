@@ -164,6 +164,7 @@
   "library": {
     "filter": "Filter",
     "curated": "Curated",
+    "externalPlaylist": "External tracks",
     "recentlyUsed": "Recent",
     "createPlaylist": "New playlist",
     "createFolder": "New folder",

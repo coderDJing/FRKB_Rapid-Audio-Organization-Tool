@@ -7,16 +7,18 @@ import settingGrey from '@renderer/assets/setting-grey.png?asset'
 import settingWhite from '@renderer/assets/setting-white.png?asset'
 import trashGrey from '@renderer/assets/trash-grey.png?asset'
 import trashWhite from '@renderer/assets/trash-white.png?asset'
-import { ref, reactive } from 'vue'
+import { ref, reactive, watch } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import settingDialog from '@renderer/components/settingDialog.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { t } from '@renderer/utils/translate'
 import { Icon } from '../../../../types/globals'
+import tempListGrey from '@renderer/assets/tempList-grey.png?asset'
+import tempListWhite from '@renderer/assets/tempList-white.png?asset'
 const emit = defineEmits(['librarySelectedChange'])
 
-const iconArr = ref<Icon[]>([
+const baseIcons: Icon[] = [
   {
     name: 'FilterLibrary',
     grey: listGrey,
@@ -42,21 +44,39 @@ const iconArr = ref<Icon[]>([
     showAlt: false,
     i18nKey: 'recycleBin.recycleBin'
   } as any
-])
+]
+
+const externalIcon: Icon = {
+  name: 'ExternalPlaylist',
+  grey: tempListGrey,
+  white: tempListWhite,
+  src: tempListGrey,
+  showAlt: false,
+  i18nKey: 'library.externalPlaylist'
+} as any
+
+const iconArr = ref<Icon[]>([...baseIcons])
 
 const selectedIcon = ref(iconArr.value[0])
 selectedIcon.value.src = selectedIcon.value.white
 
 const runtime = useRuntimeStore()
 
+const updateSelectedIcon = (item: Icon | undefined) => {
+  if (!item) return
+  if (selectedIcon.value && selectedIcon.value !== item) {
+    selectedIcon.value.src = selectedIcon.value.grey
+  }
+  selectedIcon.value = item
+  selectedIcon.value.src = selectedIcon.value.white
+}
+
 const clickIcon = (item: Icon) => {
   if (item.name == selectedIcon.value.name) {
+    runtime.libraryAreaSelected = item.name
     return
   }
   runtime.libraryAreaSelected = item.name
-  selectedIcon.value.src = selectedIcon.value.grey
-  selectedIcon.value = item
-  selectedIcon.value.src = selectedIcon.value.white
 }
 
 const settingDialogShow = ref(false)
@@ -122,6 +142,39 @@ const iconDragEnter = (event: DragEvent, item: Icon) => {
     libraryHandleClick(item)
   }
 }
+
+watch(
+  () => runtime.externalPlaylist.songs.length,
+  (len) => {
+    const exists = iconArr.value.find((icon) => icon.name === 'ExternalPlaylist')
+    if (len > 0 && !exists) {
+      externalIcon.src = externalIcon.grey
+      const recycleIndex = iconArr.value.findIndex((icon) => icon.name === 'RecycleBin')
+      if (recycleIndex === -1) {
+        iconArr.value.push(externalIcon)
+      } else {
+        iconArr.value.splice(recycleIndex, 0, externalIcon)
+      }
+      if (runtime.libraryAreaSelected === 'ExternalPlaylist') {
+        updateSelectedIcon(externalIcon)
+      }
+    } else if (len === 0 && exists) {
+      iconArr.value = iconArr.value.filter((icon) => icon.name !== 'ExternalPlaylist')
+    }
+  },
+  { immediate: true }
+)
+
+watch(
+  () => runtime.libraryAreaSelected,
+  (val) => {
+    const target = iconArr.value.find((icon) => icon.name === val)
+    if (target) {
+      updateSelectedIcon(target)
+    }
+  },
+  { immediate: true }
+)
 </script>
 <template>
   <div class="librarySelectArea unselectable">
