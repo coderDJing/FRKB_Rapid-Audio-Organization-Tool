@@ -131,6 +131,8 @@ let resizeObserver: ResizeObserver | null = null
 let rafId = 0
 let lastScrollTop = -1
 let hostEl: HTMLElement | null = null
+let overlayLeftLock = 0
+let detachPreviewGuards: (() => void) | null = null
 
 function resolveViewportEl(): HTMLElement | null {
   // 1) 优先使用传入的 viewport
@@ -341,11 +343,14 @@ const onRowsMouseOver = (e: MouseEvent) => {
 }
 const onRowsMouseLeave = (e: MouseEvent) => {
   const rt = (e && (e.relatedTarget as HTMLElement | null)) || null
-  // 若移入了气泡框（teleport 到 body，具有 .frkb-bubble 类），不要清空 hovered 状态
-  if (rt && typeof rt.closest === 'function' && rt.closest('.frkb-bubble')) {
-    return
+  // 若移入气泡框或封面预览（teleport 到 body）时保持当前状态
+  if (rt && typeof rt.closest === 'function') {
+    if (rt.closest('.frkb-bubble') || rt.closest('.cover-preview-overlay')) {
+      return
+    }
   }
   hoveredCellKey.value = null
+  closeCoverPreview()
 }
 
 // --- 封面懒加载（有限并发 + 非响应式缓存） ---
@@ -477,11 +482,13 @@ watch(
 const coverPreviewState = reactive({
   active: false,
   anchorIndex: -1,
+  anchorFilePath: '',
   displayIndex: -1,
   overlayLeft: 0,
   overlayTop: 0,
   overlayWidth: 0,
-  lockedOverlayLeft: 0
+  pointerClientX: 0,
+  pointerClientY: 0
 })
 const coverPreviewSize = computed(() => {
   // 展开容器保持正方形：默认取封面列宽度，兜底使用行高
@@ -503,16 +510,72 @@ const previewedCoverUrl = computed(() => {
   return url
 })
 
+function getListContainerRect(): DOMRect | null {
+  const container =
+    viewportEl || (hostEl?.querySelector?.('.os-viewport') as HTMLElement | null) || rowsRoot.value
+  return container?.getBoundingClientRect?.() || null
+}
+
+function ensurePointerWithinAllowedArea() {
+  if (typeof document === 'undefined') return
+  if (!coverPreviewState.active) return
+  const x = coverPreviewState.pointerClientX
+  const y = coverPreviewState.pointerClientY
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return
+  const rect = getListContainerRect()
+  if (rect) {
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      closeCoverPreview()
+      return
+    }
+  }
+  const el = document.elementFromPoint(x, y)
+  if (!el) {
+    closeCoverPreview()
+    return
+  }
+  if (el.closest('.cover-preview-overlay')) {
+    return
+  }
+  const anchorEl = coverPreviewState.anchorFilePath
+    ? coverCellRefMap.get(coverPreviewState.anchorFilePath) || null
+    : null
+  if (anchorEl && anchorEl.contains(el)) {
+    return
+  }
+  closeCoverPreview()
+}
+
+function attachPreviewGuards() {
+  if (typeof window === 'undefined') return
+  detachPreviewGuards?.()
+  const onPointerMove = (event: MouseEvent) => {
+    coverPreviewState.pointerClientX = event.clientX
+    coverPreviewState.pointerClientY = event.clientY
+    ensurePointerWithinAllowedArea()
+  }
+  const onGlobalScroll = () => {
+    ensurePointerWithinAllowedArea()
+  }
+  window.addEventListener('mousemove', onPointerMove, true)
+  window.addEventListener('scroll', onGlobalScroll, true)
+  detachPreviewGuards = () => {
+    window.removeEventListener('mousemove', onPointerMove, true)
+    window.removeEventListener('scroll', onGlobalScroll, true)
+    detachPreviewGuards = null
+  }
+}
+
 function applyCoverPreviewRect(rect: DOMRect | null, lockHorizontal = false): boolean {
   if (!rect) return false
   const fallbackSize = rowHeight.value || defaultRowHeight
   const width =
     rect.width && rect.width > 0 ? rect.width : coverPreviewState.overlayWidth || fallbackSize
   coverPreviewState.overlayWidth = width
-  if (!coverPreviewState.lockedOverlayLeft || lockHorizontal) {
-    coverPreviewState.lockedOverlayLeft = rect.left
+  if (lockHorizontal || !overlayLeftLock) {
+    overlayLeftLock = rect.left
   }
-  coverPreviewState.overlayLeft = coverPreviewState.lockedOverlayLeft || rect.left
+  coverPreviewState.overlayLeft = overlayLeftLock || rect.left
   const effectiveSize = width > 0 ? width : Math.max(fallbackSize, rect.height || 0)
   coverPreviewState.overlayTop = rect.top + rect.height / 2 - effectiveSize / 2
   return true
@@ -527,9 +590,7 @@ function syncPreviewPositionByIndex(idx: number): boolean {
 }
 
 function isPointerOutsideVisibleArea(event: MouseEvent): boolean {
-  const container =
-    viewportEl || (hostEl?.querySelector?.('.os-viewport') as HTMLElement | null) || rowsRoot.value
-  const rect = container?.getBoundingClientRect()
+  const rect = getListContainerRect()
   if (!rect) return false
   return (
     event.clientX < rect.left ||
@@ -543,22 +604,48 @@ function onCoverMouseEnter(idx: number, event: MouseEvent) {
   const target = event.currentTarget as HTMLElement | null
   if (!target) return
   const rect = target.getBoundingClientRect()
+  if (coverPreviewState.active) {
+    if (coverPreviewState.anchorIndex === idx) {
+      return
+    }
+    closeCoverPreview()
+    return
+  }
+  coverPreviewState.pointerClientX = event.clientX
+  coverPreviewState.pointerClientY = event.clientY
   coverPreviewState.active = true
   coverPreviewState.anchorIndex = idx
   coverPreviewState.displayIndex = idx
+  coverPreviewState.anchorFilePath = props.songs?.[idx]?.filePath || ''
   applyCoverPreviewRect(rect, true)
+  attachPreviewGuards()
   const song = props.songs?.[idx]
   if (song?.filePath) fetchCoverUrl(song.filePath)
+}
+
+function onCoverMouseLeave(idx: number, event: MouseEvent) {
+  if (!coverPreviewState.active) return
+  const nextTarget = (event?.relatedTarget as HTMLElement | null) || null
+  if (nextTarget && nextTarget.closest('.cover-preview-overlay')) {
+    return
+  }
+  if (coverPreviewState.anchorIndex === idx) {
+    closeCoverPreview()
+  }
 }
 
 function closeCoverPreview() {
   coverPreviewState.active = false
   coverPreviewState.anchorIndex = -1
+  coverPreviewState.anchorFilePath = ''
   coverPreviewState.displayIndex = -1
   coverPreviewState.overlayWidth = 0
   coverPreviewState.overlayLeft = 0
   coverPreviewState.overlayTop = 0
-  coverPreviewState.lockedOverlayLeft = 0
+  coverPreviewState.pointerClientX = 0
+  coverPreviewState.pointerClientY = 0
+  overlayLeftLock = 0
+  detachPreviewGuards?.()
 }
 
 function trySwitchPreviewSong(direction: -1 | 1, pointerClientY: number): boolean {
@@ -577,6 +664,8 @@ function trySwitchPreviewSong(direction: -1 | 1, pointerClientY: number): boolea
 
 function handleCoverPreviewMouseMove(event: MouseEvent) {
   if (!coverPreviewState.active) return
+  coverPreviewState.pointerClientX = event.clientX
+  coverPreviewState.pointerClientY = event.clientY
   if (isPointerOutsideVisibleArea(event)) {
     closeCoverPreview()
     return
@@ -667,6 +756,7 @@ watch(
                   :data-ct="coversTick"
                   :ref="(el) => setCoverCellRef(item.song.filePath, el)"
                   @mouseenter="onCoverMouseEnter(item.idx, $event)"
+                  @mouseleave="onCoverMouseLeave(item.idx, $event)"
                 >
                   <img
                     v-if="getCoverUrl(item.song.filePath)"
