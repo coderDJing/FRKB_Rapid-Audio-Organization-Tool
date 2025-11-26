@@ -46,6 +46,7 @@ interface ITrackMetadataDetail {
   filePath: string
   fileName: string
   fileExtension: string
+  durationSeconds?: number
   title?: string
   artist?: string
   album?: string
@@ -66,6 +67,64 @@ interface ITrackMetadataDetail {
     dataUrl: string
     format?: string
   } | null
+}
+
+interface IMusicBrainzSearchPayload {
+  filePath: string
+  title?: string
+  artist?: string
+  album?: string
+  durationSeconds?: number
+}
+
+interface IMusicBrainzMatch {
+  recordingId: string
+  title: string
+  artist: string
+  releaseId?: string
+  releaseTitle?: string
+  releaseDate?: string
+  country?: string
+  disambiguation?: string
+  score: number
+  matchedFields: string[]
+  durationSeconds?: number
+  durationDiffSeconds?: number
+  isrc?: string
+}
+
+interface IMusicBrainzSuggestion {
+  title?: string
+  artist?: string
+  album?: string
+  albumArtist?: string
+  year?: string
+  genre?: string
+  label?: string
+  isrc?: string
+  trackNo?: number
+  trackTotal?: number
+  discNo?: number
+  discTotal?: number
+  coverDataUrl?: string | null
+}
+
+interface IMusicBrainzSuggestionResult {
+  suggestion: IMusicBrainzSuggestion
+  source: {
+    recordingId: string
+    releaseId?: string
+  }
+  releaseTitle?: string
+  releaseDate?: string
+  country?: string
+  label?: string
+  artistCredit?: string
+}
+
+interface IMusicBrainzSuggestionParams {
+  recordingId: string
+  releaseId?: string
 }
 
 // 元数据更新请求结构
@@ -231,5 +290,10 @@ export {
   IMenu,
   IImportSongsFormData,
   ISongsAreaColumn,
-  Icon
+  Icon,
+  IMusicBrainzSearchPayload,
+  IMusicBrainzMatch,
+  IMusicBrainzSuggestion,
+  IMusicBrainzSuggestionResult,
+  IMusicBrainzSuggestionParams
 }

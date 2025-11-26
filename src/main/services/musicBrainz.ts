@@ -1,0 +1,473 @@
+import path = require('path')
+import fs = require('fs-extra')
+import { app } from 'electron'
+import {
+  IMusicBrainzMatch,
+  IMusicBrainzSearchPayload,
+  IMusicBrainzSuggestionParams,
+  IMusicBrainzSuggestionResult
+} from '../../types/globals'
+
+const MUSICBRAINZ_BASE = 'https://musicbrainz.org/ws/2'
+const COVER_ART_BASE = 'https://coverartarchive.org'
+const REQUEST_TIMEOUT = 8000
+const RELEASE_DETAIL_TIMEOUT = 15000
+const MIN_INTERVAL_MS = 1100
+const SEARCH_CACHE_TTL = 24 * 60 * 60 * 1000
+const DETAIL_CACHE_TTL = 7 * 24 * 60 * 60 * 1000
+
+const appReady = app.isReady() ? Promise.resolve() : app.whenReady()
+const cacheDirMap = new Map<'search' | 'detail', string>()
+const memoryCache = new Map<string, { expiresAt: number; data: any }>()
+
+interface QueueItem<T> {
+  fn: () => Promise<T>
+  resolve: (value: T | PromiseLike<T>) => void
+  reject: (reason?: unknown) => void
+}
+
+const requestQueue: QueueItem<any>[] = []
+let queueProcessing = false
+
+function scheduleRequest<T>(fn: () => Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    requestQueue.push({ fn, resolve, reject })
+    processQueue()
+  })
+}
+
+function processQueue() {
+  if (queueProcessing) return
+  const item = requestQueue.shift()
+  if (!item) return
+  queueProcessing = true
+  item
+    .fn()
+    .then((res) => item.resolve(res))
+    .catch((err) => item.reject(err))
+    .finally(() => {
+      setTimeout(() => {
+        queueProcessing = false
+        processQueue()
+      }, MIN_INTERVAL_MS)
+    })
+}
+
+async function ensureCacheDir(scope: 'search' | 'detail'): Promise<string> {
+  const existing = cacheDirMap.get(scope)
+  if (existing) return existing
+  await appReady
+  const dir = path.join(app.getPath('userData'), 'cache', 'musicbrainz', scope)
+  await fs.ensureDir(dir)
+  cacheDirMap.set(scope, dir)
+  return dir
+}
+
+interface CacheEntry<T> {
+  expiresAt: number
+  data: T
+}
+
+function makeCacheKey(scope: 'search' | 'detail', key: string) {
+  return `${scope}:${key}`
+}
+
+function encodeKey(key: string) {
+  return Buffer.from(key)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '')
+}
+
+async function readCache<T>(scope: 'search' | 'detail', key: string): Promise<T | null> {
+  const now = Date.now()
+  const memoryKey = makeCacheKey(scope, key)
+  const memEntry = memoryCache.get(memoryKey)
+  if (memEntry && memEntry.expiresAt > now) {
+    return memEntry.data as T
+  }
+  const dir = await ensureCacheDir(scope)
+  const file = path.join(dir, `${encodeKey(key)}.json`)
+  if (!(await fs.pathExists(file))) return null
+  try {
+    const entry = (await fs.readJson(file)) as CacheEntry<T>
+    if (!entry || typeof entry.expiresAt !== 'number' || entry.expiresAt <= now) {
+      await fs.remove(file).catch(() => {})
+      return null
+    }
+    memoryCache.set(memoryKey, entry)
+    return entry.data
+  } catch {
+    await fs.remove(file).catch(() => {})
+    return null
+  }
+}
+
+async function writeCache<T>(
+  scope: 'search' | 'detail',
+  key: string,
+  ttlMs: number,
+  data: T
+): Promise<void> {
+  const expiresAt = Date.now() + ttlMs
+  const dir = await ensureCacheDir(scope)
+  const entry: CacheEntry<T> = { expiresAt, data }
+  const file = path.join(dir, `${encodeKey(key)}.json`)
+  memoryCache.set(makeCacheKey(scope, key), entry)
+  await fs.writeJson(file, entry).catch(() => {})
+}
+
+function getUserAgent() {
+  const version = app.getVersion()
+  return `FRKB/${version} (https://coderDJing.github.io/FRKB_Rapid-Audio-Organization-Tool/)`
+}
+
+function mergeHeaders(extra?: HeadersInit): HeadersInit {
+  const base: Record<string, string> = {
+    'User-Agent': getUserAgent()
+  }
+  if (extra) {
+    if (Array.isArray(extra)) {
+      for (const [k, v] of extra) base[k] = v as string
+    } else if (extra instanceof Headers) {
+      extra.forEach((value, key) => {
+        base[key] = value
+      })
+    } else {
+      Object.assign(base, extra)
+    }
+  }
+  return base
+}
+
+async function requestJson<T>(url: string, headers?: HeadersInit, timeoutMs?: number): Promise<T> {
+  return scheduleRequest(async () => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs ?? REQUEST_TIMEOUT)
+    try {
+      const res = await fetch(url, {
+        headers: mergeHeaders({
+          Accept: 'application/json',
+          ...headers
+        }),
+        signal: controller.signal
+      })
+      if (res.status === 429) throw new Error('MUSICBRAINZ_RATE_LIMITED')
+      if (res.status === 503) throw new Error('MUSICBRAINZ_UNAVAILABLE')
+      if (!res.ok) throw new Error(`MUSICBRAINZ_HTTP_${res.status}`)
+      return (await res.json()) as T
+    } catch (err: any) {
+      if (err?.name === 'AbortError') throw new Error('MUSICBRAINZ_TIMEOUT')
+      if (err?.code === 'ECONNRESET' || err?.message?.includes('fetch failed')) {
+        console.error('[musicbrainz] request JSON network error', url, err)
+        throw new Error('MUSICBRAINZ_NETWORK')
+      }
+      throw err
+    } finally {
+      clearTimeout(timer)
+    }
+  })
+}
+
+async function requestBuffer(
+  url: string,
+  headers?: HeadersInit,
+  timeoutMs?: number
+): Promise<{
+  mime: string
+  buffer: Buffer
+} | null> {
+  return scheduleRequest(async () => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs ?? REQUEST_TIMEOUT)
+    try {
+      const res = await fetch(url, {
+        headers: mergeHeaders(headers),
+        signal: controller.signal
+      })
+      if (res.status === 404) return null
+      if (res.status === 429) throw new Error('MUSICBRAINZ_RATE_LIMITED')
+      if (res.status === 503) throw new Error('MUSICBRAINZ_UNAVAILABLE')
+      if (!res.ok) throw new Error(`MUSICBRAINZ_HTTP_${res.status}`)
+      const mime = res.headers.get('content-type') || 'image/jpeg'
+      const arrayBuffer = await res.arrayBuffer()
+      return { mime, buffer: Buffer.from(arrayBuffer) }
+    } catch (err: any) {
+      if (err?.name === 'AbortError') throw new Error('MUSICBRAINZ_TIMEOUT')
+      if (err?.code === 'ECONNRESET' || err?.message?.includes('fetch failed')) {
+        console.error('[musicbrainz] request buffer network error', url, err)
+        throw new Error('MUSICBRAINZ_NETWORK')
+      }
+      throw err
+    } finally {
+      clearTimeout(timer)
+    }
+  })
+}
+
+function normalizeText(value?: string | null): string | undefined {
+  if (!value || typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed === '' ? undefined : trimmed
+}
+
+function normalizeSearchPayload(payload: IMusicBrainzSearchPayload) {
+  return {
+    filePath: payload.filePath,
+    title: normalizeText(payload.title),
+    artist: normalizeText(payload.artist),
+    album: normalizeText(payload.album),
+    durationSeconds:
+      typeof payload.durationSeconds === 'number' && payload.durationSeconds > 0
+        ? Math.round(payload.durationSeconds)
+        : undefined
+  }
+}
+
+function escapeQueryValue(value: string) {
+  return value.replace(/"/g, '\\"')
+}
+
+function buildRecordingQuery(payload: ReturnType<typeof normalizeSearchPayload>) {
+  const parts: string[] = []
+  if (payload.title) {
+    parts.push(`recording:"${escapeQueryValue(payload.title)}"`)
+  }
+  if (payload.artist) {
+    parts.push(`artist:"${escapeQueryValue(payload.artist)}"`)
+  }
+  if (payload.album) {
+    parts.push(`release:"${escapeQueryValue(payload.album)}"`)
+  }
+  if (payload.durationSeconds && payload.durationSeconds > 0) {
+    const baseMs = payload.durationSeconds * 1000
+    const delta = 2000
+    parts.push(`dur:[${Math.max(baseMs - delta, 0)} TO ${baseMs + delta}]`)
+  }
+  return parts.join(' AND ')
+}
+
+function formatArtistCredit(credit: any): string {
+  if (!Array.isArray(credit)) return ''
+  return credit
+    .map((entry: any) => {
+      const name = entry?.name || entry?.artist?.name
+      const joinphrase = entry?.joinphrase || ''
+      return `${name || ''}${joinphrase}`
+    })
+    .join('')
+    .trim()
+}
+
+function computeMatchedFields(
+  recording: any,
+  payload: ReturnType<typeof normalizeSearchPayload>,
+  release?: any
+) {
+  const matched: string[] = []
+  const recTitle = normalizeText(recording?.title)?.toLowerCase()
+  const artistCredit = formatArtistCredit(recording?.['artist-credit']).toLowerCase()
+  const releaseTitle = normalizeText(release?.title)?.toLowerCase()
+  if (payload.title && recTitle && payload.title.toLowerCase() === recTitle) matched.push('title')
+  if (payload.artist && artistCredit && payload.artist.toLowerCase() === artistCredit) {
+    matched.push('artist')
+  }
+  if (payload.album && releaseTitle && payload.album.toLowerCase() === releaseTitle) {
+    matched.push('album')
+  }
+  if (payload.durationSeconds && typeof recording?.length === 'number') {
+    const diff = Math.abs(Math.round(recording.length / 1000) - payload.durationSeconds)
+    if (diff <= 2) matched.push('duration')
+  }
+  return matched
+}
+
+function pickRelease(releases: any[]): any | undefined {
+  if (!Array.isArray(releases) || releases.length === 0) return undefined
+  const scored = releases
+    .map((release) => ({
+      release,
+      score:
+        (release?.status === 'Official' ? 20 : 0) +
+        (Array.isArray(release?.media) && release.media.length ? 10 : 0) +
+        (release?.country ? 5 : 0)
+    }))
+    .sort((a, b) => b.score - a.score)
+  return scored[0]?.release ?? releases[0]
+}
+
+function transformRecording(
+  recording: any,
+  payload: ReturnType<typeof normalizeSearchPayload>
+): IMusicBrainzMatch {
+  const release = pickRelease(recording?.releases ?? [])
+  const durationSeconds =
+    typeof recording?.length === 'number' ? Math.round(recording.length / 1000) : undefined
+  const durationDiffSeconds =
+    payload.durationSeconds && durationSeconds
+      ? Math.abs(durationSeconds - payload.durationSeconds)
+      : undefined
+  const baseScore = typeof recording?.score === 'number' ? recording.score : 0
+  let score = baseScore
+  const matchedFields = computeMatchedFields(recording, payload, release)
+  score += matchedFields.length * 5
+  if (typeof durationDiffSeconds === 'number') {
+    if (durationDiffSeconds <= 2) score += 10
+    else if (durationDiffSeconds > 8) score -= 10
+  }
+  if (release?.status === 'Official') score += 5
+  if (release?.country) score += 2
+  if (release?.['release-events']?.length) score += 1
+  score = Math.max(0, Math.min(100, score))
+  return {
+    recordingId: recording?.id,
+    title: recording?.title || '',
+    artist: formatArtistCredit(recording?.['artist-credit']),
+    releaseId: release?.id,
+    releaseTitle: release?.title,
+    releaseDate: release?.date,
+    country: release?.country,
+    disambiguation: recording?.disambiguation,
+    score,
+    matchedFields,
+    durationSeconds,
+    durationDiffSeconds,
+    isrc: Array.isArray(recording?.isrcs) ? recording.isrcs[0] : undefined
+  }
+}
+
+export async function searchMusicBrainz(
+  payload: IMusicBrainzSearchPayload
+): Promise<IMusicBrainzMatch[]> {
+  const normalized = normalizeSearchPayload(payload)
+  if (!normalized.title && !normalized.artist && !normalized.album && !normalized.durationSeconds) {
+    throw new Error('MUSICBRAINZ_EMPTY_QUERY')
+  }
+  const query = buildRecordingQuery(normalized)
+  if (!query) throw new Error('MUSICBRAINZ_EMPTY_QUERY')
+  const cacheKey = JSON.stringify({
+    title: normalized.title,
+    artist: normalized.artist,
+    album: normalized.album,
+    durationSeconds: normalized.durationSeconds
+  })
+  const cached = await readCache<IMusicBrainzMatch[]>('search', cacheKey)
+  if (cached) return cached
+  const url = `${MUSICBRAINZ_BASE}/recording?fmt=json&limit=5&inc=releases+artists+isrcs&query=${encodeURIComponent(query)}`
+  const response = await requestJson<any>(url)
+  const recordings: any[] = Array.isArray(response?.recordings) ? response.recordings : []
+  const matches = recordings
+    .map((rec) => transformRecording(rec, normalized))
+    .filter((m) => m.title)
+  matches.sort((a, b) => b.score - a.score)
+  await writeCache('search', cacheKey, SEARCH_CACHE_TTL, matches)
+  return matches
+}
+
+async function fetchRecordingDetail(recordingId: string): Promise<any> {
+  const url = `${MUSICBRAINZ_BASE}/recording/${recordingId}?fmt=json&inc=releases+artists+isrcs`
+  console.log('[musicbrainz] recording detail start', recordingId)
+  const start = Date.now()
+  const result = await requestJson<any>(url)
+  console.log('[musicbrainz] recording detail done', recordingId, `${Date.now() - start}ms`)
+  return result
+}
+
+async function fetchReleaseDetail(releaseId: string): Promise<any> {
+  const url = `${MUSICBRAINZ_BASE}/release/${releaseId}?fmt=json&inc=recordings+artists+labels+genres+media`
+  console.log('[musicbrainz] release detail start', releaseId)
+  const start = Date.now()
+  const result = await requestJson<any>(url, undefined, RELEASE_DETAIL_TIMEOUT)
+  console.log('[musicbrainz] release detail done', releaseId, `${Date.now() - start}ms`)
+  return result
+}
+
+function findTrackContext(release: any, recordingId: string) {
+  if (!release || !Array.isArray(release.media)) return null
+  for (const medium of release.media) {
+    const trackList = medium?.tracks || medium?.track
+    if (!Array.isArray(trackList)) continue
+    for (const track of trackList) {
+      if (track?.recording?.id === recordingId) {
+        return { medium, track }
+      }
+    }
+  }
+  return null
+}
+
+async function fetchCoverDataUrl(releaseId: string): Promise<string | null> {
+  console.log('[musicbrainz] cover fetch start', releaseId)
+  const start = Date.now()
+  try {
+    const cover = await requestBuffer(
+      `${COVER_ART_BASE}/release/${releaseId}/front-500`,
+      undefined,
+      RELEASE_DETAIL_TIMEOUT
+    )
+    console.log('[musicbrainz] cover fetch done', releaseId, `${Date.now() - start}ms`, !!cover)
+    if (!cover) return null
+    return `data:${cover.mime};base64,${cover.buffer.toString('base64')}`
+  } catch (err) {
+    console.error('[musicbrainz] cover fetch failed', releaseId, err)
+    throw err
+  }
+}
+
+export async function fetchMusicBrainzSuggestion(
+  params: IMusicBrainzSuggestionParams
+): Promise<IMusicBrainzSuggestionResult> {
+  if (!params || !params.recordingId) {
+    throw new Error('MUSICBRAINZ_INVALID_PARAMS')
+  }
+  const detailCacheKey = `${params.recordingId}:${params.releaseId || 'auto'}`
+  const cached = await readCache<IMusicBrainzSuggestionResult>('detail', detailCacheKey)
+  if (cached) return cached
+  const recording = await fetchRecordingDetail(params.recordingId)
+  const preferredRelease =
+    params.releaseId || pickRelease(recording?.releases || [])?.id || recording?.releases?.[0]?.id
+  if (!preferredRelease) throw new Error('MUSICBRAINZ_RELEASE_NOT_FOUND')
+  const releaseDetail = await fetchReleaseDetail(preferredRelease)
+  const trackCtx = findTrackContext(releaseDetail, params.recordingId)
+  if (!trackCtx) throw new Error('MUSICBRAINZ_RECORDING_NOT_IN_RELEASE')
+  const suggestion = {
+    title: recording?.title,
+    artist: formatArtistCredit(recording?.['artist-credit']),
+    album: releaseDetail?.title,
+    albumArtist: formatArtistCredit(releaseDetail?.['artist-credit']),
+    year: normalizeText(releaseDetail?.date)?.slice(0, 4),
+    genre: Array.isArray(releaseDetail?.genres) ? releaseDetail.genres[0]?.name : undefined,
+    label: releaseDetail?.['label-info']?.[0]?.label?.name,
+    isrc: Array.isArray(recording?.isrcs) ? recording.isrcs[0] : undefined,
+    trackNo: trackCtx.track?.position
+      ? Number(trackCtx.track.position)
+      : trackCtx.track?.number
+        ? parseInt(trackCtx.track.number, 10) || undefined
+        : undefined,
+    trackTotal:
+      typeof trackCtx.medium?.['track-count'] === 'number'
+        ? trackCtx.medium['track-count']
+        : trackCtx.medium?.trackCount,
+    discNo: typeof trackCtx.medium?.position === 'number' ? trackCtx.medium.position : undefined,
+    discTotal: Array.isArray(releaseDetail?.media) ? releaseDetail.media.length : undefined,
+    coverDataUrl:
+      releaseDetail?.['cover-art-archive']?.front === true
+        ? await fetchCoverDataUrl(preferredRelease)
+        : null
+  } as IMusicBrainzSuggestionResult['suggestion']
+  const result: IMusicBrainzSuggestionResult = {
+    suggestion,
+    source: {
+      recordingId: params.recordingId,
+      releaseId: preferredRelease
+    },
+    releaseTitle: releaseDetail?.title,
+    releaseDate: releaseDetail?.date,
+    country: releaseDetail?.country,
+    label: suggestion.label,
+    artistCredit: suggestion.albumArtist
+  }
+  await writeCache('detail', detailCacheKey, DETAIL_CACHE_TTL, result)
+  return result
+}
