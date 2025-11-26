@@ -131,6 +131,7 @@ let resizeObserver: ResizeObserver | null = null
 let rafId = 0
 let lastScrollTop = -1
 let hostEl: HTMLElement | null = null
+let lastScrollLeft = -1
 let overlayLeftLock = 0
 let detachPreviewGuards: (() => void) | null = null
 
@@ -158,7 +159,12 @@ function resolveViewportEl(): HTMLElement | null {
   return vp || content || host || null
 }
 
-function detectScrollCarrier(): { el: HTMLElement | null; height: number; top: number } {
+function detectScrollCarrier(): {
+  el: HTMLElement | null
+  height: number
+  top: number
+  left: number
+} {
   const host = hostEl || rowsRoot.value?.closest('.os-host') || null
   const vp = (host as HTMLElement | null)?.querySelector?.('.os-viewport') as HTMLElement | null
   const content = (host as HTMLElement | null)?.querySelector?.('.os-content') as HTMLElement | null
@@ -171,7 +177,7 @@ function detectScrollCarrier(): { el: HTMLElement | null; height: number; top: n
     const h = el.clientHeight
     const sh = el.scrollHeight
     if (h > 0 && sh > h + 1) {
-      return { el, height: h, top: el.scrollTop }
+      return { el, height: h, top: el.scrollTop, left: el.scrollLeft || 0 }
     }
   }
   // 兜底
@@ -180,7 +186,8 @@ function detectScrollCarrier(): { el: HTMLElement | null; height: number; top: n
     height:
       (viewportEl || vp || content || (host as HTMLElement | null))?.clientHeight ||
       window.innerHeight,
-    top: (viewportEl || vp || content || (host as HTMLElement | null))?.scrollTop || 0
+    top: (viewportEl || vp || content || (host as HTMLElement | null))?.scrollTop || 0,
+    left: (viewportEl || vp || content || (host as HTMLElement | null))?.scrollLeft || 0
   }
 }
 
@@ -191,12 +198,18 @@ function attachListeners() {
   const initCarrier = detectScrollCarrier()
   viewportHeight.value = initCarrier.height
   scrollTop.value = initCarrier.top
+  lastScrollLeft = initCarrier.left ?? 0
 
   onScrollBound = (e: Event) => {
     // 仅读取 scrollTop，避免布局抖动
     const carrier = detectScrollCarrier()
     scrollTop.value = carrier.top
     viewportHeight.value = carrier.height
+    const currentLeft = carrier.left ?? 0
+    if (coverPreviewState.active && currentLeft !== lastScrollLeft) {
+      closeCoverPreview()
+    }
+    lastScrollLeft = currentLeft
   }
   viewportEl.addEventListener('scroll', onScrollBound, { passive: true })
   // 同时在 content/host 上也监听，以防实际滚动元素不同
@@ -221,12 +234,20 @@ function attachListeners() {
   const tick = () => {
     const carrier = detectScrollCarrier()
     const st = carrier.top
+    const sl = carrier.left ?? 0
     if (st !== lastScrollTop) {
       lastScrollTop = st
       scrollTop.value = st
       viewportHeight.value = carrier.height
       // 每次滚动尝试测量一次行高（首屏或样式变化后）
       measureRowHeight()
+    }
+    if (sl !== lastScrollLeft) {
+      if (coverPreviewState.active) ensurePointerWithinAllowedArea()
+      lastScrollLeft = sl
+    }
+    if (coverPreviewState.active) {
+      ensurePointerWithinAllowedArea()
     }
     rafId = requestAnimationFrame(tick)
   }
@@ -488,7 +509,11 @@ const coverPreviewState = reactive({
   overlayTop: 0,
   overlayWidth: 0,
   pointerClientX: 0,
-  pointerClientY: 0
+  pointerClientY: 0,
+  anchorRectLeft: 0,
+  anchorRectTop: 0,
+  anchorRectWidth: 0,
+  anchorRectHeight: 0
 })
 const coverPreviewSize = computed(() => {
   // 展开容器保持正方形：默认取封面列宽度，兜底使用行高
@@ -529,18 +554,32 @@ function ensurePointerWithinAllowedArea() {
       return
     }
   }
+  const anchorEl = coverPreviewState.anchorFilePath
+    ? coverCellRefMap.get(coverPreviewState.anchorFilePath) || null
+    : null
+  if (!anchorEl) {
+    closeCoverPreview()
+    return
+  }
+  const anchorRect = anchorEl.getBoundingClientRect()
+  const driftThresholdX = Math.max(coverPreviewState.anchorRectWidth || 0, 20) * 0.2
+  const driftThresholdY = Math.max(coverPreviewState.anchorRectHeight || 0, 20) * 0.3
+  const driftX = Math.abs(anchorRect.left - coverPreviewState.anchorRectLeft)
+  const driftY = Math.abs(anchorRect.top - coverPreviewState.anchorRectTop)
+  if (driftX > driftThresholdX || driftY > driftThresholdY) {
+    closeCoverPreview()
+    return
+  }
   const el = document.elementFromPoint(x, y)
   if (!el) {
     closeCoverPreview()
     return
   }
-  if (el.closest('.cover-preview-overlay')) {
+  if (anchorEl.contains(el)) {
     return
   }
-  const anchorEl = coverPreviewState.anchorFilePath
-    ? coverCellRefMap.get(coverPreviewState.anchorFilePath) || null
-    : null
-  if (anchorEl && anchorEl.contains(el)) {
+  const overlayTarget = el.closest('.cover-preview-overlay')
+  if (overlayTarget) {
     return
   }
   closeCoverPreview()
@@ -578,6 +617,10 @@ function applyCoverPreviewRect(rect: DOMRect | null, lockHorizontal = false): bo
   coverPreviewState.overlayLeft = overlayLeftLock || rect.left
   const effectiveSize = width > 0 ? width : Math.max(fallbackSize, rect.height || 0)
   coverPreviewState.overlayTop = rect.top + rect.height / 2 - effectiveSize / 2
+  coverPreviewState.anchorRectLeft = rect.left
+  coverPreviewState.anchorRectTop = rect.top
+  coverPreviewState.anchorRectWidth = rect.width
+  coverPreviewState.anchorRectHeight = rect.height
   return true
 }
 
@@ -644,6 +687,10 @@ function closeCoverPreview() {
   coverPreviewState.overlayTop = 0
   coverPreviewState.pointerClientX = 0
   coverPreviewState.pointerClientY = 0
+  coverPreviewState.anchorRectLeft = 0
+  coverPreviewState.anchorRectTop = 0
+  coverPreviewState.anchorRectWidth = 0
+  coverPreviewState.anchorRectHeight = 0
   overlayLeftLock = 0
   detachPreviewGuards?.()
 }
