@@ -69,6 +69,7 @@ const emit = defineEmits<{
 
 // 记录每个单元格 DOM，用于气泡锚定（非响应，减少依赖跟踪）
 const cellRefMap = markRaw({} as Record<string, HTMLElement | null>)
+const coverCellRefMap = markRaw(new Map<string, HTMLElement | null>())
 const getCellKey = (song: ISongInfo, colKey: string) => `${song.filePath}__${colKey}`
 const setCellRef = (key: string, el: Element | ComponentPublicInstance | null) => {
   let dom: HTMLElement | null = null
@@ -80,6 +81,21 @@ const setCellRef = (key: string, el: Element | ComponentPublicInstance | null) =
     }
   }
   cellRefMap[key] = dom
+}
+const setCoverCellRef = (filePath: string, el: Element | ComponentPublicInstance | null) => {
+  let dom: HTMLElement | null = null
+  if (el) {
+    if (el instanceof HTMLElement) {
+      dom = el
+    } else if ((el as any).$el instanceof HTMLElement) {
+      dom = (el as any).$el as HTMLElement
+    }
+  }
+  if (dom) {
+    coverCellRefMap.set(filePath, dom)
+  } else {
+    coverCellRefMap.delete(filePath)
+  }
 }
 
 // 渲染完成观测：当 songs 变化后，等待一帧统计行数并上报
@@ -246,6 +262,8 @@ onMounted(() => {
 onUnmounted(() => {
   detachListeners()
   emitter.off('songMetadataUpdated', handleSongMetadataUpdated)
+  closeCoverPreview()
+  coverCellRefMap.clear()
 })
 
 // 监听传入的 scrollHostElement 变化，及时重挂监听
@@ -454,6 +472,148 @@ watch(
   () => primePrefetchWindow(),
   { deep: false }
 )
+
+// --- 封面展开预览 ---
+const coverPreviewState = reactive({
+  active: false,
+  anchorIndex: -1,
+  displayIndex: -1,
+  overlayLeft: 0,
+  overlayTop: 0,
+  overlayWidth: 0,
+  lockedOverlayLeft: 0
+})
+const coverPreviewSize = computed(() => {
+  // 展开容器保持正方形：默认取封面列宽度，兜底使用行高
+  return coverPreviewState.overlayWidth > 0
+    ? coverPreviewState.overlayWidth
+    : rowHeight.value || defaultRowHeight
+})
+const previewedSong = computed(() => {
+  if (!coverPreviewState.active) return null
+  return props.songs?.[coverPreviewState.displayIndex] ?? null
+})
+const previewedCoverUrl = computed(() => {
+  const song = previewedSong.value
+  if (!song?.filePath) return null
+  const url = getCoverUrl(song.filePath)
+  if (url === undefined) {
+    fetchCoverUrl(song.filePath)
+  }
+  return url
+})
+
+function applyCoverPreviewRect(rect: DOMRect | null, lockHorizontal = false): boolean {
+  if (!rect) return false
+  const fallbackSize = rowHeight.value || defaultRowHeight
+  const width =
+    rect.width && rect.width > 0 ? rect.width : coverPreviewState.overlayWidth || fallbackSize
+  coverPreviewState.overlayWidth = width
+  if (!coverPreviewState.lockedOverlayLeft || lockHorizontal) {
+    coverPreviewState.lockedOverlayLeft = rect.left
+  }
+  coverPreviewState.overlayLeft = coverPreviewState.lockedOverlayLeft || rect.left
+  const effectiveSize = width > 0 ? width : Math.max(fallbackSize, rect.height || 0)
+  coverPreviewState.overlayTop = rect.top + rect.height / 2 - effectiveSize / 2
+  return true
+}
+
+function syncPreviewPositionByIndex(idx: number): boolean {
+  const song = props.songs?.[idx]
+  if (!song) return false
+  const el = coverCellRefMap.get(song.filePath) || null
+  if (!el) return false
+  return applyCoverPreviewRect(el.getBoundingClientRect())
+}
+
+function isPointerOutsideVisibleArea(event: MouseEvent): boolean {
+  const container =
+    viewportEl || (hostEl?.querySelector?.('.os-viewport') as HTMLElement | null) || rowsRoot.value
+  const rect = container?.getBoundingClientRect()
+  if (!rect) return false
+  return (
+    event.clientX < rect.left ||
+    event.clientX > rect.right ||
+    event.clientY < rect.top ||
+    event.clientY > rect.bottom
+  )
+}
+
+function onCoverMouseEnter(idx: number, event: MouseEvent) {
+  const target = event.currentTarget as HTMLElement | null
+  if (!target) return
+  const rect = target.getBoundingClientRect()
+  coverPreviewState.active = true
+  coverPreviewState.anchorIndex = idx
+  coverPreviewState.displayIndex = idx
+  applyCoverPreviewRect(rect, true)
+  const song = props.songs?.[idx]
+  if (song?.filePath) fetchCoverUrl(song.filePath)
+}
+
+function closeCoverPreview() {
+  coverPreviewState.active = false
+  coverPreviewState.anchorIndex = -1
+  coverPreviewState.displayIndex = -1
+  coverPreviewState.overlayWidth = 0
+  coverPreviewState.overlayLeft = 0
+  coverPreviewState.overlayTop = 0
+  coverPreviewState.lockedOverlayLeft = 0
+}
+
+function trySwitchPreviewSong(direction: -1 | 1, pointerClientY: number): boolean {
+  if (!coverPreviewState.active) return false
+  const total = props.songs?.length || 0
+  const nextIdx = coverPreviewState.displayIndex + direction
+  if (nextIdx < 0 || nextIdx >= total) return false
+  coverPreviewState.displayIndex = nextIdx
+  if (!syncPreviewPositionByIndex(nextIdx)) {
+    coverPreviewState.overlayTop = pointerClientY - coverPreviewSize.value / 2
+  }
+  const song = props.songs?.[nextIdx]
+  if (song?.filePath) fetchCoverUrl(song.filePath)
+  return true
+}
+
+function handleCoverPreviewMouseMove(event: MouseEvent) {
+  if (!coverPreviewState.active) return
+  if (isPointerOutsideVisibleArea(event)) {
+    closeCoverPreview()
+    return
+  }
+  const target = event.currentTarget as HTMLElement | null
+  if (!target) return
+  const rect = target.getBoundingClientRect()
+  if (!rect || rect.height <= 0) return
+  const ratio = (event.clientY - rect.top) / rect.height
+  const normalized = Math.max(0, Math.min(1, ratio))
+  const topThreshold = 1 / 3
+  const bottomThreshold = 2 / 3
+  if (normalized < topThreshold) {
+    if (trySwitchPreviewSong(-1, event.clientY)) return
+  } else if (normalized > bottomThreshold) {
+    if (trySwitchPreviewSong(1, event.clientY)) return
+  }
+}
+
+watch(
+  () => effectiveScrollTop.value,
+  () => {
+    if (coverPreviewState.active) closeCoverPreview()
+  }
+)
+watch(
+  () => props.songs,
+  () => {
+    if (coverPreviewState.active) closeCoverPreview()
+  }
+)
+watch(
+  () => props.songs?.length,
+  () => {
+    if (coverPreviewState.active) closeCoverPreview()
+  }
+)
 </script>
 
 <template>
@@ -502,7 +662,12 @@ watch(
                 class="cell-cover"
                 :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
               >
-                <div class="cover-wrapper" :data-ct="coversTick">
+                <div
+                  class="cover-wrapper"
+                  :data-ct="coversTick"
+                  :ref="(el) => setCoverCellRef(item.song.filePath, el)"
+                  @mouseenter="onCoverMouseEnter(item.idx, $event)"
+                >
                   <img
                     v-if="getCoverUrl(item.song.filePath)"
                     :src="getCoverUrl(item.song.filePath) as string"
@@ -535,6 +700,23 @@ watch(
       </div>
     </div>
   </div>
+  <teleport to="body">
+    <div
+      v-if="coverPreviewState.active"
+      class="cover-preview-overlay"
+      :style="{
+        top: coverPreviewState.overlayTop + 'px',
+        left: coverPreviewState.overlayLeft + 'px',
+        width: coverPreviewState.overlayWidth + 'px',
+        height: coverPreviewSize + 'px'
+      }"
+      @mousemove="handleCoverPreviewMouseMove"
+      @mouseleave="closeCoverPreview"
+    >
+      <img v-if="previewedCoverUrl" :src="previewedCoverUrl" alt="cover preview" decoding="async" />
+      <div v-else class="cover-skeleton expanded"></div>
+    </div>
+  </teleport>
 </template>
 
 <style lang="scss" scoped>
@@ -585,26 +767,54 @@ watch(
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  position: relative;
 }
 
 .cover-wrapper {
   width: 100%;
   height: 100%;
-  overflow: hidden; // 多余部分被遮挡
+  overflow: hidden; // 保持单元格原有宽度
   display: flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
 }
 .cover-wrapper img {
   width: 100%;
   height: 100%;
-  object-fit: cover; // 占满宽高
+  object-fit: cover; // 填满容器
   display: block;
+  pointer-events: none; // 禁止拦截事件，防止拖拽
+  -webkit-user-drag: none; // CSS 方式禁用拖拽
+  user-select: none;
 }
 .cover-skeleton {
   width: 100%;
   height: 100%;
-  // background: #333;
+}
+.cover-skeleton.expanded {
+  background-color: var(--bg-elev);
+}
+
+.cover-preview-overlay {
+  position: fixed;
+  background-color: var(--bg-elev);
+  // 通过双重阴影模拟描边，避免占用额外像素
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 10px 30px rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  z-index: 3000;
+  overflow: hidden;
+}
+.cover-preview-overlay img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .unselectable {
