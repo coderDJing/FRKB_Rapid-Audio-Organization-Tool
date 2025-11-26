@@ -31,7 +31,12 @@ import { readManifestFile, MANIFEST_FILE_NAME, looksLikeLegacyStructure } from '
 import { setupMacMenus, rebuildMacMenusForCurrentFocus } from './menu/macMenu'
 import { prepareAndOpenMainWindow } from './bootstrap/prepareDatabase'
 import { execFile, execFileSync } from 'child_process'
-import { ISongInfo, ITrackMetadataUpdatePayload } from '../types/globals'
+import {
+  ISongInfo,
+  ITrackMetadataUpdatePayload,
+  IMusicBrainzSearchPayload,
+  IMusicBrainzSuggestionParams
+} from '../types/globals'
 import type { ISettingConfig } from '../types/globals'
 import { EXTERNAL_PLAYLIST_UUID } from '../shared/externalPlayback'
 import { scanSongList as svcScanSongList } from './services/scanSongs'
@@ -45,6 +50,7 @@ import {
   readTrackMetadata as svcReadTrackMetadata,
   updateTrackMetadata as svcUpdateTrackMetadata
 } from './services/metadataEditor'
+import { searchMusicBrainz, fetchMusicBrainzSuggestion } from './services/musicBrainz'
 import { v4 as uuidV4 } from 'uuid'
 // import AudioFeatureExtractor from './mfccTest'
 
@@ -1242,6 +1248,14 @@ ipcMain.handle('audio:metadata:update', async (_e, payload: ITrackMetadataUpdate
       message: error?.message || 'metadata-update-failed'
     }
   }
+})
+
+ipcMain.handle('musicbrainz:search', async (_e, payload: IMusicBrainzSearchPayload) => {
+  return await searchMusicBrainz(payload)
+})
+
+ipcMain.handle('musicbrainz:suggest', async (_e, payload: IMusicBrainzSuggestionParams) => {
+  return await fetchMusicBrainzSuggestion(payload)
 })
 
 ipcMain.handle('getLibrary', async () => {
