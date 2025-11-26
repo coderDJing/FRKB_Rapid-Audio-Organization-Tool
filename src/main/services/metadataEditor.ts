@@ -88,6 +88,8 @@ function buildDetail(filePath: string, metadata: any): ITrackMetadataDetail {
   const nameWithoutExt = dotIndex >= 0 ? baseName.slice(0, dotIndex) : baseName
   const extension = dotIndex >= 0 ? baseName.slice(dotIndex) : ''
   const pictureSource = Array.isArray(metadata.common?.picture) ? metadata.common.picture[0] : null
+  const durationSeconds =
+    typeof metadata.format?.duration === 'number' ? Math.round(metadata.format.duration) : undefined
 
   const firstString = (arr: unknown): string | undefined => {
     if (!Array.isArray(arr)) return undefined
@@ -104,6 +106,7 @@ function buildDetail(filePath: string, metadata: any): ITrackMetadataDetail {
     filePath,
     fileName: nameWithoutExt,
     fileExtension: extension,
+    durationSeconds,
     title: typeof metadata.common?.title === 'string' ? metadata.common.title : undefined,
     artist: typeof metadata.common?.artist === 'string' ? metadata.common.artist : undefined,
     album: typeof metadata.common?.album === 'string' ? metadata.common.album : undefined,
