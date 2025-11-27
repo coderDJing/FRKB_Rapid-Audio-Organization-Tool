@@ -17,7 +17,9 @@ import ColumnHeaderContextMenu from './ColumnHeaderContextMenu.vue'
 // Composable import
 import {
   useSongItemContextMenu,
-  type MetadataUpdatedAction
+  type MetadataUpdatedAction,
+  type PlaylistCacheClearedAction,
+  type TrackCacheClearedAction
 } from '@renderer/pages/modules/songsArea/composables/useSongItemContextMenu'
 import { useSelectAndMoveSongs } from '@renderer/pages/modules/songsArea/composables/useSelectAndMoveSongs'
 import { useDragSongs } from '@renderer/pages/modules/songsArea/composables/useDragSongs'
@@ -81,6 +83,14 @@ const { loadingShow, isRequesting, openSongList } = useSongsLoader({
   applyFiltersAndSorting
 })
 
+const handlePlaylistCacheCleared = async (payload: { uuid?: string }) => {
+  if (!payload || payload.uuid !== runtime.songsArea.songListUUID) return
+  const selectionBeforeReload = [...runtime.songsArea.selectedSongFilePath]
+  await openSongList()
+  runtime.songsArea.selectedSongFilePath = selectionBeforeReload.filter(Boolean)
+}
+emitter.on('playlistCacheCleared', handlePlaylistCacheCleared)
+
 // 键盘与鼠标选择
 const { songClick } = useKeyboardSelection({
   runtime,
@@ -98,6 +108,10 @@ useSongsAreaEvents({
   applyFiltersAndSorting,
   openSongList,
   scheduleSweepCovers
+})
+
+onUnmounted(() => {
+  emitter.off('playlistCacheCleared', handlePlaylistCacheCleared)
 })
 // 上述列、加载、事件与封面清理已由组合函数提供
 
@@ -195,6 +209,28 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
     } catch {}
 
     scheduleSweepCovers()
+
+    // 为避免缓存导致的展示差异，保存后重新扫描当前歌单
+    const selectionBeforeReload = [...runtime.songsArea.selectedSongFilePath]
+    await openSongList()
+    runtime.songsArea.selectedSongFilePath = selectionBeforeReload.map((path) =>
+      path === oldFilePath ? updatedSong.filePath : path
+    )
+    return
+  }
+
+  if (result.action === 'trackCacheCleared') {
+    const selectionBeforeReload = [...runtime.songsArea.selectedSongFilePath]
+    await openSongList()
+    runtime.songsArea.selectedSongFilePath = selectionBeforeReload.filter(Boolean)
+    return
+  }
+
+  if (result.action === 'playlistCacheCleared') {
+    const selectionBeforeReload = [...runtime.songsArea.selectedSongFilePath]
+    await openSongList()
+    runtime.songsArea.selectedSongFilePath = selectionBeforeReload.filter(Boolean)
+    return
   }
 }
 

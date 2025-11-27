@@ -223,7 +223,9 @@
     "showInFileExplorer": "Open in Explorer",
     "saveCoverAs": "Save cover as",
     "convertFormat": "Convert format",
-    "editMetadata": "Edit track info"
+    "editMetadata": "Edit track info",
+    "clearTrackCache": "Clear track cache",
+    "clearTrackCache": "Clear track cache"
   },
   "metadata": {
     "dialogTitle": "Edit Track Info",
@@ -473,6 +475,7 @@
     "tryOtherCombinations": "Try another combo."
   },
   "playlist": {
+    "clearCache": "Clear playlist cache",
     "deletePlaylist": "Delete playlist",
     "emptyPlaylist": "Empty playlist",
     "collapsibleFolder": "Collapsible folder",

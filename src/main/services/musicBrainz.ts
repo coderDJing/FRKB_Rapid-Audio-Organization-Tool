@@ -7,6 +7,7 @@ import {
   IMusicBrainzSuggestionParams,
   IMusicBrainzSuggestionResult
 } from '../../types/globals'
+import { ProxyAgent } from 'undici'
 
 const MUSICBRAINZ_BASE = 'https://musicbrainz.org/ws/2'
 const COVER_ART_BASE = 'https://coverartarchive.org'
@@ -15,6 +16,8 @@ const RELEASE_DETAIL_TIMEOUT = 15000
 const MIN_INTERVAL_MS = 1100
 const SEARCH_CACHE_TTL = 24 * 60 * 60 * 1000
 const DETAIL_CACHE_TTL = 7 * 24 * 60 * 60 * 1000
+const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || ''
+const proxyDispatcher = proxyUrl ? new ProxyAgent(proxyUrl) : undefined
 
 const appReady = app.isReady() ? Promise.resolve() : app.whenReady()
 const cacheDirMap = new Map<'search' | 'detail', string>()
@@ -146,13 +149,15 @@ async function requestJson<T>(url: string, headers?: HeadersInit, timeoutMs?: nu
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs ?? REQUEST_TIMEOUT)
     try {
-      const res = await fetch(url, {
+      const init: RequestInit & { dispatcher?: any } = {
         headers: mergeHeaders({
           Accept: 'application/json',
           ...headers
         }),
         signal: controller.signal
-      })
+      }
+      if (proxyDispatcher) init.dispatcher = proxyDispatcher
+      const res = await fetch(url, init)
       if (res.status === 429) throw new Error('MUSICBRAINZ_RATE_LIMITED')
       if (res.status === 503) throw new Error('MUSICBRAINZ_UNAVAILABLE')
       if (!res.ok) throw new Error(`MUSICBRAINZ_HTTP_${res.status}`)
@@ -182,10 +187,12 @@ async function requestBuffer(
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs ?? REQUEST_TIMEOUT)
     try {
-      const res = await fetch(url, {
+      const init: RequestInit & { dispatcher?: any } = {
         headers: mergeHeaders(headers),
         signal: controller.signal
-      })
+      }
+      if (proxyDispatcher) init.dispatcher = proxyDispatcher
+      const res = await fetch(url, init)
       if (res.status === 404) return null
       if (res.status === 429) throw new Error('MUSICBRAINZ_RATE_LIMITED')
       if (res.status === 503) throw new Error('MUSICBRAINZ_UNAVAILABLE')
