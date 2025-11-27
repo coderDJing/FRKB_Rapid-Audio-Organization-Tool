@@ -127,6 +127,22 @@ interface IMusicBrainzSuggestionParams {
   releaseId?: string
 }
 
+interface IMusicBrainzApplyPayload {
+  title?: string
+  artist?: string
+  album?: string
+  albumArtist?: string
+  year?: string
+  genre?: string
+  label?: string
+  isrc?: string
+  trackNo?: number
+  trackTotal?: number
+  discNo?: number
+  discTotal?: number
+  coverDataUrl?: string | null
+}
+
 // 元数据更新请求结构
 interface ITrackMetadataUpdatePayload {
   filePath: string
@@ -295,5 +311,6 @@ export {
   IMusicBrainzMatch,
   IMusicBrainzSuggestion,
   IMusicBrainzSuggestionResult,
-  IMusicBrainzSuggestionParams
+  IMusicBrainzSuggestionParams,
+  IMusicBrainzApplyPayload
 }
