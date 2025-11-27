@@ -230,6 +230,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
               { menuName: 'playlist.emptyPlaylist' }
             ],
             [{ menuName: 'tracks.showInFileExplorer' }],
+            [{ menuName: 'playlist.clearCache' }],
             [{ menuName: 'playlist.fingerprintDeduplicate' }],
             [{ menuName: 'tracks.convertFormat' }],
             [{ menuName: 'fingerprints.analyzeAndAdd' }]
@@ -379,6 +380,13 @@ const contextmenuEvent = async (event: MouseEvent) => {
         return
       }
       await analyzeFingerprintsForPaths(files, { origin: 'playlist' })
+    } else if (result.menuName === 'playlist.clearCache') {
+      const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
+      await window.electron.ipcRenderer.invoke('playlist:cache:clear', dirPath || '')
+      trackCount.value = null
+      try {
+        emitter.emit('playlistCacheCleared', { uuid: props.uuid })
+      } catch {}
     } else if (result.menuName === 'playlist.fingerprintDeduplicate') {
       if (runtime.isProgressing) {
         await confirm({

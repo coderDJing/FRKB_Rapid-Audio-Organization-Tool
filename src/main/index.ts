@@ -47,6 +47,10 @@ import {
   sweepSongListCovers as svcSweepSongListCovers
 } from './services/covers'
 import {
+  clearSongListCaches as svcClearSongListCaches,
+  clearTrackCache as svcClearTrackCache
+} from './services/cacheMaintenance'
+import {
   readTrackMetadata as svcReadTrackMetadata,
   updateTrackMetadata as svcUpdateTrackMetadata
 } from './services/metadataEditor'
@@ -1256,6 +1260,14 @@ ipcMain.handle('musicbrainz:search', async (_e, payload: IMusicBrainzSearchPaylo
 
 ipcMain.handle('musicbrainz:suggest', async (_e, payload: IMusicBrainzSuggestionParams) => {
   return await fetchMusicBrainzSuggestion(payload)
+})
+
+ipcMain.handle('playlist:cache:clear', async (_e, songListPath: string) => {
+  await svcClearSongListCaches(songListPath)
+})
+
+ipcMain.handle('track:cache:clear', async (_e, filePath: string) => {
+  await svcClearTrackCache(filePath)
 })
 
 ipcMain.handle('getLibrary', async () => {

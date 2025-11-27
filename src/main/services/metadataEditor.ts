@@ -4,9 +4,11 @@ import fs = require('fs-extra')
 import child_process = require('child_process')
 import { v4 as uuidV4 } from 'uuid'
 import { resolveBundledFfmpegPath, ensureExecutableOnMac } from '../ffmpeg'
+import { operateHiddenFile } from '../utils'
 import { ISongInfo, ITrackMetadataDetail, ITrackMetadataUpdatePayload } from '../../types/globals'
 import { extFromMime } from './covers'
 import { writeWavRiffInfoWindows, readWavRiffInfoWindows } from './wavRiffInfo'
+import { updateSongCacheEntry, purgeCoverCacheForTrack } from './cacheMaintenance'
 
 async function parseMetadata(filePath: string) {
   const mm = await import('music-metadata')
@@ -452,10 +454,14 @@ export async function updateTrackMetadata(
         }
       } catch {}
     }
+    const songInfo = buildSongInfo(filePath, songInfoMeta)
+    const renamedFrom = originalFilePath === filePath ? undefined : originalFilePath
+    await updateSongCacheEntry(filePath, songInfo, renamedFrom)
+    await purgeCoverCacheForTrack(filePath, renamedFrom)
     return {
-      songInfo: buildSongInfo(filePath, songInfoMeta),
+      songInfo,
       detail: buildDetail(filePath, metadata),
-      renamedFrom: originalFilePath === filePath ? undefined : originalFilePath
+      renamedFrom
     }
   } finally {
     try {
