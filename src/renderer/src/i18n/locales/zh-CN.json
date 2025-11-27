@@ -224,7 +224,8 @@
     "showInFileExplorer": "在文件资源浏览器中显示",
     "saveCoverAs": "封面另存为",
     "convertFormat": "转换格式",
-    "editMetadata": "编辑曲目信息"
+    "editMetadata": "编辑曲目信息",
+    "clearTrackCache": "清除曲目缓存"
   },
   "metadata": {
     "dialogTitle": "编辑曲目信息",
@@ -477,6 +478,7 @@
     "tryOtherCombinations": "请尝试其他组合"
   },
   "playlist": {
+    "clearCache": "清除歌单缓存",
     "deletePlaylist": "删除歌单",
     "emptyPlaylist": "清空歌单",
     "collapsibleFolder": "折叠文件夹",

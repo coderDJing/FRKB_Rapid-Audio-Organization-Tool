@@ -103,6 +103,7 @@
     "realtime-bpm-analyzer": "^4.0.2",
     "rust_package": "./rust_package",
     "sass": "^1.79.3",
+    "undici": "^6.19.8",
     "uuid": "^10.0.0",
     "vue-draggable-plus": "^0.5.3",
     "vue-i18n": "9"

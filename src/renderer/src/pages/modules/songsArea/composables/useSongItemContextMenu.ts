@@ -28,6 +28,14 @@ export interface MetadataUpdatedAction {
   oldFilePath?: string
 }
 
+export interface PlaylistCacheClearedAction {
+  action: 'playlistCacheCleared'
+}
+
+export interface TrackCacheClearedAction {
+  action: 'trackCacheCleared'
+}
+
 export function useSongItemContextMenu(
   // runtimeStore: ReturnType<typeof useRuntimeStore>, // Passed implicitly via direct import for now
   songsAreaHostElementRef: Ref<InstanceType<typeof OverlayScrollbarsComponent> | null> // For scrolling
@@ -43,13 +51,21 @@ export function useSongItemContextMenu(
     ],
     [{ menuName: 'tracks.showInFileExplorer' }],
     [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.editMetadata' }],
+    [{ menuName: 'tracks.clearTrackCache' }],
     [{ menuName: 'fingerprints.analyzeAndAdd' }]
   ])
 
   const showAndHandleSongContextMenu = async (
     event: MouseEvent,
     song: ISongInfo
-  ): Promise<OpenDialogAction | SongsRemovedAction | MetadataUpdatedAction | null> => {
+  ): Promise<
+    | OpenDialogAction
+    | SongsRemovedAction
+    | MetadataUpdatedAction
+    | PlaylistCacheClearedAction
+    | TrackCacheClearedAction
+    | null
+  > => {
     if (runtime.songsArea.selectedSongFilePath.indexOf(song.filePath) === -1) {
       runtime.songsArea.selectedSongFilePath = [song.filePath]
     }
@@ -260,6 +276,10 @@ export function useSongItemContextMenu(
       case 'tracks.showInFileExplorer':
         window.electron.ipcRenderer.send('show-item-in-folder', song.filePath)
         break
+      case 'tracks.clearTrackCache': {
+        await window.electron.ipcRenderer.invoke('track:cache:clear', song.filePath)
+        return { action: 'trackCacheCleared' }
+      }
     }
     return null // Default return if no dialog action
   }
