@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, computed, nextTick } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { t } from '@renderer/utils/translate'
 import hotkeys from 'hotkeys-js'
 import utils from '@renderer/utils/utils'
@@ -7,11 +7,10 @@ import { v4 as uuidV4 } from 'uuid'
 import type {
   ITrackMetadataDetail,
   ITrackMetadataUpdatePayload,
-  IMusicBrainzMatch,
-  IMusicBrainzSuggestionResult,
-  IMusicBrainzSearchPayload
+  IMusicBrainzApplyPayload
 } from 'src/types/globals'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
+import showMusicBrainzDialog, { MusicBrainzDialogInitialQuery } from './musicBrainzDialog'
 
 const uuid = uuidV4()
 
@@ -80,75 +79,7 @@ const flashArea = ref('')
 let flashTimer: any = null
 let flashCount = 0
 
-const MUSICBRAINZ_FIELD_SEQUENCE = [
-  'title',
-  'artist',
-  'album',
-  'albumArtist',
-  'year',
-  'genre',
-  'label',
-  'isrc',
-  'trackNo',
-  'trackTotal',
-  'discNo',
-  'discTotal'
-] as const
-type MusicBrainzFieldKey = (typeof MUSICBRAINZ_FIELD_SEQUENCE)[number]
-type MusicBrainzFieldKeyWithCover = MusicBrainzFieldKey | 'cover'
-const MUSICBRAINZ_FIELD_DEFS: Array<{ key: MusicBrainzFieldKeyWithCover; labelKey: string }> = [
-  { key: 'title', labelKey: 'metadata.title' },
-  { key: 'artist', labelKey: 'metadata.artist' },
-  { key: 'album', labelKey: 'metadata.album' },
-  { key: 'albumArtist', labelKey: 'metadata.albumArtist' },
-  { key: 'year', labelKey: 'metadata.year' },
-  { key: 'genre', labelKey: 'metadata.genre' },
-  { key: 'label', labelKey: 'metadata.label' },
-  { key: 'isrc', labelKey: 'metadata.isrc' },
-  { key: 'trackNo', labelKey: 'metadata.trackNo' },
-  { key: 'trackTotal', labelKey: 'metadata.trackTotal' },
-  { key: 'discNo', labelKey: 'metadata.discNo' },
-  { key: 'discTotal', labelKey: 'metadata.discTotal' },
-  { key: 'cover', labelKey: 'metadata.cover' }
-]
-
-const musicBrainzPanelOpen = ref(false)
-const musicBrainzState = reactive({
-  query: {
-    title: '',
-    artist: '',
-    album: ''
-  },
-  searching: false,
-  searchError: '',
-  results: [] as IMusicBrainzMatch[],
-  hasSearched: false,
-  suggestionLoading: false,
-  suggestionError: '',
-  selectedRecordingId: '',
-  suggestion: null as IMusicBrainzSuggestionResult | null,
-  applyMessage: '',
-  lastQueryDurationSeconds: undefined as number | undefined
-})
-const musicBrainzFieldSelections = reactive<Record<MusicBrainzFieldKeyWithCover, boolean>>({
-  title: true,
-  artist: true,
-  album: true,
-  albumArtist: true,
-  year: true,
-  genre: true,
-  label: true,
-  isrc: true,
-  trackNo: true,
-  trackTotal: true,
-  discNo: true,
-  discTotal: true,
-  cover: true
-})
-let musicBrainzApplyTimer: number | null = null
-const resolvedLocalIsrc = computed(
-  () => normalizeIsrcValue(form.isrc) || normalizeIsrcValue(metadataDetail.value?.isrc)
-)
+const musicBrainzDialogOpening = ref(false)
 
 function resetForm(detail: ITrackMetadataDetail) {
   form.title = detail.title ?? ''
@@ -274,289 +205,73 @@ function flashFileNameInput() {
   }, 500)
 }
 
-function resetMusicBrainzState(detail?: ITrackMetadataDetail | null) {
-  musicBrainzState.results = []
-  musicBrainzState.searchError = ''
-  musicBrainzState.hasSearched = false
-  musicBrainzState.suggestionLoading = false
-  musicBrainzState.suggestionError = ''
-  musicBrainzState.selectedRecordingId = ''
-  musicBrainzState.suggestion = null
-  musicBrainzState.applyMessage = ''
-  musicBrainzPanelOpen.value = false
-  if (musicBrainzApplyTimer) {
-    clearTimeout(musicBrainzApplyTimer)
-    musicBrainzApplyTimer = null
-  }
-  if (detail) {
-    musicBrainzState.query.title = detail.title || ''
-    musicBrainzState.query.artist = detail.artist || ''
-    musicBrainzState.query.album = detail.album || ''
-    musicBrainzState.lastQueryDurationSeconds = detail.durationSeconds
-  }
-  if (musicBrainzPanelOpen.value) {
-    nextTick(() => autoSearchMusicBrainzIfNeeded())
-  }
-}
-
-function syncMusicBrainzQueryFromForm() {
-  musicBrainzState.query.title = form.title || metadataDetail.value?.title || ''
-  musicBrainzState.query.artist = form.artist || metadataDetail.value?.artist || ''
-  musicBrainzState.query.album = form.album || metadataDetail.value?.album || ''
-  musicBrainzState.lastQueryDurationSeconds = metadataDetail.value?.durationSeconds
-}
-
-function toggleMusicBrainzPanel() {
-  musicBrainzPanelOpen.value = !musicBrainzPanelOpen.value
-  if (musicBrainzPanelOpen.value) {
-    syncMusicBrainzQueryFromForm()
-    nextTick(() => autoSearchMusicBrainzIfNeeded())
-  }
-}
-
-function formatSeconds(seconds?: number) {
-  if (typeof seconds !== 'number' || Number.isNaN(seconds)) return '--:--'
-  const mins = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-}
-
-function mapMusicBrainzError(code?: string) {
-  if (!code) return t('metadata.musicbrainzGenericError')
-  switch (code) {
-    case 'MUSICBRAINZ_RATE_LIMITED':
-      return t('metadata.musicbrainzRateLimited')
-    case 'MUSICBRAINZ_UNAVAILABLE':
-      return t('metadata.musicbrainzUnavailable')
-    case 'MUSICBRAINZ_TIMEOUT':
-      return t('metadata.musicbrainzTimeout')
-    case 'MUSICBRAINZ_NETWORK':
-      return t('metadata.musicbrainzNetworkError')
-    case 'MUSICBRAINZ_EMPTY_QUERY':
-      return t('metadata.musicbrainzNeedKeyword')
-    default:
-      return t('metadata.musicbrainzGenericError')
-  }
-}
-
-function describeMatchedFields(fields: string[]) {
-  if (!Array.isArray(fields) || !fields.length) return ''
-  const mapping: Record<string, string> = {
-    title: t('metadata.title'),
-    artist: t('metadata.artist'),
-    album: t('metadata.album'),
-    duration: t('columns.duration')
-  }
-  return fields.map((field) => mapping[field] || field).join(' / ')
-}
-
-function buildMusicBrainzSearchPayload(): IMusicBrainzSearchPayload | null {
-  const title = musicBrainzState.query.title?.trim()
-  const artist = musicBrainzState.query.artist?.trim()
-  const album = musicBrainzState.query.album?.trim()
-  const durationSeconds = musicBrainzState.lastQueryDurationSeconds
-  if (!title && !artist && !album && !durationSeconds) {
-    return null
-  }
+function buildMusicBrainzInitialQuery(): MusicBrainzDialogInitialQuery {
+  const detail = metadataDetail.value
   return {
-    filePath: currentFilePath.value,
-    title: title || undefined,
-    artist: artist || undefined,
-    album: album || undefined,
-    durationSeconds
+    title: form.title || detail?.title || undefined,
+    artist: form.artist || detail?.artist || undefined,
+    album: form.album || detail?.album || undefined,
+    durationSeconds: detail?.durationSeconds,
+    isrc: form.isrc || detail?.isrc || undefined
   }
 }
 
-function autoSearchMusicBrainzIfNeeded() {
-  if (!musicBrainzPanelOpen.value) return
-  if (musicBrainzState.searching || musicBrainzState.hasSearched) return
-  const payload = buildMusicBrainzSearchPayload()
-  if (!payload) return
-  searchMusicBrainz({ silent: true })
-}
-
-function normalizeIsrcValue(value?: string | null) {
-  if (!value) return ''
-  const trimmed = value.trim()
-  return trimmed === '' ? '' : trimmed.toUpperCase()
-}
-
-function hasIsrcMatch(match: IMusicBrainzMatch) {
-  const candidate = normalizeIsrcValue(match?.isrc)
-  if (!candidate) return false
-  const localIsrc = resolvedLocalIsrc.value
-  return !!localIsrc && localIsrc === candidate
-}
-
-function shouldShowDurationDiff(match: IMusicBrainzMatch) {
-  return typeof match?.durationDiffSeconds === 'number'
-}
-
-function getDurationDiffClass(diff?: number) {
-  if (typeof diff !== 'number') return ''
-  if (diff <= 2) return 'tag-good'
-  if (diff > 6) return 'tag-warn'
-  return ''
-}
-
-function getDurationDiffText(diff?: number) {
-  if (typeof diff !== 'number') return ''
-  return t('metadata.musicbrainzDurationDiff', { seconds: diff })
-}
-
-function resetMusicBrainzSelections(result: IMusicBrainzSuggestionResult | null) {
-  ;(Object.keys(musicBrainzFieldSelections) as MusicBrainzFieldKeyWithCover[]).forEach((key) => {
-    musicBrainzFieldSelections[key] = false
-  })
-  if (!result) return
-  MUSICBRAINZ_FIELD_SEQUENCE.forEach((key) => {
-    const value = result.suggestion[key]
-    musicBrainzFieldSelections[key] = value !== undefined && value !== null && value !== ''
-  })
-  musicBrainzFieldSelections.cover = result.suggestion.coverDataUrl !== undefined
-}
-
-function hasMusicBrainzValue(key: MusicBrainzFieldKeyWithCover) {
-  const suggestion = musicBrainzState.suggestion?.suggestion
-  if (!suggestion) return false
-  if (key === 'cover') {
-    return suggestion.coverDataUrl !== undefined && suggestion.coverDataUrl !== null
+function applyMusicBrainzPayload(payload: IMusicBrainzApplyPayload) {
+  if (payload.title !== undefined) {
+    form.title = payload.title
   }
-  const value = suggestion[key as MusicBrainzFieldKey]
-  return value !== undefined && value !== null && value !== ''
+  if (payload.artist !== undefined) {
+    form.artist = payload.artist
+  }
+  if (payload.album !== undefined) {
+    form.album = payload.album
+  }
+  if (payload.albumArtist !== undefined) {
+    form.albumArtist = payload.albumArtist
+  }
+  if (payload.year !== undefined) {
+    form.year = payload.year
+  }
+  if (payload.genre !== undefined) {
+    form.genre = payload.genre
+  }
+  if (payload.label !== undefined) {
+    form.label = payload.label
+  }
+  if (payload.isrc !== undefined) {
+    form.isrc = payload.isrc
+  }
+  if (payload.trackNo !== undefined) {
+    form.trackNo = payload.trackNo === null ? '' : String(payload.trackNo)
+  }
+  if (payload.trackTotal !== undefined) {
+    form.trackTotal = payload.trackTotal === null ? '' : String(payload.trackTotal)
+  }
+  if (payload.discNo !== undefined) {
+    form.discNo = payload.discNo === null ? '' : String(payload.discNo)
+  }
+  if (payload.discTotal !== undefined) {
+    form.discTotal = payload.discTotal === null ? '' : String(payload.discTotal)
+  }
+  if (payload.coverDataUrl !== undefined) {
+    coverDataUrl.value = payload.coverDataUrl ?? null
+  }
 }
 
-function getMusicBrainzValueText(key: MusicBrainzFieldKeyWithCover) {
-  const suggestion = musicBrainzState.suggestion?.suggestion
-  if (!suggestion) return ''
-  if (key === 'cover') {
-    if (suggestion.coverDataUrl === null || suggestion.coverDataUrl === undefined) return ''
-    return t('metadata.musicbrainzCoverReady')
-  }
-  const value = suggestion[key as MusicBrainzFieldKey]
-  if (value === undefined || value === null) return ''
-  return typeof value === 'number' ? String(value) : value
-}
-
-async function searchMusicBrainz(options?: { silent?: boolean }) {
-  if (musicBrainzState.searching) return
-  const payload = buildMusicBrainzSearchPayload()
-  if (!payload) {
-    if (!options?.silent) {
-      musicBrainzState.searchError = t('metadata.musicbrainzNeedKeyword')
-    }
-    return
-  }
-  musicBrainzState.searching = true
-  musicBrainzState.searchError = ''
-  musicBrainzState.results = []
-  musicBrainzState.suggestion = null
-  musicBrainzState.selectedRecordingId = ''
+async function onOpenMusicBrainzDialog() {
+  if (loading.value || submitting.value || musicBrainzDialogOpening.value) return
+  musicBrainzDialogOpening.value = true
   try {
-    const results = (await window.electron.ipcRenderer.invoke(
-      'musicbrainz:search',
-      payload
-    )) as IMusicBrainzMatch[]
-    musicBrainzState.results = results
-    musicBrainzState.hasSearched = true
-    if (!results.length) {
-      musicBrainzState.suggestion = null
-      return
+    const result = await showMusicBrainzDialog({
+      filePath: currentFilePath.value,
+      initialQuery: buildMusicBrainzInitialQuery()
+    })
+    if (result !== 'cancel') {
+      applyMusicBrainzPayload(result.payload)
     }
-    const first = results[0]
-    musicBrainzState.selectedRecordingId = first.recordingId
-    await loadMusicBrainzSuggestion(first)
-  } catch (err: any) {
-    musicBrainzState.searchError = mapMusicBrainzError(err?.message)
-    musicBrainzState.hasSearched = true
   } finally {
-    musicBrainzState.searching = false
+    musicBrainzDialogOpening.value = false
   }
-}
-
-async function loadMusicBrainzSuggestion(match: IMusicBrainzMatch) {
-  if (!match) return
-  musicBrainzState.suggestionLoading = true
-  musicBrainzState.suggestionError = ''
-  musicBrainzState.suggestion = null
-  try {
-    const result = (await window.electron.ipcRenderer.invoke('musicbrainz:suggest', {
-      recordingId: match.recordingId,
-      releaseId: match.releaseId
-    })) as IMusicBrainzSuggestionResult
-    musicBrainzState.suggestion = result
-    resetMusicBrainzSelections(result)
-  } catch (err: any) {
-    musicBrainzState.suggestionError = mapMusicBrainzError(err?.message)
-  } finally {
-    musicBrainzState.suggestionLoading = false
-  }
-}
-
-function onSelectMusicBrainzMatch(match: IMusicBrainzMatch) {
-  if (!match) return
-  if (musicBrainzState.selectedRecordingId === match.recordingId && musicBrainzState.suggestion)
-    return
-  musicBrainzState.selectedRecordingId = match.recordingId
-  loadMusicBrainzSuggestion(match)
-}
-
-function applyMusicBrainzSuggestion() {
-  if (!musicBrainzState.suggestion) return
-  const suggestion = musicBrainzState.suggestion.suggestion
-  const applyStringField = (key: MusicBrainzFieldKey, setter: (value: string) => void) => {
-    if (!musicBrainzFieldSelections[key]) return
-    const value = suggestion[key]
-    if (value === undefined || value === null) return
-    setter(typeof value === 'number' ? String(value) : value)
-  }
-  applyStringField('title', (value) => {
-    form.title = value
-  })
-  applyStringField('artist', (value) => {
-    form.artist = value
-  })
-  applyStringField('album', (value) => {
-    form.album = value
-  })
-  applyStringField('albumArtist', (value) => {
-    form.albumArtist = value
-  })
-  applyStringField('year', (value) => {
-    form.year = value
-  })
-  applyStringField('genre', (value) => {
-    form.genre = value
-  })
-  applyStringField('label', (value) => {
-    form.label = value
-  })
-  applyStringField('isrc', (value) => {
-    form.isrc = value
-  })
-  if (musicBrainzFieldSelections.trackNo && typeof suggestion.trackNo === 'number') {
-    form.trackNo = String(suggestion.trackNo)
-  }
-  if (musicBrainzFieldSelections.trackTotal && typeof suggestion.trackTotal === 'number') {
-    form.trackTotal = String(suggestion.trackTotal)
-  }
-  if (musicBrainzFieldSelections.discNo && typeof suggestion.discNo === 'number') {
-    form.discNo = String(suggestion.discNo)
-  }
-  if (musicBrainzFieldSelections.discTotal && typeof suggestion.discTotal === 'number') {
-    form.discTotal = String(suggestion.discTotal)
-  }
-  if (musicBrainzFieldSelections.cover) {
-    if (suggestion.coverDataUrl !== undefined) {
-      coverDataUrl.value = suggestion.coverDataUrl
-    }
-  }
-  musicBrainzState.applyMessage = t('metadata.musicbrainzApplied')
-  if (musicBrainzApplyTimer) clearTimeout(musicBrainzApplyTimer)
-  musicBrainzApplyTimer = window.setTimeout(() => {
-    musicBrainzState.applyMessage = ''
-    musicBrainzApplyTimer = null
-  }, 3500)
 }
 
 async function loadMetadata() {
@@ -572,7 +287,6 @@ async function loadMetadata() {
       metadataDetail.value = detail
       resetForm(detail)
       await ensureCover(detail)
-      resetMusicBrainzState(detail)
     } else {
       loadError.value = t('metadata.loadFailed')
     }
@@ -765,10 +479,6 @@ onMounted(() => {
 onUnmounted(() => {
   utils.delHotkeysScope(uuid)
   clearInterval(flashTimer)
-  if (musicBrainzApplyTimer) {
-    clearTimeout(musicBrainzApplyTimer)
-    musicBrainzApplyTimer = null
-  }
 })
 </script>
 
@@ -829,176 +539,23 @@ onUnmounted(() => {
                 <div class="button text-button" @click="loadMetadata">{{ t('common.retry') }}</div>
               </div>
               <div v-else class="form-body">
-                <div class="section musicbrainz-section">
-                  <div class="musicbrainz-toggle-row">
-                    <div>
-                      <div class="section-title">{{ t('metadata.musicbrainzTitle') }}</div>
-                      <div class="musicbrainz-hint">{{ t('metadata.musicbrainzHint') }}</div>
-                    </div>
-                    <div class="musicbrainz-toggle-actions">
-                      <div
-                        class="button text-button"
-                        :class="{ disabled: musicBrainzState.searching }"
-                        @click="musicBrainzState.searching ? null : syncMusicBrainzQueryFromForm()"
-                      >
-                        {{ t('metadata.musicbrainzSync') }}
-                      </div>
-                      <div class="button" @click="toggleMusicBrainzPanel">
-                        {{
-                          musicBrainzPanelOpen
-                            ? t('metadata.musicbrainzHidePanel')
-                            : t('metadata.musicbrainzShowPanel')
-                        }}
-                      </div>
-                    </div>
-                  </div>
-                  <div v-if="musicBrainzPanelOpen" class="musicbrainz-panel">
-                    <div class="musicbrainz-query-grid">
-                      <label>{{ t('metadata.title') }}</label>
-                      <input
-                        v-model="musicBrainzState.query.title"
-                        :disabled="musicBrainzState.searching"
-                      />
-                      <label>{{ t('metadata.artist') }}</label>
-                      <input
-                        v-model="musicBrainzState.query.artist"
-                        :disabled="musicBrainzState.searching"
-                      />
-                      <label>{{ t('metadata.album') }}</label>
-                      <input
-                        v-model="musicBrainzState.query.album"
-                        :disabled="musicBrainzState.searching"
-                      />
-                      <label>{{ t('columns.duration') }}</label>
-                      <div class="musicbrainz-duration">
-                        {{ formatSeconds(musicBrainzState.lastQueryDurationSeconds) }}
-                      </div>
-                    </div>
-                    <div class="musicbrainz-panel-actions">
-                      <div
-                        class="button"
-                        :class="{ disabled: musicBrainzState.searching }"
-                        @click="musicBrainzState.searching ? null : searchMusicBrainz()"
-                      >
-                        {{
-                          musicBrainzState.searching
-                            ? t('metadata.musicbrainzSearching')
-                            : t('metadata.musicbrainzSearch')
-                        }}
-                      </div>
-                    </div>
-                    <div v-if="musicBrainzState.searchError" class="error-text">
-                      {{ musicBrainzState.searchError }}
-                    </div>
+                <div class="section">
+                  <div class="section-title">{{ t('metadata.musicbrainzTitle') }}</div>
+                  <div class="musicbrainz-launch-row">
+                    <div class="musicbrainz-hint">{{ t('metadata.musicbrainzHint') }}</div>
                     <div
-                      v-else-if="
-                        musicBrainzState.hasSearched && musicBrainzState.results.length === 0
+                      class="button"
+                      :class="{
+                        disabled:
+                          loading || submitting || musicBrainzDialogOpening || !metadataDetail
+                      }"
+                      @click="
+                        loading || submitting || musicBrainzDialogOpening || !metadataDetail
+                          ? null
+                          : onOpenMusicBrainzDialog()
                       "
-                      class="musicbrainz-empty"
                     >
-                      {{ t('metadata.musicbrainzNoResult') }}
-                    </div>
-                    <div v-if="musicBrainzState.results.length" class="musicbrainz-results">
-                      <div
-                        v-for="match in musicBrainzState.results"
-                        :key="match.recordingId"
-                        class="musicbrainz-result"
-                        :class="{
-                          active: match.recordingId === musicBrainzState.selectedRecordingId
-                        }"
-                        @click="onSelectMusicBrainzMatch(match)"
-                      >
-                        <div class="result-title-row">
-                          <div class="result-title">{{ match.title }}</div>
-                          <div class="result-score">
-                            {{ t('metadata.musicbrainzScore', { score: match.score }) }}
-                          </div>
-                        </div>
-                        <div class="result-meta">
-                          <span>{{ match.artist }}</span>
-                          <span v-if="match.releaseTitle">{{ match.releaseTitle }}</span>
-                          <span v-if="match.durationSeconds">
-                            {{ formatSeconds(match.durationSeconds) }}
-                          </span>
-                        </div>
-                        <div class="result-meta small" v-if="match.releaseDate">
-                          {{ t('metadata.musicbrainzReleaseDate') }}: {{ match.releaseDate }}
-                        </div>
-                        <div class="result-meta small" v-if="match.matchedFields.length">
-                          {{
-                            t('metadata.musicbrainzMatchedFields', {
-                              fields: describeMatchedFields(match.matchedFields)
-                            })
-                          }}
-                        </div>
-                        <div
-                          class="result-tags"
-                          v-if="shouldShowDurationDiff(match) || hasIsrcMatch(match)"
-                        >
-                          <span
-                            v-if="shouldShowDurationDiff(match)"
-                            class="tag"
-                            :class="getDurationDiffClass(match.durationDiffSeconds)"
-                          >
-                            {{ getDurationDiffText(match.durationDiffSeconds) }}
-                          </span>
-                          <span v-if="hasIsrcMatch(match)" class="tag tag-good">
-                            {{ t('metadata.musicbrainzIsrcMatch') }}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div class="musicbrainz-suggestion">
-                      <div v-if="musicBrainzState.suggestionLoading" class="musicbrainz-loading">
-                        {{ t('metadata.musicbrainzLoadingSuggestion') }}
-                      </div>
-                      <div v-else-if="musicBrainzState.suggestionError" class="error-text">
-                        {{ musicBrainzState.suggestionError }}
-                      </div>
-                      <div
-                        v-else-if="musicBrainzState.suggestion"
-                        class="musicbrainz-suggestion-body"
-                      >
-                        <div class="musicbrainz-suggestion-meta">
-                          <div>
-                            {{ t('metadata.musicbrainzChosenRelease') }}：
-                            {{ musicBrainzState.suggestion.releaseTitle || '--' }}
-                          </div>
-                          <div>
-                            {{ t('metadata.musicbrainzReleaseDate') }}：
-                            {{ musicBrainzState.suggestion.releaseDate || '--' }}
-                          </div>
-                          <div>
-                            {{ t('metadata.musicbrainzLabel') }}：
-                            {{ musicBrainzState.suggestion.label || '--' }}
-                          </div>
-                        </div>
-                        <div class="musicbrainz-field-grid">
-                          <label
-                            v-for="field in MUSICBRAINZ_FIELD_DEFS"
-                            :key="field.key"
-                            :class="{ disabled: !hasMusicBrainzValue(field.key) }"
-                          >
-                            <input
-                              type="checkbox"
-                              v-model="musicBrainzFieldSelections[field.key]"
-                              :disabled="!hasMusicBrainzValue(field.key)"
-                            />
-                            <span class="field-name">{{ t(field.labelKey) }}</span>
-                            <span class="field-value">
-                              {{ getMusicBrainzValueText(field.key) || '--' }}
-                            </span>
-                          </label>
-                        </div>
-                        <div class="musicbrainz-apply-row">
-                          <div class="button" @click="applyMusicBrainzSuggestion">
-                            {{ t('metadata.musicbrainzApplySelection') }}
-                          </div>
-                          <div v-if="musicBrainzState.applyMessage" class="success-text">
-                            {{ musicBrainzState.applyMessage }}
-                          </div>
-                        </div>
-                      </div>
+                      {{ t('metadata.musicbrainzOpenDialog') }}
                     </div>
                   </div>
                 </div>
@@ -1423,185 +980,16 @@ onUnmounted(() => {
   color: var(--text-secondary, #888);
 }
 
-.musicbrainz-section {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 12px;
-  background-color: var(--bg);
-  gap: 8px;
-}
-
-.musicbrainz-toggle-row {
+.musicbrainz-launch-row {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  align-items: flex-start;
-}
-
-.musicbrainz-toggle-actions {
-  display: flex;
-  gap: 8px;
 }
 
 .musicbrainz-hint {
   font-size: 12px;
   color: var(--text-secondary, #888);
-  margin-top: 4px;
-}
-
-.musicbrainz-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 12px;
-}
-
-.musicbrainz-query-grid {
-  display: grid;
-  grid-template-columns: 120px 1fr;
-  gap: 8px 12px;
-  align-items: center;
-}
-
-.musicbrainz-duration {
-  font-size: 13px;
-  color: var(--text-secondary, #888);
-}
-
-.musicbrainz-panel-actions {
-  display: flex;
-  gap: 10px;
-}
-
-.musicbrainz-results {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 200px;
-  overflow: auto;
-}
-
-.musicbrainz-result {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.musicbrainz-result.active {
-  border-color: var(--accent);
-  background-color: rgba(0, 120, 212, 0.1);
-}
-
-.result-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 4px;
-}
-
-.tag {
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  font-size: 11px;
-  line-height: 1.3;
-  background-color: var(--bg);
-}
-
-.tag-good {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.tag-warn {
-  border-color: #be1100;
-  color: #be1100;
-}
-
-.result-title-row {
-  display: flex;
-  justify-content: space-between;
-  font-weight: bold;
-}
-
-.result-score {
-  font-size: 12px;
-  color: var(--accent);
-}
-
-.result-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text-secondary, #888);
-}
-
-.result-meta.small {
-  font-size: 11px;
-}
-
-.musicbrainz-suggestion-body {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  border-top: 1px solid var(--border);
-  padding-top: 12px;
-}
-
-.musicbrainz-suggestion-meta {
-  font-size: 12px;
-  color: var(--text-secondary, #888);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.musicbrainz-field-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 220px;
-  overflow: auto;
-}
-
-.musicbrainz-field-grid label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-
-.musicbrainz-field-grid label.disabled {
-  opacity: 0.6;
-}
-
-.musicbrainz-field-grid .field-name {
-  width: 120px;
-}
-
-.musicbrainz-field-grid .field-value {
   flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  color: var(--text-secondary, #888);
-}
-
-.musicbrainz-apply-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.musicbrainz-empty,
-.musicbrainz-loading {
-  font-size: 13px;
-  color: var(--text-secondary, #888);
 }
 </style>
