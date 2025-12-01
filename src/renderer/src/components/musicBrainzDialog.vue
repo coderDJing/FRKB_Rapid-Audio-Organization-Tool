@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { t } from '@renderer/utils/translate'
 import hotkeys from 'hotkeys-js'
 import utils from '@renderer/utils/utils'
+import { mapAcoustIdClientError } from '@renderer/utils/acoustid'
 import { v4 as uuidV4 } from 'uuid'
 import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 import type {
@@ -12,8 +13,22 @@ import type {
   IMusicBrainzApplyPayload
 } from 'src/types/globals'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
+import { useRuntimeStore } from '@renderer/stores/runtime'
 
 const uuid = uuidV4()
+const runtime = useRuntimeStore()
+const flashArea = ref('')
+const flashBorder = (flashAreaName: string) => {
+  flashArea.value = flashAreaName
+  let count = 0
+  const interval = setInterval(() => {
+    count++
+    if (count >= 3) {
+      clearInterval(interval)
+      flashArea.value = ''
+    }
+  }, 500)
+}
 
 const props = defineProps({
   filePath: {
@@ -50,15 +65,53 @@ const query = reactive({
 const durationSeconds = ref<number | undefined>(props.initialQuery?.durationSeconds)
 const localIsrc = computed(() => normalizeIsrcValue(props.initialQuery?.isrc))
 
+type TabKey = 'text' | 'fingerprint'
+
 const state = reactive({
   searching: false,
   searchError: '',
-  results: [] as IMusicBrainzMatch[],
-  suggestion: null as IMusicBrainzSuggestionResult | null,
-  suggestionError: '',
-  suggestionLoading: false,
-  selectedRecordingId: '',
-  hasSearched: false
+  textResults: [] as IMusicBrainzMatch[],
+  textHasSearched: false,
+  fingerprintResults: [] as IMusicBrainzMatch[],
+  fingerprintHasSearched: false,
+  suggestionByTab: {
+    text: null,
+    fingerprint: null
+  } as Record<TabKey, IMusicBrainzSuggestionResult | null>,
+  suggestionErrorByTab: {
+    text: '',
+    fingerprint: ''
+  } as Record<TabKey, string>,
+  suggestionLoadingByTab: {
+    text: false,
+    fingerprint: false
+  } as Record<TabKey, boolean>,
+  selectedRecordingIdByTab: {
+    text: '',
+    fingerprint: ''
+  } as Record<TabKey, string>,
+  fingerprintMatching: false,
+  fingerprintStatus: '',
+  fingerprintError: ''
+})
+const activeTab = ref<TabKey>('text')
+const showAcoustIdPanel = ref(false)
+const acoustIdKeyInput = ref('')
+const acoustIdKeyError = ref('')
+const savingAcoustIdKey = ref(false)
+const pendingFingerprintAfterKey = ref(false)
+const hasAcoustIdKey = computed(() => {
+  const key = runtime.setting?.acoustIdClientKey
+  if (typeof key !== 'string') return false
+  return key.trim() !== ''
+})
+
+watch(hasAcoustIdKey, (val) => {
+  if (val) {
+    showAcoustIdPanel.value = false
+    acoustIdKeyInput.value = runtime.setting?.acoustIdClientKey || ''
+    acoustIdKeyError.value = ''
+  }
 })
 
 const FIELD_KEYS = [
@@ -92,25 +145,60 @@ const fieldMeta: Array<{ key: FieldKeyWithCover; label: string }> = [
   { key: 'discTotal', label: t('metadata.discTotal') },
   { key: 'cover', label: t('metadata.cover') }
 ]
+const FIELD_KEYS_WITH_COVER: FieldKeyWithCover[] = [...FIELD_KEYS, 'cover']
 
-const fieldSelections = reactive<Record<FieldKeyWithCover, boolean>>({
-  title: true,
-  artist: true,
-  album: true,
-  albumArtist: true,
-  year: true,
-  genre: true,
-  label: true,
-  isrc: true,
-  trackNo: true,
-  trackTotal: true,
-  discNo: true,
-  discTotal: true,
-  cover: true
+function createDefaultFieldSelections() {
+  const defaults: Record<FieldKeyWithCover, boolean> = {} as Record<FieldKeyWithCover, boolean>
+  FIELD_KEYS_WITH_COVER.forEach((key) => {
+    defaults[key] = true
+  })
+  return defaults
+}
+
+const fieldSelections = reactive<Record<FieldKeyWithCover, boolean>>(createDefaultFieldSelections())
+const fieldSelectionsCache = reactive<Record<TabKey, Record<FieldKeyWithCover, boolean>>>({
+  text: createDefaultFieldSelections(),
+  fingerprint: createDefaultFieldSelections()
 })
 
-const canConfirm = computed(() => !!state.suggestion && !state.suggestionLoading)
-const suggestionCoverDataUrl = computed(() => state.suggestion?.suggestion.coverDataUrl)
+const currentSelectedRecordingId = computed(() => state.selectedRecordingIdByTab[activeTab.value])
+const currentSuggestion = computed(() => state.suggestionByTab[activeTab.value])
+const currentSuggestionError = computed(() => state.suggestionErrorByTab[activeTab.value])
+const currentSuggestionLoading = computed(() => state.suggestionLoadingByTab[activeTab.value])
+const canConfirm = computed(() => !!currentSuggestion.value && !currentSuggestionLoading.value)
+const suggestionCoverDataUrl = computed(() => currentSuggestion.value?.suggestion.coverDataUrl)
+const displayedResults = computed(() =>
+  activeTab.value === 'fingerprint' ? state.fingerprintResults : state.textResults
+)
+const isTextTab = computed(() => activeTab.value === 'text')
+const currentErrorMessage = computed(() =>
+  activeTab.value === 'text' ? state.searchError : state.fingerprintError
+)
+const shouldShowEmptyState = computed(() => {
+  if (activeTab.value === 'text') {
+    return (
+      !state.searchError &&
+      state.textHasSearched &&
+      !state.searching &&
+      state.textResults.length === 0
+    )
+  }
+  return (
+    !state.fingerprintError &&
+    state.fingerprintHasSearched &&
+    !state.fingerprintMatching &&
+    state.fingerprintResults.length === 0
+  )
+})
+const hasQueryTextInput = computed(() => {
+  return query.title.trim() !== '' || query.artist.trim() !== '' || query.album.trim() !== ''
+})
+const fingerprintStatusText = computed(() => {
+  if (!state.fingerprintMatching) return ''
+  return state.fingerprintStatus === 'lookup'
+    ? t('metadata.musicbrainzFingerprintStatusLookup')
+    : t('metadata.musicbrainzFingerprintStatusAnalyzing')
+})
 
 function formatSeconds(seconds?: number) {
   if (typeof seconds !== 'number' || Number.isNaN(seconds)) return '--:--'
@@ -121,7 +209,8 @@ function formatSeconds(seconds?: number) {
 
 function mapError(code?: string) {
   if (!code) return t('metadata.musicbrainzGenericError')
-  switch (code) {
+  const normalized = String(code || '').split(':')[0]
+  switch (normalized) {
     case 'MUSICBRAINZ_RATE_LIMITED':
       return t('metadata.musicbrainzRateLimited')
     case 'MUSICBRAINZ_UNAVAILABLE':
@@ -132,9 +221,117 @@ function mapError(code?: string) {
       return t('metadata.musicbrainzNetworkError')
     case 'MUSICBRAINZ_EMPTY_QUERY':
       return t('metadata.musicbrainzNeedKeyword')
-    default:
-      return t('metadata.musicbrainzGenericError')
+    case 'ACOUSTID_CLIENT_MISSING':
+      return t('metadata.musicbrainzAcoustIdClientMissing')
+    case 'ACOUSTID_CLIENT_INVALID':
+      return t('metadata.acoustidKeyInvalid')
+    case 'ACOUSTID_FPCALC_NOT_FOUND':
+    case 'ACOUSTID_FPCALC_FAILED':
+    case 'ACOUSTID_FPCALC_PARSE_ERROR':
+      return t('metadata.musicbrainzAcoustIdToolMissing')
+    case 'ACOUSTID_INVALID_PARAMS':
+    case 'ACOUSTID_FILE_NOT_FOUND':
+      return t('metadata.musicbrainzAcoustIdFileMissing')
+    case 'ACOUSTID_NO_FINGERPRINT':
+    case 'ACOUSTID_INVALID_DURATION':
+      return t('metadata.musicbrainzAcoustIdAnalysisFailed')
+    case 'ACOUSTID_TIMEOUT':
+      return t('metadata.musicbrainzAcoustIdTimeout')
+    case 'ACOUSTID_RATE_LIMITED':
+      return t('metadata.musicbrainzAcoustIdRateLimited')
+    case 'ACOUSTID_NETWORK':
+      return t('metadata.musicbrainzAcoustIdNetworkError')
+    case 'MUSICBRAINZ_ABORTED':
+    case 'ACOUSTID_ABORTED':
+      return ''
   }
+  if (normalized.startsWith('ACOUSTID_HTTP_') || normalized === 'ACOUSTID_LOOKUP_FAILED') {
+    return t('metadata.musicbrainzAcoustIdUnavailable')
+  }
+  return t('metadata.musicbrainzGenericError')
+}
+
+function ensureAcoustIdKeyReady(triggerMatch: boolean): boolean {
+  if (hasAcoustIdKey.value) return true
+  pendingFingerprintAfterKey.value = triggerMatch
+  acoustIdKeyInput.value = runtime.setting?.acoustIdClientKey || ''
+  acoustIdKeyError.value = ''
+  showAcoustIdPanel.value = true
+  return false
+}
+
+function openAcoustIdPanelManually() {
+  pendingFingerprintAfterKey.value = false
+  acoustIdKeyInput.value = runtime.setting?.acoustIdClientKey || ''
+  acoustIdKeyError.value = ''
+  showAcoustIdPanel.value = true
+}
+
+const persistRuntimeSetting = async () => {
+  await window.electron.ipcRenderer.invoke(
+    'setSetting',
+    JSON.parse(JSON.stringify(runtime.setting))
+  )
+}
+
+async function saveAcoustIdKey() {
+  const value = acoustIdKeyInput.value.trim()
+  if (!value) {
+    acoustIdKeyError.value = t('metadata.acoustidKeyRequired')
+    flashBorder('acoustidKey')
+    return
+  }
+  acoustIdKeyError.value = ''
+  savingAcoustIdKey.value = true
+  try {
+    await window.electron.ipcRenderer.invoke('acoustid:validateClientKey', value)
+    runtime.setting.acoustIdClientKey = value
+    await persistRuntimeSetting()
+    showAcoustIdPanel.value = false
+    if (pendingFingerprintAfterKey.value) {
+      pendingFingerprintAfterKey.value = false
+      await matchFingerprint()
+    }
+  } catch (error) {
+    acoustIdKeyError.value =
+      mapAcoustIdClientError((error as any)?.message) || t('metadata.acoustidKeySaveFailed')
+  } finally {
+    savingAcoustIdKey.value = false
+  }
+}
+
+function cancelAcoustIdSetup() {
+  showAcoustIdPanel.value = false
+  pendingFingerprintAfterKey.value = false
+  acoustIdKeyError.value = ''
+}
+
+function openAcoustIdRegister() {
+  window.electron.ipcRenderer.send('openLocalBrowser', 'https://acoustid.org/new-application')
+}
+
+function triggerFingerprintMatch() {
+  if (!ensureAcoustIdKeyReady(true)) return
+  void matchFingerprint()
+}
+
+async function cancelBackendRequests() {
+  try {
+    await window.electron.ipcRenderer.invoke('musicbrainz:cancelRequests')
+  } catch {}
+  try {
+    await window.electron.ipcRenderer.invoke('acoustid:cancelRequests')
+  } catch {}
+}
+
+function onTabClick(tab: 'text' | 'fingerprint') {
+  if (activeTab.value === tab) {
+    if (tab === 'fingerprint') {
+      triggerFingerprintMatch()
+    }
+    return
+  }
+  activeTab.value = tab
 }
 
 function describeMatchedFields(fields: string[]) {
@@ -143,7 +340,8 @@ function describeMatchedFields(fields: string[]) {
     title: t('metadata.title'),
     artist: t('metadata.artist'),
     album: t('metadata.album'),
-    duration: t('columns.duration')
+    duration: t('columns.duration'),
+    fingerprint: t('metadata.musicbrainzMatchFingerprint')
   }
   return fields.map((f) => mapping[f] || f).join(' / ')
 }
@@ -153,7 +351,7 @@ function buildSearchPayload(): IMusicBrainzSearchPayload | null {
   const artist = query.artist.trim()
   const album = query.album.trim()
   const duration = durationSeconds.value
-  if (!title && !artist && !album && !duration) return null
+  if (!title && !artist && !album) return null
   return {
     filePath: props.filePath,
     title: title || undefined,
@@ -172,62 +370,167 @@ async function searchMusicBrainz() {
   }
   state.searching = true
   state.searchError = ''
-  state.results = []
-  state.suggestion = null
-  state.selectedRecordingId = ''
+  state.textResults = []
+  state.textHasSearched = false
+  state.selectedRecordingIdByTab.text = ''
+  state.suggestionByTab.text = null
+  state.suggestionErrorByTab.text = ''
+  state.suggestionLoadingByTab.text = false
   try {
     const results = (await window.electron.ipcRenderer.invoke(
       'musicbrainz:search',
       payload
     )) as IMusicBrainzMatch[]
-    state.results = results
-    state.hasSearched = true
+    state.textResults = results
+    state.textHasSearched = true
     if (!results.length) return
-    selectMatch(results[0])
+    selectMatch(results[0], 'text')
   } catch (err: any) {
     state.searchError = mapError(err?.message)
-    state.hasSearched = true
+    state.textHasSearched = true
   } finally {
     state.searching = false
   }
 }
 
-async function selectMatch(match: IMusicBrainzMatch) {
-  state.selectedRecordingId = match.recordingId
-  state.suggestionLoading = true
-  state.suggestionError = ''
-  state.suggestion = null
+async function matchFingerprint() {
+  if (state.fingerprintMatching || state.searching) return
+  if (!ensureAcoustIdKeyReady(true)) {
+    state.fingerprintError = ''
+    return
+  }
+  state.fingerprintError = ''
+  pendingFingerprintAfterKey.value = false
+  state.fingerprintMatching = true
+  state.fingerprintStatus = 'analyzing'
+  state.suggestionByTab.fingerprint = null
+  state.suggestionErrorByTab.fingerprint = ''
+  state.suggestionLoadingByTab.fingerprint = false
+  state.selectedRecordingIdByTab.fingerprint = ''
+  state.fingerprintResults = []
+  state.fingerprintHasSearched = false
+  let lookupPhaseTimer: ReturnType<typeof setTimeout> | null = null
+  lookupPhaseTimer = setTimeout(() => {
+    if (state.fingerprintMatching) {
+      state.fingerprintStatus = 'lookup'
+    }
+  }, 2000)
+  try {
+    const matches = (await window.electron.ipcRenderer.invoke('musicbrainz:acoustidMatch', {
+      filePath: props.filePath,
+      durationSeconds: durationSeconds.value
+    })) as IMusicBrainzMatch[]
+    state.fingerprintResults = matches
+    state.fingerprintHasSearched = true
+    if (matches.length) {
+      await selectMatch(matches[0], 'fingerprint')
+    }
+  } catch (err: any) {
+    state.fingerprintError = mapError(err?.message)
+    state.fingerprintHasSearched = true
+  } finally {
+    if (lookupPhaseTimer) {
+      clearTimeout(lookupPhaseTimer)
+    }
+    state.fingerprintMatching = false
+    state.fingerprintStatus = ''
+  }
+}
+
+async function selectMatch(match: IMusicBrainzMatch, tab: TabKey = activeTab.value) {
+  state.selectedRecordingIdByTab[tab] = match.recordingId
+  state.suggestionLoadingByTab[tab] = true
+  state.suggestionErrorByTab[tab] = ''
+  state.suggestionByTab[tab] = null
   try {
     const result = (await window.electron.ipcRenderer.invoke('musicbrainz:suggest', {
       recordingId: match.recordingId,
       releaseId: match.releaseId
     })) as IMusicBrainzSuggestionResult
-    state.suggestion = result
-    resetFieldSelections(result)
+    state.suggestionByTab[tab] = result
+    applyFieldSelectionsForSuggestion(result, tab)
   } catch (err: any) {
-    state.suggestionError = mapError(err?.message)
+    state.suggestionErrorByTab[tab] = mapError(err?.message)
   } finally {
-    state.suggestionLoading = false
+    state.suggestionLoadingByTab[tab] = false
   }
 }
 
-function resetFieldSelections(result: IMusicBrainzSuggestionResult | null) {
-  Object.keys(fieldSelections).forEach((key) => {
-    fieldSelections[key as FieldKeyWithCover] = false
+function cacheFieldSelections(tab: TabKey) {
+  const cache = fieldSelectionsCache[tab]
+  FIELD_KEYS_WITH_COVER.forEach((key) => {
+    cache[key] = fieldSelections[key]
   })
-  if (!result) return
-  FIELD_KEYS.forEach((key) => {
-    const value = result.suggestion[key]
-    fieldSelections[key] = value !== undefined && value !== null && value !== ''
-  })
-  fieldSelections.cover = result.suggestion.coverDataUrl !== undefined
 }
+
+function restoreFieldSelections(tab: TabKey) {
+  const cache = fieldSelectionsCache[tab]
+  FIELD_KEYS_WITH_COVER.forEach((key) => {
+    fieldSelections[key] = cache[key]
+  })
+}
+
+function applyFieldSelectionsForSuggestion(
+  result: IMusicBrainzSuggestionResult | null,
+  tab: TabKey
+) {
+  const cache = fieldSelectionsCache[tab]
+  FIELD_KEYS_WITH_COVER.forEach((key) => {
+    cache[key] = false
+  })
+  if (result) {
+    FIELD_KEYS.forEach((key) => {
+      const value = result.suggestion[key]
+      cache[key] = value !== undefined && value !== null && value !== ''
+    })
+    cache.cover = result.suggestion.coverDataUrl !== undefined
+  }
+  if (tab === activeTab.value) {
+    restoreFieldSelections(tab)
+  }
+}
+
+watch(
+  () => activeTab.value,
+  (tab, prev) => {
+    if (prev) {
+      cacheFieldSelections(prev)
+    }
+    restoreFieldSelections(tab)
+    if (tab === 'fingerprint') {
+      triggerFingerprintMatch()
+    }
+  },
+  { immediate: false }
+)
+
+watch(
+  fieldSelections,
+  () => {
+    cacheFieldSelections(activeTab.value)
+  },
+  { deep: true }
+)
 
 function hasIsrcMatch(match: IMusicBrainzMatch) {
   const candidate = normalizeIsrcValue(match.isrc)
   if (!candidate) return false
   const local = localIsrc.value
   return !!local && local === candidate
+}
+
+function isAcoustIdMatch(match: IMusicBrainzMatch) {
+  return match.source === 'acoustid'
+}
+
+function getMatchSourceLabel(match: IMusicBrainzMatch) {
+  return match.source === 'acoustid'
+    ? t('metadata.musicbrainzSourceAcoustId')
+    : t('metadata.musicbrainzSourceSearch')
+}
+
+function hasLowConfidence(match: IMusicBrainzMatch) {
+  return !!match.isLowConfidence
 }
 
 function shouldShowDurationDiff(match: IMusicBrainzMatch) {
@@ -247,7 +550,7 @@ function durationDiffText(diff?: number) {
 }
 
 function hasMusicBrainzValue(key: FieldKeyWithCover) {
-  const suggestion = state.suggestion?.suggestion
+  const suggestion = currentSuggestion.value?.suggestion
   if (!suggestion) return false
   if (key === 'cover') {
     return suggestion.coverDataUrl !== undefined
@@ -259,7 +562,7 @@ function hasMusicBrainzValue(key: FieldKeyWithCover) {
 }
 
 function getFieldText(key: FieldKeyWithCover) {
-  const suggestion = state.suggestion?.suggestion
+  const suggestion = currentSuggestion.value?.suggestion
   if (!suggestion) return '--'
   if (key === 'cover') {
     if (suggestion.coverDataUrl === undefined) return '--'
@@ -271,7 +574,7 @@ function getFieldText(key: FieldKeyWithCover) {
 }
 
 function buildApplyPayload(): IMusicBrainzApplyPayload | null {
-  const suggestion = state.suggestion?.suggestion
+  const suggestion = currentSuggestion.value?.suggestion
   if (!suggestion) return null
   const payload: IMusicBrainzApplyPayload = {}
   const setString = (key: keyof IMusicBrainzApplyPayload, value?: string | null) => {
@@ -315,6 +618,7 @@ async function handleConfirm() {
 }
 
 function handleCancel() {
+  void cancelBackendRequests()
   props.cancelCallback()
 }
 
@@ -322,8 +626,7 @@ function autoSearch() {
   const hasInitial =
     (query.title && query.title.trim() !== '') ||
     (query.artist && query.artist.trim() !== '') ||
-    (query.album && query.album.trim() !== '') ||
-    typeof durationSeconds.value === 'number'
+    (query.album && query.album.trim() !== '')
   if (hasInitial) {
     nextTick(() => searchMusicBrainz())
   }
@@ -335,7 +638,7 @@ function normalizeText(value?: string | null) {
 }
 
 function normalizeIsrcValue(value?: string | null) {
-  if (!value) return ''
+  if (typeof value !== 'string') return ''
   const trimmed = value.trim()
   return trimmed === '' ? '' : trimmed.toUpperCase()
 }
@@ -359,6 +662,7 @@ onUnmounted(() => {
   hotkeys.unbind('esc', uuid)
   hotkeys.unbind('enter', uuid)
   utils.delHotkeysScope(uuid)
+  void cancelBackendRequests()
 })
 </script>
 
@@ -377,7 +681,16 @@ onUnmounted(() => {
           defer
         >
           <div class="content">
-            <div class="section">
+            <div class="tabs">
+              <div class="tab" :class="{ active: isTextTab }" @click="onTabClick('text')">
+                {{ t('metadata.musicbrainzTabText') }}
+              </div>
+              <div class="tab" :class="{ active: !isTextTab }" @click="onTabClick('fingerprint')">
+                {{ t('metadata.musicbrainzTabFingerprint') }}
+              </div>
+            </div>
+
+            <div v-if="isTextTab" class="section">
               <div class="section-title">{{ t('metadata.musicbrainzQueryTitle') }}</div>
               <div class="musicbrainz-query-grid">
                 <label>{{ t('metadata.title') }}</label>
@@ -394,8 +707,14 @@ onUnmounted(() => {
               <div class="musicbrainz-panel-actions">
                 <div
                   class="button"
-                  :class="{ disabled: state.searching }"
-                  @click="state.searching ? null : searchMusicBrainz()"
+                  :class="{
+                    disabled: state.searching || !hasQueryTextInput || state.fingerprintMatching
+                  }"
+                  @click="
+                    state.searching || !hasQueryTextInput || state.fingerprintMatching
+                      ? null
+                      : searchMusicBrainz()
+                  "
                 >
                   {{
                     state.searching
@@ -404,24 +723,66 @@ onUnmounted(() => {
                   }}
                 </div>
               </div>
-              <div v-if="state.searchError" class="error-text">
-                {{ state.searchError }}
+            </div>
+
+            <div v-else class="section fingerprint-section">
+              <div class="section-title">{{ t('metadata.musicbrainzTabFingerprint') }}</div>
+              <div class="fingerprint-meta-row">
+                <label>{{ t('columns.duration') }}</label>
+                <div class="musicbrainz-duration">{{ formatSeconds(durationSeconds) }}</div>
+              </div>
+              <p class="hint-text">{{ t('metadata.musicbrainzFingerprintIntro') }}</p>
+              <div v-if="showAcoustIdPanel" class="acoustid-panel">
+                <div class="panel-title">{{ t('metadata.acoustidSetupTitle') }}</div>
+                <p>{{ t('metadata.acoustidSettingDesc1') }}</p>
+                <p>{{ t('metadata.acoustidSettingDesc2') }}</p>
+                <p>{{ t('metadata.acoustidSettingDesc3') }}</p>
+                <div class="acoustid-input-row">
+                  <input
+                    class="flashing-border"
+                    :class="{ 'is-flashing': flashArea === 'acoustidKey' }"
+                    :placeholder="t('metadata.acoustidKeyPlaceholder')"
+                    v-model="acoustIdKeyInput"
+                    :disabled="savingAcoustIdKey"
+                  />
+                  <div class="button secondary" @click="openAcoustIdRegister">
+                    {{ t('metadata.acoustidOpenRegister') }}
+                  </div>
+                </div>
+                <div v-if="acoustIdKeyError" class="error-text">{{ acoustIdKeyError }}</div>
+                <div class="acoustid-panel-actions">
+                  <div
+                    class="button"
+                    :class="{ disabled: savingAcoustIdKey || !acoustIdKeyInput.trim() }"
+                    @click="saveAcoustIdKey"
+                  >
+                    {{ savingAcoustIdKey ? t('metadata.saving') : t('metadata.acoustidSaveKey') }}
+                  </div>
+                  <div class="button secondary" @click="cancelAcoustIdSetup">
+                    {{ t('common.cancel') }}
+                  </div>
+                </div>
+              </div>
+              <div v-else-if="!hasAcoustIdKey" class="hint-text acoustid-inline-hint">
+                {{ t('metadata.acoustidMissingHint') }}
+                <span class="link-like" @click="openAcoustIdPanelManually">
+                  {{ t('metadata.acoustidConfigureNow') }}
+                </span>
+              </div>
+              <div v-else class="hint-text acoustid-inline-hint">
+                {{ t('metadata.acoustidSetupDesc3') }}
+              </div>
+              <div v-if="fingerprintStatusText" class="musicbrainz-fingerprint-status">
+                {{ fingerprintStatusText }}
               </div>
             </div>
 
-            <div
-              v-if="!state.searchError && state.hasSearched && state.results.length === 0"
-              class="musicbrainz-empty"
-            >
-              {{ t('metadata.musicbrainzNoResult') }}
-            </div>
-
-            <div v-if="state.results.length" class="musicbrainz-results">
+            <div v-if="displayedResults.length" class="musicbrainz-results">
               <div
-                v-for="match in state.results"
+                v-for="match in displayedResults"
                 :key="match.recordingId"
                 class="musicbrainz-result"
-                :class="{ active: match.recordingId === state.selectedRecordingId }"
+                :class="{ active: match.recordingId === currentSelectedRecordingId }"
                 @click="selectMatch(match)"
               >
                 <div class="result-title-row">
@@ -449,8 +810,23 @@ onUnmounted(() => {
                 </div>
                 <div
                   class="result-tags"
-                  v-if="shouldShowDurationDiff(match) || hasIsrcMatch(match)"
+                  v-if="
+                    match.source ||
+                    shouldShowDurationDiff(match) ||
+                    hasIsrcMatch(match) ||
+                    hasLowConfidence(match)
+                  "
                 >
+                  <span
+                    v-if="match.source"
+                    class="tag tag-source"
+                    :class="{ 'tag-source-acoustid': isAcoustIdMatch(match) }"
+                  >
+                    {{ getMatchSourceLabel(match) }}
+                  </span>
+                  <span v-if="hasLowConfidence(match)" class="tag tag-warn">
+                    {{ t('metadata.musicbrainzLowConfidence') }}
+                  </span>
                   <span
                     v-if="shouldShowDurationDiff(match)"
                     class="tag"
@@ -464,27 +840,33 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
+            <div v-else-if="currentErrorMessage" class="error-text">
+              {{ currentErrorMessage }}
+            </div>
+            <div v-else-if="shouldShowEmptyState" class="musicbrainz-empty">
+              {{ t('metadata.musicbrainzNoResult') }}
+            </div>
 
             <div class="musicbrainz-suggestion">
-              <div v-if="state.suggestionLoading" class="musicbrainz-loading">
+              <div v-if="currentSuggestionLoading" class="musicbrainz-loading">
                 {{ t('metadata.musicbrainzLoadingSuggestion') }}
               </div>
-              <div v-else-if="state.suggestionError" class="error-text">
-                {{ state.suggestionError }}
+              <div v-else-if="currentSuggestionError" class="error-text">
+                {{ currentSuggestionError }}
               </div>
-              <div v-else-if="state.suggestion" class="musicbrainz-suggestion-body">
+              <div v-else-if="currentSuggestion" class="musicbrainz-suggestion-body">
                 <div class="musicbrainz-suggestion-meta">
                   <div>
                     {{ t('metadata.musicbrainzChosenRelease') }}：
-                    {{ state.suggestion.releaseTitle || '--' }}
+                    {{ currentSuggestion.releaseTitle || '--' }}
                   </div>
                   <div>
                     {{ t('metadata.musicbrainzReleaseDate') }}：
-                    {{ state.suggestion.releaseDate || '--' }}
+                    {{ currentSuggestion.releaseDate || '--' }}
                   </div>
                   <div>
                     {{ t('metadata.musicbrainzLabel') }}：
-                    {{ state.suggestion.label || '--' }}
+                    {{ currentSuggestion.label || '--' }}
                   </div>
                 </div>
                 <div class="musicbrainz-suggestion-content">
@@ -572,6 +954,26 @@ onUnmounted(() => {
   font-size: 14px;
 }
 
+.tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+
+.tab {
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+  border-bottom: 2px solid transparent;
+}
+
+.tab.active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .footer {
   display: flex;
   justify-content: flex-end;
@@ -620,14 +1022,109 @@ onUnmounted(() => {
   margin-top: 10px;
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.musicbrainz-panel-actions .button.secondary {
+  background-color: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.fingerprint-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fingerprint-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-secondary, #888);
+}
+
+.musicbrainz-fingerprint-status {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+}
+
+.hint-text {
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+.acoustid-inline-hint .link-like {
+  margin-left: 6px;
+}
+
+.link-like {
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.acoustid-panel {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  margin-top: 12px;
+  background-color: rgba(0, 0, 0, 0.03);
+}
+
+.acoustid-panel .panel-title {
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+.acoustid-panel p {
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+}
+
+.acoustid-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0;
+}
+
+.acoustid-input-row input {
+  flex: 1;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 8px;
+  background-color: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+
+.acoustid-input-row input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.25);
+}
+
+.acoustid-panel-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 10px;
+}
+
+.acoustid-panel .button.secondary {
+  background-color: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
 }
 
 .musicbrainz-results {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 200px;
-  overflow: auto;
 }
 
 .musicbrainz-result {
@@ -680,6 +1177,16 @@ onUnmounted(() => {
 }
 
 .tag-good {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.tag-source {
+  border-color: var(--border);
+  color: var(--text-secondary, #666);
+}
+
+.tag-source-acoustid {
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -792,5 +1299,11 @@ onUnmounted(() => {
 .musicbrainz-loading {
   font-size: 13px;
   color: var(--text-secondary, #888);
+}
+
+.error-text {
+  color: #e81123;
+  font-size: 12px;
+  margin-top: 6px;
 }
 </style>

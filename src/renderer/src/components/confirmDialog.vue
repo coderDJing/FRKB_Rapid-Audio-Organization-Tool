@@ -38,6 +38,14 @@ const props = defineProps({
   cancelCallback: {
     type: Function
   },
+  confirmText: {
+    type: String,
+    default: ''
+  },
+  cancelText: {
+    type: String,
+    default: ''
+  },
   canCopyText: {
     type: Boolean,
     default: false
@@ -67,6 +75,14 @@ const innerStyle = computed(() => {
       : 'max-height:70vh;'
   return `${heightPart}width:${props.innerWidth}px;`
 })
+
+const confirmLabel = computed(() =>
+  props.confirmText && props.confirmText.trim() !== '' ? props.confirmText : t('common.confirm')
+)
+
+const cancelLabel = computed(() =>
+  props.cancelText && props.cancelText.trim() !== '' ? props.cancelText : t('common.cancel')
+)
 
 onMounted(() => {
   hotkeys('E,Enter', uuid, () => {
@@ -120,10 +136,10 @@ onUnmounted(() => {
           style="margin-right: 10px; width: 90px; text-align: center"
           @click="confirm()"
         >
-          {{ t('common.confirm') }} (E)
+          {{ confirmLabel }} (E)
         </div>
         <div class="button" style="width: 90px; text-align: center" @click="cancel()">
-          {{ t('common.cancel') }} (Esc)
+          {{ cancelLabel }} (Esc)
         </div>
       </div>
       <div v-if="!confirmShow" style="display: flex; justify-content: center; padding-bottom: 10px">

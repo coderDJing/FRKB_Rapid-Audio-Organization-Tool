@@ -14,6 +14,10 @@
       {
         "from": "vendor/ffmpeg",
         "to": "ffmpeg"
+      },
+      {
+        "from": "vendor/chromaprint",
+        "to": "chromaprint"
       }
     ],
     "appId": "com.electron.frkb",

@@ -35,12 +35,14 @@ import {
   ISongInfo,
   ITrackMetadataUpdatePayload,
   IMusicBrainzSearchPayload,
-  IMusicBrainzSuggestionParams
+  IMusicBrainzSuggestionParams,
+  IMusicBrainzAcoustIdPayload
 } from '../types/globals'
 import type { ISettingConfig } from '../types/globals'
 import { EXTERNAL_PLAYLIST_UUID } from '../shared/externalPlayback'
 import { scanSongList as svcScanSongList } from './services/scanSongs'
 import { resolveBundledFfmpegPath, ensureExecutableOnMac } from './ffmpeg'
+import { resolveBundledFpcalcPath, ensureFpcalcExecutable } from './chromaprint'
 import {
   getSongCover as svcGetSongCover,
   getSongCoverThumb as svcGetSongCoverThumb,
@@ -54,7 +56,16 @@ import {
   readTrackMetadata as svcReadTrackMetadata,
   updateTrackMetadata as svcUpdateTrackMetadata
 } from './services/metadataEditor'
-import { searchMusicBrainz, fetchMusicBrainzSuggestion } from './services/musicBrainz'
+import {
+  searchMusicBrainz,
+  fetchMusicBrainzSuggestion,
+  cancelMusicBrainzRequests
+} from './services/musicBrainz'
+import {
+  matchTrackWithAcoustId,
+  cancelAcoustIdRequests,
+  validateAcoustIdClientKeyValue
+} from './services/acoustId'
 import { v4 as uuidV4 } from 'uuid'
 // import AudioFeatureExtractor from './mfccTest'
 
@@ -98,6 +109,9 @@ const platform = process.platform
 const ffmpegPath = resolveBundledFfmpegPath()
 process.env.FRKB_FFMPEG_PATH = ffmpegPath
 void ensureExecutableOnMac(ffmpegPath)
+const fpcalcPath = resolveBundledFpcalcPath()
+process.env.FRKB_FPCALC_PATH = fpcalcPath
+void ensureFpcalcExecutable(fpcalcPath)
 // 不再使用 Tray，改用应用菜单
 if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
   fs.outputJsonSync(url.layoutConfigFileUrl, {
@@ -220,7 +234,8 @@ const defaultSettings = {
   convertDefaults: defaultConvertDefaults,
   // “更新日志”弹窗记录字段
   lastSeenWhatsNewVersion: '',
-  pendingWhatsNewForVersion: ''
+  pendingWhatsNewForVersion: '',
+  acoustIdClientKey: ''
 }
 
 const WHATS_NEW_RELEASE_URL =
@@ -367,6 +382,10 @@ if (process.platform === 'win32') {
   }
 } else {
   ;(finalSettings as any).enableExplorerContextMenu = false
+}
+
+if (typeof finalSettings.acoustIdClientKey !== 'string') {
+  finalSettings.acoustIdClientKey = ''
 }
 
 // 一次性迁移：默认勾选所有格式（升级老版本时补齐），并写入迁移标记
@@ -1245,11 +1264,15 @@ ipcMain.handle('audio:metadata:update', async (_e, payload: ITrackMetadataUpdate
   } catch (error: any) {
     log.error('更新音频元数据失败', {
       filePath: payload?.filePath,
-      error: error?.message || error
+      error: error?.message || error,
+      stderr: error?.stderr,
+      exitCode: error?.exitCode
     })
     return {
       success: false,
-      message: error?.message || 'metadata-update-failed'
+      message: error?.message || 'metadata-update-failed',
+      errorCode: error?.code || error?.message || 'metadata-update-failed',
+      errorDetail: error?.stderr || ''
     }
   }
 })
@@ -1260,6 +1283,21 @@ ipcMain.handle('musicbrainz:search', async (_e, payload: IMusicBrainzSearchPaylo
 
 ipcMain.handle('musicbrainz:suggest', async (_e, payload: IMusicBrainzSuggestionParams) => {
   return await fetchMusicBrainzSuggestion(payload)
+})
+
+ipcMain.handle('musicbrainz:cancelRequests', async () => {
+  cancelMusicBrainzRequests()
+})
+
+ipcMain.handle('musicbrainz:acoustidMatch', async (_e, payload: IMusicBrainzAcoustIdPayload) => {
+  return await matchTrackWithAcoustId(payload)
+})
+ipcMain.handle('acoustid:validateClientKey', async (_e, clientKey: string) => {
+  await validateAcoustIdClientKeyValue(typeof clientKey === 'string' ? clientKey : '')
+})
+
+ipcMain.handle('acoustid:cancelRequests', async () => {
+  cancelAcoustIdRequests()
 })
 
 ipcMain.handle('playlist:cache:clear', async (_e, songListPath: string) => {

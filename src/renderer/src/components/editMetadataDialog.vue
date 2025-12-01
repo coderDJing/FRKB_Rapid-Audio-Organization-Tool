@@ -11,6 +11,7 @@ import type {
 } from 'src/types/globals'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import showMusicBrainzDialog, { MusicBrainzDialogInitialQuery } from './musicBrainzDialog'
+import confirm from '@renderer/components/confirmDialog'
 
 const uuid = uuidV4()
 
@@ -40,6 +41,8 @@ const originalFileName = ref('')
 const fileExtension = ref('')
 const fileNameError = ref('')
 
+const WAV_COVER_HINT_KEY = 'FRKB_HIDE_WAV_COVER_HINT'
+
 const form = reactive({
   title: '',
   artist: '',
@@ -58,6 +61,19 @@ const form = reactive({
   comment: '',
   lyrics: ''
 })
+const isWavFile = computed(() => fileExtension.value.toLowerCase() === '.wav')
+
+async function showMetadataErrorDialog(message: string) {
+  errorMessage.value = message
+  await confirm({
+    title: t('common.error'),
+    content: [message],
+    confirmShow: false,
+    innerWidth: 420,
+    canCopyText: true,
+    textAlign: 'left'
+  })
+}
 
 const metadataDetail = ref<ITrackMetadataDetail | null>(null)
 
@@ -304,12 +320,17 @@ function onFileButtonClick() {
   }
 }
 
-function normalizeText(value: string): string | undefined {
+function normalizeText(value: string | undefined | null): string | undefined {
+  if (typeof value !== 'string') return undefined
   const trimmed = value.trim()
   return trimmed === '' ? undefined : trimmed
 }
 
-function parsePositiveInt(value: string, errorKey: string): number | null | undefined {
+function parsePositiveInt(
+  value: string | undefined | null,
+  errorKey: string
+): number | null | undefined {
+  if (typeof value !== 'string') return undefined
   const trimmed = value.trim()
   if (trimmed === '') return undefined
   const num = Number(trimmed)
@@ -359,7 +380,7 @@ async function onConfirm() {
     isrc: normalizeText(form.isrc),
     comment: normalizeText(form.comment),
     lyrics: normalizeText(form.lyrics),
-    coverDataUrl: coverDataUrl.value
+    coverDataUrl: !isWavFile.value ? coverDataUrl.value : undefined
   }
 
   if (trimmedFileName !== originalFileName.value) {
@@ -377,9 +398,11 @@ async function onConfirm() {
       detail?: ITrackMetadataDetail
       renamedFrom?: string
       message?: string
+      errorCode?: string
+      errorDetail?: string
     }
     if (!response || response.success !== true || !response.songInfo || !response.detail) {
-      const code = response?.message
+      const code = response?.errorCode || response?.message
       if (code === 'INVALID_FILE_NAME') {
         fileNameError.value = t('metadata.fileNameInvalid')
         flashFileNameInput()
@@ -392,8 +415,21 @@ async function onConfirm() {
         submitting.value = false
         return
       }
-      const fallback = code && code.trim() !== '' ? code : t('common.error')
-      errorMessage.value = t('metadata.saveFailed', { message: fallback })
+      if (code === 'FFMPEG_METADATA_FAILED') {
+        const detail = response?.errorDetail?.trim()
+        const message = detail
+          ? t('metadata.ffmpegFailedWithReason', { reason: detail })
+          : t('metadata.ffmpegFailed')
+        await showMetadataErrorDialog(message)
+        submitting.value = false
+        return
+      }
+      const fallbackDetail =
+        (response?.errorDetail && response.errorDetail.trim() !== ''
+          ? response.errorDetail
+          : code) || ''
+      const fallback = fallbackDetail !== '' ? fallbackDetail : t('common.error')
+      await showMetadataErrorDialog(t('metadata.saveFailed', { message: fallback }))
       submitting.value = false
       return
     }
@@ -412,17 +448,24 @@ async function onConfirm() {
       detail: response.detail,
       oldFilePath: response.renamedFrom ?? previousFilePath
     })
+    await maybeShowWavCoverHint()
   } catch (err: any) {
-    const code = err?.message
+    const code = err?.errorCode || err?.message
     if (code === 'INVALID_FILE_NAME') {
       fileNameError.value = t('metadata.fileNameInvalid')
       flashFileNameInput()
     } else if (code === 'FILE_NAME_EXISTS') {
       fileNameError.value = t('metadata.fileNameExists')
       flashFileNameInput()
+    } else if (code === 'FFMPEG_METADATA_FAILED') {
+      const detail = err?.errorDetail?.trim()
+      const message = detail
+        ? t('metadata.ffmpegFailedWithReason', { reason: detail })
+        : t('metadata.ffmpegFailed')
+      await showMetadataErrorDialog(message)
     } else {
       const fallback = code && String(code).trim() !== '' ? code : t('common.error')
-      errorMessage.value = t('metadata.saveFailed', { message: fallback })
+      await showMetadataErrorDialog(t('metadata.saveFailed', { message: fallback }))
     }
     submitting.value = false
   }
@@ -434,8 +477,37 @@ function onCancel() {
 }
 
 function onRemoveCover() {
-  if (isRemoveDisabled.value) return
+  if (isRemoveDisabled.value || isWavFile.value) {
+    coverDataUrl.value = null
+    return
+  }
   coverDataUrl.value = null
+}
+
+async function maybeShowWavCoverHint() {
+  if (!isWavFile.value) return
+  try {
+    if (localStorage.getItem(WAV_COVER_HINT_KEY) === '1') return
+  } catch {
+    // ignore
+  }
+  const result = await confirm({
+    title: t('metadata.cover'),
+    content: [t('metadata.coverHintWav')],
+    confirmShow: true,
+    confirmText: t('metadata.coverHintDontAsk'),
+    cancelText: t('common.close'),
+    textAlign: 'left',
+    innerWidth: 420,
+    canCopyText: true
+  })
+  if (result === 'confirm') {
+    try {
+      localStorage.setItem(WAV_COVER_HINT_KEY, '1')
+    } catch {
+      // ignore
+    }
+  }
 }
 
 function onRestoreCover() {
@@ -638,29 +710,31 @@ onUnmounted(() => {
                     <div class="cover-actions">
                       <div
                         class="button"
-                        :class="{ disabled: submitting }"
-                        @click="submitting ? null : onFileButtonClick()"
+                        :class="{ disabled: submitting || isWavFile }"
+                        @click="submitting || isWavFile ? null : onFileButtonClick()"
                       >
                         {{ t('metadata.chooseCover') }}
                       </div>
                       <div
                         class="button"
-                        :class="{ disabled: isRemoveDisabled }"
-                        @click="isRemoveDisabled ? null : onRemoveCover()"
+                        :class="{ disabled: isRemoveDisabled || isWavFile }"
+                        @click="isRemoveDisabled || isWavFile ? null : onRemoveCover()"
                       >
                         {{ t('metadata.removeCover') }}
                       </div>
                       <div
                         v-if="showRestoreButton"
                         class="button"
-                        :class="{ disabled: isRestoreDisabled }"
-                        @click="isRestoreDisabled ? null : onRestoreCover()"
+                        :class="{ disabled: isRestoreDisabled || isWavFile }"
+                        @click="isRestoreDisabled || isWavFile ? null : onRestoreCover()"
                       >
                         {{ t('metadata.restoreCover') }}
                       </div>
                     </div>
                   </div>
-                  <div class="cover-hint">{{ t('metadata.coverHint') }}</div>
+                  <div class="cover-hint">
+                    {{ isWavFile ? t('metadata.coverHintWav') : t('metadata.coverHint') }}
+                  </div>
                 </div>
               </div>
 
