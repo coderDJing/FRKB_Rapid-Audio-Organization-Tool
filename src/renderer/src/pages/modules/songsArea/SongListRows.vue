@@ -646,6 +646,17 @@ function isPointerOutsideVisibleArea(event: MouseEvent): boolean {
 function onCoverMouseEnter(idx: number, event: MouseEvent) {
   const target = event.currentTarget as HTMLElement | null
   if (!target) return
+  const song = props.songs?.[idx]
+  const filePath = song?.filePath
+  if (!filePath) {
+    closeCoverPreview()
+    return
+  }
+  const cachedCoverUrl = getCoverUrl(filePath)
+  if (cachedCoverUrl === null) {
+    closeCoverPreview()
+    return
+  }
   const rect = target.getBoundingClientRect()
   if (coverPreviewState.active) {
     if (coverPreviewState.anchorIndex === idx) {
@@ -659,11 +670,10 @@ function onCoverMouseEnter(idx: number, event: MouseEvent) {
   coverPreviewState.active = true
   coverPreviewState.anchorIndex = idx
   coverPreviewState.displayIndex = idx
-  coverPreviewState.anchorFilePath = props.songs?.[idx]?.filePath || ''
+  coverPreviewState.anchorFilePath = filePath
   applyCoverPreviewRect(rect, true)
   attachPreviewGuards()
-  const song = props.songs?.[idx]
-  if (song?.filePath) fetchCoverUrl(song.filePath)
+  fetchCoverUrl(filePath)
 }
 
 function onCoverMouseLeave(idx: number, event: MouseEvent) {
@@ -738,6 +748,13 @@ watch(
     if (coverPreviewState.active) closeCoverPreview()
   }
 )
+watch([() => coverPreviewState.active, previewedCoverUrl], ([active, url]) => {
+  if (!active) return
+  if (url === null) {
+    // 缺少封面时立即收起预览，避免展示空白骨架
+    closeCoverPreview()
+  }
+})
 watch(
   () => props.songs,
   () => {
