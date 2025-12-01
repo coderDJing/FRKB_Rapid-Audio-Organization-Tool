@@ -14,6 +14,7 @@ import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
 import { SUPPORTED_AUDIO_FORMATS } from '../../../shared/audioFormats'
+import { mapAcoustIdClientError } from '@renderer/utils/acoustid'
 const runtime = useRuntimeStore()
 const uuid = uuidV4()
 const emits = defineEmits(['cancel'])
@@ -70,6 +71,16 @@ if ((runtime as any).setting.enableExplorerContextMenu === undefined) {
 if ((runtime as any).setting.songListBubbleAlways === undefined) {
   ;(runtime as any).setting.songListBubbleAlways = false
 }
+
+if ((runtime as any).setting.acoustIdClientKey === undefined) {
+  ;(runtime as any).setting.acoustIdClientKey = ''
+}
+const lastValidAcoustIdClientKey = ref(
+  String((runtime as any).setting.acoustIdClientKey || '').trim()
+)
+;(runtime as any).setting.acoustIdClientKey = lastValidAcoustIdClientKey.value
+const acoustIdKeyValidating = ref(false)
+const acoustIdKeyErrorText = ref('')
 
 const AUDIO_FOLLOW_SYSTEM_ID = ''
 const isWindowsPlatform = computed(() => runtime.setting.platform === 'win32')
@@ -203,6 +214,45 @@ const refreshAudioOutputDevices = async () => {
     audioOutputError.value = t('player.audioOutputRefreshFailed', { reason })
   } finally {
     isEnumeratingAudioOutputs.value = false
+  }
+}
+
+const openAcoustIdSite = () => {
+  window.electron.ipcRenderer.send('openLocalBrowser', 'https://acoustid.org/new-application')
+}
+
+const handleAcoustIdKeyBlur = async () => {
+  const rawValue = runtime.setting.acoustIdClientKey || ''
+  const trimmed = rawValue.trim()
+  if (rawValue !== trimmed) {
+    runtime.setting.acoustIdClientKey = trimmed
+  }
+  if (trimmed === lastValidAcoustIdClientKey.value) {
+    acoustIdKeyErrorText.value = ''
+    if (rawValue !== trimmed) {
+      await setSetting()
+    }
+    return
+  }
+  if (!trimmed) {
+    lastValidAcoustIdClientKey.value = ''
+    acoustIdKeyErrorText.value = ''
+    runtime.setting.acoustIdClientKey = ''
+    await setSetting()
+    return
+  }
+  acoustIdKeyValidating.value = true
+  try {
+    await window.electron.ipcRenderer.invoke('acoustid:validateClientKey', trimmed)
+    lastValidAcoustIdClientKey.value = trimmed
+    acoustIdKeyErrorText.value = ''
+    runtime.setting.acoustIdClientKey = trimmed
+    await setSetting()
+  } catch (error: any) {
+    acoustIdKeyErrorText.value = mapAcoustIdClientError(error?.message)
+    runtime.setting.acoustIdClientKey = lastValidAcoustIdClientKey.value
+  } finally {
+    acoustIdKeyValidating.value = false
   }
 }
 
@@ -618,6 +668,36 @@ const clearCloudFingerprints = async () => {
                 @blur="updateRecentDialogCacheMaxCount()"
               />
             </div>
+            <div style="margin-top: 30px">
+              <div class="section-title">{{ t('metadata.acoustidSettingTitle') }}</div>
+              <div class="setting-hint">{{ t('metadata.acoustidSettingDesc1') }}</div>
+              <div class="setting-hint">{{ t('metadata.acoustidSettingDesc2') }}</div>
+              <div class="setting-hint">{{ t('metadata.acoustidSettingDesc3') }}</div>
+              <div class="acoustid-row">
+                <input
+                  class="acoustid-input"
+                  :class="{ invalid: acoustIdKeyErrorText }"
+                  v-model="runtime.setting.acoustIdClientKey"
+                  :placeholder="t('metadata.acoustidSettingPlaceholder')"
+                  :disabled="acoustIdKeyValidating"
+                  @blur="handleAcoustIdKeyBlur"
+                />
+                <div
+                  class="button"
+                  style="height: 25px; line-height: 25px"
+                  @click="openAcoustIdSite"
+                >
+                  {{ t('metadata.acoustidSettingOpenLink') }}
+                </div>
+              </div>
+              <div v-if="acoustIdKeyValidating" class="setting-hint">
+                {{ t('metadata.acoustidKeyValidating') }}
+              </div>
+              <div v-else-if="acoustIdKeyErrorText" class="error-text">
+                {{ acoustIdKeyErrorText }}
+              </div>
+              <div class="setting-hint">{{ t('metadata.acoustidSettingRateHint') }}</div>
+            </div>
             <div style="margin-top: 20px">{{ t('filters.persistFiltersAfterRestart') }}：</div>
             <div style="margin-top: 10px">
               <singleCheckbox
@@ -841,5 +921,45 @@ option {
     background-color: var(--hover);
     border-color: var(--accent);
   }
+}
+
+.setting-hint {
+  font-size: 12px;
+  color: var(--text-secondary, #8c8c8c);
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
+.acoustid-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.acoustid-input {
+  flex: 1;
+  height: 25px;
+  border: 1px solid var(--border);
+  background-color: var(--bg-elev);
+  color: var(--text);
+  border-radius: 3px;
+  padding: 0 8px;
+  outline: none;
+}
+
+.acoustid-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.25);
+}
+
+.acoustid-input.invalid {
+  border-color: #e81123;
+}
+
+.error-text {
+  color: #e81123;
+  font-size: 12px;
+  margin-top: 6px;
 }
 </style>

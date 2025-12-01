@@ -100,6 +100,10 @@
    - 存储 MBID、支持自动重命名与目录整理。
    - 引入 AcoustID / 指纹匹配。
 
+## 声纹匹配扩展（草案）
+
+已迁移到独立文档《[docs/musicbrainz-acoustid-plan.md](./musicbrainz-acoustid-plan.md)》，便于后续单独评审与迭代。
+
 ## 未决问题
 - 是否需要在设置页暴露 MusicBrainz 请求速率/代理等选项？
 - 批量模式下，若用户一次处理上千首歌曲，如何提示 MusicBrainz 限速导致的排队时间？可能需要与用户沟通可选的本地镜像或 API key（MusicBrainz 支持注册账户提高限额）。
@@ -109,4 +113,3 @@
 1. 评审本文档后，确认 M1 范围与 UI 交互稿。
 2. 依据 M1 范围创建具体任务（service/IPC/UI/国际化/测试）。
 3. 在 `README` 或官网补充分页，说明需要网络以使用 MusicBrainz 功能，并尊重其 ToS。
-

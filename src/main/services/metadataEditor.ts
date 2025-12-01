@@ -140,6 +140,26 @@ function sanitizeMetadataValue(value: string | undefined): string | undefined {
   return value.replace(/\u0000/g, '').trim()
 }
 
+function summarizeFfmpegStderr(output?: string): string {
+  if (!output) return ''
+  return output
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(-5)
+    .join(' | ')
+    .slice(0, 500)
+}
+
+function createFfmpegError(code: number | null, stderr?: string): Error {
+  const err: any = new Error('FFMPEG_METADATA_FAILED')
+  err.code = 'FFMPEG_METADATA_FAILED'
+  err.exitCode = code ?? undefined
+  err.stderr = summarizeFfmpegStderr(stderr)
+  return err
+}
+
 function buildFfmpegArgs(
   filePath: string,
   destPath: string,
@@ -342,10 +362,18 @@ export async function updateTrackMetadata(
     const args = buildFfmpegArgs(filePath, tempOutput, payload, coverTempPath)
     await new Promise<void>((resolve, reject) => {
       const child = child_process.spawn(ffmpegPath, args, { windowsHide: true })
-      child.on('error', reject)
+      let stderrOutput = ''
+      child.stderr?.on('data', (chunk) => {
+        if (stderrOutput.length < 8000) {
+          stderrOutput += chunk.toString()
+        }
+      })
+      child.on('error', (err) => {
+        reject(createFfmpegError(null, stderrOutput || err?.message))
+      })
       child.on('exit', (code) => {
         if (code === 0) resolve()
-        else reject(new Error(`ffmpeg exit ${code}`))
+        else reject(createFfmpegError(code ?? null, stderrOutput))
       })
     })
 
@@ -402,10 +430,18 @@ export async function updateTrackMetadata(
               )
               await new Promise<void>((resolve, reject) => {
                 const child = child_process.spawn(ffmpegPath, patchArgs, { windowsHide: true })
-                child.on('error', reject)
+                let stderrOutput = ''
+                child.stderr?.on('data', (chunk) => {
+                  if (stderrOutput.length < 8000) {
+                    stderrOutput += chunk.toString()
+                  }
+                })
+                child.on('error', (err) => {
+                  reject(createFfmpegError(null, stderrOutput || err?.message))
+                })
                 child.on('exit', (code) => {
                   if (code === 0) resolve()
-                  else reject(new Error(`ffmpeg exit ${code}`))
+                  else reject(createFfmpegError(code ?? null, stderrOutput))
                 })
               })
               await fs.move(patchOutput, filePath, { overwrite: true })
