@@ -154,7 +154,6 @@ async function runFpcalc(
   filePath: string,
   maxLengthSeconds?: number
 ): Promise<{ fingerprint: string; duration: number }> {
-  console.log('[acoustid] fpcalc start', { filePath })
   const fpcalcPath = resolveBundledFpcalcPath()
   if (!fpcalcPath || !(await fs.pathExists(fpcalcPath))) {
     throw new Error('ACOUSTID_FPCALC_NOT_FOUND')
@@ -200,12 +199,6 @@ async function runFpcalc(
         const parsed = JSON.parse(stdout)
         const fingerprint = parsed?.fingerprint
         const duration = parsed?.duration
-        console.log('[acoustid] fpcalc done', { filePath, duration })
-        console.log('[acoustid] fpcalc fingerprint', {
-          filePath,
-          length: typeof fingerprint === 'string' ? fingerprint.length : 0,
-          sample: typeof fingerprint === 'string' ? fingerprint.slice(0, 80) : ''
-        })
         if (!fingerprint || typeof fingerprint !== 'string') {
           reject(new Error('ACOUSTID_NO_FINGERPRINT'))
           return
@@ -280,7 +273,6 @@ async function lookupAcoustId(
   if (!clientKey) {
     throw new Error('ACOUSTID_CLIENT_MISSING')
   }
-  console.log('[acoustid] lookup start', { duration })
   return scheduleLookup(async () => {
     const controller = new AbortController()
     currentLookupAbort = controller
@@ -310,7 +302,6 @@ async function lookupAcoustId(
       if (res.status === 429) throw new Error('ACOUSTID_RATE_LIMITED')
       if (res.status === 401 || res.status === 403) throw new Error('ACOUSTID_CLIENT_INVALID')
       if (!res.ok) throw new Error(`ACOUSTID_HTTP_${res.status}`)
-      console.log('[acoustid] lookup success')
       return (await res.json()) as AcoustIdLookupResponse
     } catch (err: any) {
       if (err?.name === 'AbortError') {
@@ -429,7 +420,6 @@ async function ensureFingerprint(
   const { key } = await buildCacheKey(resolved)
   let entry = await readFingerprintCache(key)
   if (!entry || !entry.fingerprint) {
-    console.log('[acoustid] cache miss, generating fingerprint', { filePath: resolved })
     const result = await runFpcalc(resolved, payload.maxLengthSeconds)
     entry = {
       fingerprint: result.fingerprint,
@@ -462,26 +452,8 @@ export async function matchTrackWithAcoustId(
   if (!payload || !payload.filePath) {
     throw new Error('ACOUSTID_INVALID_PARAMS')
   }
-  console.log('[acoustid] matchTrack start', {
-    filePath: payload.filePath,
-    durationSeconds: payload.durationSeconds
-  })
   const { cacheKey, entry } = await ensureFingerprint(payload)
   const response = await fetchAcoustIdWithCache(cacheKey, entry)
-  console.log('[acoustid] lookup response summary', {
-    status: response?.status,
-    resultCount: Array.isArray(response?.results) ? response.results.length : 0,
-    firstScore: response?.results?.[0]?.score ?? null,
-    hasRecordings:
-      Array.isArray(response?.results?.[0]?.recordings) &&
-      response?.results?.[0]?.recordings?.length
-  })
-  if (Array.isArray(response?.results) && response.results.length) {
-    console.log(
-      '[acoustid] lookup first result raw',
-      JSON.stringify(response.results[0]).slice(0, 500)
-    )
-  }
   if (response?.status === 'error') {
     const message = response?.error?.message || ''
     if (isInvalidClientError(message)) {
@@ -490,10 +462,6 @@ export async function matchTrackWithAcoustId(
     throw new Error(`ACOUSTID_LOOKUP_FAILED:${message}`)
   }
   const matches = transformMatches(response, payload)
-  console.log('[acoustid] matchTrack done', {
-    filePath: payload.filePath,
-    matchCount: matches.length
-  })
   return matches.slice(0, 10)
 }
 
