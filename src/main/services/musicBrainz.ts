@@ -31,6 +31,7 @@ interface QueueItem<T> {
 
 const requestQueue: QueueItem<any>[] = []
 let queueProcessing = false
+let currentAbortController: AbortController | null = null
 
 function scheduleRequest<T>(fn: () => Promise<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -147,7 +148,12 @@ function mergeHeaders(extra?: HeadersInit): HeadersInit {
 async function requestJson<T>(url: string, headers?: HeadersInit, timeoutMs?: number): Promise<T> {
   return scheduleRequest(async () => {
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), timeoutMs ?? REQUEST_TIMEOUT)
+    currentAbortController = controller
+    let abortedByTimeout = false
+    const timer = setTimeout(() => {
+      abortedByTimeout = true
+      controller.abort()
+    }, timeoutMs ?? REQUEST_TIMEOUT)
     try {
       const init: RequestInit & { dispatcher?: any } = {
         headers: mergeHeaders({
@@ -163,7 +169,10 @@ async function requestJson<T>(url: string, headers?: HeadersInit, timeoutMs?: nu
       if (!res.ok) throw new Error(`MUSICBRAINZ_HTTP_${res.status}`)
       return (await res.json()) as T
     } catch (err: any) {
-      if (err?.name === 'AbortError') throw new Error('MUSICBRAINZ_TIMEOUT')
+      if (err?.name === 'AbortError') {
+        if (abortedByTimeout) throw new Error('MUSICBRAINZ_TIMEOUT')
+        throw new Error('MUSICBRAINZ_ABORTED')
+      }
       if (err?.code === 'ECONNRESET' || err?.message?.includes('fetch failed')) {
         console.error('[musicbrainz] request JSON network error', url, err)
         throw new Error('MUSICBRAINZ_NETWORK')
@@ -171,6 +180,9 @@ async function requestJson<T>(url: string, headers?: HeadersInit, timeoutMs?: nu
       throw err
     } finally {
       clearTimeout(timer)
+      if (currentAbortController === controller) {
+        currentAbortController = null
+      }
     }
   })
 }
@@ -185,7 +197,12 @@ async function requestBuffer(
 } | null> {
   return scheduleRequest(async () => {
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), timeoutMs ?? REQUEST_TIMEOUT)
+    currentAbortController = controller
+    let abortedByTimeout = false
+    const timer = setTimeout(() => {
+      abortedByTimeout = true
+      controller.abort()
+    }, timeoutMs ?? REQUEST_TIMEOUT)
     try {
       const init: RequestInit & { dispatcher?: any } = {
         headers: mergeHeaders(headers),
@@ -201,7 +218,10 @@ async function requestBuffer(
       const arrayBuffer = await res.arrayBuffer()
       return { mime, buffer: Buffer.from(arrayBuffer) }
     } catch (err: any) {
-      if (err?.name === 'AbortError') throw new Error('MUSICBRAINZ_TIMEOUT')
+      if (err?.name === 'AbortError') {
+        if (abortedByTimeout) throw new Error('MUSICBRAINZ_TIMEOUT')
+        throw new Error('MUSICBRAINZ_ABORTED')
+      }
       if (err?.code === 'ECONNRESET' || err?.message?.includes('fetch failed')) {
         console.error('[musicbrainz] request buffer network error', url, err)
         throw new Error('MUSICBRAINZ_NETWORK')
@@ -209,6 +229,9 @@ async function requestBuffer(
       throw err
     } finally {
       clearTimeout(timer)
+      if (currentAbortController === controller) {
+        currentAbortController = null
+      }
     }
   })
 }
@@ -340,7 +363,8 @@ function transformRecording(
     matchedFields,
     durationSeconds,
     durationDiffSeconds,
-    isrc: Array.isArray(recording?.isrcs) ? recording.isrcs[0] : undefined
+    isrc: Array.isArray(recording?.isrcs) ? recording.isrcs[0] : undefined,
+    source: 'search'
   }
 }
 
@@ -477,4 +501,14 @@ export async function fetchMusicBrainzSuggestion(
   }
   await writeCache('detail', detailCacheKey, DETAIL_CACHE_TTL, result)
   return result
+}
+
+export function cancelMusicBrainzRequests() {
+  requestQueue.length = 0
+  if (currentAbortController) {
+    try {
+      currentAbortController.abort()
+    } catch {}
+    currentAbortController = null
+  }
 }

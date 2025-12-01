@@ -10,6 +10,8 @@ interface DialogOptions {
   innerHeight?: number
   innerWidth?: number
   canCopyText?: boolean
+  confirmText?: string
+  cancelText?: string
 }
 
 export default (options: DialogOptions) => {

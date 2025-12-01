@@ -77,6 +77,12 @@ interface IMusicBrainzSearchPayload {
   durationSeconds?: number
 }
 
+interface IMusicBrainzAcoustIdPayload {
+  filePath: string
+  durationSeconds?: number
+  maxLengthSeconds?: number
+}
+
 interface IMusicBrainzMatch {
   recordingId: string
   title: string
@@ -91,6 +97,9 @@ interface IMusicBrainzMatch {
   durationSeconds?: number
   durationDiffSeconds?: number
   isrc?: string
+  source?: 'search' | 'acoustid'
+  acoustIdScore?: number
+  isLowConfidence?: boolean
 }
 
 interface IMusicBrainzSuggestion {
@@ -244,6 +253,8 @@ interface ISettingConfig {
   lastSeenWhatsNewVersion?: string
   // 若上次拉取失败，需要下次继续尝试的版本号
   pendingWhatsNewForVersion?: string
+  // AcoustID 客户端 Key（声纹匹配）
+  acoustIdClientKey?: string
 }
 
 interface ILanguageDict {
@@ -309,6 +320,7 @@ export {
   Icon,
   IMusicBrainzSearchPayload,
   IMusicBrainzMatch,
+  IMusicBrainzAcoustIdPayload,
   IMusicBrainzSuggestion,
   IMusicBrainzSuggestionResult,
   IMusicBrainzSuggestionParams,

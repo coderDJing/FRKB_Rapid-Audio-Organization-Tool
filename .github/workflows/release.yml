@@ -55,6 +55,23 @@ jobs:
           Remove-Item ffmpeg.zip -Force
           Remove-Item ffmpeg_unzip -Recurse -Force
 
+      - name: Prepare Chromaprint (Windows)
+        shell: pwsh
+        run: |
+          $chromaprintVersion = '1.5.1'
+          $tag = "v$chromaprintVersion"
+          $url = "https://github.com/acoustid/chromaprint/releases/download/$tag/chromaprint-fpcalc-$chromaprintVersion-windows-x86_64.zip"
+          New-Item -ItemType Directory -Force -Path vendor/chromaprint/win32-x64 | Out-Null
+          Invoke-WebRequest -Uri $url -OutFile fpcalc.zip
+          Expand-Archive -Path fpcalc.zip -DestinationPath fpcalc_unzip -Force
+          $fpcalc = Get-ChildItem -Recurse -Filter fpcalc.exe fpcalc_unzip | Select-Object -First 1
+          if (-not $fpcalc) {
+            throw "fpcalc.exe not found in downloaded archive."
+          }
+          Copy-Item -Path $fpcalc.FullName -Destination vendor/chromaprint/win32-x64/fpcalc.exe -Force
+          Remove-Item fpcalc.zip -Force
+          Remove-Item fpcalc_unzip -Recurse -Force
+
       - name: Build Rust N-API (rust_package)
         working-directory: rust_package
         run: npx --yes @napi-rs/cli@2.18.4 build --platform --release --target x86_64-pc-windows-msvc
@@ -216,6 +233,18 @@ jobs:
           
           echo "Listing vendor/ffmpeg directory"
           find vendor/ffmpeg -maxdepth 2 -type f -exec ls -l {} \;
+
+      - name: Prepare Chromaprint (macOS universal)
+        run: |
+          set -euxo pipefail
+          CHROMAPRINT_VERSION="1.5.1"
+          TAG="v${CHROMAPRINT_VERSION}"
+          mkdir -p vendor/chromaprint/darwin
+          curl -L "https://github.com/acoustid/chromaprint/releases/download/${TAG}/chromaprint-fpcalc-${CHROMAPRINT_VERSION}-macos-universal.tar.gz" -o fpcalc-mac.tar.gz
+          tar -xzf fpcalc-mac.tar.gz
+          install -m 755 chromaprint-fpcalc-${CHROMAPRINT_VERSION}-macos-universal/fpcalc vendor/chromaprint/darwin/fpcalc
+          rm -rf fpcalc-mac.tar.gz chromaprint-fpcalc-${CHROMAPRINT_VERSION}-macos-universal
+          ls -l vendor/chromaprint/darwin
 
       - name: Build Rust N-API for mac (both arch)
         working-directory: rust_package
