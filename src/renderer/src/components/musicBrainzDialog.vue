@@ -60,7 +60,7 @@ const props = defineProps({
 const query = reactive({
   title: props.initialQuery?.title || '',
   artist: props.initialQuery?.artist || '',
-  album: props.initialQuery?.album || ''
+  album: ''
 })
 const durationSeconds = ref<number | undefined>(props.initialQuery?.durationSeconds)
 const localIsrc = computed(() => normalizeIsrcValue(props.initialQuery?.isrc))
@@ -529,6 +529,10 @@ function getMatchSourceLabel(match: IMusicBrainzMatch) {
     : t('metadata.musicbrainzSourceSearch')
 }
 
+function sourceTagClass(match: IMusicBrainzMatch) {
+  return isAcoustIdMatch(match) ? 'tag-source-acoustid' : 'tag-good'
+}
+
 function hasLowConfidence(match: IMusicBrainzMatch) {
   return !!match.isLowConfidence
 }
@@ -791,12 +795,21 @@ onUnmounted(() => {
                     {{ t('metadata.musicbrainzScore', { score: match.score }) }}
                   </div>
                 </div>
-                <div class="result-meta">
-                  <span>{{ match.artist }}</span>
-                  <span v-if="match.releaseTitle">{{ match.releaseTitle }}</span>
-                  <span v-if="match.durationSeconds">
-                    {{ formatSeconds(match.durationSeconds) }}
-                  </span>
+                <div class="result-meta-lines">
+                  <div class="result-meta-line" v-if="match.artist">
+                    <span class="result-meta-label">{{ t('metadata.artist') }}</span>
+                    <span class="result-meta-value">{{ match.artist }}</span>
+                  </div>
+                  <div class="result-meta-line" v-if="match.releaseTitle">
+                    <span class="result-meta-label">{{ t('metadata.album') }}</span>
+                    <span class="result-meta-value">{{ match.releaseTitle }}</span>
+                  </div>
+                  <div class="result-meta-line" v-if="match.durationSeconds">
+                    <span class="result-meta-label">{{ t('columns.duration') }}</span>
+                    <span class="result-meta-value">
+                      {{ formatSeconds(match.durationSeconds) }}
+                    </span>
+                  </div>
                 </div>
                 <div class="result-meta small" v-if="match.releaseDate">
                   {{ t('metadata.musicbrainzReleaseDate') }}: {{ match.releaseDate }}
@@ -817,11 +830,7 @@ onUnmounted(() => {
                     hasLowConfidence(match)
                   "
                 >
-                  <span
-                    v-if="match.source"
-                    class="tag tag-source"
-                    :class="{ 'tag-source-acoustid': isAcoustIdMatch(match) }"
-                  >
+                  <span v-if="match.source" class="tag" :class="sourceTagClass(match)">
                     {{ getMatchSourceLabel(match) }}
                   </span>
                   <span v-if="hasLowConfidence(match)" class="tag tag-warn">
@@ -1149,15 +1158,36 @@ onUnmounted(() => {
 }
 
 .result-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
   font-size: 12px;
   color: var(--text-secondary, #888);
 }
 
 .result-meta.small {
   font-size: 11px;
+}
+
+.result-meta-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.result-meta-line {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+}
+
+.result-meta-label {
+  min-width: 52px;
+  color: var(--text-secondary, #777);
+}
+
+.result-meta-value {
+  flex: 1;
+  color: var(--text);
 }
 
 .result-tags {
@@ -1179,11 +1209,6 @@ onUnmounted(() => {
 .tag-good {
   border-color: var(--accent);
   color: var(--accent);
-}
-
-.tag-source {
-  border-color: var(--border);
-  color: var(--text-secondary, #666);
 }
 
 .tag-source-acoustid {

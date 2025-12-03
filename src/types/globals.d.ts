@@ -134,6 +134,7 @@ interface IMusicBrainzSuggestionResult {
 interface IMusicBrainzSuggestionParams {
   recordingId: string
   releaseId?: string
+  allowFallback?: boolean
 }
 
 interface IMusicBrainzApplyPayload {
@@ -173,6 +174,38 @@ interface ITrackMetadataUpdatePayload {
   comment?: string
   lyrics?: string
   coverDataUrl?: string | null
+}
+
+type IMetadataAutoFillStatus = 'applied' | 'no-match' | 'skipped' | 'error'
+type IMetadataAutoFillMethod = 'fingerprint' | 'search'
+
+interface IMetadataAutoFillRequest {
+  filePaths: string[]
+  progressId?: string
+}
+
+interface IMetadataAutoFillItemResult {
+  filePath: string
+  displayName: string
+  status: IMetadataAutoFillStatus
+  method?: IMetadataAutoFillMethod
+  messageCode?: string
+  messageDetail?: string
+  updatedSongInfo?: ISongInfo
+  oldFilePath?: string
+}
+
+interface IMetadataAutoFillSummary {
+  total: number
+  applied: number
+  fingerprintApplied: number
+  searchApplied: number
+  noMatch: number
+  skipped: number
+  errors: number
+  durationMs: number
+  progressId: string
+  items: IMetadataAutoFillItemResult[]
 }
 
 interface ILayoutConfig {
@@ -311,6 +344,9 @@ export {
   ISongInfo,
   ITrackMetadataDetail,
   ITrackMetadataUpdatePayload,
+  IMetadataAutoFillRequest,
+  IMetadataAutoFillItemResult,
+  IMetadataAutoFillSummary,
   ILayoutConfig,
   ISettingConfig,
   ILanguageDict,

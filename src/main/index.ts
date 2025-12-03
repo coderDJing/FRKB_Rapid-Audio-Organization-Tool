@@ -36,7 +36,8 @@ import {
   ITrackMetadataUpdatePayload,
   IMusicBrainzSearchPayload,
   IMusicBrainzSuggestionParams,
-  IMusicBrainzAcoustIdPayload
+  IMusicBrainzAcoustIdPayload,
+  IMetadataAutoFillRequest
 } from '../types/globals'
 import type { ISettingConfig } from '../types/globals'
 import { EXTERNAL_PLAYLIST_UUID } from '../shared/externalPlayback'
@@ -66,6 +67,7 @@ import {
   cancelAcoustIdRequests,
   validateAcoustIdClientKeyValue
 } from './services/acoustId'
+import { autoFillTrackMetadata } from './services/metadataAutoFill'
 import { v4 as uuidV4 } from 'uuid'
 // import AudioFeatureExtractor from './mfccTest'
 
@@ -1275,6 +1277,12 @@ ipcMain.handle('audio:metadata:update', async (_e, payload: ITrackMetadataUpdate
       errorDetail: error?.stderr || ''
     }
   }
+})
+
+ipcMain.handle('metadata:autoFill', async (_e, payload: IMetadataAutoFillRequest) => {
+  return await autoFillTrackMetadata(
+    payload && Array.isArray(payload.filePaths) ? payload : { filePaths: [] }
+  )
 })
 
 ipcMain.handle('musicbrainz:search', async (_e, payload: IMusicBrainzSearchPayload) => {
