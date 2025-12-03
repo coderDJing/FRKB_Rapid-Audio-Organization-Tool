@@ -24,6 +24,8 @@ import {
 import { reactive } from 'vue'
 import { useDragSongs } from '@renderer/pages/modules/songsArea/composables/useDragSongs'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
+import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
+import type { IMetadataAutoFillSummary } from '../../../../types/globals'
 const props = defineProps({
   uuid: {
     type: String,
@@ -40,6 +42,23 @@ const props = defineProps({
   }
 })
 const runtime = useRuntimeStore()
+const hasAcoustIdKey = computed(() => {
+  const key = (runtime.setting?.acoustIdClientKey || '').trim()
+  return key.length > 0
+})
+const hasWarnedAcoustId = ref(false)
+const warnAcoustIdMissing = () => {
+  if (hasAcoustIdKey.value || hasWarnedAcoustId.value) return
+  hasWarnedAcoustId.value = true
+  void confirm({
+    title: t('metadata.autoFillFingerprintHintTitle'),
+    content: [
+      t('metadata.autoFillFingerprintHintMissing'),
+      t('metadata.autoFillFingerprintHintGuide')
+    ],
+    confirmShow: false
+  })
+}
 const { handleDropToSongList } = useDragSongs()
 
 let dirData = libraryUtils.getLibraryTreeByUUID(props.uuid)
@@ -158,6 +177,7 @@ const menuArr = ref(
         ],
         [{ menuName: 'tracks.showInFileExplorer' }],
         [{ menuName: 'playlist.fingerprintDeduplicate' }],
+        [{ menuName: 'metadata.autoFillMenu' }],
         [{ menuName: 'tracks.convertFormat' }],
         [{ menuName: 'fingerprints.analyzeAndAdd' }]
       ]
@@ -230,6 +250,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
               { menuName: 'playlist.emptyPlaylist' }
             ],
             [{ menuName: 'tracks.showInFileExplorer' }],
+            [{ menuName: 'metadata.autoFillMenu' }],
             [{ menuName: 'playlist.clearCache' }],
             [{ menuName: 'playlist.fingerprintDeduplicate' }],
             [{ menuName: 'tracks.convertFormat' }],
@@ -337,6 +358,71 @@ const contextmenuEvent = async (event: MouseEvent) => {
         'openFileExplorer',
         libraryUtils.findDirPathByUuid(props.uuid)
       )
+    } else if (result.menuName === 'metadata.autoFillMenu') {
+      const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
+      const scan = await window.electron.ipcRenderer.invoke('scanSongList', dirPath, props.uuid)
+      const files: string[] = Array.isArray(scan?.scanData)
+        ? scan.scanData.map((s: any) => s.filePath).filter(Boolean)
+        : []
+      if (!files.length) {
+        await confirm({
+          title: t('dialog.hint'),
+          content: [t('metadata.autoFillNoEligible')],
+          confirmShow: false
+        })
+        return
+      }
+      warnAcoustIdMissing()
+      runtime.isProgressing = true
+      let summary: IMetadataAutoFillSummary | null = null
+      let hadError = false
+      try {
+        summary = await invokeMetadataAutoFill(files)
+      } catch (error: any) {
+        hadError = true
+        const message =
+          typeof error?.message === 'string' && error.message.trim().length
+            ? error.message
+            : t('common.unknownError')
+        await confirm({
+          title: t('common.error'),
+          content: [message],
+          confirmShow: false
+        })
+      } finally {
+        runtime.isProgressing = false
+      }
+      if (!summary) {
+        if (!hadError) {
+          await confirm({
+            title: t('dialog.hint'),
+            content: [t('metadata.autoFillNoEligible')],
+            confirmShow: false
+          })
+        }
+        return
+      }
+      const { default: openAutoSummary } = await import(
+        '@renderer/components/autoMetadataSummaryDialog'
+      )
+      await openAutoSummary(summary)
+      const updates =
+        summary.items
+          ?.filter((item) => item.status === 'applied' && item.updatedSongInfo)
+          .map((item) => ({
+            song: item.updatedSongInfo,
+            oldFilePath: item.oldFilePath
+          })) || []
+      if (updates.length) {
+        try {
+          emitter.emit('metadataBatchUpdated', { updates })
+        } catch {}
+      }
+      if (runtime.songsArea.songListUUID === props.uuid) {
+        try {
+          emitter.emit('playlistContentChanged', { uuids: [props.uuid] })
+        } catch {}
+      }
     } else if (result.menuName === 'tracks.convertFormat') {
       try {
         const dirPath = libraryUtils.findDirPathByUuid(props.uuid)

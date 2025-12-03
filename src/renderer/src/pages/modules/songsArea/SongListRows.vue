@@ -356,6 +356,27 @@ const onRowsDblclick = (e: MouseEvent) => {
   if (song) emit('song-dblclick', song)
 }
 
+const handleCoverDblclick = (song: ISongInfo, event: MouseEvent) => {
+  event.stopPropagation()
+  event.preventDefault()
+  closeCoverPreview()
+  emit('song-dblclick', song)
+}
+
+const handleCoverPreviewDblclick = (event: MouseEvent) => {
+  event.stopPropagation()
+  event.preventDefault()
+  const idx =
+    coverPreviewState.anchorIndex >= 0
+      ? coverPreviewState.anchorIndex
+      : coverPreviewState.displayIndex
+  const song = typeof idx === 'number' ? props.songs?.[idx] : null
+  if (song) {
+    closeCoverPreview()
+    emit('song-dblclick', song)
+  }
+}
+
 const onRowsMouseOver = (e: MouseEvent) => {
   const cell = (e.target as HTMLElement)?.closest('.cell-title') as HTMLElement | null
   if (!cell) return
@@ -821,6 +842,7 @@ watch(
                   :ref="(el) => setCoverCellRef(item.song.filePath, el)"
                   @mouseenter="onCoverMouseEnter(item.idx, $event)"
                   @mouseleave="onCoverMouseLeave(item.idx, $event)"
+                  @dblclick.stop.prevent="handleCoverDblclick(item.song, $event)"
                 >
                   <img
                     v-if="getCoverUrl(item.song.filePath)"
@@ -866,6 +888,7 @@ watch(
       }"
       @mousemove="handleCoverPreviewMouseMove"
       @mouseleave="closeCoverPreview"
+      @dblclick.stop.prevent="handleCoverPreviewDblclick"
     >
       <img v-if="previewedCoverUrl" :src="previewedCoverUrl" alt="cover preview" decoding="async" />
       <div v-else class="cover-skeleton expanded"></div>

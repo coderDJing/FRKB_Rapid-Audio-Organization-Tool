@@ -342,7 +342,51 @@
     "musicbrainzLowConfidence": "低置信度",
     "musicbrainzSourceAcoustId": "AcoustID",
     "musicbrainzSourceSearch": "MusicBrainz",
-    "acoustidSetupDesc3": "如需更换，可随时在设置页面重新编辑并保存。"
+    "acoustidSetupDesc3": "如需更换，可随时在设置页面重新编辑并保存。",
+    "autoFillMenu": "自动补齐曲目信息",
+    "autoFillNeedSelection": "请先选择至少一首需要补齐的曲目。",
+    "autoFillNoEligible": "当前没有可处理的曲目。",
+    "autoFillProgressPreparing": "自动补齐准备中",
+    "autoFillProgressRunning": "自动补齐曲目信息",
+    "autoFillProgressFinished": "自动补齐完成",
+    "autoFillSummaryTitle": "自动补齐报告",
+    "autoFillSummaryDuration": "耗时",
+    "autoFillSummaryStatsTitle": "处理统计",
+    "autoFillSummaryListHeader": "处理详情",
+    "autoFillSummaryEmpty": "本次没有处理任何曲目。",
+    "autoFillStatTotal": "总计",
+    "autoFillStatApplied": "已写入",
+    "autoFillStatFingerprint": "声纹命中",
+    "autoFillStatSearch": "条件命中",
+    "autoFillStatNoMatch": "无匹配",
+    "autoFillStatSkipped": "跳过",
+    "autoFillStatErrors": "失败",
+    "autoFillStatus": {
+      "applied": "已写入",
+      "noMatch": "未匹配",
+      "skipped": "已跳过",
+      "error": "失败"
+    },
+    "autoFillMethod": {
+      "fingerprint": "声纹",
+      "search": "条件搜索",
+      "unknown": "—"
+    },
+    "autoFillReason": {
+      "SUCCESS": "写入成功",
+      "NO_QUERY": "缺少可用的检索条件",
+      "NO_RESULT": "未找到匹配记录",
+      "SUGGESTION_EMPTY": "匹配结果没有可写入的字段",
+      "SUGGESTION_FAILED": "候选详情获取失败",
+      "SEARCH_FAILED": "条件搜索失败",
+      "FFMPEG_METADATA_FAILED": "FFmpeg 写入失败，常见于 WAV/文件被占用",
+      "UPDATE_FAILED": "写入文件失败",
+      "READ_FAILED": "读取文件失败",
+      "UNKNOWN": "发生未知错误"
+    },
+    "autoFillFingerprintHintTitle": "提示",
+    "autoFillFingerprintHintMissing": "当前未配置 AcoustID Client Key，本次仅会使用条件搜索。",
+    "autoFillFingerprintHintGuide": "在设置中填写 Client Key 后即可启用声纹匹配，命中率更高。"
   },
   "convert": {
     "title": "转换格式",

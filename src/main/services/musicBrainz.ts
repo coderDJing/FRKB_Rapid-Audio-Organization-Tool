@@ -452,55 +452,144 @@ export async function fetchMusicBrainzSuggestion(
   if (!params || !params.recordingId) {
     throw new Error('MUSICBRAINZ_INVALID_PARAMS')
   }
-  const detailCacheKey = `${params.recordingId}:${params.releaseId || 'auto'}`
-  const cached = await readCache<IMusicBrainzSuggestionResult>('detail', detailCacheKey)
-  if (cached) return cached
-  const recording = await fetchRecordingDetail(params.recordingId)
-  const preferredRelease =
-    params.releaseId || pickRelease(recording?.releases || [])?.id || recording?.releases?.[0]?.id
-  if (!preferredRelease) throw new Error('MUSICBRAINZ_RELEASE_NOT_FOUND')
-  const releaseDetail = await fetchReleaseDetail(preferredRelease)
-  const trackCtx = findTrackContext(releaseDetail, params.recordingId)
-  if (!trackCtx) throw new Error('MUSICBRAINZ_RECORDING_NOT_IN_RELEASE')
-  const suggestion = {
-    title: recording?.title,
-    artist: formatArtistCredit(recording?.['artist-credit']),
-    album: releaseDetail?.title,
-    albumArtist: formatArtistCredit(releaseDetail?.['artist-credit']),
-    year: normalizeText(releaseDetail?.date)?.slice(0, 4),
-    genre: Array.isArray(releaseDetail?.genres) ? releaseDetail.genres[0]?.name : undefined,
-    label: releaseDetail?.['label-info']?.[0]?.label?.name,
-    isrc: Array.isArray(recording?.isrcs) ? recording.isrcs[0] : undefined,
-    trackNo: trackCtx.track?.position
-      ? Number(trackCtx.track.position)
-      : trackCtx.track?.number
-        ? parseInt(trackCtx.track.number, 10) || undefined
-        : undefined,
-    trackTotal:
-      typeof trackCtx.medium?.['track-count'] === 'number'
-        ? trackCtx.medium['track-count']
-        : trackCtx.medium?.trackCount,
-    discNo: typeof trackCtx.medium?.position === 'number' ? trackCtx.medium.position : undefined,
-    discTotal: Array.isArray(releaseDetail?.media) ? releaseDetail.media.length : undefined,
-    coverDataUrl:
-      releaseDetail?.['cover-art-archive']?.front === true
-        ? await fetchCoverDataUrl(preferredRelease)
-        : null
-  } as IMusicBrainzSuggestionResult['suggestion']
-  const result: IMusicBrainzSuggestionResult = {
-    suggestion,
-    source: {
-      recordingId: params.recordingId,
-      releaseId: preferredRelease
-    },
-    releaseTitle: releaseDetail?.title,
-    releaseDate: releaseDetail?.date,
-    country: releaseDetail?.country,
-    label: suggestion.label,
-    artistCredit: suggestion.albumArtist
+  const allowFallback = params.allowFallback === true
+  const recordingId = params.recordingId
+  const autoCacheKey = `${recordingId}:auto`
+  const preferredCacheKey = params.releaseId ? `${recordingId}:${params.releaseId}` : null
+  const cacheKeysToCheck: string[] = []
+  if (allowFallback) cacheKeysToCheck.push(autoCacheKey)
+  if (preferredCacheKey) cacheKeysToCheck.push(preferredCacheKey)
+  if (!cacheKeysToCheck.length) cacheKeysToCheck.push(autoCacheKey)
+  for (const key of cacheKeysToCheck) {
+    if (!key) continue
+    const cached = await readCache<IMusicBrainzSuggestionResult>('detail', key)
+    if (cached) return cached
   }
-  await writeCache('detail', detailCacheKey, DETAIL_CACHE_TTL, result)
-  return result
+  const recording = await fetchRecordingDetail(params.recordingId)
+  const releaseCandidates: string[] = []
+  const addCandidate = (id?: string | null) => {
+    if (!id) return
+    if (!releaseCandidates.includes(id)) releaseCandidates.push(id)
+  }
+  const recordingReleases = Array.isArray(recording?.releases) ? recording?.releases : []
+  if (params.releaseId) {
+    addCandidate(params.releaseId)
+  }
+  if (!params.releaseId || allowFallback) {
+    addCandidate(pickRelease(recordingReleases || [])?.id)
+    addCandidate(recordingReleases?.[0]?.id)
+  }
+  for (const rel of recordingReleases) {
+    addCandidate(rel?.id)
+  }
+  if (!releaseCandidates.length) throw new Error('MUSICBRAINZ_RELEASE_NOT_FOUND')
+
+  const buildResultFromRelease = async (releaseDetail: any, releaseId: string, trackCtx?: any) => {
+    const hasTrack = !!trackCtx
+    const trackNumber =
+      hasTrack && trackCtx.track?.position
+        ? Number(trackCtx.track.position)
+        : hasTrack && trackCtx.track?.number
+          ? parseInt(trackCtx.track.number, 10) || undefined
+          : undefined
+    const suggestion = {
+      title: recording?.title,
+      artist: formatArtistCredit(recording?.['artist-credit']),
+      album: releaseDetail?.title,
+      albumArtist: formatArtistCredit(releaseDetail?.['artist-credit']),
+      year: normalizeText(releaseDetail?.date)?.slice(0, 4),
+      genre: Array.isArray(releaseDetail?.genres) ? releaseDetail.genres[0]?.name : undefined,
+      label: releaseDetail?.['label-info']?.[0]?.label?.name,
+      isrc: Array.isArray(recording?.isrcs) ? recording.isrcs[0] : undefined,
+      trackNo: trackNumber,
+      trackTotal:
+        hasTrack && typeof trackCtx.medium?.['track-count'] === 'number'
+          ? trackCtx.medium['track-count']
+          : hasTrack
+            ? trackCtx.medium?.trackCount
+            : undefined,
+      discNo:
+        hasTrack && typeof trackCtx.medium?.position === 'number'
+          ? trackCtx.medium.position
+          : undefined,
+      discTotal: Array.isArray(releaseDetail?.media) ? releaseDetail.media.length : undefined,
+      coverDataUrl:
+        releaseDetail?.['cover-art-archive']?.front === true
+          ? await fetchCoverDataUrl(releaseId)
+          : null
+    } as IMusicBrainzSuggestionResult['suggestion']
+    return {
+      suggestion,
+      source: {
+        recordingId: params.recordingId,
+        releaseId
+      },
+      releaseTitle: releaseDetail?.title,
+      releaseDate: releaseDetail?.date,
+      country: releaseDetail?.country,
+      label: suggestion.label,
+      artistCredit: suggestion.albumArtist
+    } satisfies IMusicBrainzSuggestionResult
+  }
+  let fallbackReleaseDetail: { releaseId: string; detail: any } | null = null
+  let lastError: Error | null = null
+  for (const releaseId of releaseCandidates) {
+    try {
+      const releaseDetail = await fetchReleaseDetail(releaseId)
+      const trackCtx = findTrackContext(releaseDetail, params.recordingId)
+      if (!trackCtx) {
+        const trackErr = new Error('MUSICBRAINZ_RECORDING_NOT_IN_RELEASE')
+        lastError = trackErr
+        if (allowFallback) {
+          if (!fallbackReleaseDetail) {
+            fallbackReleaseDetail = { releaseId, detail: releaseDetail }
+          }
+          continue
+        }
+        throw trackErr
+      }
+      const result = await buildResultFromRelease(releaseDetail, releaseId, trackCtx)
+      const keysToWrite = new Set<string>()
+      if (result.source.releaseId) {
+        keysToWrite.add(`${recordingId}:${result.source.releaseId}`)
+      }
+      if (!params.releaseId || allowFallback) {
+        keysToWrite.add(autoCacheKey)
+      }
+      if (params.releaseId && !allowFallback && result.source.releaseId === params.releaseId) {
+        keysToWrite.add(`${recordingId}:${params.releaseId}`)
+      }
+      for (const key of keysToWrite) {
+        if (key) {
+          await writeCache('detail', key, DETAIL_CACHE_TTL, result)
+        }
+      }
+      return result
+    } catch (error: any) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+      const shouldFallback =
+        allowFallback && lastError?.message === 'MUSICBRAINZ_RECORDING_NOT_IN_RELEASE'
+      if (shouldFallback) continue
+      throw lastError
+    }
+  }
+  if (allowFallback && fallbackReleaseDetail) {
+    const result = await buildResultFromRelease(
+      fallbackReleaseDetail.detail,
+      fallbackReleaseDetail.releaseId
+    )
+    const keysToWrite = new Set<string>()
+    if (result.source.releaseId) {
+      keysToWrite.add(`${recordingId}:${result.source.releaseId}`)
+    }
+    keysToWrite.add(autoCacheKey)
+    for (const key of keysToWrite) {
+      await writeCache('detail', key, DETAIL_CACHE_TTL, result)
+    }
+    return result
+  }
+  if (lastError) throw lastError
+  throw new Error('MUSICBRAINZ_RECORDING_NOT_IN_RELEASE')
 }
 
 export function cancelMusicBrainzRequests() {
