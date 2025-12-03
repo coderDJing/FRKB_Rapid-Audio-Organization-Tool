@@ -91,6 +91,31 @@ const handlePlaylistCacheCleared = async (payload: { uuid?: string }) => {
 }
 emitter.on('playlistCacheCleared', handlePlaylistCacheCleared)
 
+const handleMetadataBatchUpdatedFromEvent = async (payload: {
+  updates?: Array<{ song: ISongInfo; oldFilePath?: string }>
+}) => {
+  const updates = Array.isArray(payload?.updates) ? payload.updates : []
+  if (!updates.length) return
+  const renameMap = new Map<string, string>()
+  let touchedCurrentList = false
+  for (const update of updates) {
+    if (!update?.song) continue
+    const oldPath = update.oldFilePath ?? update.song.filePath
+    renameMap.set(oldPath, update.song.filePath)
+    const didTouch = await applyMetadataUpdate(update.song, update.oldFilePath, {
+      rescan: false
+    })
+    if (didTouch) touchedCurrentList = true
+  }
+  if (!touchedCurrentList) return
+  const selectionBeforeReload = [...runtime.songsArea.selectedSongFilePath]
+  await openSongList()
+  runtime.songsArea.selectedSongFilePath = selectionBeforeReload.map(
+    (path) => renameMap.get(path) || path
+  )
+}
+emitter.on('metadataBatchUpdated', handleMetadataBatchUpdatedFromEvent)
+
 // 键盘与鼠标选择
 const { songClick } = useKeyboardSelection({
   runtime,
@@ -112,12 +137,101 @@ useSongsAreaEvents({
 
 onUnmounted(() => {
   emitter.off('playlistCacheCleared', handlePlaylistCacheCleared)
+  emitter.off('metadataBatchUpdated', handleMetadataBatchUpdatedFromEvent)
 })
 // 上述列、加载、事件与封面清理已由组合函数提供
 
 // 移除残留的 perfLog
 
 // songClick 已由 useKeyboardSelection 提供
+
+const applyMetadataUpdate = async (
+  updatedSong: ISongInfo | undefined,
+  incomingOldFilePath?: string,
+  options?: { rescan?: boolean }
+) => {
+  if (!updatedSong) return false
+  const oldFilePath = incomingOldFilePath ?? updatedSong.filePath
+  let touchedCurrentList = false
+  const arr = [...originalSongInfoArr.value]
+  let idx = arr.findIndex((item) => item.filePath === oldFilePath)
+  if (idx === -1) idx = arr.findIndex((item) => item.filePath === updatedSong.filePath)
+  if (idx !== -1) {
+    arr.splice(idx, 1, updatedSong)
+    originalSongInfoArr.value = arr
+    applyFiltersAndSorting()
+    touchedCurrentList = true
+  }
+
+  let runtimeListTouched = false
+  runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.map((item) => {
+    if (item.filePath === oldFilePath) {
+      runtimeListTouched = true
+      return { ...updatedSong }
+    }
+    if (item.filePath === updatedSong.filePath) {
+      runtimeListTouched = true
+      return { ...item, ...updatedSong }
+    }
+    return item
+  })
+  if (runtimeListTouched) touchedCurrentList = true
+
+  let selectionTouched = false
+  runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.map((path) => {
+    if (path === oldFilePath) {
+      selectionTouched = true
+      return updatedSong.filePath
+    }
+    return path
+  })
+  if (selectionTouched) touchedCurrentList = true
+
+  if (
+    runtime.playingData.playingSong &&
+    (runtime.playingData.playingSong.filePath === updatedSong.filePath ||
+      runtime.playingData.playingSong.filePath === oldFilePath)
+  ) {
+    runtime.playingData.playingSong = {
+      ...runtime.playingData.playingSong,
+      ...updatedSong
+    }
+    runtime.playingData.playingSong.filePath = updatedSong.filePath
+  }
+
+  if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+    runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map((item) =>
+      item.filePath === oldFilePath || item.filePath === updatedSong.filePath
+        ? { ...item, ...updatedSong }
+        : item
+    )
+  }
+
+  if (touchedCurrentList && runtime.songsArea.songListUUID) {
+    try {
+      emitter.emit('playlistContentChanged', { uuids: [runtime.songsArea.songListUUID] })
+    } catch {}
+  }
+  try {
+    emitter.emit('songMetadataUpdated', {
+      filePath: updatedSong.filePath,
+      oldFilePath
+    })
+  } catch {}
+
+  if (touchedCurrentList) {
+    scheduleSweepCovers()
+  }
+
+  if (options?.rescan === false || !touchedCurrentList) return touchedCurrentList
+
+  const selectionBeforeReload = [...runtime.songsArea.selectedSongFilePath]
+  await openSongList()
+  runtime.songsArea.selectedSongFilePath = selectionBeforeReload.map((path) =>
+    path === oldFilePath ? updatedSong.filePath : path
+  )
+  return touchedCurrentList
+}
 
 const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) => {
   const result = await showAndHandleSongContextMenu(event, song)
@@ -156,65 +270,29 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
   }
 
   if (result.action === 'metadataUpdated') {
-    const updatedSong = result.song
-    const oldFilePath = result.oldFilePath ?? updatedSong.filePath
-    const arr = [...originalSongInfoArr.value]
-    let idx = arr.findIndex((item) => item.filePath === oldFilePath)
-    if (idx === -1) idx = arr.findIndex((item) => item.filePath === updatedSong.filePath)
-    if (idx !== -1) {
-      arr.splice(idx, 1, updatedSong)
-      originalSongInfoArr.value = arr
-      applyFiltersAndSorting()
-    }
+    await applyMetadataUpdate(result.song, result.oldFilePath)
+    return
+  }
 
-    runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.map((item) => {
-      if (item.filePath === oldFilePath) return { ...updatedSong }
-      if (item.filePath === updatedSong.filePath) return { ...item, ...updatedSong }
-      return item
-    })
-
-    runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.map((path) =>
-      path === oldFilePath ? updatedSong.filePath : path
-    )
-
-    if (
-      runtime.playingData.playingSong &&
-      (runtime.playingData.playingSong.filePath === updatedSong.filePath ||
-        runtime.playingData.playingSong.filePath === oldFilePath)
-    ) {
-      runtime.playingData.playingSong = {
-        ...runtime.playingData.playingSong,
-        ...updatedSong
-      }
-      runtime.playingData.playingSong.filePath = updatedSong.filePath
-    }
-
-    if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-      runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map(
-        (item) =>
-          item.filePath === oldFilePath || item.filePath === updatedSong.filePath
-            ? { ...item, ...updatedSong }
-            : item
-      )
-    }
-
-    try {
-      emitter.emit('playlistContentChanged', { uuids: [runtime.songsArea.songListUUID] })
-    } catch {}
-    try {
-      emitter.emit('songMetadataUpdated', {
-        filePath: updatedSong.filePath,
-        oldFilePath
+  if (result.action === 'metadataBatchUpdated') {
+    const updates = Array.isArray(result.updates) ? result.updates : []
+    if (!updates.length) return
+    const renameMap = new Map<string, string>()
+    let touchedCurrentList = false
+    for (const update of updates) {
+      if (!update?.song) continue
+      const oldPath = update.oldFilePath ?? update.song.filePath
+      renameMap.set(oldPath, update.song.filePath)
+      const didTouch = await applyMetadataUpdate(update.song, update.oldFilePath, {
+        rescan: false
       })
-    } catch {}
-
-    scheduleSweepCovers()
-
-    // 为避免缓存导致的展示差异，保存后重新扫描当前歌单
+      if (didTouch) touchedCurrentList = true
+    }
+    if (!touchedCurrentList) return
     const selectionBeforeReload = [...runtime.songsArea.selectedSongFilePath]
     await openSongList()
-    runtime.songsArea.selectedSongFilePath = selectionBeforeReload.map((path) =>
-      path === oldFilePath ? updatedSong.filePath : path
+    runtime.songsArea.selectedSongFilePath = selectionBeforeReload.map(
+      (path) => renameMap.get(path) || path
     )
     return
   }

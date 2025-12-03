@@ -341,7 +341,51 @@
     "musicbrainzLowConfidence": "Low confidence",
     "musicbrainzSourceAcoustId": "AcoustID",
     "musicbrainzSourceSearch": "MusicBrainz",
-    "acoustidSetupDesc3": "Need to change it later? Open the Settings dialog and update the key there."
+    "acoustidSetupDesc3": "Need to change it later? Open the Settings dialog and update the key there.",
+    "autoFillMenu": "Auto-fill metadata",
+    "autoFillNeedSelection": "Select at least one track before running auto-fill.",
+    "autoFillNoEligible": "No eligible tracks were found.",
+    "autoFillProgressPreparing": "Preparing auto-fill",
+    "autoFillProgressRunning": "Auto-filling metadata",
+    "autoFillProgressFinished": "Auto-fill completed",
+    "autoFillSummaryTitle": "Auto-fill Report",
+    "autoFillSummaryDuration": "Duration",
+    "autoFillSummaryStatsTitle": "Summary stats",
+    "autoFillSummaryListHeader": "Details",
+    "autoFillSummaryEmpty": "No tracks were processed.",
+    "autoFillStatTotal": "Total",
+    "autoFillStatApplied": "Applied",
+    "autoFillStatFingerprint": "Fingerprint hits",
+    "autoFillStatSearch": "Text hits",
+    "autoFillStatNoMatch": "No match",
+    "autoFillStatSkipped": "Skipped",
+    "autoFillStatErrors": "Failed",
+    "autoFillStatus": {
+      "applied": "Applied",
+      "noMatch": "No match",
+      "skipped": "Skipped",
+      "error": "Failed"
+    },
+    "autoFillMethod": {
+      "fingerprint": "Fingerprint",
+      "search": "Text search",
+      "unknown": "—"
+    },
+    "autoFillReason": {
+      "SUCCESS": "Metadata applied",
+      "NO_QUERY": "Not enough tags to build a query",
+      "NO_RESULT": "No matching record",
+      "SUGGESTION_EMPTY": "Match contains no writable fields",
+      "SUGGESTION_FAILED": "Failed to load release details",
+      "SEARCH_FAILED": "Text search failed",
+      "FFMPEG_METADATA_FAILED": "FFmpeg failed to write tags (often WAV or locked file)",
+      "UPDATE_FAILED": "Failed to write metadata",
+      "READ_FAILED": "Failed to read the file",
+      "UNKNOWN": "Unknown error"
+    },
+    "autoFillFingerprintHintTitle": "Heads up",
+    "autoFillFingerprintHintMissing": "AcoustID Client Key is not configured, so this run will use text search only.",
+    "autoFillFingerprintHintGuide": "Add your Client Key in Settings to enable fingerprint matches for more accurate results."
   },
   "columns": {
     "cover": "Cover",

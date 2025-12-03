@@ -19,7 +19,6 @@ const VALIDATION_TRACK_ID = '889584fb-b962-4601-9d10-252e07310713'
 const LOOKUP_META = 'recordings releasegroups releases tracks'
 const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || ''
 const proxyDispatcher = proxyUrl ? new ProxyAgent(proxyUrl) : undefined
-const fallbackAcoustIdClientKey = process.env.ACOUSTID_CLIENT_KEY || ''
 
 type FingerprintCacheEntry = {
   fingerprint: string
@@ -232,7 +231,7 @@ function resolveAcoustIdClientKey(): string {
     const trimmed = fromSetting.trim()
     if (trimmed) return trimmed
   }
-  return fallbackAcoustIdClientKey
+  return ''
 }
 
 function isInvalidClientError(message?: string) {

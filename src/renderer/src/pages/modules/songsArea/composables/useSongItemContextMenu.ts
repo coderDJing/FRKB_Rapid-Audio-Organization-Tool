@@ -1,6 +1,6 @@
 import { nextTick, Ref, ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import { ISongInfo, IMenu } from '../../../../../../types/globals' // Corrected path
+import { ISongInfo, IMenu, type IMetadataAutoFillSummary } from '../../../../../../types/globals' // Corrected path
 import { t } from '@renderer/utils/translate'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import rightClickMenu from '@renderer/components/rightClickMenu' // Assuming it's a default export or easily callable
@@ -9,6 +9,7 @@ import exportDialog from '@renderer/components/exportDialog'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import emitter from '@renderer/utils/mitt'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
+import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
 
 // Type for the return value when a dialog needs to be opened by the parent
 export interface OpenDialogAction {
@@ -28,6 +29,11 @@ export interface MetadataUpdatedAction {
   oldFilePath?: string
 }
 
+export interface MetadataBatchUpdatedAction {
+  action: 'metadataBatchUpdated'
+  updates: Array<{ song: ISongInfo; oldFilePath?: string }>
+}
+
 export interface PlaylistCacheClearedAction {
   action: 'playlistCacheCleared'
 }
@@ -41,6 +47,23 @@ export function useSongItemContextMenu(
   songsAreaHostElementRef: Ref<InstanceType<typeof OverlayScrollbarsComponent> | null> // For scrolling
 ) {
   const runtime = useRuntimeStore() // Use the store directly
+  const hasAcoustIdKey = () => {
+    const key = (runtime.setting?.acoustIdClientKey || '').trim()
+    return key.length > 0
+  }
+  const hasWarnedMissingAcoustId = ref(false)
+  const warnAcoustIdMissing = () => {
+    if (hasAcoustIdKey() || hasWarnedMissingAcoustId.value) return
+    hasWarnedMissingAcoustId.value = true
+    void confirm({
+      title: t('metadata.autoFillFingerprintHintTitle'),
+      content: [
+        t('metadata.autoFillFingerprintHintMissing'),
+        t('metadata.autoFillFingerprintHintGuide')
+      ],
+      confirmShow: false
+    })
+  }
 
   const menuArr: Ref<IMenu[][]> = ref([
     [{ menuName: 'tracks.exportTracks' }],
@@ -50,6 +73,7 @@ export function useSongItemContextMenu(
       { menuName: 'tracks.deleteAllAbove' }
     ],
     [{ menuName: 'tracks.showInFileExplorer' }],
+    [{ menuName: 'metadata.autoFillMenu' }],
     [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.editMetadata' }],
     [{ menuName: 'tracks.clearTrackCache' }],
     [{ menuName: 'fingerprints.analyzeAndAdd' }]
@@ -62,6 +86,7 @@ export function useSongItemContextMenu(
     | OpenDialogAction
     | SongsRemovedAction
     | MetadataUpdatedAction
+    | MetadataBatchUpdatedAction
     | PlaylistCacheClearedAction
     | TrackCacheClearedAction
     | null
@@ -90,6 +115,65 @@ export function useSongItemContextMenu(
             action: 'metadataUpdated',
             song: dialogResult.updatedSongInfo,
             oldFilePath: dialogResult.oldFilePath
+          }
+        }
+        return null
+      }
+      case 'metadata.autoFillMenu': {
+        const selectedFiles = [...runtime.songsArea.selectedSongFilePath]
+        if (!selectedFiles.length) {
+          await confirm({
+            title: t('dialog.hint'),
+            content: [t('metadata.autoFillNeedSelection')],
+            confirmShow: false
+          })
+          return null
+        }
+        warnAcoustIdMissing()
+        runtime.isProgressing = true
+        let summary: IMetadataAutoFillSummary | null = null
+        let hadError = false
+        try {
+          summary = await invokeMetadataAutoFill(selectedFiles)
+        } catch (error: any) {
+          hadError = true
+          const message =
+            typeof error?.message === 'string' && error.message.trim().length
+              ? error.message
+              : t('common.unknownError')
+          await confirm({
+            title: t('common.error'),
+            content: [message],
+            confirmShow: false
+          })
+        } finally {
+          runtime.isProgressing = false
+        }
+        if (!summary) {
+          if (!hadError) {
+            await confirm({
+              title: t('dialog.hint'),
+              content: [t('metadata.autoFillNoEligible')],
+              confirmShow: false
+            })
+          }
+          return null
+        }
+        const { default: openAutoSummary } = await import(
+          '@renderer/components/autoMetadataSummaryDialog'
+        )
+        await openAutoSummary(summary)
+        const updates =
+          summary.items
+            ?.filter((item) => item.status === 'applied' && item.updatedSongInfo)
+            .map((item) => ({
+              song: item.updatedSongInfo as ISongInfo,
+              oldFilePath: item.oldFilePath
+            })) || []
+        if (updates.length) {
+          return {
+            action: 'metadataBatchUpdated',
+            updates
           }
         }
         return null
