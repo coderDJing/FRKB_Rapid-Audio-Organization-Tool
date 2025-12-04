@@ -1047,7 +1047,7 @@ option {
 }
 
 .playerShortcutLabel {
-  min-width: 180px;
+  min-width: 130px;
   font-size: 13px;
   color: var(--text-weak);
 }
