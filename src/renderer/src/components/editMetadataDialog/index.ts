@@ -1,28 +1,24 @@
 import { createVNode, render } from 'vue'
-import musicBrainzDialog from './musicBrainzDialog.vue'
+import editMetadataDialog from './EditMetadataDialog.vue'
 import { attachAppContext } from '@renderer/utils/appContext'
-import type { IMusicBrainzApplyPayload } from 'src/types/globals'
-
-export interface MusicBrainzDialogInitialQuery {
-  title?: string
-  artist?: string
-  album?: string
-  durationSeconds?: number
-  isrc?: string
-}
+import type { ISongInfo, ITrackMetadataDetail } from 'src/types/globals'
 
 export default ({
-  filePath,
-  initialQuery
+  filePath
 }: {
   filePath: string
-  initialQuery?: MusicBrainzDialogInitialQuery
-}): Promise<'cancel' | { payload: IMusicBrainzApplyPayload }> => {
+}): Promise<
+  'cancel' | { updatedSongInfo: ISongInfo; detail: ITrackMetadataDetail; oldFilePath: string }
+> => {
   return new Promise((resolve) => {
     const div = document.createElement('div')
     document.body.appendChild(div)
 
-    const confirmCallback = (data: { payload: IMusicBrainzApplyPayload }) => {
+    const confirmCallback = (data: {
+      updatedSongInfo: ISongInfo
+      detail: ITrackMetadataDetail
+      oldFilePath: string
+    }) => {
       render(null, div)
       div.remove()
       resolve(data)
@@ -34,9 +30,8 @@ export default ({
       resolve('cancel')
     }
 
-    const vnode = createVNode(musicBrainzDialog, {
+    const vnode = createVNode(editMetadataDialog, {
       filePath,
-      initialQuery,
       confirmCallback,
       cancelCallback
     })
