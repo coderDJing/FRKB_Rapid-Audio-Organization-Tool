@@ -20,8 +20,8 @@ const globalShortcut = computed(() => {
     <div class="welcome-content">
       <img
         :src="welcomeLogo"
-        width="250"
-        height="250"
+        width="150"
+        height="150"
         alt=""
         class="unselectable welcome-logo theme-icon"
         draggable="false"
@@ -144,8 +144,8 @@ const globalShortcut = computed(() => {
 }
 
 .welcome-logo {
-  width: 250px;
-  height: 250px;
+  width: 150px;
+  height: 150px;
   flex-shrink: 0;
 }
 
