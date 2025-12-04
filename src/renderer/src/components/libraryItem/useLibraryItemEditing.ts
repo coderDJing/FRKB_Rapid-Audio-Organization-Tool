@@ -1,0 +1,233 @@
+import { nextTick, ref, useTemplateRef } from 'vue'
+import { t } from '@renderer/utils/translate'
+import libraryUtils from '@renderer/utils/libraryUtils'
+
+interface UseLibraryItemEditingOptions {
+  dirData: any
+  fatherDirData: any
+  runtime: any
+  props: { uuid: string }
+  emitter: { on: (event: string, handler: (...args: any[]) => void) => void }
+}
+
+export function useLibraryItemEditing({
+  dirData,
+  fatherDirData,
+  runtime,
+  props,
+  emitter
+}: UseLibraryItemEditingOptions) {
+  const operationInputValue = ref('')
+  const inputHintText = ref('')
+  const inputHintShow = ref(false)
+  const myInput = useTemplateRef<HTMLInputElement | null>('myInput')
+
+  if (dirData?.dirName === '') {
+    nextTick(() => {
+      myInput.value?.focus()
+    })
+  }
+
+  const myInputHandleInput = () => {
+    const newName = operationInputValue.value
+    const invalidCharsRegex = /[<>:"/\\|?*\u0000-\u001F]/
+    let hintShouldShow = false
+    let hintText = ''
+
+    if (newName === '') {
+      hintText = t('library.nameRequired')
+      hintShouldShow = true
+    } else if (invalidCharsRegex.test(newName)) {
+      hintText = t('library.nameInvalidChars')
+      hintShouldShow = true
+    } else {
+      const exists = fatherDirData.children?.some((obj: any) => obj.dirName === newName)
+      if (exists) {
+        hintText = t('library.nameAlreadyExists', { name: newName })
+        hintShouldShow = true
+      }
+    }
+
+    inputHintText.value = hintText
+    inputHintShow.value = hintShouldShow
+  }
+
+  const inputKeyDownEnter = () => {
+    if (inputHintShow.value || operationInputValue.value === '') {
+      if (!inputHintShow.value) {
+        inputHintText.value = t('library.nameRequired')
+        inputHintShow.value = true
+      }
+      return
+    }
+    myInput.value?.blur()
+  }
+
+  const resetDraftNode = () => {
+    if (dirData?.dirName === '' && fatherDirData?.children?.[0]?.dirName === '') {
+      fatherDirData.children.shift()
+    }
+    operationInputValue.value = ''
+    inputHintShow.value = false
+  }
+
+  const inputKeyDownEsc = () => {
+    resetDraftNode()
+    inputBlurHandle()
+  }
+
+  const inputBlurHandle = async () => {
+    if (!Array.isArray(fatherDirData.children)) {
+      throw new Error(`fatherDirData.children error: ${JSON.stringify(fatherDirData.children)}`)
+    }
+    if (inputHintShow.value || operationInputValue.value === '') {
+      resetDraftNode()
+      return
+    }
+    for (const item of fatherDirData.children) {
+      if (item.order) {
+        item.order++
+      }
+    }
+    dirData.dirName = operationInputValue.value
+    dirData.order = 1
+    dirData.children = []
+    operationInputValue.value = ''
+    if (dirData.type === 'songList') {
+      runtime.creatingSongListUUID = dirData.uuid
+    }
+    await libraryUtils.diffLibraryTreeExecuteFileOperation()
+    if (dirData.type === 'songList') {
+      runtime.songsArea.songListUUID = dirData.uuid
+    }
+    if (runtime.creatingSongListUUID === dirData.uuid) {
+      runtime.creatingSongListUUID = ''
+    }
+  }
+
+  const renameDivShow = ref(false)
+  const renameDivValue = ref('')
+  const myRenameInput = useTemplateRef<HTMLInputElement | null>('myRenameInput')
+  const renameInputHintShow = ref(false)
+  const renameInputHintText = ref('')
+
+  const renameInputBlurHandle = async () => {
+    if (
+      renameInputHintShow.value ||
+      renameDivValue.value === '' ||
+      renameDivValue.value === dirData.dirName
+    ) {
+      renameDivValue.value = ''
+      renameDivShow.value = false
+      return
+    }
+    if (dirData.uuid === runtime.songsArea.songListUUID) {
+      for (const item of runtime.songsArea.songInfoArr) {
+        const arr = item.filePath.split('\\')
+        arr[arr.length - 2] = renameDivValue.value
+        item.filePath = arr.join('\\')
+      }
+      for (const index in runtime.songsArea.selectedSongFilePath) {
+        const arr = runtime.songsArea.selectedSongFilePath[index].split('\\')
+        arr[arr.length - 2] = renameDivValue.value
+        runtime.songsArea.selectedSongFilePath[index] = arr.join('\\')
+      }
+    }
+    if (
+      dirData.uuid === runtime.playingData.playingSongListUUID &&
+      runtime.playingData.playingSong
+    ) {
+      const arr = runtime.playingData.playingSong.filePath.split('\\')
+      arr[arr.length - 2] = renameDivValue.value
+      runtime.playingData.playingSong.filePath = arr.join('\\')
+      for (const item of runtime.playingData.playingSongListData) {
+        const fileArr = item.filePath.split('\\')
+        fileArr[fileArr.length - 2] = renameDivValue.value
+        item.filePath = fileArr.join('\\')
+      }
+    }
+    dirData.dirName = renameDivValue.value
+    renameDivValue.value = ''
+    renameDivShow.value = false
+    await libraryUtils.diffLibraryTreeExecuteFileOperation()
+  }
+
+  const renameInputKeyDownEnter = () => {
+    if (renameDivValue.value === '') {
+      renameInputHintText.value = t('library.nameRequired')
+      renameInputHintShow.value = true
+      return
+    }
+    if (renameInputHintShow.value) {
+      return
+    }
+    myRenameInput.value?.blur()
+  }
+
+  const renameInputKeyDownEsc = () => {
+    renameDivValue.value = ''
+    renameInputBlurHandle()
+  }
+
+  const renameMyInputHandleInput = () => {
+    const newName = renameDivValue.value
+    const invalidCharsRegex = /[<>:"/\\|?*\u0000-\u001F]/
+    let hintShouldShow = false
+    let hintText = ''
+
+    if (newName === '') {
+      hintText = t('library.nameRequired')
+      hintShouldShow = true
+    } else if (invalidCharsRegex.test(newName)) {
+      hintText = t('library.nameInvalidChars')
+      hintShouldShow = true
+    } else {
+      const exists = fatherDirData.children?.some(
+        (obj: any) => obj.dirName === newName && obj.uuid !== props.uuid
+      )
+      if (exists) {
+        hintText = t('library.nameAlreadyExists', { name: newName })
+        hintShouldShow = true
+      }
+    }
+
+    renameInputHintText.value = hintText
+    renameInputHintShow.value = hintShouldShow
+  }
+
+  const startRename = async () => {
+    if (!dirData?.dirName) return
+    renameDivShow.value = true
+    renameDivValue.value = dirData.dirName
+    await nextTick()
+    myRenameInput.value?.focus()
+  }
+
+  emitter.on('libraryArea/trigger-rename', async (targetUuid: string) => {
+    try {
+      if (targetUuid !== props.uuid) return
+      await startRename()
+    } catch {}
+  })
+
+  return {
+    operationInputValue,
+    inputHintText,
+    inputHintShow,
+    myInput,
+    myInputHandleInput,
+    inputKeyDownEnter,
+    inputKeyDownEsc,
+    inputBlurHandle,
+    renameDivShow,
+    renameDivValue,
+    myRenameInput,
+    renameInputHintShow,
+    renameInputHintText,
+    renameInputBlurHandle,
+    renameInputKeyDownEnter,
+    renameInputKeyDownEsc,
+    renameMyInputHandleInput,
+    startRename
+  }
+}

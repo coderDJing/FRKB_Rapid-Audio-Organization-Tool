@@ -1,10 +1,19 @@
 <script setup lang="ts">
-import { PropType, reactive, markRaw } from 'vue'
-import { useRuntimeStore } from '@renderer/stores/runtime'
+import {
+  PropType,
+  computed,
+  markRaw,
+  onUnmounted,
+  ref as vRef,
+  toRef,
+  type ComponentPublicInstance
+} from 'vue'
 import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
-import type { ComponentPublicInstance } from 'vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
-import emitter from '@renderer/utils/mitt'
+import { useVirtualRows } from './SongListRows/useVirtualRows'
+import { useSongRowEvents } from './SongListRows/useSongRowEvents'
+import { useCoverThumbnails } from './SongListRows/useCoverThumbnails'
+import { useCoverPreview } from './SongListRows/useCoverPreview'
 
 const props = defineProps({
   songs: {
@@ -27,7 +36,6 @@ const props = defineProps({
     type: Number,
     required: true
   },
-  // 新增：拖拽相关的props
   sourceLibraryName: {
     type: String,
     required: true
@@ -36,12 +44,10 @@ const props = defineProps({
     type: String,
     required: true
   },
-  // 新增：可选传入滚动容器（OverlayScrollbars 的 viewport 元素）
   scrollHostElement: {
     type: Object as PropType<HTMLElement | null | undefined>,
     default: undefined
   },
-  // 父组件传入的滚动位与视口高度（优先使用）
   externalScrollTop: {
     type: Number as PropType<number | undefined>,
     default: undefined
@@ -50,7 +56,6 @@ const props = defineProps({
     type: Number as PropType<number | undefined>,
     default: undefined
   },
-  // 歌单根目录（用于在主进程将缩略图缓存到该目录下）
   songListRootDir: {
     type: String as PropType<string | undefined>,
     default: undefined
@@ -61,36 +66,32 @@ const emit = defineEmits<{
   (e: 'song-click', event: MouseEvent, song: ISongInfo): void
   (e: 'song-contextmenu', event: MouseEvent, song: ISongInfo): void
   (e: 'song-dblclick', song: ISongInfo): void
-  // 新增：拖拽相关的事件
   (e: 'song-dragstart', event: DragEvent, song: ISongInfo): void
   (e: 'song-dragend', event: DragEvent): void
   (e: 'rows-rendered', count: number): void
 }>()
 
-// 记录每个单元格 DOM，用于气泡锚定（非响应，减少依赖跟踪）
+const songsRef = toRef(props, 'songs')
+const scrollHostElementRef = toRef(props, 'scrollHostElement')
+const externalScrollTopRef = toRef(props, 'externalScrollTop')
+const externalViewportHeightRef = toRef(props, 'externalViewportHeight')
+const songListRootDirRef = toRef(props, 'songListRootDir')
+
 const cellRefMap = markRaw({} as Record<string, HTMLElement | null>)
 const coverCellRefMap = markRaw(new Map<string, HTMLElement | null>())
 const getCellKey = (song: ISongInfo, colKey: string) => `${song.filePath}__${colKey}`
-const setCellRef = (key: string, el: Element | ComponentPublicInstance | null) => {
-  let dom: HTMLElement | null = null
-  if (el) {
-    if (el instanceof HTMLElement) {
-      dom = el
-    } else if ((el as any).$el instanceof HTMLElement) {
-      dom = (el as any).$el as HTMLElement
-    }
+const resolveHTMLElement = (el: Element | ComponentPublicInstance | null) => {
+  if (el && typeof (el as ComponentPublicInstance).$el !== 'undefined') {
+    return ((el as ComponentPublicInstance).$el || null) as Element | null
   }
+  return el as Element | null
+}
+const setCellRef = (key: string, el: Element | ComponentPublicInstance | null) => {
+  const dom = resolveHTMLElement(el) as HTMLElement | null
   cellRefMap[key] = dom
 }
 const setCoverCellRef = (filePath: string, el: Element | ComponentPublicInstance | null) => {
-  let dom: HTMLElement | null = null
-  if (el) {
-    if (el instanceof HTMLElement) {
-      dom = el
-    } else if ((el as any).$el instanceof HTMLElement) {
-      dom = (el as any).$el as HTMLElement
-    }
-  }
+  const dom = resolveHTMLElement(el) as HTMLElement | null
   if (dom) {
     coverCellRefMap.set(filePath, dom)
   } else {
@@ -98,262 +99,83 @@ const setCoverCellRef = (filePath: string, el: Element | ComponentPublicInstance
   }
 }
 
-// 渲染完成观测：当 songs 变化后，等待一帧统计行数并上报
-import { nextTick, watch, ref as vRef, computed, onMounted, onUnmounted } from 'vue'
-const rowsRoot = vRef<HTMLElement | null>(null)
-const runtime = useRuntimeStore()
-const onlyWhenOverflowComputed = computed(() => !(runtime.setting as any)?.songListBubbleAlways)
-// 按需展示气泡：仅在鼠标悬停的单元格渲染 bubbleBox，避免批量挂载
 const hoveredCellKey = vRef<string | null>(null)
-// 移除 rows 渲染观测，避免大 DOM 遍历
+const onlyWhenOverflowComputed = computed(() => true)
+const DEFAULT_ROW_HEIGHT = 30
 
-// --- 虚拟滚动实现 ---
-const defaultRowHeight = 30 // 兜底默认行高
-const rowHeight = vRef<number>(defaultRowHeight)
-// 动态测量实际行高（考虑边框等因素）
-function measureRowHeight() {
-  const root = rowsRoot.value
-  if (!root) return
-  const el = root.querySelector('.song-row-content') as HTMLElement | null
-  const h = el?.offsetHeight
-  if (h && h > 0 && h !== rowHeight.value) {
-    rowHeight.value = h
-  }
-}
-const BUFFER_ROWS = 12
-const scrollTop = vRef(0)
-const viewportHeight = vRef(0)
-const totalHeight = computed(() => (props.songs?.length || 0) * rowHeight.value)
-
-let viewportEl: HTMLElement | null = null
-let onScrollBound: ((e: Event) => void) | null = null
-let resizeObserver: ResizeObserver | null = null
-let rafId = 0
-let lastScrollTop = -1
-let hostEl: HTMLElement | null = null
-let lastScrollLeft = -1
-let overlayLeftLock = 0
-let detachPreviewGuards: (() => void) | null = null
-
-function resolveViewportEl(): HTMLElement | null {
-  // 1) 优先使用传入的 viewport
-  if (props.scrollHostElement instanceof HTMLElement) {
-    const vp = props.scrollHostElement
-    // 检测 vp 是否实际滚动，否则回退到 content
-    const host = vp.closest('.os-host') as HTMLElement | null
-    hostEl = host || null
-    const content = host?.querySelector('.os-content') as HTMLElement | null
-    if (vp.scrollHeight > vp.clientHeight + 1) return vp
-    if (content && content.scrollHeight > content.clientHeight + 1) return content
-    return vp
-  }
-  // 2) 从当前节点向上找到 os-host，再找 viewport / content
-  const root = rowsRoot.value
-  if (!root) return null
-  const host = root.closest('.os-host') as HTMLElement | null
-  hostEl = host || null
-  const vp = host?.querySelector('.os-viewport') as HTMLElement | null
-  const content = host?.querySelector('.os-content') as HTMLElement | null
-  if (vp && vp.scrollHeight > vp.clientHeight + 1) return vp
-  if (content && content.scrollHeight > content.clientHeight + 1) return content
-  return vp || content || host || null
-}
-
-function detectScrollCarrier(): {
-  el: HTMLElement | null
-  height: number
-  top: number
-  left: number
-} {
-  const host = hostEl || rowsRoot.value?.closest('.os-host') || null
-  const vp = (host as HTMLElement | null)?.querySelector?.('.os-viewport') as HTMLElement | null
-  const content = (host as HTMLElement | null)?.querySelector?.('.os-content') as HTMLElement | null
-  const candidates: HTMLElement[] = []
-  if (viewportEl) candidates.push(viewportEl)
-  if (vp && !candidates.includes(vp)) candidates.push(vp)
-  if (content && !candidates.includes(content)) candidates.push(content)
-  if (host && !candidates.includes(host)) candidates.push(host as HTMLElement)
-  for (const el of candidates) {
-    const h = el.clientHeight
-    const sh = el.scrollHeight
-    if (h > 0 && sh > h + 1) {
-      return { el, height: h, top: el.scrollTop, left: el.scrollLeft || 0 }
-    }
-  }
-  // 兜底
-  return {
-    el: (viewportEl || vp || content || (host as HTMLElement | null)) as HTMLElement | null,
-    height:
-      (viewportEl || vp || content || (host as HTMLElement | null))?.clientHeight ||
-      window.innerHeight,
-    top: (viewportEl || vp || content || (host as HTMLElement | null))?.scrollTop || 0,
-    left: (viewportEl || vp || content || (host as HTMLElement | null))?.scrollLeft || 0
-  }
-}
-
-function attachListeners() {
-  viewportEl = resolveViewportEl()
-  if (!viewportEl) return
-  // 初始化尺寸与滚动位
-  const initCarrier = detectScrollCarrier()
-  viewportHeight.value = initCarrier.height
-  scrollTop.value = initCarrier.top
-  lastScrollLeft = initCarrier.left ?? 0
-
-  onScrollBound = (e: Event) => {
-    // 仅读取 scrollTop，避免布局抖动
-    const carrier = detectScrollCarrier()
-    scrollTop.value = carrier.top
-    viewportHeight.value = carrier.height
-    const currentLeft = carrier.left ?? 0
-    if (coverPreviewState.active && currentLeft !== lastScrollLeft) {
-      closeCoverPreview()
-    }
-    lastScrollLeft = currentLeft
-  }
-  viewportEl.addEventListener('scroll', onScrollBound, { passive: true })
-  // 同时在 content/host 上也监听，以防实际滚动元素不同
-  const host = hostEl
-  const vp = host?.querySelector('.os-viewport') as HTMLElement | null
-  const content = host?.querySelector('.os-content') as HTMLElement | null
-  if (vp && vp !== viewportEl) vp.addEventListener('scroll', onScrollBound, { passive: true })
-  if (content && content !== viewportEl)
-    content.addEventListener('scroll', onScrollBound, { passive: true })
-
-  if ('ResizeObserver' in window) {
-    resizeObserver = new ResizeObserver((entries) => {
-      const carrier = detectScrollCarrier()
-      viewportHeight.value = carrier.height
-    })
-    if (viewportEl) resizeObserver.observe(viewportEl)
-    if (vp && vp !== viewportEl) resizeObserver.observe(vp)
-    if (content && content !== viewportEl) resizeObserver.observe(content)
-  }
-
-  // rAF 兜底：即使 scroll 事件未触发，也能侦测滚动
-  const tick = () => {
-    const carrier = detectScrollCarrier()
-    const st = carrier.top
-    const sl = carrier.left ?? 0
-    if (st !== lastScrollTop) {
-      lastScrollTop = st
-      scrollTop.value = st
-      viewportHeight.value = carrier.height
-      // 每次滚动尝试测量一次行高（首屏或样式变化后）
-      measureRowHeight()
-    }
-    if (sl !== lastScrollLeft) {
-      if (coverPreviewState.active) ensurePointerWithinAllowedArea()
-      lastScrollLeft = sl
-    }
-    if (coverPreviewState.active) {
-      ensurePointerWithinAllowedArea()
-    }
-    rafId = requestAnimationFrame(tick)
-  }
-  cancelAnimationFrame(rafId)
-  rafId = requestAnimationFrame(tick)
-}
-
-function detachListeners() {
-  if (viewportEl && onScrollBound) {
-    viewportEl.removeEventListener('scroll', onScrollBound)
-  }
-  onScrollBound = null
-  cancelAnimationFrame(rafId)
-  if (resizeObserver && viewportEl) {
-    try {
-      resizeObserver.unobserve(viewportEl)
-    } catch {}
-  }
-  resizeObserver = null
-  viewportEl = null
-}
-
-onMounted(() => {
-  // 初次尝试
-  attachListeners()
-  // 若延迟挂载（OverlayScrollbars defer），下一帧重试
-  nextTick(() => {
-    if (!viewportEl) attachListeners()
-  })
-  // 首屏预取
-  primePrefetchWindow()
-  emitter.on('songMetadataUpdated', handleSongMetadataUpdated)
+const {
+  rowsRoot,
+  hostElement,
+  viewportElement,
+  visibleSongsWithIndex,
+  offsetTopPx,
+  totalHeight,
+  rowHeight,
+  effectiveScrollTop,
+  startIndex,
+  endIndex,
+  visibleCount,
+  scrollLeft
+} = useVirtualRows({
+  songs: songsRef,
+  scrollHostElement: scrollHostElementRef,
+  externalScrollTop: externalScrollTopRef,
+  externalViewportHeight: externalViewportHeightRef
 })
 
-onUnmounted(() => {
-  detachListeners()
-  emitter.off('songMetadataUpdated', handleSongMetadataUpdated)
+const { onRowsClick, onRowsContextmenu, onRowsDblclick } = useSongRowEvents({
+  songs: songsRef,
+  emitSongClick: (e, song) => emit('song-click', e, song),
+  emitSongContextmenu: (e, song) => emit('song-contextmenu', e, song),
+  emitSongDblclick: (song) => emit('song-dblclick', song)
+})
+
+const { coversTick, getCoverUrl, fetchCoverUrl, onImgError } = useCoverThumbnails({
+  songs: songsRef,
+  visibleSongsWithIndex,
+  startIndex,
+  endIndex,
+  visibleCount,
+  songListRootDir: songListRootDirRef
+})
+
+const {
+  coverPreviewState,
+  coverPreviewSize,
+  previewedCoverUrl,
+  onCoverMouseEnter,
+  onCoverMouseLeave,
+  handleCoverPreviewMouseMove,
+  closeCoverPreview
+} = useCoverPreview({
+  songs: songsRef,
+  rowsRoot,
+  hostElement,
+  viewportElement,
+  coverCellRefMap,
+  rowHeight,
+  defaultRowHeight: DEFAULT_ROW_HEIGHT,
+  getCoverUrl,
+  fetchCoverUrl,
+  effectiveScrollTop,
+  scrollLeft
+})
+
+const onRowsMouseOver = (e: MouseEvent) => {
+  const cell = (e.target as HTMLElement)?.closest('.cell-title') as HTMLElement | null
+  if (!cell) return
+  const key = cell.dataset.key
+  if (key) hoveredCellKey.value = key
+}
+const onRowsMouseLeave = (e: MouseEvent) => {
+  const rt = (e && (e.relatedTarget as HTMLElement | null)) || null
+  if (rt && typeof rt.closest === 'function') {
+    if (rt.closest('.frkb-bubble') || rt.closest('.cover-preview-overlay')) {
+      return
+    }
+  }
+  hoveredCellKey.value = null
   closeCoverPreview()
-  coverCellRefMap.clear()
-})
-
-// 监听传入的 scrollHostElement 变化，及时重挂监听
-watch(
-  () => props.scrollHostElement,
-  () => {
-    detachListeners()
-    nextTick(() => attachListeners())
-  }
-)
-
-const effectiveScrollTop = computed(() => props.externalScrollTop ?? scrollTop.value)
-const effectiveViewportHeight = computed(() => props.externalViewportHeight ?? viewportHeight.value)
-
-const startIndex = computed(() => {
-  const raw = Math.floor(effectiveScrollTop.value / rowHeight.value) - BUFFER_ROWS
-  return Math.max(0, raw)
-})
-const visibleCount = computed(() => {
-  const vh =
-    effectiveViewportHeight.value && effectiveViewportHeight.value > 0
-      ? effectiveViewportHeight.value
-      : rowsRoot.value?.parentElement?.clientHeight || window.innerHeight
-  const base = Math.ceil(vh / rowHeight.value) + BUFFER_ROWS * 2
-  return Math.max(base, BUFFER_ROWS * 2 + 1)
-})
-const endIndex = computed(() => {
-  return Math.min(props.songs?.length || 0, startIndex.value + visibleCount.value)
-})
-const offsetTopPx = computed(() => startIndex.value * rowHeight.value)
-const visibleSongsWithIndex = computed(() => {
-  const out: { song: ISongInfo; idx: number }[] = []
-  const arr = props.songs || []
-  for (let i = startIndex.value; i < endIndex.value; i++) {
-    out.push({ song: arr[i], idx: i })
-  }
-  return out
-})
-
-// （迁移至封面缓存与预取函数定义之后）
-
-// 预取移动至封面缓存定义之后，避免初始化顺序问题
-
-// 事件委托，减少每行 addEventListener 带来的开销
-const onRowsClick = (e: MouseEvent) => {
-  e.stopPropagation()
-  const row = (e.target as HTMLElement)?.closest('.song-row-item') as HTMLElement | null
-  if (!row) return
-  const fp = row.dataset.filepath
-  const song = props.songs.find((s) => s.filePath === fp)
-  if (song) emit('song-click', e, song)
-}
-const onRowsContextmenu = (e: MouseEvent) => {
-  e.stopPropagation()
-  const row = (e.target as HTMLElement)?.closest('.song-row-item') as HTMLElement | null
-  if (!row) return
-  const fp = row.dataset.filepath
-  const song = props.songs.find((s) => s.filePath === fp)
-  if (song) emit('song-contextmenu', e, song)
-}
-const onRowsDblclick = (e: MouseEvent) => {
-  e.stopPropagation()
-  const row = (e.target as HTMLElement)?.closest('.song-row-item') as HTMLElement | null
-  if (!row) return
-  const fp = row.dataset.filepath
-  const song = props.songs.find((s) => s.filePath === fp)
-  if (song) emit('song-dblclick', song)
 }
 
 const handleCoverDblclick = (song: ISongInfo, event: MouseEvent) => {
@@ -370,424 +192,16 @@ const handleCoverPreviewDblclick = (event: MouseEvent) => {
     coverPreviewState.anchorIndex >= 0
       ? coverPreviewState.anchorIndex
       : coverPreviewState.displayIndex
-  const song = typeof idx === 'number' ? props.songs?.[idx] : null
+  const song = typeof idx === 'number' ? songsRef.value?.[idx] : null
   if (song) {
     closeCoverPreview()
     emit('song-dblclick', song)
   }
 }
 
-const onRowsMouseOver = (e: MouseEvent) => {
-  const cell = (e.target as HTMLElement)?.closest('.cell-title') as HTMLElement | null
-  if (!cell) return
-  const key = cell.dataset.key
-  if (key) hoveredCellKey.value = key
-}
-const onRowsMouseLeave = (e: MouseEvent) => {
-  const rt = (e && (e.relatedTarget as HTMLElement | null)) || null
-  // 若移入气泡框或封面预览（teleport 到 body）时保持当前状态
-  if (rt && typeof rt.closest === 'function') {
-    if (rt.closest('.frkb-bubble') || rt.closest('.cover-preview-overlay')) {
-      return
-    }
-  }
-  hoveredCellKey.value = null
-  closeCoverPreview()
-}
-
-// --- 封面懒加载（有限并发 + 非响应式缓存） ---
-const coverUrlCache = markRaw(new Map<string, string | null>()) // filePath -> blob url
-const inflight = markRaw(new Map<string, Promise<string | null>>())
-let running = 0
-const MAX_CONCURRENCY = 12
-const pendingQueue: Array<() => void> = []
-const coversTick = vRef(0) // 轻量信号：封面就绪时触发一次性重渲染
-function fetchCoverUrl(filePath: string): Promise<string | null> {
-  if (!filePath) return Promise.resolve(null)
-  const cached = coverUrlCache.get(filePath)
-  if (cached !== undefined) return Promise.resolve(cached)
-  const inq = inflight.get(filePath)
-  if (inq) return inq
-  const task = new Promise<string | null>((resolve) => {
-    const run = async () => {
-      try {
-        const resp = (await window.electron.ipcRenderer.invoke(
-          'getSongCoverThumb',
-          filePath,
-          48,
-          props.songListRootDir
-        )) as { format: string; data?: Uint8Array | { data: number[] }; dataUrl?: string } | null
-        if (resp && (resp as any).dataUrl) {
-          const url = (resp as any).dataUrl as string
-          coverUrlCache.set(filePath, url)
-          coversTick.value++
-          resolve(url)
-        } else if (resp && (resp as any).data) {
-          const raw: any = (resp as any).data
-          const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw.data || raw)
-          const blob = new Blob([bytes.buffer], { type: (resp as any).format || 'image/jpeg' })
-          const url = URL.createObjectURL(blob)
-          coverUrlCache.set(filePath, url)
-          coversTick.value++
-          resolve(url)
-        } else {
-          coverUrlCache.set(filePath, null)
-          coversTick.value++
-          resolve(null)
-        }
-      } catch {
-        coverUrlCache.set(filePath, null)
-        coversTick.value++
-        resolve(null)
-      } finally {
-        inflight.delete(filePath)
-        running--
-        pump()
-      }
-    }
-    // 避免重复入队
-    const alreadyQueued = pendingQueue.findIndex((fn: any) => (fn as any).__fp === filePath) !== -1
-    if (!alreadyQueued) {
-      ;(run as any).__fp = filePath
-      pendingQueue.push(run)
-    }
-    pump()
-  })
-  inflight.set(filePath, task)
-  return task
-}
-
-function getCoverUrl(filePath: string): string | null | undefined {
-  return coverUrlCache.get(filePath)
-}
-
-function pump() {
-  while (running < MAX_CONCURRENCY && pendingQueue.length > 0) {
-    const fn = pendingQueue.shift()!
-    running++
-    fn()
-  }
-}
-
-function onImgError(filePath: string) {
-  coverUrlCache.set(filePath, null)
-  coversTick.value++
-}
-
-function handleSongMetadataUpdated(payload: { filePath?: string; oldFilePath?: string }) {
-  const newPath = payload?.filePath
-  if (payload?.oldFilePath) {
-    coverUrlCache.delete(payload.oldFilePath)
-    inflight.delete(payload.oldFilePath)
-  }
-  if (!newPath) return
-  coverUrlCache.delete(newPath)
-  inflight.delete(newPath)
-  for (let i = pendingQueue.length - 1; i >= 0; i--) {
-    const queued = pendingQueue[i] as any
-    if (queued && (queued.__fp === newPath || queued.__fp === payload?.oldFilePath)) {
-      pendingQueue.splice(i, 1)
-    }
-  }
-  coversTick.value++
-  fetchCoverUrl(newPath)
-}
-
-// 预取当前可视窗口内的封面（避免首屏空白）——放到缓存定义之后
-function primePrefetchWindow() {
-  const arr = props.songs || []
-  // 预取范围：当前窗口前后一屏，提升首屏与轻滚动命中率
-  const prefetchStart = Math.max(0, startIndex.value - visibleCount.value)
-  const prefetchEnd = Math.min(arr.length, endIndex.value + visibleCount.value)
-  for (let i = prefetchStart; i < prefetchEnd; i++) {
-    const fp = arr[i]?.filePath
-    if (fp && !coverUrlCache.has(fp)) fetchCoverUrl(fp)
-  }
-}
-
-// 在所有依赖（computed + 缓存 + 函数）都已初始化后再注册预取 watchers
-watch(
-  () => visibleSongsWithIndex.value.map((v) => v.song?.filePath).join('|'),
-  () => {
-    primePrefetchWindow()
-  },
-  { immediate: true }
-)
-
-watch(
-  () => [startIndex.value, endIndex.value, props.songs?.length] as const,
-  () => primePrefetchWindow(),
-  { deep: false }
-)
-
-// --- 封面展开预览 ---
-const coverPreviewState = reactive({
-  active: false,
-  anchorIndex: -1,
-  anchorFilePath: '',
-  displayIndex: -1,
-  overlayLeft: 0,
-  overlayTop: 0,
-  overlayWidth: 0,
-  pointerClientX: 0,
-  pointerClientY: 0,
-  anchorRectLeft: 0,
-  anchorRectTop: 0,
-  anchorRectWidth: 0,
-  anchorRectHeight: 0
+onUnmounted(() => {
+  coverCellRefMap.clear()
 })
-const coverPreviewSize = computed(() => {
-  // 展开容器保持正方形：默认取封面列宽度，兜底使用行高
-  return coverPreviewState.overlayWidth > 0
-    ? coverPreviewState.overlayWidth
-    : rowHeight.value || defaultRowHeight
-})
-const previewedSong = computed(() => {
-  if (!coverPreviewState.active) return null
-  return props.songs?.[coverPreviewState.displayIndex] ?? null
-})
-const previewedCoverUrl = computed(() => {
-  const song = previewedSong.value
-  if (!song?.filePath) return null
-  const url = getCoverUrl(song.filePath)
-  if (url === undefined) {
-    fetchCoverUrl(song.filePath)
-  }
-  return url
-})
-
-function getListContainerRect(): DOMRect | null {
-  const container =
-    viewportEl || (hostEl?.querySelector?.('.os-viewport') as HTMLElement | null) || rowsRoot.value
-  return container?.getBoundingClientRect?.() || null
-}
-
-function ensurePointerWithinAllowedArea() {
-  if (typeof document === 'undefined') return
-  if (!coverPreviewState.active) return
-  const x = coverPreviewState.pointerClientX
-  const y = coverPreviewState.pointerClientY
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return
-  const rect = getListContainerRect()
-  if (rect) {
-    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
-      closeCoverPreview()
-      return
-    }
-  }
-  const anchorEl = coverPreviewState.anchorFilePath
-    ? coverCellRefMap.get(coverPreviewState.anchorFilePath) || null
-    : null
-  if (!anchorEl) {
-    closeCoverPreview()
-    return
-  }
-  const anchorRect = anchorEl.getBoundingClientRect()
-  const driftThresholdX = Math.max(coverPreviewState.anchorRectWidth || 0, 20) * 0.2
-  const driftThresholdY = Math.max(coverPreviewState.anchorRectHeight || 0, 20) * 0.3
-  const driftX = Math.abs(anchorRect.left - coverPreviewState.anchorRectLeft)
-  const driftY = Math.abs(anchorRect.top - coverPreviewState.anchorRectTop)
-  if (driftX > driftThresholdX || driftY > driftThresholdY) {
-    closeCoverPreview()
-    return
-  }
-  const el = document.elementFromPoint(x, y)
-  if (!el) {
-    closeCoverPreview()
-    return
-  }
-  if (anchorEl.contains(el)) {
-    return
-  }
-  const overlayTarget = el.closest('.cover-preview-overlay')
-  if (overlayTarget) {
-    return
-  }
-  closeCoverPreview()
-}
-
-function attachPreviewGuards() {
-  if (typeof window === 'undefined') return
-  detachPreviewGuards?.()
-  const onPointerMove = (event: MouseEvent) => {
-    coverPreviewState.pointerClientX = event.clientX
-    coverPreviewState.pointerClientY = event.clientY
-    ensurePointerWithinAllowedArea()
-  }
-  const onGlobalScroll = () => {
-    ensurePointerWithinAllowedArea()
-  }
-  window.addEventListener('mousemove', onPointerMove, true)
-  window.addEventListener('scroll', onGlobalScroll, true)
-  detachPreviewGuards = () => {
-    window.removeEventListener('mousemove', onPointerMove, true)
-    window.removeEventListener('scroll', onGlobalScroll, true)
-    detachPreviewGuards = null
-  }
-}
-
-function applyCoverPreviewRect(rect: DOMRect | null, lockHorizontal = false): boolean {
-  if (!rect) return false
-  const fallbackSize = rowHeight.value || defaultRowHeight
-  const width =
-    rect.width && rect.width > 0 ? rect.width : coverPreviewState.overlayWidth || fallbackSize
-  coverPreviewState.overlayWidth = width
-  if (lockHorizontal || !overlayLeftLock) {
-    overlayLeftLock = rect.left
-  }
-  coverPreviewState.overlayLeft = overlayLeftLock || rect.left
-  const effectiveSize = width > 0 ? width : Math.max(fallbackSize, rect.height || 0)
-  coverPreviewState.overlayTop = rect.top + rect.height / 2 - effectiveSize / 2
-  coverPreviewState.anchorRectLeft = rect.left
-  coverPreviewState.anchorRectTop = rect.top
-  coverPreviewState.anchorRectWidth = rect.width
-  coverPreviewState.anchorRectHeight = rect.height
-  return true
-}
-
-function syncPreviewPositionByIndex(idx: number): boolean {
-  const song = props.songs?.[idx]
-  if (!song) return false
-  const el = coverCellRefMap.get(song.filePath) || null
-  if (!el) return false
-  return applyCoverPreviewRect(el.getBoundingClientRect())
-}
-
-function isPointerOutsideVisibleArea(event: MouseEvent): boolean {
-  const rect = getListContainerRect()
-  if (!rect) return false
-  return (
-    event.clientX < rect.left ||
-    event.clientX > rect.right ||
-    event.clientY < rect.top ||
-    event.clientY > rect.bottom
-  )
-}
-
-function onCoverMouseEnter(idx: number, event: MouseEvent) {
-  const target = event.currentTarget as HTMLElement | null
-  if (!target) return
-  const song = props.songs?.[idx]
-  const filePath = song?.filePath
-  if (!filePath) {
-    closeCoverPreview()
-    return
-  }
-  const cachedCoverUrl = getCoverUrl(filePath)
-  if (cachedCoverUrl === null) {
-    closeCoverPreview()
-    return
-  }
-  const rect = target.getBoundingClientRect()
-  if (coverPreviewState.active) {
-    if (coverPreviewState.anchorIndex === idx) {
-      return
-    }
-    closeCoverPreview()
-    return
-  }
-  coverPreviewState.pointerClientX = event.clientX
-  coverPreviewState.pointerClientY = event.clientY
-  coverPreviewState.active = true
-  coverPreviewState.anchorIndex = idx
-  coverPreviewState.displayIndex = idx
-  coverPreviewState.anchorFilePath = filePath
-  applyCoverPreviewRect(rect, true)
-  attachPreviewGuards()
-  fetchCoverUrl(filePath)
-}
-
-function onCoverMouseLeave(idx: number, event: MouseEvent) {
-  if (!coverPreviewState.active) return
-  const nextTarget = (event?.relatedTarget as HTMLElement | null) || null
-  if (nextTarget && nextTarget.closest('.cover-preview-overlay')) {
-    return
-  }
-  if (coverPreviewState.anchorIndex === idx) {
-    closeCoverPreview()
-  }
-}
-
-function closeCoverPreview() {
-  coverPreviewState.active = false
-  coverPreviewState.anchorIndex = -1
-  coverPreviewState.anchorFilePath = ''
-  coverPreviewState.displayIndex = -1
-  coverPreviewState.overlayWidth = 0
-  coverPreviewState.overlayLeft = 0
-  coverPreviewState.overlayTop = 0
-  coverPreviewState.pointerClientX = 0
-  coverPreviewState.pointerClientY = 0
-  coverPreviewState.anchorRectLeft = 0
-  coverPreviewState.anchorRectTop = 0
-  coverPreviewState.anchorRectWidth = 0
-  coverPreviewState.anchorRectHeight = 0
-  overlayLeftLock = 0
-  detachPreviewGuards?.()
-}
-
-function trySwitchPreviewSong(direction: -1 | 1, pointerClientY: number): boolean {
-  if (!coverPreviewState.active) return false
-  const total = props.songs?.length || 0
-  const nextIdx = coverPreviewState.displayIndex + direction
-  if (nextIdx < 0 || nextIdx >= total) return false
-  coverPreviewState.displayIndex = nextIdx
-  if (!syncPreviewPositionByIndex(nextIdx)) {
-    coverPreviewState.overlayTop = pointerClientY - coverPreviewSize.value / 2
-  }
-  const song = props.songs?.[nextIdx]
-  if (song?.filePath) fetchCoverUrl(song.filePath)
-  return true
-}
-
-function handleCoverPreviewMouseMove(event: MouseEvent) {
-  if (!coverPreviewState.active) return
-  coverPreviewState.pointerClientX = event.clientX
-  coverPreviewState.pointerClientY = event.clientY
-  if (isPointerOutsideVisibleArea(event)) {
-    closeCoverPreview()
-    return
-  }
-  const target = event.currentTarget as HTMLElement | null
-  if (!target) return
-  const rect = target.getBoundingClientRect()
-  if (!rect || rect.height <= 0) return
-  const ratio = (event.clientY - rect.top) / rect.height
-  const normalized = Math.max(0, Math.min(1, ratio))
-  const topThreshold = 1 / 3
-  const bottomThreshold = 2 / 3
-  if (normalized < topThreshold) {
-    if (trySwitchPreviewSong(-1, event.clientY)) return
-  } else if (normalized > bottomThreshold) {
-    if (trySwitchPreviewSong(1, event.clientY)) return
-  }
-}
-
-watch(
-  () => effectiveScrollTop.value,
-  () => {
-    if (coverPreviewState.active) closeCoverPreview()
-  }
-)
-watch([() => coverPreviewState.active, previewedCoverUrl], ([active, url]) => {
-  if (!active) return
-  if (url === null) {
-    // 缺少封面时立即收起预览，避免展示空白骨架
-    closeCoverPreview()
-  }
-})
-watch(
-  () => props.songs,
-  () => {
-    if (coverPreviewState.active) closeCoverPreview()
-  }
-)
-watch(
-  () => props.songs?.length,
-  () => {
-    if (coverPreviewState.active) closeCoverPreview()
-  }
-)
 </script>
 
 <template>
