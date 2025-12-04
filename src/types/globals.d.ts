@@ -215,6 +215,15 @@ interface ILayoutConfig {
   mainWindowHeight: number
 }
 
+type PlayerGlobalShortcutAction = 'fastForward' | 'fastBackward' | 'nextSong' | 'previousSong'
+
+interface IPlayerGlobalShortcuts {
+  fastForward: string
+  fastBackward: string
+  nextSong: string
+  previousSong: string
+}
+
 interface ISettingConfig {
   platform: 'win32' | 'darwin'
   language: '' | 'enUS' | 'zhCN'
@@ -223,6 +232,7 @@ interface ISettingConfig {
   audioExt: string[]
   databaseUrl: string
   globalCallShortcut: string
+  playerGlobalShortcuts: IPlayerGlobalShortcuts
   nextCheckUpdateTime: string
   hiddenPlayControlArea: boolean
   waveformStyle?: 'SoundCloud' | 'Fine' | 'RGB'
@@ -349,6 +359,8 @@ export {
   IMetadataAutoFillSummary,
   ILayoutConfig,
   ISettingConfig,
+  IPlayerGlobalShortcuts,
+  PlayerGlobalShortcutAction,
   ILanguageDict,
   IMenu,
   IImportSongsFormData,

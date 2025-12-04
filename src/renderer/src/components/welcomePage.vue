@@ -2,7 +2,7 @@
 import welcomeLogo from '@renderer/assets/welcomeLogo.png?asset'
 import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 
 const runtime = useRuntimeStore()
 
@@ -54,6 +54,30 @@ const globalShortcut = computed(() => {
           </dd>
         </dl>
         <dl>
+          <dt>{{ t('shortcuts.globalPreviousNext') }}</dt>
+          <dd>
+            <div class="monaco-keybinding">
+              <span class="monaco-keybinding-key">Shift</span>
+              <span class="monaco-keybinding-key-separator">+</span>
+              <span class="monaco-keybinding-key">Alt</span>
+              <span class="monaco-keybinding-key-separator">+</span>
+              <span class="monaco-keybinding-key">Up / Down</span>
+            </div>
+          </dd>
+        </dl>
+        <dl>
+          <dt>{{ t('shortcuts.globalFastBackwardForward') }}</dt>
+          <dd>
+            <div class="monaco-keybinding">
+              <span class="monaco-keybinding-key">Shift</span>
+              <span class="monaco-keybinding-key-separator">+</span>
+              <span class="monaco-keybinding-key">Alt</span>
+              <span class="monaco-keybinding-key-separator">+</span>
+              <span class="monaco-keybinding-key">Left / Right</span>
+            </div>
+          </dd>
+        </dl>
+        <dl>
           <dt>{{ t('player.moveToLibraries') }}</dt>
           <dd>
             <div class="monaco-keybinding">
@@ -83,7 +107,7 @@ const globalShortcut = computed(() => {
           <dd>
             <div class="monaco-keybinding" style="min-width: 250px">
               <template v-for="(item, index) in globalShortcut" :key="index">
-                <span class="monaco-keybinding-key" style="width: 50px">{{ item.key }}</span>
+                <span class="monaco-keybinding-key">{{ item.key }}</span>
                 <span
                   v-if="index !== globalShortcut.length - 1"
                   class="monaco-keybinding-key-separator"
@@ -193,16 +217,22 @@ dd {
   box-shadow: inset 0 -1px 0 var(--border);
   border-radius: 3px;
   font-size: 11px;
-  min-width: 14px;
+  min-width: 60px;
+  display: inline-flex;
+  justify-content: center;
   text-align: center;
   color: var(--text-weak);
   white-space: nowrap;
-  width: 30px;
 }
 
 .monaco-keybinding-key-separator {
   padding: 0 4px;
   color: var(--text-weak);
+}
+
+.global-shortcut-divider {
+  color: var(--text-weak);
+  font-size: 13px;
 }
 
 .unselectable {

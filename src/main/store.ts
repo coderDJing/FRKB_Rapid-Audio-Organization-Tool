@@ -37,6 +37,12 @@ let settingConfig: ISettingConfig = {
   ],
   databaseUrl: '',
   globalCallShortcut: '',
+  playerGlobalShortcuts: {
+    fastForward: 'Shift+Alt+Right',
+    fastBackward: 'Shift+Alt+Left',
+    nextSong: 'Shift+Alt+Down',
+    previousSong: 'Shift+Alt+Up'
+  },
   nextCheckUpdateTime: '',
   hiddenPlayControlArea: false,
   waveformStyle: 'SoundCloud' as 'SoundCloud' | 'RGB',

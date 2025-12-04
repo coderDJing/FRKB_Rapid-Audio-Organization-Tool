@@ -9,11 +9,13 @@ import { t } from '@renderer/utils/translate'
 import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 import confirm from '@renderer/components/confirmDialog'
 import globalCallShortcutDialog from './globalCallShortcutDialog'
+import playerGlobalShortcutDialog from './playerGlobalShortcutDialog'
 import dangerConfirmWithInput from './dangerConfirmWithInputDialog'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
 import { SUPPORTED_AUDIO_FORMATS } from '../../../shared/audioFormats'
+import type { PlayerGlobalShortcutAction } from 'src/types/globals'
 import { mapAcoustIdClientError } from '@renderer/utils/acoustid'
 const runtime = useRuntimeStore()
 const uuid = uuidV4()
@@ -96,6 +98,19 @@ if ((runtime as any).setting.waveformStyle === undefined) {
 if ((runtime as any).setting.waveformMode === undefined) {
   ;(runtime as any).setting.waveformMode = 'half'
 }
+
+const ensurePlayerGlobalShortcuts = () => {
+  if (!runtime.setting.playerGlobalShortcuts) {
+    runtime.setting.playerGlobalShortcuts = {
+      fastForward: 'Shift+Alt+Right',
+      fastBackward: 'Shift+Alt+Left',
+      nextSong: 'Shift+Alt+Down',
+      previousSong: 'Shift+Alt+Up'
+    }
+  }
+  return runtime.setting.playerGlobalShortcuts
+}
+ensurePlayerGlobalShortcuts()
 
 // 将布尔设置映射为单选值（与指纹模式类似的布局与交互）
 const songListBubbleMode = computed<'overflowOnly' | 'always'>({
@@ -371,6 +386,11 @@ const globalCallShortcutHandle = async () => {
   await globalCallShortcutDialog()
 }
 
+const playerGlobalShortcutHandle = async (action: PlayerGlobalShortcutAction) => {
+  ensurePlayerGlobalShortcuts()
+  await playerGlobalShortcutDialog(action)
+}
+
 const reSelectLibrary = async () => {
   if (runtime.isProgressing) {
     await confirm({
@@ -607,6 +627,56 @@ const clearCloudFingerprints = async () => {
               >
                 {{ runtime.setting.globalCallShortcut }}
               </div>
+            </div>
+            <div style="margin-top: 20px">{{ t('shortcuts.playerGlobalShortcuts') }}：</div>
+            <div class="playerShortcutList">
+              <div class="playerShortcutRow">
+                <div class="playerShortcutLabel">
+                  {{ t('shortcuts.globalFastForwardShortcut') }}
+                </div>
+                <div
+                  class="chooseDirDiv"
+                  @click="playerGlobalShortcutHandle('fastForward')"
+                  :title="runtime.setting.playerGlobalShortcuts.fastForward"
+                >
+                  {{ runtime.setting.playerGlobalShortcuts.fastForward }}
+                </div>
+              </div>
+              <div class="playerShortcutRow">
+                <div class="playerShortcutLabel">
+                  {{ t('shortcuts.globalFastBackwardShortcut') }}
+                </div>
+                <div
+                  class="chooseDirDiv"
+                  @click="playerGlobalShortcutHandle('fastBackward')"
+                  :title="runtime.setting.playerGlobalShortcuts.fastBackward"
+                >
+                  {{ runtime.setting.playerGlobalShortcuts.fastBackward }}
+                </div>
+              </div>
+              <div class="playerShortcutRow">
+                <div class="playerShortcutLabel">{{ t('shortcuts.globalNextShortcut') }}</div>
+                <div
+                  class="chooseDirDiv"
+                  @click="playerGlobalShortcutHandle('nextSong')"
+                  :title="runtime.setting.playerGlobalShortcuts.nextSong"
+                >
+                  {{ runtime.setting.playerGlobalShortcuts.nextSong }}
+                </div>
+              </div>
+              <div class="playerShortcutRow">
+                <div class="playerShortcutLabel">{{ t('shortcuts.globalPreviousShortcut') }}</div>
+                <div
+                  class="chooseDirDiv"
+                  @click="playerGlobalShortcutHandle('previousSong')"
+                  :title="runtime.setting.playerGlobalShortcuts.previousSong"
+                >
+                  {{ runtime.setting.playerGlobalShortcuts.previousSong }}
+                </div>
+              </div>
+            </div>
+            <div class="playerShortcutHint">
+              {{ t('shortcuts.playerGlobalShortcutsHint') }}
             </div>
             <div style="margin-top: 20px">{{ t('player.fastForwardTime') }}：</div>
             <div style="margin-top: 10px">
@@ -961,5 +1031,30 @@ option {
   color: #e81123;
   font-size: 12px;
   margin-top: 6px;
+}
+
+.playerShortcutList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.playerShortcutRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.playerShortcutLabel {
+  min-width: 180px;
+  font-size: 13px;
+  color: var(--text-weak);
+}
+
+.playerShortcutHint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-weak);
 }
 </style>
