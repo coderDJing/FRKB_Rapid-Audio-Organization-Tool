@@ -14,6 +14,7 @@ import dangerConfirmWithInput from './dangerConfirmWithInputDialog'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
+import BaseSelect from '@renderer/components/BaseSelect.vue'
 import { SUPPORTED_AUDIO_FORMATS } from '../../../shared/audioFormats'
 import type { PlayerGlobalShortcutAction } from 'src/types/globals'
 import { mapAcoustIdClientError } from '@renderer/utils/acoustid'
@@ -137,6 +138,39 @@ const audioOutputSupported = computed(() => {
   )
 })
 let cleanupAudioDeviceListener: (() => void) | null = null
+
+const themeModeOptions = computed(() => [
+  { label: t('theme.system'), value: 'system' },
+  { label: t('theme.light'), value: 'light' },
+  { label: t('theme.dark'), value: 'dark' }
+])
+
+const languageOptions = computed(() => [
+  { label: '简体中文', value: 'zhCN' },
+  { label: 'English', value: 'enUS' }
+])
+
+const waveformStyleOptions = computed(() => [
+  { label: t('player.waveformStyleSoundCloud'), value: 'SoundCloud' },
+  { label: t('player.waveformStyleFine'), value: 'Fine' },
+  { label: t('player.waveformStyleRGB'), value: 'RGB' }
+])
+
+const waveformModeOptions = computed(() => [
+  { label: t('player.waveformModeHalf'), value: 'half' },
+  { label: t('player.waveformModeFull'), value: 'full' }
+])
+
+const audioOutputSelectOptions = computed(() => {
+  const unknownText = t('player.audioOutputDeviceUnknown')
+  return [
+    { label: t('player.audioOutputFollowSystem'), value: AUDIO_FOLLOW_SYSTEM_ID },
+    ...audioOutputDevices.value.map((device, index) => ({
+      label: device.label || `${unknownText} ${index + 1}`,
+      value: device.deviceId
+    }))
+  ]
+})
 
 // 修改后的 cancel 函数 - 移除了范围验证和保存
 const cancel = async () => {
@@ -520,47 +554,29 @@ const clearCloudFingerprints = async () => {
           <div style="padding: 20px; font-size: 14px; flex-grow: 1">
             <div>{{ t('theme.mode') }}：</div>
             <div style="margin-top: 10px">
-              <select v-model="(runtime as any).setting.themeMode" @change="setSetting">
-                <option value="system">{{ t('theme.system') }}</option>
-                <option value="light">{{ t('theme.light') }}</option>
-                <option value="dark">{{ t('theme.dark') }}</option>
-              </select>
+              <BaseSelect
+                v-model="(runtime as any).setting.themeMode"
+                :options="themeModeOptions"
+                @change="setSetting"
+              />
             </div>
             <div style="margin-top: 20px">{{ t('common.language') }}：</div>
             <div style="margin-top: 10px">
-              <select v-model="runtime.setting.language" @change="setSetting">
-                <option value="zhCN">简体中文</option>
-                <option value="enUS">English</option>
-              </select>
+              <BaseSelect
+                v-model="runtime.setting.language"
+                :options="languageOptions"
+                @change="setSetting"
+              />
             </div>
             <div style="margin-top: 20px">{{ t('player.audioOutputDevice') }}：</div>
             <div style="margin-top: 10px">
-              <select
+              <BaseSelect
                 v-model="runtime.setting.audioOutputDeviceId"
-                @change="handleAudioOutputChange"
+                :options="audioOutputSelectOptions"
                 :disabled="!audioOutputSupported || isEnumeratingAudioOutputs"
-              >
-                <option :value="AUDIO_FOLLOW_SYSTEM_ID">
-                  {{ t('player.audioOutputFollowSystem') }}
-                </option>
-                <option
-                  v-for="(device, index) in audioOutputDevices"
-                  :key="device.deviceId || `audio-output-${index}`"
-                  :value="device.deviceId"
-                >
-                  {{ device.label || `${t('player.audioOutputDeviceUnknown')} ${index + 1}` }}
-                </option>
-              </select>
-              <div
-                v-if="isEnumeratingAudioOutputs"
-                style="margin-top: 6px; font-size: 12px; color: #999"
-              >
-                {{ t('player.audioOutputRefreshing') }}
-              </div>
-              <div
-                v-else-if="audioOutputError"
-                style="margin-top: 6px; font-size: 12px; color: #e81123"
-              >
+                @change="handleAudioOutputChange"
+              />
+              <div v-if="audioOutputError" style="margin-top: 6px; font-size: 12px; color: #e81123">
                 {{ audioOutputError }}
               </div>
             </div>
@@ -584,28 +600,19 @@ const clearCloudFingerprints = async () => {
             </div>
             <div style="margin-top: 20px">{{ t('player.waveformStyle') }}：</div>
             <div style="margin-top: 10px">
-              <select v-model="(runtime as any).setting.waveformStyle" @change="setSetting">
-                <option value="SoundCloud">
-                  {{ t('player.waveformStyleSoundCloud') }}
-                </option>
-                <option value="Fine">
-                  {{ t('player.waveformStyleFine') }}
-                </option>
-                <option value="RGB">
-                  {{ t('player.waveformStyleRGB') }}
-                </option>
-              </select>
+              <BaseSelect
+                v-model="(runtime as any).setting.waveformStyle"
+                :options="waveformStyleOptions"
+                @change="setSetting"
+              />
             </div>
             <div style="margin-top: 20px">{{ t('player.waveformMode') }}：</div>
             <div style="margin-top: 10px">
-              <select v-model="(runtime as any).setting.waveformMode" @change="setSetting">
-                <option value="half">
-                  {{ t('player.waveformModeHalf') }}
-                </option>
-                <option value="full">
-                  {{ t('player.waveformModeFull') }}
-                </option>
-              </select>
+              <BaseSelect
+                v-model="(runtime as any).setting.waveformMode"
+                :options="waveformModeOptions"
+                @change="setSetting"
+              />
             </div>
             <div style="margin-top: 20px">{{ t('fingerprints.scanFormats') }}：</div>
             <div style="margin-top: 10px">
@@ -949,29 +956,6 @@ const clearCloudFingerprints = async () => {
     color: #ffffff;
     background-color: #e81123;
   }
-}
-
-select {
-  border: 1px solid var(--border);
-  background-color: var(--bg-elev);
-  color: var(--text);
-  font-size: 14px;
-  width: 200px;
-  height: 25px;
-  padding-left: 5px;
-  outline: none;
-
-  &:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.25);
-  }
-}
-
-/* 美化选项内容 */
-option {
-  padding: 5px;
-  background-color: var(--bg-elev);
-  color: var(--text);
 }
 
 .chooseDirDiv {
