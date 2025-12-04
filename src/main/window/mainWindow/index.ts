@@ -13,11 +13,99 @@ import { registerImportHandlers } from './importHandlers'
 import { registerFilesystemHandlers } from './filesystemHandlers'
 import { registerAudioConversionHandlers } from './audioConversionHandlers'
 import { createProgressSender } from './progress'
+import type { IPlayerGlobalShortcuts, PlayerGlobalShortcutAction } from 'src/types/globals'
 
 let mainWindow: BrowserWindow | null = null
 const getMainWindow = () => mainWindow
 const sendProgress = createProgressSender(getMainWindow)
 let sharedHandlersRegistered = false
+const playerShortcutActions: PlayerGlobalShortcutAction[] = [
+  'fastForward',
+  'fastBackward',
+  'nextSong',
+  'previousSong'
+]
+const playerShortcutActionsSet = new Set<PlayerGlobalShortcutAction>(playerShortcutActions)
+const fallbackPlayerShortcuts: IPlayerGlobalShortcuts = {
+  fastForward: 'Shift+Alt+Right',
+  fastBackward: 'Shift+Alt+Left',
+  nextSong: 'Shift+Alt+Down',
+  previousSong: 'Shift+Alt+Up'
+}
+const registeredPlaybackShortcuts = new Map<PlayerGlobalShortcutAction, string>()
+
+const ensurePlayerShortcutConfig = (): IPlayerGlobalShortcuts => {
+  const current = store.settingConfig.playerGlobalShortcuts
+  const safeValue: IPlayerGlobalShortcuts =
+    current && typeof current === 'object'
+      ? {
+          fastForward: current.fastForward || fallbackPlayerShortcuts.fastForward,
+          fastBackward: current.fastBackward || fallbackPlayerShortcuts.fastBackward,
+          nextSong: current.nextSong || fallbackPlayerShortcuts.nextSong,
+          previousSong: current.previousSong || fallbackPlayerShortcuts.previousSong
+        }
+      : { ...fallbackPlayerShortcuts }
+  store.settingConfig.playerGlobalShortcuts = safeValue
+  return safeValue
+}
+
+const registerPlaybackShortcut = (
+  action: PlayerGlobalShortcutAction,
+  accelerator: string
+): boolean => {
+  if (!mainWindow) return false
+  const prevShortcut = registeredPlaybackShortcuts.get(action)
+  if (prevShortcut === accelerator) {
+    return true
+  }
+  if (prevShortcut) {
+    try {
+      globalShortcut.unregister(prevShortcut)
+    } catch {}
+    registeredPlaybackShortcuts.delete(action)
+  }
+  if (!accelerator) {
+    return true
+  }
+  const success = globalShortcut.register(accelerator, () => {
+    try {
+      mainWindow?.webContents.send('player/global-shortcut', action)
+    } catch {}
+  })
+  if (!success) {
+    if (prevShortcut) {
+      const reverted = globalShortcut.register(prevShortcut, () => {
+        try {
+          mainWindow?.webContents.send('player/global-shortcut', action)
+        } catch {}
+      })
+      if (reverted) {
+        registeredPlaybackShortcuts.set(action, prevShortcut)
+      }
+    }
+    return false
+  }
+  registeredPlaybackShortcuts.set(action, accelerator)
+  return true
+}
+
+const unregisterPlaybackGlobalShortcuts = () => {
+  registeredPlaybackShortcuts.forEach((shortcut) => {
+    try {
+      globalShortcut.unregister(shortcut)
+    } catch {}
+  })
+  registeredPlaybackShortcuts.clear()
+}
+
+const registerPlaybackGlobalShortcuts = () => {
+  unregisterPlaybackGlobalShortcuts()
+  if (!mainWindow) return
+  const config = ensurePlayerShortcutConfig()
+  playerShortcutActions.forEach((action) => {
+    registerPlaybackShortcut(action, config[action])
+  })
+}
 
 function ensureSharedHandlersRegistered() {
   if (sharedHandlersRegistered) return
@@ -75,6 +163,7 @@ function createWindow() {
         mainWindow.minimize()
       }
     })
+    registerPlaybackGlobalShortcuts()
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -159,6 +248,28 @@ function createWindow() {
     return true
   })
 
+  ipcMain.handle(
+    'playerGlobalShortcut:update',
+    async (
+      _e,
+      payload: { action: PlayerGlobalShortcutAction; accelerator: string } | undefined
+    ) => {
+      const action = payload?.action
+      const accelerator = typeof payload?.accelerator === 'string' ? payload.accelerator.trim() : ''
+      if (!action || !playerShortcutActionsSet.has(action) || !accelerator) {
+        return { success: false }
+      }
+      const success = registerPlaybackShortcut(action, accelerator)
+      if (!success) {
+        return { success: false }
+      }
+      const config = ensurePlayerShortcutConfig()
+      config[action] = accelerator
+      await fs.outputJson(url.settingConfigFileUrl, store.settingConfig)
+      return { success: true }
+    }
+  )
+
   ipcMain.on('checkForUpdates', () => {
     if (updateWindow.instance === null) {
       updateWindow.createWindow()
@@ -188,6 +299,7 @@ function createWindow() {
     ipcMain.removeHandler('changeGlobalShortcut')
     ipcMain.removeHandler('reSelectLibrary')
     globalShortcut.unregister(store.settingConfig.globalCallShortcut)
+    unregisterPlaybackGlobalShortcuts()
     mainWindow = null
   })
 }

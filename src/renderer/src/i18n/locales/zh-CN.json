@@ -568,7 +568,18 @@
     "globalCallShortcut": "聚焦/最小化 FRKB 窗口快捷键",
     "enterNewShortcut": "请直接在键盘上输入新的快捷键",
     "shortcutSetFailed": "快捷键设置失败，可能是由于冲突或错误",
-    "tryOtherCombinations": "请尝试其他组合"
+    "tryOtherCombinations": "请尝试其他组合",
+    "playerGlobalShortcuts": "全局播放快捷键",
+    "playerGlobalShortcutsHint": "即使窗口最小化，也可以通过这些组合键快进、快退或切歌。",
+    "globalFastForwardShortcut": "全局快进",
+    "globalFastBackwardShortcut": "全局快退",
+    "globalNextShortcut": "全局下一首",
+    "globalPreviousShortcut": "全局上一首",
+    "playerShortcutPrompt": "为 {action} 设置全局快捷键",
+    "globalArrowControl": "全局方向键控制",
+    "globalPlayerShortcutHint": "默认推荐使用 Shift + Alt + 方向键，也可在设置中自定义。",
+    "globalPreviousNext": "全局上一首 / 下一首",
+    "globalFastBackwardForward": "全局快退 / 快进"
   },
   "playlist": {
     "clearCache": "清除歌单缓存",

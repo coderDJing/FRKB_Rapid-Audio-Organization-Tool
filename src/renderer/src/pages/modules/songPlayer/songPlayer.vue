@@ -12,6 +12,7 @@ import {
   nextTick
 } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
+import type { IpcRendererEvent } from 'electron'
 import { WebAudioPlayer } from './webAudioPlayer'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import musicIcon from '@renderer/assets/musicIcon.png?asset'
@@ -323,6 +324,7 @@ onMounted(() => {
   } catch (_) {}
 
   window.addEventListener('resize', updateParentWaveformWidth)
+  window.electron.ipcRenderer.on('player/global-shortcut', handleGlobalPlayerShortcut)
 })
 
 // 歌曲移动、删除、播放控制等统一动作
@@ -412,6 +414,33 @@ const playerState = {
 }
 usePlayerHotkeys(hotkeyActions, playerState, runtime)
 
+type GlobalPlayerShortcutAction = 'fastForward' | 'fastBackward' | 'nextSong' | 'previousSong'
+const handleGlobalPlayerShortcut = (
+  _event: IpcRendererEvent,
+  action: GlobalPlayerShortcutAction
+) => {
+  if (!waveformShow.value) {
+    return
+  }
+  if ((action === 'nextSong' || action === 'previousSong') && selectSongListDialogShow.value) {
+    return
+  }
+  switch (action) {
+    case 'fastForward':
+      playerActions.fastForward()
+      break
+    case 'fastBackward':
+      playerActions.fastBackward()
+      break
+    case 'nextSong':
+      playerActions.nextSong()
+      break
+    case 'previousSong':
+      playerActions.previousSong()
+      break
+  }
+}
+
 watch(
   () => runtime.setting.audioOutputDeviceId,
   (newValue) => {
@@ -442,6 +471,7 @@ onUnmounted(() => {
   window.removeEventListener('resize', updateParentWaveformWidth)
   emitter.off('player/replay-current-song', handleReplayRequest)
   emitter.off('external-open/play', handleExternalOpenPlay)
+  window.electron.ipcRenderer.removeListener('player/global-shortcut', handleGlobalPlayerShortcut)
 })
 
 // 切歌响应（含预加载命中）

@@ -564,7 +564,18 @@
     "globalCallShortcut": "Toggle FRKB focus/minimize",
     "enterNewShortcut": "Type a new shortcut.",
     "shortcutSetFailed": "Failed to set shortcut. May conflict.",
-    "tryOtherCombinations": "Try another combo."
+    "tryOtherCombinations": "Try another combo.",
+    "playerGlobalShortcuts": "Global playback shortcuts",
+    "playerGlobalShortcutsHint": "These combos still work even if the app is minimized.",
+    "globalFastForwardShortcut": "Global forward",
+    "globalFastBackwardShortcut": "Global rewind",
+    "globalNextShortcut": "Global next track",
+    "globalPreviousShortcut": "Global previous track",
+    "playerShortcutPrompt": "Set a global shortcut for {action}",
+    "globalArrowControl": "Global arrow-key control",
+    "globalPlayerShortcutHint": "Shift + Alt + Arrow is the default combo—you can customize it anytime in Settings.",
+    "globalPreviousNext": "Global previous / next",
+    "globalFastBackwardForward": "Global rewind / forward"
   },
   "playlist": {
     "clearCache": "Clear playlist cache",
