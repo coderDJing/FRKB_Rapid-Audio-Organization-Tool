@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, computed, useTemplateRef } from 'vue'
 import { t } from '@renderer/utils/translate'
 import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
+import BaseSelect from '@renderer/components/BaseSelect.vue'
 import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
 import { v4 as uuidV4 } from 'uuid'
@@ -38,6 +39,12 @@ type ConvertDefaults = {
 }
 
 const supportedFormats = ref<SupportedAudioFormat[]>([])
+const formatOptions = computed(() =>
+  supportedFormats.value.map((fmt) => ({
+    label: fmt.toUpperCase(),
+    value: fmt
+  }))
+)
 const form = ref<ConvertDefaults>({
   targetFormat: 'mp3',
   bitrateKbps: 320,
@@ -171,16 +178,13 @@ const cancel = () => props.cancelCallback?.()
         <div style="padding: 20px; font-size: 14px">
           <div>{{ t('convert.targetFormat') }}：</div>
           <div style="margin-top: 10px">
-            <select
+            <BaseSelect
               v-model="form.targetFormat"
-              style="width: 200px"
+              :options="formatOptions"
+              :width="200"
               class="flashing-border"
               :class="{ 'is-flashing': flashArea == 'targetFormat' }"
-            >
-              <option v-for="fmt in supportedFormats" :key="fmt" :value="fmt">
-                {{ fmt.toUpperCase() }}
-              </option>
-            </select>
+            />
           </div>
 
           <div style="margin-top: 20px">{{ t('convert.strategy') }}：</div>
@@ -238,27 +242,5 @@ const cancel = () => props.cancelCallback?.()
   text-align: left;
   font-size: 14px;
   width: 140px;
-}
-
-select {
-  border: 1px solid var(--border);
-  background-color: var(--bg-elev);
-  color: var(--text);
-  font-size: 14px;
-  width: 200px;
-  height: 25px;
-  padding-left: 5px;
-  outline: none;
-
-  &:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.25);
-  }
-}
-
-option {
-  padding: 5px;
-  background-color: var(--bg-elev);
-  color: var(--text);
 }
 </style>
