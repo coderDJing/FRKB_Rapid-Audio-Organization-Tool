@@ -4,7 +4,7 @@ import { log } from '../log'
 import store from '../store'
 import url from '../url'
 import mainWindow from '../window/mainWindow'
-import type { ISettingConfig } from '../../types/globals'
+import type { IPlayerGlobalShortcuts, ISettingConfig } from '../../types/globals'
 import fs = require('fs-extra')
 
 const platform = process.platform
@@ -20,6 +20,13 @@ const defaultConvertDefaults: NonNullable<ISettingConfig['convertDefaults']> = {
   overwrite: false,
   backupOnReplace: true,
   addFingerprint: false
+}
+
+const defaultPlayerGlobalShortcuts: IPlayerGlobalShortcuts = {
+  fastForward: 'Shift+Alt+Right',
+  fastBackward: 'Shift+Alt+Left',
+  nextSong: 'Shift+Alt+Down',
+  previousSong: 'Shift+Alt+Up'
 }
 
 const defaultSettings = {
@@ -50,6 +57,7 @@ const defaultSettings = {
   databaseUrl: '',
   globalCallShortcut:
     platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
+  playerGlobalShortcuts: { ...defaultPlayerGlobalShortcuts },
   hiddenPlayControlArea: false,
   waveformStyle: 'SoundCloud' as 'SoundCloud' | 'RGB',
   waveformMode: 'half',
@@ -101,6 +109,25 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
     ...defaultSettings,
     ...loadedSettings
   }
+  const sanitizeShortcut = (value: unknown, fallback: string) =>
+    typeof value === 'string' && value.trim() ? value : fallback
+  const sanitizePlayerShortcuts = (
+    value: Partial<IPlayerGlobalShortcuts> | undefined
+  ): IPlayerGlobalShortcuts => {
+    const base = { ...defaultPlayerGlobalShortcuts }
+    if (!value || typeof value !== 'object') {
+      return base
+    }
+    return {
+      fastForward: sanitizeShortcut(value.fastForward, base.fastForward),
+      fastBackward: sanitizeShortcut(value.fastBackward, base.fastBackward),
+      nextSong: sanitizeShortcut(value.nextSong, base.nextSong),
+      previousSong: sanitizeShortcut(value.previousSong, base.previousSong)
+    }
+  }
+  mergedSettings.playerGlobalShortcuts = sanitizePlayerShortcuts(
+    (mergedSettings as any).playerGlobalShortcuts
+  )
 
   const finalSettings: ISettingConfig = {
     ...mergedSettings,
