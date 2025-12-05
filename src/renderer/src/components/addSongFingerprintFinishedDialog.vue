@@ -28,52 +28,54 @@ const formatDurationSec = (ms: number) => {
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div class="inner" v-dialog-drag="'.dialog-title'">
-      <div class="title dialog-title">{{ t('fingerprints.updateCompleted') }}</div>
-      <div class="stats">
-        <div class="section">
-          <div class="section-title">{{ t('import.overview') }}</div>
-          <div class="chips">
-            <div class="chip" :class="{ success: (summary?.fingerprintAddedCount || 0) > 0 }">
-              <div class="num">{{ summary?.fingerprintAddedCount || 0 }}</div>
-              <div class="cap">{{ t('import.newFingerprints') }}</div>
-            </div>
-            <div class="chip">
-              <div class="num">{{ summary?.duplicatesRemovedCount || 0 }}</div>
-              <div class="cap">{{ t('import.removedSkippedDuplicates') }}</div>
-            </div>
-            <div class="chip" :class="{ danger: (summary?.analyzeFailedCount || 0) > 0 }">
-              <div class="num">{{ summary?.analyzeFailedCount || 0 }}</div>
-              <div class="cap">{{ t('import.analysisFailed') }}</div>
-            </div>
-            <div class="chip">
-              <div class="num">{{ formatDurationSec(summary?.durationMs || 0) }}</div>
-              <div class="cap">{{ t('cloudSync.duration') }} ({{ t('player.seconds') }})</div>
+      <div class="title dialog-title dialog-header">{{ t('fingerprints.updateCompleted') }}</div>
+      <div class="stats-body">
+        <div class="stats">
+          <div class="section">
+            <div class="section-title">{{ t('import.overview') }}</div>
+            <div class="chips">
+              <div class="chip" :class="{ success: (summary?.fingerprintAddedCount || 0) > 0 }">
+                <div class="num">{{ summary?.fingerprintAddedCount || 0 }}</div>
+                <div class="cap">{{ t('import.newFingerprints') }}</div>
+              </div>
+              <div class="chip">
+                <div class="num">{{ summary?.duplicatesRemovedCount || 0 }}</div>
+                <div class="cap">{{ t('import.removedSkippedDuplicates') }}</div>
+              </div>
+              <div class="chip" :class="{ danger: (summary?.analyzeFailedCount || 0) > 0 }">
+                <div class="num">{{ summary?.analyzeFailedCount || 0 }}</div>
+                <div class="cap">{{ t('import.analysisFailed') }}</div>
+              </div>
+              <div class="chip">
+                <div class="num">{{ formatDurationSec(summary?.durationMs || 0) }}</div>
+                <div class="cap">{{ t('cloudSync.duration') }} ({{ t('player.seconds') }})</div>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="section">
-          <div class="section-title">{{ t('import.totalFingerprints') }}</div>
-          <div class="section-body">
-            <span class="count-pair">
-              <span class="count-text">{{ summary?.fingerprintTotalBefore || 0 }}</span>
-              <span class="arrow" aria-hidden="true">
-                <svg viewBox="0 0 24 24">
-                  <path
-                    d="M5 12h12M13 6l6 6-6 6"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  ></path>
-                </svg>
+          <div class="section">
+            <div class="section-title">{{ t('import.totalFingerprints') }}</div>
+            <div class="section-body">
+              <span class="count-pair">
+                <span class="count-text">{{ summary?.fingerprintTotalBefore || 0 }}</span>
+                <span class="arrow" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path
+                      d="M5 12h12M13 6l6 6-6 6"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    ></path>
+                  </svg>
+                </span>
+                <span class="count-text">{{ summary?.fingerprintTotalAfter || 0 }}</span>
               </span>
-              <span class="count-text">{{ summary?.fingerprintTotalAfter || 0 }}</span>
-            </span>
+            </div>
           </div>
         </div>
       </div>
-      <div class="actions">
+      <div class="dialog-footer">
         <div class="button" @click="closeWithAnimation(() => emits('close'))">
           {{ t('common.close') }}
         </div>
@@ -85,15 +87,17 @@ const formatDurationSec = (ms: number) => {
 <style scoped lang="scss">
 .inner {
   width: 520px;
-  padding: 20px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
 }
 .title {
-  text-align: center;
-  font-weight: bold;
   color: var(--text);
+}
+.stats-body {
+  padding: 20px;
+  flex: 1;
+  min-height: 0;
 }
 .stats {
   display: flex;
@@ -179,11 +183,5 @@ const formatDurationSec = (ms: number) => {
   width: 14px;
   height: 14px;
   display: block;
-}
-.actions {
-  display: flex;
-  justify-content: center;
-  gap: 0;
-  padding-top: 10px;
 }
 </style>

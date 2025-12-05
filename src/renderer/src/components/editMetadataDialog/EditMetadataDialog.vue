@@ -57,7 +57,7 @@ const {
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div class="inner" v-dialog-drag="'.dialog-title'">
       <div class="top-block">
-        <div class="dialog-title">{{ t('metadata.dialogTitle') }}</div>
+        <div class="dialog-title dialog-header">{{ t('metadata.dialogTitle') }}</div>
         <div class="body">
           <OverlayScrollbarsComponent
             :options="{
@@ -243,7 +243,7 @@ const {
         </div>
       </div>
 
-      <div class="footer">
+      <div class="dialog-footer">
         <div
           class="button"
           :class="{ disabled: loading || submitting }"
@@ -291,13 +291,7 @@ const {
 }
 
 .dialog-title {
-  text-align: center;
-  height: 30px;
-  line-height: 30px;
-  font-size: 14px;
   font-weight: bold;
-  background-color: var(--bg);
-  border-bottom: 1px solid var(--border);
 }
 
 .body {
@@ -527,15 +521,6 @@ const {
   margin-top: 8px;
   color: var(--accent);
   font-size: 13px;
-}
-
-.footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 12px 18px 18px;
-  border-top: 1px solid var(--border);
-  background-color: var(--bg);
 }
 
 .hidden-input {

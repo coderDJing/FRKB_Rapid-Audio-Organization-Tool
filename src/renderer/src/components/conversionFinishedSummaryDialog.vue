@@ -29,48 +29,50 @@ const formatDurationSec = (ms?: number) => {
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div class="inner" v-dialog-drag="'.dialog-title'">
-      <div class="title dialog-title">{{ t('convert.completed') }}</div>
-      <div class="stats">
-        <div class="section">
-          <div class="section-title">{{ t('import.overview') }}</div>
-          <div class="chips">
-            <div class="chip">
-              <div class="num">{{ summary?.success || 0 }}</div>
-              <div class="cap">{{ t('convert.converted') }}</div>
-            </div>
-            <div class="chip">
-              <div class="num">{{ summary?.skipped || 0 }}</div>
-              <div class="cap">{{ t('convert.skippedSameFormat') }}</div>
-            </div>
-            <div class="chip" :class="{ danger: (summary?.failed || 0) > 0 }">
-              <div class="num">{{ summary?.failed || 0 }}</div>
-              <div class="cap">{{ t('convert.failed') }}</div>
-            </div>
-            <div class="chip">
-              <div class="num">{{ formatDurationSec(summary?.durationMs) }}</div>
-              <div class="cap">{{ t('cloudSync.duration') }} ({{ t('player.seconds') }})</div>
+      <div class="title dialog-title dialog-header">{{ t('convert.completed') }}</div>
+      <div class="stats-body">
+        <div class="stats">
+          <div class="section">
+            <div class="section-title">{{ t('import.overview') }}</div>
+            <div class="chips">
+              <div class="chip">
+                <div class="num">{{ summary?.success || 0 }}</div>
+                <div class="cap">{{ t('convert.converted') }}</div>
+              </div>
+              <div class="chip">
+                <div class="num">{{ summary?.skipped || 0 }}</div>
+                <div class="cap">{{ t('convert.skippedSameFormat') }}</div>
+              </div>
+              <div class="chip" :class="{ danger: (summary?.failed || 0) > 0 }">
+                <div class="num">{{ summary?.failed || 0 }}</div>
+                <div class="cap">{{ t('convert.failed') }}</div>
+              </div>
+              <div class="chip">
+                <div class="num">{{ formatDurationSec(summary?.durationMs) }}</div>
+                <div class="cap">{{ t('cloudSync.duration') }} ({{ t('player.seconds') }})</div>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="section">
-          <div class="section-title">{{ t('import.overview') }}</div>
-          <div class="chips">
-            <div class="chip">
-              <div class="num">{{ summary?.renamed || 0 }}</div>
-              <div class="cap">{{ t('convert.createdNew') }}</div>
-            </div>
-            <div class="chip">
-              <div class="num">{{ summary?.overwritten || 0 }}</div>
-              <div class="cap">{{ t('convert.replaced') }}</div>
-            </div>
-            <div class="chip" :class="{ success: (summary?.fingerprintAddedCount || 0) > 0 }">
-              <div class="num">{{ summary?.fingerprintAddedCount || 0 }}</div>
-              <div class="cap">{{ t('import.newFingerprints') }}</div>
+          <div class="section">
+            <div class="section-title">{{ t('import.overview') }}</div>
+            <div class="chips">
+              <div class="chip">
+                <div class="num">{{ summary?.renamed || 0 }}</div>
+                <div class="cap">{{ t('convert.createdNew') }}</div>
+              </div>
+              <div class="chip">
+                <div class="num">{{ summary?.overwritten || 0 }}</div>
+                <div class="cap">{{ t('convert.replaced') }}</div>
+              </div>
+              <div class="chip" :class="{ success: (summary?.fingerprintAddedCount || 0) > 0 }">
+                <div class="num">{{ summary?.fingerprintAddedCount || 0 }}</div>
+                <div class="cap">{{ t('import.newFingerprints') }}</div>
+              </div>
             </div>
           </div>
         </div>
       </div>
-      <div class="actions">
+      <div class="dialog-footer">
         <div class="button" @click="close">{{ t('common.close') }}</div>
       </div>
     </div>
@@ -80,15 +82,17 @@ const formatDurationSec = (ms?: number) => {
 <style scoped lang="scss">
 .inner {
   width: 520px;
-  padding: 20px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
 }
 .title {
-  text-align: center;
-  font-weight: bold;
   color: var(--text);
+}
+.stats-body {
+  padding: 20px;
+  flex: 1;
+  min-height: 0;
 }
 .stats {
   display: flex;
@@ -138,10 +142,5 @@ const formatDurationSec = (ms?: number) => {
 }
 .chip.success .num {
   color: #9fe870;
-}
-.actions {
-  display: flex;
-  justify-content: center;
-  padding-top: 10px;
 }
 </style>

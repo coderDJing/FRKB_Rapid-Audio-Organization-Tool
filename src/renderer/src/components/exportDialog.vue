@@ -115,53 +115,40 @@ onUnmounted(() => {
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
-      style="
-        width: 450px;
-        height: 300px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-      "
+      style="width: 450px; height: 300px; display: flex; flex-direction: column"
       class="inner"
       v-dialog-drag="'.dialog-title'"
     >
-      <div>
-        <div
-          class="dialog-title"
-          style="text-align: center; height: 30px; line-height: 30px; font-size: 14px"
-        >
-          <span style="font-weight: bold">{{ t(props.title) }} {{ t('export.exportTo') }}</span>
-        </div>
-        <div style="padding-left: 20px; padding-top: 30px; padding-right: 20px">
-          <div style="display: flex">
-            <div class="formLabel">
-              <span>{{ t('tracks.exportToFolder') }}：</span>
-            </div>
-            <div style="width: 290px">
-              <div
-                class="chooseDirDiv flashing-border"
-                @click="clickChooseDir()"
-                :title="folderPathVal"
-                :class="{ 'is-flashing': flashArea == 'folderPathVal' }"
-              >
-                {{ folderPathVal }}
-              </div>
+      <div class="dialog-title dialog-header">
+        <span>{{ t(props.title) }} {{ t('export.exportTo') }}</span>
+      </div>
+      <div style="padding: 20px 20px 0">
+        <div style="display: flex">
+          <div class="formLabel">
+            <span>{{ t('tracks.exportToFolder') }}：</span>
+          </div>
+          <div style="width: 290px">
+            <div
+              class="chooseDirDiv flashing-border"
+              @click="clickChooseDir()"
+              :title="folderPathVal"
+              :class="{ 'is-flashing': flashArea == 'folderPathVal' }"
+            >
+              {{ folderPathVal }}
             </div>
           </div>
-          <div style="margin-top: 30px; display: flex">
-            <div class="formLabel" style="text-align: right">
-              <span>{{ t('tracks.deleteAfterExport') }}：</span>
-            </div>
-            <div style="flex: 1; width: 21px; height: 21px; display: flex; align-items: center">
-              <singleCheckbox v-model="deleteSongsAfterExport" />
-            </div>
+        </div>
+        <div style="margin-top: 30px; display: flex">
+          <div class="formLabel" style="text-align: right">
+            <span>{{ t('tracks.deleteAfterExport') }}：</span>
+          </div>
+          <div style="flex: 1; width: 21px; height: 21px; display: flex; align-items: center">
+            <singleCheckbox v-model="deleteSongsAfterExport" />
           </div>
         </div>
       </div>
-      <div style="display: flex; justify-content: center; padding-bottom: 10px">
-        <div class="button" style="margin-right: 10px" @click="confirm()">
-          {{ t('common.confirm') }} (E)
-        </div>
+      <div class="dialog-footer">
+        <div class="button" @click="confirm()">{{ t('common.confirm') }} (E)</div>
         <div class="button" @click="cancel()">{{ t('common.cancel') }} (Esc)</div>
       </div>
     </div>

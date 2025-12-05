@@ -255,53 +255,54 @@ onUnmounted(() => {
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div class="inner" v-dialog-drag="'.dialog-title'">
-      <div class="title dialog-title">{{ t('cloudSync.syncFingerprints') }}</div>
-      <div v-if="configured === false" class="hint">{{ t('cloudSync.notConfigured') }}</div>
-      <div class="stages">
-        <div
-          class="stage"
-          v-for="(s, i) in stages"
-          :key="s.key"
-          :class="{ active: i <= currentPhaseIndex, current: i === currentPhaseIndex }"
-        >
-          <div class="dot"></div>
-          <div class="label">{{ t(s.label) }}</div>
-        </div>
-      </div>
-      <div class="progress">
-        <div class="bar">
-          <div class="fill" :style="{ width: percent + '%' }">
-            <div class="gloss"></div>
+      <div class="title dialog-title dialog-header">{{ t('cloudSync.syncFingerprints') }}</div>
+      <div class="body">
+        <div v-if="configured === false" class="hint">{{ t('cloudSync.notConfigured') }}</div>
+        <div class="stages">
+          <div
+            class="stage"
+            v-for="(s, i) in stages"
+            :key="s.key"
+            :class="{ active: i <= currentPhaseIndex, current: i === currentPhaseIndex }"
+          >
+            <div class="dot"></div>
+            <div class="label">{{ t(s.label) }}</div>
           </div>
-          <div class="percentText">{{ percent }}%</div>
         </div>
-        <div class="progress-details">
-          <template v-if="phase === 'checking'">
-            <span>{{ t('cloudSync.clientCount') }}: {{ progressDetails.clientCount ?? '-' }}</span>
-            <span class="sep">|</span>
-            <span>{{ t('cloudSync.serverCount') }}: {{ progressDetails.serverCount ?? '-' }}</span>
-          </template>
-          <template v-else-if="phase === 'diffing'">
-            <span>{{ t('cloudSync.toUpload') }}: {{ progressDetails.toAddCount ?? 0 }}</span>
-          </template>
-          <template v-else-if="phase === 'pulling'">
-            <span>{{ t('cloudSync.pulledPages') }}: {{ progressDetails.pulledPages ?? 0 }}</span>
-            <span class="sep">/</span>
-            <span>{{ t('cloudSync.totalPages') }}: {{ progressDetails.totalPages ?? 0 }}</span>
-          </template>
+        <div class="progress">
+          <div class="bar">
+            <div class="fill" :style="{ width: percent + '%' }">
+              <div class="gloss"></div>
+            </div>
+            <div class="percentText">{{ percent }}%</div>
+          </div>
+          <div class="progress-details">
+            <template v-if="phase === 'checking'">
+              <span
+                >{{ t('cloudSync.clientCount') }}: {{ progressDetails.clientCount ?? '-' }}</span
+              >
+              <span class="sep">|</span>
+              <span
+                >{{ t('cloudSync.serverCount') }}: {{ progressDetails.serverCount ?? '-' }}</span
+              >
+            </template>
+            <template v-else-if="phase === 'diffing'">
+              <span>{{ t('cloudSync.toUpload') }}: {{ progressDetails.toAddCount ?? 0 }}</span>
+            </template>
+            <template v-else-if="phase === 'pulling'">
+              <span>{{ t('cloudSync.pulledPages') }}: {{ progressDetails.pulledPages ?? 0 }}</span>
+              <span class="sep">/</span>
+              <span>{{ t('cloudSync.totalPages') }}: {{ progressDetails.totalPages ?? 0 }}</span>
+            </template>
+          </div>
         </div>
+        <div class="log" v-if="logMsg">{{ logMsg }}</div>
       </div>
-      <div class="actions">
+      <div class="dialog-footer">
         <div
           class="button"
           :class="{ disabled: syncing }"
-          style="
-            margin-right: 10px;
-            width: 90px;
-            text-align: center;
-            height: 25px;
-            line-height: 25px;
-          "
+          style="width: 90px; text-align: center; height: 25px; line-height: 25px"
           @click="startSync"
         >
           {{ t('cloudSync.startSync') }}
@@ -314,7 +315,6 @@ onUnmounted(() => {
           {{ t('common.close') }} (Esc)
         </div>
       </div>
-      <div class="log" v-if="logMsg">{{ logMsg }}</div>
     </div>
   </div>
   <div
@@ -323,68 +323,70 @@ onUnmounted(() => {
     :class="{ 'dialog-visible': summaryDialogVisible }"
   >
     <div class="inner" v-dialog-drag="'.dialog-title'">
-      <div class="title dialog-title">{{ t('cloudSync.syncCompleted') }}</div>
-      <div class="stats">
-        <div class="section">
-          <div class="section-title">{{ t('cloudSync.overview') }}</div>
-          <div class="chips">
-            <div class="chip" :class="{ success: (summary.addedToServerCount || 0) > 0 }">
-              <div class="num">{{ summary.addedToServerCount }}</div>
-              <div class="cap">{{ t('cloudSync.uploadedNew') }}</div>
-            </div>
-            <div class="chip" :class="{ success: (summary.pulledToClientCount || 0) > 0 }">
-              <div class="num">{{ summary.pulledToClientCount }}</div>
-              <div class="cap">{{ t('cloudSync.pulledNew') }}</div>
-            </div>
-            <div class="chip">
-              <div class="num">{{ formatDurationSec(summary.durationMs) }}</div>
-              <div class="cap">{{ t('cloudSync.duration') }} ({{ t('player.seconds') }})</div>
+      <div class="title dialog-title dialog-header">{{ t('cloudSync.syncCompleted') }}</div>
+      <div class="body summary-body">
+        <div class="stats">
+          <div class="section">
+            <div class="section-title">{{ t('cloudSync.overview') }}</div>
+            <div class="chips">
+              <div class="chip" :class="{ success: (summary.addedToServerCount || 0) > 0 }">
+                <div class="num">{{ summary.addedToServerCount }}</div>
+                <div class="cap">{{ t('cloudSync.uploadedNew') }}</div>
+              </div>
+              <div class="chip" :class="{ success: (summary.pulledToClientCount || 0) > 0 }">
+                <div class="num">{{ summary.pulledToClientCount }}</div>
+                <div class="cap">{{ t('cloudSync.pulledNew') }}</div>
+              </div>
+              <div class="chip">
+                <div class="num">{{ formatDurationSec(summary.durationMs) }}</div>
+                <div class="cap">{{ t('cloudSync.duration') }} ({{ t('player.seconds') }})</div>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="section">
-          <div class="section-title">{{ t('cloudSync.totalChanges') }}</div>
-          <div class="section-body">
-            <span class="count-pair">
-              <span class="count-text"
-                >{{ t('cloudSync.clientCount') }}: {{ summary.clientInitialCount }}</span
-              >
-              <span class="arrow" aria-hidden="true">
-                <svg viewBox="0 0 24 24">
-                  <path
-                    d="M5 12h12M13 6l6 6-6 6"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  ></path>
-                </svg>
+          <div class="section">
+            <div class="section-title">{{ t('cloudSync.totalChanges') }}</div>
+            <div class="section-body">
+              <span class="count-pair">
+                <span class="count-text"
+                  >{{ t('cloudSync.clientCount') }}: {{ summary.clientInitialCount }}</span
+                >
+                <span class="arrow" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path
+                      d="M5 12h12M13 6l6 6-6 6"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    ></path>
+                  </svg>
+                </span>
+                <span class="count-text">{{ summary.totalClientCountAfter }}</span>
               </span>
-              <span class="count-text">{{ summary.totalClientCountAfter }}</span>
-            </span>
-            <span class="count-pair" style="margin-left: 16px">
-              <span class="count-text"
-                >{{ t('cloudSync.serverCount') }}: {{ summary.serverInitialCount }}</span
-              >
-              <span class="arrow" aria-hidden="true">
-                <svg viewBox="0 0 24 24">
-                  <path
-                    d="M5 12h12M13 6l6 6-6 6"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  ></path>
-                </svg>
+              <span class="count-pair" style="margin-left: 16px">
+                <span class="count-text"
+                  >{{ t('cloudSync.serverCount') }}: {{ summary.serverInitialCount }}</span
+                >
+                <span class="arrow" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path
+                      d="M5 12h12M13 6l6 6-6 6"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    ></path>
+                  </svg>
+                </span>
+                <span class="count-text">{{ summary.totalServerCountAfter }}</span>
               </span>
-              <span class="count-text">{{ summary.totalServerCountAfter }}</span>
-            </span>
+            </div>
           </div>
         </div>
       </div>
-      <div class="actions">
+      <div class="dialog-footer">
         <div class="button" @click="closeSummaryAndCancel">
           {{ t('common.close') }}
         </div>
@@ -395,15 +397,23 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .inner {
   width: 520px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.title {
+  color: var(--text);
+}
+.body {
   padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  flex: 1;
+  min-height: 0;
 }
-.title {
-  text-align: center;
-  font-weight: bold;
-  color: var(--text);
+.summary-body {
+  gap: 12px;
 }
 .stages {
   display: flex;
@@ -534,12 +544,6 @@ onUnmounted(() => {
 .progress-details .sep {
   margin: 0 6px;
   color: var(--text-weak);
-}
-.actions {
-  display: flex;
-  justify-content: center;
-  gap: 0;
-  padding-top: 10px;
 }
 .disabled {
   opacity: 0.6;
