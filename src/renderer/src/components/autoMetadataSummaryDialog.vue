@@ -115,10 +115,10 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) => item.status === 
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div class="inner" v-dialog-drag="'.dialog-title'">
+      <div class="dialog-title dialog-header">
+        {{ t('metadata.autoFillSummaryTitle') }}
+      </div>
       <div class="content">
-        <div class="dialog-title">
-          {{ t('metadata.autoFillSummaryTitle') }}
-        </div>
         <div class="stats">
           <div class="section">
             <div class="section-title">{{ t('metadata.autoFillSummaryStatsTitle') }}</div>
@@ -171,9 +171,9 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) => item.status === 
             {{ t('metadata.autoFillSummaryEmpty') }}
           </div>
         </div>
-        <div class="actions">
-          <div class="button" @click="close">{{ t('common.close') }}</div>
-        </div>
+      </div>
+      <div class="dialog-footer">
+        <div class="button" @click="close">{{ t('common.close') }}</div>
       </div>
     </div>
   </div>
@@ -184,7 +184,7 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) => item.status === 
   width: 640px;
   max-height: 80vh;
   height: 80vh;
-  padding: 20px;
+  padding: 0;
   display: flex;
   flex-direction: column;
 }
@@ -194,11 +194,9 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) => item.status === 
   gap: 12px;
   flex: 1;
   min-height: 0;
+  padding: 20px;
 }
 .dialog-title {
-  font-weight: bold;
-  text-align: center;
-  font-size: 15px;
   flex-shrink: 0;
 }
 .stats {
@@ -365,10 +363,5 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) => item.status === 
   color: var(--text-secondary, #888);
   padding: 20px;
   text-align: center;
-}
-.actions {
-  display: flex;
-  justify-content: center;
-  flex-shrink: 0;
 }
 </style>

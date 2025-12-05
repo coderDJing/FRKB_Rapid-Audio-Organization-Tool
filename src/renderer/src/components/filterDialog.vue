@@ -95,65 +95,54 @@ onUnmounted(() => {
     <div
       class="inner"
       v-dialog-drag="'.dialog-title'"
-      style="
-        width: 420px;
-        min-height: 240px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-      "
+      style="width: 420px; min-height: 240px; display: flex; flex-direction: column"
     >
-      <div>
-        <div
-          class="dialog-title"
-          style="text-align: center; height: 30px; line-height: 30px; font-size: 14px"
-        >
-          <span style="font-weight: bold">{{
-            props.type === 'text' ? t('filters.filterByText') : t('filters.filterByDuration')
-          }}</span>
-        </div>
-        <div style="padding: 10px 20px 10px 20px">
-          <template v-if="props.type === 'text'">
-            <input
-              v-model="text"
-              class="filter-input"
-              type="text"
-              :placeholder="t('filters.keywordPlaceholder')"
-              style="width: 100%"
-            />
-          </template>
-          <template v-else>
-            <div class="radio-group">
-              <label class="radio"
-                ><input type="radio" value="gte" v-model="op" /><span class="dot"></span
-                >{{ t('filters.greaterOrEqual') }}</label
-              >
-              <label class="radio"
-                ><input type="radio" value="lte" v-model="op" /><span class="dot"></span
-                >{{ t('filters.lessOrEqual') }}</label
-              >
-              <label class="radio"
-                ><input type="radio" value="eq" v-model="op" /><span class="dot"></span
-                >{{ t('filters.equals') }}</label
-              >
-            </div>
-            <input
-              v-model="duration"
-              @blur="duration = normalizeMmSs(duration)"
-              class="filter-input"
-              type="text"
-              :placeholder="t('filters.durationPlaceholder')"
-              style="width: 100%"
-            />
-            <div style="margin-top: 8px; display: flex; gap: 8px">
-              <div class="tag" @click="duration = '01:30'">01:30</div>
-              <div class="tag" @click="duration = '03:00'">03:00</div>
-              <div class="tag" @click="duration = '05:00'">05:00</div>
-            </div>
-          </template>
-        </div>
+      <div class="dialog-title dialog-header">
+        <span>{{
+          props.type === 'text' ? t('filters.filterByText') : t('filters.filterByDuration')
+        }}</span>
       </div>
-      <div style="display: flex; justify-content: center; padding: 0 20px 10px 20px; gap: 10px">
+      <div style="padding: 10px 20px; flex: 1; overflow-y: auto">
+        <template v-if="props.type === 'text'">
+          <input
+            v-model="text"
+            class="filter-input"
+            type="text"
+            :placeholder="t('filters.keywordPlaceholder')"
+            style="width: 100%"
+          />
+        </template>
+        <template v-else>
+          <div class="radio-group">
+            <label class="radio"
+              ><input type="radio" value="gte" v-model="op" /><span class="dot"></span
+              >{{ t('filters.greaterOrEqual') }}</label
+            >
+            <label class="radio"
+              ><input type="radio" value="lte" v-model="op" /><span class="dot"></span
+              >{{ t('filters.lessOrEqual') }}</label
+            >
+            <label class="radio"
+              ><input type="radio" value="eq" v-model="op" /><span class="dot"></span
+              >{{ t('filters.equals') }}</label
+            >
+          </div>
+          <input
+            v-model="duration"
+            @blur="duration = normalizeMmSs(duration)"
+            class="filter-input"
+            type="text"
+            :placeholder="t('filters.durationPlaceholder')"
+            style="width: 100%"
+          />
+          <div style="margin-top: 8px; display: flex; gap: 8px">
+            <div class="tag" @click="duration = '01:30'">01:30</div>
+            <div class="tag" @click="duration = '03:00'">03:00</div>
+            <div class="tag" @click="duration = '05:00'">05:00</div>
+          </div>
+        </template>
+      </div>
+      <div class="dialog-footer" style="padding: 10px 20px 18px; gap: 10px">
         <div class="button" style="width: 90px; text-align: center" @click="handleConfirm">
           {{ t('common.confirm') }} (E)
         </div>

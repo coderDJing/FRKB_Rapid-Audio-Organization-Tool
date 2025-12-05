@@ -49,22 +49,17 @@ onUnmounted(() => {
       class="inner"
       v-dialog-drag="'.dialog-title'"
       :style="'height:' + (innerHeight || 220) + 'px;' + 'width:' + (innerWidth || 460) + 'px;'"
-      style="display: flex; flex-direction: column; justify-content: space-between"
+      style="display: flex; flex-direction: column"
     >
-      <div>
-        <div
-          class="dialog-title"
-          style="text-align: center; height: 30px; line-height: 30px; font-size: 14px"
-        >
-          <span style="font-weight: bold">{{ props.title }}</span>
-        </div>
-        <div style="padding-left: 20px; padding-right: 20px">
-          <div v-for="line in props.content || []" style="margin-top: 10px; text-align: left">
-            <span>{{ line }}</span>
-          </div>
+      <div class="dialog-title dialog-header">
+        <span>{{ props.title }}</span>
+      </div>
+      <div style="padding: 0 20px; flex: 1; overflow-y: auto">
+        <div v-for="line in props.content || []" style="margin-top: 10px; text-align: left">
+          <span>{{ line }}</span>
         </div>
       </div>
-      <div style="display: flex; justify-content: center; padding-bottom: 10px; gap: 10px">
+      <div class="dialog-footer">
         <div
           v-for="(opt, i) in props.options"
           :key="opt.key"

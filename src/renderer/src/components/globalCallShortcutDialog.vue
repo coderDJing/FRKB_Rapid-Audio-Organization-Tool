@@ -104,39 +104,29 @@ onUnmounted(() => {
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
-      style="
-        width: 350px;
-        height: 200px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-      "
+      style="width: 350px; height: 200px; display: flex; flex-direction: column"
       class="inner"
       v-dialog-drag="'.dialog-title'"
     >
-      <div>
-        <div
-          class="dialog-title"
-          style="text-align: center; height: 30px; line-height: 30px; font-size: 14px"
-        >
-          <span style="font-weight: bold">{{ t('shortcuts.enterNewShortcut') }}</span>
-        </div>
-        <div style="width: 100%; height: 100px; line-height: 100px; text-align: center">
-          {{ shortcutValue }}
-        </div>
+      <div class="dialog-title dialog-header">
+        <span>{{ t('shortcuts.enterNewShortcut') }}</span>
       </div>
-      <div style="display: flex; justify-content: center; padding-bottom: 10px">
-        <div class="button" style="margin-right: 10px" @click="confirm()">
-          {{ t('common.confirm') }} (E)
-        </div>
+      <div class="shortcut-preview">
+        {{ shortcutValue }}
+      </div>
+      <div class="dialog-footer">
+        <div class="button" @click="confirm()">{{ t('common.confirm') }} (E)</div>
         <div class="button" @click="cancel()">{{ t('common.cancel') }} (Esc)</div>
       </div>
     </div>
   </div>
 </template>
 <style lang="scss" scoped>
-.formLabel {
-  text-align: left;
-  font-size: 14px;
+.shortcut-preview {
+  width: 100%;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 </style>

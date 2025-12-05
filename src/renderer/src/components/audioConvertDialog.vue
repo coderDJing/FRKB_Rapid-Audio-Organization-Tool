@@ -166,75 +166,60 @@ const cancel = () => {
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
-      style="
-        width: 500px;
-        height: 400px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-      "
+      style="width: 500px; height: 400px; display: flex; flex-direction: column"
       class="inner"
       v-dialog-drag="'.dialog-title'"
     >
-      <div>
-        <div
-          class="dialog-title"
-          style="text-align: center; height: 30px; line-height: 30px; font-size: 14px"
-        >
-          <span style="font-weight: bold">{{ t('convert.title') }}</span>
+      <div class="dialog-title dialog-header">
+        <span>{{ t('convert.title') }}</span>
+      </div>
+      <div style="padding: 20px; font-size: 14px; flex: 1; overflow-y: auto">
+        <div>{{ t('convert.targetFormat') }}：</div>
+        <div style="margin-top: 10px">
+          <BaseSelect
+            v-model="form.targetFormat"
+            :options="formatOptions"
+            :width="200"
+            class="flashing-border"
+            :class="{ 'is-flashing': flashArea == 'targetFormat' }"
+          />
         </div>
-        <div style="padding: 20px; font-size: 14px">
-          <div>{{ t('convert.targetFormat') }}：</div>
-          <div style="margin-top: 10px">
-            <BaseSelect
-              v-model="form.targetFormat"
-              :options="formatOptions"
-              :width="200"
-              class="flashing-border"
-              :class="{ 'is-flashing': flashArea == 'targetFormat' }"
-            />
-          </div>
 
-          <div style="margin-top: 20px">{{ t('convert.strategy') }}：</div>
-          <div style="margin-top: 10px">
-            <singleRadioGroup
-              name="convertStrategy"
-              :options="[
-                { label: t('convert.newFile'), value: 'new_file' },
-                { label: t('convert.replaceOriginal'), value: 'replace' }
-              ]"
-              v-model="(form as any).strategy"
-              :optionFontSize="12"
-            />
-          </div>
+        <div style="margin-top: 20px">{{ t('convert.strategy') }}：</div>
+        <div style="margin-top: 10px">
+          <singleRadioGroup
+            name="convertStrategy"
+            :options="[
+              { label: t('convert.newFile'), value: 'new_file' },
+              { label: t('convert.replaceOriginal'), value: 'replace' }
+            ]"
+            v-model="(form as any).strategy"
+            :optionFontSize="12"
+          />
+        </div>
 
-          <div style="margin-top: 20px">
-            {{ t('convert.preserveMetadata') }}：
-            <img
-              ref="metadataHintRef"
-              :src="hintIcon"
-              style="width: 15px; height: 15px; margin-left: 6px"
-              :draggable="false"
-              class="theme-icon"
-            />
-            <bubbleBox :dom="metadataHintRef || undefined" :title="metadataHint" :maxWidth="240" />
-          </div>
-          <div style="margin-top: 10px">
-            <singleCheckbox v-model="(form as any).preserveMetadata" />
-          </div>
+        <div style="margin-top: 20px">
+          {{ t('convert.preserveMetadata') }}：
+          <img
+            ref="metadataHintRef"
+            :src="hintIcon"
+            style="width: 15px; height: 15px; margin-left: 6px"
+            :draggable="false"
+            class="theme-icon"
+          />
+          <bubbleBox :dom="metadataHintRef || undefined" :title="metadataHint" :maxWidth="240" />
+        </div>
+        <div style="margin-top: 10px">
+          <singleCheckbox v-model="(form as any).preserveMetadata" />
+        </div>
 
-          <div style="margin-top: 20px">{{ t('convert.addFingerprint') }}：</div>
-          <div style="margin-top: 10px">
-            <singleCheckbox v-model="(form as any).addFingerprint" />
-          </div>
+        <div style="margin-top: 20px">{{ t('convert.addFingerprint') }}：</div>
+        <div style="margin-top: 10px">
+          <singleCheckbox v-model="(form as any).addFingerprint" />
         </div>
       </div>
-      <div style="display: flex; justify-content: center; padding-bottom: 10px; height: 30px">
-        <div
-          class="button"
-          style="margin-right: 10px; width: 90px; text-align: center"
-          @click="confirm()"
-        >
+      <div class="dialog-footer">
+        <div class="button" style="width: 90px; text-align: center" @click="confirm()">
           {{ t('common.confirm') }} (E)
         </div>
         <div class="button" @click="cancel()" style="width: 90px; text-align: center">

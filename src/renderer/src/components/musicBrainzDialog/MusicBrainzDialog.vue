@@ -75,7 +75,7 @@ const {
 <template>
   <div class="dialog musicbrainz-dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div class="inner" v-dialog-drag="'.dialog-title'">
-      <div class="dialog-title">{{ t('metadata.musicbrainzDialogTitle') }}</div>
+      <div class="dialog-title dialog-header">{{ t('metadata.musicbrainzDialogTitle') }}</div>
       <div class="body">
         <OverlayScrollbarsComponent
           :options="{
@@ -314,7 +314,7 @@ const {
         </OverlayScrollbarsComponent>
       </div>
 
-      <div class="footer">
+      <div class="dialog-footer">
         <div
           class="button"
           :class="{ disabled: !canConfirm }"
@@ -343,13 +343,8 @@ const {
 }
 
 .dialog-title {
-  text-align: center;
-  height: 32px;
-  line-height: 32px;
-  font-size: 14px;
   font-weight: bold;
-  border-bottom: 1px solid var(--border);
-  background-color: var(--bg);
+  font-size: 14px;
 }
 
 .body {
@@ -383,15 +378,6 @@ const {
 .tab.active {
   color: var(--accent);
   border-color: var(--accent);
-}
-
-.footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 12px 20px 16px;
-  border-top: 1px solid var(--border);
-  background-color: var(--bg);
 }
 
 .section-title {

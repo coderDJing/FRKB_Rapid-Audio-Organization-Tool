@@ -248,128 +248,113 @@ onUnmounted(() => {
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
-      style="
-        width: 500px;
-        height: 510px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-      "
+      style="width: 500px; height: 530px; display: flex; flex-direction: column"
       class="inner"
       v-dialog-drag="'.dialog-title'"
     >
-      <div>
-        <div
-          class="dialog-title"
-          style="text-align: center; height: 30px; line-height: 30px; font-size: 14px"
-        >
-          <span style="font-weight: bold">{{
-            t('library.importNewTracks', { libraryType: toLibraryDisplayName(props.libraryName) })
-          }}</span>
-        </div>
-        <div style="padding: 20px; font-size: 14px">
-          <template v-if="props.mode === 'scan'">
-            <div>{{ t('library.selectFilesAndFolders') }}：</div>
-            <div style="margin-top: 10px">
-              <div
-                ref="fileSelectRef"
-                class="chooseDirDiv flashing-border"
-                @click="clickChooseDir()"
-                :class="{ 'is-flashing': flashArea == 'selectedPaths' }"
-              >
-                {{ selectedPathsDisplay || t('library.clickToSelect') }}
-              </div>
-              <bubbleBox
-                :dom="fileSelectRef || undefined"
-                :title="selectedPathsDisplay || t('library.clickToSelect')"
-                :maxWidth="320"
-              />
-            </div>
-          </template>
-
-          <div style="margin-top: 20px">{{ t('library.selectPlaylist') }}：</div>
+      <div class="dialog-title dialog-header">
+        <span>{{
+          t('library.importNewTracks', { libraryType: toLibraryDisplayName(props.libraryName) })
+        }}</span>
+      </div>
+      <div style="padding: 20px; font-size: 14px; flex: 1; overflow-y: auto">
+        <template v-if="props.mode === 'scan'">
+          <div>{{ t('library.selectFilesAndFolders') }}：</div>
           <div style="margin-top: 10px">
             <div
-              ref="songListSelectRef"
+              ref="fileSelectRef"
               class="chooseDirDiv flashing-border"
-              @click="clickChooseSongList()"
-              :class="{ 'is-flashing': flashArea == 'songListPathVal' }"
+              @click="clickChooseDir()"
+              :class="{ 'is-flashing': flashArea == 'selectedPaths' }"
             >
-              {{ songListSelectedDisplay || t('library.clickToSelect') }}
+              {{ selectedPathsDisplay || t('library.clickToSelect') }}
             </div>
             <bubbleBox
-              :dom="songListSelectRef || undefined"
-              :title="songListSelectedDisplay || t('library.clickToSelect')"
+              :dom="fileSelectRef || undefined"
+              :title="selectedPathsDisplay || t('library.clickToSelect')"
               :maxWidth="320"
             />
           </div>
+        </template>
 
-          <div style="margin-top: 20px">{{ t('library.deleteAfterImport') }}：</div>
-          <div style="margin-top: 10px">
-            <singleCheckbox v-model="settingData.isDeleteSourceFile" />
+        <div style="margin-top: 20px">{{ t('library.selectPlaylist') }}：</div>
+        <div style="margin-top: 10px">
+          <div
+            ref="songListSelectRef"
+            class="chooseDirDiv flashing-border"
+            @click="clickChooseSongList()"
+            :class="{ 'is-flashing': flashArea == 'songListPathVal' }"
+          >
+            {{ songListSelectedDisplay || t('library.clickToSelect') }}
           </div>
+          <bubbleBox
+            :dom="songListSelectRef || undefined"
+            :title="songListSelectedDisplay || t('library.clickToSelect')"
+            :maxWidth="320"
+          />
+        </div>
 
-          <div style="margin-top: 20px">{{ t('library.addToFingerprintLibrary') }}：</div>
-          <div style="margin-top: 10px; display: inline-flex; align-items: center; gap: 6px">
-            <singleCheckbox v-model="settingData.isPushSongFingerprintLibrary" />
-            <img
-              ref="hint2Ref"
-              :src="hintIcon"
-              style="width: 15px; height: 15px"
-              :draggable="false"
-              class="theme-icon"
-            />
-            <bubbleBox
-              :dom="hint2Ref || undefined"
-              :title="t('library.fingerprintHint')"
-              :maxWidth="240"
-            />
-          </div>
+        <div style="margin-top: 20px">{{ t('library.deleteAfterImport') }}：</div>
+        <div style="margin-top: 10px">
+          <singleCheckbox v-model="settingData.isDeleteSourceFile" />
+        </div>
 
-          <div style="margin-top: 20px">{{ t('library.deduplicateMode') }}：</div>
-          <div style="margin-top: 10px">
-            <singleRadioGroup
-              :options="[
-                { label: t('library.deduplicateModeLibrary'), value: 'library' },
-                { label: t('library.deduplicateModeBatch'), value: 'batch' },
-                { label: t('library.deduplicateModeNone'), value: 'none' }
-              ]"
-              v-model="settingData.deduplicateMode as any"
-              name="dedupMode"
-              :optionFontSize="12"
-            >
-              <template #option="{ opt }">
-                <span class="label">{{ opt.label }}</span>
-                <template v-if="opt.value !== 'none'">
-                  <img
-                    :ref="(el: any) => setDedupOptionHintRef(opt.value, el)"
-                    :src="hintIcon"
-                    style="width: 14px; height: 14px; margin-left: 6px"
-                    :draggable="false"
-                    class="theme-icon"
-                  />
-                  <bubbleBox
-                    :dom="(dedupOptionHintRefs[opt.value] || undefined) as any"
-                    :title="
-                      opt.value === 'library'
-                        ? t('library.deduplicateHint')
-                        : t('library.deduplicateBatchHint')
-                    "
-                    :maxWidth="320"
-                  />
-                </template>
+        <div style="margin-top: 20px">{{ t('library.addToFingerprintLibrary') }}：</div>
+        <div style="margin-top: 10px; display: inline-flex; align-items: center; gap: 6px">
+          <singleCheckbox v-model="settingData.isPushSongFingerprintLibrary" />
+          <img
+            ref="hint2Ref"
+            :src="hintIcon"
+            style="width: 15px; height: 15px"
+            :draggable="false"
+            class="theme-icon"
+          />
+          <bubbleBox
+            :dom="hint2Ref || undefined"
+            :title="t('library.fingerprintHint')"
+            :maxWidth="240"
+          />
+        </div>
+
+        <div style="margin-top: 20px">{{ t('library.deduplicateMode') }}：</div>
+        <div style="margin-top: 10px">
+          <singleRadioGroup
+            :options="[
+              { label: t('library.deduplicateModeLibrary'), value: 'library' },
+              { label: t('library.deduplicateModeBatch'), value: 'batch' },
+              { label: t('library.deduplicateModeNone'), value: 'none' }
+            ]"
+            v-model="settingData.deduplicateMode as any"
+            name="dedupMode"
+            :optionFontSize="12"
+          >
+            <template #option="{ opt }">
+              <span class="label">{{ opt.label }}</span>
+              <template v-if="opt.value !== 'none'">
+                <img
+                  :ref="(el: any) => setDedupOptionHintRef(opt.value, el)"
+                  :src="hintIcon"
+                  style="width: 14px; height: 14px; margin-left: 6px"
+                  :draggable="false"
+                  class="theme-icon"
+                />
+                <bubbleBox
+                  :dom="(dedupOptionHintRefs[opt.value] || undefined) as any"
+                  :title="
+                    opt.value === 'library'
+                      ? t('library.deduplicateHint')
+                      : t('library.deduplicateBatchHint')
+                  "
+                  :maxWidth="320"
+                />
               </template>
-            </singleRadioGroup>
-          </div>
+            </template>
+          </singleRadioGroup>
         </div>
       </div>
 
-      <div style="display: flex; justify-content: center; padding-bottom: 10px">
-        <div
-          class="button"
-          style="margin-right: 10px; width: 90px; text-align: center"
-          @click="confirm()"
-        >
+      <div class="dialog-footer">
+        <div class="button" style="width: 90px; text-align: center" @click="confirm()">
           {{ t('common.confirm') }} (E)
         </div>
         <div class="button" @click="cancel()" style="width: 90px; text-align: center">

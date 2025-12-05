@@ -522,22 +522,13 @@ const clearCloudFingerprints = async () => {
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
-      style="
-        width: 60vw;
-        height: 70vh;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-      "
+      style="width: 60vw; height: 70vh; display: flex; flex-direction: column"
       class="inner"
       v-dialog-drag="'.dialog-title'"
     >
       <div style="height: 100%; display: flex; flex-direction: column">
-        <div
-          class="dialog-title"
-          style="text-align: center; height: 30px; line-height: 30px; font-size: 14px"
-        >
-          <span style="font-weight: bold">{{ t('common.setting') }}</span>
+        <div class="dialog-title dialog-header">
+          <span>{{ t('common.setting') }}</span>
         </div>
         <OverlayScrollbarsComponent
           :options="{
@@ -923,7 +914,7 @@ const clearCloudFingerprints = async () => {
             </div>
           </div>
         </OverlayScrollbarsComponent>
-        <div style="display: flex; justify-content: center; padding-bottom: 10px; height: 30px">
+        <div class="dialog-footer">
           <div class="button" @click="cancel">{{ t('common.close') }} (Esc)</div>
         </div>
       </div>
