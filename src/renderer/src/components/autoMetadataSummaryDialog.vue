@@ -3,11 +3,14 @@ import { computed } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { t } from '@renderer/utils/translate'
 import type { IMetadataAutoFillSummary, IMetadataAutoFillItemResult } from 'src/types/globals'
+import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 
 const props = defineProps<{
   summary: IMetadataAutoFillSummary | null
 }>()
 const emits = defineEmits(['close'])
+const { dialogVisible, closeWithAnimation } = useDialogTransition()
+const close = () => closeWithAnimation(() => emits('close'))
 
 const scrollbarOptions = {
   scrollbars: { autoHide: 'leave' as const, autoHideDelay: 50, clickScroll: true },
@@ -110,7 +113,7 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) => item.status === 
 </script>
 
 <template>
-  <div class="dialog unselectable">
+  <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div class="inner" v-dialog-drag="'.dialog-title'">
       <div class="content">
         <div class="dialog-title">
@@ -169,7 +172,7 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) => item.status === 
           </div>
         </div>
         <div class="actions">
-          <div class="button" @click="$emit('close')">{{ t('common.close') }}</div>
+          <div class="button" @click="close">{{ t('common.close') }}</div>
         </div>
       </div>
     </div>

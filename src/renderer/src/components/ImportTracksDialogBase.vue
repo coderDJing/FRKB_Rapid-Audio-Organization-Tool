@@ -13,6 +13,7 @@ import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'
 import { t, toLibraryDisplayName } from '@renderer/utils/translate'
 import { i18n } from '@renderer/i18n'
+import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 
 type Mode = 'scan' | 'drop'
 
@@ -143,6 +144,7 @@ const selectSongListDialogConfirm = (uuid: string) => {
 }
 
 const emits = defineEmits(['cancel'])
+const { dialogVisible, closeWithAnimation } = useDialogTransition()
 
 const flashArea = ref('') // 控制动画是否正在播放
 const flashBorder = (flashAreaName: string) => {
@@ -193,16 +195,20 @@ const confirm = () => {
     localStorage.setItem('scanNewSongDialog', JSON.stringify(settingData.value))
     // 清除已选中的路径，为下次使用做准备
     selectedPaths.value = []
-    ;(props.confirmCallback as Function)()
+    closeWithAnimation(() => {
+      ;(props.confirmCallback as Function)()
+    })
   } else if (props.mode === 'drop') {
     localStorage.setItem('scanNewSongDialog', JSON.stringify(settingData.value))
-    ;(props.confirmCallback as Function)({
-      importingSongListUUID: importingSongListUUID,
-      songListPath: songListSelectedPath,
-      isDeleteSourceFile: settingData.value.isDeleteSourceFile,
-      isComparisonSongFingerprint: settingData.value.deduplicateMode === 'library',
-      isPushSongFingerprintLibrary: settingData.value.isPushSongFingerprintLibrary,
-      deduplicateMode: settingData.value.deduplicateMode
+    closeWithAnimation(() => {
+      ;(props.confirmCallback as Function)({
+        importingSongListUUID: importingSongListUUID,
+        songListPath: songListSelectedPath,
+        isDeleteSourceFile: settingData.value.isDeleteSourceFile,
+        isComparisonSongFingerprint: settingData.value.deduplicateMode === 'library',
+        isPushSongFingerprintLibrary: settingData.value.isPushSongFingerprintLibrary,
+        deduplicateMode: settingData.value.deduplicateMode
+      })
     })
   }
 }
@@ -211,7 +217,10 @@ const cancel = () => {
   localStorage.setItem('scanNewSongDialog', JSON.stringify(settingData.value))
   // 取消时清空当前已选，确保下次新打开为空
   selectedPaths.value = []
-  ;(props.cancelCallback as Function)()
+  closeWithAnimation(() => {
+    ;(props.cancelCallback as Function)()
+    emits('cancel')
+  })
 }
 
 const hint2Ref = useTemplateRef<HTMLImageElement>('hint2Ref')
@@ -237,7 +246,7 @@ onUnmounted(() => {
 })
 </script>
 <template>
-  <div class="dialog unselectable">
+  <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
       style="
         width: 500px;

@@ -7,6 +7,7 @@ import { t } from '@renderer/utils/translate'
 import hintIcon from '@renderer/assets/hint.png?asset'
 import { CONTACT_EMAIL } from '../constants/app'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 const emits = defineEmits(['cancel'])
 const uuid = uuidV4()
 
@@ -15,6 +16,10 @@ const connectivity = ref<null | { success: boolean; message?: string }>(null)
 const limitInfo = ref<null | { success: boolean; limit?: number; message?: string }>(null)
 const testing = ref(false)
 const saving = ref(false)
+const { dialogVisible, closeWithAnimation } = useDialogTransition()
+const cancel = () => {
+  closeWithAnimation(() => emits('cancel'))
+}
 
 const clickTest = async () => {
   if (testing.value) return
@@ -39,7 +44,7 @@ const clickSave = async () => {
       userKey: userKey.value
     })
     if (res?.success) {
-      emits('cancel')
+      cancel()
     } else {
       // 显示内联错误
       connectivity.value = {
@@ -68,7 +73,7 @@ onMounted(async () => {
     void clickTest()
   })
   hotkeys('Esc', uuid, () => {
-    emits('cancel')
+    cancel()
     return false
   })
   utils.setHotkeysScpoe(uuid)
@@ -77,7 +82,7 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
 </script>
 
 <template>
-  <div class="dialog unselectable">
+  <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div class="inner" v-dialog-drag="'.dialog-title'">
       <div class="title dialog-title">{{ t('cloudSync.settings') }}</div>
       <div class="form">
@@ -151,7 +156,7 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
         <div
           class="button"
           style="width: 120px; text-align: center; height: 25px; line-height: 25px"
-          @click="$emit('cancel')"
+          @click="cancel"
         >
           {{ t('common.cancel') }} (Esc)
         </div>

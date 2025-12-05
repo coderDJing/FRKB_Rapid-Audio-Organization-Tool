@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, computed } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
 import { v4 as uuidV4 } from 'uuid'
+import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 
 const uuid = uuidV4()
 const emits = defineEmits(['select'])
@@ -14,7 +15,10 @@ const props = defineProps<{
   innerWidth?: number
 }>()
 
-const clickOption = (key: string) => emits('select', key)
+const { dialogVisible, closeWithAnimation } = useDialogTransition()
+const clickOption = (key: string) => {
+  closeWithAnimation(() => emits('select', key))
+}
 
 // 为常见三选项设置快捷键：enter=Q, reset=E, cancel=Esc
 const keyHint = (key: string, index: number) => {
@@ -36,7 +40,11 @@ onUnmounted(() => {
 })
 </script>
 <template>
-  <div class="dialog unselectable" style="font-size: 14px">
+  <div
+    class="dialog unselectable"
+    :class="{ 'dialog-visible': dialogVisible }"
+    style="font-size: 14px"
+  >
     <div
       class="inner"
       v-dialog-drag="'.dialog-title'"

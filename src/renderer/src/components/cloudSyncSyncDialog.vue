@@ -6,8 +6,16 @@ import utils from '@renderer/utils/utils'
 import { useI18n } from '@renderer/composables/useI18n'
 import confirm from '@renderer/components/confirmDialog'
 import { CONTACT_EMAIL } from '../constants/app'
+import {
+  useDialogTransition,
+  DIALOG_TRANSITION_DURATION
+} from '@renderer/composables/useDialogTransition'
 const emits = defineEmits(['cancel'])
 const uuid = uuidV4()
+const { dialogVisible, closeWithAnimation } = useDialogTransition()
+const cancelDialog = () => {
+  closeWithAnimation(() => emits('cancel'))
+}
 
 const { t } = useI18n()
 
@@ -19,6 +27,26 @@ const phase = ref<
 const percent = ref(0)
 const logMsg = ref('')
 const summary = ref<any | null>(null)
+const summaryShouldRender = ref(false)
+const {
+  dialogVisible: summaryDialogVisible,
+  closeWithAnimation: closeSummaryWithAnimation,
+  show: showSummaryDialog
+} = useDialogTransition(DIALOG_TRANSITION_DURATION, false)
+
+const openSummary = (data: any) => {
+  summary.value = data
+  summaryShouldRender.value = true
+  showSummaryDialog()
+}
+
+const closeSummaryPanel = (after?: () => void) => {
+  closeSummaryWithAnimation(() => {
+    summaryShouldRender.value = false
+    summary.value = null
+    after?.()
+  })
+}
 const progressDetails = ref<any>({})
 
 const stages = [
@@ -43,11 +71,13 @@ const startSync = async () => {
   if (res === 'not_configured') {
     logMsg.value = t('cloudSync.notConfiguredHint')
     window.setTimeout(() => {
-      emits('cancel')
-      window.setTimeout(() => {
-        const evt = new CustomEvent('openDialogFromChild', { detail: 'cloudSync.settings' })
-        window.dispatchEvent(evt)
-      }, 50)
+      closeWithAnimation(() => {
+        emits('cancel')
+        window.setTimeout(() => {
+          const evt = new CustomEvent('openDialogFromChild', { detail: 'cloudSync.settings' })
+          window.dispatchEvent(evt)
+        }, 50)
+      })
     }, 300)
     return
   }
@@ -95,10 +125,11 @@ const handleNotice = (_e: any, payload: any) => {
     contentMsg = t(msg)
   }
   isNoticePromptOpen.value = true
-  // 先关闭同步面板
-  emits('cancel')
-  // 同时弹出提示对话框（非阻塞）
-  void confirm({ title: t('dialog.hint'), content: [contentMsg], confirmShow: false })
+  // 先关闭同步面板再提示
+  closeWithAnimation(() => {
+    emits('cancel')
+    void confirm({ title: t('dialog.hint'), content: [contentMsg], confirmShow: false })
+  })
 }
 const handleProgress = (_e: any, p: any) => {
   phase.value = p.phase
@@ -180,8 +211,9 @@ const handleError = async (_e: any, err: any) => {
 }
 
 const closeSummaryAndCancel = () => {
-  summary.value = null
-  emits('cancel')
+  closeSummaryPanel(() => {
+    cancelDialog()
+  })
 }
 
 const formatDurationSec = (ms: number) => {
@@ -193,7 +225,7 @@ const formatDurationSec = (ms: number) => {
 onMounted(async () => {
   const cfg = await window.electron.ipcRenderer.invoke('cloudSync/config/get')
   configured.value = !!cfg?.userKey
-  hotkeys('Esc', uuid, () => emits('cancel'))
+  hotkeys('Esc', uuid, () => cancelDialog())
   utils.setHotkeysScpoe(uuid)
   // 防止累积：先清理仅由本组件使用的事件
   window.electron.ipcRenderer.removeAllListeners('cloudSync/state')
@@ -207,7 +239,7 @@ onMounted(async () => {
   window.electron.ipcRenderer.on('cloudSync/error', handleError)
   window.electron.ipcRenderer.on('cloudSync/summary', (_e, s) => {
     syncing.value = false
-    summary.value = s
+    openSummary(s)
   })
 })
 onUnmounted(() => {
@@ -221,7 +253,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="dialog unselectable">
+  <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div class="inner" v-dialog-drag="'.dialog-title'">
       <div class="title dialog-title">{{ t('cloudSync.syncFingerprints') }}</div>
       <div v-if="configured === false" class="hint">{{ t('cloudSync.notConfigured') }}</div>
@@ -277,7 +309,7 @@ onUnmounted(() => {
         <div
           class="button"
           style="width: 90px; text-align: center; height: 25px; line-height: 25px"
-          @click="$emit('cancel')"
+          @click="cancelDialog()"
         >
           {{ t('common.close') }} (Esc)
         </div>
@@ -285,7 +317,11 @@ onUnmounted(() => {
       <div class="log" v-if="logMsg">{{ logMsg }}</div>
     </div>
   </div>
-  <div class="dialog unselectable" v-if="summary">
+  <div
+    class="dialog unselectable"
+    v-if="summaryShouldRender"
+    :class="{ 'dialog-visible': summaryDialogVisible }"
+  >
     <div class="inner" v-dialog-drag="'.dialog-title'">
       <div class="title dialog-title">{{ t('cloudSync.syncCompleted') }}</div>
       <div class="stats">

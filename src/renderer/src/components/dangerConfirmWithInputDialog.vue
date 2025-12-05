@@ -4,6 +4,7 @@ import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
 import { v4 as uuidV4 } from 'uuid'
 import { t } from '@renderer/utils/translate'
+import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 
 const uuid = uuidV4()
 const emits = defineEmits(['confirm', 'cancel'])
@@ -21,11 +22,12 @@ const isValid = computed(
   () => inputText.value.trim().toLowerCase() === String(props.confirmKeyword).toLowerCase()
 )
 
+const { dialogVisible, closeWithAnimation } = useDialogTransition()
 const clickConfirm = () => {
   if (!isValid.value) return
-  emits('confirm', { text: inputText.value })
+  closeWithAnimation(() => emits('confirm', { text: inputText.value }))
 }
-const clickCancel = () => emits('cancel')
+const clickCancel = () => closeWithAnimation(() => emits('cancel'))
 
 onMounted(() => {
   hotkeys('E,Enter', uuid, () => {
@@ -39,7 +41,11 @@ onUnmounted(() => {
 })
 </script>
 <template>
-  <div class="dialog unselectable" style="font-size: 14px">
+  <div
+    class="dialog unselectable"
+    :class="{ 'dialog-visible': dialogVisible }"
+    style="font-size: 14px"
+  >
     <div
       class="inner"
       v-dialog-drag="'.dialog-title'"

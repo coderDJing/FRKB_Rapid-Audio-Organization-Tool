@@ -5,6 +5,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import utils from '../utils/utils'
 import { v4 as uuidV4 } from 'uuid'
 import { t } from '@renderer/utils/translate'
+import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 
 const uuid = uuidV4()
 const runtime = useRuntimeStore()
@@ -52,17 +53,18 @@ const props = defineProps({
   }
 })
 const emits = defineEmits(['confirm', 'cancel'])
+const { dialogVisible, closeWithAnimation } = useDialogTransition()
 const confirm = () => {
-  emits('confirm')
-  if (props.confirmCallback) {
-    props.confirmCallback()
-  }
+  closeWithAnimation(() => {
+    emits('confirm')
+    props.confirmCallback?.()
+  })
 }
 const cancel = () => {
-  emits('cancel')
-  if (props.cancelCallback) {
-    props.cancelCallback()
-  }
+  closeWithAnimation(() => {
+    emits('cancel')
+    props.cancelCallback?.()
+  })
 }
 
 // 计算容器样式：
@@ -103,7 +105,11 @@ onUnmounted(() => {
 })
 </script>
 <template>
-  <div class="dialog unselectable" style="font-size: 14px">
+  <div
+    class="dialog unselectable"
+    :class="{ 'dialog-visible': dialogVisible }"
+    style="font-size: 14px"
+  >
     <div
       style="display: flex; flex-direction: column; justify-content: space-between"
       class="inner"

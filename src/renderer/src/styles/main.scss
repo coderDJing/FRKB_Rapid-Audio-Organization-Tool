@@ -95,12 +95,30 @@ body,
   color: var(--text);
   overflow: hidden;
   overscroll-behavior: contain;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.24s ease;
 
   .inner {
     border: 1px solid var(--border);
     background-color: var(--bg-elev);
     border-radius: 5px;
     box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+    transform: translateY(16px) scale(0.95);
+    opacity: 0.3;
+    transition:
+      transform 0.24s cubic-bezier(0.33, 1, 0.68, 1),
+      opacity 0.24s ease;
+  }
+
+  &.dialog-visible {
+    opacity: 1;
+    pointer-events: auto;
+
+    .inner {
+      transform: translateY(0) scale(1);
+      opacity: 1;
+    }
   }
 }
 

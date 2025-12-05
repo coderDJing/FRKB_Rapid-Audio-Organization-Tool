@@ -6,6 +6,7 @@ import utils from '../utils/utils'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 const uuid = uuidV4()
 const emits = defineEmits(['cancel'])
 
@@ -67,6 +68,7 @@ const folderPathTooltip = computed(() => {
   return folderPathDisplay.value || t('library.clickToSelect')
 })
 const chooseDirRef = useTemplateRef<HTMLDivElement>('chooseDirRef')
+const { dialogVisible, closeWithAnimation } = useDialogTransition()
 const handleConfirm = async () => {
   if (folderPathVal.value.length === 0) {
     if (!flashArea.value) {
@@ -83,7 +85,7 @@ const handleConfirm = async () => {
   cancel()
 }
 const cancel = () => {
-  emits('cancel')
+  closeWithAnimation(() => emits('cancel'))
 }
 onMounted(() => {
   hotkeys('E,Enter', uuid, () => {
@@ -101,7 +103,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="dialog unselectable">
+  <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
       style="
         width: 500px;
