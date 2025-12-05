@@ -111,44 +111,35 @@ onUnmounted(() => {
     style="font-size: 14px"
   >
     <div
-      style="display: flex; flex-direction: column; justify-content: space-between"
+      style="display: flex; flex-direction: column"
       class="inner"
       v-dialog-drag="'.dialog-title'"
       :style="innerStyle"
     >
-      <div>
+      <div class="dialog-title dialog-header">
+        <span>{{ props.title }}</span>
+      </div>
+      <div
+        style="padding: 10px 20px 20px; overflow-y: auto; flex: 1 1 auto"
+        :class="{ selectable: canCopyText }"
+      >
         <div
-          class="dialog-title"
-          style="text-align: center; height: 30px; line-height: 30px; font-size: 14px"
+          v-for="item of props.content"
+          style="margin-top: 10px"
+          :style="'text-align:' + textAlign"
         >
-          <span style="font-weight: bold">{{ props.title }}</span>
-        </div>
-        <div
-          style="padding-left: 20px; padding-right: 20px; overflow-y: auto; flex: 1 1 auto"
-          :class="{ selectable: canCopyText }"
-        >
-          <div
-            v-for="item of props.content"
-            style="margin-top: 10px"
-            :style="'text-align:' + textAlign"
-          >
-            <span>{{ item }}</span>
-          </div>
+          <span>{{ item }}</span>
         </div>
       </div>
-      <div v-if="confirmShow" style="display: flex; justify-content: center; padding-bottom: 10px">
-        <div
-          class="button"
-          style="margin-right: 10px; width: 90px; text-align: center"
-          @click="confirm()"
-        >
+      <div v-if="confirmShow" class="dialog-footer">
+        <div class="button" style="width: 90px; text-align: center" @click="confirm()">
           {{ confirmLabel }} (E)
         </div>
         <div class="button" style="width: 90px; text-align: center" @click="cancel()">
           {{ cancelLabel }} (Esc)
         </div>
       </div>
-      <div v-if="!confirmShow" style="display: flex; justify-content: center; padding-bottom: 10px">
+      <div v-if="!confirmShow" class="dialog-footer">
         <div class="button" @click="cancel()">{{ t('common.close') }} (Esc)</div>
       </div>
     </div>

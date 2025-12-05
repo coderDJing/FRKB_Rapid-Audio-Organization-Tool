@@ -84,71 +84,64 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div class="inner" v-dialog-drag="'.dialog-title'">
-      <div class="title dialog-title">{{ t('cloudSync.settings') }}</div>
-      <div class="form">
-        <div class="row">
-          <div class="label">{{ t('cloudSync.userKey') }}</div>
-          <input v-model="userKey" class="input" placeholder="uuid-v4" style="max-width: 100%" />
-        </div>
-        <div class="row" style="position: relative">
-          <div class="label">{{ t('cloudSync.applyEmailHint') }}</div>
-          <div class="value" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
-            <span>{{ CONTACT_EMAIL }}</span>
-            <span class="link" @click="clickCopyEmail">{{ t('cloudSync.copyEmail') }}</span>
-            <img
-              ref="emailHintIconRef"
-              :src="hintIcon"
-              style="width: 14px; height: 14px; margin-top: 2px"
-              :draggable="false"
-              class="theme-icon"
-            />
-            <bubbleBox
-              :dom="emailHintIconRef || undefined"
-              :title="t('cloudSync.applyEmailInstruction')"
-              :maxWidth="320"
-            />
+      <div class="title dialog-title dialog-header">{{ t('cloudSync.settings') }}</div>
+      <div class="body">
+        <div class="form">
+          <div class="row">
+            <div class="label">{{ t('cloudSync.userKey') }}</div>
+            <input v-model="userKey" class="input" placeholder="uuid-v4" style="max-width: 100%" />
           </div>
-        </div>
-        <div class="row">
-          <div class="label">{{ t('cloudSync.connectivity') }}</div>
-          <div class="value">
-            <span v-if="connectivity === null">{{ t('cloudSync.notTested') }}</span>
-            <span v-else-if="connectivity.success" class="success">
-              {{ t('cloudSync.connectivityOk') }}
-              <template v-if="limitInfo && typeof limitInfo.limit === 'number'">
-                <span class="sep">|</span>
-                <span class="muted">{{ t('cloudSync.limit') }}: {{ limitInfo.limit }}</span>
-              </template>
-            </span>
-            <span v-else class="error">{{
-              t(connectivity.message || 'cloudSync.connectivityFailed')
-            }}</span>
+          <div class="row" style="position: relative">
+            <div class="label">{{ t('cloudSync.applyEmailHint') }}</div>
+            <div
+              class="value"
+              style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap"
+            >
+              <span>{{ CONTACT_EMAIL }}</span>
+              <span class="link" @click="clickCopyEmail">{{ t('cloudSync.copyEmail') }}</span>
+              <img
+                ref="emailHintIconRef"
+                :src="hintIcon"
+                style="width: 14px; height: 14px; margin-top: 2px"
+                :draggable="false"
+                class="theme-icon"
+              />
+              <bubbleBox
+                :dom="emailHintIconRef || undefined"
+                :title="t('cloudSync.applyEmailInstruction')"
+                :maxWidth="320"
+              />
+            </div>
+          </div>
+          <div class="row">
+            <div class="label">{{ t('cloudSync.connectivity') }}</div>
+            <div class="value">
+              <span v-if="connectivity === null">{{ t('cloudSync.notTested') }}</span>
+              <span v-else-if="connectivity.success" class="success">
+                {{ t('cloudSync.connectivityOk') }}
+                <template v-if="limitInfo && typeof limitInfo.limit === 'number'">
+                  <span class="sep">|</span>
+                  <span class="muted">{{ t('cloudSync.limit') }}: {{ limitInfo.limit }}</span>
+                </template>
+              </span>
+              <span v-else class="error">{{
+                t(connectivity.message || 'cloudSync.connectivityFailed')
+              }}</span>
+            </div>
           </div>
         </div>
       </div>
-      <div class="actions">
+      <div class="dialog-footer">
         <div
           class="button"
-          style="
-            margin-right: 10px;
-            width: 120px;
-            text-align: center;
-            height: 25px;
-            line-height: 25px;
-          "
+          style="width: 120px; text-align: center; height: 25px; line-height: 25px"
           @click="clickTest"
         >
           {{ t('cloudSync.testConnectivity') }} (T)
         </div>
         <div
           class="button"
-          style="
-            margin-right: 10px;
-            width: 120px;
-            text-align: center;
-            height: 25px;
-            line-height: 25px;
-          "
+          style="width: 120px; text-align: center; height: 25px; line-height: 25px"
           @click="clickSave"
         >
           {{ t('common.save') }} (E)
@@ -168,15 +161,19 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
 <style scoped lang="scss">
 .inner {
   width: 520px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.title {
+  color: var(--text);
+}
+.body {
   padding: 20px 28px 20px 20px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-}
-.title {
-  text-align: center;
-  font-weight: bold;
-  color: var(--text);
+  flex: 1;
+  min-height: 0;
 }
 .form {
   display: flex;
@@ -229,12 +226,6 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
 .link {
   color: var(--accent);
   cursor: pointer;
-}
-.actions {
-  display: flex;
-  justify-content: center;
-  gap: 0;
-  padding-top: 12px;
 }
 .error {
   color: #e81123;

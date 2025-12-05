@@ -56,13 +56,13 @@ const handleCancel = () => {
 <template>
   <div v-if="shouldRender" class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div class="inner" v-dialog-drag="'.dialog-title'">
-      <div class="title dialog-title">{{ t('errors.diskFullTitle') }}</div>
+      <div class="title dialog-title dialog-header">{{ t('errors.diskFullTitle') }}</div>
       <div class="content">
         <div style="margin-top: 6px">
           {{ t('errors.diskFullInterruptedHint', { done: totalDone, pending: pendingAll }) }}
         </div>
       </div>
-      <div class="actions">
+      <div class="dialog-footer">
         <div class="button" style="width: 90px; text-align: center" @click="handleCancel">
           {{ t('common.skip') }}
         </div>
@@ -81,24 +81,16 @@ const handleCancel = () => {
 <style scoped lang="scss">
 .inner {
   width: 520px;
-  padding: 20px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
 }
 .title {
-  text-align: center;
-  font-weight: bold;
   color: #e5e5e5;
 }
 .content {
+  padding: 20px;
   font-size: 13px;
   color: #d0d0d0;
-}
-.actions {
-  display: flex;
-  justify-content: center;
-  gap: 0;
-  padding-top: 6px;
 }
 </style>

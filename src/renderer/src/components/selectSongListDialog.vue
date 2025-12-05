@@ -472,177 +472,182 @@ watch(
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div class="content inner" v-dialog-drag="'.dialog-title'" @contextmenu.stop="contextmenuEvent">
-      <div class="unselectable libraryTitle dialog-title" v-if="libraryData">
+      <div class="unselectable libraryTitle dialog-title dialog-header" v-if="libraryData">
+        <div class="collapseButtonPlaceholder"></div>
         <span>{{ libraryTitleText }}</span>
-        <div style="display: flex; justify-content: center; align-items: center">
-          <div
-            ref="collapseButtonRef"
-            class="collapseButton"
-            data-dialog-drag-ignore="true"
-            @click="collapseButtonHandleClick()"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="currentColor"
-            >
-              <path d="M9 9H4v1h5V9z" />
-              <path
-                fill-rule="evenodd"
-                clip-rule="evenodd"
-                d="M5 3l1-1h7l1 1v7l-1 1h-2v2l-1 1H3l-1-1V6l1-1h2V3zm1 2h4l1 1v4h2V3H6v2zm4 1H3v7h7V6z"
-              />
-            </svg>
-          </div>
-          <bubbleBox
-            :dom="collapseButtonRef || undefined"
-            :title="t('playlist.collapsibleFolder')"
-          />
-        </div>
-      </div>
-      <!-- 顶部筛选输入框 -->
-      <div class="librarySearchWrapper">
-        <div class="searchRow">
-          <div class="searchInputWrapper">
-            <input
-              v-model="playlistSearch"
-              class="searchInput"
-              @keydown.down.prevent="handleMoveDown"
-              @keydown.up.prevent="handleMoveUp"
-              :placeholder="t('playlist.searchPlaylists')"
-            />
+        <div class="collapseButtonWrapper">
+          <div style="display: flex; justify-content: center; align-items: center">
             <div
-              class="clearBtn"
-              v-show="String(playlistSearch || '').length"
-              @click="playlistSearch = ''"
+              ref="collapseButtonRef"
+              class="collapseButton"
+              data-dialog-drag-ignore="true"
+              @click="collapseButtonHandleClick()"
             >
               <svg
-                width="12"
-                height="12"
-                viewBox="0 0 12 12"
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
                 xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                shape-rendering="geometricPrecision"
+                fill="currentColor"
               >
+                <path d="M9 9H4v1h5V9z" />
                 <path
-                  d="M3 3 L9 9 M9 3 L3 9"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  stroke-linecap="round"
-                  vector-effect="non-scaling-stroke"
+                  fill-rule="evenodd"
+                  clip-rule="evenodd"
+                  d="M5 3l1-1h7l1 1v7l-1 1h-2v2l-1 1H3l-1-1V6l1-1h2V3zm1 2h4l1 1v4h2V3H6v2zm4 1H3v7h7V6z"
                 />
               </svg>
             </div>
-          </div>
-          <div v-if="showCreateNow" class="createNowBtn" @click="createNow">
-            {{ t('playlist.createNow') }}
+            <bubbleBox
+              :dom="collapseButtonRef || undefined"
+              :title="t('playlist.collapsibleFolder')"
+            />
           </div>
         </div>
       </div>
-      <div
-        class="unselectable libraryArea flashing-border"
-        :class="{ 'is-flashing': flashArea == 'selectSongList' }"
-        v-if="libraryData?.children?.length"
-      >
-        <OverlayScrollbarsComponent
-          :options="{
-            scrollbars: {
-              autoHide: 'leave' as const,
-              autoHideDelay: 50,
-              clickScroll: true
-            } as const,
-            overflow: {
-              x: 'hidden',
-              y: 'scroll'
-            } as const
-          }"
-          element="div"
-          style="height: 100%; width: 100%"
-          defer
+      <div class="dialog-body">
+        <!-- 顶部筛选输入框 -->
+        <div class="librarySearchWrapper">
+          <div class="searchRow">
+            <div class="searchInputWrapper">
+              <input
+                v-model="playlistSearch"
+                class="searchInput"
+                @keydown.down.prevent="handleMoveDown"
+                @keydown.up.prevent="handleMoveUp"
+                :placeholder="t('playlist.searchPlaylists')"
+              />
+              <div
+                class="clearBtn"
+                v-show="String(playlistSearch || '').length"
+                @click="playlistSearch = ''"
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 12 12"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  shape-rendering="geometricPrecision"
+                >
+                  <path
+                    d="M3 3 L9 9 M9 3 L3 9"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    vector-effect="non-scaling-stroke"
+                  />
+                </svg>
+              </div>
+            </div>
+            <div v-if="showCreateNow" class="createNowBtn" @click="createNow">
+              {{ t('playlist.createNow') }}
+            </div>
+          </div>
+        </div>
+        <div
+          class="unselectable libraryArea flashing-border"
+          :class="{ 'is-flashing': flashArea == 'selectSongList' }"
+          v-if="libraryData?.children?.length"
         >
-          <template v-if="recentSongListArr.length > 0">
-            <div style="padding-left: 5px">
-              <span style="font-size: 14px">{{ t('library.recentlyUsed') }}</span>
-            </div>
-            <div style="width: 100%; background-color: var(--border); height: 1px">
-              <div style="height: 1px"></div>
-            </div>
+          <OverlayScrollbarsComponent
+            :options="{
+              scrollbars: {
+                autoHide: 'leave' as const,
+                autoHideDelay: 50,
+                clickScroll: true
+              } as const,
+              overflow: {
+                x: 'hidden',
+                y: 'scroll'
+              } as const
+            }"
+            element="div"
+            style="height: 100%; width: 100%"
+            defer
+          >
+            <template v-if="recentSongListArr.length > 0">
+              <div style="padding-left: 5px; padding-bottom: 5px">
+                <span style="font-size: 12px">{{ t('library.recentlyUsed') }}</span>
+              </div>
+              <div style="width: 100%; background-color: var(--border); height: 1px">
+                <div style="height: 1px"></div>
+              </div>
+              <div
+                v-for="item of recentSongListArr.filter(
+                  (x) =>
+                    x.type === 'songList' &&
+                    (!playlistSearch ||
+                      x.dirName?.toLowerCase().includes(String(playlistSearch).toLowerCase()))
+                )"
+                :key="item.uuid"
+                :ref="(el: any) => setRecentRowRef(item.uuid, el)"
+                @click="
+                  ((runtime.dialogSelectedSongListUUID = item.uuid), (selectedArea = 'recent'))
+                "
+                @dblclick="confirmHandle()"
+                :class="{
+                  selectedDir:
+                    selectedArea === 'recent' && item.uuid == runtime.dialogSelectedSongListUUID
+                }"
+                class="recentLibraryItem"
+              >
+                <div
+                  style="width: 20px; justify-content: center; align-items: center; display: flex"
+                >
+                  <img class="songlist-icon" style="width: 13px; height: 13px" :src="listIcon" />
+                </div>
+                <div class="nameRow">
+                  <span class="nameText">{{ item.dirName }}</span>
+                  <span v-if="(runtime as any).setting.showPlaylistTrackCount" class="countBadge">{{
+                    recentCounts[item.uuid] ?? 0
+                  }}</span>
+                </div>
+              </div>
+              <div style="width: 100%; background-color: var(--border); height: 1px">
+                <div style="height: 1px"></div>
+              </div>
+            </template>
+            <template v-for="item of libraryData?.children" :key="item.uuid">
+              <dialogLibraryItem
+                :uuid="item.uuid"
+                :libraryName="libraryData.dirName + 'Dialog'"
+                :filterText="playlistSearch"
+                :suppressHighlight="selectedArea === 'recent'"
+                @dblClickSongList="confirmHandle()"
+                @markTreeSelected="selectedArea = 'tree'"
+              />
+            </template>
             <div
-              v-for="item of recentSongListArr.filter(
-                (x) =>
-                  x.type === 'songList' &&
-                  (!playlistSearch ||
-                    x.dirName?.toLowerCase().includes(String(playlistSearch).toLowerCase()))
-              )"
-              :key="item.uuid"
-              :ref="(el: any) => setRecentRowRef(item.uuid, el)"
-              @click="((runtime.dialogSelectedSongListUUID = item.uuid), (selectedArea = 'recent'))"
-              @dblclick="confirmHandle()"
-              :class="{
-                selectedDir:
-                  selectedArea === 'recent' && item.uuid == runtime.dialogSelectedSongListUUID
-              }"
-              class="recentLibraryItem"
-            >
-              <div style="width: 20px; justify-content: center; align-items: center; display: flex">
-                <img class="songlist-icon" style="width: 13px; height: 13px" :src="listIcon" />
-              </div>
-              <div class="nameRow">
-                <span class="nameText">{{ item.dirName }}</span>
-                <span v-if="(runtime as any).setting.showPlaylistTrackCount" class="countBadge">{{
-                  recentCounts[item.uuid] ?? 0
-                }}</span>
-              </div>
-            </div>
-            <div style="width: 100%; background-color: var(--border); height: 1px">
-              <div style="height: 1px"></div>
-            </div>
-          </template>
-          <template v-for="item of libraryData?.children" :key="item.uuid">
-            <dialogLibraryItem
-              :uuid="item.uuid"
-              :libraryName="libraryData.dirName + 'Dialog'"
-              :filterText="playlistSearch"
-              :suppressHighlight="selectedArea === 'recent'"
-              @dblClickSongList="confirmHandle()"
-              @markTreeSelected="selectedArea = 'tree'"
-            />
-          </template>
-          <div
-            style="flex-grow: 1; min-height: 30px"
-            @dragover.stop.prevent="dragover"
-            @dragenter.stop.prevent="dragenter"
-            @drop.stop="drop"
-            @dragleave.stop="dragleave"
-          ></div>
-        </OverlayScrollbarsComponent>
-      </div>
-      <div
-        class="unselectable flashing-border"
-        :class="{ 'is-flashing': flashArea == 'selectSongList' }"
-        v-else
-        style="
-          max-width: 300px;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          flex-grow: 1;
-          min-height: 0;
-        "
-      >
-        <span style="font-size: 12px; color: var(--text-weak)">{{
-          t('library.rightClickToCreate')
-        }}</span>
+              style="flex-grow: 1; min-height: 30px"
+              @dragover.stop.prevent="dragover"
+              @dragenter.stop.prevent="dragenter"
+              @drop.stop="drop"
+              @dragleave.stop="dragleave"
+            ></div>
+          </OverlayScrollbarsComponent>
+        </div>
+        <div
+          class="unselectable flashing-border"
+          :class="{ 'is-flashing': flashArea == 'selectSongList' }"
+          v-else
+          style="
+            max-width: 300px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-grow: 1;
+            min-height: 0;
+          "
+        >
+          <span style="font-size: 12px; color: var(--text-weak)">{{
+            t('library.rightClickToCreate')
+          }}</span>
+        </div>
       </div>
 
-      <div style="display: flex; justify-content: center; padding-bottom: 10px">
-        <div
-          class="button"
-          style="margin-right: 10px; width: 90px; text-align: center"
-          @click="confirmHandle()"
-        >
+      <div class="dialog-footer footer-centered">
+        <div class="button" style="width: 90px; text-align: center" @click="confirmHandle()">
           {{ t('common.confirm') }} (E)
         </div>
         <div class="button" style="width: 90px; text-align: center" @click="cancel()">
@@ -725,13 +730,27 @@ watch(
   flex-direction: column;
 
   .libraryTitle {
-    height: 35px;
-    line-height: 35px;
-    padding: 0 18px 0 20px;
+    padding: 0 12px 0 12px;
     font-size: 12px;
     font-weight: bold;
     display: flex;
-    justify-content: space-between;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+
+    span {
+      flex: 1;
+      text-align: center;
+    }
+
+    .collapseButtonPlaceholder,
+    .collapseButtonWrapper {
+      width: 32px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-shrink: 0;
+    }
 
     .collapseButton {
       color: var(--text);
@@ -748,6 +767,16 @@ watch(
       }
     }
   }
+}
+.dialog-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background-color: var(--bg);
+}
+.footer-centered {
+  justify-content: center;
 }
 
 .librarySearchWrapper {

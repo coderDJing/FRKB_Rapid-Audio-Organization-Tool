@@ -105,51 +105,32 @@ onUnmounted(() => {
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
-      style="
-        width: 500px;
-        height: 320px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-      "
+      style="width: 500px; height: 320px; display: flex; flex-direction: column"
       class="inner"
       v-dialog-drag="'.dialog-title'"
     >
-      <div>
-        <div
-          class="dialog-title"
-          style="text-align: center; height: 30px; line-height: 30px; font-size: 14px"
-        >
-          <span style="font-weight: bold">{{ t('fingerprints.importDatabase') }}</span>
+      <div class="dialog-title dialog-header">
+        <span>{{ t('fingerprints.importDatabase') }}</span>
+      </div>
+      <div style="padding: 20px; font-size: 14px; flex: 1; overflow-y: auto">
+        <div>{{ t('fingerprints.selectDatabaseFile') }}：</div>
+        <div style="margin-top: 10px">
+          <div
+            ref="chooseDirRef"
+            class="chooseDirDiv flashing-border"
+            @click="clickChooseDir()"
+            :class="{ 'is-flashing': flashArea == 'folderPathVal' }"
+          >
+            {{ folderPathDisplayWithPlaceholder }}
+          </div>
+          <bubbleBox :dom="chooseDirRef || undefined" :title="folderPathTooltip" :maxWidth="320" />
         </div>
-        <div style="padding: 20px; font-size: 14px">
-          <div>{{ t('fingerprints.selectDatabaseFile') }}：</div>
-          <div style="margin-top: 10px">
-            <div
-              ref="chooseDirRef"
-              class="chooseDirDiv flashing-border"
-              @click="clickChooseDir()"
-              :class="{ 'is-flashing': flashArea == 'folderPathVal' }"
-            >
-              {{ folderPathDisplayWithPlaceholder }}
-            </div>
-            <bubbleBox
-              :dom="chooseDirRef || undefined"
-              :title="folderPathTooltip"
-              :maxWidth="320"
-            />
-          </div>
-          <div style="margin-top: 20px; font-size: 12px; color: #999">
-            {{ t('fingerprints.importMergeHint') }}
-          </div>
+        <div style="margin-top: 20px; font-size: 12px; color: #999">
+          {{ t('fingerprints.importMergeHint') }}
         </div>
       </div>
-      <div style="display: flex; justify-content: center; padding-bottom: 10px">
-        <div
-          class="button"
-          style="margin-right: 10px; width: 90px; text-align: center"
-          @click="handleConfirm()"
-        >
+      <div class="dialog-footer">
+        <div class="button" style="width: 90px; text-align: center" @click="handleConfirm()">
           {{ t('common.confirm') }} (E)
         </div>
         <div class="button" style="width: 90px; text-align: center" @click="cancel()">

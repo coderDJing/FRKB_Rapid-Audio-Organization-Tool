@@ -126,33 +126,20 @@ onUnmounted(() => {
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
-      style="
-        width: 350px;
-        height: 200px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-      "
+      style="width: 350px; height: 200px; display: flex; flex-direction: column"
       class="inner"
       v-dialog-drag="'.dialog-title'"
     >
-      <div>
-        <div
-          class="dialog-title"
-          style="text-align: center; height: 30px; line-height: 30px; font-size: 14px"
-        >
-          <span style="font-weight: bold">
-            {{ t('shortcuts.playerShortcutPrompt', { action: actionLabel }) }}
-          </span>
-        </div>
-        <div class="shortcut-preview">
-          {{ shortcutValue }}
-        </div>
+      <div class="dialog-title dialog-header">
+        <span>
+          {{ t('shortcuts.playerShortcutPrompt', { action: actionLabel }) }}
+        </span>
       </div>
-      <div class="actions">
-        <div class="button" style="margin-right: 10px" @click="confirm()">
-          {{ t('common.confirm') }} (E)
-        </div>
+      <div class="shortcut-preview">
+        {{ shortcutValue }}
+      </div>
+      <div class="dialog-footer">
+        <div class="button" @click="confirm()">{{ t('common.confirm') }} (E)</div>
         <div class="button" @click="cancel()">{{ t('common.cancel') }} (Esc)</div>
       </div>
     </div>
@@ -162,14 +149,9 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .shortcut-preview {
   width: 100%;
-  height: 100px;
-  line-height: 100px;
-  text-align: center;
-}
-
-.actions {
+  flex: 1;
   display: flex;
+  align-items: center;
   justify-content: center;
-  padding-bottom: 10px;
 }
 </style>
