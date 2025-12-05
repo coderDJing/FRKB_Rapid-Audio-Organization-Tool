@@ -6,6 +6,7 @@ import { ref, onUnmounted, onMounted } from 'vue'
 import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import confirmDialog from '@renderer/components/confirmDialog'
+import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 const uuid = uuidV4()
 const props = defineProps({
   confirmCallback: {
@@ -20,15 +21,16 @@ const props = defineProps({
 const runtime = useRuntimeStore()
 const shortcutValue = ref(runtime.setting.globalCallShortcut)
 
+const { dialogVisible, closeWithAnimation } = useDialogTransition()
+
 const confirm = async () => {
   if (shortcutValue.value !== runtime.setting.globalCallShortcut) {
-    let result = await window.electron.ipcRenderer.invoke(
+    const result = await window.electron.ipcRenderer.invoke(
       'changeGlobalShortcut',
       shortcutValue.value
     )
     if (result) {
       runtime.setting.globalCallShortcut = shortcutValue.value
-      props.confirmCallback()
     } else {
       await confirmDialog({
         title: t('common.error'),
@@ -37,14 +39,14 @@ const confirm = async () => {
         content: [t('shortcuts.shortcutSetFailed'), t('shortcuts.tryOtherCombinations')],
         confirmShow: false
       })
+      return
     }
-  } else {
-    props.confirmCallback()
   }
+  closeWithAnimation(() => props.confirmCallback())
 }
 
 const cancel = () => {
-  props.cancelCallback()
+  closeWithAnimation(() => props.cancelCallback())
 }
 function isLetterOrDigitOrF1ToF12(event: KeyboardEvent) {
   const keyCode = event.keyCode
@@ -100,7 +102,7 @@ onUnmounted(() => {
 })
 </script>
 <template>
-  <div class="dialog unselectable">
+  <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
       style="
         width: 350px;

@@ -5,6 +5,7 @@ import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'
 import { ref, onUnmounted, onMounted } from 'vue'
 import { t } from '@renderer/utils/translate'
+import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 const uuid = uuidV4()
 const props = defineProps({
   title: {
@@ -21,6 +22,7 @@ const props = defineProps({
   }
 })
 const flashArea = ref('') // 控制动画是否正在播放
+const { dialogVisible, closeWithAnimation } = useDialogTransition()
 
 // 模拟闪烁三次的逻辑（使用 setTimeout）
 const flashBorder = (flashAreaName: string) => {
@@ -75,9 +77,11 @@ const confirm = () => {
       deleteSongsAfterExport: deleteSongsAfterExport.value
     })
   )
-  props.confirmCallback({
-    folderPathVal: folderPathVal.value,
-    deleteSongsAfterExport: deleteSongsAfterExport.value
+  closeWithAnimation(() => {
+    props.confirmCallback({
+      folderPathVal: folderPathVal.value,
+      deleteSongsAfterExport: deleteSongsAfterExport.value
+    })
   })
 }
 
@@ -88,7 +92,9 @@ const cancel = () => {
       deleteSongsAfterExport: deleteSongsAfterExport.value
     })
   )
-  props.cancelCallback()
+  closeWithAnimation(() => {
+    props.cancelCallback()
+  })
 }
 
 onMounted(() => {
@@ -107,7 +113,7 @@ onUnmounted(() => {
 })
 </script>
 <template>
-  <div class="dialog unselectable">
+  <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
       style="
         width: 450px;

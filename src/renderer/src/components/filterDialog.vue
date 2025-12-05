@@ -4,6 +4,7 @@ import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
 import { t } from '@renderer/utils/translate'
 import utils from '@renderer/utils/utils'
+import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 
 type Op = 'eq' | 'gte' | 'lte'
 
@@ -51,15 +52,17 @@ function normalizeMmSs(input: string): string {
   return `${mm}:${ss}`
 }
 
+const { dialogVisible, closeWithAnimation } = useDialogTransition()
+
 const handleConfirm = () => {
-  if (props.type === 'text') {
-    emits('confirm', { type: 'text', text: text.value.trim() })
-  } else {
-    emits('confirm', { type: 'duration', op: op.value, duration: normalizeMmSs(duration.value) })
-  }
+  const payload =
+    props.type === 'text'
+      ? ({ type: 'text', text: text.value.trim() } as const)
+      : ({ type: 'duration', op: op.value, duration: normalizeMmSs(duration.value) } as const)
+  closeWithAnimation(() => emits('confirm', payload))
 }
-const handleCancel = () => emits('cancel')
-const handleClear = () => emits('clear')
+const handleCancel = () => closeWithAnimation(() => emits('cancel'))
+const handleClear = () => closeWithAnimation(() => emits('clear'))
 
 onMounted(() => {
   // 切换热键作用域，防止与全局热键干扰
@@ -84,7 +87,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="dialog unselectable" style="font-size: 14px; color: var(--text)">
+  <div
+    class="dialog unselectable"
+    :class="{ 'dialog-visible': dialogVisible }"
+    style="font-size: 14px; color: var(--text)"
+  >
     <div
       class="inner"
       v-dialog-drag="'.dialog-title'"

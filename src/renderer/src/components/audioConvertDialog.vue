@@ -14,6 +14,7 @@ import {
   type SupportedAudioFormat,
   METADATA_PRESERVABLE_FORMATS
 } from '../../../shared/audioFormats'
+import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 
 const props = defineProps<{
   confirmCallback?: (payload: any) => void
@@ -62,6 +63,7 @@ const form = ref<ConvertDefaults>({
 const metadataCapableFormats = new Set<SupportedAudioFormat>(METADATA_PRESERVABLE_FORMATS)
 const metadataHint = computed(() => t('convert.metadataHint'))
 const metadataHintRef = useTemplateRef<HTMLImageElement>('metadataHintRef')
+const { dialogVisible, closeWithAnimation } = useDialogTransition()
 
 // 必填闪烁提示（参考项目其他弹窗）
 const flashArea = ref('')
@@ -150,13 +152,19 @@ const confirm = async () => {
     const next = { ...setting, convertDefaults: { ...form.value } }
     await window.electron.ipcRenderer.invoke('setSetting', next)
   } catch {}
-  props.confirmCallback?.({ ...form.value })
+  closeWithAnimation(() => {
+    props.confirmCallback?.({ ...form.value })
+  })
 }
-const cancel = () => props.cancelCallback?.()
+const cancel = () => {
+  closeWithAnimation(() => {
+    props.cancelCallback?.()
+  })
+}
 </script>
 
 <template>
-  <div class="dialog unselectable">
+  <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
       style="
         width: 500px;

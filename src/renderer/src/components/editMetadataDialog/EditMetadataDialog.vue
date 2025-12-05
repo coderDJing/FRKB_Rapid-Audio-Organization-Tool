@@ -3,6 +3,7 @@ import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { t } from '@renderer/utils/translate'
 import { useEditMetadataDialog } from './useEditMetadataDialog'
 import type { ISongInfo, ITrackMetadataDetail } from 'src/types/globals'
+import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 
 const props = defineProps<{
   filePath: string
@@ -13,6 +14,8 @@ const props = defineProps<{
   }) => void
   cancelCallback: () => void
 }>()
+
+const { dialogVisible, closeWithAnimation } = useDialogTransition()
 
 const {
   loading,
@@ -43,11 +46,15 @@ const {
   onRemoveCover,
   onRestoreCover,
   onCoverSelected
-} = useEditMetadataDialog(props)
+} = useEditMetadataDialog({
+  ...props,
+  confirmCallback: (payload) => closeWithAnimation(() => props.confirmCallback(payload)),
+  cancelCallback: () => closeWithAnimation(() => props.cancelCallback())
+})
 </script>
 
 <template>
-  <div class="dialog unselectable">
+  <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div class="inner" v-dialog-drag="'.dialog-title'">
       <div class="top-block">
         <div class="dialog-title">{{ t('metadata.dialogTitle') }}</div>

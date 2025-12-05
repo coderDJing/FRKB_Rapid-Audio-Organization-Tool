@@ -7,10 +7,13 @@ import {
   useMusicBrainzDialog,
   type MusicBrainzDialogProps
 } from './composables/useMusicBrainzDialog'
+import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 
 const props = withDefaults(defineProps<MusicBrainzDialogProps>(), {
   initialQuery: () => ({})
 })
+
+const { dialogVisible, closeWithAnimation } = useDialogTransition()
 
 const {
   flashArea,
@@ -58,11 +61,19 @@ const {
   handleConfirm,
   handleCancel,
   onTabClick
-} = useMusicBrainzDialog(props)
+} = useMusicBrainzDialog({
+  ...props,
+  confirmCallback: (payload) => {
+    closeWithAnimation(() => props.confirmCallback(payload))
+  },
+  cancelCallback: () => {
+    closeWithAnimation(() => props.cancelCallback())
+  }
+})
 </script>
 
 <template>
-  <div class="dialog musicbrainz-dialog unselectable">
+  <div class="dialog musicbrainz-dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div class="inner" v-dialog-drag="'.dialog-title'">
       <div class="dialog-title">{{ t('metadata.musicbrainzDialogTitle') }}</div>
       <div class="body">

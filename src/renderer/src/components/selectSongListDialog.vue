@@ -24,6 +24,7 @@ import emitter from '../utils/mitt'
 import type { IDir } from 'src/types/globals'
 import { handleLibraryAreaEmptySpaceDrop } from '../utils/dragUtils'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
+import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 
 const uuid = uuidV4()
 const props = defineProps({
@@ -373,6 +374,8 @@ const flashBorder = (flashAreaName: string) => {
     }
   }, 500)
 }
+const { dialogVisible, closeWithAnimation } = useDialogTransition()
+
 const confirmHandle = () => {
   if (
     runtime.dialogSelectedSongListUUID === '' ||
@@ -404,12 +407,13 @@ const confirmHandle = () => {
       'recentDialogSelectedSongListUUID' + props.libraryName,
       JSON.stringify(recentDialogSelectedSongListUUID)
     )
-    emits('confirm', runtime.dialogSelectedSongListUUID)
+    const selectedUuid = runtime.dialogSelectedSongListUUID
+    closeWithAnimation(() => emits('confirm', selectedUuid))
   }
 }
 const emits = defineEmits(['cancel', 'confirm'])
 const cancel = () => {
-  emits('cancel')
+  closeWithAnimation(() => emits('cancel'))
 }
 
 // 依据选择的 UUID 判定当前高亮区域（用户通过鼠标点击树或最近区时生效）
@@ -466,7 +470,7 @@ watch(
 )
 </script>
 <template>
-  <div class="dialog unselectable">
+  <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div class="content inner" v-dialog-drag="'.dialog-title'" @contextmenu.stop="contextmenuEvent">
       <div class="unselectable libraryTitle dialog-title" v-if="libraryData">
         <span>{{ libraryTitleText }}</span>
