@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { t } from '@renderer/utils/translate'
+import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 
 const props = defineProps<{
   summary: {
@@ -21,6 +22,8 @@ const props = defineProps<{
   } | null
 }>()
 const emits = defineEmits(['close'])
+const { dialogVisible, closeWithAnimation } = useDialogTransition()
+const close = () => closeWithAnimation(() => emits('close'))
 
 const formatDurationSec = (ms: number) => {
   const seconds = ms / 1000
@@ -39,7 +42,7 @@ const showOverviewSection = computed(() => {
 </script>
 
 <template>
-  <div class="dialog unselectable">
+  <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div class="inner" v-dialog-drag="'.dialog-title'">
       <div class="title dialog-title">{{ t('import.completed') }}</div>
       <div class="stats">
@@ -100,7 +103,7 @@ const showOverviewSection = computed(() => {
         </div>
       </div>
       <div class="actions">
-        <div class="button" @click="$emit('close')">{{ t('common.close') }}</div>
+        <div class="button" @click="close">{{ t('common.close') }}</div>
       </div>
     </div>
   </div>

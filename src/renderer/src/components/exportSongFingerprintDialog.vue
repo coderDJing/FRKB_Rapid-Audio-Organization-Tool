@@ -5,6 +5,7 @@ import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
 import { t } from '@renderer/utils/translate'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 const uuid = uuidV4()
 const emits = defineEmits(['cancel'])
 
@@ -67,8 +68,9 @@ const confirm = async () => {
   await window.electron.ipcRenderer.invoke('exportSongFingerprint', folderPathVal.value[0])
   cancel()
 }
+const { dialogVisible, closeWithAnimation } = useDialogTransition()
 const cancel = () => {
-  emits('cancel')
+  closeWithAnimation(() => emits('cancel'))
 }
 onMounted(() => {
   hotkeys('E,Enter', uuid, () => {
@@ -86,7 +88,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="dialog unselectable">
+  <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
       style="
         width: 500px;

@@ -18,9 +18,12 @@ import BaseSelect from '@renderer/components/BaseSelect.vue'
 import { SUPPORTED_AUDIO_FORMATS } from '../../../shared/audioFormats'
 import type { PlayerGlobalShortcutAction } from 'src/types/globals'
 import { mapAcoustIdClientError } from '@renderer/utils/acoustid'
+import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 const runtime = useRuntimeStore()
 const uuid = uuidV4()
 const emits = defineEmits(['cancel'])
+
+const { dialogVisible, closeWithAnimation } = useDialogTransition()
 
 // 响应式的指纹库长度数据
 const songFingerprintListLength = ref(0)
@@ -172,9 +175,10 @@ const audioOutputSelectOptions = computed(() => {
   ]
 })
 
-// 修改后的 cancel 函数 - 移除了范围验证和保存
-const cancel = async () => {
-  emits('cancel')
+const cancel = () => {
+  closeWithAnimation(() => {
+    emits('cancel')
+  })
 }
 
 onMounted(() => {
@@ -476,7 +480,7 @@ const clearCloudFingerprints = async () => {
   const cfg = await window.electron.ipcRenderer.invoke('cloudSync/config/get')
   const userKey = cfg?.userKey || ''
   if (!userKey) {
-    emits('cancel')
+    cancel()
     window.dispatchEvent(new CustomEvent('openDialogFromChild', { detail: 'cloudSync.settings' }))
     await confirm({
       title: t('cloudSync.settings'),
@@ -516,7 +520,7 @@ const clearCloudFingerprints = async () => {
 }
 </script>
 <template>
-  <div class="dialog unselectable">
+  <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
       style="
         width: 60vw;
@@ -971,6 +975,7 @@ const clearCloudFingerprints = async () => {
   font-size: 14px;
   padding-left: 5px;
   box-sizing: border-box;
+
   &:hover {
     background-color: var(--hover);
     border-color: var(--accent);

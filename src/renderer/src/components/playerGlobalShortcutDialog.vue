@@ -7,6 +7,7 @@ import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import confirmDialog from '@renderer/components/confirmDialog'
 import type { PlayerGlobalShortcutAction } from 'src/types/globals'
+import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 
 const props = defineProps<{
   actionKey: PlayerGlobalShortcutAction
@@ -36,10 +37,12 @@ const actionLabelMap: Record<PlayerGlobalShortcutAction, string> = {
 
 const actionLabel = computed(() => actionLabelMap[props.actionKey] || '')
 
+const { dialogVisible, closeWithAnimation } = useDialogTransition()
+
 const confirm = async () => {
   const current = runtime.setting.playerGlobalShortcuts?.[props.actionKey] || ''
   if (shortcutValue.value === current) {
-    props.confirmCallback()
+    closeWithAnimation(() => props.confirmCallback())
     return
   }
   const result = await window.electron.ipcRenderer.invoke('playerGlobalShortcut:update', {
@@ -48,7 +51,7 @@ const confirm = async () => {
   })
   if (result?.success) {
     runtime.setting.playerGlobalShortcuts[props.actionKey] = shortcutValue.value
-    props.confirmCallback()
+    closeWithAnimation(() => props.confirmCallback())
   } else {
     await confirmDialog({
       title: t('common.error'),
@@ -61,7 +64,7 @@ const confirm = async () => {
 }
 
 const cancel = () => {
-  props.cancelCallback()
+  closeWithAnimation(() => props.cancelCallback())
 }
 
 const normalizeKey = (event: KeyboardEvent): string | null => {
@@ -121,7 +124,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="dialog unselectable">
+  <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
       style="
         width: 350px;
