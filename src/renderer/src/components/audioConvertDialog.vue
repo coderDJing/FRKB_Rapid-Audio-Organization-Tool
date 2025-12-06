@@ -166,7 +166,7 @@ const cancel = () => {
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
-      style="width: 500px; height: 400px; display: flex; flex-direction: column"
+      style="width: 500px; height: 450px; display: flex; flex-direction: column"
       class="inner"
       v-dialog-drag="'.dialog-title'"
     >

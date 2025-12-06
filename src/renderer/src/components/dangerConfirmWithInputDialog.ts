@@ -14,7 +14,6 @@ interface DangerConfirmOptions {
 export default (options: DangerConfirmOptions) => {
   return new Promise<{ text: string } | 'cancel'>((resolve) => {
     const div = document.createElement('div')
-    div.setAttribute('class', 'dialog')
     document.body.appendChild(div)
 
     const onConfirm = (payload: { text: string }) => {

@@ -122,6 +122,12 @@ body,
   }
 }
 
+.dialog--dragging {
+  .inner {
+    transition: none !important;
+  }
+}
+
 .dialog-title {
   user-select: none;
   -webkit-user-select: none;
