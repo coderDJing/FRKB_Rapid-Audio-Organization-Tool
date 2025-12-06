@@ -720,7 +720,8 @@ watch(
 }
 
 .content {
-  height: 500px;
+  height: 70vh;
+  max-height: 70vh;
   width: 300px;
   max-width: 300px;
   display: flex;
