@@ -24,40 +24,44 @@
       </svg>
     </div>
     <transition name="base-select-fade">
-      <ul
+      <OverlayScrollbarsComponent
         v-if="isOpen"
         class="base-select__dropdown"
+        :options="scrollbarOptions"
+        element="div"
         :style="{ maxHeight: `${maxHeight}px` }"
-        role="listbox"
         @click.stop
       >
-        <li
-          v-for="(option, index) in normalizedOptions"
-          :key="getOptionKey(option, index)"
-          class="base-select__option"
-          :class="{
-            'is-selected': option.value === modelValue,
-            'is-highlighted': index === highlightIndex,
-            'is-disabled': option.disabled
-          }"
-          role="option"
-          :aria-selected="option.value === modelValue"
-          @click.stop="selectOption(option)"
-        >
-          <slot name="option" :option="option">
-            {{ option.label }}
-          </slot>
-        </li>
-        <li v-if="!normalizedOptions.length" class="base-select__empty">
-          {{ emptyText }}
-        </li>
-      </ul>
+        <ul class="base-select__dropdown-list" role="listbox">
+          <li
+            v-for="(option, index) in normalizedOptions"
+            :key="getOptionKey(option, index)"
+            class="base-select__option"
+            :class="{
+              'is-selected': option.value === modelValue,
+              'is-highlighted': index === highlightIndex,
+              'is-disabled': option.disabled
+            }"
+            role="option"
+            :aria-selected="option.value === modelValue"
+            @click.stop="selectOption(option)"
+          >
+            <slot name="option" :option="option">
+              {{ option.label }}
+            </slot>
+          </li>
+          <li v-if="!normalizedOptions.length" class="base-select__empty">
+            {{ emptyText }}
+          </li>
+        </ul>
+      </OverlayScrollbarsComponent>
     </transition>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, type PropType } from 'vue'
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 
 type SelectValue = string | number | boolean | null | undefined
 
@@ -124,6 +128,18 @@ const wrapperStyle = computed(() => {
 
   return { width: parsedWidth }
 })
+
+const scrollbarOptions = {
+  scrollbars: {
+    autoHide: 'leave' as const,
+    autoHideDelay: 50,
+    clickScroll: true
+  },
+  overflow: {
+    x: 'hidden',
+    y: 'scroll'
+  } as const
+}
 
 const getOptionKey = (option: SelectOption, index: number) => {
   const { value, label } = option
@@ -368,7 +384,10 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border);
   background-color: var(--bg-elev);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-  overflow-y: auto;
+  overflow: hidden;
+}
+
+.base-select__dropdown-list {
   list-style: none;
   padding: 5px 0;
   margin: 0;
