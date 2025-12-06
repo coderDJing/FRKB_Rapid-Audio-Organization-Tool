@@ -17,7 +17,6 @@ interface DialogOptions {
 export default (options: DialogOptions) => {
   return new Promise<string>((resolve, reject) => {
     const div = document.createElement('div')
-    div.setAttribute('class', 'dialog')
     document.body.appendChild(div)
 
     const confirmCallback = () => {

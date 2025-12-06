@@ -72,7 +72,8 @@ const openDialog = async (item: string) => {
       title: t('menu.about'),
       content,
       confirmShow: false,
-      canCopyText: true
+      canCopyText: true,
+      innerHeight: 320
     })
   }
   if (item === 'menu.visitGithub') {

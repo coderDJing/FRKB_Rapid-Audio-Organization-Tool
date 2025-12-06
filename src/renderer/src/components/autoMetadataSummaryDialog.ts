@@ -6,7 +6,6 @@ import type { IMetadataAutoFillSummary } from 'src/types/globals'
 export default (summary: IMetadataAutoFillSummary) => {
   return new Promise<void>((resolve) => {
     const div = document.createElement('div')
-    div.setAttribute('class', 'dialog')
     document.body.appendChild(div)
 
     const handleClose = () => {
