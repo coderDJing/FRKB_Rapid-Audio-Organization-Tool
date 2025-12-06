@@ -22,7 +22,6 @@ export interface ImportSummary {
 export default (summary: ImportSummary) => {
   return new Promise<void>((resolve) => {
     const div = document.createElement('div')
-    div.setAttribute('class', 'dialog')
     document.body.appendChild(div)
 
     const onClose = () => {

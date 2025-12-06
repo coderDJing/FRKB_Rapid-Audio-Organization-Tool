@@ -122,7 +122,16 @@ onUnmounted(() => {
       <div class="dialog-title dialog-header">
         <span>{{ t(props.title) }} {{ t('export.exportTo') }}</span>
       </div>
-      <div style="padding: 20px 20px 0">
+      <div
+        style="
+          padding: 20px 20px 0;
+          flex: 1 1 auto;
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-start;
+          gap: 30px;
+        "
+      >
         <div style="display: flex">
           <div class="formLabel">
             <span>{{ t('tracks.exportToFolder') }}：</span>
@@ -138,7 +147,7 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-        <div style="margin-top: 30px; display: flex">
+        <div style="display: flex">
           <div class="formLabel" style="text-align: right">
             <span>{{ t('tracks.deleteAfterExport') }}：</span>
           </div>

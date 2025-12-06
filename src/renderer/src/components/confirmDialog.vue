@@ -145,4 +145,8 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
-<style lang="scss" scoped></style>
+<style lang="scss" scoped>
+.dialog-footer {
+  justify-content: center;
+}
+</style>

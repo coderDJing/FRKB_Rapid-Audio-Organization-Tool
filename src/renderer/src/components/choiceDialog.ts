@@ -16,7 +16,6 @@ export default (options: {
 }): Promise<string> => {
   return new Promise<string>((resolve) => {
     const div = document.createElement('div')
-    div.setAttribute('class', 'dialog')
     document.body.appendChild(div)
 
     const onSelect = (key: string) => {
