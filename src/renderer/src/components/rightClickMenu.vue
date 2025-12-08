@@ -31,15 +31,36 @@ const props = defineProps({
 })
 
 const menuRef = ref<HTMLDivElement | null>(null)
+const isVisible = ref(true)
+const isClosing = ref(false)
+const closeResult = ref<IMenu | 'cancel'>('cancel')
+
+const requestClose = (result: IMenu | 'cancel') => {
+  if (isClosing.value) return
+  isClosing.value = true
+  closeResult.value = result
+  if (runtime.activeMenuUUID === uuid) {
+    runtime.activeMenuUUID = ''
+  }
+  isVisible.value = false
+}
 
 watch(
   () => runtime.activeMenuUUID,
   (val) => {
     if (val !== uuid) {
-      props.cancelCallback()
+      requestClose('cancel')
     }
   }
 )
+
+const handleAfterLeave = () => {
+  if (closeResult.value === 'cancel') {
+    props.cancelCallback()
+    return
+  }
+  props.confirmCallback(closeResult.value)
+}
 
 let positionTop = ref(0)
 let positionLeft = ref(0)
@@ -48,8 +69,7 @@ positionTop.value = -9999
 positionLeft.value = -9999
 
 const menuButtonClick = (item: IMenu) => {
-  runtime.activeMenuUUID = ''
-  props.confirmCallback(item)
+  requestClose(item)
 }
 const hoverItem = ref<IMenu | null>(null)
 const mouseover = (item: IMenu) => {
@@ -111,8 +131,13 @@ onMounted(() => {
     return false
   })
   hotkeys('E,Enter', uuid, () => {
-    runtime.activeMenuUUID = ''
-    props.confirmCallback(hoverItem.value)
+    if (hoverItem.value === null) {
+      const flattened = props.menuArr.flat(1)
+      hoverItem.value = flattened[0]
+    }
+    if (hoverItem.value) {
+      requestClose(hoverItem.value)
+    }
   })
   utils.setHotkeysScpoe(uuid)
 })
@@ -122,31 +147,47 @@ onUnmounted(() => {
 })
 </script>
 <template>
-  <div
-    ref="menuRef"
-    class="menu unselectable"
-    :style="{ top: positionTop + 'px', left: positionLeft + 'px' }"
-    @click.stop="() => {}"
-    @mouseleave.stop="mouseleave()"
-  >
-    <div v-for="item of props.menuArr" class="menuGroup">
-      <div
-        v-for="button of item"
-        class="menuButton"
-        @click="menuButtonClick(button)"
-        :class="{
-          menuButtonOver: hoverItem === null ? false : hoverItem.menuName === button.menuName
-        }"
-        @mouseover.stop="mouseover(button)"
-        @contextmenu="menuButtonClick(button)"
-      >
-        <span>{{ t(button.menuName) }}</span>
-        <span>{{ button.shortcutKey }}</span>
+  <Transition name="context-menu" appear @after-leave="handleAfterLeave">
+    <div
+      v-if="isVisible"
+      ref="menuRef"
+      class="menu unselectable"
+      :style="{ top: positionTop + 'px', left: positionLeft + 'px' }"
+      @click.stop="() => {}"
+      @mouseleave.stop="mouseleave()"
+    >
+      <div v-for="item of props.menuArr" class="menuGroup">
+        <div
+          v-for="button of item"
+          class="menuButton"
+          @click="menuButtonClick(button)"
+          :class="{
+            menuButtonOver: hoverItem === null ? false : hoverItem.menuName === button.menuName
+          }"
+          @mouseover.stop="mouseover(button)"
+          @contextmenu="menuButtonClick(button)"
+        >
+          <span>{{ t(button.menuName) }}</span>
+          <span>{{ button.shortcutKey }}</span>
+        </div>
       </div>
     </div>
-  </div>
+  </Transition>
 </template>
 <style lang="scss" scoped>
+.context-menu-enter-active,
+.context-menu-leave-active {
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.context-menu-enter-from,
+.context-menu-leave-to {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+}
+
 .menu {
   position: absolute;
   background-color: var(--bg-elev);
