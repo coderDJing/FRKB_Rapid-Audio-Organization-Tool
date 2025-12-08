@@ -398,20 +398,12 @@ export async function searchMusicBrainz(
 
 async function fetchRecordingDetail(recordingId: string): Promise<any> {
   const url = `${MUSICBRAINZ_BASE}/recording/${recordingId}?fmt=json&inc=releases+artists+isrcs`
-  console.log('[musicbrainz] recording detail start', recordingId)
-  const start = Date.now()
-  const result = await requestJson<any>(url)
-  console.log('[musicbrainz] recording detail done', recordingId, `${Date.now() - start}ms`)
-  return result
+  return await requestJson<any>(url)
 }
 
 async function fetchReleaseDetail(releaseId: string): Promise<any> {
   const url = `${MUSICBRAINZ_BASE}/release/${releaseId}?fmt=json&inc=recordings+artists+labels+genres+media`
-  console.log('[musicbrainz] release detail start', releaseId)
-  const start = Date.now()
-  const result = await requestJson<any>(url, undefined, RELEASE_DETAIL_TIMEOUT)
-  console.log('[musicbrainz] release detail done', releaseId, `${Date.now() - start}ms`)
-  return result
+  return await requestJson<any>(url, undefined, RELEASE_DETAIL_TIMEOUT)
 }
 
 function findTrackContext(release: any, recordingId: string) {
@@ -429,15 +421,12 @@ function findTrackContext(release: any, recordingId: string) {
 }
 
 async function fetchCoverDataUrl(releaseId: string): Promise<string | null> {
-  console.log('[musicbrainz] cover fetch start', releaseId)
-  const start = Date.now()
   try {
     const cover = await requestBuffer(
       `${COVER_ART_BASE}/release/${releaseId}/front-500`,
       undefined,
       RELEASE_DETAIL_TIMEOUT
     )
-    console.log('[musicbrainz] cover fetch done', releaseId, `${Date.now() - start}ms`, !!cover)
     if (!cover) return null
     return `data:${cover.mime};base64,${cover.buffer.toString('base64')}`
   } catch (err) {
