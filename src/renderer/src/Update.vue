@@ -202,26 +202,18 @@ const runtime = useRuntimeStore()
         flex-direction: column;
       "
     >
-      <div>
-        {{ t('update.downloadingUpdate') }} {{ convertBytesToUnits(progress.bytesPerSecond) }}
-      </div>
-      <div style="width: 90%; margin-top: 15px; border: 1px solid #ccc; position: relative">
-        <div
-          :style="{ width: progress.percent.toFixed(2) + '%' }"
-          style="text-align: center; height: 20px; line-height: 20px; background-color: #0078d4"
-        ></div>
-        <div
-          style="
-            text-align: center;
-            height: 20px;
-            line-height: 20px;
-            width: 100%;
-            position: absolute;
-            top: 0;
-            left: 0;
-          "
-        >
-          {{ progress.percent.toFixed(2) }}%
+      <div class="update-progress">
+        <div class="update-progress__header">
+          <span>{{ t('update.downloadingUpdate') }}</span>
+          <span class="update-progress__speed">{{
+            convertBytesToUnits(progress.bytesPerSecond)
+          }}</span>
+        </div>
+        <div class="update-progress__bar">
+          <div class="update-progress__fill" :style="{ width: progress.percent.toFixed(2) + '%' }">
+            <div class="update-progress__gloss"></div>
+          </div>
+          <div class="update-progress__percent">{{ progress.percent.toFixed(2) }}%</div>
         </div>
       </div>
     </div>
@@ -306,6 +298,114 @@ body {
 
   .closeIcon:hover {
     background-color: #e81123;
+  }
+}
+
+.update-progress {
+  width: 90%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.update-progress__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.update-progress__speed {
+  font-size: 12px;
+  color: var(--text-weak);
+}
+
+.update-progress__bar {
+  position: relative;
+  height: 10px;
+  background: var(--bg-elev);
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.update-progress__fill {
+  position: relative;
+  height: 100%;
+  background: linear-gradient(90deg, #3a7afe, #4da3ff);
+  background-size: 200% 100%;
+  animation: updateSlideBg 2.2s linear infinite;
+  transition: width 0.3s ease-in-out;
+}
+
+.update-progress__fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.12) 0 8px,
+    rgba(255, 255, 255, 0.04) 8px 16px
+  );
+  mix-blend-mode: overlay;
+  animation: updateMoveStripes 1.2s linear infinite;
+}
+
+.update-progress__gloss {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.25) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: translateX(-100%);
+  animation: updateShine 2.8s ease-in-out infinite;
+}
+
+.update-progress__percent {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: var(--text);
+}
+
+@keyframes updateSlideBg {
+  0% {
+    background-position: 0 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes updateMoveStripes {
+  0% {
+    background-position: 0 0;
+  }
+
+  100% {
+    background-position: 100px 0;
+  }
+}
+
+@keyframes updateShine {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  50% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(100%);
   }
 }
 
