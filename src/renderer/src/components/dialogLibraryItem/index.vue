@@ -3,7 +3,7 @@ import { ref, nextTick, useTemplateRef, reactive, onMounted, watch, computed } f
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import listIcon from '@renderer/assets/listIcon.png?asset'
+import listIconAsset from '@renderer/assets/listIcon.png?asset'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { v4 as uuidV4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog'
@@ -17,6 +17,7 @@ import {
   handleDrop,
   type DragState
 } from '../../utils/dragUtils'
+const listIcon = listIconAsset
 const props = defineProps({
   uuid: {
     type: String,

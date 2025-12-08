@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch, nextTick, computed, getCurrentInstance } from 'vue'
 import type { PropType } from 'vue'
-import shortcutIcon from '@renderer/assets/shortcutIcon.png?asset'
+import shortcutIconAsset from '@renderer/assets/shortcutIcon.png?asset'
 import { t } from '@renderer/utils/translate'
+const shortcutIcon = shortcutIconAsset
 
 type BoundaryType = 'window' | 'element'
 

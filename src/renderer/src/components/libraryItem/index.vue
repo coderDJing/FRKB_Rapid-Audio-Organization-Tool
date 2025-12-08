@@ -2,8 +2,8 @@
 import { ref, computed, watch } from 'vue'
 import libraryItem from '@renderer/components/libraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import listIcon from '@renderer/assets/listIcon.png?asset'
-import listIconBlue from '@renderer/assets/listIconBlue.png?asset'
+import listIconAsset from '@renderer/assets/listIcon.png?asset'
+import listIconBlueAsset from '@renderer/assets/listIconBlue.png?asset'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
@@ -14,6 +14,8 @@ import { useLibraryContextMenu } from './useLibraryContextMenu'
 import { useLibraryDragAndDrop } from './useLibraryDragAndDrop'
 import { useLibraryTrackCount } from './useLibraryTrackCount'
 import { useLibraryFilter } from './useLibraryFilter'
+const listIcon = listIconAsset
+const listIconBlue = listIconBlueAsset
 const props = defineProps({
   uuid: {
     type: String,

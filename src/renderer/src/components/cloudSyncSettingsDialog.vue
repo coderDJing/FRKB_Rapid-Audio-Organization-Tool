@@ -4,10 +4,11 @@ import { v4 as uuidV4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import utils from '@renderer/utils/utils'
 import { t } from '@renderer/utils/translate'
-import hintIcon from '@renderer/assets/hint.png?asset'
+import hintIconAsset from '@renderer/assets/hint.png?asset'
 import { CONTACT_EMAIL } from '../constants/app'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
+const hintIcon = hintIconAsset
 const emits = defineEmits(['cancel'])
 const uuid = uuidV4()
 

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { withDefaults, defineProps, defineEmits } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { t } from '@renderer/utils/translate'
 import { useCustomFileSelector } from './useCustomFileSelector'

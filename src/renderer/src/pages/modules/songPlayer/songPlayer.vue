@@ -15,7 +15,7 @@ import type { ISongInfo } from 'src/types/globals'
 import type { IpcRendererEvent } from 'electron'
 import { WebAudioPlayer } from './webAudioPlayer'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import musicIcon from '@renderer/assets/musicIcon.png?asset'
+import musicIconAsset from '@renderer/assets/musicIcon.png?asset'
 import playerControls from '../../../components/playerControls.vue'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import BpmTap from './BpmTap.vue'
@@ -28,6 +28,7 @@ import { useWaveform } from './useWaveform'
 import emitter from '@renderer/utils/mitt'
 import { useSongLoader } from './useSongLoader'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
+const musicIcon = musicIconAsset
 
 const runtime = useRuntimeStore()
 const waveform = useTemplateRef<HTMLDivElement>('waveform')

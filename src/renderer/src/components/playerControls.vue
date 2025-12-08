@@ -1,21 +1,31 @@
 <script setup lang="ts">
-import previousSong from '@renderer/assets/previousSong.png?asset'
-import fastBackward from '@renderer/assets/fastBackward.png?asset'
-import play from '@renderer/assets/play.png?asset'
-import pause from '@renderer/assets/pause.png?asset'
-import fastForward from '@renderer/assets/fastForward.png?asset'
-import nextSong from '@renderer/assets/nextSong.png?asset'
-import more from '@renderer/assets/more.png?asset'
-import volumePng from '@renderer/assets/volume.png?asset'
-import volumeMutePng from '@renderer/assets/volumeMute.png?asset'
+import previousSongAsset from '@renderer/assets/previousSong.png?asset'
+import fastBackwardAsset from '@renderer/assets/fastBackward.png?asset'
+import playAsset from '@renderer/assets/play.png?asset'
+import pauseAsset from '@renderer/assets/pause.png?asset'
+import fastForwardAsset from '@renderer/assets/fastForward.png?asset'
+import nextSongAsset from '@renderer/assets/nextSong.png?asset'
+import moreAsset from '@renderer/assets/more.png?asset'
+import volumePngAsset from '@renderer/assets/volume.png?asset'
+import volumeMutePngAsset from '@renderer/assets/volumeMute.png?asset'
 import { ref, onUnmounted, watch, useTemplateRef, onMounted, computed } from 'vue'
 import { v4 as uuidV4 } from 'uuid'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
-import shortcutIcon from '@renderer/assets/shortcutIcon.png?asset'
+import shortcutIconAsset from '@renderer/assets/shortcutIcon.png?asset'
 import { t } from '@renderer/utils/translate'
 import confirm from '@renderer/components/confirmDialog'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
+const previousSong = previousSongAsset
+const fastBackward = fastBackwardAsset
+const play = playAsset
+const pause = pauseAsset
+const fastForward = fastForwardAsset
+const nextSong = nextSongAsset
+const more = moreAsset
+const volumePng = volumePngAsset
+const volumeMutePng = volumeMutePngAsset
+const shortcutIcon = shortcutIconAsset
 const uuid = uuidV4()
 const runtime = useRuntimeStore()
 const playing = ref(true)

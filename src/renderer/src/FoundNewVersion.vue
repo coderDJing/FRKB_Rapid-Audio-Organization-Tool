@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import chromeMiniimize from '@renderer/assets/chrome-minimize.svg?asset'
-import logo from '@renderer/assets/logo.png?asset'
+import chromeMiniimizeAsset from '@renderer/assets/chrome-minimize.svg?asset'
+import logoAsset from '@renderer/assets/logo.png?asset'
 import { ref } from 'vue'
 import { t } from '@renderer/utils/translate'
 import singleCheckbox from './components/singleCheckbox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 const fillColor = ref('#9d9d9d')
+const chromeMiniimize = chromeMiniimizeAsset
+const logo = logoAsset
 
 const toggleMinimize = () => {
   window.electron.ipcRenderer.send('foundNewVersionWindow-toggle-minimize')
