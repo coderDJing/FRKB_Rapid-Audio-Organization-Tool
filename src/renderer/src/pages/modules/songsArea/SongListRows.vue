@@ -199,6 +199,19 @@ const handleCoverPreviewDblclick = (event: MouseEvent) => {
   }
 }
 
+const handleCoverPreviewContextmenu = (event: MouseEvent) => {
+  event.stopPropagation()
+  event.preventDefault()
+  const idx =
+    coverPreviewState.displayIndex >= 0
+      ? coverPreviewState.displayIndex
+      : coverPreviewState.anchorIndex
+  const song = typeof idx === 'number' ? songsRef.value?.[idx] : null
+  if (song) {
+    emit('song-contextmenu', event, song)
+  }
+}
+
 onUnmounted(() => {
   coverCellRefMap.clear()
 })
@@ -302,6 +315,7 @@ onUnmounted(() => {
       }"
       @mousemove="handleCoverPreviewMouseMove"
       @mouseleave="closeCoverPreview"
+      @contextmenu.stop.prevent="handleCoverPreviewContextmenu"
       @dblclick.stop.prevent="handleCoverPreviewDblclick"
     >
       <img v-if="previewedCoverUrl" :src="previewedCoverUrl" alt="cover preview" decoding="async" />
