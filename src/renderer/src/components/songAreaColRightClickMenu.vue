@@ -2,11 +2,12 @@
 import { watch, ref, PropType } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidV4 } from 'uuid'
-import tickIcon from '@renderer/assets/tickIcon.png?asset'
+import tickIconAsset from '@renderer/assets/tickIcon.png?asset'
 import { t } from '@renderer/utils/translate'
 import { ISongsAreaColumn } from '../../../types/globals'
 const uuid = uuidV4()
 const runtime = useRuntimeStore()
+const tickIcon = tickIconAsset
 
 const emits = defineEmits(['update:modelValue', 'colMenuHandleClick'])
 watch(

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onUnmounted, onMounted, ref, useTemplateRef, reactive, computed, watch } from 'vue'
-import hintIcon from '@renderer/assets/hint.png?asset'
+import hintIconAsset from '@renderer/assets/hint.png?asset'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'
@@ -24,6 +24,7 @@ const uuid = uuidV4()
 const emits = defineEmits(['cancel'])
 
 const { dialogVisible, closeWithAnimation } = useDialogTransition()
+const hintIcon = hintIconAsset
 
 // 响应式的指纹库长度数据
 const songFingerprintListLength = ref(0)

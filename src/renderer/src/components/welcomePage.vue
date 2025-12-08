@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import welcomeLogo from '@renderer/assets/welcomeLogo.png?asset'
+import welcomeLogoAsset from '@renderer/assets/welcomeLogo.png?asset'
 import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { computed } from 'vue'
 
 const runtime = useRuntimeStore()
+const welcomeLogo = welcomeLogoAsset
 
 // 将快捷键字符串转换为数组
 const globalShortcut = computed(() => {

@@ -32,13 +32,15 @@ import { useParentRafSampler } from '@renderer/pages/modules/songsArea/composabl
 import { useSongsAreaEvents } from '@renderer/pages/modules/songsArea/composables/useSongsAreaEvents'
 
 // 资源导入
-import ascendingOrder from '@renderer/assets/ascending-order.png?asset'
-import descendingOrder from '@renderer/assets/descending-order.png?asset'
+import ascendingOrderAsset from '@renderer/assets/ascending-order.png?asset'
+import descendingOrderAsset from '@renderer/assets/descending-order.png?asset'
 
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 
 // 类型定义，以便正确引用 OverlayScrollbarsComponent 实例
 type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
+const ascendingOrder = ascendingOrderAsset
+const descendingOrder = descendingOrderAsset
 
 const runtime = useRuntimeStore()
 const songsAreaRef = useTemplateRef<OverlayScrollbarsComponentRef>('songsAreaRef')

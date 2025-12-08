@@ -5,7 +5,7 @@ import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import selectSongListDialog from './selectSongListDialog.vue'
 import libraryUtils from '@renderer/utils/libraryUtils'
-import hintIcon from '@renderer/assets/hint.png?asset'
+import hintIconAsset from '@renderer/assets/hint.png?asset'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import customFileSelector from './customFileSelector/customFileSelector.vue'
 import hotkeys from 'hotkeys-js'
@@ -14,6 +14,7 @@ import utils from '../utils/utils'
 import { t, toLibraryDisplayName } from '@renderer/utils/translate'
 import { i18n } from '@renderer/i18n'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
+const hintIcon = hintIconAsset
 
 type Mode = 'scan' | 'drop'
 
