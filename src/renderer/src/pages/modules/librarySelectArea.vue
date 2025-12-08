@@ -13,9 +13,14 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import settingDialog from '@renderer/components/settingDialog.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { t } from '@renderer/utils/translate'
-import { Icon } from '../../../../types/globals'
+import type { Icon, IDir } from '../../../../types/globals'
 import tempListGrey from '@renderer/assets/tempList-grey.png?asset'
 import tempListWhite from '@renderer/assets/tempList-white.png?asset'
+import rightClickMenu from '@renderer/components/rightClickMenu'
+import confirm from '@renderer/components/confirmDialog'
+import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
+import emitter from '@renderer/utils/mitt'
+import libraryUtils from '@renderer/utils/libraryUtils'
 const emit = defineEmits(['librarySelectedChange'])
 
 const baseIcons: Icon[] = [
@@ -61,6 +66,23 @@ const selectedIcon = ref(iconArr.value[0])
 selectedIcon.value.src = selectedIcon.value.white
 
 const runtime = useRuntimeStore()
+const hasWarnedAcoustId = ref(false)
+const hasAcoustIdKey = () => {
+  const key = (runtime.setting?.acoustIdClientKey || '').trim()
+  return key.length > 0
+}
+const warnAcoustIdMissing = () => {
+  if (hasAcoustIdKey() || hasWarnedAcoustId.value) return
+  hasWarnedAcoustId.value = true
+  void confirm({
+    title: t('metadata.autoFillFingerprintHintTitle'),
+    content: [
+      t('metadata.autoFillFingerprintHintMissing'),
+      t('metadata.autoFillFingerprintHintGuide')
+    ],
+    confirmShow: false
+  })
+}
 
 const updateSelectedIcon = (item: Icon | undefined) => {
   if (!item) return
@@ -105,6 +127,187 @@ const iconMouseover = (item: Icon | ButtomIcon) => {
 const iconMouseout = (item: Icon | ButtomIcon) => {
   if (selectedIcon.value != item) {
     item.src = item.grey
+  }
+}
+
+const findLibraryNode = (libraryName: string): IDir | undefined => {
+  return runtime.libraryTree.children?.find((item: any) => item.dirName === libraryName)
+}
+
+const collectSongLists = (root?: IDir | null): IDir[] => {
+  const result: IDir[] = []
+  const traverse = (node?: IDir | null) => {
+    if (!node) return
+    if (node.type === 'songList') {
+      result.push(node)
+    }
+    if (Array.isArray(node.children)) {
+      node.children.forEach((child) => traverse(child as IDir))
+    }
+  }
+  traverse(root)
+  return result
+}
+
+const scanSongListsFiles = async (songLists: IDir[]) => {
+  const files: string[] = []
+  for (const list of songLists) {
+    try {
+      const dirPath = libraryUtils.findDirPathByUuid(list.uuid)
+      const scan = await window.electron.ipcRenderer.invoke('scanSongList', dirPath, list.uuid)
+      const songFiles = Array.isArray(scan?.scanData)
+        ? scan.scanData.map((s: any) => s.filePath).filter(Boolean)
+        : []
+      files.push(...songFiles)
+    } catch (error) {
+      console.error('[librarySelectArea] scanSongList failed', error)
+    }
+  }
+  return Array.from(new Set(files))
+}
+
+const handleAutoFillForLibrary = async (libraryName: string) => {
+  const libraryNode = findLibraryNode(libraryName)
+  const songLists = collectSongLists(libraryNode)
+  if (!songLists.length) {
+    await confirm({
+      title: t('dialog.hint'),
+      content: [t('metadata.autoFillNoEligible')],
+      confirmShow: false
+    })
+    return
+  }
+  const files = await scanSongListsFiles(songLists)
+  if (!files.length) {
+    await confirm({
+      title: t('dialog.hint'),
+      content: [t('metadata.autoFillNoEligible')],
+      confirmShow: false
+    })
+    return
+  }
+  warnAcoustIdMissing()
+  runtime.isProgressing = true
+  let summary: any = null
+  let hadError = false
+  try {
+    summary = await invokeMetadataAutoFill(files)
+  } catch (error: any) {
+    hadError = true
+    const message =
+      typeof error?.message === 'string' && error.message.trim().length
+        ? error.message
+        : t('common.unknownError')
+    await confirm({
+      title: t('common.error'),
+      content: [message],
+      confirmShow: false
+    })
+  } finally {
+    runtime.isProgressing = false
+  }
+  if (!summary) {
+    if (!hadError) {
+      await confirm({
+        title: t('dialog.hint'),
+        content: [t('metadata.autoFillNoEligible')],
+        confirmShow: false
+      })
+    }
+    return
+  }
+  const { default: openAutoSummary } = await import(
+    '@renderer/components/autoMetadataSummaryDialog'
+  )
+  await openAutoSummary(summary)
+  const updates =
+    summary.items
+      ?.filter((item: any) => item.status === 'applied' && item.updatedSongInfo)
+      .map((item: any) => ({
+        song: item.updatedSongInfo,
+        oldFilePath: item.oldFilePath
+      })) || []
+  if (updates.length) {
+    try {
+      emitter.emit('metadataBatchUpdated', { updates })
+    } catch {}
+  }
+}
+
+const clearCachesForLibrary = async (libraryName: string) => {
+  const libraryNode = findLibraryNode(libraryName)
+  const songLists = collectSongLists(libraryNode)
+  if (!songLists.length) return
+  for (const list of songLists) {
+    try {
+      const dirPath = libraryUtils.findDirPathByUuid(list.uuid)
+      await window.electron.ipcRenderer.invoke('playlist:cache:clear', dirPath || '')
+      emitter.emit('playlistCacheCleared', { uuid: list.uuid })
+    } catch (error) {
+      console.error('[librarySelectArea] clear playlist cache failed', error)
+    }
+  }
+}
+
+const emptyRecycleBinHandleClick = async () => {
+  const res = await confirm({
+    title: t('recycleBin.emptyRecycleBin'),
+    content: [t('recycleBin.confirmEmpty'), t('tracks.deleteHint')]
+  })
+  if (res !== 'confirm') return
+  const recycleBin = findLibraryNode('RecycleBin')
+  const recycleChildren = recycleBin?.children || []
+  if (recycleChildren.length === 0) return
+
+  await window.electron.ipcRenderer.invoke('emptyRecycleBin')
+
+  const recycleUUIDs = new Set(recycleChildren.map((c: any) => c.uuid))
+
+  if (recycleUUIDs.has(runtime.songsArea.songListUUID)) {
+    runtime.songsArea.songListUUID = ''
+    runtime.songsArea.selectedSongFilePath.length = 0
+    runtime.songsArea.songInfoArr = []
+    runtime.songsArea.totalSongCount = 0
+  }
+
+  if (recycleUUIDs.has(runtime.playingData.playingSongListUUID)) {
+    runtime.playingData.playingSong = null
+    runtime.playingData.playingSongListUUID = ''
+    runtime.playingData.playingSongListData = []
+  }
+
+  if (recycleBin) {
+    recycleBin.children = []
+  }
+}
+
+const buildMenuArr = (item: Icon) => {
+  const commonMenus = [
+    [{ menuName: 'metadata.autoFillMenu' }],
+    [{ menuName: 'playlist.clearCache' }]
+  ]
+  if (item.name === 'RecycleBin') {
+    return [[{ menuName: 'recycleBin.emptyRecycleBin' }], ...commonMenus]
+  }
+  return commonMenus
+}
+
+const handleIconContextmenu = async (event: MouseEvent, item: Icon) => {
+  if (!['FilterLibrary', 'CuratedLibrary', 'RecycleBin'].includes(item.name as string)) return
+  event.preventDefault()
+  const menuArr = buildMenuArr(item)
+  const result = await rightClickMenu({ menuArr, clickEvent: event })
+  if (result === 'cancel') return
+  switch (result.menuName) {
+    case 'metadata.autoFillMenu':
+      await handleAutoFillForLibrary(item.name)
+      break
+    case 'playlist.clearCache':
+      await clearCachesForLibrary(item.name)
+      break
+    case 'recycleBin.emptyRecycleBin':
+      await emptyRecycleBinHandleClick()
+      break
   }
 }
 type ButtomIcon = {
@@ -184,6 +387,7 @@ watch(
         :key="item.name"
         class="iconBox"
         @click="clickIcon(item)"
+        @contextmenu.stop.prevent="handleIconContextmenu($event, item)"
         @mouseover="iconMouseover(item)"
         @mouseout="iconMouseout(item)"
         @dragenter="iconDragEnter($event, item)"
