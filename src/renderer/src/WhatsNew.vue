@@ -2,10 +2,12 @@
 import { computed, ref } from 'vue'
 import { marked } from 'marked'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
-import chromeMinimize from '@renderer/assets/chrome-minimize.svg?asset'
-import logo from '@renderer/assets/logo.png?asset'
+import chromeMinimizeAsset from '@renderer/assets/chrome-minimize.svg?asset'
+import logoAsset from '@renderer/assets/logo.png?asset'
 import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+const chromeMinimize = chromeMinimizeAsset
+const logo = logoAsset
 
 type ReleasePayload = {
   title: string

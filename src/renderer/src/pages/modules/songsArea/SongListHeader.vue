@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, PropType, watch, onMounted } from 'vue'
 import { ISongsAreaColumn } from '../../../../../types/globals' // Corrected path
-import filterIcon from '@renderer/assets/filterIcon.png?asset'
-import filterIconBlue from '@renderer/assets/filterIconBlue.png?asset'
+import filterIconAsset from '@renderer/assets/filterIcon.png?asset'
+import filterIconBlueAsset from '@renderer/assets/filterIconBlue.png?asset'
 import { UseDraggableOptions, vDraggable } from 'vue-draggable-plus'
 import { MIN_WIDTH_BY_KEY } from './minWidth'
 import filterDialog from '@renderer/components/filterDialog.vue'
+const filterIcon = filterIconAsset
+const filterIconBlue = filterIconBlueAsset
 
 // 类型定义
 type VDraggableBinding = [list: ISongsAreaColumn[], options?: UseDraggableOptions<ISongsAreaColumn>]

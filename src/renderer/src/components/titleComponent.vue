@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import chromeMaximize from '@renderer/assets/chrome-maximize.svg?asset'
-import chromeRestore from '@renderer/assets/chrome-restore.svg?asset'
-import chromeMiniimize from '@renderer/assets/chrome-minimize.svg?asset'
-import logo from '@renderer/assets/logo.png?asset'
+import chromeMaximizeAsset from '@renderer/assets/chrome-maximize.svg?asset'
+import chromeRestoreAsset from '@renderer/assets/chrome-restore.svg?asset'
+import chromeMiniimizeAsset from '@renderer/assets/chrome-minimize.svg?asset'
+import logoAsset from '@renderer/assets/logo.png?asset'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { ref } from 'vue'
 import menuComponent from './menu.vue'
@@ -10,6 +10,11 @@ import confirm from '@renderer/components/confirmDialog'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog'
 import { t } from '@renderer/utils/translate'
 import hotkeys from 'hotkeys-js'
+
+const chromeMaximize = chromeMaximizeAsset
+const chromeRestore = chromeRestoreAsset
+const chromeMiniimize = chromeMiniimizeAsset
+const logo = logoAsset
 const emit = defineEmits(['openDialog'])
 const toggleMaximize = () => {
   window.electron.ipcRenderer.send('toggle-maximize')

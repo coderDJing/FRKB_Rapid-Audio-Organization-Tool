@@ -8,13 +8,14 @@ import confirm from '@renderer/components/confirmDialog'
 import rightClickMenu from '../../components/rightClickMenu'
 import { t, toLibraryDisplayName } from '@renderer/utils/translate'
 import emitter from '../../utils/mitt'
-import emptyRecycleBin from '@renderer/assets/empty-recycleBin.png?asset'
+import emptyRecycleBinAsset from '@renderer/assets/empty-recycleBin.png?asset'
 import { handleLibraryAreaEmptySpaceDrop } from '@renderer/utils/dragUtils'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import type { IDir } from 'src/types/globals'
 
 const runtime = useRuntimeStore()
+const emptyRecycleBin = emptyRecycleBinAsset
 const props = defineProps({
   uuid: {
     type: String,

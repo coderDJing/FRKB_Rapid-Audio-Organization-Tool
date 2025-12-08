@@ -16,7 +16,7 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import { v4 as uuidV4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog'
 import hotkeys from 'hotkeys-js'
-import listIcon from '@renderer/assets/listIcon.png?asset'
+import listIconAsset from '@renderer/assets/listIcon.png?asset'
 import utils, { getCurrentTimeDirName } from '../utils/utils'
 import { t, toLibraryDisplayName } from '@renderer/utils/translate'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
@@ -212,6 +212,7 @@ watch(
 const collapseButtonRef = useTemplateRef<HTMLDivElement>('collapseButtonRef')
 
 const libraryTitleText = computed(() => toLibraryDisplayName(libraryData.value.dirName))
+const listIcon = listIconAsset
 
 const menuArr = ref([
   [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]
