@@ -167,20 +167,23 @@ function buildFfmpegArgs(
   coverPath?: string | null
 ) {
   const args: string[] = ['-y', '-i', filePath]
-  if (coverPath) {
+  const ext = path.extname(filePath).toLowerCase()
+  // WAV 不支持封面写入，直接忽略封面输入避免 FFmpeg 报错
+  const coverInputEnabled = !!coverPath && ext !== '.wav'
+
+  if (coverInputEnabled) {
     args.push('-i', coverPath)
   }
 
   args.push('-map_metadata', '-1')
   args.push('-map', '0:a?')
 
-  if (coverPath) {
+  if (coverInputEnabled) {
     args.push('-map', '1:0')
   }
 
   args.push('-c:a', 'copy')
 
-  const ext = path.extname(filePath).toLowerCase()
   if (ext === '.mp3') {
     args.push('-id3v2_version', '3')
   }
@@ -194,7 +197,7 @@ function buildFfmpegArgs(
     args.push('-id3v2_version', '3')
   }
 
-  if (coverPath) {
+  if (coverInputEnabled) {
     args.push('-disposition:v:0', 'attached_pic')
     args.push('-metadata:s:v:0', 'title=Album cover')
     args.push('-metadata:s:v:0', 'comment=Cover (front)')
@@ -317,6 +320,7 @@ export async function updateTrackMetadata(
   let filePath = payload.filePath
   const originalFilePath = filePath
   const ext = path.extname(filePath)
+  const lowerExt = ext.toLowerCase()
   const ffmpegPath = resolveBundledFfmpegPath()
   await ensureExecutableOnMac(ffmpegPath)
 
@@ -353,8 +357,12 @@ export async function updateTrackMetadata(
       payload.filePath = targetPath
     }
 
-    if (payload.coverDataUrl) {
-      const { buffer, mime } = dataUrlToBuffer(payload.coverDataUrl)
+    const coverDataUrl = payload.coverDataUrl
+    // WAV 不写入封面，避免因封面编码器缺失导致整体失败
+    const coverAllowed =
+      typeof coverDataUrl === 'string' && coverDataUrl !== '' && lowerExt !== '.wav'
+    if (coverAllowed) {
+      const { buffer, mime } = dataUrlToBuffer(coverDataUrl)
       const extension = mime.includes('png') ? '.png' : mime.includes('webp') ? '.webp' : '.jpg'
       coverTempPath = await writeTempFile(buffer, extension)
     }
@@ -381,7 +389,7 @@ export async function updateTrackMetadata(
 
     // Windows: WAV 写入 LIST/INFO（GBK），与 ID3v2.3 同步
     try {
-      if (process.platform === 'win32' && ext.toLowerCase() === '.wav') {
+      if (process.platform === 'win32' && lowerExt === '.wav') {
         await writeWavRiffInfoWindows(filePath, {
           title: payload.title,
           artist: payload.artist,
@@ -394,7 +402,7 @@ export async function updateTrackMetadata(
     } catch {}
 
     // 如果没有提供新的封面但原文件包含封面，尝试从备份恢复
-    if (!payload.coverDataUrl && originalMetadata) {
+    if (!payload.coverDataUrl && originalMetadata && lowerExt !== '.wav') {
       try {
         const originalCover = (await import('music-metadata')).selectCover(
           originalMetadata.common?.picture
@@ -461,7 +469,7 @@ export async function updateTrackMetadata(
     const metadata = await parseMetadata(filePath)
     // 构造返回给列表的简要信息时，也应用与读取时相同的 WAV INFO 合并逻辑，避免出现 '0!0!0!'
     let songInfoMeta = metadata
-    if (process.platform === 'win32' && path.extname(filePath).toLowerCase() === '.wav') {
+    if (process.platform === 'win32' && lowerExt === '.wav') {
       try {
         const info = await readWavRiffInfoWindows(filePath)
         if (info) {
