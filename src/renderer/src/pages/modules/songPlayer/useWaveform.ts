@@ -559,8 +559,8 @@ export function useWaveform(params: {
 
     const amplitudeWeights = {
       low: 0.9,
-      mid: 0.7,
-      high: 1.0
+      mid: 0.5,
+      high: 0.8
     }
 
     const drawOnCtx = (ctx: CanvasRenderingContext2D, alpha: number) => {
@@ -602,7 +602,7 @@ export function useWaveform(params: {
         // RMS 为主，峰值少量加权；突出低频红，压低中频染色，保留高频尖峰
         const lowIntensity = (lowRms * 0.7 + lowPeak * 0.3) * 0.9
         const midIntensity = (midRms * 0.75 + midPeak * 0.25) * 0.6
-        const highIntensity = (highRms * 0.75 + highPeak * 0.25) * 0.8
+        const highIntensity = (highRms * 0.7 + highPeak * 0.3) * 0.7
 
         const weightedEnergy =
           lowIntensity * amplitudeWeights.low +
@@ -617,23 +617,24 @@ export function useWaveform(params: {
         const rectHeight = Math.max(1, isHalf ? amplitudePx : amplitudePx * 2)
         const yTop = isHalf ? baselineY - amplitudePx : centerY - amplitudePx
 
-        const midForColor = midIntensity < 0.1 ? midIntensity * 0.3 : midIntensity * 0.6
+        // 中频颜色贡献上调（不抬高度），弱时保留 60%，正常 100%
+        const midForColor = midIntensity < 0.1 ? midIntensity * 0.6 : midIntensity * 1.0
         const sumWeight =
-          Math.pow(lowIntensity, 1.0) + Math.pow(midForColor, 0.9) + Math.pow(highIntensity, 1.25)
+          Math.pow(lowIntensity, 1.0) + Math.pow(midForColor, 1.05) + Math.pow(highIntensity, 1.25)
         const mixDivider = sumWeight > 0 ? sumWeight : 1
         const baseR =
           (REKORDBOX_RGB_COLORS.low.r * Math.pow(lowIntensity, 1.0) +
-            REKORDBOX_RGB_COLORS.mid.r * Math.pow(midForColor, 0.9) +
+            REKORDBOX_RGB_COLORS.mid.r * Math.pow(midForColor, 1.05) +
             REKORDBOX_RGB_COLORS.high.r * Math.pow(highIntensity, 1.25)) /
           mixDivider
         const baseG =
           (REKORDBOX_RGB_COLORS.low.g * Math.pow(lowIntensity, 1.0) +
-            REKORDBOX_RGB_COLORS.mid.g * Math.pow(midForColor, 0.9) +
+            REKORDBOX_RGB_COLORS.mid.g * Math.pow(midForColor, 1.05) +
             REKORDBOX_RGB_COLORS.high.g * Math.pow(highIntensity, 1.25)) /
           mixDivider
         const baseB =
           (REKORDBOX_RGB_COLORS.low.b * Math.pow(lowIntensity, 1.0) +
-            REKORDBOX_RGB_COLORS.mid.b * Math.pow(midForColor, 0.9) +
+            REKORDBOX_RGB_COLORS.mid.b * Math.pow(midForColor, 1.05) +
             REKORDBOX_RGB_COLORS.high.b * Math.pow(highIntensity, 1.25)) /
           mixDivider
 
