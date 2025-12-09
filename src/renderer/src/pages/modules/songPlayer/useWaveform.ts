@@ -37,12 +37,14 @@ export function useWaveform(params: {
   const WAVEFORM_STYLE_SOUND_CLOUD: WaveformStyle = 'SoundCloud'
   const WAVEFORM_STYLE_FINE: WaveformStyle = 'Fine'
   const WAVEFORM_STYLE_RGB: WaveformStyle = 'RGB'
+  const WAVEFORM_STYLE_REKORDBOX_MINI: WaveformStyle = 'RekordboxMini'
+  const REKORDBOX_MINI_POINTS_PER_SECOND = 300
   const RGB_BASE_ALPHA = 0.42
   const RGB_PROGRESS_ALPHA = 0.95
   const REKORDBOX_RGB_COLORS: Record<RGBWaveformBandKey, { r: number; g: number; b: number }> = {
-    low: { r: 255, g: 80, b: 70 }, // 参考 Rekordbox 低频红
-    mid: { r: 120, g: 255, b: 85 }, // 参考 Rekordbox 中频绿
-    high: { r: 90, g: 190, b: 255 } // 参考 Rekordbox 高频蓝
+    low: { r: 255, g: 50, b: 30 }, // 更纯的低频红
+    mid: { r: 50, g: 255, b: 60 }, // 更亮的中频绿
+    high: { r: 60, g: 180, b: 255 } // 偏青蓝的高频
   }
   const RGB_BAND_INTENSITY_EXP: Record<RGBWaveformBandKey, number> = {
     low: 0.9,
@@ -54,6 +56,8 @@ export function useWaveform(params: {
     mid: 1,
     high: 1.2
   }
+  const isRgbBasedStyle = (style: WaveformStyle) =>
+    style === WAVEFORM_STYLE_RGB || style === WAVEFORM_STYLE_REKORDBOX_MINI
 
   const drawFineWaveform = (width: number, height: number) => {
     if (!soundCloudMinMaxData || !audioBuffer) {
@@ -125,7 +129,8 @@ export function useWaveform(params: {
     if (
       style === WAVEFORM_STYLE_RGB ||
       style === WAVEFORM_STYLE_FINE ||
-      style === WAVEFORM_STYLE_SOUND_CLOUD
+      style === WAVEFORM_STYLE_SOUND_CLOUD ||
+      style === WAVEFORM_STYLE_REKORDBOX_MINI
     ) {
       return style
     }
@@ -501,6 +506,195 @@ export function useWaveform(params: {
     drawOnCtx(progressCtx, RGB_PROGRESS_ALPHA)
   }
 
+  const drawRekordboxMiniWaveform = (
+    width: number,
+    height: number,
+    waveformData: RGBWaveformData | null
+  ) => {
+    if (!waveformData) {
+      clearCanvases()
+      return
+    }
+
+    const lowLen = waveformData.bands.low?.values.length ?? 0
+    const midLen = waveformData.bands.mid?.values.length ?? 0
+    const highLen = waveformData.bands.high?.values.length ?? 0
+    const totalPoints = Math.min(lowLen, midLen, highLen)
+    if (totalPoints === 0) {
+      clearCanvases()
+      return
+    }
+
+    const pixelRatio = window.devicePixelRatio || 1
+    resizeCanvas(baseCanvas, baseCtx, width, height, pixelRatio)
+    resizeCanvas(progressCanvas, progressCtx, width, height, pixelRatio)
+
+    const isHalf = useHalfWaveform()
+    const padding = Math.max(2, Math.floor(height * 0.08))
+    const centerY = height / 2
+    const baselineY = isHalf ? height - padding : centerY
+    const maxAmplitude = isHalf ? height - padding * 1.05 : centerY - padding * 0.6
+
+    const duration = waveformData.duration || 0
+    const targetPoints =
+      duration > 0
+        ? Math.max(1, Math.floor(duration * REKORDBOX_MINI_POINTS_PER_SECOND))
+        : totalPoints
+    const reductionStride = Math.max(1, Math.floor(totalPoints / targetPoints))
+    const effectiveTotalPoints = Math.max(1, Math.floor(totalPoints / reductionStride))
+
+    const samplesPerPixel = Math.max(1, effectiveTotalPoints / Math.max(1, width))
+    const smoothSamples = Math.max(2, Math.min(6, Math.floor(samplesPerPixel * 1.5)))
+
+    const getBandIntensity = (band: RGBWaveformBandKey, index: number) => {
+      const bandData = waveformData.bands[band]
+      if (!bandData || !bandData.values.length) return 0
+      const peak = bandData.peak || 1
+      if (!peak) return 0
+      const value = bandData.values[Math.min(index, bandData.values.length - 1)]
+      const normalized = Math.max(0, Math.min(1, value / peak))
+      const exponent = RGB_BAND_INTENSITY_EXP[band] ?? 1
+      return Math.pow(normalized, exponent)
+    }
+
+    const amplitudeWeights = {
+      low: 0.9,
+      mid: 0.7,
+      high: 1.0
+    }
+
+    const drawOnCtx = (ctx: CanvasRenderingContext2D, alpha: number) => {
+      ctx.save()
+      ctx.globalAlpha = alpha
+      ctx.globalCompositeOperation = 'source-over'
+
+      for (let x = 0; x < width; x++) {
+        const windowStart = Math.min(
+          totalPoints - 1,
+          Math.floor(x * samplesPerPixel) * reductionStride
+        )
+        const windowEnd = Math.min(totalPoints, windowStart + smoothSamples * reductionStride)
+        let lowPeak = 0
+        let midPeak = 0
+        let highPeak = 0
+        let lowSq = 0
+        let midSq = 0
+        let highSq = 0
+        let count = 0
+        for (let i = windowStart; i < windowEnd; i += reductionStride) {
+          const lowVal = getBandIntensity('low', i)
+          const midVal = getBandIntensity('mid', i)
+          const highVal = getBandIntensity('high', i)
+          lowPeak = Math.max(lowPeak, lowVal)
+          midPeak = Math.max(midPeak, midVal)
+          highPeak = Math.max(highPeak, highVal)
+          lowSq += lowVal * lowVal
+          midSq += midVal * midVal
+          highSq += highVal * highVal
+          count++
+        }
+
+        const safeCount = count || 1
+        const lowRms = Math.sqrt(lowSq / safeCount)
+        const midRms = Math.sqrt(midSq / safeCount)
+        const highRms = Math.sqrt(highSq / safeCount)
+
+        // RMS 为主，峰值少量加权；突出低频红，压低中频染色，保留高频尖峰
+        const lowIntensity = (lowRms * 0.7 + lowPeak * 0.3) * 0.9
+        const midIntensity = (midRms * 0.75 + midPeak * 0.25) * 0.6
+        const highIntensity = (highRms * 0.75 + highPeak * 0.25) * 0.8
+
+        const weightedEnergy =
+          lowIntensity * amplitudeWeights.low +
+          midIntensity * amplitudeWeights.mid +
+          highIntensity * amplitudeWeights.high
+        if (weightedEnergy <= 0.0001) continue
+
+        const amplitudeRatio = Math.min(1, Math.pow(weightedEnergy, 0.42))
+        const lowFloor = Math.max(0, Math.pow(lowIntensity, 0.82) * maxAmplitude * 0.08)
+        let amplitudePx = Math.max(1, amplitudeRatio * maxAmplitude * 0.7 + lowFloor)
+        amplitudePx *= 1 + 0.45 * amplitudeRatio
+        const rectHeight = Math.max(1, isHalf ? amplitudePx : amplitudePx * 2)
+        const yTop = isHalf ? baselineY - amplitudePx : centerY - amplitudePx
+
+        const midForColor = midIntensity < 0.1 ? midIntensity * 0.3 : midIntensity * 0.6
+        const sumWeight =
+          Math.pow(lowIntensity, 1.0) + Math.pow(midForColor, 0.9) + Math.pow(highIntensity, 1.25)
+        const mixDivider = sumWeight > 0 ? sumWeight : 1
+        const baseR =
+          (REKORDBOX_RGB_COLORS.low.r * Math.pow(lowIntensity, 1.0) +
+            REKORDBOX_RGB_COLORS.mid.r * Math.pow(midForColor, 0.9) +
+            REKORDBOX_RGB_COLORS.high.r * Math.pow(highIntensity, 1.25)) /
+          mixDivider
+        const baseG =
+          (REKORDBOX_RGB_COLORS.low.g * Math.pow(lowIntensity, 1.0) +
+            REKORDBOX_RGB_COLORS.mid.g * Math.pow(midForColor, 0.9) +
+            REKORDBOX_RGB_COLORS.high.g * Math.pow(highIntensity, 1.25)) /
+          mixDivider
+        const baseB =
+          (REKORDBOX_RGB_COLORS.low.b * Math.pow(lowIntensity, 1.0) +
+            REKORDBOX_RGB_COLORS.mid.b * Math.pow(midForColor, 0.9) +
+            REKORDBOX_RGB_COLORS.high.b * Math.pow(highIntensity, 1.25)) /
+          mixDivider
+
+        // 主导频段驱动颜色：dominant 贡献 0.8，其他频段分 0.2
+        let domBand: RGBWaveformBandKey = 'low'
+        let domValue = lowIntensity
+        if (midIntensity >= lowIntensity && midIntensity >= highIntensity) {
+          domBand = 'mid'
+          domValue = midIntensity
+        } else if (highIntensity >= lowIntensity && highIntensity >= midIntensity) {
+          domBand = 'high'
+          domValue = highIntensity
+        }
+
+        const domColor = REKORDBOX_RGB_COLORS[domBand]
+        const otherSum = lowIntensity + midIntensity + highIntensity - domValue
+        const otherColor =
+          otherSum > 0
+            ? {
+                r:
+                  (REKORDBOX_RGB_COLORS.low.r * (domBand === 'low' ? 0 : lowIntensity) +
+                    REKORDBOX_RGB_COLORS.mid.r * (domBand === 'mid' ? 0 : midIntensity) +
+                    REKORDBOX_RGB_COLORS.high.r * (domBand === 'high' ? 0 : highIntensity)) /
+                  otherSum,
+                g:
+                  (REKORDBOX_RGB_COLORS.low.g * (domBand === 'low' ? 0 : lowIntensity) +
+                    REKORDBOX_RGB_COLORS.mid.g * (domBand === 'mid' ? 0 : midIntensity) +
+                    REKORDBOX_RGB_COLORS.high.g * (domBand === 'high' ? 0 : highIntensity)) /
+                  otherSum,
+                b:
+                  (REKORDBOX_RGB_COLORS.low.b * (domBand === 'low' ? 0 : lowIntensity) +
+                    REKORDBOX_RGB_COLORS.mid.b * (domBand === 'mid' ? 0 : midIntensity) +
+                    REKORDBOX_RGB_COLORS.high.b * (domBand === 'high' ? 0 : highIntensity)) /
+                  otherSum
+              }
+            : domColor
+
+        const mixedR = domColor.r * 0.7 + otherColor.r * 0.3
+        const mixedG = domColor.g * 0.7 + otherColor.g * 0.3
+        const mixedB = domColor.b * 0.7 + otherColor.b * 0.3
+        const dominant = domValue
+        const brightness = Math.min(1.4, 0.55 + amplitudeRatio * 0.75 + dominant * 0.45)
+        // 饱和拉升：对混合色做放大
+        const satR = mixedR * 1.15
+        const satG = mixedG * 1.2
+        const satB = mixedB * 1.08
+        const r = Math.min(255, Math.round(satR * brightness))
+        const g = Math.min(255, Math.round(satG * brightness))
+        const b = Math.min(255, Math.round(satB * brightness))
+
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`
+        ctx.fillRect(x, yTop, 1, rectHeight)
+      }
+
+      ctx.restore()
+    }
+
+    drawOnCtx(baseCtx, 0.68)
+    drawOnCtx(progressCtx, 0.98)
+  }
+
   const drawWaveform = (forceRedraw = false) => {
     if (!waveformEl.value || !audioPlayer.value) return
 
@@ -523,6 +717,8 @@ export function useWaveform(params: {
       drawSoundCloudWaveform(width, height)
     } else if (style === WAVEFORM_STYLE_FINE) {
       drawFineWaveform(width, height)
+    } else if (style === WAVEFORM_STYLE_REKORDBOX_MINI) {
+      drawRekordboxMiniWaveform(width, height, player.rgbWaveformData ?? null)
     } else {
       drawRgbWaveform(width, height, player.rgbWaveformData ?? null)
     }
@@ -547,13 +743,13 @@ export function useWaveform(params: {
 
     audioBuffer = buffer
 
-    if (style === WAVEFORM_STYLE_RGB) {
+    if (isRgbBasedStyle(style)) {
       soundCloudMinMaxData = null
       if (player.rgbWaveformData) {
         drawWaveform(true)
       } else {
         void player.ensureRgbWaveform().then(() => {
-          if (getWaveformStyle() === WAVEFORM_STYLE_RGB) {
+          if (isRgbBasedStyle(getWaveformStyle())) {
             drawWaveform(true)
           }
         })
@@ -615,13 +811,14 @@ export function useWaveform(params: {
     }
 
     const ensureRgbIfNeeded = () => {
-      if (getWaveformStyle() === WAVEFORM_STYLE_RGB) {
+      if (isRgbBasedStyle(getWaveformStyle())) {
         void player.ensureRgbWaveform()
       }
     }
 
     const handleDecode = (duration: number) => {
       updateDurationDisplay(duration)
+      updateProgressVisual(0)
       updateParentWaveformWidth()
       updateWaveform()
       ensureRgbIfNeeded()
@@ -637,6 +834,7 @@ export function useWaveform(params: {
       if (typeof playerDuration === 'number') {
         updateDurationDisplay(playerDuration)
       }
+      updateProgressVisual(0)
       updateParentWaveformWidth()
       updateWaveform()
       ensureRgbIfNeeded()
@@ -685,7 +883,7 @@ export function useWaveform(params: {
     registerPlayerHandler(player, 'seeked', handleSeeked)
     registerPlayerHandler(player, 'finish', handleFinish)
     registerPlayerHandler(player, 'rgbwaveformready', () => {
-      if (getWaveformStyle() === WAVEFORM_STYLE_RGB) {
+      if (isRgbBasedStyle(getWaveformStyle())) {
         drawWaveform(true)
       }
     })
@@ -760,7 +958,7 @@ export function useWaveform(params: {
   watch(
     () => runtime.setting?.waveformStyle,
     () => {
-      if (audioPlayer.value && getWaveformStyle() === WAVEFORM_STYLE_RGB) {
+      if (audioPlayer.value && isRgbBasedStyle(getWaveformStyle())) {
         void audioPlayer.value.ensureRgbWaveform()
       }
       updateWaveform()
@@ -779,6 +977,7 @@ export function useWaveform(params: {
     () => {
       detachEventListeners()
       attachEventListeners()
+      updateProgressVisual(0)
       updateWaveform()
     },
     { immediate: true }
