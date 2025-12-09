@@ -59,7 +59,7 @@ const defaultSettings = {
     platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
   playerGlobalShortcuts: { ...defaultPlayerGlobalShortcuts },
   hiddenPlayControlArea: false,
-  waveformStyle: 'SoundCloud' as 'SoundCloud' | 'RGB',
+  waveformStyle: 'SoundCloud' as 'SoundCloud' | 'Fine' | 'RGB' | 'RekordboxMini',
   waveformMode: 'half',
   autoPlayNextSong: false,
   startPlayPercent: 0,

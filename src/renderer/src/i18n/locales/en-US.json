@@ -439,6 +439,7 @@
     "waveformStyleSoundCloud": "SoundCloud waveform",
     "waveformStyleFine": "Fine waveform",
     "waveformStyleRGB": "RGB spectrum waveform",
+    "waveformStyleRekordboxMini": "Rekordbox-style mini waveform",
     "waveformMode": "Waveform height",
     "waveformModeHalf": "Half waveform",
     "waveformModeFull": "Full waveform",

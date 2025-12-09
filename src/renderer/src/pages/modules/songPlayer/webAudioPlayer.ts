@@ -2,7 +2,7 @@ import mitt from 'mitt'
 
 export type RGBWaveformBandKey = 'low' | 'mid' | 'high'
 
-export type WaveformStyle = 'SoundCloud' | 'Fine' | 'RGB'
+export type WaveformStyle = 'SoundCloud' | 'Fine' | 'RGB' | 'RekordboxMini'
 
 export type RGBWaveformBand = {
   values: Float32Array
@@ -139,6 +139,8 @@ export class WebAudioPlayer {
     this.releaseActiveBuffer('loadPCM:replace')
     this.audioBuffer = null
     this.rgbWaveformPromise = null
+    this.pausedTime = 0
+    this.startTime = 0
 
     try {
       // 创建 AudioBuffer
