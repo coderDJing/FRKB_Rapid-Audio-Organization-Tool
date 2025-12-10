@@ -9,7 +9,7 @@ import {
   readTrackMetadata as svcReadTrackMetadata,
   updateTrackMetadata as svcUpdateTrackMetadata
 } from '../services/metadataEditor'
-import { autoFillTrackMetadata } from '../services/metadataAutoFill'
+import { autoFillTrackMetadata, cancelMetadataAutoFill } from '../services/metadataAutoFill'
 import {
   searchMusicBrainz,
   fetchMusicBrainzSuggestion,
@@ -80,6 +80,9 @@ export function registerMediaMetadataHandlers() {
     return await autoFillTrackMetadata(
       payload && Array.isArray(payload.filePaths) ? payload : { filePaths: [] }
     )
+  })
+  ipcMain.handle('metadata:autoFill:cancel', async (_e, progressId: string) => {
+    cancelMetadataAutoFill(typeof progressId === 'string' ? progressId : '')
   })
 
   ipcMain.handle('musicbrainz:search', async (_e, payload: IMusicBrainzSearchPayload) => {
