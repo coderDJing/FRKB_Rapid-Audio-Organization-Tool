@@ -359,11 +359,13 @@
     "autoFillStatSearch": "Text hits",
     "autoFillStatNoMatch": "No match",
     "autoFillStatSkipped": "Skipped",
+    "autoFillStatCancelled": "Cancelled",
     "autoFillStatErrors": "Failed",
     "autoFillStatus": {
       "applied": "Applied",
       "noMatch": "No match",
       "skipped": "Skipped",
+      "cancelled": "Cancelled",
       "error": "Failed"
     },
     "autoFillMethod": {
@@ -381,6 +383,7 @@
       "FFMPEG_METADATA_FAILED": "FFmpeg failed to write tags (often WAV or locked file)",
       "UPDATE_FAILED": "Failed to write metadata",
       "READ_FAILED": "Failed to read the file",
+      "CANCELLED": "Cancelled by user",
       "UNKNOWN": "Unknown error"
     },
     "autoFillFingerprintHintTitle": "Heads up",
