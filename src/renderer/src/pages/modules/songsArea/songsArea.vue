@@ -344,6 +344,12 @@ const songDblClick = async (song: ISongInfo) => {
 // --- 新增计算属性给 SongListRows ---
 const playingSongFilePathForRows = computed(() => runtime.playingData.playingSong?.filePath)
 
+const viewState = computed<'welcome' | 'loading' | 'list'>(() => {
+  if (loadingShow.value) return 'loading'
+  if (!runtime.songsArea.songListUUID) return 'welcome'
+  return 'list'
+})
+
 // 父级采样由 useParentRafSampler 提供
 
 // 自动滚动逻辑由 useAutoScrollToCurrent 提供
@@ -430,85 +436,85 @@ const handleSongDragEnd = (event: DragEvent) => {
 // 播放列表同步由 useSongsAreaEvents 管理
 </script>
 <template>
-  <div style="width: 100%; height: 100%; min-width: 0; overflow: hidden; position: relative">
-    <div
-      v-show="!loadingShow && !runtime.songsArea.songListUUID"
-      class="unselectable welcomeContainer"
-    >
-      <welcomePage />
-    </div>
-    <div
-      v-show="loadingShow"
-      style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center"
-    >
-      <div class="loading"></div>
-    </div>
+  <div class="songs-area-root">
+    <Transition name="songs-area-switch" mode="out-in">
+      <div v-if="viewState === 'welcome'" key="welcome" class="unselectable welcomeContainer">
+        <welcomePage />
+      </div>
 
-    <OverlayScrollbarsComponent
-      v-if="runtime.songsArea.songListUUID && !loadingShow"
-      :options="{
-        scrollbars: {
-          autoHide: 'leave' as const,
-          autoHideDelay: 50,
-          clickScroll: true
-        } as const,
-        overflow: {
-          x: 'scroll',
-          y: 'scroll'
-        } as const
-      }"
-      element="div"
-      style="height: 100%; width: 100%; position: relative"
-      defer
-      ref="songsAreaRef"
-      @click="runtime.songsArea.selectedSongFilePath.length = 0"
-    >
-      <SongListHeader
-        :columns="columnData"
-        :t="t"
-        :ascendingOrder="ascendingOrder"
-        :descendingOrder="descendingOrder"
-        :total-width="totalColumnsWidth"
-        @update:columns="handleColumnsUpdate"
-        @column-click="colMenuClick"
-        @header-contextmenu="contextmenuEvent"
-        @drag-start="runtime.dragTableHeader = true"
-        @drag-end="runtime.dragTableHeader = false"
-      />
+      <div v-else-if="viewState === 'loading'" key="loading" class="loading-wrapper">
+        <div class="loading"></div>
+      </div>
 
-      <!-- 使用 SongListRows 组件渲染歌曲列表 -->
-      <SongListRows
-        v-if="runtime.songsArea.songInfoArr.length > 0"
-        :songs="runtime.songsArea.songInfoArr"
-        :visibleColumns="columnDataArr"
-        :selectedSongFilePaths="runtime.songsArea.selectedSongFilePath"
-        :playingSongFilePath="playingSongFilePathForRows"
-        :total-width="totalColumnsWidth"
-        :sourceLibraryName="runtime.libraryAreaSelected"
-        :sourceSongListUUID="runtime.songsArea.songListUUID"
-        :scroll-host-element="songsAreaRef?.osInstance()?.elements().viewport"
-        :external-scroll-top="externalScrollTop"
-        :external-viewport-height="externalViewportHeight"
-        :song-list-root-dir="libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID) || ''"
-        @song-click="songClick"
-        @song-contextmenu="handleSongContextMenuEvent"
-        @song-dblclick="songDblClick"
-        @song-dragstart="handleSongDragStart"
-        @song-dragend="handleSongDragEnd"
-      />
-    </OverlayScrollbarsComponent>
+      <div v-else key="list" class="songs-area-shell">
+        <OverlayScrollbarsComponent
+          :options="{
+            scrollbars: {
+              autoHide: 'leave' as const,
+              autoHideDelay: 50,
+              clickScroll: true
+            } as const,
+            overflow: {
+              x: 'scroll',
+              y: 'scroll'
+            } as const
+          }"
+          element="div"
+          style="height: 100%; width: 100%; position: relative"
+          defer
+          ref="songsAreaRef"
+          @click="runtime.songsArea.selectedSongFilePath.length = 0"
+        >
+          <SongListHeader
+            :columns="columnData"
+            :t="t"
+            :ascendingOrder="ascendingOrder"
+            :descendingOrder="descendingOrder"
+            :total-width="totalColumnsWidth"
+            @update:columns="handleColumnsUpdate"
+            @column-click="colMenuClick"
+            @header-contextmenu="contextmenuEvent"
+            @drag-start="runtime.dragTableHeader = true"
+            @drag-end="runtime.dragTableHeader = false"
+          />
 
-    <!-- Empty State Overlay: 独立于滚动内容，始终居中在可视区域 -->
-    <div v-if="shouldShowEmptyState && !loadingShow" class="songs-area-empty-overlay unselectable">
-      <div class="empty-box">
-        <div class="title">
-          {{ hasActiveFilter ? t('filters.noResults') : t('tracks.noTracks') }}
-        </div>
-        <div class="hint">
-          {{ hasActiveFilter ? t('filters.noResultsHint') : t('tracks.noTracksHint') }}
+          <!-- 使用 SongListRows 组件渲染歌曲列表 -->
+          <SongListRows
+            v-if="runtime.songsArea.songInfoArr.length > 0"
+            :songs="runtime.songsArea.songInfoArr"
+            :visibleColumns="columnDataArr"
+            :selectedSongFilePaths="runtime.songsArea.selectedSongFilePath"
+            :playingSongFilePath="playingSongFilePathForRows"
+            :total-width="totalColumnsWidth"
+            :sourceLibraryName="runtime.libraryAreaSelected"
+            :sourceSongListUUID="runtime.songsArea.songListUUID"
+            :scroll-host-element="songsAreaRef?.osInstance()?.elements().viewport"
+            :external-scroll-top="externalScrollTop"
+            :external-viewport-height="externalViewportHeight"
+            :song-list-root-dir="
+              libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID) || ''
+            "
+            @song-click="songClick"
+            @song-contextmenu="handleSongContextMenuEvent"
+            @song-dblclick="songDblClick"
+            @song-dragstart="handleSongDragStart"
+            @song-dragend="handleSongDragEnd"
+          />
+        </OverlayScrollbarsComponent>
+
+        <!-- Empty State Overlay: 独立于滚动内容，始终居中在可视区域 -->
+        <div v-if="shouldShowEmptyState" class="songs-area-empty-overlay unselectable">
+          <div class="empty-box">
+            <div class="title">
+              {{ hasActiveFilter ? t('filters.noResults') : t('tracks.noTracks') }}
+            </div>
+            <div class="hint">
+              {{ hasActiveFilter ? t('filters.noResultsHint') : t('tracks.noTracksHint') }}
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+    </Transition>
 
     <ColumnHeaderContextMenu
       v-model="colRightClickMenuShow"
@@ -528,6 +534,41 @@ const handleSongDragEnd = (event: DragEvent) => {
   </div>
 </template>
 <style lang="scss" scoped>
+.songs-area-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.songs-area-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.loading-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.songs-area-switch-enter-active,
+.songs-area-switch-leave-active {
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease;
+}
+
+.songs-area-switch-enter-from,
+.songs-area-switch-leave-to {
+  opacity: 0;
+  transform: translateY(6px) scale(0.995);
+}
+
 .loading {
   display: block;
   position: relative;
