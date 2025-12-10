@@ -135,6 +135,7 @@ interface IMusicBrainzSuggestionParams {
   recordingId: string
   releaseId?: string
   allowFallback?: boolean
+  cancelToken?: { cancelled: boolean }
 }
 
 interface IMusicBrainzApplyPayload {
@@ -176,7 +177,7 @@ interface ITrackMetadataUpdatePayload {
   coverDataUrl?: string | null
 }
 
-type IMetadataAutoFillStatus = 'applied' | 'no-match' | 'skipped' | 'error'
+type IMetadataAutoFillStatus = 'applied' | 'no-match' | 'skipped' | 'error' | 'cancelled'
 type IMetadataAutoFillMethod = 'fingerprint' | 'search'
 
 interface IMetadataAutoFillRequest {
@@ -202,6 +203,7 @@ interface IMetadataAutoFillSummary {
   searchApplied: number
   noMatch: number
   skipped: number
+  cancelled: number
   errors: number
   durationMs: number
   progressId: string

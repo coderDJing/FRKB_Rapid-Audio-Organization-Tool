@@ -360,11 +360,13 @@
     "autoFillStatSearch": "条件命中",
     "autoFillStatNoMatch": "无匹配",
     "autoFillStatSkipped": "跳过",
+    "autoFillStatCancelled": "已取消",
     "autoFillStatErrors": "失败",
     "autoFillStatus": {
       "applied": "已写入",
       "noMatch": "未匹配",
       "skipped": "已跳过",
+      "cancelled": "已取消",
       "error": "失败"
     },
     "autoFillMethod": {
@@ -382,6 +384,7 @@
       "FFMPEG_METADATA_FAILED": "FFmpeg 写入失败，常见于 WAV/文件被占用",
       "UPDATE_FAILED": "写入文件失败",
       "READ_FAILED": "读取文件失败",
+      "CANCELLED": "用户取消",
       "UNKNOWN": "发生未知错误"
     },
     "autoFillFingerprintHintTitle": "提示",

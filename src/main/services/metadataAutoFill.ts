@@ -126,6 +126,11 @@ function summarizeErrorMessage(err: any): string {
   return 'UNKNOWN'
 }
 
+const isCancelledError = (err: any) => {
+  const code = summarizeErrorMessage(err)
+  return code === 'MUSICBRAINZ_ABORTED' || code === 'ACOUSTID_ABORTED'
+}
+
 const cancelTokens = new Map<string, { cancelled: boolean }>()
 
 function createCancelToken(progressId: string) {
@@ -168,6 +173,7 @@ export async function autoFillTrackMetadata(
     searchApplied: 0,
     noMatch: 0,
     skipped: 0,
+    cancelled: 0,
     errors: 0,
     durationMs: 0,
     progressId,
@@ -175,6 +181,13 @@ export async function autoFillTrackMetadata(
   }
   const startedAt = Date.now()
   let cancelled = false
+  const markItemCancelled = (item: IMetadataAutoFillItemResult) => {
+    item.status = 'cancelled'
+    item.messageCode = 'CANCELLED'
+    summary.cancelled++
+    cancelled = true
+    cancelToken.cancelled = true
+  }
   try {
     if (uniquePaths.length === 0) {
       pushProgress('metadata.autoFillProgressFinished', 1, 1, { isInitial: true })
@@ -229,6 +242,10 @@ export async function autoFillTrackMetadata(
               method = 'fingerprint'
             }
           } catch (err: any) {
+            if (isCancelledError(err)) {
+              markItemCancelled(item)
+              break
+            }
             const code = summarizeErrorMessage(err)
             if (
               code === 'ACOUSTID_CLIENT_MISSING' ||
@@ -257,6 +274,10 @@ export async function autoFillTrackMetadata(
               method = 'search'
             }
           } catch (err: any) {
+            if (isCancelledError(err)) {
+              markItemCancelled(item)
+              break
+            }
             log.error('[metadata-auto] musicbrainz search failed', {
               filePath,
               error: err?.message || err
@@ -281,9 +302,14 @@ export async function autoFillTrackMetadata(
           suggestion = await fetchMusicBrainzSuggestion({
             recordingId: match.recordingId,
             releaseId: match.releaseId,
-            allowFallback: true
+            allowFallback: true,
+            cancelToken
           })
         } catch (err: any) {
+          if (isCancelledError(err)) {
+            markItemCancelled(item)
+            break
+          }
           log.error('[metadata-auto] fetch suggestion failed', {
             filePath,
             recordingId: match.recordingId,
@@ -330,6 +356,10 @@ export async function autoFillTrackMetadata(
             }
           } catch {}
         } catch (err: any) {
+          if (isCancelledError(err)) {
+            markItemCancelled(item)
+            break
+          }
           log.error('[metadata-auto] update metadata failed', {
             filePath,
             error: err?.message || err,
@@ -351,6 +381,10 @@ export async function autoFillTrackMetadata(
           }
         }
       } catch (err: any) {
+        if (isCancelledError(err)) {
+          markItemCancelled(item)
+          break
+        }
         log.error('[metadata-auto] unexpected error', { filePath, error: err?.message || err })
         summary.errors++
         item.status = 'error'
