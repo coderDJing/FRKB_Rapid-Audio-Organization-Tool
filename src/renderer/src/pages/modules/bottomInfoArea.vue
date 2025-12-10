@@ -23,6 +23,10 @@ type Task = {
   noNum: boolean
   startedAt: number
   lastUpdateAt: number
+  cancelable?: boolean
+  cancelChannel?: string
+  cancelPayload?: any
+  canceling?: boolean
   removing?: boolean
 }
 const tasks = ref<Task[]>([])
@@ -109,6 +113,11 @@ window.electron.ipcRenderer.on('progressSet', (_event, arg1, arg2, arg3, arg4) =
     const nowNum = Number(payload.now || 0)
     const total = Number(payload.total || 0)
     const noNumFlag = !!payload.isInitial
+    const hasCancelMeta =
+      'cancelable' in payload || 'cancelChannel' in payload || 'cancelPayload' in payload
+    const cancelable = !!payload.cancelable && typeof payload.cancelChannel === 'string'
+    const cancelChannel = cancelable ? String(payload.cancelChannel) : undefined
+    const cancelPayload = cancelable ? (payload.cancelPayload ?? id) : undefined
     if (id && titleKey) {
       // 直接以 id 作为分组键；覆盖阶段
       const idx = tasks.value.findIndex((t) => t.id === id)
@@ -121,7 +130,11 @@ window.electron.ipcRenderer.on('progressSet', (_event, arg1, arg2, arg3, arg4) =
           total,
           noNum: noNumFlag,
           startedAt: Date.now(),
-          lastUpdateAt: Date.now()
+          lastUpdateAt: Date.now(),
+          cancelable,
+          cancelChannel,
+          cancelPayload,
+          canceling: false
         })
       } else {
         const task = tasks.value[idx]
@@ -131,6 +144,12 @@ window.electron.ipcRenderer.on('progressSet', (_event, arg1, arg2, arg3, arg4) =
         task.total = total
         task.noNum = noNumFlag
         task.lastUpdateAt = Date.now()
+        if (hasCancelMeta) {
+          task.cancelable = cancelable
+          task.cancelChannel = cancelChannel
+          task.cancelPayload = cancelPayload
+          if (!cancelable) task.canceling = false
+        }
       }
       // 仅对非 import/fingerprint/convert 类任务启用“自动移除”（这些任务有独立完成事件来清理）
       const canAutoRemove = !/^import_|^fingerprints_|^convert_/i.test(id)
@@ -153,6 +172,23 @@ window.electron.ipcRenderer.on('progressSet', (_event, arg1, arg2, arg3, arg4) =
   const noNumFlag = arg4
   upsertTask(String(titleKey), Number(nowNum) || 0, Number(total) || 0, !!noNumFlag)
 })
+
+const cancelTask = async (task: Task) => {
+  if (!task.cancelable || task.canceling) return
+  task.canceling = true
+  const channel = task.cancelChannel
+  if (!channel) {
+    task.canceling = false
+    return
+  }
+  try {
+    const payload = task.cancelPayload ?? task.id
+    await window.electron.ipcRenderer.invoke(channel, payload)
+  } catch (error) {
+    console.error('cancel task failed', error)
+    task.canceling = false
+  }
+}
 window.electron.ipcRenderer.on(
   'importFinished',
   async (event, _songListUUID, importSummary, progressId?: string) => {
@@ -264,6 +300,11 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
             :style="'width:' + (task.total ? (task.now / task.total) * 100 : 0) + '%'"
           />
         </div>
+      </div>
+      <div class="actions" v-if="task.cancelable">
+        <button class="cancel-btn" :disabled="task.canceling" @click="cancelTask(task)">
+          {{ t('common.cancel') }}
+        </button>
       </div>
     </div>
     <div
@@ -392,6 +433,29 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   height: 100%;
   flex-grow: 1;
   text-align: center;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  padding: 0 8px 0 4px;
+}
+.cancel-btn {
+  border: 1px solid var(--divider);
+  background: transparent;
+  color: var(--text);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.cancel-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--text-weak);
+}
+.cancel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .progress {
