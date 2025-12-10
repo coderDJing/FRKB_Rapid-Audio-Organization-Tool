@@ -2,7 +2,7 @@ import mitt from 'mitt'
 
 export type RGBWaveformBandKey = 'low' | 'mid' | 'high'
 
-export type WaveformStyle = 'SoundCloud' | 'Fine' | 'RGB' | 'RekordboxMini'
+export type WaveformStyle = 'SoundCloud' | 'Fine' | 'RGB'
 
 export type RGBWaveformBand = {
   values: Float32Array

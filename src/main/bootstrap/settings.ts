@@ -59,7 +59,7 @@ const defaultSettings = {
     platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
   playerGlobalShortcuts: { ...defaultPlayerGlobalShortcuts },
   hiddenPlayControlArea: false,
-  waveformStyle: 'SoundCloud' as 'SoundCloud' | 'Fine' | 'RGB' | 'RekordboxMini',
+  waveformStyle: 'SoundCloud' as 'SoundCloud' | 'Fine' | 'RGB',
   waveformMode: 'half',
   autoPlayNextSong: false,
   startPlayPercent: 0,
@@ -129,8 +129,17 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
     (mergedSettings as any).playerGlobalShortcuts
   )
 
+  const rawWaveformStyle = (mergedSettings as any).waveformStyle
+  const normalizedWaveformStyle = rawWaveformStyle === 'RekordboxMini' ? 'RGB' : rawWaveformStyle
+
   const finalSettings: ISettingConfig = {
     ...mergedSettings,
+    waveformStyle:
+      normalizedWaveformStyle === 'SoundCloud' ||
+      normalizedWaveformStyle === 'Fine' ||
+      normalizedWaveformStyle === 'RGB'
+        ? normalizedWaveformStyle
+        : 'SoundCloud',
     waveformMode: mergedSettings.waveformMode === 'full' ? 'full' : 'half'
   }
 
