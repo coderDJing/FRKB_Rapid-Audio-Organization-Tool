@@ -429,7 +429,10 @@ async function fetchCoverDataUrl(releaseId: string): Promise<string | null> {
     )
     if (!cover) return null
     return `data:${cover.mime};base64,${cover.buffer.toString('base64')}`
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.message === 'MUSICBRAINZ_ABORTED') {
+      throw err
+    }
     console.error('[musicbrainz] cover fetch failed', releaseId, err)
     throw err
   }
@@ -441,6 +444,12 @@ export async function fetchMusicBrainzSuggestion(
   if (!params || !params.recordingId) {
     throw new Error('MUSICBRAINZ_INVALID_PARAMS')
   }
+  const ensureNotCancelled = () => {
+    if (params?.cancelToken?.cancelled) {
+      throw new Error('MUSICBRAINZ_ABORTED')
+    }
+  }
+  ensureNotCancelled()
   const allowFallback = params.allowFallback === true
   const recordingId = params.recordingId
   const autoCacheKey = `${recordingId}:auto`
@@ -474,6 +483,7 @@ export async function fetchMusicBrainzSuggestion(
   if (!releaseCandidates.length) throw new Error('MUSICBRAINZ_RELEASE_NOT_FOUND')
 
   const buildResultFromRelease = async (releaseDetail: any, releaseId: string, trackCtx?: any) => {
+    ensureNotCancelled()
     const hasTrack = !!trackCtx
     const trackNumber =
       hasTrack && trackCtx.track?.position
@@ -524,6 +534,7 @@ export async function fetchMusicBrainzSuggestion(
   let lastError: Error | null = null
   for (const releaseId of releaseCandidates) {
     try {
+      ensureNotCancelled()
       const releaseDetail = await fetchReleaseDetail(releaseId)
       const trackCtx = findTrackContext(releaseDetail, params.recordingId)
       if (!trackCtx) {
@@ -537,6 +548,7 @@ export async function fetchMusicBrainzSuggestion(
         }
         throw trackErr
       }
+      ensureNotCancelled()
       const result = await buildResultFromRelease(releaseDetail, releaseId, trackCtx)
       const keysToWrite = new Set<string>()
       if (result.source.releaseId) {
@@ -563,6 +575,7 @@ export async function fetchMusicBrainzSuggestion(
     }
   }
   if (allowFallback && fallbackReleaseDetail) {
+    ensureNotCancelled()
     const result = await buildResultFromRelease(
       fallbackReleaseDetail.detail,
       fallbackReleaseDetail.releaseId

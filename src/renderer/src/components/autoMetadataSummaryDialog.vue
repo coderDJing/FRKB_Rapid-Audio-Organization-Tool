@@ -51,6 +51,10 @@ const chips = computed((): SummaryChip[] => {
       value: s?.skipped || 0
     },
     {
+      label: t('metadata.autoFillStatCancelled'),
+      value: s?.cancelled || 0
+    },
+    {
       label: t('metadata.autoFillStatErrors'),
       value: s?.errors || 0,
       danger: (s?.errors || 0) > 0
@@ -82,6 +86,7 @@ const hasItems = computed(() => {
 const statusClassMap: Record<IMetadataAutoFillItemResult['status'], string> = {
   applied: 'tag-good',
   'no-match': 'tag-neutral',
+  cancelled: 'tag-neutral',
   skipped: 'tag-neutral',
   error: 'tag-warn'
 }
@@ -90,6 +95,7 @@ const statusLabel = (status: IMetadataAutoFillItemResult['status']) => {
   if (status === 'applied') return t('metadata.autoFillStatus.applied')
   if (status === 'no-match') return t('metadata.autoFillStatus.noMatch')
   if (status === 'skipped') return t('metadata.autoFillStatus.skipped')
+  if (status === 'cancelled') return t('metadata.autoFillStatus.cancelled')
   return t('metadata.autoFillStatus.error')
 }
 
@@ -109,7 +115,8 @@ const reasonLabel = (item: IMetadataAutoFillItemResult) => {
   return translated
 }
 
-const shouldShowReason = (item: IMetadataAutoFillItemResult) => item.status === 'error'
+const shouldShowReason = (item: IMetadataAutoFillItemResult) =>
+  item.status === 'error' || item.status === 'cancelled'
 </script>
 
 <template>

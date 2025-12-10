@@ -279,34 +279,36 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
 </script>
 <template>
   <div class="bottom-info-area" :class="{ empty: tasks.length === 0 }">
-    <div v-for="task in tasks" :key="task.id" class="task-row">
-      <div class="spinner">
-        <div class="loading">
-          <div></div>
-          <div></div>
-          <div></div>
-          <div></div>
-          <div></div>
+    <TransitionGroup name="progress-fade" tag="div">
+      <div v-for="task in tasks" :key="task.id" class="task-row">
+        <div class="spinner">
+          <div class="loading">
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+          </div>
+        </div>
+        <div class="label">
+          {{ task.title }}
+          <span v-show="!task.noNum">{{ task.now }} / {{ task.total }}</span>
+        </div>
+        <div class="container">
+          <div class="progress">
+            <div
+              class="progress-bar"
+              :style="'width:' + (task.total ? (task.now / task.total) * 100 : 0) + '%'"
+            />
+          </div>
+        </div>
+        <div class="actions" v-if="task.cancelable">
+          <button class="cancel-btn" :disabled="task.canceling" @click="cancelTask(task)">
+            {{ t('common.cancel') }}
+          </button>
         </div>
       </div>
-      <div class="label">
-        {{ task.title }}
-        <span v-show="!task.noNum">{{ task.now }} / {{ task.total }}</span>
-      </div>
-      <div class="container">
-        <div class="progress">
-          <div
-            class="progress-bar"
-            :style="'width:' + (task.total ? (task.now / task.total) * 100 : 0) + '%'"
-          />
-        </div>
-      </div>
-      <div class="actions" v-if="task.cancelable">
-        <button class="cancel-btn" :disabled="task.canceling" @click="cancelTask(task)">
-          {{ t('common.cancel') }}
-        </button>
-      </div>
-    </div>
+    </TransitionGroup>
     <div
       v-if="
         tasks.length === 0 &&
@@ -476,6 +478,7 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   border-radius: 3px;
   overflow: hidden;
   will-change: background-position, width;
+  transition: width 0.2s ease;
 }
 
 .progress-bar::after {
@@ -563,6 +566,9 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   width: 100%;
   display: flex;
   align-items: center;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
 .spinner {
   display: flex;
@@ -588,5 +594,22 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   font-size: 11px;
   color: var(--text-weak);
   white-space: nowrap;
+}
+
+.progress-fade-enter-from,
+.progress-fade-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.progress-fade-leave-active {
+  position: relative;
+}
+
+.progress-fade-enter-active,
+.progress-fade-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
 </style>
