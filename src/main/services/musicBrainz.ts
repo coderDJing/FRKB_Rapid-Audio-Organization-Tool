@@ -8,12 +8,14 @@ import {
   IMusicBrainzSuggestionResult
 } from '../../types/globals'
 import { ProxyAgent } from 'undici'
+import { log } from '../log'
 
 const MUSICBRAINZ_BASE = 'https://musicbrainz.org/ws/2'
 const COVER_ART_BASE = 'https://coverartarchive.org'
 const REQUEST_TIMEOUT = 8000
 const RELEASE_DETAIL_TIMEOUT = 15000
 const MIN_INTERVAL_MS = 1100
+const MAX_RETRIES = 3
 const SEARCH_CACHE_TTL = 24 * 60 * 60 * 1000
 const DETAIL_CACHE_TTL = 7 * 24 * 60 * 60 * 1000
 const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || ''
@@ -55,6 +57,60 @@ function processQueue() {
         processQueue()
       }, MIN_INTERVAL_MS)
     })
+}
+
+function getErrorCode(err: any) {
+  if (!err) return ''
+  if (typeof err.message === 'string' && err.message.trim()) return err.message.trim()
+  if (typeof err.code === 'string' && err.code.trim()) return err.code.trim()
+  return ''
+}
+
+function isRetriableError(err: any) {
+  const code = getErrorCode(err)
+  if (!code) return false
+  if (code === 'MUSICBRAINZ_RATE_LIMITED' || code === 'MUSICBRAINZ_ABORTED') return false
+  if (
+    code === 'MUSICBRAINZ_EMPTY_QUERY' ||
+    code === 'MUSICBRAINZ_INVALID_PARAMS' ||
+    code === 'MUSICBRAINZ_RELEASE_NOT_FOUND' ||
+    code === 'MUSICBRAINZ_RECORDING_NOT_IN_RELEASE'
+  ) {
+    return false
+  }
+  if (code.startsWith('MUSICBRAINZ_HTTP_') && !code.startsWith('MUSICBRAINZ_HTTP_5')) return false
+  return (
+    code === 'MUSICBRAINZ_NETWORK' ||
+    code === 'MUSICBRAINZ_TIMEOUT' ||
+    code === 'MUSICBRAINZ_UNAVAILABLE' ||
+    code.startsWith('MUSICBRAINZ_HTTP_5')
+  )
+}
+
+async function withRetry<T>(fn: () => Promise<T>, meta: { url: string; type: 'json' | 'buffer' }) {
+  let lastError: any
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 1) {
+      log.info('[musicbrainz] retrying request', { url: meta.url, type: meta.type, attempt })
+    }
+    try {
+      return await fn()
+    } catch (err: any) {
+      lastError = err
+      const code = getErrorCode(err)
+      const willRetry = attempt < MAX_RETRIES && isRetriableError(err)
+      log.warn('[musicbrainz] request failed', {
+        url: meta.url,
+        type: meta.type,
+        attempt,
+        code,
+        message: err?.message,
+        willRetry
+      })
+      if (!willRetry) throw err
+    }
+  }
+  throw lastError
 }
 
 async function ensureCacheDir(scope: 'search' | 'detail'): Promise<string> {
@@ -146,45 +202,51 @@ function mergeHeaders(extra?: HeadersInit): HeadersInit {
 }
 
 async function requestJson<T>(url: string, headers?: HeadersInit, timeoutMs?: number): Promise<T> {
-  return scheduleRequest(async () => {
-    const controller = new AbortController()
-    currentAbortController = controller
-    let abortedByTimeout = false
-    const timer = setTimeout(() => {
-      abortedByTimeout = true
-      controller.abort()
-    }, timeoutMs ?? REQUEST_TIMEOUT)
-    try {
-      const init: RequestInit & { dispatcher?: any } = {
-        headers: mergeHeaders({
-          Accept: 'application/json',
-          ...headers
-        }),
-        signal: controller.signal
+  const attempt = () =>
+    scheduleRequest(async () => {
+      const controller = new AbortController()
+      currentAbortController = controller
+      let abortedByTimeout = false
+      const timer = setTimeout(() => {
+        abortedByTimeout = true
+        controller.abort()
+      }, timeoutMs ?? REQUEST_TIMEOUT)
+      try {
+        const init: RequestInit & { dispatcher?: any } = {
+          headers: mergeHeaders({
+            Accept: 'application/json',
+            ...headers
+          }),
+          signal: controller.signal
+        }
+        if (proxyDispatcher) init.dispatcher = proxyDispatcher
+        const res = await fetch(url, init)
+        if (res.status === 429) throw new Error('MUSICBRAINZ_RATE_LIMITED')
+        if (res.status === 503) throw new Error('MUSICBRAINZ_UNAVAILABLE')
+        if (!res.ok) throw new Error(`MUSICBRAINZ_HTTP_${res.status}`)
+        return (await res.json()) as T
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          if (abortedByTimeout) throw new Error('MUSICBRAINZ_TIMEOUT')
+          throw new Error('MUSICBRAINZ_ABORTED')
+        }
+        if (err?.code === 'ECONNRESET' || err?.message?.includes('fetch failed')) {
+          log.warn('[musicbrainz] request JSON network error', {
+            url,
+            code: err?.code,
+            message: err?.message
+          })
+          throw new Error('MUSICBRAINZ_NETWORK')
+        }
+        throw err
+      } finally {
+        clearTimeout(timer)
+        if (currentAbortController === controller) {
+          currentAbortController = null
+        }
       }
-      if (proxyDispatcher) init.dispatcher = proxyDispatcher
-      const res = await fetch(url, init)
-      if (res.status === 429) throw new Error('MUSICBRAINZ_RATE_LIMITED')
-      if (res.status === 503) throw new Error('MUSICBRAINZ_UNAVAILABLE')
-      if (!res.ok) throw new Error(`MUSICBRAINZ_HTTP_${res.status}`)
-      return (await res.json()) as T
-    } catch (err: any) {
-      if (err?.name === 'AbortError') {
-        if (abortedByTimeout) throw new Error('MUSICBRAINZ_TIMEOUT')
-        throw new Error('MUSICBRAINZ_ABORTED')
-      }
-      if (err?.code === 'ECONNRESET' || err?.message?.includes('fetch failed')) {
-        console.error('[musicbrainz] request JSON network error', url, err)
-        throw new Error('MUSICBRAINZ_NETWORK')
-      }
-      throw err
-    } finally {
-      clearTimeout(timer)
-      if (currentAbortController === controller) {
-        currentAbortController = null
-      }
-    }
-  })
+    })
+  return withRetry(attempt, { url, type: 'json' })
 }
 
 async function requestBuffer(
@@ -195,45 +257,51 @@ async function requestBuffer(
   mime: string
   buffer: Buffer
 } | null> {
-  return scheduleRequest(async () => {
-    const controller = new AbortController()
-    currentAbortController = controller
-    let abortedByTimeout = false
-    const timer = setTimeout(() => {
-      abortedByTimeout = true
-      controller.abort()
-    }, timeoutMs ?? REQUEST_TIMEOUT)
-    try {
-      const init: RequestInit & { dispatcher?: any } = {
-        headers: mergeHeaders(headers),
-        signal: controller.signal
+  const attempt = () =>
+    scheduleRequest(async () => {
+      const controller = new AbortController()
+      currentAbortController = controller
+      let abortedByTimeout = false
+      const timer = setTimeout(() => {
+        abortedByTimeout = true
+        controller.abort()
+      }, timeoutMs ?? REQUEST_TIMEOUT)
+      try {
+        const init: RequestInit & { dispatcher?: any } = {
+          headers: mergeHeaders(headers),
+          signal: controller.signal
+        }
+        if (proxyDispatcher) init.dispatcher = proxyDispatcher
+        const res = await fetch(url, init)
+        if (res.status === 404) return null
+        if (res.status === 429) throw new Error('MUSICBRAINZ_RATE_LIMITED')
+        if (res.status === 503) throw new Error('MUSICBRAINZ_UNAVAILABLE')
+        if (!res.ok) throw new Error(`MUSICBRAINZ_HTTP_${res.status}`)
+        const mime = res.headers.get('content-type') || 'image/jpeg'
+        const arrayBuffer = await res.arrayBuffer()
+        return { mime, buffer: Buffer.from(arrayBuffer) }
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          if (abortedByTimeout) throw new Error('MUSICBRAINZ_TIMEOUT')
+          throw new Error('MUSICBRAINZ_ABORTED')
+        }
+        if (err?.code === 'ECONNRESET' || err?.message?.includes('fetch failed')) {
+          log.warn('[musicbrainz] request buffer network error', {
+            url,
+            code: err?.code,
+            message: err?.message
+          })
+          throw new Error('MUSICBRAINZ_NETWORK')
+        }
+        throw err
+      } finally {
+        clearTimeout(timer)
+        if (currentAbortController === controller) {
+          currentAbortController = null
+        }
       }
-      if (proxyDispatcher) init.dispatcher = proxyDispatcher
-      const res = await fetch(url, init)
-      if (res.status === 404) return null
-      if (res.status === 429) throw new Error('MUSICBRAINZ_RATE_LIMITED')
-      if (res.status === 503) throw new Error('MUSICBRAINZ_UNAVAILABLE')
-      if (!res.ok) throw new Error(`MUSICBRAINZ_HTTP_${res.status}`)
-      const mime = res.headers.get('content-type') || 'image/jpeg'
-      const arrayBuffer = await res.arrayBuffer()
-      return { mime, buffer: Buffer.from(arrayBuffer) }
-    } catch (err: any) {
-      if (err?.name === 'AbortError') {
-        if (abortedByTimeout) throw new Error('MUSICBRAINZ_TIMEOUT')
-        throw new Error('MUSICBRAINZ_ABORTED')
-      }
-      if (err?.code === 'ECONNRESET' || err?.message?.includes('fetch failed')) {
-        console.error('[musicbrainz] request buffer network error', url, err)
-        throw new Error('MUSICBRAINZ_NETWORK')
-      }
-      throw err
-    } finally {
-      clearTimeout(timer)
-      if (currentAbortController === controller) {
-        currentAbortController = null
-      }
-    }
-  })
+    })
+  return withRetry(attempt, { url, type: 'buffer' })
 }
 
 function normalizeText(value?: string | null): string | undefined {
@@ -433,7 +501,7 @@ async function fetchCoverDataUrl(releaseId: string): Promise<string | null> {
     if (err?.message === 'MUSICBRAINZ_ABORTED') {
       throw err
     }
-    console.error('[musicbrainz] cover fetch failed', releaseId, err)
+    log.error('[musicbrainz] cover fetch failed', { releaseId, message: err?.message })
     throw err
   }
 }
@@ -444,6 +512,11 @@ export async function fetchMusicBrainzSuggestion(
   if (!params || !params.recordingId) {
     throw new Error('MUSICBRAINZ_INVALID_PARAMS')
   }
+  log.info('[musicbrainz] suggest start', {
+    recordingId: params.recordingId,
+    releaseId: params.releaseId,
+    allowFallback: params.allowFallback === true
+  })
   const ensureNotCancelled = () => {
     if (params?.cancelToken?.cancelled) {
       throw new Error('MUSICBRAINZ_ABORTED')
@@ -461,7 +534,10 @@ export async function fetchMusicBrainzSuggestion(
   for (const key of cacheKeysToCheck) {
     if (!key) continue
     const cached = await readCache<IMusicBrainzSuggestionResult>('detail', key)
-    if (cached) return cached
+    if (cached) {
+      log.info('[musicbrainz] suggest cache hit', { recordingId, cacheKey: key })
+      return cached
+    }
   }
   const recording = await fetchRecordingDetail(params.recordingId)
   const releaseCandidates: string[] = []
@@ -481,6 +557,12 @@ export async function fetchMusicBrainzSuggestion(
     addCandidate(rel?.id)
   }
   if (!releaseCandidates.length) throw new Error('MUSICBRAINZ_RELEASE_NOT_FOUND')
+  log.info('[musicbrainz] release candidates prepared', {
+    recordingId,
+    preferredReleaseId: params.releaseId,
+    allowFallback,
+    candidates: releaseCandidates
+  })
 
   const buildResultFromRelease = async (releaseDetail: any, releaseId: string, trackCtx?: any) => {
     ensureNotCancelled()
@@ -535,6 +617,7 @@ export async function fetchMusicBrainzSuggestion(
   for (const releaseId of releaseCandidates) {
     try {
       ensureNotCancelled()
+      log.info('[musicbrainz] fetching release detail', { recordingId, releaseId })
       const releaseDetail = await fetchReleaseDetail(releaseId)
       const trackCtx = findTrackContext(releaseDetail, params.recordingId)
       if (!trackCtx) {
@@ -544,12 +627,21 @@ export async function fetchMusicBrainzSuggestion(
           if (!fallbackReleaseDetail) {
             fallbackReleaseDetail = { releaseId, detail: releaseDetail }
           }
+          log.warn('[musicbrainz] recording not found in release, fallback allowed', {
+            recordingId,
+            releaseId
+          })
           continue
         }
         throw trackErr
       }
       ensureNotCancelled()
       const result = await buildResultFromRelease(releaseDetail, releaseId, trackCtx)
+      log.info('[musicbrainz] suggestion built', {
+        recordingId,
+        releaseId: result.source.releaseId,
+        hasCover: result.suggestion.coverDataUrl === null ? false : !!result.suggestion.coverDataUrl
+      })
       const keysToWrite = new Set<string>()
       if (result.source.releaseId) {
         keysToWrite.add(`${recordingId}:${result.source.releaseId}`)
@@ -571,6 +663,11 @@ export async function fetchMusicBrainzSuggestion(
       const shouldFallback =
         allowFallback && lastError?.message === 'MUSICBRAINZ_RECORDING_NOT_IN_RELEASE'
       if (shouldFallback) continue
+      log.error('[musicbrainz] suggestion failed for release', {
+        recordingId,
+        releaseId,
+        message: lastError?.message
+      })
       throw lastError
     }
   }
@@ -585,12 +682,24 @@ export async function fetchMusicBrainzSuggestion(
       keysToWrite.add(`${recordingId}:${result.source.releaseId}`)
     }
     keysToWrite.add(autoCacheKey)
+    log.info('[musicbrainz] suggestion built from fallback release', {
+      recordingId,
+      releaseId: fallbackReleaseDetail.releaseId,
+      hasCover: result.suggestion.coverDataUrl === null ? false : !!result.suggestion.coverDataUrl
+    })
     for (const key of keysToWrite) {
       await writeCache('detail', key, DETAIL_CACHE_TTL, result)
     }
     return result
   }
-  if (lastError) throw lastError
+  if (lastError) {
+    log.error('[musicbrainz] suggestion failed after all candidates', {
+      recordingId,
+      preferredReleaseId: params.releaseId,
+      message: lastError?.message
+    })
+    throw lastError
+  }
   throw new Error('MUSICBRAINZ_RECORDING_NOT_IN_RELEASE')
 }
 
