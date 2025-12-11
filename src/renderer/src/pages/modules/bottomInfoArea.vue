@@ -594,6 +594,7 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   font-size: 11px;
   color: var(--text-weak);
   white-space: nowrap;
+  margin-bottom: 10px;
 }
 
 .progress-fade-enter-from,
