@@ -530,102 +530,109 @@ watch(
 )
 </script>
 <template>
-  <div
-    style="
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      padding: 0 5px 0 0;
-      box-sizing: border-box;
-    "
-  >
-    <div style="width: 50px; display: flex" class="unselectable">
-      <div
-        v-show="waveformShow"
-        style="
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          height: 50px;
-          width: 50px;
-        "
-        @mouseenter="songInfoShow = true"
-      >
-        <img v-if="coverBlobUrl" :src="coverBlobUrl" class="songCover" />
-        <img v-else :src="musicIcon" style="width: 25px; height: 25px" />
-      </div>
-    </div>
-    <transition name="fade">
-      <div v-if="songInfoShow" @mouseleave="handleSongInfoMouseLeave" class="songInfo">
-        <div class="cover unselectable" @contextmenu.prevent="showCoverContextMenu">
-          <img
-            v-if="coverBlobUrl"
-            :src="coverBlobUrl"
-            style="width: 280px; height: 280px"
-            draggable="false"
-          />
-          <img v-else :src="musicIcon" style="width: 48px; height: 48px" draggable="false" />
-        </div>
-        <div style="font-size: 14px" class="info">
-          {{ runtime.playingData.playingSong?.title }}
-        </div>
-        <div style="font-size: 12px" class="info">
-          {{ runtime.playingData.playingSong?.artist }}
-        </div>
-        <div style="font-size: 10px" class="info">
-          {{ runtime.playingData.playingSong?.album }}
-        </div>
-        <div style="font-size: 10px" class="info">
-          {{ runtime.playingData.playingSong?.label }}
-        </div>
-      </div>
-    </transition>
+  <transition name="player-area-toggle">
     <div
-      :style="{ width: runtime.setting.hiddenPlayControlArea ? '15px' : '260px' }"
       v-show="waveformShow"
+      class="playerArea"
+      style="
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        padding: 0 5px 0 0;
+        box-sizing: border-box;
+      "
     >
-      <playerControls
-        v-if="!runtime.setting.hiddenPlayControlArea"
-        ref="playerControlsRef"
-        @pause="playerActions.pause"
-        @play="playerActions.play"
-        @fastForward="playerActions.fastForward"
-        @fastBackward="playerActions.fastBackward"
-        @nextSong="playerActions.nextSong"
-        @previousSong="playerActions.previousSong"
-        @delSong="playerActions.delSong"
-        @moveToListLibrary="(song) => playerActions.moveToListLibrary(song)"
-        @moveToLikeLibrary="(song) => playerActions.moveToLikeLibrary(song)"
-        @exportTrack="playerActions.exportTrack"
-        @setVolume="
-          (v) => {
-            try {
-              audioPlayer?.setVolume?.(v)
-            } catch (_) {}
-          }
-        "
-      />
-    </div>
-
-    <div style="flex-grow: 1; position: relative" class="unselectable">
-      <div id="waveform" ref="waveform" v-show="waveformShow">
-        <div id="time">0:00</div>
-        <div id="duration">0:00</div>
-        <div id="hover"></div>
+      <div style="width: 50px; display: flex" class="unselectable">
+        <div
+          style="
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 50px;
+            width: 50px;
+          "
+          @mouseenter="songInfoShow = true"
+        >
+          <transition name="cover-switch" mode="out-in">
+            <img v-if="coverBlobUrl" :key="coverBlobUrl" :src="coverBlobUrl" class="songCover" />
+            <img v-else :key="'placeholder'" :src="musicIcon" style="width: 25px; height: 25px" />
+          </transition>
+        </div>
+      </div>
+      <transition name="fade">
+        <div v-if="songInfoShow" @mouseleave="handleSongInfoMouseLeave" class="songInfo">
+          <div class="cover unselectable" @contextmenu.prevent="showCoverContextMenu">
+            <img
+              v-if="coverBlobUrl"
+              :src="coverBlobUrl"
+              style="width: 280px; height: 280px"
+              draggable="false"
+            />
+            <img v-else :src="musicIcon" style="width: 48px; height: 48px" draggable="false" />
+          </div>
+          <div style="font-size: 14px" class="info">
+            {{ runtime.playingData.playingSong?.title }}
+          </div>
+          <div style="font-size: 12px" class="info">
+            {{ runtime.playingData.playingSong?.artist }}
+          </div>
+          <div style="font-size: 10px" class="info">
+            {{ runtime.playingData.playingSong?.album }}
+          </div>
+          <div style="font-size: 10px" class="info">
+            {{ runtime.playingData.playingSong?.label }}
+          </div>
+        </div>
+      </transition>
+      <div
+        class="controlsContainer"
+        :style="{ width: runtime.setting.hiddenPlayControlArea ? '15px' : '260px' }"
+      >
+        <transition name="player-controls-toggle">
+          <playerControls
+            v-if="!runtime.setting.hiddenPlayControlArea"
+            ref="playerControlsRef"
+            @pause="playerActions.pause"
+            @play="playerActions.play"
+            @fastForward="playerActions.fastForward"
+            @fastBackward="playerActions.fastBackward"
+            @nextSong="playerActions.nextSong"
+            @previousSong="playerActions.previousSong"
+            @delSong="playerActions.delSong"
+            @moveToListLibrary="(song) => playerActions.moveToListLibrary(song)"
+            @moveToLikeLibrary="(song) => playerActions.moveToLikeLibrary(song)"
+            @exportTrack="playerActions.exportTrack"
+            @setVolume="
+              (v) => {
+                try {
+                  audioPlayer?.setVolume?.(v)
+                } catch (_) {}
+              }
+            "
+          />
+        </transition>
       </div>
 
-      <PlaybackRangeHandles
-        v-model:modelValueStart="runtime.setting.startPlayPercent"
-        v-model:modelValueEnd="runtime.setting.endPlayPercent"
-        :container-width="waveformContainerWidth"
-        :enable-playback-range="runtime.setting.enablePlaybackRange"
-        :waveform-show="waveformShow"
-        @dragEnd="setSetting"
-      />
+      <div style="flex-grow: 1; position: relative" class="unselectable">
+        <div id="waveform" ref="waveform">
+          <div id="time">0:00</div>
+          <div id="duration">0:00</div>
+          <div id="hover"></div>
+        </div>
+
+        <PlaybackRangeHandles
+          v-model:modelValueStart="runtime.setting.startPlayPercent"
+          v-model:modelValueEnd="runtime.setting.endPlayPercent"
+          :container-width="waveformContainerWidth"
+          :enable-playback-range="runtime.setting.enablePlaybackRange"
+          :waveform-show="waveformShow"
+          @dragEnd="setSetting"
+        />
+      </div>
+      <BpmTap :bpm="bpm" :waveformShow="waveformShow" />
     </div>
-    <BpmTap :bpm="bpm" :waveformShow="waveformShow" />
-  </div>
+  </transition>
   <selectSongListDialog
     v-if="selectSongListDialogShow"
     :libraryName="selectSongListDialogLibraryName"
@@ -727,5 +734,61 @@ watch(
 
 #duration {
   right: 0;
+}
+
+.player-area-toggle-enter-active,
+.player-area-toggle-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.player-area-toggle-enter-from,
+.player-area-toggle-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.controlsContainer {
+  transition: width 0.22s ease;
+  overflow: hidden;
+}
+
+.player-controls-toggle-enter-active,
+.player-controls-toggle-leave-active {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.player-controls-toggle-enter-from,
+.player-controls-toggle-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.cover-switch-enter-active,
+.cover-switch-leave-active {
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+
+.cover-switch-enter-from,
+.cover-switch-leave-to {
+  opacity: 0;
+  transform: scale(0.9);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .player-area-toggle-enter-active,
+  .player-area-toggle-leave-active,
+  .player-controls-toggle-enter-active,
+  .player-controls-toggle-leave-active,
+  .controlsContainer,
+  .cover-switch-enter-active,
+  .cover-switch-leave-active {
+    transition: none;
+  }
 }
 </style>
