@@ -30,6 +30,7 @@ type Task = {
   removing?: boolean
 }
 const tasks = ref<Task[]>([])
+const showTotalRow = ref(tasks.value.length === 0)
 // 组件内部通过 CSS 控制显隐（empty => display:none），无需向上层发事件
 
 const playlistTotalDaysHoursSeconds = computed(() => {
@@ -173,6 +174,21 @@ window.electron.ipcRenderer.on('progressSet', (_event, arg1, arg2, arg3, arg4) =
   upsertTask(String(titleKey), Number(nowNum) || 0, Number(total) || 0, !!noNumFlag)
 })
 
+watch(
+  () => tasks.value.length,
+  (len) => {
+    if (len > 0) {
+      showTotalRow.value = false
+    }
+  }
+)
+
+const handleAfterLeave = () => {
+  if (tasks.value.length === 0) {
+    showTotalRow.value = true
+  }
+}
+
 const cancelTask = async (task: Task) => {
   if (!task.cancelable || task.canceling) return
   task.canceling = true
@@ -279,7 +295,7 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
 </script>
 <template>
   <div class="bottom-info-area" :class="{ empty: tasks.length === 0 }">
-    <TransitionGroup name="progress-fade" tag="div">
+    <TransitionGroup name="progress-fade" tag="div" @after-leave="handleAfterLeave">
       <div v-for="task in tasks" :key="task.id" class="task-row">
         <div class="spinner">
           <div class="loading">
@@ -311,9 +327,7 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
     </TransitionGroup>
     <div
       v-if="
-        tasks.length === 0 &&
-        runtime.songsArea.songListUUID &&
-        runtime.songsArea.songInfoArr.length > 0
+        showTotalRow && runtime.songsArea.songListUUID && runtime.songsArea.songInfoArr.length > 0
       "
       class="total-row"
     >
@@ -594,7 +608,7 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   font-size: 11px;
   color: var(--text-weak);
   white-space: nowrap;
-  margin-bottom: 10px;
+  margin-bottom: 2px;
 }
 
 .progress-fade-enter-from,
