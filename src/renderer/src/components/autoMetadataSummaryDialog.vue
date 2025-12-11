@@ -188,7 +188,7 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) =>
 
 <style scoped lang="scss">
 .inner {
-  width: 640px;
+  width: 675px;
   max-height: 80vh;
   height: 80vh;
   padding: 0;
