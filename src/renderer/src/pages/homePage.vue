@@ -17,6 +17,8 @@ let startX = 0
 let isResizing = false
 const isHovered = ref(false)
 let hoverTimeout: NodeJS.Timeout
+const librarySwitching = ref(false)
+let librarySwitchTimer: ReturnType<typeof setTimeout> | null = null
 
 // 计算 dragBar 的 left 样式
 const dragBarLeft = computed(() => {
@@ -79,6 +81,20 @@ function stopResize() {
   window.electron.ipcRenderer.send('layoutConfigChanged', JSON.stringify(runtime.layoutConfig))
 }
 
+const triggerLibrarySwitchAnimation = (shouldSkip = false) => {
+  if (shouldSkip) return
+  librarySwitching.value = false
+  if (librarySwitchTimer) {
+    clearTimeout(librarySwitchTimer)
+  }
+  requestAnimationFrame(() => {
+    librarySwitching.value = true
+    librarySwitchTimer = setTimeout(() => {
+      librarySwitching.value = false
+    }, 220)
+  })
+}
+
 const adjustLibraryWidth = () => {
   const windowWidth = window.innerWidth
   const maxWidth = windowWidth - 100
@@ -99,18 +115,22 @@ onUnmounted(() => {
   document.removeEventListener('mousemove', resize)
   document.removeEventListener('mouseup', stopResize)
   clearTimeout(hoverTimeout)
+  if (librarySwitchTimer) {
+    clearTimeout(librarySwitchTimer)
+  }
 })
 
 let librarySelected = ref('FilterLibrary')
 watch(
   () => runtime.libraryAreaSelected,
-  (val) => {
+  (val, oldVal) => {
     librarySelected.value = val
     if (val === 'ExternalPlaylist') {
       if (runtime.songsArea.songListUUID !== EXTERNAL_PLAYLIST_UUID) {
         runtime.songsArea.songListUUID = EXTERNAL_PLAYLIST_UUID
       }
     }
+    triggerLibrarySwitchAnimation(oldVal === undefined)
   },
   { immediate: true }
 )
@@ -299,7 +319,9 @@ const drop = async (e: DragEvent) => {
       >
         <div
           v-show="!isExternalPlaylistView"
+          class="libraryPanel"
           style="border-right: 1px solid var(--border); flex-shrink: 0"
+          :class="{ librarySwitching }"
           :style="'width:' + runtime.layoutConfig.libraryAreaWidth + 'px'"
         >
           <div
@@ -342,6 +364,29 @@ const drop = async (e: DragEvent) => {
   </div>
 </template>
 <style lang="scss" scoped>
+.libraryPanel {
+  &.librarySwitching {
+    animation: librarySwitchFade 220ms ease;
+  }
+}
+
+@keyframes librarySwitchFade {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .libraryPanel.librarySwitching {
+    animation: none;
+  }
+}
+
 .dragBar {
   position: absolute;
   top: 0;
