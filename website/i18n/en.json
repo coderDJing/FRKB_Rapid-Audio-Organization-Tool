@@ -18,6 +18,7 @@
     "extra": {
       "waveform": "Multiple waveform views: SoundCloud classic, fine-grained waveform, and RGB three-band energy to spot transitions instantly",
       "formats": "Wide format playback & conversion: Built-in FFmpeg pipeline covers 20+ DJ and archival formats with batch transcoding",
+      "metadata": "Online metadata enrichment: search track metadata by conditions, or match directly via audio fingerprint",
       "crossOpen": "Cross‑platform and open‑source: Windows / macOS; inspect and contribute"
     }
   },
