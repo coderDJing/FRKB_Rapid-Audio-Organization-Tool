@@ -127,6 +127,8 @@
 
 ## 训练/推理触发与接口（基线）
 - 训练触发（建议）：上层在 `positiveIds ≥ 20` 且 `negativeIds ≥ 4 * positiveIds` 时进行首次训练；不足则跳过训练并仅用相似度排序。之后当 `positiveIds/negativeIds` 发生变化时按需重新训练（准确率优先）。后端不自行判断业务事件，只响应训练调用。  
+- 标签更正：上层若发现样本归类有误（负样本改为正样本或反之），更新 `positiveIds/negativeIds` 后重新调用训练即可；后端不持久化历史标签，新模型会覆盖旧影响。  
+- 训练形态：基线使用 **全量从零重训**（仅重训 GBDT 权重，不重算已缓存的音频特征）。当前选用的纯 Rust `gbdt` 不支持可靠的在线/增量更新；若未来必须增量训练，需要改为支持 warm‑start 的框架（如 XGBoost/LightGBM FFI）或引入在线模型作为辅助手段。  
 - N‑API 接口草案：  
   - `extractOpenL3Embedding(filePath) -> Float32Array(256)`（内部整曲滑窗聚合）。  
   - `trainSelectionGbdt(positiveIds, negativeIds, featureStorePath) -> { status, modelPath?, metrics? }`（`status` 可能为 `trained | insufficient_samples | failed`）。  
