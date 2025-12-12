@@ -751,7 +751,8 @@ watch(
 
 .controlsContainer {
   transition: width 0.22s ease;
-  overflow: hidden;
+  /* 允许音量条、更多菜单浮层溢出容器 */
+  overflow: visible;
 }
 
 .player-controls-toggle-enter-active,
