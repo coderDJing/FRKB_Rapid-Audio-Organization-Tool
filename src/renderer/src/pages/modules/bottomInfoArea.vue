@@ -255,9 +255,10 @@ window.electron.ipcRenderer.on(
     }
   }
 )
-window.electron.ipcRenderer.on('noAudioFileWasScanned', async (event) => {
+window.electron.ipcRenderer.on('noAudioFileWasScanned', async (_event, progressId?: string) => {
   runtime.isProgressing = false
   runtime.importingSongListUUID = ''
+  if (progressId) tasks.value = tasks.value.filter((t) => t.id !== String(progressId))
   await confirm({
     title: t('common.finished'),
     content: [t('fingerprints.noAudioFilesFound')],

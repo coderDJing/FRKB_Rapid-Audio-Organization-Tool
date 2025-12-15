@@ -43,7 +43,7 @@ export function registerImportHandlers(
     }
     sendProgress('fingerprints.scanningFiles', 1, 1, true, progressId)
     if (songFileUrls.length === 0) {
-      getWindow()?.webContents.send('noAudioFileWasScanned')
+      getWindow()?.webContents.send('noAudioFileWasScanned', progressId)
       return
     }
     songFileUrls = Array.from(new Set(songFileUrls))
