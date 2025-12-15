@@ -32,7 +32,7 @@ export function registerFingerprintHandlers({
     ).flat()
     sendProgress({ id: progressId, titleKey: 'fingerprints.scanningFiles', now: 1, total: 1 })
     if (songFileUrls.length === 0) {
-      getWindow()?.webContents.send('noAudioFileWasScanned')
+      getWindow()?.webContents.send('noAudioFileWasScanned', progressId)
       return
     }
     sendProgress({
