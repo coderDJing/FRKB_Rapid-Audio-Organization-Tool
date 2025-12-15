@@ -1,13 +1,19 @@
-# 本地精选预测后端方案（定稿）
+# 本地精选预测方案（后端定稿 + 前端交互草案）
+
+> 说明：本文后端方案为定稿；前端交互/触发规则为草案，后续可按体验迭代。
 
 ## 背景与目标
-- 需求：基于历史“已加入精选”的曲目（即便文件已删除）预测筛选库里最可能加入精选的候选；全程离线、用户零配置。
+- 需求：基于用户显式标注的“喜欢/不喜欢”（可兼容历史“已加入精选”的曲目作为喜欢）预测筛选库里最可能被用户喜欢/加入精选的候选；全程离线、用户零配置。
 - 约束：仅使用歌曲自身信息（音频内容 + 元数据），不引入播放/跳过等行为特征；纯本地推理，不依赖服务器。
 - 目标：在桌面端提供高精度的候选排序，优先准确率，其次兼顾包体和延迟。
 
+## 库目录与数据落盘约定
+- FRKB 库目录：用户选择 `FRKB.database.frkbdb` 所在目录（以该目录为库的根目录）。
+- 可携带性：除用户界面配置外，与该库相关的所有数据均落在库目录中（如 `FRKB.database.frkbdb`、`features.db`、`models/selection/*` 等）；库目录移动路径或迁移到其他电脑后，重新选择该 `FRKB.database.frkbdb` 即可继续使用。
+
 ## 数据与特征前提
-- 正样本：历史精选曲目（含已删除文件），需保留元数据快照 + 音频指纹/嵌入。
-- 负样本：筛选库中未被加入精选的曲目，可随机采样或取时间邻近但未选中的项。
+- 正样本：用户标注为“喜欢”的曲目（可包含“已加入精选”的历史曲目，含已删除文件的快照），需保留元数据快照 + 音频指纹/嵌入。
+- 负样本：用户标注为“不喜欢”的曲目（仅显式 `disliked`）；不从 `neutral` 自动采样补齐，负样本不足则视为不可训练/不可预测。
 - 稳定 ID：上层提供 `songId`，**推荐使用现有的 PCM 内容 SHA256（`sha256_Hash`）** 作为跨路径/重编码一致的主键，用于 features 表去重与历史对齐。
 - 音频特征：首选嵌入（OpenL3 small），**第一版必做** Chromaprint 指纹 + HPCP/Chroma + BPM/Key（从音频内容提取），辅以响度、时长等统计特征。
 - 元数据特征：艺人/流派/专辑/年份、BPM/调式/时长、比特率；标题/标签可做文本相似度（轻量 TF-IDF 或小型文本嵌入）。
@@ -19,7 +25,8 @@
 ## 部署形态（开箱即用）
 - 推荐链路：开发阶段将模型转 ONNX → Rust 侧用 `onnxruntime` (`ort`) 推理 → 暴露 N-API 给 Electron；随应用打包 ORT 动态库或静态链接，首次运行零下载。
 - 预处理：音频解码/重采样、梅尔谱/增广等前处理尽量放在 Rust 侧，减少 JS 往返与 CPU 开销。
-- 包体管理：模型与 ORT 二进制可压缩/分片随安装包，启动时校验哈希后解压到 `userData`。
+- 应用资源：OpenL3 ONNX 模型与 ORT 运行时可压缩/分片随安装包，启动时校验哈希后解压到 `userData`（与库目录无关）。
+- 库数据：训练产物、特征与缓存均落在库目录（见“库目录与数据落盘约定”）。
 
 ## 推理与排序流程
 1) **离线特征提取**  
@@ -31,8 +38,8 @@
    - 后端不做 Top‑N 预筛，`candidateIds` 全量进入重排；上层若需压缩候选量，可自行先取 Top‑N 再调用预测。
 3) **重排（提高准确率）**  
    - **默认：GBDT 重排**，只用内容特征：音频相似度、Chromaprint/HPCP 距离、BPM/调式差、元数据匹配度（艺人/流派/年份/时长/比特率）、标题/标签相似度。  
-   - 若暂不训练，可用加权规则先行：音频相似度为主，元数据作平滑加分/扣分（如低比特率、异常时长）。  
-   - 输出最终排序，返回 Top‑K 候选。
+   - 若模型未训练或样本不足：不输出预测分数/排序；由上层提示用户继续标注“喜欢/不喜欢”后再训练。  
+   - 训练完成后输出最终排序，返回 Top‑K 候选。
 4) **缓存与更新**  
    - 嵌入/索引持久化，检测文件 mtime/哈希变化后增量更新。  
    - 模型/索引版本号记录，便于升级时重建或迁移。
@@ -49,7 +56,7 @@
 ## 后端结论与风险
 - **策略已定：暂不设包体/首次索引时间上限，以最大准确率为基线实现**；若实测包体或首次索引时间不可接受，再逐步向下探（量化、截断时长、降低窗口数等）。  
 - **已定：第一版必做 Chromaprint/HPCP/BPM/Key**，并在缺失时依靠 `has_bpm/has_key/has_hpcp` 等标记让 GBDT 自行学习忽略。  
-- **已定：训练降级阈值**：当 `positiveIds < 20` 或 `negativeIds < 4 * positiveIds` 时不训练 GBDT，直接回退到 OpenL3 相似度排序 + 规则平滑。  
+- **已定：训练门槛**：当 `positiveIds < 20` 或 `negativeIds < 4 * positiveIds`（`negativeIds` 仅来自用户显式 `disliked`）时不训练 GBDT；预测不做任何回退排序，仅返回 `insufficient_samples` 等状态供上层展示提示。  
 - **已定：默认候选与输出**：后端不做 Top‑N 预筛；`predictSelectionCandidates` 默认返回 Top‑K=100（上层可覆盖）。  
 - **已定：GBDT 实现与序列化**：使用纯 Rust `gbdt` crate；模型用 `bincode` 序列化保存，加载失败或版本不匹配时由上层触发重训。  
 - **风险/假设**：元数据侧（BPM/Key/流派/年份等）存在缺失或噪声时，GBDT 依赖 `has_*` 标记自动降权；若缺失比例极高，元数据软特征贡献会变小，效果主要由 OpenL3/指纹特征决定。
@@ -86,7 +93,7 @@
 - 任务形式：二分类 GBDT（logistic loss），预测“加入精选概率”，按概率排序输出 Top‑K。  
 - 样本输入（后端无业务假设）：  
   - 正样本 ID 列表 `positiveIds` 与负样本 ID 列表 `negativeIds` **由上层业务/前端提供**；后端仅基于这些样本做特征构建与 GBDT 训练/推理，不关心样本来自何种 UI 或业务流程。  
-  - 上层若需要采样策略，可参考：正:负 ≈ 1:4，且负样本中约 50% 为与正样本相似但未被选中的 Hard negatives，用于提升 Top‑K 精度；具体如何采样由业务侧决定。  
+  - 已定：负样本仅使用用户显式标注为 `disliked` 的曲目；不从 `neutral` 自动采样补齐；建议保持正:负≈1:4，比例不足则返回 `insufficient_samples` 不训练。  
 - 训练实现：使用纯 Rust `gbdt` crate；超参先固定不调参：`depth 6–8, trees 300–600, lr 0.03–0.05, subsample 0.8`，必要时加早停。模型用 `bincode` 持久化，加载失败即视为需重训。  
 
 ### 3. 评估方式（离线、与业务指标对齐）
@@ -112,30 +119,71 @@
 ### 3. 缓存与增量
 - 嵌入与特征缓存：**统一落到 SQLite**（建议独立文件 `features.db`，未来可并入全局数据库）。表存 `songId, fileHash, modelVersion, vector(256f32 blob), rms_mean` 等，仅在文件内容变化时重算。  
 - 统计缓存：不预存 `openl3_sim_*`，因为它依赖“当前精选集合”；每次预测按最新 `P` 现算，避免缓存失效。  
-- 版本化：OpenL3 与 GBDT 模型版本写入 **数据库根目录** `models/selection/manifest.json`，上层在检测到版本变化时触发重提嵌入/重训。  
+- 版本化：OpenL3 与 GBDT 模型版本写入 **库目录** `models/selection/manifest.json`；`modelRevision` 为库内自增整型（初始为 0），每次 `trainSelectionGbdt` 成功（`status=trained`）后 `+1`，用于预测缓存失效与展示更新。  
 
 ### 4. SQLite 结构设计（可与未来指纹库合并）
-- 文件位置：**放在数据库根目录**（与 `songFingerprint` 同级），文件名暂定 `features.db`；保证不同库之间特征完全隔离，且不与现有 `frkbdb` 格式耦合，后续重构时再评估是否合并。  
+- 文件位置：**放在库目录**（与 `FRKB.database.frkbdb` 同级），文件名暂定 `features.db`；保证不同库之间特征完全隔离，且不与现有 `frkbdb` 格式耦合，后续重构时再评估是否合并。  
 - 基础表建议：  
   - `song_features`：`songId TEXT PRIMARY KEY, fileHash TEXT, modelVersion TEXT, openl3_vector BLOB, rmsMean REAL, hpcp BLOB, bpm REAL, key TEXT, durationSec REAL, bitrateKbps REAL, updatedAt TEXT`。  
   - `schema_meta`：`key TEXT PRIMARY KEY, value TEXT`（记录 schemaVersion、模型版本等）。  
+  - `song_prediction_cache`：`songId TEXT, modelRevision INTEGER, fileHash TEXT, score REAL, updatedAt TEXT, PRIMARY KEY(songId, modelRevision, fileHash)`（预测分数缓存，仅用于加速列表展示）。  
 - 向量存储：`openl3_vector/hpcp` 用 **f32 小端序 BLOB**（无损），必要时可再加 `zstd` 无损压缩列。  
 - 索引：对 `fileHash`、`modelVersion`、`updatedAt` 建索引，保证增量扫描与版本迁移效率。  
 - 迁移策略：`schema_meta.schemaVersion` 单调递增；升级时做原子迁移（新表→拷贝→切换），与未来把 `songFingerprint` 迁到 SQLite 时保持同一套版本化/备份约定。
 
 ## 训练/推理触发与接口（基线）
-- 训练触发（建议）：上层在 `positiveIds ≥ 20` 且 `negativeIds ≥ 4 * positiveIds` 时进行首次训练；不足则跳过训练并仅用相似度排序。之后当 `positiveIds/negativeIds` 发生变化时按需重新训练（准确率优先）。后端不自行判断业务事件，只响应训练调用。  
+- 训练触发（建议）：上层在 `positiveIds ≥ 20` 且 `negativeIds ≥ 4 * positiveIds`（`negativeIds` 仅为显式 `disliked`）时进行首次训练；不足则跳过训练并视为“不可预测”（不做任何回退排序/打分）。之后当 `positiveIds/negativeIds` 发生变化时按需重新训练（准确率优先）。后端不自行判断业务事件，只响应训练调用。  
 - 标签更正：上层若发现样本归类有误（负样本改为正样本或反之），更新 `positiveIds/negativeIds` 后重新调用训练即可；后端不持久化历史标签，新模型会覆盖旧影响。  
 - 训练形态：基线使用 **全量从零重训**（仅重训 GBDT 权重，不重算已缓存的音频特征）。当前选用的纯 Rust `gbdt` 不支持可靠的在线/增量更新；若未来必须增量训练，需要改为支持 warm‑start 的框架（如 XGBoost/LightGBM FFI）或引入在线模型作为辅助手段。  
+- 推理口径（已定）：预测使用“最近一次训练时的喜欢集合快照”（由后端随模型保存）；用户后续新增/修改 `liked/disliked/neutral` 标注在触发重训前**不影响当前分数**，仅在重训成功后刷新。  
 - N‑API 接口草案：  
   - `extractOpenL3Embedding(filePath) -> Float32Array(256)`（内部整曲滑窗聚合）。  
-  - `trainSelectionGbdt(positiveIds, negativeIds, featureStorePath) -> { status, modelPath?, metrics? }`（`status` 可能为 `trained | insufficient_samples | failed`）。  
-  - `predictSelectionCandidates(positiveIds, candidateIds, featureStorePath, modelPath?, topK?) -> [{ id, score }]`（`topK` 默认 100；`modelPath` 缺失时回退到 OpenL3 相似度排序）。  
-- 模型持久化：GBDT 模型二进制落到 **数据库根目录** `models/selection/selection_gbdt_v1.bin`，与 manifest 一起管理与迁移。  
+  - `trainSelectionGbdt(positiveIds, negativeIds, featureStorePath) -> { status, modelRevision?, modelPath?, metrics? }`（`status` 可能为 `trained | insufficient_samples | failed`；`modelRevision` 为库内自增整型，仅在 `trained` 时返回）。  
+  - `predictSelectionCandidates(candidateIds, featureStorePath, modelPath?, topK?) -> { status, modelRevision?, items? }`（`status` 可能为 `ok | not_trained | insufficient_samples | failed`；仅当 `ok` 时返回 `modelRevision` 与 `items: [{ id, score }]`；不做任何回退排序）。  
+- 模型持久化：GBDT 模型二进制落到 **库目录** `models/selection/selection_gbdt_v1.bin`，与 manifest 一起管理与迁移。  
+
+## 前端交互与样本标注（草案，不实现）
+- 右键菜单（曲目）：新增“喜欢该曲目 / 不喜欢该曲目 / 清除喜好标记”，支持对当前选中集批量生效；执行后统一覆盖为目标标记（清除=置为 `neutral`）。
+- 右键菜单（歌单）：新增“喜欢歌单中的所有曲目 / 不喜欢歌单中的所有曲目”，建议二次确认；大批量时显示进度并支持取消。
+- 右键菜单（库 icon）：新增“喜欢库中所有曲目 / 不喜欢库中所有曲目”，同样建议二次确认 + 进度/取消。
+- 列表展示：新增一列“预测喜好”（仅在模型已训练时展示分数，显示为 0–100 整数）；允许按该列排序；未训练/样本不足时该列显示 `*`，鼠标悬停提示“样本不足，无法预测，请标记你的喜欢/不喜欢”。
+- 预测计算策略（已定）：打开歌单/曲目列表时，若模型状态为 `ok` 则对该列表**全量** `songIds` 启动后台预测任务并边算边刷列表；按 100–300 首/批调用预测接口以控制资源；切换歌单/切库时取消旧任务；同一 `songId` 去重并优先命中 `song_prediction_cache` 后再计算缺失项（需要全量分数时，`topK` 取当前批大小即可）。
+- 预测结果缓存：对已算出的分数进行持久化缓存，落在每个库自己的 `features.db` 表 `song_prediction_cache`；缓存键包含 `songId + modelRevision + fileHash`（`modelRevision` 为库内自增整型），在模型重训或音频内容变化后自动失效并重算。
+- 缓存回收（GC）：  
+  - 模型重训成功后：清理旧 `modelRevision` 的缓存（例如只保留最新一次训练对应的缓存）。  
+  - 歌曲被移出库/文件系统删除：在库扫描/导入同步确认移除后，按 `songId` 删除对应缓存行；避免缓存无限增长。  
+  - 歌曲内容变更（`fileHash` 变化）：在重算特征并写入新 `fileHash` 后，删除同 `songId` 下旧 `fileHash` 的缓存行。  
+- 标签模型：每首歌维护三态 `liked / disliked / neutral`；`positiveIds/negativeIds` 由三态实时派生（Set 去重，避免冲突与重复）。
+- 标签持久化：`liked/disliked/neutral` 作为业务真值写入库目录内的 `FRKB.database.frkbdb`（与 `features.db` 解耦，支持随库目录迁移）。
+- 删除曲目样本：曲目被移出库或文件系统删除后，其 `liked/disliked` 标签与已落库特征快照作为训练样本永久保留；不提供“清理已删除样本”入口。
+- 系统设置（对当前库生效）：新增“初始化 AI 模型”按钮，执行后重置本库所有喜好标记（全部置为 `neutral`）并清空本库的预测/训练产物（如 `models/selection/*`、`song_prediction_cache`，并重置 `modelRevision`）；需二次确认并明确警告“操作不可恢复，初始化后需重新标记喜欢/不喜欢并等待重训才会显示预测分数”。
+- 样本变化计数：仅统计**真实标签变更**的曲目数量作为 `sampleChangeCount` 累加：`newTag == oldTag` 不计；`neutral→liked/disliked`、`liked↔disliked`、`liked/disliked→neutral` 均计 1。
+- 重训触发：当 `sampleChangeCount ≥ 20` 且满足后端样本阈值（`positiveIds ≥ 20` 且 `negativeIds ≥ 4 * positiveIds`）时触发一次 `trainSelectionGbdt`；训练成功后清零计数；建议对“最后一次打标”做 5–10s debounce 避免频繁重训。
+
+## 训练后台执行与进度（草案，不实现）
+- 训练不应阻塞 UI：`trainSelectionGbdt` 在 Rust/N-API 侧启动后台 worker 线程/任务执行，JS 侧以 Promise/任务句柄异步等待。
+- 训练资源占用：限制并发（例如同时只允许 1 个训练任务），必要时降低优先级/限制线程数，避免前台明显变慢。
+- 进度与取消：训练过程通过事件/回调回传 `progress{phase, percent}`，前端显示进度条；完成/失败后自动消失并提示结果；提供取消 token（切库/用户取消时中断任务）。
+
+## 单曲预测耗时预估（经验值）
+- 若该曲目特征已缓存（嵌入/指纹等已落库）：一次“是否喜欢/加入精选”的打分主要是相似度统计 + GBDT 前向，通常为**毫秒级到几十毫秒**（与正样本数量、候选规模相关）。
+- 若需要首次提取 OpenL3 嵌入：耗时主要由音频解码与 OpenL3 推理决定，通常与曲长近似线性；在常见桌面 CPU 上，3–5 分钟歌曲往往在 **0.5–3 秒量级**，最终以实测为准。
+
+## 拍板结果（前后端）
+- 缓存回收触发：仅做事件驱动清理（训练成功后清理旧 `modelRevision`；库扫描确认移除后按 `songId` 清理；`fileHash` 变化后清理旧 `fileHash`），不做启动时/定期清理。
+- IPC 约定：  
+  - `status`：`ok | not_trained | insufficient_samples | cancelled | failed`（训练接口可用 `trained` 代替 `ok`）。  
+  - `failed.errorCode`：`runtime_unavailable | model_load_failed | db_error | internal_error`。  
+  - `progress.phase`：`prepare | train | save`（0–100）。  
+  - 取消语义：best-effort，后端收到取消请求后尽快停止并返回 `cancelled`。
+- 资源策略：训练/预测/特征提取允许并行，但需限制并发与优先级：  
+  - 训练：单任务执行（同一时刻最多 1 个训练任务），线程数上限 1–2。  
+  - 预测：按批次执行，线程数上限 1–2，可与训练并行但整体低优先级。  
+  - 特征提取：可与训练/预测并行，但总 CPU 线程上限统一由后端调度（避免占满导致前台卡顿）。  
 
 ## 下一步建议
 1) 以 OpenL3 small 为基线实现完整离线管线（提嵌入→召回→重排→展示），不规划模式切换。  
 2) 选定推理栈（Rust + ort），完成 OpenL3 的 ONNX 转换与最小推理原型（单曲推理 + 全量相似度统计）。  
 3) 设计特征缓存与索引存储格式（含版本与校验），实现增量更新。  
-4) 用历史精选/非精选样本快速训练或调试一版加权规则/GBDT 重排，评估 Precision@K/NDCG。  
+4) 用历史精选/非精选样本快速训练并调试一版 GBDT 重排，评估 Precision@K/NDCG。  
 5) 前端规划：候选列表展示、进度/取消与错误提示。
