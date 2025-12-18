@@ -396,6 +396,8 @@
     "fileName": "File Name",
     "artist": "Artist",
     "duration": "Duration",
+    "selectionLabel": "Preference",
+    "selectionScore": "Predicted Like",
     "album": "Album",
     "genre": "Genre",
     "label": "Label",
@@ -404,6 +406,21 @@
     "format": "Format",
     "bpm": "BPM",
     "index": "Index"
+  },
+  "selection": {
+    "like": "Like track",
+    "dislike": "Dislike track",
+    "clearPreference": "Clear preference",
+    "liked": "Liked",
+    "disliked": "Disliked",
+    "likeAllInPlaylist": "Like all tracks in playlist",
+    "dislikeAllInPlaylist": "Dislike all tracks in playlist",
+    "likeAllInLibrary": "Like all tracks in library",
+    "dislikeAllInLibrary": "Dislike all tracks in library",
+    "bulkConfirmPlaylist": "Mark {count} tracks in this playlist as: {label}. This may take a while. Continue?",
+    "bulkConfirmLibrary": "Mark {count} tracks in this library as: {label}. This may take a while. Continue?",
+    "bulkDone": "Bulk update completed (batches: {okBatches}).",
+    "bulkDoneWithErrors": "Bulk update finished with errors (ok: {okBatches}, failed: {failedBatches})."
   },
   "convert": {
     "title": "Format conversion",
@@ -514,6 +531,13 @@
     "noTracksSelected": "Select at least one track.",
     "noEligibleTracks": "Selected items do not contain analyzable audio files.",
     "noPlayingTrack": "No track is currently playing."
+  },
+  "selectionTraining": {
+    "clear": "Clear model training data",
+    "clearShort": "Clear",
+    "confirmClear": "This will remove all Like/Dislike labels and delete the trained local prediction model. Continue?",
+    "clearCompleted": "Cleared model training data",
+    "clearFailed": "Clear failed"
   },
   "import": {
     "completed": "Import done",

@@ -9,6 +9,7 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
+import { setSelectionLabelForFilePathsBatched } from '@renderer/utils/selectionActions'
 import type { IMetadataAutoFillSummary } from '../../../../types/globals'
 
 interface UseLibraryContextMenuOptions {
@@ -49,6 +50,10 @@ export function useLibraryContextMenu({
             { menuName: 'common.rename' },
             { menuName: 'playlist.deletePlaylist' },
             { menuName: 'playlist.emptyPlaylist' }
+          ],
+          [
+            { menuName: 'selection.likeAllInPlaylist' },
+            { menuName: 'selection.dislikeAllInPlaylist' }
           ],
           [{ menuName: 'tracks.showInFileExplorer' }],
           [{ menuName: 'playlist.fingerprintDeduplicate' }],
@@ -119,6 +124,10 @@ export function useLibraryContextMenu({
     if (runtime.libraryAreaSelected === 'RecycleBin') {
       menuArr.value = [
         [{ menuName: 'recycleBin.permanentlyDelete' }],
+        [
+          { menuName: 'selection.likeAllInPlaylist' },
+          { menuName: 'selection.dislikeAllInPlaylist' }
+        ],
         [{ menuName: 'tracks.showInFileExplorer' }],
         [{ menuName: 'tracks.convertFormat' }]
       ]
@@ -135,6 +144,10 @@ export function useLibraryContextMenu({
                 { menuName: 'common.rename' },
                 { menuName: 'playlist.deletePlaylist' },
                 { menuName: 'playlist.emptyPlaylist' }
+              ],
+              [
+                { menuName: 'selection.likeAllInPlaylist' },
+                { menuName: 'selection.dislikeAllInPlaylist' }
               ],
               [{ menuName: 'tracks.showInFileExplorer' }],
               [{ menuName: 'metadata.autoFillMenu' }],
@@ -353,6 +366,62 @@ export function useLibraryContextMenu({
           return
         }
         await analyzeFingerprintsForPaths(files, { origin: 'playlist' })
+        break
+      }
+      case 'selection.likeAllInPlaylist':
+      case 'selection.dislikeAllInPlaylist': {
+        const label = result.menuName === 'selection.likeAllInPlaylist' ? 'liked' : 'disliked'
+        const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
+        const scan = await window.electron.ipcRenderer.invoke('scanSongList', dirPath, props.uuid)
+        const files: string[] = Array.isArray(scan?.scanData)
+          ? scan.scanData.map((s: any) => s.filePath).filter(Boolean)
+          : []
+        if (!files.length) {
+          await confirm({
+            title: t('dialog.hint'),
+            content: [t('metadata.autoFillNoEligible')],
+            confirmShow: false
+          })
+          return
+        }
+
+        const labelText = label === 'liked' ? t('selection.liked') : t('selection.disliked')
+        const res = await confirm({
+          title: t('dialog.hint'),
+          content: [t('selection.bulkConfirmPlaylist', { count: files.length, label: labelText })]
+        })
+        if (res !== 'confirm') return
+
+        // 先乐观更新当前打开列表（若有交集），后台再逐步落盘
+        try {
+          emitter.emit('selectionLabelsChanged', { filePaths: files, label })
+        } catch {}
+
+        const summary = await setSelectionLabelForFilePathsBatched({
+          filePaths: files,
+          label,
+          batchSize: 200,
+          concurrency: 2
+        })
+        if (summary.failedBatches > 0) {
+          await confirm({
+            title: t('common.error'),
+            content: [
+              t('selection.bulkDoneWithErrors', {
+                okBatches: summary.okBatches,
+                failedBatches: summary.failedBatches
+              }),
+              summary.firstErrorMessage || t('common.unknownError')
+            ],
+            confirmShow: false
+          })
+        } else {
+          await confirm({
+            title: t('dialog.hint'),
+            content: [t('selection.bulkDone', { okBatches: summary.okBatches })],
+            confirmShow: false
+          })
+        }
         break
       }
       case 'playlist.clearCache': {

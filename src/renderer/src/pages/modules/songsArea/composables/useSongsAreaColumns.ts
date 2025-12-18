@@ -28,6 +28,8 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
       order: 'asc'
     },
     { columnName: 'columns.duration', key: 'duration', show: true, filterType: 'duration' },
+    { columnName: 'columns.selectionLabel', key: 'selectionLabel', show: true },
+    { columnName: 'columns.selectionScore', key: 'selectionScore', show: true },
     { columnName: 'columns.album', key: 'album', show: true, filterType: 'text' },
     { columnName: 'columns.genre', key: 'genre', show: true, filterType: 'text' },
     { columnName: 'columns.label', key: 'label', show: true, filterType: 'text' },

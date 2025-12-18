@@ -9,11 +9,47 @@ permissions:
   contents: write
 
 jobs:
+  prepare_openl3_onnx:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python (OpenL3 export)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Export OpenL3 ONNX (librosa frontend)
+        run: |
+          set -euxo pipefail
+          python -m pip install --upgrade pip setuptools wheel
+          # 固定版本：避免 TensorFlow 最新版拉高 protobuf/NumPy 后，pip 为满足依赖而把 tf2onnx 回退到旧版（进而与 NumPy 2.x 不兼容）
+          pip install "openl3==0.4.2" "tensorflow==2.15.1" "tf2onnx==1.16.1" "protobuf==3.20.3" "kapre==0.3.6"
+          python scripts/export-openl3-onnx.py --manifest resources/ai/openl3/manifest.json --write-sha256
+          ls -lh resources/ai/openl3
+
+      - name: Upload OpenL3 ONNX bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: openl3-onnx
+          if-no-files-found: error
+          path: |
+            resources/ai/openl3/manifest.json
+            resources/ai/openl3/*.onnx
+
   build_win:
+    needs: [prepare_openl3_onnx]
     runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Download OpenL3 ONNX bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: openl3-onnx
+          path: .
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -98,10 +134,17 @@ jobs:
             dist/*.yml
 
   build_mac:
+    needs: [prepare_openl3_onnx]
     runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Download OpenL3 ONNX bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: openl3-onnx
+          path: .
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
