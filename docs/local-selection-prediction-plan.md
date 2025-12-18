@@ -2,6 +2,102 @@
 
 > 说明：本文后端方案为定稿；前端交互/触发规则为草案，后续可按体验迭代。
 
+## 当前实现状态（持续更新）
+- ✅ `features.db`：SQLite 结构与读写已落地（`schemaVersion=2`；`song_features` / `song_prediction_cache` / `schema_meta`）。
+- ✅ GBDT：训练/推理与模型落盘已落地（`models/selection/selection_gbdt_v1.bin` + `models/selection/manifest.json`）。
+- ✅ 标签落盘：库目录 `selection_labels.db`（SQLite），并维护 `sampleChangeCount`；`neutral` 为默认态不落行。
+- ✅ 主进程 IPC：已接入 `selection:*` 处理器（训练/预测/标签/特征 upsert）。
+- ✅ 基础特征提取：已提供 `selection:features:extractAndUpsert`（离线提取并写入 `chromaprintFingerprint/rmsMean/hpcp/bpm/key/durationSec/bitrateKbps`）。
+- ✅ filePaths 直连：已提供 `selection:labels:setForFilePaths` / `selection:predictForFilePaths`（内部自动计算 `sha256_Hash`）。
+- ✅ songId 映射索引：库目录 `selection_path_index.db`（SQLite），持久化缓存 `filePath+size+mtime → songId(PCM SHA256)`；支持移动迁移与 GC。
+- ✅ 自动重训：在 `selection:labels:set` 后按 `sampleChangeCount` + 8s debounce 自动触发训练（成功后清零计数，并广播 `selection:autoTrainStatus` 事件）。
+- ✅ 自动补齐特征：打开列表完成加载后会后台补齐缺失音频特征（主进程并发=2，**不依赖预测列是否可见**）；未提取特征的曲目**不展示预测分**（避免无意义分数）。
+- ✅ 元数据编辑：`audio:metadata:update` 保存后，若可编辑元数据发生真实变化，会按 `songId=sha256_Hash` 清理该曲目的预测缓存；若该曲目为样本（`liked/disliked`）则计入 `sampleChangeCount` 并触发自动重训调度。
+- ✅ 渲染层：右键菜单已支持“喜欢/不喜欢/清除喜好”，并新增列 `columns.selectionScore`（打开列表后后台刷新预测分数）。
+- ✅ 批量打标：歌单/库右键菜单已支持“喜欢/不喜欢全部歌曲”（分批 + 控并发，且 UI 立即更新喜好标记）。
+- ✅ 清除训练数据：设置页已提供“清除模型训练数据”，会清空所有“喜欢/不喜欢”标记并重置预测/模型状态。
+- ✅ OpenL3：已接入 ONNX 推理并写入 `song_features.openl3_vector`（需放置模型文件；缺失则降级为 `runtime_unavailable`）。
+- ✅ Chromaprint：已接入 `fpcalc` 指纹落盘（`song_features.chromaprintFingerprint`），并纳入 GBDT 特征（`chromaprint_sim_max/has_chromaprint`）。
+- ✅ OpenL3 ONNX 产物：支持本地导出；Release CI 会自动导出并注入打包产物（见下文）。
+
+## OpenL3 ONNX 获取/导出
+
+### 1) 本地导出（推荐）
+
+前置：Python 3.11（`openl3==0.4.2` 在 Python 3.12+ 会因 `imp` 被移除而安装失败）。建议使用独立 venv（例如 `.venv-openl3`，仓库已在 `.gitignore` 中忽略 `.venv*/`）。
+
+PowerShell 示例：
+
+```powershell
+# 1) 创建 venv（如系统已安装 Python Launcher）
+py -3.11 -m venv ".venv-openl3"
+
+# 2) 安装依赖（固定版本，避免 NumPy 2.x 与 tf2onnx 旧接口不兼容）
+& ".venv-openl3/Scripts/python.exe" -m pip install --upgrade pip setuptools wheel
+& ".venv-openl3/Scripts/python.exe" -m pip install --upgrade --force-reinstall `
+  "numpy==1.26.4" "protobuf==3.20.3" "tensorflow==2.15.1" "kapre==0.3.6" "openl3==0.4.2" "tf2onnx==1.16.1"
+
+# 3) 导出 ONNX，并把 sha256 写回 manifest
+& ".venv-openl3/Scripts/python.exe" "scripts/export-openl3-onnx.py" `
+  --manifest "resources/ai/openl3/manifest.json" --write-sha256
+```
+
+产物：
+- 生成 `resources/ai/openl3/*.onnx`
+- 更新 `resources/ai/openl3/manifest.json`（写入 `sha256`）
+
+当前仓库约定（便于核对是否导出成功）：
+- `resources/ai/openl3/manifest.json`：
+  - `modelFile=openl3_small_48k_music_mel256_512d_fp32.onnx`
+  - `sha256=8bf0b490320334c78c5fec218edea9318797bc7d22045e73556433e7da74dd46`
+
+注意：`resources/ai/openl3/*.onnx` 默认被 `.gitignore` 排除（避免误提交大文件）。若你发现 `.venv-openl3` “未被忽略”，通常是因为该目录已被 Git 追踪，需要先 `git rm -r --cached` 解除追踪（不会删除本地文件）。
+
+### 2) GitHub Actions（Release）自动导出
+
+Release 工作流 `/.github/workflows/release.yml` 已包含 `prepare_openl3_onnx` job：使用 Python 3.11 执行 `scripts/export-openl3-onnx.py`，并把 `resources/ai/openl3/*.onnx` + `manifest.json` 作为 artifact 传递到各平台打包 job 中，确保安装包内始终携带可用模型文件。
+
+## 批量打标（歌单/库）
+
+目标：对大量曲目快速批量设置 `liked/disliked`，**不阻塞 UI**，并且列表“喜好标记”列会**立即可见更新**；特征提取在后台队列静默执行。
+
+### UI 入口
+- **歌单列表（含回收站歌单）**：右键歌单 → `喜欢歌单内全部歌曲` / `不喜欢歌单内全部歌曲`
+- **库图标（左侧）**：右键 `FilterLibrary / CuratedLibrary / RecycleBin` → `喜欢库内全部歌曲` / `不喜欢库内全部歌曲`
+  - `ExternalPlaylist` 图标**不提供**该功能（外部歌曲不应被“全库打标”影响）。
+
+### 执行流程（关键点）
+1) 扫描目标范围的文件列表：复用 IPC `scanSongList`，拿到 `filePaths` 后去重。
+2) 二次确认：提示将要影响的曲目数量。
+3) **乐观 UI 更新**：通过 `emitter.emit('selectionLabelsChanged', { filePaths, label })` 让当前打开列表先显示更新。
+4) 后台分批落盘：按 `batchSize=200`、`concurrency=2` 分批调用 `selection:labels:setForFilePaths`；主进程侧仍会做任务队列/并发限制，避免拖垮前台。
+
+### 相关实现位置（便于下次继续开发）
+- 歌单右键菜单：`src/renderer/src/components/libraryItem/useLibraryContextMenu.ts`
+- 库图标右键菜单：`src/renderer/src/pages/modules/librarySelectArea.vue`
+- 批处理工具：`src/renderer/src/utils/selectionActions.ts`（`setSelectionLabelForFilePathsBatched`）
+- UI 列表接收并刷新：`src/renderer/src/pages/modules/songsArea/composables/useSongsAreaEvents.ts`（监听 `selectionLabelsChanged`）
+- i18n：`src/renderer/src/i18n/locales/zh-CN.json` / `src/renderer/src/i18n/locales/en-US.json`（`selection.likeAllIn*`、`selection.bulkConfirm*` 等 key）
+
+## 清除模型训练数据（设置页）
+
+目标：一键恢复“未训练”状态，方便重新标注与验证。
+
+- 入口：设置页 → `清除模型训练数据`（与“清除曲目指纹库”同样式/交互）
+- 行为：清空本库所有 `liked/disliked`（置为 `neutral`），并重置预测/模型状态（如预测缓存、模型文件等）；完成后会广播 `selection:autoTrainStatus` 的 `reset` 状态，让前端清空预测分/标记。
+- 相关实现：
+  - UI：`src/renderer/src/components/settingDialog.vue`
+  - 主进程：`src/main/ipc/selectionPredictionHandlers.ts`（IPC：`selection:training:reset`）
+
+## 调试与日志（实战信息）
+- 主进程日志前缀统一为 `[selection]`，且已改为中文，便于用户侧排查耗时卡点（解码/指纹/OpenL3/写库等）。
+- 渲染层调试日志默认仅在开发环境输出；如需在 Release 包里看更详细日志，可在 DevTools Console 执行：
+  - `localStorage.setItem('FRKB_DEBUG_SELECTION', '1')` 后刷新/重启应用
+
+## 下一轮待办（重要）
+- 音频片段策略：当前 `src/main/services/selectionFeatureExtractor.ts` 使用 `INTRO_SKIP_SECONDS=30`（跳过前 30 秒后再算 RMS/HPCP/BPM）。对前奏较长的常见曲风（如 EDM）不理想，需要改为更“信息量密集”的片段策略（例如中段采样/多段采样/按能量段选窗），并与 OpenL3 的 `maxAnalyzeSeconds/maxWindows` 一起联动调参。
+- 批量打标体验：目前只有“确认 + 完成提示”，缺少进度/取消/后台任务列表；可考虑复用现有任务系统或新增轻量 job 面板。
+
 ## 背景与目标
 - 需求：基于用户显式标注的“喜欢/不喜欢”（可兼容历史“已加入精选”的曲目作为喜欢）预测筛选库里最可能被用户喜欢/加入精选的候选；全程离线、用户零配置。
 - 约束：仅使用歌曲自身信息（音频内容 + 元数据），不引入播放/跳过等行为特征；纯本地推理，不依赖服务器。
@@ -11,22 +107,87 @@
 - FRKB 库目录：用户选择 `FRKB.database.frkbdb` 所在目录（以该目录为库的根目录）。
 - 可携带性：除用户界面配置外，与该库相关的所有数据均落在库目录中（如 `FRKB.database.frkbdb`、`features.db`、`models/selection/*` 等）；库目录移动路径或迁移到其他电脑后，重新选择该 `FRKB.database.frkbdb` 即可继续使用。
 
+## songId 映射缓存（filePath → songId）
+
+### 背景
+- `songId` 统一使用 PCM 内容 SHA256（`sha256_Hash`）作为稳定主键，优点是**不受元数据影响**、跨路径/重命名一致；缺点是首次计算需要解码音频，成本较高。
+- 为避免“每次重启/换歌单都重新解码算哈希”，新增持久化索引。
+
+### 落盘与命中规则
+- 落盘：库目录 `selection_path_index.db`（SQLite）。
+- Key：`pathKey`（对 `filePath` 做规范化后的 key），并同时记录 `filePath`、`size`、`mtimeMs`。
+- 命中：仅当 `pathKey` 相同且 `size/mtimeMs` 与当前文件一致时，直接复用缓存的 `songId/fileHash`；否则重新计算并覆盖写入。
+
+### 迁移与回收（GC）
+- 迁移：应用内“移动曲目到其他歌单”（`moveSongsToDir`）会在移动成功后将旧路径的缓存迁移到新路径，并删除旧路径条目，避免移动后再次解码。
+- 回收：索引带 TTL 与容量上限回收（带防抖，默认 24h 最多执行一次），避免索引无限增长；回收只影响性能，不影响正确性（缺失时会重新计算并写回）。
+
 ## 数据与特征前提
 - 正样本：用户标注为“喜欢”的曲目（可包含“已加入精选”的历史曲目，含已删除文件的快照），需保留元数据快照 + 音频指纹/嵌入。
 - 负样本：用户标注为“不喜欢”的曲目（仅显式 `disliked`）；不从 `neutral` 自动采样补齐，负样本不足则视为不可训练/不可预测。
-- 稳定 ID：上层提供 `songId`，**推荐使用现有的 PCM 内容 SHA256（`sha256_Hash`）** 作为跨路径/重编码一致的主键，用于 features 表去重与历史对齐。
+- 稳定 ID：上层提供 `songId`，**统一使用现有的 PCM 内容 SHA256（`sha256_Hash`）** 作为跨路径/重编码一致的主键，用于 features 表去重与历史对齐。
 - 音频特征：首选嵌入（OpenL3 small），**第一版必做** Chromaprint 指纹 + HPCP/Chroma + BPM/Key（从音频内容提取），辅以响度、时长等统计特征。
 - 元数据特征：艺人/流派/专辑/年份、BPM/调式/时长、比特率；标题/标签可做文本相似度（轻量 TF-IDF 或小型文本嵌入）。
 
 ## 模型选型（已拍板）
-- **统一使用：OpenL3 small（优先 48 kHz 版，输出 256 维，fp32，`content_type=music`，`input_repr=mel256`）**。音乐相似度表现稳定，模型体积/推理成本和跨平台 ONNX 化风险都较低，满足纯本地开箱即用与准确率目标。
+- **统一使用：OpenL3 small（48 kHz，输出 512 维，fp32，`content_type=music`，`input_repr=mel256`）**。音乐相似度表现稳定，模型体积/推理成本和跨平台 ONNX 化风险都较低，满足纯本地开箱即用与准确率目标。
 - 若算力/包体允许，可探索更大音频 Transformer（PaSST/Audio-MAE/MERT）的 ONNX 版，但部署复杂度更高。
 
 ## 部署形态（开箱即用）
-- 推荐链路：开发阶段将模型转 ONNX → Rust 侧用 `onnxruntime` (`ort`) 推理 → 暴露 N-API 给 Electron；随应用打包 ORT 动态库或静态链接，首次运行零下载。
+- 推荐链路：开发阶段将模型转 ONNX → Rust 侧用 ONNX 推理引擎推理（优先 ORT；当前实现使用 `tract-onnx` 纯 Rust 推理，后续可切换 ORT）→ 暴露 N-API 给 Electron；随应用打包推理运行时，首次运行零下载。
 - 预处理：音频解码/重采样、梅尔谱/增广等前处理尽量放在 Rust 侧，减少 JS 往返与 CPU 开销。
-- 应用资源：OpenL3 ONNX 模型与 ORT 运行时可压缩/分片随安装包，启动时校验哈希后解压到 `userData`（与库目录无关）。
-- 库数据：训练产物、特征与缓存均落在库目录（见“库目录与数据落盘约定”）。
+- 应用资源：OpenL3 ONNX 模型随安装包（建议 `resources/ai/openl3/*`），启动时校验哈希后解压到 `userData/ai/openl3/*`（与库目录无关，移动库不受影响；若后续切换 ORT，再补充 ORT 运行时分发）。
+- 库数据：训练产物、特征与缓存均落在库目录（含 `models/selection/*`，移动库会保留训练结果；见“库目录与数据落盘约定”）。
+
+### OpenL3 ONNX 怎么获得（开发期一次性）
+> 结论：OpenL3 官方提供的是 `.h5` 权重（安装/下载时会从 `marl/openl3` 的 `models` 分支拉取），需要用 Python + TensorFlow 转成 ONNX；本仓库不提交 `.onnx`（体积大），你本地生成后放到 `resources/ai/openl3/` 即可。
+>
+> 备注：Release CI 会自动导出并打包（见 `.github/workflows/release.yml` 的 `prepare_openl3_onnx`）。
+
+1) 准备 Python 环境（任意机器均可，建议 Python 3.10/3.11）  
+   - 重要：**不要用 Python 3.12+/3.13**（`openl3==0.4.2` 的打包脚本依赖 `imp`，在 3.12+ 已移除，会报 `ModuleNotFoundError: No module named 'imp'`；同时 TensorFlow 也通常不会为 3.13 提供可用轮子）。
+   - 先确认 Python 版本：`python --version`（应为 3.10/3.11）；若系统默认是 3.13，请用 Python Launcher 指定 3.11 创建 venv（见下方示例）。
+   - Windows 小贴士：若 `py` 不在 PATH，可用 `& "$env:LOCALAPPDATA/Programs/Python/Launcher/py.exe"` 直接调用 Python Launcher（例如 `& "$env:LOCALAPPDATA/Programs/Python/Launcher/py.exe" -0p` 查看已安装版本）。
+   - 安装依赖（建议固定版本 + 强制重装，避免残留冲突；同时避免 `kapre>=0.4.0` 把 `tensorflow/numpy` 拉到新版本导致 `tf2onnx` 运行报错）：`python -m pip install --upgrade --force-reinstall "numpy==1.26.4" "protobuf==3.20.3" "tensorflow==2.15.1" "kapre==0.3.6" "openl3==0.4.2" "tf2onnx==1.16.1"`
+   - 建议始终用 venv 的 Python 执行 pip：`python -m pip ...`（或直接用 `& ".venv-openl3/Scripts/python.exe" -m pip ...`），避免新开终端后把依赖装到系统 Python。
+   - 若报 `ModuleNotFoundError: No module named 'tensorflow.keras'`（Windows 偶发，TensorFlow 安装不完整），在 venv 内执行：`pip install --force-reinstall --no-deps --no-cache-dir "tensorflow-intel==2.15.1"`。
+   - venv 目录（如 `.venv-openl3`）无需提交，仓库已在 `.gitignore` 忽略 `.venv*/`。
+   - 说明：`openl3` 在安装时会自动下载并解压官方权重（例如 `openl3_audio_mel256_music-v0_4_0.h5.gz`）。
+
+2) 导出 ONNX（导出“librosa 前端”版本：输入为 log‑mel，避免把 kapre 前处理打进 ONNX）  
+   - 参考脚本（示例输出名以 `resources/ai/openl3/manifest.json` 为准）：
+      - `frontend='librosa'`、`input_repr='mel256'`、`content_type='music'`、`embedding_size=512`（small）
+      - 输入 shape：`[None, 256, 199, 1]`（float32，`n_mels=256`，`1s@48kHz`、`hop=242` → `199` 帧）
+
+   ```powershell
+   # Windows PowerShell（确保使用 Python 3.11）
+   # 若可用 Python Launcher：
+   py -3.11 -m venv ".venv-openl3"
+   # 若 py 不在 PATH，可直接用 Launcher 路径：
+   # & "$env:LOCALAPPDATA/Programs/Python/Launcher/py.exe" -3.11 -m venv ".venv-openl3"
+
+   & ".venv-openl3/Scripts/python.exe" -m pip install --upgrade pip setuptools wheel
+   & ".venv-openl3/Scripts/python.exe" -m pip install --upgrade --force-reinstall `
+     "numpy==1.26.4" "protobuf==3.20.3" "tensorflow==2.15.1" "kapre==0.3.6" "openl3==0.4.2" "tf2onnx==1.16.1"
+   & ".venv-openl3/Scripts/python.exe" -c "import tensorflow as tf; import tensorflow.keras as k; print(tf.__version__)"
+   & ".venv-openl3/Scripts/python.exe" "scripts/export-openl3-onnx.py" --manifest "resources/ai/openl3/manifest.json" --write-sha256
+   ```
+
+   ```bash
+   # macOS/Linux（建议使用 Python 3.11）
+   python3.11 -m venv ".venv-openl3"
+   source ".venv-openl3/bin/activate"
+   python -m pip install --upgrade pip setuptools wheel
+   python -m pip install --upgrade --force-reinstall \
+     "numpy==1.26.4" "protobuf==3.20.3" "tensorflow==2.15.1" "kapre==0.3.6" "openl3==0.4.2" "tf2onnx==1.16.1"
+   python "scripts/export-openl3-onnx.py" --manifest "resources/ai/openl3/manifest.json" --write-sha256
+   ```
+
+3) 放置与校验  
+    - 把导出的 `.onnx` 放到 `resources/ai/openl3/`，文件名与 `resources/ai/openl3/manifest.json` 的 `modelFile` 一致。
+    - 建议在导出时加 `--write-sha256` 自动写回 `manifest.json`；或手动计算（Windows 可用 `Get-FileHash -Algorithm SHA256 "<onnx>"`）。
+    - 运行时逻辑：启动后会从安装包内 `resources/ai/openl3/*` 复制到 `userData/ai/openl3/*` 并设置 `FRKB_OPENL3_MODEL_PATH`；若缺失则 OpenL3 特征自动降级跳过，不影响 Chromaprint/GBDT 主流程。
+    - 若运行时日志出现 `openl3 推理失败: Clashing resolution for expression ...`：通常是 **本地 `rust_package` N-API 二进制未更新**（旧版会在 batch 变化时触发 tract 符号冲突）。请在仓库内重新构建：`cd rust_package && corepack yarn run build`（或 `npx --yes @napi-rs/cli@2.18.4 build --platform --release`）。
 
 ## 推理与排序流程
 1) **离线特征提取**  
@@ -62,11 +223,15 @@
 - **风险/假设**：元数据侧（BPM/Key/流派/年份等）存在缺失或噪声时，GBDT 依赖 `has_*` 标记自动降权；若缺失比例极高，元数据软特征贡献会变小，效果主要由 OpenL3/指纹特征决定。
 
 ## 准确率优先的初始配置
-- 模型：OpenL3 small **fp32 全精度**，优先选 256 维输出（若有 48 kHz 版本则优先 48 kHz）。  
+- 模型：OpenL3 small **fp32 全精度**，输出 **512 维**（48 kHz，`mel256/music`）。  
 - 取样策略：**整曲滑窗提嵌入**。窗口长度按 OpenL3 原生约 1s；步长 `hop=0.1s`（≈90% 重叠）；首尾采用 center+reflect padding；整曲向量用能量加权平均（RMS 加权，低能量窗跳过）。  
-- 运行时：Rust 侧优先使用 ORT（`ort`）推理以获取最稳的算子支持与较高性能。  
+- 运行时：当前实现使用 `tract-onnx`（纯 Rust）；后续若要更高兼容/性能可切换 ORT（`ort`）。  
 
 ## GBDT 特征与训练（基线）
+### 0. 当前已实现（GBDT v1）
+- `feature_names`：`hpcp_corr_max`、`bpm_diff_min`、`key_dist_min`、`duration_diff_min_log1p`、`bitrate_kbps`、`rms_mean`、`has_hpcp`、`has_bpm`、`has_key`、`has_duration`、`has_bitrate`、`has_rms`、`chromaprint_sim_max`、`has_chromaprint`。
+- 说明：OpenL3 相似度统计已落地（`openl3_sim_max/openl3_sim_top5_mean/openl3_sim_top20_mean/openl3_sim_centroid`）；Chromaprint 相似度第一版使用 64-bit SimHash 的汉明相似度做轻量近似。
+
 ### 1. 特征集合（仅歌曲自身信息）
 **OpenL3 相似度统计（核心）**
 - `openl3_sim_max`：候选与历史精选集合的最大余弦相似度。  
@@ -74,7 +239,7 @@
 - `openl3_sim_centroid`：候选与“精选全局质心向量”的余弦相似度。  
 
 **指纹/调性/节奏补充**
-- `fp_sim_max / fp_sim_top5_mean`：Chromaprint 指纹相似度统计（哈明/相关系数）。  
+- `chromaprint_sim_max`：Chromaprint 指纹相似度统计（第一版使用 64-bit SimHash 的汉明相似度做轻量近似）。  
 - `hpcp_corr_max`：HPCP/Chroma 与精选曲目的最大相关（或最小距离）。  
 - `bpm_diff_min`：与任一精选曲目 BPM 的最小绝对差。  
 - `key_dist_min`：与任一精选曲目调式/主调的最小距离（五度圈/半音距离，模式不同时加 1）。  
@@ -124,7 +289,7 @@
 ### 4. SQLite 结构设计（可与未来指纹库合并）
 - 文件位置：**放在库目录**（与 `FRKB.database.frkbdb` 同级），文件名暂定 `features.db`；保证不同库之间特征完全隔离，且不与现有 `frkbdb` 格式耦合，后续重构时再评估是否合并。  
 - 基础表建议：  
-  - `song_features`：`songId TEXT PRIMARY KEY, fileHash TEXT, modelVersion TEXT, openl3_vector BLOB, rmsMean REAL, hpcp BLOB, bpm REAL, key TEXT, durationSec REAL, bitrateKbps REAL, updatedAt TEXT`。  
+  - `song_features`：`songId TEXT PRIMARY KEY, fileHash TEXT, modelVersion TEXT, openl3_vector BLOB, chromaprintFingerprint TEXT, rmsMean REAL, hpcp BLOB, bpm REAL, key TEXT, durationSec REAL, bitrateKbps REAL, updatedAt TEXT`。  
   - `schema_meta`：`key TEXT PRIMARY KEY, value TEXT`（记录 schemaVersion、模型版本等）。  
   - `song_prediction_cache`：`songId TEXT, modelRevision INTEGER, fileHash TEXT, score REAL, updatedAt TEXT, PRIMARY KEY(songId, modelRevision, fileHash)`（预测分数缓存，仅用于加速列表展示）。  
 - 向量存储：`openl3_vector/hpcp` 用 **f32 小端序 BLOB**（无损），必要时可再加 `zstd` 无损压缩列。  
@@ -137,9 +302,14 @@
 - 训练形态：基线使用 **全量从零重训**（仅重训 GBDT 权重，不重算已缓存的音频特征）。当前选用的纯 Rust `gbdt` 不支持可靠的在线/增量更新；若未来必须增量训练，需要改为支持 warm‑start 的框架（如 XGBoost/LightGBM FFI）或引入在线模型作为辅助手段。  
 - 推理口径（已定）：预测使用“最近一次训练时的喜欢集合快照”（由后端随模型保存）；用户后续新增/修改 `liked/disliked/neutral` 标注在触发重训前**不影响当前分数**，仅在重训成功后刷新。  
 - N‑API 接口草案：  
-  - `extractOpenL3Embedding(filePath) -> Float32Array(256)`（内部整曲滑窗聚合）。  
+  - `upsertSongFeatures(featureStorePath, items) -> affected`（写入/更新 `features.db.song_features`，支持部分字段更新）。  
+  - `extractOpenL3Embedding(filePath, maxSeconds?, maxWindows?) -> Promise<Buffer>`（内部整曲滑窗聚合；返回 **f32 小端序 BLOB**；若未放置 `resources/ai/openl3/manifest.json` 对应的 `modelFile` 则返回 `runtime_unavailable`）。  
   - `trainSelectionGbdt(positiveIds, negativeIds, featureStorePath) -> { status, modelRevision?, modelPath?, metrics? }`（`status` 可能为 `trained | insufficient_samples | failed`；`modelRevision` 为库内自增整型，仅在 `trained` 时返回）。  
   - `predictSelectionCandidates(candidateIds, featureStorePath, modelPath?, topK?) -> { status, modelRevision?, items? }`（`status` 可能为 `ok | not_trained | insufficient_samples | failed`；仅当 `ok` 时返回 `modelRevision` 与 `items: [{ id, score }]`；不做任何回退排序）。  
+  - `setSelectionLabels(labelStorePath, songIds, label) -> { total, changed, sampleChangeCount, sampleChangeDelta }`。  
+  - `getSelectionLabelSnapshot(labelStorePath) -> { positiveIds, negativeIds, sampleChangeCount }`。  
+  - `resetSelectionSampleChangeCount(labelStorePath) -> sampleChangeCount`。  
+  - `resetSelectionLabels(labelStorePath) -> boolean`。  
 - 模型持久化：GBDT 模型二进制落到 **库目录** `models/selection/selection_gbdt_v1.bin`，与 manifest 一起管理与迁移。  
 
 ## 前端交互与样本标注（草案，不实现）
@@ -154,10 +324,13 @@
   - 歌曲被移出库/文件系统删除：在库扫描/导入同步确认移除后，按 `songId` 删除对应缓存行；避免缓存无限增长。  
   - 歌曲内容变更（`fileHash` 变化）：在重算特征并写入新 `fileHash` 后，删除同 `songId` 下旧 `fileHash` 的缓存行。  
 - 标签模型：每首歌维护三态 `liked / disliked / neutral`；`positiveIds/negativeIds` 由三态实时派生（Set 去重，避免冲突与重复）。
-- 标签持久化：`liked/disliked/neutral` 作为业务真值写入库目录内的 `FRKB.database.frkbdb`（与 `features.db` 解耦，支持随库目录迁移）。
+- 标签持久化：`liked/disliked/neutral` 作为业务真值写入库目录内的 `selection_labels.db`（SQLite，与 `features.db`/`FRKB.database.frkbdb` 解耦，支持随库目录迁移）。
 - 删除曲目样本：曲目被移出库或文件系统删除后，其 `liked/disliked` 标签与已落库特征快照作为训练样本永久保留；不提供“清理已删除样本”入口。
 - 系统设置（对当前库生效）：新增“初始化 AI 模型”按钮，执行后重置本库所有喜好标记（全部置为 `neutral`）并清空本库的预测/训练产物（如 `models/selection/*`、`song_prediction_cache`，并重置 `modelRevision`）；需二次确认并明确警告“操作不可恢复，初始化后需重新标记喜欢/不喜欢并等待重训才会显示预测分数”。
-- 样本变化计数：仅统计**真实标签变更**的曲目数量作为 `sampleChangeCount` 累加：`newTag == oldTag` 不计；`neutral→liked/disliked`、`liked↔disliked`、`liked/disliked→neutral` 均计 1。
+- 样本变化计数（已实现）：仅统计**真实标签变更**的曲目数量作为 `sampleChangeCount` 累加：`newTag == oldTag` 不计；`neutral→liked/disliked`、`liked↔disliked`、`liked/disliked→neutral` 均计 1。
+- 元数据变更（已实现）：内部保存可编辑元数据（艺人/流派/专辑/年份等）后，若发生**真实变化**：
+  - 对该 `songId` 清理 `song_prediction_cache`（因为元数据变化时 `fileHash` 可能不变，否则会返回旧缓存分数）。
+  - 若该曲目为训练样本（`liked/disliked`），则将本次变更计入 `sampleChangeCount`，并复用同一套阈值与 debounce 触发重训。
 - 重训触发：当 `sampleChangeCount ≥ 20` 且满足后端样本阈值（`positiveIds ≥ 20` 且 `negativeIds ≥ 4 * positiveIds`）时触发一次 `trainSelectionGbdt`；训练成功后清零计数；建议对“最后一次打标”做 5–10s debounce 避免频繁重训。
 
 ## 训练后台执行与进度（草案，不实现）

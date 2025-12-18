@@ -421,6 +421,46 @@ const clearTracksFingerprintLibrary = async () => {
   }
 }
 
+// 清除本地精选预测训练数据（清空 liked/disliked + 删除模型文件）
+const clearSelectionTrainingData = async () => {
+  if (runtime.isProgressing) {
+    await confirm({
+      title: t('common.setting'),
+      content: [t('import.waitForTask')],
+      confirmShow: false
+    })
+    return
+  }
+  const resConfirm = await confirm({
+    title: t('common.warning'),
+    content: [t('selectionTraining.confirmClear')]
+  })
+  if (resConfirm !== 'confirm') return
+
+  try {
+    const result = await window.electron.ipcRenderer.invoke('selection:training:reset')
+    if (result?.ok) {
+      await confirm({
+        title: t('common.setting'),
+        content: [t('selectionTraining.clearCompleted')],
+        confirmShow: false
+      })
+    } else {
+      await confirm({
+        title: t('common.setting'),
+        content: [t('selectionTraining.clearFailed'), String(result?.failed?.message || '')],
+        confirmShow: false
+      })
+    }
+  } catch (error: any) {
+    await confirm({
+      title: t('common.setting'),
+      content: [t('selectionTraining.clearFailed'), String(error?.message || error || '')],
+      confirmShow: false
+    })
+  }
+}
+
 const globalCallShortcutHandle = async () => {
   await globalCallShortcutDialog()
 }
@@ -846,6 +886,16 @@ const clearCloudFingerprints = async () => {
                 @click="clearTracksFingerprintLibrary()"
               >
                 {{ t('fingerprints.clearShort') }}
+              </div>
+            </div>
+            <div style="margin-top: 20px">{{ t('selectionTraining.clear') }}：</div>
+            <div style="margin-top: 10px">
+              <div
+                class="dangerButton"
+                style="width: 90px; text-align: center"
+                @click="clearSelectionTrainingData()"
+              >
+                {{ t('selectionTraining.clearShort') }}
               </div>
             </div>
             <div style="margin-top: 20px">{{ t('cloudSync.reset.sectionTitle') }}：</div>

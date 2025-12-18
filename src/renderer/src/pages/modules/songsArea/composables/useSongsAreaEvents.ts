@@ -22,14 +22,15 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     scheduleSweepCovers
   } = params
 
+  const normalizePath = (p: string | undefined | null) =>
+    (p || '').replace(/\//g, '\\').toLowerCase()
+
   const onSongsRemoved = (
     payload: { listUUID?: string; paths: string[] } | { paths: string[] }
   ) => {
     const pathsToRemove: string[] = Array.isArray((payload as any).paths)
       ? ((payload as any).paths as string[])
       : []
-    const normalizePath = (p: string | undefined | null) =>
-      (p || '').replace(/\//g, '\\').toLowerCase()
     const listUUID = (payload as any).listUUID
     const normalizedSet = new Set<string>(pathsToRemove.map((p: string) => normalizePath(p)))
     const hasIntersection = originalSongInfoArr.value.some((s) =>
@@ -96,16 +97,56 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     scheduleSweepCovers()
   }
 
+  const onSelectionLabelsChanged = (payload: any) => {
+    const filePaths: string[] = Array.isArray(payload?.filePaths)
+      ? payload.filePaths.filter(Boolean).map(String)
+      : []
+    const rawLabel = typeof payload?.label === 'string' ? payload.label : ''
+    const nextLabel: ISongInfo['selectionLabel'] =
+      rawLabel === 'liked' ? 'liked' : rawLabel === 'disliked' ? 'disliked' : undefined
+
+    const normalizedSet = new Set(filePaths.map((p) => normalizePath(p)).filter(Boolean))
+    if (normalizedSet.size === 0) return
+
+    const hasIntersection = originalSongInfoArr.value.some((s) =>
+      normalizedSet.has(normalizePath(s.filePath))
+    )
+    if (!hasIntersection) return
+
+    const patch = (song: ISongInfo): ISongInfo => {
+      if (!song?.filePath) return song
+      if (!normalizedSet.has(normalizePath(song.filePath))) return song
+      return { ...song, selectionLabel: nextLabel }
+    }
+
+    originalSongInfoArr.value = originalSongInfoArr.value.map(patch)
+    runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.map(patch)
+
+    if (
+      runtime.playingData.playingSong &&
+      normalizedSet.has(normalizePath(runtime.playingData.playingSong.filePath))
+    ) {
+      runtime.playingData.playingSong = patch(runtime.playingData.playingSong)
+    }
+    if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+      runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map(patch)
+    }
+
+    applyFiltersAndSorting()
+  }
+
   onMounted(() => {
     emitter.on('songsRemoved', onSongsRemoved)
     emitter.on('songsMovedByDrag', onSongsMovedByDrag)
     emitter.on('external-playlist/refresh', onExternalPlaylistRefresh)
+    emitter.on('selectionLabelsChanged', onSelectionLabelsChanged)
   })
 
   onUnmounted(() => {
     emitter.off('songsRemoved', onSongsRemoved)
     emitter.off('songsMovedByDrag', onSongsMovedByDrag)
     emitter.off('external-playlist/refresh', onExternalPlaylistRefresh)
+    emitter.off('selectionLabelsChanged', onSelectionLabelsChanged)
   })
 
   // 导入完成后重新打开歌单

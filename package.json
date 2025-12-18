@@ -18,6 +18,10 @@
       {
         "from": "vendor/chromaprint",
         "to": "chromaprint"
+      },
+      {
+        "from": "resources/ai/openl3",
+        "to": "ai/openl3"
       }
     ],
     "appId": "com.electron.frkb",
@@ -26,7 +30,8 @@
     "files": [
       "**/*",
       "!rust_package/target{,/**/*}",
-      "!node_modules/rust_package/target{,/**/*}"
+      "!node_modules/rust_package/target{,/**/*}",
+      "!resources/ai/openl3/*.onnx*"
     ],
     "fileAssociations": [
       {

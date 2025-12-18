@@ -21,6 +21,7 @@ import confirm from '@renderer/components/confirmDialog'
 import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
 import emitter from '@renderer/utils/mitt'
 import libraryUtils from '@renderer/utils/libraryUtils'
+import { setSelectionLabelForFilePathsBatched } from '@renderer/utils/selectionActions'
 const emit = defineEmits(['librarySelectedChange'])
 
 const baseIcons: Icon[] = [
@@ -160,10 +161,71 @@ const scanSongListsFiles = async (songLists: IDir[]) => {
         : []
       files.push(...songFiles)
     } catch (error) {
-      console.error('[librarySelectArea] scanSongList failed', error)
+      console.error('[librarySelectArea] scanSongList 失败', error)
     }
   }
   return Array.from(new Set(files))
+}
+
+const handleBulkLabelForLibrary = async (libraryName: string, label: 'liked' | 'disliked') => {
+  const libraryNode = findLibraryNode(libraryName)
+  const songLists = collectSongLists(libraryNode)
+  if (!songLists.length) {
+    await confirm({
+      title: t('dialog.hint'),
+      content: [t('metadata.autoFillNoEligible')],
+      confirmShow: false
+    })
+    return
+  }
+
+  const files = await scanSongListsFiles(songLists)
+  if (!files.length) {
+    await confirm({
+      title: t('dialog.hint'),
+      content: [t('metadata.autoFillNoEligible')],
+      confirmShow: false
+    })
+    return
+  }
+
+  const labelText = label === 'liked' ? t('selection.liked') : t('selection.disliked')
+  const res = await confirm({
+    title: t('dialog.hint'),
+    content: [t('selection.bulkConfirmLibrary', { count: files.length, label: labelText })]
+  })
+  if (res !== 'confirm') return
+
+  try {
+    emitter.emit('selectionLabelsChanged', { filePaths: files, label })
+  } catch {}
+
+  const summary = await setSelectionLabelForFilePathsBatched({
+    filePaths: files,
+    label,
+    batchSize: 200,
+    concurrency: 2
+  })
+
+  if (summary.failedBatches > 0) {
+    await confirm({
+      title: t('common.error'),
+      content: [
+        t('selection.bulkDoneWithErrors', {
+          okBatches: summary.okBatches,
+          failedBatches: summary.failedBatches
+        }),
+        summary.firstErrorMessage || t('common.unknownError')
+      ],
+      confirmShow: false
+    })
+  } else {
+    await confirm({
+      title: t('dialog.hint'),
+      content: [t('selection.bulkDone', { okBatches: summary.okBatches })],
+      confirmShow: false
+    })
+  }
 }
 
 const handleAutoFillForLibrary = async (libraryName: string) => {
@@ -244,7 +306,7 @@ const clearCachesForLibrary = async (libraryName: string) => {
       await window.electron.ipcRenderer.invoke('playlist:cache:clear', dirPath || '')
       emitter.emit('playlistCacheCleared', { uuid: list.uuid })
     } catch (error) {
-      console.error('[librarySelectArea] clear playlist cache failed', error)
+      console.error('[librarySelectArea] 清理歌单缓存失败', error)
     }
   }
 }
@@ -283,6 +345,7 @@ const emptyRecycleBinHandleClick = async () => {
 
 const buildMenuArr = (item: Icon) => {
   const commonMenus = [
+    [{ menuName: 'selection.likeAllInLibrary' }, { menuName: 'selection.dislikeAllInLibrary' }],
     [{ menuName: 'metadata.autoFillMenu' }],
     [{ menuName: 'playlist.clearCache' }]
   ]
@@ -299,6 +362,12 @@ const handleIconContextmenu = async (event: MouseEvent, item: Icon) => {
   const result = await rightClickMenu({ menuArr, clickEvent: event })
   if (result === 'cancel') return
   switch (result.menuName) {
+    case 'selection.likeAllInLibrary':
+      await handleBulkLabelForLibrary(item.name, 'liked')
+      break
+    case 'selection.dislikeAllInLibrary':
+      await handleBulkLabelForLibrary(item.name, 'disliked')
+      break
     case 'metadata.autoFillMenu':
       await handleAutoFillForLibrary(item.name)
       break

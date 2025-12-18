@@ -4,7 +4,13 @@ out
 # build
 .DS_Store
 resources/pyScript/
+# AI models（避免误提交大文件）
+resources/ai/openl3/*.onnx
+resources/ai/openl3/*.onnx.gz
 *.log*
+
+# Python virtual envs
+.venv*/
 
 # local env files
 .env
