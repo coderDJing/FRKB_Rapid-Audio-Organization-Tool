@@ -8,6 +8,7 @@ resources/pyScript/
 resources/ai/openl3/*.onnx
 resources/ai/openl3/*.onnx.gz
 *.log*
+**/*.node
 
 # Python virtual envs
 .venv*/
