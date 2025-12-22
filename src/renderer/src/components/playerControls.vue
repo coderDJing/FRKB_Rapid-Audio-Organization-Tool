@@ -382,112 +382,118 @@ onUnmounted(() => {
 // ---------------- End 媒体会话集成 ----------------
 </script>
 <template>
-  <div
-    class="playerControls unselectable"
-    style="
-      width: 100%;
-      height: 50px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    "
-  >
-    <div ref="previousSongRef" class="buttonIcon" @click="handlePreviousSong()">
-      <img :src="previousSong" draggable="false" />
-    </div>
-    <bubbleBox :dom="previousSongRef || undefined" :title="t('player.previous')" shortcut="W" />
-    <div ref="fastBackwardRef" class="buttonIcon" @mousedown="handleFastBackward()">
-      <img :src="fastBackward" draggable="false" />
-    </div>
-    <bubbleBox :dom="fastBackwardRef || undefined" :title="t('player.fastBackward')" shortcut="A" />
-    <div ref="playRef" class="buttonIcon" v-show="!playing" @click="handlePlay()">
-      <img :src="play" draggable="false" />
-    </div>
-    <bubbleBox :dom="playRef || undefined" :title="t('player.play')" shortcut="Space" />
-    <div ref="pauseRef" class="buttonIcon" v-show="playing" @click="handlePause()">
-      <img :src="pause" draggable="false" />
-    </div>
-    <bubbleBox :dom="pauseRef || undefined" :title="t('player.pause')" shortcut="Space" />
-    <div ref="fastForwardRef" class="buttonIcon" @mousedown="handleFastForward()">
-      <img :src="fastForward" draggable="false" />
-    </div>
-    <bubbleBox :dom="fastForwardRef || undefined" :title="t('player.fastForward')" shortcut="D" />
-    <div ref="nextSongRef" class="buttonIcon" @click="handleNextSong()">
-      <img :src="nextSong" draggable="false" />
-    </div>
-    <bubbleBox :dom="nextSongRef || undefined" :title="t('player.next')" shortcut="S" />
-    <!-- 音量按钮，与“下一首”同风格 -->
+  <div class="playerControlsRoot">
     <div
-      class="buttonIcon volumeIcon"
-      @mouseenter="iconHovering = true"
-      @mouseleave="iconHovering = false"
-      style="position: relative"
+      class="playerControls unselectable"
+      style="
+        width: 100%;
+        height: 50px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      "
     >
-      <img :src="volumeIcon" draggable="false" @click.stop="toggleMute" />
-      <transition name="fade">
-        <div
-          v-if="showVolumeSlider"
-          class="volumePopover unselectable"
-          @mouseenter="sliderHovering = true"
-          @mouseleave="sliderHovering = false"
-        >
-          <div class="volumeBar" ref="volumeBarRef" @mousedown="handleBarMousedown">
-            <div class="volumeFill" :style="{ height: Math.round(volume * 100) + '%' }"></div>
+      <div ref="previousSongRef" class="buttonIcon" @click="handlePreviousSong()">
+        <img :src="previousSong" draggable="false" />
+      </div>
+      <bubbleBox :dom="previousSongRef || undefined" :title="t('player.previous')" shortcut="W" />
+      <div ref="fastBackwardRef" class="buttonIcon" @mousedown="handleFastBackward()">
+        <img :src="fastBackward" draggable="false" />
+      </div>
+      <bubbleBox
+        :dom="fastBackwardRef || undefined"
+        :title="t('player.fastBackward')"
+        shortcut="A"
+      />
+      <div ref="playRef" class="buttonIcon" v-show="!playing" @click="handlePlay()">
+        <img :src="play" draggable="false" />
+      </div>
+      <bubbleBox :dom="playRef || undefined" :title="t('player.play')" shortcut="Space" />
+      <div ref="pauseRef" class="buttonIcon" v-show="playing" @click="handlePause()">
+        <img :src="pause" draggable="false" />
+      </div>
+      <bubbleBox :dom="pauseRef || undefined" :title="t('player.pause')" shortcut="Space" />
+      <div ref="fastForwardRef" class="buttonIcon" @mousedown="handleFastForward()">
+        <img :src="fastForward" draggable="false" />
+      </div>
+      <bubbleBox :dom="fastForwardRef || undefined" :title="t('player.fastForward')" shortcut="D" />
+      <div ref="nextSongRef" class="buttonIcon" @click="handleNextSong()">
+        <img :src="nextSong" draggable="false" />
+      </div>
+      <bubbleBox :dom="nextSongRef || undefined" :title="t('player.next')" shortcut="S" />
+      <!-- 音量按钮，与“下一首”同风格 -->
+      <div
+        class="buttonIcon volumeIcon"
+        @mouseenter="iconHovering = true"
+        @mouseleave="iconHovering = false"
+        style="position: relative"
+      >
+        <img :src="volumeIcon" draggable="false" @click.stop="toggleMute" />
+        <transition name="fade">
+          <div
+            v-if="showVolumeSlider"
+            class="volumePopover unselectable"
+            @mouseenter="sliderHovering = true"
+            @mouseleave="sliderHovering = false"
+          >
+            <div class="volumeBar" ref="volumeBarRef" @mousedown="handleBarMousedown">
+              <div class="volumeFill" :style="{ height: Math.round(volume * 100) + '%' }"></div>
+            </div>
+          </div>
+        </transition>
+      </div>
+      <div class="buttonIcon" @click.stop="handelMoreClick()">
+        <img :src="more" draggable="false" />
+      </div>
+    </div>
+    <transition name="fade">
+      <div class="moreMenu unselectable" v-if="moreMenuShow">
+        <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
+          <div class="menuButton" @click="exportTrack()">
+            <span>{{ t('tracks.exportTracks') }}</span>
           </div>
         </div>
-      </transition>
-    </div>
-    <div class="buttonIcon" @click.stop="handelMoreClick()">
-      <img :src="more" draggable="false" />
-    </div>
+        <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
+          <div class="menuButton" @click="moveToListLibrary()">
+            <div>
+              <span>{{ t('library.moveToFilter') }}</span>
+            </div>
+            <div class="shortcut" style="display: flex; align-items: center">
+              <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>Q</span>
+            </div>
+          </div>
+          <div class="menuButton" @click="moveToLikeLibrary()">
+            <div>
+              <span>{{ t('library.moveToCurated') }}</span>
+            </div>
+            <div class="shortcut" style="display: flex; align-items: center">
+              <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>E</span>
+            </div>
+          </div>
+        </div>
+        <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
+          <div class="menuButton" @click="delSong()">
+            <div>
+              <span>{{ t('tracks.deleteTracks') }} </span>
+            </div>
+            <div class="shortcut" style="display: flex; align-items: center">
+              <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>F</span>
+            </div>
+          </div>
+        </div>
+        <div style="padding: 5px 5px">
+          <div class="menuButton" @click="showInFileExplorer()">
+            <span>{{ t('tracks.showInFileExplorer') }}</span>
+          </div>
+        </div>
+        <div style="padding: 5px 5px; border-top: 1px solid var(--border)">
+          <div class="menuButton" @click="handleAnalyzeCurrentSongFingerprint()">
+            <span>{{ t('fingerprints.analyzeAndAdd') }}</span>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
-  <transition name="fade">
-    <div class="moreMenu unselectable" v-if="moreMenuShow">
-      <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
-        <div class="menuButton" @click="exportTrack()">
-          <span>{{ t('tracks.exportTracks') }}</span>
-        </div>
-      </div>
-      <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
-        <div class="menuButton" @click="moveToListLibrary()">
-          <div>
-            <span>{{ t('library.moveToFilter') }}</span>
-          </div>
-          <div class="shortcut" style="display: flex; align-items: center">
-            <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>Q</span>
-          </div>
-        </div>
-        <div class="menuButton" @click="moveToLikeLibrary()">
-          <div>
-            <span>{{ t('library.moveToCurated') }}</span>
-          </div>
-          <div class="shortcut" style="display: flex; align-items: center">
-            <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>E</span>
-          </div>
-        </div>
-      </div>
-      <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
-        <div class="menuButton" @click="delSong()">
-          <div>
-            <span>{{ t('tracks.deleteTracks') }} </span>
-          </div>
-          <div class="shortcut" style="display: flex; align-items: center">
-            <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>F</span>
-          </div>
-        </div>
-      </div>
-      <div style="padding: 5px 5px">
-        <div class="menuButton" @click="showInFileExplorer()">
-          <span>{{ t('tracks.showInFileExplorer') }}</span>
-        </div>
-      </div>
-      <div style="padding: 5px 5px; border-top: 1px solid var(--border)">
-        <div class="menuButton" @click="handleAnalyzeCurrentSongFingerprint()">
-          <span>{{ t('fingerprints.analyzeAndAdd') }}</span>
-        </div>
-      </div>
-    </div>
-  </transition>
 </template>
 <style lang="scss" scoped>
 .moreMenu {
