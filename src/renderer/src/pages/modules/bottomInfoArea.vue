@@ -296,7 +296,12 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
 </script>
 <template>
   <div class="bottom-info-area" :class="{ empty: tasks.length === 0 }">
-    <TransitionGroup name="progress-fade" tag="div" @after-leave="handleAfterLeave">
+    <TransitionGroup
+      name="progress-fade"
+      tag="div"
+      class="task-list"
+      @after-leave="handleAfterLeave"
+    >
       <div v-for="task in tasks" :key="task.id" class="task-row">
         <div class="spinner">
           <div class="loading">
@@ -559,7 +564,6 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 4px;
   padding: 2px 0;
   box-sizing: border-box;
   overflow: hidden;
@@ -576,6 +580,12 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   opacity: 1;
   padding: 2px 0;
   pointer-events: none;
+}
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
 }
 .task-row {
   width: 100%;
