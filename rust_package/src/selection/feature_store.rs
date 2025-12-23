@@ -25,7 +25,6 @@ pub struct SongFeaturesPatch {
 pub struct SongFeaturesRow {
   pub song_id: String,
   pub file_hash: String,
-  pub model_version: String,
   pub openl3_vector: Option<Vec<f32>>,
   pub chromaprint_fingerprint: Option<String>,
   pub rms_mean: Option<f64>,
@@ -34,7 +33,6 @@ pub struct SongFeaturesRow {
   pub key: Option<String>,
   pub duration_sec: Option<f64>,
   pub bitrate_kbps: Option<f64>,
-  pub updated_at: String,
 }
 
 pub fn open_and_migrate(feature_store_path: &Path) -> Result<Connection, String> {
@@ -242,7 +240,7 @@ pub fn get_song_features_map(
     .collect::<Vec<_>>()
     .join(",");
   let sql = format!(
-    "SELECT songId, fileHash, modelVersion, openl3_vector, chromaprintFingerprint, rmsMean, hpcp, bpm, key, durationSec, bitrateKbps, updatedAt FROM song_features WHERE songId IN ({})",
+    "SELECT songId, fileHash, openl3_vector, chromaprintFingerprint, rmsMean, hpcp, bpm, key, durationSec, bitrateKbps FROM song_features WHERE songId IN ({})",
     placeholders
   );
 
@@ -256,21 +254,18 @@ pub fn get_song_features_map(
       |row| {
       let song_id: String = row.get(0)?;
       let file_hash: String = row.get(1)?;
-      let model_version: String = row.get(2)?;
-      let openl3_blob: Option<Vec<u8>> = row.get(3)?;
-      let chromaprint_fingerprint: Option<String> = row.get(4)?;
-      let rms_mean: Option<f64> = row.get(5)?;
-      let hpcp_blob: Option<Vec<u8>> = row.get(6)?;
-      let bpm: Option<f64> = row.get(7)?;
-      let key: Option<String> = row.get(8)?;
-      let duration_sec: Option<f64> = row.get(9)?;
-      let bitrate_kbps: Option<f64> = row.get(10)?;
-      let updated_at: String = row.get(11)?;
+      let openl3_blob: Option<Vec<u8>> = row.get(2)?;
+      let chromaprint_fingerprint: Option<String> = row.get(3)?;
+      let rms_mean: Option<f64> = row.get(4)?;
+      let hpcp_blob: Option<Vec<u8>> = row.get(5)?;
+      let bpm: Option<f64> = row.get(6)?;
+      let key: Option<String> = row.get(7)?;
+      let duration_sec: Option<f64> = row.get(8)?;
+      let bitrate_kbps: Option<f64> = row.get(9)?;
 
       Ok(SongFeaturesRow {
         song_id,
         file_hash,
-        model_version,
         openl3_vector: openl3_blob.and_then(|b| parse_f32_le_blob(&b).ok()),
         chromaprint_fingerprint,
         rms_mean,
@@ -279,7 +274,6 @@ pub fn get_song_features_map(
         key,
         duration_sec,
         bitrate_kbps,
-        updated_at,
       })
     },
     )

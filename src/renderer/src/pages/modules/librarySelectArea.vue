@@ -189,13 +189,6 @@ const handleBulkLabelForLibrary = async (libraryName: string, label: 'liked' | '
     return
   }
 
-  const labelText = label === 'liked' ? t('selection.liked') : t('selection.disliked')
-  const res = await confirm({
-    title: t('dialog.hint'),
-    content: [t('selection.bulkConfirmLibrary', { count: files.length, label: labelText })]
-  })
-  if (res !== 'confirm') return
-
   try {
     emitter.emit('selectionLabelsChanged', { filePaths: files, label })
   } catch {}
@@ -217,12 +210,6 @@ const handleBulkLabelForLibrary = async (libraryName: string, label: 'liked' | '
         }),
         summary.firstErrorMessage || t('common.unknownError')
       ],
-      confirmShow: false
-    })
-  } else {
-    await confirm({
-      title: t('dialog.hint'),
-      content: [t('selection.bulkDone', { okBatches: summary.okBatches })],
       confirmShow: false
     })
   }

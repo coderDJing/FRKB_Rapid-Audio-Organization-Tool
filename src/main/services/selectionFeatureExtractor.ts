@@ -3,23 +3,31 @@ import {
   extractOpenL3Embedding,
   type UpsertSongFeaturesInput
 } from 'rust_package'
+import { app } from 'electron'
 import { spawn } from 'child_process'
 import fs = require('fs-extra')
 import { ensureFpcalcExecutable, resolveBundledFpcalcPath } from '../chromaprint'
 import { ensureOpenL3ModelReady } from '../openl3'
-import { log } from '../log'
 
 const Meyda = require('meyda')
 
 const DEFAULT_MODEL_VERSION = 'selection_features_v1'
 const DEFAULT_MAX_ANALYZE_SECONDS = 120
 const DEFAULT_OPENL3_MAX_WINDOWS = 64
-const INTRO_SKIP_SECONDS = 30
+const FEATURE_SEGMENT_SECONDS = 12
+const FEATURE_SEGMENT_HOP_SECONDS = 4
+const FEATURE_SEGMENT_COUNT = 3
+const FEATURE_SEGMENT_EDGE_GUARD_SECONDS = 6
 const CHROMA_MAX_FRAMES = 400
 const DECODE_TIMEOUT_MS = 120_000
 const META_TIMEOUT_MS = 10_000
 const OPENL3_TIMEOUT_MS = 300_000
 const FPCALC_TIMEOUT = 45_000
+
+const IS_DEV = !app.isPackaged
+const devLog = (message: string): void => {
+  if (IS_DEV) console.log(message)
+}
 
 let openl3InitPromise: Promise<{
   modelPath: string
@@ -90,27 +98,25 @@ export async function buildSelectionSongFeaturePatches(
     }
 
     const startedAt = Date.now()
-    log.debug(
-      `[selection] 特征提取：开始 songId=${songId} 最大分析秒数=${String(maxAnalyzeSeconds)}`
-    )
+    devLog(`[selection] 特征提取：开始 songId=${songId} 最大分析秒数=${String(maxAnalyzeSeconds)}`)
 
     const metaTask = (async () => {
       const at = Date.now()
-      log.debug(`[selection] 特征提取：读取元数据开始 songId=${songId}`)
+      devLog(`[selection] 特征提取：读取元数据开始 songId=${songId}`)
       try {
         const meta = await withTimeout(
           readAudioFormatMeta(filePath),
           META_TIMEOUT_MS,
           '读取元数据超时'
         )
-        log.debug(
+        devLog(
           `[selection] 特征提取：读取元数据完成 songId=${songId} (${Date.now() - at}ms) bitrateKbps=${String(
             meta?.bitrateKbps ?? ''
           )} durationSec=${String(meta?.durationSec ?? '')}`
         )
         return { meta, ok: true as const, error: null as string | null }
       } catch (e: any) {
-        log.debug(
+        devLog(
           `[selection] 特征提取：读取元数据失败 songId=${songId} (${Date.now() - at}ms) error=${String(
             e?.message || e
           )}`
@@ -121,19 +127,19 @@ export async function buildSelectionSongFeaturePatches(
 
     const fpTask = (async () => {
       const at = Date.now()
-      log.debug(
+      devLog(
         `[selection] 特征提取：fpcalc 开始 songId=${songId} maxSeconds=${String(maxAnalyzeSeconds)}`
       )
       try {
         const fp = await runFpcalcFingerprint(filePath, maxAnalyzeSeconds)
-        log.debug(
+        devLog(
           `[selection] 特征提取：fpcalc 完成 songId=${songId} (${Date.now() - at}ms) len=${String(
             fp.length
           )}`
         )
         return { fp, ok: true as const, error: null as string | null }
       } catch (e: any) {
-        log.debug(
+        devLog(
           `[selection] 特征提取：fpcalc 失败 songId=${songId} (${Date.now() - at}ms) error=${String(
             e?.message || e
           )}`
@@ -148,7 +154,7 @@ export async function buildSelectionSongFeaturePatches(
         return { openl3: 'skipped' as const, vec: null as Buffer | null, error: 'MODEL_NOT_READY' }
       }
       const at = Date.now()
-      log.debug(
+      devLog(
         `[selection] 特征提取：OpenL3 开始 songId=${songId} maxWindows=${DEFAULT_OPENL3_MAX_WINDOWS}`
       )
       try {
@@ -159,13 +165,13 @@ export async function buildSelectionSongFeaturePatches(
         )
         const ms = Date.now() - at
         const dim = vec?.byteLength ? Math.floor(vec.byteLength / 4) : 0
-        log.debug(
+        devLog(
           `[selection] 特征提取：OpenL3 完成 songId=${songId} (${ms}ms) bytes=${vec?.byteLength || 0} dim=${dim}`
         )
         return { openl3: 'ok' as const, vec, error: null as string | null }
       } catch (e: any) {
         const ms = Date.now() - at
-        log.debug(
+        devLog(
           `[selection] 特征提取：OpenL3 失败 songId=${songId} (${ms}ms) error=${String(e?.message || e)}`
         )
         return {
@@ -178,14 +184,14 @@ export async function buildSelectionSongFeaturePatches(
 
     try {
       const decodeAt = Date.now()
-      log.debug(`[selection] 特征提取：解码开始 songId=${songId}`)
+      devLog(`[selection] 特征提取：解码开始 songId=${songId}`)
       const decoded = await withTimeout(
         decodeAudioFileLimited(filePath, maxAnalyzeSeconds),
         DECODE_TIMEOUT_MS,
         '音频解码超时'
       )
       if (decoded?.error) throw new Error(decoded.error)
-      log.debug(
+      devLog(
         `[selection] 特征提取：解码完成 songId=${songId} (${Date.now() - decodeAt}ms) sr=${String(
           decoded.sampleRate
         )} ch=${String(decoded.channels)} frames=${String(decoded.totalFrames)} bytes=${String(
@@ -205,19 +211,16 @@ export async function buildSelectionSongFeaturePatches(
       )
       const mono = downmixToMono(pcm, channels, maxFrames)
 
-      const introSkipFrames = Math.max(0, Math.floor(sampleRate * INTRO_SKIP_SECONDS))
-      const shouldSkipIntro = mono.length - introSkipFrames >= sampleRate
-      const featureSignal = shouldSkipIntro ? mono.subarray(introSkipFrames) : mono
-
       const calcAt = Date.now()
-      const rmsMean = computeRmsMean(featureSignal)
-      const hpcpVec = computeMeanChroma(featureSignal, sampleRate)
+      const { rmsMean, hpcpVec, bpm, segmentSummary } = computeSegmentedAudioFeatures(
+        mono,
+        sampleRate
+      )
       const key = hpcpVec ? detectKeyFromChroma(hpcpVec) : null
-      const bpm = estimateBpmFromSignal(featureSignal, sampleRate)
-      log.debug(
-        `[selection] 特征提取：音频特征完成 songId=${songId} (${Date.now() - calcAt}ms) skipIntroSec=${
-          shouldSkipIntro ? INTRO_SKIP_SECONDS : 0
-        } rmsMean=${String(rmsMean ?? '')} bpm=${String(bpm ?? '')} key=${String(key ?? '')} hpcp=${
+      devLog(
+        `[selection] 特征提取：音频特征完成 songId=${songId} (${Date.now() - calcAt}ms) segments=${segmentSummary} rmsMean=${String(
+          rmsMean ?? ''
+        )} bpm=${String(bpm ?? '')} key=${String(key ?? '')} hpcp=${
           hpcpVec ? hpcpVec.map((v) => Number(v || 0).toFixed(3)).join(',') : ''
         }`
       )
@@ -287,7 +290,7 @@ export async function buildSelectionSongFeaturePatches(
       return out.map((v) => v.toFixed(4)).join(',')
     })()
 
-    log.debug(
+    devLog(
       `[selection] 特征提取：结果 songId=${songId} (${Date.now() - startedAt}ms) rmsMean=${String(
         lastPatch.rmsMean ?? ''
       )} bpm=${String(lastPatch.bpm ?? '')} key=${String(lastPatch.key ?? '')} durationSec=${String(
@@ -341,6 +344,118 @@ function downmixToMono(
   return mono
 }
 
+type FeatureSegment = {
+  startFrame: number
+  endFrame: number
+  rms: number
+}
+
+function computeSegmentedAudioFeatures(
+  signal: Float32Array,
+  sampleRate: number
+): {
+  rmsMean: number | null
+  hpcpVec: number[] | null
+  bpm: number | null
+  segmentSummary: string
+} {
+  const segments = selectFeatureSegments(signal, sampleRate)
+  let rmsEnergySum = 0
+  let rmsFrames = 0
+  const chromaAcc = new Array(12).fill(0)
+  let chromaWeight = 0
+  const bpmValues: number[] = []
+
+  for (const segment of segments) {
+    const segmentSignal = signal.subarray(segment.startFrame, segment.endFrame)
+    const segmentFrames = segmentSignal.length
+    if (!segmentFrames) continue
+
+    const segmentRms = Number.isFinite(segment.rms) ? segment.rms : computeRmsMean(segmentSignal)
+    if (typeof segmentRms === 'number' && Number.isFinite(segmentRms)) {
+      rmsEnergySum += segmentRms * segmentRms * segmentFrames
+      rmsFrames += segmentFrames
+    }
+
+    const chroma = computeMeanChroma(segmentSignal, sampleRate)
+    if (chroma) {
+      for (let i = 0; i < 12; i++) {
+        chromaAcc[i] += (chroma[i] || 0) * segmentFrames
+      }
+      chromaWeight += segmentFrames
+    }
+
+    const bpm = estimateBpmFromSignal(segmentSignal, sampleRate)
+    if (typeof bpm === 'number' && Number.isFinite(bpm)) {
+      bpmValues.push(bpm)
+    }
+  }
+
+  const rmsMean = rmsFrames > 0 ? Math.sqrt(rmsEnergySum / rmsFrames) : null
+  const hpcpVec = chromaWeight > 0 ? normalizeChroma(chromaAcc, chromaWeight) : null
+  const bpm = median(bpmValues)
+  const segmentSummary = segments
+    .map((segment) => {
+      const startSec = segment.startFrame / sampleRate
+      const endSec = segment.endFrame / sampleRate
+      return `${startSec.toFixed(1)}-${endSec.toFixed(1)}s`
+    })
+    .join(',')
+
+  return { rmsMean, hpcpVec, bpm, segmentSummary: segmentSummary || 'n/a' }
+}
+
+function selectFeatureSegments(signal: Float32Array, sampleRate: number): FeatureSegment[] {
+  const totalFrames = signal.length
+  if (!totalFrames || sampleRate <= 0) return []
+
+  const segmentFrames = Math.max(1, Math.floor(sampleRate * FEATURE_SEGMENT_SECONDS))
+  if (totalFrames <= segmentFrames) {
+    const rms = computeRmsMean(signal) ?? 0
+    return [{ startFrame: 0, endFrame: totalFrames, rms }]
+  }
+
+  const hopFrames = Math.max(1, Math.floor(sampleRate * FEATURE_SEGMENT_HOP_SECONDS))
+  const edgeGuardFrames = Math.max(0, Math.floor(sampleRate * FEATURE_SEGMENT_EDGE_GUARD_SECONDS))
+  const lastStart = Math.max(0, totalFrames - segmentFrames)
+  const candidates: FeatureSegment[] = []
+
+  for (let start = 0; start <= lastStart; start += hopFrames) {
+    if (edgeGuardFrames > 0) {
+      if (start < edgeGuardFrames || start > lastStart - edgeGuardFrames) continue
+    }
+    const end = start + segmentFrames
+    const rms = computeRmsMean(signal.subarray(start, end)) ?? 0
+    candidates.push({ startFrame: start, endFrame: end, rms })
+  }
+
+  if (!candidates.length) {
+    const rms = computeRmsMean(signal) ?? 0
+    return [{ startFrame: 0, endFrame: totalFrames, rms }]
+  }
+
+  candidates.sort((a, b) => b.rms - a.rms)
+  const selected: FeatureSegment[] = []
+  const minGapFrames = Math.max(1, Math.floor(segmentFrames * 0.6))
+
+  for (const candidate of candidates) {
+    if (selected.length >= FEATURE_SEGMENT_COUNT) break
+    const separated = selected.every(
+      (segment) => Math.abs(candidate.startFrame - segment.startFrame) >= minGapFrames
+    )
+    if (!separated) continue
+    selected.push(candidate)
+  }
+
+  if (!selected.length) {
+    const rms = computeRmsMean(signal) ?? 0
+    return [{ startFrame: 0, endFrame: totalFrames, rms }]
+  }
+
+  selected.sort((a, b) => a.startFrame - b.startFrame)
+  return selected
+}
+
 function computeRmsMean(signal: Float32Array): number | null {
   if (!signal.length) return null
   let sum = 0
@@ -349,6 +464,15 @@ function computeRmsMean(signal: Float32Array): number | null {
     sum += v * v
   }
   return Math.sqrt(sum / signal.length)
+}
+
+function normalizeChroma(acc: number[], weight: number): number[] {
+  const mean = acc.map((v) => v / weight)
+  const norm = Math.sqrt(mean.reduce((s, v) => s + v * v, 0))
+  if (norm > 0) {
+    for (let i = 0; i < mean.length; i++) mean[i] = mean[i] / norm
+  }
+  return mean
 }
 
 function computeMeanChroma(signal: Float32Array, sampleRate: number): number[] | null {
@@ -384,6 +508,16 @@ function computeMeanChroma(signal: Float32Array, sampleRate: number): number[] |
     for (let i = 0; i < mean.length; i++) mean[i] = mean[i] / norm
   }
   return mean
+}
+
+function median(values: number[]): number | null {
+  if (!Array.isArray(values) || values.length === 0) return null
+  const sorted = values.slice().sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  if (sorted.length % 2 === 0) {
+    return (sorted[mid - 1] + sorted[mid]) / 2
+  }
+  return sorted[mid]
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {

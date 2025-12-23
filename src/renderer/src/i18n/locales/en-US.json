@@ -417,10 +417,9 @@
     "dislikeAllInPlaylist": "Dislike all tracks in playlist",
     "likeAllInLibrary": "Like all tracks in library",
     "dislikeAllInLibrary": "Dislike all tracks in library",
-    "bulkConfirmPlaylist": "Mark {count} tracks in this playlist as: {label}. This may take a while. Continue?",
-    "bulkConfirmLibrary": "Mark {count} tracks in this library as: {label}. This may take a while. Continue?",
-    "bulkDone": "Bulk update completed (batches: {okBatches}).",
-    "bulkDoneWithErrors": "Bulk update finished with errors (ok: {okBatches}, failed: {failedBatches})."
+    "bulkDoneWithErrors": "Bulk update finished with errors (ok: {okBatches}, failed: {failedBatches}).",
+    "bulkLabeling": "Bulk labeling",
+    "bulkLabelCancelled": "Bulk labeling cancelled"
   },
   "convert": {
     "title": "Format conversion",
@@ -533,10 +532,10 @@
     "noPlayingTrack": "No track is currently playing."
   },
   "selectionTraining": {
-    "clear": "Clear model training data",
+    "clear": "Clear selection prediction data",
     "clearShort": "Clear",
-    "confirmClear": "This will remove all Like/Dislike labels and delete the trained local prediction model. Continue?",
-    "clearCompleted": "Cleared model training data",
+    "confirmClear": "This will remove all Like/Dislike labels, audio features, and path index, and delete the trained local prediction model. Continue?",
+    "clearCompleted": "Selection prediction data cleared",
     "clearFailed": "Clear failed"
   },
   "import": {

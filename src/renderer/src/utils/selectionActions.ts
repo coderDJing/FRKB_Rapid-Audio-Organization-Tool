@@ -18,15 +18,6 @@ const dedupeFilePaths = (filePaths: string[]): string[] => {
   return result
 }
 
-const chunk = <T>(items: T[], size: number): T[][] => {
-  const safeSize = Number.isFinite(size) && size > 0 ? Math.floor(size) : items.length
-  const result: T[][] = []
-  for (let i = 0; i < items.length; i += safeSize) {
-    result.push(items.slice(i, i + safeSize))
-  }
-  return result
-}
-
 export async function setSelectionLabelForFilePathsBatched(params: {
   filePaths: string[]
   label: SelectionLabel
@@ -35,76 +26,78 @@ export async function setSelectionLabelForFilePathsBatched(params: {
   maxAnalyzeSeconds?: number
 }): Promise<{
   total: number
+  totalUnique: number
   batches: number
   okBatches: number
   failedBatches: number
+  cancelledBatches: number
   firstErrorMessage: string | null
+  cancelled: boolean
 }> {
   const label = params.label
   const totalPaths = Array.isArray(params.filePaths) ? params.filePaths.length : 0
   const filePaths = dedupeFilePaths(Array.isArray(params.filePaths) ? params.filePaths : [])
-  const batches = chunk(filePaths, params.batchSize ?? 200)
-
+  const batchSize =
+    Number.isFinite(params.batchSize) && params.batchSize > 0 ? Math.floor(params.batchSize) : 200
   const concurrency =
-    Number.isFinite(params.concurrency) && (params.concurrency as number) > 0
-      ? Math.floor(params.concurrency as number)
+    Number.isFinite(params.concurrency) && params.concurrency > 0
+      ? Math.floor(params.concurrency)
       : 2
 
-  let cursor = 0
-  const results: Array<{ ok: boolean; errorMessage: string | null }> = new Array(
-    batches.length
-  ).fill({ ok: true, errorMessage: null })
-
-  const worker = async () => {
-    while (true) {
-      const index = cursor
-      cursor += 1
-      if (index >= batches.length) return
-
-      const batch = batches[index]
-      if (!batch.length) {
-        results[index] = { ok: true, errorMessage: null }
-        continue
+  try {
+    const res: any = await window.electron.ipcRenderer.invoke(
+      'selection:labels:setForFilePathsBatched',
+      {
+        filePaths,
+        label,
+        batchSize,
+        concurrency,
+        ...(typeof params.maxAnalyzeSeconds === 'number' && params.maxAnalyzeSeconds > 0
+          ? { maxAnalyzeSeconds: params.maxAnalyzeSeconds }
+          : {})
       }
-
-      try {
-        const res: any = await window.electron.ipcRenderer.invoke(
-          'selection:labels:setForFilePaths',
-          {
-            filePaths: batch,
-            label,
-            ...(typeof params.maxAnalyzeSeconds === 'number' && params.maxAnalyzeSeconds > 0
-              ? { maxAnalyzeSeconds: params.maxAnalyzeSeconds }
-              : {})
-          }
-        )
-        if (!res?.ok) {
-          results[index] = {
-            ok: false,
-            errorMessage: String(res?.failed?.message || res?.failed?.errorCode || 'FAILED')
-          }
-          continue
-        }
-        results[index] = { ok: true, errorMessage: null }
-      } catch (error: any) {
-        results[index] = { ok: false, errorMessage: String(error?.message || error || 'FAILED') }
+    )
+    if (!res?.ok) {
+      const message = String(res?.failed?.message || res?.failed?.errorCode || 'FAILED')
+      const totalUnique =
+        typeof res?.totalUnique === 'number' && Number.isFinite(res.totalUnique)
+          ? res.totalUnique
+          : filePaths.length
+      return {
+        total: totalPaths,
+        totalUnique,
+        batches: Number(res?.batches || 0),
+        okBatches: Number(res?.okBatches || 0),
+        failedBatches: Number(res?.failedBatches || 1),
+        cancelledBatches: Number(res?.cancelledBatches || 0),
+        firstErrorMessage: message,
+        cancelled: Boolean(res?.cancelled)
       }
     }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(concurrency, batches.length) }, () => worker()))
-
-  let okBatches = 0
-  let failedBatches = 0
-  let firstErrorMessage: string | null = null
-  for (const r of results) {
-    if (r.ok) {
-      okBatches += 1
-    } else {
-      failedBatches += 1
-      if (!firstErrorMessage) firstErrorMessage = r.errorMessage || 'FAILED'
+    const totalUnique =
+      typeof res?.totalUnique === 'number' && Number.isFinite(res.totalUnique)
+        ? res.totalUnique
+        : filePaths.length
+    return {
+      total: totalPaths,
+      totalUnique,
+      batches: Number(res?.batches || 0),
+      okBatches: Number(res?.okBatches || 0),
+      failedBatches: Number(res?.failedBatches || 0),
+      cancelledBatches: Number(res?.cancelledBatches || 0),
+      firstErrorMessage: res?.firstErrorMessage ? String(res.firstErrorMessage) : null,
+      cancelled: Boolean(res?.cancelled)
+    }
+  } catch (error: any) {
+    return {
+      total: totalPaths,
+      totalUnique: filePaths.length,
+      batches: 0,
+      okBatches: 0,
+      failedBatches: 1,
+      cancelledBatches: 0,
+      firstErrorMessage: String(error?.message || error || 'FAILED'),
+      cancelled: false
     }
   }
-
-  return { total: totalPaths, batches: batches.length, okBatches, failedBatches, firstErrorMessage }
 }

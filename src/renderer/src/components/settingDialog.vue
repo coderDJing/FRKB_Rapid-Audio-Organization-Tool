@@ -421,7 +421,7 @@ const clearTracksFingerprintLibrary = async () => {
   }
 }
 
-// 清除本地精选预测训练数据（清空 liked/disliked + 删除模型文件）
+// 清除本地精选预测数据（清空 liked/disliked + 特征/索引 + 删除模型文件）
 const clearSelectionTrainingData = async () => {
   if (runtime.isProgressing) {
     await confirm({

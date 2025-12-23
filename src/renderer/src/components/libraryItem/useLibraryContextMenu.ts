@@ -385,13 +385,6 @@ export function useLibraryContextMenu({
           return
         }
 
-        const labelText = label === 'liked' ? t('selection.liked') : t('selection.disliked')
-        const res = await confirm({
-          title: t('dialog.hint'),
-          content: [t('selection.bulkConfirmPlaylist', { count: files.length, label: labelText })]
-        })
-        if (res !== 'confirm') return
-
         // 先乐观更新当前打开列表（若有交集），后台再逐步落盘
         try {
           emitter.emit('selectionLabelsChanged', { filePaths: files, label })
@@ -413,12 +406,6 @@ export function useLibraryContextMenu({
               }),
               summary.firstErrorMessage || t('common.unknownError')
             ],
-            confirmShow: false
-          })
-        } else {
-          await confirm({
-            title: t('dialog.hint'),
-            content: [t('selection.bulkDone', { okBatches: summary.okBatches })],
             confirmShow: false
           })
         }
