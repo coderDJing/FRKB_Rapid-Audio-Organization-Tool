@@ -37,12 +37,12 @@ export async function setSelectionLabelForFilePathsBatched(params: {
   const label = params.label
   const totalPaths = Array.isArray(params.filePaths) ? params.filePaths.length : 0
   const filePaths = dedupeFilePaths(Array.isArray(params.filePaths) ? params.filePaths : [])
+  const batchSizeRaw = params.batchSize ?? NaN
+  const concurrencyRaw = params.concurrency ?? NaN
   const batchSize =
-    Number.isFinite(params.batchSize) && params.batchSize > 0 ? Math.floor(params.batchSize) : 200
+    Number.isFinite(batchSizeRaw) && batchSizeRaw > 0 ? Math.floor(batchSizeRaw) : 200
   const concurrency =
-    Number.isFinite(params.concurrency) && params.concurrency > 0
-      ? Math.floor(params.concurrency)
-      : 2
+    Number.isFinite(concurrencyRaw) && concurrencyRaw > 0 ? Math.floor(concurrencyRaw) : 2
 
   try {
     const res: any = await window.electron.ipcRenderer.invoke(
