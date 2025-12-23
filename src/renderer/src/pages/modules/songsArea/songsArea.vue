@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, useTemplateRef, onUnmounted } from 'vue'
+import { ref, shallowRef, computed, useTemplateRef, onUnmounted, watch } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
 import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
+import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 
 // 组件导入
 import confirm from '@renderer/components/confirmDialog'
@@ -19,6 +20,7 @@ import {
   useSongItemContextMenu,
   type MetadataUpdatedAction,
   type PlaylistCacheClearedAction,
+  type SelectionLabelsChangedAction,
   type TrackCacheClearedAction
 } from '@renderer/pages/modules/songsArea/composables/useSongItemContextMenu'
 import { useSelectAndMoveSongs } from '@renderer/pages/modules/songsArea/composables/useSelectAndMoveSongs'
@@ -30,6 +32,7 @@ import { useKeyboardSelection } from '@renderer/pages/modules/songsArea/composab
 import { useAutoScrollToCurrent } from '@renderer/pages/modules/songsArea/composables/useAutoScrollToCurrent'
 import { useParentRafSampler } from '@renderer/pages/modules/songsArea/composables/useParentRafSampler'
 import { useSongsAreaEvents } from '@renderer/pages/modules/songsArea/composables/useSongsAreaEvents'
+import { useSelectionPrediction } from '@renderer/pages/modules/songsArea/composables/useSelectionPrediction'
 
 // 资源导入
 import ascendingOrderAsset from '@renderer/assets/ascending-order.png?asset'
@@ -84,6 +87,24 @@ const { loadingShow, isRequesting, openSongList } = useSongsLoader({
   originalSongInfoArr,
   applyFiltersAndSorting
 })
+
+const { refreshSelectionScoresForCurrentList } = useSelectionPrediction({
+  runtime,
+  originalSongInfoArr,
+  columnData,
+  applyFiltersAndSorting
+})
+
+watch(
+  () => isRequesting.value,
+  (requesting) => {
+    if (requesting) return
+    if (!runtime.songsArea.songListUUID) return
+    if (runtime.songsArea.songListUUID === EXTERNAL_PLAYLIST_UUID) return
+    if (runtime.songsArea.songInfoArr.length === 0) return
+    void refreshSelectionScoresForCurrentList()
+  }
+)
 
 const handlePlaylistCacheCleared = async (payload: { uuid?: string }) => {
   if (!payload || payload.uuid !== runtime.songsArea.songListUUID) return
@@ -267,6 +288,36 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
       runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
         (path) => !pathsToRemove.includes(path)
       )
+    }
+    return
+  }
+
+  if (result.action === 'selectionLabelsChanged') {
+    const paths = Array.isArray(result.filePaths) ? result.filePaths : []
+    const label = result.label
+    const nextLabel: ISongInfo['selectionLabel'] =
+      label === 'liked' ? 'liked' : label === 'disliked' ? 'disliked' : undefined
+    const set = new Set(paths.filter(Boolean))
+    if (set.size === 0) return
+
+    const patch = (song: ISongInfo): ISongInfo => {
+      if (!song?.filePath || !set.has(song.filePath)) return song
+      return { ...song, selectionLabel: nextLabel }
+    }
+
+    originalSongInfoArr.value = originalSongInfoArr.value.map(patch)
+    runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.map(patch)
+
+    if (runtime.playingData.playingSong && set.has(runtime.playingData.playingSong.filePath)) {
+      runtime.playingData.playingSong = patch(runtime.playingData.playingSong)
+    }
+    if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+      runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map(patch)
+    }
+
+    const sorted = columnData.value.find((c) => c.order)
+    if (sorted?.key === 'selectionLabel') {
+      applyFiltersAndSorting()
     }
     return
   }

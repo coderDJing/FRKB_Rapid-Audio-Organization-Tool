@@ -14,6 +14,7 @@ import { useVirtualRows } from './SongListRows/useVirtualRows'
 import { useSongRowEvents } from './SongListRows/useSongRowEvents'
 import { useCoverThumbnails } from './SongListRows/useCoverThumbnails'
 import { useCoverPreview } from './SongListRows/useCoverPreview'
+import { t } from '@renderer/utils/translate'
 
 const props = defineProps({
   songs: {
@@ -102,6 +103,19 @@ const setCoverCellRef = (filePath: string, el: Element | ComponentPublicInstance
 const hoveredCellKey = vRef<string | null>(null)
 const onlyWhenOverflowComputed = computed(() => true)
 const DEFAULT_ROW_HEIGHT = 30
+
+const formatSelectionLabel = (label: ISongInfo['selectionLabel'] | undefined) => {
+  if (label === 'liked') return t('selection.liked')
+  if (label === 'disliked') return t('selection.disliked')
+  return ''
+}
+
+const getCellDisplayText = (song: ISongInfo, colKey: string): string => {
+  if (colKey === 'selectionLabel') {
+    return formatSelectionLabel(song.selectionLabel)
+  }
+  return String((song as any)?.[colKey] ?? '')
+}
 
 const {
   rowsRoot,
@@ -289,11 +303,11 @@ onUnmounted(() => {
                 :ref="(el) => setCellRef(getCellKey(item.song, col.key), el)"
                 :data-key="getCellKey(item.song, col.key)"
               >
-                {{ item.song[col.key as keyof ISongInfo] }}
+                {{ getCellDisplayText(item.song, col.key) }}
                 <bubbleBox
                   v-if="hoveredCellKey === getCellKey(item.song, col.key)"
                   :dom="cellRefMap[getCellKey(item.song, col.key)] || undefined"
-                  :title="String((item.song as any)[col.key] ?? '')"
+                  :title="getCellDisplayText(item.song, col.key)"
                   :only-when-overflow="onlyWhenOverflowComputed"
                 />
               </div>

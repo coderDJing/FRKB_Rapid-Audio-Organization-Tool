@@ -39,6 +39,10 @@ interface ISongInfo {
   label: string | undefined
   bitrate: number | undefined
   container: string | undefined
+  // 本地精选预测：0~100（可选，按需写入用于列表展示/排序）
+  selectionScore?: number | null
+  // 本地精选预测：liked/disliked/neutral（可选）
+  selectionLabel?: 'liked' | 'disliked' | 'neutral'
 }
 
 // 曲目完整元数据明细，用于编辑界面展示

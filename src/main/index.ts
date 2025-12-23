@@ -34,6 +34,7 @@ import { registerMediaMetadataHandlers } from './ipc/mediaMetadataHandlers'
 import { registerCacheHandlers } from './ipc/cacheHandlers'
 import { registerFilesystemHandlers } from './ipc/filesystemHandlers'
 import { registerExportHandlers } from './ipc/exportHandlers'
+import { registerSelectionPredictionHandlers } from './ipc/selectionPredictionHandlers'
 import { maybeShowWhatsNew, registerWhatsNewHandlers } from './services/whatsNew'
 // import AudioFeatureExtractor from './mfccTest'
 
@@ -106,6 +107,7 @@ registerMediaMetadataHandlers()
 registerCacheHandlers()
 registerFilesystemHandlers()
 registerExportHandlers()
+registerSelectionPredictionHandlers()
 
 let devInitDatabaseFunction = async () => {
   if (!fs.pathExistsSync(store.settingConfig.databaseUrl)) {

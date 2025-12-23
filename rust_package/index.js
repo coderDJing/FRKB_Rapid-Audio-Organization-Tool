@@ -310,10 +310,29 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { calculateAudioHashes, calculateAudioHashesWithProgress, calculateFileHashes, calculateFileHashesWithProgress, decodeAudioFile } = nativeBinding
+const { upsertSongFeatures, extractOpenL3Embedding, setSelectionLabels, getSelectionLabelSnapshot, resetSelectionSampleChangeCount, resetSelectionLabels, getSelectionFeatureStatus, getSelectionPathIndexEntries, upsertSelectionPathIndexEntries, touchSelectionPathIndexEntries, deleteSelectionPathIndexEntries, gcSelectionPathIndex, getSelectionLabel, bumpSelectionSampleChangeCount, deleteSelectionPredictionCache, clearSelectionPredictionCache, trainSelectionGbdt, predictSelectionCandidates, calculateAudioHashes, calculateAudioHashesWithProgress, calculateFileHashes, calculateFileHashesWithProgress, decodeAudioFile, decodeAudioFileLimited } = nativeBinding
 
+module.exports.upsertSongFeatures = upsertSongFeatures
+module.exports.extractOpenL3Embedding = extractOpenL3Embedding
+module.exports.setSelectionLabels = setSelectionLabels
+module.exports.getSelectionLabelSnapshot = getSelectionLabelSnapshot
+module.exports.resetSelectionSampleChangeCount = resetSelectionSampleChangeCount
+module.exports.resetSelectionLabels = resetSelectionLabels
+module.exports.getSelectionFeatureStatus = getSelectionFeatureStatus
+module.exports.getSelectionPathIndexEntries = getSelectionPathIndexEntries
+module.exports.upsertSelectionPathIndexEntries = upsertSelectionPathIndexEntries
+module.exports.touchSelectionPathIndexEntries = touchSelectionPathIndexEntries
+module.exports.deleteSelectionPathIndexEntries = deleteSelectionPathIndexEntries
+module.exports.gcSelectionPathIndex = gcSelectionPathIndex
+module.exports.getSelectionLabel = getSelectionLabel
+module.exports.bumpSelectionSampleChangeCount = bumpSelectionSampleChangeCount
+module.exports.deleteSelectionPredictionCache = deleteSelectionPredictionCache
+module.exports.clearSelectionPredictionCache = clearSelectionPredictionCache
+module.exports.trainSelectionGbdt = trainSelectionGbdt
+module.exports.predictSelectionCandidates = predictSelectionCandidates
 module.exports.calculateAudioHashes = calculateAudioHashes
 module.exports.calculateAudioHashesWithProgress = calculateAudioHashesWithProgress
 module.exports.calculateFileHashes = calculateFileHashes
 module.exports.calculateFileHashesWithProgress = calculateFileHashesWithProgress
 module.exports.decodeAudioFile = decodeAudioFile
+module.exports.decodeAudioFileLimited = decodeAudioFileLimited

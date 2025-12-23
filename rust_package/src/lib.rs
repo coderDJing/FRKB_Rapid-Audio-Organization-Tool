@@ -24,6 +24,7 @@ use rayon::prelude::*;
 // Node.js 绑定
 use napi::bindgen_prelude::*;
 use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
+use napi::tokio;
 
 // 音频处理
 use symphonia::core::audio::{AudioBufferRef, SampleBuffer, Signal, SignalSpec};
@@ -45,6 +46,8 @@ use bytemuck::cast_slice;
 // 启用 napi 宏
 #[macro_use]
 extern crate napi_derive;
+
+mod selection;
 
 // ===== 类型定义 =====
 
@@ -253,6 +256,69 @@ pub fn decode_audio_file(file_path: String) -> DecodeAudioResult {
   }
 }
 
+/// 解码音频文件为 PCM Float32Array（限长，避免大文件阻塞与占用内存）
+///
+/// - `max_seconds <= 0` 时不限制长度
+/// - 返回的 `totalFrames` 为**本次返回的 PCM 帧数**（非整曲）
+#[napi]
+pub async fn decode_audio_file_limited(file_path: String, max_seconds: f64) -> DecodeAudioResult {
+  match tokio::task::spawn_blocking(move || decode_audio_file_limited_sync(file_path, max_seconds))
+    .await
+  {
+    Ok(res) => res,
+    Err(e) => DecodeAudioResult {
+      pcm_data: Buffer::from(vec![]),
+      sample_rate: 0,
+      channels: 0,
+      total_frames: 0.0,
+      error: Some(format!("内部音频解码错误: {}", e)),
+    },
+  }
+}
+
+pub(crate) fn decode_audio_file_limited_sync(file_path: String, max_seconds: f64) -> DecodeAudioResult {
+  let path = Path::new(&file_path);
+  let ext = path
+    .extension()
+    .and_then(|s| s.to_str())
+    .map(|s| s.to_ascii_lowercase())
+    .unwrap_or_default();
+
+  let ffmpeg_only_exts = [
+    "wma", "ac3", "dts", "mka", "webm", "ape", "tak", "tta", "wv",
+  ];
+
+  if ffmpeg_only_exts.contains(&ext.as_str()) {
+    return match decode_with_ffmpeg_limited(path, max_seconds) {
+      Ok(result) => result,
+      Err(ffmpeg_err) => DecodeAudioResult {
+        pcm_data: Buffer::from(vec![]),
+        sample_rate: 0,
+        channels: 0,
+        total_frames: 0.0,
+        error: Some(format!("FFmpeg 解码失败: {}", ffmpeg_err)),
+      },
+    };
+  }
+
+  match decode_with_symphonia_limited(path, max_seconds) {
+    Ok(result) => result,
+    Err(symphonia_err) => match decode_with_ffmpeg_limited(path, max_seconds) {
+      Ok(result) => result,
+      Err(ffmpeg_err) => DecodeAudioResult {
+        pcm_data: Buffer::from(vec![]),
+        sample_rate: 0,
+        channels: 0,
+        total_frames: 0.0,
+        error: Some(format!(
+          "Symphonia 解码失败: {}; FFmpeg 解码失败: {}",
+          symphonia_err, ffmpeg_err
+        )),
+      },
+    },
+  }
+}
+
 /// 解码音频为 PCM Float32Array
 fn decode_audio_to_pcm(mut format: Box<dyn FormatReader>) -> napi::Result<DecodeAudioResult> {
   let (track_id, codec_params) = {
@@ -344,6 +410,118 @@ fn decode_audio_to_pcm(mut format: Box<dyn FormatReader>) -> napi::Result<Decode
   })
 }
 
+/// 解码音频为 PCM Float32Array（限长）
+fn decode_audio_to_pcm_limited(
+  mut format: Box<dyn FormatReader>,
+  max_seconds: f64,
+) -> napi::Result<DecodeAudioResult> {
+  let (track_id, codec_params) = {
+    let track = find_decode_track(&mut format)?;
+    (track.id, track.codec_params.clone())
+  };
+
+  let channels = codec_params
+    .channels
+    .ok_or_else(|| napi::Error::from_reason("缺少声道信息"))?
+    .count() as u8;
+  let sample_rate = codec_params
+    .sample_rate
+    .ok_or_else(|| napi::Error::from_reason("缺少采样率信息"))?;
+
+  let max_frames: Option<u64> = if max_seconds.is_finite() && max_seconds > 0.0 {
+    let frames = (max_seconds * sample_rate as f64).ceil();
+    Some(frames.max(0.0) as u64)
+  } else {
+    None
+  };
+
+  let mut decoder = build_decoder(&codec_params)?;
+
+  let mut all_samples: Vec<f32> = Vec::new();
+  let mut total_frames: u64 = 0;
+
+  while let Some(packet) = next_packet(&mut format, track_id) {
+    if let Some(limit) = max_frames {
+      if total_frames >= limit {
+        break;
+      }
+    }
+
+    match decoder.decode(&packet) {
+      Ok(audio_buf) => {
+        let frame_count = audio_buf.frames();
+        let mut take = frame_count;
+        if let Some(limit) = max_frames {
+          if total_frames >= limit {
+            break;
+          }
+          let remaining = (limit - total_frames) as usize;
+          take = take.min(remaining);
+        }
+        if take == 0 {
+          break;
+        }
+
+        total_frames += take as u64;
+
+        match audio_buf {
+          AudioBufferRef::F32(buf) => {
+            for frame_idx in 0..take {
+              for ch in 0..channels as usize {
+                all_samples.push(buf.chan(ch)[frame_idx]);
+              }
+            }
+          }
+          AudioBufferRef::S16(buf) => {
+            for frame_idx in 0..take {
+              for ch in 0..channels as usize {
+                all_samples.push(buf.chan(ch)[frame_idx] as f32 / 32768.0);
+              }
+            }
+          }
+          AudioBufferRef::S24(buf) => {
+            for frame_idx in 0..take {
+              for ch in 0..channels as usize {
+                let sample = buf.chan(ch)[frame_idx].inner();
+                all_samples.push(sample as f32 / 8388608.0);
+              }
+            }
+          }
+          AudioBufferRef::S32(buf) => {
+            for frame_idx in 0..take {
+              for ch in 0..channels as usize {
+                all_samples.push(buf.chan(ch)[frame_idx] as f32 / 2147483648.0);
+              }
+            }
+          }
+          AudioBufferRef::U8(buf) => {
+            for frame_idx in 0..take {
+              for ch in 0..channels as usize {
+                all_samples.push((buf.chan(ch)[frame_idx] as f32 - 128.0) / 128.0);
+              }
+            }
+          }
+          _ => {
+            return Err(napi::Error::from_reason("不支持的音频格式"));
+          }
+        }
+      }
+      Err(SymphoniaError::IoError(_)) | Err(SymphoniaError::DecodeError(_)) => continue,
+      Err(e) => {
+        return Err(napi::Error::from_reason(format!("解码错误: {}", e)));
+      }
+    }
+  }
+
+  Ok(DecodeAudioResult {
+    pcm_data: Buffer::from(cast_slice(&all_samples).to_vec()),
+    sample_rate,
+    channels,
+    total_frames: total_frames as f64,
+    error: None,
+  })
+}
+
 fn decode_with_symphonia(path: &Path) -> StdResult<DecodeAudioResult, String> {
   let file = File::open(path).map_err(|_| "打开文件失败".to_string())?;
   let media_stream = MediaSourceStream::new(Box::new(file), Default::default());
@@ -370,8 +548,61 @@ fn decode_with_symphonia(path: &Path) -> StdResult<DecodeAudioResult, String> {
   }
 }
 
+fn decode_with_symphonia_limited(path: &Path, max_seconds: f64) -> StdResult<DecodeAudioResult, String> {
+  let file = File::open(path).map_err(|_| "打开文件失败".to_string())?;
+  let media_stream = MediaSourceStream::new(Box::new(file), Default::default());
+  let mut hint = Hint::new();
+  if let Some(ext) = path.extension().and_then(|os| os.to_str()) {
+    hint.with_extension(ext);
+  }
+
+  let format_opts = FormatOptions::default();
+  let metadata_opts = MetadataOptions {
+    limit_metadata_bytes: Limit::None,
+    limit_visual_bytes: Limit::None,
+    ..Default::default()
+  };
+
+  let probed = get_probe()
+    .format(&hint, media_stream, &format_opts, &metadata_opts)
+    .map_err(|e| format!("探测音频格式失败: {}", e))?;
+
+  match catch_unwind(AssertUnwindSafe(|| decode_audio_to_pcm_limited(probed.format, max_seconds))) {
+    Ok(Ok(result)) => Ok(result),
+    Ok(Err(err)) => Err(err.to_string()),
+    Err(_) => Err("内部音频解码错误（panic）".to_string()),
+  }
+}
+
 fn decode_with_ffmpeg(path: &Path) -> StdResult<DecodeAudioResult, String> {
   let ffmpeg_pcm = ffmpeg_decode_to_i16(path)?;
+  if ffmpeg_pcm.channels == 0 {
+    return Err("FFmpeg 返回的声道数无效".to_string());
+  }
+
+  let channels_u8 = if ffmpeg_pcm.channels > u8::MAX as u16 {
+    return Err("声道数超过支持范围".to_string());
+  } else {
+    ffmpeg_pcm.channels as u8
+  };
+
+  let pcm_f32: Vec<f32> = ffmpeg_pcm
+    .samples_i16
+    .iter()
+    .map(|sample| (*sample as f32) / 32768.0)
+    .collect();
+
+  Ok(DecodeAudioResult {
+    pcm_data: Buffer::from(cast_slice(&pcm_f32).to_vec()),
+    sample_rate: ffmpeg_pcm.sample_rate,
+    channels: channels_u8,
+    total_frames: ffmpeg_pcm.total_frames as f64,
+    error: None,
+  })
+}
+
+fn decode_with_ffmpeg_limited(path: &Path, max_seconds: f64) -> StdResult<DecodeAudioResult, String> {
+  let ffmpeg_pcm = ffmpeg_decode_to_i16_limited(path, max_seconds)?;
   if ffmpeg_pcm.channels == 0 {
     return Err("FFmpeg 返回的声道数无效".to_string());
   }
@@ -418,6 +649,30 @@ fn ffmpeg_decode_to_i16(path: &Path) -> StdResult<FfmpegPcmData, String> {
     .arg("pipe:1")
     .output()
     .map_err(|e| format!("调用 FFmpeg 失败: {}", e))?;
+
+  if !output.status.success() {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    return Err(format!("FFmpeg 解码失败: {}", stderr.trim()));
+  }
+
+  parse_wav_s16le(&output.stdout)
+}
+
+fn ffmpeg_decode_to_i16_limited(path: &Path, max_seconds: f64) -> StdResult<FfmpegPcmData, String> {
+  let ffmpeg_path = get_ffmpeg_path()?;
+  let mut cmd = Command::new(ffmpeg_path);
+  cmd.arg("-v").arg("error");
+  cmd.arg("-i").arg(path);
+  if max_seconds.is_finite() && max_seconds > 0.0 {
+    cmd.arg("-t").arg(format!("{}", max_seconds));
+  }
+  cmd.arg("-f")
+    .arg("wav")
+    .arg("-acodec")
+    .arg("pcm_s16le")
+    .arg("pipe:1");
+
+  let output = cmd.output().map_err(|e| format!("调用 FFmpeg 失败: {}", e))?;
 
   if !output.status.success() {
     let stderr = String::from_utf8_lossy(&output.stderr);

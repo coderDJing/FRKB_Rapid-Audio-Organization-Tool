@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "modelVersion": "openl3_small_48k_music_mel256_512d_fp32_v1",
+  "modelFile": "openl3_small_48k_music_mel256_512d_fp32.onnx",
+  "sha256": "8bf0b490320334c78c5fec218edea9318797bc7d22045e73556433e7da74dd46",
+  "embeddingDim": 512,
+  "sampleRate": 48000
+}

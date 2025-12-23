@@ -396,6 +396,8 @@
     "fileName": "File Name",
     "artist": "Artist",
     "duration": "Duration",
+    "selectionLabel": "Preference",
+    "selectionScore": "Predicted Like",
     "album": "Album",
     "genre": "Genre",
     "label": "Label",
@@ -404,6 +406,20 @@
     "format": "Format",
     "bpm": "BPM",
     "index": "Index"
+  },
+  "selection": {
+    "like": "Like track",
+    "dislike": "Dislike track",
+    "clearPreference": "Clear preference",
+    "liked": "Liked",
+    "disliked": "Disliked",
+    "likeAllInPlaylist": "Like all tracks in playlist",
+    "dislikeAllInPlaylist": "Dislike all tracks in playlist",
+    "likeAllInLibrary": "Like all tracks in library",
+    "dislikeAllInLibrary": "Dislike all tracks in library",
+    "bulkDoneWithErrors": "Bulk update finished with errors (ok: {okBatches}, failed: {failedBatches}).",
+    "bulkLabeling": "Bulk labeling",
+    "bulkLabelCancelled": "Bulk labeling cancelled"
   },
   "convert": {
     "title": "Format conversion",
@@ -514,6 +530,13 @@
     "noTracksSelected": "Select at least one track.",
     "noEligibleTracks": "Selected items do not contain analyzable audio files.",
     "noPlayingTrack": "No track is currently playing."
+  },
+  "selectionTraining": {
+    "clear": "Clear selection prediction data",
+    "clearShort": "Clear",
+    "confirmClear": "This will remove all Like/Dislike labels, audio features, and path index, and delete the trained local prediction model. Continue?",
+    "clearCompleted": "Selection prediction data cleared",
+    "clearFailed": "Clear failed"
   },
   "import": {
     "completed": "Import done",

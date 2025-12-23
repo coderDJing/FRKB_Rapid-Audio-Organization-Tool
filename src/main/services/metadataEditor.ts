@@ -265,6 +265,42 @@ async function writeTempFile(buffer: Buffer, extension: string): Promise<string>
   return target
 }
 
+function normalizeCompareText(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function normalizeCompareNumber(value: unknown): number | null {
+  const n = typeof value === 'number' && Number.isFinite(value) ? value : null
+  return n
+}
+
+function didEditableMetadataChange(
+  before: ITrackMetadataDetail,
+  after: ITrackMetadataDetail
+): boolean {
+  const eqText = (a: unknown, b: unknown) => normalizeCompareText(a) === normalizeCompareText(b)
+  const eqNum = (a: unknown, b: unknown) => normalizeCompareNumber(a) === normalizeCompareNumber(b)
+
+  return (
+    !eqText(before.title, after.title) ||
+    !eqText(before.artist, after.artist) ||
+    !eqText(before.album, after.album) ||
+    !eqText(before.albumArtist, after.albumArtist) ||
+    !eqNum(before.trackNo, after.trackNo) ||
+    !eqNum(before.trackTotal, after.trackTotal) ||
+    !eqNum(before.discNo, after.discNo) ||
+    !eqNum(before.discTotal, after.discTotal) ||
+    !eqText(before.year, after.year) ||
+    !eqText(before.genre, after.genre) ||
+    !eqText(before.composer, after.composer) ||
+    !eqText(before.lyricist, after.lyricist) ||
+    !eqText(before.label, after.label) ||
+    !eqText(before.isrc, after.isrc) ||
+    !eqText(before.comment, after.comment) ||
+    !eqText(before.lyrics, after.lyrics)
+  )
+}
+
 export async function readTrackMetadata(filePath: string): Promise<ITrackMetadataDetail | null> {
   try {
     const metadata = await parseMetadata(filePath)
@@ -314,9 +350,12 @@ export async function readTrackMetadata(filePath: string): Promise<ITrackMetadat
   }
 }
 
-export async function updateTrackMetadata(
-  payload: ITrackMetadataUpdatePayload
-): Promise<{ songInfo: ISongInfo; detail: ITrackMetadataDetail; renamedFrom?: string }> {
+export async function updateTrackMetadata(payload: ITrackMetadataUpdatePayload): Promise<{
+  songInfo: ISongInfo
+  detail: ITrackMetadataDetail
+  renamedFrom?: string
+  didUpdateEditableMetadata: boolean
+}> {
   let filePath = payload.filePath
   const originalFilePath = filePath
   const ext = path.extname(filePath)
@@ -500,12 +539,20 @@ export async function updateTrackMetadata(
     }
     const songInfo = buildSongInfo(filePath, songInfoMeta)
     const renamedFrom = originalFilePath === filePath ? undefined : originalFilePath
+
+    const detail = buildDetail(filePath, metadata)
+    const beforeDetail = originalMetadata ? buildDetail(originalFilePath, originalMetadata) : null
+    const didUpdateEditableMetadata = beforeDetail
+      ? didEditableMetadataChange(beforeDetail, detail)
+      : true
+
     await updateSongCacheEntry(filePath, songInfo, renamedFrom)
     await purgeCoverCacheForTrack(filePath, renamedFrom)
     return {
       songInfo,
-      detail: buildDetail(filePath, metadata),
-      renamedFrom
+      detail,
+      renamedFrom,
+      didUpdateEditableMetadata
     }
   } finally {
     try {
