@@ -15,8 +15,10 @@
 - ✅ 元数据编辑：`audio:metadata:update` 保存后，若可编辑元数据发生真实变化，会按 `songId=sha256_Hash` 清理该曲目的预测缓存；若该曲目为样本（`liked/disliked`）则计入 `sampleChangeCount` 并触发自动重训调度。
 - ✅ 渲染层：右键菜单已支持“喜欢/不喜欢/清除喜好”，并新增列 `columns.selectionScore`（打开列表后后台刷新预测分数）。
 - ✅ 批量打标：歌单/库右键菜单已支持“喜欢/不喜欢全部歌曲”（分批 + 控并发，且 UI 立即更新喜好标记）。
+- ✅ 批量打标进度：复用任务系统展示进度与取消入口（底部任务栏可取消）。
 - ✅ 清除训练数据：设置页已提供“清除模型训练数据”，会清空所有“喜欢/不喜欢”标记并重置预测/模型状态。
 - ✅ OpenL3：已接入 ONNX 推理并写入 `song_features.openl3_vector`（需放置模型文件；缺失则降级为 `runtime_unavailable`）。
+- ✅ 音频片段策略：RMS/HPCP/BPM 与 OpenL3 统一使用多段高能采样（12s 窗、4s hop、3 段、6s 边缘保护），不再固定跳过前 30s。
 - ✅ Chromaprint：已接入 `fpcalc` 指纹落盘（`song_features.chromaprintFingerprint`），并纳入 GBDT 特征（`chromaprint_sim_max/has_chromaprint`）。
 - ✅ OpenL3 ONNX 产物：支持本地导出；Release CI 会自动导出并注入打包产物（见下文）。
 
@@ -68,9 +70,10 @@ Release 工作流 `/.github/workflows/release.yml` 已包含 `prepare_openl3_onn
 
 ### 执行流程（关键点）
 1) 扫描目标范围的文件列表：复用 IPC `scanSongList`，拿到 `filePaths` 后去重。
-2) 二次确认：提示将要影响的曲目数量。
+2) 静默执行：不再弹出“耗时确认”提示。
 3) **乐观 UI 更新**：通过 `emitter.emit('selectionLabelsChanged', { filePaths, label })` 让当前打开列表先显示更新。
-4) 后台分批落盘：按 `batchSize=200`、`concurrency=2` 分批调用 `selection:labels:setForFilePaths`；主进程侧仍会做任务队列/并发限制，避免拖垮前台。
+4) 后台分批落盘：按 `batchSize=200`、`concurrency=2` 调用 `selection:labels:setForFilePathsBatched`（内部仍会分批进入 `selection:labels:setForFilePaths` 队列）；主进程侧保持任务队列/并发限制，避免拖垮前台。
+5) 任务系统显示进度与取消入口；完成后不弹出提示（仅失败时提示错误）。
 
 ### 相关实现位置（便于下次继续开发）
 - 歌单右键菜单：`src/renderer/src/components/libraryItem/useLibraryContextMenu.ts`
@@ -95,8 +98,7 @@ Release 工作流 `/.github/workflows/release.yml` 已包含 `prepare_openl3_onn
   - `localStorage.setItem('FRKB_DEBUG_SELECTION', '1')` 后刷新/重启应用
 
 ## 下一轮待办（重要）
-- 音频片段策略：当前 `src/main/services/selectionFeatureExtractor.ts` 使用 `INTRO_SKIP_SECONDS=30`（跳过前 30 秒后再算 RMS/HPCP/BPM）。对前奏较长的常见曲风（如 EDM）不理想，需要改为更“信息量密集”的片段策略（例如中段采样/多段采样/按能量段选窗），并与 OpenL3 的 `maxAnalyzeSeconds/maxWindows` 一起联动调参。
-- 批量打标体验：目前只有“确认 + 完成提示”，缺少进度/取消/后台任务列表；可考虑复用现有任务系统或新增轻量 job 面板。
+- 暂无
 
 ## 背景与目标
 - 需求：基于用户显式标注的“喜欢/不喜欢”（可兼容历史“已加入精选”的曲目作为喜欢）预测筛选库里最可能被用户喜欢/加入精选的候选；全程离线、用户零配置。

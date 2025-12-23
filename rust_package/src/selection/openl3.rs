@@ -11,11 +11,16 @@ const ENV_OPENL3_MODEL_PATH: &str = "FRKB_OPENL3_MODEL_PATH";
 const TARGET_SAMPLE_RATE: u32 = 48_000;
 const WINDOW_SECONDS: f32 = 1.0;
 const HOP_SECONDS: f32 = 0.1;
-const INTRO_SKIP_SECONDS: f32 = 30.0;
 
 const DEFAULT_MAX_SECONDS: f64 = 120.0;
 const DEFAULT_MAX_WINDOWS: usize = 200;
 const DEFAULT_BATCH: usize = 16;
+
+const FEATURE_SEGMENT_SECONDS: f32 = 12.0;
+const FEATURE_SEGMENT_HOP_SECONDS: f32 = 4.0;
+const FEATURE_SEGMENT_COUNT: usize = 3;
+const FEATURE_SEGMENT_EDGE_GUARD_SECONDS: f32 = 6.0;
+const FEATURE_SEGMENT_MIN_GAP_RATIO: f32 = 0.6;
 
 // OpenL3 (kapre) 常见参数：n_fft=512, hop=242 时 1s @48kHz 输出 199 帧
 const N_FFT: usize = 512;
@@ -32,13 +37,19 @@ struct InputLayout {
 }
 
 struct OpenL3Runtime {
-  model_path: String,
   plan: TypedRunnableModel<TypedModel>,
   layout: InputLayout,
   embedding_dim: usize,
   mel_filters: Vec<Vec<(usize, f32)>>,
   window_fn: Vec<f32>,
   fft: Arc<dyn Fft<f32>>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct FeatureSegment {
+  start: usize,
+  end: usize,
+  rms: f32,
 }
 
 static OPENL3_RUNTIME: OnceLock<Mutex<Option<(String, Arc<OpenL3Runtime>)>>> = OnceLock::new();
@@ -68,14 +79,9 @@ pub fn extract_openl3_embedding(
   let window_len = (WINDOW_SECONDS * TARGET_SAMPLE_RATE as f32).round().max(1.0) as usize;
   let hop_len = (HOP_SECONDS * TARGET_SAMPLE_RATE as f32).round().max(1.0) as usize;
 
-  // 跳过前奏段：避免前 30s（常见前奏/铺垫）主导 embedding
-  let intro_skip_samples = (INTRO_SKIP_SECONDS * TARGET_SAMPLE_RATE as f32).round().max(0.0) as usize;
-  let start_at = if mono.len() > intro_skip_samples + window_len {
-    intro_skip_samples
-  } else {
-    0usize
-  };
-  let starts = build_window_starts(mono.len(), hop_len, max_windows, start_at);
+  // 片段联动：基于高能量片段选窗（与 RMS/HPCP/BPM 片段策略一致）
+  let segments = select_feature_segments(&mono, TARGET_SAMPLE_RATE);
+  let starts = build_window_starts_for_segments(mono.len(), window_len, hop_len, max_windows, &segments);
 
   // 分 batch 推理，RMS 加权平均
   let mut acc = vec![0f32; rt.embedding_dim];
@@ -201,7 +207,6 @@ fn load_runtime(model_path: &str) -> Result<OpenL3Runtime, String> {
   let fft = planner.plan_fft_forward(N_FFT);
 
   Ok(OpenL3Runtime {
-    model_path: model_path.to_string(),
     plan,
     layout,
     embedding_dim,
@@ -490,12 +495,155 @@ fn build_window_starts(len: usize, hop: usize, max_windows: usize, start_at: usi
   out
 }
 
+fn build_window_starts_for_segments(
+  len: usize,
+  window_len: usize,
+  hop: usize,
+  max_windows: usize,
+  segments: &[FeatureSegment],
+) -> Vec<usize> {
+  if len == 0 {
+    return Vec::new();
+  }
+  if segments.is_empty() {
+    return build_window_starts(len, hop, max_windows, 0);
+  }
+
+  let mut starts: Vec<usize> = Vec::new();
+  for seg in segments {
+    let seg_start = seg.start.min(len);
+    let seg_end = seg.end.min(len);
+    if seg_end <= seg_start {
+      continue;
+    }
+    let last = if seg_end > window_len {
+      seg_end.saturating_sub(window_len)
+    } else {
+      seg_start
+    };
+    let mut s = seg_start;
+    while s <= last {
+      starts.push(s);
+      s = s.saturating_add(hop.max(1));
+    }
+  }
+
+  if starts.is_empty() {
+    return build_window_starts(len, hop, max_windows, 0);
+  }
+
+  starts.sort_unstable();
+  starts.dedup();
+  if starts.len() <= max_windows {
+    return starts;
+  }
+
+  if max_windows <= 1 {
+    return vec![starts[starts.len() / 2]];
+  }
+  let n = starts.len();
+  let max_index = (n - 1) as u128;
+  let denom = (max_windows - 1) as u128;
+  let mut out: Vec<usize> = Vec::with_capacity(max_windows);
+  for i in 0..max_windows {
+    let idx = ((i as u128) * max_index / denom) as usize;
+    out.push(starts[idx.min(n - 1)]);
+  }
+  out
+}
+
 fn slice_reflect(signal: &[f32], start: usize, len: usize) -> Vec<f32> {
   let mut out = Vec::with_capacity(len);
   for i in 0..len {
     out.push(sample_reflect(signal, (start + i) as isize));
   }
   out
+}
+
+fn select_feature_segments(signal: &[f32], sample_rate: u32) -> Vec<FeatureSegment> {
+  if signal.is_empty() || sample_rate == 0 {
+    return Vec::new();
+  }
+
+  let segment_frames =
+    (FEATURE_SEGMENT_SECONDS * sample_rate as f32).round().max(1.0) as usize;
+  if signal.len() <= segment_frames {
+    return vec![FeatureSegment {
+      start: 0,
+      end: signal.len(),
+      rms: rms(signal),
+    }];
+  }
+
+  let hop_frames =
+    (FEATURE_SEGMENT_HOP_SECONDS * sample_rate as f32).round().max(1.0) as usize;
+  let edge_guard_frames =
+    (FEATURE_SEGMENT_EDGE_GUARD_SECONDS * sample_rate as f32).round().max(0.0) as usize;
+  let last_start = signal.len().saturating_sub(segment_frames);
+
+  let mut candidates: Vec<FeatureSegment> = Vec::new();
+  let mut start = 0usize;
+  while start <= last_start {
+    if edge_guard_frames > 0 {
+      let max_start = last_start.saturating_sub(edge_guard_frames);
+      if start < edge_guard_frames || start > max_start {
+        start = start.saturating_add(hop_frames);
+        continue;
+      }
+    }
+    let end = start + segment_frames;
+    let rms_value = rms(&signal[start..end]);
+    candidates.push(FeatureSegment {
+      start,
+      end,
+      rms: rms_value,
+    });
+    start = start.saturating_add(hop_frames);
+  }
+
+  if candidates.is_empty() {
+    return vec![FeatureSegment {
+      start: 0,
+      end: signal.len(),
+      rms: rms(signal),
+    }];
+  }
+
+  candidates.sort_by(|a, b| {
+    b.rms
+      .partial_cmp(&a.rms)
+      .unwrap_or(std::cmp::Ordering::Equal)
+  });
+
+  let min_gap_frames = (segment_frames as f32 * FEATURE_SEGMENT_MIN_GAP_RATIO)
+    .round()
+    .max(1.0) as usize;
+  let mut selected: Vec<FeatureSegment> = Vec::new();
+
+  for candidate in candidates {
+    if selected.len() >= FEATURE_SEGMENT_COUNT {
+      break;
+    }
+    let separated = selected.iter().all(|seg| {
+      let diff = candidate.start as i64 - seg.start as i64;
+      diff.abs() as usize >= min_gap_frames
+    });
+    if !separated {
+      continue;
+    }
+    selected.push(candidate);
+  }
+
+  if selected.is_empty() {
+    return vec![FeatureSegment {
+      start: 0,
+      end: signal.len(),
+      rms: rms(signal),
+    }];
+  }
+
+  selected.sort_by(|a, b| a.start.cmp(&b.start));
+  selected
 }
 
 fn rms(x: &[f32]) -> f32 {

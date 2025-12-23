@@ -31,6 +31,10 @@ const FEATURE_EXTRACT_CONCURRENCY = 2
 const FEATURE_ENSURE_QUEUE_CONCURRENCY = 1
 const LABEL_SET_CONCURRENCY = 2
 const LABEL_SET_DEFAULT_MAX_ANALYZE_SECONDS = 120
+const BULK_LABEL_DEFAULT_BATCH_SIZE = 200
+const BULK_LABEL_DEFAULT_CONCURRENCY = 2
+const BULK_LABEL_PROGRESS_TITLE_KEY = 'selection.bulkLabeling'
+const BULK_LABEL_CANCELLED_TITLE_KEY = 'selection.bulkLabelCancelled'
 
 let autoTrainTimer: NodeJS.Timeout | null = null
 let autoTrainInFlight = false
@@ -45,14 +49,22 @@ type QueuedTask<T> = {
   reject: (reason: any) => void
 }
 
+type BulkLabelBatchResult = {
+  status: 'ok' | 'failed' | 'cancelled'
+  errorMessage: string | null
+  count: number
+}
+
 let labelSetSeq = 0
 let labelSetInFlight = 0
 const labelSetQueue: Array<QueuedTask<any>> = []
+const bulkLabelCancelTokens = new Map<string, { cancelled: boolean }>()
 
 let featureEnsureSeq = 0
 let featureEnsureInFlight = 0
 const featureEnsureQueue: Array<QueuedTask<any>> = []
 const featureEnsurePendingSongIds = new Set<string>()
+let selectionResetEpoch = 0
 
 function enqueueLabelSetTask<T>(run: () => Promise<T>): Promise<T> {
   const id = (labelSetSeq += 1)
@@ -85,6 +97,143 @@ async function drainLabelSetQueue() {
         void drainLabelSetQueue()
       })
   }
+}
+
+function normalizeFilePathKey(value: string): string {
+  return String(value || '')
+    .trim()
+    .replace(/\//g, '\\')
+    .toLowerCase()
+}
+
+function dedupeFilePaths(filePaths: string[]): string[] {
+  const result: string[] = []
+  const seen = new Set<string>()
+  for (const raw of filePaths) {
+    if (typeof raw !== 'string') continue
+    const trimmed = raw.trim()
+    if (!trimmed) continue
+    const key = normalizeFilePathKey(trimmed)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    result.push(trimmed)
+  }
+  return result
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const safeSize = Number.isFinite(size) && size > 0 ? Math.floor(size) : items.length
+  const result: T[][] = []
+  for (let i = 0; i < items.length; i += safeSize) {
+    result.push(items.slice(i, i + safeSize))
+  }
+  return result
+}
+
+function createBulkLabelCancelToken(progressId: string) {
+  const token = { cancelled: false }
+  bulkLabelCancelTokens.set(progressId, token)
+  return token
+}
+
+function cancelBulkLabelTask(progressId?: string) {
+  if (!progressId) return
+  const token = bulkLabelCancelTokens.get(progressId)
+  if (token) token.cancelled = true
+}
+
+async function runSelectionLabelsSetForFilePaths(payload: any, dbDir: string) {
+  const filePaths = Array.isArray(payload?.filePaths) ? payload.filePaths.map(String) : []
+  const label = typeof payload?.label === 'string' ? payload.label : ''
+
+  return enqueueLabelSetTask(async () => {
+    // 若任务在队列中等待期间切库，直接取消（避免写入到错误的库）
+    if (!store.databaseDir || store.databaseDir !== dbDir) {
+      return {
+        ok: false,
+        labelResult: null,
+        hashReport: [],
+        failed: { errorCode: 'cancelled', message: '库已切换，任务已取消' } as Failed
+      }
+    }
+
+    try {
+      const startedAt = Date.now()
+      log.info(`[selection] labels:setForFilePaths 开始 标签=${label} 文件数=${filePaths.length}`)
+
+      const step1At = Date.now()
+      log.debug('[selection] labels:setForFilePaths 步骤1/2 计算歌曲ID（PCM SHA256）开始')
+      const { items, report: hashReport } = await resolveSelectionSongIds(filePaths, { dbDir })
+      log.debug(
+        `[selection] labels:setForFilePaths 步骤1/2 计算歌曲ID完成 items=${items.length}/${filePaths.length} (${Date.now() - step1At}ms)`
+      )
+      const songIds = items.map((x) => x.songId)
+
+      const maxAnalyzeSeconds =
+        typeof payload?.maxAnalyzeSeconds === 'number' && payload.maxAnalyzeSeconds > 0
+          ? payload.maxAnalyzeSeconds
+          : LABEL_SET_DEFAULT_MAX_ANALYZE_SECONDS
+
+      const step2At = Date.now()
+      log.debug(`[selection] labels:setForFilePaths 步骤2/2 写入标签开始 songIds=${songIds.length}`)
+      const res = setSelectionLabels(dbDir, songIds, label)
+      log.debug(
+        `[selection] labels:setForFilePaths 步骤2/2 写入标签完成 (${Date.now() - step2At}ms)`
+      )
+
+      // 特征提取放到后台队列，避免阻塞 UI；仅对 liked/disliked 触发（neutral 无需补齐）
+      const shouldEnsureFeatures = label === 'liked' || label === 'disliked'
+      const featureQueue =
+        shouldEnsureFeatures && items.length
+          ? scheduleSelectionFeatureEnsureForItems(
+              dbDir,
+              items.map((x) => ({
+                songId: x.songId,
+                filePath: x.filePath,
+                fileHash: x.fileHash
+              })),
+              { maxAnalyzeSeconds, reason: `label:${label}` }
+            )
+          : { enqueued: 0, skipped: 0 }
+
+      if (res.sampleChangeDelta > 0) {
+        scheduleAutoTrain(dbDir)
+        emitAutoTrainEvent({
+          status: 'scheduled',
+          debounceMs: AUTO_TRAIN_DEBOUNCE_MS,
+          sampleChangeCount: res.sampleChangeCount
+        })
+      } else {
+        log.debug('[selection] labels:setForFilePaths 标签未变化；跳过自动训练调度')
+      }
+
+      try {
+        const hashOk = (hashReport || []).filter((x: any) => x?.ok === true).length
+        log.info(
+          `[selection] labels:setForFilePaths 完成 (${Date.now() - startedAt}ms) 解析=${items.length}/${filePaths.length} 哈希通过=${hashOk}/${hashReport.length} 特征提取(已入队/跳过)=${featureQueue.enqueued}/${featureQueue.skipped} 样本变更增量=${res.sampleChangeDelta} 样本变更计数=${res.sampleChangeCount}`
+        )
+      } catch {}
+
+      return {
+        ok: true,
+        labelResult: res,
+        hashReport,
+        featureQueue
+      }
+    } catch (error: any) {
+      log.error('[selection] labels:setForFilePaths 失败', error)
+      return {
+        ok: false,
+        labelResult: null,
+        hashReport: [],
+        featureQueue: { enqueued: 0, skipped: 0 },
+        failed: {
+          errorCode: 'internal_error',
+          message: String(error?.message || error)
+        } as Failed
+      }
+    }
+  })
 }
 
 function enqueueFeatureEnsureTask<T>(run: () => Promise<T>): Promise<T> {
@@ -126,7 +275,7 @@ async function drainFeatureEnsureQueue() {
 async function ensureSelectionFeaturesForItems(
   featureStorePath: string,
   items: Array<{ songId: string; filePath: string; fileHash: string }>,
-  options?: { maxAnalyzeSeconds?: number; logLabel?: string }
+  options?: { maxAnalyzeSeconds?: number; logLabel?: string; resetEpoch?: number }
 ): Promise<{
   ok: boolean
   total: number
@@ -139,8 +288,23 @@ async function ensureSelectionFeaturesForItems(
   const startedAt = Date.now()
   const logLabel = options?.logLabel || 'features:ensure'
   const maxAnalyzeSeconds = options?.maxAnalyzeSeconds
+  const expectedEpoch =
+    typeof options?.resetEpoch === 'number' ? options.resetEpoch : selectionResetEpoch
+  const isCancelled = () => expectedEpoch !== selectionResetEpoch
 
   try {
+    if (isCancelled()) {
+      return {
+        ok: false,
+        total: items.length,
+        extracted: 0,
+        skipped: items.length,
+        affected: 0,
+        report: [],
+        failed: { errorCode: 'cancelled', message: 'RESET_IN_PROGRESS' } as Failed
+      }
+    }
+
     const songIds = items.map((x) => x.songId)
     log.debug(
       `[selection] ${logLabel} 开始 songs=${items.length} 最大分析秒数=${String(maxAnalyzeSeconds ?? '')}`
@@ -148,6 +312,17 @@ async function ensureSelectionFeaturesForItems(
 
     let statusList: Array<{ songId: string; hasFeatures: boolean }> = []
     try {
+      if (isCancelled()) {
+        return {
+          ok: false,
+          total: items.length,
+          extracted: 0,
+          skipped: items.length,
+          affected: 0,
+          report: [],
+          failed: { errorCode: 'cancelled', message: 'RESET_IN_PROGRESS' } as Failed
+        }
+      }
       statusList = getSelectionFeatureStatus(featureStorePath, songIds) as any
     } catch (error) {
       log.warn('[selection] 读取特征状态失败', error)
@@ -198,6 +373,18 @@ async function ensureSelectionFeaturesForItems(
     const { results } = await runWithConcurrency(tasks, {
       concurrency: FEATURE_EXTRACT_CONCURRENCY
     })
+
+    if (isCancelled()) {
+      return {
+        ok: false,
+        total: items.length,
+        extracted: 0,
+        skipped: items.length,
+        affected: 0,
+        report: [],
+        failed: { errorCode: 'cancelled', message: 'RESET_IN_PROGRESS' } as Failed
+      }
+    }
 
     const patches: any[] = []
     const report: any[] = []
@@ -277,6 +464,7 @@ function scheduleSelectionFeatureEnsureForItems(
   options?: { maxAnalyzeSeconds?: number; reason?: string }
 ): { enqueued: number; skipped: number } {
   if (!dbDir) return { enqueued: 0, skipped: 0 }
+  const resetEpoch = selectionResetEpoch
   const uniqueById = new Map<string, { songId: string; filePath: string; fileHash: string }>()
   for (const it of items) {
     if (!it?.songId) continue
@@ -302,7 +490,8 @@ function scheduleSelectionFeatureEnsureForItems(
       const featureStorePath = path.join(dbDir, 'features.db')
       await ensureSelectionFeaturesForItems(featureStorePath, pending, {
         maxAnalyzeSeconds: options?.maxAnalyzeSeconds,
-        logLabel: 'features:ensure(后台)'
+        logLabel: 'features:ensure(后台)',
+        resetEpoch
       })
     } finally {
       for (const it of pending) featureEnsurePendingSongIds.delete(it.songId)
@@ -471,6 +660,7 @@ export function registerSelectionPredictionHandlers() {
   ipcMain.handle('selection:training:reset', async () => {
     try {
       if (!store.databaseDir) throw new Error('NO_DB')
+      selectionResetEpoch += 1
       if (autoTrainTimer) {
         clearTimeout(autoTrainTimer)
         autoTrainTimer = null
@@ -482,11 +672,42 @@ export function registerSelectionPredictionHandlers() {
       resetSelectionSampleChangeCount(store.databaseDir)
 
       let clearedPredictionCache = 0
+      let removedFeaturesDb = false
+      let removedLabelsDb = false
+      let removedPathIndexDb = false
+      const featureStorePath = path.join(store.databaseDir, 'features.db')
+      const labelStorePath = path.join(store.databaseDir, 'selection_labels.db')
+      const pathIndexPath = path.join(store.databaseDir, 'selection_path_index.db')
       try {
-        const featureStorePath = path.join(store.databaseDir, 'features.db')
-        clearedPredictionCache = clearSelectionPredictionCache(featureStorePath)
+        if (await fs.pathExists(featureStorePath)) {
+          clearedPredictionCache = clearSelectionPredictionCache(featureStorePath)
+        }
       } catch (e) {
         log.warn('[selection] 清空预测缓存失败', e)
+      }
+      try {
+        if (await fs.pathExists(featureStorePath)) {
+          await fs.remove(featureStorePath)
+          removedFeaturesDb = true
+        }
+      } catch (e) {
+        log.warn('[selection] 删除 features.db 失败', e)
+      }
+      try {
+        if (await fs.pathExists(labelStorePath)) {
+          await fs.remove(labelStorePath)
+          removedLabelsDb = true
+        }
+      } catch (e) {
+        log.warn('[selection] 删除 selection_labels.db 失败', e)
+      }
+      try {
+        if (await fs.pathExists(pathIndexPath)) {
+          await fs.remove(pathIndexPath)
+          removedPathIndexDb = true
+        }
+      } catch (e) {
+        log.warn('[selection] 删除 selection_path_index.db 失败', e)
       }
 
       let removedModel = false
@@ -509,7 +730,7 @@ export function registerSelectionPredictionHandlers() {
       }
 
       log.info(
-        `[selection] 训练数据重置完成：重置标签=${resetLabelsOk} 清空预测缓存=${clearedPredictionCache} 删除模型文件=${removedModel} 删除manifest=${removedManifest}`
+        `[selection] 训练数据重置完成：重置标签=${resetLabelsOk} 清空预测缓存=${clearedPredictionCache} 删除featuresDb=${removedFeaturesDb} 删除labelsDb=${removedLabelsDb} 删除pathIndexDb=${removedPathIndexDb} 删除模型文件=${removedModel} 删除manifest=${removedManifest}`
       )
       emitAutoTrainEvent({
         status: 'reset',
@@ -519,6 +740,9 @@ export function registerSelectionPredictionHandlers() {
         ok: true,
         resetLabels: resetLabelsOk,
         clearedPredictionCache,
+        removedFeaturesDb,
+        removedLabelsDb,
+        removedPathIndexDb,
         removedModel,
         removedManifest
       }
@@ -565,100 +789,197 @@ export function registerSelectionPredictionHandlers() {
         failed: { errorCode: 'internal_error', message: 'NO_DB' } as Failed
       }
     }
+    return runSelectionLabelsSetForFilePaths(payload, dbDir)
+  })
 
-    const filePaths = Array.isArray(payload?.filePaths) ? payload.filePaths.map(String) : []
-    const label = typeof payload?.label === 'string' ? payload.label : ''
-
-    return enqueueLabelSetTask(async () => {
-      // 若任务在队列中等待期间切库，直接取消（避免写入到错误的库）
-      if (!store.databaseDir || store.databaseDir !== dbDir) {
-        return {
-          ok: false,
-          labelResult: null,
-          hashReport: [],
-          failed: { errorCode: 'cancelled', message: '库已切换，任务已取消' } as Failed
-        }
+  ipcMain.handle('selection:labels:setForFilePathsBatched', async (_e, payload: any) => {
+    const dbDir = store.databaseDir
+    if (!dbDir) {
+      return {
+        ok: false,
+        total: 0,
+        totalUnique: 0,
+        batches: 0,
+        okBatches: 0,
+        failedBatches: 0,
+        cancelledBatches: 0,
+        firstErrorMessage: null,
+        cancelled: false,
+        failed: { errorCode: 'internal_error', message: 'NO_DB' } as Failed
       }
+    }
 
-      try {
-        const startedAt = Date.now()
-        log.info(`[selection] labels:setForFilePaths 开始 标签=${label} 文件数=${filePaths.length}`)
+    const rawFilePaths = Array.isArray(payload?.filePaths) ? payload.filePaths.map(String) : []
+    const label = typeof payload?.label === 'string' ? payload.label : ''
+    const filePaths = dedupeFilePaths(rawFilePaths)
+    const totalUnique = filePaths.length
+    const progressId =
+      typeof payload?.progressId === 'string' && payload.progressId.trim()
+        ? payload.progressId.trim()
+        : `selection_bulk_${Date.now()}`
 
-        const step1At = Date.now()
-        log.debug('[selection] labels:setForFilePaths 步骤1/2 计算歌曲ID（PCM SHA256）开始')
-        const { items, report: hashReport } = await resolveSelectionSongIds(filePaths, { dbDir })
-        log.debug(
-          `[selection] labels:setForFilePaths 步骤1/2 计算歌曲ID完成 items=${items.length}/${filePaths.length} (${Date.now() - step1At}ms)`
-        )
-        const songIds = items.map((x) => x.songId)
+    const maxAnalyzeSeconds =
+      typeof payload?.maxAnalyzeSeconds === 'number' && payload.maxAnalyzeSeconds > 0
+        ? payload.maxAnalyzeSeconds
+        : undefined
 
-        const maxAnalyzeSeconds =
-          typeof payload?.maxAnalyzeSeconds === 'number' && payload.maxAnalyzeSeconds > 0
-            ? payload.maxAnalyzeSeconds
-            : LABEL_SET_DEFAULT_MAX_ANALYZE_SECONDS
+    const batchSize =
+      Number.isFinite(payload?.batchSize) && payload.batchSize > 0
+        ? Math.floor(payload.batchSize)
+        : BULK_LABEL_DEFAULT_BATCH_SIZE
+    const concurrency =
+      Number.isFinite(payload?.concurrency) && payload.concurrency > 0
+        ? Math.floor(payload.concurrency)
+        : BULK_LABEL_DEFAULT_CONCURRENCY
+    const batches = chunkArray(filePaths, batchSize)
 
-        const step2At = Date.now()
-        log.debug(
-          `[selection] labels:setForFilePaths 步骤2/2 写入标签开始 songIds=${songIds.length}`
-        )
-        const res = setSelectionLabels(dbDir, songIds, label)
-        log.debug(
-          `[selection] labels:setForFilePaths 步骤2/2 写入标签完成 (${Date.now() - step2At}ms)`
-        )
+    const token = createBulkLabelCancelToken(progressId)
+    const sendProgress = (titleKey: string, now: number, total: number, options?: any) => {
+      if (!mainWindow.instance) return
+      mainWindow.instance.webContents.send('progressSet', {
+        id: progressId,
+        titleKey,
+        now,
+        total,
+        isInitial: !!options?.isInitial,
+        cancelable: options?.cancelable !== false,
+        cancelChannel: 'selection:labels:bulkCancel',
+        cancelPayload: progressId
+      })
+    }
 
-        // 特征提取放到后台队列，避免阻塞 UI；仅对 liked/disliked 触发（neutral 无需补齐）
-        const shouldEnsureFeatures = label === 'liked' || label === 'disliked'
-        const featureQueue =
-          shouldEnsureFeatures && items.length
-            ? scheduleSelectionFeatureEnsureForItems(
-                dbDir,
-                items.map((x) => ({
-                  songId: x.songId,
-                  filePath: x.filePath,
-                  fileHash: x.fileHash
-                })),
-                { maxAnalyzeSeconds, reason: `label:${label}` }
-              )
-            : { enqueued: 0, skipped: 0 }
-
-        if (res.sampleChangeDelta > 0) {
-          scheduleAutoTrain(dbDir)
-          emitAutoTrainEvent({
-            status: 'scheduled',
-            debounceMs: AUTO_TRAIN_DEBOUNCE_MS,
-            sampleChangeCount: res.sampleChangeCount
-          })
-        } else {
-          log.debug('[selection] labels:setForFilePaths 标签未变化；跳过自动训练调度')
-        }
-
-        try {
-          const hashOk = (hashReport || []).filter((x: any) => x?.ok === true).length
-          log.info(
-            `[selection] labels:setForFilePaths 完成 (${Date.now() - startedAt}ms) 解析=${items.length}/${filePaths.length} 哈希通过=${hashOk}/${hashReport.length} 特征提取(已入队/跳过)=${featureQueue.enqueued}/${featureQueue.skipped} 样本变更增量=${res.sampleChangeDelta} 样本变更计数=${res.sampleChangeCount}`
-          )
-        } catch {}
-
+    try {
+      if (totalUnique === 0) {
         return {
           ok: true,
-          labelResult: res,
-          hashReport,
-          featureQueue
-        }
-      } catch (error: any) {
-        log.error('[selection] labels:setForFilePaths 失败', error)
-        return {
-          ok: false,
-          labelResult: null,
-          hashReport: [],
-          featureQueue: { enqueued: 0, skipped: 0 },
-          failed: {
-            errorCode: 'internal_error',
-            message: String(error?.message || error)
-          } as Failed
+          total: rawFilePaths.length,
+          totalUnique: 0,
+          batches: 0,
+          okBatches: 0,
+          failedBatches: 0,
+          cancelledBatches: 0,
+          firstErrorMessage: null,
+          cancelled: false,
+          progressId
         }
       }
-    })
+
+      log.info(
+        `[selection] 批量打标开始 标签=${label} 总数=${totalUnique} 批次=${batches.length} 并发=${concurrency} progressId=${progressId}`
+      )
+      sendProgress(BULK_LABEL_PROGRESS_TITLE_KEY, 0, totalUnique, { isInitial: true })
+      // 让进度事件先落到渲染层，避免主进程重计算时 UI 无刷新
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      const results: Array<BulkLabelBatchResult | null> = new Array(batches.length).fill(null)
+      let cursor = 0
+      let processed = 0
+
+      const worker = async () => {
+        while (true) {
+          if (token.cancelled) return
+          const index = cursor
+          cursor += 1
+          if (index >= batches.length) return
+
+          const batch = batches[index]
+          if (!batch.length) {
+            results[index] = { status: 'ok', errorMessage: null, count: 0 }
+            continue
+          }
+
+          const res = await runSelectionLabelsSetForFilePaths(
+            {
+              filePaths: batch,
+              label,
+              ...(typeof maxAnalyzeSeconds === 'number' ? { maxAnalyzeSeconds } : {})
+            },
+            dbDir
+          )
+          if (res?.ok) {
+            results[index] = { status: 'ok', errorMessage: null, count: batch.length }
+          } else {
+            results[index] = {
+              status: 'failed',
+              errorMessage: String(res?.failed?.message || res?.failed?.errorCode || 'FAILED'),
+              count: batch.length
+            }
+          }
+          processed += batch.length
+          sendProgress(BULK_LABEL_PROGRESS_TITLE_KEY, Math.min(processed, totalUnique), totalUnique)
+        }
+      }
+
+      const workerCount = Math.min(concurrency, batches.length)
+      await Promise.all(Array.from({ length: workerCount }, () => worker()))
+
+      for (let i = 0; i < batches.length; i += 1) {
+        if (!results[i]) {
+          results[i] = { status: 'cancelled', errorMessage: null, count: batches[i].length }
+        }
+      }
+
+      let okBatches = 0
+      let failedBatches = 0
+      let cancelledBatches = 0
+      let firstErrorMessage: string | null = null
+      for (const r of results) {
+        if (!r) continue
+        if (r.status === 'ok') {
+          okBatches += 1
+        } else if (r.status === 'failed') {
+          failedBatches += 1
+          if (!firstErrorMessage) firstErrorMessage = r.errorMessage || 'FAILED'
+        } else {
+          cancelledBatches += 1
+        }
+      }
+
+      const cancelled = token.cancelled || cancelledBatches > 0
+      const finalTitle = cancelled ? BULK_LABEL_CANCELLED_TITLE_KEY : BULK_LABEL_PROGRESS_TITLE_KEY
+      sendProgress(finalTitle, totalUnique, totalUnique, { cancelable: false })
+      log.info(
+        `[selection] 批量打标结束 progressId=${progressId} ok=${okBatches} failed=${failedBatches} cancelled=${cancelledBatches}`
+      )
+
+      return {
+        ok: true,
+        total: rawFilePaths.length,
+        totalUnique,
+        batches: batches.length,
+        okBatches,
+        failedBatches,
+        cancelledBatches,
+        firstErrorMessage,
+        cancelled,
+        progressId
+      }
+    } catch (error: any) {
+      log.error('[selection] labels:setForFilePathsBatched 失败', error)
+      sendProgress(BULK_LABEL_CANCELLED_TITLE_KEY, totalUnique, totalUnique, { cancelable: false })
+      return {
+        ok: false,
+        total: rawFilePaths.length,
+        totalUnique,
+        batches: batches.length,
+        okBatches: 0,
+        failedBatches: batches.length,
+        cancelledBatches: 0,
+        firstErrorMessage: String(error?.message || error),
+        cancelled: false,
+        failed: {
+          errorCode: 'internal_error',
+          message: String(error?.message || error)
+        } as Failed
+      }
+    } finally {
+      bulkLabelCancelTokens.delete(progressId)
+    }
+  })
+
+  ipcMain.handle('selection:labels:bulkCancel', async (_e, progressId: string) => {
+    cancelBulkLabelTask(typeof progressId === 'string' ? progressId : '')
+    return { ok: true }
   })
 
   ipcMain.handle('selection:labels:snapshot', async () => {
@@ -715,7 +1036,16 @@ export function registerSelectionPredictionHandlers() {
       if (!store.databaseDir) throw new Error('NO_DB')
       const featureStorePath = path.join(store.databaseDir, 'features.db')
       const items = Array.isArray(payload?.items) ? payload.items : []
+      const resetEpoch = selectionResetEpoch
       const { patches, report } = await buildSelectionSongFeaturePatches(items)
+      if (resetEpoch !== selectionResetEpoch) {
+        return {
+          ok: false,
+          affected: 0,
+          report,
+          failed: { errorCode: 'cancelled', message: 'RESET_IN_PROGRESS' } as Failed
+        }
+      }
       const affected = upsertSongFeatures(featureStorePath, patches)
       return { ok: true, affected, report }
     } catch (error: any) {
@@ -749,6 +1079,7 @@ export function registerSelectionPredictionHandlers() {
       typeof payload?.maxAnalyzeSeconds === 'number' && payload.maxAnalyzeSeconds > 0
         ? payload.maxAnalyzeSeconds
         : undefined
+    const resetEpoch = selectionResetEpoch
 
     return enqueueFeatureEnsureTask(async () => {
       // 若任务在队列中等待期间切库，直接取消（避免写入到错误的库）
@@ -772,7 +1103,7 @@ export function registerSelectionPredictionHandlers() {
         const ensured = await ensureSelectionFeaturesForItems(
           featureStorePath,
           items.map((x) => ({ songId: x.songId, filePath: x.filePath, fileHash: x.fileHash })),
-          { maxAnalyzeSeconds, logLabel: 'features:ensureForFilePaths' }
+          { maxAnalyzeSeconds, logLabel: 'features:ensureForFilePaths', resetEpoch }
         )
         return { ...ensured, hashReport }
       } catch (error: any) {

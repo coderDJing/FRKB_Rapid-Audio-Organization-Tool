@@ -55,6 +55,7 @@ As a DJ, I frequently need to organize large numbers of music files. However, ex
 - **Internationalization (i18n)**: Built-in Chinese (`zh-CN`) and English (`en-US`) language packs.
 - **Save Cover Image**: Right-click the enlarged cover to save the image locally.
 - **Song Filtering**: Supports filtering the song list by multiple dimensions such as title, artist, album, duration, and format.
+- **Bulk Preference Labeling**: Shows progress in the task bar and allows canceling bulk like/dislike actions.
 - **Wide Format Playback & Conversion**: Built-in FFmpeg pipeline plays instantly and batch-converts 20+ mainstream and pro audio formats.
 
   | Format | Scan/Playback | Conversion |
