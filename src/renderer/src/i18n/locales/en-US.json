@@ -405,6 +405,7 @@
     "fileFormat": "File Format",
     "format": "Format",
     "bpm": "BPM",
+    "key": "Key",
     "index": "Index"
   },
   "selection": {
@@ -663,6 +664,11 @@
   },
   "settings": {
     "showPlaylistTrackCount": "Show track count after playlist name",
+    "keyNotation": {
+      "title": "Key display",
+      "classic": "Classic (C/Em)",
+      "camelot": "Camelot (1A/1B)"
+    },
     "songListBubble": {
       "title": "Track row bubble tooltip",
       "overflowOnly": "Show only when text is truncated",

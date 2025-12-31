@@ -26,6 +26,11 @@ import {
 } from './platform/windowsContextMenu'
 import { resolveBundledFfmpegPath, ensureExecutableOnMac } from './ffmpeg'
 import { resolveBundledFpcalcPath, ensureFpcalcExecutable } from './chromaprint'
+import {
+  resolveBundledEssentiaPath,
+  ensureEssentiaExecutable,
+  cleanupEssentiaTempFiles
+} from './essentia'
 import { processExternalOpenQueue, queueExternalAudioFiles } from './services/externalOpenQueue'
 import { registerSettingsHandlers } from './ipc/settingsHandlers'
 import { registerLibraryMaintenanceHandlers } from './ipc/libraryMaintenanceHandlers'
@@ -80,6 +85,14 @@ void ensureExecutableOnMac(ffmpegPath)
 const fpcalcPath = resolveBundledFpcalcPath()
 process.env.FRKB_FPCALC_PATH = fpcalcPath
 void ensureFpcalcExecutable(fpcalcPath)
+const essentiaPath = resolveBundledEssentiaPath()
+process.env.FRKB_ESSENTIA_PATH = essentiaPath
+void ensureEssentiaExecutable(essentiaPath)
+void cleanupEssentiaTempFiles().then((res) => {
+  if (res.deleted > 0) {
+    log.debug(`[selection] 清理 Essentia 临时文件 deleted=${res.deleted} scanned=${res.scanned}`)
+  }
+})
 // 不再使用 Tray，改用应用菜单
 if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
   fs.outputJsonSync(url.layoutConfigFileUrl, {

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const FEATURES_DB_SCHEMA_VERSION: i32 = 2;
+const FEATURES_DB_SCHEMA_VERSION: i32 = 3;
 
 #[derive(Debug, Clone)]
 pub struct SongFeaturesPatch {
@@ -12,6 +12,7 @@ pub struct SongFeaturesPatch {
   pub file_hash: String,
   pub model_version: String,
   pub openl3_vector: Option<Vec<u8>>,
+  pub essentia_vector: Option<Vec<u8>>,
   pub chromaprint_fingerprint: Option<String>,
   pub rms_mean: Option<f64>,
   pub hpcp: Option<Vec<u8>>,
@@ -26,6 +27,7 @@ pub struct SongFeaturesRow {
   pub song_id: String,
   pub file_hash: String,
   pub openl3_vector: Option<Vec<f32>>,
+  pub essentia_vector: Option<Vec<f32>>,
   pub chromaprint_fingerprint: Option<String>,
   pub rms_mean: Option<f64>,
   pub hpcp: Option<Vec<f32>>,
@@ -33,6 +35,16 @@ pub struct SongFeaturesRow {
   pub key: Option<String>,
   pub duration_sec: Option<f64>,
   pub bitrate_kbps: Option<f64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SongFeatureStatus {
+  pub has_features: bool,
+  pub has_full_features: bool,
+  pub has_bpm: bool,
+  pub has_key: bool,
+  pub bpm: Option<f64>,
+  pub key: Option<String>,
 }
 
 pub fn open_and_migrate(feature_store_path: &Path) -> Result<Connection, String> {
@@ -80,6 +92,7 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
           fileHash TEXT,
           modelVersion TEXT,
           openl3_vector BLOB,
+          essentiaVector BLOB,
           chromaprintFingerprint TEXT,
           rmsMean REAL,
           hpcp BLOB,
@@ -134,6 +147,10 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
     migrate_to_v2(conn)?;
     version = 2;
   }
+  if version < 3 {
+    migrate_to_v3(conn)?;
+    version = 3;
+  }
 
   if version != current {
     conn
@@ -163,6 +180,19 @@ fn migrate_to_v2(conn: &Connection) -> Result<(), String> {
   Ok(())
 }
 
+fn migrate_to_v3(conn: &Connection) -> Result<(), String> {
+  // 增加 Essentia 向量列（BLOB：f32 小端序）
+  match conn.execute("ALTER TABLE song_features ADD COLUMN essentiaVector BLOB", []) {
+    Ok(_) => {}
+    Err(e) => {
+      if !e.to_string().to_lowercase().contains("duplicate column") {
+        return Err(format!("迁移到 v3 失败: {}", e));
+      }
+    }
+  }
+  Ok(())
+}
+
 pub fn upsert_song_features(
   conn: &mut Connection,
   items: &[SongFeaturesPatch],
@@ -182,14 +212,15 @@ pub fn upsert_song_features(
       .prepare(
         r#"
         INSERT INTO song_features (
-          songId, fileHash, modelVersion, openl3_vector, chromaprintFingerprint, rmsMean, hpcp, bpm, key, durationSec, bitrateKbps, updatedAt
+          songId, fileHash, modelVersion, openl3_vector, essentiaVector, chromaprintFingerprint, rmsMean, hpcp, bpm, key, durationSec, bitrateKbps, updatedAt
         ) VALUES (
-          ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12
+          ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13
         )
         ON CONFLICT(songId) DO UPDATE SET
           fileHash = excluded.fileHash,
           modelVersion = excluded.modelVersion,
           openl3_vector = COALESCE(excluded.openl3_vector, song_features.openl3_vector),
+          essentiaVector = COALESCE(excluded.essentiaVector, song_features.essentiaVector),
           chromaprintFingerprint = COALESCE(excluded.chromaprintFingerprint, song_features.chromaprintFingerprint),
           rmsMean = COALESCE(excluded.rmsMean, song_features.rmsMean),
           hpcp = COALESCE(excluded.hpcp, song_features.hpcp),
@@ -209,6 +240,7 @@ pub fn upsert_song_features(
           it.file_hash.as_str(),
           it.model_version.as_str(),
           it.openl3_vector.as_deref(),
+          it.essentia_vector.as_deref(),
           it.chromaprint_fingerprint.as_deref(),
           it.rms_mean,
           it.hpcp.as_deref(),
@@ -240,7 +272,7 @@ pub fn get_song_features_map(
     .collect::<Vec<_>>()
     .join(",");
   let sql = format!(
-    "SELECT songId, fileHash, openl3_vector, chromaprintFingerprint, rmsMean, hpcp, bpm, key, durationSec, bitrateKbps FROM song_features WHERE songId IN ({})",
+    "SELECT songId, fileHash, openl3_vector, essentiaVector, chromaprintFingerprint, rmsMean, hpcp, bpm, key, durationSec, bitrateKbps FROM song_features WHERE songId IN ({})",
     placeholders
   );
 
@@ -255,18 +287,20 @@ pub fn get_song_features_map(
       let song_id: String = row.get(0)?;
       let file_hash: String = row.get(1)?;
       let openl3_blob: Option<Vec<u8>> = row.get(2)?;
-      let chromaprint_fingerprint: Option<String> = row.get(3)?;
-      let rms_mean: Option<f64> = row.get(4)?;
-      let hpcp_blob: Option<Vec<u8>> = row.get(5)?;
-      let bpm: Option<f64> = row.get(6)?;
-      let key: Option<String> = row.get(7)?;
-      let duration_sec: Option<f64> = row.get(8)?;
-      let bitrate_kbps: Option<f64> = row.get(9)?;
+      let essentia_blob: Option<Vec<u8>> = row.get(3)?;
+      let chromaprint_fingerprint: Option<String> = row.get(4)?;
+      let rms_mean: Option<f64> = row.get(5)?;
+      let hpcp_blob: Option<Vec<u8>> = row.get(6)?;
+      let bpm: Option<f64> = row.get(7)?;
+      let key: Option<String> = row.get(8)?;
+      let duration_sec: Option<f64> = row.get(9)?;
+      let bitrate_kbps: Option<f64> = row.get(10)?;
 
       Ok(SongFeaturesRow {
         song_id,
         file_hash,
         openl3_vector: openl3_blob.and_then(|b| parse_f32_le_blob(&b).ok()),
+        essentia_vector: essentia_blob.and_then(|b| parse_f32_le_blob(&b).ok()),
         chromaprint_fingerprint,
         rms_mean,
         hpcp: hpcp_blob.and_then(|b| parse_f32_le_blob(&b).ok()),
@@ -289,8 +323,8 @@ pub fn get_song_features_map(
 pub fn get_song_feature_status_map(
   conn: &Connection,
   song_ids: &[String],
-) -> Result<HashMap<String, bool>, String> {
-  let mut map: HashMap<String, bool> = HashMap::new();
+) -> Result<HashMap<String, SongFeatureStatus>, String> {
+  let mut map: HashMap<String, SongFeatureStatus> = HashMap::new();
   if song_ids.is_empty() {
     return Ok(map);
   }
@@ -300,7 +334,7 @@ pub fn get_song_feature_status_map(
     .collect::<Vec<_>>()
     .join(",");
   let sql = format!(
-    "SELECT songId, openl3_vector, chromaprintFingerprint, rmsMean, hpcp, bpm, key, durationSec, bitrateKbps FROM song_features WHERE songId IN ({})",
+    "SELECT songId, openl3_vector, essentiaVector, chromaprintFingerprint, rmsMean, hpcp, bpm, key, durationSec, bitrateKbps FROM song_features WHERE songId IN ({})",
     placeholders
   );
 
@@ -314,35 +348,48 @@ pub fn get_song_feature_status_map(
       |row| {
         let song_id: String = row.get(0)?;
         let openl3_blob: Option<Vec<u8>> = row.get(1)?;
-        let chromaprint_fingerprint: Option<String> = row.get(2)?;
-        let rms_mean: Option<f64> = row.get(3)?;
-        let hpcp_blob: Option<Vec<u8>> = row.get(4)?;
-        let bpm: Option<f64> = row.get(5)?;
-        let key: Option<String> = row.get(6)?;
-        let duration_sec: Option<f64> = row.get(7)?;
-        let bitrate_kbps: Option<f64> = row.get(8)?;
+        let essentia_blob: Option<Vec<u8>> = row.get(2)?;
+        let chromaprint_fingerprint: Option<String> = row.get(3)?;
+        let rms_mean: Option<f64> = row.get(4)?;
+        let hpcp_blob: Option<Vec<u8>> = row.get(5)?;
+        let bpm: Option<f64> = row.get(6)?;
+        let key: Option<String> = row.get(7)?;
+        let duration_sec: Option<f64> = row.get(8)?;
+        let bitrate_kbps: Option<f64> = row.get(9)?;
 
-        let has_features =
+        let has_bpm = bpm.is_some();
+        let has_key = key.as_ref().is_some_and(|s| !s.trim().is_empty());
+        let has_non_light =
           openl3_blob.as_ref().is_some_and(|b| !b.is_empty())
+            || essentia_blob.as_ref().is_some_and(|b| !b.is_empty())
             || hpcp_blob.as_ref().is_some_and(|b| !b.is_empty())
             || chromaprint_fingerprint
               .as_ref()
               .is_some_and(|s| !s.trim().is_empty())
             || rms_mean.is_some()
-            || bpm.is_some()
-            || key.as_ref().is_some_and(|s| !s.trim().is_empty())
             || duration_sec.is_some()
             || bitrate_kbps.is_some();
+        let has_features = has_non_light || has_bpm || has_key;
 
-        Ok((song_id, has_features))
+        Ok((
+          song_id,
+          SongFeatureStatus {
+            has_features,
+            has_full_features: has_non_light,
+            has_bpm,
+            has_key,
+            bpm,
+            key,
+          },
+        ))
       },
     )
     .map_err(|e| format!("执行查询 song_features(status) 失败: {}", e))?;
 
   for r in rows {
-    let (song_id, has_features) =
+    let (song_id, status) =
       r.map_err(|e| format!("读取 song_features(status) 行失败: {}", e))?;
-    map.insert(song_id, has_features);
+    map.insert(song_id, status);
   }
 
   Ok(map)

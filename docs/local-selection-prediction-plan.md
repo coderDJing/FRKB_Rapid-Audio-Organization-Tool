@@ -3,8 +3,8 @@
 > 说明：本文后端方案为定稿；前端交互/触发规则为草案，后续可按体验迭代。
 
 ## 当前实现状态（持续更新）
-- ✅ `features.db`：SQLite 结构与读写已落地（`schemaVersion=2`；`song_features` / `song_prediction_cache` / `schema_meta`）。
-- ✅ GBDT：训练/推理与模型落盘已落地（`models/selection/selection_gbdt_v1.bin` + `models/selection/manifest.json`）。
+- ✅ `features.db`：SQLite 结构与读写已落地（`schemaVersion=3`；`song_features` / `song_prediction_cache` / `schema_meta`）。
+- ✅ GBDT：训练/推理与模型落盘已落地（`models/selection/selection_gbdt_v2.bin` + `models/selection/manifest.json`）。
 - ✅ 标签落盘：库目录 `selection_labels.db`（SQLite），并维护 `sampleChangeCount`；`neutral` 为默认态不落行。
 - ✅ 主进程 IPC：已接入 `selection:*` 处理器（训练/预测/标签/特征 upsert）。
 - ✅ 基础特征提取：已提供 `selection:features:extractAndUpsert`（离线提取并写入 `chromaprintFingerprint/rmsMean/hpcp/bpm/key/durationSec/bitrateKbps`）。
@@ -12,6 +12,7 @@
 - ✅ songId 映射索引：库目录 `selection_path_index.db`（SQLite），持久化缓存 `filePath+size+mtime → songId(PCM SHA256)`；支持移动迁移与 GC。
 - ✅ 自动重训：在 `selection:labels:set` 后按 `sampleChangeCount` + 8s debounce 自动触发训练（成功后清零计数，并广播 `selection:autoTrainStatus` 事件）。
 - ✅ 自动补齐特征：打开列表完成加载后会后台补齐缺失音频特征（主进程并发=2，**不依赖预测列是否可见**）；未提取特征的曲目**不展示预测分**（避免无意义分数）。
+- ✅ BPM/调性补齐：Rust N-API 提取 + 分批写库，并通过 `selection:bpmKeyUpdated` 渐进刷新列表。
 - ✅ 元数据编辑：`audio:metadata:update` 保存后，若可编辑元数据发生真实变化，会按 `songId=sha256_Hash` 清理该曲目的预测缓存；若该曲目为样本（`liked/disliked`）则计入 `sampleChangeCount` 并触发自动重训调度。
 - ✅ 渲染层：右键菜单已支持“喜欢/不喜欢/清除喜好”，并新增列 `columns.selectionScore`（打开列表后后台刷新预测分数）。
 - ✅ 批量打标：歌单/库右键菜单已支持“喜欢/不喜欢全部歌曲”（分批 + 控并发，且 UI 立即更新喜好标记）。
@@ -230,8 +231,8 @@ Release 工作流 `/.github/workflows/release.yml` 已包含 `prepare_openl3_onn
 - 运行时：当前实现使用 `tract-onnx`（纯 Rust）；后续若要更高兼容/性能可切换 ORT（`ort`）。  
 
 ## GBDT 特征与训练（基线）
-### 0. 当前已实现（GBDT v1）
-- `feature_names`：`hpcp_corr_max`、`bpm_diff_min`、`key_dist_min`、`duration_diff_min_log1p`、`bitrate_kbps`、`rms_mean`、`has_hpcp`、`has_bpm`、`has_key`、`has_duration`、`has_bitrate`、`has_rms`、`chromaprint_sim_max`、`has_chromaprint`。
+### 0. 当前已实现（GBDT v2）
+- `feature_names`：基础相似度特征（`hpcp_corr_max/bpm_diff_min/key_dist_min/...`）+ `has_openl3/has_chromaprint/has_essentia`，并追加 **Essentia 高层/中层向量特征**（见上文清单）。
 - 说明：OpenL3 相似度统计已落地（`openl3_sim_max/openl3_sim_top5_mean/openl3_sim_top20_mean/openl3_sim_centroid`）；Chromaprint 相似度第一版使用 64-bit SimHash 的汉明相似度做轻量近似。
 
 ### 1. 特征集合（仅歌曲自身信息）
@@ -239,6 +240,15 @@ Release 工作流 `/.github/workflows/release.yml` 已包含 `prepare_openl3_onn
 - `openl3_sim_max`：候选与历史精选集合的最大余弦相似度。  
 - `openl3_sim_top5_mean / openl3_sim_top20_mean`：Top‑5/Top‑20 相似度均值，提升稳健性。  
 - `openl3_sim_centroid`：候选与“精选全局质心向量”的余弦相似度。  
+
+**Essentia 高层（强相关，直接特征）**
+- `highlevel`：`mood_*`、`genre_*`、`danceability`、`timbre`、`voice_instrumental`、`culture`、`tonal_atonal`、`mirex_ballroom`、`moods_mirex`（使用各分类器的 **all 概率分布** 作为数值特征）。  
+- `rhythm`：`perceptual_tempo`、`onset_rate`、`beats_loudness`（均值）、`bpm_histogram_first/second_peak(+weight/+spread)`、`bpm_confidence`。  
+- `tonal`：`key_strength`、`chords_changes_rate`、`chords_number_rate`、`chords_strength`（与 `key_key/key_scale` 一并作为调性口味特征）。  
+
+**Essentia 中层（音色/质感补充）**
+- `lowlevel`：`spectral_centroid/flux/flatness_db/rolloff/rms`（均值）、`dynamic_complexity`、`dissonance`（均值）、`average_loudness`。  
+- `mfcc/gfcc`：使用 `mean` 统计向量（固定维度）作为音色补充特征。  
 
 **指纹/调性/节奏补充**
 - `chromaprint_sim_max`：Chromaprint 指纹相似度统计（第一版使用 64-bit SimHash 的汉明相似度做轻量近似）。  
@@ -291,10 +301,10 @@ Release 工作流 `/.github/workflows/release.yml` 已包含 `prepare_openl3_onn
 ### 4. SQLite 结构设计（可与未来指纹库合并）
 - 文件位置：**放在库目录**（与 `FRKB.database.frkbdb` 同级），文件名暂定 `features.db`；保证不同库之间特征完全隔离，且不与现有 `frkbdb` 格式耦合，后续重构时再评估是否合并。  
 - 基础表建议：  
-  - `song_features`：`songId TEXT PRIMARY KEY, fileHash TEXT, modelVersion TEXT, openl3_vector BLOB, chromaprintFingerprint TEXT, rmsMean REAL, hpcp BLOB, bpm REAL, key TEXT, durationSec REAL, bitrateKbps REAL, updatedAt TEXT`。  
+  - `song_features`：`songId TEXT PRIMARY KEY, fileHash TEXT, modelVersion TEXT, openl3_vector BLOB, essentiaVector BLOB, chromaprintFingerprint TEXT, rmsMean REAL, hpcp BLOB, bpm REAL, key TEXT, durationSec REAL, bitrateKbps REAL, updatedAt TEXT`。  
   - `schema_meta`：`key TEXT PRIMARY KEY, value TEXT`（记录 schemaVersion、模型版本等）。  
   - `song_prediction_cache`：`songId TEXT, modelRevision INTEGER, fileHash TEXT, score REAL, updatedAt TEXT, PRIMARY KEY(songId, modelRevision, fileHash)`（预测分数缓存，仅用于加速列表展示）。  
-- 向量存储：`openl3_vector/hpcp` 用 **f32 小端序 BLOB**（无损），必要时可再加 `zstd` 无损压缩列。  
+- 向量存储：`openl3_vector/hpcp/essentiaVector` 用 **f32 小端序 BLOB**（无损），必要时可再加 `zstd` 无损压缩列。  
 - 索引：对 `fileHash`、`modelVersion`、`updatedAt` 建索引，保证增量扫描与版本迁移效率。  
 - 迁移策略：`schema_meta.schemaVersion` 单调递增；升级时做原子迁移（新表→拷贝→切换），与未来把 `songFingerprint` 迁到 SQLite 时保持同一套版本化/备份约定。
 
@@ -312,7 +322,7 @@ Release 工作流 `/.github/workflows/release.yml` 已包含 `prepare_openl3_onn
   - `getSelectionLabelSnapshot(labelStorePath) -> { positiveIds, negativeIds, sampleChangeCount }`。  
   - `resetSelectionSampleChangeCount(labelStorePath) -> sampleChangeCount`。  
   - `resetSelectionLabels(labelStorePath) -> boolean`。  
-- 模型持久化：GBDT 模型二进制落到 **库目录** `models/selection/selection_gbdt_v1.bin`，与 manifest 一起管理与迁移。  
+- 模型持久化：GBDT 模型二进制落到 **库目录** `models/selection/selection_gbdt_v2.bin`，与 manifest 一起管理与迁移。  
 
 ## 前端交互与样本标注（草案，不实现）
 - 右键菜单（曲目）：新增“喜欢该曲目 / 不喜欢该曲目 / 清除喜好标记”，支持对当前选中集批量生效；执行后统一覆盖为目标标记（清除=置为 `neutral`）。
@@ -361,4 +371,89 @@ Release 工作流 `/.github/workflows/release.yml` 已包含 `prepare_openl3_onn
 2) 选定推理栈（Rust + ort），完成 OpenL3 的 ONNX 转换与最小推理原型（单曲推理 + 全量相似度统计）。  
 3) 设计特征缓存与索引存储格式（含版本与校验），实现增量更新。  
 4) 用历史精选/非精选样本快速训练并调试一版 GBDT 重排，评估 Precision@K/NDCG。  
-5) 前端规划：候选列表展示、进度/取消与错误提示。
+5) 前端规划：候选列表展示、进度/取消与错误提示。  
+
+## BPM/调性列表列与特征回收（草案）
+
+### 目标
+- 歌曲列表新增两列：`BPM` 与 `调性`
+- 未分析的条目显示 `—`
+- 后台渐进补齐，不阻塞 UI
+- 仍使用 `features.db`，不新建数据库
+
+### 数据来源/存储
+- `features.db` -> `song_features` 表
+  - `bpm`：数值（保留 1 位小数）
+- `key`：字符串（如 `C` / `Em`，落库即标准格式，不再保留 `c:maj`）
+- `songId` 基于 PCM SHA256（`selection_path_index.db`）
+
+### 展示规则
+- 有值：直接展示 `bpm` 与 `key`
+- 无值：展示 `—`
+- 列表刷新后触发后台补齐，补齐完成自动刷新对应行
+
+### 后台补齐策略（草案）
+- 入口：列表加载完成后对缺失 `bpm/key` 的曲目发起后台分析
+- 任务：主进程调用 `rust_package.extractSelectionBpmKeyFeatures`（仅 Essentia CLI；失败/缺失记录失败并跳过）
+- 入库：按批次写入（`batchSize=10`，并发=2），每批完成即触发 `selection:bpmKeyUpdated` 刷新对应行
+- 限长：`maxAnalyzeSeconds=60`（只做 BPM/调性，不做 OpenL3）
+
+### Essentia 接入（已选方案）
+- 二进制：使用自建仓库 `coderDJing/essentia-build` 的 Release 产物 `essentia_streaming_extractor_music`，放入 `vendor/essentia/*`
+- 目录结构示例：
+  - `vendor/essentia/win32-x64/essentia_streaming_extractor_music.exe`
+  - `vendor/essentia/win32-x64/profiles/all_config.yaml`
+  - `vendor/essentia/win32-x64/svm_models/*`
+  - `vendor/essentia/darwin-arm64/essentia_streaming_extractor_music`
+  - `vendor/essentia/darwin-arm64/profiles/all_config.yaml`
+  - `vendor/essentia/darwin-arm64/svm_models/*`
+  - `vendor/essentia/darwin-x64/essentia_streaming_extractor_music`
+  - `vendor/essentia/darwin-x64/profiles/all_config.yaml`
+  - `vendor/essentia/darwin-x64/svm_models/*`
+- 获取方式：从 `https://github.com/coderDJing/essentia-build/releases` 下载对应平台压缩包并解压（二进制无需提交 Git）
+- 路径：主进程启动时设置 `FRKB_ESSENTIA_PATH`（打包后为 `resources/essentia/...`）
+- 输出格式：按输出文件名后缀自动切换，`.json` 输出 JSON，`.yaml/.yml` 输出 YAML；项目默认输出 `.json`
+- 可选参数：支持 `FRKB_ESSENTIA_ARGS`（可用 `{input}` / `{output}` / `{max_seconds}` 占位）
+- 缺失处理：二进制不可用或执行失败直接报错并记录失败（不做回退）
+
+#### GitHub Actions 自动下载（Release）
+- secrets：
+  - `ESSENTIA_URL_WIN`（必填）
+  - `ESSENTIA_URL_MAC_UNIVERSAL`（推荐）
+  - 或 `ESSENTIA_URL_MAC_ARM64` + `ESSENTIA_URL_MAC_X64`（分别下载后用 `lipo` 合并）
+- CI 会解压并自动拷贝二进制 + `profiles/` + `svm_models/` 到 `vendor/essentia/*`，打包时随 `extraResources` 带入安装包
+- 默认指向 `v2.0.1-build.43` 的 Release 资产，除非 secrets 覆盖
+
+### 特征回收策略（外部删除兜底）
+> 前提：用户可能在文件系统中手动删除歌曲；不依赖实时监听。
+
+#### 规则
+- 仅清理 **label=neutral** 的曲目特征
+- `liked/disliked` 即使文件不存在也保留（用于训练）
+- 通过 `selection_path_index.db` 判断“是否仍有路径引用”
+
+#### 时机
+- 启动后每天静默跑一次（后台任务）
+- 跑完 `selection_path_index` 的 TTL GC 后，再清理孤儿特征
+
+#### 流程
+1) `gcSelectionPathIndex(ttlDays=7)` 回收 7 天未见的 path 记录  
+2) 统计 songId 引用数（仅 count=0 视为孤儿）  
+3) 读取对应 label（非 liked/disliked 才清理）  
+4) 删除 `features.db` 中的 `song_features` + 预测缓存
+
+#### 复制多份文件
+- 同内容多路径 -> 引用数 > 0，不会误删  
+
+### 需要补的接口（草案）
+- `countSelectionPathIndexBySongIds(songIds)`：返回引用计数
+- `deleteSelectionSongFeatures(songIds)`：删除特征 + 清缓存
+
+### 风险与说明
+- 网络盘/离线盘长时间不可用会被视为“删除”（TTL=7 天）
+- `liked/disliked` 样本不受影响，训练数据安全
+
+### TODO
+- ✅ 列表列定义与渲染
+- ✅ 缺失特征的后台补齐调度
+- ⏳ 维护任务（每日一次）与孤儿清理

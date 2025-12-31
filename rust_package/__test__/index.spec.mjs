@@ -101,7 +101,7 @@ test('selection features db basic flow', (t) => {
         modelVersion: 'selection_features_v1',
         rmsMean: 0.123,
         bpm: 128.5,
-        key: 'c:maj',
+        key: 'C',
         durationSec: 180.2,
         bitrateKbps: 320,
         chromaprintFingerprint: '1,2,3,4,5'

@@ -1,24 +1,21 @@
 import {
-  decodeAudioFileLimited,
   extractOpenL3Embedding,
+  extractSelectionBpmKeyFeatures,
+  extractSelectionEssentiaFeatures,
   type UpsertSongFeaturesInput
 } from 'rust_package'
 import { app } from 'electron'
 import { spawn } from 'child_process'
 import fs = require('fs-extra')
+import os = require('os')
+import path = require('path')
 import { ensureFpcalcExecutable, resolveBundledFpcalcPath } from '../chromaprint'
 import { ensureOpenL3ModelReady } from '../openl3'
 
-const Meyda = require('meyda')
-
-const DEFAULT_MODEL_VERSION = 'selection_features_v1'
+const DEFAULT_MODEL_VERSION = 'selection_features_v2'
 const DEFAULT_MAX_ANALYZE_SECONDS = 120
+const DEFAULT_BPM_KEY_MAX_ANALYZE_SECONDS = 15
 const DEFAULT_OPENL3_MAX_WINDOWS = 64
-const FEATURE_SEGMENT_SECONDS = 12
-const FEATURE_SEGMENT_HOP_SECONDS = 4
-const FEATURE_SEGMENT_COUNT = 3
-const FEATURE_SEGMENT_EDGE_GUARD_SECONDS = 6
-const CHROMA_MAX_FRAMES = 400
 const DECODE_TIMEOUT_MS = 120_000
 const META_TIMEOUT_MS = 10_000
 const OPENL3_TIMEOUT_MS = 300_000
@@ -60,6 +57,24 @@ export type SelectionFeatureExtractReportItem = {
   error?: string
   openl3?: 'skipped' | 'ok' | 'failed'
   openl3Error?: string
+  elapsedMs?: number
+}
+
+export type SelectionBpmKeyExtractReportItem = {
+  songId: string
+  filePath: string
+  ok: boolean
+  error?: string
+  elapsedMs?: number
+}
+
+const TIMING_LOG_PATH = path.join(os.homedir(), 'Desktop', 'frkb-selection-timing.txt')
+
+const logTiming = (tag: string, payload: Record<string, any>) => {
+  try {
+    const line = `${new Date().toISOString()} ${tag} ${JSON.stringify(payload)}\n`
+    void fs.appendFile(TIMING_LOG_PATH, line)
+  } catch {}
 }
 
 export async function buildSelectionSongFeaturePatches(
@@ -183,55 +198,46 @@ export async function buildSelectionSongFeaturePatches(
     })()
 
     try {
-      const decodeAt = Date.now()
-      devLog(`[selection] 特征提取：解码开始 songId=${songId}`)
-      const decoded = await withTimeout(
-        decodeAudioFileLimited(filePath, maxAnalyzeSeconds),
-        DECODE_TIMEOUT_MS,
-        '音频解码超时'
-      )
-      if (decoded?.error) throw new Error(decoded.error)
-      devLog(
-        `[selection] 特征提取：解码完成 songId=${songId} (${Date.now() - decodeAt}ms) sr=${String(
-          decoded.sampleRate
-        )} ch=${String(decoded.channels)} frames=${String(decoded.totalFrames)} bytes=${String(
-          decoded.pcmData?.byteLength || 0
-        )}`
-      )
-
-      const channels = Math.max(1, Number(decoded.channels || 1))
-      const sampleRate = Math.max(1, Number(decoded.sampleRate || 0))
-      const totalFrames = Math.max(0, Number(decoded.totalFrames || 0))
-      const durationSec = totalFrames > 0 ? totalFrames / sampleRate : 0
-
-      const pcm = toFloat32ArrayView(decoded.pcmData)
-      const maxFrames = Math.min(
-        totalFrames > 0 ? totalFrames : Math.floor(pcm.length / channels),
-        Math.floor(sampleRate * maxAnalyzeSeconds)
-      )
-      const mono = downmixToMono(pcm, channels, maxFrames)
-
       const calcAt = Date.now()
-      const { rmsMean, hpcpVec, bpm, segmentSummary } = computeSegmentedAudioFeatures(
-        mono,
-        sampleRate
+      const audioRes = await withTimeout(
+        extractSelectionEssentiaFeatures(filePath, maxAnalyzeSeconds),
+        DECODE_TIMEOUT_MS,
+        '音频分析超时'
       )
-      const key = hpcpVec ? detectKeyFromChroma(hpcpVec) : null
+      const rmsMean =
+        typeof audioRes?.rmsMean === 'number' && Number.isFinite(audioRes.rmsMean)
+          ? audioRes.rmsMean
+          : null
+      const bpm =
+        typeof audioRes?.bpm === 'number' && Number.isFinite(audioRes.bpm) ? audioRes.bpm : null
+      const key =
+        typeof audioRes?.key === 'string' && audioRes.key.trim()
+          ? String(audioRes.key).trim()
+          : null
+      const hpcp = Buffer.isBuffer(audioRes?.hpcp) ? audioRes.hpcp : null
+      const essentiaVector = Buffer.isBuffer(audioRes?.essentiaVector)
+        ? audioRes.essentiaVector
+        : null
+      const durationSec =
+        typeof audioRes?.durationSec === 'number' && Number.isFinite(audioRes.durationSec)
+          ? audioRes.durationSec
+          : null
       devLog(
-        `[selection] 特征提取：音频特征完成 songId=${songId} (${Date.now() - calcAt}ms) segments=${segmentSummary} rmsMean=${String(
+        `[selection] 特征提取：音频特征完成 songId=${songId} (${Date.now() - calcAt}ms) rmsMean=${String(
           rmsMean ?? ''
-        )} bpm=${String(bpm ?? '')} key=${String(key ?? '')} hpcp=${
-          hpcpVec ? hpcpVec.map((v) => Number(v || 0).toFixed(3)).join(',') : ''
-        }`
+        )} bpm=${String(bpm ?? '')} key=${String(key ?? '')} hpcpBytes=${String(
+          hpcp?.byteLength || 0
+        )} essentiaBytes=${String(essentiaVector?.byteLength || 0)}`
       )
 
       patches.push({
         ...basePatch,
         rmsMean: rmsMean ?? undefined,
-        hpcp: hpcpVec ? f32ArrayToLEBuffer(hpcpVec) : undefined,
+        hpcp: hpcp ?? undefined,
         bpm: bpm ?? undefined,
         key: key ?? undefined,
-        durationSec: Number.isFinite(durationSec) && durationSec > 0 ? durationSec : undefined
+        essentiaVector: essentiaVector ?? undefined,
+        durationSec: durationSec && durationSec > 0 ? durationSec : undefined
       })
       report.push({ songId, filePath, ok: true })
     } catch (error: any) {
@@ -290,14 +296,25 @@ export async function buildSelectionSongFeaturePatches(
       return out.map((v) => v.toFixed(4)).join(',')
     })()
 
+    const elapsedMs = Date.now() - startedAt
+    if (lastReport) lastReport.elapsedMs = elapsedMs
+    logTiming('features:timing', {
+      songId,
+      filePath,
+      ms: elapsedMs,
+      ok: lastReport?.ok === true,
+      openl3: lastReport?.openl3
+    })
     devLog(
-      `[selection] 特征提取：结果 songId=${songId} (${Date.now() - startedAt}ms) rmsMean=${String(
+      `[selection] 特征提取：结果 songId=${songId} (${elapsedMs}ms) rmsMean=${String(
         lastPatch.rmsMean ?? ''
       )} bpm=${String(lastPatch.bpm ?? '')} key=${String(lastPatch.key ?? '')} durationSec=${String(
         lastPatch.durationSec ?? ''
       )} bitrateKbps=${String(lastPatch.bitrateKbps ?? '')} hpcpBytes=${String(
         (lastPatch.hpcp as any)?.byteLength || 0
-      )} chromaprintLen=${String(lastPatch.chromaprintFingerprint?.length || 0)} openl3Bytes=${String(
+      )} essentiaBytes=${String((lastPatch.essentiaVector as any)?.byteLength || 0)} chromaprintLen=${String(
+        lastPatch.chromaprintFingerprint?.length || 0
+      )} openl3Bytes=${String(
         (lastPatch.openl3Vector as any)?.byteLength || 0
       )} openl3=${String(lastReport?.openl3 || '')} openl3Head=${openl3Head}`
     )
@@ -306,220 +323,99 @@ export async function buildSelectionSongFeaturePatches(
   return { patches, report }
 }
 
-function toFloat32ArrayView(pcmData: unknown): Float32Array {
-  if (!pcmData) return new Float32Array(0)
-  if (pcmData instanceof Float32Array) return pcmData
-  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(pcmData)) {
-    const buffer = pcmData as Buffer
-    return new Float32Array(buffer.buffer, buffer.byteOffset, Math.floor(buffer.byteLength / 4))
+export async function buildSelectionSongBpmKeyPatches(
+  items: SelectionFeatureSourceItem[],
+  options?: {
+    modelVersion?: string
+    maxAnalyzeSeconds?: number
   }
-  if (pcmData instanceof Uint8Array) {
-    return new Float32Array(pcmData.buffer, pcmData.byteOffset, Math.floor(pcmData.byteLength / 4))
-  }
-  return new Float32Array(0)
-}
+): Promise<{ patches: UpsertSongFeaturesInput[]; report: SelectionBpmKeyExtractReportItem[] }> {
+  const modelVersion =
+    typeof options?.modelVersion === 'string' && options.modelVersion.trim()
+      ? options.modelVersion.trim()
+      : DEFAULT_MODEL_VERSION
+  const maxAnalyzeSeconds =
+    typeof options?.maxAnalyzeSeconds === 'number' && options.maxAnalyzeSeconds > 0
+      ? options.maxAnalyzeSeconds
+      : DEFAULT_BPM_KEY_MAX_ANALYZE_SECONDS
 
-function downmixToMono(
-  pcmInterleaved: Float32Array,
-  channels: number,
-  frames: number
-): Float32Array {
-  const outFrames = Math.max(0, Math.min(frames, Math.floor(pcmInterleaved.length / channels)))
-  const mono = new Float32Array(outFrames)
-  if (outFrames === 0) return mono
+  const patches: UpsertSongFeaturesInput[] = []
+  const report: SelectionBpmKeyExtractReportItem[] = []
 
-  if (channels === 1) {
-    mono.set(pcmInterleaved.subarray(0, outFrames))
-    return mono
-  }
-
-  for (let frameIndex = 0; frameIndex < outFrames; frameIndex++) {
-    let sum = 0
-    const base = frameIndex * channels
-    for (let channelIndex = 0; channelIndex < channels; channelIndex++) {
-      sum += pcmInterleaved[base + channelIndex] || 0
-    }
-    mono[frameIndex] = sum / channels
-  }
-  return mono
-}
-
-type FeatureSegment = {
-  startFrame: number
-  endFrame: number
-  rms: number
-}
-
-function computeSegmentedAudioFeatures(
-  signal: Float32Array,
-  sampleRate: number
-): {
-  rmsMean: number | null
-  hpcpVec: number[] | null
-  bpm: number | null
-  segmentSummary: string
-} {
-  const segments = selectFeatureSegments(signal, sampleRate)
-  let rmsEnergySum = 0
-  let rmsFrames = 0
-  const chromaAcc = new Array(12).fill(0)
-  let chromaWeight = 0
-  const bpmValues: number[] = []
-
-  for (const segment of segments) {
-    const segmentSignal = signal.subarray(segment.startFrame, segment.endFrame)
-    const segmentFrames = segmentSignal.length
-    if (!segmentFrames) continue
-
-    const segmentRms = Number.isFinite(segment.rms) ? segment.rms : computeRmsMean(segmentSignal)
-    if (typeof segmentRms === 'number' && Number.isFinite(segmentRms)) {
-      rmsEnergySum += segmentRms * segmentRms * segmentFrames
-      rmsFrames += segmentFrames
+  for (const item of items) {
+    const songId = typeof item?.songId === 'string' ? item.songId.trim() : ''
+    const filePath = typeof item?.filePath === 'string' ? item.filePath : ''
+    if (!songId || !filePath) {
+      continue
     }
 
-    const chroma = computeMeanChroma(segmentSignal, sampleRate)
-    if (chroma) {
-      for (let i = 0; i < 12; i++) {
-        chromaAcc[i] += (chroma[i] || 0) * segmentFrames
-      }
-      chromaWeight += segmentFrames
+    const fileHash =
+      typeof item?.fileHash === 'string' && item.fileHash.trim() ? item.fileHash.trim() : songId
+
+    const basePatch: UpsertSongFeaturesInput = {
+      songId,
+      fileHash,
+      modelVersion
     }
 
-    const bpm = estimateBpmFromSignal(segmentSignal, sampleRate)
-    if (typeof bpm === 'number' && Number.isFinite(bpm)) {
-      bpmValues.push(bpm)
+    const startedAt = Date.now()
+    devLog(`[selection] BPM/调性：开始 songId=${songId} 最大分析秒数=${String(maxAnalyzeSeconds)}`)
+
+    try {
+      const audioRes = await withTimeout(
+        extractSelectionBpmKeyFeatures(filePath, maxAnalyzeSeconds),
+        DECODE_TIMEOUT_MS,
+        '音频分析超时'
+      )
+      const bpm =
+        typeof audioRes?.bpm === 'number' && Number.isFinite(audioRes.bpm) ? audioRes.bpm : null
+      const key =
+        typeof audioRes?.key === 'string' && audioRes.key.trim()
+          ? String(audioRes.key).trim()
+          : null
+
+      const elapsedMs = Date.now() - startedAt
+      patches.push({
+        ...basePatch,
+        bpm: typeof bpm === 'number' && Number.isFinite(bpm) ? bpm : undefined,
+        key: key ?? undefined
+      })
+      report.push({ songId, filePath, ok: true, elapsedMs })
+      logTiming('bpmKey:timing', {
+        songId,
+        filePath,
+        ms: elapsedMs,
+        ok: true,
+        bpm,
+        key
+      })
+      devLog(
+        `[selection] BPM/调性：完成 songId=${songId} (${elapsedMs}ms) bpm=${String(
+          bpm ?? ''
+        )} key=${String(key ?? '')}`
+      )
+    } catch (error: any) {
+      const elapsedMs = Date.now() - startedAt
+      patches.push(basePatch)
+      report.push({
+        songId,
+        filePath,
+        ok: false,
+        error: String(error?.message || error),
+        elapsedMs
+      })
+      logTiming('bpmKey:timing', {
+        songId,
+        filePath,
+        ms: elapsedMs,
+        ok: false,
+        error: String(error?.message || error)
+      })
     }
   }
 
-  const rmsMean = rmsFrames > 0 ? Math.sqrt(rmsEnergySum / rmsFrames) : null
-  const hpcpVec = chromaWeight > 0 ? normalizeChroma(chromaAcc, chromaWeight) : null
-  const bpm = median(bpmValues)
-  const segmentSummary = segments
-    .map((segment) => {
-      const startSec = segment.startFrame / sampleRate
-      const endSec = segment.endFrame / sampleRate
-      return `${startSec.toFixed(1)}-${endSec.toFixed(1)}s`
-    })
-    .join(',')
-
-  return { rmsMean, hpcpVec, bpm, segmentSummary: segmentSummary || 'n/a' }
+  return { patches, report }
 }
-
-function selectFeatureSegments(signal: Float32Array, sampleRate: number): FeatureSegment[] {
-  const totalFrames = signal.length
-  if (!totalFrames || sampleRate <= 0) return []
-
-  const segmentFrames = Math.max(1, Math.floor(sampleRate * FEATURE_SEGMENT_SECONDS))
-  if (totalFrames <= segmentFrames) {
-    const rms = computeRmsMean(signal) ?? 0
-    return [{ startFrame: 0, endFrame: totalFrames, rms }]
-  }
-
-  const hopFrames = Math.max(1, Math.floor(sampleRate * FEATURE_SEGMENT_HOP_SECONDS))
-  const edgeGuardFrames = Math.max(0, Math.floor(sampleRate * FEATURE_SEGMENT_EDGE_GUARD_SECONDS))
-  const lastStart = Math.max(0, totalFrames - segmentFrames)
-  const candidates: FeatureSegment[] = []
-
-  for (let start = 0; start <= lastStart; start += hopFrames) {
-    if (edgeGuardFrames > 0) {
-      if (start < edgeGuardFrames || start > lastStart - edgeGuardFrames) continue
-    }
-    const end = start + segmentFrames
-    const rms = computeRmsMean(signal.subarray(start, end)) ?? 0
-    candidates.push({ startFrame: start, endFrame: end, rms })
-  }
-
-  if (!candidates.length) {
-    const rms = computeRmsMean(signal) ?? 0
-    return [{ startFrame: 0, endFrame: totalFrames, rms }]
-  }
-
-  candidates.sort((a, b) => b.rms - a.rms)
-  const selected: FeatureSegment[] = []
-  const minGapFrames = Math.max(1, Math.floor(segmentFrames * 0.6))
-
-  for (const candidate of candidates) {
-    if (selected.length >= FEATURE_SEGMENT_COUNT) break
-    const separated = selected.every(
-      (segment) => Math.abs(candidate.startFrame - segment.startFrame) >= minGapFrames
-    )
-    if (!separated) continue
-    selected.push(candidate)
-  }
-
-  if (!selected.length) {
-    const rms = computeRmsMean(signal) ?? 0
-    return [{ startFrame: 0, endFrame: totalFrames, rms }]
-  }
-
-  selected.sort((a, b) => a.startFrame - b.startFrame)
-  return selected
-}
-
-function computeRmsMean(signal: Float32Array): number | null {
-  if (!signal.length) return null
-  let sum = 0
-  for (let i = 0; i < signal.length; i++) {
-    const v = signal[i] || 0
-    sum += v * v
-  }
-  return Math.sqrt(sum / signal.length)
-}
-
-function normalizeChroma(acc: number[], weight: number): number[] {
-  const mean = acc.map((v) => v / weight)
-  const norm = Math.sqrt(mean.reduce((s, v) => s + v * v, 0))
-  if (norm > 0) {
-    for (let i = 0; i < mean.length; i++) mean[i] = mean[i] / norm
-  }
-  return mean
-}
-
-function computeMeanChroma(signal: Float32Array, sampleRate: number): number[] | null {
-  const windowSize = 2048
-  const hopSize = 1024
-  if (signal.length < windowSize) return null
-
-  Meyda.sampleRate = sampleRate
-  Meyda.bufferSize = windowSize
-
-  const acc = new Array(12).fill(0)
-  let n = 0
-
-  const totalFrames = Math.floor((signal.length - windowSize) / hopSize) + 1
-  const step = totalFrames > CHROMA_MAX_FRAMES ? Math.ceil(totalFrames / CHROMA_MAX_FRAMES) : 1
-
-  for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += step) {
-    const offset = frameIndex * hopSize
-    const frame = signal.subarray(offset, offset + windowSize)
-    const features = Meyda.extract(['chroma'], frame)
-    const chroma = (features as any)?.chroma as ArrayLike<number> | undefined
-    if (!chroma || typeof chroma.length !== 'number' || chroma.length < 12) continue
-    for (let i = 0; i < 12; i++) {
-      acc[i] += Number(chroma[i] || 0)
-    }
-    n++
-  }
-
-  if (n <= 0) return null
-  const mean = acc.map((v) => v / n)
-  const norm = Math.sqrt(mean.reduce((s, v) => s + v * v, 0))
-  if (norm > 0) {
-    for (let i = 0; i < mean.length; i++) mean[i] = mean[i] / norm
-  }
-  return mean
-}
-
-function median(values: number[]): number | null {
-  if (!Array.isArray(values) || values.length === 0) return null
-  const sorted = values.slice().sort((a, b) => a - b)
-  const mid = Math.floor(sorted.length / 2)
-  if (sorted.length % 2 === 0) {
-    return (sorted[mid - 1] + sorted[mid]) / 2
-  }
-  return sorted[mid]
-}
-
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return promise
   let timer: NodeJS.Timeout | null = null
@@ -533,109 +429,6 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: s
   } finally {
     if (timer) clearTimeout(timer)
   }
-}
-
-function detectKeyFromChroma(chroma: number[]): string | null {
-  if (!Array.isArray(chroma) || chroma.length < 12) return null
-  const energy = chroma.reduce((s, v) => s + v * v, 0)
-  if (energy <= 0) return null
-
-  // Krumhansl-Schmuckler profiles
-  const major = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]
-  const minor = [6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
-  const roots = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b']
-
-  const scoreFor = (profile: number[], shift: number): number => {
-    let dot = 0
-    let na = 0
-    let nb = 0
-    for (let i = 0; i < 12; i++) {
-      const a = chroma[i] || 0
-      const b = profile[(i - shift + 12) % 12] || 0
-      dot += a * b
-      na += a * a
-      nb += b * b
-    }
-    if (na <= 0 || nb <= 0) return 0
-    return dot / (Math.sqrt(na) * Math.sqrt(nb))
-  }
-
-  let best = { score: 0, root: 0, mode: 'maj' as 'maj' | 'min' }
-  for (let shift = 0; shift < 12; shift++) {
-    const sMaj = scoreFor(major, shift)
-    if (sMaj > best.score) best = { score: sMaj, root: shift, mode: 'maj' }
-    const sMin = scoreFor(minor, shift)
-    if (sMin > best.score) best = { score: sMin, root: shift, mode: 'min' }
-  }
-
-  const root = roots[best.root] || 'c'
-  return `${root}:${best.mode}`
-}
-
-function estimateBpmFromSignal(signal: Float32Array, sampleRate: number): number | null {
-  const minBpm = 60
-  const maxBpm = 200
-  const frameSize = 1024
-  const hopSize = 512
-  if (signal.length < frameSize * 4) return null
-
-  const frameCount = Math.floor((signal.length - frameSize) / hopSize) + 1
-  if (frameCount < 32) return null
-
-  const energy = new Float32Array(frameCount)
-  for (let i = 0; i < frameCount; i++) {
-    const start = i * hopSize
-    let sum = 0
-    for (let j = 0; j < frameSize; j++) {
-      const v = signal[start + j] || 0
-      sum += v * v
-    }
-    energy[i] = Math.sqrt(sum / frameSize)
-  }
-
-  // onset envelope：正向差分
-  const onset = new Float32Array(frameCount)
-  for (let i = 1; i < frameCount; i++) {
-    const d = energy[i] - energy[i - 1]
-    onset[i] = d > 0 ? d : 0
-  }
-
-  const framesPerSecond = sampleRate / hopSize
-  const minLag = Math.max(1, Math.floor((60 * framesPerSecond) / maxBpm))
-  const maxLag = Math.max(minLag + 1, Math.floor((60 * framesPerSecond) / minBpm))
-  if (frameCount < maxLag * 2) return null
-
-  let bestLag = 0
-  let bestScore = -Infinity
-  for (let lag = minLag; lag <= maxLag; lag++) {
-    let sum = 0
-    for (let i = 0; i + lag < frameCount; i++) {
-      sum += onset[i] * onset[i + lag]
-    }
-    if (sum > bestScore) {
-      bestScore = sum
-      bestLag = lag
-    }
-  }
-  if (bestLag <= 0 || !Number.isFinite(bestScore) || bestScore <= 0) return null
-
-  let bpm = (60 * framesPerSecond) / bestLag
-  if (!Number.isFinite(bpm) || bpm <= 0) return null
-
-  // 轻量修正：把结果折叠到常见展示范围
-  while (bpm < 80) bpm *= 2
-  while (bpm > 160) bpm /= 2
-
-  return Math.round(bpm * 10) / 10
-}
-
-function f32ArrayToLEBuffer(values: ArrayLike<number>): Buffer {
-  const n = Math.max(0, Number(values?.length || 0))
-  const buffer = Buffer.alloc(n * 4)
-  for (let i = 0; i < n; i++) {
-    buffer.writeFloatLE(Number(values[i] || 0), i * 4)
-  }
-  return buffer
 }
 
 async function readAudioFormatMeta(

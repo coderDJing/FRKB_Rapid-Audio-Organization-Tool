@@ -103,6 +103,12 @@ cd ..
 pnpm install
 ```
 
+### Essentia CLI (BPM/Key)
+BPM/Key analysis uses the Essentia CLI from https://github.com/coderDJing/essentia-build/releases.
+CI downloads the archives into `vendor/essentia` for packaging.
+Default pinned release: `v2.0.1-build.43` (override via workflow secrets).
+High-level features require `profiles/` and `svm_models/` placed alongside the binary.
+
 ### Development Mode
 
 ```bash

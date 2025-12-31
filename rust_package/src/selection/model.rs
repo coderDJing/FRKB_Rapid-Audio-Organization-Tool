@@ -1,3 +1,4 @@
+use crate::selection::essentia_schema;
 use crate::selection::feature_store::SongFeaturesRow;
 use gbdt::config::Config;
 use gbdt::decision_tree::{Data, DataVec};
@@ -5,6 +6,7 @@ use gbdt::gradient_boost::GBDT;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectionErrorCode {
@@ -65,8 +67,8 @@ pub struct SelectionGbdtModelV1 {
   pub gbdt: GBDT,
 }
 
-pub const GBDT_MODEL_VERSION: &str = "selection_gbdt_v1";
-pub const GBDT_MODEL_FILE_NAME: &str = "selection_gbdt_v1.bin";
+pub const GBDT_MODEL_VERSION: &str = "selection_gbdt_v2";
+pub const GBDT_MODEL_FILE_NAME: &str = "selection_gbdt_v2.bin";
 
 pub fn dedupe_ids(positive_ids: Vec<String>, negative_ids: Vec<String>) -> (Vec<String>, Vec<String>) {
   let mut pos_set: HashSet<String> = positive_ids
@@ -178,7 +180,7 @@ pub fn train_gbdt_model(
   gbdt.fit(&mut dv);
 
   let model = SelectionGbdtModelV1 {
-    version: 1,
+    version: 2,
     model_revision,
     trained_at_ms,
     positive_ids,
@@ -272,7 +274,7 @@ pub fn predict_with_model(
 }
 
 fn feature_names_v1() -> Vec<String> {
-  vec![
+  let mut names = vec![
     "hpcp_corr_max".to_string(),
     "bpm_diff_min".to_string(),
     "key_dist_min".to_string(),
@@ -293,7 +295,10 @@ fn feature_names_v1() -> Vec<String> {
     "openl3_sim_centroid".to_string(),
     "has_openl3".to_string(),
     "has_openl3_pos".to_string(),
-  ]
+    "has_essentia".to_string(),
+  ];
+  names.extend(essentia_schema::essentia_feature_names());
+  names
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -318,6 +323,7 @@ struct FeatureValuesV1 {
   openl3_sim_centroid: f32,
   has_openl3: f32,
   has_openl3_pos: f32,
+  has_essentia: f32,
 }
 
 fn build_features_for_names(
@@ -361,7 +367,8 @@ fn build_features_for_names(
       "openl3_sim_centroid" => v.openl3_sim_centroid,
       "has_openl3" => v.has_openl3,
       "has_openl3_pos" => v.has_openl3_pos,
-      _ => 0.0,
+      "has_essentia" => v.has_essentia,
+      _ => essentia_feature_value(candidate, name).unwrap_or(0.0),
     })
     .collect()
 }
@@ -401,6 +408,15 @@ fn compute_feature_values_v1(
     has_openl3,
     has_openl3_pos,
   ) = feature_openl3_sim_stats(candidate, positive_openl3, openl3_centroid, exclude_positive_id);
+  let has_essentia = if candidate
+    .essentia_vector
+    .as_ref()
+    .is_some_and(|v| !v.is_empty())
+  {
+    1.0
+  } else {
+    0.0
+  };
 
   FeatureValuesV1 {
     hpcp_corr_max,
@@ -423,6 +439,7 @@ fn compute_feature_values_v1(
     openl3_sim_centroid,
     has_openl3,
     has_openl3_pos,
+    has_essentia,
   }
 }
 
@@ -562,9 +579,34 @@ fn parse_key_code(key: &str) -> Option<i32> {
     return None;
   }
   let lower = raw.to_ascii_lowercase();
-  let mut parts = lower.split(':');
-  let root = parts.next()?.trim();
-  let mode = parts.next().unwrap_or("maj").trim();
+  let bytes = lower.as_bytes();
+  if bytes.is_empty() {
+    return None;
+  }
+  let first = bytes[0] as char;
+  if first < 'a' || first > 'g' {
+    return None;
+  }
+
+  let mut idx = 1usize;
+  if idx < bytes.len() {
+    let c = bytes[idx] as char;
+    if c == '#' || c == 'b' {
+      idx += 1;
+    }
+  }
+
+  let root = lower.get(0..idx)?.trim();
+  while idx < bytes.len() {
+    let c = bytes[idx];
+    if c == b':' || c.is_ascii_whitespace() {
+      idx += 1;
+      continue;
+    }
+    break;
+  }
+  let mode_raw = lower.get(idx..).unwrap_or("").trim();
+  let mode = if mode_raw.is_empty() { "maj" } else { mode_raw };
 
   let pitch = match root {
     "c" => 0,
@@ -582,7 +624,7 @@ fn parse_key_code(key: &str) -> Option<i32> {
     _ => return None,
   };
 
-  let minor = mode == "min" || mode == "minor" || mode.ends_with('m');
+  let minor = mode == "min" || mode == "minor" || mode == "m";
   let code = pitch + if minor { 12 } else { 0 };
   Some(code)
 }
@@ -812,4 +854,22 @@ fn mix64(mut x: u64) -> u64 {
   x = (x ^ (x >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
   x = (x ^ (x >> 27)).wrapping_mul(0x94d049bb133111eb);
   x ^ (x >> 31)
+}
+
+fn essentia_feature_value(candidate: &SongFeaturesRow, name: &str) -> Option<f32> {
+  let idx = essentia_feature_index(name)?;
+  let vec = candidate.essentia_vector.as_ref()?;
+  vec.get(idx).copied()
+}
+
+fn essentia_feature_index(name: &str) -> Option<usize> {
+  static INDEX: OnceLock<HashMap<String, usize>> = OnceLock::new();
+  let map = INDEX.get_or_init(|| {
+    let mut out = HashMap::new();
+    for (idx, key) in essentia_schema::essentia_feature_names().into_iter().enumerate() {
+      out.insert(key, idx);
+    }
+    out
+  });
+  map.get(name).copied()
 }

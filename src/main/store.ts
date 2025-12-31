@@ -63,6 +63,7 @@ let settingConfig: ISettingConfig = {
   persistSongFilters: false,
   enableExplorerContextMenu: false,
   showPlaylistTrackCount: true,
+  keyDisplayMode: 'classic',
   lastSeenWhatsNewVersion: '',
   pendingWhatsNewForVersion: ''
 } //设置config

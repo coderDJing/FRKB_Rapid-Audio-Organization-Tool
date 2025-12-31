@@ -1,17 +1,15 @@
-/// <reference types="node" />
-
-export interface ProcessProgress {
+export type ProcessProgress = {
   processed: number
   total: number
 }
 
-export interface AudioFileResult {
+export type AudioFileResult = {
   sha256Hash: string
   filePath: string
   error?: string | null
 }
 
-export interface DecodeAudioResult {
+export type DecodeAudioResult = {
   pcmData: Buffer
   sampleRate: number
   channels: number
@@ -19,63 +17,86 @@ export interface DecodeAudioResult {
   error?: string | null
 }
 
-export interface SelectionFailed {
+export type SelectionFailed = {
   errorCode: string
   message?: string | null
 }
 
-export interface TrainSelectionGbdtResult {
+export type TrainSelectionGbdtResult = {
   status: string
-  modelRevision: number | null
-  modelPath: string | null
+  modelRevision?: number | null
+  modelPath?: string | null
   failed?: SelectionFailed | null
 }
 
-export interface PredictSelectionItem {
+export type PredictSelectionItem = {
   id: string
   score: number
 }
 
-export interface PredictSelectionCandidatesResult {
+export type PredictSelectionCandidatesResult = {
   status: string
-  modelRevision: number | null
-  items: PredictSelectionItem[] | null
+  modelRevision?: number | null
+  items?: PredictSelectionItem[] | null
   failed?: SelectionFailed | null
 }
 
-export interface SelectionFeatureStatusItem {
+export type SelectionFeatureStatusItem = {
   songId: string
   hasFeatures: boolean
+  hasFullFeatures: boolean
+  hasBpm: boolean
+  hasKey: boolean
+  bpm?: number | null
+  key?: string | null
 }
 
-export interface UpsertSongFeaturesInput {
+export type SelectionBpmKeyFeatures = {
+  bpm?: number | null
+  key?: string | null
+  rmsMean?: number | null
+  hpcp?: Buffer | null
+  durationSec?: number | null
+}
+
+export type SelectionEssentiaFeatures = {
+  bpm?: number | null
+  key?: string | null
+  rmsMean?: number | null
+  hpcp?: Buffer | null
+  durationSec?: number | null
+  essentiaVector?: Buffer | null
+}
+
+export type UpsertSongFeaturesInput = {
   songId: string
   fileHash: string
   modelVersion: string
-  openl3Vector?: Buffer | null
-  chromaprintFingerprint?: string | null
-  rmsMean?: number | null
-  hpcp?: Buffer | null
-  bpm?: number | null
-  key?: string | null
-  durationSec?: number | null
-  bitrateKbps?: number | null
+  openl3Vector?: Buffer
+  essentiaVector?: Buffer
+  chromaprintFingerprint?: string
+  rmsMean?: number
+  hpcp?: Buffer
+  bpm?: number
+  key?: string
+  durationSec?: number
+  bitrateKbps?: number
 }
 
-export interface SetSelectionLabelsResult {
+export type SetSelectionLabelsResult = {
   total: number
   changed: number
   sampleChangeCount: number
   sampleChangeDelta: number
 }
 
-export interface SelectionLabelSnapshot {
+export type SelectionLabelSnapshot = {
   positiveIds: string[]
   negativeIds: string[]
   sampleChangeCount: number
 }
 
-export interface SelectionPathIndexEntry {
+export type SelectionPathIndexEntry = {
   pathKey: string
   filePath: string
   size: number
@@ -86,7 +107,7 @@ export interface SelectionPathIndexEntry {
   lastSeenAt: number
 }
 
-export interface UpsertSelectionPathIndexEntry {
+export type UpsertSelectionPathIndexEntry = {
   pathKey: string
   filePath: string
   size: number
@@ -95,14 +116,14 @@ export interface UpsertSelectionPathIndexEntry {
   fileHash: string
 }
 
-export interface SelectionPathIndexGcOptions {
-  ttlDays?: number | null
-  maxRows?: number | null
-  deleteLimit?: number | null
-  minIntervalMs?: number | null
+export type SelectionPathIndexGcOptions = {
+  ttlDays?: number
+  maxRows?: number
+  deleteLimit?: number
+  minIntervalMs?: number
 }
 
-export interface SelectionPathIndexGcResult {
+export type SelectionPathIndexGcResult = {
   skipped: boolean
   before: number
   after: number
@@ -111,12 +132,15 @@ export interface SelectionPathIndexGcResult {
   lastGcAt: number
 }
 
-export type SelectionLabel = 'liked' | 'disliked' | 'neutral'
-
-export function upsertSongFeatures(
-  featureStorePath: string,
-  items: UpsertSongFeaturesInput[]
-): number
+export function upsertSongFeatures(featureStorePath: string, items: UpsertSongFeaturesInput[]): number
+export function extractSelectionBpmKeyFeatures(
+  filePath: string,
+  maxSeconds?: number | null
+): Promise<SelectionBpmKeyFeatures>
+export function extractSelectionEssentiaFeatures(
+  filePath: string,
+  maxSeconds?: number | null
+): Promise<SelectionEssentiaFeatures>
 export function extractOpenL3Embedding(
   filePath: string,
   maxSeconds?: number | null,
@@ -125,7 +149,7 @@ export function extractOpenL3Embedding(
 export function setSelectionLabels(
   labelStorePath: string,
   songIds: string[],
-  label: SelectionLabel | string
+  label: string
 ): SetSelectionLabelsResult
 export function getSelectionLabelSnapshot(labelStorePath: string): SelectionLabelSnapshot
 export function resetSelectionSampleChangeCount(labelStorePath: string): number
@@ -142,30 +166,15 @@ export function upsertSelectionPathIndexEntries(
   pathIndexStorePath: string,
   items: UpsertSelectionPathIndexEntry[]
 ): number
-export function touchSelectionPathIndexEntries(
-  pathIndexStorePath: string,
-  pathKeys: string[]
-): number
-export function deleteSelectionPathIndexEntries(
-  pathIndexStorePath: string,
-  pathKeys: string[]
-): number
+export function touchSelectionPathIndexEntries(pathIndexStorePath: string, pathKeys: string[]): number
+export function deleteSelectionPathIndexEntries(pathIndexStorePath: string, pathKeys: string[]): number
 export function gcSelectionPathIndex(
   pathIndexStorePath: string,
   options?: SelectionPathIndexGcOptions | null
 ): SelectionPathIndexGcResult
-export function getSelectionLabel(
-  labelStorePath: string,
-  songId: string
-): SelectionLabel | string
-export function bumpSelectionSampleChangeCount(
-  labelStorePath: string,
-  delta: number
-): number
-export function deleteSelectionPredictionCache(
-  featureStorePath: string,
-  songIds: string[]
-): number
+export function getSelectionLabel(labelStorePath: string, songId: string): string
+export function bumpSelectionSampleChangeCount(labelStorePath: string, delta: number): number
+export function deleteSelectionPredictionCache(featureStorePath: string, songIds: string[]): number
 export function clearSelectionPredictionCache(featureStorePath: string): number
 export function trainSelectionGbdt(
   positiveIds: string[],
@@ -189,7 +198,4 @@ export function calculateFileHashesWithProgress(
   callback?: (err: Error | null, progress: ProcessProgress) => void
 ): Promise<AudioFileResult[]>
 export function decodeAudioFile(filePath: string): DecodeAudioResult
-export function decodeAudioFileLimited(
-  filePath: string,
-  maxSeconds?: number | null
-): Promise<DecodeAudioResult>
+export function decodeAudioFileLimited(filePath: string, maxSeconds: number): Promise<DecodeAudioResult>
