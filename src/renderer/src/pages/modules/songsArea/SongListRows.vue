@@ -15,6 +15,9 @@ import { useSongRowEvents } from './SongListRows/useSongRowEvents'
 import { useCoverThumbnails } from './SongListRows/useCoverThumbnails'
 import { useCoverPreview } from './SongListRows/useCoverPreview'
 import { t } from '@renderer/utils/translate'
+import { formatBpmLabel } from '@renderer/utils/formatBpm'
+import { formatKeyDisplay, type KeyDisplayMode } from '@renderer/utils/formatKey'
+import { useRuntimeStore } from '@renderer/stores/runtime'
 
 const props = defineProps({
   songs: {
@@ -103,6 +106,10 @@ const setCoverCellRef = (filePath: string, el: Element | ComponentPublicInstance
 const hoveredCellKey = vRef<string | null>(null)
 const onlyWhenOverflowComputed = computed(() => true)
 const DEFAULT_ROW_HEIGHT = 30
+const runtime = useRuntimeStore()
+const keyDisplayMode = computed<KeyDisplayMode>(() => {
+  return runtime.setting.keyDisplayMode === 'camelot' ? 'camelot' : 'classic'
+})
 
 const formatSelectionLabel = (label: ISongInfo['selectionLabel'] | undefined) => {
   if (label === 'liked') return t('selection.liked')
@@ -113,6 +120,17 @@ const formatSelectionLabel = (label: ISongInfo['selectionLabel'] | undefined) =>
 const getCellDisplayText = (song: ISongInfo, colKey: string): string => {
   if (colKey === 'selectionLabel') {
     return formatSelectionLabel(song.selectionLabel)
+  }
+  if (colKey === 'bpm') {
+    const formatted = formatBpmLabel((song as any)?.bpm)
+    if (formatted) return formatted
+    return '—'
+  }
+  if (colKey === 'key') {
+    const key = (song as any)?.key
+    const formatted = formatKeyDisplay(key, keyDisplayMode.value)
+    if (formatted) return formatted
+    return '—'
   }
   return String((song as any)?.[colKey] ?? '')
 }

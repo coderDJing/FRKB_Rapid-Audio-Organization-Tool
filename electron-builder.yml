@@ -10,6 +10,15 @@ files:
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
 asarUnpack:
   - resources/**
+extraResources:
+  - from: vendor/ffmpeg
+    to: ffmpeg
+  - from: vendor/chromaprint
+    to: chromaprint
+  - from: vendor/essentia
+    to: essentia
+  - from: resources/ai/openl3
+    to: ai/openl3
 fileAssociations:
   - ext:
       - mp3
@@ -53,6 +62,7 @@ mac:
     - dmg
     - zip
   entitlementsInherit: build/entitlements.mac.plist
+  x64ArchFiles: Contents/Resources/{ffmpeg,chromaprint,essentia}/darwin/{ffmpeg,fpcalc,essentia_streaming_extractor_music}
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.

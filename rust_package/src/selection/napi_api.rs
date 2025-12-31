@@ -1,4 +1,5 @@
 use crate::selection::feature_store::{self, SongFeaturesPatch};
+use crate::selection::audio_features;
 use crate::selection::label_store::{self, SelectionLabel};
 use crate::selection::manifest::{read_manifest, write_manifest, SelectionManifest};
 use crate::selection::model::{self, SelectionErrorCode};
@@ -48,6 +49,30 @@ pub struct PredictSelectionCandidatesResult {
 pub struct SelectionFeatureStatusItem {
   pub song_id: String,
   pub has_features: bool,
+  pub has_full_features: bool,
+  pub has_bpm: bool,
+  pub has_key: bool,
+  pub bpm: Option<f64>,
+  pub key: Option<String>,
+}
+
+#[napi(object)]
+pub struct SelectionBpmKeyFeatures {
+  pub bpm: Option<f64>,
+  pub key: Option<String>,
+  pub rms_mean: Option<f64>,
+  pub hpcp: Option<Buffer>,
+  pub duration_sec: Option<f64>,
+}
+
+#[napi(object)]
+pub struct SelectionEssentiaFeatures {
+  pub bpm: Option<f64>,
+  pub key: Option<String>,
+  pub rms_mean: Option<f64>,
+  pub hpcp: Option<Buffer>,
+  pub duration_sec: Option<f64>,
+  pub essentia_vector: Option<Buffer>,
 }
 
 #[napi(object)]
@@ -56,6 +81,7 @@ pub struct UpsertSongFeaturesInput {
   pub file_hash: String,
   pub model_version: String,
   pub openl3_vector: Option<Buffer>,
+  pub essentia_vector: Option<Buffer>,
   pub chromaprint_fingerprint: Option<String>,
   pub rms_mean: Option<f64>,
   pub hpcp: Option<Buffer>,
@@ -139,6 +165,7 @@ pub fn upsert_song_features(
       file_hash: it.file_hash,
       model_version: it.model_version,
       openl3_vector: it.openl3_vector.map(|b| b.to_vec()),
+      essentia_vector: it.essentia_vector.map(|b| b.to_vec()),
       chromaprint_fingerprint: it.chromaprint_fingerprint,
       rms_mean: it.rms_mean,
       hpcp: it.hpcp.map(|b| b.to_vec()),
@@ -152,6 +179,65 @@ pub fn upsert_song_features(
   let affected = feature_store::upsert_song_features(&mut conn, &patches)
     .map_err(|e| napi::Error::from_reason(format!("db_error: {}", e)))?;
   Ok(affected as i32)
+}
+
+#[napi]
+pub async fn extract_selection_bpm_key_features(
+  file_path: String,
+  max_seconds: Option<f64>,
+) -> napi::Result<SelectionBpmKeyFeatures> {
+  let max_seconds = max_seconds.unwrap_or(60.0);
+  let res = tokio::task::spawn_blocking(move || {
+    audio_features::extract_bpm_key_from_file(&file_path, max_seconds)
+  })
+  .await
+  .map_err(|e| napi::Error::from_reason(format!("内部 BPM/调性任务失败: {}", e)))?;
+
+  let feats = res.map_err(|e| napi::Error::from_reason(e))?;
+  let hpcp = feats
+    .hpcp
+    .as_ref()
+    .map(|v| Buffer::from(cast_slice(v.as_slice()).to_vec()));
+
+  Ok(SelectionBpmKeyFeatures {
+    bpm: feats.bpm,
+    key: feats.key,
+    rms_mean: feats.rms_mean,
+    hpcp,
+    duration_sec: feats.duration_sec,
+  })
+}
+
+#[napi]
+pub async fn extract_selection_essentia_features(
+  file_path: String,
+  max_seconds: Option<f64>,
+) -> napi::Result<SelectionEssentiaFeatures> {
+  let max_seconds = max_seconds.unwrap_or(120.0);
+  let res = tokio::task::spawn_blocking(move || {
+    audio_features::extract_full_features_from_file(&file_path, max_seconds)
+  })
+  .await
+  .map_err(|e| napi::Error::from_reason(format!("内部 Essentia 任务失败: {}", e)))?;
+
+  let feats = res.map_err(|e| napi::Error::from_reason(e))?;
+  let hpcp = feats
+    .hpcp
+    .as_ref()
+    .map(|v| Buffer::from(cast_slice(v.as_slice()).to_vec()));
+  let essentia_vector = feats
+    .essentia_vector
+    .as_ref()
+    .map(|v| Buffer::from(cast_slice(v.as_slice()).to_vec()));
+
+  Ok(SelectionEssentiaFeatures {
+    bpm: feats.bpm,
+    key: feats.key,
+    rms_mean: feats.rms_mean,
+    hpcp,
+    duration_sec: feats.duration_sec,
+    essentia_vector,
+  })
 }
 
 #[napi]
@@ -262,9 +348,17 @@ pub fn get_selection_feature_status(
   Ok(
     ids
       .into_iter()
-      .map(|song_id| SelectionFeatureStatusItem {
-        has_features: *map.get(&song_id).unwrap_or(&false),
-        song_id,
+      .map(|song_id| {
+        let status = map.get(&song_id);
+        SelectionFeatureStatusItem {
+          has_features: status.map(|s| s.has_features).unwrap_or(false),
+          has_full_features: status.map(|s| s.has_full_features).unwrap_or(false),
+          has_bpm: status.map(|s| s.has_bpm).unwrap_or(false),
+          has_key: status.map(|s| s.has_key).unwrap_or(false),
+          bpm: status.and_then(|s| s.bpm),
+          key: status.and_then(|s| s.key.clone()),
+          song_id,
+        }
       })
       .collect(),
   )

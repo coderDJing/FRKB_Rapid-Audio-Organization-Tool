@@ -2,6 +2,7 @@
 import { computed, ref, watch, useTemplateRef } from 'vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { t } from '@renderer/utils/translate'
+import { formatBpmLabel } from '@renderer/utils/formatBpm'
 
 // 组件用于显示 BPM，并支持通过左键点击节拍来计算 BPM，右键恢复系统分析值
 const props = defineProps<{
@@ -32,10 +33,12 @@ watch(
 // 将显示值统一成字符串
 const displayValue = computed<string>(() => {
   if (isManual.value && manualBpm.value !== null) {
-    return manualBpm.value.toFixed(1)
+    return formatBpmLabel(manualBpm.value) ?? manualBpm.value.toFixed(1)
   }
   // 系统 BPM 支持 number 或字符串
-  if (typeof props.bpm === 'number') return props.bpm.toString()
+  if (typeof props.bpm === 'number') {
+    return formatBpmLabel(props.bpm) ?? props.bpm.toString()
+  }
   return props.bpm || ''
 })
 

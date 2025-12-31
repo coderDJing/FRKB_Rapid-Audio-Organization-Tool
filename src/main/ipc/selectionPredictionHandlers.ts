@@ -1,9 +1,13 @@
 import { ipcMain } from 'electron'
 import path = require('path')
+import os = require('os')
 import fs = require('fs-extra')
 import { log } from '../log'
 import store from '../store'
-import { buildSelectionSongFeaturePatches } from '../services/selectionFeatureExtractor'
+import {
+  buildSelectionSongBpmKeyPatches,
+  buildSelectionSongFeaturePatches
+} from '../services/selectionFeatureExtractor'
 import { resolveSelectionSongIds } from '../services/selectionSongIdResolver'
 import { runWithConcurrency } from '../utils'
 import mainWindow from '../window/mainWindow'
@@ -27,10 +31,14 @@ const AUTO_TRAIN_SAMPLE_CHANGE_THRESHOLD = 20
 const AUTO_TRAIN_MIN_POSITIVE = 20
 const AUTO_TRAIN_NEGATIVE_RATIO = 4
 
-const FEATURE_EXTRACT_CONCURRENCY = 2
+const CPU_COUNT = Math.max(1, os.cpus()?.length || 1)
+const FEATURE_EXTRACT_CONCURRENCY = CPU_COUNT <= 1 ? 1 : Math.min(4, Math.max(2, CPU_COUNT - 1))
 const FEATURE_ENSURE_QUEUE_CONCURRENCY = 1
+const BPM_KEY_EXTRACT_CONCURRENCY = CPU_COUNT <= 1 ? 1 : Math.min(4, Math.max(2, CPU_COUNT - 1))
+const BPM_KEY_ENSURE_QUEUE_CONCURRENCY = 2
 const LABEL_SET_CONCURRENCY = 2
 const LABEL_SET_DEFAULT_MAX_ANALYZE_SECONDS = 120
+const BPM_KEY_DEFAULT_MAX_ANALYZE_SECONDS = 30
 const BULK_LABEL_DEFAULT_BATCH_SIZE = 200
 const BULK_LABEL_DEFAULT_CONCURRENCY = 2
 const BULK_LABEL_PROGRESS_TITLE_KEY = 'selection.bulkLabeling'
@@ -64,6 +72,9 @@ let featureEnsureSeq = 0
 let featureEnsureInFlight = 0
 const featureEnsureQueue: Array<QueuedTask<any>> = []
 const featureEnsurePendingSongIds = new Set<string>()
+let bpmKeyEnsureSeq = 0
+let bpmKeyEnsureInFlight = 0
+const bpmKeyEnsureQueue: Array<QueuedTask<any>> = []
 let selectionResetEpoch = 0
 
 function enqueueLabelSetTask<T>(run: () => Promise<T>): Promise<T> {
@@ -272,6 +283,39 @@ async function drainFeatureEnsureQueue() {
   }
 }
 
+function enqueueBpmKeyEnsureTask<T>(run: () => Promise<T>): Promise<T> {
+  const id = (bpmKeyEnsureSeq += 1)
+  const queuedAt = Date.now()
+  return new Promise<T>((resolve, reject) => {
+    bpmKeyEnsureQueue.push({ id, queuedAt, run, resolve, reject })
+    log.debug(
+      `[selection] bpmKey:ensure 已加入队列 id=${id} 排队=${bpmKeyEnsureQueue.length} 并发中=${bpmKeyEnsureInFlight} 并发上限=${BPM_KEY_ENSURE_QUEUE_CONCURRENCY}`
+    )
+    void drainBpmKeyEnsureQueue()
+  })
+}
+
+async function drainBpmKeyEnsureQueue() {
+  while (bpmKeyEnsureInFlight < BPM_KEY_ENSURE_QUEUE_CONCURRENCY && bpmKeyEnsureQueue.length > 0) {
+    const task = bpmKeyEnsureQueue.shift() as QueuedTask<any>
+    bpmKeyEnsureInFlight += 1
+    const waitMs = Date.now() - task.queuedAt
+    log.debug(
+      `[selection] bpmKey:ensure 开始执行 id=${task.id} 排队等待=${waitMs}ms 排队=${bpmKeyEnsureQueue.length} 并发中=${bpmKeyEnsureInFlight}/${BPM_KEY_ENSURE_QUEUE_CONCURRENCY}`
+    )
+    task
+      .run()
+      .then(task.resolve, task.reject)
+      .finally(() => {
+        bpmKeyEnsureInFlight -= 1
+        log.debug(
+          `[selection] bpmKey:ensure 执行结束 id=${task.id} 排队=${bpmKeyEnsureQueue.length} 并发中=${bpmKeyEnsureInFlight}/${BPM_KEY_ENSURE_QUEUE_CONCURRENCY}`
+        )
+        void drainBpmKeyEnsureQueue()
+      })
+  }
+}
+
 async function ensureSelectionFeaturesForItems(
   featureStorePath: string,
   items: Array<{ songId: string; filePath: string; fileHash: string }>,
@@ -310,7 +354,7 @@ async function ensureSelectionFeaturesForItems(
       `[selection] ${logLabel} 开始 songs=${items.length} 最大分析秒数=${String(maxAnalyzeSeconds ?? '')}`
     )
 
-    let statusList: Array<{ songId: string; hasFeatures: boolean }> = []
+    let statusList: Array<{ songId: string; hasFullFeatures: boolean }> = []
     try {
       if (isCancelled()) {
         return {
@@ -334,7 +378,7 @@ async function ensureSelectionFeaturesForItems(
     for (const it of statusList) {
       const id = typeof (it as any)?.songId === 'string' ? String((it as any).songId) : ''
       if (!id) continue
-      hasById.set(id, Boolean((it as any).hasFeatures))
+      hasById.set(id, Boolean((it as any).hasFullFeatures))
     }
 
     const pending = items.filter((x) => hasById.get(x.songId) !== true)
@@ -356,7 +400,16 @@ async function ensureSelectionFeaturesForItems(
           [{ songId: x.songId, filePath: x.filePath, fileHash: x.fileHash }],
           { maxAnalyzeSeconds }
         )
-        return { patch: patches?.[0], report: report?.[0] }
+        const patch = patches?.[0]
+        if (patch) {
+          const bpm = typeof patch.bpm === 'number' && Number.isFinite(patch.bpm) ? patch.bpm : null
+          const key =
+            typeof patch.key === 'string' && patch.key.trim() ? String(patch.key).trim() : null
+          if (bpm !== null || key !== null) {
+            emitSelectionBpmKeyUpdated([{ filePath: x.filePath, bpm, key }])
+          }
+        }
+        return { patch, report: report?.[0] }
       } catch (error: any) {
         return {
           patch: { songId: x.songId, fileHash: x.fileHash, modelVersion: 'selection_features_v1' },
@@ -405,7 +458,6 @@ async function ensureSelectionFeaturesForItems(
     }
 
     const affected = patches.length ? upsertSongFeatures(featureStorePath, patches) : 0
-
     // 特征补齐后，清理这些 songId 的预测缓存，避免继续命中“缺特征时”的旧分数
     if (touchedIds.size > 0) {
       try {
@@ -434,6 +486,184 @@ async function ensureSelectionFeaturesForItems(
           }))
         log.warn('[selection] openl3 失败样例', samples)
       }
+    } catch {}
+
+    return {
+      ok: true,
+      total: items.length,
+      extracted: pending.length,
+      skipped: items.length - pending.length,
+      affected,
+      report
+    }
+  } catch (error: any) {
+    log.error(`[selection] ${logLabel} 失败`, error)
+    return {
+      ok: false,
+      total: 0,
+      extracted: 0,
+      skipped: 0,
+      affected: 0,
+      report: [],
+      failed: { errorCode: 'internal_error', message: String(error?.message || error) } as Failed
+    }
+  }
+}
+
+async function ensureSelectionBpmKeyForItems(
+  featureStorePath: string,
+  items: Array<{ songId: string; filePath: string; fileHash: string }>,
+  options?: { maxAnalyzeSeconds?: number; logLabel?: string; resetEpoch?: number }
+): Promise<{
+  ok: boolean
+  total: number
+  extracted: number
+  skipped: number
+  affected: number
+  report: any[]
+  failed?: Failed
+}> {
+  const startedAt = Date.now()
+  const logLabel = options?.logLabel || 'bpmKey:ensure'
+  const maxAnalyzeSeconds = options?.maxAnalyzeSeconds
+  const expectedEpoch =
+    typeof options?.resetEpoch === 'number' ? options.resetEpoch : selectionResetEpoch
+  const isCancelled = () => expectedEpoch !== selectionResetEpoch
+
+  try {
+    if (isCancelled()) {
+      return {
+        ok: false,
+        total: items.length,
+        extracted: 0,
+        skipped: items.length,
+        affected: 0,
+        report: [],
+        failed: { errorCode: 'cancelled', message: 'RESET_IN_PROGRESS' } as Failed
+      }
+    }
+
+    const songIds = items.map((x) => x.songId)
+    log.debug(
+      `[selection] ${logLabel} 开始 songs=${items.length} 最大分析秒数=${String(maxAnalyzeSeconds ?? '')}`
+    )
+
+    let statusList: Array<{ songId: string; hasBpm: boolean; hasKey: boolean }> = []
+    try {
+      if (isCancelled()) {
+        return {
+          ok: false,
+          total: items.length,
+          extracted: 0,
+          skipped: items.length,
+          affected: 0,
+          report: [],
+          failed: { errorCode: 'cancelled', message: 'RESET_IN_PROGRESS' } as Failed
+        }
+      }
+      statusList = getSelectionFeatureStatus(featureStorePath, songIds) as any
+    } catch (error) {
+      log.warn('[selection] 读取 BPM/调性状态失败', error)
+      statusList = []
+    }
+
+    const hasById = new Map<string, { hasBpm: boolean; hasKey: boolean }>()
+    for (const it of statusList) {
+      const id = typeof (it as any)?.songId === 'string' ? String((it as any).songId) : ''
+      if (!id) continue
+      hasById.set(id, {
+        hasBpm: Boolean((it as any).hasBpm),
+        hasKey: Boolean((it as any).hasKey)
+      })
+    }
+
+    const pending = items.filter((x) => {
+      const state = hasById.get(x.songId)
+      return !state || !state.hasBpm || !state.hasKey
+    })
+    if (pending.length === 0) {
+      log.debug(`[selection] ${logLabel} 无需处理（全部已就绪，${Date.now() - startedAt}ms）`)
+      return {
+        ok: true,
+        total: items.length,
+        extracted: 0,
+        skipped: items.length,
+        affected: 0,
+        report: []
+      }
+    }
+
+    const tasks = pending.map((x) => async (): Promise<{ patch: any; report: any }> => {
+      try {
+        const { patches, report } = await buildSelectionSongBpmKeyPatches(
+          [{ songId: x.songId, filePath: x.filePath, fileHash: x.fileHash }],
+          { maxAnalyzeSeconds }
+        )
+        const patch = patches?.[0]
+        if (patch) {
+          const bpm = typeof patch.bpm === 'number' && Number.isFinite(patch.bpm) ? patch.bpm : null
+          const key =
+            typeof patch.key === 'string' && patch.key.trim() ? String(patch.key).trim() : null
+          if (bpm !== null || key !== null) {
+            emitSelectionBpmKeyUpdated([{ filePath: x.filePath, bpm, key }])
+          }
+        }
+        return { patch, report: report?.[0] }
+      } catch (error: any) {
+        return {
+          patch: { songId: x.songId, fileHash: x.fileHash, modelVersion: 'selection_features_v1' },
+          report: {
+            songId: x.songId,
+            filePath: x.filePath,
+            ok: false,
+            error: String(error?.message || error)
+          }
+        }
+      }
+    })
+
+    const { results } = await runWithConcurrency(tasks, {
+      concurrency: BPM_KEY_EXTRACT_CONCURRENCY
+    })
+
+    if (isCancelled()) {
+      return {
+        ok: false,
+        total: items.length,
+        extracted: 0,
+        skipped: items.length,
+        affected: 0,
+        report: [],
+        failed: { errorCode: 'cancelled', message: 'RESET_IN_PROGRESS' } as Failed
+      }
+    }
+
+    const patches: any[] = []
+    const report: any[] = []
+    for (const r of results) {
+      if (r instanceof Error) {
+        report.push({ ok: false, error: String((r as any)?.message || r) })
+        continue
+      }
+      if (r?.patch) {
+        patches.push(r.patch)
+      }
+      if (r?.report) {
+        report.push(r.report)
+      }
+    }
+    const usable = patches.filter((patch) => {
+      const hasBpm = typeof patch?.bpm === 'number' && Number.isFinite(patch.bpm)
+      const hasKey = typeof patch?.key === 'string' && patch.key.trim()
+      return hasBpm || hasKey
+    })
+    const affected = usable.length ? upsertSongFeatures(featureStorePath, usable) : 0
+
+    try {
+      const okCount = report.filter((x: any) => x?.ok === true).length
+      log.info(
+        `[selection] ${logLabel} 完成 (${Date.now() - startedAt}ms) 总数=${items.length} 提取=${pending.length} 入库=${affected} 成功=${okCount}/${report.length}`
+      )
     } catch {}
 
     return {
@@ -528,6 +758,15 @@ function scheduleAutoTrain(dbDir: string) {
 function emitAutoTrainEvent(payload: any) {
   try {
     mainWindow.instance?.webContents.send('selection:autoTrainStatus', payload)
+  } catch {}
+}
+
+function emitSelectionBpmKeyUpdated(
+  items: Array<{ filePath: string; bpm: number | null; key: string | null }>
+) {
+  if (!items.length) return
+  try {
+    mainWindow.instance?.webContents.send('selection:bpmKeyUpdated', { items })
   } catch {}
 }
 
@@ -1059,6 +1298,75 @@ export function registerSelectionPredictionHandlers() {
     }
   })
 
+  ipcMain.handle('selection:features:ensureBpmKeyForFilePaths', async (_e, payload: any) => {
+    const dbDir = store.databaseDir
+    if (!dbDir) {
+      return {
+        ok: false,
+        total: 0,
+        extracted: 0,
+        skipped: 0,
+        affected: 0,
+        hashReport: [],
+        report: [],
+        failed: { errorCode: 'internal_error', message: 'NO_DB' } as Failed
+      }
+    }
+
+    const filePaths = Array.isArray(payload?.filePaths) ? payload.filePaths.map(String) : []
+    const maxAnalyzeSeconds =
+      typeof payload?.maxAnalyzeSeconds === 'number' && payload.maxAnalyzeSeconds > 0
+        ? payload.maxAnalyzeSeconds
+        : BPM_KEY_DEFAULT_MAX_ANALYZE_SECONDS
+    const resetEpoch = selectionResetEpoch
+
+    return enqueueBpmKeyEnsureTask(async () => {
+      // 若任务在队列中等待期间切库，直接取消（避免写入到错误的库）
+      if (!store.databaseDir || store.databaseDir !== dbDir) {
+        return {
+          ok: false,
+          total: 0,
+          extracted: 0,
+          skipped: 0,
+          affected: 0,
+          hashReport: [],
+          report: [],
+          failed: { errorCode: 'cancelled', message: '库已切换，任务已取消' } as Failed
+        }
+      }
+
+      try {
+        const { items, report: hashReport } = await resolveSelectionSongIds(filePaths, { dbDir })
+        const featureStorePath = path.join(dbDir, 'features.db')
+        const ensured = await ensureSelectionBpmKeyForItems(
+          featureStorePath,
+          items.map((x) => ({ songId: x.songId, filePath: x.filePath, fileHash: x.fileHash })),
+          {
+            maxAnalyzeSeconds,
+            logLabel: 'features:ensureBpmKeyForFilePaths',
+            resetEpoch
+          }
+        )
+        return { ...ensured, hashReport }
+      } catch (error: any) {
+        log.error('[selection] features:ensureBpmKeyForFilePaths 失败', error)
+        return {
+          ok: false,
+          total: 0,
+          extracted: 0,
+          skipped: 0,
+          affected: 0,
+          hashReport: [],
+          report: [],
+          failed: {
+            errorCode: 'internal_error',
+            message: String(error?.message || error)
+          } as Failed
+        }
+      }
+    })
+  })
+
   ipcMain.handle('selection:features:ensureForFilePaths', async (_e, payload: any) => {
     const dbDir = store.databaseDir
     if (!dbDir) {
@@ -1228,16 +1536,23 @@ export function registerSelectionPredictionHandlers() {
 
       // 没有音频特征的候选不参与推理（避免“缺特征时”的无意义分数与缓存）
       let readySet = new Set<string>()
+      let bpmKeyById = new Map<string, { bpm: number | null; key: string | null }>()
       try {
         const statusList = getSelectionFeatureStatus(featureStorePath, candidateIds) as any
         for (const it of statusList || []) {
           const id = typeof it?.songId === 'string' ? it.songId : ''
           if (!id) continue
-          if (it?.hasFeatures) readySet.add(id)
+          if (it?.hasFullFeatures) readySet.add(id)
+          const rawBpm = typeof it?.bpm === 'number' && Number.isFinite(it.bpm) ? it.bpm : null
+          const rawKey = typeof it?.key === 'string' && it.key.trim() ? String(it.key).trim() : null
+          if (rawBpm !== null || rawKey !== null) {
+            bpmKeyById.set(id, { bpm: rawBpm, key: rawKey })
+          }
         }
       } catch (error) {
         log.warn('[selection] 读取特征状态失败', error)
         readySet = new Set()
+        bpmKeyById = new Map()
       }
 
       const readyIds = candidateIds.filter((id) => readySet.has(id))
@@ -1265,6 +1580,8 @@ export function registerSelectionPredictionHandlers() {
           filePath: x.filePath,
           songId: x.songId,
           score: readySet.has(x.songId) ? (scoreById.get(x.songId) ?? null) : null,
+          bpm: bpmKeyById.get(x.songId)?.bpm ?? null,
+          key: bpmKeyById.get(x.songId)?.key ?? null,
           label: likedSet.has(x.songId)
             ? 'liked'
             : dislikedSet.has(x.songId)

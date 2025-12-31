@@ -6,3 +6,5 @@ pub mod napi_api;
 pub mod manifest;
 pub mod paths;
 pub mod path_index_store;
+pub mod audio_features;
+pub mod essentia_schema;

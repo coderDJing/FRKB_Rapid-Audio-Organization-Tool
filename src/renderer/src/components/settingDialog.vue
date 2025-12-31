@@ -79,6 +79,10 @@ if ((runtime as any).setting.songListBubbleAlways === undefined) {
   ;(runtime as any).setting.songListBubbleAlways = false
 }
 
+if ((runtime as any).setting.keyDisplayMode === undefined) {
+  ;(runtime as any).setting.keyDisplayMode = 'classic'
+}
+
 if ((runtime as any).setting.acoustIdClientKey === undefined) {
   ;(runtime as any).setting.acoustIdClientKey = ''
 }
@@ -163,6 +167,11 @@ const waveformStyleOptions = computed(() => [
 const waveformModeOptions = computed(() => [
   { label: t('player.waveformModeHalf'), value: 'half' },
   { label: t('player.waveformModeFull'), value: 'full' }
+])
+
+const keyDisplayModeOptions = computed(() => [
+  { label: t('settings.keyNotation.classic'), value: 'classic' },
+  { label: t('settings.keyNotation.camelot'), value: 'camelot' }
 ])
 
 const audioOutputSelectOptions = computed(() => {
@@ -647,6 +656,14 @@ const clearCloudFingerprints = async () => {
               <BaseSelect
                 v-model="(runtime as any).setting.waveformMode"
                 :options="waveformModeOptions"
+                @change="setSetting"
+              />
+            </div>
+            <div style="margin-top: 20px">{{ t('settings.keyNotation.title') }}：</div>
+            <div style="margin-top: 10px">
+              <BaseSelect
+                v-model="(runtime as any).setting.keyDisplayMode"
+                :options="keyDisplayModeOptions"
                 @change="setSetting"
               />
             </div>

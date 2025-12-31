@@ -106,6 +106,12 @@ cd ..
 pnpm install
 ```
 
+### Essentia CLI（BPM/调性）
+BPM/调性分析使用 https://github.com/coderDJing/essentia-build/releases 的 CLI。
+CI 会下载并放入 `vendor/essentia` 参与打包。
+默认使用 `v2.0.1-build.43`（可用 workflow secrets 覆盖）。
+高层特征需要把 `profiles/` 与 `svm_models/` 与二进制放在同目录。
+
 ### 开发模式
 
 ```bash

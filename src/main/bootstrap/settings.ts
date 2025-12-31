@@ -73,6 +73,7 @@ const defaultSettings = {
   persistSongFilters: false,
   enableExplorerContextMenu: platform === 'win32',
   showPlaylistTrackCount: true,
+  keyDisplayMode: 'classic' as 'classic' | 'camelot',
   nextCheckUpdateTime: '',
   enableErrorReport: true,
   errorReportUsageMsSinceLastSuccess: 0,
@@ -131,6 +132,8 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
 
   const rawWaveformStyle = (mergedSettings as any).waveformStyle
   const normalizedWaveformStyle = rawWaveformStyle === 'RekordboxMini' ? 'RGB' : rawWaveformStyle
+  const normalizedKeyDisplayMode =
+    (mergedSettings as any).keyDisplayMode === 'camelot' ? 'camelot' : 'classic'
 
   const finalSettings: ISettingConfig = {
     ...mergedSettings,
@@ -140,7 +143,8 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
       normalizedWaveformStyle === 'RGB'
         ? normalizedWaveformStyle
         : 'SoundCloud',
-    waveformMode: mergedSettings.waveformMode === 'full' ? 'full' : 'half'
+    waveformMode: mergedSettings.waveformMode === 'full' ? 'full' : 'half',
+    keyDisplayMode: normalizedKeyDisplayMode
   }
 
   if (process.platform === 'win32') {

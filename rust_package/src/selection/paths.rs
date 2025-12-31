@@ -38,7 +38,7 @@ pub fn selection_manifest_path(library_root: &Path) -> PathBuf {
 }
 
 pub fn selection_gbdt_model_path(library_root: &Path) -> PathBuf {
-  selection_model_dir(library_root).join("selection_gbdt_v1.bin")
+  selection_model_dir(library_root).join("selection_gbdt_v2.bin")
 }
 
 pub fn normalize_label_store_path(label_store_path: &str) -> PathBuf {

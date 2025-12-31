@@ -437,6 +437,7 @@
     "fileFormat": "文件格式",
     "format": "编码格式",
     "bpm": "BPM",
+    "key": "调性",
     "index": "序号"
   },
   "player": {
@@ -666,6 +667,11 @@
   },
   "settings": {
     "showPlaylistTrackCount": "在歌单名称后显示曲目数量",
+    "keyNotation": {
+      "title": "调性显示",
+      "classic": "Classic（C/Em）",
+      "camelot": "Camelot（1A/1B）"
+    },
     "songListBubble": {
       "title": "歌单行气泡提示显示",
       "overflowOnly": "仅在文字被截断时显示",
