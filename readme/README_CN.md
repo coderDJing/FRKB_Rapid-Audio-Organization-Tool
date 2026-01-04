@@ -57,6 +57,7 @@
 - **国际化（i18n）**：内置中文（`zh-CN`）与英文（`en-US`）语言包。
 - **封面右键另存**：悬浮封面支持右键菜单，将封面图片另存为本地文件。
 - **歌曲筛选**：支持根据标题，艺术家，专辑，时长，格式等多种维度对歌曲列表进行筛选。
+- **批量喜好标记**：批量喜欢/不喜欢支持任务进度展示并可取消。
 - **多格式播放与转换**：内建 FFmpeg 管线，导入即播，批量转码 20+ 常见与专业音频格式。
   | 格式     | 扫描/播放 | 转换 |
   | -------- | --------- | ---- |
@@ -104,6 +105,12 @@ napi build --platform --release
 cd ..
 pnpm install
 ```
+
+### Essentia CLI（BPM/调性）
+BPM/调性分析使用 https://github.com/coderDJing/essentia-build/releases 的 CLI。
+CI 会下载并放入 `vendor/essentia` 参与打包。
+默认使用 `v2.0.1-build.43`（可用 workflow secrets 覆盖）。
+高层特征需要把 `profiles/` 与 `svm_models/` 与二进制放在同目录。
 
 ### 开发模式
 

@@ -1,15 +1,31 @@
 import { nextTick, Ref, ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import { ISongInfo, IMenu, type IMetadataAutoFillSummary } from '../../../../../../types/globals' // Corrected path
+import { ISongInfo, IMenu, type IMetadataAutoFillSummary } from '../../../../../../types/globals'
 import { t } from '@renderer/utils/translate'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
-import rightClickMenu from '@renderer/components/rightClickMenu' // Assuming it's a default export or easily callable
+import rightClickMenu from '@renderer/components/rightClickMenu'
 import confirm from '@renderer/components/confirmDialog'
 import exportDialog from '@renderer/components/exportDialog'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import emitter from '@renderer/utils/mitt'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
+
+const debugSelection = (...args: any[]) => {
+  try {
+    const isDev =
+      typeof window !== 'undefined' &&
+      typeof window.location?.protocol === 'string' &&
+      (window.location.protocol === 'http:' || window.location.hostname === 'localhost')
+    const forced =
+      typeof window !== 'undefined' &&
+      typeof window.localStorage?.getItem === 'function' &&
+      window.localStorage.getItem('FRKB_DEBUG_SELECTION') === '1'
+    if (isDev || forced) {
+      console.log(...args)
+    }
+  } catch {}
+}
 
 // Type for the return value when a dialog needs to be opened by the parent
 export interface OpenDialogAction {
@@ -40,6 +56,12 @@ export interface PlaylistCacheClearedAction {
 
 export interface TrackCacheClearedAction {
   action: 'trackCacheCleared'
+}
+
+export interface SelectionLabelsChangedAction {
+  action: 'selectionLabelsChanged'
+  filePaths: string[]
+  label: 'liked' | 'disliked' | 'neutral'
 }
 
 export function useSongItemContextMenu(
@@ -75,6 +97,11 @@ export function useSongItemContextMenu(
     [{ menuName: 'tracks.showInFileExplorer' }],
     [{ menuName: 'metadata.autoFillMenu' }],
     [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.editMetadata' }],
+    [
+      { menuName: 'selection.like' },
+      { menuName: 'selection.dislike' },
+      { menuName: 'selection.clearPreference' }
+    ],
     [{ menuName: 'tracks.clearTrackCache' }],
     [{ menuName: 'fingerprints.analyzeAndAdd' }]
   ])
@@ -89,6 +116,7 @@ export function useSongItemContextMenu(
     | MetadataBatchUpdatedAction
     | PlaylistCacheClearedAction
     | TrackCacheClearedAction
+    | SelectionLabelsChangedAction
     | null
   > => {
     if (runtime.songsArea.selectedSongFilePath.indexOf(song.filePath) === -1) {
@@ -312,6 +340,66 @@ export function useSongItemContextMenu(
       case 'fingerprints.analyzeAndAdd': {
         const files = [...runtime.songsArea.selectedSongFilePath]
         await analyzeFingerprintsForPaths(files, { origin: 'selection' })
+        return null
+      }
+      case 'selection.like':
+      case 'selection.dislike':
+      case 'selection.clearPreference': {
+        const files = [...runtime.songsArea.selectedSongFilePath]
+        if (files.length === 0) {
+          await confirm({
+            title: t('dialog.hint'),
+            content: [t('fingerprints.noTracksSelected')],
+            confirmShow: false
+          })
+          return null
+        }
+
+        const label =
+          result.menuName === 'selection.like'
+            ? 'liked'
+            : result.menuName === 'selection.dislike'
+              ? 'disliked'
+              : 'neutral'
+
+        const startedAt = Date.now()
+        debugSelection('[selection] 应用标签：开始', { label, fileCount: files.length })
+        try {
+          const res = await window.electron.ipcRenderer.invoke('selection:labels:setForFilePaths', {
+            filePaths: files,
+            label
+          })
+          const hashReport = Array.isArray(res?.hashReport) ? res.hashReport : []
+          const hashOk = hashReport.filter((x: any) => x?.ok === true).length
+          const featureQueue = res?.featureQueue || {}
+          const featureEnqueued =
+            typeof featureQueue?.enqueued === 'number' ? featureQueue.enqueued : 0
+          const featureSkipped =
+            typeof featureQueue?.skipped === 'number' ? featureQueue.skipped : 0
+
+          debugSelection('[selection] 应用标签：返回', {
+            ms: Date.now() - startedAt,
+            ok: res?.ok === true,
+            sampleChangeDelta: res?.labelResult?.sampleChangeDelta,
+            sampleChangeCount: res?.labelResult?.sampleChangeCount,
+            hashOk,
+            hashTotal: hashReport.length,
+            featureEnqueued,
+            featureSkipped
+          })
+
+          if (!res?.ok) {
+            throw new Error(res?.failed?.message || res?.failed?.errorCode || 'FAILED')
+          }
+
+          return { action: 'selectionLabelsChanged', filePaths: files, label }
+        } catch (error: any) {
+          await confirm({
+            title: t('common.error'),
+            content: [String(error?.message || error || t('common.unknownError'))],
+            confirmShow: false
+          })
+        }
         return null
       }
       case 'library.moveToCurated':

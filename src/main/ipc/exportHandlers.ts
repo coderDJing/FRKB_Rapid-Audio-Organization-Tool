@@ -14,6 +14,7 @@ import {
 import { log } from '../log'
 import mainWindow from '../window/mainWindow'
 import { saveList, exportSnapshot, importFromJsonFile } from '../fingerprintStore'
+import { migrateSelectionSongIdCacheByMoves } from '../services/selectionSongIdResolver'
 
 async function findUniqueFolder(inputFolderPath: string) {
   const parts = path.parse(inputFolderPath)
@@ -185,13 +186,17 @@ export function registerExportHandlers() {
   })
 
   ipcMain.handle('moveSongsToDir', async (_e, srcs, dest) => {
+    const dbDir = store.databaseDir
+    if (!dbDir) throw new Error('NO_DB')
     const tasks: Array<() => Promise<any>> = []
     for (const src of srcs) {
-      const matches = src.match(/[^\\]+$/)
-      if (Array.isArray(matches) && matches.length > 0) {
-        const targetPath = path.join(store.databaseDir, mapRendererPathToFsPath(dest), matches[0])
-        tasks.push(() => moveOrCopyItemWithCheckIsExist(src, targetPath, true))
-      }
+      const fileName = path.basename(src || '')
+      if (!fileName) continue
+      const targetPath = path.join(dbDir, mapRendererPathToFsPath(dest), fileName)
+      tasks.push(async () => {
+        const actual = await moveOrCopyItemWithCheckIsExist(src, targetPath, true)
+        return { fromPath: src, toPath: actual }
+      })
     }
     const batchId = `moveSongs_${Date.now()}`
     if (mainWindow.instance) {
@@ -245,6 +250,23 @@ export function registerExportHandlers() {
     }
     if (failed > 0) {
       throw new Error('moveSongsToDir failed')
+    }
+
+    // 迁移本地精选：filePath -> songId 的持久化索引，避免移动后再次解码算 PCM SHA256
+    try {
+      const moves = results
+        .filter((r) => !(r instanceof Error))
+        .map((r) => r as any)
+        .filter((r) => typeof r?.fromPath === 'string' && typeof r?.toPath === 'string')
+        .map((r) => ({ fromPath: r.fromPath, toPath: r.toPath }))
+      if (moves.length > 0) {
+        const migrated = await migrateSelectionSongIdCacheByMoves(moves, { dbDir })
+        log.debug(
+          `[selection] 路径索引迁移完成：移动=${moves.length} 写入=${migrated.migrated} 删除旧=${migrated.deletedOld}`
+        )
+      }
+    } catch (e) {
+      log.warn('[selection] 路径索引迁移失败', e)
     }
   })
 }

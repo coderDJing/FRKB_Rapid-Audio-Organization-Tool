@@ -1,5 +1,8 @@
 import { ipcMain } from 'electron'
+import path = require('path')
+import fs = require('fs-extra')
 import { log } from '../log'
+import store from '../store'
 import {
   getSongCover as svcGetSongCover,
   getSongCoverThumb as svcGetSongCoverThumb,
@@ -9,6 +12,10 @@ import {
   readTrackMetadata as svcReadTrackMetadata,
   updateTrackMetadata as svcUpdateTrackMetadata
 } from '../services/metadataEditor'
+import {
+  migrateSelectionSongIdCacheByMoves,
+  resolveSelectionSongIds
+} from '../services/selectionSongIdResolver'
 import { autoFillTrackMetadata, cancelMetadataAutoFill } from '../services/metadataAutoFill'
 import {
   searchMusicBrainz,
@@ -20,6 +27,12 @@ import {
   cancelAcoustIdRequests,
   validateAcoustIdClientKeyValue
 } from '../services/acoustId'
+import {
+  bumpSelectionSampleChangeCount,
+  deleteSelectionPredictionCache,
+  getSelectionLabel
+} from 'rust_package'
+import { notifySelectionSamplesChanged } from './selectionPredictionHandlers'
 import {
   IMusicBrainzSearchPayload,
   IMusicBrainzSuggestionParams,
@@ -54,6 +67,71 @@ export function registerMediaMetadataHandlers() {
   ipcMain.handle('audio:metadata:update', async (_e, payload: ITrackMetadataUpdatePayload) => {
     try {
       const result = await svcUpdateTrackMetadata(payload)
+
+      // 本地精选预测：可编辑元数据发生变化时，清理缓存并计入重训阈值（仅对样本 liked/disliked）
+      if (result?.didUpdateEditableMetadata && store.databaseDir) {
+        try {
+          const labelDbPath = path.join(store.databaseDir, 'selection_labels.db')
+          if (!(await fs.pathExists(labelDbPath))) {
+            return {
+              success: true,
+              songInfo: result.songInfo,
+              detail: result.detail,
+              renamedFrom: result.renamedFrom
+            }
+          }
+
+          const filePath =
+            typeof result?.songInfo?.filePath === 'string' && result.songInfo.filePath
+              ? result.songInfo.filePath
+              : typeof result?.detail?.filePath === 'string' && result.detail.filePath
+                ? result.detail.filePath
+                : ''
+
+          if (filePath) {
+            const renamedFrom =
+              typeof result?.renamedFrom === 'string' && result.renamedFrom.trim()
+                ? result.renamedFrom.trim()
+                : ''
+            if (renamedFrom && renamedFrom !== filePath) {
+              try {
+                await migrateSelectionSongIdCacheByMoves(
+                  [{ fromPath: renamedFrom, toPath: filePath }],
+                  {
+                    dbDir: store.databaseDir
+                  }
+                )
+              } catch {}
+            }
+            const { items } = await resolveSelectionSongIds([filePath], {
+              dbDir: store.databaseDir
+            })
+            const songId = items?.[0]?.songId
+            if (typeof songId === 'string' && songId) {
+              const featureStorePath = path.join(store.databaseDir, 'features.db')
+              try {
+                if (await fs.pathExists(featureStorePath)) {
+                  deleteSelectionPredictionCache(featureStorePath, [songId])
+                }
+              } catch {}
+
+              try {
+                const label = getSelectionLabel(store.databaseDir, songId)
+                if (label === 'liked' || label === 'disliked') {
+                  const newCount = bumpSelectionSampleChangeCount(store.databaseDir, 1)
+                  notifySelectionSamplesChanged(store.databaseDir, {
+                    sampleChangeCount: newCount,
+                    reason: 'metadata_changed'
+                  })
+                }
+              } catch {}
+            }
+          }
+        } catch (error) {
+          log.warn('[selection] 元数据更新钩子失败', error)
+        }
+      }
+
       return {
         success: true,
         songInfo: result.songInfo,

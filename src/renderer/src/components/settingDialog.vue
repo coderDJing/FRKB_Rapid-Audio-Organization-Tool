@@ -79,6 +79,10 @@ if ((runtime as any).setting.songListBubbleAlways === undefined) {
   ;(runtime as any).setting.songListBubbleAlways = false
 }
 
+if ((runtime as any).setting.keyDisplayMode === undefined) {
+  ;(runtime as any).setting.keyDisplayMode = 'classic'
+}
+
 if ((runtime as any).setting.acoustIdClientKey === undefined) {
   ;(runtime as any).setting.acoustIdClientKey = ''
 }
@@ -163,6 +167,11 @@ const waveformStyleOptions = computed(() => [
 const waveformModeOptions = computed(() => [
   { label: t('player.waveformModeHalf'), value: 'half' },
   { label: t('player.waveformModeFull'), value: 'full' }
+])
+
+const keyDisplayModeOptions = computed(() => [
+  { label: t('settings.keyNotation.classic'), value: 'classic' },
+  { label: t('settings.keyNotation.camelot'), value: 'camelot' }
 ])
 
 const audioOutputSelectOptions = computed(() => {
@@ -421,6 +430,46 @@ const clearTracksFingerprintLibrary = async () => {
   }
 }
 
+// 清除本地精选预测数据（清空 liked/disliked + 特征/索引 + 删除模型文件）
+const clearSelectionTrainingData = async () => {
+  if (runtime.isProgressing) {
+    await confirm({
+      title: t('common.setting'),
+      content: [t('import.waitForTask')],
+      confirmShow: false
+    })
+    return
+  }
+  const resConfirm = await confirm({
+    title: t('common.warning'),
+    content: [t('selectionTraining.confirmClear')]
+  })
+  if (resConfirm !== 'confirm') return
+
+  try {
+    const result = await window.electron.ipcRenderer.invoke('selection:training:reset')
+    if (result?.ok) {
+      await confirm({
+        title: t('common.setting'),
+        content: [t('selectionTraining.clearCompleted')],
+        confirmShow: false
+      })
+    } else {
+      await confirm({
+        title: t('common.setting'),
+        content: [t('selectionTraining.clearFailed'), String(result?.failed?.message || '')],
+        confirmShow: false
+      })
+    }
+  } catch (error: any) {
+    await confirm({
+      title: t('common.setting'),
+      content: [t('selectionTraining.clearFailed'), String(error?.message || error || '')],
+      confirmShow: false
+    })
+  }
+}
+
 const globalCallShortcutHandle = async () => {
   await globalCallShortcutDialog()
 }
@@ -607,6 +656,14 @@ const clearCloudFingerprints = async () => {
               <BaseSelect
                 v-model="(runtime as any).setting.waveformMode"
                 :options="waveformModeOptions"
+                @change="setSetting"
+              />
+            </div>
+            <div style="margin-top: 20px">{{ t('settings.keyNotation.title') }}：</div>
+            <div style="margin-top: 10px">
+              <BaseSelect
+                v-model="(runtime as any).setting.keyDisplayMode"
+                :options="keyDisplayModeOptions"
                 @change="setSetting"
               />
             </div>
@@ -846,6 +903,16 @@ const clearCloudFingerprints = async () => {
                 @click="clearTracksFingerprintLibrary()"
               >
                 {{ t('fingerprints.clearShort') }}
+              </div>
+            </div>
+            <div style="margin-top: 20px">{{ t('selectionTraining.clear') }}：</div>
+            <div style="margin-top: 10px">
+              <div
+                class="dangerButton"
+                style="width: 90px; text-align: center"
+                @click="clearSelectionTrainingData()"
+              >
+                {{ t('selectionTraining.clearShort') }}
               </div>
             </div>
             <div style="margin-top: 20px">{{ t('cloudSync.reset.sectionTitle') }}：</div>

@@ -39,6 +39,12 @@ interface ISongInfo {
   label: string | undefined
   bitrate: number | undefined
   container: string | undefined
+  bpm?: number | null
+  key?: string | null
+  // 本地精选预测：0~100（可选，按需写入用于列表展示/排序）
+  selectionScore?: number | null
+  // 本地精选预测：liked/disliked/neutral（可选）
+  selectionLabel?: 'liked' | 'disliked' | 'neutral'
 }
 
 // 曲目完整元数据明细，用于编辑界面展示
@@ -262,6 +268,8 @@ interface ISettingConfig {
   migratedAudioExtAiffAif?: boolean
   // 指纹模式：pcm（解码后内容哈希）或 file（整文件哈希）
   fingerprintMode?: 'pcm' | 'file'
+  // 调性显示方式：classic（C/Em）或 camelot（1A/1B）
+  keyDisplayMode?: 'classic' | 'camelot'
   // 云同步用户 Key（由设置页配置）
   cloudSyncUserKey?: string
   // 音频转换默认项（记住用户上次选择）

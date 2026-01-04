@@ -18,6 +18,14 @@
       {
         "from": "vendor/chromaprint",
         "to": "chromaprint"
+      },
+      {
+        "from": "vendor/essentia",
+        "to": "essentia"
+      },
+      {
+        "from": "resources/ai/openl3",
+        "to": "ai/openl3"
       }
     ],
     "appId": "com.electron.frkb",
@@ -26,7 +34,8 @@
     "files": [
       "**/*",
       "!rust_package/target{,/**/*}",
-      "!node_modules/rust_package/target{,/**/*}"
+      "!node_modules/rust_package/target{,/**/*}",
+      "!resources/ai/openl3/*.onnx*"
     ],
     "fileAssociations": [
       {
@@ -68,7 +77,7 @@
       "allowElevation": true
     },
     "mac": {
-      "x64ArchFiles": "Contents/Resources/{ffmpeg,chromaprint}/darwin/{ffmpeg,fpcalc}",
+      "x64ArchFiles": "Contents/Resources/{ffmpeg,chromaprint,essentia}/darwin/{ffmpeg,fpcalc,essentia_streaming_extractor_music}",
       "artifactName": "${productName}-${version}-universal.${ext}"
     }
   },
