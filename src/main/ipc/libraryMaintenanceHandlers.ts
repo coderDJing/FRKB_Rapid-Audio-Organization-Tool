@@ -2,16 +2,15 @@ import { ipcMain } from 'electron'
 import path = require('path')
 import fs = require('fs-extra')
 import { v4 as uuidV4 } from 'uuid'
-import { log } from '../log'
 import store from '../store'
 import mainWindow from '../window/mainWindow'
 import {
   getCoreFsDirName,
   mapRendererPathToFsPath,
-  operateHiddenFile,
   runWithConcurrency,
   waitForUserDecision
 } from '../utils'
+import { findLibraryNodeByPath, insertLibraryNode } from '../libraryTreeDb'
 
 export function registerLibraryMaintenanceHandlers() {
   ipcMain.on('delSongs', async (_e, songFilePaths: string[], dirName: string) => {
@@ -53,21 +52,25 @@ export function registerLibraryMaintenanceHandlers() {
     if (failed > 0) {
       throw new Error('delSongs failed')
     }
+    const recycleNodePath = path.join('library', getCoreFsDirName('RecycleBin'), dirName)
+    const existingNode = findLibraryNodeByPath(recycleNodePath)
     let descriptionJson = {
-      uuid: uuidV4(),
+      uuid: existingNode?.uuid || uuidV4(),
       type: 'songList',
-      order: Date.now()
+      order: existingNode?.order ?? Date.now()
     }
-    const descPath = path.join(recycleBinTargetDir, '.description.json')
-    await operateHiddenFile(descPath, async () => {
-      if (!(await fs.pathExists(descPath))) {
-        await fs.outputJSON(descPath, descriptionJson)
+    if (!existingNode) {
+      const parentNode = findLibraryNodeByPath(path.join('library', getCoreFsDirName('RecycleBin')))
+      if (parentNode) {
+        insertLibraryNode({
+          uuid: descriptionJson.uuid,
+          parentUuid: parentNode.uuid,
+          dirName,
+          nodeType: 'songList',
+          order: descriptionJson.order
+        })
       }
-    })
-    try {
-      const existing = await fs.readJSON(descPath)
-      descriptionJson = { ...descriptionJson, ...existing }
-    } catch {}
+    }
     if (mainWindow.instance) {
       mainWindow.instance.webContents.send('delSongsSuccess', {
         dirName,
@@ -83,18 +86,12 @@ export function registerLibraryMaintenanceHandlers() {
 
   ipcMain.handle('dirPathExists', async (_e, targetPath: string) => {
     try {
-      const filePath = path.join(
-        store.databaseDir,
-        mapRendererPathToFsPath(targetPath),
-        '.description.json'
-      )
-      const descriptionJson = await fs.readJSON(filePath)
+      const mapped = mapRendererPathToFsPath(targetPath)
+      const absPath = path.join(store.databaseDir, mapped)
+      if (!(await fs.pathExists(absPath))) return false
+      const node = findLibraryNodeByPath(mapped)
       const validTypes = ['root', 'library', 'dir', 'songList']
-      return !!(
-        descriptionJson.uuid &&
-        descriptionJson.type &&
-        validTypes.includes(descriptionJson.type)
-      )
+      return !!(node && validTypes.includes(node.nodeType))
     } catch {
       return false
     }

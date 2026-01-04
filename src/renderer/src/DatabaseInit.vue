@@ -114,6 +114,19 @@ const clickChooseDir = async () => {
 const clickChooseExistingDb = async () => {
   const result = await window.electron.ipcRenderer.invoke('select-existing-database-file')
   if (!result) return
+  if (result && result.error === 'incompatible') {
+    await confirm({
+      title: t('common.error'),
+      content: [
+        t('database.incompatibleManifest', {
+          minVersion: result.minAppVersion || '-',
+          currentVersion: result.appVersion || '-'
+        })
+      ],
+      confirmShow: false
+    })
+    return
+  }
   if (result === 'error') {
     await confirm({
       title: t('common.error'),

@@ -8,14 +8,23 @@ import {
   mapRendererPathToFsPath,
   getCoreFsDirName,
   runWithConcurrency,
-  waitForUserDecision,
-  operateHiddenFile
+  waitForUserDecision
 } from '../../utils'
 import { FileSystemOperation } from '@renderer/utils/diffLibraryTree'
+import {
+  findLibraryNodeByPath,
+  insertLibraryNode,
+  moveLibraryNode,
+  removeLibraryNode,
+  removeLibraryNodesByParentUuid,
+  updateLibraryNodeName,
+  updateLibraryNodeOrder
+} from '../../libraryTreeDb'
 
 export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null) {
   ipcMain.on('openFileExplorer', (_e, targetPath) => {
-    shell.openPath(path.join(store.databaseDir, targetPath))
+    const mapped = mapRendererPathToFsPath(String(targetPath || ''))
+    shell.openPath(path.join(store.databaseDir, mapped))
   })
 
   ipcMain.on('show-item-in-folder', (_e, filePath: string) => {
@@ -29,6 +38,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
       getCoreFsDirName('RecycleBin'),
       dirName
     )
+    await fs.ensureDir(recycleBinTargetDir)
     const songFileUrls = await collectFilesWithExtensions(
       path.join(store.databaseDir, mapRendererPathToFsPath(targetPath)),
       store.settingConfig.audioExt
@@ -45,14 +55,25 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
       onInterrupted: async (payload) =>
         waitForUserDecision(getWindow(), batchId, 'emptyDir', payload)
     })
+    const recycleNodePath = path.join('library', getCoreFsDirName('RecycleBin'), dirName)
+    const existingNode = findLibraryNodeByPath(recycleNodePath)
     const descriptionJson = {
-      uuid: uuidV4(),
+      uuid: existingNode?.uuid || uuidV4(),
       type: 'songList',
-      order: Date.now()
+      order: existingNode?.order ?? Date.now()
     }
-    await operateHiddenFile(path.join(recycleBinTargetDir, '.description.json'), async () => {
-      fs.outputJSON(path.join(recycleBinTargetDir, '.description.json'), descriptionJson)
-    })
+    if (!existingNode) {
+      const parentNode = findLibraryNodeByPath(path.join('library', getCoreFsDirName('RecycleBin')))
+      if (parentNode) {
+        insertLibraryNode({
+          uuid: descriptionJson.uuid,
+          parentUuid: parentNode.uuid,
+          dirName,
+          nodeType: 'songList',
+          order: descriptionJson.order
+        })
+      }
+    }
     const targetWindow = getWindow()
     if (targetWindow) {
       targetWindow.webContents.send('delSongsSuccess', {
@@ -85,6 +106,10 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
         }
       })
       await Promise.all(deletePromises)
+      const parentNode = findLibraryNodeByPath(path.join('library', getCoreFsDirName('RecycleBin')))
+      if (parentNode) {
+        removeLibraryNodesByParentUuid(parentNode.uuid)
+      }
     } catch (error) {
       console.error('清空回收站失败:', error)
     }
@@ -97,51 +122,42 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
         let operationStatus = 'processed'
         let recycleBinInfo: any = null
         if (item.type === 'create') {
-          const createPath = path.join(store.databaseDir, item.path)
-          await operateHiddenFile(path.join(createPath, '.description.json'), async () => {
-            await fs.ensureDir(path.dirname(createPath))
-            await fs.ensureDir(createPath)
-            await fs.outputJSON(path.join(createPath, '.description.json'), {
+          const mappedPath = mapRendererPathToFsPath(item.path)
+          const createPath = path.join(store.databaseDir, mappedPath)
+          await fs.ensureDir(path.dirname(createPath))
+          await fs.ensureDir(createPath)
+          const parentNode = findLibraryNodeByPath(path.dirname(mappedPath))
+          if (parentNode) {
+            insertLibraryNode({
               uuid: item.uuid,
-              type: item.nodeType,
+              parentUuid: parentNode.uuid,
+              dirName: path.basename(mappedPath),
+              nodeType: (item.nodeType as any) || 'dir',
               order: item.order
             })
-          })
+          }
           operationStatus = 'created'
         } else if (item.type === 'reorder') {
-          await operateHiddenFile(
-            path.join(store.databaseDir, item.path, '.description.json'),
-            async () => {
-              let existingData = {}
-              try {
-                existingData = await fs.readJson(
-                  path.join(store.databaseDir, item.path, '.description.json')
-                )
-              } catch {}
-              await fs.outputJSON(path.join(store.databaseDir, item.path, '.description.json'), {
-                ...existingData,
-                uuid: item.uuid,
-                type: item.nodeType,
-                order: item.order
-              })
-            }
-          )
+          updateLibraryNodeOrder(item.uuid, item.order ?? null)
           operationStatus = 'reordered'
         } else if (item.type === 'rename') {
-          const oldFullPath = path.join(store.databaseDir, item.path)
-          const newFullPath = path.join(
-            store.databaseDir,
-            item.path.slice(0, item.path.lastIndexOf('/') + 1) + item.newName
-          )
+          const mappedOldPath = mapRendererPathToFsPath(item.path)
+          const mappedNewPath = item.newPath
+            ? mapRendererPathToFsPath(item.newPath)
+            : path.join(path.dirname(mappedOldPath), item.newName || '')
+          const oldFullPath = path.join(store.databaseDir, mappedOldPath)
+          const newFullPath = path.join(store.databaseDir, mappedNewPath)
           if (await fs.pathExists(oldFullPath)) {
             await fs.rename(oldFullPath, newFullPath)
+            updateLibraryNodeName(item.uuid, path.basename(mappedNewPath))
             operationStatus = 'renamed'
           } else {
             console.warn(`Rename source path not found: ${oldFullPath}`)
             operationStatus = 'rename_failed_source_not_found'
           }
         } else if (item.type === 'delete' && item.recycleBinDir) {
-          const dirPath = path.join(store.databaseDir, item.path)
+          const mappedPath = mapRendererPathToFsPath(item.path)
+          const dirPath = path.join(store.databaseDir, mappedPath)
           const recycleBinTargetDir = path.join(
             store.databaseDir,
             'library',
@@ -151,6 +167,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
           const isEmpty = await isDirectoryEffectivelyEmpty(dirPath, store.settingConfig.audioExt)
           if (isEmpty) {
             await fs.remove(dirPath)
+            removeLibraryNode(item.uuid)
             operationStatus = 'removed'
           } else {
             try {
@@ -158,11 +175,12 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
               const itemsToMove = await fs.readdir(dirPath)
               const tasks: Array<() => Promise<any>> = []
               for (const dirItem of itemsToMove) {
-                if (dirItem !== '.description.json') {
-                  const srcPath = path.join(dirPath, dirItem)
-                  const destPath = path.join(recycleBinTargetDir, dirItem)
-                  tasks.push(() => fs.move(srcPath, destPath, { overwrite: true }))
+                if (dirItem.startsWith('.description.json')) {
+                  continue
                 }
+                const srcPath = path.join(dirPath, dirItem)
+                const destPath = path.join(recycleBinTargetDir, dirItem)
+                tasks.push(() => fs.move(srcPath, destPath, { overwrite: true }))
               }
               const batchId = `recycleMove_${Date.now()}`
               const { success, failed, hasENOSPC, skipped } = await runWithConcurrency(tasks, {
@@ -173,23 +191,30 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
               })
               if (failed === 0) {
                 await fs.remove(dirPath)
+                removeLibraryNode(item.uuid)
               }
-              const descriptionJson = {
-                uuid: item.recycleBinDir.uuid,
-                type: item.recycleBinDir.type,
-                order: item.recycleBinDir.order
-              }
-              await operateHiddenFile(
-                path.join(recycleBinTargetDir, '.description.json'),
-                async () => {
-                  await fs.outputJSON(
-                    path.join(recycleBinTargetDir, '.description.json'),
-                    descriptionJson
-                  )
-                }
-              )
               operationStatus = 'recycled'
               recycleBinInfo = item.recycleBinDir
+              const recycleNodePath = path.join(
+                'library',
+                getCoreFsDirName('RecycleBin'),
+                item.recycleBinDir.dirName
+              )
+              const existingRecycle = findLibraryNodeByPath(recycleNodePath)
+              if (!existingRecycle) {
+                const parentNode = findLibraryNodeByPath(
+                  path.join('library', getCoreFsDirName('RecycleBin'))
+                )
+                if (parentNode) {
+                  insertLibraryNode({
+                    uuid: item.recycleBinDir.uuid,
+                    parentUuid: parentNode.uuid,
+                    dirName: item.recycleBinDir.dirName,
+                    nodeType: 'songList',
+                    order: item.recycleBinDir.order
+                  })
+                }
+              }
               if (hasENOSPC && getWindow()) {
                 getWindow()?.webContents.send('file-batch-summary', {
                   context: 'recycleMove',
@@ -213,26 +238,25 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
             }
           }
         } else if (item.type === 'permanentlyDelete') {
-          await fs.remove(path.join(store.databaseDir, item.path))
+          const mappedPath = mapRendererPathToFsPath(item.path)
+          await fs.remove(path.join(store.databaseDir, mappedPath))
+          removeLibraryNode(item.uuid)
           operationStatus = 'permanently_deleted'
         } else if (item.type === 'move') {
-          const srcFullPath = path.join(store.databaseDir, item.path)
-          const destFullPath = path.join(store.databaseDir, item.newPath as string)
+          const mappedOldPath = mapRendererPathToFsPath(item.path)
+          const mappedNewPath = mapRendererPathToFsPath(item.newPath as string)
+          const srcFullPath = path.join(store.databaseDir, mappedOldPath)
+          const destFullPath = path.join(store.databaseDir, mappedNewPath)
           if (await fs.pathExists(srcFullPath)) {
             await fs.ensureDir(path.dirname(destFullPath))
             await fs.move(srcFullPath, destFullPath, { overwrite: true })
-            await operateHiddenFile(path.join(destFullPath, '.description.json'), async () => {
-              let existingData = {}
-              try {
-                existingData = await fs.readJson(path.join(destFullPath, '.description.json'))
-              } catch {}
-              await fs.outputJSON(path.join(destFullPath, '.description.json'), {
-                ...existingData,
-                uuid: item.uuid,
-                type: item.nodeType,
-                order: item.order
-              })
-            })
+            const parentNode = findLibraryNodeByPath(path.dirname(mappedNewPath))
+            if (parentNode) {
+              moveLibraryNode(item.uuid, parentNode.uuid, path.basename(mappedNewPath))
+              if (item.order !== undefined) {
+                updateLibraryNodeOrder(item.uuid, item.order)
+              }
+            }
             operationStatus = 'moved'
           } else {
             console.warn(`Move source path not found: ${srcFullPath}`)

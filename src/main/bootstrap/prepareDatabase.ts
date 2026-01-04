@@ -4,8 +4,13 @@ import store from '../store'
 import databaseInitWindow from '../window/databaseInitWindow'
 import mainWindow from '../window/mainWindow'
 import { initDatabaseStructure } from '../initDatabase'
-import { ensureManifestForLegacy, writeManifest } from '../databaseManifest'
-import { healAndPrepare, loadList } from '../fingerprintStore'
+import {
+  ensureManifestForLegacy,
+  writeManifest,
+  ensureManifestMinVersion
+} from '../databaseManifest'
+import { loadList } from '../fingerprintStore'
+import { ensureLegacyMigration } from '../libraryMigration'
 
 // 幂等准备数据库并打开主窗口；异常或缺少数据库则进入初始化窗口
 export const prepareAndOpenMainWindow = async (): Promise<void> => {
@@ -39,9 +44,10 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
       if (!legacy) {
         await writeManifest(store.settingConfig.databaseUrl, app.getVersion())
       }
+      await ensureManifestMinVersion(store.settingConfig.databaseUrl, app.getVersion())
     } catch {}
-    // 指纹仓：修复并加载
-    await healAndPrepare()
+    const proceed = await ensureLegacyMigration(store.settingConfig.databaseUrl)
+    if (!proceed) return
     // 根据设置的模式加载对应列表
     const mode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
     const list = await loadList(mode)

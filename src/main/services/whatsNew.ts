@@ -1,11 +1,10 @@
 import { app, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { log } from '../log'
-import url from '../url'
 import store from '../store'
 import whatsNewWindow, { type WhatsNewReleasePayload } from '../window/whatsNewWindow'
-import fs = require('fs-extra')
 import type { ISettingConfig } from '../../types/globals'
+import { persistSettingConfig } from '../settingsPersistence'
 
 const WHATS_NEW_RELEASE_URL =
   'https://api.github.com/repos/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases/latest'
@@ -26,7 +25,7 @@ async function persistWhatsNewState(patch: WhatsNewStatePatch) {
   }
   store.settingConfig = nextSetting
   try {
-    await fs.outputJson(url.settingConfigFileUrl, nextSetting)
+    await persistSettingConfig(nextSetting)
   } catch (error) {
     log.error('[whatsNew] 持久化设置失败', error)
   }

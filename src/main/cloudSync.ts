@@ -1,11 +1,10 @@
 import { ipcMain } from 'electron'
-import fs = require('fs-extra')
 import { is } from '@electron-toolkit/utils'
 import store from './store'
-import url from './url'
 import FingerprintStore from './fingerprintStore'
 import { log } from './log'
 import mainWindow from './window/mainWindow'
+import { persistSettingConfig } from './settingsPersistence'
 
 const CLOUD_SYNC = {
   BASE_URL: is.dev
@@ -122,7 +121,7 @@ ipcMain.handle('cloudSync/config/get', () => {
     storedUserKey = DEV_DEFAULT_USER_KEY
     cloudSyncConfig.userKey = storedUserKey
     ;(store as any).settingConfig.cloudSyncUserKey = storedUserKey
-    fs.outputJson(url.settingConfigFileUrl, (store as any).settingConfig)
+    void persistSettingConfig()
   } else {
     cloudSyncConfig.userKey = storedUserKey
   }
@@ -183,7 +182,7 @@ ipcMain.handle('cloudSync/config/save', async (_e, payload: { userKey: string })
     if (json?.success === true && json?.data?.isActive === true) {
       cloudSyncConfig.userKey = json?.data?.userKey || userKey
       ;(store as any).settingConfig.cloudSyncUserKey = cloudSyncConfig.userKey
-      await fs.outputJson(url.settingConfigFileUrl, (store as any).settingConfig)
+      await persistSettingConfig()
       return { success: true }
     }
     const error = String(json?.error || '').toUpperCase()

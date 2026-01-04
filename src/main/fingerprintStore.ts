@@ -1,20 +1,31 @@
 import fs = require('fs-extra')
 import path = require('path')
-import os = require('os')
-import { v4 as uuidV4 } from 'uuid'
-import { getCurrentTimeYYYYMMDDHHMMSSSSS } from './utils'
 import store from './store'
+import { getLibraryDb, getMetaValue, setMetaValue } from './libraryDb'
+import { log } from './log'
 
-// 指纹库版本化存储与读写：
+// 旧版指纹文件仅用于迁移读取：
 // - 数据文件：songFingerprintV2_YYYYMMDDHHMMSSSSS_UUID.json
 // - 指针文件：latest.meta（内容仅一行：当前数据文件名）
-// - 修复标记：.fingerprint_healed
 
 const DATA_PREFIX = 'songFingerprintV2_'
 const META_FILE = 'latest.meta'
-const HEAL_MARK = '.fingerprint_healed'
 
 type FingerprintMode = 'pcm' | 'file'
+
+const MIGRATION_META_PREFIX = 'fingerprints_migrated_'
+
+function resolveMode(mode?: FingerprintMode): FingerprintMode {
+  return mode === 'file' ? 'file' : 'pcm'
+}
+
+function normalizeList(list: string[]): string[] {
+  return Array.from(new Set(list.map((m) => String(m))))
+}
+
+function getMigrationKey(mode: FingerprintMode): string {
+  return `${MIGRATION_META_PREFIX}${mode}`
+}
 
 // 简单串行化队列，确保同一时间仅一次写入
 let writeQueue: Promise<any> = Promise.resolve()
@@ -24,90 +35,11 @@ function enqueue<T>(task: () => Promise<T>): Promise<T> {
 }
 
 function getDir(mode?: FingerprintMode): string {
-  const base = path.join(
-    store.databaseDir || store.settingConfig?.databaseUrl || '',
-    'songFingerprint'
-  )
+  const root = store.databaseDir || store.settingConfig?.databaseUrl || ''
+  if (!root) return ''
+  const base = path.join(root, 'songFingerprint')
   const sub = mode === 'file' ? 'file' : 'pcm'
   return path.join(base, sub)
-}
-
-async function ensureDir(mode?: FingerprintMode): Promise<string> {
-  const dir = getDir(mode)
-  await fs.ensureDir(dir)
-  return dir
-}
-
-function isWindows(): boolean {
-  return os.platform() === 'win32'
-}
-
-async function isHiddenWindows(filePath: string): Promise<boolean> {
-  if (!isWindows()) return false
-  const { exec } = require('child_process')
-  const { promisify } = require('util')
-  const execAsync = promisify(exec)
-  try {
-    const { stdout } = await execAsync(`attrib "${filePath}"`)
-    return /\sH\s/i.test(stdout || '')
-  } catch {
-    return false
-  }
-}
-
-async function unhideWindows(filePath: string): Promise<void> {
-  if (!isWindows()) return
-  const { exec } = require('child_process')
-  const { promisify } = require('util')
-  const execAsync = promisify(exec)
-  // 指数退避：50 → 100 → 200 → 400 → 800ms
-  const waits = [50, 100, 200, 400, 800]
-  for (let i = 0; i < waits.length; i++) {
-    try {
-      await execAsync(`attrib -h "${filePath}"`)
-      return
-    } catch (e) {
-      await new Promise((r) => setTimeout(r, waits[i]))
-    }
-  }
-}
-
-function shouldRetry(err: any): boolean {
-  const code = String((err && err.code) || '').toUpperCase()
-  if (isWindows()) {
-    return code === 'EPERM' || code === 'EBUSY' || code === 'EACCES' || code === 'UNKNOWN'
-  }
-  return code === 'EBUSY' || code === 'EAGAIN' || code === 'UNKNOWN'
-}
-
-async function moveWithRetry(src: string, dest: string): Promise<void> {
-  const waits = [50, 100, 200, 400, 800]
-  let lastErr: any = null
-  for (let i = 0; i < waits.length; i++) {
-    try {
-      await fs.move(src, dest, { overwrite: true })
-      return
-    } catch (e: any) {
-      lastErr = e
-      if (!shouldRetry(e)) throw e
-      await new Promise((r) => setTimeout(r, waits[i]))
-    }
-  }
-  if (lastErr) throw lastErr
-}
-
-async function writeJSONAtomic(destFile: string, data: any): Promise<void> {
-  const dir = path.dirname(destFile)
-  const tmp = path.join(dir, `${path.basename(destFile)}.tmp`)
-  await fs.outputJSON(tmp, data)
-  await moveWithRetry(tmp, destFile)
-}
-
-async function writeTextAtomic(destFile: string, text: string): Promise<void> {
-  const dir = path.dirname(destFile)
-  const tmp = path.join(dir, `${path.basename(destFile)}.tmp`)
-  await fs.outputFile(tmp, text, 'utf8')
-  await moveWithRetry(tmp, destFile)
 }
 
 async function listVersionFiles(dir: string): Promise<string[]> {
@@ -135,67 +67,62 @@ async function selectLatestFile(dir: string, candidates: string[]): Promise<stri
   return withStats[0]?.name || null
 }
 
-export async function healAndPrepare(): Promise<void> {
-  // 旧库静默清理：若检测到根目录下旧结构，清空旧文件；模式由 UI 选择/设置项决定
-  try {
-    const base = path.join(
-      store.databaseDir || store.settingConfig?.databaseUrl || '',
-      'songFingerprint'
-    )
-    const legacyV1 = path.join(base, 'songFingerprint.json')
-    const legacyV2 = path.join(base, 'songFingerprintV2.json')
-    if (await fs.pathExists(legacyV1)) {
-      await fs.remove(legacyV1)
-    }
-    if (await fs.pathExists(legacyV2)) {
-      try {
-        if (await isHiddenWindows(legacyV2)) await unhideWindows(legacyV2)
-      } catch {}
-      await fs.remove(legacyV2)
-    }
-
-    // 进一步清理：根目录下旧版 V2 残留（不再使用的版本化文件与指针/标记）
-    // 仅清理 base 根目录，保留 pcm/ 与 file/ 子目录内的现行文件
-    try {
-      const names = await fs.readdir(base)
-      for (const name of names) {
-        const full = path.join(base, name)
-        const stat = await fs.stat(full).catch(() => null)
-        if (!stat || !stat.isFile()) continue
-        const isLegacyMark = name === HEAL_MARK || name === META_FILE
-        const isLegacyV2File = name.startsWith(DATA_PREFIX) && name.endsWith('.json')
-        if (isLegacyMark || isLegacyV2File) {
-          try {
-            if (await isHiddenWindows(full)) await unhideWindows(full)
-          } catch {}
-          await fs.remove(full).catch(() => {})
-        }
-      }
-    } catch {}
-  } catch {}
-
-  const dir = await ensureDir((store as any).settingConfig?.fingerprintMode || 'pcm')
-  const mark = path.join(dir, HEAL_MARK)
-  if (await fs.pathExists(mark)) return
-
-  // 目录层面的遗留文件清理已在上方完成，这里仅做当前子目录的首次初始化
-
-  // 若无版本文件与指针，则从旧文件或空数组落第一个版本，并建立指针
-  const versions = await listVersionFiles(dir)
-  const metaPath = path.join(dir, META_FILE)
-  if (versions.length === 0 || !(await fs.pathExists(metaPath))) {
-    let list: string[] = []
-    const fileName = `${DATA_PREFIX}${getCurrentTimeYYYYMMDDHHMMSSSSS()}_${uuidV4()}.json`
-    const dest = path.join(dir, fileName)
-    await writeJSONAtomic(dest, list)
-    await writeTextAtomic(metaPath, fileName)
-  }
-
-  await fs.outputFile(mark, 'ok')
+function toStringArray(value: any): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item) => typeof item === 'string').map((item) => String(item))
 }
 
-export async function loadList(mode?: FingerprintMode): Promise<string[]> {
-  const dir = await ensureDir(mode)
+async function readJsonArrayIfExists(filePath: string): Promise<string[]> {
+  try {
+    if (await fs.pathExists(filePath)) {
+      const json = await fs.readJSON(filePath)
+      return toStringArray(json)
+    }
+  } catch {}
+  return []
+}
+
+async function loadLegacyRootList(baseDir: string): Promise<string[]> {
+  const collected: string[] = []
+  const v1 = await readJsonArrayIfExists(path.join(baseDir, 'songFingerprint.json'))
+  const v2 = await readJsonArrayIfExists(path.join(baseDir, 'songFingerprintV2.json'))
+  collected.push(...v1, ...v2)
+  const candidates = await listVersionFiles(baseDir)
+  if (candidates.length > 0) {
+    const latest = await selectLatestFile(baseDir, candidates)
+    if (latest) {
+      const json = await readJsonArrayIfExists(path.join(baseDir, latest))
+      collected.push(...json)
+    }
+  }
+  return normalizeList(collected)
+}
+
+function readListFromDb(db: any, mode: FingerprintMode): string[] {
+  const rows = db.prepare('SELECT hash FROM fingerprints WHERE mode = ?').all(mode)
+  return rows.map((row: any) => String(row.hash))
+}
+
+function writeListToDb(db: any, mode: FingerprintMode, list: string[]): void {
+  const insert = db.prepare('INSERT OR IGNORE INTO fingerprints (mode, hash) VALUES (?, ?)')
+  const wipe = db.prepare('DELETE FROM fingerprints WHERE mode = ?')
+  const run = db.transaction((items: string[]) => {
+    wipe.run(mode)
+    for (const hash of items) {
+      insert.run(mode, hash)
+    }
+  })
+  run(list)
+}
+
+async function loadListFromFiles(mode?: FingerprintMode): Promise<string[]> {
+  const dir = getDir(mode)
+  if (!dir) return []
+  try {
+    if (!(await fs.pathExists(dir))) return []
+  } catch {
+    return []
+  }
   const metaPath = path.join(dir, META_FILE)
   try {
     if (await fs.pathExists(metaPath)) {
@@ -218,58 +145,101 @@ export async function loadList(mode?: FingerprintMode): Promise<string[]> {
   return []
 }
 
-async function cleanupOldVersions(dir: string, keep: number = 5): Promise<void> {
-  try {
-    const candidates = await listVersionFiles(dir)
-    if (candidates.length <= keep) return
-    // 最新在前，保留前 keep 个
-    const withOrder = await Promise.all(
-      candidates.map(async (name) => {
-        const full = path.join(dir, name)
-        let mtime = 0
-        try {
-          const st = await fs.stat(full)
-          mtime = st.mtimeMs || 0
-        } catch {
-          mtime = 0
-        }
-        return { name, mtime }
-      })
-    )
-    withOrder.sort((a, b) => (a.name < b.name ? 1 : a.name > b.name ? -1 : b.mtime - a.mtime))
-    const toDelete = withOrder.slice(keep).map((x) => path.join(dir, x.name))
-    for (const f of toDelete) {
-      try {
-        await fs.remove(f)
-      } catch {
-        // 删除失败下次再试，不影响使用
-      }
-    }
-  } catch {
-    // 清理失败静默
+async function migrateLegacyIfNeeded(
+  db: any,
+  mode: FingerprintMode,
+  fallbackList?: string[]
+): Promise<void> {
+  const key = getMigrationKey(mode)
+  const migrated = getMetaValue(db, key)
+  if (migrated === '1') return
+  const existing = readListFromDb(db, mode)
+  if (existing.length > 0) {
+    setMetaValue(db, key, '1')
+    return
   }
+  let legacy = await loadListFromFiles(mode)
+  if (fallbackList && fallbackList.length > 0) {
+    legacy = normalizeList([...legacy, ...fallbackList])
+  }
+  if (legacy.length > 0) {
+    writeListToDb(db, mode, normalizeList(legacy))
+  }
+  setMetaValue(db, key, '1')
+}
+
+export async function healAndPrepare(): Promise<void> {
+  const root = store.databaseDir || store.settingConfig?.databaseUrl || ''
+  if (!root) return
+  const base = path.join(root, 'songFingerprint')
+  let legacyRootList: string[] = []
+  try {
+    if (await fs.pathExists(base)) {
+      legacyRootList = await loadLegacyRootList(base)
+    }
+  } catch {}
+
+  const db = getLibraryDb()
+  if (!db) {
+    log.error('[fingerprint] sqlite not available, skip migration')
+    return
+  }
+  try {
+    await migrateLegacyIfNeeded(db, 'pcm', legacyRootList)
+    await migrateLegacyIfNeeded(db, 'file')
+  } catch (error) {
+    log.error('[fingerprint] sqlite migration failed', error)
+  }
+  try {
+    if (await fs.pathExists(base)) {
+      await fs.remove(base)
+    }
+  } catch {}
+}
+
+export async function loadList(mode?: FingerprintMode): Promise<string[]> {
+  const resolvedMode = resolveMode(mode)
+  const db = getLibraryDb()
+  if (!db) {
+    log.error('[fingerprint] sqlite not available, load skipped')
+    return []
+  }
+  try {
+    await migrateLegacyIfNeeded(db, resolvedMode)
+    return readListFromDb(db, resolvedMode)
+  } catch (error) {
+    log.error('[fingerprint] sqlite load failed', error)
+  }
+  return []
 }
 
 export async function saveList(list: string[], mode?: FingerprintMode): Promise<void> {
-  const dir = await ensureDir(mode)
+  const resolvedMode = resolveMode(mode)
   return enqueue(async () => {
-    const fileName = `${DATA_PREFIX}${getCurrentTimeYYYYMMDDHHMMSSSSS()}_${uuidV4()}.json`
-    const dest = path.join(dir, fileName)
-    await writeJSONAtomic(dest, Array.from(new Set(list.map((m) => String(m)))))
-    await writeTextAtomic(path.join(dir, META_FILE), fileName)
-    // 清理旧版本（异步执行，不阻塞）
-    cleanupOldVersions(dir, 5).catch(() => {})
+    const normalized = normalizeList(list)
+    const db = getLibraryDb()
+    if (!db) {
+      log.error('[fingerprint] sqlite not available, save skipped')
+      return
+    }
+    try {
+      writeListToDb(db, resolvedMode, normalized)
+      setMetaValue(db, getMigrationKey(resolvedMode), '1')
+      return
+    } catch (error) {
+      log.error('[fingerprint] sqlite save failed', error)
+    }
   })
 }
 
 export async function exportSnapshot(toFilePath: string, list: string[]): Promise<void> {
-  await fs.outputJSON(toFilePath, Array.from(new Set(list.map((m) => String(m)))))
+  await fs.outputJSON(toFilePath, normalizeList(list))
 }
 
 export async function importFromJsonFile(filePath: string): Promise<string[]> {
   const json: any = await fs.readJSON(filePath)
   if (Array.isArray(json)) {
-    const merged = Array.from(new Set([...(store.songFingerprintList || []), ...json]))
+    const merged = normalizeList([...(store.songFingerprintList || []), ...json])
     await saveList(merged)
     return merged
   }

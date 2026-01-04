@@ -5,6 +5,7 @@ import { is } from '@electron-toolkit/utils'
 import store from './store'
 import url from './url'
 import { log } from './log'
+import { persistSettingConfig } from './settingsPersistence'
 
 // 正式阈值：累计运行 100 小时上报一次；失败后每 1 小时重试一次
 const USAGE_UPLOAD_THRESHOLD_MS = 100 * 60 * 60 * 1000
@@ -72,11 +73,9 @@ async function uploadLogText(text: string): Promise<boolean> {
 }
 
 function persistSettings() {
-  try {
-    fs.outputJson(url.settingConfigFileUrl, store.settingConfig)
-  } catch (e) {
+  persistSettingConfig().catch((e) => {
     log.error('[errorReport] 持久化设置失败', e)
-  }
+  })
 }
 
 async function tryUploadOnce(trigger: 'auto' | 'manual'): Promise<boolean> {
