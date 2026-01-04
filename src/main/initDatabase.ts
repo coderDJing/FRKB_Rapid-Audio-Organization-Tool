@@ -1,7 +1,11 @@
 import fs = require('fs-extra')
 import path = require('path')
-import { v4 as uuidV4 } from 'uuid'
-import { operateHiddenFile, ensureEnglishCoreLibraries } from './utils'
+import { ensureEnglishCoreLibraries, getCoreFsDirName } from './utils'
+import {
+  ensureLibraryTreeBaseline,
+  findLibraryNodeByPath,
+  insertLibraryNode
+} from './libraryTreeDb'
 
 function hasSubdirectories(targetPath: fs.PathLike) {
   try {
@@ -34,42 +38,24 @@ export async function initDatabaseStructure(
     }
   } catch {}
 
-  // 根描述
-  const rootDescription = {
-    uuid: uuidV4(),
-    type: 'root',
-    order: 1
-  }
-  await operateHiddenFile(path.join(dirPath, 'library', '.description.json'), async () => {
-    await fs.ensureDir(path.join(dirPath, 'library'))
-    await fs.outputJson(path.join(dirPath, 'library', '.description.json'), rootDescription)
-  })
-
-  const makeLibrary = async (libraryPath: string, order: number) => {
-    const descPath = path.join(libraryPath, '.description.json')
-    if (!fs.pathExistsSync(descPath)) {
-      const description = {
-        uuid: uuidV4(),
-        type: 'library',
-        order
-      }
-      await operateHiddenFile(descPath, async () => {
-        await fs.ensureDir(libraryPath)
-        await fs.outputJson(descPath, description)
-      })
-    }
-  }
+  // 库根目录
+  await fs.ensureDir(path.join(dirPath, 'library'))
 
   // 核心库目录改为英文命名，兼容旧库将在读取时尝试从中文重命名为英文
-  const filterLibraryPath = path.join(dirPath, 'library/FilterLibrary')
-  const curatedLibraryPath = path.join(dirPath, 'library/CuratedLibrary')
-  const recycleBinPath = path.join(dirPath, 'library/RecycleBin')
-  await makeLibrary(filterLibraryPath, 1)
-  await makeLibrary(curatedLibraryPath, 2)
-  await makeLibrary(recycleBinPath, 3)
+  const filterLibraryPath = path.join(dirPath, 'library', getCoreFsDirName('FilterLibrary'))
+  const curatedLibraryPath = path.join(dirPath, 'library', getCoreFsDirName('CuratedLibrary'))
+  const recycleBinPath = path.join(dirPath, 'library', getCoreFsDirName('RecycleBin'))
+  await fs.ensureDir(filterLibraryPath)
+  await fs.ensureDir(curatedLibraryPath)
+  await fs.ensureDir(recycleBinPath)
 
-  // 确保指纹目录存在（指纹文件由 healAndPrepare 负责创建）
-  await fs.ensureDir(path.join(dirPath, 'songFingerprint'))
+  await ensureLibraryTreeBaseline(dirPath, {
+    coreDirNames: {
+      FilterLibrary: getCoreFsDirName('FilterLibrary'),
+      CuratedLibrary: getCoreFsDirName('CuratedLibrary'),
+      RecycleBin: getCoreFsDirName('RecycleBin')
+    }
+  })
 
   // 仅在需要时（初始化向导）注入示例内容
   if (
@@ -77,68 +63,84 @@ export async function initDatabaseStructure(
     !hasSubdirectories(filterLibraryPath) &&
     !hasSubdirectories(curatedLibraryPath)
   ) {
-    await operateHiddenFile(
-      path.join(filterLibraryPath, 'House', '.description.json'),
-      async () => {
-        await fs.outputJson(path.join(filterLibraryPath, 'House', '.description.json'), {
-          uuid: 'filterLibrarySonglistDemo1',
-          type: 'songList',
-          order: 1
-        })
-        const filterLibrarySonglistSongDemo1 = path
-          .join(
-            __dirname,
-            '../../resources/demoMusic/Oden & Fatzo, Poppy Baskcomb - Tell Me What You Want (Extended Mix).mp3'
-          )
-          .replace('app.asar', 'app.asar.unpacked')
-        const filterLibrarySonglistSongDemo2 = path
-          .join(__dirname, '../../resources/demoMusic/War - Low Rider (Kyle Watson Remix).mp3')
-          .replace('app.asar', 'app.asar.unpacked')
-        if (fs.pathExistsSync(filterLibrarySonglistSongDemo1)) {
-          await fs.copy(
-            filterLibrarySonglistSongDemo1,
-            path.join(
-              filterLibraryPath,
-              'House',
-              'Oden & Fatzo, Poppy Baskcomb - Tell Me What You Want (Extended Mix).mp3'
-            )
-          )
-        }
-        if (fs.pathExistsSync(filterLibrarySonglistSongDemo2)) {
-          await fs.copy(
-            filterLibrarySonglistSongDemo2,
-            path.join(filterLibraryPath, 'House', 'War - Low Rider (Kyle Watson Remix).mp3')
-          )
-        }
-      }
-    )
+    await fs.ensureDir(path.join(filterLibraryPath, 'House'))
+    const filterLibrarySonglistSongDemo1 = path
+      .join(
+        __dirname,
+        '../../resources/demoMusic/Oden & Fatzo, Poppy Baskcomb - Tell Me What You Want (Extended Mix).mp3'
+      )
+      .replace('app.asar', 'app.asar.unpacked')
+    const filterLibrarySonglistSongDemo2 = path
+      .join(__dirname, '../../resources/demoMusic/War - Low Rider (Kyle Watson Remix).mp3')
+      .replace('app.asar', 'app.asar.unpacked')
+    if (fs.pathExistsSync(filterLibrarySonglistSongDemo1)) {
+      await fs.copy(
+        filterLibrarySonglistSongDemo1,
+        path.join(
+          filterLibraryPath,
+          'House',
+          'Oden & Fatzo, Poppy Baskcomb - Tell Me What You Want (Extended Mix).mp3'
+        )
+      )
+    }
+    if (fs.pathExistsSync(filterLibrarySonglistSongDemo2)) {
+      await fs.copy(
+        filterLibrarySonglistSongDemo2,
+        path.join(filterLibraryPath, 'House', 'War - Low Rider (Kyle Watson Remix).mp3')
+      )
+    }
 
-    await operateHiddenFile(
-      path.join(curatedLibraryPath, 'House Nice', '.description.json'),
-      async () => {
-        await fs.outputJson(path.join(curatedLibraryPath, 'House Nice', '.description.json'), {
-          uuid: 'curatedLibrarySonglistDemo1',
-          type: 'songList',
-          order: 1
-        })
-        const curatedLibrarySonglistSongDemo1 = path
-          .join(
-            __dirname,
-            '../../resources/demoMusic/Armand Van Helden - I Want Your Soul (AVH Rework).mp3'
-          )
-          .replace('app.asar', 'app.asar.unpacked')
-        if (fs.pathExistsSync(curatedLibrarySonglistSongDemo1)) {
-          await fs.copy(
-            curatedLibrarySonglistSongDemo1,
-            path.join(
-              curatedLibraryPath,
-              'House Nice',
-              'Armand Van Helden - I Want Your Soul (AVH Rework).mp3'
-            )
-          )
-        }
-      }
+    await fs.ensureDir(path.join(curatedLibraryPath, 'House Nice'))
+    const curatedLibrarySonglistSongDemo1 = path
+      .join(
+        __dirname,
+        '../../resources/demoMusic/Armand Van Helden - I Want Your Soul (AVH Rework).mp3'
+      )
+      .replace('app.asar', 'app.asar.unpacked')
+    if (fs.pathExistsSync(curatedLibrarySonglistSongDemo1)) {
+      await fs.copy(
+        curatedLibrarySonglistSongDemo1,
+        path.join(
+          curatedLibraryPath,
+          'House Nice',
+          'Armand Van Helden - I Want Your Soul (AVH Rework).mp3'
+        )
+      )
+    }
+
+    const filterParent = findLibraryNodeByPath(
+      path.join('library', getCoreFsDirName('FilterLibrary')),
+      dirPath
     )
+    if (filterParent) {
+      insertLibraryNode(
+        {
+          uuid: 'filterLibrarySonglistDemo1',
+          parentUuid: filterParent.uuid,
+          dirName: 'House',
+          nodeType: 'songList',
+          order: 1
+        },
+        dirPath
+      )
+    }
+
+    const curatedParent = findLibraryNodeByPath(
+      path.join('library', getCoreFsDirName('CuratedLibrary')),
+      dirPath
+    )
+    if (curatedParent) {
+      insertLibraryNode(
+        {
+          uuid: 'curatedLibrarySonglistDemo1',
+          parentUuid: curatedParent.uuid,
+          dirName: 'House Nice',
+          nodeType: 'songList',
+          order: 1
+        },
+        dirPath
+      )
+    }
   }
 }
 

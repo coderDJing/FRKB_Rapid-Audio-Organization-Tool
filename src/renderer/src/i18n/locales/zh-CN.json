@@ -57,6 +57,7 @@
     "initHintCreate": "选择文件夹并输入库名，系统将在该路径下创建库名子文件夹作为数据库。",
     "selectFingerprintModeRequired": "请选择指纹模式（PCM 内容哈希 或 整文件哈希）",
     "invalidManifestFile": "不是有效的 FRKB 数据库声明文件",
+    "incompatibleManifest": "该库需要 FRKB {minVersion} 或更高版本。当前版本：{currentVersion}。请升级后再试。",
     "manifestAlreadyExists": "该目录下已存在 FRKB.database（.frkbdb），不可在此新建数据库。请在“选择已有数据库”中选择该文件，或换一个空目录新建。",
     "dirHasDatabase": "所选文件夹已包含数据库。",
     "dirHasDatabaseOptions": "按 确定：作为已有数据库进入；按 取消：选择是否重置为全新数据库。",
@@ -65,6 +66,14 @@
     "parentIsInsideDb": "所选父路径位于一个已存在的数据库内部，不允许在库内新建。请选择操作：",
     "enterExisting": "直接进入已有数据库",
     "resetRebuild": "覆盖重建"
+  },
+  "migration": {
+    "legacyTitle": "库升级",
+    "legacyInProgress": "检测到上次升级未完成，将重新执行。",
+    "legacyRequired": "检测到旧库，需要升级后继续使用。",
+    "legacyActions": "升级会整理库数据，升级后的库不兼容旧版本 FRKB，请勿在旧版本中打开。若库较大可能耗时较久，请勿强制退出。",
+    "legacyConfirm": "开始升级",
+    "legacyExit": "退出"
   },
   "cloudSync": {
     "syncFingerprints": "同步曲目指纹库",

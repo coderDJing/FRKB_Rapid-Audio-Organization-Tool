@@ -11,12 +11,12 @@ import {
   getSongsAnalyseResult,
   getCoreFsDirName,
   mapRendererPathToFsPath,
-  operateHiddenFile,
   runWithConcurrency,
   waitForUserDecision
 } from '../utils'
 import { isSupportedAudioPath } from '../services/externalOpenQueue'
 import { v4 as uuidV4 } from 'uuid'
+import { findLibraryNodeByPath, insertLibraryNode } from '../libraryTreeDb'
 
 export function registerPlaylistHandlers() {
   ipcMain.handle(
@@ -238,17 +238,27 @@ export function registerPlaylistHandlers() {
         null
 
       if (movedPaths.length > 0) {
+        const recycleNodePath = path.join('library', getCoreFsDirName('RecycleBin'), dirName)
+        const existingNode = findLibraryNodeByPath(recycleNodePath)
         const descriptionJson = {
-          uuid: uuidV4(),
+          uuid: existingNode?.uuid || uuidV4(),
           type: 'songList',
-          order: Date.now()
+          order: existingNode?.order ?? Date.now()
         }
-        await operateHiddenFile(path.join(recycleBinTargetDir, '.description.json'), async () => {
-          const descPath = path.join(recycleBinTargetDir, '.description.json')
-          if (!(await fs.pathExists(descPath))) {
-            await fs.outputJSON(descPath, descriptionJson)
+        if (!existingNode) {
+          const parentNode = findLibraryNodeByPath(
+            path.join('library', getCoreFsDirName('RecycleBin'))
+          )
+          if (parentNode) {
+            insertLibraryNode({
+              uuid: descriptionJson.uuid,
+              parentUuid: parentNode.uuid,
+              dirName,
+              nodeType: 'songList',
+              order: descriptionJson.order
+            })
           }
-        })
+        }
         recycleBinInfo = { dirName, ...descriptionJson }
         if (mainWindow.instance) {
           mainWindow.instance.webContents.send('delSongsSuccess', recycleBinInfo)

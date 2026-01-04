@@ -57,6 +57,7 @@
     "initHintCreate": "Select a folder and enter the database name. A subfolder with that name will be created as the database.",
     "selectFingerprintModeRequired": "Please choose a fingerprint mode (PCM content hash or File hash)",
     "invalidManifestFile": "Not a valid FRKB database manifest",
+    "incompatibleManifest": "This library requires FRKB {minVersion} or later. Current version: {currentVersion}. Please update and try again.",
     "dirHasDatabase": "The selected folder already contains a database.",
     "dirHasDatabaseOptions": "Confirm: enter as existing; Cancel: choose to reset to a brand-new database.",
     "parentIsInsideDb": "The selected parent path is inside an existing database. Creating a new one inside is not allowed. Please choose:",
@@ -65,6 +66,14 @@
     "manifestAlreadyExists": "FRKB.database (.frkbdb) already exists in this directory. You cannot create a new database here. Please select that file in 'Select existing database', or use an empty directory.",
     "resetConfirm": "Dangerous: this will clear the library and fingerprints, resetting to a brand-new database. Continue?",
     "nonEmptyDirConfirm": "The selected directory is not empty. Create a database here anyway? (Using an empty directory or a new subfolder is recommended)"
+  },
+  "migration": {
+    "legacyTitle": "Library Upgrade",
+    "legacyInProgress": "Previous upgrade didn't finish. It will run again.",
+    "legacyRequired": "Legacy library detected. Upgrade required to continue.",
+    "legacyActions": "The upgrade will reorganize library data. The upgraded library won't work with older FRKB versions. Please don't open it with older versions. Large libraries may take longer. Please don't force quit.",
+    "legacyConfirm": "Start upgrade",
+    "legacyExit": "Exit"
   },
   "cloudSync": {
     "syncFingerprints": "Sync fingerprints",

@@ -6,13 +6,14 @@ import child_process = require('child_process')
 import store from '../store'
 import FingerprintStore from '../fingerprintStore'
 import { resolveBundledFfmpegPath, ensureExecutableOnMac } from '../ffmpeg'
-import { getCoreFsDirName, operateHiddenFile, runWithConcurrency } from '../utils'
+import { getCoreFsDirName, runWithConcurrency } from '../utils'
 import {
   SUPPORTED_AUDIO_FORMATS,
   ENCODER_REQUIREMENTS,
   type SupportedAudioFormat
 } from '../../shared/audioFormats'
 import { writeWavRiffInfoWindows } from './wavRiffInfo'
+import { findLibraryNodeByPath, insertLibraryNode } from '../libraryTreeDb'
 
 type ConvertJobOptions = {
   src: string
@@ -81,12 +82,25 @@ async function backupOriginalIfNeeded(src: string) {
   await fs.ensureDir(recycleBinTargetDir)
   const dest = path.join(recycleBinTargetDir, path.basename(src))
   await fs.move(src, dest)
-  const descriptionJson = { uuid: uuidV4(), type: 'songList' as const, order: Date.now() }
-  await operateHiddenFile(path.join(recycleBinTargetDir, '.description.json'), async () => {
-    if (!(await fs.pathExists(path.join(recycleBinTargetDir, '.description.json')))) {
-      await fs.outputJSON(path.join(recycleBinTargetDir, '.description.json'), descriptionJson)
+  const recycleNodePath = path.join('library', getCoreFsDirName('RecycleBin'), dirName)
+  const existingNode = findLibraryNodeByPath(recycleNodePath)
+  const descriptionJson = {
+    uuid: existingNode?.uuid || uuidV4(),
+    type: 'songList' as const,
+    order: existingNode?.order ?? Date.now()
+  }
+  if (!existingNode) {
+    const parentNode = findLibraryNodeByPath(path.join('library', getCoreFsDirName('RecycleBin')))
+    if (parentNode) {
+      insertLibraryNode({
+        uuid: descriptionJson.uuid,
+        parentUuid: parentNode.uuid,
+        dirName,
+        nodeType: 'songList',
+        order: descriptionJson.order
+      })
     }
-  })
+  }
   return { dirName, descriptionJson }
 }
 

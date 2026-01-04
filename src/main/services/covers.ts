@@ -2,6 +2,7 @@ import path = require('path')
 import fs = require('fs-extra')
 import { mapRendererPathToFsPath, operateHiddenFile } from '../utils'
 import store from '../store'
+import * as LibraryCacheDb from '../libraryCacheDb'
 
 export async function getSongCover(
   filePath: string
@@ -25,12 +26,6 @@ export async function getSongCover(
   }
 }
 
-type CoverIndex = {
-  fileToHash: Record<string, string>
-  hashToFiles: Record<string, string[]>
-  hashToExt: Record<string, string>
-}
-
 const mimeFromExt = (ext: string) =>
   ext === '.png'
     ? 'image/png'
@@ -48,11 +43,6 @@ export const extFromMime = (mime: string) => {
   if (lower.includes('gif')) return '.gif'
   if (lower.includes('bmp')) return '.bmp'
   return '.jpg'
-}
-
-const ensureArrHas = (arr: string[], v: string) => {
-  if (arr.indexOf(v) === -1) arr.push(v)
-  return arr
 }
 
 export async function getSongCoverThumb(
@@ -76,53 +66,41 @@ export async function getSongCoverThumb(
         resolvedRoot = path.join(store.databaseDir, mapped)
       }
     }
-    const useDiskCache = !!(
+    let useDiskCache = !!(
       resolvedRoot &&
       path.isAbsolute(resolvedRoot) &&
       (await fs.pathExists(resolvedRoot))
     )
-    const coversDir = useDiskCache ? path.join(resolvedRoot as string, '.frkb_covers') : null
+    let coversDir: string | null = useDiskCache
+      ? path.join(resolvedRoot as string, '.frkb_covers')
+      : null
+    let dbEntry: { hash: string; ext: string } | null = null
+    if (useDiskCache && coversDir) {
+      const listRoot = resolvedRoot as string
+      const entry = await LibraryCacheDb.loadCoverIndexEntry(listRoot, filePath)
+      if (entry === undefined) {
+        useDiskCache = false
+        coversDir = null
+      } else {
+        dbEntry = entry
+      }
+    }
     if (useDiskCache && coversDir) {
       await fs.ensureDir(coversDir)
       await operateHiddenFile(coversDir, async () => {})
     }
 
-    const indexPath = useDiskCache && coversDir ? path.join(coversDir, '.index.json') : null
-    const loadIndex = async (): Promise<CoverIndex> => {
-      if (!indexPath) return { fileToHash: {}, hashToFiles: {}, hashToExt: {} }
-      try {
-        const json = await fs.readJSON(indexPath)
-        return {
-          fileToHash: json?.fileToHash || {},
-          hashToFiles: json?.hashToFiles || {},
-          hashToExt: json?.hashToExt || {}
-        }
-      } catch {
-        return { fileToHash: {}, hashToFiles: {}, hashToExt: {} }
-      }
-    }
-    const saveIndex = async (idx: CoverIndex) => {
-      if (!indexPath) return
-      try {
-        await fs.writeJSON(indexPath, idx)
-      } catch {}
-    }
-
     // 命中索引则直接返回
-    if (useDiskCache && coversDir) {
-      const idx = await loadIndex()
-      const known = idx.fileToHash[filePath]
-      if (known) {
-        const ext = idx.hashToExt[known] || '.jpg'
-        const p = path.join(coversDir, `${known}${ext}`)
-        if (await fs.pathExists(p)) {
-          const st0 = await fs.stat(p)
-          if (st0.size > 0) {
-            const data = await fs.readFile(p)
-            const mime = mimeFromExt(ext)
-            const dataUrl = `data:${mime};base64,${data.toString('base64')}`
-            return { format: mime, data, dataUrl }
-          }
+    if (useDiskCache && coversDir && dbEntry) {
+      const ext = dbEntry.ext || '.jpg'
+      const p = path.join(coversDir, `${dbEntry.hash}${ext}`)
+      if (await fs.pathExists(p)) {
+        const st0 = await fs.stat(p)
+        if (st0.size > 0) {
+          const data = await fs.readFile(p)
+          const mime = mimeFromExt(ext)
+          const dataUrl = `data:${mime};base64,${data.toString('base64')}`
+          return { format: mime, data, dataUrl }
         }
       }
     }
@@ -172,11 +150,11 @@ export async function getSongCoverThumb(
         await fs.writeFile(tmp, data)
         await fs.move(tmp, targetPath, { overwrite: true })
         await operateHiddenFile(targetPath, async () => {})
-        const idx = await loadIndex()
-        idx.fileToHash[filePath] = imageHash
-        idx.hashToFiles[imageHash] = ensureArrHas(idx.hashToFiles[imageHash] || [], filePath)
-        idx.hashToExt[imageHash] = ext
-        await saveIndex(idx)
+        const listRoot = resolvedRoot as string
+        const saved = await LibraryCacheDb.upsertCoverIndexEntry(listRoot, filePath, imageHash, ext)
+        if (!saved) {
+          return { format: mime, data, dataUrl }
+        }
       } catch {
       } finally {
         try {
@@ -203,70 +181,68 @@ export async function sweepSongListCovers(
     const coversDir = path.join(resolvedRoot, '.frkb_covers')
     if (!(await fs.pathExists(coversDir))) return { removed: 0 }
 
-    const indexPath = path.join(coversDir, '.index.json')
-    let idx: any = { fileToHash: {}, hashToFiles: {}, hashToExt: {} }
-    try {
-      const json = await fs.readJSON(indexPath)
-      idx.fileToHash = json?.fileToHash || {}
-      idx.hashToFiles = json?.hashToFiles || {}
-      idx.hashToExt = json?.hashToExt || {}
-    } catch {}
-
-    const alive = new Set(currentFilePaths || [])
-    for (const fp of Object.keys(idx.fileToHash)) {
-      if (!alive.has(fp)) {
-        const h = idx.fileToHash[fp]
-        delete idx.fileToHash[fp]
-        if (Array.isArray(idx.hashToFiles[h])) {
-          idx.hashToFiles[h] = idx.hashToFiles[h].filter((x: string) => x !== fp)
+    const dbEntries = await LibraryCacheDb.loadCoverIndexEntries(resolvedRoot)
+    if (dbEntries) {
+      const alive = new Set(currentFilePaths || [])
+      const hashCounts = new Map<string, number>()
+      const hashToExt = new Map<string, string>()
+      for (const entry of dbEntries) {
+        hashCounts.set(entry.hash, (hashCounts.get(entry.hash) || 0) + 1)
+        if (!hashToExt.has(entry.hash)) {
+          hashToExt.set(entry.hash, entry.ext || '.jpg')
         }
       }
-    }
-    let removed = 0
-    const liveHashes = new Set<string>()
-    for (const h of Object.keys(idx.hashToFiles)) {
-      const arr = idx.hashToFiles[h]
-      if (Array.isArray(arr) && arr.length > 0) liveHashes.add(h)
-    }
-    for (const h of Object.keys(idx.hashToFiles)) {
-      const arr = idx.hashToFiles[h]
-      if (!Array.isArray(arr) || arr.length === 0) {
-        const ext = idx.hashToExt[h] || '.jpg'
-        const p = path.join(coversDir, `${h}${ext}`)
+      const toRemove: string[] = []
+      for (const entry of dbEntries) {
+        if (!alive.has(entry.filePath)) {
+          toRemove.push(entry.filePath)
+          hashCounts.set(entry.hash, (hashCounts.get(entry.hash) || 1) - 1)
+        }
+      }
+      if (toRemove.length > 0) {
+        await LibraryCacheDb.removeCoverIndexEntries(resolvedRoot, toRemove)
+      }
+      let removed = 0
+      const liveHashes = new Set<string>()
+      for (const [hash, count] of hashCounts.entries()) {
+        if (count > 0) {
+          liveHashes.add(hash)
+          continue
+        }
+        const ext = hashToExt.get(hash) || '.jpg'
+        const p = path.join(coversDir, `${hash}${ext}`)
         try {
           if (await fs.pathExists(p)) {
             await fs.remove(p)
             removed++
           }
         } catch {}
-        delete idx.hashToFiles[h]
-        delete idx.hashToExt[h]
       }
+      try {
+        const entries = await fs.readdir(coversDir)
+        const imgRegex = /^[a-f0-9]{40}\.(jpg|png|webp|gif|bmp)$/i
+        for (const name of entries) {
+          const full = path.join(coversDir, name)
+          if (name.includes('.tmp_')) {
+            try {
+              await fs.remove(full)
+            } catch {}
+            continue
+          }
+          if (!imgRegex.test(name)) continue
+          const hash = name.slice(0, 40).toLowerCase()
+          if (!liveHashes.has(hash)) {
+            try {
+              await fs.remove(full)
+              removed++
+            } catch {}
+          }
+        }
+      } catch {}
+      return { removed }
     }
-    try {
-      const entries = await fs.readdir(coversDir)
-      const imgRegex = /^[a-f0-9]{40}\.(jpg|png|webp|gif|bmp)$/i
-      for (const name of entries) {
-        const full = path.join(coversDir, name)
-        if (name.includes('.tmp_')) {
-          try {
-            await fs.remove(full)
-          } catch {}
-          continue
-        }
-        if (!imgRegex.test(name)) continue
-        const hash = name.slice(0, 40).toLowerCase()
-        if (!liveHashes.has(hash)) {
-          try {
-            await fs.remove(full)
-            removed++
-          } catch {}
-        }
-      }
-    } catch {}
 
-    await fs.writeJSON(indexPath, idx)
-    return { removed }
+    return { removed: 0 }
   } catch {
     return { removed: 0 }
   }

@@ -101,7 +101,7 @@ export function calculateFileSystemOperations(oldTree: IDir, newTree: IDir): Fil
     }
 
     if (!oldNode && newNode) {
-      // 新增节点 - 只需要创建文件夹，order会在.description.json中设置
+      // 新增节点 - 只需要创建文件夹，order会在 SQLite 中设置
       const newPath = getFullPath(newNode)
 
       // 检查是否是移动的节点
@@ -253,7 +253,7 @@ export function calculateFileSystemOperations(oldTree: IDir, newTree: IDir): Fil
         })
       }
 
-      // 检查order是否发生变化 - 这是唯一需要修改.description.json的情况
+      // 检查order是否发生变化 - 这是唯一需要更新 SQLite 顺序的情况
       if (oldNode.order !== newNode.order) {
         operations.push({
           type: 'reorder',

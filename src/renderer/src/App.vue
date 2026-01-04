@@ -233,6 +233,16 @@ onMounted(() => {
       fileOpBatchId.value = payload?.batchId || ''
     } catch (_err) {}
   })
+  window.electron.ipcRenderer.on('library-tree-updated', async (_e, tree) => {
+    try {
+      if (tree) {
+        runtime.libraryTree = tree
+        runtime.oldLibraryTree = JSON.parse(JSON.stringify(tree))
+        return
+      }
+      await getLibrary()
+    } catch (_err) {}
+  })
 
   // 全局同步：当有 songsRemoved 事件触发时，若针对当前播放歌单，则同步清理播放列表快照
   emitter.on('songsRemoved', (payload: any) => {

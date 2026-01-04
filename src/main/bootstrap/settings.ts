@@ -5,6 +5,7 @@ import store from '../store'
 import url from '../url'
 import mainWindow from '../window/mainWindow'
 import type { IPlayerGlobalShortcuts, ISettingConfig } from '../../types/globals'
+import { persistSettingConfigSync } from '../settingsPersistence'
 import fs = require('fs-extra')
 
 const platform = process.platform
@@ -182,7 +183,7 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
   }
 
   store.settingConfig = finalSettings
-  fs.outputJsonSync(url.settingConfigFileUrl, finalSettings)
+  persistSettingConfigSync(finalSettings)
   return finalSettings
 }
 

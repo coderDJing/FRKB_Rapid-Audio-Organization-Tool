@@ -10,6 +10,11 @@ import {
   decodeAudioFile
 } from 'rust_package'
 import { BrowserWindow, ipcMain } from 'electron'
+import {
+  ensureLibraryTreeBaseline,
+  loadLibraryNodes,
+  syncLibraryTreeFromDisk
+} from './libraryTreeDb'
 
 interface SongsAnalyseResult {
   songsAnalyseResult: md5[]
@@ -56,18 +61,8 @@ export async function ensureEnglishCoreLibraries(dbRootDir: string): Promise<voi
           // 不创建，避免与中文并存造成歧义
         }
       } else {
-        // 两者都不存在，创建英文目录及描述文件
+        // 两者都不存在，创建英文目录
         await fs.ensureDir(enPath)
-        const descPath = path.join(enPath, '.description.json')
-        if (!(await fs.pathExists(descPath))) {
-          await operateHiddenFile(descPath, async () => {
-            await fs.outputJson(descPath, {
-              uuid: require('uuid').v4(),
-              type: 'library',
-              order: enName === 'FilterLibrary' ? 1 : enName === 'CuratedLibrary' ? 2 : 3
-            })
-          })
-        }
         coreEnToFsName[enName] = enName
       }
     } catch (_err) {
@@ -146,60 +141,95 @@ export async function getSongsAnalyseResult(
 
   return { songsAnalyseResult, errorSongsAnalyseResult }
 }
-async function getdirsDescriptionJson(dirPath: string, dirs: fs.Dirent[]) {
-  const jsons = await Promise.all(
-    dirs.map(async (dir) => {
-      try {
-        const filePath = path.join(dirPath, dir.name, '.description.json')
-        let descriptionJson = await fs.readJSON(filePath)
-        descriptionJson.dirName = dir.name
-        let types = ['root', 'library', 'dir', 'songList']
-        if (descriptionJson.uuid && descriptionJson.type && types.includes(descriptionJson.type)) {
-          const json: IDir = descriptionJson
-          const subDirPath = path.join(dirPath, dir.name)
-          const subEntries = await fs.readdir(subDirPath, { withFileTypes: true })
-          const subDirs = subEntries.filter((entry) => entry.isDirectory())
-          const subJsons = await getdirsDescriptionJson(subDirPath, subDirs)
-          json.children = subJsons
-          // 若为核心库层级，统一将显示名规范为英文（渲染层接收英文）
-          if (json.type === 'library') {
-            for (const enName of CORE_KEYS) {
-              const cnName = CORE_EN_TO_CN[enName]
-              if (json.dirName === enName || json.dirName === cnName) {
-                json.dirName = enName
-                break
-              }
-            }
-          }
-          return json
-        } else {
-          return null
-        }
-      } catch (e) {
-        return null
-      }
-    })
-  )
-  const filteredJsons = jsons.filter((json) => json !== null) as IDir[]
-  return filteredJsons.sort((a, b) => {
-    if (a.order === undefined || b.order === undefined) return 0
-    return a.order - b.order
-  })
-}
-
 //获取整个库的树结构
-export async function getLibrary() {
-  const dirPath = path.join(store.databaseDir, 'library')
+export async function getLibrary(options: { skipSync?: boolean } = {}) {
+  const rootDir = store.databaseDir
+  if (!rootDir) {
+    return { uuid: 'library_root_missing', type: 'root', dirName: 'library', children: [] }
+  }
   // 先确保核心库英文化（若失败则回退中文），同时建立英文->FS 名的映射
-  await ensureEnglishCoreLibraries(store.databaseDir)
-  let descriptionJson = await fs.readJSON(path.join(dirPath, '.description.json'))
-  descriptionJson.dirName = 'library'
-  const rootDescriptionJson: IDir = descriptionJson
-  const entries = await fs.readdir(dirPath, { withFileTypes: true })
-  const dirs = entries.filter((entry) => entry.isDirectory())
-  const dirsDescriptionJson = await getdirsDescriptionJson(dirPath, dirs)
-  rootDescriptionJson.children = dirsDescriptionJson
-  return rootDescriptionJson
+  await ensureEnglishCoreLibraries(rootDir)
+  await ensureLibraryTreeBaseline(rootDir, {
+    coreDirNames: {
+      FilterLibrary: getCoreFsDirName('FilterLibrary'),
+      CuratedLibrary: getCoreFsDirName('CuratedLibrary'),
+      RecycleBin: getCoreFsDirName('RecycleBin')
+    }
+  })
+  if (!options.skipSync) {
+    await syncLibraryTreeFromDisk(rootDir, {
+      coreDirNames: {
+        FilterLibrary: getCoreFsDirName('FilterLibrary'),
+        CuratedLibrary: getCoreFsDirName('CuratedLibrary'),
+        RecycleBin: getCoreFsDirName('RecycleBin')
+      },
+      audioExtensions: store.settingConfig?.audioExt
+    })
+  }
+
+  const rows = loadLibraryNodes(rootDir) || []
+  if (rows.length === 0) {
+    return { uuid: 'library_root_missing', type: 'root', dirName: 'library', children: [] }
+  }
+
+  const fsToRenderer = new Map<string, string>([
+    [getCoreFsDirName('FilterLibrary'), 'FilterLibrary'],
+    [getCoreFsDirName('CuratedLibrary'), 'CuratedLibrary'],
+    [getCoreFsDirName('RecycleBin'), 'RecycleBin']
+  ])
+
+  const nodeMap = new Map<string, IDir>()
+  let rootNode: IDir | null = null
+
+  for (const row of rows) {
+    let dirName = row.dirName
+    if (row.nodeType === 'library') {
+      const mapped = fsToRenderer.get(dirName)
+      if (mapped) dirName = mapped
+    }
+    const node: IDir = {
+      uuid: row.uuid,
+      type: row.nodeType,
+      dirName
+    }
+    if (row.order !== null) node.order = row.order
+    nodeMap.set(row.uuid, node)
+  }
+
+  for (const row of rows) {
+    const node = nodeMap.get(row.uuid)
+    if (!node) continue
+    if (row.parentUuid) {
+      const parent = nodeMap.get(row.parentUuid)
+      if (parent) {
+        if (!parent.children) parent.children = []
+        parent.children.push(node)
+      }
+    } else if (!rootNode) {
+      rootNode = node
+    }
+  }
+
+  const resolvedRoot: IDir = rootNode ??
+    nodeMap.values().next().value ?? {
+      uuid: 'library_root_missing',
+      type: 'root',
+      dirName: 'library',
+      children: []
+    }
+
+  const sortChildren = (node: IDir) => {
+    if (!node.children || node.children.length === 0) return
+    node.children.sort((a, b) => {
+      if (a.order === undefined || b.order === undefined) return 0
+      return a.order - b.order
+    })
+    node.children.forEach(sortChildren)
+  }
+
+  if (!resolvedRoot.children) resolvedRoot.children = []
+  sortChildren(resolvedRoot)
+  return resolvedRoot
 }
 
 export const operateHiddenFile = async (

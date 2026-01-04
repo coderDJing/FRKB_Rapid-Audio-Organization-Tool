@@ -4,12 +4,18 @@ import icon from '../../../resources/icon.png?asset'
 import { v4 as uuidV4 } from 'uuid'
 import mainWindow from '../window/mainWindow'
 import store from '../store'
-import { operateHiddenFile } from '../utils'
 import { initDatabaseStructure } from '../initDatabase'
 import fs = require('fs-extra')
 import path = require('path')
 import FingerprintStore from '../fingerprintStore'
-import { ensureManifestForLegacy, writeManifest } from '../databaseManifest'
+import {
+  ensureManifestForLegacy,
+  writeManifest,
+  ensureManifestMinVersion
+} from '../databaseManifest'
+import { getLibraryDbPath } from '../libraryDb'
+import { ensureLegacyMigration } from '../libraryMigration'
+import { persistSettingConfig } from '../settingsPersistence'
 let databaseInitWindow: BrowserWindow | null = null
 
 const createWindow = ({ needErrorHint = false } = {}) => {
@@ -94,14 +100,16 @@ const createWindow = ({ needErrorHint = false } = {}) => {
         try {
           await fs.remove(path.join(dirPath, 'FRKB.database.frkbdb'))
         } catch {}
+        try {
+          await fs.remove(getLibraryDbPath(dirPath))
+        } catch {}
       }
 
       // 持久化首次选择的指纹模式（若传入）
       try {
         if (options?.fingerprintMode === 'pcm' || options?.fingerprintMode === 'file') {
           ;(store as any).settingConfig.fingerprintMode = options.fingerprintMode
-          const url = require('../url').default
-          await fs.outputJson(url.settingConfigFileUrl, (store as any).settingConfig)
+          await persistSettingConfig()
         }
       } catch {}
 
@@ -117,11 +125,14 @@ const createWindow = ({ needErrorHint = false } = {}) => {
             await writeManifest(dirPath, app.getVersion())
           }
         }
+        await ensureManifestMinVersion(dirPath, app.getVersion())
       } catch {}
 
-      // 使用 FingerprintStore：前置修复 + 首次建立版本与指针
+      const proceed = await ensureLegacyMigration(dirPath, databaseInitWindow)
+      if (!proceed) return
+
+      // 使用 FingerprintStore：加载指纹列表
       store.databaseDir = dirPath
-      await FingerprintStore.healAndPrepare()
       const mode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
       const list = await FingerprintStore.loadList(mode)
       store.songFingerprintList = Array.isArray(list) ? list : []
