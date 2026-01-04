@@ -1,11 +1,16 @@
-import { ipcMain, dialog } from 'electron'
+import { ipcMain, dialog, app } from 'electron'
 import os = require('os')
 import path = require('path')
 import fs = require('fs-extra')
 import { execFile } from 'child_process'
 import { log } from '../log'
 import url from '../url'
-import { readManifestFile, MANIFEST_FILE_NAME, looksLikeLegacyStructure } from '../databaseManifest'
+import {
+  readManifestFile,
+  MANIFEST_FILE_NAME,
+  looksLikeLegacyStructure,
+  isManifestCompatible
+} from '../databaseManifest'
 import store from '../store'
 import { mapRendererPathToFsPath, getCoreFsDirName } from '../utils'
 
@@ -144,7 +149,15 @@ export function registerFilesystemHandlers() {
       if (path.basename(filePath) !== MANIFEST_FILE_NAME) {
         return 'error'
       }
-      await readManifestFile(filePath)
+      const manifest = await readManifestFile(filePath)
+      const appVersion = app.getVersion()
+      if (!isManifestCompatible(manifest, appVersion)) {
+        return {
+          error: 'incompatible',
+          minAppVersion: manifest.minAppVersion,
+          appVersion
+        }
+      }
       return { filePath, rootDir: path.dirname(filePath), fileName: MANIFEST_FILE_NAME }
     } catch {
       return 'error'

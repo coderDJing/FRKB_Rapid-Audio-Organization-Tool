@@ -13,7 +13,9 @@ import { registerImportHandlers } from './importHandlers'
 import { registerFilesystemHandlers } from './filesystemHandlers'
 import { registerAudioConversionHandlers } from './audioConversionHandlers'
 import { createProgressSender } from './progress'
+import { startLibraryTreeWatcher, stopLibraryTreeWatcher } from '../../libraryTreeWatcher'
 import type { IPlayerGlobalShortcuts, PlayerGlobalShortcutAction } from 'src/types/globals'
+import { persistSettingConfig } from '../../settingsPersistence'
 
 let mainWindow: BrowserWindow | null = null
 const getMainWindow = () => mainWindow
@@ -147,6 +149,7 @@ function createWindow() {
   if (!app.isPackaged) {
     mainWindow.webContents.openDevTools()
   }
+  startLibraryTreeWatcher(mainWindow)
 
   mainWindow.on('ready-to-show', () => {
     if (store.layoutConfig.isMaxMainWin) {
@@ -244,7 +247,7 @@ function createWindow() {
     if (!ret) return false
     globalShortcut.unregister(store.settingConfig.globalCallShortcut)
     store.settingConfig.globalCallShortcut = shortCutValue
-    fs.outputJson(url.settingConfigFileUrl, store.settingConfig)
+    void persistSettingConfig()
     return true
   })
 
@@ -265,7 +268,7 @@ function createWindow() {
       }
       const config = ensurePlayerShortcutConfig()
       config[action] = accelerator
-      await fs.outputJson(url.settingConfigFileUrl, store.settingConfig)
+      await persistSettingConfig()
       return { success: true }
     }
   )
@@ -292,6 +295,7 @@ function createWindow() {
   })
 
   mainWindow.on('closed', () => {
+    stopLibraryTreeWatcher()
     ipcMain.removeAllListeners('toggle-maximize')
     ipcMain.removeAllListeners('toggle-minimize')
     ipcMain.removeAllListeners('toggle-close')

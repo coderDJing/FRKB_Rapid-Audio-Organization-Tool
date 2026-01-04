@@ -1,11 +1,12 @@
 import path = require('path')
 import fs = require('fs-extra')
-import { collectFilesWithExtensions, operateHiddenFile, runWithConcurrency } from '../utils'
+import { collectFilesWithExtensions, runWithConcurrency } from '../utils'
 import { ISongInfo } from '../../types/globals'
 import { SUPPORTED_AUDIO_FORMATS } from '../../shared/audioFormats'
 import { readWavRiffInfoWindows } from './wavRiffInfo'
+import * as LibraryCacheDb from '../libraryCacheDb'
 
-// 扫描歌单目录，带 .songs.cache.json 缓存
+// 扫描歌单目录，带 SQLite 缓存
 export async function scanSongList(
   scanPath: string | string[],
   audioExt: string[],
@@ -82,25 +83,18 @@ export async function scanSongList(
   }
   const cacheBase =
     typeof scanPath === 'string' ? scanPath : Array.isArray(scanPath) ? (scanPath[0] ?? '') : ''
-  const cacheFile =
+  const cacheRoot =
     cacheBase && (await fs.pathExists(cacheBase)) && (await fs.stat(cacheBase)).isDirectory()
-      ? path.join(cacheBase, '.songs.cache.json')
+      ? cacheBase
       : ''
   let cacheMap = new Map<string, CacheEntry>()
-  if (cacheFile) {
-    try {
-      if (await fs.pathExists(cacheFile)) {
-        const json = await fs.readJSON(cacheFile)
-        if (json && typeof json === 'object') {
-          const entries = (json.entries || {}) as Record<string, CacheEntry>
-          for (const [k, v] of Object.entries(entries)) {
-            if (v && typeof v.size === 'number' && typeof v.mtimeMs === 'number' && v.info) {
-              cacheMap.set(k, v)
-            }
-          }
-        }
-      }
-    } catch {}
+  let cacheFromDb = false
+  if (cacheRoot) {
+    const dbCache = await LibraryCacheDb.loadSongCache(cacheRoot)
+    if (dbCache) {
+      cacheMap = dbCache
+      cacheFromDb = true
+    }
   }
 
   const perfCacheCheckStart = Date.now()
@@ -300,23 +294,24 @@ export async function scanSongList(
   const perfParseEnd = Date.now()
 
   // 回写缓存
-  if (cacheFile) {
+  if (cacheRoot) {
     try {
-      const newEntries: Record<string, CacheEntry> = {}
       const infoMap = new Map<string, ISongInfo>()
       for (const info of songInfoArr) infoMap.set(info.filePath, enrichSongInfo(info))
+      const newEntriesMap = new Map<string, CacheEntry>()
       for (const st of filesStatList) {
         const info = infoMap.get(st.file)
         if (info) {
-          newEntries[st.file] = {
+          newEntriesMap.set(st.file, {
             size: st.size,
             mtimeMs: st.mtimeMs,
             info: enrichSongInfo(info)
-          }
+          })
         }
       }
-      await fs.writeJSON(cacheFile, { entries: newEntries })
-      await operateHiddenFile(cacheFile, async () => {})
+      if (cacheFromDb) {
+        await LibraryCacheDb.replaceSongCache(cacheRoot, newEntriesMap)
+      }
     } catch {}
   }
 

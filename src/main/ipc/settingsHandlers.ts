@@ -1,10 +1,10 @@
 import { ipcMain } from 'electron'
-import fs = require('fs-extra')
-import url from '../url'
 import store from '../store'
 import { applyThemeFromSettings, broadcastSystemThemeIfNeeded } from '../bootstrap/settings'
 import { ensureWindowsContextMenu, removeWindowsContextMenu } from '../platform/windowsContextMenu'
 import { rebuildMacMenusForCurrentFocus } from '../menu/macMenu'
+import { saveLibrarySettingsFromConfig } from '../librarySettingsDb'
+import { persistSettingConfig } from '../settingsPersistence'
 
 type Dependencies = {
   loadFingerprintList: (mode: 'pcm' | 'file') => Promise<string[]>
@@ -19,7 +19,8 @@ export function registerSettingsHandlers(deps: Dependencies) {
     const prevContextMenu = !!(store as any).settingConfig?.enableExplorerContextMenu
     const prevMode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
     store.settingConfig = setting
-    await fs.outputJson(url.settingConfigFileUrl, setting)
+    await persistSettingConfig(setting)
+    await saveLibrarySettingsFromConfig()
 
     try {
       applyThemeFromSettings()

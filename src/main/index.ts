@@ -35,6 +35,7 @@ import { registerCacheHandlers } from './ipc/cacheHandlers'
 import { registerFilesystemHandlers } from './ipc/filesystemHandlers'
 import { registerExportHandlers } from './ipc/exportHandlers'
 import { maybeShowWhatsNew, registerWhatsNewHandlers } from './services/whatsNew'
+import * as LibraryCacheDb from './libraryCacheDb'
 // import AudioFeatureExtractor from './mfccTest'
 
 const initDevDatabase = false
@@ -186,36 +187,31 @@ app.whenReady().then(async () => {
             const full = path.join(dir, ent.name)
             if (ent.isDirectory()) {
               const coversDir = path.join(full, '.frkb_covers')
-              const indexPath = path.join(coversDir, '.index.json')
-              if (await fs.pathExists(indexPath)) {
-                try {
-                  const idx = await fs.readJSON(indexPath)
-                  const hashToFiles = idx?.hashToFiles || {}
-                  const hashToExt = idx?.hashToExt || {}
-                  let removed = 0
-                  for (const h of Object.keys(hashToFiles)) {
-                    const arr = hashToFiles[h]
-                    if (!Array.isArray(arr) || arr.length === 0) {
-                      const ext = hashToExt[h] || '.jpg'
-                      const p = path.join(coversDir, `${h}${ext}`)
-                      try {
-                        if (await fs.pathExists(p)) {
-                          await fs.remove(p)
-                          removed++
-                        }
-                      } catch {}
-                      delete hashToFiles[h]
-                      delete hashToExt[h]
+              if (await fs.pathExists(coversDir)) {
+                const dbEntries = await LibraryCacheDb.loadCoverIndexEntries(full)
+                if (dbEntries) {
+                  const liveHashes = new Set(dbEntries.map((item) => item.hash))
+                  try {
+                    const entries = await fs.readdir(coversDir)
+                    const imgRegex = /^[a-f0-9]{40}\.(jpg|png|webp|gif|bmp)$/i
+                    for (const name of entries) {
+                      const fullPath = path.join(coversDir, name)
+                      if (name.includes('.tmp_')) {
+                        try {
+                          await fs.remove(fullPath)
+                        } catch {}
+                        continue
+                      }
+                      if (!imgRegex.test(name)) continue
+                      const hash = name.slice(0, 40).toLowerCase()
+                      if (!liveHashes.has(hash)) {
+                        try {
+                          await fs.remove(fullPath)
+                        } catch {}
+                      }
                     }
-                  }
-                  if (removed > 0) {
-                    await fs.writeJSON(indexPath, {
-                      fileToHash: idx?.fileToHash || {},
-                      hashToFiles,
-                      hashToExt
-                    })
-                  }
-                } catch {}
+                  } catch {}
+                }
               }
               await walk(full)
             }
