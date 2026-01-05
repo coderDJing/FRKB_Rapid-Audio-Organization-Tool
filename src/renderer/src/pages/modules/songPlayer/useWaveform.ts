@@ -3,6 +3,7 @@ import {
   WebAudioPlayer,
   type RGBWaveformBandKey,
   type RGBWaveformData,
+  type MixxxWaveformData,
   type WaveformStyle,
   type WebAudioPlayerEvents
 } from './webAudioPlayer'
@@ -38,13 +39,22 @@ export function useWaveform(params: {
   const WAVEFORM_STYLE_SOUND_CLOUD: WaveformStyle = 'SoundCloud'
   const WAVEFORM_STYLE_FINE: WaveformStyle = 'Fine'
   const WAVEFORM_STYLE_RGB: WaveformStyle = 'RGB'
+  const WAVEFORM_STYLE_MIXXX: WaveformStyle = 'Mixxx'
   const REKORDBOX_MINI_POINTS_PER_SECOND = 300
   const RGB_BASE_ALPHA = 0.68
   const RGB_PROGRESS_ALPHA = 0.98
+  const MIXXX_BASE_ALPHA = 1
+  const MIXXX_PROGRESS_ALPHA = 1
+  const MIXXX_MAX_RGB_ENERGY = Math.sqrt(255 * 255 * 3)
   const REKORDBOX_RGB_COLORS: Record<RGBWaveformBandKey, { r: number; g: number; b: number }> = {
     low: { r: 255, g: 50, b: 30 }, // 更纯的低频红
     mid: { r: 50, g: 255, b: 60 }, // 更亮的中频绿
     high: { r: 60, g: 180, b: 255 } // 偏青蓝的高频
+  }
+  const MIXXX_RGB_COMPONENTS: Record<RGBWaveformBandKey, { r: number; g: number; b: number }> = {
+    low: { r: 1, g: 0, b: 0 },
+    mid: { r: 0, g: 1, b: 0 },
+    high: { r: 0, g: 0, b: 1 }
   }
   const RGB_BAND_INTENSITY_EXP: Record<RGBWaveformBandKey, number> = {
     low: 0.9,
@@ -60,6 +70,7 @@ export function useWaveform(params: {
     if (style === 'RekordboxMini') return WAVEFORM_STYLE_RGB
     if (
       style === WAVEFORM_STYLE_RGB ||
+      style === WAVEFORM_STYLE_MIXXX ||
       style === WAVEFORM_STYLE_FINE ||
       style === WAVEFORM_STYLE_SOUND_CLOUD
     ) {
@@ -74,6 +85,12 @@ export function useWaveform(params: {
     low: number
     mid: number
     high: number
+    color: { r: number; g: number; b: number }
+  }
+
+  type MixxxColumnMetrics = {
+    amplitudeLeft: number
+    amplitudeRight: number
     color: { r: number; g: number; b: number }
   }
 
@@ -281,6 +298,114 @@ export function useWaveform(params: {
         mid: midIntensity,
         high: highIntensity,
         color: { r, g, b }
+      }
+    }
+
+    return columns
+  }
+
+  const computeMixxxColumnMetrics = (
+    columnCount: number,
+    waveformData: MixxxWaveformData | null
+  ): MixxxColumnMetrics[] => {
+    if (!waveformData || columnCount <= 0) return []
+
+    const low = waveformData.bands.low
+    const mid = waveformData.bands.mid
+    const high = waveformData.bands.high
+    const frameCount = Math.min(
+      low.left.length,
+      low.right.length,
+      mid.left.length,
+      mid.right.length,
+      high.left.length,
+      high.right.length
+    )
+    if (frameCount === 0) return []
+
+    const columns: MixxxColumnMetrics[] = new Array(columnCount)
+    const dataSize = frameCount * 2
+    const gain = dataSize / Math.max(1, columnCount)
+    const lastVisualFrame = frameCount - 1
+
+    for (let x = 0; x < columnCount; x++) {
+      const xSampleWidth = gain * x
+      const xVisualSampleIndex = xSampleWidth
+      const maxSamplingRange = gain / 2
+
+      let visualFrameStart = Math.floor(xVisualSampleIndex / 2 - maxSamplingRange + 0.5)
+      let visualFrameStop = Math.floor(xVisualSampleIndex / 2 + maxSamplingRange + 0.5)
+      if (visualFrameStart < 0) visualFrameStart = 0
+      if (visualFrameStop > lastVisualFrame) visualFrameStop = lastVisualFrame
+      if (visualFrameStop < visualFrameStart) {
+        visualFrameStop = visualFrameStart
+      }
+
+      let maxLow = 0
+      let maxMid = 0
+      let maxHigh = 0
+      let maxAllLeft = 0
+      let maxAllRight = 0
+
+      for (let i = visualFrameStart; i <= visualFrameStop; i++) {
+        const lowLeft = low.left[i]
+        const lowRight = low.right[i]
+        const midLeft = mid.left[i]
+        const midRight = mid.right[i]
+        const highLeft = high.left[i]
+        const highRight = high.right[i]
+        const lowLeftAmp = low.peakLeft ? low.peakLeft[i] : lowLeft
+        const lowRightAmp = low.peakRight ? low.peakRight[i] : lowRight
+        const midLeftAmp = mid.peakLeft ? mid.peakLeft[i] : midLeft
+        const midRightAmp = mid.peakRight ? mid.peakRight[i] : midRight
+        const highLeftAmp = high.peakLeft ? high.peakLeft[i] : highLeft
+        const highRightAmp = high.peakRight ? high.peakRight[i] : highRight
+
+        if (lowLeft > maxLow) maxLow = lowLeft
+        if (lowRight > maxLow) maxLow = lowRight
+        if (midLeft > maxMid) maxMid = midLeft
+        if (midRight > maxMid) maxMid = midRight
+        if (highLeft > maxHigh) maxHigh = highLeft
+        if (highRight > maxHigh) maxHigh = highRight
+
+        const allLeft =
+          lowLeftAmp * lowLeftAmp + midLeftAmp * midLeftAmp + highLeftAmp * highLeftAmp
+        const allRight =
+          lowRightAmp * lowRightAmp + midRightAmp * midRightAmp + highRightAmp * highRightAmp
+        if (allLeft > maxAllLeft) maxAllLeft = allLeft
+        if (allRight > maxAllRight) maxAllRight = allRight
+      }
+
+      const red =
+        maxLow * MIXXX_RGB_COMPONENTS.low.r +
+        maxMid * MIXXX_RGB_COMPONENTS.mid.r +
+        maxHigh * MIXXX_RGB_COMPONENTS.high.r
+      const green =
+        maxLow * MIXXX_RGB_COMPONENTS.low.g +
+        maxMid * MIXXX_RGB_COMPONENTS.mid.g +
+        maxHigh * MIXXX_RGB_COMPONENTS.high.g
+      const blue =
+        maxLow * MIXXX_RGB_COMPONENTS.low.b +
+        maxMid * MIXXX_RGB_COMPONENTS.mid.b +
+        maxHigh * MIXXX_RGB_COMPONENTS.high.b
+
+      const maxColor = Math.max(red, green, blue)
+      const color =
+        maxColor > 0
+          ? {
+              r: Math.round((red / maxColor) * 255),
+              g: Math.round((green / maxColor) * 255),
+              b: Math.round((blue / maxColor) * 255)
+            }
+          : { r: 0, g: 0, b: 0 }
+
+      const amplitudeLeft = Math.min(1, Math.sqrt(maxAllLeft) / MIXXX_MAX_RGB_ENERGY)
+      const amplitudeRight = Math.min(1, Math.sqrt(maxAllRight) / MIXXX_MAX_RGB_ENERGY)
+
+      columns[x] = {
+        amplitudeLeft,
+        amplitudeRight,
+        color
       }
     }
 
@@ -582,6 +707,58 @@ export function useWaveform(params: {
     drawOnCtx(progressCtx, RGB_PROGRESS_ALPHA)
   }
 
+  const drawMixxxWaveform = (
+    width: number,
+    height: number,
+    waveformData: MixxxWaveformData | null
+  ) => {
+    if (!waveformData) {
+      clearCanvases()
+      return
+    }
+
+    const pixelRatio = window.devicePixelRatio || 1
+    resizeCanvas(baseCanvas, baseCtx, width, height, pixelRatio)
+    resizeCanvas(progressCanvas, progressCtx, width, height, pixelRatio)
+
+    const columns = computeMixxxColumnMetrics(Math.max(1, Math.floor(width)), waveformData)
+    if (!columns.length) {
+      clearCanvases()
+      return
+    }
+
+    const isHalf = useHalfWaveform()
+    const centerY = height / 2
+    const maxAmplitude = centerY
+
+    const drawOnCtx = (ctx: CanvasRenderingContext2D, alpha: number) => {
+      ctx.save()
+      ctx.globalAlpha = alpha
+      ctx.globalCompositeOperation = 'source-over'
+
+      for (let x = 0; x < columns.length; x++) {
+        const column = columns[x]
+        const { r, g, b } = column.color
+        if (!r && !g && !b) continue
+
+        const amplitudeTop = Math.max(1, column.amplitudeLeft * maxAmplitude)
+        const amplitudeBottom = Math.max(1, column.amplitudeRight * maxAmplitude)
+        const rectHeight = isHalf
+          ? Math.max(amplitudeTop, amplitudeBottom)
+          : amplitudeTop + amplitudeBottom
+        const yTop = isHalf ? height - rectHeight : centerY - amplitudeTop
+
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`
+        ctx.fillRect(x, yTop, 1, rectHeight)
+      }
+
+      ctx.restore()
+    }
+
+    drawOnCtx(baseCtx, MIXXX_BASE_ALPHA)
+    drawOnCtx(progressCtx, MIXXX_PROGRESS_ALPHA)
+  }
+
   const drawWaveform = (forceRedraw = false) => {
     if (!waveformEl.value || !audioPlayer.value) return
 
@@ -602,6 +779,16 @@ export function useWaveform(params: {
     const style = getWaveformStyle()
     if (style === WAVEFORM_STYLE_FINE) {
       drawFineWaveform(width, height)
+      return
+    }
+
+    if (style === WAVEFORM_STYLE_MIXXX) {
+      const mixxxData = player.mixxxWaveformData ?? null
+      if (!mixxxData) {
+        clearCanvases()
+        return
+      }
+      drawMixxxWaveform(width, height, mixxxData)
       return
     }
 
@@ -663,6 +850,21 @@ export function useWaveform(params: {
 
     soundCloudMinMaxData = null
 
+    if (style === WAVEFORM_STYLE_MIXXX) {
+      if (player.mixxxWaveformData) {
+        drawWaveform(true)
+        return
+      }
+
+      clearCanvases()
+      void player.ensureMixxxWaveform().then(() => {
+        if (audioPlayer.value === player && player.mixxxWaveformData) {
+          drawWaveform(true)
+        }
+      })
+      return
+    }
+
     if (player.rgbWaveformData) {
       drawWaveform(true)
       return
@@ -707,7 +909,13 @@ export function useWaveform(params: {
       if (el) el.textContent = formatTime(seconds)
     }
 
-    const ensureRgbIfNeeded = () => {
+    const ensureWaveformIfNeeded = () => {
+      const style = getWaveformStyle()
+      if (style === WAVEFORM_STYLE_FINE) return
+      if (style === WAVEFORM_STYLE_MIXXX) {
+        void player.ensureMixxxWaveform()
+        return
+      }
       void player.ensureRgbWaveform()
     }
 
@@ -716,11 +924,11 @@ export function useWaveform(params: {
       updateProgressVisual(0)
       updateParentWaveformWidth()
       updateWaveform()
-      ensureRgbIfNeeded()
+      ensureWaveformIfNeeded()
       setTimeout(() => {
         updateParentWaveformWidth()
         updateWaveform()
-        ensureRgbIfNeeded()
+        ensureWaveformIfNeeded()
       }, 50)
     }
 
@@ -732,11 +940,11 @@ export function useWaveform(params: {
       updateProgressVisual(0)
       updateParentWaveformWidth()
       updateWaveform()
-      ensureRgbIfNeeded()
+      ensureWaveformIfNeeded()
       setTimeout(() => {
         updateParentWaveformWidth()
         updateWaveform()
-        ensureRgbIfNeeded()
+        ensureWaveformIfNeeded()
       }, 50)
     }
 
@@ -780,7 +988,10 @@ export function useWaveform(params: {
     registerPlayerHandler(player, 'rgbwaveformready', () => {
       drawWaveform(true)
     })
-    ensureRgbIfNeeded()
+    registerPlayerHandler(player, 'mixxxwaveformready', () => {
+      drawWaveform(true)
+    })
+    ensureWaveformIfNeeded()
 
     if (onError) {
       const handleError = (error: any) => {

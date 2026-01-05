@@ -50,7 +50,7 @@ const sanitizeUiSettings = (input: Record<string, unknown>): UiSettings => {
         break
       }
       case 'waveformStyle':
-        if (value === 'SoundCloud' || value === 'Fine' || value === 'RGB') {
+        if (value === 'SoundCloud' || value === 'Fine' || value === 'RGB' || value === 'Mixxx') {
           output[key] = value
         }
         break
