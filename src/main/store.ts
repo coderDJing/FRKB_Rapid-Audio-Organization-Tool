@@ -45,7 +45,7 @@ let settingConfig: ISettingConfig = {
   },
   nextCheckUpdateTime: '',
   hiddenPlayControlArea: false,
-  waveformStyle: 'SoundCloud' as 'SoundCloud' | 'Fine' | 'RGB' | 'Mixxx',
+  waveformStyle: 'SoundCloud' as 'SoundCloud' | 'Fine' | 'RGB',
   waveformMode: 'half',
   autoPlayNextSong: false,
   startPlayPercent: 0,
