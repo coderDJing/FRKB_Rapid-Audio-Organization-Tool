@@ -451,6 +451,7 @@
     "waveformStyleSoundCloud": "SoundCloud waveform",
     "waveformStyleFine": "Fine waveform",
     "waveformStyleRGB": "RGB spectrum waveform",
+    "waveformStyleMixxx": "Mixxx RGB waveform",
     "waveformMode": "Waveform height",
     "waveformModeHalf": "Half waveform",
     "waveformModeFull": "Full waveform",

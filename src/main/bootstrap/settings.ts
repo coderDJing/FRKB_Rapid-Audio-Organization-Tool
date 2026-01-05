@@ -60,7 +60,7 @@ const defaultSettings = {
     platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
   playerGlobalShortcuts: { ...defaultPlayerGlobalShortcuts },
   hiddenPlayControlArea: false,
-  waveformStyle: 'SoundCloud' as 'SoundCloud' | 'Fine' | 'RGB',
+  waveformStyle: 'SoundCloud' as 'SoundCloud' | 'Fine' | 'RGB' | 'Mixxx',
   waveformMode: 'half',
   autoPlayNextSong: false,
   startPlayPercent: 0,
@@ -138,7 +138,8 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
     waveformStyle:
       normalizedWaveformStyle === 'SoundCloud' ||
       normalizedWaveformStyle === 'Fine' ||
-      normalizedWaveformStyle === 'RGB'
+      normalizedWaveformStyle === 'RGB' ||
+      normalizedWaveformStyle === 'Mixxx'
         ? normalizedWaveformStyle
         : 'SoundCloud',
     waveformMode: mergedSettings.waveformMode === 'full' ? 'full' : 'half'
