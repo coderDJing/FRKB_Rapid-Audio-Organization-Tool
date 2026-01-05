@@ -237,7 +237,7 @@ interface ISettingConfig {
   playerGlobalShortcuts: IPlayerGlobalShortcuts
   nextCheckUpdateTime: string
   hiddenPlayControlArea: boolean
-  waveformStyle?: 'SoundCloud' | 'Fine' | 'RGB' | 'Mixxx'
+  waveformStyle?: 'SoundCloud' | 'Fine' | 'RGB'
   waveformMode?: 'half' | 'full'
   autoPlayNextSong: boolean
   startPlayPercent: number

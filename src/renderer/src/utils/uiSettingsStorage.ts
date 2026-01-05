@@ -49,11 +49,13 @@ const sanitizeUiSettings = (input: Record<string, unknown>): UiSettings => {
         if (v !== undefined) output[key] = v
         break
       }
-      case 'waveformStyle':
-        if (value === 'SoundCloud' || value === 'Fine' || value === 'RGB' || value === 'Mixxx') {
-          output[key] = value
+      case 'waveformStyle': {
+        const normalized = value === 'Mixxx' || value === 'RekordboxMini' ? 'RGB' : value
+        if (normalized === 'SoundCloud' || normalized === 'Fine' || normalized === 'RGB') {
+          output[key] = normalized
         }
         break
+      }
       case 'waveformMode':
         if (value === 'half' || value === 'full') {
           output[key] = value

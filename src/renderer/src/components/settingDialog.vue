@@ -157,8 +157,7 @@ const languageOptions = computed(() => [
 const waveformStyleOptions = computed(() => [
   { label: t('player.waveformStyleSoundCloud'), value: 'SoundCloud' },
   { label: t('player.waveformStyleFine'), value: 'Fine' },
-  { label: t('player.waveformStyleRGB'), value: 'RGB' },
-  { label: t('player.waveformStyleMixxx'), value: 'Mixxx' }
+  { label: t('player.waveformStyleRGB'), value: 'RGB' }
 ])
 
 const waveformModeOptions = computed(() => [
