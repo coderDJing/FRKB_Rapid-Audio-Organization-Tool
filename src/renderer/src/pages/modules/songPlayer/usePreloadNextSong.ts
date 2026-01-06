@@ -1,6 +1,7 @@
 import { ref, onUnmounted, watch, type Ref } from 'vue'
 import * as realtimeBpm from 'realtime-bpm-analyzer'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import { type MixxxWaveformData } from './webAudioPlayer'
 const nowMs = () =>
   typeof performance !== 'undefined' && typeof performance.now === 'function'
     ? performance.now()
@@ -13,6 +14,7 @@ type PcmPayload = {
   sampleRate: number
   channels: number
   totalFrames: number
+  mixxxWaveformData?: MixxxWaveformData | null
 }
 
 type PreloadCacheEntry = {

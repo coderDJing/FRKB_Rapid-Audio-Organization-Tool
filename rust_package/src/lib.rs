@@ -46,6 +46,10 @@ use bytemuck::cast_slice;
 #[macro_use]
 extern crate napi_derive;
 
+mod mixxx_waveform;
+
+use crate::mixxx_waveform::MixxxWaveformData;
+
 // ===== 类型定义 =====
 
 /// 进度信息结构体
@@ -251,6 +255,16 @@ pub fn decode_audio_file(file_path: String) -> DecodeAudioResult {
       },
     },
   }
+}
+
+/// 基于 PCM 计算 Mixxx RGB 波形
+#[napi]
+pub fn compute_mixxx_waveform(
+  pcm_data: Buffer,
+  sample_rate: u32,
+  channels: u8,
+) -> napi::Result<MixxxWaveformData> {
+  mixxx_waveform::compute_mixxx_waveform(pcm_data, sample_rate, channels)
 }
 
 /// 解码音频为 PCM Float32Array

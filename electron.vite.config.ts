@@ -9,6 +9,22 @@ export default defineConfig({
       }
     },
     plugins: [externalizeDepsPlugin()],
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve(__dirname, 'src/main/index.ts'),
+          audioDecodeWorker: resolve(__dirname, 'src/main/workers/audioDecodeWorker.ts')
+        },
+        output: {
+          entryFileNames: (chunk) => {
+            if (chunk.name === 'audioDecodeWorker') {
+              return 'workers/audioDecodeWorker.js'
+            }
+            return '[name].js'
+          }
+        }
+      }
+    },
     define: {
       'process.env.CLOUD_SYNC_BASE_URL_DEV': JSON.stringify(
         process.env.CLOUD_SYNC_BASE_URL_DEV || ''

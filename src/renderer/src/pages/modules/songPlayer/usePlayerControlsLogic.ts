@@ -7,13 +7,14 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import { t } from '@renderer/utils/translate'
 import emitter from '@renderer/utils/mitt'
-import { WebAudioPlayer } from './webAudioPlayer'
+import { WebAudioPlayer, type MixxxWaveformData } from './webAudioPlayer'
 
 type PcmPayload = {
   pcmData: Float32Array
   sampleRate: number
   channels: number
   totalFrames: number
+  mixxxWaveformData?: MixxxWaveformData | null
 }
 
 type PreloadHit = {

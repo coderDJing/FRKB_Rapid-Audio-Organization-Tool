@@ -4,13 +4,11 @@
   "main": "index.js",
   "types": "index.d.ts",
   "napi": {
-    "name": "rust_package",
-    "triples": {
-      "additional": [
-        "x86_64-apple-darwin",
-        "aarch64-apple-darwin"
-      ]
-    }
+    "binaryName": "rust_package",
+    "targets": [
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin"
+    ]
   },
   "license": "MIT",
   "devDependencies": {

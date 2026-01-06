@@ -1,10 +1,4 @@
 import mitt from 'mitt'
-import {
-  designMixxxBesselBandpass,
-  designMixxxBesselHighpass,
-  designMixxxBesselLowpass,
-  type MixxxBesselCoefficients
-} from './mixxxBesselFilter'
 
 export type RGBWaveformBandKey = 'low' | 'mid' | 'high'
 
@@ -26,6 +20,7 @@ export type MixxxWaveformData = {
 
 type LoadPcmOptions = {
   filePath?: string | null
+  mixxxWaveformData?: MixxxWaveformData | null
 }
 
 export type SeekedEventPayload = {
@@ -45,12 +40,6 @@ export type WebAudioPlayerEvents = {
   mixxxwaveformready: undefined
 } & Record<string, unknown>
 
-const MIXXX_WAVEFORM_POINTS_PER_SECOND = 441
-const MIXXX_SUMMARY_MAX_SAMPLES = 2 * 1920
-const MIXXX_LOWPASS_MAX_HZ = 600
-const MIXXX_HIGHPASS_MIN_HZ = 4000
-const MIXXX_HIGH_SCALE_EXP = 0.632
-
 export class WebAudioPlayer {
   public audioBuffer: AudioBuffer | null = null
   public mixxxWaveformData: MixxxWaveformData | null = null
@@ -67,13 +56,10 @@ export class WebAudioPlayer {
   private mediaStreamDestination: MediaStreamAudioDestinationNode | null = null
   private outputAudioElement: HTMLAudioElement | null = null
   private currentOutputDeviceId: string = ''
-  private mixxxWaveformPromise: Promise<void> | null = null
   private activeFilePath: string | null = null
   private activeBufferBytes = 0
   private mixxxWaveformFilePath: string | null = null
   private mixxxWaveformBytes = 0
-  private mixxxWaveformTaskFile: string | null = null
-  private mixxxBesselCache = new Map<string, MixxxBesselCoefficients>()
 
   constructor(audioContext: AudioContext) {
     this.audioContext = audioContext
@@ -135,7 +121,6 @@ export class WebAudioPlayer {
     this.releaseMixxxWaveformData()
     this.releaseActiveBuffer('loadPCM:replace')
     this.audioBuffer = null
-    this.mixxxWaveformPromise = null
     this.pausedTime = 0
     this.startTime = 0
 
@@ -157,6 +142,7 @@ export class WebAudioPlayer {
       const filePath = options?.filePath ?? null
       this.activeFilePath = filePath
       this.activeBufferBytes = bufferBytes
+      this.applyMixxxWaveformData(options?.mixxxWaveformData ?? null, filePath)
       this.emit('decode', duration)
       this.emit('ready')
     } catch (error) {
@@ -300,7 +286,6 @@ export class WebAudioPlayer {
     this.pausedTime = 0
     this.startTime = 0
     this.releaseMixxxWaveformData()
-    this.mixxxWaveformPromise = null
   }
 
   private startTimeUpdate(): void {
@@ -314,56 +299,14 @@ export class WebAudioPlayer {
     this.animationFrameId = requestAnimationFrame(update)
   }
 
-  public ensureMixxxWaveform(force = false): Promise<void> {
-    if (!this.audioBuffer || !this.activeFilePath) {
-      return Promise.resolve()
+  private applyMixxxWaveformData(data: MixxxWaveformData | null, filePath: string | null): void {
+    if (!data) return
+    this.mixxxWaveformData = data
+    if (filePath) {
+      this.mixxxWaveformFilePath = filePath
+      this.mixxxWaveformBytes = this.calculateMixxxWaveformBytes(data)
     }
-    if (!force && this.mixxxWaveformData) {
-      return Promise.resolve()
-    }
-    if (this.mixxxWaveformPromise) {
-      if (this.mixxxWaveformTaskFile === this.activeFilePath) {
-        return this.mixxxWaveformPromise
-      }
-      if (!force) {
-        return this.mixxxWaveformPromise
-      }
-    }
-    if (!force && this.mixxxWaveformPromise) {
-      return this.mixxxWaveformPromise
-    }
-
-    const buffer = this.audioBuffer
-    const filePath = this.activeFilePath
-    const promise = (async () => {
-      try {
-        const data = await this.generateMixxxWaveform(buffer, filePath)
-        if (this.audioBuffer !== buffer || this.activeFilePath !== filePath) {
-          return
-        }
-        if (data) {
-          this.mixxxWaveformData = data
-          if (filePath) {
-            const waveformBytes = this.calculateMixxxWaveformBytes(data)
-            this.mixxxWaveformFilePath = filePath
-            this.mixxxWaveformBytes = waveformBytes
-          }
-          this.emit('mixxxwaveformready')
-        }
-      } catch (error) {
-        console.warn('[WebAudioPlayer] 生成 RGB 波形失败', error)
-        this.releaseMixxxWaveformData()
-      }
-    })()
-
-    this.mixxxWaveformTaskFile = this.activeFilePath
-    this.mixxxWaveformPromise = promise
-    return promise.finally(() => {
-      if (this.mixxxWaveformPromise === promise) {
-        this.mixxxWaveformPromise = null
-        this.mixxxWaveformTaskFile = null
-      }
-    })
+    this.emit('mixxxwaveformready')
   }
 
   private releaseMixxxWaveformData(): void {
@@ -397,307 +340,6 @@ export class WebAudioPlayer {
       }
     })
     return total
-  }
-
-  private async generateMixxxWaveform(
-    buffer: AudioBuffer,
-    filePath: string | null
-  ): Promise<MixxxWaveformData | null> {
-    if (!buffer.length) {
-      return null
-    }
-    const sampleRate = buffer.sampleRate
-    const frameLength = buffer.length
-    const channelCount = Math.max(1, Math.min(2, buffer.numberOfChannels || 1))
-    const analysisChannels = 2
-    const mainStride = Math.max(1, sampleRate / MIXXX_WAVEFORM_POINTS_PER_SECOND)
-    let summaryVisualSampleRate = sampleRate
-    if (frameLength > MIXXX_SUMMARY_MAX_SAMPLES / analysisChannels) {
-      summaryVisualSampleRate =
-        (sampleRate * MIXXX_SUMMARY_MAX_SAMPLES) / analysisChannels / frameLength
-    }
-    const summaryStride = sampleRate / summaryVisualSampleRate
-    const leftSamples = buffer.getChannelData(0)
-    const rightSamples = channelCount > 1 ? buffer.getChannelData(1) : leftSamples
-    const [low, mid, high] = await Promise.all([
-      this.renderMixxxBand(leftSamples, rightSamples, 'low', mainStride, summaryStride, sampleRate),
-      this.renderMixxxBand(leftSamples, rightSamples, 'mid', mainStride, summaryStride, sampleRate),
-      this.renderMixxxBand(leftSamples, rightSamples, 'high', mainStride, summaryStride, sampleRate)
-    ])
-
-    if (!low || !mid || !high) {
-      return null
-    }
-
-    return {
-      duration: buffer.duration,
-      sampleRate,
-      step: summaryStride,
-      bands: {
-        low,
-        mid,
-        high
-      }
-    }
-  }
-
-  private async renderMixxxBand(
-    leftSamples: Float32Array,
-    rightSamples: Float32Array,
-    band: RGBWaveformBandKey,
-    mainStride: number,
-    summaryStride: number,
-    sampleRate: number
-  ): Promise<MixxxWaveformBand | null> {
-    try {
-      const coeffs = this.getMixxxBesselCoefficients(band, sampleRate)
-      return this.downsampleMixxxBand(
-        leftSamples,
-        rightSamples,
-        band,
-        mainStride,
-        summaryStride,
-        coeffs
-      )
-    } catch (error) {
-      console.warn(`[WebAudioPlayer] 渲染 RGB ${band} 频段波形失败`, error)
-      return null
-    }
-  }
-
-  private downsampleMixxxBand(
-    leftSamples: Float32Array,
-    rightSamples: Float32Array,
-    band: RGBWaveformBandKey,
-    mainStride: number,
-    summaryStride: number,
-    coeffs: MixxxBesselCoefficients
-  ): MixxxWaveformBand {
-    const totalSamples = Math.min(leftSamples.length, rightSamples.length)
-    const leftValues: number[] = []
-    const rightValues: number[] = []
-    const leftPeakValues: number[] = []
-    const rightPeakValues: number[] = []
-    let position = 0
-    let nextMainStore = mainStride
-    let nextSummaryStore = summaryStride
-    let leftPeak = 0
-    let rightPeak = 0
-    let leftAverage = 0
-    let rightAverage = 0
-    let averageDivisor = 0
-    let leftPeakMax = 0
-    let rightPeakMax = 0
-    const leftState = new Float64Array(coeffs.order)
-    const rightState = new Float64Array(coeffs.order)
-
-    for (let i = 0; i < totalSamples; i++) {
-      const l = Math.abs(
-        this.processMixxxBandSample(band, coeffs.coefficients, leftState, leftSamples[i])
-      )
-      const r = Math.abs(
-        this.processMixxxBandSample(band, coeffs.coefficients, rightState, rightSamples[i])
-      )
-      if (l > leftPeak) leftPeak = l
-      if (r > rightPeak) rightPeak = r
-
-      position += 1
-      if (position >= nextMainStore) {
-        if (leftPeak > leftPeakMax) leftPeakMax = leftPeak
-        if (rightPeak > rightPeakMax) rightPeakMax = rightPeak
-        leftAverage += leftPeak
-        rightAverage += rightPeak
-        averageDivisor += 1
-        leftPeak = 0
-        rightPeak = 0
-        nextMainStore += mainStride
-      }
-      if (position >= nextSummaryStore) {
-        const leftValue = averageDivisor > 0 ? leftAverage / averageDivisor : leftPeak
-        const rightValue = averageDivisor > 0 ? rightAverage / averageDivisor : rightPeak
-        const leftPeakValue = averageDivisor > 0 ? leftPeakMax : leftPeak
-        const rightPeakValue = averageDivisor > 0 ? rightPeakMax : rightPeak
-        leftValues.push(this.scaleMixxxValue(leftValue, band))
-        rightValues.push(this.scaleMixxxValue(rightValue, band))
-        leftPeakValues.push(this.scaleMixxxValue(leftPeakValue, band))
-        rightPeakValues.push(this.scaleMixxxValue(rightPeakValue, band))
-        leftAverage = 0
-        rightAverage = 0
-        averageDivisor = 0
-        leftPeakMax = 0
-        rightPeakMax = 0
-        nextSummaryStore += summaryStride
-      }
-    }
-
-    const expectedFrames = Math.floor(totalSamples / summaryStride) + 1
-    while (leftValues.length < expectedFrames) {
-      leftValues.push(0)
-      rightValues.push(0)
-      leftPeakValues.push(0)
-      rightPeakValues.push(0)
-    }
-    if (leftValues.length > expectedFrames) {
-      leftValues.length = expectedFrames
-      rightValues.length = expectedFrames
-      leftPeakValues.length = expectedFrames
-      rightPeakValues.length = expectedFrames
-    }
-
-    return {
-      left: Uint8Array.from(leftValues),
-      right: Uint8Array.from(rightValues),
-      peakLeft: Uint8Array.from(leftPeakValues),
-      peakRight: Uint8Array.from(rightPeakValues)
-    }
-  }
-
-  private getMixxxBesselCoefficients(
-    band: RGBWaveformBandKey,
-    sampleRate: number
-  ): MixxxBesselCoefficients {
-    const key = `${band}:${sampleRate}`
-    const cached = this.mixxxBesselCache.get(key)
-    if (cached) {
-      return cached
-    }
-    let coeffs: MixxxBesselCoefficients
-    if (band === 'low') {
-      coeffs = designMixxxBesselLowpass(sampleRate, MIXXX_LOWPASS_MAX_HZ)
-    } else if (band === 'high') {
-      coeffs = designMixxxBesselHighpass(sampleRate, MIXXX_HIGHPASS_MIN_HZ)
-    } else {
-      coeffs = designMixxxBesselBandpass(sampleRate, MIXXX_LOWPASS_MAX_HZ, MIXXX_HIGHPASS_MIN_HZ)
-    }
-    this.mixxxBesselCache.set(key, coeffs)
-    return coeffs
-  }
-
-  private processMixxxBandSample(
-    band: RGBWaveformBandKey,
-    coefficients: Float64Array,
-    state: Float64Array,
-    value: number
-  ): number {
-    if (band === 'mid') {
-      return this.processMixxxBandpassSample(coefficients, state, value)
-    }
-    if (band === 'high') {
-      return this.processMixxxHighpassSample(coefficients, state, value)
-    }
-    return this.processMixxxLowpassSample(coefficients, state, value)
-  }
-
-  private processMixxxLowpassSample(
-    coefficients: Float64Array,
-    state: Float64Array,
-    value: number
-  ): number {
-    let tmp = state[0]
-    state[0] = state[1]
-    state[1] = state[2]
-    state[2] = state[3]
-    let iir = value * coefficients[0]
-    iir -= coefficients[1] * tmp
-    let fir = tmp
-    iir -= coefficients[2] * state[0]
-    fir += state[0] + state[0]
-    fir += iir
-    tmp = state[1]
-    state[1] = iir
-    value = fir
-    iir = value
-    iir -= coefficients[3] * tmp
-    fir = tmp
-    iir -= coefficients[4] * state[2]
-    fir += state[2] + state[2]
-    fir += iir
-    state[3] = iir
-    return fir
-  }
-
-  private processMixxxHighpassSample(
-    coefficients: Float64Array,
-    state: Float64Array,
-    value: number
-  ): number {
-    let tmp = state[0]
-    state[0] = state[1]
-    state[1] = state[2]
-    state[2] = state[3]
-    let iir = value * coefficients[0]
-    iir -= coefficients[1] * tmp
-    let fir = tmp
-    iir -= coefficients[2] * state[0]
-    fir += -state[0] - state[0]
-    fir += iir
-    tmp = state[1]
-    state[1] = iir
-    value = fir
-    iir = value
-    iir -= coefficients[3] * tmp
-    fir = tmp
-    iir -= coefficients[4] * state[2]
-    fir += -state[2] - state[2]
-    fir += iir
-    state[3] = iir
-    return fir
-  }
-
-  private processMixxxBandpassSample(
-    coefficients: Float64Array,
-    state: Float64Array,
-    value: number
-  ): number {
-    let tmp = state[0]
-    state[0] = state[1]
-    state[1] = state[2]
-    state[2] = state[3]
-    state[3] = state[4]
-    state[4] = state[5]
-    state[5] = state[6]
-    state[6] = state[7]
-    let iir = value * coefficients[0]
-    iir -= coefficients[1] * tmp
-    let fir = tmp
-    iir -= coefficients[2] * state[0]
-    fir += -state[0] - state[0]
-    fir += iir
-    tmp = state[1]
-    state[1] = iir
-    value = fir
-    iir = value
-    iir -= coefficients[3] * tmp
-    fir = tmp
-    iir -= coefficients[4] * state[2]
-    fir += -state[2] - state[2]
-    fir += iir
-    tmp = state[3]
-    state[3] = iir
-    value = fir
-    iir = value
-    iir -= coefficients[5] * tmp
-    fir = tmp
-    iir -= coefficients[6] * state[4]
-    fir += state[4] + state[4]
-    fir += iir
-    tmp = state[5]
-    state[5] = iir
-    value = fir
-    iir = value
-    iir -= coefficients[7] * tmp
-    fir = tmp
-    iir -= coefficients[8] * state[6]
-    fir += state[6] + state[6]
-    fir += iir
-    state[7] = iir
-    return fir
-  }
-
-  private scaleMixxxValue(value: number, band: RGBWaveformBandKey): number {
-    if (!value) return 0
-    const scaled = band === 'high' ? Math.pow(value, MIXXX_HIGH_SCALE_EXP) : value
-    return Math.max(0, Math.min(255, Math.round(scaled * 255)))
   }
 
   destroy(): void {
