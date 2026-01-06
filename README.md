@@ -83,7 +83,7 @@ As a DJ, I frequently need to organize large numbers of music files. However, ex
 Contributions of all kinds are welcome! Whether reporting issues, suggesting features, or contributing code, feel free to open an issue or submit a pull request.
 
 ### License
-FRKB follows the MIT license, allowing extensive use and modification of the software.
+FRKB follows the GNU General Public License v2.0 or later (GPL-2.0-or-later).
 
 # Development
 

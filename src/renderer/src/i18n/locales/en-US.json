@@ -36,6 +36,7 @@
     "visitWebsite": "Visit Website",
     "checkUpdate": "Check for Update",
     "whatsNew": "Release Notes",
+    "thirdPartyNotices": "Third-Party Notices",
     "about": "About"
   },
   "database": {
@@ -623,7 +624,8 @@
   "about": {
     "author": "Author: Coder 'Programmer/DJ'",
     "contact": "Feedback or DJ booking: {email}",
-    "prereleaseHint": "This is a pre-release build. May be unstable. Please use with caution or download the stable version."
+    "prereleaseHint": "This is a pre-release build. May be unstable. Please use with caution or download the stable version.",
+    "thirdPartyNoticesHint": "Third-party notices: Help → Third-Party Notices"
   },
   "errorReport": {
     "enable": "Enable error log reporting",

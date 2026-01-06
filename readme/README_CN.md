@@ -86,7 +86,7 @@
 
 ### 许可证
 
-FRKB遵循MIT许可证，允许广泛使用和修改软件。
+FRKB遵循 GNU GPL v2.0 或更高版本（GPL-2.0-or-later）。
 
 # 如何开发
 

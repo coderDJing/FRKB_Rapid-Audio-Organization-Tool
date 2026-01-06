@@ -36,6 +36,7 @@
     "visitWebsite": "访问官网",
     "checkUpdate": "检查更新",
     "whatsNew": "更新日志",
+    "thirdPartyNotices": "第三方许可",
     "about": "关于"
   },
   "database": {
@@ -627,7 +628,8 @@
   "about": {
     "author": "作者 Coder '程序猿/DJ'",
     "contact": "对FRKB有任何建议或Booking我演出: {email}",
-    "prereleaseHint": "当前为预发布版本，可能不稳定。请谨慎使用或下载正式版。"
+    "prereleaseHint": "当前为预发布版本，可能不稳定。请谨慎使用或下载正式版。",
+    "thirdPartyNoticesHint": "第三方许可与鸣谢：帮助 → 第三方许可"
   },
   "errorReport": {
     "enable": "启用错误日志上报",

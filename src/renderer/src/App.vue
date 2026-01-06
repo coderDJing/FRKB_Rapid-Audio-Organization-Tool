@@ -49,6 +49,7 @@ const sendFileOpControl = (action: 'resume' | 'cancel') => {
 const openDialog = async (item: string) => {
   // 统一将中文项映射为 i18n 键，避免不同语言下判断不一致
   if (item === '关于') item = 'menu.about'
+  if (item === '第三方许可') item = 'menu.thirdPartyNotices'
   if (item === '访问 GitHub') item = 'menu.visitGithub'
   if (item === '访问官网') item = 'menu.visitWebsite'
   if (item === '检查更新') item = 'menu.checkUpdate'
@@ -68,6 +69,7 @@ const openDialog = async (item: string) => {
     if (isPrerelease) content.push(t('about.prereleaseHint'))
     content.push(t('about.author'))
     content.push(t('about.contact', { email: 'jinlingwuyanzu@qq.com' }))
+    content.push(t('about.thirdPartyNoticesHint'))
     await confirm({
       title: t('menu.about'),
       content,
@@ -75,6 +77,13 @@ const openDialog = async (item: string) => {
       canCopyText: true,
       innerHeight: 320
     })
+  }
+  if (item === 'menu.thirdPartyNotices') {
+    window.electron.ipcRenderer.send(
+      'openLocalBrowser',
+      'https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/THIRD_PARTY_NOTICES.md'
+    )
+    return
   }
   if (item === 'menu.visitGithub') {
     window.electron.ipcRenderer.send(
