@@ -671,11 +671,6 @@ export function useWaveform(params: {
     const mixxxData = player.mixxxWaveformData ?? null
     if (!mixxxData) {
       clearCanvases()
-      void player.ensureMixxxWaveform().then(() => {
-        if (audioPlayer.value === player && player.mixxxWaveformData) {
-          updateWaveform()
-        }
-      })
       return
     }
 
@@ -725,20 +720,14 @@ export function useWaveform(params: {
       if (el) el.textContent = formatTime(seconds)
     }
 
-    const ensureWaveformIfNeeded = () => {
-      void player.ensureMixxxWaveform()
-    }
-
     const handleDecode = (duration: number) => {
       updateDurationDisplay(duration)
       updateProgressVisual(0)
       updateParentWaveformWidth()
       updateWaveform()
-      ensureWaveformIfNeeded()
       setTimeout(() => {
         updateParentWaveformWidth()
         updateWaveform()
-        ensureWaveformIfNeeded()
       }, 50)
     }
 
@@ -750,11 +739,9 @@ export function useWaveform(params: {
       updateProgressVisual(0)
       updateParentWaveformWidth()
       updateWaveform()
-      ensureWaveformIfNeeded()
       setTimeout(() => {
         updateParentWaveformWidth()
         updateWaveform()
-        ensureWaveformIfNeeded()
       }, 50)
     }
 
@@ -798,7 +785,6 @@ export function useWaveform(params: {
     registerPlayerHandler(player, 'mixxxwaveformready', () => {
       updateWaveform()
     })
-    ensureWaveformIfNeeded()
 
     if (onError) {
       const handleError = (error: any) => {
@@ -869,9 +855,6 @@ export function useWaveform(params: {
   watch(
     () => runtime.setting?.waveformStyle,
     () => {
-      if (audioPlayer.value) {
-        void audioPlayer.value.ensureMixxxWaveform()
-      }
       updateWaveform()
     }
   )

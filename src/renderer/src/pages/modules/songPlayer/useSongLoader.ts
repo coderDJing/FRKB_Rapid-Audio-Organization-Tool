@@ -4,7 +4,7 @@ import { t } from '@renderer/utils/translate'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import emitter from '@renderer/utils/mitt'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import { WebAudioPlayer } from './webAudioPlayer'
+import { WebAudioPlayer, type MixxxWaveformData } from './webAudioPlayer'
 
 const nowMs = () =>
   typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -16,6 +16,7 @@ type PcmPayload = {
   sampleRate: number
   channels: number
   totalFrames: number
+  mixxxWaveformData?: MixxxWaveformData | null
 }
 type SongFilePayload = PcmPayload & {
   metaOnly?: boolean
@@ -185,7 +186,8 @@ export function useSongLoader(params: {
 
       // 加载 PCM 数据到播放器
       playerInstance.loadPCM(pcmData.pcmData, pcmData.sampleRate, pcmData.channels, {
-        filePath
+        filePath,
+        mixxxWaveformData: pcmData.mixxxWaveformData ?? null
       })
 
       if (requestId !== currentLoadRequestId.value) {

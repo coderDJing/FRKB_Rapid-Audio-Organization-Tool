@@ -30,6 +30,26 @@ export interface DecodeAudioResult {
   /** 错误描述（当解码失败时） */
   error?: string
 }
+/** Mixxx 波形频段数据 */
+export interface MixxxWaveformBand {
+  left: Buffer
+  right: Buffer
+  peakLeft: Buffer
+  peakRight: Buffer
+}
+/** Mixxx 波形三频数据 */
+export interface MixxxWaveformBands {
+  low: MixxxWaveformBand
+  mid: MixxxWaveformBand
+  high: MixxxWaveformBand
+}
+/** Mixxx 波形数据 */
+export interface MixxxWaveformData {
+  duration: number
+  sampleRate: number
+  step: number
+  bands: MixxxWaveformBands
+}
 /**
  * 计算音频文件的 SHA256 哈希值，并生成声纹与质量标签
  *
@@ -41,11 +61,17 @@ export interface DecodeAudioResult {
  */
 export declare function calculateAudioHashes(filePaths: Array<string>): Array<AudioFileResult>
 /** 带进度回调的异步音频处理 */
-export declare function calculateAudioHashesWithProgress(filePaths: Array<string>, callback?: (err: Error | null, arg: ProcessProgress) => any | undefined | null): Promise<Array<AudioFileResult>>
+export declare function calculateAudioHashesWithProgress(
+  filePaths: Array<string>,
+  callback?: (err: Error | null, arg: ProcessProgress) => any | undefined | null
+): Promise<Array<AudioFileResult>>
 /** 计算整文件 SHA256（不解码，速度快；与 PCM 内容哈希互不兼容） */
 export declare function calculateFileHashes(filePaths: Array<string>): Array<AudioFileResult>
 /** 计算整文件 SHA256（带进度） */
-export declare function calculateFileHashesWithProgress(filePaths: Array<string>, callback?: (err: Error | null, arg: ProcessProgress) => any | undefined | null): Promise<Array<AudioFileResult>>
+export declare function calculateFileHashesWithProgress(
+  filePaths: Array<string>,
+  callback?: (err: Error | null, arg: ProcessProgress) => any | undefined | null
+): Promise<Array<AudioFileResult>>
 /**
  * 解码音频文件为 PCM Float32Array
  *
@@ -56,3 +82,18 @@ export declare function calculateFileHashesWithProgress(filePaths: Array<string>
  * * 包含 PCM 数据和元数据的解码结果
  */
 export declare function decodeAudioFile(filePath: string): DecodeAudioResult
+/**
+ * 基于 PCM 计算 Mixxx RGB 波形
+ *
+ * # 参数
+ * * `pcm_data` - 交错 PCM Buffer (f32 小端序)
+ * * `sample_rate` - 采样率
+ * * `channels` - 声道数
+ */
+export declare function computeMixxxWaveform(
+  pcmData: Buffer,
+  sampleRate: number,
+  channels: number
+): MixxxWaveformData
+
+export {}
