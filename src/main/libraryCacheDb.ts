@@ -29,6 +29,15 @@ function toNumber(value: any): number | null {
   return Number.isFinite(num) ? num : null
 }
 
+function normalizeRoot(value: any): string {
+  let normalized = path.normalize(String(value || ''))
+  normalized = normalized.replace(/[\\/]+$/, '')
+  if (process.platform === 'win32') {
+    normalized = normalized.toLowerCase()
+  }
+  return normalized
+}
+
 async function ensureSongCacheMigrated(db: any, listRoot: string): Promise<void> {
   if (!listRoot || migratedSongRoots.has(listRoot)) return
   migratedSongRoots.add(listRoot)
@@ -353,6 +362,53 @@ export async function countCoverIndexByHash(
   } catch (error) {
     log.error('[sqlite] cover index count failed', error)
     return null
+  }
+}
+
+export async function pruneCachesByRoots(
+  keepRoots: Iterable<string> | null | undefined
+): Promise<{ songCacheRemoved: number; coverIndexRemoved: number }> {
+  const db = getLibraryDb()
+  if (!db) return { songCacheRemoved: 0, coverIndexRemoved: 0 }
+  try {
+    const keepSet = new Set<string>()
+    if (keepRoots) {
+      for (const root of keepRoots) {
+        const normalized = normalizeRoot(root)
+        if (normalized) keepSet.add(normalized)
+      }
+    }
+
+    const pruneTable = (table: 'song_cache' | 'cover_index'): number => {
+      const rows = db.prepare(`SELECT DISTINCT list_root FROM ${table}`).all()
+      if (!rows || rows.length === 0) return 0
+      const toRemove: string[] = []
+      for (const row of rows) {
+        const raw = row?.list_root
+        const normalized = normalizeRoot(raw)
+        if (!normalized || !keepSet.has(normalized)) {
+          toRemove.push(String(raw))
+        }
+      }
+      if (toRemove.length === 0) return 0
+      const del = db.prepare(`DELETE FROM ${table} WHERE list_root = ?`)
+      let removed = 0
+      const run = db.transaction((items: string[]) => {
+        for (const item of items) {
+          const info = del.run(item) as any
+          removed += Number(info?.changes || 0)
+        }
+      })
+      run(toRemove)
+      return removed
+    }
+
+    const songCacheRemoved = pruneTable('song_cache')
+    const coverIndexRemoved = pruneTable('cover_index')
+    return { songCacheRemoved, coverIndexRemoved }
+  } catch (error) {
+    log.error('[sqlite] cache prune failed', error)
+    return { songCacheRemoved: 0, coverIndexRemoved: 0 }
   }
 }
 

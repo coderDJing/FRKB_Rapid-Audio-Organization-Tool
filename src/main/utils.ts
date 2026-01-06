@@ -15,6 +15,7 @@ import {
   loadLibraryNodes,
   syncLibraryTreeFromDisk
 } from './libraryTreeDb'
+import { pruneOrphanedSongListCaches } from './services/cacheMaintenance'
 
 interface SongsAnalyseResult {
   songsAnalyseResult: md5[]
@@ -165,6 +166,7 @@ export async function getLibrary(options: { skipSync?: boolean } = {}) {
       },
       audioExtensions: store.settingConfig?.audioExt
     })
+    await pruneOrphanedSongListCaches(rootDir)
   }
 
   const rows = loadLibraryNodes(rootDir) || []

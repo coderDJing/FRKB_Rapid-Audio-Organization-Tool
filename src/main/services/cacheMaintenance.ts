@@ -4,7 +4,8 @@ import { ISongInfo } from '../../types/globals'
 import { mapRendererPathToFsPath } from '../utils'
 import store from '../store'
 import * as LibraryCacheDb from '../libraryCacheDb'
-import { findSongListRootByPath } from '../libraryTreeDb'
+import { findSongListRootByPath, loadLibraryNodes } from '../libraryTreeDb'
+import type { LibraryNodeRow } from '../libraryTreeDb'
 
 async function findSongListRoot(startDir: string): Promise<string | null> {
   return await findSongListRootByPath(startDir)
@@ -22,6 +23,36 @@ function normalizeSongInfoForCache(info: ISongInfo): ISongInfo {
         ? info.fileFormat
         : normalizedExt || info.fileFormat
   }
+}
+
+function buildNodePathMap(nodes: LibraryNodeRow[], root: LibraryNodeRow): Map<string, string> {
+  const childrenMap = new Map<string, LibraryNodeRow[]>()
+  for (const row of nodes) {
+    if (!row.parentUuid) continue
+    const list = childrenMap.get(row.parentUuid)
+    if (list) {
+      list.push(row)
+    } else {
+      childrenMap.set(row.parentUuid, [row])
+    }
+  }
+  const pathByUuid = new Map<string, string>()
+  pathByUuid.set(root.uuid, root.dirName)
+  const queue: LibraryNodeRow[] = [root]
+  for (let i = 0; i < queue.length; i += 1) {
+    const parent = queue[i]
+    const parentPath = pathByUuid.get(parent.uuid)
+    if (!parentPath) continue
+    const children = childrenMap.get(parent.uuid) || []
+    for (const child of children) {
+      const childPath = path.join(parentPath, child.dirName)
+      if (!pathByUuid.has(child.uuid)) {
+        pathByUuid.set(child.uuid, childPath)
+        queue.push(child)
+      }
+    }
+  }
+  return pathByUuid
 }
 
 export async function updateSongCacheEntry(
@@ -96,6 +127,34 @@ export async function clearTrackCache(filePath: string) {
     await LibraryCacheDb.removeSongCacheEntry(songListRoot, filePath)
     await purgeCoverCacheForTrack(filePath)
   } catch {}
+}
+
+export async function pruneOrphanedSongListCaches(
+  dbRoot?: string
+): Promise<{ songCacheRemoved: number; coverIndexRemoved: number }> {
+  try {
+    const rootDir = dbRoot || store.databaseDir
+    if (!rootDir) return { songCacheRemoved: 0, coverIndexRemoved: 0 }
+    const nodes = loadLibraryNodes(rootDir) || []
+    if (nodes.length === 0) {
+      return await LibraryCacheDb.pruneCachesByRoots(new Set())
+    }
+    const root = nodes.find((row) => row.parentUuid === null && row.nodeType === 'root')
+    if (!root) {
+      return await LibraryCacheDb.pruneCachesByRoots(new Set())
+    }
+    const pathByUuid = buildNodePathMap(nodes, root)
+    const keepRoots = new Set<string>()
+    for (const row of nodes) {
+      if (row.nodeType !== 'songList') continue
+      const rel = pathByUuid.get(row.uuid)
+      if (!rel) continue
+      keepRoots.add(path.join(rootDir, rel))
+    }
+    return await LibraryCacheDb.pruneCachesByRoots(keepRoots)
+  } catch {
+    return { songCacheRemoved: 0, coverIndexRemoved: 0 }
+  }
 }
 
 export { findSongListRoot }
