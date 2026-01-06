@@ -145,6 +145,11 @@ const buildFullMenu = () =>
             mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.checkUpdate')
         },
         {
+          label: tMenu('menu.thirdPartyNotices'),
+          click: () =>
+            mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.thirdPartyNotices')
+        },
+        {
           label: tMenu('menu.about'),
           click: () => mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.about')
         }
