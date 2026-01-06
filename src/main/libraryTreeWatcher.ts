@@ -5,6 +5,7 @@ import store from './store'
 import { log } from './log'
 import { ensureEnglishCoreLibraries, getCoreFsDirName, getLibrary } from './utils'
 import { syncLibraryTreeFromDisk } from './libraryTreeDb'
+import { pruneOrphanedSongListCaches } from './services/cacheMaintenance'
 
 let watcher: fs.FSWatcher | null = null
 let debounceTimer: NodeJS.Timeout | null = null
@@ -35,6 +36,7 @@ async function reconcileLibraryTree(window: BrowserWindow | null) {
       audioExtensions: store.settingConfig?.audioExt
     })
     if (result.added + result.removed + result.updated > 0) {
+      await pruneOrphanedSongListCaches(rootDir)
       const tree = await getLibrary({ skipSync: true })
       window?.webContents.send('library-tree-updated', tree)
     }
