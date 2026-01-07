@@ -146,6 +146,70 @@ export async function loadSongCache(listRoot: string): Promise<Map<string, SongC
   }
 }
 
+export async function loadSongCacheEntry(
+  listRoot: string,
+  filePath: string
+): Promise<SongCacheEntry | null | undefined> {
+  const db = getLibraryDb()
+  if (!db || !listRoot || !filePath) return undefined
+  try {
+    await ensureSongCacheMigrated(db, listRoot)
+    const row = db
+      .prepare(
+        'SELECT size, mtime_ms, info_json FROM song_cache WHERE list_root = ? AND file_path = ?'
+      )
+      .get(listRoot, filePath)
+    if (!row || row.info_json === undefined) return null
+    let info: ISongInfo | null = null
+    try {
+      info = JSON.parse(String(row.info_json)) as ISongInfo
+    } catch {
+      info = null
+    }
+    const size = toNumber(row.size)
+    const mtimeMs = toNumber(row.mtime_ms)
+    if (!info || size === null || mtimeMs === null) return null
+    return { size, mtimeMs, info }
+  } catch (error) {
+    log.error('[sqlite] song cache entry load failed', error)
+    return undefined
+  }
+}
+
+export async function updateSongCacheKey(
+  listRoot: string,
+  filePath: string,
+  keyText: string
+): Promise<boolean> {
+  const db = getLibraryDb()
+  if (!db || !listRoot || !filePath) return false
+  try {
+    await ensureSongCacheMigrated(db, listRoot)
+    const row = db
+      .prepare('SELECT info_json FROM song_cache WHERE list_root = ? AND file_path = ?')
+      .get(listRoot, filePath)
+    if (!row || row.info_json === undefined) return false
+    let info: ISongInfo | null = null
+    try {
+      info = JSON.parse(String(row.info_json)) as ISongInfo
+    } catch {
+      info = null
+    }
+    if (!info) return false
+    if (info.key === keyText) return true
+    const nextInfo = { ...info, key: keyText }
+    db.prepare('UPDATE song_cache SET info_json = ? WHERE list_root = ? AND file_path = ?').run(
+      JSON.stringify(nextInfo),
+      listRoot,
+      filePath
+    )
+    return true
+  } catch (error) {
+    log.error('[sqlite] song cache key update failed', error)
+    return false
+  }
+}
+
 export async function replaceSongCache(
   listRoot: string,
   entries: Map<string, SongCacheEntry>

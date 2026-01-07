@@ -61,6 +61,11 @@ const sanitizeUiSettings = (input: Record<string, unknown>): UiSettings => {
           output[key] = value
         }
         break
+      case 'keyDisplayStyle':
+        if (value === 'Classic' || value === 'Camelot') {
+          output[key] = value
+        }
+        break
       case 'startPlayPercent':
       case 'endPlayPercent':
       case 'fastForwardTime':

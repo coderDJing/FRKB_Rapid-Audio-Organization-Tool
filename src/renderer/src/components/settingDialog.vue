@@ -103,6 +103,9 @@ if ((runtime as any).setting.waveformStyle === undefined) {
 if ((runtime as any).setting.waveformMode === undefined) {
   ;(runtime as any).setting.waveformMode = 'half'
 }
+if ((runtime as any).setting.keyDisplayStyle === undefined) {
+  ;(runtime as any).setting.keyDisplayStyle = 'Classic'
+}
 
 const ensurePlayerGlobalShortcuts = () => {
   if (!runtime.setting.playerGlobalShortcuts) {
@@ -163,6 +166,11 @@ const waveformStyleOptions = computed(() => [
 const waveformModeOptions = computed(() => [
   { label: t('player.waveformModeHalf'), value: 'half' },
   { label: t('player.waveformModeFull'), value: 'full' }
+])
+
+const keyDisplayStyleOptions = computed(() => [
+  { label: t('player.keyDisplayStyleClassic'), value: 'Classic' },
+  { label: t('player.keyDisplayStyleCamelot'), value: 'Camelot' }
 ])
 
 const audioOutputSelectOptions = computed(() => {
@@ -607,6 +615,14 @@ const clearCloudFingerprints = async () => {
               <BaseSelect
                 v-model="(runtime as any).setting.waveformMode"
                 :options="waveformModeOptions"
+                @change="setSetting"
+              />
+            </div>
+            <div style="margin-top: 20px">{{ t('player.keyDisplayStyle') }}：</div>
+            <div style="margin-top: 10px">
+              <BaseSelect
+                v-model="(runtime as any).setting.keyDisplayStyle"
+                :options="keyDisplayStyleOptions"
                 @change="setSetting"
               />
             </div>

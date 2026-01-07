@@ -479,6 +479,13 @@ onUnmounted(() => {
 watch(
   () => runtime.playingData.playingSong,
   (newSong, oldSong) => {
+    if (newSong?.filePath && newSong.filePath !== oldSong?.filePath) {
+      try {
+        window.electron.ipcRenderer.send('key-analysis:queue-playing', {
+          filePath: newSong.filePath
+        })
+      } catch {}
+    }
     if (isInternalSongChange.value) {
       isInternalSongChange.value = false
       return
@@ -630,7 +637,11 @@ watch(
           @dragEnd="setSetting"
         />
       </div>
-      <BpmTap :bpm="bpm" :waveformShow="waveformShow" />
+      <BpmTap
+        :bpm="bpm"
+        :waveformShow="waveformShow"
+        :keyText="runtime.playingData.playingSong?.key || ''"
+      />
     </div>
   </transition>
   <selectSongListDialog

@@ -2,6 +2,8 @@
 import { computed, ref, watch, useTemplateRef } from 'vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { t } from '@renderer/utils/translate'
+import { useRuntimeStore } from '@renderer/stores/runtime'
+import { getKeyDisplayText } from '@shared/keyDisplay'
 
 // 组件用于显示 BPM，并支持通过左键点击节拍来计算 BPM，右键恢复系统分析值
 const props = defineProps<{
@@ -9,6 +11,8 @@ const props = defineProps<{
   bpm: number | string
   // 与父级保持一致的可见控制
   waveformShow: boolean
+  // 调性文本（Mixxx 口径）
+  keyText?: string
 }>()
 
 // 是否处于手动点击（Tap Tempo）模式
@@ -20,6 +24,7 @@ const tapTimestamps = ref<number[]>([])
 
 // 提示气泡绑定 DOM
 const bpmDomRef = useTemplateRef<HTMLDivElement>('bpmDomRef')
+const runtime = useRuntimeStore()
 
 // 当系统 BPM 变化（如切歌或重新分析）时，自动退出手动模式
 watch(
@@ -31,12 +36,28 @@ watch(
 
 // 将显示值统一成字符串
 const displayValue = computed<string>(() => {
+  let bpmText = ''
   if (isManual.value && manualBpm.value !== null) {
-    return manualBpm.value.toFixed(1)
+    bpmText = manualBpm.value.toFixed(1)
+  } else if (typeof props.bpm === 'number') {
+    bpmText = props.bpm.toString()
+  } else {
+    bpmText = props.bpm || ''
   }
-  // 系统 BPM 支持 number 或字符串
-  if (typeof props.bpm === 'number') return props.bpm.toString()
-  return props.bpm || ''
+
+  const rawKey = typeof props.keyText === 'string' ? props.keyText.trim() : ''
+  let keyText = ''
+  if (!rawKey) {
+    keyText = ''
+  } else if (rawKey.toLowerCase() === 'o') {
+    keyText = '-'
+  } else {
+    const style = (runtime.setting as any).keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
+    keyText = getKeyDisplayText(rawKey, style)
+  }
+
+  if (bpmText === '' && keyText === '') return ''
+  return `${bpmText}/${keyText}`
 })
 
 // 左键点击：加入一次节拍点击并重新计算 BPM
@@ -96,7 +117,9 @@ const resetManual = () => {
     class="unselectable"
     ref="bpmDomRef"
     :style="{
-      width: '50px',
+      width: 'auto',
+      minWidth: '80px',
+      padding: '0 6px',
       display: 'flex',
       justifyContent: 'center',
       alignItems: 'center',

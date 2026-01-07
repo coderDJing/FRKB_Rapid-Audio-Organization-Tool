@@ -9,6 +9,7 @@ import {
 type DecodeJob = {
   jobId: number
   filePath: string
+  analyzeKey?: boolean
 }
 
 type DecodeResultPayload = {
@@ -17,6 +18,8 @@ type DecodeResultPayload = {
   channels: number
   totalFrames: number
   mixxxWaveformData?: MixxxWaveformData | null
+  keyText?: string
+  keyError?: string
 }
 
 type DecodeResponse = {
@@ -42,11 +45,20 @@ const loadRust = () => {
       sampleRate: number,
       channels: number
     ) => MixxxWaveformData
+    analyzeKeyFromPcm?: (
+      pcmData: Buffer,
+      sampleRate: number,
+      channels: number,
+      fastAnalysis: boolean
+    ) => { keyText: string; error?: string }
   }
   return binding
 }
 
-const decodeWithCache = async (filePath: string): Promise<DecodeResultPayload> => {
+const decodeWithCache = async (
+  filePath: string,
+  analyzeKey: boolean
+): Promise<DecodeResultPayload> => {
   const stat = await fs.stat(filePath)
   let cachedWaveform: MixxxWaveformData | null = null
   if (cacheRoot) {
@@ -75,12 +87,27 @@ const decodeWithCache = async (filePath: string): Promise<DecodeResultPayload> =
     } catch {}
   }
 
+  let keyText: string | undefined
+  let keyError: string | undefined
+  if (analyzeKey && typeof rust.analyzeKeyFromPcm === 'function') {
+    const keyResult = rust.analyzeKeyFromPcm(
+      result.pcmData,
+      result.sampleRate,
+      result.channels,
+      true
+    )
+    keyText = keyResult?.keyText
+    keyError = keyResult?.error
+  }
+
   return {
     pcmData: result.pcmData,
     sampleRate: result.sampleRate,
     channels: result.channels,
     totalFrames: result.totalFrames,
-    mixxxWaveformData
+    mixxxWaveformData,
+    keyText,
+    keyError
   }
 }
 
@@ -94,7 +121,7 @@ parentPort?.on('message', async (job: DecodeJob) => {
     if (!job?.filePath) {
       throw new Error('Missing file path')
     }
-    response.result = await decodeWithCache(job.filePath)
+    response.result = await decodeWithCache(job.filePath, Boolean(job.analyzeKey))
   } catch (error) {
     response.error = (error as Error)?.message ?? String(error)
   }

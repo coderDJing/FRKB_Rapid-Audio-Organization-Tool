@@ -5,6 +5,7 @@ import { ISongInfo } from '../../types/globals'
 import { SUPPORTED_AUDIO_FORMATS } from '../../shared/audioFormats'
 import { readWavRiffInfoWindows } from './wavRiffInfo'
 import * as LibraryCacheDb from '../libraryCacheDb'
+import { enqueueKeyAnalysisList } from './keyAnalysisQueue'
 
 // 扫描歌单目录，带 SQLite 缓存
 export async function scanSongList(
@@ -313,6 +314,14 @@ export async function scanSongList(
         await LibraryCacheDb.replaceSongCache(cacheRoot, newEntriesMap)
       }
     } catch {}
+  }
+
+  if (cacheRoot && songInfoArr.length > 0) {
+    const pendingKeys = songInfoArr
+      .filter((info) => !info.key)
+      .map((info) => info.filePath)
+      .filter((filePath) => typeof filePath === 'string' && filePath.trim().length > 0)
+    enqueueKeyAnalysisList(pendingKeys, 'low')
   }
 
   const perfAllEnd = Date.now()

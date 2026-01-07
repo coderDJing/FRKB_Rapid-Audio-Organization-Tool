@@ -39,6 +39,7 @@ interface ISongInfo {
   label: string | undefined
   bitrate: number | undefined
   container: string | undefined
+  key?: string
 }
 
 // 曲目完整元数据明细，用于编辑界面展示
@@ -239,6 +240,7 @@ interface ISettingConfig {
   hiddenPlayControlArea: boolean
   waveformStyle?: 'SoundCloud' | 'Fine' | 'RGB'
   waveformMode?: 'half' | 'full'
+  keyDisplayStyle?: 'Classic' | 'Camelot'
   autoPlayNextSong: boolean
   startPlayPercent: number
   endPlayPercent: number
