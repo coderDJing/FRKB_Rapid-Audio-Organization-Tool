@@ -2,6 +2,7 @@ import { app, ipcMain, type BrowserWindow } from 'electron'
 import os from 'node:os'
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
+import { enqueueKeyAnalysis, enqueueKeyAnalysisImmediate } from '../../services/keyAnalysisQueue'
 
 const clonePcmData = (pcmData: unknown): Float32Array => {
   if (!pcmData) {
@@ -36,11 +37,14 @@ type DecodeWorkerResult = {
   channels: number
   totalFrames: number
   mixxxWaveformData?: any
+  keyText?: string
+  keyError?: string
 }
 
 type WorkerJob = {
   jobId: number
   filePath: string
+  analyzeKey: boolean
   resolve: (result: DecodeWorkerResult) => void
   reject: (error: Error) => void
 }
@@ -62,10 +66,16 @@ class AudioDecodeWorkerPool {
     }
   }
 
-  decode(filePath: string): Promise<DecodeWorkerResult> {
+  decode(filePath: string, options: { analyzeKey?: boolean } = {}): Promise<DecodeWorkerResult> {
     return new Promise((resolve, reject) => {
       const jobId = ++this.nextJobId
-      const job: WorkerJob = { jobId, filePath, resolve, reject }
+      const job: WorkerJob = {
+        jobId,
+        filePath,
+        analyzeKey: Boolean(options.analyzeKey),
+        resolve,
+        reject
+      }
       this.pending.set(jobId, job)
       this.queue.push(job)
       this.drain()
@@ -140,7 +150,11 @@ class AudioDecodeWorkerPool {
       const job = this.queue.shift()
       if (!worker || !job) return
       this.busy.set(worker, job.jobId)
-      worker.postMessage({ jobId: job.jobId, filePath: job.filePath })
+      worker.postMessage({
+        jobId: job.jobId,
+        filePath: job.filePath,
+        analyzeKey: job.analyzeKey
+      })
     }
   }
 }
@@ -161,7 +175,12 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
     async (_e: Electron.IpcMainEvent, filePath: string, requestId: string) => {
       try {
         const pool = getDecodePool()
-        const result = await pool.decode(filePath)
+        if (eventName === 'readSongFile') {
+          enqueueKeyAnalysisImmediate(filePath)
+        } else {
+          enqueueKeyAnalysis(filePath, 'high')
+        }
+        const result = await pool.decode(filePath, { analyzeKey: false })
         const payload = {
           pcmData: clonePcmData(result.pcmData),
           sampleRate: result.sampleRate,

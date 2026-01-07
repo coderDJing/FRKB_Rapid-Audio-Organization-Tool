@@ -34,8 +34,10 @@ import { registerMediaMetadataHandlers } from './ipc/mediaMetadataHandlers'
 import { registerCacheHandlers } from './ipc/cacheHandlers'
 import { registerFilesystemHandlers } from './ipc/filesystemHandlers'
 import { registerExportHandlers } from './ipc/exportHandlers'
+import { registerKeyAnalysisHandlers } from './ipc/keyAnalysisHandlers'
 import { maybeShowWhatsNew, registerWhatsNewHandlers } from './services/whatsNew'
 import * as LibraryCacheDb from './libraryCacheDb'
+import { keyAnalysisEvents } from './services/keyAnalysisQueue'
 // import AudioFeatureExtractor from './mfccTest'
 
 const initDevDatabase = false
@@ -107,6 +109,15 @@ registerMediaMetadataHandlers()
 registerCacheHandlers()
 registerFilesystemHandlers()
 registerExportHandlers()
+registerKeyAnalysisHandlers()
+
+keyAnalysisEvents.on('key-updated', (payload) => {
+  if (mainWindow.instance) {
+    try {
+      mainWindow.instance.webContents.send('song-key-updated', payload)
+    } catch {}
+  }
+})
 
 let devInitDatabaseFunction = async () => {
   if (!fs.pathExistsSync(store.settingConfig.databaseUrl)) {

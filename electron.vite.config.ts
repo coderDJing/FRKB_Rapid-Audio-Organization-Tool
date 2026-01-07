@@ -13,12 +13,16 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/main/index.ts'),
-          audioDecodeWorker: resolve(__dirname, 'src/main/workers/audioDecodeWorker.ts')
+          audioDecodeWorker: resolve(__dirname, 'src/main/workers/audioDecodeWorker.ts'),
+          keyAnalysisWorker: resolve(__dirname, 'src/main/workers/keyAnalysisWorker.ts')
         },
         output: {
           entryFileNames: (chunk) => {
             if (chunk.name === 'audioDecodeWorker') {
               return 'workers/audioDecodeWorker.js'
+            }
+            if (chunk.name === 'keyAnalysisWorker') {
+              return 'workers/keyAnalysisWorker.js'
             }
             return '[name].js'
           }

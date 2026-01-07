@@ -10,9 +10,13 @@ import {
 } from 'vue'
 import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import { useRuntimeStore } from '@renderer/stores/runtime'
+import { getKeyDisplayText as formatKeyDisplayText } from '@shared/keyDisplay'
+import { t } from '@renderer/utils/translate'
 import { useVirtualRows } from './SongListRows/useVirtualRows'
 import { useSongRowEvents } from './SongListRows/useSongRowEvents'
 import { useCoverThumbnails } from './SongListRows/useCoverThumbnails'
+import { useKeyAnalysisQueue } from './SongListRows/useKeyAnalysisQueue'
 import { useCoverPreview } from './SongListRows/useCoverPreview'
 
 const props = defineProps({
@@ -76,6 +80,7 @@ const scrollHostElementRef = toRef(props, 'scrollHostElement')
 const externalScrollTopRef = toRef(props, 'externalScrollTop')
 const externalViewportHeightRef = toRef(props, 'externalViewportHeight')
 const songListRootDirRef = toRef(props, 'songListRootDir')
+const runtime = useRuntimeStore()
 
 const cellRefMap = markRaw({} as Record<string, HTMLElement | null>)
 const coverCellRefMap = markRaw(new Map<string, HTMLElement | null>())
@@ -102,6 +107,25 @@ const setCoverCellRef = (filePath: string, el: Element | ComponentPublicInstance
 const hoveredCellKey = vRef<string | null>(null)
 const onlyWhenOverflowComputed = computed(() => true)
 const DEFAULT_ROW_HEIGHT = 30
+
+const getKeyDisplayText = (value: unknown): string => {
+  const text = typeof value === 'string' ? value.trim() : ''
+  const style = (runtime.setting as any).keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
+  const display = formatKeyDisplayText(text, style)
+  if (display.toLowerCase() === 'o') {
+    return t('player.keyDisplayNone')
+  }
+  return display
+}
+
+const getCellValue = (song: ISongInfo, colKey: string): string | number => {
+  if (colKey === 'key') {
+    return getKeyDisplayText((song as any).key)
+  }
+  const raw = (song as any)[colKey]
+  if (raw === undefined || raw === null) return ''
+  return raw as string | number
+}
 
 const {
   rowsRoot,
@@ -138,6 +162,8 @@ const { coversTick, getCoverUrl, fetchCoverUrl, onImgError } = useCoverThumbnail
   visibleCount,
   songListRootDir: songListRootDirRef
 })
+
+useKeyAnalysisQueue({ visibleSongsWithIndex })
 
 const {
   coverPreviewState,
@@ -289,11 +315,11 @@ onUnmounted(() => {
                 :ref="(el) => setCellRef(getCellKey(item.song, col.key), el)"
                 :data-key="getCellKey(item.song, col.key)"
               >
-                {{ item.song[col.key as keyof ISongInfo] }}
+                {{ getCellValue(item.song, col.key) }}
                 <bubbleBox
                   v-if="hoveredCellKey === getCellKey(item.song, col.key)"
                   :dom="cellRefMap[getCellKey(item.song, col.key)] || undefined"
-                  :title="String((item.song as any)[col.key] ?? '')"
+                  :title="String(getCellValue(item.song, col.key))"
                   :only-when-overflow="onlyWhenOverflowComputed"
                 />
               </div>

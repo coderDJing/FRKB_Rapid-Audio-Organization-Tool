@@ -1,7 +1,8 @@
-import { computed, ref, type ShallowRef } from 'vue'
+import { computed, ref, watch, type ShallowRef } from 'vue'
 import type { ISongInfo, ISongsAreaColumn } from '../../../../../../types/globals'
 import { MIN_WIDTH_BY_KEY } from '../minWidth'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
+import { getKeySortText } from '@shared/keyDisplay'
 
 interface UseSongsAreaColumnsParams {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -27,6 +28,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
       filterType: 'text',
       order: 'asc'
     },
+    { columnName: 'columns.key', key: 'key', show: true, filterType: 'text' },
     { columnName: 'columns.duration', key: 'duration', show: true, filterType: 'duration' },
     { columnName: 'columns.album', key: 'album', show: true, filterType: 'text' },
     { columnName: 'columns.genre', key: 'genre', show: true, filterType: 'text' },
@@ -178,11 +180,28 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
 
     const sortedCol = columnData.value.find((c) => c.order)
     if (sortedCol) {
-      filtered = sortArrayByProperty<ISongInfo>(
-        filtered,
-        sortedCol.key as keyof ISongInfo,
-        sortedCol.order!
-      )
+      if (sortedCol.key === 'key') {
+        const style = (runtime.setting as any).keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
+        const collator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
+        filtered = [...filtered].sort((a, b) => {
+          const valueA = getKeySortText(String((a as any).key || ''), style)
+          const valueB = getKeySortText(String((b as any).key || ''), style)
+          const emptyA = valueA.trim() === ''
+          const emptyB = valueB.trim() === ''
+          if (emptyA && emptyB) return 0
+          if (emptyA) return 1
+          if (emptyB) return -1
+          return sortedCol.order === 'asc'
+            ? collator.compare(valueA, valueB)
+            : collator.compare(valueB, valueA)
+        })
+      } else {
+        filtered = sortArrayByProperty<ISongInfo>(
+          filtered,
+          sortedCol.key as keyof ISongInfo,
+          sortedCol.order!
+        )
+      }
     }
 
     // 防御性去重：以 filePath 为键去重，避免竞态下重复条目影响渲染与选择
@@ -205,6 +224,16 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     applyFiltersAndSorting()
     runtime.songsArea.selectedSongFilePath.length = 0
   }
+
+  watch(
+    () => (runtime.setting as any).keyDisplayStyle,
+    () => {
+      const sortedCol = columnData.value.find((c) => c.order)
+      if (sortedCol?.key === 'key') {
+        applyFiltersAndSorting()
+      }
+    }
+  )
 
   // --- 右键菜单与可见性切换 ---
   const colRightClickMenuShow = ref(false)

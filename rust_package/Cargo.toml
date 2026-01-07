@@ -27,6 +27,7 @@ parking_lot = "0.12"
 crossbeam-channel = "0.5"
 
 [build-dependencies]
+cc = "1.0.98"
 napi-build = "2.0.1"
 
 [features]

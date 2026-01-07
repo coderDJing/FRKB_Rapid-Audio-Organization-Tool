@@ -62,6 +62,7 @@ const defaultSettings = {
   hiddenPlayControlArea: false,
   waveformStyle: 'SoundCloud' as 'SoundCloud' | 'Fine' | 'RGB',
   waveformMode: 'half',
+  keyDisplayStyle: 'Classic' as 'Classic' | 'Camelot',
   autoPlayNextSong: false,
   startPlayPercent: 0,
   endPlayPercent: 100,
@@ -142,7 +143,8 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
       normalizedWaveformStyle === 'RGB'
         ? normalizedWaveformStyle
         : 'SoundCloud',
-    waveformMode: mergedSettings.waveformMode === 'full' ? 'full' : 'half'
+    waveformMode: mergedSettings.waveformMode === 'full' ? 'full' : 'half',
+    keyDisplayStyle: mergedSettings.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
   }
 
   if (process.platform === 'win32') {

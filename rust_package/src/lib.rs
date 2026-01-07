@@ -7,6 +7,7 @@
 // ===== 导入依赖 =====
 // 基础功能
 // use std::cmp::{max, min}; // 声纹比对已移除
+use std::borrow::Cow;
 use std::convert::TryInto;
 use std::fs::File;
 use std::io::Read;
@@ -38,7 +39,7 @@ use symphonia::default::get_probe;
 // 哈希
 use hex;
 use ring::digest::{Context, SHA256};
-use bytemuck::cast_slice;
+use bytemuck::{cast_slice, try_cast_slice};
 
 // 常量（已不再需要文件级哈希缓冲区）
 
@@ -47,6 +48,7 @@ use bytemuck::cast_slice;
 extern crate napi_derive;
 
 mod mixxx_waveform;
+mod qm_key;
 
 use crate::mixxx_waveform::MixxxWaveformData;
 
@@ -85,6 +87,15 @@ pub struct DecodeAudioResult {
   /// 总帧数
   pub total_frames: f64,
   /// 错误描述（当解码失败时）
+  pub error: Option<String>,
+}
+
+/// 调性分析结果
+#[napi(object)]
+pub struct KeyAnalysisResult {
+  /// ID3v2 ASCII key 文本
+  pub key_text: String,
+  /// 错误描述（当分析失败时）
   pub error: Option<String>,
 }
 
@@ -265,6 +276,85 @@ pub fn compute_mixxx_waveform(
   channels: u8,
 ) -> napi::Result<MixxxWaveformData> {
   mixxx_waveform::compute_mixxx_waveform(pcm_data, sample_rate, channels)
+}
+
+/// 基于 PCM 计算调性（Mixxx Queen Mary）
+#[napi]
+pub fn analyze_key_from_pcm(
+  pcm_data: Buffer,
+  sample_rate: u32,
+  channels: u8,
+  fast_analysis: bool,
+) -> KeyAnalysisResult {
+  let pcm_bytes = pcm_data.as_ref();
+  let pcm_f32 = match try_cast_slice::<u8, f32>(pcm_bytes) {
+    Ok(slice) => Cow::Borrowed(slice),
+    Err(_) => {
+      if pcm_bytes.len() % 4 != 0 {
+        return KeyAnalysisResult {
+          key_text: "o".to_string(),
+          error: Some("PCM buffer length is not aligned".to_string()),
+        };
+      }
+      let mut out = Vec::with_capacity(pcm_bytes.len() / 4);
+      for chunk in pcm_bytes.chunks_exact(4) {
+        out.push(f32::from_le_bytes(chunk.try_into().unwrap()));
+      }
+      Cow::Owned(out)
+    }
+  };
+
+  match qm_key::analyze_key_id_from_pcm(
+    pcm_f32.as_ref(),
+    sample_rate,
+    channels,
+    fast_analysis,
+  ) {
+    Ok(key_id) => KeyAnalysisResult {
+      key_text: key_id_to_id3_text(key_id),
+      error: None,
+    },
+    Err(error) => KeyAnalysisResult {
+      key_text: "o".to_string(),
+      error: Some(error),
+    },
+  }
+}
+
+fn key_id_to_id3_text(key_id: i32) -> String {
+  const ID3_KEYS: [&str; 25] = [
+    "o",  // INVALID
+    "C",
+    "Db",
+    "D",
+    "Eb",
+    "E",
+    "F",
+    "F#",
+    "G",
+    "Ab",
+    "A",
+    "Bb",
+    "B",
+    "Cm",
+    "C#m",
+    "Dm",
+    "Ebm",
+    "Em",
+    "Fm",
+    "F#m",
+    "Gm",
+    "G#m",
+    "Am",
+    "Bbm",
+    "Bm",
+  ];
+  let index = if key_id >= 0 && key_id < ID3_KEYS.len() as i32 {
+    key_id as usize
+  } else {
+    0
+  };
+  ID3_KEYS[index].to_string()
 }
 
 /// 解码音频为 PCM Float32Array

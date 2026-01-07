@@ -96,16 +96,65 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     scheduleSweepCovers()
   }
 
+  let keyUpdateScheduled = false
+  const scheduleApply = () => {
+    if (keyUpdateScheduled) return
+    keyUpdateScheduled = true
+    requestAnimationFrame(() => {
+      keyUpdateScheduled = false
+      applyFiltersAndSorting()
+    })
+  }
+
+  const onSongKeyUpdated = (_e: unknown, payload: { filePath?: string; keyText?: string }) => {
+    const filePath = payload?.filePath
+    const keyText = payload?.keyText
+    if (!filePath || typeof keyText !== 'string') return
+
+    let touched = false
+    const nextOriginal = originalSongInfoArr.value.map((item) => {
+      if (item.filePath !== filePath) return item
+      if (item.key === keyText) return item
+      touched = true
+      return { ...item, key: keyText }
+    })
+    if (touched) {
+      originalSongInfoArr.value = markRaw(nextOriginal)
+      scheduleApply()
+    }
+
+    if (runtime.playingData.playingSong?.filePath === filePath) {
+      runtime.playingData.playingSong = {
+        ...runtime.playingData.playingSong,
+        key: keyText
+      }
+    }
+
+    if (runtime.playingData.playingSongListData.length > 0) {
+      runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map(
+        (item) => (item.filePath === filePath ? { ...item, key: keyText } : item)
+      )
+    }
+
+    if (runtime.externalPlaylist.songs.length > 0) {
+      runtime.externalPlaylist.songs = runtime.externalPlaylist.songs.map((item) =>
+        item.filePath === filePath ? { ...item, key: keyText } : item
+      )
+    }
+  }
+
   onMounted(() => {
     emitter.on('songsRemoved', onSongsRemoved)
     emitter.on('songsMovedByDrag', onSongsMovedByDrag)
     emitter.on('external-playlist/refresh', onExternalPlaylistRefresh)
+    window.electron.ipcRenderer.on('song-key-updated', onSongKeyUpdated)
   })
 
   onUnmounted(() => {
     emitter.off('songsRemoved', onSongsRemoved)
     emitter.off('songsMovedByDrag', onSongsMovedByDrag)
     emitter.off('external-playlist/refresh', onExternalPlaylistRefresh)
+    window.electron.ipcRenderer.removeListener('song-key-updated', onSongKeyUpdated)
   })
 
   // 导入完成后重新打开歌单
