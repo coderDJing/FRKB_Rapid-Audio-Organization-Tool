@@ -110,10 +110,17 @@ export async function scanSongList(
   }
   const cachedInfos: ISongInfo[] = []
   const filesToParse: string[] = []
+  const analysisOnlyByPath = new Map<string, { key?: string; bpm?: number }>()
+  const isAnalysisOnly = (info?: ISongInfo | null): boolean => Boolean(info?.analysisOnly)
   for (const it of filesStatList) {
     const c = cacheMap.get(it.file)
     if (c && c.size === it.size && Math.abs(c.mtimeMs - it.mtimeMs) < 1) {
-      cachedInfos.push(enrichSongInfo(c.info))
+      if (isAnalysisOnly(c.info)) {
+        analysisOnlyByPath.set(it.file, { key: c.info.key, bpm: c.info.bpm })
+        filesToParse.push(it.file)
+      } else {
+        cachedInfos.push(enrichSongInfo(c.info))
+      }
     } else {
       filesToParse.push(it.file)
     }
@@ -258,6 +265,18 @@ export async function scanSongList(
   const parsedInfos: ISongInfo[] = results
     .filter((r) => r && !(r instanceof Error))
     .map((info) => enrichSongInfo(info as ISongInfo))
+  if (analysisOnlyByPath.size > 0) {
+    for (const info of parsedInfos) {
+      const cached = analysisOnlyByPath.get(info.filePath)
+      if (!cached) continue
+      if (!hasKey(info.key) && hasKey(cached.key)) {
+        info.key = cached.key as string
+      }
+      if (!hasBpm(info.bpm) && hasBpm(cached.bpm)) {
+        info.bpm = cached.bpm as number
+      }
+    }
+  }
   songInfoArr = [...cachedInfos, ...parsedInfos]
 
   // Windows 下 WAV：对缓存与新解析的结果做一次统一修正，避免列表残留 '0!0!0!' 或含 \x00 的值

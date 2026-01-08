@@ -5,8 +5,14 @@ import { EventEmitter } from 'node:events'
 import { Worker } from 'node:worker_threads'
 import { findSongListRoot } from './cacheMaintenance'
 import * as LibraryCacheDb from '../libraryCacheDb'
+import { getLibraryDb } from '../libraryDb'
+import store from '../store'
+import { loadLibraryNodes, type LibraryNodeRow } from '../libraryTreeDb'
+import type { ISongInfo } from '../../types/globals'
+import { log } from '../log'
 
-type KeyAnalysisPriority = 'high' | 'medium' | 'low'
+type KeyAnalysisPriority = 'high' | 'medium' | 'low' | 'background'
+type KeyAnalysisSource = 'foreground' | 'background'
 
 type KeyAnalysisJob = {
   jobId: number
@@ -14,6 +20,7 @@ type KeyAnalysisJob = {
   normalizedPath: string
   priority: KeyAnalysisPriority
   fastAnalysis: boolean
+  source: KeyAnalysisSource
 }
 
 type KeyAnalysisResult = {
@@ -40,6 +47,13 @@ type WorkerPayload = {
   error?: string
 }
 
+type BackgroundDirItem = {
+  dir: string
+  listRoot: string
+}
+
+type DirHandle = Awaited<ReturnType<typeof fs.opendir>>
+
 const normalizePath = (value: string): string => {
   let normalized = path.normalize(value || '')
   if (process.platform === 'win32') {
@@ -54,19 +68,43 @@ const isValidKeyText = (value: unknown): value is string =>
 const isValidBpm = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0
 
+const BACKGROUND_IDLE_DELAY_MS = 3000
+const BACKGROUND_SCAN_COOLDOWN_MS = 5000
+const BACKGROUND_SCAN_ROW_LIMIT = 200
+const BACKGROUND_BATCH_SIZE = 1
+const BACKGROUND_MAX_INFLIGHT = 1
+const BACKGROUND_FS_REFRESH_MS = 60000
+const BACKGROUND_FS_DIR_LIMIT = 3
+const BACKGROUND_FS_ENTRY_LIMIT = 200
+const BACKGROUND_CLEAN_ROW_LIMIT = 200
+const BACKGROUND_CLEAN_BATCH_SIZE = 20
+
 class KeyAnalysisQueue {
   private workers: Worker[] = []
   private idle: Worker[] = []
   private pendingHigh: KeyAnalysisJob[] = []
   private pendingMedium: KeyAnalysisJob[] = []
   private pendingLow: KeyAnalysisJob[] = []
+  private pendingBackground: KeyAnalysisJob[] = []
   private pendingByPath = new Map<string, KeyAnalysisJob>()
   private activeByPath = new Map<string, KeyAnalysisJob>()
   private busy = new Map<Worker, number>()
   private inFlight = new Map<number, KeyAnalysisJob>()
+  private preemptedJobIds = new Set<number>()
   private doneByPath = new Map<string, DoneEntry>()
   private nextJobId = 0
   private events: EventEmitter
+  private lastForegroundAt = 0
+  private backgroundTimer: ReturnType<typeof setTimeout> | null = null
+  private backgroundScanInProgress = false
+  private backgroundCursor = 0
+  private backgroundLastScanAt = 0
+  private backgroundRoots: string[] = []
+  private backgroundRootsSignature = ''
+  private backgroundRootIndex = 0
+  private backgroundDirQueue: BackgroundDirItem[] = []
+  private backgroundRootsLastRefresh = 0
+  private backgroundCleanCursor = 0
 
   constructor(workerCount: number, events: EventEmitter) {
     const count = Math.max(1, workerCount)
@@ -76,15 +114,35 @@ class KeyAnalysisQueue {
     }
   }
 
-  enqueue(filePath: string, priority: KeyAnalysisPriority, options: { urgent?: boolean } = {}) {
+  startBackgroundSweep() {
+    if (this.backgroundTimer) return
+    if (this.isIdle()) {
+      this.scheduleBackgroundScan()
+    }
+  }
+
+  enqueue(
+    filePath: string,
+    priority: KeyAnalysisPriority,
+    options: { urgent?: boolean; source?: KeyAnalysisSource; fastAnalysis?: boolean } = {}
+  ) {
     if (!filePath) return
+    this.clearBackgroundTimer()
     const normalizedPath = normalizePath(filePath)
+    const source = options.source || (priority === 'background' ? 'background' : 'foreground')
+    if (source === 'foreground') {
+      this.lastForegroundAt = Date.now()
+    }
     if (this.activeByPath.has(normalizedPath)) return
     const existing = this.pendingByPath.get(normalizedPath)
     if (existing) {
       if (this.isHigherPriority(priority, existing.priority)) {
         this.removePending(existing)
         existing.priority = priority
+        existing.source = source
+        if (options.fastAnalysis !== undefined) {
+          existing.fastAnalysis = options.fastAnalysis
+        }
         this.addPending(existing, options.urgent)
       }
       if (options.urgent && existing.priority === 'high') {
@@ -99,16 +157,20 @@ class KeyAnalysisQueue {
       filePath,
       normalizedPath,
       priority,
-      fastAnalysis: true
+      fastAnalysis: options.fastAnalysis ?? true,
+      source
     }
     this.addPending(job, options.urgent)
+    if (source === 'foreground') {
+      this.maybePreemptBackground()
+    }
     this.drain()
   }
 
   enqueueList(
     filePaths: string[],
     priority: KeyAnalysisPriority,
-    options: { urgent?: boolean } = {}
+    options: { urgent?: boolean; source?: KeyAnalysisSource; fastAnalysis?: boolean } = {}
   ) {
     if (!Array.isArray(filePaths) || filePaths.length === 0) return
     for (const filePath of filePaths) {
@@ -117,7 +179,7 @@ class KeyAnalysisQueue {
   }
 
   private isHigherPriority(next: KeyAnalysisPriority, current: KeyAnalysisPriority): boolean {
-    const rank = { high: 3, medium: 2, low: 1 }
+    const rank = { high: 4, medium: 3, low: 2, background: 1 }
     return rank[next] > rank[current]
   }
 
@@ -131,8 +193,10 @@ class KeyAnalysisQueue {
       }
     } else if (job.priority === 'medium') {
       this.pendingMedium.push(job)
-    } else {
+    } else if (job.priority === 'low') {
       this.pendingLow.push(job)
+    } else {
+      this.pendingBackground.push(job)
     }
   }
 
@@ -144,11 +208,16 @@ class KeyAnalysisQueue {
     removeFrom(this.pendingHigh)
     removeFrom(this.pendingMedium)
     removeFrom(this.pendingLow)
+    removeFrom(this.pendingBackground)
     this.pendingByPath.delete(job.normalizedPath)
   }
 
   private popNextJob(): KeyAnalysisJob | null {
-    const job = this.pendingHigh.shift() || this.pendingMedium.shift() || this.pendingLow.shift()
+    const job =
+      this.pendingHigh.shift() ||
+      this.pendingMedium.shift() ||
+      this.pendingLow.shift() ||
+      this.pendingBackground.shift()
     if (!job) return null
     this.pendingByPath.delete(job.normalizedPath)
     return job
@@ -178,11 +247,16 @@ class KeyAnalysisQueue {
 
   private handleWorkerFailure(worker: Worker, _error: Error) {
     const jobId = this.busy.get(worker)
+    let preemptedJob: KeyAnalysisJob | null = null
     if (jobId) {
       const job = this.inFlight.get(jobId)
       if (job) {
         this.activeByPath.delete(job.normalizedPath)
         this.inFlight.delete(jobId)
+      }
+      if (job && this.preemptedJobIds.has(jobId)) {
+        this.preemptedJobIds.delete(jobId)
+        preemptedJob = job
       }
       this.busy.delete(worker)
     }
@@ -193,12 +267,20 @@ class KeyAnalysisQueue {
     const replacement = this.createWorker()
     this.workers.push(replacement)
     this.drain()
+    if (preemptedJob) {
+      this.enqueue(preemptedJob.filePath, 'background', { source: 'background' })
+    }
   }
 
   private async handleWorkerMessage(worker: Worker, payload: WorkerPayload) {
     const jobId = payload?.jobId
     const job = this.inFlight.get(jobId)
+    const payloadResult = payload?.result
+    const payloadError = payload?.error
 
+    if (typeof jobId === 'number') {
+      this.preemptedJobIds.delete(jobId)
+    }
     this.inFlight.delete(jobId)
     this.busy.delete(worker)
     this.idle.push(worker)
@@ -206,17 +288,40 @@ class KeyAnalysisQueue {
       this.activeByPath.delete(job.normalizedPath)
     }
 
-    if (job && payload?.result && !payload.result.keyError) {
-      const keyText = payload.result.keyText
+    if (job && payloadResult && !payloadResult.keyError) {
+      const keyText = payloadResult.keyText
       if (isValidKeyText(keyText)) {
         await this.persistKey(job.filePath, keyText)
       }
     }
 
-    if (job && payload?.result && !payload.result.bpmError) {
-      const bpmValue = payload.result.bpm
+    if (job && payloadResult && !payloadResult.bpmError) {
+      const bpmValue = payloadResult.bpm
       if (isValidBpm(bpmValue)) {
         await this.persistBpm(job.filePath, bpmValue)
+      }
+    }
+
+    if (job) {
+      if (payloadError) {
+        log.warn('[key-analysis] failed', {
+          filePath: job.filePath,
+          priority: job.priority,
+          source: job.source,
+          error: payloadError
+        })
+      } else {
+        const keyText = payloadResult?.keyText
+        const bpmValue = payloadResult?.bpm
+        log.info('[key-analysis] done', {
+          filePath: job.filePath,
+          priority: job.priority,
+          source: job.source,
+          keyText: isValidKeyText(keyText) ? keyText : null,
+          bpm: isValidBpm(bpmValue) ? Number(bpmValue.toFixed(2)) : null,
+          keyError: payloadResult?.keyError,
+          bpmError: payloadResult?.bpmError
+        })
       }
     }
 
@@ -237,7 +342,15 @@ class KeyAnalysisQueue {
 
       const listRoot = await findSongListRoot(path.dirname(filePath))
       if (listRoot) {
-        await LibraryCacheDb.updateSongCacheKey(listRoot, filePath, keyText)
+        const updated = await LibraryCacheDb.updateSongCacheKey(listRoot, filePath, keyText)
+        if (!updated) {
+          await this.ensureSongCacheEntry(
+            listRoot,
+            filePath,
+            { keyText },
+            { size: stat.size, mtimeMs: stat.mtimeMs }
+          )
+        }
       }
 
       const payload: KeyAnalysisResult = { filePath, keyText }
@@ -270,7 +383,15 @@ class KeyAnalysisQueue {
 
       const listRoot = await findSongListRoot(path.dirname(filePath))
       if (listRoot) {
-        await LibraryCacheDb.updateSongCacheBpm(listRoot, filePath, normalizedBpm)
+        const updated = await LibraryCacheDb.updateSongCacheBpm(listRoot, filePath, normalizedBpm)
+        if (!updated) {
+          await this.ensureSongCacheEntry(
+            listRoot,
+            filePath,
+            { bpm: normalizedBpm },
+            { size: stat.size, mtimeMs: stat.mtimeMs }
+          )
+        }
       }
 
       const payload: BpmAnalysisResult = { filePath, bpm: normalizedBpm }
@@ -286,6 +407,81 @@ class KeyAnalysisQueue {
       const payload: BpmAnalysisResult = { filePath, bpm: normalizedBpm }
       this.events.emit('bpm-updated', payload)
     }
+  }
+
+  private buildLiteSongInfo(filePath: string): ISongInfo {
+    const baseName = path.basename(filePath)
+    const ext = path.extname(filePath)
+    const fileFormat = ext ? ext.slice(1).toUpperCase() : ''
+    return {
+      filePath,
+      fileName: baseName,
+      fileFormat,
+      cover: null,
+      title: baseName,
+      artist: undefined,
+      album: undefined,
+      duration: '',
+      genre: undefined,
+      label: undefined,
+      bitrate: undefined,
+      container: fileFormat || undefined,
+      analysisOnly: true
+    }
+  }
+
+  private applyLiteDefaults(info: ISongInfo, filePath: string): ISongInfo {
+    const baseName = path.basename(filePath)
+    const ext = path.extname(filePath)
+    const fileFormat = ext ? ext.slice(1).toUpperCase() : ''
+    if (!info.fileName || info.fileName.trim() === '') info.fileName = baseName
+    if (!info.fileFormat || info.fileFormat.trim() === '') info.fileFormat = fileFormat
+    if (!info.title || info.title.trim() === '') info.title = baseName
+    if (typeof info.container !== 'string' || info.container.trim() === '') {
+      info.container = info.fileFormat || fileFormat || info.container
+    }
+    return info
+  }
+
+  private async ensureSongCacheEntry(
+    listRoot: string,
+    filePath: string,
+    payload: { keyText?: string; bpm?: number },
+    stat?: { size: number; mtimeMs: number }
+  ) {
+    if (!listRoot || !filePath) return
+    let fileStat = stat
+    if (!fileStat) {
+      try {
+        const fsStat = await fs.stat(filePath)
+        fileStat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
+      } catch {
+        return
+      }
+    }
+    let entry = await LibraryCacheDb.loadSongCacheEntry(listRoot, filePath)
+    let info: ISongInfo
+    if (entry && entry.info) {
+      info = { ...entry.info }
+    } else {
+      info = this.buildLiteSongInfo(filePath)
+    }
+    info = this.applyLiteDefaults(info, filePath)
+    const markAnalysisOnly = !entry || Boolean(entry.info?.analysisOnly)
+    if (markAnalysisOnly) {
+      info.analysisOnly = true
+    }
+    if (payload.keyText) {
+      info.key = payload.keyText
+    }
+    if (payload.bpm !== undefined) {
+      info.bpm = payload.bpm
+    }
+    await LibraryCacheDb.upsertSongCacheEntry(listRoot, filePath, {
+      size: fileStat.size,
+      mtimeMs: fileStat.mtimeMs,
+      info
+    })
   }
 
   private async prepareJob(job: KeyAnalysisJob): Promise<boolean> {
@@ -354,12 +550,399 @@ class KeyAnalysisQueue {
     } catch {}
   }
 
+  private hasForegroundWork(): boolean {
+    if (
+      this.pendingHigh.length > 0 ||
+      this.pendingMedium.length > 0 ||
+      this.pendingLow.length > 0
+    ) {
+      return true
+    }
+    for (const job of this.inFlight.values()) {
+      if (job.source === 'foreground') return true
+    }
+    return false
+  }
+
+  private isIdle(): boolean {
+    return (
+      this.inFlight.size === 0 &&
+      this.pendingHigh.length === 0 &&
+      this.pendingMedium.length === 0 &&
+      this.pendingLow.length === 0 &&
+      this.pendingBackground.length === 0
+    )
+  }
+
+  private getAudioExtensions(): Set<string> {
+    const result = new Set<string>()
+    const raw = store.settingConfig?.audioExt
+    if (!Array.isArray(raw)) return result
+    for (const item of raw) {
+      if (!item) continue
+      let ext = String(item).trim().toLowerCase()
+      if (!ext) continue
+      if (!ext.startsWith('.')) ext = `.${ext}`
+      result.add(ext)
+    }
+    return result
+  }
+
+  private resolveSongListRoots(): string[] {
+    const rootDir = store.databaseDir
+    if (!rootDir) return []
+    const rows = loadLibraryNodes(rootDir) || []
+    const root = rows.find((row) => row.parentUuid === null && row.nodeType === 'root')
+    if (!root) return []
+    const childrenMap = new Map<string, LibraryNodeRow[]>()
+    for (const row of rows) {
+      if (!row.parentUuid) continue
+      const list = childrenMap.get(row.parentUuid)
+      if (list) {
+        list.push(row)
+      } else {
+        childrenMap.set(row.parentUuid, [row])
+      }
+    }
+    const pathByUuid = new Map<string, string>()
+    pathByUuid.set(root.uuid, root.dirName)
+    const queue: LibraryNodeRow[] = [root]
+    for (let i = 0; i < queue.length; i += 1) {
+      const parent = queue[i]
+      const parentPath = pathByUuid.get(parent.uuid)
+      if (!parentPath) continue
+      const children = childrenMap.get(parent.uuid) || []
+      for (const child of children) {
+        const childPath = path.join(parentPath, child.dirName)
+        if (!pathByUuid.has(child.uuid)) {
+          pathByUuid.set(child.uuid, childPath)
+          queue.push(child)
+        }
+      }
+    }
+    const roots: string[] = []
+    for (const row of rows) {
+      if (row.nodeType !== 'songList') continue
+      const rel = pathByUuid.get(row.uuid)
+      if (!rel) continue
+      roots.push(path.join(rootDir, rel))
+    }
+    return roots
+  }
+
+  private refreshBackgroundRoots(): string[] {
+    const now = Date.now()
+    const shouldRefresh =
+      now - this.backgroundRootsLastRefresh >= BACKGROUND_FS_REFRESH_MS ||
+      this.backgroundRoots.length === 0
+    if (!shouldRefresh) return this.backgroundRoots
+    const nextRoots = this.resolveSongListRoots()
+    const signature = nextRoots.join('|')
+    if (signature !== this.backgroundRootsSignature) {
+      this.backgroundDirQueue = []
+      this.backgroundRootIndex = 0
+      this.backgroundRootsSignature = signature
+    }
+    this.backgroundRoots = nextRoots
+    this.backgroundRootsLastRefresh = now
+    return this.backgroundRoots
+  }
+
+  private clearBackgroundTimer() {
+    if (this.backgroundTimer) {
+      clearTimeout(this.backgroundTimer)
+      this.backgroundTimer = null
+    }
+  }
+
+  private scheduleBackgroundScan() {
+    if (this.backgroundTimer) return
+    if (!this.isIdle()) return
+    const now = Date.now()
+    const idleDelay = Math.max(BACKGROUND_IDLE_DELAY_MS - (now - this.lastForegroundAt), 0)
+    const cooldownDelay = Math.max(
+      BACKGROUND_SCAN_COOLDOWN_MS - (now - this.backgroundLastScanAt),
+      0
+    )
+    const delay = Math.max(idleDelay, cooldownDelay)
+    this.backgroundTimer = setTimeout(() => {
+      this.backgroundTimer = null
+      void this.runBackgroundScan()
+    }, delay)
+  }
+
+  private async runBackgroundScan() {
+    if (this.backgroundScanInProgress) return
+    if (!this.isIdle()) return
+    const now = Date.now()
+    if (now - this.lastForegroundAt < BACKGROUND_IDLE_DELAY_MS) {
+      this.scheduleBackgroundScan()
+      return
+    }
+    if (now - this.backgroundLastScanAt < BACKGROUND_SCAN_COOLDOWN_MS) {
+      this.scheduleBackgroundScan()
+      return
+    }
+    this.backgroundScanInProgress = true
+    this.backgroundLastScanAt = now
+    try {
+      const candidates = await this.collectBackgroundCandidates(BACKGROUND_BATCH_SIZE)
+      if (candidates.length > 0) {
+        this.enqueueList(candidates, 'background', { source: 'background' })
+      } else {
+        await this.cleanupMissingCacheEntries(BACKGROUND_CLEAN_BATCH_SIZE)
+      }
+    } finally {
+      this.backgroundScanInProgress = false
+      if (this.isIdle()) {
+        this.scheduleBackgroundScan()
+      }
+    }
+  }
+
+  private async collectBackgroundCandidates(limit: number): Promise<string[]> {
+    const fromCache = await this.collectBackgroundCacheCandidates(limit)
+    if (fromCache.length > 0) return fromCache
+    return await this.collectBackgroundFsCandidates(limit)
+  }
+
+  private async collectBackgroundCacheCandidates(limit: number): Promise<string[]> {
+    const results: string[] = []
+    if (limit <= 0) return results
+    const db = getLibraryDb()
+    if (!db) return results
+    let rows: Array<{ rowId: number; file_path: string; info_json: string }> = []
+    try {
+      const stmt = db.prepare(
+        'SELECT rowid as rowId, file_path, info_json FROM song_cache WHERE rowid > ? ORDER BY rowid LIMIT ?'
+      )
+      rows = stmt.all(this.backgroundCursor, BACKGROUND_SCAN_ROW_LIMIT)
+    } catch {
+      return results
+    }
+    if (!rows || rows.length === 0) {
+      if (this.backgroundCursor !== 0) {
+        this.backgroundCursor = 0
+      }
+      return results
+    }
+    let processedAll = true
+    let lastRowId = this.backgroundCursor
+    for (const row of rows) {
+      const rowId = Number(row?.rowId)
+      if (!Number.isFinite(rowId)) continue
+      lastRowId = rowId
+      const filePath = typeof row?.file_path === 'string' ? row.file_path.trim() : ''
+      if (!filePath) continue
+      let info: { key?: unknown; bpm?: unknown } | null = null
+      try {
+        info = JSON.parse(String(row?.info_json || '{}')) as { key?: unknown; bpm?: unknown }
+      } catch {
+        info = null
+      }
+      const hasKey = isValidKeyText(info?.key)
+      const hasBpm = isValidBpm(info?.bpm)
+      if (!hasKey || !hasBpm) {
+        results.push(filePath)
+        if (results.length >= limit) {
+          processedAll = false
+          break
+        }
+      }
+    }
+    this.backgroundCursor = lastRowId
+    if (processedAll && rows.length < BACKGROUND_SCAN_ROW_LIMIT) {
+      this.backgroundCursor = 0
+    }
+    return results
+  }
+
+  private async collectBackgroundFsCandidates(limit: number): Promise<string[]> {
+    const results: string[] = []
+    if (limit <= 0) return results
+    if (!store.databaseDir) return results
+    if (this.hasForegroundWork()) return results
+    const roots = this.refreshBackgroundRoots()
+    if (roots.length === 0) return results
+    const audioExts = this.getAudioExtensions()
+    if (audioExts.size === 0) return results
+
+    let dirsProcessed = 0
+    while (results.length < limit && dirsProcessed < BACKGROUND_FS_DIR_LIMIT) {
+      if (this.hasForegroundWork()) break
+      if (this.backgroundDirQueue.length === 0) {
+        const nextRoot = roots[this.backgroundRootIndex % roots.length]
+        this.backgroundRootIndex = (this.backgroundRootIndex + 1) % roots.length
+        if (!nextRoot) break
+        this.backgroundDirQueue.push({ dir: nextRoot, listRoot: nextRoot })
+      }
+      const current = this.backgroundDirQueue.shift()
+      if (!current) break
+      dirsProcessed += 1
+      let dirHandle: DirHandle
+      try {
+        dirHandle = await fs.opendir(current.dir)
+      } catch {
+        continue
+      }
+      let entryCount = 0
+      try {
+        for await (const entry of dirHandle) {
+          if (entryCount >= BACKGROUND_FS_ENTRY_LIMIT) break
+          if (this.hasForegroundWork()) break
+          entryCount += 1
+          if (entry.isDirectory()) {
+            if (entry.name.startsWith('.') || entry.name === '.frkb_covers') continue
+            const childDir = path.join(current.dir, entry.name)
+            this.backgroundDirQueue.push({ dir: childDir, listRoot: current.listRoot })
+            continue
+          }
+          if (!entry.isFile()) continue
+          const ext = path.extname(entry.name).toLowerCase()
+          if (!audioExts.has(ext)) continue
+          const filePath = path.join(current.dir, entry.name)
+          const normalizedPath = normalizePath(filePath)
+          if (this.pendingByPath.has(normalizedPath) || this.activeByPath.has(normalizedPath)) {
+            continue
+          }
+          const done = this.doneByPath.get(normalizedPath)
+          if (done && isValidKeyText(done.keyText) && isValidBpm(done.bpm)) {
+            continue
+          }
+          const cached = await LibraryCacheDb.loadSongCacheEntry(current.listRoot, filePath)
+          if (cached === undefined) continue
+          const cachedKey = cached?.info ? (cached.info as any).key : undefined
+          const cachedBpm = cached?.info ? (cached.info as any).bpm : undefined
+          const hasKey = isValidKeyText(cachedKey)
+          const hasBpm = isValidBpm(cachedBpm)
+          if (!cached || !hasKey || !hasBpm) {
+            results.push(filePath)
+            if (results.length >= limit) break
+          }
+        }
+      } finally {
+        try {
+          await dirHandle.close()
+        } catch {}
+      }
+    }
+    return results
+  }
+
+  private async cleanupMissingCacheEntries(limit: number): Promise<number> {
+    if (limit <= 0) return 0
+    if (this.hasForegroundWork()) return 0
+    const db = getLibraryDb()
+    if (!db) return 0
+    let rows: Array<{ rowId: number; list_root: string; file_path: string }> = []
+    try {
+      const stmt = db.prepare(
+        'SELECT rowid as rowId, list_root, file_path FROM song_cache WHERE rowid > ? ORDER BY rowid LIMIT ?'
+      )
+      rows = stmt.all(this.backgroundCleanCursor, BACKGROUND_CLEAN_ROW_LIMIT)
+    } catch {
+      return 0
+    }
+    if (!rows || rows.length === 0) {
+      if (this.backgroundCleanCursor !== 0) {
+        this.backgroundCleanCursor = 0
+      }
+      return 0
+    }
+    let removed = 0
+    let lastRowId = this.backgroundCleanCursor
+    const listRootExistsCache = new Map<string, boolean>()
+    for (const row of rows) {
+      if (this.hasForegroundWork()) break
+      const rowId = Number(row?.rowId)
+      if (!Number.isFinite(rowId)) continue
+      lastRowId = rowId
+      const listRoot = typeof row?.list_root === 'string' ? row.list_root.trim() : ''
+      const filePath = typeof row?.file_path === 'string' ? row.file_path.trim() : ''
+      if (!listRoot || !filePath) continue
+      let listRootExists = listRootExistsCache.get(listRoot)
+      if (listRootExists === undefined) {
+        try {
+          const st = await fs.stat(listRoot)
+          listRootExists = st.isDirectory()
+        } catch {
+          listRootExists = false
+        }
+        listRootExistsCache.set(listRoot, listRootExists)
+      }
+      if (!listRootExists) continue
+      let fileExists = false
+      try {
+        const st = await fs.stat(filePath)
+        fileExists = st.isFile()
+      } catch {
+        fileExists = false
+      }
+      if (fileExists) continue
+      await LibraryCacheDb.removeSongCacheEntry(listRoot, filePath)
+      await this.removeCoverCacheForMissingTrack(listRoot, filePath)
+      this.doneByPath.delete(normalizePath(filePath))
+      removed += 1
+      if (removed >= limit) break
+    }
+    this.backgroundCleanCursor = lastRowId
+    if (rows.length < BACKGROUND_CLEAN_ROW_LIMIT) {
+      this.backgroundCleanCursor = 0
+    }
+    if (removed > 0) {
+      log.info('[key-analysis] cleanup', { removed })
+    }
+    return removed
+  }
+
+  private async removeCoverCacheForMissingTrack(listRoot: string, filePath: string) {
+    try {
+      const removed = await LibraryCacheDb.removeCoverIndexEntry(listRoot, filePath)
+      if (removed === undefined || !removed) return
+      const remaining = await LibraryCacheDb.countCoverIndexByHash(listRoot, removed.hash)
+      if (remaining !== 0) return
+      const coverPath = path.join(
+        listRoot,
+        '.frkb_covers',
+        `${removed.hash}${removed.ext || '.jpg'}`
+      )
+      try {
+        await fs.rm(coverPath, { force: true })
+      } catch {}
+    } catch {}
+  }
+
+  private maybePreemptBackground() {
+    if (this.idle.length > 0) return
+    for (const [worker, jobId] of this.busy.entries()) {
+      const job = this.inFlight.get(jobId)
+      if (job && job.source === 'background') {
+        this.preemptedJobIds.add(jobId)
+        void worker.terminate().catch(() => {})
+        return
+      }
+    }
+  }
+
+  private countBackgroundInFlight(): number {
+    let count = 0
+    for (const job of this.inFlight.values()) {
+      if (job.source === 'background') count += 1
+    }
+    return count
+  }
+
   private drain() {
     while (this.idle.length > 0) {
+      const hasForegroundPending =
+        this.pendingHigh.length > 0 || this.pendingMedium.length > 0 || this.pendingLow.length > 0
+      if (!hasForegroundPending && this.pendingBackground.length > 0) {
+        if (this.countBackgroundInFlight() >= BACKGROUND_MAX_INFLIGHT) break
+      }
       const job = this.popNextJob()
-      if (!job) return
+      if (!job) break
       const worker = this.idle.shift()
-      if (!worker) return
+      if (!worker) break
       this.busy.set(worker, job.jobId)
       this.inFlight.set(job.jobId, job)
       this.activeByPath.set(job.normalizedPath, job)
@@ -374,12 +957,21 @@ class KeyAnalysisQueue {
           this.drain()
           return
         }
+        log.info('[key-analysis] start', {
+          filePath: job.filePath,
+          priority: job.priority,
+          source: job.source,
+          fastAnalysis: job.fastAnalysis
+        })
         worker.postMessage({
           jobId: job.jobId,
           filePath: job.filePath,
           fastAnalysis: job.fastAnalysis
         })
       })()
+    }
+    if (this.isIdle()) {
+      this.scheduleBackgroundScan()
     }
   }
 }
@@ -405,4 +997,8 @@ export function enqueueKeyAnalysisList(filePaths: string[], priority: KeyAnalysi
 
 export function enqueueKeyAnalysisImmediate(filePath: string) {
   getQueue().enqueue(filePath, 'high', { urgent: true })
+}
+
+export function startKeyAnalysisBackground() {
+  getQueue().startBackgroundSweep()
 }

@@ -41,6 +41,7 @@ interface ISongInfo {
   container: string | undefined
   key?: string
   bpm?: number
+  analysisOnly?: boolean
 }
 
 // 曲目完整元数据明细，用于编辑界面展示
