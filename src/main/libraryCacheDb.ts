@@ -2,6 +2,12 @@ import path = require('path')
 import fs = require('fs-extra')
 import { getLibraryDb } from './libraryDb'
 import { log } from './log'
+import {
+  decodeMixxxWaveformData,
+  encodeMixxxWaveformData,
+  MIXXX_WAVEFORM_CACHE_VERSION,
+  type MixxxWaveformData
+} from './waveformCache'
 import { ISongInfo } from '../types/globals'
 
 export type SongCacheEntry = {
@@ -14,6 +20,16 @@ export type CoverIndexEntry = {
   filePath: string
   hash: string
   ext: string
+}
+
+type WaveformCacheMeta = {
+  size: number
+  mtimeMs: number
+  version: number
+  sampleRate: number
+  step: number
+  duration: number
+  frames: number
 }
 
 export type LegacyCacheRoots = {
@@ -36,6 +52,30 @@ function normalizeRoot(value: any): string {
     normalized = normalized.toLowerCase()
   }
   return normalized
+}
+
+function normalizeWaveformMeta(row: any): WaveformCacheMeta | null {
+  if (!row) return null
+  const size = toNumber(row.size)
+  const mtimeMs = toNumber(row.mtime_ms)
+  const version = toNumber(row.version)
+  const sampleRate = toNumber(row.sample_rate)
+  const step = toNumber(row.step)
+  const duration = toNumber(row.duration)
+  const frames = toNumber(row.frames)
+  if (
+    size === null ||
+    mtimeMs === null ||
+    version === null ||
+    sampleRate === null ||
+    step === null ||
+    duration === null ||
+    frames === null
+  ) {
+    return null
+  }
+  if (frames <= 0) return null
+  return { size, mtimeMs, version, sampleRate, step, duration, frames }
 }
 
 async function ensureSongCacheMigrated(db: any, listRoot: string): Promise<void> {
@@ -465,11 +505,271 @@ export async function countCoverIndexByHash(
   }
 }
 
+export async function loadWaveformCacheData(
+  listRoot: string,
+  filePath: string,
+  stat: { size: number; mtimeMs: number }
+): Promise<MixxxWaveformData | null | undefined> {
+  const db = getLibraryDb()
+  if (!db || !listRoot || !filePath) return undefined
+  try {
+    const row = db
+      .prepare(
+        'SELECT size, mtime_ms, version, sample_rate, step, duration, frames, data FROM waveform_cache WHERE list_root = ? AND file_path = ?'
+      )
+      .get(listRoot, filePath)
+    if (!row || row.data === undefined) return null
+    const meta = normalizeWaveformMeta(row)
+    if (!meta || meta.version !== MIXXX_WAVEFORM_CACHE_VERSION) {
+      await removeWaveformCacheEntry(listRoot, filePath)
+      return null
+    }
+    if (meta.size !== stat.size || Math.abs(meta.mtimeMs - stat.mtimeMs) > 1) {
+      await removeWaveformCacheEntry(listRoot, filePath)
+      return null
+    }
+    const payload = Buffer.isBuffer(row.data)
+      ? row.data
+      : row.data instanceof Uint8Array
+        ? Buffer.from(row.data)
+        : null
+    if (!payload) {
+      await removeWaveformCacheEntry(listRoot, filePath)
+      return null
+    }
+    const decoded = decodeMixxxWaveformData(
+      {
+        sampleRate: meta.sampleRate,
+        step: meta.step,
+        duration: meta.duration,
+        frames: meta.frames
+      },
+      payload
+    )
+    if (!decoded) {
+      await removeWaveformCacheEntry(listRoot, filePath)
+      return null
+    }
+    return decoded
+  } catch (error) {
+    log.error('[sqlite] waveform cache load failed', error)
+    return undefined
+  }
+}
+
+export async function hasWaveformCacheEntry(
+  listRoot: string,
+  filePath: string,
+  stat: { size: number; mtimeMs: number }
+): Promise<boolean> {
+  const db = getLibraryDb()
+  if (!db || !listRoot || !filePath) return false
+  try {
+    const row = db
+      .prepare(
+        'SELECT size, mtime_ms, version, frames FROM waveform_cache WHERE list_root = ? AND file_path = ?'
+      )
+      .get(listRoot, filePath)
+    if (!row) return false
+    const size = toNumber(row.size)
+    const mtimeMs = toNumber(row.mtime_ms)
+    const version = toNumber(row.version)
+    const frames = toNumber(row.frames)
+    if (
+      size === null ||
+      mtimeMs === null ||
+      version === null ||
+      frames === null ||
+      frames <= 0 ||
+      version !== MIXXX_WAVEFORM_CACHE_VERSION
+    ) {
+      await removeWaveformCacheEntry(listRoot, filePath)
+      return false
+    }
+    if (size !== stat.size || Math.abs(mtimeMs - stat.mtimeMs) > 1) {
+      await removeWaveformCacheEntry(listRoot, filePath)
+      return false
+    }
+    return true
+  } catch (error) {
+    log.error('[sqlite] waveform cache check failed', error)
+    return false
+  }
+}
+
+export async function hasWaveformCacheEntryByMeta(
+  listRoot: string,
+  filePath: string,
+  size: number,
+  mtimeMs: number
+): Promise<boolean> {
+  const db = getLibraryDb()
+  if (!db || !listRoot || !filePath) return false
+  const sizeNum = toNumber(size)
+  const mtimeNum = toNumber(mtimeMs)
+  if (sizeNum === null || mtimeNum === null) return false
+  try {
+    const row = db
+      .prepare(
+        'SELECT size, mtime_ms, version, frames FROM waveform_cache WHERE list_root = ? AND file_path = ?'
+      )
+      .get(listRoot, filePath)
+    if (!row) return false
+    const rowSize = toNumber(row.size)
+    const rowMtime = toNumber(row.mtime_ms)
+    const version = toNumber(row.version)
+    const frames = toNumber(row.frames)
+    if (
+      rowSize === null ||
+      rowMtime === null ||
+      version === null ||
+      frames === null ||
+      frames <= 0 ||
+      version !== MIXXX_WAVEFORM_CACHE_VERSION
+    ) {
+      await removeWaveformCacheEntry(listRoot, filePath)
+      return false
+    }
+    if (rowSize !== sizeNum || Math.abs(rowMtime - mtimeNum) > 1) {
+      await removeWaveformCacheEntry(listRoot, filePath)
+      return false
+    }
+    return true
+  } catch (error) {
+    log.error('[sqlite] waveform cache meta check failed', error)
+    return false
+  }
+}
+
+export async function upsertWaveformCacheEntry(
+  listRoot: string,
+  filePath: string,
+  stat: { size: number; mtimeMs: number },
+  data: MixxxWaveformData
+): Promise<boolean> {
+  const db = getLibraryDb()
+  if (!db || !listRoot || !filePath) return false
+  if (!Number.isFinite(stat?.size) || !Number.isFinite(stat?.mtimeMs)) return false
+  if (!Number.isFinite(data?.sampleRate) || data.sampleRate <= 0) return false
+  if (!Number.isFinite(data?.step) || data.step <= 0) return false
+  if (!Number.isFinite(data?.duration) || data.duration <= 0) return false
+  const encoded = encodeMixxxWaveformData(data)
+  if (!encoded) return false
+  try {
+    db.prepare(
+      'INSERT INTO waveform_cache (list_root, file_path, size, mtime_ms, version, sample_rate, step, duration, frames, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(list_root, file_path) DO UPDATE SET size = excluded.size, mtime_ms = excluded.mtime_ms, version = excluded.version, sample_rate = excluded.sample_rate, step = excluded.step, duration = excluded.duration, frames = excluded.frames, data = excluded.data'
+    ).run(
+      listRoot,
+      filePath,
+      stat.size,
+      stat.mtimeMs,
+      MIXXX_WAVEFORM_CACHE_VERSION,
+      data.sampleRate,
+      data.step,
+      data.duration,
+      encoded.frames,
+      encoded.payload
+    )
+    return true
+  } catch (error) {
+    log.error('[sqlite] waveform cache upsert failed', error)
+    return false
+  }
+}
+
+export async function moveWaveformCacheEntry(
+  listRoot: string,
+  oldFilePath: string,
+  newFilePath: string,
+  stat?: { size: number; mtimeMs: number }
+): Promise<boolean> {
+  const db = getLibraryDb()
+  if (!db || !listRoot || !oldFilePath || !newFilePath) return false
+  if (oldFilePath === newFilePath) return true
+  try {
+    const row = db
+      .prepare(
+        'SELECT size, mtime_ms, version, sample_rate, step, duration, frames, data FROM waveform_cache WHERE list_root = ? AND file_path = ?'
+      )
+      .get(listRoot, oldFilePath)
+    if (!row || row.data === undefined) return false
+    const meta = normalizeWaveformMeta(row)
+    if (!meta || meta.version !== MIXXX_WAVEFORM_CACHE_VERSION) {
+      await removeWaveformCacheEntry(listRoot, oldFilePath)
+      return false
+    }
+    const payload = Buffer.isBuffer(row.data)
+      ? row.data
+      : row.data instanceof Uint8Array
+        ? Buffer.from(row.data)
+        : null
+    if (!payload) {
+      await removeWaveformCacheEntry(listRoot, oldFilePath)
+      return false
+    }
+    const nextSize = stat && Number.isFinite(stat.size) ? Number(stat.size) : Number(meta.size)
+    const nextMtime =
+      stat && Number.isFinite(stat.mtimeMs) ? Number(stat.mtimeMs) : Number(meta.mtimeMs)
+    db.prepare(
+      'INSERT INTO waveform_cache (list_root, file_path, size, mtime_ms, version, sample_rate, step, duration, frames, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(list_root, file_path) DO UPDATE SET size = excluded.size, mtime_ms = excluded.mtime_ms, version = excluded.version, sample_rate = excluded.sample_rate, step = excluded.step, duration = excluded.duration, frames = excluded.frames, data = excluded.data'
+    ).run(
+      listRoot,
+      newFilePath,
+      nextSize,
+      nextMtime,
+      meta.version,
+      meta.sampleRate,
+      meta.step,
+      meta.duration,
+      meta.frames,
+      payload
+    )
+    db.prepare('DELETE FROM waveform_cache WHERE list_root = ? AND file_path = ?').run(
+      listRoot,
+      oldFilePath
+    )
+    return true
+  } catch (error) {
+    log.error('[sqlite] waveform cache move failed', error)
+    return false
+  }
+}
+
+export async function removeWaveformCacheEntry(
+  listRoot: string,
+  filePath: string
+): Promise<boolean> {
+  const db = getLibraryDb()
+  if (!db || !listRoot || !filePath) return false
+  try {
+    db.prepare('DELETE FROM waveform_cache WHERE list_root = ? AND file_path = ?').run(
+      listRoot,
+      filePath
+    )
+    return true
+  } catch (error) {
+    log.error('[sqlite] waveform cache delete failed', error)
+    return false
+  }
+}
+
+export async function clearWaveformCache(listRoot: string): Promise<boolean> {
+  const db = getLibraryDb()
+  if (!db || !listRoot) return false
+  try {
+    db.prepare('DELETE FROM waveform_cache WHERE list_root = ?').run(listRoot)
+    return true
+  } catch (error) {
+    log.error('[sqlite] waveform cache clear failed', error)
+    return false
+  }
+}
+
 export async function pruneCachesByRoots(
   keepRoots: Iterable<string> | null | undefined
-): Promise<{ songCacheRemoved: number; coverIndexRemoved: number }> {
+): Promise<{ songCacheRemoved: number; coverIndexRemoved: number; waveformCacheRemoved: number }> {
   const db = getLibraryDb()
-  if (!db) return { songCacheRemoved: 0, coverIndexRemoved: 0 }
+  if (!db) return { songCacheRemoved: 0, coverIndexRemoved: 0, waveformCacheRemoved: 0 }
   try {
     const keepSet = new Set<string>()
     if (keepRoots) {
@@ -479,7 +779,7 @@ export async function pruneCachesByRoots(
       }
     }
 
-    const pruneTable = (table: 'song_cache' | 'cover_index'): number => {
+    const pruneTable = (table: 'song_cache' | 'cover_index' | 'waveform_cache'): number => {
       const rows = db.prepare(`SELECT DISTINCT list_root FROM ${table}`).all()
       if (!rows || rows.length === 0) return 0
       const toRemove: string[] = []
@@ -505,10 +805,11 @@ export async function pruneCachesByRoots(
 
     const songCacheRemoved = pruneTable('song_cache')
     const coverIndexRemoved = pruneTable('cover_index')
-    return { songCacheRemoved, coverIndexRemoved }
+    const waveformCacheRemoved = pruneTable('waveform_cache')
+    return { songCacheRemoved, coverIndexRemoved, waveformCacheRemoved }
   } catch (error) {
     log.error('[sqlite] cache prune failed', error)
-    return { songCacheRemoved: 0, coverIndexRemoved: 0 }
+    return { songCacheRemoved: 0, coverIndexRemoved: 0, waveformCacheRemoved: 0 }
   }
 }
 
