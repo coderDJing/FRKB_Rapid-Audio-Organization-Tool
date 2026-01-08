@@ -316,6 +316,7 @@ class KeyAnalysisQueue {
 
     if (job && payloadResult?.mixxxWaveformData && job.needsWaveform) {
       await this.persistWaveform(job.filePath, payloadResult.mixxxWaveformData)
+      this.events.emit('waveform-updated', { filePath: job.filePath })
     }
 
     if (job) {

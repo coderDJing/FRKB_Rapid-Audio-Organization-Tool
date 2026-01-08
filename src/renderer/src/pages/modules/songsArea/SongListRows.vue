@@ -18,6 +18,7 @@ import { useSongRowEvents } from './SongListRows/useSongRowEvents'
 import { useCoverThumbnails } from './SongListRows/useCoverThumbnails'
 import { useKeyAnalysisQueue } from './SongListRows/useKeyAnalysisQueue'
 import { useCoverPreview } from './SongListRows/useCoverPreview'
+import { useWaveformPreview } from './SongListRows/useWaveformPreview'
 
 const props = defineProps({
   songs: {
@@ -80,6 +81,7 @@ const scrollHostElementRef = toRef(props, 'scrollHostElement')
 const externalScrollTopRef = toRef(props, 'externalScrollTop')
 const externalViewportHeightRef = toRef(props, 'externalViewportHeight')
 const songListRootDirRef = toRef(props, 'songListRootDir')
+const visibleColumnsRef = toRef(props, 'visibleColumns')
 const runtime = useRuntimeStore()
 
 const cellRefMap = markRaw({} as Record<string, HTMLElement | null>)
@@ -185,6 +187,12 @@ const {
   fetchCoverUrl,
   effectiveScrollTop,
   scrollLeft
+})
+
+const { setWaveformCanvasRef } = useWaveformPreview({
+  visibleSongsWithIndex,
+  visibleColumns: visibleColumnsRef,
+  songListRootDir: songListRootDirRef
 })
 
 const onRowsMouseOver = (e: MouseEvent) => {
@@ -309,6 +317,18 @@ onUnmounted(() => {
                 </div>
               </div>
               <div
+                v-else-if="col.key === 'waveformPreview'"
+                class="cell-waveform"
+                :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
+              >
+                <canvas
+                  class="waveform-preview-canvas"
+                  :ref="
+                    (el) => setWaveformCanvasRef(item.song.filePath, el as HTMLCanvasElement | null)
+                  "
+                ></canvas>
+              </div>
+              <div
                 v-else
                 class="cell-title"
                 :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
@@ -387,6 +407,25 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.cell-waveform {
+  height: 100%;
+  box-sizing: border-box;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0 8px;
+}
+
+.waveform-preview-canvas {
+  width: 100%;
+  height: 18px;
+  display: block;
+  color: var(--text-weak);
+  pointer-events: none;
 }
 
 .cell-cover {

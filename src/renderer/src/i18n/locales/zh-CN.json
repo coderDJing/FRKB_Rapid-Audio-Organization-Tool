@@ -432,6 +432,7 @@
     "fileFormat": "文件格式",
     "format": "编码格式",
     "bpm": "BPM",
+    "waveformPreview": "波形预览",
     "index": "序号"
   },
   "player": {

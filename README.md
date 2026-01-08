@@ -49,6 +49,7 @@ As a DJ, I frequently need to organize large numbers of music files. However, ex
 - **Selectable Playback Range**: Often, you only need to listen to a specific part of an audio track for screening. This feature allows you to set a start and end point for playback.
 - **Direct File Management**: When adding tracks, FRKB directly manages the audio files themselves, ensuring that the organization results are immediately reflected in the computer's folders, achieving a "what you see is what you get" effect.
 - **Multiple Waveform Visualizations**: Offers SoundCloud-style waveform, fine-grained waveform, and RGB three-band energy view to spot drops and phrasing instantly.
+- **Waveform Preview Column**: Shows cached waveform previews directly in the song list for fast scanning.
 - **BPM Analysis & Tap Tempo**: Displays BPM information. Left-click the BPM to tap tempo (calculated to 1 decimal place). When the BPM is manually tapped, it is highlighted in `#0078d4`. Right-click to restore the system-analyzed BPM. Tooltip: "Tap beat (LMB) / Reset (RMB)".
 - **Recycle Bin**: Features a recycle bin, ensuring that accidentally deleted files aren't permanently lost, a common issue with other software.
 - **Cloud Sync (fingerprints)**: Bidirectional sync of local track fingerprints (SHA256) with the cloud, including diff analysis, paginated pulls, and batched uploads, with quota and rate limiting (up to 10 sync starts within 5 minutes). Entry: system tray → Cloud Sync.
@@ -107,6 +108,10 @@ pnpm install
 ```bash
 pnpm run dev
 ```
+
+### Development Notes
+- Idle background key/BPM sweeps run at lowest priority; missing-file cache entries are cleaned in small batches and analysis-only cache entries refresh on next playlist scan. Analysis logs print in the backend console.
+- Mixxx waveform cache now lives in sqlite alongside song caches; legacy file caches under userData are purged on migration.
 
 ### Building
 
