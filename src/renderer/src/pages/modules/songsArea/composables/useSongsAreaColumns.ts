@@ -30,6 +30,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     },
     { columnName: 'columns.key', key: 'key', show: true, filterType: 'text' },
     { columnName: 'columns.bpm', key: 'bpm', show: true },
+    { columnName: 'columns.waveformPreview', key: 'waveformPreview', show: true },
     { columnName: 'columns.duration', key: 'duration', show: true, filterType: 'duration' },
     { columnName: 'columns.album', key: 'album', show: true, filterType: 'text' },
     { columnName: 'columns.genre', key: 'genre', show: true, filterType: 'text' },
@@ -266,7 +267,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
 
   // --- 列头排序点击 ---
   const colMenuClick = (col: ISongsAreaColumn) => {
-    if (col.key === 'index' || col.key === 'cover') return
+    if (col.key === 'index' || col.key === 'cover' || col.key === 'waveformPreview') return
 
     const newColumnData = columnData.value.map((item) => {
       if (item.key !== col.key) {

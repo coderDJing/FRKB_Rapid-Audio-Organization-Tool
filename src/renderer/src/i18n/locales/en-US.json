@@ -414,6 +414,7 @@
     "fileFormat": "File Format",
     "format": "Format",
     "bpm": "BPM",
+    "waveformPreview": "Waveform",
     "index": "Index"
   },
   "convert": {

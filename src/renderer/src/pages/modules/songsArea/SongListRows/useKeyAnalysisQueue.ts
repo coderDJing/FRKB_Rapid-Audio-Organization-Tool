@@ -15,7 +15,7 @@ export function useKeyAnalysisQueue({ visibleSongsWithIndex }: UseKeyAnalysisQue
     const seen = new Set<string>()
     for (const item of visibleSongsWithIndex.value || []) {
       const song = item?.song
-      if (!song || song.key) continue
+      if (!song) continue
       const filePath = song.filePath
       if (!filePath || seen.has(filePath)) continue
       seen.add(filePath)

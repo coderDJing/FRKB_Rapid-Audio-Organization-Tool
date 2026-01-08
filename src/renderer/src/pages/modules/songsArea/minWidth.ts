@@ -11,6 +11,7 @@ export const MIN_WIDTH_BY_KEY: Record<string, number> = {
   label: 140,
   key: 80,
   bpm: 80,
+  waveformPreview: 260,
   bitrate: 100,
   fileFormat: 100,
   container: 140
