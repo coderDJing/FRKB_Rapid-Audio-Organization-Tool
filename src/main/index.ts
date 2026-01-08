@@ -37,7 +37,7 @@ import { registerExportHandlers } from './ipc/exportHandlers'
 import { registerKeyAnalysisHandlers } from './ipc/keyAnalysisHandlers'
 import { maybeShowWhatsNew, registerWhatsNewHandlers } from './services/whatsNew'
 import * as LibraryCacheDb from './libraryCacheDb'
-import { keyAnalysisEvents } from './services/keyAnalysisQueue'
+import { keyAnalysisEvents, startKeyAnalysisBackground } from './services/keyAnalysisQueue'
 // import AudioFeatureExtractor from './mfccTest'
 
 const initDevDatabase = false
@@ -179,6 +179,7 @@ app.whenReady().then(async () => {
   }
   // 数据库准备与主窗口：统一调用幂等流程
   await prepareAndOpenMainWindow()
+  startKeyAnalysisBackground()
   await processExternalOpenQueue()
   setTimeout(() => {
     maybeShowWhatsNew().catch((error) => {
