@@ -1,15 +1,10 @@
-import { ref, onUnmounted, shallowRef, type Ref } from 'vue'
+import { ref, onUnmounted, shallowRef } from 'vue'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import emitter from '@renderer/utils/mitt'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { WebAudioPlayer, type MixxxWaveformData } from './webAudioPlayer'
-
-const nowMs = () =>
-  typeof performance !== 'undefined' && typeof performance.now === 'function'
-    ? performance.now()
-    : Date.now()
 
 type PcmPayload = {
   pcmData: Float32Array
@@ -29,34 +24,16 @@ type SongFilePayload = PcmPayload & {
 export function useSongLoader(params: {
   runtime: ReturnType<typeof useRuntimeStore>
   audioPlayer: ReturnType<typeof shallowRef<WebAudioPlayer | null>>
-  audioContext: Ref<AudioContext | null>
   bpm: { value: number | string }
   waveformShow: { value: boolean }
   setCoverByIPC: (filePath: string) => void
   onSongBuffered?: (filePath: string, payload: PcmPayload, bpm: number | string | null) => void
 }) {
-  const {
-    runtime,
-    audioPlayer,
-    audioContext: audioContextRef,
-    bpm,
-    waveformShow,
-    setCoverByIPC,
-    onSongBuffered
-  } = params
-
-  const getAudioContext = (): AudioContext => {
-    const ctx = audioContextRef.value
-    if (!ctx) {
-      throw new Error('[useSongLoader] AudioContext is not available')
-    }
-    return ctx
-  }
+  const { runtime, audioPlayer, bpm, waveformShow, setCoverByIPC, onSongBuffered } = params
 
   const currentLoadRequestId = ref(0)
   const isLoadingBlob = ref(false)
   const ignoreNextEmptyError = ref(false)
-  const shouldAnalyzeBpm = () => true
 
   let errorDialogShowing = false
 
@@ -141,7 +118,7 @@ export function useSongLoader(params: {
     }
   ) => {
     waveformShow.value = false
-    bpm.value = 'N/A'
+    bpm.value = ''
     runtime.playerReady = false
     runtime.isSwitchingSong = false
     isLoadingBlob.value = false
@@ -174,11 +151,21 @@ export function useSongLoader(params: {
     setCoverByIPC(filePath)
     waveformShow.value = true
     let bpmValueAssigned = false
-    if (preloadedBpmValue !== undefined && preloadedBpmValue !== null) {
+    if (
+      typeof preloadedBpmValue === 'number' &&
+      Number.isFinite(preloadedBpmValue) &&
+      preloadedBpmValue > 0
+    ) {
       bpm.value = preloadedBpmValue
       bpmValueAssigned = true
     } else {
-      bpm.value = ''
+      const cachedBpm = runtime.playingData.playingSong?.bpm
+      if (typeof cachedBpm === 'number' && Number.isFinite(cachedBpm) && cachedBpm > 0) {
+        bpm.value = cachedBpm
+        bpmValueAssigned = true
+      } else {
+        bpm.value = ''
+      }
     }
 
     try {
@@ -199,62 +186,7 @@ export function useSongLoader(params: {
         return
       }
 
-      onSongBuffered?.(filePath, pcmData, preloadedBpmValue ?? null)
-
-      // 计算 BPM（如果未预加载且未被禁用）
-      if (!bpmValueAssigned && shouldAnalyzeBpm()) {
-        let analyzerBuffer: AudioBuffer | null = null
-        let analyzerStarted = false
-        const analyzerBytes = pcmData.totalFrames * pcmData.channels * 4
-        try {
-          const audioContext = getAudioContext()
-          analyzerBuffer = audioContext.createBuffer(
-            pcmData.channels,
-            pcmData.totalFrames,
-            pcmData.sampleRate
-          )
-          for (let ch = 0; ch < pcmData.channels; ch++) {
-            const channelData = analyzerBuffer.getChannelData(ch)
-            for (let i = 0; i < pcmData.totalFrames; i++) {
-              channelData[i] = pcmData.pcmData[i * pcmData.channels + ch]
-            }
-          }
-
-          if (
-            requestId === currentLoadRequestId.value &&
-            runtime.playingData.playingSong?.filePath === filePath
-          ) {
-            const { analyzeFullBuffer } = await import('realtime-bpm-analyzer')
-            analyzerStarted = true
-            const analyzeStartedAt = nowMs()
-            const topCandidates = await analyzeFullBuffer(analyzerBuffer)
-            const elapsed = Math.round(nowMs() - analyzeStartedAt)
-            const analyzedBpm = topCandidates[0]?.tempo ?? 'N/A'
-            if (
-              requestId === currentLoadRequestId.value &&
-              runtime.playingData.playingSong?.filePath === filePath
-            ) {
-              bpm.value = analyzedBpm
-              onSongBuffered?.(filePath, pcmData, analyzedBpm)
-            }
-          }
-        } catch (error) {
-          if (
-            requestId === currentLoadRequestId.value &&
-            runtime.playingData.playingSong?.filePath === filePath
-          ) {
-            bpm.value = 'N/A'
-            onSongBuffered?.(filePath, pcmData, 'N/A')
-          }
-          if (analyzerStarted) {
-          }
-        } finally {
-          analyzerBuffer = null
-        }
-      } else if (!bpmValueAssigned) {
-        bpm.value = 'N/A'
-        onSongBuffered?.(filePath, pcmData, null)
-      }
+      onSongBuffered?.(filePath, pcmData, bpmValueAssigned ? bpm.value : null)
 
       // 开始播放
       try {

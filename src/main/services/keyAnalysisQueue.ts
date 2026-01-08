@@ -21,16 +21,22 @@ type KeyAnalysisResult = {
   keyText: string
 }
 
+type BpmAnalysisResult = {
+  filePath: string
+  bpm: number
+}
+
 type DoneEntry = {
   size: number
   mtimeMs: number
   keyText?: string
+  bpm?: number
 }
 
 type WorkerPayload = {
   jobId: number
   filePath: string
-  result?: { keyText: string; error?: string }
+  result?: { keyText: string; keyError?: string; bpm?: number; bpmError?: string }
   error?: string
 }
 
@@ -41,6 +47,12 @@ const normalizePath = (value: string): string => {
   }
   return normalized
 }
+
+const isValidKeyText = (value: unknown): value is string =>
+  typeof value === 'string' && value.trim() !== ''
+
+const isValidBpm = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0
 
 class KeyAnalysisQueue {
   private workers: Worker[] = []
@@ -194,10 +206,17 @@ class KeyAnalysisQueue {
       this.activeByPath.delete(job.normalizedPath)
     }
 
-    if (job && payload?.result && !payload.result.error) {
+    if (job && payload?.result && !payload.result.keyError) {
       const keyText = payload.result.keyText
-      if (typeof keyText === 'string' && keyText.trim() !== '') {
+      if (isValidKeyText(keyText)) {
         await this.persistKey(job.filePath, keyText)
+      }
+    }
+
+    if (job && payload?.result && !payload.result.bpmError) {
+      const bpmValue = payload.result.bpm
+      if (isValidBpm(bpmValue)) {
+        await this.persistBpm(job.filePath, bpmValue)
       }
     }
 
@@ -208,10 +227,12 @@ class KeyAnalysisQueue {
     const normalizedPath = normalizePath(filePath)
     try {
       const stat = await fs.stat(filePath)
+      const existing = this.doneByPath.get(normalizedPath)
       this.doneByPath.set(normalizedPath, {
         size: stat.size,
         mtimeMs: stat.mtimeMs,
-        keyText
+        keyText,
+        bpm: existing?.bpm
       })
 
       const listRoot = await findSongListRoot(path.dirname(filePath))
@@ -222,13 +243,48 @@ class KeyAnalysisQueue {
       const payload: KeyAnalysisResult = { filePath, keyText }
       this.events.emit('key-updated', payload)
     } catch {
+      const existing = this.doneByPath.get(normalizedPath)
       this.doneByPath.set(normalizedPath, {
         size: 0,
         mtimeMs: 0,
-        keyText
+        keyText,
+        bpm: existing?.bpm
       })
       const payload: KeyAnalysisResult = { filePath, keyText }
       this.events.emit('key-updated', payload)
+    }
+  }
+
+  private async persistBpm(filePath: string, bpm: number) {
+    const normalizedPath = normalizePath(filePath)
+    const normalizedBpm = Number(bpm.toFixed(2))
+    try {
+      const stat = await fs.stat(filePath)
+      const existing = this.doneByPath.get(normalizedPath)
+      this.doneByPath.set(normalizedPath, {
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+        keyText: existing?.keyText,
+        bpm: normalizedBpm
+      })
+
+      const listRoot = await findSongListRoot(path.dirname(filePath))
+      if (listRoot) {
+        await LibraryCacheDb.updateSongCacheBpm(listRoot, filePath, normalizedBpm)
+      }
+
+      const payload: BpmAnalysisResult = { filePath, bpm: normalizedBpm }
+      this.events.emit('bpm-updated', payload)
+    } catch {
+      const existing = this.doneByPath.get(normalizedPath)
+      this.doneByPath.set(normalizedPath, {
+        size: 0,
+        mtimeMs: 0,
+        keyText: existing?.keyText,
+        bpm: normalizedBpm
+      })
+      const payload: BpmAnalysisResult = { filePath, bpm: normalizedBpm }
+      this.events.emit('bpm-updated', payload)
     }
   }
 
@@ -243,9 +299,19 @@ class KeyAnalysisQueue {
       return false
     }
 
+    let needsKey = true
+    let needsBpm = true
     const done = this.doneByPath.get(job.normalizedPath)
     if (done && done.size === stat.size && Math.abs(done.mtimeMs - stat.mtimeMs) < 1) {
-      return false
+      if (isValidKeyText(done.keyText)) {
+        needsKey = false
+      }
+      if (isValidBpm(done.bpm)) {
+        needsBpm = false
+      }
+      if (!needsKey && !needsBpm) {
+        return false
+      }
     }
 
     const listRoot = await findSongListRoot(path.dirname(filePath))
@@ -253,12 +319,24 @@ class KeyAnalysisQueue {
       const cached = await LibraryCacheDb.loadSongCacheEntry(listRoot, filePath)
       if (cached && cached.size === stat.size && Math.abs(cached.mtimeMs - stat.mtimeMs) < 1) {
         const cachedKey = (cached.info as any)?.key
-        if (typeof cachedKey === 'string' && cachedKey.trim() !== '') {
+        const cachedBpm = (cached.info as any)?.bpm
+        const hasKey = isValidKeyText(cachedKey)
+        const hasBpm = isValidBpm(cachedBpm)
+        if (hasKey || hasBpm) {
           this.doneByPath.set(job.normalizedPath, {
             size: stat.size,
             mtimeMs: stat.mtimeMs,
-            keyText: cachedKey
+            keyText: hasKey ? cachedKey : undefined,
+            bpm: hasBpm ? cachedBpm : undefined
           })
+        }
+        if (needsKey && hasKey) {
+          needsKey = false
+        }
+        if (needsBpm && hasBpm) {
+          needsBpm = false
+        }
+        if (!needsKey && !needsBpm) {
           return false
         }
       }

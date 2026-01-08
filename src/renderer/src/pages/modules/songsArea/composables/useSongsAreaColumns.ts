@@ -2,7 +2,7 @@ import { computed, ref, watch, type ShallowRef } from 'vue'
 import type { ISongInfo, ISongsAreaColumn } from '../../../../../../types/globals'
 import { MIN_WIDTH_BY_KEY } from '../minWidth'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
-import { getKeySortText } from '@shared/keyDisplay'
+import { getKeyDisplayText, getKeySortText } from '@shared/keyDisplay'
 
 interface UseSongsAreaColumnsParams {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -29,6 +29,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
       order: 'asc'
     },
     { columnName: 'columns.key', key: 'key', show: true, filterType: 'text' },
+    { columnName: 'columns.bpm', key: 'bpm', show: true },
     { columnName: 'columns.duration', key: 'duration', show: true, filterType: 'duration' },
     { columnName: 'columns.album', key: 'album', show: true, filterType: 'text' },
     { columnName: 'columns.genre', key: 'genre', show: true, filterType: 'text' },
@@ -161,8 +162,13 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
       if (!col.filterActive) continue
       if (col.filterType === 'text' && col.filterValue && col.key) {
         const keyword = String(col.filterValue).toLowerCase()
+        const isKeyColumn = col.key === 'key'
+        const keyStyle =
+          (runtime.setting as any).keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
         filtered = filtered.filter((song) => {
-          const value = String((song as any)[col.key] ?? '').toLowerCase()
+          const rawValue = String((song as any)[col.key] ?? '')
+          const displayValue = isKeyColumn ? getKeyDisplayText(rawValue, keyStyle) : rawValue
+          const value = displayValue.toLowerCase()
           return value.includes(keyword)
         })
       } else if (col.filterType === 'duration' && col.filterOp && col.filterDuration) {
@@ -229,7 +235,8 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     () => (runtime.setting as any).keyDisplayStyle,
     () => {
       const sortedCol = columnData.value.find((c) => c.order)
-      if (sortedCol?.key === 'key') {
+      const hasKeyFilter = columnData.value.some((c) => c.key === 'key' && c.filterActive)
+      if (sortedCol?.key === 'key' || hasKeyFilter) {
         applyFiltersAndSorting()
       }
     }

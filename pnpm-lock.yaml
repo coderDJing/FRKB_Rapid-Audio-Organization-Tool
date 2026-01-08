@@ -62,9 +62,6 @@ importers:
       pinia:
         specifier: ^2.2.2
         version: 2.3.1(typescript@5.8.2)(vue@3.5.13(typescript@5.8.2))
-      realtime-bpm-analyzer:
-        specifier: ^4.0.2
-        version: 4.0.2
       rust_package:
         specifier: ./rust_package
         version: link:rust_package
@@ -2945,9 +2942,6 @@ packages:
   readdirp@4.1.2:
     resolution: {integrity: sha512-GDhwkLfywWL2s6vEjyhri+eXmfH6j1L7JE27WhqLeYzoh/A3DBaYGEj2H/HFZCn/kMfim73FXxEJTw06WtxQwg==}
     engines: {node: '>= 14.18.0'}
-
-  realtime-bpm-analyzer@4.0.2:
-    resolution: {integrity: sha512-F4PLzZ0KzDvkOg4C5YeTM7VJjrDakMpBNI3uRz3tOq+HDXW/p/pwuDXs6KB7EUpiiLwSQrlRIptugofeBTeGNA==}
 
   require-directory@2.1.1:
     resolution: {integrity: sha512-fGxEI7+wsG9xrvdjsrlmL22OMTTiHRwAMroiEeMgq8gzoLC/PQr7RsRDSTLUg/bZAZtF+TVIkHc6/4RIKrui+Q==}
@@ -6561,8 +6555,6 @@ snapshots:
       minimatch: 5.1.6
 
   readdirp@4.1.2: {}
-
-  realtime-bpm-analyzer@4.0.2: {}
 
   require-directory@2.1.1: {}
 

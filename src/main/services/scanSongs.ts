@@ -160,6 +160,10 @@ export async function scanSongList(
     }
   }
 
+  const hasKey = (value: unknown): boolean => typeof value === 'string' && value.trim() !== ''
+  const hasBpm = (value: unknown): boolean =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0
+
   const perfParseStart = Date.now()
   const FALLBACK_ONLY_EXTS = new Set(['.ac3', '.dts', '.tak', '.tta'])
 
@@ -318,7 +322,7 @@ export async function scanSongList(
 
   if (cacheRoot && songInfoArr.length > 0) {
     const pendingKeys = songInfoArr
-      .filter((info) => !info.key)
+      .filter((info) => !hasKey(info.key) || !hasBpm(info.bpm))
       .map((info) => info.filePath)
       .filter((filePath) => typeof filePath === 'string' && filePath.trim().length > 0)
     enqueueKeyAnalysisList(pendingKeys, 'low')

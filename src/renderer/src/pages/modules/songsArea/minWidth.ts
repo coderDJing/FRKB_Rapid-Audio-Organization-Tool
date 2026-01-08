@@ -10,6 +10,7 @@ export const MIN_WIDTH_BY_KEY: Record<string, number> = {
   genre: 120,
   label: 140,
   key: 80,
+  bpm: 80,
   bitrate: 100,
   fileFormat: 100,
   container: 140

@@ -8,7 +8,9 @@ type KeyJob = {
 
 type KeyResultPayload = {
   keyText: string
-  error?: string
+  keyError?: string
+  bpm?: number
+  bpmError?: string
 }
 
 type KeyResponse = {
@@ -33,6 +35,12 @@ const loadRust = () => {
       channels: number,
       fastAnalysis: boolean
     ) => { keyText: string; error?: string }
+    analyzeKeyAndBpmFromPcm?: (
+      pcmData: Buffer,
+      sampleRate: number,
+      channels: number,
+      fastAnalysis: boolean
+    ) => { keyText: string; keyError?: string; bpm: number; bpmError?: string }
   }
   return binding
 }
@@ -43,10 +51,15 @@ const analyzeKeyForFile = (filePath: string, fastAnalysis: boolean): KeyResultPa
   if (decoded.error) {
     throw new Error(decoded.error)
   }
-  if (typeof rust.analyzeKeyFromPcm !== 'function') {
-    throw new Error('analyzeKeyFromPcm not available')
+  if (typeof rust.analyzeKeyAndBpmFromPcm !== 'function') {
+    throw new Error('analyzeKeyAndBpmFromPcm not available')
   }
-  return rust.analyzeKeyFromPcm(decoded.pcmData, decoded.sampleRate, decoded.channels, fastAnalysis)
+  return rust.analyzeKeyAndBpmFromPcm(
+    decoded.pcmData,
+    decoded.sampleRate,
+    decoded.channels,
+    fastAnalysis
+  )
 }
 
 parentPort?.on('message', async (job: KeyJob) => {

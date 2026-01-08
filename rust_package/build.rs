@@ -15,7 +15,11 @@ fn main() {
     .define("_USE_MATH_DEFINES", None)
     .define("kiss_fft_scalar", Some("double"))
     .file(qm_root.join("qm_key_wrapper.cpp"))
+    .file(qm_root.join("qm_bpm_wrapper.cpp"))
     .file(qm_root.join("dsp/keydetection/GetKeyMode.cpp"))
+    .file(qm_root.join("dsp/onsets/DetectionFunction.cpp"))
+    .file(qm_root.join("dsp/phasevocoder/PhaseVocoder.cpp"))
+    .file(qm_root.join("dsp/tempotracking/TempoTrackV2.cpp"))
     .file(qm_root.join("dsp/chromagram/Chromagram.cpp"))
     .file(qm_root.join("dsp/chromagram/ConstantQ.cpp"))
     .file(qm_root.join("dsp/rateconversion/Decimator.cpp"))
@@ -39,16 +43,13 @@ fn main() {
 
   napi_build::setup();
 
-  let dts_path = manifest_dir.join("index.d.ts");
+  let dts_dir = manifest_dir.join("types");
+  let dts_path = dts_dir.join("index.d.ts");
   let dts_template_path = manifest_dir.join("index.d.ts.template");
   println!("cargo:rerun-if-changed={}", dts_template_path.display());
 
-  let needs_restore = fs::metadata(&dts_path)
-    .map(|meta| meta.len() == 0)
-    .unwrap_or(true);
-  if needs_restore {
-    if let Ok(template) = fs::read(&dts_template_path) {
-      let _ = fs::write(&dts_path, template);
-    }
+  if let Ok(template) = fs::read(&dts_template_path) {
+    let _ = fs::create_dir_all(&dts_dir);
+    let _ = fs::write(&dts_path, template);
   }
 }

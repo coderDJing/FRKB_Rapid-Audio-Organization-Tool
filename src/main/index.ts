@@ -119,6 +119,14 @@ keyAnalysisEvents.on('key-updated', (payload) => {
   }
 })
 
+keyAnalysisEvents.on('bpm-updated', (payload) => {
+  if (mainWindow.instance) {
+    try {
+      mainWindow.instance.webContents.send('song-bpm-updated', payload)
+    } catch {}
+  }
+})
+
 let devInitDatabaseFunction = async () => {
   if (!fs.pathExistsSync(store.settingConfig.databaseUrl)) {
     return
