@@ -4,7 +4,7 @@ import store from './store'
 import { log } from './log'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
-const SCHEMA_VERSION = 3
+const SCHEMA_VERSION = 4
 
 type SqliteDatabase = any
 
@@ -65,6 +65,24 @@ function createDatabase(dbPath: string): SqliteDatabase {
       CREATE INDEX IF NOT EXISTS idx_library_nodes_parent ON library_nodes(parent_uuid);
       CREATE INDEX IF NOT EXISTS idx_library_nodes_type ON library_nodes(node_type);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_library_nodes_parent_dir ON library_nodes(parent_uuid, dir_name);
+    `)
+  }
+  if (userVersion < 4) {
+    instance.exec(`
+      CREATE TABLE IF NOT EXISTS waveform_cache (
+        list_root TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        mtime_ms INTEGER NOT NULL,
+        version INTEGER NOT NULL,
+        sample_rate INTEGER NOT NULL,
+        step REAL NOT NULL,
+        duration REAL NOT NULL,
+        frames INTEGER NOT NULL,
+        data BLOB NOT NULL,
+        PRIMARY KEY (list_root, file_path)
+      );
+      CREATE INDEX IF NOT EXISTS idx_waveform_cache_root ON waveform_cache(list_root);
     `)
   }
   if (userVersion < SCHEMA_VERSION) {

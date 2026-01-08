@@ -31,6 +31,7 @@ const MIGRATION_IN_PROGRESS_KEY = 'legacy_migration_in_progress_v1'
 const CACHE_MIGRATION_DONE_KEY = 'legacy_cache_migrated_v1'
 const FINGERPRINT_MIGRATED_PCM_KEY = 'fingerprints_migrated_pcm'
 const FINGERPRINT_MIGRATED_FILE_KEY = 'fingerprints_migrated_file'
+const WAVEFORM_CACHE_PURGED_KEY = 'waveform_cache_purged_v1'
 const DATA_PREFIX = 'songFingerprintV2_'
 
 type LegacyFingerprintNeed = {
@@ -239,6 +240,18 @@ async function cleanupLegacyFiles(dbRoot: string): Promise<number> {
   return deleted
 }
 
+async function cleanupLegacyWaveformCache(db: any): Promise<void> {
+  if (!db) return
+  if (hasMetaFlag(db, WAVEFORM_CACHE_PURGED_KEY)) return
+  const cacheDir = path.join(app.getPath('userData'), 'waveforms', 'mixxx-waveform-v1')
+  try {
+    if (await fs.pathExists(cacheDir)) {
+      await fs.remove(cacheDir)
+    }
+  } catch {}
+  setMetaValue(db, WAVEFORM_CACHE_PURGED_KEY, '1')
+}
+
 export async function ensureLegacyMigration(
   dbRoot: string,
   parent?: BrowserWindow | null
@@ -263,6 +276,7 @@ export async function ensureLegacyMigration(
     }
     await syncLibrarySettingsFromDb(dbRoot)
     await FingerprintStore.healAndPrepare()
+    await cleanupLegacyWaveformCache(db)
     return true
   }
 
@@ -310,6 +324,7 @@ export async function ensureLegacyMigration(
       setMetaValue(db, CACHE_MIGRATION_DONE_KEY, '1')
     }
     await cleanupLegacyFiles(dbRoot)
+    await cleanupLegacyWaveformCache(db)
     setMetaValue(db, MIGRATION_DONE_KEY, '1')
     setMetaValue(db, MIGRATION_IN_PROGRESS_KEY, '0')
   } catch (error) {

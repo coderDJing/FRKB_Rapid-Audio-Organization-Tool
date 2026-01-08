@@ -1,15 +1,11 @@
-import fs from 'node:fs/promises'
-import { parentPort, workerData } from 'node:worker_threads'
-import {
-  readMixxxWaveformCache,
-  writeMixxxWaveformCache,
-  type MixxxWaveformData
-} from '../waveformCache'
+import { parentPort } from 'node:worker_threads'
+import type { MixxxWaveformData } from '../waveformCache'
 
 type DecodeJob = {
   jobId: number
   filePath: string
   analyzeKey?: boolean
+  needWaveform?: boolean
 }
 
 type DecodeResultPayload = {
@@ -28,8 +24,6 @@ type DecodeResponse = {
   result?: DecodeResultPayload
   error?: string
 }
-
-const cacheRoot = typeof workerData?.cacheRoot === 'string' ? workerData.cacheRoot : ''
 
 const loadRust = () => {
   const binding = require('rust_package') as {
@@ -57,34 +51,26 @@ const loadRust = () => {
 
 const decodeWithCache = async (
   filePath: string,
-  analyzeKey: boolean
+  analyzeKey: boolean,
+  needWaveform: boolean
 ): Promise<DecodeResultPayload> => {
-  const stat = await fs.stat(filePath)
-  let cachedWaveform: MixxxWaveformData | null = null
-  if (cacheRoot) {
-    try {
-      cachedWaveform = await readMixxxWaveformCache(cacheRoot, filePath, stat)
-    } catch {}
-  }
   const rust = loadRust()
   const result = rust.decodeAudioFile(filePath)
   if (result.error) {
     throw new Error(result.error)
   }
 
-  let mixxxWaveformData: MixxxWaveformData | null = cachedWaveform
-  if (!mixxxWaveformData && typeof rust.computeMixxxWaveform === 'function') {
-    mixxxWaveformData = rust.computeMixxxWaveform(
-      result.pcmData,
-      result.sampleRate,
-      result.channels
-    )
-  }
-
-  if (mixxxWaveformData && cacheRoot) {
+  let mixxxWaveformData: MixxxWaveformData | null = null
+  if (needWaveform && typeof rust.computeMixxxWaveform === 'function') {
     try {
-      await writeMixxxWaveformCache(cacheRoot, filePath, stat, mixxxWaveformData)
-    } catch {}
+      mixxxWaveformData = rust.computeMixxxWaveform(
+        result.pcmData,
+        result.sampleRate,
+        result.channels
+      )
+    } catch {
+      mixxxWaveformData = null
+    }
   }
 
   let keyText: string | undefined
@@ -121,7 +107,11 @@ parentPort?.on('message', async (job: DecodeJob) => {
     if (!job?.filePath) {
       throw new Error('Missing file path')
     }
-    response.result = await decodeWithCache(job.filePath, Boolean(job.analyzeKey))
+    response.result = await decodeWithCache(
+      job.filePath,
+      Boolean(job.analyzeKey),
+      Boolean(job.needWaveform)
+    )
   } catch (error) {
     response.error = (error as Error)?.message ?? String(error)
   }

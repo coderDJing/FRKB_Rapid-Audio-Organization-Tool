@@ -75,6 +75,17 @@ export async function updateSongCacheEntry(
       },
       oldFilePath
     )
+    if (oldFilePath && oldFilePath !== filePath) {
+      const moved = await LibraryCacheDb.moveWaveformCacheEntry(
+        songListRoot,
+        oldFilePath,
+        filePath,
+        { size: stat.size, mtimeMs: stat.mtimeMs }
+      )
+      if (!moved) {
+        await LibraryCacheDb.removeWaveformCacheEntry(songListRoot, oldFilePath)
+      }
+    }
   } catch {}
 }
 
@@ -111,6 +122,7 @@ export async function clearSongListCaches(songListPath: string | null | undefine
     const coversDir = path.join(resolvedRoot, '.frkb_covers')
     await LibraryCacheDb.clearSongCache(resolvedRoot)
     await LibraryCacheDb.clearCoverIndex(resolvedRoot)
+    await LibraryCacheDb.clearWaveformCache(resolvedRoot)
     if (await fs.pathExists(songsCache)) {
       await fs.remove(songsCache)
     }
@@ -125,16 +137,19 @@ export async function clearTrackCache(filePath: string) {
     const songListRoot = await findSongListRoot(path.dirname(filePath))
     if (!songListRoot) return
     await LibraryCacheDb.removeSongCacheEntry(songListRoot, filePath)
+    await LibraryCacheDb.removeWaveformCacheEntry(songListRoot, filePath)
     await purgeCoverCacheForTrack(filePath)
   } catch {}
 }
 
 export async function pruneOrphanedSongListCaches(
   dbRoot?: string
-): Promise<{ songCacheRemoved: number; coverIndexRemoved: number }> {
+): Promise<{ songCacheRemoved: number; coverIndexRemoved: number; waveformCacheRemoved: number }> {
   try {
     const rootDir = dbRoot || store.databaseDir
-    if (!rootDir) return { songCacheRemoved: 0, coverIndexRemoved: 0 }
+    if (!rootDir) {
+      return { songCacheRemoved: 0, coverIndexRemoved: 0, waveformCacheRemoved: 0 }
+    }
     const nodes = loadLibraryNodes(rootDir) || []
     if (nodes.length === 0) {
       return await LibraryCacheDb.pruneCachesByRoots(new Set())
@@ -153,7 +168,7 @@ export async function pruneOrphanedSongListCaches(
     }
     return await LibraryCacheDb.pruneCachesByRoots(keepRoots)
   } catch {
-    return { songCacheRemoved: 0, coverIndexRemoved: 0 }
+    return { songCacheRemoved: 0, coverIndexRemoved: 0, waveformCacheRemoved: 0 }
   }
 }
 

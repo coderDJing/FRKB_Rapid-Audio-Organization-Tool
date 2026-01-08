@@ -4,11 +4,13 @@ import fs from 'node:fs/promises'
 import { EventEmitter } from 'node:events'
 import { Worker } from 'node:worker_threads'
 import { findSongListRoot } from './cacheMaintenance'
+import { applyLiteDefaults, buildLiteSongInfo } from './songInfoLite'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { getLibraryDb } from '../libraryDb'
 import store from '../store'
 import { loadLibraryNodes, type LibraryNodeRow } from '../libraryTreeDb'
 import type { ISongInfo } from '../../types/globals'
+import type { MixxxWaveformData } from '../waveformCache'
 import { log } from '../log'
 
 type KeyAnalysisPriority = 'high' | 'medium' | 'low' | 'background'
@@ -21,6 +23,9 @@ type KeyAnalysisJob = {
   priority: KeyAnalysisPriority
   fastAnalysis: boolean
   source: KeyAnalysisSource
+  needsKey?: boolean
+  needsBpm?: boolean
+  needsWaveform?: boolean
 }
 
 type KeyAnalysisResult = {
@@ -38,12 +43,19 @@ type DoneEntry = {
   mtimeMs: number
   keyText?: string
   bpm?: number
+  hasWaveform?: boolean
 }
 
 type WorkerPayload = {
   jobId: number
   filePath: string
-  result?: { keyText: string; keyError?: string; bpm?: number; bpmError?: string }
+  result?: {
+    keyText?: string
+    keyError?: string
+    bpm?: number
+    bpmError?: string
+    mixxxWaveformData?: MixxxWaveformData | null
+  }
   error?: string
 }
 
@@ -302,12 +314,23 @@ class KeyAnalysisQueue {
       }
     }
 
+    if (job && payloadResult?.mixxxWaveformData && job.needsWaveform) {
+      await this.persistWaveform(job.filePath, payloadResult.mixxxWaveformData)
+    }
+
     if (job) {
+      const waveformStatus = (() => {
+        if (!job.needsWaveform) return 'skip'
+        if (payloadError) return 'failed'
+        if (payloadResult?.mixxxWaveformData) return 'computed'
+        return 'missing'
+      })()
       if (payloadError) {
         log.warn('[key-analysis] failed', {
           filePath: job.filePath,
           priority: job.priority,
           source: job.source,
+          waveform: waveformStatus,
           error: payloadError
         })
       } else {
@@ -319,6 +342,7 @@ class KeyAnalysisQueue {
           source: job.source,
           keyText: isValidKeyText(keyText) ? keyText : null,
           bpm: isValidBpm(bpmValue) ? Number(bpmValue.toFixed(2)) : null,
+          waveform: waveformStatus,
           keyError: payloadResult?.keyError,
           bpmError: payloadResult?.bpmError
         })
@@ -337,7 +361,8 @@ class KeyAnalysisQueue {
         size: stat.size,
         mtimeMs: stat.mtimeMs,
         keyText,
-        bpm: existing?.bpm
+        bpm: existing?.bpm,
+        hasWaveform: existing?.hasWaveform
       })
 
       const listRoot = await findSongListRoot(path.dirname(filePath))
@@ -361,7 +386,8 @@ class KeyAnalysisQueue {
         size: 0,
         mtimeMs: 0,
         keyText,
-        bpm: existing?.bpm
+        bpm: existing?.bpm,
+        hasWaveform: existing?.hasWaveform
       })
       const payload: KeyAnalysisResult = { filePath, keyText }
       this.events.emit('key-updated', payload)
@@ -378,7 +404,8 @@ class KeyAnalysisQueue {
         size: stat.size,
         mtimeMs: stat.mtimeMs,
         keyText: existing?.keyText,
-        bpm: normalizedBpm
+        bpm: normalizedBpm,
+        hasWaveform: existing?.hasWaveform
       })
 
       const listRoot = await findSongListRoot(path.dirname(filePath))
@@ -402,45 +429,55 @@ class KeyAnalysisQueue {
         size: 0,
         mtimeMs: 0,
         keyText: existing?.keyText,
-        bpm: normalizedBpm
+        bpm: normalizedBpm,
+        hasWaveform: existing?.hasWaveform
       })
       const payload: BpmAnalysisResult = { filePath, bpm: normalizedBpm }
       this.events.emit('bpm-updated', payload)
     }
   }
 
-  private buildLiteSongInfo(filePath: string): ISongInfo {
-    const baseName = path.basename(filePath)
-    const ext = path.extname(filePath)
-    const fileFormat = ext ? ext.slice(1).toUpperCase() : ''
-    return {
-      filePath,
-      fileName: baseName,
-      fileFormat,
-      cover: null,
-      title: baseName,
-      artist: undefined,
-      album: undefined,
-      duration: '',
-      genre: undefined,
-      label: undefined,
-      bitrate: undefined,
-      container: fileFormat || undefined,
-      analysisOnly: true
-    }
-  }
+  private async persistWaveform(filePath: string, waveformData: MixxxWaveformData) {
+    const normalizedPath = normalizePath(filePath)
+    try {
+      const stat = await fs.stat(filePath)
+      const existing = this.doneByPath.get(normalizedPath)
+      this.doneByPath.set(normalizedPath, {
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+        keyText: existing?.keyText,
+        bpm: existing?.bpm,
+        hasWaveform: true
+      })
 
-  private applyLiteDefaults(info: ISongInfo, filePath: string): ISongInfo {
-    const baseName = path.basename(filePath)
-    const ext = path.extname(filePath)
-    const fileFormat = ext ? ext.slice(1).toUpperCase() : ''
-    if (!info.fileName || info.fileName.trim() === '') info.fileName = baseName
-    if (!info.fileFormat || info.fileFormat.trim() === '') info.fileFormat = fileFormat
-    if (!info.title || info.title.trim() === '') info.title = baseName
-    if (typeof info.container !== 'string' || info.container.trim() === '') {
-      info.container = info.fileFormat || fileFormat || info.container
+      const listRoot = await findSongListRoot(path.dirname(filePath))
+      if (listRoot) {
+        const cached = await LibraryCacheDb.loadSongCacheEntry(listRoot, filePath)
+        if (!cached) {
+          await this.ensureSongCacheEntry(
+            listRoot,
+            filePath,
+            {},
+            { size: stat.size, mtimeMs: stat.mtimeMs }
+          )
+        }
+        await LibraryCacheDb.upsertWaveformCacheEntry(
+          listRoot,
+          filePath,
+          { size: stat.size, mtimeMs: stat.mtimeMs },
+          waveformData
+        )
+      }
+    } catch {
+      const existing = this.doneByPath.get(normalizedPath)
+      this.doneByPath.set(normalizedPath, {
+        size: 0,
+        mtimeMs: 0,
+        keyText: existing?.keyText,
+        bpm: existing?.bpm,
+        hasWaveform: true
+      })
     }
-    return info
   }
 
   private async ensureSongCacheEntry(
@@ -464,9 +501,9 @@ class KeyAnalysisQueue {
     if (entry && entry.info) {
       info = { ...entry.info }
     } else {
-      info = this.buildLiteSongInfo(filePath)
+      info = buildLiteSongInfo(filePath)
     }
-    info = this.applyLiteDefaults(info, filePath)
+    info = applyLiteDefaults(info, filePath)
     const markAnalysisOnly = !entry || Boolean(entry.info?.analysisOnly)
     if (markAnalysisOnly) {
       info.analysisOnly = true
@@ -497,6 +534,7 @@ class KeyAnalysisQueue {
 
     let needsKey = true
     let needsBpm = true
+    let needsWaveform = true
     const done = this.doneByPath.get(job.normalizedPath)
     if (done && done.size === stat.size && Math.abs(done.mtimeMs - stat.mtimeMs) < 1) {
       if (isValidKeyText(done.keyText)) {
@@ -505,7 +543,13 @@ class KeyAnalysisQueue {
       if (isValidBpm(done.bpm)) {
         needsBpm = false
       }
-      if (!needsKey && !needsBpm) {
+      if (done.hasWaveform) {
+        needsWaveform = false
+      }
+      if (!needsKey && !needsBpm && !needsWaveform) {
+        job.needsKey = false
+        job.needsBpm = false
+        job.needsWaveform = false
         return false
       }
     }
@@ -523,7 +567,8 @@ class KeyAnalysisQueue {
             size: stat.size,
             mtimeMs: stat.mtimeMs,
             keyText: hasKey ? cachedKey : undefined,
-            bpm: hasBpm ? cachedBpm : undefined
+            bpm: hasBpm ? cachedBpm : undefined,
+            hasWaveform: done?.hasWaveform
           })
         }
         if (needsKey && hasKey) {
@@ -532,12 +577,32 @@ class KeyAnalysisQueue {
         if (needsBpm && hasBpm) {
           needsBpm = false
         }
-        if (!needsKey && !needsBpm) {
+        const hasWaveform = await LibraryCacheDb.hasWaveformCacheEntry(listRoot, filePath, stat)
+        if (hasWaveform) {
+          const existingDone = this.doneByPath.get(job.normalizedPath)
+          this.doneByPath.set(job.normalizedPath, {
+            size: stat.size,
+            mtimeMs: stat.mtimeMs,
+            keyText: existingDone?.keyText,
+            bpm: existingDone?.bpm,
+            hasWaveform: true
+          })
+          needsWaveform = false
+        }
+        if (!needsKey && !needsBpm && !needsWaveform) {
+          job.needsKey = false
+          job.needsBpm = false
+          job.needsWaveform = false
           return false
         }
       }
+    } else {
+      needsWaveform = false
     }
 
+    job.needsKey = needsKey
+    job.needsBpm = needsBpm
+    job.needsWaveform = needsWaveform
     return true
   }
 
@@ -546,6 +611,7 @@ class KeyAnalysisQueue {
       const listRoot = await findSongListRoot(path.dirname(filePath))
       if (listRoot) {
         await LibraryCacheDb.removeSongCacheEntry(listRoot, filePath)
+        await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
       }
     } catch {}
   }
@@ -711,10 +777,17 @@ class KeyAnalysisQueue {
     if (limit <= 0) return results
     const db = getLibraryDb()
     if (!db) return results
-    let rows: Array<{ rowId: number; file_path: string; info_json: string }> = []
+    let rows: Array<{
+      rowId: number
+      list_root: string
+      file_path: string
+      info_json: string
+      size: number
+      mtime_ms: number
+    }> = []
     try {
       const stmt = db.prepare(
-        'SELECT rowid as rowId, file_path, info_json FROM song_cache WHERE rowid > ? ORDER BY rowid LIMIT ?'
+        'SELECT rowid as rowId, list_root, file_path, info_json, size, mtime_ms FROM song_cache WHERE rowid > ? ORDER BY rowid LIMIT ?'
       )
       rows = stmt.all(this.backgroundCursor, BACKGROUND_SCAN_ROW_LIMIT)
     } catch {
@@ -742,7 +815,19 @@ class KeyAnalysisQueue {
       }
       const hasKey = isValidKeyText(info?.key)
       const hasBpm = isValidBpm(info?.bpm)
-      if (!hasKey || !hasBpm) {
+      const listRoot = typeof row?.list_root === 'string' ? row.list_root.trim() : ''
+      const size = Number(row?.size)
+      const mtimeMs = Number(row?.mtime_ms)
+      let hasWaveform = false
+      if (listRoot && Number.isFinite(size) && Number.isFinite(mtimeMs)) {
+        hasWaveform = await LibraryCacheDb.hasWaveformCacheEntryByMeta(
+          listRoot,
+          filePath,
+          size,
+          mtimeMs
+        )
+      }
+      if (!hasKey || !hasBpm || !hasWaveform) {
         results.push(filePath)
         if (results.length >= limit) {
           processedAll = false
@@ -815,7 +900,16 @@ class KeyAnalysisQueue {
           const cachedBpm = cached?.info ? (cached.info as any).bpm : undefined
           const hasKey = isValidKeyText(cachedKey)
           const hasBpm = isValidBpm(cachedBpm)
-          if (!cached || !hasKey || !hasBpm) {
+          let hasWaveform = false
+          if (cached && Number.isFinite(cached.size) && Number.isFinite(cached.mtimeMs)) {
+            hasWaveform = await LibraryCacheDb.hasWaveformCacheEntryByMeta(
+              current.listRoot,
+              filePath,
+              cached.size,
+              cached.mtimeMs
+            )
+          }
+          if (!cached || !hasKey || !hasBpm || !hasWaveform) {
             results.push(filePath)
             if (results.length >= limit) break
           }
@@ -880,6 +974,7 @@ class KeyAnalysisQueue {
       }
       if (fileExists) continue
       await LibraryCacheDb.removeSongCacheEntry(listRoot, filePath)
+      await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
       await this.removeCoverCacheForMissingTrack(listRoot, filePath)
       this.doneByPath.delete(normalizePath(filePath))
       removed += 1
@@ -966,7 +1061,10 @@ class KeyAnalysisQueue {
         worker.postMessage({
           jobId: job.jobId,
           filePath: job.filePath,
-          fastAnalysis: job.fastAnalysis
+          fastAnalysis: job.fastAnalysis,
+          needsKey: job.needsKey,
+          needsBpm: job.needsBpm,
+          needsWaveform: job.needsWaveform
         })
       })()
     }

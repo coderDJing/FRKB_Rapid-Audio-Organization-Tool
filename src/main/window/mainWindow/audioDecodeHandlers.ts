@@ -1,8 +1,13 @@
-import { app, ipcMain, type BrowserWindow } from 'electron'
+import { ipcMain, type BrowserWindow } from 'electron'
+import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
+import { findSongListRoot } from '../../services/cacheMaintenance'
 import { enqueueKeyAnalysis, enqueueKeyAnalysisImmediate } from '../../services/keyAnalysisQueue'
+import * as LibraryCacheDb from '../../libraryCacheDb'
+import { applyLiteDefaults, buildLiteSongInfo } from '../../services/songInfoLite'
+import type { MixxxWaveformData } from '../../waveformCache'
 
 const clonePcmData = (pcmData: unknown): Float32Array => {
   if (!pcmData) {
@@ -36,7 +41,7 @@ type DecodeWorkerResult = {
   sampleRate: number
   channels: number
   totalFrames: number
-  mixxxWaveformData?: any
+  mixxxWaveformData?: MixxxWaveformData | null
   keyText?: string
   keyError?: string
 }
@@ -45,6 +50,7 @@ type WorkerJob = {
   jobId: number
   filePath: string
   analyzeKey: boolean
+  needWaveform: boolean
   resolve: (result: DecodeWorkerResult) => void
   reject: (error: Error) => void
 }
@@ -56,23 +62,25 @@ class AudioDecodeWorkerPool {
   private pending = new Map<number, WorkerJob>()
   private busy = new Map<Worker, number>()
   private nextJobId = 0
-  private cacheRoot: string
 
-  constructor(workerCount: number, cacheRoot: string) {
-    this.cacheRoot = cacheRoot
+  constructor(workerCount: number) {
     const count = Math.max(1, workerCount)
     for (let i = 0; i < count; i++) {
       this.workers.push(this.createWorker())
     }
   }
 
-  decode(filePath: string, options: { analyzeKey?: boolean } = {}): Promise<DecodeWorkerResult> {
+  decode(
+    filePath: string,
+    options: { analyzeKey?: boolean; needWaveform?: boolean } = {}
+  ): Promise<DecodeWorkerResult> {
     return new Promise((resolve, reject) => {
       const jobId = ++this.nextJobId
       const job: WorkerJob = {
         jobId,
         filePath,
         analyzeKey: Boolean(options.analyzeKey),
+        needWaveform: Boolean(options.needWaveform),
         resolve,
         reject
       }
@@ -84,9 +92,7 @@ class AudioDecodeWorkerPool {
 
   private createWorker(): Worker {
     const workerPath = path.join(__dirname, 'workers', 'audioDecodeWorker.js')
-    const worker = new Worker(workerPath, {
-      workerData: { cacheRoot: this.cacheRoot }
-    })
+    const worker = new Worker(workerPath)
 
     worker.on('message', (payload: any) => {
       const jobId = payload?.jobId
@@ -153,7 +159,8 @@ class AudioDecodeWorkerPool {
       worker.postMessage({
         jobId: job.jobId,
         filePath: job.filePath,
-        analyzeKey: job.analyzeKey
+        analyzeKey: job.analyzeKey,
+        needWaveform: job.needWaveform
       })
     }
   }
@@ -164,8 +171,7 @@ let decodePool: AudioDecodeWorkerPool | null = null
 const getDecodePool = () => {
   if (decodePool) return decodePool
   const workerCount = Math.max(1, Math.min(2, os.cpus().length))
-  const cacheRoot = app.getPath('userData')
-  decodePool = new AudioDecodeWorkerPool(workerCount, cacheRoot)
+  decodePool = new AudioDecodeWorkerPool(workerCount)
   return decodePool
 }
 
@@ -180,13 +186,49 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
         } else {
           enqueueKeyAnalysis(filePath, 'high')
         }
-        const result = await pool.decode(filePath, { analyzeKey: false })
+        let stat: { size: number; mtimeMs: number } | null = null
+        try {
+          const fsStat = await fs.stat(filePath)
+          stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
+        } catch {}
+
+        const listRoot = await findSongListRoot(path.dirname(filePath))
+        let cachedWaveform: MixxxWaveformData | null = null
+        if (stat && listRoot) {
+          const cached = await LibraryCacheDb.loadWaveformCacheData(listRoot, filePath, stat)
+          if (cached) {
+            cachedWaveform = cached
+          }
+        }
+
+        const result = await pool.decode(filePath, {
+          analyzeKey: false,
+          needWaveform: !cachedWaveform
+        })
+        const mixxxWaveformData = cachedWaveform ?? result.mixxxWaveformData ?? null
+        if (!cachedWaveform && mixxxWaveformData && listRoot && stat) {
+          const cachedEntry = await LibraryCacheDb.loadSongCacheEntry(listRoot, filePath)
+          if (!cachedEntry) {
+            const info = applyLiteDefaults(buildLiteSongInfo(filePath), filePath)
+            await LibraryCacheDb.upsertSongCacheEntry(listRoot, filePath, {
+              size: stat.size,
+              mtimeMs: stat.mtimeMs,
+              info
+            })
+          }
+          await LibraryCacheDb.upsertWaveformCacheEntry(
+            listRoot,
+            filePath,
+            { size: stat.size, mtimeMs: stat.mtimeMs },
+            mixxxWaveformData
+          )
+        }
         const payload = {
           pcmData: clonePcmData(result.pcmData),
           sampleRate: result.sampleRate,
           channels: result.channels,
           totalFrames: result.totalFrames,
-          mixxxWaveformData: result.mixxxWaveformData ?? null
+          mixxxWaveformData
         }
         getWindow()?.webContents.send(successEvent, payload, filePath, requestId)
       } catch (error) {
