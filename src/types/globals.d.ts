@@ -40,6 +40,7 @@ interface ISongInfo {
   bitrate: number | undefined
   container: string | undefined
   key?: string
+  bpm?: number
 }
 
 // 曲目完整元数据明细，用于编辑界面展示

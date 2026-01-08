@@ -49,7 +49,7 @@ const handleExternalOpenPlay = (payload: { songs?: ISongInfo[]; startIndex?: num
   runtime.playingData.playingSong = normalizedQueue[startIndex]
 }
 
-// 预加载与 BPM 预计算
+// 预加载
 const audioContextRef = shallowRef<AudioContext | null>(new AudioContext())
 const audioPlayer = shallowRef<WebAudioPlayer | null>(null)
 const AUDIO_FOLLOW_SYSTEM_ID = ''
@@ -232,7 +232,7 @@ const {
   setCoverByIPC
 } = useCover(runtime)
 
-// 预加载与 BPM 预计算
+// 预加载
 const {
   currentPreloadRequestId,
   schedulePreloadAfterPlay,
@@ -243,7 +243,7 @@ const {
   takePreloadedData,
   rememberPlayback,
   forgetCachesForFile
-} = usePreloadNextSong({ runtime, audioContext: audioContextRef })
+} = usePreloadNextSong({ runtime })
 
 // 加载/播放与错误处理
 const bpm = ref<number | string>('')
@@ -257,7 +257,6 @@ const {
 } = useSongLoader({
   runtime,
   audioPlayer,
-  audioContext: audioContextRef,
   bpm,
   waveformShow,
   setCoverByIPC,
@@ -521,6 +520,15 @@ watch(
       refreshPreloadWindow()
     } else if (newSong && oldSong && newSong !== oldSong && newSong.filePath === oldSong.filePath) {
       setCoverByIPC(newSong.filePath)
+    }
+  }
+)
+
+watch(
+  () => runtime.playingData.playingSong?.bpm,
+  (newBpm) => {
+    if (typeof newBpm === 'number' && Number.isFinite(newBpm) && newBpm > 0) {
+      bpm.value = newBpm
     }
   }
 )

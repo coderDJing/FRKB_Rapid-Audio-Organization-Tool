@@ -1,9 +1,7 @@
-use std::borrow::Cow;
 use std::cmp::min;
 use std::os::raw::{c_double, c_int};
 
-const K_ANALYSIS_FRAMES_PER_CHUNK: usize = 4096;
-const K_FAST_ANALYSIS_SECONDS: usize = 60;
+use crate::analysis_utils::{calc_frames_to_process, to_stereo, K_ANALYSIS_FRAMES_PER_CHUNK};
 
 #[repr(C)]
 pub struct QmKeyDetectorHandle {
@@ -22,12 +20,52 @@ extern "C" {
   fn qm_key_finalize(handle: *mut QmKeyDetectorHandle) -> c_int;
 }
 
-struct DetectorGuard(*mut QmKeyDetectorHandle);
+pub struct KeyDetector {
+  handle: *mut QmKeyDetectorHandle,
+}
 
-impl Drop for DetectorGuard {
+impl KeyDetector {
+  pub fn new(sample_rate: u32) -> Result<Self, String> {
+    let handle = unsafe { qm_key_create(sample_rate as f64) };
+    if handle.is_null() {
+      return Err("qm_key_create failed".to_string());
+    }
+    Ok(KeyDetector { handle })
+  }
+
+  pub fn process(
+    &mut self,
+    interleaved: &[f32],
+    frames: usize,
+    channels: u8,
+  ) -> Result<(), String> {
+    if self.handle.is_null() {
+      return Err("qm_key_process failed".to_string());
+    }
+    if channels != 2 {
+      return Err("channels is not 2".to_string());
+    }
+    let ok = unsafe { qm_key_process(self.handle, interleaved.as_ptr(), frames, channels as c_int) };
+    if ok == 0 {
+      return Err("qm_key_process failed".to_string());
+    }
+    Ok(())
+  }
+
+  pub fn finalize(&mut self) -> Result<i32, String> {
+    if self.handle.is_null() {
+      return Err("qm_key_finalize failed".to_string());
+    }
+    let key_id = unsafe { qm_key_finalize(self.handle) };
+    Ok(key_id)
+  }
+}
+
+impl Drop for KeyDetector {
   fn drop(&mut self) {
-    if !self.0.is_null() {
-      unsafe { qm_key_destroy(self.0) };
+    if !self.handle.is_null() {
+      unsafe { qm_key_destroy(self.handle) };
+      self.handle = std::ptr::null_mut();
     }
   }
 }
@@ -55,12 +93,7 @@ pub fn analyze_key_id_from_pcm(
     return Err("pcm_data has no frames".to_string());
   }
 
-  let max_frames = if fast_analysis {
-    (sample_rate as usize).saturating_mul(K_FAST_ANALYSIS_SECONDS)
-  } else {
-    total_frames
-  };
-  let frames_to_process = min(total_frames, max_frames);
+  let frames_to_process = calc_frames_to_process(total_frames, sample_rate, fast_analysis);
   if frames_to_process == 0 {
     return Err("frames_to_process is 0".to_string());
   }
@@ -68,12 +101,7 @@ pub fn analyze_key_id_from_pcm(
   let needed_samples = frames_to_process * channels_usize;
   let pcm_slice = &pcm_data[..needed_samples];
   let stereo = to_stereo(pcm_slice, channels_usize, frames_to_process);
-
-  let handle = unsafe { qm_key_create(sample_rate as f64) };
-  if handle.is_null() {
-    return Err("qm_key_create failed".to_string());
-  }
-  let _guard = DetectorGuard(handle);
+  let mut detector = KeyDetector::new(sample_rate)?;
 
   let stereo_samples = stereo.as_ref();
   let mut offset_frames = 0usize;
@@ -82,43 +110,10 @@ pub fn analyze_key_id_from_pcm(
       min(K_ANALYSIS_FRAMES_PER_CHUNK, frames_to_process - offset_frames);
     let start = offset_frames * 2;
     let end = start + chunk_frames * 2;
-    let ok = unsafe {
-      qm_key_process(handle, stereo_samples[start..end].as_ptr(), chunk_frames, 2)
-    };
-    if ok == 0 {
-      return Err("qm_key_process failed".to_string());
-    }
+    detector.process(&stereo_samples[start..end], chunk_frames, 2)?;
     offset_frames += chunk_frames;
   }
 
-  let key_id = unsafe { qm_key_finalize(handle) };
+  let key_id = detector.finalize()?;
   Ok(key_id)
-}
-
-fn to_stereo(pcm: &[f32], channels: usize, frames: usize) -> Cow<'_, [f32]> {
-  if channels == 2 {
-    return Cow::Borrowed(&pcm[..frames * 2]);
-  }
-
-  let mut out = Vec::with_capacity(frames * 2);
-  if channels == 1 {
-    for frame in 0..frames {
-      let v = pcm[frame];
-      out.push(v);
-      out.push(v);
-    }
-    return Cow::Owned(out);
-  }
-
-  for frame in 0..frames {
-    let mut sum = 0.0f32;
-    let base = frame * channels;
-    for ch in 0..channels {
-      sum += pcm[base + ch];
-    }
-    let avg = sum / channels as f32;
-    out.push(avg);
-    out.push(avg);
-  }
-  Cow::Owned(out)
 }

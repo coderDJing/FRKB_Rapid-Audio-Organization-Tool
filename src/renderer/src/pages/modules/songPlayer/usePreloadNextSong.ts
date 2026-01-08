@@ -1,11 +1,6 @@
-import { ref, onUnmounted, watch, type Ref } from 'vue'
-import * as realtimeBpm from 'realtime-bpm-analyzer'
+import { ref, onUnmounted } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { type MixxxWaveformData } from './webAudioPlayer'
-const nowMs = () =>
-  typeof performance !== 'undefined' && typeof performance.now === 'function'
-    ? performance.now()
-    : Date.now()
 
 const logPreloadTimeline = (..._args: any[]) => {}
 
@@ -30,6 +25,7 @@ type PreloadCacheEntry = {
 type PreloadTask = {
   filePath: string
   offset: number
+  bpm?: number | null
 }
 
 type PlaybackCache = {
@@ -57,18 +53,8 @@ const PRELOAD_OFFSETS = [1, 2]
 const HISTORY_WINDOW = 1
 const PRELOAD_DELAY = 3000
 
-export function usePreloadNextSong(params: {
-  runtime: ReturnType<typeof useRuntimeStore>
-  audioContext: Ref<AudioContext | null>
-}) {
-  const { runtime, audioContext: audioContextRef } = params
-  const getAudioContext = (): AudioContext => {
-    const ctx = audioContextRef.value
-    if (!ctx) {
-      throw new Error('[usePreloadNextSong] AudioContext is not available')
-    }
-    return ctx
-  }
+export function usePreloadNextSong(params: { runtime: ReturnType<typeof useRuntimeStore> }) {
+  const { runtime } = params
 
   const currentPreloadRequestId = ref(0)
   let preloadTimerId: any = null
@@ -81,6 +67,16 @@ export function usePreloadNextSong(params: {
   const previousPlaybackList = ref<PlaybackCache[]>([])
 
   let activeRequest: { filePath: string; requestId: number } | null = null
+
+  const resolveBpmFromList = (filePath: string): number | null => {
+    const list = runtime.playingData.playingSongListData
+    if (!Array.isArray(list) || list.length === 0) return null
+    const match = list.find((item) => item.filePath === filePath)
+    const bpmValue = match?.bpm
+    return typeof bpmValue === 'number' && Number.isFinite(bpmValue) && bpmValue > 0
+      ? bpmValue
+      : null
+  }
 
   const cancelPreloadTimer = (reason?: string) => {
     void reason
@@ -233,11 +229,12 @@ export function usePreloadNextSong(params: {
       releasePreloadPayload('supply:next', cacheEntry)
       preloadCache.delete(filePath)
       logPreloadTimeline('supply:next', { file: filePath })
+      const latestBpm = resolveBpmFromList(filePath)
       return {
         source: 'next',
         filePath,
         payload,
-        bpm: cacheEntry.bpm ?? null
+        bpm: latestBpm ?? cacheEntry.bpm ?? null
       }
     }
 
@@ -248,11 +245,12 @@ export function usePreloadNextSong(params: {
         return null
       }
       logPreloadTimeline('supply:previous', { file: filePath })
+      const latestBpm = resolveBpmFromList(filePath)
       return {
         source: 'previous',
         filePath,
         payload: matched.payload,
-        bpm: matched.bpm ?? null
+        bpm: latestBpm ?? matched.bpm ?? null
       }
     }
 
@@ -265,6 +263,9 @@ export function usePreloadNextSong(params: {
       if (preloadCache.has(target.filePath)) {
         const exist = preloadCache.get(target.filePath)!
         exist.offset = target.offset
+        if (typeof target.bpm === 'number' && Number.isFinite(target.bpm) && target.bpm > 0) {
+          exist.bpm = target.bpm
+        }
         continue
       }
       if (preloadQueue.some((task) => task.filePath === target.filePath)) continue
@@ -296,6 +297,7 @@ export function usePreloadNextSong(params: {
       status: 'loading',
       requestId,
       offset: task.offset,
+      bpm: task.bpm ?? null,
       updatedAt: Date.now()
     }
     preloadCache.set(task.filePath, entry)
@@ -332,7 +334,11 @@ export function usePreloadNextSong(params: {
     for (const offset of PRELOAD_OFFSETS) {
       const nextItem = list[currentIndex + offset]
       if (nextItem?.filePath) {
-        targets.push({ filePath: nextItem.filePath, offset })
+        const bpmValue =
+          typeof nextItem.bpm === 'number' && Number.isFinite(nextItem.bpm) && nextItem.bpm > 0
+            ? nextItem.bpm
+            : null
+        targets.push({ filePath: nextItem.filePath, offset, bpm: bpmValue })
       }
     }
 
@@ -412,7 +418,7 @@ export function usePreloadNextSong(params: {
     if (pcmData.metaOnly) {
       entry.status = 'ready'
       entry.payload = undefined
-      entry.bpm = null
+      entry.bpm = entry.bpm ?? resolveBpmFromList(filePath)
       entry.updatedAt = Date.now()
       if (activeRequest?.requestId === requestId) {
         activeRequest = null
@@ -421,70 +427,19 @@ export function usePreloadNextSong(params: {
       return
     }
 
-    let analyzerStarted = false
-    let analyzerBuffer: AudioBuffer | null = null
-    try {
-      const audioContext = getAudioContext()
-      analyzerBuffer = audioContext.createBuffer(
-        pcmData.channels,
-        pcmData.totalFrames,
-        pcmData.sampleRate
-      )
-
-      for (let ch = 0; ch < pcmData.channels; ch++) {
-        const channelData = analyzerBuffer.getChannelData(ch)
-        for (let i = 0; i < pcmData.totalFrames; i++) {
-          channelData[i] = pcmData.pcmData[i * pcmData.channels + ch]
-        }
-      }
-
-      analyzerStarted = true
-      const analyzeStartedAt = nowMs()
-      const topCandidates = await realtimeBpm.analyzeFullBuffer(analyzerBuffer)
-      const elapsed = Math.round(nowMs() - analyzeStartedAt)
-      entry.bpm = topCandidates[0]?.tempo ?? 'N/A'
-      entry.payload = pcmData
-      entry.status = 'ready'
-      entry.updatedAt = Date.now()
-      logPreloadTimeline('decode:ready', {
-        file: filePath,
-        bpm: entry.bpm,
-        cacheSize: preloadCache.size
-      })
-      logPreloadTimeline('bpm:analyzed', {
-        file: filePath,
-        elapsedMs: elapsed,
-        bpm: entry.bpm
-      })
-    } catch (error) {
-      console.warn('[preload] 计算 BPM 失败', error)
-      entry.status = 'ready'
-      entry.payload = pcmData
-      entry.bpm = 'N/A'
-      entry.updatedAt = Date.now()
-      logPreloadTimeline('decode:ready', {
-        file: filePath,
-        bpm: entry.bpm,
-        cacheSize: preloadCache.size
-      })
-      if (analyzerStarted) {
-        logPreloadTimeline('bpm:analyzed', {
-          file: filePath,
-          bpm: 'N/A',
-          error: true,
-          message: (error as Error)?.message ?? String(error)
-        })
-      }
-    } finally {
-      if (analyzerStarted) {
-        logPreloadTimeline('bpm:release', { file: filePath })
-      }
-      analyzerBuffer = null
-      if (activeRequest?.requestId === requestId) {
-        activeRequest = null
-      }
-      processQueue()
+    entry.status = 'ready'
+    entry.payload = pcmData
+    entry.bpm = entry.bpm ?? resolveBpmFromList(filePath)
+    entry.updatedAt = Date.now()
+    logPreloadTimeline('decode:ready', {
+      file: filePath,
+      bpm: entry.bpm,
+      cacheSize: preloadCache.size
+    })
+    if (activeRequest?.requestId === requestId) {
+      activeRequest = null
     }
+    processQueue()
   }
 
   const onReadNextSongFileError = (

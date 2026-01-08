@@ -317,7 +317,8 @@ const {
   calculateFileHashesWithProgress,
   decodeAudioFile,
   computeMixxxWaveform,
-  analyzeKeyFromPcm
+  analyzeKeyFromPcm,
+  analyzeKeyAndBpmFromPcm
 } = nativeBinding
 
 module.exports.calculateAudioHashes = calculateAudioHashes
@@ -327,3 +328,4 @@ module.exports.calculateFileHashesWithProgress = calculateFileHashesWithProgress
 module.exports.decodeAudioFile = decodeAudioFile
 module.exports.computeMixxxWaveform = computeMixxxWaveform
 module.exports.analyzeKeyFromPcm = analyzeKeyFromPcm
+module.exports.analyzeKeyAndBpmFromPcm = analyzeKeyAndBpmFromPcm

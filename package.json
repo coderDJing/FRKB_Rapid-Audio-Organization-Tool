@@ -106,7 +106,6 @@
     "overlayscrollbars": "^2.11.1",
     "overlayscrollbars-vue": "^0.5.9",
     "pinia": "^2.2.2",
-    "realtime-bpm-analyzer": "^4.0.2",
     "rust_package": "./rust_package",
     "sass": "^1.79.3",
     "undici": "^6.19.8",

@@ -143,11 +143,49 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     }
   }
 
+  const onSongBpmUpdated = (_e: unknown, payload: { filePath?: string; bpm?: number }) => {
+    const filePath = payload?.filePath
+    const bpmValue = payload?.bpm
+    if (!filePath || typeof bpmValue !== 'number' || !Number.isFinite(bpmValue)) return
+
+    let touched = false
+    const nextOriginal = originalSongInfoArr.value.map((item) => {
+      if (item.filePath !== filePath) return item
+      if (item.bpm === bpmValue) return item
+      touched = true
+      return { ...item, bpm: bpmValue }
+    })
+    if (touched) {
+      originalSongInfoArr.value = markRaw(nextOriginal)
+      scheduleApply()
+    }
+
+    if (runtime.playingData.playingSong?.filePath === filePath) {
+      runtime.playingData.playingSong = {
+        ...runtime.playingData.playingSong,
+        bpm: bpmValue
+      }
+    }
+
+    if (runtime.playingData.playingSongListData.length > 0) {
+      runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map(
+        (item) => (item.filePath === filePath ? { ...item, bpm: bpmValue } : item)
+      )
+    }
+
+    if (runtime.externalPlaylist.songs.length > 0) {
+      runtime.externalPlaylist.songs = runtime.externalPlaylist.songs.map((item) =>
+        item.filePath === filePath ? { ...item, bpm: bpmValue } : item
+      )
+    }
+  }
+
   onMounted(() => {
     emitter.on('songsRemoved', onSongsRemoved)
     emitter.on('songsMovedByDrag', onSongsMovedByDrag)
     emitter.on('external-playlist/refresh', onExternalPlaylistRefresh)
     window.electron.ipcRenderer.on('song-key-updated', onSongKeyUpdated)
+    window.electron.ipcRenderer.on('song-bpm-updated', onSongBpmUpdated)
   })
 
   onUnmounted(() => {
@@ -155,6 +193,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     emitter.off('songsMovedByDrag', onSongsMovedByDrag)
     emitter.off('external-playlist/refresh', onExternalPlaylistRefresh)
     window.electron.ipcRenderer.removeListener('song-key-updated', onSongKeyUpdated)
+    window.electron.ipcRenderer.removeListener('song-bpm-updated', onSongBpmUpdated)
   })
 
   // 导入完成后重新打开歌单

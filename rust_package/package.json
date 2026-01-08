@@ -2,7 +2,7 @@
   "name": "rust_package",
   "version": "0.0.0",
   "main": "index.js",
-  "types": "index.d.ts",
+  "types": "types/index.d.ts",
   "napi": {
     "binaryName": "rust_package",
     "targets": [
@@ -34,7 +34,8 @@
     "index.js",
     "*.node",
     "npm",
-    "libs"
+    "libs",
+    "types"
   ],
   "packageManager": "yarn@4.6.0"
 }

@@ -210,6 +210,42 @@ export async function updateSongCacheKey(
   }
 }
 
+export async function updateSongCacheBpm(
+  listRoot: string,
+  filePath: string,
+  bpm: number
+): Promise<boolean> {
+  const db = getLibraryDb()
+  if (!db || !listRoot || !filePath) return false
+  const normalizedBpm = Number.isFinite(bpm) ? Number(bpm.toFixed(2)) : null
+  if (normalizedBpm === null) return false
+  try {
+    await ensureSongCacheMigrated(db, listRoot)
+    const row = db
+      .prepare('SELECT info_json FROM song_cache WHERE list_root = ? AND file_path = ?')
+      .get(listRoot, filePath)
+    if (!row || row.info_json === undefined) return false
+    let info: ISongInfo | null = null
+    try {
+      info = JSON.parse(String(row.info_json)) as ISongInfo
+    } catch {
+      info = null
+    }
+    if (!info) return false
+    if (info.bpm === normalizedBpm) return true
+    const nextInfo = { ...info, bpm: normalizedBpm }
+    db.prepare('UPDATE song_cache SET info_json = ? WHERE list_root = ? AND file_path = ?').run(
+      JSON.stringify(nextInfo),
+      listRoot,
+      filePath
+    )
+    return true
+  } catch (error) {
+    log.error('[sqlite] song cache bpm update failed', error)
+    return false
+  }
+}
+
 export async function replaceSongCache(
   listRoot: string,
   entries: Map<string, SongCacheEntry>
