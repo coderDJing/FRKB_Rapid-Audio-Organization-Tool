@@ -1,7 +1,6 @@
-import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
-import { WebAudioPlayer } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 
 type PreviewPlayPayload = {
   filePath?: string
@@ -35,17 +34,24 @@ const normalizeStopReason = (reason?: string): PreviewStopReason => {
   }
 }
 
+const toPreviewUrl = (filePath: string) => {
+  const raw = (filePath || '').trim()
+  if (!raw) return ''
+  if (raw.startsWith('frkb-preview://')) return raw
+  return `frkb-preview://local/?path=${encodeURIComponent(raw)}`
+}
+
 export function useWaveformPreviewPlayer() {
   const runtime = useRuntimeStore()
-  const audioContextRef = shallowRef<AudioContext | null>(null)
-  const previewPlayer = shallowRef<WebAudioPlayer | null>(null)
   const previewActive = ref(false)
   const previewFilePath = ref('')
-  const previewRequestId = ref(0)
   const resumeMainPlayer = ref(false)
   const pendingStartPercent = ref(0)
-  const loadedFilePath = ref<string | null>(null)
+  const playToken = ref(0)
+  const audioElement = ref<HTMLAudioElement | null>(null)
+  const activeSrc = ref('')
   let pendingOutputDeviceId = runtime.setting.audioOutputDeviceId || AUDIO_FOLLOW_SYSTEM_ID
+  let progressRaf: number | null = null
   let stopping = false
 
   const emitPreviewState = (active: boolean, filePath: string | null) => {
@@ -57,16 +63,16 @@ export function useWaveformPreviewPlayer() {
 
   const emitPreviewProgress = (currentTime?: number) => {
     if (!previewActive.value) return
-    const player = previewPlayer.value
-    if (!player) return
+    const audio = audioElement.value
+    if (!audio) return
     const filePath = previewFilePath.value
     if (!filePath) return
-    const duration = player.getDuration()
+    const duration = audio.duration
     if (!duration || !Number.isFinite(duration)) return
     const timeValue =
       typeof currentTime === 'number' && Number.isFinite(currentTime)
         ? currentTime
-        : player.getCurrentTime()
+        : audio.currentTime
     const percent = duration > 0 ? clamp01(timeValue / duration) : 0
     emitter.emit('waveform-preview:progress', {
       filePath,
@@ -74,57 +80,59 @@ export function useWaveformPreviewPlayer() {
     })
   }
 
+  const stopProgressLoop = () => {
+    if (progressRaf !== null) {
+      cancelAnimationFrame(progressRaf)
+      progressRaf = null
+    }
+  }
+
+  const startProgressLoop = () => {
+    stopProgressLoop()
+    const loop = () => {
+      const audio = audioElement.value
+      if (!audio || audio.paused || audio.ended) {
+        progressRaf = null
+        return
+      }
+      emitPreviewProgress()
+      progressRaf = requestAnimationFrame(loop)
+    }
+    progressRaf = requestAnimationFrame(loop)
+  }
+
   const applySavedVolume = () => {
+    const audio = audioElement.value
+    if (!audio) return
     try {
       const s = localStorage.getItem('frkb_volume')
       let v = s !== null ? parseFloat(s) : NaN
       if (!(v >= 0 && v <= 1)) v = 0.8
-      previewPlayer.value?.setVolume(v)
+      audio.volume = v
     } catch {}
   }
 
   const applyAudioOutputDevice = async (deviceId: string) => {
     pendingOutputDeviceId = deviceId || AUDIO_FOLLOW_SYSTEM_ID
-    const playerInstance = previewPlayer.value
-    if (!playerInstance) {
+    const audio = audioElement.value
+    if (!audio) {
+      return
+    }
+    const setSinkId = (audio as any)?.setSinkId
+    if (typeof setSinkId !== 'function') {
       return
     }
     try {
-      await playerInstance.setOutputDevice(pendingOutputDeviceId)
+      await setSinkId.call(audio, pendingOutputDeviceId)
     } catch (error) {
       console.warn('[waveform-preview] Failed to switch output device, fallback to default', error)
       if (pendingOutputDeviceId !== AUDIO_FOLLOW_SYSTEM_ID) {
         pendingOutputDeviceId = AUDIO_FOLLOW_SYSTEM_ID
         try {
-          await playerInstance.setOutputDevice(AUDIO_FOLLOW_SYSTEM_ID)
-        } catch (_) {
-          // 回退默认输出失败时无需额外处理
-        }
+          await setSinkId.call(audio, AUDIO_FOLLOW_SYSTEM_ID)
+        } catch {}
       }
     }
-  }
-
-  const bindPlayerEvents = (player: WebAudioPlayer) => {
-    player.on('play', () => emitPreviewProgress())
-    player.on('pause', () => emitPreviewProgress())
-    player.on('timeupdate', (time) => emitPreviewProgress(time))
-    player.on('seeked', ({ time }) => emitPreviewProgress(time))
-    player.on('finish', () => stopWaveformPreview('auto-finish'))
-    player.on('error', () => stopWaveformPreview('error'))
-  }
-
-  const ensurePreviewPlayer = () => {
-    if (!audioContextRef.value) {
-      audioContextRef.value = new AudioContext()
-    }
-    if (!previewPlayer.value) {
-      const player = new WebAudioPlayer(audioContextRef.value as AudioContext)
-      previewPlayer.value = player
-      bindPlayerEvents(player)
-      applySavedVolume()
-      void applyAudioOutputDevice(pendingOutputDeviceId)
-    }
-    return previewPlayer.value
   }
 
   const pauseMainPlayerIfNeeded = () => {
@@ -136,15 +144,6 @@ export function useWaveformPreviewPlayer() {
     } satisfies PauseMainPayload)
   }
 
-  const playPreviewAtPercent = (startPercent: number) => {
-    const player = previewPlayer.value
-    if (!player) return
-    const duration = player.getDuration()
-    const startTime = duration > 0 ? duration * clamp01(startPercent) : 0
-    player.play(startTime)
-    emitPreviewProgress(startTime)
-  }
-
   const stopWaveformPreview = (reason: PreviewStopReason) => {
     if (!previewActive.value || stopping) return
     stopping = true
@@ -152,13 +151,19 @@ export function useWaveformPreviewPlayer() {
     previewActive.value = false
     previewFilePath.value = ''
     pendingStartPercent.value = 0
-    previewRequestId.value += 1
+    playToken.value += 1
     emitPreviewState(false, filePath || null)
-    if (previewPlayer.value) {
-      previewPlayer.value.stop()
-      previewPlayer.value.empty()
+    stopProgressLoop()
+
+    const audio = audioElement.value
+    if (audio) {
+      audio.pause()
+      try {
+        audio.currentTime = 0
+      } catch {}
+      audio.muted = false
     }
-    loadedFilePath.value = null
+
     const shouldResume =
       resumeMainPlayer.value && (reason === 'explicit' || reason === 'auto-finish')
     resumeMainPlayer.value = false
@@ -168,7 +173,57 @@ export function useWaveformPreviewPlayer() {
     stopping = false
   }
 
-  const startWaveformPreview = async (payload: PreviewPlayPayload) => {
+  const ensureAudioElement = () => {
+    if (!audioElement.value) {
+      const audio = document.createElement('audio')
+      audio.preload = 'auto'
+      audio.addEventListener('play', () => {
+        emitPreviewProgress()
+        startProgressLoop()
+      })
+      audio.addEventListener('pause', () => {
+        emitPreviewProgress()
+        stopProgressLoop()
+      })
+      audio.addEventListener('timeupdate', () => emitPreviewProgress())
+      audio.addEventListener('ended', () => stopWaveformPreview('auto-finish'))
+      audio.addEventListener('error', () => stopWaveformPreview('error'))
+      audioElement.value = audio
+      if (!audio.parentNode && typeof document !== 'undefined') {
+        audio.style.display = 'none'
+        document.body.appendChild(audio)
+      }
+      applySavedVolume()
+      void applyAudioOutputDevice(pendingOutputDeviceId)
+    }
+    return audioElement.value
+  }
+
+  const playFromPercent = (audio: HTMLAudioElement, token: number, startPercent: number) => {
+    if (playToken.value !== token) return
+    const duration = Number.isFinite(audio.duration) ? audio.duration : 0
+    const startTime = duration > 0 ? duration * clamp01(startPercent) : 0
+    try {
+      if (typeof (audio as any).fastSeek === 'function') {
+        ;(audio as any).fastSeek(startTime)
+      } else {
+        audio.currentTime = startTime
+      }
+    } catch {}
+    if (audio.paused) {
+      const playPromise = audio.play()
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => {
+          if (playToken.value === token) {
+            stopWaveformPreview('error')
+          }
+        })
+      }
+    }
+    emitPreviewProgress(startTime)
+  }
+
+  const startWaveformPreview = (payload: PreviewPlayPayload) => {
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
     if (!filePath) return
     const startPercent = clamp01(payload?.startPercent ?? 0)
@@ -180,29 +235,60 @@ export function useWaveformPreviewPlayer() {
     pendingStartPercent.value = startPercent
     emitPreviewState(true, filePath)
 
-    const player = ensurePreviewPlayer()
-    if (!player) return
+    const audio = ensureAudioElement()
+    if (!audio) return
+    applySavedVolume()
 
-    try {
-      if (audioContextRef.value?.state === 'suspended') {
-        await audioContextRef.value.resume()
-      }
-    } catch {}
-
-    if (loadedFilePath.value === filePath && player.getDuration() > 0) {
-      player.stop()
-      playPreviewAtPercent(startPercent)
+    const token = playToken.value + 1
+    playToken.value = token
+    const nextSrc = toPreviewUrl(filePath)
+    if (!nextSrc) {
+      stopWaveformPreview('error')
       return
     }
 
-    player.stop()
-    const nextRequestId = previewRequestId.value + 1
-    previewRequestId.value = nextRequestId
-    window.electron.ipcRenderer.send('readPreviewSongFile', filePath, nextRequestId)
+    if (activeSrc.value !== nextSrc) {
+      audio.pause()
+      audio.src = nextSrc
+      audio.load()
+      activeSrc.value = nextSrc
+    } else {
+      audio.pause()
+    }
+
+    const needsSeek = startPercent > 0.0001
+    audio.muted = needsSeek ? true : false
+
+    const playPromise = audio.play()
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(() => {
+        if (playToken.value === token) {
+          stopWaveformPreview('error')
+        }
+      })
+    }
+
+    if (!needsSeek) {
+      emitPreviewProgress(0)
+      return
+    }
+
+    const applySeek = () => {
+      if (playToken.value !== token) return
+      playFromPercent(audio, token, startPercent)
+      audio.muted = false
+    }
+
+    if (audio.readyState >= 1 && Number.isFinite(audio.duration) && audio.duration > 0) {
+      applySeek()
+      return
+    }
+
+    audio.addEventListener('loadedmetadata', applySeek, { once: true })
   }
 
   const handlePreviewPlay = (payload: PreviewPlayPayload) => {
-    void startWaveformPreview(payload)
+    startWaveformPreview(payload)
   }
 
   const handlePreviewStop = (payload?: PreviewStopPayload) => {
@@ -210,51 +296,9 @@ export function useWaveformPreviewPlayer() {
     stopWaveformPreview(reason)
   }
 
-  const handleReadPreviewSongFile = (
-    _event: any,
-    payload: {
-      pcmData: Float32Array
-      sampleRate: number
-      channels: number
-      totalFrames: number
-    },
-    filePath: string,
-    requestId?: number
-  ) => {
-    if (requestId && requestId !== previewRequestId.value) return
-    if (!previewActive.value) return
-    if (filePath !== previewFilePath.value) return
-    const player = ensurePreviewPlayer()
-    if (!player) return
-    try {
-      player.loadPCM(payload.pcmData, payload.sampleRate, payload.channels, {
-        filePath
-      })
-      loadedFilePath.value = filePath
-      playPreviewAtPercent(pendingStartPercent.value)
-    } catch {
-      stopWaveformPreview('error')
-    }
-  }
-
-  const handleReadPreviewSongFileError = (
-    _event: any,
-    filePath: string,
-    _errorMessage: string,
-    requestId?: number
-  ) => {
-    if (requestId && requestId !== previewRequestId.value) return
-    if (filePath !== previewFilePath.value) return
-    stopWaveformPreview('error')
-  }
-
   onMounted(() => {
     emitter.on('waveform-preview:play', handlePreviewPlay)
     emitter.on('waveform-preview:stop', handlePreviewStop)
-    if (window?.electron?.ipcRenderer) {
-      window.electron.ipcRenderer.on('readedPreviewSongFile', handleReadPreviewSongFile)
-      window.electron.ipcRenderer.on('readPreviewSongFileError', handleReadPreviewSongFileError)
-    }
   })
 
   watch(
@@ -279,21 +323,16 @@ export function useWaveformPreviewPlayer() {
   onUnmounted(() => {
     emitter.off('waveform-preview:play', handlePreviewPlay)
     emitter.off('waveform-preview:stop', handlePreviewStop)
-    if (window?.electron?.ipcRenderer) {
-      window.electron.ipcRenderer.removeListener('readedPreviewSongFile', handleReadPreviewSongFile)
-      window.electron.ipcRenderer.removeListener(
-        'readPreviewSongFileError',
-        handleReadPreviewSongFileError
-      )
-    }
     stopWaveformPreview('cancel')
-    if (previewPlayer.value) {
-      previewPlayer.value.destroy()
-      previewPlayer.value = null
-    }
-    if (audioContextRef.value) {
-      void audioContextRef.value.close().catch(() => {})
-      audioContextRef.value = null
+    stopProgressLoop()
+    if (audioElement.value) {
+      audioElement.value.pause()
+      audioElement.value.src = ''
+      audioElement.value.load()
+      if (audioElement.value.parentNode) {
+        audioElement.value.parentNode.removeChild(audioElement.value)
+      }
+      audioElement.value = null
     }
   })
 }
