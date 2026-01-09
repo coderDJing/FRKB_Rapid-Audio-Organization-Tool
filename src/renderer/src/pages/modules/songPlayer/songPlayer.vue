@@ -35,6 +35,9 @@ const waveform = useTemplateRef<HTMLDivElement>('waveform')
 const playerControlsRef = useTemplateRef('playerControlsRef')
 
 const handleExternalOpenPlay = (payload: { songs?: ISongInfo[]; startIndex?: number }) => {
+  try {
+    emitter.emit('waveform-preview:stop', { reason: 'switch' })
+  } catch {}
   const queue = Array.isArray(payload?.songs)
     ? payload.songs.filter((item) => item && typeof item.filePath === 'string')
     : []
@@ -300,6 +303,8 @@ onMounted(() => {
   initAudioPlayer()
   emitter.on('player/replay-current-song', handleReplayRequest)
   emitter.on('external-open/play', handleExternalOpenPlay)
+  emitter.on('waveform-preview:pause-main', handleWaveformPreviewPauseMain)
+  emitter.on('waveform-preview:resume-main', handleWaveformPreviewResumeMain)
 
   useWaveform({
     waveformEl: waveform,
@@ -353,6 +358,47 @@ const playerActions = usePlayerControlsLogic({
   }
 })
 
+const handleWaveformPreviewPauseMain = (payload?: { onPaused?: (wasPlaying: boolean) => void }) => {
+  const wasPlaying = audioPlayer.value?.isPlaying() ?? false
+  if (wasPlaying) {
+    audioPlayer.value?.pause()
+  }
+  payload?.onPaused?.(wasPlaying)
+}
+
+const handleWaveformPreviewResumeMain = () => {
+  playerActions.play()
+}
+
+const stopWaveformPreviewForManualPlay = () => {
+  try {
+    emitter.emit('waveform-preview:stop', { reason: 'manual-play' })
+  } catch {}
+}
+
+const handleUserPlay = () => {
+  stopWaveformPreviewForManualPlay()
+  playerActions.play()
+}
+
+const handleUserNextSong = () => {
+  stopWaveformPreviewForManualPlay()
+  playerActions.nextSong()
+}
+
+const handleUserPreviousSong = () => {
+  stopWaveformPreviewForManualPlay()
+  playerActions.previousSong()
+}
+
+const handleUserTogglePlayPause = () => {
+  const isPlaying = audioPlayer.value?.isPlaying() ?? false
+  if (!isPlaying) {
+    stopWaveformPreviewForManualPlay()
+  }
+  playerActions.togglePlayPause()
+}
+
 const selectSongListDialogConfirm = async (item: string) => {
   await playerActions.handleMoveSong(item)
 }
@@ -391,16 +437,16 @@ const applyAudioOutputDevice = async (deviceId: string) => {
 
 // 热键
 const hotkeyActions = {
-  play: playerActions.play,
+  play: handleUserPlay,
   pause: playerActions.pause,
   fastForward: playerActions.fastForward,
   fastBackward: playerActions.fastBackward,
-  nextSong: playerActions.nextSong,
-  previousSong: playerActions.previousSong,
+  nextSong: handleUserNextSong,
+  previousSong: handleUserPreviousSong,
   delSong: playerActions.delSong,
   moveToListLibrary: playerActions.moveToListLibrary,
   moveToLikeLibrary: playerActions.moveToLikeLibrary,
-  togglePlayPause: playerActions.togglePlayPause
+  togglePlayPause: handleUserTogglePlayPause
 }
 
 const isPlaying = computed(() => audioPlayer.value?.isPlaying() ?? false)
@@ -433,10 +479,10 @@ const handleGlobalPlayerShortcut = (
       playerActions.fastBackward()
       break
     case 'nextSong':
-      playerActions.nextSong()
+      handleUserNextSong()
       break
     case 'previousSong':
-      playerActions.previousSong()
+      handleUserPreviousSong()
       break
   }
 }
@@ -471,6 +517,8 @@ onUnmounted(() => {
   window.removeEventListener('resize', updateParentWaveformWidth)
   emitter.off('player/replay-current-song', handleReplayRequest)
   emitter.off('external-open/play', handleExternalOpenPlay)
+  emitter.off('waveform-preview:pause-main', handleWaveformPreviewPauseMain)
+  emitter.off('waveform-preview:resume-main', handleWaveformPreviewResumeMain)
   window.electron.ipcRenderer.removeListener('player/global-shortcut', handleGlobalPlayerShortcut)
 })
 
@@ -609,11 +657,11 @@ watch(
             v-if="!runtime.setting.hiddenPlayControlArea"
             ref="playerControlsRef"
             @pause="playerActions.pause"
-            @play="playerActions.play"
+            @play="handleUserPlay"
             @fastForward="playerActions.fastForward"
             @fastBackward="playerActions.fastBackward"
-            @nextSong="playerActions.nextSong"
-            @previousSong="playerActions.previousSong"
+            @nextSong="handleUserNextSong"
+            @previousSong="handleUserPreviousSong"
             @delSong="playerActions.delSong"
             @moveToListLibrary="(song) => playerActions.moveToListLibrary(song)"
             @moveToLikeLibrary="(song) => playerActions.moveToLikeLibrary(song)"

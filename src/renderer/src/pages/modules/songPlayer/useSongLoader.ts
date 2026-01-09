@@ -188,12 +188,13 @@ export function useSongLoader(params: {
 
       onSongBuffered?.(filePath, pcmData, bpmValueAssigned ? bpm.value : null)
 
+      const duration = playerInstance.getDuration()
+
       // 开始播放
       try {
         const reqIdToPlay = requestId
         if (reqIdToPlay !== currentLoadRequestId.value) return
         if (runtime.setting.enablePlaybackRange) {
-          const duration = playerInstance.getDuration()
           const startPercent = runtime.setting.startPlayPercent ?? 0
           const startTime = (duration * startPercent) / 100
           playerInstance.play(startTime)

@@ -237,9 +237,39 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
       }
     }
 
+  const handlePreviewDecode = async (
+    _e: Electron.IpcMainEvent,
+    filePath: string,
+    requestId: string
+  ) => {
+    try {
+      const pool = getDecodePool()
+      const result = await pool.decode(filePath, {
+        analyzeKey: false,
+        needWaveform: false
+      })
+      const payload = {
+        pcmData: clonePcmData(result.pcmData),
+        sampleRate: result.sampleRate,
+        channels: result.channels,
+        totalFrames: result.totalFrames
+      }
+      getWindow()?.webContents.send('readedPreviewSongFile', payload, filePath, requestId)
+    } catch (error) {
+      console.error(`解码预览文件失败 ${filePath}:`, error)
+      getWindow()?.webContents.send(
+        'readPreviewSongFileError',
+        filePath,
+        (error as Error).message,
+        requestId
+      )
+    }
+  }
+
   ipcMain.on('readSongFile', handleDecode('readSongFile', 'readedSongFile', 'readSongFileError'))
   ipcMain.on(
     'readNextSongFile',
     handleDecode('readNextSongFile', 'readedNextSongFile', 'readNextSongFileError')
   )
+  ipcMain.on('readPreviewSongFile', handlePreviewDecode)
 }

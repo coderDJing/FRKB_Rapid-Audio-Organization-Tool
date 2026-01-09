@@ -766,7 +766,9 @@ export function useWaveform(params: {
 
     const handleFinish = () => {
       cancelPreloadTimer()
-      if (runtime.setting.autoPlayNextSong) onNextSong()
+      if (runtime.setting.autoPlayNextSong) {
+        onNextSong()
+      }
       drawWaveform()
     }
 
