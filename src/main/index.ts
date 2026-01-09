@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { app, BrowserWindow, ipcMain, shell, nativeTheme } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, nativeTheme, protocol } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { log } from './log'
 import './cloudSync'
@@ -49,6 +49,48 @@ let devDatabase = dev_DB
 // 主题：默认按设置文件（首次为 system），不再强制日间模式
 
 const gotTheLock = app.requestSingleInstanceLock()
+const PREVIEW_PROTOCOL = 'frkb-preview'
+const PREVIEW_MIME_MAP: Record<string, string> = {
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.flac': 'audio/flac',
+  '.aif': 'audio/aiff',
+  '.aiff': 'audio/aiff',
+  '.ogg': 'audio/ogg',
+  '.opus': 'audio/opus',
+  '.aac': 'audio/aac',
+  '.m4a': 'audio/mp4',
+  '.mp4': 'audio/mp4',
+  '.wma': 'audio/x-ms-wma',
+  '.ac3': 'audio/ac3',
+  '.dts': 'audio/vnd.dts',
+  '.mka': 'audio/x-matroska',
+  '.webm': 'audio/webm',
+  '.ape': 'audio/ape',
+  '.tak': 'audio/tak',
+  '.tta': 'audio/tta',
+  '.wv': 'audio/wavpack'
+}
+
+const getPreviewMimeType = (filePath: string) => {
+  const ext = path.extname(filePath || '').toLowerCase()
+  return PREVIEW_MIME_MAP[ext] || 'application/octet-stream'
+}
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: PREVIEW_PROTOCOL,
+    privileges: {
+      standard: true,
+      secure: true,
+      corsEnabled: true,
+      bypassCSP: true,
+      allowServiceWorkers: true,
+      supportFetchAPI: true,
+      stream: true
+    }
+  }
+])
 
 if (!gotTheLock) {
   app.quit()
@@ -162,6 +204,86 @@ if (is.dev && platform === 'win32') {
 
 app.whenReady().then(async () => {
   electronApp.setAppUserModelId('frkb.coderDjing')
+  try {
+    if (!protocol.isProtocolRegistered(PREVIEW_PROTOCOL)) {
+      protocol.registerStreamProtocol(PREVIEW_PROTOCOL, async (request, callback) => {
+        try {
+          let decodedPath = ''
+          try {
+            const urlObj = new URL(request.url)
+            const paramPath = urlObj.searchParams.get('path')
+            if (paramPath) {
+              decodedPath = decodeURIComponent(paramPath)
+            } else {
+              const host = urlObj.hostname || ''
+              const pathname = urlObj.pathname || ''
+              if (host && /^[a-zA-Z]$/.test(host) && pathname) {
+                decodedPath = `${host}:${decodeURIComponent(pathname)}`
+              } else if (host && host !== 'local') {
+                decodedPath = decodeURIComponent(`${host}${pathname}`)
+              } else {
+                const rawPath = pathname.startsWith('/') ? pathname.slice(1) : pathname
+                decodedPath = decodeURIComponent(rawPath)
+              }
+            }
+          } catch {
+            const encodedPath = request.url.slice(`${PREVIEW_PROTOCOL}://`.length)
+            const cleanedPath = (encodedPath || '').replace(/^\/+/, '')
+            decodedPath = decodeURIComponent(cleanedPath || '')
+          }
+
+          if (decodedPath.startsWith('/') && /^[a-zA-Z]:\//.test(decodedPath.slice(1))) {
+            decodedPath = decodedPath.slice(1)
+          }
+          if (!decodedPath) {
+            callback({ statusCode: 400 })
+            return
+          }
+          const stat = await fs.stat(decodedPath)
+          const size = stat.size
+          const rangeHeader = request.headers?.range || request.headers?.Range
+          const mimeType = getPreviewMimeType(decodedPath)
+
+          if (typeof rangeHeader === 'string' && rangeHeader.startsWith('bytes=')) {
+            const range = rangeHeader.replace('bytes=', '').split('-')
+            const start = Math.max(0, parseInt(range[0] || '0', 10))
+            const end = range[1] ? Math.min(parseInt(range[1], 10), size - 1) : size - 1
+            if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) {
+              callback({ statusCode: 416 })
+              return
+            }
+            const stream = fs.createReadStream(decodedPath, { start, end })
+            callback({
+              statusCode: 206,
+              data: stream,
+              mimeType,
+              headers: {
+                'Content-Range': `bytes ${start}-${end}/${size}`,
+                'Accept-Ranges': 'bytes',
+                'Content-Length': String(end - start + 1)
+              }
+            })
+            return
+          }
+
+          const stream = fs.createReadStream(decodedPath)
+          callback({
+            statusCode: 200,
+            data: stream,
+            mimeType,
+            headers: {
+              'Accept-Ranges': 'bytes',
+              'Content-Length': String(size)
+            }
+          })
+        } catch (error) {
+          callback({ statusCode: 404 })
+        }
+      })
+    }
+  } catch (error) {
+    log.error('[previewProtocol] register failed', error)
+  }
   // 设置应用显示名称为 FRKB（影响菜单栏左上角 App 菜单标题）
   try {
     app.setName('FRKB')
