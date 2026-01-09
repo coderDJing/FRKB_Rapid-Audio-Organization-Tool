@@ -53,7 +53,6 @@ const handleExternalOpenPlay = (payload: { songs?: ISongInfo[]; startIndex?: num
 }
 
 // 预加载
-const audioContextRef = shallowRef<AudioContext | null>(new AudioContext())
 const audioPlayer = shallowRef<WebAudioPlayer | null>(null)
 const AUDIO_FOLLOW_SYSTEM_ID = ''
 let pendingAudioOutputDeviceId = runtime.setting.audioOutputDeviceId || AUDIO_FOLLOW_SYSTEM_ID
@@ -217,10 +216,7 @@ const initAudioPlayer = () => {
   if (audioPlayer.value) {
     audioPlayer.value.destroy()
   }
-  if (!audioContextRef.value) {
-    audioContextRef.value = new AudioContext()
-  }
-  const player = new WebAudioPlayer(audioContextRef.value as AudioContext)
+  const player = new WebAudioPlayer()
   audioPlayer.value = player
   teardownPlayerEvents = bindPlayerEvents(player)
   void applyAudioOutputDevice(pendingAudioOutputDeviceId)
@@ -237,7 +233,6 @@ const {
 
 // 预加载
 const {
-  currentPreloadRequestId,
   schedulePreloadAfterPlay,
   cancelPreloadTimer,
   refreshPreloadWindow,
@@ -250,24 +245,22 @@ const {
 
 // 加载/播放与错误处理
 const bpm = ref<number | string>('')
-const {
-  currentLoadRequestId,
-  isLoadingBlob,
-  ignoreNextEmptyError,
-  requestLoadSong,
-  handleLoadPCM,
-  handleSongLoadError
-} = useSongLoader({
-  runtime,
-  audioPlayer,
-  bpm,
-  waveformShow,
-  setCoverByIPC,
-  onSongBuffered: rememberPlayback
-})
+const { isLoadingBlob, ignoreNextEmptyError, requestLoadSong, handleSongLoadError } = useSongLoader(
+  {
+    runtime,
+    audioPlayer,
+    bpm,
+    waveformShow,
+    setCoverByIPC,
+    onSongBuffered: rememberPlayback
+  }
+)
 
-const requestSongWithRecreate = (filePath: string) => {
-  requestLoadSong(filePath)
+const requestSongWithRecreate = (
+  filePath: string,
+  options?: { preloadedAudio?: HTMLAudioElement | null; preloadedBpm?: number | string | null }
+) => {
+  requestLoadSong(filePath, options)
 }
 
 // 内部切歌标志
@@ -344,9 +337,7 @@ const playerActions = usePlayerControlsLogic({
   selectSongListDialogLibraryName,
   isInternalSongChange,
   requestLoadSong: requestSongWithRecreate,
-  handleLoadPCM,
   cancelPreloadTimer,
-  currentLoadRequestId,
   ignoreNextEmptyError,
   preloadApi: {
     takePreloadedData,
@@ -510,10 +501,6 @@ onUnmounted(() => {
     audioPlayer.value.destroy()
     audioPlayer.value = null
   }
-  if (audioContextRef.value) {
-    void audioContextRef.value.close().catch(() => {})
-    audioContextRef.value = null
-  }
   window.removeEventListener('resize', updateParentWaveformWidth)
   emitter.off('player/replay-current-song', handleReplayRequest)
   emitter.off('external-open/play', handleExternalOpenPlay)
@@ -553,13 +540,10 @@ watch(
       setCoverByIPC(newPath)
       const preloadHit = takePreloadedData(newPath)
       if (preloadHit) {
-        currentLoadRequestId.value++
-        handleLoadPCM(
-          preloadHit.payload,
-          newPath,
-          currentLoadRequestId.value,
-          preloadHit.bpm ?? undefined
-        )
+        requestSongWithRecreate(newPath, {
+          preloadedAudio: preloadHit.audio,
+          preloadedBpm: preloadHit.bpm ?? undefined
+        })
       } else {
         cancelPreloadTimer()
         clearNextCaches()

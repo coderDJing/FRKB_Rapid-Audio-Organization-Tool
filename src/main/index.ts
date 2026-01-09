@@ -190,7 +190,6 @@ let devInitDatabaseFunction = async () => {
   store.databaseDir = store.settingConfig.databaseUrl
   store.songFingerprintList = []
   await saveList([])
-  console.log('devInitDatabase (new scheme)')
 }
 if (is.dev && platform === 'win32') {
   // store.settingConfig.databaseUrl = devDatabase

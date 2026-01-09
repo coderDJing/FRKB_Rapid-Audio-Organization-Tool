@@ -170,7 +170,6 @@ const contextmenuEvent = async (event: MouseEvent) => {
 
 const collapseButtonHandleClick = async () => {
   emitter.emit('collapseButtonHandleClick', libraryData.dirName)
-  console.log(JSON.parse(JSON.stringify(runtime.libraryTree)))
 }
 
 const dragApproach = ref('')

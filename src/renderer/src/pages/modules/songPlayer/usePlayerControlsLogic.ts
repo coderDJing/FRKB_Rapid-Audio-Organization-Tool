@@ -7,20 +7,12 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import { t } from '@renderer/utils/translate'
 import emitter from '@renderer/utils/mitt'
-import { WebAudioPlayer, type MixxxWaveformData } from './webAudioPlayer'
-
-type PcmPayload = {
-  pcmData: Float32Array
-  sampleRate: number
-  channels: number
-  totalFrames: number
-  mixxxWaveformData?: MixxxWaveformData | null
-}
+import { WebAudioPlayer } from './webAudioPlayer'
 
 type PreloadHit = {
   source: 'next' | 'previous'
   filePath: string
-  payload: PcmPayload
+  audio: HTMLAudioElement
   bpm: number | string | null
 } | null
 
@@ -33,22 +25,22 @@ interface UsePlayerControlsOptions {
   selectSongListDialogShow: Ref<boolean>
   selectSongListDialogLibraryName: Ref<string>
   isInternalSongChange: Ref<boolean>
-  requestLoadSong: (filePath: string) => void
-  handleLoadPCM: (
-    pcmData: PcmPayload,
+  requestLoadSong: (
     filePath: string,
-    requestId: number,
-    preloadedBpmValue?: number | string | null
-  ) => Promise<void>
+    options?: { preloadedAudio?: HTMLAudioElement | null; preloadedBpm?: number | string | null }
+  ) => void
   cancelPreloadTimer: (reason?: string) => void
-  currentLoadRequestId: Ref<number>
   ignoreNextEmptyError: Ref<boolean>
   preloadApi: {
     takePreloadedData: (filePath: string) => PreloadHit
     refreshPreloadWindow: () => void
     clearNextCaches: () => void
     clearAllCaches: () => void
-    rememberPlayback: (filePath: string, payload: PcmPayload, bpm: number | string | null) => void
+    rememberPlayback: (
+      filePath: string,
+      audio: HTMLAudioElement,
+      bpm: number | string | null
+    ) => void
     forgetCachesForFile: (filePath: string) => void
   }
 }
@@ -62,9 +54,7 @@ export function usePlayerControlsLogic({
   selectSongListDialogLibraryName,
   isInternalSongChange,
   requestLoadSong,
-  handleLoadPCM,
   cancelPreloadTimer,
-  currentLoadRequestId,
   ignoreNextEmptyError,
   preloadApi
 }: UsePlayerControlsOptions) {
@@ -77,8 +67,7 @@ export function usePlayerControlsLogic({
     if (!audioPlayer.value) return
 
     try {
-      const duration = audioPlayer.value.getDuration()
-      if (!duration) {
+      if (!audioPlayer.value.hasSource()) {
         return
       }
       audioPlayer.value.play()
@@ -176,7 +165,7 @@ export function usePlayerControlsLogic({
         audioPlayer.value.pause()
       }
       ignoreNextEmptyError.value = true
-      audioPlayer.value.empty()
+      audioPlayer.value.stop()
     }
 
     // 重要：在开始加载前先更新UI状态
@@ -185,13 +174,10 @@ export function usePlayerControlsLogic({
 
     const preloadHit = preloadApi.takePreloadedData(nextSongFilePath)
     if (preloadHit) {
-      currentLoadRequestId.value++
-      handleLoadPCM(
-        preloadHit.payload,
-        nextSongFilePath,
-        currentLoadRequestId.value,
-        preloadHit.bpm ?? undefined
-      )
+      requestLoadSong(nextSongFilePath, {
+        preloadedAudio: preloadHit.audio,
+        preloadedBpm: preloadHit.bpm ?? undefined
+      })
     } else {
       requestLoadSong(nextSongFilePath)
     }
@@ -228,7 +214,7 @@ export function usePlayerControlsLogic({
         audioPlayer.value.pause()
       }
       ignoreNextEmptyError.value = true
-      audioPlayer.value.empty()
+      audioPlayer.value.stop()
     }
     // 设置内部切换并请求加载
     isInternalSongChange.value = true // 标记内部切换
@@ -236,13 +222,10 @@ export function usePlayerControlsLogic({
 
     const preloadHit = preloadApi.takePreloadedData(prevSongFilePath)
     if (preloadHit) {
-      currentLoadRequestId.value++
-      handleLoadPCM(
-        preloadHit.payload,
-        prevSongFilePath,
-        currentLoadRequestId.value,
-        preloadHit.bpm ?? undefined
-      )
+      requestLoadSong(prevSongFilePath, {
+        preloadedAudio: preloadHit.audio,
+        preloadedBpm: preloadHit.bpm ?? undefined
+      })
     } else {
       requestLoadSong(prevSongFilePath)
     }
@@ -334,15 +317,11 @@ export function usePlayerControlsLogic({
         if (nextPlayingSongPath && preloadHit) {
           isInternalSongChange.value = true // 标记内部切换
           runtime.playingData.playingSong = nextPlayingSong // 更新当前播放歌曲
-
-          handleLoadPCM(
-            preloadHit.payload,
-            nextPlayingSongPath,
-            currentLoadRequestId.value,
-            preloadHit.bpm ?? undefined
-          ).finally(() => {
-            preloadApi.refreshPreloadWindow()
+          requestLoadSong(nextPlayingSongPath, {
+            preloadedAudio: preloadHit.audio,
+            preloadedBpm: preloadHit.bpm ?? undefined
           })
+          preloadApi.refreshPreloadWindow()
         } else if (nextPlayingSong) {
           // 列表未空，但未命中预加载
           isInternalSongChange.value = true
@@ -517,12 +496,10 @@ export function usePlayerControlsLogic({
       if (nextPlayingSongPath && preloadHit) {
         isInternalSongChange.value = true
         runtime.playingData.playingSong = nextPlayingSong
-        await handleLoadPCM(
-          preloadHit.payload,
-          nextPlayingSongPath,
-          currentLoadRequestId.value,
-          preloadHit.bpm ?? undefined
-        )
+        requestLoadSong(nextPlayingSongPath, {
+          preloadedAudio: preloadHit.audio,
+          preloadedBpm: preloadHit.bpm ?? undefined
+        })
         preloadApi.refreshPreloadWindow()
       } else if (nextPlayingSong) {
         isInternalSongChange.value = true
@@ -606,12 +583,10 @@ export function usePlayerControlsLogic({
 
             // 加载下一首歌或清空列表
             if (nextPlayingSong && preloadHit) {
-              await handleLoadPCM(
-                preloadHit.payload,
-                nextPlayingSong.filePath,
-                currentLoadRequestId.value,
-                preloadHit.bpm ?? undefined
-              )
+              requestLoadSong(nextPlayingSong.filePath, {
+                preloadedAudio: preloadHit.audio,
+                preloadedBpm: preloadHit.bpm ?? undefined
+              })
               preloadApi.refreshPreloadWindow()
             } else if (nextPlayingSong) {
               requestLoadSong(nextPlayingSong.filePath)

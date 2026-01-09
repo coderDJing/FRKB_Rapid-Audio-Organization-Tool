@@ -37,7 +37,6 @@ class AudioFeatureExtractor {
       const audioDataBuffer = Buffer.from(audioBuffer.getChannelData(0).buffer)
       md5Hash.update(audioDataBuffer)
       const md5Value = md5Hash.digest('hex')
-      console.log('音频文件MD5:', md5Value)
       // 获取音频数据（如果是立体声，转换为单声道）
       const audioData = this.getMonoChannel(audioBuffer)
 
