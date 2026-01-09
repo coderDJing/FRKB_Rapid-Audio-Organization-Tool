@@ -189,11 +189,32 @@ const {
   scrollLeft
 })
 
-const { setWaveformCanvasRef } = useWaveformPreview({
+const {
+  setWaveformCanvasRef,
+  getWaveformClickPercent,
+  requestWaveformPreview,
+  stopWaveformPreview,
+  isWaveformPreviewActive,
+  getWaveformPreviewPlayheadStyle
+} = useWaveformPreview({
   visibleSongsWithIndex,
   visibleColumns: visibleColumnsRef,
   songListRootDir: songListRootDirRef
 })
+
+const handleWaveformClick = (song: ISongInfo, event: MouseEvent) => {
+  if (event.button !== 0) return
+  const filePath = song?.filePath
+  if (!filePath) return
+  const percent = getWaveformClickPercent(filePath, event.clientX)
+  requestWaveformPreview(song, percent)
+}
+
+const handleWaveformStopClick = (event: MouseEvent) => {
+  event.stopPropagation()
+  event.preventDefault()
+  stopWaveformPreview()
+}
 
 const onRowsMouseOver = (e: MouseEvent) => {
   const cell = (e.target as HTMLElement)?.closest('.cell-title') as HTMLElement | null
@@ -320,13 +341,31 @@ onUnmounted(() => {
                 v-else-if="col.key === 'waveformPreview'"
                 class="cell-waveform"
                 :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
+                @click="handleWaveformClick(item.song, $event)"
               >
-                <canvas
-                  class="waveform-preview-canvas"
-                  :ref="
-                    (el) => setWaveformCanvasRef(item.song.filePath, el as HTMLCanvasElement | null)
-                  "
-                ></canvas>
+                <div class="waveform-preview-stop-slot">
+                  <button
+                    v-if="isWaveformPreviewActive(item.song.filePath)"
+                    class="waveform-preview-stop"
+                    type="button"
+                    aria-label="Stop preview"
+                    @click="handleWaveformStopClick"
+                  ></button>
+                </div>
+                <div class="waveform-preview-shell">
+                  <canvas
+                    class="waveform-preview-canvas"
+                    :ref="
+                      (el) =>
+                        setWaveformCanvasRef(item.song.filePath, el as HTMLCanvasElement | null)
+                    "
+                  ></canvas>
+                  <div
+                    v-if="isWaveformPreviewActive(item.song.filePath)"
+                    class="waveform-preview-playhead"
+                    :style="getWaveformPreviewPlayheadStyle(item.song.filePath)"
+                  ></div>
+                </div>
               </div>
               <div
                 v-else
@@ -417,7 +456,27 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  padding: 0 8px;
+  padding: 0 12px 0 7px;
+  position: relative;
+  cursor: default;
+  gap: 6px;
+}
+
+.waveform-preview-stop-slot {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.waveform-preview-shell {
+  position: relative;
+  width: 100%;
+  height: 18px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .waveform-preview-canvas {
@@ -426,6 +485,67 @@ onUnmounted(() => {
   display: block;
   color: var(--text-weak);
   pointer-events: none;
+}
+
+.waveform-preview-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.waveform-preview-stop {
+  width: 16px;
+  height: 16px;
+  background: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  padding: 0;
+  cursor: pointer;
+  z-index: 3;
+  opacity: 0.95;
+  appearance: none;
+  outline: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.2),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease,
+    opacity 120ms ease;
+}
+
+.waveform-preview-stop::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--bg);
+}
+
+.waveform-preview-stop:hover {
+  opacity: 1;
+  transform: scale(1.05);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.28),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.waveform-preview-stop:active {
+  transform: scale(0.98);
+}
+
+.waveform-preview-stop:focus-visible {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent),
+    0 2px 6px rgba(0, 0, 0, 0.28);
 }
 
 .cell-cover {

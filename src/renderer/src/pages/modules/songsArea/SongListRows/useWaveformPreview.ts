@@ -1,6 +1,7 @@
-import { computed, markRaw, nextTick, onUnmounted, watch, type Ref } from 'vue'
+import { computed, markRaw, nextTick, onUnmounted, ref, watch, type Ref } from 'vue'
 import type { ISongInfo, ISongsAreaColumn } from '../../../../../../types/globals'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import emitter from '@renderer/utils/mitt'
 import type {
   MixxxWaveformData,
   RGBWaveformBandKey,
@@ -214,8 +215,12 @@ export function useWaveformPreview(params: {
   const MAX_CACHE_ENTRIES = 200
   let loadTimer: ReturnType<typeof setTimeout> | null = null
   let drawRaf = 0
+  const previewActive = ref(false)
+  const previewFilePath = ref<string | null>(null)
+  const previewPercent = ref(0)
 
   const useHalfWaveform = () => (runtime.setting?.waveformMode ?? 'half') !== 'full'
+  const clamp01 = (value: number) => (Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0)
 
   const setWaveformCanvasRef = (filePath: string, el: HTMLCanvasElement | null) => {
     if (!filePath) return
@@ -237,6 +242,41 @@ export function useWaveformPreview(params: {
       paths.push(filePath)
     }
     return paths
+  }
+
+  const getWaveformClickPercent = (filePath: string, clientX: number) => {
+    const canvas = canvasMap.get(filePath)
+    if (!canvas) return 0
+    const rect = canvas.getBoundingClientRect()
+    if (!rect.width) return 0
+    return clamp01((clientX - rect.left) / rect.width)
+  }
+
+  const requestWaveformPreview = (song: ISongInfo, startPercent: number) => {
+    const filePath = typeof song?.filePath === 'string' ? song.filePath : ''
+    if (!filePath) return
+    emitter.emit('waveform-preview:play', {
+      filePath,
+      startPercent: clamp01(startPercent)
+    })
+    previewActive.value = true
+    previewFilePath.value = filePath
+    previewPercent.value = clamp01(startPercent)
+  }
+
+  const stopWaveformPreview = () => {
+    emitter.emit('waveform-preview:stop', { reason: 'explicit' })
+  }
+
+  const isWaveformPreviewActive = (filePath: string) =>
+    previewActive.value && previewFilePath.value === filePath
+
+  const getWaveformPreviewPlayheadStyle = (filePath: string) => {
+    if (!isWaveformPreviewActive(filePath)) return {}
+    const percent = clamp01(previewPercent.value)
+    return {
+      left: `${percent * 100}%`
+    }
   }
 
   const getMinMaxSamples = (filePath: string, data: MixxxWaveformData): MinMaxSample[] => {
@@ -489,6 +529,32 @@ export function useWaveformPreview(params: {
     void fetchWaveformBatch([filePath])
   }
 
+  const handleWaveformPreviewState = (payload: { filePath?: string; active?: boolean }) => {
+    const filePath = typeof payload?.filePath === 'string' ? payload.filePath : ''
+    const isActive = Boolean(payload?.active)
+    if (!isActive) {
+      if (!filePath || previewFilePath.value === filePath) {
+        previewActive.value = false
+        previewFilePath.value = null
+        previewPercent.value = 0
+      }
+      return
+    }
+    if (filePath) {
+      previewActive.value = true
+      previewFilePath.value = filePath
+    }
+  }
+
+  const handleWaveformPreviewProgress = (payload: { filePath?: string; percent?: number }) => {
+    const filePath = typeof payload?.filePath === 'string' ? payload.filePath : ''
+    if (!filePath) return
+    const percentRaw = typeof payload?.percent === 'number' ? payload.percent : 0
+    previewActive.value = true
+    previewFilePath.value = filePath
+    previewPercent.value = clamp01(percentRaw)
+  }
+
   watch(
     () => visibleSongsWithIndex.value.map((item) => item.song?.filePath || '').join('|'),
     () => {
@@ -535,6 +601,8 @@ export function useWaveformPreview(params: {
   if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
     window.electron.ipcRenderer.on('song-waveform-updated', handleWaveformUpdated)
   }
+  emitter.on('waveform-preview:state', handleWaveformPreviewState)
+  emitter.on('waveform-preview:progress', handleWaveformPreviewProgress)
 
   onUnmounted(() => {
     if (loadTimer) clearTimeout(loadTimer)
@@ -542,9 +610,16 @@ export function useWaveformPreview(params: {
     if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
       window.electron.ipcRenderer.removeListener('song-waveform-updated', handleWaveformUpdated)
     }
+    emitter.off('waveform-preview:state', handleWaveformPreviewState)
+    emitter.off('waveform-preview:progress', handleWaveformPreviewProgress)
   })
 
   return {
-    setWaveformCanvasRef
+    setWaveformCanvasRef,
+    getWaveformClickPercent,
+    requestWaveformPreview,
+    stopWaveformPreview,
+    isWaveformPreviewActive,
+    getWaveformPreviewPlayheadStyle
   }
 }

@@ -30,6 +30,7 @@ import { useKeyboardSelection } from '@renderer/pages/modules/songsArea/composab
 import { useAutoScrollToCurrent } from '@renderer/pages/modules/songsArea/composables/useAutoScrollToCurrent'
 import { useParentRafSampler } from '@renderer/pages/modules/songsArea/composables/useParentRafSampler'
 import { useSongsAreaEvents } from '@renderer/pages/modules/songsArea/composables/useSongsAreaEvents'
+import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
 
 // 资源导入
 import ascendingOrderAsset from '@renderer/assets/ascending-order.png?asset'
@@ -136,6 +137,7 @@ useSongsAreaEvents({
   openSongList,
   scheduleSweepCovers
 })
+useWaveformPreviewPlayer()
 
 onUnmounted(() => {
   emitter.off('playlistCacheCleared', handlePlaylistCacheCleared)
@@ -315,6 +317,9 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
 }
 
 const songDblClick = async (song: ISongInfo) => {
+  try {
+    emitter.emit('waveform-preview:stop', { reason: 'switch' })
+  } catch {}
   runtime.activeMenuUUID = ''
   runtime.songsArea.selectedSongFilePath = []
 
