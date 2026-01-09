@@ -4,21 +4,23 @@ import { t } from '@renderer/utils/translate'
 import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import emitter from '@renderer/utils/mitt'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import { WebAudioPlayer, type MixxxWaveformData } from './webAudioPlayer'
+import { WebAudioPlayer, type MixxxWaveformData, canPlayHtmlAudio } from './webAudioPlayer'
 
-type PcmPayload = {
+type WaveformCacheResponse = {
+  items?: Array<{ filePath: string; data: MixxxWaveformData | null }>
+}
+
+type DecodePayload = {
   pcmData: Float32Array
   sampleRate: number
   channels: number
   totalFrames: number
   mixxxWaveformData?: MixxxWaveformData | null
 }
-type SongFilePayload = PcmPayload & {
-  metaOnly?: boolean
-  durationMs?: number
-  fileSize?: number
-  skipDecode?: boolean
-  discardAfterDecode?: boolean
+
+type LoadOptions = {
+  preloadedAudio?: HTMLAudioElement | null
+  preloadedBpm?: number | string | null
 }
 
 export function useSongLoader(params: {
@@ -27,7 +29,7 @@ export function useSongLoader(params: {
   bpm: { value: number | string }
   waveformShow: { value: boolean }
   setCoverByIPC: (filePath: string) => void
-  onSongBuffered?: (filePath: string, payload: PcmPayload, bpm: number | string | null) => void
+  onSongBuffered?: (filePath: string, audio: HTMLAudioElement, bpm: number | string | null) => void
 }) {
   const { runtime, audioPlayer, bpm, waveformShow, setCoverByIPC, onSongBuffered } = params
 
@@ -37,8 +39,8 @@ export function useSongLoader(params: {
 
   let errorDialogShowing = false
 
-  const handleSongLoadError = async (filePath: string | null, isPreload: boolean) => {
-    // 预加载错误不在此处理
+  const handleSongLoadError = async (filePath: string | null, _isPreload: boolean) => {
+    void _isPreload
     if (!filePath || errorDialogShowing) return
 
     errorDialogShowing = true
@@ -92,169 +94,199 @@ export function useSongLoader(params: {
     }
   }
 
-  const requestLoadSong = (filePath: string) => {
-    isLoadingBlob.value = false
-    if (audioPlayer.value) {
-      if (audioPlayer.value.isPlaying()) audioPlayer.value.pause()
-      ignoreNextEmptyError.value = true
-      audioPlayer.value.empty()
-    }
-
-    runtime.playerReady = false
-
-    const newRequestId = currentLoadRequestId.value + 1
-    currentLoadRequestId.value = newRequestId
-    window.electron.ipcRenderer.send('readSongFile', filePath, newRequestId)
-  }
-
-  const handleMetadataOnlyResponse = (
-    filePath: string,
-    payload?: {
-      durationMs?: number
-      requestId?: number
-      fileSize?: number
-      skipDecode?: boolean
-      discardAfterDecode?: boolean
-    }
-  ) => {
-    waveformShow.value = false
-    bpm.value = ''
-    runtime.playerReady = false
-    runtime.isSwitchingSong = false
-    isLoadingBlob.value = false
-  }
-
-  const handleLoadPCM = async (
-    pcmData: SongFilePayload,
-    filePath: string,
-    requestId: number,
-    preloadedBpmValue?: number | string | null
-  ) => {
-    if (requestId !== currentLoadRequestId.value) return
-    if (isLoadingBlob.value) return
-    if (runtime.playingData.playingSong?.filePath !== filePath) return
-    if (pcmData.metaOnly) {
-      setCoverByIPC(filePath)
-      handleMetadataOnlyResponse(filePath, {
-        durationMs: pcmData.durationMs,
-        requestId,
-        fileSize: (pcmData as any).fileSize,
-        skipDecode: Boolean((pcmData as any).skipDecode),
-        discardAfterDecode: Boolean((pcmData as any).discardAfterDecode)
-      })
-      return
-    }
-
-    const playerInstance = audioPlayer.value
-    if (!playerInstance) return
-
-    setCoverByIPC(filePath)
-    waveformShow.value = true
-    let bpmValueAssigned = false
+  const resolveBpmValue = (preloadedBpmValue?: number | string | null) => {
     if (
       typeof preloadedBpmValue === 'number' &&
       Number.isFinite(preloadedBpmValue) &&
       preloadedBpmValue > 0
     ) {
       bpm.value = preloadedBpmValue
-      bpmValueAssigned = true
-    } else {
-      const cachedBpm = runtime.playingData.playingSong?.bpm
-      if (typeof cachedBpm === 'number' && Number.isFinite(cachedBpm) && cachedBpm > 0) {
-        bpm.value = cachedBpm
-        bpmValueAssigned = true
-      } else {
-        bpm.value = ''
+      return true
+    }
+    const cachedBpm = runtime.playingData.playingSong?.bpm
+    if (typeof cachedBpm === 'number' && Number.isFinite(cachedBpm) && cachedBpm > 0) {
+      bpm.value = cachedBpm
+      return true
+    }
+    bpm.value = ''
+    return false
+  }
+
+  const fetchWaveformCache = async (filePath: string, requestId: number) => {
+    let response: WaveformCacheResponse | null = null
+    try {
+      response = await window.electron.ipcRenderer.invoke('waveform-cache:batch', {
+        filePaths: [filePath]
+      })
+    } catch {
+      response = null
+    }
+
+    if (requestId !== currentLoadRequestId.value) return
+    if (runtime.playingData.playingSong?.filePath !== filePath) return
+
+    const item = response?.items?.find((entry) => entry.filePath === filePath)
+    const data = item?.data ?? null
+    const playerInstance = audioPlayer.value
+    if (!playerInstance) return
+    playerInstance.setMixxxWaveformData(data, filePath)
+  }
+
+  const startPlaybackWhenReady = (
+    playerInstance: WebAudioPlayer,
+    filePath: string,
+    requestId: number
+  ) => {
+    const startPlay = () => {
+      if (requestId !== currentLoadRequestId.value) return
+      if (runtime.playingData.playingSong?.filePath !== filePath) return
+      const duration = playerInstance.getDuration()
+      let startTime = 0
+      if (runtime.setting.enablePlaybackRange && duration > 0) {
+        const startPercent = runtime.setting.startPlayPercent ?? 0
+        const startValue =
+          typeof startPercent === 'number' ? startPercent : parseFloat(String(startPercent))
+        const safePercent = Number.isFinite(startValue) ? startValue : 0
+        startTime = (duration * Math.min(Math.max(safePercent, 0), 100)) / 100
+      }
+      try {
+        playerInstance.play(startTime)
+      } catch (playError: any) {
+        if (playError?.name !== 'AbortError') {
+          void handleSongLoadError(filePath, false)
+        }
+      } finally {
+        isLoadingBlob.value = false
       }
     }
 
+    if (playerInstance.isReady()) {
+      startPlay()
+      return
+    }
+
+    playerInstance.once('ready', startPlay)
+  }
+
+  const handleLoadSong = async (filePath: string, requestId: number, options?: LoadOptions) => {
+    if (requestId !== currentLoadRequestId.value) return
+    if (runtime.playingData.playingSong?.filePath !== filePath) return
+
+    const playerInstance = audioPlayer.value
+    if (!playerInstance) return
+
+    setCoverByIPC(filePath)
+    waveformShow.value = true
+    resolveBpmValue(options?.preloadedBpm ?? null)
+
+    isLoadingBlob.value = true
+
+    const useHtmlPlayback = canPlayHtmlAudio(filePath)
     try {
-      isLoadingBlob.value = true
+      playerInstance.setMixxxWaveformData(null, filePath)
+      if (useHtmlPlayback) {
+        playerInstance.loadFile(filePath, {
+          audioElement: options?.preloadedAudio ?? null
+        })
 
-      // 加载 PCM 数据到播放器
-      playerInstance.loadPCM(pcmData.pcmData, pcmData.sampleRate, pcmData.channels, {
-        filePath,
-        mixxxWaveformData: pcmData.mixxxWaveformData ?? null
-      })
-
-      if (requestId !== currentLoadRequestId.value) {
-        isLoadingBlob.value = false
-        return
-      }
-      if (runtime.playingData.playingSong?.filePath !== filePath) {
-        isLoadingBlob.value = false
-        return
-      }
-
-      onSongBuffered?.(filePath, pcmData, bpmValueAssigned ? bpm.value : null)
-
-      const duration = playerInstance.getDuration()
-
-      // 开始播放
-      try {
-        const reqIdToPlay = requestId
-        if (reqIdToPlay !== currentLoadRequestId.value) return
-        if (runtime.setting.enablePlaybackRange) {
-          const startPercent = runtime.setting.startPlayPercent ?? 0
-          const startTime = (duration * startPercent) / 100
-          playerInstance.play(startTime)
-        } else {
-          playerInstance.play()
+        const activeAudio = playerInstance.getAudioElement()
+        if (activeAudio) {
+          onSongBuffered?.(filePath, activeAudio, bpm.value || null)
         }
-      } catch (playError: any) {
-        if (playError?.name !== 'AbortError') {
-          await handleSongLoadError(filePath, false)
-        }
+
+        startPlaybackWhenReady(playerInstance, filePath, requestId)
+
+        void fetchWaveformCache(filePath, requestId)
+      } else {
+        window.electron.ipcRenderer.send('readSongFile', filePath, String(requestId))
       }
     } catch (loadError: any) {
+      isLoadingBlob.value = false
       if (loadError?.name !== 'AbortError') {
         await handleSongLoadError(filePath, false)
       }
-    } finally {
-      isLoadingBlob.value = false
     }
   }
 
-  const onReadedSongFile = (
-    event: any,
-    pcmData: SongFilePayload,
-    filePath: string,
-    requestId?: number
-  ) => {
-    if (requestId && requestId !== currentLoadRequestId.value) return
-    if (filePath !== runtime.playingData.playingSong?.filePath) {
-      return
+  const requestLoadSong = (filePath: string, options?: LoadOptions) => {
+    const normalized = typeof filePath === 'string' ? filePath.trim() : ''
+    if (!normalized) return
+
+    isLoadingBlob.value = false
+    if (audioPlayer.value) {
+      if (audioPlayer.value.isPlaying()) audioPlayer.value.pause()
+      ignoreNextEmptyError.value = true
+      audioPlayer.value.stop()
     }
-    if (pcmData.metaOnly) {
-      setCoverByIPC(filePath)
-      handleMetadataOnlyResponse(filePath, {
-        durationMs: pcmData.durationMs,
-        requestId,
-        fileSize: (pcmData as any).fileSize,
-        skipDecode: Boolean((pcmData as any).skipDecode),
-        discardAfterDecode: Boolean((pcmData as any).discardAfterDecode)
+
+    runtime.playerReady = false
+
+    const newRequestId = currentLoadRequestId.value + 1
+    currentLoadRequestId.value = newRequestId
+    void handleLoadSong(normalized, newRequestId, options)
+  }
+
+  const handleWaveformUpdated = (_event: unknown, payload: { filePath?: string }) => {
+    const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
+    if (!filePath) return
+    if (runtime.playingData.playingSong?.filePath !== filePath) return
+    void fetchWaveformCache(filePath, currentLoadRequestId.value)
+  }
+
+  const handleReadedSongFile = (
+    _event: unknown,
+    payload: DecodePayload,
+    filePath: string,
+    requestId: string
+  ) => {
+    const requestNumber = Number(requestId)
+    if (!Number.isFinite(requestNumber)) return
+    if (requestNumber !== currentLoadRequestId.value) return
+    if (runtime.playingData.playingSong?.filePath !== filePath) return
+
+    const playerInstance = audioPlayer.value
+    if (!playerInstance) return
+
+    try {
+      playerInstance.loadPCM({
+        pcmData: payload?.pcmData ?? new Float32Array(0),
+        sampleRate: payload?.sampleRate ?? 0,
+        channels: payload?.channels ?? 1,
+        totalFrames: payload?.totalFrames ?? 0,
+        mixxxWaveformData: payload?.mixxxWaveformData ?? null,
+        filePath
       })
-      return
+      startPlaybackWhenReady(playerInstance, filePath, requestNumber)
+    } catch (error: any) {
+      isLoadingBlob.value = false
+      if (error?.name !== 'AbortError') {
+        void handleSongLoadError(filePath, false)
+      }
     }
-    handleLoadPCM(pcmData, filePath, requestId || currentLoadRequestId.value)
   }
 
-  const onReadSongFileError = (
-    event: any,
+  const handleReadSongFileError = (
+    _event: unknown,
     filePath: string,
-    errorMessage: string,
-    requestId?: number
+    _message: string,
+    requestId: string
   ) => {
-    if (requestId && requestId !== currentLoadRequestId.value) return
-    handleSongLoadError(filePath, false)
+    const requestNumber = Number(requestId)
+    if (!Number.isFinite(requestNumber)) return
+    if (requestNumber !== currentLoadRequestId.value) return
+    if (runtime.playingData.playingSong?.filePath !== filePath) return
+    isLoadingBlob.value = false
+    void handleSongLoadError(filePath, false)
   }
 
-  window.electron.ipcRenderer.on('readedSongFile', onReadedSongFile)
-  window.electron.ipcRenderer.on('readSongFileError', onReadSongFileError)
+  window.electron.ipcRenderer.on('song-waveform-updated', handleWaveformUpdated)
+  window.electron.ipcRenderer.on('readedSongFile', handleReadedSongFile)
+  window.electron.ipcRenderer.on('readSongFileError', handleReadSongFileError)
 
   onUnmounted(() => {
-    window.electron.ipcRenderer.removeListener('readedSongFile', onReadedSongFile)
-    window.electron.ipcRenderer.removeListener('readSongFileError', onReadSongFileError)
+    window.electron.ipcRenderer.removeListener('song-waveform-updated', handleWaveformUpdated)
+    window.electron.ipcRenderer.removeListener('readedSongFile', handleReadedSongFile)
+    window.electron.ipcRenderer.removeListener('readSongFileError', handleReadSongFileError)
   })
 
   return {
@@ -262,7 +294,6 @@ export function useSongLoader(params: {
     isLoadingBlob,
     ignoreNextEmptyError,
     requestLoadSong,
-    handleLoadPCM,
     handleSongLoadError
   }
 }

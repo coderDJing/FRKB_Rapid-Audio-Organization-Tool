@@ -77,7 +77,7 @@ export function useWaveform(params: {
   const useHalfWaveform = () => (runtime.setting?.waveformMode ?? 'half') !== 'full'
 
   const drawFineWaveform = (width: number, height: number) => {
-    if (!soundCloudMinMaxData || !audioBuffer) {
+    if (!soundCloudMinMaxData) {
       clearCanvases()
       return
     }
@@ -480,7 +480,7 @@ export function useWaveform(params: {
   }
 
   const drawSoundCloudWaveform = (width: number, height: number) => {
-    if (!soundCloudMinMaxData || !audioBuffer) {
+    if (!soundCloudMinMaxData) {
       clearCanvases()
       return
     }
@@ -615,7 +615,7 @@ export function useWaveform(params: {
     const height = waveformHeight
     const player = audioPlayer.value
 
-    const duration = audioBuffer?.duration ?? player?.getDuration?.() ?? 0
+    const duration = player?.getDuration?.() ?? audioBuffer?.duration ?? 0
     const currentTime = player?.getCurrentTime?.() ?? 0
     const progress = duration > 0 ? currentTime / duration : 0
     updateProgressVisual(progress)
@@ -649,9 +649,8 @@ export function useWaveform(params: {
     if (!audioPlayer.value) return
     const player = audioPlayer.value
     const style = getWaveformStyle()
-    const buffer = player.audioBuffer
-
-    if (!buffer) {
+    const mixxxData = player.mixxxWaveformData ?? null
+    if (!mixxxData) {
       audioBuffer = null
       soundCloudMinMaxData = null
       mixxxMinMaxSource = null
@@ -661,18 +660,8 @@ export function useWaveform(params: {
       return
     }
 
-    const previousBuffer = audioBuffer
+    const buffer = player.audioBuffer ?? null
     audioBuffer = buffer
-    if (previousBuffer !== buffer) {
-      soundCloudMinMaxData = null
-      mixxxMinMaxSource = null
-    }
-
-    const mixxxData = player.mixxxWaveformData ?? null
-    if (!mixxxData) {
-      clearCanvases()
-      return
-    }
 
     if (style !== WAVEFORM_STYLE_RGB) {
       if (!soundCloudMinMaxData || mixxxMinMaxSource !== mixxxData) {

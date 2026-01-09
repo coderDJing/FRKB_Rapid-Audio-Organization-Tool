@@ -1,23 +1,13 @@
 import { ref, onUnmounted } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import { type MixxxWaveformData } from './webAudioPlayer'
-
-const logPreloadTimeline = (..._args: any[]) => {}
-
-type PcmPayload = {
-  pcmData: Float32Array
-  sampleRate: number
-  channels: number
-  totalFrames: number
-  mixxxWaveformData?: MixxxWaveformData | null
-}
+import { canPlayHtmlAudio, toPreviewUrl } from './webAudioPlayer'
 
 type PreloadCacheEntry = {
   filePath: string
   status: 'loading' | 'ready' | 'error'
   requestId: number
   offset: number
-  payload?: PcmPayload
+  audio?: HTMLAudioElement | null
   bpm?: number | string | null
   updatedAt: number
 }
@@ -30,7 +20,7 @@ type PreloadTask = {
 
 type PlaybackCache = {
   filePath: string
-  payload: PcmPayload | null
+  audio: HTMLAudioElement | null
   bpm: number | string | null
   storedAt: number
 }
@@ -39,19 +29,48 @@ type PreloadHit =
   | {
       source: 'next'
       filePath: string
-      payload: PcmPayload
+      audio: HTMLAudioElement
       bpm: number | string | null
     }
   | {
       source: 'previous'
       filePath: string
-      payload: PcmPayload
+      audio: HTMLAudioElement
       bpm: number | string | null
     }
 
 const PRELOAD_OFFSETS = [1, 2]
 const HISTORY_WINDOW = 1
 const PRELOAD_DELAY = 3000
+
+const releaseAudioElement = (audio?: HTMLAudioElement | null) => {
+  if (!audio) return false
+  try {
+    audio.pause()
+  } catch (_) {}
+  try {
+    audio.src = ''
+    audio.load()
+  } catch (_) {}
+  if (audio.parentNode) {
+    try {
+      audio.parentNode.removeChild(audio)
+    } catch (_) {}
+  }
+  return true
+}
+
+const createPreloadAudio = (filePath: string) => {
+  if (!canPlayHtmlAudio(filePath)) {
+    return null
+  }
+  const audio = document.createElement('audio')
+  audio.preload = 'auto'
+  audio.autoplay = false
+  audio.muted = false
+  audio.src = toPreviewUrl(filePath)
+  return audio
+}
 
 export function usePreloadNextSong(params: { runtime: ReturnType<typeof useRuntimeStore> }) {
   const { runtime } = params
@@ -93,34 +112,26 @@ export function usePreloadNextSong(params: { runtime: ReturnType<typeof useRunti
     }
   }
 
-  const releasePreloadPayload = (reason: string, entry?: PreloadCacheEntry | null) => {
+  const releasePreloadAudio = (reason: string, entry?: PreloadCacheEntry | null) => {
     void reason
-    if (!entry?.payload) return false
-    entry.payload = undefined
-    return true
+    if (!entry?.audio) return false
+    const released = releaseAudioElement(entry.audio)
+    entry.audio = null
+    return released
   }
 
-  const releasePlaybackPayload = (reason: string, entry?: PlaybackCache | null) => {
+  const releasePlaybackAudio = (reason: string, entry?: PlaybackCache | null) => {
     void reason
-    if (!entry?.payload) return false
-    entry.payload = null
-    return true
+    if (!entry?.audio) return false
+    const released = releaseAudioElement(entry.audio)
+    entry.audio = null
+    return released
   }
 
   const releasePlaybackCollection = (reason: string, entries: PlaybackCache[]) => {
     entries.forEach((entry) => {
-      releasePlaybackPayload(reason, entry)
+      releasePlaybackAudio(reason, entry)
     })
-  }
-
-  const releasePlaybackCaches = (reason: string) => {
-    if (currentPlayback.value) {
-      releasePlaybackPayload(reason, currentPlayback.value)
-    }
-    if (previousPlaybackList.value.length) {
-      releasePlaybackCollection(reason, previousPlaybackList.value)
-      previousPlaybackList.value = []
-    }
   }
 
   const clearNextCaches = () => {
@@ -129,29 +140,31 @@ export function usePreloadNextSong(params: { runtime: ReturnType<typeof useRunti
       if (entry.status === 'loading') {
         staleRequestIds.add(entry.requestId)
       }
-      releasePreloadPayload('clearNextCaches', entry)
+      releasePreloadAudio('clearNextCaches', entry)
     })
     preloadCache.clear()
     markActiveRequestStale()
-    logPreloadTimeline('cache:clear', { target: 'next' })
   }
 
   const clearAllCaches = () => {
     clearNextCaches()
     if (currentPlayback.value) {
-      releasePlaybackPayload('clearAllCaches', currentPlayback.value)
+      releasePlaybackAudio('clearAllCaches', currentPlayback.value)
       currentPlayback.value = null
     }
     if (previousPlaybackList.value.length) {
       releasePlaybackCollection('clearAllCaches', previousPlaybackList.value)
       previousPlaybackList.value = []
     }
-    logPreloadTimeline('cache:clear', { target: 'all' })
   }
 
-  const rememberPlayback = (filePath: string, payload: PcmPayload, bpm: number | string | null) => {
+  const rememberPlayback = (
+    filePath: string,
+    audio: HTMLAudioElement,
+    bpm: number | string | null
+  ) => {
     const currentEntry = currentPlayback.value
-    if (currentEntry && currentEntry.filePath === filePath && currentEntry.payload === payload) {
+    if (currentEntry && currentEntry.filePath === filePath && currentEntry.audio === audio) {
       currentPlayback.value = {
         ...currentEntry,
         bpm,
@@ -162,7 +175,7 @@ export function usePreloadNextSong(params: { runtime: ReturnType<typeof useRunti
 
     const wrapped: PlaybackCache = {
       filePath,
-      payload,
+      audio,
       bpm,
       storedAt: Date.now()
     }
@@ -185,10 +198,6 @@ export function usePreloadNextSong(params: { runtime: ReturnType<typeof useRunti
     if (droppedHistory.length > 0) {
       releasePlaybackCollection('history-window', droppedHistory)
     }
-    logPreloadTimeline('history:update', {
-      current: filePath,
-      previous: trimmed.map((item) => item.filePath)
-    })
   }
 
   const forgetCachesForFile = (filePath: string) => {
@@ -202,7 +211,7 @@ export function usePreloadNextSong(params: { runtime: ReturnType<typeof useRunti
       staleRequestIds.add(entry.requestId)
     }
     if (entry) {
-      releasePreloadPayload('forgetCachesForFile', entry)
+      releasePreloadAudio('forgetCachesForFile', entry)
     }
     preloadCache.delete(filePath)
     const removedHistoryEntries = previousPlaybackList.value.filter(
@@ -216,24 +225,25 @@ export function usePreloadNextSong(params: { runtime: ReturnType<typeof useRunti
     )
 
     if (currentPlayback.value?.filePath === filePath) {
-      releasePlaybackPayload('forgetCachesForFile', currentPlayback.value)
+      releasePlaybackAudio('forgetCachesForFile', currentPlayback.value)
       currentPlayback.value = null
     }
-    logPreloadTimeline('cache:forget', { file: filePath })
   }
 
   const takePreloadedData = (filePath: string): PreloadHit | null => {
+    if (!canPlayHtmlAudio(filePath)) {
+      forgetCachesForFile(filePath)
+      return null
+    }
     const cacheEntry = preloadCache.get(filePath)
-    if (cacheEntry && cacheEntry.status === 'ready' && cacheEntry.payload) {
-      const payload = cacheEntry.payload
-      releasePreloadPayload('supply:next', cacheEntry)
+    if (cacheEntry && cacheEntry.status === 'ready' && cacheEntry.audio) {
+      const audio = cacheEntry.audio
       preloadCache.delete(filePath)
-      logPreloadTimeline('supply:next', { file: filePath })
       const latestBpm = resolveBpmFromList(filePath)
       return {
         source: 'next',
         filePath,
-        payload,
+        audio,
         bpm: latestBpm ?? cacheEntry.bpm ?? null
       }
     }
@@ -241,15 +251,14 @@ export function usePreloadNextSong(params: { runtime: ReturnType<typeof useRunti
     const previousIndex = previousPlaybackList.value.findIndex((item) => item.filePath === filePath)
     if (previousIndex !== -1) {
       const matched = previousPlaybackList.value[previousIndex]
-      if (!matched.payload) {
+      if (!matched.audio) {
         return null
       }
-      logPreloadTimeline('supply:previous', { file: filePath })
       const latestBpm = resolveBpmFromList(filePath)
       return {
         source: 'previous',
         filePath,
-        payload: matched.payload,
+        audio: matched.audio,
         bpm: latestBpm ?? matched.bpm ?? null
       }
     }
@@ -258,7 +267,6 @@ export function usePreloadNextSong(params: { runtime: ReturnType<typeof useRunti
   }
 
   const enqueuePreloadTargets = (targets: PreloadTask[]) => {
-    const added: string[] = []
     for (const target of targets) {
       if (preloadCache.has(target.filePath)) {
         const exist = preloadCache.get(target.filePath)!
@@ -270,13 +278,6 @@ export function usePreloadNextSong(params: { runtime: ReturnType<typeof useRunti
       }
       if (preloadQueue.some((task) => task.filePath === target.filePath)) continue
       preloadQueue.push(target)
-      added.push(target.filePath)
-    }
-    if (added.length) {
-      logPreloadTimeline('queue:update', {
-        added,
-        queueLength: preloadQueue.length
-      })
     }
   }
 
@@ -284,7 +285,6 @@ export function usePreloadNextSong(params: { runtime: ReturnType<typeof useRunti
     if (activeRequest) return
     if (preloadQueue.length === 0) return
 
-    // 保证串行顺序：下一首优先，其次下下首，下下下首
     preloadQueue.sort((a, b) => a.offset - b.offset)
     const task = preloadQueue.shift()
     if (!task) return
@@ -300,15 +300,80 @@ export function usePreloadNextSong(params: { runtime: ReturnType<typeof useRunti
       bpm: task.bpm ?? null,
       updatedAt: Date.now()
     }
+
+    if (!canPlayHtmlAudio(task.filePath)) {
+      preloadCache.delete(task.filePath)
+      processQueue()
+      return
+    }
+
+    const audio = createPreloadAudio(task.filePath)
+    if (!audio) {
+      preloadCache.delete(task.filePath)
+      processQueue()
+      return
+    }
+    entry.audio = audio
     preloadCache.set(task.filePath, entry)
     activeRequest = { filePath: task.filePath, requestId }
 
-    logPreloadTimeline('decode:start', {
-      file: task.filePath,
-      offset: task.offset,
-      queueLength: preloadQueue.length
-    })
-    window.electron.ipcRenderer.send('readNextSongFile', task.filePath, requestId)
+    const finalize = (status: 'ready' | 'error') => {
+      if (staleRequestIds.has(requestId)) {
+        staleRequestIds.delete(requestId)
+        releasePreloadAudio('stale', entry)
+        if (activeRequest?.requestId === requestId) {
+          activeRequest = null
+        }
+        processQueue()
+        return
+      }
+
+      const latest = preloadCache.get(task.filePath)
+      if (!latest || latest.requestId !== requestId) {
+        releasePreloadAudio('mismatch', entry)
+        if (activeRequest?.requestId === requestId) {
+          activeRequest = null
+        }
+        processQueue()
+        return
+      }
+      if (latest.status !== 'loading') {
+        if (activeRequest?.requestId === requestId) {
+          activeRequest = null
+        }
+        processQueue()
+        return
+      }
+
+      if (status === 'ready') {
+        latest.status = 'ready'
+        latest.audio = audio
+        latest.bpm = latest.bpm ?? resolveBpmFromList(task.filePath)
+        latest.updatedAt = Date.now()
+      } else {
+        latest.status = 'error'
+        latest.updatedAt = Date.now()
+        releasePreloadAudio('decode:error', latest)
+        preloadCache.delete(task.filePath)
+      }
+
+      if (activeRequest?.requestId === requestId) {
+        activeRequest = null
+      }
+      processQueue()
+    }
+
+    audio.addEventListener('loadedmetadata', () => finalize('ready'), { once: true })
+    audio.addEventListener('error', () => finalize('error'), { once: true })
+
+    try {
+      audio.load()
+      if (audio.readyState >= 1) {
+        finalize('ready')
+      }
+    } catch (_) {
+      finalize('error')
+    }
   }
 
   const refreshPreloadWindow = () => {
@@ -333,25 +398,25 @@ export function usePreloadNextSong(params: { runtime: ReturnType<typeof useRunti
     const targets: PreloadTask[] = []
     for (const offset of PRELOAD_OFFSETS) {
       const nextItem = list[currentIndex + offset]
-      if (nextItem?.filePath) {
+      if (nextItem?.filePath && canPlayHtmlAudio(nextItem.filePath)) {
         const bpmValue =
           typeof nextItem.bpm === 'number' && Number.isFinite(nextItem.bpm) && nextItem.bpm > 0
             ? nextItem.bpm
             : null
         targets.push({ filePath: nextItem.filePath, offset, bpm: bpmValue })
+      } else if (nextItem?.filePath) {
+        forgetCachesForFile(nextItem.filePath)
       }
     }
 
     const allowed = new Set(targets.map((item) => item.filePath))
 
-    // 清理队列中不再需要的任务
     for (let i = preloadQueue.length - 1; i >= 0; i--) {
       if (!allowed.has(preloadQueue[i].filePath)) {
         preloadQueue.splice(i, 1)
       }
     }
 
-    // 清理缓存中不再需要的曲目
     const removedEntries: PreloadCacheEntry[] = []
     preloadCache.forEach((entry, filePath) => {
       if (allowed.has(filePath)) return
@@ -362,16 +427,10 @@ export function usePreloadNextSong(params: { runtime: ReturnType<typeof useRunti
     })
     removedEntries.forEach((entry) => {
       preloadCache.delete(entry.filePath)
-      releasePreloadPayload('refreshPreloadWindow', entry)
+      releasePreloadAudio('refreshPreloadWindow', entry)
     })
     enqueuePreloadTargets(targets)
     processQueue()
-    logPreloadTimeline('window:refresh', {
-      current: currentSong.filePath,
-      targets: targets.map((item) => item.filePath),
-      cacheSize: preloadCache.size,
-      queueLength: preloadQueue.length
-    })
   }
 
   const schedulePreloadAfterPlay = () => {
@@ -383,105 +442,8 @@ export function usePreloadNextSong(params: { runtime: ReturnType<typeof useRunti
     }, PRELOAD_DELAY)
   }
 
-  const onReadedNextSongFile = async (
-    event: any,
-    pcmData: PcmPayload & {
-      metaOnly?: boolean
-      durationMs?: number
-      fileSize?: number
-      skipDecode?: boolean
-      discardAfterDecode?: boolean
-    },
-    filePath: string,
-    requestId?: number
-  ) => {
-    void event
-    if (!requestId) return
-    if (staleRequestIds.has(requestId)) {
-      staleRequestIds.delete(requestId)
-      if (activeRequest?.requestId === requestId) {
-        activeRequest = null
-        processQueue()
-      }
-      return
-    }
-
-    const entry = preloadCache.get(filePath)
-    if (!entry || entry.requestId !== requestId) {
-      if (activeRequest?.requestId === requestId) {
-        activeRequest = null
-        processQueue()
-      }
-      return
-    }
-
-    if (pcmData.metaOnly) {
-      entry.status = 'ready'
-      entry.payload = undefined
-      entry.bpm = entry.bpm ?? resolveBpmFromList(filePath)
-      entry.updatedAt = Date.now()
-      if (activeRequest?.requestId === requestId) {
-        activeRequest = null
-      }
-      processQueue()
-      return
-    }
-
-    entry.status = 'ready'
-    entry.payload = pcmData
-    entry.bpm = entry.bpm ?? resolveBpmFromList(filePath)
-    entry.updatedAt = Date.now()
-    logPreloadTimeline('decode:ready', {
-      file: filePath,
-      bpm: entry.bpm,
-      cacheSize: preloadCache.size
-    })
-    if (activeRequest?.requestId === requestId) {
-      activeRequest = null
-    }
-    processQueue()
-  }
-
-  const onReadNextSongFileError = (
-    event: any,
-    filePath: string,
-    errorMessage: string,
-    requestId?: number
-  ) => {
-    void event
-    console.warn('[preload] 预加载失败', filePath, errorMessage)
-    if (!requestId) return
-    if (staleRequestIds.has(requestId)) {
-      staleRequestIds.delete(requestId)
-      if (activeRequest?.requestId === requestId) {
-        activeRequest = null
-        processQueue()
-      }
-      return
-    }
-
-    const entry = preloadCache.get(filePath)
-    if (entry && entry.requestId === requestId) {
-      entry.status = 'error'
-      entry.updatedAt = Date.now()
-      releasePreloadPayload('onReadNextSongFileError', entry)
-      preloadCache.delete(filePath)
-      logPreloadTimeline('decode:error', { file: filePath, message: errorMessage })
-    }
-
-    if (activeRequest?.requestId === requestId) {
-      activeRequest = null
-      processQueue()
-    }
-  }
-
-  window.electron.ipcRenderer.on('readedNextSongFile', onReadedNextSongFile)
-  window.electron.ipcRenderer.on('readNextSongFileError', onReadNextSongFileError)
-
   onUnmounted(() => {
     cancelPreloadTimer()
-    window.electron.ipcRenderer.removeListener('readedNextSongFile', onReadedNextSongFile)
-    window.electron.ipcRenderer.removeListener('readNextSongFileError', onReadNextSongFileError)
     clearAllCaches()
   })
 
