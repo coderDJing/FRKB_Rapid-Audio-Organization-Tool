@@ -341,7 +341,9 @@ export function useWaveformPreview(params: {
     samples: MinMaxSample[],
     style: WaveformStyle,
     isHalf: boolean,
-    color: string
+    baseColor: string,
+    progressColor: string,
+    playedPercent: number
   ) => {
     if (!samples.length || width <= 0 || height <= 0) return
     const barWidth = style === WAVEFORM_STYLE_SOUND_CLOUD ? 2 : 1
@@ -357,7 +359,7 @@ export function useWaveformPreview(params: {
     const baselineY = isHalf ? height : midY
     const scaleY = isHalf ? baselineY : midY
 
-    ctx.fillStyle = color || '#999999'
+    const rects: Array<{ x: number; y: number; width: number; height: number }> = []
 
     for (let index = 0; index < columnCount; index++) {
       const start = Math.floor(index * samplesPerColumn)
@@ -374,17 +376,30 @@ export function useWaveformPreview(params: {
       }
 
       const amplitudePx = Math.max(1, peak * scaleY)
-      if (isHalf) {
-        const rectHeight = Math.max(1, amplitudePx)
-        const y = baselineY - rectHeight
-        const x = Math.max(0, Math.min(width - drawWidth, index * spacing + offset))
-        ctx.fillRect(x, y, drawWidth, rectHeight)
-      } else {
-        const rectHeight = Math.max(1, amplitudePx * 2)
-        const y = baselineY - amplitudePx
-        const x = Math.max(0, Math.min(width - drawWidth, index * spacing + offset))
-        ctx.fillRect(x, y, drawWidth, rectHeight)
+      const rectHeight = isHalf ? Math.max(1, amplitudePx) : Math.max(1, amplitudePx * 2)
+      const y = isHalf ? baselineY - rectHeight : baselineY - amplitudePx
+      const x = Math.max(0, Math.min(width - drawWidth, index * spacing + offset))
+      rects.push({ x, y, width: drawWidth, height: rectHeight })
+    }
+
+    const paintRects = (fillStyle: string) => {
+      ctx.fillStyle = fillStyle || '#999999'
+      for (const rect of rects) {
+        ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
       }
+    }
+
+    paintRects(baseColor)
+
+    const clampedPlayed = clamp01(playedPercent)
+    if (clampedPlayed > 0) {
+      const playedWidth = width * clampedPlayed
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(0, 0, playedWidth, height)
+      ctx.clip()
+      paintRects(progressColor)
+      ctx.restore()
     }
   }
 
@@ -445,8 +460,22 @@ export function useWaveformPreview(params: {
     }
 
     const samples = getMinMaxSamples(filePath, data)
-    const color = typeof window !== 'undefined' ? getComputedStyle(canvas).color : '#999999'
-    drawMinMaxWaveform(ctx, width, height, samples, style, isHalf, color)
+    const computedStyle = typeof window !== 'undefined' ? getComputedStyle(canvas) : null
+    const baseColor = computedStyle?.color || '#999999'
+    const accent = computedStyle?.getPropertyValue('--accent') || ''
+    const progressColor = accent.trim() || '#0078d4'
+    const playedPercent = isWaveformPreviewActive(filePath) ? clamp01(previewPercent.value) : 0
+    drawMinMaxWaveform(
+      ctx,
+      width,
+      height,
+      samples,
+      style,
+      isHalf,
+      baseColor,
+      progressColor,
+      playedPercent
+    )
   }
 
   const drawVisible = () => {
