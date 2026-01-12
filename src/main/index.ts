@@ -20,7 +20,8 @@ import {
   loadInitialSettings
 } from './bootstrap/settings'
 import {
-  ensureWindowsContextMenu,
+  clearWindowsContextMenuSignature,
+  ensureWindowsContextMenuIfNeeded,
   hasWindowsContextMenu,
   removeWindowsContextMenu
 } from './platform/windowsContextMenu'
@@ -41,9 +42,8 @@ import { keyAnalysisEvents, startKeyAnalysisBackground } from './services/keyAna
 // import AudioFeatureExtractor from './mfccTest'
 
 const initDevDatabase = false
-const dev_DB = 'C:\\Users\\renlu\\Desktop\\FRKB_database'
-const my_real_DB = 'D:\\FRKB_database'
-// 需要切换时，将下一行改为 my_real_DB
+const dev_DB = 'D:/FRKB_database'
+const my_real_DB = 'D:/FRKB_database'
 let devDatabase = dev_DB
 
 // 主题：默认按设置文件（首次为 system），不再强制日间模式
@@ -192,7 +192,7 @@ let devInitDatabaseFunction = async () => {
   await saveList([])
 }
 if (is.dev && platform === 'win32') {
-  // store.settingConfig.databaseUrl = devDatabase
+  store.settingConfig.databaseUrl = devDatabase
   // if (initDevDatabase) {
   //   if (devDatabase !== my_real_DB) {
   //     // 做一个保险，防止误操作把我真实数据库删了
@@ -293,9 +293,11 @@ app.whenReady().then(async () => {
   queueExternalAudioFiles(process.argv.slice(1))
   if (process.platform === 'win32') {
     if ((store as any).settingConfig.enableExplorerContextMenu !== false) {
-      await ensureWindowsContextMenu()
+      void ensureWindowsContextMenuIfNeeded().catch(() => {})
     } else {
-      await removeWindowsContextMenu()
+      void removeWindowsContextMenu()
+        .then(() => clearWindowsContextMenuSignature())
+        .catch(() => {})
     }
   }
   app.on('browser-window-created', (_, window) => {

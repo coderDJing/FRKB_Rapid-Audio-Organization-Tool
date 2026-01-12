@@ -1,7 +1,11 @@
 import { ipcMain } from 'electron'
 import store from '../store'
 import { applyThemeFromSettings, broadcastSystemThemeIfNeeded } from '../bootstrap/settings'
-import { ensureWindowsContextMenu, removeWindowsContextMenu } from '../platform/windowsContextMenu'
+import {
+  clearWindowsContextMenuSignature,
+  ensureWindowsContextMenuIfNeeded,
+  removeWindowsContextMenu
+} from '../platform/windowsContextMenu'
 import { rebuildMacMenusForCurrentFocus } from '../menu/macMenu'
 import { saveLibrarySettingsFromConfig } from '../librarySettingsDb'
 import { persistSettingConfig } from '../settingsPersistence'
@@ -41,12 +45,11 @@ export function registerSettingsHandlers(deps: Dependencies) {
 
     if (process.platform === 'win32') {
       const nextContextMenu = !!(store as any).settingConfig?.enableExplorerContextMenu
-      if (nextContextMenu !== prevContextMenu) {
-        if (nextContextMenu) {
-          await ensureWindowsContextMenu()
-        } else {
-          await removeWindowsContextMenu()
-        }
+      if (nextContextMenu) {
+        await ensureWindowsContextMenuIfNeeded()
+      } else if (prevContextMenu) {
+        await removeWindowsContextMenu()
+        await clearWindowsContextMenuSignature()
       }
     }
   })
