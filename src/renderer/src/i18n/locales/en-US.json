@@ -645,12 +645,14 @@
   "filters": {
     "filterByText": "Filter by text (contains)",
     "filterByDuration": "Filter by duration",
+    "filterByBpm": "Filter by BPM",
     "equals": "Equals",
     "greaterOrEqual": "Greater or equal",
     "lessOrEqual": "Less or equal",
     "keywordPlaceholder": "Please enter keyword",
     "clearThisColumn": "Clear column",
     "durationPlaceholder": "MM:SS",
+    "bpmPlaceholder": "e.g. 128 or 128.5",
     "noResults": "No results for current filters",
     "noResultsHint": "Try widening conditions or clear filters.",
     "persistFiltersAfterRestart": "Keep filter conditions after restart"
