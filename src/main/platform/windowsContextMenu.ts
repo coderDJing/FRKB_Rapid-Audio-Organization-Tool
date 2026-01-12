@@ -1,6 +1,7 @@
 import { execFile, execFileSync } from 'child_process'
 import store from '../store'
 import { log } from '../log'
+import { persistSettingConfig } from '../settingsPersistence'
 
 const WINDOWS_LEGACY_CONTEXT_MENU_REG_PATH = 'HKCU\\Software\\Classes\\*\\shell\\PlayWithFRKB'
 
@@ -13,7 +14,7 @@ const runRegCommand = (args: string[]): Promise<void> => {
   })
 }
 
-const getWindowsContextMenuPaths = (): string[] => {
+const getNormalizedExtensions = (): string[] => {
   if (process.platform !== 'win32') return []
   const extensions = Array.isArray(store.settingConfig.audioExt) ? store.settingConfig.audioExt : []
   const normalized = extensions
@@ -24,7 +25,12 @@ const getWindowsContextMenuPaths = (): string[] => {
     })
     .filter(Boolean)
   const unique = Array.from(new Set(normalized.map((ext) => ext.toLowerCase())))
-  return unique.map(
+  unique.sort()
+  return unique
+}
+
+const getWindowsContextMenuPaths = (): string[] => {
+  return getNormalizedExtensions().map(
     (ext) => `HKCU\\Software\\Classes\\SystemFileAssociations\\${ext}\\shell\\PlayWithFRKB`
   )
 }
@@ -60,6 +66,26 @@ export async function ensureWindowsContextMenu(): Promise<void> {
   }
 }
 
+const buildContextMenuSignature = (): string => {
+  if (process.platform !== 'win32') return ''
+  const payload = {
+    execPath: process.execPath || '',
+    exts: getNormalizedExtensions()
+  }
+  return JSON.stringify(payload)
+}
+
+export async function ensureWindowsContextMenuIfNeeded(): Promise<void> {
+  if (process.platform !== 'win32') return
+  const signature = buildContextMenuSignature()
+  if (!signature) return
+  const stored = String((store.settingConfig as any).windowsContextMenuSignature || '')
+  if (stored === signature) return
+  await ensureWindowsContextMenu()
+  ;(store.settingConfig as any).windowsContextMenuSignature = signature
+  await persistSettingConfig()
+}
+
 export async function removeWindowsContextMenu(): Promise<void> {
   if (process.platform !== 'win32') return
   const shellPaths = getWindowsContextMenuPaths()
@@ -71,6 +97,13 @@ export async function removeWindowsContextMenu(): Promise<void> {
     }
   }
   await removeLegacyWindowsContextMenu()
+}
+
+export async function clearWindowsContextMenuSignature(): Promise<void> {
+  if (process.platform !== 'win32') return
+  if (!('windowsContextMenuSignature' in (store.settingConfig as any))) return
+  delete (store.settingConfig as any).windowsContextMenuSignature
+  await persistSettingConfig()
 }
 
 export function hasWindowsContextMenu(): boolean {

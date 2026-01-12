@@ -260,6 +260,7 @@ interface ISettingConfig {
   // 是否在重启后保留“曲目筛选条件”（默认不保留）
   persistSongFilters: boolean
   enableExplorerContextMenu?: boolean
+  windowsContextMenuSignature?: string
   // 是否在歌单名称后显示曲目数量
   showPlaylistTrackCount: boolean
   // 迁移标记：是否已将 .aif/.aiff 默认加入 audioExt（避免重复覆盖用户选择）
