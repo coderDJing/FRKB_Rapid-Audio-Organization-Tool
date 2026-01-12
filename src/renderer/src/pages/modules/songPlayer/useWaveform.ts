@@ -40,11 +40,14 @@ export function useWaveform(params: {
   const MIXXX_BASE_ALPHA = 1
   const MIXXX_PROGRESS_ALPHA = 1
   const MIXXX_MAX_RGB_ENERGY = Math.sqrt(255 * 255 * 3)
+  const MIXXX_RGB_BRIGHTNESS_SCALE = 0.95
+  const MIXXX_RGB_PROGRESS_BRIGHTNESS_SCALE = 0.4
   const MIXXX_RGB_COMPONENTS: Record<RGBWaveformBandKey, { r: number; g: number; b: number }> = {
     low: { r: 1, g: 0, b: 0 },
     mid: { r: 0, g: 1, b: 0 },
     high: { r: 0, g: 0, b: 1 }
   }
+  const toColorChannel = (value: number) => Math.max(0, Math.min(255, Math.round(value)))
   const normalizeWaveformStyle = (
     style?: WaveformStyle | 'RekordboxMini' | 'Mixxx'
   ): WaveformStyle => {
@@ -68,6 +71,7 @@ export function useWaveform(params: {
     amplitudeLeft: number
     amplitudeRight: number
     color: { r: number; g: number; b: number }
+    progressColor: { r: number; g: number; b: number }
   }
 
   const getWaveformStyle = (): WaveformStyle => {
@@ -271,9 +275,17 @@ export function useWaveform(params: {
       const color =
         maxColor > 0
           ? {
-              r: Math.round((red / maxColor) * 255),
-              g: Math.round((green / maxColor) * 255),
-              b: Math.round((blue / maxColor) * 255)
+              r: toColorChannel((red / maxColor) * 255 * MIXXX_RGB_BRIGHTNESS_SCALE),
+              g: toColorChannel((green / maxColor) * 255 * MIXXX_RGB_BRIGHTNESS_SCALE),
+              b: toColorChannel((blue / maxColor) * 255 * MIXXX_RGB_BRIGHTNESS_SCALE)
+            }
+          : { r: 0, g: 0, b: 0 }
+      const progressColor =
+        maxColor > 0
+          ? {
+              r: toColorChannel((red / maxColor) * 255 * MIXXX_RGB_PROGRESS_BRIGHTNESS_SCALE),
+              g: toColorChannel((green / maxColor) * 255 * MIXXX_RGB_PROGRESS_BRIGHTNESS_SCALE),
+              b: toColorChannel((blue / maxColor) * 255 * MIXXX_RGB_PROGRESS_BRIGHTNESS_SCALE)
             }
           : { r: 0, g: 0, b: 0 }
 
@@ -283,7 +295,8 @@ export function useWaveform(params: {
       columns[x] = {
         amplitudeLeft,
         amplitudeRight,
-        color
+        color,
+        progressColor
       }
     }
 
@@ -579,14 +592,14 @@ export function useWaveform(params: {
     const centerY = height / 2
     const maxAmplitude = isHalf ? height : centerY
 
-    const drawOnCtx = (ctx: CanvasRenderingContext2D, alpha: number) => {
+    const drawOnCtx = (ctx: CanvasRenderingContext2D, alpha: number, useProgressColor: boolean) => {
       ctx.save()
       ctx.globalAlpha = alpha
       ctx.globalCompositeOperation = 'source-over'
 
       for (let x = 0; x < columns.length; x++) {
         const column = columns[x]
-        const { r, g, b } = column.color
+        const { r, g, b } = useProgressColor ? column.progressColor : column.color
         if (!r && !g && !b) continue
 
         const amplitudeTop = Math.max(1, column.amplitudeLeft * maxAmplitude)
@@ -603,8 +616,8 @@ export function useWaveform(params: {
       ctx.restore()
     }
 
-    drawOnCtx(baseCtx, MIXXX_BASE_ALPHA)
-    drawOnCtx(progressCtx, MIXXX_PROGRESS_ALPHA)
+    drawOnCtx(baseCtx, MIXXX_BASE_ALPHA, false)
+    drawOnCtx(progressCtx, MIXXX_PROGRESS_ALPHA, true)
   }
 
   const drawWaveform = (forceRedraw = false) => {

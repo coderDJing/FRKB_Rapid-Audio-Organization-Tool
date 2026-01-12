@@ -19,17 +19,21 @@ type MixxxColumnMetrics = {
   amplitudeLeft: number
   amplitudeRight: number
   color: { r: number; g: number; b: number }
+  progressColor: { r: number; g: number; b: number }
 }
 
 const WAVEFORM_STYLE_SOUND_CLOUD: WaveformStyle = 'SoundCloud'
 const WAVEFORM_STYLE_FINE: WaveformStyle = 'Fine'
 const WAVEFORM_STYLE_RGB: WaveformStyle = 'RGB'
 const MIXXX_MAX_RGB_ENERGY = Math.sqrt(255 * 255 * 3)
+const MIXXX_RGB_BRIGHTNESS_SCALE = 0.95
+const MIXXX_RGB_PROGRESS_BRIGHTNESS_SCALE = 0.6
 const MIXXX_RGB_COMPONENTS: Record<RGBWaveformBandKey, { r: number; g: number; b: number }> = {
   low: { r: 1, g: 0, b: 0 },
   mid: { r: 0, g: 1, b: 0 },
   high: { r: 0, g: 0, b: 1 }
 }
+const toColorChannel = (value: number) => Math.max(0, Math.min(255, Math.round(value)))
 
 const normalizeWaveformStyle = (
   style?: WaveformStyle | 'RekordboxMini' | 'Mixxx'
@@ -172,9 +176,17 @@ const computeMixxxColumnMetrics = (
     const color =
       maxColor > 0
         ? {
-            r: Math.round((red / maxColor) * 255),
-            g: Math.round((green / maxColor) * 255),
-            b: Math.round((blue / maxColor) * 255)
+            r: toColorChannel((red / maxColor) * 255 * MIXXX_RGB_BRIGHTNESS_SCALE),
+            g: toColorChannel((green / maxColor) * 255 * MIXXX_RGB_BRIGHTNESS_SCALE),
+            b: toColorChannel((blue / maxColor) * 255 * MIXXX_RGB_BRIGHTNESS_SCALE)
+          }
+        : { r: 0, g: 0, b: 0 }
+    const progressColor =
+      maxColor > 0
+        ? {
+            r: toColorChannel((red / maxColor) * 255 * MIXXX_RGB_PROGRESS_BRIGHTNESS_SCALE),
+            g: toColorChannel((green / maxColor) * 255 * MIXXX_RGB_PROGRESS_BRIGHTNESS_SCALE),
+            b: toColorChannel((blue / maxColor) * 255 * MIXXX_RGB_PROGRESS_BRIGHTNESS_SCALE)
           }
         : { r: 0, g: 0, b: 0 }
 
@@ -184,7 +196,8 @@ const computeMixxxColumnMetrics = (
     columns[x] = {
       amplitudeLeft,
       amplitudeRight,
-      color
+      color,
+      progressColor
     }
   }
 
@@ -380,17 +393,22 @@ export function useWaveformPreview(params: {
     width: number,
     height: number,
     waveformData: MixxxWaveformData,
-    isHalf: boolean
+    isHalf: boolean,
+    playedPercent: number
   ) => {
     const columns = computeMixxxColumnMetrics(Math.max(1, Math.floor(width)), waveformData)
     if (!columns.length) return
 
     const centerY = height / 2
     const maxAmplitude = isHalf ? height : centerY
+    const playedColumns = Math.min(
+      columns.length,
+      Math.max(0, Math.floor(columns.length * playedPercent))
+    )
 
     for (let x = 0; x < columns.length; x++) {
       const column = columns[x]
-      const { r, g, b } = column.color
+      const { r, g, b } = x < playedColumns ? column.progressColor : column.color
       if (!r && !g && !b) continue
 
       const amplitudeTop = Math.max(1, column.amplitudeLeft * maxAmplitude)
@@ -421,7 +439,8 @@ export function useWaveformPreview(params: {
     const isHalf = useHalfWaveform()
 
     if (style === WAVEFORM_STYLE_RGB) {
-      drawRgbWaveform(ctx, width, height, data, isHalf)
+      const playedPercent = isWaveformPreviewActive(filePath) ? clamp01(previewPercent.value) : 0
+      drawRgbWaveform(ctx, width, height, data, isHalf, playedPercent)
       return
     }
 
@@ -533,16 +552,21 @@ export function useWaveformPreview(params: {
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath : ''
     const isActive = Boolean(payload?.active)
     if (!isActive) {
+      const previousFilePath = previewFilePath.value
       if (!filePath || previewFilePath.value === filePath) {
         previewActive.value = false
         previewFilePath.value = null
         previewPercent.value = 0
+      }
+      if (previousFilePath) {
+        drawWaveform(previousFilePath)
       }
       return
     }
     if (filePath) {
       previewActive.value = true
       previewFilePath.value = filePath
+      drawWaveform(filePath)
     }
   }
 
@@ -553,6 +577,7 @@ export function useWaveformPreview(params: {
     previewActive.value = true
     previewFilePath.value = filePath
     previewPercent.value = clamp01(percentRaw)
+    drawWaveform(filePath)
   }
 
   watch(
