@@ -648,12 +648,14 @@
   "filters": {
     "filterByText": "按文本筛选（包含匹配）",
     "filterByDuration": "按时长筛选",
+    "filterByBpm": "按 BPM 筛选",
     "equals": "等于",
     "greaterOrEqual": "大于等于",
     "lessOrEqual": "小于等于",
     "keywordPlaceholder": "请输入关键词",
     "clearThisColumn": "清空本列",
     "durationPlaceholder": "MM:SS",
+    "bpmPlaceholder": "例如 128 或 128.5",
     "noResults": "未找到符合筛选条件的曲目",
     "noResultsHint": "可尝试放宽条件或清空筛选。",
     "persistFiltersAfterRestart": "重新启动保留筛选条件"

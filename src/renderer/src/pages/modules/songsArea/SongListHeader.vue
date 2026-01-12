@@ -235,6 +235,7 @@ const filterActiveKey = ref<string>('')
 const tempText = ref<string>('')
 const tempOp = ref<'eq' | 'gte' | 'lte'>('gte')
 const tempDuration = ref<string>('00:00')
+const tempNumber = ref<string>('')
 
 // 打开筛选弹窗
 function handleFilterIconClick(e: MouseEvent, col: ISongsAreaColumn) {
@@ -245,6 +246,9 @@ function handleFilterIconClick(e: MouseEvent, col: ISongsAreaColumn) {
   } else if (col.filterType === 'duration') {
     tempOp.value = col.filterOp || 'gte'
     tempDuration.value = col.filterDuration || '00:00'
+  } else if (col.filterType === 'bpm') {
+    tempOp.value = col.filterOp || 'gte'
+    tempNumber.value = col.filterNumber || ''
   }
 }
 
@@ -266,6 +270,15 @@ function normalizeMmSs(input: string): string {
   return `${mm}:${ss}`
 }
 
+function normalizeNumberInput(input: string): string {
+  const raw = String(input || '').trim()
+  if (!raw) return ''
+  const cleaned = raw.replace(/[^0-9.]/g, '')
+  if (!cleaned) return ''
+  const parts = cleaned.split('.')
+  return parts.length > 1 ? `${parts[0]}.${parts.slice(1).join('')}` : parts[0]
+}
+
 function applyFilterConfirm(target: ISongsAreaColumn) {
   const newColumns = props.columns.map((c) => {
     if (c.key !== target.key) return c
@@ -280,6 +293,13 @@ function applyFilterConfirm(target: ISongsAreaColumn) {
       next.filterDuration = normalizeMmSs(tempDuration.value)
       next.filterActive = !!next.filterDuration
       next.filterValue = undefined
+      next.filterNumber = undefined
+    } else if (c.filterType === 'bpm') {
+      next.filterOp = tempOp.value
+      next.filterNumber = normalizeNumberInput(tempNumber.value)
+      next.filterActive = !!next.filterNumber
+      next.filterValue = undefined
+      next.filterDuration = undefined
     }
     return next
   })
@@ -295,7 +315,8 @@ function clearFilter(target: ISongsAreaColumn) {
       filterActive: false,
       filterValue: undefined,
       filterOp: undefined,
-      filterDuration: undefined
+      filterDuration: undefined,
+      filterNumber: undefined
     }
   })
   emit('update:columns', newColumns)
@@ -316,6 +337,15 @@ function getFilterTooltip(col: ISongsAreaColumn): string {
           ? props.t('filters.greaterOrEqual')
           : props.t('filters.lessOrEqual')
     return `${props.t('filters.filterByDuration')}: ${op} ${col.filterDuration || ''}`
+  }
+  if (col.filterType === 'bpm') {
+    const op =
+      col.filterOp === 'eq'
+        ? props.t('filters.equals')
+        : col.filterOp === 'gte'
+          ? props.t('filters.greaterOrEqual')
+          : props.t('filters.lessOrEqual')
+    return `${props.t('filters.filterByBpm')}: ${op} ${col.filterNumber || ''}`
   }
   return ''
 }
@@ -393,13 +423,17 @@ const handleContextMenu = (event: MouseEvent) => {
           :initText="tempText"
           :initOp="tempOp"
           :initDuration="tempDuration"
+          :initNumber="tempNumber"
           @confirm="
             (payload) => {
               if (payload.type === 'text') {
                 tempText = (payload as any).text
-              } else {
+              } else if (payload.type === 'duration') {
                 tempOp = (payload as any).op
                 tempDuration = (payload as any).duration
+              } else if (payload.type === 'bpm') {
+                tempOp = (payload as any).op
+                tempNumber = (payload as any).value
               }
               applyFilterConfirm(col)
             }

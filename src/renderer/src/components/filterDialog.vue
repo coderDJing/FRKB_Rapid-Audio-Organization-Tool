@@ -9,16 +9,20 @@ import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 type Op = 'eq' | 'gte' | 'lte'
 
 const props = defineProps<{
-  type: 'text' | 'duration'
+  type: 'text' | 'duration' | 'bpm'
   initText?: string
   initOp?: Op
   initDuration?: string
+  initNumber?: string
 }>()
 
 const emits = defineEmits<{
   (
     e: 'confirm',
-    payload: { type: 'text'; text: string } | { type: 'duration'; op: Op; duration: string }
+    payload:
+      | { type: 'text'; text: string }
+      | { type: 'duration'; op: Op; duration: string }
+      | { type: 'bpm'; op: Op; value: string }
   ): void
   (e: 'cancel'): void
   (e: 'clear'): void
@@ -29,13 +33,15 @@ const uuid = uuidV4()
 const text = ref(props.initText || '')
 const op = ref<Op>(props.initOp || 'gte')
 const duration = ref(props.initDuration || '00:00')
+const numberValue = ref(props.initNumber || '')
 
 watch(
-  () => [props.initText, props.initOp, props.initDuration, props.type],
+  () => [props.initText, props.initOp, props.initDuration, props.initNumber, props.type],
   () => {
     text.value = props.initText || ''
     op.value = props.initOp || 'gte'
     duration.value = props.initDuration || '00:00'
+    numberValue.value = props.initNumber || ''
   }
 )
 
@@ -52,13 +58,24 @@ function normalizeMmSs(input: string): string {
   return `${mm}:${ss}`
 }
 
+function normalizeNumberInput(input: string): string {
+  const raw = String(input || '').trim()
+  if (!raw) return ''
+  const cleaned = raw.replace(/[^0-9.]/g, '')
+  if (!cleaned) return ''
+  const parts = cleaned.split('.')
+  return parts.length > 1 ? `${parts[0]}.${parts.slice(1).join('')}` : parts[0]
+}
+
 const { dialogVisible, closeWithAnimation } = useDialogTransition()
 
 const handleConfirm = () => {
   const payload =
     props.type === 'text'
       ? ({ type: 'text', text: text.value.trim() } as const)
-      : ({ type: 'duration', op: op.value, duration: normalizeMmSs(duration.value) } as const)
+      : props.type === 'duration'
+        ? ({ type: 'duration', op: op.value, duration: normalizeMmSs(duration.value) } as const)
+        : ({ type: 'bpm', op: op.value, value: normalizeNumberInput(numberValue.value) } as const)
   closeWithAnimation(() => emits('confirm', payload))
 }
 const handleCancel = () => closeWithAnimation(() => emits('cancel'))
@@ -98,9 +115,15 @@ onUnmounted(() => {
       style="width: 420px; min-height: 240px; display: flex; flex-direction: column"
     >
       <div class="dialog-title dialog-header">
-        <span>{{
-          props.type === 'text' ? t('filters.filterByText') : t('filters.filterByDuration')
-        }}</span>
+        <span>
+          {{
+            props.type === 'text'
+              ? t('filters.filterByText')
+              : props.type === 'duration'
+                ? t('filters.filterByDuration')
+                : t('filters.filterByBpm')
+          }}
+        </span>
       </div>
       <div style="padding: 10px 20px; flex: 1; overflow-y: auto">
         <template v-if="props.type === 'text'">
@@ -112,7 +135,7 @@ onUnmounted(() => {
             style="width: 100%"
           />
         </template>
-        <template v-else>
+        <template v-else-if="props.type === 'duration'">
           <div class="radio-group">
             <label class="radio"
               ><input type="radio" value="gte" v-model="op" /><span class="dot"></span
@@ -140,6 +163,31 @@ onUnmounted(() => {
             <div class="tag" @click="duration = '03:00'">03:00</div>
             <div class="tag" @click="duration = '05:00'">05:00</div>
           </div>
+        </template>
+        <template v-else>
+          <div class="radio-group">
+            <label class="radio"
+              ><input type="radio" value="gte" v-model="op" /><span class="dot"></span
+              >{{ t('filters.greaterOrEqual') }}</label
+            >
+            <label class="radio"
+              ><input type="radio" value="lte" v-model="op" /><span class="dot"></span
+              >{{ t('filters.lessOrEqual') }}</label
+            >
+            <label class="radio"
+              ><input type="radio" value="eq" v-model="op" /><span class="dot"></span
+              >{{ t('filters.equals') }}</label
+            >
+          </div>
+          <input
+            v-model="numberValue"
+            @blur="numberValue = normalizeNumberInput(numberValue)"
+            class="filter-input"
+            type="text"
+            inputmode="decimal"
+            :placeholder="t('filters.bpmPlaceholder')"
+            style="width: 100%"
+          />
         </template>
       </div>
       <div class="dialog-footer" style="padding: 10px 20px 18px; gap: 10px">

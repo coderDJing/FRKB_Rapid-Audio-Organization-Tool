@@ -17,10 +17,10 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
 
   // 基础列定义（不包含 width），避免写死无意义的宽度数字
   const baseColumns: Omit<ISongsAreaColumn, 'width'>[] = [
-    { columnName: 'columns.cover', key: 'cover', show: true },
     { columnName: 'columns.index', key: 'index', show: true },
+    { columnName: 'columns.cover', key: 'cover', show: true },
+    { columnName: 'columns.waveformPreview', key: 'waveformPreview', show: true },
     { columnName: 'columns.title', key: 'title', show: true, filterType: 'text' },
-    { columnName: 'columns.fileName', key: 'fileName', show: true, filterType: 'text' },
     {
       columnName: 'columns.artist',
       key: 'artist',
@@ -28,15 +28,15 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
       filterType: 'text',
       order: 'asc'
     },
-    { columnName: 'columns.key', key: 'key', show: true, filterType: 'text' },
-    { columnName: 'columns.bpm', key: 'bpm', show: true },
-    { columnName: 'columns.waveformPreview', key: 'waveformPreview', show: true },
     { columnName: 'columns.duration', key: 'duration', show: true, filterType: 'duration' },
+    { columnName: 'columns.bpm', key: 'bpm', show: true, filterType: 'bpm' },
+    { columnName: 'columns.key', key: 'key', show: true, filterType: 'text' },
     { columnName: 'columns.album', key: 'album', show: true, filterType: 'text' },
-    { columnName: 'columns.genre', key: 'genre', show: true, filterType: 'text' },
     { columnName: 'columns.label', key: 'label', show: true, filterType: 'text' },
-    { columnName: 'columns.bitrate', key: 'bitrate', show: true },
+    { columnName: 'columns.genre', key: 'genre', show: true, filterType: 'text' },
     { columnName: 'columns.fileFormat', key: 'fileFormat', show: true, filterType: 'text' },
+    { columnName: 'columns.bitrate', key: 'bitrate', show: true },
+    { columnName: 'columns.fileName', key: 'fileName', show: true, filterType: 'text' },
     { columnName: 'columns.format', key: 'container', show: true, filterType: 'text' }
   ]
 
@@ -80,6 +80,9 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
                   filterOp: runtime.setting.persistSongFilters ? savedCol.filterOp : undefined,
                   filterDuration: runtime.setting.persistSongFilters
                     ? savedCol.filterDuration
+                    : undefined,
+                  filterNumber: runtime.setting.persistSongFilters
+                    ? (savedCol as ISongsAreaColumn).filterNumber
                     : undefined
                 }
                 return mergedCol
@@ -150,6 +153,21 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     return m * 60 + s
   }
 
+  function parseNumberInput(input: unknown): number {
+    if (input === null || input === undefined) return NaN
+    if (typeof input === 'number') {
+      return Number.isFinite(input) ? input : NaN
+    }
+    const raw = String(input || '').trim()
+    if (!raw) return NaN
+    const cleaned = raw.replace(/[^0-9.]/g, '')
+    if (!cleaned) return NaN
+    const parts = cleaned.split('.')
+    const normalized = parts.length > 1 ? `${parts[0]}.${parts.slice(1).join('')}` : parts[0]
+    const num = Number(normalized)
+    return Number.isFinite(num) ? num : NaN
+  }
+
   // --- 持久化 ---
   const persistColumnData = () => {
     localStorage.setItem('songColumnData', JSON.stringify(columnData.value))
@@ -180,6 +198,16 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
           if (col.filterOp === 'eq') return dur === target
           if (col.filterOp === 'gte') return dur >= target
           if (col.filterOp === 'lte') return dur <= target
+          return true
+        })
+      } else if (col.filterType === 'bpm' && col.filterOp && col.filterNumber) {
+        const target = parseNumberInput(col.filterNumber)
+        filtered = filtered.filter((song) => {
+          const bpm = parseNumberInput((song as any)?.bpm)
+          if (Number.isNaN(bpm) || Number.isNaN(target)) return false
+          if (col.filterOp === 'eq') return bpm === target
+          if (col.filterOp === 'gte') return bpm >= target
+          if (col.filterOp === 'lte') return bpm <= target
           return true
         })
       }
