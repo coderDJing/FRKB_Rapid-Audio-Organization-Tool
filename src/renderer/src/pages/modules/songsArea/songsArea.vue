@@ -128,7 +128,7 @@ const { songClick } = useKeyboardSelection({
 })
 
 // 自动滚动到当前播放
-useAutoScrollToCurrent({ runtime, songsAreaRef })
+const { scrollToIndex } = useAutoScrollToCurrent({ runtime, songsAreaRef })
 
 // 事件订阅与同步
 useSongsAreaEvents({
@@ -356,6 +356,21 @@ const viewState = computed<'welcome' | 'loading' | 'list'>(() => {
   return 'list'
 })
 
+const currentPlayingIndex = computed(() => {
+  const currentPath = runtime.playingData.playingSong?.filePath
+  if (!currentPath) return -1
+  return runtime.songsArea.songInfoArr.findIndex((song) => song.filePath === currentPath)
+})
+
+const showScrollToPlaying = computed(() => {
+  return viewState.value === 'list' && currentPlayingIndex.value >= 0
+})
+
+const handleScrollToPlaying = () => {
+  if (currentPlayingIndex.value < 0) return
+  scrollToIndex(currentPlayingIndex.value)
+}
+
 // 父级采样由 useParentRafSampler 提供
 
 // 自动滚动逻辑由 useAutoScrollToCurrent 提供
@@ -519,6 +534,16 @@ const handleSongDragEnd = (event: DragEvent) => {
           />
         </OverlayScrollbarsComponent>
 
+        <button
+          v-if="showScrollToPlaying"
+          class="songs-area-float-jump"
+          type="button"
+          title="Scroll to playing"
+          @click.stop="handleScrollToPlaying"
+        >
+          <span class="songs-area-float-jump__icon" aria-hidden="true"></span>
+        </button>
+
         <!-- Empty State Overlay: 独立于滚动内容，始终居中在可视区域 -->
         <div v-if="shouldShowEmptyState" class="songs-area-empty-overlay unselectable">
           <div class="empty-box">
@@ -563,6 +588,76 @@ const handleSongDragEnd = (event: DragEvent) => {
   position: relative;
   width: 100%;
   height: 100%;
+}
+
+.songs-area-float-jump {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  opacity: 0.65;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 6;
+  cursor: pointer;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18);
+}
+
+.songs-area-float-jump:hover {
+  opacity: 0.95;
+  transform: translateY(-1px);
+}
+
+.songs-area-float-jump:active {
+  transform: translateY(0);
+}
+
+.songs-area-float-jump:focus-visible {
+  outline: 2px solid rgba(0, 120, 212, 0.6);
+  outline-offset: 2px;
+}
+
+.songs-area-float-jump__icon {
+  position: relative;
+  width: 14px;
+  height: 14px;
+}
+
+.songs-area-float-jump__icon::before,
+.songs-area-float-jump__icon::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.songs-area-float-jump__icon::before {
+  width: 2px;
+  height: 12px;
+  left: 6px;
+  top: 1px;
+  background: var(--text);
+  border-radius: 1px;
+  opacity: 0.85;
+}
+
+.songs-area-float-jump__icon::after {
+  width: 6px;
+  height: 6px;
+  left: 4px;
+  top: 4px;
+  background: var(--text);
+  border-radius: 50%;
+  opacity: 0.9;
 }
 
 .loading-wrapper {
