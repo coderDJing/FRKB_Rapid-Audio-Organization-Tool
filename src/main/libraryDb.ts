@@ -4,7 +4,7 @@ import store from './store'
 import { log } from './log'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
-const SCHEMA_VERSION = 4
+const SCHEMA_VERSION = 5
 
 type SqliteDatabase = any
 
@@ -83,6 +83,19 @@ function createDatabase(dbPath: string): SqliteDatabase {
         PRIMARY KEY (list_root, file_path)
       );
       CREATE INDEX IF NOT EXISTS idx_waveform_cache_root ON waveform_cache(list_root);
+    `)
+  }
+  if (userVersion < 5) {
+    instance.exec(`
+      CREATE TABLE IF NOT EXISTS recycle_bin_records (
+        file_path TEXT PRIMARY KEY,
+        deleted_at_ms INTEGER NOT NULL,
+        original_playlist_path TEXT,
+        original_file_name TEXT,
+        source_type TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_recycle_bin_deleted_at ON recycle_bin_records(deleted_at_ms);
+      CREATE INDEX IF NOT EXISTS idx_recycle_bin_playlist ON recycle_bin_records(original_playlist_path);
     `)
   }
   if (userVersion < SCHEMA_VERSION) {

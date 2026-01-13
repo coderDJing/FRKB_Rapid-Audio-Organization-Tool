@@ -648,7 +648,13 @@ export async function syncLibraryTreeFromDisk(
         assignedUuid = diskUuid
         existingNode = existing
       } else {
-        assignedUuid = diskUuid
+        const existingByPath = dbPathByPath.get(node.relPath)
+        if (existingByPath && !usedUuids.has(existingByPath.uuid)) {
+          assignedUuid = existingByPath.uuid
+          existingNode = existingByPath
+        } else {
+          assignedUuid = diskUuid
+        }
       }
     }
 

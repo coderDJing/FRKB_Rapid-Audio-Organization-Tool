@@ -433,7 +433,9 @@
     "format": "编码格式",
     "bpm": "BPM",
     "waveformPreview": "波形预览",
-    "index": "序号"
+    "index": "序号",
+    "deletedAt": "删除时间",
+    "originalPlaylist": "原歌单"
   },
   "player": {
     "previous": "上一首",
@@ -625,7 +627,20 @@
     "emptyRecycleBin": "清空回收站",
     "noDeletionRecords": "暂无删除记录",
     "permanentlyDelete": "彻底删除",
-    "confirmEmpty": "确认清空回收站吗？"
+    "permanentlyDeleteTracks": "彻底删除曲目",
+    "restoreToOriginal": "恢复到原歌单",
+    "externalSource": "外部曲目/导入去重",
+    "confirmEmpty": "确认清空回收站吗？",
+    "deleteSummaryTitle": "删除结果",
+    "deleteSummarySuccess": "成功删除 {count} 首曲目",
+    "deleteSummaryFailed": "失败 {count} 首曲目",
+    "restoreSummaryTitle": "恢复结果",
+    "restoreSummarySuccess": "成功恢复 {count} 首曲目",
+    "restoreSummaryMissingPlaylist": "原歌单不存在 {count} 首曲目",
+    "restoreSummaryMissingFile": "文件已不存在 {count} 首曲目",
+    "restoreSummaryMissingRecord": "记录缺失 {count} 首曲目",
+    "restoreSummaryFailed": "恢复失败 {count} 首曲目",
+    "restoreMissingPlaylistHint": "原来的歌单不存在了，请自行移动到筛选库或精选库"
   },
   "dialog": {
     "hint": "提示",

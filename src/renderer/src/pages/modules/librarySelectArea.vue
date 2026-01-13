@@ -7,7 +7,7 @@ import settingGrey from '@renderer/assets/setting-grey.png?asset'
 import settingWhite from '@renderer/assets/setting-white.png?asset'
 import trashGrey from '@renderer/assets/trash-grey.png?asset'
 import trashWhite from '@renderer/assets/trash-white.png?asset'
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, nextTick } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import settingDialog from '@renderer/components/settingDialog.vue'
@@ -21,6 +21,7 @@ import confirm from '@renderer/components/confirmDialog'
 import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
 import emitter from '@renderer/utils/mitt'
 import libraryUtils from '@renderer/utils/libraryUtils'
+import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 const emit = defineEmits(['librarySelectedChange'])
 
 const baseIcons: Icon[] = [
@@ -255,29 +256,20 @@ const emptyRecycleBinHandleClick = async () => {
     content: [t('recycleBin.confirmEmpty'), t('tracks.deleteHint')]
   })
   if (res !== 'confirm') return
-  const recycleBin = findLibraryNode('RecycleBin')
-  const recycleChildren = recycleBin?.children || []
-  if (recycleChildren.length === 0) return
 
   await window.electron.ipcRenderer.invoke('emptyRecycleBin')
 
-  const recycleUUIDs = new Set(recycleChildren.map((c: any) => c.uuid))
-
-  if (recycleUUIDs.has(runtime.songsArea.songListUUID)) {
+  if (runtime.songsArea.songListUUID === RECYCLE_BIN_UUID) {
     runtime.songsArea.songListUUID = ''
     runtime.songsArea.selectedSongFilePath.length = 0
-    runtime.songsArea.songInfoArr = []
-    runtime.songsArea.totalSongCount = 0
+    await nextTick()
+    runtime.songsArea.songListUUID = RECYCLE_BIN_UUID
   }
 
-  if (recycleUUIDs.has(runtime.playingData.playingSongListUUID)) {
+  if (runtime.playingData.playingSongListUUID === RECYCLE_BIN_UUID) {
     runtime.playingData.playingSong = null
     runtime.playingData.playingSongListUUID = ''
     runtime.playingData.playingSongListData = []
-  }
-
-  if (recycleBin) {
-    recycleBin.children = []
   }
 }
 

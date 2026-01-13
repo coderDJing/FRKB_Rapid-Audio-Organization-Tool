@@ -6,14 +6,14 @@ import child_process = require('child_process')
 import store from '../store'
 import FingerprintStore from '../fingerprintStore'
 import { resolveBundledFfmpegPath, ensureExecutableOnMac } from '../ffmpeg'
-import { getCoreFsDirName, runWithConcurrency } from '../utils'
+import { runWithConcurrency } from '../utils'
 import {
   SUPPORTED_AUDIO_FORMATS,
   ENCODER_REQUIREMENTS,
   type SupportedAudioFormat
 } from '../../shared/audioFormats'
 import { writeWavRiffInfoWindows } from './wavRiffInfo'
-import { findLibraryNodeByPath, insertLibraryNode } from '../libraryTreeDb'
+import { moveFileToRecycleBin } from '../recycleBinService'
 
 type ConvertJobOptions = {
   src: string
@@ -68,40 +68,11 @@ function buildNonConflictTarget(src: string, fmt: string): string {
 }
 
 async function backupOriginalIfNeeded(src: string) {
-  const now = new Date()
-  const pad2 = (n: number) => (n < 10 ? '0' + n : '' + n)
-  const dirName = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(
-    now.getDate()
-  )}_${pad2(now.getHours())}-${pad2(now.getMinutes())}`
-  const recycleBinTargetDir = path.join(
-    store.databaseDir,
-    'library',
-    getCoreFsDirName('RecycleBin'),
-    dirName
-  )
-  await fs.ensureDir(recycleBinTargetDir)
-  const dest = path.join(recycleBinTargetDir, path.basename(src))
-  await fs.move(src, dest)
-  const recycleNodePath = path.join('library', getCoreFsDirName('RecycleBin'), dirName)
-  const existingNode = findLibraryNodeByPath(recycleNodePath)
-  const descriptionJson = {
-    uuid: existingNode?.uuid || uuidV4(),
-    type: 'songList' as const,
-    order: existingNode?.order ?? Date.now()
+  const result = await moveFileToRecycleBin(src, { sourceType: 'conversion_backup' })
+  if (result.status === 'failed') {
+    throw new Error(result.error || 'backup to recycle bin failed')
   }
-  if (!existingNode) {
-    const parentNode = findLibraryNodeByPath(path.join('library', getCoreFsDirName('RecycleBin')))
-    if (parentNode) {
-      insertLibraryNode({
-        uuid: descriptionJson.uuid,
-        parentUuid: parentNode.uuid,
-        dirName,
-        nodeType: 'songList',
-        order: descriptionJson.order
-      })
-    }
-  }
-  return { dirName, descriptionJson }
+  return result
 }
 
 function buildFfmpegArgs(src: string, dest: string, opts: ConvertJobOptions): string[] {
@@ -367,7 +338,7 @@ export async function startAudioConversion(
             })
           })
           // 备份并覆盖
-          const { descriptionJson } = await backupOriginalIfNeeded(src)
+          await backupOriginalIfNeeded(src)
           backupCount += 1
           await fs.move(tmp, dest, { overwrite: true })
           overwritten += 1

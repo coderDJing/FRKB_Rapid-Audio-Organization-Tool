@@ -9,14 +9,11 @@ import { scanSongList as svcScanSongList } from '../services/scanSongs'
 import {
   collectFilesWithExtensions,
   getSongsAnalyseResult,
-  getCoreFsDirName,
   mapRendererPathToFsPath,
-  runWithConcurrency,
-  waitForUserDecision
+  runWithConcurrency
 } from '../utils'
 import { isSupportedAudioPath } from '../services/externalOpenQueue'
-import { v4 as uuidV4 } from 'uuid'
-import { findLibraryNodeByPath, insertLibraryNode } from '../libraryTreeDb'
+import { moveFileToRecycleBin, normalizeRendererPlaylistPath } from '../recycleBinService'
 
 export function registerPlaylistHandlers() {
   ipcMain.handle(
@@ -197,25 +194,14 @@ export function registerPlaylistHandlers() {
         }
       }
 
-      const now = new Date()
-      const pad2 = (n: number) => (n < 10 ? `0${n}` : `${n}`)
-      const dirName = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}_${pad2(
-        now.getHours()
-      )}-${pad2(now.getMinutes())}`
-      const recycleBinTargetDir = path.join(
-        store.databaseDir,
-        'library',
-        getCoreFsDirName('RecycleBin'),
-        dirName
-      )
-
-      await fs.ensureDir(recycleBinTargetDir)
-
       pushProgress('playlist.deduplicateProgressRemoving', 0, existingToRemove.length)
 
+      const originalPlaylistPath = normalizeRendererPlaylistPath(rendererPath)
       const moveTasks = existingToRemove.map((srcPath) => async () => {
-        const destPath = path.join(recycleBinTargetDir, path.basename(srcPath))
-        await fs.move(srcPath, destPath, { overwrite: true })
+        const result = await moveFileToRecycleBin(srcPath, { originalPlaylistPath })
+        if (result.status === 'failed') {
+          throw new Error(result.error || 'move to recycle bin failed')
+        }
         return srcPath
       })
 
@@ -234,36 +220,7 @@ export function registerPlaylistHandlers() {
         })
       }
 
-      let recycleBinInfo: { dirName: string; uuid: string; type: string; order: number } | null =
-        null
-
-      if (movedPaths.length > 0) {
-        const recycleNodePath = path.join('library', getCoreFsDirName('RecycleBin'), dirName)
-        const existingNode = findLibraryNodeByPath(recycleNodePath)
-        const descriptionJson = {
-          uuid: existingNode?.uuid || uuidV4(),
-          type: 'songList',
-          order: existingNode?.order ?? Date.now()
-        }
-        if (!existingNode) {
-          const parentNode = findLibraryNodeByPath(
-            path.join('library', getCoreFsDirName('RecycleBin'))
-          )
-          if (parentNode) {
-            insertLibraryNode({
-              uuid: descriptionJson.uuid,
-              parentUuid: parentNode.uuid,
-              dirName,
-              nodeType: 'songList',
-              order: descriptionJson.order
-            })
-          }
-        }
-        recycleBinInfo = { dirName, ...descriptionJson }
-        if (mainWindow.instance) {
-          mainWindow.instance.webContents.send('delSongsSuccess', recycleBinInfo)
-        }
-      }
+      const recycleBinInfo = null
 
       pushProgress('playlist.deduplicateProgressFinished', 1, 1)
 

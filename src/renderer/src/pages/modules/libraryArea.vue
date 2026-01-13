@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, useTemplateRef } from 'vue'
+import { computed, ref, useTemplateRef, nextTick } from 'vue'
 import libraryItem from '@renderer/components/libraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
@@ -13,6 +13,7 @@ import { handleLibraryAreaEmptySpaceDrop } from '@renderer/utils/dragUtils'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import type { IDir } from 'src/types/globals'
+import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 
 const runtime = useRuntimeStore()
 const emptyRecycleBin = emptyRecycleBinAsset
@@ -57,32 +58,22 @@ const emptyRecycleBinHandleClick = async () => {
   if (res !== 'confirm') {
     return
   }
-  const recycleBin = runtime.libraryTree.children?.find((item) => item.dirName === 'RecycleBin')
-  const recycleChildren = recycleBin?.children || []
-  if (recycleChildren.length === 0) return
 
   await window.electron.ipcRenderer.invoke('emptyRecycleBin')
 
-  const recycleUUIDs = new Set(recycleChildren.map((c) => c.uuid))
-
-  // 若当前打开的是回收站中的歌单，则关闭
-  if (recycleUUIDs.has(runtime.songsArea.songListUUID)) {
+  // 若当前打开回收站，则刷新列表
+  if (runtime.songsArea.songListUUID === RECYCLE_BIN_UUID) {
     runtime.songsArea.songListUUID = ''
     runtime.songsArea.selectedSongFilePath.length = 0
-    runtime.songsArea.songInfoArr = []
-    runtime.songsArea.totalSongCount = 0
+    await nextTick()
+    runtime.songsArea.songListUUID = RECYCLE_BIN_UUID
   }
 
-  // 若当前正在播放来自回收站的歌单，则停止播放并清空播放列表
-  if (recycleUUIDs.has(runtime.playingData.playingSongListUUID)) {
+  // 若当前正在播放来自回收站，则停止播放并清空播放列表
+  if (runtime.playingData.playingSongListUUID === RECYCLE_BIN_UUID) {
     runtime.playingData.playingSong = null
     runtime.playingData.playingSongListUUID = ''
     runtime.playingData.playingSongListData = []
-  }
-
-  // 清空回收站 UI 节点
-  if (recycleBin) {
-    recycleBin.children = []
   }
 }
 

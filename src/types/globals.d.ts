@@ -42,6 +42,9 @@ interface ISongInfo {
   key?: string
   bpm?: number
   analysisOnly?: boolean
+  deletedAtMs?: number
+  originalPlaylistPath?: string | null
+  recycleBinSourceType?: string | null
 }
 
 // 曲目完整元数据明细，用于编辑界面展示

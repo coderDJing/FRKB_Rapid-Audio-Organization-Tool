@@ -14,6 +14,8 @@ import {
 import { log } from '../log'
 import mainWindow from '../window/mainWindow'
 import { saveList, exportSnapshot, importFromJsonFile } from '../fingerprintStore'
+import { deleteRecycleBinRecord } from '../recycleBinDb'
+import { isInRecycleBinAbsPath, toLibraryRelativePath } from '../recycleBinService'
 
 async function findUniqueFolder(inputFolderPath: string) {
   const parts = path.parse(inputFolderPath)
@@ -190,7 +192,14 @@ export function registerExportHandlers() {
       const matches = src.match(/[^\\]+$/)
       if (Array.isArray(matches) && matches.length > 0) {
         const targetPath = path.join(store.databaseDir, mapRendererPathToFsPath(dest), matches[0])
-        tasks.push(() => moveOrCopyItemWithCheckIsExist(src, targetPath, true))
+        tasks.push(async () => {
+          const movedPath = await moveOrCopyItemWithCheckIsExist(src, targetPath, true)
+          if (isInRecycleBinAbsPath(src)) {
+            const rel = toLibraryRelativePath(src)
+            if (rel) deleteRecycleBinRecord(rel)
+          }
+          return movedPath
+        })
       }
     }
     const batchId = `moveSongs_${Date.now()}`

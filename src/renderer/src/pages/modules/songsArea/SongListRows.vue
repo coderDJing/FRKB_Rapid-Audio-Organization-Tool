@@ -13,6 +13,7 @@ import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { getKeyDisplayText as formatKeyDisplayText } from '@shared/keyDisplay'
 import { t } from '@renderer/utils/translate'
+import { formatDeletedAtMs, getOriginalPlaylistDisplay } from '@renderer/utils/recycleBinDisplay'
 import { useVirtualRows } from './SongListRows/useVirtualRows'
 import { useSongRowEvents } from './SongListRows/useSongRowEvents'
 import { useCoverThumbnails } from './SongListRows/useCoverThumbnails'
@@ -123,6 +124,12 @@ const getKeyDisplayText = (value: unknown): string => {
 const getCellValue = (song: ISongInfo, colKey: string): string | number => {
   if (colKey === 'key') {
     return getKeyDisplayText((song as any).key)
+  }
+  if (colKey === 'deletedAtMs') {
+    return formatDeletedAtMs((song as any).deletedAtMs)
+  }
+  if (colKey === 'originalPlaylistPath') {
+    return getOriginalPlaylistDisplay(song)
   }
   const raw = (song as any)[colKey]
   if (raw === undefined || raw === null) return ''

@@ -18,39 +18,6 @@ export const diffLibraryTreeExecuteFileOperation = async () => {
 
   // 3. 处理返回结果并更新 UI
   if (result.success && result.details) {
-    const recycleBinNode = runtime.libraryTree.children?.find(
-      (item) => item.dirName === 'RecycleBin'
-    )
-
-    if (recycleBinNode && !recycleBinNode.children) {
-      recycleBinNode.children = [] // 确保回收站子数组存在
-    }
-
-    for (const detail of result.details) {
-      // 如果操作是回收，并且主进程确认创建了回收站条目
-      if (detail.status === 'recycled' && detail.recycleBinDir && recycleBinNode) {
-        // 在 UI 的回收站中添加节点
-        recycleBinNode.children?.push({
-          uuid: detail.recycleBinDir.uuid,
-          dirName: detail.recycleBinDir.dirName,
-          type: detail.recycleBinDir.type, // 应该总是 'songList'
-          order: detail.recycleBinDir.order
-          // children: [] // 回收站条目通常不需要 children
-        })
-      } else if (detail.status === 'removed') {
-        // 永久删除，UI 回收站无需操作
-      } else if (detail.status === 'recycle_failed') {
-        console.error(`Recycling failed for uuid: ${detail.uuid}. UI might be inconsistent.`)
-        // 此处可以添加错误提示给用户
-      }
-      // 可以根据需要处理其他状态 (created, reordered, renamed, moved etc.)
-    }
-
-    // 对回收站子节点排序（如果需要的话）
-    if (recycleBinNode?.children) {
-      recycleBinNode.children.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    }
-
     // 4. 同步 oldLibraryTree
     runtime.oldLibraryTree = JSON.parse(JSON.stringify(runtime.libraryTree))
   } else {

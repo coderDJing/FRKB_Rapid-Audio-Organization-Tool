@@ -6,7 +6,6 @@ import scanNewSongDialog from '@renderer/components/scanNewSongDialog'
 import exportDialog from '@renderer/components/exportDialog'
 import { t } from '@renderer/utils/translate'
 import libraryUtils from '@renderer/utils/libraryUtils'
-import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
 import type { IMetadataAutoFillSummary } from '../../../../types/globals'
@@ -183,7 +182,7 @@ export function useLibraryContextMenu({
       }
       case 'playlist.emptyPlaylist': {
         const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
-        await window.electron.ipcRenderer.invoke('emptyDir', dirPath, getCurrentTimeDirName())
+        await window.electron.ipcRenderer.invoke('emptyDir', dirPath)
         if (dirData.type === 'songList' && runtime.setting.showPlaylistTrackCount) {
           trackCount.value = 0
         }
