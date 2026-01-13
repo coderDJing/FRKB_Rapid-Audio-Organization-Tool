@@ -127,7 +127,7 @@ const { songClick } = useKeyboardSelection({
   scheduleSweepCovers
 })
 
-// 自动滚动到当前播放
+// 手动滚动到当前播放
 const { scrollToIndex } = useAutoScrollToCurrent({ runtime, songsAreaRef })
 
 // 事件订阅与同步
