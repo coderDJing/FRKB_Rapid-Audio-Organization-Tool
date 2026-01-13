@@ -109,10 +109,6 @@ pnpm install
 pnpm run dev
 ```
 
-### Development Notes
-- Idle background key/BPM sweeps run at lowest priority; missing-file cache entries are cleaned in small batches and analysis-only cache entries refresh on next playlist scan. Analysis logs print in the backend console.
-- Mixxx waveform cache now lives in sqlite alongside song caches; legacy file caches under userData are purged on migration.
-
 ### Building
 
 ```bash
