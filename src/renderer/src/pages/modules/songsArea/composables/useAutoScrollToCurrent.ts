@@ -1,4 +1,4 @@
-import { watch, nextTick } from 'vue'
+import { nextTick } from 'vue'
 import type { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
 
@@ -38,21 +38,6 @@ export function useAutoScrollToCurrent(params: UseAutoScrollParams) {
     if (index < 0) return
     scrollToIndex(index)
   }
-
-  watch(
-    () => runtime.playingData.playingSong,
-    (newSong, oldSong) => {
-      if (
-        runtime.setting.autoScrollToCurrentSong &&
-        newSong &&
-        newSong.filePath !== oldSong?.filePath &&
-        songsAreaRef.value
-      ) {
-        scrollToSong(newSong.filePath)
-      }
-    },
-    { deep: true }
-  )
 
   return {
     scrollToIndex,
