@@ -191,6 +191,18 @@ export class WebAudioPlayer {
     event: K,
     payload?: WebAudioPlayerEvents[K]
   ): void {
+    if (event === 'error') {
+      const error = payload as any
+      console.error('[player] error', {
+        filePath: this.activeFilePath,
+        mode: this.mode,
+        src: this.activeSrc,
+        name: error?.name,
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack
+      })
+    }
     this.emitter.emit(event, payload as any)
   }
 
