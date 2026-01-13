@@ -5,6 +5,7 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
 import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
+import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 
 // 组件导入
 import confirm from '@renderer/components/confirmDialog'
@@ -404,6 +405,17 @@ const shouldShowEmptyState = computed(() => {
 })
 // 是否存在任意激活的筛选条件
 const hasActiveFilter = computed(() => columnData.value.some((c) => !!c.filterActive))
+const isRecycleBinView = computed(() => runtime.songsArea.songListUUID === RECYCLE_BIN_UUID)
+const emptyTitleText = computed(() => {
+  if (hasActiveFilter.value) return t('filters.noResults')
+  if (isRecycleBinView.value) return t('recycleBin.noDeletionRecords')
+  return t('tracks.noTracks')
+})
+const emptyHintText = computed(() => {
+  if (hasActiveFilter.value) return t('filters.noResultsHint')
+  if (isRecycleBinView.value) return ''
+  return t('tracks.noTracksHint')
+})
 // --- END 新增计算属性 ---
 
 // 拖拽相关函数
@@ -511,10 +523,10 @@ const handleSongDragEnd = (event: DragEvent) => {
         <div v-if="shouldShowEmptyState" class="songs-area-empty-overlay unselectable">
           <div class="empty-box">
             <div class="title">
-              {{ hasActiveFilter ? t('filters.noResults') : t('tracks.noTracks') }}
+              {{ emptyTitleText }}
             </div>
             <div class="hint">
-              {{ hasActiveFilter ? t('filters.noResultsHint') : t('tracks.noTracksHint') }}
+              {{ emptyHintText }}
             </div>
           </div>
         </div>

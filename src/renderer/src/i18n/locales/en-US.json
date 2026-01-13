@@ -415,7 +415,9 @@
     "format": "Format",
     "bpm": "BPM",
     "waveformPreview": "Waveform",
-    "index": "Index"
+    "index": "Index",
+    "deletedAt": "Deleted At",
+    "originalPlaylist": "Original Playlist"
   },
   "convert": {
     "title": "Format conversion",
@@ -621,7 +623,20 @@
     "emptyRecycleBin": "Empty Recycle Bin",
     "noDeletionRecords": "No records",
     "permanentlyDelete": "Permanently delete",
-    "confirmEmpty": "Empty recycle bin?"
+    "permanentlyDeleteTracks": "Permanently delete tracks",
+    "restoreToOriginal": "Restore to original playlist",
+    "externalSource": "External / Import dedup",
+    "confirmEmpty": "Empty recycle bin?",
+    "deleteSummaryTitle": "Delete Summary",
+    "deleteSummarySuccess": "Deleted {count} track(s)",
+    "deleteSummaryFailed": "Failed {count} track(s)",
+    "restoreSummaryTitle": "Restore Summary",
+    "restoreSummarySuccess": "Restored {count} track(s)",
+    "restoreSummaryMissingPlaylist": "Original playlist missing: {count}",
+    "restoreSummaryMissingFile": "File missing: {count}",
+    "restoreSummaryMissingRecord": "Record missing: {count}",
+    "restoreSummaryFailed": "Failed to restore: {count}",
+    "restoreMissingPlaylistHint": "Original playlist no longer exists. Please move it to Filter/Curated manually."
   },
   "dialog": {
     "hint": "Hint",

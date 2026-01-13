@@ -5,6 +5,7 @@ import type { ISongInfo } from '../../../../../../types/globals'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
+import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 
 interface UseSongsLoaderParams {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -34,6 +35,24 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       applyFiltersAndSorting()
       isRequesting.value = false
       loadingShow.value = false
+      return
+    }
+    if (runtime.songsArea.songListUUID === RECYCLE_BIN_UUID) {
+      loadingShow.value = false
+      const loadingSetTimeout = setTimeout(() => {
+        loadingShow.value = true
+      }, 100)
+      try {
+        const { scanData, songListUUID } =
+          await window.electron.ipcRenderer.invoke('recycleBin:list')
+        if (songListUUID !== runtime.songsArea.songListUUID) return
+        originalSongInfoArr.value = markRaw(scanData)
+        applyFiltersAndSorting()
+      } finally {
+        isRequesting.value = false
+        clearTimeout(loadingSetTimeout)
+        loadingShow.value = false
+      }
       return
     }
 

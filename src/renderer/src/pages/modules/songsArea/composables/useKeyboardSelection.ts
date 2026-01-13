@@ -2,10 +2,12 @@ import { onMounted, onUnmounted } from 'vue'
 import hotkeys from 'hotkeys-js'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
-import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import type { ISongInfo } from '../../../../../../types/globals'
 import emitter from '@renderer/utils/mitt'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
+import libraryUtils from '@renderer/utils/libraryUtils'
+import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
+import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 
 interface UseKeyboardSelectionParams {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -59,9 +61,40 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
     const selectedPaths = JSON.parse(JSON.stringify(runtime.songsArea.selectedSongFilePath))
     if (!selectedPaths.length) return false
 
-    const isInRecycleBin = runtime.libraryTree.children
-      ?.find((item) => item.dirName === 'RecycleBin')
-      ?.children?.find((item) => item.uuid === runtime.songsArea.songListUUID)
+    const isInRecycleBin = runtime.songsArea.songListUUID === RECYCLE_BIN_UUID
+    const isExternalView = runtime.songsArea.songListUUID === EXTERNAL_PLAYLIST_UUID
+
+    const buildDelSongsPayload = (paths: string[]) => {
+      if (isExternalView) {
+        return { filePaths: paths, sourceType: 'external' }
+      }
+      const songListPath = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
+      if (songListPath) {
+        return { filePaths: paths, songListPath }
+      }
+      return paths
+    }
+
+    const showDeleteSummaryIfNeeded = async (summary: {
+      total?: number
+      success?: number
+      failed?: number
+    }) => {
+      const total = Number(summary?.total || 0)
+      const success = Number(summary?.success || 0)
+      const failed = Number(summary?.failed || 0)
+      if (total <= 1 && failed === 0) return
+      const content: string[] = []
+      content.push(t('recycleBin.deleteSummarySuccess', { count: success }))
+      if (failed > 0) {
+        content.push(t('recycleBin.deleteSummaryFailed', { count: failed }))
+      }
+      await confirm({
+        title: t('recycleBin.deleteSummaryTitle'),
+        content,
+        confirmShow: false
+      })
+    }
 
     let shouldDelete = true
     if (isInRecycleBin) {
@@ -73,14 +106,27 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
     }
 
     if (shouldDelete) {
+      let removedPathsForEvent = [...selectedPaths]
       if (isInRecycleBin) {
-        window.electron.ipcRenderer.invoke('permanentlyDelSongs', selectedPaths)
+        const summary = await window.electron.ipcRenderer.invoke(
+          'permanentlyDelSongs',
+          selectedPaths
+        )
+        const removedPaths = Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
+        removedPathsForEvent = removedPaths
+        await showDeleteSummaryIfNeeded(summary)
       } else {
-        window.electron.ipcRenderer.send('delSongs', selectedPaths, getCurrentTimeDirName())
+        window.electron.ipcRenderer.send('delSongs', buildDelSongsPayload(selectedPaths))
       }
 
       runtime.songsArea.selectedSongFilePath.length = 0
       scheduleSweepCovers()
+      if (removedPathsForEvent.length > 0) {
+        emitter.emit('songsRemoved', {
+          listUUID: runtime.songsArea.songListUUID,
+          paths: removedPathsForEvent
+        })
+      }
       // 兜底：通知库区刷新当前歌单（包含回收站内删除与普通歌单删除）
       try {
         if (runtime.songsArea.songListUUID) {

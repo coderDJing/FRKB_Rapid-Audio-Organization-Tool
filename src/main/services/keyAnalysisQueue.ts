@@ -1073,6 +1073,14 @@ class KeyAnalysisQueue {
       this.scheduleBackgroundScan()
     }
   }
+
+  invalidateDoneByPath(filePaths: string[]) {
+    if (!Array.isArray(filePaths) || filePaths.length === 0) return
+    for (const filePath of filePaths) {
+      if (!filePath) continue
+      this.doneByPath.delete(normalizePath(filePath))
+    }
+  }
 }
 
 const workerCount = Math.max(1, Math.min(2, os.cpus().length))
@@ -1100,4 +1108,10 @@ export function enqueueKeyAnalysisImmediate(filePath: string) {
 
 export function startKeyAnalysisBackground() {
   getQueue().startBackgroundSweep()
+}
+
+export function invalidateKeyAnalysisCache(filePaths: string[] | string) {
+  if (!queue) return
+  const list = Array.isArray(filePaths) ? filePaths : [filePaths]
+  queue.invalidateDoneByPath(list)
 }

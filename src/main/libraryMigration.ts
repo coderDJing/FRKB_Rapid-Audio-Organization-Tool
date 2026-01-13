@@ -4,6 +4,7 @@ import fs = require('fs-extra')
 import path = require('path')
 import store from './store'
 import { getMetaValue, initLibraryDb, setMetaValue } from './libraryDb'
+import { collectFilesWithExtensions, getCoreFsDirName } from './utils'
 import {
   scanLegacyCacheRoots,
   migrateLegacyCachesInLibrary,
@@ -12,16 +13,24 @@ import {
 import FingerprintStore from './fingerprintStore'
 import { syncLibrarySettingsFromDb } from './librarySettingsDb'
 import { log } from './log'
+import { moveFileToRecycleBin } from './recycleBinService'
+import {
+  listRecycleBinRecords,
+  upsertRecycleBinRecord,
+  deleteRecycleBinRecords
+} from './recycleBinDb'
 import zhCNLocale from '../renderer/src/i18n/locales/zh-CN.json'
 import enUSLocale from '../renderer/src/i18n/locales/en-US.json'
 import {
   archiveLegacyDescriptionFiles,
   archiveLegacyDescriptionFilesByRoot,
+  findLibraryNodeByPath,
   isLibraryTreeMigrationDone,
   isLibraryTreeMigrationInProgress,
   needsLibraryTreeArchive,
   needsLibraryTreeMigration,
   migrateLegacyLibraryTree,
+  removeLibraryNodesByParentUuid,
   setLibraryTreeMigrationDone,
   setLibraryTreeMigrationInProgress
 } from './libraryTreeDb'
@@ -32,6 +41,7 @@ const CACHE_MIGRATION_DONE_KEY = 'legacy_cache_migrated_v1'
 const FINGERPRINT_MIGRATED_PCM_KEY = 'fingerprints_migrated_pcm'
 const FINGERPRINT_MIGRATED_FILE_KEY = 'fingerprints_migrated_file'
 const WAVEFORM_CACHE_PURGED_KEY = 'waveform_cache_purged_v1'
+const RECYCLE_BIN_MIGRATED_KEY = 'recycle_bin_migrated_v1'
 const DATA_PREFIX = 'songFingerprintV2_'
 
 type LegacyFingerprintNeed = {
@@ -45,6 +55,7 @@ type LegacyMigrationPlan = {
   fingerprintNeeded: boolean
   libraryTreeNeeded: boolean
   libraryTreeArchiveNeeded: boolean
+  recycleBinNeeded: boolean
 }
 
 const getCurrentLocaleId = (): 'zh-CN' | 'en-US' =>
@@ -87,6 +98,166 @@ async function hasVersionedFiles(dirPath: string): Promise<boolean> {
   }
 }
 
+function normalizeAudioExts(input: string[] | undefined | null): string[] {
+  if (!Array.isArray(input)) return []
+  const set = new Set<string>()
+  for (const raw of input) {
+    if (!raw) continue
+    let ext = String(raw).trim().toLowerCase()
+    if (!ext) continue
+    if (!ext.startsWith('.')) ext = `.${ext}`
+    set.add(ext)
+  }
+  return Array.from(set)
+}
+
+function parseLegacyRecycleTimeDir(name: string): number | null {
+  const match = String(name).match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})$/)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const hour = Number(match[4])
+  const minute = Number(match[5])
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day) ||
+    !Number.isFinite(hour) ||
+    !Number.isFinite(minute)
+  ) {
+    return null
+  }
+  const date = new Date(year, month - 1, day, hour, minute, 0)
+  const ts = date.getTime()
+  return Number.isFinite(ts) ? ts : null
+}
+
+function toLibraryRelativePathWithRoot(libraryRoot: string, absPath: string): string | null {
+  if (!libraryRoot || !absPath) return null
+  const rel = path.relative(libraryRoot, absPath)
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null
+  return rel
+}
+
+async function needsRecycleBinMigration(dbRoot: string, db: any): Promise<boolean> {
+  if (!dbRoot || !db) return false
+  const recycleRoot = path.join(dbRoot, 'library', getCoreFsDirName('RecycleBin'))
+  if (!(await fs.pathExists(recycleRoot))) return false
+  let entries: fs.Dirent[] = []
+  try {
+    entries = await fs.readdir(recycleRoot, { withFileTypes: true })
+  } catch {
+    return false
+  }
+  return entries.some((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+}
+
+async function migrateLegacyRecycleBin(dbRoot: string, db: any): Promise<void> {
+  if (!dbRoot || !db) return
+  const libraryRoot = path.join(dbRoot, 'library')
+  const recycleRoot = path.join(libraryRoot, getCoreFsDirName('RecycleBin'))
+  if (!(await fs.pathExists(recycleRoot))) {
+    setMetaValue(db, RECYCLE_BIN_MIGRATED_KEY, '1')
+    return
+  }
+
+  const audioExts = normalizeAudioExts(store.settingConfig?.audioExt || [])
+  let entries: fs.Dirent[] = []
+  try {
+    entries = await fs.readdir(recycleRoot, { withFileTypes: true })
+  } catch {
+    entries = []
+  }
+
+  let hadFailures = false
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue
+    const dirPath = path.join(recycleRoot, entry.name)
+    const deletedAtFromDir = parseLegacyRecycleTimeDir(entry.name)
+    const audioFiles = await collectFilesWithExtensions(dirPath, audioExts)
+    for (const filePath of audioFiles) {
+      const stat = await fs.stat(filePath).catch(() => null)
+      const deletedAtMs =
+        deletedAtFromDir ?? (stat && Number.isFinite(stat.mtimeMs) ? stat.mtimeMs : Date.now())
+      const result = await moveFileToRecycleBin(filePath, {
+        deletedAtMs,
+        originalPlaylistPath: null,
+        sourceType: 'legacy',
+        originalFileName: path.basename(filePath)
+      })
+      if (result.status === 'failed') {
+        log.error('[migration] recycle bin move failed', { filePath, error: result.error })
+        hadFailures = true
+      }
+    }
+    try {
+      const remaining = await collectFilesWithExtensions(dirPath, audioExts)
+      if (remaining.length === 0) {
+        await fs.remove(dirPath)
+      }
+    } catch {}
+  }
+
+  const missingRecords: string[] = []
+  const existingRecords = listRecycleBinRecords()
+  for (const record of existingRecords) {
+    const absPath = path.isAbsolute(record.filePath)
+      ? record.filePath
+      : path.join(libraryRoot, record.filePath)
+    if (!(await fs.pathExists(absPath))) {
+      missingRecords.push(record.filePath)
+    }
+  }
+  if (missingRecords.length > 0) {
+    deleteRecycleBinRecords(missingRecords)
+  }
+  const records = listRecycleBinRecords()
+  const recordSet = new Set<string>(records.map((r) => r.filePath))
+
+  let rootEntries: fs.Dirent[] = []
+  try {
+    rootEntries = await fs.readdir(recycleRoot, { withFileTypes: true })
+  } catch {
+    rootEntries = []
+  }
+  for (const entry of rootEntries) {
+    if (!entry.isFile()) continue
+    const ext = path.extname(entry.name).toLowerCase()
+    if (!audioExts.includes(ext)) continue
+    const absPath = path.join(recycleRoot, entry.name)
+    const rel = toLibraryRelativePathWithRoot(libraryRoot, absPath)
+    if (!rel || recordSet.has(rel)) continue
+    const stat = await fs.stat(absPath).catch(() => null)
+    const deletedAtMs = stat && Number.isFinite(stat.mtimeMs) ? stat.mtimeMs : Date.now()
+    upsertRecycleBinRecord({
+      filePath: rel,
+      deletedAtMs,
+      originalPlaylistPath: null,
+      originalFileName: entry.name,
+      sourceType: 'legacy'
+    })
+  }
+
+  const recycleNode = findLibraryNodeByPath(path.join('library', getCoreFsDirName('RecycleBin')))
+  if (recycleNode) {
+    removeLibraryNodesByParentUuid(recycleNode.uuid)
+  }
+
+  let postEntries: fs.Dirent[] = []
+  try {
+    postEntries = await fs.readdir(recycleRoot, { withFileTypes: true })
+  } catch {
+    postEntries = []
+  }
+  const legacyRemaining = postEntries.some(
+    (entry) => entry.isDirectory() && !entry.name.startsWith('.')
+  )
+  if (!legacyRemaining && !hadFailures) {
+    setMetaValue(db, RECYCLE_BIN_MIGRATED_KEY, '1')
+  }
+}
+
 async function detectLegacyFingerprints(dbRoot: string, db: any): Promise<LegacyFingerprintNeed> {
   const result: LegacyFingerprintNeed = { pcm: false, file: false }
   if (!dbRoot) return result
@@ -120,17 +291,20 @@ async function buildLegacyMigrationPlan(dbRoot: string, db: any): Promise<Legacy
   const fingerprintNeed = await detectLegacyFingerprints(dbRoot, db)
   const libraryTreeNeeded = await needsLibraryTreeMigration(dbRoot, db)
   const libraryTreeArchiveNeeded = await needsLibraryTreeArchive(dbRoot, db)
+  const recycleBinNeeded = await needsRecycleBinMigration(dbRoot, db)
   const reasons: string[] = []
   if (libraryTreeNeeded || libraryTreeArchiveNeeded) reasons.push('库结构')
   if (fingerprintNeed.pcm || fingerprintNeed.file) reasons.push('指纹库')
   if (cacheRoots.songRoots.size > 0) reasons.push('扫描缓存')
   if (cacheRoots.coverRoots.size > 0) reasons.push('封面索引')
+  if (recycleBinNeeded) reasons.push('回收站')
   return {
     reasons,
     cacheRoots,
     fingerprintNeeded: fingerprintNeed.pcm || fingerprintNeed.file,
     libraryTreeNeeded,
-    libraryTreeArchiveNeeded
+    libraryTreeArchiveNeeded,
+    recycleBinNeeded
   }
 }
 
@@ -257,6 +431,9 @@ export async function ensureLegacyMigration(
   parent?: BrowserWindow | null
 ): Promise<boolean> {
   if (!dbRoot) return true
+  if (!store.databaseDir) {
+    store.databaseDir = dbRoot
+  }
   const db = initLibraryDb(dbRoot)
   if (!db) return true
 
@@ -277,6 +454,11 @@ export async function ensureLegacyMigration(
     await syncLibrarySettingsFromDb(dbRoot)
     await FingerprintStore.healAndPrepare()
     await cleanupLegacyWaveformCache(db)
+    try {
+      await migrateLegacyRecycleBin(dbRoot, db)
+    } catch (error) {
+      log.error('[migration] recycle bin migrate failed', error)
+    }
     return true
   }
 
@@ -322,6 +504,9 @@ export async function ensureLegacyMigration(
     if (plan.cacheRoots.songRoots.size > 0 || plan.cacheRoots.coverRoots.size > 0) {
       await migrateLegacyCachesInLibrary(dbRoot, plan.cacheRoots)
       setMetaValue(db, CACHE_MIGRATION_DONE_KEY, '1')
+    }
+    if (plan.recycleBinNeeded) {
+      await migrateLegacyRecycleBin(dbRoot, db)
     }
     await cleanupLegacyFiles(dbRoot)
     await cleanupLegacyWaveformCache(db)

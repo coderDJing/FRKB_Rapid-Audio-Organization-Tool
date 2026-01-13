@@ -1,6 +1,4 @@
 import { IDir } from '../../../types/globals'
-import { v4 as uuidV4 } from 'uuid'
-import { getCurrentTimeDirName } from './utils'
 
 export interface FileSystemOperation {
   type: 'create' | 'delete' | 'permanentlyDelete' | 'rename' | 'move' | 'reorder'
@@ -11,12 +9,6 @@ export interface FileSystemOperation {
   oldOrder?: number
   uuid: string
   nodeType?: string
-  recycleBinDir?: {
-    uuid: string
-    order: number
-    type: 'songList'
-    dirName: string
-  }
 }
 
 export function calculateFileSystemOperations(oldTree: IDir, newTree: IDir): FileSystemOperation[] {
@@ -187,15 +179,7 @@ export function calculateFileSystemOperations(oldTree: IDir, newTree: IDir): Fil
           type: isInTrash(oldPath) ? 'permanentlyDelete' : 'delete',
           path: oldPath,
           uuid: oldNode.uuid,
-          nodeType: oldNode.type,
-          ...(!isInTrash(oldPath) && {
-            recycleBinDir: {
-              uuid: uuidV4(),
-              dirName: getCurrentTimeDirName(),
-              type: 'songList',
-              order: Date.now()
-            }
-          })
+          nodeType: oldNode.type
         })
         deletedPaths.add(oldPath) // 标记此路径已被删除
       }
@@ -295,15 +279,7 @@ export function calculateFileSystemOperations(oldTree: IDir, newTree: IDir): Fil
                 type: isInTrash(childOldPath) ? 'permanentlyDelete' : 'delete',
                 path: childOldPath,
                 uuid: existingNode.uuid,
-                nodeType: existingNode.type,
-                ...(!isInTrash(childOldPath) && {
-                  recycleBinDir: {
-                    uuid: uuidV4(),
-                    dirName: getCurrentTimeDirName(),
-                    type: 'songList',
-                    order: Date.now()
-                  }
-                })
+                nodeType: existingNode.type
               })
               deletedPaths.add(childOldPath) // 标记此路径已被删除
             }

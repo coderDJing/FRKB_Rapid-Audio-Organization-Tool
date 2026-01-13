@@ -20,6 +20,10 @@ interface Runtime {
     totalSongCount: number
     selectedSongFilePath: string[]
   }
+  lastSongListUUIDByLibrary: {
+    FilterLibrary: string
+    CuratedLibrary: string
+  }
   importingSongListUUID: string
   isProgressing: boolean
   playingData: {
@@ -75,6 +79,10 @@ export const useRuntimeStore = defineStore('runtime', {
         songInfoArr: [], //歌单内容
         totalSongCount: 0,
         selectedSongFilePath: [] //歌单内选中的歌曲条目
+      },
+      lastSongListUUIDByLibrary: {
+        FilterLibrary: '',
+        CuratedLibrary: ''
       },
       importingSongListUUID: '', //正在执行导入中的歌单
       creatingSongListUUID: '', //正在创建中的歌单（用于微动效）

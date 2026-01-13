@@ -4,10 +4,11 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import confirm from '@renderer/components/confirmDialog'
 import exportDialog from '@renderer/components/exportDialog'
 import libraryUtils from '@renderer/utils/libraryUtils'
-import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import { t } from '@renderer/utils/translate'
 import emitter from '@renderer/utils/mitt'
 import { WebAudioPlayer } from './webAudioPlayer'
+import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
+import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 
 type PreloadHit = {
   source: 'next' | 'previous'
@@ -258,9 +259,8 @@ export function usePlayerControlsLogic({
         }
 
         // 检查是否在回收站
-        const isInRecycleBin = runtime.libraryTree.children
-          ?.find((item) => item.dirName === 'RecycleBin')
-          ?.children?.find((item) => item.uuid === currentSongListUUID)
+        const isInRecycleBin = currentSongListUUID === RECYCLE_BIN_UUID
+        const isExternalView = currentSongListUUID === EXTERNAL_PLAYLIST_UUID
 
         let performDelete = false
         let permanently = false
@@ -338,21 +338,37 @@ export function usePlayerControlsLogic({
         }
 
         // 执行删除操作（移动到回收站或彻底删除）
-        const deletePromise = permanently
-          ? window.electron.ipcRenderer.invoke('permanentlyDelSongs', [filePathToDelete])
-          : window.electron.ipcRenderer.send(
-              'delSongs',
-              [filePathToDelete],
-              getCurrentTimeDirName()
-            )
-        await Promise.resolve(deletePromise)
+        let removedPathsForEvent = [filePathToDelete]
+        if (permanently) {
+          const summary = await window.electron.ipcRenderer.invoke('permanentlyDelSongs', [
+            filePathToDelete
+          ])
+          const removedPaths = Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
+          if (removedPaths.length > 0) {
+            removedPathsForEvent = removedPaths
+          } else {
+            removedPathsForEvent = []
+          }
+        } else {
+          const payload = isExternalView
+            ? { filePaths: [filePathToDelete], sourceType: 'external' }
+            : (() => {
+                const songListPath = libraryUtils.findDirPathByUuid(currentSongListUUID)
+                return songListPath
+                  ? { filePaths: [filePathToDelete], songListPath }
+                  : [filePathToDelete]
+              })()
+          window.electron.ipcRenderer.send('delSongs', payload)
+        }
 
         // 广播删除，保证当前 songsArea 若显示同一歌单可同步移除
         const listUuidAtDeleteStart = currentSongListUUID
-        emitter.emit('songsRemoved', {
-          listUUID: listUuidAtDeleteStart,
-          paths: [filePathToDelete]
-        })
+        if (removedPathsForEvent.length > 0) {
+          emitter.emit('songsRemoved', {
+            listUUID: listUuidAtDeleteStart,
+            paths: removedPathsForEvent
+          })
+        }
         emitter.emit('playlistContentChanged', { uuids: [listUuidAtDeleteStart] })
 
         await nextTick() // 等待 DOM 更新

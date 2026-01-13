@@ -2,7 +2,6 @@ import { nextTick, Ref, ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { ISongInfo, IMenu, type IMetadataAutoFillSummary } from '../../../../../../types/globals' // Corrected path
 import { t } from '@renderer/utils/translate'
-import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import rightClickMenu from '@renderer/components/rightClickMenu' // Assuming it's a default export or easily callable
 import confirm from '@renderer/components/confirmDialog'
 import exportDialog from '@renderer/components/exportDialog'
@@ -10,6 +9,9 @@ import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import emitter from '@renderer/utils/mitt'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
+import libraryUtils from '@renderer/utils/libraryUtils'
+import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
+import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 
 // Type for the return value when a dialog needs to be opened by the parent
 export interface OpenDialogAction {
@@ -65,7 +67,7 @@ export function useSongItemContextMenu(
     })
   }
 
-  const menuArr: Ref<IMenu[][]> = ref([
+  const defaultMenuArr: IMenu[][] = [
     [{ menuName: 'tracks.exportTracks' }],
     [{ menuName: 'library.moveToFilter' }, { menuName: 'library.moveToCurated' }],
     [
@@ -77,7 +79,22 @@ export function useSongItemContextMenu(
     [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.editMetadata' }],
     [{ menuName: 'tracks.clearTrackCache' }],
     [{ menuName: 'fingerprints.analyzeAndAdd' }]
-  ])
+  ]
+  const recycleMenuArr: IMenu[][] = [
+    [{ menuName: 'recycleBin.restoreToOriginal' }],
+    [{ menuName: 'tracks.exportTracks' }],
+    [{ menuName: 'library.moveToFilter' }, { menuName: 'library.moveToCurated' }],
+    [
+      { menuName: 'recycleBin.permanentlyDeleteTracks', shortcutKey: 'Delete' },
+      { menuName: 'tracks.deleteAllAbove' }
+    ],
+    [{ menuName: 'tracks.showInFileExplorer' }],
+    [{ menuName: 'metadata.autoFillMenu' }],
+    [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.editMetadata' }],
+    [{ menuName: 'tracks.clearTrackCache' }],
+    [{ menuName: 'fingerprints.analyzeAndAdd' }]
+  ]
+  const menuArr: Ref<IMenu[][]> = ref(defaultMenuArr)
 
   const showAndHandleSongContextMenu = async (
     event: MouseEvent,
@@ -91,10 +108,13 @@ export function useSongItemContextMenu(
     | TrackCacheClearedAction
     | null
   > => {
+    const isRecycleBinView = runtime.songsArea.songListUUID === RECYCLE_BIN_UUID
+    const isExternalView = runtime.songsArea.songListUUID === EXTERNAL_PLAYLIST_UUID
     if (runtime.songsArea.selectedSongFilePath.indexOf(song.filePath) === -1) {
       runtime.songsArea.selectedSongFilePath = [song.filePath]
     }
 
+    menuArr.value = isRecycleBinView ? recycleMenuArr : defaultMenuArr
     const result = await rightClickMenu({
       menuArr: menuArr.value,
       clickEvent: event
@@ -102,7 +122,109 @@ export function useSongItemContextMenu(
 
     if (result === 'cancel') return null
 
+    const buildDelSongsPayload = (paths: string[]) => {
+      if (isExternalView) {
+        return { filePaths: paths, sourceType: 'external' }
+      }
+      const songListPath = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
+      if (songListPath) {
+        return { filePaths: paths, songListPath }
+      }
+      return paths
+    }
+
+    const showDeleteSummaryIfNeeded = async (summary: {
+      total?: number
+      success?: number
+      failed?: number
+    }) => {
+      const total = Number(summary?.total || 0)
+      const success = Number(summary?.success || 0)
+      const failed = Number(summary?.failed || 0)
+      if (total <= 1 && failed === 0) return
+      const content: string[] = []
+      content.push(t('recycleBin.deleteSummarySuccess', { count: success }))
+      if (failed > 0) {
+        content.push(t('recycleBin.deleteSummaryFailed', { count: failed }))
+      }
+      await confirm({
+        title: t('recycleBin.deleteSummaryTitle'),
+        content,
+        confirmShow: false
+      })
+    }
+
+    const showRestoreSummaryIfNeeded = async (summary: {
+      total?: number
+      restored?: number
+      missingPlaylist?: number
+      missingFile?: number
+      missingRecord?: number
+      failed?: number
+    }) => {
+      const total = Number(summary?.total || 0)
+      const restored = Number(summary?.restored || 0)
+      const missingPlaylist = Number(summary?.missingPlaylist || 0)
+      const missingFile = Number(summary?.missingFile || 0)
+      const missingRecord = Number(summary?.missingRecord || 0)
+      const failed = Number(summary?.failed || 0)
+      if (
+        total <= 1 &&
+        missingPlaylist === 0 &&
+        missingFile === 0 &&
+        missingRecord === 0 &&
+        failed === 0
+      )
+        return
+      const content: string[] = []
+      content.push(t('recycleBin.restoreSummarySuccess', { count: restored }))
+      if (missingPlaylist > 0) {
+        content.push(t('recycleBin.restoreSummaryMissingPlaylist', { count: missingPlaylist }))
+        content.push(t('recycleBin.restoreMissingPlaylistHint'))
+      }
+      if (missingFile > 0) {
+        content.push(t('recycleBin.restoreSummaryMissingFile', { count: missingFile }))
+      }
+      if (missingRecord > 0) {
+        content.push(t('recycleBin.restoreSummaryMissingRecord', { count: missingRecord }))
+      }
+      if (failed > 0) {
+        content.push(t('recycleBin.restoreSummaryFailed', { count: failed }))
+      }
+      await confirm({
+        title: t('recycleBin.restoreSummaryTitle'),
+        content,
+        confirmShow: false
+      })
+    }
+
     switch (result.menuName) {
+      case 'recycleBin.restoreToOriginal': {
+        const currentSelectedPaths = [...runtime.songsArea.selectedSongFilePath]
+        if (!currentSelectedPaths.length) return null
+        const summary = await window.electron.ipcRenderer.invoke('recycleBin:restore', {
+          filePaths: [...currentSelectedPaths]
+        })
+        const removedPaths = Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
+        if (removedPaths.length > 0) {
+          emitter.emit('songsRemoved', {
+            listUUID: runtime.songsArea.songListUUID,
+            paths: removedPaths
+          })
+        }
+        const playlistUuids = Array.isArray(summary?.playlistUuids) ? summary.playlistUuids : []
+        if (playlistUuids.length > 0) {
+          emitter.emit('playlistContentChanged', { uuids: playlistUuids })
+        }
+        runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
+          (path) => !removedPaths.includes(path)
+        )
+        await showRestoreSummaryIfNeeded(summary)
+        if (removedPaths.length > 0) {
+          return { action: 'songsRemoved', paths: removedPaths }
+        }
+        return null
+      }
       case 'tracks.editMetadata': {
         const { default: openEditMetadataDialog } = await import(
           '@renderer/components/editMetadataDialog'
@@ -227,11 +349,7 @@ export function useSongItemContextMenu(
         }
 
         // 2. 用户确认 (如果需要)
-        const isInRecycleBin = runtime.libraryTree.children
-          ?.find((item) => item.dirName === 'RecycleBin')
-          ?.children?.find((item) => item.uuid === runtime.songsArea.songListUUID)
-
-        if (isInRecycleBin) {
+        if (isRecycleBinView) {
           const res = await confirm({
             title: t('common.delete'),
             content: [t('tracks.confirmDeleteAllAbove'), t('tracks.deleteHint')]
@@ -243,11 +361,23 @@ export function useSongItemContextMenu(
 
         // 列表不再使用封面 URL，无需回收
 
+        let removedPathsForEvent = [...delPaths]
         // 4. IPC 调用执行文件删除
-        if (isInRecycleBin) {
-          await window.electron.ipcRenderer.invoke('permanentlyDelSongs', [...delPaths])
+        if (isRecycleBinView) {
+          const summary = await window.electron.ipcRenderer.invoke('permanentlyDelSongs', [
+            ...delPaths
+          ])
+          const removedPaths = Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
+          if (removedPaths.length > 0) {
+            emitter.emit('songsRemoved', {
+              listUUID: runtime.songsArea.songListUUID,
+              paths: removedPaths
+            })
+          }
+          removedPathsForEvent = removedPaths
+          await showDeleteSummaryIfNeeded(summary)
         } else {
-          window.electron.ipcRenderer.send('delSongs', [...delPaths], getCurrentTimeDirName())
+          window.electron.ipcRenderer.send('delSongs', buildDelSongsPayload([...delPaths]))
         }
 
         // 7. UI 操作 (滚动到顶部)
@@ -258,22 +388,22 @@ export function useSongItemContextMenu(
           }
         })
         // 通知全局，保证其他视图也能同步（包含当前 songsArea 监听的统一删除处理）
-        emitter.emit('songsRemoved', { listUUID: runtime.songsArea.songListUUID, paths: delPaths })
+        emitter.emit('songsRemoved', {
+          listUUID: runtime.songsArea.songListUUID,
+          paths: removedPathsForEvent
+        })
         emitter.emit('playlistContentChanged', { uuids: [runtime.songsArea.songListUUID] })
-        return { action: 'songsRemoved', paths: delPaths }
+        return { action: 'songsRemoved', paths: removedPathsForEvent }
       }
       case 'tracks.deleteTracks':
+      case 'recycleBin.permanentlyDeleteTracks':
         {
           const currentSelectedPaths = [...runtime.songsArea.selectedSongFilePath]
 
           if (!currentSelectedPaths.length) return null
 
-          const isInRecycleBin = runtime.libraryTree.children
-            ?.find((item) => item.dirName === 'RecycleBin')
-            ?.children?.find((item) => item.uuid === runtime.songsArea.songListUUID)
-
           let shouldDelete = true
-          if (isInRecycleBin) {
+          if (isRecycleBinView) {
             const res = await confirm({
               title: t('common.delete'),
               content: [t('tracks.confirmDeleteSelected'), t('tracks.deleteHint')]
@@ -282,30 +412,34 @@ export function useSongItemContextMenu(
           }
 
           if (shouldDelete) {
-            const songsActuallyBeingDeletedBasedOnSnapshot = runtime.songsArea.songInfoArr.filter(
-              (item) => currentSelectedPaths.includes(item.filePath)
-            )
-            // 列表不再使用封面 URL
-
-            if (isInRecycleBin) {
-              await window.electron.ipcRenderer.invoke('permanentlyDelSongs', [
+            let removedPathsForEvent = [...currentSelectedPaths]
+            if (isRecycleBinView) {
+              const summary = await window.electron.ipcRenderer.invoke('permanentlyDelSongs', [
                 ...currentSelectedPaths
               ])
+              const removedPaths = Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
+              if (removedPaths.length > 0) {
+                emitter.emit('songsRemoved', {
+                  listUUID: runtime.songsArea.songListUUID,
+                  paths: removedPaths
+                })
+              }
+              removedPathsForEvent = removedPaths
+              await showDeleteSummaryIfNeeded(summary)
             } else {
               window.electron.ipcRenderer.send(
                 'delSongs',
-                [...currentSelectedPaths],
-                getCurrentTimeDirName()
+                buildDelSongsPayload([...currentSelectedPaths])
               )
             }
 
             runtime.songsArea.selectedSongFilePath.length = 0
             emitter.emit('songsRemoved', {
               listUUID: runtime.songsArea.songListUUID,
-              paths: currentSelectedPaths
+              paths: removedPathsForEvent
             })
             emitter.emit('playlistContentChanged', { uuids: [runtime.songsArea.songListUUID] })
-            return { action: 'songsRemoved', paths: currentSelectedPaths }
+            return { action: 'songsRemoved', paths: removedPathsForEvent }
           }
         }
         break

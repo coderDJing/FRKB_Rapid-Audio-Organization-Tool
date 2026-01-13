@@ -7,7 +7,31 @@ import * as LibraryCacheDb from '../libraryCacheDb'
 import { findSongListRootByPath, loadLibraryNodes } from '../libraryTreeDb'
 import type { LibraryNodeRow } from '../libraryTreeDb'
 
+const normalizePath = (value: string): string => {
+  if (!value) return ''
+  let normalized = path.resolve(value)
+  if (process.platform === 'win32') {
+    normalized = normalized.toLowerCase()
+  }
+  return normalized
+}
+
 async function findSongListRoot(startDir: string): Promise<string | null> {
+  if (!startDir) return null
+  const rootDir = store.databaseDir
+  if (rootDir) {
+    const recycleRoot = path.join(rootDir, mapRendererPathToFsPath('library/RecycleBin'))
+    const normalizedStart = normalizePath(startDir)
+    const normalizedRecycle = normalizePath(recycleRoot)
+    if (
+      normalizedStart &&
+      normalizedRecycle &&
+      (normalizedStart === normalizedRecycle ||
+        normalizedStart.startsWith(normalizedRecycle + path.sep))
+    ) {
+      return recycleRoot
+    }
+  }
   return await findSongListRootByPath(startDir)
 }
 
@@ -166,6 +190,7 @@ export async function pruneOrphanedSongListCaches(
       if (!rel) continue
       keepRoots.add(path.join(rootDir, rel))
     }
+    keepRoots.add(path.join(rootDir, mapRendererPathToFsPath('library/RecycleBin')))
     return await LibraryCacheDb.pruneCachesByRoots(keepRoots)
   } catch {
     return { songCacheRemoved: 0, coverIndexRemoved: 0, waveformCacheRemoved: 0 }

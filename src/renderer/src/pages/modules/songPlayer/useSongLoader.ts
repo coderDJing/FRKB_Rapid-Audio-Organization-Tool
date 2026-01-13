@@ -1,10 +1,12 @@
 import { ref, onUnmounted, shallowRef } from 'vue'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
-import { getCurrentTimeDirName } from '@renderer/utils/utils'
 import emitter from '@renderer/utils/mitt'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { WebAudioPlayer, type MixxxWaveformData, canPlayHtmlAudio } from './webAudioPlayer'
+import libraryUtils from '@renderer/utils/libraryUtils'
+import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
+import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 
 type WaveformCacheResponse = {
   items?: Array<{ filePath: string; data: MixxxWaveformData | null }>
@@ -59,7 +61,25 @@ export function useSongLoader(params: {
       })
 
       if (res === 'confirm') {
-        window.electron.ipcRenderer.send('delSongs', [localFilePath], getCurrentTimeDirName())
+        const currentListUUID = runtime.playingData.playingSongListUUID
+        const isRecycleBinView = currentListUUID === RECYCLE_BIN_UUID
+        const isExternalView = currentListUUID === EXTERNAL_PLAYLIST_UUID
+        let removedPathsForEvent = [localFilePath]
+        if (isRecycleBinView) {
+          const summary = await window.electron.ipcRenderer.invoke('permanentlyDelSongs', [
+            localFilePath
+          ])
+          const removedPaths = Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
+          removedPathsForEvent = removedPaths
+        } else {
+          const payload = isExternalView
+            ? { filePaths: [localFilePath], sourceType: 'external' }
+            : (() => {
+                const songListPath = libraryUtils.findDirPathByUuid(currentListUUID)
+                return songListPath ? { filePaths: [localFilePath], songListPath } : [localFilePath]
+              })()
+          window.electron.ipcRenderer.send('delSongs', payload)
+        }
         const errorIndex = runtime.playingData.playingSongListData.findIndex(
           (item) => item.filePath === localFilePath
         )
@@ -73,10 +93,12 @@ export function useSongLoader(params: {
           }
         }
 
-        emitter.emit('songsRemoved', {
-          listUUID: runtime.playingData.playingSongListUUID,
-          paths: [localFilePath]
-        })
+        if (removedPathsForEvent.length > 0) {
+          emitter.emit('songsRemoved', {
+            listUUID: currentListUUID,
+            paths: removedPathsForEvent
+          })
+        }
       } else {
         if (runtime.playingData.playingSong?.filePath === localFilePath) {
           runtime.playingData.playingSong = null

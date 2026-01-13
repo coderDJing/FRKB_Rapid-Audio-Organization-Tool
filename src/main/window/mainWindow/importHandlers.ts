@@ -1,7 +1,6 @@
 import { ipcMain, type BrowserWindow } from 'electron'
 import path = require('path')
 import fs = require('fs-extra')
-import { v4 as uuidV4 } from 'uuid'
 import store from '../../store'
 import FingerprintStore from '../../fingerprintStore'
 import {
@@ -9,12 +8,11 @@ import {
   getSongsAnalyseResult,
   runWithConcurrency,
   waitForUserDecision,
-  getCoreFsDirName,
   moveOrCopyItemWithCheckIsExist
 } from '../../utils'
 import type { IImportSongsFormData, md5 } from '../../../types/globals'
 import type { SendProgress } from './progress'
-import { findLibraryNodeByPath, insertLibraryNode } from '../../libraryTreeDb'
+import { moveFileToRecycleBin } from '../../recycleBinService'
 
 export function registerImportHandlers(
   sendProgress: SendProgress,
@@ -235,23 +233,16 @@ async function moveToRecycleBin(
   getWindow: () => BrowserWindow | null,
   sendProgress: SendProgress
 ) {
-  const now = new Date()
-  const pad2 = (n: number) => (n < 10 ? '0' + n : '' + n)
-  const dirName = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}_${pad2(
-    now.getHours()
-  )}-${pad2(now.getMinutes())}`
-  const recycleBinTargetDir = path.join(
-    store.databaseDir,
-    'library',
-    getCoreFsDirName('RecycleBin'),
-    dirName
-  )
-  fs.ensureDirSync(recycleBinTargetDir)
-  const tasks: Array<() => Promise<any>> = []
-  for (const srcPath of delList) {
-    const dest = path.join(recycleBinTargetDir, path.basename(srcPath))
-    tasks.push(() => fs.move(srcPath, dest))
-  }
+  const tasks: Array<() => Promise<any>> = delList.map((srcPath) => async () => {
+    const result = await moveFileToRecycleBin(srcPath, {
+      sourceType: 'import_dedup',
+      originalPlaylistPath: null
+    })
+    if (result.status === 'failed') {
+      throw new Error(result.error || 'move to recycle bin failed')
+    }
+    return result
+  })
   const batchId = `import_recycle_duplicates_${Date.now()}`
   const { success, failed, hasENOSPC, skipped } = await runWithConcurrency(tasks, {
     concurrency: 16,
@@ -261,41 +252,16 @@ async function moveToRecycleBin(
     onInterrupted: async (payload) =>
       waitForUserDecision(getWindow(), batchId, 'recycleDuplicatesOnImport', payload)
   })
-  const recycleNodePath = path.join('library', getCoreFsDirName('RecycleBin'), dirName)
-  const existingNode = findLibraryNodeByPath(recycleNodePath)
-  const descriptionJson = {
-    uuid: existingNode?.uuid || uuidV4(),
-    type: 'songList',
-    order: existingNode?.order ?? Date.now()
-  }
-  if (!existingNode) {
-    const parentNode = findLibraryNodeByPath(path.join('library', getCoreFsDirName('RecycleBin')))
-    if (parentNode) {
-      insertLibraryNode({
-        uuid: descriptionJson.uuid,
-        parentUuid: parentNode.uuid,
-        dirName,
-        nodeType: 'songList',
-        order: descriptionJson.order
-      })
-    }
-  }
   const targetWindow = getWindow()
-  if (targetWindow) {
-    targetWindow.webContents.send('delSongsSuccess', {
-      dirName,
-      ...descriptionJson
+  if (targetWindow && hasENOSPC) {
+    targetWindow.webContents.send('file-batch-summary', {
+      context: 'recycleDuplicatesOnImport',
+      total: tasks.length,
+      success,
+      failed,
+      hasENOSPC,
+      skipped,
+      errorSamples: []
     })
-    if (hasENOSPC) {
-      targetWindow.webContents.send('file-batch-summary', {
-        context: 'recycleDuplicatesOnImport',
-        total: tasks.length,
-        success,
-        failed,
-        hasENOSPC,
-        skipped,
-        errorSamples: []
-      })
-    }
   }
 }
