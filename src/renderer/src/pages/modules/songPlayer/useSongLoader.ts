@@ -175,6 +175,7 @@ export function useSongLoader(params: {
         playerInstance.play(startTime)
       } catch (playError: any) {
         if (playError?.name !== 'AbortError') {
+          console.error('[player] play error', { filePath, error: playError })
           void handleSongLoadError(filePath, false)
         }
       } finally {
@@ -225,6 +226,7 @@ export function useSongLoader(params: {
     } catch (loadError: any) {
       isLoadingBlob.value = false
       if (loadError?.name !== 'AbortError') {
+        console.error('[player] load error', { filePath, useHtmlPlayback, error: loadError })
         await handleSongLoadError(filePath, false)
       }
     }
@@ -282,6 +284,7 @@ export function useSongLoader(params: {
     } catch (error: any) {
       isLoadingBlob.value = false
       if (error?.name !== 'AbortError') {
+        console.error('[player] loadPCM error', { filePath, requestId: requestNumber, error })
         void handleSongLoadError(filePath, false)
       }
     }
@@ -298,6 +301,7 @@ export function useSongLoader(params: {
     if (requestNumber !== currentLoadRequestId.value) return
     if (runtime.playingData.playingSong?.filePath !== filePath) return
     isLoadingBlob.value = false
+    console.error('[player] decode error', { filePath, requestId, message: _message })
     void handleSongLoadError(filePath, false)
   }
 

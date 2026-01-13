@@ -207,28 +207,41 @@ app.whenReady().then(async () => {
     if (!protocol.isProtocolRegistered(PREVIEW_PROTOCOL)) {
       protocol.registerStreamProtocol(PREVIEW_PROTOCOL, async (request, callback) => {
         try {
+          const safeDecode = (value: string) => {
+            try {
+              return decodeURIComponent(value)
+            } catch {
+              return value
+            }
+          }
           let decodedPath = ''
           try {
             const urlObj = new URL(request.url)
             const paramPath = urlObj.searchParams.get('path')
             if (paramPath) {
-              decodedPath = decodeURIComponent(paramPath)
+              decodedPath = paramPath
             } else {
               const host = urlObj.hostname || ''
               const pathname = urlObj.pathname || ''
               if (host && /^[a-zA-Z]$/.test(host) && pathname) {
-                decodedPath = `${host}:${decodeURIComponent(pathname)}`
+                decodedPath = `${host}:${safeDecode(pathname)}`
               } else if (host && host !== 'local') {
-                decodedPath = decodeURIComponent(`${host}${pathname}`)
+                decodedPath = safeDecode(`${host}${pathname}`)
               } else {
                 const rawPath = pathname.startsWith('/') ? pathname.slice(1) : pathname
-                decodedPath = decodeURIComponent(rawPath)
+                decodedPath = safeDecode(rawPath)
               }
             }
           } catch {
-            const encodedPath = request.url.slice(`${PREVIEW_PROTOCOL}://`.length)
-            const cleanedPath = (encodedPath || '').replace(/^\/+/, '')
-            decodedPath = decodeURIComponent(cleanedPath || '')
+            const rawUrl = request.url || ''
+            const match = rawUrl.match(/[?&]path=([^&]+)/i)
+            if (match) {
+              decodedPath = safeDecode(match[1])
+            } else {
+              const encodedPath = rawUrl.slice(`${PREVIEW_PROTOCOL}://`.length)
+              const cleanedPath = (encodedPath || '').replace(/^\/+/, '')
+              decodedPath = safeDecode(cleanedPath || '')
+            }
           }
 
           if (decodedPath.startsWith('/') && /^[a-zA-Z]:\//.test(decodedPath.slice(1))) {
