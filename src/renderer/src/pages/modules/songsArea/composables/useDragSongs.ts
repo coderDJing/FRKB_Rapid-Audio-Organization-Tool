@@ -14,6 +14,24 @@ export function useDragSongs() {
   const runtime = useRuntimeStore()
   const isDragging = ref(false)
   const dragData = ref<DragSongData | null>(null)
+  let dragCleanupTimer: ReturnType<typeof setTimeout> | null = null
+
+  const clearDragCleanupTimer = () => {
+    if (dragCleanupTimer) {
+      clearTimeout(dragCleanupTimer)
+      dragCleanupTimer = null
+    }
+  }
+  const setRuntimeDragState = (filePaths: string[], sourceSongListUUID: string) => {
+    runtime.songDragActive = true
+    runtime.draggingSongFilePaths = [...filePaths]
+    runtime.dragSourceSongListUUID = sourceSongListUUID
+  }
+  const clearRuntimeDragState = () => {
+    runtime.songDragActive = false
+    runtime.draggingSongFilePaths = []
+    runtime.dragSourceSongListUUID = ''
+  }
 
   /**
    * 开始拖拽歌曲
@@ -25,7 +43,8 @@ export function useDragSongs() {
     songOrSongs: ISongInfo | ISongInfo[],
     sourceLibraryName: string,
     sourceSongListUUID: string
-  ) => {
+  ): string[] => {
+    clearDragCleanupTimer()
     // 如果是单个歌曲且没有被选中，则只拖拽该歌曲
     // 如果是单个歌曲但已被选中，则拖拽所有选中的歌曲
     // 如果传入的是数组，则拖拽整个数组
@@ -52,6 +71,8 @@ export function useDragSongs() {
       sourceSongListUUID
     }
     isDragging.value = true
+    setRuntimeDragState(songFilePaths, sourceSongListUUID)
+    return songFilePaths
   }
 
   /**
@@ -60,6 +81,15 @@ export function useDragSongs() {
   const endDragSongs = () => {
     isDragging.value = false
     dragData.value = null
+    clearRuntimeDragState()
+    clearDragCleanupTimer()
+  }
+
+  const scheduleDragCleanup = (delayMs: number = 8000) => {
+    clearDragCleanupTimer()
+    dragCleanupTimer = setTimeout(() => {
+      endDragSongs()
+    }, delayMs)
   }
 
   /**
@@ -69,47 +99,55 @@ export function useDragSongs() {
    * @returns 被移动的歌曲文件路径数组
    */
   const handleDropToSongList = async (targetSongListUUID: string, targetLibraryName: string) => {
-    // 直接从 runtime store 获取当前选中的歌曲
-    const selectedSongFilePaths = [...runtime.songsArea.selectedSongFilePath] // 创建副本避免响应式对象
-    const sourceSongListUUID = runtime.songsArea.songListUUID
-
-    if (!selectedSongFilePaths.length || !sourceSongListUUID) {
-      return []
-    }
-
-    // 如果目标歌单和源歌单相同，不做任何操作
-    if (targetSongListUUID === sourceSongListUUID) {
-      return []
-    }
-
-    // 获取目标路径，确保是纯字符串
-    const targetDirPath = libraryUtils.findDirPathByUuid(targetSongListUUID)
-
-    if (!targetDirPath) {
-      return []
-    }
-
-    // 调用移动歌曲的 IPC，确保所有参数都是可序列化的
-    await window.electron.ipcRenderer.invoke('moveSongsToDir', selectedSongFilePaths, targetDirPath)
-
-    // 广播：源/目标歌单内容发生变化（用于刷新数量）
     try {
-      const affected = [sourceSongListUUID, targetSongListUUID].filter(Boolean)
-      emitter.emit('playlistContentChanged', { uuids: affected })
-    } catch {}
+      // 直接从 runtime store 获取当前选中的歌曲
+      const selectedSongFilePaths = [...runtime.songsArea.selectedSongFilePath] // 创建副本避免响应式对象
+      const sourceSongListUUID = runtime.dragSourceSongListUUID || runtime.songsArea.songListUUID
 
-    // 广播：源歌单移除这些歌曲，确保当前视图（若显示源歌单或其筛选结果）能及时剔除并重建
-    try {
-      const normalizePath = (p: string | undefined | null) =>
-        (p || '').replace(/\//g, '\\').toLowerCase()
-      const normalized = selectedSongFilePaths.map((p) => normalizePath(p))
-      emitter.emit('songsRemoved', {
-        listUUID: sourceSongListUUID,
-        paths: normalized
-      })
-    } catch {}
+      if (!selectedSongFilePaths.length || !sourceSongListUUID) {
+        return []
+      }
 
-    return selectedSongFilePaths
+      // 如果目标歌单和源歌单相同，不做任何操作
+      if (targetSongListUUID === sourceSongListUUID) {
+        return []
+      }
+
+      // 获取目标路径，确保是纯字符串
+      const targetDirPath = libraryUtils.findDirPathByUuid(targetSongListUUID)
+
+      if (!targetDirPath) {
+        return []
+      }
+
+      // 调用移动歌曲的 IPC，确保所有参数都是可序列化的
+      await window.electron.ipcRenderer.invoke(
+        'moveSongsToDir',
+        selectedSongFilePaths,
+        targetDirPath
+      )
+
+      // 广播：源/目标歌单内容发生变化（用于刷新数量）
+      try {
+        const affected = [sourceSongListUUID, targetSongListUUID].filter(Boolean)
+        emitter.emit('playlistContentChanged', { uuids: affected })
+      } catch {}
+
+      // 广播：源歌单移除这些歌曲，确保当前视图（若显示源歌单或其筛选结果）能及时剔除并重建
+      try {
+        const normalizePath = (p: string | undefined | null) =>
+          (p || '').replace(/\//g, '\\').toLowerCase()
+        const normalized = selectedSongFilePaths.map((p) => normalizePath(p))
+        emitter.emit('songsRemoved', {
+          listUUID: sourceSongListUUID,
+          paths: normalized
+        })
+      } catch {}
+
+      return selectedSongFilePaths
+    } finally {
+      endDragSongs()
+    }
   }
 
   const draggedSongCount = computed(() => {
@@ -122,6 +160,7 @@ export function useDragSongs() {
     draggedSongCount,
     startDragSongs,
     endDragSongs,
+    scheduleDragCleanup,
     handleDropToSongList
   }
 }

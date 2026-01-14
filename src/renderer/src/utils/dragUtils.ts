@@ -432,6 +432,9 @@ export const handleDrop = async (
         return false
       }
     } else if (e.dataTransfer?.files.length && dirData.type === 'songList') {
+      if (runtime.songDragActive && runtime.draggingSongFilePaths.length > 0) {
+        return false
+      }
       // 处理外部文件拖入
       const filePaths = []
       for (let item of Array.from(e.dataTransfer.files)) {

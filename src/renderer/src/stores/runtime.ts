@@ -10,6 +10,9 @@ interface Runtime {
   layoutConfig: ILayoutConfig
   dragItemData: null | IDir
   dragTableHeader: boolean
+  songDragActive: boolean
+  draggingSongFilePaths: string[]
+  dragSourceSongListUUID: string
   libraryTree: IDir
   oldLibraryTree: IDir
   selectSongListDialogShow: boolean
@@ -60,6 +63,9 @@ export const useRuntimeStore = defineStore('runtime', {
       },
       dragItemData: null,
       dragTableHeader: false, //是否正在拖拽表头
+      songDragActive: false,
+      draggingSongFilePaths: [],
+      dragSourceSongListUUID: '',
       libraryTree: {
         uuid: '',
         type: 'root',
