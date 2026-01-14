@@ -1,5 +1,10 @@
 import { ipcMain } from 'electron'
-import { enqueueKeyAnalysisImmediate, enqueueKeyAnalysisList } from '../services/keyAnalysisQueue'
+import {
+  cancelKeyAnalysisBackground,
+  enqueueKeyAnalysisImmediate,
+  enqueueKeyAnalysisList,
+  getKeyAnalysisBackgroundStatus
+} from '../services/keyAnalysisQueue'
 
 type VisibleQueuePayload = {
   filePaths?: string[]
@@ -17,5 +22,15 @@ export function registerKeyAnalysisHandlers() {
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
     if (!filePath) return
     enqueueKeyAnalysisImmediate(filePath)
+  })
+
+  ipcMain.handle('key-analysis:cancel-background', (_e, payload?: { mode?: string }) => {
+    const mode = String(payload?.mode || '')
+    const pauseMs = mode === '1h' ? 60 * 60 * 1000 : mode === '3h' ? 3 * 60 * 60 * 1000 : 0
+    cancelKeyAnalysisBackground(pauseMs || undefined)
+  })
+
+  ipcMain.handle('key-analysis:background-status', () => {
+    return getKeyAnalysisBackgroundStatus()
   })
 }

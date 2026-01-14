@@ -58,6 +58,15 @@ type WorkerPayload = {
   error?: string
 }
 
+export type KeyAnalysisBackgroundStatus = {
+  active: boolean
+  pending: number
+  inFlight: number
+  processing: number
+  scanInProgress: boolean
+  enabled: boolean
+}
+
 type BackgroundDirItem = {
   dir: string
   listRoot: string
@@ -116,6 +125,10 @@ class KeyAnalysisQueue {
   private backgroundDirQueue: BackgroundDirItem[] = []
   private backgroundRootsLastRefresh = 0
   private backgroundCleanCursor = 0
+  private backgroundEnabled = true
+  private backgroundResumeTimer: ReturnType<typeof setTimeout> | null = null
+  private backgroundProcessingJobs = new Set<number>()
+  private lastBackgroundStatus: KeyAnalysisBackgroundStatus | null = null
 
   constructor(workerCount: number, events: EventEmitter) {
     const count = Math.max(1, workerCount)
@@ -125,11 +138,37 @@ class KeyAnalysisQueue {
     }
   }
 
+  getBackgroundStatusSnapshot(): KeyAnalysisBackgroundStatus {
+    return this.getBackgroundStatus()
+  }
+
+  private getBackgroundStatus(): KeyAnalysisBackgroundStatus {
+    const pending = this.pendingBackground.length
+    const inFlight = this.countBackgroundInFlight()
+    const processing = this.backgroundProcessingJobs.size
+    const scanInProgress = this.backgroundScanInProgress
+    const enabled = this.backgroundEnabled
+    const active = enabled && (processing > 0 || inFlight > 0)
+    return { active, pending, inFlight, processing, scanInProgress, enabled }
+  }
+
+  private emitBackgroundStatus() {
+    const next = this.getBackgroundStatus()
+    const prev = this.lastBackgroundStatus
+    if (prev && prev.active === next.active && prev.enabled === next.enabled) {
+      return
+    }
+    this.lastBackgroundStatus = next
+    this.events.emit('background-status', next)
+  }
+
   startBackgroundSweep() {
+    if (!this.backgroundEnabled) return
     if (this.backgroundTimer) return
     if (this.isIdle()) {
       this.scheduleBackgroundScan()
     }
+    this.emitBackgroundStatus()
   }
 
   enqueue(
@@ -138,6 +177,7 @@ class KeyAnalysisQueue {
     options: { urgent?: boolean; source?: KeyAnalysisSource; fastAnalysis?: boolean } = {}
   ) {
     if (!filePath) return
+    if (priority === 'background' && !this.backgroundEnabled) return
     this.clearBackgroundTimer()
     const normalizedPath = normalizePath(filePath)
     const source = options.source || (priority === 'background' ? 'background' : 'foreground')
@@ -189,6 +229,40 @@ class KeyAnalysisQueue {
     }
   }
 
+  cancelBackgroundWork(pauseMs?: number) {
+    const resumeDelay = Number.isFinite(pauseMs) && pauseMs && pauseMs > 0 ? pauseMs : 0
+    this.backgroundEnabled = false
+    this.clearBackgroundTimer()
+    this.clearBackgroundResumeTimer()
+    this.clearPendingBackground()
+    for (const [worker, jobId] of this.busy.entries()) {
+      const job = this.inFlight.get(jobId)
+      if (job && job.source === 'background') {
+        this.backgroundProcessingJobs.delete(job.jobId)
+        void worker.terminate().catch(() => {})
+      }
+    }
+    if (resumeDelay > 0) {
+      this.backgroundResumeTimer = setTimeout(() => {
+        this.backgroundEnabled = true
+        this.backgroundResumeTimer = null
+        this.emitBackgroundStatus()
+        if (this.isIdle()) {
+          this.scheduleBackgroundScan()
+        }
+      }, resumeDelay)
+    }
+    this.emitBackgroundStatus()
+  }
+
+  private clearPendingBackground() {
+    if (this.pendingBackground.length === 0) return
+    for (const job of this.pendingBackground) {
+      this.pendingByPath.delete(job.normalizedPath)
+    }
+    this.pendingBackground = []
+  }
+
   private isHigherPriority(next: KeyAnalysisPriority, current: KeyAnalysisPriority): boolean {
     const rank = { high: 4, medium: 3, low: 2, background: 1 }
     return rank[next] > rank[current]
@@ -209,6 +283,9 @@ class KeyAnalysisQueue {
     } else {
       this.pendingBackground.push(job)
     }
+    if (job.priority === 'background') {
+      this.emitBackgroundStatus()
+    }
   }
 
   private removePending(job: KeyAnalysisJob) {
@@ -221,6 +298,9 @@ class KeyAnalysisQueue {
     removeFrom(this.pendingLow)
     removeFrom(this.pendingBackground)
     this.pendingByPath.delete(job.normalizedPath)
+    if (job.priority === 'background') {
+      this.emitBackgroundStatus()
+    }
   }
 
   private popNextJob(): KeyAnalysisJob | null {
@@ -261,6 +341,9 @@ class KeyAnalysisQueue {
     let preemptedJob: KeyAnalysisJob | null = null
     if (jobId) {
       const job = this.inFlight.get(jobId)
+      if (job && job.source === 'background') {
+        this.backgroundProcessingJobs.delete(job.jobId)
+      }
       if (job) {
         this.activeByPath.delete(job.normalizedPath)
         this.inFlight.delete(jobId)
@@ -281,6 +364,7 @@ class KeyAnalysisQueue {
     if (preemptedJob) {
       this.enqueue(preemptedJob.filePath, 'background', { source: 'background' })
     }
+    this.emitBackgroundStatus()
   }
 
   private async handleWorkerMessage(worker: Worker, payload: WorkerPayload) {
@@ -297,6 +381,10 @@ class KeyAnalysisQueue {
     this.idle.push(worker)
     if (job) {
       this.activeByPath.delete(job.normalizedPath)
+      if (job.source === 'background') {
+        this.backgroundProcessingJobs.delete(job.jobId)
+        this.emitBackgroundStatus()
+      }
     }
 
     if (job && payloadResult && !payloadResult.keyError) {
@@ -690,7 +778,15 @@ class KeyAnalysisQueue {
     }
   }
 
+  private clearBackgroundResumeTimer() {
+    if (this.backgroundResumeTimer) {
+      clearTimeout(this.backgroundResumeTimer)
+      this.backgroundResumeTimer = null
+    }
+  }
+
   private scheduleBackgroundScan() {
+    if (!this.backgroundEnabled) return
     if (this.backgroundTimer) return
     if (!this.isIdle()) return
     const now = Date.now()
@@ -707,6 +803,7 @@ class KeyAnalysisQueue {
   }
 
   private async runBackgroundScan() {
+    if (!this.backgroundEnabled) return
     if (this.backgroundScanInProgress) return
     if (!this.isIdle()) return
     const now = Date.now()
@@ -720,15 +817,19 @@ class KeyAnalysisQueue {
     }
     this.backgroundScanInProgress = true
     this.backgroundLastScanAt = now
+    this.emitBackgroundStatus()
     try {
       const candidates = await this.collectBackgroundCandidates(BACKGROUND_BATCH_SIZE)
-      if (candidates.length > 0) {
-        this.enqueueList(candidates, 'background', { source: 'background' })
-      } else {
-        await this.cleanupMissingCacheEntries(BACKGROUND_CLEAN_BATCH_SIZE)
+      if (this.backgroundEnabled) {
+        if (candidates.length > 0) {
+          this.enqueueList(candidates, 'background', { source: 'background' })
+        } else {
+          await this.cleanupMissingCacheEntries(BACKGROUND_CLEAN_BATCH_SIZE)
+        }
       }
     } finally {
       this.backgroundScanInProgress = false
+      this.emitBackgroundStatus()
       if (this.isIdle()) {
         this.scheduleBackgroundScan()
       }
@@ -736,6 +837,7 @@ class KeyAnalysisQueue {
   }
 
   private async collectBackgroundCandidates(limit: number): Promise<string[]> {
+    if (!this.backgroundEnabled) return []
     const fromCache = await this.collectBackgroundCacheCandidates(limit)
     if (fromCache.length > 0) return fromCache
     return await this.collectBackgroundFsCandidates(limit)
@@ -1018,6 +1120,10 @@ class KeyAnalysisQueue {
           this.drain()
           return
         }
+        if (job.source === 'background') {
+          this.backgroundProcessingJobs.add(job.jobId)
+          this.emitBackgroundStatus()
+        }
         worker.postMessage({
           jobId: job.jobId,
           filePath: job.filePath,
@@ -1031,6 +1137,7 @@ class KeyAnalysisQueue {
     if (this.isIdle()) {
       this.scheduleBackgroundScan()
     }
+    this.emitBackgroundStatus()
   }
 
   invalidateDoneByPath(filePaths: string[]) {
@@ -1067,6 +1174,25 @@ export function enqueueKeyAnalysisImmediate(filePath: string) {
 
 export function startKeyAnalysisBackground() {
   getQueue().startBackgroundSweep()
+}
+
+export function cancelKeyAnalysisBackground(pauseMs?: number) {
+  if (!queue) return
+  queue.cancelBackgroundWork(pauseMs)
+}
+
+export function getKeyAnalysisBackgroundStatus(): KeyAnalysisBackgroundStatus {
+  if (!queue) {
+    return {
+      active: false,
+      pending: 0,
+      inFlight: 0,
+      processing: 0,
+      scanInProgress: false,
+      enabled: false
+    }
+  }
+  return queue.getBackgroundStatusSnapshot()
 }
 
 export function invalidateKeyAnalysisCache(filePaths: string[] | string) {
