@@ -28,6 +28,5 @@ pnpm-debug.log*
 *.njsproj
 *.sln
 *.sw?
-AGENTS.md
 
 vendor/
