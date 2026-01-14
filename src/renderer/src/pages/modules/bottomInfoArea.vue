@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue'
 import { i18n } from '@renderer/i18n'
 import confirm from '@renderer/components/confirmDialog'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -21,6 +21,7 @@ type Task = {
   now: number
   total: number
   noNum: boolean
+  noProgress?: boolean
   startedAt: number
   lastUpdateAt: number
   cancelable?: boolean
@@ -31,7 +32,25 @@ type Task = {
 }
 const tasks = ref<Task[]>([])
 const showTotalRow = ref(tasks.value.length === 0)
+const cancelMenuTaskId = ref<string | null>(null)
+const backgroundTaskId = 'key-analysis.background'
+const BACKGROUND_HIDE_DELAY_MS = 6000
+let backgroundHideTimer: ReturnType<typeof setTimeout> | null = null
 // 组件内部通过 CSS 控制显隐（empty => display:none），无需向上层发事件
+
+const clearBackgroundHideTimer = () => {
+  if (!backgroundHideTimer) return
+  clearTimeout(backgroundHideTimer)
+  backgroundHideTimer = null
+}
+
+const dismissBackgroundTaskNow = () => {
+  clearBackgroundHideTimer()
+  if (cancelMenuTaskId.value === backgroundTaskId) {
+    cancelMenuTaskId.value = null
+  }
+  tasks.value = tasks.value.filter((item) => item.id !== backgroundTaskId)
+}
 
 const playlistTotalDaysHoursSeconds = computed(() => {
   const list = (runtime.songsArea?.songInfoArr || []) as Array<{ duration?: string }>
@@ -106,65 +125,125 @@ function upsertTask(titleKey: string, nowNum: number, total: number, noNumFlag?:
   }
 }
 
+const applyProgressPayload = (payload: any) => {
+  const id = String(payload.id || '')
+  const titleKey = String(payload.titleKey || '')
+  const nowNum = Number(payload.now || 0)
+  const total = Number(payload.total || 0)
+  const noNumFlag = !!payload.isInitial
+  const dismiss = !!payload.dismiss
+  const hasCancelMeta =
+    'cancelable' in payload || 'cancelChannel' in payload || 'cancelPayload' in payload
+  const cancelable = !!payload.cancelable && typeof payload.cancelChannel === 'string'
+  const cancelChannel = cancelable ? String(payload.cancelChannel) : undefined
+  const cancelPayload = cancelable ? (payload.cancelPayload ?? id) : undefined
+  const hasProgressMeta = 'noProgress' in payload
+  const noProgress = !!payload.noProgress
+  if (id === backgroundTaskId && !dismiss) {
+    clearBackgroundHideTimer()
+    const existing = tasks.value.find((t) => t.id === id)
+    if (existing) existing.removing = false
+  }
+  if (dismiss && id === backgroundTaskId) {
+    if (cancelMenuTaskId.value === id) {
+      cancelMenuTaskId.value = null
+    }
+    clearBackgroundHideTimer()
+    const task = tasks.value.find((t) => t.id === id)
+    if (!task) return true
+    task.removing = true
+    backgroundHideTimer = setTimeout(() => {
+      tasks.value = tasks.value.filter((t) => t.id !== id)
+      backgroundHideTimer = null
+    }, BACKGROUND_HIDE_DELAY_MS)
+    return true
+  }
+  if (dismiss && id) {
+    tasks.value = tasks.value.filter((t) => t.id !== id)
+    if (cancelMenuTaskId.value === id) {
+      cancelMenuTaskId.value = null
+    }
+    return true
+  }
+  if (!id || !titleKey) return true
+  const idx = tasks.value.findIndex((t) => t.id === id)
+  if (idx === -1) {
+    tasks.value.push({
+      id,
+      titleKey,
+      title: t(titleKey as any),
+      now: nowNum,
+      total,
+      noNum: noNumFlag,
+      noProgress: hasProgressMeta ? noProgress : false,
+      startedAt: Date.now(),
+      lastUpdateAt: Date.now(),
+      cancelable,
+      cancelChannel,
+      cancelPayload,
+      canceling: false
+    })
+  } else {
+    const task = tasks.value[idx]
+    task.titleKey = titleKey
+    task.title = t(titleKey as any)
+    task.now = nowNum
+    task.total = total
+    task.noNum = noNumFlag
+    task.lastUpdateAt = Date.now()
+    if (hasProgressMeta) {
+      task.noProgress = noProgress
+    }
+    if (hasCancelMeta) {
+      task.cancelable = cancelable
+      task.cancelChannel = cancelChannel
+      task.cancelPayload = cancelPayload
+      if (!cancelable) task.canceling = false
+    }
+  }
+  // 仅对非 import/fingerprint/convert 类任务启用“自动移除”（这些任务有独立完成事件来清理）
+  const canAutoRemove = !/^import_|^fingerprints_|^convert_/i.test(id)
+  if (canAutoRemove && nowNum >= total && total > 0) {
+    const task = tasks.value.find((t) => t.id === id)
+    if (task && !task.removing) {
+      task.removing = true
+      setTimeout(() => {
+        tasks.value = tasks.value.filter((t) => t.id !== id)
+      }, 1500)
+    }
+  }
+  return true
+}
+
+const syncKeyAnalysisBackgroundStatus = async () => {
+  try {
+    const status = await window.electron.ipcRenderer.invoke('key-analysis:background-status')
+    if (status?.active) {
+      applyProgressPayload({
+        id: backgroundTaskId,
+        titleKey: 'keyAnalysis.backgroundAnalyzing',
+        now: 0,
+        total: 0,
+        isInitial: true,
+        noProgress: true,
+        cancelable: true,
+        cancelChannel: 'key-analysis:cancel-background'
+      })
+    } else if (status && typeof status === 'object') {
+      applyProgressPayload({
+        id: backgroundTaskId,
+        dismiss: true
+      })
+    }
+  } catch (error) {
+    console.error('sync key-analysis background status failed', error)
+  }
+}
+void syncKeyAnalysisBackgroundStatus()
+
 window.electron.ipcRenderer.on('progressSet', (_event, arg1, arg2, arg3, arg4) => {
   if (arg1 && typeof arg1 === 'object') {
-    const payload = arg1 as any
-    const id = String(payload.id || '')
-    const titleKey = String(payload.titleKey || '')
-    const nowNum = Number(payload.now || 0)
-    const total = Number(payload.total || 0)
-    const noNumFlag = !!payload.isInitial
-    const hasCancelMeta =
-      'cancelable' in payload || 'cancelChannel' in payload || 'cancelPayload' in payload
-    const cancelable = !!payload.cancelable && typeof payload.cancelChannel === 'string'
-    const cancelChannel = cancelable ? String(payload.cancelChannel) : undefined
-    const cancelPayload = cancelable ? (payload.cancelPayload ?? id) : undefined
-    if (id && titleKey) {
-      // 直接以 id 作为分组键；覆盖阶段
-      const idx = tasks.value.findIndex((t) => t.id === id)
-      if (idx === -1) {
-        tasks.value.push({
-          id,
-          titleKey,
-          title: t(titleKey as any),
-          now: nowNum,
-          total,
-          noNum: noNumFlag,
-          startedAt: Date.now(),
-          lastUpdateAt: Date.now(),
-          cancelable,
-          cancelChannel,
-          cancelPayload,
-          canceling: false
-        })
-      } else {
-        const task = tasks.value[idx]
-        task.titleKey = titleKey
-        task.title = t(titleKey as any)
-        task.now = nowNum
-        task.total = total
-        task.noNum = noNumFlag
-        task.lastUpdateAt = Date.now()
-        if (hasCancelMeta) {
-          task.cancelable = cancelable
-          task.cancelChannel = cancelChannel
-          task.cancelPayload = cancelPayload
-          if (!cancelable) task.canceling = false
-        }
-      }
-      // 仅对非 import/fingerprint/convert 类任务启用“自动移除”（这些任务有独立完成事件来清理）
-      const canAutoRemove = !/^import_|^fingerprints_|^convert_/i.test(id)
-      if (canAutoRemove && nowNum >= total && total > 0) {
-        const task = tasks.value.find((t) => t.id === id)
-        if (task && !task.removing) {
-          task.removing = true
-          setTimeout(() => {
-            tasks.value = tasks.value.filter((t) => t.id !== id)
-          }, 1500)
-        }
-      }
-      return
-    }
+    if (applyProgressPayload(arg1)) return
   }
   // 兼容旧签名
   const titleKey = arg1
@@ -205,6 +284,48 @@ const cancelTask = async (task: Task) => {
     task.canceling = false
   }
 }
+
+const setTaskCanceling = (taskId: string, canceling: boolean) => {
+  const task = tasks.value.find((item) => item.id === taskId)
+  if (task) task.canceling = canceling
+}
+
+const pauseKeyAnalysisBackground = async (mode: '1h' | '3h' | 'until-restart') => {
+  const taskId = backgroundTaskId
+  dismissBackgroundTaskNow()
+  try {
+    await window.electron.ipcRenderer.invoke('key-analysis:cancel-background', { mode })
+  } catch (error) {
+    console.error('pause key-analysis background failed', error)
+  }
+}
+
+const handleCancelClick = async (task: Task) => {
+  if (task.id === backgroundTaskId) {
+    if (task.canceling) return
+    cancelMenuTaskId.value = cancelMenuTaskId.value === task.id ? null : task.id
+    return
+  }
+  if (cancelMenuTaskId.value) {
+    cancelMenuTaskId.value = null
+  }
+  await cancelTask(task)
+}
+
+const handleDocumentClick = () => {
+  if (cancelMenuTaskId.value) {
+    cancelMenuTaskId.value = null
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleDocumentClick)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleDocumentClick)
+  clearBackgroundHideTimer()
+})
 window.electron.ipcRenderer.on(
   'importFinished',
   async (event, _songListUUID, importSummary, progressId?: string) => {
@@ -317,7 +438,7 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
           <span v-show="!task.noNum">{{ task.now }} / {{ task.total }}</span>
         </div>
         <div class="container">
-          <div class="progress">
+          <div class="progress" v-if="!task.noProgress">
             <div
               class="progress-bar"
               :style="'width:' + (task.total ? (task.now / task.total) * 100 : 0) + '%'"
@@ -325,9 +446,40 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
           </div>
         </div>
         <div class="actions" v-if="task.cancelable">
-          <button class="cancel-btn" :disabled="task.canceling" @click="cancelTask(task)">
+          <button
+            class="cancel-btn"
+            :disabled="task.canceling"
+            @click.stop="handleCancelClick(task)"
+          >
             {{ t('common.cancel') }}
           </button>
+          <div
+            v-if="task.id === backgroundTaskId && cancelMenuTaskId === task.id"
+            class="cancel-menu"
+            @click.stop
+          >
+            <button
+              class="cancel-menu-item"
+              :disabled="task.canceling"
+              @click.stop="pauseKeyAnalysisBackground('1h')"
+            >
+              {{ t('keyAnalysis.pause1h') }}
+            </button>
+            <button
+              class="cancel-menu-item"
+              :disabled="task.canceling"
+              @click.stop="pauseKeyAnalysisBackground('3h')"
+            >
+              {{ t('keyAnalysis.pause3h') }}
+            </button>
+            <button
+              class="cancel-menu-item"
+              :disabled="task.canceling"
+              @click.stop="pauseKeyAnalysisBackground('until-restart')"
+            >
+              {{ t('keyAnalysis.pauseUntilRestart') }}
+            </button>
+          </div>
         </div>
       </div>
     </TransitionGroup>
@@ -460,13 +612,18 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   display: flex;
   align-items: center;
   padding: 0 8px 0 4px;
+  position: relative;
+  height: 20px;
 }
 .cancel-btn {
   border: 1px solid var(--divider);
   background: transparent;
   color: var(--text);
   border-radius: 4px;
-  padding: 4px 8px;
+  padding: 0 8px;
+  height: 18px;
+  line-height: 16px;
+  box-sizing: border-box;
   font-size: 11px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -476,6 +633,51 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   border-color: var(--text-weak);
 }
 .cancel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.cancel-menu {
+  position: absolute;
+  right: 10px;
+  bottom: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+  z-index: 9999;
+  min-width: 120px;
+}
+.cancel-menu::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  bottom: -6px;
+  border-width: 6px 6px 0 6px;
+  border-style: solid;
+  border-color: var(--bg-elev) transparent transparent transparent;
+}
+.cancel-menu-item {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+.cancel-menu-item:hover:not(:disabled) {
+  background: var(--hover);
+  border-color: var(--divider);
+}
+.cancel-menu-item:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -566,7 +768,7 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   flex-direction: column;
   padding: 2px 0;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: visible;
   max-height: 400px;
   min-height: 24px;
   opacity: 1;
@@ -580,6 +782,7 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   opacity: 1;
   padding: 2px 0;
   pointer-events: none;
+  overflow: hidden;
 }
 .task-list {
   display: flex;
@@ -591,6 +794,7 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   width: 100%;
   display: flex;
   align-items: center;
+  height: 20px;
   transition:
     opacity 0.2s ease,
     transform 0.2s ease;

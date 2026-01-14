@@ -514,6 +514,12 @@
   "audio": {
     "convert": "转换格式"
   },
+  "keyAnalysis": {
+    "backgroundAnalyzing": "闲时自动分析曲目中",
+    "pause1h": "暂停1小时",
+    "pause3h": "暂停3小时",
+    "pauseUntilRestart": "直到重启"
+  },
   "fingerprints": {
     "manualAdd": "手动添加曲目指纹",
     "analyzeAndAdd": "分析指纹并加入指纹库",

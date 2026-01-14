@@ -39,7 +39,11 @@ import { registerExportHandlers } from './ipc/exportHandlers'
 import { registerKeyAnalysisHandlers } from './ipc/keyAnalysisHandlers'
 import { maybeShowWhatsNew, registerWhatsNewHandlers } from './services/whatsNew'
 import * as LibraryCacheDb from './libraryCacheDb'
-import { keyAnalysisEvents, startKeyAnalysisBackground } from './services/keyAnalysisQueue'
+import {
+  keyAnalysisEvents,
+  startKeyAnalysisBackground,
+  type KeyAnalysisBackgroundStatus
+} from './services/keyAnalysisQueue'
 // import AudioFeatureExtractor from './mfccTest'
 
 const initDevDatabase = false
@@ -178,6 +182,29 @@ keyAnalysisEvents.on('waveform-updated', (payload) => {
     } catch {}
   }
 })
+
+const keyAnalysisBackgroundProgressId = 'key-analysis.background'
+const sendKeyAnalysisBackgroundStatus = (status: KeyAnalysisBackgroundStatus) => {
+  if (!mainWindow.instance) return
+  if (!status.active) {
+    mainWindow.instance.webContents.send('progressSet', {
+      id: keyAnalysisBackgroundProgressId,
+      dismiss: true
+    })
+    return
+  }
+  mainWindow.instance.webContents.send('progressSet', {
+    id: keyAnalysisBackgroundProgressId,
+    titleKey: 'keyAnalysis.backgroundAnalyzing',
+    now: 0,
+    total: 0,
+    isInitial: true,
+    noProgress: true,
+    cancelable: true,
+    cancelChannel: 'key-analysis:cancel-background'
+  })
+}
+keyAnalysisEvents.on('background-status', sendKeyAnalysisBackgroundStatus)
 
 let devInitDatabaseFunction = async () => {
   if (!fs.pathExistsSync(store.settingConfig.databaseUrl)) {
