@@ -34,6 +34,7 @@ import { registerPlaylistHandlers } from './ipc/playlistHandlers'
 import { registerMediaMetadataHandlers } from './ipc/mediaMetadataHandlers'
 import { registerCacheHandlers } from './ipc/cacheHandlers'
 import { registerFilesystemHandlers } from './ipc/filesystemHandlers'
+import { registerClipboardHandlers } from './ipc/clipboardHandlers'
 import { registerExportHandlers } from './ipc/exportHandlers'
 import { registerKeyAnalysisHandlers } from './ipc/keyAnalysisHandlers'
 import { maybeShowWhatsNew, registerWhatsNewHandlers } from './services/whatsNew'
@@ -150,6 +151,7 @@ registerPlaylistHandlers()
 registerMediaMetadataHandlers()
 registerCacheHandlers()
 registerFilesystemHandlers()
+registerClipboardHandlers()
 registerExportHandlers()
 registerKeyAnalysisHandlers()
 

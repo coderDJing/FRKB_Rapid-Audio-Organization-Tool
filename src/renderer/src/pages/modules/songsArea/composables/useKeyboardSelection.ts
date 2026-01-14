@@ -9,6 +9,8 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 
+type ClipboardOperation = 'copy' | 'cut'
+
 interface UseKeyboardSelectionParams {
   runtime: ReturnType<typeof useRuntimeStore>
   externalViewportHeight: { value: number }
@@ -17,6 +19,13 @@ interface UseKeyboardSelectionParams {
 
 export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
   const { runtime, externalViewportHeight, scheduleSweepCovers } = params
+  const CUT_POLL_INTERVAL_MS = 1500
+  const CUT_POLL_TIMEOUT_MS = 2 * 60 * 1000
+  let cutPollTimer: ReturnType<typeof setInterval> | null = null
+  let cutPollStartAt = 0
+  let cutPollInFlight = false
+  let pendingCutPaths = new Set<string>()
+  let pendingCutListUUID = ''
 
   const songClick = (event: MouseEvent, song: ISongInfo) => {
     runtime.activeMenuUUID = ''
@@ -54,6 +63,97 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
       }
     } else {
       runtime.songsArea.selectedSongFilePath = [song.filePath]
+    }
+  }
+
+  const isEditableElement = (target: Element | null) => {
+    if (!target) return false
+    const tagName = target.tagName
+    if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') return true
+    return (target as HTMLElement).isContentEditable
+  }
+
+  const hasTextSelection = () => {
+    const selection = window.getSelection()
+    if (!selection) return false
+    return selection.toString().length > 0
+  }
+
+  const shouldSkipClipboardHotkey = (event?: KeyboardEvent) => {
+    if (isEditableElement(document.activeElement)) return true
+    if (event?.target && isEditableElement(event.target as Element)) return true
+    if (hasTextSelection()) return true
+    return false
+  }
+
+  const stopCutPolling = () => {
+    if (cutPollTimer) {
+      clearInterval(cutPollTimer)
+      cutPollTimer = null
+    }
+    cutPollStartAt = 0
+    cutPollInFlight = false
+    pendingCutPaths.clear()
+    pendingCutListUUID = ''
+  }
+
+  const pollCutPaths = async () => {
+    if (cutPollInFlight || pendingCutPaths.size === 0) return
+    if (cutPollStartAt && Date.now() - cutPollStartAt > CUT_POLL_TIMEOUT_MS) {
+      stopCutPolling()
+      return
+    }
+    cutPollInFlight = true
+    try {
+      const paths = Array.from(pendingCutPaths)
+      const result = await window.electron.ipcRenderer.invoke('paths:exists', { paths })
+      const existingPaths = new Set<string>(
+        Array.isArray(result?.existingPaths) ? result.existingPaths : []
+      )
+      const missingPaths = paths.filter((p) => !existingPaths.has(p))
+      if (missingPaths.length > 0) {
+        missingPaths.forEach((p) => pendingCutPaths.delete(p))
+        emitter.emit('songsRemoved', {
+          listUUID: pendingCutListUUID,
+          paths: missingPaths
+        })
+        if (pendingCutListUUID) {
+          emitter.emit('playlistContentChanged', { uuids: [pendingCutListUUID] })
+        }
+      }
+      if (pendingCutPaths.size === 0) {
+        stopCutPolling()
+      }
+    } catch {
+      // 轮询异常时不终止，下一轮继续确认
+    } finally {
+      cutPollInFlight = false
+    }
+  }
+
+  const startCutPolling = (paths: string[], listUUID: string) => {
+    stopCutPolling()
+    if (paths.length === 0) return
+    pendingCutPaths = new Set(paths)
+    pendingCutListUUID = listUUID
+    cutPollStartAt = Date.now()
+    cutPollTimer = setInterval(() => {
+      void pollCutPaths()
+    }, CUT_POLL_INTERVAL_MS)
+    void pollCutPaths()
+  }
+
+  const writeFilesToClipboard = async (operation: ClipboardOperation, filePaths: string[]) => {
+    const result = await window.electron.ipcRenderer.invoke('clipboard:write-files', {
+      filePaths,
+      operation
+    })
+    const existingPaths = Array.isArray(result?.existingPaths) ? result.existingPaths : []
+    if (result?.success && existingPaths.length > 0) {
+      emitter.emit('songsArea/clipboardHint', { action: operation })
+      if (operation === 'cut') {
+        startCutPolling(existingPaths, runtime.songsArea.songListUUID)
+      }
     }
   }
 
@@ -216,6 +316,20 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
       handleDeleteKey()
       return false
     })
+    hotkeys('ctrl+c, command+c', 'windowGlobal', (event) => {
+      if (shouldSkipClipboardHotkey(event)) return true
+      const selectedPaths = [...runtime.songsArea.selectedSongFilePath]
+      if (selectedPaths.length === 0) return true
+      void writeFilesToClipboard('copy', selectedPaths)
+      return false
+    })
+    hotkeys('ctrl+x, command+x', 'windowGlobal', (event) => {
+      if (shouldSkipClipboardHotkey(event)) return true
+      const selectedPaths = [...runtime.songsArea.selectedSongFilePath]
+      if (selectedPaths.length === 0) return true
+      void writeFilesToClipboard('cut', selectedPaths)
+      return false
+    })
     hotkeys('shift+home', 'windowGlobal', () => {
       handleShiftHome()
       return false
@@ -235,10 +349,13 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
   })
 
   onUnmounted(() => {
+    hotkeys.unbind('ctrl+c, command+c', 'windowGlobal')
+    hotkeys.unbind('ctrl+x, command+x', 'windowGlobal')
     hotkeys.unbind('shift+home', 'windowGlobal')
     hotkeys.unbind('shift+end', 'windowGlobal')
     hotkeys.unbind('shift+pageup', 'windowGlobal')
     hotkeys.unbind('shift+pagedown', 'windowGlobal')
+    stopCutPolling()
   })
 
   return {

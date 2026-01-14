@@ -221,6 +221,8 @@
     "deleteTracks": "删除曲目",
     "movingTracks": "移动曲目",
     "copyingTracks": "复制曲目",
+    "clipboardCopySuccess": "复制成功",
+    "clipboardCutSuccess": "剪切成功",
     "deletingDuplicates": "删除重复曲目",
     "recyclingDuplicates": "将重复曲目移动到回收站",
     "exportToFolder": "导出到文件夹",

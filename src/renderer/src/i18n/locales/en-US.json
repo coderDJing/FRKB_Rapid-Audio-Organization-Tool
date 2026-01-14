@@ -220,6 +220,8 @@
     "deleteTracks": "Delete",
     "movingTracks": "Moving...",
     "copyingTracks": "Copying...",
+    "clipboardCopySuccess": "Copied",
+    "clipboardCutSuccess": "Cut",
     "deletingDuplicates": "Deleting duplicates",
     "recyclingDuplicates": "Moving duplicates to Recycle Bin",
     "exportToFolder": "Export to folder",
