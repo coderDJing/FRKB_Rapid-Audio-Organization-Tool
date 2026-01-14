@@ -11,7 +11,6 @@ import store from '../store'
 import { loadLibraryNodes, type LibraryNodeRow } from '../libraryTreeDb'
 import type { ISongInfo } from '../../types/globals'
 import type { MixxxWaveformData } from '../waveformCache'
-import { log } from '../log'
 
 type KeyAnalysisPriority = 'high' | 'medium' | 'low' | 'background'
 type KeyAnalysisSource = 'foreground' | 'background'
@@ -317,37 +316,6 @@ class KeyAnalysisQueue {
     if (job && payloadResult?.mixxxWaveformData && job.needsWaveform) {
       await this.persistWaveform(job.filePath, payloadResult.mixxxWaveformData)
       this.events.emit('waveform-updated', { filePath: job.filePath })
-    }
-
-    if (job) {
-      const waveformStatus = (() => {
-        if (!job.needsWaveform) return 'skip'
-        if (payloadError) return 'failed'
-        if (payloadResult?.mixxxWaveformData) return 'computed'
-        return 'missing'
-      })()
-      if (payloadError) {
-        log.warn('[key-analysis] failed', {
-          filePath: job.filePath,
-          priority: job.priority,
-          source: job.source,
-          waveform: waveformStatus,
-          error: payloadError
-        })
-      } else {
-        const keyText = payloadResult?.keyText
-        const bpmValue = payloadResult?.bpm
-        log.info('[key-analysis] done', {
-          filePath: job.filePath,
-          priority: job.priority,
-          source: job.source,
-          keyText: isValidKeyText(keyText) ? keyText : null,
-          bpm: isValidBpm(bpmValue) ? Number(bpmValue.toFixed(2)) : null,
-          waveform: waveformStatus,
-          keyError: payloadResult?.keyError,
-          bpmError: payloadResult?.bpmError
-        })
-      }
     }
 
     this.drain()
@@ -985,9 +953,6 @@ class KeyAnalysisQueue {
     if (rows.length < BACKGROUND_CLEAN_ROW_LIMIT) {
       this.backgroundCleanCursor = 0
     }
-    if (removed > 0) {
-      log.info('[key-analysis] cleanup', { removed })
-    }
     return removed
   }
 
@@ -1053,12 +1018,6 @@ class KeyAnalysisQueue {
           this.drain()
           return
         }
-        log.info('[key-analysis] start', {
-          filePath: job.filePath,
-          priority: job.priority,
-          source: job.source,
-          fastAnalysis: job.fastAnalysis
-        })
         worker.postMessage({
           jobId: job.jobId,
           filePath: job.filePath,
