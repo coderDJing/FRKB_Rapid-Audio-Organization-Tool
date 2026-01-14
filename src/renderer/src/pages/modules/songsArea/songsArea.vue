@@ -65,6 +65,9 @@ const { startDragSongs, scheduleDragCleanup, handleDropToSongList } = useDragSon
 const dragHintVisible = ref(false)
 const dragHintMode = ref<'internal' | 'external'>('internal')
 let dragHintCleanup: (() => void) | null = null
+const clipboardHintVisible = ref(false)
+const clipboardHintText = ref('')
+let clipboardHintTimer: ReturnType<typeof setTimeout> | null = null
 const isAltPressed = ref(false)
 const isCtrlPressed = ref(false)
 let modifierKeyCleanup: (() => void) | null = null
@@ -97,6 +100,26 @@ const showDragHint = (mode: 'internal' | 'external') => {
   dragHintMode.value = mode
   dragHintVisible.value = true
   attachDragHintListeners()
+}
+const showClipboardHint = (message: string) => {
+  clipboardHintText.value = message
+  clipboardHintVisible.value = true
+  if (clipboardHintTimer) {
+    clearTimeout(clipboardHintTimer)
+  }
+  clipboardHintTimer = setTimeout(() => {
+    clipboardHintVisible.value = false
+  }, 2000)
+}
+const handleClipboardHint = (payload?: { action?: 'copy' | 'cut' }) => {
+  const action = payload?.action
+  if (action === 'cut') {
+    showClipboardHint(t('tracks.clipboardCutSuccess'))
+    return
+  }
+  if (action === 'copy') {
+    showClipboardHint(t('tracks.clipboardCopySuccess'))
+  }
 }
 const attachModifierKeyListeners = () => {
   if (modifierKeyCleanup) return
@@ -201,11 +224,17 @@ useSongsAreaEvents({
   scheduleSweepCovers
 })
 useWaveformPreviewPlayer()
+emitter.on('songsArea/clipboardHint', handleClipboardHint)
 
 onUnmounted(() => {
   emitter.off('playlistCacheCleared', handlePlaylistCacheCleared)
   emitter.off('metadataBatchUpdated', handleMetadataBatchUpdatedFromEvent)
+  emitter.off('songsArea/clipboardHint', handleClipboardHint)
   hideDragHint()
+  if (clipboardHintTimer) {
+    clearTimeout(clipboardHintTimer)
+    clipboardHintTimer = null
+  }
   if (modifierKeyCleanup) {
     modifierKeyCleanup()
     modifierKeyCleanup = null
@@ -669,6 +698,11 @@ const handleSongDragEnd = () => {
             <div class="desc">{{ dragHintDesc }}</div>
           </div>
         </Transition>
+        <Transition name="songs-area-drag-hint">
+          <div v-if="clipboardHintVisible" class="songs-area-drag-hint songs-area-clipboard-hint">
+            <div class="title">{{ clipboardHintText }}</div>
+          </div>
+        </Transition>
 
         <!-- Empty State Overlay: 独立于滚动内容，始终居中在可视区域 -->
         <div v-if="shouldShowEmptyState" class="songs-area-empty-overlay unselectable">
@@ -820,6 +854,11 @@ const handleSongDragEnd = () => {
 .songs-area-drag-hint .desc {
   font-size: 11px;
   color: var(--text-weak);
+}
+
+.songs-area-clipboard-hint .title {
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .songs-area-drag-hint-enter-active,
