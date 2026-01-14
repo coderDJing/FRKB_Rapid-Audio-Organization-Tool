@@ -199,14 +199,19 @@ let dragOverSongsArea = ref(false)
 const isExternalPlaylistView = computed(() => runtime.libraryAreaSelected === 'ExternalPlaylist')
 const isRecycleBinView = computed(() => runtime.libraryAreaSelected === 'RecycleBin')
 const isLibraryPanelHidden = computed(() => isExternalPlaylistView.value || isRecycleBinView.value)
+const isInternalSongDrag = (e: DragEvent) => {
+  return (
+    (runtime.songDragActive && runtime.draggingSongFilePaths.length > 0) ||
+    e.dataTransfer?.types?.includes('application/x-song-drag')
+  )
+}
 const dragover = (e: DragEvent) => {
   if (e.dataTransfer === null) {
     throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
   }
 
   // 如果是歌曲拖拽，忽略处理
-  const isSongDrag = e.dataTransfer.types?.includes('application/x-song-drag')
-  if (isSongDrag) {
+  if (isInternalSongDrag(e)) {
     return
   }
 
@@ -239,8 +244,7 @@ const dragleave = (e: DragEvent) => {
   }
 
   // 如果是歌曲拖拽，忽略处理
-  const isSongDrag = e.dataTransfer.types?.includes('application/x-song-drag')
-  if (isSongDrag) {
+  if (isInternalSongDrag(e)) {
     return
   }
 
@@ -271,8 +275,7 @@ const drop = async (e: DragEvent) => {
   }
 
   // 如果是歌曲拖拽，忽略处理
-  const isSongDrag = e.dataTransfer.types?.includes('application/x-song-drag')
-  if (isSongDrag) {
+  if (isInternalSongDrag(e)) {
     return
   }
 

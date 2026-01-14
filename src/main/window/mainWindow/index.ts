@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, globalShortcut } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, globalShortcut, nativeImage } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../../resources/icon.png?asset'
 import path = require('path')
@@ -180,6 +180,76 @@ function createWindow() {
     }
   })
 
+  ipcMain.on('startExternalSongDrag', (event, payload: { filePaths?: string[] }) => {
+    const rawPaths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
+    console.info('[external-drag] start request', {
+      count: rawPaths.length,
+      sample: rawPaths[0] || ''
+    })
+    if (rawPaths.length === 0) {
+      console.info('[external-drag] abort: empty payload')
+      event.returnValue = false
+      return
+    }
+    const existingPaths: string[] = []
+    for (const filePath of rawPaths) {
+      if (typeof filePath !== 'string' || !filePath.trim()) {
+        continue
+      }
+      const normalized = path.normalize(filePath)
+      if (fs.existsSync(normalized)) {
+        existingPaths.push(normalized)
+      }
+    }
+    if (existingPaths.length === 0) {
+      console.info('[external-drag] abort: no existing paths')
+      event.returnValue = false
+      return
+    }
+    const iconCandidates = [
+      icon,
+      path.resolve(process.cwd(), 'resources', 'icon.png'),
+      path.resolve(process.cwd(), 'build', 'icon.png'),
+      path.resolve(app.getAppPath(), 'resources', 'icon.png'),
+      path.resolve(app.getAppPath(), 'build', 'icon.png'),
+      path.resolve(process.resourcesPath, 'icon.png')
+    ]
+    let dragIcon: ReturnType<typeof nativeImage.createFromPath> | null = null
+    for (const candidate of iconCandidates) {
+      if (typeof candidate !== 'string' || !candidate) {
+        continue
+      }
+      if (!fs.existsSync(candidate)) {
+        continue
+      }
+      const image = nativeImage.createFromPath(candidate)
+      if (!image.isEmpty()) {
+        dragIcon = image
+        break
+      }
+    }
+    if (!dragIcon || dragIcon.isEmpty()) {
+      dragIcon = nativeImage.createFromDataURL(
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQImWNgYGD4DwABBAEAHFqRSgAAAABJRU5ErkJggg=='
+      )
+    }
+    try {
+      console.info('[external-drag] startDrag', {
+        count: existingPaths.length,
+        first: existingPaths[0]
+      })
+      event.sender.startDrag({
+        file: existingPaths[0],
+        files: existingPaths,
+        icon: dragIcon
+      })
+      event.returnValue = true
+    } catch (error) {
+      console.error('[startExternalSongDrag] failed', error)
+      event.returnValue = false
+    }
+  })
+
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -302,6 +372,7 @@ function createWindow() {
     ipcMain.removeAllListeners('checkForUpdates')
     ipcMain.removeHandler('changeGlobalShortcut')
     ipcMain.removeHandler('reSelectLibrary')
+    ipcMain.removeAllListeners('startExternalSongDrag')
     globalShortcut.unregister(store.settingConfig.globalCallShortcut)
     unregisterPlaybackGlobalShortcuts()
     mainWindow = null

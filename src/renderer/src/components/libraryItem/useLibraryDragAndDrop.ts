@@ -60,6 +60,12 @@ export function useLibraryDragAndDrop({
     return recycleBin?.children?.some((child: any) => child.uuid === props.uuid)
   }
 
+  const isInternalSongDrag = (e: DragEvent) => {
+    if (runtime.dragItemData) return false
+    if (e.dataTransfer?.types?.includes('application/x-song-drag')) return true
+    return runtime.songDragActive && runtime.draggingSongFilePaths.length > 0
+  }
+
   const handleSongDragGuard = (e: DragEvent) => {
     if (runtime.libraryAreaSelected === 'RecycleBin') {
       if (e.dataTransfer) {
@@ -67,7 +73,7 @@ export function useLibraryDragAndDrop({
       }
       return true
     }
-    const isSongDrag = e.dataTransfer?.types?.includes('application/x-song-drag')
+    const isSongDrag = isInternalSongDrag(e)
     if (isSongDrag && dirData.type === 'songList') {
       if (isPlaylistInRecycleBin()) {
         if (e.dataTransfer) {
@@ -86,8 +92,8 @@ export function useLibraryDragAndDrop({
       }
       return
     }
-    const isSongDrag = e.dataTransfer?.types?.includes('application/x-song-drag')
-    if (isSongDrag && dirData.type === 'songList') {
+    const isInternalDrag = isInternalSongDrag(e)
+    if (isInternalDrag && dirData.type === 'songList') {
       if (isPlaylistInRecycleBin()) {
         if (e.dataTransfer) {
           e.dataTransfer.dropEffect = 'none'
@@ -108,8 +114,8 @@ export function useLibraryDragAndDrop({
     if (handleSongDragGuard(e)) {
       return
     }
-    const isSongDrag = e.dataTransfer?.types?.includes('application/x-song-drag')
-    if (isSongDrag && dirData.type === 'songList' && !isPlaylistInRecycleBin()) {
+    const isInternalDrag = isInternalSongDrag(e)
+    if (isInternalDrag && dirData.type === 'songList' && !isPlaylistInRecycleBin()) {
       e.preventDefault()
       dragState.dragApproach = 'center'
       return
@@ -128,8 +134,8 @@ export function useLibraryDragAndDrop({
     if (handleSongDragGuard(e)) {
       return
     }
-    const isSongDrag = e.dataTransfer?.types?.includes('application/x-song-drag')
-    if (isSongDrag && dirData.type === 'songList') {
+    const isInternalDrag = isInternalSongDrag(e)
+    if (isInternalDrag && dirData.type === 'songList') {
       if (isPlaylistInRecycleBin()) {
         dragState.dragApproach = ''
         return

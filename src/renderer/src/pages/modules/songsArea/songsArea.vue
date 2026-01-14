@@ -61,7 +61,68 @@ const {
   handleMoveSongsConfirm,
   handleDialogCancel
 } = useSelectAndMoveSongs()
-const { isDragging, startDragSongs, endDragSongs, handleDropToSongList } = useDragSongs()
+const { startDragSongs, scheduleDragCleanup, handleDropToSongList } = useDragSongs()
+const dragHintVisible = ref(false)
+const dragHintMode = ref<'internal' | 'external'>('internal')
+let dragHintCleanup: (() => void) | null = null
+const isAltPressed = ref(false)
+const isCtrlPressed = ref(false)
+let modifierKeyCleanup: (() => void) | null = null
+const hideDragHint = () => {
+  dragHintVisible.value = false
+  if (dragHintCleanup) {
+    dragHintCleanup()
+    dragHintCleanup = null
+  }
+}
+const attachDragHintListeners = () => {
+  if (dragHintCleanup) return
+  const onMouseUp = () => hideDragHint()
+  const onDragEnd = () => hideDragHint()
+  const onBlur = () => hideDragHint()
+  window.addEventListener('mouseup', onMouseUp)
+  window.addEventListener('dragend', onDragEnd)
+  window.addEventListener('blur', onBlur)
+  dragHintCleanup = () => {
+    window.removeEventListener('mouseup', onMouseUp)
+    window.removeEventListener('dragend', onDragEnd)
+    window.removeEventListener('blur', onBlur)
+  }
+}
+const showDragHint = (mode: 'internal' | 'external') => {
+  if (mode === 'external') {
+    hideDragHint()
+    return
+  }
+  dragHintMode.value = mode
+  dragHintVisible.value = true
+  attachDragHintListeners()
+}
+const attachModifierKeyListeners = () => {
+  if (modifierKeyCleanup) return
+  const updateModifierState = (event: KeyboardEvent) => {
+    isAltPressed.value = event.altKey
+    isCtrlPressed.value = event.ctrlKey
+  }
+  const onKeyDown = (event: KeyboardEvent) => {
+    updateModifierState(event)
+  }
+  const onKeyUp = (event: KeyboardEvent) => {
+    updateModifierState(event)
+  }
+  const onBlur = () => {
+    isAltPressed.value = false
+    isCtrlPressed.value = false
+  }
+  window.addEventListener('keydown', onKeyDown)
+  window.addEventListener('keyup', onKeyUp)
+  window.addEventListener('blur', onBlur)
+  modifierKeyCleanup = () => {
+    window.removeEventListener('keydown', onKeyDown)
+    window.removeEventListener('keyup', onKeyUp)
+    window.removeEventListener('blur', onBlur)
+  }
+}
 
 // 集中列、筛选、排序与列头交互逻辑
 const {
@@ -129,6 +190,7 @@ const { songClick } = useKeyboardSelection({
 
 // 手动滚动到当前播放
 const { scrollToIndex } = useAutoScrollToCurrent({ runtime, songsAreaRef })
+attachModifierKeyListeners()
 
 // 事件订阅与同步
 useSongsAreaEvents({
@@ -143,6 +205,11 @@ useWaveformPreviewPlayer()
 onUnmounted(() => {
   emitter.off('playlistCacheCleared', handlePlaylistCacheCleared)
   emitter.off('metadataBatchUpdated', handleMetadataBatchUpdatedFromEvent)
+  hideDragHint()
+  if (modifierKeyCleanup) {
+    modifierKeyCleanup()
+    modifierKeyCleanup = null
+  }
 })
 // 上述列、加载、事件与封面清理已由组合函数提供
 
@@ -431,6 +498,26 @@ const emptyHintText = computed(() => {
   if (isRecycleBinView.value) return ''
   return t('tracks.noTracksHint')
 })
+const isMacPlatform = computed(() => runtime.setting.platform === 'darwin')
+const dragHintModifier = computed(() => {
+  return isMacPlatform.value ? t('tracks.dragHintModifierOption') : t('tracks.dragHintModifierCtrl')
+})
+const dragHintTarget = computed(() => {
+  return isMacPlatform.value ? t('tracks.dragHintTargetFinder') : t('tracks.dragHintTargetExplorer')
+})
+const dragHintTitle = computed(() => {
+  return dragHintMode.value === 'external'
+    ? t('tracks.dragHintExternalTitle')
+    : t('tracks.dragHintInternalTitle')
+})
+const dragHintDesc = computed(() => {
+  return dragHintMode.value === 'external'
+    ? t('tracks.dragHintExternalSub', { target: dragHintTarget.value })
+    : t('tracks.dragHintInternalSub', {
+        modifier: dragHintModifier.value,
+        target: dragHintTarget.value
+      })
+})
 // --- END 新增计算属性 ---
 
 // 拖拽相关函数
@@ -445,11 +532,38 @@ const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
     runtime.songsArea.selectedSongFilePath = [song.filePath]
   }
 
+  const songFilePaths = runtime.songsArea.selectedSongFilePath.length
+    ? [...runtime.songsArea.selectedSongFilePath]
+    : [song.filePath]
+
+  const hasExternalModifier = isMacPlatform.value
+    ? event.altKey ||
+      isAltPressed.value ||
+      (typeof event.getModifierState === 'function' && event.getModifierState('Alt'))
+    : event.ctrlKey ||
+      isCtrlPressed.value ||
+      (typeof event.getModifierState === 'function' && event.getModifierState('Control'))
+
+  if (hasExternalModifier) {
+    showDragHint('external')
+    console.info('[external-drag] request', {
+      fileCount: songFilePaths.length,
+      sample: songFilePaths[0] || '',
+      platform: runtime.setting.platform
+    })
+    event.preventDefault()
+    window.electron.ipcRenderer.sendSync('startExternalSongDrag', {
+      filePaths: songFilePaths
+    })
+    return
+  }
+
+  showDragHint('internal')
   startDragSongs(song, runtime.libraryAreaSelected, runtime.songsArea.songListUUID)
 
-  // 设置拖拽数据
+  // 设置拖拽数据以支持内部拖放
   if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.effectAllowed = 'copyMove'
     event.dataTransfer.setData(
       'application/x-song-drag',
       JSON.stringify({
@@ -461,8 +575,9 @@ const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
   }
 }
 
-const handleSongDragEnd = (event: DragEvent) => {
-  endDragSongs()
+const handleSongDragEnd = () => {
+  hideDragHint()
+  scheduleDragCleanup()
 }
 
 // 播放列表同步由 useSongsAreaEvents 管理
@@ -543,6 +658,17 @@ const handleSongDragEnd = (event: DragEvent) => {
         >
           <span class="songs-area-float-jump__icon" aria-hidden="true"></span>
         </button>
+
+        <Transition name="songs-area-drag-hint">
+          <div
+            v-if="dragHintVisible"
+            class="songs-area-drag-hint"
+            :class="{ 'is-external': dragHintMode === 'external' }"
+          >
+            <div class="title">{{ dragHintTitle }}</div>
+            <div class="desc">{{ dragHintDesc }}</div>
+          </div>
+        </Transition>
 
         <!-- Empty State Overlay: 独立于滚动内容，始终居中在可视区域 -->
         <div v-if="shouldShowEmptyState" class="songs-area-empty-overlay unselectable">
@@ -658,6 +784,55 @@ const handleSongDragEnd = (event: DragEvent) => {
   background: var(--text);
   border-radius: 50%;
   opacity: 0.9;
+}
+
+.songs-area-drag-hint {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  min-width: 168px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text);
+  z-index: 7;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.songs-area-drag-hint.is-external {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 1px rgba(0, 120, 212, 0.35),
+    0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.songs-area-drag-hint .title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.songs-area-drag-hint .desc {
+  font-size: 11px;
+  color: var(--text-weak);
+}
+
+.songs-area-drag-hint-enter-active,
+.songs-area-drag-hint-leave-active {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.songs-area-drag-hint-enter-from,
+.songs-area-drag-hint-leave-to {
+  opacity: 0;
+  transform: translateY(6px) scale(0.98);
 }
 
 .loading-wrapper {
