@@ -17,6 +17,7 @@ interface PlayerActions {
   delSong: () => void // 改回同步，因为 KeyHandler 不支持 async
   moveToListLibrary: () => void
   moveToLikeLibrary: () => void
+  seekToPercent: (percent: number) => void
   // 可以添加一个 togglePlayPause 方法来简化 space 键处理
   togglePlayPause?: () => void
 }
@@ -157,6 +158,27 @@ export function usePlayerHotkeys(
       }
       actions.moveToLikeLibrary()
     })
+
+    hotkeys('`', scope, (event) => {
+      event.preventDefault()
+      if (!state.waveformShow.value || state.selectSongListDialogShow.value) {
+        return
+      }
+      actions.seekToPercent(0)
+    })
+
+    hotkeys('1,2,3,4,5,6,7,8,9,0', scope, (event, handler) => {
+      event.preventDefault()
+      if (!state.waveformShow.value || state.selectSongListDialogShow.value) {
+        return
+      }
+      const rawKey = handler.key
+      const normalized = rawKey === '0' ? 10 : Number(rawKey)
+      if (!Number.isFinite(normalized)) {
+        return
+      }
+      actions.seekToPercent(Math.min(Math.max(normalized / 10, 0), 1))
+    })
   }
 
   const cleanupHotkeys = () => {
@@ -169,6 +191,8 @@ export function usePlayerHotkeys(
     hotkeys.unbind('f,delete', 'windowGlobal')
     hotkeys.unbind('q', 'windowGlobal')
     hotkeys.unbind('e', 'windowGlobal')
+    hotkeys.unbind('`', 'windowGlobal')
+    hotkeys.unbind('1,2,3,4,5,6,7,8,9,0', 'windowGlobal')
   }
 
   onMounted(() => {

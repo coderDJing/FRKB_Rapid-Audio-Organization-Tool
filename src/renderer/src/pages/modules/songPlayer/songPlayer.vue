@@ -390,6 +390,19 @@ const handleUserTogglePlayPause = () => {
   playerActions.togglePlayPause()
 }
 
+const handleSeekToPercent = (percent: number) => {
+  const playerInstance = audioPlayer.value
+  if (!playerInstance || !waveformShow.value || runtime.isSwitchingSong) {
+    return
+  }
+  const duration = playerInstance.getDuration()
+  if (!duration || Number.isNaN(duration)) {
+    return
+  }
+  const clamped = Math.min(Math.max(percent, 0), 1)
+  playerInstance.seek(duration * clamped, true)
+}
+
 const selectSongListDialogConfirm = async (item: string) => {
   await playerActions.handleMoveSong(item)
 }
@@ -437,7 +450,8 @@ const hotkeyActions = {
   delSong: playerActions.delSong,
   moveToListLibrary: playerActions.moveToListLibrary,
   moveToLikeLibrary: playerActions.moveToLikeLibrary,
-  togglePlayPause: handleUserTogglePlayPause
+  togglePlayPause: handleUserTogglePlayPause,
+  seekToPercent: handleSeekToPercent
 }
 
 const isPlaying = computed(() => audioPlayer.value?.isPlaying() ?? false)
