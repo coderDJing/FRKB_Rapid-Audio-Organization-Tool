@@ -6,13 +6,16 @@
 - `src/renderer/` Vue 3 UI, Pinia stores, styles, i18n assets.
 - `src/shared/` cross-process utilities; `src/types/` shared TS types.
 - `rust_package/` Rust N-API module, with tests in `rust_package/__test__/`.
-- `resources/` app assets, `build/` packaging assets, `vendor/` bundled ffmpeg/chromaprint binaries, `out/` build output, `website/` static site.
+- `resources/` app assets, `build/` packaging assets, `vendor/` bundled ffmpeg/chromaprint binaries, `out/` build output, `docs/` VitePress documentation site.
 
 ## Build, Test, and Development Commands
 - `pnpm install` installs root dependencies.
 - `pnpm run dev` starts the Electron + Vite dev workflow.
 - `pnpm run build` builds main/renderer into `out/`.
 - `pnpm run build:win` (or `build:mac`, `build:linux`) packages installers via electron-builder.
+- `pnpm run docs:dev` starts VitePress dev server for documentation site.
+- `pnpm run docs:build` builds VitePress site into `docs/.vitepress/dist/`.
+- `pnpm run docs:preview` previews the built documentation site locally.
 - `pnpm run lint` and `pnpm run format` apply ESLint/Prettier rules.
 - `cd rust_package` then `napi build --platform --release` builds the native module (requires `@napi-rs/cli`).
 - `cd rust_package` then `yarn test` runs `ava` tests.

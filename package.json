@@ -75,6 +75,9 @@
   },
   "scripts": {
     "format": "prettier --write .",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs",
     "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
@@ -134,6 +137,7 @@
     "prettier": "^3.5.1",
     "rimraf": "^6.0.1",
     "vite": "^6.1.0",
+    "vitepress": "^1.6.4",
     "vue": "^3.5.13",
     "vue-tsc": "^2.2.2"
   },

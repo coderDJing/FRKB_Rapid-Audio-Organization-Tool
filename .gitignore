@@ -24,6 +24,11 @@ pnpm-debug.log*
 .vscode
 .cursor
 *.suo
+
+# VitePress
+docs/.vitepress/dist
+docs/.vitepress/cache
+
 *.ntvs*
 *.njsproj
 *.sln

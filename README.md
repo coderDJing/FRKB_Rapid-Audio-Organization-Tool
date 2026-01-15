@@ -44,18 +44,27 @@ As a DJ, I frequently need to organize large numbers of music files. However, ex
 
 ### Core Features
 - **Portable**: Easily transfer the database to mobile devices for on-the-go use.
-- **Song Deduplication**: Identify and exclude duplicate tracks in the music library using the SHA256 algorithm (ignoring metadata such as cover art, title, artist, etc.), providing prompts during the import phase to keep your music collection clean and efficient.
+- **Song Deduplication**: Identify and exclude duplicate tracks using content fingerprints (content hash / file hash modes; content hash ignores cover art, title, artist, etc.), with prompts during import to keep your library clean and efficient.
+- **Playlist Fingerprint Deduplication**: One-click analysis on a playlist and move duplicates to the recycle bin.
 - **Ergonomic Shortcuts**: Ergonomically designed shortcuts that allow most operations to be performed with the left hand, making the organization process smoother and more efficient.
+- **Global Shortcuts**: Playback controls even when minimized, plus a customizable focus/minimize toggle shortcut.
 - **Selectable Playback Range**: Often, you only need to listen to a specific part of an audio track for screening. This feature allows you to set a start and end point for playback.
+- **Output Device Selection**: Choose a specific output device or follow the system default.
 - **Direct File Management**: When adding tracks, FRKB directly manages the audio files themselves, ensuring that the organization results are immediately reflected in the computer's folders, achieving a "what you see is what you get" effect.
+- **Filter/Curated Dual-Library Flow**: Fast triage and layered organization that matches DJ workflows.
+- **Drag-and-Drop Import & Move**: Drag files/folders to import, drag tracks between playlists, and hold Ctrl/Option to drag out copies to Explorer/Finder.
+- **External Track Playback**: Open external audio files for temporary playback without importing them.
+- **Track Export**: Export to a folder and optionally delete tracks after export.
 - **Multiple Waveform Visualizations**: Offers SoundCloud-style waveform, fine-grained waveform, and RGB three-band energy view to spot drops and phrasing instantly.
 - **Waveform Preview Column**: Shows cached waveform previews directly in the song list for fast scanning.
 - **BPM Analysis & Tap Tempo**: Displays BPM information. Left-click the BPM to tap tempo (calculated to 1 decimal place). When the BPM is manually tapped, it is highlighted in `#0078d4`. Right-click to restore the system-analyzed BPM. Tooltip: "Tap beat (LMB) / Reset (RMB)".
-- **Recycle Bin**: Features a recycle bin, ensuring that accidentally deleted files aren't permanently lost, a common issue with other software.
+- **Key Analysis & Display**: Supports Classic (C#m) and Camelot (1A/1B) display styles.
+- **Recycle Bin**: Safely recover deleted tracks and restore them to their original playlists.
 - **Cloud Sync (fingerprints)**: Bidirectional sync of local track fingerprints (SHA256) with the cloud, including diff analysis, paginated pulls, and batched uploads, with quota and rate limiting (up to 10 sync starts within 5 minutes). Entry: system tray → Cloud Sync.
 - **Internationalization (i18n)**: Built-in Chinese (`zh-CN`) and English (`en-US`) language packs.
 - **Save Cover Image**: Right-click the enlarged cover to save the image locally.
-- **Song Filtering**: Supports filtering the song list by multiple dimensions such as title, artist, album, duration, and format.
+- **Metadata Editing & Online Fill**: Edit tags and cover art with MusicBrainz criteria search and AcoustID fingerprint matching, plus batch auto-fill for track info.
+- **Song Filtering**: Filter by title, artist, album, duration, format, BPM, and more, with optional persistence after restart.
 - **Wide Format Playback & Conversion**: Built-in FFmpeg pipeline plays instantly and batch-converts 20+ mainstream and pro audio formats.
 
   | Format | Scan/Playback | Conversion |
