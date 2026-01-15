@@ -350,10 +350,12 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
   background-color: var(--bg);
   width: 100%;
   height: 100vh;
+  overflow: hidden;
 }
 
 body {
   margin: 0px;
   background-color: var(--bg-elev);
+  overflow: hidden;
 }
 </style>
