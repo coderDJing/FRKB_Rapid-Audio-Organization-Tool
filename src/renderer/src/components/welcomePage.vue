@@ -55,6 +55,15 @@ const globalShortcut = computed(() => {
           </dd>
         </dl>
         <dl>
+          <dt>{{ t('player.seekPercent') }}</dt>
+          <dd>
+            <div class="monaco-keybinding">
+              <span class="monaco-keybinding-key">{{ t('player.seekPercentKeys') }}</span>
+              <span class="easter-egg">{{ t('player.seekPercentHint') }}</span>
+            </div>
+          </dd>
+        </dl>
+        <dl>
           <dt>{{ t('shortcuts.globalPreviousNext') }}</dt>
           <dd>
             <div class="monaco-keybinding">
