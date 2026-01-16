@@ -14,6 +14,7 @@ import { registerFilesystemHandlers } from './filesystemHandlers'
 import { registerAudioConversionHandlers } from './audioConversionHandlers'
 import { createProgressSender } from './progress'
 import { startLibraryTreeWatcher, stopLibraryTreeWatcher } from '../../libraryTreeWatcher'
+import { startKeyAnalysisBackground } from '../../services/keyAnalysisQueue'
 import type { IPlayerGlobalShortcuts, PlayerGlobalShortcutAction } from 'src/types/globals'
 import { persistSettingConfig } from '../../settingsPersistence'
 
@@ -259,6 +260,11 @@ function createWindow() {
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow?.webContents.send('mainWin-max', !!mainWindow?.isMaximized())
     mainWindow?.webContents.send('layoutConfigReaded', store.layoutConfig)
+    // 启动后台分析和清理任务
+    // 延迟启动，避免影响初始加载性能
+    setTimeout(() => {
+      startKeyAnalysisBackground()
+    }, 5000)
   })
 
   mainWindow.on('maximize', () => {

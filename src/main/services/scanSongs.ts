@@ -6,6 +6,7 @@ import { SUPPORTED_AUDIO_FORMATS } from '../../shared/audioFormats'
 import { readWavRiffInfoWindows } from './wavRiffInfo'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { enqueueKeyAnalysisList } from './keyAnalysisQueue'
+import { sweepSongListCovers } from './covers'
 
 // 扫描歌单目录，带 SQLite 缓存
 export async function scanSongList(
@@ -345,6 +346,13 @@ export async function scanSongList(
       .map((info) => info.filePath)
       .filter((filePath) => typeof filePath === 'string' && filePath.trim().length > 0)
     enqueueKeyAnalysisList(pendingKeys, 'low')
+  }
+
+  // 扫描完成后自动清理孤立的封面文件
+  if (cacheRoot) {
+    const currentFilePaths = songInfoArr.map((info) => info.filePath)
+    // 异步执行封面清理，不阻塞返回结果
+    sweepSongListCovers(cacheRoot, currentFilePaths).catch(() => {})
   }
 
   const perfAllEnd = Date.now()
