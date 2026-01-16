@@ -118,21 +118,25 @@ const togglePlatform = (e) => {
   showMac.value = !winHidden
 }
 
+// 功能特性配置 - 支持不同主题的截图
 const zhFeatures = [
   {
     title: '键盘优先的人机工学',
     details: '大幅减少鼠标移动与点击，所有高频操作均可通过快捷键完成。',
-    img: '/assets/shortcutKey_cn.webp'
+    imgDark: '/assets/shortcutKey_cn.webp',
+    imgLight: '/assets/shortcutKey_cn_light.webp' // 待补充
   },
   {
     title: '内容感知去重',
     details: '基于音频指纹技术，精准识别内容重复的文件。',
-    img: '/assets/import_cn.webp'
+    imgDark: '/assets/import_cn.webp',
+    imgLight: '/assets/import_cn_light.webp' // 待补充
   },
   {
     title: '所见即所得的映射',
     details: '界面上的分组与目录即是真实的磁盘结构，同步生效。',
-    img: '/assets/mappingRelation_cn.webp'
+    imgDark: '/assets/mappingRelation_cn.webp',
+    imgLight: '/assets/mappingRelation_cn_light.webp' // 待补充
   },
   {
     title: '云端同步与便携',
@@ -155,17 +159,20 @@ const enFeatures = [
   {
     title: 'Keyboard-First Ergonomics',
     details: 'Minimize mouse movement. All frequent operations are accessible via shortcuts.',
-    img: '/assets/shortcutKey.webp'
+    imgDark: '/assets/shortcutKey.webp',
+    imgLight: '/assets/shortcutKey_light.webp' // 待补充
   },
   {
     title: 'Content-Aware Dedup',
     details: 'Identify duplicates based on audio characteristics.',
-    img: '/assets/import.webp'
+    imgDark: '/assets/import.webp',
+    imgLight: '/assets/import_light.webp' // 待补充
   },
   {
     title: 'WYSIWYG Mapping',
     details: 'UI groups and directories reflect the true disk structure.',
-    img: '/assets/mappingRelation.webp'
+    imgDark: '/assets/mappingRelation.webp',
+    imgLight: '/assets/mappingRelation_light.webp' // 待补充
   },
   {
     title: 'Cloud Sync & Portability',
@@ -183,6 +190,26 @@ const enFeatures = [
     icon: 'analysis'
   }
 ]
+
+// 根据主题获取截图路径
+const getFeatureImage = (feature) => {
+  if (feature.icon) return null
+  const img = theme.value === 'light' ? feature.imgLight : feature.imgDark
+  return img
+}
+
+// 检查图片是否存在（用于显示占位符）
+const imageExists = (img) => {
+  // 日间模式的截图目前都不存在，返回 false 显示占位符
+  if (img && img.includes('_light')) return false
+  return true
+}
+
+// Hero 主界面截图加载失败处理
+const heroImageError = ref(false)
+const handleHeroImageError = () => {
+  heroImageError.value = true
+}
 </script>
 
 <template>
@@ -306,7 +333,13 @@ const enFeatures = [
               class="hero-img"
               :src="
                 withBase(
-                  isEn ? '/assets/softwareScreenshot.webp' : '/assets/softwareScreenshot_cn.webp'
+                  theme === 'light'
+                    ? isEn
+                      ? '/assets/softwareScreenshot_light.webp'
+                      : '/assets/softwareScreenshot_cn_light.webp'
+                    : isEn
+                      ? '/assets/softwareScreenshot.webp'
+                      : '/assets/softwareScreenshot_cn.webp'
                 )
               "
               alt="FRKB UI"
@@ -331,7 +364,28 @@ const enFeatures = [
             <h3>{{ f.title }}</h3>
             <p>{{ f.details }}</p>
             <div class="shot-container">
-              <img v-if="f.img" :src="withBase(f.img)" :alt="f.title" class="shot" />
+              <!-- 有截图的功能 -->
+              <template v-if="getFeatureImage(f)">
+                <!-- 截图存在，直接显示 -->
+                <img
+                  v-if="imageExists(getFeatureImage(f))"
+                  :src="withBase(getFeatureImage(f))"
+                  :alt="f.title"
+                  class="shot"
+                />
+                <!-- 截图不存在（日间模式占位） -->
+                <div v-else class="placeholder-shot">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
+                  </svg>
+                  <span>{{
+                    isEn ? 'Light mode screenshot coming soon...' : '日间模式截图即将上传...'
+                  }}</span>
+                </div>
+              </template>
+
+              <!-- 使用图标的功能 -->
               <div v-else class="placeholder-shot">
                 <svg
                   v-if="f.icon === 'cloud'"
