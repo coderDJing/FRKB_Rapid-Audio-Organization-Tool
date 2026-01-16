@@ -2,16 +2,16 @@
 
 ## 当前状态
 
-网站已配置为根据日间/夜间主题显示不同的截图。目前所有截图都是夜间模式的，日间模式的截图会显示占位符。
+网站已配置为根据日间/夜间主题显示不同的截图。部分截图已有，部分需要补充。
 
-## 需要补充的日间模式截图
+## 截图清单
 
 ### 1. 主界面截图
 
-| 语言 | 夜间模式（已有） | 日间模式（待补充） |
-|------|-----------------|-------------------|
-| 中文 | `softwareScreenshot_cn.webp` | `softwareScreenshot_cn_light.webp` |
-| 英文 | `softwareScreenshot.webp` | `softwareScreenshot_light.webp` |
+| 语言 | 夜间模式 | 日间模式 |
+|------|---------|---------|
+| 中文 | ✅ `softwareScreenshot_cn.webp` | ⏳ `softwareScreenshot_cn_light.webp` |
+| 英文 | ⏳ `softwareScreenshot.webp` | ⏳ `softwareScreenshot_light.webp` |
 
 **位置**: Hero 区域的主要软件界面截图
 
@@ -21,19 +21,19 @@
 
 #### 中文版
 
-| 功能 | 夜间模式（已有） | 日间模式（待补充） |
-|------|-----------------|-------------------|
-| 键盘优先的人机工学 | `shortcutKey_cn.webp` | `shortcutKey_cn_light.webp` |
-| 内容感知去重 | `import_cn.webp` | `import_cn_light.webp` |
-| 所见即所得的映射 | `mappingRelation_cn.webp` | `mappingRelation_cn_light.webp` |
+| 功能 | 夜间模式 | 日间模式 |
+|------|---------|---------|
+| 键盘优先的人机工学 | ✅ `shortcutKey_cn.webp` | ⏳ `shortcutKey_cn_light.webp` |
+| 内容感知去重 | ✅ `import_cn.webp` | ⏳ `import_cn_light.webp` |
+| 所见即所得的映射 | ✅ `mappingRelation_cn.webp` | ⏳ `mappingRelation_cn_light.webp` |
 
 #### 英文版
 
-| 功能 | 夜间模式（已有） | 日间模式（待补充） |
-|------|-----------------|-------------------|
-| Keyboard-First Ergonomics | `shortcutKey.webp` | `shortcutKey_light.webp` |
-| Content-Aware Dedup | `import.webp` | `import_light.webp` |
-| WYSIWYG Mapping | `mappingRelation.webp` | `mappingRelation_light.webp` |
+| 功能 | 夜间模式 | 日间模式 |
+|------|---------|---------|
+| Keyboard-First Ergonomics | ⏳ `shortcutKey.webp` | ⏳ `shortcutKey_light.webp` |
+| Content-Aware Dedup | ⏳ `import.webp` | ⏳ `import_light.webp` |
+| WYSIWYG Mapping | ⏳ `mappingRelation.webp` | ⏳ `mappingRelation_light.webp` |
 
 **位置**: Features 区域的特性卡片
 
@@ -43,18 +43,26 @@
 
 ### 文件格式
 - **格式**: WebP（推荐）或 PNG
-- **命名规则**: 原文件名 + `_light` 后缀
+- **命名规则**: 
+  - 夜间模式：`功能名.webp` 或 `功能名_cn.webp`
+  - 日间模式：`功能名_light.webp` 或 `功能名_cn_light.webp`
 - **存放路径**: `docs/public/assets/`
 
-### 尺寸建议
-- **主界面截图**: 1200x750 像素左右（16:10 比例）
-- **功能截图**: 800x500 像素左右（16:10 比例）
+### 尺寸要求
+- **宽高比例**: 保持 **16:10** 比例（推荐）
+- **不要求固定尺寸**：可以根据实际界面大小调整
+- **建议范围**：
+  - 主界面截图：宽度 1000-1600px
+  - 功能截图：宽度 600-1000px
+- **重要**：确保同一功能的中英文、日间夜间截图比例一致
 
 ### 拍摄要求
-1. 使用应用的日间/亮色主题模式
-2. 确保界面清晰、无个人信息
-3. 背景干净，避免杂乱
-4. 窗口大小适中，不要太大或太小
+1. **夜间模式**：使用应用的夜间/暗色主题
+2. **日间模式**：使用应用的日间/亮色主题
+3. 确保界面清晰、无个人信息
+4. 背景干净，避免杂乱
+5. 窗口大小适中，不要太大或太小
+6. 同一功能的不同语言版本保持相同的界面状态和视角
 
 ---
 
@@ -72,12 +80,53 @@
 
 ---
 
+## 📊 截图统计
+
+### 总计
+- **中文**: 8 张（4 夜间 + 4 日间）
+  - ✅ 已有: 3 张夜间截图
+  - ⏳ 待补: 1 张夜间 + 4 张日间 = 5 张
+- **英文**: 8 张（4 夜间 + 4 日间）
+  - ⏳ 待补: 8 张全部
+
+### 待补充截图列表
+
+#### 优先级 1：中文日间模式（4 张）
+```
+docs/public/assets/
+├── softwareScreenshot_cn_light.webp
+├── shortcutKey_cn_light.webp
+├── import_cn_light.webp
+└── mappingRelation_cn_light.webp
+```
+
+#### 优先级 2：英文夜间模式（4 张）
+```
+docs/public/assets/
+├── softwareScreenshot.webp
+├── shortcutKey.webp
+├── import.webp
+└── mappingRelation.webp
+```
+
+#### 优先级 3：英文日间模式（4 张）
+```
+docs/public/assets/
+├── softwareScreenshot_light.webp
+├── shortcutKey_light.webp
+├── import_light.webp
+└── mappingRelation_light.webp
+```
+
+---
+
 ## 当前显示效果
 
-- **夜间模式**: 显示现有的夜间模式截图 ✅
+- **夜间模式**: 
+  - 中文：显示现有的 3 张截图 ✅，1 张显示占位符
+  - 英文：全部显示占位符
 - **日间模式**: 
-  - 主界面截图：如果文件不存在，会尝试加载（显示损坏图标）
-  - 功能截图：显示占位符，提示"日间模式截图即将上传..." ✅
+  - 全部显示占位符，提示"日间模式截图即将上传..." ✅
 
 ---
 
@@ -89,9 +138,21 @@
 
 ---
 
-## 注意事项
+## ⚠️ 注意事项
 
-- 截图文件名必须完全匹配，包括大小写
-- WebP 格式可以减小文件大小，加快加载速度
-- 建议使用图片压缩工具优化文件大小（保持质量的同时减小体积）
-- 所有截图都应该在同一个软件版本中拍摄，保持界面一致性
+### 文件命名
+- 截图文件名必须**完全匹配**，包括大小写
+- 中文版截图必须带 `_cn` 后缀
+- 日间模式必须带 `_light` 后缀
+
+### 图片质量
+- **宽高比例**：保持 16:10 最佳（适合网页显示）
+- **文件大小**：建议单张不超过 500KB
+- **压缩工具**：推荐使用 [TinyPNG](https://tinypng.com/) 或 [Squoosh](https://squoosh.app/)
+- **格式选择**：WebP > PNG > JPG
+
+### 内容一致性
+- 所有截图应在**同一软件版本**中拍摄
+- 同一功能的中英文版本应该展示**相同的界面状态**
+- 窗口大小和视角保持一致
+- 避免出现个人信息、测试数据等敏感内容
