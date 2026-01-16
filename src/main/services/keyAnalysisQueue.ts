@@ -4,11 +4,12 @@ import fs from 'node:fs/promises'
 import { EventEmitter } from 'node:events'
 import { Worker } from 'node:worker_threads'
 import { findSongListRoot } from './cacheMaintenance'
+import { sweepSongListCovers } from './covers'
 import { applyLiteDefaults, buildLiteSongInfo } from './songInfoLite'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { getLibraryDb } from '../libraryDb'
 import store from '../store'
-import { loadLibraryNodes, type LibraryNodeRow } from '../libraryTreeDb'
+import { loadLibraryNodes, pruneMissingLibraryNodes, type LibraryNodeRow } from '../libraryTreeDb'
 import type { ISongInfo } from '../../types/globals'
 import type { MixxxWaveformData } from '../waveformCache'
 
@@ -98,6 +99,12 @@ const BACKGROUND_FS_DIR_LIMIT = 3
 const BACKGROUND_FS_ENTRY_LIMIT = 200
 const BACKGROUND_CLEAN_ROW_LIMIT = 200
 const BACKGROUND_CLEAN_BATCH_SIZE = 20
+// 库树清理周期：每 5 分钟最多执行一次
+const BACKGROUND_LIBRARY_TREE_CLEANUP_INTERVAL_MS = 5 * 60 * 1000
+// 封面清理周期：每 10 分钟最多执行一次完整扫描
+const BACKGROUND_COVER_CLEANUP_INTERVAL_MS = 10 * 60 * 1000
+// 每次封面清理最多处理的歌单数
+const BACKGROUND_COVER_CLEANUP_BATCH_SIZE = 3
 
 class KeyAnalysisQueue {
   private workers: Worker[] = []
@@ -129,6 +136,10 @@ class KeyAnalysisQueue {
   private backgroundResumeTimer: ReturnType<typeof setTimeout> | null = null
   private backgroundProcessingJobs = new Set<number>()
   private lastBackgroundStatus: KeyAnalysisBackgroundStatus | null = null
+  // 跟踪上次库树清理和封面清理的时间
+  private lastLibraryTreeCleanupAt = 0
+  private lastCoverCleanupAt = 0
+  private coverCleanupRootIndex = 0
 
   constructor(workerCount: number, events: EventEmitter) {
     const count = Math.max(1, workerCount)
@@ -824,7 +835,12 @@ class KeyAnalysisQueue {
         if (candidates.length > 0) {
           this.enqueueList(candidates, 'background', { source: 'background' })
         } else {
-          await this.cleanupMissingCacheEntries(BACKGROUND_CLEAN_BATCH_SIZE)
+          // 没有待分析任务时，执行清理工作
+          const cleaned = await this.cleanupMissingCacheEntries(BACKGROUND_CLEAN_BATCH_SIZE)
+          // 如果缓存清理没有找到更多条目，尝试其他清理任务
+          if (cleaned === 0 && !this.hasForegroundWork()) {
+            await this.runPeriodicMaintenanceTasks(now)
+          }
         }
       }
     } finally {
@@ -834,6 +850,98 @@ class KeyAnalysisQueue {
         this.scheduleBackgroundScan()
       }
     }
+  }
+
+  /**
+   * 执行周期性维护任务（库树清理、封面清理）
+   * 这些任务在后台空闲时执行，不阻塞用户操作
+   */
+  private async runPeriodicMaintenanceTasks(now: number) {
+    if (this.hasForegroundWork()) return
+
+    // 1. 库树节点清理（清理不存在的目录节点）
+    if (now - this.lastLibraryTreeCleanupAt >= BACKGROUND_LIBRARY_TREE_CLEANUP_INTERVAL_MS) {
+      try {
+        const removed = await pruneMissingLibraryNodes()
+        if (removed > 0) {
+          this.events.emit('library-tree-cleaned', { removed })
+        }
+        this.lastLibraryTreeCleanupAt = now
+      } catch {}
+    }
+
+    if (this.hasForegroundWork()) return
+
+    // 2. 封面文件清理（清理孤立的封面文件）
+    if (now - this.lastCoverCleanupAt >= BACKGROUND_COVER_CLEANUP_INTERVAL_MS) {
+      try {
+        await this.cleanupOrphanedCovers()
+        this.lastCoverCleanupAt = now
+      } catch {}
+    }
+  }
+
+  /**
+   * 清理孤立的封面文件
+   * 遍历所有歌单，清理不再被引用的封面图片
+   */
+  private async cleanupOrphanedCovers() {
+    const roots = this.refreshBackgroundRoots()
+    if (roots.length === 0) return
+
+    const audioExts = this.getAudioExtensions()
+    if (audioExts.size === 0) return
+
+    // 每次只处理部分歌单，避免占用太多时间
+    const startIndex = this.coverCleanupRootIndex % roots.length
+    const endIndex = Math.min(startIndex + BACKGROUND_COVER_CLEANUP_BATCH_SIZE, roots.length)
+
+    for (let i = startIndex; i < endIndex; i++) {
+      if (this.hasForegroundWork()) break
+      const listRoot = roots[i]
+      try {
+        // 获取当前歌单中的所有音频文件路径
+        const currentFilePaths = await this.collectAudioFilesInRoot(listRoot, audioExts)
+        if (this.hasForegroundWork()) break
+        // 清理孤立封面
+        await sweepSongListCovers(listRoot, currentFilePaths)
+      } catch {}
+    }
+
+    // 更新索引，下次从下一批开始
+    this.coverCleanupRootIndex = endIndex >= roots.length ? 0 : endIndex
+  }
+
+  /**
+   * 收集指定歌单根目录下的所有音频文件路径
+   */
+  private async collectAudioFilesInRoot(
+    listRoot: string,
+    audioExts: Set<string>
+  ): Promise<string[]> {
+    const filePaths: string[] = []
+    const queue: string[] = [listRoot]
+
+    while (queue.length > 0 && !this.hasForegroundWork()) {
+      const dir = queue.shift()
+      if (!dir) break
+      try {
+        const entries = await fs.readdir(dir, { withFileTypes: true })
+        for (const entry of entries) {
+          if (entry.isDirectory()) {
+            if (entry.name.startsWith('.') || entry.name === '.frkb_covers') continue
+            queue.push(path.join(dir, entry.name))
+          } else if (entry.isFile()) {
+            const ext = path.extname(entry.name).toLowerCase()
+            if (audioExts.has(ext)) {
+              filePaths.push(path.join(dir, entry.name))
+            }
+          }
+        }
+      } catch {}
+    }
+
+    return filePaths
   }
 
   private async collectBackgroundCandidates(limit: number): Promise<string[]> {
