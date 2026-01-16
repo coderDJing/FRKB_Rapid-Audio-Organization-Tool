@@ -6,18 +6,21 @@
 
 ## 截图清单
 
+> **说明**: ✅ = 当前已有（将被替换），⏳ = 需要新增
+
 ### 1. 主界面截图
 
 | 语言 | 夜间模式 | 日间模式 |
 |------|---------|---------|
 | 中文 | ✅ `softwareScreenshot_cn.webp` | ⏳ `softwareScreenshot_cn_light.webp` |
-| 英文 | ⏳ `softwareScreenshot.webp` | ⏳ `softwareScreenshot_light.webp` |
+| 英文 | ✅ `softwareScreenshot.webp` | ⏳ `softwareScreenshot_light.webp` |
 
-**位置**: Hero 区域的主要软件界面截图
+**位置**: Hero 区域的主要软件界面截图  
+**用途**: 网站首页顶部展示
 
 ---
 
-### 2. 功能截图
+### 2. 功能截图（网站使用）
 
 #### 中文版
 
@@ -31,11 +34,44 @@
 
 | 功能 | 夜间模式 | 日间模式 |
 |------|---------|---------|
-| Keyboard-First Ergonomics | ⏳ `shortcutKey.webp` | ⏳ `shortcutKey_light.webp` |
-| Content-Aware Dedup | ⏳ `import.webp` | ⏳ `import_light.webp` |
-| WYSIWYG Mapping | ⏳ `mappingRelation.webp` | ⏳ `mappingRelation_light.webp` |
+| Keyboard-First Ergonomics | ✅ `shortcutKey.webp` | ⏳ `shortcutKey_light.webp` |
+| Content-Aware Dedup | ✅ `import.webp` | ⏳ `import_light.webp` |
+| WYSIWYG Mapping | ✅ `mappingRelation.webp` | ⏳ `mappingRelation_light.webp` |
 
-**位置**: Features 区域的特性卡片
+**位置**: Features 区域的特性卡片  
+**用途**: 展示核心功能
+
+---
+
+### 3. 其他功能截图（备用）
+
+这些截图当前在 `docs/public/assets/` 目录中，可用于将来扩展功能展示。
+
+#### 中文版
+
+| 功能 | 夜间模式 | 日间模式 |
+|------|---------|---------|
+| 元数据编辑 | ✅ `metadata_cn.png` | ⏳ `metadata_cn_light.png` |
+| 开源信息 | ✅ `openSource _cn.webp` | ⏳ `openSource _cn_light.webp` |
+| 翻译功能 | ✅ `trans_cn.png` | ⏳ `trans_cn_light.png` |
+
+#### 英文版
+
+| 功能 | 夜间模式 | 日间模式 |
+|------|---------|---------|
+| Metadata Editor | ✅ `metadata.png` | ⏳ `metadata_light.png` |
+| Open Source Info | ✅ `openSource.webp` | ⏳ `openSource_light.webp` |
+| Translation | ✅ `trans.png` | ⏳ `trans_light.png` |
+
+**用途**: 预留备用，可用于未来添加更多功能展示
+
+---
+
+### 4. 其他资源
+
+| 文件 | 说明 |
+|------|------|
+| ✅ `icon.webp` | 网站图标 |
 
 ---
 
@@ -82,51 +118,85 @@
 
 ## 📊 截图统计
 
-### 总计
+### 网站使用的截图（核心）
 - **中文**: 8 张（4 夜间 + 4 日间）
-  - ✅ 已有: 3 张夜间截图
-  - ⏳ 待补: 1 张夜间 + 4 张日间 = 5 张
+  - ✅ 已有夜间: 4 张（将全部替换）
+  - ⏳ 待补日间: 4 张
 - **英文**: 8 张（4 夜间 + 4 日间）
-  - ⏳ 待补: 8 张全部
+  - ✅ 已有夜间: 4 张（将全部替换）
+  - ⏳ 待补日间: 4 张
 
-### 待补充截图列表
+### 备用功能截图
+- **中文**: 6 张（3 夜间 + 3 日间）
+  - ✅ 已有夜间: 3 张（将全部替换）
+  - ⏳ 待补日间: 3 张
+- **英文**: 6 张（3 夜间 + 3 日间）
+  - ✅ 已有夜间: 3 张（将全部替换）
+  - ⏳ 待补日间: 3 张
 
-#### 优先级 1：中文日间模式（4 张）
+### **总计**
+- ✅ **现有**: 14 张夜间截图（全部待替换）
+- ⏳ **需补**: 14 张日间截图
+- 📦 **合计**: 28 张截图
+
+---
+
+## 📝 待补充截图完整清单
+
+### 核心截图（优先）
+
+#### 中文日间模式（4 张）
 ```
 docs/public/assets/
-├── softwareScreenshot_cn_light.webp
-├── shortcutKey_cn_light.webp
-├── import_cn_light.webp
-└── mappingRelation_cn_light.webp
+├── softwareScreenshot_cn_light.webp     # 主界面
+├── shortcutKey_cn_light.webp            # 快捷键
+├── import_cn_light.webp                 # 去重
+└── mappingRelation_cn_light.webp        # 映射
 ```
 
-#### 优先级 2：英文夜间模式（4 张）
+#### 英文日间模式（4 张）
 ```
 docs/public/assets/
-├── softwareScreenshot.webp
-├── shortcutKey.webp
-├── import.webp
-└── mappingRelation.webp
+├── softwareScreenshot_light.webp        # 主界面
+├── shortcutKey_light.webp               # 快捷键
+├── import_light.webp                    # 去重
+└── mappingRelation_light.webp           # 映射
 ```
 
-#### 优先级 3：英文日间模式（4 张）
+### 备用截图（次要）
+
+#### 中文日间模式（3 张）
 ```
 docs/public/assets/
-├── softwareScreenshot_light.webp
-├── shortcutKey_light.webp
-├── import_light.webp
-└── mappingRelation_light.webp
+├── metadata_cn_light.png                # 元数据
+├── openSource _cn_light.webp            # 开源（注意文件名有空格）
+└── trans_cn_light.png                   # 翻译
+```
+
+#### 英文日间模式（3 张）
+```
+docs/public/assets/
+├── metadata_light.png                   # 元数据
+├── openSource_light.webp                # 开源
+└── trans_light.png                      # 翻译
 ```
 
 ---
 
 ## 当前显示效果
 
+### 网站展示区域
 - **夜间模式**: 
-  - 中文：显示现有的 3 张截图 ✅，1 张显示占位符
-  - 英文：全部显示占位符
+  - 中文：显示现有的 4 张截图 ✅（待替换为新版本）
+  - 英文：显示现有的 4 张截图 ✅（待替换为新版本）
 - **日间模式**: 
-  - 全部显示占位符，提示"日间模式截图即将上传..." ✅
+  - 中文：4 张全部显示占位符，提示"日间模式截图即将上传..." 
+  - 英文：4 张全部显示占位符，提示"日间模式截图即将上传..."
+
+### 备用截图资源
+- 额外的 6 张功能截图（中英文各 3 张）已存在于 `assets/` 目录
+- 可用于将来扩展功能展示或文档说明
+- 同样需要日间模式版本
 
 ---
 
@@ -135,6 +205,66 @@ docs/public/assets/
 1. 访问本地开发服务器：`pnpm run docs:dev`
 2. 点击导航栏的太阳图标切换到日间模式
 3. 可以看到占位符显示位置
+
+---
+
+## 🔄 替换截图流程
+
+### 方案一：逐步替换（推荐）
+
+适合分批截图、逐步更新的情况。
+
+**步骤：**
+
+1. **拍摄新截图**
+   - 夜间模式：替换现有的 14 张
+   - 日间模式：新增 14 张
+
+2. **替换和添加文件**
+   ```bash
+   # 将新截图直接放入目录，覆盖同名文件
+   docs/public/assets/
+   ├── softwareScreenshot_cn.webp           # 覆盖
+   ├── softwareScreenshot_cn_light.webp     # 新增
+   ├── shortcutKey_cn.webp                  # 覆盖
+   ├── shortcutKey_cn_light.webp            # 新增
+   └── ... （其他文件同理）
+   ```
+
+3. **提交并推送**
+   ```bash
+   git add docs/public/assets/
+   git commit -m "feat(docs): update screenshots with new version
+   
+   - Replace all 14 dark mode screenshots
+   - Add 14 light mode screenshots for theme support"
+   git push
+   ```
+
+### 方案二：一次性完成
+
+适合准备好所有 28 张截图后一次性提交。
+
+```bash
+# 1. 将所有新截图放入目录
+docs/public/assets/
+
+# 2. 一次性提交
+git add docs/public/assets/
+git commit -m "feat(docs): complete screenshot overhaul
+
+- Replace all 14 dark mode screenshots with latest version
+- Add 14 light mode screenshots for theme toggle  
+- Cover core features and additional screenshots
+- Support both Chinese and English languages"
+git push
+```
+
+### 自动部署
+
+- GitHub Actions 会自动检测更改
+- 约 2-3 分钟后完成构建和部署
+- 新截图将自动显示在网站上
 
 ---
 
