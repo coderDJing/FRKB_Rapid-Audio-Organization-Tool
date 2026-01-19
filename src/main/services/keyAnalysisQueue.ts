@@ -111,6 +111,7 @@ const BACKGROUND_COVER_CLEANUP_BATCH_SIZE = 3
 class KeyAnalysisQueue {
   private workers: Worker[] = []
   private idle: Worker[] = []
+  private foregroundWorker: Worker | null = null
   private pendingHigh: KeyAnalysisJob[] = []
   private pendingMedium: KeyAnalysisJob[] = []
   private pendingLow: KeyAnalysisJob[] = []
@@ -149,6 +150,7 @@ class KeyAnalysisQueue {
     for (let i = 0; i < count; i += 1) {
       this.workers.push(this.createWorker())
     }
+    this.refreshForegroundWorker()
   }
 
   getBackgroundStatusSnapshot(): KeyAnalysisBackgroundStatus {
@@ -161,7 +163,7 @@ class KeyAnalysisQueue {
     const processing = this.backgroundProcessingJobs.size
     const scanInProgress = this.backgroundScanInProgress
     const enabled = this.backgroundEnabled
-    const active = enabled && (processing > 0 || inFlight > 0)
+    const active = enabled && (processing > 0 || inFlight > 0 || pending > 0)
     return { active, pending, inFlight, processing, scanInProgress, enabled }
   }
 
@@ -351,21 +353,28 @@ class KeyAnalysisQueue {
 
   private handleWorkerFailure(worker: Worker, error: Error) {
     const jobId = this.busy.get(worker)
+    const wasPreempted = typeof jobId === 'number' && this.preemptedJobIds.has(jobId)
+    const wasForegroundWorker = this.foregroundWorker === worker
     let preemptedJob: KeyAnalysisJob | null = null
-    if (jobId) {
-      const job = this.inFlight.get(jobId)
+    let job: KeyAnalysisJob | undefined
+    if (typeof jobId === 'number') {
+      job = this.inFlight.get(jobId)
       if (job) {
         if (job.source === 'background') {
-          const errorMsg = `[闲时分析] Worker 崩溃 - ${path.basename(job.filePath)}`
-          log.error(errorMsg, error)
+          if (!wasPreempted) {
+            const errorMsg = `[闲时分析] Worker 崩溃 - ${path.basename(job.filePath)}`
+            log.error(errorMsg, error)
+          }
           this.backgroundProcessingJobs.delete(job.jobId)
         }
         this.activeByPath.delete(job.normalizedPath)
         this.inFlight.delete(jobId)
       }
-      if (job && this.preemptedJobIds.has(jobId)) {
+      if (wasPreempted) {
         this.preemptedJobIds.delete(jobId)
-        preemptedJob = job
+        if (job) {
+          preemptedJob = job
+        }
       }
       this.busy.delete(worker)
     } else {
@@ -376,8 +385,15 @@ class KeyAnalysisQueue {
     this.workers = this.workers.filter((item) => item !== worker)
     this.idle = this.idle.filter((item) => item !== worker)
 
-    const replacement = this.createWorker()
-    this.workers.push(replacement)
+    let replacement: Worker | null = null
+    if (!wasPreempted) {
+      replacement = this.createWorker()
+      this.workers.push(replacement)
+    }
+    if (wasForegroundWorker) {
+      this.foregroundWorker = replacement
+    }
+    this.refreshForegroundWorker()
     this.drain()
     if (preemptedJob) {
       this.enqueue(preemptedJob.filePath, 'background', { source: 'background' })
@@ -1208,8 +1224,38 @@ class KeyAnalysisQueue {
     } catch {}
   }
 
+  private refreshForegroundWorker() {
+    if (this.workers.length <= 1) {
+      this.foregroundWorker = null
+      return
+    }
+    if (this.foregroundWorker && this.workers.includes(this.foregroundWorker)) {
+      return
+    }
+    this.foregroundWorker = this.workers[0] || null
+  }
+
+  private getReservedWorker(): Worker | null {
+    if (this.workers.length <= 1) return null
+    return this.foregroundWorker
+  }
+
+  private getIdleWorker(allowReserved: boolean): Worker | null {
+    if (this.idle.length === 0) return null
+    const reserved = this.getReservedWorker()
+    if (!reserved || allowReserved) {
+      return this.idle.shift() || null
+    }
+    const idx = this.idle.findIndex((item) => item !== reserved)
+    if (idx === -1) return null
+    const [worker] = this.idle.splice(idx, 1)
+    return worker || null
+  }
+
   private maybePreemptBackground() {
     if (this.idle.length > 0) return
+    if (this.workers.length <= 1) return
+    if (this.foregroundWorker) return
     for (const [worker, jobId] of this.busy.entries()) {
       const job = this.inFlight.get(jobId)
       if (job && job.source === 'background') {
@@ -1235,10 +1281,13 @@ class KeyAnalysisQueue {
       if (!hasForegroundPending && this.pendingBackground.length > 0) {
         if (this.countBackgroundInFlight() >= BACKGROUND_MAX_INFLIGHT) break
       }
-      const job = this.popNextJob()
-      if (!job) break
-      const worker = this.idle.shift()
+      const worker = this.getIdleWorker(hasForegroundPending || !this.getReservedWorker())
       if (!worker) break
+      const job = this.popNextJob()
+      if (!job) {
+        this.idle.push(worker)
+        break
+      }
       this.busy.set(worker, job.jobId)
       this.inFlight.set(job.jobId, job)
       this.activeByPath.set(job.normalizedPath, job)
