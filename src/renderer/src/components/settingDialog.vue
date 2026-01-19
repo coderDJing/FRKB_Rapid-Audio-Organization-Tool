@@ -592,6 +592,13 @@ const clearCloudFingerprints = async () => {
             <div style="margin-top: 10px">
               <singleCheckbox v-model="runtime.setting.autoPlayNextSong" @change="setSetting()" />
             </div>
+            <div style="margin-top: 20px">{{ t('player.autoCenterSong') }}：</div>
+            <div style="margin-top: 10px">
+              <singleCheckbox
+                v-model="runtime.setting.autoScrollToCurrentSong"
+                @change="setSetting()"
+              />
+            </div>
             <div style="margin-top: 20px">{{ t('player.enablePlaybackRange') }}：</div>
             <div style="margin-top: 10px">
               <singleCheckbox
@@ -743,13 +750,6 @@ const clearCloudFingerprints = async () => {
                 @blur="setSetting()"
               />
               {{ t('player.seconds') }}
-            </div>
-            <div style="margin-top: 20px">{{ t('player.autoCenterSong') }}：</div>
-            <div style="margin-top: 10px">
-              <singleCheckbox
-                v-model="runtime.setting.autoScrollToCurrentSong"
-                @change="setSetting()"
-              />
             </div>
             <div style="margin-top: 20px">{{ t('player.recentPlaylistCache') }}：</div>
             <div style="margin-top: 10px">

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, useTemplateRef, onUnmounted } from 'vue'
+import { ref, shallowRef, computed, useTemplateRef, onUnmounted, watch } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
@@ -461,6 +461,28 @@ const currentPlayingIndex = computed(() => {
 const showScrollToPlaying = computed(() => {
   return viewState.value === 'list' && currentPlayingIndex.value >= 0
 })
+
+const scrollToCurrentIfNeeded = () => {
+  if (!runtime.setting.autoScrollToCurrentSong) return
+  if (!runtime.playingData.playingSong?.filePath) return
+  if (runtime.playingData.playingSongListUUID !== runtime.songsArea.songListUUID) return
+  if (currentPlayingIndex.value < 0) return
+  scrollToIndex(currentPlayingIndex.value)
+}
+
+watch(
+  () => [
+    runtime.setting.autoScrollToCurrentSong,
+    runtime.playingData.playingSong?.filePath,
+    runtime.playingData.playingSongListUUID,
+    runtime.songsArea.songListUUID,
+    runtime.songsArea.songInfoArr.length
+  ],
+  () => {
+    scrollToCurrentIfNeeded()
+  },
+  { flush: 'post' }
+)
 
 const handleScrollToPlaying = () => {
   if (currentPlayingIndex.value < 0) return
