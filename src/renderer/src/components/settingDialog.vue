@@ -51,6 +51,10 @@ if (runtime.setting.startPlayPercent === undefined) {
 if (runtime.setting.endPlayPercent === undefined) {
   runtime.setting.endPlayPercent = 100
 }
+// 是否显示闲时分析状态：默认不显示
+if ((runtime as any).setting.showIdleAnalysisStatus === undefined) {
+  ;(runtime as any).setting.showIdleAnalysisStatus = false
+}
 // 最近使用歌单缓存数量默认值
 if (runtime.setting.recentDialogSelectedSongListMaxCount === undefined) {
   runtime.setting.recentDialogSelectedSongListMaxCount = 10
@@ -623,6 +627,13 @@ const clearCloudFingerprints = async () => {
               <BaseSelect
                 v-model="(runtime as any).setting.keyDisplayStyle"
                 :options="keyDisplayStyleOptions"
+                @change="setSetting"
+              />
+            </div>
+            <div style="margin-top: 20px">{{ t('player.showIdleAnalysisStatus') }}：</div>
+            <div style="margin-top: 10px">
+              <singleCheckbox
+                v-model="(runtime as any).setting.showIdleAnalysisStatus"
                 @change="setSetting"
               />
             </div>

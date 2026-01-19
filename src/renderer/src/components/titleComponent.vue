@@ -4,12 +4,13 @@ import chromeRestoreAsset from '@renderer/assets/chrome-restore.svg?asset'
 import chromeMiniimizeAsset from '@renderer/assets/chrome-minimize.svg?asset'
 import logoAsset from '@renderer/assets/logo.png?asset'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import menuComponent from './menu.vue'
 import confirm from '@renderer/components/confirmDialog'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog'
 import { t } from '@renderer/utils/translate'
 import hotkeys from 'hotkeys-js'
+import pkg from '../../../../package.json'
 
 const chromeMaximize = chromeMaximizeAsset
 const chromeRestore = chromeRestoreAsset
@@ -55,6 +56,13 @@ type Menu = {
   subMenu: MenuItem[][]
 }
 
+// 检查是否是 dev 模式或预发布版本
+// dev 模式或预发布版本（版本号包含 '-'）都显示日志菜单
+const isDevOrPrerelease = computed(() => {
+  const version = String((pkg as any).version || '')
+  return version.includes('-')
+})
+
 const menuArr = ref<Menu[]>([
   {
     name: 'menu.file',
@@ -98,7 +106,9 @@ const menuArr = ref<Menu[]>([
         { name: 'menu.whatsNew' },
         { name: 'menu.thirdPartyNotices' },
         { name: 'menu.about' }
-      ]
+      ],
+      // 开发模式或预发布版本才显示日志菜单
+      ...(isDevOrPrerelease.value ? [[{ name: 'menu.openLog', action: 'open-log' }]] : [])
     ]
   }
 ])
@@ -171,6 +181,10 @@ const menuButtonClick = async (item: MenuItem) => {
       await scanNewSongDialog({ libraryName: 'CuratedLibrary', songListUuid: '' })
       return
     }
+  }
+  if (item.action === 'open-log') {
+    window.electron.ipcRenderer.send('openLog')
+    return
   }
   emit('openDialog', item.name)
 }

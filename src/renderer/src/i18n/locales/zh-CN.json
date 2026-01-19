@@ -37,7 +37,8 @@
     "checkUpdate": "检查更新",
     "whatsNew": "更新日志",
     "thirdPartyNotices": "第三方许可",
-    "about": "关于"
+    "about": "关于",
+    "openLog": "打开日志"
   },
   "database": {
     "selectLocation": "请选择数据存储位置",
@@ -476,6 +477,7 @@
     "keyDisplayStyle": "调性显示风格",
     "keyDisplayStyleClassic": "Classic（C#m）",
     "keyDisplayStyleCamelot": "Camelot（1A/1B）",
+    "showIdleAnalysisStatus": "显示闲时分析状态",
     "keyDisplayNone": "无调性",
     "autoCenterSong": "切换歌曲时，自动滚动列表将当前歌曲置于视图中央",
     "recentPlaylistCache": "最近使用歌单缓存数量",

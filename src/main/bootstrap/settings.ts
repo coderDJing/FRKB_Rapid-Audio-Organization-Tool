@@ -63,6 +63,7 @@ const defaultSettings = {
   waveformStyle: 'SoundCloud' as 'SoundCloud' | 'Fine' | 'RGB',
   waveformMode: 'half',
   keyDisplayStyle: 'Classic' as 'Classic' | 'Camelot',
+  showIdleAnalysisStatus: false,
   autoPlayNextSong: false,
   startPlayPercent: 0,
   endPlayPercent: 100,

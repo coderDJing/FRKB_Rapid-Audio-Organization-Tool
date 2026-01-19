@@ -194,7 +194,8 @@ const bindPlayerEvents = (player: WebAudioPlayer) => {
 
   const onError = async (error: any) => {
     const currentPath = runtime.playingData.playingSong?.filePath ?? null
-    await handleSongLoadError(currentPath, false)
+    const errorMsg = error?.message || String(error)
+    await handleSongLoadError(currentPath, false, errorMsg)
   }
   player.on('error', onError)
   disposers.push(() => player.off('error', onError))

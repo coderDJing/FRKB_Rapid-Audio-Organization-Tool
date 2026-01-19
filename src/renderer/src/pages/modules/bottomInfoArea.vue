@@ -139,6 +139,12 @@ const applyProgressPayload = (payload: any) => {
   const cancelPayload = cancelable ? (payload.cancelPayload ?? id) : undefined
   const hasProgressMeta = 'noProgress' in payload
   const noProgress = !!payload.noProgress
+
+  // 如果是后台分析任务且设置为不显示，则忽略
+  if (id === backgroundTaskId && !(runtime as any).setting?.showIdleAnalysisStatus) {
+    return true
+  }
+
   if (id === backgroundTaskId && !dismiss) {
     clearBackgroundHideTimer()
     const existing = tasks.value.find((t) => t.id === id)
@@ -258,6 +264,19 @@ watch(
   (len) => {
     if (len > 0) {
       showTotalRow.value = false
+    }
+  }
+)
+
+watch(
+  () => (runtime as any).setting?.showIdleAnalysisStatus,
+  (enabled) => {
+    if (enabled === false) {
+      dismissBackgroundTaskNow()
+      return
+    }
+    if (enabled === true) {
+      void syncKeyAnalysisBackgroundStatus()
     }
   }
 )

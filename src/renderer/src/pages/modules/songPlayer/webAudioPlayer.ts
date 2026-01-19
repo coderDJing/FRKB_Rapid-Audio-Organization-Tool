@@ -88,9 +88,50 @@ const normalizeExtension = (filePath: string) => {
   return match ? match[1] : ''
 }
 
+// 强制使用后端解码的扩展名
+// 后端解码策略：优先 Symphonia (快)，不支持时自动降级到 FFmpeg
+//
+// Symphonia 支持: AAC, M4A(AAC), MP3, FLAC, WAV, AIFF, Ogg/Vorbis
+// FFmpeg 降级支持: ALAC, APE, TAK, TTA, WavPack, DTS, AC3, WMA, Opus 等
+const FORCE_PCM_EXTENSIONS = new Set([
+  // 容器格式（可能包含多种编解码器，不可靠）
+  'm4a', // M4A: 如果是 AAC → Symphonia(快)；如果是 ALAC → FFmpeg
+  'm4b', // M4B (有声书): 同 M4A
+  'mp4', // MP4 音频: 同 M4A
+  'mka', // Matroska: FFmpeg
+  'webm', // WebM: FFmpeg
+
+  // 无损/专业格式（浏览器不支持，需要后端解码）
+  'alac', // Apple Lossless → FFmpeg
+  'ape', // Monkey's Audio → FFmpeg
+  'tak', // TAK → FFmpeg
+  'tta', // True Audio → FFmpeg
+  'wv', // WavPack → FFmpeg
+
+  // 专业音频格式（浏览器不支持）
+  'dts', // DTS → FFmpeg
+  'ac3', // AC3/Dolby Digital → FFmpeg
+  'wma', // Windows Media Audio → FFmpeg
+
+  // AAC 裸流（容器不完整，不可靠）
+  'aac' // AAC 裸流 → Symphonia/FFmpeg
+])
+
+// 浏览器原生支持良好的格式（保持 HTML 直接播放，性能最佳）：
+// - mp3: 浏览器原生支持 ✅
+// - wav: 浏览器原生支持 ✅
+// - flac: 现代浏览器支持 ✅
+// - ogg/oga: Vorbis，浏览器支持 ✅
+// - opus: 现代浏览器支持 ✅
+// - aif/aiff: 部分浏览器支持 ✅
+
 export const canPlayHtmlAudio = (filePath: string) => {
   const ext = normalizeExtension(filePath)
   if (!ext) return false
+
+  // 黑名单：强制使用 PCM 解码
+  if (FORCE_PCM_EXTENSIONS.has(ext)) return false
+
   const mime = AUDIO_MIME_BY_EXTENSION[ext]
   if (!mime) return false
   if (typeof document === 'undefined') return true
@@ -771,7 +812,31 @@ export class WebAudioPlayer {
     this.isPlayingFlag = false
     this.stopTimeUpdate()
     const error = this.audioElement?.error
-    this.emit('error', error ?? new Error('Audio error'))
+
+    // 记录详细的错误信息
+    let errorMessage = 'Audio error'
+    if (error) {
+      const errorCodes: Record<number, string> = {
+        1: 'MEDIA_ERR_ABORTED - 加载被中止',
+        2: 'MEDIA_ERR_NETWORK - 网络错误',
+        3: 'MEDIA_ERR_DECODE - 解码失败',
+        4: 'MEDIA_ERR_SRC_NOT_SUPPORTED - 不支持的格式或源'
+      }
+      errorMessage = errorCodes[error.code] || `未知错误 (code: ${error.code})`
+      if (error.message) {
+        errorMessage += ` - ${error.message}`
+      }
+    }
+
+    console.error('[WebAudioPlayer] HTML Audio 错误:', {
+      code: error?.code,
+      message: error?.message,
+      filePath: this.activeFilePath,
+      src: this.activeSrc,
+      errorMessage
+    })
+
+    this.emit('error', new Error(errorMessage))
   }
 
   private async applyOutputDevice(audio: HTMLAudioElement, deviceId: string): Promise<void> {

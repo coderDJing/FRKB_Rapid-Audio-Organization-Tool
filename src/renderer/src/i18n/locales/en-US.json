@@ -37,7 +37,8 @@
     "checkUpdate": "Check for Update",
     "whatsNew": "Release Notes",
     "thirdPartyNotices": "Third-Party Notices",
-    "about": "About"
+    "about": "About",
+    "openLog": "Open Log File"
   },
   "database": {
     "selectLocation": "Set up database",
@@ -475,6 +476,7 @@
     "keyDisplayStyle": "Key display style",
     "keyDisplayStyleClassic": "Classic (C#m)",
     "keyDisplayStyleCamelot": "Camelot (1A/1B)",
+    "showIdleAnalysisStatus": "Show idle analysis status",
     "keyDisplayNone": "No key",
     "autoCenterSong": "Auto-center current track",
     "recentPlaylistCache": "Recent playlist cache size",

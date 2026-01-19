@@ -7,6 +7,9 @@ resources/pyScript/
 *.log*
 **/*.node
 
+# Dev mode log file (project root)
+log.txt
+
 # local env files
 .env
 .env.*

@@ -3,6 +3,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
+import { log } from '../../log'
 import { findSongListRoot } from '../../services/cacheMaintenance'
 import { enqueueKeyAnalysis, enqueueKeyAnalysisImmediate } from '../../services/keyAnalysisQueue'
 import * as LibraryCacheDb from '../../libraryCacheDb'
@@ -232,7 +233,9 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
         }
         getWindow()?.webContents.send(successEvent, payload, filePath, requestId)
       } catch (error) {
-        console.error(`解码歌曲文件失败(${eventName}) ${filePath}:`, error)
+        const errorMsg = `解码歌曲文件失败(${eventName}) ${filePath}`
+        log.error(errorMsg, error)
+        console.error(`${errorMsg}:`, error)
         getWindow()?.webContents.send(errorEvent, filePath, (error as Error).message, requestId)
       }
     }
@@ -256,7 +259,9 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
       }
       getWindow()?.webContents.send('readedPreviewSongFile', payload, filePath, requestId)
     } catch (error) {
-      console.error(`解码预览文件失败 ${filePath}:`, error)
+      const errorMsg = `解码预览文件失败 ${filePath}`
+      log.error(errorMsg, error)
+      console.error(`${errorMsg}:`, error)
       getWindow()?.webContents.send(
         'readPreviewSongFileError',
         filePath,

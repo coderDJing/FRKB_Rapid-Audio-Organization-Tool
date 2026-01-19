@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import { app, BrowserWindow, ipcMain, shell, nativeTheme, protocol } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { log } from './log'
+import { log, getLogPath } from './log'
 import './cloudSync'
 import errorReport from './errorReport'
 import url from './url'
@@ -39,6 +39,8 @@ import { registerExportHandlers } from './ipc/exportHandlers'
 import { registerKeyAnalysisHandlers } from './ipc/keyAnalysisHandlers'
 import { maybeShowWhatsNew, registerWhatsNewHandlers } from './services/whatsNew'
 import * as LibraryCacheDb from './libraryCacheDb'
+import path from 'path'
+import fs from 'fs-extra'
 import {
   keyAnalysisEvents,
   startKeyAnalysisBackground,
@@ -120,8 +122,6 @@ app.on('open-file', (event, openedPath) => {
   queueExternalAudioFiles([openedPath])
 })
 
-import path = require('path')
-import fs = require('fs-extra')
 const platform = process.platform
 const ffmpegPath = resolveBundledFfmpegPath()
 process.env.FRKB_FFMPEG_PATH = ffmpegPath
@@ -437,6 +437,26 @@ ipcMain.on('outputLog', (e, logMsg) => {
 
 ipcMain.on('openLocalBrowser', (e, url) => {
   shell.openExternal(url)
+})
+
+ipcMain.on('openLog', async () => {
+  const logPath = getLogPath()
+  try {
+    // 确保日志文件存在，如果不存在则创建空文件
+    await fs.ensureFile(logPath)
+    // 尝试打开日志文件
+    const result = await shell.openPath(logPath)
+    if (result) {
+      // 如果打开失败（返回非空字符串表示错误），尝试打开日志所在文件夹
+      await shell.showItemInFolder(logPath)
+    }
+  } catch (error) {
+    // 如果所有操作都失败，记录错误并尝试打开文件夹
+    log.error('打开日志文件失败', error)
+    try {
+      await shell.showItemInFolder(logPath)
+    } catch {}
+  }
 })
 
 ipcMain.handle('clearTracksFingerprintLibrary', async (_e) => {

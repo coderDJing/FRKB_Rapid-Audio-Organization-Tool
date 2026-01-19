@@ -1,8 +1,12 @@
-import { app, BrowserWindow, Menu } from 'electron'
+import { app, BrowserWindow, Menu, shell } from 'electron'
+import { is } from '@electron-toolkit/utils'
+import path from 'path'
 import zhCNLocale from '../../renderer/src/i18n/locales/zh-CN.json'
 import enUSLocale from '../../renderer/src/i18n/locales/en-US.json'
 import store from '../store'
 import mainWindow from '../window/mainWindow'
+import { getLogPath, log } from '../log'
+import fs from 'fs-extra'
 
 // 依据当前设置返回语言 ID
 const getCurrentLocaleId = (): 'zh-CN' | 'en-US' =>
@@ -149,6 +153,35 @@ const buildFullMenu = () =>
           click: () =>
             mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.thirdPartyNotices')
         },
+        // 开发模式或预发布版本显示日志菜单
+        ...(is.dev || app.getVersion().includes('-')
+          ? [
+              { type: 'separator' as const },
+              {
+                label: getCurrentLocaleId() === 'en-US' ? 'Open Log File' : '打开日志',
+                click: async () => {
+                  const logPath = getLogPath()
+                  try {
+                    // 确保日志文件存在，如果不存在则创建空文件
+                    await fs.ensureFile(logPath)
+                    // 尝试打开日志文件
+                    const result = await shell.openPath(logPath)
+                    if (result) {
+                      // 如果打开失败（返回非空字符串表示错误），尝试打开日志所在文件夹
+                      await shell.showItemInFolder(logPath)
+                    }
+                  } catch (error) {
+                    // 如果所有操作都失败，记录错误并尝试打开文件夹
+                    log.error('打开日志文件失败', error)
+                    try {
+                      await shell.showItemInFolder(logPath)
+                    } catch {}
+                  }
+                }
+              }
+            ]
+          : []),
+        { type: 'separator' },
         {
           label: tMenu('menu.about'),
           click: () => mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.about')

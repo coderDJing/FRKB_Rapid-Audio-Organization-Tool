@@ -12,6 +12,7 @@ import store from '../store'
 import { loadLibraryNodes, pruneMissingLibraryNodes, type LibraryNodeRow } from '../libraryTreeDb'
 import type { ISongInfo } from '../../types/globals'
 import type { MixxxWaveformData } from '../waveformCache'
+import { log } from '../log'
 
 type KeyAnalysisPriority = 'high' | 'medium' | 'low' | 'background'
 type KeyAnalysisSource = 'foreground' | 'background'
@@ -26,6 +27,7 @@ type KeyAnalysisJob = {
   needsKey?: boolean
   needsBpm?: boolean
   needsWaveform?: boolean
+  startTime?: number
 }
 
 type KeyAnalysisResult = {
@@ -347,15 +349,17 @@ class KeyAnalysisQueue {
     return worker
   }
 
-  private handleWorkerFailure(worker: Worker, _error: Error) {
+  private handleWorkerFailure(worker: Worker, error: Error) {
     const jobId = this.busy.get(worker)
     let preemptedJob: KeyAnalysisJob | null = null
     if (jobId) {
       const job = this.inFlight.get(jobId)
-      if (job && job.source === 'background') {
-        this.backgroundProcessingJobs.delete(job.jobId)
-      }
       if (job) {
+        if (job.source === 'background') {
+          const errorMsg = `[闲时分析] Worker 崩溃 - ${path.basename(job.filePath)}`
+          log.error(errorMsg, error)
+          this.backgroundProcessingJobs.delete(job.jobId)
+        }
         this.activeByPath.delete(job.normalizedPath)
         this.inFlight.delete(jobId)
       }
@@ -364,6 +368,9 @@ class KeyAnalysisQueue {
         preemptedJob = job
       }
       this.busy.delete(worker)
+    } else {
+      const errorMsg = '[闲时分析] Worker 崩溃（无关联任务）'
+      log.error(errorMsg, error)
     }
 
     this.workers = this.workers.filter((item) => item !== worker)
@@ -393,6 +400,22 @@ class KeyAnalysisQueue {
     if (job) {
       this.activeByPath.delete(job.normalizedPath)
       if (job.source === 'background') {
+        const results: string[] = []
+        const errors: string[] = []
+        if (payloadResult?.keyText && !payloadResult.keyError) results.push('key')
+        else if (payloadResult?.keyError) errors.push(`key: ${payloadResult.keyError}`)
+        if (payloadResult?.bpm && !payloadResult.bpmError) results.push('bpm')
+        else if (payloadResult?.bpmError) errors.push(`bpm: ${payloadResult.bpmError}`)
+        if (payloadResult?.mixxxWaveformData) results.push('waveform')
+        if (payloadError) errors.push(`worker错误: ${payloadError}`)
+
+        // 只在有错误时记录到日志文件
+        if (errors.length > 0) {
+          const elapsed = job.startTime ? Date.now() - job.startTime : 0
+          const statusMsg = `[闲时分析] 任务完成但有错误 - ${path.basename(job.filePath)} (耗时: ${elapsed}ms) 错误: ${errors.join('; ')}`
+          log.warn(statusMsg)
+        }
+
         this.backgroundProcessingJobs.delete(job.jobId)
         this.emitBackgroundStatus()
       }
@@ -843,6 +866,8 @@ class KeyAnalysisQueue {
           }
         }
       }
+    } catch (error) {
+      log.error('[闲时分析] 扫描过程出错', error)
     } finally {
       this.backgroundScanInProgress = false
       this.emitBackgroundStatus()
@@ -1229,6 +1254,7 @@ class KeyAnalysisQueue {
           return
         }
         if (job.source === 'background') {
+          job.startTime = Date.now()
           this.backgroundProcessingJobs.add(job.jobId)
           this.emitBackgroundStatus()
         }

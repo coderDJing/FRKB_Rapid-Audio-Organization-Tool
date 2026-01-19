@@ -40,8 +40,13 @@ export function useSongLoader(params: {
   const ignoreNextEmptyError = ref(false)
 
   let errorDialogShowing = false
+  let lastErrorMessage = ''
 
-  const handleSongLoadError = async (filePath: string | null, _isPreload: boolean) => {
+  const handleSongLoadError = async (
+    filePath: string | null,
+    _isPreload: boolean,
+    errorMessage?: string
+  ) => {
     void _isPreload
     if (!filePath || errorDialogShowing) return
 
@@ -55,9 +60,16 @@ export function useSongLoader(params: {
       waveformShow.value = false
       bpm.value = 'N/A'
 
+      // 记录错误到控制台
+      console.error('[播放失败]', filePath, errorMessage || '未知错误')
+
+      const content = errorMessage
+        ? [t('tracks.cannotPlay'), errorMessage, t('tracks.cannotPlayHint')]
+        : [t('tracks.cannotPlay'), t('tracks.cannotPlayHint')]
+
       const res = await confirm({
         title: t('common.error'),
-        content: [t('tracks.cannotPlay'), t('tracks.cannotPlayHint')]
+        content
       })
 
       if (res === 'confirm') {
@@ -290,7 +302,7 @@ export function useSongLoader(params: {
   const handleReadSongFileError = (
     _event: unknown,
     filePath: string,
-    _message: string,
+    message: string,
     requestId: string
   ) => {
     const requestNumber = Number(requestId)
@@ -298,7 +310,7 @@ export function useSongLoader(params: {
     if (requestNumber !== currentLoadRequestId.value) return
     if (runtime.playingData.playingSong?.filePath !== filePath) return
     isLoadingBlob.value = false
-    void handleSongLoadError(filePath, false)
+    void handleSongLoadError(filePath, false, message)
   }
 
   window.electron.ipcRenderer.on('song-waveform-updated', handleWaveformUpdated)
