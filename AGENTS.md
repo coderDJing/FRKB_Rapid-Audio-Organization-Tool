@@ -31,6 +31,7 @@
 
 ## Commit & Pull Request Guidelines
 - Recent commits use Conventional Commit prefixes with optional scopes: `feat(ui): ...`, `fix(player): ...`, `refactor(...)`, `docs(...)`.
+- 提交信息必须使用中文（保留 Conventional Commit 结构）。
 - PRs should include a clear summary, testing notes, and screenshots for UI changes; link related issues and call out packaging or native-module impacts.
 
 ## Documentation Updates
