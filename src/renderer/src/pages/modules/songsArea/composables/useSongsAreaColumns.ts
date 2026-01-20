@@ -68,11 +68,15 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     return columns
   }
 
+  const defaultNoExtraWidthKeys = new Set(['index', 'duration', 'bpm', 'key'])
   const buildDefaultColumns = (isRecycleBin: boolean): ISongsAreaColumn[] =>
-    buildBaseColumns(isRecycleBin).map((col) => ({
-      ...col,
-      width: (MIN_WIDTH_BY_KEY[col.key] ?? 0) + INIT_EXTRA_WIDTH
-    }))
+    buildBaseColumns(isRecycleBin).map((col) => {
+      const minWidth = MIN_WIDTH_BY_KEY[col.key] ?? 0
+      return {
+        ...col,
+        width: defaultNoExtraWidthKeys.has(col.key) ? minWidth : minWidth + INIT_EXTRA_WIDTH
+      }
+    })
 
   const loadColumnsFromStorage = (isRecycleBin: boolean): ISongsAreaColumn[] => {
     const storageKey = isRecycleBin ? RECYCLE_STORAGE_KEY : DEFAULT_STORAGE_KEY
