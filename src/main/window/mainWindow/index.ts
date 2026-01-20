@@ -36,6 +36,16 @@ const fallbackPlayerShortcuts: IPlayerGlobalShortcuts = {
   previousSong: 'Shift+Alt+Up'
 }
 const registeredPlaybackShortcuts = new Map<PlayerGlobalShortcutAction, string>()
+const screenshotShortcut = is.dev && process.platform === 'win32' ? 'F9' : ''
+const screenshotCss = `
+  html,
+  body,
+  #app {
+    background-color: var(--bg, #111111) !important;
+  }
+`
+let screenshotInProgress = false
+let registeredScreenshotShortcut = ''
 
 const ensurePlayerShortcutConfig = (): IPlayerGlobalShortcuts => {
   const current = store.settingConfig.playerGlobalShortcuts
@@ -110,6 +120,70 @@ const registerPlaybackGlobalShortcuts = () => {
   })
 }
 
+const formatScreenshotTimestamp = () => {
+  const now = new Date()
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(
+    now.getHours()
+  )}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+}
+
+const getScreenshotOutputDir = () => {
+  return app.getPath('desktop')
+}
+
+const captureMainWindowScreenshot = async () => {
+  if (!is.dev || !mainWindow || mainWindow.isDestroyed() || screenshotInProgress) return
+  screenshotInProgress = true
+  let cssKey: string | null = null
+  try {
+    cssKey = await mainWindow.webContents.insertCSS(screenshotCss)
+  } catch {}
+  try {
+    await mainWindow.webContents.executeJavaScript(
+      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+      true
+    )
+  } catch {}
+  try {
+    const image = await mainWindow.webContents.capturePage()
+    const outputDir = getScreenshotOutputDir()
+    await fs.ensureDir(outputDir)
+    const outputPath = path.join(outputDir, `frkb-${formatScreenshotTimestamp()}.png`)
+    await fs.outputFile(outputPath, image.toPNG())
+    console.info('[screenshot] saved', outputPath)
+  } catch (error) {
+    console.error('[screenshot] failed', error)
+  } finally {
+    if (cssKey) {
+      try {
+        await mainWindow.webContents.removeInsertedCSS(cssKey)
+      } catch {}
+    }
+    screenshotInProgress = false
+  }
+}
+
+const registerScreenshotShortcut = () => {
+  if (!mainWindow || !screenshotShortcut) return
+  unregisterScreenshotShortcut()
+  if (globalShortcut.isRegistered(screenshotShortcut)) return
+  const success = globalShortcut.register(screenshotShortcut, () => {
+    void captureMainWindowScreenshot()
+  })
+  if (success) {
+    registeredScreenshotShortcut = screenshotShortcut
+  }
+}
+
+const unregisterScreenshotShortcut = () => {
+  if (!registeredScreenshotShortcut) return
+  try {
+    globalShortcut.unregister(registeredScreenshotShortcut)
+  } catch {}
+  registeredScreenshotShortcut = ''
+}
+
 function ensureSharedHandlersRegistered() {
   if (sharedHandlersRegistered) return
   registerAudioDecodeHandlers(getMainWindow)
@@ -168,6 +242,7 @@ function createWindow() {
       }
     })
     registerPlaybackGlobalShortcuts()
+    registerScreenshotShortcut()
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -381,6 +456,7 @@ function createWindow() {
     ipcMain.removeAllListeners('startExternalSongDrag')
     globalShortcut.unregister(store.settingConfig.globalCallShortcut)
     unregisterPlaybackGlobalShortcuts()
+    unregisterScreenshotShortcut()
     mainWindow = null
   })
 }
