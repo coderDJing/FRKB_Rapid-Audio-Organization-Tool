@@ -92,17 +92,23 @@ onUnmounted(() => {
   <div
     v-show="waveformShow && enablePlaybackRange"
     class="manual-handle start-handle"
+    :class="{ dragging: isDraggingStart }"
     ref="startHandleRef"
     :style="{ left: startHandleLeftPercent + '%' }"
     @mousedown="(event) => handleMouseDown(event, 'start')"
-  ></div>
+  >
+    <span class="handle-line"></span>
+  </div>
   <div
     v-show="waveformShow && enablePlaybackRange"
     class="manual-handle end-handle"
+    :class="{ dragging: isDraggingEnd }"
     ref="endHandleRef"
     :style="{ left: endHandleLeftPercent + '%' }"
     @mousedown="(event) => handleMouseDown(event, 'end')"
-  ></div>
+  >
+    <span class="handle-line"></span>
+  </div>
 </template>
 
 <style scoped>
@@ -110,56 +116,78 @@ onUnmounted(() => {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 1px;
-  cursor: default;
+  width: 14px;
+  transform: translateX(-50%);
+  cursor: ew-resize;
   z-index: 12;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.35));
+  transition: filter 0.15s ease;
+}
+
+.handle-line {
+  position: absolute;
+  left: 50%;
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+  background: currentColor;
+  border-radius: 1px;
+  opacity: 0.85;
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 
 .manual-handle::before,
 .manual-handle::after {
   content: '';
   position: absolute;
+  left: 50%;
   width: 8px;
   height: 8px;
-  background-color: currentColor;
-  cursor: ew-resize;
-  opacity: 0.9;
+  background: currentColor;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  opacity: 0.92;
+  transform: translateX(-50%);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.45),
+    0 2px 4px rgba(0, 0, 0, 0.25);
+  transition:
+    transform 0.15s ease,
+    opacity 0.15s ease;
+  pointer-events: none;
 }
 
 .manual-handle::before {
-  top: 0;
-  transform: translateX(-50%);
+  top: -1px;
 }
 
 .manual-handle::after {
-  bottom: 0;
-  transform: translateX(-50%);
-}
-
-.start-handle {
-  color: #2ecc71;
-  background-color: #2ecc71;
-}
-
-.start-handle::before,
-.start-handle::after {
-  left: 50%;
+  bottom: -1px;
+  transform: translateX(-50%) rotate(180deg);
 }
 
 .end-handle {
-  color: #e74c3c;
-  background-color: #e74c3c;
+  color: #6f6bff;
 }
 
-.end-handle::before,
-.end-handle::after {
-  left: 50%;
+.start-handle {
+  color: #f5a524;
 }
 
 .manual-handle:hover::before,
+.manual-handle.dragging::before {
+  opacity: 1;
+  transform: translateX(-50%) scale(1.05);
+}
+
 .manual-handle:hover::after,
-.manual-handle.dragging::before,
 .manual-handle.dragging::after {
   opacity: 1;
+  transform: translateX(-50%) rotate(180deg) scale(1.05);
+}
+
+.manual-handle:hover,
+.manual-handle.dragging {
+  filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.45));
 }
 </style>
