@@ -271,7 +271,7 @@ body {
 }
 
 .hero-frame {
-  border-radius: var(--radius-xl);
+  border-radius: 0;
   overflow: hidden;
   border: 1px solid var(--glass-border);
   box-shadow: 0 50px 100px rgba(0, 0, 0, 0.4);
