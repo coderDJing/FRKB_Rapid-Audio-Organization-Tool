@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useData, withBase } from 'vitepress'
 
-const { localeIndex, site } = useData()
+const { localeIndex } = useData()
 const isEn = ref(localeIndex.value === 'en')
 
 // 监听语言切换
@@ -118,98 +118,60 @@ const togglePlatform = (e) => {
   showMac.value = !winHidden
 }
 
-// 功能特性配置 - 支持不同主题的截图
+// 功能特性配置 - 仅文字展示
 const zhFeatures = [
   {
     title: '键盘优先的人机工学',
-    details: '大幅减少鼠标移动与点击，所有高频操作均可通过快捷键完成。',
-    imgDark: '/assets/shortcutKey_cn.webp',
-    imgLight: '/assets/shortcutKey_cn_light.webp' // 待补充
+    details: '大幅减少鼠标移动与点击，所有高频操作均可通过快捷键完成。'
   },
   {
     title: '内容感知去重',
-    details: '基于音频指纹技术，精准识别内容重复的文件。',
-    imgDark: '/assets/import_cn.webp',
-    imgLight: '/assets/import_cn_light.webp' // 待补充
+    details: '基于音频指纹技术，精准识别内容重复的文件。'
   },
   {
     title: '所见即所得的映射',
-    details: '界面上的分组与目录即是真实的磁盘结构，同步生效。',
-    imgDark: '/assets/mappingRelation_cn.webp',
-    imgLight: '/assets/mappingRelation_cn_light.webp' // 待补充
+    details: '界面上的分组与目录即是真实的磁盘结构，同步生效。'
   },
   {
     title: '云端同步与便携',
-    details: '支持 SHA256 指纹双向云同步，数据库轻量便携。',
-    icon: 'cloud'
+    details: '支持 SHA256 指纹双向云同步，数据库轻量便携。'
   },
   {
     title: '全局人机工学快键',
-    details: '支持全局播放控制，即使应用最小化也能快速切歌。',
-    icon: 'keyboard'
+    details: '支持全局播放控制，即使应用最小化也能快速切歌。'
   },
   {
     title: 'BPM 与调性分析',
-    details: '精准分析曲目速度与调性，支持 Tap Tempo 手动修正。',
-    icon: 'analysis'
+    details: '精准分析曲目速度与调性，支持 Tap Tempo 手动修正。'
   }
 ]
 
 const enFeatures = [
   {
     title: 'Keyboard-First Ergonomics',
-    details: 'Minimize mouse movement. All frequent operations are accessible via shortcuts.',
-    imgDark: '/assets/shortcutKey.webp',
-    imgLight: '/assets/shortcutKey_light.webp' // 待补充
+    details: 'Minimize mouse movement. All frequent operations are accessible via shortcuts.'
   },
   {
     title: 'Content-Aware Dedup',
-    details: 'Identify duplicates based on audio characteristics.',
-    imgDark: '/assets/import.webp',
-    imgLight: '/assets/import_light.webp' // 待补充
+    details: 'Identify duplicates based on audio characteristics.'
   },
   {
     title: 'WYSIWYG Mapping',
-    details: 'UI groups and directories reflect the true disk structure.',
-    imgDark: '/assets/mappingRelation.webp',
-    imgLight: '/assets/mappingRelation_light.webp' // 待补充
+    details: 'UI groups and directories reflect the true disk structure.'
   },
   {
     title: 'Cloud Sync & Portability',
-    details: 'SHA256-based fingerprint sync for secure backups.',
-    icon: 'cloud'
+    details: 'SHA256-based fingerprint sync for secure backups.'
   },
   {
     title: 'Global & Ergonomic Shortcuts',
-    details: 'Full playback control even when minimized.',
-    icon: 'keyboard'
+    details: 'Full playback control even when minimized.'
   },
   {
     title: 'BPM & Key Analysis',
-    details: 'Precise analysis with Tap Tempo support.',
-    icon: 'analysis'
+    details: 'Precise analysis with Tap Tempo support.'
   }
 ]
-
-// 根据主题获取截图路径
-const getFeatureImage = (feature) => {
-  if (feature.icon) return null
-  const img = theme.value === 'light' ? feature.imgLight : feature.imgDark
-  return img
-}
-
-// 检查图片是否存在（用于显示占位符）
-const imageExists = (img) => {
-  // 日间模式的截图目前都不存在，返回 false 显示占位符
-  if (img && img.includes('_light')) return false
-  return true
-}
-
-// Hero 主界面截图加载失败处理
-const heroImageError = ref(false)
-const handleHeroImageError = () => {
-  heroImageError.value = true
-}
 </script>
 
 <template>
@@ -363,64 +325,6 @@ const handleHeroImageError = () => {
           >
             <h3>{{ f.title }}</h3>
             <p>{{ f.details }}</p>
-            <div class="shot-container">
-              <!-- 有截图的功能 -->
-              <template v-if="getFeatureImage(f)">
-                <!-- 截图存在，直接显示 -->
-                <img
-                  v-if="imageExists(getFeatureImage(f))"
-                  :src="withBase(getFeatureImage(f))"
-                  :alt="f.title"
-                  class="shot"
-                />
-                <!-- 截图不存在（日间模式占位） -->
-                <div v-else class="placeholder-shot">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                    <path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
-                  </svg>
-                  <span>{{
-                    isEn ? 'Light mode screenshot coming soon...' : '日间模式截图即将上传...'
-                  }}</span>
-                </div>
-              </template>
-
-              <!-- 使用图标的功能 -->
-              <div v-else class="placeholder-shot">
-                <svg
-                  v-if="f.icon === 'cloud'"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1"
-                >
-                  <path
-                    d="M17.5 19c.6 0 1.2-.1 1.7-.3 1.1-.5 1.8-1.6 1.8-2.7 0-1.2-.8-2.2-1.9-2.5-.1-3.1-2.7-5.5-5.8-5.5-2.1 0-4 1.1-5 2.8-.2-.1-.5-.1-.8-.1-2.1 0-3.7 1.7-3.7 3.8s1.6 3.8 3.7 3.8h10z"
-                  />
-                </svg>
-                <svg
-                  v-if="f.icon === 'keyboard'"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1"
-                >
-                  <rect x="2" y="4" width="20" height="16" rx="2" />
-                  <path d="M7 16h10" />
-                </svg>
-                <svg
-                  v-if="f.icon === 'analysis'"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1"
-                >
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M12 2v20M2 12h20" />
-                </svg>
-                <span>{{ isEn ? 'Waiting for upload...' : '等待截图上传...' }}</span>
-              </div>
-            </div>
           </div>
         </div>
       </div>
