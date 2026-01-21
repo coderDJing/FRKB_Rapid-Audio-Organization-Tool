@@ -567,65 +567,87 @@ watch(
             style="height: 100%; width: 100%"
             defer
           >
-            <template v-if="recentSongListArr.length > 0">
-              <div style="padding-left: 5px; padding-bottom: 5px">
-                <span style="font-size: 12px">{{ t('library.recentlyUsed') }}</span>
-              </div>
-              <div style="width: 100%; background-color: var(--border); height: 1px">
-                <div style="height: 1px"></div>
-              </div>
-              <div
-                v-for="item of recentSongListArr.filter(
-                  (x) =>
-                    x.type === 'songList' &&
-                    (!playlistSearch ||
-                      x.dirName?.toLowerCase().includes(String(playlistSearch).toLowerCase()))
-                )"
-                :key="item.uuid"
-                :ref="(el: any) => setRecentRowRef(item.uuid, el)"
-                @click="
-                  ((runtime.dialogSelectedSongListUUID = item.uuid), (selectedArea = 'recent'))
-                "
-                @dblclick="confirmHandle()"
-                :class="{
-                  selectedDir:
-                    selectedArea === 'recent' && item.uuid == runtime.dialogSelectedSongListUUID
-                }"
-                class="recentLibraryItem"
-              >
-                <div
-                  style="width: 20px; justify-content: center; align-items: center; display: flex"
-                >
-                  <img class="songlist-icon" style="width: 13px; height: 13px" :src="listIcon" />
+            <div class="sectionStack">
+              <div v-if="recentSongListArr.length > 0" class="sectionCard sectionCard--recent">
+                <div class="sectionHeader">
+                  <div class="sectionTitle">
+                    <span class="sectionAccent sectionAccent--recent"></span>
+                    <span>{{ t('library.recentlyUsed') }}</span>
+                  </div>
                 </div>
-                <div class="nameRow">
-                  <span class="nameText">{{ item.dirName }}</span>
-                  <span v-if="(runtime as any).setting.showPlaylistTrackCount" class="countBadge">{{
-                    recentCounts[item.uuid] ?? 0
-                  }}</span>
+                <div class="sectionBody">
+                  <div
+                    v-for="item of recentSongListArr.filter(
+                      (x) =>
+                        x.type === 'songList' &&
+                        (!playlistSearch ||
+                          x.dirName?.toLowerCase().includes(String(playlistSearch).toLowerCase()))
+                    )"
+                    :key="item.uuid"
+                    :ref="(el: any) => setRecentRowRef(item.uuid, el)"
+                    @click="
+                      ((runtime.dialogSelectedSongListUUID = item.uuid), (selectedArea = 'recent'))
+                    "
+                    @dblclick="confirmHandle()"
+                    :class="{
+                      selectedDir:
+                        selectedArea === 'recent' && item.uuid == runtime.dialogSelectedSongListUUID
+                    }"
+                    class="recentLibraryItem"
+                  >
+                    <div
+                      style="
+                        width: 20px;
+                        justify-content: center;
+                        align-items: center;
+                        display: flex;
+                      "
+                    >
+                      <img
+                        class="songlist-icon"
+                        style="width: 13px; height: 13px"
+                        :src="listIcon"
+                      />
+                    </div>
+                    <div class="nameRow">
+                      <span class="nameText">{{ item.dirName }}</span>
+                      <span
+                        v-if="(runtime as any).setting.showPlaylistTrackCount"
+                        class="countBadge"
+                        >{{ recentCounts[item.uuid] ?? 0 }}</span
+                      >
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div style="width: 100%; background-color: var(--border); height: 1px">
-                <div style="height: 1px"></div>
+              <div class="sectionCard sectionCard--all">
+                <div class="sectionHeader">
+                  <div class="sectionTitle">
+                    <span class="sectionAccent sectionAccent--all"></span>
+                    <span>{{ t('library.allPlaylists') }}</span>
+                  </div>
+                </div>
+                <div class="sectionBody">
+                  <template v-for="item of libraryData?.children" :key="item.uuid">
+                    <dialogLibraryItem
+                      :uuid="item.uuid"
+                      :libraryName="libraryData.dirName + 'Dialog'"
+                      :filterText="playlistSearch"
+                      :suppressHighlight="selectedArea === 'recent'"
+                      @dblClickSongList="confirmHandle()"
+                      @markTreeSelected="selectedArea = 'tree'"
+                    />
+                  </template>
+                  <div
+                    class="libraryDropSpace"
+                    @dragover.stop.prevent="dragover"
+                    @dragenter.stop.prevent="dragenter"
+                    @drop.stop="drop"
+                    @dragleave.stop="dragleave"
+                  ></div>
+                </div>
               </div>
-            </template>
-            <template v-for="item of libraryData?.children" :key="item.uuid">
-              <dialogLibraryItem
-                :uuid="item.uuid"
-                :libraryName="libraryData.dirName + 'Dialog'"
-                :filterText="playlistSearch"
-                :suppressHighlight="selectedArea === 'recent'"
-                @dblClickSongList="confirmHandle()"
-                @markTreeSelected="selectedArea = 'tree'"
-              />
-            </template>
-            <div
-              style="flex-grow: 1; min-height: 30px"
-              @dragover.stop.prevent="dragover"
-              @dragenter.stop.prevent="dragenter"
-              @drop.stop="drop"
-              @dragleave.stop="dragleave"
-            ></div>
+            </div>
           </OverlayScrollbarsComponent>
         </div>
         <div
@@ -659,12 +681,73 @@ watch(
   </div>
 </template>
 <style lang="scss" scoped>
+.sectionStack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px;
+  box-sizing: border-box;
+}
+
+.sectionCard {
+  background-color: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px;
+  box-sizing: border-box;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 6px 4px;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sectionAccent {
+  width: 6px;
+  height: 14px;
+  border-radius: 3px;
+  background-color: var(--accent);
+}
+
+.sectionAccent--recent {
+  background-color: var(--accent);
+}
+
+.sectionAccent--all {
+  background-color: var(--text-weak);
+}
+
+.sectionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
+}
+
+.libraryDropSpace {
+  flex-grow: 1;
+  min-height: 30px;
+}
+
 .recentLibraryItem {
   display: flex;
 
   height: 23px;
   align-items: center;
   font-size: 13px;
+  border-radius: 4px;
+  padding: 0 6px 0 2px;
 
   &:hover {
     background-color: var(--hover);
