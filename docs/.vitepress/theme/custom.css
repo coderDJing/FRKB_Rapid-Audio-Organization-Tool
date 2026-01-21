@@ -266,6 +266,12 @@ body {
   color: var(--text);
 }
 
+.cta-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .hero-media {
   margin-top: 100px;
 }
@@ -303,6 +309,16 @@ body {
   font-size: 56px;
   font-weight: 900;
   letter-spacing: -0.04em;
+}
+
+.features-header p {
+  margin-top: 16px;
+  color: var(--text-dim);
+  font-size: 18px;
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.7;
 }
 
 .grid {
@@ -374,6 +390,171 @@ body {
   opacity: 0.3;
 }
 
+/* Shared Section Header */
+.section-header {
+  text-align: center;
+  margin-bottom: 80px;
+}
+
+.section-header h2 {
+  font-size: clamp(36px, 6vw, 56px);
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+
+.section-header p {
+  margin-top: 16px;
+  color: var(--text-dim);
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+/* Workflow Section */
+.workflow {
+  padding: 140px 0;
+  border-top: 1px solid var(--glass-border);
+}
+
+.workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 24px;
+}
+
+.workflow-card {
+  background: var(--surface);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  padding: 28px;
+  transition: var(--transition);
+}
+
+.workflow-card:hover {
+  transform: translateY(-8px);
+  border-color: rgba(var(--accent-rgb), 0.35);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
+}
+
+.workflow-step {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+
+.workflow-card h3 {
+  font-size: 20px;
+  margin-bottom: 12px;
+  font-weight: 800;
+}
+
+.workflow-card p {
+  color: var(--text-dim);
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+/* Matrix Section */
+.matrix {
+  padding: 160px 0;
+  background: var(--surface);
+  border-top: 1px solid var(--glass-border);
+}
+
+.matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 28px;
+}
+
+.matrix-card {
+  background: var(--bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  padding: 28px;
+  transition: var(--transition);
+}
+
+.matrix-card:hover {
+  transform: translateY(-8px);
+  border-color: rgba(var(--accent-rgb), 0.35);
+  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.35);
+}
+
+.matrix-card h3 {
+  font-size: 20px;
+  font-weight: 800;
+  margin-bottom: 16px;
+}
+
+.matrix-card ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.matrix-card li {
+  color: var(--text-dim);
+  font-size: 14px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.matrix-card li::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-top: 7px;
+  flex-shrink: 0;
+}
+
+/* FAQ Section */
+.faq {
+  padding: 160px 0;
+  border-top: 1px solid var(--glass-border);
+}
+
+.faq-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+}
+
+.faq-item {
+  background: var(--surface);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  padding: 26px;
+  transition: var(--transition);
+}
+
+.faq-item:hover {
+  transform: translateY(-6px);
+  border-color: rgba(var(--accent-rgb), 0.3);
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.3);
+}
+
+.faq-item h3 {
+  font-size: 18px;
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+
+.faq-item p {
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
 /* Specs Section */
 .specs {
   padding: 160px 0;
@@ -419,6 +600,12 @@ body {
   line-height: 1.8;
 }
 
+.specs-note {
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
 /* 响应式 */
 @media (max-width: 1024px) {
   .grid {
@@ -431,11 +618,37 @@ body {
 }
 
 @media (max-width: 768px) {
+  .nav-inner {
+    height: auto;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 12px 20px;
+  }
+  .nav-left {
+    margin-left: 0;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .nav-right {
+    width: 100%;
+    justify-content: flex-end;
+  }
   .grid {
     grid-template-columns: 1fr;
   }
   .hero h1 {
     font-size: 56px;
+  }
+  .features-header p,
+  .section-header p {
+    font-size: 16px;
+  }
+  .workflow,
+  .matrix,
+  .faq,
+  .features,
+  .specs {
+    padding: 120px 0;
   }
 }
 

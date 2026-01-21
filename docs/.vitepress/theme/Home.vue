@@ -121,55 +121,298 @@ const togglePlatform = (e) => {
 // 功能特性配置 - 仅文字展示
 const zhFeatures = [
   {
-    title: '键盘优先的人机工学',
-    details: '大幅减少鼠标移动与点击，所有高频操作均可通过快捷键完成。'
+    title: '键盘优先效率',
+    details: '高频操作可通过快捷键完成，减少鼠标移动。'
   },
   {
-    title: '内容感知去重',
-    details: '基于音频指纹技术，精准识别内容重复的文件。'
+    title: '指纹去重',
+    details: '导入与歌单一键去重，支持内容指纹/文件哈希两种模式。'
   },
   {
-    title: '所见即所得的映射',
-    details: '界面上的分组与目录即是真实的磁盘结构，同步生效。'
+    title: '真实文件映射',
+    details: '界面分组与磁盘目录同步，所见即所得整理。'
   },
   {
-    title: '云端同步与便携',
-    details: '支持 SHA256 指纹双向云同步，数据库轻量便携。'
-  },
-  {
-    title: '全局人机工学快键',
-    details: '支持全局播放控制，即使应用最小化也能快速切歌。'
+    title: '波形与试听',
+    details: '三种波形样式与列表预览，支持播放区间快速筛歌。'
   },
   {
     title: 'BPM 与调性分析',
-    details: '精准分析曲目速度与调性，支持 Tap Tempo 手动修正。'
+    details: '后台分析 BPM/调性，Tap Tempo 手动校正。'
+  },
+  {
+    title: '元数据与封面',
+    details: '标签编辑、封面替换与另存，支持 MusicBrainz/AcoustID。'
   }
 ]
 
 const enFeatures = [
   {
-    title: 'Keyboard-First Ergonomics',
-    details: 'Minimize mouse movement. All frequent operations are accessible via shortcuts.'
+    title: 'Keyboard-First Efficiency',
+    details: 'Frequent actions are mapped to shortcuts to reduce mouse travel.'
   },
   {
-    title: 'Content-Aware Dedup',
-    details: 'Identify duplicates based on audio characteristics.'
+    title: 'Fingerprint Dedup',
+    details: 'Import and playlist dedup with content-fingerprint or file-hash modes.'
   },
   {
-    title: 'WYSIWYG Mapping',
-    details: 'UI groups and directories reflect the true disk structure.'
+    title: 'WYSIWYG File Mapping',
+    details: 'On-screen structure mirrors real folders for true file-level organization.'
   },
   {
-    title: 'Cloud Sync & Portability',
-    details: 'SHA256-based fingerprint sync for secure backups.'
-  },
-  {
-    title: 'Global & Ergonomic Shortcuts',
-    details: 'Full playback control even when minimized.'
+    title: 'Waveform-Driven Preview',
+    details: 'Three waveform styles plus list previews with playback range.'
   },
   {
     title: 'BPM & Key Analysis',
-    details: 'Precise analysis with Tap Tempo support.'
+    details: 'Background BPM/key analysis with Tap Tempo correction.'
+  },
+  {
+    title: 'Metadata & Artwork',
+    details: 'Edit tags and covers with MusicBrainz/AcoustID auto-fill.'
+  }
+]
+
+const zhWorkflow = [
+  {
+    title: '建库与目录映射',
+    details: '选择库位置，筛选库/精选库自动生成并与磁盘同步。'
+  },
+  {
+    title: '拖拽导入 + 去重策略',
+    details: '导入时可选指纹库去重/批次去重与“导入后删除原文件”。'
+  },
+  {
+    title: '快速试听与筛选',
+    details: '波形预览、BPM/调性与快捷键帮助你快速做决定。'
+  },
+  {
+    title: '移动/导出/回收',
+    details: '移动到精选、导出到文件夹或回收站，目录结构同步更新。'
+  }
+]
+
+const enWorkflow = [
+  {
+    title: 'Create Library & Map Folders',
+    details: 'Choose a library location; Filter/Curated libraries are created and synced to disk.'
+  },
+  {
+    title: 'Drag in & Choose Dedup',
+    details: 'Pick fingerprint-library or batch-only dedup, plus optional delete-after-import.'
+  },
+  {
+    title: 'Preview & Decide Fast',
+    details: 'Waveform preview, BPM/Key, and shortcuts speed up screening.'
+  },
+  {
+    title: 'Move, Export, Recycle',
+    details: 'Move to Curated, export to a folder, or use the Recycle Bin—disk stays in sync.'
+  }
+]
+
+const zhMatrix = [
+  {
+    title: '指纹与去重',
+    items: [
+      '内容指纹/文件哈希两种模式',
+      '导入去重: 指纹库/仅本批',
+      '歌单一键去重',
+      '批量分析与手动添加指纹',
+      '指纹库导入/导出 + 云同步(需 key)'
+    ]
+  },
+  {
+    title: '库与整理',
+    items: [
+      '筛选库/精选库双库流程',
+      '真实文件映射, 目录同步',
+      '拖拽导入与拖拽移动',
+      '外拖复制到资源管理器/Finder',
+      '导出到文件夹, 可选导出后删除',
+      '回收站还原与彻底删除',
+      '库目录变更自动同步'
+    ]
+  },
+  {
+    title: '试听与分析',
+    items: [
+      'BPM/调性后台分析',
+      'Tap Tempo 手动校正',
+      'Classic/Camelot 调性显示',
+      '播放区间选择',
+      '自动续播下一曲',
+      '输出设备选择'
+    ]
+  },
+  {
+    title: '波形与视图',
+    items: [
+      'SoundCloud/Fine/RGB 波形样式',
+      '半/全波形切换',
+      '列表波形预览列',
+      '列拖拽排序/显隐/宽度',
+      '文本/时长/BPM 筛选',
+      '筛选条件可持久化'
+    ]
+  },
+  {
+    title: '元数据与封面',
+    items: [
+      '曲目信息编辑',
+      '封面替换与封面另存',
+      'MusicBrainz 搜索匹配',
+      'AcoustID 指纹匹配',
+      '批量自动填充'
+    ]
+  },
+  {
+    title: '格式转换',
+    items: ['批量转换多种格式', '新文件/替换原文件', '保留元数据', '可选添加指纹库']
+  },
+  {
+    title: '系统集成与维护',
+    items: [
+      '外部曲目临时播放, 不导入也可试听',
+      '在资源管理器/Finder 中显示',
+      'Windows 右键菜单“在 FRKB 中播放”',
+      '全局快捷键',
+      '更新检查与提示',
+      '扫描格式可配置',
+      '中英文界面'
+    ]
+  }
+]
+
+const enMatrix = [
+  {
+    title: 'Fingerprint & Dedup',
+    items: [
+      'Content fingerprint / file-hash modes',
+      'Import dedup: library or batch-only',
+      'One-click playlist dedup',
+      'Batch analyze or manual add fingerprints',
+      'Export/import fingerprint DB + cloud sync (key required)'
+    ]
+  },
+  {
+    title: 'Libraries & Organization',
+    items: [
+      'Filter/Curated dual-library flow',
+      'WYSIWYG file mapping with disk sync',
+      'Drag-in import and drag-to-move',
+      'Drag out copies to Explorer/Finder',
+      'Export to folder with optional delete',
+      'Recycle Bin restore / permanent delete',
+      'Auto sync on library folder changes'
+    ]
+  },
+  {
+    title: 'Playback & Analysis',
+    items: [
+      'Background BPM/key analysis',
+      'Tap Tempo correction',
+      'Classic/Camelot display',
+      'Playback range selection',
+      'Auto play next',
+      'Output device selection'
+    ]
+  },
+  {
+    title: 'Waveform & View',
+    items: [
+      'SoundCloud / Fine / RGB waveforms',
+      'Half / full waveform modes',
+      'List waveform preview column',
+      'Columns drag-reorder / hide / resize',
+      'Text, duration, BPM filters',
+      'Filters can persist across restarts'
+    ]
+  },
+  {
+    title: 'Metadata & Artwork',
+    items: [
+      'Edit track metadata',
+      'Replace and save cover art',
+      'MusicBrainz search',
+      'AcoustID fingerprint match',
+      'Batch auto-fill'
+    ]
+  },
+  {
+    title: 'Format Conversion',
+    items: [
+      'Batch convert to many formats',
+      'New file or replace original',
+      'Preserve metadata',
+      'Optionally add fingerprints'
+    ]
+  },
+  {
+    title: 'System & Maintenance',
+    items: [
+      'External tracks for temporary playback',
+      'Open in Explorer/Finder',
+      'Windows context menu: Play in FRKB',
+      'Global shortcuts',
+      'Update checks & prompts',
+      'Configurable scan formats',
+      'Chinese/English UI'
+    ]
+  }
+]
+
+const zhFaq = [
+  {
+    q: 'FRKB 会上传音频吗？',
+    a: '不会。云同步只同步 SHA256 指纹，不上传音频与标签。'
+  },
+  {
+    q: '需要联网吗？',
+    a: '本地整理/播放/去重可离线使用；元数据自动填充、云同步、更新检查需要联网。'
+  },
+  {
+    q: '指纹模式有什么区别？',
+    a: '内容指纹基于音频内容，文件哈希基于文件本体，适用场景不同。'
+  },
+  {
+    q: 'AcoustID Key 怎么用？',
+    a: '在设置中填写个人 Client Key，可提升匹配稳定性并避免公共限速。'
+  },
+  {
+    q: '有 Linux 版本吗？',
+    a: '暂无 Linux 正式版。'
+  },
+  {
+    q: '自动更新如何工作？',
+    a: '内置检查与提示，下载与安装由你确认。'
+  }
+]
+
+const enFaq = [
+  {
+    q: 'Does FRKB upload my audio?',
+    a: 'No. Cloud Sync only syncs SHA256 fingerprints, not audio or tags.'
+  },
+  {
+    q: 'Do I need internet?',
+    a: 'Local organization/playback/dedup work offline. MusicBrainz/AcoustID, Cloud Sync, and update checks need a connection.'
+  },
+  {
+    q: 'What’s the difference between fingerprint modes?',
+    a: 'Content fingerprints are based on audio content; file hash uses the file itself. They serve different dedup needs.'
+  },
+  {
+    q: 'How do I use an AcoustID key?',
+    a: 'Add your Client Key in Settings to improve matching and avoid public rate limits.'
+  },
+  {
+    q: 'Is there a Linux build?',
+    a: 'No official Linux build yet.'
+  },
+  {
+    q: 'How do updates work?',
+    a: 'FRKB checks for updates and shows prompts; downloads are confirmed by you.'
   }
 ]
 </script>
@@ -188,6 +431,8 @@ const enFeatures = [
         </a>
         <div class="nav-left">
           <a href="#features">{{ isEn ? 'Features' : '特性' }}</a>
+          <a href="#workflow">{{ isEn ? 'Workflow' : '流程' }}</a>
+          <a href="#faq">{{ isEn ? 'FAQ' : '常见问题' }}</a>
           <a href="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool" target="_blank"
             >GitHub</a
           >
@@ -231,8 +476,8 @@ const enFeatures = [
         <p class="subtitle reveal is-visible">
           {{
             isEn
-              ? 'Built for audio professionals seeking ultimate efficiency. Content-aware dedup and WYSIWYG file mapping.'
-              : '专为追求极致效率的音频工作者打造。内容感知去重，所见即所得的文件映射。'
+              ? 'Built for audio pros who value speed: keyboard-first workflows, fingerprint dedup, and true file mapping.'
+              : '为追求效率的音频工作者而生：键盘优先、指纹去重、所见即所得的文件整理。'
           }}
         </p>
 
@@ -285,8 +530,22 @@ const enFeatures = [
 
           <!-- 其他平台按钮 -->
           <a v-if="!isLoadingDownloads" href="#" @click="togglePlatform" class="toggle-platform">
-            {{ isEn ? 'Other Platforms' : '其他平台' }}
+            {{ isEn ? 'Switch Platform' : '切换平台' }}
           </a>
+          <p v-if="!isLoadingDownloads" class="cta-note">
+            {{
+              isEn
+                ? 'Windows and macOS only. No Linux build yet.'
+                : '仅支持 Windows 与 macOS，暂无 Linux 版本。'
+            }}
+          </p>
+          <p v-if="!isLoadingDownloads" class="cta-note">
+            {{
+              isEn
+                ? 'Built-in update checks with manual download confirmation.'
+                : '内置更新检查与提示，下载需你确认。'
+            }}
+          </p>
         </div>
 
         <div class="hero-media reveal is-visible">
@@ -316,6 +575,13 @@ const enFeatures = [
       <div class="container">
         <div class="features-header reveal is-visible">
           <h2>{{ isEn ? 'Key Features' : '核心特性' }}</h2>
+          <p>
+            {{
+              isEn
+                ? 'From import and dedup to preview and export, every step stays fast and file-true.'
+                : '从导入、去重到试听与导出，每一步都保持高效且文件级同步。'
+            }}
+          </p>
         </div>
         <div class="grid">
           <div
@@ -330,8 +596,91 @@ const enFeatures = [
       </div>
     </section>
 
+    <!-- Workflow Section -->
+    <section id="workflow" class="workflow">
+      <div class="container">
+        <div class="section-header reveal is-visible">
+          <h2>{{ isEn ? 'A Workflow Built for Speed' : '为速度而生的流程' }}</h2>
+          <p>
+            {{
+              isEn
+                ? 'Four steps cover the full lifecycle: import, preview, decide, and ship.'
+                : '四步完成一轮筛歌：导入、试听、决策、输出。'
+            }}
+          </p>
+        </div>
+        <div class="workflow-grid">
+          <div
+            class="workflow-card reveal is-visible"
+            v-for="(step, index) in isEn ? enWorkflow : zhWorkflow"
+            :key="step.title"
+          >
+            <div class="workflow-step">
+              {{ isEn ? `Step ${index + 1}` : `步骤 ${index + 1}` }}
+            </div>
+            <h3>{{ step.title }}</h3>
+            <p>{{ step.details }}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Matrix Section -->
+    <section id="matrix" class="matrix">
+      <div class="container">
+        <div class="section-header reveal is-visible">
+          <h2>{{ isEn ? 'Capability Matrix' : '能力矩阵' }}</h2>
+          <p>
+            {{
+              isEn
+                ? 'Everything you need to clean, analyze, and organize audio—without leaving the app.'
+                : '从去重、试听到整理与导出，你需要的能力都在这里。'
+            }}
+          </p>
+        </div>
+        <div class="matrix-grid">
+          <div
+            class="matrix-card reveal is-visible"
+            v-for="group in isEn ? enMatrix : zhMatrix"
+            :key="group.title"
+          >
+            <h3>{{ group.title }}</h3>
+            <ul>
+              <li v-for="item in group.items" :key="item">{{ item }}</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section id="faq" class="faq">
+      <div class="container">
+        <div class="section-header reveal is-visible">
+          <h2>{{ isEn ? 'FAQ & Transparency' : 'FAQ 与透明说明' }}</h2>
+          <p>
+            {{
+              isEn
+                ? 'Clear answers about syncing, privacy, and platform support.'
+                : '关于同步、隐私与平台支持的明确说明。'
+            }}
+          </p>
+        </div>
+        <div class="faq-grid">
+          <div
+            class="faq-item reveal is-visible"
+            v-for="item in isEn ? enFaq : zhFaq"
+            :key="item.q"
+          >
+            <h3>{{ item.q }}</h3>
+            <p>{{ item.a }}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Specs Section -->
-    <section class="specs">
+    <section id="specs" class="specs">
       <div class="container">
         <div class="specs-grid">
           <div>
@@ -339,6 +688,7 @@ const enFeatures = [
             <ul>
               <li>{{ isEn ? 'Windows 10 or later (x64)' : 'Windows 10 或更高版本 (x64)' }}</li>
               <li>{{ isEn ? 'macOS 12 or later' : 'macOS 12 或更高版本' }}</li>
+              <li>{{ isEn ? 'No official Linux build yet' : '暂无 Linux 正式版' }}</li>
             </ul>
           </div>
           <div>
@@ -346,8 +696,13 @@ const enFeatures = [
             <p>
               {{
                 isEn
-                  ? 'MP3, WAV, FLAC, AIFF, OGG, OPUS, AAC, M4A, MP4, WMA, AC3, DTS, MKA, WEBM, APE, TAK, TTA, WV'
-                  : 'MP3, WAV, FLAC, AIFF, OGG, OPUS, AAC, M4A, MP4, WMA, AC3, DTS, MKA, WEBM, APE, TAK, TTA, WV'
+                  ? 'MP3, WAV, FLAC, AIF, AIFF, OGG, OPUS, AAC, M4A, MP4, WMA, AC3, DTS, MKA, WEBM, APE, TAK, TTA, WV'
+                  : 'MP3, WAV, FLAC, AIF, AIFF, OGG, OPUS, AAC, M4A, MP4, WMA, AC3, DTS, MKA, WEBM, APE, TAK, TTA, WV'
+              }}
+            </p>
+            <p class="specs-note">
+              {{
+                isEn ? 'Scan formats can be configured in Settings.' : '扫描格式可在设置中配置。'
               }}
             </p>
           </div>
