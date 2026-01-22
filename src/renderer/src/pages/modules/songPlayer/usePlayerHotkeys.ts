@@ -18,6 +18,8 @@ interface PlayerActions {
   moveToListLibrary: () => void
   moveToLikeLibrary: () => void
   seekToPercent: (percent: number) => void
+  volumeUp: () => void
+  volumeDown: () => void
   // 可以添加一个 togglePlayPause 方法来简化 space 键处理
   togglePlayPause?: () => void
 }
@@ -179,6 +181,17 @@ export function usePlayerHotkeys(
       }
       actions.seekToPercent(Math.min(Math.max(normalized / 10, 0), 1))
     })
+
+    // +/- 音量控制
+    hotkeys('=,+,shift+=', scope, (event) => {
+      event.preventDefault()
+      actions.volumeUp()
+    })
+
+    hotkeys('-', scope, (event) => {
+      event.preventDefault()
+      actions.volumeDown()
+    })
   }
 
   const cleanupHotkeys = () => {
@@ -193,6 +206,9 @@ export function usePlayerHotkeys(
     hotkeys.unbind('e', 'windowGlobal')
     hotkeys.unbind('`', 'windowGlobal')
     hotkeys.unbind('1,2,3,4,5,6,7,8,9,0', 'windowGlobal')
+    hotkeys.unbind('r', 'windowGlobal')
+    hotkeys.unbind('=,+,shift+=', 'windowGlobal')
+    hotkeys.unbind('-', 'windowGlobal')
   }
 
   onMounted(() => {

@@ -485,6 +485,7 @@
     "autoPlayNext": "自动播放下一曲",
     "enablePlaybackRange": "启用区间播放",
     "playbackRange": "区间播放",
+    "volumeControl": "音量调节",
     "endMustBeGreater": "结束位置必须大于开始位置",
     "tapBeat": "左键节拍点按 / 右键恢复",
     "aiffNotSupported": "当前格式（AIFF/AIF）不支持播放",

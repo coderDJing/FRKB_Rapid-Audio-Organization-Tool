@@ -484,6 +484,7 @@
     "autoPlayNext": "Auto play next",
     "enablePlaybackRange": "Enable range",
     "playbackRange": "Range",
+    "volumeControl": "Volume",
     "endMustBeGreater": "End must be after start",
     "tapBeat": "Tap (LMB) / Reset (RMB)",
     "aiffNotSupported": "AIFF/AIF format is not supported for playback",

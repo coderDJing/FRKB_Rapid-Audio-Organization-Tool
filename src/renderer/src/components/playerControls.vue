@@ -55,6 +55,12 @@ const setPlayingValue = (value: boolean) => {
   playing.value = value
 }
 
+const setVolumeValue = (value: number) => {
+  const v = Math.min(1, Math.max(0, value))
+  volume.value = v
+  if (v > 0) lastNonZeroVolume.value = v
+}
+
 const handlePause = () => {
   playing.value = !playing.value
   emits('pause')
@@ -105,7 +111,8 @@ onUnmounted(() => {
 })
 
 defineExpose({
-  setPlayingValue
+  setPlayingValue,
+  setVolumeValue
 })
 
 const moreMenuShow = ref(false)

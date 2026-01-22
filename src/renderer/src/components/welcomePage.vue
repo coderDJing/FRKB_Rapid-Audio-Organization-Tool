@@ -113,6 +113,14 @@ const globalShortcut = computed(() => {
           </dd>
         </dl>
         <dl>
+          <dt>{{ t('player.volumeControl') }}</dt>
+          <dd>
+            <div class="monaco-keybinding">
+              <span class="monaco-keybinding-key">+ / -</span>
+            </div>
+          </dd>
+        </dl>
+        <dl>
           <dt>{{ t('player.showHide') }}</dt>
           <dd>
             <div class="monaco-keybinding" style="min-width: 250px">

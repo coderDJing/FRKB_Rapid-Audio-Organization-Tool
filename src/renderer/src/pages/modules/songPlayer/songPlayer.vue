@@ -404,6 +404,40 @@ const handleSeekToPercent = (percent: number) => {
   playerInstance.seek(duration * clamped, true)
 }
 
+// 音量控制
+const VOLUME_KEY = 'frkb_volume'
+const VOLUME_STEP = 0.05
+
+const getVolume = (): number => {
+  try {
+    const s = localStorage.getItem(VOLUME_KEY)
+    let v = s !== null ? parseFloat(s) : NaN
+    if (!(v >= 0 && v <= 1)) v = 0.8
+    return v
+  } catch {
+    return 0.8
+  }
+}
+
+const setVolume = (v: number) => {
+  const clamped = Math.min(1, Math.max(0, v))
+  audioPlayer.value?.setVolume?.(clamped)
+  playerControlsRef.value?.setVolumeValue?.(clamped)
+  try {
+    localStorage.setItem(VOLUME_KEY, String(clamped))
+  } catch {}
+}
+
+const handleVolumeUp = () => {
+  const current = getVolume()
+  setVolume(current + VOLUME_STEP)
+}
+
+const handleVolumeDown = () => {
+  const current = getVolume()
+  setVolume(current - VOLUME_STEP)
+}
+
 const selectSongListDialogConfirm = async (item: string) => {
   await playerActions.handleMoveSong(item)
 }
@@ -452,7 +486,9 @@ const hotkeyActions = {
   moveToListLibrary: playerActions.moveToListLibrary,
   moveToLikeLibrary: playerActions.moveToLikeLibrary,
   togglePlayPause: handleUserTogglePlayPause,
-  seekToPercent: handleSeekToPercent
+  seekToPercent: handleSeekToPercent,
+  volumeUp: handleVolumeUp,
+  volumeDown: handleVolumeDown
 }
 
 const isPlaying = computed(() => audioPlayer.value?.isPlaying() ?? false)
