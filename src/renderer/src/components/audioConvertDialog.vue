@@ -8,7 +8,7 @@ import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
 import { v4 as uuidV4 } from 'uuid'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
-import hintIconAsset from '@renderer/assets/hint.png?asset'
+import hintIconAsset from '@renderer/assets/hint.svg?asset'
 import {
   SUPPORTED_AUDIO_FORMATS,
   type SupportedAudioFormat,

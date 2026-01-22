@@ -2,8 +2,7 @@
 import { ref, computed, watch } from 'vue'
 import libraryItem from '@renderer/components/libraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import listIconAsset from '@renderer/assets/listIcon.png?asset'
-import listIconBlueAsset from '@renderer/assets/listIconBlue.png?asset'
+import listIconAsset from '@renderer/assets/listIcon.svg?asset'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
@@ -15,7 +14,9 @@ import { useLibraryDragAndDrop } from './useLibraryDragAndDrop'
 import { useLibraryTrackCount } from './useLibraryTrackCount'
 import { useLibraryFilter } from './useLibraryFilter'
 const listIcon = listIconAsset
-const listIconBlue = listIconBlueAsset
+const listIconMaskStyle = {
+  '--icon-mask': `url("${listIcon}")`
+}
 const props = defineProps({
   uuid: {
     type: String,
@@ -262,16 +263,16 @@ const nameForDisplay = computed(() => displayDirName.value)
           d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"
         />
       </svg>
-      <img
+      <span
         v-if="
           dirData.type == 'songList' &&
           runtime.importingSongListUUID != props.uuid &&
           runtime.creatingSongListUUID !== props.uuid
         "
-        style="width: 13px; height: 13px"
-        :src="isPlaying ? listIconBlue : listIcon"
-        :class="!isPlaying ? 'songlist-icon' : ''"
-      />
+        class="library-list-icon"
+        :class="{ 'is-playing': isPlaying }"
+        :style="listIconMaskStyle"
+      ></span>
       <div
         v-if="dirData.type == 'songList' && runtime.creatingSongListUUID === props.uuid"
         class="loading"
@@ -353,6 +354,25 @@ const nameForDisplay = computed(() => displayDirName.value)
   </div>
 </template>
 <style lang="scss" scoped>
+.library-list-icon {
+  width: 13px;
+  height: 13px;
+  display: inline-block;
+  background-color: currentColor;
+  color: var(--text);
+  mask-image: var(--icon-mask);
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-image: var(--icon-mask);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}
+.library-list-icon.is-playing {
+  color: var(--accent);
+}
+
 .nameRow {
   line-height: 23px;
   font-size: 13px;

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onUnmounted, onMounted, ref, useTemplateRef, reactive, computed, watch } from 'vue'
-import hintIconAsset from '@renderer/assets/hint.png?asset'
+import hintIconAsset from '@renderer/assets/hint.svg?asset'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'

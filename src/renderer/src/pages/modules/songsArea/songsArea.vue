@@ -34,8 +34,8 @@ import { useSongsAreaEvents } from '@renderer/pages/modules/songsArea/composable
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
 
 // 资源导入
-import ascendingOrderAsset from '@renderer/assets/ascending-order.png?asset'
-import descendingOrderAsset from '@renderer/assets/descending-order.png?asset'
+import ascendingOrderAsset from '@renderer/assets/ascending-order.svg?asset'
+import descendingOrderAsset from '@renderer/assets/descending-order.svg?asset'
 
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 

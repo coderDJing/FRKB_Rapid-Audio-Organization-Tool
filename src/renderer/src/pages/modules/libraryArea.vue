@@ -8,7 +8,6 @@ import confirm from '@renderer/components/confirmDialog'
 import rightClickMenu from '../../components/rightClickMenu'
 import { t, toLibraryDisplayName } from '@renderer/utils/translate'
 import emitter from '../../utils/mitt'
-import emptyRecycleBinAsset from '@renderer/assets/empty-recycleBin.png?asset'
 import { handleLibraryAreaEmptySpaceDrop } from '@renderer/utils/dragUtils'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
@@ -16,7 +15,6 @@ import type { IDir } from 'src/types/globals'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 
 const runtime = useRuntimeStore()
-const emptyRecycleBin = emptyRecycleBinAsset
 const props = defineProps({
   uuid: {
     type: String,
@@ -45,7 +43,6 @@ const showHint = computed(() => {
   return !children?.length || (children?.length === 1 && hasSpecialChild)
 })
 const collapseButtonRef = useTemplateRef<HTMLDivElement>('collapseButtonRef')
-const emptyRecycleRef = useTemplateRef<HTMLDivElement>('emptyRecycleRef')
 
 // 将核心库名称映射为 i18n key，仅用于显示
 const libraryTitleText = computed(() => toLibraryDisplayName(libraryData.dirName))
@@ -248,19 +245,6 @@ const drop = async (e: DragEvent) => {
       <span>{{ libraryTitleText }}</span>
       <!-- todo还有个导出整个库的按钮 -->
       <div style="display: flex; justify-content: center; align-items: center">
-        <div
-          ref="emptyRecycleRef"
-          class="collapseButton"
-          v-show="runtime.libraryAreaSelected === 'RecycleBin'"
-          @click="emptyRecycleBinHandleClick()"
-        >
-          <img
-            :src="emptyRecycleBin"
-            style="width: 16px; height: 16px"
-            draggable="false"
-            class="theme-icon"
-          />
-        </div>
         <div ref="collapseButtonRef" class="collapseButton" @click="collapseButtonHandleClick()">
           <svg
             width="16"
@@ -278,7 +262,6 @@ const drop = async (e: DragEvent) => {
           </svg>
         </div>
         <bubbleBox :dom="collapseButtonRef || undefined" :title="t('playlist.collapsibleFolder')" />
-        <bubbleBox :dom="emptyRecycleRef || undefined" :title="t('recycleBin.emptyRecycleBin')" />
       </div>
     </div>
     <!-- 顶部筛选输入框 -->

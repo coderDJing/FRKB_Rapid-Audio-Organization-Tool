@@ -4,10 +4,10 @@ import hotkeys from 'hotkeys-js'
 import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import utils from '@renderer/utils/utils'
-import audioFileIcon from '@renderer/assets/audioFile.png?asset'
-import folderIcon from '@renderer/assets/folder.png?asset'
-import desktopIcon from '@renderer/assets/desktop.png?asset'
-import diskIcon from '@renderer/assets/disk.png?asset'
+import audioFileIcon from '@renderer/assets/audioFile.svg?asset'
+import folderIcon from '@renderer/assets/folder.svg?asset'
+import desktopIcon from '@renderer/assets/desktop.svg?asset'
+import diskIcon from '@renderer/assets/disk.svg?asset'
 import type {
   CustomFileSelectorEmits,
   CustomFileSelectorProps,

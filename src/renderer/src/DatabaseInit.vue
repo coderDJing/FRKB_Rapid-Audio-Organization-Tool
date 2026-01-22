@@ -9,7 +9,7 @@ import confirm from '@renderer/components/confirmDialog'
 import choice from '@renderer/components/choiceDialog'
 import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
-import hintIconAsset from '@renderer/assets/hint.png?asset'
+import hintIconAsset from '@renderer/assets/hint.svg?asset'
 const runtime = useRuntimeStore()
 const uuid = uuidV4()
 const flashArea = ref('') // 控制动画是否正在播放

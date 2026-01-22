@@ -1,12 +1,8 @@
 <script setup lang="ts">
-import listGrey from '@renderer/assets/list-grey.png?asset'
-import listWhite from '@renderer/assets/list-white.png?asset'
-import likeGrey from '@renderer/assets/like-grey.png?asset'
-import likeWhite from '@renderer/assets/like-white.png?asset'
-import settingGrey from '@renderer/assets/setting-grey.png?asset'
-import settingWhite from '@renderer/assets/setting-white.png?asset'
-import trashGrey from '@renderer/assets/trash-grey.png?asset'
-import trashWhite from '@renderer/assets/trash-white.png?asset'
+import listIconAsset from '@renderer/assets/list.svg?asset'
+import likeIconAsset from '@renderer/assets/like.svg?asset'
+import settingIconAsset from '@renderer/assets/setting.svg?asset'
+import trashIconAsset from '@renderer/assets/trash.svg?asset'
 import { ref, reactive, watch, nextTick } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -14,8 +10,7 @@ import settingDialog from '@renderer/components/settingDialog.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { t } from '@renderer/utils/translate'
 import type { Icon, IDir } from '../../../../types/globals'
-import tempListGrey from '@renderer/assets/tempList-grey.png?asset'
-import tempListWhite from '@renderer/assets/tempList-white.png?asset'
+import tempListIconAsset from '@renderer/assets/tempList.svg?asset'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import confirm from '@renderer/components/confirmDialog'
 import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
@@ -27,26 +22,26 @@ const emit = defineEmits(['librarySelectedChange'])
 const baseIcons: Icon[] = [
   {
     name: 'FilterLibrary',
-    grey: listGrey,
-    white: listWhite,
-    src: listGrey,
+    grey: listIconAsset,
+    white: listIconAsset,
+    src: listIconAsset,
     showAlt: false,
     // i18n key for tooltip
     i18nKey: 'library.filter'
   } as any,
   {
     name: 'CuratedLibrary',
-    grey: likeGrey,
-    white: likeWhite,
-    src: likeGrey,
+    grey: likeIconAsset,
+    white: likeIconAsset,
+    src: likeIconAsset,
     showAlt: false,
     i18nKey: 'library.curated'
   } as any,
   {
     name: 'RecycleBin',
-    grey: trashGrey,
-    white: trashWhite,
-    src: trashGrey,
+    grey: trashIconAsset,
+    white: trashIconAsset,
+    src: trashIconAsset,
     showAlt: false,
     i18nKey: 'recycleBin.recycleBin'
   } as any
@@ -54,9 +49,9 @@ const baseIcons: Icon[] = [
 
 const externalIcon: Icon = {
   name: 'ExternalPlaylist',
-  grey: tempListGrey,
-  white: tempListWhite,
-  src: tempListGrey,
+  grey: tempListIconAsset,
+  white: tempListIconAsset,
+  src: tempListIconAsset,
   showAlt: false,
   i18nKey: 'library.externalPlaylist'
 } as any
@@ -313,9 +308,9 @@ type ButtomIcon = {
 const buttomIconArr = ref<ButtomIcon[]>([
   {
     name: '设置',
-    grey: settingGrey,
-    white: settingWhite,
-    src: settingGrey,
+    grey: settingIconAsset,
+    white: settingIconAsset,
+    src: settingIconAsset,
     showAlt: false,
     i18nKey: 'common.setting'
   }
@@ -402,7 +397,11 @@ watch(
             :src="item.src"
             draggable="false"
             :ref="(el) => setIconRef(item.name, el)"
-            :class="{ 'theme-icon': item.src === item.white }"
+            :class="[
+              'theme-icon',
+              'sidebar-icon',
+              { 'is-active': item.name === selectedIcon.name }
+            ]"
           />
           <bubbleBox
             :dom="iconRefMap[item.name] || undefined"
@@ -434,7 +433,7 @@ watch(
             :src="item.src"
             draggable="false"
             :ref="(el) => setIconRef(item.name, el)"
-            :class="{ 'theme-icon': item.src === item.white }"
+            :class="['theme-icon', 'sidebar-icon']"
           />
           <bubbleBox
             :dom="iconRefMap[item.name] || undefined"
@@ -473,9 +472,19 @@ watch(
     justify-content: center;
     align-items: center;
 
-    img {
+    .sidebar-icon {
       width: 25px;
       height: 25px;
+      opacity: 0.55;
+      transition: opacity 0.15s ease;
+    }
+
+    &:hover .sidebar-icon {
+      opacity: 0.85;
+    }
+
+    .sidebar-icon.is-active {
+      opacity: 1;
     }
   }
 

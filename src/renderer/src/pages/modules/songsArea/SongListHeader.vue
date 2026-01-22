@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, PropType, watch, onMounted } from 'vue'
 import { ISongsAreaColumn } from '../../../../../types/globals' // Corrected path
-import filterIconAsset from '@renderer/assets/filterIcon.png?asset'
-import filterIconBlueAsset from '@renderer/assets/filterIconBlue.png?asset'
+import filterIconAsset from '@renderer/assets/filterIcon.svg?asset'
 import { UseDraggableOptions, vDraggable } from 'vue-draggable-plus'
 import { MIN_WIDTH_BY_KEY } from './minWidth'
 import filterDialog from '@renderer/components/filterDialog.vue'
 const filterIcon = filterIconAsset
-const filterIconBlue = filterIconBlueAsset
+const filterIconMaskStyle = {
+  '--icon-mask': `url("${filterIcon}")`
+}
 
 // 类型定义
 type VDraggableBinding = [list: ISongsAreaColumn[], options?: UseDraggableOptions<ISongsAreaColumn>]
@@ -408,13 +409,14 @@ const handleContextMenu = (event: MouseEvent) => {
       </div>
       <!-- 筛选图标：靠右对齐、垂直居中，固定 20×20，不触发排序 -->
       <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px">
-        <img
+        <span
           v-if="col.key !== 'index' && col.filterType"
-          :src="col.filterActive ? filterIconBlue : filterIcon"
-          style="width: 20px; height: 20px; margin-right: 12px; cursor: pointer"
+          class="mask-icon filter-icon"
+          :class="{ 'is-active': col.filterActive }"
+          :style="filterIconMaskStyle"
           :title="getFilterTooltip(col)"
           @click.stop="(e) => handleFilterIconClick(e, col)"
-        />
+        ></span>
       </div>
       <Teleport to="body">
         <filterDialog
@@ -577,5 +579,27 @@ const handleContextMenu = (event: MouseEvent) => {
   border-radius: 4px;
   height: 28px;
   padding: 0 10px;
+}
+.mask-icon {
+  display: inline-block;
+  background-color: currentColor;
+  mask-image: var(--icon-mask);
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-image: var(--icon-mask);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}
+.filter-icon {
+  width: 20px;
+  height: 20px;
+  margin-right: 12px;
+  cursor: pointer;
+  color: var(--text-weak);
+}
+.filter-icon.is-active {
+  color: var(--accent);
 }
 </style>
