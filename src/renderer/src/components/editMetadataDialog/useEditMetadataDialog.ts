@@ -73,6 +73,7 @@ export function useEditMetadataDialog(props: DialogProps) {
   let flashTimer: any = null
   let flashCount = 0
   const musicBrainzDialogOpening = ref(false)
+  const appliedMusicBrainzData = ref(false)
 
   async function showMetadataErrorDialog(message: string) {
     errorMessage.value = message
@@ -222,6 +223,7 @@ export function useEditMetadataDialog(props: DialogProps) {
   }
 
   function applyMusicBrainzPayload(payload: IMusicBrainzApplyPayload) {
+    appliedMusicBrainzData.value = true
     if (payload.title !== undefined) form.title = payload.title
     if (payload.artist !== undefined) form.artist = payload.artist
     if (payload.album !== undefined) form.album = payload.album
@@ -350,7 +352,8 @@ export function useEditMetadataDialog(props: DialogProps) {
       isrc: normalizeText(form.isrc),
       comment: normalizeText(form.comment),
       lyrics: normalizeText(form.lyrics),
-      coverDataUrl: !isWavFile.value ? coverDataUrl.value : undefined
+      coverDataUrl: !isWavFile.value ? coverDataUrl.value : undefined,
+      markAsAutoFilled: appliedMusicBrainzData.value || undefined
     }
 
     if (trimmedFileName !== originalFileName.value) {

@@ -17,7 +17,8 @@ import {
   fetchMusicBrainzSuggestion,
   cancelMusicBrainzRequests
 } from './musicBrainz'
-import { purgeCoverCacheForTrack } from './cacheMaintenance'
+import { purgeCoverCacheForTrack, findSongListRoot } from './cacheMaintenance'
+import * as LibraryCacheDb from '../libraryCacheDb'
 import store from '../store'
 
 type ProgressEmitter = (
@@ -227,6 +228,23 @@ export async function autoFillTrackMetadata(
         item.displayName =
           normalizeText(detail.title) || normalizeText(detail.fileName) || item.displayName
 
+        // Check if track was already auto-filled and skip if setting is enabled
+        const skipCompleted = (store as any)?.settingConfig?.autoFillSkipCompleted !== false
+        if (skipCompleted) {
+          try {
+            const listRoot = await findSongListRoot(path.dirname(filePath))
+            if (listRoot) {
+              const cached = await LibraryCacheDb.loadSongCacheEntry(listRoot, filePath)
+              if (cached?.info?.autoFilled) {
+                item.status = 'skipped'
+                item.messageCode = 'ALREADY_FILLED'
+                summary.skipped++
+                continue
+              }
+            }
+          } catch {}
+        }
+
         let match: IMusicBrainzMatch | null = null
         let method: 'fingerprint' | 'search' | undefined
 
@@ -346,6 +364,25 @@ export async function autoFillTrackMetadata(
           } else {
             summary.searchApplied++
           }
+
+          // Mark track as auto-filled in cache
+          try {
+            const listRoot = await findSongListRoot(path.dirname(result.songInfo.filePath))
+            if (listRoot) {
+              const cached = await LibraryCacheDb.loadSongCacheEntry(
+                listRoot,
+                result.songInfo.filePath
+              )
+              if (cached?.info) {
+                cached.info.autoFilled = true
+                await LibraryCacheDb.upsertSongCacheEntry(
+                  listRoot,
+                  result.songInfo.filePath,
+                  cached
+                )
+              }
+            }
+          } catch {}
         } catch (err: any) {
           if (isCancelledError(err)) {
             markItemCancelled(item)

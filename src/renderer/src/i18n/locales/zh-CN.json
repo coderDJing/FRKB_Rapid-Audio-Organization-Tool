@@ -295,6 +295,8 @@
     "acoustidSettingPlaceholder": "例如 0XyPvB8SIW",
     "acoustidSettingOpenLink": "打开注册页面",
     "acoustidSettingRateHint": "匿名 Key 仅约 3 次/秒（所有用户共享）。为避免互相限速，建议每位用户注册并填写自己的 Client Key。",
+    "autoFillSkipCompleted": "自动补齐时跳过已补齐的曲目",
+    "autoFillSkipCompletedHint": "开启后，自动补齐将跳过之前已成功补齐过的曲目，避免重复处理。",
     "acoustidSetupTitle": "配置 AcoustID Client Key",
     "acoustidSetupDesc1": "Client Key 绑定你的 AcoustID 帐户，可在多台设备复用。",
     "acoustidSetupDesc2": "注册后粘贴 12 位 Client Key 并保存，即可启用声纹匹配。",
@@ -406,6 +408,7 @@
       "FFMPEG_METADATA_FAILED": "FFmpeg 写入失败，常见于 WAV/文件被占用",
       "UPDATE_FAILED": "写入文件失败",
       "READ_FAILED": "读取文件失败",
+      "ALREADY_FILLED": "已补齐过，跳过",
       "CANCELLED": "用户取消",
       "UNKNOWN": "发生未知错误"
     },

@@ -86,6 +86,9 @@ if ((runtime as any).setting.songListBubbleAlways === undefined) {
 if ((runtime as any).setting.acoustIdClientKey === undefined) {
   ;(runtime as any).setting.acoustIdClientKey = ''
 }
+if ((runtime as any).setting.autoFillSkipCompleted === undefined) {
+  ;(runtime as any).setting.autoFillSkipCompleted = true
+}
 const lastValidAcoustIdClientKey = ref(
   String((runtime as any).setting.acoustIdClientKey || '').trim()
 )
@@ -798,6 +801,14 @@ const clearCloudFingerprints = async () => {
               </div>
               <div class="setting-hint">{{ t('metadata.acoustidSettingRateHint') }}</div>
             </div>
+            <div style="margin-top: 20px">{{ t('metadata.autoFillSkipCompleted') }}：</div>
+            <div style="margin-top: 10px">
+              <singleCheckbox
+                v-model="(runtime as any).setting.autoFillSkipCompleted"
+                @change="setSetting()"
+              />
+            </div>
+            <div class="setting-hint">{{ t('metadata.autoFillSkipCompletedHint') }}</div>
             <div style="margin-top: 20px">{{ t('filters.persistFiltersAfterRestart') }}：</div>
             <div style="margin-top: 10px">
               <singleCheckbox

@@ -294,6 +294,8 @@
     "acoustidSettingPlaceholder": "e.g. 0XyPvB8SIW",
     "acoustidSettingOpenLink": "Open registration page",
     "acoustidSettingRateHint": "The public key only allows about 3 requests per second for everyone combined. Ask each user to register their own Client Key to avoid throttling.",
+    "autoFillSkipCompleted": "Skip previously filled tracks when auto-filling",
+    "autoFillSkipCompletedHint": "When enabled, auto-fill will skip tracks that have already been successfully filled before.",
     "acoustidSetupTitle": "Configure AcoustID Client Key",
     "acoustidSetupDesc1": "The Client Key is tied to your AcoustID account and can be reused on all of your devices.",
     "acoustidSetupDesc2": "Paste the 12-character key after registering and save to enable fingerprint matching.",
@@ -405,6 +407,7 @@
       "FFMPEG_METADATA_FAILED": "FFmpeg failed to write tags (often WAV or locked file)",
       "UPDATE_FAILED": "Failed to write metadata",
       "READ_FAILED": "Failed to read the file",
+      "ALREADY_FILLED": "Already filled, skipped",
       "CANCELLED": "Cancelled by user",
       "UNKNOWN": "Unknown error"
     },

@@ -42,6 +42,7 @@ interface ISongInfo {
   key?: string
   bpm?: number
   analysisOnly?: boolean
+  autoFilled?: boolean
   deletedAtMs?: number
   originalPlaylistPath?: string | null
   recycleBinSourceType?: string | null
@@ -181,6 +182,8 @@ interface ITrackMetadataUpdatePayload {
   comment?: string
   lyrics?: string
   coverDataUrl?: string | null
+  // 标记此次更新来自 MusicBrainz 补齐（自动或手动搜索）
+  markAsAutoFilled?: boolean
 }
 
 type IMetadataAutoFillStatus = 'applied' | 'no-match' | 'skipped' | 'error' | 'cancelled'
@@ -310,6 +313,8 @@ interface ISettingConfig {
   pendingWhatsNewForVersion?: string
   // AcoustID 客户端 Key（声纹匹配）
   acoustIdClientKey?: string
+  // 自动补齐时跳过已补齐过的曲目
+  autoFillSkipCompleted?: boolean
 }
 
 interface ILanguageDict {

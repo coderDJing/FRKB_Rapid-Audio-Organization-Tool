@@ -85,7 +85,8 @@ const defaultSettings = {
   convertDefaults: defaultConvertDefaults,
   lastSeenWhatsNewVersion: '',
   pendingWhatsNewForVersion: '',
-  acoustIdClientKey: ''
+  acoustIdClientKey: '',
+  autoFillSkipCompleted: true
 } as ISettingConfig
 
 type LoadSettingsOptions = {

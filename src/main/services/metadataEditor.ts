@@ -8,7 +8,8 @@ import { operateHiddenFile } from '../utils'
 import { ISongInfo, ITrackMetadataDetail, ITrackMetadataUpdatePayload } from '../../types/globals'
 import { extFromMime } from './covers'
 import { writeWavRiffInfoWindows, readWavRiffInfoWindows } from './wavRiffInfo'
-import { updateSongCacheEntry, purgeCoverCacheForTrack } from './cacheMaintenance'
+import { updateSongCacheEntry, purgeCoverCacheForTrack, findSongListRoot } from './cacheMaintenance'
+import * as LibraryCacheDb from '../libraryCacheDb'
 
 async function parseMetadata(filePath: string) {
   const mm = await import('music-metadata')
@@ -502,6 +503,21 @@ export async function updateTrackMetadata(
     const renamedFrom = originalFilePath === filePath ? undefined : originalFilePath
     await updateSongCacheEntry(filePath, songInfo, renamedFrom)
     await purgeCoverCacheForTrack(filePath, renamedFrom)
+
+    // Mark track as auto-filled if requested (from MusicBrainz search)
+    if (payload.markAsAutoFilled) {
+      try {
+        const listRoot = await findSongListRoot(path.dirname(filePath))
+        if (listRoot) {
+          const cached = await LibraryCacheDb.loadSongCacheEntry(listRoot, filePath)
+          if (cached?.info) {
+            cached.info.autoFilled = true
+            await LibraryCacheDb.upsertSongCacheEntry(listRoot, filePath, cached)
+          }
+        }
+      } catch {}
+    }
+
     return {
       songInfo,
       detail: buildDetail(filePath, metadata),
