@@ -17,7 +17,7 @@ import {
   fetchMusicBrainzSuggestion,
   cancelMusicBrainzRequests
 } from './musicBrainz'
-import { findSongListRoot, clearSongListCaches } from './cacheMaintenance'
+import { purgeCoverCacheForTrack } from './cacheMaintenance'
 import store from '../store'
 
 type ProgressEmitter = (
@@ -203,7 +203,6 @@ export async function autoFillTrackMetadata(
     let fingerprintDisabledCode: string | null = configuredAcoustIdKey
       ? null
       : 'ACOUSTID_CLIENT_MISSING'
-    const touchedSongListRoots = new Set<string>()
 
     for (let idx = 0; idx < uniquePaths.length; idx++) {
       if (cancelToken.cancelled) {
@@ -347,14 +346,6 @@ export async function autoFillTrackMetadata(
           } else {
             summary.searchApplied++
           }
-          try {
-            const newRoot = await findSongListRoot(path.dirname(result.songInfo.filePath))
-            if (newRoot) touchedSongListRoots.add(newRoot)
-            if (result.renamedFrom) {
-              const oldRoot = await findSongListRoot(path.dirname(result.renamedFrom))
-              if (oldRoot) touchedSongListRoots.add(oldRoot)
-            }
-          } catch {}
         } catch (err: any) {
           if (isCancelledError(err)) {
             markItemCancelled(item)
@@ -395,10 +386,14 @@ export async function autoFillTrackMetadata(
       }
     }
 
-    for (const root of touchedSongListRoots) {
-      try {
-        await clearSongListCaches(root)
-      } catch {}
+    // Only purge cover cache for updated tracks, NOT waveform cache
+    // Waveform data is expensive to regenerate and unrelated to metadata changes
+    for (const item of summary.items) {
+      if (item.status === 'applied' && item.updatedSongInfo) {
+        try {
+          await purgeCoverCacheForTrack(item.updatedSongInfo.filePath, item.oldFilePath)
+        } catch {}
+      }
     }
 
     summary.durationMs = Date.now() - startedAt

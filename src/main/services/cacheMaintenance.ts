@@ -89,6 +89,20 @@ export async function updateSongCacheEntry(
     if (!songListRoot) return
     const stat = await fs.stat(filePath)
     const normalizedInfo = normalizeSongInfoForCache(info)
+
+    // Preserve existing bpm and key if not provided in new info
+    // These are computed by audio analysis and should not be lost during metadata updates
+    const lookupPath = oldFilePath || filePath
+    const existingEntry = await LibraryCacheDb.loadSongCacheEntry(songListRoot, lookupPath)
+    if (existingEntry?.info) {
+      if (normalizedInfo.bpm === undefined && existingEntry.info.bpm !== undefined) {
+        normalizedInfo.bpm = existingEntry.info.bpm
+      }
+      if (normalizedInfo.key === undefined && existingEntry.info.key !== undefined) {
+        normalizedInfo.key = existingEntry.info.key
+      }
+    }
+
     await LibraryCacheDb.upsertSongCacheEntry(
       songListRoot,
       filePath,
@@ -99,6 +113,14 @@ export async function updateSongCacheEntry(
       },
       oldFilePath
     )
+
+    // Update waveform cache stat to match new file stat after metadata update
+    // This prevents cache invalidation when FFmpeg rewrites the file
+    await LibraryCacheDb.updateWaveformCacheStat(songListRoot, filePath, {
+      size: stat.size,
+      mtimeMs: stat.mtimeMs
+    })
+
     if (oldFilePath && oldFilePath !== filePath) {
       const moved = await LibraryCacheDb.moveWaveformCacheEntry(
         songListRoot,

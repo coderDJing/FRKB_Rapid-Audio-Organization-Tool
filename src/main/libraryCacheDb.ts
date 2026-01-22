@@ -735,6 +735,27 @@ export async function moveWaveformCacheEntry(
   }
 }
 
+export async function updateWaveformCacheStat(
+  listRoot: string,
+  filePath: string,
+  stat: { size: number; mtimeMs: number }
+): Promise<boolean> {
+  const db = getLibraryDb()
+  if (!db || !listRoot || !filePath) return false
+  if (!Number.isFinite(stat?.size) || !Number.isFinite(stat?.mtimeMs)) return false
+  try {
+    const result = db
+      .prepare(
+        'UPDATE waveform_cache SET size = ?, mtime_ms = ? WHERE list_root = ? AND file_path = ?'
+      )
+      .run(stat.size, stat.mtimeMs, listRoot, filePath)
+    return result.changes > 0
+  } catch (error) {
+    log.error('[sqlite] waveform cache stat update failed', error)
+    return false
+  }
+}
+
 export async function removeWaveformCacheEntry(
   listRoot: string,
   filePath: string
