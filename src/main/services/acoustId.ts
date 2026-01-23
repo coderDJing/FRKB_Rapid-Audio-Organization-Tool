@@ -7,6 +7,7 @@ import { ProxyAgent } from 'undici'
 import { IMusicBrainzAcoustIdPayload, IMusicBrainzMatch } from '../../types/globals'
 import { ensureFpcalcExecutable, resolveBundledFpcalcPath } from '../chromaprint'
 import store from '../store'
+import { getSystemProxy } from '../utils'
 
 const MAX_ANALYSIS_SECONDS = 120
 const FPCALC_TIMEOUT = 45_000
@@ -17,8 +18,20 @@ const LOOKUP_URL = 'https://api.acoustid.org/v2/lookup'
 const VALIDATION_TRACK_ID = '889584fb-b962-4601-9d10-252e07310713'
 // NOTE: meta 参数使用空格分隔，URLSearchParams 会将空格编码为 '+'，符合 AcoustID 要求
 const LOOKUP_META = 'recordings releasegroups releases tracks'
-const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || ''
-const proxyDispatcher = proxyUrl ? new ProxyAgent(proxyUrl) : undefined
+
+// Proxy dispatcher will be initialized lazily after detecting system proxy
+let proxyDispatcher: ProxyAgent | undefined
+let proxyInitialized = false
+
+async function ensureProxyInitialized(): Promise<void> {
+  if (proxyInitialized) return
+  proxyInitialized = true
+
+  const proxyUrl = await getSystemProxy()
+  if (proxyUrl) {
+    proxyDispatcher = new ProxyAgent(proxyUrl)
+  }
+}
 
 type FingerprintCacheEntry = {
   fingerprint: string
@@ -268,6 +281,7 @@ async function lookupAcoustId(
   fingerprint: string,
   duration: number
 ): Promise<AcoustIdLookupResponse> {
+  await ensureProxyInitialized()
   const clientKey = resolveAcoustIdClientKey()
   if (!clientKey) {
     throw new Error('ACOUSTID_CLIENT_MISSING')
@@ -475,6 +489,7 @@ export function cancelAcoustIdRequests() {
 }
 
 export async function validateAcoustIdClientKeyValue(clientKey: string): Promise<void> {
+  await ensureProxyInitialized()
   const trimmed = typeof clientKey === 'string' ? clientKey.trim() : ''
   if (!trimmed) {
     throw new Error('ACOUSTID_CLIENT_MISSING')

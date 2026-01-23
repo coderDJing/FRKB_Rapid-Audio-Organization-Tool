@@ -9,6 +9,7 @@ import {
 } from '../../types/globals'
 import { ProxyAgent } from 'undici'
 import { log } from '../log'
+import { getSystemProxy } from '../utils'
 
 const MUSICBRAINZ_BASE = 'https://musicbrainz.org/ws/2'
 const COVER_ART_BASE = 'https://coverartarchive.org'
@@ -18,8 +19,20 @@ const MIN_INTERVAL_MS = 1100
 const MAX_RETRIES = 3
 const SEARCH_CACHE_TTL = 24 * 60 * 60 * 1000
 const DETAIL_CACHE_TTL = 7 * 24 * 60 * 60 * 1000
-const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || ''
-const proxyDispatcher = proxyUrl ? new ProxyAgent(proxyUrl) : undefined
+
+// Proxy dispatcher will be initialized lazily after detecting system proxy
+let proxyDispatcher: ProxyAgent | undefined
+let proxyInitialized = false
+
+async function ensureProxyInitialized(): Promise<void> {
+  if (proxyInitialized) return
+  proxyInitialized = true
+
+  const proxyUrl = await getSystemProxy()
+  if (proxyUrl) {
+    proxyDispatcher = new ProxyAgent(proxyUrl)
+  }
+}
 
 const appReady = app.isReady() ? Promise.resolve() : app.whenReady()
 const cacheDirMap = new Map<'search' | 'detail', string>()
@@ -202,6 +215,7 @@ function mergeHeaders(extra?: HeadersInit): HeadersInit {
 }
 
 async function requestJson<T>(url: string, headers?: HeadersInit, timeoutMs?: number): Promise<T> {
+  await ensureProxyInitialized()
   const attempt = () =>
     scheduleRequest(async () => {
       const controller = new AbortController()
@@ -257,6 +271,7 @@ async function requestBuffer(
   mime: string
   buffer: Buffer
 } | null> {
+  await ensureProxyInitialized()
   const attempt = () =>
     scheduleRequest(async () => {
       const controller = new AbortController()
@@ -498,11 +513,17 @@ async function fetchCoverDataUrl(releaseId: string): Promise<string | null> {
     if (!cover) return null
     return `data:${cover.mime};base64,${cover.buffer.toString('base64')}`
   } catch (err: any) {
+    // Only re-throw if user cancelled the request
     if (err?.message === 'MUSICBRAINZ_ABORTED') {
       throw err
     }
-    log.error('[musicbrainz] cover fetch failed', { releaseId, message: err?.message })
-    throw err
+    // For network errors, log and return null (graceful degradation)
+    // This allows other metadata to be returned even if cover fetch fails
+    log.warn('[musicbrainz] cover fetch failed, returning null', {
+      releaseId,
+      message: err?.message
+    })
+    return null
   }
 }
 

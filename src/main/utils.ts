@@ -533,6 +533,76 @@ export function waitForUserDecision(
   })
 }
 
+/**
+ * Detect system proxy settings on Windows
+ * Returns proxy URL (e.g., "http://127.0.0.1:7890") or empty string if not configured
+ */
+export async function getSystemProxy(): Promise<string> {
+  // First check environment variables (highest priority)
+  const envProxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || ''
+  if (envProxy) {
+    return envProxy
+  }
+
+  // On Windows, read from registry
+  if (os.platform() === 'win32') {
+    const { exec } = require('child_process')
+    const { promisify } = require('util')
+    const execAsync = promisify(exec)
+
+    try {
+      // Check if proxy is enabled
+      const enableResult = await execAsync(
+        'reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyEnable',
+        { encoding: 'utf8' }
+      )
+      const enableMatch = enableResult.stdout.match(/ProxyEnable\s+REG_DWORD\s+0x(\d+)/)
+      const proxyEnabled = enableMatch && parseInt(enableMatch[1], 16) === 1
+
+      if (!proxyEnabled) {
+        return ''
+      }
+
+      // Get proxy server address
+      const serverResult = await execAsync(
+        'reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyServer',
+        { encoding: 'utf8' }
+      )
+      const serverMatch = serverResult.stdout.match(/ProxyServer\s+REG_SZ\s+(.+)/)
+      if (serverMatch && serverMatch[1]) {
+        const proxyServer = serverMatch[1].trim()
+        // Handle different proxy formats
+        // Format: "127.0.0.1:7890" or "http=127.0.0.1:7890;https=127.0.0.1:7890"
+        if (proxyServer.includes('=')) {
+          // Multiple protocols specified, extract https or http
+          const parts = proxyServer.split(';')
+          for (const part of parts) {
+            if (part.startsWith('https=')) {
+              const addr = part.substring(6)
+              return addr.startsWith('http') ? addr : `http://${addr}`
+            }
+          }
+          for (const part of parts) {
+            if (part.startsWith('http=')) {
+              const addr = part.substring(5)
+              return addr.startsWith('http') ? addr : `http://${addr}`
+            }
+          }
+        }
+        // Simple format: "127.0.0.1:7890"
+        return proxyServer.startsWith('http') ? proxyServer : `http://${proxyServer}`
+      }
+    } catch {
+      // Registry read failed, return empty
+    }
+  }
+
+  // macOS: read from scutil (future support)
+  // Linux: typically uses environment variables only
+
+  return ''
+}
+
 export function getCurrentTimeYYYYMMDDHHMMSSSSS() {
   let now = new Date()
 

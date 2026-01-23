@@ -366,6 +366,9 @@ export async function autoFillTrackMetadata(
           }
 
           // Mark track as auto-filled in cache
+          // Only mark as fully auto-filled if cover was also fetched successfully
+          // If cover is missing, don't mark as auto-filled so it will be retried next time
+          const hasCover = !!suggestion.suggestion.coverDataUrl
           try {
             const listRoot = await findSongListRoot(path.dirname(result.songInfo.filePath))
             if (listRoot) {
@@ -374,7 +377,9 @@ export async function autoFillTrackMetadata(
                 result.songInfo.filePath
               )
               if (cached?.info) {
-                cached.info.autoFilled = true
+                // Only mark as auto-filled if cover was successfully fetched
+                // This ensures tracks without covers will be retried on next auto-fill
+                cached.info.autoFilled = hasCover
                 await LibraryCacheDb.upsertSongCacheEntry(
                   listRoot,
                   result.songInfo.filePath,
