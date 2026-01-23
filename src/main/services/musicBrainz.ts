@@ -512,11 +512,6 @@ export async function fetchMusicBrainzSuggestion(
   if (!params || !params.recordingId) {
     throw new Error('MUSICBRAINZ_INVALID_PARAMS')
   }
-  log.info('[musicbrainz] suggest start', {
-    recordingId: params.recordingId,
-    releaseId: params.releaseId,
-    allowFallback: params.allowFallback === true
-  })
   const ensureNotCancelled = () => {
     if (params?.cancelToken?.cancelled) {
       throw new Error('MUSICBRAINZ_ABORTED')
@@ -535,7 +530,6 @@ export async function fetchMusicBrainzSuggestion(
     if (!key) continue
     const cached = await readCache<IMusicBrainzSuggestionResult>('detail', key)
     if (cached) {
-      log.info('[musicbrainz] suggest cache hit', { recordingId, cacheKey: key })
       return cached
     }
   }
@@ -557,12 +551,6 @@ export async function fetchMusicBrainzSuggestion(
     addCandidate(rel?.id)
   }
   if (!releaseCandidates.length) throw new Error('MUSICBRAINZ_RELEASE_NOT_FOUND')
-  log.info('[musicbrainz] release candidates prepared', {
-    recordingId,
-    preferredReleaseId: params.releaseId,
-    allowFallback,
-    candidates: releaseCandidates
-  })
 
   const buildResultFromRelease = async (releaseDetail: any, releaseId: string, trackCtx?: any) => {
     ensureNotCancelled()
@@ -617,7 +605,6 @@ export async function fetchMusicBrainzSuggestion(
   for (const releaseId of releaseCandidates) {
     try {
       ensureNotCancelled()
-      log.info('[musicbrainz] fetching release detail', { recordingId, releaseId })
       const releaseDetail = await fetchReleaseDetail(releaseId)
       const trackCtx = findTrackContext(releaseDetail, params.recordingId)
       if (!trackCtx) {
@@ -637,11 +624,6 @@ export async function fetchMusicBrainzSuggestion(
       }
       ensureNotCancelled()
       const result = await buildResultFromRelease(releaseDetail, releaseId, trackCtx)
-      log.info('[musicbrainz] suggestion built', {
-        recordingId,
-        releaseId: result.source.releaseId,
-        hasCover: result.suggestion.coverDataUrl === null ? false : !!result.suggestion.coverDataUrl
-      })
       const keysToWrite = new Set<string>()
       if (result.source.releaseId) {
         keysToWrite.add(`${recordingId}:${result.source.releaseId}`)
@@ -682,11 +664,6 @@ export async function fetchMusicBrainzSuggestion(
       keysToWrite.add(`${recordingId}:${result.source.releaseId}`)
     }
     keysToWrite.add(autoCacheKey)
-    log.info('[musicbrainz] suggestion built from fallback release', {
-      recordingId,
-      releaseId: fallbackReleaseDetail.releaseId,
-      hasCover: result.suggestion.coverDataUrl === null ? false : !!result.suggestion.coverDataUrl
-    })
     for (const key of keysToWrite) {
       await writeCache('detail', key, DETAIL_CACHE_TTL, result)
     }
