@@ -679,6 +679,7 @@ const handleSongDragEnd = () => {
           <!-- 使用 SongListRows 组件渲染歌曲列表 -->
           <SongListRows
             v-if="runtime.songsArea.songInfoArr.length > 0"
+            :key="runtime.songsArea.songListUUID"
             :songs="runtime.songsArea.songInfoArr"
             :visibleColumns="columnDataArr"
             :selectedSongFilePaths="runtime.songsArea.selectedSongFilePath"

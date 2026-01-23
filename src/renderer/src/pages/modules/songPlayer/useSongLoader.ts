@@ -1,4 +1,4 @@
-import { ref, onUnmounted, shallowRef } from 'vue'
+import { ref, onBeforeUnmount, shallowRef } from 'vue'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 import emitter from '@renderer/utils/mitt'
@@ -317,7 +317,7 @@ export function useSongLoader(params: {
   window.electron.ipcRenderer.on('readedSongFile', handleReadedSongFile)
   window.electron.ipcRenderer.on('readSongFileError', handleReadSongFileError)
 
-  onUnmounted(() => {
+  onBeforeUnmount(() => {
     window.electron.ipcRenderer.removeListener('song-waveform-updated', handleWaveformUpdated)
     window.electron.ipcRenderer.removeListener('readedSongFile', handleReadedSongFile)
     window.electron.ipcRenderer.removeListener('readSongFileError', handleReadSongFileError)

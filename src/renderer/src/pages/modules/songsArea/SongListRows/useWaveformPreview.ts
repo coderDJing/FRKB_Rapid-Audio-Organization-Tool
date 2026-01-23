@@ -1,4 +1,4 @@
-import { computed, markRaw, nextTick, onUnmounted, ref, watch, type Ref } from 'vue'
+import { computed, markRaw, nextTick, onBeforeUnmount, ref, watch, type Ref } from 'vue'
 import type { ISongInfo, ISongsAreaColumn } from '../../../../../../types/globals'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
@@ -658,7 +658,7 @@ export function useWaveformPreview(params: {
   emitter.on('waveform-preview:state', handleWaveformPreviewState)
   emitter.on('waveform-preview:progress', handleWaveformPreviewProgress)
 
-  onUnmounted(() => {
+  onBeforeUnmount(() => {
     if (loadTimer) clearTimeout(loadTimer)
     if (drawRaf) cancelAnimationFrame(drawRaf)
     if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
