@@ -59,6 +59,7 @@ type Menu = {
 // 检查是否是 dev 模式或预发布版本
 // dev 模式或预发布版本（版本号包含 '-'）都显示日志菜单
 const isDevOrPrerelease = computed(() => {
+  if (process.env.NODE_ENV === 'development') return true
   const version = String((pkg as any).version || '')
   return version.includes('-')
 })
