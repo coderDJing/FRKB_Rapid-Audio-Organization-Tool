@@ -17,6 +17,8 @@ const props = defineProps<{
 
 // 是否处于手动点击（Tap Tempo）模式
 const isManual = ref(false)
+// 是否已开始手动点击（用于隐藏气泡直到右键恢复）
+const isTapActive = ref(false)
 // 手动计算得到的 BPM（保留一位小数）
 const manualBpm = ref<number | null>(null)
 // 最近的点击时间戳（毫秒）
@@ -62,6 +64,7 @@ const displayValue = computed<string>(() => {
 
 // 左键点击：加入一次节拍点击并重新计算 BPM
 const handleLeftClick = () => {
+  isTapActive.value = true
   const now = Date.now()
 
   // 如果距离上次点击过久，则从头开始
@@ -107,6 +110,7 @@ const handleRightClick = (e: MouseEvent) => {
 
 const resetManual = () => {
   isManual.value = false
+  isTapActive.value = false
   manualBpm.value = null
   tapTimestamps.value = []
 }
@@ -135,10 +139,12 @@ const resetManual = () => {
     {{ displayValue }}
   </div>
   <bubbleBox
+    v-if="!isTapActive"
     :dom="bpmDomRef || undefined"
     title="BPM"
     :shortcut="t('player.tapBeat')"
     :maxWidth="250"
+    :interactive="false"
   />
 </template>
 

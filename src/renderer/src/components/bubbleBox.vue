@@ -51,6 +51,11 @@ const props = defineProps({
     type: Number,
     default: 280
   },
+  // 是否允许气泡拦截鼠标事件（默认允许）
+  interactive: {
+    type: Boolean,
+    default: true
+  },
   // 是否跟随鼠标移动定位（默认不跟随，只锚定到触发元素）
   followMouse: {
     type: Boolean,
@@ -296,7 +301,9 @@ onUnmounted(() => {
           top: topPx + 'px',
           left: leftPx + 'px',
           maxWidth: maxWidth + 'px',
-          zIndex: zIndex
+          zIndex: zIndex,
+          pointerEvents: interactive ? 'auto' : 'none',
+          userSelect: interactive ? 'text' : 'none'
         }"
         @mouseenter="onBubbleMouseEnter"
         @mouseleave="onBubbleMouseLeave"
