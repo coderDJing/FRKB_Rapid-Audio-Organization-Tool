@@ -16,6 +16,7 @@ import mainWindow from '../window/mainWindow'
 import { saveList, exportSnapshot, importFromJsonFile } from '../fingerprintStore'
 import { deleteRecycleBinRecord } from '../recycleBinDb'
 import { isInRecycleBinAbsPath, toLibraryRelativePath } from '../recycleBinService'
+import { findSongListRoot, transferTrackCaches } from '../services/cacheMaintenance'
 
 async function findUniqueFolder(inputFolderPath: string) {
   const parts = path.parse(inputFolderPath)
@@ -194,6 +195,16 @@ export function registerExportHandlers() {
         const targetPath = path.join(store.databaseDir, mapRendererPathToFsPath(dest), matches[0])
         tasks.push(async () => {
           const movedPath = await moveOrCopyItemWithCheckIsExist(src, targetPath, true)
+          try {
+            const fromRoot = await findSongListRoot(path.dirname(src))
+            const toRoot = await findSongListRoot(path.dirname(movedPath))
+            await transferTrackCaches({
+              fromRoot,
+              toRoot,
+              fromPath: src,
+              toPath: movedPath
+            })
+          } catch {}
           if (isInRecycleBinAbsPath(src)) {
             const rel = toLibraryRelativePath(src)
             if (rel) deleteRecycleBinRecord(rel)

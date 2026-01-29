@@ -9,9 +9,12 @@ import {
   deleteRecycleBinRecord,
   type RecycleBinRecord
 } from './recycleBinDb'
-import { clearTrackCache, purgeCoverCacheForTrack } from './services/cacheMaintenance'
+import {
+  clearTrackCache,
+  purgeCoverCacheForTrack,
+  transferTrackCaches
+} from './services/cacheMaintenance'
 import { findSongListRootByPath } from './libraryTreeDb'
-import * as LibraryCacheDb from './libraryCacheDb'
 import { invalidateKeyAnalysisCache } from './services/keyAnalysisQueue'
 
 export type RecycleBinSourceType = 'external' | 'import_dedup' | 'unknown'
@@ -131,51 +134,6 @@ function resolveRecordByPath(filePath: string): RecordLookup {
   return { record: null, recordKey: rel || filePath }
 }
 
-async function transferAnalysisCache(params: {
-  fromRoot: string | null
-  toRoot: string | null
-  fromPath: string
-  toPath: string
-}): Promise<void> {
-  const { fromRoot, toRoot, fromPath, toPath } = params
-  if (!fromRoot || !toRoot || !fromPath || !toPath) return
-  if (fromRoot === toRoot && path.resolve(fromPath) === path.resolve(toPath)) return
-
-  let stat: { size: number; mtimeMs: number } | null = null
-  try {
-    const fsStat = await fs.stat(toPath)
-    stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
-  } catch {
-    return
-  }
-
-  try {
-    const cacheEntry = await LibraryCacheDb.loadSongCacheEntry(fromRoot, fromPath)
-    if (cacheEntry && stat) {
-      const nextInfo = { ...cacheEntry.info, filePath: toPath }
-      const updated = await LibraryCacheDb.upsertSongCacheEntry(toRoot, toPath, {
-        size: stat.size,
-        mtimeMs: stat.mtimeMs,
-        info: nextInfo
-      })
-      if (updated) {
-        await LibraryCacheDb.removeSongCacheEntry(fromRoot, fromPath)
-      }
-    }
-  } catch {}
-
-  if (!stat) return
-  try {
-    const waveform = await LibraryCacheDb.loadWaveformCacheData(fromRoot, fromPath, stat)
-    if (waveform) {
-      const updated = await LibraryCacheDb.upsertWaveformCacheEntry(toRoot, toPath, stat, waveform)
-      if (updated) {
-        await LibraryCacheDb.removeWaveformCacheEntry(fromRoot, fromPath)
-      }
-    }
-  } catch {}
-}
-
 export async function moveFileToRecycleBin(
   srcPath: string,
   options: RecycleBinMoveOptions = {}
@@ -196,7 +154,7 @@ export async function moveFileToRecycleBin(
     const destPath = path.join(recycleRoot, targetName)
     await fs.move(srcPath, destPath)
     try {
-      await transferAnalysisCache({
+      await transferTrackCaches({
         fromRoot: sourceListRoot,
         toRoot: recycleRoot,
         fromPath: srcPath,
@@ -205,9 +163,6 @@ export async function moveFileToRecycleBin(
     } catch {}
     try {
       invalidateKeyAnalysisCache([srcPath, destPath])
-    } catch {}
-    try {
-      await purgeCoverCacheForTrack(srcPath)
     } catch {}
     const rel = toLibraryRelativePath(destPath)
     if (!rel) {
@@ -263,7 +218,7 @@ export async function restoreRecycleBinFile(filePath: string): Promise<RecycleBi
     const destPath = path.join(destDir, finalName)
     await fs.move(srcPath, destPath)
     try {
-      await transferAnalysisCache({
+      await transferTrackCaches({
         fromRoot: recycleRoot,
         toRoot: destDir,
         fromPath: srcPath,
@@ -272,9 +227,6 @@ export async function restoreRecycleBinFile(filePath: string): Promise<RecycleBi
     } catch {}
     try {
       invalidateKeyAnalysisCache([srcPath, destPath])
-    } catch {}
-    try {
-      await purgeCoverCacheForTrack(srcPath)
     } catch {}
     if (recordKey) deleteRecycleBinRecord(recordKey)
     return { status: 'restored', srcPath, destPath, playlistPath: playlistRel }

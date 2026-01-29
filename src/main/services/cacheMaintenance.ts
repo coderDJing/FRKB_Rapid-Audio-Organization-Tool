@@ -1,7 +1,7 @@
 import path = require('path')
 import fs = require('fs-extra')
 import { ISongInfo } from '../../types/globals'
-import { mapRendererPathToFsPath } from '../utils'
+import { mapRendererPathToFsPath, operateHiddenFile } from '../utils'
 import store from '../store'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { findSongListRootByPath, loadLibraryNodes } from '../libraryTreeDb'
@@ -130,6 +130,91 @@ export async function updateSongCacheEntry(
       )
       if (!moved) {
         await LibraryCacheDb.removeWaveformCacheEntry(songListRoot, oldFilePath)
+      }
+    }
+  } catch {}
+}
+
+export async function transferTrackCaches(params: {
+  fromRoot: string | null
+  toRoot: string | null
+  fromPath: string
+  toPath: string
+}): Promise<void> {
+  const { fromRoot, toRoot, fromPath, toPath } = params
+  if (!fromRoot || !toRoot || !fromPath || !toPath) return
+  if (
+    normalizePath(fromRoot) === normalizePath(toRoot) &&
+    normalizePath(fromPath) === normalizePath(toPath)
+  ) {
+    return
+  }
+
+  let stat: { size: number; mtimeMs: number } | null = null
+  try {
+    const fsStat = await fs.stat(toPath)
+    stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
+  } catch {
+    return
+  }
+
+  try {
+    const cacheEntry = await LibraryCacheDb.loadSongCacheEntry(fromRoot, fromPath)
+    if (cacheEntry && stat) {
+      const nextInfo = { ...cacheEntry.info, filePath: toPath }
+      const updated = await LibraryCacheDb.upsertSongCacheEntry(toRoot, toPath, {
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+        info: nextInfo
+      })
+      if (updated) {
+        await LibraryCacheDb.removeSongCacheEntry(fromRoot, fromPath)
+      }
+    }
+  } catch {}
+
+  if (!stat) return
+  try {
+    const waveform = await LibraryCacheDb.loadWaveformCacheData(fromRoot, fromPath, stat)
+    if (waveform) {
+      const updated = await LibraryCacheDb.upsertWaveformCacheEntry(toRoot, toPath, stat, waveform)
+      if (updated) {
+        await LibraryCacheDb.removeWaveformCacheEntry(fromRoot, fromPath)
+      }
+    }
+  } catch {}
+
+  try {
+    const cover = await LibraryCacheDb.loadCoverIndexEntry(fromRoot, fromPath)
+    if (!cover) return
+    const ext = cover.ext || '.jpg'
+    const fromCoversDir = path.join(fromRoot, '.frkb_covers')
+    const toCoversDir = path.join(toRoot, '.frkb_covers')
+    const fromCoverPath = path.join(fromCoversDir, `${cover.hash}${ext}`)
+    const toCoverPath = path.join(toCoversDir, `${cover.hash}${ext}`)
+    if (normalizePath(fromCoverPath) !== normalizePath(toCoverPath)) {
+      await fs.ensureDir(toCoversDir)
+      await operateHiddenFile(toCoversDir, async () => {})
+      try {
+        if ((await fs.pathExists(fromCoverPath)) && !(await fs.pathExists(toCoverPath))) {
+          await fs.copy(fromCoverPath, toCoverPath)
+          await operateHiddenFile(toCoverPath, async () => {})
+        }
+      } catch {}
+    }
+    const saved = await LibraryCacheDb.upsertCoverIndexEntry(toRoot, toPath, cover.hash, ext)
+    if (saved) {
+      const removed = await LibraryCacheDb.removeCoverIndexEntry(fromRoot, fromPath)
+      if (removed) {
+        const remaining = await LibraryCacheDb.countCoverIndexByHash(fromRoot, removed.hash)
+        if (remaining === 0) {
+          const staleCoverPath = path.join(fromCoversDir, `${removed.hash}${removed.ext || '.jpg'}`)
+          try {
+            if (await fs.pathExists(staleCoverPath)) {
+              await fs.remove(staleCoverPath)
+            }
+          } catch {}
+        }
       }
     }
   } catch {}
