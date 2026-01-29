@@ -7,6 +7,7 @@ import store from '../store'
 import FingerprintStore from '../fingerprintStore'
 import { resolveBundledFfmpegPath, ensureExecutableOnMac } from '../ffmpeg'
 import { runWithConcurrency } from '../utils'
+import { log } from '../log'
 import {
   SUPPORTED_AUDIO_FORMATS,
   ENCODER_REQUIREMENTS,
@@ -79,6 +80,7 @@ function buildFfmpegArgs(src: string, dest: string, opts: ConvertJobOptions): st
   const args: string[] = ['-y', '-i', src]
   let sampleRateApplied = false
   let channelsApplied = false
+  const shouldMapCover = opts.preserveMetadata && opts.targetFormat === 'mp3'
   const applySampleRate = (rate: number) => {
     args.push('-ar', String(rate))
     sampleRateApplied = true
@@ -88,8 +90,13 @@ function buildFfmpegArgs(src: string, dest: string, opts: ConvertJobOptions): st
     channelsApplied = true
   }
   if (opts.normalize) args.push('-filter:a', 'loudnorm')
-  // 只处理音频流，忽略封面/视频附件
-  args.push('-map', '0:a:0', '-vn')
+  // 默认只处理音频流；保留元数据且目标为 mp3 时尝试保留封面
+  args.push('-map', '0:a:0')
+  if (shouldMapCover) {
+    args.push('-map', '0:v?', '-c:v', 'copy')
+  } else {
+    args.push('-vn')
+  }
   if (opts.preserveMetadata) args.push('-map_metadata', '0')
   // 编码器与比特率
   switch (opts.targetFormat) {
@@ -203,41 +210,70 @@ function buildFfmpegArgs(src: string, dest: string, opts: ConvertJobOptions): st
   return args
 }
 
+let cachedTargetFormats: SupportedAudioFormat[] | null = null
+let cachedTargetFormatsPromise: Promise<SupportedAudioFormat[]> | null = null
+
 // 列出当前 FFmpeg 可用的音频编码器，返回可作为目标格式的扩展集合
 export async function listAvailableTargetFormats(): Promise<SupportedAudioFormat[]> {
-  const ffmpegPath = resolveBundledFfmpegPath()
-  await ensureExecutableOnMac(ffmpegPath)
-  const out = child_process
-    .execFileSync(ffmpegPath, ['-hide_banner', '-encoders'], {
-      windowsHide: true
-    })
-    .toString()
+  if (cachedTargetFormats) return cachedTargetFormats
+  if (cachedTargetFormatsPromise) return cachedTargetFormatsPromise
 
-  const availableEncoders = new Set<string>()
-  for (const line of out.split(/\r?\n/)) {
-    if (!line || line.startsWith('Encoders:') || line.startsWith('------')) continue
-    const trimmed = line.trim()
-    if (!trimmed || !/^[AVS]/.test(trimmed)) continue
-    const parts = trimmed.split(/\s+/)
-    if (parts.length >= 2) {
-      availableEncoders.add(parts[1])
+  cachedTargetFormatsPromise = (async () => {
+    try {
+      const ffmpegPath = resolveBundledFfmpegPath()
+      await ensureExecutableOnMac(ffmpegPath)
+      const out = await new Promise<string>((resolve, reject) => {
+        child_process.execFile(
+          ffmpegPath,
+          ['-hide_banner', '-encoders'],
+          { windowsHide: true },
+          (err, stdout, stderr) => {
+            if (err) {
+              reject(err)
+              return
+            }
+            const text = String(stdout || stderr || '')
+            resolve(text)
+          }
+        )
+      })
+
+      const availableEncoders = new Set<string>()
+      for (const line of out.split(/\r?\n/)) {
+        if (!line || line.startsWith('Encoders:') || line.startsWith('------')) continue
+        const trimmed = line.trim()
+        if (!trimmed || !/^[AVS]/.test(trimmed)) continue
+        const parts = trimmed.split(/\s+/)
+        if (parts.length >= 2) {
+          availableEncoders.add(parts[1])
+        }
+      }
+
+      const uniqueFormats = new Set<SupportedAudioFormat>()
+      for (const fmt of SUPPORTED_AUDIO_FORMATS) {
+        const requirements = ENCODER_REQUIREMENTS[fmt] || []
+        if (
+          requirements.length === 0 ||
+          requirements.some((encoder) => availableEncoders.has(encoder))
+        ) {
+          if (fmt === 'dts' && !availableEncoders.has('dca')) continue
+          uniqueFormats.add(fmt)
+        }
+      }
+
+      const result = SUPPORTED_AUDIO_FORMATS.filter((fmt) => uniqueFormats.has(fmt))
+      cachedTargetFormats = result
+      return result
+    } catch (error) {
+      log.error('[audio-convert] list target formats failed', error)
+      cachedTargetFormats = [...SUPPORTED_AUDIO_FORMATS]
+      return cachedTargetFormats
+    } finally {
+      cachedTargetFormatsPromise = null
     }
-  }
+  })()
 
-  const uniqueFormats = new Set<SupportedAudioFormat>()
-  for (const fmt of SUPPORTED_AUDIO_FORMATS) {
-    const requirements = ENCODER_REQUIREMENTS[fmt] || []
-    if (
-      requirements.length === 0 ||
-      requirements.some((encoder) => availableEncoders.has(encoder))
-    ) {
-      if (fmt === 'dts' && !availableEncoders.has('dca')) continue
-      uniqueFormats.add(fmt)
-    }
-  }
-
-  const result = SUPPORTED_AUDIO_FORMATS.filter((fmt) => uniqueFormats.has(fmt))
-  return result
+  return cachedTargetFormatsPromise
 }
 
 export async function startAudioConversion(
@@ -269,6 +305,20 @@ export async function startAudioConversion(
   let backupCount = 0
   let fingerprintAddedCount = 0
   let skipped = 0
+  const errors: Array<{ filePath: string; message: string; stderr?: string }> = []
+
+  const pushError = (filePath: string, err: unknown, stderr?: string, args?: string[]) => {
+    const message = err instanceof Error ? err.message : String(err || 'unknown error')
+    const trimmedStderr = String(stderr || '').trim()
+    const clippedStderr = trimmedStderr ? trimmedStderr.slice(0, 1200) : undefined
+    errors.push({ filePath, message, stderr: clippedStderr })
+    log.error('[audio-convert] failed', {
+      filePath,
+      message,
+      stderr: trimmedStderr,
+      args
+    })
+  }
 
   const tasks: Array<() => Promise<void>> = files.map((src) => async () => {
     let lastFfmpegArgs: string[] = []
@@ -542,6 +592,7 @@ export async function startAudioConversion(
       } catch (err) {
         failed += 1
         success -= 1
+        pushError(src, err, lastFfmpegStderr, lastFfmpegArgs)
         await Promise.all(
           tmpPaths.map(async (tmpPath) => {
             try {
@@ -561,6 +612,7 @@ export async function startAudioConversion(
       if (mainWindow) mainWindow.webContents.send('audio:convert:progress', { jobId })
     } catch (e) {
       failed += 1
+      pushError(src, e, lastFfmpegStderr, lastFfmpegArgs)
       // 清理临时文件
       for (const tmpPath of tmpPaths) {
         try {
@@ -606,7 +658,7 @@ export async function startAudioConversion(
         fingerprintAddedCount,
         durationMs: Date.now() - startedAt
       },
-      errors: []
+      errors
     })
   }
 

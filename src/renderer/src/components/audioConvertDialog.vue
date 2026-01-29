@@ -80,6 +80,29 @@ const flashBorder = (flashAreaName: string) => {
   }, 500)
 }
 
+const filterSupportedFormats = (available: SupportedAudioFormat[]) => {
+  // 过滤与源相同的格式（简单化：移除所有所选文件扩展名对应的目标格式）
+  const srcSet = new Set(
+    (props.sourceExts || [])
+      .map((e) => String(e || '').toLowerCase())
+      .map((e) => e.replace(/^\./, ''))
+      .filter(Boolean) as Array<string>
+  )
+  let filtered = available
+  if (srcSet.size === 1) {
+    const only = Array.from(srcSet)[0]
+    filtered = available.filter((fmt) => {
+      // .aif 与 .aiff 视为同类
+      if (only === 'aif' || only === 'aiff') {
+        return !(fmt === 'aif' || fmt === 'aiff')
+      }
+      return fmt !== only
+    })
+    if (filtered.length === 0) filtered = available
+  }
+  return filtered
+}
+
 onMounted(async () => {
   hotkeys('E,Enter', uuid, () => {
     confirm()
@@ -91,6 +114,11 @@ onMounted(async () => {
   })
   utils.setHotkeysScpoe(uuid)
 
+  // 先给一个可用列表，避免弹窗首次打开卡顿
+  supportedFormats.value = filterSupportedFormats(
+    SUPPORTED_AUDIO_FORMATS.filter(isSupportedAudioFormat)
+  )
+
   const setting = await window.electron.ipcRenderer.invoke('getSetting')
   try {
     // 询问主进程：FFmpeg 可编码的目标格式
@@ -98,27 +126,7 @@ onMounted(async () => {
       'audio:convert:list-target-formats'
     )
     let allowed = targetFormats.filter(isSupportedAudioFormat)
-
-    // 过滤与源相同的格式（简单化：移除所有所选文件扩展名对应的目标格式）
-    const srcSet = new Set(
-      (props.sourceExts || [])
-        .map((e) => String(e || '').toLowerCase())
-        .map((e) => e.replace(/^\./, ''))
-        .filter(Boolean) as Array<string>
-    )
-    let filtered = allowed
-    if (srcSet.size === 1) {
-      const only = Array.from(srcSet)[0]
-      filtered = allowed.filter((fmt) => {
-        // .aif 与 .aiff 视为同类
-        if (only === 'aif' || only === 'aiff') {
-          return !(fmt === 'aif' || fmt === 'aiff')
-        }
-        return fmt !== only
-      })
-      if (filtered.length === 0) filtered = allowed
-    }
-    supportedFormats.value = filtered
+    supportedFormats.value = filterSupportedFormats(allowed)
   } catch (err) {
     console.error('[AudioConvertDialog] list-target-formats failed:', err)
   }

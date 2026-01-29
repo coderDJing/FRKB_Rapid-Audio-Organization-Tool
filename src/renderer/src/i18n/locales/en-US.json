@@ -449,6 +449,7 @@
     "failed": "Failed",
     "createdNew": "Created new file",
     "replaced": "Replaced original",
+    "errorDetails": "Failure details",
     "backupCount": ""
   },
   "player": {

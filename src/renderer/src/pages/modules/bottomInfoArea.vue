@@ -431,7 +431,7 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
     scheduleRemoval('audio.convert')
   }
   const openSummary = (await import('@renderer/components/conversionFinishedSummaryDialog')).default
-  await openSummary(payload?.summary || null)
+  await openSummary(payload?.summary || null, payload?.errors || [])
 })
 </script>
 <template>

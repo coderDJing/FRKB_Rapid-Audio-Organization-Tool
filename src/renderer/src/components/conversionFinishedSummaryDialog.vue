@@ -14,6 +14,11 @@ const props = defineProps<{
     fingerprintAddedCount: number
     durationMs?: number
   } | null
+  errors?: Array<{
+    filePath: string
+    message: string
+    stderr?: string
+  }>
 }>()
 const emits = defineEmits(['close'])
 const { dialogVisible, closeWithAnimation } = useDialogTransition()
@@ -23,6 +28,12 @@ const formatDurationSec = (ms?: number) => {
   const s = (ms || 0) / 1000
   if (s >= 10) return String(Math.round(s))
   return String(Math.round(s * 10) / 10)
+}
+const getFileName = (filePath?: string) => {
+  const raw = String(filePath || '')
+  if (!raw) return ''
+  const parts = raw.split(/[/\\\\]/)
+  return parts[parts.length - 1] || raw
 }
 </script>
 
@@ -67,6 +78,16 @@ const formatDurationSec = (ms?: number) => {
               <div class="chip" :class="{ success: (summary?.fingerprintAddedCount || 0) > 0 }">
                 <div class="num">{{ summary?.fingerprintAddedCount || 0 }}</div>
                 <div class="cap">{{ t('import.newFingerprints') }}</div>
+              </div>
+            </div>
+          </div>
+          <div v-if="(props.errors || []).length > 0" class="section">
+            <div class="section-title">{{ t('convert.errorDetails') }}</div>
+            <div class="error-list">
+              <div v-for="item in props.errors" :key="item.filePath" class="error-item">
+                <div class="error-file">{{ getFileName(item.filePath) }}</div>
+                <div class="error-msg">{{ item.message }}</div>
+                <div v-if="item.stderr" class="error-stderr">{{ item.stderr }}</div>
               </div>
             </div>
           </div>
@@ -142,5 +163,42 @@ const formatDurationSec = (ms?: number) => {
 }
 .chip.success .num {
   color: #9fe870;
+}
+.error-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  background: var(--bg-elev);
+  max-height: 180px;
+  overflow-y: auto;
+}
+.error-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--border);
+}
+.error-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.error-file {
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 600;
+}
+.error-msg {
+  font-size: 11px;
+  color: #ff8a8a;
+}
+.error-stderr {
+  font-size: 10px;
+  color: var(--text-weak);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>

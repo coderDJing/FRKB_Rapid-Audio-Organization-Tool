@@ -431,6 +431,7 @@
     "failed": "失败",
     "createdNew": "新文件（重命名）",
     "replaced": "替换覆盖",
+    "errorDetails": "失败详情",
     "backupCount": ""
   },
   "columns": {
