@@ -687,13 +687,16 @@
     "diskFullInterruptedHint": "可用空间不足。已完成 {0} 项，待处理 {1} 项。释放空间后可重试，或跳过剩余任务。"
   },
   "filters": {
-    "filterByText": "按文本筛选（包含匹配）",
+    "filterByText": "按文本筛选（包含/排除）",
     "filterByDuration": "按时长筛选",
     "filterByBpm": "按 BPM 筛选",
     "equals": "等于",
     "greaterOrEqual": "大于等于",
     "lessOrEqual": "小于等于",
+    "includeKeyword": "包含关键词",
+    "excludeKeyword": "排除关键词",
     "keywordPlaceholder": "请输入关键词",
+    "excludeKeywordPlaceholder": "请输入需要排除的关键词",
     "clearThisColumn": "清空本列",
     "durationPlaceholder": "MM:SS",
     "bpmPlaceholder": "例如 128 或 128.5",

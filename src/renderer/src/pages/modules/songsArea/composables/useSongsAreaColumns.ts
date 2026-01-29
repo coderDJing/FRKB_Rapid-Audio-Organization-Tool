@@ -108,6 +108,9 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
                 filterActive:
                   (runtime.setting.persistSongFilters ? savedCol.filterActive : false) ?? false,
                 filterValue: runtime.setting.persistSongFilters ? savedCol.filterValue : undefined,
+                filterExcludeValue: runtime.setting.persistSongFilters
+                  ? (savedCol as ISongsAreaColumn).filterExcludeValue
+                  : undefined,
                 filterOp: runtime.setting.persistSongFilters ? savedCol.filterOp : undefined,
                 filterDuration: runtime.setting.persistSongFilters
                   ? savedCol.filterDuration
@@ -222,8 +225,12 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     runtime.songsArea.totalSongCount = filtered.length
     for (const col of columnData.value) {
       if (!col.filterActive) continue
-      if (col.filterType === 'text' && col.filterValue && col.key) {
-        const keyword = String(col.filterValue).toLowerCase()
+      if (col.filterType === 'text' && col.key) {
+        const keyword = String(col.filterValue || '').toLowerCase()
+        const excludeKeyword = String(col.filterExcludeValue || '').toLowerCase()
+        const hasInclude = keyword.trim().length > 0
+        const hasExclude = excludeKeyword.trim().length > 0
+        if (!hasInclude && !hasExclude) continue
         const isKeyColumn = col.key === 'key'
         const isOriginalPlaylist = col.key === 'originalPlaylistPath'
         const keyStyle =
@@ -234,7 +241,9 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
             : String((song as any)[col.key] ?? '')
           const displayValue = isKeyColumn ? getKeyDisplayText(rawValue, keyStyle) : rawValue
           const value = displayValue.toLowerCase()
-          return value.includes(keyword)
+          if (hasInclude && !value.includes(keyword)) return false
+          if (hasExclude && value.includes(excludeKeyword)) return false
+          return true
         })
       } else if (col.filterType === 'duration' && col.filterOp && col.filterDuration) {
         const target = parseDurationToSeconds(col.filterDuration)

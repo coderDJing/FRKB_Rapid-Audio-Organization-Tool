@@ -354,6 +354,8 @@ interface ISongsAreaColumn {
   filterActive?: boolean
   // 文本筛选：关键字（包含匹配，不区分大小写）
   filterValue?: string
+  // 文本筛选：排除关键字（包含则剔除，不区分大小写）
+  filterExcludeValue?: string
   // 时长筛选：操作符与目标时长（固定 MM:SS 字符串）
   filterOp?: 'eq' | 'gte' | 'lte'
   filterDuration?: string

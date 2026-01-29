@@ -684,13 +684,16 @@
     "diskFullInterruptedHint": "Insufficient space. Completed {0}, pending {1}. Free space then retry or skip the rest."
   },
   "filters": {
-    "filterByText": "Filter by text (contains)",
+    "filterByText": "Filter by text (include/exclude)",
     "filterByDuration": "Filter by duration",
     "filterByBpm": "Filter by BPM",
     "equals": "Equals",
     "greaterOrEqual": "Greater or equal",
     "lessOrEqual": "Less or equal",
+    "includeKeyword": "Include keyword",
+    "excludeKeyword": "Exclude keyword",
     "keywordPlaceholder": "Please enter keyword",
+    "excludeKeywordPlaceholder": "Enter keyword to exclude",
     "clearThisColumn": "Clear column",
     "durationPlaceholder": "MM:SS",
     "bpmPlaceholder": "e.g. 128 or 128.5",

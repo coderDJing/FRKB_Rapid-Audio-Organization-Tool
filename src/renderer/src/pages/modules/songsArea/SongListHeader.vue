@@ -234,6 +234,7 @@ const handleColumnClick = (col: ISongsAreaColumn) => {
 // 弹窗状态与临时输入
 const filterActiveKey = ref<string>('')
 const tempText = ref<string>('')
+const tempExcludeText = ref<string>('')
 const tempOp = ref<'eq' | 'gte' | 'lte'>('gte')
 const tempDuration = ref<string>('00:00')
 const tempNumber = ref<string>('')
@@ -244,6 +245,7 @@ function handleFilterIconClick(e: MouseEvent, col: ISongsAreaColumn) {
   filterActiveKey.value = col.key
   if (col.filterType === 'text') {
     tempText.value = col.filterValue || ''
+    tempExcludeText.value = col.filterExcludeValue || ''
   } else if (col.filterType === 'duration') {
     tempOp.value = col.filterOp || 'gte'
     tempDuration.value = col.filterDuration || '00:00'
@@ -285,15 +287,20 @@ function applyFilterConfirm(target: ISongsAreaColumn) {
     if (c.key !== target.key) return c
     const next = { ...c }
     if (c.filterType === 'text') {
-      next.filterValue = tempText.value.trim()
-      next.filterActive = !!next.filterValue
+      const includeText = tempText.value.trim()
+      const excludeText = tempExcludeText.value.trim()
+      next.filterValue = includeText || undefined
+      next.filterExcludeValue = excludeText || undefined
+      next.filterActive = !!includeText || !!excludeText
       next.filterOp = undefined
       next.filterDuration = undefined
+      next.filterNumber = undefined
     } else if (c.filterType === 'duration') {
       next.filterOp = tempOp.value
       next.filterDuration = normalizeMmSs(tempDuration.value)
       next.filterActive = !!next.filterDuration
       next.filterValue = undefined
+      next.filterExcludeValue = undefined
       next.filterNumber = undefined
     } else if (c.filterType === 'bpm') {
       next.filterOp = tempOp.value
@@ -301,6 +308,7 @@ function applyFilterConfirm(target: ISongsAreaColumn) {
       next.filterActive = !!next.filterNumber
       next.filterValue = undefined
       next.filterDuration = undefined
+      next.filterExcludeValue = undefined
     }
     return next
   })
@@ -315,6 +323,7 @@ function clearFilter(target: ISongsAreaColumn) {
       ...c,
       filterActive: false,
       filterValue: undefined,
+      filterExcludeValue: undefined,
       filterOp: undefined,
       filterDuration: undefined,
       filterNumber: undefined
@@ -328,7 +337,13 @@ function clearFilter(target: ISongsAreaColumn) {
 function getFilterTooltip(col: ISongsAreaColumn): string {
   if (!col.filterActive) return ''
   if (col.filterType === 'text') {
-    return `${props.t('filters.filterByText')}: "${col.filterValue || ''}"`
+    const includeText = (col.filterValue || '').trim()
+    const excludeText = (col.filterExcludeValue || '').trim()
+    const parts = []
+    if (includeText) parts.push(`${props.t('filters.includeKeyword')}: "${includeText}"`)
+    if (excludeText) parts.push(`${props.t('filters.excludeKeyword')}: "${excludeText}"`)
+    if (parts.length === 0) return ''
+    return `${props.t('filters.filterByText')}: ${parts.join(' / ')}`
   }
   if (col.filterType === 'duration') {
     const op =
@@ -423,6 +438,7 @@ const handleContextMenu = (event: MouseEvent) => {
           v-if="filterActiveKey === col.key && col.filterType"
           :type="col.filterType as any"
           :initText="tempText"
+          :initExcludeText="tempExcludeText"
           :initOp="tempOp"
           :initDuration="tempDuration"
           :initNumber="tempNumber"
@@ -430,6 +446,7 @@ const handleContextMenu = (event: MouseEvent) => {
             (payload) => {
               if (payload.type === 'text') {
                 tempText = (payload as any).text
+                tempExcludeText = (payload as any).excludeText
               } else if (payload.type === 'duration') {
                 tempOp = (payload as any).op
                 tempDuration = (payload as any).duration

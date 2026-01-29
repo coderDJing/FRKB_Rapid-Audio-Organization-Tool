@@ -11,6 +11,7 @@ type Op = 'eq' | 'gte' | 'lte'
 const props = defineProps<{
   type: 'text' | 'duration' | 'bpm'
   initText?: string
+  initExcludeText?: string
   initOp?: Op
   initDuration?: string
   initNumber?: string
@@ -20,7 +21,7 @@ const emits = defineEmits<{
   (
     e: 'confirm',
     payload:
-      | { type: 'text'; text: string }
+      | { type: 'text'; text: string; excludeText: string }
       | { type: 'duration'; op: Op; duration: string }
       | { type: 'bpm'; op: Op; value: string }
   ): void
@@ -31,14 +32,23 @@ const emits = defineEmits<{
 const uuid = uuidV4()
 
 const text = ref(props.initText || '')
+const excludeText = ref(props.initExcludeText || '')
 const op = ref<Op>(props.initOp || 'gte')
 const duration = ref(props.initDuration || '00:00')
 const numberValue = ref(props.initNumber || '')
 
 watch(
-  () => [props.initText, props.initOp, props.initDuration, props.initNumber, props.type],
+  () => [
+    props.initText,
+    props.initExcludeText,
+    props.initOp,
+    props.initDuration,
+    props.initNumber,
+    props.type
+  ],
   () => {
     text.value = props.initText || ''
+    excludeText.value = props.initExcludeText || ''
     op.value = props.initOp || 'gte'
     duration.value = props.initDuration || '00:00'
     numberValue.value = props.initNumber || ''
@@ -72,7 +82,11 @@ const { dialogVisible, closeWithAnimation } = useDialogTransition()
 const handleConfirm = () => {
   const payload =
     props.type === 'text'
-      ? ({ type: 'text', text: text.value.trim() } as const)
+      ? ({
+          type: 'text',
+          text: text.value.trim(),
+          excludeText: excludeText.value.trim()
+        } as const)
       : props.type === 'duration'
         ? ({ type: 'duration', op: op.value, duration: normalizeMmSs(duration.value) } as const)
         : ({ type: 'bpm', op: op.value, value: normalizeNumberInput(numberValue.value) } as const)
@@ -127,13 +141,26 @@ onUnmounted(() => {
       </div>
       <div style="padding: 10px 20px; flex: 1; overflow-y: auto">
         <template v-if="props.type === 'text'">
-          <input
-            v-model="text"
-            class="filter-input"
-            type="text"
-            :placeholder="t('filters.keywordPlaceholder')"
-            style="width: 100%"
-          />
+          <div class="filter-field">
+            <div class="filter-label">{{ t('filters.includeKeyword') }}</div>
+            <input
+              v-model="text"
+              class="filter-input"
+              type="text"
+              :placeholder="t('filters.keywordPlaceholder')"
+              style="width: 100%"
+            />
+          </div>
+          <div class="filter-field" style="margin-top: 10px">
+            <div class="filter-label">{{ t('filters.excludeKeyword') }}</div>
+            <input
+              v-model="excludeText"
+              class="filter-input"
+              type="text"
+              :placeholder="t('filters.excludeKeywordPlaceholder')"
+              style="width: 100%"
+            />
+          </div>
         </template>
         <template v-else-if="props.type === 'duration'">
           <div class="radio-group">
@@ -223,6 +250,15 @@ onUnmounted(() => {
     border-color: var(--accent);
     box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.25);
   }
+}
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.filter-label {
+  font-size: 12px;
+  color: var(--text-weak);
 }
 .radio-group {
   display: flex;
