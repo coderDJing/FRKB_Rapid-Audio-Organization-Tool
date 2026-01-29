@@ -210,6 +210,7 @@ watch(
 // libraryData 已提前定义
 
 const collapseButtonRef = useTemplateRef<HTMLDivElement>('collapseButtonRef')
+const searchInputRef = useTemplateRef<HTMLInputElement>('searchInputRef')
 
 const libraryTitleText = computed(() => toLibraryDisplayName(libraryData.value.dirName))
 const listIcon = listIconAsset
@@ -259,6 +260,31 @@ const exactMatchExists = computed(() => {
 const showCreateNow = computed(() => {
   const keyword = String(playlistSearch.value || '').trim()
   return !!keyword && !exactMatchExists.value
+})
+const searchKeyword = computed(() =>
+  String(playlistSearch.value || '')
+    .trim()
+    .toLowerCase()
+)
+const filteredRecentSongListArr = computed(() => {
+  if (!searchKeyword.value) return recentSongListArr.value
+  return recentSongListArr.value.filter((item) =>
+    String(item.dirName || '')
+      .toLowerCase()
+      .includes(searchKeyword.value)
+  )
+})
+const filteredAllSongListArr = computed(() => {
+  if (!searchKeyword.value) return allSongListArr.value
+  return allSongListArr.value.filter((item) =>
+    String(item.dirName || '')
+      .toLowerCase()
+      .includes(searchKeyword.value)
+  )
+})
+const filteredSongListUuids = computed(() => {
+  if (!searchKeyword.value) return allSongListArr.value.map((item) => item.uuid)
+  return filteredAllSongListArr.value.map((item) => item.uuid)
 })
 
 // 立即以关键字作为名称在根层级创建歌单，并置顶；在对话框中仅高亮不触发确认
@@ -378,16 +404,20 @@ const flashBorder = (flashAreaName: string) => {
 const { dialogVisible, closeWithAnimation } = useDialogTransition()
 
 const confirmHandle = () => {
+  const selectedUuid = runtime.dialogSelectedSongListUUID
+  const selectionVisible =
+    !searchKeyword.value || filteredSongListUuids.value.includes(selectedUuid)
   if (
-    runtime.dialogSelectedSongListUUID === '' ||
-    libraryUtils.getLibraryTreeByUUID(runtime.dialogSelectedSongListUUID) === null
+    !selectedUuid ||
+    !selectionVisible ||
+    libraryUtils.getLibraryTreeByUUID(selectedUuid) === null
   ) {
     if (!flashArea.value) {
       flashBorder('selectSongList')
     }
   } else {
-    if (recentDialogSelectedSongListUUID.indexOf(runtime.dialogSelectedSongListUUID) === -1) {
-      recentDialogSelectedSongListUUID.unshift(runtime.dialogSelectedSongListUUID)
+    if (recentDialogSelectedSongListUUID.indexOf(selectedUuid) === -1) {
+      recentDialogSelectedSongListUUID.unshift(selectedUuid)
       const maxCount = runtime.setting.recentDialogSelectedSongListMaxCount ?? 10
       while (recentDialogSelectedSongListUUID.length > maxCount) {
         recentDialogSelectedSongListUUID.pop()
@@ -395,7 +425,7 @@ const confirmHandle = () => {
     } else {
       recentDialogSelectedSongListUUID.unshift(
         recentDialogSelectedSongListUUID.splice(
-          recentDialogSelectedSongListUUID.indexOf(runtime.dialogSelectedSongListUUID),
+          recentDialogSelectedSongListUUID.indexOf(selectedUuid),
           1
         )[0]
       )
@@ -408,13 +438,31 @@ const confirmHandle = () => {
       'recentDialogSelectedSongListUUID' + props.libraryName,
       JSON.stringify(recentDialogSelectedSongListUUID)
     )
-    const selectedUuid = runtime.dialogSelectedSongListUUID
     closeWithAnimation(() => emits('confirm', selectedUuid))
   }
 }
 const emits = defineEmits(['cancel', 'confirm'])
 const cancel = () => {
   closeWithAnimation(() => emits('cancel'))
+}
+const handleSearchEnter = () => {
+  if (!searchKeyword.value) return
+  const firstRecent = filteredRecentSongListArr.value[0]
+  const firstAll = filteredAllSongListArr.value[0]
+  if (!firstRecent && !firstAll) {
+    createNow()
+    searchInputRef.value?.blur()
+    return
+  }
+  if (firstRecent) {
+    runtime.dialogSelectedSongListUUID = firstRecent.uuid
+    selectedArea.value = 'recent'
+  } else if (firstAll) {
+    runtime.dialogSelectedSongListUUID = firstAll.uuid
+    selectedArea.value = 'tree'
+  }
+  syncNavIndexByUUID()
+  searchInputRef.value?.blur()
 }
 
 // 依据选择的 UUID 判定当前高亮区域（用户通过鼠标点击树或最近区时生效）
@@ -514,8 +562,10 @@ watch(
               <input
                 v-model="playlistSearch"
                 class="searchInput"
+                ref="searchInputRef"
                 @keydown.down.prevent="handleMoveDown"
                 @keydown.up.prevent="handleMoveUp"
+                @keydown.enter.prevent.stop="handleSearchEnter"
                 :placeholder="t('playlist.searchPlaylists')"
               />
               <div
@@ -577,12 +627,7 @@ watch(
                 </div>
                 <div class="sectionBody">
                   <div
-                    v-for="item of recentSongListArr.filter(
-                      (x) =>
-                        x.type === 'songList' &&
-                        (!playlistSearch ||
-                          x.dirName?.toLowerCase().includes(String(playlistSearch).toLowerCase()))
-                    )"
+                    v-for="item of filteredRecentSongListArr.filter((x) => x.type === 'songList')"
                     :key="item.uuid"
                     :ref="(el: any) => setRecentRowRef(item.uuid, el)"
                     @click="
