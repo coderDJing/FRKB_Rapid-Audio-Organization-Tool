@@ -13,23 +13,70 @@ export function useAutoScrollToCurrent(params: UseAutoScrollParams) {
   const { runtime, songsAreaRef } = params
 
   const ROW_HEIGHT = 30
+  const SCROLL_TOLERANCE_PX = 2
 
-  const scrollToIndex = (index: number) => {
-    if (!Number.isFinite(index) || index < 0) return
-    if (!songsAreaRef.value) return
-    nextTick(() => {
-      const scrollInstance = songsAreaRef.value?.osInstance()
-      const viewportElement = scrollInstance?.elements().viewport as HTMLElement | undefined
-      if (!viewportElement) return
+  const resolveViewportElement = () => {
+    const scrollInstance = songsAreaRef.value?.osInstance()
+    return scrollInstance?.elements().viewport as HTMLElement | undefined
+  }
 
-      const targetTop = index * ROW_HEIGHT
-      const centerTop = Math.max(0, targetTop - viewportElement.clientHeight / 2)
-      try {
-        viewportElement.scrollTo({ top: centerTop, behavior: 'smooth' })
-      } catch {
-        viewportElement.scrollTop = centerTop
+  const isIndexVisible = (index: number, viewportElement: HTMLElement) => {
+    const rowTop = index * ROW_HEIGHT
+    const rowBottom = rowTop + ROW_HEIGHT
+    const viewTop = viewportElement.scrollTop
+    const viewBottom = viewTop + viewportElement.clientHeight
+    return rowBottom >= viewTop && rowTop <= viewBottom
+  }
+
+  const getTargetTop = (
+    index: number,
+    viewportElement: HTMLElement,
+    align: 'center' | 'nearest'
+  ) => {
+    const rowTop = index * ROW_HEIGHT
+    const rowBottom = rowTop + ROW_HEIGHT
+    if (align === 'nearest') {
+      if (rowTop < viewportElement.scrollTop) return rowTop
+      if (rowBottom > viewportElement.scrollTop + viewportElement.clientHeight) {
+        return Math.max(0, rowBottom - viewportElement.clientHeight)
       }
-    })
+      return viewportElement.scrollTop
+    }
+    return Math.max(0, rowTop - viewportElement.clientHeight / 2)
+  }
+
+  const runScroll = (
+    index: number,
+    options?: {
+      behavior?: ScrollBehavior
+      align?: 'center' | 'nearest'
+      onlyIfNeeded?: boolean
+    }
+  ) => {
+    if (!Number.isFinite(index) || index < 0) return
+    const viewportElement = resolveViewportElement()
+    if (!viewportElement) return
+
+    const align = options?.align ?? 'center'
+    if (options?.onlyIfNeeded && isIndexVisible(index, viewportElement)) return
+
+    const targetTop = getTargetTop(index, viewportElement, align)
+    if (Math.abs(viewportElement.scrollTop - targetTop) <= SCROLL_TOLERANCE_PX) return
+    try {
+      viewportElement.scrollTo({ top: targetTop, behavior: options?.behavior ?? 'smooth' })
+    } catch {
+      viewportElement.scrollTop = targetTop
+    }
+  }
+
+  const scrollToIndex = (index: number, behavior: ScrollBehavior = 'smooth') => {
+    if (!songsAreaRef.value) return
+    nextTick(() => runScroll(index, { behavior, align: 'center' }))
+  }
+
+  const scrollToIndexIfNeeded = (index: number, align: 'center' | 'nearest' = 'center') => {
+    if (!songsAreaRef.value) return
+    nextTick(() => runScroll(index, { onlyIfNeeded: true, align }))
   }
 
   const scrollToSong = (filePath?: string | null) => {
@@ -41,6 +88,7 @@ export function useAutoScrollToCurrent(params: UseAutoScrollParams) {
 
   return {
     scrollToIndex,
+    scrollToIndexIfNeeded,
     scrollToSong
   }
 }

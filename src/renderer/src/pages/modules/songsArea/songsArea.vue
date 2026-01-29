@@ -212,7 +212,7 @@ const { songClick } = useKeyboardSelection({
 })
 
 // 手动滚动到当前播放
-const { scrollToIndex } = useAutoScrollToCurrent({ runtime, songsAreaRef })
+const { scrollToIndex, scrollToIndexIfNeeded } = useAutoScrollToCurrent({ runtime, songsAreaRef })
 attachModifierKeyListeners()
 
 // 事件订阅与同步
@@ -462,24 +462,30 @@ const showScrollToPlaying = computed(() => {
   return viewState.value === 'list' && currentPlayingIndex.value >= 0
 })
 
-const scrollToCurrentIfNeeded = () => {
-  if (!runtime.setting.autoScrollToCurrentSong) return
-  if (!runtime.playingData.playingSong?.filePath) return
-  if (runtime.playingData.playingSongListUUID !== runtime.songsArea.songListUUID) return
-  if (currentPlayingIndex.value < 0) return
-  scrollToIndex(currentPlayingIndex.value)
-}
+const lastAutoScrollKey = ref('')
+const autoScrollPresence = computed(() => (currentPlayingIndex.value >= 0 ? '1' : '0'))
+const autoScrollKey = computed(() => {
+  const listUUID = runtime.songsArea.songListUUID || ''
+  const playingPath = runtime.playingData.playingSong?.filePath || ''
+  return `${listUUID}|${playingPath}|${autoScrollPresence.value}`
+})
+const autoScrollTriggerKey = computed(() => {
+  if (!runtime.setting.autoScrollToCurrentSong) return ''
+  return autoScrollKey.value
+})
 
 watch(
-  () => [
-    runtime.setting.autoScrollToCurrentSong,
-    runtime.playingData.playingSong?.filePath,
-    runtime.playingData.playingSongListUUID,
-    runtime.songsArea.songListUUID,
-    runtime.songsArea.songInfoArr.length
-  ],
-  () => {
-    scrollToCurrentIfNeeded()
+  () => autoScrollTriggerKey.value,
+  (key) => {
+    if (!key) {
+      lastAutoScrollKey.value = ''
+      return
+    }
+    if (key.endsWith('|0')) return
+    if (key === lastAutoScrollKey.value) return
+    if (runtime.playingData.playingSongListUUID !== runtime.songsArea.songListUUID) return
+    lastAutoScrollKey.value = key
+    scrollToIndexIfNeeded(currentPlayingIndex.value)
   },
   { flush: 'post' }
 )
