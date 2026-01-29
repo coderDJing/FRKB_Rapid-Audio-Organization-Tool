@@ -559,6 +559,7 @@ export function usePlayerControlsLogic({
       const filePath = songToExport.filePath
       const currentList = runtime.playingData.playingSongListData
       const currentIndex = currentList.findIndex((item) => item.filePath === filePath)
+      const listUuidAtExportStart = runtime.playingData.playingSongListUUID
 
       try {
         // 调用后端导出功能
@@ -612,6 +613,8 @@ export function usePlayerControlsLogic({
               preloadApi.clearAllCaches()
             }
           }
+          emitter.emit('songsRemoved', { listUUID: listUuidAtExportStart, paths: [filePath] })
+          emitter.emit('playlistContentChanged', { uuids: [listUuidAtExportStart] })
         }
       } catch (error) {
         console.error('导出曲目时出错:', error)
