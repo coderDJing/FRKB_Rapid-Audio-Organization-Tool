@@ -62,6 +62,12 @@ export function useSongLoader(params: {
 
       // 记录错误到控制台
       console.error('[播放失败]', filePath, errorMessage || '未知错误')
+      try {
+        const logMsg = errorMessage
+          ? `[player] 打开歌曲失败: ${localFilePath} | ${errorMessage}`
+          : `[player] 打开歌曲失败: ${localFilePath}`
+        window.electron.ipcRenderer.send('outputLog', logMsg)
+      } catch {}
 
       const content = errorMessage
         ? [t('tracks.cannotPlay'), errorMessage, t('tracks.cannotPlayHint')]
