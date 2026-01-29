@@ -17,6 +17,7 @@ import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
 import emitter from '@renderer/utils/mitt'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
+import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 const emit = defineEmits(['librarySelectedChange'])
 
 const baseIcons: Icon[] = [
@@ -124,6 +125,21 @@ const iconMouseout = (item: Icon | ButtomIcon) => {
   if (selectedIcon.value != item) {
     item.src = item.grey
   }
+}
+
+const getIconMaskStyle = (item: Icon | ButtomIcon) => ({
+  '--icon-mask': `url("${item.src}")`
+})
+
+const isPlayingLibraryIcon = (item: Icon) => {
+  const playingUuid = runtime.playingData.playingSongListUUID
+  if (!playingUuid) return false
+  if (item.name === 'ExternalPlaylist') return playingUuid === EXTERNAL_PLAYLIST_UUID
+  if (item.name === 'RecycleBin' && playingUuid === RECYCLE_BIN_UUID) return true
+  const libraryNode = findLibraryNode(item.name)
+  if (!libraryNode) return false
+  const uuids = libraryUtils.getAllUuids(libraryNode)
+  return uuids.includes(playingUuid)
 }
 
 const findLibraryNode = (libraryName: string): IDir | undefined => {
@@ -393,16 +409,17 @@ watch(
           "
           @click="libraryHandleClick(item)"
         >
-          <img
-            :src="item.src"
-            draggable="false"
+          <span
+            :style="getIconMaskStyle(item)"
             :ref="(el) => setIconRef(item.name, el)"
             :class="[
-              'theme-icon',
               'sidebar-icon',
-              { 'is-active': item.name === selectedIcon.name }
+              {
+                'is-active': item.name === selectedIcon.name,
+                'is-playing': isPlayingLibraryIcon(item)
+              }
             ]"
-          />
+          ></span>
           <bubbleBox
             :dom="iconRefMap[item.name] || undefined"
             :title="t((item as any).i18nKey || item.name)"
@@ -429,12 +446,11 @@ watch(
             align-items: center;
           "
         >
-          <img
-            :src="item.src"
-            draggable="false"
+          <span
+            :style="getIconMaskStyle(item)"
             :ref="(el) => setIconRef(item.name, el)"
-            :class="['theme-icon', 'sidebar-icon']"
-          />
+            :class="['sidebar-icon']"
+          ></span>
           <bubbleBox
             :dom="iconRefMap[item.name] || undefined"
             :title="t(item.i18nKey || 'common.setting')"
@@ -475,8 +491,21 @@ watch(
     .sidebar-icon {
       width: 25px;
       height: 25px;
+      display: inline-block;
       opacity: 0.55;
-      transition: opacity 0.15s ease;
+      background-color: currentColor;
+      color: var(--text);
+      mask-image: var(--icon-mask);
+      mask-repeat: no-repeat;
+      mask-position: center;
+      mask-size: contain;
+      -webkit-mask-image: var(--icon-mask);
+      -webkit-mask-repeat: no-repeat;
+      -webkit-mask-position: center;
+      -webkit-mask-size: contain;
+      transition:
+        opacity 0.15s ease,
+        color 0.15s ease;
     }
 
     &:hover .sidebar-icon {
@@ -485,6 +514,11 @@ watch(
 
     .sidebar-icon.is-active {
       opacity: 1;
+    }
+
+    .sidebar-icon.is-playing {
+      opacity: 1;
+      color: var(--accent);
     }
   }
 
