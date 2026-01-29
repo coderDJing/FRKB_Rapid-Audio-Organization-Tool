@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import { app, BrowserWindow, ipcMain, shell, nativeTheme, protocol } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { log, getLogPath } from './log'
+import { log, getLogPath, clearLogFileSync } from './log'
 import './cloudSync'
 import errorReport from './errorReport'
 import url from './url'
@@ -19,6 +19,7 @@ import {
   broadcastSystemThemeIfNeeded,
   loadInitialSettings
 } from './bootstrap/settings'
+import { persistSettingConfigSync } from './settingsPersistence'
 import {
   clearWindowsContextMenuSignature,
   ensureWindowsContextMenuIfNeeded,
@@ -84,6 +85,42 @@ const getPreviewMimeType = (filePath: string) => {
   return PREVIEW_MIME_MAP[ext] || 'application/octet-stream'
 }
 
+const maybeClearLogAfterUpgrade = () => {
+  try {
+    const currentVersion = app.getVersion()
+    const setting = store.settingConfig || ({} as any)
+    const lastVersion =
+      typeof (setting as any).lastRunAppVersion === 'string'
+        ? String((setting as any).lastRunAppVersion || '')
+        : ''
+    const logPath = getLogPath()
+    const hasLogFile = fs.pathExistsSync(logPath)
+    let logHasContent = false
+    if (hasLogFile) {
+      try {
+        logHasContent = fs.statSync(logPath).size > 0
+      } catch {
+        logHasContent = false
+      }
+    }
+    const isVersionChanged = !!lastVersion && lastVersion !== currentVersion
+    const shouldClearOnUnknownVersion = !lastVersion && logHasContent
+    if (isVersionChanged || shouldClearOnUnknownVersion) {
+      clearLogFileSync()
+      // 清理旧日志后重置上报计时，避免空日志重复触发
+      ;(setting as any).errorReportUsageMsSinceLastSuccess = 0
+      ;(setting as any).errorReportRetryMsSinceLastFailure = -1
+    }
+    if (lastVersion !== currentVersion) {
+      ;(setting as any).lastRunAppVersion = currentVersion
+      store.settingConfig = setting
+      persistSettingConfigSync(setting)
+    }
+  } catch (error) {
+    log.error('[upgrade] 清理旧日志失败', error)
+  }
+}
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: PREVIEW_PROTOCOL,
@@ -141,6 +178,7 @@ if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
 
 store.layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
 loadInitialSettings({ getWindowsContextMenuStatus: hasWindowsContextMenu })
+maybeClearLogAfterUpgrade()
 errorReport.setup()
 registerWhatsNewHandlers()
 registerSettingsHandlers({

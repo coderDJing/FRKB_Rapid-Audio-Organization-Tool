@@ -311,6 +311,8 @@ interface ISettingConfig {
   lastSeenWhatsNewVersion?: string
   // 若上次拉取失败，需要下次继续尝试的版本号
   pendingWhatsNewForVersion?: string
+  // 上次启动的应用版本（用于升级后清理旧日志）
+  lastRunAppVersion?: string
   // AcoustID 客户端 Key（声纹匹配）
   acoustIdClientKey?: string
   // 自动补齐时跳过已补齐过的曲目

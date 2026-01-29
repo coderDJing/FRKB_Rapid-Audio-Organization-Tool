@@ -85,6 +85,7 @@ const defaultSettings = {
   convertDefaults: defaultConvertDefaults,
   lastSeenWhatsNewVersion: '',
   pendingWhatsNewForVersion: '',
+  lastRunAppVersion: '',
   acoustIdClientKey: '',
   autoFillSkipCompleted: true
 } as ISettingConfig

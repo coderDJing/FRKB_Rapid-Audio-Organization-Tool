@@ -65,7 +65,8 @@ let settingConfig: ISettingConfig = {
   enableExplorerContextMenu: false,
   showPlaylistTrackCount: true,
   lastSeenWhatsNewVersion: '',
-  pendingWhatsNewForVersion: ''
+  pendingWhatsNewForVersion: '',
+  lastRunAppVersion: ''
 } //设置config
 let analyseSongPort: string = ''
 export default {

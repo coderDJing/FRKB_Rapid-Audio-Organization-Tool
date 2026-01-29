@@ -2,6 +2,7 @@ import url from './url'
 import path = require('path')
 import { app } from 'electron'
 import { is } from '@electron-toolkit/utils'
+import fs = require('fs-extra')
 export import log = require('electron-log')
 
 log.transports.file.level = 'debug' // 设置日志级别
@@ -32,6 +33,15 @@ export function getLogPath(): string {
     return path.join(process.cwd(), 'log.txt')
   } else {
     return path.join(url.userDataDir, 'log.txt')
+  }
+}
+
+export function clearLogFileSync(): void {
+  try {
+    const filePath = getLogPath()
+    fs.outputFileSync(filePath, '')
+  } catch (e) {
+    log.error('[log] 清空日志失败', e)
   }
 }
 
