@@ -428,14 +428,23 @@ const setVolume = (v: number) => {
   } catch {}
 }
 
+const showVolumeUiIfVisible = () => {
+  if (runtime.setting.hiddenPlayControlArea) {
+    return
+  }
+  playerControlsRef.value?.showVolumeSliderByShortcut?.()
+}
+
 const handleVolumeUp = () => {
   const current = getVolume()
   setVolume(current + VOLUME_STEP)
+  showVolumeUiIfVisible()
 }
 
 const handleVolumeDown = () => {
   const current = getVolume()
   setVolume(current - VOLUME_STEP)
+  showVolumeUiIfVisible()
 }
 
 const selectSongListDialogConfirm = async (item: string) => {

@@ -110,11 +110,6 @@ onUnmounted(() => {
   document.removeEventListener('mouseup', handleFastBackwardMouseup)
 })
 
-defineExpose({
-  setPlayingValue,
-  setVolumeValue
-})
-
 const moreMenuShow = ref(false)
 const handelMoreClick = () => {
   if (moreMenuShow.value) {
@@ -172,9 +167,11 @@ const volume = ref(1)
 const lastNonZeroVolume = ref(1)
 const sliderHovering = ref(false)
 const iconHovering = ref(false)
+const shortcutVolumeVisible = ref(false)
 let draggingVolume = false
+let volumeUiTimer: number | null = null
 const showVolumeSlider = computed(
-  () => iconHovering.value || sliderHovering.value || draggingVolume
+  () => iconHovering.value || sliderHovering.value || draggingVolume || shortcutVolumeVisible.value
 )
 
 const volumeIcon = computed(() => {
@@ -238,9 +235,30 @@ const handleBarMouseup = () => {
   document.removeEventListener('mouseup', handleBarMouseup)
 }
 
+const showVolumeSliderByShortcut = (duration = 1200) => {
+  shortcutVolumeVisible.value = true
+  if (volumeUiTimer !== null) {
+    window.clearTimeout(volumeUiTimer)
+  }
+  volumeUiTimer = window.setTimeout(() => {
+    shortcutVolumeVisible.value = false
+    volumeUiTimer = null
+  }, duration)
+}
+
+defineExpose({
+  setPlayingValue,
+  setVolumeValue,
+  showVolumeSliderByShortcut
+})
+
 onUnmounted(() => {
   document.removeEventListener('mousemove', handleBarMousemove)
   document.removeEventListener('mouseup', handleBarMouseup)
+  if (volumeUiTimer !== null) {
+    window.clearTimeout(volumeUiTimer)
+    volumeUiTimer = null
+  }
 })
 
 // 初始化从 localStorage 读取音量（默认 0.8）并应用
