@@ -1,3 +1,4 @@
+import path = require('path')
 import { getLibraryDb } from '../libraryDb'
 import { log } from '../log'
 import {
@@ -10,7 +11,8 @@ import {
   toNumber,
   resolveListRootInput,
   resolveFilePathInput,
-  resolveAbsoluteListRoot
+  resolveAbsoluteListRoot,
+  normalizeRoot
 } from './pathResolvers'
 
 type WaveformCacheMeta = {
@@ -21,6 +23,114 @@ type WaveformCacheMeta = {
   step: number
   duration: number
   frames: number
+}
+
+const looseWaveformRootCache = new Map<string, string[]>()
+
+function toLooseCompareExpr(column: string): string {
+  return `REPLACE(LOWER(${column}), '/', '\\\\') = REPLACE(LOWER(?), '/', '\\\\')`
+}
+
+function toLooseCompareExprRaw(expr: string): string {
+  return `REPLACE(LOWER(${expr}), '/', '\\\\') = REPLACE(LOWER(?), '/', '\\\\')`
+}
+
+function getLooseWaveformRoots(
+  db: any,
+  candidates: Array<string | null | undefined>,
+  listRootKey: string
+): string[] {
+  const key = `${listRootKey}::${candidates.filter(Boolean).join('|')}`
+  const cached = looseWaveformRootCache.get(key)
+  if (cached) return cached
+  const roots: string[] = []
+  const seen = new Set<string>()
+  const stmt = db.prepare(
+    `SELECT DISTINCT list_root FROM waveform_cache WHERE ${toLooseCompareExpr('list_root')} LIMIT 20`
+  )
+  for (const candidate of candidates) {
+    const value = candidate ? String(candidate) : ''
+    if (!value) continue
+    let rows: any[] = []
+    try {
+      rows = stmt.all(value)
+    } catch {
+      rows = []
+    }
+    for (const row of rows) {
+      const root = row?.list_root ? String(row.list_root) : ''
+      if (!root || seen.has(root)) continue
+      seen.add(root)
+      roots.push(root)
+    }
+  }
+  looseWaveformRootCache.set(key, roots)
+  return roots
+}
+
+function getWaveformRowLoose(
+  db: any,
+  listRootCandidates: string[],
+  filePathCandidates: string[]
+): { row: any; hitListRoot: string; hitFilePath: string } | null {
+  if (!db || listRootCandidates.length === 0 || filePathCandidates.length === 0) return null
+  const stmt = db.prepare(
+    `SELECT list_root, file_path, size, mtime_ms, version, sample_rate, step, duration, frames, data FROM waveform_cache WHERE ${toLooseCompareExpr(
+      'list_root'
+    )} AND ${toLooseCompareExpr('file_path')} LIMIT 1`
+  )
+  for (const listRoot of listRootCandidates) {
+    for (const filePath of filePathCandidates) {
+      let row: any = null
+      try {
+        row = stmt.get(listRoot, filePath)
+      } catch {
+        row = null
+      }
+      if (row && row.data !== undefined) {
+        return {
+          row,
+          hitListRoot: String(row.list_root || listRoot),
+          hitFilePath: String(row.file_path || filePath)
+        }
+      }
+    }
+  }
+  return null
+}
+
+function getWaveformRowBySongAbsPath(
+  db: any,
+  absPathCandidates: string[]
+): { row: any; hitListRoot: string; hitFilePath: string } | null {
+  if (!db || absPathCandidates.length === 0) return null
+  try {
+    const expr = "json_extract(s.info_json, '$.filePath')"
+    const stmt = db.prepare(
+      `SELECT w.list_root, w.file_path, w.size, w.mtime_ms, w.version, w.sample_rate, w.step, w.duration, w.frames, w.data
+       FROM waveform_cache w
+       JOIN song_cache s ON s.list_root = w.list_root AND s.file_path = w.file_path
+       WHERE ${toLooseCompareExprRaw(expr)} LIMIT 1`
+    )
+    for (const absPath of absPathCandidates) {
+      let row: any = null
+      try {
+        row = stmt.get(absPath)
+      } catch {
+        row = null
+      }
+      if (row && row.data !== undefined) {
+        return {
+          row,
+          hitListRoot: String(row.list_root || ''),
+          hitFilePath: String(row.file_path || '')
+        }
+      }
+    }
+  } catch {
+    return null
+  }
+  return null
 }
 
 export function migrateWaveformCacheRows(
@@ -137,7 +247,44 @@ export async function loadWaveformCacheData(
         legacyHit = true
       }
     }
-    if (!row || row.data === undefined) return null
+    if (!row || row.data === undefined) {
+      const looseRoots = getLooseWaveformRoots(
+        db,
+        [listRoot, listRootAbs, listRootKey],
+        listRootKey
+      )
+      const loose = getWaveformRowLoose(
+        db,
+        looseRoots,
+        [fileKey, fileKeyRaw, legacyFilePath, filePath].filter(
+          (value): value is string => typeof value === 'string' && value.length > 0
+        )
+      )
+      if (loose) {
+        row = loose.row
+        hitListRoot = loose.hitListRoot
+        hitFilePath = loose.hitFilePath
+        legacyHit = true
+      }
+    }
+    if (!row || row.data === undefined) {
+      const absCandidates = [resolvedFile.abs, filePath, legacyFilePath].filter(
+        (value): value is string =>
+          typeof value === 'string' && value.length > 0 && path.isAbsolute(value)
+      )
+      if (absCandidates.length > 0) {
+        const byAbs = getWaveformRowBySongAbsPath(db, absCandidates)
+        if (byAbs) {
+          row = byAbs.row
+          hitListRoot = byAbs.hitListRoot
+          hitFilePath = byAbs.hitFilePath
+          legacyHit = true
+        }
+      }
+    }
+    if (!row || row.data === undefined) {
+      return null
+    }
     const meta = normalizeWaveformMeta(row)
     if (!meta || meta.version !== MIXXX_WAVEFORM_CACHE_VERSION) {
       await removeWaveformCacheEntry(listRoot, filePath)
@@ -171,12 +318,17 @@ export async function loadWaveformCacheData(
     }
     if (legacyHit && resolvedRoot.isRelativeKey) {
       try {
-        const del = db.prepare('DELETE FROM waveform_cache WHERE list_root = ? AND file_path = ?')
-        const update = db.prepare(
-          'UPDATE waveform_cache SET list_root = ?, file_path = ? WHERE list_root = ? AND file_path = ?'
-        )
-        del.run(listRootKey, fileKey)
-        update.run(listRootKey, fileKey, hitListRoot, hitFilePath)
+        const sameRoot = normalizeRoot(hitListRoot) === normalizeRoot(listRootKey)
+        if (sameRoot) {
+          const del = db.prepare('DELETE FROM waveform_cache WHERE list_root = ? AND file_path = ?')
+          const update = db.prepare(
+            'UPDATE waveform_cache SET list_root = ?, file_path = ? WHERE list_root = ? AND file_path = ?'
+          )
+          del.run(listRootKey, fileKey)
+          update.run(listRootKey, fileKey, hitListRoot, hitFilePath)
+        } else {
+          await upsertWaveformCacheEntry(listRoot, filePath, stat, decoded)
+        }
       } catch {}
     }
     return decoded
@@ -236,6 +388,26 @@ export async function hasWaveformCacheEntry(
       if (row) {
         hitListRoot = legacyListRoot
         hitFilePath = legacyFilePath
+        legacyHit = true
+      }
+    }
+    if (!row) {
+      const looseRoots = getLooseWaveformRoots(
+        db,
+        [listRoot, listRootAbs, listRootKey],
+        listRootKey
+      )
+      const loose = getWaveformRowLoose(
+        db,
+        looseRoots,
+        [fileKey, fileKeyRaw, legacyFilePath, filePath].filter(
+          (value): value is string => typeof value === 'string' && value.length > 0
+        )
+      )
+      if (loose) {
+        row = loose.row
+        hitListRoot = loose.hitListRoot
+        hitFilePath = loose.hitFilePath
         legacyHit = true
       }
     }
@@ -330,6 +502,26 @@ export async function hasWaveformCacheEntryByMeta(
       if (row) {
         hitListRoot = legacyListRoot
         hitFilePath = legacyFilePath
+        legacyHit = true
+      }
+    }
+    if (!row) {
+      const looseRoots = getLooseWaveformRoots(
+        db,
+        [listRoot, listRootAbs, listRootKey],
+        listRootKey
+      )
+      const loose = getWaveformRowLoose(
+        db,
+        looseRoots,
+        [fileKey, fileKeyRaw, legacyFilePath, filePath].filter(
+          (value): value is string => typeof value === 'string' && value.length > 0
+        )
+      )
+      if (loose) {
+        row = loose.row
+        hitListRoot = loose.hitListRoot
+        hitFilePath = loose.hitFilePath
         legacyHit = true
       }
     }

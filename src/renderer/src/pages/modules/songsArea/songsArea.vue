@@ -413,6 +413,14 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
   }
 }
 
+const requestImmediateAnalysis = (song: ISongInfo) => {
+  const filePath = song?.filePath
+  if (!filePath) return
+  try {
+    window.electron.ipcRenderer.send('key-analysis:queue-playing', { filePath })
+  } catch {}
+}
+
 const songDblClick = async (song: ISongInfo) => {
   try {
     emitter.emit('waveform-preview:stop', { reason: 'switch' })
@@ -421,6 +429,7 @@ const songDblClick = async (song: ISongInfo) => {
   runtime.songsArea.selectedSongFilePath = []
 
   const normalizedSong = { ...song }
+  requestImmediateAnalysis(normalizedSong)
   const isSameList = runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID
   const isSameSong =
     isSameList && runtime.playingData.playingSong?.filePath === normalizedSong.filePath

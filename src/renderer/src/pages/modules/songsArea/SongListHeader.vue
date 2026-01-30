@@ -282,6 +282,14 @@ function normalizeNumberInput(input: string): string {
   return parts.length > 1 ? `${parts[0]}.${parts.slice(1).join('')}` : parts[0]
 }
 
+function parseExcludeKeywords(input: string): string[] {
+  if (!input) return []
+  return String(input)
+    .split(/[,\n;\r，；、|]+/g)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
 function applyFilterConfirm(target: ISongsAreaColumn) {
   const newColumns = props.columns.map((c) => {
     if (c.key !== target.key) return c
@@ -289,9 +297,10 @@ function applyFilterConfirm(target: ISongsAreaColumn) {
     if (c.filterType === 'text') {
       const includeText = tempText.value.trim()
       const excludeText = tempExcludeText.value.trim()
+      const excludeKeywords = parseExcludeKeywords(excludeText)
       next.filterValue = includeText || undefined
-      next.filterExcludeValue = excludeText || undefined
-      next.filterActive = !!includeText || !!excludeText
+      next.filterExcludeValue = excludeKeywords.length > 0 ? excludeText : undefined
+      next.filterActive = !!includeText || excludeKeywords.length > 0
       next.filterOp = undefined
       next.filterDuration = undefined
       next.filterNumber = undefined
@@ -338,10 +347,12 @@ function getFilterTooltip(col: ISongsAreaColumn): string {
   if (!col.filterActive) return ''
   if (col.filterType === 'text') {
     const includeText = (col.filterValue || '').trim()
-    const excludeText = (col.filterExcludeValue || '').trim()
+    const excludeKeywords = parseExcludeKeywords((col.filterExcludeValue || '').trim())
     const parts = []
     if (includeText) parts.push(`${props.t('filters.includeKeyword')}: "${includeText}"`)
-    if (excludeText) parts.push(`${props.t('filters.excludeKeyword')}: "${excludeText}"`)
+    if (excludeKeywords.length > 0) {
+      parts.push(`${props.t('filters.excludeKeyword')}: "${excludeKeywords.join(', ')}"`)
+    }
     if (parts.length === 0) return ''
     return `${props.t('filters.filterByText')}: ${parts.join(' / ')}`
   }

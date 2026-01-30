@@ -213,6 +213,16 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     return Number.isFinite(num) ? num : NaN
   }
 
+  function parseExcludeKeywords(input: unknown): string[] {
+    if (input === null || input === undefined) return []
+    const raw = String(input)
+    if (!raw.trim()) return []
+    return raw
+      .split(/[,\n;\r，；、|]+/g)
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean)
+  }
+
   // --- 持久化 ---
   const persistColumnData = () => {
     const storageKey = isRecycleBinView.value ? RECYCLE_STORAGE_KEY : DEFAULT_STORAGE_KEY
@@ -227,9 +237,9 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
       if (!col.filterActive) continue
       if (col.filterType === 'text' && col.key) {
         const keyword = String(col.filterValue || '').toLowerCase()
-        const excludeKeyword = String(col.filterExcludeValue || '').toLowerCase()
+        const excludeKeywords = parseExcludeKeywords(col.filterExcludeValue)
         const hasInclude = keyword.trim().length > 0
-        const hasExclude = excludeKeyword.trim().length > 0
+        const hasExclude = excludeKeywords.length > 0
         if (!hasInclude && !hasExclude) continue
         const isKeyColumn = col.key === 'key'
         const isOriginalPlaylist = col.key === 'originalPlaylistPath'
@@ -242,7 +252,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
           const displayValue = isKeyColumn ? getKeyDisplayText(rawValue, keyStyle) : rawValue
           const value = displayValue.toLowerCase()
           if (hasInclude && !value.includes(keyword)) return false
-          if (hasExclude && value.includes(excludeKeyword)) return false
+          if (hasExclude && excludeKeywords.some((kw) => value.includes(kw))) return false
           return true
         })
       } else if (col.filterType === 'duration' && col.filterOp && col.filterDuration) {

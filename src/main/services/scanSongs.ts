@@ -77,6 +77,11 @@ export async function scanSongList(
   }
   const perfListEnd = Date.now()
 
+  const normalizePathKey = (value: string): string => {
+    const resolved = path.resolve(value)
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+  }
+
   // 缓存结构
   type CacheEntry = {
     size: number
@@ -94,17 +99,25 @@ export async function scanSongList(
   if (cacheRoot) {
     const dbCache = await LibraryCacheDb.loadSongCache(cacheRoot)
     if (dbCache) {
-      cacheMap = dbCache
+      if (process.platform === 'win32') {
+        const normalizedMap = new Map<string, CacheEntry>()
+        for (const [filePath, entry] of dbCache) {
+          normalizedMap.set(normalizePathKey(filePath), entry)
+        }
+        cacheMap = normalizedMap
+      } else {
+        cacheMap = dbCache
+      }
       cacheFromDb = true
     }
   }
 
   const perfCacheCheckStart = Date.now()
-  const filesStatList: Array<{ file: string; size: number; mtimeMs: number }> = []
+  const filesStatList: Array<{ file: string; key: string; size: number; mtimeMs: number }> = []
   for (const file of songFileUrls) {
     try {
       const st = await fs.stat(file)
-      filesStatList.push({ file, size: st.size, mtimeMs: st.mtimeMs })
+      filesStatList.push({ file, key: normalizePathKey(file), size: st.size, mtimeMs: st.mtimeMs })
     } catch {
       // ignore stat error
     }
@@ -114,13 +127,13 @@ export async function scanSongList(
   const analysisOnlyByPath = new Map<string, { key?: string; bpm?: number }>()
   const isAnalysisOnly = (info?: ISongInfo | null): boolean => Boolean(info?.analysisOnly)
   for (const it of filesStatList) {
-    const c = cacheMap.get(it.file)
+    const c = cacheMap.get(it.key)
     if (c && c.size === it.size && Math.abs(c.mtimeMs - it.mtimeMs) < 1) {
       if (isAnalysisOnly(c.info)) {
-        analysisOnlyByPath.set(it.file, { key: c.info.key, bpm: c.info.bpm })
+        analysisOnlyByPath.set(it.key, { key: c.info.key, bpm: c.info.bpm })
         filesToParse.push(it.file)
       } else {
-        cachedInfos.push(enrichSongInfo(c.info))
+        cachedInfos.push(enrichSongInfo({ ...c.info, filePath: it.file }))
       }
     } else {
       filesToParse.push(it.file)
@@ -171,6 +184,22 @@ export async function scanSongList(
   const hasKey = (value: unknown): boolean => typeof value === 'string' && value.trim() !== ''
   const hasBpm = (value: unknown): boolean =>
     typeof value === 'number' && Number.isFinite(value) && value > 0
+
+  if (cacheFromDb && cacheRoot && cacheMap.size > 0 && filesStatList.length > 0) {
+    for (const st of filesStatList) {
+      const entry = cacheMap.get(st.key)
+      if (!entry || !entry.info) continue
+      const missingKeyBpm = !hasKey(entry.info.key) || !hasBpm(entry.info.bpm)
+      if (!missingKeyBpm) continue
+      const refreshed = await LibraryCacheDb.loadSongCacheEntry(cacheRoot, st.file)
+      if (refreshed?.info) {
+        cacheMap.set(st.key, refreshed)
+        if (refreshed.info.analysisOnly) {
+          analysisOnlyByPath.set(st.key, { key: refreshed.info.key, bpm: refreshed.info.bpm })
+        }
+      }
+    }
+  }
 
   const perfParseStart = Date.now()
   const FALLBACK_ONLY_EXTS = new Set(['.ac3', '.dts', '.tak', '.tta'])
@@ -268,7 +297,7 @@ export async function scanSongList(
     .map((info) => enrichSongInfo(info as ISongInfo))
   if (analysisOnlyByPath.size > 0) {
     for (const info of parsedInfos) {
-      const cached = analysisOnlyByPath.get(info.filePath)
+      const cached = analysisOnlyByPath.get(normalizePathKey(info.filePath))
       if (!cached) continue
       if (!hasKey(info.key) && hasKey(cached.key)) {
         info.key = cached.key as string
@@ -322,17 +351,31 @@ export async function scanSongList(
   if (cacheRoot) {
     try {
       const infoMap = new Map<string, ISongInfo>()
-      for (const info of songInfoArr) infoMap.set(info.filePath, enrichSongInfo(info))
+      for (const info of songInfoArr) {
+        infoMap.set(normalizePathKey(info.filePath), enrichSongInfo(info))
+      }
       const newEntriesMap = new Map<string, CacheEntry>()
       for (const st of filesStatList) {
-        const info = infoMap.get(st.file)
-        if (info) {
-          newEntriesMap.set(st.file, {
-            size: st.size,
-            mtimeMs: st.mtimeMs,
-            info: enrichSongInfo(info)
-          })
+        const info = infoMap.get(st.key)
+        if (!info) continue
+        const nextInfo = { ...info }
+        const cached = cacheMap.get(st.key)
+        if (cached?.info) {
+          if (!hasKey(nextInfo.key) && hasKey(cached.info.key)) {
+            nextInfo.key = cached.info.key as string
+          }
+          if (!hasBpm(nextInfo.bpm) && hasBpm(cached.info.bpm)) {
+            nextInfo.bpm = cached.info.bpm as number
+          }
+          if (nextInfo.analysisOnly === undefined && cached.info.analysisOnly) {
+            nextInfo.analysisOnly = true
+          }
         }
+        newEntriesMap.set(st.file, {
+          size: st.size,
+          mtimeMs: st.mtimeMs,
+          info: enrichSongInfo(nextInfo)
+        })
       }
       if (cacheFromDb) {
         await LibraryCacheDb.replaceSongCache(cacheRoot, newEntriesMap)
@@ -345,7 +388,9 @@ export async function scanSongList(
       .filter((info) => !hasKey(info.key) || !hasBpm(info.bpm))
       .map((info) => info.filePath)
       .filter((filePath) => typeof filePath === 'string' && filePath.trim().length > 0)
-    enqueueKeyAnalysisList(pendingKeys, 'low')
+    if (pendingKeys.length > 0) {
+      enqueueKeyAnalysisList(pendingKeys, 'low')
+    }
   }
 
   // 扫描完成后自动清理孤立的封面文件

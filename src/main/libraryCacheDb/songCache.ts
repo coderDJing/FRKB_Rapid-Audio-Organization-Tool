@@ -10,10 +10,205 @@ import {
   resolveFilePathInput,
   resolveAbsoluteListRoot,
   resolveAbsoluteFilePath,
-  normalizeInfoJsonFilePath
+  normalizeInfoJsonFilePath,
+  normalizeRoot
 } from './pathResolvers'
 
 const migratedSongRoots = new Set<string>()
+const looseSongRootCache = new Map<string, string[]>()
+
+function parseInfoJson(raw: any): ISongInfo | null {
+  if (raw === undefined || raw === null) return null
+  try {
+    return JSON.parse(String(raw)) as ISongInfo
+  } catch {
+    return null
+  }
+}
+
+function hasKeyText(value: unknown): value is string {
+  return typeof value === 'string' && value.trim() !== ''
+}
+
+function hasBpmValue(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+}
+
+function mergeInfoJson(
+  baseRaw: any,
+  incomingRaw: any,
+  absFilePath: string
+): { json: string; changed: boolean } {
+  const base = parseInfoJson(baseRaw)
+  const incoming = parseInfoJson(incomingRaw)
+  if (!base && !incoming) {
+    return { json: normalizeInfoJsonFilePath(baseRaw, absFilePath), changed: false }
+  }
+  const next: Partial<ISongInfo> = { ...(base || {}) }
+  if (incoming) {
+    for (const [key, value] of Object.entries(incoming)) {
+      if (value !== undefined) {
+        ;(next as any)[key] = value
+      }
+    }
+  }
+  const beforeKey = next.key
+  const beforeBpm = next.bpm
+  const beforeAnalysisOnly = next.analysisOnly
+  if (!hasKeyText(next.key) && hasKeyText(base?.key)) next.key = base?.key
+  if (!hasKeyText(next.key) && hasKeyText(incoming?.key)) next.key = incoming?.key
+  if (!hasBpmValue(next.bpm) && hasBpmValue(base?.bpm)) next.bpm = base?.bpm
+  if (!hasBpmValue(next.bpm) && hasBpmValue(incoming?.bpm)) next.bpm = incoming?.bpm
+  if (next.analysisOnly && incoming?.analysisOnly === false) {
+    next.analysisOnly = false
+  }
+  if (next.analysisOnly && base?.analysisOnly === false) {
+    next.analysisOnly = false
+  }
+  if (next.analysisOnly === undefined && incoming?.analysisOnly !== undefined) {
+    next.analysisOnly = incoming?.analysisOnly
+  }
+  if (next.analysisOnly === undefined && base?.analysisOnly !== undefined) {
+    next.analysisOnly = base?.analysisOnly
+  }
+  next.filePath = absFilePath
+  const changed =
+    beforeKey !== next.key || beforeBpm !== next.bpm || beforeAnalysisOnly !== next.analysisOnly
+  return { json: JSON.stringify(next), changed }
+}
+
+function toLooseCompareExpr(column: string): string {
+  return `REPLACE(LOWER(${column}), '/', '\\\\') = REPLACE(LOWER(?), '/', '\\\\')`
+}
+
+function toLooseCompareExprRaw(expr: string): string {
+  return `REPLACE(LOWER(${expr}), '/', '\\\\') = REPLACE(LOWER(?), '/', '\\\\')`
+}
+
+function getLooseSongCacheRoots(
+  db: any,
+  candidates: Array<string | null | undefined>,
+  listRootKey: string
+): string[] {
+  const key = `${listRootKey}::${candidates.filter(Boolean).join('|')}`
+  const cached = looseSongRootCache.get(key)
+  if (cached) return cached
+  const roots: string[] = []
+  const seen = new Set<string>()
+  const stmt = db.prepare(
+    `SELECT DISTINCT list_root FROM song_cache WHERE ${toLooseCompareExpr('list_root')} LIMIT 20`
+  )
+  for (const candidate of candidates) {
+    const value = candidate ? String(candidate) : ''
+    if (!value) continue
+    let rows: any[] = []
+    try {
+      rows = stmt.all(value)
+    } catch {
+      rows = []
+    }
+    for (const row of rows) {
+      const root = row?.list_root ? String(row.list_root) : ''
+      if (!root || seen.has(root)) continue
+      seen.add(root)
+      roots.push(root)
+    }
+  }
+  looseSongRootCache.set(key, roots)
+  return roots
+}
+
+function getSongCacheRowLoose(
+  db: any,
+  listRootCandidates: string[],
+  filePathCandidates: string[]
+): { row: any; hitListRoot: string; hitFilePath: string } | null {
+  if (!db || listRootCandidates.length === 0 || filePathCandidates.length === 0) return null
+  const stmt = db.prepare(
+    `SELECT list_root, file_path, size, mtime_ms, info_json FROM song_cache WHERE ${toLooseCompareExpr(
+      'list_root'
+    )} AND ${toLooseCompareExpr('file_path')} LIMIT 1`
+  )
+  for (const listRoot of listRootCandidates) {
+    for (const filePath of filePathCandidates) {
+      let row: any = null
+      try {
+        row = stmt.get(listRoot, filePath)
+      } catch {
+        row = null
+      }
+      if (row && row.info_json !== undefined) {
+        return {
+          row,
+          hitListRoot: String(row.list_root || listRoot),
+          hitFilePath: String(row.file_path || filePath)
+        }
+      }
+    }
+  }
+  return null
+}
+
+function getSongCacheRowGlobal(
+  db: any,
+  filePathCandidates: string[]
+): { row: any; hitListRoot: string; hitFilePath: string } | null {
+  if (!db || filePathCandidates.length === 0) return null
+  const stmt = db.prepare(
+    `SELECT list_root, file_path, size, mtime_ms, info_json FROM song_cache WHERE ${toLooseCompareExpr(
+      'file_path'
+    )} LIMIT 1`
+  )
+  for (const filePath of filePathCandidates) {
+    let row: any = null
+    try {
+      row = stmt.get(filePath)
+    } catch {
+      row = null
+    }
+    if (row && row.info_json !== undefined) {
+      return {
+        row,
+        hitListRoot: String(row.list_root || ''),
+        hitFilePath: String(row.file_path || filePath)
+      }
+    }
+  }
+  return null
+}
+
+function getSongCacheRowByAbsPath(
+  db: any,
+  absPathCandidates: string[]
+): { row: any; hitListRoot: string; hitFilePath: string } | null {
+  if (!db || absPathCandidates.length === 0) return null
+  try {
+    const expr = "json_extract(info_json, '$.filePath')"
+    const stmt = db.prepare(
+      `SELECT list_root, file_path, size, mtime_ms, info_json FROM song_cache WHERE ${toLooseCompareExprRaw(
+        expr
+      )} LIMIT 1`
+    )
+    for (const absPath of absPathCandidates) {
+      let row: any = null
+      try {
+        row = stmt.get(absPath)
+      } catch {
+        row = null
+      }
+      if (row && row.info_json !== undefined) {
+        return {
+          row,
+          hitListRoot: String(row.list_root || ''),
+          hitFilePath: String(row.file_path || '')
+        }
+      }
+    }
+  } catch {
+    return null
+  }
+  return null
+}
 
 export function migrateSongCacheRows(
   db: any,
@@ -30,6 +225,12 @@ export function migrateSongCacheRows(
     const update = db.prepare(
       'UPDATE song_cache SET list_root = ?, file_path = ?, info_json = ? WHERE list_root = ? AND file_path = ?'
     )
+    const selectNew = db.prepare(
+      'SELECT size, mtime_ms, info_json FROM song_cache WHERE list_root = ? AND file_path = ?'
+    )
+    const updateNew = db.prepare(
+      'UPDATE song_cache SET size = ?, mtime_ms = ?, info_json = ? WHERE list_root = ? AND file_path = ?'
+    )
     let moved = 0
     const run = db.transaction(() => {
       for (const row of rows) {
@@ -39,6 +240,24 @@ export function migrateSongCacheRows(
         if (!resolvedFile) continue
         const newFileKey = resolvedFile.key
         const absFilePath = resolveAbsoluteFilePath(newListRootKey, newFileKey)
+        const existing = selectNew.get(newListRootKey, newFileKey)
+        if (existing && existing.info_json !== undefined) {
+          const merged = mergeInfoJson(existing.info_json, row?.info_json, absFilePath)
+          const nextSize = toNumber(existing.size)
+          const nextMtime = toNumber(existing.mtime_ms)
+          const fallbackSize = toNumber(row.size)
+          const fallbackMtime = toNumber(row.mtime_ms)
+          updateNew.run(
+            nextSize ?? fallbackSize ?? 0,
+            nextMtime ?? fallbackMtime ?? 0,
+            merged.json,
+            newListRootKey,
+            newFileKey
+          )
+          del.run(oldListRoot, filePath)
+          moved += 1
+          continue
+        }
         const infoJson = normalizeInfoJsonFilePath(row?.info_json, absFilePath)
         del.run(newListRootKey, newFileKey)
         const result = update.run(newListRootKey, newFileKey, infoJson, oldListRoot, filePath)
@@ -124,16 +343,6 @@ export async function loadSongCache(listRoot: string): Promise<Map<string, SongC
       : undefined
   try {
     await ensureSongCacheMigrated(db, listRoot)
-    const rows = db
-      .prepare('SELECT file_path, size, mtime_ms, info_json FROM song_cache WHERE list_root = ?')
-      .all(listRootKey)
-    const legacyRows = legacyListRoot
-      ? db
-          .prepare(
-            'SELECT file_path, size, mtime_ms, info_json FROM song_cache WHERE list_root = ?'
-          )
-          .all(legacyListRoot)
-      : []
     const map = new Map<string, SongCacheEntry>()
     const appendRows = (rowsToUse: any[], rootKey: string, legacyRelRoot?: string) => {
       for (const row of rowsToUse || []) {
@@ -156,6 +365,36 @@ export async function loadSongCache(listRoot: string): Promise<Map<string, SongC
         }
         info.filePath = absFilePath
         map.set(absFilePath, { size, mtimeMs, info })
+      }
+    }
+    const rows = db
+      .prepare('SELECT file_path, size, mtime_ms, info_json FROM song_cache WHERE list_root = ?')
+      .all(listRootKey)
+    const legacyRows = legacyListRoot
+      ? db
+          .prepare(
+            'SELECT file_path, size, mtime_ms, info_json FROM song_cache WHERE list_root = ?'
+          )
+          .all(legacyListRoot)
+      : []
+    const looseRoots =
+      rows.length === 0 && legacyRows.length === 0
+        ? getLooseSongCacheRoots(db, [listRoot, listRootAbs, listRootKey], listRootKey).filter(
+            (root) => root !== listRootKey && root !== legacyListRoot
+          )
+        : []
+    if (looseRoots.length > 0) {
+      const extraStmt = db.prepare(
+        'SELECT file_path, size, mtime_ms, info_json FROM song_cache WHERE list_root = ?'
+      )
+      for (const root of looseRoots) {
+        const extraRows = extraStmt.all(root)
+        if (extraRows && extraRows.length > 0) {
+          appendRows(extraRows, root, listRootAbs)
+          if (resolvedRoot.isRelativeKey && listRootAbs) {
+            migrateSongCacheRows(db, root, listRootKey, listRootAbs)
+          }
+        }
       }
     }
     appendRows(rows, listRootKey)
@@ -225,7 +464,147 @@ export async function loadSongCacheEntry(
         legacyHit = true
       }
     }
-    if (!row || row.info_json === undefined) return null
+    if (!row || row.info_json === undefined) {
+      const looseRoots = getLooseSongCacheRoots(
+        db,
+        [listRoot, listRootAbs, listRootKey],
+        listRootKey
+      )
+      const loose = getSongCacheRowLoose(
+        db,
+        looseRoots,
+        [fileKey, fileKeyRaw, legacyFilePath, filePath].filter(
+          (value): value is string => typeof value === 'string' && value.length > 0
+        )
+      )
+      if (loose) {
+        row = loose.row
+        hitListRoot = loose.hitListRoot
+        hitFilePath = loose.hitFilePath
+        legacyHit = true
+      }
+    }
+    const currentInfo = parseInfoJson(row?.info_json)
+    const needsGlobalMerge =
+      !row ||
+      row.info_json === undefined ||
+      !hasKeyText(currentInfo?.key) ||
+      !hasBpmValue(currentInfo?.bpm)
+    if (needsGlobalMerge) {
+      const fileCandidates = [fileKey, fileKeyRaw, legacyFilePath, filePath].filter(
+        (value): value is string => typeof value === 'string' && value.length > 0
+      )
+      const looseRoots = getLooseSongCacheRoots(
+        db,
+        [listRoot, listRootAbs, listRootKey],
+        listRootKey
+      )
+      const loose = getSongCacheRowLoose(db, looseRoots, fileCandidates)
+      let mergeSource: { row: any; hitListRoot: string; hitFilePath: string } | null = null
+      if (loose && loose.row && loose.row.info_json !== undefined) {
+        const looseInfo = parseInfoJson(loose.row.info_json)
+        if (hasKeyText(looseInfo?.key) || hasBpmValue(looseInfo?.bpm)) {
+          if (!(hitListRoot === loose.hitListRoot && hitFilePath === loose.hitFilePath)) {
+            mergeSource = loose
+          }
+        }
+      }
+      if (!mergeSource) {
+        const absCandidates = [
+          resolvedFile.abs,
+          filePath,
+          legacyFilePath,
+          resolveAbsoluteFilePath(listRootKey, fileKey)
+        ].filter(
+          (value): value is string =>
+            typeof value === 'string' && value.length > 0 && path.isAbsolute(value)
+        )
+        if (absCandidates.length > 0) {
+          const byAbs = getSongCacheRowByAbsPath(db, absCandidates)
+          if (byAbs && byAbs.row && byAbs.row.info_json !== undefined) {
+            const byAbsInfo = parseInfoJson(byAbs.row.info_json)
+            if (hasKeyText(byAbsInfo?.key) || hasBpmValue(byAbsInfo?.bpm)) {
+              if (!(hitListRoot === byAbs.hitListRoot && hitFilePath === byAbs.hitFilePath)) {
+                mergeSource = byAbs
+              }
+            }
+          }
+        }
+      }
+      if (!mergeSource) {
+        const absCandidates = [filePath, legacyFilePath].filter(
+          (value): value is string =>
+            typeof value === 'string' && value.length > 0 && path.isAbsolute(value)
+        )
+        if (absCandidates.length > 0) {
+          const global = getSongCacheRowGlobal(db, absCandidates)
+          if (global && global.row && global.row.info_json !== undefined) {
+            const globalInfo = parseInfoJson(global.row.info_json)
+            if (hasKeyText(globalInfo?.key) || hasBpmValue(globalInfo?.bpm)) {
+              if (!(hitListRoot === global.hitListRoot && hitFilePath === global.hitFilePath)) {
+                mergeSource = global
+              }
+            }
+          }
+        }
+      }
+      if (mergeSource && mergeSource.row && mergeSource.row.info_json !== undefined) {
+        const absFilePath = resolvedFile.abs || resolveAbsoluteFilePath(listRootKey, fileKey)
+        const merged = mergeInfoJson(row?.info_json, mergeSource.row.info_json, absFilePath)
+        const sameRoot = normalizeRoot(mergeSource.hitListRoot) === normalizeRoot(listRootKey)
+        if (row && row.info_json !== undefined) {
+          const updateExisting = db.prepare(
+            'UPDATE song_cache SET info_json = ? WHERE list_root = ? AND file_path = ?'
+          )
+          updateExisting.run(merged.json, listRootKey, fileKey)
+          row = { ...row, info_json: merged.json }
+          if (
+            sameRoot &&
+            (mergeSource.hitListRoot !== listRootKey || mergeSource.hitFilePath !== fileKey)
+          ) {
+            try {
+              db.prepare('DELETE FROM song_cache WHERE list_root = ? AND file_path = ?').run(
+                mergeSource.hitListRoot,
+                mergeSource.hitFilePath
+              )
+            } catch {}
+          }
+        } else {
+          if (sameRoot) {
+            const del = db.prepare('DELETE FROM song_cache WHERE list_root = ? AND file_path = ?')
+            const update = db.prepare(
+              'UPDATE song_cache SET list_root = ?, file_path = ?, info_json = ? WHERE list_root = ? AND file_path = ?'
+            )
+            del.run(listRootKey, fileKey)
+            update.run(
+              listRootKey,
+              fileKey,
+              merged.json,
+              mergeSource.hitListRoot,
+              mergeSource.hitFilePath
+            )
+            row = { ...mergeSource.row, info_json: merged.json }
+            hitListRoot = listRootKey
+            hitFilePath = fileKey
+            legacyHit = true
+          } else {
+            const insert = db.prepare(
+              'INSERT OR REPLACE INTO song_cache (list_root, file_path, size, mtime_ms, info_json) VALUES (?, ?, ?, ?, ?)'
+            )
+            const size = toNumber(mergeSource.row.size) ?? 0
+            const mtimeMs = toNumber(mergeSource.row.mtime_ms) ?? 0
+            insert.run(listRootKey, fileKey, size, mtimeMs, merged.json)
+            row = { ...mergeSource.row, info_json: merged.json }
+            hitListRoot = listRootKey
+            hitFilePath = fileKey
+            legacyHit = false
+          }
+        }
+      }
+    }
+    if (!row || row.info_json === undefined) {
+      return null
+    }
     let info: ISongInfo | null = null
     try {
       info = JSON.parse(String(row.info_json)) as ISongInfo
@@ -240,13 +619,37 @@ export async function loadSongCacheEntry(
     info.filePath = absFilePath
     if (legacyHit && resolvedRoot.isRelativeKey) {
       try {
-        const normalizedInfoJson = normalizeInfoJsonFilePath(row.info_json, absFilePath)
-        const del = db.prepare('DELETE FROM song_cache WHERE list_root = ? AND file_path = ?')
-        const update = db.prepare(
-          'UPDATE song_cache SET list_root = ?, file_path = ?, info_json = ? WHERE list_root = ? AND file_path = ?'
-        )
-        del.run(listRootKey, fileKey)
-        update.run(listRootKey, fileKey, normalizedInfoJson, hitListRoot, hitFilePath)
+        const sameRoot = normalizeRoot(hitListRoot) === normalizeRoot(listRootKey)
+        const existing = db
+          .prepare('SELECT info_json FROM song_cache WHERE list_root = ? AND file_path = ?')
+          .get(listRootKey, fileKey)
+        if (existing && existing.info_json !== undefined) {
+          const merged = mergeInfoJson(existing.info_json, row.info_json, absFilePath)
+          db.prepare(
+            'UPDATE song_cache SET info_json = ? WHERE list_root = ? AND file_path = ?'
+          ).run(merged.json, listRootKey, fileKey)
+          if (sameRoot && (hitListRoot !== listRootKey || hitFilePath !== fileKey)) {
+            db.prepare('DELETE FROM song_cache WHERE list_root = ? AND file_path = ?').run(
+              hitListRoot,
+              hitFilePath
+            )
+          }
+        } else {
+          const normalizedInfoJson = normalizeInfoJsonFilePath(row.info_json, absFilePath)
+          if (sameRoot) {
+            const del = db.prepare('DELETE FROM song_cache WHERE list_root = ? AND file_path = ?')
+            const update = db.prepare(
+              'UPDATE song_cache SET list_root = ?, file_path = ?, info_json = ? WHERE list_root = ? AND file_path = ?'
+            )
+            del.run(listRootKey, fileKey)
+            update.run(listRootKey, fileKey, normalizedInfoJson, hitListRoot, hitFilePath)
+          } else {
+            const insert = db.prepare(
+              'INSERT OR REPLACE INTO song_cache (list_root, file_path, size, mtime_ms, info_json) VALUES (?, ?, ?, ?, ?)'
+            )
+            insert.run(listRootKey, fileKey, size, mtimeMs, normalizedInfoJson)
+          }
+        }
       } catch {}
     }
     return { size, mtimeMs, info }

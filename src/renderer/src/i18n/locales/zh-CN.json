@@ -697,7 +697,7 @@
     "includeKeyword": "包含关键词",
     "excludeKeyword": "排除关键词",
     "keywordPlaceholder": "请输入关键词",
-    "excludeKeywordPlaceholder": "请输入需要排除的关键词",
+    "excludeKeywordPlaceholder": "请输入需要排除的关键词（用逗号/分号/顿号/竖线分隔）",
     "clearThisColumn": "清空本列",
     "durationPlaceholder": "MM:SS",
     "bpmPlaceholder": "例如 128 或 128.5",

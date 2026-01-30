@@ -439,9 +439,9 @@ const enFaq = [
         </div>
         <div class="nav-right">
           <button
-            @click="toggleTheme"
             class="theme-toggle"
             :aria-label="isEn ? 'Toggle theme' : '切换主题'"
+            @click="toggleTheme"
           >
             <svg
               width="20"
@@ -529,7 +529,7 @@ const enFaq = [
           </div>
 
           <!-- 其他平台按钮 -->
-          <a v-if="!isLoadingDownloads" href="#" @click="togglePlatform" class="toggle-platform">
+          <a v-if="!isLoadingDownloads" href="#" class="toggle-platform" @click="togglePlatform">
             {{ isEn ? 'Switch Platform' : '切换平台' }}
           </a>
           <p v-if="!isLoadingDownloads" class="cta-note">
@@ -585,9 +585,9 @@ const enFaq = [
         </div>
         <div class="grid">
           <div
-            class="card reveal is-visible"
             v-for="f in isEn ? enFeatures : zhFeatures"
             :key="f.title"
+            class="card reveal is-visible"
           >
             <h3>{{ f.title }}</h3>
             <p>{{ f.details }}</p>
@@ -611,9 +611,9 @@ const enFaq = [
         </div>
         <div class="workflow-grid">
           <div
-            class="workflow-card reveal is-visible"
             v-for="(step, index) in isEn ? enWorkflow : zhWorkflow"
             :key="step.title"
+            class="workflow-card reveal is-visible"
           >
             <div class="workflow-step">
               {{ isEn ? `Step ${index + 1}` : `步骤 ${index + 1}` }}
@@ -640,9 +640,9 @@ const enFaq = [
         </div>
         <div class="matrix-grid">
           <div
-            class="matrix-card reveal is-visible"
             v-for="group in isEn ? enMatrix : zhMatrix"
             :key="group.title"
+            class="matrix-card reveal is-visible"
           >
             <h3>{{ group.title }}</h3>
             <ul>
@@ -668,9 +668,9 @@ const enFaq = [
         </div>
         <div class="faq-grid">
           <div
-            class="faq-item reveal is-visible"
             v-for="item in isEn ? enFaq : zhFaq"
             :key="item.q"
+            class="faq-item reveal is-visible"
           >
             <h3>{{ item.q }}</h3>
             <p>{{ item.a }}</p>

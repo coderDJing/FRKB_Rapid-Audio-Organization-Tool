@@ -79,7 +79,7 @@ export function resolveListRootInput(listRoot: string): CacheRootResolved | null
   let isRelativeKey = false
   if (isAbs) {
     abs = path.resolve(raw)
-    legacyAbs = raw
+    legacyAbs = normalizeRoot(abs)
     if (base && isUnderPath(base, abs)) {
       keyRaw = path.relative(base, abs)
       key = normalizeRoot(keyRaw)
@@ -100,7 +100,7 @@ export function resolveListRootInput(listRoot: string): CacheRootResolved | null
     isRelativeKey = true
     if (base) {
       abs = path.join(base, raw)
-      legacyAbs = abs
+      legacyAbs = normalizeRoot(abs)
     }
   }
   if (!key) return null
@@ -127,7 +127,7 @@ export function resolveFilePathInput(
   let isRelativeKey = false
   if (isAbs) {
     abs = path.resolve(raw)
-    legacyAbs = raw
+    legacyAbs = normalizeRoot(abs)
     if (listRootAbs && isUnderPath(listRootAbs, abs)) {
       keyRaw = path.relative(listRootAbs, abs)
       key = normalizeRoot(keyRaw)
@@ -141,7 +141,7 @@ export function resolveFilePathInput(
     isRelativeKey = true
     if (listRootAbs) {
       abs = path.join(listRootAbs, raw)
-      legacyAbs = abs
+      legacyAbs = normalizeRoot(abs)
     }
   }
   if (!key) return null

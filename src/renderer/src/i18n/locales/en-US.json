@@ -694,7 +694,7 @@
     "includeKeyword": "Include keyword",
     "excludeKeyword": "Exclude keyword",
     "keywordPlaceholder": "Please enter keyword",
-    "excludeKeywordPlaceholder": "Enter keyword to exclude",
+    "excludeKeywordPlaceholder": "Enter keywords to exclude (comma/semicolon/pipe separated)",
     "clearThisColumn": "Clear column",
     "durationPlaceholder": "MM:SS",
     "bpmPlaceholder": "e.g. 128 or 128.5",

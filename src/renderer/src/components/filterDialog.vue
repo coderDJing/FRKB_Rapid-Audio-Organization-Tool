@@ -149,6 +149,7 @@ onUnmounted(() => {
               type="text"
               :placeholder="t('filters.keywordPlaceholder')"
               style="width: 100%"
+              @keydown.enter.prevent.stop="handleConfirm"
             />
           </div>
           <div class="filter-field" style="margin-top: 10px">
@@ -159,6 +160,7 @@ onUnmounted(() => {
               type="text"
               :placeholder="t('filters.excludeKeywordPlaceholder')"
               style="width: 100%"
+              @keydown.enter.prevent.stop="handleConfirm"
             />
           </div>
         </template>
@@ -184,6 +186,7 @@ onUnmounted(() => {
             :placeholder="t('filters.durationPlaceholder')"
             style="width: 100%"
             @blur="duration = normalizeMmSs(duration)"
+            @keydown.enter.prevent.stop="handleConfirm"
           />
           <div style="margin-top: 8px; display: flex; gap: 8px">
             <div class="tag" @click="duration = '01:30'">01:30</div>
@@ -214,6 +217,7 @@ onUnmounted(() => {
             :placeholder="t('filters.bpmPlaceholder')"
             style="width: 100%"
             @blur="numberValue = normalizeNumberInput(numberValue)"
+            @keydown.enter.prevent.stop="handleConfirm"
           />
         </template>
       </div>

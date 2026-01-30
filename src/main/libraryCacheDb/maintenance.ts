@@ -17,7 +17,7 @@ import { ensureSongCacheMigrated, migrateSongCacheRows } from './songCache'
 import { ensureCoverIndexMigrated, migrateCoverIndexRows } from './coverIndex'
 import { migrateWaveformCacheRows } from './waveformCache'
 
-const CACHE_KEY_MIGRATION_META_KEY = 'cache_key_relative_migrated_v1'
+const CACHE_KEY_MIGRATION_META_KEY_V2 = 'cache_key_relative_migrated_v2'
 let cacheKeyMigrationScheduled = false
 
 export async function renameCacheRoot(
@@ -228,12 +228,12 @@ export async function migrateCacheKeysToRelativeIfNeeded(): Promise<void> {
   const db = getLibraryDb()
   if (!db) return
   try {
-    if (getMetaValue(db, CACHE_KEY_MIGRATION_META_KEY) === '1') return
+    if (getMetaValue(db, CACHE_KEY_MIGRATION_META_KEY_V2) === '1') return
     const baseRoot = getDatabaseRootAbs()
     if (!baseRoot) return
     const roots = collectMigratableCacheRoots(db, baseRoot)
     if (roots.size === 0) {
-      setMetaValue(db, CACHE_KEY_MIGRATION_META_KEY, '1')
+      setMetaValue(db, CACHE_KEY_MIGRATION_META_KEY_V2, '1')
       return
     }
     for (const root of roots) {
@@ -243,13 +243,13 @@ export async function migrateCacheKeysToRelativeIfNeeded(): Promise<void> {
       if (!rel) continue
       const newKey = normalizeRoot(rel)
       if (!newKey) continue
-      migrateSongCacheRows(db, root, newKey, root)
-      migrateCoverIndexRows(db, root, newKey, root)
-      migrateWaveformCacheRows(db, root, newKey, root)
+      const songMoved = migrateSongCacheRows(db, root, newKey, root)
+      const coverMoved = migrateCoverIndexRows(db, root, newKey, root)
+      const waveformMoved = migrateWaveformCacheRows(db, root, newKey, root)
     }
     const remaining = collectMigratableCacheRoots(db, baseRoot)
     if (remaining.size === 0) {
-      setMetaValue(db, CACHE_KEY_MIGRATION_META_KEY, '1')
+      setMetaValue(db, CACHE_KEY_MIGRATION_META_KEY_V2, '1')
     }
   } catch (error) {
     log.error('[sqlite] cache key migration failed', error)
