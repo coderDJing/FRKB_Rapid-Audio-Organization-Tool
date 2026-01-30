@@ -118,8 +118,9 @@ const resetManual = () => {
 
 <template>
   <div
-    class="unselectable"
+    v-show="waveformShow"
     ref="bpmDomRef"
+    class="unselectable"
     :style="{
       width: 'auto',
       minWidth: '80px',
@@ -132,7 +133,6 @@ const resetManual = () => {
       // 手动 BPM 高亮为主题色
       color: isManual ? '#0078d4' : undefined
     }"
-    v-show="waveformShow"
     @click.left="handleLeftClick"
     @contextmenu="handleRightClick"
   >
@@ -143,7 +143,7 @@ const resetManual = () => {
     :dom="bpmDomRef || undefined"
     title="BPM"
     :shortcut="t('player.tapBeat')"
-    :maxWidth="250"
+    :max-width="250"
     :interactive="false"
   />
 </template>

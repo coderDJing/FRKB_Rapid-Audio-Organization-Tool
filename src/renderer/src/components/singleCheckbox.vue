@@ -34,12 +34,12 @@ function handleChange() {
   <div class="checkBoxContainer">
     <div class="checkBox">
       <input
+        :id="'checkBoxInput' + uuid"
+        v-model="value"
         class="sure"
         type="checkbox"
-        v-model="value"
         :value="true"
         @change="handleChange"
-        :id="'checkBoxInput' + uuid"
       />
       <label class="box" :for="'checkBoxInput' + uuid"></label>
     </div>

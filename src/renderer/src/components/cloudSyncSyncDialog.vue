@@ -254,15 +254,15 @@ onUnmounted(() => {
 
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
-    <div class="inner" v-dialog-drag="'.dialog-title'">
+    <div v-dialog-drag="'.dialog-title'" class="inner">
       <div class="title dialog-title dialog-header">{{ t('cloudSync.syncFingerprints') }}</div>
       <div class="body">
         <div v-if="configured === false" class="hint">{{ t('cloudSync.notConfigured') }}</div>
         <div class="stages">
           <div
-            class="stage"
             v-for="(s, i) in stages"
             :key="s.key"
+            class="stage"
             :class="{ active: i <= currentPhaseIndex, current: i === currentPhaseIndex }"
           >
             <div class="dot"></div>
@@ -296,7 +296,7 @@ onUnmounted(() => {
             </template>
           </div>
         </div>
-        <div class="log" v-if="logMsg">{{ logMsg }}</div>
+        <div v-if="logMsg" class="log">{{ logMsg }}</div>
       </div>
       <div class="dialog-footer">
         <div
@@ -318,11 +318,11 @@ onUnmounted(() => {
     </div>
   </div>
   <div
-    class="dialog unselectable"
     v-if="summaryShouldRender"
+    class="dialog unselectable"
     :class="{ 'dialog-visible': summaryDialogVisible }"
   >
-    <div class="inner" v-dialog-drag="'.dialog-title'">
+    <div v-dialog-drag="'.dialog-title'" class="inner">
       <div class="title dialog-title dialog-header">{{ t('cloudSync.syncCompleted') }}</div>
       <div class="body summary-body">
         <div class="stats">

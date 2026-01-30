@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="triggerRef"
     class="base-select"
     :class="{
       'base-select--open': isOpen && !disabled,
@@ -9,10 +10,9 @@
     role="combobox"
     :aria-expanded="isOpen"
     :aria-disabled="disabled"
+    :tabindex="disabled ? -1 : 0"
     @click="toggleDropdown"
     @keydown.stop="handleKeydown"
-    :tabindex="disabled ? -1 : 0"
-    ref="triggerRef"
   >
     <div class="base-select__value" :title="selectedLabel || placeholder">
       <span v-if="selectedLabel">{{ selectedLabel }}</span>

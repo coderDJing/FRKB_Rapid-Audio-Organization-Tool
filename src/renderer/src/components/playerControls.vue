@@ -412,11 +412,11 @@ onUnmounted(() => {
         :title="t('player.fastBackward')"
         shortcut="A"
       />
-      <div ref="playRef" class="buttonIcon" v-show="!playing" @click="handlePlay()">
+      <div v-show="!playing" ref="playRef" class="buttonIcon" @click="handlePlay()">
         <img :src="play" draggable="false" />
       </div>
       <bubbleBox :dom="playRef || undefined" :title="t('player.play')" shortcut="Space" />
-      <div ref="pauseRef" class="buttonIcon" v-show="playing" @click="handlePause()">
+      <div v-show="playing" ref="pauseRef" class="buttonIcon" @click="handlePause()">
         <img :src="pause" draggable="false" />
       </div>
       <bubbleBox :dom="pauseRef || undefined" :title="t('player.pause')" shortcut="Space" />
@@ -431,9 +431,9 @@ onUnmounted(() => {
       <!-- 音量按钮，与“下一首”同风格 -->
       <div
         class="buttonIcon volumeIcon"
+        style="position: relative"
         @mouseenter="iconHovering = true"
         @mouseleave="iconHovering = false"
-        style="position: relative"
       >
         <img :src="volumeIcon" draggable="false" @click.stop="toggleMute" />
         <transition name="fade">
@@ -443,7 +443,7 @@ onUnmounted(() => {
             @mouseenter="sliderHovering = true"
             @mouseleave="sliderHovering = false"
           >
-            <div class="volumeBar" ref="volumeBarRef" @mousedown="handleBarMousedown">
+            <div ref="volumeBarRef" class="volumeBar" @mousedown="handleBarMousedown">
               <div class="volumeFill" :style="{ height: Math.round(volume * 100) + '%' }"></div>
             </div>
           </div>
@@ -454,7 +454,7 @@ onUnmounted(() => {
       </div>
     </div>
     <transition name="fade">
-      <div class="moreMenu unselectable" v-if="moreMenuShow">
+      <div v-if="moreMenuShow" class="moreMenu unselectable">
         <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
           <div class="menuButton" @click="exportTrack()">
             <span>{{ t('tracks.exportTracks') }}</span>

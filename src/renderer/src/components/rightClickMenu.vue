@@ -160,10 +160,10 @@ onUnmounted(() => {
         <div
           v-for="button of item"
           class="menuButton"
-          @click="menuButtonClick(button)"
           :class="{
             menuButtonOver: hoverItem === null ? false : hoverItem.menuName === button.menuName
           }"
+          @click="menuButtonClick(button)"
           @mouseover.stop="mouseover(button)"
           @contextmenu="menuButtonClick(button)"
         >

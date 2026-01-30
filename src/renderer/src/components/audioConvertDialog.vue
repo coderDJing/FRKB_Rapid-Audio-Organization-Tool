@@ -175,9 +175,9 @@ const cancel = () => {
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
+      v-dialog-drag="'.dialog-title'"
       style="width: 500px; height: 450px; display: flex; flex-direction: column"
       class="inner"
-      v-dialog-drag="'.dialog-title'"
     >
       <div class="dialog-title dialog-header">
         <span>{{ t('convert.title') }}</span>
@@ -197,13 +197,13 @@ const cancel = () => {
         <div style="margin-top: 20px">{{ t('convert.strategy') }}：</div>
         <div style="margin-top: 10px">
           <singleRadioGroup
+            v-model="(form as any).strategy"
             name="convertStrategy"
             :options="[
               { label: t('convert.newFile'), value: 'new_file' },
               { label: t('convert.replaceOriginal'), value: 'replace' }
             ]"
-            v-model="(form as any).strategy"
-            :optionFontSize="12"
+            :option-font-size="12"
           />
         </div>
 
@@ -216,7 +216,7 @@ const cancel = () => {
             :draggable="false"
             class="theme-icon"
           />
-          <bubbleBox :dom="metadataHintRef || undefined" :title="metadataHint" :maxWidth="240" />
+          <bubbleBox :dom="metadataHintRef || undefined" :title="metadataHint" :max-width="240" />
         </div>
         <div style="margin-top: 10px">
           <singleCheckbox v-model="(form as any).preserveMetadata" />
@@ -231,7 +231,7 @@ const cancel = () => {
         <div class="button" style="width: 90px; text-align: center" @click="confirm()">
           {{ t('common.confirm') }} (E)
         </div>
-        <div class="button" @click="cancel()" style="width: 90px; text-align: center">
+        <div class="button" style="width: 90px; text-align: center" @click="cancel()">
           {{ t('common.cancel') }} (Esc)
         </div>
       </div>

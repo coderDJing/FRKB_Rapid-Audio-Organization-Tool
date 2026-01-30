@@ -296,7 +296,7 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
 <template>
   <div style="height: 100%; max-height: 100%; width: 100%; display: flex; flex-direction: column">
     <div style="height: 35px">
-      <titleComponent @openDialog="openDialog" />
+      <titleComponent @open-dialog="openDialog" />
     </div>
     <div style="flex: 1 1 auto; min-height: 0">
       <homePage />

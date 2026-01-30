@@ -537,19 +537,11 @@ watch(
 </script>
 <template>
   <div
-    class="mainBody"
+    v-show="shouldShow"
     ref="rowEl"
+    class="mainBody"
     style="display: flex; box-sizing: border-box"
     :style="'padding-left:' + (props.needPaddingLeft ? indentWidth : 0) + 'px'"
-    @contextmenu.stop="contextmenuEvent"
-    @click.stop="dirHandleClick()"
-    @dblclick="dirHandleDblClick()"
-    @dragover.stop.prevent="dragover"
-    @dragstart.stop="dragstart"
-    @dragenter.stop.prevent="dragenter"
-    @drop.stop="drop"
-    @dragleave.stop="dragleave"
-    v-show="shouldShow"
     :draggable="dirData.dirName && !renameDivShow ? true : false"
     :class="{
       rightClickBorder: rightClickMenuShow,
@@ -558,6 +550,14 @@ watch(
       borderCenter: dragState.dragApproach == 'center',
       selectedDir: !props.suppressHighlight && props.uuid == runtime.dialogSelectedSongListUUID
     }"
+    @contextmenu.stop="contextmenuEvent"
+    @click.stop="dirHandleClick()"
+    @dblclick="dirHandleDblClick()"
+    @dragover.stop.prevent="dragover"
+    @dragstart.stop="dragstart"
+    @dragenter.stop.prevent="dragenter"
+    @drop.stop="drop"
+    @dragleave.stop="dragleave"
   >
     <div class="prefixIcon">
       <svg
@@ -659,11 +659,11 @@ watch(
     <template v-for="item of dirData.children" :key="item.uuid">
       <dialogLibraryItem
         :uuid="item.uuid"
-        :libraryName="props.libraryName"
-        :filterText="(props as any).filterText"
-        :suppressHighlight="props.suppressHighlight"
-        @markTreeSelected="emits('markTreeSelected')"
-        @dblClickSongList="emits('dblClickSongList')"
+        :library-name="props.libraryName"
+        :filter-text="(props as any).filterText"
+        :suppress-highlight="props.suppressHighlight"
+        @mark-tree-selected="emits('markTreeSelected')"
+        @dbl-click-song-list="emits('dblClickSongList')"
       />
     </template>
   </div>

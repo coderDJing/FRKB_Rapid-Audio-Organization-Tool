@@ -91,9 +91,9 @@ onUnmounted(() => {
 <template>
   <div
     v-show="waveformShow && enablePlaybackRange"
+    ref="startHandleRef"
     class="manual-handle start-handle"
     :class="{ dragging: isDraggingStart }"
-    ref="startHandleRef"
     :style="{ left: startHandleLeftPercent + '%' }"
     @mousedown="(event) => handleMouseDown(event, 'start')"
   >
@@ -101,9 +101,9 @@ onUnmounted(() => {
   </div>
   <div
     v-show="waveformShow && enablePlaybackRange"
+    ref="endHandleRef"
     class="manual-handle end-handle"
     :class="{ dragging: isDraggingEnd }"
-    ref="endHandleRef"
     :style="{ left: endHandleLeftPercent + '%' }"
     @mousedown="(event) => handleMouseDown(event, 'end')"
   >

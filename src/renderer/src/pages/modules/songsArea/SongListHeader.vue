@@ -375,7 +375,8 @@ const handleContextMenu = (event: MouseEvent) => {
 <template>
   <div
     ref="headerRoot"
-    @contextmenu.stop="handleContextMenu"
+    :key="draggableInstanceKey"
+    v-draggable="vDraggableData"
     class="songListHeader songItem lightBackground"
     :style="{
       position: 'sticky',
@@ -385,13 +386,12 @@ const handleContextMenu = (event: MouseEvent) => {
       'border-bottom': '1px solid var(--border)',
       'min-width': `var(--songs-total-width, ${totalWidth}px)`
     }"
-    :key="draggableInstanceKey"
-    v-draggable="vDraggableData"
+    @contextmenu.stop="handleContextMenu"
   >
     <div
-      class="unselectable header-column"
       v-for="col of draggableVisibleColumns"
       :key="col.key"
+      class="unselectable header-column"
       :class="['lightBackground', 'titleDiv']"
       :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
       style="
@@ -405,9 +405,9 @@ const handleContextMenu = (event: MouseEvent) => {
       <div style="flex-grow: 1; overflow: hidden; display: flex; align-items: center">
         <!-- 收窄排序触发区域：仅文字与其右侧少量空白响应点击 -->
         <div
-          @click.stop="handleColumnClick(col)"
           style="white-space: nowrap; display: inline-flex; align-items: center; padding-right: 8px"
           :style="{ color: col.order ? 'var(--accent)' : 'var(--text)' }"
+          @click.stop="handleColumnClick(col)"
         >
           {{ t(col.columnName) }}
           <img
@@ -437,11 +437,11 @@ const handleContextMenu = (event: MouseEvent) => {
         <filterDialog
           v-if="filterActiveKey === col.key && col.filterType"
           :type="col.filterType as any"
-          :initText="tempText"
-          :initExcludeText="tempExcludeText"
-          :initOp="tempOp"
-          :initDuration="tempDuration"
-          :initNumber="tempNumber"
+          :init-text="tempText"
+          :init-exclude-text="tempExcludeText"
+          :init-op="tempOp"
+          :init-duration="tempDuration"
+          :init-number="tempNumber"
           @confirm="
             (payload) => {
               if (payload.type === 'text') {

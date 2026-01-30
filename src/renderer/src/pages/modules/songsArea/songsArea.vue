@@ -652,6 +652,7 @@ const handleSongDragEnd = () => {
 
       <div v-else key="list" class="songs-area-shell">
         <OverlayScrollbarsComponent
+          ref="songsAreaRef"
           :options="{
             scrollbars: {
               autoHide: 'leave' as const,
@@ -666,14 +667,13 @@ const handleSongDragEnd = () => {
           element="div"
           style="height: 100%; width: 100%; position: relative"
           defer
-          ref="songsAreaRef"
           @click="runtime.songsArea.selectedSongFilePath.length = 0"
         >
           <SongListHeader
             :columns="columnData"
             :t="t"
-            :ascendingOrder="ascendingOrder"
-            :descendingOrder="descendingOrder"
+            :ascending-order="ascendingOrder"
+            :descending-order="descendingOrder"
             :total-width="totalColumnsWidth"
             @update:columns="handleColumnsUpdate"
             @column-click="colMenuClick"
@@ -687,12 +687,12 @@ const handleSongDragEnd = () => {
             v-if="runtime.songsArea.songInfoArr.length > 0"
             :key="runtime.songsArea.songListUUID"
             :songs="runtime.songsArea.songInfoArr"
-            :visibleColumns="columnDataArr"
-            :selectedSongFilePaths="runtime.songsArea.selectedSongFilePath"
-            :playingSongFilePath="playingSongFilePathForRows"
+            :visible-columns="columnDataArr"
+            :selected-song-file-paths="runtime.songsArea.selectedSongFilePath"
+            :playing-song-file-path="playingSongFilePathForRows"
             :total-width="totalColumnsWidth"
-            :sourceLibraryName="runtime.libraryAreaSelected"
-            :sourceSongListUUID="runtime.songsArea.songListUUID"
+            :source-library-name="runtime.libraryAreaSelected"
+            :source-song-list-u-u-i-d="runtime.songsArea.songListUUID"
             :scroll-host-element="songsAreaRef?.osInstance()?.elements().viewport"
             :external-scroll-top="externalScrollTop"
             :external-viewport-height="externalViewportHeight"
@@ -749,15 +749,15 @@ const handleSongDragEnd = () => {
 
     <ColumnHeaderContextMenu
       v-model="colRightClickMenuShow"
-      :targetEvent="triggeringColContextEvent"
+      :target-event="triggeringColContextEvent"
       :columns="columnData"
-      :scrollHostElement="songsAreaRef?.osInstance()?.elements().host"
+      :scroll-host-element="songsAreaRef?.osInstance()?.elements().host"
       @toggle-column-visibility="handleToggleColumnVisibility"
     />
     <Teleport to="body">
       <selectSongListDialog
         v-if="isSelectSongListDialogVisible"
-        :libraryName="selectSongListDialogTargetLibraryName"
+        :library-name="selectSongListDialogTargetLibraryName"
         @confirm="onMoveSongsDialogConfirmed"
         @cancel="handleDialogCancel"
       />

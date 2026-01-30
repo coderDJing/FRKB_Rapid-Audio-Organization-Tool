@@ -538,9 +538,9 @@ const clearCloudFingerprints = async () => {
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
+      v-dialog-drag="'.dialog-title'"
       style="width: 60vw; height: 70vh; display: flex; flex-direction: column"
       class="inner"
-      v-dialog-drag="'.dialog-title'"
     >
       <div style="height: 100%; display: flex; flex-direction: column">
         <div class="dialog-title dialog-header">
@@ -662,8 +662,8 @@ const clearCloudFingerprints = async () => {
             <div style="margin-top: 10px">
               <div
                 class="chooseDirDiv"
-                @click="globalCallShortcutHandle()"
                 :title="runtime.setting.globalCallShortcut"
+                @click="globalCallShortcutHandle()"
               >
                 {{ runtime.setting.globalCallShortcut }}
               </div>
@@ -676,8 +676,8 @@ const clearCloudFingerprints = async () => {
                 </div>
                 <div
                   class="chooseDirDiv"
-                  @click="playerGlobalShortcutHandle('fastForward')"
                   :title="runtime.setting.playerGlobalShortcuts.fastForward"
+                  @click="playerGlobalShortcutHandle('fastForward')"
                 >
                   {{ runtime.setting.playerGlobalShortcuts.fastForward }}
                 </div>
@@ -688,8 +688,8 @@ const clearCloudFingerprints = async () => {
                 </div>
                 <div
                   class="chooseDirDiv"
-                  @click="playerGlobalShortcutHandle('fastBackward')"
                   :title="runtime.setting.playerGlobalShortcuts.fastBackward"
+                  @click="playerGlobalShortcutHandle('fastBackward')"
                 >
                   {{ runtime.setting.playerGlobalShortcuts.fastBackward }}
                 </div>
@@ -698,8 +698,8 @@ const clearCloudFingerprints = async () => {
                 <div class="playerShortcutLabel">{{ t('shortcuts.globalNextShortcut') }}</div>
                 <div
                   class="chooseDirDiv"
-                  @click="playerGlobalShortcutHandle('nextSong')"
                   :title="runtime.setting.playerGlobalShortcuts.nextSong"
+                  @click="playerGlobalShortcutHandle('nextSong')"
                 >
                   {{ runtime.setting.playerGlobalShortcuts.nextSong }}
                 </div>
@@ -708,8 +708,8 @@ const clearCloudFingerprints = async () => {
                 <div class="playerShortcutLabel">{{ t('shortcuts.globalPreviousShortcut') }}</div>
                 <div
                   class="chooseDirDiv"
-                  @click="playerGlobalShortcutHandle('previousSong')"
                   :title="runtime.setting.playerGlobalShortcuts.previousSong"
+                  @click="playerGlobalShortcutHandle('previousSong')"
                 >
                   {{ runtime.setting.playerGlobalShortcuts.previousSong }}
                 </div>
@@ -721,8 +721,8 @@ const clearCloudFingerprints = async () => {
             <div style="margin-top: 20px">{{ t('player.fastForwardTime') }}：</div>
             <div style="margin-top: 10px">
               <input
-                class="myInput"
                 v-model="runtime.setting.fastForwardTime"
+                class="myInput"
                 type="number"
                 min="1"
                 step="1"
@@ -739,8 +739,8 @@ const clearCloudFingerprints = async () => {
             <div style="margin-top: 20px">{{ t('player.fastBackwardTime') }}：</div>
             <div style="margin-top: 10px">
               <input
-                class="myInput"
                 v-model="runtime.setting.fastBackwardTime"
+                class="myInput"
                 type="number"
                 max="-1"
                 step="1"
@@ -757,8 +757,8 @@ const clearCloudFingerprints = async () => {
             <div style="margin-top: 20px">{{ t('player.recentPlaylistCache') }}：</div>
             <div style="margin-top: 10px">
               <input
-                class="myInput"
                 v-model="runtime.setting.recentDialogSelectedSongListMaxCount"
+                class="myInput"
                 type="number"
                 min="0"
                 step="1"
@@ -778,9 +778,9 @@ const clearCloudFingerprints = async () => {
               <div class="setting-hint">{{ t('metadata.acoustidSettingDesc3') }}</div>
               <div class="acoustid-row">
                 <input
+                  v-model="runtime.setting.acoustIdClientKey"
                   class="acoustid-input"
                   :class="{ invalid: acoustIdKeyErrorText }"
-                  v-model="runtime.setting.acoustIdClientKey"
                   :placeholder="t('metadata.acoustidSettingPlaceholder')"
                   :disabled="acoustIdKeyValidating"
                   @blur="handleAcoustIdKeyBlur"
@@ -835,13 +835,13 @@ const clearCloudFingerprints = async () => {
             <div style="margin-top: 20px">{{ t('settings.songListBubble.title') }}：</div>
             <div style="margin-top: 10px">
               <singleRadioGroup
+                v-model="songListBubbleMode as any"
                 name="songListBubble"
                 :options="[
                   { label: t('settings.songListBubble.overflowOnly'), value: 'overflowOnly' },
                   { label: t('settings.songListBubble.always'), value: 'always' }
                 ]"
-                v-model="songListBubbleMode as any"
-                :optionFontSize="12"
+                :option-font-size="12"
                 @change="setSetting()"
               >
                 <template #option="{ opt }">
@@ -874,7 +874,7 @@ const clearCloudFingerprints = async () => {
               <bubbleBox
                 :dom="hint1Ref || undefined"
                 :title="t('fingerprints.currentCount', { count: songFingerprintListLength })"
-                :maxWidth="220"
+                :max-width="220"
               />
             </div>
             <div style="margin-top: 10px">
@@ -899,12 +899,12 @@ const clearCloudFingerprints = async () => {
             <div style="margin-top: 20px">{{ t('fingerprints.mode') }}：</div>
             <div style="margin-top: 10px">
               <singleRadioGroup
+                v-model="(runtime as any).setting.fingerprintMode as any"
                 name="fpMode"
                 :options="[
                   { label: t('fingerprints.modePCM'), value: 'pcm' },
                   { label: t('fingerprints.modeFile'), value: 'file' }
                 ]"
-                v-model="(runtime as any).setting.fingerprintMode as any"
                 @change="onFingerprintModeChange()"
               >
                 <template #option="{ opt }">
@@ -922,7 +922,7 @@ const clearCloudFingerprints = async () => {
                         ? t('fingerprints.modePCMHint')
                         : t('fingerprints.modeFileHint')
                     "
-                    :maxWidth="360"
+                    :max-width="360"
                   />
                 </template>
               </singleRadioGroup>
@@ -942,7 +942,7 @@ const clearCloudFingerprints = async () => {
               <bubbleBox
                 :dom="hintErrorReportRef || undefined"
                 :title="t('errorReport.hint')"
-                :maxWidth="260"
+                :max-width="260"
               />
             </div>
             <div style="margin-top: 10px">

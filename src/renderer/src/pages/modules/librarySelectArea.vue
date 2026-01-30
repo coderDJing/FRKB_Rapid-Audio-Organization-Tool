@@ -410,8 +410,8 @@ watch(
           @click="libraryHandleClick(item)"
         >
           <span
-            :style="getIconMaskStyle(item)"
             :ref="(el) => setIconRef(item.name, el)"
+            :style="getIconMaskStyle(item)"
             :class="[
               'sidebar-icon',
               {
@@ -447,8 +447,8 @@ watch(
           "
         >
           <span
-            :style="getIconMaskStyle(item)"
             :ref="(el) => setIconRef(item.name, el)"
+            :style="getIconMaskStyle(item)"
             :class="['sidebar-icon']"
           ></span>
           <bubbleBox

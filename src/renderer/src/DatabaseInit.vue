@@ -394,10 +394,10 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
           <div class="fieldLabel" style="font-size: 14px">{{ t('database.createNewDb') }}</div>
           <div
             class="chooseDirDiv flashing-border"
-            @click="clickChooseDir()"
             :title="folderPathVal"
             :class="{ 'is-flashing': flashArea == 'folderPathVal' }"
             style="width: 100%"
+            @click="clickChooseDir()"
           >
             {{ folderPathVal || t('database.pickFolder') }}
           </div>
@@ -431,13 +431,13 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
             "
           >
             <singleRadioGroup
+              v-model="fingerprintMode as any"
               :options="[
                 { label: t('fingerprints.modePCM'), value: 'pcm' },
                 { label: t('fingerprints.modeFile'), value: 'file' }
               ]"
-              v-model="fingerprintMode as any"
               name="fpModeInit"
-              :optionFontSize="12"
+              :option-font-size="12"
             >
               <template #option="{ opt }">
                 <span class="label">{{ opt.label }}</span>
@@ -455,7 +455,7 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
                       ? t('fingerprints.modePCMHint')
                       : t('fingerprints.modeFileHint')
                   "
-                  :maxWidth="360"
+                  :max-width="360"
                 />
               </template>
             </singleRadioGroup>

@@ -46,8 +46,8 @@ onUnmounted(() => {
     style="font-size: 14px"
   >
     <div
-      class="inner"
       v-dialog-drag="'.dialog-title'"
+      class="inner"
       :style="'height:' + (innerHeight || 220) + 'px;' + 'width:' + (innerWidth || 460) + 'px;'"
       style="display: flex; flex-direction: column"
     >

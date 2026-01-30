@@ -659,7 +659,7 @@ watch(
         </div>
       </div>
       <transition name="fade">
-        <div v-if="songInfoShow" @mouseleave="handleSongInfoMouseLeave" class="songInfo">
+        <div v-if="songInfoShow" class="songInfo" @mouseleave="handleSongInfoMouseLeave">
           <div class="cover unselectable" @contextmenu.prevent="showCoverContextMenu">
             <img
               v-if="coverBlobUrl"
@@ -693,15 +693,15 @@ watch(
             ref="playerControlsRef"
             @pause="playerActions.pause"
             @play="handleUserPlay"
-            @fastForward="playerActions.fastForward"
-            @fastBackward="playerActions.fastBackward"
-            @nextSong="handleUserNextSong"
-            @previousSong="handleUserPreviousSong"
-            @delSong="playerActions.delSong"
-            @moveToListLibrary="(song) => playerActions.moveToListLibrary(song)"
-            @moveToLikeLibrary="(song) => playerActions.moveToLikeLibrary(song)"
-            @exportTrack="playerActions.exportTrack"
-            @setVolume="
+            @fast-forward="playerActions.fastForward"
+            @fast-backward="playerActions.fastBackward"
+            @next-song="handleUserNextSong"
+            @previous-song="handleUserPreviousSong"
+            @del-song="playerActions.delSong"
+            @move-to-list-library="(song) => playerActions.moveToListLibrary(song)"
+            @move-to-like-library="(song) => playerActions.moveToLikeLibrary(song)"
+            @export-track="playerActions.exportTrack"
+            @set-volume="
               (v) => {
                 try {
                   audioPlayer?.setVolume?.(v)
@@ -720,24 +720,24 @@ watch(
         </div>
 
         <PlaybackRangeHandles
-          v-model:modelValueStart="runtime.setting.startPlayPercent"
-          v-model:modelValueEnd="runtime.setting.endPlayPercent"
+          v-model:model-value-start="runtime.setting.startPlayPercent"
+          v-model:model-value-end="runtime.setting.endPlayPercent"
           :container-width="waveformContainerWidth"
           :enable-playback-range="runtime.setting.enablePlaybackRange"
           :waveform-show="waveformShow"
-          @dragEnd="setSetting"
+          @drag-end="setSetting"
         />
       </div>
       <BpmTap
         :bpm="bpm"
-        :waveformShow="waveformShow"
-        :keyText="runtime.playingData.playingSong?.key || ''"
+        :waveform-show="waveformShow"
+        :key-text="runtime.playingData.playingSong?.key || ''"
       />
     </div>
   </transition>
   <selectSongListDialog
     v-if="selectSongListDialogShow"
-    :libraryName="selectSongListDialogLibraryName"
+    :library-name="selectSongListDialogLibraryName"
     @confirm="selectSongListDialogConfirm"
     @cancel="
       () => {

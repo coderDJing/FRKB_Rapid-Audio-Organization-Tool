@@ -143,7 +143,7 @@ const publishedText = computed(() => {
       <template v-else>
         <div class="info-block">
           <div class="version">{{ releaseTitle }}</div>
-          <div class="published" v-if="publishedText">
+          <div v-if="publishedText" class="published">
             {{ t('whatsNew.subtitle', { date: publishedText }) }}
           </div>
         </div>
@@ -155,13 +155,14 @@ const publishedText = computed(() => {
           defer
         >
           <div class="body-text">
+            <!-- eslint-disable-next-line vue/no-v-html -->
             <div v-if="bodyHtml" class="markdown-body" v-html="bodyHtml"></div>
             <div v-else class="empty-text">{{ t('whatsNew.noChangelog') }}</div>
           </div>
         </OverlayScrollbarsComponent>
       </template>
     </div>
-    <div class="footer" v-if="!loading && release">
+    <div v-if="!loading && release" class="footer">
       <div class="button action-button" @click="acknowledge">{{ t('whatsNew.ok') }}</div>
     </div>
   </div>

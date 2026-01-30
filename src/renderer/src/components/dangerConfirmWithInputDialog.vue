@@ -47,8 +47,8 @@ onUnmounted(() => {
     style="font-size: 14px"
   >
     <div
-      class="inner"
       v-dialog-drag="'.dialog-title'"
+      class="inner"
       :style="'height:' + innerHeight + 'px;' + 'width:' + innerWidth + 'px;'"
       style="display: flex; flex-direction: column"
     >
@@ -64,8 +64,8 @@ onUnmounted(() => {
             {{ t('common.input') }}: <b>{{ props.confirmKeyword }}</b>
           </div>
           <input
-            class="dangerInput"
             v-model="inputText"
+            class="dangerInput"
             :placeholder="props.placeholder"
             style="width: 100%"
           />

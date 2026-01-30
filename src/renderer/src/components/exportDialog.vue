@@ -115,9 +115,9 @@ onUnmounted(() => {
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
+      v-dialog-drag="'.dialog-title'"
       style="width: 450px; height: 300px; display: flex; flex-direction: column"
       class="inner"
-      v-dialog-drag="'.dialog-title'"
     >
       <div class="dialog-title dialog-header">
         <span>{{ t(props.title) }} {{ t('export.exportTo') }}</span>
@@ -139,9 +139,9 @@ onUnmounted(() => {
           <div style="width: 290px">
             <div
               class="chooseDirDiv flashing-border"
-              @click="clickChooseDir()"
               :title="folderPathVal"
               :class="{ 'is-flashing': flashArea == 'folderPathVal' }"
+              @click="clickChooseDir()"
             >
               {{ folderPathVal }}
             </div>

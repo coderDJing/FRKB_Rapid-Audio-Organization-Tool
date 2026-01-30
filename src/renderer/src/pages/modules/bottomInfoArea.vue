@@ -457,14 +457,14 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
           <span v-show="!task.noNum">{{ task.now }} / {{ task.total }}</span>
         </div>
         <div class="container">
-          <div class="progress" v-if="!task.noProgress">
+          <div v-if="!task.noProgress" class="progress">
             <div
               class="progress-bar"
               :style="'width:' + (task.total ? (task.now / task.total) * 100 : 0) + '%'"
             />
           </div>
         </div>
-        <div class="actions" v-if="task.cancelable">
+        <div v-if="task.cancelable" class="actions">
           <button
             class="cancel-btn"
             :disabled="task.canceling"

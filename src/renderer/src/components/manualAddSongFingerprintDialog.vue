@@ -94,9 +94,9 @@ onUnmounted(() => {
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
+      v-dialog-drag="'.dialog-title'"
       style="width: 500px; height: 320px; display: flex; flex-direction: column"
       class="inner"
-      v-dialog-drag="'.dialog-title'"
     >
       <div class="dialog-title dialog-header">
         <span>{{ t('fingerprints.manualAdd') }}</span>
@@ -107,12 +107,12 @@ onUnmounted(() => {
           <div
             ref="chooseDirRef"
             class="chooseDirDiv flashing-border"
-            @click="clickChooseDir()"
             :class="{ 'is-flashing': flashArea == 'folderPathVal' }"
+            @click="clickChooseDir()"
           >
             {{ folderPathDisplayWithPlaceholder }}
           </div>
-          <bubbleBox :dom="chooseDirRef || undefined" :title="folderPathTooltip" :maxWidth="320" />
+          <bubbleBox :dom="chooseDirRef || undefined" :title="folderPathTooltip" :max-width="320" />
         </div>
         <div style="margin-top: 20px; font-size: 12px; color: #999">
           {{ t('fingerprints.analysisHint') }}

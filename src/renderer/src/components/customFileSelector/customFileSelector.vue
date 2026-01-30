@@ -42,18 +42,18 @@ const {
 </script>
 
 <template>
-  <div v-if="visible" class="file-selector-modal" ref="modalRef" tabindex="0">
+  <div v-if="visible" ref="modalRef" class="file-selector-modal" tabindex="0">
     <div class="file-selector-content">
       <!-- 顶部路径导航 -->
       <div class="path-navigation">
         <div class="path-breadcrumb">
-          <button class="back-button" type="button" @click="navigateUp" :disabled="!currentPath">
+          <button class="back-button" type="button" :disabled="!currentPath" @click="navigateUp">
             {{ t('fileSelector.navigateUp') }}
           </button>
-          <span class="path-current" :title="currentPath" v-if="currentPath">{{
+          <span v-if="currentPath" class="path-current" :title="currentPath">{{
             currentPath
           }}</span>
-          <span class="path-current" v-else>{{ t('fileSelector.rootLabel') }}</span>
+          <span v-else class="path-current">{{ t('fileSelector.rootLabel') }}</span>
         </div>
         <div class="path-search">
           <input
@@ -107,15 +107,15 @@ const {
                 <div class="item-name-wrapper">
                   <div class="item-name" :title="item.name">{{ item.name }}</div>
                 </div>
-                <div class="item-size" v-if="item.size && item.size > 0">
+                <div v-if="item.size && item.size > 0" class="item-size">
                   {{ formatFileSize(item.size) }}
                 </div>
-                <div class="item-size" v-else-if="item.type === 'directory'">-</div>
-                <div class="item-size" v-else>{{ formatFileSize(item.size || 0) }}</div>
-                <div class="item-type" v-if="item.type === 'file'">
+                <div v-else-if="item.type === 'directory'" class="item-size">-</div>
+                <div v-else class="item-size">{{ formatFileSize(item.size || 0) }}</div>
+                <div v-if="item.type === 'file'" class="item-type">
                   {{ item.name.split('.').pop()?.toUpperCase() }}
                 </div>
-                <div class="item-type" v-else-if="item.type === 'directory'">
+                <div v-else-if="item.type === 'directory'" class="item-type">
                   {{
                     (item as any).isSpecial
                       ? '常用文件夹'
@@ -136,7 +136,7 @@ const {
               {{ t('fileSelector.selectedItems') }}
               <span class="selected-count">({{ selectedCount }})</span>
             </h4>
-            <button @click="clearSelection" class="clear-btn" :disabled="selectedCount === 0">
+            <button class="clear-btn" :disabled="selectedCount === 0" @click="clearSelection">
               {{ t('fileSelector.clearAll') }}
             </button>
           </div>
@@ -152,10 +152,10 @@ const {
 
           <OverlayScrollbarsComponent
             v-if="selectedCount > 0"
+            ref="selectedListRef"
             :options="scrollbarOptions"
             element="div"
             class="selected-list"
-            ref="selectedListRef"
             defer
           >
             <div v-for="item in selectedItems" :key="item.id" class="selected-item">
@@ -166,7 +166,7 @@ const {
                 <div class="selected-name" :title="item.name">{{ item.name }}</div>
                 <div class="selected-path" :title="item.path">{{ item.path }}</div>
               </div>
-              <button @click="removeSelectionByPath(item.path)" class="remove-btn">×</button>
+              <button class="remove-btn" @click="removeSelectionByPath(item.path)">×</button>
             </div>
           </OverlayScrollbarsComponent>
 
@@ -186,7 +186,7 @@ const {
           >
             {{ t('common.confirm') }} (E)
           </div>
-          <div class="button" @click="cancel" style="width: 90px; text-align: center">
+          <div class="button" style="width: 90px; text-align: center" @click="cancel">
             {{ t('common.cancel') }} (Esc)
           </div>
         </div>

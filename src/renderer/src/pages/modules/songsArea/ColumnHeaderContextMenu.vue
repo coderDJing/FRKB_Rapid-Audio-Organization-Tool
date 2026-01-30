@@ -85,11 +85,11 @@ const onMenuVModelUpdate = (value: boolean) => {
 
 <template>
   <SongAreaColRightClickMenu
-    :modelValue="internalShow"
-    @update:modelValue="onMenuVModelUpdate"
-    :clickPosition="menuPosition"
-    :columnData="columns"
-    @colMenuHandleClick="handleMenuItemClick"
+    :model-value="internalShow"
+    :click-position="menuPosition"
+    :column-data="columns"
+    @update:model-value="onMenuVModelUpdate"
+    @col-menu-handle-click="handleMenuItemClick"
   />
 </template>
 

@@ -380,8 +380,8 @@ const drop = async (e: DragEvent) => {
 <template>
   <div style="display: flex; height: 100%; min-width: 0; overflow: hidden">
     <librarySelectArea
-      @librarySelectedChange="librarySelectedChange"
       style="flex-shrink: 0"
+      @library-selected-change="librarySelectedChange"
     ></librarySelectArea>
     <div style="flex-grow: 1; min-width: 0; overflow: hidden">
       <div
@@ -402,8 +402,8 @@ const drop = async (e: DragEvent) => {
         >
           <div
             v-for="item of runtime.libraryTree.children"
-            style="width: 100%; height: 100%"
             v-show="librarySelected == item.dirName"
+            style="width: 100%; height: 100%"
           >
             <libraryArea :uuid="item.uuid"></libraryArea>
           </div>
@@ -412,10 +412,10 @@ const drop = async (e: DragEvent) => {
           v-show="!isLibraryPanelHidden"
           class="dragBar"
           :style="{ left: dragBarLeft }"
+          :class="{ dragBarHovered: isHovered }"
           @mousedown="startResize"
           @mouseenter="handleMouseEnter"
           @mouseleave="handleMouseLeave"
-          :class="{ dragBarHovered: isHovered }"
         ></div>
         <div
           style="

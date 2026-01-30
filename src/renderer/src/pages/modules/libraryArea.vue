@@ -274,8 +274,8 @@ const drop = async (e: DragEvent) => {
             :placeholder="t('playlist.searchPlaylists')"
           />
           <div
-            class="clearBtn"
             v-show="String(playlistSearch || '').length"
+            class="clearBtn"
             @click="playlistSearch = ''"
           >
             <svg
@@ -320,10 +320,10 @@ const drop = async (e: DragEvent) => {
       >
         <template v-for="item of displayedChildren" :key="item.uuid">
           <libraryItem
-            :uuid="item.uuid"
-            :libraryName="libraryData.dirName"
-            :filterText="playlistSearch"
             v-if="!(runtime.selectSongListDialogShow && !item.dirName)"
+            :uuid="item.uuid"
+            :library-name="libraryData.dirName"
+            :filter-text="playlistSearch"
           />
         </template>
         <div
@@ -334,15 +334,15 @@ const drop = async (e: DragEvent) => {
             justify-content: center;
             align-items: center;
           "
+          :class="{ borderTop: dragApproach == 'top' }"
           @dragover.stop.prevent="dragover"
           @dragenter.stop.prevent="dragenter"
           @drop.stop="drop"
           @dragleave.stop="dragleave"
-          :class="{ borderTop: dragApproach == 'top' }"
         >
           <span
-            style="font-size: 12px; color: #8c8c8c; position: absolute; bottom: 50vh"
             v-show="showHint && runtime.layoutConfig.libraryAreaWidth !== 0"
+            style="font-size: 12px; color: #8c8c8c; position: absolute; bottom: 50vh"
           >
             {{
               runtime.libraryAreaSelected === 'RecycleBin'

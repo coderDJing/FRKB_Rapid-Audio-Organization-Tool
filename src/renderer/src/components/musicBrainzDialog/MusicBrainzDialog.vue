@@ -73,7 +73,7 @@ const {
 
 <template>
   <div class="dialog musicbrainz-dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
-    <div class="inner" v-dialog-drag="'.dialog-title'">
+    <div v-dialog-drag="'.dialog-title'" class="inner">
       <div class="dialog-title dialog-header">{{ t('metadata.musicbrainzDialogTitle') }}</div>
       <div class="body">
         <OverlayScrollbarsComponent
@@ -144,10 +144,10 @@ const {
                 <p>{{ t('metadata.acoustidSettingDesc3') }}</p>
                 <div class="acoustid-input-row">
                   <input
+                    v-model="acoustIdKeyInput"
                     class="flashing-border"
                     :class="{ 'is-flashing': flashArea === 'acoustidKey' }"
                     :placeholder="t('metadata.acoustidKeyPlaceholder')"
-                    v-model="acoustIdKeyInput"
                     :disabled="savingAcoustIdKey"
                   />
                   <div class="button secondary" @click="openAcoustIdRegister">
@@ -197,25 +197,25 @@ const {
                   </div>
                 </div>
                 <div class="result-meta-lines">
-                  <div class="result-meta-line" v-if="match.artist">
+                  <div v-if="match.artist" class="result-meta-line">
                     <span class="result-meta-label">{{ t('metadata.artist') }}</span>
                     <span class="result-meta-value">{{ match.artist }}</span>
                   </div>
-                  <div class="result-meta-line" v-if="match.releaseTitle">
+                  <div v-if="match.releaseTitle" class="result-meta-line">
                     <span class="result-meta-label">{{ t('metadata.album') }}</span>
                     <span class="result-meta-value">{{ match.releaseTitle }}</span>
                   </div>
-                  <div class="result-meta-line" v-if="match.durationSeconds">
+                  <div v-if="match.durationSeconds" class="result-meta-line">
                     <span class="result-meta-label">{{ t('columns.duration') }}</span>
                     <span class="result-meta-value">
                       {{ formatSeconds(match.durationSeconds) }}
                     </span>
                   </div>
                 </div>
-                <div class="result-meta small" v-if="match.releaseDate">
+                <div v-if="match.releaseDate" class="result-meta small">
                   {{ t('metadata.musicbrainzReleaseDate') }}: {{ match.releaseDate }}
                 </div>
-                <div class="result-meta small" v-if="match.matchedFields.length">
+                <div v-if="match.matchedFields.length" class="result-meta small">
                   {{
                     t('metadata.musicbrainzMatchedFields', {
                       fields: describeMatchedFields(match.matchedFields)
@@ -223,13 +223,13 @@ const {
                   }}
                 </div>
                 <div
-                  class="result-tags"
                   v-if="
                     match.source ||
                     shouldShowDurationDiff(match) ||
                     hasIsrcMatch(match) ||
                     hasLowConfidence(match)
                   "
+                  class="result-tags"
                 >
                   <span v-if="match.source" class="tag" :class="sourceTagClass(match)">
                     {{ getMatchSourceLabel(match) }}

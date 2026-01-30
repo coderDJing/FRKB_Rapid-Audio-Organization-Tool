@@ -104,9 +104,9 @@ onUnmounted(() => {
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
+      v-dialog-drag="'.dialog-title'"
       style="width: 350px; height: 200px; display: flex; flex-direction: column"
       class="inner"
-      v-dialog-drag="'.dialog-title'"
     >
       <div class="dialog-title dialog-header">
         <span>{{ t('shortcuts.enterNewShortcut') }}</span>

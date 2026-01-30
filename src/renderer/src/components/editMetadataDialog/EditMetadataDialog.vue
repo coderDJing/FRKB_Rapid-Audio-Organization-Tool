@@ -55,7 +55,7 @@ const {
 
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
-    <div class="inner" v-dialog-drag="'.dialog-title'">
+    <div v-dialog-drag="'.dialog-title'" class="inner">
       <div class="top-block">
         <div class="dialog-title dialog-header">{{ t('metadata.dialogTitle') }}</div>
         <div class="body">

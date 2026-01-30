@@ -249,9 +249,9 @@ onUnmounted(() => {
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
+      v-dialog-drag="'.dialog-title'"
       style="width: 500px; height: 530px; display: flex; flex-direction: column"
       class="inner"
-      v-dialog-drag="'.dialog-title'"
     >
       <div class="dialog-title dialog-header">
         <span>{{
@@ -265,15 +265,15 @@ onUnmounted(() => {
             <div
               ref="fileSelectRef"
               class="chooseDirDiv flashing-border"
-              @click="clickChooseDir()"
               :class="{ 'is-flashing': flashArea == 'selectedPaths' }"
+              @click="clickChooseDir()"
             >
               {{ selectedPathsDisplay || t('library.clickToSelect') }}
             </div>
             <bubbleBox
               :dom="fileSelectRef || undefined"
               :title="selectedPathsDisplay || t('library.clickToSelect')"
-              :maxWidth="320"
+              :max-width="320"
             />
           </div>
         </template>
@@ -283,15 +283,15 @@ onUnmounted(() => {
           <div
             ref="songListSelectRef"
             class="chooseDirDiv flashing-border"
-            @click="clickChooseSongList()"
             :class="{ 'is-flashing': flashArea == 'songListPathVal' }"
+            @click="clickChooseSongList()"
           >
             {{ songListSelectedDisplay || t('library.clickToSelect') }}
           </div>
           <bubbleBox
             :dom="songListSelectRef || undefined"
             :title="songListSelectedDisplay || t('library.clickToSelect')"
-            :maxWidth="320"
+            :max-width="320"
           />
         </div>
 
@@ -313,21 +313,21 @@ onUnmounted(() => {
           <bubbleBox
             :dom="hint2Ref || undefined"
             :title="t('library.fingerprintHint')"
-            :maxWidth="240"
+            :max-width="240"
           />
         </div>
 
         <div style="margin-top: 20px">{{ t('library.deduplicateMode') }}：</div>
         <div style="margin-top: 10px">
           <singleRadioGroup
+            v-model="settingData.deduplicateMode as any"
             :options="[
               { label: t('library.deduplicateModeLibrary'), value: 'library' },
               { label: t('library.deduplicateModeBatch'), value: 'batch' },
               { label: t('library.deduplicateModeNone'), value: 'none' }
             ]"
-            v-model="settingData.deduplicateMode as any"
             name="dedupMode"
-            :optionFontSize="12"
+            :option-font-size="12"
           >
             <template #option="{ opt }">
               <span class="label">{{ opt.label }}</span>
@@ -346,7 +346,7 @@ onUnmounted(() => {
                       ? t('library.deduplicateHint')
                       : t('library.deduplicateBatchHint')
                   "
-                  :maxWidth="320"
+                  :max-width="320"
                 />
               </template>
             </template>
@@ -358,7 +358,7 @@ onUnmounted(() => {
         <div class="button" style="width: 90px; text-align: center" @click="confirm()">
           {{ t('common.confirm') }} (E)
         </div>
-        <div class="button" @click="cancel()" style="width: 90px; text-align: center">
+        <div class="button" style="width: 90px; text-align: center" @click="cancel()">
           {{ t('common.cancel') }} (Esc)
         </div>
       </div>
@@ -366,7 +366,7 @@ onUnmounted(() => {
   </div>
   <selectSongListDialog
     v-if="selectSongListDialogShow"
-    :libraryName="props.libraryName"
+    :library-name="props.libraryName"
     @confirm="selectSongListDialogConfirm"
     @cancel="
       () => {
@@ -377,9 +377,9 @@ onUnmounted(() => {
 
   <customFileSelector
     v-model:visible="customFileSelectorVisible"
-    :multiSelect="true"
-    :allowMixedSelection="true"
-    :initialSelectedPaths="selectedPaths"
+    :multi-select="true"
+    :allow-mixed-selection="true"
+    :initial-selected-paths="selectedPaths"
     @confirm="onFileSelectorConfirm"
     @cancel="onFileSelectorCancel"
   />

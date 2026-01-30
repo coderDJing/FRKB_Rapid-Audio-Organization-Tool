@@ -124,8 +124,8 @@ onUnmounted(() => {
     style="font-size: 14px; color: var(--text)"
   >
     <div
-      class="inner"
       v-dialog-drag="'.dialog-title'"
+      class="inner"
       style="width: 420px; min-height: 240px; display: flex; flex-direction: column"
     >
       <div class="dialog-title dialog-header">
@@ -165,25 +165,25 @@ onUnmounted(() => {
         <template v-else-if="props.type === 'duration'">
           <div class="radio-group">
             <label class="radio"
-              ><input type="radio" value="gte" v-model="op" /><span class="dot"></span
+              ><input v-model="op" type="radio" value="gte" /><span class="dot"></span
               >{{ t('filters.greaterOrEqual') }}</label
             >
             <label class="radio"
-              ><input type="radio" value="lte" v-model="op" /><span class="dot"></span
+              ><input v-model="op" type="radio" value="lte" /><span class="dot"></span
               >{{ t('filters.lessOrEqual') }}</label
             >
             <label class="radio"
-              ><input type="radio" value="eq" v-model="op" /><span class="dot"></span
+              ><input v-model="op" type="radio" value="eq" /><span class="dot"></span
               >{{ t('filters.equals') }}</label
             >
           </div>
           <input
             v-model="duration"
-            @blur="duration = normalizeMmSs(duration)"
             class="filter-input"
             type="text"
             :placeholder="t('filters.durationPlaceholder')"
             style="width: 100%"
+            @blur="duration = normalizeMmSs(duration)"
           />
           <div style="margin-top: 8px; display: flex; gap: 8px">
             <div class="tag" @click="duration = '01:30'">01:30</div>
@@ -194,26 +194,26 @@ onUnmounted(() => {
         <template v-else>
           <div class="radio-group">
             <label class="radio"
-              ><input type="radio" value="gte" v-model="op" /><span class="dot"></span
+              ><input v-model="op" type="radio" value="gte" /><span class="dot"></span
               >{{ t('filters.greaterOrEqual') }}</label
             >
             <label class="radio"
-              ><input type="radio" value="lte" v-model="op" /><span class="dot"></span
+              ><input v-model="op" type="radio" value="lte" /><span class="dot"></span
               >{{ t('filters.lessOrEqual') }}</label
             >
             <label class="radio"
-              ><input type="radio" value="eq" v-model="op" /><span class="dot"></span
+              ><input v-model="op" type="radio" value="eq" /><span class="dot"></span
               >{{ t('filters.equals') }}</label
             >
           </div>
           <input
             v-model="numberValue"
-            @blur="numberValue = normalizeNumberInput(numberValue)"
             class="filter-input"
             type="text"
             inputmode="decimal"
             :placeholder="t('filters.bpmPlaceholder')"
             style="width: 100%"
+            @blur="numberValue = normalizeNumberInput(numberValue)"
           />
         </template>
       </div>

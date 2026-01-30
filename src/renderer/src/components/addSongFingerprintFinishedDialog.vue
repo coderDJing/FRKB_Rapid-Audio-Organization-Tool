@@ -27,7 +27,7 @@ const formatDurationSec = (ms: number) => {
 
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
-    <div class="inner" v-dialog-drag="'.dialog-title'">
+    <div v-dialog-drag="'.dialog-title'" class="inner">
       <div class="title dialog-title dialog-header">{{ t('fingerprints.updateCompleted') }}</div>
       <div class="stats-body">
         <div class="stats">

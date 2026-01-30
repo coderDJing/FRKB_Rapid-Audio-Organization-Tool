@@ -106,7 +106,7 @@ function getButtonKey(button: { name: string; shortcutKey?: string; action?: str
 }
 </script>
 <template>
-  <div class="menu" v-if="props.modelValue" @click.stop="() => {}">
+  <div v-if="props.modelValue" class="menu" @click.stop="() => {}">
     <div
       v-for="item of props.menuArr"
       class="menuGroup"
@@ -119,8 +119,8 @@ function getButtonKey(button: { name: string; shortcutKey?: string; action?: str
       <div
         v-for="button of item"
         class="menuButton"
-        @click="menuButtonClick(button)"
         :class="{ menuButtonHover: selectedMenuButton === getButtonKey(button) }"
+        @click="menuButtonClick(button)"
         @mouseenter="
           () => {
             selectedMenuButton = getButtonKey(button)

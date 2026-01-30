@@ -43,11 +43,11 @@ const showOverviewSection = computed(() => {
 
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
-    <div class="inner" v-dialog-drag="'.dialog-title'">
+    <div v-dialog-drag="'.dialog-title'" class="inner">
       <div class="title dialog-title dialog-header">{{ t('import.completed') }}</div>
       <div class="stats-body">
         <div class="stats">
-          <div class="section" v-if="showOverviewSection">
+          <div v-if="showOverviewSection" class="section">
             <div class="section-title">{{ t('import.overview') }}</div>
             <div class="chips">
               <div class="chip">
@@ -68,7 +68,7 @@ const showOverviewSection = computed(() => {
               </div>
             </div>
           </div>
-          <div class="section" v-if="hasFingerprintSection">
+          <div v-if="hasFingerprintSection" class="section">
             <div class="section-title">{{ t('import.fingerprintChanges') }}</div>
             <div class="chips">
               <div class="chip" :class="{ success: (summary?.fingerprintAddedCount || 0) > 0 }">
@@ -81,7 +81,7 @@ const showOverviewSection = computed(() => {
               </div>
             </div>
           </div>
-          <div class="section" v-if="hasFingerprintSection">
+          <div v-if="hasFingerprintSection" class="section">
             <div class="section-title">{{ t('import.totalFingerprints') }}</div>
             <div class="section-body">
               <span class="count-pair">

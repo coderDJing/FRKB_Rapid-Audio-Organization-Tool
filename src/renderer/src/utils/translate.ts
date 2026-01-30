@@ -24,7 +24,7 @@ export function t(text: string, valuesOrIndex?: number | Record<string, any>): s
 
     // 访问 locale 以建立对语言的响应式依赖，切换语言时触发重渲染
     const localeRef: any = (i18n.global as any).locale
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+
     typeof localeRef === 'object' ? localeRef.value : localeRef
 
     const i18nT = i18n.global.t as any

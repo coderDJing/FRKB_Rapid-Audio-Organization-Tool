@@ -520,8 +520,8 @@ watch(
 </script>
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
-    <div class="content inner" v-dialog-drag="'.dialog-title'" @contextmenu.stop="contextmenuEvent">
-      <div class="unselectable libraryTitle dialog-title dialog-header" v-if="libraryData">
+    <div v-dialog-drag="'.dialog-title'" class="content inner" @contextmenu.stop="contextmenuEvent">
+      <div v-if="libraryData" class="unselectable libraryTitle dialog-title dialog-header">
         <div class="collapseButtonPlaceholder"></div>
         <span>{{ libraryTitleText }}</span>
         <div class="collapseButtonWrapper">
@@ -560,17 +560,17 @@ watch(
           <div class="searchRow">
             <div class="searchInputWrapper">
               <input
+                ref="searchInputRef"
                 v-model="playlistSearch"
                 class="searchInput"
-                ref="searchInputRef"
+                :placeholder="t('playlist.searchPlaylists')"
                 @keydown.down.prevent="handleMoveDown"
                 @keydown.up.prevent="handleMoveUp"
                 @keydown.enter.prevent.stop="handleSearchEnter"
-                :placeholder="t('playlist.searchPlaylists')"
               />
               <div
-                class="clearBtn"
                 v-show="String(playlistSearch || '').length"
+                class="clearBtn"
                 @click="playlistSearch = ''"
               >
                 <svg
@@ -597,9 +597,9 @@ watch(
           </div>
         </div>
         <div
+          v-if="libraryData?.children?.length"
           class="unselectable libraryArea flashing-border"
           :class="{ 'is-flashing': flashArea == 'selectSongList' }"
-          v-if="libraryData?.children?.length"
         >
           <OverlayScrollbarsComponent
             :options="{
@@ -630,15 +630,15 @@ watch(
                     v-for="item of filteredRecentSongListArr.filter((x) => x.type === 'songList')"
                     :key="item.uuid"
                     :ref="(el: any) => setRecentRowRef(item.uuid, el)"
-                    @click="
-                      ((runtime.dialogSelectedSongListUUID = item.uuid), (selectedArea = 'recent'))
-                    "
-                    @dblclick="confirmHandle()"
                     :class="{
                       selectedDir:
                         selectedArea === 'recent' && item.uuid == runtime.dialogSelectedSongListUUID
                     }"
                     class="recentLibraryItem"
+                    @click="
+                      ((runtime.dialogSelectedSongListUUID = item.uuid), (selectedArea = 'recent'))
+                    "
+                    @dblclick="confirmHandle()"
                   >
                     <div
                       style="
@@ -676,11 +676,11 @@ watch(
                   <template v-for="item of libraryData?.children" :key="item.uuid">
                     <dialogLibraryItem
                       :uuid="item.uuid"
-                      :libraryName="libraryData.dirName + 'Dialog'"
-                      :filterText="playlistSearch"
-                      :suppressHighlight="selectedArea === 'recent'"
-                      @dblClickSongList="confirmHandle()"
-                      @markTreeSelected="selectedArea = 'tree'"
+                      :library-name="libraryData.dirName + 'Dialog'"
+                      :filter-text="playlistSearch"
+                      :suppress-highlight="selectedArea === 'recent'"
+                      @dbl-click-song-list="confirmHandle()"
+                      @mark-tree-selected="selectedArea = 'tree'"
                     />
                   </template>
                   <div
@@ -696,9 +696,9 @@ watch(
           </OverlayScrollbarsComponent>
         </div>
         <div
+          v-else
           class="unselectable flashing-border"
           :class="{ 'is-flashing': flashArea == 'selectSongList' }"
-          v-else
           style="
             max-width: 300px;
             display: flex;

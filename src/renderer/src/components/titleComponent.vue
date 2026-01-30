@@ -230,7 +230,7 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
       <img :src="logo" style="width: 20px" :draggable="false" class="theme-icon" />
     </div>
     <template v-if="runtime.platform !== 'Mac'">
-      <div style="z-index: 1; padding-left: 5px" v-for="item in menuArr" :key="item.name">
+      <div v-for="item in menuArr" :key="item.name" style="z-index: 1; padding-left: 5px">
         <div
           class="functionButton"
           :class="{ functionButtonHover: item.show }"
@@ -240,11 +240,11 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
           {{ t(item.name) }}
         </div>
         <menuComponent
-          :menuArr="item.subMenu"
-          :menuName="item.name"
           v-model="item.show"
-          @menuButtonClick="menuButtonClick"
-          @switchMenu="switchMenu"
+          :menu-arr="item.subMenu"
+          :menu-name="item.name"
+          @menu-button-click="menuButtonClick"
+          @switch-menu="switchMenu"
         ></menuComponent>
       </div>
     </template>

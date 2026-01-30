@@ -121,7 +121,7 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) =>
 
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
-    <div class="inner" v-dialog-drag="'.dialog-title'">
+    <div v-dialog-drag="'.dialog-title'" class="inner">
       <div class="dialog-title dialog-header">
         {{ t('metadata.autoFillSummaryTitle') }}
       </div>
@@ -131,9 +131,9 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) =>
             <div class="section-title">{{ t('metadata.autoFillSummaryStatsTitle') }}</div>
             <div class="chips">
               <div
-                class="chip"
                 v-for="chip in chips"
                 :key="chip.label"
+                class="chip"
                 :class="{ danger: chip.danger }"
               >
                 <div class="num">{{ chip.value }}</div>
@@ -144,7 +144,7 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) =>
         </div>
         <div class="list-container">
           <div class="list-header">{{ t('metadata.autoFillSummaryListHeader') }}</div>
-          <div class="list-wrapper" v-if="hasItems">
+          <div v-if="hasItems" class="list-wrapper">
             <OverlayScrollbarsComponent
               class="list-scroll"
               :options="scrollbarOptions"
@@ -152,9 +152,9 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) =>
             >
               <div class="list">
                 <div
-                  class="item"
                   v-for="(item, index) in summary?.items"
                   :key="`${item.filePath}-${index}`"
+                  class="item"
                 >
                   <div class="item-title">
                     <div class="name">{{ item.displayName || item.filePath }}</div>
@@ -162,19 +162,19 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) =>
                       <span class="tag" :class="statusClassMap[item.status]">
                         {{ statusLabel(item.status) }}
                       </span>
-                      <span class="tag tag-muted" v-if="item.status === 'applied'">
+                      <span v-if="item.status === 'applied'" class="tag tag-muted">
                         {{ methodLabel(item.method) }}
                       </span>
                     </div>
                   </div>
-                  <div class="item-desc" v-if="shouldShowReason(item)">
+                  <div v-if="shouldShowReason(item)" class="item-desc">
                     <span>{{ reasonLabel(item) }}</span>
                   </div>
                 </div>
               </div>
             </OverlayScrollbarsComponent>
           </div>
-          <div class="empty" v-else>
+          <div v-else class="empty">
             {{ t('metadata.autoFillSummaryEmpty') }}
           </div>
         </div>

@@ -40,10 +40,10 @@ const optionFontSizeVar = computed(() => {
   >
     <label v-for="opt in options" :key="opt.value" class="radio">
       <input
+        v-model="current as any"
         type="radio"
         :name="name || 'single-radio-group'"
         :value="opt.value"
-        v-model="current as any"
         :disabled="disabled"
       />
       <span class="dot"></span>

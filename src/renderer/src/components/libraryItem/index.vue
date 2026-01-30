@@ -208,17 +208,10 @@ const nameForDisplay = computed(() => displayDirName.value)
 </script>
 <template>
   <div
+    v-show="shouldShow"
     class="mainBody"
     style="display: flex; box-sizing: border-box"
     :style="'padding-left:' + indentWidth + 'px'"
-    @contextmenu.stop="contextmenuEvent"
-    @click.stop="dirHandleClick()"
-    @dragover.stop.prevent="dragover"
-    @dragstart.stop="dragstart"
-    @dragenter.stop.prevent="dragenter"
-    @drop.stop.prevent="drop"
-    @dragleave.stop="dragleave"
-    v-show="shouldShow"
     :draggable="
       dirData.dirName && !renameDivShow && runtime.libraryAreaSelected !== 'RecycleBin'
         ? true
@@ -231,6 +224,13 @@ const nameForDisplay = computed(() => displayDirName.value)
       borderCenter: dragApproach == 'center',
       selectedDir: props.uuid == runtime.songsArea.songListUUID
     }"
+    @contextmenu.stop="contextmenuEvent"
+    @click.stop="dirHandleClick()"
+    @dragover.stop.prevent="dragover"
+    @dragstart.stop="dragstart"
+    @dragenter.stop.prevent="dragenter"
+    @drop.stop.prevent="drop"
+    @dragleave.stop="dragleave"
   >
     <div class="prefixIcon" :class="{ isPlaying: isPlaying }">
       <svg
@@ -347,8 +347,8 @@ const nameForDisplay = computed(() => displayDirName.value)
     <template v-for="item of dirData.children" :key="item.uuid">
       <libraryItem
         :uuid="item.uuid"
-        :libraryName="props.libraryName"
-        :filterText="(props as any).filterText"
+        :library-name="props.libraryName"
+        :filter-text="(props as any).filterText"
       />
     </template>
   </div>

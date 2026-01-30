@@ -111,9 +111,9 @@ onUnmounted(() => {
     style="font-size: 14px"
   >
     <div
+      v-dialog-drag="'.dialog-title'"
       style="display: flex; flex-direction: column"
       class="inner"
-      v-dialog-drag="'.dialog-title'"
       :style="innerStyle"
     >
       <div class="dialog-title dialog-header">

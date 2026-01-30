@@ -326,19 +326,19 @@ onUnmounted(() => {
                 :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
               >
                 <div
+                  :ref="(el) => setCoverCellRef(item.song.filePath, el)"
                   class="cover-wrapper"
                   :data-ct="coversTick"
-                  :ref="(el) => setCoverCellRef(item.song.filePath, el)"
                   @mouseenter="onCoverMouseEnter(item.idx, $event)"
                   @mouseleave="onCoverMouseLeave(item.idx, $event)"
                   @dblclick.stop.prevent="handleCoverDblclick(item.song, $event)"
                 >
                   <img
                     v-if="getCoverUrl(item.song.filePath)"
+                    :key="getCoverUrl(item.song.filePath) || item.song.filePath + '-ph'"
                     :src="getCoverUrl(item.song.filePath) as string"
                     alt="cover"
                     decoding="async"
-                    :key="getCoverUrl(item.song.filePath) || item.song.filePath + '-ph'"
                     @error="onImgError(item.song.filePath)"
                   />
                   <div v-else class="cover-skeleton"></div>
@@ -361,11 +361,11 @@ onUnmounted(() => {
                 </div>
                 <div class="waveform-preview-shell">
                   <canvas
-                    class="waveform-preview-canvas"
                     :ref="
                       (el) =>
                         setWaveformCanvasRef(item.song.filePath, el as HTMLCanvasElement | null)
                     "
+                    class="waveform-preview-canvas"
                   ></canvas>
                   <div
                     v-if="isWaveformPreviewActive(item.song.filePath)"
@@ -376,9 +376,9 @@ onUnmounted(() => {
               </div>
               <div
                 v-else
+                :ref="(el) => setCellRef(getCellKey(item.song, col.key), el)"
                 class="cell-title"
                 :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
-                :ref="(el) => setCellRef(getCellKey(item.song, col.key), el)"
                 :data-key="getCellKey(item.song, col.key)"
               >
                 {{ getCellValue(item.song, col.key) }}
