@@ -9,15 +9,19 @@ import {
   runWithConcurrency,
   waitForUserDecision
 } from '../../utils'
+import { transferTrackCaches } from '../../services/cacheMaintenance'
+import { renameCacheRoot } from '../../libraryCacheDb'
 import { FileSystemOperation } from '@renderer/utils/diffLibraryTree'
 import {
   findLibraryNodeByPath,
   insertLibraryNode,
+  loadLibraryNodes,
   moveLibraryNode,
   removeLibraryNode,
   removeLibraryNodesByParentUuid,
   updateLibraryNodeName,
-  updateLibraryNodeOrder
+  updateLibraryNodeOrder,
+  type LibraryNodeRow
 } from '../../libraryTreeDb'
 import {
   getRecycleBinRootAbs,
@@ -154,6 +158,11 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
           if (await fs.pathExists(oldFullPath)) {
             await fs.rename(oldFullPath, newFullPath)
             updateLibraryNodeName(item.uuid, path.basename(mappedNewPath))
+            await transferCachesAfterDirChange({
+              nodeType: item.nodeType,
+              oldFullPath,
+              newFullPath
+            })
             operationStatus = 'renamed'
           } else {
             console.warn(`Rename source path not found: ${oldFullPath}`)
@@ -227,6 +236,11 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
                 updateLibraryNodeOrder(item.uuid, item.order)
               }
             }
+            await transferCachesAfterDirChange({
+              nodeType: item.nodeType,
+              oldFullPath: srcFullPath,
+              newFullPath: destFullPath
+            })
             operationStatus = 'moved'
           } else {
             console.warn(`Move source path not found: ${srcFullPath}`)
@@ -241,6 +255,115 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
       return { success: false, error: (error as Error).message, details: results }
     }
   })
+}
+
+function normalizePath(value: string): string {
+  if (!value) return ''
+  let normalized = path.resolve(value)
+  if (process.platform === 'win32') {
+    normalized = normalized.toLowerCase()
+  }
+  return normalized
+}
+
+function isUnderPath(parentPath: string, targetPath: string): boolean {
+  const parent = normalizePath(parentPath)
+  const target = normalizePath(targetPath)
+  if (!parent || !target) return false
+  return target === parent || target.startsWith(parent + path.sep)
+}
+
+function buildNodePathMap(nodes: LibraryNodeRow[], root: LibraryNodeRow): Map<string, string> {
+  const childrenMap = new Map<string, LibraryNodeRow[]>()
+  for (const row of nodes) {
+    if (!row.parentUuid) continue
+    const list = childrenMap.get(row.parentUuid)
+    if (list) {
+      list.push(row)
+    } else {
+      childrenMap.set(row.parentUuid, [row])
+    }
+  }
+  const pathByUuid = new Map<string, string>()
+  pathByUuid.set(root.uuid, root.dirName)
+  const queue: LibraryNodeRow[] = [root]
+  for (let i = 0; i < queue.length; i += 1) {
+    const parent = queue[i]
+    const parentPath = pathByUuid.get(parent.uuid)
+    if (!parentPath) continue
+    const children = childrenMap.get(parent.uuid) || []
+    for (const child of children) {
+      const childPath = path.join(parentPath, child.dirName)
+      if (!pathByUuid.has(child.uuid)) {
+        pathByUuid.set(child.uuid, childPath)
+        queue.push(child)
+      }
+    }
+  }
+  return pathByUuid
+}
+
+async function transferCachesAfterDirChange(params: {
+  nodeType?: string
+  oldFullPath: string
+  newFullPath: string
+}): Promise<void> {
+  const { nodeType, oldFullPath, newFullPath } = params
+  if (!oldFullPath || !newFullPath) return
+  if (normalizePath(oldFullPath) === normalizePath(newFullPath)) return
+
+  if (nodeType === 'songList') {
+    try {
+      const audioExts = store.settingConfig.audioExt || []
+      const files = await collectFilesWithExtensions(newFullPath, audioExts)
+      if (files.length === 0) return
+      const tasks: Array<() => Promise<any>> = files.map((filePath) => async () => {
+        const rel = path.relative(newFullPath, filePath)
+        if (!rel || rel.startsWith('..')) return
+        const oldFilePath = path.join(oldFullPath, rel)
+        await transferTrackCaches({
+          fromRoot: oldFullPath,
+          toRoot: newFullPath,
+          fromPath: oldFilePath,
+          toPath: filePath
+        })
+      })
+      await runWithConcurrency(tasks, { concurrency: 8, stopOnENOSPC: false })
+    } catch (error) {
+      console.warn('songlist cache transfer failed:', error)
+    }
+    return
+  }
+
+  try {
+    const rootDir = store.databaseDir
+    if (!rootDir) return
+    const nodes = loadLibraryNodes(rootDir) || []
+    if (nodes.length === 0) return
+    const root = nodes.find((row) => row.parentUuid === null && row.nodeType === 'root')
+    if (!root) return
+    const pathByUuid = buildNodePathMap(nodes, root)
+    const songListRoots: string[] = []
+    for (const row of nodes) {
+      if (row.nodeType !== 'songList') continue
+      const rel = pathByUuid.get(row.uuid)
+      if (!rel) continue
+      const abs = path.join(rootDir, rel)
+      if (isUnderPath(newFullPath, abs)) {
+        songListRoots.push(abs)
+      }
+    }
+    if (songListRoots.length === 0) return
+    const tasks: Array<() => Promise<any>> = songListRoots.map((songListRoot) => async () => {
+      const rel = path.relative(newFullPath, songListRoot)
+      if (!rel || rel.startsWith('..')) return
+      const oldRoot = path.join(oldFullPath, rel)
+      await renameCacheRoot(oldRoot, songListRoot)
+    })
+    await runWithConcurrency(tasks, { concurrency: 4, stopOnENOSPC: false })
+  } catch (error) {
+    console.warn('songlist cache transfer failed:', error)
+  }
 }
 
 async function isDirectoryEffectivelyEmpty(dirPath: string, audioExtensions: string[]) {

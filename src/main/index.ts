@@ -391,6 +391,7 @@ app.whenReady().then(async () => {
   // 数据库准备与主窗口：统一调用幂等流程
   await prepareAndOpenMainWindow()
   startKeyAnalysisBackground()
+  LibraryCacheDb.scheduleCacheKeyMigration()
   await processExternalOpenQueue()
   setTimeout(() => {
     maybeShowWhatsNew().catch((error) => {

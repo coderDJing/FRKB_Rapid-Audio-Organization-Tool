@@ -292,8 +292,9 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       if (removed === undefined || !removed) return
       const remaining = await LibraryCacheDb.countCoverIndexByHash(listRoot, removed.hash)
       if (remaining !== 0) return
+      const listRootAbs = LibraryCacheDb.resolveCacheListRootAbs(listRoot) || listRoot
       const coverPath = path.join(
-        listRoot,
+        listRootAbs,
         '.frkb_covers',
         `${removed.hash}${removed.ext || '.jpg'}`
       )

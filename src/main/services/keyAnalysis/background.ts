@@ -366,19 +366,22 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       const hasKey = isValidKeyText(info?.key)
       const hasBpm = isValidBpm(info?.bpm)
       const listRoot = typeof row?.list_root === 'string' ? row.list_root.trim() : ''
+      if (!listRoot) continue
+      const absFilePath = LibraryCacheDb.resolveCacheFilePath(listRoot, filePath)
+      if (!absFilePath) continue
       const size = Number(row?.size)
       const mtimeMs = Number(row?.mtime_ms)
       let hasWaveform = false
-      if (listRoot && Number.isFinite(size) && Number.isFinite(mtimeMs)) {
+      if (Number.isFinite(size) && Number.isFinite(mtimeMs)) {
         hasWaveform = await LibraryCacheDb.hasWaveformCacheEntryByMeta(
           listRoot,
-          filePath,
+          absFilePath,
           size,
           mtimeMs
         )
       }
       if (!hasKey || !hasBpm || !hasWaveform) {
-        results.push(filePath)
+        results.push(absFilePath)
         if (results.length >= limit) {
           processedAll = false
           break
@@ -504,29 +507,32 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       const listRoot = typeof row?.list_root === 'string' ? row.list_root.trim() : ''
       const filePath = typeof row?.file_path === 'string' ? row.file_path.trim() : ''
       if (!listRoot || !filePath) continue
-      let listRootExists = listRootExistsCache.get(listRoot)
+      const absListRoot = LibraryCacheDb.resolveCacheListRootAbs(listRoot)
+      const absFilePath = LibraryCacheDb.resolveCacheFilePath(listRoot, filePath)
+      if (!absListRoot || !absFilePath) continue
+      let listRootExists = listRootExistsCache.get(absListRoot)
       if (listRootExists === undefined) {
         try {
-          const st = await fs.stat(listRoot)
+          const st = await fs.stat(absListRoot)
           listRootExists = st.isDirectory()
         } catch {
           listRootExists = false
         }
-        listRootExistsCache.set(listRoot, listRootExists)
+        listRootExistsCache.set(absListRoot, listRootExists)
       }
       if (!listRootExists) continue
       let fileExists = false
       try {
-        const st = await fs.stat(filePath)
+        const st = await fs.stat(absFilePath)
         fileExists = st.isFile()
       } catch {
         fileExists = false
       }
       if (fileExists) continue
-      await LibraryCacheDb.removeSongCacheEntry(listRoot, filePath)
-      await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
-      await deps.persistence.removeCoverCacheForMissingTrack(listRoot, filePath)
-      deps.doneByPath.delete(normalizePath(filePath))
+      await LibraryCacheDb.removeSongCacheEntry(listRoot, absFilePath)
+      await LibraryCacheDb.removeWaveformCacheEntry(listRoot, absFilePath)
+      await deps.persistence.removeCoverCacheForMissingTrack(listRoot, absFilePath)
+      deps.doneByPath.delete(normalizePath(absFilePath))
       removed += 1
       if (removed >= limit) break
     }
