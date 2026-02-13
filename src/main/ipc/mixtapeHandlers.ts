@@ -1,9 +1,11 @@
 import { ipcMain } from 'electron'
 import os from 'node:os'
+import fs from 'node:fs'
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import mixtapeWindow, { type MixtapeWindowPayload } from '../window/mixtapeWindow'
 import mainWindow from '../window/mainWindow'
+import { log } from '../log'
 import {
   appendMixtapeItems,
   listMixtapeItems,
@@ -23,16 +25,37 @@ const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
     new Set(filePaths.map((item) => (typeof item === 'string' ? item.trim() : '')).filter(Boolean))
   )
   if (unique.length === 0) {
-    return { results: [], unresolved: [] as string[] }
+    return {
+      results: [],
+      unresolved: [] as string[],
+      unresolvedDetails: [] as Array<{ filePath: string; reason: string }>
+    }
   }
 
   const workerPath = resolveKeyAnalysisWorkerPath()
+  if (!fs.existsSync(workerPath)) {
+    log.error('[mixtape] BPM worker entry not found', { workerPath, requested: unique.length })
+    return {
+      results: [],
+      unresolved: unique,
+      unresolvedDetails: unique.map((filePath) => ({ filePath, reason: 'worker entry not found' }))
+    }
+  }
+
+  const startedAt = Date.now()
+  log.info('[mixtape] BPM analyze start', {
+    requested: filePaths.length,
+    unique: unique.length,
+    sample: unique.slice(0, 3).map((item) => path.basename(item))
+  })
+
   const maxWorkers = Math.max(1, Math.min(2, os.cpus().length, unique.length))
   const workers: Worker[] = []
   const busy = new Map<Worker, number>()
   const jobMap = new Map<number, string>()
   const unresolved = new Set<string>(unique)
   const results: Array<{ filePath: string; bpm: number }> = []
+  const unresolvedReasons = new Map<string, string>()
   let cursor = 0
   let jobId = 0
   let finished = false
@@ -41,8 +64,14 @@ const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
   return await new Promise<{
     results: Array<{ filePath: string; bpm: number }>
     unresolved: string[]
+    unresolvedDetails: Array<{ filePath: string; reason: string }>
   }>((resolve) => {
     let timer: ReturnType<typeof setTimeout> | null = null
+
+    const markUnresolvedReason = (filePath: string, reason: string) => {
+      if (!filePath || unresolvedReasons.has(filePath)) return
+      unresolvedReasons.set(filePath, reason || 'unknown error')
+    }
 
     const cleanup = () => {
       for (const worker of workers) {
@@ -63,7 +92,30 @@ const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
       finished = true
       if (timer) clearTimeout(timer)
       cleanup()
-      resolve({ results, unresolved: Array.from(unresolved) })
+      const unresolvedList = Array.from(unresolved)
+      if (unresolvedList.length > 0) {
+        const sample = unresolvedList.slice(0, 5).map((filePath) => ({
+          file: path.basename(filePath),
+          reason: unresolvedReasons.get(filePath) || 'unknown error'
+        }))
+        log.warn('[mixtape] BPM analyze finished with unresolved tracks', {
+          requested: unique.length,
+          resolved: results.length,
+          unresolved: unresolvedList.length,
+          sample
+        })
+      }
+      const unresolvedDetails = unresolvedList.map((filePath) => ({
+        filePath,
+        reason: unresolvedReasons.get(filePath) || 'unknown error'
+      }))
+      log.info('[mixtape] BPM analyze finish', {
+        requested: unique.length,
+        resolved: results.length,
+        unresolved: unresolvedList.length,
+        elapsedMs: Date.now() - startedAt
+      })
+      resolve({ results, unresolved: unresolvedList, unresolvedDetails })
     }
 
     const assignNext = (worker: Worker) => {
@@ -91,19 +143,27 @@ const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
       if (currentJobId !== undefined) {
         busy.delete(worker)
       }
-      const filePath = jobMap.get(payload?.jobId ?? currentJobId ?? -1)
+      const resolvedJobId =
+        typeof payload?.jobId === 'number' ? payload.jobId : (currentJobId ?? -1)
+      const filePath = jobMap.get(resolvedJobId)
       if (filePath) {
-        jobMap.delete(payload?.jobId ?? currentJobId ?? -1)
+        jobMap.delete(resolvedJobId)
         const bpmValue = payload?.result?.bpm
         if (typeof bpmValue === 'number' && Number.isFinite(bpmValue) && bpmValue > 0) {
           results.push({ filePath, bpm: bpmValue })
           unresolved.delete(filePath)
+        } else {
+          const reason =
+            (typeof payload?.error === 'string' && payload.error) ||
+            (typeof payload?.result?.bpmError === 'string' && payload.result.bpmError) ||
+            `invalid bpm value: ${String(bpmValue)}`
+          markUnresolvedReason(filePath, reason)
         }
       }
       assignNext(worker)
     }
 
-    const handleFailure = (worker: Worker) => {
+    const handleFailure = (worker: Worker, error?: unknown) => {
       const currentJobId = busy.get(worker)
       if (currentJobId !== undefined) {
         busy.delete(worker)
@@ -111,6 +171,10 @@ const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
         if (filePath) {
           jobMap.delete(currentJobId)
           unresolved.add(filePath)
+          markUnresolvedReason(
+            filePath,
+            error instanceof Error ? error.message : String(error || 'worker failure')
+          )
         }
       }
       try {
@@ -121,11 +185,18 @@ const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
       } catch {}
       const idx = workers.indexOf(worker)
       if (idx !== -1) workers.splice(idx, 1)
+      log.warn('[mixtape] BPM worker failed', {
+        error: error instanceof Error ? error.message : String(error || 'worker failure'),
+        busyWorkers: busy.size,
+        pendingJobs: unique.length - cursor
+      })
       if (!finished && cursor < unique.length) {
-        const replacement = new Worker(workerPath)
-        workers.push(replacement)
-        bindWorker(replacement)
-        assignNext(replacement)
+        const replacement = createWorker()
+        if (replacement) {
+          assignNext(replacement)
+        } else if (busy.size === 0) {
+          finish()
+        }
       } else if (busy.size === 0 && cursor >= unique.length) {
         finish()
       }
@@ -133,18 +204,41 @@ const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
 
     const bindWorker = (worker: Worker) => {
       worker.on('message', (payload) => handleMessage(worker, payload))
-      worker.on('error', () => handleFailure(worker))
+      worker.on('error', (error) => handleFailure(worker, error))
       worker.on('exit', (code) => {
         if (code !== 0) {
-          handleFailure(worker)
+          handleFailure(worker, new Error(`worker exited with code ${code}`))
         }
       })
     }
 
+    const createWorker = () => {
+      try {
+        const worker = new Worker(workerPath)
+        workers.push(worker)
+        bindWorker(worker)
+        return worker
+      } catch (error) {
+        log.error('[mixtape] BPM worker spawn failed', {
+          workerPath,
+          error: error instanceof Error ? error.message : String(error)
+        })
+        return null
+      }
+    }
+
     for (let i = 0; i < maxWorkers; i += 1) {
-      const worker = new Worker(workerPath)
-      workers.push(worker)
-      bindWorker(worker)
+      const worker = createWorker()
+      if (!worker) break
+    }
+
+    if (workers.length === 0) {
+      log.error('[mixtape] BPM analyze aborted because no worker can be started', {
+        workerPath,
+        requested: unique.length
+      })
+      finish()
+      return
     }
 
     timer = setTimeout(() => finish(), timeoutMs)
@@ -228,6 +322,18 @@ export function registerMixtapeHandlers() {
 
   ipcMain.handle('mixtape:analyze-bpm', async (_e, payload: { filePaths?: string[] }) => {
     const input = Array.isArray(payload?.filePaths) ? payload.filePaths : []
-    return analyzeMixtapeBpmBatch(input)
+    try {
+      return await analyzeMixtapeBpmBatch(input)
+    } catch (error) {
+      log.error('[mixtape] BPM analyze invoke failed', {
+        requested: input.length,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      return {
+        results: [],
+        unresolved: input,
+        unresolvedDetails: input.map((filePath) => ({ filePath, reason: 'invoke failed' }))
+      }
+    }
   })
 }

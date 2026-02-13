@@ -88,6 +88,11 @@ export const useMixtape = () => {
     }
   }
 
+  const normalizeMixtapeFilePath = (value: unknown) => {
+    if (typeof value !== 'string') return ''
+    return value.trim()
+  }
+
   const parseSnapshot = (raw: MixtapeRawItem, index: number): MixtapeTrack => {
     let info: Record<string, any> | null = null
     if (raw?.infoJson) {
@@ -97,7 +102,8 @@ export const useMixtape = () => {
         info = null
       }
     }
-    const filePath = String(raw?.filePath || info?.filePath || '')
+    const filePath =
+      normalizeMixtapeFilePath(raw?.filePath) || normalizeMixtapeFilePath(info?.filePath)
     const fileName = filePath.split(/[/\\]/).pop() || filePath || t('tracks.unknownTrack')
     return {
       id: String(raw?.id || `${filePath}-${index}`),
@@ -116,7 +122,7 @@ export const useMixtape = () => {
     const unique = new Set<string>()
     const targets: string[] = []
     for (const track of tracks.value) {
-      const filePath = String(track.filePath || '').trim()
+      const filePath = normalizeMixtapeFilePath(track.filePath)
       if (!filePath || unique.has(filePath)) continue
       unique.add(filePath)
       targets.push(filePath)
@@ -130,36 +136,54 @@ export const useMixtape = () => {
       bpmAnalysisActive.value = false
       return
     }
+    const bpmTargets = new Set(filePaths)
+    const missingPathCount = tracks.value.filter(
+      (track) => !normalizeMixtapeFilePath(track.filePath)
+    ).length
+    if (missingPathCount > 0) {
+      console.warn('[mixtape] BPM analyze skipped tracks without file path', { missingPathCount })
+    }
     const key = [...filePaths].sort().join('|')
-    if (key === lastBpmAnalysisKey) return
-    lastBpmAnalysisKey = key
+    const hasMissingBpm = tracks.value.some((track) => {
+      const trackPath = normalizeMixtapeFilePath(track.filePath)
+      if (!trackPath || !bpmTargets.has(trackPath)) return false
+      return typeof track.bpm !== 'number' || !Number.isFinite(track.bpm) || track.bpm <= 0
+    })
+    if (key === lastBpmAnalysisKey && !hasMissingBpm) return
+
     const token = (bpmAnalysisToken += 1)
+    let allResolved = false
     bpmAnalysisActive.value = true
     bpmAnalysisFailed.value = false
     bpmAnalysisFailedCount.value = 0
-    const bpmTargets = new Set(filePaths)
-    tracks.value = tracks.value.map((track) => {
-      if (!bpmTargets.has(track.filePath)) return track
-      if (track.bpm === undefined) return track
-      return { ...track, bpm: undefined }
-    })
+
     scheduleTimelineDraw()
     try {
       const result = await window.electron.ipcRenderer.invoke('mixtape:analyze-bpm', { filePaths })
       if (token !== bpmAnalysisToken) return
       const results = Array.isArray(result?.results) ? result.results : []
       const unresolved = Array.isArray(result?.unresolved) ? result.unresolved : []
+      const unresolvedDetails = Array.isArray(result?.unresolvedDetails)
+        ? result.unresolvedDetails
+        : []
+      if (unresolvedDetails.length > 0) {
+        console.warn('[mixtape] BPM analyze unresolved details', {
+          count: unresolvedDetails.length,
+          sample: unresolvedDetails.slice(0, 5)
+        })
+      }
       if (results.length > 0) {
         const bpmMap = new Map<string, number>()
         for (const item of results) {
-          const filePath = typeof item?.filePath === 'string' ? item.filePath : ''
+          const filePath = normalizeMixtapeFilePath(item?.filePath)
           const bpmValue = item?.bpm
           if (!filePath || typeof bpmValue !== 'number' || !Number.isFinite(bpmValue)) continue
           bpmMap.set(filePath, bpmValue)
         }
         if (bpmMap.size > 0) {
           tracks.value = tracks.value.map((track) => {
-            const bpmValue = bpmMap.get(track.filePath)
+            const trackPath = normalizeMixtapeFilePath(track.filePath)
+            const bpmValue = trackPath ? bpmMap.get(trackPath) : undefined
             if (bpmValue === undefined || bpmValue === track.bpm) return track
             return { ...track, bpm: bpmValue }
           })
@@ -169,20 +193,40 @@ export const useMixtape = () => {
           scheduleFullPreRender()
           scheduleWorkerPreRender()
         }
-        if (bpmMap.size < filePaths.length) {
+        const missingTrackCount = tracks.value.filter((track) => {
+          const trackPath = normalizeMixtapeFilePath(track.filePath)
+          if (!trackPath || !bpmTargets.has(trackPath)) return false
+          return typeof track.bpm !== 'number' || !Number.isFinite(track.bpm) || track.bpm <= 0
+        }).length
+        if (missingTrackCount > 0) {
           bpmAnalysisFailed.value = true
           bpmAnalysisFailedCount.value = Math.max(
+            missingTrackCount,
+            unresolvedDetails.length,
             unresolved.length,
             Math.max(0, filePaths.length - bpmMap.size)
           )
+        } else {
+          allResolved = true
         }
       } else if (filePaths.length > 0) {
         bpmAnalysisFailed.value = true
         bpmAnalysisFailedCount.value = Math.max(unresolved.length, filePaths.length)
       }
-    } catch {
+    } catch (error) {
+      bpmAnalysisFailed.value = true
+      bpmAnalysisFailedCount.value = Math.max(filePaths.length, 1)
+      console.error('[mixtape] BPM analyze invoke failed', {
+        fileCount: filePaths.length,
+        error
+      })
     } finally {
       if (token === bpmAnalysisToken) {
+        if (allResolved) {
+          lastBpmAnalysisKey = key
+        } else if (lastBpmAnalysisKey === key) {
+          lastBpmAnalysisKey = ''
+        }
         bpmAnalysisActive.value = false
         scheduleTimelineDraw()
       }
