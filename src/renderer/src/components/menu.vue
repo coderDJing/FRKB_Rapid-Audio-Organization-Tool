@@ -168,6 +168,7 @@ function getButtonKey(button: { name: string; shortcutKey?: string; action?: str
 <style lang="scss" scoped>
 .menu {
   position: absolute;
+  z-index: 10020;
   background-color: var(--bg-elev);
   border: 1px solid var(--border);
   font-size: 14px;

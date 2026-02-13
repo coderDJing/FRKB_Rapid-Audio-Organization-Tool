@@ -49,7 +49,7 @@ const {
 
 <template>
   <div class="mixtape-shell">
-    <div style="height: 35px">
+    <div class="mixtape-title-wrap">
       <titleComponent
         control-prefix="mixtapeWindow"
         max-event-channel="mixtapeWindow-max"
@@ -199,12 +199,21 @@ const {
   background: var(--bg);
   color: var(--text);
   position: relative;
+  z-index: 1;
 }
 
 .mixtape-shell {
   height: 100%;
   display: flex;
   flex-direction: column;
+  position: relative;
+}
+
+.mixtape-title-wrap {
+  height: 35px;
+  position: relative;
+  z-index: 10030;
+  overflow: visible;
 }
 
 .title-drag {
@@ -528,7 +537,9 @@ const {
   background: #2b2b2b;
   pointer-events: none;
   z-index: 6;
-  max-width: 70%;
+  width: max-content;
+  max-width: none;
+  min-width: 0;
   opacity: 0;
   transition: opacity 0.12s ease;
 }
@@ -538,14 +549,24 @@ const {
 }
 
 .lane-track__meta-title {
+  display: block;
+  max-width: none;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: normal;
+  word-break: normal;
+  line-height: 1.25;
 }
 
 .lane-track__meta-sub {
   font-size: 10px;
   color: var(--text-weak);
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .lane-loading {
