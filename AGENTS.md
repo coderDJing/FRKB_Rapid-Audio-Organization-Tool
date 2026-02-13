@@ -24,10 +24,12 @@
 - Indentation: 2 spaces; LF; trim trailing whitespace; end files with a newline.
 - Prettier: single quotes, no semicolons, `printWidth: 100`.
 - ESLint extends Vue 3 + Electron toolkit; component names may be single-word.
+- 单个代码文件不应超过 1000 行；超过 1000 行时必须进行拆分，且拆分后的模块放置位置与命名应符合现有项目结构与习惯。
 
 ## Testing Guidelines
 - Rust module tests live in `rust_package/__test__/` and follow `*.spec.mjs` naming.
 - There is no root JS test runner yet; add new suites near the code they cover and document how to run them.
+- 代码修改完成后必须运行 `npx vue-tsc --noEmit`；若存在错误，必须先修复再交付。
 
 ## Commit & Pull Request Guidelines
 - Recent commits use Conventional Commit prefixes with optional scopes: `feat(ui): ...`, `fix(player): ...`, `refactor(...)`, `docs(...)`.
