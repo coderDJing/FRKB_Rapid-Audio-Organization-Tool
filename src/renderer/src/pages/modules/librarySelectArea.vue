@@ -56,7 +56,6 @@ const baseIcons: Icon[] = [
     showAlt: false,
     i18nKey: 'library.mixtapeLibrary'
   } as any,
-  externalIcon,
   {
     name: 'RecycleBin',
     grey: trashIconAsset,
@@ -358,6 +357,28 @@ const iconDragEnter = (event: DragEvent, item: Icon) => {
     libraryHandleClick(item)
   }
 }
+
+watch(
+  () => runtime.externalPlaylist.songs.length,
+  (len) => {
+    const exists = iconArr.value.find((icon) => icon.name === 'ExternalPlaylist')
+    if (len > 0 && !exists) {
+      externalIcon.src = externalIcon.grey
+      const recycleIndex = iconArr.value.findIndex((icon) => icon.name === 'RecycleBin')
+      if (recycleIndex === -1) {
+        iconArr.value.push(externalIcon)
+      } else {
+        iconArr.value.splice(recycleIndex, 0, externalIcon)
+      }
+      if (runtime.libraryAreaSelected === 'ExternalPlaylist') {
+        updateSelectedIcon(externalIcon)
+      }
+    } else if (len === 0 && exists) {
+      iconArr.value = iconArr.value.filter((icon) => icon.name !== 'ExternalPlaylist')
+    }
+  },
+  { immediate: true }
+)
 
 watch(
   () => runtime.libraryAreaSelected,
