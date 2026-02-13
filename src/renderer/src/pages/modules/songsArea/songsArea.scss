@@ -1,0 +1,254 @@
+.songs-area-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.songs-area-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.songs-area-float-jump {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  opacity: 0.65;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 6;
+  cursor: pointer;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18);
+}
+
+.songs-area-float-jump:hover {
+  opacity: 0.95;
+  transform: translateY(-1px);
+}
+
+.songs-area-float-jump:active {
+  transform: translateY(0);
+}
+
+.songs-area-float-jump:focus-visible {
+  outline: 2px solid rgba(0, 120, 212, 0.6);
+  outline-offset: 2px;
+}
+
+.songs-area-float-jump__icon {
+  position: relative;
+  width: 14px;
+  height: 14px;
+}
+
+.songs-area-float-jump__icon::before,
+.songs-area-float-jump__icon::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.songs-area-float-jump__icon::before {
+  width: 2px;
+  height: 12px;
+  left: 6px;
+  top: 1px;
+  background: var(--text);
+  border-radius: 1px;
+  opacity: 0.85;
+}
+
+.songs-area-float-jump__icon::after {
+  width: 6px;
+  height: 6px;
+  left: 4px;
+  top: 4px;
+  background: var(--text);
+  border-radius: 50%;
+  opacity: 0.9;
+}
+
+.songs-area-drag-hint {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  min-width: 168px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text);
+  z-index: 7;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.songs-area-drag-hint.is-external {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 1px rgba(0, 120, 212, 0.35),
+    0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.songs-area-drag-hint .title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.songs-area-drag-hint .desc {
+  font-size: 11px;
+  color: var(--text-weak);
+}
+
+.songs-area-clipboard-hint .title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.songs-area-drag-hint-enter-active,
+.songs-area-drag-hint-leave-active {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.songs-area-drag-hint-enter-from,
+.songs-area-drag-hint-leave-to {
+  opacity: 0;
+  transform: translateY(6px) scale(0.98);
+}
+
+.loading-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.songs-area-switch-enter-active,
+.songs-area-switch-leave-active {
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease;
+}
+
+.songs-area-switch-enter-from,
+.songs-area-switch-leave-to {
+  opacity: 0;
+  transform: translateY(6px) scale(0.995);
+}
+
+.loading {
+  display: block;
+  position: relative;
+  width: 6px;
+  height: 10px;
+
+  animation: rectangle infinite 1s ease-in-out -0.2s;
+
+  background-color: #cccccc;
+}
+
+.loading:before,
+.loading:after {
+  position: absolute;
+  width: 6px;
+  height: 10px;
+  content: '';
+  background-color: #cccccc;
+}
+
+.loading:before {
+  left: -14px;
+
+  animation: rectangle infinite 1s ease-in-out -0.4s;
+}
+
+.loading:after {
+  right: -14px;
+
+  animation: rectangle infinite 1s ease-in-out;
+}
+
+@keyframes rectangle {
+  0%,
+  80%,
+  100% {
+    height: 20px;
+    box-shadow: 0 0 #cccccc;
+  }
+
+  40% {
+    height: 30px;
+    box-shadow: 0 -20px #cccccc;
+  }
+}
+
+.welcomeContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 430px;
+}
+
+/* 为新的空状态容器添加一个类名，以便将来可能需要的特定样式 */
+.songs-area-empty-state {
+  /* Styles for empty state are mostly inline, but class is good for targeting */
+  &.unselectable {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+}
+
+/* 新的空态覆盖层，固定在可视区域中央，不受横向滚动影响 */
+.songs-area-empty-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.songs-area-empty-overlay .empty-box {
+  min-height: 120px;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.songs-area-empty-overlay .title {
+  font-size: 16px;
+  color: #999999;
+}
+.songs-area-empty-overlay .hint {
+  font-size: 12px;
+  color: #999999;
+  margin-top: 10px;
+}

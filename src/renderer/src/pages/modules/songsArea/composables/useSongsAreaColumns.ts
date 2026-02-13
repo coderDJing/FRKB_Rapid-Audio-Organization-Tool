@@ -5,11 +5,14 @@ import type { useRuntimeStore } from '@renderer/stores/runtime'
 import { getKeyDisplayText, getKeySortText } from '@shared/keyDisplay'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { getOriginalPlaylistDisplay } from '@renderer/utils/recycleBinDisplay'
+import libraryUtils from '@renderer/utils/libraryUtils'
 
 interface UseSongsAreaColumnsParams {
   runtime: ReturnType<typeof useRuntimeStore>
   originalSongInfoArr: ShallowRef<ISongInfo[]>
 }
+
+type ColumnMode = 'default' | 'recycle' | 'mixtape'
 
 export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
   const { runtime, originalSongInfoArr } = params
@@ -18,12 +21,23 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
   const INIT_EXTRA_WIDTH = 40
   const DEFAULT_STORAGE_KEY = 'songColumnData'
   const RECYCLE_STORAGE_KEY = 'recycleBinColumnData'
+  const MIXTAPE_STORAGE_KEY = 'mixtapeColumnData'
 
   const isRecycleBinView = computed(() => runtime.songsArea.songListUUID === RECYCLE_BIN_UUID)
+  const isMixtapeView = computed(
+    () => libraryUtils.getLibraryTreeByUUID(runtime.songsArea.songListUUID)?.type === 'mixtapeList'
+  )
+  const columnMode = computed<ColumnMode>(() => {
+    if (isRecycleBinView.value) return 'recycle'
+    if (isMixtapeView.value) return 'mixtape'
+    return 'default'
+  })
 
-  const buildBaseColumns = (isRecycleBin: boolean): Omit<ISongsAreaColumn, 'width'>[] => {
+  const buildBaseColumns = (mode: ColumnMode): Omit<ISongsAreaColumn, 'width'>[] => {
+    const isRecycleBin = mode === 'recycle'
+    const isMixtape = mode === 'mixtape'
     const columns: Omit<ISongsAreaColumn, 'width'>[] = [
-      { columnName: 'columns.index', key: 'index', show: true }
+      { columnName: isMixtape ? 'columns.mixOrder' : 'columns.index', key: 'index', show: true }
     ]
     if (isRecycleBin) {
       columns.push({
@@ -36,13 +50,18 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     columns.push(
       { columnName: 'columns.cover', key: 'cover', show: true },
       { columnName: 'columns.waveformPreview', key: 'waveformPreview', show: true },
-      { columnName: 'columns.title', key: 'title', show: true, filterType: 'text' },
+      {
+        columnName: 'columns.title',
+        key: 'title',
+        show: true,
+        filterType: isMixtape ? undefined : 'text'
+      },
       {
         columnName: 'columns.artist',
         key: 'artist',
         show: true,
-        filterType: 'text',
-        order: isRecycleBin ? undefined : 'asc'
+        filterType: isMixtape ? undefined : 'text',
+        order: isRecycleBin || isMixtape ? undefined : 'asc'
       }
     )
     if (isRecycleBin) {
@@ -53,34 +72,97 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
         filterType: 'text'
       })
     }
+    if (isMixtape) {
+      columns.push({
+        columnName: 'columns.mixSource',
+        key: 'originalPlaylistPath',
+        show: true
+      })
+    }
     columns.push(
-      { columnName: 'columns.duration', key: 'duration', show: true, filterType: 'duration' },
-      { columnName: 'columns.bpm', key: 'bpm', show: true, filterType: 'bpm' },
-      { columnName: 'columns.key', key: 'key', show: true, filterType: 'text' },
-      { columnName: 'columns.album', key: 'album', show: true, filterType: 'text' },
-      { columnName: 'columns.label', key: 'label', show: true, filterType: 'text' },
-      { columnName: 'columns.genre', key: 'genre', show: true, filterType: 'text' },
-      { columnName: 'columns.fileFormat', key: 'fileFormat', show: true, filterType: 'text' },
+      {
+        columnName: 'columns.duration',
+        key: 'duration',
+        show: true,
+        filterType: isMixtape ? undefined : 'duration'
+      },
+      {
+        columnName: 'columns.bpm',
+        key: 'bpm',
+        show: true,
+        filterType: isMixtape ? undefined : 'bpm'
+      },
+      {
+        columnName: 'columns.key',
+        key: 'key',
+        show: true,
+        filterType: isMixtape ? undefined : 'text'
+      },
+      {
+        columnName: 'columns.album',
+        key: 'album',
+        show: true,
+        filterType: isMixtape ? undefined : 'text'
+      },
+      {
+        columnName: 'columns.label',
+        key: 'label',
+        show: true,
+        filterType: isMixtape ? undefined : 'text'
+      },
+      {
+        columnName: 'columns.genre',
+        key: 'genre',
+        show: true,
+        filterType: isMixtape ? undefined : 'text'
+      },
+      {
+        columnName: 'columns.fileFormat',
+        key: 'fileFormat',
+        show: true,
+        filterType: isMixtape ? undefined : 'text'
+      },
       { columnName: 'columns.bitrate', key: 'bitrate', show: true },
-      { columnName: 'columns.fileName', key: 'fileName', show: true, filterType: 'text' },
-      { columnName: 'columns.format', key: 'container', show: true, filterType: 'text' }
+      {
+        columnName: 'columns.fileName',
+        key: 'fileName',
+        show: true,
+        filterType: isMixtape ? undefined : 'text'
+      },
+      {
+        columnName: 'columns.format',
+        key: 'container',
+        show: true,
+        filterType: isMixtape ? undefined : 'text'
+      }
     )
     return columns
   }
 
   const defaultNoExtraWidthKeys = new Set(['index', 'duration', 'bpm', 'key'])
-  const buildDefaultColumns = (isRecycleBin: boolean): ISongsAreaColumn[] =>
-    buildBaseColumns(isRecycleBin).map((col) => {
-      const minWidth = MIN_WIDTH_BY_KEY[col.key] ?? 0
+  const getMinWidthByKey = (key: string, mode: ColumnMode) => {
+    const base = MIN_WIDTH_BY_KEY[key] ?? 0
+    if (mode === 'mixtape' && key === 'index') return base + 30
+    return base
+  }
+
+  const buildDefaultColumns = (mode: ColumnMode): ISongsAreaColumn[] =>
+    buildBaseColumns(mode).map((col) => {
+      const minWidth = getMinWidthByKey(col.key, mode)
       return {
         ...col,
         width: defaultNoExtraWidthKeys.has(col.key) ? minWidth : minWidth + INIT_EXTRA_WIDTH
       }
     })
 
-  const loadColumnsFromStorage = (isRecycleBin: boolean): ISongsAreaColumn[] => {
-    const storageKey = isRecycleBin ? RECYCLE_STORAGE_KEY : DEFAULT_STORAGE_KEY
-    const defaultColumns = buildDefaultColumns(isRecycleBin)
+  const loadColumnsFromStorage = (mode: ColumnMode): ISongsAreaColumn[] => {
+    const storageKey =
+      mode === 'recycle'
+        ? RECYCLE_STORAGE_KEY
+        : mode === 'mixtape'
+          ? MIXTAPE_STORAGE_KEY
+          : DEFAULT_STORAGE_KEY
+    const defaultColumns = buildDefaultColumns(mode)
     const savedData = localStorage.getItem(storageKey)
     let finalColumns: ISongsAreaColumn[]
 
@@ -139,8 +221,8 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     }
 
     const hasOrderAfterMerge = finalColumns.some((col) => col.order !== undefined)
-    if (!hasOrderAfterMerge) {
-      if (isRecycleBin) {
+    if (!hasOrderAfterMerge && mode !== 'mixtape') {
+      if (mode === 'recycle') {
         const deletedAtIndex = finalColumns.findIndex((col) => col.key === 'deletedAtMs')
         if (deletedAtIndex !== -1) {
           finalColumns[deletedAtIndex] = {
@@ -162,17 +244,23 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     }
 
     finalColumns = finalColumns.map((col) => {
-      const minWidth = MIN_WIDTH_BY_KEY[col.key] ?? col.width
+      const minWidth = getMinWidthByKey(col.key, mode) ?? col.width
       if (col.width < minWidth) {
         return { ...col, width: minWidth }
       }
       return col
     })
+    if (mode === 'mixtape') {
+      finalColumns = finalColumns.map((col) => ({
+        ...col,
+        order: undefined
+      }))
+    }
 
     return finalColumns
   }
 
-  const columnData = ref<ISongsAreaColumn[]>(loadColumnsFromStorage(isRecycleBinView.value))
+  const columnData = ref<ISongsAreaColumn[]>(loadColumnsFromStorage(columnMode.value))
 
   // --- 工具 ---
   function sortArrayByProperty<T>(
@@ -225,7 +313,12 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
 
   // --- 持久化 ---
   const persistColumnData = () => {
-    const storageKey = isRecycleBinView.value ? RECYCLE_STORAGE_KEY : DEFAULT_STORAGE_KEY
+    const storageKey =
+      columnMode.value === 'recycle'
+        ? RECYCLE_STORAGE_KEY
+        : columnMode.value === 'mixtape'
+          ? MIXTAPE_STORAGE_KEY
+          : DEFAULT_STORAGE_KEY
     localStorage.setItem(storageKey, JSON.stringify(columnData.value))
   }
 
@@ -276,6 +369,11 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
           return true
         })
       }
+    }
+
+    if (columnMode.value === 'mixtape') {
+      runtime.songsArea.songInfoArr = filtered
+      return
     }
 
     const sortedCol = columnData.value.find((c) => c.order)
@@ -351,9 +449,9 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
   }
 
   watch(
-    () => isRecycleBinView.value,
+    () => columnMode.value,
     () => {
-      columnData.value = loadColumnsFromStorage(isRecycleBinView.value)
+      columnData.value = loadColumnsFromStorage(columnMode.value)
       applyFiltersAndSorting()
     }
   )
@@ -393,6 +491,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
 
   // --- 列头排序点击 ---
   const colMenuClick = (col: ISongsAreaColumn) => {
+    if (columnMode.value === 'mixtape') return
     if (col.key === 'index' || col.key === 'cover' || col.key === 'waveformPreview') return
 
     const newColumnData = columnData.value.map((item) => {

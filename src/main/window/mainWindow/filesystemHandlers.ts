@@ -10,6 +10,7 @@ import {
   waitForUserDecision
 } from '../../utils'
 import { transferTrackCaches } from '../../services/cacheMaintenance'
+import { cleanupMixtapeWaveformCache } from '../../services/mixtapeWaveformMaintenance'
 import { renameCacheRoot } from '../../libraryCacheDb'
 import { FileSystemOperation } from '@renderer/utils/diffLibraryTree'
 import {
@@ -30,8 +31,15 @@ import {
   permanentlyDeleteFile
 } from '../../recycleBinService'
 import { listRecycleBinRecords, deleteRecycleBinRecords } from '../../recycleBinDb'
+import { listMixtapeFilePathsByPlaylist, removeMixtapeItemsByPlaylist } from '../../mixtapeDb'
 
 export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null) {
+  const finalizeMixtapePlaylistRemoval = async (playlistId: string, filePaths: string[]) => {
+    if (!playlistId) return
+    removeMixtapeItemsByPlaylist(playlistId)
+    await cleanupMixtapeWaveformCache(filePaths)
+  }
+
   ipcMain.on('openFileExplorer', (_e, targetPath) => {
     const mapped = mapRendererPathToFsPath(String(targetPath || ''))
     shell.openPath(path.join(store.databaseDir, mapped))
@@ -169,6 +177,8 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
             operationStatus = 'rename_failed_source_not_found'
           }
         } else if (item.type === 'delete') {
+          const mixtapeFilePaths =
+            item.nodeType === 'mixtapeList' ? listMixtapeFilePathsByPlaylist(item.uuid) : []
           const mappedPath = mapRendererPathToFsPath(item.path)
           const dirPath = path.join(store.databaseDir, mappedPath)
           const isEmpty = await isDirectoryEffectivelyEmpty(dirPath, store.settingConfig.audioExt)
@@ -176,6 +186,9 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
             await fs.remove(dirPath)
             removeLibraryNode(item.uuid)
             operationStatus = 'removed'
+            if (item.nodeType === 'mixtapeList') {
+              await finalizeMixtapePlaylistRemoval(item.uuid, mixtapeFilePaths)
+            }
           } else {
             try {
               const audioExts = store.settingConfig.audioExt
@@ -198,6 +211,9 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
               if (failed === 0) {
                 await fs.remove(dirPath)
                 removeLibraryNode(item.uuid)
+                if (item.nodeType === 'mixtapeList') {
+                  await finalizeMixtapePlaylistRemoval(item.uuid, mixtapeFilePaths)
+                }
               }
               operationStatus = failed === 0 ? 'recycled' : 'recycle_failed'
               if (hasENOSPC && getWindow()) {
@@ -217,10 +233,15 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
             }
           }
         } else if (item.type === 'permanentlyDelete') {
+          const mixtapeFilePaths =
+            item.nodeType === 'mixtapeList' ? listMixtapeFilePathsByPlaylist(item.uuid) : []
           const mappedPath = mapRendererPathToFsPath(item.path)
           await fs.remove(path.join(store.databaseDir, mappedPath))
           removeLibraryNode(item.uuid)
           operationStatus = 'permanently_deleted'
+          if (item.nodeType === 'mixtapeList') {
+            await finalizeMixtapePlaylistRemoval(item.uuid, mixtapeFilePaths)
+          }
         } else if (item.type === 'move') {
           const mappedOldPath = mapRendererPathToFsPath(item.path)
           const mappedNewPath = mapRendererPathToFsPath(item.newPath as string)

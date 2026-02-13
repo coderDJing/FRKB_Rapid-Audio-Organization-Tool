@@ -38,6 +38,7 @@ import { registerFilesystemHandlers } from './ipc/filesystemHandlers'
 import { registerClipboardHandlers } from './ipc/clipboardHandlers'
 import { registerExportHandlers } from './ipc/exportHandlers'
 import { registerKeyAnalysisHandlers } from './ipc/keyAnalysisHandlers'
+import { registerMixtapeHandlers } from './ipc/mixtapeHandlers'
 import { maybeShowWhatsNew, registerWhatsNewHandlers } from './services/whatsNew'
 import * as LibraryCacheDb from './libraryCacheDb'
 import path from 'path'
@@ -196,6 +197,7 @@ registerFilesystemHandlers()
 registerClipboardHandlers()
 registerExportHandlers()
 registerKeyAnalysisHandlers()
+registerMixtapeHandlers()
 
 keyAnalysisEvents.on('key-updated', (payload) => {
   if (mainWindow.instance) {

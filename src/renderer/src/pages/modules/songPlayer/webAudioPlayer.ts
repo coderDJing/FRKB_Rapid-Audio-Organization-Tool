@@ -1,6 +1,7 @@
 import mitt from 'mitt'
 
 export type RGBWaveformBandKey = 'low' | 'mid' | 'high'
+export type MixxxWaveformBandKey = RGBWaveformBandKey | 'all'
 
 export type WaveformStyle = 'SoundCloud' | 'Fine' | 'RGB'
 
@@ -15,7 +16,7 @@ export type MixxxWaveformData = {
   duration: number
   sampleRate: number
   step: number
-  bands: Record<RGBWaveformBandKey, MixxxWaveformBand>
+  bands: Record<MixxxWaveformBandKey, MixxxWaveformBand>
 }
 
 type LoadFileOptions = {
@@ -581,7 +582,7 @@ export class WebAudioPlayer {
   }
 
   private calculateMixxxWaveformBytes(data: MixxxWaveformData): number {
-    const bands: RGBWaveformBandKey[] = ['low', 'mid', 'high']
+    const bands: MixxxWaveformBandKey[] = ['low', 'mid', 'high', 'all']
     let total = 0
     bands.forEach((band) => {
       const bandData = data.bands[band]

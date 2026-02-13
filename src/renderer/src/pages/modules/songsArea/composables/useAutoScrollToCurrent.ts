@@ -123,13 +123,13 @@ export function useAutoScrollToCurrent(params: UseAutoScrollParams) {
 
   const resolveRowElement = (index: number, viewportElement: HTMLElement) => {
     const song = runtime.songsArea.songInfoArr[index]
-    const filePath = song?.filePath
-    if (!filePath) return null
+    const rowKey = (song as any)?.mixtapeItemId || song?.filePath
+    if (!rowKey) return null
     const escaped =
       typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
-        ? CSS.escape(filePath)
-        : filePath.replace(/["\\]/g, '\\$&')
-    const selector = `.song-row-item[data-filepath="${escaped}"]`
+        ? CSS.escape(rowKey)
+        : rowKey.replace(/["\\]/g, '\\$&')
+    const selector = `.song-row-item[data-rowkey="${escaped}"]`
     return (viewportElement.querySelector(selector) as HTMLElement | null) ?? null
   }
 

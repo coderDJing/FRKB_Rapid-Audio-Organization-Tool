@@ -74,7 +74,7 @@ export function useLibraryDragAndDrop({
       return true
     }
     const isSongDrag = isInternalSongDrag(e)
-    if (isSongDrag && dirData.type === 'songList') {
+    if (isSongDrag && (dirData.type === 'songList' || dirData.type === 'mixtapeList')) {
       if (isPlaylistInRecycleBin()) {
         if (e.dataTransfer) {
           e.dataTransfer.dropEffect = 'none'
@@ -93,7 +93,7 @@ export function useLibraryDragAndDrop({
       return
     }
     const isInternalDrag = isInternalSongDrag(e)
-    if (isInternalDrag && dirData.type === 'songList') {
+    if (isInternalDrag && (dirData.type === 'songList' || dirData.type === 'mixtapeList')) {
       if (isPlaylistInRecycleBin()) {
         if (e.dataTransfer) {
           e.dataTransfer.dropEffect = 'none'
@@ -115,7 +115,11 @@ export function useLibraryDragAndDrop({
       return
     }
     const isInternalDrag = isInternalSongDrag(e)
-    if (isInternalDrag && dirData.type === 'songList' && !isPlaylistInRecycleBin()) {
+    if (
+      isInternalDrag &&
+      (dirData.type === 'songList' || dirData.type === 'mixtapeList') &&
+      !isPlaylistInRecycleBin()
+    ) {
       e.preventDefault()
       dragState.dragApproach = 'center'
       return
@@ -135,7 +139,7 @@ export function useLibraryDragAndDrop({
       return
     }
     const isInternalDrag = isInternalSongDrag(e)
-    if (isInternalDrag && dirData.type === 'songList') {
+    if (isInternalDrag && (dirData.type === 'songList' || dirData.type === 'mixtapeList')) {
       if (isPlaylistInRecycleBin()) {
         dragState.dragApproach = ''
         return

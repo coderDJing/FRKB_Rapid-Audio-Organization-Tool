@@ -254,6 +254,8 @@ export async function clearSongListCaches(songListPath: string | null | undefine
     await LibraryCacheDb.clearSongCache(resolvedRoot)
     await LibraryCacheDb.clearCoverIndex(resolvedRoot)
     await LibraryCacheDb.clearWaveformCache(resolvedRoot)
+    await LibraryCacheDb.clearMixtapeWaveformCache(resolvedRoot)
+    await LibraryCacheDb.clearMixtapeRawWaveformCache(resolvedRoot)
     if (await fs.pathExists(songsCache)) {
       await fs.remove(songsCache)
     }
@@ -269,17 +271,29 @@ export async function clearTrackCache(filePath: string) {
     if (!songListRoot) return
     await LibraryCacheDb.removeSongCacheEntry(songListRoot, filePath)
     await LibraryCacheDb.removeWaveformCacheEntry(songListRoot, filePath)
+    await LibraryCacheDb.removeMixtapeWaveformCacheEntry(songListRoot, filePath)
+    await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(songListRoot, filePath)
     await purgeCoverCacheForTrack(filePath)
   } catch {}
 }
 
-export async function pruneOrphanedSongListCaches(
-  dbRoot?: string
-): Promise<{ songCacheRemoved: number; coverIndexRemoved: number; waveformCacheRemoved: number }> {
+export async function pruneOrphanedSongListCaches(dbRoot?: string): Promise<{
+  songCacheRemoved: number
+  coverIndexRemoved: number
+  waveformCacheRemoved: number
+  mixtapeWaveformCacheRemoved: number
+  mixtapeRawWaveformCacheRemoved: number
+}> {
   try {
     const rootDir = dbRoot || store.databaseDir
     if (!rootDir) {
-      return { songCacheRemoved: 0, coverIndexRemoved: 0, waveformCacheRemoved: 0 }
+      return {
+        songCacheRemoved: 0,
+        coverIndexRemoved: 0,
+        waveformCacheRemoved: 0,
+        mixtapeWaveformCacheRemoved: 0,
+        mixtapeRawWaveformCacheRemoved: 0
+      }
     }
     const nodes = loadLibraryNodes(rootDir) || []
     if (nodes.length === 0) {
@@ -300,7 +314,13 @@ export async function pruneOrphanedSongListCaches(
     keepRoots.add(path.join(rootDir, mapRendererPathToFsPath('library/RecycleBin')))
     return await LibraryCacheDb.pruneCachesByRoots(keepRoots)
   } catch {
-    return { songCacheRemoved: 0, coverIndexRemoved: 0, waveformCacheRemoved: 0 }
+    return {
+      songCacheRemoved: 0,
+      coverIndexRemoved: 0,
+      waveformCacheRemoved: 0,
+      mixtapeWaveformCacheRemoved: 0,
+      mixtapeRawWaveformCacheRemoved: 0
+    }
   }
 }
 

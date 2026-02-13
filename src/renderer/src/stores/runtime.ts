@@ -1,6 +1,11 @@
 import { defineStore } from 'pinia'
 import { IDir, ILayoutConfig, ISettingConfig, ISongInfo } from 'src/types/globals'
-type LibrarySelection = 'FilterLibrary' | 'CuratedLibrary' | 'RecycleBin' | 'ExternalPlaylist'
+type LibrarySelection =
+  | 'FilterLibrary'
+  | 'CuratedLibrary'
+  | 'MixtapeLibrary'
+  | 'RecycleBin'
+  | 'ExternalPlaylist'
 
 interface Runtime {
   platform: string
@@ -26,6 +31,7 @@ interface Runtime {
   lastSongListUUIDByLibrary: {
     FilterLibrary: string
     CuratedLibrary: string
+    MixtapeLibrary: string
   }
   importingSongListUUID: string
   isProgressing: boolean
@@ -88,7 +94,8 @@ export const useRuntimeStore = defineStore('runtime', {
       },
       lastSongListUUIDByLibrary: {
         FilterLibrary: '',
-        CuratedLibrary: ''
+        CuratedLibrary: '',
+        MixtapeLibrary: ''
       },
       importingSongListUUID: '', //正在执行导入中的歌单
       creatingSongListUUID: '', //正在创建中的歌单（用于微动效）

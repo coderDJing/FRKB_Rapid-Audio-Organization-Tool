@@ -81,7 +81,7 @@ const allSongListArr = computed<IDir[]>(() => {
   const result: IDir[] = []
   const traverse = (node?: IDir) => {
     if (!node) return
-    if (node.type === 'songList') result.push(node)
+    if (node.type === 'songList' || node.type === 'mixtapeList') result.push(node)
     if (node.children && node.children.length) {
       for (const child of node.children) traverse(child as IDir)
     }
@@ -103,6 +103,7 @@ const showCreateNow = computed(() => {
   if (runtime.libraryAreaSelected === 'RecycleBin') return false
   return !exactMatchExists.value
 })
+const isMixtapeLibrary = computed(() => runtime.libraryAreaSelected === 'MixtapeLibrary')
 const createNow = async () => {
   const name = String(playlistSearch.value || '').trim()
   if (!name) return
@@ -113,7 +114,7 @@ const createNow = async () => {
   libraryData.children = libraryData.children || []
   libraryData.children.unshift({
     uuid: newUuid,
-    type: 'songList',
+    type: isMixtapeLibrary.value ? 'mixtapeList' : 'songList',
     dirName: name,
     order: 1,
     children: []
@@ -131,6 +132,8 @@ const menuArr = ref([
 const contextmenuEvent = async (event: MouseEvent) => {
   if (runtime.libraryAreaSelected === 'RecycleBin') {
     menuArr.value = [[{ menuName: 'recycleBin.emptyRecycleBin' }]]
+  } else if (runtime.libraryAreaSelected === 'MixtapeLibrary') {
+    menuArr.value = [[{ menuName: 'library.createMixtape' }, { menuName: 'library.createFolder' }]]
   } else {
     menuArr.value = [[{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]]
   }
@@ -138,12 +141,21 @@ const contextmenuEvent = async (event: MouseEvent) => {
   if (result !== 'cancel') {
     if (result.menuName == 'library.createPlaylist') {
       const newUuid = uuidV4()
-      libraryData.children?.unshift({
+      libraryData.children = libraryData.children || []
+      libraryData.children.unshift({
         uuid: newUuid,
         type: 'songList',
         dirName: ''
       })
       // 不在此时标记“创建中”，等待命名确认开始写盘时再标记
+    } else if (result.menuName == 'library.createMixtape') {
+      const newUuid = uuidV4()
+      libraryData.children = libraryData.children || []
+      libraryData.children.unshift({
+        uuid: newUuid,
+        type: 'mixtapeList',
+        dirName: ''
+      })
     } else if (result.menuName == 'library.createFolder') {
       libraryData.children?.unshift({
         uuid: uuidV4(),

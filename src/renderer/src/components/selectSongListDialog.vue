@@ -33,6 +33,9 @@ const props = defineProps({
     default: 'FilterLibrary'
   }
 })
+const isMixtapeDialog = computed(() => props.libraryName === 'MixtapeLibrary')
+const isDialogListType = (node?: IDir | null) =>
+  isMixtapeDialog.value ? node?.type === 'mixtapeList' : node?.type === 'songList'
 
 const runtime = useRuntimeStore()
 runtime.activeMenuUUID = ''
@@ -122,7 +125,7 @@ const allSongListArr = computed<IDir[]>(() => {
   const result: IDir[] = []
   const traverse = (node?: IDir) => {
     if (!node) return
-    if (node.type === 'songList') {
+    if (isDialogListType(node)) {
       result.push(node)
     }
     if (node.children && node.children.length) {
@@ -216,15 +219,23 @@ const libraryTitleText = computed(() => toLibraryDisplayName(libraryData.value.d
 const listIcon = listIconAsset
 
 const menuArr = ref([
-  [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]
+  isMixtapeDialog.value
+    ? [{ menuName: 'library.createMixtape' }, { menuName: 'library.createFolder' }]
+    : [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]
 ])
 const contextmenuEvent = async (event: MouseEvent) => {
   if (!libraryData.value) return
+  menuArr.value = [
+    isMixtapeDialog.value
+      ? [{ menuName: 'library.createMixtape' }, { menuName: 'library.createFolder' }]
+      : [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]
+  ]
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
   if (result !== 'cancel') {
     if (result.menuName == 'library.createPlaylist') {
       const newUuid = uuidV4()
-      libraryData.value.children?.unshift({
+      libraryData.value.children = libraryData.value.children || []
+      libraryData.value.children.unshift({
         uuid: newUuid,
         type: 'songList',
         dirName: ''
@@ -232,8 +243,19 @@ const contextmenuEvent = async (event: MouseEvent) => {
       // 新建后在对话框中仅定位高亮，不触发双击
       runtime.dialogSelectedSongListUUID = newUuid
       selectedArea.value = 'tree'
+    } else if (result.menuName == 'library.createMixtape') {
+      const newUuid = uuidV4()
+      libraryData.value.children = libraryData.value.children || []
+      libraryData.value.children.unshift({
+        uuid: newUuid,
+        type: 'mixtapeList',
+        dirName: ''
+      })
+      runtime.dialogSelectedSongListUUID = newUuid
+      selectedArea.value = 'tree'
     } else if (result.menuName == 'library.createFolder') {
-      libraryData.value.children?.unshift({
+      libraryData.value.children = libraryData.value.children || []
+      libraryData.value.children.unshift({
         uuid: uuidV4(),
         type: 'dir',
         dirName: ''
@@ -267,8 +289,9 @@ const searchKeyword = computed(() =>
     .toLowerCase()
 )
 const filteredRecentSongListArr = computed(() => {
-  if (!searchKeyword.value) return recentSongListArr.value
-  return recentSongListArr.value.filter((item) =>
+  const base = recentSongListArr.value.filter((item) => isDialogListType(item))
+  if (!searchKeyword.value) return base
+  return base.filter((item) =>
     String(item.dirName || '')
       .toLowerCase()
       .includes(searchKeyword.value)
@@ -300,7 +323,7 @@ const createNow = async () => {
   libraryData.value.children = libraryData.value.children || []
   libraryData.value.children.unshift({
     uuid: newUuid,
-    type: 'songList',
+    type: isMixtapeDialog.value ? 'mixtapeList' : 'songList',
     dirName: name,
     order: 1,
     children: []
@@ -627,7 +650,7 @@ watch(
                 </div>
                 <div class="sectionBody">
                   <div
-                    v-for="item of filteredRecentSongListArr.filter((x) => x.type === 'songList')"
+                    v-for="item of filteredRecentSongListArr"
                     :key="item.uuid"
                     :ref="(el: any) => setRecentRowRef(item.uuid, el)"
                     :class="{
@@ -657,7 +680,10 @@ watch(
                     <div class="nameRow">
                       <span class="nameText">{{ item.dirName }}</span>
                       <span
-                        v-if="(runtime as any).setting.showPlaylistTrackCount"
+                        v-if="
+                          (runtime as any).setting.showPlaylistTrackCount &&
+                          item.type === 'songList'
+                        "
                         class="countBadge"
                         >{{ recentCounts[item.uuid] ?? 0 }}</span
                       >

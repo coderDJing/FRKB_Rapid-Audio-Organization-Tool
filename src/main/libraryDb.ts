@@ -4,7 +4,7 @@ import store from './store'
 import { log } from './log'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
-const SCHEMA_VERSION = 5
+const SCHEMA_VERSION = 8
 
 type SqliteDatabase = any
 
@@ -96,6 +96,62 @@ function createDatabase(dbPath: string): SqliteDatabase {
       );
       CREATE INDEX IF NOT EXISTS idx_recycle_bin_deleted_at ON recycle_bin_records(deleted_at_ms);
       CREATE INDEX IF NOT EXISTS idx_recycle_bin_playlist ON recycle_bin_records(original_playlist_path);
+    `)
+  }
+  if (userVersion < 6) {
+    instance.exec(`
+      CREATE TABLE IF NOT EXISTS mixtape_items (
+        id TEXT PRIMARY KEY,
+        playlist_uuid TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        mix_order INTEGER NOT NULL,
+        origin_playlist_uuid TEXT,
+        origin_path_snapshot TEXT,
+        info_json TEXT,
+        created_at_ms INTEGER NOT NULL,
+        FOREIGN KEY (playlist_uuid) REFERENCES library_nodes(uuid) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_mixtape_items_playlist ON mixtape_items(playlist_uuid);
+      CREATE INDEX IF NOT EXISTS idx_mixtape_items_order ON mixtape_items(playlist_uuid, mix_order);
+    `)
+  }
+  if (userVersion < 7) {
+    instance.exec(`
+      CREATE TABLE IF NOT EXISTS mixtape_waveform_cache (
+        list_root TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        mtime_ms INTEGER NOT NULL,
+        version INTEGER NOT NULL,
+        sample_rate INTEGER NOT NULL,
+        step REAL NOT NULL,
+        duration REAL NOT NULL,
+        frames INTEGER NOT NULL,
+        data BLOB NOT NULL,
+        PRIMARY KEY (list_root, file_path)
+      );
+      CREATE INDEX IF NOT EXISTS idx_mixtape_waveform_cache_root ON mixtape_waveform_cache(list_root);
+    `)
+  }
+  if (userVersion < 8) {
+    instance.exec(`
+      CREATE TABLE IF NOT EXISTS mixtape_raw_waveform_cache (
+        list_root TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        mtime_ms INTEGER NOT NULL,
+        version INTEGER NOT NULL,
+        sample_rate INTEGER NOT NULL,
+        rate INTEGER NOT NULL,
+        duration REAL NOT NULL,
+        frames INTEGER NOT NULL,
+        min_left BLOB NOT NULL,
+        max_left BLOB NOT NULL,
+        min_right BLOB NOT NULL,
+        max_right BLOB NOT NULL,
+        PRIMARY KEY (list_root, file_path)
+      );
+      CREATE INDEX IF NOT EXISTS idx_mixtape_raw_waveform_cache_root ON mixtape_raw_waveform_cache(list_root);
     `)
   }
   if (userVersion < SCHEMA_VERSION) {

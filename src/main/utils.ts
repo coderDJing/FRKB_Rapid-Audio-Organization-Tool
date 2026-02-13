@@ -26,15 +26,17 @@ interface SongsAnalyseResult {
 const CORE_EN_TO_CN: Record<string, string> = {
   FilterLibrary: '筛选库',
   CuratedLibrary: '精选库',
+  MixtapeLibrary: '混音库',
   RecycleBin: '回收站'
 }
 const CORE_KEYS = Object.keys(CORE_EN_TO_CN) as Array<
-  'FilterLibrary' | 'CuratedLibrary' | 'RecycleBin'
+  'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
 >
 // 运行期：英文名 -> 实际物理目录名（优先英文，若重命名失败则回退中文）
 const coreEnToFsName: Record<string, string> = {
   FilterLibrary: 'FilterLibrary',
   CuratedLibrary: 'CuratedLibrary',
+  MixtapeLibrary: 'MixtapeLibrary',
   RecycleBin: 'RecycleBin'
 }
 
@@ -74,7 +76,7 @@ export async function ensureEnglishCoreLibraries(dbRootDir: string): Promise<voi
 }
 
 export function getCoreFsDirName(
-  enName: 'FilterLibrary' | 'CuratedLibrary' | 'RecycleBin'
+  enName: 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
 ): string {
   return coreEnToFsName[enName] || enName
 }
@@ -154,6 +156,7 @@ export async function getLibrary(options: { skipSync?: boolean } = {}) {
     coreDirNames: {
       FilterLibrary: getCoreFsDirName('FilterLibrary'),
       CuratedLibrary: getCoreFsDirName('CuratedLibrary'),
+      MixtapeLibrary: getCoreFsDirName('MixtapeLibrary'),
       RecycleBin: getCoreFsDirName('RecycleBin')
     }
   })
@@ -162,6 +165,7 @@ export async function getLibrary(options: { skipSync?: boolean } = {}) {
       coreDirNames: {
         FilterLibrary: getCoreFsDirName('FilterLibrary'),
         CuratedLibrary: getCoreFsDirName('CuratedLibrary'),
+        MixtapeLibrary: getCoreFsDirName('MixtapeLibrary'),
         RecycleBin: getCoreFsDirName('RecycleBin')
       },
       audioExtensions: store.settingConfig?.audioExt
@@ -177,6 +181,7 @@ export async function getLibrary(options: { skipSync?: boolean } = {}) {
   const fsToRenderer = new Map<string, string>([
     [getCoreFsDirName('FilterLibrary'), 'FilterLibrary'],
     [getCoreFsDirName('CuratedLibrary'), 'CuratedLibrary'],
+    [getCoreFsDirName('MixtapeLibrary'), 'MixtapeLibrary'],
     [getCoreFsDirName('RecycleBin'), 'RecycleBin']
   ])
 

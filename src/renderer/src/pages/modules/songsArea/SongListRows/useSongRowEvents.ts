@@ -19,8 +19,12 @@ export function useSongRowEvents({
   const getSongFromTarget = (target: EventTarget | null) => {
     const row = (target as HTMLElement | null)?.closest('.song-row-item') as HTMLElement | null
     if (!row) return null
-    const fp = row.dataset.filepath
-    return resolveSongs().find((s) => s.filePath === fp) || null
+    const rowKey = row.dataset.rowkey || row.dataset.filepath
+    if (!rowKey) return null
+    return (
+      resolveSongs().find((s) => (s as any).mixtapeItemId === rowKey || s.filePath === rowKey) ||
+      null
+    )
   }
 
   const onRowsClick = (e: MouseEvent) => {

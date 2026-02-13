@@ -4,6 +4,7 @@ import type { ShallowRef } from 'vue'
 import type { ISongInfo } from '../../../../../../types/globals'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
+import libraryUtils from '@renderer/utils/libraryUtils'
 
 interface UseSongsAreaEventsParams {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -22,20 +23,51 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     scheduleSweepCovers
   } = params
 
-  const onSongsRemoved = (
-    payload: { listUUID?: string; paths: string[] } | { paths: string[] }
-  ) => {
-    const pathsToRemove: string[] = Array.isArray((payload as any).paths)
-      ? ((payload as any).paths as string[])
-      : []
+  const onSongsRemoved = (payload: { listUUID?: string; paths?: string[]; itemIds?: string[] }) => {
+    const listUUID = payload?.listUUID
+    const itemIds: string[] = Array.isArray(payload?.itemIds) ? payload.itemIds : []
+    const currentListUUID = runtime.songsArea.songListUUID
+    const isMixtapeView = libraryUtils.getLibraryTreeByUUID(currentListUUID)?.type === 'mixtapeList'
+
+    if (itemIds.length > 0) {
+      if (!isMixtapeView) return
+      if (listUUID && listUUID !== currentListUUID) return
+      const idSet = new Set(itemIds)
+      const hasIntersection = originalSongInfoArr.value.some((s) =>
+        idSet.has(s.mixtapeItemId || '')
+      )
+      if (!hasIntersection) return
+
+      originalSongInfoArr.value = originalSongInfoArr.value.filter(
+        (song) => !idSet.has(song.mixtapeItemId || '')
+      )
+      applyFiltersAndSorting()
+
+      if (runtime.playingData.playingSongListUUID === currentListUUID) {
+        runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+        if (
+          runtime.playingData.playingSong &&
+          idSet.has(runtime.playingData.playingSong.mixtapeItemId || '')
+        ) {
+          runtime.playingData.playingSong = null
+        }
+      }
+
+      runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
+        (key) => !idSet.has(key)
+      )
+
+      scheduleSweepCovers()
+      return
+    }
+
+    const pathsToRemove: string[] = Array.isArray(payload?.paths) ? payload.paths : []
     const normalizePath = (p: string | undefined | null) =>
       (p || '').replace(/\//g, '\\').toLowerCase()
-    const listUUID = (payload as any).listUUID
     const normalizedSet = new Set<string>(pathsToRemove.map((p: string) => normalizePath(p)))
     const hasIntersection = originalSongInfoArr.value.some((s) =>
       normalizedSet.has(normalizePath(s.filePath))
     )
-    const currentListUUID = runtime.songsArea.songListUUID
 
     if (!pathsToRemove.length) return
     // 任意视图：仅在当前列表与要移除的路径存在交集时才更新，避免误删与不必要重建
@@ -65,6 +97,9 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
   }
 
   const onSongsMovedByDrag = (movedSongPaths: string[]) => {
+    if (libraryUtils.getLibraryTreeByUUID(runtime.songsArea.songListUUID)?.type === 'mixtapeList') {
+      return
+    }
     if (!Array.isArray(movedSongPaths) || movedSongPaths.length === 0) return
 
     originalSongInfoArr.value = originalSongInfoArr.value.filter(

@@ -61,6 +61,10 @@ if (fatherDirData === null) {
   throw new Error(`fatherDirData error: ${JSON.stringify(fatherDirData)}`)
 }
 
+const isSongList = computed(() => dirData.type === 'songList')
+const isMixtapeList = computed(() => dirData.type === 'mixtapeList')
+const isPlaylist = computed(() => isSongList.value || isMixtapeList.value)
+
 const {
   operationInputValue,
   inputHintText,
@@ -133,7 +137,7 @@ const dirHandleClick = async () => {
     await deleteDir()
     return
   }
-  if (dirData.type === 'songList') {
+  if (isPlaylist.value) {
     if (runtime.songsArea.songListUUID === props.uuid) {
       runtime.songsArea.songListUUID = ''
       return
@@ -265,7 +269,7 @@ const nameForDisplay = computed(() => displayDirName.value)
       </svg>
       <span
         v-if="
-          dirData.type == 'songList' &&
+          isPlaylist &&
           runtime.importingSongListUUID != props.uuid &&
           runtime.creatingSongListUUID !== props.uuid
         "

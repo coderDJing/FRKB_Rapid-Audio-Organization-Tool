@@ -35,6 +35,20 @@ export {
 } from './libraryCacheDb/waveformCache'
 
 export {
+  loadMixtapeWaveformCacheData,
+  upsertMixtapeWaveformCacheEntry,
+  removeMixtapeWaveformCacheEntry,
+  clearMixtapeWaveformCache
+} from './libraryCacheDb/mixtapeWaveformCache'
+
+export {
+  loadMixtapeRawWaveformCacheData,
+  upsertMixtapeRawWaveformCacheEntry,
+  removeMixtapeRawWaveformCacheEntry,
+  clearMixtapeRawWaveformCache
+} from './libraryCacheDb/mixtapeRawWaveformCache'
+
+export {
   renameCacheRoot,
   pruneCachesByRoots,
   migrateCacheKeysToRelativeIfNeeded,

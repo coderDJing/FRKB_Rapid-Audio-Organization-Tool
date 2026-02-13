@@ -1,0 +1,283 @@
+import { v4 as uuidV4 } from 'uuid'
+import { getLibraryDb } from './libraryDb'
+import { log } from './log'
+
+const TABLE = 'mixtape_items'
+
+export type MixtapeItemRecord = {
+  id: string
+  playlistUuid: string
+  filePath: string
+  mixOrder: number
+  originPlaylistUuid?: string | null
+  originPathSnapshot?: string | null
+  infoJson?: string | null
+  createdAtMs: number
+}
+
+export type MixtapeAppendItem = {
+  filePath: string
+  originPlaylistUuid?: string | null
+  originPathSnapshot?: string | null
+  info?: Record<string, any> | null
+}
+
+function normalizeUniqueStrings(values: unknown[]): string[] {
+  if (!Array.isArray(values)) return []
+  return Array.from(
+    new Set(
+      values
+        .filter((value) => typeof value === 'string')
+        .map((value) => String(value).trim())
+        .filter(Boolean)
+    )
+  )
+}
+
+function toRecord(row: any): MixtapeItemRecord | null {
+  if (!row || !row.id || !row.playlist_uuid || !row.file_path) return null
+  return {
+    id: String(row.id),
+    playlistUuid: String(row.playlist_uuid),
+    filePath: String(row.file_path),
+    mixOrder: Number(row.mix_order) || 0,
+    originPlaylistUuid: row.origin_playlist_uuid ? String(row.origin_playlist_uuid) : null,
+    originPathSnapshot: row.origin_path_snapshot ? String(row.origin_path_snapshot) : null,
+    infoJson: row.info_json ? String(row.info_json) : null,
+    createdAtMs: Number(row.created_at_ms) || 0
+  }
+}
+
+function normalizeMixtapeOrder(db: any, playlistUuid: string) {
+  const rows = db
+    .prepare(
+      `SELECT id FROM ${TABLE} WHERE playlist_uuid = ? ORDER BY mix_order ASC, created_at_ms ASC, id ASC`
+    )
+    .all(playlistUuid)
+  if (!rows || rows.length === 0) return
+  const update = db.prepare(`UPDATE ${TABLE} SET mix_order = ? WHERE id = ?`)
+  const tx = db.transaction(() => {
+    rows.forEach((row: any, idx: number) => {
+      update.run(idx + 1, row.id)
+    })
+  })
+  tx()
+}
+
+export function listMixtapeItems(playlistUuid: string): MixtapeItemRecord[] {
+  if (!playlistUuid) return []
+  const db = getLibraryDb()
+  if (!db) return []
+  try {
+    const rows = db
+      .prepare(
+        `SELECT id, playlist_uuid, file_path, mix_order, origin_playlist_uuid, origin_path_snapshot, info_json, created_at_ms
+         FROM ${TABLE}
+         WHERE playlist_uuid = ?
+         ORDER BY mix_order ASC, created_at_ms ASC, id ASC`
+      )
+      .all(playlistUuid)
+    return rows.map(toRecord).filter(Boolean) as MixtapeItemRecord[]
+  } catch (error) {
+    log.error('[sqlite] mixtape list failed', error)
+    return []
+  }
+}
+
+export function appendMixtapeItems(
+  playlistUuid: string,
+  items: MixtapeAppendItem[]
+): { inserted: number } {
+  const normalizedItems = Array.isArray(items)
+    ? items.filter((item) => item && typeof item.filePath === 'string' && item.filePath.length > 0)
+    : []
+  if (!playlistUuid || normalizedItems.length === 0) return { inserted: 0 }
+  const db = getLibraryDb()
+  if (!db) return { inserted: 0 }
+  try {
+    const maxRow = db
+      .prepare(`SELECT MAX(mix_order) AS max_order FROM ${TABLE} WHERE playlist_uuid = ?`)
+      .get(playlistUuid)
+    let currentOrder = Number(maxRow?.max_order || 0)
+    const insert = db.prepare(
+      `INSERT INTO ${TABLE} (id, playlist_uuid, file_path, mix_order, origin_playlist_uuid, origin_path_snapshot, info_json, created_at_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    const now = Date.now()
+    const tx = db.transaction(() => {
+      for (const item of normalizedItems) {
+        currentOrder += 1
+        const infoJson = item.info ? JSON.stringify(item.info) : null
+        insert.run(
+          uuidV4(),
+          playlistUuid,
+          item.filePath,
+          currentOrder,
+          item.originPlaylistUuid || null,
+          item.originPathSnapshot || null,
+          infoJson,
+          now
+        )
+      }
+    })
+    tx()
+    return { inserted: normalizedItems.length }
+  } catch (error) {
+    log.error('[sqlite] mixtape append failed', error)
+    return { inserted: 0 }
+  }
+}
+
+export function removeMixtapeItemsByFilePath(
+  playlistUuid: string,
+  filePaths: string[]
+): { removed: number } {
+  const normalizedPaths = normalizeUniqueStrings(filePaths)
+  if (!playlistUuid || normalizedPaths.length === 0) return { removed: 0 }
+  const db = getLibraryDb()
+  if (!db) return { removed: 0 }
+  try {
+    const del = db.prepare(`DELETE FROM ${TABLE} WHERE playlist_uuid = ? AND file_path = ?`)
+    let removed = 0
+    const tx = db.transaction(() => {
+      for (const filePath of normalizedPaths) {
+        const info = del.run(playlistUuid, filePath)
+        removed += Number(info?.changes || 0)
+      }
+    })
+    tx()
+    normalizeMixtapeOrder(db, playlistUuid)
+    return { removed }
+  } catch (error) {
+    log.error('[sqlite] mixtape remove failed', error)
+    return { removed: 0 }
+  }
+}
+
+export function removeMixtapeItemsById(
+  playlistUuid: string,
+  itemIds: string[]
+): { removed: number } {
+  const normalizedIds = normalizeUniqueStrings(itemIds)
+  if (!playlistUuid || normalizedIds.length === 0) return { removed: 0 }
+  const db = getLibraryDb()
+  if (!db) return { removed: 0 }
+  try {
+    const del = db.prepare(`DELETE FROM ${TABLE} WHERE playlist_uuid = ? AND id = ?`)
+    let removed = 0
+    const tx = db.transaction(() => {
+      for (const id of normalizedIds) {
+        const info = del.run(playlistUuid, id)
+        removed += Number(info?.changes || 0)
+      }
+    })
+    tx()
+    normalizeMixtapeOrder(db, playlistUuid)
+    return { removed }
+  } catch (error) {
+    log.error('[sqlite] mixtape remove by id failed', error)
+    return { removed: 0 }
+  }
+}
+
+export function reorderMixtapeItems(
+  playlistUuid: string,
+  orderedIds: string[]
+): { updated: number } {
+  const normalizedIds = Array.isArray(orderedIds)
+    ? orderedIds
+        .filter((id) => typeof id === 'string')
+        .map((id) => String(id).trim())
+        .filter(Boolean)
+    : []
+  if (!playlistUuid || normalizedIds.length === 0) return { updated: 0 }
+  const db = getLibraryDb()
+  if (!db) return { updated: 0 }
+  try {
+    const rows = db
+      .prepare(
+        `SELECT id FROM ${TABLE} WHERE playlist_uuid = ? ORDER BY mix_order ASC, created_at_ms ASC, id ASC`
+      )
+      .all(playlistUuid)
+    const existingIds: string[] = rows.map((row: { id: string | number }) => String(row.id))
+    const orderedSet = new Set(normalizedIds)
+    const finalIds = [
+      ...normalizedIds.filter((id) => existingIds.includes(id)),
+      ...existingIds.filter((id) => !orderedSet.has(id))
+    ]
+    const update = db.prepare(`UPDATE ${TABLE} SET mix_order = ? WHERE id = ?`)
+    const tx = db.transaction(() => {
+      finalIds.forEach((id, idx) => {
+        update.run(idx + 1, id)
+      })
+    })
+    tx()
+    return { updated: finalIds.length }
+  } catch (error) {
+    log.error('[sqlite] mixtape reorder failed', error)
+    return { updated: 0 }
+  }
+}
+
+export function listMixtapeFilePathsByPlaylist(playlistUuid: string): string[] {
+  if (!playlistUuid) return []
+  const db = getLibraryDb()
+  if (!db) return []
+  try {
+    const rows = db
+      .prepare(`SELECT file_path FROM ${TABLE} WHERE playlist_uuid = ?`)
+      .all(playlistUuid)
+    return normalizeUniqueStrings(rows.map((row: { file_path: string }) => row.file_path))
+  } catch (error) {
+    log.error('[sqlite] mixtape list file paths failed', error)
+    return []
+  }
+}
+
+export function listMixtapeFilePathsByItemIds(playlistUuid: string, itemIds: string[]): string[] {
+  const normalizedIds = normalizeUniqueStrings(itemIds)
+  if (!playlistUuid || normalizedIds.length === 0) return []
+  const db = getLibraryDb()
+  if (!db) return []
+  try {
+    const placeholders = normalizedIds.map(() => '?').join(',')
+    const rows = db
+      .prepare(`SELECT file_path FROM ${TABLE} WHERE playlist_uuid = ? AND id IN (${placeholders})`)
+      .all(playlistUuid, ...normalizedIds)
+    return normalizeUniqueStrings(rows.map((row: { file_path: string }) => row.file_path))
+  } catch (error) {
+    log.error('[sqlite] mixtape list file paths by id failed', error)
+    return []
+  }
+}
+
+export function listMixtapeFilePathsInUse(filePaths: string[]): string[] {
+  const normalizedPaths = normalizeUniqueStrings(filePaths)
+  if (normalizedPaths.length === 0) return []
+  const db = getLibraryDb()
+  if (!db) return []
+  try {
+    const placeholders = normalizedPaths.map(() => '?').join(',')
+    const rows = db
+      .prepare(`SELECT DISTINCT file_path FROM ${TABLE} WHERE file_path IN (${placeholders})`)
+      .all(...normalizedPaths)
+    return normalizeUniqueStrings(rows.map((row: { file_path: string }) => row.file_path))
+  } catch (error) {
+    log.error('[sqlite] mixtape list file paths in use failed', error)
+    return []
+  }
+}
+
+export function removeMixtapeItemsByPlaylist(playlistUuid: string): { removed: number } {
+  if (!playlistUuid) return { removed: 0 }
+  const db = getLibraryDb()
+  if (!db) return { removed: 0 }
+  try {
+    const del = db.prepare(`DELETE FROM ${TABLE} WHERE playlist_uuid = ?`)
+    const info = del.run(playlistUuid)
+    return { removed: Number(info?.changes || 0) }
+  } catch (error) {
+    log.error('[sqlite] mixtape remove by playlist failed', error)
+    return { removed: 0 }
+  }
+}

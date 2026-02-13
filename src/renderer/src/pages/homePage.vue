@@ -122,24 +122,29 @@ onUnmounted(() => {
 })
 
 let librarySelected = ref('FilterLibrary')
+type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary'
 const normalizeLibraryPath = (value: string) => (value || '').replace(/\\/g, '/')
-const isSongListUnderLibrary = (
-  uuid: string,
-  libraryName: 'FilterLibrary' | 'CuratedLibrary'
-): boolean => {
+const isCoreLibraryName = (value: string): value is CoreLibraryName =>
+  ['FilterLibrary', 'CuratedLibrary', 'MixtapeLibrary'].includes(value)
+const isPlaylistUnderLibrary = (uuid: string, libraryName: CoreLibraryName): boolean => {
   if (!uuid) return false
   const node = libraryUtils.getLibraryTreeByUUID(uuid)
-  if (!node || node.type !== 'songList') return false
+  if (!node || (node.type !== 'songList' && node.type !== 'mixtapeList')) return false
+  if (libraryName === 'MixtapeLibrary') {
+    if (node.type !== 'mixtapeList') return false
+  } else if (node.type !== 'songList') {
+    return false
+  }
   const dirPath = libraryUtils.findDirPathByUuid(uuid)
   if (!dirPath) return false
   const normalized = normalizeLibraryPath(dirPath)
   const prefix = `library/${libraryName}`
   return normalized === prefix || normalized.startsWith(`${prefix}/`)
 }
-const resolveStoredSongListUUID = (libraryName: 'FilterLibrary' | 'CuratedLibrary'): string => {
+const resolveStoredSongListUUID = (libraryName: CoreLibraryName): string => {
   const candidate = runtime.lastSongListUUIDByLibrary[libraryName]
   if (!candidate) return ''
-  return isSongListUnderLibrary(candidate, libraryName) ? candidate : ''
+  return isPlaylistUnderLibrary(candidate, libraryName) ? candidate : ''
 }
 
 watch(
@@ -147,8 +152,8 @@ watch(
   (uuid) => {
     if (!uuid || uuid === EXTERNAL_PLAYLIST_UUID || uuid === RECYCLE_BIN_UUID) return
     const currentLibrary = runtime.libraryAreaSelected
-    if (currentLibrary !== 'FilterLibrary' && currentLibrary !== 'CuratedLibrary') return
-    if (!isSongListUnderLibrary(uuid, currentLibrary)) return
+    if (!isCoreLibraryName(currentLibrary)) return
+    if (!isPlaylistUnderLibrary(uuid, currentLibrary)) return
     runtime.lastSongListUUIDByLibrary[currentLibrary] = uuid
   }
 )
@@ -165,10 +170,10 @@ watch(
       if (runtime.songsArea.songListUUID !== RECYCLE_BIN_UUID) {
         runtime.songsArea.songListUUID = RECYCLE_BIN_UUID
       }
-    } else if (val === 'FilterLibrary' || val === 'CuratedLibrary') {
+    } else if (isCoreLibraryName(val)) {
       const storedUuid = resolveStoredSongListUUID(val)
       const currentUuid = runtime.songsArea.songListUUID
-      const hasCurrent = isSongListUnderLibrary(currentUuid, val)
+      const hasCurrent = isPlaylistUnderLibrary(currentUuid, val)
       if (storedUuid) {
         if (currentUuid !== storedUuid) {
           runtime.songsArea.songListUUID = storedUuid
@@ -198,6 +203,7 @@ const librarySelectedChange = (item: Icon) => {
 let dragOverSongsArea = ref(false)
 const isExternalPlaylistView = computed(() => runtime.libraryAreaSelected === 'ExternalPlaylist')
 const isRecycleBinView = computed(() => runtime.libraryAreaSelected === 'RecycleBin')
+const isMixtapeLibraryView = computed(() => runtime.libraryAreaSelected === 'MixtapeLibrary')
 const isLibraryPanelHidden = computed(() => isExternalPlaylistView.value || isRecycleBinView.value)
 const isInternalSongDrag = (e: DragEvent) => {
   return (
@@ -216,6 +222,12 @@ const dragover = (e: DragEvent) => {
   }
 
   if (isRecycleBinView.value) {
+    e.dataTransfer.dropEffect = 'none'
+    dragOverSongsArea.value = false
+    return
+  }
+
+  if (isMixtapeLibraryView.value) {
     e.dataTransfer.dropEffect = 'none'
     dragOverSongsArea.value = false
     return
@@ -253,6 +265,11 @@ const dragleave = (e: DragEvent) => {
     return
   }
 
+  if (isMixtapeLibraryView.value) {
+    dragOverSongsArea.value = false
+    return
+  }
+
   if (isExternalPlaylistView.value) {
     dragOverSongsArea.value = false
     return
@@ -280,6 +297,11 @@ const drop = async (e: DragEvent) => {
   }
 
   if (isRecycleBinView.value) {
+    dragOverSongsArea.value = false
+    return
+  }
+
+  if (isMixtapeLibraryView.value) {
     dragOverSongsArea.value = false
     return
   }

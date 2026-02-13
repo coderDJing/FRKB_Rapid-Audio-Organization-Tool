@@ -3,6 +3,7 @@ import listIconAsset from '@renderer/assets/list.svg?asset'
 import likeIconAsset from '@renderer/assets/like.svg?asset'
 import settingIconAsset from '@renderer/assets/setting.svg?asset'
 import trashIconAsset from '@renderer/assets/trash.svg?asset'
+import mixtapeIconAsset from '@renderer/assets/mixtape.svg?asset'
 import { ref, reactive, watch, nextTick } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -19,6 +20,15 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 const emit = defineEmits(['librarySelectedChange'])
+
+const externalIcon: Icon = {
+  name: 'ExternalPlaylist',
+  grey: tempListIconAsset,
+  white: tempListIconAsset,
+  src: tempListIconAsset,
+  showAlt: false,
+  i18nKey: 'library.externalPlaylist'
+} as any
 
 const baseIcons: Icon[] = [
   {
@@ -39,6 +49,15 @@ const baseIcons: Icon[] = [
     i18nKey: 'library.curated'
   } as any,
   {
+    name: 'MixtapeLibrary',
+    grey: mixtapeIconAsset,
+    white: mixtapeIconAsset,
+    src: mixtapeIconAsset,
+    showAlt: false,
+    i18nKey: 'library.mixtapeLibrary'
+  } as any,
+  externalIcon,
+  {
     name: 'RecycleBin',
     grey: trashIconAsset,
     white: trashIconAsset,
@@ -47,15 +66,6 @@ const baseIcons: Icon[] = [
     i18nKey: 'recycleBin.recycleBin'
   } as any
 ]
-
-const externalIcon: Icon = {
-  name: 'ExternalPlaylist',
-  grey: tempListIconAsset,
-  white: tempListIconAsset,
-  src: tempListIconAsset,
-  showAlt: false,
-  i18nKey: 'library.externalPlaylist'
-} as any
 
 const iconArr = ref<Icon[]>([...baseIcons])
 
@@ -348,28 +358,6 @@ const iconDragEnter = (event: DragEvent, item: Icon) => {
     libraryHandleClick(item)
   }
 }
-
-watch(
-  () => runtime.externalPlaylist.songs.length,
-  (len) => {
-    const exists = iconArr.value.find((icon) => icon.name === 'ExternalPlaylist')
-    if (len > 0 && !exists) {
-      externalIcon.src = externalIcon.grey
-      const recycleIndex = iconArr.value.findIndex((icon) => icon.name === 'RecycleBin')
-      if (recycleIndex === -1) {
-        iconArr.value.push(externalIcon)
-      } else {
-        iconArr.value.splice(recycleIndex, 0, externalIcon)
-      }
-      if (runtime.libraryAreaSelected === 'ExternalPlaylist') {
-        updateSelectedIcon(externalIcon)
-      }
-    } else if (len === 0 && exists) {
-      iconArr.value = iconArr.value.filter((icon) => icon.name !== 'ExternalPlaylist')
-    }
-  },
-  { immediate: true }
-)
 
 watch(
   () => runtime.libraryAreaSelected,

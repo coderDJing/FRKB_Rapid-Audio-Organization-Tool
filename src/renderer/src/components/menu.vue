@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch, ref, PropType } from 'vue'
+import { watch, ref, PropType, onMounted, onUnmounted } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidV4 } from 'uuid'
 import { t } from '@renderer/utils/translate'
@@ -33,6 +33,7 @@ const props = defineProps({
     type: String
   }
 })
+const menuRef = ref<HTMLDivElement | null>(null)
 watch(
   () => props.modelValue,
   () => {
@@ -94,6 +95,27 @@ watch(
   }
 )
 
+const closeMenu = () => {
+  if (!props.modelValue) return
+  runtime.activeMenuUUID = ''
+  emits('update:modelValue', false)
+}
+
+const handleGlobalPointerDown = (event: MouseEvent) => {
+  if (!props.modelValue) return
+  const target = event.target as Node | null
+  if (!menuRef.value || (target && menuRef.value.contains(target))) return
+  closeMenu()
+}
+
+onMounted(() => {
+  window.addEventListener('pointerdown', handleGlobalPointerDown, true)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('pointerdown', handleGlobalPointerDown, true)
+})
+
 const menuButtonClick = (item: { name: string; shortcutKey?: string; action?: string }) => {
   runtime.activeMenuUUID = ''
   emits('menuButtonClick', item)
@@ -106,7 +128,7 @@ function getButtonKey(button: { name: string; shortcutKey?: string; action?: str
 }
 </script>
 <template>
-  <div v-if="props.modelValue" class="menu" @click.stop="() => {}">
+  <div v-if="props.modelValue" ref="menuRef" class="menu" @click.stop="() => {}">
     <div
       v-for="item of props.menuArr"
       class="menuGroup"

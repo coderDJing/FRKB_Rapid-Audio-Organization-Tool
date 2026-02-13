@@ -21,14 +21,21 @@ export function useLibraryFilter({
 
   const matchesSelf = computed(() => {
     if (!keyword.value) return true
-    return dirData?.type === 'songList' && dirData?.dirName?.toLowerCase().includes(keyword.value)
+    return (
+      (dirData?.type === 'songList' || dirData?.type === 'mixtapeList') &&
+      dirData?.dirName?.toLowerCase().includes(keyword.value)
+    )
   })
 
   const hasMatchingDescendant = (node?: any): boolean => {
     if (!keyword.value) return true
     if (!node?.children) return false
     for (const c of node.children) {
-      if (c.type === 'songList' && c.dirName?.toLowerCase().includes(keyword.value)) return true
+      if (
+        (c.type === 'songList' || c.type === 'mixtapeList') &&
+        c.dirName?.toLowerCase().includes(keyword.value)
+      )
+        return true
       if (c.type === 'dir' && hasMatchingDescendant(c)) return true
     }
     return false

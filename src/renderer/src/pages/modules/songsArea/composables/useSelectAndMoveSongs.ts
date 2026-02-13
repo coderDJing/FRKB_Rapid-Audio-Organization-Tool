@@ -2,10 +2,10 @@ import { ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
-// ISongInfo might not be directly needed here unless we manipulate song data deeply
-// but runtime store interaction will involve it indirectly.
+import { t } from '@renderer/utils/translate'
+import type { ISongInfo } from '../../../../../../types/globals'
 
-export type MoveSongsLibraryName = 'CuratedLibrary' | 'FilterLibrary'
+export type MoveSongsLibraryName = 'CuratedLibrary' | 'FilterLibrary' | 'MixtapeLibrary'
 
 export function useSelectAndMoveSongs() {
   const runtime = useRuntimeStore()
@@ -33,6 +33,63 @@ export function useSelectAndMoveSongs() {
     const sourceSongListUUID = runtime.songsArea.songListUUID
     const selectedPaths = JSON.parse(JSON.stringify(runtime.songsArea.selectedSongFilePath))
     if (!selectedPaths.length) return
+
+    const targetNode = libraryUtils.getLibraryTreeByUUID(targetSongListUUID)
+    const isMixtapeTarget =
+      targetNode?.type === 'mixtapeList' || targetLibraryName.value === 'MixtapeLibrary'
+    if (isMixtapeTarget) {
+      const sourceNode = libraryUtils.getLibraryTreeByUUID(sourceSongListUUID)
+      if (!sourceNode || sourceNode.type !== 'songList') return
+      const resolveFileNameAndFormat = (filePath: string) => {
+        const baseName =
+          String(filePath || '')
+            .split(/[/\\]/)
+            .pop() || ''
+        const parts = baseName.split('.')
+        const ext = parts.length > 1 ? parts.pop() || '' : ''
+        const fileFormat = ext ? ext.toUpperCase() : ''
+        return { fileName: baseName, fileFormat }
+      }
+      const buildSongSnapshot = (filePath: string, song?: ISongInfo | null) => {
+        const meta = resolveFileNameAndFormat(filePath)
+        return {
+          filePath,
+          fileName: song?.fileName || meta.fileName,
+          fileFormat: song?.fileFormat || meta.fileFormat,
+          cover: null,
+          title: song?.title ?? meta.fileName,
+          artist: song?.artist,
+          album: song?.album,
+          duration: song?.duration ?? '',
+          genre: song?.genre,
+          label: song?.label,
+          bitrate: song?.bitrate,
+          container: song?.container,
+          key: song?.key,
+          bpm: song?.bpm
+        }
+      }
+      const originPathSnapshot = libraryUtils.buildDisplayPathByUuid(sourceSongListUUID)
+      const songMap = new Map(runtime.songsArea.songInfoArr.map((song) => [song.filePath, song]))
+      const items = selectedPaths.map((filePath: string) => ({
+        filePath,
+        originPlaylistUuid: sourceSongListUUID,
+        originPathSnapshot,
+        info: buildSongSnapshot(filePath, songMap.get(filePath))
+      }))
+      await window.electron.ipcRenderer.invoke('mixtape:append', {
+        playlistId: targetSongListUUID,
+        items
+      })
+      runtime.songsArea.selectedSongFilePath.length = 0
+      try {
+        emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
+        emitter.emit('songsArea/clipboardHint', {
+          message: t('mixtape.addedToMixtape', { count: selectedPaths.length })
+        })
+      } catch {}
+      return
+    }
 
     await window.electron.ipcRenderer.invoke(
       'moveSongsToDir',

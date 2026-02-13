@@ -31,6 +31,7 @@ async function reconcileLibraryTree(window: BrowserWindow | null) {
       coreDirNames: {
         FilterLibrary: getCoreFsDirName('FilterLibrary'),
         CuratedLibrary: getCoreFsDirName('CuratedLibrary'),
+        MixtapeLibrary: getCoreFsDirName('MixtapeLibrary'),
         RecycleBin: getCoreFsDirName('RecycleBin')
       },
       audioExtensions: store.settingConfig?.audioExt

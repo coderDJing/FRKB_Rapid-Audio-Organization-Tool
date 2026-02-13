@@ -18,6 +18,7 @@ enum BandKey {
   Low,
   Mid,
   High,
+  All,
 }
 
 #[napi(object)]
@@ -33,6 +34,7 @@ pub struct MixxxWaveformBands {
   pub low: MixxxWaveformBand,
   pub mid: MixxxWaveformBand,
   pub high: MixxxWaveformBand,
+  pub all: MixxxWaveformBand,
 }
 
 #[napi(object)]
@@ -650,6 +652,7 @@ fn process_mixxx_band_sample(
     BandKey::Mid => process_mixxx_bandpass_sample(coefficients, state, value),
     BandKey::High => process_mixxx_highpass_sample(coefficients, state, value),
     BandKey::Low => process_mixxx_lowpass_sample(coefficients, state, value),
+    BandKey::All => value,
   }
 }
 
@@ -807,10 +810,11 @@ fn pcm_buffer_to_f32(buffer: &Buffer) -> Cow<'_, [f32]> {
   }
 }
 
-pub fn compute_mixxx_waveform(
+fn compute_mixxx_waveform_with_summary_rate(
   pcm_data: Buffer,
   sample_rate: u32,
   channels: u8,
+  summary_visual_sample_rate: f64,
 ) -> Result<MixxxWaveformData> {
   if channels == 0 {
     return Err(Error::from_reason("Missing channels for Mixxx waveform"));
@@ -832,21 +836,57 @@ pub fn compute_mixxx_waveform(
 
   let sample_rate_f = sample_rate as f64;
   let main_stride = sample_rate_f / MIXXX_WAVEFORM_POINTS_PER_SECOND;
-  let mut summary_visual_sample_rate = sample_rate_f;
-  let analysis_channels = 2.0;
-  if (total_frames as f64) > (MIXXX_SUMMARY_MAX_SAMPLES / analysis_channels) {
-    summary_visual_sample_rate =
-      (sample_rate_f * MIXXX_SUMMARY_MAX_SAMPLES) / analysis_channels / total_frames as f64;
+  let mut visual_rate = if summary_visual_sample_rate.is_finite() && summary_visual_sample_rate > 0.0 {
+    summary_visual_sample_rate
+  } else {
+    MIXXX_WAVEFORM_POINTS_PER_SECOND
+  };
+  if visual_rate > sample_rate_f {
+    visual_rate = sample_rate_f;
   }
-  let summary_stride = sample_rate_f / summary_visual_sample_rate;
+  let summary_stride = sample_rate_f / visual_rate;
 
   let low_coeffs = design_mixxx_bessel_lowpass(sample_rate_f, MIXXX_LOWPASS_MAX_HZ)?;
-  let mid_coeffs = design_mixxx_bessel_bandpass(sample_rate_f, MIXXX_LOWPASS_MAX_HZ, MIXXX_HIGHPASS_MIN_HZ)?;
+  let mid_coeffs =
+    design_mixxx_bessel_bandpass(sample_rate_f, MIXXX_LOWPASS_MAX_HZ, MIXXX_HIGHPASS_MIN_HZ)?;
   let high_coeffs = design_mixxx_bessel_highpass(sample_rate_f, MIXXX_HIGHPASS_MIN_HZ)?;
 
-  let low_band = downsample_mixxx_band(&samples, channels_usize, BandKey::Low, main_stride, summary_stride, &low_coeffs);
-  let mid_band = downsample_mixxx_band(&samples, channels_usize, BandKey::Mid, main_stride, summary_stride, &mid_coeffs);
-  let high_band = downsample_mixxx_band(&samples, channels_usize, BandKey::High, main_stride, summary_stride, &high_coeffs);
+  let low_band = downsample_mixxx_band(
+    &samples,
+    channels_usize,
+    BandKey::Low,
+    main_stride,
+    summary_stride,
+    &low_coeffs,
+  );
+  let mid_band = downsample_mixxx_band(
+    &samples,
+    channels_usize,
+    BandKey::Mid,
+    main_stride,
+    summary_stride,
+    &mid_coeffs,
+  );
+  let high_band = downsample_mixxx_band(
+    &samples,
+    channels_usize,
+    BandKey::High,
+    main_stride,
+    summary_stride,
+    &high_coeffs,
+  );
+  let all_coeffs = MixxxBesselCoefficients {
+    coefficients: Vec::new(),
+    order: 0,
+  };
+  let all_band = downsample_mixxx_band(
+    &samples,
+    channels_usize,
+    BandKey::All,
+    main_stride,
+    summary_stride,
+    &all_coeffs,
+  );
 
   let duration = total_frames as f64 / sample_rate_f;
 
@@ -858,6 +898,40 @@ pub fn compute_mixxx_waveform(
       low: low_band,
       mid: mid_band,
       high: high_band,
+      all: all_band,
     },
   })
+}
+
+pub fn compute_mixxx_waveform(
+  pcm_data: Buffer,
+  sample_rate: u32,
+  channels: u8,
+) -> Result<MixxxWaveformData> {
+  let sample_rate_f = sample_rate as f64;
+  let mut summary_visual_sample_rate = sample_rate_f;
+  let analysis_channels = 2.0;
+  if sample_rate_f > 0.0 && channels > 0 {
+    let total_samples = pcm_data.len() / 4;
+    let total_frames = total_samples / channels as usize;
+    if (total_frames as f64) > (MIXXX_SUMMARY_MAX_SAMPLES / analysis_channels) {
+      summary_visual_sample_rate =
+        (sample_rate_f * MIXXX_SUMMARY_MAX_SAMPLES) / analysis_channels / total_frames as f64;
+    }
+  }
+  compute_mixxx_waveform_with_summary_rate(
+    pcm_data,
+    sample_rate,
+    channels,
+    summary_visual_sample_rate,
+  )
+}
+
+pub fn compute_mixxx_waveform_with_rate(
+  pcm_data: Buffer,
+  sample_rate: u32,
+  channels: u8,
+  target_visual_rate: f64,
+) -> Result<MixxxWaveformData> {
+  compute_mixxx_waveform_with_summary_rate(pcm_data, sample_rate, channels, target_visual_rate)
 }

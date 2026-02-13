@@ -279,7 +279,7 @@ export function registerLibraryMaintenanceHandlers() {
       const absPath = path.join(store.databaseDir, mapped)
       if (!(await fs.pathExists(absPath))) return false
       const node = findLibraryNodeByPath(mapped)
-      const validTypes = ['root', 'library', 'dir', 'songList']
+      const validTypes = ['root', 'library', 'dir', 'songList', 'mixtapeList']
       return !!(node && validTypes.includes(node.nodeType))
     } catch {
       return false

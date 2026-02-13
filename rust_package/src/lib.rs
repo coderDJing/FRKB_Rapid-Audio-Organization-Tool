@@ -294,6 +294,22 @@ pub fn compute_mixxx_waveform(
   mixxx_waveform::compute_mixxx_waveform(pcm_data, sample_rate, channels)
 }
 
+/// 基于 PCM 计算 Mixxx RGB 波形（指定可视采样率）
+#[napi]
+pub fn compute_mixxx_waveform_with_rate(
+  pcm_data: Buffer,
+  sample_rate: u32,
+  channels: u8,
+  target_visual_rate: f64,
+) -> napi::Result<MixxxWaveformData> {
+  mixxx_waveform::compute_mixxx_waveform_with_rate(
+    pcm_data,
+    sample_rate,
+    channels,
+    target_visual_rate,
+  )
+}
+
 /// 基于 PCM 计算调性（Mixxx Queen Mary）
 #[napi]
 pub fn analyze_key_from_pcm(

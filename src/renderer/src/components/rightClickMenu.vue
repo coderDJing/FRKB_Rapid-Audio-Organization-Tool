@@ -78,6 +78,12 @@ const mouseover = (item: IMenu) => {
 const mouseleave = () => {
   hoverItem.value = null
 }
+const handleGlobalPointerDown = (event: MouseEvent) => {
+  if (!isVisible.value) return
+  const target = event.target as Node | null
+  if (menuRef.value && target && menuRef.value.contains(target)) return
+  requestClose('cancel')
+}
 onMounted(() => {
   nextTick(() => {
     if (!menuRef.value) return
@@ -140,10 +146,12 @@ onMounted(() => {
     }
   })
   utils.setHotkeysScpoe(uuid)
+  window.addEventListener('pointerdown', handleGlobalPointerDown, true)
 })
 
 onUnmounted(() => {
   utils.delHotkeysScope(uuid)
+  window.removeEventListener('pointerdown', handleGlobalPointerDown, true)
 })
 </script>
 <template>

@@ -14,7 +14,12 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/main/index.ts'),
           audioDecodeWorker: resolve(__dirname, 'src/main/workers/audioDecodeWorker.ts'),
-          keyAnalysisWorker: resolve(__dirname, 'src/main/workers/keyAnalysisWorker.ts')
+          keyAnalysisWorker: resolve(__dirname, 'src/main/workers/keyAnalysisWorker.ts'),
+          mixtapeWaveformWorker: resolve(__dirname, 'src/main/workers/mixtapeWaveformWorker.ts'),
+          mixtapeRawWaveformWorker: resolve(
+            __dirname,
+            'src/main/workers/mixtapeRawWaveformWorker.ts'
+          )
         },
         output: {
           entryFileNames: (chunk) => {
@@ -23,6 +28,12 @@ export default defineConfig({
             }
             if (chunk.name === 'keyAnalysisWorker') {
               return 'workers/keyAnalysisWorker.js'
+            }
+            if (chunk.name === 'mixtapeWaveformWorker') {
+              return 'workers/mixtapeWaveformWorker.js'
+            }
+            if (chunk.name === 'mixtapeRawWaveformWorker') {
+              return 'workers/mixtapeRawWaveformWorker.js'
             }
             return '[name].js'
           }
@@ -82,7 +93,8 @@ export default defineConfig({
           databaseInit: resolve(__dirname, 'src/renderer/', 'databaseInit.html'),
           update: resolve(__dirname, 'src/renderer/', 'update.html'),
           foundNewVersion: resolve(__dirname, 'src/renderer/', 'foundNewVersion.html'),
-          whatsNew: resolve(__dirname, 'src/renderer/', 'whatsNew.html')
+          whatsNew: resolve(__dirname, 'src/renderer/', 'whatsNew.html'),
+          mixtape: resolve(__dirname, 'src/renderer/', 'mixtape.html')
         }
       }
     }

@@ -33,6 +33,37 @@ export function useDragSongs() {
     runtime.dragSourceSongListUUID = ''
   }
 
+  const resolveFileNameAndFormat = (filePath: string) => {
+    const baseName =
+      String(filePath || '')
+        .split(/[/\\]/)
+        .pop() || ''
+    const parts = baseName.split('.')
+    const ext = parts.length > 1 ? parts.pop() || '' : ''
+    const fileFormat = ext ? ext.toUpperCase() : ''
+    return { fileName: baseName, fileFormat }
+  }
+
+  const buildSongSnapshot = (filePath: string, song?: ISongInfo | null) => {
+    const meta = resolveFileNameAndFormat(filePath)
+    return {
+      filePath,
+      fileName: song?.fileName || meta.fileName,
+      fileFormat: song?.fileFormat || meta.fileFormat,
+      cover: null,
+      title: song?.title ?? meta.fileName,
+      artist: song?.artist,
+      album: song?.album,
+      duration: song?.duration ?? '',
+      genre: song?.genre,
+      label: song?.label,
+      bitrate: song?.bitrate,
+      container: song?.container,
+      key: song?.key,
+      bpm: song?.bpm
+    }
+  }
+
   /**
    * 开始拖拽歌曲
    * @param songOrSongs - 单个歌曲或歌曲数组
@@ -108,8 +139,38 @@ export function useDragSongs() {
         return []
       }
 
+      const targetNode = libraryUtils.getLibraryTreeByUUID(targetSongListUUID)
+      const sourceNode = libraryUtils.getLibraryTreeByUUID(sourceSongListUUID)
+      const isMixtapeTarget = targetNode?.type === 'mixtapeList'
+
+      if (isMixtapeTarget) {
+        if (!sourceNode || sourceNode.type !== 'songList') {
+          return []
+        }
+        const originPathSnapshot = libraryUtils.buildDisplayPathByUuid(sourceSongListUUID)
+        const songMap = new Map(runtime.songsArea.songInfoArr.map((song) => [song.filePath, song]))
+        const items = selectedSongFilePaths.map((filePath) => ({
+          filePath,
+          originPlaylistUuid: sourceSongListUUID,
+          originPathSnapshot,
+          info: buildSongSnapshot(filePath, songMap.get(filePath))
+        }))
+        await window.electron.ipcRenderer.invoke('mixtape:append', {
+          playlistId: targetSongListUUID,
+          items
+        })
+        try {
+          emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
+        } catch {}
+        return selectedSongFilePaths
+      }
+
       // 如果目标歌单和源歌单相同，不做任何操作
       if (targetSongListUUID === sourceSongListUUID) {
+        return []
+      }
+
+      if (sourceNode?.type === 'mixtapeList') {
         return []
       }
 

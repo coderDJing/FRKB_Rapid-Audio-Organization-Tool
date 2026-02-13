@@ -1,5 +1,6 @@
-const MIXXX_WAVEFORM_CACHE_VERSION = 1
-const MIXXX_WAVEFORM_BANDS = ['low', 'mid', 'high'] as const
+const MIXXX_WAVEFORM_CACHE_VERSION = 2
+const MIXXX_MIXTAPE_WAVEFORM_CACHE_VERSION = 2
+const MIXXX_WAVEFORM_BANDS = ['low', 'mid', 'high', 'all'] as const
 
 export type MixxxWaveformBand = {
   left: Uint8Array
@@ -15,7 +16,7 @@ export type MixxxWaveformData = {
   bands: Record<(typeof MIXXX_WAVEFORM_BANDS)[number], MixxxWaveformBand>
 }
 export function getMixxxWaveformByteLength(frames: number): number {
-  return frames * 12
+  return frames * 16
 }
 
 export function encodeMixxxWaveformData(
@@ -24,6 +25,7 @@ export function encodeMixxxWaveformData(
   const low = data.bands.low
   const mid = data.bands.mid
   const high = data.bands.high
+  const all = data.bands.all
   const frames = low.left.length
   if (!frames) return null
   if (
@@ -37,7 +39,11 @@ export function encodeMixxxWaveformData(
     high.left.length !== frames ||
     high.right.length !== frames ||
     high.peakLeft.length !== frames ||
-    high.peakRight.length !== frames
+    high.peakRight.length !== frames ||
+    all.left.length !== frames ||
+    all.right.length !== frames ||
+    all.peakLeft.length !== frames ||
+    all.peakRight.length !== frames
   ) {
     return null
   }
@@ -54,7 +60,11 @@ export function encodeMixxxWaveformData(
     Buffer.from(high.left),
     Buffer.from(high.right),
     Buffer.from(high.peakLeft),
-    Buffer.from(high.peakRight)
+    Buffer.from(high.peakRight),
+    Buffer.from(all.left),
+    Buffer.from(all.right),
+    Buffer.from(all.peakLeft),
+    Buffer.from(all.peakRight)
   ])
 
   return { frames, payload }
@@ -94,13 +104,19 @@ export function decodeMixxxWaveformData(
     peakLeft: readArray(),
     peakRight: readArray()
   }
+  const all = {
+    left: readArray(),
+    right: readArray(),
+    peakLeft: readArray(),
+    peakRight: readArray()
+  }
 
   return {
     duration: meta.duration,
     sampleRate: meta.sampleRate,
     step: meta.step,
-    bands: { low, mid, high }
+    bands: { low, mid, high, all }
   }
 }
 
-export { MIXXX_WAVEFORM_CACHE_VERSION }
+export { MIXXX_WAVEFORM_CACHE_VERSION, MIXXX_MIXTAPE_WAVEFORM_CACHE_VERSION }

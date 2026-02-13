@@ -4,6 +4,7 @@ import { i18n } from '@renderer/i18n'
 export const LIBRARY_NAME_TO_I18N_KEY: Record<string, string> = {
   FilterLibrary: 'library.filter',
   CuratedLibrary: 'library.curated',
+  MixtapeLibrary: 'library.mixtapeLibrary',
   RecycleBin: 'recycleBin.recycleBin'
 }
 

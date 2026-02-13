@@ -1,10 +1,11 @@
 <script setup lang="ts">
+defineOptions({ inheritAttrs: false })
 import chromeMaximizeAsset from '@renderer/assets/chrome-maximize.svg?asset'
 import chromeRestoreAsset from '@renderer/assets/chrome-restore.svg?asset'
 import chromeMiniimizeAsset from '@renderer/assets/chrome-minimize.svg?asset'
 import logoAsset from '@renderer/assets/logo.png?asset'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import menuComponent from './menu.vue'
 import confirm from '@renderer/components/confirmDialog'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog'
@@ -16,13 +17,51 @@ const chromeMaximize = chromeMaximizeAsset
 const chromeRestore = chromeRestoreAsset
 const chromeMiniimize = chromeMiniimizeAsset
 const logo = logoAsset
+type MenuItem = {
+  name: string
+  shortcutKey?: string
+  i18nParams?: Record<string, any>
+  action?: string
+}
+
+type MenuConfig = {
+  name: string
+  subMenu: MenuItem[][]
+}
+
+const props = withDefaults(
+  defineProps<{
+    controlPrefix?: string
+    maxEventChannel?: string
+    titleText?: string
+    menuOverride?: MenuConfig[]
+    enableMenuHotkeys?: boolean
+  }>(),
+  {
+    controlPrefix: '',
+    maxEventChannel: 'mainWin-max',
+    titleText: '',
+    menuOverride: undefined,
+    enableMenuHotkeys: true
+  }
+)
+
 const emit = defineEmits(['openDialog'])
+const resolveChannel = (action: 'maximize' | 'minimize' | 'close') => {
+  if (props.controlPrefix) return `${props.controlPrefix}-toggle-${action}`
+  return `toggle-${action}`
+}
+const displayTitle = computed(() => {
+  const custom = String(props.titleText || '').trim()
+  return custom || `FRKB - ${t('app.name')}`
+})
+
 const toggleMaximize = () => {
-  window.electron.ipcRenderer.send('toggle-maximize')
+  window.electron.ipcRenderer.send(resolveChannel('maximize'))
 }
 
 const toggleMinimize = () => {
-  window.electron.ipcRenderer.send('toggle-minimize')
+  window.electron.ipcRenderer.send(resolveChannel('minimize'))
 }
 
 const toggleClose = async () => {
@@ -34,21 +73,15 @@ const toggleClose = async () => {
     })
     return
   }
-  window.electron.ipcRenderer.send('toggle-close')
+  window.electron.ipcRenderer.send(resolveChannel('close'))
 }
 const runtime = useRuntimeStore()
 
-window.electron.ipcRenderer.on('mainWin-max', (event, bool) => {
+window.electron.ipcRenderer.on(props.maxEventChannel, (event, bool) => {
   runtime.isWindowMaximized = bool
 })
 
 const fillColor = ref('#9d9d9d')
-type MenuItem = {
-  name: string
-  shortcutKey?: string
-  i18nParams?: Record<string, any>
-  action?: string
-}
 
 type Menu = {
   name: string
@@ -64,10 +97,17 @@ const isDevOrPrerelease = computed(() => {
   return version.includes('-')
 })
 
-const menuArr = ref<Menu[]>([
+const buildMenuArr = (configs: MenuConfig[]): Menu[] => {
+  return configs.map((item) => ({
+    name: item.name,
+    show: false,
+    subMenu: item.subMenu || []
+  }))
+}
+
+const defaultMenus: MenuConfig[] = [
   {
     name: 'menu.file',
-    show: false,
     subMenu: [
       [
         {
@@ -89,17 +129,14 @@ const menuArr = ref<Menu[]>([
   },
   {
     name: 'menu.migration',
-    show: false,
     subMenu: [[{ name: 'fingerprints.exportDatabase' }, { name: 'fingerprints.importDatabase' }]]
   },
   {
     name: 'menu.cloudSync',
-    show: false,
     subMenu: [[{ name: 'cloudSync.syncFingerprints' }], [{ name: 'cloudSync.settings' }]]
   },
   {
     name: 'menu.help',
-    show: false,
     subMenu: [
       [{ name: 'menu.visitGithub', shortcutKey: 'F1' }, { name: 'menu.visitWebsite' }],
       [
@@ -112,51 +149,71 @@ const menuArr = ref<Menu[]>([
       ...(isDevOrPrerelease.value ? [[{ name: 'menu.openLog', action: 'open-log' }]] : [])
     ]
   }
-])
-hotkeys('alt+f', 'windowGlobal', () => {
-  menuArr.value.forEach((item) => {
-    if (item.name === 'menu.file') {
-      item.show = true
-      return
-    }
-  })
-})
-hotkeys('alt+g', 'windowGlobal', () => {
-  menuArr.value.forEach((item) => {
-    if (item.name === 'menu.migration') {
-      item.show = true
-      return
-    }
-  })
-})
-hotkeys('alt+c', 'windowGlobal', () => {
-  menuArr.value.forEach((item) => {
-    if (item.name === 'menu.cloudSync') {
-      item.show = true
-      return
-    }
-  })
-})
-hotkeys('alt+h', 'windowGlobal', () => {
-  menuArr.value.forEach((item) => {
-    if (item.name === 'menu.help') {
-      item.show = true
-      return
-    }
-  })
-})
+]
 
-hotkeys('alt+q', 'windowGlobal', () => {
-  ;(async () => {
-    await scanNewSongDialog({ libraryName: 'FilterLibrary', songListUuid: '' })
-  })()
-})
+const menuArr = ref<Menu[]>(
+  buildMenuArr(
+    Array.isArray(props.menuOverride) && props.menuOverride.length > 0
+      ? props.menuOverride
+      : defaultMenus
+  )
+)
 
-hotkeys('alt+e', 'windowGlobal', () => {
-  ;(async () => {
-    await scanNewSongDialog({ libraryName: 'CuratedLibrary', songListUuid: '' })
-  })()
-})
+watch(
+  () => props.menuOverride,
+  (next: MenuConfig[] | undefined) => {
+    if (Array.isArray(next) && next.length > 0) {
+      menuArr.value = buildMenuArr(next)
+    }
+  }
+)
+
+if (props.enableMenuHotkeys) {
+  hotkeys('alt+f', 'windowGlobal', () => {
+    menuArr.value.forEach((item) => {
+      if (item.name === 'menu.file') {
+        item.show = true
+        return
+      }
+    })
+  })
+  hotkeys('alt+g', 'windowGlobal', () => {
+    menuArr.value.forEach((item) => {
+      if (item.name === 'menu.migration') {
+        item.show = true
+        return
+      }
+    })
+  })
+  hotkeys('alt+c', 'windowGlobal', () => {
+    menuArr.value.forEach((item) => {
+      if (item.name === 'menu.cloudSync') {
+        item.show = true
+        return
+      }
+    })
+  })
+  hotkeys('alt+h', 'windowGlobal', () => {
+    menuArr.value.forEach((item) => {
+      if (item.name === 'menu.help') {
+        item.show = true
+        return
+      }
+    })
+  })
+
+  hotkeys('alt+q', 'windowGlobal', () => {
+    ;(async () => {
+      await scanNewSongDialog({ libraryName: 'FilterLibrary', songListUuid: '' })
+    })()
+  })
+
+  hotkeys('alt+e', 'windowGlobal', () => {
+    ;(async () => {
+      await scanNewSongDialog({ libraryName: 'CuratedLibrary', songListUuid: '' })
+    })()
+  })
+}
 const menuClick = (item: Menu) => {
   item.show = true
 }
@@ -215,8 +272,8 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
 }
 </script>
 <template>
-  <div class="title unselectable">FRKB - {{ t('app.name') }}</div>
-  <div class="titleComponent unselectable">
+  <div class="title unselectable">{{ displayTitle }}</div>
+  <div class="titleComponent unselectable" v-bind="$attrs">
     <div
       v-if="runtime.platform !== 'Mac'"
       style="
@@ -248,7 +305,11 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
         ></menuComponent>
       </div>
     </template>
-    <div class="canDrag" style="flex-grow: 1; height: 35px; z-index: 1"></div>
+    <div class="canDrag title-drag">
+      <div v-if="$slots.meta" class="title-meta">
+        <slot name="meta" />
+      </div>
+    </div>
     <div v-if="runtime.platform !== 'Mac'" style="display: flex; z-index: 1">
       <div class="rightIcon" @click="toggleMinimize()">
         <img :src="chromeMiniimize" :draggable="false" />
@@ -318,6 +379,27 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
   align-items: center;
   font-size: 13px;
   box-sizing: border-box;
+
+  .title-drag {
+    flex-grow: 1;
+    height: 35px;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 12px 0 8px;
+    min-width: 0;
+  }
+
+  .title-meta {
+    font-size: 12px;
+    color: var(--text-weak);
+    max-width: 60%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    pointer-events: none;
+  }
 
   .rightIcon {
     width: 47px;

@@ -14,16 +14,35 @@ const getQueue = () => {
   return queue
 }
 
-export function enqueueKeyAnalysis(filePath: string, priority: KeyAnalysisPriority = 'low') {
-  getQueue().enqueue(filePath, priority)
+export function enqueueKeyAnalysis(
+  filePath: string,
+  priority: KeyAnalysisPriority = 'low',
+  options: {
+    urgent?: boolean
+    source?: 'foreground' | 'background'
+    fastAnalysis?: boolean
+  } = {}
+) {
+  getQueue().enqueue(filePath, priority, options)
 }
 
-export function enqueueKeyAnalysisList(filePaths: string[], priority: KeyAnalysisPriority = 'low') {
-  getQueue().enqueueList(filePaths, priority)
+export function enqueueKeyAnalysisList(
+  filePaths: string[],
+  priority: KeyAnalysisPriority = 'low',
+  options: {
+    urgent?: boolean
+    source?: 'foreground' | 'background'
+    fastAnalysis?: boolean
+  } = {}
+) {
+  getQueue().enqueueList(filePaths, priority, options)
 }
 
-export function enqueueKeyAnalysisImmediate(filePath: string) {
-  getQueue().enqueue(filePath, 'high', { urgent: true })
+export function enqueueKeyAnalysisImmediate(
+  filePath: string,
+  options: { fastAnalysis?: boolean } = {}
+) {
+  getQueue().enqueue(filePath, 'high', { urgent: true, ...options })
 }
 
 export function startKeyAnalysisBackground() {

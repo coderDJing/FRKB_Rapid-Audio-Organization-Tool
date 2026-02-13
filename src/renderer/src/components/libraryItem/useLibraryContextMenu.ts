@@ -36,26 +36,49 @@ export function useLibraryContextMenu({
   startRename
 }: UseLibraryContextMenuOptions) {
   const rightClickMenuShow = ref(false)
-  const menuArr = ref<any[][]>(
-    dirData.type === 'dir'
-      ? [
-          [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }],
+  const buildMenuArr = () => {
+    if (runtime.libraryAreaSelected === 'RecycleBin') {
+      return [
+        [{ menuName: 'recycleBin.permanentlyDelete' }],
+        [{ menuName: 'tracks.showInFileExplorer' }],
+        [{ menuName: 'tracks.convertFormat' }]
+      ]
+    }
+    if (dirData.type === 'dir') {
+      if (runtime.libraryAreaSelected === 'MixtapeLibrary') {
+        return [
+          [{ menuName: 'library.createMixtape' }, { menuName: 'library.createFolder' }],
           [{ menuName: 'common.rename' }, { menuName: 'common.delete' }]
         ]
-      : [
-          [{ menuName: 'tracks.importTracks' }, { menuName: 'tracks.exportTracks' }],
-          [
-            { menuName: 'common.rename' },
-            { menuName: 'playlist.deletePlaylist' },
-            { menuName: 'playlist.emptyPlaylist' }
-          ],
-          [{ menuName: 'tracks.showInFileExplorer' }],
-          [{ menuName: 'playlist.fingerprintDeduplicate' }],
-          [{ menuName: 'metadata.autoFillMenu' }],
-          [{ menuName: 'tracks.convertFormat' }],
-          [{ menuName: 'fingerprints.analyzeAndAdd' }]
-        ]
-  )
+      }
+      return [
+        [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }],
+        [{ menuName: 'common.rename' }, { menuName: 'common.delete' }]
+      ]
+    }
+    if (dirData.type === 'mixtapeList') {
+      return [
+        [{ menuName: 'playlist.autoMix' }],
+        [{ menuName: 'common.rename' }, { menuName: 'playlist.deletePlaylist' }]
+      ]
+    }
+    return [
+      [{ menuName: 'tracks.importTracks' }, { menuName: 'tracks.exportTracks' }],
+      [
+        { menuName: 'common.rename' },
+        { menuName: 'playlist.deletePlaylist' },
+        { menuName: 'playlist.emptyPlaylist' }
+      ],
+      [{ menuName: 'tracks.showInFileExplorer' }],
+      [{ menuName: 'metadata.autoFillMenu' }],
+      [{ menuName: 'playlist.clearCache' }],
+      [{ menuName: 'playlist.fingerprintDeduplicate' }],
+      [{ menuName: 'tracks.convertFormat' }],
+      [{ menuName: 'fingerprints.analyzeAndAdd' }]
+    ]
+  }
+
+  const menuArr = ref<any[][]>(buildMenuArr())
 
   const deleteDir = async () => {
     const libraryTree = libraryUtils.getLibraryTreeByUUID(props.uuid)
@@ -115,34 +138,7 @@ export function useLibraryContextMenu({
       deleteDir()
       return
     }
-    if (runtime.libraryAreaSelected === 'RecycleBin') {
-      menuArr.value = [
-        [{ menuName: 'recycleBin.permanentlyDelete' }],
-        [{ menuName: 'tracks.showInFileExplorer' }],
-        [{ menuName: 'tracks.convertFormat' }]
-      ]
-    } else {
-      menuArr.value =
-        dirData.type === 'dir'
-          ? [
-              [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }],
-              [{ menuName: 'common.rename' }, { menuName: 'common.delete' }]
-            ]
-          : [
-              [{ menuName: 'tracks.importTracks' }, { menuName: 'tracks.exportTracks' }],
-              [
-                { menuName: 'common.rename' },
-                { menuName: 'playlist.deletePlaylist' },
-                { menuName: 'playlist.emptyPlaylist' }
-              ],
-              [{ menuName: 'tracks.showInFileExplorer' }],
-              [{ menuName: 'metadata.autoFillMenu' }],
-              [{ menuName: 'playlist.clearCache' }],
-              [{ menuName: 'playlist.fingerprintDeduplicate' }],
-              [{ menuName: 'tracks.convertFormat' }],
-              [{ menuName: 'fingerprints.analyzeAndAdd' }]
-            ]
-    }
+    menuArr.value = buildMenuArr()
     rightClickMenuShow.value = true
     const result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
     rightClickMenuShow.value = false
@@ -153,7 +149,8 @@ export function useLibraryContextMenu({
         dirChildRendered.value = true
         dirChildShow.value = true
         const newUuid = uuidV4()
-        dirData.children?.unshift({
+        dirData.children = dirData.children || []
+        dirData.children.unshift({
           uuid: newUuid,
           dirName: '',
           type: 'songList'
@@ -161,10 +158,24 @@ export function useLibraryContextMenu({
         runtime.songsArea.songListUUID = newUuid
         break
       }
+      case 'library.createMixtape': {
+        dirChildRendered.value = true
+        dirChildShow.value = true
+        const newUuid = uuidV4()
+        dirData.children = dirData.children || []
+        dirData.children.unshift({
+          uuid: newUuid,
+          dirName: '',
+          type: 'mixtapeList'
+        })
+        runtime.songsArea.songListUUID = newUuid
+        break
+      }
       case 'library.createFolder': {
         dirChildRendered.value = true
         dirChildShow.value = true
-        dirData.children?.unshift({
+        dirData.children = dirData.children || []
+        dirData.children.unshift({
           uuid: uuidV4(),
           dirName: '',
           type: 'dir'
@@ -231,6 +242,16 @@ export function useLibraryContextMenu({
             }
           }
         }
+        break
+      }
+      case 'playlist.autoMix': {
+        if (dirData.type !== 'mixtapeList') break
+        const playlistPath = libraryUtils.findDirPathByUuid(props.uuid)
+        window.electron.ipcRenderer.send('mixtape:open', {
+          playlistId: props.uuid,
+          playlistPath,
+          playlistName: dirData?.dirName
+        })
         break
       }
       case 'tracks.showInFileExplorer': {

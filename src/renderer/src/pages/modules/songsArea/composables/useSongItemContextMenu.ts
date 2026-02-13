@@ -16,13 +16,14 @@ import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 // Type for the return value when a dialog needs to be opened by the parent
 export interface OpenDialogAction {
   action: 'openSelectSongListDialog'
-  libraryName: 'CuratedLibrary' | 'FilterLibrary'
+  libraryName: 'CuratedLibrary' | 'FilterLibrary' | 'MixtapeLibrary'
 }
 
 // 新增：用于表示歌曲被右键菜单操作移除的返回类型
 export interface SongsRemovedAction {
   action: 'songsRemoved'
-  paths: string[]
+  paths?: string[]
+  itemIds?: string[]
 }
 
 export interface MetadataUpdatedAction {
@@ -49,6 +50,34 @@ export function useSongItemContextMenu(
   songsAreaHostElementRef: Ref<InstanceType<typeof OverlayScrollbarsComponent> | null> // For scrolling
 ) {
   const runtime = useRuntimeStore() // Use the store directly
+  const isMixtapeView = () =>
+    libraryUtils.getLibraryTreeByUUID(runtime.songsArea.songListUUID)?.type === 'mixtapeList'
+  const getRowKey = (song: ISongInfo) =>
+    isMixtapeView() && song.mixtapeItemId ? song.mixtapeItemId : song.filePath
+  const resolveSelectedKeys = () => runtime.songsArea.selectedSongFilePath
+  const resolveSelectedFilePaths = (keys?: string[]) => {
+    const selectedKeys = keys ?? resolveSelectedKeys()
+    if (!isMixtapeView()) return selectedKeys
+    const map = new Map<string, string>()
+    for (const item of runtime.songsArea.songInfoArr) {
+      if (item.mixtapeItemId) {
+        map.set(item.mixtapeItemId, item.filePath)
+      }
+    }
+    return selectedKeys
+      .map((key) => map.get(key) || key)
+      .filter((p) => typeof p === 'string' && p.length > 0)
+  }
+  const resolveSelectedItemIds = (keys?: string[]) => {
+    if (!isMixtapeView()) return []
+    const selectedKeys = keys ?? resolveSelectedKeys()
+    const available = new Set(
+      runtime.songsArea.songInfoArr
+        .map((item) => item.mixtapeItemId)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    )
+    return selectedKeys.filter((key) => available.has(key))
+  }
   const hasAcoustIdKey = () => {
     const key = (runtime.setting?.acoustIdClientKey || '').trim()
     return key.length > 0
@@ -69,7 +98,11 @@ export function useSongItemContextMenu(
 
   const defaultMenuArr: IMenu[][] = [
     [{ menuName: 'tracks.exportTracks' }],
-    [{ menuName: 'library.moveToFilter' }, { menuName: 'library.moveToCurated' }],
+    [
+      { menuName: 'library.moveToFilter' },
+      { menuName: 'library.moveToCurated' },
+      { menuName: 'library.addToMixtape' }
+    ],
     [
       { menuName: 'tracks.deleteTracks', shortcutKey: 'Delete' },
       { menuName: 'tracks.deleteAllAbove' }
@@ -94,6 +127,13 @@ export function useSongItemContextMenu(
     [{ menuName: 'tracks.clearTrackCache' }],
     [{ menuName: 'fingerprints.analyzeAndAdd' }]
   ]
+  const mixtapeMenuArr: IMenu[][] = [
+    [{ menuName: 'tracks.exportTracks' }],
+    [{ menuName: 'tracks.deleteTracks', shortcutKey: 'Delete' }],
+    [{ menuName: 'tracks.showInFileExplorer' }],
+    [{ menuName: 'tracks.editMetadata' }],
+    [{ menuName: 'tracks.clearTrackCache' }]
+  ]
   const menuArr: Ref<IMenu[][]> = ref(defaultMenuArr)
 
   const showAndHandleSongContextMenu = async (
@@ -110,11 +150,15 @@ export function useSongItemContextMenu(
   > => {
     const isRecycleBinView = runtime.songsArea.songListUUID === RECYCLE_BIN_UUID
     const isExternalView = runtime.songsArea.songListUUID === EXTERNAL_PLAYLIST_UUID
-    if (runtime.songsArea.selectedSongFilePath.indexOf(song.filePath) === -1) {
-      runtime.songsArea.selectedSongFilePath = [song.filePath]
+    if (runtime.songsArea.selectedSongFilePath.indexOf(getRowKey(song)) === -1) {
+      runtime.songsArea.selectedSongFilePath = [getRowKey(song)]
     }
 
-    menuArr.value = isRecycleBinView ? recycleMenuArr : defaultMenuArr
+    menuArr.value = isMixtapeView()
+      ? mixtapeMenuArr
+      : isRecycleBinView
+        ? recycleMenuArr
+        : defaultMenuArr
     const result = await rightClickMenu({
       menuArr: menuArr.value,
       clickEvent: event
@@ -200,7 +244,7 @@ export function useSongItemContextMenu(
 
     switch (result.menuName) {
       case 'recycleBin.restoreToOriginal': {
-        const currentSelectedPaths = [...runtime.songsArea.selectedSongFilePath]
+        const currentSelectedPaths = resolveSelectedFilePaths()
         if (!currentSelectedPaths.length) return null
         const summary = await window.electron.ipcRenderer.invoke('recycleBin:restore', {
           filePaths: [...currentSelectedPaths]
@@ -242,7 +286,7 @@ export function useSongItemContextMenu(
         return null
       }
       case 'metadata.autoFillMenu': {
-        const selectedFiles = [...runtime.songsArea.selectedSongFilePath]
+        const selectedFiles = resolveSelectedFilePaths()
         if (!selectedFiles.length) {
           await confirm({
             title: t('dialog.hint'),
@@ -305,7 +349,7 @@ export function useSongItemContextMenu(
         const { default: openConvertDialog } = await import(
           '@renderer/components/audioConvertDialog'
         )
-        const files = [...runtime.songsArea.selectedSongFilePath]
+        const files = resolveSelectedFilePaths()
         const extsSet = new Set(
           files
             .map((p) => (p || '').toLowerCase())
@@ -398,9 +442,25 @@ export function useSongItemContextMenu(
       case 'tracks.deleteTracks':
       case 'recycleBin.permanentlyDeleteTracks':
         {
-          const currentSelectedPaths = [...runtime.songsArea.selectedSongFilePath]
+          const currentSelectedKeys = [...resolveSelectedKeys()]
 
-          if (!currentSelectedPaths.length) return null
+          if (!currentSelectedKeys.length) return null
+
+          if (isMixtapeView()) {
+            const itemIds = resolveSelectedItemIds(currentSelectedKeys)
+            if (!itemIds.length) return null
+            await window.electron.ipcRenderer.invoke('mixtape:remove', {
+              playlistId: runtime.songsArea.songListUUID,
+              itemIds: [...itemIds]
+            })
+            runtime.songsArea.selectedSongFilePath.length = 0
+            emitter.emit('playlistContentChanged', { uuids: [runtime.songsArea.songListUUID] })
+            emitter.emit('songsRemoved', {
+              listUUID: runtime.songsArea.songListUUID,
+              itemIds: [...itemIds]
+            })
+            return { action: 'songsRemoved', itemIds: [...itemIds] }
+          }
 
           let shouldDelete = true
           if (isRecycleBinView) {
@@ -412,10 +472,11 @@ export function useSongItemContextMenu(
           }
 
           if (shouldDelete) {
-            let removedPathsForEvent = [...currentSelectedPaths]
+            const resolvedSelectedPaths = resolveSelectedFilePaths(currentSelectedKeys)
+            let removedPathsForEvent = [...resolvedSelectedPaths]
             if (isRecycleBinView) {
               const summary = await window.electron.ipcRenderer.invoke('permanentlyDelSongs', [
-                ...currentSelectedPaths
+                ...resolvedSelectedPaths
               ])
               const removedPaths = Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
               if (removedPaths.length > 0) {
@@ -429,7 +490,7 @@ export function useSongItemContextMenu(
             } else {
               window.electron.ipcRenderer.send(
                 'delSongs',
-                buildDelSongsPayload([...currentSelectedPaths])
+                buildDelSongsPayload([...resolvedSelectedPaths])
               )
             }
 
@@ -444,7 +505,7 @@ export function useSongItemContextMenu(
         }
         break
       case 'fingerprints.analyzeAndAdd': {
-        const files = [...runtime.songsArea.selectedSongFilePath]
+        const files = resolveSelectedFilePaths()
         await analyzeFingerprintsForPaths(files, { origin: 'selection' })
         return null
       }
@@ -452,11 +513,13 @@ export function useSongItemContextMenu(
         return { action: 'openSelectSongListDialog', libraryName: 'CuratedLibrary' }
       case 'library.moveToFilter':
         return { action: 'openSelectSongListDialog', libraryName: 'FilterLibrary' }
+      case 'library.addToMixtape':
+        return { action: 'openSelectSongListDialog', libraryName: 'MixtapeLibrary' }
       case 'tracks.exportTracks': {
         const exportResult = await exportDialog({ title: 'tracks.title' })
         if (exportResult !== 'cancel') {
           const { folderPathVal, deleteSongsAfterExport } = exportResult
-          const songsToExportFilePaths = [...runtime.songsArea.selectedSongFilePath]
+          const songsToExportFilePaths = resolveSelectedFilePaths()
 
           const songsToExportObjects = runtime.songsArea.songInfoArr.filter((item) =>
             songsToExportFilePaths.includes(item.filePath)
@@ -470,9 +533,14 @@ export function useSongItemContextMenu(
           )
           if (deleteSongsAfterExport && songsToExportFilePaths.length > 0) {
             // 不直接修改显示列表，仅广播，由 songsArea.vue 统一处理 original + applyFiltersAndSorting
-            runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
-              (path) => !songsToExportFilePaths.includes(path)
-            )
+            if (isMixtapeView()) {
+              runtime.songsArea.selectedSongFilePath.length = 0
+            } else {
+              runtime.songsArea.selectedSongFilePath =
+                runtime.songsArea.selectedSongFilePath.filter(
+                  (path) => !songsToExportFilePaths.includes(path)
+                )
+            }
             if (runtime.songsArea.songListUUID === runtime.playingData.playingSongListUUID) {
               if (
                 runtime.playingData.playingSong &&

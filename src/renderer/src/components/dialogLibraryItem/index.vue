@@ -47,6 +47,9 @@ if (dirData === null) {
   throw new Error(`dirData error: ${JSON.stringify(dirData)}`)
 }
 let fatherDirData = libraryUtils.getFatherLibraryTreeByUUID(props.uuid)
+const isMixtapeDialog = computed(() => String(props.libraryName || '').startsWith('MixtapeLibrary'))
+const isDialogListType = (node?: any) =>
+  node?.type === 'songList' || (isMixtapeDialog.value && node?.type === 'mixtapeList')
 const myInputHandleInput = () => {
   const newName = operationInputValue.value
   const invalidCharsRegex = /[<>:"/\\|?*\u0000-\u001F]/
@@ -122,13 +125,15 @@ const inputBlurHandle = async () => {
 
     await libraryUtils.diffLibraryTreeExecuteFileOperation()
     // 命名完成并写盘成功后，再在对话框中高亮该歌单（不触发双击）
-    if (dirData.type === 'songList') {
+    if (isDialogListType(dirData)) {
       runtime.dialogSelectedSongListUUID = dirData.uuid
       emits('markTreeSelected')
       // 命名完成后刷新曲目数量显示（此时目录已存在）
-      try {
-        await ensureTrackCount()
-      } catch {}
+      if (dirData.type === 'songList') {
+        try {
+          await ensureTrackCount()
+        } catch {}
+      }
     }
     // 清除创建中标记
     if (runtime.creatingSongListUUID === dirData.uuid) {
@@ -226,7 +231,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
         dirData.children.unshift({
           uuid: newUuid,
           dirName: '',
-          type: 'songList'
+          type: isMixtapeDialog.value ? 'mixtapeList' : 'songList'
         })
       }
       // 不在此时标记“创建中”，等待命名确认开始写盘时再标记
@@ -264,7 +269,7 @@ const dirHandleClick = async () => {
     deleteDir()
     return
   }
-  if (dirData.type == 'songList') {
+  if (isDialogListType(dirData)) {
     runtime.dialogSelectedSongListUUID = props.uuid
     emits('markTreeSelected')
   } else {
@@ -274,7 +279,7 @@ const dirHandleClick = async () => {
 }
 const emits = defineEmits(['dblClickSongList', 'markTreeSelected'])
 const dirHandleDblClick = () => {
-  if (dirData.type == 'songList') {
+  if (isDialogListType(dirData)) {
     emits('dblClickSongList')
   }
 }
@@ -497,13 +502,13 @@ const keyword = computed(() =>
 )
 const matchesSelf = computed(() => {
   if (!keyword.value) return true
-  return dirData?.type === 'songList' && dirData?.dirName?.toLowerCase().includes(keyword.value)
+  return isDialogListType(dirData) && dirData?.dirName?.toLowerCase().includes(keyword.value)
 })
 function hasMatchingDescendant(node?: any): boolean {
   if (!keyword.value) return true
   if (!node?.children) return false
   for (const c of node.children) {
-    if (c.type === 'songList' && c.dirName?.toLowerCase().includes(keyword.value)) return true
+    if (isDialogListType(c) && c.dirName?.toLowerCase().includes(keyword.value)) return true
     if (c.type === 'dir' && hasMatchingDescendant(c)) return true
   }
   return false
@@ -591,7 +596,7 @@ watch(
         />
       </svg>
       <img
-        v-if="dirData.type == 'songList' && runtime.creatingSongListUUID !== props.uuid"
+        v-if="isDialogListType(dirData) && runtime.creatingSongListUUID !== props.uuid"
         style="width: 13px; height: 13px"
         :src="listIcon"
         class="songlist-icon"

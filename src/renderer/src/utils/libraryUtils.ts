@@ -1,6 +1,7 @@
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { IDir } from 'src/types/globals'
 import { calculateFileSystemOperations } from './diffLibraryTree'
+import { toLibraryDisplayName } from './translate'
 
 export const diffLibraryTreeExecuteFileOperation = async () => {
   const runtime = useRuntimeStore()
@@ -115,6 +116,28 @@ export const findDirPathByUuid = (targetUuid: string, path: string = '', data?: 
   // 如果没有找到，返回空字符串
   return ''
 }
+
+// 根据 UUID 生成展示路径（从核心库开始）
+export const buildDisplayPathByUuid = (targetUuid: string): string => {
+  const rawPath = findDirPathByUuid(targetUuid)
+  if (!rawPath) return ''
+  const segments = rawPath.split('/').filter(Boolean)
+  const displaySegments = segments
+    .filter((seg, idx) => !(idx === 0 && seg === 'library'))
+    .map((seg) => {
+      if (
+        seg === 'FilterLibrary' ||
+        seg === 'CuratedLibrary' ||
+        seg === 'MixtapeLibrary' ||
+        seg === 'RecycleBin'
+      ) {
+        return toLibraryDisplayName(seg)
+      }
+      return seg
+    })
+    .filter(Boolean)
+  return displaySegments.join(' / ')
+}
 export const reOrderChildren = (children: IDir[]) => {
   for (let index in children) {
     children[index].order = Number(index) + 1
@@ -209,6 +232,7 @@ export const libraryUtils = {
   getFatherLibraryTreeByUUID,
   getLibraryTreeByUUID,
   findDirPathByUuid,
+  buildDisplayPathByUuid,
   reOrderChildren,
   isDragItemInDirChildren,
   getDepthByUuid,

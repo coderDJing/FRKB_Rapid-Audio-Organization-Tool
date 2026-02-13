@@ -87,7 +87,11 @@ export class KeyAnalysisQueue {
   enqueue(
     filePath: string,
     priority: KeyAnalysisPriority,
-    options: { urgent?: boolean; source?: KeyAnalysisSource; fastAnalysis?: boolean } = {}
+    options: {
+      urgent?: boolean
+      source?: KeyAnalysisSource
+      fastAnalysis?: boolean
+    } = {}
   ) {
     if (!filePath) return
     if (priority === 'background' && !this.background.isEnabled()) return
@@ -134,7 +138,11 @@ export class KeyAnalysisQueue {
   enqueueList(
     filePaths: string[],
     priority: KeyAnalysisPriority,
-    options: { urgent?: boolean; source?: KeyAnalysisSource; fastAnalysis?: boolean } = {}
+    options: {
+      urgent?: boolean
+      source?: KeyAnalysisSource
+      fastAnalysis?: boolean
+    } = {}
   ) {
     if (!Array.isArray(filePaths) || filePaths.length === 0) return
     for (const filePath of filePaths) {

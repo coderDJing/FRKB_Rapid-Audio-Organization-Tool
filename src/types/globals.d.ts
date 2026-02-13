@@ -5,7 +5,7 @@ import { IPicture } from 'music-metadata'
 
 interface IDir {
   uuid: string
-  type: 'root' | 'library' | 'dir' | 'songList'
+  type: 'root' | 'library' | 'dir' | 'songList' | 'mixtapeList'
   dirName: string
   order?: number
   children?: IDir[]
@@ -41,6 +41,8 @@ interface ISongInfo {
   container: string | undefined
   key?: string
   bpm?: number
+  mixOrder?: number
+  mixtapeItemId?: string
   analysisOnly?: boolean
   autoFilled?: boolean
   deletedAtMs?: number
@@ -364,7 +366,7 @@ interface ISongsAreaColumn {
 }
 
 type Icon = {
-  name: 'FilterLibrary' | 'CuratedLibrary' | 'RecycleBin' | 'ExternalPlaylist'
+  name: 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin' | 'ExternalPlaylist'
   grey: string
   white: string
   src: string

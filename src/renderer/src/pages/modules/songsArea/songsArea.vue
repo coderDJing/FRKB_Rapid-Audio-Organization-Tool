@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, useTemplateRef, onUnmounted, watch } from 'vue'
+import { ref, shallowRef, computed, useTemplateRef, onUnmounted, watch, markRaw } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
@@ -46,6 +46,29 @@ const descendingOrder = descendingOrderAsset
 
 const runtime = useRuntimeStore()
 const songsAreaRef = useTemplateRef<OverlayScrollbarsComponentRef>('songsAreaRef')
+const isMixtapeListView = computed(
+  () => libraryUtils.getLibraryTreeByUUID(runtime.songsArea.songListUUID)?.type === 'mixtapeList'
+)
+const getRowKey = (song: ISongInfo) =>
+  isMixtapeListView.value && song.mixtapeItemId ? song.mixtapeItemId : song.filePath
+const resolveSelectedFilePaths = (keys?: string[]) => {
+  const selectedKeys = keys ?? runtime.songsArea.selectedSongFilePath
+  if (!isMixtapeListView.value) return selectedKeys
+  const map = new Map<string, string>()
+  for (const item of runtime.songsArea.songInfoArr) {
+    if (item.mixtapeItemId) {
+      map.set(item.mixtapeItemId, item.filePath)
+    }
+  }
+  return selectedKeys
+    .map((key) => map.get(key) || key)
+    .filter((p) => typeof p === 'string' && p.length > 0)
+}
+const songListRootDir = computed(() =>
+  isMixtapeListView.value
+    ? ''
+    : libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID) || ''
+)
 // 使用浅响应+markRaw，避免为上千行数据创建深层 Proxy，降低 flushJobs 峰值
 const originalSongInfoArr = shallowRef<ISongInfo[]>([])
 
@@ -111,7 +134,12 @@ const showClipboardHint = (message: string) => {
     clipboardHintVisible.value = false
   }, 2000)
 }
-const handleClipboardHint = (payload?: { action?: 'copy' | 'cut' }) => {
+const handleClipboardHint = (payload?: { action?: 'copy' | 'cut'; message?: string }) => {
+  const message = payload?.message
+  if (message) {
+    showClipboardHint(message)
+    return
+  }
   const action = payload?.action
   if (action === 'cut') {
     showClipboardHint(t('tracks.clipboardCutSuccess'))
@@ -344,8 +372,29 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
   }
 
   if (result.action === 'songsRemoved') {
-    const pathsToRemove = result.paths
+    const itemIdsToRemove = Array.isArray(result.itemIds) ? result.itemIds : []
+    if (itemIdsToRemove.length > 0) {
+      const idSet = new Set(itemIdsToRemove)
+      originalSongInfoArr.value = originalSongInfoArr.value.filter(
+        (item) => !idSet.has(item.mixtapeItemId || '')
+      )
+      applyFiltersAndSorting()
+      if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+        runtime.playingData.playingSongListData = [...runtime.songsArea.songInfoArr]
+      }
+      if (
+        runtime.playingData.playingSong &&
+        idSet.has(runtime.playingData.playingSong.mixtapeItemId || '')
+      ) {
+        runtime.playingData.playingSong = null
+      }
+      runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
+        (key) => !idSet.has(key)
+      )
+      return
+    }
 
+    const pathsToRemove = result.paths
     if (Array.isArray(pathsToRemove) && pathsToRemove.length > 0) {
       originalSongInfoArr.value = originalSongInfoArr.value.filter(
         (item) => !pathsToRemove.includes(item.filePath)
@@ -453,7 +502,11 @@ const songDblClick = async (song: ISongInfo) => {
 // 排序、筛选与列点击等逻辑由 useSongsAreaColumns 提供
 
 // --- 新增计算属性给 SongListRows ---
-const playingSongFilePathForRows = computed(() => runtime.playingData.playingSong?.filePath)
+const playingSongFilePathForRows = computed(() => {
+  const playingSong = runtime.playingData.playingSong
+  if (!playingSong) return undefined
+  return getRowKey(playingSong)
+})
 
 const viewState = computed<'welcome' | 'loading' | 'list'>(() => {
   if (loadingShow.value) return 'loading'
@@ -511,6 +564,11 @@ const handleScrollToPlaying = () => {
 // 新增：处理移动歌曲对话框确认后的逻辑
 async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
   const pathsEffectivelyMoved = [...runtime.songsArea.selectedSongFilePath]
+  const currentListUuid = runtime.songsArea.songListUUID
+  const targetNode = libraryUtils.getLibraryTreeByUUID(targetSongListUuid)
+  const isMixtapeTarget =
+    targetNode?.type === 'mixtapeList' ||
+    selectSongListDialogTargetLibraryName.value === 'MixtapeLibrary'
 
   if (pathsEffectivelyMoved.length === 0) {
     // 如果没有选中的歌曲，让 composable 的 handleMoveSongsConfirm 处理（它可能会直接关闭对话框或不做任何事）
@@ -521,6 +579,7 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
   // 调用 composable 中的函数来执行移动操作 (IPC, 关闭对话框, 清空选择等)
   // handleMoveSongsConfirm 应该会处理 isDialogVisible 和 selectedSongFilePath
   await handleMoveSongsConfirm(targetSongListUuid)
+  if (isMixtapeTarget || targetSongListUuid === currentListUuid) return
   // 本地同步移除：基于移动前的路径快照，立即从 original 中剔除并统一重建，避免偶发事件竞态导致“复活”
   if (pathsEffectivelyMoved.length > 0) {
     const normalizePath = (p: string | undefined | null) =>
@@ -591,16 +650,18 @@ const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
   if (!runtime.songsArea.songListUUID) return
 
   // 确保拖拽的歌曲在选中列表中
-  const isSelected = runtime.songsArea.selectedSongFilePath.includes(song.filePath)
+  const rowKey = getRowKey(song)
+  const isSelected = runtime.songsArea.selectedSongFilePath.includes(rowKey)
 
   if (!isSelected || runtime.songsArea.selectedSongFilePath.length === 0) {
     // 如果这首歌没有被选中，或者没有选中任何歌曲，就选中这首歌
-    runtime.songsArea.selectedSongFilePath = [song.filePath]
+    runtime.songsArea.selectedSongFilePath = [rowKey]
   }
 
-  const songFilePaths = runtime.songsArea.selectedSongFilePath.length
+  const selectedKeysSnapshot = runtime.songsArea.selectedSongFilePath.length
     ? [...runtime.songsArea.selectedSongFilePath]
-    : [song.filePath]
+    : [rowKey]
+  const songFilePaths = resolveSelectedFilePaths(selectedKeysSnapshot)
 
   const hasExternalModifier = isMacPlatform.value
     ? event.altKey ||
@@ -624,6 +685,32 @@ const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
     return
   }
 
+  if (isMixtapeListView.value) {
+    const listUuid = runtime.songsArea.songListUUID
+    const selectedSet = new Set(selectedKeysSnapshot)
+    const selectedItemIds = runtime.songsArea.songInfoArr
+      .filter((item) => !!item.mixtapeItemId && selectedSet.has(item.mixtapeItemId))
+      .map((item) => item.mixtapeItemId)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    const fallbackId =
+      typeof song.mixtapeItemId === 'string' && song.mixtapeItemId.length > 0
+        ? [song.mixtapeItemId]
+        : []
+    const itemIds = selectedItemIds.length > 0 ? selectedItemIds : fallbackId
+    if (!listUuid || itemIds.length === 0) return
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move'
+      event.dataTransfer.setData(
+        'application/x-mixtape-reorder',
+        JSON.stringify({
+          sourceSongListUUID: listUuid,
+          itemIds
+        })
+      )
+    }
+    return
+  }
+
   showDragHint('internal')
   startDragSongs(song, runtime.libraryAreaSelected, runtime.songsArea.songListUUID)
 
@@ -644,6 +731,48 @@ const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
 const handleSongDragEnd = () => {
   hideDragHint()
   scheduleDragCleanup()
+}
+
+const handleMixtapeReorder = async (payload: { sourceItemIds: string[]; targetIndex: number }) => {
+  if (!isMixtapeListView.value) return
+  const sourceItemIds = Array.isArray(payload?.sourceItemIds) ? payload.sourceItemIds : []
+  if (!sourceItemIds.length) return
+  const sourceSet = new Set(sourceItemIds)
+  const current = [...originalSongInfoArr.value]
+  if (!current.length) return
+  const moving = current.filter((item) => sourceSet.has(item.mixtapeItemId || ''))
+  if (!moving.length) return
+  const remaining = current.filter((item) => !sourceSet.has(item.mixtapeItemId || ''))
+  const targetIndex =
+    typeof payload?.targetIndex === 'number' && Number.isFinite(payload.targetIndex)
+      ? payload.targetIndex
+      : current.length
+  let insertIndex = remaining.length
+  if (targetIndex <= 0) {
+    insertIndex = 0
+  } else if (targetIndex >= current.length) {
+    insertIndex = remaining.length
+  } else {
+    const movingBefore = current
+      .slice(0, Math.min(targetIndex, current.length))
+      .filter((item) => sourceSet.has(item.mixtapeItemId || '')).length
+    insertIndex = Math.max(0, Math.min(remaining.length, targetIndex - movingBefore))
+  }
+  const next = [...remaining.slice(0, insertIndex), ...moving, ...remaining.slice(insertIndex)]
+  next.forEach((item, idx) => {
+    item.mixOrder = idx + 1
+  })
+  originalSongInfoArr.value = markRaw(next)
+  applyFiltersAndSorting()
+  const orderedIds = next
+    .map((item) => item.mixtapeItemId)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0)
+  if (orderedIds.length > 0) {
+    window.electron.ipcRenderer.invoke('mixtape:reorder', {
+      playlistId: runtime.songsArea.songListUUID,
+      orderedIds
+    })
+  }
 }
 
 // 播放列表同步由 useSongsAreaEvents 管理
@@ -705,14 +834,13 @@ const handleSongDragEnd = () => {
             :scroll-host-element="songsAreaRef?.osInstance()?.elements().viewport"
             :external-scroll-top="externalScrollTop"
             :external-viewport-height="externalViewportHeight"
-            :song-list-root-dir="
-              libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID) || ''
-            "
+            :song-list-root-dir="songListRootDir"
             @song-click="songClick"
             @song-contextmenu="handleSongContextMenuEvent"
             @song-dblclick="songDblClick"
             @song-dragstart="handleSongDragStart"
             @song-dragend="handleSongDragEnd"
+            @mixtape-reorder="handleMixtapeReorder"
           />
         </OverlayScrollbarsComponent>
 
@@ -773,259 +901,4 @@ const handleSongDragEnd = () => {
     </Teleport>
   </div>
 </template>
-<style lang="scss" scoped>
-.songs-area-root {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.songs-area-shell {
-  position: relative;
-  width: 100%;
-  height: 100%;
-}
-
-.songs-area-float-jump {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  background: var(--bg-elev);
-  opacity: 0.65;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 6;
-  cursor: pointer;
-  transition:
-    opacity 0.15s ease,
-    transform 0.15s ease,
-    box-shadow 0.15s ease;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18);
-}
-
-.songs-area-float-jump:hover {
-  opacity: 0.95;
-  transform: translateY(-1px);
-}
-
-.songs-area-float-jump:active {
-  transform: translateY(0);
-}
-
-.songs-area-float-jump:focus-visible {
-  outline: 2px solid rgba(0, 120, 212, 0.6);
-  outline-offset: 2px;
-}
-
-.songs-area-float-jump__icon {
-  position: relative;
-  width: 14px;
-  height: 14px;
-}
-
-.songs-area-float-jump__icon::before,
-.songs-area-float-jump__icon::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-}
-
-.songs-area-float-jump__icon::before {
-  width: 2px;
-  height: 12px;
-  left: 6px;
-  top: 1px;
-  background: var(--text);
-  border-radius: 1px;
-  opacity: 0.85;
-}
-
-.songs-area-float-jump__icon::after {
-  width: 6px;
-  height: 6px;
-  left: 4px;
-  top: 4px;
-  background: var(--text);
-  border-radius: 50%;
-  opacity: 0.9;
-}
-
-.songs-area-drag-hint {
-  position: absolute;
-  right: 20px;
-  bottom: 20px;
-  min-width: 168px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--bg-elev);
-  color: var(--text);
-  z-index: 7;
-  pointer-events: none;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
-}
-
-.songs-area-drag-hint.is-external {
-  border-color: var(--accent);
-  box-shadow:
-    0 0 0 1px rgba(0, 120, 212, 0.35),
-    0 6px 16px rgba(0, 0, 0, 0.2);
-}
-
-.songs-area-drag-hint .title {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.2px;
-}
-
-.songs-area-drag-hint .desc {
-  font-size: 11px;
-  color: var(--text-weak);
-}
-
-.songs-area-clipboard-hint .title {
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.songs-area-drag-hint-enter-active,
-.songs-area-drag-hint-leave-active {
-  transition:
-    opacity 0.18s ease,
-    transform 0.18s ease;
-}
-
-.songs-area-drag-hint-enter-from,
-.songs-area-drag-hint-leave-to {
-  opacity: 0;
-  transform: translateY(6px) scale(0.98);
-}
-
-.loading-wrapper {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-}
-
-.songs-area-switch-enter-active,
-.songs-area-switch-leave-active {
-  transition:
-    opacity 0.22s ease,
-    transform 0.22s ease;
-}
-
-.songs-area-switch-enter-from,
-.songs-area-switch-leave-to {
-  opacity: 0;
-  transform: translateY(6px) scale(0.995);
-}
-
-.loading {
-  display: block;
-  position: relative;
-  width: 6px;
-  height: 10px;
-
-  animation: rectangle infinite 1s ease-in-out -0.2s;
-
-  background-color: #cccccc;
-}
-
-.loading:before,
-.loading:after {
-  position: absolute;
-  width: 6px;
-  height: 10px;
-  content: '';
-  background-color: #cccccc;
-}
-
-.loading:before {
-  left: -14px;
-
-  animation: rectangle infinite 1s ease-in-out -0.4s;
-}
-
-.loading:after {
-  right: -14px;
-
-  animation: rectangle infinite 1s ease-in-out;
-}
-
-@keyframes rectangle {
-  0%,
-  80%,
-  100% {
-    height: 20px;
-    box-shadow: 0 0 #cccccc;
-  }
-
-  40% {
-    height: 30px;
-    box-shadow: 0 -20px #cccccc;
-  }
-}
-
-.welcomeContainer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-width: 430px;
-}
-
-/* 为新的空状态容器添加一个类名，以便将来可能需要的特定样式 */
-.songs-area-empty-state {
-  /* Styles for empty state are mostly inline, but class is good for targeting */
-  &.unselectable {
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-  }
-}
-
-/* 新的空态覆盖层，固定在可视区域中央，不受横向滚动影响 */
-.songs-area-empty-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
-.songs-area-empty-overlay .empty-box {
-  min-height: 120px;
-  min-width: 300px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-.songs-area-empty-overlay .title {
-  font-size: 16px;
-  color: #999999;
-}
-.songs-area-empty-overlay .hint {
-  font-size: 12px;
-  color: #999999;
-  margin-top: 10px;
-}
-</style>
+<style lang="scss" scoped src="./songsArea.scss"></style>
