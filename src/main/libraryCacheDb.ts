@@ -49,6 +49,16 @@ export {
 } from './libraryCacheDb/mixtapeRawWaveformCache'
 
 export {
+  loadTranscodeCacheBatch,
+  loadTranscodeCacheEntry,
+  upsertTranscodeCacheEntry,
+  updateTranscodeCacheStatus,
+  removeTranscodeCacheEntries,
+  listAllTranscodeCacheFilenames,
+  listPendingTranscodeFilePaths
+} from './libraryCacheDb/mixtapeTranscodeCache'
+
+export {
   renameCacheRoot,
   pruneCachesByRoots,
   migrateCacheKeysToRelativeIfNeeded,

@@ -662,6 +662,8 @@
     "zoom": "Zoom",
     "previewSegment": "Preview Segment",
     "previewing": "Previewing...",
+    "play": "Play",
+    "stop": "Stop",
     "output": "Output",
     "outputPath": "Target path",
     "outputPathPlaceholder": "Not selected",
@@ -686,7 +688,16 @@
     "bpmAnalyzing": "Re-analyzing BPM...",
     "bpmAnalyzingHint": "This may take a while on first load",
     "bpmAnalyzeFailed": "BPM analysis failed",
-    "bpmAnalyzeFailedHint": "{count} track(s) failed to analyze. Grid lines are disabled."
+    "bpmAnalyzeFailedHint": "{count} track(s) failed to analyze. Grid lines are disabled.",
+    "transportDecoding": "Decoding…",
+    "transportPreloading": "Pre-decoding tracks…",
+    "transportPreloadingHint": "Decoding all tracks for timeline playback. Please wait.",
+    "transportPreloadingProgress": "{done}/{total} ({percent}%)",
+    "transportDecodeFailed": "{count} track(s) failed to decode and cannot be played on timeline.",
+    "transportPartialDecodeFailed": "{count} track(s) failed to decode and were skipped.",
+    "transportMissingDuration": "{count} track(s) are missing duration metadata and cannot be played on timeline.",
+    "transportNoPlayableTracks": "No playable tracks on timeline.",
+    "transportTrackError": "Track playback failed: {track} ({reason})"
   },
   "recycleBin": {
     "recycleBin": "Recycle Bin",

@@ -666,6 +666,8 @@
     "zoom": "缩放",
     "previewSegment": "片段预览",
     "previewing": "预览中…",
+    "play": "播放",
+    "stop": "停止",
     "output": "输出",
     "outputPath": "目标路径",
     "outputPathPlaceholder": "未选择",
@@ -690,7 +692,16 @@
     "bpmAnalyzing": "BPM 重新分析中…",
     "bpmAnalyzingHint": "首次打开可能较慢，请稍候",
     "bpmAnalyzeFailed": "BPM 分析失败",
-    "bpmAnalyzeFailedHint": "有 {count} 首未能分析，网格线已禁用"
+    "bpmAnalyzeFailedHint": "有 {count} 首未能分析，网格线已禁用",
+    "transportDecoding": "解码中…",
+    "transportPreloading": "轨道预解码中…",
+    "transportPreloadingHint": "正在为自动混音窗口全量解码音频，请稍候",
+    "transportPreloadingProgress": "{done}/{total}（{percent}%）",
+    "transportDecodeFailed": "有 {count} 首曲目解码失败，无法在时间轴播放",
+    "transportPartialDecodeFailed": "有 {count} 首曲目解码失败，已自动跳过",
+    "transportMissingDuration": "有 {count} 首曲目缺少时长信息，无法在时间轴播放",
+    "transportNoPlayableTracks": "没有可在时间轴播放的曲目",
+    "transportTrackError": "轨道播放失败：{track}（{reason}）"
   },
   "recycleBin": {
     "recycleBin": "回收站",

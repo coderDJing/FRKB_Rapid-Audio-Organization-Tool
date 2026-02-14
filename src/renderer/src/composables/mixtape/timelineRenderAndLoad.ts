@@ -24,6 +24,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     clampZoomValue,
     resolveLaneHeightForZoom,
     resolveTrackDurationSeconds,
+    resolveTrackSourceDurationSeconds,
     resolveTrackRenderWidthPx,
     resolveRenderPxPerSec,
     resolveRawWaveformLevel,
@@ -271,6 +272,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     renderZoomValue?: number
   ): WaveformRenderContext => {
     const data = waveformDataMap.get(track.filePath) || null
+    const sourceDurationSeconds = resolveTrackSourceDurationSeconds(track)
     const durationSeconds = resolveTrackDurationSeconds(track)
     const zoomValue =
       typeof renderZoomValue === 'number'
@@ -297,6 +299,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     return {
       track,
       trackWidth,
+      sourceDurationSeconds,
       durationSeconds,
       data,
       frameCount,
@@ -325,7 +328,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     render: WaveformRenderContext,
     tile: WaveformTile
   ) => {
-    const { track, trackWidth, durationSeconds, data, frameCount, rawData } = render
+    const { track, trackWidth, sourceDurationSeconds, data, frameCount, rawData } = render
     if (render.renderZoom <= MIXTAPE_SUMMARY_ZOOM + 0.0001) {
       renderSummaryWaveformBar(ctx, width, height)
       return
@@ -344,9 +347,11 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
 
     const startFrame = Math.floor((tile.start / Math.max(1, trackWidth)) * frameCount)
     const endFrame = Math.ceil(((tile.start + tile.width) / Math.max(1, trackWidth)) * frameCount)
-    const startTime = durationSeconds ? (tile.start / Math.max(1, trackWidth)) * durationSeconds : 0
-    const endTime = durationSeconds
-      ? ((tile.start + tile.width) / Math.max(1, trackWidth)) * durationSeconds
+    const startTime = sourceDurationSeconds
+      ? (tile.start / Math.max(1, trackWidth)) * sourceDurationSeconds
+      : 0
+    const endTime = sourceDurationSeconds
+      ? ((tile.start + tile.width) / Math.max(1, trackWidth)) * sourceDurationSeconds
       : 0
 
     const pixelRatio = window.devicePixelRatio || 1

@@ -16,9 +16,29 @@ const {
   resolveTrackBlockStyle,
   resolveTrackTitle,
   formatTrackBpm,
+  formatTrackKey,
   isRawWaveformLoading,
   preRenderState,
   preRenderPercent,
+  handleTrackDragStart,
+  transportPlaying,
+  transportDecoding,
+  transportPreloading,
+  transportPreloadDone,
+  transportPreloadTotal,
+  transportPreloadPercent,
+  playheadVisible,
+  playheadTimeLabel,
+  timelineDurationLabel,
+  rulerMinuteTicks,
+  rulerInactiveStyle,
+  overviewPlayheadStyle,
+  rulerPlayheadStyle,
+  timelinePlayheadStyle,
+  handleTransportPlayFromStart,
+  handleTransportStop,
+  handleRulerSeek,
+  transportError,
   timelineScrollWrapRef,
   isTimelinePanning,
   handleTimelinePanStart,
@@ -64,6 +84,65 @@ const {
       <section class="mixtape-body">
         <div class="mixtape-main">
           <section class="timeline">
+            <div class="timeline-ruler-wrap">
+              <div class="timeline-ruler-stop-float">
+                <button
+                  v-if="transportPlaying || transportDecoding"
+                  class="timeline-stop-btn"
+                  type="button"
+                  :title="t('mixtape.stop')"
+                  :aria-label="t('mixtape.stop')"
+                  @mousedown.stop.prevent
+                  @click.stop="handleTransportStop"
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                    <rect x="4" y="4" width="8" height="8" rx="1"></rect>
+                  </svg>
+                </button>
+                <button
+                  v-else
+                  class="timeline-stop-btn"
+                  type="button"
+                  :title="t('player.play')"
+                  :aria-label="t('player.play')"
+                  @mousedown.stop.prevent
+                  @click.stop="handleTransportPlayFromStart"
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                    <polygon points="5,4 12,8 5,12"></polygon>
+                  </svg>
+                </button>
+                <span v-if="transportDecoding" class="timeline-decoding-hint">
+                  {{ t('mixtape.transportDecoding') }}
+                </span>
+              </div>
+              <div class="timeline-ruler" @mousedown="handleRulerSeek">
+                <div class="timeline-ruler__ticks">
+                  <div
+                    v-for="tick in rulerMinuteTicks"
+                    :key="`minute-${tick.value}-${tick.left}`"
+                    class="timeline-ruler__tick"
+                    :style="{ left: tick.left }"
+                  >
+                    <div class="timeline-ruler__tick-line"></div>
+                    <div class="timeline-ruler__tick-label">{{ tick.value }}</div>
+                  </div>
+                </div>
+                <div class="timeline-ruler__label">
+                  {{ playheadTimeLabel }} / {{ timelineDurationLabel }}
+                </div>
+                <div
+                  v-if="rulerInactiveStyle"
+                  class="timeline-ruler__inactive"
+                  :style="rulerInactiveStyle"
+                ></div>
+                <div
+                  v-if="playheadVisible"
+                  class="timeline-ruler__playhead"
+                  :style="rulerPlayheadStyle"
+                ></div>
+              </div>
+            </div>
             <div
               ref="timelineScrollWrapRef"
               class="timeline-scroll-wrap"
@@ -99,9 +178,10 @@ const {
                         >
                           <div
                             v-for="item in laneTracks[laneIndex]"
-                            :key="item.track.id"
+                            :key="`${item.track.id}-${item.startX}`"
                             class="lane-track"
                             :style="resolveTrackBlockStyle(item)"
+                            @mousedown.stop="handleTrackDragStart(item, $event)"
                           >
                             <div class="lane-track__meta">
                               <div class="lane-track__meta-title">
@@ -109,6 +189,9 @@ const {
                               </div>
                               <div class="lane-track__meta-sub">
                                 {{ t('mixtape.bpm') }} {{ formatTrackBpm(item.track.bpm) }}
+                                <template v-if="formatTrackKey(item.track.key)">
+                                  · {{ t('columns.key') }} {{ formatTrackKey(item.track.key) }}
+                                </template>
                               </div>
                             </div>
                             <div v-if="isRawWaveformLoading(item.track)" class="lane-loading">
@@ -119,6 +202,11 @@ const {
                       </div>
                     </template>
                   </div>
+                  <div
+                    v-if="playheadVisible && timelinePlayheadStyle"
+                    class="timeline-playhead"
+                    :style="timelinePlayheadStyle"
+                  ></div>
                 </div>
               </OverlayScrollbarsComponent>
               <canvas ref="timelineCanvasRef" class="timeline-waveform-canvas"></canvas>
@@ -135,6 +223,9 @@ const {
                   </div>
                 </div>
               </div>
+            </div>
+            <div v-if="transportError" class="timeline-transport-error">
+              {{ transportError }}
             </div>
             <div class="timeline-overview">
               <div
@@ -158,12 +249,32 @@ const {
                     ></div>
                   </div>
                 </div>
+                <div
+                  v-if="playheadVisible"
+                  class="overview-playhead"
+                  :style="overviewPlayheadStyle"
+                ></div>
                 <div class="overview-viewport" :style="overviewViewportStyle"></div>
               </div>
             </div>
           </section>
         </div>
       </section>
+    </div>
+    <div v-if="transportPreloading" class="mixtape-decode-mask">
+      <div class="bpm-loading-card">
+        <div class="bpm-loading-title">{{ t('mixtape.transportPreloading') }}</div>
+        <div class="bpm-loading-sub">{{ t('mixtape.transportPreloadingHint') }}</div>
+        <div class="bpm-loading-sub">
+          {{
+            t('mixtape.transportPreloadingProgress', {
+              done: transportPreloadDone,
+              total: transportPreloadTotal,
+              percent: transportPreloadPercent
+            })
+          }}
+        </div>
+      </div>
     </div>
     <div v-if="bpmAnalysisActive" class="mixtape-bpm-mask">
       <div class="bpm-loading-card">
@@ -277,6 +388,148 @@ const {
   overflow: hidden;
 }
 
+.timeline-ruler-wrap {
+  display: flex;
+  align-items: center;
+  position: relative;
+  padding: 8px 0 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.timeline-ruler-stop-float {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.timeline-decoding-hint {
+  font-size: 11px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+  white-space: nowrap;
+  animation: decoding-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes decoding-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.timeline-stop-btn {
+  height: 22px;
+  width: 22px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.45);
+  color: var(--text);
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.timeline-stop-btn:hover {
+  border-color: var(--accent);
+}
+
+.timeline-stop-btn svg {
+  width: 11px;
+  height: 11px;
+  fill: currentColor;
+}
+
+.timeline-ruler {
+  position: relative;
+  flex: 1;
+  height: 30px;
+  border: 1px solid var(--border);
+  background: linear-gradient(to right, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.01));
+  cursor: pointer;
+  overflow: hidden;
+  user-select: none;
+}
+
+.timeline-ruler__ticks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.timeline-ruler__tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  transform: translateX(0);
+}
+
+.timeline-ruler__tick-line {
+  position: absolute;
+  top: 2px;
+  bottom: 13px;
+  left: 0;
+  width: 1px;
+  transform: translateX(-50%);
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.32) 0 3px,
+    rgba(255, 255, 255, 0) 3px 6px
+  );
+}
+
+.timeline-ruler__tick-label {
+  position: absolute;
+  bottom: 2px;
+  left: 0;
+  transform: translateX(-50%);
+  font-size: 10px;
+  line-height: 10px;
+  color: var(--text-weak);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.timeline-ruler__label {
+  position: absolute;
+  right: 8px;
+  top: 4px;
+  font-size: 11px;
+  color: var(--text-weak);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.timeline-ruler__inactive {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.1);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.timeline-ruler__playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(255, 84, 84, 0.95);
+  pointer-events: none;
+  z-index: 2;
+}
+
 .timeline-scroll {
   flex: 1;
   min-height: 0;
@@ -329,6 +582,18 @@ const {
   background: rgba(8, 8, 12, 0.96);
 }
 
+.mixtape-decode-mask {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 24;
+  pointer-events: auto;
+  cursor: progress;
+  background: rgba(8, 8, 12, 0.9);
+}
+
 .mixtape-bpm-failed {
   position: absolute;
   inset: 0;
@@ -378,6 +643,16 @@ const {
   top: 0;
   height: 100%;
   background: rgba(0, 120, 212, 0.55);
+}
+
+.overview-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(255, 84, 84, 0.95);
+  pointer-events: none;
+  z-index: 5;
 }
 
 .overview-viewport {
@@ -474,6 +749,17 @@ const {
   z-index: 4;
 }
 
+.timeline-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: rgba(255, 84, 84, 0.95);
+  pointer-events: none;
+  z-index: 8;
+}
+
 :global(.timeline-scroll .os-scrollbar-vertical) {
   right: 0;
 }
@@ -511,12 +797,18 @@ const {
   border-radius: 0;
   box-sizing: border-box;
   border: 2px solid transparent;
-  cursor: pointer;
+  cursor: ew-resize;
   z-index: 5;
 
   &.is-selected {
     border-color: rgba(160, 160, 160, 0.9);
   }
+}
+
+.timeline-transport-error {
+  padding: 4px 12px 0;
+  font-size: 11px;
+  color: #f08989;
 }
 
 .lane-track:hover {

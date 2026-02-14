@@ -12,7 +12,8 @@ import {
   listMixtapeFilePathsByItemIds,
   removeMixtapeItemsById,
   removeMixtapeItemsByFilePath,
-  reorderMixtapeItems
+  reorderMixtapeItems,
+  upsertMixtapeItemBpmByFilePath
 } from '../mixtapeDb'
 import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { queueMixtapeRawWaveforms } from '../services/mixtapeRawWaveformQueue'
@@ -288,6 +289,19 @@ export function registerMixtapeHandlers() {
       if (filePaths.length > 0) {
         queueMixtapeWaveforms(filePaths)
         queueMixtapeRawWaveforms(filePaths)
+        // 预分析 BPM（后台，不阻塞返回）
+        void analyzeMixtapeBpmBatch(filePaths)
+          .then((bpmResult) => {
+            if (bpmResult.results.length > 0) {
+              upsertMixtapeItemBpmByFilePath(bpmResult.results)
+              try {
+                mixtapeWindow.broadcast?.('mixtape-bpm-batch-ready', {
+                  results: bpmResult.results
+                })
+              } catch {}
+            }
+          })
+          .catch(() => {})
       }
       return result
     }
@@ -323,7 +337,11 @@ export function registerMixtapeHandlers() {
   ipcMain.handle('mixtape:analyze-bpm', async (_e, payload: { filePaths?: string[] }) => {
     const input = Array.isArray(payload?.filePaths) ? payload.filePaths : []
     try {
-      return await analyzeMixtapeBpmBatch(input)
+      const result = await analyzeMixtapeBpmBatch(input)
+      if (result.results.length > 0) {
+        upsertMixtapeItemBpmByFilePath(result.results)
+      }
+      return result
     } catch (error) {
       log.error('[mixtape] BPM analyze invoke failed', {
         requested: input.length,

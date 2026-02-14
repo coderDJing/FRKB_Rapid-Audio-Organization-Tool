@@ -24,7 +24,18 @@ export type MixtapeTrack = {
   filePath: string
   originPath: string
   originPlaylistUuid?: string | null
+  // 调性（如 8A / C#m）
+  key?: string
+  // 当前目标 BPM（可能由吸附对齐自动改写）
   bpm?: number
+  // 首次加载时的原始 BPM，用于计算变速比率
+  originalBpm?: number
+  // 是否启用 Master Tempo（保持调性）
+  masterTempo?: boolean
+  // 全局时间线起点（秒）
+  startSec?: number
+  // 首拍偏移（毫秒）
+  firstBeatMs?: number
 }
 
 export type MinMaxSample = {
@@ -56,6 +67,7 @@ export type WaveformTile = {
 export type WaveformRenderContext = {
   track: MixtapeTrack
   trackWidth: number
+  sourceDurationSeconds: number
   durationSeconds: number
   data: MixxxWaveformData | null
   frameCount: number

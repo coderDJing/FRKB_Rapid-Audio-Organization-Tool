@@ -40,6 +40,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
     waveformMinMaxCache,
     rawWaveformPyramidMap,
     timelineLayoutCache,
+    timelineLayoutVersion,
     overviewWidth,
     waveformTileCache,
     waveformTileCacheIndex,
@@ -164,12 +165,33 @@ export const createTimelineHelpersModule = (ctx: any) => {
     return Math.max(0, parts[0] * 3600 + parts[1] * 60 + parts[2])
   }
 
-  const resolveTrackDurationSeconds = (track: MixtapeTrack) => {
+  const resolveValidBpm = (value: unknown) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric) || numeric <= 0) return null
+    return numeric
+  }
+
+  const resolveTrackTempoRatio = (track: MixtapeTrack) => {
+    const target = resolveValidBpm(track.bpm)
+    const original = resolveValidBpm(track.originalBpm)
+    if (!target || !original) return 1
+    return Math.max(0.25, Math.min(4, target / original))
+  }
+
+  const resolveTrackSourceDurationSeconds = (track: MixtapeTrack) => {
     const data = waveformDataMap.get(track.filePath) || null
     if (data && Number.isFinite(data.duration) && data.duration > 0) {
       return data.duration
     }
     return parseDurationToSeconds(track.duration)
+  }
+
+  const resolveTrackDurationSeconds = (track: MixtapeTrack) => {
+    const sourceDuration = resolveTrackSourceDurationSeconds(track)
+    if (!Number.isFinite(sourceDuration) || sourceDuration <= 0) return 0
+    const ratio = resolveTrackTempoRatio(track)
+    if (!Number.isFinite(ratio) || ratio <= 0) return sourceDuration
+    return sourceDuration / ratio
   }
 
   const resolveTrackRenderWidthPx = (track: MixtapeTrack, zoomValue?: number) => {
@@ -183,6 +205,9 @@ export const createTimelineHelpersModule = (ctx: any) => {
 
   const clearTimelineLayoutCache = () => {
     timelineLayoutCache.clear()
+    if (timelineLayoutVersion && typeof timelineLayoutVersion.value === 'number') {
+      timelineLayoutVersion.value += 1
+    }
   }
 
   const resolveFirstVisibleLayoutIndex = (endOffsets: number[], minX: number) => {
@@ -228,19 +253,19 @@ export const createTimelineHelpersModule = (ctx: any) => {
     const cached = timelineLayoutCache.get(cacheKey)
     if (cached) return cached
 
+    const px = resolveRenderPxPerSec(resolvedZoom)
     let cursor = 0
     const layout: TimelineTrackLayout[] = []
-    const startOffsets: number[] = []
-    const endOffsets: number[] = []
 
     for (let i = 0; i < tracks.value.length; i += 1) {
       const track = tracks.value[i]
       if (!track) continue
       const width = resolveTrackRenderWidthPx(track, resolvedZoom)
-      const startX = cursor
-      cursor += width
-      startOffsets.push(startX)
-      endOffsets.push(cursor)
+      const startSec = Number(track.startSec)
+      const startX =
+        Number.isFinite(startSec) && startSec >= 0 ? Math.round(startSec * px) : Math.round(cursor)
+      const endX = startX + width
+      cursor = Math.max(cursor, endX)
       layout.push({
         track,
         laneIndex: i % LANE_COUNT,
@@ -249,9 +274,20 @@ export const createTimelineHelpersModule = (ctx: any) => {
       })
     }
 
+    layout.sort((a, b) => a.startX - b.startX)
+    const startOffsets: number[] = []
+    const endOffsets: number[] = []
+    let runningEnd = 0
+    for (const item of layout) {
+      startOffsets.push(item.startX)
+      runningEnd = Math.max(runningEnd, item.startX + item.width)
+      endOffsets.push(runningEnd)
+    }
+    const lastEnd = endOffsets[endOffsets.length - 1] || 0
+
     const snapshot = {
       layout,
-      totalWidth: cursor,
+      totalWidth: Math.max(cursor, lastEnd),
       startOffsets,
       endOffsets
     }
@@ -261,7 +297,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
 
   const resolveTrackBlockStyle = (item: TimelineTrackLayout) => ({
     width: `${Math.max(0, Math.round(item.width))}px`,
-    transform: `translate3d(${Math.round(item.startX)}px, 0, 0)`,
+    left: `${Math.round(item.startX)}px`,
     '--track-start': `${Math.round(item.startX)}px`
   })
 
@@ -375,14 +411,19 @@ export const createTimelineHelpersModule = (ctx: any) => {
   }
 
   const computeTimelineDuration = () => {
-    let total = 0
+    let cursor = 0
+    let maxEnd = 0
     for (const track of tracks.value) {
       const duration = resolveTrackDurationSeconds(track)
-      if (Number.isFinite(duration) && duration > 0) {
-        total += duration
-      }
+      if (!Number.isFinite(duration) || duration <= 0) continue
+      const startSec = Number(track.startSec)
+      const start =
+        Number.isFinite(startSec) && startSec >= 0 ? Math.max(0, startSec) : Math.max(0, cursor)
+      const end = start + duration
+      maxEnd = Math.max(maxEnd, end)
+      cursor = Math.max(cursor, end)
     }
-    return total
+    return maxEnd
   }
 
   const buildMinMaxDataFromMixxx = (waveformData: MixxxWaveformData): MinMaxSample[] => {
@@ -608,6 +649,8 @@ export const createTimelineHelpersModule = (ctx: any) => {
     useRawWaveform,
     parseDurationToSeconds,
     resolveTrackDurationSeconds,
+    resolveTrackSourceDurationSeconds,
+    resolveTrackTempoRatio,
     resolveTrackRenderWidthPx,
     clearTimelineLayoutCache,
     resolveFirstVisibleLayoutIndex,

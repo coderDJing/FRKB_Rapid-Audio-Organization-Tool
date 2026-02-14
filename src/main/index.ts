@@ -339,6 +339,7 @@ app.whenReady().then(async () => {
               data: stream,
               mimeType,
               headers: {
+                'Content-Type': mimeType,
                 'Content-Range': `bytes ${start}-${end}/${size}`,
                 'Accept-Ranges': 'bytes',
                 'Content-Length': String(end - start + 1)
@@ -353,6 +354,7 @@ app.whenReady().then(async () => {
             data: stream,
             mimeType,
             headers: {
+              'Content-Type': mimeType,
               'Accept-Ranges': 'bytes',
               'Content-Length': String(size)
             }

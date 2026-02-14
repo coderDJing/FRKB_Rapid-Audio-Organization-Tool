@@ -4,7 +4,7 @@ import store from './store'
 import { log } from './log'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
-const SCHEMA_VERSION = 8
+const SCHEMA_VERSION = 9
 
 type SqliteDatabase = any
 
@@ -152,6 +152,18 @@ function createDatabase(dbPath: string): SqliteDatabase {
         PRIMARY KEY (list_root, file_path)
       );
       CREATE INDEX IF NOT EXISTS idx_mixtape_raw_waveform_cache_root ON mixtape_raw_waveform_cache(list_root);
+    `)
+  }
+  if (userVersion < 9) {
+    instance.exec(`
+      CREATE TABLE IF NOT EXISTS mixtape_transcode_cache (
+        file_path TEXT NOT NULL PRIMARY KEY,
+        size INTEGER NOT NULL,
+        mtime_ms INTEGER NOT NULL,
+        cache_filename TEXT NOT NULL,
+        transcode_status TEXT NOT NULL DEFAULT 'pending',
+        created_at_ms INTEGER NOT NULL
+      );
     `)
   }
   if (userVersion < SCHEMA_VERSION) {

@@ -268,6 +268,65 @@ export function listMixtapeFilePathsInUse(filePaths: string[]): string[] {
   }
 }
 
+export function upsertMixtapeItemBpmByFilePath(entries: Array<{ filePath: string; bpm: number }>): {
+  updated: number
+} {
+  if (!Array.isArray(entries) || entries.length === 0) return { updated: 0 }
+  const db = getLibraryDb()
+  if (!db) return { updated: 0 }
+
+  const bpmMap = new Map<string, number>()
+  for (const item of entries) {
+    const filePath = typeof item?.filePath === 'string' ? item.filePath.trim() : ''
+    const bpm = Number(item?.bpm)
+    if (!filePath || !Number.isFinite(bpm) || bpm <= 0) continue
+    bpmMap.set(filePath, Number(bpm.toFixed(2)))
+  }
+  const filePaths = Array.from(bpmMap.keys())
+  if (filePaths.length === 0) return { updated: 0 }
+
+  try {
+    let updated = 0
+    const updateStmt = db.prepare(`UPDATE ${TABLE} SET info_json = ? WHERE id = ?`)
+    const tx = db.transaction(() => {
+      const CHUNK_SIZE = 300
+      for (let offset = 0; offset < filePaths.length; offset += CHUNK_SIZE) {
+        const chunk = filePaths.slice(offset, offset + CHUNK_SIZE)
+        if (chunk.length === 0) continue
+        const placeholders = chunk.map(() => '?').join(',')
+        const rows = db
+          .prepare(
+            `SELECT id, file_path, info_json FROM ${TABLE} WHERE file_path IN (${placeholders})`
+          )
+          .all(...chunk) as Array<{ id: string; file_path: string; info_json?: string | null }>
+        for (const row of rows) {
+          const filePath = typeof row?.file_path === 'string' ? row.file_path.trim() : ''
+          const bpm = bpmMap.get(filePath)
+          if (bpm === undefined) continue
+          let info: Record<string, any> = {}
+          if (row?.info_json) {
+            try {
+              const parsed = JSON.parse(String(row.info_json))
+              if (parsed && typeof parsed === 'object') {
+                info = parsed
+              }
+            } catch {}
+          }
+          if (info.bpm === bpm) continue
+          info.bpm = bpm
+          updateStmt.run(JSON.stringify(info), row.id)
+          updated += 1
+        }
+      }
+    })
+    tx()
+    return { updated }
+  } catch (error) {
+    log.error('[sqlite] mixtape bpm upsert failed', error)
+    return { updated: 0 }
+  }
+}
+
 export function removeMixtapeItemsByPlaylist(playlistUuid: string): { removed: number } {
   if (!playlistUuid) return { removed: 0 }
   const db = getLibraryDb()

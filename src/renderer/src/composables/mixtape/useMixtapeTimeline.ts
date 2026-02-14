@@ -1,4 +1,4 @@
-import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, markRaw, onBeforeUnmount, ref } from 'vue'
 import type { Ref } from 'vue'
 import type { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { t } from '@renderer/utils/translate'
@@ -11,7 +11,6 @@ import {
   GRID_BAR_WIDTH_MAX,
   GRID_BAR_WIDTH_MAX_ZOOM,
   GRID_BAR_WIDTH_MIN,
-  LANE_COUNT,
   LANE_GAP,
   LANE_PADDING_TOP,
   MIXXX_MAX_RGB_ENERGY,
@@ -45,11 +44,7 @@ import type {
   RawWaveformLevel,
   TimelineLayoutSnapshot,
   TimelineRenderPayload,
-  TimelineRenderTrack,
-  TimelineTrackLayout,
-  WaveformPreRenderTask,
-  WaveformRenderContext,
-  WaveformTile
+  WaveformPreRenderTask
 } from '@renderer/composables/mixtape/types'
 import {
   buildRawWaveformPyramid,
@@ -59,6 +54,9 @@ import { drawMixxxRgbWaveform } from '@renderer/composables/mixtape/waveformDraw
 import { createTimelineRenderAndLoadModule } from '@renderer/composables/mixtape/timelineRenderAndLoad'
 import { createTimelineInteractionsModule } from '@renderer/composables/mixtape/timelineInteractions'
 import { createTimelineHelpersModule } from '@renderer/composables/mixtape/timelineHelpers'
+import { createTimelineTransportAndDragModule } from '@renderer/composables/mixtape/timelineTransportAndDrag'
+import { createTimelineWorkerBridgeModule } from '@renderer/composables/mixtape/timelineWorkerBridge'
+import { createTimelineWatchAndMountModule } from '@renderer/composables/mixtape/timelineWatchAndMount'
 
 type UseMixtapeTimelineOptions = {
   tracks: Ref<MixtapeTrack[]>
@@ -113,6 +111,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     new Map<string, { source: MixxxWaveformData; samples: MinMaxSample[] }>()
   )
   const timelineLayoutCache = markRaw(new Map<number, TimelineLayoutSnapshot>())
+  const timelineLayoutVersion = ref(0)
   const rawWaveformDataMap = markRaw(new Map<string, RawWaveformData | null>())
   const rawWaveformPyramidMap = markRaw(new Map<string, RawWaveformLevel[]>())
   const waveformInflight = new Set<string>()
@@ -162,8 +161,9 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     resolveRenderPxPerSec,
     renderPxPerSec,
     useRawWaveform,
-    parseDurationToSeconds,
     resolveTrackDurationSeconds,
+    resolveTrackSourceDurationSeconds,
+    resolveTrackTempoRatio,
     resolveTrackRenderWidthPx,
     clearTimelineLayoutCache,
     resolveFirstVisibleLayoutIndex,
@@ -202,6 +202,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     waveformMinMaxCache,
     rawWaveformPyramidMap,
     timelineLayoutCache,
+    timelineLayoutVersion,
     overviewWidth,
     waveformTileCache,
     waveformTileCacheIndex,
@@ -210,7 +211,10 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
   })
   const ZOOM_LEVELS = buildZoomLevels()
 
-  const timelineLayout = computed(() => buildSequentialLayoutForZoom(normalizedRenderZoom.value))
+  const timelineLayout = computed(() => {
+    void timelineLayoutVersion.value
+    return buildSequentialLayoutForZoom(normalizedRenderZoom.value)
+  })
   const laneTracks = computed(() =>
     laneIndices.map((laneIndex) =>
       timelineLayout.value.layout.filter((item) => item.laneIndex === laneIndex)
@@ -255,20 +259,6 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     if (!total || total <= 0) return 0
     return Math.max(0, Math.min(100, Math.round((done / total) * 100)))
   })
-  const clearWaveformTileCacheForFile = (filePath: string) => {
-    if (!filePath) return
-    const keys = waveformTileCacheIndex.get(filePath)
-    if (keys) {
-      for (const key of keys) {
-        const entry = waveformTileCache.get(key)
-        disposeWaveformCacheEntry(entry || null)
-        waveformTileCache.delete(key)
-        waveformTilePending.delete(key)
-      }
-      waveformTileCacheIndex.delete(filePath)
-    }
-    postWaveformWorkerMessage({ type: 'clearTileCache', payload: { filePath } })
-  }
 
   // single-canvas renderer no longer uses per-tile DOM canvases
 
@@ -505,7 +495,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
             tileStart,
             tileWidth,
             trackWidth: ctx.trackWidth,
-            durationSeconds: ctx.durationSeconds,
+            durationSeconds: ctx.sourceDurationSeconds,
             laneHeight: ctx.laneHeight,
             pixelRatio
           })
@@ -582,238 +572,150 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
 
   const markTimelineInteracting = () => {}
 
-  const postWaveformWorkerMessage = (message: any, transfer?: Transferable[]) => {
-    if (!waveformRenderWorker) return
-    try {
-      waveformRenderWorker.postMessage(message, transfer || [])
-    } catch {}
-  }
+  const {
+    isTrackDragging,
+    transportPlaying,
+    transportDecoding,
+    transportPreloading,
+    transportPreloadDone,
+    transportPreloadTotal,
+    transportPreloadPercent,
+    playheadSec,
+    playheadVisible,
+    transportError,
+    timelineDurationSec,
+    playheadTimeLabel,
+    overviewPlayheadStyle,
+    timelineDurationLabel,
+    rulerMinuteTicks,
+    rulerInactiveStyle,
+    rulerPlayheadStyle,
+    timelinePlayheadStyle,
+    handleTransportToggle,
+    handleTransportPlayFromStart,
+    handleTransportStop,
+    handleRulerSeek,
+    stopTransportForTrackChange,
+    handleTrackDragStart,
+    scheduleTransportPreload,
+    cleanupTransportAndDrag
+  } = createTimelineTransportAndDragModule({
+    tracks,
+    timelineLayout,
+    normalizedRenderZoom,
+    timelineScrollLeft,
+    timelineViewportWidth,
+    buildSequentialLayoutForZoom,
+    resolveRenderPxPerSec,
+    resolveTrackDurationSeconds,
+    resolveTrackSourceDurationSeconds,
+    resolveTrackTempoRatio,
+    computeTimelineDuration,
+    scheduleFullPreRender,
+    scheduleWorkerPreRender
+  })
 
-  const pushMixxxWaveformToWorker = (filePath: string, data: MixxxWaveformData | null) => {
-    if (!filePath || !waveformRenderWorker) return
-    postWaveformWorkerMessage({
-      type: 'storeMixxx',
-      payload: { filePath, data }
-    })
-  }
-
-  const pushRawWaveformToWorker = (filePath: string, data: RawWaveformData | null) => {
-    if (!filePath || !waveformRenderWorker) return
-    postWaveformWorkerMessage({
-      type: 'storeRaw',
-      payload: { filePath, data }
-    })
-  }
-
-  const handleWaveformWorkerMessage = (event: MessageEvent) => {
-    const payload = (event?.data || {}) as {
-      type?: string
-      cacheKey?: string
-      bitmap?: ImageBitmap
-      done?: number
-      total?: number
-    }
-    if (payload.type === 'rendered') {
-      const cacheKey = typeof payload.cacheKey === 'string' ? payload.cacheKey : ''
-      const bitmap = payload.bitmap
-      if (!cacheKey || !bitmap) return
-      const existing = waveformTileCache.get(cacheKey)
-      if (existing) {
-        disposeWaveformCacheEntry(existing)
-      }
-      waveformTileCacheTick += 1
-      waveformTileCache.set(cacheKey, { source: bitmap, used: waveformTileCacheTick })
-      const filePath = cacheKey.split('::')[0] || ''
-      if (filePath) {
-        registerWaveformTileCacheKey(filePath, cacheKey)
-      }
-      waveformTilePending.delete(cacheKey)
-      pruneWaveformTileCache()
-      scheduleTimelineDraw()
-      return
-    }
-    if (payload.type === 'preRenderProgress') {
-      const total = Number(payload.total || 0)
-      const done = Number(payload.done || 0)
-      if (preRenderPhase.value === 'tiles') {
-        const tilesTotal = preRenderTotals.value.tiles
-        const framesTotal = preRenderTotals.value.frames
-        const safeDone = Math.min(Math.max(0, done), tilesTotal)
-        preRenderState.value = {
-          active: tilesTotal + framesTotal > 0 && safeDone < tilesTotal + framesTotal,
-          total: tilesTotal + framesTotal,
-          done: safeDone
-        }
-      } else if (preRenderPhase.value === 'frames') {
-        const tilesTotal = preRenderTotals.value.tiles
-        const framesTotal = preRenderTotals.value.frames
-        const safeDone = Math.min(Math.max(0, done), framesTotal)
-        preRenderState.value = {
-          active: tilesTotal + framesTotal > 0 && safeDone < framesTotal,
-          total: tilesTotal + framesTotal,
-          done: tilesTotal + safeDone
-        }
-      } else {
-        preRenderState.value = {
-          active: total > 0 && done < total,
-          total,
-          done: Math.min(done, total)
-        }
-      }
-      return
-    }
-    if (payload.type === 'preRenderDone') {
-      if (preRenderPhase.value === 'tiles') {
-        const frames = pendingFramePreRenderTasks
-        if (frames.length) {
-          preRenderPhase.value = 'frames'
-          postWaveformWorkerMessage({ type: 'preRenderFrames', payload: { tasks: frames } })
-          return
-        }
-      }
-      preRenderPhase.value = 'idle'
-      pendingFramePreRenderTasks = []
-      preRenderState.value = {
-        active: false,
-        total: preRenderState.value.total,
-        done: preRenderState.value.total
-      }
-    }
-  }
-
-  const requestWaveformTileRender = (task: WaveformPreRenderTask) => {
-    const { ctx: render, tile, cacheKey } = task
-    const filePath = render.track.filePath
-    if (!filePath || waveformTilePending.has(cacheKey)) return
-    waveformTilePending.add(cacheKey)
-    postWaveformWorkerMessage({
-      type: 'renderTile',
-      payload: {
-        cacheKey,
-        filePath,
-        zoom: render.renderZoom,
-        tileIndex: tile.index,
-        tileStart: tile.start,
-        tileWidth: tile.width,
-        trackWidth: render.trackWidth,
-        durationSeconds: render.durationSeconds,
-        laneHeight: render.laneHeight,
-        pixelRatio: window.devicePixelRatio || 1
-      }
-    })
-  }
-
-  const initTimelineWorkerRenderer = () => {
-    if (timelineWorkerReady.value || !waveformRenderWorker) return
-    const canvas = timelineCanvasRef.value
-    if (!canvas || !('transferControlToOffscreen' in canvas)) return
-    try {
-      timelineOffscreenCanvas = canvas.transferControlToOffscreen()
-      postWaveformWorkerMessage(
-        {
-          type: 'initCanvas',
-          payload: { canvas: timelineOffscreenCanvas }
-        },
-        [timelineOffscreenCanvas]
-      )
-      timelineWorkerReady.value = true
-      if (waveformPreRenderRaf) {
-        cancelAnimationFrame(waveformPreRenderRaf)
-        waveformPreRenderRaf = 0
-      }
-      waveformPreRenderQueue = []
-      waveformPreRenderCursor = 0
-      scheduleWorkerPreRender()
-    } catch {
-      timelineWorkerReady.value = false
-      timelineOffscreenCanvas = null
-    }
-  }
-
-  const buildTimelineRenderPayload = (
-    widthPx: number,
-    heightPx: number,
-    startX: number,
-    startY: number,
-    overrideZoom?: number
-  ): TimelineRenderPayload | null => {
-    const zoomValue =
-      typeof overrideZoom === 'number' ? clampZoomValue(overrideZoom) : normalizedRenderZoom.value
-    const bufferId = resolveTimelineBufferId(zoomValue)
-    const laneH = resolveLaneHeightForZoom(zoomValue)
-    if (!laneH || laneH <= 0) return null
-    const lanePaddingTop = LANE_PADDING_TOP + MIXTAPE_WAVEFORM_Y_OFFSET
-    const endX = startX + widthPx
-    const renderStartX = Math.max(0, Math.floor(startX - RENDER_X_BUFFER_PX))
-    const renderEndX = Math.max(renderStartX, Math.ceil(endX + RENDER_X_BUFFER_PX))
-    const renderTracks: TimelineRenderTrack[] = []
-    const snapshot = buildSequentialLayoutForZoom(zoomValue)
-    forEachVisibleLayoutItem(snapshot, renderStartX, renderEndX, (item) => {
-      const track = item.track
-      const durationSeconds = resolveTrackDurationSeconds(track)
-      const trackWidth = item.width
-      if (!trackWidth || !Number.isFinite(trackWidth)) return
-      const trackStartX = item.startX
-      const trackEndX = trackStartX + trackWidth
-      if (trackEndX < renderStartX || trackStartX > renderEndX) return
-      const bpmValue = typeof track.bpm === 'number' ? track.bpm : 0
-      renderTracks.push({
-        id: track.id,
-        filePath: track.filePath,
-        durationSeconds,
-        trackWidth,
-        startX: item.startX,
-        laneIndex: item.laneIndex,
-        bpm: Number(bpmValue) || 0,
-        firstBeatMs: 0
-      })
-    })
-    return {
-      width: widthPx,
-      height: heightPx,
-      pixelRatio: window.devicePixelRatio || 1,
-      showGridLines: SHOW_GRID_LINES && !bpmAnalysisActive.value && !bpmAnalysisFailed.value,
-      allowTileBuild: true,
-      startX,
-      startY,
-      bufferId,
-      zoom: zoomValue,
-      laneHeight: laneH,
-      laneGap: LANE_GAP,
-      lanePaddingTop,
-      renderPxPerSec: resolveRenderPxPerSec(zoomValue),
-      renderVersion: waveformVersion.value,
-      tracks: renderTracks
-    }
-  }
-
-  const requestTimelineWorkerRender = (
-    widthPx: number,
-    heightPx: number,
-    startX: number,
-    startY: number
-  ) => {
-    if (!timelineWorkerReady.value || !waveformRenderWorker) return
-    const payload = buildTimelineRenderPayload(widthPx, heightPx, startX, startY)
-    if (!payload) return
-    postWaveformWorkerMessage({ type: 'renderFrame', payload })
-  }
-  const timelineCanvasRafRef = {
+  const scheduleTimelineDrawBridgeRef: { value: null | (() => void) } = { value: null }
+  const createBridgeRef = <T>(getter: () => T, setter: (value: T) => void) => ({
     get value() {
-      return timelineCanvasRaf
+      return getter()
     },
-    set value(value: number) {
-      timelineCanvasRaf = value
+    set value(value: T) {
+      setter(value)
     }
-  }
-  const waveformLoadTimerRef = {
-    get value() {
-      return waveformLoadTimer
-    },
-    set value(value: ReturnType<typeof setTimeout> | null) {
-      waveformLoadTimer = value
-    }
-  }
+  })
+  const waveformRenderWorkerRef = createBridgeRef(
+    () => waveformRenderWorker,
+    (value: Worker | null) => (waveformRenderWorker = value)
+  )
+  const timelineOffscreenCanvasRef = createBridgeRef(
+    () => timelineOffscreenCanvas,
+    (value: OffscreenCanvas | null) => (timelineOffscreenCanvas = value)
+  )
+  const timelineObserverRef = createBridgeRef(
+    () => timelineObserver,
+    (value: ResizeObserver | null) => (timelineObserver = value)
+  )
+  const timelineViewportObserverRef = createBridgeRef(
+    () => timelineViewportObserver,
+    (value: ResizeObserver | null) => (timelineViewportObserver = value)
+  )
+  const overviewObserverRef = createBridgeRef(
+    () => overviewObserver,
+    (value: ResizeObserver | null) => (overviewObserver = value)
+  )
+  const pendingFramePreRenderTasksRef = createBridgeRef(
+    () => pendingFramePreRenderTasks,
+    (value: TimelineRenderPayload[]) => (pendingFramePreRenderTasks = value)
+  )
+  const waveformPreRenderRafRef = createBridgeRef(
+    () => waveformPreRenderRaf,
+    (value: number) => (waveformPreRenderRaf = value)
+  )
+  const waveformPreRenderCursorRef = createBridgeRef(
+    () => waveformPreRenderCursor,
+    (value: number) => (waveformPreRenderCursor = value)
+  )
+  const waveformPreRenderQueueRef = createBridgeRef(
+    () => waveformPreRenderQueue,
+    (value: WaveformPreRenderTask[]) => (waveformPreRenderQueue = value)
+  )
+  const {
+    postWaveformWorkerMessage,
+    clearWaveformTileCacheForFile,
+    pushMixxxWaveformToWorker,
+    pushRawWaveformToWorker,
+    handleWaveformWorkerMessage,
+    requestWaveformTileRender,
+    initTimelineWorkerRenderer,
+    buildTimelineRenderPayload,
+    requestTimelineWorkerRender
+  } = createTimelineWorkerBridgeModule({
+    waveformRenderWorkerRef,
+    timelineWorkerReady,
+    timelineCanvasRef,
+    timelineOffscreenCanvasRef,
+    waveformTileCache,
+    waveformTileCacheIndex,
+    waveformTilePending,
+    waveformTileCacheTickRef,
+    disposeWaveformCacheEntry,
+    registerWaveformTileCacheKey,
+    pruneWaveformTileCache,
+    preRenderPhase,
+    preRenderTotals,
+    preRenderState,
+    pendingFramePreRenderTasksRef,
+    waveformPreRenderRafRef,
+    waveformPreRenderCursorRef,
+    waveformPreRenderQueueRef,
+    scheduleWorkerPreRender,
+    getScheduleTimelineDraw: () => scheduleTimelineDrawBridgeRef.value,
+    buildSequentialLayoutForZoom,
+    forEachVisibleLayoutItem,
+    resolveTrackSourceDurationSeconds,
+    resolveRenderPxPerSec,
+    resolveTimelineBufferId,
+    resolveLaneHeightForZoom,
+    clampZoomValue,
+    normalizedRenderZoom,
+    waveformVersion,
+    bpmAnalysisActive,
+    bpmAnalysisFailed,
+    SHOW_GRID_LINES,
+    RENDER_X_BUFFER_PX,
+    LANE_GAP,
+    LANE_PADDING_TOP,
+    MIXTAPE_WAVEFORM_Y_OFFSET
+  })
+  const timelineCanvasRafRef = createBridgeRef(
+    () => timelineCanvasRaf,
+    (value: number) => (timelineCanvasRaf = value)
+  )
+  const waveformLoadTimerRef = createBridgeRef(
+    () => waveformLoadTimer,
+    (value: ReturnType<typeof setTimeout> | null) => (waveformLoadTimer = value)
+  )
   const {
     drawTimelineCanvas,
     scheduleTimelineDraw,
@@ -846,6 +748,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     clampZoomValue,
     resolveLaneHeightForZoom,
     resolveTrackDurationSeconds,
+    resolveTrackSourceDurationSeconds,
     resolveTrackRenderWidthPx,
     resolveRenderPxPerSec,
     resolveRawWaveformLevel,
@@ -903,6 +806,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     useRawWaveform,
     waveformVersion
   })
+  scheduleTimelineDrawBridgeRef.value = scheduleTimelineDraw
   const {
     applyRenderZoomImmediate,
     setZoomValue,
@@ -964,86 +868,45 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     scheduleWorkerPreRender,
     markTimelineInteracting
   })
-  watch(
-    () => tracks.value.map((track) => track.id).join('|'),
-    () => {
-      clearTimelineLayoutCache()
-      updateTimelineWidth()
-      scheduleWaveformLoad()
-      scheduleFullPreRender()
-      scheduleWorkerPreRender()
-      nextTick(() => scheduleWaveformDraw())
-    }
-  )
-
-  watch(
-    () => renderPxPerSec.value,
-    () => {
-      clearTimelineLayoutCache()
-      updateTimelineWidth()
-    }
-  )
-
-  watch(
-    () => waveformVersion.value,
-    () => {
-      clearTimelineLayoutCache()
-      updateTimelineWidth(false)
-    }
-  )
-
-  onMounted(() => {
-    updateTimelineWidth()
-    if (typeof Worker !== 'undefined') {
-      try {
-        waveformRenderWorker = new Worker(
-          // @ts-expect-error Vite resolves import.meta.url in renderer build
-          new URL('../../workers/mixtapeWaveformRender.worker.ts', import.meta.url),
-          { type: 'module' }
-        )
-        waveformRenderWorker.onmessage = handleWaveformWorkerMessage
-        for (const [filePath, data] of waveformDataMap.entries()) {
-          pushMixxxWaveformToWorker(filePath, data)
-        }
-        for (const [filePath, data] of rawWaveformDataMap.entries()) {
-          pushRawWaveformToWorker(filePath, data)
-        }
-      } catch {
-        waveformRenderWorker = null
-      }
-    }
-    nextTick(() => initTimelineWorkerRenderer())
-    try {
-      const viewportEl = timelineScrollRef.value?.osInstance()?.elements().viewport as
-        | HTMLElement
-        | undefined
-      if (viewportEl) {
-        setTimelineWheelTarget(viewportEl)
-        if (typeof ResizeObserver !== 'undefined') {
-          timelineViewportObserver = new ResizeObserver(() => updateTimelineWidth())
-          timelineViewportObserver.observe(viewportEl)
-        }
-      }
-      if (timelineViewport.value && typeof ResizeObserver !== 'undefined') {
-        timelineObserver = new ResizeObserver(() => scheduleWaveformDraw())
-        timelineObserver.observe(timelineViewport.value)
-      }
-      if (overviewRef.value && typeof ResizeObserver !== 'undefined') {
-        overviewObserver = new ResizeObserver(() => updateOverviewWidth())
-        overviewObserver.observe(overviewRef.value)
-      }
-    } catch {}
-    updateOverviewWidth()
-    startTimelineScrollSampler()
-    if (typeof window !== 'undefined') {
-      window.addEventListener('wheel', handleTimelineWheel, { passive: false })
-    }
-    if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
-      window.electron.ipcRenderer.on('mixtape-waveform-updated', handleWaveformUpdated)
-    }
+  createTimelineWatchAndMountModule({
+    tracks,
+    isTrackDragging,
+    bpmAnalysisActive,
+    timelineDurationSec,
+    playheadSec,
+    renderPxPerSec,
+    waveformVersion,
+    stopTransportForTrackChange,
+    clearTimelineLayoutCache,
+    updateTimelineWidth,
+    scheduleWaveformLoad,
+    scheduleFullPreRender,
+    scheduleWorkerPreRender,
+    scheduleTimelineDraw,
+    scheduleWaveformDraw,
+    waveformRenderWorkerRef,
+    handleWaveformWorkerMessage,
+    pushMixxxWaveformToWorker,
+    pushRawWaveformToWorker,
+    waveformDataMap,
+    rawWaveformDataMap,
+    initTimelineWorkerRenderer,
+    timelineScrollRef,
+    setTimelineWheelTarget,
+    timelineViewport,
+    timelineObserverRef,
+    timelineViewportObserverRef,
+    overviewObserverRef,
+    overviewRef,
+    updateOverviewWidth,
+    startTimelineScrollSampler,
+    handleTimelineWheel,
+    handleWaveformUpdated,
+    scheduleTransportPreload
   })
 
   onBeforeUnmount(() => {
+    cleanupTransportAndDrag()
     try {
       timelineObserver?.disconnect()
     } catch {}
@@ -1123,6 +986,27 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     handleOverviewClick,
     resolveOverviewTrackStyle,
     overviewViewportStyle,
-    scheduleWaveformDraw
+    scheduleWaveformDraw,
+    handleTrackDragStart,
+    transportPlaying,
+    transportDecoding,
+    transportPreloading,
+    transportPreloadDone,
+    transportPreloadTotal,
+    transportPreloadPercent,
+    playheadVisible,
+    playheadSec,
+    playheadTimeLabel,
+    timelineDurationLabel,
+    rulerMinuteTicks,
+    rulerInactiveStyle,
+    overviewPlayheadStyle,
+    rulerPlayheadStyle,
+    timelinePlayheadStyle,
+    handleTransportToggle,
+    handleTransportPlayFromStart,
+    handleTransportStop,
+    handleRulerSeek,
+    transportError
   }
 }

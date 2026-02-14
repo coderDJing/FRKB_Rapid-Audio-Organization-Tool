@@ -271,6 +271,33 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
     }
   }
 
+  // 混音时间轴播放解码：所有格式统一通过后端 Rust/FFmpeg 解码为 PCM
+  // 使用 invoke 模式，渲染进程可 await 结果
+  ipcMain.handle(
+    'mixtape:decode-for-transport',
+    async (
+      _e,
+      filePath: string
+    ): Promise<{
+      pcmData: Float32Array
+      sampleRate: number
+      channels: number
+      totalFrames: number
+    }> => {
+      const pool = getDecodePool()
+      const result = await pool.decode(filePath, {
+        analyzeKey: false,
+        needWaveform: false
+      })
+      return {
+        pcmData: clonePcmData(result.pcmData),
+        sampleRate: result.sampleRate,
+        channels: result.channels,
+        totalFrames: result.totalFrames
+      }
+    }
+  )
+
   ipcMain.on('readSongFile', handleDecode('readSongFile', 'readedSongFile', 'readSongFileError'))
   ipcMain.on(
     'readNextSongFile',
