@@ -2,6 +2,7 @@
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import titleComponent from '@renderer/components/titleComponent.vue'
 import MixtapeOutputDialog from '@renderer/components/mixtapeOutputDialog.vue'
+import MixtapeBeatAlignDialog from '@renderer/components/mixtapeBeatAlignDialog.vue'
 import { useMixtape } from '@renderer/composables/useMixtape'
 
 const {
@@ -21,6 +22,15 @@ const {
   preRenderState,
   preRenderPercent,
   handleTrackDragStart,
+  handleTrackContextMenu,
+  trackContextMenuVisible,
+  trackContextMenuStyle,
+  handleTrackMenuAdjustGrid,
+  handleTrackMenuToggleMasterTempo,
+  trackMenuMasterTempoChecked,
+  beatAlignDialogVisible,
+  beatAlignTrack,
+  handleBeatAlignDialogCancel,
   transportPlaying,
   transportDecoding,
   transportPreloading,
@@ -182,6 +192,7 @@ const {
                             class="lane-track"
                             :style="resolveTrackBlockStyle(item)"
                             @mousedown.stop="handleTrackDragStart(item, $event)"
+                            @contextmenu.stop.prevent="handleTrackContextMenu(item, $event)"
                           >
                             <div class="lane-track__meta">
                               <div class="lane-track__meta-title">
@@ -297,6 +308,33 @@ const {
       :output-filename="outputFilename"
       @confirm="handleOutputDialogConfirm"
       @cancel="handleOutputDialogCancel"
+    />
+    <div
+      v-if="trackContextMenuVisible"
+      class="mixtape-track-menu"
+      :style="trackContextMenuStyle"
+      @contextmenu.stop.prevent
+    >
+      <button class="mixtape-track-menu__item" type="button" @click="handleTrackMenuAdjustGrid">
+        {{ t('mixtape.adjustGridMenu') }}
+      </button>
+      <button
+        class="mixtape-track-menu__item"
+        type="button"
+        @click="handleTrackMenuToggleMasterTempo"
+      >
+        <span class="mixtape-track-menu__check">{{ trackMenuMasterTempoChecked ? '✓' : '' }}</span>
+        <span>{{ t('mixtape.masterTempoMenu') }}</span>
+      </button>
+    </div>
+    <MixtapeBeatAlignDialog
+      v-if="beatAlignDialogVisible && beatAlignTrack"
+      :track-title="resolveTrackTitle(beatAlignTrack)"
+      :file-path="beatAlignTrack.filePath"
+      :bpm="Number(beatAlignTrack.bpm) || 128"
+      :first-beat-ms="Number(beatAlignTrack.firstBeatMs) || 0"
+      :master-tempo="beatAlignTrack.masterTempo !== false"
+      @cancel="handleBeatAlignDialogCancel"
     />
   </div>
 </template>
@@ -872,6 +910,43 @@ const {
   background: rgba(0, 0, 0, 0.25);
   pointer-events: none;
   z-index: 3;
+}
+
+.mixtape-track-menu {
+  position: fixed;
+  z-index: 10060;
+  min-width: 140px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elev);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38);
+  padding: 4px;
+}
+
+.mixtape-track-menu__item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font-size: 12px;
+  line-height: 28px;
+  padding: 0 8px;
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mixtape-track-menu__item:hover {
+  background: var(--hover);
+}
+
+.mixtape-track-menu__check {
+  width: 14px;
+  text-align: center;
+  color: var(--accent);
 }
 
 .timeline-empty {

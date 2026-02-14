@@ -10,10 +10,34 @@ import store from '../store'
 import { getLibrary, mapRendererPathToFsPath } from '../utils'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import type { MixxxWaveformData } from '../waveformCache'
-import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
+import { queueMixtapeWaveforms, requestMixtapeWaveform } from '../services/mixtapeWaveformQueue'
 import { requestMixtapeRawWaveform } from '../services/mixtapeRawWaveformQueue'
 
 export function registerCacheHandlers() {
+  const resolveRequestedRawRate = (value: unknown) => {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed) || parsed <= 0) return undefined
+    return parsed
+  }
+
+  const resolveRequestedWaveformRate = (value: unknown) => {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed) || parsed <= 0) return undefined
+    return parsed
+  }
+
+  const isRawWaveformRateSufficient = (data: any, requestedRate?: number) => {
+    if (!data) return false
+    if (!requestedRate) return true
+    const cachedRate = Number(data?.rate)
+    if (!Number.isFinite(cachedRate) || cachedRate <= 0) return false
+    const sampleRate = Number(data?.sampleRate)
+    const cappedSampleRate =
+      Number.isFinite(sampleRate) && sampleRate > 0 ? sampleRate : requestedRate
+    const requiredRate = Math.max(1, Math.min(requestedRate, cappedSampleRate))
+    return cachedRate >= requiredRate
+  }
+
   ipcMain.handle('playlist:cache:clear', async (_e, songListPath: string) => {
     await svcClearSongListCaches(songListPath)
   })
@@ -156,7 +180,7 @@ export function registerCacheHandlers() {
         return { items: [] as Array<{ filePath: string; data: any | null }> }
       }
 
-      const targetRate = Number(payload?.targetRate) || undefined
+      const targetRate = resolveRequestedRawRate(payload?.targetRate)
       const items: Array<{ filePath: string; data: any | null }> = []
       for (const filePath of normalizedPaths) {
         try {
@@ -169,7 +193,7 @@ export function registerCacheHandlers() {
               mtimeMs: stat.mtimeMs
             })
           }
-          if (cached) {
+          if (isRawWaveformRateSufficient(cached, targetRate)) {
             items.push({ filePath, data: cached })
             continue
           }
@@ -182,6 +206,38 @@ export function registerCacheHandlers() {
               data
             )
           }
+          items.push({ filePath, data: data ?? null })
+        } catch {
+          items.push({ filePath, data: null })
+        }
+      }
+
+      return { items }
+    }
+  )
+
+  ipcMain.handle(
+    'mixtape-waveform-hires:batch',
+    async (
+      _e,
+      payload: {
+        filePaths?: string[]
+        targetRate?: number
+      }
+    ) => {
+      const filePaths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
+      const normalizedPaths = filePaths.filter(
+        (filePath) => typeof filePath === 'string' && filePath.trim().length > 0
+      )
+      if (normalizedPaths.length === 0) {
+        return { items: [] as Array<{ filePath: string; data: MixxxWaveformData | null }> }
+      }
+
+      const targetRate = resolveRequestedWaveformRate(payload?.targetRate)
+      const items: Array<{ filePath: string; data: MixxxWaveformData | null }> = []
+      for (const filePath of normalizedPaths) {
+        try {
+          const data = await requestMixtapeWaveform(filePath, targetRate)
           items.push({ filePath, data: data ?? null })
         } catch {
           items.push({ filePath, data: null })

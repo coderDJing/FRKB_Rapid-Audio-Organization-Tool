@@ -131,6 +131,28 @@ const getWorkerPool = () => {
   return workerPool
 }
 
+const normalizeTargetRate = (value: number | undefined) => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) return MIXTAPE_WAVEFORM_TARGET_RATE
+  return Math.max(1, parsed)
+}
+
+export async function requestMixtapeWaveform(filePath: string, targetRate?: number) {
+  const normalized = typeof filePath === 'string' ? filePath.trim() : ''
+  if (!normalized) return null
+  const rate = normalizeTargetRate(targetRate)
+  try {
+    return await getWorkerPool().request(normalized, rate)
+  } catch (error) {
+    log.error('[mixtape] waveform request failed', {
+      filePath: normalized,
+      targetRate: rate,
+      error
+    })
+    return null
+  }
+}
+
 const notifyMixtapeWaveformUpdated = (filePath: string) => {
   try {
     mixtapeWindow.broadcast?.('mixtape-waveform-updated', { filePath })
@@ -154,7 +176,7 @@ const computeMixtapeWaveform = async (filePath: string, listRoot?: string) => {
       await LibraryCacheDb.removeMixtapeWaveformCacheEntry(resolvedRoot, normalized)
       return
     }
-    const waveform = await getWorkerPool().request(normalized, MIXTAPE_WAVEFORM_TARGET_RATE)
+    const waveform = await requestMixtapeWaveform(normalized, MIXTAPE_WAVEFORM_TARGET_RATE)
     if (!waveform) return
     await LibraryCacheDb.upsertMixtapeWaveformCacheEntry(
       resolvedRoot,

@@ -7,7 +7,8 @@ import { getKeyDisplayText as formatKeyDisplayText } from '@shared/keyDisplay'
 import type {
   MixtapeOpenPayload,
   MixtapeRawItem,
-  MixtapeTrack
+  MixtapeTrack,
+  TimelineTrackLayout
 } from '@renderer/composables/mixtape/types'
 
 export const useMixtape = () => {
@@ -20,6 +21,12 @@ export const useMixtape = () => {
   const outputFormat = ref<'wav' | 'mp3'>('wav')
   const outputFilename = ref(buildRecFilename())
   const outputDialogVisible = ref(false)
+  const trackContextMenuVisible = ref(false)
+  const trackContextMenuX = ref(0)
+  const trackContextMenuY = ref(0)
+  const trackContextTrackId = ref('')
+  const beatAlignDialogVisible = ref(false)
+  const beatAlignTrackId = ref('')
 
   const bpmAnalysisActive = ref(false)
   const bpmAnalysisFailed = ref(false)
@@ -94,6 +101,25 @@ export const useMixtape = () => {
   const titleLabel = computed(() => {
     return `FRKB - ${t('mixtape.title')} - ${displayName.value}`
   })
+
+  const trackContextMenuStyle = computed(() => ({
+    left: `${trackContextMenuX.value}px`,
+    top: `${trackContextMenuY.value}px`
+  }))
+
+  const beatAlignTrack = computed(() => {
+    const trackId = beatAlignTrackId.value
+    if (!trackId) return null
+    return tracks.value.find((track) => track.id === trackId) || null
+  })
+
+  const trackContextTrack = computed(() => {
+    const trackId = trackContextTrackId.value
+    if (!trackId) return null
+    return tracks.value.find((track) => track.id === trackId) || null
+  })
+
+  const trackMenuMasterTempoChecked = computed(() => trackContextTrack.value?.masterTempo !== false)
 
   const formatTrackKey = (value?: string) => {
     const raw = typeof value === 'string' ? value.trim() : ''
@@ -344,7 +370,75 @@ export const useMixtape = () => {
     if (!tracks.value.some((track) => track.id === selectedTrackId.value)) {
       selectedTrackId.value = tracks.value[0]?.id || ''
     }
+    if (!tracks.value.some((track) => track.id === beatAlignTrackId.value)) {
+      beatAlignDialogVisible.value = false
+      beatAlignTrackId.value = ''
+    }
+    closeTrackContextMenu()
     void requestMixtapeBpmAnalysis()
+  }
+
+  const closeTrackContextMenu = () => {
+    trackContextMenuVisible.value = false
+    trackContextTrackId.value = ''
+  }
+
+  const openBeatAlignDialog = (trackId: string) => {
+    const found = tracks.value.find((track) => track.id === trackId)
+    if (!found) return
+    beatAlignTrackId.value = trackId
+    beatAlignDialogVisible.value = true
+  }
+
+  const handleTrackContextMenu = (item: TimelineTrackLayout, event: MouseEvent) => {
+    const trackId = item?.track?.id || ''
+    if (!trackId) return
+    event.preventDefault()
+    event.stopPropagation()
+    const menuWidth = 150
+    const menuHeight = 70
+    const safeX = Math.max(8, Math.min(window.innerWidth - menuWidth - 8, event.clientX))
+    const safeY = Math.max(8, Math.min(window.innerHeight - menuHeight - 8, event.clientY))
+    trackContextMenuX.value = safeX
+    trackContextMenuY.value = safeY
+    trackContextTrackId.value = trackId
+    trackContextMenuVisible.value = true
+  }
+
+  const handleTrackMenuAdjustGrid = () => {
+    const trackId = trackContextTrackId.value
+    closeTrackContextMenu()
+    if (!trackId) return
+    openBeatAlignDialog(trackId)
+  }
+
+  const handleTrackMenuToggleMasterTempo = () => {
+    const trackId = trackContextTrackId.value
+    if (!trackId) return
+    const targetIndex = tracks.value.findIndex((track) => track.id === trackId)
+    if (targetIndex < 0) return
+    const currentTrack = tracks.value[targetIndex]
+    if (!currentTrack) return
+    const nextTracks = [...tracks.value]
+    nextTracks.splice(targetIndex, 1, {
+      ...currentTrack,
+      masterTempo: currentTrack.masterTempo === false
+    })
+    tracks.value = nextTracks
+    closeTrackContextMenu()
+    scheduleTimelineDraw()
+  }
+
+  const handleBeatAlignDialogCancel = () => {
+    beatAlignDialogVisible.value = false
+    beatAlignTrackId.value = ''
+  }
+
+  const handleGlobalPointerDown = (event: PointerEvent) => {
+    if (!trackContextMenuVisible.value) return
+    const target = event.target as HTMLElement | null
+    if (target?.closest('.mixtape-track-menu')) return
+    closeTrackContextMenu()
   }
 
   const openOutputDialog = () => {
@@ -432,6 +526,7 @@ export const useMixtape = () => {
       runtime.isWindowMaximized = !!next
     })
     emitter.on('playlistContentChanged', handlePlaylistContentChanged)
+    window.addEventListener('pointerdown', handleGlobalPointerDown, true)
   })
 
   onBeforeUnmount(() => {
@@ -446,6 +541,9 @@ export const useMixtape = () => {
     } catch {}
     try {
       emitter.off('playlistContentChanged', handlePlaylistContentChanged)
+    } catch {}
+    try {
+      window.removeEventListener('pointerdown', handleGlobalPointerDown, true)
     } catch {}
     if (playlistUpdateTimer) {
       clearTimeout(playlistUpdateTimer)
@@ -478,6 +576,15 @@ export const useMixtape = () => {
     preRenderState,
     preRenderPercent,
     handleTrackDragStart,
+    handleTrackContextMenu,
+    trackContextMenuVisible,
+    trackContextMenuStyle,
+    handleTrackMenuAdjustGrid,
+    handleTrackMenuToggleMasterTempo,
+    trackMenuMasterTempoChecked,
+    beatAlignDialogVisible,
+    beatAlignTrack,
+    handleBeatAlignDialogCancel,
     transportPlaying,
     transportDecoding,
     transportPreloading,

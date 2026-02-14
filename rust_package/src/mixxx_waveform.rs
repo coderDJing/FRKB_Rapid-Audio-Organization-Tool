@@ -835,7 +835,6 @@ fn compute_mixxx_waveform_with_summary_rate(
   }
 
   let sample_rate_f = sample_rate as f64;
-  let main_stride = sample_rate_f / MIXXX_WAVEFORM_POINTS_PER_SECOND;
   let mut visual_rate = if summary_visual_sample_rate.is_finite() && summary_visual_sample_rate > 0.0 {
     summary_visual_sample_rate
   } else {
@@ -844,6 +843,15 @@ fn compute_mixxx_waveform_with_summary_rate(
   if visual_rate > sample_rate_f {
     visual_rate = sample_rate_f;
   }
+  // For high-detail waveform requests (e.g. beat-grid adjustment preview),
+  // keep the analysis stride at least as dense as the requested visual rate.
+  // This avoids a fixed 441Hz internal ceiling that makes zoomed waveform look blocky.
+  let analysis_rate = if visual_rate > MIXXX_WAVEFORM_POINTS_PER_SECOND {
+    visual_rate
+  } else {
+    MIXXX_WAVEFORM_POINTS_PER_SECOND
+  };
+  let main_stride = sample_rate_f / analysis_rate;
   let summary_stride = sample_rate_f / visual_rate;
 
   let low_coeffs = design_mixxx_bessel_lowpass(sample_rate_f, MIXXX_LOWPASS_MAX_HZ)?;

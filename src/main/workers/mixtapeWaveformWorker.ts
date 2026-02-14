@@ -42,6 +42,8 @@ const loadRust = () => {
   return binding
 }
 
+const BASE_WAVEFORM_RATE = 441
+
 const buildWaveform = (filePath: string, targetRate?: number): MixtapeWaveformResult => {
   const rust = loadRust()
   const decoded = rust.decodeAudioFile(filePath)
@@ -50,11 +52,8 @@ const buildWaveform = (filePath: string, targetRate?: number): MixtapeWaveformRe
   }
   let mixxxWaveformData: MixxxWaveformData | null = null
   const target = Number(targetRate)
-  if (
-    typeof rust.computeMixxxWaveformWithRate === 'function' &&
-    Number.isFinite(target) &&
-    target > 0
-  ) {
+  const shouldUseCustomRate = Number.isFinite(target) && target > BASE_WAVEFORM_RATE
+  if (typeof rust.computeMixxxWaveformWithRate === 'function' && shouldUseCustomRate) {
     try {
       mixxxWaveformData = rust.computeMixxxWaveformWithRate(
         decoded.pcmData,

@@ -1,6 +1,6 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
-import { MIXXX_MAX_RGB_ENERGY, MIXXX_RGB_COMPONENTS } from '@renderer/composables/mixtape/constants'
+import { MIXXX_RGB_COMPONENTS } from '@renderer/composables/mixtape/constants'
 
 const toColorChannel = (value: number) => Math.max(0, Math.min(255, Math.round(value)))
 
@@ -131,19 +131,20 @@ export const drawMixxxRgbWaveform = (
       maxLow = Math.max(lowLeft, lowRight)
       maxMid = Math.max(midLeft, midRight)
       maxHigh = Math.max(highLeft, highRight)
-      maxAllLeft = Math.max(allLeft, 0)
-      maxAllRight = Math.max(allRight, 0)
-      maxAllAvgLeft = Math.max(allAvgLeft, 0)
-      maxAllAvgRight = Math.max(allAvgRight, 0)
+      maxAllLeft = allLeft
+      maxAllRight = allRight
+      maxAllAvgLeft = allAvgLeft
+      maxAllAvgRight = allAvgRight
     } else {
-      const frameStart = Math.max(
-        startFrame,
-        Math.floor((xVisualSampleIndex - maxSamplingRange) / 2)
-      )
-      const frameEnd = Math.min(
-        endFrame - 1,
-        Math.ceil((xVisualSampleIndex + maxSamplingRange) / 2)
-      )
+      let frameStart = Math.floor(xVisualSampleIndex / 2 - maxSamplingRange + 0.5)
+      let frameEnd = Math.floor(xVisualSampleIndex / 2 + maxSamplingRange + 0.5)
+      frameStart = Math.max(startFrame, Math.min(endFrame - 1, frameStart))
+      frameEnd = Math.max(startFrame, Math.min(endFrame - 1, frameEnd))
+      if (frameEnd < frameStart) {
+        const temp = frameEnd
+        frameEnd = frameStart
+        frameStart = temp
+      }
       for (let frameIndex = frameStart; frameIndex <= frameEnd; frameIndex += 1) {
         const lowLeft = low.left[frameIndex]
         const lowRight = low.right[frameIndex]
@@ -153,62 +154,74 @@ export const drawMixxxRgbWaveform = (
         const highRight = high.right[frameIndex]
         const allAvgLeft = all.left[frameIndex]
         const allAvgRight = all.right[frameIndex]
-        const peakLeft = all.peakLeft ? all.peakLeft[frameIndex] : all.left[frameIndex]
-        const peakRight = all.peakRight ? all.peakRight[frameIndex] : all.right[frameIndex]
-        const bandLow = Math.max(lowLeft, lowRight)
-        const bandMid = Math.max(midLeft, midRight)
-        const bandHigh = Math.max(highLeft, highRight)
-        if (bandLow > maxLow) maxLow = bandLow
-        if (bandMid > maxMid) maxMid = bandMid
-        if (bandHigh > maxHigh) maxHigh = bandHigh
-        if (peakLeft > maxAllLeft) maxAllLeft = peakLeft
-        if (peakRight > maxAllRight) maxAllRight = peakRight
+        const allLeft = all.peakLeft ? all.peakLeft[frameIndex] : allAvgLeft
+        const allRight = all.peakRight ? all.peakRight[frameIndex] : allAvgRight
+
+        if (lowLeft > maxLow) maxLow = lowLeft
+        if (lowRight > maxLow) maxLow = lowRight
+        if (midLeft > maxMid) maxMid = midLeft
+        if (midRight > maxMid) maxMid = midRight
+        if (highLeft > maxHigh) maxHigh = highLeft
+        if (highRight > maxHigh) maxHigh = highRight
+
+        if (allLeft > maxAllLeft) maxAllLeft = allLeft
+        if (allRight > maxAllRight) maxAllRight = allRight
         if (allAvgLeft > maxAllAvgLeft) maxAllAvgLeft = allAvgLeft
         if (allAvgRight > maxAllAvgRight) maxAllAvgRight = allAvgRight
       }
     }
 
-    let avgTop = Math.max(0, Math.min(1, (maxAllAvgLeft / 255) * heightFactor))
-    let avgBottom = Math.max(0, Math.min(1, (maxAllAvgRight / 255) * heightFactor))
-    let peakTop = Math.max(0, Math.min(1, (maxAllLeft / 255) * heightFactor))
-    let peakBottom = Math.max(0, Math.min(1, (maxAllRight / 255) * heightFactor))
-
-    if (hasRaw) {
-      const rawPos = rawStartPos + (x / Math.max(1, length - 1)) * rawVisible
-      const rawIndex = Math.max(0, Math.min(rawFrames - 1, Math.floor(rawPos)))
-      const rawIndex2 = Math.min(rawFrames - 1, rawIndex + 1)
-      const t = rawPos - rawIndex
-      const rawMinLeftValue = lerp(rawMinLeft[rawIndex] ?? 0, rawMinLeft[rawIndex2] ?? 0, t)
-      const rawMaxLeftValue = lerp(rawMaxLeft[rawIndex] ?? 0, rawMaxLeft[rawIndex2] ?? 0, t)
-      const rawMinRightValue = lerp(rawMinRight[rawIndex] ?? 0, rawMinRight[rawIndex2] ?? 0, t)
-      const rawMaxRightValue = lerp(rawMaxRight[rawIndex] ?? 0, rawMaxRight[rawIndex2] ?? 0, t)
-      avgTop = Math.max(avgTop, Math.abs(rawMaxLeftValue) * rawHeightFactor)
-      avgBottom = Math.max(avgBottom, Math.abs(rawMinRightValue) * rawHeightFactor)
-      peakTop = Math.max(peakTop, Math.abs(rawMaxLeftValue) * rawHeightFactor)
-      peakBottom = Math.max(peakBottom, Math.abs(rawMinRightValue) * rawHeightFactor)
+    const allUnscaled = maxLow + maxMid + maxHigh
+    let eqGain = 1
+    if (allUnscaled > 0) {
+      eqGain = (maxLow + maxMid + maxHigh) / allUnscaled
     }
 
-    const mixedEnergy =
+    const red =
       maxLow * MIXXX_RGB_COMPONENTS.low.r +
       maxMid * MIXXX_RGB_COMPONENTS.mid.r +
       maxHigh * MIXXX_RGB_COMPONENTS.high.r
-    const mixedEnergyG =
+    const green =
       maxLow * MIXXX_RGB_COMPONENTS.low.g +
       maxMid * MIXXX_RGB_COMPONENTS.mid.g +
       maxHigh * MIXXX_RGB_COMPONENTS.high.g
-    const mixedEnergyB =
+    const blue =
       maxLow * MIXXX_RGB_COMPONENTS.low.b +
       maxMid * MIXXX_RGB_COMPONENTS.mid.b +
       maxHigh * MIXXX_RGB_COMPONENTS.high.b
-    const energy = Math.sqrt(
-      mixedEnergy * mixedEnergy + mixedEnergyG * mixedEnergyG + mixedEnergyB * mixedEnergyB
-    )
-    const energyRatio = Math.max(0, Math.min(1, energy / MIXXX_MAX_RGB_ENERGY))
+    const maxColor = Math.max(red, green, blue)
+    if (maxColor <= 0) {
+      columns[x] = null
+      continue
+    }
+
+    let avgTop = heightFactor * eqGain * maxAllAvgLeft
+    let avgBottom = heightFactor * eqGain * maxAllAvgRight
+    let peakTop = heightFactor * eqGain * maxAllLeft
+    let peakBottom = heightFactor * eqGain * maxAllRight
+
+    if (hasRaw && rawMinLeft && rawMaxLeft && rawMinRight && rawMaxRight && rawFrames > 1) {
+      const rawPos = rawStartPos + (x / Math.max(1, length - 1)) * rawVisible
+      const rawIndex = Math.max(0, Math.min(rawFrames - 1, rawPos))
+      const i0 = Math.floor(rawIndex)
+      const i1 = Math.min(rawFrames - 1, i0 + 1)
+      const t = rawIndex - i0
+      const rawMinLeftValue = lerp(rawMinLeft[i0] || 0, rawMinLeft[i1] || 0, t)
+      const rawMaxLeftValue = lerp(rawMaxLeft[i0] || 0, rawMaxLeft[i1] || 0, t)
+      const rawMinRightValue = lerp(rawMinRight[i0] || 0, rawMinRight[i1] || 0, t)
+      const rawMaxRightValue = lerp(rawMaxRight[i0] || 0, rawMaxRight[i1] || 0, t)
+      const leftPeak = Math.max(Math.abs(rawMinLeftValue), Math.abs(rawMaxLeftValue))
+      const rightPeak = Math.max(Math.abs(rawMinRightValue), Math.abs(rawMaxRightValue))
+      avgTop = leftPeak * rawHeightFactor
+      avgBottom = rightPeak * rawHeightFactor
+      peakTop = avgTop
+      peakBottom = avgBottom
+    }
 
     const color = {
-      r: toColorChannel(255 * energyRatio),
-      g: toColorChannel(255 * (maxMid / 255)),
-      b: toColorChannel(255 * (maxHigh / 255)),
+      r: toColorChannel((red / maxColor) * 255),
+      g: toColorChannel((green / maxColor) * 255),
+      b: toColorChannel((blue / maxColor) * 255),
       avgTop,
       avgBottom,
       peakTop,
