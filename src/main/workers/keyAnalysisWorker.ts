@@ -14,6 +14,7 @@ type KeyResultPayload = {
   keyText?: string
   keyError?: string
   bpm?: number
+  firstBeatMs?: number
   bpmError?: string
   mixxxWaveformData?: MixxxWaveformData | null
 }
@@ -45,7 +46,13 @@ const loadRust = () => {
       sampleRate: number,
       channels: number,
       fastAnalysis: boolean
-    ) => { keyText: string; keyError?: string; bpm: number; bpmError?: string }
+    ) => {
+      keyText: string
+      keyError?: string
+      bpm: number
+      firstBeatMs?: number
+      bpmError?: string
+    }
     computeMixxxWaveform?: (
       pcmData: Buffer,
       sampleRate: number,
@@ -86,6 +93,13 @@ const analyzeKeyForFile = (
     }
     if (needsBpm) {
       result.bpm = analysis.bpm
+      if (
+        typeof analysis.firstBeatMs === 'number' &&
+        Number.isFinite(analysis.firstBeatMs) &&
+        analysis.firstBeatMs >= 0
+      ) {
+        result.firstBeatMs = analysis.firstBeatMs
+      }
       result.bpmError = analysis.bpmError
     }
   }

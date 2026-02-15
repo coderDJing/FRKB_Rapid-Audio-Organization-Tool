@@ -3,13 +3,16 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { t } from '@renderer/utils/translate'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import { rebuildBeatAlignOverviewCache } from '@renderer/components/mixtapeBeatAlignOverviewCache'
 import { drawBeatAlignRekordboxWaveform } from '@renderer/components/mixtapeBeatAlignWaveform'
-import { drawMixxxRgbWaveform } from '@renderer/composables/mixtape/waveformDraw'
-import type { RawWaveformData, RawWaveformLevel } from '@renderer/composables/mixtape/types'
+import { useMixtapeBeatAlignPlayback } from '@renderer/components/mixtapeBeatAlignPlayback'
+import { pickRawDataByFile } from '@renderer/components/mixtapeBeatAlignRawWaveform'
 import {
-  buildRawWaveformPyramid,
-  resolveRawWaveformLevel
-} from '@renderer/composables/mixtape/waveformPyramid'
+  isValidMixxxWaveformData,
+  pickMixxxDataByFile
+} from '@renderer/components/mixtapeBeatAlignWaveformData'
+import type { RawWaveformData, RawWaveformLevel } from '@renderer/composables/mixtape/types'
+import { buildRawWaveformPyramid } from '@renderer/composables/mixtape/waveformPyramid'
 
 const props = defineProps({
   trackTitle: {
@@ -74,6 +77,7 @@ const OVERVIEW_MAX_RENDER_COLUMNS = 960
 const OVERVIEW_IS_HALF_WAVEFORM = false
 const OVERVIEW_WAVEFORM_VERTICAL_PADDING = 8
 const PREVIEW_MAX_SAMPLES_PER_PIXEL = 180
+const PREVIEW_PLAY_ANCHOR_RATIO = 1 / 3
 
 const bpmDisplay = computed(() => {
   const bpmValue = Number(props.bpm)
@@ -90,6 +94,7 @@ const firstBeatDisplay = computed(() => {
 const masterTempoDisplay = computed(() => (props.masterTempo !== false ? 'ON' : 'OFF'))
 
 const cancel = () => {
+  stopPreviewPlayback({ syncPosition: false })
   closeWithAnimation(() => {
     emit('cancel')
   })
@@ -99,6 +104,8 @@ const normalizePathKey = (value: unknown) =>
   String(value || '')
     .trim()
     .toLowerCase()
+
+const normalizedFilePath = computed(() => String(props.filePath || '').trim())
 
 const resolvePreviewDurationSec = () => {
   const mixxxDuration = Number(previewMixxxData.value?.duration || 0)
@@ -114,12 +121,25 @@ const resolveVisibleDurationSec = () => {
   return total / safeZoom
 }
 
+const resolvePreviewLeadingPadSec = () => {
+  const visible = resolveVisibleDurationSec()
+  if (!Number.isFinite(visible) || visible <= 0) return 0
+  return visible * PREVIEW_PLAY_ANCHOR_RATIO
+}
+
+const resolvePreviewVirtualSpanSec = () => {
+  const total = resolvePreviewDurationSec()
+  const leadingPad = resolvePreviewLeadingPadSec()
+  return Math.max(0.0001, total + leadingPad)
+}
+
 const clampPreviewStart = (value: number) => {
   const total = resolvePreviewDurationSec()
   const visible = resolveVisibleDurationSec()
   if (!total || !visible) return 0
+  const minStart = -resolvePreviewLeadingPadSec()
   const maxStart = Math.max(0, total - visible)
-  return Math.max(0, Math.min(maxStart, value))
+  return Math.max(minStart, Math.min(maxStart, value))
 }
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
@@ -127,19 +147,22 @@ const clampNumber = (value: number, min: number, max: number) => Math.max(min, M
 const resolveOverviewViewportMetrics = () => {
   const total = resolvePreviewDurationSec()
   const visible = resolveVisibleDurationSec()
+  const leadingPad = resolvePreviewLeadingPadSec()
+  const virtualSpan = resolvePreviewVirtualSpanSec()
   const wrapWidth = Math.max(0, Number(overviewWrapRef.value?.clientWidth || 0))
   if (!total || !visible || wrapWidth <= 0) {
     return { left: 0, width: 0, wrapWidth: 0 }
   }
   const safeVisible = clampNumber(visible, 0.0001, total)
-  if (safeVisible >= total) {
+  if (safeVisible >= virtualSpan) {
     return { left: 0, width: wrapWidth, wrapWidth }
   }
-  const rawWidth = (safeVisible / total) * wrapWidth
+  const rawWidth = (safeVisible / virtualSpan) * wrapWidth
   const width = clampNumber(rawWidth, 12, wrapWidth)
-  const maxStart = Math.max(0, total - safeVisible)
+  const maxLeftTime = Math.max(0, virtualSpan - safeVisible)
   const safeStart = clampPreviewStart(previewStartSec.value)
-  const startRatio = maxStart > 0 ? safeStart / maxStart : 0
+  const leftTime = safeStart + leadingPad
+  const startRatio = maxLeftTime > 0 ? leftTime / maxLeftTime : 0
   const maxLeft = Math.max(0, wrapWidth - width)
   const left = startRatio * maxLeft
   return { left, width, wrapWidth }
@@ -153,39 +176,6 @@ const overviewViewportStyle = computed(() => {
     opacity: width > 0 ? '1' : '0'
   }
 })
-
-const isValidMixxxWaveformData = (data: MixxxWaveformData | null): data is MixxxWaveformData => {
-  if (!data) return false
-  const low = data.bands?.low
-  const mid = data.bands?.mid
-  const high = data.bands?.high
-  const all = data.bands?.all
-  if (!low || !mid || !high || !all) return false
-
-  const frameCount = Math.min(
-    low.left.length,
-    low.right.length,
-    mid.left.length,
-    mid.right.length,
-    high.left.length,
-    high.right.length,
-    all.left.length,
-    all.right.length
-  )
-  if (!frameCount) return false
-
-  const isMatch = (arr?: Uint8Array) => (!arr ? true : arr.length === frameCount)
-  return (
-    isMatch(low.peakLeft) &&
-    isMatch(low.peakRight) &&
-    isMatch(mid.peakLeft) &&
-    isMatch(mid.peakRight) &&
-    isMatch(high.peakLeft) &&
-    isMatch(high.peakRight) &&
-    isMatch(all.peakLeft) &&
-    isMatch(all.peakRight)
-  )
-}
 
 const resizePreviewCanvas = (
   canvas: HTMLCanvasElement,
@@ -278,83 +268,39 @@ const schedulePreviewDraw = () => {
   })
 }
 
+const {
+  previewPlaying,
+  previewDecoding,
+  previewAnchorStyle,
+  canTogglePreviewPlayback,
+  handlePreviewPlaybackToggle,
+  warmupPreviewPlayback,
+  stopPreviewPlayback,
+  cleanupPreviewPlayback
+} = useMixtapeBeatAlignPlayback({
+  filePathRef: normalizedFilePath,
+  previewLoading,
+  previewMixxxData,
+  previewStartSec,
+  resolveVisibleDurationSec,
+  resolvePreviewDurationSec,
+  clampPreviewStart,
+  schedulePreviewDraw
+})
+
 const rebuildOverviewCache = () => {
-  const wrap = overviewWrapRef.value
-  if (!wrap) {
-    overviewCacheCanvas = null
-    return
-  }
-
-  const width = Math.max(1, Math.floor(wrap.clientWidth))
-  const height = Math.max(1, Math.floor(wrap.clientHeight))
-  const dpr = Math.max(1, window.devicePixelRatio || 1)
-  const renderWidth = Math.max(160, Math.min(width, OVERVIEW_MAX_RENDER_COLUMNS))
-  const renderPixelWidth = Math.max(1, Math.floor(renderWidth * dpr))
-  const renderPixelHeight = Math.max(1, Math.floor(height * dpr))
-
-  if (!overviewCacheCanvas) {
-    overviewCacheCanvas = document.createElement('canvas')
-  }
-  if (
-    overviewCacheCanvas.width !== renderPixelWidth ||
-    overviewCacheCanvas.height !== renderPixelHeight
-  ) {
-    overviewCacheCanvas.width = renderPixelWidth
-    overviewCacheCanvas.height = renderPixelHeight
-  }
-
-  const cacheCtx = overviewCacheCanvas.getContext('2d')
-  if (!cacheCtx) return
-
-  cacheCtx.setTransform(1, 0, 0, 1, 0, 0)
-  cacheCtx.clearRect(0, 0, renderPixelWidth, renderPixelHeight)
-  cacheCtx.scale(dpr, dpr)
-  const mixxxData = overviewMixxxData.value
-  if (!mixxxData) return
-  const low = mixxxData.bands?.low
-  const mid = mixxxData.bands?.mid
-  const high = mixxxData.bands?.high
-  const all = mixxxData.bands?.all
-  if (!low || !mid || !high || !all) return
-  const frameCount = Math.min(
-    low.left.length,
-    low.right.length,
-    mid.left.length,
-    mid.right.length,
-    high.left.length,
-    high.right.length,
-    all.left.length,
-    all.right.length
-  )
-  if (!frameCount) return
-
-  const duration = Number(mixxxData.duration) || 0
-  const raw = overviewRawData.value
-  const rawSpan = Math.max(0, duration)
-  const rawSamplesPerPixel =
-    raw && rawSpan > 0 ? (raw.rate * rawSpan) / Math.max(1, renderWidth * dpr) : 0
-  const resolvedRaw = resolveRawWaveformLevel(
-    overviewRawPyramidMap,
-    overviewRawKey.value,
-    raw,
-    rawSamplesPerPixel
-  )
-
-  const verticalPadding = Math.max(
-    0,
-    Math.min(Math.floor(height / 3), OVERVIEW_WAVEFORM_VERTICAL_PADDING)
-  )
-  const drawHeight = Math.max(1, height - verticalPadding * 2)
-  cacheCtx.save()
-  cacheCtx.translate(0, verticalPadding)
-  drawMixxxRgbWaveform(cacheCtx, renderWidth, drawHeight, mixxxData, OVERVIEW_IS_HALF_WAVEFORM, {
-    startFrame: 0,
-    endFrame: frameCount,
-    startTime: 0,
-    endTime: Math.max(0, duration),
-    raw: resolvedRaw
+  overviewCacheCanvas = rebuildBeatAlignOverviewCache({
+    wrap: overviewWrapRef.value,
+    cacheCanvas: overviewCacheCanvas,
+    mixxxData: overviewMixxxData.value,
+    rawData: overviewRawData.value,
+    rawPyramidMap: overviewRawPyramidMap,
+    rawKey: overviewRawKey.value,
+    maxRenderColumns: OVERVIEW_MAX_RENDER_COLUMNS,
+    isHalfWaveform: OVERVIEW_IS_HALF_WAVEFORM,
+    waveformVerticalPadding: OVERVIEW_WAVEFORM_VERTICAL_PADDING,
+    leadingPadSec: resolvePreviewLeadingPadSec()
   })
-  cacheCtx.restore()
 }
 
 const scheduleOverviewRebuild = () => {
@@ -379,19 +325,27 @@ const setPreviewZoom = (targetZoom: number, anchorRatio: number = 0.5) => {
 }
 
 const handleZoomSliderInput = (event: Event) => {
+  stopPreviewPlayback({ syncPosition: true })
   const target = event.target as HTMLInputElement | null
   const value = Number(target?.value || PREVIEW_MIN_ZOOM)
   if (!Number.isFinite(value) || value <= 0) return
   setPreviewZoom(value, 0.5)
 }
 
-const zoomIn = () => setPreviewZoom(previewZoom.value * 1.25, 0.5)
-const zoomOut = () => setPreviewZoom(previewZoom.value / 1.25, 0.5)
+const zoomIn = () => {
+  stopPreviewPlayback({ syncPosition: true })
+  setPreviewZoom(previewZoom.value * 1.25, 0.5)
+}
+const zoomOut = () => {
+  stopPreviewPlayback({ syncPosition: true })
+  setPreviewZoom(previewZoom.value / 1.25, 0.5)
+}
 
 const handlePreviewWheel = (event: WheelEvent) => {
   const wrap = previewWrapRef.value
   if (!wrap) return
   event.preventDefault()
+  stopPreviewPlayback({ syncPosition: true })
 
   const rect = wrap.getBoundingClientRect()
   const ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5
@@ -426,6 +380,7 @@ const stopPreviewDragging = () => {
 const handlePreviewMouseDown = (event: MouseEvent) => {
   if (event.button !== 0) return
   if (!previewMixxxData.value) return
+  stopPreviewPlayback({ syncPosition: true })
 
   previewDragging.value = true
   previewDragStartClientX = event.clientX
@@ -444,23 +399,27 @@ const resolveOverviewPointer = (event: MouseEvent) => {
 const setPreviewStartByOverviewCenterRatio = (ratio: number) => {
   const total = resolvePreviewDurationSec()
   const visible = resolveVisibleDurationSec()
-  if (!total || !visible) return
+  const leadingPad = resolvePreviewLeadingPadSec()
+  const virtualSpan = resolvePreviewVirtualSpanSec()
+  if (!total || !visible || !virtualSpan) return
   const safeRatio = clampNumber(ratio, 0, 1)
-  const targetCenter = safeRatio * total
-  previewStartSec.value = clampPreviewStart(targetCenter - visible / 2)
+  const targetCenter = safeRatio * virtualSpan
+  previewStartSec.value = clampPreviewStart(targetCenter - visible / 2 - leadingPad)
   schedulePreviewDraw()
 }
 
 const setPreviewStartByOverviewLeft = (left: number) => {
   const total = resolvePreviewDurationSec()
   const visible = resolveVisibleDurationSec()
+  const leadingPad = resolvePreviewLeadingPadSec()
+  const virtualSpan = resolvePreviewVirtualSpanSec()
   const { width, wrapWidth } = resolveOverviewViewportMetrics()
-  if (!total || !visible || wrapWidth <= 0) return
+  if (!total || !visible || wrapWidth <= 0 || !virtualSpan) return
   const maxLeft = Math.max(0, wrapWidth - width)
   const clampedLeft = clampNumber(left, 0, maxLeft)
-  const maxStart = Math.max(0, total - visible)
-  const start = maxLeft > 0 ? (clampedLeft / maxLeft) * maxStart : 0
-  previewStartSec.value = clampPreviewStart(start)
+  const maxLeftTime = Math.max(0, virtualSpan - visible)
+  const leftTime = maxLeft > 0 ? (clampedLeft / maxLeft) * maxLeftTime : 0
+  previewStartSec.value = clampPreviewStart(leftTime - leadingPad)
   schedulePreviewDraw()
 }
 
@@ -495,6 +454,7 @@ const stopOverviewDragging = () => {
 const handleOverviewMouseDown = (event: MouseEvent) => {
   if (event.button !== 0) return
   if (!previewMixxxData.value) return
+  stopPreviewPlayback({ syncPosition: true })
   const pointer = resolveOverviewPointer(event)
   if (!pointer) return
   const { x, rect } = pointer
@@ -521,6 +481,7 @@ const handleOverviewMouseDown = (event: MouseEvent) => {
 }
 
 const handleOverviewClick = (event: MouseEvent) => {
+  stopPreviewPlayback({ syncPosition: true })
   if (overviewSuppressClick) {
     overviewSuppressClick = false
     return
@@ -528,75 +489,6 @@ const handleOverviewClick = (event: MouseEvent) => {
   const pointer = resolveOverviewPointer(event)
   if (!pointer) return
   setPreviewStartByOverviewCenterRatio(pointer.x / pointer.rect.width)
-}
-
-const pickMixxxDataByFile = (response: any, fileKey: string): MixxxWaveformData | null => {
-  const items = Array.isArray(response?.items) ? response.items : []
-  const item = items.find((entry: any) => normalizePathKey(entry?.filePath) === fileKey)
-  const data = (item?.data ?? null) as MixxxWaveformData | null
-  return isValidMixxxWaveformData(data) ? data : null
-}
-
-const decodeRawFloatArray = (input: unknown): Float32Array | null => {
-  if (!input) return null
-  if (input instanceof Float32Array) return input
-
-  if (ArrayBuffer.isView(input)) {
-    const view = input as ArrayBufferView
-    return new Float32Array(view.buffer, view.byteOffset, Math.floor(view.byteLength / 4))
-  }
-
-  if (input instanceof ArrayBuffer) {
-    return new Float32Array(input)
-  }
-
-  if (typeof input === 'string') {
-    try {
-      const bytes = Uint8Array.from(atob(input), (char) => char.charCodeAt(0))
-      return new Float32Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 4))
-    } catch {
-      return null
-    }
-  }
-
-  return null
-}
-
-const decodeRawWaveformData = (payload: any): RawWaveformData | null => {
-  if (!payload) return null
-  const minLeft = decodeRawFloatArray(payload.minLeft ?? payload.min)
-  const maxLeft = decodeRawFloatArray(payload.maxLeft ?? payload.max)
-  const minRight = decodeRawFloatArray(payload.minRight ?? payload.min)
-  const maxRight = decodeRawFloatArray(payload.maxRight ?? payload.max)
-  if (!minLeft || !maxLeft || !minRight || !maxRight) return null
-
-  const frames = Math.max(
-    0,
-    Math.min(
-      Number(payload.frames) || Number.POSITIVE_INFINITY,
-      minLeft.length,
-      maxLeft.length,
-      minRight.length,
-      maxRight.length
-    )
-  )
-
-  return {
-    duration: Number(payload.duration) || 0,
-    sampleRate: Number(payload.sampleRate) || 0,
-    rate: Number(payload.rate) || 0,
-    frames,
-    minLeft,
-    maxLeft,
-    minRight,
-    maxRight
-  }
-}
-
-const pickRawDataByFile = (response: any, fileKey: string): RawWaveformData | null => {
-  const items = Array.isArray(response?.items) ? response.items : []
-  const item = items.find((entry: any) => normalizePathKey(entry?.filePath) === fileKey)
-  return decodeRawWaveformData(item?.data ?? null)
 }
 
 const fetchOverviewWaveformFromCache = async (filePath: string) => {
@@ -615,7 +507,7 @@ const fetchOverviewWaveformFromCache = async (filePath: string) => {
       filePaths: [normalized]
     })
     .catch(() => null)
-  overviewMixxxData.value = pickMixxxDataByFile(cacheResult, fileKey)
+  overviewMixxxData.value = pickMixxxDataByFile(cacheResult, fileKey, normalizePathKey)
   scheduleOverviewRebuild()
 }
 
@@ -629,6 +521,7 @@ const handleMixtapeWaveformUpdated = (_event: any, payload: { filePath?: string 
 const loadPreviewWaveform = async (filePath: string) => {
   const normalized = typeof filePath === 'string' ? filePath.trim() : ''
 
+  stopPreviewPlayback({ syncPosition: false })
   previewMixxxData.value = null
   overviewMixxxData.value = null
   overviewRawData.value = null
@@ -649,6 +542,7 @@ const loadPreviewWaveform = async (filePath: string) => {
     return
   }
 
+  void warmupPreviewPlayback(normalized)
   previewLoading.value = true
   try {
     const fileKey = normalizePathKey(normalized)
@@ -672,10 +566,13 @@ const loadPreviewWaveform = async (filePath: string) => {
         .catch(() => null)
     ])
 
-    previewMixxxData.value = pickMixxxDataByFile(hiresResult, fileKey)
-    overviewMixxxData.value = pickMixxxDataByFile(cacheResult, fileKey)
-    overviewRawData.value = pickRawDataByFile(rawResult, fileKey)
+    previewMixxxData.value = pickMixxxDataByFile(hiresResult, fileKey, normalizePathKey)
+    overviewMixxxData.value = pickMixxxDataByFile(cacheResult, fileKey, normalizePathKey)
+    overviewRawData.value = pickRawDataByFile(rawResult, fileKey, normalizePathKey)
     overviewRawKey.value = fileKey
+    if (previewMixxxData.value) {
+      previewStartSec.value = clampPreviewStart(-resolvePreviewLeadingPadSec())
+    }
     if (overviewRawData.value) {
       overviewRawPyramidMap.set(fileKey, buildRawWaveformPyramid(overviewRawData.value))
     } else {
@@ -707,6 +604,22 @@ const handleWindowResize = () => {
   scheduleOverviewRebuild()
 }
 
+const isEditableEventTarget = (target: EventTarget | null) => {
+  const element = target as HTMLElement | null
+  if (!element) return false
+  if (element.isContentEditable) return true
+  const tag = element.tagName?.toLowerCase() || ''
+  return tag === 'input' || tag === 'textarea' || tag === 'select'
+}
+
+const handleWindowKeydown = (event: KeyboardEvent) => {
+  if (!dialogVisible.value) return
+  if (event.code !== 'Space' && event.key !== ' ') return
+  if (isEditableEventTarget(event.target)) return
+  event.preventDefault()
+  handlePreviewPlaybackToggle()
+}
+
 watch(
   () => props.filePath,
   (nextPath) => {
@@ -728,18 +641,22 @@ watch(
     if (visible) {
       schedulePreviewDraw()
       scheduleOverviewRebuild()
+    } else {
+      stopPreviewPlayback({ syncPosition: false })
     }
   }
 )
 
 onMounted(() => {
   window.addEventListener('resize', handleWindowResize, { passive: true })
+  window.addEventListener('keydown', handleWindowKeydown)
   try {
     window.electron.ipcRenderer.on('mixtape-waveform-updated', handleMixtapeWaveformUpdated)
   } catch {}
 })
 
 onBeforeUnmount(() => {
+  cleanupPreviewPlayback()
   if (previewRaf) {
     cancelAnimationFrame(previewRaf)
     previewRaf = 0
@@ -753,6 +670,7 @@ onBeforeUnmount(() => {
   stopPreviewDragging()
   stopOverviewDragging()
   window.removeEventListener('resize', handleWindowResize)
+  window.removeEventListener('keydown', handleWindowKeydown)
   try {
     window.electron.ipcRenderer.removeListener(
       'mixtape-waveform-updated',
@@ -782,7 +700,23 @@ onBeforeUnmount(() => {
           <div class="meta-item">{{ t('mixtape.masterTempo') }}: {{ masterTempoDisplay }}</div>
         </div>
         <div class="preview-toolbar">
-          <div class="preview-hint">{{ t('mixtape.gridAdjustViewHint') }}</div>
+          <div class="preview-tools">
+            <button
+              class="playback-btn"
+              type="button"
+              :disabled="!canTogglePreviewPlayback"
+              @click="handlePreviewPlaybackToggle"
+            >
+              {{
+                previewDecoding
+                  ? t('mixtape.transportDecoding')
+                  : previewPlaying
+                    ? t('mixtape.pause')
+                    : t('mixtape.play')
+              }}
+            </button>
+            <div class="preview-hint">{{ t('mixtape.gridAdjustViewHint') }}</div>
+          </div>
           <div class="preview-zoom">
             <span>{{ t('mixtape.gridAdjustZoom') }}：</span>
             <button class="zoom-btn" type="button" @click="zoomOut">-</button>
@@ -807,6 +741,11 @@ onBeforeUnmount(() => {
           @wheel.prevent="handlePreviewWheel"
         >
           <canvas ref="previewCanvasRef" class="preview-canvas"></canvas>
+          <div
+            class="preview-anchor-line"
+            :class="{ 'is-active': previewPlaying }"
+            :style="previewAnchorStyle"
+          ></div>
           <div v-if="previewLoading" class="preview-status">
             {{ t('mixtape.gridAdjustWaveformLoading') }}
           </div>
@@ -871,10 +810,19 @@ onBeforeUnmount(() => {
   gap: 10px;
 }
 
+.preview-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
 .preview-hint {
   font-size: 12px;
   color: var(--text-weak);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .preview-zoom {
@@ -909,6 +857,28 @@ onBeforeUnmount(() => {
   text-align: right;
 }
 
+.playback-btn {
+  min-width: 68px;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elev);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.playback-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
+.playback-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .preview-canvas-wrap {
   position: relative;
   height: 176px;
@@ -927,6 +897,22 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   display: block;
+}
+
+.preview-anchor-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: rgba(255, 233, 141, 0.7);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.preview-anchor-line.is-active {
+  background: rgba(255, 227, 122, 0.94);
 }
 
 .overview-canvas-wrap {

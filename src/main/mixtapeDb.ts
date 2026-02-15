@@ -268,21 +268,27 @@ export function listMixtapeFilePathsInUse(filePaths: string[]): string[] {
   }
 }
 
-export function upsertMixtapeItemBpmByFilePath(entries: Array<{ filePath: string; bpm: number }>): {
-  updated: number
-} {
+export function upsertMixtapeItemBpmByFilePath(
+  entries: Array<{ filePath: string; bpm: number; firstBeatMs?: number }>
+): { updated: number } {
   if (!Array.isArray(entries) || entries.length === 0) return { updated: 0 }
   const db = getLibraryDb()
   if (!db) return { updated: 0 }
 
-  const bpmMap = new Map<string, number>()
+  const analysisMap = new Map<string, { bpm: number; firstBeatMs: number }>()
   for (const item of entries) {
     const filePath = typeof item?.filePath === 'string' ? item.filePath.trim() : ''
     const bpm = Number(item?.bpm)
     if (!filePath || !Number.isFinite(bpm) || bpm <= 0) continue
-    bpmMap.set(filePath, Number(bpm.toFixed(2)))
+    const firstBeatMs = Number(item?.firstBeatMs)
+    const normalizedFirstBeatMs =
+      Number.isFinite(firstBeatMs) && firstBeatMs >= 0 ? Number(firstBeatMs.toFixed(3)) : 0
+    analysisMap.set(filePath, {
+      bpm: Number(bpm.toFixed(2)),
+      firstBeatMs: normalizedFirstBeatMs
+    })
   }
-  const filePaths = Array.from(bpmMap.keys())
+  const filePaths = Array.from(analysisMap.keys())
   if (filePaths.length === 0) return { updated: 0 }
 
   try {
@@ -301,8 +307,8 @@ export function upsertMixtapeItemBpmByFilePath(entries: Array<{ filePath: string
           .all(...chunk) as Array<{ id: string; file_path: string; info_json?: string | null }>
         for (const row of rows) {
           const filePath = typeof row?.file_path === 'string' ? row.file_path.trim() : ''
-          const bpm = bpmMap.get(filePath)
-          if (bpm === undefined) continue
+          const nextAnalysis = analysisMap.get(filePath)
+          if (!nextAnalysis) continue
           let info: Record<string, any> = {}
           if (row?.info_json) {
             try {
@@ -312,8 +318,23 @@ export function upsertMixtapeItemBpmByFilePath(entries: Array<{ filePath: string
               }
             } catch {}
           }
-          if (info.bpm === bpm) continue
-          info.bpm = bpm
+          const currentBpm = Number(info.bpm)
+          const currentFirstBeatMs = Number(info.firstBeatMs)
+          const normalizedCurrentBpm = Number.isFinite(currentBpm)
+            ? Number(currentBpm.toFixed(2))
+            : NaN
+          const normalizedCurrentFirstBeatMs =
+            Number.isFinite(currentFirstBeatMs) && currentFirstBeatMs >= 0
+              ? Number(currentFirstBeatMs.toFixed(3))
+              : 0
+          if (
+            normalizedCurrentBpm === nextAnalysis.bpm &&
+            normalizedCurrentFirstBeatMs === nextAnalysis.firstBeatMs
+          ) {
+            continue
+          }
+          info.bpm = nextAnalysis.bpm
+          info.firstBeatMs = nextAnalysis.firstBeatMs
           updateStmt.run(JSON.stringify(info), row.id)
           updated += 1
         }

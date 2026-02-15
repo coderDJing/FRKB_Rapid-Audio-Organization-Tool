@@ -43,6 +43,8 @@ export interface KeyBpmAnalysisResult {
   keyText: string
   /** BPM 值 */
   bpm: number
+  /** 首拍偏移（毫秒） */
+  firstBeatMs: number
   /** 调性分析错误描述 */
   keyError?: string
   /** BPM 分析错误描述 */

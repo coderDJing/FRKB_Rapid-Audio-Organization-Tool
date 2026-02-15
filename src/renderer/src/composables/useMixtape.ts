@@ -164,6 +164,12 @@ export const useMixtape = () => {
       typeof info?.bpm === 'number' && Number.isFinite(info.bpm) && info.bpm > 0
         ? info.bpm
         : undefined
+    const hasFirstBeatField = !!info && Object.prototype.hasOwnProperty.call(info, 'firstBeatMs')
+    const parsedFirstBeatMsValue = Number(info?.firstBeatMs)
+    const parsedFirstBeatMs =
+      hasFirstBeatField && Number.isFinite(parsedFirstBeatMsValue) && parsedFirstBeatMsValue >= 0
+        ? parsedFirstBeatMsValue
+        : undefined
     const parsedKey = typeof info?.key === 'string' ? info.key.trim() : ''
     return {
       id: String(raw?.id || `${filePath}-${index}`),
@@ -179,7 +185,7 @@ export const useMixtape = () => {
       originalBpm: parsedBpm,
       masterTempo: true,
       startSec: undefined,
-      firstBeatMs: 0
+      firstBeatMs: parsedFirstBeatMs
     }
   }
 
@@ -189,6 +195,11 @@ export const useMixtape = () => {
     for (const track of tracks.value) {
       const filePath = normalizeMixtapeFilePath(track.filePath)
       if (!filePath || unique.has(filePath)) continue
+      const bpmValue = Number(track.bpm)
+      const firstBeatMsValue = Number(track.firstBeatMs)
+      const hasValidBpm = Number.isFinite(bpmValue) && bpmValue > 0
+      const hasValidFirstBeatMs = Number.isFinite(firstBeatMsValue) && firstBeatMsValue >= 0
+      if (hasValidBpm && hasValidFirstBeatMs) continue
       unique.add(filePath)
       targets.push(filePath)
     }
@@ -200,12 +211,16 @@ export const useMixtape = () => {
     return tracks.value.filter((track) => {
       const trackPath = normalizeMixtapeFilePath(track.filePath)
       if (!trackPath || !bpmTargets.has(trackPath)) return false
-      return typeof track.bpm !== 'number' || !Number.isFinite(track.bpm) || track.bpm <= 0
+      const bpmValue = Number(track.bpm)
+      const firstBeatMsValue = Number(track.firstBeatMs)
+      const missingBpm = !Number.isFinite(bpmValue) || bpmValue <= 0
+      const missingFirstBeat = !Number.isFinite(firstBeatMsValue) || firstBeatMsValue < 0
+      return missingBpm || missingFirstBeat
     }).length
   }
 
   const applyBpmResultsToTracks = (results: unknown[]) => {
-    const bpmMap = new Map<string, number>()
+    const analysisMap = new Map<string, { bpm: number; firstBeatMs: number }>()
     for (const item of results) {
       const filePath = normalizeMixtapeFilePath((item as any)?.filePath)
       const bpmValue = (item as any)?.bpm
@@ -217,22 +232,42 @@ export const useMixtape = () => {
       ) {
         continue
       }
-      bpmMap.set(filePath, bpmValue)
+      const rawFirstBeatMs = Number((item as any)?.firstBeatMs)
+      const firstBeatMs =
+        Number.isFinite(rawFirstBeatMs) && rawFirstBeatMs >= 0 ? rawFirstBeatMs : 0
+      analysisMap.set(filePath, {
+        bpm: bpmValue,
+        firstBeatMs
+      })
     }
-    if (bpmMap.size === 0) return { resolvedCount: 0, changedCount: 0 }
+    if (analysisMap.size === 0) return { resolvedCount: 0, changedCount: 0 }
 
     let changedCount = 0
     tracks.value = tracks.value.map((track) => {
       const trackPath = normalizeMixtapeFilePath(track.filePath)
-      const bpmValue = trackPath ? bpmMap.get(trackPath) : undefined
-      if (bpmValue === undefined || bpmValue === track.bpm) return track
+      const trackAnalysis = trackPath ? analysisMap.get(trackPath) : undefined
+      if (!trackAnalysis) return track
+      const currentBpm = Number(track.bpm)
+      const hasCurrentFirstBeatMs =
+        typeof track.firstBeatMs === 'number' &&
+        Number.isFinite(track.firstBeatMs) &&
+        track.firstBeatMs >= 0
+      const currentFirstBeatMs = hasCurrentFirstBeatMs ? Number(track.firstBeatMs) : 0
+      const bpmChanged =
+        !Number.isFinite(currentBpm) || Math.abs(trackAnalysis.bpm - currentBpm) > 0.0001
+      const firstBeatChanged =
+        !hasCurrentFirstBeatMs || Math.abs(trackAnalysis.firstBeatMs - currentFirstBeatMs) > 0.001
+      if (!bpmChanged && !firstBeatChanged) return track
       changedCount += 1
       return {
         ...track,
-        bpm: bpmValue,
-        originalBpm: track.originalBpm || bpmValue,
+        bpm: trackAnalysis.bpm,
+        originalBpm:
+          Number.isFinite(Number(track.originalBpm)) && Number(track.originalBpm) > 0
+            ? track.originalBpm
+            : trackAnalysis.bpm,
         masterTempo: track.masterTempo !== false,
-        firstBeatMs: Number(track.firstBeatMs) || 0
+        firstBeatMs: trackAnalysis.firstBeatMs
       }
     })
 
@@ -243,7 +278,7 @@ export const useMixtape = () => {
       scheduleFullPreRender()
       scheduleWorkerPreRender()
     }
-    return { resolvedCount: bpmMap.size, changedCount }
+    return { resolvedCount: analysisMap.size, changedCount }
   }
 
   const handleBpmBatchReady = (_e: unknown, payload: any) => {

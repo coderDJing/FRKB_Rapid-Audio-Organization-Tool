@@ -15,6 +15,12 @@ extern "C" {
     channels: c_int,
   ) -> c_int;
   fn qm_bpm_finalize(handle: *mut QmBpmDetectorHandle) -> c_double;
+  fn qm_bpm_first_beat_frame(handle: *mut QmBpmDetectorHandle) -> c_double;
+}
+
+pub struct BpmFinalizeResult {
+  pub bpm: f64,
+  pub first_beat_frame: Option<f64>,
 }
 
 pub struct BpmDetector {
@@ -49,12 +55,21 @@ impl BpmDetector {
     Ok(())
   }
 
-  pub fn finalize(&mut self) -> Result<f64, String> {
+  pub fn finalize(&mut self) -> Result<BpmFinalizeResult, String> {
     if self.handle.is_null() {
       return Err("qm_bpm_finalize failed".to_string());
     }
     let bpm = unsafe { qm_bpm_finalize(self.handle) };
-    Ok(bpm)
+    let first_beat_frame = unsafe { qm_bpm_first_beat_frame(self.handle) };
+    let resolved_first_beat_frame = if first_beat_frame.is_finite() && first_beat_frame >= 0.0 {
+      Some(first_beat_frame)
+    } else {
+      None
+    };
+    Ok(BpmFinalizeResult {
+      bpm,
+      first_beat_frame: resolved_first_beat_frame,
+    })
   }
 }
 

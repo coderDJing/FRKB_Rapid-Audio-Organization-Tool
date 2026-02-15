@@ -663,6 +663,7 @@
     "previewSegment": "Preview Segment",
     "previewing": "Previewing...",
     "play": "Play",
+    "pause": "Pause",
     "stop": "Stop",
     "output": "Output",
     "outputPath": "Target path",

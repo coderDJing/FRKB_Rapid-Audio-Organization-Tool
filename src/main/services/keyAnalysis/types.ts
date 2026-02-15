@@ -26,6 +26,7 @@ export type KeyAnalysisResult = {
 export type BpmAnalysisResult = {
   filePath: string
   bpm: number
+  firstBeatMs?: number
 }
 
 export type DoneEntry = {
@@ -43,6 +44,7 @@ export type WorkerPayload = {
     keyText?: string
     keyError?: string
     bpm?: number
+    firstBeatMs?: number
     bpmError?: string
     mixxxWaveformData?: MixxxWaveformData | null
   }

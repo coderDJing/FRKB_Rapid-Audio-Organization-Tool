@@ -55,7 +55,7 @@ const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
   const busy = new Map<Worker, number>()
   const jobMap = new Map<number, string>()
   const unresolved = new Set<string>(unique)
-  const results: Array<{ filePath: string; bpm: number }> = []
+  const results: Array<{ filePath: string; bpm: number; firstBeatMs: number }> = []
   const unresolvedReasons = new Map<string, string>()
   let cursor = 0
   let jobId = 0
@@ -63,7 +63,7 @@ const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
   const timeoutMs = Math.min(30 * 60 * 1000, Math.max(60_000, unique.length * 12_000))
 
   return await new Promise<{
-    results: Array<{ filePath: string; bpm: number }>
+    results: Array<{ filePath: string; bpm: number; firstBeatMs: number }>
     unresolved: string[]
     unresolvedDetails: Array<{ filePath: string; reason: string }>
   }>((resolve) => {
@@ -151,7 +151,12 @@ const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
         jobMap.delete(resolvedJobId)
         const bpmValue = payload?.result?.bpm
         if (typeof bpmValue === 'number' && Number.isFinite(bpmValue) && bpmValue > 0) {
-          results.push({ filePath, bpm: bpmValue })
+          const rawFirstBeatMs = Number(payload?.result?.firstBeatMs)
+          const firstBeatMs =
+            Number.isFinite(rawFirstBeatMs) && rawFirstBeatMs >= 0
+              ? Number(rawFirstBeatMs.toFixed(3))
+              : 0
+          results.push({ filePath, bpm: bpmValue, firstBeatMs })
           unresolved.delete(filePath)
         } else {
           const reason =

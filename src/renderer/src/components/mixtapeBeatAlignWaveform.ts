@@ -68,6 +68,7 @@ const drawBeatGrid = (
 
   for (let i = startIndex; i <= endIndex; i += 1) {
     const beatTime = firstBeatSec + i * beatSec
+    if (beatTime < 0) continue
     if (beatTime < rangeStartSec - beatSec || beatTime > rangeEndSec + beatSec) continue
     const x = Math.round(((beatTime - rangeStartSec) / rangeDurationSec) * width)
     const mod16 = ((i % 16) + 16) % 16
@@ -135,8 +136,20 @@ const buildWaveformColumns = (
   for (let x = 0; x < width; x += 1) {
     const startTime = rangeStartSec + (x / width) * rangeDurationSec
     const endTime = rangeStartSec + ((x + 1) / width) * rangeDurationSec
-    const startFrame = clamp(Math.floor((startTime / duration) * frameCount), 0, frameCount - 1)
-    const endFrame = clamp(Math.ceil((endTime / duration) * frameCount), startFrame, frameCount - 1)
+    if (endTime <= 0 || startTime >= duration) continue
+    const clampedStartTime = clamp(startTime, 0, duration)
+    const clampedEndTime = clamp(endTime, clampedStartTime, duration)
+    if (clampedEndTime <= clampedStartTime) continue
+    const startFrame = clamp(
+      Math.floor((clampedStartTime / duration) * frameCount),
+      0,
+      frameCount - 1
+    )
+    const endFrame = clamp(
+      Math.ceil((clampedEndTime / duration) * frameCount),
+      startFrame,
+      frameCount - 1
+    )
 
     let maxLow = 0
     let maxMid = 0

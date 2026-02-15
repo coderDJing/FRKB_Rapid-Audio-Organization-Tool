@@ -109,6 +109,8 @@ pub struct KeyBpmAnalysisResult {
   pub key_text: String,
   /// BPM 值
   pub bpm: f64,
+  /// 首拍偏移（毫秒）
+  pub first_beat_ms: f64,
   /// 调性分析错误描述
   pub key_error: Option<String>,
   /// BPM 分析错误描述
@@ -369,6 +371,7 @@ pub fn analyze_key_and_bpm_from_pcm(
 ) -> KeyBpmAnalysisResult {
   let mut key_text = "o".to_string();
   let mut bpm = 0.0;
+  let mut first_beat_ms = 0.0;
   let mut key_error: Option<String> = None;
   let mut bpm_error: Option<String> = None;
 
@@ -381,6 +384,7 @@ pub fn analyze_key_and_bpm_from_pcm(
         return KeyBpmAnalysisResult {
           key_text,
           bpm,
+          first_beat_ms,
           key_error: Some(msg.clone()),
           bpm_error: Some(msg),
         };
@@ -398,6 +402,7 @@ pub fn analyze_key_and_bpm_from_pcm(
     return KeyBpmAnalysisResult {
       key_text,
       bpm,
+      first_beat_ms,
       key_error: Some(msg.clone()),
       bpm_error: Some(msg),
     };
@@ -407,6 +412,7 @@ pub fn analyze_key_and_bpm_from_pcm(
     return KeyBpmAnalysisResult {
       key_text,
       bpm,
+      first_beat_ms,
       key_error: Some(msg.clone()),
       bpm_error: Some(msg),
     };
@@ -418,6 +424,7 @@ pub fn analyze_key_and_bpm_from_pcm(
     return KeyBpmAnalysisResult {
       key_text,
       bpm,
+      first_beat_ms,
       key_error: Some(msg.clone()),
       bpm_error: Some(msg),
     };
@@ -429,6 +436,7 @@ pub fn analyze_key_and_bpm_from_pcm(
     return KeyBpmAnalysisResult {
       key_text,
       bpm,
+      first_beat_ms,
       key_error: Some(msg.clone()),
       bpm_error: Some(msg),
     };
@@ -440,6 +448,7 @@ pub fn analyze_key_and_bpm_from_pcm(
     return KeyBpmAnalysisResult {
       key_text,
       bpm,
+      first_beat_ms,
       key_error: Some(msg.clone()),
       bpm_error: Some(msg),
     };
@@ -499,10 +508,16 @@ pub fn analyze_key_and_bpm_from_pcm(
   if let Some(detector) = bpm_detector.as_mut() {
     match detector.finalize() {
       Ok(result) => {
-        if result > 0.0 && result.is_finite() {
-          bpm = result;
+        if result.bpm > 0.0 && result.bpm.is_finite() {
+          bpm = result.bpm;
         } else {
           bpm_error = Some("bpm not detected".to_string());
+        }
+        if let Some(first_beat_frame) = result.first_beat_frame {
+          let first_beat_ms_candidate = first_beat_frame * 1000.0 / sample_rate as f64;
+          if first_beat_ms_candidate.is_finite() && first_beat_ms_candidate >= 0.0 {
+            first_beat_ms = first_beat_ms_candidate;
+          }
         }
       }
       Err(error) => {
@@ -514,6 +529,7 @@ pub fn analyze_key_and_bpm_from_pcm(
   KeyBpmAnalysisResult {
     key_text,
     bpm,
+    first_beat_ms,
     key_error,
     bpm_error,
   }

@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -312,6 +313,7 @@ class QmBpmDetector {
     }
 
     double finalize() {
+        m_firstBeatFrame = std::numeric_limits<double>::quiet_NaN();
         if (!m_ready) {
             return 0.0;
         }
@@ -346,8 +348,15 @@ class QmBpmDetector {
         for (double beat : beats) {
             beatPositions.push_back((beat * m_stepSizeFrames) + m_stepSizeFrames / 2.0);
         }
+        if (!beatPositions.empty()) {
+            m_firstBeatFrame = beatPositions.front();
+        }
 
         return calculate_bpm(beatPositions, m_sampleRate);
+    }
+
+    double firstBeatFrame() const {
+        return m_firstBeatFrame;
     }
 
   private:
@@ -358,6 +367,7 @@ class QmBpmDetector {
     std::unique_ptr<DetectionFunction> m_detectionFunction;
     DownmixAndOverlapHelper m_helper;
     std::vector<double> m_detectionResults;
+    double m_firstBeatFrame = std::numeric_limits<double>::quiet_NaN();
 };
 
 extern "C" {
@@ -400,6 +410,13 @@ double qm_bpm_finalize(QmBpmDetectorHandle* handle) {
         return 0.0;
     }
     return handle->detector->finalize();
+}
+
+double qm_bpm_first_beat_frame(QmBpmDetectorHandle* handle) {
+    if (!handle || !handle->detector) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return handle->detector->firstBeatFrame();
 }
 
 } // extern "C"
