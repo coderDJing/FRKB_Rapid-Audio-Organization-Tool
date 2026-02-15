@@ -1,137 +1,94 @@
-# Mixtape 时间线重构说明（草案）
+# Mixtape 时间线与节拍对齐草案（实现对齐版）
 
-更新时间：2026-02-14
+更新时间：2026-02-15
 
-## 本轮目标
-1. 自动混音轨道支持左右拖动。
-2. 拖动时按大节线（32 beat）吸附。
-3. 两首歌对齐吸附成功时，自动把靠后一首歌 BPM 对齐到前一首歌 BPM。
-4. BPM 对齐后默认保持 Master Tempo（变速不变调）。
-5. 新增顶部时间轨，点击任意位置即可从该时间点开始播放。
-6. 新增播放头竖线：时间轨与波形轨同步实时移动。
-7. 播放自动停止条件：
-   - 用户主动停止
-   - 用户修改曲目相关内容（拖动、吸附引发 BPM 变化、列表变化等）
-   - 播放到混音末尾
+## 文档范围
+1. 本文只描述“当前代码已实现行为”和“明确未实现项”。
+2. 历史版本中与现状不符的描述已删除或改写。
+3. 本文不替代产品需求文档，重点是给开发和联调对齐口径。
 
-## 交互规则
-1. 轨道拖拽仅允许水平移动（X 轴）。
-2. 吸附优先基于前一首歌的大节网格（32 beat）。
-3. 吸附阈值使用像素阈值换算秒（与当前缩放联动）。
-4. 吸附触发且前后曲目 BPM 有效时：
-   - 后一首歌 `bpm -> 前一首歌 bpm`
-   - 后一首歌 `masterTempo = true`
-5. 轨道发生位置或 BPM 改动后，当前播放立即停止，避免播放状态与时间线状态不一致。
-6. 轨道位置约束：允许空隙；同一条波形轨（lane）内禁止重叠，不同波形轨允许时间交叠。
-7. 拖拽时基于“起拖快照”只约束当前被拖动轨道，不联动挤压同轨其他轨道，避免出现整条 lane 贴边连锁移动。
+## 当前实现总览
 
-## 时间轨 / 播放头
-1. 时间轨放在混音窗口时间线顶部，与主时间轴同宽、同滚动。
-2. 点击时间轨位置后：
-   - 设置全局播放时间
-   - 从该位置启动 transport
-3. 播放头竖线使用统一时间基准（秒）换算 X 坐标，在时间轨、波形主轨和底部全局 overview 轨同时显示；波形主轨为跨两条 lane 的单根全局竖线。
-4. 播放时每帧更新播放头位置，停止后冻结在当前时间。
+### 自动混音时间线
+1. 轨道支持水平拖拽（X 轴），不支持垂直换轨。
+2. 吸附逻辑基于“上一首（按 `mixOrder`）”的大节网格（32 beat）。
+3. 吸附锚点为：`上一首 startSec + 上一首 firstBeatMs/1000`。
+4. 吸附阈值是像素阈值换算秒：`14 / pxPerSec`。
+5. 吸附命中后，当前轨 `bpm` 自动对齐上一首 `bpm`，并将 `masterTempo` 设为 `true`。
+6. 同一 lane 内禁止重叠，不同 lane 允许时间交叠。
+7. 拖拽约束基于“起拖快照”，只约束当前轨，不做同 lane 其他轨道联动挤压。
+8. 轨道变更（位置/BPM/首拍等）会立即停止 transport，避免播放态与时间线状态不一致。
 
-## 播放架构（Phase 1 — 统一 AudioBuffer 音频图）
+### 播放与预解码（时间线）
+1. 时间线播放统一使用 Web Audio 图：`AudioBufferSourceNode -> GainNode -> destination`。
+2. 解码是双路径策略，不是单一路径：
+   - `browser`：`fetch + decodeAudioData`（浏览器可解码格式优先）。
+   - `ipc`：主进程 `mixtape:decode-for-transport`（Rust/FFmpeg）。
+3. `browser` 解码失败会自动回退到 `ipc`。
+4. 打开窗口与轨道列表变化时会触发全量预解码（按去重后的 `filePath`）。
+5. 预解码期间显示全局进度遮罩（`done/total/percent`）。
+6. 播放时优先复用窗口级 `AudioBuffer` 缓存；同文件并发解码通过 in-flight Promise 去重。
+7. 点击时间尺可从目标时间启动播放；顶部按钮支持从头播放/停止。
+8. 播放头是单一全局时间基准，同时渲染在时间尺、主时间线、overview。
 
-### 架构概览
-所有格式统一走后端解码 → Web Audio API 音频图。混音窗口打开后即启动全量预解码，播放阶段优先消费内存中的 `AudioBuffer`。
+### BPM/首拍分析（firstBeatMs）
+1. Rust 分析返回 `bpm` 与 `firstBeatMs`，主进程统一接收并落库。
+2. 在 `mixtape:append`（加入混音库）时即触发后台批量分析（非阻塞返回）。
+3. 打开自动混音窗口后，会对缺失 `bpm/firstBeatMs` 的轨道补跑分析。
+4. 分析结果写回 `mixtape_items.info_json`，字段为 `bpm` 与 `firstBeatMs`。
+5. 前端加载轨道时优先读持久化结果；无有效值时 `firstBeatMs` 回退 `0`。
+6. 网格线绘制统一使用轨道上的 `bpm + firstBeatMs`，不再固定从 `0ms` 起算。
 
-```
-主进程 Rust/FFmpeg 解码 → PCM Float32 via IPC → AudioBuffer
-    → AudioBufferSourceNode → GainNode → AudioContext.destination
-```
+### 节拍对齐 Dialog（Beat Align）
+1. 主波形使用高细节波形渲染（`mixtape-waveform-hires:batch`，目标 `4kHz`）。
+2. 概览波形使用缓存波形 + raw 波形金字塔（`cache:batch` + `raw:batch`）。
+3. 缩放范围 `50x ~ 100x`，默认 `50x`。
+4. 增加播放/暂停按钮，支持空格键播放暂停（输入控件聚焦时不劫持空格）。
+5. 主波形左侧 `1/3` 固定播放锚线：锚线不动，波形窗口随播放滚动。
+6. 播放起点按锚线时间计算，不再固定从可视窗口最左侧起播。
+7. 主波形和概览都引入左侧前置留白，解决开头片段无法在锚线处播放的问题。
+8. Dialog 加载波形时会后台 warmup 预解码，减少首次点播出现“解码中”。
+9. Dialog 内部解码也做了 in-flight 去重，避免 warmup 与手动播放并发重复解码。
 
-### 单轨音频图（Phase 1）
-```
-AudioBufferSourceNode  (playbackRate 控制速度)
-        ↓
-    GainNode           (未来挂载增益/音量包络线)
-        ↓
-AudioContext.destination
-```
+## 明确未实现项（避免误解）
+1. 节拍对齐 Dialog 目前仅做“自动分析结果预览 + 试听”，未落地“手动调首拍并保存”流程。
+2. `masterTempo` 仍是业务标记位，尚未接入实时变速不变调算法（当前仍是 `playbackRate` 变速）。
+3. 时间线 transport 缓存与 Beat Align Dialog 缓存尚未共享，属于两套缓存体系。
+4. 导出链路（OfflineAudioContext + 编码器联动）不在本草案覆盖范围内。
 
-### 速度与 Master Tempo
-1. 单曲速度比率：`tempoRatio = targetBpm / originalBpm`。
-2. 当前通过 `AudioBufferSourceNode.playbackRate` 实现变速，音高会随速度变化。
-3. Master Tempo（变速不变调）计划在 Phase 3 通过 SoundTouch/Rubberband WASM AudioWorklet 实现。
+## 数据字段口径（Mixtape Track）
+1. `originalBpm`：原始 BPM（用于计算 tempo ratio）。
+2. `bpm`：当前目标 BPM（可被吸附逻辑改写）。
+3. `masterTempo`：是否启用 Master Tempo（当前仅标记态）。
+4. `startSec`：轨道在全局时间线的起点秒数。
+5. `firstBeatMs`：首拍偏移毫秒数（用于网格锚点）。
 
-### 解码流程
-1. 混音窗口加载轨道后，自动按去重后的 `filePath` 全量预解码。
-2. 主进程 Rust 优先用 Symphonia 解码（mp3/flac/wav/ogg 等），不支持的格式自动降级到 FFmpeg（ape/tak/wv/dts/wma 等）。
-3. 预解码期间 UI 显示全局 Loading + 进度（done/total/percent）。
-4. 用户点击播放或时间轨跳播时，优先复用预解码 `AudioBuffer`；仅未完成项按需补解码。
-5. 窗口关闭时释放内存解码缓存。
+## 关键触发时序
+1. 加入混音库：`mixtape:append` -> 后台分析 `bpm + firstBeatMs` -> 回写 DB -> 广播增量结果。
+2. 打开混音窗口：加载轨道 -> 对缺失项补跑分析 -> 时间线调度预解码与波形加载。
+3. 打开 Beat Align：加载主/概览波形 -> 并行 warmup 预解码 -> 用户播放时优先复用缓存。
 
-### 长期演进路线（讨论中，非本轮）
-| 阶段 | 内容 | 效果 |
-|------|------|------|
-| Phase 1 ✅ | 统一 AudioBuffer + 基础音频图 (Source → Gain → dest) | 全格式可播，为音频图打基础 |
-| Phase 2 | 加入 3-band EQ + 音量/增益/EQ 包络线自动化 | 可实时预览 EQ 和音量变化 |
-| Phase 3 | 引入 SoundTouch/Rubberband WASM AudioWorklet | Master Tempo + 动态 BPM 包络线 |
-| Phase 4 | OfflineAudioContext 导出 + FFmpeg 编码 | 完整导出能力 |
+## 核心代码入口（按职责分组）
+1. 时间线主编排：`src/renderer/src/composables/mixtape/useMixtapeTimeline.ts`
+2. 时间线播放与拖拽：`src/renderer/src/composables/mixtape/timelineTransportAndDrag.ts`
+3. 时间线挂载与监听：`src/renderer/src/composables/mixtape/timelineWatchAndMount.ts`
+4. 时间线渲染与波形加载：`src/renderer/src/composables/mixtape/timelineRenderAndLoad.ts`
+5. 轨道业务与分析补跑：`src/renderer/src/composables/useMixtape.ts`
+6. 混音窗口 UI：`src/renderer/src/Mixtape.vue`
+7. 节拍对齐 Dialog：`src/renderer/src/components/mixtapeBeatAlignDialog.vue`
+8. 节拍对齐播放控制：`src/renderer/src/components/mixtapeBeatAlignPlayback.ts`
+9. 节拍对齐主波形绘制：`src/renderer/src/components/mixtapeBeatAlignWaveform.ts`
+10. 节拍对齐概览缓存：`src/renderer/src/components/mixtapeBeatAlignOverviewCache.ts`
+11. 混音 IPC 与追加触发分析：`src/main/ipc/mixtapeHandlers.ts`
+12. 分析结果持久化：`src/main/mixtapeDb.ts`
+13. 主进程解码 IPC：`src/main/window/mainWindow/audioDecodeHandlers.ts`
+14. 分析 Worker：`src/main/workers/keyAnalysisWorker.ts`
+15. Rust 分析入口：`rust_package/src/lib.rs`
+16. Rust BPM/首拍桥接：`rust_package/src/qm_bpm.rs`
+17. QM 首拍实现：`rust_package/native/qm/qm_bpm_wrapper.cpp`
 
-## 数据字段（Mixtape Track 运行态）
-1. `originalBpm`：曲目原始 BPM（分析结果或初始值）。
-2. `bpm`：当前目标 BPM（可被对齐逻辑覆盖）。
-3. `masterTempo`：是否保持调性（当前阶段仅作标记，Phase 3 生效）。
-4. `startSec`：轨道在全局时间线起点（秒）。
-5. `firstBeatMs`：首拍偏移（默认 0）。
-
-## 当前状态
-1. 自动混音已有：BPM 分析、双轨渲染、网格线绘制、overview。
-2. 自动混音已接入：轨道拖拽、32-beat 吸附、自动 BPM 对齐、Master Tempo 标记。
-3. 时间轨已支持点击跳转播放；顶部时间轨播放头为全局进度，波形轨内播放头为各轨局部进度。
-4. 轨道标签已展示 `BPM + 调性（Key）`，调性格式遵循全局设置（Classic/Camelot）。
-5. **全格式播放已完成**：所有项目声明支持的 20 种音频格式（mp3/wav/flac/aif/aiff/ogg/opus/aac/m4a/mp4/wma/ac3/dts/mka/webm/ape/tak/tta/wv）均可在时间轴播放。
-6. **统一 AudioBuffer 音频图**（Phase 1 完成）：移除了 HTML Audio / PCM 双路逻辑，所有轨道统一走后端解码 → AudioContext 音频图。每轨播放路径为 `Source → GainNode → destination`，为后续 EQ/包络线/导出奠定基础。
-7. **混音窗口预解码已接入**：打开窗口即全量预解码并显示进度，播放阶段默认走内存 `AudioBuffer`，显著减少点播瞬时卡顿。
-8. **BPM 预处理结果已持久化**：后台 BPM 预分析结果写回 `mixtape_items.info_json`，重开窗口可直接复用，避免重复分析遮罩。
-9. 当前策略默认面向高内存设备（建议 16GB 及以上），暂不做低内存阈值裁剪。
-10. 为满足代码规范，时间线主文件已拆分模块：`useMixtapeTimeline.ts`（主编排）+ `timelineTransportAndDrag.ts` + `timelineWorkerBridge.ts` + `timelineWatchAndMount.ts` + `timelineRenderAndLoad.ts`。
-
-## 节拍对齐（Beat Align）波形重构补充（2026-02-14）
-1. 已重写节拍对齐 dialog 波形区域，主波形改为高细节打碟波形（非缩略柱形预览）。
-2. 主波形缩放范围调整为 `50x ~ 100x`，默认起步 `50x`。
-3. 主波形请求较高可视采样率数据：`mixtape-waveform-hires:batch`，目标可视采样率 `4kHz`。
-4. 概览条改为复用自动混音时间线同源缓存波形（`mixtape-waveform-cache:batch`），确保里外视觉风格一致。
-5. 概览条补充 raw 层（`mixtape-waveform-raw:batch`）用于低倍率与拖拽态的稳定呈现，并通过金字塔分层降低拖拽开销。
-6. 概览条支持窗口框拖拽与点击跳转，实时同步主波形可视窗口位置。
-7. 主波形与概览波形容器背景均改为透明，减少视觉干扰。
-8. 已移除“交互时降质、松手补全”的策略，拖拽与静止保持一致渲染质量，避免先模糊再补细节。
-9. 拖拽期间网格线保持持续显示（不再因交互态临时消失）。
-
-## 验收标准（本轮）
-1. 任意轨道可平滑左右拖动，松手可吸附大节线。
-2. 吸附成功后，后一首歌 BPM 自动同步到前一首歌 BPM。
-3. 播放中可见实时播放头：顶部时间轨展示全局进度，波形轨展示局部进度。
-4. 点击时间轨任意位置可从该点开始播放。
-5. 轨道编辑或 BPM 自动变化时，播放立即停止。
-6. 所有项目声明支持的音频格式均可在时间轴正常播放。
-
-## 影响文件
-1. `src/renderer/src/Mixtape.vue`
-2. `src/renderer/src/composables/useMixtape.ts`
-3. `src/renderer/src/composables/mixtape/useMixtapeTimeline.ts`
-4. `src/renderer/src/composables/mixtape/timelineTransportAndDrag.ts`
-5. `src/renderer/src/composables/mixtape/timelineHelpers.ts`
-6. `src/renderer/src/composables/mixtape/timelineRenderAndLoad.ts`
-7. `src/renderer/src/composables/mixtape/timelineWorkerBridge.ts`
-8. `src/renderer/src/composables/mixtape/timelineWatchAndMount.ts`
-9. `src/renderer/src/composables/mixtape/types.ts`
-10. `src/main/window/mainWindow/audioDecodeHandlers.ts`
-11. `src/main/ipc/mixtapeHandlers.ts`
-12. `src/main/mixtapeDb.ts`
-13. `src/renderer/src/i18n/locales/zh-CN.json`
-14. `src/renderer/src/i18n/locales/en-US.json`
-15. `src/renderer/src/components/mixtapeBeatAlignDialog.vue`
-16. `src/renderer/src/components/mixtapeBeatAlignWaveform.ts`
-17. `src/renderer/src/composables/mixtape/waveformDraw.ts`
-18. `src/main/ipc/cacheHandlers.ts`
-19. `src/main/services/mixtapeWaveformQueue.ts`
-20. `src/main/workers/mixtapeWaveformWorker.ts`
-21. `rust_package/src/mixxx_waveform.rs`
-22. `rust_package/index.js`
-23. `rust_package/index.d.ts`
-24. `rust_package/types/index.d.ts`
+## 修订说明（本次清理）
+1. 删除了“所有格式统一后端解码”的旧说法，改为“browser/ipc 双路径 + 失败回退”。
+2. 删除了“波形轨内各轨局部播放头”的旧说法，改为“单一全局播放头”。
+3. 把“已实现”和“未实现”拆开，避免将规划误读为现状。
+4. 统一了首拍分析触发时机描述：入库即分析、开窗补跑、结果持久化复用。
