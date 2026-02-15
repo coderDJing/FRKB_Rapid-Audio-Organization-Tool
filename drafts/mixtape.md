@@ -91,6 +91,17 @@ AudioContext.destination
 9. 当前策略默认面向高内存设备（建议 16GB 及以上），暂不做低内存阈值裁剪。
 10. 为满足代码规范，时间线主文件已拆分模块：`useMixtapeTimeline.ts`（主编排）+ `timelineTransportAndDrag.ts` + `timelineWorkerBridge.ts` + `timelineWatchAndMount.ts` + `timelineRenderAndLoad.ts`。
 
+## 节拍对齐（Beat Align）波形重构补充（2026-02-14）
+1. 已重写节拍对齐 dialog 波形区域，主波形改为高细节打碟波形（非缩略柱形预览）。
+2. 主波形缩放范围调整为 `50x ~ 100x`，默认起步 `50x`。
+3. 主波形请求较高可视采样率数据：`mixtape-waveform-hires:batch`，目标可视采样率 `4kHz`。
+4. 概览条改为复用自动混音时间线同源缓存波形（`mixtape-waveform-cache:batch`），确保里外视觉风格一致。
+5. 概览条补充 raw 层（`mixtape-waveform-raw:batch`）用于低倍率与拖拽态的稳定呈现，并通过金字塔分层降低拖拽开销。
+6. 概览条支持窗口框拖拽与点击跳转，实时同步主波形可视窗口位置。
+7. 主波形与概览波形容器背景均改为透明，减少视觉干扰。
+8. 已移除“交互时降质、松手补全”的策略，拖拽与静止保持一致渲染质量，避免先模糊再补细节。
+9. 拖拽期间网格线保持持续显示（不再因交互态临时消失）。
+
 ## 验收标准（本轮）
 1. 任意轨道可平滑左右拖动，松手可吸附大节线。
 2. 吸附成功后，后一首歌 BPM 自动同步到前一首歌 BPM。
@@ -114,3 +125,13 @@ AudioContext.destination
 12. `src/main/mixtapeDb.ts`
 13. `src/renderer/src/i18n/locales/zh-CN.json`
 14. `src/renderer/src/i18n/locales/en-US.json`
+15. `src/renderer/src/components/mixtapeBeatAlignDialog.vue`
+16. `src/renderer/src/components/mixtapeBeatAlignWaveform.ts`
+17. `src/renderer/src/composables/mixtape/waveformDraw.ts`
+18. `src/main/ipc/cacheHandlers.ts`
+19. `src/main/services/mixtapeWaveformQueue.ts`
+20. `src/main/workers/mixtapeWaveformWorker.ts`
+21. `rust_package/src/mixxx_waveform.rs`
+22. `rust_package/index.js`
+23. `rust_package/index.d.ts`
+24. `rust_package/types/index.d.ts`

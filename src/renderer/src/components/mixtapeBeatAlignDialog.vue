@@ -68,13 +68,12 @@ const overviewRawPyramidMap = new Map<string, RawWaveformLevel[]>()
 const overviewRawKey = ref('')
 
 const PREVIEW_MAX_ZOOM = 100
-const PREVIEW_HIRES_TARGET_RATE = 44100
+const PREVIEW_HIRES_TARGET_RATE = 4000
 const PREVIEW_RAW_TARGET_RATE = 2400
 const OVERVIEW_MAX_RENDER_COLUMNS = 960
 const OVERVIEW_IS_HALF_WAVEFORM = false
 const OVERVIEW_WAVEFORM_VERTICAL_PADDING = 8
-const PREVIEW_DRAG_MAX_SAMPLES_PER_PIXEL = 20
-const PREVIEW_IDLE_MAX_SAMPLES_PER_PIXEL = 180
+const PREVIEW_MAX_SAMPLES_PER_PIXEL = 180
 
 const bpmDisplay = computed(() => {
   const bpmValue = Number(props.bpm)
@@ -228,8 +227,6 @@ const drawPreviewCanvas = () => {
   } else {
     previewStartSec.value = 0
   }
-  const isInteracting = previewDragging.value || overviewDragging.value
-
   drawBeatAlignRekordboxWaveform(ctx, {
     width,
     height,
@@ -239,11 +236,9 @@ const drawPreviewCanvas = () => {
     rangeDurationSec: safeDuration,
     mixxxData: previewMixxxData.value,
     showBackground: false,
-    maxSamplesPerPixel: isInteracting
-      ? PREVIEW_DRAG_MAX_SAMPLES_PER_PIXEL
-      : PREVIEW_IDLE_MAX_SAMPLES_PER_PIXEL,
-    showDetailHighlights: !isInteracting,
-    showCenterLine: !isInteracting
+    maxSamplesPerPixel: PREVIEW_MAX_SAMPLES_PER_PIXEL,
+    showDetailHighlights: true,
+    showCenterLine: true
   })
 }
 
