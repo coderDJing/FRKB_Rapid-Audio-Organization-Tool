@@ -2,6 +2,13 @@ import { computed, ref } from 'vue'
 import { t } from '@renderer/utils/translate'
 import { canPlayHtmlAudio, toPreviewUrl } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import { LANE_COUNT } from '@renderer/composables/mixtape/constants'
+import {
+  normalizeBeatOffset as normalizeBeatOffsetByMixxx,
+  resolveBeatSecByBpm,
+  resolveFirstBeatTimelineSec,
+  resolveGridAnchorSec
+} from '@renderer/composables/mixtape/mixxxSyncModel'
+import { applyMixxxTransportSync } from '@renderer/composables/mixtape/timelineTransportSync'
 import type { MixtapeTrack, TimelineTrackLayout } from '@renderer/composables/mixtape/types'
 
 // ── PCM 数据归一化（仅用于 IPC 解码路径）───────────────────────
@@ -21,6 +28,12 @@ type TransportEntry = {
   trackId: string
   filePath: string
   startSec: number
+  bpm: number
+  beatSec: number
+  firstBeatSec: number
+  barBeatOffset: number
+  masterTempo: boolean
+  syncAnchorSec: number
   sourceDuration: number
   duration: number
   tempoRatio: number
@@ -32,8 +45,32 @@ type TransportEntry = {
 
 // ── 单轨音频图节点（Phase 1 基础图：Source → Gain → destination）
 type TrackGraphNode = {
+  trackId: string
+  entry: TransportEntry
   source: AudioBufferSourceNode
   gain: GainNode
+}
+
+const GRID_SNAP_BEAT_INTERVAL = 4
+const MIXTAPE_SYNC_TICK_LOG_INTERVAL_MS = 250
+const MIXTAPE_SYNC_SNAP_LOG_INTERVAL_MS = 120
+
+const roundLogNumber = (value: unknown, digits: number = 6) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return 0
+  const factor = Math.pow(10, Math.max(0, Math.min(8, Math.floor(digits))))
+  return Math.round(numeric * factor) / factor
+}
+
+const resolveSyncDebugLogEnabled = () => {
+  if (process.env.NODE_ENV === 'development') return true
+  if (typeof window === 'undefined') return false
+  try {
+    const raw = window.localStorage.getItem('mixtape_sync_debug_log')
+    return raw === '1' || raw === 'true'
+  } catch {
+    return false
+  }
 }
 
 export const createTimelineTransportAndDragModule = (ctx: any) => {
@@ -48,6 +85,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     resolveTrackDurationSeconds,
     resolveTrackSourceDurationSeconds,
     resolveTrackTempoRatio,
+    resolveTrackFirstBeatSeconds,
     computeTimelineDuration,
     scheduleFullPreRender,
     scheduleWorkerPreRender
@@ -74,6 +112,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   let transportAudioCtx: AudioContext | null = null
   // 当前活跃的音频图节点列表
   let transportGraphNodes: TrackGraphNode[] = []
+  let transportMasterTrackId = ''
   // 版本号，用于取消过期的异步解码操作
   let transportVersion = 0
   let transportPreloadVersion = 0
@@ -81,6 +120,168 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   const transportDecodedBufferCache = new Map<string, AudioBuffer>()
   // 进行中的解码任务（按 filePath 复用 Promise）
   const transportDecodeInflight = new Map<string, Promise<AudioBuffer>>()
+  const syncDebugLogEnabled = resolveSyncDebugLogEnabled()
+  let lastSyncTickLogAt = 0
+  let lastSnapLogAt = 0
+  let lastPlanLogSignature = ''
+
+  const emitSyncDebugLog = (scope: 'plan' | 'tick' | 'snap', payload: Record<string, unknown>) => {
+    if (!syncDebugLogEnabled || typeof window === 'undefined') return
+    try {
+      window.electron.ipcRenderer.send('outputLog', `[mixtape-sync][${scope}] ${JSON.stringify(payload)}`)
+    } catch {}
+  }
+
+  const logTransportPlan = (entries: TransportEntry[], missingDurationCount: number) => {
+    if (!syncDebugLogEnabled) return
+    const signature = `${missingDurationCount}|${entries
+      .map(
+        (entry) =>
+          `${entry.trackId}:${roundLogNumber(entry.startSec, 4)}:${roundLogNumber(entry.syncAnchorSec, 4)}:${roundLogNumber(entry.tempoRatio, 4)}:${entry.masterTempo ? 1 : 0}`
+      )
+      .join('|')}`
+    if (signature === lastPlanLogSignature) return
+    lastPlanLogSignature = signature
+    emitSyncDebugLog('plan', {
+      ts: Date.now(),
+      entryCount: entries.length,
+      missingDurationCount,
+      tracks: entries.map((entry) => ({
+        trackId: entry.trackId,
+        filePath: entry.filePath,
+        bpm: roundLogNumber(entry.bpm, 4),
+        beatSec: roundLogNumber(entry.beatSec),
+        startSec: roundLogNumber(entry.startSec),
+        tempoRatio: roundLogNumber(entry.tempoRatio),
+        firstBeatSec: roundLogNumber(entry.firstBeatSec),
+        syncAnchorSec: roundLogNumber(entry.syncAnchorSec),
+        masterTempo: Boolean(entry.masterTempo)
+      }))
+    })
+  }
+
+  const logSyncTick = (timelineSec: number, syncResult: ReturnType<typeof applyMixxxTransportSync>) => {
+    if (!syncDebugLogEnabled) return
+    if (!syncResult.diagnostics.length) return
+    const now = Date.now()
+    if (now - lastSyncTickLogAt < MIXTAPE_SYNC_TICK_LOG_INTERVAL_MS) return
+    lastSyncTickLogAt = now
+    const followerDetails = syncResult.diagnostics.filter((item) => !item.master)
+    const maxAbsRawPhaseErrorSec = followerDetails.reduce((max, item) => {
+      const absError = Math.abs(Number(item.rawPhaseErrorSec) || 0)
+      return Math.max(max, absError)
+    }, 0)
+    const maxAbsPostPhaseErrorSec = followerDetails.reduce((max, item) => {
+      const absError = Math.abs(Number(item.postPhaseErrorSec) || 0)
+      return Math.max(max, absError)
+    }, 0)
+    const maxAbsPhaseErrorSec = maxAbsPostPhaseErrorSec
+    const transientLagList = followerDetails
+      .map((item) => Number(item.transientLagMs))
+      .filter((value) => Number.isFinite(value))
+    const maxAbsTransientLagMs = transientLagList.reduce(
+      (max, value) => Math.max(max, Math.abs(Number(value) || 0)),
+      0
+    )
+    const strictThresholdSec = 0.001
+    const practicalThresholdSec = 0.005
+    emitSyncDebugLog('tick', {
+      ts: now,
+      timelineSec: roundLogNumber(timelineSec),
+      masterTrackId: syncResult.masterTrackId,
+      activeTrackCount: syncResult.activeTrackCount,
+      followerCount: followerDetails.length,
+      maxAbsRawPhaseErrorSec: roundLogNumber(maxAbsRawPhaseErrorSec),
+      maxAbsRawPhaseErrorMs: roundLogNumber(maxAbsRawPhaseErrorSec * 1000, 3),
+      maxAbsPostPhaseErrorSec: roundLogNumber(maxAbsPostPhaseErrorSec),
+      maxAbsPostPhaseErrorMs: roundLogNumber(maxAbsPostPhaseErrorSec * 1000, 3),
+      maxAbsPhaseErrorSec: roundLogNumber(maxAbsPhaseErrorSec),
+      maxAbsPhaseErrorMs: roundLogNumber(maxAbsPhaseErrorSec * 1000, 3),
+      transientAvailableCount: transientLagList.length,
+      maxAbsTransientLagMs: roundLogNumber(maxAbsTransientLagMs, 3),
+      allGridCoincideStrict: followerDetails.every(
+        (item) => Math.abs(Number(item.postPhaseErrorSec) || 0) <= strictThresholdSec
+      ),
+      allGridCoincidePractical: followerDetails.every(
+        (item) => Math.abs(Number(item.postPhaseErrorSec) || 0) <= practicalThresholdSec
+      ),
+      strictThresholdMs: 1,
+      practicalThresholdMs: 5,
+      details: syncResult.diagnostics.map((item) => {
+        const transientLagMs =
+          Number.isFinite(Number(item.transientLagMs)) ? roundLogNumber(item.transientLagMs, 3) : null
+        const transientCorr =
+          Number.isFinite(Number(item.transientCorr)) ? roundLogNumber(item.transientCorr, 6) : null
+        const transientWindowMs = Number.isFinite(Number(item.transientWindowMs))
+          ? roundLogNumber(item.transientWindowMs, 3)
+          : null
+        return {
+          trackId: item.trackId,
+          master: item.master,
+          bpm: roundLogNumber(item.bpm, 4),
+          beatSec: roundLogNumber(item.beatSec),
+          syncAnchorSec: roundLogNumber(item.syncAnchorSec),
+          originSyncAnchorSec: roundLogNumber(item.originSyncAnchorSec),
+          phaseAnchorCorrectionSec: roundLogNumber(item.phaseAnchorCorrectionSec),
+          phaseAnchorCorrectionMs: roundLogNumber(item.phaseAnchorCorrectionSec * 1000, 3),
+          currentRate: roundLogNumber(item.currentRate),
+          appliedRate: roundLogNumber(item.appliedRate),
+          tempoScale: roundLogNumber(item.tempoScale),
+          tempoSyncedRate: roundLogNumber(item.tempoSyncedRate),
+          rawPhaseErrorSec: roundLogNumber(item.rawPhaseErrorSec),
+          rawPhaseErrorMs: roundLogNumber(item.rawPhaseErrorSec * 1000, 3),
+          postPhaseErrorSec: roundLogNumber(item.postPhaseErrorSec),
+          postPhaseErrorMs: roundLogNumber(item.postPhaseErrorSec * 1000, 3),
+          phaseErrorSec: roundLogNumber(item.phaseErrorSec),
+          phaseErrorMs: roundLogNumber(item.phaseErrorSec * 1000, 3),
+          rawGridCoincideStrict: Math.abs(Number(item.rawPhaseErrorSec) || 0) <= strictThresholdSec,
+          rawGridCoincidePractical: Math.abs(Number(item.rawPhaseErrorSec) || 0) <= practicalThresholdSec,
+          postGridCoincideStrict: Math.abs(Number(item.postPhaseErrorSec) || 0) <= strictThresholdSec,
+          postGridCoincidePractical:
+            Math.abs(Number(item.postPhaseErrorSec) || 0) <= practicalThresholdSec,
+          gridCoincideStrict: Math.abs(Number(item.postPhaseErrorSec) || 0) <= strictThresholdSec,
+          gridCoincidePractical: Math.abs(Number(item.postPhaseErrorSec) || 0) <= practicalThresholdSec,
+          transientLagMs,
+          transientCorr,
+          transientWindowMs,
+          phasePull: roundLogNumber(item.phasePull)
+        }
+      })
+    })
+  }
+
+  const logSnapDecision = (payload: {
+    trackId: string
+    previousTrackId: string
+    previousBpm: number
+    rawStartSec: number
+    snappedStartSec: number
+    deltaSec: number
+    gridSec: number
+    nearestIndex: number
+    snapAnchorSec: number
+    currentAnchorRawSec: number
+    thresholdSec: number
+  }) => {
+    if (!syncDebugLogEnabled) return
+    const now = Date.now()
+    if (now - lastSnapLogAt < MIXTAPE_SYNC_SNAP_LOG_INTERVAL_MS) return
+    lastSnapLogAt = now
+    emitSyncDebugLog('snap', {
+      ts: now,
+      trackId: payload.trackId,
+      previousTrackId: payload.previousTrackId,
+      previousBpm: roundLogNumber(payload.previousBpm, 4),
+      rawStartSec: roundLogNumber(payload.rawStartSec),
+      snappedStartSec: roundLogNumber(payload.snappedStartSec),
+      deltaSec: roundLogNumber(payload.deltaSec),
+      gridSec: roundLogNumber(payload.gridSec),
+      nearestIndex: payload.nearestIndex,
+      snapAnchorSec: roundLogNumber(payload.snapAnchorSec),
+      currentAnchorRawSec: roundLogNumber(payload.currentAnchorRawSec),
+      thresholdSec: roundLogNumber(payload.thresholdSec)
+    })
+  }
 
   let trackDragState: {
     trackId: string
@@ -93,10 +294,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   const clampNumber = (value: number, min: number, max: number) =>
     Math.max(min, Math.min(max, value))
   const normalizeBeatOffset = (value: unknown, interval: number) => {
-    const safeInterval = Math.max(1, Math.floor(Number(interval) || 1))
-    const numeric = Number(value)
-    const rounded = Number.isFinite(numeric) ? Math.round(numeric) : 0
-    return ((rounded % safeInterval) + safeInterval) % safeInterval
+    return normalizeBeatOffsetByMixxx(value, interval)
   }
 
   const readTransportBufferCache = (filePath: string): AudioBuffer | null => {
@@ -263,6 +461,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       } catch {}
     }
     transportGraphNodes = []
+    transportMasterTrackId = ''
   }
 
   const stopTransport = () => {
@@ -341,14 +540,32 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
           missingDurationCount += 1
           return null
         }
+        const bpm = Number(track.bpm)
+        const beatSec = resolveBeatSecByBpm(bpm)
         const tempoRatio = resolveTrackTempoRatio(track)
         const duration = sourceDuration / Math.max(0.01, tempoRatio)
+        const firstBeatSec = resolveFirstBeatTimelineSec(track.firstBeatMs, tempoRatio)
+        const barBeatOffset = normalizeBeatOffset(track.barBeatOffset, 32)
+        const masterTempo = track.masterTempo !== false
+        const startSec = startSecById.get(track.id) ?? resolveTrackStartSec(track)
+        const syncAnchorSec = resolveGridAnchorSec({
+          startSec,
+          firstBeatSec,
+          beatSec,
+          barBeatOffset
+        })
         // 浏览器能解码的走 fetch + decodeAudioData（快、无 IPC 开销）
         const decodeMode: 'browser' | 'ipc' = canPlayHtmlAudio(filePath) ? 'browser' : 'ipc'
         return {
           trackId: track.id,
           filePath,
-          startSec: startSecById.get(track.id) ?? resolveTrackStartSec(track),
+          startSec,
+          bpm,
+          beatSec,
+          firstBeatSec,
+          barBeatOffset,
+          masterTempo,
+          syncAnchorSec,
           sourceDuration,
           duration,
           tempoRatio: Math.max(0.25, Math.min(4, tempoRatio)),
@@ -358,6 +575,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       })
       .filter(Boolean) as TransportEntry[]
     entries.sort((a, b) => a.startSec - b.startSec)
+    logTransportPlan(entries, missingDurationCount)
     return {
       entries,
       decodeFailedCount: 0,
@@ -567,7 +785,12 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
         : ctx.currentTime
       source.start(safeWhen, safeOffset)
 
-      const graphNode: TrackGraphNode = { source, gain }
+      const graphNode: TrackGraphNode = {
+        trackId: entry.trackId,
+        entry,
+        source,
+        gain
+      }
       transportGraphNodes.push(graphNode)
 
       source.onended = () => {
@@ -685,6 +908,17 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
           : Math.max(0, (performance.now() - transportStartedAt) / 1000)
       const current = transportBaseSec + elapsed
       playheadSec.value = current
+      const shouldCollectSyncDiagnostics =
+        syncDebugLogEnabled && Date.now() - lastSyncTickLogAt >= MIXTAPE_SYNC_TICK_LOG_INTERVAL_MS
+      const syncResult = applyMixxxTransportSync({
+        nodes: transportGraphNodes,
+        timelineSec: current,
+        masterTrackId: transportMasterTrackId,
+        audioCtx: transportAudioCtx,
+        collectDiagnostics: shouldCollectSyncDiagnostics
+      })
+      transportMasterTrackId = syncResult.masterTrackId
+      logSyncTick(current, syncResult)
       if (current >= transportDurationSec) {
         stopTransport()
         playheadVisible.value = false
@@ -783,31 +1017,55 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     let nextStartSec = rawStartSec
     let nextBpm: number | undefined
     const currentTrackForSnap = findTrack(trackDragState.trackId)
-    const currentFirstBeatSec = (Number(currentTrackForSnap?.firstBeatMs) || 0) / 1000
+    const currentFirstBeatSec = currentTrackForSnap
+      ? resolveTrackFirstBeatSeconds(currentTrackForSnap)
+      : 0
     const previousTrack = findTrack(trackDragState.previousTrackId)
     if (previousTrack) {
       const previousBpm = Number(previousTrack.bpm)
       if (Number.isFinite(previousBpm) && previousBpm > 0) {
         const previousStartSec = resolveTrackStartSecById(previousTrack.id)
-        const previousFirstBeatSec = (Number(previousTrack.firstBeatMs) || 0) / 1000
-        const beatSec = 60 / previousBpm
-        const barSec = beatSec * 32
-        if (Number.isFinite(barSec) && barSec > 0) {
-          const previousBarOffsetSec =
-            normalizeBeatOffset(previousTrack.barBeatOffset, 32) * beatSec
-          const currentBarOffsetSec =
-            normalizeBeatOffset(currentTrackForSnap?.barBeatOffset, 32) * beatSec
-          const snapAnchor = previousStartSec + previousFirstBeatSec + previousBarOffsetSec
-          const currentBarRawSec = rawStartSec + currentFirstBeatSec + currentBarOffsetSec
-          const nearestIndex = Math.round((currentBarRawSec - snapAnchor) / barSec)
+        const previousFirstBeatSec = resolveTrackFirstBeatSeconds(previousTrack, previousBpm)
+        const currentFirstBeatSecAtTarget = currentTrackForSnap
+          ? resolveTrackFirstBeatSeconds(currentTrackForSnap, previousBpm)
+          : currentFirstBeatSec
+        const beatSec = resolveBeatSecByBpm(previousBpm)
+        const gridSec = beatSec * GRID_SNAP_BEAT_INTERVAL
+        if (Number.isFinite(gridSec) && gridSec > 0) {
+          const snapAnchor = resolveGridAnchorSec({
+            startSec: previousStartSec,
+            firstBeatSec: previousFirstBeatSec,
+            beatSec,
+            barBeatOffset: normalizeBeatOffset(previousTrack.barBeatOffset, 32)
+          })
+          const currentAnchorRawSec = resolveGridAnchorSec({
+            startSec: rawStartSec,
+            firstBeatSec: currentFirstBeatSecAtTarget,
+            beatSec,
+            barBeatOffset: normalizeBeatOffset(currentTrackForSnap?.barBeatOffset, 32)
+          })
+          const nearestIndex = Math.round((currentAnchorRawSec - snapAnchor) / gridSec)
           const snappedStartSec = Math.max(
             0,
-            snapAnchor + nearestIndex * barSec - currentFirstBeatSec - currentBarOffsetSec
+            rawStartSec + (snapAnchor + nearestIndex * gridSec - currentAnchorRawSec)
           )
           const snapThresholdSec = 14 / pxPerSec
           if (Math.abs(snappedStartSec - rawStartSec) <= snapThresholdSec) {
             nextStartSec = snappedStartSec
             nextBpm = previousBpm
+            logSnapDecision({
+              trackId: trackDragState.trackId,
+              previousTrackId: previousTrack.id,
+              previousBpm,
+              rawStartSec,
+              snappedStartSec,
+              deltaSec: snappedStartSec - rawStartSec,
+              gridSec,
+              nearestIndex,
+              snapAnchorSec: snapAnchor,
+              currentAnchorRawSec,
+              thresholdSec: snapThresholdSec
+            })
           }
         }
       }
