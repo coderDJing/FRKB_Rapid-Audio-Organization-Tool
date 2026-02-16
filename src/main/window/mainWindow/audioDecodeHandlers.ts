@@ -1,11 +1,10 @@
 import { ipcMain, type BrowserWindow } from 'electron'
 import fs from 'node:fs/promises'
-import os from 'node:os'
 import path from 'node:path'
-import { Worker } from 'node:worker_threads'
 import { log } from '../../log'
 import { findSongListRoot } from '../../services/cacheMaintenance'
 import { enqueueKeyAnalysis, enqueueKeyAnalysisImmediate } from '../../services/keyAnalysisQueue'
+import { decodeAudioShared } from '../../services/audioDecodePool'
 import * as LibraryCacheDb from '../../libraryCacheDb'
 import { applyLiteDefaults, buildLiteSongInfo } from '../../services/songInfoLite'
 import type { MixxxWaveformData } from '../../waveformCache'
@@ -37,151 +36,11 @@ const clonePcmData = (pcmData: unknown): Float32Array => {
   return new Float32Array(0)
 }
 
-type DecodeWorkerResult = {
-  pcmData: Buffer
-  sampleRate: number
-  channels: number
-  totalFrames: number
-  mixxxWaveformData?: MixxxWaveformData | null
-  keyText?: string
-  keyError?: string
-}
-
-type WorkerJob = {
-  jobId: number
-  filePath: string
-  analyzeKey: boolean
-  needWaveform: boolean
-  resolve: (result: DecodeWorkerResult) => void
-  reject: (error: Error) => void
-}
-
-class AudioDecodeWorkerPool {
-  private workers: Worker[] = []
-  private idle: Worker[] = []
-  private queue: WorkerJob[] = []
-  private pending = new Map<number, WorkerJob>()
-  private busy = new Map<Worker, number>()
-  private nextJobId = 0
-
-  constructor(workerCount: number) {
-    const count = Math.max(1, workerCount)
-    for (let i = 0; i < count; i++) {
-      this.workers.push(this.createWorker())
-    }
-  }
-
-  decode(
-    filePath: string,
-    options: { analyzeKey?: boolean; needWaveform?: boolean } = {}
-  ): Promise<DecodeWorkerResult> {
-    return new Promise((resolve, reject) => {
-      const jobId = ++this.nextJobId
-      const job: WorkerJob = {
-        jobId,
-        filePath,
-        analyzeKey: Boolean(options.analyzeKey),
-        needWaveform: Boolean(options.needWaveform),
-        resolve,
-        reject
-      }
-      this.pending.set(jobId, job)
-      this.queue.push(job)
-      this.drain()
-    })
-  }
-
-  private createWorker(): Worker {
-    const workerPath = path.join(__dirname, 'workers', 'audioDecodeWorker.js')
-    const worker = new Worker(workerPath)
-
-    worker.on('message', (payload: any) => {
-      const jobId = payload?.jobId
-      const job = this.pending.get(jobId)
-      if (!job) {
-        this.busy.delete(worker)
-        this.idle.push(worker)
-        this.drain()
-        return
-      }
-
-      this.pending.delete(jobId)
-      this.busy.delete(worker)
-      this.idle.push(worker)
-      this.drain()
-
-      if (payload?.error) {
-        job.reject(new Error(payload.error))
-        return
-      }
-
-      job.resolve(payload.result as DecodeWorkerResult)
-    })
-
-    worker.on('error', (error) => {
-      this.handleWorkerFailure(worker, error)
-    })
-
-    worker.on('exit', (code) => {
-      if (code !== 0) {
-        this.handleWorkerFailure(worker, new Error(`worker exited: ${code}`))
-      }
-    })
-
-    this.idle.push(worker)
-    return worker
-  }
-
-  private handleWorkerFailure(worker: Worker, error: Error) {
-    const jobId = this.busy.get(worker)
-    if (jobId) {
-      const job = this.pending.get(jobId)
-      if (job) {
-        this.pending.delete(jobId)
-        job.reject(error)
-      }
-      this.busy.delete(worker)
-    }
-
-    this.workers = this.workers.filter((item) => item !== worker)
-    this.idle = this.idle.filter((item) => item !== worker)
-
-    const replacement = this.createWorker()
-    this.workers.push(replacement)
-    this.drain()
-  }
-
-  private drain() {
-    while (this.idle.length > 0 && this.queue.length > 0) {
-      const worker = this.idle.shift()
-      const job = this.queue.shift()
-      if (!worker || !job) return
-      this.busy.set(worker, job.jobId)
-      worker.postMessage({
-        jobId: job.jobId,
-        filePath: job.filePath,
-        analyzeKey: job.analyzeKey,
-        needWaveform: job.needWaveform
-      })
-    }
-  }
-}
-
-let decodePool: AudioDecodeWorkerPool | null = null
-
-const getDecodePool = () => {
-  if (decodePool) return decodePool
-  const workerCount = Math.max(1, Math.min(2, os.cpus().length))
-  decodePool = new AudioDecodeWorkerPool(workerCount)
-  return decodePool
-}
-
 export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | null) {
   const handleDecode =
     (eventName: 'readSongFile' | 'readNextSongFile', successEvent: string, errorEvent: string) =>
     async (_e: Electron.IpcMainEvent, filePath: string, requestId: string) => {
       try {
-        const pool = getDecodePool()
         if (eventName === 'readSongFile') {
           enqueueKeyAnalysisImmediate(filePath)
         } else {
@@ -202,9 +61,11 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
           }
         }
 
-        const result = await pool.decode(filePath, {
+        const result = await decodeAudioShared(filePath, {
           analyzeKey: false,
-          needWaveform: !cachedWaveform
+          needWaveform: !cachedWaveform,
+          fileStat: stat,
+          traceLabel: eventName
         })
         const mixxxWaveformData = cachedWaveform ?? result.mixxxWaveformData ?? null
         if (!cachedWaveform && mixxxWaveformData && listRoot && stat) {
@@ -246,10 +107,11 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
     requestId: string
   ) => {
     try {
-      const pool = getDecodePool()
-      const result = await pool.decode(filePath, {
+      const result = await decodeAudioShared(filePath, {
         analyzeKey: false,
-        needWaveform: false
+        needWaveform: false,
+        needRawWaveform: false,
+        traceLabel: 'readPreviewSongFile'
       })
       const payload = {
         pcmData: clonePcmData(result.pcmData),
@@ -284,10 +146,11 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
       channels: number
       totalFrames: number
     }> => {
-      const pool = getDecodePool()
-      const result = await pool.decode(filePath, {
+      const result = await decodeAudioShared(filePath, {
         analyzeKey: false,
-        needWaveform: false
+        needWaveform: false,
+        needRawWaveform: false,
+        traceLabel: 'mixtape:decode-for-transport'
       })
       return {
         pcmData: clonePcmData(result.pcmData),

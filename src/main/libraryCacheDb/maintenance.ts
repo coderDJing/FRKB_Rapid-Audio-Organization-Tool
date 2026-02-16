@@ -4,6 +4,7 @@ import { getLibraryDb, getMetaValue, setMetaValue } from '../libraryDb'
 import { log } from '../log'
 import type { LegacyCacheRoots } from './types'
 import {
+  toNumber,
   extractLibraryRelative,
   getDatabaseRootAbs,
   isUnderPath,
@@ -29,6 +30,7 @@ export async function renameCacheRoot(
   waveformCacheUpdated: number
   mixtapeWaveformCacheUpdated: number
   mixtapeRawWaveformCacheUpdated: number
+  mixtapeWaveformHiresCacheUpdated: number
 }> {
   const db = getLibraryDb()
   if (!db || !oldRoot || !newRoot) {
@@ -37,7 +39,8 @@ export async function renameCacheRoot(
       coverIndexUpdated: 0,
       waveformCacheUpdated: 0,
       mixtapeWaveformCacheUpdated: 0,
-      mixtapeRawWaveformCacheUpdated: 0
+      mixtapeRawWaveformCacheUpdated: 0,
+      mixtapeWaveformHiresCacheUpdated: 0
     }
   }
   const oldResolved = resolveListRootInput(oldRoot)
@@ -48,7 +51,8 @@ export async function renameCacheRoot(
       coverIndexUpdated: 0,
       waveformCacheUpdated: 0,
       mixtapeWaveformCacheUpdated: 0,
-      mixtapeRawWaveformCacheUpdated: 0
+      mixtapeRawWaveformCacheUpdated: 0,
+      mixtapeWaveformHiresCacheUpdated: 0
     }
   }
   const oldKey = oldResolved.key
@@ -59,7 +63,8 @@ export async function renameCacheRoot(
       coverIndexUpdated: 0,
       waveformCacheUpdated: 0,
       mixtapeWaveformCacheUpdated: 0,
-      mixtapeRawWaveformCacheUpdated: 0
+      mixtapeRawWaveformCacheUpdated: 0,
+      mixtapeWaveformHiresCacheUpdated: 0
     }
   }
   const normalizedOld = normalizeRoot(oldKey)
@@ -70,7 +75,8 @@ export async function renameCacheRoot(
       coverIndexUpdated: 0,
       waveformCacheUpdated: 0,
       mixtapeWaveformCacheUpdated: 0,
-      mixtapeRawWaveformCacheUpdated: 0
+      mixtapeRawWaveformCacheUpdated: 0,
+      mixtapeWaveformHiresCacheUpdated: 0
     }
   }
   const oldAbs = oldResolved.abs || resolveAbsoluteListRoot(oldKey)
@@ -80,6 +86,7 @@ export async function renameCacheRoot(
   let waveformCacheUpdated = 0
   let mixtapeWaveformCacheUpdated = 0
   let mixtapeRawWaveformCacheUpdated = 0
+  let mixtapeWaveformHiresCacheUpdated = 0
   try {
     const deleteSong = db.prepare('DELETE FROM song_cache WHERE list_root = ? AND file_path = ?')
     const updateSong = db.prepare(
@@ -107,6 +114,12 @@ export async function renameCacheRoot(
     const updateMixtapeRawWaveform = db.prepare(
       'UPDATE mixtape_raw_waveform_cache SET list_root = ?, file_path = ? WHERE list_root = ? AND file_path = ?'
     )
+    const deleteMixtapeWaveformHires = db.prepare(
+      'DELETE FROM mixtape_waveform_hires_cache WHERE list_root = ? AND file_path = ? AND target_rate = ?'
+    )
+    const updateMixtapeWaveformHires = db.prepare(
+      'UPDATE mixtape_waveform_hires_cache SET list_root = ?, file_path = ? WHERE list_root = ? AND file_path = ? AND target_rate = ?'
+    )
 
     const run = db.transaction(() => {
       const processRoot = (rootKey: string) => {
@@ -124,6 +137,11 @@ export async function renameCacheRoot(
           .all(rootKey)
         const mixtapeRawWaveformRows = db
           .prepare('SELECT file_path FROM mixtape_raw_waveform_cache WHERE list_root = ?')
+          .all(rootKey)
+        const mixtapeWaveformHiresRows = db
+          .prepare(
+            'SELECT file_path, target_rate FROM mixtape_waveform_hires_cache WHERE list_root = ?'
+          )
           .all(rootKey)
 
         for (const row of songRows || []) {
@@ -217,6 +235,31 @@ export async function renameCacheRoot(
           const result = updateMixtapeRawWaveform.run(newKey, newFileKey, rootKey, filePath)
           mixtapeRawWaveformCacheUpdated += result?.changes ? Number(result.changes) : 0
         }
+
+        for (const row of mixtapeWaveformHiresRows || []) {
+          const filePath = row?.file_path ? String(row.file_path) : ''
+          const targetRate = toNumber(row?.target_rate)
+          if (!filePath || targetRate === null || targetRate <= 0) continue
+          let newFileKey = filePath
+          if (path.isAbsolute(filePath)) {
+            if (oldAbs && isUnderPath(oldAbs, filePath)) {
+              newFileKey = normalizeRoot(path.relative(oldAbs, filePath))
+            } else {
+              newFileKey = normalizeRoot(filePath)
+            }
+          } else {
+            newFileKey = normalizeRoot(filePath)
+          }
+          deleteMixtapeWaveformHires.run(newKey, newFileKey, targetRate)
+          const result = updateMixtapeWaveformHires.run(
+            newKey,
+            newFileKey,
+            rootKey,
+            filePath,
+            targetRate
+          )
+          mixtapeWaveformHiresCacheUpdated += result?.changes ? Number(result.changes) : 0
+        }
       }
 
       processRoot(oldKey)
@@ -235,7 +278,8 @@ export async function renameCacheRoot(
     coverIndexUpdated,
     waveformCacheUpdated,
     mixtapeWaveformCacheUpdated,
-    mixtapeRawWaveformCacheUpdated
+    mixtapeRawWaveformCacheUpdated,
+    mixtapeWaveformHiresCacheUpdated
   }
 }
 
@@ -245,6 +289,7 @@ export async function pruneCachesByRoots(keepRoots: Iterable<string> | null | un
   waveformCacheRemoved: number
   mixtapeWaveformCacheRemoved: number
   mixtapeRawWaveformCacheRemoved: number
+  mixtapeWaveformHiresCacheRemoved: number
 }> {
   const db = getLibraryDb()
   if (!db) {
@@ -253,7 +298,8 @@ export async function pruneCachesByRoots(keepRoots: Iterable<string> | null | un
       coverIndexRemoved: 0,
       waveformCacheRemoved: 0,
       mixtapeWaveformCacheRemoved: 0,
-      mixtapeRawWaveformCacheRemoved: 0
+      mixtapeRawWaveformCacheRemoved: 0,
+      mixtapeWaveformHiresCacheRemoved: 0
     }
   }
   try {
@@ -279,6 +325,7 @@ export async function pruneCachesByRoots(keepRoots: Iterable<string> | null | un
         | 'waveform_cache'
         | 'mixtape_waveform_cache'
         | 'mixtape_raw_waveform_cache'
+        | 'mixtape_waveform_hires_cache'
     ): number => {
       const rows = db.prepare(`SELECT DISTINCT list_root FROM ${table}`).all()
       if (!rows || rows.length === 0) return 0
@@ -308,12 +355,14 @@ export async function pruneCachesByRoots(keepRoots: Iterable<string> | null | un
     const waveformCacheRemoved = pruneTable('waveform_cache')
     const mixtapeWaveformCacheRemoved = pruneTable('mixtape_waveform_cache')
     const mixtapeRawWaveformCacheRemoved = pruneTable('mixtape_raw_waveform_cache')
+    const mixtapeWaveformHiresCacheRemoved = pruneTable('mixtape_waveform_hires_cache')
     return {
       songCacheRemoved,
       coverIndexRemoved,
       waveformCacheRemoved,
       mixtapeWaveformCacheRemoved,
-      mixtapeRawWaveformCacheRemoved
+      mixtapeRawWaveformCacheRemoved,
+      mixtapeWaveformHiresCacheRemoved
     }
   } catch (error) {
     log.error('[sqlite] cache prune failed', error)
@@ -322,7 +371,8 @@ export async function pruneCachesByRoots(keepRoots: Iterable<string> | null | un
       coverIndexRemoved: 0,
       waveformCacheRemoved: 0,
       mixtapeWaveformCacheRemoved: 0,
-      mixtapeRawWaveformCacheRemoved: 0
+      mixtapeRawWaveformCacheRemoved: 0,
+      mixtapeWaveformHiresCacheRemoved: 0
     }
   }
 }
@@ -336,12 +386,14 @@ function collectMigratableCacheRoots(db: any, baseRoot: string): Set<string> {
     | 'waveform_cache'
     | 'mixtape_waveform_cache'
     | 'mixtape_raw_waveform_cache'
+    | 'mixtape_waveform_hires_cache'
   > = [
     'song_cache',
     'cover_index',
     'waveform_cache',
     'mixtape_waveform_cache',
-    'mixtape_raw_waveform_cache'
+    'mixtape_raw_waveform_cache',
+    'mixtape_waveform_hires_cache'
   ]
   for (const table of tables) {
     const rows = db.prepare(`SELECT DISTINCT list_root FROM ${table}`).all()

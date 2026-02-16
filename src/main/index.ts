@@ -48,6 +48,7 @@ import {
   startKeyAnalysisBackground,
   type KeyAnalysisBackgroundStatus
 } from './services/keyAnalysisQueue'
+import { startMixtapeWaveformHiresBackground } from './services/mixtapeWaveformHiresQueue'
 // import AudioFeatureExtractor from './mfccTest'
 
 const initDevDatabase = false
@@ -395,6 +396,7 @@ app.whenReady().then(async () => {
   // 数据库准备与主窗口：统一调用幂等流程
   await prepareAndOpenMainWindow()
   startKeyAnalysisBackground()
+  startMixtapeWaveformHiresBackground()
   LibraryCacheDb.scheduleCacheKeyMigration()
   await processExternalOpenQueue()
   setTimeout(() => {

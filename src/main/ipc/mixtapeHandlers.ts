@@ -17,6 +17,7 @@ import {
 } from '../mixtapeDb'
 import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { queueMixtapeRawWaveforms } from '../services/mixtapeRawWaveformQueue'
+import { queueMixtapeWaveformHires } from '../services/mixtapeWaveformHiresQueue'
 import { cleanupMixtapeWaveformCache } from '../services/mixtapeWaveformMaintenance'
 
 const resolveKeyAnalysisWorkerPath = () => path.join(__dirname, 'workers', 'keyAnalysisWorker.js')
@@ -294,6 +295,7 @@ export function registerMixtapeHandlers() {
       if (filePaths.length > 0) {
         queueMixtapeWaveforms(filePaths)
         queueMixtapeRawWaveforms(filePaths)
+        queueMixtapeWaveformHires(filePaths)
         // 预分析 BPM（后台，不阻塞返回）
         void analyzeMixtapeBpmBatch(filePaths)
           .then((bpmResult) => {

@@ -10,8 +10,9 @@ import store from '../store'
 import { getLibrary, mapRendererPathToFsPath } from '../utils'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import type { MixxxWaveformData } from '../waveformCache'
-import { queueMixtapeWaveforms, requestMixtapeWaveform } from '../services/mixtapeWaveformQueue'
+import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { requestMixtapeRawWaveform } from '../services/mixtapeRawWaveformQueue'
+import { ensureMixtapeWaveformHires } from '../services/mixtapeWaveformHiresQueue'
 
 export function registerCacheHandlers() {
   const resolveRequestedRawRate = (value: unknown) => {
@@ -237,7 +238,10 @@ export function registerCacheHandlers() {
       const items: Array<{ filePath: string; data: MixxxWaveformData | null }> = []
       for (const filePath of normalizedPaths) {
         try {
-          const data = await requestMixtapeWaveform(filePath, targetRate)
+          const result = await ensureMixtapeWaveformHires(filePath, {
+            targetRate
+          })
+          const data = result?.data ?? null
           items.push({ filePath, data: data ?? null })
         } catch {
           items.push({ filePath, data: null })

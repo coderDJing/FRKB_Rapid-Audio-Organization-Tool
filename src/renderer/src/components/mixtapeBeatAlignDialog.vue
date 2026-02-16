@@ -67,12 +67,15 @@ let overviewDragOffset = 0
 let overviewDragMoved = false
 let overviewSuppressClick = false
 let overviewCacheCanvas: HTMLCanvasElement | null = null
+let previewLoadSequence = 0
+let previewWarmupTimer: ReturnType<typeof setTimeout> | null = null
 const overviewRawPyramidMap = new Map<string, RawWaveformLevel[]>()
 const overviewRawKey = ref('')
 
 const PREVIEW_MAX_ZOOM = 100
 const PREVIEW_HIRES_TARGET_RATE = 4000
 const PREVIEW_RAW_TARGET_RATE = 2400
+const PREVIEW_WARMUP_DELAY_MS = 600
 const OVERVIEW_MAX_RENDER_COLUMNS = 960
 const OVERVIEW_IS_HALF_WAVEFORM = false
 const OVERVIEW_WAVEFORM_VERTICAL_PADDING = 8
@@ -288,6 +291,22 @@ const {
   schedulePreviewDraw
 })
 
+const clearPreviewWarmupTimer = () => {
+  if (!previewWarmupTimer) return
+  clearTimeout(previewWarmupTimer)
+  previewWarmupTimer = null
+}
+const schedulePreviewWarmup = (filePath: string, requestSeq: number) => {
+  clearPreviewWarmupTimer()
+  const normalized = filePath.trim()
+  if (!normalized) return
+  previewWarmupTimer = setTimeout(() => {
+    previewWarmupTimer = null
+    if (requestSeq !== previewLoadSequence) return
+    if (normalizePathKey(props.filePath) !== normalizePathKey(normalized)) return
+    void warmupPreviewPlayback(normalized)
+  }, PREVIEW_WARMUP_DELAY_MS)
+}
 const rebuildOverviewCache = () => {
   overviewCacheCanvas = rebuildBeatAlignOverviewCache({
     wrap: overviewWrapRef.value,
@@ -520,8 +539,10 @@ const handleMixtapeWaveformUpdated = (_event: any, payload: { filePath?: string 
 
 const loadPreviewWaveform = async (filePath: string) => {
   const normalized = typeof filePath === 'string' ? filePath.trim() : ''
-
+  const requestSeq = ++previewLoadSequence
+  clearPreviewWarmupTimer()
   stopPreviewPlayback({ syncPosition: false })
+  previewLoading.value = false
   previewMixxxData.value = null
   overviewMixxxData.value = null
   overviewRawData.value = null
@@ -534,51 +555,45 @@ const loadPreviewWaveform = async (filePath: string) => {
   stopOverviewDragging()
   schedulePreviewDraw()
   scheduleOverviewRebuild()
-
   if (!normalized || !window?.electron?.ipcRenderer?.invoke) {
     previewError.value = t('mixtape.gridAdjustWaveformUnavailable')
     schedulePreviewDraw()
     scheduleOverviewRebuild()
     return
   }
-
-  void warmupPreviewPlayback(normalized)
   previewLoading.value = true
   try {
     const fileKey = normalizePathKey(normalized)
-    const [hiresResult, cacheResult, rawResult] = await Promise.all([
-      window.electron.ipcRenderer
-        .invoke('mixtape-waveform-hires:batch', {
-          filePaths: [normalized],
-          targetRate: PREVIEW_HIRES_TARGET_RATE
-        })
-        .catch(() => null),
-      window.electron.ipcRenderer
-        .invoke('mixtape-waveform-cache:batch', {
-          filePaths: [normalized]
-        })
-        .catch(() => null),
-      window.electron.ipcRenderer
-        .invoke('mixtape-waveform-raw:batch', {
-          filePaths: [normalized],
-          targetRate: PREVIEW_RAW_TARGET_RATE
-        })
-        .catch(() => null)
-    ])
-
+    const hiresPromise = window.electron.ipcRenderer
+      .invoke('mixtape-waveform-hires:batch', {
+        filePaths: [normalized],
+        targetRate: PREVIEW_HIRES_TARGET_RATE
+      })
+      .catch(() => null)
+    const cachePromise = window.electron.ipcRenderer
+      .invoke('mixtape-waveform-cache:batch', {
+        filePaths: [normalized]
+      })
+      .catch(() => null)
+    const rawPromise = window.electron.ipcRenderer
+      .invoke('mixtape-waveform-raw:batch', {
+        filePaths: [normalized],
+        targetRate: PREVIEW_RAW_TARGET_RATE
+      })
+      .catch(() => null)
+    const [hiresResult, cacheResult] = await Promise.all([hiresPromise, cachePromise])
+    if (requestSeq !== previewLoadSequence) return
     previewMixxxData.value = pickMixxxDataByFile(hiresResult, fileKey, normalizePathKey)
     overviewMixxxData.value = pickMixxxDataByFile(cacheResult, fileKey, normalizePathKey)
-    overviewRawData.value = pickRawDataByFile(rawResult, fileKey, normalizePathKey)
-    overviewRawKey.value = fileKey
+    if (
+      !isValidMixxxWaveformData(previewMixxxData.value) &&
+      isValidMixxxWaveformData(overviewMixxxData.value)
+    ) {
+      previewMixxxData.value = overviewMixxxData.value
+    }
     if (previewMixxxData.value) {
       previewStartSec.value = clampPreviewStart(-resolvePreviewLeadingPadSec())
     }
-    if (overviewRawData.value) {
-      overviewRawPyramidMap.set(fileKey, buildRawWaveformPyramid(overviewRawData.value))
-    } else {
-      overviewRawPyramidMap.delete(fileKey)
-    }
-
     if (!overviewMixxxData.value) {
       try {
         window.electron.ipcRenderer.send('mixtape-waveform:queue-visible', {
@@ -586,13 +601,28 @@ const loadPreviewWaveform = async (filePath: string) => {
         })
       } catch {}
     }
-
     if (!previewMixxxData.value) {
       previewError.value = t('mixtape.gridAdjustWaveformUnavailable')
     }
+    previewLoading.value = false
+    schedulePreviewDraw()
+    scheduleOverviewRebuild()
+    if (previewMixxxData.value) {
+      schedulePreviewWarmup(normalized, requestSeq)
+    }
+    const rawResult = await rawPromise
+    if (requestSeq !== previewLoadSequence) return
+    overviewRawData.value = pickRawDataByFile(rawResult, fileKey, normalizePathKey)
+    overviewRawKey.value = fileKey
+    if (overviewRawData.value) {
+      overviewRawPyramidMap.set(fileKey, buildRawWaveformPyramid(overviewRawData.value))
+    } else {
+      overviewRawPyramidMap.delete(fileKey)
+    }
+    scheduleOverviewRebuild()
   } catch {
+    if (requestSeq !== previewLoadSequence) return
     previewError.value = t('mixtape.gridAdjustWaveformUnavailable')
-  } finally {
     previewLoading.value = false
     schedulePreviewDraw()
     scheduleOverviewRebuild()
@@ -656,6 +686,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  previewLoadSequence += 1
+  clearPreviewWarmupTimer()
   cleanupPreviewPlayback()
   if (previewRaf) {
     cancelAnimationFrame(previewRaf)
