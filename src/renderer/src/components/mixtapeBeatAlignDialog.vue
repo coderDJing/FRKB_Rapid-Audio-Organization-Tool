@@ -62,6 +62,10 @@ let previewRaf = 0
 let overviewRaf = 0
 let previewDragStartClientX = 0
 let previewDragStartSec = 0
+let previewDragLastAnchorSec = 0
+let previewDragLastTs = 0
+let previewDragScrubbing = false
+let previewDragScrubToken = 0
 let overviewDragStartX = 0
 let overviewDragOffset = 0
 let overviewDragMoved = false
@@ -283,6 +287,9 @@ const {
   previewDecoding,
   previewAnchorStyle,
   canTogglePreviewPlayback,
+  startPreviewScrub,
+  updatePreviewScrub,
+  stopPreviewScrub,
   seekPreviewAnchorSec,
   nudgePreviewBySec,
   handlePreviewPlaybackToggle,
@@ -395,6 +402,16 @@ const handlePreviewDragMove = (event: MouseEvent) => {
   const deltaX = event.clientX - previewDragStartClientX
   const deltaSec = (deltaX / width) * visibleDuration
   previewStartSec.value = clampPreviewStart(previewDragStartSec - deltaSec)
+
+  const anchorSec = resolvePreviewAnchorSec(previewStartSec.value)
+  const now = performance.now()
+  if (previewDragScrubbing) {
+    const dtSec = Math.max(0.001, (now - previewDragLastTs) / 1000)
+    const velocitySecPerSec = (anchorSec - previewDragLastAnchorSec) / dtSec
+    updatePreviewScrub(anchorSec, velocitySecPerSec)
+  }
+  previewDragLastAnchorSec = anchorSec
+  previewDragLastTs = now
   schedulePreviewDraw()
 }
 
@@ -403,8 +420,13 @@ const stopPreviewDragging = () => {
   previewDragging.value = false
   window.removeEventListener('mousemove', handlePreviewDragMove)
   window.removeEventListener('mouseup', stopPreviewDragging)
-  if (previewPlaying.value) {
-    void seekPreviewAnchorSec(resolvePreviewAnchorSec())
+  const finalAnchorSec = resolvePreviewAnchorSec()
+  previewDragScrubToken += 1
+  if (previewDragScrubbing) {
+    previewDragScrubbing = false
+    void stopPreviewScrub(finalAnchorSec)
+  } else if (previewPlaying.value) {
+    void seekPreviewAnchorSec(finalAnchorSec)
   }
   schedulePreviewDraw()
 }
@@ -416,6 +438,23 @@ const handlePreviewMouseDown = (event: MouseEvent) => {
   previewDragging.value = true
   previewDragStartClientX = event.clientX
   previewDragStartSec = previewStartSec.value
+  previewDragLastAnchorSec = resolvePreviewAnchorSec(previewDragStartSec)
+  previewDragLastTs = performance.now()
+  previewDragScrubbing = false
+  if (previewPlaying.value) {
+    const token = ++previewDragScrubToken
+    void startPreviewScrub(previewDragLastAnchorSec).then((started) => {
+      if (!started) return
+      if (token !== previewDragScrubToken || !previewDragging.value) {
+        void stopPreviewScrub(resolvePreviewAnchorSec())
+        return
+      }
+      previewDragScrubbing = true
+      previewDragLastAnchorSec = resolvePreviewAnchorSec()
+      previewDragLastTs = performance.now()
+      updatePreviewScrub(previewDragLastAnchorSec, 0)
+    })
+  }
   window.addEventListener('mousemove', handlePreviewDragMove, { passive: false })
   window.addEventListener('mouseup', stopPreviewDragging, { passive: true })
 }

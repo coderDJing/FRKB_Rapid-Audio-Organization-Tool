@@ -25,8 +25,30 @@ type StopPlaybackOptions = {
   cancelPending?: boolean
 }
 
+type ScrubWorkletToMainMessage = {
+  type?: string
+  frame?: number
+}
+
+type ScrubSetSourceMessage = {
+  type: 'set-source'
+  channels: Float32Array[]
+  sampleRate: number
+  frameCount: number
+  startFrame: number
+}
+
+type ScrubSetTargetMessage = {
+  type: 'set-target'
+  targetFrame: number
+  targetRate: number
+}
+
 const PREVIEW_PLAY_ANCHOR_RATIO = 1 / 3
 const PREVIEW_PLAY_END_GUARD_SEC = 0.02
+const PREVIEW_SCRUB_MAX_RATE = 12
+const PREVIEW_SCRUB_RATE_DEADZONE = 0.04
+const PREVIEW_SCRUB_OUTPUT_GAIN = 0.94
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
@@ -73,6 +95,12 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
   let playbackDurationSec = 0
   let audioCtx: AudioContext | null = null
   let sourceNode: AudioBufferSourceNode | null = null
+  let scrubNode: AudioWorkletNode | null = null
+  let scrubGainNode: GainNode | null = null
+  let scrubBuffer: AudioBuffer | null = null
+  let scrubCurrentSec = 0
+  let scrubWorkletModulePromise: Promise<void> | null = null
+  let scrubWorkletModuleCtx: AudioContext | null = null
   const audioBufferCache = new Map<string, AudioBuffer>()
   const audioBufferInflight = new Map<string, Promise<AudioBuffer>>()
 
@@ -107,12 +135,71 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     return clampNumber(value, 0, Math.max(0, total - PREVIEW_PLAY_END_GUARD_SEC))
   }
 
+  const ensureScrubWorkletModule = async (ctx: AudioContext) => {
+    if (!ctx.audioWorklet) {
+      throw new Error('AudioWorklet is unavailable')
+    }
+    if (scrubWorkletModuleCtx === ctx && scrubWorkletModulePromise) {
+      await scrubWorkletModulePromise
+      return
+    }
+    // @ts-expect-error Vite resolves import.meta.url in renderer build
+    const moduleUrl = new URL('../workers/mixtapeBeatAlignScrub.worklet.js', import.meta.url)
+    const task = ctx.audioWorklet.addModule(moduleUrl.href)
+    scrubWorkletModuleCtx = ctx
+    scrubWorkletModulePromise = task
+    try {
+      await task
+    } catch (error) {
+      if (scrubWorkletModuleCtx === ctx) {
+        scrubWorkletModulePromise = null
+      }
+      throw error
+    }
+  }
+
+  const clearScrubNodes = () => {
+    if (scrubNode) {
+      try {
+        scrubNode.port.onmessage = null
+      } catch {}
+      try {
+        scrubNode.port.postMessage({ type: 'stop' })
+      } catch {}
+      try {
+        scrubNode.disconnect()
+      } catch {}
+      scrubNode = null
+    }
+    if (scrubGainNode) {
+      try {
+        scrubGainNode.disconnect()
+      } catch {}
+      scrubGainNode = null
+    }
+    scrubBuffer = null
+    scrubCurrentSec = 0
+  }
+
+  const resolveCurrentScrubSec = () => {
+    if (!scrubBuffer) return 0
+    const sec = Number.isFinite(scrubCurrentSec) ? scrubCurrentSec : 0
+    return clampNumber(sec, 0, Math.max(0, playbackDurationSec))
+  }
+
   const resolveCurrentPlaybackSec = () => {
+    if (scrubBuffer) {
+      return resolveCurrentScrubSec()
+    }
     const elapsed = Math.max(0, (performance.now() - playbackStartedAt) / 1000)
     return clampNumber(playbackStartSec + elapsed, 0, Math.max(0, playbackDurationSec))
   }
 
   const stopActivePlayback = (syncPosition: boolean) => {
+    const hasScrub = Boolean(scrubBuffer)
+    if (syncPosition && hasScrub && previewPlaying.value) {
+      syncPreviewWindowToAnchorSec(resolveCurrentScrubSec())
+    }
     if (syncPosition && previewPlaying.value) {
       syncPreviewWindowToAnchorSec(resolveCurrentPlaybackSec())
     }
@@ -135,6 +222,7 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
         node.disconnect()
       } catch {}
     }
+    clearScrubNodes()
   }
 
   const stopPreviewPlayback = (options: StopPlaybackOptions = {}) => {
@@ -258,8 +346,149 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     return true
   }
 
+  const startPreviewScrub = async (anchorSec: number) => {
+    if (!previewPlaying.value || previewDecoding.value) return false
+    let buffer = sourceNode?.buffer || null
+    if (!buffer) {
+      const filePath = filePathRef.value
+      if (!filePath) return false
+      try {
+        buffer = await decodeAudioBuffer(filePath)
+      } catch (error) {
+        console.error('[mixtape-beat-align] start scrub decode failed', filePath, error)
+        return false
+      }
+    }
+
+    const token = ++playbackVersion
+    stopActivePlayback(false)
+
+    const ctx = ensureAudioContext(buffer.sampleRate)
+    if (ctx.state === 'suspended') {
+      try {
+        await ctx.resume()
+      } catch {}
+    }
+    if (token !== playbackVersion) return false
+
+    try {
+      await ensureScrubWorkletModule(ctx)
+    } catch (error) {
+      console.error('[mixtape-beat-align] load scrub worklet failed', error)
+      return false
+    }
+    if (token !== playbackVersion) return false
+
+    const outputChannels = Math.max(1, Math.min(2, buffer.numberOfChannels || 1))
+    const processor = new AudioWorkletNode(ctx, 'mixtape-beat-align-scrub', {
+      numberOfInputs: 0,
+      numberOfOutputs: 1,
+      outputChannelCount: [outputChannels]
+    })
+    const gainNode = ctx.createGain()
+    gainNode.gain.value = PREVIEW_SCRUB_OUTPUT_GAIN
+
+    const startFrame = clampPlaybackAnchorSec(anchorSec, buffer.duration) * buffer.sampleRate
+    const sourceChannels: Float32Array[] = []
+    for (let ch = 0; ch < outputChannels; ch += 1) {
+      const sourceIndex = Math.min(buffer.numberOfChannels - 1, ch)
+      sourceChannels.push(new Float32Array(buffer.getChannelData(Math.max(0, sourceIndex))))
+    }
+    scrubBuffer = buffer
+    scrubCurrentSec = startFrame / Math.max(1, buffer.sampleRate)
+    playbackDurationSec = Math.max(0, Number(buffer.duration) || resolvePreviewDurationSec())
+    playbackStartSec = scrubCurrentSec
+    playbackStartedAt = performance.now()
+
+    processor.onprocessorerror = () => {
+      if (processor !== scrubNode) return
+      console.error('[mixtape-beat-align] scrub worklet processor error')
+    }
+    processor.port.onmessage = (event: MessageEvent<ScrubWorkletToMainMessage>) => {
+      if (processor !== scrubNode || !scrubBuffer) return
+      const data = event.data
+      if (!data || data.type !== 'position') return
+      const frame = Number(data.frame)
+      if (!Number.isFinite(frame)) return
+      const sec = frame / Math.max(1, scrubBuffer.sampleRate)
+      scrubCurrentSec = clampNumber(sec, 0, Math.max(0, playbackDurationSec))
+    }
+    const sourceMessage: ScrubSetSourceMessage = {
+      type: 'set-source',
+      channels: sourceChannels,
+      sampleRate: buffer.sampleRate,
+      frameCount: buffer.length,
+      startFrame
+    }
+    processor.port.postMessage(
+      sourceMessage,
+      sourceChannels.map((channel) => channel.buffer)
+    )
+    const startTargetMessage: ScrubSetTargetMessage = {
+      type: 'set-target',
+      targetFrame: startFrame,
+      targetRate: 0
+    }
+    processor.port.postMessage(startTargetMessage)
+
+    processor.connect(gainNode)
+    gainNode.connect(ctx.destination)
+    scrubNode = processor
+    scrubGainNode = gainNode
+    previewPlaying.value = true
+    return true
+  }
+
+  const updatePreviewScrub = (anchorSec: number, rate: number) => {
+    if (!scrubBuffer || !scrubNode) return
+    const duration = Number(scrubBuffer.duration) || resolvePreviewDurationSec()
+    const targetFrame = clampPlaybackAnchorSec(anchorSec, duration) * scrubBuffer.sampleRate
+    const safeRate = clampNumber(
+      Number.isFinite(rate) ? rate : 0,
+      -PREVIEW_SCRUB_MAX_RATE,
+      PREVIEW_SCRUB_MAX_RATE
+    )
+    const targetRate =
+      Math.abs(safeRate) < PREVIEW_SCRUB_RATE_DEADZONE
+        ? 0
+        : clampNumber(safeRate, -PREVIEW_SCRUB_MAX_RATE, PREVIEW_SCRUB_MAX_RATE)
+    const targetMessage: ScrubSetTargetMessage = {
+      type: 'set-target',
+      targetFrame,
+      targetRate
+    }
+    try {
+      scrubNode.port.postMessage(targetMessage)
+    } catch {
+      return
+    }
+    if (!Number.isFinite(scrubCurrentSec)) {
+      scrubCurrentSec = targetFrame / Math.max(1, scrubBuffer.sampleRate)
+    }
+  }
+
+  const stopPreviewScrub = async (anchorSec?: number) => {
+    if (!scrubBuffer) return false
+    const buffer = scrubBuffer
+    const targetAnchor =
+      typeof anchorSec === 'number'
+        ? clampPlaybackAnchorSec(anchorSec, buffer.duration)
+        : resolveCurrentScrubSec()
+    clearScrubNodes()
+    const token = ++playbackVersion
+    const started = await startPlaybackFromBuffer(buffer, targetAnchor, token)
+    if (!started && token === playbackVersion) {
+      syncPreviewWindowToAnchorSec(targetAnchor)
+    }
+    return started
+  }
+
   const seekPreviewAnchorSec = async (anchorSec: number) => {
     const targetAnchor = clampPlaybackAnchorSec(anchorSec)
+    if (scrubBuffer) {
+      await stopPreviewScrub(targetAnchor)
+      return
+    }
     if (!previewPlaying.value) {
       syncPreviewWindowToAnchorSec(targetAnchor)
       return
@@ -333,6 +562,8 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
       } catch {}
     }
     audioCtx = null
+    scrubWorkletModulePromise = null
+    scrubWorkletModuleCtx = null
   }
 
   return {
@@ -340,6 +571,9 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     previewDecoding,
     previewAnchorStyle,
     canTogglePreviewPlayback,
+    startPreviewScrub,
+    updatePreviewScrub,
+    stopPreviewScrub,
     seekPreviewAnchorSec,
     nudgePreviewBySec,
     handlePreviewPlaybackToggle,
