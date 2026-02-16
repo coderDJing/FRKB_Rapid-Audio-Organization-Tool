@@ -331,11 +331,11 @@ const {
     <MixtapeBeatAlignDialog
       v-if="beatAlignDialogVisible && beatAlignTrack"
       :track-title="resolveTrackTitle(beatAlignTrack)"
+      :track-key="beatAlignTrack.key"
       :file-path="beatAlignTrack.filePath"
       :bpm="Number(beatAlignTrack.originalBpm) || Number(beatAlignTrack.bpm) || 128"
       :first-beat-ms="Number(beatAlignTrack.firstBeatMs) || 0"
       :bar-beat-offset="Number(beatAlignTrack.barBeatOffset) || 0"
-      :master-tempo="beatAlignTrack.masterTempo !== false"
       @update-bar-beat-offset="handleBeatAlignBarBeatOffsetUpdate"
       @cancel="handleBeatAlignDialogCancel"
     />

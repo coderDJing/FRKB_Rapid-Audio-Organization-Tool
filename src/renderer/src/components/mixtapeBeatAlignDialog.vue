@@ -19,6 +19,10 @@ const props = defineProps({
     type: String,
     default: ''
   },
+  trackKey: {
+    type: String,
+    default: ''
+  },
   filePath: {
     type: String,
     default: ''
@@ -34,10 +38,6 @@ const props = defineProps({
   barBeatOffset: {
     type: Number,
     default: 0
-  },
-  masterTempo: {
-    type: Boolean,
-    default: true
   }
 })
 
@@ -108,13 +108,26 @@ const bpmDisplay = computed(() => {
   return bpmValue.toFixed(3).replace(/\.?0+$/, '')
 })
 
-const firstBeatDisplay = computed(() => {
-  const value = Number(props.firstBeatMs)
-  if (!Number.isFinite(value)) return '0 ms'
-  return `${Math.round(value)} ms`
+const trackKeyDisplay = computed(() => {
+  const raw = String(props.trackKey || '').trim()
+  if (!raw) return ''
+  return raw.toLowerCase() === 'o' ? '-' : raw
 })
 
-const masterTempoDisplay = computed(() => (props.masterTempo !== false ? 'ON' : 'OFF'))
+const trackMetaDisplay = computed(() => {
+  const chunks = [`${t('mixtape.bpm')} ${bpmDisplay.value}`]
+  if (trackKeyDisplay.value) {
+    chunks.push(`${t('columns.key')} ${trackKeyDisplay.value}`)
+  }
+  return chunks.join(' · ')
+})
+
+const trackNameTitle = computed(() => {
+  const title = String(props.trackTitle || '').trim()
+  const meta = trackMetaDisplay.value
+  if (!title) return meta
+  return meta ? `${title} · ${meta}` : title
+})
 
 const cancel = () => {
   stopPreviewPlayback({ syncPosition: false })
@@ -387,23 +400,6 @@ const setPreviewZoom = (targetZoom: number, anchorRatio: number = 0.5) => {
   const nextDuration = resolveVisibleDurationSec()
   previewStartSec.value = clampPreviewStart(anchor - nextDuration * anchorRatio)
   schedulePreviewDraw()
-}
-
-const handleZoomSliderInput = (event: Event) => {
-  stopPreviewPlayback({ syncPosition: true })
-  const target = event.target as HTMLInputElement | null
-  const value = Number(target?.value || PREVIEW_MIN_ZOOM)
-  if (!Number.isFinite(value) || value <= 0) return
-  setPreviewZoom(value, 0.5)
-}
-
-const zoomIn = () => {
-  stopPreviewPlayback({ syncPosition: true })
-  setPreviewZoom(previewZoom.value * 1.25, 0.5)
-}
-const zoomOut = () => {
-  stopPreviewPlayback({ syncPosition: true })
-  setPreviewZoom(previewZoom.value / 1.25, 0.5)
 }
 
 const handlePreviewWheel = (event: WheelEvent) => {
@@ -930,29 +926,53 @@ onBeforeUnmount(() => {
         <span>{{ t('mixtape.beatAlignDialogTitle') }}</span>
       </div>
       <div class="dialog-body">
-        <div v-if="trackTitle" class="track-name" :title="trackTitle">
-          {{ trackTitle }}
-        </div>
-        <div class="meta-row">
-          <div class="meta-item">{{ t('mixtape.bpm') }}: {{ bpmDisplay }}</div>
-          <div class="meta-item">{{ t('mixtape.firstBeatOffset') }}: {{ firstBeatDisplay }}</div>
-          <div class="meta-item">{{ t('mixtape.masterTempo') }}: {{ masterTempoDisplay }}</div>
+        <div v-if="trackTitle" class="track-name" :title="trackNameTitle">
+          <span class="track-name__title">{{ trackTitle }}</span>
+          <span class="track-name__meta"> · {{ trackMetaDisplay }}</span>
         </div>
         <div class="preview-toolbar">
           <div class="preview-tools">
             <button
-              class="playback-btn"
+              class="playback-icon-btn"
               type="button"
               :disabled="!canTogglePreviewPlayback"
-              @click="handlePreviewPlaybackToggle"
-            >
-              {{
+              :title="
                 previewDecoding
                   ? t('mixtape.transportDecoding')
                   : previewPlaying
                     ? t('mixtape.pause')
                     : t('mixtape.play')
-              }}
+              "
+              :aria-label="
+                previewDecoding
+                  ? t('mixtape.transportDecoding')
+                  : previewPlaying
+                    ? t('mixtape.pause')
+                    : t('mixtape.play')
+              "
+              @click="handlePreviewPlaybackToggle"
+            >
+              <svg
+                v-if="previewDecoding"
+                class="is-spinning"
+                viewBox="0 0 16 16"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <circle cx="8" cy="8" r="5.5"></circle>
+              </svg>
+              <svg
+                v-else-if="previewPlaying"
+                viewBox="0 0 16 16"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <rect x="4" y="3" width="3" height="10" rx="0.9"></rect>
+                <rect x="9" y="3" width="3" height="10" rx="0.9"></rect>
+              </svg>
+              <svg v-else viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <polygon points="5,3.5 12.5,8 5,12.5"></polygon>
+              </svg>
             </button>
             <button
               class="barline-btn"
@@ -967,28 +987,6 @@ onBeforeUnmount(() => {
                   : t('mixtape.gridAdjustSetBarLine')
               }}
             </button>
-            <div class="preview-hint">
-              {{
-                previewBarLinePicking
-                  ? t('mixtape.gridAdjustSetBarLineHint')
-                  : t('mixtape.gridAdjustViewHint')
-              }}
-            </div>
-          </div>
-          <div class="preview-zoom">
-            <span>{{ t('mixtape.gridAdjustZoom') }}：</span>
-            <button class="zoom-btn" type="button" @click="zoomOut">-</button>
-            <input
-              class="zoom-slider"
-              type="range"
-              :min="PREVIEW_MIN_ZOOM"
-              :max="PREVIEW_MAX_ZOOM"
-              step="0.1"
-              :value="previewZoom"
-              @input="handleZoomSliderInput"
-            />
-            <button class="zoom-btn" type="button" @click="zoomIn">+</button>
-            <span class="zoom-value">{{ previewZoom.toFixed(1) }}x</span>
           </div>
         </div>
         <div

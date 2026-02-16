@@ -10,28 +10,20 @@
   font-size: 12px;
   color: var(--text-weak);
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.meta-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  font-size: 12px;
+.track-name__title {
+  color: var(--text);
+}
+
+.track-name__meta {
   color: var(--text-weak);
-}
-
-.meta-item {
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-elev);
 }
 
 .preview-toolbar {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 10px;
 }
@@ -43,66 +35,51 @@
   min-width: 0;
 }
 
-.preview-hint {
-  font-size: 12px;
-  color: var(--text-weak);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.preview-zoom {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text-weak);
-}
-
-.zoom-slider {
-  width: 190px;
-}
-
-.zoom-btn {
-  width: 22px;
-  height: 22px;
-  border: 1px solid var(--border);
-  background: var(--bg-elev);
-  color: var(--text);
-  cursor: pointer;
-  border-radius: 3px;
-}
-
-.zoom-btn:hover {
-  border-color: var(--accent);
-  background: var(--hover);
-}
-
-.zoom-value {
-  min-width: 42px;
-  text-align: right;
-}
-
-.playback-btn {
-  min-width: 68px;
+.playback-icon-btn {
+  width: 24px;
   height: 24px;
-  padding: 0 10px;
+  padding: 0;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--bg-elev);
   color: var(--text);
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
 }
 
-.playback-btn:hover:not(:disabled) {
+.playback-icon-btn svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+
+.playback-icon-btn svg.is-spinning {
+  fill: none;
+  stroke-linecap: round;
+  stroke-dasharray: 24;
+  stroke-dashoffset: 8;
+  animation: beat-align-playback-spin 0.9s linear infinite;
+}
+
+.playback-icon-btn:hover:not(:disabled) {
   border-color: var(--accent);
   background: var(--hover);
 }
 
-.playback-btn:disabled {
+.playback-icon-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+@keyframes beat-align-playback-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .barline-btn {
@@ -203,7 +180,10 @@
   height: 66px;
   border: 1px solid rgba(124, 166, 212, 0.28);
   border-radius: 6px;
-  background: transparent;
+  background: linear-gradient(180deg, rgba(20, 32, 47, 0.72) 0%, rgba(10, 16, 24, 0.88) 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.03) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.22) inset;
   overflow: hidden;
   cursor: grab;
 }
@@ -220,15 +200,31 @@
 
 .overview-viewport {
   position: absolute;
-  top: 2px;
-  bottom: 2px;
+  top: 0;
+  bottom: 0;
   left: 0;
-  border: 1px solid rgba(145, 205, 255, 0.95);
-  background: rgba(145, 205, 255, 0.08);
-  border-radius: 4px;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25) inset;
+  border: 1px solid rgba(131, 197, 240, 0.68);
+  background: linear-gradient(180deg, rgba(122, 185, 236, 0.18) 0%, rgba(81, 150, 218, 0.08) 100%);
+  border-radius: 0;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+    0 0 0 1px rgba(16, 28, 43, 0.34),
+    0 4px 10px rgba(72, 144, 225, 0.16);
   pointer-events: none;
   will-change: transform;
+  transition:
+    border-color 0.14s ease,
+    background 0.14s ease,
+    box-shadow 0.14s ease;
+}
+
+.overview-canvas-wrap.is-dragging .overview-viewport {
+  border-color: rgba(152, 214, 248, 0.82);
+  background: linear-gradient(180deg, rgba(134, 200, 239, 0.24) 0%, rgba(92, 163, 228, 0.11) 100%);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.12) inset,
+    0 0 0 1px rgba(20, 36, 56, 0.4),
+    0 6px 12px rgba(80, 156, 238, 0.2);
 }
 
 .preview-status {
