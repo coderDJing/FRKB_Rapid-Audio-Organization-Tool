@@ -1,6 +1,6 @@
 # Mixtape 时间线与节拍对齐草案（实现对齐版）
 
-更新时间：2026-02-15
+更新时间：2026-02-16
 
 ## 文档范围
 1. 本文只描述“当前代码已实现行为”和“明确未实现项”。
@@ -49,6 +49,14 @@
 7. 主波形和概览都引入左侧前置留白，解决开头片段无法在锚线处播放的问题。
 8. Dialog 加载波形时会后台 warmup 预解码，减少首次点播出现“解码中”。
 9. Dialog 内部解码也做了 in-flight 去重，避免 warmup 与手动播放并发重复解码。
+10. 支持方向键左右微调播放锚点：每次按键移动 `4` 拍（基于当前轨 `bpm` 换算秒）。
+11. 主波形支持按住左键水平拖拽；拖拽时持续输出“拉扯感”试听，松手后瞬时回到正常播放。
+12. 概览波形可视窗口支持左键拖拽；播放态下拖拽不自动停播，拖拽结束后继续按新锚点播放。
+13. 主波形播放滚动采用增量渲染复用，避免每帧全量重绘导致的“低帧率感”。
+14. 拖拽试听链路已从 `ScriptProcessorNode` 迁移到 `AudioWorkletNode`，主线程只下发目标位置/速度。
+15. Worklet 内使用连续速率平滑 + Hermite 插值采样，减少高速度拖拽时的刺耳电流噪声。
+16. Worklet 增加“无新拖拽输入超时归零”（约 `38ms`）机制，避免手停后声音继续滑动。
+17. 已移除 ScriptProcessor 路径，浏览器 deprecation 警告不再出现。
 
 ## 明确未实现项（避免误解）
 1. 节拍对齐 Dialog 目前仅做“自动分析结果预览 + 试听”，未落地“手动调首拍并保存”流程。
@@ -79,16 +87,19 @@
 8. 节拍对齐播放控制：`src/renderer/src/components/mixtapeBeatAlignPlayback.ts`
 9. 节拍对齐主波形绘制：`src/renderer/src/components/mixtapeBeatAlignWaveform.ts`
 10. 节拍对齐概览缓存：`src/renderer/src/components/mixtapeBeatAlignOverviewCache.ts`
-11. 混音 IPC 与追加触发分析：`src/main/ipc/mixtapeHandlers.ts`
-12. 分析结果持久化：`src/main/mixtapeDb.ts`
-13. 主进程解码 IPC：`src/main/window/mainWindow/audioDecodeHandlers.ts`
-14. 分析 Worker：`src/main/workers/keyAnalysisWorker.ts`
-15. Rust 分析入口：`rust_package/src/lib.rs`
-16. Rust BPM/首拍桥接：`rust_package/src/qm_bpm.rs`
-17. QM 首拍实现：`rust_package/native/qm/qm_bpm_wrapper.cpp`
+11. 节拍对齐主波形增量渲染：`src/renderer/src/components/mixtapeBeatAlignPreviewRenderer.ts`
+12. 节拍对齐拖拽试听 Worklet：`src/renderer/src/workers/mixtapeBeatAlignScrub.worklet.js`
+13. 混音 IPC 与追加触发分析：`src/main/ipc/mixtapeHandlers.ts`
+14. 分析结果持久化：`src/main/mixtapeDb.ts`
+15. 主进程解码 IPC：`src/main/window/mainWindow/audioDecodeHandlers.ts`
+16. 分析 Worker：`src/main/workers/keyAnalysisWorker.ts`
+17. Rust 分析入口：`rust_package/src/lib.rs`
+18. Rust BPM/首拍桥接：`rust_package/src/qm_bpm.rs`
+19. QM 首拍实现：`rust_package/native/qm/qm_bpm_wrapper.cpp`
 
 ## 修订说明（本次清理）
 1. 删除了“所有格式统一后端解码”的旧说法，改为“browser/ipc 双路径 + 失败回退”。
 2. 删除了“波形轨内各轨局部播放头”的旧说法，改为“单一全局播放头”。
 3. 把“已实现”和“未实现”拆开，避免将规划误读为现状。
 4. 统一了首拍分析触发时机描述：入库即分析、开窗补跑、结果持久化复用。
+5. 新增 Beat Align 拖拽试听实现口径：方向键 4 拍微调、播放态拖拽不中断、AudioWorklet 听感链路与停手归零机制。
