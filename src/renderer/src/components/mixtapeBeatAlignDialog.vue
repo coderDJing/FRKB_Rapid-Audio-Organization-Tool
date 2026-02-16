@@ -4,7 +4,7 @@ import { t } from '@renderer/utils/translate'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import { rebuildBeatAlignOverviewCache } from '@renderer/components/mixtapeBeatAlignOverviewCache'
-import { drawBeatAlignRekordboxWaveform } from '@renderer/components/mixtapeBeatAlignWaveform'
+import { createBeatAlignPreviewRenderer } from '@renderer/components/mixtapeBeatAlignPreviewRenderer'
 import { useMixtapeBeatAlignPlayback } from '@renderer/components/mixtapeBeatAlignPlayback'
 import { pickRawDataByFile } from '@renderer/components/mixtapeBeatAlignRawWaveform'
 import {
@@ -80,7 +80,11 @@ const OVERVIEW_MAX_RENDER_COLUMNS = 960
 const OVERVIEW_IS_HALF_WAVEFORM = false
 const OVERVIEW_WAVEFORM_VERTICAL_PADDING = 8
 const PREVIEW_MAX_SAMPLES_PER_PIXEL = 180
+const PREVIEW_PLAY_MAX_SAMPLES_PER_PIXEL = 20
 const PREVIEW_PLAY_ANCHOR_RATIO = 1 / 3
+const PREVIEW_SHORTCUT_FALLBACK_BPM = 128
+const PREVIEW_SHORTCUT_BEATS = 4
+const previewRenderer = createBeatAlignPreviewRenderer()
 
 const bpmDisplay = computed(() => {
   const bpmValue = Number(props.bpm)
@@ -147,6 +151,14 @@ const clampPreviewStart = (value: number) => {
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
+const resolvePreviewAnchorSec = (startSec: number = previewStartSec.value) => {
+  const total = resolvePreviewDurationSec()
+  const visible = resolveVisibleDurationSec()
+  if (!total || !visible) return 0
+  const safeStart = clampPreviewStart(startSec)
+  return clampNumber(safeStart + visible * PREVIEW_PLAY_ANCHOR_RATIO, 0, total)
+}
+
 const resolveOverviewViewportMetrics = () => {
   const total = resolvePreviewDurationSec()
   const visible = resolveVisibleDurationSec()
@@ -174,7 +186,7 @@ const resolveOverviewViewportMetrics = () => {
 const overviewViewportStyle = computed(() => {
   const { left, width } = resolveOverviewViewportMetrics()
   return {
-    left: `${left}px`,
+    transform: `translate3d(${left}px, 0, 0)`,
     width: `${width}px`,
     opacity: width > 0 ? '1' : '0'
   }
@@ -203,13 +215,6 @@ const drawPreviewCanvas = () => {
   const wrap = previewWrapRef.value
   if (!canvas || !wrap) return
 
-  const width = Math.max(1, Math.floor(wrap.clientWidth))
-  const height = Math.max(1, Math.floor(wrap.clientHeight))
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-
-  resizePreviewCanvas(canvas, ctx, width, height)
-
   const totalDuration = resolvePreviewDurationSec()
   const visibleDuration = totalDuration > 0 ? resolveVisibleDurationSec() : 0
   const safeDuration = Math.max(0.001, visibleDuration || totalDuration || 1)
@@ -220,17 +225,19 @@ const drawPreviewCanvas = () => {
   } else {
     previewStartSec.value = 0
   }
-  drawBeatAlignRekordboxWaveform(ctx, {
-    width,
-    height,
+  const isPlaybackRendering = previewPlaying.value && !previewDragging.value
+  previewRenderer.draw({
+    canvas,
+    wrap,
     bpm: Number(props.bpm) || 0,
     firstBeatMs: Number(props.firstBeatMs) || 0,
     rangeStartSec,
     rangeDurationSec: safeDuration,
     mixxxData: previewMixxxData.value,
-    showBackground: false,
-    maxSamplesPerPixel: PREVIEW_MAX_SAMPLES_PER_PIXEL,
-    showDetailHighlights: true,
+    maxSamplesPerPixel: isPlaybackRendering
+      ? PREVIEW_PLAY_MAX_SAMPLES_PER_PIXEL
+      : PREVIEW_MAX_SAMPLES_PER_PIXEL,
+    showDetailHighlights: !isPlaybackRendering,
     showCenterLine: true
   })
 }
@@ -276,6 +283,8 @@ const {
   previewDecoding,
   previewAnchorStyle,
   canTogglePreviewPlayback,
+  seekPreviewAnchorSec,
+  nudgePreviewBySec,
   handlePreviewPlaybackToggle,
   warmupPreviewPlayback,
   stopPreviewPlayback,
@@ -288,7 +297,8 @@ const {
   resolveVisibleDurationSec,
   resolvePreviewDurationSec,
   clampPreviewStart,
-  schedulePreviewDraw
+  schedulePreviewDraw,
+  isViewportInteracting: () => previewDragging.value || overviewDragging.value
 })
 
 const clearPreviewWarmupTimer = () => {
@@ -393,13 +403,15 @@ const stopPreviewDragging = () => {
   previewDragging.value = false
   window.removeEventListener('mousemove', handlePreviewDragMove)
   window.removeEventListener('mouseup', stopPreviewDragging)
+  if (previewPlaying.value) {
+    void seekPreviewAnchorSec(resolvePreviewAnchorSec())
+  }
   schedulePreviewDraw()
 }
 
 const handlePreviewMouseDown = (event: MouseEvent) => {
   if (event.button !== 0) return
   if (!previewMixxxData.value) return
-  stopPreviewPlayback({ syncPosition: true })
 
   previewDragging.value = true
   previewDragStartClientX = event.clientX
@@ -462,10 +474,13 @@ const stopOverviewDragging = () => {
   overviewDragging.value = false
   overviewSuppressClick = overviewDragMoved
   overviewDragMoved = false
-  window.removeEventListener('mousemove', handleOverviewMouseMove as EventListener)
-  window.removeEventListener('mouseup', stopOverviewDragging as EventListener)
+  window.removeEventListener('mousemove', handleOverviewMouseMove)
+  window.removeEventListener('mouseup', stopOverviewDragging)
   if (typeof document !== 'undefined') {
     document.body.style.userSelect = ''
+  }
+  if (previewPlaying.value) {
+    void seekPreviewAnchorSec(resolvePreviewAnchorSec())
   }
   schedulePreviewDraw()
 }
@@ -473,7 +488,6 @@ const stopOverviewDragging = () => {
 const handleOverviewMouseDown = (event: MouseEvent) => {
   if (event.button !== 0) return
   if (!previewMixxxData.value) return
-  stopPreviewPlayback({ syncPosition: true })
   const pointer = resolveOverviewPointer(event)
   if (!pointer) return
   const { x, rect } = pointer
@@ -500,7 +514,6 @@ const handleOverviewMouseDown = (event: MouseEvent) => {
 }
 
 const handleOverviewClick = (event: MouseEvent) => {
-  stopPreviewPlayback({ syncPosition: true })
   if (overviewSuppressClick) {
     overviewSuppressClick = false
     return
@@ -508,6 +521,9 @@ const handleOverviewClick = (event: MouseEvent) => {
   const pointer = resolveOverviewPointer(event)
   if (!pointer) return
   setPreviewStartByOverviewCenterRatio(pointer.x / pointer.rect.width)
+  if (previewPlaying.value) {
+    void seekPreviewAnchorSec(resolvePreviewAnchorSec())
+  }
 }
 
 const fetchOverviewWaveformFromCache = async (filePath: string) => {
@@ -542,6 +558,7 @@ const loadPreviewWaveform = async (filePath: string) => {
   const requestSeq = ++previewLoadSequence
   clearPreviewWarmupTimer()
   stopPreviewPlayback({ syncPosition: false })
+  previewRenderer.reset()
   previewLoading.value = false
   previewMixxxData.value = null
   overviewMixxxData.value = null
@@ -644,10 +661,22 @@ const isEditableEventTarget = (target: EventTarget | null) => {
 
 const handleWindowKeydown = (event: KeyboardEvent) => {
   if (!dialogVisible.value) return
-  if (event.code !== 'Space' && event.key !== ' ') return
   if (isEditableEventTarget(event.target)) return
-  event.preventDefault()
-  handlePreviewPlaybackToggle()
+
+  if (event.code === 'Space' || event.key === ' ') {
+    event.preventDefault()
+    handlePreviewPlaybackToggle()
+    return
+  }
+
+  if (event.code === 'ArrowLeft' || event.code === 'ArrowRight') {
+    event.preventDefault()
+    const bpmValue = Number(props.bpm)
+    const safeBpm =
+      Number.isFinite(bpmValue) && bpmValue > 0 ? bpmValue : PREVIEW_SHORTCUT_FALLBACK_BPM
+    const deltaSec = (60 / safeBpm) * PREVIEW_SHORTCUT_BEATS
+    void nudgePreviewBySec(event.code === 'ArrowLeft' ? -deltaSec : deltaSec)
+  }
 }
 
 watch(
@@ -689,6 +718,7 @@ onBeforeUnmount(() => {
   previewLoadSequence += 1
   clearPreviewWarmupTimer()
   cleanupPreviewPlayback()
+  previewRenderer.dispose()
   if (previewRaf) {
     cancelAnimationFrame(previewRaf)
     previewRaf = 0
@@ -803,197 +833,4 @@ onBeforeUnmount(() => {
   </div>
 </template>
 
-<style lang="scss" scoped>
-.dialog-body {
-  padding: 16px 20px 0;
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.track-name {
-  font-size: 12px;
-  color: var(--text-weak);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.meta-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  font-size: 12px;
-  color: var(--text-weak);
-}
-
-.meta-item {
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-elev);
-}
-
-.preview-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-}
-
-.preview-tools {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.preview-hint {
-  font-size: 12px;
-  color: var(--text-weak);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.preview-zoom {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text-weak);
-}
-
-.zoom-slider {
-  width: 190px;
-}
-
-.zoom-btn {
-  width: 22px;
-  height: 22px;
-  border: 1px solid var(--border);
-  background: var(--bg-elev);
-  color: var(--text);
-  cursor: pointer;
-  border-radius: 3px;
-}
-
-.zoom-btn:hover {
-  border-color: var(--accent);
-  background: var(--hover);
-}
-
-.zoom-value {
-  min-width: 42px;
-  text-align: right;
-}
-
-.playback-btn {
-  min-width: 68px;
-  height: 24px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg-elev);
-  color: var(--text);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.playback-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--hover);
-}
-
-.playback-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.preview-canvas-wrap {
-  position: relative;
-  height: 176px;
-  border: 1px solid rgba(124, 166, 212, 0.3);
-  border-radius: 6px;
-  background: transparent;
-  cursor: grab;
-  overflow: hidden;
-}
-
-.preview-canvas-wrap.is-dragging {
-  cursor: grabbing;
-}
-
-.preview-canvas {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-.preview-anchor-line {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  margin-left: -1px;
-  background: rgba(255, 233, 141, 0.7);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.22);
-  pointer-events: none;
-  z-index: 2;
-}
-
-.preview-anchor-line.is-active {
-  background: rgba(255, 227, 122, 0.94);
-}
-
-.overview-canvas-wrap {
-  position: relative;
-  height: 66px;
-  border: 1px solid rgba(124, 166, 212, 0.28);
-  border-radius: 6px;
-  background: transparent;
-  overflow: hidden;
-  cursor: grab;
-}
-
-.overview-canvas-wrap.is-dragging {
-  cursor: grabbing;
-}
-
-.overview-canvas {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-.overview-viewport {
-  position: absolute;
-  top: 2px;
-  bottom: 2px;
-  left: 0;
-  border: 1px solid rgba(145, 205, 255, 0.95);
-  background: rgba(145, 205, 255, 0.08);
-  border-radius: 4px;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25) inset;
-  pointer-events: none;
-  will-change: transform;
-}
-
-.preview-status {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 12px;
-  color: var(--text-weak);
-  background: rgba(5, 10, 16, 0.6);
-  padding: 6px 10px;
-  border-radius: 4px;
-  pointer-events: none;
-}
-
-.preview-status.is-error {
-  color: #f6a2a2;
-}
-</style>
+<style lang="scss" scoped src="./mixtapeBeatAlignDialog.scss"></style>

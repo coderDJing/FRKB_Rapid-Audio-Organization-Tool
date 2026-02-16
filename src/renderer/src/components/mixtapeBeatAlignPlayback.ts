@@ -10,6 +10,7 @@ type UseMixtapeBeatAlignPlaybackParams = {
   resolvePreviewDurationSec: () => number
   clampPreviewStart: (value: number) => number
   schedulePreviewDraw: () => void
+  isViewportInteracting?: () => boolean
 }
 
 type DecodeForTransportResult = {
@@ -49,7 +50,8 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     resolveVisibleDurationSec,
     resolvePreviewDurationSec,
     clampPreviewStart,
-    schedulePreviewDraw
+    schedulePreviewDraw,
+    isViewportInteracting
   } = params
 
   const previewPlaying = ref(false)
@@ -88,6 +90,21 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     if (Math.abs(nextStart - previewStartSec.value) <= 0.0001) return
     previewStartSec.value = nextStart
     schedulePreviewDraw()
+  }
+
+  const resolveAnchorSecFromPreviewWindow = () => {
+    const visible = resolveVisibleDurationSec()
+    const baseStart = clampPreviewStart(previewStartSec.value)
+    return baseStart + Math.max(0, visible) * PREVIEW_PLAY_ANCHOR_RATIO
+  }
+
+  const clampPlaybackAnchorSec = (value: number, duration?: number) => {
+    const resolvedDuration = Number(duration)
+    const total = Number.isFinite(resolvedDuration)
+      ? Math.max(0, resolvedDuration)
+      : Math.max(0, resolvePreviewDurationSec())
+    if (total <= 0) return 0
+    return clampNumber(value, 0, Math.max(0, total - PREVIEW_PLAY_END_GUARD_SEC))
   }
 
   const resolveCurrentPlaybackSec = () => {
@@ -190,6 +207,86 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     }
   }
 
+  const startPlaybackFromBuffer = async (buffer: AudioBuffer, anchorSec: number, token: number) => {
+    const ctx = ensureAudioContext(buffer.sampleRate)
+    if (ctx.state === 'suspended') {
+      try {
+        await ctx.resume()
+      } catch {}
+    }
+    if (token !== playbackVersion) return false
+
+    const duration = Math.max(0, Number(buffer.duration) || resolvePreviewDurationSec())
+    const safeStart = clampPlaybackAnchorSec(anchorSec, duration)
+
+    const source = ctx.createBufferSource()
+    source.buffer = buffer
+    source.connect(ctx.destination)
+    sourceNode = source
+    playbackDurationSec = duration
+    playbackStartSec = safeStart
+    playbackStartedAt = performance.now()
+    previewPlaying.value = true
+
+    source.onended = () => {
+      if (source !== sourceNode) return
+      stopPreviewPlayback({ syncPosition: true })
+    }
+
+    try {
+      source.start(0, safeStart)
+    } catch (error) {
+      console.error('[mixtape-beat-align] start playback failed', filePathRef.value, error)
+      stopPreviewPlayback({ syncPosition: false })
+      return false
+    }
+
+    const tick = () => {
+      if (!previewPlaying.value || token !== playbackVersion) return
+      const currentSec = resolveCurrentPlaybackSec()
+      if (currentSec >= playbackDurationSec) {
+        syncPreviewWindowToAnchorSec(playbackDurationSec)
+        stopPreviewPlayback({ syncPosition: false, cancelPending: false })
+        return
+      }
+      if (!isViewportInteracting?.()) {
+        syncPreviewWindowToAnchorSec(currentSec)
+      }
+      playbackRaf = requestAnimationFrame(tick)
+    }
+    playbackRaf = requestAnimationFrame(tick)
+    return true
+  }
+
+  const seekPreviewAnchorSec = async (anchorSec: number) => {
+    const targetAnchor = clampPlaybackAnchorSec(anchorSec)
+    if (!previewPlaying.value) {
+      syncPreviewWindowToAnchorSec(targetAnchor)
+      return
+    }
+
+    const buffer = sourceNode?.buffer
+    if (!buffer) {
+      syncPreviewWindowToAnchorSec(targetAnchor)
+      return
+    }
+
+    const token = ++playbackVersion
+    stopActivePlayback(false)
+    const started = await startPlaybackFromBuffer(buffer, targetAnchor, token)
+    if (!started && token === playbackVersion) {
+      syncPreviewWindowToAnchorSec(targetAnchor)
+    }
+  }
+
+  const nudgePreviewBySec = async (deltaSec: number) => {
+    if (!Number.isFinite(deltaSec) || Math.abs(deltaSec) <= 0.000001) return
+    const baseAnchor = previewPlaying.value
+      ? resolveCurrentPlaybackSec()
+      : resolveAnchorSecFromPreviewWindow()
+    await seekPreviewAnchorSec(baseAnchor + deltaSec)
+  }
+
   const startPreviewPlayback = async () => {
     if (previewPlaying.value || previewDecoding.value) return
     const filePath = filePathRef.value
@@ -211,54 +308,11 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     previewDecoding.value = false
 
     stopActivePlayback(false)
-
-    const ctx = ensureAudioContext(buffer.sampleRate)
-    if (ctx.state === 'suspended') {
-      try {
-        await ctx.resume()
-      } catch {}
+    const anchorSec = resolveAnchorSecFromPreviewWindow()
+    const started = await startPlaybackFromBuffer(buffer, anchorSec, token)
+    if (!started && token === playbackVersion) {
+      syncPreviewWindowToAnchorSec(anchorSec)
     }
-
-    const visible = resolveVisibleDurationSec()
-    const baseStart = clampPreviewStart(previewStartSec.value)
-    const anchorSec = baseStart + Math.max(0, visible) * PREVIEW_PLAY_ANCHOR_RATIO
-    const duration = Math.max(0, Number(buffer.duration) || resolvePreviewDurationSec())
-    const safeStart = clampNumber(anchorSec, 0, Math.max(0, duration - PREVIEW_PLAY_END_GUARD_SEC))
-
-    const source = ctx.createBufferSource()
-    source.buffer = buffer
-    source.connect(ctx.destination)
-    sourceNode = source
-    playbackDurationSec = duration
-    playbackStartSec = safeStart
-    playbackStartedAt = performance.now()
-    previewPlaying.value = true
-
-    source.onended = () => {
-      if (source !== sourceNode) return
-      stopPreviewPlayback({ syncPosition: true })
-    }
-
-    try {
-      source.start(0, safeStart)
-    } catch (error) {
-      console.error('[mixtape-beat-align] start playback failed', filePath, error)
-      stopPreviewPlayback({ syncPosition: false })
-      return
-    }
-
-    const tick = () => {
-      if (!previewPlaying.value || token !== playbackVersion) return
-      const currentSec = resolveCurrentPlaybackSec()
-      if (currentSec >= playbackDurationSec) {
-        syncPreviewWindowToAnchorSec(playbackDurationSec)
-        stopPreviewPlayback({ syncPosition: false, cancelPending: false })
-        return
-      }
-      syncPreviewWindowToAnchorSec(currentSec)
-      playbackRaf = requestAnimationFrame(tick)
-    }
-    playbackRaf = requestAnimationFrame(tick)
   }
 
   const handlePreviewPlaybackToggle = () => {
@@ -286,6 +340,8 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     previewDecoding,
     previewAnchorStyle,
     canTogglePreviewPlayback,
+    seekPreviewAnchorSec,
+    nudgePreviewBySec,
     handlePreviewPlaybackToggle,
     warmupPreviewPlayback,
     stopPreviewPlayback,
