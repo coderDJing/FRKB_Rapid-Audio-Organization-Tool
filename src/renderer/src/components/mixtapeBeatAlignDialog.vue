@@ -6,6 +6,7 @@ import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAu
 import { rebuildBeatAlignOverviewCache } from '@renderer/components/mixtapeBeatAlignOverviewCache'
 import { createBeatAlignPreviewRenderer } from '@renderer/components/mixtapeBeatAlignPreviewRenderer'
 import { useMixtapeBeatAlignPlayback } from '@renderer/components/mixtapeBeatAlignPlayback'
+import { useMixtapeBeatAlignMetronome } from '@renderer/components/mixtapeBeatAlignMetronome'
 import { pickRawDataByFile } from '@renderer/components/mixtapeBeatAlignRawWaveform'
 import {
   isValidMixxxWaveformData,
@@ -89,6 +90,7 @@ const PREVIEW_MAX_ZOOM = 100
 const PREVIEW_HIRES_TARGET_RATE = 4000
 const PREVIEW_RAW_TARGET_RATE = 2400
 const PREVIEW_WARMUP_DELAY_MS = 600
+const PREVIEW_WARMUP_EAGER_DELAY_MS = 0
 const OVERVIEW_MAX_RENDER_COLUMNS = 960
 const OVERVIEW_IS_HALF_WAVEFORM = false
 const OVERVIEW_WAVEFORM_VERTICAL_PADDING = 8
@@ -334,6 +336,7 @@ const {
   stopPreviewScrub,
   seekPreviewAnchorSec,
   nudgePreviewBySec,
+  getPreviewPlaybackSec,
   handlePreviewPlaybackToggle,
   warmupPreviewPlayback,
   stopPreviewPlayback,
@@ -350,21 +353,51 @@ const {
   isViewportInteracting: () => previewDragging.value || overviewDragging.value
 })
 
+const {
+  metronomeEnabled,
+  metronomeSupported,
+  toggleMetronome: togglePreviewMetronome
+} = useMixtapeBeatAlignMetronome({
+  dialogVisible,
+  previewPlaying,
+  bpm: computed(() => Number(props.bpm) || 0),
+  firstBeatMs: computed(() => Number(props.firstBeatMs) || 0),
+  resolveAnchorSec: () => getPreviewPlaybackSec()
+})
+
+const canToggleMetronome = computed(() => {
+  if (previewLoading.value) return false
+  if (!previewMixxxData.value) return false
+  return metronomeSupported.value
+})
+
+const handleMetronomeToggle = () => {
+  if (!canToggleMetronome.value) return
+  togglePreviewMetronome()
+}
+
 const clearPreviewWarmupTimer = () => {
   if (!previewWarmupTimer) return
   clearTimeout(previewWarmupTimer)
   previewWarmupTimer = null
 }
-const schedulePreviewWarmup = (filePath: string, requestSeq: number) => {
+const schedulePreviewWarmup = (
+  filePath: string,
+  requestSeq: number,
+  delayMs: number = PREVIEW_WARMUP_DELAY_MS
+) => {
   clearPreviewWarmupTimer()
   const normalized = filePath.trim()
   if (!normalized) return
-  previewWarmupTimer = setTimeout(() => {
-    previewWarmupTimer = null
-    if (requestSeq !== previewLoadSequence) return
-    if (normalizePathKey(props.filePath) !== normalizePathKey(normalized)) return
-    void warmupPreviewPlayback(normalized)
-  }, PREVIEW_WARMUP_DELAY_MS)
+  previewWarmupTimer = setTimeout(
+    () => {
+      previewWarmupTimer = null
+      if (requestSeq !== previewLoadSequence) return
+      if (normalizePathKey(props.filePath) !== normalizePathKey(normalized)) return
+      void warmupPreviewPlayback(normalized)
+    },
+    Math.max(0, Number(delayMs) || 0)
+  )
 }
 const rebuildOverviewCache = () => {
   overviewCacheCanvas = rebuildBeatAlignOverviewCache({
@@ -732,6 +765,8 @@ const loadPreviewWaveform = async (filePath: string) => {
     return
   }
   previewLoading.value = true
+  // 对话框一打开即开始预解码，避免用户首次点击播放时才触发解码等待
+  schedulePreviewWarmup(normalized, requestSeq, PREVIEW_WARMUP_EAGER_DELAY_MS)
   try {
     const fileKey = normalizePathKey(normalized)
     const hiresPromise = window.electron.ipcRenderer
@@ -777,9 +812,6 @@ const loadPreviewWaveform = async (filePath: string) => {
     previewLoading.value = false
     schedulePreviewDraw()
     scheduleOverviewRebuild()
-    if (previewMixxxData.value) {
-      schedulePreviewWarmup(normalized, requestSeq)
-    }
     const rawResult = await rawPromise
     if (requestSeq !== previewLoadSequence) return
     overviewRawData.value = pickRawDataByFile(rawResult, fileKey, normalizePathKey)
@@ -986,6 +1018,22 @@ onBeforeUnmount(() => {
                   ? t('mixtape.gridAdjustSetBarLineCancel')
                   : t('mixtape.gridAdjustSetBarLine')
               }}
+            </button>
+            <button
+              class="waveform-action-btn"
+              type="button"
+              :class="{ 'is-active': metronomeEnabled }"
+              :disabled="!canToggleMetronome"
+              :title="metronomeEnabled ? t('mixtape.metronomeOn') : t('mixtape.metronomeOff')"
+              :aria-label="metronomeEnabled ? t('mixtape.metronomeOn') : t('mixtape.metronomeOff')"
+              @click="handleMetronomeToggle"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <path d="M4.5 2h7l-1.2 11h-4.6L4.5 2Z"></path>
+                <path d="M8 5.3v3.8"></path>
+                <circle cx="8" cy="10.9" r="1.1"></circle>
+              </svg>
+              <span>{{ t('mixtape.metronome') }}</span>
             </button>
           </div>
         </div>

@@ -1,5 +1,9 @@
 import { computed, ref, type Ref } from 'vue'
-import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import {
+  canPlayHtmlAudio,
+  toPreviewUrl,
+  type MixxxWaveformData
+} from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 
 type UseMixtapeBeatAlignPlaybackParams = {
   filePathRef: Ref<string>
@@ -255,6 +259,51 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     stopActivePlayback(syncPosition)
   }
 
+  const decodeAudioBufferByBrowser = async (filePath: string): Promise<AudioBuffer> => {
+    const url = toPreviewUrl(filePath)
+    if (!url) throw new Error('preview url is empty')
+    const response = await fetch(url)
+    if (!response.ok) throw new Error(`fetch failed: ${response.status}`)
+    const arrayBuffer = await response.arrayBuffer()
+    if (!arrayBuffer.byteLength) throw new Error('fetch returned empty data')
+    const ctx = ensureAudioContext()
+    return await ctx.decodeAudioData(arrayBuffer)
+  }
+
+  const decodeAudioBufferByIpc = async (filePath: string): Promise<AudioBuffer> => {
+    if (!window?.electron?.ipcRenderer?.invoke) {
+      throw new Error('ipcRenderer.invoke is unavailable')
+    }
+
+    const result = (await window.electron.ipcRenderer.invoke(
+      'mixtape:decode-for-transport',
+      filePath
+    )) as DecodeForTransportResult
+    const pcm = normalizePcmData(result?.pcmData)
+    const sampleRate = Math.max(1, Number(result?.sampleRate) || 44100)
+    const channels = Math.max(1, Number(result?.channels) || 1)
+    const totalFrames = Math.max(0, Number(result?.totalFrames) || 0)
+    const frameCount =
+      totalFrames > 0
+        ? Math.min(totalFrames, Math.floor(pcm.length / channels))
+        : Math.floor(pcm.length / channels)
+    if (frameCount <= 0 || pcm.length <= 0) {
+      throw new Error('decoded pcm is empty')
+    }
+
+    const ctx = ensureAudioContext(sampleRate)
+    const buffer = ctx.createBuffer(channels, frameCount, sampleRate)
+    for (let ch = 0; ch < channels; ch += 1) {
+      const channelData = buffer.getChannelData(ch)
+      let readIndex = ch
+      for (let i = 0; i < frameCount; i += 1) {
+        channelData[i] = pcm[readIndex] || 0
+        readIndex += channels
+      }
+    }
+    return buffer
+  }
+
   const decodeAudioBuffer = async (filePath: string): Promise<AudioBuffer> => {
     const cached = audioBufferCache.get(filePath)
     if (cached) return cached
@@ -262,36 +311,16 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     if (inflight) return inflight
 
     const task = (async () => {
-      if (!window?.electron?.ipcRenderer?.invoke) {
-        throw new Error('ipcRenderer.invoke is unavailable')
-      }
-
-      const result = (await window.electron.ipcRenderer.invoke(
-        'mixtape:decode-for-transport',
-        filePath
-      )) as DecodeForTransportResult
-      const pcm = normalizePcmData(result?.pcmData)
-      const sampleRate = Math.max(1, Number(result?.sampleRate) || 44100)
-      const channels = Math.max(1, Number(result?.channels) || 1)
-      const totalFrames = Math.max(0, Number(result?.totalFrames) || 0)
-      const frameCount =
-        totalFrames > 0
-          ? Math.min(totalFrames, Math.floor(pcm.length / channels))
-          : Math.floor(pcm.length / channels)
-      if (frameCount <= 0 || pcm.length <= 0) {
-        throw new Error('decoded pcm is empty')
-      }
-
-      const ctx = ensureAudioContext(sampleRate)
-      const buffer = ctx.createBuffer(channels, frameCount, sampleRate)
-      for (let ch = 0; ch < channels; ch += 1) {
-        const channelData = buffer.getChannelData(ch)
-        let readIndex = ch
-        for (let i = 0; i < frameCount; i += 1) {
-          channelData[i] = pcm[readIndex] || 0
-          readIndex += channels
-        }
-      }
+      const buffer = canPlayHtmlAudio(filePath)
+        ? await decodeAudioBufferByBrowser(filePath).catch(async (error) => {
+            console.warn(
+              '[mixtape-beat-align] browser decode failed, fallback to ipc:',
+              filePath,
+              error
+            )
+            return await decodeAudioBufferByIpc(filePath)
+          })
+        : await decodeAudioBufferByIpc(filePath)
       audioBufferCache.set(filePath, buffer)
       return buffer
     })()
@@ -543,6 +572,11 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     await seekPreviewAnchorSec(baseAnchor + deltaSec)
   }
 
+  const getPreviewPlaybackSec = () => {
+    if (previewPlaying.value) return resolveCurrentPlaybackSec()
+    return resolveAnchorSecFromPreviewWindow()
+  }
+
   const startPreviewPlayback = async () => {
     if (previewPlaying.value || previewDecoding.value) return
     const filePath = filePathRef.value
@@ -603,6 +637,7 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     stopPreviewScrub,
     seekPreviewAnchorSec,
     nudgePreviewBySec,
+    getPreviewPlaybackSec,
     handlePreviewPlaybackToggle,
     warmupPreviewPlayback,
     stopPreviewPlayback,

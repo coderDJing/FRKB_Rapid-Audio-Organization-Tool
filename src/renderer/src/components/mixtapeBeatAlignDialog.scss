@@ -28,6 +28,53 @@
   gap: 10px;
 }
 
+.waveform-action-btn {
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elev);
+  color: var(--text);
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.waveform-action-btn svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.waveform-action-btn svg path:first-child {
+  fill: currentColor;
+  stroke: none;
+  opacity: 0.18;
+}
+
+.waveform-action-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
+.waveform-action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.waveform-action-btn.is-active {
+  border-color: rgba(145, 205, 255, 0.95);
+  box-shadow: 0 0 0 1px rgba(145, 205, 255, 0.25) inset;
+  background: rgba(145, 205, 255, 0.12);
+}
+
 .preview-tools {
   display: inline-flex;
   align-items: center;
