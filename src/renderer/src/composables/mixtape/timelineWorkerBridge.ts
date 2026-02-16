@@ -31,6 +31,7 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
     buildSequentialLayoutForZoom,
     forEachVisibleLayoutItem,
     resolveTrackSourceDurationSeconds,
+    resolveTrackFirstBeatMs,
     resolveRenderPxPerSec,
     resolveTimelineBufferId,
     resolveLaneHeightForZoom,
@@ -251,7 +252,7 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
       const trackEndX = trackStartX + trackWidth
       if (trackEndX < renderStartX || trackStartX > renderEndX) return
       const bpmValue = typeof track.bpm === 'number' ? track.bpm : 0
-      const firstBeatMs = Number(track.firstBeatMs) || 0
+      const firstBeatMs = resolveTrackFirstBeatMs(track)
       const barBeatOffset = Number(track.barBeatOffset) || 0
       renderTracks.push({
         id: track.id,

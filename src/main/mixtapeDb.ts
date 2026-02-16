@@ -284,7 +284,7 @@ export function upsertMixtapeItemBpmByFilePath(
     const normalizedFirstBeatMs =
       Number.isFinite(firstBeatMs) && firstBeatMs >= 0 ? Number(firstBeatMs.toFixed(3)) : 0
     analysisMap.set(filePath, {
-      bpm: Number(bpm.toFixed(2)),
+      bpm: Number(bpm.toFixed(6)),
       firstBeatMs: normalizedFirstBeatMs
     })
   }
@@ -321,7 +321,7 @@ export function upsertMixtapeItemBpmByFilePath(
           const currentBpm = Number(info.bpm)
           const currentFirstBeatMs = Number(info.firstBeatMs)
           const normalizedCurrentBpm = Number.isFinite(currentBpm)
-            ? Number(currentBpm.toFixed(2))
+            ? Number(currentBpm.toFixed(6))
             : NaN
           const normalizedCurrentFirstBeatMs =
             Number.isFinite(currentFirstBeatMs) && currentFirstBeatMs >= 0

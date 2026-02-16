@@ -66,11 +66,9 @@ type UseMixtapeTimelineOptions = {
 
 export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
   const { tracks, bpmAnalysisActive, bpmAnalysisFailed } = options
-
   const zoom = ref(ZOOM_MIN)
   const renderZoom = ref(ZOOM_MIN)
   const zoomTouched = ref(true)
-
   const timelineScrollRef = ref<InstanceType<typeof OverlayScrollbarsComponent> | null>(null)
   const timelineScrollWrapRef = ref<HTMLElement | null>(null)
   const timelineCanvasRef = ref<HTMLCanvasElement | null>(null)
@@ -100,12 +98,10 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
   let waveformPreRenderQueue: WaveformPreRenderTask[] = []
   let waveformRenderWorker: Worker | null = null
   const waveformTilePending = new Set<string>()
-
   const waveformScratch = {
     canvas: null as HTMLCanvasElement | null,
     ctx: null as CanvasRenderingContext2D | null
   }
-
   const waveformDataMap = markRaw(new Map<string, MixxxWaveformData | null>())
   const waveformMinMaxCache = markRaw(
     new Map<string, { source: MixxxWaveformData; samples: MinMaxSample[] }>()
@@ -164,6 +160,8 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     resolveTrackDurationSeconds,
     resolveTrackSourceDurationSeconds,
     resolveTrackTempoRatio,
+    resolveTrackFirstBeatSeconds,
+    resolveTrackFirstBeatMs,
     resolveTrackRenderWidthPx,
     clearTimelineLayoutCache,
     resolveFirstVisibleLayoutIndex,
@@ -610,6 +608,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     resolveTrackDurationSeconds,
     resolveTrackSourceDurationSeconds,
     resolveTrackTempoRatio,
+    resolveTrackFirstBeatSeconds,
     computeTimelineDuration,
     scheduleFullPreRender,
     scheduleWorkerPreRender
@@ -694,6 +693,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     buildSequentialLayoutForZoom,
     forEachVisibleLayoutItem,
     resolveTrackSourceDurationSeconds,
+    resolveTrackFirstBeatMs,
     resolveRenderPxPerSec,
     resolveTimelineBufferId,
     resolveLaneHeightForZoom,
@@ -749,6 +749,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     resolveLaneHeightForZoom,
     resolveTrackDurationSeconds,
     resolveTrackSourceDurationSeconds,
+    resolveTrackFirstBeatMs,
     resolveTrackRenderWidthPx,
     resolveRenderPxPerSec,
     resolveRawWaveformLevel,

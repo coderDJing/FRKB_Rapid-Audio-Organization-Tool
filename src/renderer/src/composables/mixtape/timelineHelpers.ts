@@ -15,6 +15,11 @@ import {
   ZOOM_MAX,
   ZOOM_MIN
 } from '@renderer/composables/mixtape/constants'
+import {
+  normalizeBeatOffset as normalizeBeatOffsetByMixxx,
+  resolveFirstBeatTimelineSec,
+  resolveTempoRatioByBpm
+} from '@renderer/composables/mixtape/mixxxSyncModel'
 import { resolveRawWaveformLevel as resolveRawWaveformLevelByMap } from '@renderer/composables/mixtape/waveformPyramid'
 import type {
   MinMaxSample,
@@ -172,17 +177,25 @@ export const createTimelineHelpersModule = (ctx: any) => {
   }
 
   const normalizeBeatOffset = (value: number, interval: number) => {
-    const safeInterval = Math.max(1, Math.floor(Number(interval) || 1))
-    const numeric = Number(value)
-    const rounded = Number.isFinite(numeric) ? Math.round(numeric) : 0
-    return ((rounded % safeInterval) + safeInterval) % safeInterval
+    return normalizeBeatOffsetByMixxx(value, interval)
   }
 
-  const resolveTrackTempoRatio = (track: MixtapeTrack) => {
-    const target = resolveValidBpm(track.bpm)
+  const resolveTrackTempoRatio = (track: MixtapeTrack, targetBpm?: number) => {
+    const target = resolveValidBpm(targetBpm ?? track.bpm)
     const original = resolveValidBpm(track.originalBpm)
     if (!target || !original) return 1
-    return Math.max(0.25, Math.min(4, target / original))
+    return resolveTempoRatioByBpm(target, original)
+  }
+
+  const resolveTrackFirstBeatSeconds = (track: MixtapeTrack, targetBpm?: number) => {
+    const ratio = resolveTrackTempoRatio(track, targetBpm)
+    return resolveFirstBeatTimelineSec(track.firstBeatMs, ratio)
+  }
+
+  const resolveTrackFirstBeatMs = (track: MixtapeTrack, targetBpm?: number) => {
+    const firstBeatSec = resolveTrackFirstBeatSeconds(track, targetBpm)
+    if (!Number.isFinite(firstBeatSec) || firstBeatSec <= 0) return 0
+    return firstBeatSec * 1000
   }
 
   const resolveTrackSourceDurationSeconds = (track: MixtapeTrack) => {
@@ -661,6 +674,8 @@ export const createTimelineHelpersModule = (ctx: any) => {
     resolveTrackDurationSeconds,
     resolveTrackSourceDurationSeconds,
     resolveTrackTempoRatio,
+    resolveTrackFirstBeatSeconds,
+    resolveTrackFirstBeatMs,
     resolveTrackRenderWidthPx,
     clearTimelineLayoutCache,
     resolveFirstVisibleLayoutIndex,
