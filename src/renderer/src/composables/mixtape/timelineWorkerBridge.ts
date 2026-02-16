@@ -252,6 +252,7 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
       if (trackEndX < renderStartX || trackStartX > renderEndX) return
       const bpmValue = typeof track.bpm === 'number' ? track.bpm : 0
       const firstBeatMs = Number(track.firstBeatMs) || 0
+      const barBeatOffset = Number(track.barBeatOffset) || 0
       renderTracks.push({
         id: track.id,
         filePath: track.filePath,
@@ -260,7 +261,8 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
         startX: item.startX,
         laneIndex: item.laneIndex,
         bpm: Number(bpmValue) || 0,
-        firstBeatMs
+        firstBeatMs,
+        barBeatOffset
       })
     })
     return {

@@ -21,6 +21,7 @@ type CreateFrameRendererOptions = {
     height: number,
     bpm: number,
     firstBeatMs: number,
+    barBeatOffset: number,
     range: { start: number; end: number },
     renderPx: number,
     barOnly: boolean,
@@ -86,6 +87,12 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
     if (safeZoom >= maxZoom) return gridBarWidthMax
     const ratio = (safeZoom - minZoom) / Math.max(0.0001, maxZoom - minZoom)
     return gridBarWidthMin + (gridBarWidthMax - gridBarWidthMin) * ratio
+  }
+  const normalizeBeatOffset = (value: number, interval: number) => {
+    const safeInterval = Math.max(1, Math.floor(Number(interval) || 1))
+    const numeric = Number(value)
+    const rounded = Number.isFinite(numeric) ? Math.round(numeric) : 0
+    return ((rounded % safeInterval) + safeInterval) % safeInterval
   }
 
   const buildTileCacheKey = (
@@ -271,7 +278,9 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
         (track) =>
           `${track.id}:${track.filePath}:${Math.round(track.trackWidth)}:${Math.round(
             Number(track.startX) || 0
-          )}:${track.laneIndex}:${Math.round(track.bpm * 100)}:${Math.round(track.firstBeatMs)}`
+          )}:${track.laneIndex}:${Math.round(track.bpm * 100)}:${Math.round(
+            track.firstBeatMs
+          )}:${Math.round(track.barBeatOffset)}`
       )
       .join('|')
     return [
@@ -367,6 +376,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
           payload.laneHeight,
           track.bpm,
           track.firstBeatMs,
+          track.barBeatOffset,
           { start: localStart, end: localEnd },
           payload.renderPxPerSec,
           barOnlyGrid,
@@ -823,13 +833,15 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
           const interval = (60 / track.bpm) * payload.renderPxPerSec
           if (!Number.isFinite(interval) || interval <= 0) continue
           const offsetPx = (track.firstBeatMs / 1000) * payload.renderPxPerSec
+          const normalizedBarOffset = normalizeBeatOffset(track.barBeatOffset, 32)
           const startIndex = Math.floor((localStart - offsetPx) / interval) - 2
           const endIndex = Math.ceil((localEnd - offsetPx) / interval) + 2
           for (let i = startIndex; i <= endIndex; i += 1) {
             const rawX = offsetPx + i * interval
             if (rawX < localStart - interval || rawX > localEnd + interval) continue
-            const mod32 = ((i % 32) + 32) % 32
-            const mod4 = ((i % 4) + 4) % 4
+            const shiftedIndex = i - normalizedBarOffset
+            const mod32 = ((shiftedIndex % 32) + 32) % 32
+            const mod4 = ((shiftedIndex % 4) + 4) % 4
             const level = mod32 === 0 ? 'bar' : mod4 === 0 ? 'beat4' : 'beat'
             if (barOnlyGrid && level !== 'bar') continue
             if (level === 'beat') continue

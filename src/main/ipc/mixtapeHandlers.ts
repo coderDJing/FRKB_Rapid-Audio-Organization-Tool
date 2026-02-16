@@ -13,7 +13,8 @@ import {
   removeMixtapeItemsById,
   removeMixtapeItemsByFilePath,
   reorderMixtapeItems,
-  upsertMixtapeItemBpmByFilePath
+  upsertMixtapeItemBpmByFilePath,
+  upsertMixtapeItemGridByFilePath
 } from '../mixtapeDb'
 import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { queueMixtapeRawWaveforms } from '../services/mixtapeRawWaveformQueue'
@@ -361,4 +362,21 @@ export function registerMixtapeHandlers() {
       }
     }
   })
+
+  ipcMain.handle(
+    'mixtape:update-grid-definition',
+    async (_e, payload: { filePath?: string; barBeatOffset?: number }) => {
+      const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
+      const rawOffset = Number(payload?.barBeatOffset)
+      if (!filePath || !Number.isFinite(rawOffset)) {
+        return { updated: 0 }
+      }
+      return upsertMixtapeItemGridByFilePath([
+        {
+          filePath,
+          barBeatOffset: rawOffset
+        }
+      ])
+    }
+  )
 }

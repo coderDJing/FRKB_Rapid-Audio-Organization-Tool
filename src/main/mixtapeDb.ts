@@ -348,6 +348,70 @@ export function upsertMixtapeItemBpmByFilePath(
   }
 }
 
+export function upsertMixtapeItemGridByFilePath(
+  entries: Array<{ filePath: string; barBeatOffset: number }>
+): { updated: number } {
+  if (!Array.isArray(entries) || entries.length === 0) return { updated: 0 }
+  const db = getLibraryDb()
+  if (!db) return { updated: 0 }
+
+  const normalizeBarBeatOffset = (value: number) => {
+    const rounded = Math.round(Number(value) || 0)
+    return ((rounded % 32) + 32) % 32
+  }
+
+  const offsetMap = new Map<string, number>()
+  for (const item of entries) {
+    const filePath = typeof item?.filePath === 'string' ? item.filePath.trim() : ''
+    if (!filePath) continue
+    offsetMap.set(filePath, normalizeBarBeatOffset(item?.barBeatOffset))
+  }
+  const filePaths = Array.from(offsetMap.keys())
+  if (filePaths.length === 0) return { updated: 0 }
+
+  try {
+    let updated = 0
+    const updateStmt = db.prepare(`UPDATE ${TABLE} SET info_json = ? WHERE id = ?`)
+    const tx = db.transaction(() => {
+      const CHUNK_SIZE = 300
+      for (let offset = 0; offset < filePaths.length; offset += CHUNK_SIZE) {
+        const chunk = filePaths.slice(offset, offset + CHUNK_SIZE)
+        if (chunk.length === 0) continue
+        const placeholders = chunk.map(() => '?').join(',')
+        const rows = db
+          .prepare(
+            `SELECT id, file_path, info_json FROM ${TABLE} WHERE file_path IN (${placeholders})`
+          )
+          .all(...chunk) as Array<{ id: string; file_path: string; info_json?: string | null }>
+        for (const row of rows) {
+          const filePath = typeof row?.file_path === 'string' ? row.file_path.trim() : ''
+          const nextOffset = offsetMap.get(filePath)
+          if (typeof nextOffset !== 'number') continue
+          let info: Record<string, any> = {}
+          if (row?.info_json) {
+            try {
+              const parsed = JSON.parse(String(row.info_json))
+              if (parsed && typeof parsed === 'object') {
+                info = parsed
+              }
+            } catch {}
+          }
+          const currentOffset = normalizeBarBeatOffset(Number(info.barBeatOffset) || 0)
+          if (currentOffset === nextOffset) continue
+          info.barBeatOffset = nextOffset
+          updateStmt.run(JSON.stringify(info), row.id)
+          updated += 1
+        }
+      }
+    })
+    tx()
+    return { updated }
+  } catch (error) {
+    log.error('[sqlite] mixtape grid upsert failed', error)
+    return { updated: 0 }
+  }
+}
+
 export function removeMixtapeItemsByPlaylist(playlistUuid: string): { removed: number } {
   if (!playlistUuid) return { removed: 0 }
   const db = getLibraryDb()

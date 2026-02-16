@@ -36,6 +36,8 @@ export type MixtapeTrack = {
   startSec?: number
   // 首拍偏移（毫秒）
   firstBeatMs?: number
+  // 大节线相位偏移（以拍为单位，仅改变网格线定义，不改变网格线位置）
+  barBeatOffset?: number
 }
 
 export type MinMaxSample = {
@@ -99,6 +101,7 @@ export type TimelineRenderTrack = {
   laneIndex: number
   bpm: number
   firstBeatMs: number
+  barBeatOffset: number
 }
 
 export type TimelineRenderPayload = {

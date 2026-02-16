@@ -148,6 +148,13 @@ export const useMixtape = () => {
     return value.trim()
   }
 
+  const normalizeBarBeatOffset = (value: unknown) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) return 0
+    const rounded = Math.round(numeric)
+    return ((rounded % 32) + 32) % 32
+  }
+
   const parseSnapshot = (raw: MixtapeRawItem, index: number): MixtapeTrack => {
     let info: Record<string, any> | null = null
     if (raw?.infoJson) {
@@ -171,6 +178,7 @@ export const useMixtape = () => {
         ? parsedFirstBeatMsValue
         : undefined
     const parsedKey = typeof info?.key === 'string' ? info.key.trim() : ''
+    const parsedBarBeatOffset = normalizeBarBeatOffset(info?.barBeatOffset)
     return {
       id: String(raw?.id || `${filePath}-${index}`),
       mixOrder: Number(raw?.mixOrder) || index + 1,
@@ -185,7 +193,8 @@ export const useMixtape = () => {
       originalBpm: parsedBpm,
       masterTempo: true,
       startSec: undefined,
-      firstBeatMs: parsedFirstBeatMs
+      firstBeatMs: parsedFirstBeatMs,
+      barBeatOffset: parsedBarBeatOffset
     }
   }
 
@@ -469,6 +478,47 @@ export const useMixtape = () => {
     beatAlignTrackId.value = ''
   }
 
+  const handleBeatAlignBarBeatOffsetUpdate = (nextOffset: number) => {
+    const trackId = beatAlignTrackId.value
+    if (!trackId) return
+    const targetIndex = tracks.value.findIndex((track) => track.id === trackId)
+    if (targetIndex < 0) return
+    const currentTrack = tracks.value[targetIndex]
+    if (!currentTrack) return
+    const normalizedOffset = normalizeBarBeatOffset(nextOffset)
+    const currentOffset = normalizeBarBeatOffset(currentTrack.barBeatOffset)
+    if (normalizedOffset === currentOffset) return
+    const targetFilePath = normalizeMixtapeFilePath(currentTrack.filePath)
+    const nextTracks = tracks.value.map((track) => {
+      const isSameTrack =
+        targetFilePath.length > 0
+          ? normalizeMixtapeFilePath(track.filePath) === targetFilePath
+          : track.id === trackId
+      if (!isSameTrack) return track
+      return {
+        ...track,
+        barBeatOffset: normalizedOffset
+      }
+    })
+    tracks.value = nextTracks
+    scheduleTimelineDraw()
+    scheduleFullPreRender()
+    scheduleWorkerPreRender()
+    if (!targetFilePath || !window?.electron?.ipcRenderer?.invoke) return
+    void window.electron.ipcRenderer
+      .invoke('mixtape:update-grid-definition', {
+        filePath: targetFilePath,
+        barBeatOffset: normalizedOffset
+      })
+      .catch((error) => {
+        console.error('[mixtape] update bar beat offset failed', {
+          filePath: targetFilePath,
+          barBeatOffset: normalizedOffset,
+          error
+        })
+      })
+  }
+
   const handleGlobalPointerDown = (event: PointerEvent) => {
     if (!trackContextMenuVisible.value) return
     const target = event.target as HTMLElement | null
@@ -620,6 +670,7 @@ export const useMixtape = () => {
     beatAlignDialogVisible,
     beatAlignTrack,
     handleBeatAlignDialogCancel,
+    handleBeatAlignBarBeatOffsetUpdate,
     transportPlaying,
     transportDecoding,
     transportPreloading,

@@ -105,6 +105,34 @@
   cursor: not-allowed;
 }
 
+.barline-btn {
+  min-width: 122px;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elev);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.barline-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
+.barline-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.barline-btn.is-active {
+  border-color: rgba(145, 205, 255, 0.95);
+  box-shadow: 0 0 0 1px rgba(145, 205, 255, 0.25) inset;
+  background: rgba(145, 205, 255, 0.12);
+}
+
 .preview-canvas-wrap {
   position: relative;
   height: 176px;
@@ -119,10 +147,39 @@
   cursor: grabbing;
 }
 
+.preview-canvas-wrap.is-bar-selecting {
+  cursor: crosshair;
+}
+
 .preview-canvas {
   width: 100%;
   height: 100%;
   display: block;
+}
+
+.preview-barline-hit-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border: 1px dashed rgba(0, 110, 220, 0.88);
+  background: rgba(0, 110, 220, 0.14);
+  box-shadow: 0 0 0 1px rgba(0, 110, 220, 0.3) inset;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.preview-barline-glow {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: rgba(0, 110, 220, 0.98);
+  box-shadow:
+    0 0 10px rgba(0, 110, 220, 0.95),
+    0 0 24px rgba(64, 158, 255, 0.58);
+  pointer-events: none;
+  z-index: 3;
 }
 
 .preview-anchor-line {
@@ -134,7 +191,7 @@
   background: rgba(255, 233, 141, 0.7);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.22);
   pointer-events: none;
-  z-index: 2;
+  z-index: 4;
 }
 
 .preview-anchor-line.is-active {

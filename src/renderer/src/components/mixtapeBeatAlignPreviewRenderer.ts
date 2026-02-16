@@ -6,6 +6,7 @@ type BeatAlignPreviewRenderInput = {
   wrap: HTMLDivElement
   bpm: number
   firstBeatMs: number
+  barBeatOffset: number
   rangeStartSec: number
   rangeDurationSec: number
   mixxxData: MixxxWaveformData | null
@@ -28,6 +29,7 @@ type FrameState = {
   height: number
   bpm: number
   firstBeatMs: number
+  barBeatOffset: number
   rangeStartSec: number
   rangeDurationSec: number
   mixxxData: MixxxWaveformData | null
@@ -118,6 +120,7 @@ export const createBeatAlignPreviewRenderer = () => {
       height,
       bpm: input.bpm,
       firstBeatMs: input.firstBeatMs,
+      barBeatOffset: input.barBeatOffset,
       rangeStartSec,
       rangeDurationSec,
       mixxxData: input.mixxxData,
@@ -156,6 +159,7 @@ export const createBeatAlignPreviewRenderer = () => {
       height: metrics.cssHeight,
       bpm: state.bpm,
       firstBeatMs: state.firstBeatMs,
+      barBeatOffset: state.barBeatOffset,
       rangeStartSec: segmentStartSec,
       rangeDurationSec: segmentDurationSec,
       mixxxData: state.mixxxData,
@@ -184,6 +188,7 @@ export const createBeatAlignPreviewRenderer = () => {
       lastFrame.height === current.height &&
       lastFrame.bpm === current.bpm &&
       lastFrame.firstBeatMs === current.firstBeatMs &&
+      lastFrame.barBeatOffset === current.barBeatOffset &&
       lastFrame.rangeDurationSec === current.rangeDurationSec &&
       lastFrame.mixxxData === current.mixxxData &&
       lastFrame.maxSamplesPerPixel === current.maxSamplesPerPixel &&
@@ -204,6 +209,7 @@ export const createBeatAlignPreviewRenderer = () => {
       height: metrics.cssHeight,
       bpm: Number(input.bpm) || 0,
       firstBeatMs: Number(input.firstBeatMs) || 0,
+      barBeatOffset: Number(input.barBeatOffset) || 0,
       rangeStartSec,
       rangeDurationSec,
       mixxxData: input.mixxxData,

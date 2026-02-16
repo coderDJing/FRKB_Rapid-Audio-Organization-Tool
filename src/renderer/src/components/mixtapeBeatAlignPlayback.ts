@@ -46,6 +46,7 @@ type ScrubSetTargetMessage = {
 
 const PREVIEW_PLAY_ANCHOR_RATIO = 1 / 3
 const PREVIEW_PLAY_END_GUARD_SEC = 0.02
+const PREVIEW_PLAY_SCHEDULE_LEAD_SEC = 0.03
 const PREVIEW_SCRUB_MAX_RATE = 12
 const PREVIEW_SCRUB_RATE_DEADZONE = 0.04
 const PREVIEW_SCRUB_OUTPUT_GAIN = 0.94
@@ -91,6 +92,8 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
   let playbackVersion = 0
   let playbackRaf = 0
   let playbackStartedAt = 0
+  let playbackAudioStartAt = 0
+  let playbackAudioLatencySec = 0
   let playbackStartSec = 0
   let playbackDurationSec = 0
   let audioCtx: AudioContext | null = null
@@ -133,6 +136,16 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
       : Math.max(0, resolvePreviewDurationSec())
     if (total <= 0) return 0
     return clampNumber(value, 0, Math.max(0, total - PREVIEW_PLAY_END_GUARD_SEC))
+  }
+
+  const resolvePlaybackLatencySec = (ctx: AudioContext | null) => {
+    if (!ctx) return 0
+    const maybeCtx = ctx as AudioContext & { outputLatency?: number; baseLatency?: number }
+    const outputLatency = Number(maybeCtx.outputLatency)
+    const baseLatency = Number(maybeCtx.baseLatency)
+    const safeOutput = Number.isFinite(outputLatency) && outputLatency > 0 ? outputLatency : 0
+    const safeBase = Number.isFinite(baseLatency) && baseLatency > 0 ? baseLatency : 0
+    return Math.max(safeOutput, safeBase)
   }
 
   const ensureScrubWorkletModule = async (ctx: AudioContext) => {
@@ -191,6 +204,13 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     if (scrubBuffer) {
       return resolveCurrentScrubSec()
     }
+    if (audioCtx && audioCtx.state !== 'closed' && playbackAudioStartAt > 0) {
+      const elapsed = Math.max(
+        0,
+        audioCtx.currentTime - playbackAudioStartAt - Math.max(0, playbackAudioLatencySec)
+      )
+      return clampNumber(playbackStartSec + elapsed, 0, Math.max(0, playbackDurationSec))
+    }
     const elapsed = Math.max(0, (performance.now() - playbackStartedAt) / 1000)
     return clampNumber(playbackStartSec + elapsed, 0, Math.max(0, playbackDurationSec))
   }
@@ -204,6 +224,8 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
       syncPreviewWindowToAnchorSec(resolveCurrentPlaybackSec())
     }
     previewPlaying.value = false
+    playbackAudioStartAt = 0
+    playbackAudioLatencySec = 0
 
     if (playbackRaf) {
       cancelAnimationFrame(playbackRaf)
@@ -313,7 +335,10 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     sourceNode = source
     playbackDurationSec = duration
     playbackStartSec = safeStart
-    playbackStartedAt = performance.now()
+    const scheduleAt = ctx.currentTime + PREVIEW_PLAY_SCHEDULE_LEAD_SEC
+    playbackStartedAt = performance.now() + PREVIEW_PLAY_SCHEDULE_LEAD_SEC * 1000
+    playbackAudioStartAt = scheduleAt
+    playbackAudioLatencySec = resolvePlaybackLatencySec(ctx)
     previewPlaying.value = true
 
     source.onended = () => {
@@ -322,7 +347,7 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     }
 
     try {
-      source.start(0, safeStart)
+      source.start(PREVIEW_PLAY_SCHEDULE_LEAD_SEC, safeStart)
     } catch (error) {
       console.error('[mixtape-beat-align] start playback failed', filePathRef.value, error)
       stopPreviewPlayback({ syncPosition: false })
@@ -399,6 +424,8 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     playbackDurationSec = Math.max(0, Number(buffer.duration) || resolvePreviewDurationSec())
     playbackStartSec = scrubCurrentSec
     playbackStartedAt = performance.now()
+    playbackAudioStartAt = 0
+    playbackAudioLatencySec = 0
 
     processor.onprocessorerror = () => {
       if (processor !== scrubNode) return

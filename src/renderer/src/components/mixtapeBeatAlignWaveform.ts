@@ -5,6 +5,7 @@ type DrawWaveformOptions = {
   height: number
   bpm: number
   firstBeatMs: number
+  barBeatOffset?: number
   rangeStartSec: number
   rangeDurationSec: number
   mixxxData: MixxxWaveformData | null
@@ -26,6 +27,9 @@ type WaveformColumn = {
 
 const MIXXX_MAX_RGB_ENERGY = Math.sqrt(255 * 255 * 3)
 const MIXXX_RGB_BRIGHTNESS_SCALE = 0.95
+const BAR_BEAT_INTERVAL = 32
+const BEAT4_INTERVAL = 4
+const BAR_LINE_COLOR = 'rgba(0, 110, 220, 0.98)'
 const MIXXX_RGB_COMPONENTS = {
   low: { r: 1, g: 0, b: 0 },
   mid: { r: 0, g: 1, b: 0 },
@@ -34,6 +38,12 @@ const MIXXX_RGB_COMPONENTS = {
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 const toColorChannel = (value: number) => clamp(Math.round(value), 0, 255)
+const normalizeBeatOffset = (value: number, interval: number) => {
+  const safeInterval = Math.max(1, Math.floor(Number(interval) || 1))
+  const numeric = Number(value)
+  const rounded = Number.isFinite(numeric) ? Math.round(numeric) : 0
+  return ((rounded % safeInterval) + safeInterval) % safeInterval
+}
 
 const drawBackground = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
   const gradient = ctx.createLinearGradient(0, 0, 0, height)
@@ -54,6 +64,7 @@ const drawBeatGrid = (
   height: number,
   bpm: number,
   firstBeatMs: number,
+  barBeatOffset: number,
   rangeStartSec: number,
   rangeDurationSec: number
 ) => {
@@ -62,6 +73,7 @@ const drawBeatGrid = (
   if (!Number.isFinite(beatSec) || beatSec <= 0) return
 
   const firstBeatSec = (Number(firstBeatMs) || 0) / 1000
+  const normalizedBarOffset = normalizeBeatOffset(barBeatOffset, BAR_BEAT_INTERVAL)
   const rangeEndSec = rangeStartSec + rangeDurationSec
   const startIndex = Math.floor((rangeStartSec - firstBeatSec) / beatSec) - 2
   const endIndex = Math.ceil((rangeEndSec - firstBeatSec) / beatSec) + 2
@@ -71,10 +83,11 @@ const drawBeatGrid = (
     if (beatTime < 0) continue
     if (beatTime < rangeStartSec - beatSec || beatTime > rangeEndSec + beatSec) continue
     const x = Math.round(((beatTime - rangeStartSec) / rangeDurationSec) * width)
-    const mod16 = ((i % 16) + 16) % 16
-    const mod4 = ((i % 4) + 4) % 4
-    if (mod16 === 0) {
-      ctx.fillStyle = 'rgba(145, 205, 255, 0.56)'
+    const shiftedIndex = i - normalizedBarOffset
+    const modBar = ((shiftedIndex % BAR_BEAT_INTERVAL) + BAR_BEAT_INTERVAL) % BAR_BEAT_INTERVAL
+    const mod4 = ((shiftedIndex % BEAT4_INTERVAL) + BEAT4_INTERVAL) % BEAT4_INTERVAL
+    if (modBar === 0) {
+      ctx.fillStyle = BAR_LINE_COLOR
       ctx.fillRect(x, 0, 2, height)
       continue
     }
@@ -288,6 +301,7 @@ export const drawBeatAlignRekordboxWaveform = (
     height,
     bpm,
     firstBeatMs,
+    barBeatOffset,
     rangeStartSec,
     rangeDurationSec,
     mixxxData,
@@ -301,7 +315,16 @@ export const drawBeatAlignRekordboxWaveform = (
   if (showBackground !== false) {
     drawBackground(ctx, width, height)
   }
-  drawBeatGrid(ctx, width, height, bpm, firstBeatMs, rangeStartSec, rangeDurationSec)
+  drawBeatGrid(
+    ctx,
+    width,
+    height,
+    bpm,
+    firstBeatMs,
+    Number(barBeatOffset) || 0,
+    rangeStartSec,
+    rangeDurationSec
+  )
 
   if (!isValidMixxxWaveformData(mixxxData)) return false
   const columns = buildWaveformColumns(

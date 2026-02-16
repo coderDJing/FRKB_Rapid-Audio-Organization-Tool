@@ -59,10 +59,11 @@ export const createTimelineWatchAndMountModule = (ctx: any) => {
           const startSec = Number(track.startSec) || 0
           const bpm = Number(track.bpm) || 0
           const firstBeatMs = Number(track.firstBeatMs) || 0
+          const barBeatOffset = Number(track.barBeatOffset) || 0
           const masterTempo = track.masterTempo === false ? 0 : 1
           return `${track.id}:${Math.round(startSec * 1000)}:${Math.round(
             bpm * 1000
-          )}:${firstBeatMs}:${masterTempo}`
+          )}:${firstBeatMs}:${barBeatOffset}:${masterTempo}`
         })
         .join('|'),
     (_next, prev) => {

@@ -38,6 +38,12 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
   let scratchCtx: OffscreenCanvasRenderingContext2D | null = null
 
   const toColorChannel = (value: number) => Math.max(0, Math.min(255, Math.round(value)))
+  const normalizeBeatOffset = (value: number, interval: number) => {
+    const safeInterval = Math.max(1, Math.floor(Number(interval) || 1))
+    const numeric = Number(value)
+    const rounded = Number.isFinite(numeric) ? Math.round(numeric) : 0
+    return ((rounded % safeInterval) + safeInterval) % safeInterval
+  }
 
   const ensureCanvas = (
     target: OffscreenCanvas | null,
@@ -555,6 +561,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     height: number,
     bpm: number,
     firstBeatMs: number,
+    barBeatOffset: number,
     range: { start: number; end: number },
     renderPx: number,
     barOnly: boolean,
@@ -567,6 +574,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     const startX = range.start
     const endX = range.end
     if (endX <= startX || width <= 0 || height <= 0) return
+    const normalizedBarOffset = normalizeBeatOffset(barBeatOffset, 32)
     const startIndex = Math.floor((startX - offsetPx) / interval) - 2
     const endIndex = Math.ceil((endX - offsetPx) / interval) + 2
 
@@ -574,8 +582,9 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     for (let i = startIndex; i <= endIndex; i += 1) {
       const rawX = offsetPx + i * interval
       if (rawX < startX - interval || rawX > endX + interval) continue
-      const mod32 = ((i % 32) + 32) % 32
-      const mod4 = ((i % 4) + 4) % 4
+      const shiftedIndex = i - normalizedBarOffset
+      const mod32 = ((shiftedIndex % 32) + 32) % 32
+      const mod4 = ((shiftedIndex % 4) + 4) % 4
       const level = mod32 === 0 ? 'bar' : mod4 === 0 ? 'beat4' : 'beat'
       if (barOnly && level !== 'bar') continue
       if (level === 'beat') continue

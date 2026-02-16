@@ -67,8 +67,8 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   let transportRaf = 0
   let transportBaseSec = 0
   let transportStartedAt = 0
+  let transportAudioStartAt = 0
   let transportDurationSec = 0
-  let transportTimers: Array<ReturnType<typeof setTimeout>> = []
   let transportPreloadTimer: ReturnType<typeof setTimeout> | null = null
   // 共享 AudioContext（贯穿整个混音 transport 生命周期）
   let transportAudioCtx: AudioContext | null = null
@@ -92,6 +92,12 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
 
   const clampNumber = (value: number, min: number, max: number) =>
     Math.max(min, Math.min(max, value))
+  const normalizeBeatOffset = (value: unknown, interval: number) => {
+    const safeInterval = Math.max(1, Math.floor(Number(interval) || 1))
+    const numeric = Number(value)
+    const rounded = Number.isFinite(numeric) ? Math.round(numeric) : 0
+    return ((rounded % safeInterval) + safeInterval) % safeInterval
+  }
 
   const readTransportBufferCache = (filePath: string): AudioBuffer | null => {
     const key = String(filePath || '').trim()
@@ -244,13 +250,6 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     return transportAudioCtx
   }
 
-  const clearTransportTimers = () => {
-    for (const timer of transportTimers) {
-      clearTimeout(timer)
-    }
-    transportTimers = []
-  }
-
   const clearTransportGraphNodes = () => {
     for (const node of transportGraphNodes) {
       try {
@@ -274,7 +273,8 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     }
     transportPlaying.value = false
     transportDecoding.value = false
-    clearTransportTimers()
+    transportStartedAt = 0
+    transportAudioStartAt = 0
     clearTransportGraphNodes()
   }
 
@@ -541,7 +541,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   }
 
   // ── 启动单轨音频图播放（Source → Gain → destination）─────────
-  const startTransportTrack = (entry: TransportEntry, offsetSourceSec: number) => {
+  const startTransportTrack = (entry: TransportEntry, offsetSourceSec: number, whenSec: number) => {
     if (!entry.audioBuffer) return
     try {
       const ctx = ensureTransportAudioContext(entry.audioBuffer.sampleRate)
@@ -562,7 +562,10 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       gain.connect(ctx.destination)
 
       const safeOffset = clampNumber(offsetSourceSec, 0, Math.max(0, entry.sourceDuration - 0.02))
-      source.start(0, safeOffset)
+      const safeWhen = Number.isFinite(whenSec)
+        ? Math.max(ctx.currentTime, whenSec)
+        : ctx.currentTime
+      source.start(safeWhen, safeOffset)
 
       const graphNode: TrackGraphNode = { source, gain }
       transportGraphNodes.push(graphNode)
@@ -651,8 +654,18 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
 
     playheadVisible.value = true
     playheadSec.value = startSec
+    const transportCtx = ensureTransportAudioContext()
+    if (transportCtx.state === 'suspended') {
+      try {
+        await transportCtx.resume()
+      } catch {}
+    }
+    if (transportVersion !== version) return
+    const scheduleLeadSec = 0.03
+    const scheduleStartAt = transportCtx.currentTime + scheduleLeadSec
     transportBaseSec = startSec
-    transportStartedAt = performance.now()
+    transportStartedAt = performance.now() + scheduleLeadSec * 1000
+    transportAudioStartAt = scheduleStartAt
     transportPlaying.value = true
 
     for (const entry of playableEntries) {
@@ -661,19 +674,15 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       const delaySec = Math.max(0, entry.startSec - startSec)
       const offsetTimelineSec = Math.max(0, startSec - entry.startSec)
       const offsetSourceSec = offsetTimelineSec * entry.tempoRatio
-      const timer = setTimeout(
-        () => {
-          if (!transportPlaying.value) return
-          startTransportTrack(entry, offsetSourceSec)
-        },
-        Math.max(0, Math.round(delaySec * 1000))
-      )
-      transportTimers.push(timer)
+      startTransportTrack(entry, offsetSourceSec, scheduleStartAt + delaySec)
     }
 
     const tick = () => {
       if (!transportPlaying.value) return
-      const elapsed = Math.max(0, (performance.now() - transportStartedAt) / 1000)
+      const elapsed =
+        transportAudioCtx && transportAudioCtx.state !== 'closed' && transportAudioStartAt > 0
+          ? Math.max(0, transportAudioCtx.currentTime - transportAudioStartAt)
+          : Math.max(0, (performance.now() - transportStartedAt) / 1000)
       const current = transportBaseSec + elapsed
       playheadSec.value = current
       if (current >= transportDurationSec) {
@@ -773,17 +782,28 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     const rawStartSec = Math.max(0, trackDragState.initialStartSec + deltaSec)
     let nextStartSec = rawStartSec
     let nextBpm: number | undefined
+    const currentTrackForSnap = findTrack(trackDragState.trackId)
+    const currentFirstBeatSec = (Number(currentTrackForSnap?.firstBeatMs) || 0) / 1000
     const previousTrack = findTrack(trackDragState.previousTrackId)
     if (previousTrack) {
       const previousBpm = Number(previousTrack.bpm)
       if (Number.isFinite(previousBpm) && previousBpm > 0) {
         const previousStartSec = resolveTrackStartSecById(previousTrack.id)
         const previousFirstBeatSec = (Number(previousTrack.firstBeatMs) || 0) / 1000
-        const barSec = (60 / previousBpm) * 32
+        const beatSec = 60 / previousBpm
+        const barSec = beatSec * 32
         if (Number.isFinite(barSec) && barSec > 0) {
-          const snapAnchor = previousStartSec + previousFirstBeatSec
-          const nearestIndex = Math.round((rawStartSec - snapAnchor) / barSec)
-          const snappedStartSec = Math.max(0, snapAnchor + nearestIndex * barSec)
+          const previousBarOffsetSec =
+            normalizeBeatOffset(previousTrack.barBeatOffset, 32) * beatSec
+          const currentBarOffsetSec =
+            normalizeBeatOffset(currentTrackForSnap?.barBeatOffset, 32) * beatSec
+          const snapAnchor = previousStartSec + previousFirstBeatSec + previousBarOffsetSec
+          const currentBarRawSec = rawStartSec + currentFirstBeatSec + currentBarOffsetSec
+          const nearestIndex = Math.round((currentBarRawSec - snapAnchor) / barSec)
+          const snappedStartSec = Math.max(
+            0,
+            snapAnchor + nearestIndex * barSec - currentFirstBeatSec - currentBarOffsetSec
+          )
           const snapThresholdSec = 14 / pxPerSec
           if (Math.abs(snappedStartSec - rawStartSec) <= snapThresholdSec) {
             nextStartSec = snappedStartSec

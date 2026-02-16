@@ -57,6 +57,7 @@ export type RenderFrameTrack = {
   laneIndex: number
   bpm: number
   firstBeatMs: number
+  barBeatOffset: number
 }
 
 export type RenderFramePayload = {

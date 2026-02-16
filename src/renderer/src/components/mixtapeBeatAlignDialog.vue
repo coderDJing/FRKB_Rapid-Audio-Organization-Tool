@@ -31,6 +31,10 @@ const props = defineProps({
     type: Number,
     default: 0
   },
+  barBeatOffset: {
+    type: Number,
+    default: 0
+  },
   masterTempo: {
     type: Boolean,
     default: true
@@ -39,6 +43,7 @@ const props = defineProps({
 
 const emit = defineEmits<{
   (event: 'cancel'): void
+  (event: 'update-bar-beat-offset', value: number): void
 }>()
 
 const { dialogVisible, closeWithAnimation } = useDialogTransition()
@@ -57,6 +62,10 @@ const previewZoom = ref(PREVIEW_MIN_ZOOM)
 const previewStartSec = ref(0)
 const previewDragging = ref(false)
 const overviewDragging = ref(false)
+const previewBarBeatOffset = ref(0)
+const previewBarLinePicking = ref(false)
+const previewBarLineHoverCenterPx = ref(0)
+const previewBarLineHoverHit = ref(false)
 
 let previewRaf = 0
 let overviewRaf = 0
@@ -88,6 +97,9 @@ const PREVIEW_PLAY_MAX_SAMPLES_PER_PIXEL = 20
 const PREVIEW_PLAY_ANCHOR_RATIO = 1 / 3
 const PREVIEW_SHORTCUT_FALLBACK_BPM = 128
 const PREVIEW_SHORTCUT_BEATS = 4
+const PREVIEW_BAR_BEAT_INTERVAL = 32
+const PREVIEW_BAR_LINE_HIT_RADIUS_PX = 14
+const PREVIEW_BAR_LINE_HIT_DIAMETER_PX = PREVIEW_BAR_LINE_HIT_RADIUS_PX * 2
 const previewRenderer = createBeatAlignPreviewRenderer()
 
 const bpmDisplay = computed(() => {
@@ -154,6 +166,12 @@ const clampPreviewStart = (value: number) => {
 }
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+const normalizeBeatOffset = (value: number, interval: number) => {
+  const safeInterval = Math.max(1, Math.floor(Number(interval) || 1))
+  const numeric = Number(value)
+  const rounded = Number.isFinite(numeric) ? Math.round(numeric) : 0
+  return ((rounded % safeInterval) + safeInterval) % safeInterval
+}
 
 const resolvePreviewAnchorSec = (startSec: number = previewStartSec.value) => {
   const total = resolvePreviewDurationSec()
@@ -195,6 +213,16 @@ const overviewViewportStyle = computed(() => {
     opacity: width > 0 ? '1' : '0'
   }
 })
+const previewBarLineHoverVisible = computed(
+  () => previewBarLinePicking.value && previewBarLineHoverHit.value
+)
+const previewBarLineHitRangeStyle = computed(() => ({
+  left: `${Math.round(previewBarLineHoverCenterPx.value - PREVIEW_BAR_LINE_HIT_RADIUS_PX)}px`,
+  width: `${PREVIEW_BAR_LINE_HIT_DIAMETER_PX}px`
+}))
+const previewBarLineGlowStyle = computed(() => ({
+  left: `${Math.round(previewBarLineHoverCenterPx.value)}px`
+}))
 
 const resizePreviewCanvas = (
   canvas: HTMLCanvasElement,
@@ -235,6 +263,7 @@ const drawPreviewCanvas = () => {
     wrap,
     bpm: Number(props.bpm) || 0,
     firstBeatMs: Number(props.firstBeatMs) || 0,
+    barBeatOffset: previewBarBeatOffset.value,
     rangeStartSec,
     rangeDurationSec: safeDuration,
     mixxxData: previewMixxxData.value,
@@ -389,6 +418,84 @@ const handlePreviewWheel = (event: WheelEvent) => {
   setPreviewZoom(previewZoom.value * factor, Math.max(0, Math.min(1, ratio)))
 }
 
+const clearPreviewBarLineHover = () => {
+  previewBarLineHoverHit.value = false
+}
+
+const resolveBarLinePickCandidateByClientX = (clientX: number) => {
+  const wrap = previewWrapRef.value
+  if (!wrap) return null
+  const bpmValue = Number(props.bpm)
+  if (!Number.isFinite(bpmValue) || bpmValue <= 0) return null
+  const beatSec = 60 / bpmValue
+  if (!Number.isFinite(beatSec) || beatSec <= 0) return null
+
+  const rect = wrap.getBoundingClientRect()
+  if (!Number.isFinite(rect.width) || rect.width <= 0) return null
+  const localX = clampNumber(clientX - rect.left, 0, rect.width)
+  const ratio = localX / rect.width
+  const totalDuration = resolvePreviewDurationSec()
+  const visibleDuration = totalDuration > 0 ? resolveVisibleDurationSec() : 0
+  const rangeDurationSec = Math.max(0.001, visibleDuration || totalDuration || 0)
+  if (!Number.isFinite(rangeDurationSec) || rangeDurationSec <= 0) return null
+  const rangeStartSec = totalDuration > 0 ? clampPreviewStart(previewStartSec.value) : 0
+  const targetSec = rangeStartSec + ratio * rangeDurationSec
+  const firstBeatSec = (Number(props.firstBeatMs) || 0) / 1000
+  const beatIndex = Math.round((targetSec - firstBeatSec) / beatSec)
+  if (!Number.isFinite(beatIndex)) return null
+  const beatTimeSec = firstBeatSec + beatIndex * beatSec
+  const lineRatio = (beatTimeSec - rangeStartSec) / rangeDurationSec
+  const lineX = clampNumber(lineRatio * rect.width, 0, rect.width)
+  const distancePx = Math.abs(localX - lineX)
+  return {
+    beatIndex,
+    lineX,
+    hit: distancePx <= PREVIEW_BAR_LINE_HIT_RADIUS_PX
+  }
+}
+
+const updatePreviewBarLineHover = (clientX: number) => {
+  if (!previewBarLinePicking.value) return
+  const candidate = resolveBarLinePickCandidateByClientX(clientX)
+  if (!candidate || !candidate.hit) {
+    clearPreviewBarLineHover()
+    return
+  }
+  previewBarLineHoverCenterPx.value = candidate.lineX
+  previewBarLineHoverHit.value = true
+}
+
+const applyBarLineDefinitionByClientX = (clientX: number) => {
+  const candidate = resolveBarLinePickCandidateByClientX(clientX)
+  if (!candidate || !candidate.hit) {
+    clearPreviewBarLineHover()
+    return false
+  }
+  previewBarBeatOffset.value = normalizeBeatOffset(candidate.beatIndex, PREVIEW_BAR_BEAT_INTERVAL)
+  emit('update-bar-beat-offset', previewBarBeatOffset.value)
+  previewBarLinePicking.value = false
+  clearPreviewBarLineHover()
+  schedulePreviewDraw()
+  return true
+}
+
+const handleBarLinePickingToggle = () => {
+  if (previewLoading.value || !previewMixxxData.value) return
+  previewBarLinePicking.value = !previewBarLinePicking.value
+  clearPreviewBarLineHover()
+}
+
+const handlePreviewMouseMove = (event: MouseEvent) => {
+  if (!previewBarLinePicking.value) return
+  if (previewDragging.value) return
+  updatePreviewBarLineHover(event.clientX)
+}
+
+const handlePreviewMouseLeave = () => {
+  if (!previewBarLinePicking.value) return
+  clearPreviewBarLineHover()
+}
+
 const handlePreviewDragMove = (event: MouseEvent) => {
   if (!previewDragging.value) return
 
@@ -434,6 +541,14 @@ const stopPreviewDragging = () => {
 const handlePreviewMouseDown = (event: MouseEvent) => {
   if (event.button !== 0) return
   if (!previewMixxxData.value) return
+  if (previewBarLinePicking.value) {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!applyBarLineDefinitionByClientX(event.clientX)) {
+      updatePreviewBarLineHover(event.clientX)
+    }
+    return
+  }
 
   previewDragging.value = true
   previewDragStartClientX = event.clientX
@@ -607,6 +722,9 @@ const loadPreviewWaveform = async (filePath: string) => {
   previewError.value = ''
   previewZoom.value = PREVIEW_MIN_ZOOM
   previewStartSec.value = 0
+  previewBarBeatOffset.value = normalizeBeatOffset(props.barBeatOffset, PREVIEW_BAR_BEAT_INTERVAL)
+  previewBarLinePicking.value = false
+  clearPreviewBarLineHover()
   stopPreviewDragging()
   stopOverviewDragging()
   schedulePreviewDraw()
@@ -702,6 +820,13 @@ const handleWindowKeydown = (event: KeyboardEvent) => {
   if (!dialogVisible.value) return
   if (isEditableEventTarget(event.target)) return
 
+  if (event.code === 'Escape' && previewBarLinePicking.value) {
+    event.preventDefault()
+    previewBarLinePicking.value = false
+    clearPreviewBarLineHover()
+    return
+  }
+
   if (event.code === 'Space' || event.key === ' ') {
     event.preventDefault()
     handlePreviewPlaybackToggle()
@@ -734,12 +859,24 @@ watch(
 )
 
 watch(
+  () => props.barBeatOffset,
+  (next) => {
+    const normalized = normalizeBeatOffset(next, PREVIEW_BAR_BEAT_INTERVAL)
+    if (previewBarBeatOffset.value === normalized) return
+    previewBarBeatOffset.value = normalized
+    schedulePreviewDraw()
+  }
+)
+
+watch(
   () => dialogVisible.value,
   (visible) => {
     if (visible) {
       schedulePreviewDraw()
       scheduleOverviewRebuild()
     } else {
+      previewBarLinePicking.value = false
+      clearPreviewBarLineHover()
       stopPreviewPlayback({ syncPosition: false })
     }
   }
@@ -768,6 +905,7 @@ onBeforeUnmount(() => {
   }
   overviewCacheCanvas = null
   overviewRawPyramidMap.clear()
+  clearPreviewBarLineHover()
   stopPreviewDragging()
   stopOverviewDragging()
   window.removeEventListener('resize', handleWindowResize)
@@ -816,7 +954,26 @@ onBeforeUnmount(() => {
                     : t('mixtape.play')
               }}
             </button>
-            <div class="preview-hint">{{ t('mixtape.gridAdjustViewHint') }}</div>
+            <button
+              class="barline-btn"
+              type="button"
+              :class="{ 'is-active': previewBarLinePicking }"
+              :disabled="previewLoading || !previewMixxxData"
+              @click="handleBarLinePickingToggle"
+            >
+              {{
+                previewBarLinePicking
+                  ? t('mixtape.gridAdjustSetBarLineCancel')
+                  : t('mixtape.gridAdjustSetBarLine')
+              }}
+            </button>
+            <div class="preview-hint">
+              {{
+                previewBarLinePicking
+                  ? t('mixtape.gridAdjustSetBarLineHint')
+                  : t('mixtape.gridAdjustViewHint')
+              }}
+            </div>
           </div>
           <div class="preview-zoom">
             <span>{{ t('mixtape.gridAdjustZoom') }}：</span>
@@ -837,11 +994,23 @@ onBeforeUnmount(() => {
         <div
           ref="previewWrapRef"
           class="preview-canvas-wrap"
-          :class="{ 'is-dragging': previewDragging }"
+          :class="{ 'is-dragging': previewDragging, 'is-bar-selecting': previewBarLinePicking }"
           @mousedown="handlePreviewMouseDown"
+          @mousemove="handlePreviewMouseMove"
+          @mouseleave="handlePreviewMouseLeave"
           @wheel.prevent="handlePreviewWheel"
         >
           <canvas ref="previewCanvasRef" class="preview-canvas"></canvas>
+          <div
+            v-if="previewBarLineHoverVisible"
+            class="preview-barline-hit-range"
+            :style="previewBarLineHitRangeStyle"
+          ></div>
+          <div
+            v-if="previewBarLineHoverVisible"
+            class="preview-barline-glow"
+            :style="previewBarLineGlowStyle"
+          ></div>
           <div
             class="preview-anchor-line"
             :class="{ 'is-active': previewPlaying }"

@@ -213,6 +213,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
           laneH,
           Number(track.bpm) || 0,
           Number(track.firstBeatMs) || 0,
+          Number(track.barBeatOffset) || 0,
           { start: localStart, end: localEnd },
           renderCtx.renderPxPerSec,
           barOnlyGrid,
