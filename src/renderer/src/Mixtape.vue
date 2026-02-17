@@ -32,7 +32,7 @@ const {
   beatAlignDialogVisible,
   beatAlignTrack,
   handleBeatAlignDialogCancel,
-  handleBeatAlignBarBeatOffsetUpdate,
+  handleBeatAlignGridDefinitionSave,
   transportPlaying,
   transportDecoding,
   transportPreloading,
@@ -335,10 +335,10 @@ const {
       :track-title="resolveTrackTitle(beatAlignTrack)"
       :track-key="beatAlignTrack.key"
       :file-path="beatAlignTrack.filePath"
-      :bpm="Number(beatAlignTrack.originalBpm) || Number(beatAlignTrack.bpm) || 128"
+      :bpm="Number(beatAlignTrack.bpm) || Number(beatAlignTrack.originalBpm) || 128"
       :first-beat-ms="Number(beatAlignTrack.firstBeatMs) || 0"
       :bar-beat-offset="Number(beatAlignTrack.barBeatOffset) || 0"
-      @update-bar-beat-offset="handleBeatAlignBarBeatOffsetUpdate"
+      @save-grid-definition="handleBeatAlignGridDefinitionSave"
       @cancel="handleBeatAlignDialogCancel"
     />
   </div>

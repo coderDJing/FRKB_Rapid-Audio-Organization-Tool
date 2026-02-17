@@ -349,7 +349,7 @@ export function upsertMixtapeItemBpmByFilePath(
 }
 
 export function upsertMixtapeItemGridByFilePath(
-  entries: Array<{ filePath: string; barBeatOffset: number }>
+  entries: Array<{ filePath: string; barBeatOffset?: number; firstBeatMs?: number; bpm?: number }>
 ): { updated: number } {
   if (!Array.isArray(entries) || entries.length === 0) return { updated: 0 }
   const db = getLibraryDb()
@@ -360,11 +360,31 @@ export function upsertMixtapeItemGridByFilePath(
     return ((rounded % 32) + 32) % 32
   }
 
-  const offsetMap = new Map<string, number>()
+  const normalizeFirstBeatMs = (value: number) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric) || numeric < 0) return 0
+    return numeric
+  }
+
+  const normalizeBpm = (value: number) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric) || numeric <= 0) return 0
+    return Number(numeric.toFixed(6))
+  }
+
+  const offsetMap = new Map<string, { barBeatOffset: number; firstBeatMs?: number; bpm?: number }>()
   for (const item of entries) {
     const filePath = typeof item?.filePath === 'string' ? item.filePath.trim() : ''
     if (!filePath) continue
-    offsetMap.set(filePath, normalizeBarBeatOffset(item?.barBeatOffset))
+    const normalizedOffset = normalizeBarBeatOffset(item?.barBeatOffset ?? 0)
+    const hasFirstBeatMs = Number.isFinite(Number(item?.firstBeatMs))
+    const normalizedBpm = normalizeBpm(Number(item?.bpm))
+    const hasBpm = normalizedBpm > 0
+    offsetMap.set(filePath, {
+      barBeatOffset: normalizedOffset,
+      firstBeatMs: hasFirstBeatMs ? normalizeFirstBeatMs(Number(item?.firstBeatMs)) : undefined,
+      bpm: hasBpm ? normalizedBpm : undefined
+    })
   }
   const filePaths = Array.from(offsetMap.keys())
   if (filePaths.length === 0) return { updated: 0 }
@@ -385,8 +405,8 @@ export function upsertMixtapeItemGridByFilePath(
           .all(...chunk) as Array<{ id: string; file_path: string; info_json?: string | null }>
         for (const row of rows) {
           const filePath = typeof row?.file_path === 'string' ? row.file_path.trim() : ''
-          const nextOffset = offsetMap.get(filePath)
-          if (typeof nextOffset !== 'number') continue
+          const nextGrid = offsetMap.get(filePath)
+          if (!nextGrid) continue
           let info: Record<string, any> = {}
           if (row?.info_json) {
             try {
@@ -396,9 +416,28 @@ export function upsertMixtapeItemGridByFilePath(
               }
             } catch {}
           }
+          const nextOffset = normalizeBarBeatOffset(nextGrid.barBeatOffset)
           const currentOffset = normalizeBarBeatOffset(Number(info.barBeatOffset) || 0)
-          if (currentOffset === nextOffset) continue
+          const currentFirstBeatMs = normalizeFirstBeatMs(Number(info.firstBeatMs) || 0)
+          const currentBpm = normalizeBpm(Number(info.bpm) || 0)
+          const hasNextFirstBeatMs = Number.isFinite(Number(nextGrid.firstBeatMs))
+          const nextFirstBeatMs = hasNextFirstBeatMs
+            ? normalizeFirstBeatMs(Number(nextGrid.firstBeatMs))
+            : currentFirstBeatMs
+          const hasNextBpm = Number.isFinite(Number(nextGrid.bpm)) && Number(nextGrid.bpm) > 0
+          const nextBpm = hasNextBpm ? normalizeBpm(Number(nextGrid.bpm)) : currentBpm
+          const offsetChanged = currentOffset !== nextOffset
+          const firstBeatChanged =
+            hasNextFirstBeatMs && Math.abs(currentFirstBeatMs - nextFirstBeatMs) > 0.0001
+          const bpmChanged = hasNextBpm && Math.abs(currentBpm - nextBpm) > 0.0001
+          if (!offsetChanged && !firstBeatChanged && !bpmChanged) continue
           info.barBeatOffset = nextOffset
+          if (hasNextFirstBeatMs) {
+            info.firstBeatMs = nextFirstBeatMs
+          }
+          if (hasNextBpm) {
+            info.bpm = nextBpm
+          }
           updateStmt.run(JSON.stringify(info), row.id)
           updated += 1
         }

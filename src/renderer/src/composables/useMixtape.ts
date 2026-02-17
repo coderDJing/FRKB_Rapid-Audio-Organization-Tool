@@ -180,6 +180,18 @@ export const useMixtape = () => {
     return ((rounded % 32) + 32) % 32
   }
 
+  const normalizeFirstBeatMs = (value: unknown) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric) || numeric < 0) return 0
+    return numeric
+  }
+
+  const normalizeBpm = (value: unknown) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric) || numeric <= 0) return null
+    return Number(numeric.toFixed(2))
+  }
+
   const parseSnapshot = (raw: MixtapeRawItem, index: number): MixtapeTrack => {
     let info: Record<string, any> | null = null
     if (raw?.infoJson) {
@@ -512,26 +524,51 @@ export const useMixtape = () => {
     beatAlignTrackId.value = ''
   }
 
-  const handleBeatAlignBarBeatOffsetUpdate = (nextOffset: number) => {
+  const handleBeatAlignGridDefinitionSave = (payload: {
+    barBeatOffset: number
+    firstBeatMs: number
+    bpm: number
+  }) => {
     const trackId = beatAlignTrackId.value
     if (!trackId) return
     const targetIndex = tracks.value.findIndex((track) => track.id === trackId)
     if (targetIndex < 0) return
     const currentTrack = tracks.value[targetIndex]
     if (!currentTrack) return
-    const normalizedOffset = normalizeBarBeatOffset(nextOffset)
+    const normalizedOffset = normalizeBarBeatOffset(payload?.barBeatOffset)
+    const normalizedFirstBeatMs = normalizeFirstBeatMs(payload?.firstBeatMs)
+    const normalizedInputBpm = normalizeBpm(payload?.bpm)
     const currentOffset = normalizeBarBeatOffset(currentTrack.barBeatOffset)
-    if (normalizedOffset === currentOffset) return
+    const currentFirstBeatMs = normalizeFirstBeatMs(currentTrack.firstBeatMs)
+    const offsetChanged = normalizedOffset !== currentOffset
+    const firstBeatChanged = Math.abs(normalizedFirstBeatMs - currentFirstBeatMs) > 0.0001
     const targetFilePath = normalizeMixtapeFilePath(currentTrack.filePath)
+    const originalBpm = normalizeBpm(currentTrack.originalBpm)
+    const bpmCompareBase = originalBpm ?? normalizeBpm(currentTrack.bpm)
+    const shouldPersistBpm =
+      normalizedInputBpm !== null &&
+      (bpmCompareBase === null || Math.abs(normalizedInputBpm - bpmCompareBase) > 0.0001)
+    const isSameTrack = (track: MixtapeTrack) =>
+      targetFilePath.length > 0
+        ? normalizeMixtapeFilePath(track.filePath) === targetFilePath
+        : track.id === trackId
+    const bpmChanged =
+      shouldPersistBpm &&
+      tracks.value.some((track) => {
+        if (!isSameTrack(track)) return false
+        const trackBpm = normalizeBpm(track.bpm)
+        if (trackBpm === null) return true
+        return Math.abs(trackBpm - Number(normalizedInputBpm)) > 0.0001
+      })
+    if (!offsetChanged && !firstBeatChanged && !bpmChanged) return
     const nextTracks = tracks.value.map((track) => {
-      const isSameTrack =
-        targetFilePath.length > 0
-          ? normalizeMixtapeFilePath(track.filePath) === targetFilePath
-          : track.id === trackId
-      if (!isSameTrack) return track
+      if (!isSameTrack(track)) return track
       return {
         ...track,
-        barBeatOffset: normalizedOffset
+        barBeatOffset: normalizedOffset,
+        firstBeatMs: normalizedFirstBeatMs,
+        bpm:
+          shouldPersistBpm && normalizedInputBpm !== null ? Number(normalizedInputBpm) : track.bpm
       }
     })
     tracks.value = nextTracks
@@ -542,12 +579,16 @@ export const useMixtape = () => {
     void window.electron.ipcRenderer
       .invoke('mixtape:update-grid-definition', {
         filePath: targetFilePath,
-        barBeatOffset: normalizedOffset
+        barBeatOffset: normalizedOffset,
+        firstBeatMs: normalizedFirstBeatMs,
+        bpm: bpmChanged ? normalizedInputBpm : undefined
       })
       .catch((error) => {
-        console.error('[mixtape] update bar beat offset failed', {
+        console.error('[mixtape] update grid definition failed', {
           filePath: targetFilePath,
           barBeatOffset: normalizedOffset,
+          firstBeatMs: normalizedFirstBeatMs,
+          bpm: bpmChanged ? normalizedInputBpm : undefined,
           error
         })
       })
@@ -706,7 +747,7 @@ export const useMixtape = () => {
     beatAlignDialogVisible,
     beatAlignTrack,
     handleBeatAlignDialogCancel,
-    handleBeatAlignBarBeatOffsetUpdate,
+    handleBeatAlignGridDefinitionSave,
     transportPlaying,
     transportDecoding,
     transportPreloading,

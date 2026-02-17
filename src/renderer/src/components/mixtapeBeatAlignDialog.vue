@@ -3,6 +3,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { t } from '@renderer/utils/translate'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import MixtapeBeatAlignGridAdjustToolbar from '@renderer/components/mixtapeBeatAlignGridAdjustToolbar.vue'
+import MixtapeBeatAlignTopControls from '@renderer/components/mixtapeBeatAlignTopControls.vue'
+import { useMixtapeBeatAlignGridAdjust } from '@renderer/components/mixtapeBeatAlignGridAdjust'
 import { rebuildBeatAlignOverviewCache } from '@renderer/components/mixtapeBeatAlignOverviewCache'
 import { createBeatAlignPreviewRenderer } from '@renderer/components/mixtapeBeatAlignPreviewRenderer'
 import { useMixtapeBeatAlignPlayback } from '@renderer/components/mixtapeBeatAlignPlayback'
@@ -44,7 +47,10 @@ const props = defineProps({
 
 const emit = defineEmits<{
   (event: 'cancel'): void
-  (event: 'update-bar-beat-offset', value: number): void
+  (
+    event: 'save-grid-definition',
+    payload: { barBeatOffset: number; firstBeatMs: number; bpm: number }
+  ): void
 }>()
 
 const { dialogVisible, closeWithAnimation } = useDialogTransition()
@@ -64,9 +70,10 @@ const previewStartSec = ref(0)
 const previewDragging = ref(false)
 const overviewDragging = ref(false)
 const previewBarBeatOffset = ref(0)
-const previewBarLinePicking = ref(false)
-const previewBarLineHoverCenterPx = ref(0)
-const previewBarLineHoverHit = ref(false)
+const previewFirstBeatMs = ref(0)
+const previewBpm = ref(128)
+const previewBpmInput = ref('128.00')
+const bpmTapTimestamps = ref<number[]>([])
 
 let previewRaf = 0
 let overviewRaf = 0
@@ -83,6 +90,7 @@ let overviewSuppressClick = false
 let overviewCacheCanvas: HTMLCanvasElement | null = null
 let previewLoadSequence = 0
 let previewWarmupTimer: ReturnType<typeof setTimeout> | null = null
+let bpmTapResetTimer: ReturnType<typeof setTimeout> | null = null
 const overviewRawPyramidMap = new Map<string, RawWaveformLevel[]>()
 const overviewRawKey = ref('')
 
@@ -98,16 +106,25 @@ const PREVIEW_MAX_SAMPLES_PER_PIXEL = 180
 const PREVIEW_PLAY_MAX_SAMPLES_PER_PIXEL = 20
 const PREVIEW_PLAY_ANCHOR_RATIO = 1 / 3
 const PREVIEW_SHORTCUT_FALLBACK_BPM = 128
+const PREVIEW_BPM_DECIMALS = 2
+const PREVIEW_BPM_STEP = 0.01
+const PREVIEW_BPM_MIN = 1
+const PREVIEW_BPM_MAX = 300
 const PREVIEW_SHORTCUT_BEATS = 4
 const PREVIEW_BAR_BEAT_INTERVAL = 32
 const PREVIEW_BAR_LINE_HIT_RADIUS_PX = 14
-const PREVIEW_BAR_LINE_HIT_DIAMETER_PX = PREVIEW_BAR_LINE_HIT_RADIUS_PX * 2
+const PREVIEW_GRID_SHIFT_SMALL_MS = 5
+const PREVIEW_GRID_SHIFT_LARGE_MS = 20
+const PREVIEW_BPM_TAP_RESET_MS = 5000
+const PREVIEW_BPM_TAP_MIN_DELTA_MS = 50
+const PREVIEW_BPM_TAP_MAX_DELTA_MS = 2000
+const PREVIEW_BPM_TAP_MAX_COUNT = 8
 const previewRenderer = createBeatAlignPreviewRenderer()
 
 const bpmDisplay = computed(() => {
-  const bpmValue = Number(props.bpm)
+  const bpmValue = Number(previewBpm.value)
   if (!Number.isFinite(bpmValue) || bpmValue <= 0) return 'N/A'
-  return bpmValue.toFixed(3).replace(/\.?0+$/, '')
+  return bpmValue.toFixed(PREVIEW_BPM_DECIMALS)
 })
 
 const trackKeyDisplay = computed(() => {
@@ -131,11 +148,110 @@ const trackNameTitle = computed(() => {
   return meta ? `${title} · ${meta}` : title
 })
 
-const cancel = () => {
+const normalizePreviewBpm = (value: unknown) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) return PREVIEW_SHORTCUT_FALLBACK_BPM
+  const clamped = Math.max(PREVIEW_BPM_MIN, Math.min(PREVIEW_BPM_MAX, numeric))
+  return Number(clamped.toFixed(PREVIEW_BPM_DECIMALS))
+}
+
+const formatPreviewBpm = (value: unknown) =>
+  normalizePreviewBpm(value).toFixed(PREVIEW_BPM_DECIMALS)
+
+const parsePreviewBpmInput = (value: string) => {
+  const normalized = String(value || '')
+    .trim()
+    .replace(',', '.')
+  if (!normalized) return null
+  if (!/^(\d+(\.\d*)?|\.\d+)$/.test(normalized)) return null
+  const numeric = Number(normalized)
+  if (!Number.isFinite(numeric) || numeric <= 0) return null
+  return normalizePreviewBpm(numeric)
+}
+
+const syncPreviewBpmFromProps = () => {
+  previewBpm.value = normalizePreviewBpm(props.bpm)
+  previewBpmInput.value = formatPreviewBpm(previewBpm.value)
+  resetPreviewBpmTap()
+}
+
+const handlePreviewBpmInputUpdate = (value: string) => {
+  const parsed = parsePreviewBpmInput(value)
+  if (parsed === null) {
+    previewBpmInput.value = formatPreviewBpm(previewBpm.value)
+    return
+  }
+  previewBpm.value = parsed
+  previewBpmInput.value = formatPreviewBpm(parsed)
+  resetPreviewBpmTap()
+}
+
+const handlePreviewBpmInputBlur = () => {
+  previewBpmInput.value = formatPreviewBpm(previewBpm.value)
+}
+
+const clearBpmTapResetTimer = () => {
+  if (!bpmTapResetTimer) return
+  clearTimeout(bpmTapResetTimer)
+  bpmTapResetTimer = null
+}
+
+const resetPreviewBpmTap = () => {
+  clearBpmTapResetTimer()
+  bpmTapTimestamps.value = []
+}
+
+const schedulePreviewBpmTapReset = () => {
+  clearBpmTapResetTimer()
+  bpmTapResetTimer = setTimeout(() => {
+    bpmTapResetTimer = null
+    bpmTapTimestamps.value = []
+  }, PREVIEW_BPM_TAP_RESET_MS)
+}
+
+const handlePreviewBpmTap = () => {
+  if (!canAdjustGrid.value) return
+  const now = Date.now()
+  const lastTap = bpmTapTimestamps.value[bpmTapTimestamps.value.length - 1]
+  if (lastTap && now - lastTap > PREVIEW_BPM_TAP_RESET_MS) {
+    bpmTapTimestamps.value = []
+  }
+  bpmTapTimestamps.value.push(now)
+  if (bpmTapTimestamps.value.length > PREVIEW_BPM_TAP_MAX_COUNT) {
+    bpmTapTimestamps.value = bpmTapTimestamps.value.slice(-PREVIEW_BPM_TAP_MAX_COUNT)
+  }
+  schedulePreviewBpmTapReset()
+
+  if (bpmTapTimestamps.value.length < 2) return
+  const deltas: number[] = []
+  for (let i = 1; i < bpmTapTimestamps.value.length; i += 1) {
+    const delta = bpmTapTimestamps.value[i] - bpmTapTimestamps.value[i - 1]
+    if (delta > PREVIEW_BPM_TAP_MIN_DELTA_MS && delta < PREVIEW_BPM_TAP_MAX_DELTA_MS) {
+      deltas.push(delta)
+    }
+  }
+  if (!deltas.length) return
+  const avgMs = deltas.reduce((sum, delta) => sum + delta, 0) / deltas.length
+  if (!Number.isFinite(avgMs) || avgMs <= 0) return
+  const tappedBpm = 60000 / avgMs
+  previewBpm.value = normalizePreviewBpm(tappedBpm)
+  previewBpmInput.value = formatPreviewBpm(previewBpm.value)
+}
+
+const closeDialog = () => {
   stopPreviewPlayback({ syncPosition: false })
-  closeWithAnimation(() => {
-    emit('cancel')
+  closeWithAnimation(() => emit('cancel'))
+}
+
+const cancel = () => closeDialog()
+
+const save = () => {
+  emit('save-grid-definition', {
+    barBeatOffset: normalizeBeatOffset(previewBarBeatOffset.value, PREVIEW_BAR_BEAT_INTERVAL),
+    firstBeatMs: Math.max(0, Number(previewFirstBeatMs.value) || 0),
+    bpm: normalizePreviewBpm(previewBpm.value)
   })
+  closeDialog()
 }
 
 const normalizePathKey = (value: unknown) =>
@@ -144,6 +260,7 @@ const normalizePathKey = (value: unknown) =>
     .toLowerCase()
 
 const normalizedFilePath = computed(() => String(props.filePath || '').trim())
+syncPreviewBpmFromProps()
 
 const resolvePreviewDurationSec = () => {
   const mixxxDuration = Number(previewMixxxData.value?.duration || 0)
@@ -228,16 +345,6 @@ const overviewViewportStyle = computed(() => {
     opacity: width > 0 ? '1' : '0'
   }
 })
-const previewBarLineHoverVisible = computed(
-  () => previewBarLinePicking.value && previewBarLineHoverHit.value
-)
-const previewBarLineHitRangeStyle = computed(() => ({
-  left: `${Math.round(previewBarLineHoverCenterPx.value - PREVIEW_BAR_LINE_HIT_RADIUS_PX)}px`,
-  width: `${PREVIEW_BAR_LINE_HIT_DIAMETER_PX}px`
-}))
-const previewBarLineGlowStyle = computed(() => ({
-  left: `${Math.round(previewBarLineHoverCenterPx.value)}px`
-}))
 
 const resizePreviewCanvas = (
   canvas: HTMLCanvasElement,
@@ -276,8 +383,8 @@ const drawPreviewCanvas = () => {
   previewRenderer.draw({
     canvas,
     wrap,
-    bpm: Number(props.bpm) || 0,
-    firstBeatMs: Number(props.firstBeatMs) || 0,
+    bpm: Number(previewBpm.value) || 0,
+    firstBeatMs: Number(previewFirstBeatMs.value) || 0,
     barBeatOffset: previewBarBeatOffset.value,
     rangeStartSec,
     rangeDurationSec: safeDuration,
@@ -360,8 +467,8 @@ const {
 } = useMixtapeBeatAlignMetronome({
   dialogVisible,
   previewPlaying,
-  bpm: computed(() => Number(props.bpm) || 0),
-  firstBeatMs: computed(() => Number(props.firstBeatMs) || 0),
+  bpm: computed(() => Number(previewBpm.value) || 0),
+  firstBeatMs: computed(() => Number(previewFirstBeatMs.value) || 0),
   resolveAnchorSec: () => getPreviewPlaybackSec()
 })
 
@@ -375,6 +482,40 @@ const handleMetronomeToggle = () => {
   if (!canToggleMetronome.value) return
   togglePreviewMetronome()
 }
+
+const previewFirstBeatMsComputed = computed(() => Number(previewFirstBeatMs.value) || 0)
+
+const {
+  canAdjustGrid,
+  previewBarLinePicking,
+  previewBarLineHoverVisible,
+  previewBarLineGlowStyle,
+  handleBarLinePickingToggle,
+  handlePreviewMouseMoveForBarLinePicking,
+  handlePreviewMouseLeaveForBarLinePicking,
+  handlePreviewMouseDownForBarLinePicking,
+  handleSetBarLineAtPlayhead,
+  handleGridShift,
+  resetBarLinePicking
+} = useMixtapeBeatAlignGridAdjust({
+  previewWrapRef,
+  previewLoading,
+  previewMixxxData,
+  previewPlaying,
+  previewBarBeatOffset,
+  previewFirstBeatMs,
+  previewStartSec,
+  bpm: previewBpm,
+  firstBeatMs: previewFirstBeatMsComputed,
+  resolvePreviewAnchorSec,
+  resolvePreviewDurationSec,
+  resolveVisibleDurationSec,
+  clampPreviewStart,
+  getPreviewPlaybackSec,
+  schedulePreviewDraw,
+  barBeatInterval: PREVIEW_BAR_BEAT_INTERVAL,
+  barLineHitRadiusPx: PREVIEW_BAR_LINE_HIT_RADIUS_PX
+})
 
 const clearPreviewWarmupTimer = () => {
   if (!previewWarmupTimer) return
@@ -447,84 +588,6 @@ const handlePreviewWheel = (event: WheelEvent) => {
   setPreviewZoom(previewZoom.value * factor, Math.max(0, Math.min(1, ratio)))
 }
 
-const clearPreviewBarLineHover = () => {
-  previewBarLineHoverHit.value = false
-}
-
-const resolveBarLinePickCandidateByClientX = (clientX: number) => {
-  const wrap = previewWrapRef.value
-  if (!wrap) return null
-  const bpmValue = Number(props.bpm)
-  if (!Number.isFinite(bpmValue) || bpmValue <= 0) return null
-  const beatSec = 60 / bpmValue
-  if (!Number.isFinite(beatSec) || beatSec <= 0) return null
-
-  const rect = wrap.getBoundingClientRect()
-  if (!Number.isFinite(rect.width) || rect.width <= 0) return null
-  const localX = clampNumber(clientX - rect.left, 0, rect.width)
-  const ratio = localX / rect.width
-  const totalDuration = resolvePreviewDurationSec()
-  const visibleDuration = totalDuration > 0 ? resolveVisibleDurationSec() : 0
-  const rangeDurationSec = Math.max(0.001, visibleDuration || totalDuration || 0)
-  if (!Number.isFinite(rangeDurationSec) || rangeDurationSec <= 0) return null
-  const rangeStartSec = totalDuration > 0 ? clampPreviewStart(previewStartSec.value) : 0
-  const targetSec = rangeStartSec + ratio * rangeDurationSec
-  const firstBeatSec = (Number(props.firstBeatMs) || 0) / 1000
-  const beatIndex = Math.round((targetSec - firstBeatSec) / beatSec)
-  if (!Number.isFinite(beatIndex)) return null
-  const beatTimeSec = firstBeatSec + beatIndex * beatSec
-  const lineRatio = (beatTimeSec - rangeStartSec) / rangeDurationSec
-  const lineX = clampNumber(lineRatio * rect.width, 0, rect.width)
-  const distancePx = Math.abs(localX - lineX)
-  return {
-    beatIndex,
-    lineX,
-    hit: distancePx <= PREVIEW_BAR_LINE_HIT_RADIUS_PX
-  }
-}
-
-const updatePreviewBarLineHover = (clientX: number) => {
-  if (!previewBarLinePicking.value) return
-  const candidate = resolveBarLinePickCandidateByClientX(clientX)
-  if (!candidate || !candidate.hit) {
-    clearPreviewBarLineHover()
-    return
-  }
-  previewBarLineHoverCenterPx.value = candidate.lineX
-  previewBarLineHoverHit.value = true
-}
-
-const applyBarLineDefinitionByClientX = (clientX: number) => {
-  const candidate = resolveBarLinePickCandidateByClientX(clientX)
-  if (!candidate || !candidate.hit) {
-    clearPreviewBarLineHover()
-    return false
-  }
-  previewBarBeatOffset.value = normalizeBeatOffset(candidate.beatIndex, PREVIEW_BAR_BEAT_INTERVAL)
-  emit('update-bar-beat-offset', previewBarBeatOffset.value)
-  previewBarLinePicking.value = false
-  clearPreviewBarLineHover()
-  schedulePreviewDraw()
-  return true
-}
-
-const handleBarLinePickingToggle = () => {
-  if (previewLoading.value || !previewMixxxData.value) return
-  previewBarLinePicking.value = !previewBarLinePicking.value
-  clearPreviewBarLineHover()
-}
-
-const handlePreviewMouseMove = (event: MouseEvent) => {
-  if (!previewBarLinePicking.value) return
-  if (previewDragging.value) return
-  updatePreviewBarLineHover(event.clientX)
-}
-
-const handlePreviewMouseLeave = () => {
-  if (!previewBarLinePicking.value) return
-  clearPreviewBarLineHover()
-}
-
 const handlePreviewDragMove = (event: MouseEvent) => {
   if (!previewDragging.value) return
 
@@ -570,14 +633,7 @@ const stopPreviewDragging = () => {
 const handlePreviewMouseDown = (event: MouseEvent) => {
   if (event.button !== 0) return
   if (!previewMixxxData.value) return
-  if (previewBarLinePicking.value) {
-    event.preventDefault()
-    event.stopPropagation()
-    if (!applyBarLineDefinitionByClientX(event.clientX)) {
-      updatePreviewBarLineHover(event.clientX)
-    }
-    return
-  }
+  if (handlePreviewMouseDownForBarLinePicking(event)) return
 
   previewDragging.value = true
   previewDragStartClientX = event.clientX
@@ -751,9 +807,10 @@ const loadPreviewWaveform = async (filePath: string) => {
   previewError.value = ''
   previewZoom.value = PREVIEW_MIN_ZOOM
   previewStartSec.value = 0
+  syncPreviewBpmFromProps()
   previewBarBeatOffset.value = normalizeBeatOffset(props.barBeatOffset, PREVIEW_BAR_BEAT_INTERVAL)
-  previewBarLinePicking.value = false
-  clearPreviewBarLineHover()
+  previewFirstBeatMs.value = Math.max(0, Number(props.firstBeatMs) || 0)
+  resetBarLinePicking()
   stopPreviewDragging()
   stopOverviewDragging()
   schedulePreviewDraw()
@@ -850,8 +907,7 @@ const handleWindowKeydown = (event: KeyboardEvent) => {
 
   if (event.code === 'Escape' && previewBarLinePicking.value) {
     event.preventDefault()
-    previewBarLinePicking.value = false
-    clearPreviewBarLineHover()
+    resetBarLinePicking()
     return
   }
 
@@ -863,7 +919,7 @@ const handleWindowKeydown = (event: KeyboardEvent) => {
 
   if (event.code === 'ArrowLeft' || event.code === 'ArrowRight') {
     event.preventDefault()
-    const bpmValue = Number(props.bpm)
+    const bpmValue = Number(previewBpm.value)
     const safeBpm =
       Number.isFinite(bpmValue) && bpmValue > 0 ? bpmValue : PREVIEW_SHORTCUT_FALLBACK_BPM
     const deltaSec = (60 / safeBpm) * PREVIEW_SHORTCUT_BEATS
@@ -880,8 +936,23 @@ watch(
 )
 
 watch(
-  () => [props.bpm, props.firstBeatMs],
+  () => props.bpm,
   () => {
+    syncPreviewBpmFromProps()
+  }
+)
+
+watch(
+  () => previewBpm.value,
+  () => {
+    schedulePreviewDraw()
+  }
+)
+
+watch(
+  () => props.firstBeatMs,
+  (next) => {
+    previewFirstBeatMs.value = Math.max(0, Number(next) || 0)
     schedulePreviewDraw()
   }
 )
@@ -903,8 +974,8 @@ watch(
       schedulePreviewDraw()
       scheduleOverviewRebuild()
     } else {
-      previewBarLinePicking.value = false
-      clearPreviewBarLineHover()
+      resetPreviewBpmTap()
+      resetBarLinePicking()
       stopPreviewPlayback({ syncPosition: false })
     }
   }
@@ -921,6 +992,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   previewLoadSequence += 1
   clearPreviewWarmupTimer()
+  resetPreviewBpmTap()
   cleanupPreviewPlayback()
   previewRenderer.dispose()
   if (previewRaf) {
@@ -933,7 +1005,7 @@ onBeforeUnmount(() => {
   }
   overviewCacheCanvas = null
   overviewRawPyramidMap.clear()
-  clearPreviewBarLineHover()
+  resetBarLinePicking()
   stopPreviewDragging()
   stopOverviewDragging()
   window.removeEventListener('resize', handleWindowResize)
@@ -962,96 +1034,28 @@ onBeforeUnmount(() => {
           <span class="track-name__title">{{ trackTitle }}</span>
           <span class="track-name__meta"> · {{ trackMetaDisplay }}</span>
         </div>
-        <div class="preview-toolbar">
-          <div class="preview-tools">
-            <button
-              class="playback-icon-btn"
-              type="button"
-              :disabled="!canTogglePreviewPlayback"
-              :title="
-                previewDecoding
-                  ? t('mixtape.transportDecoding')
-                  : previewPlaying
-                    ? t('mixtape.pause')
-                    : t('mixtape.play')
-              "
-              :aria-label="
-                previewDecoding
-                  ? t('mixtape.transportDecoding')
-                  : previewPlaying
-                    ? t('mixtape.pause')
-                    : t('mixtape.play')
-              "
-              @click="handlePreviewPlaybackToggle"
-            >
-              <svg
-                v-if="previewDecoding"
-                class="is-spinning"
-                viewBox="0 0 16 16"
-                aria-hidden="true"
-                focusable="false"
-              >
-                <circle cx="8" cy="8" r="5.5"></circle>
-              </svg>
-              <svg
-                v-else-if="previewPlaying"
-                viewBox="0 0 16 16"
-                aria-hidden="true"
-                focusable="false"
-              >
-                <rect x="4" y="3" width="3" height="10" rx="0.9"></rect>
-                <rect x="9" y="3" width="3" height="10" rx="0.9"></rect>
-              </svg>
-              <svg v-else viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                <polygon points="5,3.5 12.5,8 5,12.5"></polygon>
-              </svg>
-            </button>
-            <button
-              class="barline-btn"
-              type="button"
-              :class="{ 'is-active': previewBarLinePicking }"
-              :disabled="previewLoading || !previewMixxxData"
-              @click="handleBarLinePickingToggle"
-            >
-              {{
-                previewBarLinePicking
-                  ? t('mixtape.gridAdjustSetBarLineCancel')
-                  : t('mixtape.gridAdjustSetBarLine')
-              }}
-            </button>
-            <button
-              class="waveform-action-btn"
-              type="button"
-              :class="{ 'is-active': metronomeEnabled }"
-              :disabled="!canToggleMetronome"
-              :title="metronomeEnabled ? t('mixtape.metronomeOn') : t('mixtape.metronomeOff')"
-              :aria-label="metronomeEnabled ? t('mixtape.metronomeOn') : t('mixtape.metronomeOff')"
-              @click="handleMetronomeToggle"
-            >
-              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                <path d="M4.5 2h7l-1.2 11h-4.6L4.5 2Z"></path>
-                <path d="M8 5.3v3.8"></path>
-                <circle cx="8" cy="10.9" r="1.1"></circle>
-              </svg>
-              <span>{{ t('mixtape.metronome') }}</span>
-            </button>
-          </div>
-        </div>
+        <MixtapeBeatAlignTopControls
+          :preview-decoding="previewDecoding"
+          :preview-playing="previewPlaying"
+          :can-toggle-preview-playback="canTogglePreviewPlayback"
+          :can-adjust-grid="canAdjustGrid"
+          :preview-bar-line-picking="previewBarLinePicking"
+          :metronome-enabled="metronomeEnabled"
+          :can-toggle-metronome="canToggleMetronome"
+          @toggle-playback="handlePreviewPlaybackToggle"
+          @toggle-barline-pick="handleBarLinePickingToggle"
+          @toggle-metronome="handleMetronomeToggle"
+        />
         <div
           ref="previewWrapRef"
           class="preview-canvas-wrap"
           :class="{ 'is-dragging': previewDragging, 'is-bar-selecting': previewBarLinePicking }"
           @mousedown="handlePreviewMouseDown"
-          @mousemove="handlePreviewMouseMove"
-          @mouseleave="handlePreviewMouseLeave"
+          @mousemove="handlePreviewMouseMoveForBarLinePicking"
+          @mouseleave="handlePreviewMouseLeaveForBarLinePicking"
           @wheel.prevent="handlePreviewWheel"
         >
           <canvas ref="previewCanvasRef" class="preview-canvas"></canvas>
-          <div
-            v-if="previewBarLineHoverVisible"
-            class="preview-barline-hit-range"
-            :style="previewBarLineHitRangeStyle"
-          ></div>
           <div
             v-if="previewBarLineHoverVisible"
             class="preview-barline-glow"
@@ -1069,6 +1073,21 @@ onBeforeUnmount(() => {
             {{ previewError }}
           </div>
         </div>
+        <MixtapeBeatAlignGridAdjustToolbar
+          :disabled="!canAdjustGrid"
+          :bpm-input-value="previewBpmInput"
+          :bpm-step="PREVIEW_BPM_STEP"
+          :bpm-min="PREVIEW_BPM_MIN"
+          :bpm-max="PREVIEW_BPM_MAX"
+          @set-bar-line="handleSetBarLineAtPlayhead"
+          @shift-left-large="handleGridShift(-PREVIEW_GRID_SHIFT_LARGE_MS)"
+          @shift-left-small="handleGridShift(-PREVIEW_GRID_SHIFT_SMALL_MS)"
+          @shift-right-small="handleGridShift(PREVIEW_GRID_SHIFT_SMALL_MS)"
+          @shift-right-large="handleGridShift(PREVIEW_GRID_SHIFT_LARGE_MS)"
+          @update-bpm-input="handlePreviewBpmInputUpdate"
+          @blur-bpm-input="handlePreviewBpmInputBlur"
+          @tap-bpm="handlePreviewBpmTap"
+        />
         <div
           ref="overviewWrapRef"
           class="overview-canvas-wrap"
@@ -1081,7 +1100,8 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <div class="dialog-footer">
-        <div class="button" @click="cancel">{{ t('common.close') }}</div>
+        <div class="button" @click="save">{{ t('common.save') }}</div>
+        <div class="button" @click="cancel">{{ t('common.cancel') }}</div>
       </div>
     </div>
   </div>

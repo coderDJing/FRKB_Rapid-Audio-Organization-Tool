@@ -365,16 +365,26 @@ export function registerMixtapeHandlers() {
 
   ipcMain.handle(
     'mixtape:update-grid-definition',
-    async (_e, payload: { filePath?: string; barBeatOffset?: number }) => {
+    async (
+      _e,
+      payload: { filePath?: string; barBeatOffset?: number; firstBeatMs?: number; bpm?: number }
+    ) => {
       const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
       const rawOffset = Number(payload?.barBeatOffset)
-      if (!filePath || !Number.isFinite(rawOffset)) {
+      const rawFirstBeatMs = Number(payload?.firstBeatMs)
+      const rawBpm = Number(payload?.bpm)
+      const hasOffset = Number.isFinite(rawOffset)
+      const hasFirstBeatMs = Number.isFinite(rawFirstBeatMs)
+      const hasBpm = Number.isFinite(rawBpm) && rawBpm > 0
+      if (!filePath || (!hasOffset && !hasFirstBeatMs && !hasBpm)) {
         return { updated: 0 }
       }
       return upsertMixtapeItemGridByFilePath([
         {
           filePath,
-          barBeatOffset: rawOffset
+          barBeatOffset: hasOffset ? rawOffset : 0,
+          firstBeatMs: hasFirstBeatMs ? rawFirstBeatMs : undefined,
+          bpm: hasBpm ? rawBpm : undefined
         }
       ])
     }
