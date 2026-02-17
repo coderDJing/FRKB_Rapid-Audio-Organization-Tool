@@ -60,7 +60,9 @@ export function useDragSongs() {
       bitrate: song?.bitrate,
       container: song?.container,
       key: song?.key,
-      bpm: song?.bpm
+      originalKey: song?.key,
+      bpm: song?.bpm,
+      originalBpm: song?.bpm
     }
   }
 

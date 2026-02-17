@@ -129,6 +129,31 @@ export const useMixtape = () => {
     return formatKeyDisplayText(raw, style)
   }
 
+  const formatTrackOriginalMeta = (track?: MixtapeTrack | null) => {
+    if (!track) return ''
+    const originalBpm = Number(track.originalBpm)
+    const originalBpmText =
+      Number.isFinite(originalBpm) && originalBpm > 0 ? formatTrackBpm(originalBpm) : ''
+    const originalKeyText = formatTrackKey(track.originalKey || track.key)
+    if (originalBpmText && originalKeyText) {
+      return t('mixtape.originalMetaBoth', { bpm: originalBpmText, key: originalKeyText })
+    }
+    if (originalBpmText) {
+      return t('mixtape.originalMetaBpmOnly', { bpm: originalBpmText })
+    }
+    if (originalKeyText) {
+      return t('mixtape.originalMetaKeyOnly', { key: originalKeyText })
+    }
+    return ''
+  }
+
+  const resolveTrackTitleWithOriginalMeta = (track: MixtapeTrack) => {
+    const baseTitle = resolveTrackTitle(track)
+    const originalMeta = formatTrackOriginalMeta(track)
+    if (!originalMeta) return baseTitle
+    return `${baseTitle}（${originalMeta}）`
+  }
+
   const mixtapeMenus = computed(() => [
     {
       name: 'mixtape.menu',
@@ -171,6 +196,11 @@ export const useMixtape = () => {
       typeof info?.bpm === 'number' && Number.isFinite(info.bpm) && info.bpm > 0
         ? info.bpm
         : undefined
+    const parsedOriginalBpmCandidate = Number(info?.originalBpm)
+    const parsedOriginalBpm =
+      Number.isFinite(parsedOriginalBpmCandidate) && parsedOriginalBpmCandidate > 0
+        ? parsedOriginalBpmCandidate
+        : parsedBpm
     const hasFirstBeatField = !!info && Object.prototype.hasOwnProperty.call(info, 'firstBeatMs')
     const parsedFirstBeatMsValue = Number(info?.firstBeatMs)
     const parsedFirstBeatMs =
@@ -178,6 +208,9 @@ export const useMixtape = () => {
         ? parsedFirstBeatMsValue
         : undefined
     const parsedKey = typeof info?.key === 'string' ? info.key.trim() : ''
+    const parsedOriginalKeyRaw =
+      typeof info?.originalKey === 'string' ? info.originalKey.trim() : ''
+    const parsedOriginalKey = parsedOriginalKeyRaw || parsedKey || undefined
     const parsedBarBeatOffset = normalizeBarBeatOffset(info?.barBeatOffset)
     return {
       id: String(raw?.id || `${filePath}-${index}`),
@@ -189,8 +222,9 @@ export const useMixtape = () => {
       originPath: String(raw?.originPathSnapshot || ''),
       originPlaylistUuid: raw?.originPlaylistUuid ? String(raw.originPlaylistUuid) : null,
       key: parsedKey || undefined,
+      originalKey: parsedOriginalKey,
       bpm: parsedBpm,
-      originalBpm: parsedBpm,
+      originalBpm: parsedOriginalBpm,
       masterTempo: true,
       startSec: undefined,
       firstBeatMs: parsedFirstBeatMs,
@@ -655,8 +689,10 @@ export const useMixtape = () => {
     laneTracks,
     resolveTrackBlockStyle,
     resolveTrackTitle,
+    resolveTrackTitleWithOriginalMeta,
     formatTrackBpm,
     formatTrackKey,
+    formatTrackOriginalMeta,
     isRawWaveformLoading,
     preRenderState,
     preRenderPercent,

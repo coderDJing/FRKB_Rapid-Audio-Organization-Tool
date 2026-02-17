@@ -16,6 +16,7 @@ const {
   laneTracks,
   resolveTrackBlockStyle,
   resolveTrackTitle,
+  resolveTrackTitleWithOriginalMeta,
   formatTrackBpm,
   formatTrackKey,
   isRawWaveformLoading,
@@ -197,7 +198,8 @@ const {
                           >
                             <div class="lane-track__meta">
                               <div class="lane-track__meta-title">
-                                {{ item.track.mixOrder }}. {{ resolveTrackTitle(item.track) }}
+                                {{ item.track.mixOrder }}.
+                                {{ resolveTrackTitleWithOriginalMeta(item.track) }}
                               </div>
                               <div class="lane-track__meta-sub">
                                 {{ t('mixtape.bpm') }} {{ formatTrackBpm(item.track.bpm) }}

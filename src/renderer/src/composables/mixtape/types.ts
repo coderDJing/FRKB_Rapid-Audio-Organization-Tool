@@ -26,6 +26,8 @@ export type MixtapeTrack = {
   originPlaylistUuid?: string | null
   // 调性（如 8A / C#m）
   key?: string
+  // 首次加载时的原始调性
+  originalKey?: string
   // 当前目标 BPM（可能由吸附对齐自动改写）
   bpm?: number
   // 首次加载时的原始 BPM，用于计算变速比率
