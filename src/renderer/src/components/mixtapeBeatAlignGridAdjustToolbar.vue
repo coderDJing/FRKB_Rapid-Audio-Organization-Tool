@@ -264,6 +264,17 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
+.grid-adjust-icon-btn:focus,
+.grid-adjust-tap-btn:focus {
+  outline: none;
+}
+
+.grid-adjust-icon-btn:focus-visible,
+.grid-adjust-tap-btn:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 .grid-adjust-icon-btn svg {
   width: 14px;
   height: 14px;

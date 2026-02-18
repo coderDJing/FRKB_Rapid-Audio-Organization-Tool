@@ -182,6 +182,21 @@ const resolveMetronomeVolumeTitle = () =>
   cursor: pointer;
 }
 
+.playback-icon-btn:focus,
+.barline-btn:focus,
+.waveform-action-btn:focus,
+.metronome-volume-btn:focus {
+  outline: none;
+}
+
+.playback-icon-btn:focus-visible,
+.barline-btn:focus-visible,
+.waveform-action-btn:focus-visible,
+.metronome-volume-btn:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 .playback-icon-btn svg {
   width: 14px;
   height: 14px;

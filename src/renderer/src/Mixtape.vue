@@ -486,6 +486,15 @@ const {
   border-color: var(--accent);
 }
 
+.timeline-stop-btn:focus {
+  outline: none;
+}
+
+.timeline-stop-btn:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 .timeline-stop-btn svg {
   width: 11px;
   height: 11px;
@@ -946,6 +955,15 @@ const {
 
 .mixtape-track-menu__item:hover {
   background: var(--hover);
+}
+
+.mixtape-track-menu__item:focus {
+  outline: none;
+}
+
+.mixtape-track-menu__item:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .mixtape-track-menu__check {
