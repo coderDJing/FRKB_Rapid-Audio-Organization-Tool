@@ -30,6 +30,8 @@
 8. 播放时优先复用窗口级 `AudioBuffer` 缓存；同文件并发解码通过 in-flight Promise 去重。
 9. 点击时间尺可从目标时间启动播放；顶部按钮支持从头播放/停止。
 10. 播放头是单一全局时间基准，同时渲染在时间尺、主时间线、overview。
+11. 自动混音窗口支持 `Space` 快捷键：未播放时从头播放，播放或解码中时直接停止（不是暂停）。
+12. 空格快捷键会跳过输入控件、Beat Align 弹窗和输出弹窗，避免抢占编辑态按键。
 
 ### BPM/首拍分析（firstBeatMs）
 1. Rust 分析返回 `bpm` 与 `firstBeatMs`，主进程统一接收并落库。
@@ -89,7 +91,7 @@
 31. 底部按钮语义为“保存/取消”：只有点击保存才把修改生效；取消直接丢弃草稿。
 32. 保存 payload 为 `barBeatOffset + firstBeatMs + bpm`。
 33. 保存时会更新 mixtape 轨道持久化（`info_json`），不改主曲库。
-34. 保存时 BPM 只在“输入 BPM 与该曲原始 BPM 不一致”时才写入 mixtape 的 `bpm` 字段。
+34. 保存时 BPM 会先与 `gridBaseBpm -> originalBpm -> bpm` 这条基准链比较，只有不一致才写入 mixtape 的 `bpm` 字段。
 
 ## 明确未实现项（避免误解）
 1. `masterTempo` 仍是业务标记位，尚未接入实时变速不变调算法（当前仍是 `playbackRate` 变速）。
@@ -97,19 +99,20 @@
 3. 导出链路（OfflineAudioContext + 编码器联动）不在本草案覆盖范围内。
 
 ## 数据字段口径（Mixtape Track）
-1. `originalBpm`：原始 BPM（用于比较是否需要覆盖 mixtape BPM）。
-2. `bpm`：自动混音窗口中的当前目标 BPM（可被吸附逻辑或 Beat Align 保存改写）。
-3. `masterTempo`：是否启用 Master Tempo（当前仅标记态）。
-4. `startSec`：轨道在全局时间线的起点秒数。
-5. `firstBeatMs`：首拍偏移毫秒数（用于网格锚点，也用于节拍对齐位移保存）。
-6. `barBeatOffset`：大节线相位偏移（以拍为单位，主要由“网格线点选设大节线”修改）。
+1. `gridBaseBpm`：网格基准 BPM（优先用于 Beat Align 初始值与“是否持久化 BPM”比较口径）。
+2. `originalBpm`：初始原始 BPM（作为 `gridBaseBpm` 缺失时的回退比较口径）。
+3. `bpm`：自动混音窗口当前目标 BPM（可被吸附逻辑临时改写，也可在 Beat Align 保存后持久化）。
+4. `masterTempo`：是否启用 Master Tempo（当前仅标记态）。
+5. `startSec`：轨道在全局时间线的起点秒数。
+6. `firstBeatMs`：首拍偏移毫秒数（用于网格锚点，也用于节拍对齐位移保存）。
+7. `barBeatOffset`：大节线相位偏移（以拍为单位，主要由“网格线点选设大节线”修改）。
 
 ## 关键触发时序
 1. 加入混音库：`mixtape:append` -> 后台分析 `bpm + firstBeatMs` -> 回写 DB -> 广播增量结果。
 2. 打开混音窗口：加载轨道 -> 对缺失项补跑分析 -> 时间线调度预解码与波形加载。
 3. 打开 Beat Align：加载主/概览波形 -> 并行 warmup 预解码 -> 用户播放时优先复用缓存。
 4. Beat Align 调整：所有操作只改 Dialog 草稿态（`barBeatOffset/firstBeatMs/bpm`），不立即写回主视图。
-5. 点击保存：前端更新同文件轨道的网格定义并调用 `mixtape:update-grid-definition`；主进程仅更新 `mixtape_items.info_json`。
+5. 点击保存：前端先按 `gridBaseBpm -> originalBpm -> bpm` 判定 BPM 是否变化，再更新同文件轨道并调用 `mixtape:update-grid-definition`；主进程仅更新 `mixtape_items.info_json`。
 6. 混音列表加载缺失对账：`mixtape:list` -> 回收站查找 -> vault 查找 -> 命中则更新路径，未命中则移除并上报 `recovery.removedPaths`。
 7. 删除混音歌单：前端删除前先检查窗口是否打开；若打开则提示并中止。未打开才进入文件删除与 DB 清理链路。
 8. 回收站彻删/清空：对每个文件执行 `permanentlyDeleteFile`；若被混音引用则转移到 vault 并改写引用路径。
@@ -150,8 +153,9 @@
 2. 新增中间网格工具栏口径：5 个网格按钮、长按连发、循环位移、BPM 输入与 Tap。
 3. 明确“将当前播放竖线设为大节线”是通过 `firstBeatMs` 平移网格，不是改 `barBeatOffset`。
 4. 明确 BPM 输入上限 `300`、两位小数显示、`0.01` 步进。
-5. 明确 BPM 持久化口径：仅在保存且与原始 BPM 不一致时改 mixtape BPM，不改主曲库。
+5. 更新 BPM 持久化口径：保存时按 `gridBaseBpm -> originalBpm -> bpm` 比较基准，仅在不一致时才写入 mixtape BPM。
 6. 新增缺失歌曲恢复链路口径：原路径 -> 回收站 -> vault，未命中则移除并提示。
 7. 新增回收站彻删/清空保护口径：混音引用文件进入 vault，不允许被直接物理删除。
 8. 新增删除混音歌单防误删口径：混音工程窗口打开时阻止删除并提示先关闭窗口。
 9. 新增删除混音歌单后 vault 残留清理口径：仅清理“已无任何混音引用”的文件。
+10. 新增自动混音窗口空格快捷键口径：空格开始播放，再按空格直接停止（非暂停），并跳过输入与弹窗编辑态。
