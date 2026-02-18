@@ -206,6 +206,14 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
       }
       const visibleWidth = Math.max(0, localEnd - localStart)
       if (showGridLines && visibleWidth > 0) {
+        const renderPxPerSecSafe = Math.max(0.0001, renderCtx.renderPxPerSec)
+        const trackStartSecFromPx = trackStartX / renderPxPerSecSafe
+        const trackStartSec =
+          Number.isFinite(Number(item.startSec)) && Number(item.startSec) >= 0
+            ? Number(item.startSec)
+            : trackStartSecFromPx
+        const adjustedFirstBeatMs =
+          resolveTrackFirstBeatMs(track) + (trackStartSec - trackStartSecFromPx) * 1000
         ctx.save()
         ctx.translate(trackStartX + localStart - startX, trackY)
         drawTrackGridLines(
@@ -213,7 +221,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
           visibleWidth,
           laneH,
           Number(track.bpm) || 0,
-          resolveTrackFirstBeatMs(track),
+          adjustedFirstBeatMs,
           Number(track.barBeatOffset) || 0,
           { start: localStart, end: localEnd },
           renderCtx.renderPxPerSec,
@@ -349,11 +357,15 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
 
     const startFrame = Math.floor((tile.start / Math.max(1, trackWidth)) * frameCount)
     const endFrame = Math.ceil(((tile.start + tile.width) / Math.max(1, trackWidth)) * frameCount)
-    const startTime = sourceDurationSeconds
-      ? (tile.start / Math.max(1, trackWidth)) * sourceDurationSeconds
+    const rawDurationSeconds =
+      rawData && Number.isFinite(rawData.duration) && rawData.duration > 0 ? rawData.duration : 0
+    const waveformDurationSeconds =
+      rawDurationSeconds > 0 ? rawDurationSeconds : sourceDurationSeconds
+    const startTime = waveformDurationSeconds
+      ? (tile.start / Math.max(1, trackWidth)) * waveformDurationSeconds
       : 0
-    const endTime = sourceDurationSeconds
-      ? ((tile.start + tile.width) / Math.max(1, trackWidth)) * sourceDurationSeconds
+    const endTime = waveformDurationSeconds
+      ? ((tile.start + tile.width) / Math.max(1, trackWidth)) * waveformDurationSeconds
       : 0
 
     const pixelRatio = window.devicePixelRatio || 1

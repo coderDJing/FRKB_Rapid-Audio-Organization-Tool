@@ -125,7 +125,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
     return GRID_BAR_WIDTH_MIN + (GRID_BAR_WIDTH_MAX - GRID_BAR_WIDTH_MIN) * ratio
   }
 
-  const resolveLaneHeightForZoom = (_value: number) => Math.round(Math.max(28, 36) * 8)
+  const resolveLaneHeightForZoom = (_value: number) => Math.round(Math.max(28, 36) * 4)
 
   const resolveTimelineBufferId = (zoomValue: number) => `z:${Math.round(zoomValue * 1000)}`
 
@@ -274,21 +274,30 @@ export const createTimelineHelpersModule = (ctx: any) => {
     if (cached) return cached
 
     const px = resolveRenderPxPerSec(resolvedZoom)
-    let cursor = 0
+    let cursorPx = 0
+    let cursorSec = 0
     const layout: TimelineTrackLayout[] = []
 
     for (let i = 0; i < tracks.value.length; i += 1) {
       const track = tracks.value[i]
       if (!track) continue
       const width = resolveTrackRenderWidthPx(track, resolvedZoom)
-      const startSec = Number(track.startSec)
-      const startX =
-        Number.isFinite(startSec) && startSec >= 0 ? Math.round(startSec * px) : Math.round(cursor)
+      const durationSec = resolveTrackDurationSeconds(track)
+      const rawStartSec = Number(track.startSec)
+      const startSec =
+        Number.isFinite(rawStartSec) && rawStartSec >= 0 ? Math.max(0, rawStartSec) : cursorSec
+      const startX = Math.round(startSec * px)
       const endX = startX + width
-      cursor = Math.max(cursor, endX)
+      cursorPx = Math.max(cursorPx, endX)
+      if (Number.isFinite(durationSec) && durationSec > 0) {
+        cursorSec = Math.max(cursorSec, startSec + durationSec)
+      } else {
+        cursorSec = Math.max(cursorSec, endX / Math.max(0.0001, px))
+      }
       layout.push({
         track,
         laneIndex: i % LANE_COUNT,
+        startSec,
         startX,
         width
       })
@@ -307,7 +316,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
 
     const snapshot = {
       layout,
-      totalWidth: Math.max(cursor, lastEnd),
+      totalWidth: Math.max(cursorPx, lastEnd),
       startOffsets,
       endOffsets
     }

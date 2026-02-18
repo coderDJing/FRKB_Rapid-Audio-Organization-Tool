@@ -53,6 +53,7 @@ export type RenderFrameTrack = {
   filePath: string
   durationSeconds: number
   trackWidth: number
+  startSec: number
   startX: number
   laneIndex: number
   bpm: number

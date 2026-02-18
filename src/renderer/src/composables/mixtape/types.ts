@@ -92,6 +92,7 @@ export type WaveformPreRenderTask = {
 export type TimelineTrackLayout = {
   track: MixtapeTrack
   laneIndex: number
+  startSec: number
   startX: number
   width: number
 }
@@ -101,6 +102,7 @@ export type TimelineRenderTrack = {
   filePath: string
   durationSeconds: number
   trackWidth: number
+  startSec: number
   startX: number
   laneIndex: number
   bpm: number

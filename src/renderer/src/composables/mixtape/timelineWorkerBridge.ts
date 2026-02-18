@@ -259,6 +259,7 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
         filePath: track.filePath,
         durationSeconds,
         trackWidth,
+        startSec: Number(item.startSec) || 0,
         startX: item.startX,
         laneIndex: item.laneIndex,
         bpm: Number(bpmValue) || 0,

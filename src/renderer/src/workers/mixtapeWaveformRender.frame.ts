@@ -278,7 +278,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
         (track) =>
           `${track.id}:${track.filePath}:${Math.round(track.trackWidth)}:${Math.round(
             Number(track.startX) || 0
-          )}:${track.laneIndex}:${Math.round(track.bpm * 100)}:${Math.round(
+          )}:${Math.round((Number(track.startSec) || 0) * 1000)}:${track.laneIndex}:${Math.round(track.bpm * 100)}:${Math.round(
             track.firstBeatMs
           )}:${Math.round(track.barBeatOffset)}`
       )
@@ -368,6 +368,14 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
 
       const visibleWidth = Math.max(0, localEnd - localStart)
       if (showGridLines && visibleWidth > 0) {
+        const renderPxPerSecSafe = Math.max(0.0001, payload.renderPxPerSec)
+        const trackStartSecFromPx = trackStartX / renderPxPerSecSafe
+        const trackStartSec =
+          Number.isFinite(Number(track.startSec)) && Number(track.startSec) >= 0
+            ? Number(track.startSec)
+            : trackStartSecFromPx
+        const adjustedFirstBeatMs =
+          Number(track.firstBeatMs) + (trackStartSec - trackStartSecFromPx) * 1000
         ctx.save()
         ctx.translate(trackStartX + localStart - viewStartX, trackY)
         drawTrackGridLines(
@@ -375,7 +383,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
           visibleWidth,
           payload.laneHeight,
           track.bpm,
-          track.firstBeatMs,
+          adjustedFirstBeatMs,
           track.barBeatOffset,
           { start: localStart, end: localEnd },
           payload.renderPxPerSec,
@@ -832,7 +840,15 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
           const localEnd = visibleEnd - trackStartX
           const interval = (60 / track.bpm) * payload.renderPxPerSec
           if (!Number.isFinite(interval) || interval <= 0) continue
-          const offsetPx = (track.firstBeatMs / 1000) * payload.renderPxPerSec
+          const renderPxPerSecSafe = Math.max(0.0001, payload.renderPxPerSec)
+          const trackStartSecFromPx = trackStartX / renderPxPerSecSafe
+          const trackStartSec =
+            Number.isFinite(Number(track.startSec)) && Number(track.startSec) >= 0
+              ? Number(track.startSec)
+              : trackStartSecFromPx
+          const adjustedFirstBeatMs =
+            Number(track.firstBeatMs) + (trackStartSec - trackStartSecFromPx) * 1000
+          const offsetPx = (adjustedFirstBeatMs / 1000) * payload.renderPxPerSec
           const normalizedBarOffset = normalizeBeatOffset(track.barBeatOffset, 32)
           const startIndex = Math.floor((localStart - offsetPx) / interval) - 2
           const endIndex = Math.ceil((localEnd - offsetPx) / interval) + 2

@@ -202,6 +202,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   })
   const timelineDurationLabel = computed(() => formatTransportTime(timelineDurationSec.value))
   const rulerMinuteTicks = computed(() => {
+    type RulerTickAlign = 'start' | 'center' | 'end'
     const pxPerSec = Math.max(0.0001, resolveRenderPxPerSec(normalizedRenderZoom.value))
     const totalWidth = Math.max(1, timelineLayout.value.totalWidth)
     const viewportWidth = Math.max(1, Number(timelineViewportWidth.value) || totalWidth)
@@ -212,17 +213,23 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     const viewportEndSec = Math.max(viewportStartSec, viewportEndX / pxPerSec)
     const timelineEndSec = Math.max(0, timelineDurationSec.value)
     if (viewportWidth <= 0 || timelineEndSec <= 0)
-      return [] as Array<{ left: string; value: number }>
+      return [] as Array<{ left: string; value: number; align: RulerTickAlign }>
     const firstMinute = Math.ceil(viewportStartSec / 60)
     const endMinute = Math.floor(Math.min(viewportEndSec, timelineEndSec) / 60)
-    const ticks: Array<{ left: string; value: number }> = []
+    const ticks: Array<{ left: string; value: number; align: RulerTickAlign }> = []
     for (let minute = firstMinute; minute <= endMinute; minute += 1) {
       const sec = minute * 60
       const x = sec * pxPerSec
       const localX = x - viewportStartX
       const ratio = clampNumber(localX / viewportWidth, 0, 1)
       const left = `${(ratio * 100).toFixed(4)}%`
-      ticks.push({ left, value: minute })
+      let align: RulerTickAlign = 'center'
+      if (ratio <= 0.0001 || minute === 0) {
+        align = 'start'
+      } else if (ratio >= 0.9999 || Math.abs(sec - timelineEndSec) <= 0.0001) {
+        align = 'end'
+      }
+      ticks.push({ left, value: minute, align })
     }
     return ticks
   })
@@ -254,6 +261,8 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       (candidate: TimelineTrackLayout) => candidate.track.id === trackId
     )
     if (!item) return 0
+    const layoutStartSec = Number(item.startSec)
+    if (Number.isFinite(layoutStartSec) && layoutStartSec >= 0) return layoutStartSec
     return item.startX / pxPerSec
   }
 
@@ -346,7 +355,13 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     const snapshot = buildSequentialLayoutForZoom(normalizedRenderZoom.value)
     const startSecById = new Map<string, number>()
     for (const item of snapshot.layout) {
-      startSecById.set(item.track.id, item.startX / pxPerSec)
+      const layoutStartSec = Number(item.startSec)
+      startSecById.set(
+        item.track.id,
+        Number.isFinite(layoutStartSec) && layoutStartSec >= 0
+          ? layoutStartSec
+          : item.startX / pxPerSec
+      )
     }
     let missingDurationCount = 0
     const entries = tracks.value
@@ -931,7 +946,10 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     trackDragState = {
       trackId,
       startClientX: event.clientX,
-      initialStartSec: item.startX / pxPerSec,
+      initialStartSec:
+        Number.isFinite(Number(item.startSec)) && Number(item.startSec) >= 0
+          ? Number(item.startSec)
+          : item.startX / pxPerSec,
       previousTrackId: resolvePreviousTrackId(trackId),
       snapshotTracks: tracks.value.map((trackItem: MixtapeTrack) => ({ ...trackItem }))
     }

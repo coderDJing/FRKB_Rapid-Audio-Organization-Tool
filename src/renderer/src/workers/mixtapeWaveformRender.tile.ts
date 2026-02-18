@@ -497,9 +497,14 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
 
     const startFrame = Math.floor((tileStart / Math.max(1, trackWidth)) * frameCount)
     const endFrame = Math.ceil(((tileStart + tileWidth) / Math.max(1, trackWidth)) * frameCount)
-    const startTime = durationSeconds ? (tileStart / Math.max(1, trackWidth)) * durationSeconds : 0
-    const endTime = durationSeconds
-      ? ((tileStart + tileWidth) / Math.max(1, trackWidth)) * durationSeconds
+    const rawDurationSeconds =
+      rawData && Number.isFinite(rawData.duration) && rawData.duration > 0 ? rawData.duration : 0
+    const waveformDurationSeconds = rawDurationSeconds > 0 ? rawDurationSeconds : durationSeconds
+    const startTime = waveformDurationSeconds
+      ? (tileStart / Math.max(1, trackWidth)) * waveformDurationSeconds
+      : 0
+    const endTime = waveformDurationSeconds
+      ? ((tileStart + tileWidth) / Math.max(1, trackWidth)) * waveformDurationSeconds
       : 0
     const rawSpan = Math.max(0, endTime - startTime)
     const rawSamplesPerPixel =

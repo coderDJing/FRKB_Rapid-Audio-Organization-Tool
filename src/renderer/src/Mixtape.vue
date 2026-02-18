@@ -137,7 +137,15 @@ const {
                     :style="{ left: tick.left }"
                   >
                     <div class="timeline-ruler__tick-line"></div>
-                    <div class="timeline-ruler__tick-label">{{ tick.value }}</div>
+                    <div
+                      class="timeline-ruler__tick-label"
+                      :class="{
+                        'timeline-ruler__tick-label--start': tick.align === 'start',
+                        'timeline-ruler__tick-label--end': tick.align === 'end'
+                      }"
+                    >
+                      {{ tick.value }}
+                    </div>
                   </div>
                 </div>
                 <div class="timeline-ruler__label">
@@ -556,6 +564,16 @@ const {
   color: var(--text-weak);
   text-align: center;
   white-space: nowrap;
+}
+
+.timeline-ruler__tick-label--start {
+  transform: translateX(0);
+  text-align: left;
+}
+
+.timeline-ruler__tick-label--end {
+  transform: translateX(-100%);
+  text-align: right;
 }
 
 .timeline-ruler__label {
