@@ -1,6 +1,6 @@
 # Mixtape 时间线与节拍对齐草案（实现对齐版）
 
-更新时间：2026-02-17
+更新时间：2026-02-18
 
 ## 文档范围
 1. 本文只描述“当前代码已实现行为”和“明确未实现项”。
@@ -38,6 +38,22 @@
 4. 分析结果写回 `mixtape_items.info_json`，字段为 `bpm` 与 `firstBeatMs`。
 5. 前端加载轨道时优先读持久化结果；无有效值时 `firstBeatMs` 回退 `0`。
 6. 网格线绘制统一使用轨道上的 `bpm + firstBeatMs`，不再固定从 `0ms` 起算。
+
+### 缺失歌曲恢复与删除防护（Mixtape）
+1. 打开自动混音窗口拉取列表（`mixtape:list`）时，主进程会先执行缺失歌曲对账。
+2. 对账顺序：原路径存在即保留；原路径不存在则先查回收站；回收站未命中再查混音保底目录（`MixtapeLibrary/.mixtape_vault`）。
+3. 若在回收站或保底目录命中，会把该轨道 `filePath` 更新到新路径，并继续保留在自动混音歌单与工程内。
+4. 若两处都未命中，会把该轨道从自动混音歌单持久化数据中移除，并清理其波形缓存。
+5. 前端会在本次加载后弹出“缺失曲目已移除”提示，展示移除数量和文件名预览。
+6. 时间线轨道分配是按当前轨道序列重新计算 `laneIndex = i % LANE_COUNT`，因此移除中间曲目后，后续轨道会自动前补并恢复两轨交替口径。
+7. 删除混音歌单时，如果对应混音工程窗口正在打开，会被阻止删除并提示“先关闭窗口再删除”。
+8. 该删除阻止策略是双保险：前端删除前预检查 + 主进程删除链路硬拦截（防止绕过前端路径）。
+9. 删除混音歌单成功后，会清理该歌单的混音项、相关波形缓存，以及已不再被任何混音项引用的 vault 残留文件。
+
+### 回收站彻删与保底目录策略
+1. 回收站“彻底删除”时，若文件仍被任一混音项引用，不会直接删除，而是移动到 `MixtapeLibrary/.mixtape_vault`。
+2. 文件被移入 vault 后，混音项里的 `filePath` 会同步改为 vault 新路径，避免工程断链。
+3. 清空回收站不是直接删目录，而是逐文件走 `permanentlyDeleteFile`，确保不会绕过上述引用保护。
 
 ### 节拍对齐 Dialog（Beat Align）
 1. 主波形使用高细节波形渲染（`mixtape-waveform-hires:batch`，目标 `4kHz`）。
@@ -94,6 +110,9 @@
 3. 打开 Beat Align：加载主/概览波形 -> 并行 warmup 预解码 -> 用户播放时优先复用缓存。
 4. Beat Align 调整：所有操作只改 Dialog 草稿态（`barBeatOffset/firstBeatMs/bpm`），不立即写回主视图。
 5. 点击保存：前端更新同文件轨道的网格定义并调用 `mixtape:update-grid-definition`；主进程仅更新 `mixtape_items.info_json`。
+6. 混音列表加载缺失对账：`mixtape:list` -> 回收站查找 -> vault 查找 -> 命中则更新路径，未命中则移除并上报 `recovery.removedPaths`。
+7. 删除混音歌单：前端删除前先检查窗口是否打开；若打开则提示并中止。未打开才进入文件删除与 DB 清理链路。
+8. 回收站彻删/清空：对每个文件执行 `permanentlyDeleteFile`；若被混音引用则转移到 vault 并改写引用路径。
 
 ## 核心代码入口（按职责分组）
 1. 时间线主编排：`src/renderer/src/composables/mixtape/useMixtapeTimeline.ts`
@@ -118,6 +137,13 @@
 20. Rust 分析入口：`rust_package/src/lib.rs`
 21. Rust BPM/首拍桥接：`rust_package/src/qm_bpm.rs`
 22. QM 首拍实现：`rust_package/native/qm/qm_bpm_wrapper.cpp`
+23. 缺失歌曲恢复/回收站与 vault 策略：`src/main/recycleBinService.ts`
+24. 混音缺失对账与窗口占用检查 IPC：`src/main/ipc/mixtapeHandlers.ts`
+25. 混音路径更新与引用查询：`src/main/mixtapeDb.ts`
+26. 混音窗口实例与占用判断：`src/main/window/mixtapeWindow.ts`
+27. 歌单删除链路与 vault 残留清理：`src/main/window/mainWindow/filesystemHandlers.ts`
+28. 缺失歌曲提示与前端轨道重载：`src/renderer/src/composables/useMixtape.ts`
+29. 删除前窗口占用预检查：`src/renderer/src/utils/libraryUtils.ts`
 
 ## 修订说明（本次清理）
 1. 删除“Beat Align 仅预览、未支持保存”的旧说法，改为“保存/取消草稿语义”。
@@ -125,3 +151,7 @@
 3. 明确“将当前播放竖线设为大节线”是通过 `firstBeatMs` 平移网格，不是改 `barBeatOffset`。
 4. 明确 BPM 输入上限 `300`、两位小数显示、`0.01` 步进。
 5. 明确 BPM 持久化口径：仅在保存且与原始 BPM 不一致时改 mixtape BPM，不改主曲库。
+6. 新增缺失歌曲恢复链路口径：原路径 -> 回收站 -> vault，未命中则移除并提示。
+7. 新增回收站彻删/清空保护口径：混音引用文件进入 vault，不允许被直接物理删除。
+8. 新增删除混音歌单防误删口径：混音工程窗口打开时阻止删除并提示先关闭窗口。
+9. 新增删除混音歌单后 vault 残留清理口径：仅清理“已无任何混音引用”的文件。
