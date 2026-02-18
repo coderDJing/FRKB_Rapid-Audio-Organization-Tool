@@ -26,18 +26,57 @@ import {
 } from '../../libraryTreeDb'
 import {
   getRecycleBinRootAbs,
+  getMixtapeVaultRootAbs,
   moveFileToRecycleBin,
   normalizeRendererPlaylistPath,
   permanentlyDeleteFile
 } from '../../recycleBinService'
 import { listRecycleBinRecords, deleteRecycleBinRecords } from '../../recycleBinDb'
-import { listMixtapeFilePathsByPlaylist, removeMixtapeItemsByPlaylist } from '../../mixtapeDb'
+import {
+  listMixtapeFilePathsByPlaylist,
+  listMixtapeFilePathsInUse,
+  removeMixtapeItemsByPlaylist
+} from '../../mixtapeDb'
+import { isMixtapeWindowOpenByPlaylistId } from '../mixtapeWindow'
+
+const MIXTAPE_WINDOW_OPEN_ERROR_CODE = 'MIXTAPE_WINDOW_OPEN'
 
 export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null) {
+  const cleanupOrphanedMixtapeVaultFiles = async (filePaths: string[]) => {
+    const vaultRoot = getMixtapeVaultRootAbs()
+    if (!vaultRoot) return
+    const normalized = Array.from(
+      new Set(
+        (Array.isArray(filePaths) ? filePaths : [])
+          .filter((item) => typeof item === 'string')
+          .map((item) => String(item).trim())
+          .filter(Boolean)
+      )
+    )
+    if (!normalized.length) return
+    const vaultCandidates = normalized.filter((filePath) => isUnderPath(vaultRoot, filePath))
+    if (!vaultCandidates.length) return
+    const inUse = new Set(listMixtapeFilePathsInUse(vaultCandidates))
+    const orphaned = vaultCandidates.filter((filePath) => !inUse.has(filePath))
+    if (!orphaned.length) return
+    await Promise.all(
+      orphaned.map(async (targetPath) => {
+        try {
+          if (await fs.pathExists(targetPath)) {
+            await fs.remove(targetPath)
+          }
+        } catch (error) {
+          console.warn('清理混音保底目录残留文件失败:', targetPath, error)
+        }
+      })
+    )
+  }
+
   const finalizeMixtapePlaylistRemoval = async (playlistId: string, filePaths: string[]) => {
     if (!playlistId) return
     removeMixtapeItemsByPlaylist(playlistId)
     await cleanupMixtapeWaveformCache(filePaths)
+    await cleanupOrphanedMixtapeVaultFiles(filePaths)
   }
 
   ipcMain.on('openFileExplorer', (_e, targetPath) => {
@@ -98,16 +137,29 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
     if (!recycleBinPath) return
     try {
       if (!(await fs.pathExists(recycleBinPath))) return
-      const entries = await fs.readdir(recycleBinPath, { withFileTypes: true })
       const deleteTasks: Array<Promise<any>> = []
-      for (const entry of entries) {
-        const entryPath = path.join(recycleBinPath, entry.name)
-        if (entry.isDirectory()) {
-          deleteTasks.push(fs.remove(entryPath))
-        } else if (entry.isFile()) {
-          deleteTasks.push(permanentlyDeleteFile(entryPath))
+      const walkAndDeleteFiles = async (targetDir: string) => {
+        let entries: fs.Dirent[] = []
+        try {
+          entries = await fs.readdir(targetDir, { withFileTypes: true })
+        } catch {
+          return
+        }
+        for (const entry of entries) {
+          const entryPath = path.join(targetDir, entry.name)
+          if (entry.isDirectory()) {
+            await walkAndDeleteFiles(entryPath)
+            try {
+              await fs.remove(entryPath)
+            } catch {}
+            continue
+          }
+          if (entry.isFile()) {
+            deleteTasks.push(permanentlyDeleteFile(entryPath))
+          }
         }
       }
+      await walkAndDeleteFiles(recycleBinPath)
       await Promise.all(deleteTasks)
       const libraryRoot = path.join(store.databaseDir, 'library')
       const records = listRecycleBinRecords()
@@ -134,6 +186,20 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
 
   ipcMain.handle('operateFileSystemChange', async (_e, operateArray: FileSystemOperation[]) => {
     const results: Array<{ uuid: string; status: string }> = []
+    for (const item of operateArray) {
+      const shouldCheckMixtapeWindow =
+        item.nodeType === 'mixtapeList' &&
+        (item.type === 'delete' || item.type === 'permanentlyDelete')
+      if (!shouldCheckMixtapeWindow) continue
+      if (!isMixtapeWindowOpenByPlaylistId(item.uuid)) continue
+      return {
+        success: false,
+        errorCode: MIXTAPE_WINDOW_OPEN_ERROR_CODE,
+        error: 'mixtape window is open',
+        blockedPlaylistId: item.uuid,
+        details: results
+      }
+    }
     try {
       for (const item of operateArray) {
         let operationStatus = 'processed'

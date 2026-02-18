@@ -733,7 +733,12 @@
     "transportPartialDecodeFailed": "有 {count} 首曲目解码失败，已自动跳过",
     "transportMissingDuration": "有 {count} 首曲目缺少时长信息，无法在时间轴播放",
     "transportNoPlayableTracks": "没有可在时间轴播放的曲目",
-    "transportTrackError": "轨道播放失败：{track}（{reason}）"
+    "transportTrackError": "轨道播放失败：{track}（{reason}）",
+    "missingTracksRemovedTitle": "自动混音曲目已更新",
+    "missingTracksRemovedSummary": "有 {count} 首曲目在回收站和自动混音保底目录中都未找到，已从自动混音歌单与工程中移除。",
+    "missingTracksRemovedMore": "其余 {count} 首未在此处展示。",
+    "deleteBlockedWindowOpen": "当前自动混音窗口正在打开，无法删除该混音歌单。",
+    "deleteBlockedWindowOpenHint": "请先关闭该自动混音窗口，再执行删除。"
   },
   "recycleBin": {
     "recycleBin": "回收站",

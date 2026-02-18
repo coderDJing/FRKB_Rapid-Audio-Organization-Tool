@@ -729,7 +729,12 @@
     "transportPartialDecodeFailed": "{count} track(s) failed to decode and were skipped.",
     "transportMissingDuration": "{count} track(s) are missing duration metadata and cannot be played on timeline.",
     "transportNoPlayableTracks": "No playable tracks on timeline.",
-    "transportTrackError": "Track playback failed: {track} ({reason})"
+    "transportTrackError": "Track playback failed: {track} ({reason})",
+    "missingTracksRemovedTitle": "Auto Mix Tracks Updated",
+    "missingTracksRemovedSummary": "{count} track(s) were not found in both recycle bin and Auto Mix vault, and have been removed from the Auto Mix playlist and project.",
+    "missingTracksRemovedMore": "{count} additional track(s) are not shown here.",
+    "deleteBlockedWindowOpen": "This Auto Mix window is currently open, so the mixtape playlist cannot be deleted.",
+    "deleteBlockedWindowOpenHint": "Please close the Auto Mix window first, then try deleting again."
   },
   "recycleBin": {
     "recycleBin": "Recycle Bin",

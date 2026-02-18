@@ -1,7 +1,32 @@
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import confirm from '@renderer/components/confirmDialog'
 import { IDir } from 'src/types/globals'
 import { calculateFileSystemOperations } from './diffLibraryTree'
-import { toLibraryDisplayName } from './translate'
+import { toLibraryDisplayName, t } from './translate'
+
+const MIXTAPE_WINDOW_OPEN_ERROR_CODE = 'MIXTAPE_WINDOW_OPEN'
+
+export const ensureMixtapeDeleteAllowed = async (playlistId: string): Promise<boolean> => {
+  const normalizedId = (playlistId || '').trim()
+  if (!normalizedId) return true
+  let isWindowOpen = false
+  try {
+    isWindowOpen = await window.electron.ipcRenderer.invoke(
+      'mixtape:is-window-open-by-playlist-id',
+      normalizedId
+    )
+  } catch (error) {
+    console.warn('check mixtape window state failed:', error)
+    return true
+  }
+  if (!isWindowOpen) return true
+  await confirm({
+    title: t('dialog.hint'),
+    content: [t('mixtape.deleteBlockedWindowOpen'), t('mixtape.deleteBlockedWindowOpenHint')],
+    confirmShow: false
+  })
+  return false
+}
 
 export const diffLibraryTreeExecuteFileOperation = async () => {
   const runtime = useRuntimeStore()
@@ -24,6 +49,14 @@ export const diffLibraryTreeExecuteFileOperation = async () => {
   } else {
     // 处理主进程报告的失败
     console.error('File system operations failed:', result.error)
+    if (result?.errorCode === MIXTAPE_WINDOW_OPEN_ERROR_CODE) {
+      runtime.libraryTree = JSON.parse(JSON.stringify(runtime.oldLibraryTree))
+      await confirm({
+        title: t('dialog.hint'),
+        content: [t('mixtape.deleteBlockedWindowOpen'), t('mixtape.deleteBlockedWindowOpenHint')],
+        confirmShow: false
+      })
+    }
     // 这里可能需要通知用户，或者尝试恢复/重新同步状态
     // 暂时不同步 oldLibraryTree，以便下次 diff 可以检测到差异
   }
@@ -238,6 +271,7 @@ export const libraryUtils = {
   getDepthByUuid,
   getAllUuids,
   diffLibraryTreeExecuteFileOperation,
+  ensureMixtapeDeleteAllowed,
   updatePlayingState
 }
 export default libraryUtils

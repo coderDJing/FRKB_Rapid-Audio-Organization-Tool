@@ -2,6 +2,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
+import confirmDialog from '@renderer/components/confirmDialog'
 import { useMixtapeTimeline } from '@renderer/composables/mixtape/useMixtapeTimeline'
 import { getKeyDisplayText as formatKeyDisplayText } from '@shared/keyDisplay'
 import type {
@@ -33,6 +34,7 @@ export const useMixtape = () => {
   const bpmAnalysisFailedCount = ref(0)
   let bpmAnalysisToken = 0
   let lastBpmAnalysisKey = ''
+  let lastMissingRemovalSignature = ''
 
   let playlistUpdateTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -261,6 +263,46 @@ export const useMixtape = () => {
     return targets
   }
 
+  const normalizeUniquePaths = (values: unknown[]) => {
+    if (!Array.isArray(values)) return [] as string[]
+    return Array.from(
+      new Set(
+        values
+          .filter((value) => typeof value === 'string')
+          .map((value) => String(value).trim())
+          .filter(Boolean)
+      )
+    )
+  }
+
+  const notifyMissingTracksRemoved = async (playlistId: string, removedPaths: string[]) => {
+    const normalized = normalizeUniquePaths(removedPaths)
+    if (!normalized.length) return
+    const signature = `${playlistId || ''}::${normalized.slice().sort().join('|')}`
+    if (signature === lastMissingRemovalSignature) return
+    lastMissingRemovalSignature = signature
+    const displayNames = Array.from(
+      new Set(normalized.map((item) => item.split(/[/\\]/).pop() || item))
+    )
+    const previewNames = displayNames.slice(0, 6)
+    const moreCount = Math.max(0, displayNames.length - previewNames.length)
+    const content = [
+      t('mixtape.missingTracksRemovedSummary', { count: normalized.length }),
+      ...previewNames.map((name) => `- ${name}`)
+    ]
+    if (moreCount > 0) {
+      content.push(t('mixtape.missingTracksRemovedMore', { count: moreCount }))
+    }
+    await confirmDialog({
+      title: t('mixtape.missingTracksRemovedTitle'),
+      content,
+      confirmShow: false,
+      textAlign: 'left',
+      innerHeight: 0,
+      innerWidth: 460
+    })
+  }
+
   const resolveMissingBpmTrackCount = (bpmTargets: Set<string>) => {
     if (!bpmTargets.size) return 0
     return tracks.value.filter((track) => {
@@ -456,6 +498,9 @@ export const useMixtape = () => {
       playlistId: payload.value.playlistId
     })
     const rawItems = Array.isArray(result?.items) ? result.items : []
+    const removedPaths = Array.isArray(result?.recovery?.removedPaths)
+      ? normalizeUniquePaths(result.recovery.removedPaths)
+      : []
     tracks.value = rawItems.map((item: MixtapeRawItem, index: number) => parseSnapshot(item, index))
     if (!tracks.value.some((track) => track.id === selectedTrackId.value)) {
       selectedTrackId.value = tracks.value[0]?.id || ''
@@ -465,6 +510,9 @@ export const useMixtape = () => {
       beatAlignTrackId.value = ''
     }
     closeTrackContextMenu()
+    if (removedPaths.length > 0) {
+      void notifyMissingTracksRemoved(payload.value.playlistId || '', removedPaths)
+    }
     void requestMixtapeBpmAnalysis()
   }
 

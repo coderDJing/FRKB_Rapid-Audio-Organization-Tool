@@ -22,6 +22,11 @@ export type MixtapeAppendItem = {
   info?: Record<string, any> | null
 }
 
+export type MixtapeFilePathUpdate = {
+  id: string
+  filePath: string
+}
+
 function normalizeUniqueStrings(values: unknown[]): string[] {
   if (!Array.isArray(values)) return []
   return Array.from(
@@ -46,6 +51,10 @@ function toRecord(row: any): MixtapeItemRecord | null {
     infoJson: row.info_json ? String(row.info_json) : null,
     createdAtMs: Number(row.created_at_ms) || 0
   }
+}
+
+function resolveFilePathWhereClause(): string {
+  return process.platform === 'win32' ? 'LOWER(file_path) = LOWER(?)' : 'file_path = ?'
 }
 
 function normalizeMixtapeOrder(db: any, playlistUuid: string) {
@@ -265,6 +274,110 @@ export function listMixtapeFilePathsInUse(filePaths: string[]): string[] {
   } catch (error) {
     log.error('[sqlite] mixtape list file paths in use failed', error)
     return []
+  }
+}
+
+export function listMixtapeItemsByFilePath(filePath: string): MixtapeItemRecord[] {
+  const normalizedPath = typeof filePath === 'string' ? filePath.trim() : ''
+  if (!normalizedPath) return []
+  const db = getLibraryDb()
+  if (!db) return []
+  try {
+    const whereClause = resolveFilePathWhereClause()
+    const rows = db
+      .prepare(
+        `SELECT id, playlist_uuid, file_path, mix_order, origin_playlist_uuid, origin_path_snapshot, info_json, created_at_ms
+         FROM ${TABLE}
+         WHERE ${whereClause}
+         ORDER BY mix_order ASC, created_at_ms ASC, id ASC`
+      )
+      .all(normalizedPath)
+    return rows.map(toRecord).filter(Boolean) as MixtapeItemRecord[]
+  } catch (error) {
+    log.error('[sqlite] mixtape list by file path failed', error)
+    return []
+  }
+}
+
+export function replaceMixtapeFilePath(
+  oldFilePath: string,
+  newFilePath: string
+): { updated: number; playlistUuids: string[]; itemIds: string[] } {
+  const sourcePath = typeof oldFilePath === 'string' ? oldFilePath.trim() : ''
+  const targetPath = typeof newFilePath === 'string' ? newFilePath.trim() : ''
+  if (!sourcePath || !targetPath || sourcePath === targetPath) {
+    return { updated: 0, playlistUuids: [], itemIds: [] }
+  }
+  const db = getLibraryDb()
+  if (!db) return { updated: 0, playlistUuids: [], itemIds: [] }
+  try {
+    const whereClause = resolveFilePathWhereClause()
+    const rows = db
+      .prepare(`SELECT id, playlist_uuid FROM ${TABLE} WHERE ${whereClause}`)
+      .all(sourcePath) as Array<{ id: string; playlist_uuid: string }>
+    if (!rows.length) {
+      return { updated: 0, playlistUuids: [], itemIds: [] }
+    }
+    const update = db.prepare(`UPDATE ${TABLE} SET file_path = ? WHERE id = ?`)
+    const tx = db.transaction(() => {
+      for (const row of rows) {
+        update.run(targetPath, row.id)
+      }
+    })
+    tx()
+    return {
+      updated: rows.length,
+      playlistUuids: Array.from(new Set(rows.map((row) => String(row.playlist_uuid)))),
+      itemIds: rows.map((row) => String(row.id))
+    }
+  } catch (error) {
+    log.error('[sqlite] mixtape file path replace failed', error)
+    return { updated: 0, playlistUuids: [], itemIds: [] }
+  }
+}
+
+export function updateMixtapeItemFilePathsById(entries: MixtapeFilePathUpdate[]): {
+  updated: number
+  playlistUuids: string[]
+} {
+  const normalizedEntries = Array.isArray(entries)
+    ? entries
+        .filter((item) => item && typeof item.id === 'string' && typeof item.filePath === 'string')
+        .map((item) => ({
+          id: String(item.id).trim(),
+          filePath: String(item.filePath).trim()
+        }))
+        .filter((item) => item.id && item.filePath)
+    : []
+  if (!normalizedEntries.length) return { updated: 0, playlistUuids: [] }
+  const db = getLibraryDb()
+  if (!db) return { updated: 0, playlistUuids: [] }
+  try {
+    const rows = db
+      .prepare(
+        `SELECT id, playlist_uuid FROM ${TABLE} WHERE id IN (${normalizedEntries.map(() => '?').join(',')})`
+      )
+      .all(...normalizedEntries.map((item) => item.id)) as Array<{
+      id: string
+      playlist_uuid: string
+    }>
+    if (!rows.length) return { updated: 0, playlistUuids: [] }
+    const existingIds = new Set(rows.map((row) => String(row.id)))
+    const playlistUuids = Array.from(new Set(rows.map((row) => String(row.playlist_uuid))))
+    const update = db.prepare(`UPDATE ${TABLE} SET file_path = ? WHERE id = ?`)
+    let updated = 0
+    const tx = db.transaction(() => {
+      for (const item of normalizedEntries) {
+        if (!existingIds.has(item.id)) continue
+        const info = update.run(item.filePath, item.id)
+        updated += Number(info?.changes || 0)
+      }
+    })
+    tx()
+    return { updated, playlistUuids }
+  } catch (error) {
+    log.error('[sqlite] mixtape update file paths by id failed', error)
+    return { updated: 0, playlistUuids: [] }
   }
 }
 

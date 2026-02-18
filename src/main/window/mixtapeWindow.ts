@@ -14,6 +14,34 @@ const mixtapeWindows = new Map<string, BrowserWindow>()
 const payloadByKey = new Map<string, MixtapeWindowPayload>()
 let ipcBound = false
 
+export const isMixtapeWindowOpenByPlaylistId = (playlistId: string): boolean => {
+  const normalizedId = (playlistId || '').trim()
+  if (!normalizedId) return false
+
+  const directWindow = mixtapeWindows.get(normalizedId)
+  if (directWindow) {
+    if (directWindow.isDestroyed()) {
+      mixtapeWindows.delete(normalizedId)
+      payloadByKey.delete(normalizedId)
+    } else {
+      return true
+    }
+  }
+
+  for (const [key, payload] of payloadByKey.entries()) {
+    if ((payload?.playlistId || '').trim() !== normalizedId) continue
+    const targetWindow = mixtapeWindows.get(key)
+    if (!targetWindow || targetWindow.isDestroyed()) {
+      mixtapeWindows.delete(key)
+      payloadByKey.delete(key)
+      continue
+    }
+    return true
+  }
+
+  return false
+}
+
 const resolveWindowKey = (payload: MixtapeWindowPayload) => {
   return (
     (payload.playlistId || '').trim() ||

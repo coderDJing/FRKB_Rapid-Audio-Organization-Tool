@@ -163,6 +163,10 @@ const menuArr = ref(
     : [[{ menuName: '重命名' }, { menuName: '删除歌单' }]]
 )
 const deleteDir = async () => {
+  if (dirData?.type === 'mixtapeList') {
+    const allowed = await libraryUtils.ensureMixtapeDeleteAllowed(props.uuid)
+    if (!allowed) return
+  }
   let libraryTree = libraryUtils.getLibraryTreeByUUID(props.uuid)
   if (libraryTree === null) {
     throw new Error(`libraryTree error: ${JSON.stringify(libraryTree)}`)

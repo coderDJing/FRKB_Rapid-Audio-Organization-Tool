@@ -81,6 +81,10 @@ export function useLibraryContextMenu({
   const menuArr = ref<any[][]>(buildMenuArr())
 
   const deleteDir = async () => {
+    if (dirData?.type === 'mixtapeList') {
+      const allowed = await libraryUtils.ensureMixtapeDeleteAllowed(props.uuid)
+      if (!allowed) return
+    }
     const libraryTree = libraryUtils.getLibraryTreeByUUID(props.uuid)
     if (libraryTree === null) {
       throw new Error(`libraryTree error: ${JSON.stringify(libraryTree)}`)

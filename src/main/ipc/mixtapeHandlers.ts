@@ -3,7 +3,10 @@ import os from 'node:os'
 import fs from 'node:fs'
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
-import mixtapeWindow, { type MixtapeWindowPayload } from '../window/mixtapeWindow'
+import mixtapeWindow, {
+  isMixtapeWindowOpenByPlaylistId,
+  type MixtapeWindowPayload
+} from '../window/mixtapeWindow'
 import mainWindow from '../window/mainWindow'
 import { log } from '../log'
 import {
@@ -13,6 +16,7 @@ import {
   removeMixtapeItemsById,
   removeMixtapeItemsByFilePath,
   reorderMixtapeItems,
+  updateMixtapeItemFilePathsById,
   upsertMixtapeItemBpmByFilePath,
   upsertMixtapeItemGridByFilePath
 } from '../mixtapeDb'
@@ -20,6 +24,7 @@ import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { queueMixtapeRawWaveforms } from '../services/mixtapeRawWaveformQueue'
 import { queueMixtapeWaveformHires } from '../services/mixtapeWaveformHiresQueue'
 import { cleanupMixtapeWaveformCache } from '../services/mixtapeWaveformMaintenance'
+import { resolveMissingMixtapeFilePath } from '../recycleBinService'
 
 const resolveKeyAnalysisWorkerPath = () => path.join(__dirname, 'workers', 'keyAnalysisWorker.js')
 
@@ -256,9 +261,106 @@ const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
   })
 }
 
+type MixtapeMissingRecovery = {
+  recovered: Array<{
+    itemId: string
+    fromPath: string
+    toPath: string
+    source: 'recycle_bin' | 'mixtape_vault'
+  }>
+  removedPaths: string[]
+}
+
+const normalizeUniquePaths = (values: unknown[]): string[] => {
+  if (!Array.isArray(values)) return []
+  return Array.from(
+    new Set(
+      values
+        .filter((value) => typeof value === 'string')
+        .map((value) => String(value).trim())
+        .filter(Boolean)
+    )
+  )
+}
+
+const reconcileMixtapeMissingFiles = async (
+  playlistId: string
+): Promise<{ items: ReturnType<typeof listMixtapeItems>; recovery: MixtapeMissingRecovery }> => {
+  const emptyRecovery: MixtapeMissingRecovery = { recovered: [], removedPaths: [] }
+  if (!playlistId) return { items: [], recovery: emptyRecovery }
+
+  const items = listMixtapeItems(playlistId)
+  if (!items.length) return { items, recovery: emptyRecovery }
+
+  const updates: Array<{ id: string; filePath: string }> = []
+  const stalePaths: string[] = []
+  const removeIds: string[] = []
+
+  for (const item of items) {
+    const itemId = typeof item?.id === 'string' ? item.id.trim() : ''
+    const filePath = typeof item?.filePath === 'string' ? item.filePath.trim() : ''
+    if (!itemId || !filePath) {
+      if (itemId) removeIds.push(itemId)
+      if (filePath) {
+        emptyRecovery.removedPaths.push(filePath)
+        stalePaths.push(filePath)
+      }
+      continue
+    }
+    if (fs.existsSync(filePath)) continue
+    const resolved = await resolveMissingMixtapeFilePath(filePath)
+    if (resolved?.resolvedPath) {
+      updates.push({ id: itemId, filePath: resolved.resolvedPath })
+      stalePaths.push(filePath)
+      emptyRecovery.recovered.push({
+        itemId,
+        fromPath: filePath,
+        toPath: resolved.resolvedPath,
+        source: resolved.source
+      })
+      continue
+    }
+    removeIds.push(itemId)
+    emptyRecovery.removedPaths.push(filePath)
+    stalePaths.push(filePath)
+  }
+
+  if (updates.length > 0) {
+    updateMixtapeItemFilePathsById(updates)
+    const resolvedPaths = normalizeUniquePaths(updates.map((item) => item.filePath))
+    if (resolvedPaths.length > 0) {
+      queueMixtapeWaveforms(resolvedPaths)
+      queueMixtapeRawWaveforms(resolvedPaths)
+      queueMixtapeWaveformHires(resolvedPaths)
+    }
+  }
+  if (removeIds.length > 0) {
+    removeMixtapeItemsById(playlistId, removeIds)
+  }
+  if (stalePaths.length > 0) {
+    await cleanupMixtapeWaveformCache(normalizeUniquePaths(stalePaths))
+  }
+  if (updates.length === 0 && removeIds.length === 0) {
+    return { items, recovery: emptyRecovery }
+  }
+
+  const refreshed = listMixtapeItems(playlistId)
+  return {
+    items: refreshed,
+    recovery: {
+      recovered: emptyRecovery.recovered,
+      removedPaths: normalizeUniquePaths(emptyRecovery.removedPaths)
+    }
+  }
+}
+
 export function registerMixtapeHandlers() {
   ipcMain.on('mixtape:open', (_e, payload: MixtapeWindowPayload) => {
     mixtapeWindow.open(payload || {})
+  })
+
+  ipcMain.handle('mixtape:is-window-open-by-playlist-id', (_e, playlistId?: string) => {
+    return isMixtapeWindowOpenByPlaylistId(typeof playlistId === 'string' ? playlistId : '')
   })
 
   ipcMain.on('mixtapeWindow-open-dialog', (_e, key: string) => {
@@ -270,7 +372,8 @@ export function registerMixtapeHandlers() {
 
   ipcMain.handle('mixtape:list', async (_e, payload: { playlistId?: string }) => {
     const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
-    return { items: listMixtapeItems(playlistId) }
+    const { items, recovery } = await reconcileMixtapeMissingFiles(playlistId)
+    return { items, recovery }
   })
 
   ipcMain.handle(
