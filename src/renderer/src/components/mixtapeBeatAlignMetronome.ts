@@ -15,17 +15,20 @@ type BeatClock = {
 
 const TICK_FREQUENCY_HZ = 1560
 const TICK_END_FREQUENCY_HZ = 1320
-const TICK_GAIN = 0.17
+const TICK_GAIN_LEVELS = [0.17, 0.32, 0.96] as const
+const DEFAULT_METRONOME_VOLUME_LEVEL: 1 | 2 | 3 = 2
 const TICK_ATTACK_SEC = 0.002
 const TICK_DURATION_SEC = 0.045
 const TICK_GAP_SEC = 0.01
 const MAX_TICKS_PER_FRAME = 12
 const ANCHOR_DIFF_EPSILON = 0.000001
 
+const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 const isFinitePositive = (value: number) => Number.isFinite(value) && value > 0
 
 export const useMixtapeBeatAlignMetronome = (params: UseMixtapeBeatAlignMetronomeParams) => {
   const metronomeEnabled = ref(false)
+  const metronomeVolumeLevel = ref<1 | 2 | 3>(DEFAULT_METRONOME_VOLUME_LEVEL)
   const metronomeSupported = computed(() => {
     const bpmValue = Number(params.bpm.value)
     return isFinitePositive(bpmValue)
@@ -78,8 +81,14 @@ export const useMixtapeBeatAlignMetronome = (params: UseMixtapeBeatAlignMetronom
       TICK_END_FREQUENCY_HZ,
       now + TICK_DURATION_SEC
     )
+    const gainLevel = clampNumber(
+      Number(metronomeVolumeLevel.value) || 1,
+      1,
+      TICK_GAIN_LEVELS.length
+    )
+    const gainValue = TICK_GAIN_LEVELS[gainLevel - 1] || TICK_GAIN_LEVELS[0]
     gainNode.gain.setValueAtTime(0.0001, now)
-    gainNode.gain.exponentialRampToValueAtTime(TICK_GAIN, now + TICK_ATTACK_SEC)
+    gainNode.gain.exponentialRampToValueAtTime(gainValue, now + TICK_ATTACK_SEC)
     gainNode.gain.exponentialRampToValueAtTime(0.0001, now + TICK_DURATION_SEC)
     oscillator.connect(gainNode)
     gainNode.connect(ctx.destination)
@@ -179,6 +188,15 @@ export const useMixtapeBeatAlignMetronome = (params: UseMixtapeBeatAlignMetronom
     setMetronomeEnabled(!metronomeEnabled.value)
   }
 
+  const setMetronomeVolumeLevel = (level: number) => {
+    const clamped = clampNumber(
+      Number(level) || DEFAULT_METRONOME_VOLUME_LEVEL,
+      1,
+      TICK_GAIN_LEVELS.length
+    )
+    metronomeVolumeLevel.value = clamped as 1 | 2 | 3
+  }
+
   const cleanupMetronome = () => {
     stopMetronomeLoop()
     lastAnchorSec = null
@@ -224,8 +242,10 @@ export const useMixtapeBeatAlignMetronome = (params: UseMixtapeBeatAlignMetronom
 
   return {
     metronomeEnabled,
+    metronomeVolumeLevel,
     metronomeSupported,
     toggleMetronome,
+    setMetronomeVolumeLevel,
     setMetronomeEnabled,
     cleanupMetronome
   }

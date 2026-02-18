@@ -462,8 +462,10 @@ const {
 
 const {
   metronomeEnabled,
+  metronomeVolumeLevel,
   metronomeSupported,
-  toggleMetronome: togglePreviewMetronome
+  setMetronomeEnabled,
+  setMetronomeVolumeLevel
 } = useMixtapeBeatAlignMetronome({
   dialogVisible,
   previewPlaying,
@@ -478,9 +480,30 @@ const canToggleMetronome = computed(() => {
   return metronomeSupported.value
 })
 
+const canAdjustMetronomeVolume = computed(() => canToggleMetronome.value)
+
+const canStopPreviewPlayback = computed(() => {
+  if (previewPlaying.value) return true
+  if (previewLoading.value) return false
+  return !!previewMixxxData.value
+})
+
 const handleMetronomeToggle = () => {
   if (!canToggleMetronome.value) return
-  togglePreviewMetronome()
+  setMetronomeEnabled(!metronomeEnabled.value)
+}
+
+const handleMetronomeVolumeCycle = () => {
+  if (!canAdjustMetronomeVolume.value) return
+  const currentLevel = Number(metronomeVolumeLevel.value)
+  const nextLevel = currentLevel >= 3 ? 1 : ((currentLevel + 1) as 1 | 2 | 3)
+  setMetronomeVolumeLevel(nextLevel)
+}
+
+const handlePreviewStopToStart = () => {
+  stopPreviewPlayback({ syncPosition: false })
+  previewStartSec.value = clampPreviewStart(-resolvePreviewLeadingPadSec())
+  schedulePreviewDraw()
 }
 
 const previewFirstBeatMsComputed = computed(() => Number(previewFirstBeatMs.value) || 0)
@@ -1038,13 +1061,18 @@ onBeforeUnmount(() => {
           :preview-decoding="previewDecoding"
           :preview-playing="previewPlaying"
           :can-toggle-preview-playback="canTogglePreviewPlayback"
+          :can-stop-preview-playback="canStopPreviewPlayback"
           :can-adjust-grid="canAdjustGrid"
           :preview-bar-line-picking="previewBarLinePicking"
           :metronome-enabled="metronomeEnabled"
+          :metronome-volume-level="metronomeVolumeLevel"
           :can-toggle-metronome="canToggleMetronome"
+          :can-adjust-metronome-volume="canAdjustMetronomeVolume"
           @toggle-playback="handlePreviewPlaybackToggle"
+          @stop-to-start="handlePreviewStopToStart"
           @toggle-barline-pick="handleBarLinePickingToggle"
           @toggle-metronome="handleMetronomeToggle"
+          @cycle-metronome-volume="handleMetronomeVolumeCycle"
         />
         <div
           ref="previewWrapRef"

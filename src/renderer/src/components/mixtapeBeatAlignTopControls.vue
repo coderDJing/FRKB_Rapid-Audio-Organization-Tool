@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t } from '@renderer/utils/translate'
 
-defineProps({
+const props = defineProps({
   previewDecoding: {
     type: Boolean,
     default: false
@@ -11,6 +11,10 @@ defineProps({
     default: false
   },
   canTogglePreviewPlayback: {
+    type: Boolean,
+    default: false
+  },
+  canStopPreviewPlayback: {
     type: Boolean,
     default: false
   },
@@ -26,7 +30,15 @@ defineProps({
     type: Boolean,
     default: false
   },
+  metronomeVolumeLevel: {
+    type: Number,
+    default: 2
+  },
   canToggleMetronome: {
+    type: Boolean,
+    default: false
+  },
+  canAdjustMetronomeVolume: {
     type: Boolean,
     default: false
   }
@@ -34,9 +46,17 @@ defineProps({
 
 const emit = defineEmits<{
   (event: 'toggle-playback'): void
+  (event: 'stop-to-start'): void
   (event: 'toggle-barline-pick'): void
   (event: 'toggle-metronome'): void
+  (event: 'cycle-metronome-volume'): void
 }>()
+
+const resolveMetronomeTitle = () =>
+  props.metronomeEnabled ? t('mixtape.metronomeOn') : t('mixtape.metronomeOff')
+
+const resolveMetronomeVolumeTitle = () =>
+  t('mixtape.metronomeVolumeLevel', { level: props.metronomeVolumeLevel })
 </script>
 
 <template>
@@ -80,6 +100,18 @@ const emit = defineEmits<{
         </svg>
       </button>
       <button
+        class="playback-icon-btn"
+        type="button"
+        :disabled="!canStopPreviewPlayback"
+        :title="t('mixtape.stop')"
+        :aria-label="t('mixtape.stop')"
+        @click="emit('stop-to-start')"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <rect x="4" y="4" width="8" height="8" rx="1"></rect>
+        </svg>
+      </button>
+      <button
         class="barline-btn"
         type="button"
         :class="{ 'is-active': previewBarLinePicking }"
@@ -97,8 +129,8 @@ const emit = defineEmits<{
         type="button"
         :class="{ 'is-active': metronomeEnabled }"
         :disabled="!canToggleMetronome"
-        :title="metronomeEnabled ? t('mixtape.metronomeOn') : t('mixtape.metronomeOff')"
-        :aria-label="metronomeEnabled ? t('mixtape.metronomeOn') : t('mixtape.metronomeOff')"
+        :title="resolveMetronomeTitle()"
+        :aria-label="resolveMetronomeTitle()"
         @click="emit('toggle-metronome')"
       >
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -107,6 +139,16 @@ const emit = defineEmits<{
           <circle cx="8" cy="10.9" r="1.1"></circle>
         </svg>
         <span>{{ t('mixtape.metronome') }}</span>
+      </button>
+      <button
+        class="metronome-volume-btn"
+        type="button"
+        :disabled="!canAdjustMetronomeVolume"
+        :title="resolveMetronomeVolumeTitle()"
+        :aria-label="resolveMetronomeVolumeTitle()"
+        @click="emit('cycle-metronome-volume')"
+      >
+        {{ metronomeVolumeLevel }}/3
       </button>
     </div>
   </div>
@@ -246,5 +288,28 @@ const emit = defineEmits<{
   border-color: rgba(145, 205, 255, 0.95);
   box-shadow: 0 0 0 1px rgba(145, 205, 255, 0.25) inset;
   background: rgba(145, 205, 255, 0.12);
+}
+
+.metronome-volume-btn {
+  height: 24px;
+  min-width: 42px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elev);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.metronome-volume-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
+.metronome-volume-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>
