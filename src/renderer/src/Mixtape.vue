@@ -335,7 +335,12 @@ const {
       :track-title="resolveTrackTitle(beatAlignTrack)"
       :track-key="beatAlignTrack.key"
       :file-path="beatAlignTrack.filePath"
-      :bpm="Number(beatAlignTrack.bpm) || Number(beatAlignTrack.originalBpm) || 128"
+      :bpm="
+        Number(beatAlignTrack.gridBaseBpm) ||
+        Number(beatAlignTrack.originalBpm) ||
+        Number(beatAlignTrack.bpm) ||
+        128
+      "
       :first-beat-ms="Number(beatAlignTrack.firstBeatMs) || 0"
       :bar-beat-offset="Number(beatAlignTrack.barBeatOffset) || 0"
       @save-grid-definition="handleBeatAlignGridDefinitionSave"

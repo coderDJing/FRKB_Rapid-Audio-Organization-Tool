@@ -238,6 +238,7 @@ export const useMixtape = () => {
       key: parsedKey || undefined,
       originalKey: parsedOriginalKey,
       bpm: parsedBpm,
+      gridBaseBpm: parsedBpm,
       originalBpm: parsedOriginalBpm,
       masterTempo: true,
       startSec: undefined,
@@ -359,6 +360,8 @@ export const useMixtape = () => {
       return {
         ...track,
         bpm: trackAnalysis.bpm,
+        gridBaseBpm:
+          normalizeBpm(track.gridBaseBpm) ?? normalizeBpm(track.originalBpm) ?? trackAnalysis.bpm,
         originalBpm:
           Number.isFinite(Number(track.originalBpm)) && Number(track.originalBpm) > 0
             ? track.originalBpm
@@ -591,8 +594,9 @@ export const useMixtape = () => {
     const offsetChanged = normalizedOffset !== currentOffset
     const firstBeatChanged = Math.abs(normalizedFirstBeatMs - currentFirstBeatMs) > 0.0001
     const targetFilePath = normalizeMixtapeFilePath(currentTrack.filePath)
+    const gridBaseBpm = normalizeBpm(currentTrack.gridBaseBpm)
     const originalBpm = normalizeBpm(currentTrack.originalBpm)
-    const bpmCompareBase = originalBpm ?? normalizeBpm(currentTrack.bpm)
+    const bpmCompareBase = gridBaseBpm ?? originalBpm ?? normalizeBpm(currentTrack.bpm)
     const shouldPersistBpm =
       normalizedInputBpm !== null &&
       (bpmCompareBase === null || Math.abs(normalizedInputBpm - bpmCompareBase) > 0.0001)
@@ -604,17 +608,26 @@ export const useMixtape = () => {
       shouldPersistBpm &&
       tracks.value.some((track) => {
         if (!isSameTrack(track)) return false
-        const trackBpm = normalizeBpm(track.bpm)
-        if (trackBpm === null) return true
-        return Math.abs(trackBpm - Number(normalizedInputBpm)) > 0.0001
+        const trackBpmBase =
+          normalizeBpm(track.gridBaseBpm) ??
+          normalizeBpm(track.originalBpm) ??
+          normalizeBpm(track.bpm)
+        if (trackBpmBase === null) return true
+        return Math.abs(trackBpmBase - Number(normalizedInputBpm)) > 0.0001
       })
     if (!offsetChanged && !firstBeatChanged && !bpmChanged) return
     const nextTracks = tracks.value.map((track) => {
       if (!isSameTrack(track)) return track
+      const fallbackGridBaseBpm =
+        normalizeBpm(track.gridBaseBpm) ?? normalizeBpm(track.originalBpm) ?? track.gridBaseBpm
       return {
         ...track,
         barBeatOffset: normalizedOffset,
         firstBeatMs: normalizedFirstBeatMs,
+        gridBaseBpm:
+          shouldPersistBpm && normalizedInputBpm !== null
+            ? Number(normalizedInputBpm)
+            : fallbackGridBaseBpm,
         bpm:
           shouldPersistBpm && normalizedInputBpm !== null ? Number(normalizedInputBpm) : track.bpm
       }
@@ -647,6 +660,33 @@ export const useMixtape = () => {
     const target = event.target as HTMLElement | null
     if (target?.closest('.mixtape-track-menu')) return
     closeTrackContextMenu()
+  }
+
+  const isEditableEventTarget = (target: EventTarget | null) => {
+    const element = target as HTMLElement | null
+    if (!element) return false
+    if (element.isContentEditable) return true
+    const tag = element.tagName?.toLowerCase() || ''
+    return tag === 'input' || tag === 'textarea' || tag === 'select'
+  }
+
+  const handleWindowKeydown = (event: KeyboardEvent) => {
+    if (event.defaultPrevented) return
+    if (event.isComposing) return
+    if (event.code !== 'Space' && event.key !== ' ') return
+    if (event.repeat) {
+      event.preventDefault()
+      return
+    }
+    if (isEditableEventTarget(event.target)) return
+    if (beatAlignDialogVisible.value || outputDialogVisible.value) return
+
+    event.preventDefault()
+    if (transportPlaying.value || transportDecoding.value) {
+      handleTransportStop()
+      return
+    }
+    handleTransportPlayFromStart()
   }
 
   const openOutputDialog = () => {
@@ -735,6 +775,7 @@ export const useMixtape = () => {
     })
     emitter.on('playlistContentChanged', handlePlaylistContentChanged)
     window.addEventListener('pointerdown', handleGlobalPointerDown, true)
+    window.addEventListener('keydown', handleWindowKeydown)
   })
 
   onBeforeUnmount(() => {
@@ -752,6 +793,9 @@ export const useMixtape = () => {
     } catch {}
     try {
       window.removeEventListener('pointerdown', handleGlobalPointerDown, true)
+    } catch {}
+    try {
+      window.removeEventListener('keydown', handleWindowKeydown)
     } catch {}
     if (playlistUpdateTimer) {
       clearTimeout(playlistUpdateTimer)
