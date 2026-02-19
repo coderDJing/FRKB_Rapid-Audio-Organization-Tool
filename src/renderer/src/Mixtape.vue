@@ -818,8 +818,8 @@ const {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 0 0 0;
+  gap: 12px;
+  padding: 18px 0 0 0;
   min-height: 100%;
   z-index: 4;
 }
@@ -851,7 +851,7 @@ const {
 
 .timeline-lane {
   position: relative;
-  min-height: 34px;
+  min-height: 51px;
 }
 
 .lane-body {
@@ -871,7 +871,7 @@ const {
   height: calc(100% + 2px);
   border-radius: 0;
   box-sizing: border-box;
-  border: 2px solid transparent;
+  border: 3px solid transparent;
   cursor: ew-resize;
   z-index: 5;
 
@@ -938,11 +938,11 @@ const {
 
 .lane-loading {
   position: absolute;
-  right: 8px;
-  bottom: 6px;
-  padding: 2px 6px;
+  right: 12px;
+  bottom: 9px;
+  padding: 3px 9px;
   border-radius: 999px;
-  font-size: 10px;
+  font-size: 15px;
   color: var(--text-weak);
   background: rgba(0, 0, 0, 0.25);
   pointer-events: none;

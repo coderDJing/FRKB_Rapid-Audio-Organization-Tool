@@ -1,4 +1,5 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import { MIXTAPE_WAVEFORM_HEIGHT_SCALE } from '@renderer/composables/mixtape/constants'
 import type {
   MixtapeTrack,
   RawWaveformData,
@@ -325,7 +326,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     width: number,
     height: number
   ) => {
-    const barHeight = Math.max(4, Math.round(height * 0.55))
+    const barHeight = Math.max(4, Math.round(height * 0.55 * MIXTAPE_WAVEFORM_HEIGHT_SCALE))
     const y = Math.round((height - barHeight) / 2)
     ctx.fillStyle = 'rgba(90, 170, 255, 0.35)'
     ctx.fillRect(0, y, width, barHeight)

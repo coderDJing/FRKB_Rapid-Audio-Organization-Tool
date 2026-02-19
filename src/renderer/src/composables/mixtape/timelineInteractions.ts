@@ -309,7 +309,8 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     const scrollableWidth = Math.max(timelineLayout.value.totalWidth, viewportWidth)
     if (!scrollableWidth) return
     const maxLeft = Math.max(0, scrollableWidth - viewportWidth)
-    const nextLeft = clampNumber(ratio * scrollableWidth, 0, maxLeft)
+    const safeRatio = clampNumber(ratio, 0, 1)
+    const nextLeft = clampNumber(safeRatio * maxLeft, 0, maxLeft)
     viewport.scrollLeft = Math.round(nextLeft)
   }
 
@@ -320,7 +321,8 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     const scrollableWidth = Math.max(timelineLayout.value.totalWidth, viewportWidth)
     if (!scrollableWidth) return
     const maxLeft = Math.max(0, scrollableWidth - viewportWidth)
-    const targetLeft = ratio * scrollableWidth - viewportWidth / 2
+    const safeRatio = clampNumber(ratio, 0, 1)
+    const targetLeft = safeRatio * scrollableWidth - viewportWidth / 2
     viewport.scrollLeft = Math.round(clampNumber(targetLeft, 0, maxLeft))
   }
 
@@ -361,7 +363,7 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     const handleWidth = overviewViewportWidth.value
     const maxLeft = Math.max(0, width - handleWidth)
     const nextLeft = clampNumber(x - overviewDragOffset, 0, maxLeft)
-    const ratio = width > 0 ? nextLeft / width : 0
+    const ratio = maxLeft > 0 ? nextLeft / maxLeft : 0
     scrollTimelineToRatio(ratio)
     event.preventDefault()
   }

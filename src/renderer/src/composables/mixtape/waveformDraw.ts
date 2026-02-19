@@ -1,6 +1,9 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
-import { MIXXX_RGB_COMPONENTS } from '@renderer/composables/mixtape/constants'
+import {
+  MIXTAPE_WAVEFORM_HEIGHT_SCALE,
+  MIXXX_RGB_COMPONENTS
+} from '@renderer/composables/mixtape/constants'
 
 const toColorChannel = (value: number) => Math.max(0, Math.min(255, Math.round(value)))
 
@@ -68,8 +71,9 @@ export const drawMixxxRgbWaveform = (
   const gain = (visibleFrames * 2) / length
   const offset = startFrame * 2
   const halfBreadth = height / 2
-  const heightFactor = (isHalf ? height : halfBreadth) / 255
-  const rawHeightFactor = isHalf ? height : halfBreadth
+  const waveformHeightScale = Math.max(0.2, Math.min(1, MIXTAPE_WAVEFORM_HEIGHT_SCALE))
+  const heightFactor = ((isHalf ? height : halfBreadth) * waveformHeightScale) / 255
+  const rawHeightFactor = (isHalf ? height : halfBreadth) * waveformHeightScale
   const pixelWidth = 1 / pixelRatio
   ctx.globalCompositeOperation = 'source-over'
   ctx.imageSmoothingEnabled = false

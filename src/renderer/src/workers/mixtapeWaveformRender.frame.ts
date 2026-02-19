@@ -9,7 +9,10 @@ type CreateFrameRendererOptions = {
   mixTapeBufferMultiplier: number
   debugTrackLines: boolean
   rawWaveformMinZoom: number
+  waveformHeightScale: number
   gridBarOnlyZoom: number
+  gridBeat4LineZoom: number
+  gridBeatLineZoom: number
   gridBarWidthMin: number
   gridBarWidthMax: number
   gridBarWidthMaxZoom: number
@@ -25,6 +28,8 @@ type CreateFrameRendererOptions = {
     range: { start: number; end: number },
     renderPx: number,
     barOnly: boolean,
+    showBeat4: boolean,
+    showBeat: boolean,
     barWidth: number
   ) => void
 }
@@ -35,7 +40,10 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
     mixTapeBufferMultiplier,
     debugTrackLines,
     rawWaveformMinZoom,
+    waveformHeightScale,
     gridBarOnlyZoom,
+    gridBeat4LineZoom,
+    gridBeatLineZoom,
     gridBarWidthMin,
     gridBarWidthMax,
     gridBarWidthMaxZoom,
@@ -105,7 +113,8 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
   ) => {
     const zoomKey = Math.round(zoomValue * 1000)
     const ratioKey = Math.round(pixelRatio * 100)
-    return `${filePath}::${tileIndex}::${zoomKey}::${width}x${height}@${ratioKey}`
+    const waveformHeightScaleKey = Math.round(waveformHeightScale * 1000)
+    return `${filePath}::${tileIndex}::${zoomKey}::${width}x${height}@${ratioKey}::h${waveformHeightScaleKey}`
   }
 
   const touchTileCache = (key: string) => {
@@ -292,6 +301,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
       Math.round(payload.lanePaddingTop * 10),
       Math.round(payload.renderPxPerSec * 100),
       Math.round(payload.pixelRatio * 100),
+      Math.round(waveformHeightScale * 1000),
       payload.showGridLines ? 1 : 0,
       payload.renderVersion,
       Math.round(payload.startY),
@@ -310,6 +320,8 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
     const showGridLines = payload.showGridLines !== false
     const allowTileBuild = payload.allowTileBuild !== false
     const barOnlyGrid = payload.zoom <= gridBarOnlyZoom
+    const showBeat4Grid = payload.zoom >= gridBeat4LineZoom
+    const showBeatGrid = payload.zoom >= gridBeatLineZoom
     const barWidth = resolveGridBarWidth(payload.zoom)
     const laneStride = payload.laneHeight + payload.laneGap
     const endX = viewStartX + viewWidth
@@ -388,6 +400,8 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
           { start: localStart, end: localEnd },
           payload.renderPxPerSec,
           barOnlyGrid,
+          showBeat4Grid,
+          showBeatGrid,
           barWidth
         )
         ctx.restore()
@@ -825,6 +839,8 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
       if (showGridLines) {
         if (!useColorProgram(slot.width, slot.height)) return
         const barOnlyGrid = payload.zoom <= gridBarOnlyZoom
+        const showBeat4Grid = payload.zoom >= gridBeat4LineZoom
+        const showBeatGrid = payload.zoom >= gridBeatLineZoom
         const barWidth = resolveGridBarWidth(payload.zoom)
         for (const track of payload.tracks) {
           const trackWidth = track.trackWidth
@@ -860,7 +876,8 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
             const mod4 = ((shiftedIndex % 4) + 4) % 4
             const level = mod32 === 0 ? 'bar' : mod4 === 0 ? 'beat4' : 'beat'
             if (barOnlyGrid && level !== 'bar') continue
-            if (level === 'beat') continue
+            if (!showBeat4Grid && level !== 'bar') continue
+            if (!showBeatGrid && level === 'beat') continue
             const x = Math.round(rawX + trackStartX - slot.startX)
             if (level === 'bar') {
               drawColorRect(x, trackY, barWidth, payload.laneHeight, {
@@ -877,7 +894,12 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
                 a: 0.85
               })
             } else {
-              drawColorRect(x, trackY, 1, payload.laneHeight, { r: 1, g: 1, b: 1, a: 0.4 })
+              drawColorRect(x, trackY, 1.3, payload.laneHeight, {
+                r: 0.71,
+                g: 0.88,
+                b: 1,
+                a: 0.8
+              })
             }
           }
         }

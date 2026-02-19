@@ -2,12 +2,16 @@ import { computed } from 'vue'
 import {
   BASE_PX_PER_SEC,
   FALLBACK_TRACK_WIDTH,
+  GRID_BEAT4_LINE_ZOOM,
+  GRID_BEAT_LINE_ZOOM,
   GRID_BAR_WIDTH_MAX,
   GRID_BAR_WIDTH_MAX_ZOOM,
   GRID_BAR_WIDTH_MIN,
   LANE_COUNT,
   MIXXX_MAX_RGB_ENERGY,
   MIN_TRACK_WIDTH,
+  MIXTAPE_TRACK_UI_SCALE,
+  MIXTAPE_WAVEFORM_HEIGHT_SCALE,
   MIXTAPE_WIDTH_SCALE,
   RAW_WAVEFORM_MIN_ZOOM,
   RENDER_ZOOM_STEP,
@@ -125,7 +129,8 @@ export const createTimelineHelpersModule = (ctx: any) => {
     return GRID_BAR_WIDTH_MIN + (GRID_BAR_WIDTH_MAX - GRID_BAR_WIDTH_MIN) * ratio
   }
 
-  const resolveLaneHeightForZoom = (_value: number) => Math.round(Math.max(28, 36) * 4)
+  const resolveLaneHeightForZoom = (_value: number) =>
+    Math.round(Math.max(28, 36) * 4 * MIXTAPE_TRACK_UI_SCALE)
 
   const resolveTimelineBufferId = (zoomValue: number) => `z:${Math.round(zoomValue * 1000)}`
 
@@ -388,6 +393,8 @@ export const createTimelineHelpersModule = (ctx: any) => {
     const startIndex = Math.floor((startX - offsetPx) / interval) - 2
     const endIndex = Math.ceil((endX - offsetPx) / interval) + 2
     const barWidth = resolveGridBarWidth(zoomValue)
+    const showBeat4Grid = zoomValue >= GRID_BEAT4_LINE_ZOOM
+    const showBeatGrid = zoomValue >= GRID_BEAT_LINE_ZOOM
 
     context.save()
     for (let i = startIndex; i <= endIndex; i += 1) {
@@ -398,7 +405,8 @@ export const createTimelineHelpersModule = (ctx: any) => {
       const mod4 = ((shiftedIndex % 4) + 4) % 4
       const level = mod32 === 0 ? 'bar' : mod4 === 0 ? 'beat4' : 'beat'
       if (barOnly && level !== 'bar') continue
-      if (level === 'beat') continue
+      if (!showBeat4Grid && level !== 'bar') continue
+      if (!showBeatGrid && level === 'beat') continue
       const x = Math.round(rawX - startX)
 
       if (level === 'bar') {
@@ -409,6 +417,10 @@ export const createTimelineHelpersModule = (ctx: any) => {
         context.globalAlpha = 0.85
         context.fillStyle = 'rgba(120, 200, 255, 0.98)'
         context.fillRect(x, 0, 1.8, height)
+      } else {
+        context.globalAlpha = 0.8
+        context.fillStyle = 'rgba(180, 225, 255, 0.95)'
+        context.fillRect(x, 0, 1.3, height)
       }
     }
     context.restore()
@@ -605,7 +617,8 @@ export const createTimelineHelpersModule = (ctx: any) => {
   ) => {
     const zoomKey = Math.round(zoomValue * 1000)
     const ratioKey = Math.round(pixelRatio * 100)
-    return `${filePath}::${tileIndex}::${zoomKey}::${width}x${height}@${ratioKey}`
+    const waveformHeightScaleKey = Math.round(MIXTAPE_WAVEFORM_HEIGHT_SCALE * 1000)
+    return `${filePath}::${tileIndex}::${zoomKey}::${width}x${height}@${ratioKey}::h${waveformHeightScaleKey}`
   }
 
   const touchWaveformTileCache = (key: string) => {

@@ -218,6 +218,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
       timelineLayout.value.layout.filter((item) => item.laneIndex === laneIndex)
     )
   )
+  const OVERVIEW_VIEWPORT_MIN_WIDTH_PX = 4
   const overviewViewportMetrics = computed(() => {
     const totalWidth = Math.max(1, timelineLayout.value.totalWidth)
     const viewportWidth = Math.max(0, timelineViewportWidth.value)
@@ -226,12 +227,18 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
       return { left: 0, width: 0 }
     }
     const widthRatio = overviewTotalWidth / totalWidth
-    const rawLeft = Math.round(timelineScrollLeft.value * widthRatio)
-    const rawWidth = Math.round(viewportWidth * widthRatio)
-    const width = Math.max(12, Math.min(overviewTotalWidth, rawWidth))
+    const rawWidth = viewportWidth * widthRatio
+    const minWidth = Math.min(overviewTotalWidth, OVERVIEW_VIEWPORT_MIN_WIDTH_PX)
+    const width = Math.min(overviewTotalWidth, Math.max(minWidth, rawWidth))
     const maxLeft = Math.max(0, overviewTotalWidth - width)
-    const left = Math.max(0, Math.min(maxLeft, rawLeft))
-    return { left, width }
+    const maxScrollLeft = Math.max(0, totalWidth - viewportWidth)
+    const scrollRatio =
+      maxScrollLeft > 0 ? Math.max(0, Math.min(1, timelineScrollLeft.value / maxScrollLeft)) : 0
+    const left = maxLeft * scrollRatio
+    return {
+      left: Number(left.toFixed(3)),
+      width: Number(width.toFixed(3))
+    }
   })
   const overviewViewportLeft = computed(() => overviewViewportMetrics.value.left)
   const overviewViewportWidth = computed(() => overviewViewportMetrics.value.width)

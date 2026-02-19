@@ -16,6 +16,7 @@ type CreateTileRendererOptions = {
   rawCache: Map<string, RawWaveformData>
   rawPyramidCache: Map<string, RawWaveformLevel[]>
   rawWaveformMinZoom: number
+  waveformHeightScale: number
   summaryZoom: number
   mixxxRgbComponents: RgbComponents
   postToMain: (message: any, transfer?: Transferable[]) => void
@@ -27,6 +28,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     rawCache,
     rawPyramidCache,
     rawWaveformMinZoom,
+    waveformHeightScale,
     summaryZoom,
     mixxxRgbComponents,
     postToMain
@@ -36,6 +38,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
   let tileCtx: OffscreenCanvasRenderingContext2D | null = null
   let scratchCanvas: OffscreenCanvas | null = null
   let scratchCtx: OffscreenCanvasRenderingContext2D | null = null
+  const normalizedWaveformHeightScale = Math.max(0.2, Math.min(1, waveformHeightScale))
 
   const toColorChannel = (value: number) => Math.max(0, Math.min(255, Math.round(value)))
   const normalizeBeatOffset = (value: number, interval: number) => {
@@ -217,8 +220,8 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     const gain = (visibleFrames * 2) / length
     const offset = startFrame * 2
     const halfBreadth = height / 2
-    const heightFactor = halfBreadth / 255
-    const rawHeightFactor = halfBreadth
+    const heightFactor = (halfBreadth * normalizedWaveformHeightScale) / 255
+    const rawHeightFactor = halfBreadth * normalizedWaveformHeightScale
     const pixelWidth = 1 / pixelRatio
     ctx.globalCompositeOperation = 'source-over'
     ctx.imageSmoothingEnabled = false
@@ -441,7 +444,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     width: number,
     height: number
   ) => {
-    const barHeight = Math.max(4, Math.round(height * 0.55))
+    const barHeight = Math.max(4, Math.round(height * 0.55 * normalizedWaveformHeightScale))
     const y = Math.round((height - barHeight) / 2)
     ctx.fillStyle = 'rgba(90, 170, 255, 0.35)'
     ctx.fillRect(0, y, width, barHeight)
@@ -570,6 +573,8 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     range: { start: number; end: number },
     renderPx: number,
     barOnly: boolean,
+    showBeat4: boolean,
+    showBeat: boolean,
     barWidth: number
   ) => {
     if (!Number.isFinite(bpm) || bpm <= 0) return
@@ -592,7 +597,8 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       const mod4 = ((shiftedIndex % 4) + 4) % 4
       const level = mod32 === 0 ? 'bar' : mod4 === 0 ? 'beat4' : 'beat'
       if (barOnly && level !== 'bar') continue
-      if (level === 'beat') continue
+      if (!showBeat4 && level !== 'bar') continue
+      if (!showBeat && level === 'beat') continue
       const x = Math.round(rawX - startX)
       if (level === 'bar') {
         ctx.globalAlpha = 0.95
@@ -603,9 +609,9 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
         ctx.fillStyle = 'rgba(120, 200, 255, 0.98)'
         ctx.fillRect(x, 0, 1.8, height)
       } else {
-        ctx.globalAlpha = 0.35
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'
-        ctx.fillRect(x, 0, 1, height)
+        ctx.globalAlpha = 0.8
+        ctx.fillStyle = 'rgba(180, 225, 255, 0.95)'
+        ctx.fillRect(x, 0, 1.3, height)
       }
     }
     ctx.restore()
