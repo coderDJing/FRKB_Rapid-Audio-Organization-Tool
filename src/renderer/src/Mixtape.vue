@@ -448,8 +448,8 @@ const {
   display: flex;
   align-items: center;
   position: relative;
-  padding: 8px 0 6px;
-  border-bottom: 1px solid var(--border);
+  padding: 0;
+  border-bottom: 0;
   background: var(--bg);
 }
 
@@ -681,7 +681,7 @@ const {
 }
 
 .timeline-overview {
-  border-top: 1px solid var(--border);
+  border-top: 0;
   padding: 8px 0 12px;
   background: var(--bg);
 }
@@ -818,8 +818,8 @@ const {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 18px 0 0 0;
+  gap: 8px;
+  padding: 10px 0 0 0;
   min-height: 100%;
   z-index: 4;
 }
