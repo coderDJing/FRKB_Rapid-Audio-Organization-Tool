@@ -21,6 +21,7 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     tracks,
     timelineScrollRef,
     timelineViewportWidth,
+    timelineScrollWidth,
     timelineContentWidth,
     timelineScrollLeft,
     timelineScrollTop,
@@ -61,6 +62,15 @@ export const createTimelineInteractionsModule = (ctx: any) => {
   let overviewDragStartX = 0
   let overviewDragMoved = false
   let overviewSuppressClick = false
+  const FLOAT_EPSILON = 0.01
+  const nearlyEqual = (a: number, b: number) => Math.abs(a - b) < FLOAT_EPSILON
+  const resolveScrollableWidth = (viewport: HTMLElement) => {
+    const viewportWidth = viewport.clientWidth || 0
+    const domScrollWidth = Number(viewport.scrollWidth || 0)
+    const stateScrollWidth = Number(timelineScrollWidth.value || 0)
+    const layoutWidth = Number(timelineLayout.value.totalWidth || 0)
+    return Math.max(viewportWidth, domScrollWidth, stateScrollWidth, layoutWidth)
+  }
   const applyRenderZoomImmediate = () => {
     const target = resolveRenderZoomLevel(normalizedZoom.value)
     if (target === renderZoom.value) return
@@ -110,26 +120,33 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     const viewport = timelineScrollRef.value?.osInstance()?.elements()
       .viewport as HTMLElement | null
     if (!viewport) return
-    const nextLeft = Math.round(viewport.scrollLeft || 0)
-    const nextTop = Math.round(viewport.scrollTop || 0)
-    const nextWidth = viewport.clientWidth || 0
-    const nextHeight = viewport.clientHeight || 0
-    const movedScroll = nextLeft !== timelineScrollLeft.value || nextTop !== timelineScrollTop.value
+    const nextLeft = Number(viewport.scrollLeft || 0)
+    const nextTop = Number(viewport.scrollTop || 0)
+    const nextWidth = Number(viewport.clientWidth || 0)
+    const nextHeight = Number(viewport.clientHeight || 0)
+    const nextScrollWidth = Number(viewport.scrollWidth || nextWidth || 0)
+    const movedScroll =
+      !nearlyEqual(nextLeft, Number(timelineScrollLeft.value || 0)) ||
+      !nearlyEqual(nextTop, Number(timelineScrollTop.value || 0))
     let changed = false
-    if (nextLeft !== timelineScrollLeft.value) {
+    if (!nearlyEqual(nextLeft, Number(timelineScrollLeft.value || 0))) {
       timelineScrollLeft.value = nextLeft
       changed = true
     }
-    if (nextTop !== timelineScrollTop.value) {
+    if (!nearlyEqual(nextTop, Number(timelineScrollTop.value || 0))) {
       timelineScrollTop.value = nextTop
       changed = true
     }
-    if (nextWidth !== timelineViewportWidth.value) {
+    if (!nearlyEqual(nextWidth, Number(timelineViewportWidth.value || 0))) {
       timelineViewportWidth.value = nextWidth
       changed = true
     }
-    if (nextHeight !== timelineViewportHeight.value) {
+    if (!nearlyEqual(nextHeight, Number(timelineViewportHeight.value || 0))) {
       timelineViewportHeight.value = nextHeight
+      changed = true
+    }
+    if (!nearlyEqual(nextScrollWidth, Number(timelineScrollWidth.value || 0))) {
+      timelineScrollWidth.value = nextScrollWidth
       changed = true
     }
     if (changed) {
@@ -194,7 +211,7 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     nextTick(() => {
       const nextScale = Math.max(0.0001, renderPxPerSec.value)
       const targetLeft = (prevLeft + anchorX) * (nextScale / prevScale) - anchorX
-      const maxLeft = Math.max(0, timelineContentWidth.value - viewport.clientWidth)
+      const maxLeft = Math.max(0, resolveScrollableWidth(viewport) - viewport.clientWidth)
       viewport.scrollLeft = Math.max(0, Math.min(maxLeft, targetLeft))
     })
   }
@@ -267,7 +284,7 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     if (!timelinePanMoved && Math.abs(dx) + Math.abs(dy) > 2) {
       timelinePanMoved = true
     }
-    const maxLeft = Math.max(0, timelineContentWidth.value - viewport.clientWidth)
+    const maxLeft = Math.max(0, resolveScrollableWidth(viewport) - viewport.clientWidth)
     const maxTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
     viewport.scrollLeft = Math.max(0, Math.min(maxLeft, Math.round(timelinePanStartLeft - dx)))
     viewport.scrollTop = Math.max(0, Math.min(maxTop, Math.round(timelinePanStartTop - dy)))
@@ -306,7 +323,7 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     const viewport = resolveTimelineViewportEl()
     if (!viewport) return
     const viewportWidth = viewport.clientWidth || 0
-    const scrollableWidth = Math.max(timelineLayout.value.totalWidth, viewportWidth)
+    const scrollableWidth = resolveScrollableWidth(viewport)
     if (!scrollableWidth) return
     const maxLeft = Math.max(0, scrollableWidth - viewportWidth)
     const safeRatio = clampNumber(ratio, 0, 1)
@@ -318,7 +335,7 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     const viewport = resolveTimelineViewportEl()
     if (!viewport) return
     const viewportWidth = viewport.clientWidth || 0
-    const scrollableWidth = Math.max(timelineLayout.value.totalWidth, viewportWidth)
+    const scrollableWidth = resolveScrollableWidth(viewport)
     if (!scrollableWidth) return
     const maxLeft = Math.max(0, scrollableWidth - viewportWidth)
     const safeRatio = clampNumber(ratio, 0, 1)
