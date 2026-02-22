@@ -6,6 +6,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { i18n } from '@renderer/i18n'
 import 'overlayscrollbars/overlayscrollbars.css'
 import dialogDrag from './directives/dialogDrag'
+import { initUiSettings, watchUiSettings } from '@renderer/utils/uiSettingsStorage'
 
 const pinia = createPinia()
 const app = createApp(App)
@@ -24,6 +25,11 @@ app.use(i18n)
 const initializeApp = async () => {
   const runtime = useRuntimeStore()
   runtime.setting = await window.electron.ipcRenderer.invoke('getSetting')
+  const { cleanedSetting, needsCleanup } = initUiSettings(runtime.setting)
+  if (needsCleanup) {
+    void window.electron.ipcRenderer.invoke('setSetting', cleanedSetting)
+  }
+  watchUiSettings(runtime.setting)
   {
     const p = runtime.setting?.platform
     runtime.platform = p === 'darwin' ? 'Mac' : p === 'win32' ? 'Windows' : 'Unknown'

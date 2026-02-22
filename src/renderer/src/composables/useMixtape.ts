@@ -4,6 +4,8 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
 import confirmDialog from '@renderer/components/confirmDialog'
 import { useMixtapeTimeline } from '@renderer/composables/mixtape/useMixtapeTimeline'
+import { createMixtapeAutoGainController } from '@renderer/composables/mixtape/autoGainController'
+import { normalizeGainEnvelopePoints } from '@renderer/composables/mixtape/gainEnvelope'
 import { getKeyDisplayText as formatKeyDisplayText } from '@shared/keyDisplay'
 import type {
   MixtapeOpenPayload,
@@ -15,6 +17,7 @@ import type {
 export const useMixtape = () => {
   const payload = ref<MixtapeOpenPayload>({})
   const tracks = ref<MixtapeTrack[]>([])
+  const mixtapeRawItems = ref<MixtapeRawItem[]>([])
   const selectedTrackId = ref('')
   const runtime = useRuntimeStore()
 
@@ -48,6 +51,7 @@ export const useMixtape = () => {
     laneHeight,
     laneTracks,
     resolveTrackBlockStyle,
+    resolveGainEnvelopePolyline,
     resolveTrackTitle,
     formatTrackBpm,
     isRawWaveformLoading,
@@ -103,6 +107,8 @@ export const useMixtape = () => {
   const titleLabel = computed(() => {
     return `FRKB - ${t('mixtape.title')} - ${displayName.value}`
   })
+
+  const mixtapePlaylistId = computed(() => String(payload.value.playlistId || ''))
 
   const trackContextMenuStyle = computed(() => ({
     left: `${trackContextMenuX.value}px`,
@@ -226,6 +232,7 @@ export const useMixtape = () => {
       typeof info?.originalKey === 'string' ? info.originalKey.trim() : ''
     const parsedOriginalKey = parsedOriginalKeyRaw || parsedKey || undefined
     const parsedBarBeatOffset = normalizeBarBeatOffset(info?.barBeatOffset)
+    const parsedGainEnvelope = normalizeGainEnvelopePoints(info?.gainEnvelope)
     return {
       id: String(raw?.id || `${filePath}-${index}`),
       mixOrder: Number(raw?.mixOrder) || index + 1,
@@ -242,6 +249,7 @@ export const useMixtape = () => {
       originalBpm: parsedOriginalBpm,
       masterTempo: true,
       startSec: undefined,
+      gainEnvelope: parsedGainEnvelope.length ? parsedGainEnvelope : undefined,
       firstBeatMs: parsedFirstBeatMs,
       barBeatOffset: parsedBarBeatOffset
     }
@@ -489,8 +497,10 @@ export const useMixtape = () => {
 
   const loadMixtapeItems = async () => {
     if (!payload.value.playlistId) {
+      mixtapeRawItems.value = []
       tracks.value = []
       selectedTrackId.value = ''
+      resetAutoGainState()
       bpmAnalysisActive.value = false
       bpmAnalysisFailed.value = false
       bpmAnalysisFailedCount.value = 0
@@ -501,6 +511,7 @@ export const useMixtape = () => {
       playlistId: payload.value.playlistId
     })
     const rawItems = Array.isArray(result?.items) ? result.items : []
+    mixtapeRawItems.value = rawItems
     const removedPaths = Array.isArray(result?.recovery?.removedPaths)
       ? normalizeUniquePaths(result.recovery.removedPaths)
       : []
@@ -508,6 +519,7 @@ export const useMixtape = () => {
     if (!tracks.value.some((track) => track.id === selectedTrackId.value)) {
       selectedTrackId.value = tracks.value[0]?.id || ''
     }
+    syncAutoGainReferenceTrack()
     if (!tracks.value.some((track) => track.id === beatAlignTrackId.value)) {
       beatAlignDialogVisible.value = false
       beatAlignTrackId.value = ''
@@ -679,7 +691,8 @@ export const useMixtape = () => {
       return
     }
     if (isEditableEventTarget(event.target)) return
-    if (beatAlignDialogVisible.value || outputDialogVisible.value) return
+    if (beatAlignDialogVisible.value || outputDialogVisible.value || autoGainDialogVisible.value)
+      return
 
     event.preventDefault()
     if (transportPlaying.value || transportDecoding.value) {
@@ -707,6 +720,61 @@ export const useMixtape = () => {
   const handleOutputDialogCancel = () => {
     outputDialogVisible.value = false
   }
+
+  const persistGainEnvelope = async (
+    entries: Array<{ itemId: string; gainEnvelope: Array<{ sec: number; gain: number }> }>
+  ) => {
+    if (!entries.length || !window?.electron?.ipcRenderer?.invoke) return
+    try {
+      await window.electron.ipcRenderer.invoke('mixtape:update-gain-envelope', { entries })
+    } catch (error) {
+      console.error('[mixtape] update gain envelope failed', {
+        count: entries.length,
+        error
+      })
+    }
+  }
+
+  const showAutoGainErrorDialog = async (message: string) => {
+    await confirmDialog({
+      title: t('common.error'),
+      content: [message],
+      confirmShow: false
+    })
+  }
+
+  const {
+    autoGainDialogVisible,
+    autoGainReferenceTrackId,
+    autoGainReferenceFeedback,
+    autoGainBusy,
+    autoGainReferenceOptions,
+    autoGainProgressText,
+    canStartAutoGain,
+    openAutoGainDialog,
+    handleAutoGainDialogCancel,
+    handleAutoGainDialogConfirm,
+    handleAutoGainSelectLoudestReference,
+    handleAutoGainSelectQuietestReference,
+    syncReferenceTrack: syncAutoGainReferenceTrack,
+    resetAutoGainState
+  } = createMixtapeAutoGainController({
+    tracks,
+    selectedTrackId,
+    transportPlaying,
+    transportDecoding,
+    bpmAnalysisActive,
+    resolveTrackTitle,
+    t,
+    onStopTransport: handleTransportStop,
+    onEnvelopeApplied: () => {
+      clearTimelineLayoutCache()
+      updateTimelineWidth(false)
+      scheduleTimelineDraw()
+    },
+    persistGainEnvelope,
+    showErrorDialog: showAutoGainErrorDialog
+  })
 
   const schedulePlaylistReload = () => {
     if (playlistUpdateTimer) {
@@ -814,13 +882,16 @@ export const useMixtape = () => {
   return {
     t,
     titleLabel,
+    mixtapePlaylistId,
     mixtapeMenus,
     handleTitleOpenDialog,
+    mixtapeRawItems,
     tracks,
     laneIndices,
     laneHeight,
     laneTracks,
     resolveTrackBlockStyle,
+    resolveGainEnvelopePolyline,
     resolveTrackTitle,
     resolveTrackTitleWithOriginalMeta,
     formatTrackBpm,
@@ -883,6 +954,18 @@ export const useMixtape = () => {
     outputFormat,
     outputFilename,
     handleOutputDialogConfirm,
-    handleOutputDialogCancel
+    handleOutputDialogCancel,
+    autoGainDialogVisible,
+    autoGainReferenceTrackId,
+    autoGainReferenceFeedback,
+    autoGainReferenceOptions,
+    autoGainBusy,
+    autoGainProgressText,
+    canStartAutoGain,
+    openAutoGainDialog,
+    handleAutoGainDialogCancel,
+    handleAutoGainDialogConfirm,
+    handleAutoGainSelectLoudestReference,
+    handleAutoGainSelectQuietestReference
   }
 }

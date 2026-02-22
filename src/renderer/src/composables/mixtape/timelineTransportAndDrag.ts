@@ -8,8 +8,17 @@ import {
   resolveFirstBeatTimelineSec,
   resolveGridAnchorSec
 } from '@renderer/composables/mixtape/mixxxSyncModel'
+import {
+  buildFlatGainEnvelope,
+  normalizeGainEnvelopePoints,
+  sampleGainEnvelopeAtSec
+} from '@renderer/composables/mixtape/gainEnvelope'
 import { applyMixxxTransportSync } from '@renderer/composables/mixtape/timelineTransportSync'
-import type { MixtapeTrack, TimelineTrackLayout } from '@renderer/composables/mixtape/types'
+import type {
+  MixtapeGainPoint,
+  MixtapeTrack,
+  TimelineTrackLayout
+} from '@renderer/composables/mixtape/types'
 
 // ── PCM 数据归一化（仅用于 IPC 解码路径）───────────────────────
 const normalizePcmData = (pcmData: unknown): Float32Array => {
@@ -37,6 +46,7 @@ type TransportEntry = {
   sourceDuration: number
   duration: number
   tempoRatio: number
+  gainEnvelope: MixtapeGainPoint[]
   /** 解码策略：browser = fetch + decodeAudioData（快）；ipc = 主进程 Rust/FFmpeg 解码 */
   decodeMode: 'browser' | 'ipc'
   /** 解码后的 AudioBuffer */
@@ -266,6 +276,18 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     return item.startX / pxPerSec
   }
 
+  const resolveTrackGainEnvelope = (track: MixtapeTrack, durationSec: number) => {
+    const safeDuration = Math.max(0, Number(durationSec) || 0)
+    const normalized = normalizeGainEnvelopePoints(track.gainEnvelope, safeDuration)
+    if (normalized.length > 0) return normalized
+    return buildFlatGainEnvelope(safeDuration, 1)
+  }
+
+  const resolveEntryGainValue = (entry: TransportEntry, timelineOffsetSec: number) => {
+    const safeOffset = clampNumber(timelineOffsetSec, 0, Math.max(0, entry.duration))
+    return clampNumber(sampleGainEnvelopeAtSec(entry.gainEnvelope, safeOffset, 1), 0.0001, 16)
+  }
+
   // ── AudioContext 管理 ─────────────────────────────────────────
   const ensureTransportAudioContext = (sampleRate?: number): AudioContext => {
     if (transportAudioCtx && transportAudioCtx.state !== 'closed') {
@@ -387,6 +409,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
           beatSec,
           barBeatOffset
         })
+        const gainEnvelope = resolveTrackGainEnvelope(track, duration)
         // 浏览器能解码的走 fetch + decodeAudioData（快、无 IPC 开销）
         const decodeMode: 'browser' | 'ipc' = canPlayHtmlAudio(filePath) ? 'browser' : 'ipc'
         return {
@@ -402,6 +425,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
           sourceDuration,
           duration,
           tempoRatio: Math.max(0.25, Math.min(4, tempoRatio)),
+          gainEnvelope,
           decodeMode,
           audioBuffer: null
         } as TransportEntry
@@ -606,7 +630,8 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       source.playbackRate.value = entry.tempoRatio
 
       const gain = ctx.createGain()
-      gain.gain.value = 1.0
+      const offsetTimelineSec = offsetSourceSec / Math.max(0.01, entry.tempoRatio)
+      gain.gain.value = resolveEntryGainValue(entry, offsetTimelineSec)
 
       source.connect(gain)
       gain.connect(ctx.destination)
@@ -637,6 +662,20 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       }
     } catch (error) {
       console.error('[mixtape-transport] 播放启动失败:', entry.filePath, error)
+    }
+  }
+
+  const applyTransportGainAtTimelineSec = (timelineSec: number) => {
+    if (!transportAudioCtx || transportAudioCtx.state === 'closed') return
+    const now = transportAudioCtx.currentTime
+    for (const node of transportGraphNodes) {
+      const entry = node.entry
+      const localTimelineSec = timelineSec - entry.startSec
+      if (localTimelineSec < 0 || localTimelineSec > entry.duration) continue
+      const nextGain = resolveEntryGainValue(entry, localTimelineSec)
+      try {
+        node.gain.gain.setTargetAtTime(nextGain, now, 0.04)
+      } catch {}
     }
   }
 
@@ -740,6 +779,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
           : Math.max(0, (performance.now() - transportStartedAt) / 1000)
       const current = transportBaseSec + elapsed
       playheadSec.value = current
+      applyTransportGainAtTimelineSec(current)
       const syncResult = applyMixxxTransportSync({
         nodes: transportGraphNodes,
         timelineSec: current,

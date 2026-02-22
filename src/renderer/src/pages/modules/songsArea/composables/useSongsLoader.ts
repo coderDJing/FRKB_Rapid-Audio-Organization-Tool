@@ -1,6 +1,7 @@
 import { ref, nextTick, markRaw } from 'vue'
 import type { ShallowRef } from 'vue'
 import libraryUtils from '@renderer/utils/libraryUtils'
+import { mapMixtapeSnapshotToSongInfo } from '@renderer/composables/mixtape/mixtapeSnapshotSongMapper'
 import type { ISongInfo } from '../../../../../../types/globals'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
@@ -25,49 +26,6 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
   const isMixtapeListView = () => {
     const node = libraryUtils.getLibraryTreeByUUID(runtime.songsArea.songListUUID)
     return node?.type === 'mixtapeList'
-  }
-
-  const resolveFileNameAndFormat = (filePath: string) => {
-    const baseName =
-      String(filePath || '')
-        .split(/[/\\]/)
-        .pop() || ''
-    const parts = baseName.split('.')
-    const ext = parts.length > 1 ? parts.pop() || '' : ''
-    const fileFormat = ext ? ext.toUpperCase() : ''
-    return { fileName: baseName, fileFormat }
-  }
-
-  const buildSongFromSnapshot = (raw: any, fallbackIndex: number) => {
-    let info: any = null
-    if (raw?.infoJson) {
-      try {
-        info = JSON.parse(String(raw.infoJson))
-      } catch {
-        info = null
-      }
-    }
-    const filePath = String(raw?.filePath || info?.filePath || '')
-    const meta = resolveFileNameAndFormat(filePath)
-    return {
-      filePath,
-      fileName: info?.fileName || meta.fileName,
-      fileFormat: info?.fileFormat || meta.fileFormat,
-      cover: info?.cover ?? null,
-      title: info?.title ?? meta.fileName,
-      artist: info?.artist,
-      album: info?.album,
-      duration: info?.duration ?? '',
-      genre: info?.genre,
-      label: info?.label,
-      bitrate: info?.bitrate,
-      container: info?.container,
-      key: info?.key,
-      bpm: info?.bpm,
-      mixOrder: Number(raw?.mixOrder) || fallbackIndex + 1,
-      mixtapeItemId: raw?.id ? String(raw.id) : undefined,
-      originalPlaylistPath: ''
-    }
   }
 
   const openSongList = async () => {
@@ -114,14 +72,11 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
           playlistId: runtime.songsArea.songListUUID
         })
         const rawItems = Array.isArray(result?.items) ? result.items : []
-        const songs = rawItems.map((item: any, index: number) => {
-          const song = buildSongFromSnapshot(item, index)
-          const originDisplay =
-            libraryUtils.buildDisplayPathByUuid(item?.originPlaylistUuid || '') ||
-            String(item?.originPathSnapshot || '')
-          song.originalPlaylistPath = originDisplay
-          return song
-        })
+        const songs = rawItems.map((item: any, index: number) =>
+          mapMixtapeSnapshotToSongInfo(item, index, {
+            buildDisplayPathByUuid: (uuid) => libraryUtils.buildDisplayPathByUuid(uuid)
+          })
+        )
         originalSongInfoArr.value = markRaw(songs)
         applyFiltersAndSorting()
 

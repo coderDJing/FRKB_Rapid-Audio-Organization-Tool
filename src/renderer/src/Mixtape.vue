@@ -1,20 +1,41 @@
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import titleComponent from '@renderer/components/titleComponent.vue'
 import MixtapeOutputDialog from '@renderer/components/mixtapeOutputDialog.vue'
 import MixtapeBeatAlignDialog from '@renderer/components/mixtapeBeatAlignDialog.vue'
+import ColumnHeaderContextMenu from '@renderer/pages/modules/songsArea/ColumnHeaderContextMenu.vue'
+import SongListHeader from '@renderer/pages/modules/songsArea/SongListHeader.vue'
+import SongListRows from '@renderer/pages/modules/songsArea/SongListRows.vue'
+import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
+import {
+  buildSongsAreaDefaultColumns,
+  getSongsAreaMinWidthByKey,
+  SONGS_AREA_MIXTAPE_STORAGE_KEY
+} from '@renderer/pages/modules/songsArea/composables/useSongsAreaColumns'
+import { mapMixtapeSnapshotToSongInfo } from '@renderer/composables/mixtape/mixtapeSnapshotSongMapper'
 import { useMixtape } from '@renderer/composables/useMixtape'
+import { useRuntimeStore } from '@renderer/stores/runtime'
+import { applyUiSettings, readUiSettings } from '@renderer/utils/uiSettingsStorage'
+import libraryUtils from '@renderer/utils/libraryUtils'
+import emitter from '@renderer/utils/mitt'
+import ascendingOrderAsset from '@renderer/assets/ascending-order.svg?asset'
+import descendingOrderAsset from '@renderer/assets/descending-order.svg?asset'
+import type { ISongInfo, ISongsAreaColumn } from '../../types/globals'
 
 const {
   t,
   titleLabel,
+  mixtapePlaylistId,
   mixtapeMenus,
   handleTitleOpenDialog,
+  mixtapeRawItems,
   tracks,
   laneIndices,
   laneHeight,
   laneTracks,
   resolveTrackBlockStyle,
+  resolveGainEnvelopePolyline,
   resolveTrackTitle,
   resolveTrackTitleWithOriginalMeta,
   formatTrackBpm,
@@ -75,8 +96,230 @@ const {
   outputFormat,
   outputFilename,
   handleOutputDialogConfirm,
-  handleOutputDialogCancel
+  handleOutputDialogCancel,
+  autoGainDialogVisible,
+  autoGainReferenceTrackId,
+  autoGainReferenceFeedback,
+  autoGainBusy,
+  autoGainProgressText,
+  canStartAutoGain,
+  openAutoGainDialog,
+  handleAutoGainDialogCancel,
+  handleAutoGainDialogConfirm,
+  handleAutoGainSelectLoudestReference,
+  handleAutoGainSelectQuietestReference
 } = useMixtape()
+
+const mixParamOptions = [
+  {
+    id: 'gain',
+    labelKey: 'mixtape.mixParamGain'
+  },
+  {
+    id: 'high',
+    labelKey: 'mixtape.mixParamHigh'
+  },
+  {
+    id: 'mid',
+    labelKey: 'mixtape.mixParamMid'
+  },
+  {
+    id: 'low',
+    labelKey: 'mixtape.mixParamLow'
+  },
+  {
+    id: 'volume',
+    labelKey: 'mixtape.mixParamVolume'
+  }
+] as const
+
+type MixParamId = (typeof mixParamOptions)[number]['id']
+
+const selectedMixParam = ref<MixParamId>('gain')
+const runtime = useRuntimeStore()
+useWaveformPreviewPlayer()
+type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
+const ascendingOrder = ascendingOrderAsset
+const descendingOrder = descendingOrderAsset
+const autoGainHeaderTranslate = (key: string) => t(key)
+
+const autoGainSongListScrollRef = ref<OverlayScrollbarsComponentRef>(null)
+const autoGainColumnMenuVisible = ref(false)
+const autoGainColumnMenuEvent = ref<MouseEvent | null>(null)
+
+const MIXTAPE_COLUMN_MODE = 'mixtape' as const
+
+const normalizeColumnOrder = (_value: unknown): undefined => undefined
+
+const persistAutoGainColumns = (columns: ISongsAreaColumn[]) => {
+  try {
+    const normalized = columns.map((column) => ({
+      ...column,
+      order: normalizeColumnOrder(column.order)
+    }))
+    localStorage.setItem(SONGS_AREA_MIXTAPE_STORAGE_KEY, JSON.stringify(normalized))
+  } catch {}
+}
+
+const loadAutoGainColumns = () => {
+  const defaultColumns: ISongsAreaColumn[] = buildSongsAreaDefaultColumns(MIXTAPE_COLUMN_MODE).map(
+    (column) => ({
+      ...column,
+      order: normalizeColumnOrder(column.order)
+    })
+  )
+  const defaultColumnsByKey = new Map(defaultColumns.map((column) => [column.key, column]))
+  const saved = localStorage.getItem(SONGS_AREA_MIXTAPE_STORAGE_KEY)
+  let mergedColumns: ISongsAreaColumn[] = defaultColumns
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved) as Partial<ISongsAreaColumn>[]
+      const normalized: ISongsAreaColumn[] = parsed
+        .map((item): ISongsAreaColumn | null => {
+          const key = String(item?.key || '')
+          const fallback = defaultColumnsByKey.get(key)
+          if (!fallback) return null
+          const minWidth = getSongsAreaMinWidthByKey(fallback.key, MIXTAPE_COLUMN_MODE)
+          const rawWidth = Number(item?.width)
+          const nextColumn: ISongsAreaColumn = {
+            ...fallback,
+            show: typeof item?.show === 'boolean' ? item.show : fallback.show,
+            width: Number.isFinite(rawWidth) ? Math.max(minWidth, rawWidth) : fallback.width
+          }
+          nextColumn.order = normalizeColumnOrder(item?.order)
+          return nextColumn
+        })
+        .filter((item): item is ISongsAreaColumn => item !== null)
+      if (normalized.length) {
+        const existingKeySet = new Set(normalized.map((item) => item.key))
+        for (const fallback of defaultColumns) {
+          if (existingKeySet.has(fallback.key)) continue
+          normalized.push(fallback)
+        }
+        mergedColumns = normalized
+      }
+    } catch {}
+  }
+  const visibleColumns = mergedColumns.filter((column) => column.show)
+  return visibleColumns.length ? mergedColumns : defaultColumns
+}
+
+const autoGainDialogColumns = ref<ISongsAreaColumn[]>(loadAutoGainColumns())
+
+watch(
+  () => autoGainDialogColumns.value,
+  (columns) => {
+    persistAutoGainColumns(columns)
+  },
+  { deep: true }
+)
+
+const autoGainSongColumns = computed<ISongsAreaColumn[]>(() =>
+  autoGainDialogColumns.value.filter((column) => column.show)
+)
+
+const autoGainSongTotalWidth = computed(() =>
+  autoGainSongColumns.value.reduce((sum, column) => sum + Number(column.width || 0), 0)
+)
+
+const autoGainDialogSongs = computed<ISongInfo[]>(() => {
+  return mixtapeRawItems.value.map((raw, index) =>
+    mapMixtapeSnapshotToSongInfo(raw, index, {
+      buildDisplayPathByUuid: (uuid) => libraryUtils.buildDisplayPathByUuid(uuid)
+    })
+  )
+})
+
+const autoGainSelectedRowKeys = computed(() => {
+  const referenceTrackId = autoGainReferenceTrackId.value
+  if (!referenceTrackId) return []
+  const targetTrack = tracks.value.find((item) => item.id === referenceTrackId)
+  const keys = [referenceTrackId, targetTrack?.filePath || ''].filter(Boolean)
+  return Array.from(new Set(keys))
+})
+
+const resolveAutoGainReferenceId = (song: ISongInfo) => {
+  if (song.mixtapeItemId) return song.mixtapeItemId
+  const matchedTrack = tracks.value.find((item) => item.filePath === song.filePath)
+  return matchedTrack?.id || ''
+}
+
+const handleAutoGainSongClick = (_event: MouseEvent, song: ISongInfo) => {
+  const nextId = resolveAutoGainReferenceId(song)
+  if (nextId) autoGainReferenceTrackId.value = nextId
+}
+
+const handleAutoGainSongDragStart = (event: DragEvent) => {
+  event.preventDefault()
+}
+
+const handleAutoGainColumnsUpdate = (columns: ISongsAreaColumn[]) => {
+  if (!Array.isArray(columns) || !columns.length) return
+  autoGainDialogColumns.value = columns.map((column) => ({
+    ...column,
+    order: normalizeColumnOrder(column.order)
+  }))
+}
+
+const handleAutoGainColumnClick = (_column: ISongsAreaColumn) => {
+  // 与主窗口混音歌单一致：列头点击不触发排序
+}
+
+const handleAutoGainHeaderContextMenu = (event: MouseEvent) => {
+  autoGainColumnMenuEvent.value = event
+  autoGainColumnMenuVisible.value = true
+}
+
+const handleAutoGainToggleColumnVisibility = (columnKey: string) => {
+  const key = String(columnKey || '')
+  if (!key) return
+  autoGainDialogColumns.value = autoGainDialogColumns.value.map((column) =>
+    column.key === key ? { ...column, show: !column.show } : column
+  )
+}
+
+const refreshRuntimeSetting = async () => {
+  try {
+    const latest = await window.electron.ipcRenderer.invoke('getSetting')
+    if (latest && typeof latest === 'object') {
+      const merged = { ...(latest as Record<string, unknown>) }
+      applyUiSettings(merged, readUiSettings())
+      runtime.setting = merged as any
+    }
+  } catch {}
+}
+
+const handleOpenAutoGainDialog = async () => {
+  await refreshRuntimeSetting()
+  autoGainDialogColumns.value = loadAutoGainColumns()
+  autoGainColumnMenuVisible.value = false
+  autoGainColumnMenuEvent.value = null
+  openAutoGainDialog()
+}
+
+const stopAutoGainWaveformPreview = () => {
+  emitter.emit('waveform-preview:stop', { reason: 'explicit' })
+}
+
+const handleAutoGainDialogCancelClick = () => {
+  stopAutoGainWaveformPreview()
+  handleAutoGainDialogCancel()
+}
+
+const handleAutoGainDialogConfirmClick = async () => {
+  stopAutoGainWaveformPreview()
+  await handleAutoGainDialogConfirm()
+}
+
+const handleAutoGainSelectLoudestReferenceClick = async () => {
+  stopAutoGainWaveformPreview()
+  await handleAutoGainSelectLoudestReference()
+}
+
+const handleAutoGainSelectQuietestReferenceClick = async () => {
+  stopAutoGainWaveformPreview()
+  await handleAutoGainSelectQuietestReference()
+}
 </script>
 
 <template>
@@ -94,6 +337,31 @@ const {
     </div>
     <div class="mixtape-window">
       <section class="mixtape-body">
+        <div class="mixtape-param-bar">
+          <div class="mixtape-param-bar__title">{{ t('mixtape.mixPanelTitle') }}</div>
+          <div class="mixtape-param-bar__tabs">
+            <button
+              v-for="item in mixParamOptions"
+              :key="item.id"
+              class="mixtape-param-bar__tab"
+              :class="{ 'is-active': selectedMixParam === item.id }"
+              type="button"
+              @click="selectedMixParam = item.id"
+            >
+              {{ t(item.labelKey) }}
+            </button>
+          </div>
+          <div v-if="selectedMixParam === 'gain'" class="mixtape-param-bar__actions">
+            <button
+              class="button mixtape-param-bar__action-btn"
+              type="button"
+              :disabled="!canStartAutoGain"
+              @click="handleOpenAutoGainDialog"
+            >
+              {{ t('mixtape.autoGainAction') }}
+            </button>
+          </div>
+        </div>
         <div class="mixtape-main">
           <section class="timeline">
             <div class="timeline-ruler-wrap">
@@ -204,6 +472,25 @@ const {
                             @mousedown.stop="handleTrackDragStart(item, $event)"
                             @contextmenu.stop.prevent="handleTrackContextMenu(item, $event)"
                           >
+                            <svg
+                              class="lane-track__envelope-svg"
+                              viewBox="0 0 100 100"
+                              preserveAspectRatio="none"
+                            >
+                              <line
+                                class="lane-track__envelope-midline"
+                                :class="{ 'is-hidden': selectedMixParam !== 'gain' }"
+                                x1="0"
+                                y1="50"
+                                x2="100"
+                                y2="50"
+                              ></line>
+                              <polyline
+                                class="lane-track__envelope-line"
+                                :class="{ 'is-hidden': selectedMixParam !== 'gain' }"
+                                :points="resolveGainEnvelopePolyline(item)"
+                              ></polyline>
+                            </svg>
                             <div class="lane-track__meta">
                               <div class="lane-track__meta-title">
                                 {{ item.track.mixOrder }}.
@@ -312,6 +599,104 @@ const {
         </div>
       </div>
     </div>
+    <div v-if="autoGainBusy && !autoGainDialogVisible" class="mixtape-auto-gain-mask">
+      <div class="bpm-loading-card">
+        <div class="bpm-loading-title">{{ t('mixtape.autoGainRunning') }}</div>
+        <div class="bpm-loading-sub">{{ autoGainProgressText }}</div>
+      </div>
+    </div>
+    <div v-if="autoGainDialogVisible" class="mixtape-auto-gain-dialog">
+      <div class="mixtape-auto-gain-dialog__card">
+        <div class="mixtape-auto-gain-dialog__title">{{ t('mixtape.autoGainDialogTitle') }}</div>
+        <div class="mixtape-auto-gain-dialog__hint">{{ t('mixtape.autoGainDialogHint') }}</div>
+        <div v-if="autoGainReferenceFeedback" class="mixtape-auto-gain-dialog__feedback">
+          {{ autoGainReferenceFeedback }}
+        </div>
+        <div class="mixtape-auto-gain-dialog__song-list-host">
+          <OverlayScrollbarsComponent
+            ref="autoGainSongListScrollRef"
+            class="mixtape-auto-gain-dialog__songs-scroll"
+            :options="{
+              scrollbars: {
+                autoHide: 'leave' as const,
+                autoHideDelay: 50,
+                clickScroll: true
+              } as const,
+              overflow: {
+                x: 'scroll',
+                y: 'scroll'
+              } as const
+            }"
+            element="div"
+            defer
+          >
+            <SongListHeader
+              :columns="autoGainDialogColumns"
+              :t="autoGainHeaderTranslate"
+              :ascending-order="ascendingOrder"
+              :descending-order="descendingOrder"
+              :total-width="autoGainSongTotalWidth"
+              @update:columns="handleAutoGainColumnsUpdate"
+              @column-click="handleAutoGainColumnClick"
+              @header-contextmenu="handleAutoGainHeaderContextMenu"
+            />
+            <div class="mixtape-auto-gain-dialog__song-list">
+              <SongListRows
+                :songs="autoGainDialogSongs"
+                :visible-columns="autoGainSongColumns"
+                :selected-song-file-paths="autoGainSelectedRowKeys"
+                :total-width="autoGainSongTotalWidth"
+                source-library-name="mixtape-auto-gain"
+                :source-song-list-u-u-i-d="mixtapePlaylistId"
+                :scroll-host-element="autoGainSongListScrollRef?.osInstance()?.elements().viewport"
+                song-list-root-dir=""
+                @song-click="handleAutoGainSongClick"
+                @song-dragstart="handleAutoGainSongDragStart"
+              />
+            </div>
+          </OverlayScrollbarsComponent>
+          <ColumnHeaderContextMenu
+            v-model="autoGainColumnMenuVisible"
+            :target-event="autoGainColumnMenuEvent"
+            :columns="autoGainDialogColumns"
+            :scroll-host-element="autoGainSongListScrollRef?.osInstance()?.elements().host"
+            @toggle-column-visibility="handleAutoGainToggleColumnVisibility"
+          />
+        </div>
+        <div class="mixtape-auto-gain-dialog__actions">
+          <button
+            type="button"
+            :disabled="autoGainBusy || autoGainDialogSongs.length < 2"
+            @click="handleAutoGainSelectLoudestReferenceClick"
+          >
+            {{ t('mixtape.autoGainSelectLoudestAction') }}
+          </button>
+          <button
+            type="button"
+            :disabled="autoGainBusy || autoGainDialogSongs.length < 2"
+            @click="handleAutoGainSelectQuietestReferenceClick"
+          >
+            {{ t('mixtape.autoGainSelectQuietestAction') }}
+          </button>
+          <button type="button" :disabled="autoGainBusy" @click="handleAutoGainDialogCancelClick">
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            type="button"
+            :disabled="autoGainBusy || !autoGainReferenceTrackId"
+            @click="handleAutoGainDialogConfirmClick"
+          >
+            {{ t('common.confirm') }}
+          </button>
+        </div>
+        <div v-if="autoGainBusy" class="mixtape-auto-gain-dialog__busy-mask">
+          <div class="bpm-loading-card">
+            <div class="bpm-loading-title">{{ t('mixtape.autoGainRunning') }}</div>
+            <div class="bpm-loading-sub">{{ autoGainProgressText }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
     <MixtapeOutputDialog
       v-if="outputDialogVisible"
       :output-path="outputPath"
@@ -357,654 +742,4 @@ const {
   </div>
 </template>
 
-<style scoped lang="scss">
-.mixtape-window {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  background: var(--bg);
-  color: var(--text);
-  position: relative;
-  z-index: 1;
-}
-
-.mixtape-shell {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-}
-
-.mixtape-title-wrap {
-  height: 35px;
-  position: relative;
-  z-index: 10030;
-  overflow: visible;
-}
-
-.title-drag {
-  flex-grow: 1;
-  height: 35px;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 0 12px 0 8px;
-  min-width: 0;
-}
-
-.title-meta {
-  font-size: 12px;
-  color: var(--text-weak);
-  max-width: 60%;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  pointer-events: none;
-}
-
-:global(#app) {
-  color: var(--text);
-  background-color: var(--bg);
-  width: 100%;
-  height: 100vh;
-  overflow: hidden;
-}
-
-:global(body) {
-  margin: 0;
-  background-color: var(--bg-elev);
-  overflow: hidden;
-}
-
-.mixtape-body {
-  flex: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0;
-  padding: 0;
-  min-height: 0;
-}
-
-.mixtape-main {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr);
-  gap: 0;
-  min-height: 0;
-}
-
-.timeline {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  overflow: hidden;
-}
-
-.timeline-ruler-wrap {
-  display: flex;
-  align-items: center;
-  position: relative;
-  padding: 0;
-  border-bottom: 0;
-  background: var(--bg);
-}
-
-.timeline-ruler-stop-float {
-  position: absolute;
-  left: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 4;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.timeline-decoding-hint {
-  font-size: 11px;
-  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
-  white-space: nowrap;
-  animation: decoding-pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes decoding-pulse {
-  0%,
-  100% {
-    opacity: 0.5;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-.timeline-stop-btn {
-  height: 22px;
-  width: 22px;
-  border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.45);
-  color: var(--text);
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  padding: 0;
-}
-
-.timeline-stop-btn:hover {
-  border-color: var(--accent);
-}
-
-.timeline-stop-btn:focus {
-  outline: none;
-}
-
-.timeline-stop-btn:focus-visible {
-  outline: none;
-  box-shadow: none;
-}
-
-.timeline-stop-btn svg {
-  width: 11px;
-  height: 11px;
-  fill: currentColor;
-}
-
-.timeline-ruler {
-  position: relative;
-  flex: 1;
-  height: 30px;
-  border: 1px solid var(--border);
-  background: linear-gradient(to right, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.01));
-  cursor: pointer;
-  overflow: hidden;
-  user-select: none;
-}
-
-.timeline-ruler__ticks {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.timeline-ruler__tick {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 0;
-  transform: translateX(0);
-}
-
-.timeline-ruler__tick-line {
-  position: absolute;
-  top: 2px;
-  bottom: 13px;
-  left: 0;
-  width: 1px;
-  transform: translateX(-50%);
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(255, 255, 255, 0.32) 0 3px,
-    rgba(255, 255, 255, 0) 3px 6px
-  );
-}
-
-.timeline-ruler__tick-label {
-  position: absolute;
-  bottom: 2px;
-  left: 0;
-  transform: translateX(-50%);
-  font-size: 10px;
-  line-height: 10px;
-  color: var(--text-weak);
-  text-align: center;
-  white-space: nowrap;
-}
-
-.timeline-ruler__tick-label--start {
-  transform: translateX(0);
-  text-align: left;
-}
-
-.timeline-ruler__tick-label--end {
-  transform: translateX(-100%);
-  text-align: right;
-}
-
-.timeline-ruler__label {
-  position: absolute;
-  right: 8px;
-  top: 4px;
-  font-size: 11px;
-  color: var(--text-weak);
-  z-index: 1;
-  pointer-events: none;
-}
-
-.timeline-ruler__inactive {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  background: rgba(255, 255, 255, 0.1);
-  pointer-events: none;
-  z-index: 0;
-}
-
-.timeline-ruler__playhead {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: rgba(255, 84, 84, 0.95);
-  pointer-events: none;
-  z-index: 2;
-}
-
-.timeline-scroll {
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-  height: 100%;
-  position: relative;
-  z-index: 3;
-}
-
-.timeline-scroll-wrap {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-  height: 100%;
-  cursor: grab;
-}
-
-.timeline-scroll-wrap.is-panning {
-  cursor: grabbing;
-}
-
-.timeline-waveform-canvas {
-  position: absolute;
-  left: 0;
-  top: 0;
-  z-index: 1;
-  pointer-events: none;
-}
-
-.timeline-preload {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 5;
-  pointer-events: none;
-}
-
-.mixtape-bpm-mask {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 20;
-  pointer-events: auto;
-  cursor: progress;
-  background: rgba(8, 8, 12, 0.96);
-}
-
-.mixtape-decode-mask {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 24;
-  pointer-events: auto;
-  cursor: progress;
-  background: rgba(8, 8, 12, 0.9);
-}
-
-.mixtape-bpm-failed {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 18;
-  pointer-events: none;
-  background: rgba(8, 8, 12, 0.6);
-}
-
-.timeline-overview {
-  border-top: 0;
-  padding: 8px 0 12px;
-  background: var(--bg);
-}
-
-.overview-stage {
-  position: relative;
-  width: 100%;
-  background: rgba(0, 0, 0, 0.18);
-  cursor: grab;
-  user-select: none;
-}
-
-.overview-stage.is-dragging {
-  cursor: grabbing;
-}
-
-.overview-lanes {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 0;
-}
-
-.overview-lane {
-  position: relative;
-  height: 12px;
-  background: rgba(255, 255, 255, 0.08);
-  overflow: hidden;
-}
-
-.overview-track {
-  position: absolute;
-  left: 0;
-  top: 0;
-  height: 100%;
-  background: rgba(0, 120, 212, 0.55);
-}
-
-.overview-playhead {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: rgba(255, 84, 84, 0.95);
-  pointer-events: none;
-  z-index: 5;
-}
-
-.overview-viewport {
-  position: absolute;
-  top: 6px;
-  bottom: 6px;
-  left: 0;
-  border-radius: 4px;
-  border: 1px solid rgba(0, 120, 212, 0.9);
-  background: rgba(0, 120, 212, 0.16);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2) inset;
-  opacity: 1;
-  transition: opacity 0.12s ease;
-  pointer-events: none;
-  will-change: transform;
-}
-
-.preload-card {
-  min-width: 240px;
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  text-align: center;
-}
-
-.preload-title {
-  font-size: 12px;
-  color: var(--text);
-}
-
-.preload-bar {
-  width: 240px;
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
-  overflow: hidden;
-}
-
-.preload-bar__fill {
-  height: 100%;
-  width: 0%;
-  background: var(--accent);
-  transition: width 0.12s ease;
-}
-
-.preload-sub {
-  font-size: 11px;
-  color: var(--text-weak);
-}
-
-.bpm-loading-card {
-  min-width: 220px;
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  text-align: center;
-}
-
-.bpm-loading-card.is-error {
-  background: rgba(80, 10, 10, 0.7);
-  border-color: rgba(255, 120, 120, 0.25);
-}
-
-.bpm-loading-title {
-  font-size: 12px;
-  color: var(--text);
-}
-
-.bpm-loading-sub {
-  font-size: 11px;
-  color: var(--text-weak);
-}
-
-.timeline-viewport {
-  position: relative;
-  min-height: 100%;
-}
-
-.timeline-lanes {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 0 0 0;
-  min-height: 100%;
-  z-index: 4;
-}
-
-.timeline-playhead {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 2px;
-  background: rgba(255, 84, 84, 0.95);
-  pointer-events: none;
-  z-index: 8;
-}
-
-:global(.timeline-scroll .os-scrollbar-vertical) {
-  right: 0;
-}
-
-:global(.timeline-scroll .os-scrollbar-horizontal) {
-  display: none;
-}
-
-:global(.timeline-scroll .os-content) {
-  display: block;
-  min-height: 100%;
-  width: 100% !important;
-}
-
-.timeline-lane {
-  position: relative;
-  min-height: 51px;
-}
-
-.lane-body {
-  width: 100%;
-  height: 100%;
-  border: 1px dashed var(--border);
-  border-radius: 0;
-  background: transparent;
-  overflow: visible;
-  position: relative;
-}
-
-.lane-track {
-  position: absolute;
-  left: 0;
-  top: -1px;
-  height: calc(100% + 2px);
-  border-radius: 0;
-  box-sizing: border-box;
-  border: 3px solid transparent;
-  cursor: ew-resize;
-  z-index: 5;
-
-  &.is-selected {
-    border-color: rgba(160, 160, 160, 0.9);
-  }
-}
-
-.timeline-transport-error {
-  padding: 4px 12px 0;
-  font-size: 11px;
-  color: #f08989;
-}
-
-.lane-track:hover {
-  border-color: rgba(170, 170, 170, 0.95);
-}
-
-.lane-track__meta {
-  position: absolute;
-  left: max(6px, calc(var(--timeline-scroll-left, 0px) - var(--track-start, 0px) + 6px));
-  top: 6px;
-  padding: 4px 8px;
-  border-radius: 0;
-  display: inline-flex;
-  flex-direction: column;
-  align-items: flex-start;
-  font-size: 11px;
-  color: rgba(230, 230, 230, 0.98);
-  background: #2b2b2b;
-  pointer-events: none;
-  z-index: 6;
-  width: max-content;
-  max-width: none;
-  min-width: 0;
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-
-.lane-track:hover .lane-track__meta {
-  opacity: 1;
-}
-
-.lane-track__meta-title {
-  display: block;
-  max-width: none;
-  white-space: nowrap;
-  overflow: visible;
-  text-overflow: clip;
-  overflow-wrap: normal;
-  word-break: normal;
-  line-height: 1.25;
-}
-
-.lane-track__meta-sub {
-  font-size: 10px;
-  color: var(--text-weak);
-  max-width: 100%;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.lane-loading {
-  position: absolute;
-  right: 12px;
-  bottom: 9px;
-  padding: 3px 9px;
-  border-radius: 999px;
-  font-size: 15px;
-  color: var(--text-weak);
-  background: rgba(0, 0, 0, 0.25);
-  pointer-events: none;
-  z-index: 3;
-}
-
-.mixtape-track-menu {
-  position: fixed;
-  z-index: 10060;
-  min-width: 140px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg-elev);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38);
-  padding: 4px;
-}
-
-.mixtape-track-menu__item {
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  text-align: left;
-  font-size: 12px;
-  line-height: 28px;
-  padding: 0 8px;
-  cursor: pointer;
-  border-radius: 3px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.mixtape-track-menu__item:hover {
-  background: var(--hover);
-}
-
-.mixtape-track-menu__item:focus {
-  outline: none;
-}
-
-.mixtape-track-menu__item:focus-visible {
-  outline: none;
-  box-shadow: none;
-}
-
-.mixtape-track-menu__check {
-  width: 14px;
-  text-align: center;
-  color: var(--accent);
-}
-
-.timeline-empty {
-  text-align: center;
-  color: var(--text-weak);
-  font-size: 12px;
-  padding: 32px 0;
-}
-
-.timeline-empty-hint {
-  margin-top: 6px;
-  opacity: 0.75;
-  font-size: 12px;
-}
-</style>
+<style scoped lang="scss" src="./Mixtape.scss"></style>

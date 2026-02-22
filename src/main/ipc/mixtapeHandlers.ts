@@ -18,7 +18,8 @@ import {
   reorderMixtapeItems,
   updateMixtapeItemFilePathsById,
   upsertMixtapeItemBpmByFilePath,
-  upsertMixtapeItemGridByFilePath
+  upsertMixtapeItemGridByFilePath,
+  upsertMixtapeItemGainEnvelopeById
 } from '../mixtapeDb'
 import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { queueMixtapeRawWaveforms } from '../services/mixtapeRawWaveformQueue'
@@ -490,6 +491,37 @@ export function registerMixtapeHandlers() {
           bpm: hasBpm ? rawBpm : undefined
         }
       ])
+    }
+  )
+
+  ipcMain.handle(
+    'mixtape:update-gain-envelope',
+    async (
+      _e,
+      payload?: {
+        entries?: Array<{ itemId?: string; gainEnvelope?: Array<{ sec?: number; gain?: number }> }>
+      }
+    ) => {
+      const entries = Array.isArray(payload?.entries) ? payload.entries : []
+      return upsertMixtapeItemGainEnvelopeById(
+        entries.map((item) => ({
+          itemId: typeof item?.itemId === 'string' ? item.itemId : '',
+          gainEnvelope: Array.isArray(item?.gainEnvelope)
+            ? item.gainEnvelope
+                .map((point) => ({
+                  sec: Number(point?.sec),
+                  gain: Number(point?.gain)
+                }))
+                .filter(
+                  (point) =>
+                    Number.isFinite(point.sec) &&
+                    point.sec >= 0 &&
+                    Number.isFinite(point.gain) &&
+                    point.gain > 0
+                )
+            : []
+        }))
+      )
     }
   )
 }

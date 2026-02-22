@@ -24,6 +24,12 @@ import {
   resolveFirstBeatTimelineSec,
   resolveTempoRatioByBpm
 } from '@renderer/composables/mixtape/mixxxSyncModel'
+import {
+  buildGainEnvelopePolyline,
+  normalizeGainEnvelopePoints,
+  MIXTAPE_GAIN_KNOB_MAX_DB,
+  MIXTAPE_GAIN_KNOB_MIN_DB
+} from '@renderer/composables/mixtape/gainEnvelope'
 import { resolveRawWaveformLevel as resolveRawWaveformLevelByMap } from '@renderer/composables/mixtape/waveformPyramid'
 import type {
   MinMaxSample,
@@ -334,6 +340,20 @@ export const createTimelineHelpersModule = (ctx: any) => {
     left: `${Math.round(item.startX)}px`,
     '--track-start': `${Math.round(item.startX)}px`
   })
+
+  const resolveGainEnvelopePolyline = (item: TimelineTrackLayout) => {
+    const trackDurationSec = resolveTrackDurationSeconds(item.track)
+    const safeDuration = Math.max(0, Number(trackDurationSec) || 0)
+    const envelope = normalizeGainEnvelopePoints(item.track.gainEnvelope, safeDuration)
+    const sampleCount = Math.max(32, Math.min(520, Math.round(Math.max(60, item.width) / 2)))
+    return buildGainEnvelopePolyline({
+      points: envelope,
+      durationSec: safeDuration,
+      sampleCount,
+      minDb: MIXTAPE_GAIN_KNOB_MIN_DB,
+      maxDb: MIXTAPE_GAIN_KNOB_MAX_DB
+    })
+  }
 
   const resolveOverviewScale = () => {
     const width = overviewWidth.value
@@ -704,6 +724,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
     forEachVisibleLayoutItem,
     buildSequentialLayoutForZoom,
     resolveTrackBlockStyle,
+    resolveGainEnvelopePolyline,
     resolveOverviewTrackStyle,
     resolveTrackTilesForWidth,
     drawTrackGridLines,

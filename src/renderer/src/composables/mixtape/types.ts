@@ -38,10 +38,17 @@ export type MixtapeTrack = {
   masterTempo?: boolean
   // 全局时间线起点（秒）
   startSec?: number
+  // 增益包络线（轨道内时间 -> 线性增益）
+  gainEnvelope?: MixtapeGainPoint[]
   // 首拍偏移（毫秒）
   firstBeatMs?: number
   // 大节线相位偏移（以拍为单位，仅改变网格线定义，不改变网格线位置）
   barBeatOffset?: number
+}
+
+export type MixtapeGainPoint = {
+  sec: number
+  gain: number
 }
 
 export type MinMaxSample = {

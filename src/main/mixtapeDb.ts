@@ -564,6 +564,98 @@ export function upsertMixtapeItemGridByFilePath(
   }
 }
 
+export function upsertMixtapeItemGainEnvelopeById(
+  entries: Array<{ itemId: string; gainEnvelope: Array<{ sec: number; gain: number }> }>
+): { updated: number } {
+  if (!Array.isArray(entries) || entries.length === 0) return { updated: 0 }
+  const db = getLibraryDb()
+  if (!db) return { updated: 0 }
+
+  const normalizeEnvelope = (raw: unknown) => {
+    const points = Array.isArray(raw)
+      ? raw
+          .map((item) => {
+            const sec = Number((item as any)?.sec)
+            const gain = Number((item as any)?.gain)
+            if (!Number.isFinite(sec) || sec < 0) return null
+            if (!Number.isFinite(gain) || gain <= 0) return null
+            return {
+              sec: Number(sec.toFixed(4)),
+              gain: Number(gain.toFixed(6))
+            }
+          })
+          .filter(Boolean)
+      : []
+    if (!points.length) return [] as Array<{ sec: number; gain: number }>
+    const sorted = (points as Array<{ sec: number; gain: number }>).sort((a, b) => a.sec - b.sec)
+    const unique: Array<{ sec: number; gain: number }> = []
+    for (const point of sorted) {
+      const last = unique[unique.length - 1]
+      if (!last || Math.abs(last.sec - point.sec) > 0.0001) {
+        unique.push(point)
+      } else {
+        last.gain = point.gain
+      }
+    }
+    return unique
+  }
+
+  const envelopeById = new Map<string, Array<{ sec: number; gain: number }>>()
+  for (const item of entries) {
+    const itemId = typeof item?.itemId === 'string' ? item.itemId.trim() : ''
+    if (!itemId) continue
+    const normalizedEnvelope = normalizeEnvelope(item?.gainEnvelope)
+    if (normalizedEnvelope.length < 2) continue
+    envelopeById.set(itemId, normalizedEnvelope)
+  }
+  const itemIds = Array.from(envelopeById.keys())
+  if (!itemIds.length) return { updated: 0 }
+
+  try {
+    let updated = 0
+    const updateStmt = db.prepare(`UPDATE ${TABLE} SET info_json = ? WHERE id = ?`)
+    const tx = db.transaction(() => {
+      const CHUNK_SIZE = 300
+      for (let offset = 0; offset < itemIds.length; offset += CHUNK_SIZE) {
+        const chunk = itemIds.slice(offset, offset + CHUNK_SIZE)
+        if (chunk.length === 0) continue
+        const placeholders = chunk.map(() => '?').join(',')
+        const rows = db
+          .prepare(`SELECT id, info_json FROM ${TABLE} WHERE id IN (${placeholders})`)
+          .all(...chunk) as Array<{ id: string; info_json?: string | null }>
+        for (const row of rows) {
+          const itemId = typeof row?.id === 'string' ? row.id.trim() : ''
+          if (!itemId) continue
+          const nextEnvelope = envelopeById.get(itemId)
+          if (!nextEnvelope || nextEnvelope.length < 2) continue
+          let info: Record<string, any> = {}
+          if (row?.info_json) {
+            try {
+              const parsed = JSON.parse(String(row.info_json))
+              if (parsed && typeof parsed === 'object') {
+                info = parsed
+              }
+            } catch {}
+          }
+          const currentEnvelope = normalizeEnvelope(info.gainEnvelope)
+          const currentSignature = JSON.stringify(currentEnvelope)
+          const nextSignature = JSON.stringify(nextEnvelope)
+          if (currentSignature === nextSignature) continue
+          info.gainEnvelope = nextEnvelope
+          info.gainEnvelopeUpdatedAt = Date.now()
+          updateStmt.run(JSON.stringify(info), itemId)
+          updated += 1
+        }
+      }
+    })
+    tx()
+    return { updated }
+  } catch (error) {
+    log.error('[sqlite] mixtape gain envelope upsert failed', error)
+    return { updated: 0 }
+  }
+}
+
 export function removeMixtapeItemsByPlaylist(playlistUuid: string): { removed: number } {
   if (!playlistUuid) return { removed: 0 }
   const db = getLibraryDb()
