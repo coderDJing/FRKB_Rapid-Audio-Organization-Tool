@@ -82,6 +82,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
   const timelineScrollWidth = ref(0)
   const timelineWorkerReady = ref(false)
   const isTimelinePanning = ref(false)
+  const isTimelineZooming = ref(false)
   const overviewRef = ref<HTMLElement | null>(null)
   const overviewWidth = ref(0)
   const isOverviewDragging = ref(false)
@@ -756,6 +757,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     timelineViewportHeight,
     timelineScrollLeft,
     timelineScrollTop,
+    isTimelineZooming,
     timelineCanvasRafRef,
     timelineContentWidth,
     normalizedRenderZoom,
@@ -792,7 +794,6 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     waveformQueuedMissing,
     rawWaveformInflight,
     waveformLoadTimerRef,
-    initTimelineWorkerRenderer,
     buildSequentialLayoutForZoom,
     forEachVisibleLayoutItem,
     buildWaveformTileCacheKey,
@@ -866,6 +867,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     timelineLayout,
     timelineWidth,
     isTimelinePanning,
+    isTimelineZooming,
     isOverviewDragging,
     overviewRef,
     overviewWidth,
@@ -977,6 +979,9 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     scheduleTimelineDraw,
     scheduleFullPreRender,
     scheduleWorkerPreRender,
+    renderZoomLevel: normalizedRenderZoom,
+    resolveTrackDurationSeconds,
+    resolveTrackFirstBeatSeconds,
     laneIndices,
     laneHeight,
     laneTracks,

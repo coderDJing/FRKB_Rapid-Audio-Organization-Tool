@@ -23,7 +23,6 @@ export const createTimelineWatchAndMountModule = (ctx: any) => {
     pushRawWaveformToWorker,
     waveformDataMap,
     rawWaveformDataMap,
-    initTimelineWorkerRenderer,
     timelineScrollRef,
     setTimelineWheelTarget,
     timelineViewport,
@@ -136,7 +135,6 @@ export const createTimelineWatchAndMountModule = (ctx: any) => {
         waveformRenderWorkerRef.value = null
       }
     }
-    nextTick(() => initTimelineWorkerRenderer())
     try {
       const viewportEl = timelineScrollRef.value?.osInstance()?.elements().viewport as
         | HTMLElement

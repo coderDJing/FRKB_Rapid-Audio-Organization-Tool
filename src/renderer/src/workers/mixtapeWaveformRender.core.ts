@@ -10,6 +10,7 @@ import type { MixxxWaveformData, RawWaveformLevel } from './mixtapeWaveformRende
 
 const MIXTAPE_WEBGL_ENABLED = true
 const MIXTAPE_BUFFER_MULTIPLIER = 3
+const TIMELINE_SIDE_PADDING_PX = 18
 const FRAME_RENDER_INTERVAL_MS = 16
 const PRE_RENDER_PAUSE_ON_INTERACTION_MS = 16
 const PRE_RENDER_PROGRESS_MIN_INTERVAL_MS = 66
@@ -61,6 +62,7 @@ const frameRenderer = createFrameRenderer({
   mixTapeWebglEnabled: MIXTAPE_WEBGL_ENABLED,
   mixTapeBufferMultiplier: MIXTAPE_BUFFER_MULTIPLIER,
   debugTrackLines: MIXTAPE_DEBUG_TRACK_LINES,
+  timelineSidePaddingPx: TIMELINE_SIDE_PADDING_PX,
   rawWaveformMinZoom: RAW_WAVEFORM_MIN_ZOOM,
   waveformHeightScale: MIXTAPE_WAVEFORM_HEIGHT_SCALE,
   gridBarOnlyZoom: GRID_BAR_ONLY_ZOOM,

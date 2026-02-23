@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import titleComponent from '@renderer/components/titleComponent.vue'
 import MixtapeOutputDialog from '@renderer/components/mixtapeOutputDialog.vue'
@@ -19,8 +19,13 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { applyUiSettings, readUiSettings } from '@renderer/utils/uiSettingsStorage'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
+import { createMixtapeGainEnvelopeEditor } from '@renderer/composables/mixtape/useGainEnvelopeEditor'
 import ascendingOrderAsset from '@renderer/assets/ascending-order.svg?asset'
 import descendingOrderAsset from '@renderer/assets/descending-order.svg?asset'
+import type {
+  MixtapeEnvelopeParamId,
+  TimelineTrackLayout
+} from '@renderer/composables/mixtape/types'
 import type { ISongInfo, ISongsAreaColumn } from '../../types/globals'
 
 const {
@@ -34,8 +39,10 @@ const {
   laneIndices,
   laneHeight,
   laneTracks,
+  renderZoomLevel,
+  resolveTrackDurationSeconds,
+  resolveTrackFirstBeatSeconds,
   resolveTrackBlockStyle,
-  resolveGainEnvelopePolyline,
   resolveTrackTitle,
   resolveTrackTitleWithOriginalMeta,
   formatTrackBpm,
@@ -112,6 +119,10 @@ const {
 
 const mixParamOptions = [
   {
+    id: 'position',
+    labelKey: 'mixtape.mixParamPosition'
+  },
+  {
     id: 'gain',
     labelKey: 'mixtape.mixParamGain'
   },
@@ -135,7 +146,15 @@ const mixParamOptions = [
 
 type MixParamId = (typeof mixParamOptions)[number]['id']
 
-const selectedMixParam = ref<MixParamId>('gain')
+const selectedMixParam = ref<MixParamId>('position')
+const isTrackPositionMode = computed(() => selectedMixParam.value === 'position')
+const isGainParamMode = computed(() => selectedMixParam.value === 'gain')
+const isEnvelopeParamMode = computed(() => !isTrackPositionMode.value)
+
+const handleLaneTrackMouseDown = (item: TimelineTrackLayout, event: MouseEvent) => {
+  if (!isTrackPositionMode.value) return
+  handleTrackDragStart(item, event)
+}
 const runtime = useRuntimeStore()
 useWaveformPreviewPlayer()
 type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
@@ -320,6 +339,29 @@ const handleAutoGainSelectQuietestReferenceClick = async () => {
   stopAutoGainWaveformPreview()
   await handleAutoGainSelectQuietestReference()
 }
+
+const envelopeEditable = computed(() => isEnvelopeParamMode.value)
+const {
+  resolveActiveEnvelopePolyline,
+  resolveActiveEnvelopePointDots,
+  handleEnvelopePointMouseDown,
+  handleEnvelopeStageMouseDown,
+  handleEnvelopePointDoubleClick,
+  handleEnvelopePointContextMenu,
+  cleanupGainEnvelopeEditor
+} = createMixtapeGainEnvelopeEditor({
+  tracks,
+  renderZoomLevel,
+  resolveTrackDurationSeconds,
+  resolveTrackFirstBeatSeconds,
+  resolveActiveParam: () =>
+    isEnvelopeParamMode.value ? (selectedMixParam.value as MixtapeEnvelopeParamId) : null,
+  isEditable: () => envelopeEditable.value
+})
+
+onBeforeUnmount(() => {
+  cleanupGainEnvelopeEditor()
+})
 </script>
 
 <template>
@@ -469,7 +511,7 @@ const handleAutoGainSelectQuietestReferenceClick = async () => {
                             :key="`${item.track.id}-${item.startX}`"
                             class="lane-track"
                             :style="resolveTrackBlockStyle(item)"
-                            @mousedown.stop="handleTrackDragStart(item, $event)"
+                            @mousedown.stop="handleLaneTrackMouseDown(item, $event)"
                             @contextmenu.stop.prevent="handleTrackContextMenu(item, $event)"
                           >
                             <svg
@@ -479,7 +521,7 @@ const handleAutoGainSelectQuietestReferenceClick = async () => {
                             >
                               <line
                                 class="lane-track__envelope-midline"
-                                :class="{ 'is-hidden': selectedMixParam !== 'gain' }"
+                                :class="{ 'is-hidden': !isEnvelopeParamMode }"
                                 x1="0"
                                 y1="50"
                                 x2="100"
@@ -487,11 +529,37 @@ const handleAutoGainSelectQuietestReferenceClick = async () => {
                               ></line>
                               <polyline
                                 class="lane-track__envelope-line"
-                                :class="{ 'is-hidden': selectedMixParam !== 'gain' }"
-                                :points="resolveGainEnvelopePolyline(item)"
+                                :class="{ 'is-hidden': !isEnvelopeParamMode }"
+                                :points="resolveActiveEnvelopePolyline(item)"
                               ></polyline>
                             </svg>
-                            <div class="lane-track__meta">
+                            <div
+                              v-if="isEnvelopeParamMode"
+                              class="lane-track__envelope-points"
+                              @mousedown.stop.prevent="handleEnvelopeStageMouseDown(item, $event)"
+                            >
+                              <button
+                                v-for="point in resolveActiveEnvelopePointDots(item)"
+                                :key="`point-${item.track.id}-${point.index}`"
+                                class="lane-track__envelope-point"
+                                :class="{ 'is-boundary': point.isBoundary }"
+                                type="button"
+                                :style="{
+                                  left: `${point.x}%`,
+                                  top: `${point.y}%`
+                                }"
+                                @mousedown.stop.prevent="
+                                  handleEnvelopePointMouseDown(item, point.index, $event)
+                                "
+                                @dblclick.stop.prevent="
+                                  handleEnvelopePointDoubleClick(item, point.index)
+                                "
+                                @contextmenu.stop.prevent="
+                                  handleEnvelopePointContextMenu(item, point.index)
+                                "
+                              ></button>
+                            </div>
+                            <div v-if="isTrackPositionMode" class="lane-track__meta">
                               <div class="lane-track__meta-title">
                                 {{ item.track.mixOrder }}.
                                 {{ resolveTrackTitleWithOriginalMeta(item.track) }}

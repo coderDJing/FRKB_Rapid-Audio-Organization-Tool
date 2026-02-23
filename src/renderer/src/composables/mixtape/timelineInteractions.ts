@@ -2,6 +2,7 @@ import { nextTick } from 'vue'
 import {
   BASE_PX_PER_SEC,
   MIXTAPE_WIDTH_SCALE,
+  TIMELINE_SIDE_PADDING_PX,
   ZOOM_STEP,
   WHEEL_LINE_HEIGHT_PX,
   WHEEL_MAX_STEPS_PER_FRAME,
@@ -29,6 +30,7 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     timelineLayout,
     timelineWidth,
     isTimelinePanning,
+    isTimelineZooming,
     isOverviewDragging,
     overviewRef,
     overviewWidth,
@@ -52,6 +54,7 @@ export const createTimelineInteractionsModule = (ctx: any) => {
   let wheelZoomRaf = 0
   let wheelZoomDelta = 0
   let wheelZoomAnchorClientX = 0
+  let timelineZoomingTimer: ReturnType<typeof setTimeout> | null = null
   let timelineWheelTarget: HTMLElement | null = null
   let timelinePanStartX = 0
   let timelinePanStartY = 0
@@ -77,6 +80,15 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     renderZoom.value = target
     scheduleTimelineDraw()
     scheduleFullPreRender()
+  }
+
+  const markTimelineZooming = () => {
+    isTimelineZooming.value = true
+    if (timelineZoomingTimer) clearTimeout(timelineZoomingTimer)
+    timelineZoomingTimer = setTimeout(() => {
+      timelineZoomingTimer = null
+      isTimelineZooming.value = false
+    }, 180)
   }
 
   const setZoomValue = (value: number) => {
@@ -204,13 +216,17 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     const nextZoom = clampZoomValue(normalizedZoom.value + direction * dynamicStep * steps)
     if (Math.abs(nextZoom - normalizedZoom.value) < 0.0001) return
 
+    markTimelineZooming()
     setZoomValue(nextZoom)
     applyRenderZoomImmediate()
 
     if (!viewport) return
     nextTick(() => {
       const nextScale = Math.max(0.0001, renderPxPerSec.value)
-      const targetLeft = (prevLeft + anchorX) * (nextScale / prevScale) - anchorX
+      const targetLeft =
+        (prevLeft + anchorX - TIMELINE_SIDE_PADDING_PX) * (nextScale / prevScale) +
+        TIMELINE_SIDE_PADDING_PX -
+        anchorX
       const maxLeft = Math.max(0, resolveScrollableWidth(viewport) - viewport.clientWidth)
       viewport.scrollLeft = Math.max(0, Math.min(maxLeft, targetLeft))
     })
@@ -416,6 +432,11 @@ export const createTimelineInteractionsModule = (ctx: any) => {
       cancelAnimationFrame(wheelZoomRaf)
       wheelZoomRaf = 0
     }
+    if (timelineZoomingTimer) {
+      clearTimeout(timelineZoomingTimer)
+      timelineZoomingTimer = null
+    }
+    isTimelineZooming.value = false
     wheelZoomDelta = 0
     timelineWheelTarget = null
     try {

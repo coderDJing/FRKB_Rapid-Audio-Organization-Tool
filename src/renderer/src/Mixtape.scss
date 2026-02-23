@@ -770,11 +770,53 @@
 }
 
 .lane-track__envelope-line.is-hidden {
-  opacity: 0.2;
+  display: none;
 }
 
 .lane-track__envelope-midline.is-hidden {
-  opacity: 0.38;
+  display: none;
+}
+
+.lane-track__envelope-points {
+  position: absolute;
+  left: calc(-1 * var(--lane-track-border-width));
+  right: calc(-1 * var(--lane-track-border-width));
+  top: 4px;
+  bottom: 4px;
+  width: calc(100% + var(--lane-track-border-width) * 2);
+  height: calc(100% - 8px);
+  z-index: 3;
+  cursor: crosshair;
+}
+
+.lane-track__envelope-point {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.65);
+  background: rgba(255, 255, 255, 0.95);
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.lane-track__envelope-point:hover {
+  background: rgba(255, 255, 255, 1);
+  border-color: rgba(64, 163, 255, 0.98);
+}
+
+.lane-track__envelope-point:active {
+  cursor: grabbing;
+}
+
+.lane-track__envelope-point.is-boundary {
+  width: 7px;
+  height: 7px;
+  background: rgba(226, 234, 247, 0.95);
 }
 
 .lane-track__meta {

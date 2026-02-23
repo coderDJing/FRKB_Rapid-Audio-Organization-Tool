@@ -564,12 +564,33 @@ export function upsertMixtapeItemGridByFilePath(
   }
 }
 
-export function upsertMixtapeItemGainEnvelopeById(
+export type MixtapeMixEnvelopeParam = 'gain' | 'high' | 'mid' | 'low' | 'volume'
+
+const MIXTAPE_ENVELOPE_FIELD_BY_PARAM: Record<MixtapeMixEnvelopeParam, string> = {
+  gain: 'gainEnvelope',
+  high: 'highEnvelope',
+  mid: 'midEnvelope',
+  low: 'lowEnvelope',
+  volume: 'volumeEnvelope'
+}
+
+const MIXTAPE_ENVELOPE_MAX_GAIN_BY_PARAM: Record<MixtapeMixEnvelopeParam, number> = {
+  gain: 16,
+  high: 16,
+  mid: 16,
+  low: 16,
+  volume: 1
+}
+
+export function upsertMixtapeItemMixEnvelopeById(
+  param: MixtapeMixEnvelopeParam,
   entries: Array<{ itemId: string; gainEnvelope: Array<{ sec: number; gain: number }> }>
 ): { updated: number } {
   if (!Array.isArray(entries) || entries.length === 0) return { updated: 0 }
   const db = getLibraryDb()
   if (!db) return { updated: 0 }
+  const envelopeField = MIXTAPE_ENVELOPE_FIELD_BY_PARAM[param]
+  const maxGain = MIXTAPE_ENVELOPE_MAX_GAIN_BY_PARAM[param]
 
   const normalizeEnvelope = (raw: unknown) => {
     const points = Array.isArray(raw)
@@ -581,7 +602,7 @@ export function upsertMixtapeItemGainEnvelopeById(
             if (!Number.isFinite(gain) || gain <= 0) return null
             return {
               sec: Number(sec.toFixed(4)),
-              gain: Number(gain.toFixed(6))
+              gain: Math.max(0.0001, Math.min(maxGain, Number(gain.toFixed(6))))
             }
           })
           .filter(Boolean)
@@ -637,12 +658,12 @@ export function upsertMixtapeItemGainEnvelopeById(
               }
             } catch {}
           }
-          const currentEnvelope = normalizeEnvelope(info.gainEnvelope)
+          const currentEnvelope = normalizeEnvelope(info[envelopeField])
           const currentSignature = JSON.stringify(currentEnvelope)
           const nextSignature = JSON.stringify(nextEnvelope)
           if (currentSignature === nextSignature) continue
-          info.gainEnvelope = nextEnvelope
-          info.gainEnvelopeUpdatedAt = Date.now()
+          info[envelopeField] = nextEnvelope
+          info[`${envelopeField}UpdatedAt`] = Date.now()
           updateStmt.run(JSON.stringify(info), itemId)
           updated += 1
         }
@@ -651,7 +672,81 @@ export function upsertMixtapeItemGainEnvelopeById(
     tx()
     return { updated }
   } catch (error) {
-    log.error('[sqlite] mixtape gain envelope upsert failed', error)
+    log.error('[sqlite] mixtape mix envelope upsert failed', { param, error })
+    return { updated: 0 }
+  }
+}
+
+export function upsertMixtapeItemGainEnvelopeById(
+  entries: Array<{ itemId: string; gainEnvelope: Array<{ sec: number; gain: number }> }>
+): { updated: number } {
+  return upsertMixtapeItemMixEnvelopeById('gain', entries)
+}
+
+export function upsertMixtapeItemStartSecById(
+  entries: Array<{ itemId: string; startSec: number }>
+): { updated: number } {
+  if (!Array.isArray(entries) || entries.length === 0) return { updated: 0 }
+  const db = getLibraryDb()
+  if (!db) return { updated: 0 }
+
+  const normalizeStartSec = (value: unknown) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric) || numeric < 0) return null
+    return Number(numeric.toFixed(4))
+  }
+
+  const startSecById = new Map<string, number>()
+  for (const item of entries) {
+    const itemId = typeof item?.itemId === 'string' ? item.itemId.trim() : ''
+    const startSec = normalizeStartSec(item?.startSec)
+    if (!itemId || startSec === null) continue
+    startSecById.set(itemId, startSec)
+  }
+  const itemIds = Array.from(startSecById.keys())
+  if (!itemIds.length) return { updated: 0 }
+
+  try {
+    let updated = 0
+    const updateStmt = db.prepare(`UPDATE ${TABLE} SET info_json = ? WHERE id = ?`)
+    const tx = db.transaction(() => {
+      const CHUNK_SIZE = 300
+      for (let offset = 0; offset < itemIds.length; offset += CHUNK_SIZE) {
+        const chunk = itemIds.slice(offset, offset + CHUNK_SIZE)
+        if (chunk.length === 0) continue
+        const placeholders = chunk.map(() => '?').join(',')
+        const rows = db
+          .prepare(`SELECT id, info_json FROM ${TABLE} WHERE id IN (${placeholders})`)
+          .all(...chunk) as Array<{ id: string; info_json?: string | null }>
+        for (const row of rows) {
+          const itemId = typeof row?.id === 'string' ? row.id.trim() : ''
+          if (!itemId) continue
+          const nextStartSec = startSecById.get(itemId)
+          if (typeof nextStartSec !== 'number') continue
+          let info: Record<string, any> = {}
+          if (row?.info_json) {
+            try {
+              const parsed = JSON.parse(String(row.info_json))
+              if (parsed && typeof parsed === 'object') {
+                info = parsed
+              }
+            } catch {}
+          }
+          const currentStartSec = normalizeStartSec(info.startSec)
+          if (currentStartSec !== null && Math.abs(currentStartSec - nextStartSec) <= 0.0001) {
+            continue
+          }
+          info.startSec = nextStartSec
+          info.startSecUpdatedAt = Date.now()
+          updateStmt.run(JSON.stringify(info), itemId)
+          updated += 1
+        }
+      }
+    })
+    tx()
+    return { updated }
+  } catch (error) {
+    log.error('[sqlite] mixtape start sec upsert failed', error)
     return { updated: 0 }
   }
 }

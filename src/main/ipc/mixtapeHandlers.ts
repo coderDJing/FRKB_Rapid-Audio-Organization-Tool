@@ -19,7 +19,9 @@ import {
   updateMixtapeItemFilePathsById,
   upsertMixtapeItemBpmByFilePath,
   upsertMixtapeItemGridByFilePath,
-  upsertMixtapeItemGainEnvelopeById
+  upsertMixtapeItemGainEnvelopeById,
+  upsertMixtapeItemMixEnvelopeById,
+  upsertMixtapeItemStartSecById
 } from '../mixtapeDb'
 import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { queueMixtapeRawWaveforms } from '../services/mixtapeRawWaveformQueue'
@@ -520,6 +522,62 @@ export function registerMixtapeHandlers() {
                     point.gain > 0
                 )
             : []
+        }))
+      )
+    }
+  )
+
+  ipcMain.handle(
+    'mixtape:update-mix-envelope',
+    async (
+      _e,
+      payload?: {
+        param?: string
+        entries?: Array<{ itemId?: string; gainEnvelope?: Array<{ sec?: number; gain?: number }> }>
+      }
+    ) => {
+      const paramRaw = typeof payload?.param === 'string' ? payload.param.trim() : ''
+      const supportedParams = new Set(['gain', 'high', 'mid', 'low', 'volume'])
+      if (!supportedParams.has(paramRaw)) {
+        return { updated: 0 }
+      }
+      const entries = Array.isArray(payload?.entries) ? payload.entries : []
+      return upsertMixtapeItemMixEnvelopeById(
+        paramRaw as 'gain' | 'high' | 'mid' | 'low' | 'volume',
+        entries.map((item) => ({
+          itemId: typeof item?.itemId === 'string' ? item.itemId : '',
+          gainEnvelope: Array.isArray(item?.gainEnvelope)
+            ? item.gainEnvelope
+                .map((point) => ({
+                  sec: Number(point?.sec),
+                  gain: Number(point?.gain)
+                }))
+                .filter(
+                  (point) =>
+                    Number.isFinite(point.sec) &&
+                    point.sec >= 0 &&
+                    Number.isFinite(point.gain) &&
+                    point.gain > 0
+                )
+            : []
+        }))
+      )
+    }
+  )
+
+  ipcMain.handle(
+    'mixtape:update-track-start-sec',
+    async (
+      _e,
+      payload?: {
+        entries?: Array<{ itemId?: string; startSec?: number }>
+      }
+    ) => {
+      const entries = Array.isArray(payload?.entries) ? payload.entries : []
+      return upsertMixtapeItemStartSecById(
+        entries.map((item) => ({
+          itemId: typeof item?.itemId === 'string' ? item.itemId : '',
+          startSec: Number(item?.startSec)
         }))
       )
     }

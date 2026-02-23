@@ -1,5 +1,8 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
-import { MIXTAPE_WAVEFORM_HEIGHT_SCALE } from '@renderer/composables/mixtape/constants'
+import {
+  MIXTAPE_WAVEFORM_HEIGHT_SCALE,
+  TIMELINE_SIDE_PADDING_PX
+} from '@renderer/composables/mixtape/constants'
 import type {
   MixtapeTrack,
   RawWaveformData,
@@ -19,6 +22,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     timelineViewportHeight,
     timelineScrollLeft,
     timelineScrollTop,
+    isTimelineZooming,
     timelineCanvasRafRef,
     timelineContentWidth,
     normalizedRenderZoom,
@@ -55,7 +59,6 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     waveformQueuedMissing,
     rawWaveformInflight,
     waveformLoadTimerRef,
-    initTimelineWorkerRenderer,
     buildSequentialLayoutForZoom,
     forEachVisibleLayoutItem,
     buildWaveformTileCacheKey,
@@ -105,13 +108,6 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
       (timelineScrollRef.value?.osInstance()?.elements().viewport as HTMLElement | undefined) ||
       null
     if (!canvas || !wrap || !viewport) return
-    if (
-      !timelineWorkerReady.value &&
-      waveformRenderWorker &&
-      'transferControlToOffscreen' in canvas
-    ) {
-      initTimelineWorkerRenderer()
-    }
     const width = viewport.clientWidth || 0
     const height = viewport.clientHeight || 0
     if (!width || !height) return
@@ -208,7 +204,10 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
       const visibleWidth = Math.max(0, localEnd - localStart)
       if (showGridLines && visibleWidth > 0) {
         const renderPxPerSecSafe = Math.max(0.0001, renderCtx.renderPxPerSec)
-        const trackStartSecFromPx = trackStartX / renderPxPerSecSafe
+        const trackStartSecFromPx = Math.max(
+          0,
+          (trackStartX - TIMELINE_SIDE_PADDING_PX) / renderPxPerSecSafe
+        )
         const trackStartSec =
           Number.isFinite(Number(item.startSec)) && Number(item.startSec) >= 0
             ? Number(item.startSec)
@@ -235,6 +234,10 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
   }
 
   const scheduleTimelineDraw = () => {
+    if (!timelineWorkerReady.value && isTimelineZooming.value) {
+      drawTimelineCanvas()
+      return
+    }
     if (typeof requestAnimationFrame === 'undefined') {
       drawTimelineCanvas()
       return

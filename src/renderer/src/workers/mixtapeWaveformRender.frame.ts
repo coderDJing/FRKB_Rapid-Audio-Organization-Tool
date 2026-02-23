@@ -8,6 +8,7 @@ type CreateFrameRendererOptions = {
   mixTapeWebglEnabled: boolean
   mixTapeBufferMultiplier: number
   debugTrackLines: boolean
+  timelineSidePaddingPx: number
   rawWaveformMinZoom: number
   waveformHeightScale: number
   gridBarOnlyZoom: number
@@ -39,6 +40,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
     mixTapeWebglEnabled,
     mixTapeBufferMultiplier,
     debugTrackLines,
+    timelineSidePaddingPx,
     rawWaveformMinZoom,
     waveformHeightScale,
     gridBarOnlyZoom,
@@ -381,7 +383,10 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
       const visibleWidth = Math.max(0, localEnd - localStart)
       if (showGridLines && visibleWidth > 0) {
         const renderPxPerSecSafe = Math.max(0.0001, payload.renderPxPerSec)
-        const trackStartSecFromPx = trackStartX / renderPxPerSecSafe
+        const trackStartSecFromPx = Math.max(
+          0,
+          (trackStartX - timelineSidePaddingPx) / renderPxPerSecSafe
+        )
         const trackStartSec =
           Number.isFinite(Number(track.startSec)) && Number(track.startSec) >= 0
             ? Number(track.startSec)
@@ -857,7 +862,10 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
           const interval = (60 / track.bpm) * payload.renderPxPerSec
           if (!Number.isFinite(interval) || interval <= 0) continue
           const renderPxPerSecSafe = Math.max(0.0001, payload.renderPxPerSec)
-          const trackStartSecFromPx = trackStartX / renderPxPerSecSafe
+          const trackStartSecFromPx = Math.max(
+            0,
+            (trackStartX - timelineSidePaddingPx) / renderPxPerSecSafe
+          )
           const trackStartSec =
             Number.isFinite(Number(track.startSec)) && Number(track.startSec) >= 0
               ? Number(track.startSec)

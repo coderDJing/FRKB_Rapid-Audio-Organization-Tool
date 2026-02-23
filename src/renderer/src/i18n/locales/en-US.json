@@ -679,6 +679,7 @@
     "adjustGridMenu": "Adjust Grid Lines",
     "masterTempoMenu": "Master Tempo",
     "mixPanelTitle": "Mix Controls",
+    "mixParamPosition": "Position",
     "mixParamGain": "Gain",
     "mixParamHigh": "High",
     "mixParamMid": "Mid",

@@ -11,6 +11,7 @@ import {
   MIXXX_MAX_RGB_ENERGY,
   MIN_TRACK_WIDTH,
   MIXTAPE_TRACK_UI_SCALE,
+  TIMELINE_SIDE_PADDING_PX,
   MIXTAPE_WAVEFORM_HEIGHT_SCALE,
   MIXTAPE_WIDTH_SCALE,
   RAW_WAVEFORM_MIN_ZOOM,
@@ -25,7 +26,7 @@ import {
   resolveTempoRatioByBpm
 } from '@renderer/composables/mixtape/mixxxSyncModel'
 import {
-  buildGainEnvelopePolyline,
+  buildGainEnvelopePolylineByControlPoints,
   normalizeGainEnvelopePoints,
   MIXTAPE_GAIN_KNOB_MAX_DB,
   MIXTAPE_GAIN_KNOB_MIN_DB
@@ -285,7 +286,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
     if (cached) return cached
 
     const px = resolveRenderPxPerSec(resolvedZoom)
-    let cursorPx = 0
+    let cursorPx = TIMELINE_SIDE_PADDING_PX
     let cursorSec = 0
     const layout: TimelineTrackLayout[] = []
 
@@ -297,7 +298,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
       const rawStartSec = Number(track.startSec)
       const startSec =
         Number.isFinite(rawStartSec) && rawStartSec >= 0 ? Math.max(0, rawStartSec) : cursorSec
-      const startX = Math.round(startSec * px)
+      const startX = TIMELINE_SIDE_PADDING_PX + Math.round(startSec * px)
       const endX = startX + width
       cursorPx = Math.max(cursorPx, endX)
       if (Number.isFinite(durationSec) && durationSec > 0) {
@@ -325,9 +326,10 @@ export const createTimelineHelpersModule = (ctx: any) => {
     }
     const lastEnd = endOffsets[endOffsets.length - 1] || 0
 
+    const timelineEndX = Math.max(cursorPx, lastEnd)
     const snapshot = {
       layout,
-      totalWidth: Math.max(cursorPx, lastEnd),
+      totalWidth: Math.max(TIMELINE_SIDE_PADDING_PX * 2, timelineEndX + TIMELINE_SIDE_PADDING_PX),
       startOffsets,
       endOffsets
     }
@@ -342,14 +344,14 @@ export const createTimelineHelpersModule = (ctx: any) => {
   })
 
   const resolveGainEnvelopePolyline = (item: TimelineTrackLayout) => {
-    const trackDurationSec = resolveTrackDurationSeconds(item.track)
+    const currentTrack =
+      tracks.value.find((track: MixtapeTrack) => track.id === item.track.id) || item.track
+    const trackDurationSec = resolveTrackDurationSeconds(currentTrack)
     const safeDuration = Math.max(0, Number(trackDurationSec) || 0)
-    const envelope = normalizeGainEnvelopePoints(item.track.gainEnvelope, safeDuration)
-    const sampleCount = Math.max(32, Math.min(520, Math.round(Math.max(60, item.width) / 2)))
-    return buildGainEnvelopePolyline({
+    const envelope = normalizeGainEnvelopePoints(currentTrack.gainEnvelope, safeDuration)
+    return buildGainEnvelopePolylineByControlPoints({
       points: envelope,
       durationSec: safeDuration,
-      sampleCount,
       minDb: MIXTAPE_GAIN_KNOB_MIN_DB,
       maxDb: MIXTAPE_GAIN_KNOB_MAX_DB
     })

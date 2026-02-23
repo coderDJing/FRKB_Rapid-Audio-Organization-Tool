@@ -683,6 +683,7 @@
     "adjustGridMenu": "调整网格线",
     "masterTempoMenu": "Master Tempo",
     "mixPanelTitle": "混音参数",
+    "mixParamPosition": "轨道位置",
     "mixParamGain": "增益",
     "mixParamHigh": "高频",
     "mixParamMid": "中频",

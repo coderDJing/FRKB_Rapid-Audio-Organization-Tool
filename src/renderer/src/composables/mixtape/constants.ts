@@ -15,6 +15,7 @@ export const WHEEL_LINE_HEIGHT_PX = 16
 export const LANE_GAP = 8
 export const LANE_COUNT = 2
 export const LANE_PADDING_TOP = 10
+export const TIMELINE_SIDE_PADDING_PX = 18
 export const MIXTAPE_WAVEFORM_Y_OFFSET = 1
 export const PRE_RENDER_RANGE_BUFFER = 1.2
 export const SHOW_GRID_LINES = true

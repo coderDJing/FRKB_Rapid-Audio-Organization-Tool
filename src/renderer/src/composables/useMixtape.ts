@@ -5,7 +5,10 @@ import emitter from '@renderer/utils/mitt'
 import confirmDialog from '@renderer/components/confirmDialog'
 import { useMixtapeTimeline } from '@renderer/composables/mixtape/useMixtapeTimeline'
 import { createMixtapeAutoGainController } from '@renderer/composables/mixtape/autoGainController'
-import { normalizeGainEnvelopePoints } from '@renderer/composables/mixtape/gainEnvelope'
+import {
+  normalizeGainEnvelopePoints,
+  normalizeMixEnvelopePoints
+} from '@renderer/composables/mixtape/gainEnvelope'
 import { getKeyDisplayText as formatKeyDisplayText } from '@shared/keyDisplay'
 import type {
   MixtapeOpenPayload,
@@ -47,6 +50,9 @@ export const useMixtape = () => {
     scheduleTimelineDraw,
     scheduleFullPreRender,
     scheduleWorkerPreRender,
+    renderZoomLevel,
+    resolveTrackDurationSeconds,
+    resolveTrackFirstBeatSeconds,
     laneIndices,
     laneHeight,
     laneTracks,
@@ -233,6 +239,15 @@ export const useMixtape = () => {
     const parsedOriginalKey = parsedOriginalKeyRaw || parsedKey || undefined
     const parsedBarBeatOffset = normalizeBarBeatOffset(info?.barBeatOffset)
     const parsedGainEnvelope = normalizeGainEnvelopePoints(info?.gainEnvelope)
+    const parsedHighEnvelope = normalizeMixEnvelopePoints('high', info?.highEnvelope)
+    const parsedMidEnvelope = normalizeMixEnvelopePoints('mid', info?.midEnvelope)
+    const parsedLowEnvelope = normalizeMixEnvelopePoints('low', info?.lowEnvelope)
+    const parsedVolumeEnvelope = normalizeMixEnvelopePoints('volume', info?.volumeEnvelope)
+    const parsedStartSecRaw = Number(info?.startSec)
+    const parsedStartSec =
+      Number.isFinite(parsedStartSecRaw) && parsedStartSecRaw >= 0
+        ? Number(parsedStartSecRaw.toFixed(4))
+        : undefined
     return {
       id: String(raw?.id || `${filePath}-${index}`),
       mixOrder: Number(raw?.mixOrder) || index + 1,
@@ -248,8 +263,12 @@ export const useMixtape = () => {
       gridBaseBpm: parsedBpm,
       originalBpm: parsedOriginalBpm,
       masterTempo: true,
-      startSec: undefined,
+      startSec: parsedStartSec,
       gainEnvelope: parsedGainEnvelope.length ? parsedGainEnvelope : undefined,
+      highEnvelope: parsedHighEnvelope.length ? parsedHighEnvelope : undefined,
+      midEnvelope: parsedMidEnvelope.length ? parsedMidEnvelope : undefined,
+      lowEnvelope: parsedLowEnvelope.length ? parsedLowEnvelope : undefined,
+      volumeEnvelope: parsedVolumeEnvelope.length ? parsedVolumeEnvelope : undefined,
       firstBeatMs: parsedFirstBeatMs,
       barBeatOffset: parsedBarBeatOffset
     }
@@ -890,6 +909,9 @@ export const useMixtape = () => {
     laneIndices,
     laneHeight,
     laneTracks,
+    renderZoomLevel,
+    resolveTrackDurationSeconds,
+    resolveTrackFirstBeatSeconds,
     resolveTrackBlockStyle,
     resolveGainEnvelopePolyline,
     resolveTrackTitle,

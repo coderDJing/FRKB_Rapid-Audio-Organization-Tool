@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { t } from '@renderer/utils/translate'
 import { canPlayHtmlAudio, toPreviewUrl } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
-import { LANE_COUNT } from '@renderer/composables/mixtape/constants'
+import { LANE_COUNT, TIMELINE_SIDE_PADDING_PX } from '@renderer/composables/mixtape/constants'
 import {
   normalizeBeatOffset as normalizeBeatOffsetByMixxx,
   resolveBeatSecByBpm,
@@ -9,12 +9,17 @@ import {
   resolveGridAnchorSec
 } from '@renderer/composables/mixtape/mixxxSyncModel'
 import {
-  buildFlatGainEnvelope,
-  normalizeGainEnvelopePoints,
-  sampleGainEnvelopeAtSec
+  MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM,
+  MIXTAPE_GAIN_KNOB_MAX_DB,
+  MIXTAPE_GAIN_KNOB_MIN_DB,
+  buildFlatMixEnvelope,
+  linearGainToDb,
+  normalizeMixEnvelopePoints,
+  sampleMixEnvelopeAtSec
 } from '@renderer/composables/mixtape/gainEnvelope'
 import { applyMixxxTransportSync } from '@renderer/composables/mixtape/timelineTransportSync'
 import type {
+  MixtapeEnvelopeParamId,
   MixtapeGainPoint,
   MixtapeTrack,
   TimelineTrackLayout
@@ -46,7 +51,8 @@ type TransportEntry = {
   sourceDuration: number
   duration: number
   tempoRatio: number
-  gainEnvelope: MixtapeGainPoint[]
+  mixEnvelopes: Record<MixtapeEnvelopeParamId, MixtapeGainPoint[]>
+  mixEnvelopeSources: Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[] | undefined>>
   /** 解码策略：browser = fetch + decodeAudioData（快）；ipc = 主进程 Rust/FFmpeg 解码 */
   decodeMode: 'browser' | 'ipc'
   /** 解码后的 AudioBuffer */
@@ -58,10 +64,15 @@ type TrackGraphNode = {
   trackId: string
   entry: TransportEntry
   source: AudioBufferSourceNode
+  eqHigh: BiquadFilterNode
+  eqMid: BiquadFilterNode
+  eqLow: BiquadFilterNode
+  volume: GainNode
   gain: GainNode
 }
 
 const GRID_SNAP_BEAT_INTERVAL = 4
+const MIX_ENVELOPE_PARAMS: MixtapeEnvelopeParamId[] = ['gain', 'high', 'mid', 'low', 'volume']
 
 export const createTimelineTransportAndDragModule = (ctx: any) => {
   const {
@@ -124,6 +135,23 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   const normalizeBeatOffset = (value: unknown, interval: number) => {
     return normalizeBeatOffsetByMixxx(value, interval)
   }
+  const normalizeStartSec = (value: unknown) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric) || numeric < 0) return null
+    return Number(numeric.toFixed(4))
+  }
+
+  const persistTrackStartSec = async (entries: Array<{ itemId: string; startSec: number }>) => {
+    if (!entries.length || !window?.electron?.ipcRenderer?.invoke) return
+    try {
+      await window.electron.ipcRenderer.invoke('mixtape:update-track-start-sec', { entries })
+    } catch (error) {
+      console.error('[mixtape] update track start sec failed', {
+        count: entries.length,
+        error
+      })
+    }
+  }
 
   const readTransportBufferCache = (filePath: string): AudioBuffer | null => {
     const key = String(filePath || '').trim()
@@ -165,13 +193,23 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     if (!total) return 0
     return Math.max(0, Math.min(100, Math.round((done / total) * 100)))
   })
-  const overviewPlayheadRatio = computed(() => {
-    const total = timelineDurationSec.value
-    if (!Number.isFinite(total) || total <= 0) return 0
-    return clampNumber(playheadSec.value / total, 0, 1)
-  })
+  const resolveTimelineDisplayX = (sec: number, pxPerSec: number, maxX: number) => {
+    const safeSec = Math.max(0, Number(sec) || 0)
+    return clampNumber(TIMELINE_SIDE_PADDING_PX + safeSec * pxPerSec, 0, maxX)
+  }
+  const resolveTimelineSecByX = (x: number, pxPerSec: number) => {
+    if (!Number.isFinite(pxPerSec) || pxPerSec <= 0) return 0
+    const normalizedX = Math.max(0, Number(x) || 0)
+    const sec = (normalizedX - TIMELINE_SIDE_PADDING_PX) / pxPerSec
+    return Math.max(0, sec)
+  }
   const overviewPlayheadStyle = computed(() => ({
-    left: `${(overviewPlayheadRatio.value * 100).toFixed(4)}%`
+    left: (() => {
+      const pxPerSec = Math.max(0.0001, resolveRenderPxPerSec(normalizedRenderZoom.value))
+      const totalWidth = Math.max(1, timelineLayout.value.totalWidth)
+      const playheadX = resolveTimelineDisplayX(playheadSec.value, pxPerSec, totalWidth)
+      return `${((playheadX / totalWidth) * 100).toFixed(4)}%`
+    })()
   }))
   const rulerPlayheadStyle = computed(() => {
     const pxPerSec = Math.max(0.0001, resolveRenderPxPerSec(normalizedRenderZoom.value))
@@ -179,7 +217,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     const viewportWidth = Math.max(1, Number(timelineViewportWidth.value) || totalWidth)
     const maxScroll = Math.max(0, totalWidth - viewportWidth)
     const viewportStartX = clampNumber(Number(timelineScrollLeft.value) || 0, 0, maxScroll)
-    const playheadX = clampNumber(playheadSec.value * pxPerSec, 0, totalWidth)
+    const playheadX = resolveTimelineDisplayX(playheadSec.value, pxPerSec, totalWidth)
     const ratio = (playheadX - viewportStartX) / viewportWidth
     return {
       left: `${(ratio * 100).toFixed(4)}%`
@@ -189,7 +227,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     if (!playheadVisible.value) return null
     const pxPerSec = Math.max(0.0001, resolveRenderPxPerSec(normalizedRenderZoom.value))
     const maxX = Math.max(0, timelineLayout.value.totalWidth)
-    const playheadX = clampNumber(playheadSec.value * pxPerSec, 0, maxX)
+    const playheadX = resolveTimelineDisplayX(playheadSec.value, pxPerSec, maxX)
     return {
       transform: `translate3d(${Math.round(playheadX)}px, 0, 0)`
     }
@@ -219,8 +257,8 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     const maxScroll = Math.max(0, totalWidth - viewportWidth)
     const viewportStartX = clampNumber(Number(timelineScrollLeft.value) || 0, 0, maxScroll)
     const viewportEndX = viewportStartX + viewportWidth
-    const viewportStartSec = Math.max(0, viewportStartX / pxPerSec)
-    const viewportEndSec = Math.max(viewportStartSec, viewportEndX / pxPerSec)
+    const viewportStartSec = resolveTimelineSecByX(viewportStartX, pxPerSec)
+    const viewportEndSec = Math.max(viewportStartSec, resolveTimelineSecByX(viewportEndX, pxPerSec))
     const timelineEndSec = Math.max(0, timelineDurationSec.value)
     if (viewportWidth <= 0 || timelineEndSec <= 0)
       return [] as Array<{ left: string; value: number; align: RulerTickAlign }>
@@ -229,7 +267,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     const ticks: Array<{ left: string; value: number; align: RulerTickAlign }> = []
     for (let minute = firstMinute; minute <= endMinute; minute += 1) {
       const sec = minute * 60
-      const x = sec * pxPerSec
+      const x = resolveTimelineDisplayX(sec, pxPerSec, totalWidth)
       const localX = x - viewportStartX
       const ratio = clampNumber(localX / viewportWidth, 0, 1)
       const left = `${(ratio * 100).toFixed(4)}%`
@@ -273,19 +311,50 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     if (!item) return 0
     const layoutStartSec = Number(item.startSec)
     if (Number.isFinite(layoutStartSec) && layoutStartSec >= 0) return layoutStartSec
-    return item.startX / pxPerSec
+    return resolveTimelineSecByX(item.startX, pxPerSec)
   }
 
-  const resolveTrackGainEnvelope = (track: MixtapeTrack, durationSec: number) => {
+  const resolveTrackMixEnvelope = (
+    track: MixtapeTrack,
+    durationSec: number,
+    param: MixtapeEnvelopeParamId
+  ) => {
     const safeDuration = Math.max(0, Number(durationSec) || 0)
-    const normalized = normalizeGainEnvelopePoints(track.gainEnvelope, safeDuration)
+    const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
+    const normalized = normalizeMixEnvelopePoints(
+      param,
+      (track as any)?.[envelopeField],
+      safeDuration
+    )
     if (normalized.length > 0) return normalized
-    return buildFlatGainEnvelope(safeDuration, 1)
+    return buildFlatMixEnvelope(param, safeDuration, 1)
   }
 
-  const resolveEntryGainValue = (entry: TransportEntry, timelineOffsetSec: number) => {
+  const resolveEntryEnvelopeValue = (
+    entry: TransportEntry,
+    param: MixtapeEnvelopeParamId,
+    timelineOffsetSec: number
+  ) => {
+    const latestTrack = tracks.value.find((track: MixtapeTrack) => track.id === entry.trackId)
+    const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
+    const latestEnvelopeSource = latestTrack
+      ? ((latestTrack as any)?.[envelopeField] as MixtapeGainPoint[] | undefined)
+      : undefined
+    if (latestTrack && latestEnvelopeSource !== entry.mixEnvelopeSources[param]) {
+      entry.mixEnvelopes[param] = resolveTrackMixEnvelope(latestTrack, entry.duration, param)
+      entry.mixEnvelopeSources[param] = latestEnvelopeSource
+    }
     const safeOffset = clampNumber(timelineOffsetSec, 0, Math.max(0, entry.duration))
-    return clampNumber(sampleGainEnvelopeAtSec(entry.gainEnvelope, safeOffset, 1), 0.0001, 16)
+    return sampleMixEnvelopeAtSec(param, entry.mixEnvelopes[param], safeOffset, 1)
+  }
+
+  const resolveEntryEqDbValue = (
+    entry: TransportEntry,
+    param: 'high' | 'mid' | 'low',
+    timelineOffsetSec: number
+  ) => {
+    const gain = resolveEntryEnvelopeValue(entry, param, timelineOffsetSec)
+    return clampNumber(linearGainToDb(gain), MIXTAPE_GAIN_KNOB_MIN_DB, MIXTAPE_GAIN_KNOB_MAX_DB)
   }
 
   // ── AudioContext 管理 ─────────────────────────────────────────
@@ -304,6 +373,18 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       } catch {}
       try {
         node.source.disconnect()
+      } catch {}
+      try {
+        node.eqHigh.disconnect()
+      } catch {}
+      try {
+        node.eqMid.disconnect()
+      } catch {}
+      try {
+        node.eqLow.disconnect()
+      } catch {}
+      try {
+        node.volume.disconnect()
       } catch {}
       try {
         node.gain.disconnect()
@@ -366,7 +447,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     const viewportStartX = clampNumber(Number(timelineScrollLeft.value) || 0, 0, maxScroll)
     const targetX = clampNumber(viewportStartX + localRatio * viewportWidth, 0, totalWidth)
     const totalSec = Math.max(0, timelineDurationSec.value)
-    const sec = targetX / pxPerSec
+    const sec = resolveTimelineSecByX(targetX, pxPerSec)
     if (!Number.isFinite(sec) || sec <= 0) return 0
     return clampNumber(sec, 0, totalSec)
   }
@@ -382,7 +463,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
         item.track.id,
         Number.isFinite(layoutStartSec) && layoutStartSec >= 0
           ? layoutStartSec
-          : item.startX / pxPerSec
+          : resolveTimelineSecByX(item.startX, pxPerSec)
       )
     }
     let missingDurationCount = 0
@@ -409,7 +490,21 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
           beatSec,
           barBeatOffset
         })
-        const gainEnvelope = resolveTrackGainEnvelope(track, duration)
+        const mixEnvelopes = MIX_ENVELOPE_PARAMS.reduce(
+          (acc, param) => {
+            acc[param] = resolveTrackMixEnvelope(track, duration, param)
+            return acc
+          },
+          {} as Record<MixtapeEnvelopeParamId, MixtapeGainPoint[]>
+        )
+        const mixEnvelopeSources = MIX_ENVELOPE_PARAMS.reduce(
+          (acc, param) => {
+            const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
+            acc[param] = (track as any)?.[envelopeField] as MixtapeGainPoint[] | undefined
+            return acc
+          },
+          {} as Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[] | undefined>>
+        )
         // 浏览器能解码的走 fetch + decodeAudioData（快、无 IPC 开销）
         const decodeMode: 'browser' | 'ipc' = canPlayHtmlAudio(filePath) ? 'browser' : 'ipc'
         return {
@@ -425,7 +520,8 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
           sourceDuration,
           duration,
           tempoRatio: Math.max(0.25, Math.min(4, tempoRatio)),
-          gainEnvelope,
+          mixEnvelopes,
+          mixEnvelopeSources,
           decodeMode,
           audioBuffer: null
         } as TransportEntry
@@ -614,7 +710,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     }, 80)
   }
 
-  // ── 启动单轨音频图播放（Source → Gain → destination）─────────
+  // ── 启动单轨音频图播放（Source → EQ → Volume → Gain → destination）─────────
   const startTransportTrack = (entry: TransportEntry, offsetSourceSec: number, whenSec: number) => {
     if (!entry.audioBuffer) return
     try {
@@ -624,16 +720,38 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
         void ctx.resume()
       }
 
-      // 构建音频图：Source → GainNode → destination
+      // 构建音频图：Source → LowShelf → MidPeaking → HighShelf → Volume → Gain → destination
       const source = ctx.createBufferSource()
       source.buffer = entry.audioBuffer
       source.playbackRate.value = entry.tempoRatio
 
+      const eqLow = ctx.createBiquadFilter()
+      eqLow.type = 'lowshelf'
+      eqLow.frequency.value = 220
+
+      const eqMid = ctx.createBiquadFilter()
+      eqMid.type = 'peaking'
+      eqMid.frequency.value = 1000
+      eqMid.Q.value = 0.9
+
+      const eqHigh = ctx.createBiquadFilter()
+      eqHigh.type = 'highshelf'
+      eqHigh.frequency.value = 3200
+
+      const volume = ctx.createGain()
       const gain = ctx.createGain()
       const offsetTimelineSec = offsetSourceSec / Math.max(0.01, entry.tempoRatio)
-      gain.gain.value = resolveEntryGainValue(entry, offsetTimelineSec)
+      eqHigh.gain.value = resolveEntryEqDbValue(entry, 'high', offsetTimelineSec)
+      eqMid.gain.value = resolveEntryEqDbValue(entry, 'mid', offsetTimelineSec)
+      eqLow.gain.value = resolveEntryEqDbValue(entry, 'low', offsetTimelineSec)
+      volume.gain.value = resolveEntryEnvelopeValue(entry, 'volume', offsetTimelineSec)
+      gain.gain.value = resolveEntryEnvelopeValue(entry, 'gain', offsetTimelineSec)
 
-      source.connect(gain)
+      source.connect(eqLow)
+      eqLow.connect(eqMid)
+      eqMid.connect(eqHigh)
+      eqHigh.connect(volume)
+      volume.connect(gain)
       gain.connect(ctx.destination)
 
       const safeOffset = clampNumber(offsetSourceSec, 0, Math.max(0, entry.sourceDuration - 0.02))
@@ -646,6 +764,10 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
         trackId: entry.trackId,
         entry,
         source,
+        eqHigh,
+        eqMid,
+        eqLow,
+        volume,
         gain
       }
       transportGraphNodes.push(graphNode)
@@ -657,6 +779,18 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
           source.disconnect()
         } catch {}
         try {
+          eqHigh.disconnect()
+        } catch {}
+        try {
+          eqMid.disconnect()
+        } catch {}
+        try {
+          eqLow.disconnect()
+        } catch {}
+        try {
+          volume.disconnect()
+        } catch {}
+        try {
           gain.disconnect()
         } catch {}
       }
@@ -665,14 +799,30 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     }
   }
 
-  const applyTransportGainAtTimelineSec = (timelineSec: number) => {
+  const applyTransportMixParamsAtTimelineSec = (timelineSec: number) => {
     if (!transportAudioCtx || transportAudioCtx.state === 'closed') return
     const now = transportAudioCtx.currentTime
     for (const node of transportGraphNodes) {
       const entry = node.entry
       const localTimelineSec = timelineSec - entry.startSec
       if (localTimelineSec < 0 || localTimelineSec > entry.duration) continue
-      const nextGain = resolveEntryGainValue(entry, localTimelineSec)
+      const nextEqHighDb = resolveEntryEqDbValue(entry, 'high', localTimelineSec)
+      const nextEqMidDb = resolveEntryEqDbValue(entry, 'mid', localTimelineSec)
+      const nextEqLowDb = resolveEntryEqDbValue(entry, 'low', localTimelineSec)
+      const nextVolume = resolveEntryEnvelopeValue(entry, 'volume', localTimelineSec)
+      const nextGain = resolveEntryEnvelopeValue(entry, 'gain', localTimelineSec)
+      try {
+        node.eqHigh.gain.setTargetAtTime(nextEqHighDb, now, 0.04)
+      } catch {}
+      try {
+        node.eqMid.gain.setTargetAtTime(nextEqMidDb, now, 0.04)
+      } catch {}
+      try {
+        node.eqLow.gain.setTargetAtTime(nextEqLowDb, now, 0.04)
+      } catch {}
+      try {
+        node.volume.gain.setTargetAtTime(nextVolume, now, 0.04)
+      } catch {}
       try {
         node.gain.gain.setTargetAtTime(nextGain, now, 0.04)
       } catch {}
@@ -779,7 +929,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
           : Math.max(0, (performance.now() - transportStartedAt) / 1000)
       const current = transportBaseSec + elapsed
       playheadSec.value = current
-      applyTransportGainAtTimelineSec(current)
+      applyTransportMixParamsAtTimelineSec(current)
       const syncResult = applyMixxxTransportSync({
         nodes: transportGraphNodes,
         timelineSec: current,
@@ -965,12 +1115,26 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
 
   const handleTrackDragEnd = () => {
     if (!trackDragState) return
+    const targetTrackId = trackDragState.trackId
+    const previousTrack =
+      trackDragState.snapshotTracks.find((item: MixtapeTrack) => item.id === targetTrackId) || null
+    const currentTrack = findTrack(targetTrackId)
+    const previousStartSec = normalizeStartSec(previousTrack?.startSec)
+    const currentStartSec = normalizeStartSec(currentTrack?.startSec)
     isTrackDragging.value = false
     trackDragState = null
     window.removeEventListener('mousemove', handleTrackDragMove as EventListener)
     window.removeEventListener('mouseup', handleTrackDragEnd as EventListener)
     scheduleFullPreRender()
     scheduleWorkerPreRender()
+    if (!currentTrack || currentStartSec === null) return
+    if (previousStartSec !== null && Math.abs(previousStartSec - currentStartSec) <= 0.0001) return
+    void persistTrackStartSec([
+      {
+        itemId: targetTrackId,
+        startSec: currentStartSec
+      }
+    ])
   }
 
   const handleTrackDragStart = (item: TimelineTrackLayout, event: MouseEvent) => {
@@ -989,7 +1153,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       initialStartSec:
         Number.isFinite(Number(item.startSec)) && Number(item.startSec) >= 0
           ? Number(item.startSec)
-          : item.startX / pxPerSec,
+          : resolveTimelineSecByX(item.startX, pxPerSec),
       previousTrackId: resolvePreviousTrackId(trackId),
       snapshotTracks: tracks.value.map((trackItem: MixtapeTrack) => ({ ...trackItem }))
     }
