@@ -6,9 +6,13 @@ import confirmDialog from '@renderer/components/confirmDialog'
 import { useMixtapeTimeline } from '@renderer/composables/mixtape/useMixtapeTimeline'
 import { createMixtapeAutoGainController } from '@renderer/composables/mixtape/autoGainController'
 import {
+  MIXTAPE_ENVELOPE_PARAMS,
+  MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM,
+  buildFlatMixEnvelope,
   normalizeGainEnvelopePoints,
   normalizeMixEnvelopePoints
 } from '@renderer/composables/mixtape/gainEnvelope'
+import { normalizeVolumeMuteSegments } from '@renderer/composables/mixtape/volumeMuteSegments'
 import { getKeyDisplayText as formatKeyDisplayText } from '@shared/keyDisplay'
 import type {
   MixtapeOpenPayload,
@@ -227,6 +231,7 @@ export const useMixtape = () => {
       Number.isFinite(parsedOriginalBpmCandidate) && parsedOriginalBpmCandidate > 0
         ? parsedOriginalBpmCandidate
         : parsedBpm
+    const parsedMasterTempo = info?.masterTempo !== false
     const hasFirstBeatField = !!info && Object.prototype.hasOwnProperty.call(info, 'firstBeatMs')
     const parsedFirstBeatMsValue = Number(info?.firstBeatMs)
     const parsedFirstBeatMs =
@@ -243,6 +248,10 @@ export const useMixtape = () => {
     const parsedMidEnvelope = normalizeMixEnvelopePoints('mid', info?.midEnvelope)
     const parsedLowEnvelope = normalizeMixEnvelopePoints('low', info?.lowEnvelope)
     const parsedVolumeEnvelope = normalizeMixEnvelopePoints('volume', info?.volumeEnvelope)
+    const parsedVolumeMuteSegments = normalizeVolumeMuteSegments(
+      info?.volumeMuteSegments,
+      Number(info?.durationSec)
+    )
     const parsedStartSecRaw = Number(info?.startSec)
     const parsedStartSec =
       Number.isFinite(parsedStartSecRaw) && parsedStartSecRaw >= 0
@@ -262,13 +271,14 @@ export const useMixtape = () => {
       bpm: parsedBpm,
       gridBaseBpm: parsedBpm,
       originalBpm: parsedOriginalBpm,
-      masterTempo: true,
+      masterTempo: parsedMasterTempo,
       startSec: parsedStartSec,
       gainEnvelope: parsedGainEnvelope.length ? parsedGainEnvelope : undefined,
       highEnvelope: parsedHighEnvelope.length ? parsedHighEnvelope : undefined,
       midEnvelope: parsedMidEnvelope.length ? parsedMidEnvelope : undefined,
       lowEnvelope: parsedLowEnvelope.length ? parsedLowEnvelope : undefined,
       volumeEnvelope: parsedVolumeEnvelope.length ? parsedVolumeEnvelope : undefined,
+      volumeMuteSegments: parsedVolumeMuteSegments.length ? parsedVolumeMuteSegments : undefined,
       firstBeatMs: parsedFirstBeatMs,
       barBeatOffset: parsedBarBeatOffset
     }
@@ -591,12 +601,31 @@ export const useMixtape = () => {
     if (targetIndex < 0) return
     const currentTrack = tracks.value[targetIndex]
     if (!currentTrack) return
+    const nextMasterTempo = currentTrack.masterTempo === false
     const nextTracks = [...tracks.value]
     nextTracks.splice(targetIndex, 1, {
       ...currentTrack,
-      masterTempo: currentTrack.masterTempo === false
+      masterTempo: nextMasterTempo
     })
     tracks.value = nextTracks
+    if (window?.electron?.ipcRenderer?.invoke) {
+      void window.electron.ipcRenderer
+        .invoke('mixtape:update-track-start-sec', {
+          entries: [
+            {
+              itemId: currentTrack.id,
+              masterTempo: nextMasterTempo
+            }
+          ]
+        })
+        .catch((error) => {
+          console.error('[mixtape] update master tempo failed', {
+            itemId: currentTrack.id,
+            masterTempo: nextMasterTempo,
+            error
+          })
+        })
+    }
     closeTrackContextMenu()
     scheduleTimelineDraw()
   }
@@ -606,7 +635,7 @@ export const useMixtape = () => {
     beatAlignTrackId.value = ''
   }
 
-  const handleBeatAlignGridDefinitionSave = (payload: {
+  const handleBeatAlignGridDefinitionSave = async (payload: {
     barBeatOffset: number
     firstBeatMs: number
     bpm: number
@@ -647,11 +676,21 @@ export const useMixtape = () => {
         return Math.abs(trackBpmBase - Number(normalizedInputBpm)) > 0.0001
       })
     if (!offsetChanged && !firstBeatChanged && !bpmChanged) return
+    const gridPositionChanged = firstBeatChanged || bpmChanged
+    const shouldResetEnvelope = gridPositionChanged
+      ? (await confirmDialog({
+          title: t('mixtape.gridAdjustSaveResetEnvelopeTitle'),
+          content: [t('mixtape.gridAdjustSaveResetEnvelopeHint')],
+          confirmText: t('mixtape.gridAdjustSaveResetEnvelopeConfirm'),
+          cancelText: t('mixtape.gridAdjustSaveResetEnvelopeCancel')
+        })) === 'confirm'
+      : false
+    if (gridPositionChanged && !shouldResetEnvelope) return
     const nextTracks = tracks.value.map((track) => {
       if (!isSameTrack(track)) return track
       const fallbackGridBaseBpm =
         normalizeBpm(track.gridBaseBpm) ?? normalizeBpm(track.originalBpm) ?? track.gridBaseBpm
-      return {
+      const nextTrack = {
         ...track,
         barBeatOffset: normalizedOffset,
         firstBeatMs: normalizedFirstBeatMs,
@@ -662,28 +701,90 @@ export const useMixtape = () => {
         bpm:
           shouldPersistBpm && normalizedInputBpm !== null ? Number(normalizedInputBpm) : track.bpm
       }
+      if (!shouldResetEnvelope) return nextTrack
+      for (const param of MIXTAPE_ENVELOPE_PARAMS) {
+        const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
+        ;(nextTrack as any)[envelopeField] = buildFlatMixEnvelope(
+          param,
+          resolveTrackDurationSeconds(track),
+          1
+        )
+      }
+      nextTrack.volumeMuteSegments = []
+      return nextTrack
     })
     tracks.value = nextTracks
     scheduleTimelineDraw()
     scheduleFullPreRender()
     scheduleWorkerPreRender()
-    if (!targetFilePath || !window?.electron?.ipcRenderer?.invoke) return
-    void window.electron.ipcRenderer
-      .invoke('mixtape:update-grid-definition', {
-        filePath: targetFilePath,
-        barBeatOffset: normalizedOffset,
-        firstBeatMs: normalizedFirstBeatMs,
-        bpm: bpmChanged ? normalizedInputBpm : undefined
-      })
-      .catch((error) => {
-        console.error('[mixtape] update grid definition failed', {
+    if (!window?.electron?.ipcRenderer?.invoke) return
+
+    if (targetFilePath) {
+      void window.electron.ipcRenderer
+        .invoke('mixtape:update-grid-definition', {
           filePath: targetFilePath,
           barBeatOffset: normalizedOffset,
           firstBeatMs: normalizedFirstBeatMs,
-          bpm: bpmChanged ? normalizedInputBpm : undefined,
-          error
+          bpm: bpmChanged ? normalizedInputBpm : undefined
         })
+        .catch((error) => {
+          console.error('[mixtape] update grid definition failed', {
+            filePath: targetFilePath,
+            barBeatOffset: normalizedOffset,
+            firstBeatMs: normalizedFirstBeatMs,
+            bpm: bpmChanged ? normalizedInputBpm : undefined,
+            error
+          })
+        })
+    }
+
+    if (!shouldResetEnvelope) return
+    const affectedTracks = nextTracks.filter((track) => isSameTrack(track))
+    if (!affectedTracks.length) return
+    const envelopeUpdateTasks = MIXTAPE_ENVELOPE_PARAMS.map((param) => {
+      const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
+      const entries = affectedTracks
+        .map((track) => {
+          const points = normalizeMixEnvelopePoints(
+            param,
+            (track as any)?.[envelopeField],
+            resolveTrackDurationSeconds(track)
+          )
+          if (points.length < 2) return null
+          return {
+            itemId: track.id,
+            gainEnvelope: points.map((point) => ({
+              sec: Number(point.sec),
+              gain: Number(point.gain)
+            }))
+          }
+        })
+        .filter(
+          (item): item is { itemId: string; gainEnvelope: Array<{ sec: number; gain: number }> } =>
+            item !== null
+        )
+      if (!entries.length) return Promise.resolve(null)
+      return window.electron.ipcRenderer.invoke('mixtape:update-mix-envelope', {
+        param,
+        entries
       })
+    })
+    const muteSegmentUpdateEntries = affectedTracks.map((track) => ({
+      itemId: track.id,
+      segments: []
+    }))
+    const muteSegmentUpdateTask =
+      muteSegmentUpdateEntries.length > 0
+        ? window.electron.ipcRenderer.invoke('mixtape:update-volume-mute-segments', {
+            entries: muteSegmentUpdateEntries
+          })
+        : Promise.resolve(null)
+    void Promise.all([...envelopeUpdateTasks, muteSegmentUpdateTask]).catch((error) => {
+      console.error('[mixtape] reset mix envelope after grid update failed', {
+        trackCount: affectedTracks.length,
+        error
+      })
+    })
   }
 
   const handleGlobalPointerDown = (event: PointerEvent) => {

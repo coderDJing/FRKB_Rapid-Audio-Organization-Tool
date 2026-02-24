@@ -21,6 +21,7 @@ import {
   upsertMixtapeItemGridByFilePath,
   upsertMixtapeItemGainEnvelopeById,
   upsertMixtapeItemMixEnvelopeById,
+  upsertMixtapeItemVolumeMuteSegmentsById,
   upsertMixtapeItemStartSecById
 } from '../mixtapeDb'
 import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
@@ -566,18 +567,61 @@ export function registerMixtapeHandlers() {
   )
 
   ipcMain.handle(
+    'mixtape:update-volume-mute-segments',
+    async (
+      _e,
+      payload?: {
+        entries?: Array<{
+          itemId?: string
+          segments?: Array<{ startSec?: number; endSec?: number }>
+        }>
+      }
+    ) => {
+      const entries = Array.isArray(payload?.entries) ? payload.entries : []
+      return upsertMixtapeItemVolumeMuteSegmentsById(
+        entries.map((item) => ({
+          itemId: typeof item?.itemId === 'string' ? item.itemId : '',
+          segments: Array.isArray(item?.segments)
+            ? item.segments
+                .map((segment) => ({
+                  startSec: Number(segment?.startSec),
+                  endSec: Number(segment?.endSec)
+                }))
+                .filter(
+                  (segment) =>
+                    Number.isFinite(segment.startSec) &&
+                    segment.startSec >= 0 &&
+                    Number.isFinite(segment.endSec) &&
+                    segment.endSec > segment.startSec
+                )
+            : []
+        }))
+      )
+    }
+  )
+
+  ipcMain.handle(
     'mixtape:update-track-start-sec',
     async (
       _e,
       payload?: {
-        entries?: Array<{ itemId?: string; startSec?: number }>
+        entries?: Array<{
+          itemId?: string
+          startSec?: number
+          bpm?: number
+          masterTempo?: boolean
+          originalBpm?: number
+        }>
       }
     ) => {
       const entries = Array.isArray(payload?.entries) ? payload.entries : []
       return upsertMixtapeItemStartSecById(
         entries.map((item) => ({
           itemId: typeof item?.itemId === 'string' ? item.itemId : '',
-          startSec: Number(item?.startSec)
+          startSec: Number(item?.startSec),
+          bpm: Number(item?.bpm),
+          masterTempo: typeof item?.masterTempo === 'boolean' ? item.masterTempo : undefined,
+          originalBpm: Number(item?.originalBpm)
         }))
       )
     }

@@ -119,6 +119,16 @@
   margin-left: auto;
 }
 
+.mixtape-param-bar__hint {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-weak);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .mixtape-param-bar__action-btn {
   height: auto;
   min-height: 22px;
@@ -135,6 +145,11 @@
 .mixtape-param-bar__action-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.mixtape-param-bar__action-btn.is-active {
+  background: rgba(193, 58, 58, 0.2);
+  color: #ffd6d6;
 }
 
 .mixtape-param-bar__tab {
@@ -777,6 +792,25 @@
   display: none;
 }
 
+.lane-track__mute-segments {
+  position: absolute;
+  left: calc(-1 * var(--lane-track-border-width));
+  right: calc(-1 * var(--lane-track-border-width));
+  top: 4px;
+  bottom: 4px;
+  width: calc(100% + var(--lane-track-border-width) * 2);
+  height: calc(100% - 8px);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.lane-track__mute-segment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(210, 58, 58, 0.2);
+}
+
 .lane-track__envelope-points {
   position: absolute;
   left: calc(-1 * var(--lane-track-border-width));
@@ -787,6 +821,10 @@
   height: calc(100% - 8px);
   z-index: 3;
   cursor: crosshair;
+}
+
+.lane-track__envelope-points.is-segment-mute-mode {
+  cursor: pointer;
 }
 
 .lane-track__envelope-point {

@@ -50,6 +50,8 @@ export type MixtapeTrack = {
   lowEnvelope?: MixtapeGainPoint[]
   // 音量包络线（轨道内时间 -> 线性增益，最大 1.0）
   volumeEnvelope?: MixtapeGainPoint[]
+  // 片段静音区间（轨道内时间，静音遮罩）
+  volumeMuteSegments?: MixtapeMuteSegment[]
   // 首拍偏移（毫秒）
   firstBeatMs?: number
   // 大节线相位偏移（以拍为单位，仅改变网格线定义，不改变网格线位置）
@@ -59,6 +61,11 @@ export type MixtapeTrack = {
 export type MixtapeGainPoint = {
   sec: number
   gain: number
+}
+
+export type MixtapeMuteSegment = {
+  startSec: number
+  endSec: number
 }
 
 export type MinMaxSample = {

@@ -593,6 +593,8 @@ export function upsertMixtapeItemMixEnvelopeById(
   const maxGain = MIXTAPE_ENVELOPE_MAX_GAIN_BY_PARAM[param]
 
   const normalizeEnvelope = (raw: unknown) => {
+    const sameSecEpsilon = 0.0001
+    const maxPointsPerSec = 2
     const points = Array.isArray(raw)
       ? raw
           .map((item) => {
@@ -609,16 +611,27 @@ export function upsertMixtapeItemMixEnvelopeById(
       : []
     if (!points.length) return [] as Array<{ sec: number; gain: number }>
     const sorted = (points as Array<{ sec: number; gain: number }>).sort((a, b) => a.sec - b.sec)
-    const unique: Array<{ sec: number; gain: number }> = []
+    const limited: Array<{ sec: number; gain: number }> = []
+    let bucketStartIndex = -1
+    let bucketSec = NaN
+    let bucketCount = 0
     for (const point of sorted) {
-      const last = unique[unique.length - 1]
-      if (!last || Math.abs(last.sec - point.sec) > 0.0001) {
-        unique.push(point)
-      } else {
-        last.gain = point.gain
+      if (!bucketCount || Math.abs(point.sec - bucketSec) > sameSecEpsilon) {
+        limited.push(point)
+        bucketStartIndex = limited.length - 1
+        bucketSec = point.sec
+        bucketCount = 1
+        continue
       }
+      bucketCount += 1
+      if (bucketCount <= maxPointsPerSec) {
+        limited.push(point)
+        continue
+      }
+      const replaceIndex = bucketStartIndex + maxPointsPerSec - 1
+      limited[replaceIndex] = point
     }
-    return unique
+    return limited
   }
 
   const envelopeById = new Map<string, Array<{ sec: number; gain: number }>>()
@@ -683,27 +696,59 @@ export function upsertMixtapeItemGainEnvelopeById(
   return upsertMixtapeItemMixEnvelopeById('gain', entries)
 }
 
-export function upsertMixtapeItemStartSecById(
-  entries: Array<{ itemId: string; startSec: number }>
+export function upsertMixtapeItemVolumeMuteSegmentsById(
+  entries: Array<{ itemId: string; segments: Array<{ startSec: number; endSec: number }> }>
 ): { updated: number } {
   if (!Array.isArray(entries) || entries.length === 0) return { updated: 0 }
   const db = getLibraryDb()
   if (!db) return { updated: 0 }
 
-  const normalizeStartSec = (value: unknown) => {
-    const numeric = Number(value)
-    if (!Number.isFinite(numeric) || numeric < 0) return null
-    return Number(numeric.toFixed(4))
+  const normalizeSegments = (raw: unknown) => {
+    const sameSecEpsilon = 0.0001
+    const points = Array.isArray(raw)
+      ? raw
+          .map((item) => {
+            const startSec = Number((item as any)?.startSec)
+            const endSec = Number((item as any)?.endSec)
+            if (!Number.isFinite(startSec) || !Number.isFinite(endSec)) return null
+            const safeStart = Math.max(0, Number(startSec.toFixed(4)))
+            const safeEnd = Math.max(0, Number(endSec.toFixed(4)))
+            if (safeEnd - safeStart <= sameSecEpsilon) return null
+            return {
+              startSec: safeStart,
+              endSec: safeEnd
+            }
+          })
+          .filter(Boolean)
+      : []
+    if (!points.length) return [] as Array<{ startSec: number; endSec: number }>
+    const sorted = (points as Array<{ startSec: number; endSec: number }>).sort((a, b) => {
+      if (Math.abs(a.startSec - b.startSec) > sameSecEpsilon) return a.startSec - b.startSec
+      return a.endSec - b.endSec
+    })
+    const deduped: Array<{ startSec: number; endSec: number }> = []
+    for (const segment of sorted) {
+      const last = deduped[deduped.length - 1]
+      if (
+        last &&
+        Math.abs(last.startSec - segment.startSec) <= sameSecEpsilon &&
+        Math.abs(last.endSec - segment.endSec) <= sameSecEpsilon
+      ) {
+        continue
+      }
+      deduped.push(segment)
+    }
+    return deduped
   }
 
-  const startSecById = new Map<string, number>()
+  const segmentById = new Map<string, Array<{ startSec: number; endSec: number }>>()
   for (const item of entries) {
     const itemId = typeof item?.itemId === 'string' ? item.itemId.trim() : ''
-    const startSec = normalizeStartSec(item?.startSec)
-    if (!itemId || startSec === null) continue
-    startSecById.set(itemId, startSec)
+    if (!itemId) continue
+    const normalizedSegments = normalizeSegments(item?.segments)
+    segmentById.set(itemId, normalizedSegments)
   }
-  const itemIds = Array.from(startSecById.keys())
+  const itemIds = Array.from(segmentById.keys())
   if (!itemIds.length) return { updated: 0 }
 
   try {
@@ -721,8 +766,8 @@ export function upsertMixtapeItemStartSecById(
         for (const row of rows) {
           const itemId = typeof row?.id === 'string' ? row.id.trim() : ''
           if (!itemId) continue
-          const nextStartSec = startSecById.get(itemId)
-          if (typeof nextStartSec !== 'number') continue
+          const nextSegments = segmentById.get(itemId)
+          if (!nextSegments) continue
           let info: Record<string, any> = {}
           if (row?.info_json) {
             try {
@@ -732,12 +777,148 @@ export function upsertMixtapeItemStartSecById(
               }
             } catch {}
           }
-          const currentStartSec = normalizeStartSec(info.startSec)
-          if (currentStartSec !== null && Math.abs(currentStartSec - nextStartSec) <= 0.0001) {
-            continue
+          const currentSegments = normalizeSegments(info.volumeMuteSegments)
+          const currentSignature = JSON.stringify(currentSegments)
+          const nextSignature = JSON.stringify(nextSegments)
+          if (currentSignature === nextSignature) continue
+          info.volumeMuteSegments = nextSegments
+          info.volumeMuteSegmentsUpdatedAt = Date.now()
+          updateStmt.run(JSON.stringify(info), itemId)
+          updated += 1
+        }
+      }
+    })
+    tx()
+    return { updated }
+  } catch (error) {
+    log.error('[sqlite] mixtape volume mute segments upsert failed', error)
+    return { updated: 0 }
+  }
+}
+
+export function upsertMixtapeItemStartSecById(
+  entries: Array<{
+    itemId: string
+    startSec?: number
+    bpm?: number
+    masterTempo?: boolean
+    originalBpm?: number
+  }>
+): { updated: number } {
+  if (!Array.isArray(entries) || entries.length === 0) return { updated: 0 }
+  const db = getLibraryDb()
+  if (!db) return { updated: 0 }
+
+  const normalizeStartSec = (value: unknown) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric) || numeric < 0) return null
+    return Number(numeric.toFixed(4))
+  }
+
+  const normalizeBpm = (value: unknown) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric) || numeric <= 0) return null
+    return Number(numeric.toFixed(6))
+  }
+
+  const trackPatchById = new Map<
+    string,
+    {
+      startSec?: number
+      bpm?: number
+      masterTempo?: boolean
+      originalBpm?: number
+    }
+  >()
+  for (const item of entries) {
+    const itemId = typeof item?.itemId === 'string' ? item.itemId.trim() : ''
+    const startSec = normalizeStartSec(item?.startSec)
+    const bpm = normalizeBpm(item?.bpm)
+    const originalBpm = normalizeBpm(item?.originalBpm)
+    const masterTempo = typeof item?.masterTempo === 'boolean' ? item.masterTempo : undefined
+    if (!itemId) continue
+    if (startSec === null && bpm === null && originalBpm === null && masterTempo === undefined) {
+      continue
+    }
+    const prev = trackPatchById.get(itemId) || {}
+    trackPatchById.set(itemId, {
+      ...prev,
+      ...(startSec === null ? {} : { startSec }),
+      ...(bpm === null ? {} : { bpm }),
+      ...(originalBpm === null ? {} : { originalBpm }),
+      ...(masterTempo === undefined ? {} : { masterTempo })
+    })
+  }
+  const itemIds = Array.from(trackPatchById.keys())
+  if (!itemIds.length) return { updated: 0 }
+
+  try {
+    let updated = 0
+    const updateStmt = db.prepare(`UPDATE ${TABLE} SET info_json = ? WHERE id = ?`)
+    const tx = db.transaction(() => {
+      const CHUNK_SIZE = 300
+      for (let offset = 0; offset < itemIds.length; offset += CHUNK_SIZE) {
+        const chunk = itemIds.slice(offset, offset + CHUNK_SIZE)
+        if (chunk.length === 0) continue
+        const placeholders = chunk.map(() => '?').join(',')
+        const rows = db
+          .prepare(`SELECT id, info_json FROM ${TABLE} WHERE id IN (${placeholders})`)
+          .all(...chunk) as Array<{ id: string; info_json?: string | null }>
+        for (const row of rows) {
+          const itemId = typeof row?.id === 'string' ? row.id.trim() : ''
+          if (!itemId) continue
+          const nextPatch = trackPatchById.get(itemId)
+          if (!nextPatch) continue
+          let info: Record<string, any> = {}
+          if (row?.info_json) {
+            try {
+              const parsed = JSON.parse(String(row.info_json))
+              if (parsed && typeof parsed === 'object') {
+                info = parsed
+              }
+            } catch {}
           }
-          info.startSec = nextStartSec
-          info.startSecUpdatedAt = Date.now()
+          let changed = false
+          if (typeof nextPatch.startSec === 'number') {
+            const currentStartSec = normalizeStartSec(info.startSec)
+            if (
+              currentStartSec === null ||
+              Math.abs(currentStartSec - Number(nextPatch.startSec)) > 0.0001
+            ) {
+              info.startSec = Number(nextPatch.startSec)
+              info.startSecUpdatedAt = Date.now()
+              changed = true
+            }
+          }
+
+          if (typeof nextPatch.bpm === 'number') {
+            const currentBpm = normalizeBpm(info.bpm)
+            if (currentBpm === null || Math.abs(currentBpm - Number(nextPatch.bpm)) > 0.0001) {
+              info.bpm = Number(nextPatch.bpm)
+              changed = true
+            }
+          }
+
+          if (typeof nextPatch.originalBpm === 'number') {
+            const currentOriginalBpm = normalizeBpm(info.originalBpm)
+            if (
+              currentOriginalBpm === null ||
+              Math.abs(currentOriginalBpm - Number(nextPatch.originalBpm)) > 0.0001
+            ) {
+              info.originalBpm = Number(nextPatch.originalBpm)
+              changed = true
+            }
+          }
+
+          if (typeof nextPatch.masterTempo === 'boolean') {
+            const currentMasterTempo = info.masterTempo !== false
+            if (currentMasterTempo !== nextPatch.masterTempo) {
+              info.masterTempo = nextPatch.masterTempo
+              changed = true
+            }
+          }
+
+          if (!changed) continue
           updateStmt.run(JSON.stringify(info), itemId)
           updated += 1
         }

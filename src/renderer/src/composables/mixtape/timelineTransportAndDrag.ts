@@ -1,7 +1,12 @@
 import { computed, ref } from 'vue'
 import { t } from '@renderer/utils/translate'
 import { canPlayHtmlAudio, toPreviewUrl } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
-import { LANE_COUNT, TIMELINE_SIDE_PADDING_PX } from '@renderer/composables/mixtape/constants'
+import {
+  GRID_BEAT4_LINE_ZOOM,
+  GRID_BEAT_LINE_ZOOM,
+  LANE_COUNT,
+  TIMELINE_SIDE_PADDING_PX
+} from '@renderer/composables/mixtape/constants'
 import {
   normalizeBeatOffset as normalizeBeatOffsetByMixxx,
   resolveBeatSecByBpm,
@@ -17,10 +22,15 @@ import {
   normalizeMixEnvelopePoints,
   sampleMixEnvelopeAtSec
 } from '@renderer/composables/mixtape/gainEnvelope'
+import {
+  isSecMutedBySegments,
+  normalizeVolumeMuteSegments
+} from '@renderer/composables/mixtape/volumeMuteSegments'
 import { applyMixxxTransportSync } from '@renderer/composables/mixtape/timelineTransportSync'
 import type {
   MixtapeEnvelopeParamId,
   MixtapeGainPoint,
+  MixtapeMuteSegment,
   MixtapeTrack,
   TimelineTrackLayout
 } from '@renderer/composables/mixtape/types'
@@ -53,6 +63,8 @@ type TransportEntry = {
   tempoRatio: number
   mixEnvelopes: Record<MixtapeEnvelopeParamId, MixtapeGainPoint[]>
   mixEnvelopeSources: Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[] | undefined>>
+  volumeMuteSegments: MixtapeMuteSegment[]
+  volumeMuteSegmentsSource?: MixtapeMuteSegment[]
   /** 解码策略：browser = fetch + decodeAudioData（快）；ipc = 主进程 Rust/FFmpeg 解码 */
   decodeMode: 'browser' | 'ipc'
   /** 解码后的 AudioBuffer */
@@ -71,8 +83,8 @@ type TrackGraphNode = {
   gain: GainNode
 }
 
-const GRID_SNAP_BEAT_INTERVAL = 4
 const MIX_ENVELOPE_PARAMS: MixtapeEnvelopeParamId[] = ['gain', 'high', 'mid', 'low', 'volume']
+const MIXTAPE_SEGMENT_MUTE_GAIN = 0.0001
 
 export const createTimelineTransportAndDragModule = (ctx: any) => {
   const {
@@ -141,16 +153,106 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     return Number(numeric.toFixed(4))
   }
 
-  const persistTrackStartSec = async (entries: Array<{ itemId: string; startSec: number }>) => {
+  const persistTrackStartSec = async (
+    entries: Array<{
+      itemId: string
+      startSec?: number
+      bpm?: number
+      masterTempo?: boolean
+      originalBpm?: number
+    }>
+  ) => {
     if (!entries.length || !window?.electron?.ipcRenderer?.invoke) return
     try {
       await window.electron.ipcRenderer.invoke('mixtape:update-track-start-sec', { entries })
     } catch (error) {
-      console.error('[mixtape] update track start sec failed', {
+      console.error('[mixtape] update track timing failed', {
         count: entries.length,
         error
       })
     }
+  }
+
+  const persistTrackVolumeMuteSegments = async (
+    entries: Array<{ itemId: string; segments: MixtapeMuteSegment[] }>
+  ) => {
+    if (!entries.length || !window?.electron?.ipcRenderer?.invoke) return
+    try {
+      await window.electron.ipcRenderer.invoke('mixtape:update-volume-mute-segments', {
+        entries: entries.map((item) => ({
+          itemId: item.itemId,
+          segments: item.segments.map((segment) => ({
+            startSec: Number(segment.startSec),
+            endSec: Number(segment.endSec)
+          }))
+        }))
+      })
+    } catch (error) {
+      console.error('[mixtape] update volume mute segments failed', {
+        count: entries.length,
+        error
+      })
+    }
+  }
+
+  const resolveTrackDurationByBpm = (track: MixtapeTrack, targetBpm: number) => {
+    const sourceDuration = resolveTrackSourceDurationSeconds(track)
+    if (!Number.isFinite(sourceDuration) || sourceDuration <= 0) return 0
+    const tempoRatio = resolveTrackTempoRatio(track, targetBpm)
+    if (!Number.isFinite(tempoRatio) || tempoRatio <= 0) return sourceDuration
+    return sourceDuration / Math.max(0.01, tempoRatio)
+  }
+
+  const remapVolumeMuteSegmentsForBpm = (track: MixtapeTrack, targetBpm: number) => {
+    const sourceDuration = resolveTrackDurationSeconds(track)
+    const targetDuration = resolveTrackDurationByBpm(track, targetBpm)
+    const sourceSegments = normalizeVolumeMuteSegments(track.volumeMuteSegments, sourceDuration)
+    if (!sourceSegments.length) return [] as MixtapeMuteSegment[]
+    const sourceBpm = Number(track.bpm)
+    const sourceBeatSec = resolveBeatSecByBpm(sourceBpm)
+    const targetBeatSec = resolveBeatSecByBpm(targetBpm)
+    if (
+      !Number.isFinite(sourceBeatSec) ||
+      !sourceBeatSec ||
+      !Number.isFinite(targetBeatSec) ||
+      !targetBeatSec ||
+      !targetDuration
+    ) {
+      return normalizeVolumeMuteSegments(sourceSegments, targetDuration || sourceDuration)
+    }
+    const sourceFirstBeatSec = resolveTrackFirstBeatSeconds(track, sourceBpm)
+    const targetFirstBeatSec = resolveTrackFirstBeatSeconds(track, targetBpm)
+    const beatSnapEpsilon = 0.0005
+    const remapped = sourceSegments
+      .map((segment) => {
+        const startBeatRaw = (segment.startSec - sourceFirstBeatSec) / sourceBeatSec
+        const endBeatRaw = (segment.endSec - sourceFirstBeatSec) / sourceBeatSec
+        const startBeatNearest = Math.round(startBeatRaw)
+        const endBeatNearest = Math.round(endBeatRaw)
+        const startBeat =
+          Math.abs(startBeatRaw - startBeatNearest) <= beatSnapEpsilon
+            ? startBeatNearest
+            : startBeatRaw
+        const endBeat =
+          Math.abs(endBeatRaw - endBeatNearest) <= beatSnapEpsilon ? endBeatNearest : endBeatRaw
+        const remappedStart = clampNumber(
+          targetFirstBeatSec + startBeat * targetBeatSec,
+          0,
+          targetDuration
+        )
+        const remappedEnd = clampNumber(
+          targetFirstBeatSec + endBeat * targetBeatSec,
+          0,
+          targetDuration
+        )
+        if (remappedEnd - remappedStart <= 0.0001) return null
+        return {
+          startSec: Number(remappedStart.toFixed(4)),
+          endSec: Number(remappedEnd.toFixed(4))
+        }
+      })
+      .filter((segment): segment is MixtapeMuteSegment => segment !== null)
+    return normalizeVolumeMuteSegments(remapped, targetDuration)
   }
 
   const readTransportBufferCache = (filePath: string): AudioBuffer | null => {
@@ -344,8 +446,18 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       entry.mixEnvelopes[param] = resolveTrackMixEnvelope(latestTrack, entry.duration, param)
       entry.mixEnvelopeSources[param] = latestEnvelopeSource
     }
+    if (param === 'volume' && latestTrack) {
+      const latestMuteSource = latestTrack.volumeMuteSegments
+      if (latestMuteSource !== entry.volumeMuteSegmentsSource) {
+        entry.volumeMuteSegments = normalizeVolumeMuteSegments(latestMuteSource, entry.duration)
+        entry.volumeMuteSegmentsSource = latestMuteSource
+      }
+    }
     const safeOffset = clampNumber(timelineOffsetSec, 0, Math.max(0, entry.duration))
-    return sampleMixEnvelopeAtSec(param, entry.mixEnvelopes[param], safeOffset, 1)
+    const envelopeGain = sampleMixEnvelopeAtSec(param, entry.mixEnvelopes[param], safeOffset, 1)
+    if (param !== 'volume') return envelopeGain
+    const muted = isSecMutedBySegments(entry.volumeMuteSegments, safeOffset)
+    return muted ? MIXTAPE_SEGMENT_MUTE_GAIN : envelopeGain
   }
 
   const resolveEntryEqDbValue = (
@@ -505,6 +617,8 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
           },
           {} as Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[] | undefined>>
         )
+        const volumeMuteSegmentsSource = track.volumeMuteSegments
+        const volumeMuteSegments = normalizeVolumeMuteSegments(volumeMuteSegmentsSource, duration)
         // 浏览器能解码的走 fetch + decodeAudioData（快、无 IPC 开销）
         const decodeMode: 'browser' | 'ipc' = canPlayHtmlAudio(filePath) ? 'browser' : 'ipc'
         return {
@@ -522,6 +636,8 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
           tempoRatio: Math.max(0.25, Math.min(4, tempoRatio)),
           mixEnvelopes,
           mixEnvelopeSources,
+          volumeMuteSegments,
+          volumeMuteSegmentsSource,
           decodeMode,
           audioBuffer: null
         } as TransportEntry
@@ -1005,17 +1121,23 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     })
   }
 
-  const resolveTrackDragStartInLane = (
-    snapshotTracks: MixtapeTrack[],
-    trackId: string,
-    proposedStartSec: number
-  ) => {
+  const resolveTrackDragBounds = (snapshotTracks: MixtapeTrack[], trackId: string) => {
     const timings = buildTrackTimingSnapshot(snapshotTracks)
     const target = timings.find((item) => item.id === trackId)
-    if (!target) return Math.max(0, proposedStartSec)
+    if (!target) {
+      return {
+        minStart: 0,
+        maxStart: Number.POSITIVE_INFINITY
+      }
+    }
     const sameLane = timings.filter((item) => item.laneIndex === target.laneIndex)
     const lanePos = sameLane.findIndex((item) => item.id === trackId)
-    if (lanePos < 0) return Math.max(0, proposedStartSec)
+    if (lanePos < 0) {
+      return {
+        minStart: 0,
+        maxStart: Number.POSITIVE_INFINITY
+      }
+    }
     const prev = lanePos > 0 ? sameLane[lanePos - 1] : null
     const next = lanePos < sameLane.length - 1 ? sameLane[lanePos + 1] : null
 
@@ -1024,7 +1146,53 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     if (next) {
       maxStart = Math.max(minStart, next.startSec - target.durationSec)
     }
-    return clampNumber(Math.max(0, proposedStartSec), minStart, maxStart)
+    return {
+      minStart,
+      maxStart
+    }
+  }
+
+  const resolveVisibleGridSnapStepBeats = () => {
+    const zoomValue = Number(normalizedRenderZoom.value) || 0
+    if (zoomValue >= GRID_BEAT_LINE_ZOOM) return 1
+    if (zoomValue >= GRID_BEAT4_LINE_ZOOM) return 4
+    return 32
+  }
+
+  const resolveSnappedStartSec = (payload: {
+    rawStartSec: number
+    minStartSec: number
+    maxStartSec: number
+    snapAnchorSec: number
+    currentAnchorRawSec: number
+    stepSec: number
+  }) => {
+    const stepSec = Number(payload.stepSec)
+    if (!Number.isFinite(stepSec) || stepSec <= 0) return null
+    const rawStartSec = Math.max(0, Number(payload.rawStartSec) || 0)
+    const minStartSec = Math.max(0, Number(payload.minStartSec) || 0)
+    const maxStartSec = Number.isFinite(Number(payload.maxStartSec))
+      ? Math.max(minStartSec, Number(payload.maxStartSec))
+      : Number.POSITIVE_INFINITY
+    const snapAnchorSec = Number(payload.snapAnchorSec)
+    const currentAnchorRawSec = Number(payload.currentAnchorRawSec)
+    if (!Number.isFinite(snapAnchorSec) || !Number.isFinite(currentAnchorRawSec)) return null
+
+    const startOffsetSec = rawStartSec - currentAnchorRawSec
+    const rawIndex = (currentAnchorRawSec - snapAnchorSec) / stepSec
+    if (!Number.isFinite(rawIndex)) return null
+
+    let nearestIndex = Math.round(rawIndex)
+    const minIndex = Math.ceil((minStartSec - startOffsetSec - snapAnchorSec) / stepSec)
+    const maxIndex = Number.isFinite(maxStartSec)
+      ? Math.floor((maxStartSec - startOffsetSec - snapAnchorSec) / stepSec)
+      : Number.POSITIVE_INFINITY
+    if (minIndex > maxIndex) return null
+    nearestIndex = Math.max(minIndex, Math.min(maxIndex, nearestIndex))
+
+    const snappedStartSec = startOffsetSec + snapAnchorSec + nearestIndex * stepSec
+    if (!Number.isFinite(snappedStartSec)) return null
+    return clampNumber(snappedStartSec, minStartSec, maxStartSec)
   }
 
   const handleTrackDragMove = (event: MouseEvent) => {
@@ -1032,12 +1200,12 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     const pxPerSec = Math.max(0.0001, resolveRenderPxPerSec(normalizedRenderZoom.value))
     const deltaSec = (event.clientX - trackDragState.startClientX) / pxPerSec
     const rawStartSec = Math.max(0, trackDragState.initialStartSec + deltaSec)
-    let nextStartSec = rawStartSec
+    const dragBounds = resolveTrackDragBounds(trackDragState.snapshotTracks, trackDragState.trackId)
+    const clampedRawStartSec = clampNumber(rawStartSec, dragBounds.minStart, dragBounds.maxStart)
+    let nextStartSec = clampedRawStartSec
     let nextBpm: number | undefined
     const currentTrackForSnap = findTrack(trackDragState.trackId)
-    const currentFirstBeatSec = currentTrackForSnap
-      ? resolveTrackFirstBeatSeconds(currentTrackForSnap)
-      : 0
+    const snapStepBeats = resolveVisibleGridSnapStepBeats()
     const previousTrack = findTrack(trackDragState.previousTrackId)
     if (previousTrack) {
       const previousBpm = Number(previousTrack.bpm)
@@ -1046,10 +1214,10 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
         const previousFirstBeatSec = resolveTrackFirstBeatSeconds(previousTrack, previousBpm)
         const currentFirstBeatSecAtTarget = currentTrackForSnap
           ? resolveTrackFirstBeatSeconds(currentTrackForSnap, previousBpm)
-          : currentFirstBeatSec
+          : 0
         const beatSec = resolveBeatSecByBpm(previousBpm)
-        const gridSec = beatSec * GRID_SNAP_BEAT_INTERVAL
-        if (Number.isFinite(gridSec) && gridSec > 0) {
+        const snapStepSec = beatSec * snapStepBeats
+        if (Number.isFinite(snapStepSec) && snapStepSec > 0) {
           const snapAnchor = resolveGridAnchorSec({
             startSec: previousStartSec,
             firstBeatSec: previousFirstBeatSec,
@@ -1057,29 +1225,52 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
             barBeatOffset: normalizeBeatOffset(previousTrack.barBeatOffset, 32)
           })
           const currentAnchorRawSec = resolveGridAnchorSec({
-            startSec: rawStartSec,
+            startSec: clampedRawStartSec,
             firstBeatSec: currentFirstBeatSecAtTarget,
             beatSec,
             barBeatOffset: normalizeBeatOffset(currentTrackForSnap?.barBeatOffset, 32)
           })
-          const nearestIndex = Math.round((currentAnchorRawSec - snapAnchor) / gridSec)
-          const snappedStartSec = Math.max(
-            0,
-            rawStartSec + (snapAnchor + nearestIndex * gridSec - currentAnchorRawSec)
-          )
-          const snapThresholdSec = 14 / pxPerSec
-          if (Math.abs(snappedStartSec - rawStartSec) <= snapThresholdSec) {
+          const snappedStartSec = resolveSnappedStartSec({
+            rawStartSec: clampedRawStartSec,
+            minStartSec: dragBounds.minStart,
+            maxStartSec: dragBounds.maxStart,
+            snapAnchorSec: snapAnchor,
+            currentAnchorRawSec,
+            stepSec: snapStepSec
+          })
+          if (typeof snappedStartSec === 'number') {
             nextStartSec = snappedStartSec
             nextBpm = previousBpm
           }
         }
       }
     }
-    nextStartSec = resolveTrackDragStartInLane(
-      trackDragState.snapshotTracks,
-      trackDragState.trackId,
-      nextStartSec
-    )
+    if (typeof nextBpm !== 'number' && currentTrackForSnap) {
+      const currentBpm = Number(currentTrackForSnap.bpm)
+      if (Number.isFinite(currentBpm) && currentBpm > 0) {
+        const beatSec = resolveBeatSecByBpm(currentBpm)
+        const snapStepSec = beatSec * snapStepBeats
+        const currentFirstBeatSec = resolveTrackFirstBeatSeconds(currentTrackForSnap, currentBpm)
+        const currentAnchorRawSec = resolveGridAnchorSec({
+          startSec: clampedRawStartSec,
+          firstBeatSec: currentFirstBeatSec,
+          beatSec,
+          barBeatOffset: normalizeBeatOffset(currentTrackForSnap.barBeatOffset, 32)
+        })
+        const snappedStartSec = resolveSnappedStartSec({
+          rawStartSec: clampedRawStartSec,
+          minStartSec: dragBounds.minStart,
+          maxStartSec: dragBounds.maxStart,
+          snapAnchorSec: 0,
+          currentAnchorRawSec,
+          stepSec: snapStepSec
+        })
+        if (typeof snappedStartSec === 'number') {
+          nextStartSec = snappedStartSec
+        }
+      }
+    }
+    nextStartSec = clampNumber(nextStartSec, dragBounds.minStart, dragBounds.maxStart)
 
     const targetIndex = tracks.value.findIndex(
       (item: MixtapeTrack) => item.id === trackDragState?.trackId
@@ -1087,6 +1278,9 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     if (targetIndex < 0) return
     const currentTrack = tracks.value[targetIndex]
     if (!currentTrack) return
+    const snapshotTrack =
+      trackDragState.snapshotTracks.find((item: MixtapeTrack) => item.id === currentTrack.id) ||
+      currentTrack
     const currentStartSec = resolveTrackStartSecById(currentTrack.id)
     const shouldUpdateStart = Math.abs(nextStartSec - currentStartSec) > 0.0001
     const shouldUpdateBpm =
@@ -1100,12 +1294,14 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       startSec: nextStartSec
     }
     if (shouldUpdateBpm) {
-      nextTrack.bpm = nextBpm
+      const safeNextBpm = Number(nextBpm)
+      nextTrack.bpm = safeNextBpm
       nextTrack.masterTempo = true
       nextTrack.originalBpm =
         Number.isFinite(Number(currentTrack.originalBpm)) && Number(currentTrack.originalBpm) > 0
           ? currentTrack.originalBpm
-          : Number(currentTrack.bpm) || nextBpm
+          : Number(currentTrack.bpm) || safeNextBpm
+      nextTrack.volumeMuteSegments = remapVolumeMuteSegmentsForBpm(snapshotTrack, safeNextBpm)
     }
     const nextTracks = [...tracks.value]
     nextTracks.splice(targetIndex, 1, nextTrack)
@@ -1121,20 +1317,67 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     const currentTrack = findTrack(targetTrackId)
     const previousStartSec = normalizeStartSec(previousTrack?.startSec)
     const currentStartSec = normalizeStartSec(currentTrack?.startSec)
+    const normalizeTrackBpm = (value: unknown) => {
+      const numeric = Number(value)
+      if (!Number.isFinite(numeric) || numeric <= 0) return null
+      return Number(numeric.toFixed(6))
+    }
+    const previousBpm = normalizeTrackBpm(previousTrack?.bpm)
+    const currentBpm = normalizeTrackBpm(currentTrack?.bpm)
+    const previousOriginalBpm = normalizeTrackBpm(previousTrack?.originalBpm)
+    const currentOriginalBpm = normalizeTrackBpm(currentTrack?.originalBpm)
+    const previousMasterTempo = previousTrack?.masterTempo !== false
+    const currentMasterTempo = currentTrack?.masterTempo !== false
     isTrackDragging.value = false
     trackDragState = null
     window.removeEventListener('mousemove', handleTrackDragMove as EventListener)
     window.removeEventListener('mouseup', handleTrackDragEnd as EventListener)
     scheduleFullPreRender()
     scheduleWorkerPreRender()
-    if (!currentTrack || currentStartSec === null) return
-    if (previousStartSec !== null && Math.abs(previousStartSec - currentStartSec) <= 0.0001) return
+    if (!currentTrack) return
+    const startChanged =
+      currentStartSec !== null &&
+      (previousStartSec === null || Math.abs(previousStartSec - currentStartSec) > 0.0001)
+    const bpmChanged =
+      currentBpm !== null && (previousBpm === null || Math.abs(previousBpm - currentBpm) > 0.0001)
+    const originalBpmChanged =
+      currentOriginalBpm !== null &&
+      (previousOriginalBpm === null || Math.abs(previousOriginalBpm - currentOriginalBpm) > 0.0001)
+    const masterTempoChanged = previousMasterTempo !== currentMasterTempo
+    if (!startChanged && !bpmChanged && !originalBpmChanged && !masterTempoChanged) return
     void persistTrackStartSec([
       {
         itemId: targetTrackId,
-        startSec: currentStartSec
+        ...(startChanged ? { startSec: Number(currentStartSec) } : {}),
+        ...(bpmChanged ? { bpm: Number(currentBpm) } : {}),
+        ...(originalBpmChanged ? { originalBpm: Number(currentOriginalBpm) } : {}),
+        ...(masterTempoChanged ? { masterTempo: currentMasterTempo } : {})
       }
     ])
+    if (bpmChanged) {
+      const currentDuration = resolveTrackDurationSeconds(currentTrack)
+      const previousDuration = previousTrack ? resolveTrackDurationSeconds(previousTrack) : 0
+      const currentSegments = normalizeVolumeMuteSegments(
+        currentTrack.volumeMuteSegments,
+        currentDuration
+      )
+      const previousSegments = normalizeVolumeMuteSegments(
+        previousTrack?.volumeMuteSegments,
+        previousDuration
+      )
+      if (
+        JSON.stringify(currentSegments) !== JSON.stringify(previousSegments) ||
+        currentSegments.length > 0 ||
+        previousSegments.length > 0
+      ) {
+        void persistTrackVolumeMuteSegments([
+          {
+            itemId: targetTrackId,
+            segments: currentSegments
+          }
+        ])
+      }
+    }
   }
 
   const handleTrackDragStart = (item: TimelineTrackLayout, event: MouseEvent) => {

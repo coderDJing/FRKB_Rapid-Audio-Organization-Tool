@@ -149,7 +149,21 @@ type MixParamId = (typeof mixParamOptions)[number]['id']
 const selectedMixParam = ref<MixParamId>('position')
 const isTrackPositionMode = computed(() => selectedMixParam.value === 'position')
 const isGainParamMode = computed(() => selectedMixParam.value === 'gain')
+const isVolumeParamMode = computed(() => selectedMixParam.value === 'volume')
 const isEnvelopeParamMode = computed(() => !isTrackPositionMode.value)
+const volumeMuteSelectionMode = ref(false)
+const envelopeHintKey = computed(() => {
+  if (isVolumeParamMode.value && volumeMuteSelectionMode.value) {
+    return 'mixtape.segmentMuteHint'
+  }
+  return 'mixtape.envelopeEditHint'
+})
+
+watch(selectedMixParam, (nextParam) => {
+  if (nextParam !== 'volume') {
+    volumeMuteSelectionMode.value = false
+  }
+})
 
 const handleLaneTrackMouseDown = (item: TimelineTrackLayout, event: MouseEvent) => {
   if (!isTrackPositionMode.value) return
@@ -340,10 +354,16 @@ const handleAutoGainSelectQuietestReferenceClick = async () => {
   await handleAutoGainSelectQuietestReference()
 }
 
+const handleToggleVolumeMuteSelectionMode = () => {
+  if (!isVolumeParamMode.value) return
+  volumeMuteSelectionMode.value = !volumeMuteSelectionMode.value
+}
+
 const envelopeEditable = computed(() => isEnvelopeParamMode.value)
 const {
   resolveActiveEnvelopePolyline,
   resolveActiveEnvelopePointDots,
+  resolveVolumeMuteSegmentMasks,
   handleEnvelopePointMouseDown,
   handleEnvelopeStageMouseDown,
   handleEnvelopePointDoubleClick,
@@ -356,6 +376,7 @@ const {
   resolveTrackFirstBeatSeconds,
   resolveActiveParam: () =>
     isEnvelopeParamMode.value ? (selectedMixParam.value as MixtapeEnvelopeParamId) : null,
+  isVolumeMuteSelectionMode: () => isVolumeParamMode.value && volumeMuteSelectionMode.value,
   isEditable: () => envelopeEditable.value
 })
 
@@ -393,14 +414,30 @@ onBeforeUnmount(() => {
               {{ t(item.labelKey) }}
             </button>
           </div>
-          <div v-if="selectedMixParam === 'gain'" class="mixtape-param-bar__actions">
+          <div v-if="isEnvelopeParamMode" class="mixtape-param-bar__hint">
+            {{ t(envelopeHintKey) }}
+          </div>
+          <div
+            v-if="selectedMixParam === 'gain' || selectedMixParam === 'volume'"
+            class="mixtape-param-bar__actions"
+          >
             <button
+              v-if="selectedMixParam === 'gain'"
               class="button mixtape-param-bar__action-btn"
               type="button"
               :disabled="!canStartAutoGain"
               @click="handleOpenAutoGainDialog"
             >
               {{ t('mixtape.autoGainAction') }}
+            </button>
+            <button
+              v-if="selectedMixParam === 'volume'"
+              class="button mixtape-param-bar__action-btn"
+              :class="{ 'is-active': volumeMuteSelectionMode }"
+              type="button"
+              @click="handleToggleVolumeMuteSelectionMode"
+            >
+              {{ t('mixtape.segmentMuteAction') }}
             </button>
           </div>
         </div>
@@ -533,12 +570,27 @@ onBeforeUnmount(() => {
                                 :points="resolveActiveEnvelopePolyline(item)"
                               ></polyline>
                             </svg>
+                            <div class="lane-track__mute-segments">
+                              <div
+                                v-for="segment in resolveVolumeMuteSegmentMasks(item)"
+                                :key="`mute-${item.track.id}-${segment.key}`"
+                                class="lane-track__mute-segment"
+                                :style="{
+                                  left: `${segment.left}%`,
+                                  width: `${segment.width}%`
+                                }"
+                              ></div>
+                            </div>
                             <div
                               v-if="isEnvelopeParamMode"
                               class="lane-track__envelope-points"
+                              :class="{
+                                'is-segment-mute-mode': isVolumeParamMode && volumeMuteSelectionMode
+                              }"
                               @mousedown.stop.prevent="handleEnvelopeStageMouseDown(item, $event)"
                             >
                               <button
+                                v-if="!(isVolumeParamMode && volumeMuteSelectionMode)"
                                 v-for="point in resolveActiveEnvelopePointDots(item)"
                                 :key="`point-${item.track.id}-${point.index}`"
                                 class="lane-track__envelope-point"

@@ -2,6 +2,8 @@ import type { MixtapeEnvelopeParamId, MixtapeGainPoint } from '@renderer/composa
 
 const MIN_VALID_GAIN = 0.0001
 const MAX_GAIN_DEFAULT = 16
+const ENVELOPE_SAME_SEC_EPSILON = 0.0001
+const ENVELOPE_MAX_POINTS_PER_SEC = 2
 
 export const MIXTAPE_GAIN_KNOB_MIN_DB = -26
 export const MIXTAPE_GAIN_KNOB_MAX_DB = 12
@@ -122,32 +124,44 @@ export const normalizeMixEnvelopePoints = (
     if (typeof durationSec !== 'number') return []
     return buildFlatMixEnvelope(param, durationSec, config.defaultGain)
   }
-  points.sort((a, b) => a!.sec - b!.sec)
-  const unique: MixtapeGainPoint[] = []
-  for (const point of points as MixtapeGainPoint[]) {
-    const last = unique[unique.length - 1]
-    if (!last || Math.abs(last.sec - point.sec) > 0.0001) {
-      unique.push(point)
-    } else {
-      last.gain = point.gain
-    }
-  }
+  const sorted = (points as MixtapeGainPoint[]).sort((a, b) => a.sec - b.sec)
   const safeDuration = Math.max(0, Number(durationSec) || 0)
-  if (!unique.length) return buildFlatMixEnvelope(param, safeDuration, config.defaultGain)
-  if (unique[0].sec > 0.0001) {
-    unique.unshift({ sec: 0, gain: unique[0].gain })
+  if (!sorted.length) return buildFlatMixEnvelope(param, safeDuration, config.defaultGain)
+  if (sorted[0].sec > 0.0001) {
+    sorted.unshift({ sec: 0, gain: sorted[0].gain })
   } else {
-    unique[0].sec = 0
+    sorted[0].sec = 0
   }
   if (safeDuration > 0) {
-    const last = unique[unique.length - 1]
+    const last = sorted[sorted.length - 1]
     if (!last || safeDuration - last.sec > 0.0001) {
-      unique.push({ sec: safeDuration, gain: last ? last.gain : config.defaultGain })
+      sorted.push({ sec: safeDuration, gain: last ? last.gain : config.defaultGain })
     } else {
       last.sec = safeDuration
     }
   }
-  return unique
+  // 同一时间点最多保留两个点：第一点表示跳变前，第二点表示跳变后。
+  const limited: MixtapeGainPoint[] = []
+  let bucketStartIndex = -1
+  let bucketSec = Number.NaN
+  let bucketCount = 0
+  for (const point of sorted) {
+    if (!bucketCount || Math.abs(point.sec - bucketSec) > ENVELOPE_SAME_SEC_EPSILON) {
+      limited.push(point)
+      bucketStartIndex = limited.length - 1
+      bucketSec = point.sec
+      bucketCount = 1
+      continue
+    }
+    bucketCount += 1
+    if (bucketCount <= ENVELOPE_MAX_POINTS_PER_SEC) {
+      limited.push(point)
+      continue
+    }
+    const replaceIndex = bucketStartIndex + ENVELOPE_MAX_POINTS_PER_SEC - 1
+    limited[replaceIndex] = point
+  }
+  return limited
 }
 
 export const normalizeGainEnvelopePoints = (
