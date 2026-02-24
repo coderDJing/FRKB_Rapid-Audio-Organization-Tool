@@ -30,7 +30,7 @@ type ApplyTransportSyncParams = {
   nodes: TransportSyncNode[]
   timelineSec: number
   masterTrackId: string
-  audioCtx: AudioContext | null
+  audioCtx: BaseAudioContext | null
   collectDiagnostics?: boolean
 }
 
@@ -138,7 +138,12 @@ const resolveTransientLagDiagnostics = (params: {
   if (!masterBuffer || !targetBuffer) return null
   const masterRate = Number(masterBuffer.sampleRate)
   const targetRate = Number(targetBuffer.sampleRate)
-  if (!Number.isFinite(masterRate) || !Number.isFinite(targetRate) || masterRate <= 0 || targetRate <= 0) {
+  if (
+    !Number.isFinite(masterRate) ||
+    !Number.isFinite(targetRate) ||
+    masterRate <= 0 ||
+    targetRate <= 0
+  ) {
     return null
   }
   if (Math.abs(masterRate - targetRate) > 1) return null
@@ -197,7 +202,9 @@ const resolveTransientLagDiagnostics = (params: {
   }
 }
 
-export const applyMixxxTransportSync = (params: ApplyTransportSyncParams): ApplyTransportSyncResult => {
+export const applyMixxxTransportSync = (
+  params: ApplyTransportSyncParams
+): ApplyTransportSyncResult => {
   const { nodes, timelineSec, audioCtx } = params
   const collectDiagnostics = Boolean(params.collectDiagnostics)
   if (!audioCtx || audioCtx.state === 'closed') {
@@ -252,10 +259,9 @@ export const applyMixxxTransportSync = (params: ApplyTransportSyncParams): Apply
     const safeOriginSyncAnchorSec = Number.isFinite(originSyncAnchorSec) ? originSyncAnchorSec : 0
     const baseRate = clampNumber(entry.tempoRatio, 0.25, 4)
     const currentRate = clampNumber(Number(node.source.playbackRate.value) || 1, 0.25, 4)
-    let runtimeSyncAnchorSec =
-      Number.isFinite(Number(node.runtimeSyncAnchorSec))
-        ? Number(node.runtimeSyncAnchorSec)
-        : safeOriginSyncAnchorSec
+    let runtimeSyncAnchorSec = Number.isFinite(Number(node.runtimeSyncAnchorSec))
+      ? Number(node.runtimeSyncAnchorSec)
+      : safeOriginSyncAnchorSec
     if (isMasterNode) {
       runtimeSyncAnchorSec = safeOriginSyncAnchorSec
       node.phaseAnchorLocked = true
@@ -297,8 +303,8 @@ export const applyMixxxTransportSync = (params: ApplyTransportSyncParams): Apply
           masterAnchorSec,
           timelineSec,
           phaseLockStrength: 0.16,
-            maxPhasePull: 0.05
-          })
+          maxPhasePull: 0.05
+        })
       }
       postPhaseErrorSec = postSyncDiagnostics.phaseErrorSec
       nextRate = postSyncDiagnostics.rate
@@ -317,7 +323,12 @@ export const applyMixxxTransportSync = (params: ApplyTransportSyncParams): Apply
     let transientLagMs: number | null = null
     let transientCorr: number | null = null
     let transientWindowMs: number | null = null
-    if (!isMasterNode && collectDiagnostics && masterEstimatedSourceSec !== null && estimatedSourceSec !== null) {
+    if (
+      !isMasterNode &&
+      collectDiagnostics &&
+      masterEstimatedSourceSec !== null &&
+      estimatedSourceSec !== null
+    ) {
       const transientDiagnostics = resolveTransientLagDiagnostics({
         masterNode,
         targetNode: node,

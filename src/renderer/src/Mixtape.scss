@@ -464,6 +464,18 @@
   background: rgba(8, 8, 12, 0.85);
 }
 
+.mixtape-output-mask {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 27;
+  pointer-events: auto;
+  cursor: progress;
+  background: rgba(8, 8, 12, 0.88);
+}
+
 .mixtape-auto-gain-dialog {
   position: absolute;
   inset: 0;

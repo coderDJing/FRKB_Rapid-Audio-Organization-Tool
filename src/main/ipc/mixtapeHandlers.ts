@@ -29,6 +29,11 @@ import { queueMixtapeRawWaveforms } from '../services/mixtapeRawWaveformQueue'
 import { queueMixtapeWaveformHires } from '../services/mixtapeWaveformHiresQueue'
 import { cleanupMixtapeWaveformCache } from '../services/mixtapeWaveformMaintenance'
 import { resolveMissingMixtapeFilePath } from '../recycleBinService'
+import {
+  runMixtapeOutput,
+  type MixtapeOutputInput,
+  type MixtapeOutputProgressPayload
+} from '../services/mixtapeOutput'
 
 const resolveKeyAnalysisWorkerPath = () => path.join(__dirname, 'workers', 'keyAnalysisWorker.js')
 
@@ -466,6 +471,43 @@ export function registerMixtapeHandlers() {
         results: [],
         unresolved: input,
         unresolvedDetails: input.map((filePath) => ({ filePath, reason: 'invoke failed' }))
+      }
+    }
+  })
+
+  ipcMain.handle('mixtape:output', async (event, payload?: MixtapeOutputInput) => {
+    const sendProgress = (progress: MixtapeOutputProgressPayload) => {
+      try {
+        event.sender.send('mixtape-output:progress', progress)
+      } catch {}
+    }
+    try {
+      const result = await runMixtapeOutput({
+        payload: payload || {},
+        onProgress: sendProgress
+      })
+      sendProgress({
+        stageKey: 'mixtape.outputProgressFinished',
+        done: 100,
+        total: 100,
+        percent: 100
+      })
+      return {
+        ok: true,
+        ...result
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || '导出失败')
+      sendProgress({
+        stageKey: 'mixtape.outputProgressFailed',
+        done: 100,
+        total: 100,
+        percent: 100
+      })
+      log.error('[mixtape-output] export failed', { message, error })
+      return {
+        ok: false,
+        error: message
       }
     }
   })

@@ -53,12 +53,10 @@ const handlePickOutputPath = async () => {
 }
 
 const confirm = () => {
-  closeWithAnimation(() => {
-    emit('confirm', {
-      outputPath: draftPath.value,
-      outputFormat: draftFormat.value,
-      outputFilename: draftFilename.value
-    })
+  emit('confirm', {
+    outputPath: draftPath.value,
+    outputFormat: draftFormat.value,
+    outputFilename: draftFilename.value
   })
 }
 

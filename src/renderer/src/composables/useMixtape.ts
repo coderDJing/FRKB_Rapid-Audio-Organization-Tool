@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
@@ -32,6 +32,11 @@ export const useMixtape = () => {
   const outputFormat = ref<'wav' | 'mp3'>('wav')
   const outputFilename = ref(buildRecFilename())
   const outputDialogVisible = ref(false)
+  const outputRunning = ref(false)
+  const outputProgressKey = ref('mixtape.outputProgressPreparing')
+  const outputProgressPercent = ref(0)
+  const outputProgressDone = ref(0)
+  const outputProgressTotal = ref(100)
   const trackContextMenuVisible = ref(false)
   const trackContextMenuX = ref(0)
   const trackContextMenuY = ref(0)
@@ -87,6 +92,7 @@ export const useMixtape = () => {
     handleTransportStop,
     handleRulerSeek,
     transportError,
+    renderMixtapeOutputWav,
     timelineScrollWrapRef,
     isTimelinePanning,
     handleTimelinePanStart,
@@ -138,6 +144,17 @@ export const useMixtape = () => {
   })
 
   const trackMenuMasterTempoChecked = computed(() => trackContextTrack.value?.masterTempo !== false)
+  const outputProgressText = computed(() => {
+    const stageKey = outputProgressKey.value || 'mixtape.outputProgressPreparing'
+    const stageLabel = t(stageKey as any)
+    const percent = Math.max(0, Math.min(100, Number(outputProgressPercent.value) || 0))
+    const done = Math.max(0, Number(outputProgressDone.value) || 0)
+    const total = Math.max(0, Number(outputProgressTotal.value) || 0)
+    if (total > 0 && done <= total) {
+      return `${stageLabel} ${done}/${total} (${percent}%)`
+    }
+    return `${stageLabel} (${percent}%)`
+  })
 
   const formatTrackKey = (value?: string) => {
     const raw = typeof value === 'string' ? value.trim() : ''
@@ -811,7 +828,12 @@ export const useMixtape = () => {
       return
     }
     if (isEditableEventTarget(event.target)) return
-    if (beatAlignDialogVisible.value || outputDialogVisible.value || autoGainDialogVisible.value)
+    if (
+      beatAlignDialogVisible.value ||
+      outputDialogVisible.value ||
+      outputRunning.value ||
+      autoGainDialogVisible.value
+    )
       return
 
     event.preventDefault()
@@ -826,7 +848,132 @@ export const useMixtape = () => {
     outputDialogVisible.value = true
   }
 
-  const handleOutputDialogConfirm = (payload: {
+  const applyOutputProgressPayload = (payload: any) => {
+    if (!payload || typeof payload !== 'object') return
+    const stageKey =
+      typeof payload?.stageKey === 'string' && payload.stageKey.trim()
+        ? payload.stageKey.trim()
+        : ''
+    if (stageKey) {
+      outputProgressKey.value = stageKey
+    }
+    const done = Number(payload?.done)
+    const total = Number(payload?.total)
+    const percent = Number(payload?.percent)
+    if (Number.isFinite(done)) {
+      outputProgressDone.value = Math.max(0, Math.round(done))
+    }
+    if (Number.isFinite(total)) {
+      outputProgressTotal.value = Math.max(0, Math.round(total))
+    }
+    if (Number.isFinite(percent)) {
+      outputProgressPercent.value = Math.max(0, Math.min(100, Math.round(percent)))
+    } else if (outputProgressTotal.value > 0) {
+      outputProgressPercent.value = Math.max(
+        0,
+        Math.min(
+          100,
+          Math.round((outputProgressDone.value / Math.max(1, outputProgressTotal.value)) * 100)
+        )
+      )
+    }
+  }
+
+  const runMixtapeOutput = async () => {
+    if (outputRunning.value) return
+    const normalizedOutputPath = outputPath.value.trim()
+    const normalizedFilename = outputFilename.value.trim()
+    if (!normalizedOutputPath) {
+      await confirmDialog({
+        title: t('common.error'),
+        content: [t('mixtape.outputPathRequired')],
+        confirmShow: false
+      })
+      return
+    }
+    if (!normalizedFilename) {
+      await confirmDialog({
+        title: t('common.error'),
+        content: [t('mixtape.outputFilenameRequired')],
+        confirmShow: false
+      })
+      return
+    }
+    if (!tracks.value.length) {
+      await confirmDialog({
+        title: t('common.error'),
+        content: [t('mixtape.outputNoTracks')],
+        confirmShow: false
+      })
+      return
+    }
+
+    outputRunning.value = true
+    outputProgressKey.value = 'mixtape.outputProgressPreparing'
+    outputProgressDone.value = 0
+    outputProgressTotal.value = 100
+    outputProgressPercent.value = 0
+    await nextTick()
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve())
+    })
+
+    const payload = {
+      outputPath: normalizedOutputPath,
+      outputFormat: outputFormat.value,
+      outputFilename: normalizedFilename
+    }
+
+    try {
+      const rendered = await renderMixtapeOutputWav({
+        onProgress: applyOutputProgressPayload
+      })
+      const result = await window.electron.ipcRenderer.invoke('mixtape:output', {
+        ...payload,
+        wavBytes: rendered.wavBytes,
+        durationSec: rendered.durationSec,
+        sampleRate: rendered.sampleRate,
+        channels: rendered.channels
+      })
+      if (!result?.ok) {
+        throw new Error(result?.error || t('common.unknownError'))
+      }
+      applyOutputProgressPayload({
+        stageKey: 'mixtape.outputProgressFinished',
+        done: 100,
+        total: 100,
+        percent: 100
+      })
+      outputRunning.value = false
+      await confirmDialog({
+        title: t('common.finished'),
+        content: [t('mixtape.outputFinishedHint', { path: String(result?.outputPath || '') })],
+        confirmShow: false,
+        textAlign: 'left',
+        innerWidth: 500
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || t('common.error'))
+      applyOutputProgressPayload({
+        stageKey: 'mixtape.outputProgressFailed',
+        done: 100,
+        total: 100,
+        percent: 100
+      })
+      outputRunning.value = false
+      await confirmDialog({
+        title: t('common.error'),
+        content: [t('mixtape.outputFailedHint', { reason: message })],
+        confirmShow: false,
+        textAlign: 'left',
+        innerWidth: 500
+      })
+    } finally {
+      outputRunning.value = false
+    }
+  }
+
+  const handleOutputDialogConfirm = async (payload: {
     outputPath: string
     outputFormat: 'wav' | 'mp3'
     outputFilename: string
@@ -835,6 +982,7 @@ export const useMixtape = () => {
     outputFormat.value = payload.outputFormat
     outputFilename.value = payload.outputFilename
     outputDialogVisible.value = false
+    await runMixtapeOutput()
   }
 
   const handleOutputDialogCancel = () => {
@@ -922,6 +1070,10 @@ export const useMixtape = () => {
     loadMixtapeItems()
   }
 
+  const handleMixtapeOutputProgress = (_e: unknown, payload: any) => {
+    applyOutputProgressPayload(payload)
+  }
+
   const handleTitleOpenDialog = (key: string) => {
     if (!key) return
     if (key === 'mixtape.menuOutput') {
@@ -958,6 +1110,7 @@ export const useMixtape = () => {
     } catch {}
     window.electron.ipcRenderer.on('mixtape-open', handleOpen)
     window.electron.ipcRenderer.on('mixtape-bpm-batch-ready', handleBpmBatchReady)
+    window.electron.ipcRenderer.on('mixtape-output:progress', handleMixtapeOutputProgress)
     window.electron.ipcRenderer.on('mixtapeWindow-max', (_e, next: boolean) => {
       runtime.isWindowMaximized = !!next
     })
@@ -972,6 +1125,12 @@ export const useMixtape = () => {
     } catch {}
     try {
       window.electron.ipcRenderer.removeListener('mixtape-bpm-batch-ready', handleBpmBatchReady)
+    } catch {}
+    try {
+      window.electron.ipcRenderer.removeListener(
+        'mixtape-output:progress',
+        handleMixtapeOutputProgress
+      )
     } catch {}
     try {
       window.electron.ipcRenderer.removeAllListeners('mixtapeWindow-max')
@@ -1076,6 +1235,9 @@ export const useMixtape = () => {
     outputPath,
     outputFormat,
     outputFilename,
+    outputRunning,
+    outputProgressText,
+    outputProgressPercent,
     handleOutputDialogConfirm,
     handleOutputDialogCancel,
     autoGainDialogVisible,

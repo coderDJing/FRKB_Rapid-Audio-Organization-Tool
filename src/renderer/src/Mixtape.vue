@@ -104,6 +104,9 @@ const {
   outputPath,
   outputFormat,
   outputFilename,
+  outputRunning,
+  outputProgressText,
+  outputProgressPercent,
   handleOutputDialogConfirm,
   handleOutputDialogCancel,
   autoGainDialogVisible,
@@ -899,6 +902,15 @@ onBeforeUnmount(() => {
       <div class="bpm-loading-card">
         <div class="bpm-loading-title">{{ t('mixtape.autoGainRunning') }}</div>
         <div class="bpm-loading-sub">{{ autoGainProgressText }}</div>
+      </div>
+    </div>
+    <div v-if="outputRunning" class="mixtape-output-mask">
+      <div class="bpm-loading-card">
+        <div class="bpm-loading-title">{{ t('mixtape.outputRunning') }}</div>
+        <div class="bpm-loading-sub">{{ outputProgressText }}</div>
+        <div class="preload-bar">
+          <div class="preload-bar__fill" :style="{ width: `${outputProgressPercent}%` }"></div>
+        </div>
       </div>
     </div>
     <div v-if="autoGainDialogVisible" class="mixtape-auto-gain-dialog">
