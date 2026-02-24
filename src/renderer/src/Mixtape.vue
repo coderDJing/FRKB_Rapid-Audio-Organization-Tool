@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import titleComponent from '@renderer/components/titleComponent.vue'
 import MixtapeOutputDialog from '@renderer/components/mixtapeOutputDialog.vue'
@@ -24,6 +24,8 @@ import ascendingOrderAsset from '@renderer/assets/ascending-order.svg?asset'
 import descendingOrderAsset from '@renderer/assets/descending-order.svg?asset'
 import type {
   MixtapeEnvelopeParamId,
+  MixtapeMuteSegment,
+  MixtapeTrack,
   TimelineTrackLayout
 } from '@renderer/composables/mixtape/types'
 import type { ISongInfo, ISongsAreaColumn } from '../../types/globals'
@@ -145,6 +147,14 @@ const mixParamOptions = [
 ] as const
 
 type MixParamId = (typeof mixParamOptions)[number]['id']
+type TrackTimingUndoSnapshot = {
+  trackId: string
+  startSec: number
+  bpm?: number
+  originalBpm?: number
+  masterTempo: boolean
+  volumeMuteSegments: MixtapeMuteSegment[]
+}
 
 const selectedMixParam = ref<MixParamId>('position')
 const isTrackPositionMode = computed(() => selectedMixParam.value === 'position')
@@ -165,9 +175,129 @@ watch(selectedMixParam, (nextParam) => {
   }
 })
 
+const normalizeTrackTimingSnapshotNumber = (value: unknown) => {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? Number(numeric) : undefined
+}
+
+const buildTrackTimingUndoSnapshot = (
+  track: MixtapeTrack,
+  fallbackStartSec: number
+): TrackTimingUndoSnapshot => {
+  const trackStartSec = normalizeTrackTimingSnapshotNumber(track.startSec)
+  const safeFallbackStartSec = Math.max(
+    0,
+    normalizeTrackTimingSnapshotNumber(fallbackStartSec) || 0
+  )
+  const startSec =
+    typeof trackStartSec === 'number' && trackStartSec >= 0 ? trackStartSec : safeFallbackStartSec
+  const bpm = normalizeTrackTimingSnapshotNumber(track.bpm)
+  const originalBpm = normalizeTrackTimingSnapshotNumber(track.originalBpm)
+  const volumeMuteSegments = Array.isArray(track.volumeMuteSegments)
+    ? track.volumeMuteSegments.map((segment) => ({
+        startSec: Number(segment.startSec),
+        endSec: Number(segment.endSec)
+      }))
+    : []
+  return {
+    trackId: track.id,
+    startSec: Number(startSec.toFixed(4)),
+    bpm: typeof bpm === 'number' && bpm > 0 ? Number(bpm.toFixed(6)) : undefined,
+    originalBpm:
+      typeof originalBpm === 'number' && originalBpm > 0
+        ? Number(originalBpm.toFixed(6))
+        : undefined,
+    masterTempo: track.masterTempo !== false,
+    volumeMuteSegments
+  }
+}
+
+const isTrackTimingSnapshotSame = (
+  left: TrackTimingUndoSnapshot | null,
+  right: TrackTimingUndoSnapshot | null
+) => JSON.stringify(left) === JSON.stringify(right)
+
+const restoreTrackTimingUndoSnapshot = (snapshot: TrackTimingUndoSnapshot) => {
+  const targetIndex = tracks.value.findIndex((track) => track.id === snapshot.trackId)
+  if (targetIndex < 0) return false
+  const currentTrack = tracks.value[targetIndex]
+  if (!currentTrack) return false
+  const nextTrack: MixtapeTrack = {
+    ...currentTrack,
+    startSec: snapshot.startSec,
+    bpm: snapshot.bpm,
+    originalBpm: snapshot.originalBpm,
+    masterTempo: snapshot.masterTempo,
+    volumeMuteSegments: snapshot.volumeMuteSegments.map((segment) => ({
+      startSec: Number(segment.startSec),
+      endSec: Number(segment.endSec)
+    }))
+  }
+  const nextTracks = [...tracks.value]
+  nextTracks.splice(targetIndex, 1, nextTrack)
+  tracks.value = nextTracks
+  if (window?.electron?.ipcRenderer?.invoke) {
+    void window.electron.ipcRenderer
+      .invoke('mixtape:update-track-start-sec', {
+        entries: [
+          {
+            itemId: snapshot.trackId,
+            startSec: Number(snapshot.startSec),
+            bpm: snapshot.bpm,
+            originalBpm: snapshot.originalBpm,
+            masterTempo: snapshot.masterTempo
+          }
+        ]
+      })
+      .catch((error) => {
+        console.error('[mixtape] undo track timing failed', {
+          itemId: snapshot.trackId,
+          error
+        })
+      })
+    void window.electron.ipcRenderer
+      .invoke('mixtape:update-volume-mute-segments', {
+        entries: [
+          {
+            itemId: snapshot.trackId,
+            segments: snapshot.volumeMuteSegments.map((segment) => ({
+              startSec: Number(segment.startSec),
+              endSec: Number(segment.endSec)
+            }))
+          }
+        ]
+      })
+      .catch((error) => {
+        console.error('[mixtape] undo volume mute segments failed', {
+          itemId: snapshot.trackId,
+          error
+        })
+      })
+  }
+  return true
+}
+
 const handleLaneTrackMouseDown = (item: TimelineTrackLayout, event: MouseEvent) => {
   if (!isTrackPositionMode.value) return
+  const targetTrackId = item?.track?.id || ''
+  const fallbackStartSec = Number(item?.startSec) || 0
+  const currentTrack = tracks.value.find((track) => track.id === targetTrackId) || null
+  const beforeSnapshot = currentTrack
+    ? buildTrackTimingUndoSnapshot(currentTrack, fallbackStartSec)
+    : null
   handleTrackDragStart(item, event)
+  if (!beforeSnapshot) return
+  window.addEventListener(
+    'mouseup',
+    () => {
+      const latestTrack = tracks.value.find((track) => track.id === targetTrackId) || null
+      if (!latestTrack) return
+      const afterSnapshot = buildTrackTimingUndoSnapshot(latestTrack, fallbackStartSec)
+      if (isTrackTimingSnapshotSame(beforeSnapshot, afterSnapshot)) return
+      pushExternalUndoStep(() => restoreTrackTimingUndoSnapshot(beforeSnapshot))
+    },
+    { once: true }
+  )
 }
 const runtime = useRuntimeStore()
 useWaveformPreviewPlayer()
@@ -368,6 +498,9 @@ const {
   handleEnvelopeStageMouseDown,
   handleEnvelopePointDoubleClick,
   handleEnvelopePointContextMenu,
+  canUndoMixParam,
+  pushExternalUndoStep,
+  undoLastMixParamChange,
   cleanupGainEnvelopeEditor
 } = createMixtapeGainEnvelopeEditor({
   tracks,
@@ -380,7 +513,40 @@ const {
   isEditable: () => envelopeEditable.value
 })
 
+const isEditableEventTarget = (target: EventTarget | null) => {
+  const element = target as HTMLElement | null
+  if (!element) return false
+  if (element.isContentEditable) return true
+  const tag = element.tagName?.toLowerCase() || ''
+  return tag === 'input' || tag === 'textarea' || tag === 'select'
+}
+
+const handleUndoMixParam = () => {
+  undoLastMixParamChange()
+}
+
+const handleUndoKeydown = (event: KeyboardEvent) => {
+  if (event.defaultPrevented) return
+  if (event.isComposing || event.repeat) return
+  if (isEditableEventTarget(event.target)) return
+  if (beatAlignDialogVisible.value || outputDialogVisible.value || autoGainDialogVisible.value)
+    return
+  const key = String(event.key || '').toLowerCase()
+  const isUndoShortcut = (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey
+  if (!isUndoShortcut || key !== 'z') return
+  if (!canUndoMixParam.value) return
+  event.preventDefault()
+  handleUndoMixParam()
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleUndoKeydown)
+})
+
 onBeforeUnmount(() => {
+  try {
+    window.removeEventListener('keydown', handleUndoKeydown)
+  } catch {}
   cleanupGainEnvelopeEditor()
 })
 </script>
@@ -417,10 +583,20 @@ onBeforeUnmount(() => {
           <div v-if="isEnvelopeParamMode" class="mixtape-param-bar__hint">
             {{ t(envelopeHintKey) }}
           </div>
-          <div
-            v-if="selectedMixParam === 'gain' || selectedMixParam === 'volume'"
-            class="mixtape-param-bar__actions"
-          >
+          <div class="mixtape-param-bar__actions">
+            <button
+              class="button mixtape-param-bar__action-btn mixtape-param-bar__action-btn--icon"
+              type="button"
+              :disabled="!canUndoMixParam"
+              :title="t('mixtape.undoActionHint')"
+              :aria-label="t('mixtape.undoActionHint')"
+              @click="handleUndoMixParam"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <path d="M6 3.5 2.5 7l3.5 3.5"></path>
+                <path d="M3 7h5.5a3.5 3.5 0 1 1 0 7H7.5"></path>
+              </svg>
+            </button>
             <button
               v-if="selectedMixParam === 'gain'"
               class="button mixtape-param-bar__action-btn"

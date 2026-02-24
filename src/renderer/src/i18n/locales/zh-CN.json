@@ -691,6 +691,8 @@
     "mixParamVolume": "音量",
     "envelopeEditHint": "单击加点，拖拽调节，双击删除点",
     "segmentMuteAction": "段落静音",
+    "undoAction": "撤销",
+    "undoActionHint": "撤销上一步修改（Ctrl+Z）",
     "segmentMuteHint": "拖拽选择段落切换静音，重复选择可取消静音",
     "autoGainAction": "自动增益",
     "autoGainDialogTitle": "自动增益",

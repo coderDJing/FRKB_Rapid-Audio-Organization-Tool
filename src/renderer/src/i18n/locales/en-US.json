@@ -687,6 +687,8 @@
     "mixParamVolume": "Volume",
     "envelopeEditHint": "Click to add, drag to adjust, double-click to delete",
     "segmentMuteAction": "Segment Mute",
+    "undoAction": "Undo",
+    "undoActionHint": "Undo last edit (Ctrl+Z)",
     "segmentMuteHint": "Drag over segments to toggle mute. Dragging again toggles them off",
     "autoGainAction": "Auto Gain",
     "autoGainDialogTitle": "Auto Gain",

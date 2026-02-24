@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { Ref } from 'vue'
 import {
   MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM,
@@ -51,6 +51,29 @@ type VolumeMuteSelectionState = {
   lastSec: number
 }
 
+type MixParamUndoEntry =
+  | {
+      type: 'envelope'
+      trackId: string
+      param: MixtapeEnvelopeParamId
+      points: MixtapeGainPoint[]
+    }
+  | {
+      type: 'volumeMute'
+      trackId: string
+      segments: MixtapeMuteSegment[]
+    }
+  | {
+      type: 'external'
+      undo: () => boolean
+    }
+
+type EnvelopeUndoSeed = {
+  trackId: string
+  param: MixtapeEnvelopeParamId
+  points: MixtapeGainPoint[]
+}
+
 type CreateMixtapeGainEnvelopeEditorParams = {
   tracks: Ref<MixtapeTrack[]>
   renderZoomLevel: Ref<number>
@@ -67,6 +90,7 @@ const GAIN_ENVELOPE_LOCKED_SEC_EPSILON = 0.0001
 const GAIN_ENVELOPE_SAME_SEC_EPSILON = 0.0001
 const GAIN_ENVELOPE_MAX_POINTS_PER_SEC = 2
 const VOLUME_MUTE_SEGMENT_EPSILON = 0.0001
+const MIX_PARAM_UNDO_STACK_LIMIT = 100
 
 export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelopeEditorParams) => {
   const pendingMixEnvelopePersist = new Map<
@@ -80,6 +104,10 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
   const pendingVolumeMutePersist = new Map<string, Array<{ startSec: number; endSec: number }>>()
   const envelopeDragState = ref<EnvelopeDragState | null>(null)
   const volumeMuteSelectionState = ref<VolumeMuteSelectionState | null>(null)
+  const undoStack = ref<MixParamUndoEntry[]>([])
+  const canUndoMixParam = computed(() => undoStack.value.length > 0)
+  const envelopeUndoSeed = ref<EnvelopeUndoSeed | null>(null)
+  let isApplyingUndo = false
   let mixEnvelopePersistTimer: ReturnType<typeof setTimeout> | null = null
   let volumeMutePersistTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -133,6 +161,73 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
       durationSec,
       segments
     }
+  }
+
+  const cloneGainPoints = (points: MixtapeGainPoint[]) =>
+    points.map((point) => ({
+      sec: Number(point.sec),
+      gain: Number(point.gain)
+    }))
+
+  const cloneMuteSegments = (segments: MixtapeMuteSegment[]) =>
+    segments.map((segment) => ({
+      startSec: Number(segment.startSec),
+      endSec: Number(segment.endSec)
+    }))
+
+  const pushUndoEntry = (entry: MixParamUndoEntry) => {
+    if (isApplyingUndo) return
+    undoStack.value.push(entry)
+    if (undoStack.value.length > MIX_PARAM_UNDO_STACK_LIMIT) {
+      undoStack.value.splice(0, undoStack.value.length - MIX_PARAM_UNDO_STACK_LIMIT)
+    }
+  }
+
+  const pushExternalUndoStep = (undo: (() => boolean) | null | undefined) => {
+    if (typeof undo !== 'function') return
+    pushUndoEntry({
+      type: 'external',
+      undo
+    })
+  }
+
+  const beginEnvelopeUndoSeed = (param: MixtapeEnvelopeParamId, trackId: string) => {
+    if (isApplyingUndo || envelopeUndoSeed.value) return
+    const { track, points } = resolveTrackEnvelopeState(trackId, param)
+    if (!track || points.length < 2) return
+    envelopeUndoSeed.value = {
+      trackId: track.id,
+      param,
+      points: cloneGainPoints(points)
+    }
+  }
+
+  const commitEnvelopeUndoSeed = () => {
+    const seed = envelopeUndoSeed.value
+    envelopeUndoSeed.value = null
+    if (!seed || isApplyingUndo) return
+    const { track, points } = resolveTrackEnvelopeState(seed.trackId, seed.param)
+    if (!track || points.length < 2) return
+    if (JSON.stringify(seed.points) === JSON.stringify(points)) return
+    pushUndoEntry({
+      type: 'envelope',
+      trackId: seed.trackId,
+      param: seed.param,
+      points: cloneGainPoints(seed.points)
+    })
+  }
+
+  const pushVolumeMuteUndoEntry = (trackId: string, baseSegments: MixtapeMuteSegment[]) => {
+    if (isApplyingUndo) return
+    const { track, segments } = resolveTrackVolumeMuteState(trackId)
+    if (!track) return
+    const normalizedBase = cloneMuteSegments(baseSegments)
+    if (JSON.stringify(normalizedBase) === JSON.stringify(segments)) return
+    pushUndoEntry({
+      type: 'volumeMute',
+      trackId: track.id,
+      segments: normalizedBase
+    })
   }
 
   const resolveVolumeMuteSegmentKey = (segment: MixtapeMuteSegment) =>
@@ -654,8 +749,10 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
   function handleVolumeMuteSelectionEnd() {
     const state = volumeMuteSelectionState.value
     if (!state) return
+    const baseSegments = cloneMuteSegments(state.baseSegments)
     stopVolumeMuteSelection()
     applyVolumeMuteSelectionToggle(state)
+    pushVolumeMuteUndoEntry(state.trackId, baseSegments)
     void flushPendingVolumeMutePersist()
   }
 
@@ -747,6 +844,7 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
   function handleEnvelopePointDragEnd() {
     if (!envelopeDragState.value) return
     stopEnvelopePointDrag()
+    commitEnvelopeUndoSeed()
     void flushPendingMixEnvelopePersist()
   }
 
@@ -756,6 +854,7 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
     pointIndex: number,
     stageEl: HTMLElement
   ) {
+    beginEnvelopeUndoSeed(param, trackId)
     stopEnvelopePointDrag()
     envelopeDragState.value = {
       param,
@@ -800,6 +899,7 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
       startVolumeMuteSelection(track.id, stageEl, segment)
       return
     }
+    beginEnvelopeUndoSeed(param, item.track.id)
     const { track, durationSec, points } = resolveTrackEnvelopeState(item.track.id, param)
     if (!track || !durationSec || points.length < 2) return
     const pointer = resolveEnvelopePointer(param, stageEl, event, durationSec)
@@ -964,14 +1064,81 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
   const handleEnvelopePointDoubleClick = (item: TimelineTrackLayout, pointIndex: number) => {
     const param = resolveCurrentParam()
     if (!params.isEditable() || !param) return
+    beginEnvelopeUndoSeed(param, item.track.id)
     removeTrackEnvelopePoint(param, item.track.id, pointIndex)
+    commitEnvelopeUndoSeed()
   }
 
   const handleEnvelopePointContextMenu = (_item: TimelineTrackLayout, _pointIndex: number) => {}
 
+  const restoreEnvelopeUndoEntry = (entry: Extract<MixParamUndoEntry, { type: 'envelope' }>) => {
+    const { track, durationSec, points } = resolveTrackEnvelopeState(entry.trackId, entry.param)
+    if (!track || !durationSec) return false
+    const normalized = normalizeMixEnvelopePoints(entry.param, entry.points, durationSec)
+    if (normalized.length < 2) return false
+    if (JSON.stringify(points) === JSON.stringify(normalized)) return false
+    const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[entry.param]
+    params.tracks.value = params.tracks.value.map((item) =>
+      item.id === track.id
+        ? ({
+            ...item,
+            [envelopeField]: normalized
+          } as MixtapeTrack)
+        : item
+    )
+    scheduleMixEnvelopePersist(entry.param, track.id, normalized)
+    void flushPendingMixEnvelopePersist()
+    return true
+  }
+
+  const restoreVolumeMuteUndoEntry = (
+    entry: Extract<MixParamUndoEntry, { type: 'volumeMute' }>
+  ) => {
+    const { track, durationSec, segments } = resolveTrackVolumeMuteState(entry.trackId)
+    if (!track || !durationSec) return false
+    const normalized = resolveGridAlignedVolumeMuteSegments(track, durationSec, entry.segments)
+    if (JSON.stringify(segments) === JSON.stringify(normalized)) return false
+    params.tracks.value = params.tracks.value.map((item) =>
+      item.id === track.id
+        ? ({
+            ...item,
+            volumeMuteSegments: normalized
+          } as MixtapeTrack)
+        : item
+    )
+    scheduleVolumeMuteSegmentsPersist(track.id, normalized)
+    void flushPendingVolumeMutePersist()
+    return true
+  }
+
+  const undoLastMixParamChange = () => {
+    stopEnvelopePointDrag()
+    stopVolumeMuteSelection()
+    envelopeUndoSeed.value = null
+    while (undoStack.value.length > 0) {
+      const entry = undoStack.value.pop()
+      if (!entry) break
+      isApplyingUndo = true
+      try {
+        if (entry.type === 'envelope') {
+          if (restoreEnvelopeUndoEntry(entry)) return true
+        } else if (entry.type === 'volumeMute') {
+          if (restoreVolumeMuteUndoEntry(entry)) return true
+        } else if (entry.undo()) {
+          return true
+        }
+      } finally {
+        isApplyingUndo = false
+      }
+    }
+    return false
+  }
+
   const cleanupGainEnvelopeEditor = () => {
     stopEnvelopePointDrag()
     stopVolumeMuteSelection()
+    envelopeUndoSeed.value = null
+    undoStack.value = []
     void flushPendingMixEnvelopePersist()
     void flushPendingVolumeMutePersist()
   }
@@ -984,6 +1151,9 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
     handleEnvelopeStageMouseDown,
     handleEnvelopePointDoubleClick,
     handleEnvelopePointContextMenu,
+    canUndoMixParam,
+    pushExternalUndoStep,
+    undoLastMixParamChange,
     cleanupGainEnvelopeEditor
   }
 }
