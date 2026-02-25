@@ -211,6 +211,7 @@ const TRACK_ENVELOPE_PREVIEW_STROKES: Record<MixtapeEnvelopeParamId, number> = {
   low: 1.08,
   volume: 0.95
 }
+const TRACK_ENVELOPE_PREVIEW_EDGE_INSET_PERCENT = 1.2
 
 const TIMELINE_TRACK_LANE_GAP_PX = 8
 const TIMELINE_TRACK_VERTICAL_PADDING_PX = 10
@@ -598,6 +599,20 @@ const {
   isEditable: () => envelopeEditable.value
 })
 
+const normalizeEnvelopePreviewPolyline = (points: string) =>
+  points.replace(
+    /(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/g,
+    (_matched, xText: string, yText: string) => {
+      const y = Number(yText)
+      if (!Number.isFinite(y)) return `${xText},${yText}`
+      const safeY = Math.max(
+        TRACK_ENVELOPE_PREVIEW_EDGE_INSET_PERCENT,
+        Math.min(100 - TRACK_ENVELOPE_PREVIEW_EDGE_INSET_PERCENT, y)
+      )
+      return `${xText},${safeY.toFixed(3)}`
+    }
+  )
+
 const resolveTrackEnvelopePreviewLines = (
   item: TimelineTrackLayout
 ): TrackEnvelopePreviewLine[] => {
@@ -620,7 +635,7 @@ const resolveTrackEnvelopePreviewLines = (
     if (!points) return null
     return {
       key: param,
-      points,
+      points: normalizeEnvelopePreviewPolyline(points),
       color: TRACK_ENVELOPE_PREVIEW_COLORS[param],
       strokeWidth: TRACK_ENVELOPE_PREVIEW_STROKES[param]
     }

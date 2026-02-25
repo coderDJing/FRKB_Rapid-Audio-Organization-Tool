@@ -759,6 +759,18 @@
   overflow: hidden;
 }
 
+.timeline-envelope-preview__track::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px dashed rgba(255, 255, 255, 0.4);
+  transform: translateY(-0.5px);
+  pointer-events: none;
+  z-index: 0;
+}
+
 .timeline-envelope-preview__mute-segments {
   position: absolute;
   left: 0;
@@ -798,7 +810,6 @@
 
 .timeline-envelope-preview__line--volume {
   opacity: 0.78;
-  stroke-dasharray: 4 2;
 }
 
 .timeline-overview {
