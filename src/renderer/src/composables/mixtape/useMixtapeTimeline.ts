@@ -1,4 +1,4 @@
-import { computed, markRaw, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, markRaw, ref } from 'vue'
 import type { Ref } from 'vue'
 import type { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { t } from '@renderer/utils/translate'
@@ -15,9 +15,6 @@ import {
   LANE_GAP,
   LANE_PADDING_TOP,
   MIXXX_MAX_RGB_ENERGY,
-  MIXTAPE_BASE_TRACK_LANE_HEIGHT,
-  MIXTAPE_ENVELOPE_PREVIEW_BASE_LANE_HEIGHT,
-  MIXTAPE_OVERVIEW_BASE_LANE_HEIGHT,
   MIXTAPE_SUMMARY_ZOOM,
   MIXTAPE_WAVEFORM_SUPERSAMPLE,
   MIXTAPE_WAVEFORM_Y_OFFSET,
@@ -61,6 +58,13 @@ import { createTimelineHelpersModule } from '@renderer/composables/mixtape/timel
 import { createTimelineTransportAndDragModule } from '@renderer/composables/mixtape/timelineTransportAndDrag'
 import { createTimelineWorkerBridgeModule } from '@renderer/composables/mixtape/timelineWorkerBridge'
 import { createTimelineWatchAndMountModule } from '@renderer/composables/mixtape/timelineWatchAndMount'
+import { setupTimelineVisualScaleLifecycle } from '@renderer/composables/mixtape/timelineVisualScaleLifecycle'
+import { createTimelineViewportModule } from '@renderer/composables/mixtape/timelineViewport'
+import {
+  resolveTimelineScalableBaseHeightByTrackCount,
+  TIMELINE_VISUAL_SCALE_MAX,
+  TIMELINE_VISUAL_SCALE_MIN
+} from '@renderer/composables/mixtape/timelineVisualScaleConfig'
 
 type UseMixtapeTimelineOptions = {
   tracks: Ref<MixtapeTrack[]>
@@ -93,35 +97,8 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
   const overviewRef = ref<HTMLElement | null>(null)
   const overviewWidth = ref(0)
   const isOverviewDragging = ref(false)
-  const TIMELINE_VISUAL_SCALE_MIN = 1
-  const TIMELINE_VISUAL_SCALE_MAX = 3
-  const TIMELINE_TRACK_LANE_BORDER_PX = 2
-  const TIMELINE_TRACK_LANE_GAP_PX = 8
-  const TIMELINE_TRACK_VERTICAL_PADDING_PX = 20
-  const ENVELOPE_PREVIEW_LANE_GAP_PX = 2
-  const ENVELOPE_PREVIEW_LANE_PADDING_Y_PX = 2
-  const OVERVIEW_LANE_GAP_PX = 6
-  const OVERVIEW_LANE_PADDING_Y_PX = 8
-  const TRACK_SECTION_BASE_HEIGHT =
-    LANE_COUNT * (MIXTAPE_BASE_TRACK_LANE_HEIGHT + TIMELINE_TRACK_LANE_BORDER_PX) +
-    Math.max(0, LANE_COUNT - 1) * TIMELINE_TRACK_LANE_GAP_PX +
-    TIMELINE_TRACK_VERTICAL_PADDING_PX
-  const ENVELOPE_SECTION_BASE_HEIGHT =
-    LANE_COUNT * MIXTAPE_ENVELOPE_PREVIEW_BASE_LANE_HEIGHT +
-    Math.max(0, LANE_COUNT - 1) * ENVELOPE_PREVIEW_LANE_GAP_PX +
-    ENVELOPE_PREVIEW_LANE_PADDING_Y_PX
-  const OVERVIEW_SECTION_BASE_HEIGHT =
-    LANE_COUNT * MIXTAPE_OVERVIEW_BASE_LANE_HEIGHT +
-    Math.max(0, LANE_COUNT - 1) * OVERVIEW_LANE_GAP_PX +
-    OVERVIEW_LANE_PADDING_Y_PX
-  const resolveTimelineScalableBaseHeight = () => {
-    const hasTracks = Array.isArray(tracks.value) && tracks.value.length > 0
-    const envelopeSectionHeight = hasTracks ? ENVELOPE_SECTION_BASE_HEIGHT : 0
-    return Math.max(
-      1,
-      TRACK_SECTION_BASE_HEIGHT + envelopeSectionHeight + OVERVIEW_SECTION_BASE_HEIGHT
-    )
-  }
+  const resolveTimelineScalableBaseHeight = () =>
+    resolveTimelineScalableBaseHeightByTrackCount(tracks.value.length)
   let timelineOffscreenCanvas: OffscreenCanvas | null = null
   let timelineObserver: ResizeObserver | null = null
   let timelineViewportObserver: ResizeObserver | null = null
@@ -260,56 +237,21 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
       timelineLayout.value.layout.filter((item) => item.laneIndex === laneIndex)
     )
   )
-  const overviewViewportMetrics = computed(() => {
-    const viewportWidth = Math.max(0, timelineViewportWidth.value)
-    const overviewTotalWidth = Math.max(0, overviewWidth.value)
-    const domScrollWidth = Number(timelineScrollWidth.value) || 0
-    const fallbackScrollWidth = Math.max(
-      1,
-      Number(timelineContentWidth.value) || 0,
-      Number(timelineLayout.value.totalWidth) || 0
-    )
-    const scrollTotalWidth = Math.max(1, domScrollWidth > 0 ? domScrollWidth : fallbackScrollWidth)
-    if (!overviewTotalWidth || !viewportWidth) {
-      return { left: 0, width: 0 }
-    }
-    const widthRatio = overviewTotalWidth / scrollTotalWidth
-    const rawWidth = viewportWidth * widthRatio
-    const width = Math.min(overviewTotalWidth, Math.max(0, rawWidth))
-    const maxLeft = Math.max(0, overviewTotalWidth - width)
-    const maxScrollLeft = Math.max(0, scrollTotalWidth - viewportWidth)
-    const safeScrollLeft = Math.max(
-      0,
-      Math.min(maxScrollLeft, Number(timelineScrollLeft.value) || 0)
-    )
-    const scrollRatio =
-      maxScrollLeft > 0 ? Math.max(0, Math.min(1, safeScrollLeft / maxScrollLeft)) : 0
-    const left = maxLeft * scrollRatio
-    return { left, width }
-  })
-  const overviewViewportLeft = computed(() => overviewViewportMetrics.value.left)
-  const overviewViewportWidth = computed(() => overviewViewportMetrics.value.width)
-  const overviewViewportStyle = computed(() => ({
-    left: `${overviewViewportMetrics.value.left}px`,
-    width: `${overviewViewportMetrics.value.width}px`
-  }))
-  const timelineScrollbarOptions = {
-    scrollbars: {
-      autoHide: 'leave' as const,
-      autoHideDelay: 50,
-      clickScroll: true
-    },
-    overflow: {
-      x: 'scroll',
-      y: 'scroll'
-    } as const
-  }
-
-  const preRenderPercent = computed(() => {
-    const total = preRenderState.value.total
-    const done = preRenderState.value.done
-    if (!total || total <= 0) return 0
-    return Math.max(0, Math.min(100, Math.round((done / total) * 100)))
+  const {
+    overviewViewportMetrics,
+    overviewViewportLeft,
+    overviewViewportWidth,
+    overviewViewportStyle,
+    timelineScrollbarOptions,
+    preRenderPercent
+  } = createTimelineViewportModule({
+    timelineViewportWidth,
+    overviewWidth,
+    timelineScrollWidth,
+    timelineContentWidth,
+    timelineLayout,
+    timelineScrollLeft,
+    preRenderState
   })
 
   // single-canvas renderer no longer uses per-tile DOM canvases
@@ -698,6 +640,14 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     () => overviewObserver,
     (value: ResizeObserver | null) => (overviewObserver = value)
   )
+  const timelineRootObserverRef = createBridgeRef(
+    () => timelineRootObserver,
+    (value: ResizeObserver | null) => (timelineRootObserver = value)
+  )
+  const timelineScaleRafRef = createBridgeRef(
+    () => timelineScaleRaf,
+    (value: number) => (timelineScaleRaf = value)
+  )
   const pendingFramePreRenderTasksRef = createBridgeRef(
     () => pendingFramePreRenderTasks,
     (value: TimelineRenderPayload[]) => (pendingFramePreRenderTasks = value)
@@ -770,6 +720,10 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
   const waveformLoadTimerRef = createBridgeRef(
     () => waveformLoadTimer,
     (value: ReturnType<typeof setTimeout> | null) => (waveformLoadTimer = value)
+  )
+  const waveformPreRenderTimerRef = createBridgeRef(
+    () => waveformPreRenderTimer,
+    (value: ReturnType<typeof setTimeout> | null) => (waveformPreRenderTimer = value)
   )
   const {
     drawTimelineCanvas,
@@ -929,99 +883,6 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     markTimelineInteracting
   })
 
-  const measureTimelineCurrentContentHeight = () => {
-    const root = timelineRootRef.value
-    if (!root) return 0
-    const children = Array.from(root.children) as HTMLElement[]
-    return children.reduce((sum, child) => sum + Math.max(0, Number(child.offsetHeight || 0)), 0)
-  }
-
-  const scheduleTimelineVisualScaleUpdate = () => {
-    if (typeof requestAnimationFrame === 'undefined') {
-      updateTimelineVisualScale()
-      return
-    }
-    if (timelineScaleRaf) return
-    timelineScaleRaf = requestAnimationFrame(() => {
-      timelineScaleRaf = 0
-      updateTimelineVisualScale()
-    })
-  }
-
-  const updateTimelineVisualScale = () => {
-    const root = timelineRootRef.value
-    if (!root) return
-    const scalableBaseHeight = resolveTimelineScalableBaseHeight()
-    if (!scalableBaseHeight) {
-      timelineVisualScale.value = 1
-      return
-    }
-    const currentScale = Math.max(TIMELINE_VISUAL_SCALE_MIN, Number(timelineVisualScale.value || 1))
-    const currentContentHeight = Math.max(0, measureTimelineCurrentContentHeight())
-    if (!currentContentHeight) {
-      timelineVisualScale.value = 1
-      return
-    }
-    const fixedHeight = Math.max(0, currentContentHeight - scalableBaseHeight * currentScale)
-    const availableHeight = Math.max(0, Number(root.clientHeight || 0))
-    const rawScale = (availableHeight - fixedHeight) / scalableBaseHeight
-    const nextScale = Math.max(
-      TIMELINE_VISUAL_SCALE_MIN,
-      Math.min(TIMELINE_VISUAL_SCALE_MAX, Number(rawScale.toFixed(4)))
-    )
-    if (Math.abs(nextScale - timelineVisualScale.value) < 0.001) return
-    timelineVisualScale.value = nextScale
-    scheduleTimelineDraw()
-    scheduleFullPreRender()
-    scheduleWorkerPreRender()
-    scheduleTimelineVisualScaleUpdate()
-  }
-
-  const ensureTimelineRootObserver = () => {
-    if (typeof ResizeObserver === 'undefined') return
-    if (!timelineRootObserver) {
-      timelineRootObserver = new ResizeObserver(() => {
-        scheduleTimelineVisualScaleUpdate()
-      })
-    }
-    try {
-      timelineRootObserver.disconnect()
-    } catch {}
-    const root = timelineRootRef.value
-    if (!root) return
-    try {
-      timelineRootObserver.observe(root)
-    } catch {}
-  }
-
-  watch(
-    () => timelineRootRef.value,
-    () => {
-      timelineVisualScale.value = 1
-      ensureTimelineRootObserver()
-      scheduleTimelineVisualScaleUpdate()
-    }
-  )
-
-  watch(
-    () => tracks.value.length,
-    () => {
-      scheduleTimelineVisualScaleUpdate()
-    }
-  )
-
-  watch(
-    () => transportError.value,
-    () => {
-      scheduleTimelineVisualScaleUpdate()
-    }
-  )
-
-  onMounted(() => {
-    ensureTimelineRootObserver()
-    scheduleTimelineVisualScaleUpdate()
-  })
-
   createTimelineWatchAndMountModule({
     tracks,
     isTrackDragging,
@@ -1058,62 +919,36 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     handleWaveformUpdated,
     scheduleTransportPreload
   })
-
-  onBeforeUnmount(() => {
-    cleanupTransportAndDrag()
-    try {
-      timelineObserver?.disconnect()
-    } catch {}
-    try {
-      timelineViewportObserver?.disconnect()
-    } catch {}
-    try {
-      overviewObserver?.disconnect()
-    } catch {}
-    try {
-      timelineRootObserver?.disconnect()
-    } catch {}
-    if (timelineScaleRaf) {
-      cancelAnimationFrame(timelineScaleRaf)
-      timelineScaleRaf = 0
-    }
-    setTimelineWheelTarget(null)
-    try {
-      if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
-        window.electron.ipcRenderer.removeListener(
-          'mixtape-waveform-updated',
-          handleWaveformUpdated
-        )
-      }
-    } catch {}
-    if (waveformLoadTimer) {
-      clearTimeout(waveformLoadTimer)
-      waveformLoadTimer = null
-    }
-    if (waveformPreRenderTimer) {
-      clearTimeout(waveformPreRenderTimer)
-      waveformPreRenderTimer = null
-    }
-    cancelWorkerPreRender()
-    if (waveformPreRenderRaf) {
-      cancelAnimationFrame(waveformPreRenderRaf)
-      waveformPreRenderRaf = 0
-    }
-    waveformPreRenderQueue = []
-    if (waveformRenderWorker) {
-      try {
-        postWaveformWorkerMessage({ type: 'clearAllCaches' })
-        waveformRenderWorker.terminate()
-      } catch {}
-      waveformRenderWorker = null
-    }
-    timelineWorkerReady.value = false
-    timelineOffscreenCanvas = null
-    if (timelineCanvasRaf) {
-      cancelAnimationFrame(timelineCanvasRaf)
-      timelineCanvasRaf = 0
-    }
-    cleanupInteractions()
+  setupTimelineVisualScaleLifecycle({
+    tracks,
+    timelineRootRef,
+    transportError,
+    timelineVisualScale,
+    resolveTimelineScalableBaseHeight,
+    timelineVisualScaleMin: TIMELINE_VISUAL_SCALE_MIN,
+    timelineVisualScaleMax: TIMELINE_VISUAL_SCALE_MAX,
+    scheduleTimelineDraw,
+    scheduleFullPreRender,
+    scheduleWorkerPreRender,
+    cleanupTransportAndDrag,
+    timelineObserverRef,
+    timelineViewportObserverRef,
+    overviewObserverRef,
+    timelineRootObserverRef,
+    timelineScaleRafRef,
+    setTimelineWheelTarget,
+    handleWaveformUpdated,
+    waveformLoadTimerRef,
+    waveformPreRenderTimerRef,
+    cancelWorkerPreRender,
+    waveformPreRenderRafRef,
+    waveformPreRenderQueueRef,
+    waveformRenderWorkerRef,
+    postWaveformWorkerMessage,
+    timelineWorkerReady,
+    timelineOffscreenCanvasRef,
+    timelineCanvasRafRef,
+    cleanupInteractions
   })
 
   return {

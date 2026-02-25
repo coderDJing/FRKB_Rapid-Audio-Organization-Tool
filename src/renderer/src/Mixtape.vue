@@ -3,28 +3,15 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import titleComponent from '@renderer/components/titleComponent.vue'
 import MixtapeOutputDialog from '@renderer/components/mixtapeOutputDialog.vue'
-import MixtapeBeatAlignDialog from '@renderer/components/mixtapeBeatAlignDialog.vue'
+import MixtapeBeatAlignDialog from '@renderer/components/MixtapeBeatAlignDialog.vue'
 import ColumnHeaderContextMenu from '@renderer/pages/modules/songsArea/ColumnHeaderContextMenu.vue'
 import SongListHeader from '@renderer/pages/modules/songsArea/SongListHeader.vue'
 import SongListRows from '@renderer/pages/modules/songsArea/SongListRows.vue'
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
-import {
-  buildSongsAreaDefaultColumns,
-  getSongsAreaMinWidthByKey,
-  SONGS_AREA_MIXTAPE_STORAGE_KEY
-} from '@renderer/pages/modules/songsArea/composables/useSongsAreaColumns'
-import { mapMixtapeSnapshotToSongInfo } from '@renderer/composables/mixtape/mixtapeSnapshotSongMapper'
 import { useMixtape } from '@renderer/composables/useMixtape'
-import { useRuntimeStore } from '@renderer/stores/runtime'
-import { applyUiSettings, readUiSettings } from '@renderer/utils/uiSettingsStorage'
-import libraryUtils from '@renderer/utils/libraryUtils'
-import emitter from '@renderer/utils/mitt'
 import { createMixtapeGainEnvelopeEditor } from '@renderer/composables/mixtape/useGainEnvelopeEditor'
-import {
-  MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM,
-  buildMixEnvelopePolylineByControlPoints,
-  normalizeMixEnvelopePoints
-} from '@renderer/composables/mixtape/gainEnvelope'
+import { useMixtapeAutoGainDialog } from '@renderer/composables/mixtape/useMixtapeAutoGainDialog'
+import { useMixtapeEnvelopePreview } from '@renderer/composables/mixtape/useMixtapeEnvelopePreview'
 import ascendingOrderAsset from '@renderer/assets/ascending-order.svg?asset'
 import descendingOrderAsset from '@renderer/assets/descending-order.svg?asset'
 import type {
@@ -33,7 +20,6 @@ import type {
   MixtapeTrack,
   TimelineTrackLayout
 } from '@renderer/composables/mixtape/types'
-import type { ISongInfo, ISongsAreaColumn } from '../../types/globals'
 
 const {
   t,
@@ -168,13 +154,6 @@ type TrackTimingUndoSnapshot = {
   volumeMuteSegments: MixtapeMuteSegment[]
 }
 
-type TrackEnvelopePreviewLine = {
-  key: MixtapeEnvelopeParamId
-  points: string
-  color: string
-  strokeWidth: number
-}
-
 const selectedMixParam = ref<MixParamId>('position')
 const isTrackPositionMode = computed(() => selectedMixParam.value === 'position')
 const isGainParamMode = computed(() => selectedMixParam.value === 'gain')
@@ -188,71 +167,20 @@ const envelopeHintKey = computed(() => {
   return 'mixtape.envelopeEditHint'
 })
 
-const TRACK_ENVELOPE_PREVIEW_PARAMS: MixtapeEnvelopeParamId[] = [
-  'gain',
-  'high',
-  'mid',
-  'low',
-  'volume'
-]
-
-const TRACK_ENVELOPE_PREVIEW_COLORS: Record<MixtapeEnvelopeParamId, string> = {
-  gain: '#f2f6ff',
-  high: '#4f8bff',
-  mid: '#45d07e',
-  low: '#ff5d61',
-  volume: '#ffc94a'
-}
-
-const TRACK_ENVELOPE_PREVIEW_STROKES: Record<MixtapeEnvelopeParamId, number> = {
-  gain: 1.2,
-  high: 1.08,
-  mid: 1.08,
-  low: 1.08,
-  volume: 0.95
-}
-const TRACK_ENVELOPE_PREVIEW_EDGE_INSET_PERCENT = 1.2
-
-const TIMELINE_TRACK_LANE_GAP_PX = 8
-const TIMELINE_TRACK_VERTICAL_PADDING_PX = 10
-const TIMELINE_TRACK_LANE_BORDER_PX = 2
-const TIMELINE_ENVELOPE_PREVIEW_BASE_LANE_HEIGHT_PX = 63
-const TIMELINE_OVERVIEW_BASE_LANE_HEIGHT_PX = 12
-
-const resolveMaybeRefNumber = (input: unknown, fallback = 0) => {
-  const source = (input as { value?: unknown } | null)?.value ?? input
-  const numeric = Number(source)
-  return Number.isFinite(numeric) ? numeric : fallback
-}
-
-const trackEnvelopePreviewLegend = TRACK_ENVELOPE_PREVIEW_PARAMS.map((param) => ({
-  key: param,
-  label: param.toUpperCase(),
-  color: TRACK_ENVELOPE_PREVIEW_COLORS[param]
-}))
-
-const timelineTrackAreaHeight = computed(() => {
-  const laneCount = Math.max(0, Array.isArray(laneIndices) ? laneIndices.length : 0)
-  const safeLaneHeight = Math.max(0, resolveMaybeRefNumber(laneHeight, 0))
-  if (!laneCount || !safeLaneHeight) return 0
-  const laneOuterHeight = safeLaneHeight + TIMELINE_TRACK_LANE_BORDER_PX
-  const gaps = Math.max(0, laneCount - 1) * TIMELINE_TRACK_LANE_GAP_PX
-  const verticalPadding = TIMELINE_TRACK_VERTICAL_PADDING_PX * 2
-  return Math.round(laneOuterHeight * laneCount + gaps + verticalPadding)
-})
-
-const timelineAdaptiveStyle = computed(() => {
-  const scale = Math.max(1, resolveMaybeRefNumber(timelineVisualScale, 1))
-  return {
-    '--timeline-envelope-preview-lane-height': `${Math.max(
-      1,
-      Math.round(TIMELINE_ENVELOPE_PREVIEW_BASE_LANE_HEIGHT_PX * scale)
-    )}px`,
-    '--timeline-overview-lane-height': `${Math.max(
-      1,
-      Math.round(TIMELINE_OVERVIEW_BASE_LANE_HEIGHT_PX * scale)
-    )}px`
-  }
+const {
+  trackEnvelopePreviewLegend,
+  timelineTrackAreaHeight,
+  timelineAdaptiveStyle,
+  resolveTrackEnvelopePreviewLines,
+  trackEnvelopePreviewViewportStyle
+} = useMixtapeEnvelopePreview({
+  laneIndices,
+  laneHeight,
+  timelineVisualScale,
+  timelineContentWidth,
+  timelineScrollLeft,
+  tracks,
+  resolveTrackDurationSeconds
 })
 
 watch(selectedMixParam, (nextParam) => {
@@ -385,7 +313,6 @@ const handleLaneTrackMouseDown = (item: TimelineTrackLayout, event: MouseEvent) 
     { once: true }
   )
 }
-const runtime = useRuntimeStore()
 useWaveformPreviewPlayer()
 type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
 const ascendingOrder = ascendingOrderAsset
@@ -393,182 +320,35 @@ const descendingOrder = descendingOrderAsset
 const autoGainHeaderTranslate = (key: string) => t(key)
 
 const autoGainSongListScrollRef = ref<OverlayScrollbarsComponentRef>(null)
-const autoGainColumnMenuVisible = ref(false)
-const autoGainColumnMenuEvent = ref<MouseEvent | null>(null)
-
-const MIXTAPE_COLUMN_MODE = 'mixtape' as const
-
-const normalizeColumnOrder = (_value: unknown): undefined => undefined
-
-const persistAutoGainColumns = (columns: ISongsAreaColumn[]) => {
-  try {
-    const normalized = columns.map((column) => ({
-      ...column,
-      order: normalizeColumnOrder(column.order)
-    }))
-    localStorage.setItem(SONGS_AREA_MIXTAPE_STORAGE_KEY, JSON.stringify(normalized))
-  } catch {}
-}
-
-const loadAutoGainColumns = () => {
-  const defaultColumns: ISongsAreaColumn[] = buildSongsAreaDefaultColumns(MIXTAPE_COLUMN_MODE).map(
-    (column) => ({
-      ...column,
-      order: normalizeColumnOrder(column.order)
-    })
-  )
-  const defaultColumnsByKey = new Map(defaultColumns.map((column) => [column.key, column]))
-  const saved = localStorage.getItem(SONGS_AREA_MIXTAPE_STORAGE_KEY)
-  let mergedColumns: ISongsAreaColumn[] = defaultColumns
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved) as Partial<ISongsAreaColumn>[]
-      const normalized: ISongsAreaColumn[] = parsed
-        .map((item): ISongsAreaColumn | null => {
-          const key = String(item?.key || '')
-          const fallback = defaultColumnsByKey.get(key)
-          if (!fallback) return null
-          const minWidth = getSongsAreaMinWidthByKey(fallback.key, MIXTAPE_COLUMN_MODE)
-          const rawWidth = Number(item?.width)
-          const nextColumn: ISongsAreaColumn = {
-            ...fallback,
-            show: typeof item?.show === 'boolean' ? item.show : fallback.show,
-            width: Number.isFinite(rawWidth) ? Math.max(minWidth, rawWidth) : fallback.width
-          }
-          nextColumn.order = normalizeColumnOrder(item?.order)
-          return nextColumn
-        })
-        .filter((item): item is ISongsAreaColumn => item !== null)
-      if (normalized.length) {
-        const existingKeySet = new Set(normalized.map((item) => item.key))
-        for (const fallback of defaultColumns) {
-          if (existingKeySet.has(fallback.key)) continue
-          normalized.push(fallback)
-        }
-        mergedColumns = normalized
-      }
-    } catch {}
-  }
-  const visibleColumns = mergedColumns.filter((column) => column.show)
-  return visibleColumns.length ? mergedColumns : defaultColumns
-}
-
-const autoGainDialogColumns = ref<ISongsAreaColumn[]>(loadAutoGainColumns())
-
-watch(
-  () => autoGainDialogColumns.value,
-  (columns) => {
-    persistAutoGainColumns(columns)
-  },
-  { deep: true }
-)
-
-const autoGainSongColumns = computed<ISongsAreaColumn[]>(() =>
-  autoGainDialogColumns.value.filter((column) => column.show)
-)
-
-const autoGainSongTotalWidth = computed(() =>
-  autoGainSongColumns.value.reduce((sum, column) => sum + Number(column.width || 0), 0)
-)
-
-const autoGainDialogSongs = computed<ISongInfo[]>(() => {
-  return mixtapeRawItems.value.map((raw, index) =>
-    mapMixtapeSnapshotToSongInfo(raw, index, {
-      buildDisplayPathByUuid: (uuid) => libraryUtils.buildDisplayPathByUuid(uuid)
-    })
-  )
+const {
+  autoGainColumnMenuVisible,
+  autoGainColumnMenuEvent,
+  autoGainDialogColumns,
+  autoGainSongColumns,
+  autoGainSongTotalWidth,
+  autoGainDialogSongs,
+  autoGainSelectedRowKeys,
+  handleAutoGainSongClick,
+  handleAutoGainSongDragStart,
+  handleAutoGainColumnsUpdate,
+  handleAutoGainColumnClick,
+  handleAutoGainHeaderContextMenu,
+  handleAutoGainToggleColumnVisibility,
+  handleOpenAutoGainDialog,
+  handleAutoGainDialogCancelClick,
+  handleAutoGainDialogConfirmClick,
+  handleAutoGainSelectLoudestReferenceClick,
+  handleAutoGainSelectQuietestReferenceClick
+} = useMixtapeAutoGainDialog({
+  mixtapeRawItems,
+  tracks,
+  autoGainReferenceTrackId,
+  openAutoGainDialog,
+  handleAutoGainDialogCancel,
+  handleAutoGainDialogConfirm,
+  handleAutoGainSelectLoudestReference,
+  handleAutoGainSelectQuietestReference
 })
-
-const autoGainSelectedRowKeys = computed(() => {
-  const referenceTrackId = autoGainReferenceTrackId.value
-  if (!referenceTrackId) return []
-  const targetTrack = tracks.value.find((item) => item.id === referenceTrackId)
-  const keys = [referenceTrackId, targetTrack?.filePath || ''].filter(Boolean)
-  return Array.from(new Set(keys))
-})
-
-const resolveAutoGainReferenceId = (song: ISongInfo) => {
-  if (song.mixtapeItemId) return song.mixtapeItemId
-  const matchedTrack = tracks.value.find((item) => item.filePath === song.filePath)
-  return matchedTrack?.id || ''
-}
-
-const handleAutoGainSongClick = (_event: MouseEvent, song: ISongInfo) => {
-  const nextId = resolveAutoGainReferenceId(song)
-  if (nextId) autoGainReferenceTrackId.value = nextId
-}
-
-const handleAutoGainSongDragStart = (event: DragEvent) => {
-  event.preventDefault()
-}
-
-const handleAutoGainColumnsUpdate = (columns: ISongsAreaColumn[]) => {
-  if (!Array.isArray(columns) || !columns.length) return
-  autoGainDialogColumns.value = columns.map((column) => ({
-    ...column,
-    order: normalizeColumnOrder(column.order)
-  }))
-}
-
-const handleAutoGainColumnClick = (_column: ISongsAreaColumn) => {
-  // 与主窗口混音歌单一致：列头点击不触发排序
-}
-
-const handleAutoGainHeaderContextMenu = (event: MouseEvent) => {
-  autoGainColumnMenuEvent.value = event
-  autoGainColumnMenuVisible.value = true
-}
-
-const handleAutoGainToggleColumnVisibility = (columnKey: string) => {
-  const key = String(columnKey || '')
-  if (!key) return
-  autoGainDialogColumns.value = autoGainDialogColumns.value.map((column) =>
-    column.key === key ? { ...column, show: !column.show } : column
-  )
-}
-
-const refreshRuntimeSetting = async () => {
-  try {
-    const latest = await window.electron.ipcRenderer.invoke('getSetting')
-    if (latest && typeof latest === 'object') {
-      const merged = { ...(latest as Record<string, unknown>) }
-      applyUiSettings(merged, readUiSettings())
-      runtime.setting = merged as any
-    }
-  } catch {}
-}
-
-const handleOpenAutoGainDialog = async () => {
-  await refreshRuntimeSetting()
-  autoGainDialogColumns.value = loadAutoGainColumns()
-  autoGainColumnMenuVisible.value = false
-  autoGainColumnMenuEvent.value = null
-  openAutoGainDialog()
-}
-
-const stopAutoGainWaveformPreview = () => {
-  emitter.emit('waveform-preview:stop', { reason: 'explicit' })
-}
-
-const handleAutoGainDialogCancelClick = () => {
-  stopAutoGainWaveformPreview()
-  handleAutoGainDialogCancel()
-}
-
-const handleAutoGainDialogConfirmClick = async () => {
-  stopAutoGainWaveformPreview()
-  await handleAutoGainDialogConfirm()
-}
-
-const handleAutoGainSelectLoudestReferenceClick = async () => {
-  stopAutoGainWaveformPreview()
-  await handleAutoGainSelectLoudestReference()
-}
-
-const handleAutoGainSelectQuietestReferenceClick = async () => {
-  stopAutoGainWaveformPreview()
-  await handleAutoGainSelectQuietestReference()
-}
 
 const handleToggleVolumeMuteSelectionMode = () => {
   if (!isVolumeParamMode.value) return
@@ -597,58 +377,6 @@ const {
     isEnvelopeParamMode.value ? (selectedMixParam.value as MixtapeEnvelopeParamId) : null,
   isVolumeMuteSelectionMode: () => isVolumeParamMode.value && volumeMuteSelectionMode.value,
   isEditable: () => envelopeEditable.value
-})
-
-const normalizeEnvelopePreviewPolyline = (points: string) =>
-  points.replace(
-    /(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/g,
-    (_matched, xText: string, yText: string) => {
-      const y = Number(yText)
-      if (!Number.isFinite(y)) return `${xText},${yText}`
-      const safeY = Math.max(
-        TRACK_ENVELOPE_PREVIEW_EDGE_INSET_PERCENT,
-        Math.min(100 - TRACK_ENVELOPE_PREVIEW_EDGE_INSET_PERCENT, y)
-      )
-      return `${xText},${safeY.toFixed(3)}`
-    }
-  )
-
-const resolveTrackEnvelopePreviewLines = (
-  item: TimelineTrackLayout
-): TrackEnvelopePreviewLine[] => {
-  const currentTrack = tracks.value.find((track) => track.id === item.track.id) || item.track
-  const durationSec = Math.max(0, Number(resolveTrackDurationSeconds(currentTrack)) || 0)
-  if (!durationSec) return []
-  return TRACK_ENVELOPE_PREVIEW_PARAMS.map((param) => {
-    const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
-    const normalizedPoints = normalizeMixEnvelopePoints(
-      param,
-      (currentTrack as Record<string, unknown>)[envelopeField],
-      durationSec
-    )
-    if (normalizedPoints.length < 2) return null
-    const points = buildMixEnvelopePolylineByControlPoints({
-      param,
-      points: normalizedPoints,
-      durationSec
-    })
-    if (!points) return null
-    return {
-      key: param,
-      points: normalizeEnvelopePreviewPolyline(points),
-      color: TRACK_ENVELOPE_PREVIEW_COLORS[param],
-      strokeWidth: TRACK_ENVELOPE_PREVIEW_STROKES[param]
-    }
-  }).filter((line): line is TrackEnvelopePreviewLine => line !== null)
-}
-
-const trackEnvelopePreviewViewportStyle = computed(() => {
-  const safeWidth = Math.max(0, Number(timelineContentWidth.value) || 0)
-  const safeScrollLeft = Math.max(0, Number(timelineScrollLeft.value) || 0)
-  return {
-    width: `${safeWidth}px`,
-    transform: `translate3d(${-safeScrollLeft}px, 0, 0)`
-  }
 })
 
 const isEditableEventTarget = (target: EventTarget | null) => {

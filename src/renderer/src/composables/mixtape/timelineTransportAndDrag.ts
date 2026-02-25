@@ -1,38 +1,27 @@
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import { t } from '@renderer/utils/translate'
 import { canPlayHtmlAudio, toPreviewUrl } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
-import {
-  GRID_BEAT4_LINE_ZOOM,
-  GRID_BEAT_LINE_ZOOM,
-  LANE_COUNT,
-  TIMELINE_SIDE_PADDING_PX
-} from '@renderer/composables/mixtape/constants'
 import {
   normalizeBeatOffset as normalizeBeatOffsetByMixxx,
   resolveBeatSecByBpm,
   resolveFirstBeatTimelineSec,
   resolveGridAnchorSec
 } from '@renderer/composables/mixtape/mixxxSyncModel'
-import {
-  MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM,
-  MIXTAPE_GAIN_KNOB_MAX_DB,
-  MIXTAPE_GAIN_KNOB_MIN_DB,
-  buildFlatMixEnvelope,
-  linearGainToDb,
-  normalizeMixEnvelopePoints,
-  sampleMixEnvelopeAtSec
-} from '@renderer/composables/mixtape/gainEnvelope'
-import {
-  isSecMutedBySegments,
-  normalizeVolumeMuteSegments
-} from '@renderer/composables/mixtape/volumeMuteSegments'
+import { MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM } from '@renderer/composables/mixtape/gainEnvelope'
+import { normalizeVolumeMuteSegments } from '@renderer/composables/mixtape/volumeMuteSegments'
 import { applyMixxxTransportSync } from '@renderer/composables/mixtape/timelineTransportSync'
+import {
+  createTimelineTransportRenderWavModule,
+  type MixtapeOutputProgressPayload,
+  type MixtapeRenderedWavResult
+} from '@renderer/composables/mixtape/timelineTransportRenderWav'
+import { createTimelineTransportTrackDragModule } from '@renderer/composables/mixtape/timelineTransportTrackDrag'
+import { createTimelineTransportResolversModule } from '@renderer/composables/mixtape/timelineTransportResolvers'
 import type {
   MixtapeEnvelopeParamId,
   MixtapeGainPoint,
   MixtapeMuteSegment,
-  MixtapeTrack,
-  TimelineTrackLayout
+  MixtapeTrack
 } from '@renderer/composables/mixtape/types'
 
 // ── PCM 数据归一化（仅用于 IPC 解码路径）───────────────────────
@@ -83,20 +72,7 @@ type TrackGraphNode = {
   gain: GainNode
 }
 
-export type MixtapeOutputProgressPayload = {
-  stageKey: string
-  done: number
-  total: number
-  percent: number
-}
-
-export type MixtapeRenderedWavResult = {
-  wavBytes: Uint8Array
-  durationSec: number
-  sampleRate: number
-  channels: number
-  trackCount: number
-}
+export type { MixtapeOutputProgressPayload, MixtapeRenderedWavResult }
 
 const MIX_ENVELOPE_PARAMS: MixtapeEnvelopeParamId[] = ['gain', 'high', 'mid', 'low', 'volume']
 const MIXTAPE_SEGMENT_MUTE_GAIN = 0.0001
@@ -119,7 +95,6 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     scheduleWorkerPreRender
   } = ctx
 
-  const isTrackDragging = ref(false)
   const transportPlaying = ref(false)
   const transportDecoding = ref(false)
   const transportPreloading = ref(false)
@@ -148,14 +123,6 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   const transportDecodedBufferCache = new Map<string, AudioBuffer>()
   // 进行中的解码任务（按 filePath 复用 Promise）
   const transportDecodeInflight = new Map<string, Promise<AudioBuffer>>()
-
-  let trackDragState: {
-    trackId: string
-    startClientX: number
-    initialStartSec: number
-    previousTrackId: string
-    snapshotTracks: MixtapeTrack[]
-  } | null = null
 
   const clampNumber = (value: number, min: number, max: number) =>
     Math.max(min, Math.min(max, value))
@@ -302,187 +269,49 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     clearTransportPreloadTimer()
   }
 
-  // ── Computed 属性 ─────────────────────────────────────────────
-  const timelineDurationSec = computed(() => computeTimelineDuration())
-  const transportPreloadPercent = computed(() => {
-    const total = Math.max(0, Number(transportPreloadTotal.value) || 0)
-    const done = Math.max(0, Number(transportPreloadDone.value) || 0)
-    if (!total) return 0
-    return Math.max(0, Math.min(100, Math.round((done / total) * 100)))
+  const transportDurationSecRef = {
+    get value() {
+      return transportDurationSec
+    },
+    set value(value: number) {
+      transportDurationSec = value
+    }
+  }
+  const {
+    timelineDurationSec,
+    transportPreloadPercent,
+    resolveTimelineDisplayX,
+    resolveTimelineSecByX,
+    overviewPlayheadStyle,
+    rulerPlayheadStyle,
+    timelinePlayheadStyle,
+    playheadTimeLabel,
+    timelineDurationLabel,
+    rulerMinuteTicks,
+    rulerInactiveStyle,
+    resolveTrackStartSec,
+    resolveTrackStartSecById,
+    resolveTrackMixEnvelope,
+    resolveEntryEnvelopeValue,
+    resolveEntryEqDbValue
+  } = createTimelineTransportResolversModule({
+    tracks,
+    timelineLayout,
+    normalizedRenderZoom,
+    timelineScrollLeft,
+    timelineViewportWidth,
+    playheadSec,
+    playheadVisible,
+    transportPreloadDone,
+    transportPreloadTotal,
+    transportDurationSecRef,
+    computeTimelineDuration,
+    resolveRenderPxPerSec,
+    buildSequentialLayoutForZoom,
+    clampNumber,
+    mixEnvelopeParams: MIX_ENVELOPE_PARAMS,
+    segmentMuteGain: MIXTAPE_SEGMENT_MUTE_GAIN
   })
-  const resolveTimelineDisplayX = (sec: number, pxPerSec: number, maxX: number) => {
-    const safeSec = Math.max(0, Number(sec) || 0)
-    return clampNumber(TIMELINE_SIDE_PADDING_PX + safeSec * pxPerSec, 0, maxX)
-  }
-  const resolveTimelineSecByX = (x: number, pxPerSec: number) => {
-    if (!Number.isFinite(pxPerSec) || pxPerSec <= 0) return 0
-    const normalizedX = Math.max(0, Number(x) || 0)
-    const sec = (normalizedX - TIMELINE_SIDE_PADDING_PX) / pxPerSec
-    return Math.max(0, sec)
-  }
-  const overviewPlayheadStyle = computed(() => ({
-    left: (() => {
-      const pxPerSec = Math.max(0.0001, resolveRenderPxPerSec(normalizedRenderZoom.value))
-      const totalWidth = Math.max(1, timelineLayout.value.totalWidth)
-      const playheadX = resolveTimelineDisplayX(playheadSec.value, pxPerSec, totalWidth)
-      return `${((playheadX / totalWidth) * 100).toFixed(4)}%`
-    })()
-  }))
-  const rulerPlayheadStyle = computed(() => {
-    const pxPerSec = Math.max(0.0001, resolveRenderPxPerSec(normalizedRenderZoom.value))
-    const totalWidth = Math.max(1, timelineLayout.value.totalWidth)
-    const viewportWidth = Math.max(1, Number(timelineViewportWidth.value) || totalWidth)
-    const maxScroll = Math.max(0, totalWidth - viewportWidth)
-    const viewportStartX = clampNumber(Number(timelineScrollLeft.value) || 0, 0, maxScroll)
-    const playheadX = resolveTimelineDisplayX(playheadSec.value, pxPerSec, totalWidth)
-    const ratio = (playheadX - viewportStartX) / viewportWidth
-    return {
-      left: `${(ratio * 100).toFixed(4)}%`
-    }
-  })
-  const timelinePlayheadStyle = computed(() => {
-    if (!playheadVisible.value) return null
-    const pxPerSec = Math.max(0.0001, resolveRenderPxPerSec(normalizedRenderZoom.value))
-    const maxX = Math.max(0, timelineLayout.value.totalWidth)
-    const playheadX = resolveTimelineDisplayX(playheadSec.value, pxPerSec, maxX)
-    return {
-      transform: `translate3d(${Math.round(playheadX)}px, 0, 0)`
-    }
-  })
-
-  const formatTransportTime = (seconds: number) => {
-    const safe = Math.max(0, Number.isFinite(seconds) ? seconds : 0)
-    const total = Math.floor(safe)
-    const hh = Math.floor(total / 3600)
-    const mm = Math.floor((total % 3600) / 60)
-    const ss = total % 60
-    if (hh > 0) {
-      return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
-    }
-    return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
-  }
-  const playheadTimeLabel = computed(() => {
-    if (!transportPlaying.value) return '--:--:--'
-    return formatTransportTime(playheadSec.value)
-  })
-  const timelineDurationLabel = computed(() => formatTransportTime(timelineDurationSec.value))
-  const rulerMinuteTicks = computed(() => {
-    type RulerTickAlign = 'start' | 'center' | 'end'
-    const pxPerSec = Math.max(0.0001, resolveRenderPxPerSec(normalizedRenderZoom.value))
-    const totalWidth = Math.max(1, timelineLayout.value.totalWidth)
-    const viewportWidth = Math.max(1, Number(timelineViewportWidth.value) || totalWidth)
-    const maxScroll = Math.max(0, totalWidth - viewportWidth)
-    const viewportStartX = clampNumber(Number(timelineScrollLeft.value) || 0, 0, maxScroll)
-    const viewportEndX = viewportStartX + viewportWidth
-    const viewportStartSec = resolveTimelineSecByX(viewportStartX, pxPerSec)
-    const viewportEndSec = Math.max(viewportStartSec, resolveTimelineSecByX(viewportEndX, pxPerSec))
-    const timelineEndSec = Math.max(0, timelineDurationSec.value)
-    if (viewportWidth <= 0 || timelineEndSec <= 0)
-      return [] as Array<{ left: string; value: number; align: RulerTickAlign }>
-    const firstMinute = Math.ceil(viewportStartSec / 60)
-    const endMinute = Math.floor(Math.min(viewportEndSec, timelineEndSec) / 60)
-    const ticks: Array<{ left: string; value: number; align: RulerTickAlign }> = []
-    for (let minute = firstMinute; minute <= endMinute; minute += 1) {
-      const sec = minute * 60
-      const x = resolveTimelineDisplayX(sec, pxPerSec, totalWidth)
-      const localX = x - viewportStartX
-      const ratio = clampNumber(localX / viewportWidth, 0, 1)
-      const left = `${(ratio * 100).toFixed(4)}%`
-      let align: RulerTickAlign = 'center'
-      if (ratio <= 0.0001 || minute === 0) {
-        align = 'start'
-      } else if (ratio >= 0.9999 || Math.abs(sec - timelineEndSec) <= 0.0001) {
-        align = 'end'
-      }
-      ticks.push({ left, value: minute, align })
-    }
-    return ticks
-  })
-  const rulerInactiveStyle = computed<Record<string, string> | null>(() => {
-    const totalWidth = Math.max(0, timelineLayout.value.totalWidth)
-    const viewportWidth = Math.max(1, Number(timelineViewportWidth.value) || 0)
-    if (totalWidth <= 0 || viewportWidth <= 0 || totalWidth >= viewportWidth) return null
-    const activeRatio = clampNumber(totalWidth / viewportWidth, 0, 1)
-    const inactiveRatio = 1 - activeRatio
-    if (inactiveRatio <= 0.0001) return null
-    return {
-      left: `${(activeRatio * 100).toFixed(4)}%`,
-      width: `${(inactiveRatio * 100).toFixed(4)}%`
-    }
-  })
-
-  // ── 轨道时间解析 ──────────────────────────────────────────────
-  const resolveTrackStartSec = (track: MixtapeTrack) => {
-    const numeric = Number(track.startSec)
-    if (Number.isFinite(numeric) && numeric >= 0) return numeric
-    return 0
-  }
-
-  const resolveTrackStartSecById = (trackId: string) => {
-    if (!trackId) return 0
-    const pxPerSec = Math.max(0.0001, resolveRenderPxPerSec(normalizedRenderZoom.value))
-    const snapshot = buildSequentialLayoutForZoom(normalizedRenderZoom.value)
-    const item = snapshot.layout.find(
-      (candidate: TimelineTrackLayout) => candidate.track.id === trackId
-    )
-    if (!item) return 0
-    const layoutStartSec = Number(item.startSec)
-    if (Number.isFinite(layoutStartSec) && layoutStartSec >= 0) return layoutStartSec
-    return resolveTimelineSecByX(item.startX, pxPerSec)
-  }
-
-  const resolveTrackMixEnvelope = (
-    track: MixtapeTrack,
-    durationSec: number,
-    param: MixtapeEnvelopeParamId
-  ) => {
-    const safeDuration = Math.max(0, Number(durationSec) || 0)
-    const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
-    const normalized = normalizeMixEnvelopePoints(
-      param,
-      (track as any)?.[envelopeField],
-      safeDuration
-    )
-    if (normalized.length > 0) return normalized
-    return buildFlatMixEnvelope(param, safeDuration, 1)
-  }
-
-  const resolveEntryEnvelopeValue = (
-    entry: TransportEntry,
-    param: MixtapeEnvelopeParamId,
-    timelineOffsetSec: number
-  ) => {
-    const latestTrack = tracks.value.find((track: MixtapeTrack) => track.id === entry.trackId)
-    const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
-    const latestEnvelopeSource = latestTrack
-      ? ((latestTrack as any)?.[envelopeField] as MixtapeGainPoint[] | undefined)
-      : undefined
-    if (latestTrack && latestEnvelopeSource !== entry.mixEnvelopeSources[param]) {
-      entry.mixEnvelopes[param] = resolveTrackMixEnvelope(latestTrack, entry.duration, param)
-      entry.mixEnvelopeSources[param] = latestEnvelopeSource
-    }
-    if (param === 'volume' && latestTrack) {
-      const latestMuteSource = latestTrack.volumeMuteSegments
-      if (latestMuteSource !== entry.volumeMuteSegmentsSource) {
-        entry.volumeMuteSegments = normalizeVolumeMuteSegments(latestMuteSource, entry.duration)
-        entry.volumeMuteSegmentsSource = latestMuteSource
-      }
-    }
-    const safeOffset = clampNumber(timelineOffsetSec, 0, Math.max(0, entry.duration))
-    const envelopeGain = sampleMixEnvelopeAtSec(param, entry.mixEnvelopes[param], safeOffset, 1)
-    if (param !== 'volume') return envelopeGain
-    const muted = isSecMutedBySegments(entry.volumeMuteSegments, safeOffset)
-    return muted ? MIXTAPE_SEGMENT_MUTE_GAIN : envelopeGain
-  }
-
-  const resolveEntryEqDbValue = (
-    entry: TransportEntry,
-    param: 'high' | 'mid' | 'low',
-    timelineOffsetSec: number
-  ) => {
-    const gain = resolveEntryEnvelopeValue(entry, param, timelineOffsetSec)
-    return clampNumber(linearGainToDb(gain), MIXTAPE_GAIN_KNOB_MIN_DB, MIXTAPE_GAIN_KNOB_MAX_DB)
-  }
 
   // ── AudioContext 管理 ─────────────────────────────────────────
   const ensureTransportAudioContext = (sampleRate?: number): AudioContext => {
@@ -763,311 +592,18 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     )
     return failCount
   }
-
-  const resolveOutputChannels = (_entries: TransportEntry[]) => 2
-
-  const resolveOutputSampleRate = (entries: TransportEntry[]) => {
-    const activeTransportSampleRate = Number(transportAudioCtx?.sampleRate || 0)
-    if (Number.isFinite(activeTransportSampleRate) && activeTransportSampleRate > 0) {
-      return activeTransportSampleRate
-    }
-    for (const entry of entries) {
-      const sampleRate = Number(entry.audioBuffer?.sampleRate || 0)
-      if (Number.isFinite(sampleRate) && sampleRate > 0) {
-        return sampleRate
-      }
-    }
-    try {
-      const context = new AudioContext()
-      const sampleRate = Number(context.sampleRate) || 44100
-      void context.close().catch(() => {})
-      return sampleRate
-    } catch {
-      return 44100
-    }
-  }
-
-  const writeWavText = (view: DataView, offset: number, value: string) => {
-    for (let index = 0; index < value.length; index += 1) {
-      view.setUint8(offset + index, value.charCodeAt(index))
-    }
-  }
-
-  const encodeAudioBufferToWav = (audioBuffer: AudioBuffer, channels: number): Uint8Array => {
-    const sourceChannels = Math.max(1, Math.floor(audioBuffer.numberOfChannels || 1))
-    const outputChannels = Math.max(1, Math.min(2, Math.floor(channels || sourceChannels)))
-    const frameCount = Math.max(0, Math.floor(audioBuffer.length || 0))
-    const sampleRate = Math.max(1, Math.floor(audioBuffer.sampleRate || 44100))
-    const bytesPerSample = 2
-    const blockAlign = outputChannels * bytesPerSample
-    const dataSize = frameCount * blockAlign
-    const buffer = new ArrayBuffer(44 + dataSize)
-    const view = new DataView(buffer)
-
-    writeWavText(view, 0, 'RIFF')
-    view.setUint32(4, 36 + dataSize, true)
-    writeWavText(view, 8, 'WAVE')
-    writeWavText(view, 12, 'fmt ')
-    view.setUint32(16, 16, true)
-    view.setUint16(20, 1, true)
-    view.setUint16(22, outputChannels, true)
-    view.setUint32(24, sampleRate, true)
-    view.setUint32(28, sampleRate * blockAlign, true)
-    view.setUint16(32, blockAlign, true)
-    view.setUint16(34, bytesPerSample * 8, true)
-    writeWavText(view, 36, 'data')
-    view.setUint32(40, dataSize, true)
-
-    const channelData: Float32Array[] = []
-    for (let channelIndex = 0; channelIndex < sourceChannels; channelIndex += 1) {
-      channelData.push(audioBuffer.getChannelData(channelIndex))
-    }
-
-    let writeOffset = 44
-    for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
-      for (let channelIndex = 0; channelIndex < outputChannels; channelIndex += 1) {
-        const sourceIndex = sourceChannels === 1 ? 0 : Math.min(sourceChannels - 1, channelIndex)
-        const sample = channelData[sourceIndex]?.[frameIndex] ?? 0
-        const clamped = clampNumber(sample, -1, 1)
-        const int16Value = clamped < 0 ? Math.round(clamped * 0x8000) : Math.round(clamped * 0x7fff)
-        view.setInt16(writeOffset, int16Value, true)
-        writeOffset += 2
-      }
-    }
-    return new Uint8Array(buffer)
-  }
-
-  const buildOutputTrackNodes = (
-    offlineCtx: OfflineAudioContext,
-    entries: TransportEntry[]
-  ): TrackGraphNode[] => {
-    const nodes: TrackGraphNode[] = []
-    for (const entry of entries) {
-      if (!entry.audioBuffer) continue
-      const source = offlineCtx.createBufferSource()
-      source.buffer = entry.audioBuffer
-      source.playbackRate.value = entry.tempoRatio
-
-      const eqLow = offlineCtx.createBiquadFilter()
-      eqLow.type = 'lowshelf'
-      eqLow.frequency.value = 220
-
-      const eqMid = offlineCtx.createBiquadFilter()
-      eqMid.type = 'peaking'
-      eqMid.frequency.value = 1000
-      eqMid.Q.value = 0.9
-
-      const eqHigh = offlineCtx.createBiquadFilter()
-      eqHigh.type = 'highshelf'
-      eqHigh.frequency.value = 3200
-
-      const volume = offlineCtx.createGain()
-      const gain = offlineCtx.createGain()
-
-      const initialTimelineSec = 0
-      const initialLocalSec = Math.max(0, initialTimelineSec - entry.startSec)
-      eqHigh.gain.value = resolveEntryEqDbValue(entry, 'high', initialLocalSec)
-      eqMid.gain.value = resolveEntryEqDbValue(entry, 'mid', initialLocalSec)
-      eqLow.gain.value = resolveEntryEqDbValue(entry, 'low', initialLocalSec)
-      volume.gain.value = resolveEntryEnvelopeValue(entry, 'volume', initialLocalSec)
-      gain.gain.value = resolveEntryEnvelopeValue(entry, 'gain', initialLocalSec)
-
-      source.connect(eqLow)
-      eqLow.connect(eqMid)
-      eqMid.connect(eqHigh)
-      eqHigh.connect(volume)
-      volume.connect(gain)
-      gain.connect(offlineCtx.destination)
-      source.start(entry.startSec, 0)
-
-      nodes.push({
-        trackId: entry.trackId,
-        entry,
-        source,
-        eqHigh,
-        eqMid,
-        eqLow,
-        volume,
-        gain
-      })
-    }
-    return nodes
-  }
-
-  const renderMixtapeOutputWav = async (options?: {
-    onProgress?: (payload: MixtapeOutputProgressPayload) => void
-  }): Promise<MixtapeRenderedWavResult> => {
-    const emitProgress = (payload: MixtapeOutputProgressPayload) => {
-      options?.onProgress?.(payload)
-    }
-    emitProgress({
-      stageKey: 'mixtape.outputProgressPreparing',
-      done: 1,
-      total: 100,
-      percent: 1
-    })
-
-    const plan = buildTransportEntries()
-    const entries = plan.entries
-    if (!entries.length) {
-      throw new Error(t('mixtape.outputNoTracks'))
-    }
-    if (plan.missingDurationCount > 0) {
-      throw new Error(t('mixtape.transportMissingDuration', { count: plan.missingDurationCount }))
-    }
-
-    const decodeQueue: TransportEntry[] = []
-    for (const entry of entries) {
-      const cached = readTransportBufferCache(entry.filePath)
-      if (cached) {
-        entry.audioBuffer = cached
-        continue
-      }
-      decodeQueue.push(entry)
-    }
-    const decodeTotal = Math.max(1, decodeQueue.length)
-    emitProgress({
-      stageKey: 'mixtape.outputProgressDecoding',
-      done: 0,
-      total: decodeTotal,
-      percent: 5
-    })
-    if (decodeQueue.length > 0) {
-      let decodeDone = 0
-      const workerCount = Math.max(1, Math.min(3, decodeQueue.length))
-      let cursor = 0
-      let failCount = 0
-      const workers = Array.from({ length: workerCount }, async () => {
-        while (true) {
-          const currentIndex = cursor
-          cursor += 1
-          if (currentIndex >= decodeQueue.length) return
-          const entry = decodeQueue[currentIndex]
-          try {
-            await ensureDecodedEntry(entry)
-          } catch (error) {
-            console.error('[mixtape-output] decode failed:', entry.filePath, error)
-            failCount += 1
-          } finally {
-            decodeDone += 1
-            emitProgress({
-              stageKey: 'mixtape.outputProgressDecoding',
-              done: decodeDone,
-              total: decodeTotal,
-              percent: Math.round(5 + (decodeDone / decodeTotal) * 35)
-            })
-          }
-        }
-      })
-      await Promise.all(workers)
-      if (failCount > 0) {
-        throw new Error(t('mixtape.transportDecodeFailed', { count: failCount }))
-      }
-    }
-
-    for (const entry of entries) {
-      if (!entry.audioBuffer) {
-        throw new Error(t('mixtape.transportDecodeFailed', { count: 1 }))
-      }
-    }
-    const playableEntries = entries.filter((entry) => !!entry.audioBuffer)
-    const durationSec = playableEntries.reduce(
-      (max, entry) => Math.max(max, entry.startSec + entry.duration),
-      0
-    )
-    if (!durationSec || !Number.isFinite(durationSec) || durationSec <= 0) {
-      throw new Error(t('mixtape.transportNoPlayableTracks'))
-    }
-
-    const sampleRate = resolveOutputSampleRate(playableEntries)
-    const outputChannels = resolveOutputChannels(playableEntries)
-    const frameCount = Math.max(1, Math.ceil(durationSec * sampleRate))
-    const offlineCtx = new OfflineAudioContext(outputChannels, frameCount, sampleRate)
-    const nodes = buildOutputTrackNodes(offlineCtx, playableEntries)
-
-    emitProgress({
-      stageKey: 'mixtape.outputProgressScheduling',
-      done: 0,
-      total: 100,
-      percent: 42
-    })
-
-    let masterTrackId = ''
-    const stepSec = 1 / 120
-    const totalSteps = Math.max(1, Math.ceil(durationSec / stepSec))
-    const schedulingNodes = nodes as any[]
-    for (let step = 0; step <= totalSteps; step += 1) {
-      const timelineSec = Math.min(durationSec, step * stepSec)
-      applyTransportMixParamsAtTimelineSec(timelineSec, {
-        nodes,
-        audioCtx: offlineCtx,
-        automationAtSec: timelineSec
-      })
-      const syncResult = applyMixxxTransportSync({
-        nodes: schedulingNodes,
-        timelineSec,
-        masterTrackId,
-        audioCtx: offlineCtx
-      })
-      masterTrackId = syncResult.masterTrackId
-      if (step % 20 === 0 || step === totalSteps) {
-        emitProgress({
-          stageKey: 'mixtape.outputProgressScheduling',
-          done: step,
-          total: totalSteps,
-          percent: Math.round(42 + (step / Math.max(1, totalSteps)) * 26)
-        })
-      }
-    }
-
-    emitProgress({
-      stageKey: 'mixtape.outputProgressRendering',
-      done: 0,
-      total: 100,
-      percent: 70
-    })
-    let renderPercent = 70
-    const renderTicker = setInterval(() => {
-      renderPercent = Math.min(92, renderPercent + 1)
-      emitProgress({
-        stageKey: 'mixtape.outputProgressRendering',
-        done: renderPercent,
-        total: 100,
-        percent: renderPercent
-      })
-    }, 160)
-    let renderedBuffer: AudioBuffer | null = null
-    try {
-      renderedBuffer = await offlineCtx.startRendering()
-    } finally {
-      clearInterval(renderTicker)
-    }
-    if (!renderedBuffer) {
-      throw new Error(t('mixtape.outputProgressFailed'))
-    }
-
-    emitProgress({
-      stageKey: 'mixtape.outputProgressEncoding',
-      done: 93,
-      total: 100,
-      percent: 93
-    })
-    const wavBytes = encodeAudioBufferToWav(renderedBuffer, outputChannels)
-    emitProgress({
-      stageKey: 'mixtape.outputProgressEncoding',
-      done: 94,
-      total: 100,
-      percent: 94
-    })
-
-    return {
-      wavBytes,
-      durationSec,
-      sampleRate: renderedBuffer.sampleRate,
-      channels: outputChannels,
-      trackCount: playableEntries.length
-    }
-  }
+  const { renderMixtapeOutputWav } = createTimelineTransportRenderWavModule({
+    t,
+    buildTransportEntries,
+    readTransportBufferCache,
+    ensureDecodedEntry,
+    getTransportAudioContext: () => transportAudioCtx,
+    clampNumber,
+    resolveEntryEqDbValue,
+    resolveEntryEnvelopeValue,
+    applyTransportMixParamsAtTimelineSec: (timelineSec: number, options?: any) =>
+      applyTransportMixParamsAtTimelineSec(timelineSec, options)
+  })
 
   const preloadTransportBuffers = async () => {
     const version = ++transportPreloadVersion
@@ -1419,332 +955,30 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     playheadVisible.value = false
   }
 
-  // ── 拖拽相关（未改动）────────────────────────────────────────
-  const resolvePreviousTrackId = (trackId: string) => {
-    const ordered = [...tracks.value].sort(
-      (a: MixtapeTrack, b: MixtapeTrack) => a.mixOrder - b.mixOrder
-    )
-    const index = ordered.findIndex((item: MixtapeTrack) => item.id === trackId)
-    if (index <= 0) return ''
-    return ordered[index - 1]?.id || ''
-  }
-
-  const findTrack = (trackId: string) =>
-    tracks.value.find((item: MixtapeTrack) => item.id === trackId) || null
-
-  const buildTrackTimingSnapshot = (inputTracks: MixtapeTrack[]) => {
-    let cursorSec = 0
-    return inputTracks.map((track, index) => {
-      const laneIndex = index % LANE_COUNT
-      const duration = resolveTrackDurationSeconds(track)
-      const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0
-      const rawStartSec = Number(track.startSec)
-      const startSec =
-        Number.isFinite(rawStartSec) && rawStartSec >= 0 ? Math.max(0, rawStartSec) : cursorSec
-      const endSec = startSec + safeDuration
-      cursorSec = Math.max(cursorSec, endSec)
-      return {
-        id: track.id,
-        laneIndex,
-        startSec,
-        endSec,
-        durationSec: safeDuration
-      }
+  const { isTrackDragging, handleTrackDragStart, cleanupTrackDrag } =
+    createTimelineTransportTrackDragModule({
+      tracks,
+      normalizedRenderZoom,
+      resolveRenderPxPerSec,
+      resolveTrackDurationSeconds,
+      resolveTrackFirstBeatSeconds,
+      resolveTrackStartSecById,
+      resolveTimelineSecByX,
+      stopTransportForTrackChange,
+      scheduleFullPreRender,
+      scheduleWorkerPreRender,
+      persistTrackStartSec,
+      persistTrackVolumeMuteSegments,
+      remapVolumeMuteSegmentsForBpm,
+      normalizeStartSec,
+      clampNumber,
+      normalizeBeatOffset
     })
-  }
-
-  const resolveTrackDragBounds = (snapshotTracks: MixtapeTrack[], trackId: string) => {
-    const timings = buildTrackTimingSnapshot(snapshotTracks)
-    const target = timings.find((item) => item.id === trackId)
-    if (!target) {
-      return {
-        minStart: 0,
-        maxStart: Number.POSITIVE_INFINITY
-      }
-    }
-    const sameLane = timings.filter((item) => item.laneIndex === target.laneIndex)
-    const lanePos = sameLane.findIndex((item) => item.id === trackId)
-    if (lanePos < 0) {
-      return {
-        minStart: 0,
-        maxStart: Number.POSITIVE_INFINITY
-      }
-    }
-    const prev = lanePos > 0 ? sameLane[lanePos - 1] : null
-    const next = lanePos < sameLane.length - 1 ? sameLane[lanePos + 1] : null
-
-    const minStart = prev ? prev.endSec : 0
-    let maxStart = Number.POSITIVE_INFINITY
-    if (next) {
-      maxStart = Math.max(minStart, next.startSec - target.durationSec)
-    }
-    return {
-      minStart,
-      maxStart
-    }
-  }
-
-  const resolveVisibleGridSnapStepBeats = () => {
-    const zoomValue = Number(normalizedRenderZoom.value) || 0
-    if (zoomValue >= GRID_BEAT_LINE_ZOOM) return 1
-    if (zoomValue >= GRID_BEAT4_LINE_ZOOM) return 4
-    return 32
-  }
-
-  const resolveSnappedStartSec = (payload: {
-    rawStartSec: number
-    minStartSec: number
-    maxStartSec: number
-    snapAnchorSec: number
-    currentAnchorRawSec: number
-    stepSec: number
-  }) => {
-    const stepSec = Number(payload.stepSec)
-    if (!Number.isFinite(stepSec) || stepSec <= 0) return null
-    const rawStartSec = Math.max(0, Number(payload.rawStartSec) || 0)
-    const minStartSec = Math.max(0, Number(payload.minStartSec) || 0)
-    const maxStartSec = Number.isFinite(Number(payload.maxStartSec))
-      ? Math.max(minStartSec, Number(payload.maxStartSec))
-      : Number.POSITIVE_INFINITY
-    const snapAnchorSec = Number(payload.snapAnchorSec)
-    const currentAnchorRawSec = Number(payload.currentAnchorRawSec)
-    if (!Number.isFinite(snapAnchorSec) || !Number.isFinite(currentAnchorRawSec)) return null
-
-    const startOffsetSec = rawStartSec - currentAnchorRawSec
-    const rawIndex = (currentAnchorRawSec - snapAnchorSec) / stepSec
-    if (!Number.isFinite(rawIndex)) return null
-
-    let nearestIndex = Math.round(rawIndex)
-    const minIndex = Math.ceil((minStartSec - startOffsetSec - snapAnchorSec) / stepSec)
-    const maxIndex = Number.isFinite(maxStartSec)
-      ? Math.floor((maxStartSec - startOffsetSec - snapAnchorSec) / stepSec)
-      : Number.POSITIVE_INFINITY
-    if (minIndex > maxIndex) return null
-    nearestIndex = Math.max(minIndex, Math.min(maxIndex, nearestIndex))
-
-    const snappedStartSec = startOffsetSec + snapAnchorSec + nearestIndex * stepSec
-    if (!Number.isFinite(snappedStartSec)) return null
-    return clampNumber(snappedStartSec, minStartSec, maxStartSec)
-  }
-
-  const handleTrackDragMove = (event: MouseEvent) => {
-    if (!trackDragState) return
-    const pxPerSec = Math.max(0.0001, resolveRenderPxPerSec(normalizedRenderZoom.value))
-    const deltaSec = (event.clientX - trackDragState.startClientX) / pxPerSec
-    const rawStartSec = Math.max(0, trackDragState.initialStartSec + deltaSec)
-    const dragBounds = resolveTrackDragBounds(trackDragState.snapshotTracks, trackDragState.trackId)
-    const clampedRawStartSec = clampNumber(rawStartSec, dragBounds.minStart, dragBounds.maxStart)
-    let nextStartSec = clampedRawStartSec
-    let nextBpm: number | undefined
-    const currentTrackForSnap = findTrack(trackDragState.trackId)
-    const snapStepBeats = resolveVisibleGridSnapStepBeats()
-    const previousTrack = findTrack(trackDragState.previousTrackId)
-    if (previousTrack) {
-      const previousBpm = Number(previousTrack.bpm)
-      if (Number.isFinite(previousBpm) && previousBpm > 0) {
-        const previousStartSec = resolveTrackStartSecById(previousTrack.id)
-        const previousFirstBeatSec = resolveTrackFirstBeatSeconds(previousTrack, previousBpm)
-        const currentFirstBeatSecAtTarget = currentTrackForSnap
-          ? resolveTrackFirstBeatSeconds(currentTrackForSnap, previousBpm)
-          : 0
-        const beatSec = resolveBeatSecByBpm(previousBpm)
-        const snapStepSec = beatSec * snapStepBeats
-        if (Number.isFinite(snapStepSec) && snapStepSec > 0) {
-          const snapAnchor = resolveGridAnchorSec({
-            startSec: previousStartSec,
-            firstBeatSec: previousFirstBeatSec,
-            beatSec,
-            barBeatOffset: normalizeBeatOffset(previousTrack.barBeatOffset, 32)
-          })
-          const currentAnchorRawSec = resolveGridAnchorSec({
-            startSec: clampedRawStartSec,
-            firstBeatSec: currentFirstBeatSecAtTarget,
-            beatSec,
-            barBeatOffset: normalizeBeatOffset(currentTrackForSnap?.barBeatOffset, 32)
-          })
-          const snappedStartSec = resolveSnappedStartSec({
-            rawStartSec: clampedRawStartSec,
-            minStartSec: dragBounds.minStart,
-            maxStartSec: dragBounds.maxStart,
-            snapAnchorSec: snapAnchor,
-            currentAnchorRawSec,
-            stepSec: snapStepSec
-          })
-          if (typeof snappedStartSec === 'number') {
-            nextStartSec = snappedStartSec
-            nextBpm = previousBpm
-          }
-        }
-      }
-    }
-    if (typeof nextBpm !== 'number' && currentTrackForSnap) {
-      const currentBpm = Number(currentTrackForSnap.bpm)
-      if (Number.isFinite(currentBpm) && currentBpm > 0) {
-        const beatSec = resolveBeatSecByBpm(currentBpm)
-        const snapStepSec = beatSec * snapStepBeats
-        const currentFirstBeatSec = resolveTrackFirstBeatSeconds(currentTrackForSnap, currentBpm)
-        const currentAnchorRawSec = resolveGridAnchorSec({
-          startSec: clampedRawStartSec,
-          firstBeatSec: currentFirstBeatSec,
-          beatSec,
-          barBeatOffset: normalizeBeatOffset(currentTrackForSnap.barBeatOffset, 32)
-        })
-        const snappedStartSec = resolveSnappedStartSec({
-          rawStartSec: clampedRawStartSec,
-          minStartSec: dragBounds.minStart,
-          maxStartSec: dragBounds.maxStart,
-          snapAnchorSec: 0,
-          currentAnchorRawSec,
-          stepSec: snapStepSec
-        })
-        if (typeof snappedStartSec === 'number') {
-          nextStartSec = snappedStartSec
-        }
-      }
-    }
-    nextStartSec = clampNumber(nextStartSec, dragBounds.minStart, dragBounds.maxStart)
-
-    const targetIndex = tracks.value.findIndex(
-      (item: MixtapeTrack) => item.id === trackDragState?.trackId
-    )
-    if (targetIndex < 0) return
-    const currentTrack = tracks.value[targetIndex]
-    if (!currentTrack) return
-    const snapshotTrack =
-      trackDragState.snapshotTracks.find((item: MixtapeTrack) => item.id === currentTrack.id) ||
-      currentTrack
-    const currentStartSec = resolveTrackStartSecById(currentTrack.id)
-    const shouldUpdateStart = Math.abs(nextStartSec - currentStartSec) > 0.0001
-    const shouldUpdateBpm =
-      typeof nextBpm === 'number' &&
-      Number.isFinite(nextBpm) &&
-      nextBpm > 0 &&
-      Math.abs((Number(currentTrack.bpm) || 0) - nextBpm) > 0.0001
-    if (!shouldUpdateStart && !shouldUpdateBpm) return
-    const nextTrack: MixtapeTrack = {
-      ...currentTrack,
-      startSec: nextStartSec
-    }
-    if (shouldUpdateBpm) {
-      const safeNextBpm = Number(nextBpm)
-      nextTrack.bpm = safeNextBpm
-      nextTrack.masterTempo = true
-      nextTrack.originalBpm =
-        Number.isFinite(Number(currentTrack.originalBpm)) && Number(currentTrack.originalBpm) > 0
-          ? currentTrack.originalBpm
-          : Number(currentTrack.bpm) || safeNextBpm
-      nextTrack.volumeMuteSegments = remapVolumeMuteSegmentsForBpm(snapshotTrack, safeNextBpm)
-    }
-    const nextTracks = [...tracks.value]
-    nextTracks.splice(targetIndex, 1, nextTrack)
-    tracks.value = nextTracks
-    event.preventDefault()
-  }
-
-  const handleTrackDragEnd = () => {
-    if (!trackDragState) return
-    const targetTrackId = trackDragState.trackId
-    const previousTrack =
-      trackDragState.snapshotTracks.find((item: MixtapeTrack) => item.id === targetTrackId) || null
-    const currentTrack = findTrack(targetTrackId)
-    const previousStartSec = normalizeStartSec(previousTrack?.startSec)
-    const currentStartSec = normalizeStartSec(currentTrack?.startSec)
-    const normalizeTrackBpm = (value: unknown) => {
-      const numeric = Number(value)
-      if (!Number.isFinite(numeric) || numeric <= 0) return null
-      return Number(numeric.toFixed(6))
-    }
-    const previousBpm = normalizeTrackBpm(previousTrack?.bpm)
-    const currentBpm = normalizeTrackBpm(currentTrack?.bpm)
-    const previousOriginalBpm = normalizeTrackBpm(previousTrack?.originalBpm)
-    const currentOriginalBpm = normalizeTrackBpm(currentTrack?.originalBpm)
-    const previousMasterTempo = previousTrack?.masterTempo !== false
-    const currentMasterTempo = currentTrack?.masterTempo !== false
-    isTrackDragging.value = false
-    trackDragState = null
-    window.removeEventListener('mousemove', handleTrackDragMove as EventListener)
-    window.removeEventListener('mouseup', handleTrackDragEnd as EventListener)
-    scheduleFullPreRender()
-    scheduleWorkerPreRender()
-    if (!currentTrack) return
-    const startChanged =
-      currentStartSec !== null &&
-      (previousStartSec === null || Math.abs(previousStartSec - currentStartSec) > 0.0001)
-    const bpmChanged =
-      currentBpm !== null && (previousBpm === null || Math.abs(previousBpm - currentBpm) > 0.0001)
-    const originalBpmChanged =
-      currentOriginalBpm !== null &&
-      (previousOriginalBpm === null || Math.abs(previousOriginalBpm - currentOriginalBpm) > 0.0001)
-    const masterTempoChanged = previousMasterTempo !== currentMasterTempo
-    if (!startChanged && !bpmChanged && !originalBpmChanged && !masterTempoChanged) return
-    void persistTrackStartSec([
-      {
-        itemId: targetTrackId,
-        ...(startChanged ? { startSec: Number(currentStartSec) } : {}),
-        ...(bpmChanged ? { bpm: Number(currentBpm) } : {}),
-        ...(originalBpmChanged ? { originalBpm: Number(currentOriginalBpm) } : {}),
-        ...(masterTempoChanged ? { masterTempo: currentMasterTempo } : {})
-      }
-    ])
-    if (bpmChanged) {
-      const currentDuration = resolveTrackDurationSeconds(currentTrack)
-      const previousDuration = previousTrack ? resolveTrackDurationSeconds(previousTrack) : 0
-      const currentSegments = normalizeVolumeMuteSegments(
-        currentTrack.volumeMuteSegments,
-        currentDuration
-      )
-      const previousSegments = normalizeVolumeMuteSegments(
-        previousTrack?.volumeMuteSegments,
-        previousDuration
-      )
-      if (
-        JSON.stringify(currentSegments) !== JSON.stringify(previousSegments) ||
-        currentSegments.length > 0 ||
-        previousSegments.length > 0
-      ) {
-        void persistTrackVolumeMuteSegments([
-          {
-            itemId: targetTrackId,
-            segments: currentSegments
-          }
-        ])
-      }
-    }
-  }
-
-  const handleTrackDragStart = (item: TimelineTrackLayout, event: MouseEvent) => {
-    if (event.button !== 0) return
-    event.preventDefault()
-    event.stopPropagation()
-    stopTransportForTrackChange()
-    const trackId = item?.track?.id || ''
-    if (!trackId) return
-    const track = findTrack(trackId)
-    if (!track) return
-    const pxPerSec = Math.max(0.0001, resolveRenderPxPerSec(normalizedRenderZoom.value))
-    trackDragState = {
-      trackId,
-      startClientX: event.clientX,
-      initialStartSec:
-        Number.isFinite(Number(item.startSec)) && Number(item.startSec) >= 0
-          ? Number(item.startSec)
-          : resolveTimelineSecByX(item.startX, pxPerSec),
-      previousTrackId: resolvePreviousTrackId(trackId),
-      snapshotTracks: tracks.value.map((trackItem: MixtapeTrack) => ({ ...trackItem }))
-    }
-    isTrackDragging.value = true
-    window.addEventListener('mousemove', handleTrackDragMove, { passive: false })
-    window.addEventListener('mouseup', handleTrackDragEnd, { passive: true })
-  }
 
   const cleanupTransportAndDrag = () => {
     cancelTransportPreload()
     stopTransport()
-    trackDragState = null
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('mousemove', handleTrackDragMove as EventListener)
-      window.removeEventListener('mouseup', handleTrackDragEnd as EventListener)
-    }
+    cleanupTrackDrag()
     // 关闭 AudioContext 释放资源
     if (transportAudioCtx && transportAudioCtx.state !== 'closed') {
       try {

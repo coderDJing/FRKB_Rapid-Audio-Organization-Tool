@@ -1,0 +1,291 @@
+.mixtape-window {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: var(--bg);
+  color: var(--text);
+  position: relative;
+  z-index: 1;
+}
+
+.mixtape-shell {
+  --mix-envelope-line-color: #ffffff;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+:global(.theme-light) .mixtape-shell {
+  --mix-envelope-line-color: #000000;
+}
+
+:global(.theme-dark) .mixtape-shell {
+  --mix-envelope-line-color: #ffffff;
+}
+
+.mixtape-title-wrap {
+  height: 35px;
+  position: relative;
+  z-index: 10030;
+  overflow: visible;
+}
+
+.title-drag {
+  flex-grow: 1;
+  height: 35px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 12px 0 8px;
+  min-width: 0;
+}
+
+.title-meta {
+  font-size: 12px;
+  color: var(--text-weak);
+  max-width: 60%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+:global(#app) {
+  color: var(--text);
+  background-color: var(--bg);
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+:global(body) {
+  margin: 0;
+  background-color: var(--bg-elev);
+  overflow: hidden;
+}
+
+.mixtape-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+  min-height: 0;
+}
+
+.mixtape-main {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  min-height: 0;
+}
+
+.mixtape-param-bar {
+  min-height: 32px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0) 100%);
+  padding: 3px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.mixtape-param-bar__title {
+  font-size: 11px;
+  color: var(--text);
+  font-weight: 500;
+  flex: 0 0 auto;
+}
+
+.mixtape-param-bar__tabs {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.mixtape-param-bar__actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.mixtape-param-bar__hint {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-weak);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mixtape-param-bar__action-btn {
+  height: auto;
+  min-height: 22px;
+  line-height: 20px;
+  padding: 0 9px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.mixtape-param-bar__action-btn--icon {
+  width: 24px;
+  min-width: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mixtape-param-bar__action-btn--icon svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mixtape-param-bar__action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mixtape-param-bar__action-btn.is-active {
+  background: rgba(193, 58, 58, 0.2);
+  color: #ffd6d6;
+}
+
+.mixtape-param-bar__tab {
+  --mix-tab-accent-rgb: 0, 120, 212;
+  --mix-tab-accent: var(--text);
+  --mix-tab-bg-alpha: 0.16;
+  --mix-tab-bg-alpha-strong: 0.24;
+  --mix-tab-shadow-alpha: 0.2;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text-weak);
+  font-size: 11px;
+  line-height: 20px;
+  min-height: 22px;
+  padding: 0 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    border-color 0.12s ease,
+    color 0.12s ease,
+    background 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.mixtape-param-bar__tab:hover {
+  border-color: rgba(var(--mix-tab-accent-rgb), 0.72);
+  color: var(--mix-tab-accent);
+  background: linear-gradient(
+    180deg,
+    rgba(var(--mix-tab-accent-rgb), 0.12) 0%,
+    rgba(var(--mix-tab-accent-rgb), 0.06) 100%
+  );
+}
+
+.mixtape-param-bar__tab.is-active {
+  border-color: rgba(var(--mix-tab-accent-rgb), 0.95);
+  background: linear-gradient(
+    180deg,
+    rgba(var(--mix-tab-accent-rgb), var(--mix-tab-bg-alpha-strong)) 0%,
+    rgba(var(--mix-tab-accent-rgb), var(--mix-tab-bg-alpha)) 100%
+  );
+  color: var(--mix-tab-accent);
+  box-shadow:
+    inset 0 0 0 1px rgba(var(--mix-tab-accent-rgb), var(--mix-tab-shadow-alpha)),
+    0 0 0 1px rgba(0, 0, 0, 0.16);
+}
+
+.mixtape-param-bar__tab--position {
+  --mix-tab-accent-rgb: 170, 182, 196;
+  --mix-tab-accent: #dce3ed;
+}
+
+.mixtape-param-bar__tab--gain {
+  --mix-tab-accent-rgb: 242, 246, 255;
+  --mix-tab-accent: #f2f6ff;
+  --mix-tab-bg-alpha: 0.22;
+  --mix-tab-bg-alpha-strong: 0.3;
+}
+
+.mixtape-param-bar__tab--high {
+  --mix-tab-accent-rgb: 79, 139, 255;
+  --mix-tab-accent: #4f8bff;
+}
+
+.mixtape-param-bar__tab--mid {
+  --mix-tab-accent-rgb: 69, 208, 126;
+  --mix-tab-accent: #45d07e;
+}
+
+.mixtape-param-bar__tab--low {
+  --mix-tab-accent-rgb: 255, 93, 97;
+  --mix-tab-accent: #ff5d61;
+}
+
+.mixtape-param-bar__tab--volume {
+  --mix-tab-accent-rgb: 255, 201, 74;
+  --mix-tab-accent: #ffc94a;
+}
+
+:global(.theme-light) .mixtape-param-bar__tab--position {
+  --mix-tab-accent-rgb: 82, 97, 117;
+  --mix-tab-accent: #526175;
+}
+
+:global(.theme-light) .mixtape-param-bar__tab--gain {
+  --mix-tab-accent-rgb: 93, 106, 124;
+  --mix-tab-accent: #5f6e82;
+}
+
+:global(.theme-light) .mixtape-param-bar__tab--high {
+  --mix-tab-accent-rgb: 43, 102, 217;
+  --mix-tab-accent: #2b66d9;
+}
+
+:global(.theme-light) .mixtape-param-bar__tab--mid {
+  --mix-tab-accent-rgb: 16, 138, 79;
+  --mix-tab-accent: #108a4f;
+}
+
+:global(.theme-light) .mixtape-param-bar__tab--low {
+  --mix-tab-accent-rgb: 196, 59, 59;
+  --mix-tab-accent: #c43b3b;
+}
+
+:global(.theme-light) .mixtape-param-bar__tab--volume {
+  --mix-tab-accent-rgb: 176, 112, 0;
+  --mix-tab-accent: #b07000;
+}
+
+.mixtape-param-bar__tab:focus {
+  outline: none;
+}
+
+.mixtape-param-bar__tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(var(--mix-tab-accent-rgb), 0.24);
+}

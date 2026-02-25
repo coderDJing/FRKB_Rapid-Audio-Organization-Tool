@@ -1,5 +1,4 @@
 import { computed, ref } from 'vue'
-import type { Ref } from 'vue'
 import {
   MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM,
   buildMixEnvelopePolylineByControlPoints,
@@ -9,12 +8,34 @@ import {
   normalizeMixEnvelopePoints,
   sampleMixEnvelopeAtSec
 } from '@renderer/composables/mixtape/gainEnvelope'
-import { normalizeVolumeMuteSegments } from '@renderer/composables/mixtape/volumeMuteSegments'
-import { GRID_BEAT4_LINE_ZOOM, GRID_BEAT_LINE_ZOOM } from '@renderer/composables/mixtape/constants'
 import {
-  normalizeBeatOffset as normalizeBeatOffsetByMixxx,
-  resolveBeatSecByBpm
-} from '@renderer/composables/mixtape/mixxxSyncModel'
+  GAIN_ENVELOPE_LOCKED_SEC_EPSILON,
+  GAIN_ENVELOPE_MAX_POINTS_PER_SEC,
+  GAIN_ENVELOPE_MIN_GAP_RATIO,
+  GAIN_ENVELOPE_PERSIST_DEBOUNCE_MS,
+  GAIN_ENVELOPE_SAME_SEC_EPSILON,
+  MIX_PARAM_UNDO_STACK_LIMIT
+} from '@renderer/composables/mixtape/gainEnvelopeEditorConstants'
+import {
+  clampNumber,
+  resolveGridAlignedVolumeMuteSegments as resolveGridAlignedVolumeMuteSegmentsByUtils,
+  resolveVolumeMuteGrid as resolveVolumeMuteGridByUtils,
+  resolveVolumeMutePointerSec,
+  resolveVolumeMuteSegmentBySec as resolveVolumeMuteSegmentBySecByUtils,
+  resolveVolumeMuteSegmentKey,
+  resolveVolumeMuteSegmentMasks as resolveVolumeMuteSegmentMasksByUtils,
+  resolveVolumeMuteSegmentsByToggle,
+  snapSecToVisibleGrid as snapSecToVisibleGridByUtils
+} from '@renderer/composables/mixtape/gainEnvelopeEditorGrid'
+import type {
+  CreateMixtapeGainEnvelopeEditorParams,
+  EnvelopeDragState,
+  EnvelopePointDot,
+  EnvelopeUndoSeed,
+  MixParamUndoEntry,
+  VolumeMuteSegmentMask,
+  VolumeMuteSelectionState
+} from '@renderer/composables/mixtape/gainEnvelopeEditorTypes'
 import type {
   MixtapeEnvelopeParamId,
   MixtapeGainPoint,
@@ -22,75 +43,6 @@ import type {
   MixtapeTrack,
   TimelineTrackLayout
 } from '@renderer/composables/mixtape/types'
-
-type EnvelopePointDot = {
-  index: number
-  x: number
-  y: number
-  isBoundary: boolean
-}
-
-type EnvelopeDragState = {
-  param: MixtapeEnvelopeParamId
-  trackId: string
-  pointIndex: number
-  stageEl: HTMLElement
-}
-
-type VolumeMuteSegmentMask = {
-  key: string
-  left: number
-  width: number
-}
-
-type VolumeMuteSelectionState = {
-  trackId: string
-  stageEl: HTMLElement
-  baseSegments: MixtapeMuteSegment[]
-  touched: Map<string, MixtapeMuteSegment>
-  lastSec: number
-}
-
-type MixParamUndoEntry =
-  | {
-      type: 'envelope'
-      trackId: string
-      param: MixtapeEnvelopeParamId
-      points: MixtapeGainPoint[]
-    }
-  | {
-      type: 'volumeMute'
-      trackId: string
-      segments: MixtapeMuteSegment[]
-    }
-  | {
-      type: 'external'
-      undo: () => boolean
-    }
-
-type EnvelopeUndoSeed = {
-  trackId: string
-  param: MixtapeEnvelopeParamId
-  points: MixtapeGainPoint[]
-}
-
-type CreateMixtapeGainEnvelopeEditorParams = {
-  tracks: Ref<MixtapeTrack[]>
-  renderZoomLevel: Ref<number>
-  resolveTrackDurationSeconds: (track: MixtapeTrack) => number
-  resolveTrackFirstBeatSeconds: (track: MixtapeTrack) => number
-  resolveActiveParam: () => MixtapeEnvelopeParamId | null
-  isVolumeMuteSelectionMode: () => boolean
-  isEditable: () => boolean
-}
-
-const GAIN_ENVELOPE_MIN_GAP_RATIO = 0.004
-const GAIN_ENVELOPE_PERSIST_DEBOUNCE_MS = 180
-const GAIN_ENVELOPE_LOCKED_SEC_EPSILON = 0.0001
-const GAIN_ENVELOPE_SAME_SEC_EPSILON = 0.0001
-const GAIN_ENVELOPE_MAX_POINTS_PER_SEC = 2
-const VOLUME_MUTE_SEGMENT_EPSILON = 0.0001
-const MIX_PARAM_UNDO_STACK_LIMIT = 100
 
 export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelopeEditorParams) => {
   const pendingMixEnvelopePersist = new Map<
@@ -111,10 +63,55 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
   let mixEnvelopePersistTimer: ReturnType<typeof setTimeout> | null = null
   let volumeMutePersistTimer: ReturnType<typeof setTimeout> | null = null
 
-  const clampNumber = (value: number, min: number, max: number) =>
-    Math.max(min, Math.min(max, value))
-
   const resolveCurrentParam = () => params.resolveActiveParam()
+  const resolveRenderZoom = () => Number(params.renderZoomLevel.value) || 0
+  const resolveTrackFirstBeatSec = (track: MixtapeTrack) =>
+    Math.max(0, Number(params.resolveTrackFirstBeatSeconds(track)) || 0)
+
+  const resolveVolumeMuteGrid = (track: MixtapeTrack, durationSec: number) =>
+    resolveVolumeMuteGridByUtils({
+      track,
+      durationSec,
+      zoom: resolveRenderZoom(),
+      firstBeatSec: resolveTrackFirstBeatSec(track)
+    })
+
+  const resolveGridAlignedVolumeMuteSegments = (
+    track: MixtapeTrack,
+    durationSec: number,
+    value: unknown
+  ) =>
+    resolveGridAlignedVolumeMuteSegmentsByUtils({
+      track,
+      durationSec,
+      value,
+      zoom: resolveRenderZoom(),
+      firstBeatSec: resolveTrackFirstBeatSec(track)
+    })
+
+  const resolveVolumeMuteSegmentBySec = (payload: {
+    track: MixtapeTrack
+    durationSec: number
+    sec: number
+  }) =>
+    resolveVolumeMuteSegmentBySecByUtils({
+      ...payload,
+      zoom: resolveRenderZoom(),
+      firstBeatSec: resolveTrackFirstBeatSec(payload.track)
+    })
+
+  const snapSecToVisibleGrid = (payload: {
+    track: MixtapeTrack
+    sec: number
+    durationSec: number
+    minSec?: number
+    maxSec?: number
+  }) =>
+    snapSecToVisibleGridByUtils({
+      ...payload,
+      zoom: resolveRenderZoom(),
+      firstBeatSec: resolveTrackFirstBeatSec(payload.track)
+    })
 
   const resolveTrackEnvelopeState = (trackId: string, param: MixtapeEnvelopeParamId) => {
     const safeTrackId = String(trackId || '').trim()
@@ -230,98 +227,6 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
     })
   }
 
-  const resolveVolumeMuteSegmentKey = (segment: MixtapeMuteSegment) =>
-    `${Number(segment.startSec).toFixed(4)}:${Number(segment.endSec).toFixed(4)}`
-
-  const resolveVolumeMuteStepBeats = () => {
-    const zoom = Number(params.renderZoomLevel.value) || 0
-    if (zoom >= GRID_BEAT_LINE_ZOOM) return 1
-    if (zoom >= GRID_BEAT4_LINE_ZOOM) return 4
-    return 32
-  }
-
-  const resolveVolumeMuteGrid = (track: MixtapeTrack, durationSec: number) => {
-    const beatSec = resolveBeatSecByBpm(Number(track.bpm))
-    if (!beatSec) return null
-    const stepBeats = resolveVolumeMuteStepBeats()
-    const firstBeatSec = Math.max(0, Number(params.resolveTrackFirstBeatSeconds(track)) || 0)
-    const barOffset = normalizeBeatOffsetByMixxx(track.barBeatOffset, 32)
-    const baseSec = stepBeats === 1 ? firstBeatSec : firstBeatSec + barOffset * beatSec
-    const stepSec = beatSec * stepBeats
-    if (!Number.isFinite(stepSec) || stepSec <= 0) return null
-    return {
-      durationSec: Math.max(0, Number(durationSec) || 0),
-      baseSec,
-      stepSec
-    }
-  }
-
-  const resolveGridAlignedVolumeMuteSegments = (
-    track: MixtapeTrack,
-    durationSec: number,
-    value: unknown
-  ) => {
-    const normalized = normalizeVolumeMuteSegments(value, durationSec)
-    if (!normalized.length) return [] as MixtapeMuteSegment[]
-    const grid = resolveVolumeMuteGrid(track, durationSec)
-    if (!grid) return normalized
-    const segmentMap = new Map<string, MixtapeMuteSegment>()
-    for (const segment of normalized) {
-      const safeStart = clampNumber(Number(segment.startSec) || 0, 0, grid.durationSec)
-      const safeEnd = clampNumber(Number(segment.endSec) || 0, 0, grid.durationSec)
-      if (safeEnd - safeStart <= VOLUME_MUTE_SEGMENT_EPSILON) continue
-      const startIndex = Math.floor((safeStart - grid.baseSec) / grid.stepSec)
-      const endIndex = Math.floor(
-        (Math.max(safeStart, safeEnd - VOLUME_MUTE_SEGMENT_EPSILON) - grid.baseSec) / grid.stepSec
-      )
-      for (let index = startIndex; index <= endIndex; index += 1) {
-        const rawStartSec = grid.baseSec + index * grid.stepSec
-        const rawEndSec = rawStartSec + grid.stepSec
-        const segmentStartSec = clampNumber(rawStartSec, 0, grid.durationSec)
-        const segmentEndSec = clampNumber(rawEndSec, 0, grid.durationSec)
-        if (segmentEndSec - segmentStartSec <= VOLUME_MUTE_SEGMENT_EPSILON) continue
-        const alignedSegment: MixtapeMuteSegment = {
-          startSec: Number(segmentStartSec.toFixed(4)),
-          endSec: Number(segmentEndSec.toFixed(4))
-        }
-        segmentMap.set(resolveVolumeMuteSegmentKey(alignedSegment), alignedSegment)
-      }
-    }
-    return normalizeVolumeMuteSegments(Array.from(segmentMap.values()), durationSec)
-  }
-
-  const resolveVolumeMutePointerSec = (
-    stageEl: HTMLElement,
-    event: MouseEvent,
-    durationSec: number
-  ) => {
-    const rect = stageEl.getBoundingClientRect()
-    if (!rect.width || !durationSec) return null
-    const xRatio = clampNumber((event.clientX - rect.left) / rect.width, 0, 1)
-    return Number((xRatio * durationSec).toFixed(4))
-  }
-
-  const resolveVolumeMuteSegmentBySec = (payload: {
-    track: MixtapeTrack
-    durationSec: number
-    sec: number
-  }): MixtapeMuteSegment | null => {
-    const grid = resolveVolumeMuteGrid(payload.track, payload.durationSec)
-    if (!grid) return null
-    const maxSelectableSec = Math.max(0, grid.durationSec - VOLUME_MUTE_SEGMENT_EPSILON)
-    const safeSec = clampNumber(Number(payload.sec) || 0, 0, maxSelectableSec)
-    const index = Math.floor((safeSec - grid.baseSec) / grid.stepSec)
-    const startSec = grid.baseSec + index * grid.stepSec
-    const endSec = startSec + grid.stepSec
-    const safeStartSec = clampNumber(startSec, 0, grid.durationSec)
-    const safeEndSec = clampNumber(endSec, 0, grid.durationSec)
-    if (safeEndSec - safeStartSec <= VOLUME_MUTE_SEGMENT_EPSILON) return null
-    return {
-      startSec: Number(safeStartSec.toFixed(4)),
-      endSec: Number(safeEndSec.toFixed(4))
-    }
-  }
-
   const resolveActiveEnvelopePolyline = (item: TimelineTrackLayout) => {
     const param = resolveCurrentParam()
     if (!param) return ''
@@ -349,123 +254,7 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
 
   const resolveVolumeMuteSegmentMasks = (item: TimelineTrackLayout): VolumeMuteSegmentMask[] => {
     const { durationSec, segments } = resolveTrackVolumeMuteState(item.track.id)
-    if (!durationSec || !segments.length) return []
-    return segments
-      .map((segment) => {
-        const startRatio = clampNumber(segment.startSec / durationSec, 0, 1)
-        const endRatio = clampNumber(segment.endSec / durationSec, 0, 1)
-        const widthRatio = Math.max(0, endRatio - startRatio)
-        if (widthRatio <= 0.0001) return null
-        return {
-          key: resolveVolumeMuteSegmentKey(segment),
-          left: Number((startRatio * 100).toFixed(4)),
-          width: Number((widthRatio * 100).toFixed(4))
-        }
-      })
-      .filter((segment): segment is VolumeMuteSegmentMask => segment !== null)
-  }
-
-  const resolveGridSnapModes = () => {
-    const zoom = Number(params.renderZoomLevel.value) || 0
-    const snapBeat = zoom >= GRID_BEAT_LINE_ZOOM
-    const snapBeat4 = zoom >= GRID_BEAT4_LINE_ZOOM
-    return {
-      snapBar: true,
-      snapBeat4,
-      snapBeat
-    }
-  }
-
-  const resolveNearestGridSec = (payload: {
-    targetSec: number
-    minSec: number
-    maxSec: number
-    baseSec: number
-    stepSec: number
-  }) => {
-    const targetSec = Number(payload.targetSec)
-    const minSec = Number(payload.minSec)
-    const maxSec = Number(payload.maxSec)
-    const baseSec = Number(payload.baseSec)
-    const stepSec = Number(payload.stepSec)
-    if (!Number.isFinite(targetSec) || !Number.isFinite(minSec) || !Number.isFinite(maxSec))
-      return null
-    if (maxSec < minSec) return null
-    if (!Number.isFinite(baseSec) || !Number.isFinite(stepSec) || stepSec <= 0) return null
-    const minN = Math.ceil((minSec - baseSec) / stepSec)
-    const maxN = Math.floor((maxSec - baseSec) / stepSec)
-    if (minN > maxN) return null
-    const approxN = Math.round((targetSec - baseSec) / stepSec)
-    const safeN = Math.max(minN, Math.min(maxN, approxN))
-    return baseSec + safeN * stepSec
-  }
-
-  const snapSecToVisibleGrid = (payload: {
-    track: MixtapeTrack
-    sec: number
-    durationSec: number
-    minSec?: number
-    maxSec?: number
-  }) => {
-    const durationSec = Math.max(0, Number(payload.durationSec) || 0)
-    const minSec = clampNumber(Number(payload.minSec) || 0, 0, durationSec)
-    const maxSec = clampNumber(
-      Number.isFinite(Number(payload.maxSec)) ? Number(payload.maxSec) : durationSec,
-      minSec,
-      durationSec
-    )
-    const safeSec = clampNumber(Number(payload.sec) || 0, minSec, maxSec)
-    const track = payload.track
-    const beatSec = resolveBeatSecByBpm(Number(track.bpm))
-    if (!beatSec) return null
-    const firstBeatSec = Math.max(0, Number(params.resolveTrackFirstBeatSeconds(track)) || 0)
-    const barOffset = normalizeBeatOffsetByMixxx(track.barBeatOffset, 32)
-    const barBaseSec = firstBeatSec + barOffset * beatSec
-    const { snapBar, snapBeat4, snapBeat } = resolveGridSnapModes()
-    const candidates: number[] = []
-    if (snapBar) {
-      const barSec = resolveNearestGridSec({
-        targetSec: safeSec,
-        minSec,
-        maxSec,
-        baseSec: barBaseSec,
-        stepSec: beatSec * 32
-      })
-      if (typeof barSec === 'number' && Number.isFinite(barSec)) candidates.push(barSec)
-    }
-    if (snapBeat4) {
-      const beat4Sec = resolveNearestGridSec({
-        targetSec: safeSec,
-        minSec,
-        maxSec,
-        baseSec: barBaseSec,
-        stepSec: beatSec * 4
-      })
-      if (typeof beat4Sec === 'number' && Number.isFinite(beat4Sec)) candidates.push(beat4Sec)
-    }
-    if (snapBeat) {
-      const beatSecPoint = resolveNearestGridSec({
-        targetSec: safeSec,
-        minSec,
-        maxSec,
-        baseSec: firstBeatSec,
-        stepSec: beatSec
-      })
-      if (typeof beatSecPoint === 'number' && Number.isFinite(beatSecPoint))
-        candidates.push(beatSecPoint)
-    }
-    if (!candidates.length) return null
-    let nearest = candidates[0]
-    let minDiff = Math.abs(nearest - safeSec)
-    for (let i = 1; i < candidates.length; i += 1) {
-      const candidate = candidates[i]
-      const diff = Math.abs(candidate - safeSec)
-      if (diff < minDiff) {
-        minDiff = diff
-        nearest = candidate
-      }
-    }
-    return clampNumber(nearest, minSec, maxSec)
+    return resolveVolumeMuteSegmentMasksByUtils(durationSec, segments)
   }
 
   const clearMixEnvelopePersistTimer = () => {
@@ -610,23 +399,6 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
     if (shouldPersist) {
       scheduleVolumeMuteSegmentsPersist(track.id, normalized)
     }
-  }
-
-  const resolveVolumeMuteSegmentsByToggle = (
-    baseSegments: MixtapeMuteSegment[],
-    touched: Map<string, MixtapeMuteSegment>
-  ) => {
-    const nextMap = new Map(
-      baseSegments.map((segment) => [resolveVolumeMuteSegmentKey(segment), segment])
-    )
-    for (const [key, segment] of touched.entries()) {
-      if (nextMap.has(key)) {
-        nextMap.delete(key)
-      } else {
-        nextMap.set(key, segment)
-      }
-    }
-    return Array.from(nextMap.values())
   }
 
   const updateTrackMixEnvelope = (

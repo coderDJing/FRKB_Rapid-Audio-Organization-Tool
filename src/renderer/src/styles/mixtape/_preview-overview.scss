@@ -1,0 +1,216 @@
+.timeline-envelope-preview {
+  --envelope-preview-lane-height: var(--timeline-envelope-preview-lane-height, 63px);
+  --envelope-preview-lane-gap: 2px;
+  --envelope-preview-lane-padding-y: 1px;
+  flex: 0 0 auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 6px 0 3px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(0, 0, 0, 0.14) 45%,
+    rgba(0, 0, 0, 0.08) 100%
+  );
+}
+
+.timeline-envelope-preview__legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 8px 4px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-weak);
+  text-transform: uppercase;
+  pointer-events: none;
+  user-select: none;
+}
+
+.timeline-envelope-preview__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.92;
+}
+
+.timeline-envelope-preview__legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4) inset;
+}
+
+.timeline-envelope-preview__stage {
+  position: relative;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.16);
+  overflow: hidden;
+  cursor: grab;
+}
+
+.timeline-envelope-preview__stage.is-dragging {
+  cursor: grabbing;
+}
+
+.timeline-envelope-preview__empty {
+  text-align: center;
+  padding: 14px 0;
+  font-size: 11px;
+  color: var(--text-weak);
+}
+
+.timeline-envelope-preview__viewport {
+  position: relative;
+  will-change: transform;
+}
+
+.timeline-envelope-preview__lanes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--envelope-preview-lane-gap);
+  padding: var(--envelope-preview-lane-padding-y) 0;
+}
+
+.timeline-envelope-preview__lane {
+  position: relative;
+  height: var(--envelope-preview-lane-height);
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.timeline-envelope-preview__track {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border: 0;
+  box-shadow: inset 0 0 0 1px rgba(0, 120, 212, 0.52);
+  background: linear-gradient(
+    180deg,
+    rgba(0, 120, 212, 0.18) 0%,
+    rgba(0, 120, 212, 0.1) 55%,
+    rgba(0, 120, 212, 0.15) 100%
+  );
+  overflow: hidden;
+}
+
+.timeline-envelope-preview__track::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px dashed rgba(255, 255, 255, 0.4);
+  transform: translateY(-0.5px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.timeline-envelope-preview__mute-segments {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.timeline-envelope-preview__mute-segment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(210, 58, 58, 0.28);
+}
+
+.timeline-envelope-preview__track-svg {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.timeline-envelope-preview__line {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.94;
+}
+
+.timeline-envelope-preview__line--gain {
+  opacity: 0.72;
+}
+
+.timeline-envelope-preview__line--volume {
+  opacity: 0.78;
+}
+
+.timeline-overview {
+  flex: 0 0 auto;
+  border-top: 0;
+  padding: 3px 0 12px;
+  background: var(--bg);
+}
+
+.overview-stage {
+  position: relative;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.18);
+  cursor: grab;
+  user-select: none;
+}
+
+.overview-stage.is-dragging {
+  cursor: grabbing;
+}
+
+.overview-lanes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.overview-lane {
+  position: relative;
+  height: var(--timeline-overview-lane-height, 12px);
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.overview-track {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background: rgba(0, 120, 212, 0.55);
+}
+
+.overview-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(255, 84, 84, 0.95);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.overview-viewport {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 120, 212, 0.9);
+  background: rgba(0, 120, 212, 0.16);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2) inset;
+  opacity: 1;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+  will-change: transform;
+}

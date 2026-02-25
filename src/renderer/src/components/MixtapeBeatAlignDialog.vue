@@ -15,6 +15,48 @@ import {
   isValidMixxxWaveformData,
   pickMixxxDataByFile
 } from '@renderer/components/mixtapeBeatAlignWaveformData'
+import {
+  OVERVIEW_IS_HALF_WAVEFORM,
+  OVERVIEW_MAX_RENDER_COLUMNS,
+  OVERVIEW_WAVEFORM_VERTICAL_PADDING,
+  PREVIEW_BAR_BEAT_INTERVAL,
+  PREVIEW_BAR_LINE_HIT_RADIUS_PX,
+  PREVIEW_BPM_DECIMALS,
+  PREVIEW_BPM_MAX,
+  PREVIEW_BPM_MIN,
+  PREVIEW_BPM_STEP,
+  PREVIEW_BPM_TAP_MAX_COUNT,
+  PREVIEW_BPM_TAP_MAX_DELTA_MS,
+  PREVIEW_BPM_TAP_MIN_DELTA_MS,
+  PREVIEW_BPM_TAP_RESET_MS,
+  PREVIEW_GRID_SHIFT_LARGE_MS,
+  PREVIEW_GRID_SHIFT_SMALL_MS,
+  PREVIEW_HIRES_TARGET_RATE,
+  PREVIEW_MAX_SAMPLES_PER_PIXEL,
+  PREVIEW_MAX_ZOOM,
+  PREVIEW_MIN_ZOOM,
+  PREVIEW_PLAY_MAX_SAMPLES_PER_PIXEL,
+  PREVIEW_RAW_TARGET_RATE,
+  PREVIEW_SHORTCUT_BEATS,
+  PREVIEW_SHORTCUT_FALLBACK_BPM,
+  PREVIEW_WARMUP_DELAY_MS,
+  PREVIEW_WARMUP_EAGER_DELAY_MS,
+  clampNumber,
+  clampPreviewStartByRange,
+  formatPreviewBpm,
+  isEditableEventTarget,
+  normalizeBeatOffset,
+  normalizePathKey,
+  normalizePreviewBpm,
+  parsePreviewBpmInput,
+  resolveOverviewViewportMetricsByRange,
+  resolvePreviewAnchorSecByRange,
+  resolvePreviewDurationSecByMixxx,
+  resolvePreviewLeadingPadSecByVisible,
+  resolvePreviewVirtualSpanSecByRange,
+  resolveVisibleDurationSecByZoom,
+  resizePreviewCanvasByPixelRatio
+} from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import type { RawWaveformData, RawWaveformLevel } from '@renderer/composables/mixtape/types'
 import { buildRawWaveformPyramid } from '@renderer/composables/mixtape/waveformPyramid'
 
@@ -64,7 +106,6 @@ const previewError = ref('')
 const previewMixxxData = ref<MixxxWaveformData | null>(null)
 const overviewMixxxData = ref<MixxxWaveformData | null>(null)
 const overviewRawData = ref<RawWaveformData | null>(null)
-const PREVIEW_MIN_ZOOM = 50
 const previewZoom = ref(PREVIEW_MIN_ZOOM)
 const previewStartSec = ref(0)
 const previewDragging = ref(false)
@@ -94,31 +135,6 @@ let bpmTapResetTimer: ReturnType<typeof setTimeout> | null = null
 const overviewRawPyramidMap = new Map<string, RawWaveformLevel[]>()
 const overviewRawKey = ref('')
 
-const PREVIEW_MAX_ZOOM = 100
-const PREVIEW_HIRES_TARGET_RATE = 4000
-const PREVIEW_RAW_TARGET_RATE = 2400
-const PREVIEW_WARMUP_DELAY_MS = 600
-const PREVIEW_WARMUP_EAGER_DELAY_MS = 0
-const OVERVIEW_MAX_RENDER_COLUMNS = 960
-const OVERVIEW_IS_HALF_WAVEFORM = false
-const OVERVIEW_WAVEFORM_VERTICAL_PADDING = 8
-const PREVIEW_MAX_SAMPLES_PER_PIXEL = 180
-const PREVIEW_PLAY_MAX_SAMPLES_PER_PIXEL = 20
-const PREVIEW_PLAY_ANCHOR_RATIO = 1 / 3
-const PREVIEW_SHORTCUT_FALLBACK_BPM = 128
-const PREVIEW_BPM_DECIMALS = 2
-const PREVIEW_BPM_STEP = 0.01
-const PREVIEW_BPM_MIN = 1
-const PREVIEW_BPM_MAX = 300
-const PREVIEW_SHORTCUT_BEATS = 4
-const PREVIEW_BAR_BEAT_INTERVAL = 32
-const PREVIEW_BAR_LINE_HIT_RADIUS_PX = 14
-const PREVIEW_GRID_SHIFT_SMALL_MS = 5
-const PREVIEW_GRID_SHIFT_LARGE_MS = 20
-const PREVIEW_BPM_TAP_RESET_MS = 5000
-const PREVIEW_BPM_TAP_MIN_DELTA_MS = 50
-const PREVIEW_BPM_TAP_MAX_DELTA_MS = 2000
-const PREVIEW_BPM_TAP_MAX_COUNT = 8
 const previewRenderer = createBeatAlignPreviewRenderer()
 
 const bpmDisplay = computed(() => {
@@ -147,27 +163,6 @@ const trackNameTitle = computed(() => {
   if (!title) return meta
   return meta ? `${title} · ${meta}` : title
 })
-
-const normalizePreviewBpm = (value: unknown) => {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric) || numeric <= 0) return PREVIEW_SHORTCUT_FALLBACK_BPM
-  const clamped = Math.max(PREVIEW_BPM_MIN, Math.min(PREVIEW_BPM_MAX, numeric))
-  return Number(clamped.toFixed(PREVIEW_BPM_DECIMALS))
-}
-
-const formatPreviewBpm = (value: unknown) =>
-  normalizePreviewBpm(value).toFixed(PREVIEW_BPM_DECIMALS)
-
-const parsePreviewBpmInput = (value: string) => {
-  const normalized = String(value || '')
-    .trim()
-    .replace(',', '.')
-  if (!normalized) return null
-  if (!/^(\d+(\.\d*)?|\.\d+)$/.test(normalized)) return null
-  const numeric = Number(normalized)
-  if (!Number.isFinite(numeric) || numeric <= 0) return null
-  return normalizePreviewBpm(numeric)
-}
 
 const syncPreviewBpmFromProps = () => {
   previewBpm.value = normalizePreviewBpm(props.bpm)
@@ -254,88 +249,40 @@ const save = () => {
   closeDialog()
 }
 
-const normalizePathKey = (value: unknown) =>
-  String(value || '')
-    .trim()
-    .toLowerCase()
-
 const normalizedFilePath = computed(() => String(props.filePath || '').trim())
 syncPreviewBpmFromProps()
 
-const resolvePreviewDurationSec = () => {
-  const mixxxDuration = Number(previewMixxxData.value?.duration || 0)
-  if (Number.isFinite(mixxxDuration) && mixxxDuration > 0) return mixxxDuration
-  return 0
-}
+const resolvePreviewDurationSec = () => resolvePreviewDurationSecByMixxx(previewMixxxData.value)
 
-const resolveVisibleDurationSec = () => {
-  const total = resolvePreviewDurationSec()
-  if (!total) return 0
-  const zoomValue = Number(previewZoom.value)
-  const safeZoom = Number.isFinite(zoomValue) && zoomValue > 0 ? zoomValue : PREVIEW_MIN_ZOOM
-  return total / safeZoom
-}
+const resolveVisibleDurationSec = () =>
+  resolveVisibleDurationSecByZoom(resolvePreviewDurationSec(), Number(previewZoom.value))
 
-const resolvePreviewLeadingPadSec = () => {
-  const visible = resolveVisibleDurationSec()
-  if (!Number.isFinite(visible) || visible <= 0) return 0
-  return visible * PREVIEW_PLAY_ANCHOR_RATIO
-}
+const resolvePreviewLeadingPadSec = () =>
+  resolvePreviewLeadingPadSecByVisible(resolveVisibleDurationSec())
 
-const resolvePreviewVirtualSpanSec = () => {
-  const total = resolvePreviewDurationSec()
-  const leadingPad = resolvePreviewLeadingPadSec()
-  return Math.max(0.0001, total + leadingPad)
-}
+const resolvePreviewVirtualSpanSec = () =>
+  resolvePreviewVirtualSpanSecByRange(resolvePreviewDurationSec(), resolvePreviewLeadingPadSec())
 
-const clampPreviewStart = (value: number) => {
-  const total = resolvePreviewDurationSec()
-  const visible = resolveVisibleDurationSec()
-  if (!total || !visible) return 0
-  const minStart = -resolvePreviewLeadingPadSec()
-  const maxStart = Math.max(0, total - visible)
-  return Math.max(minStart, Math.min(maxStart, value))
-}
+const clampPreviewStart = (value: number) =>
+  clampPreviewStartByRange(
+    value,
+    resolvePreviewDurationSec(),
+    resolveVisibleDurationSec(),
+    resolvePreviewLeadingPadSec()
+  )
 
-const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
-const normalizeBeatOffset = (value: number, interval: number) => {
-  const safeInterval = Math.max(1, Math.floor(Number(interval) || 1))
-  const numeric = Number(value)
-  const rounded = Number.isFinite(numeric) ? Math.round(numeric) : 0
-  return ((rounded % safeInterval) + safeInterval) % safeInterval
-}
+const resolvePreviewAnchorSec = (startSec: number = previewStartSec.value) =>
+  resolvePreviewAnchorSecByRange(startSec, resolvePreviewDurationSec(), resolveVisibleDurationSec())
 
-const resolvePreviewAnchorSec = (startSec: number = previewStartSec.value) => {
-  const total = resolvePreviewDurationSec()
-  const visible = resolveVisibleDurationSec()
-  if (!total || !visible) return 0
-  const safeStart = clampPreviewStart(startSec)
-  return clampNumber(safeStart + visible * PREVIEW_PLAY_ANCHOR_RATIO, 0, total)
-}
-
-const resolveOverviewViewportMetrics = () => {
-  const total = resolvePreviewDurationSec()
-  const visible = resolveVisibleDurationSec()
-  const leadingPad = resolvePreviewLeadingPadSec()
-  const virtualSpan = resolvePreviewVirtualSpanSec()
-  const wrapWidth = Math.max(0, Number(overviewWrapRef.value?.clientWidth || 0))
-  if (!total || !visible || wrapWidth <= 0) {
-    return { left: 0, width: 0, wrapWidth: 0 }
-  }
-  const safeVisible = clampNumber(visible, 0.0001, total)
-  if (safeVisible >= virtualSpan) {
-    return { left: 0, width: wrapWidth, wrapWidth }
-  }
-  const rawWidth = (safeVisible / virtualSpan) * wrapWidth
-  const width = clampNumber(rawWidth, 12, wrapWidth)
-  const maxLeftTime = Math.max(0, virtualSpan - safeVisible)
-  const safeStart = clampPreviewStart(previewStartSec.value)
-  const leftTime = safeStart + leadingPad
-  const startRatio = maxLeftTime > 0 ? leftTime / maxLeftTime : 0
-  const maxLeft = Math.max(0, wrapWidth - width)
-  const left = startRatio * maxLeft
-  return { left, width, wrapWidth }
-}
+const resolveOverviewViewportMetrics = () =>
+  resolveOverviewViewportMetricsByRange({
+    durationSec: resolvePreviewDurationSec(),
+    visibleDurationSec: resolveVisibleDurationSec(),
+    leadingPadSec: resolvePreviewLeadingPadSec(),
+    virtualSpanSec: resolvePreviewVirtualSpanSec(),
+    wrapWidth: Math.max(0, Number(overviewWrapRef.value?.clientWidth || 0)),
+    startSec: previewStartSec.value
+  })
 
 const overviewViewportStyle = computed(() => {
   const { left, width } = resolveOverviewViewportMetrics()
@@ -345,24 +292,6 @@ const overviewViewportStyle = computed(() => {
     opacity: width > 0 ? '1' : '0'
   }
 })
-
-const resizePreviewCanvas = (
-  canvas: HTMLCanvasElement,
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number
-) => {
-  const pixelRatio = window.devicePixelRatio || 1
-  const scaledWidth = Math.max(1, Math.floor(width * pixelRatio))
-  const scaledHeight = Math.max(1, Math.floor(height * pixelRatio))
-  if (canvas.width !== scaledWidth || canvas.height !== scaledHeight) {
-    canvas.width = scaledWidth
-    canvas.height = scaledHeight
-  }
-  ctx.setTransform(1, 0, 0, 1, 0, 0)
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
-  ctx.scale(pixelRatio, pixelRatio)
-}
 
 const drawPreviewCanvas = () => {
   const canvas = previewCanvasRef.value
@@ -407,7 +336,7 @@ const drawOverviewCanvas = () => {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
 
-  resizePreviewCanvas(canvas, ctx, width, height)
+  resizePreviewCanvasByPixelRatio(canvas, ctx, width, height)
 
   if (overviewCacheCanvas) {
     ctx.imageSmoothingEnabled = false
@@ -916,14 +845,6 @@ const handleWindowResize = () => {
   scheduleOverviewRebuild()
 }
 
-const isEditableEventTarget = (target: EventTarget | null) => {
-  const element = target as HTMLElement | null
-  if (!element) return false
-  if (element.isContentEditable) return true
-  const tag = element.tagName?.toLowerCase() || ''
-  return tag === 'input' || tag === 'textarea' || tag === 'select'
-}
-
 const handleWindowKeydown = (event: KeyboardEvent) => {
   if (!dialogVisible.value) return
   if (isEditableEventTarget(event.target)) return
@@ -1135,4 +1056,4 @@ onBeforeUnmount(() => {
   </div>
 </template>
 
-<style lang="scss" scoped src="./mixtapeBeatAlignDialog.scss"></style>
+<style lang="scss" scoped src="./MixtapeBeatAlignDialog.scss"></style>

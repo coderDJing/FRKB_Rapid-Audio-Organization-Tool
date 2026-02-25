@@ -9,10 +9,27 @@ import {
   MIXTAPE_ENVELOPE_PARAMS,
   MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM,
   buildFlatMixEnvelope,
-  normalizeGainEnvelopePoints,
   normalizeMixEnvelopePoints
 } from '@renderer/composables/mixtape/gainEnvelope'
-import { normalizeVolumeMuteSegments } from '@renderer/composables/mixtape/volumeMuteSegments'
+import {
+  normalizeBpm,
+  normalizeBarBeatOffset,
+  normalizeFirstBeatMs,
+  normalizeMixtapeFilePath,
+  normalizeUniquePaths,
+  parseSnapshot
+} from '@renderer/composables/mixtape/mixtapeTrackSnapshot'
+import {
+  applyBpmResultsToTracks,
+  buildMixtapeBpmTargetKey,
+  buildMixtapeBpmTargets,
+  resolveMissingBpmTrackCount
+} from '@renderer/composables/mixtape/mixtapeBpmAnalysis'
+import {
+  buildRecFilename,
+  resolveMixtapeOutputProgressState
+} from '@renderer/composables/mixtape/mixtapeOutputProgress'
+import { createMixtapeMissingTracksNotifier } from '@renderer/composables/mixtape/mixtapeMissingTracksNotifier'
 import { getKeyDisplayText as formatKeyDisplayText } from '@shared/keyDisplay'
 import type {
   MixtapeOpenPayload,
@@ -49,9 +66,9 @@ export const useMixtape = () => {
   const bpmAnalysisFailedCount = ref(0)
   let bpmAnalysisToken = 0
   let lastBpmAnalysisKey = ''
-  let lastMissingRemovalSignature = ''
 
   let playlistUpdateTimer: ReturnType<typeof setTimeout> | null = null
+  const { notifyMissingTracksRemoved } = createMixtapeMissingTracksNotifier()
 
   const {
     clearTimelineLayoutCache,
@@ -208,251 +225,38 @@ export const useMixtape = () => {
     }
   }
 
-  const normalizeMixtapeFilePath = (value: unknown) => {
-    if (typeof value !== 'string') return ''
-    return value.trim()
-  }
+  const buildBpmTargets = () => buildMixtapeBpmTargets(tracks.value)
 
-  const normalizeBarBeatOffset = (value: unknown) => {
-    const numeric = Number(value)
-    if (!Number.isFinite(numeric)) return 0
-    const rounded = Math.round(numeric)
-    return ((rounded % 32) + 32) % 32
-  }
+  const resolveMissingBpmCount = (bpmTargets: Set<string>) =>
+    resolveMissingBpmTrackCount(tracks.value, bpmTargets)
 
-  const normalizeFirstBeatMs = (value: unknown) => {
-    const numeric = Number(value)
-    if (!Number.isFinite(numeric) || numeric < 0) return 0
-    return numeric
-  }
-
-  const normalizeBpm = (value: unknown) => {
-    const numeric = Number(value)
-    if (!Number.isFinite(numeric) || numeric <= 0) return null
-    return Number(numeric.toFixed(2))
-  }
-
-  const parseSnapshot = (raw: MixtapeRawItem, index: number): MixtapeTrack => {
-    let info: Record<string, any> | null = null
-    if (raw?.infoJson) {
-      try {
-        info = JSON.parse(String(raw.infoJson))
-      } catch {
-        info = null
-      }
-    }
-    const filePath =
-      normalizeMixtapeFilePath(raw?.filePath) || normalizeMixtapeFilePath(info?.filePath)
-    const fileName = filePath.split(/[/\\]/).pop() || filePath || t('tracks.unknownTrack')
-    const parsedBpm =
-      typeof info?.bpm === 'number' && Number.isFinite(info.bpm) && info.bpm > 0
-        ? info.bpm
-        : undefined
-    const parsedOriginalBpmCandidate = Number(info?.originalBpm)
-    const parsedOriginalBpm =
-      Number.isFinite(parsedOriginalBpmCandidate) && parsedOriginalBpmCandidate > 0
-        ? parsedOriginalBpmCandidate
-        : parsedBpm
-    const parsedMasterTempo = info?.masterTempo !== false
-    const hasFirstBeatField = !!info && Object.prototype.hasOwnProperty.call(info, 'firstBeatMs')
-    const parsedFirstBeatMsValue = Number(info?.firstBeatMs)
-    const parsedFirstBeatMs =
-      hasFirstBeatField && Number.isFinite(parsedFirstBeatMsValue) && parsedFirstBeatMsValue >= 0
-        ? parsedFirstBeatMsValue
-        : undefined
-    const parsedKey = typeof info?.key === 'string' ? info.key.trim() : ''
-    const parsedOriginalKeyRaw =
-      typeof info?.originalKey === 'string' ? info.originalKey.trim() : ''
-    const parsedOriginalKey = parsedOriginalKeyRaw || parsedKey || undefined
-    const parsedBarBeatOffset = normalizeBarBeatOffset(info?.barBeatOffset)
-    const parsedGainEnvelope = normalizeGainEnvelopePoints(info?.gainEnvelope)
-    const parsedHighEnvelope = normalizeMixEnvelopePoints('high', info?.highEnvelope)
-    const parsedMidEnvelope = normalizeMixEnvelopePoints('mid', info?.midEnvelope)
-    const parsedLowEnvelope = normalizeMixEnvelopePoints('low', info?.lowEnvelope)
-    const parsedVolumeEnvelope = normalizeMixEnvelopePoints('volume', info?.volumeEnvelope)
-    const parsedVolumeMuteSegments = normalizeVolumeMuteSegments(
-      info?.volumeMuteSegments,
-      Number(info?.durationSec)
-    )
-    const parsedStartSecRaw = Number(info?.startSec)
-    const parsedStartSec =
-      Number.isFinite(parsedStartSecRaw) && parsedStartSecRaw >= 0
-        ? Number(parsedStartSecRaw.toFixed(4))
-        : undefined
-    return {
-      id: String(raw?.id || `${filePath}-${index}`),
-      mixOrder: Number(raw?.mixOrder) || index + 1,
-      title: String(info?.title || fileName || t('tracks.unknownTrack')),
-      artist: String(info?.artist || ''),
-      duration: String(info?.duration || ''),
-      filePath,
-      originPath: String(raw?.originPathSnapshot || ''),
-      originPlaylistUuid: raw?.originPlaylistUuid ? String(raw.originPlaylistUuid) : null,
-      key: parsedKey || undefined,
-      originalKey: parsedOriginalKey,
-      bpm: parsedBpm,
-      gridBaseBpm: parsedBpm,
-      originalBpm: parsedOriginalBpm,
-      masterTempo: parsedMasterTempo,
-      startSec: parsedStartSec,
-      gainEnvelope: parsedGainEnvelope.length ? parsedGainEnvelope : undefined,
-      highEnvelope: parsedHighEnvelope.length ? parsedHighEnvelope : undefined,
-      midEnvelope: parsedMidEnvelope.length ? parsedMidEnvelope : undefined,
-      lowEnvelope: parsedLowEnvelope.length ? parsedLowEnvelope : undefined,
-      volumeEnvelope: parsedVolumeEnvelope.length ? parsedVolumeEnvelope : undefined,
-      volumeMuteSegments: parsedVolumeMuteSegments.length ? parsedVolumeMuteSegments : undefined,
-      firstBeatMs: parsedFirstBeatMs,
-      barBeatOffset: parsedBarBeatOffset
-    }
-  }
-
-  const buildMixtapeBpmTargets = () => {
-    const unique = new Set<string>()
-    const targets: string[] = []
-    for (const track of tracks.value) {
-      const filePath = normalizeMixtapeFilePath(track.filePath)
-      if (!filePath || unique.has(filePath)) continue
-      const bpmValue = Number(track.bpm)
-      const firstBeatMsValue = Number(track.firstBeatMs)
-      const hasValidBpm = Number.isFinite(bpmValue) && bpmValue > 0
-      const hasValidFirstBeatMs = Number.isFinite(firstBeatMsValue) && firstBeatMsValue >= 0
-      if (hasValidBpm && hasValidFirstBeatMs) continue
-      unique.add(filePath)
-      targets.push(filePath)
-    }
-    return targets
-  }
-
-  const normalizeUniquePaths = (values: unknown[]) => {
-    if (!Array.isArray(values)) return [] as string[]
-    return Array.from(
-      new Set(
-        values
-          .filter((value) => typeof value === 'string')
-          .map((value) => String(value).trim())
-          .filter(Boolean)
-      )
-    )
-  }
-
-  const notifyMissingTracksRemoved = async (playlistId: string, removedPaths: string[]) => {
-    const normalized = normalizeUniquePaths(removedPaths)
-    if (!normalized.length) return
-    const signature = `${playlistId || ''}::${normalized.slice().sort().join('|')}`
-    if (signature === lastMissingRemovalSignature) return
-    lastMissingRemovalSignature = signature
-    const displayNames = Array.from(
-      new Set(normalized.map((item) => item.split(/[/\\]/).pop() || item))
-    )
-    const previewNames = displayNames.slice(0, 6)
-    const moreCount = Math.max(0, displayNames.length - previewNames.length)
-    const content = [
-      t('mixtape.missingTracksRemovedSummary', { count: normalized.length }),
-      ...previewNames.map((name) => `- ${name}`)
-    ]
-    if (moreCount > 0) {
-      content.push(t('mixtape.missingTracksRemovedMore', { count: moreCount }))
-    }
-    await confirmDialog({
-      title: t('mixtape.missingTracksRemovedTitle'),
-      content,
-      confirmShow: false,
-      textAlign: 'left',
-      innerHeight: 0,
-      innerWidth: 460
-    })
-  }
-
-  const resolveMissingBpmTrackCount = (bpmTargets: Set<string>) => {
-    if (!bpmTargets.size) return 0
-    return tracks.value.filter((track) => {
-      const trackPath = normalizeMixtapeFilePath(track.filePath)
-      if (!trackPath || !bpmTargets.has(trackPath)) return false
-      const bpmValue = Number(track.bpm)
-      const firstBeatMsValue = Number(track.firstBeatMs)
-      const missingBpm = !Number.isFinite(bpmValue) || bpmValue <= 0
-      const missingFirstBeat = !Number.isFinite(firstBeatMsValue) || firstBeatMsValue < 0
-      return missingBpm || missingFirstBeat
-    }).length
-  }
-
-  const applyBpmResultsToTracks = (results: unknown[]) => {
-    const analysisMap = new Map<string, { bpm: number; firstBeatMs: number }>()
-    for (const item of results) {
-      const filePath = normalizeMixtapeFilePath((item as any)?.filePath)
-      const bpmValue = (item as any)?.bpm
-      if (
-        !filePath ||
-        typeof bpmValue !== 'number' ||
-        !Number.isFinite(bpmValue) ||
-        bpmValue <= 0
-      ) {
-        continue
-      }
-      const rawFirstBeatMs = Number((item as any)?.firstBeatMs)
-      const firstBeatMs =
-        Number.isFinite(rawFirstBeatMs) && rawFirstBeatMs >= 0 ? rawFirstBeatMs : 0
-      analysisMap.set(filePath, {
-        bpm: bpmValue,
-        firstBeatMs
-      })
-    }
-    if (analysisMap.size === 0) return { resolvedCount: 0, changedCount: 0 }
-
-    let changedCount = 0
-    tracks.value = tracks.value.map((track) => {
-      const trackPath = normalizeMixtapeFilePath(track.filePath)
-      const trackAnalysis = trackPath ? analysisMap.get(trackPath) : undefined
-      if (!trackAnalysis) return track
-      const currentBpm = Number(track.bpm)
-      const hasCurrentFirstBeatMs =
-        typeof track.firstBeatMs === 'number' &&
-        Number.isFinite(track.firstBeatMs) &&
-        track.firstBeatMs >= 0
-      const currentFirstBeatMs = hasCurrentFirstBeatMs ? Number(track.firstBeatMs) : 0
-      const bpmChanged =
-        !Number.isFinite(currentBpm) || Math.abs(trackAnalysis.bpm - currentBpm) > 0.0001
-      const firstBeatChanged =
-        !hasCurrentFirstBeatMs || Math.abs(trackAnalysis.firstBeatMs - currentFirstBeatMs) > 0.001
-      if (!bpmChanged && !firstBeatChanged) return track
-      changedCount += 1
-      return {
-        ...track,
-        bpm: trackAnalysis.bpm,
-        gridBaseBpm:
-          normalizeBpm(track.gridBaseBpm) ?? normalizeBpm(track.originalBpm) ?? trackAnalysis.bpm,
-        originalBpm:
-          Number.isFinite(Number(track.originalBpm)) && Number(track.originalBpm) > 0
-            ? track.originalBpm
-            : trackAnalysis.bpm,
-        masterTempo: track.masterTempo !== false,
-        firstBeatMs: trackAnalysis.firstBeatMs
-      }
-    })
-
-    if (changedCount > 0) {
+  const applyBpmAnalysisToTracks = (results: unknown[]) => {
+    const applied = applyBpmResultsToTracks(tracks.value, results)
+    if (applied.resolvedCount <= 0) return applied
+    tracks.value = applied.nextTracks
+    if (applied.changedCount > 0) {
       clearTimelineLayoutCache()
       updateTimelineWidth(false)
       scheduleTimelineDraw()
       scheduleFullPreRender()
       scheduleWorkerPreRender()
     }
-    return { resolvedCount: analysisMap.size, changedCount }
+    return applied
   }
 
   const handleBpmBatchReady = (_e: unknown, payload: any) => {
     const results = Array.isArray(payload?.results) ? payload.results : []
     if (!results.length) return
-    const { resolvedCount } = applyBpmResultsToTracks(results)
+    const { resolvedCount } = applyBpmAnalysisToTracks(results)
     if (resolvedCount <= 0) return
-    const filePaths = buildMixtapeBpmTargets()
+    const filePaths = buildBpmTargets()
     const bpmTargets = new Set(filePaths)
-    const missingTrackCount = resolveMissingBpmTrackCount(bpmTargets)
+    const missingTrackCount = resolveMissingBpmCount(bpmTargets)
     if (missingTrackCount === 0) {
       if (bpmAnalysisActive.value) {
         bpmAnalysisToken += 1
       }
-      lastBpmAnalysisKey = [...filePaths].sort().join('|')
+      lastBpmAnalysisKey = buildMixtapeBpmTargetKey(filePaths)
       bpmAnalysisActive.value = false
       bpmAnalysisFailed.value = false
       bpmAnalysisFailedCount.value = 0
@@ -463,7 +267,7 @@ export const useMixtape = () => {
   }
 
   const requestMixtapeBpmAnalysis = async () => {
-    const filePaths = buildMixtapeBpmTargets()
+    const filePaths = buildBpmTargets()
     if (!filePaths.length || !window?.electron?.ipcRenderer?.invoke) {
       bpmAnalysisActive.value = false
       return
@@ -475,8 +279,8 @@ export const useMixtape = () => {
     if (missingPathCount > 0) {
       console.warn('[mixtape] BPM analyze skipped tracks without file path', { missingPathCount })
     }
-    const key = [...filePaths].sort().join('|')
-    const missingTrackCount = resolveMissingBpmTrackCount(bpmTargets)
+    const key = buildMixtapeBpmTargetKey(filePaths)
+    const missingTrackCount = resolveMissingBpmCount(bpmTargets)
     const hasMissingBpm = missingTrackCount > 0
     if (!hasMissingBpm) {
       lastBpmAnalysisKey = key
@@ -509,8 +313,8 @@ export const useMixtape = () => {
         })
       }
       if (results.length > 0) {
-        const { resolvedCount } = applyBpmResultsToTracks(results)
-        const remainMissingCount = resolveMissingBpmTrackCount(bpmTargets)
+        const { resolvedCount } = applyBpmAnalysisToTracks(results)
+        const remainMissingCount = resolveMissingBpmCount(bpmTargets)
         if (remainMissingCount > 0) {
           bpmAnalysisFailed.value = true
           bpmAnalysisFailedCount.value = Math.max(
@@ -566,7 +370,9 @@ export const useMixtape = () => {
     const removedPaths = Array.isArray(result?.recovery?.removedPaths)
       ? normalizeUniquePaths(result.recovery.removedPaths)
       : []
-    tracks.value = rawItems.map((item: MixtapeRawItem, index: number) => parseSnapshot(item, index))
+    tracks.value = rawItems.map((item: MixtapeRawItem, index: number) =>
+      parseSnapshot(item, index, t('tracks.unknownTrack'))
+    )
     if (!tracks.value.some((track) => track.id === selectedTrackId.value)) {
       selectedTrackId.value = tracks.value[0]?.id || ''
     }
@@ -854,34 +660,19 @@ export const useMixtape = () => {
   }
 
   const applyOutputProgressPayload = (payload: any) => {
-    if (!payload || typeof payload !== 'object') return
-    const stageKey =
-      typeof payload?.stageKey === 'string' && payload.stageKey.trim()
-        ? payload.stageKey.trim()
-        : ''
-    if (stageKey) {
-      outputProgressKey.value = stageKey
-    }
-    const done = Number(payload?.done)
-    const total = Number(payload?.total)
-    const percent = Number(payload?.percent)
-    if (Number.isFinite(done)) {
-      outputProgressDone.value = Math.max(0, Math.round(done))
-    }
-    if (Number.isFinite(total)) {
-      outputProgressTotal.value = Math.max(0, Math.round(total))
-    }
-    if (Number.isFinite(percent)) {
-      outputProgressPercent.value = Math.max(0, Math.min(100, Math.round(percent)))
-    } else if (outputProgressTotal.value > 0) {
-      outputProgressPercent.value = Math.max(
-        0,
-        Math.min(
-          100,
-          Math.round((outputProgressDone.value / Math.max(1, outputProgressTotal.value)) * 100)
-        )
-      )
-    }
+    const nextState = resolveMixtapeOutputProgressState(
+      {
+        stageKey: outputProgressKey.value,
+        done: outputProgressDone.value,
+        total: outputProgressTotal.value,
+        percent: outputProgressPercent.value
+      },
+      payload
+    )
+    outputProgressKey.value = nextState.stageKey
+    outputProgressDone.value = nextState.done
+    outputProgressTotal.value = nextState.total
+    outputProgressPercent.value = nextState.percent
   }
 
   const runMixtapeOutput = async () => {
@@ -1154,14 +945,6 @@ export const useMixtape = () => {
       playlistUpdateTimer = null
     }
   })
-
-  function buildRecFilename() {
-    const now = new Date()
-    const pad = (value: number) => String(value).padStart(2, '0')
-    const date = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
-    const time = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
-    return `rec-${date}-${time}`
-  }
 
   return {
     t,

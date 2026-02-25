@@ -1,0 +1,99 @@
+.mixtape-auto-gain-dialog {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 26;
+  background: rgba(8, 8, 12, 0.72);
+}
+
+.mixtape-auto-gain-dialog__card {
+  position: relative;
+  width: min(1200px, calc(100vw - 64px));
+  height: min(86vh, 860px);
+  max-height: min(86vh, 860px);
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  border-radius: 8px;
+  padding: 14px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.mixtape-auto-gain-dialog__busy-mask {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 8;
+  pointer-events: auto;
+  background: rgba(8, 8, 12, 0.62);
+}
+
+.mixtape-auto-gain-dialog__title {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.mixtape-auto-gain-dialog__hint {
+  font-size: 12px;
+  color: var(--text-weak);
+}
+
+.mixtape-auto-gain-dialog__feedback {
+  font-size: 12px;
+  color: var(--accent);
+  min-height: 16px;
+}
+
+.mixtape-auto-gain-dialog__song-list-host {
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.16);
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.mixtape-auto-gain-dialog__song-list {
+  min-height: 100%;
+}
+
+.mixtape-auto-gain-dialog__songs-scroll {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.mixtape-auto-gain-dialog__song-list-host :deep(.song-row-item) {
+  cursor: pointer;
+}
+
+.mixtape-auto-gain-dialog__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mixtape-auto-gain-dialog__actions button {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  min-width: 88px;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.mixtape-auto-gain-dialog__actions button:hover {
+  border-color: var(--accent);
+}
+
+.mixtape-auto-gain-dialog__actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
