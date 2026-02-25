@@ -87,6 +87,22 @@ const getPreviewMimeType = (filePath: string) => {
   return PREVIEW_MIME_MAP[ext] || 'application/octet-stream'
 }
 
+const focusWindowIfPossible = (target: BrowserWindow | null): boolean => {
+  if (!target || target.isDestroyed()) return false
+  if (target.isMinimized()) {
+    target.restore()
+  }
+  target.focus()
+  return true
+}
+
+const ensurePrimaryWindowVisible = async (): Promise<void> => {
+  if (focusWindowIfPossible(databaseInitWindow.instance)) return
+  if (focusWindowIfPossible(mainWindow.instance)) return
+  await prepareAndOpenMainWindow()
+  await processExternalOpenQueue()
+}
+
 const maybeClearLogAfterUpgrade = () => {
   try {
     const currentVersion = app.getVersion()
@@ -143,17 +159,7 @@ if (!gotTheLock) {
 } else {
   app.on('second-instance', (_event, _commandLine, _workingDirectory) => {
     queueExternalAudioFiles(_commandLine)
-    if (databaseInitWindow.instance) {
-      if (databaseInitWindow.instance.isMinimized()) {
-        databaseInitWindow.instance.restore()
-      }
-      databaseInitWindow.instance.focus()
-    } else if (mainWindow.instance) {
-      if (mainWindow.instance.isMinimized()) {
-        mainWindow.instance.restore()
-      }
-      mainWindow.instance.focus()
-    }
+    void ensurePrimaryWindowVisible()
   })
 }
 app.on('open-file', (event, openedPath) => {
@@ -461,12 +467,7 @@ app.whenReady().then(async () => {
   } catch {}
 
   app.on('activate', async function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) {
-      await prepareAndOpenMainWindow()
-      await processExternalOpenQueue()
-    }
+    await ensurePrimaryWindowVisible()
   })
 })
 
