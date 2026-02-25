@@ -1,4 +1,4 @@
-import { computed, markRaw, onBeforeUnmount, ref } from 'vue'
+import { computed, markRaw, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Ref } from 'vue'
 import type { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { t } from '@renderer/utils/translate'
@@ -11,9 +11,13 @@ import {
   GRID_BAR_WIDTH_MAX,
   GRID_BAR_WIDTH_MAX_ZOOM,
   GRID_BAR_WIDTH_MIN,
+  LANE_COUNT,
   LANE_GAP,
   LANE_PADDING_TOP,
   MIXXX_MAX_RGB_ENERGY,
+  MIXTAPE_BASE_TRACK_LANE_HEIGHT,
+  MIXTAPE_ENVELOPE_PREVIEW_BASE_LANE_HEIGHT,
+  MIXTAPE_OVERVIEW_BASE_LANE_HEIGHT,
   MIXTAPE_SUMMARY_ZOOM,
   MIXTAPE_WAVEFORM_SUPERSAMPLE,
   MIXTAPE_WAVEFORM_Y_OFFSET,
@@ -69,6 +73,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
   const zoom = ref(ZOOM_MIN)
   const renderZoom = ref(ZOOM_MIN)
   const zoomTouched = ref(true)
+  const timelineRootRef = ref<HTMLElement | null>(null)
   const timelineScrollRef = ref<InstanceType<typeof OverlayScrollbarsComponent> | null>(null)
   const timelineScrollWrapRef = ref<HTMLElement | null>(null)
   const timelineCanvasRef = ref<HTMLCanvasElement | null>(null)
@@ -83,14 +88,46 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
   const timelineWorkerReady = ref(false)
   const isTimelinePanning = ref(false)
   const isTimelineZooming = ref(false)
+  const timelineVisualScale = ref(1)
   const envelopePreviewRef = ref<HTMLElement | null>(null)
   const overviewRef = ref<HTMLElement | null>(null)
   const overviewWidth = ref(0)
   const isOverviewDragging = ref(false)
+  const TIMELINE_VISUAL_SCALE_MIN = 1
+  const TIMELINE_VISUAL_SCALE_MAX = 3
+  const TIMELINE_TRACK_LANE_BORDER_PX = 2
+  const TIMELINE_TRACK_LANE_GAP_PX = 8
+  const TIMELINE_TRACK_VERTICAL_PADDING_PX = 20
+  const ENVELOPE_PREVIEW_LANE_GAP_PX = 2
+  const ENVELOPE_PREVIEW_LANE_PADDING_Y_PX = 2
+  const OVERVIEW_LANE_GAP_PX = 6
+  const OVERVIEW_LANE_PADDING_Y_PX = 8
+  const TRACK_SECTION_BASE_HEIGHT =
+    LANE_COUNT * (MIXTAPE_BASE_TRACK_LANE_HEIGHT + TIMELINE_TRACK_LANE_BORDER_PX) +
+    Math.max(0, LANE_COUNT - 1) * TIMELINE_TRACK_LANE_GAP_PX +
+    TIMELINE_TRACK_VERTICAL_PADDING_PX
+  const ENVELOPE_SECTION_BASE_HEIGHT =
+    LANE_COUNT * MIXTAPE_ENVELOPE_PREVIEW_BASE_LANE_HEIGHT +
+    Math.max(0, LANE_COUNT - 1) * ENVELOPE_PREVIEW_LANE_GAP_PX +
+    ENVELOPE_PREVIEW_LANE_PADDING_Y_PX
+  const OVERVIEW_SECTION_BASE_HEIGHT =
+    LANE_COUNT * MIXTAPE_OVERVIEW_BASE_LANE_HEIGHT +
+    Math.max(0, LANE_COUNT - 1) * OVERVIEW_LANE_GAP_PX +
+    OVERVIEW_LANE_PADDING_Y_PX
+  const resolveTimelineScalableBaseHeight = () => {
+    const hasTracks = Array.isArray(tracks.value) && tracks.value.length > 0
+    const envelopeSectionHeight = hasTracks ? ENVELOPE_SECTION_BASE_HEIGHT : 0
+    return Math.max(
+      1,
+      TRACK_SECTION_BASE_HEIGHT + envelopeSectionHeight + OVERVIEW_SECTION_BASE_HEIGHT
+    )
+  }
   let timelineOffscreenCanvas: OffscreenCanvas | null = null
   let timelineObserver: ResizeObserver | null = null
   let timelineViewportObserver: ResizeObserver | null = null
   let overviewObserver: ResizeObserver | null = null
+  let timelineRootObserver: ResizeObserver | null = null
+  let timelineScaleRaf = 0
   let waveformLoadTimer: ReturnType<typeof setTimeout> | null = null
   let timelineCanvasRaf = 0
   let waveformPreRenderToken = 0
@@ -206,6 +243,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     timelineLayoutCache,
     timelineLayoutVersion,
     overviewWidth,
+    timelineVisualScale,
     waveformTileCache,
     waveformTileCacheIndex,
     waveformTileCacheTickRef,
@@ -890,6 +928,100 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     scheduleWorkerPreRender,
     markTimelineInteracting
   })
+
+  const measureTimelineCurrentContentHeight = () => {
+    const root = timelineRootRef.value
+    if (!root) return 0
+    const children = Array.from(root.children) as HTMLElement[]
+    return children.reduce((sum, child) => sum + Math.max(0, Number(child.offsetHeight || 0)), 0)
+  }
+
+  const scheduleTimelineVisualScaleUpdate = () => {
+    if (typeof requestAnimationFrame === 'undefined') {
+      updateTimelineVisualScale()
+      return
+    }
+    if (timelineScaleRaf) return
+    timelineScaleRaf = requestAnimationFrame(() => {
+      timelineScaleRaf = 0
+      updateTimelineVisualScale()
+    })
+  }
+
+  const updateTimelineVisualScale = () => {
+    const root = timelineRootRef.value
+    if (!root) return
+    const scalableBaseHeight = resolveTimelineScalableBaseHeight()
+    if (!scalableBaseHeight) {
+      timelineVisualScale.value = 1
+      return
+    }
+    const currentScale = Math.max(TIMELINE_VISUAL_SCALE_MIN, Number(timelineVisualScale.value || 1))
+    const currentContentHeight = Math.max(0, measureTimelineCurrentContentHeight())
+    if (!currentContentHeight) {
+      timelineVisualScale.value = 1
+      return
+    }
+    const fixedHeight = Math.max(0, currentContentHeight - scalableBaseHeight * currentScale)
+    const availableHeight = Math.max(0, Number(root.clientHeight || 0))
+    const rawScale = (availableHeight - fixedHeight) / scalableBaseHeight
+    const nextScale = Math.max(
+      TIMELINE_VISUAL_SCALE_MIN,
+      Math.min(TIMELINE_VISUAL_SCALE_MAX, Number(rawScale.toFixed(4)))
+    )
+    if (Math.abs(nextScale - timelineVisualScale.value) < 0.001) return
+    timelineVisualScale.value = nextScale
+    scheduleTimelineDraw()
+    scheduleFullPreRender()
+    scheduleWorkerPreRender()
+    scheduleTimelineVisualScaleUpdate()
+  }
+
+  const ensureTimelineRootObserver = () => {
+    if (typeof ResizeObserver === 'undefined') return
+    if (!timelineRootObserver) {
+      timelineRootObserver = new ResizeObserver(() => {
+        scheduleTimelineVisualScaleUpdate()
+      })
+    }
+    try {
+      timelineRootObserver.disconnect()
+    } catch {}
+    const root = timelineRootRef.value
+    if (!root) return
+    try {
+      timelineRootObserver.observe(root)
+    } catch {}
+  }
+
+  watch(
+    () => timelineRootRef.value,
+    () => {
+      timelineVisualScale.value = 1
+      ensureTimelineRootObserver()
+      scheduleTimelineVisualScaleUpdate()
+    }
+  )
+
+  watch(
+    () => tracks.value.length,
+    () => {
+      scheduleTimelineVisualScaleUpdate()
+    }
+  )
+
+  watch(
+    () => transportError.value,
+    () => {
+      scheduleTimelineVisualScaleUpdate()
+    }
+  )
+
+  onMounted(() => {
+    ensureTimelineRootObserver()
+    scheduleTimelineVisualScaleUpdate()
+  })
+
   createTimelineWatchAndMountModule({
     tracks,
     isTrackDragging,
@@ -938,6 +1070,13 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     try {
       overviewObserver?.disconnect()
     } catch {}
+    try {
+      timelineRootObserver?.disconnect()
+    } catch {}
+    if (timelineScaleRaf) {
+      cancelAnimationFrame(timelineScaleRaf)
+      timelineScaleRaf = 0
+    }
     setTimelineWheelTarget(null)
     try {
       if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
@@ -996,6 +1135,8 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     isRawWaveformLoading,
     preRenderState,
     preRenderPercent,
+    timelineRootRef,
+    timelineVisualScale,
     timelineScrollWrapRef,
     isTimelinePanning,
     handleTimelinePanStart,

@@ -9,10 +9,10 @@ import {
   GRID_BAR_WIDTH_MIN,
   LANE_COUNT,
   MIXXX_MAX_RGB_ENERGY,
-  MIN_TRACK_WIDTH,
-  MIXTAPE_TRACK_UI_SCALE,
-  TIMELINE_SIDE_PADDING_PX,
+  MIXTAPE_BASE_TRACK_LANE_HEIGHT,
   MIXTAPE_WAVEFORM_HEIGHT_SCALE,
+  MIN_TRACK_WIDTH,
+  TIMELINE_SIDE_PADDING_PX,
   MIXTAPE_WIDTH_SCALE,
   RAW_WAVEFORM_MIN_ZOOM,
   RENDER_ZOOM_STEP,
@@ -58,6 +58,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
     timelineLayoutCache,
     timelineLayoutVersion,
     overviewWidth,
+    timelineVisualScale,
     waveformTileCache,
     waveformTileCacheIndex,
     waveformTileCacheTickRef,
@@ -136,8 +137,14 @@ export const createTimelineHelpersModule = (ctx: any) => {
     return GRID_BAR_WIDTH_MIN + (GRID_BAR_WIDTH_MAX - GRID_BAR_WIDTH_MIN) * ratio
   }
 
+  const resolveTimelineVisualScale = () => {
+    const numeric = Number(timelineVisualScale?.value)
+    if (!Number.isFinite(numeric) || numeric <= 0) return 1
+    return Math.max(1, numeric)
+  }
+
   const resolveLaneHeightForZoom = (_value: number) =>
-    Math.round(Math.max(28, 36) * 4 * MIXTAPE_TRACK_UI_SCALE)
+    Math.round(MIXTAPE_BASE_TRACK_LANE_HEIGHT * resolveTimelineVisualScale())
 
   const resolveTimelineBufferId = (zoomValue: number) => `z:${Math.round(zoomValue * 1000)}`
 

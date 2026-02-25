@@ -1,4 +1,9 @@
 export const MIXTAPE_TRACK_UI_SCALE = 1.5
+export const MIXTAPE_BASE_TRACK_LANE_HEIGHT = Math.round(
+  Math.max(28, 36) * 4 * MIXTAPE_TRACK_UI_SCALE
+)
+export const MIXTAPE_ENVELOPE_PREVIEW_BASE_LANE_HEIGHT = 63
+export const MIXTAPE_OVERVIEW_BASE_LANE_HEIGHT = 12
 export const BASE_PX_PER_SEC = 80
 export const MIXTAPE_WIDTH_SCALE = 0.1 * MIXTAPE_TRACK_UI_SCALE
 export const MIN_TRACK_WIDTH = Math.max(6, Math.round(60 * MIXTAPE_WIDTH_SCALE))

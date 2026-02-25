@@ -57,6 +57,8 @@ const {
   isRawWaveformLoading,
   preRenderState,
   preRenderPercent,
+  timelineRootRef,
+  timelineVisualScale,
   handleTrackDragStart,
   handleTrackContextMenu,
   trackContextMenuVisible,
@@ -213,6 +215,14 @@ const TRACK_ENVELOPE_PREVIEW_STROKES: Record<MixtapeEnvelopeParamId, number> = {
 const TIMELINE_TRACK_LANE_GAP_PX = 8
 const TIMELINE_TRACK_VERTICAL_PADDING_PX = 10
 const TIMELINE_TRACK_LANE_BORDER_PX = 2
+const TIMELINE_ENVELOPE_PREVIEW_BASE_LANE_HEIGHT_PX = 63
+const TIMELINE_OVERVIEW_BASE_LANE_HEIGHT_PX = 12
+
+const resolveMaybeRefNumber = (input: unknown, fallback = 0) => {
+  const source = (input as { value?: unknown } | null)?.value ?? input
+  const numeric = Number(source)
+  return Number.isFinite(numeric) ? numeric : fallback
+}
 
 const trackEnvelopePreviewLegend = TRACK_ENVELOPE_PREVIEW_PARAMS.map((param) => ({
   key: param,
@@ -222,14 +232,26 @@ const trackEnvelopePreviewLegend = TRACK_ENVELOPE_PREVIEW_PARAMS.map((param) => 
 
 const timelineTrackAreaHeight = computed(() => {
   const laneCount = Math.max(0, Array.isArray(laneIndices) ? laneIndices.length : 0)
-  const rawLaneHeight =
-    (laneHeight as unknown as { value?: number } | null)?.value ?? (laneHeight as unknown as number)
-  const safeLaneHeight = Math.max(0, Number(rawLaneHeight) || 0)
+  const safeLaneHeight = Math.max(0, resolveMaybeRefNumber(laneHeight, 0))
   if (!laneCount || !safeLaneHeight) return 0
   const laneOuterHeight = safeLaneHeight + TIMELINE_TRACK_LANE_BORDER_PX
   const gaps = Math.max(0, laneCount - 1) * TIMELINE_TRACK_LANE_GAP_PX
   const verticalPadding = TIMELINE_TRACK_VERTICAL_PADDING_PX * 2
   return Math.round(laneOuterHeight * laneCount + gaps + verticalPadding)
+})
+
+const timelineAdaptiveStyle = computed(() => {
+  const scale = Math.max(1, resolveMaybeRefNumber(timelineVisualScale, 1))
+  return {
+    '--timeline-envelope-preview-lane-height': `${Math.max(
+      1,
+      Math.round(TIMELINE_ENVELOPE_PREVIEW_BASE_LANE_HEIGHT_PX * scale)
+    )}px`,
+    '--timeline-overview-lane-height': `${Math.max(
+      1,
+      Math.round(TIMELINE_OVERVIEW_BASE_LANE_HEIGHT_PX * scale)
+    )}px`
+  }
 })
 
 watch(selectedMixParam, (nextParam) => {
@@ -722,7 +744,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div class="mixtape-main">
-          <section class="timeline">
+          <section ref="timelineRootRef" class="timeline" :style="timelineAdaptiveStyle">
             <div class="timeline-ruler-wrap">
               <div class="timeline-ruler-stop-float">
                 <button

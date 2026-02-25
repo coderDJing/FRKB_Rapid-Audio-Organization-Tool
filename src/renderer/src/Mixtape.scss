@@ -304,6 +304,7 @@
   display: flex;
   align-items: center;
   position: relative;
+  flex: 0 0 auto;
   padding: 0;
   border-bottom: 0;
   background: var(--bg);
@@ -661,9 +662,10 @@
 }
 
 .timeline-envelope-preview {
-  --envelope-preview-lane-height: 63px;
+  --envelope-preview-lane-height: var(--timeline-envelope-preview-lane-height, 63px);
   --envelope-preview-lane-gap: 2px;
   --envelope-preview-lane-padding-y: 1px;
+  flex: 0 0 auto;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   padding: 6px 0 3px;
@@ -800,6 +802,7 @@
 }
 
 .timeline-overview {
+  flex: 0 0 auto;
   border-top: 0;
   padding: 3px 0 12px;
   background: var(--bg);
@@ -826,7 +829,7 @@
 
 .overview-lane {
   position: relative;
-  height: 12px;
+  height: var(--timeline-overview-lane-height, 12px);
   background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
