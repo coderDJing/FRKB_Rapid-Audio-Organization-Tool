@@ -83,6 +83,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
   const timelineWorkerReady = ref(false)
   const isTimelinePanning = ref(false)
   const isTimelineZooming = ref(false)
+  const envelopePreviewRef = ref<HTMLElement | null>(null)
   const overviewRef = ref<HTMLElement | null>(null)
   const overviewWidth = ref(0)
   const isOverviewDragging = ref(false)
@@ -838,6 +839,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     isWheelInsideTimeline,
     handleTimelineWheel,
     handleTimelinePanStart,
+    handleTimelineHorizontalPanStart,
     handleTimelinePanMove,
     handleTimelinePanEnd,
     updateOverviewWidth,
@@ -869,6 +871,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     timelineWidth,
     isTimelinePanning,
     isTimelineZooming,
+    envelopePreviewRef,
     isOverviewDragging,
     overviewRef,
     overviewWidth,
@@ -996,6 +999,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     timelineScrollWrapRef,
     isTimelinePanning,
     handleTimelinePanStart,
+    handleTimelineHorizontalPanStart,
     timelineScrollRef,
     timelineScrollbarOptions,
     timelineViewport,
@@ -1003,6 +1007,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     timelineScrollLeft,
     timelineViewportWidth,
     timelineCanvasRef,
+    envelopePreviewRef,
     overviewRef,
     isOverviewDragging,
     handleOverviewMouseDown,

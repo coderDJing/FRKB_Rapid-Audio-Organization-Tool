@@ -20,6 +20,11 @@ import { applyUiSettings, readUiSettings } from '@renderer/utils/uiSettingsStora
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
 import { createMixtapeGainEnvelopeEditor } from '@renderer/composables/mixtape/useGainEnvelopeEditor'
+import {
+  MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM,
+  buildMixEnvelopePolylineByControlPoints,
+  normalizeMixEnvelopePoints
+} from '@renderer/composables/mixtape/gainEnvelope'
 import ascendingOrderAsset from '@renderer/assets/ascending-order.svg?asset'
 import descendingOrderAsset from '@renderer/assets/descending-order.svg?asset'
 import type {
@@ -84,6 +89,7 @@ const {
   timelineScrollWrapRef,
   isTimelinePanning,
   handleTimelinePanStart,
+  handleTimelineHorizontalPanStart,
   timelineScrollRef,
   timelineScrollbarOptions,
   timelineViewport,
@@ -91,6 +97,7 @@ const {
   timelineScrollLeft,
   timelineViewportWidth,
   timelineCanvasRef,
+  envelopePreviewRef,
   overviewRef,
   isOverviewDragging,
   handleOverviewMouseDown,
@@ -159,6 +166,13 @@ type TrackTimingUndoSnapshot = {
   volumeMuteSegments: MixtapeMuteSegment[]
 }
 
+type TrackEnvelopePreviewLine = {
+  key: MixtapeEnvelopeParamId
+  points: string
+  color: string
+  strokeWidth: number
+}
+
 const selectedMixParam = ref<MixParamId>('position')
 const isTrackPositionMode = computed(() => selectedMixParam.value === 'position')
 const isGainParamMode = computed(() => selectedMixParam.value === 'gain')
@@ -170,6 +184,52 @@ const envelopeHintKey = computed(() => {
     return 'mixtape.segmentMuteHint'
   }
   return 'mixtape.envelopeEditHint'
+})
+
+const TRACK_ENVELOPE_PREVIEW_PARAMS: MixtapeEnvelopeParamId[] = [
+  'gain',
+  'high',
+  'mid',
+  'low',
+  'volume'
+]
+
+const TRACK_ENVELOPE_PREVIEW_COLORS: Record<MixtapeEnvelopeParamId, string> = {
+  gain: '#f2f6ff',
+  high: '#4f8bff',
+  mid: '#45d07e',
+  low: '#ff5d61',
+  volume: '#ffc94a'
+}
+
+const TRACK_ENVELOPE_PREVIEW_STROKES: Record<MixtapeEnvelopeParamId, number> = {
+  gain: 1.2,
+  high: 1.08,
+  mid: 1.08,
+  low: 1.08,
+  volume: 0.95
+}
+
+const TIMELINE_TRACK_LANE_GAP_PX = 8
+const TIMELINE_TRACK_VERTICAL_PADDING_PX = 10
+const TIMELINE_TRACK_LANE_BORDER_PX = 2
+
+const trackEnvelopePreviewLegend = TRACK_ENVELOPE_PREVIEW_PARAMS.map((param) => ({
+  key: param,
+  label: param.toUpperCase(),
+  color: TRACK_ENVELOPE_PREVIEW_COLORS[param]
+}))
+
+const timelineTrackAreaHeight = computed(() => {
+  const laneCount = Math.max(0, Array.isArray(laneIndices) ? laneIndices.length : 0)
+  const rawLaneHeight =
+    (laneHeight as unknown as { value?: number } | null)?.value ?? (laneHeight as unknown as number)
+  const safeLaneHeight = Math.max(0, Number(rawLaneHeight) || 0)
+  if (!laneCount || !safeLaneHeight) return 0
+  const laneOuterHeight = safeLaneHeight + TIMELINE_TRACK_LANE_BORDER_PX
+  const gaps = Math.max(0, laneCount - 1) * TIMELINE_TRACK_LANE_GAP_PX
+  const verticalPadding = TIMELINE_TRACK_VERTICAL_PADDING_PX * 2
+  return Math.round(laneOuterHeight * laneCount + gaps + verticalPadding)
 })
 
 watch(selectedMixParam, (nextParam) => {
@@ -516,6 +576,44 @@ const {
   isEditable: () => envelopeEditable.value
 })
 
+const resolveTrackEnvelopePreviewLines = (
+  item: TimelineTrackLayout
+): TrackEnvelopePreviewLine[] => {
+  const currentTrack = tracks.value.find((track) => track.id === item.track.id) || item.track
+  const durationSec = Math.max(0, Number(resolveTrackDurationSeconds(currentTrack)) || 0)
+  if (!durationSec) return []
+  return TRACK_ENVELOPE_PREVIEW_PARAMS.map((param) => {
+    const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
+    const normalizedPoints = normalizeMixEnvelopePoints(
+      param,
+      (currentTrack as Record<string, unknown>)[envelopeField],
+      durationSec
+    )
+    if (normalizedPoints.length < 2) return null
+    const points = buildMixEnvelopePolylineByControlPoints({
+      param,
+      points: normalizedPoints,
+      durationSec
+    })
+    if (!points) return null
+    return {
+      key: param,
+      points,
+      color: TRACK_ENVELOPE_PREVIEW_COLORS[param],
+      strokeWidth: TRACK_ENVELOPE_PREVIEW_STROKES[param]
+    }
+  }).filter((line): line is TrackEnvelopePreviewLine => line !== null)
+}
+
+const trackEnvelopePreviewViewportStyle = computed(() => {
+  const safeWidth = Math.max(0, Number(timelineContentWidth.value) || 0)
+  const safeScrollLeft = Math.max(0, Number(timelineScrollLeft.value) || 0)
+  return {
+    width: `${safeWidth}px`,
+    transform: `translate3d(${-safeScrollLeft}px, 0, 0)`
+  }
+})
+
 const isEditableEventTarget = (target: EventTarget | null) => {
   const element = target as HTMLElement | null
   if (!element) return false
@@ -576,7 +674,10 @@ onBeforeUnmount(() => {
               v-for="item in mixParamOptions"
               :key="item.id"
               class="mixtape-param-bar__tab"
-              :class="{ 'is-active': selectedMixParam === item.id }"
+              :class="[
+                `mixtape-param-bar__tab--${item.id}`,
+                { 'is-active': selectedMixParam === item.id }
+              ]"
               type="button"
               @click="selectedMixParam = item.id"
             >
@@ -693,6 +794,7 @@ onBeforeUnmount(() => {
               ref="timelineScrollWrapRef"
               class="timeline-scroll-wrap"
               :class="{ 'is-panning': isTimelinePanning }"
+              :style="{ height: `${timelineTrackAreaHeight}px` }"
               @mousedown="handleTimelinePanStart"
             >
               <OverlayScrollbarsComponent
@@ -834,6 +936,77 @@ onBeforeUnmount(() => {
             </div>
             <div v-if="transportError" class="timeline-transport-error">
               {{ transportError }}
+            </div>
+            <div class="timeline-envelope-preview">
+              <div class="timeline-envelope-preview__legend">
+                <span
+                  v-for="legend in trackEnvelopePreviewLegend"
+                  :key="`envelope-preview-legend-${legend.key}`"
+                  class="timeline-envelope-preview__legend-item"
+                >
+                  <span
+                    class="timeline-envelope-preview__legend-dot"
+                    :style="{ backgroundColor: legend.color }"
+                  ></span>
+                  {{ legend.label }}
+                </span>
+              </div>
+              <div
+                ref="envelopePreviewRef"
+                class="timeline-envelope-preview__stage"
+                :class="{ 'is-dragging': isTimelinePanning }"
+                @mousedown="handleTimelineHorizontalPanStart"
+              >
+                <div v-if="tracks.length === 0" class="timeline-envelope-preview__empty">
+                  {{ t('mixtape.trackEmptyHint') }}
+                </div>
+                <div
+                  v-else
+                  class="timeline-envelope-preview__viewport"
+                  :style="trackEnvelopePreviewViewportStyle"
+                >
+                  <div class="timeline-envelope-preview__lanes">
+                    <div
+                      v-for="laneIndex in laneIndices"
+                      :key="`envelope-preview-${laneIndex}`"
+                      class="timeline-envelope-preview__lane"
+                    >
+                      <div
+                        v-for="item in laneTracks[laneIndex]"
+                        :key="`envelope-preview-${item.track.id}`"
+                        class="timeline-envelope-preview__track"
+                        :style="resolveTrackBlockStyle(item)"
+                      >
+                        <div class="timeline-envelope-preview__mute-segments">
+                          <div
+                            v-for="segment in resolveVolumeMuteSegmentMasks(item)"
+                            :key="`envelope-preview-mute-${item.track.id}-${segment.key}`"
+                            class="timeline-envelope-preview__mute-segment"
+                            :style="{
+                              left: `${segment.left}%`,
+                              width: `${segment.width}%`
+                            }"
+                          ></div>
+                        </div>
+                        <svg
+                          class="timeline-envelope-preview__track-svg"
+                          viewBox="0 0 100 100"
+                          preserveAspectRatio="none"
+                        >
+                          <polyline
+                            v-for="line in resolveTrackEnvelopePreviewLines(item)"
+                            :key="`envelope-preview-${item.track.id}-${line.key}`"
+                            class="timeline-envelope-preview__line"
+                            :class="`timeline-envelope-preview__line--${line.key}`"
+                            :points="line.points"
+                            :style="{ stroke: line.color, strokeWidth: line.strokeWidth }"
+                          ></polyline>
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="timeline-overview">
               <div

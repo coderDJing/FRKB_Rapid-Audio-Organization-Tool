@@ -96,6 +96,7 @@ export const useMixtape = () => {
     timelineScrollWrapRef,
     isTimelinePanning,
     handleTimelinePanStart,
+    handleTimelineHorizontalPanStart,
     timelineScrollRef,
     timelineScrollbarOptions,
     timelineViewport,
@@ -103,6 +104,7 @@ export const useMixtape = () => {
     timelineScrollLeft,
     timelineViewportWidth,
     timelineCanvasRef,
+    envelopePreviewRef,
     overviewRef,
     isOverviewDragging,
     handleOverviewMouseDown,
@@ -191,8 +193,9 @@ export const useMixtape = () => {
 
   const mixtapeMenus = computed(() => [
     {
-      name: 'mixtape.menu',
-      subMenu: [[{ name: 'mixtape.menuOutput' }]]
+      name: 'mixtape.menuOutput',
+      subMenu: [],
+      directAction: 'mixtape.menuOutput'
     }
   ])
 
@@ -1215,6 +1218,7 @@ export const useMixtape = () => {
     timelineScrollWrapRef,
     isTimelinePanning,
     handleTimelinePanStart,
+    handleTimelineHorizontalPanStart,
     timelineScrollRef,
     timelineScrollbarOptions,
     timelineViewport,
@@ -1222,6 +1226,7 @@ export const useMixtape = () => {
     timelineScrollLeft,
     timelineViewportWidth,
     timelineCanvasRef,
+    envelopePreviewRef,
     overviewRef,
     isOverviewDragging,
     handleOverviewMouseDown,

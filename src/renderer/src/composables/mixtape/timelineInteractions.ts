@@ -31,6 +31,7 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     timelineWidth,
     isTimelinePanning,
     isTimelineZooming,
+    envelopePreviewRef,
     isOverviewDragging,
     overviewRef,
     overviewWidth,
@@ -61,6 +62,7 @@ export const createTimelineInteractionsModule = (ctx: any) => {
   let timelinePanStartLeft = 0
   let timelinePanStartTop = 0
   let timelinePanMoved = false
+  let timelinePanLockHorizontal = false
   let overviewDragOffset = 0
   let overviewDragStartX = 0
   let overviewDragMoved = false
@@ -246,11 +248,14 @@ export const createTimelineInteractionsModule = (ctx: any) => {
 
   const isWheelInsideTimeline = (event: WheelEvent) => {
     const viewport = resolveTimelineViewportEl()
-    if (!viewport) return false
+    const envelopePreviewEl = (envelopePreviewRef?.value as HTMLElement | null) || null
+    if (!viewport && !envelopePreviewEl) return false
     const target = event.target as Node | null
-    if (target && viewport.contains(target)) return true
+    if (target && viewport?.contains(target)) return true
+    if (target && envelopePreviewEl?.contains(target)) return true
     const path = typeof event.composedPath === 'function' ? event.composedPath() : []
-    return path.includes(viewport)
+    if (viewport && path.includes(viewport)) return true
+    return !!(envelopePreviewEl && path.includes(envelopePreviewEl))
   }
 
   const handleTimelineWheel = (event: WheelEvent) => {
@@ -266,7 +271,7 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     scheduleWheelZoomFlush()
   }
 
-  const handleTimelinePanStart = (event: MouseEvent) => {
+  const startTimelinePan = (event: MouseEvent, horizontalOnly: boolean) => {
     if (event.button !== 0) return
     const target = event.target as HTMLElement | null
     if (target && target.closest('.os-scrollbar')) return
@@ -281,11 +286,20 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     timelinePanStartY = event.clientY
     timelinePanStartLeft = viewport.scrollLeft || 0
     timelinePanStartTop = viewport.scrollTop || 0
+    timelinePanLockHorizontal = horizontalOnly
     if (typeof document !== 'undefined') {
       document.body.style.userSelect = 'none'
     }
     window.addEventListener('mousemove', handleTimelinePanMove, { passive: false })
     window.addEventListener('mouseup', handleTimelinePanEnd, { passive: true })
+  }
+
+  const handleTimelinePanStart = (event: MouseEvent) => {
+    startTimelinePan(event, false)
+  }
+
+  const handleTimelineHorizontalPanStart = (event: MouseEvent) => {
+    startTimelinePan(event, true)
   }
 
   const handleTimelinePanMove = (event: MouseEvent) => {
@@ -296,7 +310,7 @@ export const createTimelineInteractionsModule = (ctx: any) => {
       null
     if (!viewport) return
     const dx = event.clientX - timelinePanStartX
-    const dy = event.clientY - timelinePanStartY
+    const dy = timelinePanLockHorizontal ? 0 : event.clientY - timelinePanStartY
     if (!timelinePanMoved && Math.abs(dx) + Math.abs(dy) > 2) {
       timelinePanMoved = true
     }
@@ -311,6 +325,7 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     if (!isTimelinePanning.value) return
     markTimelineInteracting()
     isTimelinePanning.value = false
+    timelinePanLockHorizontal = false
     window.removeEventListener('mousemove', handleTimelinePanMove as EventListener)
     window.removeEventListener('mouseup', handleTimelinePanEnd as EventListener)
     if (typeof document !== 'undefined') {
@@ -454,6 +469,7 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     } catch {}
     isTimelinePanning.value = false
     isOverviewDragging.value = false
+    timelinePanLockHorizontal = false
     if (typeof document !== 'undefined') {
       document.body.style.userSelect = ''
     }
@@ -473,6 +489,7 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     isWheelInsideTimeline,
     handleTimelineWheel,
     handleTimelinePanStart,
+    handleTimelineHorizontalPanStart,
     handleTimelinePanMove,
     handleTimelinePanEnd,
     updateOverviewWidth,

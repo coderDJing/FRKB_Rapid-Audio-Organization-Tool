@@ -27,6 +27,7 @@ type MenuItem = {
 type MenuConfig = {
   name: string
   subMenu: MenuItem[][]
+  directAction?: string
 }
 
 const props = withDefaults(
@@ -87,6 +88,7 @@ type Menu = {
   name: string
   show: boolean
   subMenu: MenuItem[][]
+  directAction?: string
 }
 
 // 检查是否是 dev 模式或预发布版本
@@ -101,7 +103,8 @@ const buildMenuArr = (configs: MenuConfig[]): Menu[] => {
   return configs.map((item) => ({
     name: item.name,
     show: false,
-    subMenu: item.subMenu || []
+    subMenu: item.subMenu || [],
+    directAction: item.directAction
   }))
 }
 
@@ -215,6 +218,13 @@ if (props.enableMenuHotkeys) {
   })
 }
 const menuClick = (item: Menu) => {
+  if (item.directAction) {
+    menuArr.value.forEach((menuItem) => {
+      menuItem.show = false
+    })
+    emit('openDialog', item.directAction)
+    return
+  }
   item.show = true
 }
 const menuButtonClick = async (item: MenuItem) => {
@@ -265,6 +275,7 @@ const switchMenu = (direction: 'next' | 'prev', menuName: string) => {
   menuArr.value[index].show = true
 }
 const titleMenuButtonMouseEnter = (item: Menu) => {
+  if (item.directAction) return
   if (menuArr.value.findIndex((item) => item.show === true) === -1) {
     return
   }
@@ -297,6 +308,7 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
           {{ t(item.name) }}
         </div>
         <menuComponent
+          v-if="!item.directAction && item.subMenu.length > 0"
           v-model="item.show"
           :menu-arr="item.subMenu"
           :menu-name="item.name"

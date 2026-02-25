@@ -93,9 +93,9 @@ const createWindow = (payload: MixtapeWindowPayload, windowKey: string) => {
   const mixtapeWindow = new BrowserWindow({
     resizable: true,
     width: 1100,
-    height: 720,
-    minWidth: 900,
-    minHeight: 620,
+    height: 780,
+    minWidth: 1100,
+    minHeight: 780,
     frame: process.platform === 'darwin' ? true : false,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     transparent: false,
