@@ -89,7 +89,7 @@ const isValidDrop = (
   // 不能拖拽到自身或其子项
   if (
     dragItemData.uuid === targetDir.uuid ||
-    libraryUtils.isDragItemInDirChildren(dragItemData.uuid)
+    libraryUtils.isDragItemInDirChildren(targetDir.uuid, dragItemData.children)
   ) {
     return false
   }
@@ -176,6 +176,40 @@ export function handleDragLeave(dragState: DragState): void {
 }
 
 // 更新数据结构
+function moveItemToSiblingIndex(
+  dragItemData: IDir,
+  targetFather: IDir,
+  insertIndex: number
+): boolean {
+  const dragItemFather = libraryUtils.getFatherLibraryTreeByUUID(dragItemData.uuid)
+  if (!dragItemFather?.children) {
+    console.error('Source parent directory not found or has no children')
+    return false
+  }
+
+  const sourceIndex = dragItemFather.children.findIndex((item) => item.uuid === dragItemData.uuid)
+  if (sourceIndex === -1) {
+    console.error('Source item not found in parent directory')
+    return false
+  }
+
+  const movedItem = JSON.parse(JSON.stringify(dragItemFather.children[sourceIndex]))
+  dragItemFather.children.splice(sourceIndex, 1)
+  libraryUtils.reOrderChildren(dragItemFather.children)
+
+  if (!targetFather.children) {
+    targetFather.children = []
+  }
+
+  let finalIndex = Math.max(0, Math.min(insertIndex, targetFather.children.length))
+  if (dragItemFather.uuid === targetFather.uuid && sourceIndex < finalIndex) {
+    finalIndex = Math.max(0, finalIndex - 1)
+  }
+  targetFather.children.splice(finalIndex, 0, movedItem)
+  libraryUtils.reOrderChildren(targetFather.children)
+  return true
+}
+
 async function updateDataStructure(
   dragItemData: IDir,
   targetDir: IDir,
@@ -375,42 +409,13 @@ export const handleDrop = async (
             fatherDirData.children.splice(existingItemIndex, 1)
           }
 
-          // 如果同名项就是目标，我们需要选择新的目标
+          // 如果同名项就是目标，拖拽项应占据被替换目标原来的位置
           if (isTargetSameAsExisting) {
-            // 如果父目录中还有其他项目，使用第一个作为目标
-            if (fatherDirData.children.length > 0) {
-              // 重新定义目标和方法
-              const newTarget = fatherDirData.children[0]
-
-              // 更新播放状态
-              libraryUtils.updatePlayingState(dragItemData)
-
-              // 传入skipExistingItemCheck为true，因为我们已经处理过同名项了
-              await updateDataStructure(dragItemData, newTarget, 'top', fatherDirData, true)
-            } else {
-              // 如果父目录中没有其他项目，直接添加到父目录
-              libraryUtils.updatePlayingState(dragItemData)
-
-              // 直接修改movedItem添加到父目录
-              const dragItemFather = libraryUtils.getFatherLibraryTreeByUUID(dragItemData.uuid)
-              if (dragItemFather?.children) {
-                const itemIndex = dragItemFather.children.findIndex(
-                  (item) => item.uuid === dragItemData.uuid
-                )
-                if (itemIndex !== -1) {
-                  const movedItem = JSON.parse(JSON.stringify(dragItemFather.children[itemIndex]))
-                  movedItem.order = 1
-                  dragItemFather.children.splice(itemIndex, 1)
-
-                  if (!fatherDirData.children) {
-                    fatherDirData.children = []
-                  }
-
-                  fatherDirData.children.push(movedItem)
-                  libraryUtils.reOrderChildren(dragItemFather.children)
-                  libraryUtils.reOrderChildren(fatherDirData.children)
-                }
-              }
+            libraryUtils.updatePlayingState(dragItemData)
+            const insertIndex =
+              existingItemIndex !== -1 ? existingItemIndex : fatherDirData.children.length
+            const moved = moveItemToSiblingIndex(dragItemData, fatherDirData, insertIndex)
+            if (!moved) {
               return false
             }
           } else {

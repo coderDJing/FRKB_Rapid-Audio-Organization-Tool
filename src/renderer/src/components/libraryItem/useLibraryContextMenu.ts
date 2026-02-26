@@ -103,7 +103,7 @@ export function useLibraryContextMenu({
     }
     let deleteIndex: number | undefined
     for (const index in fatherDirData.children) {
-      if (fatherDirData.children[index] === dirData) {
+      if (fatherDirData.children[index]?.uuid === dirData.uuid) {
         deleteIndex = Number(index)
         continue
       }

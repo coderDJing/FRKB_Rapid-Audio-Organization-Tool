@@ -35,7 +35,8 @@ import { listRecycleBinRecords, deleteRecycleBinRecords } from '../../recycleBin
 import {
   listMixtapeFilePathsByPlaylist,
   listMixtapeFilePathsInUse,
-  removeMixtapeItemsByPlaylist
+  removeMixtapeItemsByPlaylist,
+  replaceMixtapeFilePath
 } from '../../mixtapeDb'
 import { isMixtapeWindowOpenByPlaylistId } from '../mixtapeWindow'
 
@@ -274,14 +275,15 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
                   waitForUserDecision(getWindow(), batchId, 'recycleMove', payload)
               })
               await removeNonAudioEntries(dirPath, audioExts)
-              if (failed === 0) {
+              const allAudioMoved = failed === 0 && skipped === 0 && success === tasks.length
+              if (allAudioMoved) {
                 await fs.remove(dirPath)
                 removeLibraryNode(item.uuid)
                 if (item.nodeType === 'mixtapeList') {
                   await finalizeMixtapePlaylistRemoval(item.uuid, mixtapeFilePaths)
                 }
               }
-              operationStatus = failed === 0 ? 'recycled' : 'recycle_failed'
+              operationStatus = allAudioMoved ? 'recycled' : 'recycle_failed'
               if (hasENOSPC && getWindow()) {
                 getWindow()?.webContents.send('file-batch-summary', {
                   context: 'recycleMove',
@@ -403,6 +405,7 @@ async function transferCachesAfterDirChange(params: {
     try {
       const audioExts = store.settingConfig.audioExt || []
       const files = await collectFilesWithExtensions(newFullPath, audioExts)
+      await syncMixtapePathReferencesAfterDirChange(oldFullPath, newFullPath, files)
       if (files.length === 0) return
       const tasks: Array<() => Promise<any>> = files.map((filePath) => async () => {
         const rel = path.relative(newFullPath, filePath)
@@ -423,6 +426,9 @@ async function transferCachesAfterDirChange(params: {
   }
 
   try {
+    const audioExts = store.settingConfig.audioExt || []
+    const files = await collectFilesWithExtensions(newFullPath, audioExts)
+    await syncMixtapePathReferencesAfterDirChange(oldFullPath, newFullPath, files)
     const rootDir = store.databaseDir
     if (!rootDir) return
     const nodes = loadLibraryNodes(rootDir) || []
@@ -450,6 +456,25 @@ async function transferCachesAfterDirChange(params: {
     await runWithConcurrency(tasks, { concurrency: 4, stopOnENOSPC: false })
   } catch (error) {
     console.warn('songlist cache transfer failed:', error)
+  }
+}
+
+async function syncMixtapePathReferencesAfterDirChange(
+  oldFullPath: string,
+  newFullPath: string,
+  movedFiles: string[]
+): Promise<void> {
+  if (!Array.isArray(movedFiles) || movedFiles.length === 0) return
+  try {
+    const tasks: Array<() => Promise<void>> = movedFiles.map((newFilePath) => async () => {
+      const rel = path.relative(newFullPath, newFilePath)
+      if (!rel || rel.startsWith('..')) return
+      const oldFilePath = path.join(oldFullPath, rel)
+      replaceMixtapeFilePath(oldFilePath, newFilePath)
+    })
+    await runWithConcurrency(tasks, { concurrency: 8, stopOnENOSPC: false })
+  } catch (error) {
+    console.warn('mixtape path sync failed:', error)
   }
 }
 

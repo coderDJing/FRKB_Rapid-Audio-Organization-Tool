@@ -193,13 +193,13 @@ const deleteDir = async () => {
 
   if (!fatherDirData) return
 
-  let deleteIndex
+  let deleteIndex: number | undefined
   if (fatherDirData.children === undefined) {
     throw new Error(`fatherDirData.children error: ${JSON.stringify(fatherDirData.children)}`)
   }
   for (let index in fatherDirData.children) {
-    if (fatherDirData.children[index] == dirData) {
-      deleteIndex = index
+    if (fatherDirData.children[index]?.uuid === dirData.uuid) {
+      deleteIndex = Number(index)
       continue
     }
     if (fatherDirData.children[index].order && dirData.order) {
@@ -208,7 +208,10 @@ const deleteDir = async () => {
       }
     }
   }
-  fatherDirData.children.splice(Number(deleteIndex), 1)
+  if (deleteIndex === undefined) {
+    return
+  }
+  fatherDirData.children.splice(deleteIndex, 1)
   await libraryUtils.diffLibraryTreeExecuteFileOperation()
 }
 const contextmenuEvent = async (event: MouseEvent) => {
@@ -231,18 +234,18 @@ const contextmenuEvent = async (event: MouseEvent) => {
       dirChildRendered.value = true
       dirChildShow.value = true
       const newUuid = uuidV4()
-      if (dirData.children) {
-        dirData.children.unshift({
-          uuid: newUuid,
-          dirName: '',
-          type: isMixtapeDialog.value ? 'mixtapeList' : 'songList'
-        })
-      }
+      dirData.children = dirData.children || []
+      dirData.children.unshift({
+        uuid: newUuid,
+        dirName: '',
+        type: isMixtapeDialog.value ? 'mixtapeList' : 'songList'
+      })
       // 不在此时标记“创建中”，等待命名确认开始写盘时再标记
     } else if (result.menuName == '新建文件夹') {
       dirChildRendered.value = true
       dirChildShow.value = true
-      dirData.children?.unshift({
+      dirData.children = dirData.children || []
+      dirData.children.unshift({
         uuid: uuidV4(),
         dirName: '',
         type: 'dir'

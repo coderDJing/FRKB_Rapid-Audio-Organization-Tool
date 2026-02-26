@@ -178,15 +178,16 @@ export const reOrderChildren = (children: IDir[]) => {
 }
 
 export const isDragItemInDirChildren = (targetUUID: string, children?: IDir[]) => {
-  if (children === undefined) {
-    const runtime = useRuntimeStore()
-    children = runtime.dragItemData?.children ?? []
-  }
+  if (!Array.isArray(children) || children.length === 0) return false
   for (const child of children) {
     if (child.uuid === targetUUID) {
       return true
     }
-    if (isDragItemInDirChildren(targetUUID, child.children)) {
+    if (
+      child.children &&
+      child.children.length > 0 &&
+      isDragItemInDirChildren(targetUUID, child.children)
+    ) {
       return true
     }
   }
