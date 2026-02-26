@@ -64,6 +64,7 @@ const {
   transportPreloadTotal,
   transportPreloadPercent,
   playheadVisible,
+  followPlayheadEnabled,
   playheadTimeLabel,
   timelineDurationLabel,
   rulerMinuteTicks,
@@ -73,6 +74,7 @@ const {
   handleTransportPlayFromStart,
   handleTransportStop,
   handleRulerSeek,
+  handleToggleFollowPlayhead,
   transportError,
   timelineScrollWrapRef,
   isTimelinePanning,
@@ -464,6 +466,29 @@ onBeforeUnmount(() => {
               <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
                 <path d="M6 3.5 2.5 7l3.5 3.5"></path>
                 <path d="M3 7h5.5a3.5 3.5 0 1 1 0 7H7.5"></path>
+              </svg>
+            </button>
+            <button
+              class="button mixtape-param-bar__action-btn mixtape-param-bar__action-btn--icon"
+              :class="{ 'is-active': followPlayheadEnabled }"
+              type="button"
+              :title="
+                followPlayheadEnabled
+                  ? t('mixtape.followPlayheadActionHintDisable')
+                  : t('mixtape.followPlayheadActionHintEnable')
+              "
+              :aria-label="
+                followPlayheadEnabled
+                  ? t('mixtape.followPlayheadActionHintDisable')
+                  : t('mixtape.followPlayheadActionHintEnable')
+              "
+              @click="handleToggleFollowPlayhead"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <rect x="3" y="3" width="10" height="10" rx="1.4"></rect>
+                <path d="M8 2v12"></path>
+                <path d="M5.9 5.4 8 3.3l2.1 2.1"></path>
+                <path d="M5.9 10.6 8 12.7l2.1-2.1"></path>
               </svg>
             </button>
             <button

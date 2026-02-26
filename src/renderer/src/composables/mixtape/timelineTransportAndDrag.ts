@@ -76,14 +76,18 @@ export type { MixtapeOutputProgressPayload, MixtapeRenderedWavResult }
 
 const MIX_ENVELOPE_PARAMS: MixtapeEnvelopeParamId[] = ['gain', 'high', 'mid', 'low', 'volume']
 const MIXTAPE_SEGMENT_MUTE_GAIN = 0.0001
+const FOLLOW_PLAYHEAD_LOCK_RATIO = 1 / 3
 
 export const createTimelineTransportAndDragModule = (ctx: any) => {
   const {
     tracks,
     timelineLayout,
     normalizedRenderZoom,
+    timelineScrollRef,
     timelineScrollLeft,
     timelineViewportWidth,
+    isTimelinePanning,
+    isOverviewDragging,
     rulerRef,
     buildSequentialLayoutForZoom,
     resolveRenderPxPerSec,
@@ -105,6 +109,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   const playheadSec = ref(0)
   const playheadVisible = ref(false)
   const transportError = ref('')
+  const followPlayheadEnabled = ref(false)
 
   let transportRaf = 0
   let transportBaseSec = 0
@@ -369,6 +374,43 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     const total = transportDurationSec > 0 ? transportDurationSec : timelineDurationSec.value
     if (!Number.isFinite(total) || total <= 0) return 0
     return total
+  }
+
+  const resolveTimelineViewportEl = () =>
+    ((timelineScrollRef.value?.osInstance()?.elements().viewport as HTMLElement | undefined) ||
+      null) as HTMLElement | null
+
+  const isTimelineManualScrolling = () =>
+    Boolean(isTimelinePanning?.value || isOverviewDragging?.value)
+
+  const syncTimelineScrollByPlayhead = (timelineSec: number) => {
+    if (!followPlayheadEnabled.value) return
+    if (isTimelineManualScrolling()) return
+    const viewport = resolveTimelineViewportEl()
+    if (!viewport) return
+    const viewportWidth = Math.max(
+      1,
+      Number(viewport.clientWidth || timelineViewportWidth.value || 0)
+    )
+    const layoutTotalWidth = Math.max(0, Number(timelineLayout.value.totalWidth || 0))
+    const scrollableWidth = Math.max(
+      viewportWidth,
+      layoutTotalWidth,
+      Number(viewport.scrollWidth || 0)
+    )
+    if (scrollableWidth <= viewportWidth) return
+    const maxScrollLeft = Math.max(0, scrollableWidth - viewportWidth)
+    const pxPerSec = Math.max(0.0001, resolveRenderPxPerSec(normalizedRenderZoom.value))
+    const playheadX = clampNumber(
+      resolveTimelineDisplayX(timelineSec, pxPerSec, layoutTotalWidth),
+      0,
+      layoutTotalWidth
+    )
+    const targetLocalX = viewportWidth * FOLLOW_PLAYHEAD_LOCK_RATIO
+    const nextLeft = clampNumber(playheadX - targetLocalX, 0, maxScrollLeft)
+    const currentScrollLeft = clampNumber(Number(viewport.scrollLeft || 0), 0, maxScrollLeft)
+    if (Math.abs(nextLeft - currentScrollLeft) < 0.5) return
+    viewport.scrollLeft = Math.round(nextLeft)
   }
 
   const finishTransportPlayback = () => {
@@ -884,6 +926,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
 
     playheadVisible.value = true
     playheadSec.value = startSec
+    syncTimelineScrollByPlayhead(startSec)
     const transportCtx = ensureTransportAudioContext()
     if (transportCtx.state === 'suspended') {
       try {
@@ -915,6 +958,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
           : Math.max(0, (performance.now() - transportStartedAt) / 1000)
       const current = transportBaseSec + elapsed
       playheadSec.value = current
+      syncTimelineScrollByPlayhead(current)
       applyTransportMixParamsAtTimelineSec(current)
       const syncResult = applyMixxxTransportSync({
         nodes: transportGraphNodes,
@@ -949,6 +993,17 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   const handleRulerSeek = (event: MouseEvent) => {
     if (event.button !== 0) return
     void startTransportFrom(resolveRulerSeekSec(event))
+  }
+
+  const handleToggleFollowPlayhead = () => {
+    followPlayheadEnabled.value = !followPlayheadEnabled.value
+    if (!followPlayheadEnabled.value) return
+    const currentSec = clampNumber(
+      playheadSec.value,
+      0,
+      Math.max(resolveTransportDuration(), timelineDurationSec.value)
+    )
+    syncTimelineScrollByPlayhead(currentSec)
   }
 
   const stopTransportForTrackChange = () => {
@@ -1002,6 +1057,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     transportPreloadPercent,
     playheadSec,
     playheadVisible,
+    followPlayheadEnabled,
     transportError,
     timelineDurationSec,
     playheadTimeLabel,
@@ -1015,6 +1071,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     handleTransportPlayFromStart,
     handleTransportStop,
     handleRulerSeek,
+    handleToggleFollowPlayhead,
     stopTransportForTrackChange,
     handleTrackDragStart,
     scheduleTransportPreload,
