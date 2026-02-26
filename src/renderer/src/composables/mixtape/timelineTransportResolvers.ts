@@ -37,6 +37,7 @@ export const createTimelineTransportResolversModule = (ctx: any) => {
     normalizedRenderZoom,
     timelineScrollLeft,
     timelineViewportWidth,
+    rulerRef,
     playheadSec,
     playheadVisible,
     transportPreloadDone,
@@ -71,6 +72,22 @@ export const createTimelineTransportResolversModule = (ctx: any) => {
     return Math.max(0, timelineX / pxPerSec)
   }
 
+  const resolveRulerLeftInset = () => {
+    const rulerEl = (rulerRef?.value as HTMLElement | null) || null
+    if (!rulerEl) return 0
+    const inset = Number(rulerEl.clientLeft || 0)
+    if (!Number.isFinite(inset) || inset <= 0) return 0
+    return inset
+  }
+
+  const snapViewportX = (value: number) => {
+    const safe = Math.max(0, Number(value) || 0)
+    if (typeof window === 'undefined') return safe
+    const dpr = Number(window.devicePixelRatio || 1)
+    if (!Number.isFinite(dpr) || dpr <= 0) return safe
+    return Math.round(safe * dpr) / dpr
+  }
+
   const resolveTransportDuration = () => {
     const total =
       Number(transportDurationSecRef.value) > 0
@@ -89,24 +106,32 @@ export const createTimelineTransportResolversModule = (ctx: any) => {
     opacity: playheadVisible.value ? '1' : '0'
   }))
 
-  const rulerPlayheadStyle = computed(() => {
+  const playheadViewportX = computed(() => {
     const totalWidth = Math.max(0, timelineLayout.value.totalWidth)
     const pxPerSec = Math.max(0.0001, resolveRenderPxPerSec(normalizedRenderZoom.value))
     const totalSec = resolveTransportDuration()
-    if (!totalSec || !totalWidth) return { left: `${TIMELINE_SIDE_PADDING_PX}px`, opacity: '0' }
-    const maxX = Math.max(TIMELINE_SIDE_PADDING_PX, totalWidth + TIMELINE_SIDE_PADDING_PX)
-    const x = resolveTimelineDisplayX(playheadSec.value, pxPerSec, maxX)
-    return { left: `${x}px`, opacity: playheadVisible.value ? '1' : '0' }
-  })
-
-  const timelinePlayheadStyle = computed(() => {
-    const totalWidth = Math.max(0, timelineLayout.value.totalWidth)
-    const pxPerSec = Math.max(0.0001, resolveRenderPxPerSec(normalizedRenderZoom.value))
+    if (!totalSec || !totalWidth) return TIMELINE_SIDE_PADDING_PX
     const maxX = Math.max(TIMELINE_SIDE_PADDING_PX, totalWidth + TIMELINE_SIDE_PADDING_PX)
     const x = resolveTimelineDisplayX(playheadSec.value, pxPerSec, maxX)
     const scrollLeft = Math.max(0, Number(timelineScrollLeft.value) || 0)
-    const viewportX = Math.max(0, x - scrollLeft)
-    return { left: `${viewportX}px`, opacity: playheadVisible.value ? '1' : '0' }
+    return Math.max(0, x - scrollLeft)
+  })
+
+  const playheadViewportStyle = computed(() => ({
+    left: `${snapViewportX(playheadViewportX.value)}px`,
+    opacity: playheadVisible.value ? '1' : '0'
+  }))
+
+  const rulerPlayheadStyle = computed(() => {
+    const rulerInset = resolveRulerLeftInset()
+    return {
+      left: `${snapViewportX(Math.max(0, playheadViewportX.value - rulerInset))}px`,
+      opacity: playheadVisible.value ? '1' : '0'
+    }
+  })
+
+  const timelinePlayheadStyle = computed(() => {
+    return playheadViewportStyle.value
   })
 
   const formatTransportTime = (seconds: number) => {

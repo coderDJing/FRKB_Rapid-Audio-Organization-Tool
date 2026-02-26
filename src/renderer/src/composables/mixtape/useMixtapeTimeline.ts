@@ -78,6 +78,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
   const renderZoom = ref(ZOOM_MIN)
   const zoomTouched = ref(true)
   const timelineRootRef = ref<HTMLElement | null>(null)
+  const rulerRef = ref<HTMLElement | null>(null)
   const timelineScrollRef = ref<InstanceType<typeof OverlayScrollbarsComponent> | null>(null)
   const timelineScrollWrapRef = ref<HTMLElement | null>(null)
   const timelineCanvasRef = ref<HTMLCanvasElement | null>(null)
@@ -600,6 +601,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     normalizedRenderZoom,
     timelineScrollLeft,
     timelineViewportWidth,
+    rulerRef,
     buildSequentialLayoutForZoom,
     resolveRenderPxPerSec,
     resolveTrackDurationSeconds,
@@ -971,6 +973,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     preRenderState,
     preRenderPercent,
     timelineRootRef,
+    rulerRef,
     timelineVisualScale,
     timelineScrollWrapRef,
     isTimelinePanning,

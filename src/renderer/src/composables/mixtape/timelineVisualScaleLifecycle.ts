@@ -66,6 +66,7 @@ export const setupTimelineVisualScaleLifecycle = (ctx: any) => {
     timelineCanvasRafRef: BridgeRef<number>
     cleanupInteractions: () => void
   }
+  const TIMELINE_VISUAL_SCALE_EPSILON = 0.01
 
   const measureTimelineCurrentContentHeight = () => {
     const root = timelineRootRef.value
@@ -93,9 +94,9 @@ export const setupTimelineVisualScaleLifecycle = (ctx: any) => {
     const rawScale = (availableHeight - fixedHeight) / scalableBaseHeight
     const nextScale = Math.max(
       timelineVisualScaleMin,
-      Math.min(timelineVisualScaleMax, Number(rawScale.toFixed(4)))
+      Math.min(timelineVisualScaleMax, Number(rawScale.toFixed(3)))
     )
-    if (Math.abs(nextScale - timelineVisualScale.value) < 0.001) return
+    if (Math.abs(nextScale - timelineVisualScale.value) < TIMELINE_VISUAL_SCALE_EPSILON) return
     timelineVisualScale.value = nextScale
     scheduleTimelineDraw()
     scheduleFullPreRender()

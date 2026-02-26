@@ -44,6 +44,7 @@ const {
   preRenderState,
   preRenderPercent,
   timelineRootRef,
+  rulerRef,
   timelineVisualScale,
   handleTrackDragStart,
   handleTrackContextMenu,
@@ -68,7 +69,6 @@ const {
   rulerMinuteTicks,
   rulerInactiveStyle,
   overviewPlayheadStyle,
-  rulerPlayheadStyle,
   timelinePlayheadStyle,
   handleTransportPlayFromStart,
   handleTransportStop,
@@ -488,290 +488,295 @@ onBeforeUnmount(() => {
         </div>
         <div class="mixtape-main">
           <section ref="timelineRootRef" class="timeline" :style="timelineAdaptiveStyle">
-            <div class="timeline-ruler-wrap">
-              <div class="timeline-ruler-stop-float">
-                <button
-                  v-if="transportPlaying || transportDecoding"
-                  class="timeline-stop-btn"
-                  type="button"
-                  :title="t('mixtape.stop')"
-                  :aria-label="t('mixtape.stop')"
-                  @mousedown.stop.prevent
-                  @click.stop="handleTransportStop"
-                >
-                  <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                    <rect x="4" y="4" width="8" height="8" rx="1"></rect>
-                  </svg>
-                </button>
-                <button
-                  v-else
-                  class="timeline-stop-btn"
-                  type="button"
-                  :title="t('player.play')"
-                  :aria-label="t('player.play')"
-                  @mousedown.stop.prevent
-                  @click.stop="handleTransportPlayFromStart"
-                >
-                  <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                    <polygon points="5,4 12,8 5,12"></polygon>
-                  </svg>
-                </button>
-                <span v-if="transportDecoding" class="timeline-decoding-hint">
-                  {{ t('mixtape.transportDecoding') }}
-                </span>
-              </div>
-              <div class="timeline-ruler" @mousedown="handleRulerSeek">
-                <div class="timeline-ruler__ticks">
-                  <div
-                    v-for="tick in rulerMinuteTicks"
-                    :key="`minute-${tick.value}-${tick.left}`"
-                    class="timeline-ruler__tick"
-                    :style="{ left: tick.left }"
+            <div class="timeline-primary-zone">
+              <div class="timeline-ruler-wrap">
+                <div class="timeline-ruler-stop-float">
+                  <button
+                    v-if="transportPlaying || transportDecoding"
+                    class="timeline-stop-btn"
+                    type="button"
+                    :title="t('mixtape.stop')"
+                    :aria-label="t('mixtape.stop')"
+                    @mousedown.stop.prevent
+                    @click.stop="handleTransportStop"
                   >
-                    <div class="timeline-ruler__tick-line"></div>
+                    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                      <rect x="4" y="4" width="8" height="8" rx="1"></rect>
+                    </svg>
+                  </button>
+                  <button
+                    v-else
+                    class="timeline-stop-btn"
+                    type="button"
+                    :title="t('player.play')"
+                    :aria-label="t('player.play')"
+                    @mousedown.stop.prevent
+                    @click.stop="handleTransportPlayFromStart"
+                  >
+                    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                      <polygon points="5,4 12,8 5,12"></polygon>
+                    </svg>
+                  </button>
+                  <span v-if="transportDecoding" class="timeline-decoding-hint">
+                    {{ t('mixtape.transportDecoding') }}
+                  </span>
+                </div>
+                <div ref="rulerRef" class="timeline-ruler" @mousedown="handleRulerSeek">
+                  <div class="timeline-ruler__ticks">
                     <div
-                      class="timeline-ruler__tick-label"
-                      :class="{
-                        'timeline-ruler__tick-label--start': tick.align === 'start',
-                        'timeline-ruler__tick-label--end': tick.align === 'end'
-                      }"
+                      v-for="tick in rulerMinuteTicks"
+                      :key="`minute-${tick.value}-${tick.left}`"
+                      class="timeline-ruler__tick"
+                      :style="{ left: tick.left }"
                     >
-                      {{ tick.value }}
+                      <div class="timeline-ruler__tick-line"></div>
+                      <div
+                        class="timeline-ruler__tick-label"
+                        :class="{
+                          'timeline-ruler__tick-label--start': tick.align === 'start',
+                          'timeline-ruler__tick-label--end': tick.align === 'end'
+                        }"
+                      >
+                        {{ tick.value }}
+                      </div>
                     </div>
                   </div>
+                  <div class="timeline-ruler__label">
+                    {{ playheadTimeLabel }} / {{ timelineDurationLabel }}
+                  </div>
+                  <div
+                    v-if="rulerInactiveStyle"
+                    class="timeline-ruler__inactive"
+                    :style="rulerInactiveStyle"
+                  ></div>
                 </div>
-                <div class="timeline-ruler__label">
-                  {{ playheadTimeLabel }} / {{ timelineDurationLabel }}
-                </div>
-                <div
-                  v-if="rulerInactiveStyle"
-                  class="timeline-ruler__inactive"
-                  :style="rulerInactiveStyle"
-                ></div>
-                <div
-                  v-if="playheadVisible"
-                  class="timeline-ruler__playhead"
-                  :style="rulerPlayheadStyle"
-                ></div>
               </div>
-            </div>
-            <div
-              ref="timelineScrollWrapRef"
-              class="timeline-scroll-wrap"
-              :class="{ 'is-panning': isTimelinePanning }"
-              :style="{ height: `${timelineTrackAreaHeight}px` }"
-              @mousedown="handleTimelinePanStart"
-            >
-              <OverlayScrollbarsComponent
-                ref="timelineScrollRef"
-                class="timeline-scroll"
-                :options="timelineScrollbarOptions"
-                element="div"
-                defer
+              <div
+                ref="timelineScrollWrapRef"
+                class="timeline-scroll-wrap"
+                :class="{ 'is-panning': isTimelinePanning }"
+                :style="{ height: `${timelineTrackAreaHeight}px` }"
+                @mousedown="handleTimelinePanStart"
               >
-                <div
-                  ref="timelineViewport"
-                  class="timeline-viewport"
-                  :style="{
-                    width: `${timelineContentWidth}px`,
-                    '--timeline-scroll-left': `${timelineScrollLeft}px`,
-                    '--timeline-viewport-width': `${timelineViewportWidth}px`
-                  }"
+                <OverlayScrollbarsComponent
+                  ref="timelineScrollRef"
+                  class="timeline-scroll"
+                  :options="timelineScrollbarOptions"
+                  element="div"
+                  defer
                 >
-                  <div class="timeline-lanes">
-                    <div v-if="tracks.length === 0" class="timeline-empty">
-                      <div>{{ t('mixtape.trackEmpty') }}</div>
-                      <div class="timeline-empty-hint">{{ t('mixtape.trackEmptyHint') }}</div>
-                    </div>
-                    <template v-else>
-                      <div v-for="laneIndex in laneIndices" :key="laneIndex" class="timeline-lane">
+                  <div
+                    ref="timelineViewport"
+                    class="timeline-viewport"
+                    :style="{
+                      width: `${timelineContentWidth}px`,
+                      '--timeline-scroll-left': `${timelineScrollLeft}px`,
+                      '--timeline-viewport-width': `${timelineViewportWidth}px`
+                    }"
+                  >
+                    <div class="timeline-lanes">
+                      <div v-if="tracks.length === 0" class="timeline-empty">
+                        <div>{{ t('mixtape.trackEmpty') }}</div>
+                        <div class="timeline-empty-hint">{{ t('mixtape.trackEmptyHint') }}</div>
+                      </div>
+                      <template v-else>
                         <div
-                          class="lane-body"
-                          :style="{ height: `${laneHeight}px`, minHeight: `${laneHeight}px` }"
+                          v-for="laneIndex in laneIndices"
+                          :key="laneIndex"
+                          class="timeline-lane"
                         >
                           <div
-                            v-for="item in laneTracks[laneIndex]"
-                            :key="`${item.track.id}-${item.startX}`"
-                            class="lane-track"
-                            :style="resolveTrackBlockStyle(item)"
-                            @mousedown.stop="handleLaneTrackMouseDown(item, $event)"
-                            @contextmenu.stop.prevent="handleTrackContextMenu(item, $event)"
+                            class="lane-body"
+                            :style="{ height: `${laneHeight}px`, minHeight: `${laneHeight}px` }"
                           >
-                            <svg
-                              class="lane-track__envelope-svg"
-                              viewBox="0 0 100 100"
-                              preserveAspectRatio="none"
-                            >
-                              <line
-                                class="lane-track__envelope-midline"
-                                :class="{ 'is-hidden': !isEnvelopeParamMode }"
-                                x1="0"
-                                y1="50"
-                                x2="100"
-                                y2="50"
-                              ></line>
-                              <polyline
-                                class="lane-track__envelope-line"
-                                :class="{ 'is-hidden': !isEnvelopeParamMode }"
-                                :points="resolveActiveEnvelopePolyline(item)"
-                              ></polyline>
-                            </svg>
-                            <div class="lane-track__mute-segments">
-                              <div
-                                v-for="segment in resolveVolumeMuteSegmentMasks(item)"
-                                :key="`mute-${item.track.id}-${segment.key}`"
-                                class="lane-track__mute-segment"
-                                :style="{
-                                  left: `${segment.left}%`,
-                                  width: `${segment.width}%`
-                                }"
-                              ></div>
-                            </div>
                             <div
-                              v-if="isEnvelopeParamMode"
-                              class="lane-track__envelope-points"
-                              :class="{
-                                'is-segment-mute-mode': isVolumeParamMode && volumeMuteSelectionMode
-                              }"
-                              @mousedown.stop.prevent="handleEnvelopeStageMouseDown(item, $event)"
+                              v-for="item in laneTracks[laneIndex]"
+                              :key="`${item.track.id}-${item.startX}`"
+                              class="lane-track"
+                              :style="resolveTrackBlockStyle(item)"
+                              @mousedown.stop="handleLaneTrackMouseDown(item, $event)"
+                              @contextmenu.stop.prevent="handleTrackContextMenu(item, $event)"
                             >
-                              <button
-                                v-if="!(isVolumeParamMode && volumeMuteSelectionMode)"
-                                v-for="point in resolveActiveEnvelopePointDots(item)"
-                                :key="`point-${item.track.id}-${point.index}`"
-                                class="lane-track__envelope-point"
-                                :class="{ 'is-boundary': point.isBoundary }"
-                                type="button"
-                                :style="{
-                                  left: `${point.x}%`,
-                                  top: `${point.y}%`
+                              <svg
+                                class="lane-track__envelope-svg"
+                                viewBox="0 0 100 100"
+                                preserveAspectRatio="none"
+                              >
+                                <line
+                                  class="lane-track__envelope-midline"
+                                  :class="{ 'is-hidden': !isEnvelopeParamMode }"
+                                  x1="0"
+                                  y1="50"
+                                  x2="100"
+                                  y2="50"
+                                ></line>
+                                <polyline
+                                  class="lane-track__envelope-line"
+                                  :class="{ 'is-hidden': !isEnvelopeParamMode }"
+                                  :points="resolveActiveEnvelopePolyline(item)"
+                                ></polyline>
+                              </svg>
+                              <div class="lane-track__mute-segments">
+                                <div
+                                  v-for="segment in resolveVolumeMuteSegmentMasks(item)"
+                                  :key="`mute-${item.track.id}-${segment.key}`"
+                                  class="lane-track__mute-segment"
+                                  :style="{
+                                    left: `${segment.left}%`,
+                                    width: `${segment.width}%`
+                                  }"
+                                ></div>
+                              </div>
+                              <div
+                                v-if="isEnvelopeParamMode"
+                                class="lane-track__envelope-points"
+                                :class="{
+                                  'is-segment-mute-mode':
+                                    isVolumeParamMode && volumeMuteSelectionMode
                                 }"
-                                @mousedown.stop.prevent="
-                                  handleEnvelopePointMouseDown(item, point.index, $event)
-                                "
-                                @dblclick.stop.prevent="
-                                  handleEnvelopePointDoubleClick(item, point.index)
-                                "
-                                @contextmenu.stop.prevent="
-                                  handleEnvelopePointContextMenu(item, point.index)
-                                "
-                              ></button>
-                            </div>
-                            <div v-if="isTrackPositionMode" class="lane-track__meta">
-                              <div class="lane-track__meta-title">
-                                {{ item.track.mixOrder }}.
-                                {{ resolveTrackTitleWithOriginalMeta(item.track) }}
+                                @mousedown.stop.prevent="handleEnvelopeStageMouseDown(item, $event)"
+                              >
+                                <button
+                                  v-if="!(isVolumeParamMode && volumeMuteSelectionMode)"
+                                  v-for="point in resolveActiveEnvelopePointDots(item)"
+                                  :key="`point-${item.track.id}-${point.index}`"
+                                  class="lane-track__envelope-point"
+                                  :class="{ 'is-boundary': point.isBoundary }"
+                                  type="button"
+                                  :style="{
+                                    left: `${point.x}%`,
+                                    top: `${point.y}%`
+                                  }"
+                                  @mousedown.stop.prevent="
+                                    handleEnvelopePointMouseDown(item, point.index, $event)
+                                  "
+                                  @dblclick.stop.prevent="
+                                    handleEnvelopePointDoubleClick(item, point.index)
+                                  "
+                                  @contextmenu.stop.prevent="
+                                    handleEnvelopePointContextMenu(item, point.index)
+                                  "
+                                ></button>
                               </div>
-                              <div class="lane-track__meta-sub">
-                                {{ t('mixtape.bpm') }} {{ formatTrackBpm(item.track.bpm) }}
-                                <template v-if="formatTrackKey(item.track.key)">
-                                  · {{ t('columns.key') }} {{ formatTrackKey(item.track.key) }}
-                                </template>
+                              <div v-if="isTrackPositionMode" class="lane-track__meta">
+                                <div class="lane-track__meta-title">
+                                  {{ item.track.mixOrder }}.
+                                  {{ resolveTrackTitleWithOriginalMeta(item.track) }}
+                                </div>
+                                <div class="lane-track__meta-sub">
+                                  {{ t('mixtape.bpm') }} {{ formatTrackBpm(item.track.bpm) }}
+                                  <template v-if="formatTrackKey(item.track.key)">
+                                    · {{ t('columns.key') }} {{ formatTrackKey(item.track.key) }}
+                                  </template>
+                                </div>
                               </div>
-                            </div>
-                            <div v-if="isRawWaveformLoading(item.track)" class="lane-loading">
-                              {{ t('mixtape.rawWaveformLoading') }}
+                              <div v-if="isRawWaveformLoading(item.track)" class="lane-loading">
+                                {{ t('mixtape.rawWaveformLoading') }}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    </template>
+                      </template>
+                    </div>
                   </div>
-                  <div
-                    v-if="playheadVisible && timelinePlayheadStyle"
-                    class="timeline-playhead"
-                    :style="timelinePlayheadStyle"
-                  ></div>
-                </div>
-              </OverlayScrollbarsComponent>
-              <canvas ref="timelineCanvasRef" class="timeline-waveform-canvas"></canvas>
-              <div v-if="preRenderState.active" class="timeline-preload">
-                <div class="preload-card">
-                  <div class="preload-title">
-                    {{ t('mixtape.waveformPreparing') }} {{ preRenderPercent }}%
-                  </div>
-                  <div class="preload-bar">
-                    <div class="preload-bar__fill" :style="{ width: `${preRenderPercent}%` }"></div>
-                  </div>
-                  <div class="preload-sub">
-                    {{ preRenderState.done }} / {{ preRenderState.total }}
+                </OverlayScrollbarsComponent>
+                <canvas ref="timelineCanvasRef" class="timeline-waveform-canvas"></canvas>
+                <div v-if="preRenderState.active" class="timeline-preload">
+                  <div class="preload-card">
+                    <div class="preload-title">
+                      {{ t('mixtape.waveformPreparing') }} {{ preRenderPercent }}%
+                    </div>
+                    <div class="preload-bar">
+                      <div
+                        class="preload-bar__fill"
+                        :style="{ width: `${preRenderPercent}%` }"
+                      ></div>
+                    </div>
+                    <div class="preload-sub">
+                      {{ preRenderState.done }} / {{ preRenderState.total }}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-            <div v-if="transportError" class="timeline-transport-error">
-              {{ transportError }}
-            </div>
-            <div class="timeline-envelope-preview">
-              <div class="timeline-envelope-preview__legend">
-                <span
-                  v-for="legend in trackEnvelopePreviewLegend"
-                  :key="`envelope-preview-legend-${legend.key}`"
-                  class="timeline-envelope-preview__legend-item"
-                >
+              <div v-if="transportError" class="timeline-transport-error">
+                {{ transportError }}
+              </div>
+              <div class="timeline-envelope-preview">
+                <div class="timeline-envelope-preview__legend">
                   <span
-                    class="timeline-envelope-preview__legend-dot"
-                    :style="{ backgroundColor: legend.color }"
-                  ></span>
-                  {{ legend.label }}
-                </span>
-              </div>
-              <div
-                ref="envelopePreviewRef"
-                class="timeline-envelope-preview__stage"
-                :class="{ 'is-dragging': isTimelinePanning }"
-                @mousedown="handleTimelineHorizontalPanStart"
-              >
-                <div v-if="tracks.length === 0" class="timeline-envelope-preview__empty">
-                  {{ t('mixtape.trackEmptyHint') }}
+                    v-for="legend in trackEnvelopePreviewLegend"
+                    :key="`envelope-preview-legend-${legend.key}`"
+                    class="timeline-envelope-preview__legend-item"
+                  >
+                    <span
+                      class="timeline-envelope-preview__legend-dot"
+                      :style="{ backgroundColor: legend.color }"
+                    ></span>
+                    {{ legend.label }}
+                  </span>
                 </div>
                 <div
-                  v-else
-                  class="timeline-envelope-preview__viewport"
-                  :style="trackEnvelopePreviewViewportStyle"
+                  ref="envelopePreviewRef"
+                  class="timeline-envelope-preview__stage"
+                  :class="{ 'is-dragging': isTimelinePanning }"
+                  @mousedown="handleTimelineHorizontalPanStart"
                 >
-                  <div class="timeline-envelope-preview__lanes">
-                    <div
-                      v-for="laneIndex in laneIndices"
-                      :key="`envelope-preview-${laneIndex}`"
-                      class="timeline-envelope-preview__lane"
-                    >
+                  <div v-if="tracks.length === 0" class="timeline-envelope-preview__empty">
+                    {{ t('mixtape.trackEmptyHint') }}
+                  </div>
+                  <div
+                    v-else
+                    class="timeline-envelope-preview__viewport"
+                    :style="trackEnvelopePreviewViewportStyle"
+                  >
+                    <div class="timeline-envelope-preview__lanes">
                       <div
-                        v-for="item in laneTracks[laneIndex]"
-                        :key="`envelope-preview-${item.track.id}`"
-                        class="timeline-envelope-preview__track"
-                        :style="resolveTrackBlockStyle(item)"
+                        v-for="laneIndex in laneIndices"
+                        :key="`envelope-preview-${laneIndex}`"
+                        class="timeline-envelope-preview__lane"
                       >
-                        <div class="timeline-envelope-preview__mute-segments">
-                          <div
-                            v-for="segment in resolveVolumeMuteSegmentMasks(item)"
-                            :key="`envelope-preview-mute-${item.track.id}-${segment.key}`"
-                            class="timeline-envelope-preview__mute-segment"
-                            :style="{
-                              left: `${segment.left}%`,
-                              width: `${segment.width}%`
-                            }"
-                          ></div>
-                        </div>
-                        <svg
-                          class="timeline-envelope-preview__track-svg"
-                          viewBox="0 0 100 100"
-                          preserveAspectRatio="none"
+                        <div
+                          v-for="item in laneTracks[laneIndex]"
+                          :key="`envelope-preview-${item.track.id}`"
+                          class="timeline-envelope-preview__track"
+                          :style="resolveTrackBlockStyle(item)"
                         >
-                          <polyline
-                            v-for="line in resolveTrackEnvelopePreviewLines(item)"
-                            :key="`envelope-preview-${item.track.id}-${line.key}`"
-                            class="timeline-envelope-preview__line"
-                            :class="`timeline-envelope-preview__line--${line.key}`"
-                            :points="line.points"
-                            :style="{ stroke: line.color, strokeWidth: line.strokeWidth }"
-                          ></polyline>
-                        </svg>
+                          <div class="timeline-envelope-preview__mute-segments">
+                            <div
+                              v-for="segment in resolveVolumeMuteSegmentMasks(item)"
+                              :key="`envelope-preview-mute-${item.track.id}-${segment.key}`"
+                              class="timeline-envelope-preview__mute-segment"
+                              :style="{
+                                left: `${segment.left}%`,
+                                width: `${segment.width}%`
+                              }"
+                            ></div>
+                          </div>
+                          <svg
+                            class="timeline-envelope-preview__track-svg"
+                            viewBox="0 0 100 100"
+                            preserveAspectRatio="none"
+                          >
+                            <polyline
+                              v-for="line in resolveTrackEnvelopePreviewLines(item)"
+                              :key="`envelope-preview-${item.track.id}-${line.key}`"
+                              class="timeline-envelope-preview__line"
+                              :class="`timeline-envelope-preview__line--${line.key}`"
+                              :points="line.points"
+                              :style="{ stroke: line.color, strokeWidth: line.strokeWidth }"
+                            ></polyline>
+                          </svg>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
+              <div
+                v-if="playheadVisible && timelinePlayheadStyle"
+                class="timeline-primary-playhead"
+                :style="timelinePlayheadStyle"
+              ></div>
             </div>
             <div class="timeline-overview">
               <div
@@ -796,7 +801,7 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
                 <div
-                  v-if="playheadVisible"
+                  v-if="playheadVisible && overviewPlayheadStyle"
                   class="overview-playhead"
                   :style="overviewPlayheadStyle"
                 ></div>

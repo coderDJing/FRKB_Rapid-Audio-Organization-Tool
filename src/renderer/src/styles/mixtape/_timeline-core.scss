@@ -8,6 +8,14 @@
   overflow: hidden;
 }
 
+.timeline-primary-zone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .timeline-ruler-wrap {
   display: flex;
   align-items: center;
@@ -168,6 +176,16 @@
   background: rgba(255, 84, 84, 0.95);
   pointer-events: none;
   z-index: 2;
+}
+
+.timeline-primary-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(255, 84, 84, 0.95);
+  pointer-events: none;
+  z-index: 10;
 }
 
 .timeline-scroll {
