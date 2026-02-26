@@ -28,6 +28,7 @@ type MenuConfig = {
   name: string
   subMenu: MenuItem[][]
   directAction?: string
+  disabled?: boolean
 }
 
 const props = withDefaults(
@@ -89,6 +90,7 @@ type Menu = {
   show: boolean
   subMenu: MenuItem[][]
   directAction?: string
+  disabled?: boolean
 }
 
 // 检查是否是 dev 模式或预发布版本
@@ -104,7 +106,8 @@ const buildMenuArr = (configs: MenuConfig[]): Menu[] => {
     name: item.name,
     show: false,
     subMenu: item.subMenu || [],
-    directAction: item.directAction
+    directAction: item.directAction,
+    disabled: Boolean(item.disabled)
   }))
 }
 
@@ -218,6 +221,7 @@ if (props.enableMenuHotkeys) {
   })
 }
 const menuClick = (item: Menu) => {
+  if (item.disabled) return
   if (item.directAction) {
     menuArr.value.forEach((menuItem) => {
       menuItem.show = false
@@ -275,6 +279,7 @@ const switchMenu = (direction: 'next' | 'prev', menuName: string) => {
   menuArr.value[index].show = true
 }
 const titleMenuButtonMouseEnter = (item: Menu) => {
+  if (item.disabled) return
   if (item.directAction) return
   if (menuArr.value.findIndex((item) => item.show === true) === -1) {
     return
@@ -301,7 +306,11 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
       <div v-for="item in menuArr" :key="item.name" style="z-index: 1; padding-left: 5px">
         <div
           class="functionButton"
-          :class="{ functionButtonHover: item.show }"
+          :class="{
+            functionButtonHover: item.show,
+            functionButtonDisabled: item.disabled
+          }"
+          :aria-disabled="item.disabled ? 'true' : 'false'"
           @click.stop="menuClick(item)"
           @mouseenter="titleMenuButtonMouseEnter(item)"
         >
@@ -368,6 +377,12 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
 
 .functionButtonHover {
   background-color: var(--hover);
+}
+
+.functionButtonDisabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .title {

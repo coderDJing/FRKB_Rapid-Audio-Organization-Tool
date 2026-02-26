@@ -217,7 +217,8 @@ export const useMixtape = () => {
     {
       name: 'mixtape.menuOutput',
       subMenu: [],
-      directAction: 'mixtape.menuOutput'
+      directAction: 'mixtape.menuOutput',
+      disabled: outputRunning.value
     }
   ])
 
@@ -659,6 +660,7 @@ export const useMixtape = () => {
   }
 
   const openOutputDialog = () => {
+    if (outputRunning.value) return
     outputDialogVisible.value = true
   }
 
@@ -876,6 +878,7 @@ export const useMixtape = () => {
   const handleTitleOpenDialog = (key: string) => {
     if (!key) return
     if (key === 'mixtape.menuOutput') {
+      if (outputRunning.value) return
       openOutputDialog()
       return
     }
