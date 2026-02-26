@@ -198,6 +198,23 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     return delta
   }
 
+  const resolveZoomTargetScrollLeft = (
+    viewport: HTMLElement,
+    prevLeft: number,
+    anchorX: number,
+    prevScale: number,
+    nextScale: number
+  ) => {
+    const targetLeft =
+      (prevLeft + anchorX - TIMELINE_SIDE_PADDING_PX) * (nextScale / prevScale) +
+      TIMELINE_SIDE_PADDING_PX -
+      anchorX
+    const layoutWidth = Math.max(0, Number(timelineLayout.value.totalWidth || 0))
+    const predictedScrollWidth = Math.max(resolveScrollableWidth(viewport), layoutWidth)
+    const maxLeft = Math.max(0, predictedScrollWidth - viewport.clientWidth)
+    return Math.max(0, Math.min(maxLeft, targetLeft))
+  }
+
   const flushPendingWheelZoom = () => {
     if (!wheelZoomDelta) return
     markTimelineInteracting()
@@ -223,14 +240,25 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     applyRenderZoomImmediate()
 
     if (!viewport) return
+    const nextScale = Math.max(0.0001, renderPxPerSec.value)
+    const targetLeft = resolveZoomTargetScrollLeft(
+      viewport,
+      prevLeft,
+      anchorX,
+      prevScale,
+      nextScale
+    )
+    // 先同步响应式 scroll 状态，避免播放线在缩放和滚动补偿之间出现一帧错位。
+    timelineScrollLeft.value = targetLeft
     nextTick(() => {
-      const nextScale = Math.max(0.0001, renderPxPerSec.value)
-      const targetLeft =
-        (prevLeft + anchorX - TIMELINE_SIDE_PADDING_PX) * (nextScale / prevScale) +
-        TIMELINE_SIDE_PADDING_PX -
-        anchorX
-      const maxLeft = Math.max(0, resolveScrollableWidth(viewport) - viewport.clientWidth)
-      viewport.scrollLeft = Math.max(0, Math.min(maxLeft, targetLeft))
+      const latestScale = Math.max(0.0001, renderPxPerSec.value)
+      viewport.scrollLeft = resolveZoomTargetScrollLeft(
+        viewport,
+        prevLeft,
+        anchorX,
+        prevScale,
+        latestScale
+      )
     })
   }
 
