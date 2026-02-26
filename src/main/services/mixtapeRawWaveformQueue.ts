@@ -4,6 +4,8 @@ import { log } from '../log'
 import { decodeAudioShared, type SharedRawWaveformData } from './audioDecodePool'
 import { findSongListRoot } from './cacheMaintenance'
 import * as LibraryCacheDb from '../libraryCacheDb'
+import { isMissingFileDecodeError } from './decodeErrorUtils'
+import { resolveMixtapeFilePathWithFallback } from './mixtapeFileFallback'
 
 const RAW_WAVEFORM_TARGET_RATE = 2400
 const inflight = new Set<string>()
@@ -19,7 +21,9 @@ export async function requestMixtapeRawWaveform(
       ? (targetRate as number)
       : RAW_WAVEFORM_TARGET_RATE
   try {
-    const result = await decodeAudioShared(normalized, {
+    const resolved = await resolveMixtapeFilePathWithFallback(normalized, 'raw-waveform')
+    if (!resolved) return null
+    const result = await decodeAudioShared(resolved.filePath, {
       analyzeKey: false,
       needWaveform: false,
       needRawWaveform: true,
@@ -28,11 +32,13 @@ export async function requestMixtapeRawWaveform(
     })
     return (result.rawWaveformData as SharedRawWaveformData | null | undefined) ?? null
   } catch (error) {
-    log.error('[mixtape] raw waveform request failed', {
-      filePath: normalized,
-      targetRate: rate,
-      error
-    })
+    if (!isMissingFileDecodeError(error)) {
+      log.error('[mixtape] raw waveform request failed', {
+        filePath: normalized,
+        targetRate: rate,
+        error
+      })
+    }
     return null
   }
 }
@@ -48,26 +54,33 @@ const computeMixtapeRawWaveform = async (
   if (inflight.has(normalized)) return
   inflight.add(normalized)
   try {
+    const resolved = await resolveMixtapeFilePathWithFallback(normalized, 'raw-waveform')
+    const targetPath = resolved?.filePath || ''
     let resolvedRoot = listRoot?.trim() || ''
-    if (!resolvedRoot) {
-      resolvedRoot = (await findSongListRoot(path.dirname(normalized))) || ''
+    if (!resolvedRoot || resolved?.recovered) {
+      const probePath = targetPath || normalized
+      resolvedRoot = (await findSongListRoot(path.dirname(probePath))) || resolvedRoot
     }
     if (!resolvedRoot) return
-    const stat = await fs.stat(normalized).catch(() => null)
+    if (!targetPath) {
+      await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(resolvedRoot, normalized)
+      return
+    }
+    const stat = await fs.stat(targetPath).catch(() => null)
     if (!stat) {
       await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(resolvedRoot, normalized)
       return
     }
-    const cached = await LibraryCacheDb.loadMixtapeRawWaveformCacheData(resolvedRoot, normalized, {
+    const cached = await LibraryCacheDb.loadMixtapeRawWaveformCacheData(resolvedRoot, targetPath, {
       size: stat.size,
       mtimeMs: stat.mtimeMs
     })
     if (cached) return
-    const waveform = await requestMixtapeRawWaveform(normalized, targetRate)
+    const waveform = await requestMixtapeRawWaveform(targetPath, targetRate)
     if (!waveform) return
     await LibraryCacheDb.upsertMixtapeRawWaveformCacheEntry(
       resolvedRoot,
-      normalized,
+      targetPath,
       { size: stat.size, mtimeMs: stat.mtimeMs },
       waveform
     )

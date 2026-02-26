@@ -37,10 +37,39 @@ import {
 
 const resolveKeyAnalysisWorkerPath = () => path.join(__dirname, 'workers', 'keyAnalysisWorker.js')
 
+type MixtapeBpmAnalyzeResult = {
+  results: Array<{ filePath: string; bpm: number; firstBeatMs: number }>
+  unresolved: string[]
+  unresolvedDetails: Array<{ filePath: string; reason: string }>
+}
+
+const inFlightBpmBatchMap = new Map<string, Promise<MixtapeBpmAnalyzeResult>>()
+
+const normalizePathForBatchKey = (value: string): string => {
+  const normalized = String(value || '').trim()
+  if (!normalized) return ''
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
+}
+
+const buildBpmBatchInput = (filePaths: string[]): string[] => {
+  const set = new Set<string>()
+  for (const item of filePaths) {
+    const normalized = typeof item === 'string' ? item.trim() : ''
+    if (!normalized) continue
+    set.add(normalized)
+  }
+  return Array.from(set)
+}
+
+const buildBpmBatchKey = (filePaths: string[]): string =>
+  filePaths
+    .map((item) => normalizePathForBatchKey(item))
+    .filter(Boolean)
+    .sort()
+    .join('\n')
+
 const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
-  const unique = Array.from(
-    new Set(filePaths.map((item) => (typeof item === 'string' ? item.trim() : '')).filter(Boolean))
-  )
+  const unique = buildBpmBatchInput(filePaths)
   if (unique.length === 0) {
     return {
       results: [],
@@ -78,11 +107,7 @@ const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
   let finished = false
   const timeoutMs = Math.min(30 * 60 * 1000, Math.max(60_000, unique.length * 12_000))
 
-  return await new Promise<{
-    results: Array<{ filePath: string; bpm: number; firstBeatMs: number }>
-    unresolved: string[]
-    unresolvedDetails: Array<{ filePath: string; reason: string }>
-  }>((resolve) => {
+  return await new Promise<MixtapeBpmAnalyzeResult>((resolve) => {
     let timer: ReturnType<typeof setTimeout> | null = null
 
     const markUnresolvedReason = (filePath: string, reason: string) => {
@@ -104,10 +129,19 @@ const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
       jobMap.clear()
     }
 
-    const finish = () => {
+    const finish = (reason: 'completed' | 'timeout' = 'completed') => {
       if (finished) return
       finished = true
       if (timer) clearTimeout(timer)
+
+      if (reason === 'timeout') {
+        for (const filePath of unresolved) {
+          if (!unresolvedReasons.has(filePath)) {
+            markUnresolvedReason(filePath, 'analysis timeout')
+          }
+        }
+      }
+
       cleanup()
       const unresolvedList = Array.from(unresolved)
       if (unresolvedList.length > 0) {
@@ -119,6 +153,7 @@ const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
           requested: unique.length,
           resolved: results.length,
           unresolved: unresolvedList.length,
+          reason,
           sample
         })
       }
@@ -259,15 +294,38 @@ const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
         workerPath,
         requested: unique.length
       })
-      finish()
+      finish('completed')
       return
     }
 
-    timer = setTimeout(() => finish(), timeoutMs)
+    timer = setTimeout(() => finish('timeout'), timeoutMs)
     for (const worker of workers) {
       assignNext(worker)
     }
   })
+}
+
+const analyzeMixtapeBpmBatchShared = async (filePaths: string[]) => {
+  const input = buildBpmBatchInput(filePaths)
+  if (input.length === 0) {
+    return {
+      results: [],
+      unresolved: [],
+      unresolvedDetails: []
+    } as MixtapeBpmAnalyzeResult
+  }
+
+  const key = buildBpmBatchKey(input)
+  const existing = inFlightBpmBatchMap.get(key)
+  if (existing) return existing
+
+  const task = analyzeMixtapeBpmBatch(input).finally(() => {
+    if (inFlightBpmBatchMap.get(key) === task) {
+      inFlightBpmBatchMap.delete(key)
+    }
+  })
+  inFlightBpmBatchMap.set(key, task)
+  return task
 }
 
 type MixtapeMissingRecovery = {
@@ -410,7 +468,7 @@ export function registerMixtapeHandlers() {
         queueMixtapeRawWaveforms(filePaths)
         queueMixtapeWaveformHires(filePaths)
         // 预分析 BPM（后台，不阻塞返回）
-        void analyzeMixtapeBpmBatch(filePaths)
+        void analyzeMixtapeBpmBatchShared(filePaths)
           .then((bpmResult) => {
             if (bpmResult.results.length > 0) {
               upsertMixtapeItemBpmByFilePath(bpmResult.results)
@@ -457,7 +515,7 @@ export function registerMixtapeHandlers() {
   ipcMain.handle('mixtape:analyze-bpm', async (_e, payload: { filePaths?: string[] }) => {
     const input = Array.isArray(payload?.filePaths) ? payload.filePaths : []
     try {
-      const result = await analyzeMixtapeBpmBatch(input)
+      const result = await analyzeMixtapeBpmBatchShared(input)
       if (result.results.length > 0) {
         upsertMixtapeItemBpmByFilePath(result.results)
       }

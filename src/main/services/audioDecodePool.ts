@@ -4,6 +4,7 @@ import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { log } from '../log'
 import type { MixxxWaveformData } from '../waveformCache'
+import { isMissingFileDecodeError } from './decodeErrorUtils'
 
 export type SharedRawWaveformData = {
   duration: number
@@ -410,18 +411,22 @@ export async function decodeAudioShared(
           metrics: chainedMetrics
         }
   } catch (error) {
-    log.error('[decode-pool] decode failed', {
-      label: traceLabel,
-      filePath: normalized,
-      options: {
-        analyzeKey: Boolean(options.analyzeKey),
-        needWaveform: Boolean(options.needWaveform),
-        waveformTargetRate: options.waveformTargetRate,
-        needRawWaveform: Boolean(options.needRawWaveform),
-        rawTargetRate: options.rawTargetRate
-      },
-      error
-    })
+    const isExpectedMixtapeMissingFile =
+      traceLabel.startsWith('mixtape-') && isMissingFileDecodeError(error)
+    if (!isExpectedMixtapeMissingFile) {
+      log.error('[decode-pool] decode failed', {
+        label: traceLabel,
+        filePath: normalized,
+        options: {
+          analyzeKey: Boolean(options.analyzeKey),
+          needWaveform: Boolean(options.needWaveform),
+          waveformTargetRate: options.waveformTargetRate,
+          needRawWaveform: Boolean(options.needRawWaveform),
+          rawTargetRate: options.rawTargetRate
+        },
+        error
+      })
+    }
     throw error
   } finally {
     if (coreKey && coreInflight.get(coreKey) === workerTask) {

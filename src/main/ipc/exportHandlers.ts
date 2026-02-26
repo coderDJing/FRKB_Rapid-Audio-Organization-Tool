@@ -17,6 +17,7 @@ import { saveList, exportSnapshot, importFromJsonFile } from '../fingerprintStor
 import { deleteRecycleBinRecord } from '../recycleBinDb'
 import { isInRecycleBinAbsPath, toLibraryRelativePath } from '../recycleBinService'
 import { findSongListRoot, transferTrackCaches } from '../services/cacheMaintenance'
+import { replaceMixtapeFilePath } from '../mixtapeDb'
 
 async function findUniqueFolder(inputFolderPath: string) {
   const parts = path.parse(inputFolderPath)
@@ -195,6 +196,7 @@ export function registerExportHandlers() {
         const targetPath = path.join(store.databaseDir, mapRendererPathToFsPath(dest), matches[0])
         tasks.push(async () => {
           const movedPath = await moveOrCopyItemWithCheckIsExist(src, targetPath, true)
+          replaceMixtapeFilePath(src, movedPath)
           try {
             const fromRoot = await findSongListRoot(path.dirname(src))
             const toRoot = await findSongListRoot(path.dirname(movedPath))

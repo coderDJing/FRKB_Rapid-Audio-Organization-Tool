@@ -6,6 +6,8 @@ import { findSongListRoot } from './cacheMaintenance'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import mixtapeWindow from '../window/mixtapeWindow'
 import type { MixxxWaveformData } from '../waveformCache'
+import { isMissingFileDecodeError } from './decodeErrorUtils'
+import { resolveMixtapeFilePathWithFallback } from './mixtapeFileFallback'
 
 const MIXTAPE_WAVEFORM_TARGET_RATE = 441
 const inflight = new Set<string>()
@@ -26,7 +28,9 @@ export async function requestMixtapeWaveform(
   const rate = normalizeTargetRate(targetRate)
   const traceLabel = options?.traceLabel || 'mixtape-waveform'
   try {
-    const result = await decodeAudioShared(normalized, {
+    const resolved = await resolveMixtapeFilePathWithFallback(normalized, 'waveform')
+    if (!resolved) return null
+    const result = await decodeAudioShared(resolved.filePath, {
       analyzeKey: false,
       needWaveform: true,
       waveformTargetRate: rate,
@@ -34,11 +38,13 @@ export async function requestMixtapeWaveform(
     })
     return (result.mixxxWaveformData as MixxxWaveformData | null | undefined) ?? null
   } catch (error) {
-    log.error('[mixtape] waveform request failed', {
-      filePath: normalized,
-      targetRate: rate,
-      error
-    })
+    if (!isMissingFileDecodeError(error)) {
+      log.error('[mixtape] waveform request failed', {
+        filePath: normalized,
+        targetRate: rate,
+        error
+      })
+    }
     return null
   }
 }
@@ -56,25 +62,32 @@ const computeMixtapeWaveform = async (filePath: string, listRoot?: string) => {
   if (inflight.has(normalized)) return
   inflight.add(normalized)
   try {
+    const resolved = await resolveMixtapeFilePathWithFallback(normalized, 'waveform')
+    const targetPath = resolved?.filePath || ''
     let resolvedRoot = listRoot?.trim() || ''
-    if (!resolvedRoot) {
-      resolvedRoot = (await findSongListRoot(path.dirname(normalized))) || ''
+    if (!resolvedRoot || resolved?.recovered) {
+      const probePath = targetPath || normalized
+      resolvedRoot = (await findSongListRoot(path.dirname(probePath))) || resolvedRoot
     }
     if (!resolvedRoot) return
-    const stat = await fs.stat(normalized).catch(() => null)
+    if (!targetPath) {
+      await LibraryCacheDb.removeMixtapeWaveformCacheEntry(resolvedRoot, normalized)
+      return
+    }
+    const stat = await fs.stat(targetPath).catch(() => null)
     if (!stat) {
       await LibraryCacheDb.removeMixtapeWaveformCacheEntry(resolvedRoot, normalized)
       return
     }
-    const waveform = await requestMixtapeWaveform(normalized, MIXTAPE_WAVEFORM_TARGET_RATE)
+    const waveform = await requestMixtapeWaveform(targetPath, MIXTAPE_WAVEFORM_TARGET_RATE)
     if (!waveform) return
     await LibraryCacheDb.upsertMixtapeWaveformCacheEntry(
       resolvedRoot,
-      normalized,
+      targetPath,
       { size: stat.size, mtimeMs: stat.mtimeMs },
       waveform
     )
-    notifyMixtapeWaveformUpdated(normalized)
+    notifyMixtapeWaveformUpdated(targetPath)
   } catch (error) {
     log.error('[mixtape] waveform build failed', { filePath: normalized, error })
   } finally {

@@ -7,6 +7,7 @@ import * as LibraryCacheDb from '../libraryCacheDb'
 import { requestMixtapeWaveform } from './mixtapeWaveformQueue'
 import mixtapeWindow from '../window/mixtapeWindow'
 import type { MixxxWaveformData } from '../waveformCache'
+import { resolveMixtapeFilePathWithFallback } from './mixtapeFileFallback'
 
 const MIXTAPE_HIRES_TARGET_RATE = 4000
 const MAX_CONCURRENT = 1
@@ -59,7 +60,20 @@ export async function ensureMixtapeWaveformHires(
   const providedRoot = typeof options.listRoot === 'string' ? options.listRoot.trim() : ''
 
   try {
-    const stat = await fs.stat(normalized).catch(() => null)
+    const resolved = await resolveMixtapeFilePathWithFallback(normalized, 'hires-waveform')
+    const targetPath = resolved?.filePath || ''
+    if (!targetPath) {
+      if (providedRoot) {
+        await LibraryCacheDb.removeMixtapeWaveformHiresCacheEntry(
+          providedRoot,
+          normalized,
+          targetRate
+        )
+      }
+      return { data: null, source: 'missing-file' }
+    }
+
+    const stat = await fs.stat(targetPath).catch(() => null)
     if (!stat) {
       if (providedRoot) {
         await LibraryCacheDb.removeMixtapeWaveformHiresCacheEntry(
@@ -70,11 +84,12 @@ export async function ensureMixtapeWaveformHires(
       }
       return { data: null, source: 'missing-file' }
     }
-    const resolvedRoot = providedRoot || (await findSongListRoot(path.dirname(normalized))) || ''
+    const preferredRoot = providedRoot && !resolved?.recovered ? providedRoot : ''
+    const resolvedRoot = preferredRoot || (await findSongListRoot(path.dirname(targetPath))) || ''
     if (resolvedRoot) {
       const cached = await LibraryCacheDb.loadMixtapeWaveformHiresCacheData(
         resolvedRoot,
-        normalized,
+        targetPath,
         targetRate,
         { size: stat.size, mtimeMs: stat.mtimeMs }
       )
@@ -83,19 +98,19 @@ export async function ensureMixtapeWaveformHires(
       }
     }
 
-    const computed = await requestMixtapeWaveform(normalized, targetRate, {
+    const computed = await requestMixtapeWaveform(targetPath, targetRate, {
       traceLabel: 'mixtape-waveform-hires'
     })
     if (!computed) return { data: null, source: resolvedRoot ? 'error' : 'computed-no-root' }
     if (resolvedRoot) {
       await LibraryCacheDb.upsertMixtapeWaveformHiresCacheEntry(
         resolvedRoot,
-        normalized,
+        targetPath,
         targetRate,
         { size: stat.size, mtimeMs: stat.mtimeMs },
         computed
       )
-      notifyWaveformUpdated(normalized)
+      notifyWaveformUpdated(targetPath)
       return { data: computed, source: 'computed' }
     }
     return { data: computed, source: 'computed-no-root' }
