@@ -661,27 +661,28 @@ onBeforeUnmount(() => {
                                 }"
                                 @mousedown.stop.prevent="handleEnvelopeStageMouseDown(item, $event)"
                               >
-                                <button
-                                  v-if="!(isVolumeParamMode && volumeMuteSelectionMode)"
-                                  v-for="point in resolveActiveEnvelopePointDots(item)"
-                                  :key="`point-${item.track.id}-${point.index}`"
-                                  class="lane-track__envelope-point"
-                                  :class="{ 'is-boundary': point.isBoundary }"
-                                  type="button"
-                                  :style="{
-                                    left: `${point.x}%`,
-                                    top: `${point.y}%`
-                                  }"
-                                  @mousedown.stop.prevent="
-                                    handleEnvelopePointMouseDown(item, point.index, $event)
-                                  "
-                                  @dblclick.stop.prevent="
-                                    handleEnvelopePointDoubleClick(item, point.index)
-                                  "
-                                  @contextmenu.stop.prevent="
-                                    handleEnvelopePointContextMenu(item, point.index)
-                                  "
-                                ></button>
+                                <template v-if="!(isVolumeParamMode && volumeMuteSelectionMode)">
+                                  <button
+                                    v-for="point in resolveActiveEnvelopePointDots(item)"
+                                    :key="`point-${item.track.id}-${point.index}`"
+                                    class="lane-track__envelope-point"
+                                    :class="{ 'is-boundary': point.isBoundary }"
+                                    type="button"
+                                    :style="{
+                                      left: `${point.x}%`,
+                                      top: `${point.y}%`
+                                    }"
+                                    @mousedown.stop.prevent="
+                                      handleEnvelopePointMouseDown(item, point.index, $event)
+                                    "
+                                    @dblclick.stop.prevent="
+                                      handleEnvelopePointDoubleClick(item, point.index)
+                                    "
+                                    @contextmenu.stop.prevent="
+                                      handleEnvelopePointContextMenu(item, point.index)
+                                    "
+                                  ></button>
+                                </template>
                               </div>
                               <div v-if="isTrackPositionMode" class="lane-track__meta">
                                 <div class="lane-track__meta-title">

@@ -108,7 +108,7 @@ const estimateFirstBeatMsFromPcm = (
     onset[i] = diff > 0 ? diff : 0
   }
 
-  const beatIntervalWindows = (60 / bpm) / envelopeStepSec
+  const beatIntervalWindows = 60 / bpm / envelopeStepSec
   if (!Number.isFinite(beatIntervalWindows) || beatIntervalWindows < 2) return null
   const phaseSpan = Math.max(2, Math.round(beatIntervalWindows))
   if (phaseSpan >= onset.length) return null

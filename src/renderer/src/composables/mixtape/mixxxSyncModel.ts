@@ -97,7 +97,12 @@ export const resolveSyncPlaybackRateWithDiagnostics = (
   )
   const targetBpm = Number(params.targetBpm)
   const masterBpm = Number(params.masterBpm)
-  if (!Number.isFinite(targetBpm) || targetBpm <= 0 || !Number.isFinite(masterBpm) || masterBpm <= 0) {
+  if (
+    !Number.isFinite(targetBpm) ||
+    targetBpm <= 0 ||
+    !Number.isFinite(masterBpm) ||
+    masterBpm <= 0
+  ) {
     return {
       rate: baseRate,
       baseRate,
@@ -111,7 +116,11 @@ export const resolveSyncPlaybackRateWithDiagnostics = (
 
   // Mixxx 风格：先做 tempo sync（把从 deck tempo 拉到 master tempo）。
   const tempoScale = clampNumber(masterBpm / targetBpm, 0.5, 2)
-  const tempoSyncedRate = clampNumber(baseRate * tempoScale, MIXXX_SYNC_MIN_RATE, MIXXX_SYNC_MAX_RATE)
+  const tempoSyncedRate = clampNumber(
+    baseRate * tempoScale,
+    MIXXX_SYNC_MIN_RATE,
+    MIXXX_SYNC_MAX_RATE
+  )
 
   const masterBeatSec = resolveBeatSecByBpm(masterBpm)
   if (!masterBeatSec) {
@@ -140,7 +149,11 @@ export const resolveSyncPlaybackRateWithDiagnostics = (
   const phaseErrorSec = wrapPhaseDiffSec(masterPhase - targetPhase, masterBeatSec)
   const phaseLockStrength = clampNumber(Number(params.phaseLockStrength) || 0.12, 0, 0.5)
   const maxPhasePull = clampNumber(Number(params.maxPhasePull) || 0.04, 0, 0.15)
-  const phasePull = clampNumber((phaseErrorSec / masterBeatSec) * phaseLockStrength, -maxPhasePull, maxPhasePull)
+  const phasePull = clampNumber(
+    (phaseErrorSec / masterBeatSec) * phaseLockStrength,
+    -maxPhasePull,
+    maxPhasePull
+  )
 
   return {
     rate: clampNumber(tempoSyncedRate * (1 + phasePull), MIXXX_SYNC_MIN_RATE, MIXXX_SYNC_MAX_RATE),
