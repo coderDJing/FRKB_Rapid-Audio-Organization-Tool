@@ -525,7 +525,7 @@ onBeforeUnmount(() => {
                   <div class="timeline-ruler__ticks">
                     <div
                       v-for="tick in rulerMinuteTicks"
-                      :key="`minute-${tick.value}-${tick.left}`"
+                      :key="`tick-${tick.sec}-${tick.left}`"
                       class="timeline-ruler__tick"
                       :style="{ left: tick.left }"
                     >
@@ -537,7 +537,7 @@ onBeforeUnmount(() => {
                           'timeline-ruler__tick-label--end': tick.align === 'end'
                         }"
                       >
-                        {{ tick.value }}
+                        {{ tick.label }}
                       </div>
                     </div>
                   </div>

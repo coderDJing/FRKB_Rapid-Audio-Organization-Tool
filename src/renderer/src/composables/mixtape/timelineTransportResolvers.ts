@@ -30,6 +30,17 @@ type TransportEntryLike = {
   volumeMuteSegmentsSource?: MixtapeMuteSegment[]
 }
 
+type RulerTickAlign = 'start' | 'center' | 'end'
+type RulerMinuteTick = {
+  left: string
+  sec: number
+  label: string
+  align: RulerTickAlign
+}
+const RULER_TICK_STEPS_SEC = [1, 2, 5, 10, 15, 20, 30, 60, 120, 300, 600, 900, 1200, 1800] as const
+const RULER_TICK_LABEL_MIN_PX = 30
+const RULER_TICK_MAX_COUNT = 280
+
 export const createTimelineTransportResolversModule = (ctx: any) => {
   const {
     tracks,
@@ -143,10 +154,27 @@ export const createTimelineTransportResolversModule = (ctx: any) => {
     return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${String(fraction).padStart(2, '0')}`
   }
 
+  const formatRulerTickLabel = (seconds: number) => {
+    const safeSeconds = Math.max(0, Math.round(Number(seconds) || 0))
+    const minute = Math.floor(safeSeconds / 60)
+    const sec = safeSeconds % 60
+    return `${minute}:${String(sec).padStart(2, '0')}`
+  }
+
   const playheadTimeLabel = computed(() => formatTransportTime(playheadSec.value))
   const timelineDurationLabel = computed(() => formatTransportTime(timelineDurationSec.value))
-  const rulerMinuteTicks = computed(() => {
-    type RulerTickAlign = 'start' | 'center' | 'end'
+
+  type RulerViewportMetrics = {
+    pxPerSec: number
+    totalWidth: number
+    viewportWidth: number
+    viewportStartX: number
+    viewportStartSec: number
+    viewportEndSec: number
+    timelineEndSec: number
+  }
+
+  const resolveRulerViewportMetrics = (): RulerViewportMetrics => {
     const pxPerSec = Math.max(0.0001, resolveRenderPxPerSec(normalizedRenderZoom.value))
     const totalWidth = Math.max(1, timelineLayout.value.totalWidth)
     const viewportWidth = Math.max(1, Number(timelineViewportWidth.value) || totalWidth)
@@ -156,26 +184,70 @@ export const createTimelineTransportResolversModule = (ctx: any) => {
     const viewportStartSec = resolveTimelineSecByX(viewportStartX, pxPerSec)
     const viewportEndSec = Math.max(viewportStartSec, resolveTimelineSecByX(viewportEndX, pxPerSec))
     const timelineEndSec = Math.max(0, timelineDurationSec.value)
-    if (viewportWidth <= 0 || timelineEndSec <= 0) {
-      return [] as Array<{ left: string; value: number; align: RulerTickAlign }>
+    return {
+      pxPerSec,
+      totalWidth,
+      viewportWidth,
+      viewportStartX,
+      viewportStartSec,
+      viewportEndSec,
+      timelineEndSec
     }
+  }
 
-    const firstMinute = Math.ceil(viewportStartSec / 60)
-    const endMinute = Math.floor(Math.min(viewportEndSec, timelineEndSec) / 60)
-    const ticks: Array<{ left: string; value: number; align: RulerTickAlign }> = []
-    for (let minute = firstMinute; minute <= endMinute; minute += 1) {
-      const sec = minute * 60
+  const resolveAdaptiveRulerStepSec = (pxPerSec: number, visibleSec: number) => {
+    const safeVisibleSec = Math.max(0, Number(visibleSec) || 0)
+    const minStepByCount = safeVisibleSec / RULER_TICK_MAX_COUNT
+    const candidateSteps = RULER_TICK_STEPS_SEC.filter((stepSec) => stepSec >= minStepByCount)
+    const fallbackStep =
+      candidateSteps[0] || RULER_TICK_STEPS_SEC[RULER_TICK_STEPS_SEC.length - 1] || 60
+    for (const stepSec of candidateSteps) {
+      if (stepSec * pxPerSec >= RULER_TICK_LABEL_MIN_PX) return stepSec
+    }
+    return fallbackStep
+  }
+
+  const rulerMinuteTicks = computed<RulerMinuteTick[]>(() => {
+    const metrics = resolveRulerViewportMetrics()
+    const {
+      pxPerSec,
+      totalWidth,
+      viewportWidth,
+      viewportStartX,
+      viewportStartSec,
+      viewportEndSec,
+      timelineEndSec
+    } = metrics
+    if (viewportWidth <= 0 || timelineEndSec <= 0) {
+      return []
+    }
+    const safeViewportEndSec = Math.min(viewportEndSec, timelineEndSec)
+    const visibleSec = Math.max(0, safeViewportEndSec - viewportStartSec)
+    if (visibleSec <= 0) return []
+    const stepSec = Math.max(1, resolveAdaptiveRulerStepSec(pxPerSec, visibleSec))
+
+    const firstTick = Math.ceil(viewportStartSec / stepSec)
+    const endTick = Math.floor(safeViewportEndSec / stepSec)
+    const ticks: RulerMinuteTick[] = []
+    for (let index = firstTick; index <= endTick; index += 1) {
+      const sec = index * stepSec
       const x = resolveTimelineDisplayX(sec, pxPerSec, totalWidth)
       const localX = x - viewportStartX
       const ratio = clampNumber(localX / viewportWidth, 0, 1)
       const left = `${(ratio * 100).toFixed(4)}%`
       let align: RulerTickAlign = 'center'
-      if (ratio <= 0.0001 || minute === 0) {
+      if (ratio <= 0.0001 || sec <= 0.0001) {
         align = 'start'
       } else if (ratio >= 0.9999 || Math.abs(sec - timelineEndSec) <= 0.0001) {
         align = 'end'
       }
-      ticks.push({ left, value: minute, align })
+      ticks.push({
+        left,
+        sec: Number(sec.toFixed(3)),
+        label: formatRulerTickLabel(sec),
+        align
+      })
+      if (ticks.length >= RULER_TICK_MAX_COUNT) break
     }
     return ticks
   })
