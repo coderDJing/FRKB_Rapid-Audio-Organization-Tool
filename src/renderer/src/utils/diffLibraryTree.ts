@@ -266,7 +266,7 @@ export function calculateFileSystemOperations(oldTree: IDir, newTree: IDir): Fil
           if (!oldMap.has(newChild.uuid)) {
             // 检查是否存在同名节点
             const existingNode = oldNameMap.get(newChild.dirName)
-            if (existingNode) {
+            if (existingNode && !newMap.has(existingNode.uuid)) {
               // 如果存在同名节点，先删除它
               const childOldPath = `${newPath}/${existingNode.dirName}`
 

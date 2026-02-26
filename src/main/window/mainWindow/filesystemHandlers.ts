@@ -338,6 +338,14 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
         }
         results.push({ uuid: item.uuid, status: operationStatus })
       }
+      const failedDetails = results.filter((item) => item.status.includes('failed'))
+      if (failedDetails.length > 0) {
+        return {
+          success: false,
+          error: 'one or more filesystem operations failed',
+          details: results
+        }
+      }
       return { success: true, details: results }
     } catch (error) {
       console.error('operateFileSystemChange error:', error)

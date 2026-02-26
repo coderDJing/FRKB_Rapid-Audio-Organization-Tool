@@ -36,7 +36,7 @@ export const diffLibraryTreeExecuteFileOperation = async () => {
   // 如果没有操作，直接返回
   if (operations.length === 0) {
     runtime.oldLibraryTree = JSON.parse(JSON.stringify(runtime.libraryTree)) // 仍然同步 oldTree
-    return
+    return true
   }
 
   // 2. 发送操作到主进程
@@ -46,6 +46,7 @@ export const diffLibraryTreeExecuteFileOperation = async () => {
   if (result.success && result.details) {
     // 4. 同步 oldLibraryTree
     runtime.oldLibraryTree = JSON.parse(JSON.stringify(runtime.libraryTree))
+    return true
   } else {
     // 处理主进程报告的失败
     console.error('File system operations failed:', result.error)
@@ -56,9 +57,20 @@ export const diffLibraryTreeExecuteFileOperation = async () => {
         content: [t('mixtape.deleteBlockedWindowOpen'), t('mixtape.deleteBlockedWindowOpenHint')],
         confirmShow: false
       })
+      return false
     }
-    // 这里可能需要通知用户，或者尝试恢复/重新同步状态
-    // 暂时不同步 oldLibraryTree，以便下次 diff 可以检测到差异
+    try {
+      const latestTree = await window.electron.ipcRenderer.invoke('getLibrary')
+      if (latestTree) {
+        runtime.libraryTree = latestTree
+        runtime.oldLibraryTree = JSON.parse(JSON.stringify(latestTree))
+      } else {
+        runtime.libraryTree = JSON.parse(JSON.stringify(runtime.oldLibraryTree))
+      }
+    } catch {
+      runtime.libraryTree = JSON.parse(JSON.stringify(runtime.oldLibraryTree))
+    }
+    return false
   }
 }
 

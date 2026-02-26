@@ -51,7 +51,7 @@ export const handleDragStart = async (event: DragEvent, uuid: string): Promise<b
           }
         }
       }
-      runtime.oldLibraryTree = JSON.parse(JSON.stringify(runtime.libraryTree))
+      await libraryUtils.diffLibraryTreeExecuteFileOperation()
 
       return true // 告知调用者已从列表中删除
     }
@@ -364,9 +364,6 @@ export const handleDrop = async (
           }
         }
 
-        // 更新播放状态
-        libraryUtils.updatePlayingState(dragItemData)
-
         // 传入skipExistingItemCheck为true，因为我们已经处理过同名项了
         await updateDataStructure(dragItemData, dirData, approach, fatherDirData, true)
 
@@ -411,7 +408,6 @@ export const handleDrop = async (
 
           // 如果同名项就是目标，拖拽项应占据被替换目标原来的位置
           if (isTargetSameAsExisting) {
-            libraryUtils.updatePlayingState(dragItemData)
             const insertIndex =
               existingItemIndex !== -1 ? existingItemIndex : fatherDirData.children.length
             const moved = moveItemToSiblingIndex(dragItemData, fatherDirData, insertIndex)
@@ -419,16 +415,10 @@ export const handleDrop = async (
               return false
             }
           } else {
-            // 更新播放状态
-            libraryUtils.updatePlayingState(dragItemData)
-
             // 传入skipExistingItemCheck为true，因为我们已经处理过同名项了
             await updateDataStructure(dragItemData, dirData, approach, fatherDirData, true)
           }
         } else {
-          // 更新播放状态
-          libraryUtils.updatePlayingState(dragItemData)
-
           // 传入skipExistingItemCheck为true，因为我们已经处理过同名项了
           await updateDataStructure(dragItemData, dirData, approach, fatherDirData, true)
         }
@@ -512,9 +502,6 @@ export async function handleLibraryAreaEmptySpaceDrop(
         return true
       }
 
-      // 更新播放状态
-      libraryUtils.updatePlayingState(dragItemData)
-
       // 从原位置移除并添加到末尾
       const itemIndex = dragItemDataFather.children.findIndex(
         (item) => item.uuid === dragItemData.uuid
@@ -555,9 +542,6 @@ export async function handleLibraryAreaEmptySpaceDrop(
           libraryData.children.splice(existingItemIndex, 1)
         }
       }
-
-      // 更新拖拽项的播放状态
-      libraryUtils.updatePlayingState(dragItemData)
 
       // 从原父目录移除
       const sourceIndex = dragItemDataFather.children.findIndex(

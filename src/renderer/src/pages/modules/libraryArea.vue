@@ -96,17 +96,47 @@ const exactMatchExists = computed(() => {
   if (!keyword) return true
   return allSongListArr.value.some((x) => (x.dirName || '').toLowerCase() === keyword)
 })
+const directNameConflictExists = computed(() => {
+  const keyword = String(playlistSearch.value || '')
+    .trim()
+    .toLowerCase()
+  if (!keyword) return false
+  const siblings = libraryData.children || []
+  return siblings.some(
+    (item) =>
+      String(item?.dirName || '')
+        .trim()
+        .toLowerCase() === keyword
+  )
+})
 const showCreateNow = computed(() => {
   const keyword = String(playlistSearch.value || '').trim()
   if (!keyword) return false
   // 回收站中不显示立即创建
   if (runtime.libraryAreaSelected === 'RecycleBin') return false
-  return !exactMatchExists.value
+  return !exactMatchExists.value && !directNameConflictExists.value
 })
 const isMixtapeLibrary = computed(() => runtime.libraryAreaSelected === 'MixtapeLibrary')
 const createNow = async () => {
   const name = String(playlistSearch.value || '').trim()
   if (!name) return
+  const invalidCharsRegex = /[<>:"/\\|?*\u0000-\u001F]/
+  if (invalidCharsRegex.test(name)) {
+    await confirm({
+      title: t('common.error'),
+      content: [t('library.nameInvalidChars')],
+      confirmShow: false
+    })
+    return
+  }
+  if (directNameConflictExists.value) {
+    await confirm({
+      title: t('common.error'),
+      content: [t('library.nameAlreadyExists', { name })],
+      confirmShow: false
+    })
+    return
+  }
   const newUuid = uuidV4()
   for (let item of libraryData.children || []) {
     if (item.order) item.order++

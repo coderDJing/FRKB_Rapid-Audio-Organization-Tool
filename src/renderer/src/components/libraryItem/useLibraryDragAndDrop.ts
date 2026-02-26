@@ -42,7 +42,8 @@ export function useLibraryDragAndDrop({
   const dragstart = async (event: DragEvent) => {
     const shouldDelete = await handleDragStart(event, props.uuid)
     if (shouldDelete) {
-      await deleteDir()
+      runtime.dragItemData = null
+      return
     }
     event.target?.addEventListener(
       'dragend',

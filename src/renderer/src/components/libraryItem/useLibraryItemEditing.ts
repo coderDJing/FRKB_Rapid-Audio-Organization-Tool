@@ -121,35 +121,24 @@ export function useLibraryItemEditing({
       renameDivShow.value = false
       return
     }
-    if (dirData.uuid === runtime.songsArea.songListUUID) {
-      for (const item of runtime.songsArea.songInfoArr) {
-        const arr = item.filePath.split('\\')
-        arr[arr.length - 2] = renameDivValue.value
-        item.filePath = arr.join('\\')
-      }
-      for (const index in runtime.songsArea.selectedSongFilePath) {
-        const arr = runtime.songsArea.selectedSongFilePath[index].split('\\')
-        arr[arr.length - 2] = renameDivValue.value
-        runtime.songsArea.selectedSongFilePath[index] = arr.join('\\')
-      }
-    }
-    if (
-      dirData.uuid === runtime.playingData.playingSongListUUID &&
-      runtime.playingData.playingSong
-    ) {
-      const arr = runtime.playingData.playingSong.filePath.split('\\')
-      arr[arr.length - 2] = renameDivValue.value
-      runtime.playingData.playingSong.filePath = arr.join('\\')
-      for (const item of runtime.playingData.playingSongListData) {
-        const fileArr = item.filePath.split('\\')
-        fileArr[fileArr.length - 2] = renameDivValue.value
-        item.filePath = fileArr.join('\\')
-      }
-    }
+    const renamedUuid = dirData.uuid
+    const wasCurrentSongList = renamedUuid === runtime.songsArea.songListUUID
+    const wasPlayingSongList = renamedUuid === runtime.playingData.playingSongListUUID
     dirData.dirName = renameDivValue.value
     renameDivValue.value = ''
     renameDivShow.value = false
-    await libraryUtils.diffLibraryTreeExecuteFileOperation()
+    const success = await libraryUtils.diffLibraryTreeExecuteFileOperation()
+    if (!success) return
+    if (wasPlayingSongList) {
+      runtime.playingData.playingSongListUUID = ''
+      runtime.playingData.playingSongListData = []
+      runtime.playingData.playingSong = null
+    }
+    if (wasCurrentSongList) {
+      runtime.songsArea.songListUUID = ''
+      await nextTick()
+      runtime.songsArea.songListUUID = renamedUuid
+    }
   }
 
   const renameInputKeyDownEnter = () => {
