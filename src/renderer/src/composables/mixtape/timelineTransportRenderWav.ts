@@ -50,6 +50,26 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
     applyTransportMixParamsAtTimelineSec
   } = ctx
 
+  const SCHEDULING_PROGRESS_STEP = 20
+  const SCHEDULING_YIELD_INTERVAL_MS = 12
+  const WAV_ENCODE_CHUNK_FRAMES = 8192
+  const WAV_ENCODE_YIELD_INTERVAL_MS = 12
+
+  const getNowMs = () =>
+    typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now()
+
+  const yieldMainThread = async () => {
+    await new Promise<void>((resolve) => {
+      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(() => resolve())
+        return
+      }
+      setTimeout(() => resolve(), 0)
+    })
+  }
+
   const resolveOutputChannels = (_entries: TransportEntry[]) => 2
 
   const resolveOutputSampleRate = (entries: TransportEntry[]) => {
@@ -79,7 +99,13 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
     }
   }
 
-  const encodeAudioBufferToWav = (audioBuffer: AudioBuffer, channels: number): Uint8Array => {
+  const encodeAudioBufferToWav = async (
+    audioBuffer: AudioBuffer,
+    channels: number,
+    options?: {
+      onProgress?: (doneFrames: number, totalFrames: number) => void
+    }
+  ): Promise<Uint8Array> => {
     const sourceChannels = Math.max(1, Math.floor(audioBuffer.numberOfChannels || 1))
     const outputChannels = Math.max(1, Math.min(2, Math.floor(channels || sourceChannels)))
     const frameCount = Math.max(0, Math.floor(audioBuffer.length || 0))
@@ -110,17 +136,90 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
     }
 
     let writeOffset = 44
-    for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
-      for (let channelIndex = 0; channelIndex < outputChannels; channelIndex += 1) {
-        const sourceIndex = sourceChannels === 1 ? 0 : Math.min(sourceChannels - 1, channelIndex)
-        const sample = channelData[sourceIndex]?.[frameIndex] ?? 0
-        const clamped = clampNumber(sample, -1, 1)
-        const int16Value = clamped < 0 ? Math.round(clamped * 0x8000) : Math.round(clamped * 0x7fff)
-        view.setInt16(writeOffset, int16Value, true)
-        writeOffset += 2
+    let frameIndex = 0
+    let lastYieldAt = getNowMs()
+    while (frameIndex < frameCount) {
+      const chunkEnd = Math.min(frameCount, frameIndex + WAV_ENCODE_CHUNK_FRAMES)
+      for (; frameIndex < chunkEnd; frameIndex += 1) {
+        for (let channelIndex = 0; channelIndex < outputChannels; channelIndex += 1) {
+          const sourceIndex = sourceChannels === 1 ? 0 : Math.min(sourceChannels - 1, channelIndex)
+          const sample = channelData[sourceIndex]?.[frameIndex] ?? 0
+          const clamped = clampNumber(sample, -1, 1)
+          const int16Value =
+            clamped < 0 ? Math.round(clamped * 0x8000) : Math.round(clamped * 0x7fff)
+          view.setInt16(writeOffset, int16Value, true)
+          writeOffset += 2
+        }
       }
+      options?.onProgress?.(frameIndex, frameCount)
+      if (frameIndex >= frameCount) break
+      if (getNowMs() - lastYieldAt < WAV_ENCODE_YIELD_INTERVAL_MS) continue
+      await yieldMainThread()
+      lastYieldAt = getNowMs()
+    }
+    if (frameCount <= 0) {
+      options?.onProgress?.(0, 0)
     }
     return new Uint8Array(buffer)
+  }
+
+  const scheduleOfflineAutomation = async (params: {
+    nodes: TrackGraphNode[]
+    durationSec: number
+    offlineCtx: OfflineAudioContext
+    emitProgress: (payload: MixtapeOutputProgressPayload) => void
+  }) => {
+    const { nodes, durationSec, offlineCtx, emitProgress } = params
+    let masterTrackId = ''
+    const stepSec = 1 / 120
+    const totalSteps = Math.max(1, Math.ceil(durationSec / stepSec))
+    const schedulingNodes = nodes as any[]
+    let lastYieldAt = getNowMs()
+    for (let step = 0; step <= totalSteps; step += 1) {
+      const timelineSec = Math.min(durationSec, step * stepSec)
+      applyTransportMixParamsAtTimelineSec(timelineSec, {
+        nodes,
+        audioCtx: offlineCtx,
+        automationAtSec: timelineSec
+      })
+      const syncResult = applyMixxxTransportSync({
+        nodes: schedulingNodes,
+        timelineSec,
+        masterTrackId,
+        audioCtx: offlineCtx
+      })
+      masterTrackId = syncResult.masterTrackId
+      if (step % SCHEDULING_PROGRESS_STEP === 0 || step === totalSteps) {
+        emitProgress({
+          stageKey: 'mixtape.outputProgressScheduling',
+          done: step,
+          total: totalSteps,
+          percent: Math.round(42 + (step / Math.max(1, totalSteps)) * 26)
+        })
+      }
+      if (step >= totalSteps) continue
+      if (getNowMs() - lastYieldAt < SCHEDULING_YIELD_INTERVAL_MS) continue
+      await yieldMainThread()
+      lastYieldAt = getNowMs()
+    }
+  }
+
+  const emitEncodeProgress = (
+    emitProgress: (payload: MixtapeOutputProgressPayload) => void,
+    doneFrames: number,
+    totalFrames: number,
+    lastPercentRef: { value: number }
+  ) => {
+    const ratio = totalFrames > 0 ? doneFrames / Math.max(1, totalFrames) : 1
+    const percent = Math.round(93 + clampNumber(ratio, 0, 1) * 2)
+    if (percent <= lastPercentRef.value) return
+    lastPercentRef.value = percent
+    emitProgress({
+      stageKey: 'mixtape.outputProgressEncoding',
+      done: percent,
+      total: 100,
+      percent
+    })
   }
 
   const buildOutputTrackNodes = (
@@ -277,34 +376,12 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
       total: 100,
       percent: 42
     })
-
-    let masterTrackId = ''
-    const stepSec = 1 / 120
-    const totalSteps = Math.max(1, Math.ceil(durationSec / stepSec))
-    const schedulingNodes = nodes as any[]
-    for (let step = 0; step <= totalSteps; step += 1) {
-      const timelineSec = Math.min(durationSec, step * stepSec)
-      applyTransportMixParamsAtTimelineSec(timelineSec, {
-        nodes,
-        audioCtx: offlineCtx,
-        automationAtSec: timelineSec
-      })
-      const syncResult = applyMixxxTransportSync({
-        nodes: schedulingNodes,
-        timelineSec,
-        masterTrackId,
-        audioCtx: offlineCtx
-      })
-      masterTrackId = syncResult.masterTrackId
-      if (step % 20 === 0 || step === totalSteps) {
-        emitProgress({
-          stageKey: 'mixtape.outputProgressScheduling',
-          done: step,
-          total: totalSteps,
-          percent: Math.round(42 + (step / Math.max(1, totalSteps)) * 26)
-        })
-      }
-    }
+    await scheduleOfflineAutomation({
+      nodes,
+      durationSec,
+      offlineCtx,
+      emitProgress
+    })
 
     emitProgress({
       stageKey: 'mixtape.outputProgressRendering',
@@ -338,12 +415,16 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
       total: 100,
       percent: 93
     })
-    const wavBytes = encodeAudioBufferToWav(renderedBuffer, outputChannels)
+    const lastEncodePercentRef = { value: 93 }
+    const wavBytes = await encodeAudioBufferToWav(renderedBuffer, outputChannels, {
+      onProgress: (doneFrames, totalFrames) =>
+        emitEncodeProgress(emitProgress, doneFrames, totalFrames, lastEncodePercentRef)
+    })
     emitProgress({
       stageKey: 'mixtape.outputProgressEncoding',
-      done: 94,
+      done: Math.max(94, lastEncodePercentRef.value),
       total: 100,
-      percent: 94
+      percent: Math.max(94, lastEncodePercentRef.value)
     })
 
     return {
