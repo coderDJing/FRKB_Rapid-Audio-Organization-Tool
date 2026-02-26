@@ -21,22 +21,24 @@ const props = defineProps({
     required: true
   }
 })
-let libraryData = libraryUtils.getLibraryTreeByUUID(props.uuid)
-
-if (libraryData === null) {
-  throw new Error(`libraryData error: ${JSON.stringify(libraryData)}`)
-}
+const libraryData = computed(() => {
+  const data = libraryUtils.getLibraryTreeByUUID(props.uuid)
+  if (data === null) {
+    throw new Error(`libraryData error: ${JSON.stringify(data)}`)
+  }
+  return data
+})
 
 const displayedChildren = computed(() => {
-  if (runtime.libraryAreaSelected === 'RecycleBin' && libraryData.children) {
+  if (runtime.libraryAreaSelected === 'RecycleBin' && libraryData.value.children) {
     // 创建一个倒序副本，不改变原数组
-    return [...libraryData.children].reverse()
+    return [...libraryData.value.children].reverse()
   }
-  return libraryData.children
+  return libraryData.value.children
 })
 
 const showHint = computed(() => {
-  const children = libraryData.children
+  const children = libraryData.value.children
   const hasSpecialChild = children?.some((child) =>
     ['filterLibrarySonglistDemo1', 'curatedLibrarySonglistDemo1'].includes(child.uuid)
   )
@@ -45,7 +47,7 @@ const showHint = computed(() => {
 const collapseButtonRef = useTemplateRef<HTMLDivElement>('collapseButtonRef')
 
 // 将核心库名称映射为 i18n key，仅用于显示
-const libraryTitleText = computed(() => toLibraryDisplayName(libraryData.dirName))
+const libraryTitleText = computed(() => toLibraryDisplayName(libraryData.value.dirName))
 
 const emptyRecycleBinHandleClick = async () => {
   let res = await confirm({
@@ -86,7 +88,7 @@ const allSongListArr = computed<IDir[]>(() => {
       for (const child of node.children) traverse(child as IDir)
     }
   }
-  traverse(libraryData as unknown as IDir)
+  traverse(libraryData.value as unknown as IDir)
   return result
 })
 const exactMatchExists = computed(() => {
@@ -101,7 +103,7 @@ const directNameConflictExists = computed(() => {
     .trim()
     .toLowerCase()
   if (!keyword) return false
-  const siblings = libraryData.children || []
+  const siblings = libraryData.value.children || []
   return siblings.some(
     (item) =>
       String(item?.dirName || '')
@@ -138,11 +140,11 @@ const createNow = async () => {
     return
   }
   const newUuid = uuidV4()
-  for (let item of libraryData.children || []) {
+  for (let item of libraryData.value.children || []) {
     if (item.order) item.order++
   }
-  libraryData.children = libraryData.children || []
-  libraryData.children.unshift({
+  libraryData.value.children = libraryData.value.children || []
+  libraryData.value.children.unshift({
     uuid: newUuid,
     type: isMixtapeLibrary.value ? 'mixtapeList' : 'songList',
     dirName: name,
@@ -171,8 +173,8 @@ const contextmenuEvent = async (event: MouseEvent) => {
   if (result !== 'cancel') {
     if (result.menuName == 'library.createPlaylist') {
       const newUuid = uuidV4()
-      libraryData.children = libraryData.children || []
-      libraryData.children.unshift({
+      libraryData.value.children = libraryData.value.children || []
+      libraryData.value.children.unshift({
         uuid: newUuid,
         type: 'songList',
         dirName: ''
@@ -180,14 +182,14 @@ const contextmenuEvent = async (event: MouseEvent) => {
       // 不在此时标记“创建中”，等待命名确认开始写盘时再标记
     } else if (result.menuName == 'library.createMixtape') {
       const newUuid = uuidV4()
-      libraryData.children = libraryData.children || []
-      libraryData.children.unshift({
+      libraryData.value.children = libraryData.value.children || []
+      libraryData.value.children.unshift({
         uuid: newUuid,
         type: 'mixtapeList',
         dirName: ''
       })
     } else if (result.menuName == 'library.createFolder') {
-      libraryData.children?.unshift({
+      libraryData.value.children?.unshift({
         uuid: uuidV4(),
         type: 'dir',
         dirName: ''
@@ -199,7 +201,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
 }
 
 const collapseButtonHandleClick = async () => {
-  emitter.emit('collapseButtonHandleClick', libraryData.dirName)
+  emitter.emit('collapseButtonHandleClick', libraryData.value.dirName)
 }
 
 const dragApproach = ref('')
@@ -271,7 +273,7 @@ const drop = async (e: DragEvent) => {
 
   try {
     // 使用 dragUtils 中的函数处理拖放到空白区域
-    const handled = await handleLibraryAreaEmptySpaceDrop(runtime.dragItemData, libraryData)
+    const handled = await handleLibraryAreaEmptySpaceDrop(runtime.dragItemData, libraryData.value)
 
     // 如果处理成功或失败，都清除拖拽数据
   } catch (error) {

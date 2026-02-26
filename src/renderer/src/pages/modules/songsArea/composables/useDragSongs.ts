@@ -133,9 +133,15 @@ export function useDragSongs() {
    */
   const handleDropToSongList = async (targetSongListUUID: string, targetLibraryName: string) => {
     try {
-      // 直接从 runtime store 获取当前选中的歌曲
-      const selectedSongFilePaths = [...runtime.songsArea.selectedSongFilePath] // 创建副本避免响应式对象
-      const sourceSongListUUID = runtime.dragSourceSongListUUID || runtime.songsArea.songListUUID
+      // 优先使用拖拽开始时快照，避免拖拽过程中选中态变化导致错移
+      const selectedSongFilePaths =
+        dragData.value?.songFilePaths?.length && Array.isArray(dragData.value.songFilePaths)
+          ? [...dragData.value.songFilePaths]
+          : [...runtime.songsArea.selectedSongFilePath]
+      const sourceSongListUUID =
+        dragData.value?.sourceSongListUUID ||
+        runtime.dragSourceSongListUUID ||
+        runtime.songsArea.songListUUID
 
       if (!selectedSongFilePaths.length || !sourceSongListUUID) {
         return []

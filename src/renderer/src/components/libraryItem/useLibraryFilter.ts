@@ -1,18 +1,20 @@
-import { computed, watch } from 'vue'
+import { computed, watch, type Ref } from 'vue'
 
 interface UseLibraryFilterOptions {
   props: { filterText?: string | Record<string, any> }
-  dirData: any
+  dirDataRef: Ref<any | null>
   dirChildRendered: { value: boolean }
   dirChildShow: { value: boolean }
 }
 
 export function useLibraryFilter({
   props,
-  dirData,
+  dirDataRef,
   dirChildRendered,
   dirChildShow
 }: UseLibraryFilterOptions) {
+  const getDirData = () => dirDataRef.value
+
   const keyword = computed(() =>
     String((props as any).filterText || '')
       .trim()
@@ -20,6 +22,8 @@ export function useLibraryFilter({
   )
 
   const matchesSelf = computed(() => {
+    const dirData = getDirData()
+    if (!dirData) return false
     if (!keyword.value) return true
     return (
       (dirData?.type === 'songList' || dirData?.type === 'mixtapeList') &&
@@ -42,11 +46,15 @@ export function useLibraryFilter({
   }
 
   const shouldShow = computed(() => {
+    const dirData = getDirData()
+    if (!dirData) return false
     if (!keyword.value) return true
     return matchesSelf.value || hasMatchingDescendant(dirData)
   })
 
   watch(keyword, () => {
+    const dirData = getDirData()
+    if (!dirData) return
     if (!keyword.value) return
     if (dirData?.type === 'dir' && hasMatchingDescendant(dirData)) {
       dirChildRendered.value = true

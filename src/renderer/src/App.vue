@@ -260,16 +260,19 @@ onMounted(() => {
       const listUUID: string | undefined = payload?.listUUID
       if (!paths.length) return
       if (listUUID && listUUID !== runtime.playingData.playingSongListUUID) return
+      const normalizePath = (p: string | undefined | null) =>
+        (p || '').replace(/\//g, '\\').toLowerCase()
+      const normalizedSet = new Set(paths.map((p) => normalizePath(p)).filter(Boolean))
 
       // 过滤当前播放列表数据中的已删除项
       runtime.playingData.playingSongListData = (
         runtime.playingData.playingSongListData || []
-      ).filter((s: any) => !paths.includes(s.filePath))
+      ).filter((s: any) => !normalizedSet.has(normalizePath(s.filePath)))
 
       // 若当前播放的歌曲被删除，清空当前播放
       if (
         runtime.playingData.playingSong &&
-        paths.includes(runtime.playingData.playingSong.filePath)
+        normalizedSet.has(normalizePath(runtime.playingData.playingSong.filePath))
       ) {
         runtime.playingData.playingSong = null
       }

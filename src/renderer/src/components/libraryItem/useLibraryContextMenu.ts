@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, type Ref } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import { v4 as uuidV4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog'
@@ -11,8 +11,8 @@ import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
 import type { IMetadataAutoFillSummary } from '../../../../types/globals'
 
 interface UseLibraryContextMenuOptions {
-  dirData: any
-  fatherDirData: any
+  dirDataRef: Ref<any | null>
+  fatherDirDataRef: Ref<any | null>
   runtime: any
   props: { uuid: string; libraryName: string }
   emitter: { emit: (event: string, payload?: any) => void }
@@ -24,8 +24,8 @@ interface UseLibraryContextMenuOptions {
 }
 
 export function useLibraryContextMenu({
-  dirData,
-  fatherDirData,
+  dirDataRef,
+  fatherDirDataRef,
   runtime,
   props,
   emitter,
@@ -35,8 +35,13 @@ export function useLibraryContextMenu({
   warnAcoustIdMissing,
   startRename
 }: UseLibraryContextMenuOptions) {
+  const getDirData = () => dirDataRef.value
+  const getFatherDirData = () => fatherDirDataRef.value
+
   const rightClickMenuShow = ref(false)
   const buildMenuArr = () => {
+    const dirData = getDirData()
+    if (!dirData) return []
     if (runtime.libraryAreaSelected === 'RecycleBin') {
       return [
         [{ menuName: 'recycleBin.permanentlyDelete' }],
@@ -81,6 +86,9 @@ export function useLibraryContextMenu({
   const menuArr = ref<any[][]>(buildMenuArr())
 
   const deleteDir = async () => {
+    const dirData = getDirData()
+    const fatherDirData = getFatherDirData()
+    if (!dirData || !fatherDirData) return
     if (dirData?.type === 'mixtapeList') {
       const allowed = await libraryUtils.ensureMixtapeDeleteAllowed(props.uuid)
       if (!allowed) return
@@ -128,21 +136,28 @@ export function useLibraryContextMenu({
   }
 
   const contextmenuEvent = async (event: MouseEvent) => {
-    const songListPath = libraryUtils.findDirPathByUuid(props.uuid)
-    const isSongListPathExist = await window.electron.ipcRenderer.invoke(
-      'dirPathExists',
-      songListPath
-    )
-    if (!isSongListPathExist) {
-      await confirm({
-        title: t('common.error'),
-        content: [t('library.notExistOnDisk')],
-        confirmShow: false
-      })
-      deleteDir()
-      return
+    const dirData = getDirData()
+    if (!dirData) return
+    const shouldSkipPathCheck =
+      dirData.dirName === '' || runtime.creatingSongListUUID === props.uuid
+    if (!shouldSkipPathCheck) {
+      const songListPath = libraryUtils.findDirPathByUuid(props.uuid)
+      const isSongListPathExist = await window.electron.ipcRenderer.invoke(
+        'dirPathExists',
+        songListPath
+      )
+      if (!isSongListPathExist) {
+        await confirm({
+          title: t('common.error'),
+          content: [t('library.notExistOnDisk')],
+          confirmShow: false
+        })
+        await deleteDir()
+        return
+      }
     }
     menuArr.value = buildMenuArr()
+    if (!menuArr.value.length) return
     rightClickMenuShow.value = true
     const result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
     rightClickMenuShow.value = false
@@ -150,11 +165,13 @@ export function useLibraryContextMenu({
 
     switch (result.menuName) {
       case 'library.createPlaylist': {
+        const currentDirData = getDirData()
+        if (!currentDirData) break
         dirChildRendered.value = true
         dirChildShow.value = true
         const newUuid = uuidV4()
-        dirData.children = dirData.children || []
-        dirData.children.unshift({
+        currentDirData.children = currentDirData.children || []
+        currentDirData.children.unshift({
           uuid: newUuid,
           dirName: '',
           type: 'songList'
@@ -163,11 +180,13 @@ export function useLibraryContextMenu({
         break
       }
       case 'library.createMixtape': {
+        const currentDirData = getDirData()
+        if (!currentDirData) break
         dirChildRendered.value = true
         dirChildShow.value = true
         const newUuid = uuidV4()
-        dirData.children = dirData.children || []
-        dirData.children.unshift({
+        currentDirData.children = currentDirData.children || []
+        currentDirData.children.unshift({
           uuid: newUuid,
           dirName: '',
           type: 'mixtapeList'
@@ -176,10 +195,12 @@ export function useLibraryContextMenu({
         break
       }
       case 'library.createFolder': {
+        const currentDirData = getDirData()
+        if (!currentDirData) break
         dirChildRendered.value = true
         dirChildShow.value = true
-        dirData.children = dirData.children || []
-        dirData.children.unshift({
+        currentDirData.children = currentDirData.children || []
+        currentDirData.children.unshift({
           uuid: uuidV4(),
           dirName: '',
           type: 'dir'
@@ -198,7 +219,7 @@ export function useLibraryContextMenu({
       case 'playlist.emptyPlaylist': {
         const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
         await window.electron.ipcRenderer.invoke('emptyDir', dirPath)
-        if (dirData.type === 'songList' && runtime.setting.showPlaylistTrackCount) {
+        if (getDirData()?.type === 'songList' && runtime.setting.showPlaylistTrackCount) {
           trackCount.value = 0
         }
         try {
@@ -249,12 +270,13 @@ export function useLibraryContextMenu({
         break
       }
       case 'playlist.autoMix': {
-        if (dirData.type !== 'mixtapeList') break
+        const currentDirData = getDirData()
+        if (currentDirData?.type !== 'mixtapeList') break
         const playlistPath = libraryUtils.findDirPathByUuid(props.uuid)
         window.electron.ipcRenderer.send('mixtape:open', {
           playlistId: props.uuid,
           playlistPath,
-          playlistName: dirData?.dirName
+          playlistName: currentDirData?.dirName
         })
         break
       }

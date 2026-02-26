@@ -6,6 +6,8 @@ import type { useRuntimeStore } from '@renderer/stores/runtime'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import libraryUtils from '@renderer/utils/libraryUtils'
 
+const normalizePath = (p: string | undefined | null) => (p || '').replace(/\//g, '\\').toLowerCase()
+
 interface UseSongsAreaEventsParams {
   runtime: ReturnType<typeof useRuntimeStore>
   originalSongInfoArr: ShallowRef<ISongInfo[]>
@@ -62,9 +64,9 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     }
 
     const pathsToRemove: string[] = Array.isArray(payload?.paths) ? payload.paths : []
-    const normalizePath = (p: string | undefined | null) =>
-      (p || '').replace(/\//g, '\\').toLowerCase()
-    const normalizedSet = new Set<string>(pathsToRemove.map((p: string) => normalizePath(p)))
+    const normalizedSet = new Set<string>(
+      pathsToRemove.map((p: string) => normalizePath(p)).filter(Boolean)
+    )
     const hasIntersection = originalSongInfoArr.value.some((s) =>
       normalizedSet.has(normalizePath(s.filePath))
     )
@@ -83,14 +85,14 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
       if (
         runtime.playingData.playingSong &&
-        pathsToRemove.includes(runtime.playingData.playingSong.filePath)
+        normalizedSet.has(normalizePath(runtime.playingData.playingSong.filePath))
       ) {
         runtime.playingData.playingSong = null
       }
     }
 
     runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
-      (path) => !pathsToRemove.includes(path)
+      (path) => !normalizedSet.has(normalizePath(path))
     )
 
     scheduleSweepCovers()
@@ -101,9 +103,12 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       return
     }
     if (!Array.isArray(movedSongPaths) || movedSongPaths.length === 0) return
+    const normalizedMovedSet = new Set(
+      movedSongPaths.map((path) => normalizePath(path)).filter(Boolean)
+    )
 
     originalSongInfoArr.value = originalSongInfoArr.value.filter(
-      (song) => !movedSongPaths.includes(song.filePath)
+      (song) => !normalizedMovedSet.has(normalizePath(song.filePath))
     )
     applyFiltersAndSorting()
     scheduleSweepCovers()
@@ -112,14 +117,14 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
       if (
         runtime.playingData.playingSong &&
-        movedSongPaths.includes(runtime.playingData.playingSong.filePath)
+        normalizedMovedSet.has(normalizePath(runtime.playingData.playingSong.filePath))
       ) {
         runtime.playingData.playingSong = null
       }
     }
 
     runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
-      (path) => !movedSongPaths.includes(path)
+      (path) => !normalizedMovedSet.has(normalizePath(path))
     )
   }
 

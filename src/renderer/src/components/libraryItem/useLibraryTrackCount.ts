@@ -1,18 +1,21 @@
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, ref, watch, type Ref } from 'vue'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '../../utils/mitt'
 
 interface UseLibraryTrackCountOptions {
   runtime: any
-  dirData: any
+  dirDataRef: Ref<any | null>
   props: { uuid: string }
 }
 
-export function useLibraryTrackCount({ runtime, dirData, props }: UseLibraryTrackCountOptions) {
+export function useLibraryTrackCount({ runtime, dirDataRef, props }: UseLibraryTrackCountOptions) {
+  const getDirData = () => dirDataRef.value
+
   const trackCount = ref<number | null>(null)
   let fetchingCount = false
 
   const ensureTrackCount = async () => {
+    const dirData = getDirData()
     if (!runtime.setting.showPlaylistTrackCount) return
     if (fetchingCount) return
     if (!dirData || dirData.type !== 'songList') return
@@ -53,7 +56,11 @@ export function useLibraryTrackCount({ runtime, dirData, props }: UseLibraryTrac
   })
 
   watch(
-    () => [runtime.setting.showPlaylistTrackCount, dirData?.dirName],
+    () => [
+      runtime.setting.showPlaylistTrackCount,
+      dirDataRef.value?.type,
+      dirDataRef.value?.dirName
+    ],
     () => {
       if (runtime.setting.showPlaylistTrackCount) ensureTrackCount()
     }

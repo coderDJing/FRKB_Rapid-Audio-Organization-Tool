@@ -42,6 +42,8 @@ runtime.activeMenuUUID = ''
 runtime.selectSongListDialogShow = true
 // 选择区域，提前声明，便于初始化时设为 recent
 const selectedArea = ref<'recent' | 'tree' | ''>('')
+// 歌单筛选关键词（仅匹配歌单名）
+const playlistSearch = ref('')
 let recentDialogSelectedSongListUUID: string[] = []
 let localStorageRecentDialogSelectedSongListUUID = localStorage.getItem(
   'recentDialogSelectedSongListUUID' + props.libraryName
@@ -119,6 +121,14 @@ const libraryData: ComputedRef<IDir> = computed(() => {
   }
   return data
 })
+const dialogTreeVersion = ref(0)
+watch(
+  () => runtime.libraryTree,
+  () => {
+    dialogTreeVersion.value++
+  },
+  { deep: false }
+)
 
 // 扁平化当前库下的全部歌单（不关心折叠状态）
 const allSongListArr = computed<IDir[]>(() => {
@@ -138,10 +148,27 @@ const allSongListArr = computed<IDir[]>(() => {
 
 // 组合“最近使用歌单”+“全部歌单”（保留重复项，便于在两个区域都可停留）
 type NavItem = { uuid: string; area: 'recent' | 'tree' }
-const combinedNavList = computed<NavItem[]>(() => {
+const visibleCombinedNavList = computed<NavItem[]>(() => {
+  const keyword = String(playlistSearch.value || '')
+    .trim()
+    .toLowerCase()
+  const visibleRecent = keyword
+    ? recentSongListArr.value.filter((item) =>
+        String(item.dirName || '')
+          .toLowerCase()
+          .includes(keyword)
+      )
+    : recentSongListArr.value
+  const visibleAll = keyword
+    ? allSongListArr.value.filter((item) =>
+        String(item.dirName || '')
+          .toLowerCase()
+          .includes(keyword)
+      )
+    : allSongListArr.value
   const list: NavItem[] = []
-  for (const item of recentSongListArr.value) list.push({ uuid: item.uuid, area: 'recent' })
-  for (const item of allSongListArr.value) list.push({ uuid: item.uuid, area: 'tree' })
+  for (const item of visibleRecent) list.push({ uuid: item.uuid, area: 'recent' })
+  for (const item of visibleAll) list.push({ uuid: item.uuid, area: 'tree' })
   return list
 })
 
@@ -150,7 +177,7 @@ const combinedNavList = computed<NavItem[]>(() => {
 // 当前在组合列表中的索引
 const navIndex = ref<number>(-1)
 const syncNavIndexByUUID = () => {
-  const list = combinedNavList.value || []
+  const list = visibleCombinedNavList.value || []
   if (!runtime.dialogSelectedSongListUUID) {
     navIndex.value = -1
     return
@@ -168,7 +195,7 @@ const syncNavIndexByUUID = () => {
 
 // 统一的上下移动处理，供热键与输入框箭头键共用
 const moveSelection = (direction: 1 | -1) => {
-  const list = combinedNavList.value || []
+  const list = visibleCombinedNavList.value || []
   if (list.length === 0) return
   if (navIndex.value < 0) navIndex.value = 0
   else navIndex.value = (navIndex.value + direction + list.length) % list.length
@@ -190,7 +217,11 @@ const handleMoveUp = (e?: KeyboardEvent) => {
 }
 
 watch(
-  () => [combinedNavList.value.length, runtime.dialogSelectedSongListUUID],
+  () => [
+    visibleCombinedNavList.value.length,
+    runtime.dialogSelectedSongListUUID,
+    selectedArea.value
+  ],
   () => {
     syncNavIndexByUUID()
   },
@@ -269,8 +300,6 @@ const collapseButtonHandleClick = async () => {
   emitter.emit('collapseButtonHandleClick', libraryData.value.dirName + 'Dialog')
 }
 
-// 歌单筛选关键词（仅匹配歌单名）
-const playlistSearch = ref('')
 // 是否显示“立即创建”按钮：当存在关键字，且当前库内没有一个歌单名称与之完全匹配时显示
 const exactMatchExists = computed(() => {
   const keyword = String(playlistSearch.value || '')
@@ -699,7 +728,10 @@ watch(
                   </div>
                 </div>
                 <div class="sectionBody">
-                  <template v-for="item of libraryData?.children" :key="item.uuid">
+                  <template
+                    v-for="item of libraryData?.children"
+                    :key="`${item.uuid}-${dialogTreeVersion}`"
+                  >
                     <dialogLibraryItem
                       :uuid="item.uuid"
                       :library-name="libraryData.dirName + 'Dialog'"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, shallowRef } from 'vue'
 import libraryItem from '@renderer/components/libraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import listIconAsset from '@renderer/assets/listIcon.svg?asset'
@@ -52,17 +52,33 @@ const warnAcoustIdMissing = () => {
 }
 const { handleDropToSongList } = useDragSongs()
 
-let dirData = libraryUtils.getLibraryTreeByUUID(props.uuid)
-if (dirData === null) {
-  throw new Error(`dirData error: ${JSON.stringify(dirData)}`)
-}
-let fatherDirData = libraryUtils.getFatherLibraryTreeByUUID(props.uuid)
-if (fatherDirData === null) {
-  throw new Error(`fatherDirData error: ${JSON.stringify(fatherDirData)}`)
-}
+const dirDataRef = shallowRef<any | null>(null)
+const fatherDirDataRef = shallowRef<any | null>(null)
 
-const isSongList = computed(() => dirData.type === 'songList')
-const isMixtapeList = computed(() => dirData.type === 'mixtapeList')
+const syncNodeRefs = () => {
+  dirDataRef.value = libraryUtils.getLibraryTreeByUUID(props.uuid)
+  fatherDirDataRef.value = libraryUtils.getFatherLibraryTreeByUUID(props.uuid)
+}
+syncNodeRefs()
+
+watch(
+  () => props.uuid,
+  () => {
+    syncNodeRefs()
+  }
+)
+watch(
+  () => runtime.libraryTree,
+  () => {
+    syncNodeRefs()
+  },
+  { deep: false }
+)
+
+const dirData = computed(() => dirDataRef.value)
+
+const isSongList = computed(() => dirData.value?.type === 'songList')
+const isMixtapeList = computed(() => dirData.value?.type === 'mixtapeList')
 const isPlaylist = computed(() => isSongList.value || isMixtapeList.value)
 
 const {
@@ -84,16 +100,16 @@ const {
   renameInputKeyDownEsc,
   renameMyInputHandleInput,
   startRename
-} = useLibraryItemEditing({ dirData, fatherDirData, runtime, props, emitter })
+} = useLibraryItemEditing({ dirDataRef, fatherDirDataRef, runtime, props, emitter })
 
-const { trackCount } = useLibraryTrackCount({ runtime, dirData, props })
+const { trackCount } = useLibraryTrackCount({ runtime, dirDataRef, props })
 
 const dirChildShow = ref(false)
 const dirChildRendered = ref(false)
 
 const { rightClickMenuShow, menuArr, contextmenuEvent, deleteDir } = useLibraryContextMenu({
-  dirData,
-  fatherDirData,
+  dirDataRef,
+  fatherDirDataRef,
   runtime,
   props,
   emitter,
@@ -106,8 +122,8 @@ const { rightClickMenuShow, menuArr, contextmenuEvent, deleteDir } = useLibraryC
 
 const { dragApproach, dragstart, dragover, dragenter, dragleave, drop } = useLibraryDragAndDrop({
   runtime,
-  dirData,
-  fatherDirData,
+  dirDataRef,
+  fatherDirDataRef,
   deleteDir,
   props,
   handleDropToSongList,
@@ -116,12 +132,14 @@ const { dragApproach, dragstart, dragover, dragenter, dragleave, drop } = useLib
 
 const { shouldShow } = useLibraryFilter({
   props,
-  dirData,
+  dirDataRef,
   dirChildRendered,
   dirChildShow
 })
 
 const dirHandleClick = async () => {
+  const currentDirData = dirDataRef.value
+  if (!currentDirData) return
   runtime.activeMenuUUID = ''
   const songListPath = libraryUtils.findDirPathByUuid(props.uuid)
   const isSongListPathExist = await window.electron.ipcRenderer.invoke(
@@ -156,15 +174,28 @@ emitter.on('collapseButtonHandleClick', (libraryName: string) => {
 })
 
 const indentWidth = ref(0)
-let depth = libraryUtils.getDepthByUuid(props.uuid)
-if (depth === undefined) {
-  throw new Error(`depth error: ${JSON.stringify(depth)}`)
+const syncIndentWidth = () => {
+  const depth = libraryUtils.getDepthByUuid(props.uuid)
+  indentWidth.value = typeof depth === 'number' ? (depth - 2) * 10 : 0
 }
-indentWidth.value = (depth - 2) * 10
+syncIndentWidth()
+watch(
+  () => props.uuid,
+  () => {
+    syncIndentWidth()
+  }
+)
+watch(
+  () => runtime.libraryTree,
+  () => {
+    syncIndentWidth()
+  },
+  { deep: false }
+)
 
 let isPlaying = ref(false)
 watch(
-  () => runtime.playingData.playingSongListUUID,
+  () => [runtime.playingData.playingSongListUUID, runtime.libraryTree],
   () => {
     if (!runtime.playingData.playingSongListUUID) {
       isPlaying.value = false
@@ -172,7 +203,8 @@ watch(
     }
     let libraryTree = libraryUtils.getLibraryTreeByUUID(props.uuid)
     if (libraryTree === null) {
-      throw new Error(`libraryTree error: ${JSON.stringify(libraryTree)}`)
+      isPlaying.value = false
+      return
     }
     let uuids = libraryUtils.getAllUuids(libraryTree)
     if (uuids.indexOf(runtime.playingData.playingSongListUUID) != -1) {
@@ -180,11 +212,12 @@ watch(
     } else {
       isPlaying.value = false
     }
-  }
+  },
+  { immediate: true }
 )
 
 const displayDirName = computed(() => {
-  const d = dirData
+  const d = dirData.value
   if (!d) return ''
   if (runtime.libraryAreaSelected === 'RecycleBin' && d.dirName) {
     // 支持分钟格式（无秒）与历史秒级格式
@@ -212,6 +245,7 @@ const nameForDisplay = computed(() => displayDirName.value)
 </script>
 <template>
   <div
+    v-if="dirData"
     v-show="shouldShow"
     class="mainBody"
     style="display: flex; box-sizing: border-box"
@@ -344,7 +378,7 @@ const nameForDisplay = computed(() => displayDirName.value)
     </div>
   </div>
   <div
-    v-if="dirData.type == 'dir' && dirChildRendered"
+    v-if="dirData && dirData.type == 'dir' && dirChildRendered"
     v-show="dirChildShow"
     style="width: 100%; box-sizing: border-box"
   >

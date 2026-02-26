@@ -1,28 +1,31 @@
-import { nextTick, ref, useTemplateRef } from 'vue'
+import { nextTick, ref, useTemplateRef, type Ref } from 'vue'
 import { t } from '@renderer/utils/translate'
 import libraryUtils from '@renderer/utils/libraryUtils'
 
 interface UseLibraryItemEditingOptions {
-  dirData: any
-  fatherDirData: any
+  dirDataRef: Ref<any | null>
+  fatherDirDataRef: Ref<any | null>
   runtime: any
   props: { uuid: string }
   emitter: { on: (event: string, handler: (...args: any[]) => void) => void }
 }
 
 export function useLibraryItemEditing({
-  dirData,
-  fatherDirData,
+  dirDataRef,
+  fatherDirDataRef,
   runtime,
   props,
   emitter
 }: UseLibraryItemEditingOptions) {
+  const getDirData = () => dirDataRef.value
+  const getFatherDirData = () => fatherDirDataRef.value
+
   const operationInputValue = ref('')
   const inputHintText = ref('')
   const inputHintShow = ref(false)
   const myInput = useTemplateRef<HTMLInputElement | null>('myInput')
 
-  if (dirData?.dirName === '') {
+  if (getDirData()?.dirName === '') {
     nextTick(() => {
       myInput.value?.focus()
     })
@@ -41,7 +44,8 @@ export function useLibraryItemEditing({
       hintText = t('library.nameInvalidChars')
       hintShouldShow = true
     } else {
-      const exists = fatherDirData.children?.some((obj: any) => obj.dirName === newName)
+      const fatherDirData = getFatherDirData()
+      const exists = fatherDirData?.children?.some((obj: any) => obj.dirName === newName)
       if (exists) {
         hintText = t('library.nameAlreadyExists', { name: newName })
         hintShouldShow = true
@@ -64,6 +68,8 @@ export function useLibraryItemEditing({
   }
 
   const resetDraftNode = () => {
+    const dirData = getDirData()
+    const fatherDirData = getFatherDirData()
     if (dirData?.dirName === '' && fatherDirData?.children?.[0]?.dirName === '') {
       fatherDirData.children.shift()
     }
@@ -77,6 +83,9 @@ export function useLibraryItemEditing({
   }
 
   const inputBlurHandle = async () => {
+    const dirData = getDirData()
+    const fatherDirData = getFatherDirData()
+    if (!dirData || !fatherDirData) return
     if (!Array.isArray(fatherDirData.children)) {
       throw new Error(`fatherDirData.children error: ${JSON.stringify(fatherDirData.children)}`)
     }
@@ -112,6 +121,12 @@ export function useLibraryItemEditing({
   const renameInputHintText = ref('')
 
   const renameInputBlurHandle = async () => {
+    const dirData = getDirData()
+    if (!dirData) {
+      renameDivValue.value = ''
+      renameDivShow.value = false
+      return
+    }
     if (
       renameInputHintShow.value ||
       renameDivValue.value === '' ||
@@ -159,6 +174,8 @@ export function useLibraryItemEditing({
   }
 
   const renameMyInputHandleInput = () => {
+    const fatherDirData = getFatherDirData()
+    if (!fatherDirData) return
     const newName = renameDivValue.value
     const invalidCharsRegex = /[<>:"/\\|?*\u0000-\u001F]/
     let hintShouldShow = false
@@ -185,6 +202,7 @@ export function useLibraryItemEditing({
   }
 
   const startRename = async () => {
+    const dirData = getDirData()
     if (!dirData?.dirName) return
     renameDivShow.value = true
     renameDivValue.value = dirData.dirName

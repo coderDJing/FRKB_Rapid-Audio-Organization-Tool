@@ -1,4 +1,4 @@
-import { reactive, ref, watch } from 'vue'
+import { reactive, ref, watch, type Ref } from 'vue'
 import {
   handleDragStart,
   handleDragOver,
@@ -10,8 +10,8 @@ import {
 
 interface UseLibraryDragAndDropOptions {
   runtime: any
-  dirData: any
-  fatherDirData: any
+  dirDataRef: Ref<any | null>
+  fatherDirDataRef: Ref<any | null>
   deleteDir: () => Promise<void>
   props: { uuid: string }
   handleDropToSongList: (targetUuid: string, sourceUuid: string) => Promise<string[]>
@@ -20,13 +20,16 @@ interface UseLibraryDragAndDropOptions {
 
 export function useLibraryDragAndDrop({
   runtime,
-  dirData,
-  fatherDirData,
+  dirDataRef,
+  fatherDirDataRef,
   deleteDir,
   props,
   handleDropToSongList,
   emitter
 }: UseLibraryDragAndDropOptions) {
+  const getDirData = () => dirDataRef.value
+  const getFatherDirData = () => fatherDirDataRef.value
+
   const dragApproach = ref('')
   const dragState = reactive<DragState>({
     dragApproach: ''
@@ -68,6 +71,8 @@ export function useLibraryDragAndDrop({
   }
 
   const handleSongDragGuard = (e: DragEvent) => {
+    const dirData = getDirData()
+    if (!dirData) return true
     if (runtime.libraryAreaSelected === 'RecycleBin') {
       if (e.dataTransfer) {
         e.dataTransfer.dropEffect = 'none'
@@ -87,6 +92,8 @@ export function useLibraryDragAndDrop({
   }
 
   const dragover = (e: DragEvent) => {
+    const dirData = getDirData()
+    if (!dirData) return
     if (runtime.libraryAreaSelected === 'RecycleBin') {
       if (e.dataTransfer) {
         e.dataTransfer.dropEffect = 'none'
@@ -112,6 +119,8 @@ export function useLibraryDragAndDrop({
   }
 
   const dragenter = (e: DragEvent) => {
+    const dirData = getDirData()
+    if (!dirData) return
     if (handleSongDragGuard(e)) {
       return
     }
@@ -136,6 +145,12 @@ export function useLibraryDragAndDrop({
   }
 
   const drop = async (e: DragEvent) => {
+    const dirData = getDirData()
+    const fatherDirData = getFatherDirData()
+    if (!dirData || !fatherDirData) {
+      dragState.dragApproach = ''
+      return
+    }
     if (handleSongDragGuard(e)) {
       return
     }
