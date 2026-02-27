@@ -101,6 +101,10 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
   const setWaveformLoadTimer = (value: ReturnType<typeof setTimeout> | null) => {
     waveformLoadTimerRef.value = value
   }
+  const RAW_VISIBLE_BUFFER_PX = Math.max(WAVEFORM_TILE_WIDTH, Math.round(RENDER_X_BUFFER_PX * 1.5))
+  const RAW_BATCH_MAX_CONCURRENT = 2
+  let rawLoadInFlight = false
+  let rawLoadRerunPending = false
   const drawTimelineCanvas = () => {
     const canvas = timelineCanvasRef.value
     const wrap = timelineScrollWrapRef.value
@@ -501,26 +505,36 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     try {
       response = await window.electron.ipcRenderer.invoke('mixtape-waveform-raw:batch', {
         filePaths,
-        targetRate: RAW_WAVEFORM_TARGET_RATE
+        targetRate: RAW_WAVEFORM_TARGET_RATE,
+        preferSharedDecode: true
       })
     } catch {
       response = null
     }
     const items = Array.isArray(response?.items) ? response!.items : []
+    const itemMap = new Map(items.map((entry) => [entry?.filePath || '', entry?.data ?? null]))
     let updated = false
     for (const filePath of filePaths) {
-      const item = items.find((entry) => entry?.filePath === filePath)
-      const decoded = item ? decodeRawWaveformData(item.data) : null
-      rawWaveformDataMap.set(filePath, decoded)
-      if (decoded) {
-        rawWaveformPyramidMap.set(filePath, buildRawWaveformPyramid(decoded))
-      } else {
+      try {
+        const decoded = decodeRawWaveformData(itemMap.get(filePath))
+        rawWaveformDataMap.set(filePath, decoded)
+        if (decoded) {
+          rawWaveformPyramidMap.set(filePath, buildRawWaveformPyramid(decoded))
+        } else {
+          rawWaveformPyramidMap.delete(filePath)
+        }
+        pushRawWaveformToWorker(filePath, decoded)
+        clearWaveformTileCacheForFile(filePath)
+        updated = true
+      } catch {
+        rawWaveformDataMap.set(filePath, null)
         rawWaveformPyramidMap.delete(filePath)
+        pushRawWaveformToWorker(filePath, null)
+        clearWaveformTileCacheForFile(filePath)
+        updated = true
+      } finally {
+        rawWaveformInflight.delete(filePath)
       }
-      pushRawWaveformToWorker(filePath, decoded)
-      clearWaveformTileCacheForFile(filePath)
-      rawWaveformInflight.delete(filePath)
-      updated = true
     }
     if (updated) {
       waveformVersion.value += 1
@@ -558,19 +572,91 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
   }
 
   const loadRawWaveforms = async () => {
-    if (!tracks.value.length) return
-    if (!useRawWaveform.value) return
-    const targets: string[] = []
-    for (const track of tracks.value) {
-      const filePath = track.filePath
-      if (!filePath || rawWaveformDataMap.has(filePath) || rawWaveformInflight.has(filePath))
-        continue
-      targets.push(filePath)
+    if (rawLoadInFlight) {
+      rawLoadRerunPending = true
+      return
     }
-    if (!targets.length) return
-    for (let i = 0; i < targets.length; i += RAW_WAVEFORM_BATCH_SIZE) {
-      const batch = targets.slice(i, i + RAW_WAVEFORM_BATCH_SIZE)
-      await fetchRawWaveformBatch(batch)
+    rawLoadInFlight = true
+    try {
+      if (!tracks.value.length) return
+      if (!useRawWaveform.value) return
+
+      const collectVisibleTargets = () => {
+        const viewport =
+          (timelineScrollRef.value?.osInstance()?.elements().viewport as HTMLElement | undefined) ||
+          null
+        const viewportLeft = Math.max(
+          0,
+          Math.floor(viewport?.scrollLeft || Number(timelineScrollLeft.value || 0))
+        )
+        const viewportWidth = Math.max(
+          0,
+          Math.floor(viewport?.clientWidth || Number(timelineViewportWidth.value || 0))
+        )
+
+        const targets: string[] = []
+        const targetSet = new Set<string>()
+        const pushTarget = (filePath: string) => {
+          if (!filePath) return
+          if (targetSet.has(filePath)) return
+          if (rawWaveformDataMap.has(filePath) || rawWaveformInflight.has(filePath)) return
+          targetSet.add(filePath)
+          targets.push(filePath)
+        }
+
+        if (viewportWidth <= 0) {
+          const fallbackLimit = Math.max(RAW_WAVEFORM_BATCH_SIZE, RAW_WAVEFORM_BATCH_SIZE * 2)
+          for (const track of tracks.value) {
+            pushTarget(track.filePath)
+            if (targets.length >= fallbackLimit) break
+          }
+          return targets
+        }
+
+        const visibleStart = Math.max(0, viewportLeft - RAW_VISIBLE_BUFFER_PX)
+        const visibleEnd = Math.max(
+          visibleStart,
+          Math.ceil(viewportLeft + viewportWidth + RAW_VISIBLE_BUFFER_PX)
+        )
+        const snapshot = buildSequentialLayoutForZoom(normalizedRenderZoom.value)
+        forEachVisibleLayoutItem(
+          snapshot,
+          visibleStart,
+          visibleEnd,
+          (item: TimelineTrackLayout) => {
+            pushTarget(item.track.filePath)
+          }
+        )
+        return targets
+      }
+
+      const targets = collectVisibleTargets()
+      if (!targets.length) return
+
+      const batches: string[][] = []
+      for (let i = 0; i < targets.length; i += RAW_WAVEFORM_BATCH_SIZE) {
+        const batch = targets.slice(i, i + RAW_WAVEFORM_BATCH_SIZE)
+        if (batch.length) batches.push(batch)
+      }
+      if (!batches.length) return
+
+      const maxConcurrent = Math.max(1, Math.min(RAW_BATCH_MAX_CONCURRENT, batches.length))
+      let cursor = 0
+      const runNext = async () => {
+        while (cursor < batches.length) {
+          const index = cursor
+          cursor += 1
+          const batch = batches[index]
+          await fetchRawWaveformBatch(batch)
+        }
+      }
+      await Promise.all(Array.from({ length: maxConcurrent }, () => runNext()))
+    } finally {
+      rawLoadInFlight = false
+      if (rawLoadRerunPending) {
+        rawLoadRerunPending = false
+        void loadRawWaveforms()
+      }
     }
   }
 

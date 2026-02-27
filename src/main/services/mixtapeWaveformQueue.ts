@@ -79,6 +79,11 @@ const computeMixtapeWaveform = async (filePath: string, listRoot?: string) => {
       await LibraryCacheDb.removeMixtapeWaveformCacheEntry(resolvedRoot, normalized)
       return
     }
+    const cached = await LibraryCacheDb.loadMixtapeWaveformCacheData(resolvedRoot, targetPath, {
+      size: stat.size,
+      mtimeMs: stat.mtimeMs
+    })
+    if (cached) return
     const waveform = await requestMixtapeWaveform(targetPath, MIXTAPE_WAVEFORM_TARGET_RATE)
     if (!waveform) return
     await LibraryCacheDb.upsertMixtapeWaveformCacheEntry(

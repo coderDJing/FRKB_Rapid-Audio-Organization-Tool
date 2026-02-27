@@ -13,6 +13,7 @@ import type { MixxxWaveformData } from '../waveformCache'
 import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { requestMixtapeRawWaveform } from '../services/mixtapeRawWaveformQueue'
 import { ensureMixtapeWaveformHires } from '../services/mixtapeWaveformHiresQueue'
+import { decodeAudioShared } from '../services/audioDecodePool'
 
 export function registerCacheHandlers() {
   const resolveRequestedRawRate = (value: unknown) => {
@@ -171,6 +172,7 @@ export function registerCacheHandlers() {
       payload: {
         filePaths?: string[]
         targetRate?: number
+        preferSharedDecode?: boolean
       }
     ) => {
       const filePaths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
@@ -182,6 +184,7 @@ export function registerCacheHandlers() {
       }
 
       const targetRate = resolveRequestedRawRate(payload?.targetRate)
+      const preferSharedDecode = Boolean(payload?.preferSharedDecode)
       const items: Array<{ filePath: string; data: any | null }> = []
       for (const filePath of normalizedPaths) {
         try {
@@ -198,13 +201,50 @@ export function registerCacheHandlers() {
             items.push({ filePath, data: cached })
             continue
           }
-          const data = await requestMixtapeRawWaveform(filePath, targetRate)
+
+          let data: any | null = null
+          let computedWaveform: MixxxWaveformData | null = null
+          if (preferSharedDecode) {
+            let needWaveformForShare = true
+            if (listRoot && stat) {
+              const waveformCached = await LibraryCacheDb.loadMixtapeWaveformCacheData(
+                listRoot,
+                filePath,
+                {
+                  size: stat.size,
+                  mtimeMs: stat.mtimeMs
+                }
+              )
+              needWaveformForShare = !Boolean(waveformCached)
+            }
+            const decoded = await decodeAudioShared(filePath, {
+              analyzeKey: false,
+              needWaveform: needWaveformForShare,
+              needRawWaveform: true,
+              rawTargetRate: targetRate,
+              fileStat: stat ? { size: stat.size, mtimeMs: stat.mtimeMs } : null,
+              traceLabel: 'mixtape-raw-waveform-shared'
+            })
+            data = decoded.rawWaveformData ?? null
+            computedWaveform = needWaveformForShare ? (decoded.mixxxWaveformData ?? null) : null
+          } else {
+            data = await requestMixtapeRawWaveform(filePath, targetRate)
+          }
+
           if (data && listRoot && stat) {
             await LibraryCacheDb.upsertMixtapeRawWaveformCacheEntry(
               listRoot,
               filePath,
               { size: stat.size, mtimeMs: stat.mtimeMs },
               data
+            )
+          }
+          if (computedWaveform && listRoot && stat) {
+            await LibraryCacheDb.upsertMixtapeWaveformCacheEntry(
+              listRoot,
+              filePath,
+              { size: stat.size, mtimeMs: stat.mtimeMs },
+              computedWaveform
             )
           }
           items.push({ filePath, data: data ?? null })

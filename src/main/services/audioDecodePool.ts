@@ -349,6 +349,16 @@ const getDecodePool = () => {
 const isCoreOnlyRequest = (options: DecodeAudioOptions) =>
   !options.analyzeKey && !options.needWaveform && !options.needRawWaveform
 
+const hasKeyAnalysisResult = (result: DecodeAudioResult) =>
+  typeof result.keyText === 'string' || typeof result.keyError === 'string'
+
+const canReuseInflightResult = (options: DecodeAudioOptions, result: DecodeAudioResult) => {
+  if (options.analyzeKey && !hasKeyAnalysisResult(result)) return false
+  if (options.needWaveform && !result.mixxxWaveformData) return false
+  if (options.needRawWaveform && !result.rawWaveformData) return false
+  return true
+}
+
 export async function decodeAudioShared(
   filePath: string,
   options: DecodeAudioOptions = {}
@@ -370,22 +380,33 @@ export async function decodeAudioShared(
         chain: 'cache'
       })
     }
+  }
+
+  if (coreKey) {
     const inflight = coreInflight.get(coreKey)
     if (inflight) {
       const waitStartedAt = nowMs()
       const shared = await inflight
       const waitMs = nowMs() - waitStartedAt
-      const sourceMetrics = normalizeDecodeMetrics(shared.metrics)
-      return projectCoreOnlyResult(shared, {
-        decodeMs: sourceMetrics.decodeMs,
-        waveformMs: sourceMetrics.waveformMs,
-        rawMs: sourceMetrics.rawMs,
-        keyMs: sourceMetrics.keyMs,
-        totalMs: sourceMetrics.totalMs,
-        cacheHit: false,
-        chain: 'inflight',
-        waitMs
-      })
+      if (canReuseInflightResult(options, shared)) {
+        const sourceMetrics = normalizeDecodeMetrics(shared.metrics)
+        const inflightMetrics: DecodeAudioMetrics = {
+          decodeMs: sourceMetrics.decodeMs,
+          waveformMs: sourceMetrics.waveformMs,
+          rawMs: sourceMetrics.rawMs,
+          keyMs: sourceMetrics.keyMs,
+          totalMs: sourceMetrics.totalMs,
+          cacheHit: false,
+          chain: 'inflight',
+          waitMs
+        }
+        return coreOnly
+          ? projectCoreOnlyResult(shared, inflightMetrics)
+          : {
+              ...shared,
+              metrics: inflightMetrics
+            }
+      }
     }
   }
 

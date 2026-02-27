@@ -81,6 +81,7 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     if (target === renderZoom.value) return
     renderZoom.value = target
     scheduleTimelineDraw()
+    scheduleWaveformLoad()
     scheduleFullPreRender()
   }
 
@@ -166,6 +167,7 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     if (changed) {
       if (movedScroll) {
         markTimelineInteracting()
+        scheduleWaveformLoad()
       }
       scheduleTimelineDraw()
     }
