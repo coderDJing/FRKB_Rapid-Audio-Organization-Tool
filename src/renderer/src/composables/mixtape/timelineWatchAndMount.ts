@@ -1,4 +1,4 @@
-import { nextTick, onMounted, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
 
 export const createTimelineWatchAndMountModule = (ctx: any) => {
   const {
@@ -36,6 +36,49 @@ export const createTimelineWatchAndMountModule = (ctx: any) => {
     handleWaveformUpdated,
     scheduleTransportPreload
   } = ctx
+  const INITIAL_VIEWPORT_BIND_MAX_ATTEMPTS = 24
+  const INITIAL_VIEWPORT_BIND_INTERVAL_MS = 50
+  let initialViewportBindAttempts = 0
+  let initialViewportBindTimer: ReturnType<typeof setTimeout> | null = null
+
+  const clearInitialViewportBindTimer = () => {
+    if (!initialViewportBindTimer) return
+    clearTimeout(initialViewportBindTimer)
+    initialViewportBindTimer = null
+  }
+
+  const bindTimelineViewportIfReady = () => {
+    const viewportEl = timelineScrollRef.value?.osInstance()?.elements().viewport as
+      | HTMLElement
+      | undefined
+    if (!viewportEl) return false
+    setTimelineWheelTarget(viewportEl)
+    if (typeof ResizeObserver !== 'undefined') {
+      if (!timelineViewportObserverRef.value) {
+        timelineViewportObserverRef.value = new ResizeObserver(() => updateTimelineWidth())
+      }
+      try {
+        timelineViewportObserverRef.value.observe(viewportEl)
+      } catch {}
+    }
+    updateTimelineWidth()
+    nextTick(() => scheduleWaveformDraw())
+    return true
+  }
+
+  const scheduleInitialViewportBind = () => {
+    if (bindTimelineViewportIfReady()) {
+      clearInitialViewportBindTimer()
+      return
+    }
+    if (initialViewportBindAttempts >= INITIAL_VIEWPORT_BIND_MAX_ATTEMPTS) return
+    initialViewportBindAttempts += 1
+    clearInitialViewportBindTimer()
+    initialViewportBindTimer = setTimeout(() => {
+      initialViewportBindTimer = null
+      scheduleInitialViewportBind()
+    }, INITIAL_VIEWPORT_BIND_INTERVAL_MS)
+  }
 
   watch(
     () => tracks.value.map((track: any) => track.id).join('|'),
@@ -136,17 +179,7 @@ export const createTimelineWatchAndMountModule = (ctx: any) => {
       }
     }
     try {
-      const viewportEl = timelineScrollRef.value?.osInstance()?.elements().viewport as
-        | HTMLElement
-        | undefined
-      if (viewportEl) {
-        setTimelineWheelTarget(viewportEl)
-        if (typeof ResizeObserver !== 'undefined') {
-          const observer = new ResizeObserver(() => updateTimelineWidth())
-          timelineViewportObserverRef.value = observer
-          observer.observe(viewportEl)
-        }
-      }
+      bindTimelineViewportIfReady()
       if (timelineViewport.value && typeof ResizeObserver !== 'undefined') {
         const observer = new ResizeObserver(() => scheduleWaveformDraw())
         timelineObserverRef.value = observer
@@ -159,6 +192,8 @@ export const createTimelineWatchAndMountModule = (ctx: any) => {
       }
     } catch {}
     updateOverviewWidth()
+    initialViewportBindAttempts = 0
+    scheduleInitialViewportBind()
     scheduleTransportPreload()
     startTimelineScrollSampler()
     if (typeof window !== 'undefined') {
@@ -167,5 +202,9 @@ export const createTimelineWatchAndMountModule = (ctx: any) => {
     if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
       window.electron.ipcRenderer.on('mixtape-waveform-updated', handleWaveformUpdated)
     }
+  })
+
+  onBeforeUnmount(() => {
+    clearInitialViewportBindTimer()
   })
 }
