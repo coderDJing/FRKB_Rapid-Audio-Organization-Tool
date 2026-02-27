@@ -318,6 +318,7 @@ const drawPreviewCanvas = () => {
     rangeStartSec,
     rangeDurationSec: safeDuration,
     mixxxData: previewMixxxData.value,
+    rawData: overviewRawData.value,
     maxSamplesPerPixel: isPlaybackRendering
       ? PREVIEW_PLAY_MAX_SAMPLES_PER_PIXEL
       : PREVIEW_MAX_SAMPLES_PER_PIXEL,
@@ -830,6 +831,7 @@ const loadPreviewWaveform = async (filePath: string) => {
     } else {
       overviewRawPyramidMap.delete(fileKey)
     }
+    schedulePreviewDraw()
     scheduleOverviewRebuild()
   } catch {
     if (requestSeq !== previewLoadSequence) return

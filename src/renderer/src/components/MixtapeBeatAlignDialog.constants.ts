@@ -3,7 +3,7 @@ import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAu
 export const PREVIEW_MIN_ZOOM = 50
 export const PREVIEW_MAX_ZOOM = 100
 export const PREVIEW_HIRES_TARGET_RATE = 4000
-export const PREVIEW_RAW_TARGET_RATE = 2400
+export const PREVIEW_RAW_TARGET_RATE = 4800
 export const PREVIEW_WARMUP_DELAY_MS = 600
 export const PREVIEW_WARMUP_EAGER_DELAY_MS = 0
 export const OVERVIEW_MAX_RENDER_COLUMNS = 960

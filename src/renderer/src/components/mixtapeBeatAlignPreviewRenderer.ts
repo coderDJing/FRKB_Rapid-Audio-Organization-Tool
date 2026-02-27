@@ -1,4 +1,5 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import { drawBeatAlignRekordboxWaveform } from '@renderer/components/mixtapeBeatAlignWaveform'
 
 type BeatAlignPreviewRenderInput = {
@@ -10,6 +11,7 @@ type BeatAlignPreviewRenderInput = {
   rangeStartSec: number
   rangeDurationSec: number
   mixxxData: MixxxWaveformData | null
+  rawData: RawWaveformData | null
   maxSamplesPerPixel: number
   showDetailHighlights: boolean
   showCenterLine: boolean
@@ -33,6 +35,7 @@ type FrameState = {
   rangeStartSec: number
   rangeDurationSec: number
   mixxxData: MixxxWaveformData | null
+  rawData: RawWaveformData | null
   maxSamplesPerPixel: number
   showDetailHighlights: boolean
   showCenterLine: boolean
@@ -124,6 +127,7 @@ export const createBeatAlignPreviewRenderer = () => {
       rangeStartSec,
       rangeDurationSec,
       mixxxData: input.mixxxData,
+      rawData: input.rawData,
       showBackground: false,
       maxSamplesPerPixel: input.maxSamplesPerPixel,
       showDetailHighlights: input.showDetailHighlights,
@@ -163,6 +167,7 @@ export const createBeatAlignPreviewRenderer = () => {
       rangeStartSec: segmentStartSec,
       rangeDurationSec: segmentDurationSec,
       mixxxData: state.mixxxData,
+      rawData: state.rawData,
       showBackground: false,
       maxSamplesPerPixel: state.maxSamplesPerPixel,
       showDetailHighlights: state.showDetailHighlights,
@@ -191,6 +196,7 @@ export const createBeatAlignPreviewRenderer = () => {
       lastFrame.barBeatOffset === current.barBeatOffset &&
       lastFrame.rangeDurationSec === current.rangeDurationSec &&
       lastFrame.mixxxData === current.mixxxData &&
+      lastFrame.rawData === current.rawData &&
       lastFrame.maxSamplesPerPixel === current.maxSamplesPerPixel &&
       lastFrame.showDetailHighlights === current.showDetailHighlights &&
       lastFrame.showCenterLine === current.showCenterLine
@@ -213,6 +219,7 @@ export const createBeatAlignPreviewRenderer = () => {
       rangeStartSec,
       rangeDurationSec,
       mixxxData: input.mixxxData,
+      rawData: input.rawData,
       maxSamplesPerPixel: input.maxSamplesPerPixel,
       showDetailHighlights: input.showDetailHighlights,
       showCenterLine: input.showCenterLine
