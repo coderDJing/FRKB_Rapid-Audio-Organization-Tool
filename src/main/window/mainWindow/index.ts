@@ -221,7 +221,7 @@ function createWindow() {
     } catch {}
   }
 
-  if (!app.isPackaged) {
+  if (is.dev && process.env.FRKB_OPEN_DEVTOOLS === '1') {
     mainWindow.webContents.openDevTools()
   }
   startLibraryTreeWatcher(mainWindow)

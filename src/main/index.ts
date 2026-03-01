@@ -51,6 +51,16 @@ import {
 import { startMixtapeWaveformHiresBackground } from './services/mixtapeWaveformHiresQueue'
 // import AudioFeatureExtractor from './mfccTest'
 
+if (is.dev) {
+  try {
+    const devUserDataDir = path.join(app.getPath('appData'), 'frkb-dev')
+    app.setPath('userData', devUserDataDir)
+    app.setPath('sessionData', path.join(devUserDataDir, 'session'))
+  } catch (error) {
+    log.warn('[dev] 设置独立用户目录失败', error)
+  }
+}
+
 const initDevDatabase = false
 const dev_DB = 'D:/FRKB_database'
 const my_real_DB = 'D:/FRKB_database'
