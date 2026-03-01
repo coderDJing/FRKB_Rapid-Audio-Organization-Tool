@@ -1,7 +1,8 @@
 import type {
   FrameBufferSlot,
   RenderFramePayload,
-  RenderTilePayload
+  RenderTilePayload,
+  WaveformStemId
 } from './mixtapeWaveformRender.types'
 
 type CreateFrameRendererOptions = {
@@ -107,6 +108,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
 
   const buildTileCacheKey = (
     filePath: string,
+    stemId: WaveformStemId,
     tileIndex: number,
     zoomValue: number,
     width: number,
@@ -116,7 +118,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
     const zoomKey = Math.round(zoomValue * 1000)
     const ratioKey = Math.round(pixelRatio * 100)
     const waveformHeightScaleKey = Math.round(waveformHeightScale * 1000)
-    return `${filePath}::${tileIndex}::${zoomKey}::${width}x${height}@${ratioKey}::h${waveformHeightScaleKey}`
+    return `${filePath}::${stemId}::${tileIndex}::${zoomKey}::${width}x${height}@${ratioKey}::h${waveformHeightScaleKey}`
   }
 
   const touchTileCache = (key: string) => {
@@ -287,9 +289,11 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
     const trackSig = payload.tracks
       .map(
         (track) =>
-          `${track.id}:${track.filePath}:${Math.round(track.trackWidth)}:${Math.round(
+          `${track.id}:${track.waveformFilePath || track.filePath}:${Math.round(track.trackWidth)}:${Math.round(
             Number(track.startX) || 0
-          )}:${Math.round((Number(track.startSec) || 0) * 1000)}:${track.laneIndex}:${Math.round(track.bpm * 100)}:${Math.round(
+          )}:${Math.round((Number(track.startSec) || 0) * 1000)}:${track.laneIndex}:${Math.round(
+            Number(track.laneOffsetY) || 0
+          )}:${Math.round(Number(track.laneHeight) || payload.laneHeight)}:${Math.round(track.bpm * 100)}:${Math.round(
             track.firstBeatMs
           )}:${Math.round(track.barBeatOffset)}`
       )
@@ -329,14 +333,17 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
     const endX = viewStartX + viewWidth
 
     for (const track of payload.tracks) {
-      const filePath = track.filePath
+      const filePath = track.waveformFilePath || track.filePath
       if (!filePath) continue
+      const trackLaneHeight = Math.max(1, Number(track.laneHeight) || payload.laneHeight)
+      const trackLaneOffset = Math.max(0, Number(track.laneOffsetY) || 0)
       const trackWidth = track.trackWidth
       if (!trackWidth || !Number.isFinite(trackWidth)) continue
       const trackStartX = Number(track.startX) || 0
       const trackEndX = trackStartX + trackWidth
-      const trackY = payload.lanePaddingTop + track.laneIndex * laneStride - viewStartY
-      if (trackY > viewHeight || trackY + payload.laneHeight < 0) continue
+      const trackY =
+        payload.lanePaddingTop + track.laneIndex * laneStride + trackLaneOffset - viewStartY
+      if (trackY > viewHeight || trackY + trackLaneHeight < 0) continue
       const visibleStart = Math.max(trackStartX, viewStartX)
       const visibleEnd = Math.min(trackEndX, endX)
       if (visibleEnd <= visibleStart) continue
@@ -356,13 +363,14 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
           ? renderTileBitmap({
               cacheKey: '',
               filePath,
+              stemId: track.waveformStemId,
               zoom: payload.zoom,
               tileIndex,
               tileStart,
               tileWidth,
               trackWidth,
               durationSeconds: track.durationSeconds,
-              laneHeight: payload.laneHeight,
+              laneHeight: trackLaneHeight,
               pixelRatio: payload.pixelRatio
             })
           : null
@@ -372,7 +380,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
             trackStartX + tileStart - viewStartX,
             trackY,
             tileWidth,
-            payload.laneHeight
+            trackLaneHeight
           )
           try {
             bitmap.close()
@@ -398,7 +406,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
         drawTrackGridLines(
           ctx,
           visibleWidth,
-          payload.laneHeight,
+          trackLaneHeight,
           track.bpm,
           adjustedFirstBeatMs,
           track.barBeatOffset,
@@ -418,7 +426,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
         ctx.fillStyle = 'rgba(255, 64, 64, 0.9)'
         ctx.fillRect(0, Math.round(trackY), viewWidth, 1)
         ctx.fillStyle = 'rgba(64, 200, 255, 0.9)'
-        ctx.fillRect(0, Math.round(trackY + payload.laneHeight - 1), viewWidth, 1)
+        ctx.fillRect(0, Math.round(trackY + trackLaneHeight - 1), viewWidth, 1)
         ctx.restore()
       }
     }
@@ -697,6 +705,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
 
   const getTileTexture = (
     filePath: string,
+    stemId: WaveformStemId,
     zoom: number,
     tileIndex: number,
     tileStart: number,
@@ -709,6 +718,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
   ) => {
     const cacheKey = buildTileCacheKey(
       filePath,
+      stemId,
       tileIndex,
       zoom,
       Math.max(1, Math.floor(tileWidth)),
@@ -721,6 +731,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
       const bitmap = renderTileBitmap({
         cacheKey,
         filePath,
+        stemId,
         zoom,
         tileIndex,
         tileStart,
@@ -794,14 +805,17 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
       const laneStride = payload.laneHeight + payload.laneGap
       const endX = slot.startX + slot.width
       for (const track of payload.tracks) {
-        const filePath = track.filePath
+        const filePath = track.waveformFilePath || track.filePath
         if (!filePath) continue
+        const trackLaneHeight = Math.max(1, Number(track.laneHeight) || payload.laneHeight)
+        const trackLaneOffset = Math.max(0, Number(track.laneOffsetY) || 0)
         const trackWidth = track.trackWidth
         if (!trackWidth || !Number.isFinite(trackWidth)) continue
         const trackStartX = Number(track.startX) || 0
         const trackEndX = trackStartX + trackWidth
-        const trackY = payload.lanePaddingTop + track.laneIndex * laneStride - startY
-        if (trackY > slot.height || trackY + payload.laneHeight < 0) continue
+        const trackY =
+          payload.lanePaddingTop + track.laneIndex * laneStride + trackLaneOffset - startY
+        if (trackY > slot.height || trackY + trackLaneHeight < 0) continue
         const visibleStart = Math.max(trackStartX, slot.startX)
         const visibleEnd = Math.min(trackEndX, endX)
         if (visibleEnd <= visibleStart) continue
@@ -819,13 +833,14 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
           if (!tileWidth) continue
           const texture = getTileTexture(
             filePath,
+            track.waveformStemId,
             payload.zoom,
             tileIndex,
             tileStart,
             tileWidth,
             trackWidth,
             track.durationSeconds,
-            payload.laneHeight,
+            trackLaneHeight,
             payload.pixelRatio,
             allowTileBuild
           )
@@ -835,7 +850,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
               trackStartX + tileStart - slot.startX,
               trackY,
               tileWidth,
-              payload.laneHeight
+              trackLaneHeight
             )
           }
         }
@@ -852,8 +867,11 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
           if (!trackWidth || !Number.isFinite(trackWidth)) continue
           const trackStartX = Number(track.startX) || 0
           const trackEndX = trackStartX + trackWidth
-          const trackY = payload.lanePaddingTop + track.laneIndex * laneStride - startY
-          if (trackY > slot.height || trackY + payload.laneHeight < 0) continue
+          const trackLaneHeight = Math.max(1, Number(track.laneHeight) || payload.laneHeight)
+          const trackLaneOffset = Math.max(0, Number(track.laneOffsetY) || 0)
+          const trackY =
+            payload.lanePaddingTop + track.laneIndex * laneStride + trackLaneOffset - startY
+          if (trackY > slot.height || trackY + trackLaneHeight < 0) continue
           const visibleStart = Math.max(trackStartX, slot.startX)
           const visibleEnd = Math.min(trackEndX, endX)
           if (visibleEnd <= visibleStart) continue
@@ -888,21 +906,21 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
             if (!showBeatGrid && level === 'beat') continue
             const x = Math.round(rawX + trackStartX - slot.startX)
             if (level === 'bar') {
-              drawColorRect(x, trackY, barWidth, payload.laneHeight, {
+              drawColorRect(x, trackY, barWidth, trackLaneHeight, {
                 r: 0,
                 g: 0.43,
                 b: 0.86,
                 a: 0.95
               })
             } else if (level === 'beat4') {
-              drawColorRect(x, trackY, 1.5, payload.laneHeight, {
+              drawColorRect(x, trackY, 1.5, trackLaneHeight, {
                 r: 0.47,
                 g: 0.78,
                 b: 1,
                 a: 0.85
               })
             } else {
-              drawColorRect(x, trackY, 1.3, payload.laneHeight, {
+              drawColorRect(x, trackY, 1.3, trackLaneHeight, {
                 r: 0.71,
                 g: 0.88,
                 b: 1,
@@ -917,10 +935,13 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
         for (const track of payload.tracks) {
           const trackWidth = track.trackWidth
           if (!trackWidth || !Number.isFinite(trackWidth)) continue
-          const trackY = payload.lanePaddingTop + track.laneIndex * laneStride - startY
-          if (trackY > slot.height || trackY + payload.laneHeight < 0) continue
+          const trackLaneHeight = Math.max(1, Number(track.laneHeight) || payload.laneHeight)
+          const trackLaneOffset = Math.max(0, Number(track.laneOffsetY) || 0)
+          const trackY =
+            payload.lanePaddingTop + track.laneIndex * laneStride + trackLaneOffset - startY
+          if (trackY > slot.height || trackY + trackLaneHeight < 0) continue
           drawColorRect(0, Math.round(trackY), slot.width, 1, { r: 1, g: 0.25, b: 0.25, a: 0.9 })
-          drawColorRect(0, Math.round(trackY + payload.laneHeight - 1), slot.width, 1, {
+          drawColorRect(0, Math.round(trackY + trackLaneHeight - 1), slot.width, 1, {
             r: 0.25,
             g: 0.78,
             b: 1,
@@ -978,6 +999,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
   const warmTileTexture = (task: RenderTilePayload) => {
     getTileTexture(
       task.filePath,
+      task.stemId,
       task.zoom,
       task.tileIndex,
       task.tileStart,

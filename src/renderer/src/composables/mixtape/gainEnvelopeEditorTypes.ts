@@ -20,13 +20,14 @@ export type EnvelopeDragState = {
   stageEl: HTMLElement
 }
 
-export type VolumeMuteSegmentMask = {
+export type MixSegmentMask = {
   key: string
   left: number
   width: number
 }
 
-export type VolumeMuteSelectionState = {
+export type SegmentSelectionState = {
+  param: MixtapeEnvelopeParamId
   trackId: string
   stageEl: HTMLElement
   baseSegments: MixtapeMuteSegment[]
@@ -42,8 +43,9 @@ export type MixParamUndoEntry =
       points: MixtapeGainPoint[]
     }
   | {
-      type: 'volumeMute'
+      type: 'segment'
       trackId: string
+      param: MixtapeEnvelopeParamId
       segments: MixtapeMuteSegment[]
     }
   | {
@@ -63,6 +65,6 @@ export type CreateMixtapeGainEnvelopeEditorParams = {
   resolveTrackDurationSeconds: (track: MixtapeTrack) => number
   resolveTrackFirstBeatSeconds: (track: MixtapeTrack) => number
   resolveActiveParam: () => MixtapeEnvelopeParamId | null
-  isVolumeMuteSelectionMode: () => boolean
+  isSegmentSelectionMode: () => boolean
   isEditable: () => boolean
 }

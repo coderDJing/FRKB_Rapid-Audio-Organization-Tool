@@ -62,6 +62,19 @@
   color: var(--text-weak);
 }
 
+.bpm-loading-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.bpm-loading-action-btn {
+  min-width: 72px;
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
 .timeline-viewport {
   position: relative;
   min-height: 0;

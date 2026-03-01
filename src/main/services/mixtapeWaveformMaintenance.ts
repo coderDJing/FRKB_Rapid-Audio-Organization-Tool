@@ -29,6 +29,7 @@ export async function cleanupMixtapeWaveformCache(filePaths: string[]): Promise<
       await LibraryCacheDb.removeMixtapeWaveformCacheEntry(listRoot, filePath)
       await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(listRoot, filePath)
       await LibraryCacheDb.removeMixtapeWaveformHiresCacheEntry(listRoot, filePath)
+      await LibraryCacheDb.removeMixtapeStemWaveformCacheByFilePath(listRoot, filePath)
     } catch {}
   }
 }

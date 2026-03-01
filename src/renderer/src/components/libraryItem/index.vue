@@ -80,6 +80,10 @@ const dirData = computed(() => dirDataRef.value)
 const isSongList = computed(() => dirData.value?.type === 'songList')
 const isMixtapeList = computed(() => dirData.value?.type === 'mixtapeList')
 const isPlaylist = computed(() => isSongList.value || isMixtapeList.value)
+const resolveMixtapeModeTag = (mixMode?: string) =>
+  mixMode === 'traditional' ? t('mixtape.mixModeTraditionalTag') : t('mixtape.mixModeStemTag')
+const resolveMixtapeModeLabel = (mixMode?: string) =>
+  mixMode === 'traditional' ? t('mixtape.mixModeTraditionalLabel') : t('mixtape.mixModeStemLabel')
 
 const {
   operationInputValue,
@@ -330,6 +334,17 @@ const nameForDisplay = computed(() => displayDirName.value)
       >
         <span class="nameText">{{ nameForDisplay }}</span>
         <span
+          v-if="dirData.type === 'mixtapeList'"
+          class="mixModeBadge"
+          :class="{
+            'is-traditional': dirData.mixMode === 'traditional',
+            'is-stem': dirData.mixMode !== 'traditional',
+            isPlaying: isPlaying
+          }"
+          :title="resolveMixtapeModeLabel(dirData.mixMode)"
+          >{{ resolveMixtapeModeTag(dirData.mixMode) }}</span
+        >
+        <span
           v-if="
             dirData.type === 'songList' &&
             runtime.setting.showPlaylistTrackCount &&
@@ -424,10 +439,40 @@ const nameForDisplay = computed(() => displayDirName.value)
 .nameText {
   flex: 1 1 auto;
   min-width: 0;
-  padding-right: 48px; // 为绝对定位的徽标预留空间
+  padding-right: 72px; // 为右侧徽标预留空间
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mixModeBadge {
+  min-width: 34px;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.mixModeBadge.is-traditional {
+  background-color: rgba(255, 184, 77, 0.18);
+  color: #d98300;
+}
+
+.mixModeBadge.is-stem {
+  background-color: rgba(91, 173, 255, 0.18);
+  color: #2f85d8;
+}
+
+.isPlaying.mixModeBadge {
+  background-color: var(--accent);
+  color: #ffffff !important;
 }
 
 .countBadge {

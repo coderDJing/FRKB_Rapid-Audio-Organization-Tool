@@ -6,7 +6,7 @@ import type {
   RenderFramePayload,
   RenderTilePayload
 } from './mixtapeWaveformRender.types'
-import type { MixxxWaveformData, RawWaveformLevel } from './mixtapeWaveformRender.types'
+import type { RawWaveformLevel, StemWaveformData } from './mixtapeWaveformRender.types'
 
 const MIXTAPE_WEBGL_ENABLED = true
 const MIXTAPE_BUFFER_MULTIPLIER = 3
@@ -29,13 +29,8 @@ const GRID_BAR_WIDTH_MAX_ZOOM = 1.2
 const MIXTAPE_WAVEFORM_HEIGHT_SCALE = 0.72
 const MIXTAPE_SUMMARY_ZOOM = 0
 const MIXTAPE_DEBUG_TRACK_LINES = false
-const MIXXX_RGB_COMPONENTS = {
-  low: { r: 1, g: 0, b: 0 },
-  mid: { r: 0, g: 1, b: 0 },
-  high: { r: 0, g: 0, b: 1 }
-}
 
-const mixxxCache = new Map<string, MixxxWaveformData>()
+const stemWaveformCache = new Map<string, StemWaveformData>()
 const rawCache = new Map<string, RawWaveformData>()
 const rawPyramidCache = new Map<string, RawWaveformLevel[]>()
 
@@ -48,13 +43,12 @@ const postToMain = (message: any, transfer?: Transferable[]) => {
 }
 
 const tileRenderer = createTileRenderer({
-  mixxxCache,
+  stemWaveformCache,
   rawCache,
   rawPyramidCache,
   rawWaveformMinZoom: RAW_WAVEFORM_MIN_ZOOM,
   waveformHeightScale: MIXTAPE_WAVEFORM_HEIGHT_SCALE,
   summaryZoom: MIXTAPE_SUMMARY_ZOOM,
-  mixxxRgbComponents: MIXXX_RGB_COMPONENTS,
   postToMain
 })
 
@@ -150,7 +144,7 @@ const cancelPreRender = () => {
 
 const clearAllCaches = () => {
   frameRenderer.clearAllCaches()
-  mixxxCache.clear()
+  stemWaveformCache.clear()
   rawCache.clear()
   rawPyramidCache.clear()
 }
@@ -270,13 +264,13 @@ self.onmessage = (event: MessageEvent) => {
     }
     return
   }
-  if (message.type === 'storeMixxx') {
+  if (message.type === 'storeStemWaveform') {
     const { filePath, data } = message.payload || {}
     if (!filePath) return
     if (data) {
-      mixxxCache.set(filePath, data)
+      stemWaveformCache.set(filePath, data)
     } else {
-      mixxxCache.delete(filePath)
+      stemWaveformCache.delete(filePath)
     }
     return
   }

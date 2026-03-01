@@ -1,36 +1,29 @@
 import type {
-  MixxxWaveformData,
   RawWaveformData,
   RawWaveformLevel,
-  RenderTilePayload
+  RenderTilePayload,
+  StemWaveformData,
+  WaveformStemId
 } from './mixtapeWaveformRender.types'
 
-type RgbComponents = {
-  low: { r: number; g: number; b: number }
-  mid: { r: number; g: number; b: number }
-  high: { r: number; g: number; b: number }
-}
-
 type CreateTileRendererOptions = {
-  mixxxCache: Map<string, MixxxWaveformData>
+  stemWaveformCache: Map<string, StemWaveformData>
   rawCache: Map<string, RawWaveformData>
   rawPyramidCache: Map<string, RawWaveformLevel[]>
   rawWaveformMinZoom: number
   waveformHeightScale: number
   summaryZoom: number
-  mixxxRgbComponents: RgbComponents
   postToMain: (message: any, transfer?: Transferable[]) => void
 }
 
 export const createTileRenderer = (options: CreateTileRendererOptions) => {
   const {
-    mixxxCache,
+    stemWaveformCache,
     rawCache,
     rawPyramidCache,
     rawWaveformMinZoom,
     waveformHeightScale,
     summaryZoom,
-    mixxxRgbComponents,
     postToMain
   } = options
 
@@ -40,7 +33,20 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
   let scratchCtx: OffscreenCanvasRenderingContext2D | null = null
   const normalizedWaveformHeightScale = Math.max(0.2, Math.min(1, waveformHeightScale))
 
+  const STEM_WAVEFORM_COLORS: Record<WaveformStemId, { r: number; g: number; b: number }> = {
+    vocal: { r: 79, g: 139, b: 255 },
+    harmonic: { r: 69, g: 208, b: 126 },
+    bass: { r: 255, g: 93, b: 97 },
+    drums: { r: 165, g: 110, b: 255 }
+  }
   const toColorChannel = (value: number) => Math.max(0, Math.min(255, Math.round(value)))
+  const scaleColor = (color: { r: number; g: number; b: number }, factor: number) => ({
+    r: toColorChannel(color.r * factor),
+    g: toColorChannel(color.g * factor),
+    b: toColorChannel(color.b * factor)
+  })
+  const resolveStemWaveformColor = (stemId?: WaveformStemId) =>
+    STEM_WAVEFORM_COLORS[stemId || 'harmonic'] || STEM_WAVEFORM_COLORS.harmonic
   const normalizeBeatOffset = (value: number, interval: number) => {
     const safeInterval = Math.max(1, Math.floor(Number(interval) || 1))
     const numeric = Number(value)
@@ -158,12 +164,13 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     return best
   }
 
-  const drawMixxxRgbWaveform = (
+  const drawStemWaveform = (
     ctx: OffscreenCanvasRenderingContext2D,
     width: number,
     height: number,
-    waveformData: MixxxWaveformData,
+    waveformData: StemWaveformData,
     pixelRatio: number,
+    stemId: WaveformStemId,
     range: {
       startFrame: number
       endFrame: number
@@ -174,20 +181,8 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
   ) => {
     if (width <= 0 || height <= 0) return
 
-    const low = waveformData.bands.low
-    const mid = waveformData.bands.mid
-    const high = waveformData.bands.high
-    const all = waveformData.bands.all
-    const frameCount = Math.min(
-      low.left.length,
-      low.right.length,
-      mid.left.length,
-      mid.right.length,
-      high.left.length,
-      high.right.length,
-      all.left.length,
-      all.right.length
-    )
+    const all = waveformData.all
+    const frameCount = Math.min(all.left.length, all.right.length)
     if (!frameCount) return
 
     const rawStart = Number.isFinite(range.startFrame) ? range.startFrame : 0
@@ -223,13 +218,12 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     const heightFactor = (halfBreadth * normalizedWaveformHeightScale) / 255
     const rawHeightFactor = halfBreadth * normalizedWaveformHeightScale
     const pixelWidth = 1 / pixelRatio
+    const stemColor = resolveStemWaveformColor(stemId)
     ctx.globalCompositeOperation = 'source-over'
     ctx.imageSmoothingEnabled = false
 
     const columns = new Array<{
-      r: number
-      g: number
-      b: number
+      color: { r: number; g: number; b: number }
       avgTop: number
       avgBottom: number
       peakTop: number
@@ -250,9 +244,6 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       const xVisualSampleIndex = xSampleWidth + offset
       const maxSamplingRange = gain / 2
 
-      let maxLow = 0
-      let maxMid = 0
-      let maxHigh = 0
       let maxAllLeft = 0
       let maxAllRight = 0
       let maxAllAvgLeft = 0
@@ -263,28 +254,14 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
         const i0 = Math.floor(framePos)
         const i1 = Math.min(endFrame - 1, i0 + 1)
         const t = framePos - i0
-        const lerpVal = (a: number, b: number) => a + (b - a) * t
-
-        const lowLeft = lerpVal(low.left[i0], low.left[i1])
-        const lowRight = lerpVal(low.right[i0], low.right[i1])
-        const midLeft = lerpVal(mid.left[i0], mid.left[i1])
-        const midRight = lerpVal(mid.right[i0], mid.right[i1])
-        const highLeft = lerpVal(high.left[i0], high.left[i1])
-        const highRight = lerpVal(high.right[i0], high.right[i1])
-        const allAvgLeft = lerpVal(all.left[i0], all.left[i1])
-        const allAvgRight = lerpVal(all.right[i0], all.right[i1])
+        const allAvgLeft = lerp(all.left[i0], all.left[i1], t)
+        const allAvgRight = lerp(all.right[i0], all.right[i1], t)
         const peakLeft0 = all.peakLeft ? all.peakLeft[i0] : all.left[i0]
         const peakLeft1 = all.peakLeft ? all.peakLeft[i1] : all.left[i1]
         const peakRight0 = all.peakRight ? all.peakRight[i0] : all.right[i0]
         const peakRight1 = all.peakRight ? all.peakRight[i1] : all.right[i1]
-        const allLeft = lerpVal(peakLeft0, peakLeft1)
-        const allRight = lerpVal(peakRight0, peakRight1)
-
-        maxLow = Math.max(lowLeft, lowRight)
-        maxMid = Math.max(midLeft, midRight)
-        maxHigh = Math.max(highLeft, highRight)
-        maxAllLeft = allLeft
-        maxAllRight = allRight
+        maxAllLeft = lerp(peakLeft0, peakLeft1, t)
+        maxAllRight = lerp(peakRight0, peakRight1, t)
         maxAllAvgLeft = allAvgLeft
         maxAllAvgRight = allAvgRight
       } else {
@@ -299,23 +276,10 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
         }
 
         for (let i = visualFrameStart; i <= visualFrameStop; i += 1) {
-          const lowLeft = low.left[i]
-          const lowRight = low.right[i]
-          const midLeft = mid.left[i]
-          const midRight = mid.right[i]
-          const highLeft = high.left[i]
-          const highRight = high.right[i]
           const allAvgLeft = all.left[i]
           const allAvgRight = all.right[i]
           const allLeft = all.peakLeft ? all.peakLeft[i] : allAvgLeft
           const allRight = all.peakRight ? all.peakRight[i] : allAvgRight
-
-          if (lowLeft > maxLow) maxLow = lowLeft
-          if (lowRight > maxLow) maxLow = lowRight
-          if (midLeft > maxMid) maxMid = midLeft
-          if (midRight > maxMid) maxMid = midRight
-          if (highLeft > maxHigh) maxHigh = highLeft
-          if (highRight > maxHigh) maxHigh = highRight
 
           if (allLeft > maxAllLeft) maxAllLeft = allLeft
           if (allRight > maxAllRight) maxAllRight = allRight
@@ -324,39 +288,10 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
         }
       }
 
-      const allUnscaled = maxLow + maxMid + maxHigh
-      let eqGain = 1
-      if (allUnscaled > 0) {
-        eqGain = (maxLow + maxMid + maxHigh) / allUnscaled
-      }
-
-      const red =
-        maxLow * mixxxRgbComponents.low.r +
-        maxMid * mixxxRgbComponents.mid.r +
-        maxHigh * mixxxRgbComponents.high.r
-      const green =
-        maxLow * mixxxRgbComponents.low.g +
-        maxMid * mixxxRgbComponents.mid.g +
-        maxHigh * mixxxRgbComponents.high.g
-      const blue =
-        maxLow * mixxxRgbComponents.low.b +
-        maxMid * mixxxRgbComponents.mid.b +
-        maxHigh * mixxxRgbComponents.high.b
-
-      const maxColor = Math.max(red, green, blue)
-      if (maxColor <= 0) {
-        columns[x] = null
-        continue
-      }
-
-      const r = toColorChannel((red / maxColor) * 255)
-      const g = toColorChannel((green / maxColor) * 255)
-      const b = toColorChannel((blue / maxColor) * 255)
-
-      let avgTop = heightFactor * eqGain * maxAllAvgLeft
-      let avgBottom = heightFactor * eqGain * maxAllAvgRight
-      let peakTop = heightFactor * eqGain * maxAllLeft
-      let peakBottom = heightFactor * eqGain * maxAllRight
+      let avgTop = heightFactor * maxAllAvgLeft
+      let avgBottom = heightFactor * maxAllAvgRight
+      let peakTop = heightFactor * maxAllLeft
+      let peakBottom = heightFactor * maxAllRight
 
       if (hasRaw && rawMinLeft && rawMaxLeft && rawMinRight && rawMaxRight && rawFrames > 1) {
         const rawPos = rawStartPos + (x / Math.max(1, length - 1)) * rawVisible
@@ -376,10 +311,10 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
         peakBottom = avgBottom
       }
 
+      const localPeak = Math.max(maxAllLeft, maxAllRight) / 255
+      const color = scaleColor(stemColor, 0.45 + localPeak * 0.55)
       columns[x] = {
-        r,
-        g,
-        b,
+        color,
         avgTop,
         avgBottom,
         peakTop,
@@ -388,12 +323,11 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     }
 
     const drawBand = (alpha: number, usePeak: boolean) => {
-      ctx.globalAlpha = alpha
       for (let x = 0; x < length - 1; x += 1) {
         const current = columns[x]
         const next = columns[x + 1]
         if (!current && !next) continue
-        const color = current ?? next
+        const color = current?.color || next?.color
         if (!color) continue
         const curTop = usePeak ? (current?.peakTop ?? 0) : (current?.avgTop ?? 0)
         const curBottom = usePeak ? (current?.peakBottom ?? 0) : (current?.avgBottom ?? 0)
@@ -404,7 +338,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
         const x0 = x * pixelWidth
         const x1 = (x + 1) * pixelWidth
 
-        ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`
+        ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`
         ctx.beginPath()
         ctx.moveTo(x0, halfBreadth - curTop)
         ctx.lineTo(x1, halfBreadth - nextTop)
@@ -416,7 +350,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     }
 
     if (hasRaw) {
-      drawBand(1, false)
+      drawBand(0.95, false)
     } else {
       drawBand(0.22, true)
       drawBand(0.9, false)
@@ -453,6 +387,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
   const renderTileBitmap = (payload: RenderTilePayload): ImageBitmap | null => {
     const {
       filePath,
+      stemId,
       zoom,
       tileStart,
       tileWidth,
@@ -461,7 +396,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       laneHeight,
       pixelRatio
     } = payload
-    const mixxx = mixxxCache.get(filePath)
+    const waveform = stemWaveformCache.get(filePath)
     const rawData = zoom >= rawWaveformMinZoom ? rawCache.get(filePath) || null : null
 
     const ensured = ensureCanvas(tileCanvas, tileCtx, tileWidth, laneHeight, pixelRatio)
@@ -474,25 +409,13 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       return tileCanvas.transferToImageBitmap()
     }
 
-    if (!mixxx) {
+    if (!waveform) {
       renderEmptyPlaceholder(tileCtx, tileWidth, laneHeight)
       return tileCanvas.transferToImageBitmap()
     }
 
-    const low = mixxx.bands.low
-    const mid = mixxx.bands.mid
-    const high = mixxx.bands.high
-    const all = mixxx.bands.all
-    const frameCount = Math.min(
-      low.left.length,
-      low.right.length,
-      mid.left.length,
-      mid.right.length,
-      high.left.length,
-      high.right.length,
-      all.left.length,
-      all.right.length
-    )
+    const all = waveform.all
+    const frameCount = Math.min(all.left.length, all.right.length)
     if (!frameCount || !trackWidth) {
       renderEmptyPlaceholder(tileCtx, tileWidth, laneHeight)
       return tileCanvas.transferToImageBitmap()
@@ -521,13 +444,21 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     if (renderScale > 1) {
       const scratch = ensureScratch(tileWidth * renderScale, laneHeight)
       if (scratch && scratch.ctx) {
-        drawMixxxRgbWaveform(scratch.ctx, tileWidth * renderScale, laneHeight, mixxx, pixelRatio, {
-          startFrame,
-          endFrame,
-          startTime,
-          endTime,
-          raw: resolvedRaw
-        })
+        drawStemWaveform(
+          scratch.ctx,
+          tileWidth * renderScale,
+          laneHeight,
+          waveform,
+          pixelRatio,
+          stemId,
+          {
+            startFrame,
+            endFrame,
+            startTime,
+            endTime,
+            raw: resolvedRaw
+          }
+        )
         tileCtx.save()
         tileCtx.imageSmoothingEnabled = false
         tileCtx.clearRect(0, 0, tileWidth, laneHeight)
@@ -547,7 +478,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       }
     }
 
-    drawMixxxRgbWaveform(tileCtx, tileWidth, laneHeight, mixxx, pixelRatio, {
+    drawStemWaveform(tileCtx, tileWidth, laneHeight, waveform, pixelRatio, stemId, {
       startFrame,
       endFrame,
       startTime,

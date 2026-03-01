@@ -16,6 +16,7 @@ import {
   syncLibraryTreeFromDisk
 } from './libraryTreeDb'
 import { pruneOrphanedSongListCaches } from './services/cacheMaintenance'
+import { getMixtapeProjectMixMode } from './mixtapeDb'
 
 interface SongsAnalyseResult {
   songsAnalyseResult: md5[]
@@ -198,6 +199,9 @@ export async function getLibrary(options: { skipSync?: boolean } = {}) {
       uuid: row.uuid,
       type: row.nodeType,
       dirName
+    }
+    if (row.nodeType === 'mixtapeList') {
+      node.mixMode = getMixtapeProjectMixMode(row.uuid)
     }
     if (row.order !== null) node.order = row.order
     nodeMap.set(row.uuid, node)

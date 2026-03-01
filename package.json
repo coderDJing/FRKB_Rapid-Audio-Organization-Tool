@@ -19,6 +19,10 @@
       {
         "from": "vendor/chromaprint",
         "to": "chromaprint"
+      },
+      {
+        "from": "vendor/demucs",
+        "to": "demucs"
       }
     ],
     "appId": "com.electron.frkb",

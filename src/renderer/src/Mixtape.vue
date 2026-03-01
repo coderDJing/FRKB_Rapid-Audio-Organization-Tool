@@ -4,6 +4,7 @@ import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import titleComponent from '@renderer/components/titleComponent.vue'
 import MixtapeOutputDialog from '@renderer/components/mixtapeOutputDialog.vue'
 import MixtapeBeatAlignDialog from '@renderer/components/MixtapeBeatAlignDialog.vue'
+import BaseSelect from '@renderer/components/BaseSelect.vue'
 import ColumnHeaderContextMenu from '@renderer/pages/modules/songsArea/ColumnHeaderContextMenu.vue'
 import SongListHeader from '@renderer/pages/modules/songsArea/SongListHeader.vue'
 import SongListRows from '@renderer/pages/modules/songsArea/SongListRows.vue'
@@ -17,6 +18,7 @@ import descendingOrderAsset from '@renderer/assets/descending-order.svg?asset'
 import type {
   MixtapeEnvelopeParamId,
   MixtapeMuteSegment,
+  MixtapeStemProfile,
   MixtapeTrack,
   TimelineTrackLayout
 } from '@renderer/composables/mixtape/types'
@@ -28,6 +30,10 @@ const {
   mixtapeMenus,
   handleTitleOpenDialog,
   mixtapeRawItems,
+  mixtapeMixMode,
+  mixtapeStemMode,
+  mixtapeStemRealtimeProfile,
+  mixtapeStemExportProfile,
   tracks,
   laneIndices,
   laneHeight,
@@ -97,6 +103,9 @@ const {
   bpmAnalysisActive,
   bpmAnalysisFailed,
   bpmAnalysisFailedCount,
+  bpmAnalysisFailedAutoCloseSeconds,
+  dismissBpmAnalysisFailure,
+  retryBpmAnalysis,
   outputDialogVisible,
   outputPath,
   outputFormat,
@@ -106,6 +115,8 @@ const {
   outputProgressPercent,
   handleOutputDialogConfirm,
   handleOutputDialogCancel,
+  handleStemRealtimeProfileChange,
+  handleStemExportProfileChange,
   autoGainDialogVisible,
   autoGainReferenceTrackId,
   autoGainReferenceFeedback,
@@ -119,34 +130,111 @@ const {
   handleAutoGainSelectQuietestReference
 } = useMixtape()
 
-const mixParamOptions = [
-  {
-    id: 'position',
-    labelKey: 'mixtape.mixParamPosition'
-  },
-  {
-    id: 'gain',
-    labelKey: 'mixtape.mixParamGain'
-  },
-  {
-    id: 'high',
-    labelKey: 'mixtape.mixParamHigh'
-  },
-  {
-    id: 'mid',
-    labelKey: 'mixtape.mixParamMid'
-  },
-  {
-    id: 'low',
-    labelKey: 'mixtape.mixParamLow'
-  },
-  {
-    id: 'volume',
-    labelKey: 'mixtape.mixParamVolume'
-  }
-] as const
+type MixParamId =
+  | 'position'
+  | 'gain'
+  | 'high'
+  | 'mid'
+  | 'low'
+  | 'vocal'
+  | 'harmonic'
+  | 'bass'
+  | 'drums'
+  | 'volume'
+type MixParamOption = {
+  id: MixParamId
+  labelKey: string
+}
 
-type MixParamId = (typeof mixParamOptions)[number]['id']
+const STEM_PARAM_SET = new Set<MixParamId>(['vocal', 'harmonic', 'bass', 'drums'])
+const isStemMixMode = computed(() => mixtapeMixMode.value === 'stem')
+
+const mixParamOptions = computed<MixParamOption[]>(() => {
+  if (!isStemMixMode.value) {
+    return [
+      {
+        id: 'position',
+        labelKey: 'mixtape.mixParamPosition'
+      },
+      {
+        id: 'gain',
+        labelKey: 'mixtape.mixParamGain'
+      },
+      {
+        id: 'high',
+        labelKey: 'mixtape.mixParamHigh'
+      },
+      {
+        id: 'mid',
+        labelKey: 'mixtape.mixParamMid'
+      },
+      {
+        id: 'low',
+        labelKey: 'mixtape.mixParamLow'
+      },
+      {
+        id: 'volume',
+        labelKey: 'mixtape.mixParamVolume'
+      }
+    ]
+  }
+
+  const options: MixParamOption[] = [
+    {
+      id: 'position',
+      labelKey: 'mixtape.mixParamPosition'
+    },
+    {
+      id: 'gain',
+      labelKey: 'mixtape.mixParamGain'
+    },
+    {
+      id: 'vocal',
+      labelKey: 'mixtape.mixParamVocal'
+    },
+    {
+      id: 'harmonic',
+      labelKey: 'mixtape.mixParamHarmonic'
+    }
+  ]
+  if (mixtapeStemMode.value === '4stems') {
+    options.push({
+      id: 'bass',
+      labelKey: 'mixtape.mixParamBass'
+    })
+  }
+  options.push(
+    {
+      id: 'drums',
+      labelKey: 'mixtape.mixParamDrums'
+    },
+    {
+      id: 'volume',
+      labelKey: 'mixtape.mixParamVolume'
+    }
+  )
+  return options
+})
+
+const stemProfileOptions = computed(() => [
+  {
+    label: t('mixtape.stemProfileFastLabel'),
+    value: 'fast'
+  },
+  {
+    label: t('mixtape.stemProfileQualityLabel'),
+    value: 'quality'
+  }
+])
+
+const handleRealtimeProfileSelect = (value: unknown) => {
+  void handleStemRealtimeProfileChange(value as MixtapeStemProfile)
+}
+
+const handleExportProfileSelect = (value: unknown) => {
+  void handleStemExportProfileChange(value as MixtapeStemProfile)
+}
+
 type TrackTimingUndoSnapshot = {
   trackId: string
   startSec: number
@@ -160,11 +248,17 @@ const selectedMixParam = ref<MixParamId>('position')
 const isTrackPositionMode = computed(() => selectedMixParam.value === 'position')
 const isGainParamMode = computed(() => selectedMixParam.value === 'gain')
 const isVolumeParamMode = computed(() => selectedMixParam.value === 'volume')
+const isStemParamMode = computed(() => STEM_PARAM_SET.has(selectedMixParam.value))
 const isEnvelopeParamMode = computed(() => !isTrackPositionMode.value)
-const volumeMuteSelectionMode = ref(false)
+const isSegmentSelectionSupported = computed(() => isVolumeParamMode.value || isStemParamMode.value)
+const segmentSelectionMode = ref(false)
+const showEnvelopeCurve = computed(() => isEnvelopeParamMode.value && !isStemParamMode.value)
 const envelopeHintKey = computed(() => {
-  if (isVolumeParamMode.value && volumeMuteSelectionMode.value) {
+  if (isSegmentSelectionSupported.value && segmentSelectionMode.value) {
     return 'mixtape.segmentMuteHint'
+  }
+  if (isStemParamMode.value) {
+    return 'mixtape.stemSegmentHint'
   }
   return 'mixtape.envelopeEditHint'
 })
@@ -186,8 +280,15 @@ const {
 })
 
 watch(selectedMixParam, (nextParam) => {
-  if (nextParam !== 'volume') {
-    volumeMuteSelectionMode.value = false
+  if (nextParam === 'position' || nextParam === 'gain') {
+    segmentSelectionMode.value = false
+  }
+})
+
+watch(mixParamOptions, (nextOptions) => {
+  const availableIds = new Set(nextOptions.map((option) => option.id))
+  if (!availableIds.has(selectedMixParam.value)) {
+    selectedMixParam.value = 'position'
   }
 })
 
@@ -352,16 +453,16 @@ const {
   handleAutoGainSelectQuietestReference
 })
 
-const handleToggleVolumeMuteSelectionMode = () => {
-  if (!isVolumeParamMode.value) return
-  volumeMuteSelectionMode.value = !volumeMuteSelectionMode.value
+const handleToggleSegmentSelectionMode = () => {
+  if (!isSegmentSelectionSupported.value) return
+  segmentSelectionMode.value = !segmentSelectionMode.value
 }
 
 const envelopeEditable = computed(() => isEnvelopeParamMode.value)
 const {
   resolveActiveEnvelopePolyline,
   resolveActiveEnvelopePointDots,
-  resolveVolumeMuteSegmentMasks,
+  resolveActiveSegmentMasks,
   handleEnvelopePointMouseDown,
   handleEnvelopeStageMouseDown,
   handleEnvelopePointDoubleClick,
@@ -377,7 +478,7 @@ const {
   resolveTrackFirstBeatSeconds,
   resolveActiveParam: () =>
     isEnvelopeParamMode.value ? (selectedMixParam.value as MixtapeEnvelopeParamId) : null,
-  isVolumeMuteSelectionMode: () => isVolumeParamMode.value && volumeMuteSelectionMode.value,
+  isSegmentSelectionMode: () => isSegmentSelectionSupported.value && segmentSelectionMode.value,
   isEditable: () => envelopeEditable.value
 })
 
@@ -455,6 +556,28 @@ onBeforeUnmount(() => {
             {{ t(envelopeHintKey) }}
           </div>
           <div class="mixtape-param-bar__actions">
+            <div v-if="isStemMixMode" class="mixtape-param-bar__profile-group">
+              <span class="mixtape-param-bar__profile-label">{{
+                t('mixtape.stemRealtimeProfile')
+              }}</span>
+              <BaseSelect
+                :model-value="mixtapeStemRealtimeProfile"
+                :options="stemProfileOptions"
+                :width="128"
+                @change="handleRealtimeProfileSelect"
+              />
+            </div>
+            <div v-if="isStemMixMode" class="mixtape-param-bar__profile-group">
+              <span class="mixtape-param-bar__profile-label">{{
+                t('mixtape.stemExportProfile')
+              }}</span>
+              <BaseSelect
+                :model-value="mixtapeStemExportProfile"
+                :options="stemProfileOptions"
+                :width="128"
+                @change="handleExportProfileSelect"
+              />
+            </div>
             <button
               class="button mixtape-param-bar__action-btn mixtape-param-bar__action-btn--icon"
               type="button"
@@ -501,13 +624,13 @@ onBeforeUnmount(() => {
               {{ t('mixtape.autoGainAction') }}
             </button>
             <button
-              v-if="selectedMixParam === 'volume'"
+              v-if="isSegmentSelectionSupported"
               class="button mixtape-param-bar__action-btn"
-              :class="{ 'is-active': volumeMuteSelectionMode }"
+              :class="{ 'is-active': segmentSelectionMode }"
               type="button"
-              @click="handleToggleVolumeMuteSelectionMode"
+              @click="handleToggleSegmentSelectionMode"
             >
-              {{ t('mixtape.segmentMuteAction') }}
+              {{ t(isVolumeParamMode ? 'mixtape.segmentMuteAction' : 'mixtape.stemSegmentAction') }}
             </button>
           </div>
         </div>
@@ -629,7 +752,7 @@ onBeforeUnmount(() => {
                               >
                                 <line
                                   class="lane-track__envelope-midline"
-                                  :class="{ 'is-hidden': !isEnvelopeParamMode }"
+                                  :class="{ 'is-hidden': !showEnvelopeCurve }"
                                   x1="0"
                                   y1="50"
                                   x2="100"
@@ -637,13 +760,13 @@ onBeforeUnmount(() => {
                                 ></line>
                                 <polyline
                                   class="lane-track__envelope-line"
-                                  :class="{ 'is-hidden': !isEnvelopeParamMode }"
+                                  :class="{ 'is-hidden': !showEnvelopeCurve }"
                                   :points="resolveActiveEnvelopePolyline(item)"
                                 ></polyline>
                               </svg>
                               <div class="lane-track__mute-segments">
                                 <div
-                                  v-for="segment in resolveVolumeMuteSegmentMasks(item)"
+                                  v-for="segment in resolveActiveSegmentMasks(item)"
                                   :key="`mute-${item.track.id}-${segment.key}`"
                                   class="lane-track__mute-segment"
                                   :style="{
@@ -657,11 +780,16 @@ onBeforeUnmount(() => {
                                 class="lane-track__envelope-points"
                                 :class="{
                                   'is-segment-mute-mode':
-                                    isVolumeParamMode && volumeMuteSelectionMode
+                                    isSegmentSelectionSupported && segmentSelectionMode
                                 }"
                                 @mousedown.stop.prevent="handleEnvelopeStageMouseDown(item, $event)"
                               >
-                                <template v-if="!(isVolumeParamMode && volumeMuteSelectionMode)">
+                                <template
+                                  v-if="
+                                    showEnvelopeCurve &&
+                                    !(isVolumeParamMode && segmentSelectionMode)
+                                  "
+                                >
                                   <button
                                     v-for="point in resolveActiveEnvelopePointDots(item)"
                                     :key="`point-${item.track.id}-${point.index}`"
@@ -769,7 +897,7 @@ onBeforeUnmount(() => {
                         >
                           <div class="timeline-envelope-preview__mute-segments">
                             <div
-                              v-for="segment in resolveVolumeMuteSegmentMasks(item)"
+                              v-for="segment in resolveActiveSegmentMasks(item)"
                               :key="`envelope-preview-mute-${item.track.id}-${segment.key}`"
                               class="timeline-envelope-preview__mute-segment"
                               :style="{
@@ -864,6 +992,25 @@ onBeforeUnmount(() => {
         <div class="bpm-loading-title">{{ t('mixtape.bpmAnalyzeFailed') }}</div>
         <div class="bpm-loading-sub">
           {{ t('mixtape.bpmAnalyzeFailedHint', { count: bpmAnalysisFailedCount }) }}
+        </div>
+        <div class="bpm-loading-sub">
+          {{
+            t('mixtape.bpmAnalyzeFailedAutoCloseHint', {
+              seconds: bpmAnalysisFailedAutoCloseSeconds
+            })
+          }}
+        </div>
+        <div class="bpm-loading-actions">
+          <button class="button bpm-loading-action-btn" type="button" @click="retryBpmAnalysis">
+            {{ t('common.retry') }}
+          </button>
+          <button
+            class="button bpm-loading-action-btn"
+            type="button"
+            @click="dismissBpmAnalysisFailure"
+          >
+            {{ t('common.close') }}
+          </button>
         </div>
       </div>
     </div>

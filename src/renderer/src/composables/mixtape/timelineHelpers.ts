@@ -32,21 +32,34 @@ import {
   MIXTAPE_GAIN_KNOB_MIN_DB
 } from '@renderer/composables/mixtape/gainEnvelope'
 import { resolveRawWaveformLevel as resolveRawWaveformLevelByMap } from '@renderer/composables/mixtape/waveformPyramid'
+import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type {
   MinMaxSample,
+  MixtapeMixMode,
   MixtapeTrack,
+  MixtapeWaveformStemId,
   RawWaveformData,
+  StemWaveformData,
   TimelineLayoutSnapshot,
   TimelineTrackLayout,
   WaveformTile
 } from '@renderer/composables/mixtape/types'
-import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+
+type TrackWaveformSource = {
+  filePath: string
+  listRoot: string
+  laneIndex: number
+  laneCount: number
+  stemId: MixtapeWaveformStemId
+}
 
 export const createTimelineHelpersModule = (ctx: any) => {
   const {
     zoom,
     renderZoom,
     tracks,
+    mixtapeMixMode,
+    mixtapeStemMode,
     t,
     libraryUtils,
     waveformDataMap,
@@ -151,6 +164,36 @@ export const createTimelineHelpersModule = (ctx: any) => {
   const laneHeight = computed(() => resolveLaneHeightForZoom(normalizedRenderZoom.value))
 
   const laneIndices = Array.from({ length: LANE_COUNT }, (_, index) => index)
+  const STEM_IDS_3STEMS: MixtapeWaveformStemId[] = ['vocal', 'harmonic', 'drums']
+  const STEM_IDS_4STEMS: MixtapeWaveformStemId[] = ['vocal', 'harmonic', 'bass', 'drums']
+  const isStemMixMode = (): boolean =>
+    (mixtapeMixMode?.value as MixtapeMixMode | undefined) !== 'traditional'
+
+  const resolveWaveformStemIds = (): MixtapeWaveformStemId[] =>
+    mixtapeStemMode?.value === '4stems' ? STEM_IDS_4STEMS : STEM_IDS_3STEMS
+
+  const resolveTrackStemFilePath = (track: MixtapeTrack, stemId: MixtapeWaveformStemId): string => {
+    if (stemId === 'vocal') return String(track.stemVocalPath || '').trim()
+    if (stemId === 'harmonic') return String(track.stemHarmonicPath || '').trim()
+    if (stemId === 'bass') return String(track.stemBassPath || '').trim()
+    return String(track.stemDrumsPath || '').trim()
+  }
+
+  const resolveWaveformSubLaneMetrics = (
+    laneHeightValue: number,
+    laneIndexValue: number,
+    laneCountValue: number
+  ) => {
+    const safeHeight = Math.max(1, Math.round(Number(laneHeightValue) || 0))
+    const safeCount = Math.max(1, Math.floor(Number(laneCountValue) || 1))
+    const safeIndex = Math.max(0, Math.min(safeCount - 1, Math.floor(Number(laneIndexValue) || 0)))
+    const start = Math.floor((safeHeight * safeIndex) / safeCount)
+    const end = Math.floor((safeHeight * (safeIndex + 1)) / safeCount)
+    return {
+      offset: start,
+      height: Math.max(1, end - start)
+    }
+  }
 
   const resolveTrackTitle = (track: MixtapeTrack) => {
     const title = String(track?.title || '').trim()
@@ -218,9 +261,16 @@ export const createTimelineHelpersModule = (ctx: any) => {
   }
 
   const resolveTrackSourceDurationSeconds = (track: MixtapeTrack) => {
-    const data = waveformDataMap.get(track.filePath) || null
-    if (data && Number.isFinite(data.duration) && data.duration > 0) {
-      return data.duration
+    const candidateFilePaths = isStemMixMode()
+      ? resolveWaveformStemIds()
+          .map((stemId) => resolveTrackStemFilePath(track, stemId))
+          .filter(Boolean)
+      : [String(track.filePath || '').trim()].filter(Boolean)
+    for (const filePath of candidateFilePaths) {
+      const data = waveformDataMap.get(filePath) || null
+      if (data && Number.isFinite(data.duration) && data.duration > 0) {
+        return data.duration
+      }
     }
     return parseDurationToSeconds(track.duration)
   }
@@ -461,19 +511,64 @@ export const createTimelineHelpersModule = (ctx: any) => {
     return libraryUtils.findDirPathByUuid(originUuid) || ''
   }
 
+  const resolveTrackWaveformSources = (track: MixtapeTrack): TrackWaveformSource[] => {
+    const listRoot = resolveWaveformListRoot(track)
+    if (!isStemMixMode()) {
+      const filePath = String(track.filePath || '').trim()
+      if (!filePath) return []
+      return [
+        {
+          filePath,
+          listRoot,
+          laneIndex: 0,
+          laneCount: 1,
+          stemId: 'harmonic'
+        }
+      ]
+    }
+    const stemIds = resolveWaveformStemIds()
+    const stemSources: Array<{ stemId: MixtapeWaveformStemId; filePath: string }> = []
+    for (const stemId of stemIds) {
+      const filePath = resolveTrackStemFilePath(track, stemId)
+      if (!filePath) return []
+      stemSources.push({ stemId, filePath })
+    }
+    const laneCount = stemSources.length
+    return stemSources.map((item, laneIndex) => ({
+      filePath: item.filePath,
+      listRoot,
+      laneIndex,
+      laneCount,
+      stemId: item.stemId
+    }))
+  }
+
+  const resolveTrackWaveformFilePaths = (track: MixtapeTrack) =>
+    Array.from(new Set(resolveTrackWaveformSources(track).map((item) => item.filePath)))
+
   const isWaveformReady = (track: MixtapeTrack) => {
-    const filePath = track.filePath
-    if (!filePath) return false
-    if (waveformInflight.has(filePath)) return false
-    return Boolean(waveformDataMap.get(filePath))
+    const sources = resolveTrackWaveformSources(track)
+    if (!sources.length) return false
+    for (const source of sources) {
+      const filePath = source.filePath
+      if (!filePath) return false
+      if (waveformInflight.has(filePath)) return false
+      if (!waveformDataMap.get(filePath)) return false
+    }
+    return true
   }
 
   const isRawWaveformLoading = (track: MixtapeTrack) => {
     if (!useRawWaveform.value) return false
-    const filePath = track.filePath
-    if (!filePath) return false
-    if (rawWaveformInflight.has(filePath)) return true
-    return !rawWaveformDataMap.has(filePath)
+    const sources = resolveTrackWaveformSources(track)
+    if (!sources.length) return false
+    for (const source of sources) {
+      const filePath = source.filePath
+      if (!filePath) continue
+      if (rawWaveformInflight.has(filePath)) return true
+      if (!rawWaveformDataMap.has(filePath)) return true
+    }
+    return false
   }
 
   const resolveWaveformTitle = (track: MixtapeTrack) => {
@@ -499,7 +594,23 @@ export const createTimelineHelpersModule = (ctx: any) => {
     return maxEnd
   }
 
-  const buildMinMaxDataFromMixxx = (waveformData: MixxxWaveformData): MinMaxSample[] => {
+  const buildMinMaxDataFromStemWaveform = (waveformData: StemWaveformData): MinMaxSample[] => {
+    const all = waveformData.all
+    const frameCount = Math.min(all.left.length, all.right.length)
+    if (!frameCount) return []
+
+    const samples = new Array<MinMaxSample>(frameCount)
+    for (let i = 0; i < frameCount; i += 1) {
+      const leftPeak = all.peakLeft ? all.peakLeft[i] : all.left[i]
+      const rightPeak = all.peakRight ? all.peakRight[i] : all.right[i]
+      const leftAmp = Math.min(1, leftPeak / 255)
+      const rightAmp = Math.min(1, rightPeak / 255)
+      samples[i] = { min: -rightAmp, max: leftAmp }
+    }
+    return samples
+  }
+
+  const buildMinMaxDataFromMixxxWaveform = (waveformData: MixxxWaveformData): MinMaxSample[] => {
     const low = waveformData.bands.low
     const mid = waveformData.bands.mid
     const high = waveformData.bands.high
@@ -521,7 +632,6 @@ export const createTimelineHelpersModule = (ctx: any) => {
       const midRight = mid.peakRight ? mid.peakRight[i] : mid.right[i]
       const highLeft = high.peakLeft ? high.peakLeft[i] : high.left[i]
       const highRight = high.peakRight ? high.peakRight[i] : high.right[i]
-
       const leftEnergy = Math.sqrt(lowLeft * lowLeft + midLeft * midLeft + highLeft * highLeft)
       const rightEnergy = Math.sqrt(
         lowRight * lowRight + midRight * midRight + highRight * highRight
@@ -533,42 +643,69 @@ export const createTimelineHelpersModule = (ctx: any) => {
     return samples
   }
 
-  const isValidWaveformData = (data: MixxxWaveformData | null): data is MixxxWaveformData => {
-    if (!data) return false
-    const low = data.bands?.low
-    const mid = data.bands?.mid
-    const high = data.bands?.high
-    if (!low || !mid || !high) return false
+  const isValidStemWaveformData = (data: unknown): data is StemWaveformData => {
+    if (!data || typeof data !== 'object') return false
+    const all = (data as StemWaveformData).all
+    if (!all) return false
+    const frameCount =
+      all.left?.length || all.right?.length || all.peakLeft?.length || all.peakRight?.length || 0
+    if (!frameCount) return false
+    const isMatch = (arr?: Uint8Array) => (arr ? arr.length === frameCount : true)
+    return (
+      isMatch(all.left) && isMatch(all.right) && isMatch(all.peakLeft) && isMatch(all.peakRight)
+    )
+  }
 
+  const isValidMixxxWaveformData = (data: unknown): data is MixxxWaveformData => {
+    if (!data || typeof data !== 'object') return false
+    const bands = (data as MixxxWaveformData).bands
+    const low = bands?.low
+    const mid = bands?.mid
+    const high = bands?.high
+    const all = bands?.all
+    if (!low || !mid || !high || !all) return false
     const frameCount =
       low.left?.length || low.right?.length || low.peakLeft?.length || low.peakRight?.length || 0
     if (!frameCount) return false
-
     const isMatch = (arr?: Uint8Array) => (arr ? arr.length === frameCount : true)
-    if (
-      !isMatch(low.left) ||
-      !isMatch(low.right) ||
-      !isMatch(low.peakLeft) ||
-      !isMatch(low.peakRight) ||
-      !isMatch(mid.left) ||
-      !isMatch(mid.right) ||
-      !isMatch(mid.peakLeft) ||
-      !isMatch(mid.peakRight) ||
-      !isMatch(high.left) ||
-      !isMatch(high.right) ||
-      !isMatch(high.peakLeft) ||
-      !isMatch(high.peakRight)
-    ) {
-      return false
-    }
-
-    return true
+    return (
+      isMatch(low.left) &&
+      isMatch(low.right) &&
+      isMatch(low.peakLeft) &&
+      isMatch(low.peakRight) &&
+      isMatch(mid.left) &&
+      isMatch(mid.right) &&
+      isMatch(mid.peakLeft) &&
+      isMatch(mid.peakRight) &&
+      isMatch(high.left) &&
+      isMatch(high.right) &&
+      isMatch(high.peakLeft) &&
+      isMatch(high.peakRight) &&
+      isMatch(all.left) &&
+      isMatch(all.right) &&
+      isMatch(all.peakLeft) &&
+      isMatch(all.peakRight)
+    )
   }
 
-  const getMinMaxSamples = (filePath: string, data: MixxxWaveformData): MinMaxSample[] => {
+  const isValidWaveformData = (
+    data: StemWaveformData | MixxxWaveformData | null
+  ): data is StemWaveformData | MixxxWaveformData => {
+    if (!data) return false
+    if (isValidStemWaveformData(data)) return true
+    if (isValidMixxxWaveformData(data)) return true
+    return false
+  }
+
+  const getMinMaxSamples = (
+    filePath: string,
+    data: StemWaveformData | MixxxWaveformData
+  ): MinMaxSample[] => {
     const cached = waveformMinMaxCache.get(filePath)
     if (cached && cached.source === data) return cached.samples
-    const samples = buildMinMaxDataFromMixxx(data)
+    const samples = isValidStemWaveformData(data)
+      ? buildMinMaxDataFromStemWaveform(data)
+      : buildMinMaxDataFromMixxxWaveform(data)
     waveformMinMaxCache.set(filePath, { source: data, samples })
     return samples
   }
@@ -638,6 +775,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
 
   const buildWaveformTileCacheKey = (
     filePath: string,
+    stemId: MixtapeWaveformStemId,
     tileIndex: number,
     zoomValue: number,
     width: number,
@@ -647,7 +785,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
     const zoomKey = Math.round(zoomValue * 1000)
     const ratioKey = Math.round(pixelRatio * 100)
     const waveformHeightScaleKey = Math.round(MIXTAPE_WAVEFORM_HEIGHT_SCALE * 1000)
-    return `${filePath}::${tileIndex}::${zoomKey}::${width}x${height}@${ratioKey}::h${waveformHeightScaleKey}`
+    return `${filePath}::${stemId}::${tileIndex}::${zoomKey}::${width}x${height}@${ratioKey}::h${waveformHeightScaleKey}`
   }
 
   const touchWaveformTileCache = (key: string) => {
@@ -738,11 +876,14 @@ export const createTimelineHelpersModule = (ctx: any) => {
     resolveTrackTilesForWidth,
     drawTrackGridLines,
     resolveWaveformListRoot,
+    resolveTrackWaveformSources,
+    resolveTrackWaveformFilePaths,
+    resolveWaveformSubLaneMetrics,
     isWaveformReady,
     isRawWaveformLoading,
     resolveWaveformTitle,
     computeTimelineDuration,
-    buildMinMaxDataFromMixxx,
+    buildMinMaxDataFromStemWaveform,
     isValidWaveformData,
     getMinMaxSamples,
     decodeRawFloatArray,

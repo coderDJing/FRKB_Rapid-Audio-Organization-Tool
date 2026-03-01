@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import {
   MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM,
+  MIXTAPE_STEM_SEGMENT_PARAMS,
   buildMixEnvelopePolylineByControlPoints,
   clampMixEnvelopeGain,
   mapMixEnvelopeGainToYPercent,
@@ -32,9 +33,9 @@ import type {
   EnvelopeDragState,
   EnvelopePointDot,
   EnvelopeUndoSeed,
+  MixSegmentMask,
   MixParamUndoEntry,
-  VolumeMuteSegmentMask,
-  VolumeMuteSelectionState
+  SegmentSelectionState
 } from '@renderer/composables/mixtape/gainEnvelopeEditorTypes'
 import type {
   MixtapeEnvelopeParamId,
@@ -45,6 +46,11 @@ import type {
 } from '@renderer/composables/mixtape/types'
 
 export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelopeEditorParams) => {
+  const stemSegmentParamSet = new Set<MixtapeEnvelopeParamId>(MIXTAPE_STEM_SEGMENT_PARAMS)
+  const segmentModeParamSet = new Set<MixtapeEnvelopeParamId>([
+    ...MIXTAPE_STEM_SEGMENT_PARAMS,
+    'volume'
+  ])
   const pendingMixEnvelopePersist = new Map<
     string,
     {
@@ -55,7 +61,7 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
   >()
   const pendingVolumeMutePersist = new Map<string, Array<{ startSec: number; endSec: number }>>()
   const envelopeDragState = ref<EnvelopeDragState | null>(null)
-  const volumeMuteSelectionState = ref<VolumeMuteSelectionState | null>(null)
+  const segmentSelectionState = ref<SegmentSelectionState | null>(null)
   const undoStack = ref<MixParamUndoEntry[]>([])
   const canUndoMixParam = computed(() => undoStack.value.length > 0)
   const envelopeUndoSeed = ref<EnvelopeUndoSeed | null>(null)
@@ -64,6 +70,8 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
   let volumeMutePersistTimer: ReturnType<typeof setTimeout> | null = null
 
   const resolveCurrentParam = () => params.resolveActiveParam()
+  const isStemSegmentParam = (param: MixtapeEnvelopeParamId) => stemSegmentParamSet.has(param)
+  const isSegmentModeParam = (param: MixtapeEnvelopeParamId) => segmentModeParamSet.has(param)
   const resolveRenderZoom = () => Number(params.renderZoomLevel.value) || 0
   const resolveTrackFirstBeatSec = (track: MixtapeTrack) =>
     Math.max(0, Number(params.resolveTrackFirstBeatSeconds(track)) || 0)
@@ -160,6 +168,127 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
     }
   }
 
+  const STEM_SEGMENT_MUTE_GAIN = 0.0001
+  const STEM_SEGMENT_ACTIVE_GAIN = 1
+  const STEM_SEGMENT_MUTE_THRESHOLD = 0.5
+
+  const buildStemEnvelopeBySegments = (
+    param: MixtapeEnvelopeParamId,
+    durationSec: number,
+    segments: MixtapeMuteSegment[]
+  ): MixtapeGainPoint[] => {
+    const safeDuration = Math.max(0, Number(durationSec) || 0)
+    if (!safeDuration) {
+      return normalizeMixEnvelopePoints(param, [{ sec: 0, gain: STEM_SEGMENT_ACTIVE_GAIN }], 0)
+    }
+    const epsilon = 0.0001
+    const events = segments
+      .flatMap((segment) => {
+        const safeStart = clampNumber(Number(segment.startSec) || 0, 0, safeDuration)
+        const safeEnd = clampNumber(Number(segment.endSec) || 0, 0, safeDuration)
+        if (safeEnd - safeStart <= epsilon) return []
+        return [
+          { sec: Number(safeStart.toFixed(4)), delta: 1 },
+          { sec: Number(safeEnd.toFixed(4)), delta: -1 }
+        ]
+      })
+      .sort((left, right) => {
+        if (Math.abs(left.sec - right.sec) > epsilon) return left.sec - right.sec
+        return right.delta - left.delta
+      })
+
+    let cursor = 0
+    let depth = 0
+    while (cursor < events.length && events[cursor].sec <= epsilon) {
+      depth = Math.max(0, depth + events[cursor].delta)
+      cursor += 1
+    }
+
+    const points: MixtapeGainPoint[] = [
+      { sec: 0, gain: depth > 0 ? STEM_SEGMENT_MUTE_GAIN : STEM_SEGMENT_ACTIVE_GAIN }
+    ]
+
+    while (cursor < events.length) {
+      const sec = events[cursor].sec
+      if (sec >= safeDuration - epsilon) break
+      const beforeGain = depth > 0 ? STEM_SEGMENT_MUTE_GAIN : STEM_SEGMENT_ACTIVE_GAIN
+      const last = points[points.length - 1]
+      if (
+        !last ||
+        Math.abs(last.sec - sec) > epsilon ||
+        Math.abs(last.gain - beforeGain) > epsilon
+      ) {
+        points.push({ sec: Number(sec.toFixed(4)), gain: beforeGain })
+      }
+      while (cursor < events.length && Math.abs(events[cursor].sec - sec) <= epsilon) {
+        depth = Math.max(0, depth + events[cursor].delta)
+        cursor += 1
+      }
+      const afterGain = depth > 0 ? STEM_SEGMENT_MUTE_GAIN : STEM_SEGMENT_ACTIVE_GAIN
+      if (Math.abs(afterGain - beforeGain) > epsilon) {
+        points.push({ sec: Number(sec.toFixed(4)), gain: afterGain })
+      }
+    }
+
+    const tailGain = depth > 0 ? STEM_SEGMENT_MUTE_GAIN : STEM_SEGMENT_ACTIVE_GAIN
+    points.push({
+      sec: Number(safeDuration.toFixed(4)),
+      gain: tailGain
+    })
+    return normalizeMixEnvelopePoints(param, points, safeDuration)
+  }
+
+  const resolveTrackStemSegmentState = (trackId: string, param: MixtapeEnvelopeParamId) => {
+    const envelopeState = resolveTrackEnvelopeState(trackId, param)
+    const { track, durationSec, points } = envelopeState
+    if (!track || !durationSec) {
+      return {
+        track: null,
+        durationSec: 0,
+        segments: [] as MixtapeMuteSegment[]
+      }
+    }
+    if (!isStemSegmentParam(param)) {
+      return {
+        track,
+        durationSec,
+        segments: [] as MixtapeMuteSegment[]
+      }
+    }
+    const grid = resolveVolumeMuteGrid(track, durationSec)
+    if (!grid) {
+      return {
+        track,
+        durationSec,
+        segments: [] as MixtapeMuteSegment[]
+      }
+    }
+    const epsilon = 0.0001
+    const maxSelectableSec = Math.max(0, durationSec - epsilon)
+    const startIndex = Math.floor((0 - grid.baseSec) / grid.stepSec)
+    const endIndex = Math.floor((maxSelectableSec - grid.baseSec) / grid.stepSec)
+    const mutedSegments: MixtapeMuteSegment[] = []
+    for (let index = startIndex; index <= endIndex; index += 1) {
+      const centerSec = grid.baseSec + (index + 0.5) * grid.stepSec
+      const segment = resolveVolumeMuteSegmentBySec({
+        track,
+        durationSec,
+        sec: centerSec
+      })
+      if (!segment) continue
+      const sampleSec = Number(((segment.startSec + segment.endSec) / 2).toFixed(4))
+      const gain = sampleMixEnvelopeAtSec(param, points, sampleSec, STEM_SEGMENT_ACTIVE_GAIN)
+      if (gain > STEM_SEGMENT_MUTE_THRESHOLD) continue
+      mutedSegments.push(segment)
+    }
+    const segments = resolveGridAlignedVolumeMuteSegments(track, durationSec, mutedSegments)
+    return {
+      track,
+      durationSec,
+      segments
+    }
+  }
+
   const cloneGainPoints = (points: MixtapeGainPoint[]) =>
     points.map((point) => ({
       sec: Number(point.sec),
@@ -214,15 +343,24 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
     })
   }
 
-  const pushVolumeMuteUndoEntry = (trackId: string, baseSegments: MixtapeMuteSegment[]) => {
+  const pushSegmentUndoEntry = (
+    trackId: string,
+    param: MixtapeEnvelopeParamId,
+    baseSegments: MixtapeMuteSegment[]
+  ) => {
     if (isApplyingUndo) return
-    const { track, segments } = resolveTrackVolumeMuteState(trackId)
+    const segmentState =
+      param === 'volume'
+        ? resolveTrackVolumeMuteState(trackId)
+        : resolveTrackStemSegmentState(trackId, param)
+    const { track, segments } = segmentState
     if (!track) return
     const normalizedBase = cloneMuteSegments(baseSegments)
     if (JSON.stringify(normalizedBase) === JSON.stringify(segments)) return
     pushUndoEntry({
-      type: 'volumeMute',
+      type: 'segment',
       trackId: track.id,
+      param,
       segments: normalizedBase
     })
   }
@@ -230,6 +368,7 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
   const resolveActiveEnvelopePolyline = (item: TimelineTrackLayout) => {
     const param = resolveCurrentParam()
     if (!param) return ''
+    if (isStemSegmentParam(param)) return ''
     const { track, durationSec, points } = resolveTrackEnvelopeState(item.track.id, param)
     if (!track || !durationSec || points.length < 2) return ''
     return buildMixEnvelopePolylineByControlPoints({
@@ -242,6 +381,7 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
   const resolveActiveEnvelopePointDots = (item: TimelineTrackLayout): EnvelopePointDot[] => {
     const param = resolveCurrentParam()
     if (!param) return []
+    if (isStemSegmentParam(param)) return []
     const { durationSec, points } = resolveTrackEnvelopeState(item.track.id, param)
     if (!durationSec || points.length < 2) return []
     return points.map((point, index) => ({
@@ -252,8 +392,13 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
     }))
   }
 
-  const resolveVolumeMuteSegmentMasks = (item: TimelineTrackLayout): VolumeMuteSegmentMask[] => {
-    const { durationSec, segments } = resolveTrackVolumeMuteState(item.track.id)
+  const resolveActiveSegmentMasks = (item: TimelineTrackLayout): MixSegmentMask[] => {
+    const param = resolveCurrentParam()
+    if (!param || !isSegmentModeParam(param)) return []
+    const { durationSec, segments } =
+      param === 'volume'
+        ? resolveTrackVolumeMuteState(item.track.id)
+        : resolveTrackStemSegmentState(item.track.id, param)
     return resolveVolumeMuteSegmentMasksByUtils(durationSec, segments)
   }
 
@@ -401,6 +546,30 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
     }
   }
 
+  const updateTrackStemSegmentEnvelope = (
+    param: MixtapeEnvelopeParamId,
+    trackId: string,
+    nextSegments: MixtapeMuteSegment[]
+  ) => {
+    if (!isStemSegmentParam(param)) return
+    const {
+      track,
+      durationSec,
+      segments: currentSegments
+    } = resolveTrackStemSegmentState(trackId, param)
+    if (!track || !durationSec) return
+    const normalizedSegments = resolveGridAlignedVolumeMuteSegments(
+      track,
+      durationSec,
+      nextSegments
+    )
+    const currentSignature = JSON.stringify(currentSegments)
+    const nextSignature = JSON.stringify(normalizedSegments)
+    if (currentSignature === nextSignature) return
+    const nextEnvelope = buildStemEnvelopeBySegments(param, durationSec, normalizedSegments)
+    updateTrackMixEnvelope(param, track.id, nextEnvelope)
+  }
+
   const updateTrackMixEnvelope = (
     param: MixtapeEnvelopeParamId,
     trackId: string,
@@ -451,27 +620,48 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
     window.removeEventListener('mouseup', handleEnvelopePointDragEnd)
   }
 
-  function stopVolumeMuteSelection() {
-    volumeMuteSelectionState.value = null
-    window.removeEventListener('mousemove', handleVolumeMuteSelectionMove)
-    window.removeEventListener('mouseup', handleVolumeMuteSelectionEnd)
+  function stopSegmentSelection() {
+    segmentSelectionState.value = null
+    window.removeEventListener('mousemove', handleSegmentSelectionMove)
+    window.removeEventListener('mouseup', handleSegmentSelectionEnd)
   }
 
-  function applyVolumeMuteSelectionToggle(state: VolumeMuteSelectionState) {
+  const resolveTrackSegmentState = (trackId: string, param: MixtapeEnvelopeParamId) =>
+    param === 'volume'
+      ? resolveTrackVolumeMuteState(trackId)
+      : resolveTrackStemSegmentState(trackId, param)
+
+  const updateTrackSegmentByParam = (
+    param: MixtapeEnvelopeParamId,
+    trackId: string,
+    nextSegments: MixtapeMuteSegment[],
+    options?: {
+      persist?: boolean
+      forcePersist?: boolean
+    }
+  ) => {
+    if (param === 'volume') {
+      updateTrackVolumeMuteSegments(trackId, nextSegments, options)
+      return
+    }
+    updateTrackStemSegmentEnvelope(param, trackId, nextSegments)
+  }
+
+  function applySegmentSelectionToggle(state: SegmentSelectionState) {
     if (!state.touched.size) return
-    const { track } = resolveTrackVolumeMuteState(state.trackId)
+    const { track } = resolveTrackSegmentState(state.trackId, state.param)
     if (!track) return
     const nextSegments = resolveVolumeMuteSegmentsByToggle(state.baseSegments, state.touched)
-    updateTrackVolumeMuteSegments(track.id, nextSegments, {
+    updateTrackSegmentByParam(state.param, track.id, nextSegments, {
       forcePersist: true
     })
   }
 
-  function handleVolumeMuteSelectionMove(event: MouseEvent) {
-    const state = volumeMuteSelectionState.value
+  function handleSegmentSelectionMove(event: MouseEvent) {
+    const state = segmentSelectionState.value
     if (!state) return
     event.preventDefault()
-    const { track, durationSec } = resolveTrackVolumeMuteState(state.trackId)
+    const { track, durationSec } = resolveTrackSegmentState(state.trackId, state.param)
     if (!track || !durationSec) return
     const grid = resolveVolumeMuteGrid(track, durationSec)
     if (!grid) return
@@ -491,7 +681,7 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
     if (!previousSegment) {
       state.touched.set(resolveVolumeMuteSegmentKey(currentSegment), currentSegment)
       const nextSegments = resolveVolumeMuteSegmentsByToggle(state.baseSegments, state.touched)
-      updateTrackVolumeMuteSegments(track.id, nextSegments, {
+      updateTrackSegmentByParam(state.param, track.id, nextSegments, {
         persist: false
       })
       state.lastSec = pointerSec
@@ -512,45 +702,51 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
       state.touched.set(resolveVolumeMuteSegmentKey(segment), segment)
     }
     const nextSegments = resolveVolumeMuteSegmentsByToggle(state.baseSegments, state.touched)
-    updateTrackVolumeMuteSegments(track.id, nextSegments, {
+    updateTrackSegmentByParam(state.param, track.id, nextSegments, {
       persist: false
     })
     state.lastSec = pointerSec
   }
 
-  function handleVolumeMuteSelectionEnd() {
-    const state = volumeMuteSelectionState.value
+  function handleSegmentSelectionEnd() {
+    const state = segmentSelectionState.value
     if (!state) return
     const baseSegments = cloneMuteSegments(state.baseSegments)
-    stopVolumeMuteSelection()
-    applyVolumeMuteSelectionToggle(state)
-    pushVolumeMuteUndoEntry(state.trackId, baseSegments)
-    void flushPendingVolumeMutePersist()
+    stopSegmentSelection()
+    applySegmentSelectionToggle(state)
+    pushSegmentUndoEntry(state.trackId, state.param, baseSegments)
+    if (state.param === 'volume') {
+      void flushPendingVolumeMutePersist()
+    } else {
+      void flushPendingMixEnvelopePersist()
+    }
   }
 
-  function startVolumeMuteSelection(
+  function startSegmentSelection(
+    param: MixtapeEnvelopeParamId,
     trackId: string,
     stageEl: HTMLElement,
     seed: MixtapeMuteSegment
   ) {
-    stopVolumeMuteSelection()
-    const { track, segments } = resolveTrackVolumeMuteState(trackId)
+    stopSegmentSelection()
+    const { track, segments } = resolveTrackSegmentState(trackId, param)
     if (!track) return
     const touched = new Map<string, MixtapeMuteSegment>()
     touched.set(resolveVolumeMuteSegmentKey(seed), seed)
     const nextSegments = resolveVolumeMuteSegmentsByToggle(segments, touched)
-    updateTrackVolumeMuteSegments(track.id, nextSegments, {
+    updateTrackSegmentByParam(param, track.id, nextSegments, {
       persist: false
     })
-    volumeMuteSelectionState.value = {
+    segmentSelectionState.value = {
+      param,
       trackId,
       stageEl,
       baseSegments: segments.map((segment) => ({ ...segment })),
       touched,
       lastSec: Number(((seed.startSec + seed.endSec) / 2).toFixed(4))
     }
-    window.addEventListener('mousemove', handleVolumeMuteSelectionMove)
-    window.addEventListener('mouseup', handleVolumeMuteSelectionEnd)
+    window.addEventListener('mousemove', handleSegmentSelectionMove)
+    window.addEventListener('mouseup', handleSegmentSelectionEnd)
   }
 
   function handleEnvelopePointDragMove(event: MouseEvent) {
@@ -645,7 +841,8 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
   ) => {
     const param = resolveCurrentParam()
     if (!params.isEditable() || !param || event.button !== 0) return
-    if (param === 'volume' && params.isVolumeMuteSelectionMode()) return
+    if (isStemSegmentParam(param)) return
+    if (param === 'volume' && params.isSegmentSelectionMode()) return
     const currentTarget = event.currentTarget as HTMLElement | null
     const stageEl = currentTarget?.closest('.lane-track__envelope-points') as HTMLElement | null
     if (!stageEl) return
@@ -657,8 +854,8 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
     if (!params.isEditable() || !param || event.button !== 0) return
     const stageEl = event.currentTarget as HTMLElement | null
     if (!stageEl) return
-    if (param === 'volume' && params.isVolumeMuteSelectionMode()) {
-      const { track, durationSec } = resolveTrackVolumeMuteState(item.track.id)
+    if (isSegmentModeParam(param) && params.isSegmentSelectionMode()) {
+      const { track, durationSec } = resolveTrackSegmentState(item.track.id, param)
       if (!track || !durationSec) return
       const pointerSec = resolveVolumeMutePointerSec(stageEl, event, durationSec)
       if (typeof pointerSec !== 'number') return
@@ -668,9 +865,10 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
         sec: pointerSec
       })
       if (!segment) return
-      startVolumeMuteSelection(track.id, stageEl, segment)
+      startSegmentSelection(param, track.id, stageEl, segment)
       return
     }
+    if (isStemSegmentParam(param)) return
     beginEnvelopeUndoSeed(param, item.track.id)
     const { track, durationSec, points } = resolveTrackEnvelopeState(item.track.id, param)
     if (!track || !durationSec || points.length < 2) return
@@ -836,6 +1034,7 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
   const handleEnvelopePointDoubleClick = (item: TimelineTrackLayout, pointIndex: number) => {
     const param = resolveCurrentParam()
     if (!params.isEditable() || !param) return
+    if (isStemSegmentParam(param)) return
     beginEnvelopeUndoSeed(param, item.track.id)
     removeTrackEnvelopePoint(param, item.track.id, pointIndex)
     commitEnvelopeUndoSeed()
@@ -863,29 +1062,42 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
     return true
   }
 
-  const restoreVolumeMuteUndoEntry = (
-    entry: Extract<MixParamUndoEntry, { type: 'volumeMute' }>
-  ) => {
-    const { track, durationSec, segments } = resolveTrackVolumeMuteState(entry.trackId)
+  const restoreSegmentUndoEntry = (entry: Extract<MixParamUndoEntry, { type: 'segment' }>) => {
+    const { track, durationSec, segments } = resolveTrackSegmentState(entry.trackId, entry.param)
     if (!track || !durationSec) return false
     const normalized = resolveGridAlignedVolumeMuteSegments(track, durationSec, entry.segments)
     if (JSON.stringify(segments) === JSON.stringify(normalized)) return false
+    if (entry.param === 'volume') {
+      params.tracks.value = params.tracks.value.map((item) =>
+        item.id === track.id
+          ? ({
+              ...item,
+              volumeMuteSegments: normalized
+            } as MixtapeTrack)
+          : item
+      )
+      scheduleVolumeMuteSegmentsPersist(track.id, normalized)
+      void flushPendingVolumeMutePersist()
+      return true
+    }
+    const nextEnvelope = buildStemEnvelopeBySegments(entry.param, durationSec, normalized)
+    const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[entry.param]
     params.tracks.value = params.tracks.value.map((item) =>
       item.id === track.id
         ? ({
             ...item,
-            volumeMuteSegments: normalized
+            [envelopeField]: nextEnvelope
           } as MixtapeTrack)
         : item
     )
-    scheduleVolumeMuteSegmentsPersist(track.id, normalized)
-    void flushPendingVolumeMutePersist()
+    scheduleMixEnvelopePersist(entry.param, track.id, nextEnvelope)
+    void flushPendingMixEnvelopePersist()
     return true
   }
 
   const undoLastMixParamChange = () => {
     stopEnvelopePointDrag()
-    stopVolumeMuteSelection()
+    stopSegmentSelection()
     envelopeUndoSeed.value = null
     while (undoStack.value.length > 0) {
       const entry = undoStack.value.pop()
@@ -894,8 +1106,8 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
       try {
         if (entry.type === 'envelope') {
           if (restoreEnvelopeUndoEntry(entry)) return true
-        } else if (entry.type === 'volumeMute') {
-          if (restoreVolumeMuteUndoEntry(entry)) return true
+        } else if (entry.type === 'segment') {
+          if (restoreSegmentUndoEntry(entry)) return true
         } else if (entry.undo()) {
           return true
         }
@@ -908,7 +1120,7 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
 
   const cleanupGainEnvelopeEditor = () => {
     stopEnvelopePointDrag()
-    stopVolumeMuteSelection()
+    stopSegmentSelection()
     envelopeUndoSeed.value = null
     undoStack.value = []
     void flushPendingMixEnvelopePersist()
@@ -918,7 +1130,7 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
   return {
     resolveActiveEnvelopePolyline,
     resolveActiveEnvelopePointDots,
-    resolveVolumeMuteSegmentMasks,
+    resolveActiveSegmentMasks,
     handleEnvelopePointMouseDown,
     handleEnvelopeStageMouseDown,
     handleEnvelopePointDoubleClick,

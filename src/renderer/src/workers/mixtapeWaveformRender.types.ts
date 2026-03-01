@@ -1,20 +1,18 @@
-export type MixxxWaveformBand = {
+export type StemWaveformBand = {
   left: Uint8Array
   right: Uint8Array
-  peakLeft?: Uint8Array
-  peakRight?: Uint8Array
+  peakLeft: Uint8Array
+  peakRight: Uint8Array
 }
 
-export type MixxxWaveformData = {
+export type StemWaveformData = {
   sampleRate: number
+  duration: number
   step: number
-  bands: {
-    low: MixxxWaveformBand
-    mid: MixxxWaveformBand
-    high: MixxxWaveformBand
-    all: MixxxWaveformBand
-  }
+  all: StemWaveformBand
 }
+
+export type WaveformStemId = 'vocal' | 'harmonic' | 'bass' | 'drums'
 
 export type RawWaveformData = {
   duration: number
@@ -34,6 +32,7 @@ export type RawWaveformLevel = RawWaveformData & {
 export type RenderTilePayload = {
   cacheKey: string
   filePath: string
+  stemId: WaveformStemId
   zoom: number
   tileIndex: number
   tileStart: number
@@ -51,11 +50,15 @@ export type PreRenderPayload = {
 export type RenderFrameTrack = {
   id: string
   filePath: string
+  waveformFilePath?: string
+  waveformStemId: WaveformStemId
   durationSeconds: number
   trackWidth: number
   startSec: number
   startX: number
   laneIndex: number
+  laneOffsetY?: number
+  laneHeight?: number
   bpm: number
   firstBeatMs: number
   barBeatOffset: number

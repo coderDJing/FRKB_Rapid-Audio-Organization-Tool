@@ -1,6 +1,11 @@
 import { nextTick, ref, useTemplateRef, type Ref } from 'vue'
 import { t } from '@renderer/utils/translate'
 import libraryUtils from '@renderer/utils/libraryUtils'
+import {
+  clearPendingMixtapeProjectMode,
+  consumePendingMixtapeProjectMode,
+  persistMixtapeProjectMode
+} from '@renderer/composables/mixtape/stemMode'
 
 interface UseLibraryItemEditingOptions {
   dirDataRef: Ref<any | null>
@@ -71,6 +76,7 @@ export function useLibraryItemEditing({
     const dirData = getDirData()
     const fatherDirData = getFatherDirData()
     if (dirData?.dirName === '' && fatherDirData?.children?.[0]?.dirName === '') {
+      clearPendingMixtapeProjectMode(dirData?.uuid || '')
       fatherDirData.children.shift()
     }
     operationInputValue.value = ''
@@ -105,7 +111,13 @@ export function useLibraryItemEditing({
     if (dirData.type === 'songList') {
       runtime.creatingSongListUUID = dirData.uuid
     }
-    await libraryUtils.diffLibraryTreeExecuteFileOperation()
+    const success = await libraryUtils.diffLibraryTreeExecuteFileOperation()
+    if (dirData.type === 'mixtapeList') {
+      const projectMode = consumePendingMixtapeProjectMode(dirData.uuid)
+      if (success && projectMode) {
+        await persistMixtapeProjectMode(dirData.uuid, projectMode)
+      }
+    }
     if (dirData.type === 'songList') {
       runtime.songsArea.songListUUID = dirData.uuid
     }

@@ -11,23 +11,37 @@ import mainWindow from '../window/mainWindow'
 import { log } from '../log'
 import {
   appendMixtapeItems,
+  getMixtapeProjectMixMode,
+  getMixtapeProjectStemConfig,
+  getMixtapeProjectStemMode,
   listMixtapeItems,
   listMixtapeFilePathsByItemIds,
   removeMixtapeItemsById,
   removeMixtapeItemsByFilePath,
   reorderMixtapeItems,
+  upsertMixtapeProjectMixMode,
+  upsertMixtapeProjectStemProfiles,
+  upsertMixtapeProjectStemMode,
   updateMixtapeItemFilePathsById,
   upsertMixtapeItemBpmByFilePath,
   upsertMixtapeItemGridByFilePath,
   upsertMixtapeItemGainEnvelopeById,
   upsertMixtapeItemMixEnvelopeById,
   upsertMixtapeItemVolumeMuteSegmentsById,
-  upsertMixtapeItemStartSecById
+  upsertMixtapeItemStartSecById,
+  type MixtapeMixMode,
+  type MixtapeStemMode
 } from '../mixtapeDb'
+import { summarizeMixtapeStemStatusByPlaylist } from '../mixtapeStemDb'
 import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { queueMixtapeRawWaveforms } from '../services/mixtapeRawWaveformQueue'
 import { queueMixtapeWaveformHires } from '../services/mixtapeWaveformHiresQueue'
 import { cleanupMixtapeWaveformCache } from '../services/mixtapeWaveformMaintenance'
+import {
+  enqueueMixtapeStemJobs,
+  getMixtapeStemStatusSnapshot,
+  retryMixtapeStemJobs
+} from '../services/mixtapeStemQueue'
 import { resolveMissingMixtapeFilePath } from '../recycleBinService'
 import {
   runMixtapeOutput,
@@ -68,7 +82,22 @@ const buildBpmBatchKey = (filePaths: string[]): string =>
     .sort()
     .join('\n')
 
-const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
+type MixtapeBpmAnalyzeRunOptions = {
+  fastAnalysis?: boolean
+  stage?: 'primary' | 'retry-fast'
+  attempt?: number
+  totalAttempts?: number
+}
+
+const BPM_ANALYZE_JOB_TIMEOUT_NORMAL_MS = 3 * 60 * 1000
+const BPM_ANALYZE_JOB_TIMEOUT_FAST_MS = 2 * 60 * 1000
+const resolveBpmJobTimeoutMs = (fastAnalysis: boolean) =>
+  fastAnalysis ? BPM_ANALYZE_JOB_TIMEOUT_FAST_MS : BPM_ANALYZE_JOB_TIMEOUT_NORMAL_MS
+
+const analyzeMixtapeBpmBatch = async (
+  filePaths: string[],
+  options: MixtapeBpmAnalyzeRunOptions = {}
+) => {
   const unique = buildBpmBatchInput(filePaths)
   if (unique.length === 0) {
     return {
@@ -88,10 +117,22 @@ const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
     }
   }
 
+  const fastAnalysis = options.fastAnalysis === true
+  const stage = options.stage || (fastAnalysis ? 'retry-fast' : 'primary')
+  const attempt = Number.isFinite(Number(options.attempt)) ? Number(options.attempt) : 1
+  const totalAttempts = Number.isFinite(Number(options.totalAttempts))
+    ? Number(options.totalAttempts)
+    : 1
+  const jobTimeoutMs = resolveBpmJobTimeoutMs(fastAnalysis)
   const startedAt = Date.now()
   log.info('[mixtape] BPM analyze start', {
     requested: filePaths.length,
     unique: unique.length,
+    stage,
+    fastAnalysis,
+    attempt,
+    totalAttempts,
+    jobTimeoutMs,
     sample: unique.slice(0, 3).map((item) => path.basename(item))
   })
 
@@ -105,122 +146,24 @@ const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
   let cursor = 0
   let jobId = 0
   let finished = false
-  const timeoutMs = Math.min(30 * 60 * 1000, Math.max(60_000, unique.length * 12_000))
 
   return await new Promise<MixtapeBpmAnalyzeResult>((resolve) => {
-    let timer: ReturnType<typeof setTimeout> | null = null
+    const workerJobTimerMap = new Map<Worker, ReturnType<typeof setTimeout>>()
 
     const markUnresolvedReason = (filePath: string, reason: string) => {
       if (!filePath || unresolvedReasons.has(filePath)) return
       unresolvedReasons.set(filePath, reason || 'unknown error')
     }
 
-    const cleanup = () => {
-      for (const worker of workers) {
-        try {
-          worker.removeAllListeners()
-        } catch {}
-        try {
-          void worker.terminate()
-        } catch {}
-      }
-      workers.length = 0
-      busy.clear()
-      jobMap.clear()
+    const clearWorkerTimer = (worker: Worker) => {
+      const timer = workerJobTimerMap.get(worker)
+      if (!timer) return
+      clearTimeout(timer)
+      workerJobTimerMap.delete(worker)
     }
 
-    const finish = (reason: 'completed' | 'timeout' = 'completed') => {
-      if (finished) return
-      finished = true
-      if (timer) clearTimeout(timer)
-
-      if (reason === 'timeout') {
-        for (const filePath of unresolved) {
-          if (!unresolvedReasons.has(filePath)) {
-            markUnresolvedReason(filePath, 'analysis timeout')
-          }
-        }
-      }
-
-      cleanup()
-      const unresolvedList = Array.from(unresolved)
-      if (unresolvedList.length > 0) {
-        const sample = unresolvedList.slice(0, 5).map((filePath) => ({
-          file: path.basename(filePath),
-          reason: unresolvedReasons.get(filePath) || 'unknown error'
-        }))
-        log.warn('[mixtape] BPM analyze finished with unresolved tracks', {
-          requested: unique.length,
-          resolved: results.length,
-          unresolved: unresolvedList.length,
-          reason,
-          sample
-        })
-      }
-      const unresolvedDetails = unresolvedList.map((filePath) => ({
-        filePath,
-        reason: unresolvedReasons.get(filePath) || 'unknown error'
-      }))
-      log.info('[mixtape] BPM analyze finish', {
-        requested: unique.length,
-        resolved: results.length,
-        unresolved: unresolvedList.length,
-        elapsedMs: Date.now() - startedAt
-      })
-      resolve({ results, unresolved: unresolvedList, unresolvedDetails })
-    }
-
-    const assignNext = (worker: Worker) => {
-      if (cursor >= unique.length) {
-        if (busy.size === 0) finish()
-        return
-      }
-      const filePath = unique[cursor]
-      cursor += 1
-      const nextJobId = (jobId += 1)
-      busy.set(worker, nextJobId)
-      jobMap.set(nextJobId, filePath)
-      worker.postMessage({
-        jobId: nextJobId,
-        filePath,
-        fastAnalysis: false,
-        needsKey: false,
-        needsBpm: true,
-        needsWaveform: false
-      })
-    }
-
-    const handleMessage = (worker: Worker, payload: any) => {
-      const currentJobId = busy.get(worker)
-      if (currentJobId !== undefined) {
-        busy.delete(worker)
-      }
-      const resolvedJobId =
-        typeof payload?.jobId === 'number' ? payload.jobId : (currentJobId ?? -1)
-      const filePath = jobMap.get(resolvedJobId)
-      if (filePath) {
-        jobMap.delete(resolvedJobId)
-        const bpmValue = payload?.result?.bpm
-        if (typeof bpmValue === 'number' && Number.isFinite(bpmValue) && bpmValue > 0) {
-          const rawFirstBeatMs = Number(payload?.result?.firstBeatMs)
-          const firstBeatMs =
-            Number.isFinite(rawFirstBeatMs) && rawFirstBeatMs >= 0
-              ? Number(rawFirstBeatMs.toFixed(3))
-              : 0
-          results.push({ filePath, bpm: bpmValue, firstBeatMs })
-          unresolved.delete(filePath)
-        } else {
-          const reason =
-            (typeof payload?.error === 'string' && payload.error) ||
-            (typeof payload?.result?.bpmError === 'string' && payload.result.bpmError) ||
-            `invalid bpm value: ${String(bpmValue)}`
-          markUnresolvedReason(filePath, reason)
-        }
-      }
-      assignNext(worker)
-    }
-
-    const handleFailure = (worker: Worker, error?: unknown) => {
+    function handleFailure(worker: Worker, error?: unknown) {
+      clearWorkerTimer(worker)
       const currentJobId = busy.get(worker)
       if (currentJobId !== undefined) {
         busy.delete(worker)
@@ -257,6 +200,135 @@ const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
       } else if (busy.size === 0 && cursor >= unique.length) {
         finish()
       }
+    }
+
+    const setWorkerTimeout = (worker: Worker, currentJobId: number, filePath: string) => {
+      clearWorkerTimer(worker)
+      const timer = setTimeout(() => {
+        if (finished) return
+        const activeJobId = busy.get(worker)
+        if (activeJobId !== currentJobId) return
+        markUnresolvedReason(filePath, 'analysis timeout')
+        log.warn('[mixtape] BPM worker job timeout', {
+          jobId: currentJobId,
+          file: path.basename(filePath),
+          stage,
+          fastAnalysis,
+          timeoutMs: jobTimeoutMs
+        })
+        handleFailure(worker, new Error(`analysis timeout (${jobTimeoutMs}ms)`))
+      }, jobTimeoutMs)
+      workerJobTimerMap.set(worker, timer)
+    }
+
+    const cleanup = () => {
+      for (const timer of workerJobTimerMap.values()) {
+        clearTimeout(timer)
+      }
+      workerJobTimerMap.clear()
+      for (const worker of workers) {
+        try {
+          worker.removeAllListeners()
+        } catch {}
+        try {
+          void worker.terminate()
+        } catch {}
+      }
+      workers.length = 0
+      busy.clear()
+      jobMap.clear()
+    }
+
+    const finish = (reason: 'completed' = 'completed') => {
+      if (finished) return
+      finished = true
+
+      cleanup()
+      const unresolvedList = Array.from(unresolved)
+      if (unresolvedList.length > 0) {
+        const sample = unresolvedList.slice(0, 5).map((filePath) => ({
+          file: path.basename(filePath),
+          reason: unresolvedReasons.get(filePath) || 'unknown error'
+        }))
+        log.warn('[mixtape] BPM analyze finished with unresolved tracks', {
+          requested: unique.length,
+          resolved: results.length,
+          unresolved: unresolvedList.length,
+          stage,
+          fastAnalysis,
+          attempt,
+          totalAttempts,
+          reason,
+          sample
+        })
+      }
+      const unresolvedDetails = unresolvedList.map((filePath) => ({
+        filePath,
+        reason: unresolvedReasons.get(filePath) || 'unknown error'
+      }))
+      log.info('[mixtape] BPM analyze finish', {
+        requested: unique.length,
+        resolved: results.length,
+        unresolved: unresolvedList.length,
+        stage,
+        fastAnalysis,
+        attempt,
+        totalAttempts,
+        elapsedMs: Date.now() - startedAt
+      })
+      resolve({ results, unresolved: unresolvedList, unresolvedDetails })
+    }
+
+    const assignNext = (worker: Worker) => {
+      if (cursor >= unique.length) {
+        if (busy.size === 0) finish()
+        return
+      }
+      const filePath = unique[cursor]
+      cursor += 1
+      const nextJobId = (jobId += 1)
+      busy.set(worker, nextJobId)
+      jobMap.set(nextJobId, filePath)
+      setWorkerTimeout(worker, nextJobId, filePath)
+      worker.postMessage({
+        jobId: nextJobId,
+        filePath,
+        fastAnalysis,
+        needsKey: false,
+        needsBpm: true,
+        needsWaveform: false
+      })
+    }
+
+    const handleMessage = (worker: Worker, payload: any) => {
+      clearWorkerTimer(worker)
+      const currentJobId = busy.get(worker)
+      if (currentJobId !== undefined) {
+        busy.delete(worker)
+      }
+      const resolvedJobId =
+        typeof payload?.jobId === 'number' ? payload.jobId : (currentJobId ?? -1)
+      const filePath = jobMap.get(resolvedJobId)
+      if (filePath) {
+        jobMap.delete(resolvedJobId)
+        const bpmValue = payload?.result?.bpm
+        if (typeof bpmValue === 'number' && Number.isFinite(bpmValue) && bpmValue > 0) {
+          const rawFirstBeatMs = Number(payload?.result?.firstBeatMs)
+          const firstBeatMs =
+            Number.isFinite(rawFirstBeatMs) && rawFirstBeatMs >= 0
+              ? Number(rawFirstBeatMs.toFixed(3))
+              : 0
+          results.push({ filePath, bpm: bpmValue, firstBeatMs })
+          unresolved.delete(filePath)
+        } else {
+          const reason =
+            (typeof payload?.error === 'string' && payload.error) ||
+            (typeof payload?.result?.bpmError === 'string' && payload.result.bpmError) ||
+            `invalid bpm value: ${String(bpmValue)}`
+          markUnresolvedReason(filePath, reason)
+        }
+      }
+      assignNext(worker)
     }
 
     const bindWorker = (worker: Worker) => {
@@ -298,7 +370,6 @@ const analyzeMixtapeBpmBatch = async (filePaths: string[]) => {
       return
     }
 
-    timer = setTimeout(() => finish('timeout'), timeoutMs)
     for (const worker of workers) {
       assignNext(worker)
     }
@@ -319,7 +390,91 @@ const analyzeMixtapeBpmBatchShared = async (filePaths: string[]) => {
   const existing = inFlightBpmBatchMap.get(key)
   if (existing) return existing
 
-  const task = analyzeMixtapeBpmBatch(input).finally(() => {
+  const task = (async (): Promise<MixtapeBpmAnalyzeResult> => {
+    const resultMap = new Map<
+      string,
+      {
+        filePath: string
+        bpm: number
+        firstBeatMs: number
+      }
+    >()
+    const unresolvedReasonMap = new Map<string, string>()
+    const plans: Array<{ stage: 'primary' | 'retry-fast'; fastAnalysis: boolean }> = [
+      { stage: 'primary', fastAnalysis: false },
+      { stage: 'retry-fast', fastAnalysis: true }
+    ]
+    let pending = input
+
+    for (let idx = 0; idx < plans.length && pending.length > 0; idx += 1) {
+      const plan = plans[idx]
+      const runResult = await analyzeMixtapeBpmBatch(pending, {
+        stage: plan.stage,
+        fastAnalysis: plan.fastAnalysis,
+        attempt: idx + 1,
+        totalAttempts: plans.length
+      })
+
+      for (const item of runResult.results) {
+        const normalizedPath = normalizePathForBatchKey(item.filePath)
+        if (!normalizedPath) continue
+        resultMap.set(normalizedPath, {
+          filePath: item.filePath,
+          bpm: item.bpm,
+          firstBeatMs: Number(item.firstBeatMs.toFixed(3))
+        })
+        unresolvedReasonMap.delete(normalizedPath)
+      }
+
+      const retryCandidates: string[] = []
+      for (const detail of runResult.unresolvedDetails) {
+        const normalizedPath = normalizePathForBatchKey(detail.filePath)
+        if (!normalizedPath || resultMap.has(normalizedPath)) continue
+        unresolvedReasonMap.set(normalizedPath, detail.reason || 'unknown error')
+        retryCandidates.push(detail.filePath)
+      }
+      pending = buildBpmBatchInput(retryCandidates)
+
+      if (pending.length > 0 && idx < plans.length - 1) {
+        log.info('[mixtape] BPM analyze retry pending', {
+          requested: input.length,
+          resolved: resultMap.size,
+          pending: pending.length,
+          nextAttempt: idx + 2,
+          totalAttempts: plans.length,
+          sample: pending.slice(0, 3).map((item) => path.basename(item))
+        })
+      }
+    }
+
+    const unresolved = pending
+    const unresolvedDetails = unresolved.map((filePath) => {
+      const normalizedPath = normalizePathForBatchKey(filePath)
+      return {
+        filePath,
+        reason: unresolvedReasonMap.get(normalizedPath) || 'unknown error'
+      }
+    })
+
+    if (unresolved.length > 0) {
+      log.warn('[mixtape] BPM analyze unresolved after retries', {
+        requested: input.length,
+        resolved: resultMap.size,
+        unresolved: unresolved.length,
+        retries: plans.length - 1,
+        sample: unresolved.slice(0, 5).map((filePath) => ({
+          file: path.basename(filePath),
+          reason: unresolvedReasonMap.get(normalizePathForBatchKey(filePath)) || 'unknown error'
+        }))
+      })
+    }
+
+    return {
+      results: Array.from(resultMap.values()),
+      unresolved,
+      unresolvedDetails
+    }
+  })().finally(() => {
     if (inFlightBpmBatchMap.get(key) === task) {
       inFlightBpmBatchMap.delete(key)
     }
@@ -440,7 +595,166 @@ export function registerMixtapeHandlers() {
   ipcMain.handle('mixtape:list', async (_e, payload: { playlistId?: string }) => {
     const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
     const { items, recovery } = await reconcileMixtapeMissingFiles(playlistId)
-    return { items, recovery }
+    const stemConfig = getMixtapeProjectStemConfig(playlistId)
+    const stemSummary = summarizeMixtapeStemStatusByPlaylist(playlistId)
+    return {
+      items,
+      recovery,
+      mixMode: stemConfig.mixMode,
+      stemMode: stemConfig.stemMode,
+      stemRealtimeProfile: stemConfig.stemRealtimeProfile,
+      stemExportProfile: stemConfig.stemExportProfile,
+      stemStrategyConfirmed: stemConfig.stemStrategyConfirmed,
+      stemSummary
+    }
+  })
+
+  ipcMain.handle('mixtape:project:get-mix-mode', async (_e, payload?: { playlistId?: string }) => {
+    const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
+    return {
+      mixMode: getMixtapeProjectMixMode(playlistId)
+    }
+  })
+
+  ipcMain.handle(
+    'mixtape:project:set-mix-mode',
+    async (_e, payload?: { playlistId?: string; mixMode?: string }) => {
+      const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
+      const mixModeRaw = typeof payload?.mixMode === 'string' ? payload.mixMode : 'stem'
+      return upsertMixtapeProjectMixMode(playlistId, mixModeRaw as MixtapeMixMode)
+    }
+  )
+
+  ipcMain.handle('mixtape:project:get-stem-mode', async (_e, payload?: { playlistId?: string }) => {
+    const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
+    return {
+      stemMode: getMixtapeProjectStemMode(playlistId)
+    }
+  })
+
+  ipcMain.handle(
+    'mixtape:project:set-stem-mode',
+    async (_e, payload?: { playlistId?: string; stemMode?: string }) => {
+      const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
+      const stemModeRaw = typeof payload?.stemMode === 'string' ? payload.stemMode : '4stems'
+      return upsertMixtapeProjectStemMode(playlistId, stemModeRaw as MixtapeStemMode)
+    }
+  )
+
+  ipcMain.handle(
+    'mixtape:project:get-stem-profiles',
+    async (_e, payload?: { playlistId?: string }) => {
+      const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
+      const config = getMixtapeProjectStemConfig(playlistId)
+      return {
+        stemRealtimeProfile: config.stemRealtimeProfile,
+        stemExportProfile: config.stemExportProfile,
+        stemStrategyConfirmed: config.stemStrategyConfirmed
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'mixtape:project:set-stem-profiles',
+    async (
+      _e,
+      payload?: {
+        playlistId?: string
+        stemRealtimeProfile?: string
+        stemExportProfile?: string
+        markStrategyConfirmed?: boolean
+      }
+    ) => {
+      const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
+      const current = getMixtapeProjectStemConfig(playlistId)
+      return upsertMixtapeProjectStemProfiles(
+        playlistId,
+        {
+          stemRealtimeProfile:
+            typeof payload?.stemRealtimeProfile === 'string'
+              ? (payload.stemRealtimeProfile as any)
+              : current.stemRealtimeProfile,
+          stemExportProfile:
+            typeof payload?.stemExportProfile === 'string'
+              ? (payload.stemExportProfile as any)
+              : current.stemExportProfile
+        },
+        {
+          markStrategyConfirmed:
+            typeof payload?.markStrategyConfirmed === 'boolean'
+              ? payload.markStrategyConfirmed
+              : true
+        }
+      )
+    }
+  )
+
+  ipcMain.handle(
+    'mixtape:stem:enqueue',
+    async (
+      _e,
+      payload?: {
+        playlistId?: string
+        filePaths?: string[]
+        stemMode?: string
+        force?: boolean
+        model?: string
+        stemVersion?: string
+        profile?: string
+      }
+    ) => {
+      const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
+      const filePaths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
+      const stemModeRaw =
+        typeof payload?.stemMode === 'string'
+          ? payload.stemMode
+          : getMixtapeProjectStemMode(playlistId)
+      return enqueueMixtapeStemJobs({
+        playlistId,
+        filePaths,
+        stemMode: stemModeRaw as MixtapeStemMode,
+        force: !!payload?.force,
+        model: typeof payload?.model === 'string' ? payload.model : undefined,
+        stemVersion: typeof payload?.stemVersion === 'string' ? payload.stemVersion : undefined,
+        profile: typeof payload?.profile === 'string' ? (payload.profile as any) : undefined
+      })
+    }
+  )
+
+  ipcMain.handle(
+    'mixtape:stem:retry',
+    async (
+      _e,
+      payload?: {
+        playlistId?: string
+        stemMode?: string
+        itemIds?: string[]
+        filePaths?: string[]
+        model?: string
+        stemVersion?: string
+        profile?: string
+      }
+    ) => {
+      const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
+      const stemModeRaw =
+        typeof payload?.stemMode === 'string'
+          ? payload.stemMode
+          : getMixtapeProjectStemMode(playlistId)
+      return retryMixtapeStemJobs({
+        playlistId,
+        stemMode: stemModeRaw as MixtapeStemMode,
+        itemIds: Array.isArray(payload?.itemIds) ? payload.itemIds : [],
+        filePaths: Array.isArray(payload?.filePaths) ? payload.filePaths : [],
+        model: typeof payload?.model === 'string' ? payload.model : undefined,
+        stemVersion: typeof payload?.stemVersion === 'string' ? payload.stemVersion : undefined,
+        profile: typeof payload?.profile === 'string' ? (payload.profile as any) : undefined
+      })
+    }
+  )
+
+  ipcMain.handle('mixtape:stem:get-status', async (_e, payload?: { playlistId?: string }) => {
+    const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
+    return getMixtapeStemStatusSnapshot(playlistId)
   })
 
   ipcMain.handle(
@@ -467,6 +781,29 @@ export function registerMixtapeHandlers() {
         queueMixtapeWaveforms(filePaths)
         queueMixtapeRawWaveforms(filePaths)
         queueMixtapeWaveformHires(filePaths)
+        const stemConfig = getMixtapeProjectStemConfig(playlistId)
+        if (stemConfig.mixMode === 'stem' && stemConfig.stemStrategyConfirmed) {
+          void enqueueMixtapeStemJobs({
+            playlistId,
+            filePaths,
+            stemMode: stemConfig.stemMode,
+            profile: stemConfig.stemRealtimeProfile
+          }).catch((error) => {
+            log.error('[mixtape-stem] enqueue after append failed', {
+              playlistId,
+              fileCount: filePaths.length,
+              error
+            })
+          })
+        } else {
+          log.info(
+            '[mixtape-stem] skip enqueue after append: not stem mode or stem strategy not confirmed',
+            {
+              playlistId,
+              fileCount: filePaths.length
+            }
+          )
+        }
         // 预分析 BPM（后台，不阻塞返回）
         void analyzeMixtapeBpmBatchShared(filePaths)
           .then((bpmResult) => {
@@ -638,13 +975,32 @@ export function registerMixtapeHandlers() {
       }
     ) => {
       const paramRaw = typeof payload?.param === 'string' ? payload.param.trim() : ''
-      const supportedParams = new Set(['gain', 'high', 'mid', 'low', 'volume'])
+      const supportedParams = new Set([
+        'gain',
+        'high',
+        'mid',
+        'low',
+        'vocal',
+        'harmonic',
+        'bass',
+        'drums',
+        'volume'
+      ])
       if (!supportedParams.has(paramRaw)) {
         return { updated: 0 }
       }
       const entries = Array.isArray(payload?.entries) ? payload.entries : []
       return upsertMixtapeItemMixEnvelopeById(
-        paramRaw as 'gain' | 'high' | 'mid' | 'low' | 'volume',
+        paramRaw as
+          | 'gain'
+          | 'high'
+          | 'mid'
+          | 'low'
+          | 'vocal'
+          | 'harmonic'
+          | 'bass'
+          | 'drums'
+          | 'volume',
         entries.map((item) => ({
           itemId: typeof item?.itemId === 'string' ? item.itemId : '',
           gainEnvelope: Array.isArray(item?.gainEnvelope)

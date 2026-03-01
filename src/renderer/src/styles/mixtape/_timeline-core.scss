@@ -231,14 +231,13 @@
 
 .mixtape-bpm-mask {
   position: absolute;
-  inset: 0;
+  top: 10px;
+  right: 12px;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-start;
+  justify-content: flex-end;
   z-index: 20;
-  pointer-events: auto;
-  cursor: progress;
-  background: rgba(8, 8, 12, 0.96);
+  pointer-events: none;
 }
 
 .mixtape-decode-mask {
@@ -255,13 +254,17 @@
 
 .mixtape-bpm-failed {
   position: absolute;
-  inset: 0;
+  top: 10px;
+  right: 12px;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 18;
+  align-items: flex-start;
+  justify-content: flex-end;
+  z-index: 21;
   pointer-events: none;
-  background: rgba(8, 8, 12, 0.6);
+}
+
+.mixtape-bpm-failed .bpm-loading-card {
+  pointer-events: auto;
 }
 
 .mixtape-auto-gain-mask {

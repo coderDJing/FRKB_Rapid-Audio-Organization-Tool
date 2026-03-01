@@ -25,6 +25,11 @@ import type { IDir } from 'src/types/globals'
 import { handleLibraryAreaEmptySpaceDrop } from '../utils/dragUtils'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
+import {
+  chooseMixtapeProjectModeForCreate,
+  persistMixtapeProjectMode,
+  setPendingMixtapeProjectMode
+} from '@renderer/composables/mixtape/stemMode'
 
 const uuid = uuidV4()
 const props = defineProps({
@@ -248,6 +253,10 @@ const searchInputRef = useTemplateRef<HTMLInputElement>('searchInputRef')
 
 const libraryTitleText = computed(() => toLibraryDisplayName(libraryData.value.dirName))
 const listIcon = listIconAsset
+const resolveMixtapeModeTag = (mixMode?: string) =>
+  mixMode === 'traditional' ? t('mixtape.mixModeTraditionalTag') : t('mixtape.mixModeStemTag')
+const resolveMixtapeModeLabel = (mixMode?: string) =>
+  mixMode === 'traditional' ? t('mixtape.mixModeTraditionalLabel') : t('mixtape.mixModeStemLabel')
 
 const menuArr = ref([
   isMixtapeDialog.value
@@ -275,13 +284,17 @@ const contextmenuEvent = async (event: MouseEvent) => {
       runtime.dialogSelectedSongListUUID = newUuid
       selectedArea.value = 'tree'
     } else if (result.menuName == 'library.createMixtape') {
+      const projectMode = await chooseMixtapeProjectModeForCreate()
+      if (!projectMode) return
       const newUuid = uuidV4()
       libraryData.value.children = libraryData.value.children || []
       libraryData.value.children.unshift({
         uuid: newUuid,
         type: 'mixtapeList',
-        dirName: ''
+        dirName: '',
+        mixMode: projectMode.mixMode
       })
+      setPendingMixtapeProjectMode(newUuid, projectMode)
       runtime.dialogSelectedSongListUUID = newUuid
       selectedArea.value = 'tree'
     } else if (result.menuName == 'library.createFolder') {
@@ -344,6 +357,10 @@ const createNow = async () => {
   if (!libraryData.value) return
   const name = String(playlistSearch.value || '').trim()
   if (!name) return
+  const projectMode = isMixtapeDialog.value ? await chooseMixtapeProjectModeForCreate() : null
+  if (isMixtapeDialog.value && !projectMode) {
+    return
+  }
   const newUuid = uuidV4()
   // 先提升已有 order，再插入新项到首位
   for (let item of libraryData.value.children || []) {
@@ -354,11 +371,15 @@ const createNow = async () => {
     uuid: newUuid,
     type: isMixtapeDialog.value ? 'mixtapeList' : 'songList',
     dirName: name,
+    mixMode: isMixtapeDialog.value ? projectMode?.mixMode || 'stem' : undefined,
     order: 1,
     children: []
   } as IDir)
   try {
-    await libraryUtils.diffLibraryTreeExecuteFileOperation()
+    const success = await libraryUtils.diffLibraryTreeExecuteFileOperation()
+    if (success && projectMode) {
+      await persistMixtapeProjectMode(newUuid, projectMode)
+    }
   } catch {}
   // 在选择对话框内：高亮但不触发双击确认
   runtime.dialogSelectedSongListUUID = newUuid
@@ -709,6 +730,16 @@ watch(
                     <div class="nameRow">
                       <span class="nameText">{{ item.dirName }}</span>
                       <span
+                        v-if="item.type === 'mixtapeList'"
+                        class="mixModeBadge"
+                        :class="{
+                          'is-traditional': item.mixMode === 'traditional',
+                          'is-stem': item.mixMode !== 'traditional'
+                        }"
+                        :title="resolveMixtapeModeLabel(item.mixMode)"
+                        >{{ resolveMixtapeModeTag(item.mixMode) }}</span
+                      >
+                      <span
                         v-if="
                           (runtime as any).setting.showPlaylistTrackCount &&
                           item.type === 'songList'
@@ -868,11 +899,36 @@ watch(
 .nameText {
   flex: 1 1 auto;
   min-width: 0;
-  padding-right: 48px;
+  padding-right: 72px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.mixModeBadge {
+  min-width: 34px;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.mixModeBadge.is-traditional {
+  background-color: rgba(255, 184, 77, 0.18);
+  color: #d98300;
+}
+
+.mixModeBadge.is-stem {
+  background-color: rgba(91, 173, 255, 0.18);
+  color: #2f85d8;
+}
+
 .countBadge {
   min-width: 18px;
   height: 16px;

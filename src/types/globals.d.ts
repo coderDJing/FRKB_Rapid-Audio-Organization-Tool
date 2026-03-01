@@ -7,6 +7,7 @@ interface IDir {
   uuid: string
   type: 'root' | 'library' | 'dir' | 'songList' | 'mixtapeList'
   dirName: string
+  mixMode?: 'traditional' | 'stem'
   order?: number
   children?: IDir[]
 }

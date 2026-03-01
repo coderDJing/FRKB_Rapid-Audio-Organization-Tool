@@ -8,6 +8,10 @@ import { t } from '@renderer/utils/translate'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
+import {
+  chooseMixtapeProjectModeForCreate,
+  setPendingMixtapeProjectMode
+} from '@renderer/composables/mixtape/stemMode'
 import type { IMetadataAutoFillSummary } from '../../../../types/globals'
 
 interface UseLibraryContextMenuOptions {
@@ -182,6 +186,8 @@ export function useLibraryContextMenu({
       case 'library.createMixtape': {
         const currentDirData = getDirData()
         if (!currentDirData) break
+        const projectMode = await chooseMixtapeProjectModeForCreate()
+        if (!projectMode) break
         dirChildRendered.value = true
         dirChildShow.value = true
         const newUuid = uuidV4()
@@ -189,8 +195,10 @@ export function useLibraryContextMenu({
         currentDirData.children.unshift({
           uuid: newUuid,
           dirName: '',
-          type: 'mixtapeList'
+          type: 'mixtapeList',
+          mixMode: projectMode.mixMode
         })
+        setPendingMixtapeProjectMode(newUuid, projectMode)
         runtime.songsArea.songListUUID = newUuid
         break
       }

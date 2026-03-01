@@ -3,7 +3,11 @@ import {
   normalizeMixEnvelopePoints
 } from '@renderer/composables/mixtape/gainEnvelope'
 import { normalizeVolumeMuteSegments } from '@renderer/composables/mixtape/volumeMuteSegments'
-import type { MixtapeRawItem, MixtapeTrack } from '@renderer/composables/mixtape/types'
+import type {
+  MixtapeRawItem,
+  MixtapeStemStatus,
+  MixtapeTrack
+} from '@renderer/composables/mixtape/types'
 
 const parseSnapshotInfo = (raw: MixtapeRawItem): Record<string, any> | null => {
   if (!raw?.infoJson) return null
@@ -36,6 +40,22 @@ export const normalizeBpm = (value: unknown) => {
   const numeric = Number(value)
   if (!Number.isFinite(numeric) || numeric <= 0) return null
   return Number(numeric.toFixed(2))
+}
+
+const normalizeStemStatus = (
+  value: unknown,
+  fallback: MixtapeStemStatus = 'ready'
+): MixtapeStemStatus => {
+  if (value === 'pending' || value === 'running' || value === 'ready' || value === 'failed') {
+    return value
+  }
+  return fallback
+}
+
+const normalizeTimestampMs = (value: unknown): number | undefined => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) return undefined
+  return Math.floor(numeric)
 }
 
 export const normalizeUniquePaths = (values: unknown[]) => {
@@ -83,6 +103,10 @@ export const parseSnapshot = (
   const parsedHighEnvelope = normalizeMixEnvelopePoints('high', info?.highEnvelope)
   const parsedMidEnvelope = normalizeMixEnvelopePoints('mid', info?.midEnvelope)
   const parsedLowEnvelope = normalizeMixEnvelopePoints('low', info?.lowEnvelope)
+  const parsedVocalEnvelope = normalizeMixEnvelopePoints('vocal', info?.vocalEnvelope)
+  const parsedHarmonicEnvelope = normalizeMixEnvelopePoints('harmonic', info?.harmonicEnvelope)
+  const parsedBassEnvelope = normalizeMixEnvelopePoints('bass', info?.bassEnvelope)
+  const parsedDrumsEnvelope = normalizeMixEnvelopePoints('drums', info?.drumsEnvelope)
   const parsedVolumeEnvelope = normalizeMixEnvelopePoints('volume', info?.volumeEnvelope)
   const parsedVolumeMuteSegments = normalizeVolumeMuteSegments(
     info?.volumeMuteSegments,
@@ -93,6 +117,20 @@ export const parseSnapshot = (
     Number.isFinite(parsedStartSecRaw) && parsedStartSecRaw >= 0
       ? Number(parsedStartSecRaw.toFixed(4))
       : undefined
+  const parsedStemStatus = normalizeStemStatus(info?.stemStatus, 'ready')
+  const parsedStemError =
+    typeof info?.stemError === 'string' && info.stemError.trim() ? info.stemError.trim() : undefined
+  const parsedStemReadyAt = normalizeTimestampMs(info?.stemReadyAt)
+  const parsedStemModel =
+    typeof info?.stemModel === 'string' && info.stemModel.trim() ? info.stemModel.trim() : undefined
+  const parsedStemVersion =
+    typeof info?.stemVersion === 'string' && info.stemVersion.trim()
+      ? info.stemVersion.trim()
+      : undefined
+  const parsedStemVocalPath = normalizeMixtapeFilePath(info?.stemVocalPath) || undefined
+  const parsedStemHarmonicPath = normalizeMixtapeFilePath(info?.stemHarmonicPath) || undefined
+  const parsedStemBassPath = normalizeMixtapeFilePath(info?.stemBassPath) || undefined
+  const parsedStemDrumsPath = normalizeMixtapeFilePath(info?.stemDrumsPath) || undefined
   return {
     id: String(raw?.id || `${filePath}-${index}`),
     mixOrder: Number(raw?.mixOrder) || index + 1,
@@ -113,9 +151,22 @@ export const parseSnapshot = (
     highEnvelope: parsedHighEnvelope.length ? parsedHighEnvelope : undefined,
     midEnvelope: parsedMidEnvelope.length ? parsedMidEnvelope : undefined,
     lowEnvelope: parsedLowEnvelope.length ? parsedLowEnvelope : undefined,
+    vocalEnvelope: parsedVocalEnvelope.length ? parsedVocalEnvelope : undefined,
+    harmonicEnvelope: parsedHarmonicEnvelope.length ? parsedHarmonicEnvelope : undefined,
+    bassEnvelope: parsedBassEnvelope.length ? parsedBassEnvelope : undefined,
+    drumsEnvelope: parsedDrumsEnvelope.length ? parsedDrumsEnvelope : undefined,
     volumeEnvelope: parsedVolumeEnvelope.length ? parsedVolumeEnvelope : undefined,
     volumeMuteSegments: parsedVolumeMuteSegments.length ? parsedVolumeMuteSegments : undefined,
     firstBeatMs: parsedFirstBeatMs,
-    barBeatOffset: parsedBarBeatOffset
+    barBeatOffset: parsedBarBeatOffset,
+    stemStatus: parsedStemStatus,
+    stemError: parsedStemError,
+    stemReadyAt: parsedStemReadyAt,
+    stemModel: parsedStemModel,
+    stemVersion: parsedStemVersion,
+    stemVocalPath: parsedStemVocalPath,
+    stemHarmonicPath: parsedStemHarmonicPath,
+    stemBassPath: parsedStemBassPath,
+    stemDrumsPath: parsedStemDrumsPath
   }
 }

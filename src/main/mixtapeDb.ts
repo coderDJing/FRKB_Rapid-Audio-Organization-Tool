@@ -1,8 +1,41 @@
 import { v4 as uuidV4 } from 'uuid'
 import { getLibraryDb } from './libraryDb'
 import { log } from './log'
+import {
+  DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE,
+  DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE,
+  normalizeMixtapeStemProfile,
+  type MixtapeStemProfile
+} from '../shared/mixtapeStemProfiles'
 
 const TABLE = 'mixtape_items'
+const PROJECT_TABLE = 'mixtape_projects'
+
+export type MixtapeMixMode = 'traditional' | 'stem'
+export type MixtapeStemMode = '4stems'
+export type { MixtapeStemProfile }
+
+const DEFAULT_MIXTAPE_MIX_MODE: MixtapeMixMode = 'stem'
+const DEFAULT_MIXTAPE_STEM_MODE: MixtapeStemMode = '4stems'
+const DEFAULT_PROJECT_STEM_REALTIME_PROFILE: MixtapeStemProfile =
+  DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
+const DEFAULT_PROJECT_STEM_EXPORT_PROFILE: MixtapeStemProfile = DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
+
+function normalizeMixtapeMixMode(value: unknown): MixtapeMixMode {
+  return value === 'traditional' ? 'traditional' : 'stem'
+}
+
+function normalizeMixtapeStemMode(_value: unknown): MixtapeStemMode {
+  return '4stems'
+}
+
+export type MixtapeProjectStemConfig = {
+  mixMode: MixtapeMixMode
+  stemMode: MixtapeStemMode
+  stemRealtimeProfile: MixtapeStemProfile
+  stemExportProfile: MixtapeStemProfile
+  stemStrategyConfirmed: boolean
+}
 
 export type MixtapeItemRecord = {
   id: string
@@ -71,6 +104,268 @@ function normalizeMixtapeOrder(db: any, playlistUuid: string) {
     })
   })
   tx()
+}
+
+export function getMixtapeProjectMixMode(playlistUuid: string): MixtapeMixMode {
+  return getMixtapeProjectStemConfig(playlistUuid).mixMode
+}
+
+export function getMixtapeProjectStemMode(playlistUuid: string): MixtapeStemMode {
+  return getMixtapeProjectStemConfig(playlistUuid).stemMode
+}
+
+export function getMixtapeProjectStemConfig(playlistUuid: string): MixtapeProjectStemConfig {
+  const normalizedPlaylistUuid = typeof playlistUuid === 'string' ? playlistUuid.trim() : ''
+  if (!normalizedPlaylistUuid) {
+    return {
+      mixMode: DEFAULT_MIXTAPE_MIX_MODE,
+      stemMode: DEFAULT_MIXTAPE_STEM_MODE,
+      stemRealtimeProfile: DEFAULT_PROJECT_STEM_REALTIME_PROFILE,
+      stemExportProfile: DEFAULT_PROJECT_STEM_EXPORT_PROFILE,
+      stemStrategyConfirmed: false
+    }
+  }
+  const db = getLibraryDb()
+  if (!db) {
+    return {
+      mixMode: DEFAULT_MIXTAPE_MIX_MODE,
+      stemMode: DEFAULT_MIXTAPE_STEM_MODE,
+      stemRealtimeProfile: DEFAULT_PROJECT_STEM_REALTIME_PROFILE,
+      stemExportProfile: DEFAULT_PROJECT_STEM_EXPORT_PROFILE,
+      stemStrategyConfirmed: false
+    }
+  }
+  try {
+    const row = db
+      .prepare(
+        `SELECT mix_mode, stem_mode, stem_realtime_profile, stem_export_profile, stem_strategy_confirmed
+         FROM ${PROJECT_TABLE}
+         WHERE playlist_uuid = ?`
+      )
+      .get(normalizedPlaylistUuid)
+    return {
+      mixMode: normalizeMixtapeMixMode(row?.mix_mode),
+      stemMode: normalizeMixtapeStemMode(row?.stem_mode),
+      stemRealtimeProfile: normalizeMixtapeStemProfile(
+        row?.stem_realtime_profile,
+        DEFAULT_PROJECT_STEM_REALTIME_PROFILE
+      ),
+      stemExportProfile: normalizeMixtapeStemProfile(
+        row?.stem_export_profile,
+        DEFAULT_PROJECT_STEM_EXPORT_PROFILE
+      ),
+      stemStrategyConfirmed: Number(row?.stem_strategy_confirmed) === 1
+    }
+  } catch (error) {
+    log.error('[sqlite] mixtape project stem config get failed', error)
+    return {
+      mixMode: DEFAULT_MIXTAPE_MIX_MODE,
+      stemMode: DEFAULT_MIXTAPE_STEM_MODE,
+      stemRealtimeProfile: DEFAULT_PROJECT_STEM_REALTIME_PROFILE,
+      stemExportProfile: DEFAULT_PROJECT_STEM_EXPORT_PROFILE,
+      stemStrategyConfirmed: false
+    }
+  }
+}
+
+export function upsertMixtapeProjectMixMode(
+  playlistUuid: string,
+  mixMode: MixtapeMixMode
+): { updated: number; mixMode: MixtapeMixMode } {
+  const normalizedPlaylistUuid = typeof playlistUuid === 'string' ? playlistUuid.trim() : ''
+  const normalizedMixMode = normalizeMixtapeMixMode(mixMode)
+  if (!normalizedPlaylistUuid) {
+    return { updated: 0, mixMode: normalizedMixMode }
+  }
+  const db = getLibraryDb()
+  if (!db) return { updated: 0, mixMode: normalizedMixMode }
+  try {
+    const current = getMixtapeProjectStemConfig(normalizedPlaylistUuid)
+    const now = Date.now()
+    const info = db
+      .prepare(
+        `INSERT INTO ${PROJECT_TABLE} (
+           playlist_uuid,
+           mix_mode,
+           stem_mode,
+           stem_realtime_profile,
+           stem_export_profile,
+           stem_strategy_confirmed,
+           created_at_ms,
+           updated_at_ms
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(playlist_uuid) DO UPDATE SET
+           mix_mode = excluded.mix_mode,
+           updated_at_ms = excluded.updated_at_ms`
+      )
+      .run(
+        normalizedPlaylistUuid,
+        normalizedMixMode,
+        current.stemMode,
+        current.stemRealtimeProfile,
+        current.stemExportProfile,
+        current.stemStrategyConfirmed ? 1 : 0,
+        now,
+        now
+      )
+    return {
+      updated: Number(info?.changes || 0),
+      mixMode: normalizedMixMode
+    }
+  } catch (error) {
+    log.error('[sqlite] mixtape project mix mode upsert failed', error)
+    return {
+      updated: 0,
+      mixMode: normalizedMixMode
+    }
+  }
+}
+
+export function upsertMixtapeProjectStemMode(
+  playlistUuid: string,
+  stemMode: MixtapeStemMode
+): { updated: number; stemMode: MixtapeStemMode } {
+  const normalizedPlaylistUuid = typeof playlistUuid === 'string' ? playlistUuid.trim() : ''
+  if (!normalizedPlaylistUuid) {
+    return { updated: 0, stemMode: normalizeMixtapeStemMode(stemMode) }
+  }
+  const db = getLibraryDb()
+  if (!db) return { updated: 0, stemMode: normalizeMixtapeStemMode(stemMode) }
+  const normalizedStemMode = normalizeMixtapeStemMode(stemMode)
+  try {
+    const current = getMixtapeProjectStemConfig(normalizedPlaylistUuid)
+    const now = Date.now()
+    const info = db
+      .prepare(
+        `INSERT INTO ${PROJECT_TABLE} (
+           playlist_uuid,
+           mix_mode,
+           stem_mode,
+           stem_realtime_profile,
+           stem_export_profile,
+           stem_strategy_confirmed,
+           created_at_ms,
+           updated_at_ms
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(playlist_uuid) DO UPDATE SET
+           stem_mode = excluded.stem_mode,
+           updated_at_ms = excluded.updated_at_ms`
+      )
+      .run(
+        normalizedPlaylistUuid,
+        current.mixMode,
+        normalizedStemMode,
+        current.stemRealtimeProfile,
+        current.stemExportProfile,
+        current.stemStrategyConfirmed ? 1 : 0,
+        now,
+        now
+      )
+    return {
+      updated: Number(info?.changes || 0),
+      stemMode: normalizedStemMode
+    }
+  } catch (error) {
+    log.error('[sqlite] mixtape project stem mode upsert failed', error)
+    return {
+      updated: 0,
+      stemMode: normalizedStemMode
+    }
+  }
+}
+
+export function upsertMixtapeProjectStemProfiles(
+  playlistUuid: string,
+  profiles: {
+    stemRealtimeProfile?: MixtapeStemProfile
+    stemExportProfile?: MixtapeStemProfile
+  },
+  options?: {
+    markStrategyConfirmed?: boolean
+  }
+): {
+  updated: number
+  stemRealtimeProfile: MixtapeStemProfile
+  stemExportProfile: MixtapeStemProfile
+  stemStrategyConfirmed: boolean
+} {
+  const normalizedPlaylistUuid = typeof playlistUuid === 'string' ? playlistUuid.trim() : ''
+  const normalizedRealtimeProfile = normalizeMixtapeStemProfile(
+    profiles?.stemRealtimeProfile,
+    DEFAULT_PROJECT_STEM_REALTIME_PROFILE
+  )
+  const normalizedExportProfile = normalizeMixtapeStemProfile(
+    profiles?.stemExportProfile,
+    DEFAULT_PROJECT_STEM_EXPORT_PROFILE
+  )
+  const markStrategyConfirmed = options?.markStrategyConfirmed !== false
+  if (!normalizedPlaylistUuid) {
+    return {
+      updated: 0,
+      stemRealtimeProfile: normalizedRealtimeProfile,
+      stemExportProfile: normalizedExportProfile,
+      stemStrategyConfirmed: markStrategyConfirmed
+    }
+  }
+  const db = getLibraryDb()
+  if (!db) {
+    return {
+      updated: 0,
+      stemRealtimeProfile: normalizedRealtimeProfile,
+      stemExportProfile: normalizedExportProfile,
+      stemStrategyConfirmed: markStrategyConfirmed
+    }
+  }
+  try {
+    const current = getMixtapeProjectStemConfig(normalizedPlaylistUuid)
+    const nextStemStrategyConfirmed = markStrategyConfirmed ? true : current.stemStrategyConfirmed
+    const now = Date.now()
+    const info = db
+      .prepare(
+        `INSERT INTO ${PROJECT_TABLE} (
+           playlist_uuid,
+           mix_mode,
+           stem_mode,
+           stem_realtime_profile,
+           stem_export_profile,
+           stem_strategy_confirmed,
+           created_at_ms,
+           updated_at_ms
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(playlist_uuid) DO UPDATE SET
+           stem_realtime_profile = excluded.stem_realtime_profile,
+           stem_export_profile = excluded.stem_export_profile,
+           stem_strategy_confirmed = excluded.stem_strategy_confirmed,
+           updated_at_ms = excluded.updated_at_ms`
+      )
+      .run(
+        normalizedPlaylistUuid,
+        current.mixMode,
+        current.stemMode,
+        normalizedRealtimeProfile,
+        normalizedExportProfile,
+        nextStemStrategyConfirmed ? 1 : 0,
+        now,
+        now
+      )
+    return {
+      updated: Number(info?.changes || 0),
+      stemRealtimeProfile: normalizedRealtimeProfile,
+      stemExportProfile: normalizedExportProfile,
+      stemStrategyConfirmed: nextStemStrategyConfirmed
+    }
+  } catch (error) {
+    log.error('[sqlite] mixtape project stem profiles upsert failed', error)
+    return {
+      updated: 0,
+      stemRealtimeProfile: normalizedRealtimeProfile,
+      stemExportProfile: normalizedExportProfile,
+      stemStrategyConfirmed: markStrategyConfirmed
+    }
+  }
 }
 
 export function listMixtapeItems(playlistUuid: string): MixtapeItemRecord[] {
@@ -564,13 +859,26 @@ export function upsertMixtapeItemGridByFilePath(
   }
 }
 
-export type MixtapeMixEnvelopeParam = 'gain' | 'high' | 'mid' | 'low' | 'volume'
+export type MixtapeMixEnvelopeParam =
+  | 'gain'
+  | 'high'
+  | 'mid'
+  | 'low'
+  | 'vocal'
+  | 'harmonic'
+  | 'bass'
+  | 'drums'
+  | 'volume'
 
 const MIXTAPE_ENVELOPE_FIELD_BY_PARAM: Record<MixtapeMixEnvelopeParam, string> = {
   gain: 'gainEnvelope',
   high: 'highEnvelope',
   mid: 'midEnvelope',
   low: 'lowEnvelope',
+  vocal: 'vocalEnvelope',
+  harmonic: 'harmonicEnvelope',
+  bass: 'bassEnvelope',
+  drums: 'drumsEnvelope',
   volume: 'volumeEnvelope'
 }
 
@@ -579,6 +887,10 @@ const MIXTAPE_ENVELOPE_MAX_GAIN_BY_PARAM: Record<MixtapeMixEnvelopeParam, number
   high: 16,
   mid: 16,
   low: 16,
+  vocal: 16,
+  harmonic: 16,
+  bass: 16,
+  drums: 16,
   volume: 1
 }
 

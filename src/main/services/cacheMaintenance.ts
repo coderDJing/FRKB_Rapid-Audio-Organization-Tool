@@ -257,6 +257,7 @@ export async function clearSongListCaches(songListPath: string | null | undefine
     await LibraryCacheDb.clearMixtapeWaveformCache(resolvedRoot)
     await LibraryCacheDb.clearMixtapeRawWaveformCache(resolvedRoot)
     await LibraryCacheDb.clearMixtapeWaveformHiresCache(resolvedRoot)
+    await LibraryCacheDb.clearMixtapeStemWaveformCache(resolvedRoot)
     if (await fs.pathExists(songsCache)) {
       await fs.remove(songsCache)
     }
@@ -275,6 +276,7 @@ export async function clearTrackCache(filePath: string) {
     await LibraryCacheDb.removeMixtapeWaveformCacheEntry(songListRoot, filePath)
     await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(songListRoot, filePath)
     await LibraryCacheDb.removeMixtapeWaveformHiresCacheEntry(songListRoot, filePath)
+    await LibraryCacheDb.removeMixtapeStemWaveformCacheByFilePath(songListRoot, filePath)
     await purgeCoverCacheForTrack(filePath)
   } catch {}
 }
@@ -286,6 +288,7 @@ export async function pruneOrphanedSongListCaches(dbRoot?: string): Promise<{
   mixtapeWaveformCacheRemoved: number
   mixtapeRawWaveformCacheRemoved: number
   mixtapeWaveformHiresCacheRemoved: number
+  mixtapeStemWaveformCacheRemoved: number
 }> {
   try {
     const rootDir = dbRoot || store.databaseDir
@@ -296,7 +299,8 @@ export async function pruneOrphanedSongListCaches(dbRoot?: string): Promise<{
         waveformCacheRemoved: 0,
         mixtapeWaveformCacheRemoved: 0,
         mixtapeRawWaveformCacheRemoved: 0,
-        mixtapeWaveformHiresCacheRemoved: 0
+        mixtapeWaveformHiresCacheRemoved: 0,
+        mixtapeStemWaveformCacheRemoved: 0
       }
     }
     const nodes = loadLibraryNodes(rootDir) || []
@@ -324,7 +328,8 @@ export async function pruneOrphanedSongListCaches(dbRoot?: string): Promise<{
       waveformCacheRemoved: 0,
       mixtapeWaveformCacheRemoved: 0,
       mixtapeRawWaveformCacheRemoved: 0,
-      mixtapeWaveformHiresCacheRemoved: 0
+      mixtapeWaveformHiresCacheRemoved: 0,
+      mixtapeStemWaveformCacheRemoved: 0
     }
   }
 }

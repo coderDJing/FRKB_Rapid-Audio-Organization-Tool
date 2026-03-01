@@ -8,18 +8,37 @@ const ENVELOPE_MAX_POINTS_PER_SEC = 2
 export const MIXTAPE_GAIN_KNOB_MIN_DB = -26
 export const MIXTAPE_GAIN_KNOB_MAX_DB = 12
 export const MIXTAPE_VOLUME_ENVELOPE_MAX_GAIN = 1
-export const MIXTAPE_ENVELOPE_PARAMS: MixtapeEnvelopeParamId[] = [
+export const MIXTAPE_STEM_SEGMENT_PARAMS: MixtapeEnvelopeParamId[] = [
+  'vocal',
+  'harmonic',
+  'bass',
+  'drums'
+]
+export const MIXTAPE_ENVELOPE_PARAMS_TRADITIONAL: MixtapeEnvelopeParamId[] = [
   'gain',
   'high',
   'mid',
   'low',
   'volume'
 ]
+export const MIXTAPE_ENVELOPE_PARAMS_STEM: MixtapeEnvelopeParamId[] = [
+  'gain',
+  'vocal',
+  'harmonic',
+  'bass',
+  'drums',
+  'volume'
+]
+export const MIXTAPE_ENVELOPE_PARAMS: MixtapeEnvelopeParamId[] = MIXTAPE_ENVELOPE_PARAMS_STEM
 export const MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM = {
   gain: 'gainEnvelope',
   high: 'highEnvelope',
   mid: 'midEnvelope',
   low: 'lowEnvelope',
+  vocal: 'vocalEnvelope',
+  harmonic: 'harmonicEnvelope',
+  bass: 'bassEnvelope',
+  drums: 'drumsEnvelope',
   volume: 'volumeEnvelope'
 } as const
 
@@ -54,6 +73,34 @@ const MIXTAPE_ENVELOPE_PARAM_CONFIG: Record<MixtapeEnvelopeParamId, EnvelopePara
     defaultGain: 1
   },
   low: {
+    minDb: MIXTAPE_GAIN_KNOB_MIN_DB,
+    maxDb: MIXTAPE_GAIN_KNOB_MAX_DB,
+    minGain: MIN_VALID_GAIN,
+    maxGain: MAX_GAIN_DEFAULT,
+    defaultGain: 1
+  },
+  vocal: {
+    minDb: MIXTAPE_GAIN_KNOB_MIN_DB,
+    maxDb: MIXTAPE_GAIN_KNOB_MAX_DB,
+    minGain: MIN_VALID_GAIN,
+    maxGain: MAX_GAIN_DEFAULT,
+    defaultGain: 1
+  },
+  harmonic: {
+    minDb: MIXTAPE_GAIN_KNOB_MIN_DB,
+    maxDb: MIXTAPE_GAIN_KNOB_MAX_DB,
+    minGain: MIN_VALID_GAIN,
+    maxGain: MAX_GAIN_DEFAULT,
+    defaultGain: 1
+  },
+  bass: {
+    minDb: MIXTAPE_GAIN_KNOB_MIN_DB,
+    maxDb: MIXTAPE_GAIN_KNOB_MAX_DB,
+    minGain: MIN_VALID_GAIN,
+    maxGain: MAX_GAIN_DEFAULT,
+    defaultGain: 1
+  },
+  drums: {
     minDb: MIXTAPE_GAIN_KNOB_MIN_DB,
     maxDb: MIXTAPE_GAIN_KNOB_MAX_DB,
     minGain: MIN_VALID_GAIN,

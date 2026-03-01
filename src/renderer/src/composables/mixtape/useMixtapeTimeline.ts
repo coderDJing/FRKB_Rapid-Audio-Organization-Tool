@@ -2,7 +2,6 @@ import { computed, markRaw, ref } from 'vue'
 import type { Ref } from 'vue'
 import type { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { t } from '@renderer/utils/translate'
-import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import {
   BASE_PX_PER_SEC,
@@ -14,7 +13,6 @@ import {
   LANE_COUNT,
   LANE_GAP,
   LANE_PADDING_TOP,
-  MIXXX_MAX_RGB_ENERGY,
   MIXTAPE_SUMMARY_ZOOM,
   MIXTAPE_WAVEFORM_SUPERSAMPLE,
   MIXTAPE_WAVEFORM_Y_OFFSET,
@@ -40,18 +38,23 @@ import {
 } from '@renderer/composables/mixtape/constants'
 import type {
   MinMaxSample,
+  MixtapeMixMode,
+  MixtapeStemMode,
   MixtapeTrack,
+  MixtapeWaveformStemId,
   RawWaveformData,
   RawWaveformLevel,
+  StemWaveformData,
   TimelineLayoutSnapshot,
   TimelineRenderPayload,
   WaveformPreRenderTask
 } from '@renderer/composables/mixtape/types'
+import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import {
   buildRawWaveformPyramid,
   resolveRawWaveformLevel as resolveRawWaveformLevelByMap
 } from '@renderer/composables/mixtape/waveformPyramid'
-import { drawMixxxRgbWaveform } from '@renderer/composables/mixtape/waveformDraw'
+import { drawMixxxRgbWaveform, drawStemWaveform } from '@renderer/composables/mixtape/waveformDraw'
 import { createTimelineRenderAndLoadModule } from '@renderer/composables/mixtape/timelineRenderAndLoad'
 import { createTimelineInteractionsModule } from '@renderer/composables/mixtape/timelineInteractions'
 import { createTimelineHelpersModule } from '@renderer/composables/mixtape/timelineHelpers'
@@ -70,10 +73,13 @@ type UseMixtapeTimelineOptions = {
   tracks: Ref<MixtapeTrack[]>
   bpmAnalysisActive: Ref<boolean>
   bpmAnalysisFailed: Ref<boolean>
+  mixtapeMixMode: Ref<MixtapeMixMode>
+  mixtapeStemMode: Ref<MixtapeStemMode>
 }
 
 export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
-  const { tracks, bpmAnalysisActive, bpmAnalysisFailed } = options
+  const { tracks, bpmAnalysisActive, bpmAnalysisFailed, mixtapeMixMode, mixtapeStemMode } = options
+  const isStemMixMode = () => mixtapeMixMode.value === 'stem'
   const zoom = ref(ZOOM_MIN)
   const renderZoom = ref(ZOOM_MIN)
   const zoomTouched = ref(true)
@@ -120,9 +126,9 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     canvas: null as HTMLCanvasElement | null,
     ctx: null as CanvasRenderingContext2D | null
   }
-  const waveformDataMap = markRaw(new Map<string, MixxxWaveformData | null>())
+  const waveformDataMap = markRaw(new Map<string, StemWaveformData | MixxxWaveformData | null>())
   const waveformMinMaxCache = markRaw(
-    new Map<string, { source: MixxxWaveformData; samples: MinMaxSample[] }>()
+    new Map<string, { source: StemWaveformData | MixxxWaveformData; samples: MinMaxSample[] }>()
   )
   const timelineLayoutCache = markRaw(new Map<number, TimelineLayoutSnapshot>())
   const timelineLayoutVersion = ref(0)
@@ -191,11 +197,14 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     resolveTrackTilesForWidth,
     drawTrackGridLines,
     resolveWaveformListRoot,
+    resolveTrackWaveformSources,
+    resolveTrackWaveformFilePaths,
+    resolveWaveformSubLaneMetrics,
     isWaveformReady,
     isRawWaveformLoading,
     resolveWaveformTitle,
     computeTimelineDuration,
-    buildMinMaxDataFromMixxx,
+    buildMinMaxDataFromStemWaveform,
     isValidWaveformData,
     getMinMaxSamples,
     decodeRawFloatArray,
@@ -210,6 +219,8 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     zoom,
     renderZoom,
     tracks,
+    mixtapeMixMode,
+    mixtapeStemMode,
     t,
     libraryUtils,
     waveformDataMap,
@@ -272,7 +283,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     }
     waveformTileCacheTick += 1
     waveformTileCache.set(cacheKey, { source: cachedCanvas, used: waveformTileCacheTick })
-    registerWaveformTileCacheKey(render.track.filePath, cacheKey)
+    registerWaveformTileCacheKey(render.waveformFilePath, cacheKey)
     pruneWaveformTileCache()
   }
 
@@ -325,22 +336,11 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
       if (range.end <= range.start) continue
       forEachVisibleLayoutItem(snapshot, range.start, range.end, (item) => {
         const track = item.track
-        const filePath = track.filePath
-        if (!filePath) return
-        const data = waveformDataMap.get(filePath)
-        const isSummary = renderZoomValue <= MIXTAPE_SUMMARY_ZOOM + 0.0001
-        if (!data && !isSummary) return
-        if (
-          renderZoomValue >= RAW_WAVEFORM_MIN_ZOOM &&
-          !rawWaveformDataMap.get(filePath) &&
-          !isSummary
-        ) {
-          return
-        }
-        const ctx = buildTrackRenderContext(track, renderZoomValue)
-        if (!ctx.trackWidth || !Number.isFinite(ctx.trackWidth)) return
+        const waveformSources = resolveTrackWaveformSources(track)
+        if (!waveformSources.length) return
+        const laneMetrics = resolveLaneHeightForZoom(renderZoomValue)
         const trackStartX = item.startX
-        const trackEndX = trackStartX + ctx.trackWidth
+        const trackEndX = trackStartX + item.width
         const visibleStart = Math.max(trackStartX, range.start)
         const visibleEnd = Math.min(trackEndX, range.end)
         if (visibleEnd <= visibleStart) return
@@ -351,25 +351,53 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
           tileStartIndex,
           Math.floor(Math.max(0, localEnd - 1) / WAVEFORM_TILE_WIDTH)
         )
-        const height = Math.max(1, Math.floor(ctx.laneHeight))
-        for (let tileIndex = tileStartIndex; tileIndex <= tileEndIndex; tileIndex += 1) {
-          const tileStart = tileIndex * WAVEFORM_TILE_WIDTH
-          const tileWidth = Math.max(0, Math.min(WAVEFORM_TILE_WIDTH, ctx.trackWidth - tileStart))
-          if (!tileWidth) continue
-          const cacheKey = buildWaveformTileCacheKey(
-            filePath,
-            tileIndex,
-            renderZoomValue,
-            Math.max(1, Math.floor(tileWidth)),
-            height,
-            pixelRatio
+
+        for (const waveformSource of waveformSources) {
+          const filePath = waveformSource.filePath
+          if (!filePath) continue
+          const data = waveformDataMap.get(filePath)
+          const isSummary = renderZoomValue <= MIXTAPE_SUMMARY_ZOOM + 0.0001
+          if (!data && !isSummary) continue
+          if (
+            renderZoomValue >= RAW_WAVEFORM_MIN_ZOOM &&
+            !rawWaveformDataMap.get(filePath) &&
+            !isSummary
+          ) {
+            continue
+          }
+          const subLane = resolveWaveformSubLaneMetrics(
+            laneMetrics,
+            waveformSource.laneIndex,
+            waveformSource.laneCount
           )
-          if (waveformTileCache.has(cacheKey) || waveformTilePending.has(cacheKey)) continue
-          queue.push({
-            ctx,
-            tile: { index: tileIndex, start: tileStart, width: tileWidth },
-            cacheKey
+          const ctx = buildTrackRenderContext(track, {
+            renderZoomValue,
+            waveformFilePath: filePath,
+            waveformStemId: waveformSource.stemId,
+            laneHeight: subLane.height
           })
+          if (!ctx.trackWidth || !Number.isFinite(ctx.trackWidth)) continue
+          const height = Math.max(1, Math.floor(ctx.laneHeight))
+          for (let tileIndex = tileStartIndex; tileIndex <= tileEndIndex; tileIndex += 1) {
+            const tileStart = tileIndex * WAVEFORM_TILE_WIDTH
+            const tileWidth = Math.max(0, Math.min(WAVEFORM_TILE_WIDTH, ctx.trackWidth - tileStart))
+            if (!tileWidth) continue
+            const cacheKey = buildWaveformTileCacheKey(
+              filePath,
+              waveformSource.stemId,
+              tileIndex,
+              renderZoomValue,
+              Math.max(1, Math.floor(tileWidth)),
+              height,
+              pixelRatio
+            )
+            if (waveformTileCache.has(cacheKey) || waveformTilePending.has(cacheKey)) continue
+            queue.push({
+              ctx,
+              tile: { index: tileIndex, start: tileStart, width: tileWidth },
+              cacheKey
+            })
+          }
         }
       })
     }
@@ -384,7 +412,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     const budget = 12
     while (waveformPreRenderCursor < queue.length && performance.now() - startTime < budget) {
       const task = queue[waveformPreRenderCursor]
-      if (waveformRenderWorker) {
+      if (isStemMixMode() && waveformRenderWorker) {
         requestWaveformTileRender(task)
       } else {
         renderWaveformTileToCache(task)
@@ -415,7 +443,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
   }
 
   const scheduleFullPreRender = () => {
-    if (timelineWorkerReady.value) return
+    if (isStemMixMode() && timelineWorkerReady.value) return
     if (waveformPreRenderTimer) clearTimeout(waveformPreRenderTimer)
     waveformPreRenderTimer = setTimeout(() => {
       waveformPreRenderTimer = null
@@ -427,6 +455,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     const tasks: Array<{
       cacheKey: string
       filePath: string
+      stemId: MixtapeWaveformStemId
       zoom: number
       tileIndex: number
       tileStart: number
@@ -447,18 +476,11 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
       if (range.end <= range.start) continue
       forEachVisibleLayoutItem(snapshot, range.start, range.end, (item) => {
         const track = item.track
-        const filePath = track.filePath
-        if (!filePath) return
-        const data = waveformDataMap.get(filePath)
-        const isSummary = level <= MIXTAPE_SUMMARY_ZOOM + 0.0001
-        if (!data && !isSummary) return
-        if (level >= RAW_WAVEFORM_MIN_ZOOM && !rawWaveformDataMap.get(filePath) && !isSummary) {
-          return
-        }
-        const ctx = buildTrackRenderContext(track, level)
-        if (!ctx.trackWidth || !Number.isFinite(ctx.trackWidth)) return
+        const waveformSources = resolveTrackWaveformSources(track)
+        if (!waveformSources.length) return
+        const laneMetrics = resolveLaneHeightForZoom(level)
         const trackStartX = item.startX
-        const trackEndX = trackStartX + ctx.trackWidth
+        const trackEndX = trackStartX + item.width
         const visibleStart = Math.max(trackStartX, range.start)
         const visibleEnd = Math.min(trackEndX, range.end)
         if (visibleEnd <= visibleStart) return
@@ -469,31 +491,56 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
           tileStartIndex,
           Math.floor(Math.max(0, localEnd - 1) / WAVEFORM_TILE_WIDTH)
         )
-        const height = Math.max(1, Math.floor(ctx.laneHeight))
-        for (let tileIndex = tileStartIndex; tileIndex <= tileEndIndex; tileIndex += 1) {
-          const tileStart = tileIndex * WAVEFORM_TILE_WIDTH
-          const tileWidth = Math.max(0, Math.min(WAVEFORM_TILE_WIDTH, ctx.trackWidth - tileStart))
-          if (!tileWidth) continue
-          const cacheKey = buildWaveformTileCacheKey(
-            filePath,
-            tileIndex,
-            level,
-            Math.max(1, Math.floor(tileWidth)),
-            height,
-            pixelRatio
+
+        for (const waveformSource of waveformSources) {
+          const filePath = waveformSource.filePath
+          if (!filePath) continue
+          const data = waveformDataMap.get(filePath)
+          const isSummary = level <= MIXTAPE_SUMMARY_ZOOM + 0.0001
+          if (!data && !isSummary) continue
+          if (level >= RAW_WAVEFORM_MIN_ZOOM && !rawWaveformDataMap.get(filePath) && !isSummary) {
+            continue
+          }
+          const subLane = resolveWaveformSubLaneMetrics(
+            laneMetrics,
+            waveformSource.laneIndex,
+            waveformSource.laneCount
           )
-          tasks.push({
-            cacheKey,
-            filePath,
-            zoom: level,
-            tileIndex,
-            tileStart,
-            tileWidth,
-            trackWidth: ctx.trackWidth,
-            durationSeconds: ctx.sourceDurationSeconds,
-            laneHeight: ctx.laneHeight,
-            pixelRatio
+          const ctx = buildTrackRenderContext(track, {
+            renderZoomValue: level,
+            waveformFilePath: filePath,
+            waveformStemId: waveformSource.stemId,
+            laneHeight: subLane.height
           })
+          if (!ctx.trackWidth || !Number.isFinite(ctx.trackWidth)) continue
+          const height = Math.max(1, Math.floor(ctx.laneHeight))
+          for (let tileIndex = tileStartIndex; tileIndex <= tileEndIndex; tileIndex += 1) {
+            const tileStart = tileIndex * WAVEFORM_TILE_WIDTH
+            const tileWidth = Math.max(0, Math.min(WAVEFORM_TILE_WIDTH, ctx.trackWidth - tileStart))
+            if (!tileWidth) continue
+            const cacheKey = buildWaveformTileCacheKey(
+              filePath,
+              waveformSource.stemId,
+              tileIndex,
+              level,
+              Math.max(1, Math.floor(tileWidth)),
+              height,
+              pixelRatio
+            )
+            tasks.push({
+              cacheKey,
+              filePath,
+              stemId: waveformSource.stemId,
+              zoom: level,
+              tileIndex,
+              tileStart,
+              tileWidth,
+              trackWidth: ctx.trackWidth,
+              durationSeconds: ctx.sourceDurationSeconds,
+              laneHeight: ctx.laneHeight,
+              pixelRatio
+            })
+          }
         }
       })
     }
@@ -520,6 +567,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
   }
 
   const startWorkerPreRender = () => {
+    if (!isStemMixMode()) return
     if (!timelineWorkerReady.value || !waveformRenderWorker) return
     if (!tracks.value.length) return
     if (preRenderState.value.active) {
@@ -545,6 +593,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
   }
 
   const scheduleWorkerPreRender = () => {
+    if (!isStemMixMode()) return
     if (!timelineWorkerReady.value || !waveformRenderWorker) return
     if (waveformWorkerPreRenderTimer) clearTimeout(waveformWorkerPreRenderTimer)
     waveformWorkerPreRenderTimer = setTimeout(() => {
@@ -599,6 +648,8 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     renderMixtapeOutputWav
   } = createTimelineTransportAndDragModule({
     tracks,
+    mixtapeMixMode,
+    mixtapeStemMode,
     timelineLayout,
     normalizedRenderZoom,
     timelineScrollRef,
@@ -674,7 +725,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
   const {
     postWaveformWorkerMessage,
     clearWaveformTileCacheForFile,
-    pushMixxxWaveformToWorker,
+    pushStemWaveformToWorker,
     pushRawWaveformToWorker,
     handleWaveformWorkerMessage,
     requestWaveformTileRender,
@@ -682,6 +733,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     buildTimelineRenderPayload,
     requestTimelineWorkerRender
   } = createTimelineWorkerBridgeModule({
+    mixtapeMixMode,
     waveformRenderWorkerRef,
     timelineWorkerReady,
     timelineCanvasRef,
@@ -704,6 +756,8 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     getScheduleTimelineDraw: () => scheduleTimelineDrawBridgeRef.value,
     buildSequentialLayoutForZoom,
     forEachVisibleLayoutItem,
+    resolveTrackWaveformSources,
+    resolveWaveformSubLaneMetrics,
     resolveTrackSourceDurationSeconds,
     resolveTrackFirstBeatMs,
     resolveRenderPxPerSec,
@@ -749,6 +803,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     scheduleWaveformLoad,
     handleWaveformUpdated
   } = createTimelineRenderAndLoadModule({
+    mixtapeMixMode,
     requestTimelineWorkerRender,
     timelineWorkerReady,
     timelineCanvasRef,
@@ -770,6 +825,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     resolveTrackRenderWidthPx,
     resolveRenderPxPerSec,
     resolveRawWaveformLevel,
+    resolveWaveformSubLaneMetrics,
     useHalfWaveform,
     waveformDataMap,
     rawWaveformDataMap,
@@ -782,7 +838,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     pruneWaveformTileCache,
     waveformTilePending,
     disposeWaveformCacheEntry,
-    pushMixxxWaveformToWorker,
+    pushStemWaveformToWorker,
     pushRawWaveformToWorker,
     clearWaveformTileCacheForFile,
     buildRawWaveformPyramid,
@@ -791,6 +847,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     isValidWaveformData,
     tracks,
     resolveWaveformListRoot,
+    resolveTrackWaveformSources,
     waveformInflight,
     waveformQueuedMissing,
     rawWaveformInflight,
@@ -820,6 +877,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     RAW_WAVEFORM_BATCH_SIZE,
     MIXTAPE_WAVEFORM_SUPERSAMPLE,
     drawMixxxRgbWaveform,
+    drawStemWaveform,
     useRawWaveform,
     waveformVersion
   })
@@ -892,6 +950,9 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
 
   createTimelineWatchAndMountModule({
     tracks,
+    mixtapeMixMode,
+    mixtapeStemMode,
+    resolveTrackWaveformFilePaths,
     isTrackDragging,
     bpmAnalysisActive,
     timelineDurationSec,
@@ -908,7 +969,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     scheduleWaveformDraw,
     waveformRenderWorkerRef,
     handleWaveformWorkerMessage,
-    pushMixxxWaveformToWorker,
+    pushStemWaveformToWorker,
     pushRawWaveformToWorker,
     waveformDataMap,
     rawWaveformDataMap,

@@ -3,6 +3,9 @@ import { nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
 export const createTimelineWatchAndMountModule = (ctx: any) => {
   const {
     tracks,
+    mixtapeMixMode,
+    mixtapeStemMode,
+    resolveTrackWaveformFilePaths,
     isTrackDragging,
     bpmAnalysisActive,
     timelineDurationSec,
@@ -19,7 +22,7 @@ export const createTimelineWatchAndMountModule = (ctx: any) => {
     scheduleWaveformDraw,
     waveformRenderWorkerRef,
     handleWaveformWorkerMessage,
-    pushMixxxWaveformToWorker,
+    pushStemWaveformToWorker,
     pushRawWaveformToWorker,
     waveformDataMap,
     rawWaveformDataMap,
@@ -40,6 +43,7 @@ export const createTimelineWatchAndMountModule = (ctx: any) => {
   const INITIAL_VIEWPORT_BIND_INTERVAL_MS = 50
   let initialViewportBindAttempts = 0
   let initialViewportBindTimer: ReturnType<typeof setTimeout> | null = null
+  const isStemMixMode = () => mixtapeMixMode?.value === 'stem'
 
   const clearInitialViewportBindTimer = () => {
     if (!initialViewportBindTimer) return
@@ -81,7 +85,14 @@ export const createTimelineWatchAndMountModule = (ctx: any) => {
   }
 
   watch(
-    () => tracks.value.map((track: any) => track.id).join('|'),
+    () =>
+      `${String(mixtapeMixMode?.value || 'stem')}|${String(mixtapeStemMode?.value || '')}|${tracks.value
+        .map((track: any) => {
+          const waveformPaths = resolveTrackWaveformFilePaths(track).join(',')
+          const stemStatus = mixtapeMixMode?.value === 'stem' ? String(track.stemStatus || '') : ''
+          return `${track.id}:${stemStatus}:${waveformPaths}`
+        })
+        .join('|')}`,
     () => {
       stopTransportForTrackChange()
       clearTimelineLayoutCache()
@@ -168,8 +179,10 @@ export const createTimelineWatchAndMountModule = (ctx: any) => {
         )
         waveformRenderWorkerRef.value = worker
         worker.onmessage = handleWaveformWorkerMessage
-        for (const [filePath, data] of waveformDataMap.entries()) {
-          pushMixxxWaveformToWorker(filePath, data)
+        if (isStemMixMode()) {
+          for (const [filePath, data] of waveformDataMap.entries()) {
+            pushStemWaveformToWorker(filePath, data)
+          }
         }
         for (const [filePath, data] of rawWaveformDataMap.entries()) {
           pushRawWaveformToWorker(filePath, data)

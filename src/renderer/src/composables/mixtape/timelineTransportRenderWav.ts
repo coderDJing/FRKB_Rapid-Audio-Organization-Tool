@@ -22,17 +22,40 @@ type TransportEntry = {
   duration: number
   sourceDuration: number
   tempoRatio: number
-  audioBuffer: AudioBuffer | null
+  audioRef?: TransportAudioRef
+  stemAudioById?: Partial<Record<TransportStemId, TransportStemAudioRef>>
+}
+
+type TransportStemId = 'vocal' | 'harmonic' | 'bass' | 'drums'
+
+type TransportAudioRef = {
+  filePath: string
   decodeMode: 'browser' | 'ipc'
+  audioBuffer: AudioBuffer | null
+}
+
+type TransportStemAudioRef = {
+  stemId: TransportStemId
+  filePath: string
+  decodeMode: 'browser' | 'ipc'
+  audioBuffer: AudioBuffer | null
+}
+
+type TrackStemGraphNode = {
+  stemId: TransportStemId
+  source: AudioBufferSourceNode
+  stemGain: GainNode
 }
 
 type TrackGraphNode = {
   trackId: string
   entry: TransportEntry
   source: AudioBufferSourceNode
-  eqHigh: BiquadFilterNode
-  eqMid: BiquadFilterNode
-  eqLow: BiquadFilterNode
+  stemNodes: TrackStemGraphNode[]
+  stemBus: GainNode | null
+  eqHigh: BiquadFilterNode | null
+  eqMid: BiquadFilterNode | null
+  eqLow: BiquadFilterNode | null
   volume: GainNode
   gain: GainNode
 }
@@ -42,18 +65,23 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
     t,
     buildTransportEntries,
     readTransportBufferCache,
-    ensureDecodedEntry,
+    ensureDecodedTransportEntry,
     getTransportAudioContext,
     clampNumber,
     resolveEntryEqDbValue,
     resolveEntryEnvelopeValue,
-    applyTransportMixParamsAtTimelineSec
+    isStemMode,
+    applyTransportMixParamsAtTimelineSec,
+    resolveStemIdsForMode,
+    mirrorTransportStemPlaybackRates
   } = ctx
 
   const SCHEDULING_PROGRESS_STEP = 20
   const SCHEDULING_YIELD_INTERVAL_MS = 12
   const WAV_ENCODE_CHUNK_FRAMES = 8192
   const WAV_ENCODE_YIELD_INTERVAL_MS = 12
+  const isStemMixMode = (): boolean => Boolean(isStemMode?.())
+  const resolveStemIds = (): TransportStemId[] => resolveStemIdsForMode() as TransportStemId[]
 
   const getNowMs = () =>
     typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -78,9 +106,18 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
       return activeTransportSampleRate
     }
     for (const entry of entries) {
-      const sampleRate = Number(entry.audioBuffer?.sampleRate || 0)
-      if (Number.isFinite(sampleRate) && sampleRate > 0) {
-        return sampleRate
+      if (isStemMixMode()) {
+        for (const stemId of resolveStemIds()) {
+          const sampleRate = Number(entry.stemAudioById?.[stemId]?.audioBuffer?.sampleRate || 0)
+          if (Number.isFinite(sampleRate) && sampleRate > 0) {
+            return sampleRate
+          }
+        }
+      } else {
+        const sampleRate = Number(entry.audioRef?.audioBuffer?.sampleRate || 0)
+        if (Number.isFinite(sampleRate) && sampleRate > 0) {
+          return sampleRate
+        }
       }
     }
     try {
@@ -189,6 +226,7 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
         audioCtx: offlineCtx
       })
       masterTrackId = syncResult.masterTrackId
+      mirrorTransportStemPlaybackRates(nodes, offlineCtx, timelineSec)
       if (step % SCHEDULING_PROGRESS_STEP === 0 || step === totalSteps) {
         emitProgress({
           stageKey: 'mixtape.outputProgressScheduling',
@@ -227,10 +265,65 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
     entries: TransportEntry[]
   ): TrackGraphNode[] => {
     const nodes: TrackGraphNode[] = []
+    const useStemMode = isStemMixMode()
+    const stemIds = resolveStemIds()
     for (const entry of entries) {
-      if (!entry.audioBuffer) continue
+      if (useStemMode) {
+        const stemAudios = stemIds
+          .map((stemId) => entry.stemAudioById?.[stemId])
+          .filter((item): item is TransportStemAudioRef => !!item && !!item.audioBuffer)
+        if (!stemAudios.length) continue
+        const stemBus = offlineCtx.createGain()
+        const volume = offlineCtx.createGain()
+        const gain = offlineCtx.createGain()
+
+        const initialTimelineSec = 0
+        const initialLocalSec = Math.max(0, initialTimelineSec - entry.startSec)
+        volume.gain.value = resolveEntryEnvelopeValue(entry, 'volume', initialLocalSec)
+        gain.gain.value = resolveEntryEnvelopeValue(entry, 'gain', initialLocalSec)
+        stemBus.gain.value = 1
+        stemBus.connect(volume)
+        volume.connect(gain)
+        gain.connect(offlineCtx.destination)
+
+        const stemNodes: TrackStemGraphNode[] = []
+        for (const stemAudio of stemAudios) {
+          const source = offlineCtx.createBufferSource()
+          source.buffer = stemAudio.audioBuffer
+          source.playbackRate.value = entry.tempoRatio
+          const stemGain = offlineCtx.createGain()
+          stemGain.gain.value = resolveEntryEnvelopeValue(entry, stemAudio.stemId, initialLocalSec)
+          source.connect(stemGain)
+          stemGain.connect(stemBus)
+          source.start(entry.startSec, 0)
+          stemNodes.push({
+            stemId: stemAudio.stemId,
+            source,
+            stemGain
+          })
+        }
+        const primaryStemNode = stemNodes[0]
+        if (!primaryStemNode) continue
+
+        nodes.push({
+          trackId: entry.trackId,
+          entry,
+          source: primaryStemNode.source,
+          stemNodes,
+          stemBus,
+          eqHigh: null,
+          eqMid: null,
+          eqLow: null,
+          volume,
+          gain
+        })
+        continue
+      }
+
+      const audioBuffer = entry.audioRef?.audioBuffer
+      if (!audioBuffer) continue
       const source = offlineCtx.createBufferSource()
-      source.buffer = entry.audioBuffer
+      source.buffer = audioBuffer
       source.playbackRate.value = entry.tempoRatio
 
       const eqLow = offlineCtx.createBiquadFilter()
@@ -248,7 +341,6 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
 
       const volume = offlineCtx.createGain()
       const gain = offlineCtx.createGain()
-
       const initialTimelineSec = 0
       const initialLocalSec = Math.max(0, initialTimelineSec - entry.startSec)
       eqHigh.gain.value = resolveEntryEqDbValue(entry, 'high', initialLocalSec)
@@ -269,6 +361,8 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
         trackId: entry.trackId,
         entry,
         source,
+        stemNodes: [],
+        stemBus: null,
         eqHigh,
         eqMid,
         eqLow,
@@ -300,16 +394,45 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
     if (plan.missingDurationCount > 0) {
       throw new Error(t('mixtape.transportMissingDuration', { count: plan.missingDurationCount }))
     }
+    if (isStemMixMode() && plan.stemNotReadyCount > 0) {
+      throw new Error(t('mixtape.stemNotReadyForExport', { count: plan.stemNotReadyCount }))
+    }
+    if (isStemMixMode() && plan.missingStemAssetCount > 0) {
+      throw new Error(t('mixtape.stemNotReadyForExport', { count: plan.missingStemAssetCount }))
+    }
 
     const decodeQueue: TransportEntry[] = []
-    for (const entry of entries) {
-      const cached = readTransportBufferCache(entry.filePath)
-      if (cached) {
-        entry.audioBuffer = cached
-        continue
+    const requiredStemIds = resolveStemIds()
+    if (isStemMixMode()) {
+      for (const entry of entries) {
+        let needsDecode = false
+        for (const stemId of requiredStemIds) {
+          const stemAudio = entry.stemAudioById?.[stemId]
+          if (!stemAudio) continue
+          const cached = readTransportBufferCache(stemAudio.filePath)
+          if (cached) {
+            stemAudio.audioBuffer = cached
+            continue
+          }
+          needsDecode = true
+        }
+        if (needsDecode) {
+          decodeQueue.push(entry)
+        }
       }
-      decodeQueue.push(entry)
+    } else {
+      for (const entry of entries) {
+        const audioRef = entry.audioRef
+        if (!audioRef) continue
+        const cached = readTransportBufferCache(audioRef.filePath)
+        if (cached) {
+          audioRef.audioBuffer = cached
+          continue
+        }
+        decodeQueue.push(entry)
+      }
     }
+
     const decodeTotal = Math.max(1, decodeQueue.length)
     emitProgress({
       stageKey: 'mixtape.outputProgressDecoding',
@@ -329,7 +452,7 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
           if (currentIndex >= decodeQueue.length) return
           const entry = decodeQueue[currentIndex]
           try {
-            await ensureDecodedEntry(entry)
+            await ensureDecodedTransportEntry(entry)
           } catch (error) {
             console.error('[mixtape-output] decode failed:', entry.filePath, error)
             failCount += 1
@@ -350,12 +473,28 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
       }
     }
 
-    for (const entry of entries) {
-      if (!entry.audioBuffer) {
-        throw new Error(t('mixtape.transportDecodeFailed', { count: 1 }))
+    if (isStemMixMode()) {
+      for (const entry of entries) {
+        const allDecoded = requiredStemIds.every(
+          (stemId) => !!entry.stemAudioById?.[stemId]?.audioBuffer
+        )
+        if (!allDecoded) {
+          throw new Error(t('mixtape.transportDecodeFailed', { count: 1 }))
+        }
+      }
+    } else {
+      for (const entry of entries) {
+        if (!entry.audioRef?.audioBuffer) {
+          throw new Error(t('mixtape.transportDecodeFailed', { count: 1 }))
+        }
       }
     }
-    const playableEntries = entries.filter((entry) => !!entry.audioBuffer)
+
+    const playableEntries = entries.filter((entry) =>
+      isStemMixMode()
+        ? requiredStemIds.every((stemId) => !!entry.stemAudioById?.[stemId]?.audioBuffer)
+        : Boolean(entry.audioRef?.audioBuffer)
+    )
     const durationSec = playableEntries.reduce(
       (max, entry) => Math.max(max, entry.startSec + entry.duration),
       0

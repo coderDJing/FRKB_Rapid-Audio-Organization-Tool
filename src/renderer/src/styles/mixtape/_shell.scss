@@ -120,6 +120,18 @@
   margin-left: auto;
 }
 
+.mixtape-param-bar__profile-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mixtape-param-bar__profile-label {
+  font-size: 11px;
+  color: var(--text-weak);
+  white-space: nowrap;
+}
+
 .mixtape-param-bar__hint {
   flex: 0 1 auto;
   min-width: 0;
@@ -288,4 +300,10 @@
 .mixtape-param-bar__tab:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px rgba(var(--mix-tab-accent-rgb), 0.24);
+}
+
+@media (max-width: 1280px) {
+  .mixtape-param-bar__profile-label {
+    display: none;
+  }
 }

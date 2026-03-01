@@ -3,10 +3,12 @@ import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
 import confirmDialog from '@renderer/components/confirmDialog'
+import choiceDialog from '@renderer/components/choiceDialog'
 import { useMixtapeTimeline } from '@renderer/composables/mixtape/useMixtapeTimeline'
 import { createMixtapeAutoGainController } from '@renderer/composables/mixtape/autoGainController'
 import {
-  MIXTAPE_ENVELOPE_PARAMS,
+  MIXTAPE_ENVELOPE_PARAMS_STEM,
+  MIXTAPE_ENVELOPE_PARAMS_TRADITIONAL,
   MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM,
   buildFlatMixEnvelope,
   normalizeMixEnvelopePoints
@@ -31,8 +33,18 @@ import {
 } from '@renderer/composables/mixtape/mixtapeOutputProgress'
 import { createMixtapeMissingTracksNotifier } from '@renderer/composables/mixtape/mixtapeMissingTracksNotifier'
 import { getKeyDisplayText as formatKeyDisplayText } from '@shared/keyDisplay'
+import {
+  DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE,
+  DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE,
+  normalizeMixtapeStemProfile,
+  parseMixtapeStemModel,
+  resolveMixtapeStemModelByProfile
+} from '@shared/mixtapeStemProfiles'
 import type {
+  MixtapeMixMode,
   MixtapeOpenPayload,
+  MixtapeStemMode,
+  MixtapeStemProfile as RendererMixtapeStemProfile,
   MixtapeRawItem,
   MixtapeTrack,
   TimelineTrackLayout
@@ -40,6 +52,14 @@ import type {
 
 export const useMixtape = () => {
   const payload = ref<MixtapeOpenPayload>({})
+  const mixtapeMixMode = ref<MixtapeMixMode>('stem')
+  const mixtapeStemMode = ref<MixtapeStemMode>('4stems')
+  const mixtapeStemRealtimeProfile = ref<RendererMixtapeStemProfile>(
+    DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
+  )
+  const mixtapeStemExportProfile = ref<RendererMixtapeStemProfile>(
+    DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
+  )
   const tracks = ref<MixtapeTrack[]>([])
   const mixtapeRawItems = ref<MixtapeRawItem[]>([])
   const selectedTrackId = ref('')
@@ -64,8 +84,15 @@ export const useMixtape = () => {
   const bpmAnalysisActive = ref(false)
   const bpmAnalysisFailed = ref(false)
   const bpmAnalysisFailedCount = ref(0)
+  const bpmAnalysisFailedAutoCloseSeconds = 8
   let bpmAnalysisToken = 0
   let lastBpmAnalysisKey = ''
+  let bpmAnalysisFailedTimer: ReturnType<typeof setTimeout> | null = null
+  const mixtapeStemStrategyConfirmed = ref(false)
+  const stemResumeBootstrappedPlaylistIdSet = new Set<string>()
+  const stemResumeSignatureByPlaylistId = new Map<string, string>()
+  const stemStrategyPromptSkippedPlaylistIdSet = new Set<string>()
+  const stemStrategyPromptTaskByPlaylistId = new Map<string, Promise<void>>()
 
   let playlistUpdateTimer: ReturnType<typeof setTimeout> | null = null
   const { notifyMissingTracksRemoved } = createMixtapeMissingTracksNotifier()
@@ -133,7 +160,13 @@ export const useMixtape = () => {
     handleOverviewClick,
     resolveOverviewTrackStyle,
     overviewViewportStyle
-  } = useMixtapeTimeline({ tracks, bpmAnalysisActive, bpmAnalysisFailed })
+  } = useMixtapeTimeline({
+    tracks,
+    bpmAnalysisActive,
+    bpmAnalysisFailed,
+    mixtapeMixMode,
+    mixtapeStemMode
+  })
 
   const displayName = computed(() => {
     return (
@@ -149,6 +182,39 @@ export const useMixtape = () => {
   })
 
   const mixtapePlaylistId = computed(() => String(payload.value.playlistId || ''))
+  const normalizeMixtapeMixMode = (value: unknown): MixtapeMixMode =>
+    value === 'traditional' ? 'traditional' : 'stem'
+  const normalizeMixtapeStemMode = (_value: unknown): MixtapeStemMode => '4stems'
+  const normalizeStemProfile = (
+    value: unknown,
+    fallback: RendererMixtapeStemProfile = DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
+  ): RendererMixtapeStemProfile => normalizeMixtapeStemProfile(value, fallback)
+  const normalizeMixtapeStemStatus = (value: unknown) => {
+    if (value === 'pending' || value === 'running' || value === 'ready' || value === 'failed') {
+      return value
+    }
+    return 'ready'
+  }
+  const resolveTrackStemModel = (track: MixtapeTrack) =>
+    typeof track?.stemModel === 'string' ? track.stemModel.trim() : ''
+  const resolveTrackStemVersion = (track: MixtapeTrack) =>
+    typeof track?.stemVersion === 'string' ? track.stemVersion.trim() : ''
+  const isTrackStemTimeoutFailure = (track: MixtapeTrack) => {
+    const stemError = typeof track?.stemError === 'string' ? track.stemError.toLowerCase() : ''
+    if (!stemError) return false
+    return stemError.includes('timeout') || stemError.includes('超时')
+  }
+  const hasTrackStemPathsReady = (track: MixtapeTrack, stemMode: MixtapeStemMode) => {
+    const vocalPath = normalizeMixtapeFilePath((track as any)?.stemVocalPath)
+    const harmonicPath = normalizeMixtapeFilePath((track as any)?.stemHarmonicPath)
+    const drumsPath = normalizeMixtapeFilePath((track as any)?.stemDrumsPath)
+    if (!vocalPath || !harmonicPath || !drumsPath) return false
+    if (stemMode === '4stems') {
+      const bassPath = normalizeMixtapeFilePath((track as any)?.stemBassPath)
+      if (!bassPath) return false
+    }
+    return true
+  }
 
   const trackContextMenuStyle = computed(() => ({
     left: `${trackContextMenuX.value}px`,
@@ -248,6 +314,106 @@ export const useMixtape = () => {
     return applied
   }
 
+  const autoResumePendingStemJobs = async (params: {
+    playlistId: string
+    stemMode: MixtapeStemMode
+    trackList: MixtapeTrack[]
+    includeRunning: boolean
+    includeTimeoutFailed: boolean
+  }) => {
+    const playlistId = String(params.playlistId || '').trim()
+    if (!playlistId || !window?.electron?.ipcRenderer?.invoke) return
+    const includeRunning = !!params.includeRunning
+    const includeTimeoutFailed = !!params.includeTimeoutFailed
+    const resumeCandidates = params.trackList.filter((track) => {
+      const status = normalizeMixtapeStemStatus(track.stemStatus)
+      if (status === 'pending') return true
+      if (includeRunning && status === 'running') return true
+      if (includeTimeoutFailed && status === 'failed' && isTrackStemTimeoutFailure(track)) {
+        return true
+      }
+      return false
+    })
+    if (!resumeCandidates.length) {
+      stemResumeSignatureByPlaylistId.delete(playlistId)
+      return
+    }
+
+    const grouped = new Map<
+      string,
+      {
+        model: string
+        profile: RendererMixtapeStemProfile
+        stemVersion?: string
+        filePathSet: Set<string>
+      }
+    >()
+    for (const track of resumeCandidates) {
+      const filePath = normalizeMixtapeFilePath(track.filePath)
+      if (!filePath) continue
+      const model = resolveTrackStemModel(track)
+      const stemVersion = resolveTrackStemVersion(track)
+      const parsedModel = parseMixtapeStemModel(model, mixtapeStemRealtimeProfile.value)
+      const requestedModel = parsedModel.requestedModel
+      const profile = normalizeStemProfile(parsedModel.profile, mixtapeStemRealtimeProfile.value)
+      const groupKey = `${requestedModel}::${profile}::${stemVersion || ''}`
+      const existing = grouped.get(groupKey)
+      if (existing) {
+        existing.filePathSet.add(filePath)
+        continue
+      }
+      grouped.set(groupKey, {
+        model: requestedModel,
+        profile,
+        stemVersion: stemVersion || undefined,
+        filePathSet: new Set<string>([filePath])
+      })
+    }
+    if (!grouped.size) {
+      stemResumeSignatureByPlaylistId.delete(playlistId)
+      return
+    }
+
+    const signature = Array.from(grouped.entries())
+      .map(([groupKey, group]) => {
+        const filePathSignature = Array.from(group.filePathSet).sort().join('|')
+        return `${groupKey}::${filePathSignature}`
+      })
+      .sort()
+      .join('\n')
+    if (!signature) {
+      stemResumeSignatureByPlaylistId.delete(playlistId)
+      return
+    }
+    const lastSignature = stemResumeSignatureByPlaylistId.get(playlistId) || ''
+    if (lastSignature === signature) return
+
+    for (const group of grouped.values()) {
+      const filePaths = Array.from(group.filePathSet)
+      if (!filePaths.length) continue
+      try {
+        await window.electron.ipcRenderer.invoke('mixtape:stem:enqueue', {
+          playlistId,
+          filePaths,
+          stemMode: params.stemMode,
+          profile: group.profile,
+          model: group.model,
+          stemVersion: group.stemVersion,
+          force: false
+        })
+      } catch (error) {
+        console.error('[mixtape] auto resume pending stem jobs failed', {
+          playlistId,
+          profile: group.profile,
+          model: group.model || null,
+          count: filePaths.length,
+          error
+        })
+      }
+    }
+    stemResumeSignatureByPlaylistId.set(playlistId, signature)
+  }
+
   const handleBpmBatchReady = (_e: unknown, payload: any) => {
     const results = Array.isArray(payload?.results) ? payload.results : []
     if (!results.length) return
@@ -262,18 +428,46 @@ export const useMixtape = () => {
       }
       lastBpmAnalysisKey = buildMixtapeBpmTargetKey(filePaths)
       bpmAnalysisActive.value = false
-      bpmAnalysisFailed.value = false
-      bpmAnalysisFailedCount.value = 0
+      dismissBpmAnalysisFailure()
     } else if (bpmAnalysisFailed.value) {
       bpmAnalysisFailedCount.value = missingTrackCount
+      scheduleBpmAnalysisFailureAutoClose()
     }
     scheduleTimelineDraw()
+  }
+
+  const clearBpmAnalysisFailedTimer = () => {
+    if (!bpmAnalysisFailedTimer) return
+    clearTimeout(bpmAnalysisFailedTimer)
+    bpmAnalysisFailedTimer = null
+  }
+
+  const dismissBpmAnalysisFailure = () => {
+    clearBpmAnalysisFailedTimer()
+    bpmAnalysisFailed.value = false
+    bpmAnalysisFailedCount.value = 0
+  }
+
+  const scheduleBpmAnalysisFailureAutoClose = () => {
+    clearBpmAnalysisFailedTimer()
+    bpmAnalysisFailedTimer = setTimeout(() => {
+      if (!bpmAnalysisActive.value) {
+        dismissBpmAnalysisFailure()
+      }
+    }, bpmAnalysisFailedAutoCloseSeconds * 1000)
+  }
+
+  const retryBpmAnalysis = () => {
+    if (bpmAnalysisActive.value) return
+    dismissBpmAnalysisFailure()
+    void requestMixtapeBpmAnalysis()
   }
 
   const requestMixtapeBpmAnalysis = async () => {
     const filePaths = buildBpmTargets()
     if (!filePaths.length || !window?.electron?.ipcRenderer?.invoke) {
       bpmAnalysisActive.value = false
+      dismissBpmAnalysisFailure()
       return
     }
     const bpmTargets = new Set(filePaths)
@@ -289,14 +483,14 @@ export const useMixtape = () => {
     if (!hasMissingBpm) {
       lastBpmAnalysisKey = key
       bpmAnalysisActive.value = false
-      bpmAnalysisFailed.value = false
-      bpmAnalysisFailedCount.value = 0
+      dismissBpmAnalysisFailure()
       scheduleTimelineDraw()
       return
     }
 
     const token = (bpmAnalysisToken += 1)
     let allResolved = false
+    clearBpmAnalysisFailedTimer()
     bpmAnalysisActive.value = true
     bpmAnalysisFailed.value = false
     bpmAnalysisFailedCount.value = 0
@@ -327,16 +521,19 @@ export const useMixtape = () => {
             unresolved.length,
             Math.max(0, filePaths.length - resolvedCount)
           )
+          scheduleBpmAnalysisFailureAutoClose()
         } else {
           allResolved = true
         }
       } else if (filePaths.length > 0) {
         bpmAnalysisFailed.value = true
         bpmAnalysisFailedCount.value = Math.max(unresolved.length, filePaths.length)
+        scheduleBpmAnalysisFailureAutoClose()
       }
     } catch (error) {
       bpmAnalysisFailed.value = true
       bpmAnalysisFailedCount.value = Math.max(filePaths.length, 1)
+      scheduleBpmAnalysisFailureAutoClose()
       console.error('[mixtape] BPM analyze invoke failed', {
         fileCount: filePaths.length,
         error
@@ -345,6 +542,7 @@ export const useMixtape = () => {
       if (token === bpmAnalysisToken) {
         if (allResolved) {
           lastBpmAnalysisKey = key
+          dismissBpmAnalysisFailure()
         } else if (lastBpmAnalysisKey === key) {
           lastBpmAnalysisKey = ''
         }
@@ -357,18 +555,33 @@ export const useMixtape = () => {
   const loadMixtapeItems = async () => {
     if (!payload.value.playlistId) {
       mixtapeRawItems.value = []
+      mixtapeMixMode.value = 'stem'
+      mixtapeStemMode.value = '4stems'
+      mixtapeStemRealtimeProfile.value = DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
+      mixtapeStemExportProfile.value = DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
+      mixtapeStemStrategyConfirmed.value = false
       tracks.value = []
       selectedTrackId.value = ''
       resetAutoGainState()
       bpmAnalysisActive.value = false
-      bpmAnalysisFailed.value = false
-      bpmAnalysisFailedCount.value = 0
+      dismissBpmAnalysisFailure()
       lastBpmAnalysisKey = ''
       return
     }
     const result = await window.electron.ipcRenderer.invoke('mixtape:list', {
       playlistId: payload.value.playlistId
     })
+    mixtapeMixMode.value = normalizeMixtapeMixMode(result?.mixMode)
+    mixtapeStemMode.value = normalizeMixtapeStemMode(result?.stemMode)
+    mixtapeStemRealtimeProfile.value = normalizeStemProfile(
+      result?.stemRealtimeProfile,
+      DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
+    )
+    mixtapeStemExportProfile.value = normalizeStemProfile(
+      result?.stemExportProfile,
+      DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
+    )
+    mixtapeStemStrategyConfirmed.value = !!result?.stemStrategyConfirmed
     const rawItems = Array.isArray(result?.items) ? result.items : []
     mixtapeRawItems.value = rawItems
     const removedPaths = Array.isArray(result?.recovery?.removedPaths)
@@ -377,6 +590,108 @@ export const useMixtape = () => {
     tracks.value = rawItems.map((item: MixtapeRawItem, index: number) =>
       parseSnapshot(item, index, t('tracks.unknownTrack'))
     )
+    const stemMode = normalizeMixtapeStemMode(result?.stemMode)
+    const currentPlaylistId = String(payload.value.playlistId || '').trim()
+    if (
+      mixtapeMixMode.value === 'stem' &&
+      currentPlaylistId &&
+      tracks.value.length > 0 &&
+      !mixtapeStemStrategyConfirmed.value &&
+      !stemStrategyPromptSkippedPlaylistIdSet.has(currentPlaylistId)
+    ) {
+      const existingPromptTask = stemStrategyPromptTaskByPlaylistId.get(currentPlaylistId)
+      if (existingPromptTask) {
+        await existingPromptTask
+      } else {
+        const promptTask = (async () => {
+          const choice = await choiceDialog({
+            title: t('mixtape.stemProfileChooseTitle'),
+            content: [t('mixtape.stemProfileChooseHint')],
+            options: [
+              { key: 'enter', label: t('mixtape.stemProfileChooseFastOption') },
+              { key: 'reset', label: t('mixtape.stemProfileChooseQualityOption') },
+              { key: 'cancel', label: t('mixtape.stemProfileChooseLaterOption') }
+            ],
+            innerHeight: 240,
+            innerWidth: 560
+          })
+          if (choice === 'enter' || choice === 'reset') {
+            const selectedRealtimeProfile: RendererMixtapeStemProfile =
+              choice === 'enter' ? 'fast' : 'quality'
+            const selectedExportProfile: RendererMixtapeStemProfile = 'quality'
+            const selectedOk = await persistStemProfiles(
+              selectedRealtimeProfile,
+              selectedExportProfile,
+              {
+                markStrategyConfirmed: true
+              }
+            )
+            if (selectedOk) {
+              mixtapeStemStrategyConfirmed.value = true
+              stemStrategyPromptSkippedPlaylistIdSet.delete(currentPlaylistId)
+            }
+            return
+          }
+          stemStrategyPromptSkippedPlaylistIdSet.add(currentPlaylistId)
+        })().finally(() => {
+          stemStrategyPromptTaskByPlaylistId.delete(currentPlaylistId)
+        })
+        stemStrategyPromptTaskByPlaylistId.set(currentPlaylistId, promptTask)
+        await promptTask
+      }
+    }
+
+    if (mixtapeMixMode.value === 'stem' && mixtapeStemStrategyConfirmed.value) {
+      const missingStemAssetReadyTracks = tracks.value.filter(
+        (track) =>
+          normalizeMixtapeStemStatus(track.stemStatus) === 'ready' &&
+          !hasTrackStemPathsReady(track, stemMode)
+      )
+      if (missingStemAssetReadyTracks.length > 0 && window?.electron?.ipcRenderer?.invoke) {
+        const repairFilePaths = Array.from(
+          new Set(
+            missingStemAssetReadyTracks
+              .map((track) => normalizeMixtapeFilePath(track.filePath))
+              .filter(Boolean)
+          )
+        )
+        if (repairFilePaths.length > 0) {
+          void window.electron.ipcRenderer
+            .invoke('mixtape:stem:enqueue', {
+              playlistId: payload.value.playlistId,
+              filePaths: repairFilePaths,
+              stemMode,
+              profile: mixtapeStemRealtimeProfile.value,
+              force: false
+            })
+            .catch((error) => {
+              console.error('[mixtape] stem path backfill enqueue failed', {
+                playlistId: payload.value.playlistId,
+                count: repairFilePaths.length,
+                error
+              })
+            })
+        }
+      }
+      if (currentPlaylistId) {
+        const includeRunning = !stemResumeBootstrappedPlaylistIdSet.has(currentPlaylistId)
+        const includeTimeoutFailed = !stemResumeBootstrappedPlaylistIdSet.has(currentPlaylistId)
+        await autoResumePendingStemJobs({
+          playlistId: currentPlaylistId,
+          stemMode,
+          trackList: tracks.value,
+          includeRunning,
+          includeTimeoutFailed
+        })
+        stemResumeBootstrappedPlaylistIdSet.add(currentPlaylistId)
+      }
+    } else if (currentPlaylistId) {
+      stemResumeBootstrappedPlaylistIdSet.delete(currentPlaylistId)
+      stemResumeSignatureByPlaylistId.delete(currentPlaylistId)
+      console.info('[mixtape] stem auto enqueue skipped: non-stem mode or strategy not confirmed', {
+        playlistId: currentPlaylistId
+      })
+    }
     if (!tracks.value.some((track) => track.id === selectedTrackId.value)) {
       selectedTrackId.value = tracks.value[0]?.id || ''
     }
@@ -390,6 +705,85 @@ export const useMixtape = () => {
       void notifyMissingTracksRemoved(payload.value.playlistId || '', removedPaths)
     }
     void requestMixtapeBpmAnalysis()
+  }
+
+  const persistStemProfiles = async (
+    realtimeProfile: RendererMixtapeStemProfile,
+    exportProfile: RendererMixtapeStemProfile,
+    options?: { markStrategyConfirmed?: boolean }
+  ) => {
+    const playlistId = String(payload.value.playlistId || '').trim()
+    if (!playlistId || !window?.electron?.ipcRenderer?.invoke) return false
+    try {
+      const result = await window.electron.ipcRenderer.invoke('mixtape:project:set-stem-profiles', {
+        playlistId,
+        stemRealtimeProfile: realtimeProfile,
+        stemExportProfile: exportProfile,
+        markStrategyConfirmed:
+          typeof options?.markStrategyConfirmed === 'boolean' ? options.markStrategyConfirmed : true
+      })
+      mixtapeStemRealtimeProfile.value = normalizeStemProfile(
+        result?.stemRealtimeProfile,
+        realtimeProfile
+      )
+      mixtapeStemExportProfile.value = normalizeStemProfile(
+        result?.stemExportProfile,
+        exportProfile
+      )
+      mixtapeStemStrategyConfirmed.value = !!result?.stemStrategyConfirmed
+      return true
+    } catch (error) {
+      console.error('[mixtape] persist stem profiles failed', {
+        playlistId,
+        realtimeProfile,
+        exportProfile,
+        error
+      })
+      await confirmDialog({
+        title: t('common.error'),
+        content: [t('mixtape.stemProfilePersistFailed')],
+        confirmShow: false
+      })
+      return false
+    }
+  }
+
+  const handleStemRealtimeProfileChange = async (profile: unknown) => {
+    if (mixtapeMixMode.value !== 'stem') return
+    const nextProfile = normalizeStemProfile(profile, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
+    if (nextProfile === mixtapeStemRealtimeProfile.value) return
+    const prevRealtime = mixtapeStemRealtimeProfile.value
+    const prevExport = mixtapeStemExportProfile.value
+    const prevStrategyConfirmed = mixtapeStemStrategyConfirmed.value
+    mixtapeStemRealtimeProfile.value = nextProfile
+    const ok = await persistStemProfiles(nextProfile, prevExport)
+    if (!ok) {
+      mixtapeStemRealtimeProfile.value = prevRealtime
+      mixtapeStemExportProfile.value = prevExport
+      return
+    }
+    if (!prevStrategyConfirmed && mixtapeStemStrategyConfirmed.value) {
+      await loadMixtapeItems()
+    }
+  }
+
+  const handleStemExportProfileChange = async (profile: unknown) => {
+    if (mixtapeMixMode.value !== 'stem') return
+    const nextProfile = normalizeStemProfile(profile, DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE)
+    if (nextProfile === mixtapeStemExportProfile.value) return
+    const prevRealtime = mixtapeStemRealtimeProfile.value
+    const prevExport = mixtapeStemExportProfile.value
+    const prevStrategyConfirmed = mixtapeStemStrategyConfirmed.value
+    mixtapeStemExportProfile.value = nextProfile
+    const ok = await persistStemProfiles(prevRealtime, nextProfile)
+    if (!ok) {
+      mixtapeStemRealtimeProfile.value = prevRealtime
+      mixtapeStemExportProfile.value = prevExport
+      return
+    }
+    if (!prevStrategyConfirmed && mixtapeStemStrategyConfirmed.value) {
+      await loadMixtapeItems()
+    }
   }
 
   const closeTrackContextMenu = () => {
@@ -509,6 +903,10 @@ export const useMixtape = () => {
       })
     if (!offsetChanged && !firstBeatChanged && !bpmChanged) return
     const gridPositionChanged = firstBeatChanged || bpmChanged
+    const activeEnvelopeParams =
+      mixtapeMixMode.value === 'traditional'
+        ? MIXTAPE_ENVELOPE_PARAMS_TRADITIONAL
+        : MIXTAPE_ENVELOPE_PARAMS_STEM
     const shouldResetEnvelope = gridPositionChanged
       ? (await confirmDialog({
           title: t('mixtape.gridAdjustSaveResetEnvelopeTitle'),
@@ -534,7 +932,7 @@ export const useMixtape = () => {
           shouldPersistBpm && normalizedInputBpm !== null ? Number(normalizedInputBpm) : track.bpm
       }
       if (!shouldResetEnvelope) return nextTrack
-      for (const param of MIXTAPE_ENVELOPE_PARAMS) {
+      for (const param of activeEnvelopeParams) {
         const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
         ;(nextTrack as any)[envelopeField] = buildFlatMixEnvelope(
           param,
@@ -573,7 +971,7 @@ export const useMixtape = () => {
     if (!shouldResetEnvelope) return
     const affectedTracks = nextTracks.filter((track) => isSameTrack(track))
     if (!affectedTracks.length) return
-    const envelopeUpdateTasks = MIXTAPE_ENVELOPE_PARAMS.map((param) => {
+    const envelopeUpdateTasks = activeEnvelopeParams.map((param) => {
       const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
       const entries = affectedTracks
         .map((track) => {
@@ -708,6 +1106,59 @@ export const useMixtape = () => {
       })
       return
     }
+    if (mixtapeMixMode.value === 'stem') {
+      const exportProfile = normalizeStemProfile(
+        mixtapeStemExportProfile.value,
+        DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
+      )
+      const exportModel = resolveMixtapeStemModelByProfile(exportProfile)
+      const notReadyTracks = tracks.value.filter((track) => {
+        if (normalizeMixtapeStemStatus(track.stemStatus) !== 'ready') return true
+        if (!hasTrackStemPathsReady(track, mixtapeStemMode.value)) return true
+        return resolveTrackStemModel(track) !== exportModel
+      })
+      if (notReadyTracks.length > 0) {
+        const trackSample = notReadyTracks.slice(0, 3).map((track) => resolveTrackTitle(track))
+        const filePaths = Array.from(
+          new Set(
+            notReadyTracks
+              .map((track) => normalizeMixtapeFilePath(track.filePath))
+              .filter((filePath): filePath is string => !!filePath)
+          )
+        )
+        if (
+          filePaths.length > 0 &&
+          window?.electron?.ipcRenderer?.invoke &&
+          payload.value.playlistId
+        ) {
+          try {
+            await window.electron.ipcRenderer.invoke('mixtape:stem:enqueue', {
+              playlistId: payload.value.playlistId,
+              filePaths,
+              stemMode: mixtapeStemMode.value,
+              profile: exportProfile,
+              force: false
+            })
+          } catch (error) {
+            console.error('[mixtape] enqueue export stem profile failed', {
+              playlistId: payload.value.playlistId,
+              profile: exportProfile,
+              count: filePaths.length,
+              error
+            })
+          }
+        }
+        await confirmDialog({
+          title: t('common.warning'),
+          content: [
+            t('mixtape.exportStemPreparing', { count: notReadyTracks.length }),
+            ...trackSample
+          ],
+          confirmShow: false
+        })
+        return
+      }
+    }
 
     outputRunning.value = true
     outputProgressKey.value = 'mixtape.outputProgressPreparing'
@@ -719,7 +1170,7 @@ export const useMixtape = () => {
       requestAnimationFrame(() => resolve())
     })
 
-    const payload = {
+    const outputRequest = {
       outputPath: normalizedOutputPath,
       outputFormat: outputFormat.value,
       outputFilename: normalizedFilename
@@ -730,7 +1181,7 @@ export const useMixtape = () => {
         onProgress: applyOutputProgressPayload
       })
       const result = await window.electron.ipcRenderer.invoke('mixtape:output', {
-        ...payload,
+        ...outputRequest,
         wavBytes: rendered.wavBytes,
         durationSec: rendered.durationSec,
         sampleRate: rendered.sampleRate,
@@ -865,6 +1316,15 @@ export const useMixtape = () => {
     schedulePlaylistReload()
   }
 
+  const handleMixtapeStemStatusUpdated = (_e: unknown, eventPayload: any) => {
+    const playlistId = payload.value.playlistId
+    if (!playlistId) return
+    const targetPlaylistId =
+      typeof eventPayload?.playlistId === 'string' ? eventPayload.playlistId.trim() : ''
+    if (!targetPlaylistId || targetPlaylistId !== playlistId) return
+    schedulePlaylistReload()
+  }
+
   const handleOpen = (_e: any, next: MixtapeOpenPayload) => {
     if (!next || typeof next !== 'object') return
     applyPayload(next)
@@ -892,7 +1352,15 @@ export const useMixtape = () => {
 
   watch(
     () => payload.value.playlistId,
-    () => {
+    (nextPlaylistId, prevPlaylistId) => {
+      const nextId = String(nextPlaylistId || '').trim()
+      const prevId = String(prevPlaylistId || '').trim()
+      if (prevId && prevId !== nextId) {
+        stemResumeBootstrappedPlaylistIdSet.delete(prevId)
+        stemResumeSignatureByPlaylistId.delete(prevId)
+        stemStrategyPromptSkippedPlaylistIdSet.delete(prevId)
+        stemStrategyPromptTaskByPlaylistId.delete(prevId)
+      }
       loadMixtapeItems()
     },
     { immediate: true }
@@ -912,6 +1380,7 @@ export const useMixtape = () => {
     } catch {}
     window.electron.ipcRenderer.on('mixtape-open', handleOpen)
     window.electron.ipcRenderer.on('mixtape-bpm-batch-ready', handleBpmBatchReady)
+    window.electron.ipcRenderer.on('mixtape-stem-status-updated', handleMixtapeStemStatusUpdated)
     window.electron.ipcRenderer.on('mixtape-output:progress', handleMixtapeOutputProgress)
     window.electron.ipcRenderer.on('mixtapeWindow-max', (_e, next: boolean) => {
       runtime.isWindowMaximized = !!next
@@ -927,6 +1396,12 @@ export const useMixtape = () => {
     } catch {}
     try {
       window.electron.ipcRenderer.removeListener('mixtape-bpm-batch-ready', handleBpmBatchReady)
+    } catch {}
+    try {
+      window.electron.ipcRenderer.removeListener(
+        'mixtape-stem-status-updated',
+        handleMixtapeStemStatusUpdated
+      )
     } catch {}
     try {
       window.electron.ipcRenderer.removeListener(
@@ -950,12 +1425,17 @@ export const useMixtape = () => {
       clearTimeout(playlistUpdateTimer)
       playlistUpdateTimer = null
     }
+    clearBpmAnalysisFailedTimer()
   })
 
   return {
     t,
     titleLabel,
     mixtapePlaylistId,
+    mixtapeMixMode,
+    mixtapeStemMode,
+    mixtapeStemRealtimeProfile,
+    mixtapeStemExportProfile,
     mixtapeMenus,
     handleTitleOpenDialog,
     mixtapeRawItems,
@@ -1032,6 +1512,9 @@ export const useMixtape = () => {
     bpmAnalysisActive,
     bpmAnalysisFailed,
     bpmAnalysisFailedCount,
+    bpmAnalysisFailedAutoCloseSeconds,
+    dismissBpmAnalysisFailure,
+    retryBpmAnalysis,
     outputDialogVisible,
     outputPath,
     outputFormat,
@@ -1041,6 +1524,8 @@ export const useMixtape = () => {
     outputProgressPercent,
     handleOutputDialogConfirm,
     handleOutputDialogCancel,
+    handleStemRealtimeProfileChange,
+    handleStemExportProfileChange,
     autoGainDialogVisible,
     autoGainReferenceTrackId,
     autoGainReferenceFeedback,

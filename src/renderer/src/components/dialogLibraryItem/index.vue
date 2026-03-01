@@ -17,6 +17,13 @@ import {
   handleDrop,
   type DragState
 } from '../../utils/dragUtils'
+import {
+  chooseMixtapeProjectModeForCreate,
+  clearPendingMixtapeProjectMode,
+  consumePendingMixtapeProjectMode,
+  persistMixtapeProjectMode,
+  setPendingMixtapeProjectMode
+} from '@renderer/composables/mixtape/stemMode'
 const listIcon = listIconAsset
 const props = defineProps({
   uuid: {
@@ -50,6 +57,10 @@ let fatherDirData = libraryUtils.getFatherLibraryTreeByUUID(props.uuid)
 const isMixtapeDialog = computed(() => String(props.libraryName || '').startsWith('MixtapeLibrary'))
 const isDialogListType = (node?: any) =>
   node?.type === 'songList' || (isMixtapeDialog.value && node?.type === 'mixtapeList')
+const resolveMixtapeModeTag = (mixMode?: string) =>
+  mixMode === 'traditional' ? t('mixtape.mixModeTraditionalTag') : t('mixtape.mixModeStemTag')
+const resolveMixtapeModeLabel = (mixMode?: string) =>
+  mixMode === 'traditional' ? t('mixtape.mixModeTraditionalLabel') : t('mixtape.mixModeStemLabel')
 const myInputHandleInput = () => {
   const newName = operationInputValue.value
   const invalidCharsRegex = /[<>:"/\\|?*\u0000-\u001F]/
@@ -99,6 +110,7 @@ const inputBlurHandle = async () => {
   if (inputHintShow.value || operationInputValue.value == '') {
     if (dirData && dirData.dirName == '') {
       if (fatherDirData && fatherDirData.children && fatherDirData.children[0]?.dirName == '') {
+        clearPendingMixtapeProjectMode(dirData?.uuid || '')
         fatherDirData.children.shift()
       }
     }
@@ -123,7 +135,13 @@ const inputBlurHandle = async () => {
     dirData.children = []
     operationInputValue.value = ''
 
-    await libraryUtils.diffLibraryTreeExecuteFileOperation()
+    const success = await libraryUtils.diffLibraryTreeExecuteFileOperation()
+    if (dirData.type === 'mixtapeList') {
+      const projectMode = consumePendingMixtapeProjectMode(dirData.uuid)
+      if (success && projectMode) {
+        await persistMixtapeProjectMode(dirData.uuid, projectMode)
+      }
+    }
     // 命名完成并写盘成功后，再在对话框中高亮该歌单（不触发双击）
     if (isDialogListType(dirData)) {
       runtime.dialogSelectedSongListUUID = dirData.uuid
@@ -231,6 +249,8 @@ const contextmenuEvent = async (event: MouseEvent) => {
   rightClickMenuShow.value = false
   if (result !== 'cancel') {
     if (result.menuName == '新建歌单') {
+      const projectMode = isMixtapeDialog.value ? await chooseMixtapeProjectModeForCreate() : null
+      if (isMixtapeDialog.value && !projectMode) return
       dirChildRendered.value = true
       dirChildShow.value = true
       const newUuid = uuidV4()
@@ -238,8 +258,12 @@ const contextmenuEvent = async (event: MouseEvent) => {
       dirData.children.unshift({
         uuid: newUuid,
         dirName: '',
-        type: isMixtapeDialog.value ? 'mixtapeList' : 'songList'
+        type: isMixtapeDialog.value ? 'mixtapeList' : 'songList',
+        mixMode: isMixtapeDialog.value ? projectMode?.mixMode || 'stem' : undefined
       })
+      if (projectMode) {
+        setPendingMixtapeProjectMode(newUuid, projectMode)
+      }
       // 不在此时标记“创建中”，等待命名确认开始写盘时再标记
     } else if (result.menuName == '新建文件夹') {
       dirChildRendered.value = true
@@ -617,6 +641,16 @@ watch(
       <div v-if="dirData.dirName && !renameDivShow" class="nameRow">
         <span class="nameText">{{ dirData.dirName }}</span>
         <span
+          v-if="dirData.type === 'mixtapeList'"
+          class="mixModeBadge"
+          :class="{
+            'is-traditional': dirData.mixMode === 'traditional',
+            'is-stem': dirData.mixMode !== 'traditional'
+          }"
+          :title="resolveMixtapeModeLabel(dirData.mixMode)"
+          >{{ resolveMixtapeModeTag(dirData.mixMode) }}</span
+        >
+        <span
           v-if="
             dirData.type === 'songList' &&
             (runtime as any).setting.showPlaylistTrackCount &&
@@ -694,10 +728,35 @@ watch(
 .nameText {
   flex: 1 1 auto;
   min-width: 0;
-  padding-right: 48px;
+  padding-right: 72px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mixModeBadge {
+  min-width: 34px;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.mixModeBadge.is-traditional {
+  background-color: rgba(255, 184, 77, 0.18);
+  color: #d98300;
+}
+
+.mixModeBadge.is-stem {
+  background-color: rgba(91, 173, 255, 0.18);
+  color: #2f85d8;
 }
 
 .countBadge {

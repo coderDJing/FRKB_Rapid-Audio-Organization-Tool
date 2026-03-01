@@ -1,5 +1,19 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 
+export type StemWaveformBand = {
+  left: Uint8Array
+  right: Uint8Array
+  peakLeft: Uint8Array
+  peakRight: Uint8Array
+}
+
+export type StemWaveformData = {
+  duration: number
+  sampleRate: number
+  step: number
+  all: StemWaveformBand
+}
+
 export type MixtapeOpenPayload = {
   playlistId?: string
   playlistPath?: string
@@ -15,7 +29,22 @@ export type MixtapeRawItem = {
   infoJson?: string | null
 }
 
-export type MixtapeEnvelopeParamId = 'gain' | 'high' | 'mid' | 'low' | 'volume'
+export type MixtapeMixMode = 'traditional' | 'stem'
+export type MixtapeStemMode = '4stems'
+export type MixtapeStemProfile = 'fast' | 'quality'
+export type MixtapeStemStatus = 'pending' | 'running' | 'ready' | 'failed'
+export type MixtapeWaveformStemId = 'vocal' | 'harmonic' | 'bass' | 'drums'
+
+export type MixtapeEnvelopeParamId =
+  | 'gain'
+  | 'high'
+  | 'mid'
+  | 'low'
+  | 'vocal'
+  | 'harmonic'
+  | 'bass'
+  | 'drums'
+  | 'volume'
 
 export type MixtapeTrack = {
   id: string
@@ -42,12 +71,18 @@ export type MixtapeTrack = {
   startSec?: number
   // 增益包络线（轨道内时间 -> 线性增益）
   gainEnvelope?: MixtapeGainPoint[]
-  // 高频包络线（轨道内时间 -> 线性增益）
+  // 兼容旧 EQ 三频包络线（迁移期保留）
   highEnvelope?: MixtapeGainPoint[]
-  // 中频包络线（轨道内时间 -> 线性增益）
   midEnvelope?: MixtapeGainPoint[]
-  // 低频包络线（轨道内时间 -> 线性增益）
   lowEnvelope?: MixtapeGainPoint[]
+  // Vocal Stem 包络线（轨道内时间 -> 线性增益）
+  vocalEnvelope?: MixtapeGainPoint[]
+  // Harmonic Stem 包络线（轨道内时间 -> 线性增益）
+  harmonicEnvelope?: MixtapeGainPoint[]
+  // Bass Stem 包络线（轨道内时间 -> 线性增益）
+  bassEnvelope?: MixtapeGainPoint[]
+  // Drums Stem 包络线（轨道内时间 -> 线性增益）
+  drumsEnvelope?: MixtapeGainPoint[]
   // 音量包络线（轨道内时间 -> 线性增益，最大 1.0）
   volumeEnvelope?: MixtapeGainPoint[]
   // 片段静音区间（轨道内时间，静音遮罩）
@@ -56,6 +91,16 @@ export type MixtapeTrack = {
   firstBeatMs?: number
   // 大节线相位偏移（以拍为单位，仅改变网格线定义，不改变网格线位置）
   barBeatOffset?: number
+  // Stem 素材状态（pending/running/ready/failed）
+  stemStatus?: MixtapeStemStatus
+  stemError?: string
+  stemReadyAt?: number
+  stemModel?: string
+  stemVersion?: string
+  stemVocalPath?: string
+  stemHarmonicPath?: string
+  stemBassPath?: string
+  stemDrumsPath?: string
 }
 
 export type MixtapeGainPoint = {
@@ -96,10 +141,12 @@ export type WaveformTile = {
 
 export type WaveformRenderContext = {
   track: MixtapeTrack
+  waveformFilePath: string
+  waveformStemId: MixtapeWaveformStemId
   trackWidth: number
   sourceDurationSeconds: number
   durationSeconds: number
-  data: MixxxWaveformData | null
+  data: StemWaveformData | MixxxWaveformData | null
   frameCount: number
   rawData: RawWaveformData | null
   renderZoom: number
@@ -124,11 +171,15 @@ export type TimelineTrackLayout = {
 export type TimelineRenderTrack = {
   id: string
   filePath: string
+  waveformFilePath?: string
+  waveformStemId: MixtapeWaveformStemId
   durationSeconds: number
   trackWidth: number
   startSec: number
   startX: number
   laneIndex: number
+  laneOffsetY?: number
+  laneHeight?: number
   bpm: number
   firstBeatMs: number
   barBeatOffset: number

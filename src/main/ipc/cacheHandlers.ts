@@ -10,10 +10,12 @@ import store from '../store'
 import { getLibrary, mapRendererPathToFsPath } from '../utils'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import type { MixxxWaveformData } from '../waveformCache'
+import type { StemWaveformDataLite } from '../stemWaveformCache'
 import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { requestMixtapeRawWaveform } from '../services/mixtapeRawWaveformQueue'
 import { ensureMixtapeWaveformHires } from '../services/mixtapeWaveformHiresQueue'
 import { decodeAudioShared } from '../services/audioDecodePool'
+import { ensureMixtapeStemWaveformBundle } from '../services/mixtapeStemWaveformService'
 
 export function registerCacheHandlers() {
   const resolveRequestedRawRate = (value: unknown) => {
@@ -158,6 +160,83 @@ export function registerCacheHandlers() {
         } catch {
           await LibraryCacheDb.removeMixtapeWaveformCacheEntry(listRoot, filePath)
           items.push({ filePath, data: null })
+        }
+      }
+
+      return { items }
+    }
+  )
+
+  ipcMain.handle(
+    'mixtape-stem-waveform-cache:batch',
+    async (
+      _e,
+      payload: {
+        items?: Array<{
+          listRoot?: string
+          sourceFilePath?: string
+          stemMode?: '4stems'
+          stemModel?: string
+          stemVersion?: string
+          stemPaths?: {
+            vocalPath?: string
+            harmonicPath?: string
+            bassPath?: string
+            drumsPath?: string
+          }
+        }>
+      }
+    ) => {
+      const requests = Array.isArray(payload?.items) ? payload.items : []
+      if (!requests.length) {
+        return {
+          items: [] as Array<{
+            sourceFilePath: string
+            stems: Array<{ stemId: string; filePath: string; data: StemWaveformDataLite | null }>
+          }>
+        }
+      }
+
+      const items: Array<{
+        sourceFilePath: string
+        stems: Array<{ stemId: string; filePath: string; data: StemWaveformDataLite | null }>
+      }> = []
+      for (const request of requests) {
+        const sourceFilePath =
+          typeof request?.sourceFilePath === 'string' ? request.sourceFilePath.trim() : ''
+        if (!sourceFilePath) {
+          items.push({ sourceFilePath: '', stems: [] })
+          continue
+        }
+        const stemMode = '4stems'
+        try {
+          const result = await ensureMixtapeStemWaveformBundle({
+            listRoot: typeof request?.listRoot === 'string' ? request.listRoot.trim() : '',
+            sourceFilePath,
+            stemMode,
+            stemModel: request?.stemModel,
+            stemVersion: request?.stemVersion,
+            stemPaths: {
+              vocalPath: request?.stemPaths?.vocalPath,
+              harmonicPath: request?.stemPaths?.harmonicPath,
+              bassPath: request?.stemPaths?.bassPath,
+              drumsPath: request?.stemPaths?.drumsPath
+            }
+          })
+          if (!result) {
+            items.push({ sourceFilePath, stems: [] })
+            continue
+          }
+          items.push({
+            sourceFilePath: result.sourceFilePath,
+            stems: result.stems.map((stem) => ({
+              stemId: stem.stemId,
+              filePath: stem.filePath,
+              data: stem.data ?? null
+            }))
+          })
+        } catch {
+          items.push({ sourceFilePath, stems: [] })
         }
       }
 

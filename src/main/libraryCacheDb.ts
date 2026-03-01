@@ -56,6 +56,14 @@ export {
 } from './libraryCacheDb/mixtapeWaveformHiresCache'
 
 export {
+  loadMixtapeStemWaveformCacheData,
+  upsertMixtapeStemWaveformCacheEntry,
+  removeMixtapeStemWaveformCacheEntry,
+  removeMixtapeStemWaveformCacheByFilePath,
+  clearMixtapeStemWaveformCache
+} from './libraryCacheDb/mixtapeStemWaveformCache'
+
+export {
   renameCacheRoot,
   pruneCachesByRoots,
   migrateCacheKeysToRelativeIfNeeded,

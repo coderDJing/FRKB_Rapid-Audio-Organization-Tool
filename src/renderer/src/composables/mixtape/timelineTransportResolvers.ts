@@ -24,7 +24,7 @@ import type {
 type TransportEntryLike = {
   trackId: string
   duration: number
-  mixEnvelopes: Record<MixtapeEnvelopeParamId, MixtapeGainPoint[]>
+  mixEnvelopes: Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[]>>
   mixEnvelopeSources: Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[] | undefined>>
   volumeMuteSegments: MixtapeMuteSegment[]
   volumeMuteSegmentsSource?: MixtapeMuteSegment[]
@@ -58,7 +58,6 @@ export const createTimelineTransportResolversModule = (ctx: any) => {
     resolveRenderPxPerSec,
     buildSequentialLayoutForZoom,
     clampNumber,
-    mixEnvelopeParams,
     segmentMuteGain
   } = ctx
 

@@ -5,7 +5,7 @@ import {
 } from '@renderer/composables/mixtape/mixxxSyncModel'
 import { normalizeVolumeMuteSegments } from '@renderer/composables/mixtape/volumeMuteSegments'
 import { VOLUME_MUTE_SEGMENT_EPSILON } from '@renderer/composables/mixtape/gainEnvelopeEditorConstants'
-import type { VolumeMuteSegmentMask } from '@renderer/composables/mixtape/gainEnvelopeEditorTypes'
+import type { MixSegmentMask } from '@renderer/composables/mixtape/gainEnvelopeEditorTypes'
 import type { MixtapeMuteSegment, MixtapeTrack } from '@renderer/composables/mixtape/types'
 
 type ResolveVolumeMuteGridPayload = {
@@ -248,7 +248,7 @@ export const snapSecToVisibleGrid = ({
 export const resolveVolumeMuteSegmentMasks = (
   durationSec: number,
   segments: MixtapeMuteSegment[]
-): VolumeMuteSegmentMask[] => {
+): MixSegmentMask[] => {
   if (!durationSec || !segments.length) return []
   return segments
     .map((segment) => {
@@ -262,7 +262,7 @@ export const resolveVolumeMuteSegmentMasks = (
         width: Number((widthRatio * 100).toFixed(4))
       }
     })
-    .filter((segment): segment is VolumeMuteSegmentMask => segment !== null)
+    .filter((segment): segment is MixSegmentMask => segment !== null)
 }
 
 export const resolveVolumeMuteSegmentsByToggle = (

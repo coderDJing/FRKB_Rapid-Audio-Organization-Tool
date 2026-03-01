@@ -29,19 +29,17 @@ type TrackEnvelopePreviewLine = {
   strokeWidth: number
 }
 
-const TRACK_ENVELOPE_PREVIEW_PARAMS: MixtapeEnvelopeParamId[] = [
-  'gain',
-  'high',
-  'mid',
-  'low',
-  'volume'
-]
+const TRACK_ENVELOPE_PREVIEW_PARAMS: MixtapeEnvelopeParamId[] = ['gain', 'volume']
 
 const TRACK_ENVELOPE_PREVIEW_COLORS: Record<MixtapeEnvelopeParamId, string> = {
   gain: '#f2f6ff',
   high: '#4f8bff',
   mid: '#45d07e',
-  low: '#ff5d61',
+  low: '#a56eff',
+  vocal: '#4f8bff',
+  harmonic: '#45d07e',
+  bass: '#ff5d61',
+  drums: '#a56eff',
   volume: '#ffc94a'
 }
 
@@ -50,6 +48,10 @@ const TRACK_ENVELOPE_PREVIEW_STROKES: Record<MixtapeEnvelopeParamId, number> = {
   high: 1.08,
   mid: 1.08,
   low: 1.08,
+  vocal: 1.08,
+  harmonic: 1.08,
+  bass: 1.08,
+  drums: 1.08,
   volume: 0.95
 }
 

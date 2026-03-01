@@ -1,6 +1,6 @@
-import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type {
   RawWaveformData,
+  StemWaveformData,
   TimelineRenderPayload,
   TimelineRenderTrack,
   WaveformPreRenderTask
@@ -8,6 +8,7 @@ import type {
 
 export const createTimelineWorkerBridgeModule = (ctx: any) => {
   const {
+    mixtapeMixMode,
     waveformRenderWorkerRef,
     timelineWorkerReady,
     timelineCanvasRef,
@@ -30,6 +31,8 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
     getScheduleTimelineDraw,
     buildSequentialLayoutForZoom,
     forEachVisibleLayoutItem,
+    resolveTrackWaveformSources,
+    resolveWaveformSubLaneMetrics,
     resolveTrackSourceDurationSeconds,
     resolveTrackFirstBeatMs,
     resolveRenderPxPerSec,
@@ -46,6 +49,7 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
     LANE_PADDING_TOP,
     MIXTAPE_WAVEFORM_Y_OFFSET
   } = ctx
+  const isStemMixMode = () => mixtapeMixMode?.value !== 'traditional'
 
   const getWaveformRenderWorker = () => waveformRenderWorkerRef.value as Worker | null
   const getWaveformTileCacheTick = () => Number(waveformTileCacheTickRef.value || 0)
@@ -81,10 +85,10 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
     postWaveformWorkerMessage({ type: 'clearTileCache', payload: { filePath } })
   }
 
-  const pushMixxxWaveformToWorker = (filePath: string, data: MixxxWaveformData | null) => {
+  const pushStemWaveformToWorker = (filePath: string, data: StemWaveformData | null) => {
     if (!filePath || !getWaveformRenderWorker()) return
     postWaveformWorkerMessage({
-      type: 'storeMixxx',
+      type: 'storeStemWaveform',
       payload: { filePath, data }
     })
   }
@@ -176,8 +180,9 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
   }
 
   const requestWaveformTileRender = (task: WaveformPreRenderTask) => {
+    if (!isStemMixMode()) return
     const { ctx: render, tile, cacheKey } = task
-    const filePath = render.track.filePath
+    const filePath = render.waveformFilePath
     if (!filePath || waveformTilePending.has(cacheKey)) return
     waveformTilePending.add(cacheKey)
     postWaveformWorkerMessage({
@@ -185,6 +190,7 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
       payload: {
         cacheKey,
         filePath,
+        stemId: render.waveformStemId,
         zoom: render.renderZoom,
         tileIndex: tile.index,
         tileStart: tile.start,
@@ -198,6 +204,7 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
   }
 
   const initTimelineWorkerRenderer = () => {
+    if (!isStemMixMode()) return
     if (timelineWorkerReady.value || !getWaveformRenderWorker()) return
     const canvas = timelineCanvasRef.value
     if (!canvas || !('transferControlToOffscreen' in canvas)) return
@@ -245,27 +252,41 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
     const snapshot = buildSequentialLayoutForZoom(zoomValue)
     forEachVisibleLayoutItem(snapshot, renderStartX, renderEndX, (item: any) => {
       const track = item.track
-      const durationSeconds = resolveTrackSourceDurationSeconds(track)
       const trackWidth = item.width
       if (!trackWidth || !Number.isFinite(trackWidth)) return
       const trackStartX = item.startX
       const trackEndX = trackStartX + trackWidth
       if (trackEndX < renderStartX || trackStartX > renderEndX) return
+      const durationSeconds = resolveTrackSourceDurationSeconds(track)
       const bpmValue = typeof track.bpm === 'number' ? track.bpm : 0
       const firstBeatMs = resolveTrackFirstBeatMs(track)
       const barBeatOffset = Number(track.barBeatOffset) || 0
-      renderTracks.push({
-        id: track.id,
-        filePath: track.filePath,
-        durationSeconds,
-        trackWidth,
-        startSec: Number(item.startSec) || 0,
-        startX: item.startX,
-        laneIndex: item.laneIndex,
-        bpm: Number(bpmValue) || 0,
-        firstBeatMs,
-        barBeatOffset
-      })
+      const waveformSources = resolveTrackWaveformSources(track)
+      if (!waveformSources.length) return
+      for (const waveformSource of waveformSources) {
+        if (!waveformSource.filePath) continue
+        const subLane = resolveWaveformSubLaneMetrics(
+          laneH,
+          waveformSource.laneIndex,
+          waveformSource.laneCount
+        )
+        renderTracks.push({
+          id: `${track.id}:${waveformSource.stemId}:${waveformSource.laneIndex}`,
+          filePath: track.filePath,
+          waveformFilePath: waveformSource.filePath,
+          waveformStemId: waveformSource.stemId,
+          durationSeconds,
+          trackWidth,
+          startSec: Number(item.startSec) || 0,
+          startX: item.startX,
+          laneIndex: item.laneIndex,
+          laneOffsetY: subLane.offset,
+          laneHeight: subLane.height,
+          bpm: Number(bpmValue) || 0,
+          firstBeatMs,
+          barBeatOffset
+        })
+      }
     })
     return {
       width: widthPx,
@@ -292,6 +313,7 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
     startX: number,
     startY: number
   ) => {
+    if (!isStemMixMode()) return
     if (!timelineWorkerReady.value || !getWaveformRenderWorker()) return
     const payload = buildTimelineRenderPayload(widthPx, heightPx, startX, startY)
     if (!payload) return
@@ -301,7 +323,7 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
   return {
     postWaveformWorkerMessage,
     clearWaveformTileCacheForFile,
-    pushMixxxWaveformToWorker,
+    pushStemWaveformToWorker,
     pushRawWaveformToWorker,
     handleWaveformWorkerMessage,
     requestWaveformTileRender,
