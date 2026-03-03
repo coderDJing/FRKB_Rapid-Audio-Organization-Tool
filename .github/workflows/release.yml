@@ -43,6 +43,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile=false
 
+      - name: Ensure Demucs runtimes (Windows)
+        run: pnpm run demucs:runtime:ensure -- --ci --profiles cpu,cuda,directml
+
+      - name: Typecheck (vue-tsc)
+        run: npx vue-tsc --noEmit
+
       - name: Prepare FFmpeg (Windows)
         shell: pwsh
         run: |
@@ -133,6 +139,12 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile=false
+
+      - name: Ensure Demucs runtimes (macOS)
+        run: pnpm run demucs:runtime:ensure -- --ci --profiles cpu,mps
+
+      - name: Typecheck (vue-tsc)
+        run: npx vue-tsc --noEmit
 
       - name: Prepare FFmpeg (macOS both arch)
         run: |
