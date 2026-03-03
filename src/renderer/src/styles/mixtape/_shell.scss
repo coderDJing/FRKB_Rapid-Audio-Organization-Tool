@@ -263,6 +263,26 @@
   --mix-tab-accent: #ffc94a;
 }
 
+.mixtape-param-bar__tab--vocal {
+  --mix-tab-accent-rgb: 59, 130, 246;
+  --mix-tab-accent: #3b82f6;
+}
+
+.mixtape-param-bar__tab--inst {
+  --mix-tab-accent-rgb: 20, 184, 166;
+  --mix-tab-accent: #14b8a6;
+}
+
+.mixtape-param-bar__tab--bass {
+  --mix-tab-accent-rgb: 168, 85, 247;
+  --mix-tab-accent: #a855f7;
+}
+
+.mixtape-param-bar__tab--drums {
+  --mix-tab-accent-rgb: 249, 115, 22;
+  --mix-tab-accent: #f97316;
+}
+
 :global(.theme-light) .mixtape-param-bar__tab--position {
   --mix-tab-accent-rgb: 82, 97, 117;
   --mix-tab-accent: #526175;
@@ -291,6 +311,26 @@
 :global(.theme-light) .mixtape-param-bar__tab--volume {
   --mix-tab-accent-rgb: 176, 112, 0;
   --mix-tab-accent: #b07000;
+}
+
+:global(.theme-light) .mixtape-param-bar__tab--vocal {
+  --mix-tab-accent-rgb: 37, 99, 235;
+  --mix-tab-accent: #2563eb;
+}
+
+:global(.theme-light) .mixtape-param-bar__tab--inst {
+  --mix-tab-accent-rgb: 13, 148, 136;
+  --mix-tab-accent: #0d9488;
+}
+
+:global(.theme-light) .mixtape-param-bar__tab--bass {
+  --mix-tab-accent-rgb: 147, 51, 234;
+  --mix-tab-accent: #9333ea;
+}
+
+:global(.theme-light) .mixtape-param-bar__tab--drums {
+  --mix-tab-accent-rgb: 234, 88, 12;
+  --mix-tab-accent: #ea580c;
 }
 
 .mixtape-param-bar__tab:focus {

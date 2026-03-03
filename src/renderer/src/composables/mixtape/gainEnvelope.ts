@@ -10,7 +10,7 @@ export const MIXTAPE_GAIN_KNOB_MAX_DB = 12
 export const MIXTAPE_VOLUME_ENVELOPE_MAX_GAIN = 1
 export const MIXTAPE_STEM_SEGMENT_PARAMS: MixtapeEnvelopeParamId[] = [
   'vocal',
-  'harmonic',
+  'inst',
   'bass',
   'drums'
 ]
@@ -24,7 +24,7 @@ export const MIXTAPE_ENVELOPE_PARAMS_TRADITIONAL: MixtapeEnvelopeParamId[] = [
 export const MIXTAPE_ENVELOPE_PARAMS_STEM: MixtapeEnvelopeParamId[] = [
   'gain',
   'vocal',
-  'harmonic',
+  'inst',
   'bass',
   'drums',
   'volume'
@@ -36,7 +36,7 @@ export const MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM = {
   mid: 'midEnvelope',
   low: 'lowEnvelope',
   vocal: 'vocalEnvelope',
-  harmonic: 'harmonicEnvelope',
+  inst: 'instEnvelope',
   bass: 'bassEnvelope',
   drums: 'drumsEnvelope',
   volume: 'volumeEnvelope'
@@ -86,7 +86,7 @@ const MIXTAPE_ENVELOPE_PARAM_CONFIG: Record<MixtapeEnvelopeParamId, EnvelopePara
     maxGain: MAX_GAIN_DEFAULT,
     defaultGain: 1
   },
-  harmonic: {
+  inst: {
     minDb: MIXTAPE_GAIN_KNOB_MIN_DB,
     maxDb: MIXTAPE_GAIN_KNOB_MAX_DB,
     minGain: MIN_VALID_GAIN,

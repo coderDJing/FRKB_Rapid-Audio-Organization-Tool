@@ -981,7 +981,7 @@ export function registerMixtapeHandlers() {
         'mid',
         'low',
         'vocal',
-        'harmonic',
+        'inst',
         'bass',
         'drums',
         'volume'
@@ -997,7 +997,7 @@ export function registerMixtapeHandlers() {
           | 'mid'
           | 'low'
           | 'vocal'
-          | 'harmonic'
+          | 'inst'
           | 'bass'
           | 'drums'
           | 'volume',

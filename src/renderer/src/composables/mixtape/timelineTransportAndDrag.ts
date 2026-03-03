@@ -60,7 +60,7 @@ type TransportEntry = {
   stemAudioById?: Partial<Record<TransportStemId, TransportStemAudioRef>>
 }
 
-type TransportStemId = 'vocal' | 'harmonic' | 'bass' | 'drums'
+type TransportStemId = 'vocal' | 'inst' | 'bass' | 'drums'
 
 type TransportAudioRef = {
   filePath: string
@@ -107,20 +107,20 @@ const MIX_ENVELOPE_PARAMS_TRADITIONAL: MixtapeEnvelopeParamId[] = [
 const MIX_ENVELOPE_PARAMS_3STEMS: MixtapeEnvelopeParamId[] = [
   'gain',
   'vocal',
-  'harmonic',
+  'inst',
   'drums',
   'volume'
 ]
 const MIX_ENVELOPE_PARAMS_4STEMS: MixtapeEnvelopeParamId[] = [
   'gain',
   'vocal',
-  'harmonic',
+  'inst',
   'bass',
   'drums',
   'volume'
 ]
-const STEM_IDS_3STEMS: TransportStemId[] = ['vocal', 'harmonic', 'drums']
-const STEM_IDS_4STEMS: TransportStemId[] = ['vocal', 'harmonic', 'bass', 'drums']
+const STEM_IDS_3STEMS: TransportStemId[] = ['vocal', 'inst', 'drums']
+const STEM_IDS_4STEMS: TransportStemId[] = ['vocal', 'inst', 'bass', 'drums']
 const MIXTAPE_SEGMENT_MUTE_GAIN = 0.0001
 const FOLLOW_PLAYHEAD_LOCK_RATIO = 1 / 3
 
@@ -216,7 +216,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     resolveStemMode() === '4stems' ? STEM_IDS_4STEMS : STEM_IDS_3STEMS
   const resolveTrackStemFilePath = (track: MixtapeTrack, stemId: TransportStemId): string => {
     if (stemId === 'vocal') return String(track.stemVocalPath || '').trim()
-    if (stemId === 'harmonic') return String(track.stemHarmonicPath || '').trim()
+    if (stemId === 'inst') return String(track.stemInstPath || '').trim()
     if (stemId === 'bass') return String(track.stemBassPath || '').trim()
     return String(track.stemDrumsPath || '').trim()
   }

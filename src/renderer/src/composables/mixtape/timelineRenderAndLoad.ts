@@ -21,7 +21,7 @@ type StemWaveformBatchRequestItem = {
   stemVersion?: string
   stemPaths: {
     vocalPath?: string
-    harmonicPath?: string
+    instPath?: string
     bassPath?: string
     drumsPath?: string
   }
@@ -383,7 +383,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     }
   ): WaveformRenderContext => {
     const waveformFilePath = String(options?.waveformFilePath || track.filePath || '').trim()
-    const waveformStemId = options?.waveformStemId || 'harmonic'
+    const waveformStemId = options?.waveformStemId || 'inst'
     const data = (waveformDataMap.get(waveformFilePath) || null) as TimelineWaveformData | null
     const sourceDurationSeconds =
       data && Number.isFinite(data.duration) && data.duration > 0
@@ -429,7 +429,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
   ) => {
     const barHeight = Math.max(4, Math.round(height * 0.55 * MIXTAPE_WAVEFORM_HEIGHT_SCALE))
     const y = Math.round((height - barHeight) / 2)
-    ctx.fillStyle = 'rgba(90, 170, 255, 0.35)'
+    ctx.fillStyle = 'rgba(120, 205, 255, 0.52)'
     ctx.fillRect(0, y, width, barHeight)
   }
 
@@ -701,7 +701,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
       const stemPaths = item?.stemPaths || {}
       const requiredPaths = [
         stemPaths.vocalPath,
-        stemPaths.harmonicPath,
+        stemPaths.instPath,
         stemPaths.drumsPath,
         ...(item.stemMode === '4stems' ? [stemPaths.bassPath] : [])
       ]
@@ -895,7 +895,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
           stemVersion: String(track.stemVersion || '').trim() || undefined,
           stemPaths: {
             vocalPath: String(track.stemVocalPath || '').trim() || undefined,
-            harmonicPath: String(track.stemHarmonicPath || '').trim() || undefined,
+            instPath: String(track.stemInstPath || '').trim() || undefined,
             bassPath: String(track.stemBassPath || '').trim() || undefined,
             drumsPath: String(track.stemDrumsPath || '').trim() || undefined
           }
@@ -1067,7 +1067,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
         stemVersion: String(track.stemVersion || '').trim() || undefined,
         stemPaths: {
           vocalPath: String(track.stemVocalPath || '').trim() || undefined,
-          harmonicPath: String(track.stemHarmonicPath || '').trim() || undefined,
+          instPath: String(track.stemInstPath || '').trim() || undefined,
           bassPath: String(track.stemBassPath || '').trim() || undefined,
           drumsPath: String(track.stemDrumsPath || '').trim() || undefined
         }

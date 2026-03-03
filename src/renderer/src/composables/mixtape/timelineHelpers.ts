@@ -164,8 +164,8 @@ export const createTimelineHelpersModule = (ctx: any) => {
   const laneHeight = computed(() => resolveLaneHeightForZoom(normalizedRenderZoom.value))
 
   const laneIndices = Array.from({ length: LANE_COUNT }, (_, index) => index)
-  const STEM_IDS_3STEMS: MixtapeWaveformStemId[] = ['vocal', 'harmonic', 'drums']
-  const STEM_IDS_4STEMS: MixtapeWaveformStemId[] = ['vocal', 'harmonic', 'bass', 'drums']
+  const STEM_IDS_3STEMS: MixtapeWaveformStemId[] = ['vocal', 'inst', 'drums']
+  const STEM_IDS_4STEMS: MixtapeWaveformStemId[] = ['vocal', 'inst', 'bass', 'drums']
   const isStemMixMode = (): boolean =>
     (mixtapeMixMode?.value as MixtapeMixMode | undefined) !== 'traditional'
 
@@ -174,7 +174,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
 
   const resolveTrackStemFilePath = (track: MixtapeTrack, stemId: MixtapeWaveformStemId): string => {
     if (stemId === 'vocal') return String(track.stemVocalPath || '').trim()
-    if (stemId === 'harmonic') return String(track.stemHarmonicPath || '').trim()
+    if (stemId === 'inst') return String(track.stemInstPath || '').trim()
     if (stemId === 'bass') return String(track.stemBassPath || '').trim()
     return String(track.stemDrumsPath || '').trim()
   }
@@ -522,7 +522,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
           listRoot,
           laneIndex: 0,
           laneCount: 1,
-          stemId: 'harmonic'
+          stemId: 'inst'
         }
       ]
     }

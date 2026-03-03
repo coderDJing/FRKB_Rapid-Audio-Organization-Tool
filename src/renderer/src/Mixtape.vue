@@ -137,7 +137,7 @@ type MixParamId =
   | 'mid'
   | 'low'
   | 'vocal'
-  | 'harmonic'
+  | 'inst'
   | 'bass'
   | 'drums'
   | 'volume'
@@ -146,7 +146,7 @@ type MixParamOption = {
   labelKey: string
 }
 
-const STEM_PARAM_SET = new Set<MixParamId>(['vocal', 'harmonic', 'bass', 'drums'])
+const STEM_PARAM_SET = new Set<MixParamId>(['vocal', 'inst', 'bass', 'drums'])
 const isStemMixMode = computed(() => mixtapeMixMode.value === 'stem')
 
 const mixParamOptions = computed<MixParamOption[]>(() => {
@@ -193,8 +193,8 @@ const mixParamOptions = computed<MixParamOption[]>(() => {
       labelKey: 'mixtape.mixParamVocal'
     },
     {
-      id: 'harmonic',
-      labelKey: 'mixtape.mixParamHarmonic'
+      id: 'inst',
+      labelKey: 'mixtape.mixParamInst'
     }
   ]
   if (mixtapeStemMode.value === '4stems') {
@@ -831,6 +831,7 @@ onBeforeUnmount(() => {
                     v-for="legend in trackEnvelopePreviewLegend"
                     :key="`envelope-preview-legend-${legend.key}`"
                     class="timeline-envelope-preview__legend-item"
+                    :style="{ color: legend.color }"
                   >
                     <span
                       class="timeline-envelope-preview__legend-dot"

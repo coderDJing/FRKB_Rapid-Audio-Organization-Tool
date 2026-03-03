@@ -104,7 +104,7 @@ export const parseSnapshot = (
   const parsedMidEnvelope = normalizeMixEnvelopePoints('mid', info?.midEnvelope)
   const parsedLowEnvelope = normalizeMixEnvelopePoints('low', info?.lowEnvelope)
   const parsedVocalEnvelope = normalizeMixEnvelopePoints('vocal', info?.vocalEnvelope)
-  const parsedHarmonicEnvelope = normalizeMixEnvelopePoints('harmonic', info?.harmonicEnvelope)
+  const parsedInstEnvelope = normalizeMixEnvelopePoints('inst', info?.instEnvelope)
   const parsedBassEnvelope = normalizeMixEnvelopePoints('bass', info?.bassEnvelope)
   const parsedDrumsEnvelope = normalizeMixEnvelopePoints('drums', info?.drumsEnvelope)
   const parsedVolumeEnvelope = normalizeMixEnvelopePoints('volume', info?.volumeEnvelope)
@@ -128,7 +128,7 @@ export const parseSnapshot = (
       ? info.stemVersion.trim()
       : undefined
   const parsedStemVocalPath = normalizeMixtapeFilePath(info?.stemVocalPath) || undefined
-  const parsedStemHarmonicPath = normalizeMixtapeFilePath(info?.stemHarmonicPath) || undefined
+  const parsedStemInstPath = normalizeMixtapeFilePath(info?.stemInstPath) || undefined
   const parsedStemBassPath = normalizeMixtapeFilePath(info?.stemBassPath) || undefined
   const parsedStemDrumsPath = normalizeMixtapeFilePath(info?.stemDrumsPath) || undefined
   return {
@@ -152,7 +152,7 @@ export const parseSnapshot = (
     midEnvelope: parsedMidEnvelope.length ? parsedMidEnvelope : undefined,
     lowEnvelope: parsedLowEnvelope.length ? parsedLowEnvelope : undefined,
     vocalEnvelope: parsedVocalEnvelope.length ? parsedVocalEnvelope : undefined,
-    harmonicEnvelope: parsedHarmonicEnvelope.length ? parsedHarmonicEnvelope : undefined,
+    instEnvelope: parsedInstEnvelope.length ? parsedInstEnvelope : undefined,
     bassEnvelope: parsedBassEnvelope.length ? parsedBassEnvelope : undefined,
     drumsEnvelope: parsedDrumsEnvelope.length ? parsedDrumsEnvelope : undefined,
     volumeEnvelope: parsedVolumeEnvelope.length ? parsedVolumeEnvelope : undefined,
@@ -165,7 +165,7 @@ export const parseSnapshot = (
     stemModel: parsedStemModel,
     stemVersion: parsedStemVersion,
     stemVocalPath: parsedStemVocalPath,
-    stemHarmonicPath: parsedStemHarmonicPath,
+    stemInstPath: parsedStemInstPath,
     stemBassPath: parsedStemBassPath,
     stemDrumsPath: parsedStemDrumsPath
   }

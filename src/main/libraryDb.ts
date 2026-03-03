@@ -4,12 +4,45 @@ import store from './store'
 import { log } from './log'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
-const SCHEMA_VERSION = 16
+const SCHEMA_VERSION = 17
 
 type SqliteDatabase = any
 
 let db: SqliteDatabase | null = null
 let dbRoot: string | null = null
+
+function hasTable(dbInstance: SqliteDatabase, tableName: string): boolean {
+  const normalized = String(tableName || '').trim()
+  if (!normalized) return false
+  try {
+    const row = dbInstance
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1`)
+      .get(normalized)
+    return Boolean(row?.name)
+  } catch {
+    return false
+  }
+}
+
+function listTableColumns(dbInstance: SqliteDatabase, tableName: string): Set<string> {
+  const normalized = String(tableName || '').trim()
+  if (!normalized || !hasTable(dbInstance, normalized)) return new Set()
+  const safeTableName = normalized.replace(/[^a-zA-Z0-9_]/g, '')
+  if (!safeTableName) return new Set()
+  try {
+    const rows = dbInstance.prepare(`PRAGMA table_info(${safeTableName})`).all() as Array<{
+      name?: string
+    }>
+    const columns = new Set<string>()
+    for (const row of rows) {
+      const name = String(row?.name || '').trim()
+      if (name) columns.add(name)
+    }
+    return columns
+  } catch {
+    return new Set()
+  }
+}
 
 function createDatabase(dbPath: string): SqliteDatabase {
   const Database = require('better-sqlite3')
@@ -203,7 +236,7 @@ function createDatabase(dbPath: string): SqliteDatabase {
         model TEXT NOT NULL,
         status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'ready', 'failed')),
         vocal_path TEXT,
-        harmonic_path TEXT,
+        inst_path TEXT,
         bass_path TEXT,
         drums_path TEXT,
         error_code TEXT,
@@ -291,6 +324,60 @@ function createDatabase(dbPath: string): SqliteDatabase {
           END;
       CREATE INDEX IF NOT EXISTS idx_mixtape_projects_mix_mode ON mixtape_projects(mix_mode);
     `)
+  }
+  if (userVersion < 17) {
+    instance.exec(`
+      CREATE TABLE IF NOT EXISTS mixtape_stem_assets (
+        list_root TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        stem_mode TEXT NOT NULL CHECK (stem_mode IN ('3stems', '4stems')),
+        model TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'ready', 'failed')),
+        vocal_path TEXT,
+        inst_path TEXT,
+        bass_path TEXT,
+        drums_path TEXT,
+        error_code TEXT,
+        error_message TEXT,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        PRIMARY KEY (list_root, file_path, stem_mode, model)
+      );
+      CREATE INDEX IF NOT EXISTS idx_mixtape_stem_assets_root ON mixtape_stem_assets(list_root);
+      CREATE INDEX IF NOT EXISTS idx_mixtape_stem_assets_file ON mixtape_stem_assets(file_path);
+      CREATE INDEX IF NOT EXISTS idx_mixtape_stem_assets_status ON mixtape_stem_assets(status);
+    `)
+
+    let columns = listTableColumns(instance, 'mixtape_stem_assets')
+    if (!columns.has('inst_path')) {
+      if (columns.has('harmonic_path')) {
+        try {
+          instance.exec(
+            `ALTER TABLE mixtape_stem_assets RENAME COLUMN harmonic_path TO inst_path`
+          )
+        } catch {}
+      }
+      columns = listTableColumns(instance, 'mixtape_stem_assets')
+      if (!columns.has('inst_path')) {
+        try {
+          instance.exec(`ALTER TABLE mixtape_stem_assets ADD COLUMN inst_path TEXT`)
+        } catch {}
+      }
+    }
+
+    columns = listTableColumns(instance, 'mixtape_stem_assets')
+    if (columns.has('inst_path') && columns.has('harmonic_path')) {
+      try {
+        instance.exec(`
+          UPDATE mixtape_stem_assets
+          SET inst_path = CASE
+                WHEN inst_path IS NULL OR inst_path = '' THEN harmonic_path
+                ELSE inst_path
+              END
+          WHERE harmonic_path IS NOT NULL AND harmonic_path != '';
+        `)
+      } catch {}
+    }
   }
   if (userVersion < SCHEMA_VERSION) {
     instance.pragma('user_version = ' + SCHEMA_VERSION)

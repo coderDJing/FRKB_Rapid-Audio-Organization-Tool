@@ -26,7 +26,7 @@ type TransportEntry = {
   stemAudioById?: Partial<Record<TransportStemId, TransportStemAudioRef>>
 }
 
-type TransportStemId = 'vocal' | 'harmonic' | 'bass' | 'drums'
+type TransportStemId = 'vocal' | 'inst' | 'bass' | 'drums'
 
 type TransportAudioRef = {
   filePath: string

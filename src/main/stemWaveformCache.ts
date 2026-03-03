@@ -3,7 +3,7 @@ import type { MixxxWaveformBand } from './waveformCache'
 
 export const STEM_WAVEFORM_CACHE_VERSION = 2
 
-export type StemWaveformStemId = 'vocal' | 'harmonic' | 'bass' | 'drums'
+export type StemWaveformStemId = 'vocal' | 'inst' | 'bass' | 'drums'
 
 export type StemWaveformDataLite = {
   duration: number
@@ -33,7 +33,7 @@ type EncodedStemWaveformContainer = {
   stems: EncodedStemWaveformMeta[]
 }
 
-const STEM_IDS_4: StemWaveformStemId[] = ['vocal', 'harmonic', 'bass', 'drums']
+const STEM_IDS_4: StemWaveformStemId[] = ['vocal', 'inst', 'bass', 'drums']
 
 const normalizeStemMode = (_value: unknown): MixtapeStemMode => '4stems'
 
@@ -41,7 +41,7 @@ const resolveStemIds = (_stemMode: MixtapeStemMode): StemWaveformStemId[] => STE
 
 const normalizeStemId = (value: unknown): StemWaveformStemId | null => {
   if (value === 'vocal') return 'vocal'
-  if (value === 'harmonic') return 'harmonic'
+  if (value === 'inst') return 'inst'
   if (value === 'bass') return 'bass'
   if (value === 'drums') return 'drums'
   return null

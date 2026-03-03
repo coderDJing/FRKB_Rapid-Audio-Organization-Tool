@@ -34,11 +34,16 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
   const normalizedWaveformHeightScale = Math.max(0.2, Math.min(1, waveformHeightScale))
 
   const STEM_WAVEFORM_COLORS: Record<WaveformStemId, { r: number; g: number; b: number }> = {
-    vocal: { r: 79, g: 139, b: 255 },
-    harmonic: { r: 69, g: 208, b: 126 },
-    bass: { r: 255, g: 93, b: 97 },
-    drums: { r: 165, g: 110, b: 255 }
+    vocal: { r: 59, g: 130, b: 246 },
+    inst: { r: 20, g: 184, b: 166 },
+    bass: { r: 168, g: 85, b: 247 },
+    drums: { r: 249, g: 115, b: 22 }
   }
+  const STEM_WAVEFORM_BASE_BRIGHTNESS = 0.72
+  const STEM_WAVEFORM_PEAK_BRIGHTNESS_RANGE = 0.45
+  const STEM_WAVEFORM_PEAK_ALPHA = 0.34
+  const STEM_WAVEFORM_MAIN_ALPHA = 0.98
+  const STEM_WAVEFORM_RAW_ALPHA = 1
   const toColorChannel = (value: number) => Math.max(0, Math.min(255, Math.round(value)))
   const scaleColor = (color: { r: number; g: number; b: number }, factor: number) => ({
     r: toColorChannel(color.r * factor),
@@ -46,7 +51,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     b: toColorChannel(color.b * factor)
   })
   const resolveStemWaveformColor = (stemId?: WaveformStemId) =>
-    STEM_WAVEFORM_COLORS[stemId || 'harmonic'] || STEM_WAVEFORM_COLORS.harmonic
+    STEM_WAVEFORM_COLORS[stemId || 'inst'] || STEM_WAVEFORM_COLORS.inst
   const normalizeBeatOffset = (value: number, interval: number) => {
     const safeInterval = Math.max(1, Math.floor(Number(interval) || 1))
     const numeric = Number(value)
@@ -312,7 +317,10 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       }
 
       const localPeak = Math.max(maxAllLeft, maxAllRight) / 255
-      const color = scaleColor(stemColor, 0.45 + localPeak * 0.55)
+      const color = scaleColor(
+        stemColor,
+        STEM_WAVEFORM_BASE_BRIGHTNESS + localPeak * STEM_WAVEFORM_PEAK_BRIGHTNESS_RANGE
+      )
       columns[x] = {
         color,
         avgTop,
@@ -350,10 +358,10 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     }
 
     if (hasRaw) {
-      drawBand(0.95, false)
+      drawBand(STEM_WAVEFORM_RAW_ALPHA, false)
     } else {
-      drawBand(0.22, true)
-      drawBand(0.9, false)
+      drawBand(STEM_WAVEFORM_PEAK_ALPHA, true)
+      drawBand(STEM_WAVEFORM_MAIN_ALPHA, false)
     }
     ctx.globalAlpha = 1
   }
@@ -380,7 +388,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
   ) => {
     const barHeight = Math.max(4, Math.round(height * 0.55 * normalizedWaveformHeightScale))
     const y = Math.round((height - barHeight) / 2)
-    ctx.fillStyle = 'rgba(90, 170, 255, 0.35)'
+    ctx.fillStyle = 'rgba(120, 205, 255, 0.52)'
     ctx.fillRect(0, y, width, barHeight)
   }
 

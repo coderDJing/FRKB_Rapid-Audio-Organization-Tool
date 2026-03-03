@@ -12,11 +12,17 @@ import {
 type StemWaveformColor = { r: number; g: number; b: number }
 
 const STEM_WAVEFORM_COLORS: Record<MixtapeWaveformStemId, StemWaveformColor> = {
-  vocal: { r: 79, g: 139, b: 255 },
-  harmonic: { r: 69, g: 208, b: 126 },
-  bass: { r: 255, g: 93, b: 97 },
-  drums: { r: 165, g: 110, b: 255 }
+  vocal: { r: 59, g: 130, b: 246 },
+  inst: { r: 20, g: 184, b: 166 },
+  bass: { r: 168, g: 85, b: 247 },
+  drums: { r: 249, g: 115, b: 22 }
 }
+
+const STEM_WAVEFORM_BASE_BRIGHTNESS = 0.72
+const STEM_WAVEFORM_PEAK_BRIGHTNESS_RANGE = 0.45
+const STEM_WAVEFORM_PEAK_ALPHA = 0.34
+const STEM_WAVEFORM_MAIN_ALPHA = 0.98
+const STEM_WAVEFORM_RAW_ALPHA = 1
 
 const toColorChannel = (value: number) => Math.max(0, Math.min(255, Math.round(value)))
 const scaleColor = (color: StemWaveformColor, factor: number): StemWaveformColor => ({
@@ -26,8 +32,8 @@ const scaleColor = (color: StemWaveformColor, factor: number): StemWaveformColor
 })
 
 export const resolveStemWaveformColor = (stemId?: MixtapeWaveformStemId): StemWaveformColor => {
-  if (!stemId) return STEM_WAVEFORM_COLORS.harmonic
-  return STEM_WAVEFORM_COLORS[stemId] || STEM_WAVEFORM_COLORS.harmonic
+  if (!stemId) return STEM_WAVEFORM_COLORS.inst
+  return STEM_WAVEFORM_COLORS[stemId] || STEM_WAVEFORM_COLORS.inst
 }
 
 export const drawStemWaveform = (
@@ -182,7 +188,10 @@ export const drawStemWaveform = (
     }
 
     const localPeak = Math.max(maxAllLeft, maxAllRight) / 255
-    const color = scaleColor(stemColor, 0.45 + localPeak * 0.55)
+    const color = scaleColor(
+      stemColor,
+      STEM_WAVEFORM_BASE_BRIGHTNESS + localPeak * STEM_WAVEFORM_PEAK_BRIGHTNESS_RANGE
+    )
     columns[x] = { color, avgTop, avgBottom, peakTop, peakBottom }
   }
 
@@ -212,10 +221,10 @@ export const drawStemWaveform = (
   }
 
   if (hasRaw) {
-    drawBand(0.95, false)
+    drawBand(STEM_WAVEFORM_RAW_ALPHA, false)
   } else {
-    drawBand(0.22, true)
-    drawBand(0.9, false)
+    drawBand(STEM_WAVEFORM_PEAK_ALPHA, true)
+    drawBand(STEM_WAVEFORM_MAIN_ALPHA, false)
   }
   ctx.globalAlpha = 1
 }

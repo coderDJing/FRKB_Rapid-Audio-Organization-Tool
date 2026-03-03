@@ -865,7 +865,7 @@ export type MixtapeMixEnvelopeParam =
   | 'mid'
   | 'low'
   | 'vocal'
-  | 'harmonic'
+  | 'inst'
   | 'bass'
   | 'drums'
   | 'volume'
@@ -876,7 +876,7 @@ const MIXTAPE_ENVELOPE_FIELD_BY_PARAM: Record<MixtapeMixEnvelopeParam, string> =
   mid: 'midEnvelope',
   low: 'lowEnvelope',
   vocal: 'vocalEnvelope',
-  harmonic: 'harmonicEnvelope',
+  inst: 'instEnvelope',
   bass: 'bassEnvelope',
   drums: 'drumsEnvelope',
   volume: 'volumeEnvelope'
@@ -888,7 +888,7 @@ const MIXTAPE_ENVELOPE_MAX_GAIN_BY_PARAM: Record<MixtapeMixEnvelopeParam, number
   mid: 16,
   low: 16,
   vocal: 16,
-  harmonic: 16,
+  inst: 16,
   bass: 16,
   drums: 16,
   volume: 1

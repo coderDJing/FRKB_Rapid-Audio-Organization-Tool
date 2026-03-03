@@ -9,14 +9,14 @@ import * as LibraryCacheDb from '../libraryCacheDb'
 import { requestMixtapeWaveform } from './mixtapeWaveformQueue'
 import { findSongListRoot } from './cacheMaintenance'
 
-const STEM_IDS_4: StemWaveformStemId[] = ['vocal', 'harmonic', 'bass', 'drums']
+const STEM_IDS_4: StemWaveformStemId[] = ['vocal', 'inst', 'bass', 'drums']
 const DEFAULT_STEM_MODEL = 'htdemucs'
 const DEFAULT_STEM_VERSION = 'unknown'
 const DEFAULT_TARGET_RATE = 441
 
 type StemWaveformPaths = {
   vocalPath?: string | null
-  harmonicPath?: string | null
+  instPath?: string | null
   bassPath?: string | null
   drumsPath?: string | null
 }
@@ -111,7 +111,7 @@ const resolveRequiredStemIds = (_stemMode: MixtapeStemMode): StemWaveformStemId[
 
 const resolveStemPathById = (paths: StemWaveformPaths, stemId: StemWaveformStemId): string => {
   if (stemId === 'vocal') return normalizeFilePath(paths.vocalPath)
-  if (stemId === 'harmonic') return normalizeFilePath(paths.harmonicPath)
+  if (stemId === 'inst') return normalizeFilePath(paths.instPath)
   if (stemId === 'bass') return normalizeFilePath(paths.bassPath)
   return normalizeFilePath(paths.drumsPath)
 }

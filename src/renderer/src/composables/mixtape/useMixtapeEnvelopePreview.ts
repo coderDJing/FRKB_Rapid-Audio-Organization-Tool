@@ -36,10 +36,10 @@ const TRACK_ENVELOPE_PREVIEW_COLORS: Record<MixtapeEnvelopeParamId, string> = {
   high: '#4f8bff',
   mid: '#45d07e',
   low: '#a56eff',
-  vocal: '#4f8bff',
-  harmonic: '#45d07e',
-  bass: '#ff5d61',
-  drums: '#a56eff',
+  vocal: '#3b82f6',
+  inst: '#14b8a6',
+  bass: '#a855f7',
+  drums: '#f97316',
   volume: '#ffc94a'
 }
 
@@ -49,7 +49,7 @@ const TRACK_ENVELOPE_PREVIEW_STROKES: Record<MixtapeEnvelopeParamId, number> = {
   mid: 1.08,
   low: 1.08,
   vocal: 1.08,
-  harmonic: 1.08,
+  inst: 1.08,
   bass: 1.08,
   drums: 1.08,
   volume: 0.95

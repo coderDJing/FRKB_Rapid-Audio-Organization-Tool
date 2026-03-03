@@ -180,7 +180,7 @@ export function registerCacheHandlers() {
           stemVersion?: string
           stemPaths?: {
             vocalPath?: string
-            harmonicPath?: string
+            instPath?: string
             bassPath?: string
             drumsPath?: string
           }
@@ -218,7 +218,7 @@ export function registerCacheHandlers() {
             stemVersion: request?.stemVersion,
             stemPaths: {
               vocalPath: request?.stemPaths?.vocalPath,
-              harmonicPath: request?.stemPaths?.harmonicPath,
+              instPath: request?.stemPaths?.instPath,
               bassPath: request?.stemPaths?.bassPath,
               drumsPath: request?.stemPaths?.drumsPath
             }

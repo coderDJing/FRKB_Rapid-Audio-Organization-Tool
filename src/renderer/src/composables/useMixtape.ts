@@ -402,9 +402,9 @@ export const useMixtape = () => {
   }
   const hasTrackStemPathsReady = (track: MixtapeTrack, stemMode: MixtapeStemMode) => {
     const vocalPath = normalizeMixtapeFilePath((track as any)?.stemVocalPath)
-    const harmonicPath = normalizeMixtapeFilePath((track as any)?.stemHarmonicPath)
+    const instPath = normalizeMixtapeFilePath((track as any)?.stemInstPath)
     const drumsPath = normalizeMixtapeFilePath((track as any)?.stemDrumsPath)
-    if (!vocalPath || !harmonicPath || !drumsPath) return false
+    if (!vocalPath || !instPath || !drumsPath) return false
     if (stemMode === '4stems') {
       const bassPath = normalizeMixtapeFilePath((track as any)?.stemBassPath)
       if (!bassPath) return false
@@ -1445,7 +1445,10 @@ export const useMixtape = () => {
     void confirmDialog({
       title: t('common.warning'),
       content,
-      confirmShow: false
+      confirmShow: false,
+      textAlign: 'left',
+      innerHeight: 0,
+      innerWidth: 520
     })
   }
 

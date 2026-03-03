@@ -12,7 +12,7 @@ export type StemWaveformData = {
   all: StemWaveformBand
 }
 
-export type WaveformStemId = 'vocal' | 'harmonic' | 'bass' | 'drums'
+export type WaveformStemId = 'vocal' | 'inst' | 'bass' | 'drums'
 
 export type RawWaveformData = {
   duration: number

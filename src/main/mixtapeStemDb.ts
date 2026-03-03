@@ -16,7 +16,7 @@ export type MixtapeStemAssetRecord = {
   model: string
   status: MixtapeStemStatus
   vocalPath?: string | null
-  harmonicPath?: string | null
+  instPath?: string | null
   bassPath?: string | null
   drumsPath?: string | null
   errorCode?: string | null
@@ -32,7 +32,7 @@ export type MixtapeStemAssetUpsertInput = {
   model: string
   status: MixtapeStemStatus
   vocalPath?: string | null
-  harmonicPath?: string | null
+  instPath?: string | null
   bassPath?: string | null
   drumsPath?: string | null
   errorCode?: string | null
@@ -47,7 +47,7 @@ export type MixtapeItemStemStatePatch = {
   stemModel?: string | null
   stemVersion?: string | null
   stemVocalPath?: string | null
-  stemHarmonicPath?: string | null
+  stemInstPath?: string | null
   stemBassPath?: string | null
   stemDrumsPath?: string | null
 }
@@ -120,7 +120,7 @@ const toAssetRecord = (row: any): MixtapeStemAssetRecord | null => {
     model,
     status: normalizeStemStatus(row?.status, 'pending'),
     vocalPath: normalizeFilePath(row?.vocal_path) || null,
-    harmonicPath: normalizeFilePath(row?.harmonic_path) || null,
+    instPath: normalizeFilePath(row?.inst_path) || null,
     bassPath: normalizeFilePath(row?.bass_path) || null,
     drumsPath: normalizeFilePath(row?.drums_path) || null,
     errorCode: normalizeText(row?.error_code, 80) || null,
@@ -152,13 +152,13 @@ export function upsertMixtapeStemAsset(input: MixtapeStemAssetUpsertInput): { up
       .prepare(
         `INSERT INTO ${STEM_ASSET_TABLE} (
           list_root, file_path, stem_mode, model, status,
-          vocal_path, harmonic_path, bass_path, drums_path,
+          vocal_path, inst_path, bass_path, drums_path,
           error_code, error_message, created_at_ms, updated_at_ms
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(list_root, file_path, stem_mode, model) DO UPDATE SET
           status = excluded.status,
           vocal_path = excluded.vocal_path,
-          harmonic_path = excluded.harmonic_path,
+          inst_path = excluded.inst_path,
           bass_path = excluded.bass_path,
           drums_path = excluded.drums_path,
           error_code = excluded.error_code,
@@ -172,7 +172,7 @@ export function upsertMixtapeStemAsset(input: MixtapeStemAssetUpsertInput): { up
         model,
         status,
         normalizeFilePath(input?.vocalPath) || null,
-        normalizeFilePath(input?.harmonicPath) || null,
+        normalizeFilePath(input?.instPath) || null,
         normalizeFilePath(input?.bassPath) || null,
         normalizeFilePath(input?.drumsPath) || null,
         normalizeText(input?.errorCode, 80) || null,
@@ -210,7 +210,7 @@ export function getMixtapeStemAsset(params: {
     const row = db
       .prepare(
         `SELECT list_root, file_path, stem_mode, model, status,
-                vocal_path, harmonic_path, bass_path, drums_path,
+                vocal_path, inst_path, bass_path, drums_path,
                 error_code, error_message, created_at_ms, updated_at_ms
          FROM ${STEM_ASSET_TABLE}
          WHERE list_root = ? AND file_path = ? AND stem_mode = ? AND model = ?`
@@ -336,15 +336,15 @@ export function upsertMixtapeItemStemStateById(entries: MixtapeItemStemStatePatc
             }
           }
 
-          if (Object.prototype.hasOwnProperty.call(patch, 'stemHarmonicPath')) {
-            const nextPath = normalizeFilePath(patch.stemHarmonicPath)
+          if (Object.prototype.hasOwnProperty.call(patch, 'stemInstPath')) {
+            const nextPath = normalizeFilePath(patch.stemInstPath)
             if (nextPath) {
-              if (info.stemHarmonicPath !== nextPath) {
-                info.stemHarmonicPath = nextPath
+              if (info.stemInstPath !== nextPath) {
+                info.stemInstPath = nextPath
                 changed = true
               }
-            } else if (Object.prototype.hasOwnProperty.call(info, 'stemHarmonicPath')) {
-              delete info.stemHarmonicPath
+            } else if (Object.prototype.hasOwnProperty.call(info, 'stemInstPath')) {
+              delete info.stemInstPath
               changed = true
             }
           }

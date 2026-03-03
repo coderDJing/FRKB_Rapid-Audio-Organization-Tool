@@ -33,7 +33,7 @@ export type MixtapeMixMode = 'traditional' | 'stem'
 export type MixtapeStemMode = '4stems'
 export type MixtapeStemProfile = 'fast' | 'quality'
 export type MixtapeStemStatus = 'pending' | 'running' | 'ready' | 'failed'
-export type MixtapeWaveformStemId = 'vocal' | 'harmonic' | 'bass' | 'drums'
+export type MixtapeWaveformStemId = 'vocal' | 'inst' | 'bass' | 'drums'
 
 export type MixtapeEnvelopeParamId =
   | 'gain'
@@ -41,7 +41,7 @@ export type MixtapeEnvelopeParamId =
   | 'mid'
   | 'low'
   | 'vocal'
-  | 'harmonic'
+  | 'inst'
   | 'bass'
   | 'drums'
   | 'volume'
@@ -77,8 +77,8 @@ export type MixtapeTrack = {
   lowEnvelope?: MixtapeGainPoint[]
   // Vocal Stem 包络线（轨道内时间 -> 线性增益）
   vocalEnvelope?: MixtapeGainPoint[]
-  // Harmonic Stem 包络线（轨道内时间 -> 线性增益）
-  harmonicEnvelope?: MixtapeGainPoint[]
+  // Inst Stem 包络线（轨道内时间 -> 线性增益）
+  instEnvelope?: MixtapeGainPoint[]
   // Bass Stem 包络线（轨道内时间 -> 线性增益）
   bassEnvelope?: MixtapeGainPoint[]
   // Drums Stem 包络线（轨道内时间 -> 线性增益）
@@ -98,7 +98,7 @@ export type MixtapeTrack = {
   stemModel?: string
   stemVersion?: string
   stemVocalPath?: string
-  stemHarmonicPath?: string
+  stemInstPath?: string
   stemBassPath?: string
   stemDrumsPath?: string
 }
