@@ -12,11 +12,6 @@ import { useMixtapeBeatAlignPlayback } from '@renderer/components/mixtapeBeatAli
 import { useMixtapeBeatAlignMetronome } from '@renderer/components/mixtapeBeatAlignMetronome'
 import { pickRawDataByFile } from '@renderer/components/mixtapeBeatAlignRawWaveform'
 import {
-  isValidMixxxWaveformData,
-  pickMixxxDataByFile
-} from '@renderer/components/mixtapeBeatAlignWaveformData'
-import {
-  OVERVIEW_IS_HALF_WAVEFORM,
   OVERVIEW_MAX_RENDER_COLUMNS,
   OVERVIEW_WAVEFORM_VERTICAL_PADDING,
   PREVIEW_BAR_BEAT_INTERVAL,
@@ -31,7 +26,6 @@ import {
   PREVIEW_BPM_TAP_RESET_MS,
   PREVIEW_GRID_SHIFT_LARGE_MS,
   PREVIEW_GRID_SHIFT_SMALL_MS,
-  PREVIEW_HIRES_TARGET_RATE,
   PREVIEW_MAX_SAMPLES_PER_PIXEL,
   PREVIEW_MAX_ZOOM,
   PREVIEW_MIN_ZOOM,
@@ -57,8 +51,7 @@ import {
   resolveVisibleDurationSecByZoom,
   resizePreviewCanvasByPixelRatio
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
-import type { RawWaveformData, RawWaveformLevel } from '@renderer/composables/mixtape/types'
-import { buildRawWaveformPyramid } from '@renderer/composables/mixtape/waveformPyramid'
+import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 
 const props = defineProps({
   trackTitle: {
@@ -104,7 +97,6 @@ const overviewCanvasRef = ref<HTMLCanvasElement | null>(null)
 const previewLoading = ref(false)
 const previewError = ref('')
 const previewMixxxData = ref<MixxxWaveformData | null>(null)
-const overviewMixxxData = ref<MixxxWaveformData | null>(null)
 const overviewRawData = ref<RawWaveformData | null>(null)
 const previewZoom = ref(PREVIEW_MIN_ZOOM)
 const previewStartSec = ref(0)
@@ -132,8 +124,25 @@ let overviewCacheCanvas: HTMLCanvasElement | null = null
 let previewLoadSequence = 0
 let previewWarmupTimer: ReturnType<typeof setTimeout> | null = null
 let bpmTapResetTimer: ReturnType<typeof setTimeout> | null = null
-const overviewRawPyramidMap = new Map<string, RawWaveformLevel[]>()
-const overviewRawKey = ref('')
+
+const createRawPlaceholderMixxxData = (rawData: RawWaveformData): MixxxWaveformData => {
+  const low = 128
+  const mid = 188
+  const high = 232
+  const all = 220
+  const single = (value: number) => new Uint8Array([value])
+  return {
+    duration: Math.max(0, Number(rawData.duration) || 0),
+    sampleRate: Math.max(1, Number(rawData.sampleRate) || 1),
+    step: Math.max(1, Math.floor((Number(rawData.sampleRate) || 1) / Math.max(1, Number(rawData.rate) || 1))),
+    bands: {
+      low: { left: single(low), right: single(low) },
+      mid: { left: single(mid), right: single(mid) },
+      high: { left: single(high), right: single(high) },
+      all: { left: single(all), right: single(all) }
+    }
+  }
+}
 
 const previewRenderer = createBeatAlignPreviewRenderer()
 
@@ -497,12 +506,9 @@ const rebuildOverviewCache = () => {
   overviewCacheCanvas = rebuildBeatAlignOverviewCache({
     wrap: overviewWrapRef.value,
     cacheCanvas: overviewCacheCanvas,
-    mixxxData: overviewMixxxData.value,
+    mixxxData: previewMixxxData.value,
     rawData: overviewRawData.value,
-    rawPyramidMap: overviewRawPyramidMap,
-    rawKey: overviewRawKey.value,
     maxRenderColumns: OVERVIEW_MAX_RENDER_COLUMNS,
-    isHalfWaveform: OVERVIEW_IS_HALF_WAVEFORM,
     waveformVerticalPadding: OVERVIEW_WAVEFORM_VERTICAL_PADDING,
     leadingPadSec: resolvePreviewLeadingPadSec()
   })
@@ -718,33 +724,6 @@ const handleOverviewClick = (event: MouseEvent) => {
   }
 }
 
-const fetchOverviewWaveformFromCache = async (filePath: string) => {
-  const normalized = typeof filePath === 'string' ? filePath.trim() : ''
-  if (!normalized || !window?.electron?.ipcRenderer?.invoke) {
-    overviewMixxxData.value = null
-    overviewRawData.value = null
-    overviewRawKey.value = ''
-    overviewRawPyramidMap.clear()
-    scheduleOverviewRebuild()
-    return
-  }
-  const fileKey = normalizePathKey(normalized)
-  const cacheResult = await window.electron.ipcRenderer
-    .invoke('mixtape-waveform-cache:batch', {
-      filePaths: [normalized]
-    })
-    .catch(() => null)
-  overviewMixxxData.value = pickMixxxDataByFile(cacheResult, fileKey, normalizePathKey)
-  scheduleOverviewRebuild()
-}
-
-const handleMixtapeWaveformUpdated = (_event: any, payload: { filePath?: string }) => {
-  const currentKey = normalizePathKey(props.filePath)
-  const updatedKey = normalizePathKey(payload?.filePath)
-  if (!currentKey || !updatedKey || currentKey !== updatedKey) return
-  void fetchOverviewWaveformFromCache(props.filePath)
-}
-
 const loadPreviewWaveform = async (filePath: string) => {
   const normalized = typeof filePath === 'string' ? filePath.trim() : ''
   const requestSeq = ++previewLoadSequence
@@ -753,10 +732,7 @@ const loadPreviewWaveform = async (filePath: string) => {
   previewRenderer.reset()
   previewLoading.value = false
   previewMixxxData.value = null
-  overviewMixxxData.value = null
   overviewRawData.value = null
-  overviewRawKey.value = ''
-  overviewRawPyramidMap.clear()
   previewError.value = ''
   previewZoom.value = PREVIEW_MIN_ZOOM
   previewStartSec.value = 0
@@ -779,58 +755,24 @@ const loadPreviewWaveform = async (filePath: string) => {
   schedulePreviewWarmup(normalized, requestSeq, PREVIEW_WARMUP_EAGER_DELAY_MS)
   try {
     const fileKey = normalizePathKey(normalized)
-    const hiresPromise = window.electron.ipcRenderer
-      .invoke('mixtape-waveform-hires:batch', {
-        filePaths: [normalized],
-        targetRate: PREVIEW_HIRES_TARGET_RATE
-      })
-      .catch(() => null)
-    const cachePromise = window.electron.ipcRenderer
-      .invoke('mixtape-waveform-cache:batch', {
-        filePaths: [normalized]
-      })
-      .catch(() => null)
-    const rawPromise = window.electron.ipcRenderer
+    const rawResult = await window.electron.ipcRenderer
       .invoke('mixtape-waveform-raw:batch', {
         filePaths: [normalized],
         targetRate: PREVIEW_RAW_TARGET_RATE
       })
       .catch(() => null)
-    const [hiresResult, cacheResult] = await Promise.all([hiresPromise, cachePromise])
     if (requestSeq !== previewLoadSequence) return
-    previewMixxxData.value = pickMixxxDataByFile(hiresResult, fileKey, normalizePathKey)
-    overviewMixxxData.value = pickMixxxDataByFile(cacheResult, fileKey, normalizePathKey)
-    if (
-      !isValidMixxxWaveformData(previewMixxxData.value) &&
-      isValidMixxxWaveformData(overviewMixxxData.value)
-    ) {
-      previewMixxxData.value = overviewMixxxData.value
-    }
-    if (previewMixxxData.value) {
+    overviewRawData.value = pickRawDataByFile(rawResult, fileKey, normalizePathKey)
+    previewMixxxData.value = overviewRawData.value
+      ? createRawPlaceholderMixxxData(overviewRawData.value)
+      : null
+    if (overviewRawData.value) {
       previewStartSec.value = clampPreviewStart(-resolvePreviewLeadingPadSec())
     }
-    if (!overviewMixxxData.value) {
-      try {
-        window.electron.ipcRenderer.send('mixtape-waveform:queue-visible', {
-          filePaths: [normalized]
-        })
-      } catch {}
-    }
-    if (!previewMixxxData.value) {
+    if (!overviewRawData.value) {
       previewError.value = t('mixtape.gridAdjustWaveformUnavailable')
     }
     previewLoading.value = false
-    schedulePreviewDraw()
-    scheduleOverviewRebuild()
-    const rawResult = await rawPromise
-    if (requestSeq !== previewLoadSequence) return
-    overviewRawData.value = pickRawDataByFile(rawResult, fileKey, normalizePathKey)
-    overviewRawKey.value = fileKey
-    if (overviewRawData.value) {
-      overviewRawPyramidMap.set(fileKey, buildRawWaveformPyramid(overviewRawData.value))
-    } else {
-      overviewRawPyramidMap.delete(fileKey)
-    }
     schedulePreviewDraw()
     scheduleOverviewRebuild()
   } catch {
@@ -930,9 +872,6 @@ watch(
 onMounted(() => {
   window.addEventListener('resize', handleWindowResize, { passive: true })
   window.addEventListener('keydown', handleWindowKeydown)
-  try {
-    window.electron.ipcRenderer.on('mixtape-waveform-updated', handleMixtapeWaveformUpdated)
-  } catch {}
 })
 
 onBeforeUnmount(() => {
@@ -950,18 +889,11 @@ onBeforeUnmount(() => {
     overviewRaf = 0
   }
   overviewCacheCanvas = null
-  overviewRawPyramidMap.clear()
   resetBarLinePicking()
   stopPreviewDragging()
   stopOverviewDragging()
   window.removeEventListener('resize', handleWindowResize)
   window.removeEventListener('keydown', handleWindowKeydown)
-  try {
-    window.electron.ipcRenderer.removeListener(
-      'mixtape-waveform-updated',
-      handleMixtapeWaveformUpdated
-    )
-  } catch {}
 })
 </script>
 

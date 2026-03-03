@@ -1,17 +1,13 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
-import { drawMixxxRgbWaveform } from '@renderer/composables/mixtape/waveformDraw'
-import { resolveRawWaveformLevel } from '@renderer/composables/mixtape/waveformPyramid'
-import type { RawWaveformData, RawWaveformLevel } from '@renderer/composables/mixtape/types'
+import { drawBeatAlignRekordboxWaveform } from '@renderer/components/mixtapeBeatAlignWaveform'
+import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 
 type BuildBeatAlignOverviewCacheParams = {
   wrap: HTMLDivElement | null
   cacheCanvas: HTMLCanvasElement | null
   mixxxData: MixxxWaveformData | null
   rawData: RawWaveformData | null
-  rawPyramidMap: Map<string, RawWaveformLevel[]>
-  rawKey: string
   maxRenderColumns: number
-  isHalfWaveform: boolean
   waveformVerticalPadding: number
   leadingPadSec: number
 }
@@ -24,14 +20,12 @@ export const rebuildBeatAlignOverviewCache = (
     cacheCanvas,
     mixxxData,
     rawData,
-    rawPyramidMap,
-    rawKey,
     maxRenderColumns,
-    isHalfWaveform,
     waveformVerticalPadding,
     leadingPadSec
   } = params
-  if (!wrap || !mixxxData) return null
+  // 节拍对齐仅展示精细(raw)波形，raw 未就绪时不渲染概览波形
+  if (!wrap || !mixxxData || !rawData) return null
 
   const low = mixxxData.bands?.low
   const mid = mixxxData.bands?.mid
@@ -76,21 +70,25 @@ export const rebuildBeatAlignOverviewCache = (
   const virtualSpanSec = Math.max(0.0001, duration + safeLeadingPadSec)
   const leadingPadPx = (safeLeadingPadSec / virtualSpanSec) * renderWidth
   const contentWidth = Math.max(1, renderWidth - leadingPadPx)
-  const rawSpan = Math.max(0, duration)
-  const rawSamplesPerPixel =
-    rawData && rawSpan > 0 ? (rawData.rate * rawSpan) / Math.max(1, contentWidth * dpr) : 0
-  const resolvedRaw = resolveRawWaveformLevel(rawPyramidMap, rawKey, rawData, rawSamplesPerPixel)
 
   const verticalPadding = Math.max(0, Math.min(Math.floor(height / 3), waveformVerticalPadding))
   const drawHeight = Math.max(1, height - verticalPadding * 2)
   cacheCtx.save()
   cacheCtx.translate(leadingPadPx, verticalPadding)
-  drawMixxxRgbWaveform(cacheCtx, contentWidth, drawHeight, mixxxData, isHalfWaveform, {
-    startFrame: 0,
-    endFrame: frameCount,
-    startTime: 0,
-    endTime: Math.max(0, duration),
-    raw: resolvedRaw
+  drawBeatAlignRekordboxWaveform(cacheCtx, {
+    width: Math.max(1, Math.floor(contentWidth)),
+    height: drawHeight,
+    bpm: 0,
+    firstBeatMs: 0,
+    barBeatOffset: 0,
+    rangeStartSec: 0,
+    rangeDurationSec: Math.max(0.0001, duration),
+    mixxxData,
+    rawData,
+    showBackground: false,
+    maxSamplesPerPixel: 120,
+    showDetailHighlights: false,
+    showCenterLine: false
   })
   cacheCtx.restore()
 

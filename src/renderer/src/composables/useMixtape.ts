@@ -3,7 +3,6 @@ import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
 import confirmDialog from '@renderer/components/confirmDialog'
-import choiceDialog from '@renderer/components/choiceDialog'
 import { useMixtapeTimeline } from '@renderer/composables/mixtape/useMixtapeTimeline'
 import { createMixtapeAutoGainController } from '@renderer/composables/mixtape/autoGainController'
 import {
@@ -50,6 +49,32 @@ import type {
   TimelineTrackLayout
 } from '@renderer/composables/mixtape/types'
 
+type MixtapeStemSummary = {
+  pending: number
+  running: number
+  ready: number
+  failed: number
+}
+
+type StemRuntimeProgressEntry = {
+  itemId: string
+  filePath: string
+  device: string
+  percent: number
+  processedSec: number | null
+  totalSec: number | null
+  updatedAt: number
+}
+
+const createEmptyStemSummary = (): MixtapeStemSummary => ({
+  pending: 0,
+  running: 0,
+  ready: 0,
+  failed: 0
+})
+
+const STEM_RUNTIME_PROGRESS_MAX_VISIBLE_ITEMS = 6
+
 export const useMixtape = () => {
   const payload = ref<MixtapeOpenPayload>({})
   const mixtapeMixMode = ref<MixtapeMixMode>('stem')
@@ -68,6 +93,7 @@ export const useMixtape = () => {
   const outputPath = ref('')
   const outputFormat = ref<'wav' | 'mp3'>('wav')
   const outputFilename = ref(buildRecFilename())
+  const outputStemProfile = ref<RendererMixtapeStemProfile>(DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE)
   const outputDialogVisible = ref(false)
   const outputRunning = ref(false)
   const outputProgressKey = ref('mixtape.outputProgressPreparing')
@@ -89,10 +115,11 @@ export const useMixtape = () => {
   let lastBpmAnalysisKey = ''
   let bpmAnalysisFailedTimer: ReturnType<typeof setTimeout> | null = null
   const mixtapeStemStrategyConfirmed = ref(false)
+  const stemSummary = ref<MixtapeStemSummary>(createEmptyStemSummary())
+  const stemRuntimeProgressByTrackId = ref<Record<string, StemRuntimeProgressEntry>>({})
   const stemResumeBootstrappedPlaylistIdSet = new Set<string>()
   const stemResumeSignatureByPlaylistId = new Map<string, string>()
-  const stemStrategyPromptSkippedPlaylistIdSet = new Set<string>()
-  const stemStrategyPromptTaskByPlaylistId = new Map<string, Promise<void>>()
+  const stemCpuSlowHintShownPlaylistIdSet = new Set<string>()
 
   let playlistUpdateTimer: ReturnType<typeof setTimeout> | null = null
   const { notifyMissingTracksRemoved } = createMixtapeMissingTracksNotifier()
@@ -189,12 +216,181 @@ export const useMixtape = () => {
     value: unknown,
     fallback: RendererMixtapeStemProfile = DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
   ): RendererMixtapeStemProfile => normalizeMixtapeStemProfile(value, fallback)
+  const isStemSpeedFirstStrategy = computed(() => {
+    if (mixtapeMixMode.value !== 'stem') return false
+    const realtimeProfile = normalizeStemProfile(
+      mixtapeStemRealtimeProfile.value,
+      DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
+    )
+    const exportProfile = normalizeStemProfile(
+      mixtapeStemExportProfile.value,
+      DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
+    )
+    return realtimeProfile === 'fast' && exportProfile === 'quality'
+  })
+  const shouldShowOutputStemProfileSelect = computed(() => isStemSpeedFirstStrategy.value)
   const normalizeMixtapeStemStatus = (value: unknown) => {
     if (value === 'pending' || value === 'running' || value === 'ready' || value === 'failed') {
       return value
     }
     return 'ready'
   }
+  const normalizeStemSummaryValue = (value: unknown) => {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed) || parsed < 0) return 0
+    return Math.floor(parsed)
+  }
+  const normalizeStemSummary = (value: unknown): MixtapeStemSummary => {
+    const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+    return {
+      pending: normalizeStemSummaryValue(raw.pending),
+      running: normalizeStemSummaryValue(raw.running),
+      ready: normalizeStemSummaryValue(raw.ready),
+      failed: normalizeStemSummaryValue(raw.failed)
+    }
+  }
+  const normalizeStemRuntimeNumber = (value: unknown): number | null => {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed)) return null
+    return parsed
+  }
+  const normalizeStemRuntimePercent = (value: unknown): number => {
+    const parsed = normalizeStemRuntimeNumber(value)
+    if (parsed === null) return 0
+    return Math.max(0, Math.min(100, Math.round(parsed)))
+  }
+  const normalizeStemRuntimeSeconds = (value: unknown): number | null => {
+    const parsed = normalizeStemRuntimeNumber(value)
+    if (parsed === null || parsed < 0) return null
+    return parsed
+  }
+  const resolveStemRuntimeFileName = (filePath: string): string => {
+    const normalized = normalizeMixtapeFilePath(filePath)
+    if (!normalized) return t('tracks.unknownTrack')
+    const parts = normalized.split(/[\\/]/).filter(Boolean)
+    return parts.at(-1) || normalized
+  }
+  const formatStemRuntimeTimeLabel = (seconds: number | null): string => {
+    if (!Number.isFinite(seconds) || Number(seconds) < 0) return '--:--'
+    const totalSeconds = Math.floor(Number(seconds))
+    const minutes = Math.floor(totalSeconds / 60)
+    const remainSeconds = totalSeconds % 60
+    return `${minutes}:${String(remainSeconds).padStart(2, '0')}`
+  }
+  const removeStemRuntimeProgressByItemIds = (itemIds: string[]) => {
+    if (!itemIds.length) return
+    const next = { ...stemRuntimeProgressByTrackId.value }
+    let changed = false
+    for (const itemId of itemIds) {
+      const normalizedItemId = typeof itemId === 'string' ? itemId.trim() : ''
+      if (!normalizedItemId || !Object.prototype.hasOwnProperty.call(next, normalizedItemId)) {
+        continue
+      }
+      delete next[normalizedItemId]
+      changed = true
+    }
+    if (changed) {
+      stemRuntimeProgressByTrackId.value = next
+    }
+  }
+  const pruneStemRuntimeProgressByTracks = (trackList: MixtapeTrack[]) => {
+    const validTrackIdSet = new Set(
+      trackList.map((track) => (typeof track?.id === 'string' ? track.id.trim() : '')).filter(Boolean)
+    )
+    const next: Record<string, StemRuntimeProgressEntry> = {}
+    let changed = false
+    for (const [itemId, entry] of Object.entries(stemRuntimeProgressByTrackId.value)) {
+      if (!validTrackIdSet.has(itemId)) {
+        changed = true
+        continue
+      }
+      next[itemId] = entry
+    }
+    if (changed) {
+      stemRuntimeProgressByTrackId.value = next
+    }
+  }
+  const stemSeparationProgressTotal = computed(
+    () =>
+      stemSummary.value.pending +
+      stemSummary.value.running +
+      stemSummary.value.ready +
+      stemSummary.value.failed
+  )
+  const stemSeparationProgressDone = computed(
+    () => stemSummary.value.ready + stemSummary.value.failed
+  )
+  const stemSeparationProgressPercent = computed(() => {
+    const total = stemSeparationProgressTotal.value
+    if (total <= 0) return 0
+    return Math.max(0, Math.min(100, Math.round((stemSeparationProgressDone.value / total) * 100)))
+  })
+  const stemSeparationProgressVisible = computed(() => {
+    if (mixtapeMixMode.value !== 'stem') return false
+    if (!mixtapeStemStrategyConfirmed.value) return false
+    return stemSummary.value.pending + stemSummary.value.running > 0
+  })
+  const stemSeparationProgressText = computed(() => {
+    const total = stemSeparationProgressTotal.value
+    const done = stemSeparationProgressDone.value
+    const running = stemSummary.value.running
+    const pending = stemSummary.value.pending
+    const failed = stemSummary.value.failed
+    const percent = stemSeparationProgressPercent.value
+    if (failed > 0) {
+      return t('mixtape.stemSeparationProgressTextWithFailed', {
+        percent,
+        done,
+        total,
+        running,
+        pending,
+        failed
+      })
+    }
+    return t('mixtape.stemSeparationProgressText', {
+      percent,
+      done,
+      total,
+      running,
+      pending
+    })
+  })
+  const stemSeparationRunningProgressLines = computed(() => {
+    const trackIndexById = new Map<string, number>()
+    const trackNameById = new Map(
+      tracks.value.map((track, index) => {
+        const trackId = typeof track?.id === 'string' ? track.id.trim() : ''
+        if (trackId && !trackIndexById.has(trackId)) {
+          trackIndexById.set(trackId, index)
+        }
+        return [trackId, resolveTrackTitle(track) || resolveStemRuntimeFileName(track.filePath || '')]
+      })
+    )
+    const entries = Object.values(stemRuntimeProgressByTrackId.value)
+      .filter((entry) => entry && typeof entry.itemId === 'string' && entry.itemId.trim())
+      .sort((a, b) => {
+        const aIndex = trackIndexById.has(a.itemId)
+          ? (trackIndexById.get(a.itemId) as number)
+          : Number.MAX_SAFE_INTEGER
+        const bIndex = trackIndexById.has(b.itemId)
+          ? (trackIndexById.get(b.itemId) as number)
+          : Number.MAX_SAFE_INTEGER
+        if (aIndex !== bIndex) return aIndex - bIndex
+        return a.itemId.localeCompare(b.itemId)
+      })
+      .slice(0, STEM_RUNTIME_PROGRESS_MAX_VISIBLE_ITEMS)
+    return entries.map((entry) => {
+      const trackTitle =
+        trackNameById.get(entry.itemId) || resolveStemRuntimeFileName(entry.filePath || '')
+      return t('mixtape.stemSeparationTrackProgressText', {
+        name: trackTitle,
+        percent: normalizeStemRuntimePercent(entry.percent),
+        processed: formatStemRuntimeTimeLabel(entry.processedSec),
+        total: formatStemRuntimeTimeLabel(entry.totalSec),
+        device: String(entry.device || 'cpu').toUpperCase()
+      })
+    })
+  })
   const resolveTrackStemModel = (track: MixtapeTrack) =>
     typeof track?.stemModel === 'string' ? track.stemModel.trim() : ''
   const resolveTrackStemVersion = (track: MixtapeTrack) =>
@@ -559,7 +755,10 @@ export const useMixtape = () => {
       mixtapeStemMode.value = '4stems'
       mixtapeStemRealtimeProfile.value = DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
       mixtapeStemExportProfile.value = DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
+      outputStemProfile.value = DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
       mixtapeStemStrategyConfirmed.value = false
+      stemSummary.value = createEmptyStemSummary()
+      stemRuntimeProgressByTrackId.value = {}
       tracks.value = []
       selectedTrackId.value = ''
       resetAutoGainState()
@@ -581,7 +780,12 @@ export const useMixtape = () => {
       result?.stemExportProfile,
       DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
     )
+    outputStemProfile.value = normalizeStemProfile(
+      result?.stemExportProfile,
+      DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
+    )
     mixtapeStemStrategyConfirmed.value = !!result?.stemStrategyConfirmed
+    stemSummary.value = normalizeStemSummary(result?.stemSummary)
     const rawItems = Array.isArray(result?.items) ? result.items : []
     mixtapeRawItems.value = rawItems
     const removedPaths = Array.isArray(result?.recovery?.removedPaths)
@@ -590,56 +794,9 @@ export const useMixtape = () => {
     tracks.value = rawItems.map((item: MixtapeRawItem, index: number) =>
       parseSnapshot(item, index, t('tracks.unknownTrack'))
     )
+    pruneStemRuntimeProgressByTracks(tracks.value)
     const stemMode = normalizeMixtapeStemMode(result?.stemMode)
     const currentPlaylistId = String(payload.value.playlistId || '').trim()
-    if (
-      mixtapeMixMode.value === 'stem' &&
-      currentPlaylistId &&
-      tracks.value.length > 0 &&
-      !mixtapeStemStrategyConfirmed.value &&
-      !stemStrategyPromptSkippedPlaylistIdSet.has(currentPlaylistId)
-    ) {
-      const existingPromptTask = stemStrategyPromptTaskByPlaylistId.get(currentPlaylistId)
-      if (existingPromptTask) {
-        await existingPromptTask
-      } else {
-        const promptTask = (async () => {
-          const choice = await choiceDialog({
-            title: t('mixtape.stemProfileChooseTitle'),
-            content: [t('mixtape.stemProfileChooseHint')],
-            options: [
-              { key: 'enter', label: t('mixtape.stemProfileChooseFastOption') },
-              { key: 'reset', label: t('mixtape.stemProfileChooseQualityOption') },
-              { key: 'cancel', label: t('mixtape.stemProfileChooseLaterOption') }
-            ],
-            innerHeight: 240,
-            innerWidth: 560
-          })
-          if (choice === 'enter' || choice === 'reset') {
-            const selectedRealtimeProfile: RendererMixtapeStemProfile =
-              choice === 'enter' ? 'fast' : 'quality'
-            const selectedExportProfile: RendererMixtapeStemProfile = 'quality'
-            const selectedOk = await persistStemProfiles(
-              selectedRealtimeProfile,
-              selectedExportProfile,
-              {
-                markStrategyConfirmed: true
-              }
-            )
-            if (selectedOk) {
-              mixtapeStemStrategyConfirmed.value = true
-              stemStrategyPromptSkippedPlaylistIdSet.delete(currentPlaylistId)
-            }
-            return
-          }
-          stemStrategyPromptSkippedPlaylistIdSet.add(currentPlaylistId)
-        })().finally(() => {
-          stemStrategyPromptTaskByPlaylistId.delete(currentPlaylistId)
-        })
-        stemStrategyPromptTaskByPlaylistId.set(currentPlaylistId, promptTask)
-        await promptTask
-      }
-    }
 
     if (mixtapeMixMode.value === 'stem' && mixtapeStemStrategyConfirmed.value) {
       const missingStemAssetReadyTracks = tracks.value.filter(
@@ -705,85 +862,6 @@ export const useMixtape = () => {
       void notifyMissingTracksRemoved(payload.value.playlistId || '', removedPaths)
     }
     void requestMixtapeBpmAnalysis()
-  }
-
-  const persistStemProfiles = async (
-    realtimeProfile: RendererMixtapeStemProfile,
-    exportProfile: RendererMixtapeStemProfile,
-    options?: { markStrategyConfirmed?: boolean }
-  ) => {
-    const playlistId = String(payload.value.playlistId || '').trim()
-    if (!playlistId || !window?.electron?.ipcRenderer?.invoke) return false
-    try {
-      const result = await window.electron.ipcRenderer.invoke('mixtape:project:set-stem-profiles', {
-        playlistId,
-        stemRealtimeProfile: realtimeProfile,
-        stemExportProfile: exportProfile,
-        markStrategyConfirmed:
-          typeof options?.markStrategyConfirmed === 'boolean' ? options.markStrategyConfirmed : true
-      })
-      mixtapeStemRealtimeProfile.value = normalizeStemProfile(
-        result?.stemRealtimeProfile,
-        realtimeProfile
-      )
-      mixtapeStemExportProfile.value = normalizeStemProfile(
-        result?.stemExportProfile,
-        exportProfile
-      )
-      mixtapeStemStrategyConfirmed.value = !!result?.stemStrategyConfirmed
-      return true
-    } catch (error) {
-      console.error('[mixtape] persist stem profiles failed', {
-        playlistId,
-        realtimeProfile,
-        exportProfile,
-        error
-      })
-      await confirmDialog({
-        title: t('common.error'),
-        content: [t('mixtape.stemProfilePersistFailed')],
-        confirmShow: false
-      })
-      return false
-    }
-  }
-
-  const handleStemRealtimeProfileChange = async (profile: unknown) => {
-    if (mixtapeMixMode.value !== 'stem') return
-    const nextProfile = normalizeStemProfile(profile, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
-    if (nextProfile === mixtapeStemRealtimeProfile.value) return
-    const prevRealtime = mixtapeStemRealtimeProfile.value
-    const prevExport = mixtapeStemExportProfile.value
-    const prevStrategyConfirmed = mixtapeStemStrategyConfirmed.value
-    mixtapeStemRealtimeProfile.value = nextProfile
-    const ok = await persistStemProfiles(nextProfile, prevExport)
-    if (!ok) {
-      mixtapeStemRealtimeProfile.value = prevRealtime
-      mixtapeStemExportProfile.value = prevExport
-      return
-    }
-    if (!prevStrategyConfirmed && mixtapeStemStrategyConfirmed.value) {
-      await loadMixtapeItems()
-    }
-  }
-
-  const handleStemExportProfileChange = async (profile: unknown) => {
-    if (mixtapeMixMode.value !== 'stem') return
-    const nextProfile = normalizeStemProfile(profile, DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE)
-    if (nextProfile === mixtapeStemExportProfile.value) return
-    const prevRealtime = mixtapeStemRealtimeProfile.value
-    const prevExport = mixtapeStemExportProfile.value
-    const prevStrategyConfirmed = mixtapeStemStrategyConfirmed.value
-    mixtapeStemExportProfile.value = nextProfile
-    const ok = await persistStemProfiles(prevRealtime, nextProfile)
-    if (!ok) {
-      mixtapeStemRealtimeProfile.value = prevRealtime
-      mixtapeStemExportProfile.value = prevExport
-      return
-    }
-    if (!prevStrategyConfirmed && mixtapeStemStrategyConfirmed.value) {
-      await loadMixtapeItems()
-    }
   }
 
   const closeTrackContextMenu = () => {
@@ -1059,6 +1137,9 @@ export const useMixtape = () => {
 
   const openOutputDialog = () => {
     if (outputRunning.value) return
+    outputStemProfile.value = shouldShowOutputStemProfileSelect.value
+      ? 'quality'
+      : normalizeStemProfile(mixtapeStemExportProfile.value, DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE)
     outputDialogVisible.value = true
   }
 
@@ -1108,7 +1189,7 @@ export const useMixtape = () => {
     }
     if (mixtapeMixMode.value === 'stem') {
       const exportProfile = normalizeStemProfile(
-        mixtapeStemExportProfile.value,
+        shouldShowOutputStemProfileSelect.value ? outputStemProfile.value : mixtapeStemExportProfile.value,
         DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
       )
       const exportModel = resolveMixtapeStemModelByProfile(exportProfile)
@@ -1229,10 +1310,12 @@ export const useMixtape = () => {
     outputPath: string
     outputFormat: 'wav' | 'mp3'
     outputFilename: string
+    stemProfile?: RendererMixtapeStemProfile
   }) => {
     outputPath.value = payload.outputPath
     outputFormat.value = payload.outputFormat
     outputFilename.value = payload.outputFilename
+    outputStemProfile.value = normalizeStemProfile(payload.stemProfile, outputStemProfile.value)
     outputDialogVisible.value = false
     await runMixtapeOutput()
   }
@@ -1322,7 +1405,84 @@ export const useMixtape = () => {
     const targetPlaylistId =
       typeof eventPayload?.playlistId === 'string' ? eventPayload.playlistId.trim() : ''
     if (!targetPlaylistId || targetPlaylistId !== playlistId) return
+    const stemStatus = normalizeMixtapeStemStatus(eventPayload?.stemStatus)
+    const itemIds = Array.isArray(eventPayload?.itemIds)
+      ? eventPayload.itemIds
+          .map((itemId: unknown) => (typeof itemId === 'string' ? itemId.trim() : ''))
+          .filter(Boolean)
+      : []
+    if (stemStatus !== 'running' && itemIds.length > 0) {
+      removeStemRuntimeProgressByItemIds(itemIds)
+    }
+    if (eventPayload && typeof eventPayload === 'object') {
+      stemSummary.value = normalizeStemSummary(eventPayload.stemSummary)
+    }
     schedulePlaylistReload()
+  }
+
+  const handleMixtapeStemCpuSlowHint = (_e: unknown, eventPayload: any) => {
+    const playlistId = String(payload.value.playlistId || '').trim()
+    if (!playlistId) return
+    const targetPlaylistId =
+      typeof eventPayload?.playlistId === 'string' ? eventPayload.playlistId.trim() : ''
+    if (!targetPlaylistId || targetPlaylistId !== playlistId) return
+    if (stemCpuSlowHintShownPlaylistIdSet.has(playlistId)) return
+    stemCpuSlowHintShownPlaylistIdSet.add(playlistId)
+    const reasonCode =
+      typeof eventPayload?.reasonCode === 'string' ? eventPayload.reasonCode.trim() : ''
+    const reasonText =
+      reasonCode === 'gpu_unavailable'
+        ? t('mixtape.stemCpuSlowHintReasonGpuUnavailable')
+        : reasonCode === 'gpu_failed'
+          ? t('mixtape.stemCpuSlowHintReasonGpuFailed')
+          : reasonCode === 'gpu_backend_missing'
+            ? t('mixtape.stemCpuSlowHintReasonGpuBackendMissing')
+          : t('mixtape.stemCpuSlowHintReasonUnknown')
+    const content = [
+      t('mixtape.stemCpuSlowHintReasonLine', { reason: reasonText }),
+      t('mixtape.stemCpuSlowHint')
+    ]
+    void confirmDialog({
+      title: t('common.warning'),
+      content,
+      confirmShow: false
+    })
+  }
+
+  const handleMixtapeStemRuntimeProgress = (_e: unknown, eventPayload: any) => {
+    const playlistId = String(payload.value.playlistId || '').trim()
+    if (!playlistId) return
+    const targetPlaylistId =
+      typeof eventPayload?.playlistId === 'string' ? eventPayload.playlistId.trim() : ''
+    if (!targetPlaylistId || targetPlaylistId !== playlistId) return
+    const itemIds = Array.isArray(eventPayload?.itemIds)
+      ? eventPayload.itemIds
+          .map((itemId: unknown) => (typeof itemId === 'string' ? itemId.trim() : ''))
+          .filter(Boolean)
+      : []
+    if (!itemIds.length) return
+    const percent = normalizeStemRuntimePercent(eventPayload?.percent)
+    const processedSec = normalizeStemRuntimeSeconds(eventPayload?.processedSec)
+    const totalSec = normalizeStemRuntimeSeconds(eventPayload?.totalSec)
+    const filePath = normalizeMixtapeFilePath(eventPayload?.filePath)
+    const device =
+      typeof eventPayload?.device === 'string' && eventPayload.device.trim()
+        ? eventPayload.device.trim().toLowerCase()
+        : 'cpu'
+    const updatedAt = Date.now()
+    const next = { ...stemRuntimeProgressByTrackId.value }
+    for (const itemId of itemIds) {
+      next[itemId] = {
+        itemId,
+        filePath,
+        device,
+        percent,
+        processedSec,
+        totalSec,
+        updatedAt
+      }
+    }
+    stemRuntimeProgressByTrackId.value = next
   }
 
   const handleOpen = (_e: any, next: MixtapeOpenPayload) => {
@@ -1358,8 +1518,10 @@ export const useMixtape = () => {
       if (prevId && prevId !== nextId) {
         stemResumeBootstrappedPlaylistIdSet.delete(prevId)
         stemResumeSignatureByPlaylistId.delete(prevId)
-        stemStrategyPromptSkippedPlaylistIdSet.delete(prevId)
-        stemStrategyPromptTaskByPlaylistId.delete(prevId)
+      }
+      if (nextId !== prevId) {
+        stemSummary.value = createEmptyStemSummary()
+        stemRuntimeProgressByTrackId.value = {}
       }
       loadMixtapeItems()
     },
@@ -1381,6 +1543,8 @@ export const useMixtape = () => {
     window.electron.ipcRenderer.on('mixtape-open', handleOpen)
     window.electron.ipcRenderer.on('mixtape-bpm-batch-ready', handleBpmBatchReady)
     window.electron.ipcRenderer.on('mixtape-stem-status-updated', handleMixtapeStemStatusUpdated)
+    window.electron.ipcRenderer.on('mixtape-stem-cpu-slow-hint', handleMixtapeStemCpuSlowHint)
+    window.electron.ipcRenderer.on('mixtape-stem-runtime-progress', handleMixtapeStemRuntimeProgress)
     window.electron.ipcRenderer.on('mixtape-output:progress', handleMixtapeOutputProgress)
     window.electron.ipcRenderer.on('mixtapeWindow-max', (_e, next: boolean) => {
       runtime.isWindowMaximized = !!next
@@ -1401,6 +1565,18 @@ export const useMixtape = () => {
       window.electron.ipcRenderer.removeListener(
         'mixtape-stem-status-updated',
         handleMixtapeStemStatusUpdated
+      )
+    } catch {}
+    try {
+      window.electron.ipcRenderer.removeListener(
+        'mixtape-stem-cpu-slow-hint',
+        handleMixtapeStemCpuSlowHint
+      )
+    } catch {}
+    try {
+      window.electron.ipcRenderer.removeListener(
+        'mixtape-stem-runtime-progress',
+        handleMixtapeStemRuntimeProgress
       )
     } catch {}
     try {
@@ -1434,8 +1610,6 @@ export const useMixtape = () => {
     mixtapePlaylistId,
     mixtapeMixMode,
     mixtapeStemMode,
-    mixtapeStemRealtimeProfile,
-    mixtapeStemExportProfile,
     mixtapeMenus,
     handleTitleOpenDialog,
     mixtapeRawItems,
@@ -1519,13 +1693,17 @@ export const useMixtape = () => {
     outputPath,
     outputFormat,
     outputFilename,
+    outputStemProfile,
+    shouldShowOutputStemProfileSelect,
     outputRunning,
     outputProgressText,
     outputProgressPercent,
     handleOutputDialogConfirm,
     handleOutputDialogCancel,
-    handleStemRealtimeProfileChange,
-    handleStemExportProfileChange,
+    stemSeparationProgressVisible,
+    stemSeparationProgressPercent,
+    stemSeparationProgressText,
+    stemSeparationRunningProgressLines,
     autoGainDialogVisible,
     autoGainReferenceTrackId,
     autoGainReferenceFeedback,

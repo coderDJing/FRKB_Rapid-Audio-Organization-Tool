@@ -1,0 +1,129 @@
+{
+  "win32-x64": {
+    "baseRuntimeDir": "runtime",
+    "basePipInstall": [
+      "--index-url",
+      "https://download.pytorch.org/whl/cpu",
+      "--extra-index-url",
+      "https://pypi.org/simple",
+      "torch==2.3.1",
+      "torchaudio==2.3.1",
+      "demucs==4.0.1"
+    ],
+    "profiles": {
+      "cpu": {
+        "targetDir": "runtime-cpu",
+        "pipInstall": []
+      },
+      "directml": {
+        "targetDir": "runtime-directml",
+        "pipInstall": [
+          "torch==2.4.1",
+          "torch-directml",
+          "torchaudio==2.4.1"
+        ]
+      },
+      "cuda": {
+        "targetDir": "runtime-cuda",
+        "pipInstall": [
+          "--index-url",
+          "https://download.pytorch.org/whl/cu121",
+          "--extra-index-url",
+          "https://pypi.org/simple",
+          "torch==2.3.1",
+          "torchaudio==2.3.1"
+        ]
+      },
+      "xpu": {
+        "targetDir": "runtime-xpu",
+        "pipInstall": []
+      }
+    }
+  },
+  "darwin-arm64": {
+    "baseRuntimeDir": "runtime",
+    "basePipInstall": [
+      "torch==2.3.1",
+      "torchaudio==2.3.1",
+      "demucs==4.0.1"
+    ],
+    "profiles": {
+      "mps": {
+        "targetDir": "runtime-mps",
+        "pipInstall": []
+      },
+      "cpu": {
+        "targetDir": "runtime-cpu",
+        "pipInstall": []
+      }
+    }
+  },
+  "darwin-x64": {
+    "baseRuntimeDir": "runtime",
+    "basePipInstall": [
+      "torch==2.3.1",
+      "torchaudio==2.3.1",
+      "demucs==4.0.1"
+    ],
+    "profiles": {
+      "cpu": {
+        "targetDir": "runtime-cpu",
+        "pipInstall": []
+      }
+    }
+  },
+  "linux-x64": {
+    "baseRuntimeDir": "runtime",
+    "basePipInstall": [
+      "--index-url",
+      "https://download.pytorch.org/whl/cpu",
+      "--extra-index-url",
+      "https://pypi.org/simple",
+      "torch==2.3.1",
+      "torchaudio==2.3.1",
+      "demucs==4.0.1"
+    ],
+    "profiles": {
+      "cuda": {
+        "targetDir": "runtime-cuda",
+        "pipInstall": [
+          "--index-url",
+          "https://download.pytorch.org/whl/cu121",
+          "--extra-index-url",
+          "https://pypi.org/simple",
+          "torch==2.3.1",
+          "torchaudio==2.3.1"
+        ]
+      },
+      "rocm": {
+        "targetDir": "runtime-rocm",
+        "pipInstall": [
+          "--index-url",
+          "https://download.pytorch.org/whl/rocm6.0",
+          "--extra-index-url",
+          "https://pypi.org/simple",
+          "torch==2.3.1",
+          "torchaudio==2.3.1"
+        ]
+      },
+      "cpu": {
+        "targetDir": "runtime-cpu",
+        "pipInstall": []
+      }
+    }
+  },
+  "linux-arm64": {
+    "baseRuntimeDir": "runtime",
+    "basePipInstall": [
+      "torch==2.3.1",
+      "torchaudio==2.3.1",
+      "demucs==4.0.1"
+    ],
+    "profiles": {
+      "cpu": {
+        "targetDir": "runtime-cpu",
+        "pipInstall": []
+      }
+    }
+  }
+}

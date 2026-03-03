@@ -1,9 +1,14 @@
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
 import path = require('path')
 import fs = require('fs-extra')
 import store from '../store'
 import mainWindow from '../window/mainWindow'
-import { mapRendererPathToFsPath, runWithConcurrency, waitForUserDecision } from '../utils'
+import {
+  getCoreFsDirName,
+  mapRendererPathToFsPath,
+  runWithConcurrency,
+  waitForUserDecision
+} from '../utils'
 import {
   getRecycleBinRootAbs,
   moveFileToRecycleBin,
@@ -20,6 +25,107 @@ import {
 } from '../recycleBinDb'
 import { scanSongList as svcScanSongList } from '../services/scanSongs'
 import { RECYCLE_BIN_UUID } from '../../shared/recycleBin'
+import { getLibraryDb } from '../libraryDb'
+
+const DIRTY_DATA_SQL_TABLES = [
+  'song_cache',
+  'cover_index',
+  'waveform_cache',
+  'mixtape_items',
+  'mixtape_projects',
+  'mixtape_stem_assets',
+  'mixtape_waveform_cache',
+  'mixtape_raw_waveform_cache',
+  'mixtape_waveform_hires_cache',
+  'mixtape_stem_waveform_cache'
+] as const
+
+type DirtyDataSqlSummary = {
+  removedRows: number
+  removedByTable: Record<string, number>
+  missingTables: string[]
+}
+
+type DirtyDataPathSummary = {
+  removedCount: number
+  removedPaths: string[]
+}
+
+function clearDirtyDataSqlTables(db: any): DirtyDataSqlSummary {
+  const removedByTable: Record<string, number> = {}
+  const missingTables: string[] = []
+  let removedRows = 0
+  const existingRows = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{
+    name: string
+  }>
+  const existingTableSet = new Set(existingRows.map((row) => String(row.name)))
+  const runDelete = db.transaction(() => {
+    for (const table of DIRTY_DATA_SQL_TABLES) {
+      if (!existingTableSet.has(table)) {
+        missingTables.push(table)
+        removedByTable[table] = 0
+        continue
+      }
+      const info = db.prepare(`DELETE FROM ${table}`).run() as { changes?: number }
+      const changes = Number(info?.changes || 0)
+      removedByTable[table] = changes
+      removedRows += changes
+    }
+  })
+  runDelete()
+  return {
+    removedRows,
+    removedByTable,
+    missingTables
+  }
+}
+
+async function collectLibraryDirtyCacheTargets(libraryRoot: string): Promise<string[]> {
+  if (!libraryRoot || !(await fs.pathExists(libraryRoot))) return []
+  const targets: string[] = []
+  const queue: string[] = [libraryRoot]
+  while (queue.length > 0) {
+    const current = queue.shift()
+    if (!current) continue
+    let entries: fs.Dirent[] = []
+    try {
+      entries = await fs.readdir(current, { withFileTypes: true })
+    } catch {
+      entries = []
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name)
+      if (entry.isFile() && entry.name === '.songs.cache.json') {
+        targets.push(fullPath)
+        continue
+      }
+      if (!entry.isDirectory()) continue
+      if (entry.name === '.frkb_covers') {
+        targets.push(fullPath)
+        continue
+      }
+      if (entry.name.startsWith('.')) continue
+      queue.push(fullPath)
+    }
+  }
+  return targets
+}
+
+async function removeExistingPaths(paths: string[]): Promise<DirtyDataPathSummary> {
+  const removedPaths: string[] = []
+  const uniquePaths = Array.from(new Set(paths.filter((item) => !!item)))
+  for (const item of uniquePaths) {
+    try {
+      if (!(await fs.pathExists(item))) continue
+      await fs.remove(item)
+      removedPaths.push(item)
+    } catch {}
+  }
+  return {
+    removedCount: removedPaths.length,
+    removedPaths
+  }
+}
 
 function normalizeAudioExtensions(input?: string[]): Set<string> {
   const result = new Set<string>()
@@ -283,6 +389,43 @@ export function registerLibraryMaintenanceHandlers() {
       return !!(node && validTypes.includes(node.nodeType))
     } catch {
       return false
+    }
+  })
+
+  ipcMain.handle('library:clear-dirty-data', async () => {
+    const dbRoot = store.databaseDir
+    if (!dbRoot) {
+      throw new Error('databaseDir is empty')
+    }
+    const db = getLibraryDb()
+    if (!db) {
+      throw new Error('library db unavailable')
+    }
+    const database = clearDirtyDataSqlTables(db)
+
+    const libraryRoot = path.join(dbRoot, 'library')
+    const mixtapeVaultPath = path.join(
+      libraryRoot,
+      getCoreFsDirName('MixtapeLibrary'),
+      '.mixtape_vault'
+    )
+    const libraryDirtyTargets = await collectLibraryDirtyCacheTargets(libraryRoot)
+    libraryDirtyTargets.push(mixtapeVaultPath)
+    const libraryCache = await removeExistingPaths(libraryDirtyTargets)
+
+    const userDataRoot = app.getPath('userData')
+    const userDataCache = await removeExistingPaths([
+      path.join(userDataRoot, 'stems'),
+      path.join(userDataRoot, 'cache', 'musicbrainz'),
+      path.join(userDataRoot, 'fingerprintCache.json'),
+      path.join(userDataRoot, 'waveforms', 'mixxx-waveform-v1')
+    ])
+
+    return {
+      success: true,
+      database,
+      libraryCache,
+      userDataCache
     }
   })
 }

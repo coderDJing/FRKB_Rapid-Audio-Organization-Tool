@@ -194,6 +194,15 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     }
     return 'ready'
   }
+  const isStemAutoPreloadReady = () => {
+    if (!isStemMixMode()) return false
+    if (!tracks.value.length) return false
+    for (const track of tracks.value) {
+      const stemStatus = normalizeMixtapeStemStatus((track as any)?.stemStatus)
+      if (stemStatus !== 'ready') return false
+    }
+    return true
+  }
   const isStemMixMode = (): boolean =>
     (mixtapeMixMode?.value as MixtapeMixMode | undefined) === 'stem'
   const resolveStemMode = (): MixtapeStemMode => '4stems'
@@ -859,6 +868,13 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   })
 
   const preloadTransportBuffers = async () => {
+    if (isStemMixMode() && !isStemAutoPreloadReady()) {
+      transportPreloading.value = false
+      transportPreloadTotal.value = 0
+      transportPreloadDone.value = 0
+      transportPreloadFailed.value = 0
+      return
+    }
     const version = ++transportPreloadVersion
     const plan = buildTransportEntries()
     const useStemMode = isStemMixMode()
@@ -943,6 +959,13 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   }
 
   const scheduleTransportPreload = () => {
+    if (isStemMixMode() && !isStemAutoPreloadReady()) {
+      cancelTransportPreload()
+      transportPreloadTotal.value = 0
+      transportPreloadDone.value = 0
+      transportPreloadFailed.value = 0
+      return
+    }
     clearTransportPreloadTimer()
     transportPreloadTimer = setTimeout(() => {
       transportPreloadTimer = null

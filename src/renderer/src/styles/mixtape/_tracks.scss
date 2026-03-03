@@ -36,7 +36,10 @@
 }
 
 .bpm-loading-card {
-  min-width: 220px;
+  width: min(460px, 100%);
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   padding: 10px 14px;
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.55);
@@ -60,6 +63,8 @@
 .bpm-loading-sub {
   font-size: 11px;
   color: var(--text-weak);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .bpm-loading-actions {

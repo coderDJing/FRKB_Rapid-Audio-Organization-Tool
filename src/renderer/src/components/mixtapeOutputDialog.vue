@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { t } from '@renderer/utils/translate'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import BaseSelect from '@renderer/components/BaseSelect.vue'
+import type { MixtapeStemProfile } from '@renderer/composables/mixtape/types'
 
 const props = defineProps({
   outputPath: {
@@ -16,13 +17,26 @@ const props = defineProps({
   outputFilename: {
     type: String,
     default: ''
+  },
+  stemProfile: {
+    type: String as () => MixtapeStemProfile,
+    default: 'quality'
+  },
+  showStemProfileSelect: {
+    type: Boolean,
+    default: false
   }
 })
 
 const emit = defineEmits<{
   (
     event: 'confirm',
-    payload: { outputPath: string; outputFormat: 'wav' | 'mp3'; outputFilename: string }
+    payload: {
+      outputPath: string
+      outputFormat: 'wav' | 'mp3'
+      outputFilename: string
+      stemProfile: MixtapeStemProfile
+    }
   ): void
   (event: 'cancel'): void
 }>()
@@ -32,6 +46,11 @@ const { dialogVisible, closeWithAnimation } = useDialogTransition()
 const draftPath = ref(props.outputPath)
 const draftFormat = ref<'wav' | 'mp3'>(props.outputFormat)
 const draftFilename = ref(props.outputFilename)
+const draftStemProfile = ref<MixtapeStemProfile>(props.stemProfile)
+const dialogInnerStyle = computed(
+  () =>
+    `width: 500px; height: ${props.showStemProfileSelect ? 360 : 280}px; display: flex; flex-direction: column`
+)
 
 const outputPathDisplay = computed(() => {
   return draftPath.value || t('mixtape.outputPathPlaceholder')
@@ -40,6 +59,10 @@ const outputPathDisplay = computed(() => {
 const formatOptions = computed(() => [
   { label: 'WAV', value: 'wav' },
   { label: 'MP3', value: 'mp3' }
+])
+const stemProfileOptions = computed(() => [
+  { label: t('mixtape.outputStemProfileQualityOption'), value: 'quality' },
+  { label: t('mixtape.outputStemProfileFastOption'), value: 'fast' }
 ])
 
 const handlePickOutputPath = async () => {
@@ -56,7 +79,8 @@ const confirm = () => {
   emit('confirm', {
     outputPath: draftPath.value,
     outputFormat: draftFormat.value,
-    outputFilename: draftFilename.value
+    outputFilename: draftFilename.value,
+    stemProfile: draftStemProfile.value
   })
 }
 
@@ -72,7 +96,7 @@ const cancel = () => {
     <div
       v-dialog-drag="'.dialog-title'"
       class="inner"
-      style="width: 480px; height: 280px; display: flex; flex-direction: column"
+      :style="dialogInnerStyle"
     >
       <div class="dialog-title dialog-header">
         <span>{{ t('mixtape.outputDialogTitle') }}</span>
@@ -103,6 +127,15 @@ const cancel = () => {
             <input v-model="draftFilename" class="dialog-input" type="text" />
           </div>
         </div>
+        <div v-if="props.showStemProfileSelect" class="form-row form-row--start">
+          <div class="form-label">{{ t('mixtape.outputStemProfileLabel') }}：</div>
+          <div class="form-field">
+            <BaseSelect v-model="draftStemProfile" :options="stemProfileOptions" :width="250" />
+            <div class="form-hint">{{ t('mixtape.outputStemProfileHint') }}</div>
+            <div class="form-hint form-hint--sub">{{ t('mixtape.outputStemProfileHintQuality') }}</div>
+            <div class="form-hint form-hint--sub">{{ t('mixtape.outputStemProfileHintFast') }}</div>
+          </div>
+        </div>
       </div>
       <div class="dialog-footer">
         <div class="button" @click="confirm">{{ t('mixtape.outputAction') }}</div>
@@ -127,6 +160,10 @@ const cancel = () => {
   gap: 10px;
 }
 
+.form-row--start {
+  align-items: flex-start;
+}
+
 .form-label {
   width: 90px;
   text-align: left;
@@ -136,6 +173,17 @@ const cancel = () => {
 
 .form-field {
   flex: 1;
+}
+
+.form-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-weak);
+}
+
+.form-hint--sub {
+  margin-top: 4px;
 }
 
 .dialog-input {

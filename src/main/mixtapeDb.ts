@@ -334,7 +334,7 @@ export function upsertMixtapeProjectStemProfiles(
            created_at_ms,
            updated_at_ms
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(playlist_uuid) DO UPDATE SET
            stem_realtime_profile = excluded.stem_realtime_profile,
            stem_export_profile = excluded.stem_export_profile,

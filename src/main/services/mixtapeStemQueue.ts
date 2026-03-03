@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import crypto from 'node:crypto'
 import path from 'node:path'
+import os from 'node:os'
 import childProcess from 'node:child_process'
 import { app } from 'electron'
 import { resolveBundledFfmpegPath } from '../ffmpeg'
@@ -11,7 +12,9 @@ import { listMixtapeItems } from '../mixtapeDb'
 import {
   resolveBundledDemucsModelsPath,
   resolveBundledDemucsPythonPath,
-  resolveBundledDemucsRuntimeDir
+  resolveBundledDemucsRuntimeCandidates,
+  resolveBundledDemucsRuntimeDir,
+  type BundledDemucsRuntimeCandidate
 } from '../demucs'
 import {
   DEFAULT_MIXTAPE_STEM_BASE_MODEL,
@@ -31,15 +34,20 @@ import {
 } from '../mixtapeStemDb'
 import { findSongListRoot } from './cacheMaintenance'
 
-const STEM_JOB_CONCURRENCY = 1
+const STEM_GPU_JOB_CONCURRENCY = 1
+const STEM_CPU_JOB_CONCURRENCY_MAX = 4
+const STEM_CPU_JOB_CORE_DIVISOR = 2
 const STEM_PROCESS_TIMEOUT_MS = 60 * 60 * 1000
+const STEM_PROCESS_TIMEOUT_MAX_MS = 2 * 60 * 60 * 1000
 const STEM_CPU_PROCESS_TIMEOUT_CAP_MS = 8 * 60 * 1000
 const STEM_GPU_PROCESS_TIMEOUT_CAP_MS = STEM_PROCESS_TIMEOUT_MS
 const STEM_CPU_PROCESS_TIMEOUT_MIN_MS = 4 * 60 * 1000
 const STEM_GPU_PROCESS_TIMEOUT_MIN_MS = 3 * 60 * 1000
 const STEM_FFPROBE_TIMEOUT_MS = 20_000
 const STEM_DEVICE_PROBE_TIMEOUT_MS = 15_000
+const STEM_DEVICE_COMPATIBILITY_TIMEOUT_MS = 12_000
 const STEM_DEVICE_PROBE_CACHE_TTL_MS = 5 * 60 * 1000
+const STEM_WINDOWS_GPU_ADAPTER_PROBE_TIMEOUT_MS = 6_000
 const DEMUCS_NO_SPLIT_MAX_DURATION_SECONDS = 7 * 60
 const DEMUCS_PROFILE_OPTIONS: Record<
   MixtapeStemProfile,
@@ -82,13 +90,37 @@ type MixtapeStemSeparationResult = {
   drumsPath?: string | null
 }
 
-type MixtapeStemComputeDevice = 'cuda' | 'mps' | 'cpu'
+type MixtapeStemComputeDevice = 'cuda' | 'mps' | 'xpu' | 'directml' | 'cpu'
+type MixtapeStemCpuFallbackReasonCode = 'gpu_unavailable' | 'gpu_failed' | 'gpu_backend_missing'
+type MixtapeStemRuntimeProgress = {
+  device: MixtapeStemComputeDevice
+  percent: number
+  processedSec: number | null
+  totalSec: number | null
+  etaSec: number | null
+}
 
 type MixtapeStemDeviceProbeSnapshot = {
   checkedAt: number
+  runtimeKey: string
+  runtimeDir: string
+  pythonPath: string
   devices: MixtapeStemComputeDevice[]
   cudaAvailable: boolean
   mpsAvailable: boolean
+  xpuAvailable: boolean
+  xpuBackendInstalled: boolean
+  xpuDemucsCompatible: boolean
+  anyXpuBackendInstalled: boolean
+  directmlAvailable: boolean
+  directmlBackendInstalled: boolean
+  directmlDemucsCompatible: boolean
+  anyDirectmlBackendInstalled: boolean
+  directmlDevice: string
+  windowsAdapterNames: string[]
+  windowsHasIntelAdapter: boolean
+  windowsHasAmdAdapter: boolean
+  windowsHasNvidiaAdapter: boolean
 }
 
 const resolveStemProcessTimeoutMs = (params: {
@@ -139,6 +171,8 @@ const pendingJobMap = new Map<string, MixtapeStemQueueJob>()
 const inFlightJobMap = new Map<string, MixtapeStemQueueJob>()
 let activeWorkers = 0
 let stemDeviceProbeSnapshot: MixtapeStemDeviceProbeSnapshot | null = null
+let stemQueueConcurrencySnapshot = 0
+const cpuSlowHintNotifiedPlaylistIdSet = new Set<string>()
 
 const normalizeStemMode = (_value: unknown): MixtapeStemMode => '4stems'
 
@@ -147,6 +181,12 @@ const normalizeText = (value: unknown, maxLen = 2000): string => {
   const trimmed = value.trim()
   if (!trimmed) return ''
   return trimmed.length <= maxLen ? trimmed : trimmed.slice(0, maxLen)
+}
+
+const normalizeNumberOrNull = (value: unknown): number | null => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return null
+  return parsed
 }
 
 const normalizeFilePath = (value: unknown): string => normalizeText(value, 4000)
@@ -205,6 +245,67 @@ const notifyStemStatusUpdated = (params: {
       errorCode: normalizeText(params.errorCode, 80) || null,
       errorMessage: normalizeText(params.errorMessage, 1200) || null,
       stemSummary: summarizeMixtapeStemStatusByPlaylist(playlistId)
+    })
+  } catch {}
+}
+
+const notifyStemCpuSlowHint = (params: {
+  playlistId: string
+  filePath?: string
+  model?: string
+  reasonCode?: MixtapeStemCpuFallbackReasonCode
+  reasonDetail?: string
+}) => {
+  const playlistId = normalizePlaylistId(params.playlistId)
+  if (!playlistId) return
+  if (cpuSlowHintNotifiedPlaylistIdSet.has(playlistId)) return
+  cpuSlowHintNotifiedPlaylistIdSet.add(playlistId)
+  try {
+    mixtapeWindow.broadcast?.('mixtape-stem-cpu-slow-hint', {
+      playlistId,
+      filePath: normalizeFilePath(params.filePath),
+      model: normalizeText(params.model, 128) || null,
+      reasonCode:
+        params.reasonCode === 'gpu_unavailable' ||
+        params.reasonCode === 'gpu_failed' ||
+        params.reasonCode === 'gpu_backend_missing'
+          ? params.reasonCode
+          : null,
+      reasonDetail: normalizeText(params.reasonDetail, 600) || null
+    })
+  } catch {}
+}
+
+const notifyStemRuntimeProgress = (params: {
+  playlistId: string
+  itemIds: string[]
+  filePath?: string
+  model?: string
+  device: MixtapeStemComputeDevice
+  percent: number
+  processedSec: number | null
+  totalSec: number | null
+  etaSec: number | null
+}) => {
+  const playlistId = normalizePlaylistId(params.playlistId)
+  if (!playlistId) return
+  const itemIds = Array.from(
+    new Set((params.itemIds || []).map((itemId) => normalizeText(itemId, 80)).filter(Boolean))
+  )
+  if (!itemIds.length) return
+  const percent = Math.max(0, Math.min(100, Math.round(Number(params.percent) || 0)))
+  try {
+    mixtapeWindow.broadcast?.('mixtape-stem-runtime-progress', {
+      playlistId,
+      itemIds,
+      filePath: normalizeFilePath(params.filePath),
+      model: normalizeText(params.model, 128) || null,
+      device: params.device,
+      percent,
+      processedSec: normalizeNumberOrNull(params.processedSec),
+      totalSec: normalizeNumberOrNull(params.totalSec),
+      etaSec: normalizeNumberOrNull(params.etaSec),
+      updatedAt: Date.now()
     })
   } catch {}
 }
@@ -427,13 +528,17 @@ const runProcess = async (
     cwd?: string
     env?: NodeJS.ProcessEnv
     timeoutMs?: number
+    absoluteTimeoutMs?: number
     traceLabel?: string
     progressIntervalMs?: number
+    onStdoutChunk?: (chunk: string) => void
+    onStderrChunk?: (chunk: string) => void
   }
 ) => {
   await new Promise<void>((resolve, reject) => {
     const traceLabel = normalizeText(options?.traceLabel, 120) || 'mixtape-stem-process'
     const startedAt = Date.now()
+    let lastActivityAt = startedAt
     const progressIntervalMs = Math.max(10_000, Number(options?.progressIntervalMs) || 30_000)
     const child = childProcess.spawn(command, args, {
       cwd: options?.cwd,
@@ -443,50 +548,86 @@ const runProcess = async (
     let stderrText = ''
     let stdoutText = ''
     let timedOut = false
+    let timeoutReason: 'idle' | 'absolute' | null = null
     const timeoutMs = Math.max(10_000, Number(options?.timeoutMs) || STEM_PROCESS_TIMEOUT_MS)
+    const absoluteTimeoutMs = Math.max(
+      timeoutMs,
+      Math.min(
+        STEM_PROCESS_TIMEOUT_MAX_MS,
+        Math.max(Number(options?.absoluteTimeoutMs) || 0, timeoutMs * 4)
+      )
+    )
     const progressTimer = setInterval(() => {
+      const now = Date.now()
       log.info(`[${traceLabel}] process running`, {
-        elapsedMs: Date.now() - startedAt,
-        timeoutMs
+        elapsedMs: now - startedAt,
+        idleMs: now - lastActivityAt,
+        timeoutMs,
+        absoluteTimeoutMs
       })
     }, progressIntervalMs)
-    const timer = setTimeout(() => {
-      timedOut = true
-      try {
-        child.kill()
-      } catch {}
-    }, timeoutMs)
+    const timeoutWatcher = setInterval(() => {
+      if (timedOut) return
+      const now = Date.now()
+      if (now - startedAt >= absoluteTimeoutMs) {
+        timedOut = true
+        timeoutReason = 'absolute'
+        try {
+          child.kill()
+        } catch {}
+        return
+      }
+      if (now - lastActivityAt >= timeoutMs) {
+        timedOut = true
+        timeoutReason = 'idle'
+        try {
+          child.kill()
+        } catch {}
+      }
+    }, 1000)
 
     child.stdout?.on('data', (chunk) => {
       const text = String(chunk || '')
       if (!text) return
+      lastActivityAt = Date.now()
       stdoutText += text
       if (stdoutText.length > 4000) {
         stdoutText = stdoutText.slice(-4000)
       }
+      try {
+        options?.onStdoutChunk?.(text)
+      } catch {}
     })
     child.stderr?.on('data', (chunk) => {
       const text = String(chunk || '')
       if (!text) return
+      lastActivityAt = Date.now()
       stderrText += text
       if (stderrText.length > 6000) {
         stderrText = stderrText.slice(-6000)
       }
+      try {
+        options?.onStderrChunk?.(text)
+      } catch {}
     })
     child.on('error', (error) => {
-      clearTimeout(timer)
+      clearInterval(timeoutWatcher)
       clearInterval(progressTimer)
       reject(error)
     })
     child.on('exit', (code) => {
-      clearTimeout(timer)
+      clearInterval(timeoutWatcher)
       clearInterval(progressTimer)
       if (timedOut) {
         const output = normalizeText(`${stderrText}\n${stdoutText}`, 3000)
+        const timeoutText =
+          timeoutReason === 'idle'
+            ? `分离超时（空闲 ${Math.round(timeoutMs / 1000)} 秒）`
+            : `分离超时（总时长 ${Math.round(absoluteTimeoutMs / 1000)} 秒）`
         reject(
           createStemError(
             'STEM_SPLIT_TIMEOUT',
-            `分离超时（${Math.round(timeoutMs / 1000)} 秒）${output ? `: ${output}` : ''}`
+            `${timeoutText}${output ? `: ${output}` : ''}`
           )
         )
         return
@@ -573,39 +714,210 @@ const resolveStemDevicePriority = (): MixtapeStemComputeDevice[] => {
   if (process.platform === 'darwin') {
     return ['mps', 'cuda', 'cpu']
   }
-  return ['cuda', 'mps', 'cpu']
+  if (process.platform === 'win32') {
+    return ['cuda', 'xpu', 'directml', 'cpu']
+  }
+  return ['cuda', 'xpu', 'mps', 'cpu']
 }
 
-const probeDemucsDevices = (
-  pythonPath: string,
-  env: NodeJS.ProcessEnv
-): MixtapeStemDeviceProbeSnapshot => {
-  const now = Date.now()
-  if (
-    stemDeviceProbeSnapshot &&
-    now - stemDeviceProbeSnapshot.checkedAt <= STEM_DEVICE_PROBE_CACHE_TTL_MS
-  ) {
-    return stemDeviceProbeSnapshot
+const probeWindowsGpuAdapters = () => {
+  const emptyResult = {
+    names: [] as string[],
+    hasIntel: false,
+    hasAmd: false,
+    hasNvidia: false
   }
+  if (process.platform !== 'win32') return emptyResult
+  try {
+    const result = childProcess.spawnSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-Command',
+        '$ErrorActionPreference="SilentlyContinue"; Get-CimInstance Win32_VideoController | ForEach-Object { $_.Name }'
+      ],
+      {
+        windowsHide: true,
+        encoding: 'utf8',
+        timeout: STEM_WINDOWS_GPU_ADAPTER_PROBE_TIMEOUT_MS
+      }
+    )
+    const stdoutText = normalizeText(result?.stdout, 2400)
+    const stderrText = normalizeText(result?.stderr, 1200)
+    if (result?.status !== 0 && !stdoutText) {
+      log.warn('[mixtape-stem] windows gpu adapter probe failed', {
+        error: stderrText || `exit=${result?.status ?? -1}`
+      })
+      return emptyResult
+    }
+    const names = Array.from(
+      new Set(
+        stdoutText
+          .split(/\r?\n/)
+          .map((line) => normalizeText(line, 200))
+          .filter(Boolean)
+      )
+    )
+    const effectiveNames = names.filter((name) => {
+      const lowered = name.toLowerCase()
+      if (!lowered) return false
+      if (lowered.includes('microsoft basic render')) return false
+      if (lowered.includes('microsoft remote display')) return false
+      return true
+    })
+    const hasIntel = effectiveNames.some((name) => {
+      const lowered = name.toLowerCase()
+      return lowered.includes(' intel') || lowered.startsWith('intel')
+    })
+    const hasAmd = effectiveNames.some((name) => {
+      const lowered = name.toLowerCase()
+      return lowered.includes(' amd') || lowered.includes('radeon')
+    })
+    const hasNvidia = effectiveNames.some((name) => name.toLowerCase().includes('nvidia'))
+    return {
+      names: effectiveNames,
+      hasIntel,
+      hasAmd,
+      hasNvidia
+    }
+  } catch (error) {
+    log.warn('[mixtape-stem] windows gpu adapter probe exception', {
+      error: normalizeText(error instanceof Error ? error.message : String(error || ''), 400)
+    })
+    return emptyResult
+  }
+}
+
+const probeTorchDeviceCompatibility = (params: {
+  pythonPath: string
+  env: NodeJS.ProcessEnv
+  scriptLines: string[]
+}) => {
+  try {
+    const result = childProcess.spawnSync(params.pythonPath, ['-c', params.scriptLines.join('\n')], {
+      windowsHide: true,
+      encoding: 'utf8',
+      timeout: STEM_DEVICE_COMPATIBILITY_TIMEOUT_MS,
+      env: params.env
+    })
+    const stdoutText = normalizeText(result?.stdout, 600)
+    const stderrText = normalizeText(result?.stderr, 600)
+    if (result?.status === 0) {
+      return {
+        ok: true,
+        error: ''
+      }
+    }
+    return {
+      ok: false,
+      error: stderrText || stdoutText || `compatibility exit ${result?.status ?? -1}`
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: normalizeText(error instanceof Error ? error.message : String(error || ''), 600)
+    }
+  }
+}
+
+const probeDirectmlDemucsCompatibility = (params: {
+  pythonPath: string
+  env: NodeJS.ProcessEnv
+  directmlDevice: string
+}) => {
+  const device = normalizeText(params.directmlDevice, 80) || 'privateuseone:0'
+  return probeTorchDeviceCompatibility({
+    pythonPath: params.pythonPath,
+    env: params.env,
+    scriptLines: [
+      'import torch',
+      'import torch_directml',
+      `device = ${JSON.stringify(device)}`,
+      'x = torch.randn(2048, device=device)',
+      '_ = torch.fft.rfft(x)',
+      'print("ok")'
+    ]
+  })
+}
+
+const probeXpuDemucsCompatibility = (params: { pythonPath: string; env: NodeJS.ProcessEnv }) =>
+  probeTorchDeviceCompatibility({
+    pythonPath: params.pythonPath,
+    env: params.env,
+    scriptLines: [
+      'import torch',
+      'xpu_api = getattr(torch, "xpu", None)',
+      'assert xpu_api and xpu_api.is_available()',
+      'x = torch.randn(2048, device="xpu")',
+      '_ = torch.fft.rfft(x)',
+      'print("ok")'
+    ]
+  })
+
+const probeDemucsDevicesForRuntime = (params: {
+  checkedAt: number
+  runtimeCandidate: BundledDemucsRuntimeCandidate
+  ffmpegPath: string
+  windowsAdapterNames: string[]
+  windowsHasIntelAdapter: boolean
+  windowsHasAmdAdapter: boolean
+  windowsHasNvidiaAdapter: boolean
+}): MixtapeStemDeviceProbeSnapshot => {
   const priority = resolveStemDevicePriority()
+  const env = buildStemProcessEnv(params.runtimeCandidate.runtimeDir, params.ffmpegPath)
   let cudaAvailable = false
   let mpsAvailable = false
+  let xpuAvailable = false
+  let xpuBackendInstalled = false
+  let xpuDemucsCompatible = false
+  let directmlAvailable = false
+  let directmlBackendInstalled = false
+  let directmlDemucsCompatible = false
+  let directmlDevice = ''
   let probeError = ''
   try {
     const result = childProcess.spawnSync(
-      pythonPath,
+      params.runtimeCandidate.pythonPath,
       [
         '-c',
         [
           'import json',
+          'payload = {',
+          '  "cuda": False,',
+          '  "mps": False,',
+          '  "xpu": False,',
+          '  "xpu_backend_installed": False,',
+          '  "directml": False,',
+          '  "directml_backend_installed": False,',
+          '  "directml_device": "",',
+          '  "torch_version": ""',
+          '}',
           'try:',
           '  import torch',
-          '  cuda = bool(getattr(torch, "cuda", None) and torch.cuda.is_available())',
-          '  mps_backend = getattr(torch.backends, "mps", None)',
-          '  mps = bool(mps_backend and mps_backend.is_available())',
-          '  print(json.dumps({"cuda": cuda, "mps": mps}))',
+          '  torch_version = str(getattr(torch, "__version__", ""))',
+          '  payload["torch_version"] = torch_version',
+          '  cuda_api = getattr(torch, "cuda", None)',
+          '  payload["cuda"] = bool(cuda_api and cuda_api.is_available())',
+          '  mps_backend = getattr(getattr(torch, "backends", None), "mps", None)',
+          '  payload["mps"] = bool(mps_backend and mps_backend.is_available())',
+          '  xpu_api = getattr(torch, "xpu", None)',
+          '  xpu_backend_installed = bool(xpu_api) and ("+cpu" not in torch_version.lower())',
+          '  payload["xpu_backend_installed"] = xpu_backend_installed',
+          '  payload["xpu"] = bool(xpu_backend_installed and xpu_api and xpu_api.is_available())',
           'except Exception as exc:',
-          '  print(json.dumps({"cuda": False, "mps": False, "error": str(exc)}))'
+          '  payload["error"] = str(exc)',
+          'try:',
+          '  import torch_directml',
+          '  payload["directml_backend_installed"] = True',
+          '  try:',
+          '    dml_device = torch_directml.device()',
+          '    payload["directml"] = bool(dml_device)',
+          '    payload["directml_device"] = str(dml_device)',
+          '  except Exception as exc:',
+          '    payload["directml_error"] = str(exc)',
+          'except Exception as exc:',
+          '  payload["directml_import_error"] = str(exc)',
+          'print(json.dumps(payload))'
         ].join('\n')
       ],
       {
@@ -623,36 +935,372 @@ const probeDemucsDevices = (
         .map((line) => line.trim())
         .filter(Boolean)
       const lastLine = lines.at(-1) || ''
-      const parsed = JSON.parse(lastLine) as { cuda?: unknown; mps?: unknown; error?: unknown }
+      const parsed = JSON.parse(lastLine) as {
+        cuda?: unknown
+        mps?: unknown
+        xpu?: unknown
+        xpu_backend_installed?: unknown
+        directml?: unknown
+        directml_backend_installed?: unknown
+        directml_device?: unknown
+        error?: unknown
+        directml_error?: unknown
+        directml_import_error?: unknown
+      }
       cudaAvailable = !!parsed?.cuda
       mpsAvailable = !!parsed?.mps
-      probeError = normalizeText(parsed?.error, 400)
+      xpuAvailable = !!parsed?.xpu
+      xpuBackendInstalled = !!parsed?.xpu_backend_installed
+      directmlAvailable = !!parsed?.directml
+      directmlBackendInstalled = !!parsed?.directml_backend_installed
+      directmlDevice = normalizeText(parsed?.directml_device, 80)
+      probeError = normalizeText(
+        parsed?.error || parsed?.directml_error || parsed?.directml_import_error,
+        400
+      )
+      if (xpuAvailable) {
+        const xpuCompatibility = probeXpuDemucsCompatibility({
+          pythonPath: params.runtimeCandidate.pythonPath,
+          env
+        })
+        xpuDemucsCompatible = xpuCompatibility.ok
+        if (!xpuCompatibility.ok) {
+          xpuAvailable = false
+          probeError = probeError || normalizeText(xpuCompatibility.error, 400)
+        }
+      }
+      if (directmlAvailable) {
+        const directmlCompatibility = probeDirectmlDemucsCompatibility({
+          pythonPath: params.runtimeCandidate.pythonPath,
+          env,
+          directmlDevice: directmlDevice || 'privateuseone:0'
+        })
+        directmlDemucsCompatible = directmlCompatibility.ok
+        if (!directmlCompatibility.ok) {
+          directmlAvailable = false
+          probeError = probeError || normalizeText(directmlCompatibility.error, 400)
+        }
+      }
     } else {
       probeError = stderrText || stdoutText || `probe exit ${result?.status ?? -1}`
     }
   } catch (error) {
     probeError = normalizeText(error instanceof Error ? error.message : String(error || ''), 400)
   }
-
   const available = new Set<MixtapeStemComputeDevice>(['cpu'])
   if (cudaAvailable) available.add('cuda')
   if (mpsAvailable) available.add('mps')
+  if (xpuAvailable) available.add('xpu')
+  if (directmlAvailable) available.add('directml')
   const devices = priority.filter((device) => available.has(device))
   if (!devices.includes('cpu')) devices.push('cpu')
   const snapshot: MixtapeStemDeviceProbeSnapshot = {
-    checkedAt: now,
-    devices,
-    cudaAvailable,
-    mpsAvailable
-  }
-  stemDeviceProbeSnapshot = snapshot
-  log.info('[mixtape-stem] demucs device probe', {
+    checkedAt: params.checkedAt,
+    runtimeKey: normalizeText(params.runtimeCandidate.key, 64) || 'runtime',
+    runtimeDir: params.runtimeCandidate.runtimeDir,
+    pythonPath: params.runtimeCandidate.pythonPath,
     devices,
     cudaAvailable,
     mpsAvailable,
+    xpuAvailable,
+    xpuBackendInstalled,
+    xpuDemucsCompatible,
+    anyXpuBackendInstalled: xpuBackendInstalled,
+    directmlAvailable,
+    directmlBackendInstalled,
+    directmlDemucsCompatible,
+    anyDirectmlBackendInstalled: directmlBackendInstalled,
+    directmlDevice: directmlDevice || 'privateuseone:0',
+    windowsAdapterNames: params.windowsAdapterNames,
+    windowsHasIntelAdapter: params.windowsHasIntelAdapter,
+    windowsHasAmdAdapter: params.windowsHasAmdAdapter,
+    windowsHasNvidiaAdapter: params.windowsHasNvidiaAdapter
+  }
+  log.info('[mixtape-stem] demucs runtime probe', {
+    runtimeKey: snapshot.runtimeKey,
+    runtimeDir: snapshot.runtimeDir,
+    pythonPath: snapshot.pythonPath,
+    devices: snapshot.devices,
+    cudaAvailable,
+    mpsAvailable,
+    xpuAvailable,
+    xpuBackendInstalled,
+    xpuDemucsCompatible,
+    directmlAvailable,
+    directmlBackendInstalled,
+    directmlDemucsCompatible,
+    directmlDevice: snapshot.directmlDevice,
     probeError: probeError || null
   })
   return snapshot
+}
+
+const resolveProbeSnapshotDeviceScore = (snapshot: MixtapeStemDeviceProbeSnapshot): number => {
+  const priority = resolveStemDevicePriority()
+  const targetDevice = snapshot.devices.find((device) => device !== 'cpu') || 'cpu'
+  const score = priority.findIndex((device) => device === targetDevice)
+  if (score >= 0) return score
+  return Number.MAX_SAFE_INTEGER
+}
+
+const resolveProbeSnapshotTieBreakScore = (snapshot: MixtapeStemDeviceProbeSnapshot): number => {
+  const hasNonCpuDevice = snapshot.devices.some((device) => device !== 'cpu')
+  if (hasNonCpuDevice) return 0
+  const runtimeKey = normalizeText(snapshot.runtimeKey, 64).toLowerCase()
+  if (runtimeKey.includes('cpu')) return 0
+  if (runtimeKey === 'runtime') return 1
+  return 2
+}
+
+const probeDemucsDevices = (ffmpegPath: string): MixtapeStemDeviceProbeSnapshot => {
+  const now = Date.now()
+  if (
+    stemDeviceProbeSnapshot &&
+    now - stemDeviceProbeSnapshot.checkedAt <= STEM_DEVICE_PROBE_CACHE_TTL_MS
+  ) {
+    return stemDeviceProbeSnapshot
+  }
+  const windowsAdapterProbe = probeWindowsGpuAdapters()
+  const runtimeCandidates = resolveBundledDemucsRuntimeCandidates()
+  const runtimeSnapshots: MixtapeStemDeviceProbeSnapshot[] = []
+  for (const runtimeCandidate of runtimeCandidates) {
+    if (!runtimeCandidate.runtimeDir || !runtimeCandidate.pythonPath) continue
+    if (!fs.existsSync(runtimeCandidate.pythonPath)) continue
+    const runtimeSnapshot = probeDemucsDevicesForRuntime({
+      checkedAt: now,
+      runtimeCandidate,
+      ffmpegPath,
+      windowsAdapterNames: windowsAdapterProbe.names,
+      windowsHasIntelAdapter: windowsAdapterProbe.hasIntel,
+      windowsHasAmdAdapter: windowsAdapterProbe.hasAmd,
+      windowsHasNvidiaAdapter: windowsAdapterProbe.hasNvidia
+    })
+    runtimeSnapshots.push(runtimeSnapshot)
+  }
+  const fallbackCandidate: BundledDemucsRuntimeCandidate = {
+    key: 'runtime',
+    runtimeDir: resolveBundledDemucsRuntimeDir(),
+    pythonPath: resolveBundledDemucsPythonPath(resolveBundledDemucsRuntimeDir())
+  }
+  const selectedRuntimeSnapshot =
+    runtimeSnapshots.reduce<MixtapeStemDeviceProbeSnapshot | null>((best, current) => {
+      if (!best) return current
+      const bestScore = resolveProbeSnapshotDeviceScore(best)
+      const currentScore = resolveProbeSnapshotDeviceScore(current)
+      if (currentScore < bestScore) return current
+      if (currentScore > bestScore) return best
+      const bestNonCpuCount = best.devices.filter((device) => device !== 'cpu').length
+      const currentNonCpuCount = current.devices.filter((device) => device !== 'cpu').length
+      if (currentNonCpuCount > bestNonCpuCount) return current
+      if (currentNonCpuCount < bestNonCpuCount) return best
+      const bestTieBreakScore = resolveProbeSnapshotTieBreakScore(best)
+      const currentTieBreakScore = resolveProbeSnapshotTieBreakScore(current)
+      if (currentTieBreakScore < bestTieBreakScore) return current
+      return best
+    }, null) ||
+    {
+      checkedAt: now,
+      runtimeKey: fallbackCandidate.key,
+      runtimeDir: fallbackCandidate.runtimeDir,
+      pythonPath: fallbackCandidate.pythonPath,
+      devices: ['cpu'],
+      cudaAvailable: false,
+      mpsAvailable: false,
+      xpuAvailable: false,
+      xpuBackendInstalled: false,
+      xpuDemucsCompatible: false,
+      anyXpuBackendInstalled: false,
+      directmlAvailable: false,
+      directmlBackendInstalled: false,
+      directmlDemucsCompatible: false,
+      anyDirectmlBackendInstalled: false,
+      directmlDevice: 'privateuseone:0',
+      windowsAdapterNames: windowsAdapterProbe.names,
+      windowsHasIntelAdapter: windowsAdapterProbe.hasIntel,
+      windowsHasAmdAdapter: windowsAdapterProbe.hasAmd,
+      windowsHasNvidiaAdapter: windowsAdapterProbe.hasNvidia
+    }
+  const anyXpuBackendInstalled =
+    runtimeSnapshots.some((item) => item.xpuBackendInstalled) ||
+    selectedRuntimeSnapshot.xpuBackendInstalled
+  const anyDirectmlBackendInstalled =
+    runtimeSnapshots.some((item) => item.directmlBackendInstalled) ||
+    selectedRuntimeSnapshot.directmlBackendInstalled
+  const snapshot: MixtapeStemDeviceProbeSnapshot = {
+    ...selectedRuntimeSnapshot,
+    checkedAt: now,
+    anyXpuBackendInstalled,
+    anyDirectmlBackendInstalled
+  }
+  stemDeviceProbeSnapshot = snapshot
+  log.info('[mixtape-stem] demucs runtime selected', {
+    runtimeKey: snapshot.runtimeKey,
+    runtimeDir: snapshot.runtimeDir,
+    pythonPath: snapshot.pythonPath,
+    devices: snapshot.devices,
+    runtimeCandidates: runtimeSnapshots.map((item) => ({
+      runtimeKey: item.runtimeKey,
+      devices: item.devices,
+      xpuDemucsCompatible: item.xpuDemucsCompatible,
+      directmlDemucsCompatible: item.directmlDemucsCompatible
+    })),
+    anyXpuBackendInstalled,
+    anyDirectmlBackendInstalled,
+    windowsAdapterNames: snapshot.windowsAdapterNames,
+    windowsHasIntelAdapter: snapshot.windowsHasIntelAdapter,
+    windowsHasAmdAdapter: snapshot.windowsHasAmdAdapter,
+    windowsHasNvidiaAdapter: snapshot.windowsHasNvidiaAdapter
+  })
+  return snapshot
+}
+
+const resolveCpuFallbackReason = (params: {
+  deviceSnapshot: MixtapeStemDeviceProbeSnapshot
+  firstFailure: {
+    device: MixtapeStemComputeDevice
+    errorCode: string
+    errorMessage: string
+  } | null
+}): { reasonCode: MixtapeStemCpuFallbackReasonCode; reasonDetail: string } => {
+  const firstFailure = params.firstFailure
+  if (firstFailure) {
+    return {
+      reasonCode: 'gpu_failed',
+      reasonDetail: [firstFailure.device, firstFailure.errorCode, firstFailure.errorMessage]
+        .filter(Boolean)
+        .join(' | ')
+    }
+  }
+  const snapshot = params.deviceSnapshot
+  const mayNeedAmdIntelBackend =
+    process.platform === 'win32' &&
+    (snapshot.windowsHasAmdAdapter || snapshot.windowsHasIntelAdapter) &&
+    !snapshot.windowsHasNvidiaAdapter &&
+    !snapshot.cudaAvailable &&
+    !snapshot.xpuAvailable &&
+    !snapshot.directmlAvailable &&
+    !snapshot.anyXpuBackendInstalled &&
+    !snapshot.anyDirectmlBackendInstalled
+  if (mayNeedAmdIntelBackend) {
+    const adapterNames = snapshot.windowsAdapterNames.join(',')
+    return {
+      reasonCode: 'gpu_backend_missing',
+      reasonDetail: `adapters=${adapterNames || 'unknown'}`
+    }
+  }
+  return {
+    reasonCode: 'gpu_unavailable',
+    reasonDetail: `detected-devices=${snapshot.devices.join(',')}`
+  }
+}
+
+const resolveDemucsDeviceArg = (
+  device: MixtapeStemComputeDevice,
+  deviceSnapshot: MixtapeStemDeviceProbeSnapshot
+) => {
+  if (device === 'directml') {
+    return normalizeText(deviceSnapshot.directmlDevice, 80) || 'privateuseone:0'
+  }
+  if (device === 'xpu') return 'xpu'
+  if (device === 'mps') return 'mps'
+  if (device === 'cuda') return 'cuda'
+  return 'cpu'
+}
+
+const parseClockTokenToSeconds = (token: string): number | null => {
+  const value = normalizeText(token, 20)
+  if (!value) return null
+  const chunks = value
+    .split(':')
+    .map((part) => normalizeNumberOrNull(part))
+    .filter((part): part is number => part !== null)
+  if (!chunks.length) return null
+  if (chunks.length === 1) {
+    return chunks[0] >= 0 ? chunks[0] : null
+  }
+  if (chunks.length === 2) {
+    const [minutes, seconds] = chunks
+    if (minutes < 0 || seconds < 0) return null
+    return minutes * 60 + seconds
+  }
+  const [hours, minutes, seconds] = chunks.slice(-3)
+  if (hours < 0 || minutes < 0 || seconds < 0) return null
+  return hours * 3600 + minutes * 60 + seconds
+}
+
+const parseDemucsProgressText = (
+  text: string
+): { percent: number; processedSec: number | null; totalSec: number | null; etaSec: number | null } | null => {
+  const normalized = normalizeText(text, 600)
+  if (!normalized) return null
+  let percent: number | null = null
+  const percentMatch = normalized.match(/(\d{1,3})%\|/)
+  if (percentMatch) {
+    const parsed = normalizeNumberOrNull(percentMatch[1])
+    if (parsed !== null) {
+      percent = Math.max(0, Math.min(100, Math.round(parsed)))
+    }
+  }
+  let processedSec: number | null = null
+  let totalSec: number | null = null
+  const durationMatch = normalized.match(
+    /(?:^|\s|\|)(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)(?=\s|\||$)/
+  )
+  if (durationMatch) {
+    const processed = normalizeNumberOrNull(durationMatch[1])
+    const total = normalizeNumberOrNull(durationMatch[2])
+    if (processed !== null && processed >= 0) processedSec = processed
+    if (total !== null && total > 0) totalSec = total
+  }
+  if (percent === null && processedSec !== null && totalSec !== null && totalSec > 0) {
+    percent = Math.max(0, Math.min(100, Math.round((processedSec / totalSec) * 100)))
+  }
+  const etaMatch = normalized.match(/<([0-9:.]+)/)
+  const etaSec = etaMatch ? parseClockTokenToSeconds(etaMatch[1]) : null
+  if (percent === null && processedSec === null && totalSec === null) return null
+  return {
+    percent: percent === null ? 0 : percent,
+    processedSec,
+    totalSec,
+    etaSec
+  }
+}
+
+const runDemucsSeparate = async (params: {
+  pythonPath: string
+  demucsArgs: string[]
+  env: NodeJS.ProcessEnv
+  timeoutMs: number
+  traceLabel: string
+  useDirectmlBootstrap: boolean
+  onStderrChunk?: (chunk: string) => void
+}) => {
+  if (!params.useDirectmlBootstrap) {
+    await runProcess(params.pythonPath, ['-m', 'demucs.separate', ...params.demucsArgs], {
+      env: params.env,
+      timeoutMs: params.timeoutMs,
+      traceLabel: params.traceLabel,
+      progressIntervalMs: 30_000,
+      onStderrChunk: params.onStderrChunk
+    })
+    return
+  }
+  const argvPayload = JSON.stringify(['demucs.separate', ...params.demucsArgs])
+  const bootstrapScript = [
+    'import json',
+    'import runpy',
+    'import sys',
+    'import torch_directml',
+    `sys.argv = json.loads(${JSON.stringify(argvPayload)})`,
+    "runpy.run_module('demucs.separate', run_name='__main__')"
+  ].join('\n')
+  await runProcess(params.pythonPath, ['-c', bootstrapScript], {
+    env: params.env,
+    timeoutMs: params.timeoutMs,
+    traceLabel: params.traceLabel,
+    progressIntervalMs: 30_000,
+    onStderrChunk: params.onStderrChunk
+  })
 }
 
 const shouldRetryWithNextDevice = (error: unknown): boolean => {
@@ -672,7 +1320,13 @@ const shouldRetryWithNextDevice = (error: unknown): boolean => {
     'is not available for this process',
     'out of memory',
     'cudnn',
-    'hip'
+    'hip',
+    'xpu',
+    'oneapi',
+    'level zero',
+    'directml',
+    'privateuseone',
+    'dml'
   ]
   return patterns.some((pattern) => message.includes(pattern))
 }
@@ -681,19 +1335,22 @@ const runStemSeparation = async (params: {
   filePath: string
   stemMode: MixtapeStemMode
   model: string
+  onDeviceStart?: (
+    device: MixtapeStemComputeDevice,
+    context?: {
+      reasonCode?: MixtapeStemCpuFallbackReasonCode
+      reasonDetail?: string
+    }
+  ) => void
+  onProgress?: (progress: MixtapeStemRuntimeProgress) => void
 }): Promise<MixtapeStemSeparationResult> => {
   const filePath = normalizeFilePath(params.filePath)
   if (!filePath || !fs.existsSync(filePath)) {
     throw createStemError('STEM_SOURCE_MISSING', 'Stem 源文件不存在')
   }
-  const pythonPath = resolveBundledDemucsPythonPath()
-  const runtimeDir = resolveBundledDemucsRuntimeDir()
   const modelRepoPath = resolveBundledDemucsModelsPath()
   const ffmpegPath = resolveBundledFfmpegPath()
   const ffprobePath = resolveBundledFfprobePath()
-  if (!fs.existsSync(pythonPath)) {
-    throw createStemError('STEM_ENGINE_MISSING', `未找到 Demucs 运行时: ${pythonPath}`)
-  }
   if (!fs.existsSync(modelRepoPath)) {
     throw createStemError('STEM_MODEL_MISSING', `未找到 Demucs 模型目录: ${modelRepoPath}`)
   }
@@ -702,6 +1359,16 @@ const runStemSeparation = async (params: {
   }
   if (!fs.existsSync(ffprobePath)) {
     throw createStemError('STEM_FFPROBE_MISSING', `未找到 ffprobe: ${ffprobePath}`)
+  }
+  const deviceSnapshot = probeDemucsDevices(ffmpegPath)
+  const runtimeDir = normalizeFilePath(deviceSnapshot.runtimeDir) || resolveBundledDemucsRuntimeDir()
+  const pythonPath =
+    normalizeFilePath(deviceSnapshot.pythonPath) || resolveBundledDemucsPythonPath(runtimeDir)
+  if (!fs.existsSync(pythonPath)) {
+    throw createStemError(
+      'STEM_ENGINE_MISSING',
+      `未找到 Demucs 运行时: ${pythonPath} (runtime=${deviceSnapshot.runtimeKey})`
+    )
   }
 
   const stemCacheDir = await resolveStemCacheDir({
@@ -728,7 +1395,6 @@ const runStemSeparation = async (params: {
     DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
   )
   const profileOptions = DEMUCS_PROFILE_OPTIONS[stemProfile] || DEMUCS_PROFILE_OPTIONS.fast
-  const deviceSnapshot = probeDemucsDevices(pythonPath, env)
   const deviceCandidates: MixtapeStemComputeDevice[] =
     deviceSnapshot.devices.length > 0 ? deviceSnapshot.devices : ['cpu']
   const timeoutHintMsByDevice = Object.fromEntries(
@@ -745,6 +1411,8 @@ const runStemSeparation = async (params: {
     model: params.model,
     demucsModel: demucsModelName,
     stemProfile,
+    runtimeKey: deviceSnapshot.runtimeKey,
+    runtimeDir: deviceSnapshot.runtimeDir,
     preferNoSplit,
     cpuNoSplitDisabled: true,
     inputDurationSec,
@@ -760,15 +1428,14 @@ const runStemSeparation = async (params: {
       device,
       inputDurationSec
     })
+    const demucsDeviceArg = resolveDemucsDeviceArg(device, deviceSnapshot)
     const demucsBaseArgs = [
-      '-m',
-      'demucs.separate',
       '-n',
       demucsModelName,
       '--repo',
       modelRepoPath,
       '-d',
-      device,
+      demucsDeviceArg,
       '-j',
       '1',
       '--filename',
@@ -796,24 +1463,82 @@ const runStemSeparation = async (params: {
       demucsModel: demucsModelName,
       stemProfile,
       device,
+      demucsDeviceArg,
       timeoutMs: processTimeoutMs
+    })
+    let lastProgressEmitAt = 0
+    let lastProgressPercent = -1
+    const emitProgress = (parsed: {
+      percent: number
+      processedSec: number | null
+      totalSec: number | null
+      etaSec: number | null
+    }) => {
+      const now = Date.now()
+      const percent = Math.max(0, Math.min(100, Math.round(parsed.percent)))
+      const shouldForceEmit = percent === 0 || percent === 100
+      if (!shouldForceEmit) {
+        const noPercentChange = percent === lastProgressPercent
+        if (noPercentChange && now - lastProgressEmitAt < 2000) return
+      }
+      lastProgressEmitAt = now
+      lastProgressPercent = percent
+      params.onProgress?.({
+        device,
+        percent,
+        processedSec: parsed.processedSec,
+        totalSec: parsed.totalSec,
+        etaSec: parsed.etaSec
+      })
+    }
+    const handleStderrChunk = (chunk: string) => {
+      const chunks = chunk.split(/[\r\n]+/)
+      for (const line of chunks) {
+        const parsed = parseDemucsProgressText(line)
+        if (!parsed) continue
+        emitProgress(parsed)
+      }
+    }
+    emitProgress({
+      percent: 0,
+      processedSec: 0,
+      totalSec: Number.isFinite(inputDurationSec) && Number(inputDurationSec) > 0 ? inputDurationSec : null,
+      etaSec: null
     })
     const allowNoSplit = preferNoSplit && device !== 'cpu'
     if (!allowNoSplit) {
-      await runProcess(pythonPath, demucsSplitArgs, {
+      await runDemucsSeparate({
+        pythonPath,
+        demucsArgs: demucsSplitArgs,
         env,
         timeoutMs: processTimeoutMs,
         traceLabel: `mixtape-stem-demucs:${device}`,
-        progressIntervalMs: 30_000
+        useDirectmlBootstrap: device === 'directml',
+        onStderrChunk: handleStderrChunk
+      })
+      emitProgress({
+        percent: 100,
+        processedSec: Number.isFinite(inputDurationSec) && Number(inputDurationSec) > 0 ? inputDurationSec : null,
+        totalSec: Number.isFinite(inputDurationSec) && Number(inputDurationSec) > 0 ? inputDurationSec : null,
+        etaSec: 0
       })
       return
     }
     try {
-      await runProcess(pythonPath, demucsNoSplitArgs, {
+      await runDemucsSeparate({
+        pythonPath,
+        demucsArgs: demucsNoSplitArgs,
         env,
         timeoutMs: processTimeoutMs,
         traceLabel: `mixtape-stem-demucs:${device}`,
-        progressIntervalMs: 30_000
+        useDirectmlBootstrap: device === 'directml',
+        onStderrChunk: handleStderrChunk
+      })
+      emitProgress({
+        percent: 100,
+        processedSec: Number.isFinite(inputDurationSec) && Number(inputDurationSec) > 0 ? inputDurationSec : null,
+        totalSec: Number.isFinite(inputDurationSec) && Number(inputDurationSec) > 0 ? inputDurationSec : null,
+        etaSec: 0
       })
     } catch (error) {
       log.warn('[mixtape-stem] demucs no-split failed, fallback to split', {
@@ -828,20 +1553,49 @@ const runStemSeparation = async (params: {
           600
         )
       })
-      await runProcess(pythonPath, demucsSplitArgs, {
+      await runDemucsSeparate({
+        pythonPath,
+        demucsArgs: demucsSplitArgs,
         env,
         timeoutMs: processTimeoutMs,
         traceLabel: `mixtape-stem-demucs:${device}`,
-        progressIntervalMs: 30_000
+        useDirectmlBootstrap: device === 'directml',
+        onStderrChunk: handleStderrChunk
+      })
+      emitProgress({
+        percent: 100,
+        processedSec: Number.isFinite(inputDurationSec) && Number(inputDurationSec) > 0 ? inputDurationSec : null,
+        totalSec: Number.isFinite(inputDurationSec) && Number(inputDurationSec) > 0 ? inputDurationSec : null,
+        etaSec: 0
       })
     }
   }
 
   let selectedDevice: MixtapeStemComputeDevice | null = null
   let lastDeviceError: unknown = null
+  const retryableDeviceFailures: Array<{
+    device: MixtapeStemComputeDevice
+    errorCode: string
+    errorMessage: string
+  }> = []
   try {
     for (let index = 0; index < deviceCandidates.length; index += 1) {
       const device = deviceCandidates[index]
+      try {
+        if (device === 'cpu') {
+          const firstFailure = retryableDeviceFailures[0] || null
+          const { reasonCode, reasonDetail } = resolveCpuFallbackReason({
+            deviceSnapshot,
+            firstFailure
+          })
+          params.onDeviceStart?.(device, {
+            reasonCode,
+            reasonDetail
+          })
+        } else {
+          params.onDeviceStart?.(device)
+        }
+      } catch {}
       try {
         await runDemucsForDevice(device)
         selectedDevice = device
@@ -850,19 +1604,28 @@ const runStemSeparation = async (params: {
         lastDeviceError = error
         const hasNext = index < deviceCandidates.length - 1
         const retryable = hasNext && shouldRetryWithNextDevice(error)
+        const normalizedErrorCode = normalizeText((error as any)?.code, 80)
+        const normalizedErrorMessage = normalizeText(
+          error instanceof Error ? error.message : String(error || ''),
+          800
+        )
         log.warn('[mixtape-stem] demucs device failed', {
           file: filePath,
           model: params.model,
           demucsModel: demucsModelName,
           stemProfile,
           device,
-          errorCode: normalizeText((error as any)?.code, 80) || null,
-          errorMessage: normalizeText(
-            error instanceof Error ? error.message : String(error || ''),
-            800
-          ),
+          errorCode: normalizedErrorCode || null,
+          errorMessage: normalizedErrorMessage,
           retryWithNextDevice: retryable
         })
+        if (retryable) {
+          retryableDeviceFailures.push({
+            device,
+            errorCode: normalizedErrorCode,
+            errorMessage: normalizedErrorMessage
+          })
+        }
         if (!retryable) {
           throw error
         }
@@ -938,8 +1701,39 @@ const runStemSeparation = async (params: {
   }
 }
 
+const resolveStemQueueConcurrency = (): number => {
+  const cpuCount = Math.max(1, os.cpus().length || 1)
+  const cpuParallel = Math.max(
+    1,
+    Math.min(STEM_CPU_JOB_CONCURRENCY_MAX, Math.floor(cpuCount / STEM_CPU_JOB_CORE_DIVISOR))
+  )
+  try {
+    const ffmpegPath = resolveBundledFfmpegPath()
+    if (!fs.existsSync(ffmpegPath)) {
+      return STEM_GPU_JOB_CONCURRENCY
+    }
+    const snapshot = probeDemucsDevices(ffmpegPath)
+    const hasGpu =
+      snapshot.devices.includes('cuda') ||
+      snapshot.devices.includes('mps') ||
+      snapshot.devices.includes('xpu') ||
+      snapshot.devices.includes('directml')
+    return hasGpu ? STEM_GPU_JOB_CONCURRENCY : cpuParallel
+  } catch {
+    return STEM_GPU_JOB_CONCURRENCY
+  }
+}
+
 const runQueueLoop = () => {
-  while (activeWorkers < STEM_JOB_CONCURRENCY && pendingQueue.length > 0) {
+  const maxWorkers = Math.max(1, resolveStemQueueConcurrency())
+  if (stemQueueConcurrencySnapshot !== maxWorkers) {
+    stemQueueConcurrencySnapshot = maxWorkers
+    log.info('[mixtape-stem] queue concurrency updated', {
+      maxWorkers,
+      cpuCount: Math.max(1, os.cpus().length || 1)
+    })
+  }
+  while (activeWorkers < maxWorkers && pendingQueue.length > 0) {
     const job = pendingQueue.shift()
     if (!job) continue
     if (pendingJobMap.get(job.key) !== job) continue
@@ -991,7 +1785,34 @@ const processQueueJob = async (job: MixtapeStemQueueJob) => {
     const separation = await runStemSeparation({
       filePath: job.filePath,
       stemMode: job.stemMode,
-      model: job.model
+      model: job.model,
+      onDeviceStart: (device, context) => {
+        if (device !== 'cpu') return
+        for (const target of targets) {
+          notifyStemCpuSlowHint({
+            playlistId: target.playlistId,
+            filePath: job.filePath,
+            model: job.model,
+            reasonCode: context?.reasonCode,
+            reasonDetail: context?.reasonDetail
+          })
+        }
+      },
+      onProgress: (progress) => {
+        for (const target of targets) {
+          notifyStemRuntimeProgress({
+            playlistId: target.playlistId,
+            itemIds: target.itemIds,
+            filePath: job.filePath,
+            model: job.model,
+            device: progress.device,
+            percent: progress.percent,
+            processedSec: progress.processedSec,
+            totalSec: progress.totalSec,
+            etaSec: progress.etaSec
+          })
+        }
+      }
     })
     const requiredPaths = resolveAssetRequiredPaths(job.stemMode, separation)
     if (!requiredPaths.length || !requiredPaths.every((filePath) => fs.existsSync(filePath))) {

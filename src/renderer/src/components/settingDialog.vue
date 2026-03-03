@@ -3,6 +3,7 @@ import { onUnmounted, onMounted, ref, useTemplateRef, reactive, computed, watch 
 import hintIconAsset from '@renderer/assets/hint.svg?asset'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
+import pkg from '../../../../package.json'
 import utils from '../utils/utils'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate'
@@ -98,6 +99,11 @@ const acoustIdKeyErrorText = ref('')
 
 const AUDIO_FOLLOW_SYSTEM_ID = ''
 const isWindowsPlatform = computed(() => runtime.setting.platform === 'win32')
+const isDevOrPrerelease = computed(() => {
+  if (process.env.NODE_ENV === 'development') return true
+  const version = String((pkg as any).version || '')
+  return version.includes('-')
+})
 
 if (runtime.setting.audioOutputDeviceId === undefined) {
   runtime.setting.audioOutputDeviceId = AUDIO_FOLLOW_SYSTEM_ID
@@ -534,6 +540,46 @@ const clearCloudFingerprints = async () => {
     })
   }
 }
+
+const clearLibraryDirtyData = async () => {
+  if (runtime.isProgressing) {
+    await confirm({
+      title: t('common.setting'),
+      content: [t('import.waitForTask')],
+      confirmShow: false
+    })
+    return
+  }
+  const resConfirm = await confirm({
+    title: t('common.warning'),
+    content: [t('settings.clearDirtyData.confirmLine1'), t('settings.clearDirtyData.confirmLine2')]
+  })
+  if (resConfirm !== 'confirm') return
+  try {
+    const result = await window.electron.ipcRenderer.invoke('library:clear-dirty-data')
+    const sqliteRows = Number(result?.database?.removedRows || 0)
+    const libraryItems = Number(result?.libraryCache?.removedCount || 0)
+    const userDataItems = Number(result?.userDataCache?.removedCount || 0)
+    await confirm({
+      title: t('common.success'),
+      content: [
+        t('settings.clearDirtyData.successLine1'),
+        t('settings.clearDirtyData.successLine2', {
+          sqliteRows,
+          libraryItems,
+          userDataItems
+        })
+      ],
+      confirmShow: false
+    })
+  } catch (error) {
+    await confirm({
+      title: t('common.error'),
+      content: [t('settings.clearDirtyData.failed'), String((error as any)?.message || '')],
+      confirmShow: false
+    })
+  }
+}
 </script>
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
@@ -896,6 +942,21 @@ const clearCloudFingerprints = async () => {
                 {{ t('fingerprints.clearShort') }}
               </div>
             </div>
+            <template v-if="isDevOrPrerelease">
+              <div style="margin-top: 20px">{{ t('settings.clearDirtyData.title') }}：</div>
+              <div style="margin-top: 6px; font-size: 12px; color: #999">
+                {{ t('settings.clearDirtyData.desc') }}
+              </div>
+              <div style="margin-top: 10px">
+                <div
+                  class="dangerButton"
+                  style="width: 110px; text-align: center"
+                  @click="clearLibraryDirtyData()"
+                >
+                  {{ t('settings.clearDirtyData.button') }}
+                </div>
+              </div>
+            </template>
             <div style="margin-top: 20px">{{ t('fingerprints.mode') }}：</div>
             <div style="margin-top: 10px">
               <singleRadioGroup

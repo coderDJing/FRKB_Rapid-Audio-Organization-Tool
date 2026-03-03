@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, screen } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
 import path = require('path')
@@ -13,6 +13,31 @@ export type MixtapeWindowPayload = {
 const mixtapeWindows = new Map<string, BrowserWindow>()
 const payloadByKey = new Map<string, MixtapeWindowPayload>()
 let ipcBound = false
+
+const MIXTAPE_WINDOW_DEFAULT_WIDTH = 1100
+const MIXTAPE_WINDOW_DEFAULT_HEIGHT = 780
+const MIXTAPE_WINDOW_MIN_WIDTH = 900
+const MIXTAPE_WINDOW_MIN_HEIGHT = 600
+const MIXTAPE_WINDOW_MARGIN = 24
+
+const resolveMixtapeWindowBounds = () => {
+  const cursorPoint = screen.getCursorScreenPoint()
+  const targetDisplay = screen.getDisplayNearestPoint(cursorPoint)
+  const workArea = targetDisplay.workArea
+
+  const maxWidth = Math.max(640, workArea.width - MIXTAPE_WINDOW_MARGIN * 2)
+  const maxHeight = Math.max(480, workArea.height - MIXTAPE_WINDOW_MARGIN * 2)
+
+  const width = Math.min(MIXTAPE_WINDOW_DEFAULT_WIDTH, maxWidth)
+  const height = Math.min(MIXTAPE_WINDOW_DEFAULT_HEIGHT, maxHeight)
+  const minWidth = Math.min(MIXTAPE_WINDOW_MIN_WIDTH, width)
+  const minHeight = Math.min(MIXTAPE_WINDOW_MIN_HEIGHT, height)
+
+  const x = Math.round(workArea.x + (workArea.width - width) / 2)
+  const y = Math.round(workArea.y + (workArea.height - height) / 2)
+
+  return { width, height, minWidth, minHeight, x, y }
+}
 
 export const isMixtapeWindowOpenByPlaylistId = (playlistId: string): boolean => {
   const normalizedId = (playlistId || '').trim()
@@ -90,12 +115,15 @@ const sendPayloadToWindow = (target: BrowserWindow | null, payload?: MixtapeWind
 
 const createWindow = (payload: MixtapeWindowPayload, windowKey: string) => {
   ensureIpcHandlers()
+  const bounds = resolveMixtapeWindowBounds()
   const mixtapeWindow = new BrowserWindow({
     resizable: true,
-    width: 1100,
-    height: 780,
-    minWidth: 1100,
-    minHeight: 780,
+    width: bounds.width,
+    height: bounds.height,
+    minWidth: bounds.minWidth,
+    minHeight: bounds.minHeight,
+    x: bounds.x,
+    y: bounds.y,
     frame: process.platform === 'darwin' ? true : false,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     transparent: false,

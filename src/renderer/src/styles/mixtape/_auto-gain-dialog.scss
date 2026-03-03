@@ -1,6 +1,8 @@
 .mixtape-auto-gain-dialog {
   position: absolute;
   inset: 0;
+  padding: 12px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -10,9 +12,10 @@
 
 .mixtape-auto-gain-dialog__card {
   position: relative;
-  width: min(1200px, calc(100vw - 64px));
-  height: min(86vh, 860px);
-  max-height: min(86vh, 860px);
+  width: min(1200px, 100%);
+  max-width: 100%;
+  height: min(860px, 100%);
+  max-height: 100%;
   border: 1px solid var(--border);
   background: var(--bg-elev);
   border-radius: 8px;
@@ -76,6 +79,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
 }
 

@@ -4,7 +4,6 @@ import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import titleComponent from '@renderer/components/titleComponent.vue'
 import MixtapeOutputDialog from '@renderer/components/mixtapeOutputDialog.vue'
 import MixtapeBeatAlignDialog from '@renderer/components/MixtapeBeatAlignDialog.vue'
-import BaseSelect from '@renderer/components/BaseSelect.vue'
 import ColumnHeaderContextMenu from '@renderer/pages/modules/songsArea/ColumnHeaderContextMenu.vue'
 import SongListHeader from '@renderer/pages/modules/songsArea/SongListHeader.vue'
 import SongListRows from '@renderer/pages/modules/songsArea/SongListRows.vue'
@@ -18,7 +17,6 @@ import descendingOrderAsset from '@renderer/assets/descending-order.svg?asset'
 import type {
   MixtapeEnvelopeParamId,
   MixtapeMuteSegment,
-  MixtapeStemProfile,
   MixtapeTrack,
   TimelineTrackLayout
 } from '@renderer/composables/mixtape/types'
@@ -32,8 +30,6 @@ const {
   mixtapeRawItems,
   mixtapeMixMode,
   mixtapeStemMode,
-  mixtapeStemRealtimeProfile,
-  mixtapeStemExportProfile,
   tracks,
   laneIndices,
   laneHeight,
@@ -110,13 +106,17 @@ const {
   outputPath,
   outputFormat,
   outputFilename,
+  outputStemProfile,
+  shouldShowOutputStemProfileSelect,
   outputRunning,
   outputProgressText,
   outputProgressPercent,
   handleOutputDialogConfirm,
   handleOutputDialogCancel,
-  handleStemRealtimeProfileChange,
-  handleStemExportProfileChange,
+  stemSeparationProgressVisible,
+  stemSeparationProgressPercent,
+  stemSeparationProgressText,
+  stemSeparationRunningProgressLines,
   autoGainDialogVisible,
   autoGainReferenceTrackId,
   autoGainReferenceFeedback,
@@ -216,25 +216,6 @@ const mixParamOptions = computed<MixParamOption[]>(() => {
   return options
 })
 
-const stemProfileOptions = computed(() => [
-  {
-    label: t('mixtape.stemProfileFastLabel'),
-    value: 'fast'
-  },
-  {
-    label: t('mixtape.stemProfileQualityLabel'),
-    value: 'quality'
-  }
-])
-
-const handleRealtimeProfileSelect = (value: unknown) => {
-  void handleStemRealtimeProfileChange(value as MixtapeStemProfile)
-}
-
-const handleExportProfileSelect = (value: unknown) => {
-  void handleStemExportProfileChange(value as MixtapeStemProfile)
-}
-
 type TrackTimingUndoSnapshot = {
   trackId: string
   startSec: number
@@ -252,9 +233,12 @@ const isStemParamMode = computed(() => STEM_PARAM_SET.has(selectedMixParam.value
 const isEnvelopeParamMode = computed(() => !isTrackPositionMode.value)
 const isSegmentSelectionSupported = computed(() => isVolumeParamMode.value || isStemParamMode.value)
 const segmentSelectionMode = ref(false)
+const isSegmentSelectionActive = computed(
+  () => isStemParamMode.value || (isSegmentSelectionSupported.value && segmentSelectionMode.value)
+)
 const showEnvelopeCurve = computed(() => isEnvelopeParamMode.value && !isStemParamMode.value)
 const envelopeHintKey = computed(() => {
-  if (isSegmentSelectionSupported.value && segmentSelectionMode.value) {
+  if (isSegmentSelectionActive.value) {
     return 'mixtape.segmentMuteHint'
   }
   if (isStemParamMode.value) {
@@ -282,6 +266,10 @@ const {
 watch(selectedMixParam, (nextParam) => {
   if (nextParam === 'position' || nextParam === 'gain') {
     segmentSelectionMode.value = false
+    return
+  }
+  if (STEM_PARAM_SET.has(nextParam)) {
+    segmentSelectionMode.value = true
   }
 })
 
@@ -455,6 +443,10 @@ const {
 
 const handleToggleSegmentSelectionMode = () => {
   if (!isSegmentSelectionSupported.value) return
+  if (isStemParamMode.value) {
+    segmentSelectionMode.value = true
+    return
+  }
   segmentSelectionMode.value = !segmentSelectionMode.value
 }
 
@@ -478,7 +470,7 @@ const {
   resolveTrackFirstBeatSeconds,
   resolveActiveParam: () =>
     isEnvelopeParamMode.value ? (selectedMixParam.value as MixtapeEnvelopeParamId) : null,
-  isSegmentSelectionMode: () => isSegmentSelectionSupported.value && segmentSelectionMode.value,
+  isSegmentSelectionMode: () => isSegmentSelectionActive.value,
   isEditable: () => envelopeEditable.value
 })
 
@@ -556,28 +548,6 @@ onBeforeUnmount(() => {
             {{ t(envelopeHintKey) }}
           </div>
           <div class="mixtape-param-bar__actions">
-            <div v-if="isStemMixMode" class="mixtape-param-bar__profile-group">
-              <span class="mixtape-param-bar__profile-label">{{
-                t('mixtape.stemRealtimeProfile')
-              }}</span>
-              <BaseSelect
-                :model-value="mixtapeStemRealtimeProfile"
-                :options="stemProfileOptions"
-                :width="128"
-                @change="handleRealtimeProfileSelect"
-              />
-            </div>
-            <div v-if="isStemMixMode" class="mixtape-param-bar__profile-group">
-              <span class="mixtape-param-bar__profile-label">{{
-                t('mixtape.stemExportProfile')
-              }}</span>
-              <BaseSelect
-                :model-value="mixtapeStemExportProfile"
-                :options="stemProfileOptions"
-                :width="128"
-                @change="handleExportProfileSelect"
-              />
-            </div>
             <button
               class="button mixtape-param-bar__action-btn mixtape-param-bar__action-btn--icon"
               type="button"
@@ -626,7 +596,7 @@ onBeforeUnmount(() => {
             <button
               v-if="isSegmentSelectionSupported"
               class="button mixtape-param-bar__action-btn"
-              :class="{ 'is-active': segmentSelectionMode }"
+              :class="{ 'is-active': isSegmentSelectionActive }"
               type="button"
               @click="handleToggleSegmentSelectionMode"
             >
@@ -780,14 +750,14 @@ onBeforeUnmount(() => {
                                 class="lane-track__envelope-points"
                                 :class="{
                                   'is-segment-mute-mode':
-                                    isSegmentSelectionSupported && segmentSelectionMode
+                                    isSegmentSelectionActive
                                 }"
                                 @mousedown.stop.prevent="handleEnvelopeStageMouseDown(item, $event)"
                               >
                                 <template
                                   v-if="
                                     showEnvelopeCurve &&
-                                    !(isVolumeParamMode && segmentSelectionMode)
+                                    !(isVolumeParamMode && isSegmentSelectionActive)
                                   "
                                 >
                                   <button
@@ -981,6 +951,32 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+    <div v-if="stemSeparationProgressVisible" class="mixtape-stem-progress-mask">
+      <div class="bpm-loading-card">
+        <div class="bpm-loading-title">{{ t('mixtape.stemSeparationBlockingTitle') }}</div>
+        <div class="bpm-loading-sub">{{ t('mixtape.stemSeparationBlockingHint') }}</div>
+        <div class="bpm-loading-sub">{{ t('mixtape.stemSeparationLifecycleHint') }}</div>
+        <div class="mixtape-stem-progress-mask__bar">
+          <div
+            class="mixtape-stem-progress-mask__bar-fill"
+            :style="{ width: `${stemSeparationProgressPercent}%` }"
+          ></div>
+        </div>
+        <div class="bpm-loading-sub">{{ stemSeparationProgressText }}</div>
+        <div
+          v-if="stemSeparationRunningProgressLines.length > 0"
+          class="mixtape-stem-progress-mask__detail-list"
+        >
+          <div
+            v-for="(line, index) in stemSeparationRunningProgressLines"
+            :key="`stem-running-progress-${index}`"
+            class="mixtape-stem-progress-mask__detail-item"
+          >
+            {{ line }}
+          </div>
+        </div>
+      </div>
+    </div>
     <div v-if="bpmAnalysisActive" class="mixtape-bpm-mask">
       <div class="bpm-loading-card">
         <div class="bpm-loading-title">{{ t('mixtape.bpmAnalyzing') }}</div>
@@ -1126,6 +1122,8 @@ onBeforeUnmount(() => {
       :output-path="outputPath"
       :output-format="outputFormat"
       :output-filename="outputFilename"
+      :stem-profile="outputStemProfile"
+      :show-stem-profile-select="shouldShowOutputStemProfileSelect"
       @confirm="handleOutputDialogConfirm"
       @cancel="handleOutputDialogCancel"
     />
