@@ -1,6 +1,7 @@
 node_modules
 dist
 out
+tmp
 # build
 .DS_Store
 resources/pyScript/
@@ -38,3 +39,10 @@ docs/.vitepress/cache
 *.sw?
 
 vendor/
+!vendor/
+vendor/*
+!vendor/demucs/
+vendor/demucs/*
+!vendor/demucs/onnx/
+vendor/demucs/onnx/*
+!vendor/demucs/onnx/fast_separate.py

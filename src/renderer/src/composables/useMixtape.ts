@@ -395,11 +395,6 @@ export const useMixtape = () => {
     typeof track?.stemModel === 'string' ? track.stemModel.trim() : ''
   const resolveTrackStemVersion = (track: MixtapeTrack) =>
     typeof track?.stemVersion === 'string' ? track.stemVersion.trim() : ''
-  const isTrackStemTimeoutFailure = (track: MixtapeTrack) => {
-    const stemError = typeof track?.stemError === 'string' ? track.stemError.toLowerCase() : ''
-    if (!stemError) return false
-    return stemError.includes('timeout') || stemError.includes('超时')
-  }
   const hasTrackStemPathsReady = (track: MixtapeTrack, stemMode: MixtapeStemMode) => {
     const vocalPath = normalizeMixtapeFilePath((track as any)?.stemVocalPath)
     const instPath = normalizeMixtapeFilePath((track as any)?.stemInstPath)
@@ -515,19 +510,15 @@ export const useMixtape = () => {
     stemMode: MixtapeStemMode
     trackList: MixtapeTrack[]
     includeRunning: boolean
-    includeTimeoutFailed: boolean
   }) => {
     const playlistId = String(params.playlistId || '').trim()
     if (!playlistId || !window?.electron?.ipcRenderer?.invoke) return
     const includeRunning = !!params.includeRunning
-    const includeTimeoutFailed = !!params.includeTimeoutFailed
     const resumeCandidates = params.trackList.filter((track) => {
       const status = normalizeMixtapeStemStatus(track.stemStatus)
       if (status === 'pending') return true
       if (includeRunning && status === 'running') return true
-      if (includeTimeoutFailed && status === 'failed' && isTrackStemTimeoutFailure(track)) {
-        return true
-      }
+      if (status === 'failed') return true
       return false
     })
     if (!resumeCandidates.length) {
@@ -832,13 +823,11 @@ export const useMixtape = () => {
       }
       if (currentPlaylistId) {
         const includeRunning = !stemResumeBootstrappedPlaylistIdSet.has(currentPlaylistId)
-        const includeTimeoutFailed = !stemResumeBootstrappedPlaylistIdSet.has(currentPlaylistId)
         await autoResumePendingStemJobs({
           playlistId: currentPlaylistId,
           stemMode,
           trackList: tracks.value,
-          includeRunning,
-          includeTimeoutFailed
+          includeRunning
         })
         stemResumeBootstrappedPlaylistIdSet.add(currentPlaylistId)
       }
@@ -1490,6 +1479,15 @@ export const useMixtape = () => {
 
   const handleOpen = (_e: any, next: MixtapeOpenPayload) => {
     if (!next || typeof next !== 'object') return
+    const currentPlaylistId = String(payload.value.playlistId || '').trim()
+    const nextPlaylistId = String(next.playlistId || '').trim()
+    if (nextPlaylistId && nextPlaylistId === currentPlaylistId) {
+      stemResumeBootstrappedPlaylistIdSet.delete(nextPlaylistId)
+      stemResumeSignatureByPlaylistId.delete(nextPlaylistId)
+      console.info('[mixtape] stem auto resume reset on reopen', {
+        playlistId: nextPlaylistId
+      })
+    }
     applyPayload(next)
     loadMixtapeItems()
   }
