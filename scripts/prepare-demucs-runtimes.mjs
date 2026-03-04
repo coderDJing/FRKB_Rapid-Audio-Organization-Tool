@@ -47,7 +47,11 @@ if (!platformConfig || typeof platformConfig !== 'object') {
   process.exit(1)
 }
 
-const baseRuntimeDir = path.resolve(runtimeRoot, platformArg, String(platformConfig.baseRuntimeDir || 'runtime'))
+const baseRuntimeDir = path.resolve(
+  runtimeRoot,
+  platformArg,
+  String(platformConfig.baseRuntimeDir || 'runtime')
+)
 if (!fs.existsSync(baseRuntimeDir)) {
   console.error(`[demucs-runtime] Base runtime not found: ${baseRuntimeDir}`)
   process.exit(1)
@@ -107,7 +111,7 @@ const run = (command, commandArgs, options = {}) => {
 const runProbe = (pythonPath, runtimeKey) => {
   const script = [
     'import json',
-    'payload = {"runtime_key": "", "torch_version": "", "cuda": False, "mps": False, "xpu": False, "directml_installed": False}',
+    'payload = {"runtime_key": "", "torch_version": "", "cuda": False, "mps": False, "xpu": False, "directml_installed": False, "onnxruntime_installed": False, "onnxruntime_directml_installed": False}',
     `payload["runtime_key"] = ${JSON.stringify(runtimeKey)}`,
     'try:',
     '  import torch',
@@ -124,6 +128,18 @@ const runProbe = (pythonPath, runtimeKey) => {
     '  payload["directml_installed"] = True',
     'except Exception:',
     '  payload["directml_installed"] = False',
+    'try:',
+    '  import onnxruntime',
+    '  payload["onnxruntime_installed"] = True',
+    'except Exception:',
+    '  payload["onnxruntime_installed"] = False',
+    'try:',
+    '  providers = []',
+    '  import onnxruntime as _ort',
+    '  providers = list(_ort.get_available_providers())',
+    '  payload["onnxruntime_directml_installed"] = "DmlExecutionProvider" in providers',
+    'except Exception:',
+    '  payload["onnxruntime_directml_installed"] = False',
     'print(json.dumps(payload))'
   ].join('\n')
   const result = spawnSync(pythonPath, ['-c', script], {
@@ -131,7 +147,9 @@ const runProbe = (pythonPath, runtimeKey) => {
     windowsHide: true
   })
   if (result.status !== 0) {
-    throw new Error(`[demucs-runtime] Probe failed for ${runtimeKey}: ${result.stderr || result.stdout}`)
+    throw new Error(
+      `[demucs-runtime] Probe failed for ${runtimeKey}: ${result.stderr || result.stdout}`
+    )
   }
   const output = String(result.stdout || '')
   const lastLine = output
@@ -190,7 +208,9 @@ for (const [profileName, profileConfig] of selectedProfiles) {
   }
 
   if (install && pipInstallArgs.length > 0) {
-    console.log(`[demucs-runtime] Installing pip deps for ${profileName}: ${pipInstallArgs.join(' ')}`)
+    console.log(
+      `[demucs-runtime] Installing pip deps for ${profileName}: ${pipInstallArgs.join(' ')}`
+    )
     run(pythonPath, ['-m', 'pip', 'install', '--upgrade', ...pipInstallArgs], {
       cwd: targetRuntimeDir
     })
@@ -232,7 +252,7 @@ for (const [profileName, profileConfig] of selectedProfiles) {
   }
   writeJson(path.join(targetRuntimeDir, '.frkb-runtime-meta.json'), metadata)
   console.log(
-    `[demucs-runtime] Ready ${profileName} -> cuda=${probe.cuda} mps=${probe.mps} xpu=${probe.xpu} directml=${probe.directml_installed} directml-demucs=${probe.directml_demucs_compatible}`
+    `[demucs-runtime] Ready ${profileName} -> cuda=${probe.cuda} mps=${probe.mps} xpu=${probe.xpu} directml=${probe.directml_installed} directml-demucs=${probe.directml_demucs_compatible} onnxruntime=${probe.onnxruntime_installed} onnxruntime-directml=${probe.onnxruntime_directml_installed}`
   )
 }
 

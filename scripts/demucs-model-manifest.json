@@ -1,0 +1,41 @@
+{
+  "models": [
+    {
+      "name": "htdemucs",
+      "yaml": "models: ['955717e8']\n",
+      "files": [
+        {
+          "name": "955717e8-8726e21a.th",
+          "url": "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/955717e8-8726e21a.th",
+          "sha256": "8726e21a993978c7ba086d3872e7608d7d5bfca646ca4aca459ffda844faa8b4"
+        }
+      ]
+    },
+    {
+      "name": "mdx_extra_q",
+      "yaml": "models: ['83fc094f', '464b36d7', '14fc6a69', '7fd6ef75']\nsegment: 44\n",
+      "files": [
+        {
+          "name": "83fc094f-4a16d450.th",
+          "url": "https://dl.fbaipublicfiles.com/demucs/mdx_final/83fc094f-4a16d450.th",
+          "sha256": "4a16d450fd8c9277494e23865cadaa4a3e64141c45411d84243b8c95ea4b7cae"
+        },
+        {
+          "name": "464b36d7-e5a9386e.th",
+          "url": "https://dl.fbaipublicfiles.com/demucs/mdx_final/464b36d7-e5a9386e.th",
+          "sha256": "e5a9386ecbf6f30bb2bdc7ae162f471d87f3b5bffba1a8cb2cebe4403280967e"
+        },
+        {
+          "name": "14fc6a69-a89dd0ee.th",
+          "url": "https://dl.fbaipublicfiles.com/demucs/mdx_final/14fc6a69-a89dd0ee.th",
+          "sha256": "a89dd0eeb547221dcfd6c0a47baa768ce0bce548eaf86b9a404d6b1088b5d22f"
+        },
+        {
+          "name": "7fd6ef75-a905dd85.th",
+          "url": "https://dl.fbaipublicfiles.com/demucs/mdx_final/7fd6ef75-a905dd85.th",
+          "sha256": "a905dd8548f7389f1a3686c24c09d7bee61b716e3372e778e2acec88333ecdf4"
+        }
+      ]
+    }
+  ]
+}

@@ -26,6 +26,22 @@ jobs:
           node-version: 20
           cache: 'pnpm'
 
+      - name: Restore Demucs cache (Windows)
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor/demucs/models
+            vendor/demucs/onnx
+            vendor/demucs/win32-x64/runtime
+            vendor/demucs/win32-x64/runtime-cpu
+            vendor/demucs/win32-x64/runtime-cuda
+            vendor/demucs/win32-x64/runtime-directml
+            vendor/demucs/win32-x64/runtime-xpu
+          key: demucs-${{ runner.os }}-win32-x64-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/demucs-onnx-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs', 'vendor/demucs/onnx/fast_separate.py') }}
+          restore-keys: |
+            demucs-${{ runner.os }}-win32-x64-
+            demucs-${{ runner.os }}-
+
       - name: Setup Python (for node-gyp)
         uses: actions/setup-python@v5
         with:
@@ -120,6 +136,22 @@ jobs:
           node-version: 20
           cache: 'pnpm'
 
+      - name: Restore Demucs cache (macOS)
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor/demucs/models
+            vendor/demucs/onnx
+            vendor/demucs/darwin-arm64/runtime
+            vendor/demucs/darwin-arm64/runtime-cpu
+            vendor/demucs/darwin-arm64/runtime-mps
+            vendor/demucs/darwin-x64/runtime
+            vendor/demucs/darwin-x64/runtime-cpu
+          key: demucs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/demucs-onnx-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs', 'vendor/demucs/onnx/fast_separate.py') }}
+          restore-keys: |
+            demucs-${{ runner.os }}-${{ runner.arch }}-
+            demucs-${{ runner.os }}-
+
       - name: Setup Python (for node-gyp)
         uses: actions/setup-python@v5
         with:
@@ -150,11 +182,11 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p vendor/ffmpeg/darwin-arm64 vendor/ffmpeg/darwin-x64 vendor/ffmpeg/darwin
-          
+
           echo "=== Host uname ==="
           uname -a
           sw_vers
-          
+
           # 使用 Homebrew 安装 arm64 版本 (native on arm64 runner)
           echo "Installing arm64 ffmpeg via Homebrew"
           brew update
@@ -162,10 +194,10 @@ jobs:
           ARM64_FFMPEG_PATH="$(brew --prefix)/bin/ffmpeg"
           file "$ARM64_FFMPEG_PATH"
           install -m 755 "$ARM64_FFMPEG_PATH" vendor/ffmpeg/darwin-arm64/ffmpeg
-          
+
           # 从多个源尝试下载 x64 版本
           X64_DOWNLOADED=false
-          
+
           # 方案1: 尝试 ffbinaries.com
           echo "Trying to download x64 ffmpeg from ffbinaries..."
           if curl -L "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v4.4.1/ffmpeg-4.4.1-osx-64.zip" -o ffmpeg-x64.zip && [ -f ffmpeg-x64.zip ]; then
@@ -184,7 +216,7 @@ jobs:
             fi
             rm -rf ffmpeg-x64-temp ffmpeg-x64.zip
           fi
-          
+
           # 方案2: 如果方案1失败,尝试从 npm ffmpeg-static 提取
           if [ "$X64_DOWNLOADED" = false ]; then
             echo "Trying to extract x64 ffmpeg from npm package..."
@@ -207,42 +239,42 @@ jobs:
             popd
             rm -rf ffmpeg-npm-temp
           fi
-          
+
           # 验证是否成功获取 x64 版本
           if [ "$X64_DOWNLOADED" = false ]; then
             echo "ERROR: Failed to obtain x64 ffmpeg from all sources"
             exit 1
           fi
-          
+
           # 输出原始二进制信息
           echo "=== Raw arm64 binary ==="
           file vendor/ffmpeg/darwin-arm64/ffmpeg
           ls -lh vendor/ffmpeg/darwin-arm64/ffmpeg
           shasum -a 256 vendor/ffmpeg/darwin-arm64/ffmpeg || true
           lipo -archs vendor/ffmpeg/darwin-arm64/ffmpeg || true
-          
+
           echo "=== Raw x64 binary ==="
           file vendor/ffmpeg/darwin-x64/ffmpeg
           ls -lh vendor/ffmpeg/darwin-x64/ffmpeg
           shasum -a 256 vendor/ffmpeg/darwin-x64/ffmpeg || true
           lipo -archs vendor/ffmpeg/darwin-x64/ffmpeg || true
-          
+
           # 生成通用二进制并放入固定目录
           echo "Creating universal ffmpeg via lipo"
           lipo -create -output vendor/ffmpeg/darwin/ffmpeg \
             vendor/ffmpeg/darwin-arm64/ffmpeg \
             vendor/ffmpeg/darwin-x64/ffmpeg
           chmod +x vendor/ffmpeg/darwin/ffmpeg
-          
+
           echo "=== Universal binary ==="
           file vendor/ffmpeg/darwin/ffmpeg
           ls -lh vendor/ffmpeg/darwin/ffmpeg
           shasum -a 256 vendor/ffmpeg/darwin/ffmpeg || true
           lipo -archs vendor/ffmpeg/darwin/ffmpeg || true
-          
+
           # 清理单架构副本
           rm -rf vendor/ffmpeg/darwin-arm64 vendor/ffmpeg/darwin-x64
-          
+
           echo "Listing vendor/ffmpeg directory"
           find vendor/ffmpeg -maxdepth 2 -type f -exec ls -l {} \;
 

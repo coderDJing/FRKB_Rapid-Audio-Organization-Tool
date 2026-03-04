@@ -8,7 +8,8 @@
       "https://pypi.org/simple",
       "torch==2.3.1",
       "torchaudio==2.3.1",
-      "demucs==4.0.1"
+      "demucs==4.0.1",
+      "onnxruntime==1.20.1"
     ],
     "profiles": {
       "cpu": {
@@ -20,7 +21,8 @@
         "pipInstall": [
           "torch==2.4.1",
           "torch-directml",
-          "torchaudio==2.4.1"
+          "torchaudio==2.4.1",
+          "onnxruntime-directml==1.20.1"
         ]
       },
       "cuda": {
@@ -42,11 +44,7 @@
   },
   "darwin-arm64": {
     "baseRuntimeDir": "runtime",
-    "basePipInstall": [
-      "torch==2.3.1",
-      "torchaudio==2.3.1",
-      "demucs==4.0.1"
-    ],
+    "basePipInstall": ["torch==2.3.1", "torchaudio==2.3.1", "demucs==4.0.1", "onnxruntime==1.20.1"],
     "profiles": {
       "mps": {
         "targetDir": "runtime-mps",
@@ -60,11 +58,7 @@
   },
   "darwin-x64": {
     "baseRuntimeDir": "runtime",
-    "basePipInstall": [
-      "torch==2.3.1",
-      "torchaudio==2.3.1",
-      "demucs==4.0.1"
-    ],
+    "basePipInstall": ["torch==2.3.1", "torchaudio==2.3.1", "demucs==4.0.1", "onnxruntime==1.20.1"],
     "profiles": {
       "cpu": {
         "targetDir": "runtime-cpu",
@@ -81,7 +75,8 @@
       "https://pypi.org/simple",
       "torch==2.3.1",
       "torchaudio==2.3.1",
-      "demucs==4.0.1"
+      "demucs==4.0.1",
+      "onnxruntime==1.20.1"
     ],
     "profiles": {
       "cuda": {
@@ -114,11 +109,7 @@
   },
   "linux-arm64": {
     "baseRuntimeDir": "runtime",
-    "basePipInstall": [
-      "torch==2.3.1",
-      "torchaudio==2.3.1",
-      "demucs==4.0.1"
-    ],
+    "basePipInstall": ["torch==2.3.1", "torchaudio==2.3.1", "demucs==4.0.1", "onnxruntime==1.20.1"],
     "profiles": {
       "cpu": {
         "targetDir": "runtime-cpu",
