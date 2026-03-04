@@ -20,6 +20,11 @@ import { SUPPORTED_AUDIO_FORMATS } from '../../../shared/audioFormats'
 import type { PlayerGlobalShortcutAction } from 'src/types/globals'
 import { mapAcoustIdClientError } from '@renderer/utils/acoustid'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
+import {
+  AUDIO_OUTPUT_FOLLOW_SYSTEM_ID,
+  ensurePlayerGlobalShortcuts,
+  ensureSettingDialogRuntimeDefaults
+} from '@renderer/components/settingDialogRuntimeDefaults'
 const runtime = useRuntimeStore()
 const uuid = uuidV4()
 const emits = defineEmits(['cancel'])
@@ -41,55 +46,7 @@ const getSongFingerprintListLength = async () => {
   }
 }
 
-// 假设 runtime.setting 中已有或需要添加 enablePlaybackRange
-if (runtime.setting.enablePlaybackRange === undefined) {
-  runtime.setting.enablePlaybackRange = false // 默认禁用
-}
-// 假设 runtime.setting 中已有 startPlayPercent 和 endPlayPercent 用于 songPlayer
-if (runtime.setting.startPlayPercent === undefined) {
-  runtime.setting.startPlayPercent = 0
-}
-if (runtime.setting.endPlayPercent === undefined) {
-  runtime.setting.endPlayPercent = 100
-}
-// 是否显示闲时分析状态：默认不显示
-if ((runtime as any).setting.showIdleAnalysisStatus === undefined) {
-  ;(runtime as any).setting.showIdleAnalysisStatus = false
-}
-// 最近使用歌单缓存数量默认值
-if (runtime.setting.recentDialogSelectedSongListMaxCount === undefined) {
-  runtime.setting.recentDialogSelectedSongListMaxCount = 10
-}
-// 错误日志上报默认值
-if ((runtime as any).setting.enableErrorReport === undefined) {
-  ;(runtime as any).setting.enableErrorReport = true
-}
-if ((runtime as any).setting.errorReportUsageMsSinceLastSuccess === undefined) {
-  ;(runtime as any).setting.errorReportUsageMsSinceLastSuccess = 0
-}
-if ((runtime as any).setting.errorReportRetryMsSinceLastFailure === undefined) {
-  ;(runtime as any).setting.errorReportRetryMsSinceLastFailure = -1
-}
-
-// 是否在重启后保留曲目筛选条件：默认不保留
-if ((runtime as any).setting.persistSongFilters === undefined) {
-  ;(runtime as any).setting.persistSongFilters = false
-}
-if ((runtime as any).setting.enableExplorerContextMenu === undefined) {
-  ;(runtime as any).setting.enableExplorerContextMenu = runtime.setting.platform === 'win32'
-}
-
-// 歌单行气泡提示显示策略：默认仅在文字被截断时显示（false）
-if ((runtime as any).setting.songListBubbleAlways === undefined) {
-  ;(runtime as any).setting.songListBubbleAlways = false
-}
-
-if ((runtime as any).setting.acoustIdClientKey === undefined) {
-  ;(runtime as any).setting.acoustIdClientKey = ''
-}
-if ((runtime as any).setting.autoFillSkipCompleted === undefined) {
-  ;(runtime as any).setting.autoFillSkipCompleted = true
-}
+ensureSettingDialogRuntimeDefaults(runtime)
 const lastValidAcoustIdClientKey = ref(
   String((runtime as any).setting.acoustIdClientKey || '').trim()
 )
@@ -97,41 +54,12 @@ const lastValidAcoustIdClientKey = ref(
 const acoustIdKeyValidating = ref(false)
 const acoustIdKeyErrorText = ref('')
 
-const AUDIO_FOLLOW_SYSTEM_ID = ''
 const isWindowsPlatform = computed(() => runtime.setting.platform === 'win32')
 const isDevOrPrerelease = computed(() => {
   if (process.env.NODE_ENV === 'development') return true
   const version = String((pkg as any).version || '')
   return version.includes('-')
 })
-
-if (runtime.setting.audioOutputDeviceId === undefined) {
-  runtime.setting.audioOutputDeviceId = AUDIO_FOLLOW_SYSTEM_ID
-}
-
-if ((runtime as any).setting.waveformStyle === undefined) {
-  ;(runtime as any).setting.waveformStyle = 'SoundCloud'
-}
-
-if ((runtime as any).setting.waveformMode === undefined) {
-  ;(runtime as any).setting.waveformMode = 'half'
-}
-if ((runtime as any).setting.keyDisplayStyle === undefined) {
-  ;(runtime as any).setting.keyDisplayStyle = 'Classic'
-}
-
-const ensurePlayerGlobalShortcuts = () => {
-  if (!runtime.setting.playerGlobalShortcuts) {
-    runtime.setting.playerGlobalShortcuts = {
-      fastForward: 'Shift+Alt+Right',
-      fastBackward: 'Shift+Alt+Left',
-      nextSong: 'Shift+Alt+Down',
-      previousSong: 'Shift+Alt+Up'
-    }
-  }
-  return runtime.setting.playerGlobalShortcuts
-}
-ensurePlayerGlobalShortcuts()
 
 // 将布尔设置映射为单选值（与指纹模式类似的布局与交互）
 const songListBubbleMode = computed<'overflowOnly' | 'always'>({
@@ -189,7 +117,7 @@ const keyDisplayStyleOptions = computed(() => [
 const audioOutputSelectOptions = computed(() => {
   const unknownText = t('player.audioOutputDeviceUnknown')
   return [
-    { label: t('player.audioOutputFollowSystem'), value: AUDIO_FOLLOW_SYSTEM_ID },
+    { label: t('player.audioOutputFollowSystem'), value: AUDIO_OUTPUT_FOLLOW_SYSTEM_ID },
     ...audioOutputDevices.value.map((device, index) => ({
       label: device.label || `${unknownText} ${index + 1}`,
       value: device.deviceId
@@ -235,7 +163,7 @@ onMounted(() => {
     audioOutputDevices.value = []
     audioOutputError.value = t('player.audioOutputNotSupported')
     if (runtime.setting.audioOutputDeviceId) {
-      runtime.setting.audioOutputDeviceId = AUDIO_FOLLOW_SYSTEM_ID
+      runtime.setting.audioOutputDeviceId = AUDIO_OUTPUT_FOLLOW_SYSTEM_ID
       void setSetting()
     }
   }
@@ -263,7 +191,7 @@ const refreshAudioOutputDevices = async () => {
     audioOutputDevices.value = []
     audioOutputError.value = t('player.audioOutputNotSupported')
     if (runtime.setting.audioOutputDeviceId) {
-      runtime.setting.audioOutputDeviceId = AUDIO_FOLLOW_SYSTEM_ID
+      runtime.setting.audioOutputDeviceId = AUDIO_OUTPUT_FOLLOW_SYSTEM_ID
       await setSetting()
     }
     return
@@ -278,10 +206,10 @@ const refreshAudioOutputDevices = async () => {
       deviceId: device.deviceId,
       label: device.label
     }))
-    const current = runtime.setting.audioOutputDeviceId || AUDIO_FOLLOW_SYSTEM_ID
+    const current = runtime.setting.audioOutputDeviceId || AUDIO_OUTPUT_FOLLOW_SYSTEM_ID
     if (current && !audioOutputDevices.value.some((device) => device.deviceId === current)) {
       audioOutputError.value = t('player.audioOutputDeviceUnavailable')
-      runtime.setting.audioOutputDeviceId = AUDIO_FOLLOW_SYSTEM_ID
+      runtime.setting.audioOutputDeviceId = AUDIO_OUTPUT_FOLLOW_SYSTEM_ID
       await setSetting()
     }
   } catch (error) {
@@ -334,7 +262,7 @@ const handleAcoustIdKeyBlur = async () => {
 const handleAudioOutputChange = async () => {
   audioOutputError.value = null
   runtime.setting.audioOutputDeviceId =
-    runtime.setting.audioOutputDeviceId || AUDIO_FOLLOW_SYSTEM_ID
+    runtime.setting.audioOutputDeviceId || AUDIO_OUTPUT_FOLLOW_SYSTEM_ID
   await setSetting()
 }
 
@@ -447,7 +375,7 @@ const globalCallShortcutHandle = async () => {
 }
 
 const playerGlobalShortcutHandle = async (action: PlayerGlobalShortcutAction) => {
-  ensurePlayerGlobalShortcuts()
+  ensurePlayerGlobalShortcuts(runtime)
   await playerGlobalShortcutDialog(action)
 }
 

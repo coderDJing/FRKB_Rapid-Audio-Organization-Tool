@@ -30,7 +30,14 @@ import {
   persistMixtapeProjectMode,
   setPendingMixtapeProjectMode
 } from '@renderer/composables/mixtape/stemMode'
-
+import {
+  buildVisibleCombinedNavList,
+  loadRecentDialogSelectedSongListUUIDs,
+  persistRecentDialogSelectedSongListUUIDs,
+  resolveDialogNavIndexByUUID,
+  resolveDialogNavMove,
+  type DialogNavItem
+} from '@renderer/components/selectSongListDialogNav'
 const uuid = uuidV4()
 const props = defineProps({
   libraryName: {
@@ -49,22 +56,10 @@ runtime.selectSongListDialogShow = true
 const selectedArea = ref<'recent' | 'tree' | ''>('')
 // 歌单筛选关键词（仅匹配歌单名）
 const playlistSearch = ref('')
-let recentDialogSelectedSongListUUID: string[] = []
-let localStorageRecentDialogSelectedSongListUUID = localStorage.getItem(
-  'recentDialogSelectedSongListUUID' + props.libraryName
+let recentDialogSelectedSongListUUID = loadRecentDialogSelectedSongListUUIDs(
+  props.libraryName,
+  runtime.setting.recentDialogSelectedSongListMaxCount ?? 10
 )
-if (localStorageRecentDialogSelectedSongListUUID) {
-  recentDialogSelectedSongListUUID = JSON.parse(localStorageRecentDialogSelectedSongListUUID)
-  // 按设置的最大缓存数量裁剪本地缓存
-  const maxCount = runtime.setting.recentDialogSelectedSongListMaxCount ?? 10
-  if (recentDialogSelectedSongListUUID.length > maxCount) {
-    recentDialogSelectedSongListUUID = recentDialogSelectedSongListUUID.slice(0, maxCount)
-    localStorage.setItem(
-      'recentDialogSelectedSongListUUID' + props.libraryName,
-      JSON.stringify(recentDialogSelectedSongListUUID)
-    )
-  }
-}
 let index = 0
 if (recentDialogSelectedSongListUUID.length !== 0) {
   runtime.dialogSelectedSongListUUID = recentDialogSelectedSongListUUID[index]
@@ -101,10 +96,7 @@ watch(
       recentDialogSelectedSongListUUID = recentDialogSelectedSongListUUID.filter(
         (item) => delRecentDialogSelectedSongListUUID.indexOf(item) === -1
       )
-      localStorage.setItem(
-        'recentDialogSelectedSongListUUID' + props.libraryName,
-        JSON.stringify(recentDialogSelectedSongListUUID)
-      )
+      persistRecentDialogSelectedSongListUUIDs(props.libraryName, recentDialogSelectedSongListUUID)
     }
   },
   { deep: true, immediate: true }
@@ -152,30 +144,13 @@ const allSongListArr = computed<IDir[]>(() => {
 })
 
 // 组合“最近使用歌单”+“全部歌单”（保留重复项，便于在两个区域都可停留）
-type NavItem = { uuid: string; area: 'recent' | 'tree' }
-const visibleCombinedNavList = computed<NavItem[]>(() => {
-  const keyword = String(playlistSearch.value || '')
-    .trim()
-    .toLowerCase()
-  const visibleRecent = keyword
-    ? recentSongListArr.value.filter((item) =>
-        String(item.dirName || '')
-          .toLowerCase()
-          .includes(keyword)
-      )
-    : recentSongListArr.value
-  const visibleAll = keyword
-    ? allSongListArr.value.filter((item) =>
-        String(item.dirName || '')
-          .toLowerCase()
-          .includes(keyword)
-      )
-    : allSongListArr.value
-  const list: NavItem[] = []
-  for (const item of visibleRecent) list.push({ uuid: item.uuid, area: 'recent' })
-  for (const item of visibleAll) list.push({ uuid: item.uuid, area: 'tree' })
-  return list
-})
+const visibleCombinedNavList = computed<DialogNavItem[]>(() =>
+  buildVisibleCombinedNavList(
+    recentSongListArr.value,
+    allSongListArr.value,
+    String(playlistSearch.value || '')
+  )
+)
 
 // 当前选择所在区域，用于避免重复高亮（已提前声明）
 
@@ -183,27 +158,18 @@ const visibleCombinedNavList = computed<NavItem[]>(() => {
 const navIndex = ref<number>(-1)
 const syncNavIndexByUUID = () => {
   const list = visibleCombinedNavList.value || []
-  if (!runtime.dialogSelectedSongListUUID) {
-    navIndex.value = -1
-    return
-  }
-  // 优先匹配当前区域的索引
-  let idx = list.findIndex(
-    (x) => x.uuid === runtime.dialogSelectedSongListUUID && x.area === selectedArea.value
+  navIndex.value = resolveDialogNavIndexByUUID(
+    list,
+    runtime.dialogSelectedSongListUUID,
+    selectedArea.value
   )
-  if (idx < 0) {
-    // 若当前区域不存在该项，则退回到第一个匹配项
-    idx = list.findIndex((x) => x.uuid === runtime.dialogSelectedSongListUUID)
-  }
-  navIndex.value = idx
 }
 
 // 统一的上下移动处理，供热键与输入框箭头键共用
 const moveSelection = (direction: 1 | -1) => {
   const list = visibleCombinedNavList.value || []
   if (list.length === 0) return
-  if (navIndex.value < 0) navIndex.value = 0
-  else navIndex.value = (navIndex.value + direction + list.length) % list.length
+  navIndex.value = resolveDialogNavMove(navIndex.value, direction, list.length)
   const target = list[navIndex.value]
   selectedArea.value = target.area
   runtime.dialogSelectedSongListUUID = target.uuid
@@ -507,10 +473,7 @@ const confirmHandle = () => {
         recentDialogSelectedSongListUUID.pop()
       }
     }
-    localStorage.setItem(
-      'recentDialogSelectedSongListUUID' + props.libraryName,
-      JSON.stringify(recentDialogSelectedSongListUUID)
-    )
+    persistRecentDialogSelectedSongListUUIDs(props.libraryName, recentDialogSelectedSongListUUID)
     closeWithAnimation(() => emits('confirm', selectedUuid))
   }
 }

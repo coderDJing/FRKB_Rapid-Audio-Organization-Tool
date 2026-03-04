@@ -12,22 +12,10 @@ import type {
   WaveformRenderContext,
   WaveformTile
 } from '@renderer/composables/mixtape/types'
-
-type StemWaveformBatchRequestItem = {
-  listRoot?: string
-  sourceFilePath: string
-  stemMode: '4stems'
-  stemModel?: string
-  stemVersion?: string
-  stemPaths: {
-    vocalPath?: string
-    instPath?: string
-    bassPath?: string
-    drumsPath?: string
-  }
-}
-
-type TimelineWaveformData = StemWaveformData | MixxxWaveformData
+import type {
+  StemWaveformBatchRequestItem,
+  TimelineWaveformData
+} from '@renderer/composables/mixtape/timelineRenderAndLoadTypes'
 
 export const createTimelineRenderAndLoadModule = (ctx: any) => {
   const {
