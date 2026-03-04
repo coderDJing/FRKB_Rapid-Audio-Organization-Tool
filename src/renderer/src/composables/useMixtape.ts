@@ -40,6 +40,7 @@ import {
   parseMixtapeStemModel,
   resolveMixtapeStemModelByProfile
 } from '@shared/mixtapeStemProfiles'
+import { createClickThroughGuard } from '@renderer/utils/clickThroughGuard'
 import type {
   MixtapeMixMode,
   MixtapeOpenPayload,
@@ -72,6 +73,8 @@ const createEmptyStemSummary = (): MixtapeStemSummary => ({
 })
 const STEM_RUNTIME_PROGRESS_MAX_VISIBLE_ITEMS = 6
 export const useMixtape = () => {
+  const contextMenuClickThroughGuard = createClickThroughGuard()
+  const CONTEXT_MENU_SELECTOR = '[data-frkb-context-menu="true"]'
   const payload = ref<MixtapeOpenPayload>({})
   const mixtapeMixMode = ref<MixtapeMixMode>('stem')
   const mixtapeStemMode = ref<MixtapeStemMode>('4stems')
@@ -864,6 +867,30 @@ export const useMixtape = () => {
     }
     window.electron.ipcRenderer.send('mixtapeWindow-open-dialog', key)
   }
+
+  const hasOpenContextMenu = () => {
+    return !!document.querySelector(CONTEXT_MENU_SELECTOR)
+  }
+
+  const isInsideContextMenu = (target: EventTarget | null) => {
+    const element = target as Element | null
+    if (!element) return false
+    return !!element.closest(CONTEXT_MENU_SELECTOR)
+  }
+
+  const handleContextMenuPointerDownCapture = (event: PointerEvent) => {
+    if (event.button !== 0) return
+    if (!hasOpenContextMenu()) return
+    if (isInsideContextMenu(event.target)) return
+    contextMenuClickThroughGuard.markFromPointer(event)
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  const handleContextMenuClickCapture = (event: MouseEvent) => {
+    contextMenuClickThroughGuard.suppressClickIfNeeded(event)
+  }
+
   watch(
     () => payload.value.playlistId,
     (nextPlaylistId, prevPlaylistId) => {
@@ -906,6 +933,8 @@ export const useMixtape = () => {
       runtime.isWindowMaximized = !!next
     })
     emitter.on('playlistContentChanged', handlePlaylistContentChanged)
+    window.addEventListener('pointerdown', handleContextMenuPointerDownCapture, true)
+    window.addEventListener('click', handleContextMenuClickCapture, true)
     window.addEventListener('pointerdown', handleGlobalPointerDown, true)
     window.addEventListener('keydown', handleWindowKeydown)
   })
@@ -947,6 +976,12 @@ export const useMixtape = () => {
       emitter.off('playlistContentChanged', handlePlaylistContentChanged)
     } catch {}
     try {
+      window.removeEventListener('pointerdown', handleContextMenuPointerDownCapture, true)
+    } catch {}
+    try {
+      window.removeEventListener('click', handleContextMenuClickCapture, true)
+    } catch {}
+    try {
       window.removeEventListener('pointerdown', handleGlobalPointerDown, true)
     } catch {}
     try {
@@ -957,6 +992,7 @@ export const useMixtape = () => {
       playlistUpdateTimer = null
     }
     clearBpmAnalysisFailedTimer()
+    contextMenuClickThroughGuard.clear()
   })
   return {
     t,

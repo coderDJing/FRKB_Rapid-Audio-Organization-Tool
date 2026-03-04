@@ -5,7 +5,7 @@ import scanNewSongDialog from '@renderer/components/scanNewSongDialog'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import bottomInfoArea from './pages/modules/bottomInfoArea.vue'
 import manualAddSongFingerprintDialog from './components/manualAddSongFingerprintDialog.vue'
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import hotkeys from 'hotkeys-js'
 import utils from './utils/utils'
 import exportSongFingerprintDialog from './components/exportSongFingerprintDialog.vue'
@@ -18,8 +18,11 @@ import cloudSyncSyncDialog from './components/cloudSyncSyncDialog.vue'
 import FileOpInterruptedDialog from './components/fileOpInterruptedDialog.vue'
 import emitter from './utils/mitt'
 import { replaceExternalPlaylistFromPaths } from '@renderer/utils/externalPlaylist'
+import { createClickThroughGuard } from '@renderer/utils/clickThroughGuard'
 
 const runtime = useRuntimeStore()
+const contextMenuClickThroughGuard = createClickThroughGuard()
+const CONTEXT_MENU_SELECTOR = '[data-frkb-context-menu="true"]'
 // 使用全局设置中的平台标记进行映射，避免依赖 userAgent
 {
   const p = runtime.setting?.platform
@@ -132,6 +135,29 @@ const documentHandleClick = () => {
 }
 document.addEventListener('click', documentHandleClick)
 document.addEventListener('contextmenu', documentHandleClick)
+
+const hasOpenContextMenu = () => {
+  return !!document.querySelector(CONTEXT_MENU_SELECTOR)
+}
+
+const isInsideContextMenu = (target: EventTarget | null) => {
+  const element = target as Element | null
+  if (!element) return false
+  return !!element.closest(CONTEXT_MENU_SELECTOR)
+}
+
+const handleContextMenuPointerDownCapture = (event: PointerEvent) => {
+  if (event.button !== 0) return
+  if (!hasOpenContextMenu()) return
+  if (isInsideContextMenu(event.target)) return
+  contextMenuClickThroughGuard.markFromPointer(event)
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+const handleContextMenuClickCapture = (event: MouseEvent) => {
+  contextMenuClickThroughGuard.suppressClickIfNeeded(event)
+}
 
 const getLibrary = async () => {
   runtime.libraryTree = await window.electron.ipcRenderer.invoke('getLibrary')
@@ -253,6 +279,9 @@ onMounted(() => {
     } catch (_err) {}
   })
 
+  window.addEventListener('pointerdown', handleContextMenuPointerDownCapture, true)
+  window.addEventListener('click', handleContextMenuClickCapture, true)
+
   // 全局同步：当有 songsRemoved 事件触发时，若针对当前播放歌单，则同步清理播放列表快照
   emitter.on('songsRemoved', (payload: any) => {
     try {
@@ -278,6 +307,12 @@ onMounted(() => {
       }
     } catch {}
   })
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('pointerdown', handleContextMenuPointerDownCapture, true)
+  window.removeEventListener('click', handleContextMenuClickCapture, true)
+  contextMenuClickThroughGuard.clear()
 })
 // 供子组件触发打开对话框（例如同步面板引导打开设置）
 window.addEventListener('openDialogFromChild', (e: any) => {

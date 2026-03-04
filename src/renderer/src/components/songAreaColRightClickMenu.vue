@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch, ref, PropType } from 'vue'
+import { watch, ref, PropType, onMounted, onUnmounted } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidV4 } from 'uuid'
 import tickIconAsset from '@renderer/assets/tickIcon.svg?asset'
@@ -8,6 +8,7 @@ import { ISongsAreaColumn } from '../../../types/globals'
 const uuid = uuidV4()
 const runtime = useRuntimeStore()
 const tickIcon = tickIconAsset
+const menuRef = ref<HTMLDivElement | null>(null)
 
 const emits = defineEmits(['update:modelValue', 'colMenuHandleClick'])
 watch(
@@ -48,6 +49,14 @@ const menuButtonClick = (item: ISongsAreaColumn) => {
   emits('colMenuHandleClick', item)
 }
 
+const closeMenu = () => {
+  if (!props.modelValue) return
+  if (runtime.activeMenuUUID === uuid) {
+    runtime.activeMenuUUID = ''
+  }
+  emits('update:modelValue', false)
+}
+
 let positionTop = ref(0)
 let positionLeft = ref(0)
 watch(
@@ -57,10 +66,27 @@ watch(
     positionTop.value = newPosition.y
   }
 )
+
+const handleGlobalPointerDown = (event: PointerEvent) => {
+  if (!props.modelValue) return
+  const target = event.target as Node | null
+  if (menuRef.value && target && menuRef.value.contains(target)) return
+  closeMenu()
+}
+
+onMounted(() => {
+  window.addEventListener('pointerdown', handleGlobalPointerDown, true)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('pointerdown', handleGlobalPointerDown, true)
+})
 </script>
 <template>
   <div
     v-if="props.modelValue"
+    ref="menuRef"
+    data-frkb-context-menu="true"
     class="menu unselectable"
     :style="{ top: positionTop + 'px', left: positionLeft + 'px' }"
     @click.stop="() => {}"

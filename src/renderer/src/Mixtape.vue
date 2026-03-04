@@ -1023,6 +1023,7 @@ onBeforeUnmount(() => {
     />
     <div
       v-if="trackContextMenuVisible"
+      data-frkb-context-menu="true"
       class="mixtape-track-menu"
       :style="trackContextMenuStyle"
       @contextmenu.stop.prevent

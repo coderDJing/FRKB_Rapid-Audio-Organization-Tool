@@ -1,4 +1,5 @@
 import { nextTick } from 'vue'
+import { resolveContextMenuPoint } from '@renderer/utils/contextMenuPosition'
 
 export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
   const {
@@ -360,10 +361,17 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     event.stopPropagation()
     const menuWidth = 150
     const menuHeight = 70
-    const safeX = Math.max(8, Math.min(window.innerWidth - menuWidth - 8, event.clientX))
-    const safeY = Math.max(8, Math.min(window.innerHeight - menuHeight - 8, event.clientY))
-    trackContextMenuX.value = safeX
-    trackContextMenuY.value = safeY
+    const { x, y } = resolveContextMenuPoint(
+      {
+        clickX: event.clientX,
+        clickY: event.clientY,
+        menuWidth,
+        menuHeight
+      },
+      { padding: 8 }
+    )
+    trackContextMenuX.value = x
+    trackContextMenuY.value = y
     trackContextTrackId.value = trackId
     trackContextMenuVisible.value = true
   }

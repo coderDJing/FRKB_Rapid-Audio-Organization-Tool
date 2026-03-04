@@ -6,6 +6,7 @@ import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
 import { t } from '@renderer/utils/translate'
 import { IMenu } from '../../../types/globals'
+import { resolveContextMenuPoint } from '@renderer/utils/contextMenuPosition'
 
 const uuid = uuidV4()
 const runtime = useRuntimeStore()
@@ -92,30 +93,15 @@ onMounted(() => {
     const divHeight = menuElement.offsetHeight
     const divWidth = menuElement.offsetWidth
 
-    let windowWidth = window.innerWidth
-    let windowHeight = window.innerHeight
-    let clickX = props.clickEvent.clientX
-    let clickY = props.clickEvent.clientY
+    const { x, y } = resolveContextMenuPoint({
+      clickX: props.clickEvent.clientX,
+      clickY: props.clickEvent.clientY,
+      menuWidth: divWidth,
+      menuHeight: divHeight
+    })
 
-    let finalTop = clickY
-    let finalLeft = clickX
-
-    if (clickY + divHeight > windowHeight) {
-      finalTop = clickY - divHeight
-      if (finalTop < 0) {
-        finalTop = 0
-      }
-    }
-
-    if (clickX + divWidth > windowWidth) {
-      finalLeft = clickX - divWidth
-      if (finalLeft < 0) {
-        finalLeft = 0
-      }
-    }
-
-    positionTop.value = finalTop
-    positionLeft.value = finalLeft
+    positionTop.value = y
+    positionLeft.value = x
   })
 
   hotkeys('w', uuid, () => {
@@ -159,6 +145,7 @@ onUnmounted(() => {
     <div
       v-if="isVisible"
       ref="menuRef"
+      data-frkb-context-menu="true"
       class="menu unselectable"
       :style="{ top: positionTop + 'px', left: positionLeft + 'px' }"
       @click.stop="() => {}"

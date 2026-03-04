@@ -2,6 +2,7 @@
 import { ref, watchEffect, PropType } from 'vue'
 import { ISongsAreaColumn } from '../../../../../types/globals'
 import SongAreaColRightClickMenu from '@renderer/components/songAreaColRightClickMenu.vue'
+import { resolveContextMenuPoint } from '@renderer/utils/contextMenuPosition'
 
 const props = defineProps({
   modelValue: Boolean, // for v-model
@@ -37,26 +38,18 @@ watchEffect(() => {
     const event = props.targetEvent
 
     const parentRect = hostElement.getBoundingClientRect()
-    const absoluteX = event.clientX
-    const absoluteY = event.clientY
 
     // Estimate menu dimensions (copied from original songsArea.vue logic)
     // Consider making these props or dynamic if menu content changes significantly
     const menuHeightEstimate = props.columns.length * 40 // Rough estimate
     const menuWidthEstimate = 255 // Rough estimate
 
-    let adjustedAbsoluteX = absoluteX
-    let adjustedAbsoluteY = absoluteY
-
-    const windowWidth = window.innerWidth
-    const windowHeight = window.innerHeight
-
-    if (absoluteY + menuHeightEstimate > windowHeight) {
-      adjustedAbsoluteY = absoluteY - (absoluteY + menuHeightEstimate - windowHeight)
-    }
-    if (absoluteX + menuWidthEstimate > windowWidth) {
-      adjustedAbsoluteX = absoluteX - (absoluteX + menuWidthEstimate - windowWidth)
-    }
+    const { x: adjustedAbsoluteX, y: adjustedAbsoluteY } = resolveContextMenuPoint({
+      clickX: event.clientX,
+      clickY: event.clientY,
+      menuWidth: menuWidthEstimate,
+      menuHeight: menuHeightEstimate
+    })
 
     // Convert adjusted absolute coordinates back to relative coordinates for the menu component
     const adjustedRelativeX = adjustedAbsoluteX - parentRect.left
@@ -69,7 +62,15 @@ watchEffect(() => {
     console.warn(
       'ColumnHeaderContextMenu: scrollHostElement not available, using clientX/Y for menu position.'
     )
-    menuPosition.value = { x: props.targetEvent.clientX, y: props.targetEvent.clientY }
+    const menuHeightEstimate = props.columns.length * 40
+    const menuWidthEstimate = 255
+    const { x, y } = resolveContextMenuPoint({
+      clickX: props.targetEvent.clientX,
+      clickY: props.targetEvent.clientY,
+      menuWidth: menuWidthEstimate,
+      menuHeight: menuHeightEstimate
+    })
+    menuPosition.value = { x, y }
   }
 })
 
