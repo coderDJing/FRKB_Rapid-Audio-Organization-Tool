@@ -1,14 +1,6 @@
 import { ref } from 'vue'
 import { t } from '@renderer/utils/translate'
-import { canPlayHtmlAudio, toPreviewUrl } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
-import {
-  normalizeBeatOffset as normalizeBeatOffsetByMixxx,
-  resolveBeatSecByBpm,
-  resolveFirstBeatTimelineSec,
-  resolveGridAnchorSec
-} from '@renderer/composables/mixtape/mixxxSyncModel'
-import { MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM } from '@renderer/composables/mixtape/gainEnvelope'
-import { normalizeVolumeMuteSegments } from '@renderer/composables/mixtape/volumeMuteSegments'
+import { normalizeBeatOffset as normalizeBeatOffsetByMixxx } from '@renderer/composables/mixtape/mixxxSyncModel'
 import { applyMixxxTransportSync } from '@renderer/composables/mixtape/timelineTransportSync'
 import {
   createTimelineTransportRenderWavModule,
@@ -17,63 +9,21 @@ import {
 } from '@renderer/composables/mixtape/timelineTransportRenderWav'
 import { createTimelineTransportTrackDragModule } from '@renderer/composables/mixtape/timelineTransportTrackDrag'
 import { createTimelineTransportResolversModule } from '@renderer/composables/mixtape/timelineTransportResolvers'
+import {
+  createTimelineTransportAudioDataModule,
+  type TransportAudioRef,
+  type TransportEntry,
+  type TransportStemAudioRef,
+  type TransportStemId
+} from '@renderer/composables/mixtape/timelineTransportAudioData'
 import type {
   MixtapeEnvelopeParamId,
-  MixtapeGainPoint,
   MixtapeMixMode,
   MixtapeMuteSegment,
   MixtapeStemMode,
-  MixtapeTrack
+  MixtapeTrack,
+  MixtapeStemStatus
 } from '@renderer/composables/mixtape/types'
-
-// ── PCM 数据归一化（仅用于 IPC 解码路径）───────────────────────
-const normalizePcmData = (pcmData: unknown): Float32Array => {
-  if (!pcmData) return new Float32Array(0)
-  if (pcmData instanceof Float32Array) return pcmData
-  if (pcmData instanceof ArrayBuffer) return new Float32Array(pcmData)
-  if (ArrayBuffer.isView(pcmData)) {
-    const view = pcmData as ArrayBufferView
-    return new Float32Array(view.buffer, view.byteOffset, Math.floor(view.byteLength / 4))
-  }
-  return new Float32Array(0)
-}
-
-// ── Transport 条目类型 ──────────────────────────────────────────
-type TransportEntry = {
-  trackId: string
-  filePath: string
-  startSec: number
-  bpm: number
-  beatSec: number
-  firstBeatSec: number
-  barBeatOffset: number
-  masterTempo: boolean
-  syncAnchorSec: number
-  sourceDuration: number
-  duration: number
-  tempoRatio: number
-  mixEnvelopes: Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[]>>
-  mixEnvelopeSources: Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[] | undefined>>
-  volumeMuteSegments: MixtapeMuteSegment[]
-  volumeMuteSegmentsSource?: MixtapeMuteSegment[]
-  audioRef?: TransportAudioRef
-  stemAudioById?: Partial<Record<TransportStemId, TransportStemAudioRef>>
-}
-
-type TransportStemId = 'vocal' | 'inst' | 'bass' | 'drums'
-
-type TransportAudioRef = {
-  filePath: string
-  decodeMode: 'browser' | 'ipc'
-  audioBuffer: AudioBuffer | null
-}
-
-type TransportStemAudioRef = {
-  stemId: TransportStemId
-  filePath: string
-  decodeMode: 'browser' | 'ipc'
-  audioBuffer: AudioBuffer | null
-}
 
 type TrackStemGraphNode = {
   stemId: TransportStemId
@@ -164,7 +114,6 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   let transportStartedAt = 0
   let transportAudioStartAt = 0
   let transportDurationSec = 0
-  let transportPreloadTimer: ReturnType<typeof setTimeout> | null = null
   // 共享 AudioContext（贯穿整个混音 transport 生命周期）
   let transportAudioCtx: AudioContext | null = null
   // 当前活跃的音频图节点列表
@@ -172,11 +121,6 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   let transportMasterTrackId = ''
   // 版本号，用于取消过期的异步解码操作
   let transportVersion = 0
-  let transportPreloadVersion = 0
-  // 已解码 AudioBuffer 缓存（窗口级），避免时间轴点击反复解码
-  const transportDecodedBufferCache = new Map<string, AudioBuffer>()
-  // 进行中的解码任务（按 filePath 复用 Promise）
-  const transportDecodeInflight = new Map<string, Promise<AudioBuffer>>()
 
   const clampNumber = (value: number, min: number, max: number) =>
     Math.max(min, Math.min(max, value))
@@ -188,20 +132,11 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     if (!Number.isFinite(numeric) || numeric < 0) return null
     return Number(numeric.toFixed(4))
   }
-  const normalizeMixtapeStemStatus = (value: unknown) => {
+  const normalizeMixtapeStemStatus = (value: unknown): MixtapeStemStatus => {
     if (value === 'pending' || value === 'running' || value === 'ready' || value === 'failed') {
       return value
     }
     return 'ready'
-  }
-  const isStemAutoPreloadReady = () => {
-    if (!isStemMixMode()) return false
-    if (!tracks.value.length) return false
-    for (const track of tracks.value) {
-      const stemStatus = normalizeMixtapeStemStatus((track as any)?.stemStatus)
-      if (stemStatus !== 'ready') return false
-    }
-    return true
   }
   const isStemMixMode = (): boolean =>
     (mixtapeMixMode?.value as MixtapeMixMode | undefined) === 'stem'
@@ -263,98 +198,6 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     }
   }
 
-  const resolveTrackDurationByBpm = (track: MixtapeTrack, targetBpm: number) => {
-    const sourceDuration = resolveTrackSourceDurationSeconds(track)
-    if (!Number.isFinite(sourceDuration) || sourceDuration <= 0) return 0
-    const tempoRatio = resolveTrackTempoRatio(track, targetBpm)
-    if (!Number.isFinite(tempoRatio) || tempoRatio <= 0) return sourceDuration
-    return sourceDuration / Math.max(0.01, tempoRatio)
-  }
-
-  const remapVolumeMuteSegmentsForBpm = (track: MixtapeTrack, targetBpm: number) => {
-    const sourceDuration = resolveTrackDurationSeconds(track)
-    const targetDuration = resolveTrackDurationByBpm(track, targetBpm)
-    const sourceSegments = normalizeVolumeMuteSegments(track.volumeMuteSegments, sourceDuration)
-    if (!sourceSegments.length) return [] as MixtapeMuteSegment[]
-    const sourceBpm = Number(track.bpm)
-    const sourceBeatSec = resolveBeatSecByBpm(sourceBpm)
-    const targetBeatSec = resolveBeatSecByBpm(targetBpm)
-    if (
-      !Number.isFinite(sourceBeatSec) ||
-      !sourceBeatSec ||
-      !Number.isFinite(targetBeatSec) ||
-      !targetBeatSec ||
-      !targetDuration
-    ) {
-      return normalizeVolumeMuteSegments(sourceSegments, targetDuration || sourceDuration)
-    }
-    const sourceFirstBeatSec = resolveTrackFirstBeatSeconds(track, sourceBpm)
-    const targetFirstBeatSec = resolveTrackFirstBeatSeconds(track, targetBpm)
-    const beatSnapEpsilon = 0.0005
-    const remapped = sourceSegments
-      .map((segment) => {
-        const startBeatRaw = (segment.startSec - sourceFirstBeatSec) / sourceBeatSec
-        const endBeatRaw = (segment.endSec - sourceFirstBeatSec) / sourceBeatSec
-        const startBeatNearest = Math.round(startBeatRaw)
-        const endBeatNearest = Math.round(endBeatRaw)
-        const startBeat =
-          Math.abs(startBeatRaw - startBeatNearest) <= beatSnapEpsilon
-            ? startBeatNearest
-            : startBeatRaw
-        const endBeat =
-          Math.abs(endBeatRaw - endBeatNearest) <= beatSnapEpsilon ? endBeatNearest : endBeatRaw
-        const remappedStart = clampNumber(
-          targetFirstBeatSec + startBeat * targetBeatSec,
-          0,
-          targetDuration
-        )
-        const remappedEnd = clampNumber(
-          targetFirstBeatSec + endBeat * targetBeatSec,
-          0,
-          targetDuration
-        )
-        if (remappedEnd - remappedStart <= 0.0001) return null
-        return {
-          startSec: Number(remappedStart.toFixed(4)),
-          endSec: Number(remappedEnd.toFixed(4))
-        }
-      })
-      .filter((segment): segment is MixtapeMuteSegment => segment !== null)
-    return normalizeVolumeMuteSegments(remapped, targetDuration)
-  }
-
-  const readTransportBufferCache = (filePath: string): AudioBuffer | null => {
-    const key = String(filePath || '').trim()
-    if (!key) return null
-    const cached = transportDecodedBufferCache.get(key) || null
-    if (!cached) return null
-    // LRU 触摸
-    transportDecodedBufferCache.delete(key)
-    transportDecodedBufferCache.set(key, cached)
-    return cached
-  }
-
-  const writeTransportBufferCache = (filePath: string, buffer: AudioBuffer) => {
-    const key = String(filePath || '').trim()
-    if (!key || !buffer) return
-    if (transportDecodedBufferCache.has(key)) {
-      transportDecodedBufferCache.delete(key)
-    }
-    transportDecodedBufferCache.set(key, buffer)
-  }
-
-  const clearTransportPreloadTimer = () => {
-    if (!transportPreloadTimer) return
-    clearTimeout(transportPreloadTimer)
-    transportPreloadTimer = null
-  }
-
-  const cancelTransportPreload = () => {
-    transportPreloadVersion += 1
-    transportPreloading.value = false
-    clearTransportPreloadTimer()
-  }
-
   const transportDurationSecRef = {
     get value() {
       return transportDurationSec
@@ -397,6 +240,40 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     buildSequentialLayoutForZoom,
     clampNumber,
     segmentMuteGain: MIXTAPE_SEGMENT_MUTE_GAIN
+  })
+
+  const {
+    buildTransportEntries,
+    remapVolumeMuteSegmentsForBpm,
+    readTransportBufferCache,
+    ensureDecodedStemAudio,
+    ensureDecodedTransportEntry,
+    decodeAllTransportEntries,
+    scheduleTransportPreload,
+    cleanupTransportAudioData
+  } = createTimelineTransportAudioDataModule({
+    tracks,
+    normalizedRenderZoom,
+    timelineLayout,
+    resolveRenderPxPerSec,
+    buildSequentialLayoutForZoom,
+    resolveTimelineSecByX,
+    resolveTrackSourceDurationSeconds,
+    resolveTrackTempoRatio,
+    resolveTrackFirstBeatSeconds,
+    resolveTrackDurationSeconds,
+    resolveTrackStartSec,
+    resolveTrackMixEnvelope,
+    resolveMixEnvelopeParams,
+    resolveStemIdsForMode,
+    resolveTrackStemFilePath,
+    isStemMixMode,
+    normalizeMixtapeStemStatus,
+    ensureTransportAudioContext: (sampleRate?: number) => ensureTransportAudioContext(sampleRate),
+    transportPreloading,
+    transportPreloadDone,
+    transportPreloadTotal,
+    transportPreloadFailed
   })
 
   // ── AudioContext 管理 ─────────────────────────────────────────
@@ -542,310 +419,6 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     return clampNumber(sec, 0, totalSec)
   }
 
-  // ── 构建 Transport 条目（所有格式统一走后端解码）─────────────
-  const buildTransportEntries = () => {
-    const pxPerSec = Math.max(0.0001, resolveRenderPxPerSec(normalizedRenderZoom.value))
-    const snapshot = buildSequentialLayoutForZoom(normalizedRenderZoom.value)
-    const startSecById = new Map<string, number>()
-    for (const item of snapshot.layout) {
-      const layoutStartSec = Number(item.startSec)
-      startSecById.set(
-        item.track.id,
-        Number.isFinite(layoutStartSec) && layoutStartSec >= 0
-          ? layoutStartSec
-          : resolveTimelineSecByX(item.startX, pxPerSec)
-      )
-    }
-    let missingDurationCount = 0
-    let stemNotReadyCount = 0
-    let missingStemAssetCount = 0
-    const useStemMode = isStemMixMode()
-    const entries = tracks.value
-      .map((track: MixtapeTrack) => {
-        if (useStemMode && normalizeMixtapeStemStatus((track as any)?.stemStatus) !== 'ready') {
-          stemNotReadyCount += 1
-          return null
-        }
-        const filePath = String(track.filePath || '').trim()
-        if (!filePath) return null
-        const sourceDuration = resolveTrackSourceDurationSeconds(track)
-        if (!Number.isFinite(sourceDuration) || sourceDuration <= 0) {
-          missingDurationCount += 1
-          return null
-        }
-        const bpm = Number(track.bpm)
-        const beatSec = resolveBeatSecByBpm(bpm)
-        const tempoRatio = resolveTrackTempoRatio(track)
-        const duration = sourceDuration / Math.max(0.01, tempoRatio)
-        const firstBeatSec = resolveFirstBeatTimelineSec(track.firstBeatMs, tempoRatio)
-        const barBeatOffset = normalizeBeatOffset(track.barBeatOffset, 32)
-        const masterTempo = track.masterTempo !== false
-        const startSec = startSecById.get(track.id) ?? resolveTrackStartSec(track)
-        const syncAnchorSec = resolveGridAnchorSec({
-          startSec,
-          firstBeatSec,
-          beatSec,
-          barBeatOffset
-        })
-        const activeParams = resolveMixEnvelopeParams()
-        const mixEnvelopes = activeParams.reduce(
-          (acc, param) => {
-            acc[param] = resolveTrackMixEnvelope(track, duration, param)
-            return acc
-          },
-          {} as Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[]>>
-        )
-        const mixEnvelopeSources = activeParams.reduce(
-          (acc, param) => {
-            const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
-            acc[param] = (track as any)?.[envelopeField] as MixtapeGainPoint[] | undefined
-            return acc
-          },
-          {} as Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[] | undefined>>
-        )
-        const volumeMuteSegmentsSource = track.volumeMuteSegments
-        const volumeMuteSegments = normalizeVolumeMuteSegments(volumeMuteSegmentsSource, duration)
-        const decodeMode: 'browser' | 'ipc' = canPlayHtmlAudio(filePath) ? 'browser' : 'ipc'
-        if (!useStemMode) {
-          return {
-            trackId: track.id,
-            filePath,
-            startSec,
-            bpm,
-            beatSec,
-            firstBeatSec,
-            barBeatOffset,
-            masterTempo,
-            syncAnchorSec,
-            sourceDuration,
-            duration,
-            tempoRatio: Math.max(0.25, Math.min(4, tempoRatio)),
-            mixEnvelopes,
-            mixEnvelopeSources,
-            volumeMuteSegments,
-            volumeMuteSegmentsSource,
-            audioRef: {
-              filePath,
-              decodeMode,
-              audioBuffer: null
-            }
-          } as TransportEntry
-        }
-        const stemIds = resolveStemIdsForMode()
-        const stemAudioById: Partial<Record<TransportStemId, TransportStemAudioRef>> = {}
-        for (const stemId of stemIds) {
-          const stemFilePath = resolveTrackStemFilePath(track, stemId)
-          if (!stemFilePath) {
-            missingStemAssetCount += 1
-            return null
-          }
-          stemAudioById[stemId] = {
-            stemId,
-            filePath: stemFilePath,
-            decodeMode: canPlayHtmlAudio(stemFilePath) ? 'browser' : 'ipc',
-            audioBuffer: null
-          }
-        }
-        return {
-          trackId: track.id,
-          filePath,
-          startSec,
-          bpm,
-          beatSec,
-          firstBeatSec,
-          barBeatOffset,
-          masterTempo,
-          syncAnchorSec,
-          sourceDuration,
-          duration,
-          tempoRatio: Math.max(0.25, Math.min(4, tempoRatio)),
-          mixEnvelopes,
-          mixEnvelopeSources,
-          volumeMuteSegments,
-          volumeMuteSegmentsSource,
-          audioRef: undefined,
-          stemAudioById
-        } as TransportEntry
-      })
-      .filter(Boolean) as TransportEntry[]
-    entries.sort((a, b) => a.startSec - b.startSec)
-    return {
-      entries,
-      decodeFailedCount: 0,
-      missingDurationCount,
-      stemNotReadyCount,
-      missingStemAssetCount
-    }
-  }
-
-  // ── 全部轨道预解码：通过 IPC 解码为 AudioBuffer ──────────────
-  /**
-   * 浏览器路径解码：fetch + decodeAudioData（快，无 IPC 开销）
-   * 适用于浏览器原生支持的格式（mp3, wav, flac, ogg, opus 等）
-   */
-  const decodeBrowser = async (filePath: string): Promise<AudioBuffer> => {
-    const url = toPreviewUrl(filePath)
-    const response = await fetch(url)
-    if (!response.ok) throw new Error(`fetch 失败: ${response.status}`)
-    const arrayBuffer = await response.arrayBuffer()
-    if (!arrayBuffer.byteLength) throw new Error('fetch 返回空数据')
-    const ctx = ensureTransportAudioContext()
-    return await ctx.decodeAudioData(arrayBuffer)
-  }
-
-  /**
-   * IPC 路径解码：主进程 Rust/FFmpeg 解码 → PCM Float32 → AudioBuffer
-   * 适用于浏览器无法解码的格式（ape, tak, wv, dts, wma 等）
-   */
-  const decodeIpc = async (filePath: string): Promise<AudioBuffer> => {
-    const result = await window.electron.ipcRenderer.invoke(
-      'mixtape:decode-for-transport',
-      filePath
-    )
-    const pcmData = normalizePcmData(result?.pcmData)
-    const sampleRate = Number(result?.sampleRate) || 44100
-    const channels = Math.max(1, Number(result?.channels) || 1)
-    const totalFrames = Number(result?.totalFrames) || 0
-    const frameCount =
-      totalFrames > 0
-        ? Math.min(totalFrames, Math.floor(pcmData.length / channels))
-        : Math.floor(pcmData.length / channels)
-    if (frameCount <= 0 || !pcmData.length) throw new Error('解码结果为空')
-    const ctx = ensureTransportAudioContext(sampleRate)
-    const buffer = ctx.createBuffer(channels, frameCount, sampleRate)
-    for (let ch = 0; ch < channels; ch++) {
-      const channelData = buffer.getChannelData(ch)
-      // PCM 数据是交错格式：[L0, R0, L1, R1, ...]
-      let readIndex = ch
-      for (let i = 0; i < frameCount; i++) {
-        channelData[i] = pcmData[readIndex] || 0
-        readIndex += channels
-      }
-    }
-    return buffer
-  }
-
-  const ensureDecodedStemAudio = async (stemAudio: TransportStemAudioRef): Promise<void> => {
-    const cached = readTransportBufferCache(stemAudio.filePath)
-    if (cached) {
-      stemAudio.audioBuffer = cached
-      return
-    }
-
-    const filePath = stemAudio.filePath
-    let inflight = transportDecodeInflight.get(filePath)
-    if (!inflight) {
-      inflight = (async () => {
-        const buffer =
-          stemAudio.decodeMode === 'browser'
-            ? await decodeBrowser(filePath).catch(async (error) => {
-                console.warn('[mixtape-transport] 浏览器解码失败，回退 IPC 解码:', filePath, error)
-                return await decodeIpc(filePath)
-              })
-            : await decodeIpc(filePath)
-        writeTransportBufferCache(filePath, buffer)
-        return buffer
-      })().finally(() => {
-        transportDecodeInflight.delete(filePath)
-      })
-      transportDecodeInflight.set(filePath, inflight)
-    }
-    stemAudio.audioBuffer = await inflight
-  }
-
-  const ensureDecodedAudioRef = async (audioRef: TransportAudioRef): Promise<void> => {
-    const cached = readTransportBufferCache(audioRef.filePath)
-    if (cached) {
-      audioRef.audioBuffer = cached
-      return
-    }
-
-    const filePath = audioRef.filePath
-    let inflight = transportDecodeInflight.get(filePath)
-    if (!inflight) {
-      inflight = (async () => {
-        const buffer =
-          audioRef.decodeMode === 'browser'
-            ? await decodeBrowser(filePath).catch(async (error) => {
-                console.warn('[mixtape-transport] 浏览器解码失败，回退 IPC 解码:', filePath, error)
-                return await decodeIpc(filePath)
-              })
-            : await decodeIpc(filePath)
-        writeTransportBufferCache(filePath, buffer)
-        return buffer
-      })().finally(() => {
-        transportDecodeInflight.delete(filePath)
-      })
-      transportDecodeInflight.set(filePath, inflight)
-    }
-    audioRef.audioBuffer = await inflight
-  }
-
-  const ensureDecodedTransportEntry = async (entry: TransportEntry): Promise<void> => {
-    if (isStemMixMode()) {
-      const stemIds = resolveStemIdsForMode()
-      await Promise.all(
-        stemIds.map(async (stemId) => {
-          const stemAudio = entry.stemAudioById?.[stemId]
-          if (!stemAudio) return
-          await ensureDecodedStemAudio(stemAudio)
-        })
-      )
-      return
-    }
-    if (!entry.audioRef) return
-    await ensureDecodedAudioRef(entry.audioRef)
-  }
-
-  /**
-   * 并行解码所有轨道，根据 decodeMode 自动选择解码路径
-   */
-  const decodeAllTransportEntries = async (entries: TransportEntry[]): Promise<number> => {
-    if (!entries.length) return 0
-    let failCount = 0
-    if (isStemMixMode()) {
-      const stemAudios: TransportStemAudioRef[] = []
-      for (const entry of entries) {
-        for (const stemId of resolveStemIdsForMode()) {
-          const stemAudio = entry.stemAudioById?.[stemId]
-          if (!stemAudio) continue
-          stemAudios.push(stemAudio)
-        }
-      }
-      await Promise.all(
-        stemAudios.map(async (stemAudio) => {
-          try {
-            await ensureDecodedStemAudio(stemAudio)
-          } catch (error) {
-            console.error(
-              `[mixtape-transport] 解码失败 (${stemAudio.decodeMode}):`,
-              stemAudio.filePath,
-              error
-            )
-            failCount += 1
-          }
-        })
-      )
-      return failCount
-    }
-    await Promise.all(
-      entries.map(async (entry) => {
-        const audioRef = entry.audioRef
-        if (!audioRef) return
-        try {
-          await ensureDecodedAudioRef(audioRef)
-        } catch (error) {
-          console.error(
-            `[mixtape-transport] 解码失败 (${audioRef.decodeMode}):`,
-            audioRef.filePath,
-            error
-          )
-          failCount += 1
-        }
-      })
-    )
-    return failCount
-  }
   const { renderMixtapeOutputWav } = createTimelineTransportRenderWavModule({
     t,
     buildTransportEntries,
@@ -866,112 +439,6 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       automationAtSec?: number
     ) => mirrorTransportStemPlaybackRates(nodes, audioCtx, automationAtSec)
   })
-
-  const preloadTransportBuffers = async () => {
-    if (isStemMixMode() && !isStemAutoPreloadReady()) {
-      transportPreloading.value = false
-      transportPreloadTotal.value = 0
-      transportPreloadDone.value = 0
-      transportPreloadFailed.value = 0
-      return
-    }
-    const version = ++transportPreloadVersion
-    const plan = buildTransportEntries()
-    const useStemMode = isStemMixMode()
-    const uniqueAudioRefs = new Map<string, TransportAudioRef>()
-    if (useStemMode) {
-      for (const entry of plan.entries) {
-        for (const stemId of resolveStemIdsForMode()) {
-          const stemAudio = entry.stemAudioById?.[stemId]
-          const stemPath = String(stemAudio?.filePath || '').trim()
-          if (!stemAudio || !stemPath || uniqueAudioRefs.has(stemPath)) continue
-          uniqueAudioRefs.set(stemPath, stemAudio)
-        }
-      }
-    } else {
-      for (const entry of plan.entries) {
-        const audioRef = entry.audioRef
-        const filePath = String(audioRef?.filePath || '').trim()
-        if (!audioRef || !filePath || uniqueAudioRefs.has(filePath)) continue
-        uniqueAudioRefs.set(filePath, audioRef)
-      }
-    }
-    const uniqueAudios = Array.from(uniqueAudioRefs.values())
-
-    const keepPaths = new Set(uniqueAudios.map((item) => item.filePath))
-    for (const key of Array.from(transportDecodedBufferCache.keys())) {
-      if (!keepPaths.has(key)) {
-        transportDecodedBufferCache.delete(key)
-      }
-    }
-
-    transportPreloadTotal.value = uniqueAudios.length
-    transportPreloadDone.value = 0
-    transportPreloadFailed.value = 0
-
-    if (!uniqueAudios.length) {
-      transportPreloading.value = false
-      return
-    }
-
-    transportPreloading.value = true
-    const pendingAudios: TransportAudioRef[] = []
-    for (const audioRef of uniqueAudios) {
-      const cached = readTransportBufferCache(audioRef.filePath)
-      if (cached) {
-        audioRef.audioBuffer = cached
-        transportPreloadDone.value += 1
-        continue
-      }
-      pendingAudios.push(audioRef)
-    }
-    if (!pendingAudios.length) {
-      transportPreloading.value = false
-      return
-    }
-
-    let cursor = 0
-    const workerCount = Math.max(1, Math.min(3, pendingAudios.length))
-    const workers = Array.from({ length: workerCount }, async () => {
-      while (true) {
-        if (version !== transportPreloadVersion) return
-        const index = cursor
-        cursor += 1
-        if (index >= pendingAudios.length) return
-        const audioRef = pendingAudios[index]
-        try {
-          await ensureDecodedAudioRef(audioRef)
-        } catch (error) {
-          console.error('[mixtape-transport] 预解码失败:', audioRef.filePath, error)
-          if (version === transportPreloadVersion) {
-            transportPreloadFailed.value += 1
-          }
-        } finally {
-          if (version === transportPreloadVersion) {
-            transportPreloadDone.value += 1
-          }
-        }
-      }
-    })
-    await Promise.all(workers)
-    if (version !== transportPreloadVersion) return
-    transportPreloading.value = false
-  }
-
-  const scheduleTransportPreload = () => {
-    if (isStemMixMode() && !isStemAutoPreloadReady()) {
-      cancelTransportPreload()
-      transportPreloadTotal.value = 0
-      transportPreloadDone.value = 0
-      transportPreloadFailed.value = 0
-      return
-    }
-    clearTransportPreloadTimer()
-    transportPreloadTimer = setTimeout(() => {
-      transportPreloadTimer = null
-      void preloadTransportBuffers()
-    }, 80)
-  }
 
   // ── 启动单轨音频图播放（(StemSource -> StemGain)... -> StemBus -> Volume -> Gain）─────
   const startTransportTrack = (entry: TransportEntry, offsetSourceSec: number, whenSec: number) => {
@@ -1480,7 +947,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     })
 
   const cleanupTransportAndDrag = () => {
-    cancelTransportPreload()
+    cleanupTransportAudioData()
     stopTransport()
     cleanupTrackDrag()
     // 关闭 AudioContext 释放资源
@@ -1490,8 +957,6 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       } catch {}
       transportAudioCtx = null
     }
-    transportDecodeInflight.clear()
-    transportDecodedBufferCache.clear()
   }
 
   return {
