@@ -656,7 +656,7 @@
     "mixModeCreateTitle": "Choose Mix Mode",
     "mixModeCreateHint": "This mode is saved to the project and cannot be changed after creation.",
     "mixModeStemLabel": "Stems Mix",
-    "mixModeTraditionalLabel": "Traditional EQ Mix",
+    "mixModeTraditionalLabel": "EQ Mix",
     "mixModeStemTag": "Stems",
     "mixModeTraditionalTag": "Trad EQ",
     "mixModePersistFailed": "Failed to save project mix mode. Please try again.",
