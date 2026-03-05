@@ -39,17 +39,8 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     bass: { r: 168, g: 85, b: 247 },
     drums: { r: 249, g: 115, b: 22 }
   }
-  const STEM_WAVEFORM_BASE_BRIGHTNESS = 0.72
-  const STEM_WAVEFORM_PEAK_BRIGHTNESS_RANGE = 0.45
-  const STEM_WAVEFORM_PEAK_ALPHA = 0.34
-  const STEM_WAVEFORM_MAIN_ALPHA = 0.98
+  const STEM_WAVEFORM_MAIN_ALPHA = 0.96
   const STEM_WAVEFORM_RAW_ALPHA = 1
-  const toColorChannel = (value: number) => Math.max(0, Math.min(255, Math.round(value)))
-  const scaleColor = (color: { r: number; g: number; b: number }, factor: number) => ({
-    r: toColorChannel(color.r * factor),
-    g: toColorChannel(color.g * factor),
-    b: toColorChannel(color.b * factor)
-  })
   const resolveStemWaveformColor = (stemId?: WaveformStemId) =>
     STEM_WAVEFORM_COLORS[stemId || 'inst'] || STEM_WAVEFORM_COLORS.inst
   const normalizeBeatOffset = (value: number, interval: number) => {
@@ -173,7 +164,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     ctx: OffscreenCanvasRenderingContext2D,
     width: number,
     height: number,
-    waveformData: StemWaveformData,
+    waveformData: StemWaveformData | null,
     pixelRatio: number,
     stemId: WaveformStemId,
     range: {
@@ -185,17 +176,6 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     }
   ) => {
     if (width <= 0 || height <= 0) return
-
-    const all = waveformData.all
-    const frameCount = Math.min(all.left.length, all.right.length)
-    if (!frameCount) return
-
-    const rawStart = Number.isFinite(range.startFrame) ? range.startFrame : 0
-    const rawEnd = Number.isFinite(range.endFrame) ? range.endFrame : frameCount
-    const startFrame = Math.max(0, Math.min(frameCount - 1, Math.floor(rawStart)))
-    const endFrame = Math.max(startFrame + 1, Math.min(frameCount, Math.ceil(rawEnd)))
-    const visibleFrames = endFrame - startFrame
-    if (visibleFrames <= 0) return
 
     const rawData = range.raw || null
     const rawMinLeft = rawData?.minLeft || null
@@ -216,9 +196,22 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       Number.isFinite(rawSpan) &&
       rawSpan > 0
 
+    const all = waveformData?.all || null
+    const peakLeft = all ? all.peakLeft || all.left : null
+    const peakRight = all ? all.peakRight || all.right : null
+    const frameCount = all
+      ? Math.min(all.left.length, all.right.length, peakLeft?.length || 0, peakRight?.length || 0)
+      : 1
+    if (!hasRaw && (!all || !peakLeft || !peakRight || frameCount <= 0)) return
+
+    const rawStart = Number.isFinite(range.startFrame) ? range.startFrame : 0
+    const rawEnd = Number.isFinite(range.endFrame) ? range.endFrame : frameCount
+    const startFrame = Math.max(0, Math.min(frameCount - 1, Math.floor(rawStart)))
+    const endFrame = Math.max(startFrame + 1, Math.min(frameCount, Math.ceil(rawEnd)))
+    const visibleFrames = endFrame - startFrame
+    if (visibleFrames <= 0) return
+
     const length = Math.max(1, Math.floor(width * pixelRatio))
-    const gain = (visibleFrames * 2) / length
-    const offset = startFrame * 2
     const halfBreadth = height / 2
     const heightFactor = (halfBreadth * normalizedWaveformHeightScale) / 255
     const rawHeightFactor = halfBreadth * normalizedWaveformHeightScale
@@ -227,14 +220,9 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     ctx.globalCompositeOperation = 'source-over'
     ctx.imageSmoothingEnabled = false
 
-    const columns = new Array<{
-      color: { r: number; g: number; b: number }
-      avgTop: number
-      avgBottom: number
-      peakTop: number
-      peakBottom: number
-    } | null>(length)
-
+    const amplitudes = new Float32Array(length)
+    const gain = (visibleFrames * 2) / length
+    const offset = startFrame * 2
     const useInterpolatedSamples = gain <= 2
     const rawFrames = hasRaw
       ? Math.min(rawMinLeft.length, rawMaxLeft.length, rawMinRight.length, rawMaxRight.length)
@@ -244,61 +232,8 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     const rawVisible = hasRaw ? Math.max(1, rawEndPos - rawStartPos) : 0
     const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 
-    for (let x = 0; x < length; x += 1) {
-      const xSampleWidth = gain * x
-      const xVisualSampleIndex = xSampleWidth + offset
-      const maxSamplingRange = gain / 2
-
-      let maxAllLeft = 0
-      let maxAllRight = 0
-      let maxAllAvgLeft = 0
-      let maxAllAvgRight = 0
-
-      if (useInterpolatedSamples) {
-        const framePos = Math.max(startFrame, Math.min(endFrame - 1, xVisualSampleIndex / 2))
-        const i0 = Math.floor(framePos)
-        const i1 = Math.min(endFrame - 1, i0 + 1)
-        const t = framePos - i0
-        const allAvgLeft = lerp(all.left[i0], all.left[i1], t)
-        const allAvgRight = lerp(all.right[i0], all.right[i1], t)
-        const peakLeft0 = all.peakLeft ? all.peakLeft[i0] : all.left[i0]
-        const peakLeft1 = all.peakLeft ? all.peakLeft[i1] : all.left[i1]
-        const peakRight0 = all.peakRight ? all.peakRight[i0] : all.right[i0]
-        const peakRight1 = all.peakRight ? all.peakRight[i1] : all.right[i1]
-        maxAllLeft = lerp(peakLeft0, peakLeft1, t)
-        maxAllRight = lerp(peakRight0, peakRight1, t)
-        maxAllAvgLeft = allAvgLeft
-        maxAllAvgRight = allAvgRight
-      } else {
-        let visualFrameStart = Math.floor(xVisualSampleIndex / 2 - maxSamplingRange + 0.5)
-        let visualFrameStop = Math.floor(xVisualSampleIndex / 2 + maxSamplingRange + 0.5)
-        visualFrameStart = Math.max(startFrame, Math.min(endFrame - 1, visualFrameStart))
-        visualFrameStop = Math.max(startFrame, Math.min(endFrame - 1, visualFrameStop))
-        if (visualFrameStop < visualFrameStart) {
-          const tmp = visualFrameStop
-          visualFrameStop = visualFrameStart
-          visualFrameStart = tmp
-        }
-
-        for (let i = visualFrameStart; i <= visualFrameStop; i += 1) {
-          const allAvgLeft = all.left[i]
-          const allAvgRight = all.right[i]
-          const allLeft = all.peakLeft ? all.peakLeft[i] : allAvgLeft
-          const allRight = all.peakRight ? all.peakRight[i] : allAvgRight
-
-          if (allLeft > maxAllLeft) maxAllLeft = allLeft
-          if (allRight > maxAllRight) maxAllRight = allRight
-          if (allAvgLeft > maxAllAvgLeft) maxAllAvgLeft = allAvgLeft
-          if (allAvgRight > maxAllAvgRight) maxAllAvgRight = allAvgRight
-        }
-      }
-
-      let avgTop = heightFactor * maxAllAvgLeft
-      let avgBottom = heightFactor * maxAllAvgRight
-      let peakTop = heightFactor * maxAllLeft
-      let peakBottom = heightFactor * maxAllRight
-
-      if (hasRaw && rawMinLeft && rawMaxLeft && rawMinRight && rawMaxRight && rawFrames > 1) {
+    if (hasRaw && rawMinLeft && rawMaxLeft && rawMinRight && rawMaxRight && rawFrames > 1) {
+      for (let x = 0; x < length; x += 1) {
         const rawPos = rawStartPos + (x / Math.max(1, length - 1)) * rawVisible
         const rawIndex = Math.max(0, Math.min(rawFrames - 1, rawPos))
         const i0 = Math.floor(rawIndex)
@@ -308,60 +243,70 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
         const rawMaxLeftValue = lerp(rawMaxLeft[i0] || 0, rawMaxLeft[i1] || 0, t)
         const rawMinRightValue = lerp(rawMinRight[i0] || 0, rawMinRight[i1] || 0, t)
         const rawMaxRightValue = lerp(rawMaxRight[i0] || 0, rawMaxRight[i1] || 0, t)
-        const leftPeak = Math.max(Math.abs(rawMinLeftValue), Math.abs(rawMaxLeftValue))
-        const rightPeak = Math.max(Math.abs(rawMinRightValue), Math.abs(rawMaxRightValue))
-        avgTop = leftPeak * rawHeightFactor
-        avgBottom = rightPeak * rawHeightFactor
-        peakTop = avgTop
-        peakBottom = avgBottom
+        const monoPeak = Math.max(
+          Math.abs(rawMinLeftValue),
+          Math.abs(rawMaxLeftValue),
+          Math.abs(rawMinRightValue),
+          Math.abs(rawMaxRightValue)
+        )
+        amplitudes[x] = monoPeak * rawHeightFactor
       }
-
-      const localPeak = Math.max(maxAllLeft, maxAllRight) / 255
-      const color = scaleColor(
-        stemColor,
-        STEM_WAVEFORM_BASE_BRIGHTNESS + localPeak * STEM_WAVEFORM_PEAK_BRIGHTNESS_RANGE
-      )
-      columns[x] = {
-        color,
-        avgTop,
-        avgBottom,
-        peakTop,
-        peakBottom
+    } else {
+      if (!peakLeft || !peakRight) return
+      for (let x = 0; x < length; x += 1) {
+        const xSampleWidth = gain * x
+        const xVisualSampleIndex = xSampleWidth + offset
+        const maxSamplingRange = gain / 2
+        let monoAmp = 0
+        if (useInterpolatedSamples) {
+          const framePos = Math.max(startFrame, Math.min(endFrame - 1, xVisualSampleIndex / 2))
+          const i0 = Math.floor(framePos)
+          const i1 = Math.min(endFrame - 1, i0 + 1)
+          const t = framePos - i0
+          const mono0 = Math.max(peakLeft[i0] || 0, peakRight[i0] || 0)
+          const mono1 = Math.max(peakLeft[i1] || mono0, peakRight[i1] || mono0)
+          monoAmp = lerp(mono0, mono1, t)
+        } else {
+          let visualFrameStart = Math.floor(xVisualSampleIndex / 2 - maxSamplingRange + 0.5)
+          let visualFrameStop = Math.floor(xVisualSampleIndex / 2 + maxSamplingRange + 0.5)
+          visualFrameStart = Math.max(startFrame, Math.min(endFrame - 1, visualFrameStart))
+          visualFrameStop = Math.max(startFrame, Math.min(endFrame - 1, visualFrameStop))
+          if (visualFrameStop < visualFrameStart) {
+            const tmp = visualFrameStop
+            visualFrameStop = visualFrameStart
+            visualFrameStart = tmp
+          }
+          for (let i = visualFrameStart; i <= visualFrameStop; i += 1) {
+            const peak = Math.max(peakLeft[i] || 0, peakRight[i] || 0)
+            if (peak > monoAmp) monoAmp = peak
+          }
+        }
+        amplitudes[x] = monoAmp * heightFactor
       }
     }
 
-    const drawBand = (alpha: number, usePeak: boolean) => {
+    const drawMonoBand = (alpha: number) => {
+      ctx.fillStyle = `rgba(${stemColor.r}, ${stemColor.g}, ${stemColor.b}, ${alpha})`
       for (let x = 0; x < length - 1; x += 1) {
-        const current = columns[x]
-        const next = columns[x + 1]
-        if (!current && !next) continue
-        const color = current?.color || next?.color
-        if (!color) continue
-        const curTop = usePeak ? (current?.peakTop ?? 0) : (current?.avgTop ?? 0)
-        const curBottom = usePeak ? (current?.peakBottom ?? 0) : (current?.avgBottom ?? 0)
-        const nextTop = usePeak ? (next?.peakTop ?? curTop) : (next?.avgTop ?? curTop)
-        const nextBottom = usePeak
-          ? (next?.peakBottom ?? curBottom)
-          : (next?.avgBottom ?? curBottom)
+        const curAmp = amplitudes[x] || 0
+        const nextAmp = amplitudes[x + 1] || curAmp
         const x0 = x * pixelWidth
         const x1 = (x + 1) * pixelWidth
 
-        ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`
         ctx.beginPath()
-        ctx.moveTo(x0, halfBreadth - curTop)
-        ctx.lineTo(x1, halfBreadth - nextTop)
-        ctx.lineTo(x1, halfBreadth + nextBottom)
-        ctx.lineTo(x0, halfBreadth + curBottom)
+        ctx.moveTo(x0, halfBreadth - curAmp)
+        ctx.lineTo(x1, halfBreadth - nextAmp)
+        ctx.lineTo(x1, halfBreadth + nextAmp)
+        ctx.lineTo(x0, halfBreadth + curAmp)
         ctx.closePath()
         ctx.fill()
       }
     }
 
     if (hasRaw) {
-      drawBand(STEM_WAVEFORM_RAW_ALPHA, false)
+      drawMonoBand(STEM_WAVEFORM_RAW_ALPHA)
     } else {
-      drawBand(STEM_WAVEFORM_PEAK_ALPHA, true)
-      drawBand(STEM_WAVEFORM_MAIN_ALPHA, false)
+      drawMonoBand(STEM_WAVEFORM_MAIN_ALPHA)
     }
     ctx.globalAlpha = 1
   }
@@ -417,14 +362,14 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       return tileCanvas.transferToImageBitmap()
     }
 
-    if (!waveform) {
+    if (!waveform && !rawData) {
       renderEmptyPlaceholder(tileCtx, tileWidth, laneHeight)
       return tileCanvas.transferToImageBitmap()
     }
 
-    const all = waveform.all
-    const frameCount = Math.min(all.left.length, all.right.length)
-    if (!frameCount || !trackWidth) {
+    const all = waveform?.all || null
+    const frameCount = all ? Math.min(all.left.length, all.right.length) : 1
+    if (!trackWidth || frameCount <= 0) {
       renderEmptyPlaceholder(tileCtx, tileWidth, laneHeight)
       return tileCanvas.transferToImageBitmap()
     }
@@ -456,7 +401,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
           scratch.ctx,
           tileWidth * renderScale,
           laneHeight,
-          waveform,
+          waveform || null,
           pixelRatio,
           stemId,
           {
@@ -486,7 +431,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       }
     }
 
-    drawStemWaveform(tileCtx, tileWidth, laneHeight, waveform, pixelRatio, stemId, {
+    drawStemWaveform(tileCtx, tileWidth, laneHeight, waveform || null, pixelRatio, stemId, {
       startFrame,
       endFrame,
       startTime,

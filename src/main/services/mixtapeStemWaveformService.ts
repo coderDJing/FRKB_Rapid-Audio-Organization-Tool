@@ -13,6 +13,8 @@ const STEM_IDS_4: StemWaveformStemId[] = ['vocal', 'inst', 'bass', 'drums']
 const DEFAULT_STEM_MODEL = 'htdemucs'
 const DEFAULT_STEM_VERSION = 'unknown'
 const DEFAULT_TARGET_RATE = 441
+// 关闭 stem 低分辨率预览波形数据生成，统一走 raw 波形渲染
+const ENABLE_STEM_PREVIEW_WAVEFORM = false
 
 type StemWaveformPaths = {
   vocalPath?: string | null
@@ -215,6 +217,7 @@ const buildPrewarmKey = (params: EnsureMixtapeStemWaveformBundleParams): string 
 export async function ensureMixtapeStemWaveformBundle(
   params: EnsureMixtapeStemWaveformBundleParams
 ): Promise<MixtapeStemWaveformBundleResult | null> {
+  if (!ENABLE_STEM_PREVIEW_WAVEFORM) return null
   const sourceFilePath = normalizeFilePath(params?.sourceFilePath)
   if (!sourceFilePath) return null
   const stemMode = normalizeStemMode(params?.stemMode)
@@ -305,6 +308,7 @@ export async function ensureMixtapeStemWaveformBundle(
 export function prewarmMixtapeStemWaveformBundle(
   params: EnsureMixtapeStemWaveformBundleParams
 ): void {
+  if (!ENABLE_STEM_PREVIEW_WAVEFORM) return
   const key = buildPrewarmKey(params)
   if (!key || prewarmInflight.has(key)) return
   prewarmInflight.add(key)

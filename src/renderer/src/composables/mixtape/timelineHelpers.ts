@@ -553,7 +553,11 @@ export const createTimelineHelpersModule = (ctx: any) => {
       const filePath = source.filePath
       if (!filePath) return false
       if (waveformInflight.has(filePath)) return false
-      if (!waveformDataMap.get(filePath)) return false
+      const waveformData = waveformDataMap.get(filePath)
+      if (waveformData) continue
+      const rawData = rawWaveformDataMap.get(filePath)
+      if (rawData) continue
+      return false
     }
     return true
   }

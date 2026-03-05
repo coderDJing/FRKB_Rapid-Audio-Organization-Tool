@@ -98,6 +98,8 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     waveformVersion
   } = ctx
   const isStemMixMode = () => mixtapeMixMode?.value !== 'traditional'
+  // Stem 场景仅渲染 raw 波形，关闭低分辨率预览波形数据生成/加载
+  const ENABLE_STEM_PREVIEW_WAVEFORM = false
   const isStemWaveformData = (value: unknown): value is StemWaveformData =>
     Boolean(value && typeof value === 'object' && (value as StemWaveformData).all)
   const isMixxxWaveformData = (value: unknown): value is MixxxWaveformData =>
@@ -428,25 +430,11 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     render: WaveformRenderContext,
     tile: WaveformTile
   ) => {
-    const { trackWidth, sourceDurationSeconds, data, frameCount, rawData } = render
+    const { trackWidth, sourceDurationSeconds, data, rawData } = render
     if (render.renderZoom <= MIXTAPE_SUMMARY_ZOOM + 0.0001) {
       renderSummaryWaveformBar(ctx, width, height)
       return
     }
-    if (!data || frameCount <= 0) {
-      ctx.strokeStyle = 'rgba(128, 128, 128, 0.3)'
-      ctx.setLineDash([4, 4])
-      const midY = height / 2
-      ctx.beginPath()
-      ctx.moveTo(0, midY)
-      ctx.lineTo(width, midY)
-      ctx.stroke()
-      ctx.setLineDash([])
-      return
-    }
-
-    const startFrame = Math.floor((tile.start / Math.max(1, trackWidth)) * frameCount)
-    const endFrame = Math.ceil(((tile.start + tile.width) / Math.max(1, trackWidth)) * frameCount)
     const rawDurationSeconds =
       rawData && Number.isFinite(rawData.duration) && rawData.duration > 0 ? rawData.duration : 0
     const waveformDurationSeconds =
@@ -470,11 +458,31 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     const stemMode = isStemMixMode()
     const stemData = stemMode && isStemWaveformData(data) ? data : null
     const mixxxData = !stemMode && isMixxxWaveformData(data) ? data : null
-    if (stemMode && !stemData) return
-    if (!stemMode && !mixxxData) return
 
     const drawWaveform = (targetCtx: CanvasRenderingContext2D, targetWidth: number) => {
-      if (stemData) {
+      if (stemMode) {
+        if (!stemData && !resolvedRaw) {
+          targetCtx.strokeStyle = 'rgba(128, 128, 128, 0.3)'
+          targetCtx.setLineDash([4, 4])
+          const midY = height / 2
+          targetCtx.beginPath()
+          targetCtx.moveTo(0, midY)
+          targetCtx.lineTo(targetWidth, midY)
+          targetCtx.stroke()
+          targetCtx.setLineDash([])
+          return
+        }
+        const frameCountFromStem = stemData
+          ? Math.min(stemData.all.left.length, stemData.all.right.length)
+          : 0
+        const startFrame =
+          frameCountFromStem > 0
+            ? Math.floor((tile.start / Math.max(1, trackWidth)) * frameCountFromStem)
+            : 0
+        const endFrame =
+          frameCountFromStem > 0
+            ? Math.ceil(((tile.start + tile.width) / Math.max(1, trackWidth)) * frameCountFromStem)
+            : 1
         drawStemWaveform(targetCtx, targetWidth, height, stemData, useHalfWaveform(), {
           startFrame,
           endFrame,
@@ -485,6 +493,31 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
         })
         return
       }
+      const frameCount = mixxxData
+        ? Math.min(
+            mixxxData.bands.low.left.length,
+            mixxxData.bands.low.right.length,
+            mixxxData.bands.mid.left.length,
+            mixxxData.bands.mid.right.length,
+            mixxxData.bands.high.left.length,
+            mixxxData.bands.high.right.length,
+            mixxxData.bands.all.left.length,
+            mixxxData.bands.all.right.length
+          )
+        : 0
+      if (!mixxxData || frameCount <= 0) {
+        targetCtx.strokeStyle = 'rgba(128, 128, 128, 0.3)'
+        targetCtx.setLineDash([4, 4])
+        const midY = height / 2
+        targetCtx.beginPath()
+        targetCtx.moveTo(0, midY)
+        targetCtx.lineTo(targetWidth, midY)
+        targetCtx.stroke()
+        targetCtx.setLineDash([])
+        return
+      }
+      const startFrame = Math.floor((tile.start / Math.max(1, trackWidth)) * frameCount)
+      const endFrame = Math.ceil(((tile.start + tile.width) / Math.max(1, trackWidth)) * frameCount)
       drawMixxxRgbWaveform(targetCtx, targetWidth, height, mixxxData, useHalfWaveform(), {
         startFrame,
         endFrame,
@@ -768,15 +801,40 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     }
   }
 
-  const fetchRawWaveformBatch = async (filePaths: string[]) => {
-    if (!filePaths.length) return
-    for (const filePath of filePaths) {
+  type RawWaveformBatchTarget = {
+    filePath: string
+    listRoot?: string
+  }
+
+  const fetchRawWaveformBatch = async (targets: RawWaveformBatchTarget[]) => {
+    if (!targets.length) return
+    const normalizedTargets: RawWaveformBatchTarget[] = []
+    const targetSet = new Set<string>()
+    for (const target of targets) {
+      const filePath = String(target?.filePath || '').trim()
+      if (!filePath || targetSet.has(filePath)) continue
+      targetSet.add(filePath)
+      normalizedTargets.push({
+        filePath,
+        listRoot: String(target?.listRoot || '').trim()
+      })
+    }
+    if (!normalizedTargets.length) return
+    const requestedPaths = normalizedTargets.map((target) => target.filePath)
+    const listRootByFilePath: Record<string, string> = {}
+    for (const target of normalizedTargets) {
+      const listRoot = String(target.listRoot || '').trim()
+      if (!listRoot) continue
+      listRootByFilePath[target.filePath] = listRoot
+    }
+    for (const filePath of requestedPaths) {
       rawWaveformInflight.add(filePath)
     }
     let response: { items?: Array<{ filePath: string; data: any | null }> } | null = null
     try {
       response = await window.electron.ipcRenderer.invoke('mixtape-waveform-raw:batch', {
-        filePaths,
+        filePaths: requestedPaths,
+        listRootByFilePath: Object.keys(listRootByFilePath).length ? listRootByFilePath : undefined,
         targetRate: RAW_WAVEFORM_TARGET_RATE,
         preferSharedDecode: true
       })
@@ -786,7 +844,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     const items = Array.isArray(response?.items) ? response!.items : []
     const itemMap = new Map(items.map((entry) => [entry?.filePath || '', entry?.data ?? null]))
     let updated = false
-    for (const filePath of filePaths) {
+    for (const filePath of requestedPaths) {
       try {
         const decoded = decodeRawWaveformData(itemMap.get(filePath))
         rawWaveformDataMap.set(filePath, decoded)
@@ -818,6 +876,21 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
 
   const loadWaveforms = async () => {
     if (!tracks.value.length) return
+    if (isStemMixMode() && !ENABLE_STEM_PREVIEW_WAVEFORM) {
+      for (const track of tracks.value) {
+        const waveformSources = resolveTrackWaveformSources(track)
+        for (const source of waveformSources) {
+          const filePath = String(source.filePath || '').trim()
+          if (!filePath) continue
+          if (!waveformDataMap.has(filePath)) {
+            waveformDataMap.set(filePath, null)
+            pushStemWaveformToWorker(filePath, null)
+          }
+        }
+      }
+      scheduleWaveformDraw()
+      return
+    }
     if (!isStemMixMode()) {
       const grouped = new Map<string, string[]>()
       for (const track of tracks.value) {
@@ -923,14 +996,30 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
           Math.floor(viewport?.clientWidth || Number(timelineViewportWidth.value || 0))
         )
 
-        const targets: string[] = []
-        const targetSet = new Set<string>()
-        const pushTarget = (filePath: string) => {
-          if (!filePath) return
-          if (targetSet.has(filePath)) return
-          if (rawWaveformDataMap.has(filePath) || rawWaveformInflight.has(filePath)) return
-          targetSet.add(filePath)
-          targets.push(filePath)
+        const targets: RawWaveformBatchTarget[] = []
+        const targetIndexMap = new Map<string, number>()
+        const pushTarget = (filePath: string, listRoot?: string) => {
+          const normalizedFilePath = String(filePath || '').trim()
+          if (!normalizedFilePath) return
+          if (
+            rawWaveformDataMap.has(normalizedFilePath) ||
+            rawWaveformInflight.has(normalizedFilePath)
+          ) {
+            return
+          }
+          const normalizedListRoot = String(listRoot || '').trim()
+          const existingIndex = targetIndexMap.get(normalizedFilePath)
+          if (typeof existingIndex === 'number') {
+            if (normalizedListRoot && !targets[existingIndex].listRoot) {
+              targets[existingIndex].listRoot = normalizedListRoot
+            }
+            return
+          }
+          targetIndexMap.set(normalizedFilePath, targets.length)
+          targets.push({
+            filePath: normalizedFilePath,
+            listRoot: normalizedListRoot
+          })
         }
 
         if (viewportWidth <= 0) {
@@ -938,7 +1027,10 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
           for (const track of tracks.value) {
             const waveformSources = resolveTrackWaveformSources(track)
             for (const waveformSource of waveformSources) {
-              pushTarget(waveformSource.filePath)
+              pushTarget(
+                waveformSource.filePath,
+                waveformSource.listRoot || resolveWaveformListRoot(track)
+              )
             }
             if (targets.length >= fallbackLimit) break
           }
@@ -958,7 +1050,10 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
           (item: TimelineTrackLayout) => {
             const waveformSources = resolveTrackWaveformSources(item.track)
             for (const waveformSource of waveformSources) {
-              pushTarget(waveformSource.filePath)
+              pushTarget(
+                waveformSource.filePath,
+                waveformSource.listRoot || resolveWaveformListRoot(item.track)
+              )
             }
           }
         )
@@ -968,7 +1063,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
       const targets = collectVisibleTargets()
       if (!targets.length) return
 
-      const batches: string[][] = []
+      const batches: RawWaveformBatchTarget[][] = []
       for (let i = 0; i < targets.length; i += RAW_WAVEFORM_BATCH_SIZE) {
         const batch = targets.slice(i, i + RAW_WAVEFORM_BATCH_SIZE)
         if (batch.length) batches.push(batch)
@@ -1025,6 +1120,10 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
         }
       }
       void fetchWaveformBatch([filePath], listRoot || undefined)
+      return
+    }
+    if (!ENABLE_STEM_PREVIEW_WAVEFORM) {
+      scheduleWaveformDraw()
       return
     }
 

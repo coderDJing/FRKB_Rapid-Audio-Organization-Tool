@@ -24,6 +24,17 @@ export function registerCacheHandlers() {
     return parsed
   }
 
+  const resolveRendererListRoot = (value: unknown) => {
+    const listRootRaw = typeof value === 'string' ? value.trim() : ''
+    if (!listRootRaw) return ''
+    let input = listRootRaw
+    if (process.platform === 'win32' && /^\//.test(input)) input = input.replace(/^\/+/, '')
+    if (path.isAbsolute(input)) return input
+    if (!store.databaseDir) return ''
+    const mapped = mapRendererPathToFsPath(input)
+    return path.join(store.databaseDir, mapped)
+  }
+
   const resolveRequestedWaveformRate = (value: unknown) => {
     const parsed = Number(value)
     if (!Number.isFinite(parsed) || parsed <= 0) return undefined
@@ -250,6 +261,7 @@ export function registerCacheHandlers() {
       _e,
       payload: {
         filePaths?: string[]
+        listRootByFilePath?: Record<string, string>
         targetRate?: number
         preferSharedDecode?: boolean
       }
@@ -264,10 +276,30 @@ export function registerCacheHandlers() {
 
       const targetRate = resolveRequestedRawRate(payload?.targetRate)
       const preferSharedDecode = Boolean(payload?.preferSharedDecode)
+      const inputListRootByFilePath =
+        payload?.listRootByFilePath && typeof payload.listRootByFilePath === 'object'
+          ? payload.listRootByFilePath
+          : {}
+      const listRootByExactFilePath = new Map<string, string>()
+      const listRootByNormalizedFilePath = new Map<string, string>()
+      for (const [rawFilePath, rawListRoot] of Object.entries(inputListRootByFilePath)) {
+        const filePath = typeof rawFilePath === 'string' ? rawFilePath.trim() : ''
+        if (!filePath) continue
+        const listRoot = resolveRendererListRoot(rawListRoot)
+        if (!listRoot) continue
+        listRootByExactFilePath.set(filePath, listRoot)
+        listRootByNormalizedFilePath.set(path.normalize(filePath), listRoot)
+      }
       const items: Array<{ filePath: string; data: any | null }> = []
       for (const filePath of normalizedPaths) {
         try {
-          let listRoot = await findSongListRoot(path.dirname(filePath))
+          let listRoot =
+            listRootByExactFilePath.get(filePath) ||
+            listRootByNormalizedFilePath.get(path.normalize(filePath)) ||
+            ''
+          if (!listRoot) {
+            listRoot = (await findSongListRoot(path.dirname(filePath))) || ''
+          }
           let stat = await fs.stat(filePath).catch(() => null)
           let cached: any | null | undefined = null
           if (listRoot && stat) {

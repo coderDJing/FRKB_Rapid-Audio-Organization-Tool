@@ -356,13 +356,10 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
           const filePath = waveformSource.filePath
           if (!filePath) continue
           const data = waveformDataMap.get(filePath)
+          const raw = rawWaveformDataMap.get(filePath)
           const isSummary = renderZoomValue <= MIXTAPE_SUMMARY_ZOOM + 0.0001
-          if (!data && !isSummary) continue
-          if (
-            renderZoomValue >= RAW_WAVEFORM_MIN_ZOOM &&
-            !rawWaveformDataMap.get(filePath) &&
-            !isSummary
-          ) {
+          if (!data && !raw && !isSummary) continue
+          if (renderZoomValue >= RAW_WAVEFORM_MIN_ZOOM && !raw && !isSummary) {
             continue
           }
           const subLane = resolveWaveformSubLaneMetrics(
@@ -496,9 +493,10 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
           const filePath = waveformSource.filePath
           if (!filePath) continue
           const data = waveformDataMap.get(filePath)
+          const raw = rawWaveformDataMap.get(filePath)
           const isSummary = level <= MIXTAPE_SUMMARY_ZOOM + 0.0001
-          if (!data && !isSummary) continue
-          if (level >= RAW_WAVEFORM_MIN_ZOOM && !rawWaveformDataMap.get(filePath) && !isSummary) {
+          if (!data && !raw && !isSummary) continue
+          if (level >= RAW_WAVEFORM_MIN_ZOOM && !raw && !isSummary) {
             continue
           }
           const subLane = resolveWaveformSubLaneMetrics(

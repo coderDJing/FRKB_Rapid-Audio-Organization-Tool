@@ -93,6 +93,30 @@ const initializeApp = async () => {
       i18n.global.locale.value = lang === 'enUS' ? 'en-US' : 'zh-CN'
     }
   )
+  const getLibrary = async () => {
+    try {
+      const tree = await window.electron.ipcRenderer.invoke('getLibrary')
+      if (tree && typeof tree === 'object') {
+        runtime.libraryTree = tree
+        runtime.oldLibraryTree = JSON.parse(JSON.stringify(tree))
+      }
+    } catch (error) {
+      console.error('[mixtape] load library tree failed', error)
+    }
+  }
+  await getLibrary()
+  window.electron.ipcRenderer.on('library-tree-updated', async (_e, tree) => {
+    try {
+      if (tree && typeof tree === 'object') {
+        runtime.libraryTree = tree
+        runtime.oldLibraryTree = JSON.parse(JSON.stringify(tree))
+        return
+      }
+      await getLibrary()
+    } catch (error) {
+      console.error('[mixtape] sync library tree failed', error)
+    }
+  })
   app.mount('#app')
 }
 
