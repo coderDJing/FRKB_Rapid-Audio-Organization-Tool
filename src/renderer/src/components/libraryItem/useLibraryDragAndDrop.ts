@@ -28,15 +28,6 @@ export function useLibraryDragAndDrop({
   handleDropToSongList,
   emitter
 }: UseLibraryDragAndDropOptions) {
-  const emitDevLog = (message: string, data?: Record<string, unknown>) => {
-    try {
-      window.electron.ipcRenderer.send('devLog', {
-        scope: 'library-item-dnd',
-        message,
-        data: data || {}
-      })
-    } catch {}
-  }
   const getDirData = () => dirDataRef.value
   const getFatherDirData = () => fatherDirDataRef.value
 
@@ -110,10 +101,6 @@ export function useLibraryDragAndDrop({
       if (e.dataTransfer) {
         e.dataTransfer.dropEffect = 'none'
       }
-      emitDevLog('library drop blocked: mixtape source to normal list', {
-        sourceSongListUUID: runtime.dragSourceSongListUUID,
-        targetSongListUUID: props.uuid
-      })
       return true
     }
     if (isSongDrag && (dirData.type === 'songList' || dirData.type === 'mixtapeList')) {
@@ -200,16 +187,6 @@ export function useLibraryDragAndDrop({
       if (isInternalDrag) suppressNextLibraryClick()
       return
     }
-    emitDevLog('library drop hit', {
-      targetUuid: props.uuid,
-      targetType: dirData.type,
-      isInternalDrag,
-      runtimeSongDragActive: runtime.songDragActive,
-      runtimeDraggingPathCount: Array.isArray(runtime.draggingSongFilePaths)
-        ? runtime.draggingSongFilePaths.length
-        : 0,
-      hasSongDragMime: !!e.dataTransfer?.types?.includes('application/x-song-drag')
-    })
     if (isInternalDrag && (dirData.type === 'songList' || dirData.type === 'mixtapeList')) {
       if (isPlaylistInRecycleBin()) {
         dragState.dragApproach = ''
@@ -218,11 +195,6 @@ export function useLibraryDragAndDrop({
       }
       e.preventDefault()
       const movedSongPaths = await handleDropToSongList(props.uuid, runtime.libraryAreaSelected)
-      emitDevLog('library drop handled by songs dnd', {
-        targetUuid: props.uuid,
-        targetType: dirData.type,
-        movedCount: movedSongPaths.length
-      })
       suppressNextLibraryClick()
       dragState.dragApproach = ''
       if (movedSongPaths.length > 0) {

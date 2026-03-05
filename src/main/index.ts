@@ -505,28 +505,6 @@ ipcMain.on('outputLog', (e, logMsg) => {
   log.error(logMsg)
 })
 
-ipcMain.on('devLog', (_e, payload) => {
-  if (!is.dev) return
-  try {
-    const scope =
-      payload && typeof payload.scope === 'string' && payload.scope.trim()
-        ? payload.scope.trim()
-        : 'renderer'
-    const message =
-      payload && typeof payload.message === 'string' && payload.message.trim()
-        ? payload.message.trim()
-        : ''
-    const data = payload && typeof payload.data === 'object' ? payload.data : null
-    if (message) {
-      log.info(`[dev-log][${scope}] ${message}`, data || {})
-      return
-    }
-    log.info(`[dev-log][${scope}]`, data || {})
-  } catch (error) {
-    log.warn('[dev-log] log payload parse failed', error)
-  }
-})
-
 ipcMain.on('openLocalBrowser', (e, url) => {
   shell.openExternal(url)
 })

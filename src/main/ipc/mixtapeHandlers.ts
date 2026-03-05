@@ -777,18 +777,6 @@ export function registerMixtapeHandlers() {
     ) => {
       const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
       const inputItems = Array.isArray(payload?.items) ? payload.items : []
-      if (process.env.NODE_ENV !== 'production') {
-        log.info('[mixtape][dev] append request received', {
-          playlistId,
-          inputCount: inputItems.length,
-          sample: inputItems.slice(0, 2).map((item) => ({
-            filePath: typeof item?.filePath === 'string' ? item.filePath : '',
-            sourcePlaylistId:
-              typeof item?.sourcePlaylistId === 'string' ? item.sourcePlaylistId : '',
-            sourceItemId: typeof item?.sourceItemId === 'string' ? item.sourceItemId : ''
-          }))
-        })
-      }
 
       const normalizeText = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
       const normalizeInfo = (value: unknown): Record<string, any> | null => {
@@ -992,23 +980,8 @@ export function registerMixtapeHandlers() {
           inputCount: inputItems.length
         })
       }
-      if (process.env.NODE_ENV !== 'production') {
-        log.info('[mixtape][dev] append request normalized', {
-          playlistId,
-          normalizedCount: normalizedItems.length,
-          uniquePathCount: filePathSet.size,
-          invalidPathCount
-        })
-      }
 
       const result = appendMixtapeItems(playlistId, normalizedItems)
-      if (process.env.NODE_ENV !== 'production') {
-        log.info('[mixtape][dev] append db result', {
-          playlistId,
-          inserted: Number(result?.inserted || 0),
-          normalizedCount: normalizedItems.length
-        })
-      }
       const filePaths = Array.from(filePathSet)
       if (filePaths.length > 0) {
         queueMixtapeWaveforms(filePaths)
