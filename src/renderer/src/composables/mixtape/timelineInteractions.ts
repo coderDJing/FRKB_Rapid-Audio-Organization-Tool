@@ -228,13 +228,21 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     const rect = viewport?.getBoundingClientRect()
     const anchorX = rect ? Math.max(0, Math.min(rect.width, wheelZoomAnchorClientX - rect.left)) : 0
     const direction = delta < 0 ? 1 : -1
-    const rawSteps = Math.round(Math.abs(delta) / 100)
-    const steps = Math.max(1, Math.min(WHEEL_MAX_STEPS_PER_FRAME, rawSteps || 1))
-    const dynamicStep = Math.min(
-      WHEEL_ZOOM_MAX_STEP,
-      Math.max(WHEEL_ZOOM_BASE_STEP, normalizedZoom.value * WHEEL_ZOOM_RATIO_STEP)
+    const rawSteps = Math.abs(delta) / Math.max(1, WHEEL_LINE_HEIGHT_PX)
+    const steps = Math.max(1, Math.min(WHEEL_MAX_STEPS_PER_FRAME, rawSteps))
+    const zoomRatioPerStep = Math.min(
+      1 + WHEEL_ZOOM_MAX_STEP,
+      Math.max(1 + WHEEL_ZOOM_RATIO_STEP, 1 + WHEEL_ZOOM_BASE_STEP)
     )
-    const nextZoom = clampZoomValue(normalizedZoom.value + direction * dynamicStep * steps)
+    const zoomScale = Math.pow(zoomRatioPerStep, steps)
+    const scaledZoom =
+      direction > 0 ? normalizedZoom.value * zoomScale : normalizedZoom.value / zoomScale
+    let nextZoom = clampZoomValue(scaledZoom)
+    const alignedCurrentZoom = resolveRenderZoomLevel(normalizedZoom.value)
+    const alignedNextZoom = resolveRenderZoomLevel(nextZoom)
+    if (Math.abs(alignedNextZoom - alignedCurrentZoom) < 0.0001) {
+      nextZoom = clampZoomValue(alignedCurrentZoom + direction * WHEEL_ZOOM_BASE_STEP)
+    }
     if (Math.abs(nextZoom - normalizedZoom.value) < 0.0001) return
 
     markTimelineZooming()
@@ -250,17 +258,20 @@ export const createTimelineInteractionsModule = (ctx: any) => {
       prevScale,
       nextScale
     )
+    viewport.scrollLeft = targetLeft
     // 先同步响应式 scroll 状态，避免播放线在缩放和滚动补偿之间出现一帧错位。
     timelineScrollLeft.value = targetLeft
     nextTick(() => {
       const latestScale = Math.max(0.0001, renderPxPerSec.value)
-      viewport.scrollLeft = resolveZoomTargetScrollLeft(
+      const correctedLeft = resolveZoomTargetScrollLeft(
         viewport,
         prevLeft,
         anchorX,
         prevScale,
         latestScale
       )
+      viewport.scrollLeft = correctedLeft
+      timelineScrollLeft.value = correctedLeft
     })
   }
 
