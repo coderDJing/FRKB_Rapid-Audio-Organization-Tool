@@ -28,7 +28,8 @@ export async function requestMixtapeRawWaveform(
       needWaveform: false,
       needRawWaveform: true,
       rawTargetRate: rate,
-      traceLabel: 'mixtape-raw-waveform'
+      traceLabel: 'mixtape-raw-waveform',
+      priority: 'low'
     })
     return (result.rawWaveformData as SharedRawWaveformData | null | undefined) ?? null
   } catch (error) {

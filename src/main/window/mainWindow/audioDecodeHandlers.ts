@@ -65,7 +65,8 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
           analyzeKey: false,
           needWaveform: !cachedWaveform,
           fileStat: stat,
-          traceLabel: eventName
+          traceLabel: eventName,
+          priority: 'high'
         })
         const mixxxWaveformData = cachedWaveform ?? result.mixxxWaveformData ?? null
         if (!cachedWaveform && mixxxWaveformData && listRoot && stat) {
@@ -111,7 +112,8 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
         analyzeKey: false,
         needWaveform: false,
         needRawWaveform: false,
-        traceLabel: 'readPreviewSongFile'
+        traceLabel: 'readPreviewSongFile',
+        priority: 'high'
       })
       const payload = {
         pcmData: clonePcmData(result.pcmData),
@@ -141,7 +143,7 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
       _e,
       filePath: string
     ): Promise<{
-      pcmData: Float32Array
+      pcmData: unknown
       sampleRate: number
       channels: number
       totalFrames: number
@@ -150,10 +152,11 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
         analyzeKey: false,
         needWaveform: false,
         needRawWaveform: false,
-        traceLabel: 'mixtape:decode-for-transport'
+        traceLabel: 'mixtape:decode-for-transport',
+        priority: 'high'
       })
       return {
-        pcmData: clonePcmData(result.pcmData),
+        pcmData: result.pcmData,
         sampleRate: result.sampleRate,
         channels: result.channels,
         totalFrames: result.totalFrames

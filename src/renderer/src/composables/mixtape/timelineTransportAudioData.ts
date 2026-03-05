@@ -101,6 +101,39 @@ const normalizePcmData = (pcmData: unknown): Float32Array => {
   return new Float32Array(0)
 }
 
+const fillAudioBufferFromInterleavedPcm = (
+  buffer: AudioBuffer,
+  pcmData: Float32Array,
+  channels: number,
+  frameCount: number
+) => {
+  if (channels <= 1) {
+    buffer.getChannelData(0).set(pcmData.subarray(0, frameCount))
+    return
+  }
+
+  if (channels === 2) {
+    const left = buffer.getChannelData(0)
+    const right = buffer.getChannelData(1)
+    let readIndex = 0
+    for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
+      left[frameIndex] = pcmData[readIndex]
+      right[frameIndex] = pcmData[readIndex + 1]
+      readIndex += 2
+    }
+    return
+  }
+
+  for (let channelIndex = 0; channelIndex < channels; channelIndex += 1) {
+    const channelData = buffer.getChannelData(channelIndex)
+    let readIndex = channelIndex
+    for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
+      channelData[frameIndex] = pcmData[readIndex]
+      readIndex += channels
+    }
+  }
+}
+
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
 const normalizeBeatOffset = (value: unknown, interval: number) => {
@@ -365,14 +398,7 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
     if (frameCount <= 0 || !pcmData.length) throw new Error('解码结果为空')
     const audioCtx = ctx.ensureTransportAudioContext(sampleRate)
     const buffer = audioCtx.createBuffer(channels, frameCount, sampleRate)
-    for (let channelIndex = 0; channelIndex < channels; channelIndex += 1) {
-      const channelData = buffer.getChannelData(channelIndex)
-      let readIndex = channelIndex
-      for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
-        channelData[frameIndex] = pcmData[readIndex] || 0
-        readIndex += channels
-      }
-    }
+    fillAudioBufferFromInterleavedPcm(buffer, pcmData, channels, frameCount)
     return buffer
   }
 
@@ -450,14 +476,17 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
     if (!entries.length) return 0
     let failCount = 0
     if (ctx.isStemMixMode()) {
-      const stemAudios: TransportStemAudioRef[] = []
+      const stemAudioByPath = new Map<string, TransportStemAudioRef>()
       for (const entry of entries) {
         for (const stemId of ctx.resolveStemIdsForMode()) {
           const stemAudio = entry.stemAudioById?.[stemId]
           if (!stemAudio) continue
-          stemAudios.push(stemAudio)
+          const filePath = String(stemAudio.filePath || '').trim()
+          if (!filePath || stemAudioByPath.has(filePath)) continue
+          stemAudioByPath.set(filePath, stemAudio)
         }
       }
+      const stemAudios = Array.from(stemAudioByPath.values())
       await Promise.all(
         stemAudios.map(async (stemAudio) => {
           try {
@@ -474,10 +503,15 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
       )
       return failCount
     }
+    const audioRefByPath = new Map<string, TransportAudioRef>()
+    for (const entry of entries) {
+      const audioRef = entry.audioRef
+      const filePath = String(audioRef?.filePath || '').trim()
+      if (!audioRef || !filePath || audioRefByPath.has(filePath)) continue
+      audioRefByPath.set(filePath, audioRef)
+    }
     await Promise.all(
-      entries.map(async (entry) => {
-        const audioRef = entry.audioRef
-        if (!audioRef) return
+      Array.from(audioRefByPath.values()).map(async (audioRef) => {
         try {
           await ensureDecodedAudioRef(audioRef)
         } catch (error) {
@@ -552,7 +586,19 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
       return
     }
     let cursor = 0
-    const workerCount = Math.max(1, Math.min(3, pendingAudios.length))
+    const logicalCpuCount =
+      typeof navigator !== 'undefined' ? Math.max(1, Number(navigator.hardwareConcurrency) || 1) : 4
+    const preloadConcurrencyCap =
+      logicalCpuCount >= 16
+        ? 8
+        : logicalCpuCount >= 12
+          ? 6
+          : logicalCpuCount >= 8
+            ? 5
+            : logicalCpuCount >= 4
+              ? 4
+              : 3
+    const workerCount = Math.max(1, Math.min(preloadConcurrencyCap, pendingAudios.length))
     const workers = Array.from({ length: workerCount }, async () => {
       while (true) {
         if (version !== transportPreloadVersion) return

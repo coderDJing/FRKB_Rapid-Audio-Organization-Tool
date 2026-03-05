@@ -68,6 +68,37 @@ const normalizePcmData = (pcmData: unknown): Float32Array => {
   return new Float32Array(0)
 }
 
+const fillAudioBufferFromInterleavedPcm = (
+  buffer: AudioBuffer,
+  pcm: Float32Array,
+  channels: number,
+  frameCount: number
+) => {
+  if (channels <= 1) {
+    buffer.getChannelData(0).set(pcm.subarray(0, frameCount))
+    return
+  }
+  if (channels === 2) {
+    const left = buffer.getChannelData(0)
+    const right = buffer.getChannelData(1)
+    let readIndex = 0
+    for (let i = 0; i < frameCount; i += 1) {
+      left[i] = pcm[readIndex]
+      right[i] = pcm[readIndex + 1]
+      readIndex += 2
+    }
+    return
+  }
+  for (let ch = 0; ch < channels; ch += 1) {
+    const channelData = buffer.getChannelData(ch)
+    let readIndex = ch
+    for (let i = 0; i < frameCount; i += 1) {
+      channelData[i] = pcm[readIndex]
+      readIndex += channels
+    }
+  }
+}
+
 export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackParams) => {
   const {
     filePathRef,
@@ -293,14 +324,7 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
 
     const ctx = ensureAudioContext(sampleRate)
     const buffer = ctx.createBuffer(channels, frameCount, sampleRate)
-    for (let ch = 0; ch < channels; ch += 1) {
-      const channelData = buffer.getChannelData(ch)
-      let readIndex = ch
-      for (let i = 0; i < frameCount; i += 1) {
-        channelData[i] = pcm[readIndex] || 0
-        readIndex += channels
-      }
-    }
+    fillAudioBufferFromInterleavedPcm(buffer, pcm, channels, frameCount)
     return buffer
   }
 

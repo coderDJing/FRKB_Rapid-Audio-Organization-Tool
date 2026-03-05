@@ -41,6 +41,8 @@ export type DecodeAudioResult = {
   metrics?: DecodeAudioMetrics
 }
 
+export type DecodeAudioPriority = 'high' | 'normal' | 'low'
+
 export type DecodeAudioOptions = {
   analyzeKey?: boolean
   needWaveform?: boolean
@@ -49,6 +51,7 @@ export type DecodeAudioOptions = {
   rawTargetRate?: number
   fileStat?: { size: number; mtimeMs: number } | null
   traceLabel?: string
+  priority?: DecodeAudioPriority
 }
 
 type WorkerJob = {
@@ -59,6 +62,7 @@ type WorkerJob = {
   waveformTargetRate?: number
   needRawWaveform: boolean
   rawTargetRate?: number
+  priority: DecodeAudioPriority
   resolve: (result: DecodeAudioResult) => void
   reject: (error: Error) => void
 }
@@ -89,8 +93,14 @@ const CORE_CACHE_MAX_ENTRIES = 4
 const coreCache = new Map<string, CoreCacheEntry>()
 let coreCacheBytes = 0
 const coreInflight = new Map<string, Promise<DecodeAudioResult>>()
+const DECODE_PRIORITY_ORDER: DecodeAudioPriority[] = ['high', 'normal', 'low']
 
 const nowMs = () => Date.now()
+
+const normalizeDecodePriority = (value: unknown): DecodeAudioPriority => {
+  if (value === 'high' || value === 'low' || value === 'normal') return value
+  return 'normal'
+}
 
 const normalizeDecodeMetrics = (
   value: Partial<DecodeAudioMetrics> | null | undefined
@@ -227,7 +237,11 @@ const resolveCoreKey = async (
 class AudioDecodeWorkerPool {
   private workers: Worker[] = []
   private idle: Worker[] = []
-  private queue: WorkerJob[] = []
+  private queueByPriority: Record<DecodeAudioPriority, WorkerJob[]> = {
+    high: [],
+    normal: [],
+    low: []
+  }
   private pending = new Map<number, WorkerJob>()
   private busy = new Map<Worker, number>()
   private nextJobId = 0
@@ -250,11 +264,12 @@ class AudioDecodeWorkerPool {
         waveformTargetRate: options.waveformTargetRate,
         needRawWaveform: Boolean(options.needRawWaveform),
         rawTargetRate: options.rawTargetRate,
+        priority: normalizeDecodePriority(options.priority),
         resolve,
         reject
       }
       this.pending.set(jobId, job)
-      this.queue.push(job)
+      this.queueByPriority[job.priority].push(job)
       this.drain()
     })
   }
@@ -319,9 +334,9 @@ class AudioDecodeWorkerPool {
   }
 
   private drain() {
-    while (this.idle.length > 0 && this.queue.length > 0) {
+    while (this.idle.length > 0 && this.hasQueuedJobs()) {
       const worker = this.idle.shift()
-      const job = this.queue.shift()
+      const job = this.dequeueJob()
       if (!worker || !job) return
       this.busy.set(worker, job.jobId)
       worker.postMessage({
@@ -335,13 +350,41 @@ class AudioDecodeWorkerPool {
       })
     }
   }
+
+  private hasQueuedJobs() {
+    return DECODE_PRIORITY_ORDER.some((priority) => this.queueByPriority[priority].length > 0)
+  }
+
+  private dequeueJob(): WorkerJob | null {
+    for (const priority of DECODE_PRIORITY_ORDER) {
+      const queue = this.queueByPriority[priority]
+      if (queue.length > 0) {
+        return queue.shift() || null
+      }
+    }
+    return null
+  }
 }
 
 let decodePool: AudioDecodeWorkerPool | null = null
 
 const getDecodePool = () => {
   if (decodePool) return decodePool
-  const workerCount = Math.max(1, Math.min(2, os.cpus().length))
+  const cpuCount = Math.max(1, os.cpus().length || 1)
+  const totalMemoryGb = Math.max(1, Math.floor(os.totalmem() / 1024 ** 3))
+  const cpuBudget = cpuCount >= 12 ? cpuCount - 2 : cpuCount >= 6 ? cpuCount - 1 : cpuCount
+  const memoryBudget =
+    totalMemoryGb >= 32
+      ? 10
+      : totalMemoryGb >= 24
+        ? 8
+        : totalMemoryGb >= 16
+          ? 7
+          : totalMemoryGb >= 8
+            ? 5
+            : 3
+  const workerCount = Math.max(2, Math.min(10, cpuBudget, memoryBudget))
+  log.info('[decode-pool] initialize worker pool', { cpuCount, totalMemoryGb, workerCount })
   decodePool = new AudioDecodeWorkerPool(workerCount)
   return decodePool
 }

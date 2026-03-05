@@ -85,6 +85,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     GRID_BAR_ONLY_ZOOM,
     bpmAnalysisActive,
     bpmAnalysisFailed,
+    transportPreloading,
     MIXTAPE_SUMMARY_ZOOM,
     RAW_WAVEFORM_MIN_ZOOM,
     RAW_WAVEFORM_TARGET_RATE,
@@ -122,6 +123,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
   const RAW_BATCH_MAX_CONCURRENT = 2
   let rawLoadInFlight = false
   let rawLoadRerunPending = false
+  const isTransportPreloadingActive = () => Boolean(transportPreloading?.value)
   const drawTimelineCanvas = () => {
     const canvas = timelineCanvasRef.value
     const wrap = timelineScrollWrapRef.value
@@ -974,6 +976,10 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
   }
 
   const loadRawWaveforms = async () => {
+    if (isTransportPreloadingActive()) {
+      rawLoadRerunPending = true
+      return
+    }
     if (rawLoadInFlight) {
       rawLoadRerunPending = true
       return
@@ -1093,6 +1099,15 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
   const scheduleWaveformLoad = () => {
     const timer = getWaveformLoadTimer()
     if (timer) clearTimeout(timer)
+    if (isTransportPreloadingActive()) {
+      setWaveformLoadTimer(
+        setTimeout(() => {
+          setWaveformLoadTimer(null)
+          scheduleWaveformLoad()
+        }, 220)
+      )
+      return
+    }
     setWaveformLoadTimer(
       setTimeout(() => {
         setWaveformLoadTimer(null)

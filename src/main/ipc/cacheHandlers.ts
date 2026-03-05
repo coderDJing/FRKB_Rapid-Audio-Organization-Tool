@@ -334,7 +334,8 @@ export function registerCacheHandlers() {
               needRawWaveform: true,
               rawTargetRate: targetRate,
               fileStat: stat ? { size: stat.size, mtimeMs: stat.mtimeMs } : null,
-              traceLabel: 'mixtape-raw-waveform-shared'
+              traceLabel: 'mixtape-raw-waveform-shared',
+              priority: 'low'
             })
             data = decoded.rawWaveformData ?? null
             computedWaveform = needWaveformForShare ? (decoded.mixxxWaveformData ?? null) : null

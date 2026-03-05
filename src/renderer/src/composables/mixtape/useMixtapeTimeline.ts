@@ -877,7 +877,8 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     drawMixxxRgbWaveform,
     drawStemWaveform,
     useRawWaveform,
-    waveformVersion
+    waveformVersion,
+    transportPreloading
   })
   scheduleTimelineDrawBridgeRef.value = scheduleTimelineDraw
   const {

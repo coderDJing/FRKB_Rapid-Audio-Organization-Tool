@@ -34,7 +34,8 @@ export async function requestMixtapeWaveform(
       analyzeKey: false,
       needWaveform: true,
       waveformTargetRate: rate,
-      traceLabel
+      traceLabel,
+      priority: 'low'
     })
     return (result.mixxxWaveformData as MixxxWaveformData | null | undefined) ?? null
   } catch (error) {
