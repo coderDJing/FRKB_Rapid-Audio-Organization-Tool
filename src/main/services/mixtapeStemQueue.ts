@@ -37,6 +37,7 @@ import {
 } from '../mixtapeStemDb'
 import { findSongListRoot } from './cacheMaintenance'
 import { runStemSeparation } from './mixtapeStemSeparationRun'
+import { getStemBackgroundConcurrencyHint } from './backgroundIdleGate'
 
 const DEFAULT_STEM_MODEL = resolveMixtapeStemModelByProfile(DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
 const DEFAULT_STEM_VERSION = 'demucs-cli-builtin-20260227'
@@ -473,24 +474,45 @@ const prewarmStemWaveformBundleFromPaths = (params: {
 const STEM_QUEUE_CPU_JOB_CONCURRENCY_MAX = 4
 const STEM_QUEUE_CPU_JOB_CORE_DIVISOR = 2
 
-const resolveStemQueueConcurrency = (): number => {
+const resolveStemQueueConcurrency = () => {
   const cpuCount = Math.max(1, os.cpus().length || 1)
-  return Math.max(
+  const cpuCap = Math.max(
     1,
     Math.min(
       STEM_QUEUE_CPU_JOB_CONCURRENCY_MAX,
       Math.floor(cpuCount / STEM_QUEUE_CPU_JOB_CORE_DIVISOR)
     )
   )
+  const idleHint = getStemBackgroundConcurrencyHint()
+  const maxWorkers = Math.max(1, Math.min(cpuCap, idleHint.target))
+  return {
+    maxWorkers,
+    cpuCount,
+    cpuCap,
+    idleTarget: idleHint.target,
+    idleProfile: idleHint.profile,
+    idleAllowed: idleHint.allowed,
+    foregroundBusy: idleHint.foregroundBusy,
+    systemIdleSeconds: idleHint.systemIdleSeconds,
+    systemIdleState: idleHint.systemIdleState
+  }
 }
 
 const runQueueLoop = () => {
-  const maxWorkers = Math.max(1, resolveStemQueueConcurrency())
+  const concurrency = resolveStemQueueConcurrency()
+  const maxWorkers = concurrency.maxWorkers
   if (stemQueueConcurrencySnapshot !== maxWorkers) {
     stemQueueConcurrencySnapshot = maxWorkers
     log.info('[mixtape-stem] queue concurrency updated', {
       maxWorkers,
-      cpuCount: Math.max(1, os.cpus().length || 1)
+      cpuCount: concurrency.cpuCount,
+      cpuCap: concurrency.cpuCap,
+      idleTarget: concurrency.idleTarget,
+      idleProfile: concurrency.idleProfile,
+      idleAllowed: concurrency.idleAllowed,
+      foregroundBusy: concurrency.foregroundBusy,
+      systemIdleSeconds: concurrency.systemIdleSeconds,
+      systemIdleState: concurrency.systemIdleState
     })
   }
   while (activeWorkers < maxWorkers && pendingQueue.length > 0) {

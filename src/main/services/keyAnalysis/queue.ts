@@ -1,10 +1,14 @@
 import type { EventEmitter } from 'node:events'
 import type { Worker } from 'node:worker_threads'
+import path from 'node:path'
+import { is } from '@electron-toolkit/utils'
 import { createKeyAnalysisBackground, type KeyAnalysisBackground } from './background'
 import { createKeyAnalysisPersistence, type KeyAnalysisPersistence } from './persistence'
 import { createKeyAnalysisWorkerPool, type KeyAnalysisWorkerPool } from './workerPool'
+import { log } from '../../log'
 import {
   BACKGROUND_MAX_INFLIGHT,
+  KEY_ANALYSIS_JOB_TIMEOUT_MS,
   normalizePath,
   type DoneEntry,
   type KeyAnalysisBackgroundStatus,
@@ -12,6 +16,15 @@ import {
   type KeyAnalysisPriority,
   type KeyAnalysisSource
 } from './types'
+
+const debugDev = (message: string, payload?: unknown) => {
+  if (!is.dev) return
+  if (payload === undefined) {
+    log.debug(`[闲时分析][dev] ${message}`)
+    return
+  }
+  log.debug(`[闲时分析][dev] ${message}`, payload)
+}
 
 export class KeyAnalysisQueue {
   private workers: Worker[] = []
@@ -27,6 +40,7 @@ export class KeyAnalysisQueue {
   private inFlight = new Map<number, KeyAnalysisJob>()
   private preemptedJobIds = new Set<number>()
   private doneByPath = new Map<string, DoneEntry>()
+  private jobTimeouts = new Map<number, ReturnType<typeof setTimeout>>()
   private nextJobId = 0
   private events: EventEmitter
   private persistence: KeyAnalysisPersistence
@@ -80,6 +94,10 @@ export class KeyAnalysisQueue {
     return this.background.getBackgroundStatusSnapshot()
   }
 
+  isForegroundBusy(): boolean {
+    return this.hasForegroundWork()
+  }
+
   startBackgroundSweep() {
     this.background.startBackgroundSweep()
   }
@@ -129,6 +147,13 @@ export class KeyAnalysisQueue {
       source
     }
     this.addPending(job, options.urgent)
+    if (job.source === 'background') {
+      debugDev('后台任务入队', {
+        jobId: job.jobId,
+        filePath: job.filePath,
+        priority: job.priority
+      })
+    }
     if (source === 'foreground') {
       this.workerPool.maybePreemptBackground()
     }
@@ -248,7 +273,48 @@ export class KeyAnalysisQueue {
     return this.workerPool.countBackgroundInFlight()
   }
 
+  private clearJobTimeout(jobId: number) {
+    const timer = this.jobTimeouts.get(jobId)
+    if (!timer) return
+    clearTimeout(timer)
+    this.jobTimeouts.delete(jobId)
+  }
+
+  private cleanupStaleJobTimeouts() {
+    if (this.jobTimeouts.size === 0) return
+    for (const jobId of this.jobTimeouts.keys()) {
+      if (!this.inFlight.has(jobId)) {
+        this.clearJobTimeout(jobId)
+      }
+    }
+  }
+
+  private scheduleJobTimeout(worker: Worker, job: KeyAnalysisJob) {
+    this.clearJobTimeout(job.jobId)
+    debugDev('设置任务超时监控', {
+      jobId: job.jobId,
+      filePath: job.filePath,
+      source: job.source,
+      timeoutMs: KEY_ANALYSIS_JOB_TIMEOUT_MS
+    })
+    const timer = setTimeout(() => {
+      this.jobTimeouts.delete(job.jobId)
+      const activeJob = this.inFlight.get(job.jobId)
+      if (!activeJob) return
+      if (this.busy.get(worker) !== job.jobId) return
+      log.warn('[闲时分析] 任务执行超时，终止 worker', {
+        filePath: activeJob.filePath,
+        fileName: path.basename(activeJob.filePath),
+        source: activeJob.source,
+        timeoutMs: KEY_ANALYSIS_JOB_TIMEOUT_MS
+      })
+      void worker.terminate().catch(() => {})
+    }, KEY_ANALYSIS_JOB_TIMEOUT_MS)
+    this.jobTimeouts.set(job.jobId, timer)
+  }
+
   private drain() {
+    this.cleanupStaleJobTimeouts()
     while (this.idle.length > 0) {
       const hasForegroundPending =
         this.pendingHigh.length > 0 || this.pendingMedium.length > 0 || this.pendingLow.length > 0
@@ -271,6 +337,12 @@ export class KeyAnalysisQueue {
       void (async () => {
         const ready = await this.persistence.prepareJob(job)
         if (!ready) {
+          if (job.source === 'background') {
+            debugDev('后台任务被跳过（prepare 返回 false）', {
+              jobId: job.jobId,
+              filePath: job.filePath
+            })
+          }
           this.inFlight.delete(job.jobId)
           this.busy.delete(worker)
           this.activeByPath.delete(job.normalizedPath)
@@ -282,7 +354,15 @@ export class KeyAnalysisQueue {
           job.startTime = Date.now()
           this.background.markProcessing(job.jobId)
           this.background.emitBackgroundStatus()
+          debugDev('后台任务开始执行', {
+            jobId: job.jobId,
+            filePath: job.filePath,
+            needsKey: Boolean(job.needsKey),
+            needsBpm: Boolean(job.needsBpm),
+            needsWaveform: Boolean(job.needsWaveform)
+          })
         }
+        this.scheduleJobTimeout(worker, job)
         worker.postMessage({
           jobId: job.jobId,
           filePath: job.filePath,

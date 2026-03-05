@@ -8,6 +8,7 @@ import { requestMixtapeWaveform } from './mixtapeWaveformQueue'
 import mixtapeWindow from '../window/mixtapeWindow'
 import type { MixxxWaveformData } from '../waveformCache'
 import { resolveMixtapeFilePathWithFallback } from './mixtapeFileFallback'
+import { requestBackgroundTaskExecution } from './backgroundOrchestrator'
 
 const MIXTAPE_HIRES_TARGET_RATE = 4000
 const MAX_CONCURRENT = 1
@@ -215,8 +216,16 @@ const scheduleNextBackgroundScan = (targetRate: number) => {
   if (!backgroundEnabled || backgroundTimer) return
   backgroundTimer = setTimeout(() => {
     backgroundTimer = null
-    void runBackgroundScan(targetRate).finally(() => {
-      scheduleNextBackgroundScan(targetRate)
+    requestBackgroundTaskExecution({
+      category: 'mixtape-waveform-hires',
+      trigger: 'mixtape-waveform-hires-timer',
+      run: async () => {
+        try {
+          await runBackgroundScan(targetRate)
+        } finally {
+          scheduleNextBackgroundScan(targetRate)
+        }
+      }
     })
   }, BACKGROUND_SCAN_INTERVAL_MS)
 }
@@ -227,8 +236,16 @@ export function startMixtapeWaveformHiresBackground(targetRate?: number): void {
   const rate = normalizeTargetRate(targetRate)
   setTimeout(() => {
     if (!backgroundEnabled) return
-    void runBackgroundScan(rate).finally(() => {
-      scheduleNextBackgroundScan(rate)
+    requestBackgroundTaskExecution({
+      category: 'mixtape-waveform-hires',
+      trigger: 'mixtape-waveform-hires-initial',
+      run: async () => {
+        try {
+          await runBackgroundScan(rate)
+        } finally {
+          scheduleNextBackgroundScan(rate)
+        }
+      }
     })
   }, BACKGROUND_INITIAL_DELAY_MS)
 }

@@ -68,6 +68,11 @@ export function getKeyAnalysisBackgroundStatus(): KeyAnalysisBackgroundStatus {
   return queue.getBackgroundStatusSnapshot()
 }
 
+export function isKeyAnalysisForegroundBusy(): boolean {
+  if (!queue) return false
+  return queue.isForegroundBusy()
+}
+
 export function invalidateKeyAnalysisCache(filePaths: string[] | string) {
   if (!queue) return
   const list = Array.isArray(filePaths) ? filePaths : [filePaths]

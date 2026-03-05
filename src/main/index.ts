@@ -45,10 +45,17 @@ import path from 'path'
 import fs from 'fs-extra'
 import {
   keyAnalysisEvents,
+  isKeyAnalysisForegroundBusy,
   startKeyAnalysisBackground,
   type KeyAnalysisBackgroundStatus
 } from './services/keyAnalysisQueue'
 import { startMixtapeWaveformHiresBackground } from './services/mixtapeWaveformHiresQueue'
+import { startMixtapeStemBackgroundResume } from './services/mixtapeStemBackgroundResume'
+import {
+  startBackgroundOrchestrator,
+  stopBackgroundOrchestrator
+} from './services/backgroundOrchestrator'
+import { registerBackgroundForegroundBusyProvider } from './services/backgroundIdleGate'
 // import AudioFeatureExtractor from './mfccTest'
 
 if (is.dev) {
@@ -263,6 +270,10 @@ const sendKeyAnalysisBackgroundStatus = (status: KeyAnalysisBackgroundStatus) =>
 }
 keyAnalysisEvents.on('background-status', sendKeyAnalysisBackgroundStatus)
 
+registerBackgroundForegroundBusyProvider('key-analysis-foreground', () =>
+  isKeyAnalysisForegroundBusy()
+)
+
 let devInitDatabaseFunction = async () => {
   if (!fs.pathExistsSync(store.settingConfig.databaseUrl)) {
     return
@@ -411,8 +422,10 @@ app.whenReady().then(async () => {
   }
   // 数据库准备与主窗口：统一调用幂等流程
   await prepareAndOpenMainWindow()
+  startBackgroundOrchestrator()
   startKeyAnalysisBackground()
   startMixtapeWaveformHiresBackground()
+  startMixtapeStemBackgroundResume()
   LibraryCacheDb.scheduleCacheKeyMigration()
   await processExternalOpenQueue()
   setTimeout(() => {
@@ -483,6 +496,7 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', async () => {
   ipcMain.removeAllListeners()
+  stopBackgroundOrchestrator()
   app.quit()
 })
 

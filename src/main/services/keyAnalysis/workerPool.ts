@@ -1,6 +1,7 @@
 import path from 'node:path'
 import type { EventEmitter } from 'node:events'
 import { Worker } from 'node:worker_threads'
+import { is } from '@electron-toolkit/utils'
 import { log } from '../../log'
 import type { KeyAnalysisBackground } from './background'
 import type { KeyAnalysisPersistence } from './persistence'
@@ -30,6 +31,15 @@ type KeyAnalysisWorkerPoolDeps = {
   ) => void
   drain: () => void
   events: EventEmitter
+}
+
+const debugDev = (message: string, payload?: unknown) => {
+  if (!is.dev) return
+  if (payload === undefined) {
+    log.debug(`[闲时分析][dev] ${message}`)
+    return
+  }
+  log.debug(`[闲时分析][dev] ${message}`, payload)
 }
 
 export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => {
@@ -83,6 +93,10 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     refreshForegroundWorker()
     deps.drain()
     if (preemptedJob) {
+      debugDev('后台任务被抢占后重新入队', {
+        jobId: preemptedJob.jobId,
+        filePath: preemptedJob.filePath
+      })
       deps.enqueue(preemptedJob.filePath, 'background', { source: 'background' })
     }
     deps.background.emitBackgroundStatus()
@@ -117,6 +131,13 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
           const statusMsg = `[闲时分析] 任务完成但有错误 - ${path.basename(job.filePath)} (耗时: ${elapsed}ms) 错误: ${errors.join('; ')}`
           log.warn(statusMsg)
         }
+        debugDev('后台任务完成', {
+          jobId: job.jobId,
+          filePath: job.filePath,
+          elapsedMs: job.startTime ? Date.now() - job.startTime : 0,
+          results,
+          errors
+        })
 
         deps.background.unmarkProcessing(job.jobId)
         deps.background.emitBackgroundStatus()
@@ -203,6 +224,10 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     for (const [worker, jobId] of deps.busy.entries()) {
       const job = deps.inFlight.get(jobId)
       if (job && job.source === 'background') {
+        debugDev('抢占后台任务', {
+          jobId,
+          filePath: job.filePath
+        })
         deps.preemptedJobIds.add(jobId)
         void worker.terminate().catch(() => {})
         return

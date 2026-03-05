@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { EventEmitter } from 'node:events'
+import { is } from '@electron-toolkit/utils'
 import { sweepSongListCovers } from '../covers'
 import * as LibraryCacheDb from '../../libraryCacheDb'
 import { getLibraryDb } from '../../libraryDb'
@@ -10,6 +11,7 @@ import {
   type LibraryNodeRow
 } from '../../libraryTreeDb'
 import { log } from '../../log'
+import { requestBackgroundTaskExecution } from '../backgroundOrchestrator'
 import store from '../../store'
 import type { KeyAnalysisPersistence } from './persistence'
 import {
@@ -75,6 +77,15 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
   let lastCoverCleanupAt = 0
   let coverCleanupRootIndex = 0
 
+  const debugDev = (message: string, payload?: unknown) => {
+    if (!is.dev) return
+    if (payload === undefined) {
+      log.debug(`[闲时分析][dev] ${message}`)
+      return
+    }
+    log.debug(`[闲时分析][dev] ${message}`, payload)
+  }
+
   const getBackgroundStatus = (): KeyAnalysisBackgroundStatus => {
     const pending = deps.getPendingBackgroundCount()
     const inFlight = deps.countBackgroundInFlight()
@@ -125,9 +136,21 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
     const idleDelay = Math.max(BACKGROUND_IDLE_DELAY_MS - (now - lastForegroundAt), 0)
     const cooldownDelay = Math.max(BACKGROUND_SCAN_COOLDOWN_MS - (now - backgroundLastScanAt), 0)
     const delay = Math.max(idleDelay, cooldownDelay)
+    debugDev('调度下次扫描', {
+      delayMs: delay,
+      idleDelayMs: idleDelay,
+      cooldownDelayMs: cooldownDelay,
+      sinceLastForegroundMs: now - lastForegroundAt,
+      sinceLastScanMs: now - backgroundLastScanAt
+    })
     backgroundTimer = setTimeout(() => {
       backgroundTimer = null
-      void runBackgroundScan()
+      debugDev('触发扫描定时器')
+      requestBackgroundTaskExecution({
+        category: 'key-analysis',
+        trigger: 'key-analysis-timer',
+        run: runBackgroundScan
+      })
     }, delay)
   }
 
@@ -143,6 +166,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
   const cancelBackgroundWork = (pauseMs?: number) => {
     const resumeDelay = Number.isFinite(pauseMs) && pauseMs && pauseMs > 0 ? pauseMs : 0
     backgroundEnabled = false
+    debugDev('暂停闲时分析', { resumeDelayMs: resumeDelay })
     clearBackgroundTimer()
     clearBackgroundResumeTimer()
     deps.clearPendingBackground()
@@ -150,6 +174,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       backgroundResumeTimer = setTimeout(() => {
         backgroundEnabled = true
         backgroundResumeTimer = null
+        debugDev('恢复闲时分析', { afterPauseMs: resumeDelay })
         emitBackgroundStatus()
         if (deps.isIdle()) {
           scheduleBackgroundScan()
@@ -234,6 +259,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       backgroundDirQueue = []
       backgroundRootIndex = 0
       backgroundRootsSignature = signature
+      debugDev('歌单根目录集合发生变化', { rootCount: nextRoots.length })
     }
     backgroundRoots = nextRoots
     backgroundRootsLastRefresh = now
@@ -318,8 +344,15 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
   const collectBackgroundCandidates = async (limit: number): Promise<string[]> => {
     if (!backgroundEnabled) return []
     const fromCache = await collectBackgroundCacheCandidates(limit)
-    if (fromCache.length > 0) return fromCache
-    return await collectBackgroundFsCandidates(limit)
+    if (fromCache.length > 0) {
+      debugDev('候选来源：缓存数据库', { count: fromCache.length, limit })
+      return fromCache
+    }
+    const fromFs = await collectBackgroundFsCandidates(limit)
+    if (fromFs.length > 0) {
+      debugDev('候选来源：文件系统回退扫描', { count: fromFs.length, limit })
+    }
+    return fromFs
   }
 
   const collectBackgroundCacheCandidates = async (limit: number): Promise<string[]> => {
@@ -347,6 +380,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       if (backgroundCursor !== 0) {
         backgroundCursor = 0
       }
+      debugDev('缓存扫描无数据，重置游标')
       return results
     }
     let processedAll = true
@@ -392,6 +426,12 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
     if (processedAll && rows.length < BACKGROUND_SCAN_ROW_LIMIT) {
       backgroundCursor = 0
     }
+    debugDev('缓存扫描完成', {
+      scannedRows: rows.length,
+      selected: results.length,
+      processedAll,
+      nextCursor: backgroundCursor
+    })
     return results
   }
 
@@ -549,13 +589,24 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
     if (!deps.isIdle()) return
     const now = Date.now()
     if (now - lastForegroundAt < BACKGROUND_IDLE_DELAY_MS) {
+      debugDev('跳过扫描：未达到闲置阈值', {
+        sinceLastForegroundMs: now - lastForegroundAt,
+        requiredIdleMs: BACKGROUND_IDLE_DELAY_MS
+      })
       scheduleBackgroundScan()
       return
     }
     if (now - backgroundLastScanAt < BACKGROUND_SCAN_COOLDOWN_MS) {
+      debugDev('跳过扫描：冷却中', {
+        sinceLastScanMs: now - backgroundLastScanAt,
+        cooldownMs: BACKGROUND_SCAN_COOLDOWN_MS
+      })
       scheduleBackgroundScan()
       return
     }
+    debugDev('开始一轮闲时扫描', {
+      batchSize: BACKGROUND_BATCH_SIZE
+    })
     backgroundScanInProgress = true
     backgroundLastScanAt = now
     emitBackgroundStatus()
@@ -563,10 +614,13 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       const candidates = await collectBackgroundCandidates(BACKGROUND_BATCH_SIZE)
       if (backgroundEnabled) {
         if (candidates.length > 0) {
+          debugDev('入队后台分析任务', { count: candidates.length })
           deps.enqueueList(candidates, 'background', { source: 'background' })
         } else {
           const cleaned = await cleanupMissingCacheEntries(BACKGROUND_CLEAN_BATCH_SIZE)
+          debugDev('本轮无候选，执行缓存清理', { cleaned })
           if (cleaned === 0 && !deps.hasForegroundWork()) {
+            debugDev('执行闲时维护任务')
             await runPeriodicMaintenanceTasks(now)
           }
         }

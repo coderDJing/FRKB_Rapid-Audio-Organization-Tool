@@ -84,7 +84,7 @@ export const isValidBpm = (value: unknown): value is number =>
 export const BACKGROUND_IDLE_DELAY_MS = 3000
 export const BACKGROUND_SCAN_COOLDOWN_MS = 5000
 export const BACKGROUND_SCAN_ROW_LIMIT = 200
-export const BACKGROUND_BATCH_SIZE = 1
+export const BACKGROUND_BATCH_SIZE = 3
 export const BACKGROUND_MAX_INFLIGHT = 1
 export const BACKGROUND_FS_REFRESH_MS = 60000
 export const BACKGROUND_FS_DIR_LIMIT = 3
@@ -94,3 +94,4 @@ export const BACKGROUND_CLEAN_BATCH_SIZE = 20
 export const BACKGROUND_LIBRARY_TREE_CLEANUP_INTERVAL_MS = 5 * 60 * 1000
 export const BACKGROUND_COVER_CLEANUP_INTERVAL_MS = 10 * 60 * 1000
 export const BACKGROUND_COVER_CLEANUP_BATCH_SIZE = 3
+export const KEY_ANALYSIS_JOB_TIMEOUT_MS = 3 * 60 * 1000
