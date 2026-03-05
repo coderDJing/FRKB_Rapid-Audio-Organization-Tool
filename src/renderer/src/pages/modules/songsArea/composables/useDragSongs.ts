@@ -8,6 +8,12 @@ export interface DragSongData {
   songFilePaths: string[]
   sourceLibraryName: string
   sourceSongListUUID: string
+  sourceMixtapeItemIds?: string[]
+}
+
+type StartDragSongsOptions = {
+  songFilePaths?: string[]
+  sourceMixtapeItemIds?: string[]
 }
 
 export function useDragSongs() {
@@ -32,6 +38,15 @@ export function useDragSongs() {
     runtime.draggingSongFilePaths = []
     runtime.dragSourceSongListUUID = ''
   }
+  const normalizeUniqueStrings = (values: unknown[]): string[] =>
+    Array.from(
+      new Set(
+        values
+          .filter((value) => typeof value === 'string')
+          .map((value) => String(value).trim())
+          .filter(Boolean)
+      )
+    )
 
   const resolveFileNameAndFormat = (filePath: string) => {
     const baseName =
@@ -75,33 +90,45 @@ export function useDragSongs() {
   const startDragSongs = (
     songOrSongs: ISongInfo | ISongInfo[],
     sourceLibraryName: string,
-    sourceSongListUUID: string
+    sourceSongListUUID: string,
+    options?: StartDragSongsOptions
   ): string[] => {
     clearDragCleanupTimer()
     // 如果是单个歌曲且没有被选中，则只拖拽该歌曲
     // 如果是单个歌曲但已被选中，则拖拽所有选中的歌曲
     // 如果传入的是数组，则拖拽整个数组
     let songFilePaths: string[]
+    const optionPaths = normalizeUniqueStrings(
+      Array.isArray(options?.songFilePaths) ? options.songFilePaths : []
+    )
+    const sourceMixtapeItemIds = normalizeUniqueStrings(
+      Array.isArray(options?.sourceMixtapeItemIds) ? options.sourceMixtapeItemIds : []
+    )
 
-    if (Array.isArray(songOrSongs)) {
-      songFilePaths = songOrSongs.map((song) => song.filePath)
+    if (optionPaths.length > 0) {
+      songFilePaths = optionPaths
     } else {
-      const singleSong = songOrSongs
-      const isSelected = runtime.songsArea.selectedSongFilePath.includes(singleSong.filePath)
-
-      if (isSelected && runtime.songsArea.selectedSongFilePath.length > 0) {
-        // 如果这首歌被选中且有其他选中的歌曲，拖拽所有选中的歌曲
-        songFilePaths = [...runtime.songsArea.selectedSongFilePath]
+      if (Array.isArray(songOrSongs)) {
+        songFilePaths = songOrSongs.map((song) => song.filePath)
       } else {
-        // 否则只拖拽这首歌
-        songFilePaths = [singleSong.filePath]
+        const singleSong = songOrSongs
+        const isSelected = runtime.songsArea.selectedSongFilePath.includes(singleSong.filePath)
+
+        if (isSelected && runtime.songsArea.selectedSongFilePath.length > 0) {
+          // 如果这首歌被选中且有其他选中的歌曲，拖拽所有选中的歌曲
+          songFilePaths = [...runtime.songsArea.selectedSongFilePath]
+        } else {
+          // 否则只拖拽这首歌
+          songFilePaths = [singleSong.filePath]
+        }
       }
     }
 
     dragData.value = {
       songFilePaths,
       sourceLibraryName,
-      sourceSongListUUID
+      sourceSongListUUID,
+      sourceMixtapeItemIds
     }
     isDragging.value = true
     setRuntimeDragState(songFilePaths, sourceSongListUUID)
@@ -131,13 +158,18 @@ export function useDragSongs() {
    * @param targetLibraryName - 目标库名称
    * @returns 被移动的歌曲文件路径数组
    */
-  const handleDropToSongList = async (targetSongListUUID: string, targetLibraryName: string) => {
+  const handleDropToSongList = async (targetSongListUUID: string, _targetLibraryName: string) => {
     try {
       // 优先使用拖拽开始时快照，避免拖拽过程中选中态变化导致错移
       const selectedSongFilePaths =
         dragData.value?.songFilePaths?.length && Array.isArray(dragData.value.songFilePaths)
           ? [...dragData.value.songFilePaths]
           : [...runtime.songsArea.selectedSongFilePath]
+      const sourceMixtapeItemIds = normalizeUniqueStrings(
+        Array.isArray(dragData.value?.sourceMixtapeItemIds)
+          ? dragData.value?.sourceMixtapeItemIds
+          : []
+      )
       const sourceSongListUUID =
         dragData.value?.sourceSongListUUID ||
         runtime.dragSourceSongListUUID ||
@@ -146,23 +178,62 @@ export function useDragSongs() {
       if (!selectedSongFilePaths.length || !sourceSongListUUID) {
         return []
       }
+      if (targetSongListUUID === sourceSongListUUID) {
+        return []
+      }
 
       const targetNode = libraryUtils.getLibraryTreeByUUID(targetSongListUUID)
       const sourceNode = libraryUtils.getLibraryTreeByUUID(sourceSongListUUID)
       const isMixtapeTarget = targetNode?.type === 'mixtapeList'
 
       if (isMixtapeTarget) {
-        if (!sourceNode || sourceNode.type !== 'songList') {
+        if (!sourceNode || (sourceNode.type !== 'songList' && sourceNode.type !== 'mixtapeList')) {
           return []
         }
         const originPathSnapshot = libraryUtils.buildDisplayPathByUuid(sourceSongListUUID)
         const songMap = new Map(runtime.songsArea.songInfoArr.map((song) => [song.filePath, song]))
-        const items = selectedSongFilePaths.map((filePath) => ({
-          filePath,
-          originPlaylistUuid: sourceSongListUUID,
-          originPathSnapshot,
-          info: buildSongSnapshot(filePath, songMap.get(filePath))
-        }))
+        const mixtapeSongMap = new Map(
+          runtime.songsArea.songInfoArr
+            .filter(
+              (song) => typeof song.mixtapeItemId === 'string' && song.mixtapeItemId.length > 0
+            )
+            .map((song) => [song.mixtapeItemId as string, song])
+        )
+        const itemsFromMixtapeIds = sourceMixtapeItemIds
+          .map((itemId) => {
+            const song = mixtapeSongMap.get(itemId)
+            const filePath = song?.filePath || ''
+            if (!song || !filePath) return null
+            return {
+              filePath,
+              originPlaylistUuid: sourceSongListUUID,
+              originPathSnapshot,
+              info: buildSongSnapshot(filePath, song),
+              sourcePlaylistId: sourceSongListUUID,
+              sourceItemId: itemId
+            }
+          })
+          .filter((item): item is NonNullable<typeof item> => item !== null)
+        const items =
+          sourceNode.type === 'mixtapeList'
+            ? itemsFromMixtapeIds.length > 0
+              ? itemsFromMixtapeIds
+              : normalizeUniqueStrings(selectedSongFilePaths).map((filePath) => ({
+                  filePath,
+                  originPlaylistUuid: sourceSongListUUID,
+                  originPathSnapshot,
+                  info: buildSongSnapshot(filePath, songMap.get(filePath)),
+                  sourcePlaylistId: sourceSongListUUID
+                }))
+            : normalizeUniqueStrings(selectedSongFilePaths).map((filePath) => ({
+                filePath,
+                originPlaylistUuid: sourceSongListUUID,
+                originPathSnapshot,
+                info: buildSongSnapshot(filePath, songMap.get(filePath))
+              }))
+        if (items.length === 0) {
+          return []
+        }
         await window.electron.ipcRenderer.invoke('mixtape:append', {
           playlistId: targetSongListUUID,
           items
@@ -170,11 +241,7 @@ export function useDragSongs() {
         try {
           emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
         } catch {}
-        return selectedSongFilePaths
-      }
-
-      // 如果目标歌单和源歌单相同，不做任何操作
-      if (targetSongListUUID === sourceSongListUUID) {
+        // 混音歌单目标始终为复制，不回传“移动”结果
         return []
       }
 

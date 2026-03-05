@@ -9,6 +9,46 @@ export type MoveSongsLibraryName = 'CuratedLibrary' | 'FilterLibrary' | 'Mixtape
 
 export function useSelectAndMoveSongs() {
   const runtime = useRuntimeStore()
+  const normalizeUniqueStrings = (values: unknown[]): string[] =>
+    Array.from(
+      new Set(
+        values
+          .filter((value) => typeof value === 'string')
+          .map((value) => String(value).trim())
+          .filter(Boolean)
+      )
+    )
+  const resolveFileNameAndFormat = (filePath: string) => {
+    const baseName =
+      String(filePath || '')
+        .split(/[/\\]/)
+        .pop() || ''
+    const parts = baseName.split('.')
+    const ext = parts.length > 1 ? parts.pop() || '' : ''
+    const fileFormat = ext ? ext.toUpperCase() : ''
+    return { fileName: baseName, fileFormat }
+  }
+  const buildSongSnapshot = (filePath: string, song?: ISongInfo | null) => {
+    const meta = resolveFileNameAndFormat(filePath)
+    return {
+      filePath,
+      fileName: song?.fileName || meta.fileName,
+      fileFormat: song?.fileFormat || meta.fileFormat,
+      cover: null,
+      title: song?.title ?? meta.fileName,
+      artist: song?.artist,
+      album: song?.album,
+      duration: song?.duration ?? '',
+      genre: song?.genre,
+      label: song?.label,
+      bitrate: song?.bitrate,
+      container: song?.container,
+      key: song?.key,
+      originalKey: song?.key,
+      bpm: song?.bpm,
+      originalBpm: song?.bpm
+    }
+  }
 
   const isDialogVisible = ref(false)
   const targetLibraryName = ref<MoveSongsLibraryName | ''>('')
@@ -35,50 +75,53 @@ export function useSelectAndMoveSongs() {
     if (!selectedPaths.length) return
 
     const targetNode = libraryUtils.getLibraryTreeByUUID(targetSongListUUID)
+    const sourceNode = libraryUtils.getLibraryTreeByUUID(sourceSongListUUID)
     const isMixtapeTarget =
       targetNode?.type === 'mixtapeList' || targetLibraryName.value === 'MixtapeLibrary'
     if (isMixtapeTarget) {
-      const sourceNode = libraryUtils.getLibraryTreeByUUID(sourceSongListUUID)
-      if (!sourceNode || sourceNode.type !== 'songList') return
-      const resolveFileNameAndFormat = (filePath: string) => {
-        const baseName =
-          String(filePath || '')
-            .split(/[/\\]/)
-            .pop() || ''
-        const parts = baseName.split('.')
-        const ext = parts.length > 1 ? parts.pop() || '' : ''
-        const fileFormat = ext ? ext.toUpperCase() : ''
-        return { fileName: baseName, fileFormat }
-      }
-      const buildSongSnapshot = (filePath: string, song?: ISongInfo | null) => {
-        const meta = resolveFileNameAndFormat(filePath)
-        return {
-          filePath,
-          fileName: song?.fileName || meta.fileName,
-          fileFormat: song?.fileFormat || meta.fileFormat,
-          cover: null,
-          title: song?.title ?? meta.fileName,
-          artist: song?.artist,
-          album: song?.album,
-          duration: song?.duration ?? '',
-          genre: song?.genre,
-          label: song?.label,
-          bitrate: song?.bitrate,
-          container: song?.container,
-          key: song?.key,
-          originalKey: song?.key,
-          bpm: song?.bpm,
-          originalBpm: song?.bpm
-        }
+      if (!sourceNode || (sourceNode.type !== 'songList' && sourceNode.type !== 'mixtapeList')) {
+        return
       }
       const originPathSnapshot = libraryUtils.buildDisplayPathByUuid(sourceSongListUUID)
       const songMap = new Map(runtime.songsArea.songInfoArr.map((song) => [song.filePath, song]))
-      const items = selectedPaths.map((filePath: string) => ({
-        filePath,
-        originPlaylistUuid: sourceSongListUUID,
-        originPathSnapshot,
-        info: buildSongSnapshot(filePath, songMap.get(filePath))
-      }))
+      const mixtapeSongMap = new Map(
+        runtime.songsArea.songInfoArr
+          .filter((song) => typeof song.mixtapeItemId === 'string' && song.mixtapeItemId.length > 0)
+          .map((song) => [song.mixtapeItemId as string, song])
+      )
+      const itemsFromMixtapeIds = normalizeUniqueStrings(selectedPaths)
+        .map((itemId) => {
+          const song = mixtapeSongMap.get(itemId)
+          const filePath = song?.filePath || ''
+          if (!song || !filePath) return null
+          return {
+            filePath,
+            originPlaylistUuid: sourceSongListUUID,
+            originPathSnapshot,
+            info: buildSongSnapshot(filePath, song),
+            sourcePlaylistId: sourceSongListUUID,
+            sourceItemId: itemId
+          }
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null)
+      const items =
+        sourceNode.type === 'mixtapeList'
+          ? itemsFromMixtapeIds.length > 0
+            ? itemsFromMixtapeIds
+            : normalizeUniqueStrings(selectedPaths).map((filePath: string) => ({
+                filePath,
+                originPlaylistUuid: sourceSongListUUID,
+                originPathSnapshot,
+                info: buildSongSnapshot(filePath, songMap.get(filePath)),
+                sourcePlaylistId: sourceSongListUUID
+              }))
+          : normalizeUniqueStrings(selectedPaths).map((filePath: string) => ({
+              filePath,
+              originPlaylistUuid: sourceSongListUUID,
+              originPathSnapshot,
+              info: buildSongSnapshot(filePath, songMap.get(filePath))
+            }))
+      if (items.length === 0) return
       await window.electron.ipcRenderer.invoke('mixtape:append', {
         playlistId: targetSongListUUID,
         items
@@ -87,9 +130,13 @@ export function useSelectAndMoveSongs() {
       try {
         emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
         emitter.emit('songsArea/clipboardHint', {
-          message: t('mixtape.addedToMixtape', { count: selectedPaths.length })
+          message: t('mixtape.addedToMixtape', { count: items.length })
         })
       } catch {}
+      return
+    }
+
+    if (sourceNode?.type === 'mixtapeList') {
       return
     }
 

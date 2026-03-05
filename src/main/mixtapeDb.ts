@@ -555,6 +555,31 @@ export function listMixtapeFilePathsByItemIds(playlistUuid: string, itemIds: str
   }
 }
 
+export function listMixtapeItemsByItemIds(
+  playlistUuid: string,
+  itemIds: string[]
+): MixtapeItemRecord[] {
+  const normalizedIds = normalizeUniqueStrings(itemIds)
+  if (!playlistUuid || normalizedIds.length === 0) return []
+  const db = getLibraryDb()
+  if (!db) return []
+  try {
+    const placeholders = normalizedIds.map(() => '?').join(',')
+    const rows = db
+      .prepare(
+        `SELECT id, playlist_uuid, file_path, mix_order, origin_playlist_uuid, origin_path_snapshot, info_json, created_at_ms
+         FROM ${TABLE}
+         WHERE playlist_uuid = ? AND id IN (${placeholders})
+         ORDER BY mix_order ASC, created_at_ms ASC, id ASC`
+      )
+      .all(playlistUuid, ...normalizedIds)
+    return rows.map(toRecord).filter(Boolean) as MixtapeItemRecord[]
+  } catch (error) {
+    log.error('[sqlite] mixtape list by ids failed', error)
+    return []
+  }
+}
+
 export function listMixtapeFilePathsInUse(filePaths: string[]): string[] {
   const normalizedPaths = normalizeUniqueStrings(filePaths)
   if (normalizedPaths.length === 0) return []

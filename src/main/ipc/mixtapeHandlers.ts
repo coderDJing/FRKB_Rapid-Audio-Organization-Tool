@@ -15,6 +15,8 @@ import {
   getMixtapeProjectStemConfig,
   getMixtapeProjectStemMode,
   listMixtapeItems,
+  listMixtapeItemsByItemIds,
+  listMixtapeItemsByFilePath,
   listMixtapeFilePathsByItemIds,
   removeMixtapeItemsById,
   removeMixtapeItemsByFilePath,
@@ -768,55 +770,244 @@ export function registerMixtapeHandlers() {
           originPlaylistUuid?: string | null
           originPathSnapshot?: string | null
           info?: Record<string, any> | null
+          sourcePlaylistId?: string | null
+          sourceItemId?: string | null
         }>
       }
     ) => {
       const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
-      const items = Array.isArray(payload?.items) ? payload.items : []
-      const result = appendMixtapeItems(playlistId, items)
-      const filePaths = Array.from(
-        new Set(items.map((item) => item?.filePath).filter((value): value is string => !!value))
+      const inputItems = Array.isArray(payload?.items) ? payload.items : []
+
+      const normalizeText = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
+      const normalizeInfo = (value: unknown): Record<string, any> | null => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+        return value as Record<string, any>
+      }
+      const parseInfoJson = (value: unknown): Record<string, any> | null => {
+        if (typeof value !== 'string' || !value.trim()) return null
+        try {
+          const parsed = JSON.parse(value)
+          return normalizeInfo(parsed)
+        } catch {
+          return null
+        }
+      }
+      const hasReadyStemPaths = (info: Record<string, any> | null): boolean => {
+        if (!info) return false
+        const vocal = normalizeText(info.stemVocalPath)
+        const inst = normalizeText(info.stemInstPath)
+        const drums = normalizeText(info.stemDrumsPath)
+        if (!vocal || !inst || !drums) return false
+        const bass = normalizeText(info.stemBassPath)
+        return !!bass
+      }
+      const hasBpmReady = (info: Record<string, any> | null): boolean => {
+        if (!info) return false
+        const bpm = Number(info.bpm)
+        return Number.isFinite(bpm) && bpm > 0
+      }
+      const ANALYSIS_COPY_FIELDS = [
+        'bpm',
+        'originalBpm',
+        'firstBeatMs',
+        'barBeatOffset',
+        'key',
+        'originalKey',
+        'stemStatus',
+        'stemReadyAt',
+        'stemModel',
+        'stemVersion',
+        'stemVocalPath',
+        'stemInstPath',
+        'stemBassPath',
+        'stemDrumsPath'
+      ]
+      const pickAnalysisInfo = (info: Record<string, any> | null): Record<string, any> | null => {
+        if (!info) return null
+        const picked: Record<string, any> = {}
+        for (const key of ANALYSIS_COPY_FIELDS) {
+          if (!Object.prototype.hasOwnProperty.call(info, key)) continue
+          const value = info[key]
+          if (value === undefined || value === null) continue
+          if (typeof value === 'string' && !value.trim()) continue
+          if (key === 'stemStatus' && value !== 'ready') continue
+          picked[key] = value
+        }
+        return Object.keys(picked).length > 0 ? picked : null
+      }
+      const mergeInfoWithAnalysis = (
+        baseInfo: Record<string, any> | null,
+        analysisInfo: Record<string, any> | null
+      ): Record<string, any> | null => {
+        if (!baseInfo && !analysisInfo) return null
+        if (!analysisInfo) return baseInfo
+        if (!baseInfo) return { ...analysisInfo }
+        const merged: Record<string, any> = { ...baseInfo }
+        for (const key of ANALYSIS_COPY_FIELDS) {
+          const nextValue = analysisInfo[key]
+          if (nextValue === undefined || nextValue === null) continue
+          if (
+            merged[key] === undefined ||
+            merged[key] === null ||
+            (typeof merged[key] === 'string' && !String(merged[key]).trim())
+          ) {
+            merged[key] = nextValue
+          }
+        }
+        return merged
+      }
+
+      const targetStemConfig = getMixtapeProjectStemConfig(playlistId)
+      const targetPlaylistTypeKey = `${targetStemConfig.mixMode}::${targetStemConfig.stemMode}`
+      const playlistTypeKeyById = new Map<string, string>([[playlistId, targetPlaylistTypeKey]])
+      const resolvePlaylistTypeKey = (playlistUuid: string) => {
+        const normalized = normalizeText(playlistUuid)
+        if (!normalized) return ''
+        const cached = playlistTypeKeyById.get(normalized)
+        if (cached) return cached
+        const config = getMixtapeProjectStemConfig(normalized)
+        const key = `${config.mixMode}::${config.stemMode}`
+        playlistTypeKeyById.set(normalized, key)
+        return key
+      }
+      const sourceRefsByPlaylist = new Map<string, Set<string>>()
+      for (const item of inputItems) {
+        const sourcePlaylistId =
+          normalizeText(item?.sourcePlaylistId) || normalizeText(item?.originPlaylistUuid)
+        const sourceItemId = normalizeText(item?.sourceItemId)
+        if (!sourcePlaylistId || !sourceItemId) continue
+        if (!sourceRefsByPlaylist.has(sourcePlaylistId)) {
+          sourceRefsByPlaylist.set(sourcePlaylistId, new Set<string>())
+        }
+        sourceRefsByPlaylist.get(sourcePlaylistId)?.add(sourceItemId)
+      }
+
+      const reusableInfoBySourceKey = new Map<string, Record<string, any>>()
+      for (const [sourcePlaylistId, sourceItemIdSet] of sourceRefsByPlaylist.entries()) {
+        if (resolvePlaylistTypeKey(sourcePlaylistId) !== targetPlaylistTypeKey) continue
+        const sourceItemIds = Array.from(sourceItemIdSet)
+        const sourceRows = listMixtapeItemsByItemIds(sourcePlaylistId, sourceItemIds)
+        for (const row of sourceRows) {
+          const sourceItemId = normalizeText(row?.id)
+          const parsedInfo = parseInfoJson(row?.infoJson)
+          if (!sourceItemId || !parsedInfo) continue
+          reusableInfoBySourceKey.set(`${sourcePlaylistId}::${sourceItemId}`, parsedInfo)
+        }
+      }
+      const reusableAnalysisByFilePath = new Map<string, Record<string, any>>()
+      const uniqueInputFilePaths = Array.from(
+        new Set(inputItems.map((item) => normalizeText(item?.filePath)).filter(Boolean))
       )
+      for (const filePath of uniqueInputFilePaths) {
+        const candidateRows = listMixtapeItemsByFilePath(filePath)
+        let bestAnalysisInfo: Record<string, any> | null = null
+        let bestScore = -1
+        for (const row of candidateRows) {
+          const candidatePlaylistId = normalizeText(row?.playlistUuid)
+          if (!candidatePlaylistId) continue
+          if (resolvePlaylistTypeKey(candidatePlaylistId) !== targetPlaylistTypeKey) continue
+          const analysisInfo = pickAnalysisInfo(parseInfoJson(row?.infoJson))
+          if (!analysisInfo) continue
+          const score =
+            (hasReadyStemPaths(analysisInfo) ? 10 : 0) + (hasBpmReady(analysisInfo) ? 1 : 0)
+          if (score < bestScore) continue
+          bestScore = score
+          bestAnalysisInfo = analysisInfo
+        }
+        if (bestAnalysisInfo) {
+          reusableAnalysisByFilePath.set(filePath, bestAnalysisInfo)
+        }
+      }
+
+      const normalizedItems: Array<{
+        filePath: string
+        originPlaylistUuid?: string | null
+        originPathSnapshot?: string | null
+        info?: Record<string, any> | null
+      }> = []
+      const filePathSet = new Set<string>()
+      const bpmAnalyzeFilePathSet = new Set<string>()
+      const stemEnqueueFilePathSet = new Set<string>()
+
+      for (const item of inputItems) {
+        const filePath = normalizeText(item?.filePath)
+        if (!filePath) continue
+        const sourcePlaylistId =
+          normalizeText(item?.sourcePlaylistId) || normalizeText(item?.originPlaylistUuid)
+        const sourceItemId = normalizeText(item?.sourceItemId)
+        const sourceInfo =
+          sourcePlaylistId && sourceItemId
+            ? reusableInfoBySourceKey.get(`${sourcePlaylistId}::${sourceItemId}`) || null
+            : null
+        const itemInfo = normalizeInfo(item?.info)
+        const fallbackAnalysisInfo =
+          sourceInfo || !reusableAnalysisByFilePath.has(filePath)
+            ? null
+            : reusableAnalysisByFilePath.get(filePath) || null
+        const info = sourceInfo || mergeInfoWithAnalysis(itemInfo, fallbackAnalysisInfo)
+        normalizedItems.push({
+          filePath,
+          originPlaylistUuid: item?.originPlaylistUuid || null,
+          originPathSnapshot: item?.originPathSnapshot || null,
+          info
+        })
+        filePathSet.add(filePath)
+        if (!hasBpmReady(info)) {
+          bpmAnalyzeFilePathSet.add(filePath)
+        }
+        if (!hasReadyStemPaths(info)) {
+          stemEnqueueFilePathSet.add(filePath)
+        }
+      }
+
+      const result = appendMixtapeItems(playlistId, normalizedItems)
+      const filePaths = Array.from(filePathSet)
       if (filePaths.length > 0) {
         queueMixtapeWaveforms(filePaths)
         queueMixtapeRawWaveforms(filePaths)
         queueMixtapeWaveformHires(filePaths)
-        const stemConfig = getMixtapeProjectStemConfig(playlistId)
-        if (stemConfig.mixMode === 'stem' && stemConfig.stemStrategyConfirmed) {
+        const stemEnqueueFilePaths = Array.from(stemEnqueueFilePathSet)
+        if (
+          targetStemConfig.mixMode === 'stem' &&
+          targetStemConfig.stemStrategyConfirmed &&
+          stemEnqueueFilePaths.length > 0
+        ) {
           void enqueueMixtapeStemJobs({
             playlistId,
-            filePaths,
-            stemMode: stemConfig.stemMode,
-            profile: stemConfig.stemRealtimeProfile
+            filePaths: stemEnqueueFilePaths,
+            stemMode: targetStemConfig.stemMode,
+            profile: targetStemConfig.stemRealtimeProfile
           }).catch((error) => {
             log.error('[mixtape-stem] enqueue after append failed', {
               playlistId,
-              fileCount: filePaths.length,
+              fileCount: stemEnqueueFilePaths.length,
               error
             })
           })
         } else {
-          log.info(
-            '[mixtape-stem] skip enqueue after append: not stem mode or stem strategy not confirmed',
-            {
-              playlistId,
-              fileCount: filePaths.length
-            }
-          )
-        }
-        // 预分析 BPM（后台，不阻塞返回）
-        void analyzeMixtapeBpmBatchShared(filePaths)
-          .then((bpmResult) => {
-            if (bpmResult.results.length > 0) {
-              upsertMixtapeItemBpmByFilePath(bpmResult.results)
-              try {
-                mixtapeWindow.broadcast?.('mixtape-bpm-batch-ready', {
-                  results: bpmResult.results
-                })
-              } catch {}
-            }
+          log.info('[mixtape-stem] skip enqueue after append', {
+            playlistId,
+            fileCount: stemEnqueueFilePaths.length,
+            mixMode: targetStemConfig.mixMode,
+            stemStrategyConfirmed: targetStemConfig.stemStrategyConfirmed
           })
-          .catch(() => {})
+        }
+        const bpmAnalyzeFilePaths = Array.from(bpmAnalyzeFilePathSet)
+        if (bpmAnalyzeFilePaths.length > 0) {
+          // 预分析 BPM（后台，不阻塞返回）
+          void analyzeMixtapeBpmBatchShared(bpmAnalyzeFilePaths)
+            .then((bpmResult) => {
+              if (bpmResult.results.length > 0) {
+                upsertMixtapeItemBpmByFilePath(bpmResult.results)
+                try {
+                  mixtapeWindow.broadcast?.('mixtape-bpm-batch-ready', {
+                    results: bpmResult.results
+                  })
+                } catch {}
+              }
+            })
+            .catch(() => {})
+        }
       }
       return result
     }

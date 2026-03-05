@@ -110,7 +110,7 @@ export function useLibraryDragAndDrop({
       }
       e.preventDefault()
       if (e.dataTransfer) {
-        e.dataTransfer.dropEffect = 'move'
+        e.dataTransfer.dropEffect = dirData.type === 'mixtapeList' ? 'copy' : 'move'
       }
       dragState.dragApproach = 'center'
       return

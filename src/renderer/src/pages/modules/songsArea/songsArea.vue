@@ -688,23 +688,46 @@ const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
   if (isMixtapeListView.value) {
     const listUuid = runtime.songsArea.songListUUID
     const selectedSet = new Set(selectedKeysSnapshot)
-    const selectedItemIds = runtime.songsArea.songInfoArr
-      .filter((item) => !!item.mixtapeItemId && selectedSet.has(item.mixtapeItemId))
+    const selectedSongs = runtime.songsArea.songInfoArr.filter(
+      (item) => !!item.mixtapeItemId && selectedSet.has(item.mixtapeItemId)
+    )
+    const selectedItemIds = selectedSongs
       .map((item) => item.mixtapeItemId)
       .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    const selectedSongFilePaths = selectedSongs
+      .map((item) => item.filePath)
+      .filter((path): path is string => typeof path === 'string' && path.length > 0)
     const fallbackId =
       typeof song.mixtapeItemId === 'string' && song.mixtapeItemId.length > 0
         ? [song.mixtapeItemId]
         : []
+    const fallbackSongPath =
+      typeof song.filePath === 'string' && song.filePath.length > 0 ? [song.filePath] : []
     const itemIds = selectedItemIds.length > 0 ? selectedItemIds : fallbackId
+    const dragSongFilePaths =
+      selectedSongFilePaths.length > 0 ? selectedSongFilePaths : fallbackSongPath
     if (!listUuid || itemIds.length === 0) return
+    showDragHint('internal')
+    startDragSongs(song, runtime.libraryAreaSelected, runtime.songsArea.songListUUID, {
+      songFilePaths: dragSongFilePaths,
+      sourceMixtapeItemIds: itemIds
+    })
     if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = 'move'
+      event.dataTransfer.effectAllowed = 'copyMove'
       event.dataTransfer.setData(
         'application/x-mixtape-reorder',
         JSON.stringify({
           sourceSongListUUID: listUuid,
           itemIds
+        })
+      )
+      event.dataTransfer.setData(
+        'application/x-song-drag',
+        JSON.stringify({
+          type: 'song',
+          sourceLibraryName: runtime.libraryAreaSelected,
+          sourceSongListUUID: runtime.songsArea.songListUUID,
+          sourceMixtapeItemIds: itemIds
         })
       )
     }

@@ -129,6 +129,7 @@ export function useSongItemContextMenu(
   ]
   const mixtapeMenuArr: IMenu[][] = [
     [{ menuName: 'tracks.exportTracks' }],
+    [{ menuName: 'library.addToMixtape' }],
     [{ menuName: 'tracks.deleteTracks', shortcutKey: 'Delete' }],
     [{ menuName: 'tracks.showInFileExplorer' }],
     [{ menuName: 'tracks.editMetadata' }],
