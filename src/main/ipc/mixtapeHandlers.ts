@@ -777,6 +777,18 @@ export function registerMixtapeHandlers() {
     ) => {
       const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
       const inputItems = Array.isArray(payload?.items) ? payload.items : []
+      if (process.env.NODE_ENV !== 'production') {
+        log.info('[mixtape][dev] append request received', {
+          playlistId,
+          inputCount: inputItems.length,
+          sample: inputItems.slice(0, 2).map((item) => ({
+            filePath: typeof item?.filePath === 'string' ? item.filePath : '',
+            sourcePlaylistId:
+              typeof item?.sourcePlaylistId === 'string' ? item.sourcePlaylistId : '',
+            sourceItemId: typeof item?.sourceItemId === 'string' ? item.sourceItemId : ''
+          }))
+        })
+      }
 
       const normalizeText = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
       const normalizeInfo = (value: unknown): Record<string, any> | null => {
@@ -791,6 +803,11 @@ export function registerMixtapeHandlers() {
         } catch {
           return null
         }
+      }
+      const isLikelyAudioFilePath = (value: string) => {
+        const normalized = normalizeText(value)
+        if (!normalized) return false
+        return path.isAbsolute(normalized)
       }
       const hasReadyStemPaths = (info: Record<string, any> | null): boolean => {
         if (!info) return false
@@ -896,7 +913,11 @@ export function registerMixtapeHandlers() {
       }
       const reusableAnalysisByFilePath = new Map<string, Record<string, any>>()
       const uniqueInputFilePaths = Array.from(
-        new Set(inputItems.map((item) => normalizeText(item?.filePath)).filter(Boolean))
+        new Set(
+          inputItems
+            .map((item) => normalizeText(item?.filePath))
+            .filter((filePath) => isLikelyAudioFilePath(filePath))
+        )
       )
       for (const filePath of uniqueInputFilePaths) {
         const candidateRows = listMixtapeItemsByFilePath(filePath)
@@ -928,10 +949,15 @@ export function registerMixtapeHandlers() {
       const filePathSet = new Set<string>()
       const bpmAnalyzeFilePathSet = new Set<string>()
       const stemEnqueueFilePathSet = new Set<string>()
+      let invalidPathCount = 0
 
       for (const item of inputItems) {
         const filePath = normalizeText(item?.filePath)
         if (!filePath) continue
+        if (!isLikelyAudioFilePath(filePath)) {
+          invalidPathCount += 1
+          continue
+        }
         const sourcePlaylistId =
           normalizeText(item?.sourcePlaylistId) || normalizeText(item?.originPlaylistUuid)
         const sourceItemId = normalizeText(item?.sourceItemId)
@@ -959,8 +985,30 @@ export function registerMixtapeHandlers() {
           stemEnqueueFilePathSet.add(filePath)
         }
       }
+      if (invalidPathCount > 0) {
+        log.warn('[mixtape] skip append items with invalid file path', {
+          playlistId,
+          invalidPathCount,
+          inputCount: inputItems.length
+        })
+      }
+      if (process.env.NODE_ENV !== 'production') {
+        log.info('[mixtape][dev] append request normalized', {
+          playlistId,
+          normalizedCount: normalizedItems.length,
+          uniquePathCount: filePathSet.size,
+          invalidPathCount
+        })
+      }
 
       const result = appendMixtapeItems(playlistId, normalizedItems)
+      if (process.env.NODE_ENV !== 'production') {
+        log.info('[mixtape][dev] append db result', {
+          playlistId,
+          inserted: Number(result?.inserted || 0),
+          normalizedCount: normalizedItems.length
+        })
+      }
       const filePaths = Array.from(filePathSet)
       if (filePaths.length > 0) {
         queueMixtapeWaveforms(filePaths)

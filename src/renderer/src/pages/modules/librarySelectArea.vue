@@ -345,17 +345,29 @@ const libraryHandleClick = (item: Icon) => {
   emit('librarySelectedChange', item)
 }
 
+const isMixtapeSourceSongDrag = () => {
+  if (
+    Array.isArray(runtime.dragSourceMixtapeItemIds) &&
+    runtime.dragSourceMixtapeItemIds.length > 0
+  ) {
+    return true
+  }
+  const sourceSongListUUID = runtime.dragSourceSongListUUID
+  if (!sourceSongListUUID) return false
+  return libraryUtils.getLibraryTreeByUUID(sourceSongListUUID)?.type === 'mixtapeList'
+}
+
 // 拖拽时的库切换逻辑
 const iconDragEnter = (event: DragEvent, item: Icon) => {
   // 检查是否是歌曲拖拽
   const isSongDrag = event.dataTransfer?.types?.includes('application/x-song-drag')
-
-  if (isSongDrag && item.name !== selectedIcon.value.name) {
-    // 当拖拽歌曲时，自动切换到对应的库
-    clickIcon(item)
-    // 同时触发库切换事件，通知父组件更新
-    libraryHandleClick(item)
-  }
+  if (!isSongDrag || item.name === selectedIcon.value.name) return
+  // 混音歌单来源仅允许在混音库内投放，不应悬浮切换到其他库
+  if (isMixtapeSourceSongDrag() && item.name !== 'MixtapeLibrary') return
+  // 当拖拽歌曲时，自动切换到对应的库
+  clickIcon(item)
+  // 同时触发库切换事件，通知父组件更新
+  libraryHandleClick(item)
 }
 
 watch(

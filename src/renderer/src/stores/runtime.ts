@@ -18,6 +18,8 @@ interface Runtime {
   songDragActive: boolean
   draggingSongFilePaths: string[]
   dragSourceSongListUUID: string
+  dragSourceMixtapeItemIds: string[]
+  songDragSuppressClickUntilMs: number
   libraryTree: IDir
   oldLibraryTree: IDir
   selectSongListDialogShow: boolean
@@ -72,6 +74,8 @@ export const useRuntimeStore = defineStore('runtime', {
       songDragActive: false,
       draggingSongFilePaths: [],
       dragSourceSongListUUID: '',
+      dragSourceMixtapeItemIds: [],
+      songDragSuppressClickUntilMs: 0,
       libraryTree: {
         uuid: '',
         type: 'root',

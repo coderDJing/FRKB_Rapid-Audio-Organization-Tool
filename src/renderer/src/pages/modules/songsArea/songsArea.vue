@@ -45,6 +45,15 @@ const ascendingOrder = ascendingOrderAsset
 const descendingOrder = descendingOrderAsset
 
 const runtime = useRuntimeStore()
+const emitDevLog = (message: string, data?: Record<string, unknown>) => {
+  try {
+    window.electron.ipcRenderer.send('devLog', {
+      scope: 'songs-area-dnd',
+      message,
+      data: data || {}
+    })
+  } catch {}
+}
 const songsAreaRef = useTemplateRef<OverlayScrollbarsComponentRef>('songsAreaRef')
 const isMixtapeListView = computed(
   () => libraryUtils.getLibraryTreeByUUID(runtime.songsArea.songListUUID)?.type === 'mixtapeList'
@@ -707,6 +716,13 @@ const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
     const dragSongFilePaths =
       selectedSongFilePaths.length > 0 ? selectedSongFilePaths : fallbackSongPath
     if (!listUuid || itemIds.length === 0) return
+    emitDevLog('row dragstart from mixtape list', {
+      sourceSongListUUID: runtime.songsArea.songListUUID,
+      itemCount: itemIds.length,
+      pathCount: dragSongFilePaths.length,
+      sampleItemId: itemIds[0] || '',
+      samplePath: dragSongFilePaths[0] || ''
+    })
     showDragHint('internal')
     startDragSongs(song, runtime.libraryAreaSelected, runtime.songsArea.songListUUID, {
       songFilePaths: dragSongFilePaths,
@@ -752,6 +768,7 @@ const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
 }
 
 const handleSongDragEnd = () => {
+  runtime.songDragSuppressClickUntilMs = Date.now() + 450
   hideDragHint()
   scheduleDragCleanup()
 }

@@ -144,6 +144,7 @@ const { shouldShow } = useLibraryFilter({
 const dirHandleClick = async () => {
   const currentDirData = dirDataRef.value
   if (!currentDirData) return
+  if (runtime.songDragSuppressClickUntilMs > Date.now()) return
   runtime.activeMenuUUID = ''
   const songListPath = libraryUtils.findDirPathByUuid(props.uuid)
   const isSongListPathExist = await window.electron.ipcRenderer.invoke(

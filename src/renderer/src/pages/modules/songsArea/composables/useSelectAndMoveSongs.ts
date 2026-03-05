@@ -104,17 +104,28 @@ export function useSelectAndMoveSongs() {
           }
         })
         .filter((item): item is NonNullable<typeof item> => item !== null)
+      const itemsFromMixtapePaths = normalizeUniqueStrings(selectedPaths)
+        .map((filePath) => {
+          const song = songMap.get(filePath)
+          if (!song || !song.filePath) return null
+          return {
+            filePath: song.filePath,
+            originPlaylistUuid: sourceSongListUUID,
+            originPathSnapshot,
+            info: buildSongSnapshot(song.filePath, song),
+            sourcePlaylistId: sourceSongListUUID,
+            sourceItemId:
+              typeof song.mixtapeItemId === 'string' && song.mixtapeItemId.trim()
+                ? song.mixtapeItemId.trim()
+                : undefined
+          }
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null)
       const items =
         sourceNode.type === 'mixtapeList'
           ? itemsFromMixtapeIds.length > 0
             ? itemsFromMixtapeIds
-            : normalizeUniqueStrings(selectedPaths).map((filePath: string) => ({
-                filePath,
-                originPlaylistUuid: sourceSongListUUID,
-                originPathSnapshot,
-                info: buildSongSnapshot(filePath, songMap.get(filePath)),
-                sourcePlaylistId: sourceSongListUUID
-              }))
+            : itemsFromMixtapePaths
           : normalizeUniqueStrings(selectedPaths).map((filePath: string) => ({
               filePath,
               originPlaylistUuid: sourceSongListUUID,

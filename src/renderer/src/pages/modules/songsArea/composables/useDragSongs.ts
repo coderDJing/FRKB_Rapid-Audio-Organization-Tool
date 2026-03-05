@@ -18,6 +18,15 @@ type StartDragSongsOptions = {
 
 export function useDragSongs() {
   const runtime = useRuntimeStore()
+  const emitDevLog = (message: string, data?: Record<string, unknown>) => {
+    try {
+      window.electron.ipcRenderer.send('devLog', {
+        scope: 'songs-area-dnd',
+        message,
+        data: data || {}
+      })
+    } catch {}
+  }
   const isDragging = ref(false)
   const dragData = ref<DragSongData | null>(null)
   let dragCleanupTimer: ReturnType<typeof setTimeout> | null = null
@@ -28,15 +37,21 @@ export function useDragSongs() {
       dragCleanupTimer = null
     }
   }
-  const setRuntimeDragState = (filePaths: string[], sourceSongListUUID: string) => {
+  const setRuntimeDragState = (
+    filePaths: string[],
+    sourceSongListUUID: string,
+    sourceMixtapeItemIds: string[] = []
+  ) => {
     runtime.songDragActive = true
     runtime.draggingSongFilePaths = [...filePaths]
     runtime.dragSourceSongListUUID = sourceSongListUUID
+    runtime.dragSourceMixtapeItemIds = [...sourceMixtapeItemIds]
   }
   const clearRuntimeDragState = () => {
     runtime.songDragActive = false
     runtime.draggingSongFilePaths = []
     runtime.dragSourceSongListUUID = ''
+    runtime.dragSourceMixtapeItemIds = []
   }
   const normalizeUniqueStrings = (values: unknown[]): string[] =>
     Array.from(
@@ -131,7 +146,7 @@ export function useDragSongs() {
       sourceMixtapeItemIds
     }
     isDragging.value = true
-    setRuntimeDragState(songFilePaths, sourceSongListUUID)
+    setRuntimeDragState(songFilePaths, sourceSongListUUID, sourceMixtapeItemIds)
     return songFilePaths
   }
 
@@ -166,9 +181,12 @@ export function useDragSongs() {
           ? [...dragData.value.songFilePaths]
           : [...runtime.songsArea.selectedSongFilePath]
       const sourceMixtapeItemIds = normalizeUniqueStrings(
-        Array.isArray(dragData.value?.sourceMixtapeItemIds)
-          ? dragData.value?.sourceMixtapeItemIds
-          : []
+        Array.isArray(dragData.value?.sourceMixtapeItemIds) &&
+          dragData.value.sourceMixtapeItemIds.length > 0
+          ? dragData.value.sourceMixtapeItemIds
+          : Array.isArray(runtime.dragSourceMixtapeItemIds)
+            ? runtime.dragSourceMixtapeItemIds
+            : []
       )
       const sourceSongListUUID =
         dragData.value?.sourceSongListUUID ||
@@ -176,18 +194,42 @@ export function useDragSongs() {
         runtime.songsArea.songListUUID
 
       if (!selectedSongFilePaths.length || !sourceSongListUUID) {
+        emitDevLog('drop ignored: missing source or selected paths', {
+          targetSongListUUID,
+          sourceSongListUUID,
+          selectedPathCount: selectedSongFilePaths.length
+        })
         return []
       }
       if (targetSongListUUID === sourceSongListUUID) {
+        emitDevLog('drop ignored: source equals target', {
+          targetSongListUUID
+        })
         return []
       }
 
       const targetNode = libraryUtils.getLibraryTreeByUUID(targetSongListUUID)
       const sourceNode = libraryUtils.getLibraryTreeByUUID(sourceSongListUUID)
       const isMixtapeTarget = targetNode?.type === 'mixtapeList'
+      emitDevLog('drop resolved nodes', {
+        sourceSongListUUID,
+        targetSongListUUID,
+        sourceType: sourceNode?.type || '',
+        targetType: targetNode?.type || '',
+        sourceItemIdCount: sourceMixtapeItemIds.length,
+        runtimeSourceItemIdCount: Array.isArray(runtime.dragSourceMixtapeItemIds)
+          ? runtime.dragSourceMixtapeItemIds.length
+          : 0,
+        selectedPathCount: selectedSongFilePaths.length
+      })
 
       if (isMixtapeTarget) {
         if (!sourceNode || (sourceNode.type !== 'songList' && sourceNode.type !== 'mixtapeList')) {
+          emitDevLog('drop ignored: unsupported source type for mixtape target', {
+            sourceSongListUUID,
+            targetSongListUUID,
+            sourceType: sourceNode?.type || ''
+          })
           return []
         }
         const originPathSnapshot = libraryUtils.buildDisplayPathByUuid(sourceSongListUUID)
@@ -214,17 +256,28 @@ export function useDragSongs() {
             }
           })
           .filter((item): item is NonNullable<typeof item> => item !== null)
+        const itemsFromMixtapePaths = normalizeUniqueStrings(selectedSongFilePaths)
+          .map((filePath) => {
+            const song = songMap.get(filePath)
+            if (!song || !song.filePath) return null
+            return {
+              filePath: song.filePath,
+              originPlaylistUuid: sourceSongListUUID,
+              originPathSnapshot,
+              info: buildSongSnapshot(song.filePath, song),
+              sourcePlaylistId: sourceSongListUUID,
+              sourceItemId:
+                typeof song.mixtapeItemId === 'string' && song.mixtapeItemId.trim()
+                  ? song.mixtapeItemId.trim()
+                  : undefined
+            }
+          })
+          .filter((item): item is NonNullable<typeof item> => item !== null)
         const items =
           sourceNode.type === 'mixtapeList'
             ? itemsFromMixtapeIds.length > 0
               ? itemsFromMixtapeIds
-              : normalizeUniqueStrings(selectedSongFilePaths).map((filePath) => ({
-                  filePath,
-                  originPlaylistUuid: sourceSongListUUID,
-                  originPathSnapshot,
-                  info: buildSongSnapshot(filePath, songMap.get(filePath)),
-                  sourcePlaylistId: sourceSongListUUID
-                }))
+              : itemsFromMixtapePaths
             : normalizeUniqueStrings(selectedSongFilePaths).map((filePath) => ({
                 filePath,
                 originPlaylistUuid: sourceSongListUUID,
@@ -232,11 +285,29 @@ export function useDragSongs() {
                 info: buildSongSnapshot(filePath, songMap.get(filePath))
               }))
         if (items.length === 0) {
+          emitDevLog('drop ignored: mixtape append items empty', {
+            sourceSongListUUID,
+            targetSongListUUID,
+            sourceType: sourceNode.type,
+            sourceItemIdCount: sourceMixtapeItemIds.length,
+            selectedPathCount: selectedSongFilePaths.length
+          })
           return []
         }
+        emitDevLog('drop invoking mixtape:append', {
+          sourceSongListUUID,
+          targetSongListUUID,
+          itemCount: items.length,
+          samplePath: items[0]?.filePath || '',
+          sampleSourceItemId: (items[0] as any)?.sourceItemId || ''
+        })
         await window.electron.ipcRenderer.invoke('mixtape:append', {
           playlistId: targetSongListUUID,
           items
+        })
+        emitDevLog('drop mixtape:append completed', {
+          targetSongListUUID,
+          itemCount: items.length
         })
         try {
           emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
@@ -246,6 +317,10 @@ export function useDragSongs() {
       }
 
       if (sourceNode?.type === 'mixtapeList') {
+        emitDevLog('drop ignored: mixtape source to normal list is blocked', {
+          sourceSongListUUID,
+          targetSongListUUID
+        })
         return []
       }
 
@@ -253,10 +328,19 @@ export function useDragSongs() {
       const targetDirPath = libraryUtils.findDirPathByUuid(targetSongListUUID)
 
       if (!targetDirPath) {
+        emitDevLog('drop ignored: target dir path missing', {
+          sourceSongListUUID,
+          targetSongListUUID
+        })
         return []
       }
 
       // 调用移动歌曲的 IPC，确保所有参数都是可序列化的
+      emitDevLog('drop invoking moveSongsToDir', {
+        sourceSongListUUID,
+        targetSongListUUID,
+        selectedPathCount: selectedSongFilePaths.length
+      })
       await window.electron.ipcRenderer.invoke(
         'moveSongsToDir',
         selectedSongFilePaths,
