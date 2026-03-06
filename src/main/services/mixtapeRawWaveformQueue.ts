@@ -102,3 +102,7 @@ export function queueMixtapeRawWaveforms(
     void computeMixtapeRawWaveform(filePath, listRoot, targetRate)
   }
 }
+
+export function isMixtapeRawWaveformQueueBusy(): boolean {
+  return inflight.size > 0
+}

@@ -223,6 +223,14 @@ const resolveMixtapeModeTag = (mixMode?: string) =>
   mixMode === 'traditional' ? t('mixtape.mixModeTraditionalTag') : t('mixtape.mixModeStemTag')
 const resolveMixtapeModeLabel = (mixMode?: string) =>
   mixMode === 'traditional' ? t('mixtape.mixModeTraditionalLabel') : t('mixtape.mixModeStemLabel')
+const resolveMixtapeProfileLabel = (profile?: string) =>
+  profile === 'quality'
+    ? `${t('mixtape.stemRealtimeProfile')}：${t('mixtape.stemProfileQualityLabel')}`
+    : `${t('mixtape.stemRealtimeProfile')}：${t('mixtape.stemProfileFastLabel')}`
+const resolveMixtapeBadgeTitle = (mixMode?: string, profile?: string) =>
+  mixMode === 'traditional'
+    ? resolveMixtapeModeLabel(mixMode)
+    : `${resolveMixtapeModeLabel(mixMode)} · ${resolveMixtapeProfileLabel(profile)}`
 
 const menuArr = ref([
   isMixtapeDialog.value
@@ -258,7 +266,9 @@ const contextmenuEvent = async (event: MouseEvent) => {
         uuid: newUuid,
         type: 'mixtapeList',
         dirName: '',
-        mixMode: projectMode.mixMode
+        mixMode: projectMode.mixMode,
+        stemRealtimeProfile: projectMode.stemRealtimeProfile,
+        stemExportProfile: projectMode.stemExportProfile
       })
       setPendingMixtapeProjectMode(newUuid, projectMode)
       runtime.dialogSelectedSongListUUID = newUuid
@@ -338,6 +348,12 @@ const createNow = async () => {
     type: isMixtapeDialog.value ? 'mixtapeList' : 'songList',
     dirName: name,
     mixMode: isMixtapeDialog.value ? projectMode?.mixMode || 'stem' : undefined,
+    stemRealtimeProfile: isMixtapeDialog.value
+      ? projectMode?.stemRealtimeProfile || 'fast'
+      : undefined,
+    stemExportProfile: isMixtapeDialog.value
+      ? projectMode?.stemExportProfile || 'quality'
+      : undefined,
     order: 1,
     children: []
   } as IDir)
@@ -692,16 +708,26 @@ watch(
                     </div>
                     <div class="nameRow">
                       <span class="nameText">{{ item.dirName }}</span>
-                      <span
-                        v-if="item.type === 'mixtapeList'"
-                        class="mixModeBadge"
-                        :class="{
-                          'is-traditional': item.mixMode === 'traditional',
-                          'is-stem': item.mixMode !== 'traditional'
-                        }"
-                        :title="resolveMixtapeModeLabel(item.mixMode)"
-                        >{{ resolveMixtapeModeTag(item.mixMode) }}</span
-                      >
+                      <span v-if="item.type === 'mixtapeList'" class="mixtapeBadgeGroup">
+                        <span
+                          class="mixModeBadge"
+                          :class="{
+                            'is-traditional': item.mixMode === 'traditional',
+                            'is-stem': item.mixMode !== 'traditional'
+                          }"
+                          :title="resolveMixtapeBadgeTitle(item.mixMode, item.stemRealtimeProfile)"
+                        >
+                          <span>{{ resolveMixtapeModeTag(item.mixMode) }}</span>
+                          <span
+                            v-if="item.mixMode !== 'traditional'"
+                            class="mixModeBadgeDot"
+                            :class="{
+                              'is-quality': item.stemRealtimeProfile === 'quality',
+                              'is-fast': item.stemRealtimeProfile !== 'quality'
+                            }"
+                          ></span>
+                        </span>
+                      </span>
                       <span
                         v-if="
                           (runtime as any).setting.showPlaylistTrackCount &&
@@ -867,19 +893,29 @@ watch(
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.mixModeBadge {
-  min-width: 34px;
-  height: 16px;
-  padding: 0 6px;
-  border-radius: 8px;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 16px;
-  text-align: center;
+
+.mixtapeBadgeGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   position: absolute;
   right: 8px;
   top: 50%;
   transform: translateY(-50%);
+}
+.mixModeBadge {
+  width: 50px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  box-sizing: border-box;
 }
 
 .mixModeBadge.is-traditional {
@@ -890,6 +926,21 @@ watch(
 .mixModeBadge.is-stem {
   background-color: rgba(91, 173, 255, 0.18);
   color: #2f85d8;
+}
+
+.mixModeBadgeDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.mixModeBadgeDot.is-fast {
+  background-color: #d98300;
+}
+
+.mixModeBadgeDot.is-quality {
+  background-color: #2d8b40;
 }
 
 .countBadge {

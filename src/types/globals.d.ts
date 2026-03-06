@@ -8,6 +8,8 @@ interface IDir {
   type: 'root' | 'library' | 'dir' | 'songList' | 'mixtapeList'
   dirName: string
   mixMode?: 'traditional' | 'stem'
+  stemRealtimeProfile?: 'fast' | 'quality'
+  stemExportProfile?: 'fast' | 'quality'
   order?: number
   children?: IDir[]
 }

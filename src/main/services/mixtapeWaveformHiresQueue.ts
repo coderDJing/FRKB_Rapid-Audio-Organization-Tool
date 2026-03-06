@@ -176,6 +176,10 @@ export function queueMixtapeWaveformHires(
   drainQueue()
 }
 
+export function isMixtapeWaveformHiresQueueBusy(): boolean {
+  return queue.length > 0 || pendingKeys.size > 0 || inflightKeys.size > 0 || activeCount > 0
+}
+
 async function runBackgroundScan(targetRate: number): Promise<void> {
   if (!backgroundEnabled) return
   const db = getLibraryDb()

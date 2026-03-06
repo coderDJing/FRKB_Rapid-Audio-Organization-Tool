@@ -107,3 +107,7 @@ export function queueMixtapeWaveforms(filePaths: string[], listRoot?: string) {
     void computeMixtapeWaveform(filePath, listRoot)
   }
 }
+
+export function isMixtapeWaveformQueueBusy(): boolean {
+  return inflight.size > 0
+}

@@ -670,6 +670,8 @@
     "stemExportProfile": "Export",
     "stemProfileFastLabel": "Fast (Speed)",
     "stemProfileQualityLabel": "Quality (Cleaner)",
+    "stemProfileFastTag": "Fast",
+    "stemProfileQualityTag": "Quality",
     "stemProfileChooseTitle": "Choose Stem Strategy",
     "stemProfileChooseHint": "Choose a strategy when creating this Stem project: Speed-first (faster realtime, quality for export) or Quality-first (quality for both realtime and export).",
     "stemProfileChooseFastHint": "Speed-first: first separation is faster, but exporting in Quality may require an extra preparation pass.",

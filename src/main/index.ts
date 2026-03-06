@@ -49,8 +49,14 @@ import {
   startKeyAnalysisBackground,
   type KeyAnalysisBackgroundStatus
 } from './services/keyAnalysisQueue'
-import { startMixtapeWaveformHiresBackground } from './services/mixtapeWaveformHiresQueue'
+import {
+  isMixtapeWaveformHiresQueueBusy,
+  startMixtapeWaveformHiresBackground
+} from './services/mixtapeWaveformHiresQueue'
 import { startMixtapeStemBackgroundResume } from './services/mixtapeStemBackgroundResume'
+import { isMixtapeStemQueueBusy } from './services/mixtapeStemQueue'
+import { isMixtapeWaveformQueueBusy } from './services/mixtapeWaveformQueue'
+import { isMixtapeRawWaveformQueueBusy } from './services/mixtapeRawWaveformQueue'
 import {
   startBackgroundOrchestrator,
   stopBackgroundOrchestrator
@@ -272,6 +278,14 @@ keyAnalysisEvents.on('background-status', sendKeyAnalysisBackgroundStatus)
 
 registerBackgroundForegroundBusyProvider('key-analysis-foreground', () =>
   isKeyAnalysisForegroundBusy()
+)
+registerBackgroundForegroundBusyProvider(
+  'mixtape-prewarm',
+  () =>
+    isMixtapeStemQueueBusy() ||
+    isMixtapeWaveformQueueBusy() ||
+    isMixtapeRawWaveformQueueBusy() ||
+    isMixtapeWaveformHiresQueueBusy()
 )
 
 let devInitDatabaseFunction = async () => {

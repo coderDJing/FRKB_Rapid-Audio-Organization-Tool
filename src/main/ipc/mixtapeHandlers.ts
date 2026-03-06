@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+﻿import { ipcMain } from 'electron'
 import os from 'node:os'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -863,7 +863,7 @@ export function registerMixtapeHandlers() {
       }
 
       const targetStemConfig = getMixtapeProjectStemConfig(playlistId)
-      const targetPlaylistTypeKey = `${targetStemConfig.mixMode}::${targetStemConfig.stemMode}`
+      const targetPlaylistTypeKey = `${targetStemConfig.mixMode}::${targetStemConfig.stemMode}::${targetStemConfig.stemRealtimeProfile}`
       const playlistTypeKeyById = new Map<string, string>([[playlistId, targetPlaylistTypeKey]])
       const resolvePlaylistTypeKey = (playlistUuid: string) => {
         const normalized = normalizeText(playlistUuid)
@@ -871,7 +871,7 @@ export function registerMixtapeHandlers() {
         const cached = playlistTypeKeyById.get(normalized)
         if (cached) return cached
         const config = getMixtapeProjectStemConfig(normalized)
-        const key = `${config.mixMode}::${config.stemMode}`
+        const key = `${config.mixMode}::${config.stemMode}::${config.stemRealtimeProfile}`
         playlistTypeKeyById.set(normalized, key)
         return key
       }
@@ -988,11 +988,15 @@ export function registerMixtapeHandlers() {
         queueMixtapeRawWaveforms(filePaths)
         queueMixtapeWaveformHires(filePaths)
         const stemEnqueueFilePaths = Array.from(stemEnqueueFilePathSet)
-        if (
-          targetStemConfig.mixMode === 'stem' &&
-          targetStemConfig.stemStrategyConfirmed &&
-          stemEnqueueFilePaths.length > 0
-        ) {
+        if (stemEnqueueFilePaths.length > 0) {
+          log.info('[mixtape-stem] enqueue after append request', {
+            playlistId,
+            fileCount: stemEnqueueFilePaths.length,
+            mixMode: targetStemConfig.mixMode,
+            stemMode: targetStemConfig.stemMode,
+            stemStrategyConfirmed: targetStemConfig.stemStrategyConfirmed,
+            appended: result?.inserted ?? 0
+          })
           void enqueueMixtapeStemJobs({
             playlistId,
             filePaths: stemEnqueueFilePaths,
@@ -1006,16 +1010,14 @@ export function registerMixtapeHandlers() {
             })
           })
         } else {
-          log.info('[mixtape-stem] skip enqueue after append', {
+          log.info('[mixtape-stem] skip enqueue after append: no pending stem paths', {
             playlistId,
-            fileCount: stemEnqueueFilePaths.length,
-            mixMode: targetStemConfig.mixMode,
-            stemStrategyConfirmed: targetStemConfig.stemStrategyConfirmed
+            fileCount: stemEnqueueFilePaths.length
           })
         }
         const bpmAnalyzeFilePaths = Array.from(bpmAnalyzeFilePathSet)
         if (bpmAnalyzeFilePaths.length > 0) {
-          // 预分析 BPM（后台，不阻塞返回）
+          // 预分�?BPM（后台，不阻塞返回）
           void analyzeMixtapeBpmBatchShared(bpmAnalyzeFilePaths)
             .then((bpmResult) => {
               if (bpmResult.results.length > 0) {

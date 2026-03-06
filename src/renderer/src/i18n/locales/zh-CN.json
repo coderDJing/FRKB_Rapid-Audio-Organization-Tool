@@ -1,4 +1,4 @@
-{
+﻿{
   "common": {
     "confirm": "确定",
     "cancel": "取消",
@@ -822,7 +822,7 @@
     "waveformLoading": "（波形生成中）",
     "rawWaveformLoading": "生成中",
     "waveformPreparing": "预生成波形",
-    "bpmAnalyzing": "BPM 重新分析中…",
+    "bpmAnalyzing": "BPM 分析中…",
     "bpmAnalyzingHint": "首次打开可能较慢，请稍候",
     "bpmAnalyzeFailed": "BPM 分析失败",
     "bpmAnalyzeFailedHint": "有 {count} 首未能分析，网格线已禁用",
