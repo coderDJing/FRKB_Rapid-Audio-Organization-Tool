@@ -226,7 +226,7 @@ const runOnnxFastSeparation = async (params: {
           '--helper-model',
           'htdemucs',
           '--overlap',
-          '0.2',
+          '0.35',
           '--torch-threads',
           '1'
         ],

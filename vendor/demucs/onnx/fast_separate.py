@@ -12,6 +12,15 @@ from demucs.pretrained import get_model
 
 PROGRESS_PREFIX = 'FRKB_ONNX_PROGRESS='
 RESULT_PREFIX = 'FRKB_ONNX_RESULT='
+DEFAULT_SOURCE_ORDER_4STEMS = ['drums', 'bass', 'other', 'vocals']
+DEFAULT_SOURCE_ORDER_6STEMS = ['drums', 'bass', 'other', 'vocals', 'guitar', 'piano']
+SOURCE_NAME_ALIASES = {
+  'vocal': 'vocals',
+  'vox': 'vocals',
+  'drum': 'drums',
+  'instrumental': 'other',
+  'accompaniment': 'other'
+}
 
 
 def emit_progress(payload: dict) -> None:
@@ -87,7 +96,7 @@ def save_audio_with_ffmpeg(output_path: Path, ffmpeg_path: Path, waveform: torch
     '-i',
     '-',
     '-c:a',
-    'pcm_s16le',
+    'pcm_f32le',
     str(output_path)
   ]
   proc = subprocess.run(
@@ -152,6 +161,38 @@ def resolve_stem_wave_output(outputs):
   raise RuntimeError('Unable to locate waveform output in ONNX inference result')
 
 
+def normalize_source_name(value: str) -> str:
+  lowered = str(value or '').strip().lower()
+  cleaned = lowered.replace(' ', '').replace('-', '').replace('_', '')
+  return SOURCE_NAME_ALIASES.get(cleaned, cleaned)
+
+
+def resolve_source_order(source_count: int, raw_order: str) -> list[str]:
+  parsed = [normalize_source_name(item) for item in str(raw_order or '').split(',')]
+  parsed = [item for item in parsed if item]
+  if len(parsed) == source_count:
+    return parsed
+  if source_count == 6:
+    return list(DEFAULT_SOURCE_ORDER_6STEMS)
+  if source_count == 4:
+    return list(DEFAULT_SOURCE_ORDER_4STEMS)
+  return [f'stem{index + 1}' for index in range(source_count)]
+
+
+def find_source_index(source_order: list[str], candidates: list[str]) -> int | None:
+  for candidate in candidates:
+    normalized = normalize_source_name(candidate)
+    if normalized in source_order:
+      return source_order.index(normalized)
+  return None
+
+
+def pick_stem(stems: np.ndarray, index: int | None) -> np.ndarray:
+  if index is None or index < 0 or index >= stems.shape[0]:
+    return np.zeros((2, stems.shape[-1]), dtype=np.float32)
+  return np.asarray(stems[index], dtype=np.float32)
+
+
 def build_chunk_starts(total_samples: int, chunk_samples: int, stride: int):
   if total_samples <= chunk_samples:
     return [0]
@@ -172,6 +213,7 @@ def parse_args():
   parser.add_argument('--provider', choices=['directml', 'cpu'], default='cpu')
   parser.add_argument('--overlap', type=float, default=0.2)
   parser.add_argument('--helper-model', default='htdemucs')
+  parser.add_argument('--source-order', default='')
   parser.add_argument('--torch-threads', type=int, default=1)
   return parser.parse_args()
 
@@ -303,12 +345,44 @@ def main():
   weights = np.maximum(weights[:, :, :total_samples], 1e-6)
   stems = accumulator[:, :, :total_samples] / weights
   stems = np.nan_to_num(stems, nan=0.0, posinf=0.0, neginf=0.0)
+  source_count = int(stems.shape[0])
+  source_order = resolve_source_order(source_count, args.source_order)
+  source_order = source_order[:source_count]
 
-  # htdemucs_6s first 4 outputs: drums, bass, other, vocals
-  drums = torch.from_numpy(stems[0]).to(torch.float32)
-  bass = torch.from_numpy(stems[1]).to(torch.float32)
-  other = torch.from_numpy(stems[2]).to(torch.float32)
-  vocals = torch.from_numpy(stems[3]).to(torch.float32)
+  vocals_index = find_source_index(source_order, ['vocals'])
+  drums_index = find_source_index(source_order, ['drums'])
+  bass_index = find_source_index(source_order, ['bass'])
+
+  # 向后兼容：未知来源顺序时，沿用旧的 htdemucs 前四轨约定。
+  if drums_index is None and source_count >= 1:
+    drums_index = 0
+  if bass_index is None and source_count >= 2:
+    bass_index = 1
+  if vocals_index is None and source_count >= 4:
+    vocals_index = 3
+  elif vocals_index is None and source_count >= 1:
+    vocals_index = source_count - 1
+
+  reserved_indices = {index for index in [vocals_index, drums_index, bass_index] if index is not None}
+  inst_indices = [index for index in range(source_count) if index not in reserved_indices]
+
+  drums_np = pick_stem(stems, drums_index)
+  bass_np = pick_stem(stems, bass_index)
+  vocals_np = pick_stem(stems, vocals_index)
+
+  inst_np = np.zeros((2, total_samples), dtype=np.float32)
+  if inst_indices:
+    inst_np = np.sum(stems[inst_indices], axis=0, dtype=np.float32)
+
+  # 重建约束：保证四轨全开时尽量贴回原混音，避免“全开也不像原曲”。
+  mix_np = waveform[:, :total_samples].detach().cpu().numpy().astype(np.float32, copy=False)
+  residual_np = mix_np - (vocals_np + inst_np + bass_np + drums_np)
+  inst_np = inst_np + residual_np
+
+  drums = torch.from_numpy(drums_np).to(torch.float32)
+  bass = torch.from_numpy(bass_np).to(torch.float32)
+  vocals = torch.from_numpy(vocals_np).to(torch.float32)
+  inst = torch.from_numpy(inst_np).to(torch.float32)
 
   drums_path = output_dir / 'drums.wav'
   bass_path = output_dir / 'bass.wav'
@@ -316,7 +390,7 @@ def main():
   vocal_path = output_dir / 'vocal.wav'
   save_audio_with_ffmpeg(drums_path, ffmpeg_path, drums, sample_rate)
   save_audio_with_ffmpeg(bass_path, ffmpeg_path, bass, sample_rate)
-  save_audio_with_ffmpeg(inst_path, ffmpeg_path, other, sample_rate)
+  save_audio_with_ffmpeg(inst_path, ffmpeg_path, inst, sample_rate)
   save_audio_with_ffmpeg(vocal_path, ffmpeg_path, vocals, sample_rate)
 
   emit_progress({

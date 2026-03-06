@@ -85,7 +85,8 @@ export const ONNX_FAST_RESULT_PREFIX = 'FRKB_ONNX_RESULT='
 export const DEFAULT_STEM_MODEL = resolveMixtapeStemModelByProfile(
   DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
 )
-export const DEFAULT_STEM_VERSION = 'demucs-cli-builtin-20260227'
+export const DEFAULT_STEM_VERSION = 'demucs-cli-builtin-20260306-fast-reconstruct-v2-f32-overlap35'
+export const LEGACY_FAST_STEM_VERSION = 'demucs-cli-builtin-20260306-fast-reconstruct-v1'
 export const STEM_CACHE_DIR_NAME = 'stems'
 
 export type MixtapeStemQueueTarget = {
@@ -417,8 +418,16 @@ export const normalizeModel = (
   return normalizeText(parsed.requestedModel, 128) || DEFAULT_STEM_MODEL
 }
 
-export const normalizeStemVersion = (value: unknown): string =>
-  normalizeText(value, 128) || DEFAULT_STEM_VERSION
+export const normalizeStemVersion = (value: unknown, model?: string): string => {
+  const normalized = normalizeText(value, 128)
+  if (!normalized) return DEFAULT_STEM_VERSION
+  const parsedModel = parseMixtapeStemModel(model, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
+  const profile = normalizeStemProfile(parsedModel.profile, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
+  if (profile === 'fast' && normalized === LEGACY_FAST_STEM_VERSION) {
+    return DEFAULT_STEM_VERSION
+  }
+  return normalized
+}
 
 export const normalizePathKey = (value: string): string => {
   const normalized = normalizeFilePath(value)

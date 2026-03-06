@@ -40,7 +40,8 @@ import { runStemSeparation } from './mixtapeStemSeparationRun'
 import { getStemBackgroundConcurrencyHint } from './backgroundIdleGate'
 
 const DEFAULT_STEM_MODEL = resolveMixtapeStemModelByProfile(DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
-const DEFAULT_STEM_VERSION = 'demucs-cli-builtin-20260227'
+const DEFAULT_STEM_VERSION = 'demucs-cli-builtin-20260306-fast-reconstruct-v2-f32-overlap35'
+const LEGACY_FAST_STEM_VERSION = 'demucs-cli-builtin-20260306-fast-reconstruct-v1'
 
 type MixtapeStemQueueTarget = {
   playlistId: string
@@ -212,8 +213,49 @@ const normalizeModel = (
   return normalizeText(parsed.requestedModel, 128) || DEFAULT_STEM_MODEL
 }
 
-const normalizeStemVersion = (value: unknown): string =>
-  normalizeText(value, 128) || DEFAULT_STEM_VERSION
+const normalizeStemVersion = (value: unknown, model?: string): string => {
+  const normalized = normalizeText(value, 128)
+  if (!normalized) return DEFAULT_STEM_VERSION
+  const parsedModel = parseMixtapeStemModel(model, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
+  const profile = normalizeStemProfile(parsedModel.profile, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
+  if (profile === 'fast' && normalized === LEGACY_FAST_STEM_VERSION) {
+    return DEFAULT_STEM_VERSION
+  }
+  return normalized
+}
+
+const shouldBypassReadyCacheForLegacyFast = (params: {
+  playlistId: string
+  itemIds: string[]
+  model: string
+  stemVersion: string
+}): boolean => {
+  if (params.stemVersion !== DEFAULT_STEM_VERSION) return false
+  const parsedModel = parseMixtapeStemModel(params.model, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
+  const profile = normalizeStemProfile(parsedModel.profile, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
+  if (profile !== 'fast') return false
+  const targetItemIdSet = new Set(
+    (params.itemIds || []).map((itemId) => normalizeText(itemId, 80)).filter(Boolean)
+  )
+  if (!targetItemIdSet.size) return false
+  try {
+    const items = listMixtapeItems(params.playlistId)
+    for (const item of items) {
+      const itemId = normalizeText((item as any)?.id, 80)
+      if (!itemId || !targetItemIdSet.has(itemId)) continue
+      const infoJsonRaw = normalizeText((item as any)?.infoJson, 200_000)
+      if (!infoJsonRaw) continue
+      try {
+        const info = JSON.parse(infoJsonRaw)
+        const legacyStemVersion = normalizeText(info?.stemVersion, 128)
+        if (legacyStemVersion === LEGACY_FAST_STEM_VERSION) {
+          return true
+        }
+      } catch {}
+    }
+  } catch {}
+  return false
+}
 
 const normalizePathKey = (value: string): string => {
   const normalized = normalizeFilePath(value)
@@ -708,7 +750,7 @@ export async function enqueueMixtapeStemJobs(
   const force = !!params?.force
   const profile = normalizeStemProfile(params?.profile, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
   const model = normalizeModel(params?.model, profile)
-  const stemVersion = normalizeStemVersion(params?.stemVersion)
+  const stemVersion = normalizeStemVersion(params?.stemVersion, model)
   const inputPaths = Array.isArray(params?.filePaths) ? params.filePaths : []
   if (!playlistId || !inputPaths.length) {
     return {
@@ -722,6 +764,13 @@ export async function enqueueMixtapeStemJobs(
 
   const targetByPath = collectTargetsForFilePaths(playlistId, inputPaths)
   const total = targetByPath.size
+  if (total === 0) {
+    log.warn('[mixtape-stem] enqueue: no mixtape items matched file paths', {
+      playlistId,
+      stemMode,
+      inputCount: inputPaths.length
+    })
+  }
   let queued = 0
   let merged = 0
   let readyFromCache = 0
@@ -745,38 +794,56 @@ export async function enqueueMixtapeStemJobs(
       stemMode,
       model
     })
-    if (!force) {
-      const cachedAsset = getMixtapeStemAsset({
-        listRoot,
-        filePath,
+    const bypassReadyCache = shouldBypassReadyCacheForLegacyFast({
+      playlistId,
+      itemIds,
+      model,
+      stemVersion
+    })
+    if (bypassReadyCache) {
+      log.info('[mixtape-stem] bypass ready cache for legacy fast stem version', {
+        playlistId,
+        file: filePath,
         stemMode,
-        model
+        model,
+        stemVersion,
+        targetCount: itemIds.length
       })
-      if (hasReadyStemAssets(stemMode, cachedAsset)) {
-        readyFromCache += 1
-        upsertItemStemStatus(queueTargets, 'ready', {
-          stemError: null,
-          stemModel: model,
-          stemVersion,
-          stemReadyAt: Date.now(),
-          stemVocalPath: cachedAsset?.vocalPath || null,
-          stemInstPath: cachedAsset?.instPath || null,
-          stemBassPath: cachedAsset?.bassPath || null,
-          stemDrumsPath: cachedAsset?.drumsPath || null,
-          filePath
-        })
-        prewarmStemWaveformBundleFromPaths({
+    }
+    if (!force) {
+      if (!bypassReadyCache) {
+        const cachedAsset = getMixtapeStemAsset({
           listRoot,
-          sourceFilePath: filePath,
+          filePath,
           stemMode,
-          stemModel: model,
-          stemVersion,
-          vocalPath: cachedAsset?.vocalPath || null,
-          instPath: cachedAsset?.instPath || null,
-          bassPath: cachedAsset?.bassPath || null,
-          drumsPath: cachedAsset?.drumsPath || null
+          model
         })
-        continue
+        if (hasReadyStemAssets(stemMode, cachedAsset)) {
+          readyFromCache += 1
+          upsertItemStemStatus(queueTargets, 'ready', {
+            stemError: null,
+            stemModel: model,
+            stemVersion,
+            stemReadyAt: Date.now(),
+            stemVocalPath: cachedAsset?.vocalPath || null,
+            stemInstPath: cachedAsset?.instPath || null,
+            stemBassPath: cachedAsset?.bassPath || null,
+            stemDrumsPath: cachedAsset?.drumsPath || null,
+            filePath
+          })
+          prewarmStemWaveformBundleFromPaths({
+            listRoot,
+            sourceFilePath: filePath,
+            stemMode,
+            stemModel: model,
+            stemVersion,
+            vocalPath: cachedAsset?.vocalPath || null,
+            instPath: cachedAsset?.instPath || null,
+            bassPath: cachedAsset?.bassPath || null,
+            drumsPath: cachedAsset?.drumsPath || null
+          })
+          continue
+        }
       }
     }
 
@@ -836,6 +903,10 @@ export async function enqueueMixtapeStemJobs(
     readyFromCache,
     skipped
   }
+}
+
+export function isMixtapeStemQueueBusy(): boolean {
+  return pendingQueue.length > 0 || inFlightJobMap.size > 0 || activeWorkers > 0
 }
 
 export async function retryMixtapeStemJobs(params: MixtapeStemRetryParams) {
