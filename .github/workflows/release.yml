@@ -37,7 +37,7 @@ jobs:
             vendor/demucs/win32-x64/runtime-cuda
             vendor/demucs/win32-x64/runtime-directml
             vendor/demucs/win32-x64/runtime-xpu
-          key: demucs-${{ runner.os }}-win32-x64-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/demucs-onnx-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs', 'vendor/demucs/onnx/fast_separate.py') }}
+          key: demucs-${{ runner.os }}-win32-x64-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/demucs-onnx-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs', 'scripts/demucs/fast_separate.py') }}
           restore-keys: |
             demucs-${{ runner.os }}-win32-x64-
             demucs-${{ runner.os }}-
@@ -107,6 +107,41 @@ jobs:
       - name: Package (electron-builder, no publish)
         run: npx electron-builder --win --x64 --publish never
 
+      - name: Verify packaged Demucs resources (Windows)
+        shell: pwsh
+        run: |
+          $resourcesRoot = "dist/win-unpacked/resources"
+          if (-not (Test-Path $resourcesRoot)) {
+            throw "Windows unpacked resources directory not found: $resourcesRoot"
+          }
+
+          $required = @(
+            "demucs/onnx/fast_separate.py",
+            "demucs/onnx/htdemucs_6s.onnx",
+            "demucs/models/htdemucs.yaml",
+            "demucs/models/955717e8-8726e21a.th",
+            "demucs/win32-x64/runtime/python.exe",
+            "demucs/win32-x64/runtime-cpu/python.exe",
+            "demucs/win32-x64/runtime-cuda/python.exe",
+            "demucs/win32-x64/runtime-directml/python.exe"
+          )
+
+          $missing = @()
+          foreach ($relativePath in $required) {
+            $targetPath = Join-Path $resourcesRoot $relativePath
+            if (-not (Test-Path $targetPath)) {
+              $missing += $relativePath
+            }
+          }
+
+          if ($missing.Count -gt 0) {
+            Write-Error "Missing packaged Demucs resources (Windows):"
+            $missing | ForEach-Object { Write-Error "  - $_" }
+            exit 1
+          }
+
+          Write-Host "Packaged Demucs resources verified (Windows)."
+
       # 不再复制 rc.yml，严格遵循 GitHub provider 读取 latest.yml / latest-mac.yml
 
       - name: Upload dist artifacts (Windows)
@@ -147,7 +182,7 @@ jobs:
             vendor/demucs/darwin-arm64/runtime-mps
             vendor/demucs/darwin-x64/runtime
             vendor/demucs/darwin-x64/runtime-cpu
-          key: demucs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/demucs-onnx-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs', 'vendor/demucs/onnx/fast_separate.py') }}
+          key: demucs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/demucs-onnx-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs', 'scripts/demucs/fast_separate.py') }}
           restore-keys: |
             demucs-${{ runner.os }}-${{ runner.arch }}-
             demucs-${{ runner.os }}-
@@ -306,6 +341,53 @@ jobs:
         env:
           DEBUG: electron-builder
         run: npx electron-builder --mac --universal --publish never
+
+      - name: Verify packaged Demucs resources (macOS)
+        run: |
+          set -euo pipefail
+          APP_DIR="$(find dist/mac-universal -maxdepth 1 -name '*.app' -type d | head -n 1 || true)"
+          if [ -z "$APP_DIR" ]; then
+            echo "macOS app bundle not found under dist/mac-universal"
+            exit 1
+          fi
+          RESOURCES_DIR="${APP_DIR}/Contents/Resources"
+          if [ ! -d "$RESOURCES_DIR" ]; then
+            echo "macOS resources directory not found: ${RESOURCES_DIR}"
+            exit 1
+          fi
+
+          ARCH="$(uname -m)"
+          PLATFORM_KEY="darwin-arm64"
+          REQUIRED_RUNTIMES="runtime runtime-cpu runtime-mps"
+          if [ "$ARCH" = "x86_64" ]; then
+            PLATFORM_KEY="darwin-x64"
+            REQUIRED_RUNTIMES="runtime runtime-cpu"
+          fi
+
+          REQUIRED_PATHS=(
+            "demucs/onnx/fast_separate.py"
+            "demucs/onnx/htdemucs_6s.onnx"
+            "demucs/models/htdemucs.yaml"
+            "demucs/models/955717e8-8726e21a.th"
+          )
+          for runtime_dir in $REQUIRED_RUNTIMES; do
+            REQUIRED_PATHS+=("demucs/${PLATFORM_KEY}/${runtime_dir}/bin/python3")
+          done
+
+          MISSING=0
+          for relative_path in "${REQUIRED_PATHS[@]}"; do
+            target_path="${RESOURCES_DIR}/${relative_path}"
+            if [ ! -e "$target_path" ]; then
+              echo "Missing packaged Demucs resource (macOS): ${relative_path}"
+              MISSING=1
+            fi
+          done
+
+          if [ "$MISSING" -ne 0 ]; then
+            exit 1
+          fi
+
+          echo "Packaged Demucs resources verified (macOS) for ${PLATFORM_KEY}."
 
       # 不再复制 rc.yml / rc-mac.yml，保持标准文件名
 
