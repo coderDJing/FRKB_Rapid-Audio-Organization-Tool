@@ -203,6 +203,109 @@ def build_chunk_starts(total_samples: int, chunk_samples: int, stride: int):
   return sorted(set(starts))
 
 
+def normalize_stem_wave_shape(stem_wave: np.ndarray, chunk_samples: int) -> np.ndarray:
+  normalized = np.asarray(stem_wave, dtype=np.float32)
+  normalized = normalized[:4, :, :]
+  if normalized.shape[-1] < chunk_samples:
+    padded = np.zeros((4, 2, chunk_samples), dtype=np.float32)
+    padded[:, :, :normalized.shape[-1]] = normalized
+    normalized = padded
+  if normalized.shape[-1] > chunk_samples:
+    normalized = normalized[:, :, :chunk_samples]
+  return normalized
+
+
+def run_infer_chunk(
+  *,
+  session: ort.InferenceSession,
+  helper,
+  mix_input,
+  spec_input,
+  waveform_np: np.ndarray,
+  start: int,
+  total_samples: int,
+  chunk_samples: int
+):
+  end = min(start + chunk_samples, total_samples)
+  valid_length = max(0, end - start)
+  if valid_length <= 0:
+    return None
+
+  mix_chunk = np.zeros((2, chunk_samples), dtype=np.float32)
+  mix_chunk[:, :valid_length] = waveform_np[:, start:end]
+  mix_tensor = torch.from_numpy(mix_chunk).unsqueeze(0)
+  with torch.no_grad():
+    spec_tensor = helper._magnitude(helper._spec(mix_tensor))
+  feeds = {
+    mix_input.name: mix_tensor.numpy().astype(np.float32, copy=False),
+    spec_input.name: spec_tensor.numpy().astype(np.float32, copy=False)
+  }
+  output_list = session.run(None, feeds)
+  stem_wave = normalize_stem_wave_shape(resolve_stem_wave_output(output_list), chunk_samples)
+  return stem_wave, valid_length, mix_chunk
+
+
+def compute_chunk_residual_score(
+  *,
+  mix_chunk: np.ndarray,
+  stem_wave: np.ndarray,
+  valid_length: int
+) -> float:
+  if valid_length <= 0:
+    return 0.0
+  mix_valid = np.asarray(mix_chunk[:, :valid_length], dtype=np.float32)
+  stem_valid = np.asarray(stem_wave[:, :, :valid_length], dtype=np.float32)
+  reconstructed = np.sum(stem_valid, axis=0, dtype=np.float32)
+  residual = mix_valid - reconstructed
+  residual_rms = float(np.sqrt(np.mean(residual * residual)))
+  signal_rms = float(np.sqrt(np.mean(mix_valid * mix_valid)))
+  if not np.isfinite(residual_rms) or not np.isfinite(signal_rms):
+    return 0.0
+  return residual_rms / max(1e-6, signal_rms)
+
+
+def select_refine_starts(
+  *,
+  chunk_scores: list[tuple[int, float]],
+  base_starts: list[int],
+  chunk_samples: int,
+  total_samples: int,
+  topk_ratio: float,
+  max_chunks: int,
+  offset_ratio: float,
+  min_score: float
+) -> list[int]:
+  if not chunk_scores:
+    return []
+  if topk_ratio <= 0 or max_chunks <= 0:
+    return []
+
+  target_by_ratio = int(math.ceil(len(base_starts) * topk_ratio))
+  target = min(max_chunks, max(0, target_by_ratio))
+  if target <= 0:
+    return []
+
+  last_start = max(0, total_samples - chunk_samples)
+  offset_samples = int(round(chunk_samples * max(0.0, min(1.0, offset_ratio))))
+  base_start_set = set(base_starts)
+  selected: list[int] = []
+  selected_set = set()
+
+  sorted_scores = sorted(chunk_scores, key=lambda item: item[1], reverse=True)
+  for start, score in sorted_scores:
+    if score < min_score:
+      break
+    refined_start = min(last_start, max(0, start + offset_samples))
+    if refined_start in base_start_set or refined_start in selected_set:
+      continue
+    selected.append(refined_start)
+    selected_set.add(refined_start)
+    if len(selected) >= target:
+      break
+
+  return sorted(selected)
+
+
 def parse_args():
   parser = argparse.ArgumentParser(description='FRKB ONNX fast stem separation')
   parser.add_argument('--input', required=True)
@@ -215,6 +318,10 @@ def parse_args():
   parser.add_argument('--helper-model', default='htdemucs')
   parser.add_argument('--source-order', default='')
   parser.add_argument('--torch-threads', type=int, default=1)
+  parser.add_argument('--refine-topk-ratio', type=float, default=0.0)
+  parser.add_argument('--refine-max-chunks', type=int, default=0)
+  parser.add_argument('--refine-offset-ratio', type=float, default=0.5)
+  parser.add_argument('--refine-min-score', type=float, default=0.0)
   return parser.parse_args()
 
 
@@ -255,7 +362,8 @@ def main():
 
   waveform = decode_audio_with_ffmpeg(input_path, ffmpeg_path, sample_rate)
   waveform = normalize_waveform_channels(waveform).to(torch.float32).contiguous()
-  total_samples = int(waveform.shape[-1])
+  waveform_np = waveform.detach().cpu().numpy().astype(np.float32, copy=False)
+  total_samples = int(waveform_np.shape[-1])
   if total_samples <= 0:
     raise RuntimeError('Input audio has zero samples')
 
@@ -281,6 +389,10 @@ def main():
   mix_input, spec_input = resolve_input_binding(session)
   chunk_samples = resolve_chunk_samples(mix_input, fallback_chunk_samples)
   overlap = min(0.95, max(0.0, float(args.overlap)))
+  refine_topk_ratio = min(1.0, max(0.0, float(args.refine_topk_ratio)))
+  refine_max_chunks = max(0, int(args.refine_max_chunks))
+  refine_offset_ratio = min(1.0, max(0.0, float(args.refine_offset_ratio)))
+  refine_min_score = max(0.0, float(args.refine_min_score))
   stride = max(1, int(round(chunk_samples * (1.0 - overlap))))
   starts = build_chunk_starts(total_samples, chunk_samples, stride)
   full_length = max(total_samples, starts[-1] + chunk_samples)
@@ -293,6 +405,12 @@ def main():
   window = np.maximum(window, 1e-3)
   window_3d = window.reshape(1, 1, chunk_samples)
 
+  def accumulate_stem_chunk(*, start: int, valid_length: int, stem_wave: np.ndarray) -> None:
+    slice_end = start + valid_length
+    accumulator[:, :, start:slice_end] += stem_wave[:, :, :valid_length] * window_3d[:, :, :valid_length]
+    weights[:, :, start:slice_end] += window_3d[:, :, :valid_length]
+
+  chunk_scores: list[tuple[int, float]] = []
   emit_progress({
     'stage': 'start',
     'provider': active_provider,
@@ -303,43 +421,65 @@ def main():
   })
 
   for index, start in enumerate(starts):
-    end = min(start + chunk_samples, total_samples)
-    valid_length = max(0, end - start)
-    if valid_length <= 0:
+    infer_output = run_infer_chunk(
+      session=session,
+      helper=helper,
+      mix_input=mix_input,
+      spec_input=spec_input,
+      waveform_np=waveform_np,
+      start=start,
+      total_samples=total_samples,
+      chunk_samples=chunk_samples
+    )
+    if infer_output is None:
       continue
+    stem_wave, valid_length, mix_chunk = infer_output
+    accumulate_stem_chunk(start=start, valid_length=valid_length, stem_wave=stem_wave)
+    chunk_scores.append(
+      (start, compute_chunk_residual_score(mix_chunk=mix_chunk, stem_wave=stem_wave, valid_length=valid_length))
+    )
 
-    mix_chunk = np.zeros((2, chunk_samples), dtype=np.float32)
-    mix_chunk[:, :valid_length] = waveform[:, start:end].numpy()
-    mix_tensor = torch.from_numpy(mix_chunk).unsqueeze(0)
-
-    with torch.no_grad():
-      spec_tensor = helper._magnitude(helper._spec(mix_tensor))
-
-    feeds = {
-      mix_input.name: mix_tensor.numpy().astype(np.float32, copy=False),
-      spec_input.name: spec_tensor.numpy().astype(np.float32, copy=False)
-    }
-    output_list = session.run(None, feeds)
-    stem_wave = resolve_stem_wave_output(output_list)
-    stem_wave = stem_wave[:4, :, :]
-    if stem_wave.shape[-1] < chunk_samples:
-      padded = np.zeros((4, 2, chunk_samples), dtype=np.float32)
-      padded[:, :, :stem_wave.shape[-1]] = stem_wave
-      stem_wave = padded
-    if stem_wave.shape[-1] > chunk_samples:
-      stem_wave = stem_wave[:, :, :chunk_samples]
-
-    slice_end = start + valid_length
-    accumulator[:, :, start:slice_end] += stem_wave[:, :, :valid_length] * window_3d[:, :, :valid_length]
-    weights[:, :, start:slice_end] += window_3d[:, :, :valid_length]
-
-    percent = int(round(((index + 1) / max(1, len(starts))) * 100))
+    percent = int(round(((index + 1) / max(1, len(starts))) * 88))
     emit_progress({
       'stage': 'infer',
       'provider': active_provider,
       'chunkIndex': index + 1,
       'totalChunks': len(starts),
       'percent': max(0, min(100, percent))
+    })
+
+  refine_starts = select_refine_starts(
+    chunk_scores=chunk_scores,
+    base_starts=starts,
+    chunk_samples=chunk_samples,
+    total_samples=total_samples,
+    topk_ratio=refine_topk_ratio,
+    max_chunks=refine_max_chunks,
+    offset_ratio=refine_offset_ratio,
+    min_score=refine_min_score
+  )
+  for index, start in enumerate(refine_starts):
+    infer_output = run_infer_chunk(
+      session=session,
+      helper=helper,
+      mix_input=mix_input,
+      spec_input=spec_input,
+      waveform_np=waveform_np,
+      start=start,
+      total_samples=total_samples,
+      chunk_samples=chunk_samples
+    )
+    if infer_output is None:
+      continue
+    stem_wave, valid_length, _ = infer_output
+    accumulate_stem_chunk(start=start, valid_length=valid_length, stem_wave=stem_wave)
+    percent = int(round(88 + ((index + 1) / max(1, len(refine_starts))) * 10))
+    emit_progress({
+      'stage': 'refine',
+      'provider': active_provider,
+      'chunkIndex': index + 1,
+      'totalChunks': len(refine_starts),
+      'percent': max(88, min(98, percent))
     })
 
   weights = np.maximum(weights[:, :, :total_samples], 1e-6)
@@ -375,7 +515,7 @@ def main():
     inst_np = np.sum(stems[inst_indices], axis=0, dtype=np.float32)
 
   # 重建约束：保证四轨全开时尽量贴回原混音，避免“全开也不像原曲”。
-  mix_np = waveform[:, :total_samples].detach().cpu().numpy().astype(np.float32, copy=False)
+  mix_np = waveform_np[:, :total_samples]
   residual_np = mix_np - (vocals_np + inst_np + bass_np + drums_np)
   inst_np = inst_np + residual_np
 

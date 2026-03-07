@@ -40,8 +40,11 @@ import { runStemSeparation } from './mixtapeStemSeparationRun'
 import { getStemBackgroundConcurrencyHint } from './backgroundIdleGate'
 
 const DEFAULT_STEM_MODEL = resolveMixtapeStemModelByProfile(DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
-const DEFAULT_STEM_VERSION = 'demucs-cli-builtin-20260306-fast-reconstruct-v2-f32-overlap35'
-const LEGACY_FAST_STEM_VERSION = 'demucs-cli-builtin-20260306-fast-reconstruct-v1'
+const DEFAULT_STEM_VERSION = 'demucs-cli-builtin-20260306-fast-reconstruct-v3-adaptive-refine'
+const LEGACY_FAST_STEM_VERSIONS = new Set([
+  'demucs-cli-builtin-20260306-fast-reconstruct-v1',
+  'demucs-cli-builtin-20260306-fast-reconstruct-v2-f32-overlap35'
+])
 
 type MixtapeStemQueueTarget = {
   playlistId: string
@@ -218,7 +221,7 @@ const normalizeStemVersion = (value: unknown, model?: string): string => {
   if (!normalized) return DEFAULT_STEM_VERSION
   const parsedModel = parseMixtapeStemModel(model, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
   const profile = normalizeStemProfile(parsedModel.profile, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
-  if (profile === 'fast' && normalized === LEGACY_FAST_STEM_VERSION) {
+  if (profile === 'fast' && LEGACY_FAST_STEM_VERSIONS.has(normalized)) {
     return DEFAULT_STEM_VERSION
   }
   return normalized
@@ -248,7 +251,7 @@ const shouldBypassReadyCacheForLegacyFast = (params: {
       try {
         const info = JSON.parse(infoJsonRaw)
         const legacyStemVersion = normalizeText(info?.stemVersion, 128)
-        if (legacyStemVersion === LEGACY_FAST_STEM_VERSION) {
+        if (LEGACY_FAST_STEM_VERSIONS.has(legacyStemVersion)) {
           return true
         }
       } catch {}

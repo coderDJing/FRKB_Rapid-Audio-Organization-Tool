@@ -10,6 +10,7 @@ const runtimeProfilesRaw = fs.readFileSync(runtimeProfilesPath, 'utf8')
 const runtimeProfiles = JSON.parse(runtimeProfilesRaw)
 const modelManifestPath = path.resolve('./scripts/demucs-model-manifest.json')
 const onnxManifestPath = path.resolve('./scripts/demucs-onnx-manifest.json')
+const onnxFastScriptTemplatePath = path.resolve('./scripts/demucs/fast_separate.py')
 
 const platformDefault = (() => {
   if (process.platform === 'win32') return 'win32-x64'
@@ -477,6 +478,19 @@ const ensureDemucsModels = async (options = {}) => {
 const ensureOnnxFastAssets = async () => {
   const onnxRootDir = path.resolve(runtimeRoot, 'onnx')
   fs.mkdirSync(onnxRootDir, { recursive: true })
+  if (!fs.existsSync(onnxFastScriptTemplatePath)) {
+    throw new Error(
+      `[demucs-runtime-ensure] ONNX fast script template missing: ${onnxFastScriptTemplatePath}`
+    )
+  }
+  const onnxFastScriptTargetPath = path.resolve(onnxRootDir, 'fast_separate.py')
+  const onnxFastScriptContent = fs.readFileSync(onnxFastScriptTemplatePath, 'utf8')
+  const existingOnnxFastScriptContent = fs.existsSync(onnxFastScriptTargetPath)
+    ? fs.readFileSync(onnxFastScriptTargetPath, 'utf8')
+    : ''
+  if (existingOnnxFastScriptContent !== onnxFastScriptContent) {
+    fs.writeFileSync(onnxFastScriptTargetPath, onnxFastScriptContent, 'utf8')
+  }
   const removedTempCount = cleanupModelTempFiles(onnxRootDir)
   if (removedTempCount > 0) {
     console.log(`[demucs-runtime-ensure] Removed stale onnx temp files: ${removedTempCount}`)

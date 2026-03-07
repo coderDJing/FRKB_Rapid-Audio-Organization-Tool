@@ -101,6 +101,74 @@ export const copyOnnxStemOutputsToCache = async (params: {
   }
 }
 
+type OnnxFastExecutionOptions = {
+  overlap: string
+  torchThreads: string
+  refineTopkRatio: string
+  refineMaxChunks: string
+  refineOffsetRatio: string
+  refineMinScore: string
+}
+
+const resolveOnnxFastExecutionOptions = (params: {
+  provider: MixtapeStemOnnxProvider
+  inputDurationSec: number | null
+}): OnnxFastExecutionOptions => {
+  const isDirectml = params.provider === 'directml'
+  const durationSec =
+    Number.isFinite(params.inputDurationSec) && Number(params.inputDurationSec) > 0
+      ? Number(params.inputDurationSec)
+      : null
+  const isShortTrack = durationSec !== null && durationSec <= 4 * 60
+  const isLongTrack = durationSec !== null && durationSec >= 9 * 60
+  const cpuCount = Math.max(1, os.cpus()?.length || 1)
+  const toArgFloat = (value: number): string => String(Number(value.toFixed(4)))
+
+  const overlap = isDirectml
+    ? isShortTrack
+      ? 0.5
+      : isLongTrack
+        ? 0.42
+        : 0.46
+    : isShortTrack
+      ? 0.43
+      : isLongTrack
+        ? 0.34
+        : 0.38
+  const torchThreads = isDirectml ? (cpuCount >= 12 ? 3 : cpuCount >= 6 ? 2 : 1) : 1
+  const refineTopkRatio = isDirectml
+    ? isShortTrack
+      ? 0.2
+      : isLongTrack
+        ? 0.12
+        : 0.16
+    : isShortTrack
+      ? 0.1
+      : isLongTrack
+        ? 0.04
+        : 0.07
+  const refineMaxChunks = isDirectml
+    ? isShortTrack
+      ? 26
+      : isLongTrack
+        ? 14
+        : 20
+    : isLongTrack
+      ? 6
+      : 10
+  const refineOffsetRatio = isDirectml ? 0.5 : 0.45
+  const refineMinScore = isDirectml ? 0.03 : 0.05
+
+  return {
+    overlap: toArgFloat(overlap),
+    torchThreads: String(torchThreads),
+    refineTopkRatio: toArgFloat(refineTopkRatio),
+    refineMaxChunks: String(refineMaxChunks),
+    refineOffsetRatio: toArgFloat(refineOffsetRatio),
+    refineMinScore: toArgFloat(refineMinScore)
+  }
+}
+
 const runOnnxFastSeparation = async (params: {
   filePath: string
   stemCacheDir: string
@@ -158,6 +226,10 @@ const runOnnxFastSeparation = async (params: {
       device,
       inputDurationSec: params.inputDurationSec
     })
+    const onnxExecutionOptions = resolveOnnxFastExecutionOptions({
+      provider,
+      inputDurationSec: params.inputDurationSec
+    })
 
     try {
       if (device === 'cpu') {
@@ -176,6 +248,18 @@ const runOnnxFastSeparation = async (params: {
       await fs.promises.mkdir(providerOutputDir, { recursive: true })
       let onnxResultMarked = false
       let onnxResultProvider: MixtapeStemOnnxProvider = provider
+      log.info('[mixtape-stem] onnx fast tuning', {
+        file: params.filePath,
+        runtimeKey: params.onnxRuntimeSnapshot.runtimeKey,
+        provider,
+        inputDurationSec: params.inputDurationSec,
+        overlap: onnxExecutionOptions.overlap,
+        torchThreads: Number(onnxExecutionOptions.torchThreads),
+        refineTopkRatio: Number(onnxExecutionOptions.refineTopkRatio),
+        refineMaxChunks: Number(onnxExecutionOptions.refineMaxChunks),
+        refineOffsetRatio: Number(onnxExecutionOptions.refineOffsetRatio),
+        refineMinScore: Number(onnxExecutionOptions.refineMinScore)
+      })
 
       const handleOutputChunk = (chunk: string) => {
         const lines = chunk.split(/[\r\n]+/)
@@ -226,9 +310,17 @@ const runOnnxFastSeparation = async (params: {
           '--helper-model',
           'htdemucs',
           '--overlap',
-          '0.35',
+          onnxExecutionOptions.overlap,
           '--torch-threads',
-          '1'
+          onnxExecutionOptions.torchThreads,
+          '--refine-topk-ratio',
+          onnxExecutionOptions.refineTopkRatio,
+          '--refine-max-chunks',
+          onnxExecutionOptions.refineMaxChunks,
+          '--refine-offset-ratio',
+          onnxExecutionOptions.refineOffsetRatio,
+          '--refine-min-score',
+          onnxExecutionOptions.refineMinScore
         ],
         {
           env: params.env,
