@@ -7,9 +7,8 @@ interface IDir {
   uuid: string
   type: 'root' | 'library' | 'dir' | 'songList' | 'mixtapeList'
   dirName: string
-  mixMode?: 'traditional' | 'stem'
-  stemRealtimeProfile?: 'fast' | 'quality'
-  stemExportProfile?: 'fast' | 'quality'
+  mixMode?: 'eq' | 'stem'
+  stemProfile?: 'quality'
   order?: number
   children?: IDir[]
 }

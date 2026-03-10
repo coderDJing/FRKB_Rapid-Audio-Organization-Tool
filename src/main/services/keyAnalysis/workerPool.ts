@@ -1,14 +1,15 @@
 import path from 'node:path'
 import type { EventEmitter } from 'node:events'
 import { Worker } from 'node:worker_threads'
-import { is } from '@electron-toolkit/utils'
 import { log } from '../../log'
 import type { KeyAnalysisBackground } from './background'
 import type { KeyAnalysisPersistence } from './persistence'
 import {
   isValidBpm,
   isValidKeyText,
+  type KeyAnalysisFailureReason,
   type KeyAnalysisJob,
+  type KeyAnalysisProgress,
   type KeyAnalysisPriority,
   type WorkerPayload
 } from './types'
@@ -29,17 +30,11 @@ type KeyAnalysisWorkerPoolDeps = {
     priority: KeyAnalysisPriority,
     options?: { urgent?: boolean; source?: 'foreground' | 'background'; fastAnalysis?: boolean }
   ) => void
+  onJobProgress: (worker: Worker, job: KeyAnalysisJob, progress: KeyAnalysisProgress) => void
+  onJobFailure: (job: KeyAnalysisJob, reason: KeyAnalysisFailureReason, detail?: string) => void
+  onJobSuccess: (job: KeyAnalysisJob) => void
   drain: () => void
   events: EventEmitter
-}
-
-const debugDev = (message: string, payload?: unknown) => {
-  if (!is.dev) return
-  if (payload === undefined) {
-    log.debug(`[闲时分析][dev] ${message}`)
-    return
-  }
-  log.debug(`[闲时分析][dev] ${message}`, payload)
 }
 
 export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => {
@@ -48,21 +43,70 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     if (idx !== -1) list.splice(idx, 1)
   }
 
+  const applyWorkerProgress = (
+    worker: Worker,
+    job: KeyAnalysisJob,
+    progress: KeyAnalysisProgress
+  ) => {
+    const trace = job.trace || {}
+    trace.lastStage = progress.stage
+    trace.lastUpdateAt = Date.now()
+    if (typeof progress.elapsedMs === 'number') trace.elapsedMs = progress.elapsedMs
+    if (typeof progress.decodeMs === 'number') trace.decodeMs = progress.decodeMs
+    if (typeof progress.analyzeMs === 'number') trace.analyzeMs = progress.analyzeMs
+    if (typeof progress.waveformMs === 'number') trace.waveformMs = progress.waveformMs
+    if (typeof progress.sampleRate === 'number') trace.sampleRate = progress.sampleRate
+    if (typeof progress.channels === 'number') trace.channels = progress.channels
+    if (typeof progress.totalFrames === 'number') trace.totalFrames = progress.totalFrames
+    if (typeof progress.framesToProcess === 'number')
+      trace.framesToProcess = progress.framesToProcess
+    if (typeof progress.detail === 'string' && progress.detail.trim()) {
+      trace.detail = progress.detail.slice(0, 300)
+    }
+    job.trace = trace
+
+    deps.onJobProgress(worker, job, progress)
+  }
+
   const handleWorkerFailure = (worker: Worker, error: Error) => {
     const jobId = deps.busy.get(worker)
     const wasPreempted = typeof jobId === 'number' && deps.preemptedJobIds.has(jobId)
     const wasForegroundWorker = deps.getForegroundWorker() === worker
     let preemptedJob: KeyAnalysisJob | null = null
     let job: KeyAnalysisJob | undefined
+    let failureReason: KeyAnalysisFailureReason = 'worker-error'
+    if (error?.message?.includes('worker exited')) {
+      failureReason = 'worker-exit'
+    }
     if (typeof jobId === 'number') {
       job = deps.inFlight.get(jobId)
       if (job) {
+        const wasTimedOut = typeof job.trace?.timedOutAt === 'number'
+        if (!wasPreempted && !wasTimedOut) {
+          deps.onJobFailure(job, failureReason, String(error?.message || error).slice(0, 300))
+        }
         if (job.source === 'background') {
           if (!wasPreempted) {
             const errorMsg = `[闲时分析] Worker 崩溃 - ${path.basename(job.filePath)}`
             log.error(errorMsg, error)
           }
           deps.background.unmarkProcessing(job.jobId)
+        } else {
+          const trace = job.trace
+          const stageElapsedMs =
+            typeof trace?.lastUpdateAt === 'number' ? Date.now() - trace.lastUpdateAt : undefined
+          log.warn('[闲时分析] 前台任务 worker 异常退出', {
+            filePath: job.filePath,
+            fileName: path.basename(job.filePath),
+            workerThreadId: worker.threadId,
+            stage: trace?.lastStage || 'unknown',
+            stageElapsedMs,
+            elapsedMs: trace?.elapsedMs,
+            decodeMs: trace?.decodeMs,
+            analyzeMs: trace?.analyzeMs,
+            waveformMs: trace?.waveformMs,
+            detail: trace?.detail
+          })
         }
         deps.activeByPath.delete(job.normalizedPath)
         deps.inFlight.delete(jobId)
@@ -93,10 +137,6 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     refreshForegroundWorker()
     deps.drain()
     if (preemptedJob) {
-      debugDev('后台任务被抢占后重新入队', {
-        jobId: preemptedJob.jobId,
-        filePath: preemptedJob.filePath
-      })
       deps.enqueue(preemptedJob.filePath, 'background', { source: 'background' })
     }
     deps.background.emitBackgroundStatus()
@@ -105,8 +145,41 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
   const handleWorkerMessage = async (worker: Worker, payload: WorkerPayload) => {
     const jobId = payload?.jobId
     const job = deps.inFlight.get(jobId)
+    const payloadProgress = payload?.progress
     const payloadResult = payload?.result
     const payloadError = payload?.error
+
+    if (payloadProgress) {
+      if (job) {
+        applyWorkerProgress(worker, job, payloadProgress)
+      } else {
+        log.warn('[闲时分析] 收到进度但任务不存在', {
+          jobId,
+          filePath: payload?.filePath,
+          workerThreadId: worker.threadId,
+          stage: payloadProgress.stage
+        })
+      }
+      return
+    }
+
+    if (job) {
+      applyWorkerProgress(worker, job, {
+        stage: payloadError ? 'job-error' : 'job-done',
+        elapsedMs:
+          typeof job.trace?.elapsedMs === 'number'
+            ? job.trace.elapsedMs
+            : job.startTime
+              ? Date.now() - job.startTime
+              : 0,
+        detail: payloadError ? String(payloadError).slice(0, 300) : undefined
+      })
+      if (payloadError) {
+        deps.onJobFailure(job, 'worker-error', String(payloadError).slice(0, 300))
+      } else {
+        deps.onJobSuccess(job)
+      }
+    }
 
     if (typeof jobId === 'number') {
       deps.preemptedJobIds.delete(jobId)
@@ -131,14 +204,6 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
           const statusMsg = `[闲时分析] 任务完成但有错误 - ${path.basename(job.filePath)} (耗时: ${elapsed}ms) 错误: ${errors.join('; ')}`
           log.warn(statusMsg)
         }
-        debugDev('后台任务完成', {
-          jobId: job.jobId,
-          filePath: job.filePath,
-          elapsedMs: job.startTime ? Date.now() - job.startTime : 0,
-          results,
-          errors
-        })
-
         deps.background.unmarkProcessing(job.jobId)
         deps.background.emitBackgroundStatus()
       }
@@ -224,10 +289,6 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     for (const [worker, jobId] of deps.busy.entries()) {
       const job = deps.inFlight.get(jobId)
       if (job && job.source === 'background') {
-        debugDev('抢占后台任务', {
-          jobId,
-          filePath: job.filePath
-        })
         deps.preemptedJobIds.add(jobId)
         void worker.terminate().catch(() => {})
         return

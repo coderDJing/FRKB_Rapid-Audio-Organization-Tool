@@ -1,5 +1,6 @@
 import { nextTick } from 'vue'
 import { resolveContextMenuPoint } from '@renderer/utils/contextMenuPosition'
+import { FIXED_MIXTAPE_STEM_MODE } from '@shared/mixtapeStemMode'
 
 export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
   const {
@@ -9,9 +10,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     selectedTrackId,
     mixtapeMixMode,
     mixtapeStemMode,
-    mixtapeStemRealtimeProfile,
-    mixtapeStemExportProfile,
-    outputStemProfile,
+    mixtapeStemProfile,
     outputDialogVisible,
     outputRunning,
     outputPath,
@@ -30,8 +29,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     bpmAnalysisActive,
     bpmAnalysisFailed,
     bpmAnalysisFailedCount,
-    bpmAnalysisFailedAutoCloseSeconds,
-    mixtapeStemStrategyConfirmed,
+    bpmAnalysisFailedReason,
     stemSummary,
     stemRuntimeProgressByTrackId,
     stemResumeBootstrappedPlaylistIdSet,
@@ -39,7 +37,6 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     autoGainDialogVisible,
     transportPlaying,
     transportDecoding,
-    shouldShowOutputStemProfileSelect,
     createEmptyStemSummary,
     applyBpmAnalysisToTracks,
     buildBpmTargets,
@@ -78,8 +75,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM,
     buildFlatMixEnvelope,
     normalizeMixEnvelopePoints,
-    DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE,
-    DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE,
+    DEFAULT_MIXTAPE_STEM_PROFILE,
     confirmDialog,
     t,
     handleTransportStop,
@@ -88,7 +84,12 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
 
   let bpmAnalysisToken = 0
   let lastBpmAnalysisKey = ''
-  let bpmAnalysisFailedTimer: ReturnType<typeof setTimeout> | null = null
+
+  const normalizeBpmFailureReason = (value: unknown): string => {
+    const text = typeof value === 'string' ? value.trim() : ''
+    if (!text) return ''
+    return text.length <= 240 ? text : `${text.slice(0, 240)}...`
+  }
 
   const handleBpmBatchReady = (_e: unknown, payload: any) => {
     const results = Array.isArray(payload?.results) ? payload.results : []
@@ -107,30 +108,17 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
       dismissBpmAnalysisFailure()
     } else if (bpmAnalysisFailed.value) {
       bpmAnalysisFailedCount.value = missingTrackCount
-      scheduleBpmAnalysisFailureAutoClose()
     }
     scheduleTimelineDraw()
   }
 
-  const clearBpmAnalysisFailedTimer = () => {
-    if (!bpmAnalysisFailedTimer) return
-    clearTimeout(bpmAnalysisFailedTimer)
-    bpmAnalysisFailedTimer = null
-  }
+  const clearBpmAnalysisFailedTimer = () => {}
 
   const dismissBpmAnalysisFailure = () => {
     clearBpmAnalysisFailedTimer()
     bpmAnalysisFailed.value = false
     bpmAnalysisFailedCount.value = 0
-  }
-
-  const scheduleBpmAnalysisFailureAutoClose = () => {
-    clearBpmAnalysisFailedTimer()
-    bpmAnalysisFailedTimer = setTimeout(() => {
-      if (!bpmAnalysisActive.value) {
-        dismissBpmAnalysisFailure()
-      }
-    }, bpmAnalysisFailedAutoCloseSeconds * 1000)
+    bpmAnalysisFailedReason.value = ''
   }
 
   const retryBpmAnalysis = () => {
@@ -170,6 +158,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     bpmAnalysisActive.value = true
     bpmAnalysisFailed.value = false
     bpmAnalysisFailedCount.value = 0
+    bpmAnalysisFailedReason.value = ''
 
     scheduleTimelineDraw()
     try {
@@ -186,30 +175,33 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
           sample: unresolvedDetails.slice(0, 5)
         })
       }
+      const unresolvedReason = normalizeBpmFailureReason(unresolvedDetails[0]?.reason)
       if (results.length > 0) {
         const { resolvedCount } = applyBpmAnalysisToTracks(results)
         const remainMissingCount = resolveMissingBpmCount(bpmTargets)
         if (remainMissingCount > 0) {
           bpmAnalysisFailed.value = true
+          bpmAnalysisFailedReason.value = unresolvedReason
           bpmAnalysisFailedCount.value = Math.max(
             remainMissingCount,
             unresolvedDetails.length,
             unresolved.length,
             Math.max(0, filePaths.length - resolvedCount)
           )
-          scheduleBpmAnalysisFailureAutoClose()
         } else {
           allResolved = true
         }
       } else if (filePaths.length > 0) {
         bpmAnalysisFailed.value = true
+        bpmAnalysisFailedReason.value = unresolvedReason
         bpmAnalysisFailedCount.value = Math.max(unresolved.length, filePaths.length)
-        scheduleBpmAnalysisFailureAutoClose()
       }
     } catch (error) {
       bpmAnalysisFailed.value = true
+      bpmAnalysisFailedReason.value = normalizeBpmFailureReason(
+        error instanceof Error ? error.message : String(error || '')
+      )
       bpmAnalysisFailedCount.value = Math.max(filePaths.length, 1)
-      scheduleBpmAnalysisFailureAutoClose()
       console.error('[mixtape] BPM analyze invoke failed', {
         fileCount: filePaths.length,
         error
@@ -232,11 +224,8 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     if (!payload.value.playlistId) {
       mixtapeRawItems.value = []
       mixtapeMixMode.value = 'stem'
-      mixtapeStemMode.value = '4stems'
-      mixtapeStemRealtimeProfile.value = DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
-      mixtapeStemExportProfile.value = DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
-      outputStemProfile.value = DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
-      mixtapeStemStrategyConfirmed.value = false
+      mixtapeStemMode.value = FIXED_MIXTAPE_STEM_MODE
+      mixtapeStemProfile.value = DEFAULT_MIXTAPE_STEM_PROFILE
       stemSummary.value = createEmptyStemSummary()
       stemRuntimeProgressByTrackId.value = {}
       tracks.value = []
@@ -251,20 +240,11 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
       playlistId: payload.value.playlistId
     })
     mixtapeMixMode.value = normalizeMixtapeMixMode(result?.mixMode)
-    mixtapeStemMode.value = normalizeMixtapeStemMode(result?.stemMode)
-    mixtapeStemRealtimeProfile.value = normalizeStemProfile(
-      result?.stemRealtimeProfile,
-      DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
+    mixtapeStemMode.value = FIXED_MIXTAPE_STEM_MODE
+    mixtapeStemProfile.value = normalizeStemProfile(
+      result?.stemProfile,
+      DEFAULT_MIXTAPE_STEM_PROFILE
     )
-    mixtapeStemExportProfile.value = normalizeStemProfile(
-      result?.stemExportProfile,
-      DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
-    )
-    outputStemProfile.value = normalizeStemProfile(
-      result?.stemExportProfile,
-      DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
-    )
-    mixtapeStemStrategyConfirmed.value = !!result?.stemStrategyConfirmed
     stemSummary.value = normalizeStemSummary(result?.stemSummary)
     const rawItems = Array.isArray(result?.items) ? result.items : []
     mixtapeRawItems.value = rawItems
@@ -275,10 +255,10 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
       parseSnapshot(item, index, t('tracks.unknownTrack'))
     )
     pruneStemRuntimeProgressByTracks(tracks.value)
-    const stemMode = normalizeMixtapeStemMode(result?.stemMode)
+    const stemMode = FIXED_MIXTAPE_STEM_MODE
     const currentPlaylistId = String(payload.value.playlistId || '').trim()
 
-    if (mixtapeMixMode.value === 'stem' && mixtapeStemStrategyConfirmed.value) {
+    if (mixtapeMixMode.value === 'stem') {
       const missingStemAssetReadyTracks = tracks.value.filter(
         (track: any) =>
           normalizeMixtapeStemStatus(track.stemStatus) === 'ready' &&
@@ -298,7 +278,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
               playlistId: payload.value.playlistId,
               filePaths: repairFilePaths,
               stemMode,
-              profile: mixtapeStemRealtimeProfile.value,
+              profile: mixtapeStemProfile.value,
               force: false
             })
             .catch((error: unknown) => {
@@ -467,7 +447,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     if (!offsetChanged && !firstBeatChanged && !bpmChanged) return
     const gridPositionChanged = firstBeatChanged || bpmChanged
     const activeEnvelopeParams =
-      mixtapeMixMode.value === 'traditional'
+      mixtapeMixMode.value === 'eq'
         ? MIXTAPE_ENVELOPE_PARAMS_TRADITIONAL
         : MIXTAPE_ENVELOPE_PARAMS_STEM
     const shouldResetEnvelope = gridPositionChanged
@@ -624,9 +604,6 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
 
   const openOutputDialog = () => {
     if (outputRunning.value) return
-    outputStemProfile.value = shouldShowOutputStemProfileSelect.value
-      ? 'quality'
-      : normalizeStemProfile(mixtapeStemExportProfile.value, DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE)
     outputDialogVisible.value = true
   }
 
@@ -676,10 +653,8 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     }
     if (mixtapeMixMode.value === 'stem') {
       const exportProfile = normalizeStemProfile(
-        shouldShowOutputStemProfileSelect.value
-          ? outputStemProfile.value
-          : mixtapeStemExportProfile.value,
-        DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
+        mixtapeStemProfile.value,
+        DEFAULT_MIXTAPE_STEM_PROFILE
       )
       const exportModel = resolveMixtapeStemModelByProfile(exportProfile)
       const notReadyTracks = tracks.value.filter((track: any) => {
@@ -799,12 +774,10 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     outputPath: string
     outputFormat: 'wav' | 'mp3'
     outputFilename: string
-    stemProfile?: any
   }) => {
     outputPath.value = payload.outputPath
     outputFormat.value = payload.outputFormat
     outputFilename.value = payload.outputFilename
-    outputStemProfile.value = normalizeStemProfile(payload.stemProfile, outputStemProfile.value)
     outputDialogVisible.value = false
     await runMixtapeOutput()
   }

@@ -2,39 +2,29 @@ import { v4 as uuidV4 } from 'uuid'
 import { getLibraryDb } from './libraryDb'
 import { log } from './log'
 import {
-  DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE,
-  DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE,
+  DEFAULT_MIXTAPE_STEM_PROFILE,
   normalizeMixtapeStemProfile,
   type MixtapeStemProfile
 } from '../shared/mixtapeStemProfiles'
+import { FIXED_MIXTAPE_STEM_MODE } from '../shared/mixtapeStemMode'
 
 const TABLE = 'mixtape_items'
 const PROJECT_TABLE = 'mixtape_projects'
 
-export type MixtapeMixMode = 'traditional' | 'stem'
-export type MixtapeStemMode = '4stems'
+export type MixtapeMixMode = 'eq' | 'stem'
+export type MixtapeStemMode = typeof FIXED_MIXTAPE_STEM_MODE
 export type { MixtapeStemProfile }
 
 const DEFAULT_MIXTAPE_MIX_MODE: MixtapeMixMode = 'stem'
-const DEFAULT_MIXTAPE_STEM_MODE: MixtapeStemMode = '4stems'
-const DEFAULT_PROJECT_STEM_REALTIME_PROFILE: MixtapeStemProfile =
-  DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
-const DEFAULT_PROJECT_STEM_EXPORT_PROFILE: MixtapeStemProfile = DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
+const DEFAULT_PROJECT_STEM_PROFILE: MixtapeStemProfile = DEFAULT_MIXTAPE_STEM_PROFILE
 
 function normalizeMixtapeMixMode(value: unknown): MixtapeMixMode {
-  return value === 'traditional' ? 'traditional' : 'stem'
-}
-
-function normalizeMixtapeStemMode(_value: unknown): MixtapeStemMode {
-  return '4stems'
+  return value === 'eq' ? 'eq' : 'stem'
 }
 
 export type MixtapeProjectStemConfig = {
   mixMode: MixtapeMixMode
-  stemMode: MixtapeStemMode
-  stemRealtimeProfile: MixtapeStemProfile
-  stemExportProfile: MixtapeStemProfile
-  stemStrategyConfirmed: boolean
+  stemProfile: MixtapeStemProfile
 }
 
 export type MixtapeItemRecord = {
@@ -110,60 +100,38 @@ export function getMixtapeProjectMixMode(playlistUuid: string): MixtapeMixMode {
   return getMixtapeProjectStemConfig(playlistUuid).mixMode
 }
 
-export function getMixtapeProjectStemMode(playlistUuid: string): MixtapeStemMode {
-  return getMixtapeProjectStemConfig(playlistUuid).stemMode
-}
-
 export function getMixtapeProjectStemConfig(playlistUuid: string): MixtapeProjectStemConfig {
   const normalizedPlaylistUuid = typeof playlistUuid === 'string' ? playlistUuid.trim() : ''
   if (!normalizedPlaylistUuid) {
     return {
       mixMode: DEFAULT_MIXTAPE_MIX_MODE,
-      stemMode: DEFAULT_MIXTAPE_STEM_MODE,
-      stemRealtimeProfile: DEFAULT_PROJECT_STEM_REALTIME_PROFILE,
-      stemExportProfile: DEFAULT_PROJECT_STEM_EXPORT_PROFILE,
-      stemStrategyConfirmed: false
+      stemProfile: DEFAULT_PROJECT_STEM_PROFILE
     }
   }
   const db = getLibraryDb()
   if (!db) {
     return {
       mixMode: DEFAULT_MIXTAPE_MIX_MODE,
-      stemMode: DEFAULT_MIXTAPE_STEM_MODE,
-      stemRealtimeProfile: DEFAULT_PROJECT_STEM_REALTIME_PROFILE,
-      stemExportProfile: DEFAULT_PROJECT_STEM_EXPORT_PROFILE,
-      stemStrategyConfirmed: false
+      stemProfile: DEFAULT_PROJECT_STEM_PROFILE
     }
   }
   try {
     const row = db
       .prepare(
-        `SELECT mix_mode, stem_mode, stem_realtime_profile, stem_export_profile, stem_strategy_confirmed
+        `SELECT mix_mode, stem_mode, stem_profile
          FROM ${PROJECT_TABLE}
          WHERE playlist_uuid = ?`
       )
       .get(normalizedPlaylistUuid)
     return {
       mixMode: normalizeMixtapeMixMode(row?.mix_mode),
-      stemMode: normalizeMixtapeStemMode(row?.stem_mode),
-      stemRealtimeProfile: normalizeMixtapeStemProfile(
-        row?.stem_realtime_profile,
-        DEFAULT_PROJECT_STEM_REALTIME_PROFILE
-      ),
-      stemExportProfile: normalizeMixtapeStemProfile(
-        row?.stem_export_profile,
-        DEFAULT_PROJECT_STEM_EXPORT_PROFILE
-      ),
-      stemStrategyConfirmed: Number(row?.stem_strategy_confirmed) === 1
+      stemProfile: normalizeMixtapeStemProfile(row?.stem_profile, DEFAULT_PROJECT_STEM_PROFILE)
     }
   } catch (error) {
     log.error('[sqlite] mixtape project stem config get failed', error)
     return {
       mixMode: DEFAULT_MIXTAPE_MIX_MODE,
-      stemMode: DEFAULT_MIXTAPE_STEM_MODE,
-      stemRealtimeProfile: DEFAULT_PROJECT_STEM_REALTIME_PROFILE,
-      stemExportProfile: DEFAULT_PROJECT_STEM_EXPORT_PROFILE,
-      stemStrategyConfirmed: false
+      stemProfile: DEFAULT_PROJECT_STEM_PROFILE
     }
   }
 }
@@ -187,28 +155,16 @@ export function upsertMixtapeProjectMixMode(
         `INSERT INTO ${PROJECT_TABLE} (
            playlist_uuid,
            mix_mode,
-           stem_mode,
-           stem_realtime_profile,
-           stem_export_profile,
-           stem_strategy_confirmed,
+           stem_profile,
            created_at_ms,
            updated_at_ms
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(playlist_uuid) DO UPDATE SET
            mix_mode = excluded.mix_mode,
            updated_at_ms = excluded.updated_at_ms`
       )
-      .run(
-        normalizedPlaylistUuid,
-        normalizedMixMode,
-        current.stemMode,
-        current.stemRealtimeProfile,
-        current.stemExportProfile,
-        current.stemStrategyConfirmed ? 1 : 0,
-        now,
-        now
-      )
+      .run(normalizedPlaylistUuid, normalizedMixMode, current.stemProfile, now, now)
     return {
       updated: Number(info?.changes || 0),
       mixMode: normalizedMixMode
@@ -222,148 +178,55 @@ export function upsertMixtapeProjectMixMode(
   }
 }
 
-export function upsertMixtapeProjectStemMode(
+export function upsertMixtapeProjectStemProfile(
   playlistUuid: string,
-  stemMode: MixtapeStemMode
-): { updated: number; stemMode: MixtapeStemMode } {
-  const normalizedPlaylistUuid = typeof playlistUuid === 'string' ? playlistUuid.trim() : ''
-  if (!normalizedPlaylistUuid) {
-    return { updated: 0, stemMode: normalizeMixtapeStemMode(stemMode) }
-  }
-  const db = getLibraryDb()
-  if (!db) return { updated: 0, stemMode: normalizeMixtapeStemMode(stemMode) }
-  const normalizedStemMode = normalizeMixtapeStemMode(stemMode)
-  try {
-    const current = getMixtapeProjectStemConfig(normalizedPlaylistUuid)
-    const now = Date.now()
-    const info = db
-      .prepare(
-        `INSERT INTO ${PROJECT_TABLE} (
-           playlist_uuid,
-           mix_mode,
-           stem_mode,
-           stem_realtime_profile,
-           stem_export_profile,
-           stem_strategy_confirmed,
-           created_at_ms,
-           updated_at_ms
-         )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(playlist_uuid) DO UPDATE SET
-           stem_mode = excluded.stem_mode,
-           updated_at_ms = excluded.updated_at_ms`
-      )
-      .run(
-        normalizedPlaylistUuid,
-        current.mixMode,
-        normalizedStemMode,
-        current.stemRealtimeProfile,
-        current.stemExportProfile,
-        current.stemStrategyConfirmed ? 1 : 0,
-        now,
-        now
-      )
-    return {
-      updated: Number(info?.changes || 0),
-      stemMode: normalizedStemMode
-    }
-  } catch (error) {
-    log.error('[sqlite] mixtape project stem mode upsert failed', error)
-    return {
-      updated: 0,
-      stemMode: normalizedStemMode
-    }
-  }
-}
-
-export function upsertMixtapeProjectStemProfiles(
-  playlistUuid: string,
-  profiles: {
-    stemRealtimeProfile?: MixtapeStemProfile
-    stemExportProfile?: MixtapeStemProfile
-  },
-  options?: {
-    markStrategyConfirmed?: boolean
-  }
+  profile?: MixtapeStemProfile
 ): {
   updated: number
-  stemRealtimeProfile: MixtapeStemProfile
-  stemExportProfile: MixtapeStemProfile
-  stemStrategyConfirmed: boolean
+  stemProfile: MixtapeStemProfile
 } {
   const normalizedPlaylistUuid = typeof playlistUuid === 'string' ? playlistUuid.trim() : ''
-  const normalizedRealtimeProfile = normalizeMixtapeStemProfile(
-    profiles?.stemRealtimeProfile,
-    DEFAULT_PROJECT_STEM_REALTIME_PROFILE
-  )
-  const normalizedExportProfile = normalizeMixtapeStemProfile(
-    profiles?.stemExportProfile,
-    DEFAULT_PROJECT_STEM_EXPORT_PROFILE
-  )
-  const markStrategyConfirmed = options?.markStrategyConfirmed !== false
+  const normalizedStemProfile = normalizeMixtapeStemProfile(profile, DEFAULT_PROJECT_STEM_PROFILE)
   if (!normalizedPlaylistUuid) {
     return {
       updated: 0,
-      stemRealtimeProfile: normalizedRealtimeProfile,
-      stemExportProfile: normalizedExportProfile,
-      stemStrategyConfirmed: markStrategyConfirmed
+      stemProfile: normalizedStemProfile
     }
   }
   const db = getLibraryDb()
   if (!db) {
     return {
       updated: 0,
-      stemRealtimeProfile: normalizedRealtimeProfile,
-      stemExportProfile: normalizedExportProfile,
-      stemStrategyConfirmed: markStrategyConfirmed
+      stemProfile: normalizedStemProfile
     }
   }
   try {
     const current = getMixtapeProjectStemConfig(normalizedPlaylistUuid)
-    const nextStemStrategyConfirmed = markStrategyConfirmed ? true : current.stemStrategyConfirmed
     const now = Date.now()
     const info = db
       .prepare(
         `INSERT INTO ${PROJECT_TABLE} (
            playlist_uuid,
            mix_mode,
-           stem_mode,
-           stem_realtime_profile,
-           stem_export_profile,
-           stem_strategy_confirmed,
+           stem_profile,
            created_at_ms,
            updated_at_ms
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(playlist_uuid) DO UPDATE SET
-           stem_realtime_profile = excluded.stem_realtime_profile,
-           stem_export_profile = excluded.stem_export_profile,
-           stem_strategy_confirmed = excluded.stem_strategy_confirmed,
+           stem_profile = excluded.stem_profile,
            updated_at_ms = excluded.updated_at_ms`
       )
-      .run(
-        normalizedPlaylistUuid,
-        current.mixMode,
-        current.stemMode,
-        normalizedRealtimeProfile,
-        normalizedExportProfile,
-        nextStemStrategyConfirmed ? 1 : 0,
-        now,
-        now
-      )
+      .run(normalizedPlaylistUuid, current.mixMode, normalizedStemProfile, now, now)
     return {
       updated: Number(info?.changes || 0),
-      stemRealtimeProfile: normalizedRealtimeProfile,
-      stemExportProfile: normalizedExportProfile,
-      stemStrategyConfirmed: nextStemStrategyConfirmed
+      stemProfile: normalizedStemProfile
     }
   } catch (error) {
-    log.error('[sqlite] mixtape project stem profiles upsert failed', error)
+    log.error('[sqlite] mixtape project stem profile upsert failed', error)
     return {
       updated: 0,
-      stemRealtimeProfile: normalizedRealtimeProfile,
-      stemExportProfile: normalizedExportProfile,
-      stemStrategyConfirmed: markStrategyConfirmed
+      stemProfile: normalizedStemProfile
     }
   }
 }

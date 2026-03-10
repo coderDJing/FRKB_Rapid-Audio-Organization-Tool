@@ -2,7 +2,6 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import {
-  resolveBundledDemucsOnnxPath,
   resolveBundledDemucsPythonPath,
   resolveBundledDemucsRuntimeCandidates,
   resolveBundledDemucsRuntimeDir,
@@ -18,19 +17,9 @@ import {
 import type {
   MixtapeStemComputeDevice,
   MixtapeStemCpuFallbackReasonCode,
-  MixtapeStemDeviceProbeSnapshot,
-  MixtapeStemOnnxDirectmlRuntimeStats,
-  MixtapeStemOnnxProgressPayload,
-  MixtapeStemOnnxProvider,
-  MixtapeStemOnnxResultPayload,
-  MixtapeStemOnnxRuntimeProbeEntry,
-  MixtapeStemOnnxRuntimeProbeSnapshot
+  MixtapeStemDeviceProbeSnapshot
 } from './mixtapeStemSeparationShared'
 const {
-  ONNX_DIRECTML_FAILURE_COOLDOWN_MS,
-  ONNX_FAST_MODEL_FILE_NAME,
-  ONNX_FAST_PROGRESS_PREFIX,
-  ONNX_FAST_RESULT_PREFIX,
   STEM_DEVICE_COMPATIBILITY_TIMEOUT_MS,
   STEM_DEVICE_PROBE_CACHE_TTL_MS,
   STEM_DEVICE_PROBE_TIMEOUT_MS,
@@ -39,35 +28,18 @@ const {
   STEM_GPU_JOB_CONCURRENCY_DIRECTML_MAX,
   STEM_GPU_JOB_CONCURRENCY_MAX,
   STEM_GPU_JOB_CONCURRENCY_MIN,
-  STEM_ONNX_DIRECTML_CONCURRENCY_HIGH_SUCCESS,
-  STEM_ONNX_DIRECTML_CONCURRENCY_WARMUP_SUCCESS,
   STEM_SYSTEM_MEMORY_GB_FOR_GPU_CONCURRENCY_2,
   STEM_SYSTEM_MEMORY_GB_FOR_GPU_CONCURRENCY_3,
   STEM_WINDOWS_GPU_ADAPTER_PROBE_TIMEOUT_MS,
   buildStemProcessEnv,
-  loadStemRuntimeStateOnce,
   normalizeFilePath,
   normalizeNumberOrNull,
   normalizeText,
   runProbeProcess,
-  schedulePersistStemRuntimeState,
   resolveStemDevicePriority
 } = shared
 let stemDeviceProbeSnapshot: MixtapeStemDeviceProbeSnapshot | null = null
 let stemDeviceProbePromise: Promise<MixtapeStemDeviceProbeSnapshot> | null = null
-let stemOnnxRuntimeProbeSnapshot: MixtapeStemOnnxRuntimeProbeSnapshot | null = null
-let stemOnnxRuntimeProbePromise: Promise<MixtapeStemOnnxRuntimeProbeSnapshot> | null = null
-let stemOnnxDirectmlFailureAt = 0
-let stemOnnxDirectmlFailureReason = ''
-let stemOnnxDirectmlAttemptGate: Promise<void> | null = null
-let stemOnnxDirectmlAttemptGateResolve: (() => void) | null = null
-let stemOnnxDirectmlRuntimeStats: MixtapeStemOnnxDirectmlRuntimeStats = {
-  successCount: 0,
-  failureCount: 0,
-  consecutiveSuccessCount: 0,
-  lastSuccessAt: 0,
-  lastFailureAt: 0
-}
 export const probeWindowsGpuAdapters = async () => {
   const emptyResult = {
     names: [] as string[],
@@ -434,243 +406,6 @@ const probeDemucsDevices = async (ffmpegPath: string): Promise<MixtapeStemDevice
   })
   return await stemDeviceProbePromise
 }
-const resolveOnnxProviderCandidatesFromNames = (
-  providerNames: string[]
-): MixtapeStemOnnxProvider[] => {
-  const normalizedNames = providerNames
-    .map((name) => normalizeText(name, 80).toLowerCase())
-    .filter(Boolean)
-  const providers: MixtapeStemOnnxProvider[] = []
-  if (normalizedNames.some((name) => name.includes('dml') || name.includes('directml'))) {
-    providers.push('directml')
-  }
-  if (normalizedNames.some((name) => name.includes('cpu'))) {
-    providers.push('cpu')
-  }
-  return Array.from(new Set(providers))
-}
-const probeOnnxRuntimeForRuntime = async (params: {
-  runtimeCandidate: BundledDemucsRuntimeCandidate
-  ffmpegPath: string
-  onnxModelPath: string
-}): Promise<MixtapeStemOnnxRuntimeProbeEntry> => {
-  const runtimeKey = normalizeText(params.runtimeCandidate.key, 64) || 'runtime'
-  const runtimeDir = normalizeFilePath(params.runtimeCandidate.runtimeDir)
-  const pythonPath = normalizeFilePath(params.runtimeCandidate.pythonPath)
-  const env = buildStemProcessEnv(runtimeDir, params.ffmpegPath)
-  let providerNames: string[] = []
-  let probeError = ''
-  try {
-    const result = await runProbeProcess({
-      command: pythonPath,
-      args: [
-        '-c',
-        [
-          'import json',
-          `onnx_model_path = ${JSON.stringify(normalizeFilePath(params.onnxModelPath))}`,
-          'payload = {"providers": []}',
-          'try:',
-          '  import onnxruntime as ort',
-          '  payload["providers"] = [str(item) for item in ort.get_available_providers()]',
-          '  if "DmlExecutionProvider" in payload["providers"] and onnx_model_path:',
-          '    try:',
-          '      sess_opt = ort.SessionOptions()',
-          '      sess_opt.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL',
-          '      sess_opt.enable_mem_pattern = False',
-          '      sess = ort.InferenceSession(',
-          '        onnx_model_path,',
-          '        sess_options=sess_opt,',
-          '        providers=["DmlExecutionProvider", "CPUExecutionProvider"]',
-          '      )',
-          '      active = sess.get_providers()[0] if sess.get_providers() else ""',
-          '      payload["directml_session_provider"] = str(active)',
-          '      payload["directml_session_ok"] = active == "DmlExecutionProvider"',
-          '      if not payload["directml_session_ok"]:',
-          '        payload["directml_session_error"] = f"active provider: {active}"',
-          '    except Exception as dml_exc:',
-          '      payload["directml_session_ok"] = False',
-          '      payload["directml_session_error"] = str(dml_exc)',
-          'except Exception as exc:',
-          '  payload["error"] = str(exc)',
-          'print(json.dumps(payload))'
-        ].join('\n')
-      ],
-      env,
-      timeoutMs: STEM_DEVICE_PROBE_TIMEOUT_MS,
-      maxStdoutLen: 2000,
-      maxStderrLen: 1200
-    })
-    const stdoutText = normalizeText(result.stdout, 1400)
-    const stderrText = normalizeText(result.stderr, 800)
-    if (result.status === 0 && !result.timedOut && stdoutText) {
-      const lines = stdoutText
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean)
-      const lastLine = lines.at(-1) || ''
-      const parsed = JSON.parse(lastLine) as {
-        providers?: unknown
-        error?: unknown
-        directml_session_ok?: unknown
-        directml_session_error?: unknown
-      }
-      providerNames = Array.isArray(parsed.providers)
-        ? parsed.providers.map((item) => normalizeText(item, 80)).filter(Boolean)
-        : []
-      probeError = normalizeText(parsed.error || parsed.directml_session_error, 400)
-      const directmlSessionOk = parsed.directml_session_ok !== false
-      if (
-        providerNames.some(
-          (name) =>
-            normalizeText(name, 80).toLowerCase().includes('dml') ||
-            normalizeText(name, 80).toLowerCase().includes('directml')
-        ) &&
-        !directmlSessionOk
-      ) {
-        providerNames = providerNames.filter((name) => {
-          const normalized = normalizeText(name, 80).toLowerCase()
-          return !normalized.includes('dml') && !normalized.includes('directml')
-        })
-      }
-    } else {
-      probeError = result.error || stderrText || stdoutText || `probe exit ${result.status ?? -1}`
-    }
-  } catch (error) {
-    probeError = normalizeText(error instanceof Error ? error.message : String(error || ''), 400)
-  }
-  const providerCandidates = resolveOnnxProviderCandidatesFromNames(providerNames)
-  const entry: MixtapeStemOnnxRuntimeProbeEntry = {
-    runtimeKey,
-    runtimeDir,
-    pythonPath,
-    providerNames,
-    providerCandidates,
-    probeError
-  }
-  log.info('[mixtape-stem] onnx runtime probe', {
-    runtimeKey: entry.runtimeKey,
-    runtimeDir: entry.runtimeDir,
-    pythonPath: entry.pythonPath,
-    providers: entry.providerNames,
-    providerCandidates: entry.providerCandidates,
-    probeError: entry.probeError || null
-  })
-  return entry
-}
-const resolveOnnxRuntimeProbeScore = (entry: MixtapeStemOnnxRuntimeProbeEntry): number => {
-  const hasDirectml = entry.providerCandidates.includes('directml')
-  const hasCpu = entry.providerCandidates.includes('cpu')
-  const runtimeKey = normalizeText(entry.runtimeKey, 64).toLowerCase()
-  if (process.platform === 'win32') {
-    if (hasDirectml && runtimeKey.includes('directml')) return 0
-    if (hasDirectml) return 1
-    if (hasCpu && runtimeKey.includes('cpu')) return 10
-    if (hasCpu) return 11
-    return 30
-  }
-  if (hasCpu && runtimeKey.includes('cpu')) return 0
-  if (hasCpu) return 1
-  return 20
-}
-const probeOnnxRuntime = async (
-  ffmpegPath: string
-): Promise<MixtapeStemOnnxRuntimeProbeSnapshot> => {
-  const now = Date.now()
-  if (
-    stemOnnxRuntimeProbeSnapshot &&
-    now - stemOnnxRuntimeProbeSnapshot.checkedAt <= STEM_DEVICE_PROBE_CACHE_TTL_MS
-  ) {
-    return stemOnnxRuntimeProbeSnapshot
-  }
-  if (stemOnnxRuntimeProbePromise) return await stemOnnxRuntimeProbePromise
-  stemOnnxRuntimeProbePromise = (async () => {
-    const runtimeCandidates = resolveBundledDemucsRuntimeCandidates()
-    const onnxModelPath = path.join(resolveBundledDemucsOnnxPath(), ONNX_FAST_MODEL_FILE_NAME)
-    const runtimeSnapshots: MixtapeStemOnnxRuntimeProbeEntry[] = []
-    for (const runtimeCandidate of runtimeCandidates) {
-      if (!runtimeCandidate.runtimeDir || !runtimeCandidate.pythonPath) continue
-      if (!fs.existsSync(runtimeCandidate.pythonPath)) continue
-      const runtimeSnapshot = await probeOnnxRuntimeForRuntime({
-        runtimeCandidate,
-        ffmpegPath,
-        onnxModelPath
-      })
-      runtimeSnapshots.push(runtimeSnapshot)
-    }
-    const fallbackCandidate: BundledDemucsRuntimeCandidate = {
-      key: 'runtime',
-      runtimeDir: resolveBundledDemucsRuntimeDir(),
-      pythonPath: resolveBundledDemucsPythonPath(resolveBundledDemucsRuntimeDir())
-    }
-    const selectedRuntime = runtimeSnapshots.reduce<MixtapeStemOnnxRuntimeProbeEntry | null>(
-      (best, current) => {
-        if (!best) return current
-        const bestScore = resolveOnnxRuntimeProbeScore(best)
-        const currentScore = resolveOnnxRuntimeProbeScore(current)
-        if (currentScore < bestScore) return current
-        if (currentScore > bestScore) return best
-        return best
-      },
-      null
-    ) || {
-      runtimeKey: fallbackCandidate.key,
-      runtimeDir: fallbackCandidate.runtimeDir,
-      pythonPath: fallbackCandidate.pythonPath,
-      providerNames: [],
-      providerCandidates: ['cpu' as MixtapeStemOnnxProvider],
-      probeError: ''
-    }
-    const providerCandidates: MixtapeStemOnnxProvider[] = selectedRuntime.providerCandidates.length
-      ? selectedRuntime.providerCandidates
-      : ['cpu']
-    const suppressDirectmlByFailure = shouldSuppressOnnxDirectmlByRecentFailure()
-    const finalProviderCandidates: MixtapeStemOnnxProvider[] = suppressDirectmlByFailure
-      ? providerCandidates.filter(
-          (provider): provider is MixtapeStemOnnxProvider => provider !== 'directml'
-        )
-      : providerCandidates
-    const selectedProviderCandidates: MixtapeStemOnnxProvider[] = finalProviderCandidates.length
-      ? finalProviderCandidates
-      : ['cpu']
-    const snapshot: MixtapeStemOnnxRuntimeProbeSnapshot = {
-      checkedAt: now,
-      runtimeKey: selectedRuntime.runtimeKey,
-      runtimeDir: selectedRuntime.runtimeDir,
-      pythonPath: selectedRuntime.pythonPath,
-      providerCandidates: selectedProviderCandidates,
-      runtimeCandidates: runtimeSnapshots.map((item) => ({
-        runtimeKey: item.runtimeKey,
-        providerNames: item.providerNames,
-        providerCandidates: item.providerCandidates,
-        probeError: item.probeError || null
-      }))
-    }
-    stemOnnxRuntimeProbeSnapshot = snapshot
-    if (suppressDirectmlByFailure) {
-      log.info('[mixtape-stem] onnx directml suppressed by recent runtime failure', {
-        runtimeKey: snapshot.runtimeKey,
-        cooldownMs: ONNX_DIRECTML_FAILURE_COOLDOWN_MS,
-        failureReason: stemOnnxDirectmlFailureReason || null
-      })
-    }
-    log.info('[mixtape-stem] onnx runtime selected', {
-      runtimeKey: snapshot.runtimeKey,
-      runtimeDir: snapshot.runtimeDir,
-      pythonPath: snapshot.pythonPath,
-      providerCandidates: snapshot.providerCandidates,
-      runtimeCandidates: snapshot.runtimeCandidates.map((item) => ({
-        runtimeKey: item.runtimeKey,
-        providerNames: item.providerNames,
-        providerCandidates: item.providerCandidates,
-        probeError: item.probeError
-      }))
-    })
-    return snapshot
-  })().finally(() => {
-    stemOnnxRuntimeProbePromise = null
-  })
-  return await stemOnnxRuntimeProbePromise
-}
 const resolveCpuFallbackReason = (params: {
   deviceSnapshot: MixtapeStemDeviceProbeSnapshot
   firstFailure: {
@@ -705,9 +440,25 @@ const resolveCpuFallbackReason = (params: {
       reasonDetail: `adapters=${adapterNames || 'unknown'}`
     }
   }
+  const mayNeedDirectmlCompatibilityFix =
+    process.platform === 'win32' &&
+    (snapshot.windowsHasAmdAdapter || snapshot.windowsHasIntelAdapter) &&
+    !snapshot.windowsHasNvidiaAdapter &&
+    !snapshot.cudaAvailable &&
+    !snapshot.xpuAvailable &&
+    snapshot.anyDirectmlBackendInstalled &&
+    !snapshot.directmlAvailable &&
+    !snapshot.directmlDemucsCompatible
+  if (mayNeedDirectmlCompatibilityFix) {
+    const adapterNames = snapshot.windowsAdapterNames.join(',')
+    return {
+      reasonCode: 'gpu_failed',
+      reasonDetail: `directml-demucs-incompatible | adapters=${adapterNames || 'unknown'}`
+    }
+  }
   return {
     reasonCode: 'gpu_unavailable',
-    reasonDetail: `detected-devices=${snapshot.devices.join(',')}`
+    reasonDetail: `detected-devices=${snapshot.devices.join(',')} | runtime=${snapshot.runtimeKey || 'unknown'}`
   }
 }
 const resolveDemucsDeviceArg = (
@@ -784,236 +535,6 @@ const parseDemucsProgressText = (
     etaSec
   }
 }
-const parseOnnxFastProgressText = (
-  text: string
-): {
-  percent: number
-  provider: MixtapeStemOnnxProvider
-  chunkIndex: number | null
-  totalChunks: number | null
-} | null => {
-  const normalized = normalizeText(text, 1200)
-  if (!normalized || !normalized.startsWith(ONNX_FAST_PROGRESS_PREFIX)) {
-    return null
-  }
-  const payloadRaw = normalized.slice(ONNX_FAST_PROGRESS_PREFIX.length).trim()
-  if (!payloadRaw) return null
-  try {
-    const parsed = JSON.parse(payloadRaw) as MixtapeStemOnnxProgressPayload
-    const rawProvider = normalizeText(parsed?.provider, 40).toLowerCase()
-    const provider: MixtapeStemOnnxProvider =
-      rawProvider.includes('dml') || rawProvider.includes('directml') ? 'directml' : 'cpu'
-    const maybePercent = Number(parsed?.percent)
-    const percent = Number.isFinite(maybePercent)
-      ? Math.max(0, Math.min(100, Math.round(maybePercent)))
-      : 0
-    const chunkIndexRaw = Number(parsed?.chunkIndex)
-    const totalChunksRaw = Number(parsed?.totalChunks)
-    const chunkIndex =
-      Number.isFinite(chunkIndexRaw) && chunkIndexRaw > 0 ? Math.floor(chunkIndexRaw) : null
-    const totalChunks =
-      Number.isFinite(totalChunksRaw) && totalChunksRaw > 0 ? Math.floor(totalChunksRaw) : null
-    return {
-      percent,
-      provider,
-      chunkIndex,
-      totalChunks
-    }
-  } catch {
-    return null
-  }
-}
-const parseOnnxFastResultText = (
-  text: string
-): {
-  provider: MixtapeStemOnnxProvider
-  vocalPath: string
-  instPath: string
-  bassPath: string
-  drumsPath: string
-} | null => {
-  const normalized = normalizeText(text, 2000)
-  if (!normalized || !normalized.startsWith(ONNX_FAST_RESULT_PREFIX)) {
-    return null
-  }
-  const payloadRaw = normalized.slice(ONNX_FAST_RESULT_PREFIX.length).trim()
-  if (!payloadRaw) return null
-  try {
-    const parsed = JSON.parse(payloadRaw) as MixtapeStemOnnxResultPayload
-    const rawProvider = normalizeText(parsed?.provider, 40).toLowerCase()
-    return {
-      provider:
-        rawProvider.includes('dml') || rawProvider.includes('directml') ? 'directml' : 'cpu',
-      vocalPath: normalizeFilePath(parsed?.vocalPath),
-      instPath: normalizeFilePath(parsed?.instPath),
-      bassPath: normalizeFilePath(parsed?.bassPath),
-      drumsPath: normalizeFilePath(parsed?.drumsPath)
-    }
-  } catch {
-    return null
-  }
-}
-const summarizeOnnxErrorForLog = (message: string): string => {
-  const normalized = normalizeText(message, 4000)
-  if (!normalized) return ''
-  const cleaned = normalized.replace(/\u0000/g, '').replace(/\u001b\[[0-9;]*m/g, '')
-  const lines = cleaned
-    .split(/[\r\n]+/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-  if (lines.length === 0) return ''
-  const preferred =
-    lines.find((line) => /^runtimeerror:/i.test(line)) ||
-    lines.find((line) => /^modulenotfounderror:/i.test(line)) ||
-    lines.find((line) => /^demucs .*退出码/i.test(line)) ||
-    lines.find((line) => /directml/i.test(line)) ||
-    lines.find((line) => /onnxruntime/i.test(line)) ||
-    lines[lines.length - 1]
-  const trimmedPreferred = normalizeText(preferred, 320)
-  if (/^runtimeerror:\s*$/i.test(trimmedPreferred)) {
-    const runtimeErrorLineIndex = lines.findIndex((line) => /^runtimeerror:/i.test(line))
-    if (runtimeErrorLineIndex >= 0 && runtimeErrorLineIndex + 1 < lines.length) {
-      return normalizeText(lines[runtimeErrorLineIndex + 1], 320)
-    }
-  }
-  return trimmedPreferred
-}
-const shouldSuppressOnnxDirectmlByRecentFailure = (): boolean => {
-  loadStemRuntimeStateOnce()
-  if (!stemOnnxDirectmlFailureAt) return false
-  return Date.now() - stemOnnxDirectmlFailureAt <= ONNX_DIRECTML_FAILURE_COOLDOWN_MS
-}
-const resolveSystemMemoryGiB = (): number => {
-  return Math.max(0, os.totalmem() / (1024 * 1024 * 1024))
-}
-const resolveSystemFreeMemoryGiB = (): number => {
-  return Math.max(0, os.freemem() / (1024 * 1024 * 1024))
-}
-const resolveGpuConcurrencyCapByResources = (cpuParallel: number): number => {
-  const totalMemoryGiB = resolveSystemMemoryGiB()
-  const freeMemoryGiB = resolveSystemFreeMemoryGiB()
-  let cap = STEM_GPU_JOB_CONCURRENCY_MIN
-  if (
-    cpuParallel >= 3 &&
-    totalMemoryGiB >= STEM_SYSTEM_MEMORY_GB_FOR_GPU_CONCURRENCY_2 &&
-    freeMemoryGiB >= STEM_FREE_MEMORY_GB_FOR_GPU_CONCURRENCY_2
-  ) {
-    cap = Math.max(cap, 2)
-  }
-  if (
-    cpuParallel >= 4 &&
-    totalMemoryGiB >= STEM_SYSTEM_MEMORY_GB_FOR_GPU_CONCURRENCY_3 &&
-    freeMemoryGiB >= STEM_FREE_MEMORY_GB_FOR_GPU_CONCURRENCY_3
-  ) {
-    cap = Math.max(cap, 3)
-  }
-  return Math.max(STEM_GPU_JOB_CONCURRENCY_MIN, Math.min(STEM_GPU_JOB_CONCURRENCY_MAX, cap))
-}
-const resolveOnnxDirectmlDynamicConcurrency = (cpuParallel: number): number => {
-  loadStemRuntimeStateOnce()
-  if (shouldSuppressOnnxDirectmlByRecentFailure()) {
-    return cpuParallel
-  }
-  const capByResources = Math.min(
-    STEM_GPU_JOB_CONCURRENCY_DIRECTML_MAX,
-    resolveGpuConcurrencyCapByResources(cpuParallel)
-  )
-  const successStreak = Math.max(0, stemOnnxDirectmlRuntimeStats.consecutiveSuccessCount || 0)
-  if (successStreak >= STEM_ONNX_DIRECTML_CONCURRENCY_HIGH_SUCCESS) {
-    return Math.max(STEM_GPU_JOB_CONCURRENCY_MIN, Math.min(capByResources, 3))
-  }
-  if (successStreak >= STEM_ONNX_DIRECTML_CONCURRENCY_WARMUP_SUCCESS) {
-    return Math.max(STEM_GPU_JOB_CONCURRENCY_MIN, Math.min(capByResources, 2))
-  }
-  return STEM_GPU_JOB_CONCURRENCY_MIN
-}
-const shouldSerializeOnnxDirectmlAttempts = (): boolean => {
-  loadStemRuntimeStateOnce()
-  if (shouldSuppressOnnxDirectmlByRecentFailure()) return true
-  const successStreak = Math.max(0, stemOnnxDirectmlRuntimeStats.consecutiveSuccessCount || 0)
-  return successStreak < STEM_ONNX_DIRECTML_CONCURRENCY_WARMUP_SUCCESS
-}
-const acquireOnnxDirectmlAttemptLease = async (): Promise<{
-  skip: boolean
-  release: () => void
-}> => {
-  while (stemOnnxDirectmlAttemptGate) {
-    await stemOnnxDirectmlAttemptGate
-    if (shouldSuppressOnnxDirectmlByRecentFailure()) {
-      return {
-        skip: true,
-        release: () => {}
-      }
-    }
-  }
-  stemOnnxDirectmlAttemptGate = new Promise<void>((resolve) => {
-    stemOnnxDirectmlAttemptGateResolve = resolve
-  })
-  let released = false
-  return {
-    skip: false,
-    release: () => {
-      if (released) return
-      released = true
-      const resolve = stemOnnxDirectmlAttemptGateResolve
-      stemOnnxDirectmlAttemptGateResolve = null
-      stemOnnxDirectmlAttemptGate = null
-      try {
-        resolve?.()
-      } catch {}
-    }
-  }
-}
-const markOnnxDirectmlRuntimeFailure = (reason: string) => {
-  loadStemRuntimeStateOnce()
-  const summary = normalizeText(reason, 600)
-  stemOnnxDirectmlFailureAt = Date.now()
-  stemOnnxDirectmlFailureReason = summary
-  stemOnnxDirectmlRuntimeStats = {
-    ...stemOnnxDirectmlRuntimeStats,
-    failureCount: stemOnnxDirectmlRuntimeStats.failureCount + 1,
-    consecutiveSuccessCount: 0,
-    lastFailureAt: Date.now()
-  }
-  const current = stemOnnxRuntimeProbeSnapshot
-  if (!current || !current.providerCandidates.includes('directml')) return
-  const providerCandidates: MixtapeStemOnnxProvider[] = current.providerCandidates.filter(
-    (provider): provider is MixtapeStemOnnxProvider => provider !== 'directml'
-  )
-  const nextCandidates: MixtapeStemOnnxProvider[] = providerCandidates.length
-    ? providerCandidates
-    : ['cpu']
-  stemOnnxRuntimeProbeSnapshot = {
-    ...current,
-    checkedAt: Date.now(),
-    providerCandidates: nextCandidates
-  }
-  log.info('[mixtape-stem] onnx directml temporarily disabled after runtime failure', {
-    runtimeKey: current.runtimeKey,
-    cooldownMs: ONNX_DIRECTML_FAILURE_COOLDOWN_MS,
-    reason: summary || null
-  })
-  schedulePersistStemRuntimeState()
-}
-const markOnnxDirectmlRuntimeSuccess = () => {
-  loadStemRuntimeStateOnce()
-  stemOnnxDirectmlRuntimeStats = {
-    ...stemOnnxDirectmlRuntimeStats,
-    successCount: stemOnnxDirectmlRuntimeStats.successCount + 1,
-    consecutiveSuccessCount: stemOnnxDirectmlRuntimeStats.consecutiveSuccessCount + 1,
-    lastSuccessAt: Date.now()
-  }
-  schedulePersistStemRuntimeState()
-}
-const resolveOnnxFastProviderCandidates = (
-  runtimeSnapshot: MixtapeStemOnnxRuntimeProbeSnapshot
-): MixtapeStemOnnxProvider[] => {
-  const providers = runtimeSnapshot.providerCandidates.filter(
-    (provider): provider is MixtapeStemOnnxProvider => provider === 'directml' || provider === 'cpu'
-  )
-  if (!providers.length) return ['cpu']
-  return Array.from(new Set(providers))
-}
 export {
   probeTorchDeviceCompatibility,
   probeDirectmlDemucsCompatibility,
@@ -1022,25 +543,8 @@ export {
   resolveProbeSnapshotDeviceScore,
   resolveProbeSnapshotTieBreakScore,
   probeDemucsDevices,
-  resolveOnnxProviderCandidatesFromNames,
-  probeOnnxRuntimeForRuntime,
-  resolveOnnxRuntimeProbeScore,
-  probeOnnxRuntime,
   resolveCpuFallbackReason,
   resolveDemucsDeviceArg,
   parseClockTokenToSeconds,
-  parseDemucsProgressText,
-  parseOnnxFastProgressText,
-  parseOnnxFastResultText,
-  summarizeOnnxErrorForLog,
-  shouldSuppressOnnxDirectmlByRecentFailure,
-  resolveSystemMemoryGiB,
-  resolveSystemFreeMemoryGiB,
-  resolveGpuConcurrencyCapByResources,
-  resolveOnnxDirectmlDynamicConcurrency,
-  shouldSerializeOnnxDirectmlAttempts,
-  acquireOnnxDirectmlAttemptLease,
-  markOnnxDirectmlRuntimeFailure,
-  markOnnxDirectmlRuntimeSuccess,
-  resolveOnnxFastProviderCandidates
+  parseDemucsProgressText
 }

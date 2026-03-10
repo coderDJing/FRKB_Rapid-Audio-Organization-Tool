@@ -4,6 +4,66 @@ import type { MixxxWaveformData } from '../../waveformCache'
 
 export type KeyAnalysisPriority = 'high' | 'medium' | 'low' | 'background'
 export type KeyAnalysisSource = 'foreground' | 'background'
+export type KeyAnalysisProgressStage =
+  | 'job-received'
+  | 'decode-start'
+  | 'decode-done'
+  | 'analyze-start'
+  | 'analyze-done'
+  | 'waveform-start'
+  | 'waveform-done'
+  | 'job-done'
+  | 'job-error'
+
+export type KeyAnalysisProgress = {
+  stage: KeyAnalysisProgressStage
+  elapsedMs: number
+  decodeMs?: number
+  analyzeMs?: number
+  waveformMs?: number
+  sampleRate?: number
+  channels?: number
+  totalFrames?: number
+  framesToProcess?: number
+  needsKey?: boolean
+  needsBpm?: boolean
+  needsWaveform?: boolean
+  detail?: string
+}
+
+export type KeyAnalysisJobTrace = {
+  lastStage?: KeyAnalysisProgressStage
+  lastUpdateAt?: number
+  elapsedMs?: number
+  decodeMs?: number
+  analyzeMs?: number
+  waveformMs?: number
+  sampleRate?: number
+  channels?: number
+  totalFrames?: number
+  framesToProcess?: number
+  detail?: string
+  timedOutAt?: number
+}
+
+export type KeyAnalysisPrepareDetails = {
+  listRootResolved: boolean
+  doneEntryHit: boolean
+  songCacheHit: boolean
+  waveformCacheHit: boolean
+  needsKey: boolean
+  needsBpm: boolean
+  needsWaveform: boolean
+}
+
+export type KeyAnalysisAudioProbe = {
+  durationSec?: number
+  bitRate?: number
+  sampleRate?: number
+  channels?: number
+  codec?: string
+  error?: string
+}
 
 export type KeyAnalysisJob = {
   jobId: number
@@ -16,6 +76,29 @@ export type KeyAnalysisJob = {
   needsBpm?: boolean
   needsWaveform?: boolean
   startTime?: number
+  trace?: KeyAnalysisJobTrace
+  fileSize?: number
+  fileMtimeMs?: number
+  probe?: KeyAnalysisAudioProbe
+  enqueuedAt?: number
+  prepareReason?: string
+  prepareDetails?: KeyAnalysisPrepareDetails
+}
+
+export type KeyAnalysisFailureReason = 'timeout' | 'worker-exit' | 'worker-error'
+
+export type KeyAnalysisFailureRecord = {
+  size: number
+  mtimeMs: number
+  failCount: number
+  firstFailedAt: number
+  lastFailedAt: number
+  nextRetryAt: number
+  lastReason: KeyAnalysisFailureReason
+  lastStage?: KeyAnalysisProgressStage
+  lastDetail?: string
+  inferredCause?: string
+  lastProbe?: KeyAnalysisAudioProbe
 }
 
 export type KeyAnalysisResult = {
@@ -40,6 +123,7 @@ export type DoneEntry = {
 export type WorkerPayload = {
   jobId: number
   filePath: string
+  progress?: KeyAnalysisProgress
   result?: {
     keyText?: string
     keyError?: string
@@ -95,3 +179,14 @@ export const BACKGROUND_LIBRARY_TREE_CLEANUP_INTERVAL_MS = 5 * 60 * 1000
 export const BACKGROUND_COVER_CLEANUP_INTERVAL_MS = 10 * 60 * 1000
 export const BACKGROUND_COVER_CLEANUP_BATCH_SIZE = 3
 export const KEY_ANALYSIS_JOB_TIMEOUT_MS = 3 * 60 * 1000
+export const KEY_ANALYSIS_DECODE_STAGE_TIMEOUT_MS = 4 * 60 * 1000
+export const KEY_ANALYSIS_ANALYZE_STAGE_TIMEOUT_MS = 60 * 1000
+export const KEY_ANALYSIS_WAVEFORM_STAGE_TIMEOUT_MS = 90 * 1000
+export const KEY_ANALYSIS_STAGE_TIMEOUT_MAX_MS = 30 * 60 * 1000
+export const KEY_ANALYSIS_TIMEOUT_PROBE_MIN_FILE_SIZE_BYTES = 10 * 1024 * 1024
+export const KEY_ANALYSIS_TIMEOUT_PROBE_TIMEOUT_MS = 8000
+export const KEY_ANALYSIS_TIMEOUT_PROBE_TTL_MS = 24 * 60 * 60 * 1000
+export const KEY_ANALYSIS_FAILURE_SKIP_THRESHOLD = 2
+export const KEY_ANALYSIS_FAILURE_BASE_COOLDOWN_MS = 10 * 60 * 1000
+export const KEY_ANALYSIS_FAILURE_MAX_COOLDOWN_MS = 24 * 60 * 60 * 1000
+export const KEY_ANALYSIS_FAILURE_RECORD_TTL_MS = 7 * 24 * 60 * 60 * 1000

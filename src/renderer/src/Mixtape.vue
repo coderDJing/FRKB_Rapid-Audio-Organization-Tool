@@ -104,15 +104,13 @@ const {
   bpmAnalysisActive,
   bpmAnalysisFailed,
   bpmAnalysisFailedCount,
-  bpmAnalysisFailedAutoCloseSeconds,
+  bpmAnalysisFailedReason,
   dismissBpmAnalysisFailure,
   retryBpmAnalysis,
   outputDialogVisible,
   outputPath,
   outputFormat,
   outputFilename,
-  outputStemProfile,
-  shouldShowOutputStemProfileSelect,
   outputRunning,
   outputProgressText,
   outputProgressPercent,
@@ -202,13 +200,11 @@ const mixParamOptions = computed<MixParamOption[]>(() => {
       labelKey: 'mixtape.mixParamInst'
     }
   ]
-  if (mixtapeStemMode.value === '4stems') {
-    options.push({
+  options.push(
+    {
       id: 'bass',
       labelKey: 'mixtape.mixParamBass'
-    })
-  }
-  options.push(
+    },
     {
       id: 'drums',
       labelKey: 'mixtape.mixParamDrums'
@@ -683,7 +679,7 @@ onBeforeUnmount(() => {
                                 <div class="lane-track__meta-sub">
                                   {{ t('mixtape.bpm') }} {{ formatTrackBpm(item.track.bpm) }}
                                   <template v-if="formatTrackKey(item.track.key)">
-                                    · {{ t('columns.key') }} {{ formatTrackKey(item.track.key) }}
+                                    閻?{{ t('columns.key') }} {{ formatTrackKey(item.track.key) }}
                                   </template>
                                 </div>
                               </div>
@@ -883,24 +879,26 @@ onBeforeUnmount(() => {
         <div class="bpm-loading-sub">
           {{ t('mixtape.bpmAnalyzeFailedHint', { count: bpmAnalysisFailedCount }) }}
         </div>
-        <div class="bpm-loading-sub">
-          {{
-            t('mixtape.bpmAnalyzeFailedAutoCloseHint', {
-              seconds: bpmAnalysisFailedAutoCloseSeconds
-            })
-          }}
+        <div v-if="bpmAnalysisFailedReason" class="bpm-loading-sub">
+          {{ t('mixtape.bpmAnalyzeFailedReasonHint', { reason: bpmAnalysisFailedReason }) }}
         </div>
         <div class="bpm-loading-actions">
-          <button class="button bpm-loading-action-btn" type="button" @click="retryBpmAnalysis">
-            {{ t('common.retry') }}
-          </button>
-          <button
+          <div
             class="button bpm-loading-action-btn"
-            type="button"
+            role="button"
+            tabindex="0"
+            @click="retryBpmAnalysis"
+          >
+            {{ t('common.retry') }}
+          </div>
+          <div
+            class="button bpm-loading-action-btn"
+            role="button"
+            tabindex="0"
             @click="dismissBpmAnalysisFailure"
           >
             {{ t('common.close') }}
-          </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1016,8 +1014,6 @@ onBeforeUnmount(() => {
       :output-path="outputPath"
       :output-format="outputFormat"
       :output-filename="outputFilename"
-      :stem-profile="outputStemProfile"
-      :show-stem-profile-select="shouldShowOutputStemProfileSelect"
       @confirm="handleOutputDialogConfirm"
       @cancel="handleOutputDialogCancel"
     />
@@ -1036,7 +1032,7 @@ onBeforeUnmount(() => {
         type="button"
         @click="handleTrackMenuToggleMasterTempo"
       >
-        <span class="mixtape-track-menu__check">{{ trackMenuMasterTempoChecked ? '✓' : '' }}</span>
+        <span class="mixtape-track-menu__check">{{ trackMenuMasterTempoChecked ? '?' : '' }}</span>
         <span>{{ t('mixtape.masterTempoMenu') }}</span>
       </button>
     </div>

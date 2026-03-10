@@ -203,8 +203,7 @@ export async function getLibrary(options: { skipSync?: boolean } = {}) {
     if (row.nodeType === 'mixtapeList') {
       const stemConfig = getMixtapeProjectStemConfig(row.uuid)
       node.mixMode = stemConfig.mixMode
-      node.stemRealtimeProfile = stemConfig.stemRealtimeProfile
-      node.stemExportProfile = stemConfig.stemExportProfile
+      node.stemProfile = stemConfig.stemProfile
     }
     if (row.order !== null) node.order = row.order
     nodeMap.set(row.uuid, node)

@@ -81,17 +81,10 @@ const isSongList = computed(() => dirData.value?.type === 'songList')
 const isMixtapeList = computed(() => dirData.value?.type === 'mixtapeList')
 const isPlaylist = computed(() => isSongList.value || isMixtapeList.value)
 const resolveMixtapeModeTag = (mixMode?: string) =>
-  mixMode === 'traditional' ? t('mixtape.mixModeTraditionalTag') : t('mixtape.mixModeStemTag')
+  mixMode === 'eq' ? t('mixtape.mixModeEqTag') : t('mixtape.mixModeStemTag')
 const resolveMixtapeModeLabel = (mixMode?: string) =>
-  mixMode === 'traditional' ? t('mixtape.mixModeTraditionalLabel') : t('mixtape.mixModeStemLabel')
-const resolveMixtapeProfileLabel = (profile?: string) =>
-  profile === 'quality'
-    ? `${t('mixtape.stemRealtimeProfile')}：${t('mixtape.stemProfileQualityLabel')}`
-    : `${t('mixtape.stemRealtimeProfile')}：${t('mixtape.stemProfileFastLabel')}`
-const resolveMixtapeBadgeTitle = (mixMode?: string, profile?: string) =>
-  mixMode === 'traditional'
-    ? resolveMixtapeModeLabel(mixMode)
-    : `${resolveMixtapeModeLabel(mixMode)} · ${resolveMixtapeProfileLabel(profile)}`
+  mixMode === 'eq' ? t('mixtape.mixModeEqLabel') : t('mixtape.mixModeStemLabel')
+const resolveMixtapeBadgeTitle = (mixMode?: string) => resolveMixtapeModeLabel(mixMode)
 
 const {
   operationInputValue,
@@ -346,21 +339,13 @@ const nameForDisplay = computed(() => displayDirName.value)
           <span
             class="mixModeBadge"
             :class="{
-              'is-traditional': dirData.mixMode === 'traditional',
-              'is-stem': dirData.mixMode !== 'traditional',
+              'is-eq': dirData.mixMode === 'eq',
+              'is-stem': dirData.mixMode !== 'eq',
               isPlaying: isPlaying
             }"
-            :title="resolveMixtapeBadgeTitle(dirData.mixMode, dirData.stemRealtimeProfile)"
+            :title="resolveMixtapeBadgeTitle(dirData.mixMode)"
           >
             <span>{{ resolveMixtapeModeTag(dirData.mixMode) }}</span>
-            <span
-              v-if="dirData.mixMode !== 'traditional'"
-              class="mixModeBadgeDot"
-              :class="{
-                'is-quality': dirData.stemRealtimeProfile === 'quality',
-                'is-fast': dirData.stemRealtimeProfile !== 'quality'
-              }"
-            ></span>
           </span>
         </span>
         <span
@@ -489,7 +474,7 @@ const nameForDisplay = computed(() => displayDirName.value)
   box-sizing: border-box;
 }
 
-.mixModeBadge.is-traditional {
+.mixModeBadge.is-eq {
   background-color: rgba(255, 184, 77, 0.18);
   color: #d98300;
 }
@@ -502,21 +487,6 @@ const nameForDisplay = computed(() => displayDirName.value)
 .isPlaying.mixModeBadge {
   background-color: var(--accent);
   color: #ffffff !important;
-}
-
-.mixModeBadgeDot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex: 0 0 auto;
-}
-
-.mixModeBadgeDot.is-fast {
-  background-color: #d98300;
-}
-
-.mixModeBadgeDot.is-quality {
-  background-color: #2d8b40;
 }
 
 .countBadge {

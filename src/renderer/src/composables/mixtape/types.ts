@@ -1,4 +1,5 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import { FIXED_MIXTAPE_STEM_MODE } from '@shared/mixtapeStemMode'
 
 export type StemWaveformBand = {
   left: Uint8Array
@@ -29,9 +30,9 @@ export type MixtapeRawItem = {
   infoJson?: string | null
 }
 
-export type MixtapeMixMode = 'traditional' | 'stem'
-export type MixtapeStemMode = '4stems'
-export type MixtapeStemProfile = 'fast' | 'quality'
+export type MixtapeMixMode = 'eq' | 'stem'
+export type MixtapeStemMode = typeof FIXED_MIXTAPE_STEM_MODE
+export type MixtapeStemProfile = 'quality'
 export type MixtapeStemStatus = 'pending' | 'running' | 'ready' | 'failed'
 export type MixtapeWaveformStemId = 'vocal' | 'inst' | 'bass' | 'drums'
 

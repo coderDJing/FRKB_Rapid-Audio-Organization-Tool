@@ -16,6 +16,7 @@ import {
   type TransportStemAudioRef,
   type TransportStemId
 } from '@renderer/composables/mixtape/timelineTransportAudioData'
+import { FIXED_MIXTAPE_STEM_MODE } from '@shared/mixtapeStemMode'
 import type {
   MixtapeEnvelopeParamId,
   MixtapeMixMode,
@@ -69,7 +70,6 @@ const MIX_ENVELOPE_PARAMS_4STEMS: MixtapeEnvelopeParamId[] = [
   'drums',
   'volume'
 ]
-const STEM_IDS_3STEMS: TransportStemId[] = ['vocal', 'inst', 'drums']
 const STEM_IDS_4STEMS: TransportStemId[] = ['vocal', 'inst', 'bass', 'drums']
 const MIXTAPE_SEGMENT_MUTE_GAIN = 0.0001
 const FOLLOW_PLAYHEAD_LOCK_RATIO = 1 / 3
@@ -140,15 +140,10 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   }
   const isStemMixMode = (): boolean =>
     (mixtapeMixMode?.value as MixtapeMixMode | undefined) === 'stem'
-  const resolveStemMode = (): MixtapeStemMode => '4stems'
+  const resolveStemMode = (): MixtapeStemMode => FIXED_MIXTAPE_STEM_MODE
   const resolveMixEnvelopeParams = (): MixtapeEnvelopeParamId[] =>
-    isStemMixMode()
-      ? resolveStemMode() === '4stems'
-        ? MIX_ENVELOPE_PARAMS_4STEMS
-        : MIX_ENVELOPE_PARAMS_3STEMS
-      : MIX_ENVELOPE_PARAMS_TRADITIONAL
-  const resolveStemIdsForMode = (): TransportStemId[] =>
-    resolveStemMode() === '4stems' ? STEM_IDS_4STEMS : STEM_IDS_3STEMS
+    isStemMixMode() ? MIX_ENVELOPE_PARAMS_4STEMS : MIX_ENVELOPE_PARAMS_TRADITIONAL
+  const resolveStemIdsForMode = (): TransportStemId[] => STEM_IDS_4STEMS
   const resolveTrackStemFilePath = (track: MixtapeTrack, stemId: TransportStemId): string => {
     if (stemId === 'vocal') return String(track.stemVocalPath || '').trim()
     if (stemId === 'inst') return String(track.stemInstPath || '').trim()

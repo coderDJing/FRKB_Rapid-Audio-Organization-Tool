@@ -34,12 +34,12 @@ import {
 import { createMixtapeMissingTracksNotifier } from '@renderer/composables/mixtape/mixtapeMissingTracksNotifier'
 import { getKeyDisplayText as formatKeyDisplayText } from '@shared/keyDisplay'
 import {
-  DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE,
-  DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE,
+  DEFAULT_MIXTAPE_STEM_PROFILE,
   normalizeMixtapeStemProfile,
   parseMixtapeStemModel,
   resolveMixtapeStemModelByProfile
 } from '@shared/mixtapeStemProfiles'
+import { FIXED_MIXTAPE_STEM_MODE } from '@shared/mixtapeStemMode'
 import { createClickThroughGuard } from '@renderer/utils/clickThroughGuard'
 import type {
   MixtapeMixMode,
@@ -77,13 +77,8 @@ export const useMixtape = () => {
   const CONTEXT_MENU_SELECTOR = '[data-frkb-context-menu="true"]'
   const payload = ref<MixtapeOpenPayload>({})
   const mixtapeMixMode = ref<MixtapeMixMode>('stem')
-  const mixtapeStemMode = ref<MixtapeStemMode>('4stems')
-  const mixtapeStemRealtimeProfile = ref<RendererMixtapeStemProfile>(
-    DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
-  )
-  const mixtapeStemExportProfile = ref<RendererMixtapeStemProfile>(
-    DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
-  )
+  const mixtapeStemMode = ref<MixtapeStemMode>(FIXED_MIXTAPE_STEM_MODE)
+  const mixtapeStemProfile = ref<RendererMixtapeStemProfile>(DEFAULT_MIXTAPE_STEM_PROFILE)
   const tracks = ref<MixtapeTrack[]>([])
   const mixtapeRawItems = ref<MixtapeRawItem[]>([])
   const selectedTrackId = ref('')
@@ -91,7 +86,6 @@ export const useMixtape = () => {
   const outputPath = ref('')
   const outputFormat = ref<'wav' | 'mp3'>('wav')
   const outputFilename = ref(buildRecFilename())
-  const outputStemProfile = ref<RendererMixtapeStemProfile>(DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE)
   const outputDialogVisible = ref(false)
   const outputRunning = ref(false)
   const outputProgressKey = ref('mixtape.outputProgressPreparing')
@@ -107,8 +101,7 @@ export const useMixtape = () => {
   const bpmAnalysisActive = ref(false)
   const bpmAnalysisFailed = ref(false)
   const bpmAnalysisFailedCount = ref(0)
-  const bpmAnalysisFailedAutoCloseSeconds = 8
-  const mixtapeStemStrategyConfirmed = ref(false)
+  const bpmAnalysisFailedReason = ref('')
   const stemSummary = ref<MixtapeStemSummary>(createEmptyStemSummary())
   const stemRuntimeProgressByTrackId = ref<Record<string, StemRuntimeProgressEntry>>({})
   const stemResumeBootstrappedPlaylistIdSet = new Set<string>()
@@ -199,25 +192,12 @@ export const useMixtape = () => {
   })
   const mixtapePlaylistId = computed(() => String(payload.value.playlistId || ''))
   const normalizeMixtapeMixMode = (value: unknown): MixtapeMixMode =>
-    value === 'traditional' ? 'traditional' : 'stem'
-  const normalizeMixtapeStemMode = (_value: unknown): MixtapeStemMode => '4stems'
+    value === 'eq' ? 'eq' : 'stem'
+  const normalizeMixtapeStemMode = (_value: unknown): MixtapeStemMode => FIXED_MIXTAPE_STEM_MODE
   const normalizeStemProfile = (
     value: unknown,
-    fallback: RendererMixtapeStemProfile = DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
+    fallback: RendererMixtapeStemProfile = DEFAULT_MIXTAPE_STEM_PROFILE
   ): RendererMixtapeStemProfile => normalizeMixtapeStemProfile(value, fallback)
-  const isStemSpeedFirstStrategy = computed(() => {
-    if (mixtapeMixMode.value !== 'stem') return false
-    const realtimeProfile = normalizeStemProfile(
-      mixtapeStemRealtimeProfile.value,
-      DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
-    )
-    const exportProfile = normalizeStemProfile(
-      mixtapeStemExportProfile.value,
-      DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
-    )
-    return realtimeProfile === 'fast' && exportProfile === 'quality'
-  })
-  const shouldShowOutputStemProfileSelect = computed(() => isStemSpeedFirstStrategy.value)
   const normalizeMixtapeStemStatus = (value: unknown) => {
     if (value === 'pending' || value === 'running' || value === 'ready' || value === 'failed') {
       return value
@@ -318,7 +298,6 @@ export const useMixtape = () => {
   })
   const stemSeparationProgressVisible = computed(() => {
     if (mixtapeMixMode.value !== 'stem') return false
-    if (!mixtapeStemStrategyConfirmed.value) return false
     return stemSummary.value.pending + stemSummary.value.running > 0
   })
   const stemSeparationProgressText = computed(() => {
@@ -389,15 +368,12 @@ export const useMixtape = () => {
     typeof track?.stemModel === 'string' ? track.stemModel.trim() : ''
   const resolveTrackStemVersion = (track: MixtapeTrack) =>
     typeof track?.stemVersion === 'string' ? track.stemVersion.trim() : ''
-  const hasTrackStemPathsReady = (track: MixtapeTrack, stemMode: MixtapeStemMode) => {
+  const hasTrackStemPathsReady = (track: MixtapeTrack, _stemMode: MixtapeStemMode) => {
     const vocalPath = normalizeMixtapeFilePath((track as any)?.stemVocalPath)
     const instPath = normalizeMixtapeFilePath((track as any)?.stemInstPath)
+    const bassPath = normalizeMixtapeFilePath((track as any)?.stemBassPath)
     const drumsPath = normalizeMixtapeFilePath((track as any)?.stemDrumsPath)
-    if (!vocalPath || !instPath || !drumsPath) return false
-    if (stemMode === '4stems') {
-      const bassPath = normalizeMixtapeFilePath((track as any)?.stemBassPath)
-      if (!bassPath) return false
-    }
+    if (!vocalPath || !instPath || !bassPath || !drumsPath) return false
     return true
   }
   const trackContextMenuStyle = computed(() => ({
@@ -520,9 +496,9 @@ export const useMixtape = () => {
       if (!filePath) continue
       const model = resolveTrackStemModel(track)
       const stemVersion = resolveTrackStemVersion(track)
-      const parsedModel = parseMixtapeStemModel(model, mixtapeStemRealtimeProfile.value)
+      const parsedModel = parseMixtapeStemModel(model, mixtapeStemProfile.value)
       const requestedModel = parsedModel.requestedModel
-      const profile = normalizeStemProfile(parsedModel.profile, mixtapeStemRealtimeProfile.value)
+      const profile = normalizeStemProfile(parsedModel.profile, mixtapeStemProfile.value)
       const groupKey = `${requestedModel}::${profile}::${stemVersion || ''}`
       const existing = grouped.get(groupKey)
       if (existing) {
@@ -578,7 +554,7 @@ export const useMixtape = () => {
     }
     stemResumeSignatureByPlaylistId.set(playlistId, signature)
   }
-  // BPM、菜单与导出逻辑已拆分到 useMixtapeBpmAndUiModule
+  // BPM銆佽彍鍗曚笌瀵煎嚭閫昏緫宸叉媶鍒嗗埌 useMixtapeBpmAndUiModule
   const persistGainEnvelope = async (
     entries: Array<{ itemId: string; gainEnvelope: Array<{ sec: number; gain: number }> }>
   ) => {
@@ -656,9 +632,7 @@ export const useMixtape = () => {
     selectedTrackId,
     mixtapeMixMode,
     mixtapeStemMode,
-    mixtapeStemRealtimeProfile,
-    mixtapeStemExportProfile,
-    outputStemProfile,
+    mixtapeStemProfile,
     outputDialogVisible,
     outputRunning,
     outputPath,
@@ -677,8 +651,7 @@ export const useMixtape = () => {
     bpmAnalysisActive,
     bpmAnalysisFailed,
     bpmAnalysisFailedCount,
-    bpmAnalysisFailedAutoCloseSeconds,
-    mixtapeStemStrategyConfirmed,
+    bpmAnalysisFailedReason,
     stemSummary,
     stemRuntimeProgressByTrackId,
     stemResumeBootstrappedPlaylistIdSet,
@@ -686,7 +659,6 @@ export const useMixtape = () => {
     autoGainDialogVisible,
     transportPlaying,
     transportDecoding,
-    shouldShowOutputStemProfileSelect,
     createEmptyStemSummary,
     applyBpmAnalysisToTracks,
     buildBpmTargets,
@@ -725,8 +697,7 @@ export const useMixtape = () => {
     MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM,
     buildFlatMixEnvelope,
     normalizeMixEnvelopePoints,
-    DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE,
-    DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE,
+    DEFAULT_MIXTAPE_STEM_PROFILE,
     confirmDialog,
     t,
     handleTransportStop,
@@ -792,6 +763,11 @@ export const useMixtape = () => {
       t('mixtape.stemCpuSlowHintReasonLine', { reason: reasonText }),
       t('mixtape.stemCpuSlowHint')
     ]
+    const reasonDetail =
+      typeof eventPayload?.reasonDetail === 'string' ? eventPayload.reasonDetail.trim() : ''
+    if (reasonDetail) {
+      content.splice(1, 0, t('mixtape.stemCpuSlowHintDetailLine', { detail: reasonDetail }))
+    }
     void confirmDialog({
       title: t('common.warning'),
       content,
@@ -1076,15 +1052,13 @@ export const useMixtape = () => {
     bpmAnalysisActive,
     bpmAnalysisFailed,
     bpmAnalysisFailedCount,
-    bpmAnalysisFailedAutoCloseSeconds,
+    bpmAnalysisFailedReason,
     dismissBpmAnalysisFailure,
     retryBpmAnalysis,
     outputDialogVisible,
     outputPath,
     outputFormat,
     outputFilename,
-    outputStemProfile,
-    shouldShowOutputStemProfileSelect,
     outputRunning,
     outputProgressText,
     outputProgressPercent,

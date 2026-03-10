@@ -11,7 +11,6 @@ import type { MixtapeStemMode } from '../mixtapeDb'
 import { listMixtapeItems } from '../mixtapeDb'
 import {
   resolveBundledDemucsModelsPath,
-  resolveBundledDemucsOnnxPath,
   resolveBundledDemucsPythonPath,
   resolveBundledDemucsRuntimeCandidates,
   resolveBundledDemucsRuntimeDir,
@@ -19,13 +18,14 @@ import {
 } from '../demucs'
 import {
   DEFAULT_MIXTAPE_STEM_BASE_MODEL,
-  DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE,
+  DEFAULT_MIXTAPE_STEM_PROFILE,
   normalizeMixtapeStemProfile,
   parseMixtapeStemModel,
   resolveMixtapeStemBaseModelByProfile,
   resolveMixtapeStemModelByProfile,
   type MixtapeStemProfile
 } from '../../shared/mixtapeStemProfiles'
+import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
 import { prewarmMixtapeStemWaveformBundle } from './mixtapeStemWaveformService'
 import {
   getMixtapeStemAsset,
@@ -39,12 +39,8 @@ import { findSongListRoot } from './cacheMaintenance'
 import { runStemSeparation } from './mixtapeStemSeparationRun'
 import { getStemBackgroundConcurrencyHint } from './backgroundIdleGate'
 
-const DEFAULT_STEM_MODEL = resolveMixtapeStemModelByProfile(DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
-const DEFAULT_STEM_VERSION = 'demucs-cli-builtin-20260306-fast-reconstruct-v3-adaptive-refine'
-const LEGACY_FAST_STEM_VERSIONS = new Set([
-  'demucs-cli-builtin-20260306-fast-reconstruct-v1',
-  'demucs-cli-builtin-20260306-fast-reconstruct-v2-f32-overlap35'
-])
+const DEFAULT_STEM_MODEL = resolveMixtapeStemModelByProfile(DEFAULT_MIXTAPE_STEM_PROFILE)
+const DEFAULT_STEM_VERSION = 'demucs-cli-builtin-20260309-stem-v1'
 
 type MixtapeStemQueueTarget = {
   playlistId: string
@@ -57,6 +53,7 @@ type MixtapeStemQueueJob = {
   stemMode: MixtapeStemMode
   model: string
   stemVersion: string
+  source: MixtapeStemEnqueueSource
   listRoot: string
   targets: Map<string, Set<string>>
 }
@@ -76,54 +73,6 @@ type MixtapeStemRuntimeProgress = {
   processedSec: number | null
   totalSec: number | null
   etaSec: number | null
-}
-
-type MixtapeStemOnnxProvider = 'directml' | 'cpu'
-
-type MixtapeStemOnnxProgressPayload = {
-  percent?: unknown
-  provider?: unknown
-  chunkIndex?: unknown
-  totalChunks?: unknown
-}
-
-type MixtapeStemOnnxResultPayload = {
-  provider?: unknown
-  vocalPath?: unknown
-  instPath?: unknown
-  bassPath?: unknown
-  drumsPath?: unknown
-}
-
-type MixtapeStemOnnxRuntimeProbeEntry = {
-  runtimeKey: string
-  runtimeDir: string
-  pythonPath: string
-  providerNames: string[]
-  providerCandidates: MixtapeStemOnnxProvider[]
-  probeError: string
-}
-
-type MixtapeStemOnnxRuntimeProbeSnapshot = {
-  checkedAt: number
-  runtimeKey: string
-  runtimeDir: string
-  pythonPath: string
-  providerCandidates: MixtapeStemOnnxProvider[]
-  runtimeCandidates: Array<{
-    runtimeKey: string
-    providerNames: string[]
-    providerCandidates: MixtapeStemOnnxProvider[]
-    probeError: string | null
-  }>
-}
-
-type MixtapeStemOnnxDirectmlRuntimeStats = {
-  successCount: number
-  failureCount: number
-  consecutiveSuccessCount: number
-  lastSuccessAt: number
-  lastFailureAt: number
 }
 
 type MixtapeStemDeviceProbeSnapshot = {
@@ -149,6 +98,8 @@ type MixtapeStemDeviceProbeSnapshot = {
   windowsHasNvidiaAdapter: boolean
 }
 
+type MixtapeStemEnqueueSource = 'foreground' | 'background'
+
 export type MixtapeStemEnqueueParams = {
   playlistId: string
   filePaths: string[]
@@ -157,6 +108,7 @@ export type MixtapeStemEnqueueParams = {
   profile?: MixtapeStemProfile
   model?: string
   stemVersion?: string
+  source?: MixtapeStemEnqueueSource
 }
 
 export type MixtapeStemRetryParams = {
@@ -184,7 +136,7 @@ let activeWorkers = 0
 let stemQueueConcurrencySnapshot = 0
 const cpuSlowHintNotifiedPlaylistIdSet = new Set<string>()
 
-const normalizeStemMode = (_value: unknown): MixtapeStemMode => '4stems'
+const normalizeStemMode = (_value: unknown): MixtapeStemMode => FIXED_MIXTAPE_STEM_MODE
 
 const normalizeText = (value: unknown, maxLen = 2000): string => {
   if (typeof value !== 'string') return ''
@@ -205,12 +157,12 @@ const normalizePlaylistId = (value: unknown): string => normalizeText(value, 80)
 
 const normalizeStemProfile = (
   value: unknown,
-  fallback: MixtapeStemProfile = DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
+  fallback: MixtapeStemProfile = DEFAULT_MIXTAPE_STEM_PROFILE
 ): MixtapeStemProfile => normalizeMixtapeStemProfile(normalizeText(value, 24), fallback)
 
 const normalizeModel = (
   value: unknown,
-  fallbackProfile: MixtapeStemProfile = DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
+  fallbackProfile: MixtapeStemProfile = DEFAULT_MIXTAPE_STEM_PROFILE
 ): string => {
   const parsed = parseMixtapeStemModel(normalizeText(value, 128), fallbackProfile)
   return normalizeText(parsed.requestedModel, 128) || DEFAULT_STEM_MODEL
@@ -219,24 +171,18 @@ const normalizeModel = (
 const normalizeStemVersion = (value: unknown, model?: string): string => {
   const normalized = normalizeText(value, 128)
   if (!normalized) return DEFAULT_STEM_VERSION
-  const parsedModel = parseMixtapeStemModel(model, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
-  const profile = normalizeStemProfile(parsedModel.profile, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
-  if (profile === 'fast' && LEGACY_FAST_STEM_VERSIONS.has(normalized)) {
-    return DEFAULT_STEM_VERSION
-  }
   return normalized
 }
 
-const shouldBypassReadyCacheForLegacyFast = (params: {
+const normalizeEnqueueSource = (value: unknown): MixtapeStemEnqueueSource =>
+  value === 'background' ? 'background' : 'foreground'
+
+const shouldBypassReadyCacheForLegacyStemVersion = (params: {
   playlistId: string
   itemIds: string[]
-  model: string
   stemVersion: string
 }): boolean => {
   if (params.stemVersion !== DEFAULT_STEM_VERSION) return false
-  const parsedModel = parseMixtapeStemModel(params.model, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
-  const profile = normalizeStemProfile(parsedModel.profile, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
-  if (profile !== 'fast') return false
   const targetItemIdSet = new Set(
     (params.itemIds || []).map((itemId) => normalizeText(itemId, 80)).filter(Boolean)
   )
@@ -247,11 +193,17 @@ const shouldBypassReadyCacheForLegacyFast = (params: {
       const itemId = normalizeText((item as any)?.id, 80)
       if (!itemId || !targetItemIdSet.has(itemId)) continue
       const infoJsonRaw = normalizeText((item as any)?.infoJson, 200_000)
-      if (!infoJsonRaw) continue
+      if (!infoJsonRaw) {
+        // 历史数据缺少 stemVersion 字段时，强制重算一次，避免旧缓存误命中。
+        return true
+      }
       try {
         const info = JSON.parse(infoJsonRaw)
-        const legacyStemVersion = normalizeText(info?.stemVersion, 128)
-        if (LEGACY_FAST_STEM_VERSIONS.has(legacyStemVersion)) {
+        const currentStemVersion = normalizeText(info?.stemVersion, 128)
+        if (!currentStemVersion) {
+          return true
+        }
+        if (currentStemVersion !== params.stemVersion) {
           return true
         }
       } catch {}
@@ -528,12 +480,20 @@ const resolveStemQueueConcurrency = () => {
       Math.floor(cpuCount / STEM_QUEUE_CPU_JOB_CORE_DIVISOR)
     )
   )
+  const hasForegroundQueueJob = pendingQueue.some((job) => job.source === 'foreground')
+  const hasForegroundInFlightJob = Array.from(inFlightJobMap.values()).some(
+    (job) => job.source === 'foreground'
+  )
+  const hasForegroundDemand = hasForegroundQueueJob || hasForegroundInFlightJob
   const idleHint = getStemBackgroundConcurrencyHint()
-  const maxWorkers = Math.max(1, Math.min(cpuCap, idleHint.target))
+  const backgroundTarget = Math.max(1, Math.min(cpuCap, idleHint.target))
+  const maxWorkers = hasForegroundDemand ? cpuCap : backgroundTarget
   return {
     maxWorkers,
     cpuCount,
     cpuCap,
+    hasForegroundDemand,
+    backgroundTarget,
     idleTarget: idleHint.target,
     idleProfile: idleHint.profile,
     idleAllowed: idleHint.allowed,
@@ -552,6 +512,8 @@ const runQueueLoop = () => {
       maxWorkers,
       cpuCount: concurrency.cpuCount,
       cpuCap: concurrency.cpuCap,
+      hasForegroundDemand: concurrency.hasForegroundDemand,
+      backgroundTarget: concurrency.backgroundTarget,
       idleTarget: concurrency.idleTarget,
       idleProfile: concurrency.idleProfile,
       idleAllowed: concurrency.idleAllowed,
@@ -751,9 +713,10 @@ export async function enqueueMixtapeStemJobs(
   const playlistId = normalizePlaylistId(params?.playlistId)
   const stemMode = normalizeStemMode(params?.stemMode)
   const force = !!params?.force
-  const profile = normalizeStemProfile(params?.profile, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
+  const profile = normalizeStemProfile(params?.profile, DEFAULT_MIXTAPE_STEM_PROFILE)
   const model = normalizeModel(params?.model, profile)
   const stemVersion = normalizeStemVersion(params?.stemVersion, model)
+  const source = normalizeEnqueueSource(params?.source)
   const inputPaths = Array.isArray(params?.filePaths) ? params.filePaths : []
   if (!playlistId || !inputPaths.length) {
     return {
@@ -797,14 +760,13 @@ export async function enqueueMixtapeStemJobs(
       stemMode,
       model
     })
-    const bypassReadyCache = shouldBypassReadyCacheForLegacyFast({
+    const bypassReadyCache = shouldBypassReadyCacheForLegacyStemVersion({
       playlistId,
       itemIds,
-      model,
       stemVersion
     })
     if (bypassReadyCache) {
-      log.info('[mixtape-stem] bypass ready cache for legacy fast stem version', {
+      log.info('[mixtape-stem] bypass ready cache for outdated stem version', {
         playlistId,
         file: filePath,
         stemMode,
@@ -874,12 +836,18 @@ export async function enqueueMixtapeStemJobs(
     const pendingJob = pendingJobMap.get(jobKey)
     if (pendingJob) {
       mergeJobTargets(pendingJob, queueTargets)
+      if (source === 'foreground' && pendingJob.source !== 'foreground') {
+        pendingJob.source = 'foreground'
+      }
       merged += 1
       continue
     }
     const inFlightJob = inFlightJobMap.get(jobKey)
     if (inFlightJob) {
       mergeJobTargets(inFlightJob, queueTargets)
+      if (source === 'foreground' && inFlightJob.source !== 'foreground') {
+        inFlightJob.source = 'foreground'
+      }
       merged += 1
       continue
     }
@@ -889,6 +857,7 @@ export async function enqueueMixtapeStemJobs(
       stemMode,
       model,
       stemVersion,
+      source,
       listRoot,
       targets: new Map<string, Set<string>>()
     }
@@ -947,7 +916,7 @@ export async function retryMixtapeStemJobs(params: MixtapeStemRetryParams) {
   for (const item of explicitFilePaths) {
     failedFilePathSet.add(item)
   }
-  const profile = normalizeStemProfile(params?.profile, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
+  const profile = normalizeStemProfile(params?.profile, DEFAULT_MIXTAPE_STEM_PROFILE)
   return enqueueMixtapeStemJobs({
     playlistId,
     filePaths: Array.from(failedFilePathSet),

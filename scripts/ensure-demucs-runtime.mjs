@@ -9,8 +9,6 @@ const runtimeProfilesPath = path.resolve('./scripts/demucs-runtime-profiles.json
 const runtimeProfilesRaw = fs.readFileSync(runtimeProfilesPath, 'utf8')
 const runtimeProfiles = JSON.parse(runtimeProfilesRaw)
 const modelManifestPath = path.resolve('./scripts/demucs-model-manifest.json')
-const onnxManifestPath = path.resolve('./scripts/demucs-onnx-manifest.json')
-const onnxFastScriptTemplatePath = path.resolve('./scripts/demucs/fast_separate.py')
 
 const platformDefault = (() => {
   if (process.platform === 'win32') return 'win32-x64'
@@ -51,19 +49,14 @@ const runtimeRootArg = getArgValue('--runtime-root', 'vendor/demucs')
 const platformArg = getArgValue('--platform', platformDefault)
 const profileArg = getArgValue('--profiles', '')
 const modelsArg = getArgValue('--models', '')
-const onnxAssetsArg = getArgValue('--onnx-assets', '')
 const modelRetriesArg = Number(getArgValue('--model-retries', '3'))
 const modelTimeoutSecArg = Number(getArgValue('--model-timeout-sec', '600'))
 const install = !hasFlag('--no-install')
 const strict = hasFlag('--strict') || hasFlag('--ci')
 const force = hasFlag('--force')
-const skipOnnxFast = hasFlag('--skip-onnx-fast') || hasFlag('--no-onnx-fast')
 const skip =
   process.env.FRKB_SKIP_DEMUCS_RUNTIME_ENSURE === '1' ||
   process.env.FRKB_SKIP_DEMUCS_RUNTIME_ENSURE === 'true'
-const skipOnnxFastEnv =
-  process.env.FRKB_SKIP_DEMUCS_ONNX_FAST_ENSURE === '1' ||
-  process.env.FRKB_SKIP_DEMUCS_ONNX_FAST_ENSURE === 'true'
 
 const runtimeRoot = path.resolve(runtimeRootArg)
 
@@ -298,255 +291,175 @@ const parseModelManifest = () => {
     .filter((entry) => !!entry.name && !!entry.yaml)
 }
 
-const parseOnnxManifest = () => {
-  const raw = fs.readFileSync(onnxManifestPath, 'utf8')
-  const parsed = JSON.parse(raw)
-  const assetEntries = Array.isArray(parsed?.assets) ? parsed.assets : []
-  return assetEntries
-    .map((entry) => ({
-      name: normalizeModelName(entry?.name),
-      relativePath: normalizeRelativePath(entry?.relativePath),
-      url: normalizeUrl(entry?.url),
-      sha256: normalizeSha256(entry?.sha256)
-    }))
-    .filter((entry) => !!entry.name && !!entry.relativePath && !!entry.url)
-}
-
-const ensureModelYaml = (modelsDir, modelName, yaml) => {
-  const targetPath = path.join(modelsDir, `${modelName}.yaml`)
-  const expected = yaml.endsWith('\n') ? yaml : `${yaml}\n`
-  const existing = fs.existsSync(targetPath) ? fs.readFileSync(targetPath, 'utf8') : ''
-  if (existing === expected) return
-  fs.writeFileSync(targetPath, expected, 'utf8')
-}
-
-const calcFileSha256 = (targetPath) => {
-  const hash = createHash('sha256')
-  const stream = fs.createReadStream(targetPath)
-  return new Promise((resolve, reject) => {
-    stream.on('data', (chunk) => hash.update(chunk))
-    stream.on('error', (error) => reject(error))
-    stream.on('end', () => resolve(hash.digest('hex')))
-  })
-}
-
-const verifyFileHash = async (targetPath, expectedSha256) => {
-  const normalizedExpected = normalizeSha256(expectedSha256)
-  if (!normalizedExpected) return true
-  const actual = await calcFileSha256(targetPath)
-  return actual === normalizedExpected
-}
-
-const removeFileIfExists = (targetPath) => {
-  try {
-    if (fs.existsSync(targetPath)) {
-      fs.rmSync(targetPath, { force: true })
-    }
-  } catch {}
-}
-
-const cleanupModelTempFiles = (modelsDir) => {
-  let removedCount = 0
-  try {
-    const entries = fs.readdirSync(modelsDir, { withFileTypes: true })
-    for (const entry of entries) {
-      if (!entry.isFile()) continue
-      const name = String(entry.name || '')
-      if (!name.includes('.tmp-')) continue
-      const targetPath = path.join(modelsDir, name)
-      removeFileIfExists(targetPath)
-      removedCount += 1
-    }
-  } catch {}
-  return removedCount
-}
-
-const sleep = (ms) =>
-  new Promise((resolve) => {
-    setTimeout(resolve, Math.max(0, Number(ms) || 0))
-  })
-
-const downloadToFile = async (url, targetPath, retries) => {
-  const maxRetries = Math.max(1, Number.isFinite(retries) ? retries : 3)
-  const timeoutMs = Math.max(
-    30_000,
-    (Number.isFinite(modelTimeoutSecArg) ? modelTimeoutSecArg : 600) * 1000
-  )
-  let lastError = null
-  for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
-    const tempPath = `${targetPath}.tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    const controller = new AbortController()
-    const timeoutTimer = setTimeout(() => controller.abort(), timeoutMs)
-    try {
-      const response = await fetch(url, {
-        redirect: 'follow',
-        signal: controller.signal,
-        headers: {
-          'user-agent': 'frkb-demucs-runtime-ensure/1.0'
-        }
-      })
-      if (!response.ok || !response.body) {
-        throw new Error(`HTTP ${response.status} ${response.statusText || ''}`.trim())
-      }
-      const body = response.body
-      await pipeline(Readable.fromWeb(body), fs.createWriteStream(tempPath))
-      const stat = fs.statSync(tempPath)
-      if (!stat || stat.size <= 0) {
-        throw new Error('Downloaded file is empty')
-      }
-      fs.renameSync(tempPath, targetPath)
-      clearTimeout(timeoutTimer)
-      return
-    } catch (error) {
-      clearTimeout(timeoutTimer)
-      lastError = error
-      removeFileIfExists(tempPath)
-      if (attempt < maxRetries) {
-        await sleep(300 * attempt)
-      }
-    }
-  }
-  throw lastError || new Error(`Download failed: ${url}`)
-}
-
-const ensureDemucsModels = async (options = {}) => {
-  const modelsDir = path.resolve(runtimeRoot, 'models')
-  fs.mkdirSync(modelsDir, { recursive: true })
-  const removedTempCount = cleanupModelTempFiles(modelsDir)
-  if (removedTempCount > 0) {
-    console.log(`[demucs-runtime-ensure] Removed stale model temp files: ${removedTempCount}`)
-  }
-  const manifestEntries = parseModelManifest()
-  if (manifestEntries.length === 0) {
-    throw new Error('[demucs-runtime-ensure] Model manifest is empty')
-  }
+const resolveRequestedModels = (manifestEntries) => {
   const requestedModels = parseCsv(modelsArg)
     .map((item) => normalizeModelName(item))
     .filter(Boolean)
-  const defaultModels = ['htdemucs']
-  const selectedEntries =
-    requestedModels.length > 0
-      ? manifestEntries.filter((entry) => requestedModels.includes(entry.name))
-      : manifestEntries.filter((entry) => defaultModels.includes(entry.name))
-  const effectiveSelectedEntries = selectedEntries.length > 0 ? selectedEntries : manifestEntries
-  if (effectiveSelectedEntries.length === 0) {
-    const available = manifestEntries.map((entry) => entry.name).join(', ')
-    throw new Error(
-      `[demucs-runtime-ensure] No valid model selected. Available models: ${available || 'none'}`
-    )
-  }
-  const retries = Math.max(1, Number.isFinite(modelRetriesArg) ? modelRetriesArg : 3)
-  let downloadedCount = 0
-  let skippedCount = 0
-  for (const entry of effectiveSelectedEntries) {
-    ensureModelYaml(modelsDir, entry.name, entry.yaml)
-    for (const file of entry.files) {
-      const targetPath = path.join(modelsDir, file.name)
-      const exists = fs.existsSync(targetPath) && fs.statSync(targetPath).size > 0
-      if (exists) {
-        const hashOk = await verifyFileHash(targetPath, file.sha256)
-        if (!hashOk) {
-          console.warn(`[demucs-runtime-ensure] Hash mismatch, redownloading: ${file.name}`)
-          removeFileIfExists(targetPath)
-        } else {
-          skippedCount += 1
-          continue
-        }
-      }
-      console.log(`[demucs-runtime-ensure] Downloading model file: ${file.name}`)
-      await downloadToFile(file.url, targetPath, retries)
-      const hashOk = await verifyFileHash(targetPath, file.sha256)
-      if (!hashOk) {
-        removeFileIfExists(targetPath)
-        throw new Error(`[demucs-runtime-ensure] SHA256 mismatch after download: ${file.name}`)
-      }
-      if (!normalizeSha256(file.sha256)) {
-        console.warn(
-          `[demucs-runtime-ensure] Missing sha256 in manifest: ${entry.name}/${file.name}`
-        )
-      }
-      downloadedCount += 1
+  if (requestedModels.length === 0) {
+    return {
+      selectedModels: manifestEntries,
+      unknownModels: []
     }
   }
-  console.log(
-    `[demucs-runtime-ensure] Models ready: ${effectiveSelectedEntries
-      .map((entry) => entry.name)
-      .join(', ')} (downloaded=${downloadedCount}, existing=${skippedCount})`
-  )
+  const availableModelSet = new Set(manifestEntries.map((entry) => entry.name))
+  const selectedModelSet = new Set(requestedModels)
+  return {
+    selectedModels: manifestEntries.filter((entry) => selectedModelSet.has(entry.name)),
+    unknownModels: requestedModels.filter((item) => !availableModelSet.has(item))
+  }
 }
 
-const ensureOnnxFastAssets = async () => {
-  const onnxRootDir = path.resolve(runtimeRoot, 'onnx')
-  fs.mkdirSync(onnxRootDir, { recursive: true })
-  if (!fs.existsSync(onnxFastScriptTemplatePath)) {
+const parsePositiveInteger = (value, fallback) => {
+  if (!Number.isFinite(value)) return fallback
+  const rounded = Math.trunc(value)
+  if (rounded <= 0) return fallback
+  return rounded
+}
+
+const computeFileSha256 = async (filePath) => {
+  const hash = createHash('sha256')
+  const stream = fs.createReadStream(filePath)
+  return await new Promise((resolve, reject) => {
+    stream.on('data', (chunk) => hash.update(chunk))
+    stream.once('error', reject)
+    stream.once('end', () => resolve(hash.digest('hex')))
+  })
+}
+
+const ensureInsideDir = (baseDir, targetPath) => {
+  const relativePath = path.relative(baseDir, targetPath)
+  return !!relativePath && !relativePath.startsWith('..') && !path.isAbsolute(relativePath)
+}
+
+const downloadToFile = async ({ url, targetPath, timeoutSec, retries }) => {
+  const timeoutMs = timeoutSec * 1000
+  const tempPath = `${targetPath}.tmp-${process.pid}-${Date.now()}`
+  let lastError = null
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        redirect: 'follow'
+      })
+      if (!response.ok || !response.body) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(tempPath))
+      fs.renameSync(tempPath, targetPath)
+      clearTimeout(timer)
+      return
+    } catch (error) {
+      clearTimeout(timer)
+      if (fs.existsSync(tempPath)) fs.rmSync(tempPath, { force: true })
+      lastError = error
+      if (attempt < retries) {
+        console.warn(
+          `[demucs-runtime-ensure] Download retry (${attempt}/${retries}): ${path.basename(targetPath)} -> ${toShortText(error instanceof Error ? error.message : String(error || ''))}`
+        )
+      }
+    }
+  }
+  const reason = toShortText(lastError instanceof Error ? lastError.message : String(lastError || ''))
+  throw new Error(`[demucs-runtime-ensure] Download failed: ${url} (${reason || 'unknown'})`)
+}
+
+const ensureModelYaml = (modelsDir, modelEntry) => {
+  const yamlPath = path.resolve(modelsDir, `${modelEntry.name}.yaml`)
+  const expectedYaml = String(modelEntry.yaml || '')
+  const currentYaml = fs.existsSync(yamlPath) ? fs.readFileSync(yamlPath, 'utf8') : ''
+  if (currentYaml === expectedYaml) return
+  fs.writeFileSync(yamlPath, expectedYaml, 'utf8')
+}
+
+const ensureModelFile = async ({
+  modelsDir,
+  modelName,
+  modelFile,
+  retries,
+  timeoutSec
+}) => {
+  const relativePath = normalizeRelativePath(modelFile.name)
+  if (!relativePath) {
     throw new Error(
-      `[demucs-runtime-ensure] ONNX fast script template missing: ${onnxFastScriptTemplatePath}`
-    )
-  }
-  const onnxFastScriptTargetPath = path.resolve(onnxRootDir, 'fast_separate.py')
-  const onnxFastScriptContent = fs.readFileSync(onnxFastScriptTemplatePath, 'utf8')
-  const existingOnnxFastScriptContent = fs.existsSync(onnxFastScriptTargetPath)
-    ? fs.readFileSync(onnxFastScriptTargetPath, 'utf8')
-    : ''
-  if (existingOnnxFastScriptContent !== onnxFastScriptContent) {
-    fs.writeFileSync(onnxFastScriptTargetPath, onnxFastScriptContent, 'utf8')
-  }
-  const removedTempCount = cleanupModelTempFiles(onnxRootDir)
-  if (removedTempCount > 0) {
-    console.log(`[demucs-runtime-ensure] Removed stale onnx temp files: ${removedTempCount}`)
-  }
-  const manifestEntries = parseOnnxManifest()
-  if (manifestEntries.length === 0) {
-    throw new Error('[demucs-runtime-ensure] ONNX manifest is empty')
-  }
-  const requestedAssets = parseCsv(onnxAssetsArg)
-    .map((item) => normalizeModelName(item))
-    .filter(Boolean)
-  const selectedEntries =
-    requestedAssets.length > 0
-      ? manifestEntries.filter((entry) => requestedAssets.includes(entry.name))
-      : manifestEntries
-  if (selectedEntries.length === 0) {
-    const available = manifestEntries.map((entry) => entry.name).join(', ')
-    throw new Error(
-      `[demucs-runtime-ensure] No valid ONNX asset selected. Available: ${available || 'none'}`
+      `[demucs-runtime-ensure] Invalid model file path: ${modelFile.name || '<empty>'}`
     )
   }
 
-  const retries = Math.max(1, Number.isFinite(modelRetriesArg) ? modelRetriesArg : 3)
-  let downloadedCount = 0
-  let skippedCount = 0
-  for (const entry of selectedEntries) {
-    const targetPath = path.resolve(runtimeRoot, entry.relativePath)
-    fs.mkdirSync(path.dirname(targetPath), { recursive: true })
-    const exists = fs.existsSync(targetPath) && fs.statSync(targetPath).size > 0
-    if (exists) {
-      const hashOk = await verifyFileHash(targetPath, entry.sha256)
-      if (!hashOk) {
-        console.warn(`[demucs-runtime-ensure] ONNX hash mismatch, redownloading: ${entry.name}`)
-        removeFileIfExists(targetPath)
-      } else {
-        skippedCount += 1
-        continue
-      }
-    }
-    console.log(`[demucs-runtime-ensure] Downloading ONNX asset: ${entry.name}`)
-    await downloadToFile(entry.url, targetPath, retries)
-    const hashOk = await verifyFileHash(targetPath, entry.sha256)
-    if (!hashOk) {
-      removeFileIfExists(targetPath)
-      throw new Error(`[demucs-runtime-ensure] ONNX SHA256 mismatch: ${entry.name}`)
-    }
-    if (!normalizeSha256(entry.sha256)) {
-      console.warn(`[demucs-runtime-ensure] Missing ONNX sha256 in manifest: ${entry.name}`)
-    }
-    downloadedCount += 1
+  const targetPath = path.resolve(modelsDir, relativePath)
+  if (!ensureInsideDir(modelsDir, targetPath)) {
+    throw new Error(`[demucs-runtime-ensure] Illegal model file path: ${modelFile.name}`)
   }
-  console.log(
-    `[demucs-runtime-ensure] ONNX assets ready: ${selectedEntries
-      .map((entry) => entry.name)
-      .join(', ')} (downloaded=${downloadedCount}, existing=${skippedCount})`
-  )
+
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true })
+
+  let needsDownload = !fs.existsSync(targetPath)
+  if (!needsDownload && modelFile.sha256) {
+    const existingHash = await computeFileSha256(targetPath)
+    if (existingHash !== modelFile.sha256) {
+      console.warn(
+        `[demucs-runtime-ensure] Hash mismatch, re-downloading: ${modelName}/${relativePath}`
+      )
+      needsDownload = true
+    }
+  }
+
+  if (needsDownload) {
+    console.log(`[demucs-runtime-ensure] Fetching model file: ${modelName}/${relativePath}`)
+    await downloadToFile({
+      url: modelFile.url,
+      targetPath,
+      timeoutSec,
+      retries
+    })
+  }
+
+  if (modelFile.sha256) {
+    const downloadedHash = await computeFileSha256(targetPath)
+    if (downloadedHash !== modelFile.sha256) {
+      throw new Error(
+        `[demucs-runtime-ensure] SHA256 mismatch after download: ${modelName}/${relativePath}`
+      )
+    }
+  }
+}
+
+const ensureDemucsModels = async () => {
+  const modelEntries = parseModelManifest()
+  if (modelEntries.length === 0) {
+    console.log('[demucs-runtime-ensure] No models declared, skip')
+    return
+  }
+
+  const { selectedModels, unknownModels } = resolveRequestedModels(modelEntries)
+  if (unknownModels.length > 0) {
+    console.warn(
+      `[demucs-runtime-ensure] Unknown models ignored: ${unknownModels.join(', ')}`
+    )
+  }
+  if (selectedModels.length === 0) {
+    console.log('[demucs-runtime-ensure] No matching models selected, skip')
+    return
+  }
+
+  const retries = parsePositiveInteger(modelRetriesArg, 3)
+  const timeoutSec = parsePositiveInteger(modelTimeoutSecArg, 600)
+  const modelsDir = path.resolve(runtimeRoot, 'models')
+  fs.mkdirSync(modelsDir, { recursive: true })
+
+  for (const modelEntry of selectedModels) {
+    ensureModelYaml(modelsDir, modelEntry)
+    for (const modelFile of modelEntry.files) {
+      await ensureModelFile({
+        modelsDir,
+        modelName: modelEntry.name,
+        modelFile,
+        retries,
+        timeoutSec
+      })
+    }
+  }
 }
 
 const probeWindowsGpuAdapters = () => {
@@ -626,11 +539,7 @@ const ensureBaseRuntime = (platformKey, platformConfig) => {
   }
 
   if (install) {
-    run(resolvedBasePython, ['-m', 'pip', 'install', '--upgrade', 'pip', 'setuptools', 'wheel'])
-    const baseProbe = runQuiet(resolvedBasePython, [
-      '-c',
-      'import demucs, torch, torchaudio, onnxruntime'
-    ])
+    const baseProbe = runQuiet(resolvedBasePython, ['-c', 'import demucs, torch, torchaudio, onnxruntime'])
     if (baseProbe.status !== 0 && basePipInstallArgs.length > 0) {
       console.log(
         `[demucs-runtime-ensure] Installing base runtime deps: ${basePipInstallArgs.join(' ')}`
@@ -737,17 +646,14 @@ const main = async () => {
       continue
     }
     const payload = probe.payload
-    const baseReady =
-      !!payload.demucs && !!payload.torch && !!payload.torchaudio && !!payload.onnxruntime
+    const baseReady = !!payload.demucs && !!payload.torch && !!payload.torchaudio
     const requiresDirectml = profileName === 'directml'
-    const directmlReady = !requiresDirectml
-      ? true
-      : !!payload.torch_directml && !!payload.onnxruntime_directml_provider
+    const directmlReady = !requiresDirectml ? true : !!payload.torch_directml
     if (!baseReady || !directmlReady) {
       addUniqueItem(brokenProfiles, profileName)
       addUniqueItem(rebuildProfiles, profileName)
       console.warn(
-        `[demucs-runtime-ensure] Runtime deps incomplete (${profileName}), will rebuild: demucs=${!!payload.demucs} torch=${!!payload.torch} torchaudio=${!!payload.torchaudio} onnxruntime=${!!payload.onnxruntime} torch_directml=${!!payload.torch_directml} onnxruntime_dml=${!!payload.onnxruntime_directml_provider}`
+        `[demucs-runtime-ensure] Runtime deps incomplete (${profileName}), will rebuild: demucs=${payload.demucs} torch=${payload.torch} torchaudio=${payload.torchaudio} torch_directml=${payload.torch_directml}`
       )
     }
   }
@@ -764,11 +670,6 @@ const main = async () => {
   }
 
   await ensureDemucsModels()
-  if (skipOnnxFast || skipOnnxFastEnv) {
-    console.log('[demucs-runtime-ensure] Skip ONNX fast assets requested')
-  } else {
-    await ensureOnnxFastAssets()
-  }
 
   console.log('[demucs-runtime-ensure] Completed')
 }

@@ -1,6 +1,7 @@
 import { getLibraryDb } from './libraryDb'
 import { log } from './log'
 import type { MixtapeStemMode } from './mixtapeDb'
+import { FIXED_MIXTAPE_STEM_MODE } from '../shared/mixtapeStemMode'
 
 const ITEM_TABLE = 'mixtape_items'
 const STEM_ASSET_TABLE = 'mixtape_stem_assets'
@@ -69,7 +70,7 @@ const DEFAULT_STEM_SUMMARY: MixtapeStemSummary = {
   failed: 0
 }
 
-const normalizeStemMode = (_value: unknown): MixtapeStemMode => '4stems'
+const normalizeStemMode = (_value: unknown): MixtapeStemMode => FIXED_MIXTAPE_STEM_MODE
 
 const normalizeStemStatus = (
   value: unknown,

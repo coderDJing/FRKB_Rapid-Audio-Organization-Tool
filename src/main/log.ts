@@ -14,7 +14,7 @@ const appVersion = (() => {
   }
 })()
 log.transports.file.format = `{y}-{m}-{d} {h}:{i}:{s}.{ms} [v${appVersion}] {text}` // 自定义日志格式，带版本号
-log.transports.file.maxSize = 5 * 1024 * 1024 // 设置日志文件的最大大小，‌例如5MB
+log.transports.file.maxSize = 20 * 1024 * 1024 // 提高上限，避免长时间追踪时日志过快轮转
 
 // dev 模式下日志保存在项目根目录，生产模式下保存在用户数据目录
 log.transports.file.resolvePathFn = () => {

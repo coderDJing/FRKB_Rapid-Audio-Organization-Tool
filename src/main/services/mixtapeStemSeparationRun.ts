@@ -1,19 +1,16 @@
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import { resolveBundledFfmpegPath } from '../ffmpeg'
 import {
   resolveBundledDemucsModelsPath,
-  resolveBundledDemucsOnnxPath,
   resolveBundledDemucsPythonPath,
   resolveBundledDemucsRuntimeDir
 } from '../demucs'
 import type { MixtapeStemMode } from '../mixtapeDb'
 import {
   DEFAULT_MIXTAPE_STEM_BASE_MODEL,
-  DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE,
+  DEFAULT_MIXTAPE_STEM_PROFILE,
   parseMixtapeStemModel,
-  type MixtapeStemProfile,
   resolveMixtapeStemBaseModelByProfile
 } from '../../shared/mixtapeStemProfiles'
 import { log } from '../log'
@@ -23,8 +20,6 @@ import type {
   MixtapeStemComputeDevice,
   MixtapeStemCpuFallbackReasonCode,
   MixtapeStemDeviceProbeSnapshot,
-  MixtapeStemOnnxProvider,
-  MixtapeStemOnnxRuntimeProbeSnapshot,
   MixtapeStemRuntimeProgress,
   MixtapeStemSeparationResult
 } from './mixtapeStemSeparationShared'
@@ -33,8 +28,6 @@ const {
   DEFAULT_STEM_MODEL,
   DEMUCS_NO_SPLIT_MAX_DURATION_SECONDS,
   DEMUCS_PROFILE_OPTIONS,
-  ONNX_FAST_MODEL_FILE_NAME,
-  ONNX_FAST_SCRIPT_FILE_NAME,
   buildStemProcessEnv,
   createStemError,
   normalizeFilePath,
@@ -50,399 +43,11 @@ const {
 } = shared
 
 const {
-  acquireOnnxDirectmlAttemptLease,
-  markOnnxDirectmlRuntimeFailure,
-  markOnnxDirectmlRuntimeSuccess,
   parseDemucsProgressText,
-  parseOnnxFastProgressText,
-  parseOnnxFastResultText,
   probeDemucsDevices,
-  probeOnnxRuntime,
   resolveCpuFallbackReason,
-  resolveDemucsDeviceArg,
-  resolveOnnxFastProviderCandidates,
-  shouldSerializeOnnxDirectmlAttempts,
-  shouldSuppressOnnxDirectmlByRecentFailure,
-  summarizeOnnxErrorForLog
+  resolveDemucsDeviceArg
 } = probe
-
-export const copyOnnxStemOutputsToCache = async (params: {
-  sourceVocalPath: string
-  sourceInstPath: string
-  sourceBassPath: string
-  sourceDrumsPath: string
-  stemCacheDir: string
-}): Promise<MixtapeStemSeparationResult> => {
-  const sourceVocalPath = normalizeFilePath(params.sourceVocalPath)
-  const sourceInstPath = normalizeFilePath(params.sourceInstPath)
-  const sourceBassPath = normalizeFilePath(params.sourceBassPath)
-  const sourceDrumsPath = normalizeFilePath(params.sourceDrumsPath)
-  if (!sourceVocalPath || !sourceInstPath || !sourceBassPath || !sourceDrumsPath) {
-    throw createStemError('FAST_ONNX_OUTPUT_INVALID', 'ONNX 输出路径无效')
-  }
-  const required = [sourceVocalPath, sourceInstPath, sourceBassPath, sourceDrumsPath]
-  if (!required.every((item) => fs.existsSync(item))) {
-    throw createStemError('FAST_ONNX_OUTPUT_MISSING', 'ONNX 输出不完整')
-  }
-  await fs.promises.mkdir(params.stemCacheDir, { recursive: true })
-  const vocalOutputPath = path.join(params.stemCacheDir, 'vocal.wav')
-  const instOutputPath = path.join(params.stemCacheDir, 'inst.wav')
-  const bassOutputPath = path.join(params.stemCacheDir, 'bass.wav')
-  const drumsOutputPath = path.join(params.stemCacheDir, 'drums.wav')
-  await fs.promises.copyFile(sourceVocalPath, vocalOutputPath)
-  await fs.promises.copyFile(sourceInstPath, instOutputPath)
-  await fs.promises.copyFile(sourceBassPath, bassOutputPath)
-  await fs.promises.copyFile(sourceDrumsPath, drumsOutputPath)
-  return {
-    vocalPath: vocalOutputPath,
-    instPath: instOutputPath,
-    bassPath: bassOutputPath,
-    drumsPath: drumsOutputPath
-  }
-}
-
-type OnnxFastExecutionOptions = {
-  overlap: string
-  torchThreads: string
-  refineTopkRatio: string
-  refineMaxChunks: string
-  refineOffsetRatio: string
-  refineMinScore: string
-}
-
-const resolveOnnxFastExecutionOptions = (params: {
-  provider: MixtapeStemOnnxProvider
-  inputDurationSec: number | null
-}): OnnxFastExecutionOptions => {
-  const isDirectml = params.provider === 'directml'
-  const durationSec =
-    Number.isFinite(params.inputDurationSec) && Number(params.inputDurationSec) > 0
-      ? Number(params.inputDurationSec)
-      : null
-  const isShortTrack = durationSec !== null && durationSec <= 4 * 60
-  const isLongTrack = durationSec !== null && durationSec >= 9 * 60
-  const cpuCount = Math.max(1, os.cpus()?.length || 1)
-  const toArgFloat = (value: number): string => String(Number(value.toFixed(4)))
-
-  const overlap = isDirectml
-    ? isShortTrack
-      ? 0.5
-      : isLongTrack
-        ? 0.42
-        : 0.46
-    : isShortTrack
-      ? 0.43
-      : isLongTrack
-        ? 0.34
-        : 0.38
-  const torchThreads = isDirectml ? (cpuCount >= 12 ? 3 : cpuCount >= 6 ? 2 : 1) : 1
-  const refineTopkRatio = isDirectml
-    ? isShortTrack
-      ? 0.2
-      : isLongTrack
-        ? 0.12
-        : 0.16
-    : isShortTrack
-      ? 0.1
-      : isLongTrack
-        ? 0.04
-        : 0.07
-  const refineMaxChunks = isDirectml
-    ? isShortTrack
-      ? 26
-      : isLongTrack
-        ? 14
-        : 20
-    : isLongTrack
-      ? 6
-      : 10
-  const refineOffsetRatio = isDirectml ? 0.5 : 0.45
-  const refineMinScore = isDirectml ? 0.03 : 0.05
-
-  return {
-    overlap: toArgFloat(overlap),
-    torchThreads: String(torchThreads),
-    refineTopkRatio: toArgFloat(refineTopkRatio),
-    refineMaxChunks: String(refineMaxChunks),
-    refineOffsetRatio: toArgFloat(refineOffsetRatio),
-    refineMinScore: toArgFloat(refineMinScore)
-  }
-}
-
-const runOnnxFastSeparation = async (params: {
-  filePath: string
-  stemCacheDir: string
-  onnxRuntimeSnapshot: MixtapeStemOnnxRuntimeProbeSnapshot
-  pythonPath: string
-  env: NodeJS.ProcessEnv
-  modelRepoPath: string
-  ffmpegPath: string
-  deviceSnapshot: MixtapeStemDeviceProbeSnapshot
-  inputDurationSec: number | null
-  onDeviceStart?: (
-    device: MixtapeStemComputeDevice,
-    context?: {
-      reasonCode?: MixtapeStemCpuFallbackReasonCode
-      reasonDetail?: string
-    }
-  ) => void
-  onProgress?: (progress: MixtapeStemRuntimeProgress) => void
-}): Promise<MixtapeStemSeparationResult> => {
-  const onnxRootPath = resolveBundledDemucsOnnxPath()
-  const onnxModelPath = path.join(onnxRootPath, ONNX_FAST_MODEL_FILE_NAME)
-  const onnxScriptPath = path.join(onnxRootPath, ONNX_FAST_SCRIPT_FILE_NAME)
-  if (!fs.existsSync(onnxScriptPath)) {
-    throw createStemError('FAST_ONNX_SCRIPT_MISSING', `未找到 ONNX 脚本: ${onnxScriptPath}`)
-  }
-  if (!fs.existsSync(onnxModelPath)) {
-    throw createStemError('FAST_ONNX_MODEL_MISSING', `未找到 ONNX 模型: ${onnxModelPath}`)
-  }
-
-  const providerCandidates = resolveOnnxFastProviderCandidates(params.onnxRuntimeSnapshot)
-  const onnxRawOutputRoot = path.join(params.stemCacheDir, '__onnx_raw')
-  await fs.promises.rm(onnxRawOutputRoot, { recursive: true, force: true }).catch(() => {})
-  await fs.promises.mkdir(onnxRawOutputRoot, { recursive: true })
-
-  let lastError: unknown = null
-  for (let providerIndex = 0; providerIndex < providerCandidates.length; providerIndex += 1) {
-    const provider = providerCandidates[providerIndex]
-    let releaseDirectmlLease: (() => void) | null = null
-    if (provider === 'directml') {
-      if (shouldSuppressOnnxDirectmlByRecentFailure()) {
-        continue
-      }
-      if (shouldSerializeOnnxDirectmlAttempts()) {
-        const directmlLease = await acquireOnnxDirectmlAttemptLease()
-        if (directmlLease.skip || shouldSuppressOnnxDirectmlByRecentFailure()) {
-          directmlLease.release()
-          continue
-        }
-        releaseDirectmlLease = directmlLease.release
-      }
-    }
-    const providerOutputDir = path.join(onnxRawOutputRoot, provider)
-    const device: MixtapeStemComputeDevice = provider === 'directml' ? 'directml' : 'cpu'
-    const timeoutMs = resolveStemProcessTimeoutMs({
-      device,
-      inputDurationSec: params.inputDurationSec
-    })
-    const onnxExecutionOptions = resolveOnnxFastExecutionOptions({
-      provider,
-      inputDurationSec: params.inputDurationSec
-    })
-
-    try {
-      if (device === 'cpu') {
-        const { reasonCode, reasonDetail } = resolveCpuFallbackReason({
-          deviceSnapshot: params.deviceSnapshot,
-          firstFailure: null
-        })
-        params.onDeviceStart?.(device, { reasonCode, reasonDetail })
-      } else {
-        params.onDeviceStart?.(device)
-      }
-    } catch {}
-
-    try {
-      await fs.promises.rm(providerOutputDir, { recursive: true, force: true }).catch(() => {})
-      await fs.promises.mkdir(providerOutputDir, { recursive: true })
-      let onnxResultMarked = false
-      let onnxResultProvider: MixtapeStemOnnxProvider = provider
-      log.info('[mixtape-stem] onnx fast tuning', {
-        file: params.filePath,
-        runtimeKey: params.onnxRuntimeSnapshot.runtimeKey,
-        provider,
-        inputDurationSec: params.inputDurationSec,
-        overlap: onnxExecutionOptions.overlap,
-        torchThreads: Number(onnxExecutionOptions.torchThreads),
-        refineTopkRatio: Number(onnxExecutionOptions.refineTopkRatio),
-        refineMaxChunks: Number(onnxExecutionOptions.refineMaxChunks),
-        refineOffsetRatio: Number(onnxExecutionOptions.refineOffsetRatio),
-        refineMinScore: Number(onnxExecutionOptions.refineMinScore)
-      })
-
-      const handleOutputChunk = (chunk: string) => {
-        const lines = chunk.split(/[\r\n]+/)
-        for (const line of lines) {
-          const progress = parseOnnxFastProgressText(line)
-          if (progress) {
-            const percent = Math.max(0, Math.min(100, Math.round(progress.percent)))
-            const totalSec =
-              Number.isFinite(params.inputDurationSec) && Number(params.inputDurationSec) > 0
-                ? params.inputDurationSec
-                : null
-            const processedSec = totalSec !== null ? Math.round((totalSec * percent) / 100) : null
-            const etaSec =
-              totalSec !== null ? Math.max(0, Math.round((totalSec * (100 - percent)) / 100)) : null
-            params.onProgress?.({
-              device: progress.provider === 'directml' ? 'directml' : 'cpu',
-              percent,
-              processedSec,
-              totalSec,
-              etaSec
-            })
-            continue
-          }
-          const resultPayload = parseOnnxFastResultText(line)
-          if (resultPayload) {
-            onnxResultMarked = true
-            onnxResultProvider = resultPayload.provider
-          }
-        }
-      }
-
-      await runProcess(
-        params.pythonPath,
-        [
-          onnxScriptPath,
-          '--input',
-          params.filePath,
-          '--output-dir',
-          providerOutputDir,
-          '--onnx-model',
-          onnxModelPath,
-          '--demucs-model-repo',
-          params.modelRepoPath,
-          '--ffmpeg-path',
-          params.ffmpegPath,
-          '--provider',
-          provider,
-          '--helper-model',
-          'htdemucs',
-          '--overlap',
-          onnxExecutionOptions.overlap,
-          '--torch-threads',
-          onnxExecutionOptions.torchThreads,
-          '--refine-topk-ratio',
-          onnxExecutionOptions.refineTopkRatio,
-          '--refine-max-chunks',
-          onnxExecutionOptions.refineMaxChunks,
-          '--refine-offset-ratio',
-          onnxExecutionOptions.refineOffsetRatio,
-          '--refine-min-score',
-          onnxExecutionOptions.refineMinScore
-        ],
-        {
-          env: params.env,
-          timeoutMs,
-          traceLabel: `mixtape-stem-onnx:${provider}`,
-          progressIntervalMs: 30_000,
-          onStdoutChunk: handleOutputChunk,
-          onStderrChunk: handleOutputChunk
-        }
-      )
-
-      if (!onnxResultMarked) {
-        throw createStemError('FAST_ONNX_RESULT_MISSING', 'ONNX 未返回输出结果')
-      }
-      const copied = await copyOnnxStemOutputsToCache({
-        sourceVocalPath: path.join(providerOutputDir, 'vocal.wav'),
-        sourceInstPath: path.join(providerOutputDir, 'inst.wav'),
-        sourceBassPath: path.join(providerOutputDir, 'bass.wav'),
-        sourceDrumsPath: path.join(providerOutputDir, 'drums.wav'),
-        stemCacheDir: params.stemCacheDir
-      })
-      log.info('[mixtape-stem] onnx fast split done', {
-        file: params.filePath,
-        runtimeKey: params.onnxRuntimeSnapshot.runtimeKey,
-        provider: onnxResultProvider,
-        onnxModel: onnxModelPath,
-        outputDir: params.stemCacheDir
-      })
-      if (onnxResultProvider === 'directml') {
-        markOnnxDirectmlRuntimeSuccess()
-      }
-      await fs.promises.rm(onnxRawOutputRoot, { recursive: true, force: true }).catch(() => {})
-      return copied
-    } catch (error) {
-      const rawMessage = normalizeText(
-        error instanceof Error ? error.message : String(error || ''),
-        2000
-      )
-      const lowered = rawMessage.toLowerCase()
-      const isDirectmlUnavailable =
-        lowered.includes('directml provider unavailable') ||
-        (lowered.includes('dmlexecutionprovider') &&
-          (lowered.includes('not available') ||
-            lowered.includes('not in available provider names') ||
-            lowered.includes('available providers')))
-      const normalizedError = lowered.includes("no module named 'onnxruntime'")
-        ? createStemError(
-            'FAST_ONNX_RUNTIME_MISSING',
-            'Fast ONNX 运行时缺少 onnxruntime，请重新执行 demucs 运行时确保流程'
-          )
-        : isDirectmlUnavailable
-          ? createStemError('FAST_ONNX_DIRECTML_UNAVAILABLE', rawMessage || 'DirectML 不可用')
-          : error
-      lastError = normalizedError
-      const errorCode = normalizeText((normalizedError as any)?.code, 80) || null
-      const errorMessage = normalizeText(
-        normalizedError instanceof Error
-          ? normalizedError.message
-          : String(normalizedError || rawMessage),
-        1200
-      )
-      const summaryMessage = summarizeOnnxErrorForLog(errorMessage || rawMessage)
-      const fallbackProvider =
-        providerIndex + 1 < providerCandidates.length ? providerCandidates[providerIndex + 1] : null
-      const shouldMarkDirectmlFailure =
-        provider === 'directml' &&
-        (errorCode === 'FAST_ONNX_DIRECTML_UNAVAILABLE' ||
-          (fallbackProvider &&
-            errorCode !== 'FAST_ONNX_RUNTIME_MISSING' &&
-            errorCode !== 'FAST_ONNX_MODEL_MISSING'))
-      if (shouldMarkDirectmlFailure) {
-        markOnnxDirectmlRuntimeFailure(summaryMessage || errorMessage || rawMessage)
-      }
-      if (errorCode === 'FAST_ONNX_DIRECTML_UNAVAILABLE' && fallbackProvider) {
-        log.info('[mixtape-stem] onnx directml unavailable, fallback to next provider', {
-          file: params.filePath,
-          runtimeKey: params.onnxRuntimeSnapshot.runtimeKey,
-          provider,
-          fallbackProvider,
-          errorCode,
-          errorSummary: summaryMessage || 'DirectML provider unavailable'
-        })
-      } else if (fallbackProvider) {
-        log.warn('[mixtape-stem] onnx provider failed, fallback to next provider', {
-          file: params.filePath,
-          runtimeKey: params.onnxRuntimeSnapshot.runtimeKey,
-          provider,
-          fallbackProvider,
-          errorCode,
-          errorSummary: summaryMessage || errorMessage || null
-        })
-      } else {
-        log.warn('[mixtape-stem] onnx fast failed', {
-          file: params.filePath,
-          runtimeKey: params.onnxRuntimeSnapshot.runtimeKey,
-          provider,
-          errorCode,
-          errorSummary: summaryMessage || errorMessage || null
-        })
-      }
-      if (
-        (errorCode === 'FAST_ONNX_RUNTIME_MISSING' || errorCode === 'FAST_ONNX_MODEL_MISSING') &&
-        !fallbackProvider
-      ) {
-        log.error('[mixtape-stem] onnx fast terminal failure', {
-          file: params.filePath,
-          runtimeKey: params.onnxRuntimeSnapshot.runtimeKey,
-          provider,
-          errorCode,
-          errorSummary: summaryMessage || errorMessage || null
-        })
-      }
-    } finally {
-      try {
-        releaseDirectmlLease?.()
-      } catch {}
-      await fs.promises.rm(providerOutputDir, { recursive: true, force: true }).catch(() => {})
-    }
-  }
-  await fs.promises.rm(onnxRawOutputRoot, { recursive: true, force: true }).catch(() => {})
-  throw lastError || createStemError('FAST_ONNX_FAILED', 'ONNX fast 分离失败：未找到可用执行后端')
-}
 
 const runDemucsSeparate = async (params: {
   pythonPath: string
@@ -592,7 +197,6 @@ const inspectLocalDemucsModel = (params: {
 
 const resolveDemucsModelCandidates = (params: {
   requestedModel: string
-  stemProfile: MixtapeStemProfile
   modelRepoPath: string
 }): string[] => {
   const requestedCandidates: string[] = []
@@ -603,9 +207,6 @@ const resolveDemucsModelCandidates = (params: {
     requestedCandidates.push(normalized)
   }
   pushCandidate(params.requestedModel)
-  if (params.stemProfile === 'fast') {
-    pushCandidate(resolveMixtapeStemBaseModelByProfile('fast', 'fast'))
-  }
   pushCandidate(resolveMixtapeStemBaseModelByProfile('quality', 'quality'))
 
   const localWeightFiles = listLocalDemucsWeightFiles(params.modelRepoPath)
@@ -687,51 +288,10 @@ export const runStemSeparation = async (params: {
     Number.isFinite(inputDurationSec) &&
     Number(inputDurationSec) > 0 &&
     Number(inputDurationSec) <= DEMUCS_NO_SPLIT_MAX_DURATION_SECONDS
-  const parsedModel = parseMixtapeStemModel(params.model, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
+  const parsedModel = parseMixtapeStemModel(params.model, DEFAULT_MIXTAPE_STEM_PROFILE)
   const requestedDemucsModelName =
     normalizeText(parsedModel.demucsModel, 128) || DEFAULT_MIXTAPE_STEM_BASE_MODEL
-  const stemProfile = normalizeStemProfile(
-    parsedModel.profile,
-    DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
-  )
-
-  if (stemProfile === 'fast') {
-    const onnxRuntimeSnapshot = await probeOnnxRuntime(ffmpegPath)
-    const onnxRuntimeDir =
-      normalizeFilePath(onnxRuntimeSnapshot.runtimeDir) || resolveBundledDemucsRuntimeDir()
-    const onnxPythonPath =
-      normalizeFilePath(onnxRuntimeSnapshot.pythonPath) ||
-      resolveBundledDemucsPythonPath(onnxRuntimeDir)
-    if (!fs.existsSync(onnxPythonPath)) {
-      throw createStemError(
-        'FAST_ONNX_RUNTIME_MISSING',
-        `未找到 Fast ONNX 运行时: ${onnxPythonPath} (runtime=${onnxRuntimeSnapshot.runtimeKey})`
-      )
-    }
-    const onnxEnv = buildStemProcessEnv(onnxRuntimeDir, ffmpegPath)
-    log.info('[mixtape-stem] onnx runtime dispatch', {
-      file: filePath,
-      runtimeKey: onnxRuntimeSnapshot.runtimeKey,
-      runtimeDir: onnxRuntimeDir,
-      pythonPath: onnxPythonPath,
-      providers: onnxRuntimeSnapshot.providerCandidates
-    })
-    const onnxResult = await runOnnxFastSeparation({
-      filePath,
-      stemCacheDir,
-      onnxRuntimeSnapshot,
-      pythonPath: onnxPythonPath,
-      env: onnxEnv,
-      modelRepoPath,
-      ffmpegPath,
-      deviceSnapshot,
-      inputDurationSec,
-      onDeviceStart: params.onDeviceStart,
-      onProgress: params.onProgress
-    })
-    await fs.promises.rm(rawOutputRoot, { recursive: true, force: true }).catch(() => {})
-    return onnxResult
-  }
+  const stemProfile = normalizeStemProfile(parsedModel.profile, DEFAULT_MIXTAPE_STEM_PROFILE)
 
   const runtimeDir =
     normalizeFilePath(deviceSnapshot.runtimeDir) || resolveBundledDemucsRuntimeDir()
@@ -747,7 +307,6 @@ export const runStemSeparation = async (params: {
 
   const demucsModelCandidates = resolveDemucsModelCandidates({
     requestedModel: requestedDemucsModelName,
-    stemProfile,
     modelRepoPath
   })
   const deviceCandidates: MixtapeStemComputeDevice[] =
@@ -767,7 +326,7 @@ export const runStemSeparation = async (params: {
   try {
     for (let modelIndex = 0; modelIndex < demucsModelCandidates.length; modelIndex += 1) {
       const demucsModelName = demucsModelCandidates[modelIndex]
-      const profileOptions = DEMUCS_PROFILE_OPTIONS[stemProfile] || DEMUCS_PROFILE_OPTIONS.fast
+      const profileOptions = DEMUCS_PROFILE_OPTIONS[stemProfile] || DEMUCS_PROFILE_OPTIONS.quality
       const demucsSegmentSec = resolveDemucsSegmentSec({
         demucsModel: demucsModelName,
         requestedSegmentSec: profileOptions.segmentSec
@@ -780,7 +339,7 @@ export const runStemSeparation = async (params: {
         runtimeKey: deviceSnapshot.runtimeKey,
         runtimeDir: deviceSnapshot.runtimeDir,
         preferNoSplit,
-        cpuNoSplitEnabledForFast: false,
+        cpuNoSplitEnabled: false,
         modelRepo: modelRepoPath,
         inputDurationSec,
         deviceCandidates,

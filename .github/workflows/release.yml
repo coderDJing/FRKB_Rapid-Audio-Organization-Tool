@@ -31,13 +31,12 @@ jobs:
         with:
           path: |
             vendor/demucs/models
-            vendor/demucs/onnx
             vendor/demucs/win32-x64/runtime
             vendor/demucs/win32-x64/runtime-cpu
             vendor/demucs/win32-x64/runtime-cuda
             vendor/demucs/win32-x64/runtime-directml
             vendor/demucs/win32-x64/runtime-xpu
-          key: demucs-${{ runner.os }}-win32-x64-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/demucs-onnx-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs', 'scripts/demucs/fast_separate.py') }}
+          key: demucs-${{ runner.os }}-win32-x64-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs') }}
           restore-keys: |
             demucs-${{ runner.os }}-win32-x64-
             demucs-${{ runner.os }}-
@@ -116,8 +115,6 @@ jobs:
           }
 
           $required = @(
-            "demucs/onnx/fast_separate.py",
-            "demucs/onnx/htdemucs_6s.onnx",
             "demucs/models/htdemucs.yaml",
             "demucs/models/955717e8-8726e21a.th",
             "demucs/win32-x64/runtime/python.exe",
@@ -176,13 +173,12 @@ jobs:
         with:
           path: |
             vendor/demucs/models
-            vendor/demucs/onnx
             vendor/demucs/darwin-arm64/runtime
             vendor/demucs/darwin-arm64/runtime-cpu
             vendor/demucs/darwin-arm64/runtime-mps
             vendor/demucs/darwin-x64/runtime
             vendor/demucs/darwin-x64/runtime-cpu
-          key: demucs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/demucs-onnx-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs', 'scripts/demucs/fast_separate.py') }}
+          key: demucs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs') }}
           restore-keys: |
             demucs-${{ runner.os }}-${{ runner.arch }}-
             demucs-${{ runner.os }}-
@@ -365,8 +361,6 @@ jobs:
           fi
 
           REQUIRED_PATHS=(
-            "demucs/onnx/fast_separate.py"
-            "demucs/onnx/htdemucs_6s.onnx"
             "demucs/models/htdemucs.yaml"
             "demucs/models/955717e8-8726e21a.th"
           )

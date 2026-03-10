@@ -11,21 +11,18 @@ import type { MixtapeStemMode } from '../mixtapeDb'
 import { listMixtapeItems } from '../mixtapeDb'
 import {
   resolveBundledDemucsModelsPath,
-  resolveBundledDemucsOnnxPath,
   resolveBundledDemucsPythonPath,
-  resolveBundledDemucsRuntimeCandidates,
-  resolveBundledDemucsRuntimeDir,
-  type BundledDemucsRuntimeCandidate
+  resolveBundledDemucsRuntimeDir
 } from '../demucs'
 import {
   DEFAULT_MIXTAPE_STEM_BASE_MODEL,
-  DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE,
+  DEFAULT_MIXTAPE_STEM_PROFILE,
   normalizeMixtapeStemProfile,
   parseMixtapeStemModel,
-  resolveMixtapeStemBaseModelByProfile,
   resolveMixtapeStemModelByProfile,
   type MixtapeStemProfile
 } from '../../shared/mixtapeStemProfiles'
+import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
 import { prewarmMixtapeStemWaveformBundle } from './mixtapeStemWaveformService'
 import {
   getMixtapeStemAsset,
@@ -40,8 +37,6 @@ import { findSongListRoot } from './cacheMaintenance'
 export const STEM_GPU_JOB_CONCURRENCY_MIN = 1
 export const STEM_GPU_JOB_CONCURRENCY_MAX = 3
 export const STEM_GPU_JOB_CONCURRENCY_DIRECTML_MAX = 3
-export const STEM_ONNX_DIRECTML_CONCURRENCY_WARMUP_SUCCESS = 3
-export const STEM_ONNX_DIRECTML_CONCURRENCY_HIGH_SUCCESS = 12
 export const STEM_SYSTEM_MEMORY_GB_FOR_GPU_CONCURRENCY_2 = 16
 export const STEM_SYSTEM_MEMORY_GB_FOR_GPU_CONCURRENCY_3 = 24
 export const STEM_FREE_MEMORY_GB_FOR_GPU_CONCURRENCY_2 = 5
@@ -59,38 +54,20 @@ export const STEM_DEVICE_PROBE_TIMEOUT_MS = 15_000
 export const STEM_DEVICE_COMPATIBILITY_TIMEOUT_MS = 12_000
 export const STEM_DEVICE_PROBE_CACHE_TTL_MS = 5 * 60 * 1000
 export const STEM_WINDOWS_GPU_ADAPTER_PROBE_TIMEOUT_MS = 6_000
-export const ONNX_DIRECTML_FAILURE_COOLDOWN_MS = 30 * 60 * 1000
-export const STEM_RUNTIME_STATE_FILE_NAME = 'mixtape-stem-runtime-state-v1.json'
 export const DEMUCS_NO_SPLIT_MAX_DURATION_SECONDS = 7 * 60
 export const DEMUCS_HTDEMUCS_MAX_SEGMENT_SECONDS = 7.8
 export const DEMUCS_PROFILE_OPTIONS: Record<
   MixtapeStemProfile,
   { shifts: string; overlap: string; segmentSec: string }
 > = {
-  fast: {
-    shifts: '0',
-    overlap: '0.1',
-    segmentSec: '7'
-  },
   quality: {
     shifts: '1',
     overlap: '0.25',
     segmentSec: '11'
   }
 }
-export const ONNX_FAST_SCRIPT_FILE_NAME = 'fast_separate.py'
-export const ONNX_FAST_MODEL_FILE_NAME = 'htdemucs_6s.onnx'
-export const ONNX_FAST_PROGRESS_PREFIX = 'FRKB_ONNX_PROGRESS='
-export const ONNX_FAST_RESULT_PREFIX = 'FRKB_ONNX_RESULT='
-export const DEFAULT_STEM_MODEL = resolveMixtapeStemModelByProfile(
-  DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
-)
-export const DEFAULT_STEM_VERSION =
-  'demucs-cli-builtin-20260306-fast-reconstruct-v3-adaptive-refine'
-export const LEGACY_FAST_STEM_VERSIONS = new Set([
-  'demucs-cli-builtin-20260306-fast-reconstruct-v1',
-  'demucs-cli-builtin-20260306-fast-reconstruct-v2-f32-overlap35'
-])
+export const DEFAULT_STEM_MODEL = resolveMixtapeStemModelByProfile(DEFAULT_MIXTAPE_STEM_PROFILE)
+export const DEFAULT_STEM_VERSION = 'demucs-cli-builtin-20260309-stem-v1'
 export const STEM_CACHE_DIR_NAME = 'stems'
 
 export type MixtapeStemQueueTarget = {
@@ -126,54 +103,6 @@ export type MixtapeStemRuntimeProgress = {
   processedSec: number | null
   totalSec: number | null
   etaSec: number | null
-}
-
-export type MixtapeStemOnnxProvider = 'directml' | 'cpu'
-
-export type MixtapeStemOnnxProgressPayload = {
-  percent?: unknown
-  provider?: unknown
-  chunkIndex?: unknown
-  totalChunks?: unknown
-}
-
-export type MixtapeStemOnnxResultPayload = {
-  provider?: unknown
-  vocalPath?: unknown
-  instPath?: unknown
-  bassPath?: unknown
-  drumsPath?: unknown
-}
-
-export type MixtapeStemOnnxRuntimeProbeEntry = {
-  runtimeKey: string
-  runtimeDir: string
-  pythonPath: string
-  providerNames: string[]
-  providerCandidates: MixtapeStemOnnxProvider[]
-  probeError: string
-}
-
-export type MixtapeStemOnnxRuntimeProbeSnapshot = {
-  checkedAt: number
-  runtimeKey: string
-  runtimeDir: string
-  pythonPath: string
-  providerCandidates: MixtapeStemOnnxProvider[]
-  runtimeCandidates: Array<{
-    runtimeKey: string
-    providerNames: string[]
-    providerCandidates: MixtapeStemOnnxProvider[]
-    probeError: string | null
-  }>
-}
-
-export type MixtapeStemOnnxDirectmlRuntimeStats = {
-  successCount: number
-  failureCount: number
-  consecutiveSuccessCount: number
-  lastSuccessAt: number
-  lastFailureAt: number
 }
 
 export type MixtapeStemDeviceProbeSnapshot = {
@@ -248,26 +177,10 @@ export const inFlightJobMap = new Map<string, MixtapeStemQueueJob>()
 export let activeWorkers = 0
 export let stemDeviceProbeSnapshot: MixtapeStemDeviceProbeSnapshot | null = null
 export let stemDeviceProbePromise: Promise<MixtapeStemDeviceProbeSnapshot> | null = null
-export let stemOnnxRuntimeProbeSnapshot: MixtapeStemOnnxRuntimeProbeSnapshot | null = null
-export let stemOnnxRuntimeProbePromise: Promise<MixtapeStemOnnxRuntimeProbeSnapshot> | null = null
-export let stemOnnxDirectmlFailureAt = 0
-export let stemOnnxDirectmlFailureReason = ''
-export let stemOnnxDirectmlAttemptGate: Promise<void> | null = null
-export let stemOnnxDirectmlAttemptGateResolve: (() => void) | null = null
-export let stemOnnxDirectmlRuntimeStats: MixtapeStemOnnxDirectmlRuntimeStats = {
-  successCount: 0,
-  failureCount: 0,
-  consecutiveSuccessCount: 0,
-  lastSuccessAt: 0,
-  lastFailureAt: 0
-}
-export let stemRuntimeStateLoaded = false
-export let stemRuntimeStatePersistTimer: NodeJS.Timeout | null = null
-export let stemRuntimeStatePersisting = false
 export let stemQueueConcurrencySnapshot = 0
 export const cpuSlowHintNotifiedPlaylistIdSet = new Set<string>()
 
-export const normalizeStemMode = (_value: unknown): MixtapeStemMode => '4stems'
+export const normalizeStemMode = (_value: unknown): MixtapeStemMode => FIXED_MIXTAPE_STEM_MODE
 
 export const normalizeText = (value: unknown, maxLen = 2000): string => {
   if (typeof value !== 'string') return ''
@@ -292,98 +205,6 @@ export const normalizePositiveTimestamp = (value: unknown): number => {
   const parsed = Math.floor(Number(value))
   if (!Number.isFinite(parsed) || parsed <= 0) return 0
   return parsed
-}
-
-export const resolveStemRuntimeStateFilePath = (): string => {
-  try {
-    const userDataDir = app.getPath('userData')
-    if (!userDataDir) return ''
-    return path.join(userDataDir, 'cache', STEM_RUNTIME_STATE_FILE_NAME)
-  } catch {
-    return ''
-  }
-}
-
-export const schedulePersistStemRuntimeState = () => {
-  if (stemRuntimeStatePersistTimer) return
-  stemRuntimeStatePersistTimer = setTimeout(() => {
-    stemRuntimeStatePersistTimer = null
-    void persistStemRuntimeState()
-  }, 800)
-}
-
-export const persistStemRuntimeState = async () => {
-  if (stemRuntimeStatePersisting) return
-  stemRuntimeStatePersisting = true
-  try {
-    const filePath = resolveStemRuntimeStateFilePath()
-    if (!filePath) return
-    const payload = {
-      version: 1,
-      updatedAt: Date.now(),
-      onnxDirectmlFailureAt: stemOnnxDirectmlFailureAt,
-      onnxDirectmlFailureReason: stemOnnxDirectmlFailureReason || '',
-      onnxDirectmlRuntimeStats: {
-        successCount: Math.max(0, stemOnnxDirectmlRuntimeStats.successCount || 0),
-        failureCount: Math.max(0, stemOnnxDirectmlRuntimeStats.failureCount || 0),
-        consecutiveSuccessCount: Math.max(
-          0,
-          stemOnnxDirectmlRuntimeStats.consecutiveSuccessCount || 0
-        ),
-        lastSuccessAt: Math.max(0, stemOnnxDirectmlRuntimeStats.lastSuccessAt || 0),
-        lastFailureAt: Math.max(0, stemOnnxDirectmlRuntimeStats.lastFailureAt || 0)
-      }
-    }
-    await fs.promises.mkdir(path.dirname(filePath), { recursive: true })
-    await fs.promises.writeFile(filePath, JSON.stringify(payload), 'utf8')
-  } catch (error) {
-    log.warn('[mixtape-stem] persist runtime state failed', {
-      error: normalizeText(error instanceof Error ? error.message : String(error || ''), 500)
-    })
-  } finally {
-    stemRuntimeStatePersisting = false
-  }
-}
-
-export const loadStemRuntimeStateOnce = () => {
-  if (stemRuntimeStateLoaded) return
-  stemRuntimeStateLoaded = true
-  try {
-    const filePath = resolveStemRuntimeStateFilePath()
-    if (!filePath || !fs.existsSync(filePath)) return
-    const raw = fs.readFileSync(filePath, 'utf8')
-    if (!raw) return
-    const parsed = JSON.parse(raw) as {
-      onnxDirectmlFailureAt?: unknown
-      onnxDirectmlFailureReason?: unknown
-      onnxDirectmlRuntimeStats?: {
-        successCount?: unknown
-        failureCount?: unknown
-        consecutiveSuccessCount?: unknown
-        lastSuccessAt?: unknown
-        lastFailureAt?: unknown
-      }
-    }
-    stemOnnxDirectmlFailureAt = normalizePositiveTimestamp(parsed?.onnxDirectmlFailureAt)
-    stemOnnxDirectmlFailureReason = normalizeText(parsed?.onnxDirectmlFailureReason, 600)
-    const stats = parsed?.onnxDirectmlRuntimeStats || {}
-    stemOnnxDirectmlRuntimeStats = {
-      successCount: normalizeNonNegativeInt(stats.successCount),
-      failureCount: normalizeNonNegativeInt(stats.failureCount),
-      consecutiveSuccessCount: normalizeNonNegativeInt(stats.consecutiveSuccessCount),
-      lastSuccessAt: normalizePositiveTimestamp(stats.lastSuccessAt),
-      lastFailureAt: normalizePositiveTimestamp(stats.lastFailureAt)
-    }
-    log.info('[mixtape-stem] loaded runtime state cache', {
-      failureAt: stemOnnxDirectmlFailureAt || null,
-      failureReason: stemOnnxDirectmlFailureReason || null,
-      stats: stemOnnxDirectmlRuntimeStats
-    })
-  } catch (error) {
-    log.warn('[mixtape-stem] load runtime state failed', {
-      error: normalizeText(error instanceof Error ? error.message : String(error || ''), 500)
-    })
-  }
 }
 
 export const toDemucsSegmentSecArg = (value: number): string => {
@@ -411,12 +232,12 @@ export const normalizePlaylistId = (value: unknown): string => normalizeText(val
 
 export const normalizeStemProfile = (
   value: unknown,
-  fallback: MixtapeStemProfile = DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
+  fallback: MixtapeStemProfile = DEFAULT_MIXTAPE_STEM_PROFILE
 ): MixtapeStemProfile => normalizeMixtapeStemProfile(normalizeText(value, 24), fallback)
 
 export const normalizeModel = (
   value: unknown,
-  fallbackProfile: MixtapeStemProfile = DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
+  fallbackProfile: MixtapeStemProfile = DEFAULT_MIXTAPE_STEM_PROFILE
 ): string => {
   const parsed = parseMixtapeStemModel(normalizeText(value, 128), fallbackProfile)
   return normalizeText(parsed.requestedModel, 128) || DEFAULT_STEM_MODEL
@@ -425,11 +246,6 @@ export const normalizeModel = (
 export const normalizeStemVersion = (value: unknown, model?: string): string => {
   const normalized = normalizeText(value, 128)
   if (!normalized) return DEFAULT_STEM_VERSION
-  const parsedModel = parseMixtapeStemModel(model, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
-  const profile = normalizeStemProfile(parsedModel.profile, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
-  if (profile === 'fast' && LEGACY_FAST_STEM_VERSIONS.has(normalized)) {
-    return DEFAULT_STEM_VERSION
-  }
   return normalized
 }
 
@@ -645,23 +461,6 @@ export const resolveAssetRequiredPaths = (
   return [result.vocalPath, result.instPath, result.bassPath, result.drumsPath]
     .map((item) => normalizeFilePath(item))
     .filter(Boolean)
-}
-
-export const isFastStemModel = (model: string): boolean => {
-  const parsed = parseMixtapeStemModel(
-    normalizeText(model, 128),
-    DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
-  )
-  const profile = normalizeStemProfile(parsed.profile, DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE)
-  return profile === 'fast'
-}
-
-export const hasFastStemJobInQueue = (): boolean => {
-  if (pendingQueue.some((job) => isFastStemModel(job.model))) return true
-  for (const job of inFlightJobMap.values()) {
-    if (isFastStemModel(job.model)) return true
-  }
-  return false
 }
 
 export const hasReadyStemAssets = (

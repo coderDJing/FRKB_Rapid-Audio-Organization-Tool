@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import { is } from '@electron-toolkit/utils'
 import type { MixtapeStemMode } from '../mixtapeDb'
+import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
 import { getLibraryDb } from '../libraryDb'
 import { log } from '../log'
 import { resolveMixtapeStemStatusFromInfo } from '../mixtapeStemDb'
@@ -44,7 +45,7 @@ const normalizeFilePath = (value: unknown): string => normalizeText(value, 4000)
 
 const normalizePlaylistId = (value: unknown): string => normalizeText(value, 80)
 
-const normalizeStemMode = (_value: unknown): MixtapeStemMode => '4stems'
+const normalizeStemMode = (_value: unknown): MixtapeStemMode => FIXED_MIXTAPE_STEM_MODE
 
 const parseTrackInfoJson = (raw: unknown): Record<string, any> => {
   if (typeof raw !== 'string' || !raw.trim()) return {}
@@ -79,7 +80,7 @@ const collectBackgroundResumeGroups = (
         `SELECT i.playlist_uuid, p.stem_mode, i.file_path, i.info_json
          FROM mixtape_items i
          INNER JOIN mixtape_projects p ON p.playlist_uuid = i.playlist_uuid
-         WHERE p.mix_mode = 'stem' AND p.stem_strategy_confirmed = 1
+         WHERE p.mix_mode = 'stem'
          ORDER BY i.playlist_uuid ASC, i.mix_order ASC, i.created_at_ms ASC`
       )
       .all()
@@ -203,7 +204,8 @@ const runBackgroundResumeScan = async () => {
         stemMode: group.stemMode,
         force: false,
         model: group.model,
-        stemVersion: group.stemVersion
+        stemVersion: group.stemVersion,
+        source: 'background'
       })
       queued += result.queued
       merged += result.merged

@@ -13,7 +13,6 @@ import {
   appendMixtapeItems,
   getMixtapeProjectMixMode,
   getMixtapeProjectStemConfig,
-  getMixtapeProjectStemMode,
   listMixtapeItems,
   listMixtapeItemsByItemIds,
   listMixtapeItemsByFilePath,
@@ -22,8 +21,7 @@ import {
   removeMixtapeItemsByFilePath,
   reorderMixtapeItems,
   upsertMixtapeProjectMixMode,
-  upsertMixtapeProjectStemProfiles,
-  upsertMixtapeProjectStemMode,
+  upsertMixtapeProjectStemProfile,
   updateMixtapeItemFilePathsById,
   upsertMixtapeItemBpmByFilePath,
   upsertMixtapeItemGridByFilePath,
@@ -35,6 +33,7 @@ import {
   type MixtapeStemMode
 } from '../mixtapeDb'
 import { summarizeMixtapeStemStatusByPlaylist } from '../mixtapeStemDb'
+import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
 import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { queueMixtapeRawWaveforms } from '../services/mixtapeRawWaveformQueue'
 import { queueMixtapeWaveformHires } from '../services/mixtapeWaveformHiresQueue'
@@ -165,6 +164,7 @@ const analyzeMixtapeBpmBatch = async (
     }
 
     function handleFailure(worker: Worker, error?: unknown) {
+      if (!workers.includes(worker) && !busy.has(worker)) return
       clearWorkerTimer(worker)
       const currentJobId = busy.get(worker)
       if (currentJobId !== undefined) {
@@ -303,6 +303,21 @@ const analyzeMixtapeBpmBatch = async (
     }
 
     const handleMessage = (worker: Worker, payload: any) => {
+      const hasProgressPayload =
+        payload &&
+        typeof payload === 'object' &&
+        Object.prototype.hasOwnProperty.call(payload, 'progress')
+      if (hasProgressPayload) {
+        return
+      }
+      const hasFinalPayload =
+        payload &&
+        typeof payload === 'object' &&
+        (Object.prototype.hasOwnProperty.call(payload, 'result') ||
+          Object.prototype.hasOwnProperty.call(payload, 'error'))
+      if (!hasFinalPayload) {
+        return
+      }
       clearWorkerTimer(worker)
       const currentJobId = busy.get(worker)
       if (currentJobId !== undefined) {
@@ -337,8 +352,13 @@ const analyzeMixtapeBpmBatch = async (
       worker.on('message', (payload) => handleMessage(worker, payload))
       worker.on('error', (error) => handleFailure(worker, error))
       worker.on('exit', (code) => {
+        const activeJobId = busy.get(worker)
         if (code !== 0) {
           handleFailure(worker, new Error(`worker exited with code ${code}`))
+          return
+        }
+        if (activeJobId !== undefined) {
+          handleFailure(worker, new Error('worker exited before returning analysis result'))
         }
       })
     }
@@ -603,10 +623,7 @@ export function registerMixtapeHandlers() {
       items,
       recovery,
       mixMode: stemConfig.mixMode,
-      stemMode: stemConfig.stemMode,
-      stemRealtimeProfile: stemConfig.stemRealtimeProfile,
-      stemExportProfile: stemConfig.stemExportProfile,
-      stemStrategyConfirmed: stemConfig.stemStrategyConfirmed,
+      stemProfile: stemConfig.stemProfile,
       stemSummary
     }
   })
@@ -627,66 +644,33 @@ export function registerMixtapeHandlers() {
     }
   )
 
-  ipcMain.handle('mixtape:project:get-stem-mode', async (_e, payload?: { playlistId?: string }) => {
-    const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
-    return {
-      stemMode: getMixtapeProjectStemMode(playlistId)
-    }
-  })
-
   ipcMain.handle(
-    'mixtape:project:set-stem-mode',
-    async (_e, payload?: { playlistId?: string; stemMode?: string }) => {
-      const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
-      const stemModeRaw = typeof payload?.stemMode === 'string' ? payload.stemMode : '4stems'
-      return upsertMixtapeProjectStemMode(playlistId, stemModeRaw as MixtapeStemMode)
-    }
-  )
-
-  ipcMain.handle(
-    'mixtape:project:get-stem-profiles',
+    'mixtape:project:get-stem-profile',
     async (_e, payload?: { playlistId?: string }) => {
       const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
       const config = getMixtapeProjectStemConfig(playlistId)
       return {
-        stemRealtimeProfile: config.stemRealtimeProfile,
-        stemExportProfile: config.stemExportProfile,
-        stemStrategyConfirmed: config.stemStrategyConfirmed
+        stemProfile: config.stemProfile
       }
     }
   )
 
   ipcMain.handle(
-    'mixtape:project:set-stem-profiles',
+    'mixtape:project:set-stem-profile',
     async (
       _e,
       payload?: {
         playlistId?: string
-        stemRealtimeProfile?: string
-        stemExportProfile?: string
-        markStrategyConfirmed?: boolean
+        stemProfile?: string
       }
     ) => {
       const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
       const current = getMixtapeProjectStemConfig(playlistId)
-      return upsertMixtapeProjectStemProfiles(
+      return upsertMixtapeProjectStemProfile(
         playlistId,
-        {
-          stemRealtimeProfile:
-            typeof payload?.stemRealtimeProfile === 'string'
-              ? (payload.stemRealtimeProfile as any)
-              : current.stemRealtimeProfile,
-          stemExportProfile:
-            typeof payload?.stemExportProfile === 'string'
-              ? (payload.stemExportProfile as any)
-              : current.stemExportProfile
-        },
-        {
-          markStrategyConfirmed:
-            typeof payload?.markStrategyConfirmed === 'boolean'
-              ? payload.markStrategyConfirmed
-              : true
-        }
+        typeof payload?.stemProfile === 'string'
+          ? (payload.stemProfile as any)
+          : current.stemProfile
       )
     }
   )
@@ -708,9 +692,7 @@ export function registerMixtapeHandlers() {
       const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
       const filePaths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
       const stemModeRaw =
-        typeof payload?.stemMode === 'string'
-          ? payload.stemMode
-          : getMixtapeProjectStemMode(playlistId)
+        typeof payload?.stemMode === 'string' ? payload.stemMode : FIXED_MIXTAPE_STEM_MODE
       return enqueueMixtapeStemJobs({
         playlistId,
         filePaths,
@@ -739,9 +721,7 @@ export function registerMixtapeHandlers() {
     ) => {
       const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
       const stemModeRaw =
-        typeof payload?.stemMode === 'string'
-          ? payload.stemMode
-          : getMixtapeProjectStemMode(playlistId)
+        typeof payload?.stemMode === 'string' ? payload.stemMode : FIXED_MIXTAPE_STEM_MODE
       return retryMixtapeStemJobs({
         playlistId,
         stemMode: stemModeRaw as MixtapeStemMode,
@@ -863,17 +843,17 @@ export function registerMixtapeHandlers() {
       }
 
       const targetStemConfig = getMixtapeProjectStemConfig(playlistId)
-      const targetPlaylistTypeKey = `${targetStemConfig.mixMode}::${targetStemConfig.stemMode}::${targetStemConfig.stemRealtimeProfile}`
-      const playlistTypeKeyById = new Map<string, string>([[playlistId, targetPlaylistTypeKey]])
-      const resolvePlaylistTypeKey = (playlistUuid: string) => {
+      const targetPlaylistMixMode = targetStemConfig.mixMode
+      const playlistMixModeById = new Map<string, string>([[playlistId, targetPlaylistMixMode]])
+      const resolvePlaylistMixMode = (playlistUuid: string) => {
         const normalized = normalizeText(playlistUuid)
         if (!normalized) return ''
-        const cached = playlistTypeKeyById.get(normalized)
+        const cached = playlistMixModeById.get(normalized)
         if (cached) return cached
         const config = getMixtapeProjectStemConfig(normalized)
-        const key = `${config.mixMode}::${config.stemMode}::${config.stemRealtimeProfile}`
-        playlistTypeKeyById.set(normalized, key)
-        return key
+        const mixMode = config.mixMode
+        playlistMixModeById.set(normalized, mixMode)
+        return mixMode
       }
       const sourceRefsByPlaylist = new Map<string, Set<string>>()
       for (const item of inputItems) {
@@ -889,7 +869,7 @@ export function registerMixtapeHandlers() {
 
       const reusableInfoBySourceKey = new Map<string, Record<string, any>>()
       for (const [sourcePlaylistId, sourceItemIdSet] of sourceRefsByPlaylist.entries()) {
-        if (resolvePlaylistTypeKey(sourcePlaylistId) !== targetPlaylistTypeKey) continue
+        if (resolvePlaylistMixMode(sourcePlaylistId) !== targetPlaylistMixMode) continue
         const sourceItemIds = Array.from(sourceItemIdSet)
         const sourceRows = listMixtapeItemsByItemIds(sourcePlaylistId, sourceItemIds)
         for (const row of sourceRows) {
@@ -914,7 +894,7 @@ export function registerMixtapeHandlers() {
         for (const row of candidateRows) {
           const candidatePlaylistId = normalizeText(row?.playlistUuid)
           if (!candidatePlaylistId) continue
-          if (resolvePlaylistTypeKey(candidatePlaylistId) !== targetPlaylistTypeKey) continue
+          if (resolvePlaylistMixMode(candidatePlaylistId) !== targetPlaylistMixMode) continue
           const analysisInfo = pickAnalysisInfo(parseInfoJson(row?.infoJson))
           if (!analysisInfo) continue
           const score =
@@ -993,15 +973,14 @@ export function registerMixtapeHandlers() {
             playlistId,
             fileCount: stemEnqueueFilePaths.length,
             mixMode: targetStemConfig.mixMode,
-            stemMode: targetStemConfig.stemMode,
-            stemStrategyConfirmed: targetStemConfig.stemStrategyConfirmed,
+            stemMode: FIXED_MIXTAPE_STEM_MODE,
             appended: result?.inserted ?? 0
           })
           void enqueueMixtapeStemJobs({
             playlistId,
             filePaths: stemEnqueueFilePaths,
-            stemMode: targetStemConfig.stemMode,
-            profile: targetStemConfig.stemRealtimeProfile
+            stemMode: FIXED_MIXTAPE_STEM_MODE,
+            profile: targetStemConfig.stemProfile
           }).catch((error) => {
             log.error('[mixtape-stem] enqueue after append failed', {
               playlistId,

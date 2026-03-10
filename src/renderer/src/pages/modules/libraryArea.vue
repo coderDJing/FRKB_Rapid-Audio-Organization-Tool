@@ -158,12 +158,7 @@ const createNow = async () => {
     type: isMixtapeLibrary.value ? 'mixtapeList' : 'songList',
     dirName: name,
     mixMode: isMixtapeLibrary.value ? projectMode?.mixMode || 'stem' : undefined,
-    stemRealtimeProfile: isMixtapeLibrary.value
-      ? projectMode?.stemRealtimeProfile || 'fast'
-      : undefined,
-    stemExportProfile: isMixtapeLibrary.value
-      ? projectMode?.stemExportProfile || 'quality'
-      : undefined,
+    stemProfile: isMixtapeLibrary.value ? projectMode?.stemProfile || 'quality' : undefined,
     order: 1,
     children: []
   } as IDir)
@@ -210,8 +205,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
         type: 'mixtapeList',
         dirName: '',
         mixMode: projectMode.mixMode,
-        stemRealtimeProfile: projectMode.stemRealtimeProfile,
-        stemExportProfile: projectMode.stemExportProfile
+        stemProfile: projectMode.stemProfile
       })
       setPendingMixtapeProjectMode(newUuid, projectMode)
     } else if (result.menuName == 'library.createFolder') {

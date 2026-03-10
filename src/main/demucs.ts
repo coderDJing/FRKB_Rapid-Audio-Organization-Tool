@@ -39,10 +39,6 @@ export function resolveBundledDemucsModelsPath(): string {
   return path.join(resolveBundledDemucsRootPath(), 'models')
 }
 
-export function resolveBundledDemucsOnnxPath(): string {
-  return path.join(resolveBundledDemucsRootPath(), 'onnx')
-}
-
 export type BundledDemucsRuntimeCandidate = {
   key: string
   runtimeDir: string

@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron'
+import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import {
@@ -186,7 +187,7 @@ export function registerCacheHandlers() {
         items?: Array<{
           listRoot?: string
           sourceFilePath?: string
-          stemMode?: '4stems'
+          stemMode?: typeof FIXED_MIXTAPE_STEM_MODE
           stemModel?: string
           stemVersion?: string
           stemPaths?: {
@@ -219,7 +220,7 @@ export function registerCacheHandlers() {
           items.push({ sourceFilePath: '', stems: [] })
           continue
         }
-        const stemMode = '4stems'
+        const stemMode = FIXED_MIXTAPE_STEM_MODE
         try {
           const result = await ensureMixtapeStemWaveformBundle({
             listRoot: typeof request?.listRoot === 'string' ? request.listRoot.trim() : '',

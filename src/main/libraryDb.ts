@@ -4,7 +4,7 @@ import store from './store'
 import { log } from './log'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
-const SCHEMA_VERSION = 17
+const SCHEMA_VERSION = 20
 
 type SqliteDatabase = any
 
@@ -211,20 +211,16 @@ function createDatabase(dbPath: string): SqliteDatabase {
     instance.exec(`
       CREATE TABLE IF NOT EXISTS mixtape_projects (
         playlist_uuid TEXT PRIMARY KEY,
-        mix_mode TEXT NOT NULL DEFAULT 'stem' CHECK (mix_mode IN ('traditional', 'stem')),
+        mix_mode TEXT NOT NULL DEFAULT 'stem' CHECK (mix_mode IN ('eq', 'stem')),
         stem_mode TEXT NOT NULL DEFAULT '4stems' CHECK (stem_mode IN ('3stems', '4stems')),
-        stem_realtime_profile TEXT NOT NULL DEFAULT 'fast' CHECK (stem_realtime_profile IN ('fast', 'quality')),
-        stem_export_profile TEXT NOT NULL DEFAULT 'quality' CHECK (stem_export_profile IN ('fast', 'quality')),
-        stem_strategy_confirmed INTEGER NOT NULL DEFAULT 0 CHECK (stem_strategy_confirmed IN (0, 1)),
+        stem_profile TEXT NOT NULL DEFAULT 'quality' CHECK (stem_profile IN ('quality')),
         created_at_ms INTEGER NOT NULL,
         updated_at_ms INTEGER NOT NULL,
         FOREIGN KEY (playlist_uuid) REFERENCES library_nodes(uuid) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_mixtape_projects_mix_mode ON mixtape_projects(mix_mode);
       CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_mode ON mixtape_projects(stem_mode);
-      CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_realtime_profile ON mixtape_projects(stem_realtime_profile);
-      CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_export_profile ON mixtape_projects(stem_export_profile);
-      CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_strategy_confirmed ON mixtape_projects(stem_strategy_confirmed);
+      CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_profile ON mixtape_projects(stem_profile);
     `)
   }
   if (userVersion < 12) {
@@ -273,53 +269,28 @@ function createDatabase(dbPath: string): SqliteDatabase {
   if (userVersion < 14) {
     try {
       instance.exec(
-        `ALTER TABLE mixtape_projects ADD COLUMN stem_realtime_profile TEXT NOT NULL DEFAULT 'fast' CHECK (stem_realtime_profile IN ('fast', 'quality'))`
-      )
-    } catch {}
-    try {
-      instance.exec(
-        `ALTER TABLE mixtape_projects ADD COLUMN stem_export_profile TEXT NOT NULL DEFAULT 'quality' CHECK (stem_export_profile IN ('fast', 'quality'))`
+        `ALTER TABLE mixtape_projects ADD COLUMN stem_profile TEXT NOT NULL DEFAULT 'quality' CHECK (stem_profile IN ('quality'))`
       )
     } catch {}
     instance.exec(`
       UPDATE mixtape_projects
-      SET stem_realtime_profile = CASE
-            WHEN stem_realtime_profile IN ('fast', 'quality') THEN stem_realtime_profile
-            ELSE 'fast'
-          END,
-          stem_export_profile = CASE
-            WHEN stem_export_profile IN ('fast', 'quality') THEN stem_export_profile
-            ELSE 'quality'
-          END;
-      CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_realtime_profile ON mixtape_projects(stem_realtime_profile);
-      CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_export_profile ON mixtape_projects(stem_export_profile);
+      SET stem_profile = 'quality';
+      CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_profile ON mixtape_projects(stem_profile);
     `)
   }
   if (userVersion < 15) {
-    try {
-      instance.exec(
-        `ALTER TABLE mixtape_projects ADD COLUMN stem_strategy_confirmed INTEGER NOT NULL DEFAULT 0 CHECK (stem_strategy_confirmed IN (0, 1))`
-      )
-    } catch {}
-    instance.exec(`
-      UPDATE mixtape_projects
-      SET stem_strategy_confirmed = CASE
-            WHEN stem_strategy_confirmed IN (0, 1) THEN stem_strategy_confirmed
-            ELSE 0
-          END;
-      CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_strategy_confirmed ON mixtape_projects(stem_strategy_confirmed);
-    `)
   }
   if (userVersion < 16) {
     try {
       instance.exec(
-        `ALTER TABLE mixtape_projects ADD COLUMN mix_mode TEXT NOT NULL DEFAULT 'stem' CHECK (mix_mode IN ('traditional', 'stem'))`
+        `ALTER TABLE mixtape_projects ADD COLUMN mix_mode TEXT NOT NULL DEFAULT 'stem' CHECK (mix_mode IN ('eq', 'stem'))`
       )
     } catch {}
     instance.exec(`
       UPDATE mixtape_projects
       SET mix_mode = CASE
-            WHEN mix_mode IN ('traditional', 'stem') THEN mix_mode
+            WHEN mix_mode IN ('eq', 'stem') THEN mix_mode
+            WHEN mix_mode = 'traditional' THEN 'eq'
             ELSE 'stem'
           END;
       CREATE INDEX IF NOT EXISTS idx_mixtape_projects_mix_mode ON mixtape_projects(mix_mode);
@@ -352,9 +323,7 @@ function createDatabase(dbPath: string): SqliteDatabase {
     if (!columns.has('inst_path')) {
       if (columns.has('harmonic_path')) {
         try {
-          instance.exec(
-            `ALTER TABLE mixtape_stem_assets RENAME COLUMN harmonic_path TO inst_path`
-          )
+          instance.exec(`ALTER TABLE mixtape_stem_assets RENAME COLUMN harmonic_path TO inst_path`)
         } catch {}
       }
       columns = listTableColumns(instance, 'mixtape_stem_assets')
@@ -377,6 +346,158 @@ function createDatabase(dbPath: string): SqliteDatabase {
           WHERE harmonic_path IS NOT NULL AND harmonic_path != '';
         `)
       } catch {}
+    }
+  }
+  if (userVersion < 18) {
+    instance.exec(`
+      CREATE TABLE IF NOT EXISTS mixtape_projects__next (
+        playlist_uuid TEXT PRIMARY KEY,
+        mix_mode TEXT NOT NULL DEFAULT 'stem' CHECK (mix_mode IN ('eq', 'stem')),
+        stem_mode TEXT NOT NULL DEFAULT '4stems' CHECK (stem_mode IN ('3stems', '4stems')),
+        stem_profile TEXT NOT NULL DEFAULT 'quality' CHECK (stem_profile IN ('quality')),
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        FOREIGN KEY (playlist_uuid) REFERENCES library_nodes(uuid) ON DELETE CASCADE
+      );
+    `)
+    const projectColumns = listTableColumns(instance, 'mixtape_projects')
+    const stemProfileSelect = projectColumns.has('stem_profile') ? 'stem_profile' : `'quality'`
+    instance.exec(`
+      INSERT INTO mixtape_projects__next (
+        playlist_uuid,
+        mix_mode,
+        stem_mode,
+        stem_profile,
+        created_at_ms,
+        updated_at_ms
+      )
+      SELECT
+        playlist_uuid,
+        CASE
+          WHEN mix_mode = 'traditional' THEN 'eq'
+          WHEN mix_mode = 'eq' THEN 'eq'
+          ELSE 'stem'
+        END,
+        CASE
+          WHEN stem_mode IN ('3stems', '4stems') THEN stem_mode
+          ELSE '4stems'
+        END,
+        ${stemProfileSelect},
+        created_at_ms,
+        updated_at_ms
+      FROM mixtape_projects;
+
+      DROP TABLE mixtape_projects;
+      ALTER TABLE mixtape_projects__next RENAME TO mixtape_projects;
+      CREATE INDEX IF NOT EXISTS idx_mixtape_projects_mix_mode ON mixtape_projects(mix_mode);
+      CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_mode ON mixtape_projects(stem_mode);
+      CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_profile ON mixtape_projects(stem_profile);
+    `)
+  }
+  if (userVersion < 19) {
+    const projectColumns = listTableColumns(instance, 'mixtape_projects')
+    if (projectColumns.has('stem_profile')) {
+      instance.exec(`
+        UPDATE mixtape_projects
+        SET mix_mode = CASE
+              WHEN mix_mode = 'traditional' THEN 'eq'
+              WHEN mix_mode = 'eq' THEN 'eq'
+              ELSE 'stem'
+            END,
+            stem_profile = 'quality';
+        CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_profile ON mixtape_projects(stem_profile);
+      `)
+    } else {
+      instance.exec(`
+        CREATE TABLE IF NOT EXISTS mixtape_projects__next_v19 (
+          playlist_uuid TEXT PRIMARY KEY,
+          mix_mode TEXT NOT NULL DEFAULT 'stem' CHECK (mix_mode IN ('eq', 'stem')),
+          stem_mode TEXT NOT NULL DEFAULT '4stems' CHECK (stem_mode IN ('3stems', '4stems')),
+          stem_profile TEXT NOT NULL DEFAULT 'quality' CHECK (stem_profile IN ('quality')),
+          created_at_ms INTEGER NOT NULL,
+          updated_at_ms INTEGER NOT NULL,
+          FOREIGN KEY (playlist_uuid) REFERENCES library_nodes(uuid) ON DELETE CASCADE
+        );
+
+        INSERT INTO mixtape_projects__next_v19 (
+          playlist_uuid,
+          mix_mode,
+          stem_mode,
+          stem_profile,
+          created_at_ms,
+          updated_at_ms
+        )
+        SELECT
+          playlist_uuid,
+          CASE
+            WHEN mix_mode = 'traditional' THEN 'eq'
+            WHEN mix_mode = 'eq' THEN 'eq'
+            ELSE 'stem'
+          END,
+          CASE
+            WHEN stem_mode IN ('3stems', '4stems') THEN stem_mode
+            ELSE '4stems'
+          END,
+          'quality',
+          created_at_ms,
+          updated_at_ms
+        FROM mixtape_projects;
+
+        DROP TABLE mixtape_projects;
+        ALTER TABLE mixtape_projects__next_v19 RENAME TO mixtape_projects;
+        CREATE INDEX IF NOT EXISTS idx_mixtape_projects_mix_mode ON mixtape_projects(mix_mode);
+        CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_mode ON mixtape_projects(stem_mode);
+        CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_profile ON mixtape_projects(stem_profile);
+      `)
+    }
+  }
+  if (userVersion < 20) {
+    const projectColumns = listTableColumns(instance, 'mixtape_projects')
+    if (projectColumns.has('stem_strategy_confirmed')) {
+      instance.exec(`
+        CREATE TABLE IF NOT EXISTS mixtape_projects__next_v20 (
+          playlist_uuid TEXT PRIMARY KEY,
+          mix_mode TEXT NOT NULL DEFAULT 'stem' CHECK (mix_mode IN ('eq', 'stem')),
+          stem_mode TEXT NOT NULL DEFAULT '4stems' CHECK (stem_mode IN ('3stems', '4stems')),
+          stem_profile TEXT NOT NULL DEFAULT 'quality' CHECK (stem_profile IN ('quality')),
+          created_at_ms INTEGER NOT NULL,
+          updated_at_ms INTEGER NOT NULL,
+          FOREIGN KEY (playlist_uuid) REFERENCES library_nodes(uuid) ON DELETE CASCADE
+        );
+
+        INSERT INTO mixtape_projects__next_v20 (
+          playlist_uuid,
+          mix_mode,
+          stem_mode,
+          stem_profile,
+          created_at_ms,
+          updated_at_ms
+        )
+        SELECT
+          playlist_uuid,
+          CASE
+            WHEN mix_mode = 'traditional' THEN 'eq'
+            WHEN mix_mode = 'eq' THEN 'eq'
+            ELSE 'stem'
+          END,
+          CASE
+            WHEN stem_mode IN ('3stems', '4stems') THEN stem_mode
+            ELSE '4stems'
+          END,
+          CASE
+            WHEN stem_profile IN ('quality') THEN stem_profile
+            ELSE 'quality'
+          END,
+          created_at_ms,
+          updated_at_ms
+        FROM mixtape_projects;
+
+        DROP TABLE mixtape_projects;
+        ALTER TABLE mixtape_projects__next_v20 RENAME TO mixtape_projects;
+        CREATE INDEX IF NOT EXISTS idx_mixtape_projects_mix_mode ON mixtape_projects(mix_mode);
+        CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_mode ON mixtape_projects(stem_mode);
+        CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_profile ON mixtape_projects(stem_profile);
+      `)
     }
   }
   if (userVersion < SCHEMA_VERSION) {

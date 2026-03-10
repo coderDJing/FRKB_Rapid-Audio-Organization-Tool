@@ -1,4 +1,3 @@
-import { is } from '@electron-toolkit/utils'
 import { log } from '../log'
 import { getBackgroundIdleSnapshot } from './backgroundIdleGate'
 
@@ -34,16 +33,6 @@ let tickTimer: ReturnType<typeof setInterval> | null = null
 let started = false
 let flushInProgress = false
 let flushRequested = false
-let lastDeniedSnapshot = ''
-
-const debugDev = (message: string, payload?: unknown) => {
-  if (!is.dev) return
-  if (payload === undefined) {
-    log.debug(`[background-orchestrator][dev] ${message}`)
-    return
-  }
-  log.debug(`[background-orchestrator][dev] ${message}`, payload)
-}
 
 const pickNextRequest = (): BackgroundTaskRequest | null => {
   if (pendingRequestMap.size === 0) return null
@@ -73,11 +62,6 @@ const runRequest = async (request: BackgroundTaskRequest) => {
     trigger: request.trigger
   }
   runningState = currentRunning
-  debugDev('开始执行后台任务', {
-    category: request.category,
-    trigger: request.trigger,
-    priority: CATEGORY_PRIORITY[request.category] || 0
-  })
   try {
     await request.run()
   } catch (error) {
@@ -87,17 +71,11 @@ const runRequest = async (request: BackgroundTaskRequest) => {
       error
     })
   } finally {
-    const elapsedMs = Date.now() - currentRunning.startedAt
-    debugDev('后台任务执行完成', {
-      category: currentRunning.category,
-      trigger: currentRunning.trigger,
-      elapsedMs
-    })
     runningState = null
   }
 }
 
-const flushPendingRequests = async (trigger: string) => {
+const flushPendingRequests = async () => {
   if (!started) return
   if (flushInProgress) {
     flushRequested = true
@@ -110,25 +88,8 @@ const flushPendingRequests = async (trigger: string) => {
       if (pendingRequestMap.size === 0) return
       const idleSnapshot = getBackgroundIdleSnapshot()
       if (!idleSnapshot.allowed) {
-        const pendingCategorySummary = Array.from(pendingRequestMap.keys()).sort().join(',')
-        const denyReason = idleSnapshot.foregroundBusy
-          ? 'foreground-busy'
-          : idleSnapshot.systemIdleEnough
-            ? 'unknown'
-            : 'system-not-idle'
-        const denySummary = `${denyReason}|${idleSnapshot.systemIdleState}|${idleSnapshot.idleThresholdSec}|${idleSnapshot.deepIdleThresholdSec}|${pendingCategorySummary}`
-        if (lastDeniedSnapshot !== denySummary) {
-          lastDeniedSnapshot = denySummary
-          debugDev('闲时闸门未打开，延后后台任务', {
-            trigger,
-            denyReason,
-            pendingCategories: pendingCategorySummary ? pendingCategorySummary.split(',') : [],
-            idleSnapshot
-          })
-        }
         return
       }
-      lastDeniedSnapshot = ''
       const nextRequest = pickNextRequest()
       if (!nextRequest) return
       pendingRequestMap.delete(nextRequest.category)
@@ -143,7 +104,7 @@ const flushPendingRequests = async (trigger: string) => {
     flushInProgress = false
     if (flushRequested) {
       flushRequested = false
-      void flushPendingRequests('flush-queued')
+      void flushPendingRequests()
     }
   }
 }
@@ -154,10 +115,6 @@ export const requestBackgroundTaskExecution = (params: {
   trigger?: string
 }) => {
   if (!started) {
-    debugDev('调度器未启动，忽略后台任务请求', {
-      category: params.category,
-      trigger: String(params.trigger || 'manual')
-    })
     return
   }
   const category = params.category
@@ -169,28 +126,17 @@ export const requestBackgroundTaskExecution = (params: {
       await Promise.resolve(params.run())
     }
   }
-  const replaced = pendingRequestMap.has(category)
   pendingRequestMap.set(category, request)
-  debugDev(replaced ? '刷新后台任务请求' : '挂起后台任务请求', {
-    category,
-    trigger: request.trigger,
-    pendingCount: pendingRequestMap.size,
-    pendingCategories: Array.from(pendingRequestMap.keys())
-  })
-  void flushPendingRequests(`request:${category}`)
+  void flushPendingRequests()
 }
 
 export const startBackgroundOrchestrator = () => {
   if (started) return
   started = true
   tickTimer = setInterval(() => {
-    void flushPendingRequests('tick')
+    void flushPendingRequests()
   }, ORCHESTRATOR_TICK_MS)
   tickTimer.unref?.()
-  debugDev('启动后台统一调度器', {
-    tickMs: ORCHESTRATOR_TICK_MS,
-    priority: CATEGORY_PRIORITY
-  })
 }
 
 export const stopBackgroundOrchestrator = () => {
@@ -203,6 +149,4 @@ export const stopBackgroundOrchestrator = () => {
   runningState = null
   flushInProgress = false
   flushRequested = false
-  lastDeniedSnapshot = ''
-  debugDev('停止后台统一调度器')
 }

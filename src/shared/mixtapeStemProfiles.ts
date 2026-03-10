@@ -1,10 +1,8 @@
-export type MixtapeStemProfile = 'fast' | 'quality'
+export type MixtapeStemProfile = 'quality'
 
-export const MIXTAPE_STEM_PROFILES: MixtapeStemProfile[] = ['fast', 'quality']
+export const MIXTAPE_STEM_PROFILES: MixtapeStemProfile[] = ['quality']
 
-export const DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE: MixtapeStemProfile = 'fast'
-export const DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE: MixtapeStemProfile = 'quality'
-export const DEFAULT_MIXTAPE_STEM_FAST_MODEL = 'htdemucs'
+export const DEFAULT_MIXTAPE_STEM_PROFILE: MixtapeStemProfile = 'quality'
 export const DEFAULT_MIXTAPE_STEM_QUALITY_MODEL = 'htdemucs'
 export const DEFAULT_MIXTAPE_STEM_BASE_MODEL = DEFAULT_MIXTAPE_STEM_QUALITY_MODEL
 
@@ -17,66 +15,57 @@ export type ParsedMixtapeStemModel = {
 }
 
 export const normalizeMixtapeStemProfile = (
-  value: unknown,
-  fallback: MixtapeStemProfile = DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
+  _value: unknown,
+  _fallback: MixtapeStemProfile = DEFAULT_MIXTAPE_STEM_PROFILE
 ): MixtapeStemProfile => {
-  return value === 'quality' ? 'quality' : fallback === 'quality' ? 'quality' : 'fast'
+  return 'quality'
 }
 
 export const resolveMixtapeStemBaseModelByProfile = (
-  profile: unknown,
-  fallback: MixtapeStemProfile = DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
+  _profile: unknown,
+  _fallback: MixtapeStemProfile = DEFAULT_MIXTAPE_STEM_PROFILE
 ): string => {
-  const normalizedProfile = normalizeMixtapeStemProfile(profile, fallback)
-  return normalizedProfile === 'quality'
-    ? DEFAULT_MIXTAPE_STEM_QUALITY_MODEL
-    : DEFAULT_MIXTAPE_STEM_FAST_MODEL
+  return DEFAULT_MIXTAPE_STEM_QUALITY_MODEL
 }
 
-export const resolveMixtapeStemModelByProfile = (profile: unknown, baseModel = ''): string => {
-  const normalizedProfile = normalizeMixtapeStemProfile(profile)
+export const resolveMixtapeStemModelByProfile = (_profile: unknown, baseModel = ''): string => {
   const normalizedBaseModel =
     typeof baseModel === 'string' && baseModel.trim()
       ? baseModel.trim()
-      : resolveMixtapeStemBaseModelByProfile(normalizedProfile, normalizedProfile)
-  return `${normalizedBaseModel}${STEM_MODEL_PROFILE_SEPARATOR}${normalizedProfile}`
+      : DEFAULT_MIXTAPE_STEM_QUALITY_MODEL
+  return `${normalizedBaseModel}${STEM_MODEL_PROFILE_SEPARATOR}${DEFAULT_MIXTAPE_STEM_PROFILE}`
 }
 
 export const parseMixtapeStemModel = (
   value: unknown,
-  fallbackProfile: MixtapeStemProfile = DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
+  _fallbackProfile: MixtapeStemProfile = DEFAULT_MIXTAPE_STEM_PROFILE
 ): ParsedMixtapeStemModel => {
   const raw = typeof value === 'string' ? value.trim() : ''
   if (!raw) {
-    const profile = normalizeMixtapeStemProfile(fallbackProfile)
-    const demucsModel = resolveMixtapeStemBaseModelByProfile(profile, profile)
-    const requestedModel = resolveMixtapeStemModelByProfile(profile, demucsModel)
+    const demucsModel = DEFAULT_MIXTAPE_STEM_QUALITY_MODEL
+    const requestedModel = resolveMixtapeStemModelByProfile('quality', demucsModel)
     return {
       requestedModel,
       demucsModel,
-      profile
+      profile: 'quality'
     }
   }
+
   const separatorIndex = raw.lastIndexOf(STEM_MODEL_PROFILE_SEPARATOR)
   if (separatorIndex > 0 && separatorIndex < raw.length - 1) {
     const maybeModel = raw.slice(0, separatorIndex).trim()
-    const maybeProfile = raw.slice(separatorIndex + 1).trim()
-    const profile = normalizeMixtapeStemProfile(maybeProfile, fallbackProfile)
-    if (maybeProfile === profile) {
-      const demucsModel =
-        maybeModel || resolveMixtapeStemBaseModelByProfile(profile, fallbackProfile)
-      return {
-        requestedModel: `${demucsModel}${STEM_MODEL_PROFILE_SEPARATOR}${profile}`,
-        demucsModel,
-        profile
-      }
+    const demucsModel = maybeModel || DEFAULT_MIXTAPE_STEM_QUALITY_MODEL
+    return {
+      requestedModel: `${demucsModel}${STEM_MODEL_PROFILE_SEPARATOR}${DEFAULT_MIXTAPE_STEM_PROFILE}`,
+      demucsModel,
+      profile: 'quality'
     }
   }
-  const profile = normalizeMixtapeStemProfile(fallbackProfile)
+
   const demucsModel = raw
   return {
-    requestedModel: `${demucsModel}${STEM_MODEL_PROFILE_SEPARATOR}${profile}`,
+    requestedModel: `${demucsModel}${STEM_MODEL_PROFILE_SEPARATOR}${DEFAULT_MIXTAPE_STEM_PROFILE}`,
     demucsModel,
-    profile
+    profile: 'quality'
   }
 }

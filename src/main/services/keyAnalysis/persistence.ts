@@ -4,6 +4,7 @@ import type { EventEmitter } from 'node:events'
 import { findSongListRoot } from '../cacheMaintenance'
 import * as LibraryCacheDb from '../../libraryCacheDb'
 import { applyLiteDefaults, buildLiteSongInfo } from '../songInfoLite'
+import { log } from '../../log'
 import type { ISongInfo } from '../../../types/globals'
 import type { MixxxWaveformData } from '../../waveformCache'
 import {
@@ -22,6 +23,24 @@ type KeyAnalysisPersistenceDeps = {
 }
 
 export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) => {
+  const buildPrepareDetails = (params: {
+    listRootResolved: boolean
+    doneEntryHit: boolean
+    songCacheHit: boolean
+    waveformCacheHit: boolean
+    needsKey: boolean
+    needsBpm: boolean
+    needsWaveform: boolean
+  }) => ({
+    listRootResolved: params.listRootResolved,
+    doneEntryHit: params.doneEntryHit,
+    songCacheHit: params.songCacheHit,
+    waveformCacheHit: params.waveformCacheHit,
+    needsKey: params.needsKey,
+    needsBpm: params.needsBpm,
+    needsWaveform: params.needsWaveform
+  })
+
   const ensureSongCacheEntry = async (
     listRoot: string,
     filePath: string,
@@ -91,7 +110,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
 
       const payload: KeyAnalysisResult = { filePath, keyText }
       deps.events.emit('key-updated', payload)
-    } catch {
+    } catch (error) {
       const existing = deps.doneByPath.get(normalizedPath)
       deps.doneByPath.set(normalizedPath, {
         size: 0,
@@ -102,6 +121,10 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       })
       const payload: KeyAnalysisResult = { filePath, keyText }
       deps.events.emit('key-updated', payload)
+      log.warn('[闲时分析] persistKey 失败，已写入内存兜底', {
+        filePath,
+        error: error instanceof Error ? error.message : String(error)
+      })
     }
   }
 
@@ -134,7 +157,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
 
       const payload: BpmAnalysisResult = { filePath, bpm: normalizedBpm }
       deps.events.emit('bpm-updated', payload)
-    } catch {
+    } catch (error) {
       const existing = deps.doneByPath.get(normalizedPath)
       deps.doneByPath.set(normalizedPath, {
         size: 0,
@@ -145,6 +168,11 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       })
       const payload: BpmAnalysisResult = { filePath, bpm: normalizedBpm }
       deps.events.emit('bpm-updated', payload)
+      log.warn('[闲时分析] persistBpm 失败，已写入内存兜底', {
+        filePath,
+        bpm: normalizedBpm,
+        error: error instanceof Error ? error.message : String(error)
+      })
     }
   }
 
@@ -179,7 +207,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           waveformData
         )
       }
-    } catch {
+    } catch (error) {
       const existing = deps.doneByPath.get(normalizedPath)
       deps.doneByPath.set(normalizedPath, {
         size: 0,
@@ -187,6 +215,10 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         keyText: existing?.keyText,
         bpm: existing?.bpm,
         hasWaveform: true
+      })
+      log.warn('[闲时分析] persistWaveform 失败，已写入内存兜底', {
+        filePath,
+        error: error instanceof Error ? error.message : String(error)
       })
     }
   }
@@ -204,19 +236,36 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
   const prepareJob = async (job: KeyAnalysisJob): Promise<boolean> => {
     const filePath = job.filePath
     let stat: { size: number; mtimeMs: number }
+    let listRootResolved = false
+    let doneEntryHit = false
+    let songCacheHit = false
+    let waveformCacheHit = false
     try {
       const fsStat = await fs.stat(filePath)
       stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
     } catch {
+      job.prepareReason = 'skip-missing-file'
+      job.prepareDetails = buildPrepareDetails({
+        listRootResolved,
+        doneEntryHit,
+        songCacheHit,
+        waveformCacheHit,
+        needsKey: false,
+        needsBpm: false,
+        needsWaveform: false
+      })
       await handleMissingFile(job.filePath)
       return false
     }
+    job.fileSize = stat.size
+    job.fileMtimeMs = stat.mtimeMs
 
     let needsKey = true
     let needsBpm = true
     let needsWaveform = true
     const done = deps.doneByPath.get(job.normalizedPath)
     if (done && done.size === stat.size && Math.abs(done.mtimeMs - stat.mtimeMs) < 1) {
+      doneEntryHit = true
       if (isValidKeyText(done.keyText)) {
         needsKey = false
       }
@@ -230,14 +279,26 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         job.needsKey = false
         job.needsBpm = false
         job.needsWaveform = false
+        job.prepareReason = 'skip-done-cache-complete'
+        job.prepareDetails = buildPrepareDetails({
+          listRootResolved,
+          doneEntryHit,
+          songCacheHit,
+          waveformCacheHit,
+          needsKey,
+          needsBpm,
+          needsWaveform
+        })
         return false
       }
     }
 
     const listRoot = await findSongListRoot(path.dirname(filePath))
     if (listRoot) {
+      listRootResolved = true
       const cached = await LibraryCacheDb.loadSongCacheEntry(listRoot, filePath)
       if (cached && cached.size === stat.size && Math.abs(cached.mtimeMs - stat.mtimeMs) < 1) {
+        songCacheHit = true
         const cachedKey = (cached.info as any)?.key
         const cachedBpm = (cached.info as any)?.bpm
         const hasKey = isValidKeyText(cachedKey)
@@ -259,6 +320,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         }
         const hasWaveform = await LibraryCacheDb.hasWaveformCacheEntry(listRoot, filePath, stat)
         if (hasWaveform) {
+          waveformCacheHit = true
           const existingDone = deps.doneByPath.get(job.normalizedPath)
           deps.doneByPath.set(job.normalizedPath, {
             size: stat.size,
@@ -273,6 +335,16 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           job.needsKey = false
           job.needsBpm = false
           job.needsWaveform = false
+          job.prepareReason = 'skip-db-cache-complete'
+          job.prepareDetails = buildPrepareDetails({
+            listRootResolved,
+            doneEntryHit,
+            songCacheHit,
+            waveformCacheHit,
+            needsKey,
+            needsBpm,
+            needsWaveform
+          })
           return false
         }
       }
@@ -283,6 +355,16 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     job.needsKey = needsKey
     job.needsBpm = needsBpm
     job.needsWaveform = needsWaveform
+    job.prepareReason = 'ready-analysis'
+    job.prepareDetails = buildPrepareDetails({
+      listRootResolved,
+      doneEntryHit,
+      songCacheHit,
+      waveformCacheHit,
+      needsKey,
+      needsBpm,
+      needsWaveform
+    })
     return true
   }
 

@@ -1,5 +1,6 @@
 import type { MixtapeStemMode } from './mixtapeDb'
 import type { MixxxWaveformBand } from './waveformCache'
+import { FIXED_MIXTAPE_STEM_MODE } from '../shared/mixtapeStemMode'
 
 export const STEM_WAVEFORM_CACHE_VERSION = 2
 
@@ -35,7 +36,7 @@ type EncodedStemWaveformContainer = {
 
 const STEM_IDS_4: StemWaveformStemId[] = ['vocal', 'inst', 'bass', 'drums']
 
-const normalizeStemMode = (_value: unknown): MixtapeStemMode => '4stems'
+const normalizeStemMode = (_value: unknown): MixtapeStemMode => FIXED_MIXTAPE_STEM_MODE
 
 const resolveStemIds = (_stemMode: MixtapeStemMode): StemWaveformStemId[] => STEM_IDS_4
 

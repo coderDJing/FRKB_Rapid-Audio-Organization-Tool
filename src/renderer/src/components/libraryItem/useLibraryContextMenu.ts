@@ -197,8 +197,7 @@ export function useLibraryContextMenu({
           dirName: '',
           type: 'mixtapeList',
           mixMode: projectMode.mixMode,
-          stemRealtimeProfile: projectMode.stemRealtimeProfile,
-          stemExportProfile: projectMode.stemExportProfile
+          stemProfile: projectMode.stemProfile
         })
         setPendingMixtapeProjectMode(newUuid, projectMode)
         runtime.songsArea.songListUUID = newUuid

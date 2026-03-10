@@ -7,6 +7,7 @@ import {
   type StemWaveformData
 } from '../stemWaveformCache'
 import type { MixtapeStemMode } from '../mixtapeDb'
+import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
 import {
   resolveAbsoluteListRoot,
   resolveFilePathInput,
@@ -23,7 +24,7 @@ const normalizeText = (value: unknown, maxLen = 128): string => {
   return trimmed.length <= maxLen ? trimmed : trimmed.slice(0, maxLen)
 }
 
-const normalizeStemMode = (_value: unknown): MixtapeStemMode => '4stems'
+const normalizeStemMode = (_value: unknown): MixtapeStemMode => FIXED_MIXTAPE_STEM_MODE
 
 const normalizeTargetRate = (value: unknown): number => {
   const parsed = Number(value)

@@ -19,14 +19,54 @@ type KeyResultPayload = {
   mixxxWaveformData?: MixxxWaveformData | null
 }
 
+type KeyProgressPayload = {
+  stage:
+    | 'job-received'
+    | 'decode-start'
+    | 'decode-done'
+    | 'analyze-start'
+    | 'analyze-done'
+    | 'waveform-start'
+    | 'waveform-done'
+    | 'job-done'
+    | 'job-error'
+  elapsedMs: number
+  decodeMs?: number
+  analyzeMs?: number
+  waveformMs?: number
+  sampleRate?: number
+  channels?: number
+  totalFrames?: number
+  framesToProcess?: number
+  needsKey?: boolean
+  needsBpm?: boolean
+  needsWaveform?: boolean
+  detail?: string
+}
+
 type KeyResponse = {
   jobId: number
   filePath: string
+  progress?: KeyProgressPayload
   result?: KeyResultPayload
   error?: string
 }
 
+const K_FAST_ANALYSIS_SECONDS = 60
+
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+
+const estimateFramesToProcess = (
+  totalFrames: number,
+  sampleRate: number,
+  fastAnalysis: boolean
+): number | undefined => {
+  if (!Number.isFinite(totalFrames) || totalFrames <= 0) return undefined
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0) return undefined
+  const total = Math.floor(totalFrames)
+  if (!fastAnalysis) return total
+  return Math.min(total, Math.floor(sampleRate * K_FAST_ANALYSIS_SECONDS))
+}
 
 const toFloat32ArrayFromBuffer = (input: Buffer): Float32Array => {
   if (!input || input.length < 4) return new Float32Array(0)
@@ -203,72 +243,150 @@ const loadRust = () => {
 
 const analyzeKeyForFile = (
   filePath: string,
-  options: { fastAnalysis: boolean; needsKey: boolean; needsBpm: boolean; needsWaveform: boolean }
+  options: { fastAnalysis: boolean; needsKey: boolean; needsBpm: boolean; needsWaveform: boolean },
+  reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void
 ): KeyResultPayload => {
   const rust = loadRust()
+  reportProgress({
+    stage: 'decode-start',
+    needsKey: options.needsKey,
+    needsBpm: options.needsBpm,
+    needsWaveform: options.needsWaveform
+  })
+  const decodeStartAt = Date.now()
   const decoded = rust.decodeAudioFile(filePath)
   if (decoded.error) {
     throw new Error(decoded.error)
   }
+  const decodeMs = Date.now() - decodeStartAt
+  const framesToProcess = estimateFramesToProcess(decoded.totalFrames, decoded.sampleRate, false)
+  reportProgress({
+    stage: 'decode-done',
+    decodeMs,
+    sampleRate: decoded.sampleRate,
+    channels: decoded.channels,
+    totalFrames: decoded.totalFrames,
+    framesToProcess
+  })
   const result: KeyResultPayload = {}
   const needsKey = Boolean(options.needsKey)
   const needsBpm = Boolean(options.needsBpm)
   const needsWaveform = Boolean(options.needsWaveform)
 
   if (needsKey || needsBpm) {
+    const analyzePlanDetail = needsKey
+      ? needsBpm
+        ? 'key+bpm-full-shared'
+        : 'key-full'
+      : 'bpm-full'
+    reportProgress({
+      stage: 'analyze-start',
+      needsKey,
+      needsBpm,
+      framesToProcess,
+      detail: analyzePlanDetail
+    })
+    const analyzeStartAt = Date.now()
+    let hasAnalysisError = false
+
     const analyzeKeyAndBpm = rust.analyzeKeyAndBpmFromPcm
-    if (typeof analyzeKeyAndBpm !== 'function') {
-      throw new Error('analyzeKeyAndBpmFromPcm not available')
-    }
-    const analysis = analyzeKeyAndBpm(
-      decoded.pcmData,
-      decoded.sampleRate,
-      decoded.channels,
-      options.fastAnalysis
-    )
-    if (needsKey) {
-      result.keyText = analysis.keyText
-      result.keyError = analysis.keyError
-    }
-    if (needsBpm) {
-      result.bpm = analysis.bpm
-      if (
-        typeof analysis.firstBeatMs === 'number' &&
-        Number.isFinite(analysis.firstBeatMs) &&
-        analysis.firstBeatMs >= 0
-      ) {
-        result.firstBeatMs = analysis.firstBeatMs
-      }
-      const firstBeatMsValue = Number(result.firstBeatMs)
-      const bpmValue = Number(result.bpm)
-      const shouldEstimateFirstBeat =
-        (!Number.isFinite(firstBeatMsValue) || firstBeatMsValue <= 0) &&
-        Number.isFinite(bpmValue) &&
-        bpmValue > 0
-      if (shouldEstimateFirstBeat) {
-        const estimatedFirstBeatMs = estimateFirstBeatMsFromPcm(
-          decoded.pcmData,
-          decoded.sampleRate,
-          decoded.channels,
-          bpmValue
-        )
-        if (typeof estimatedFirstBeatMs === 'number' && Number.isFinite(estimatedFirstBeatMs)) {
-          result.firstBeatMs = estimatedFirstBeatMs
+    if (typeof analyzeKeyAndBpm === 'function') {
+      const analysis = analyzeKeyAndBpm(
+        decoded.pcmData,
+        decoded.sampleRate,
+        decoded.channels,
+        false
+      )
+      if (needsKey) {
+        result.keyText = analysis.keyText
+        result.keyError = analysis.keyError
+        if (analysis.keyError) {
+          hasAnalysisError = true
         }
       }
-      result.bpmError = analysis.bpmError
+      if (needsBpm) {
+        result.bpm = analysis.bpm
+        if (
+          typeof analysis.firstBeatMs === 'number' &&
+          Number.isFinite(analysis.firstBeatMs) &&
+          analysis.firstBeatMs >= 0
+        ) {
+          result.firstBeatMs = analysis.firstBeatMs
+        }
+        const firstBeatMsValue = Number(result.firstBeatMs)
+        const bpmValue = Number(result.bpm)
+        const shouldEstimateFirstBeat =
+          (!Number.isFinite(firstBeatMsValue) || firstBeatMsValue <= 0) &&
+          Number.isFinite(bpmValue) &&
+          bpmValue > 0
+        if (shouldEstimateFirstBeat) {
+          const estimatedFirstBeatMs = estimateFirstBeatMsFromPcm(
+            decoded.pcmData,
+            decoded.sampleRate,
+            decoded.channels,
+            bpmValue
+          )
+          if (typeof estimatedFirstBeatMs === 'number' && Number.isFinite(estimatedFirstBeatMs)) {
+            result.firstBeatMs = estimatedFirstBeatMs
+          }
+        }
+        result.bpmError = analysis.bpmError
+        if (!result.bpmError) {
+          const normalizedBpm = Number(result.bpm)
+          if (!Number.isFinite(normalizedBpm) || normalizedBpm <= 0) {
+            result.bpmError = 'invalid bpm value from analyzer'
+          }
+        }
+        if (analysis.bpmError) {
+          hasAnalysisError = true
+        }
+        if (result.bpmError) {
+          hasAnalysisError = true
+        }
+      }
+    } else if (needsKey) {
+      const analyzeKey = rust.analyzeKeyFromPcm
+      if (typeof analyzeKey !== 'function') {
+        throw new Error('analyzeKeyAndBpmFromPcm not available')
+      }
+      const keyOnly = analyzeKey(decoded.pcmData, decoded.sampleRate, decoded.channels, false)
+      result.keyText = keyOnly.keyText
+      result.keyError = keyOnly.error
+      if (keyOnly.error) {
+        hasAnalysisError = true
+      }
+    } else {
+      throw new Error('analyzeKeyAndBpmFromPcm not available')
     }
+
+    reportProgress({
+      stage: 'analyze-done',
+      analyzeMs: Date.now() - analyzeStartAt,
+      detail: hasAnalysisError ? 'analysis-has-errors' : undefined
+    })
   }
 
   if (needsWaveform && typeof rust.computeMixxxWaveform === 'function') {
+    reportProgress({ stage: 'waveform-start' })
+    const waveformStartAt = Date.now()
     try {
       result.mixxxWaveformData = rust.computeMixxxWaveform(
         decoded.pcmData,
         decoded.sampleRate,
         decoded.channels
       )
+      reportProgress({
+        stage: 'waveform-done',
+        waveformMs: Date.now() - waveformStartAt,
+        detail: 'waveform-ok'
+      })
     } catch {
       result.mixxxWaveformData = null
+      reportProgress({
+        stage: 'waveform-done',
+        waveformMs: Date.now() - waveformStartAt,
+        detail: 'waveform-failed'
+      })
     }
   }
 
@@ -280,20 +398,47 @@ parentPort?.on('message', async (job: KeyJob) => {
     jobId: job?.jobId ?? 0,
     filePath: job?.filePath ?? ''
   }
+  const startedAt = Date.now()
+  const reportProgress = (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => {
+    parentPort?.postMessage({
+      jobId: response.jobId,
+      filePath: response.filePath,
+      progress: {
+        ...progress,
+        elapsedMs: Date.now() - startedAt
+      }
+    } satisfies KeyResponse)
+  }
 
   try {
     if (!job?.filePath) {
       throw new Error('Missing file path')
     }
-    const result = analyzeKeyForFile(job.filePath, {
-      fastAnalysis: Boolean(job.fastAnalysis),
+    reportProgress({
+      stage: 'job-received',
       needsKey: Boolean(job.needsKey),
       needsBpm: Boolean(job.needsBpm),
       needsWaveform: Boolean(job.needsWaveform)
     })
+    const result = analyzeKeyForFile(
+      job.filePath,
+      {
+        fastAnalysis: Boolean(job.fastAnalysis),
+        needsKey: Boolean(job.needsKey),
+        needsBpm: Boolean(job.needsBpm),
+        needsWaveform: Boolean(job.needsWaveform)
+      },
+      reportProgress
+    )
     response.result = result
+    reportProgress({ stage: 'job-done' })
   } catch (error) {
-    response.error = (error as Error)?.message ?? String(error)
+    const message = (error as Error)?.message ?? String(error)
+    response.error = message
+    reportProgress({
+      stage: 'job-error',
+      detail: message.slice(0, 300)
+    })
   }
 
   parentPort?.postMessage(response)

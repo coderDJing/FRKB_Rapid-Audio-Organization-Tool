@@ -2,54 +2,36 @@ import choice from '@renderer/components/choiceDialog'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 import {
-  DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE,
-  DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE,
+  DEFAULT_MIXTAPE_STEM_PROFILE,
   normalizeMixtapeStemProfile,
   type MixtapeStemProfile
 } from '@shared/mixtapeStemProfiles'
+import { FIXED_MIXTAPE_STEM_MODE } from '@shared/mixtapeStemMode'
 
-export type MixtapeMixMode = 'traditional' | 'stem'
-export type MixtapeStemMode = '4stems'
+export type MixtapeMixMode = 'eq' | 'stem'
+export type MixtapeStemMode = typeof FIXED_MIXTAPE_STEM_MODE
 export type MixtapeProjectMode = {
   mixMode: MixtapeMixMode
-  stemMode: MixtapeStemMode
-  stemRealtimeProfile: MixtapeStemProfile
-  stemExportProfile: MixtapeStemProfile
-  stemStrategyConfirmed: boolean
+  stemProfile: MixtapeStemProfile
 }
 
-export const DEFAULT_MIXTAPE_STEM_MODE: MixtapeStemMode = '4stems'
+export const DEFAULT_MIXTAPE_STEM_MODE: MixtapeStemMode = FIXED_MIXTAPE_STEM_MODE
 export const DEFAULT_MIXTAPE_MIX_MODE: MixtapeMixMode = 'stem'
 
 const pendingProjectModeByPlaylistId = new Map<string, MixtapeProjectMode>()
 
-export function normalizeMixtapeStemMode(_value: unknown): MixtapeStemMode {
-  return '4stems'
-}
-
 export function normalizeMixtapeMixMode(value: unknown): MixtapeMixMode {
-  return value === 'traditional' ? 'traditional' : 'stem'
+  return value === 'eq' ? 'eq' : 'stem'
 }
 
 const normalizeMixtapeProjectMode = (
   value: Partial<MixtapeProjectMode> | null | undefined
 ): MixtapeProjectMode => {
   const mixMode = normalizeMixtapeMixMode(value?.mixMode)
-  const stemRealtimeProfile = normalizeMixtapeStemProfile(
-    value?.stemRealtimeProfile,
-    DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
-  )
-  const stemExportProfile = normalizeMixtapeStemProfile(
-    value?.stemExportProfile,
-    DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
-  )
-  const stemStrategyConfirmed = mixMode === 'stem' ? value?.stemStrategyConfirmed !== false : false
+  const stemProfile = normalizeMixtapeStemProfile(value?.stemProfile, DEFAULT_MIXTAPE_STEM_PROFILE)
   return {
     mixMode,
-    stemMode: normalizeMixtapeStemMode(value?.stemMode),
-    stemRealtimeProfile,
-    stemExportProfile,
-    stemStrategyConfirmed
+    stemProfile
   }
 }
 
@@ -59,47 +41,22 @@ export async function chooseMixtapeProjectModeForCreate(): Promise<MixtapeProjec
     content: [t('mixtape.mixModeCreateHint')],
     options: [
       { key: 'enter', label: t('mixtape.mixModeStemLabel') },
-      { key: 'reset', label: t('mixtape.mixModeTraditionalLabel') },
+      { key: 'reset', label: t('mixtape.mixModeEqLabel') },
       { key: 'cancel', label: t('common.cancel') }
     ],
     innerHeight: 210,
     innerWidth: 520
   })
   if (result === 'enter') {
-    const strategy = await choice({
-      title: t('mixtape.stemProfileChooseTitle'),
-      content: [
-        t('mixtape.stemProfileChooseHint'),
-        t('mixtape.stemProfileChooseFastHint'),
-        t('mixtape.stemProfileChooseQualityHint')
-      ],
-      options: [
-        { key: 'enter', label: t('mixtape.stemProfileChooseFastOption') },
-        { key: 'reset', label: t('mixtape.stemProfileChooseQualityOption') },
-        { key: 'cancel', label: t('common.cancel') }
-      ],
-      innerHeight: 240,
-      innerWidth: 560
-    })
-    if (strategy !== 'enter' && strategy !== 'reset') {
-      return null
-    }
-    const stemRealtimeProfile: MixtapeStemProfile = strategy === 'enter' ? 'fast' : 'quality'
     return {
       mixMode: 'stem',
-      stemMode: '4stems',
-      stemRealtimeProfile,
-      stemExportProfile: 'quality',
-      stemStrategyConfirmed: true
+      stemProfile: DEFAULT_MIXTAPE_STEM_PROFILE
     }
   }
   if (result === 'reset') {
     return {
-      mixMode: 'traditional',
-      stemMode: '4stems',
-      stemRealtimeProfile: DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE,
-      stemExportProfile: DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE,
-      stemStrategyConfirmed: false
+      mixMode: 'eq',
+      stemProfile: DEFAULT_MIXTAPE_STEM_PROFILE
     }
   }
   return null
@@ -140,16 +97,10 @@ export async function persistMixtapeProjectMode(
       playlistId: normalizedPlaylistId,
       mixMode: normalizedProjectMode.mixMode
     })
-    await window.electron.ipcRenderer.invoke('mixtape:project:set-stem-mode', {
-      playlistId: normalizedPlaylistId,
-      stemMode: normalizedProjectMode.stemMode
-    })
     if (normalizedProjectMode.mixMode === 'stem') {
-      await window.electron.ipcRenderer.invoke('mixtape:project:set-stem-profiles', {
+      await window.electron.ipcRenderer.invoke('mixtape:project:set-stem-profile', {
         playlistId: normalizedPlaylistId,
-        stemRealtimeProfile: normalizedProjectMode.stemRealtimeProfile,
-        stemExportProfile: normalizedProjectMode.stemExportProfile,
-        markStrategyConfirmed: normalizedProjectMode.stemStrategyConfirmed
+        stemProfile: normalizedProjectMode.stemProfile
       })
     }
     return true
@@ -173,40 +124,25 @@ export async function getMixtapeProjectMode(playlistId: string): Promise<Mixtape
   if (!normalizedPlaylistId) {
     return {
       mixMode: DEFAULT_MIXTAPE_MIX_MODE,
-      stemMode: DEFAULT_MIXTAPE_STEM_MODE,
-      stemRealtimeProfile: DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE,
-      stemExportProfile: DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE,
-      stemStrategyConfirmed: false
+      stemProfile: DEFAULT_MIXTAPE_STEM_PROFILE
     }
   }
   try {
     const mixModeResult = await window.electron.ipcRenderer.invoke('mixtape:project:get-mix-mode', {
       playlistId: normalizedPlaylistId
     })
-    const stemModeResult = await window.electron.ipcRenderer.invoke(
-      'mixtape:project:get-stem-mode',
-      {
-        playlistId: normalizedPlaylistId
-      }
-    )
     const stemProfileResult = await window.electron.ipcRenderer.invoke(
-      'mixtape:project:get-stem-profiles',
+      'mixtape:project:get-stem-profile',
       {
         playlistId: normalizedPlaylistId
       }
     )
     return {
       mixMode: normalizeMixtapeMixMode(mixModeResult?.mixMode),
-      stemMode: normalizeMixtapeStemMode(stemModeResult?.stemMode),
-      stemRealtimeProfile: normalizeMixtapeStemProfile(
-        stemProfileResult?.stemRealtimeProfile,
-        DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE
-      ),
-      stemExportProfile: normalizeMixtapeStemProfile(
-        stemProfileResult?.stemExportProfile,
-        DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE
-      ),
-      stemStrategyConfirmed: !!stemProfileResult?.stemStrategyConfirmed
+      stemProfile: normalizeMixtapeStemProfile(
+        stemProfileResult?.stemProfile,
+        DEFAULT_MIXTAPE_STEM_PROFILE
+      )
     }
   } catch (error) {
     console.error('[mixtape] read project mode failed', {
@@ -215,10 +151,7 @@ export async function getMixtapeProjectMode(playlistId: string): Promise<Mixtape
     })
     return {
       mixMode: DEFAULT_MIXTAPE_MIX_MODE,
-      stemMode: DEFAULT_MIXTAPE_STEM_MODE,
-      stemRealtimeProfile: DEFAULT_MIXTAPE_STEM_REALTIME_PROFILE,
-      stemExportProfile: DEFAULT_MIXTAPE_STEM_EXPORT_PROFILE,
-      stemStrategyConfirmed: false
+      stemProfile: DEFAULT_MIXTAPE_STEM_PROFILE
     }
   }
 }

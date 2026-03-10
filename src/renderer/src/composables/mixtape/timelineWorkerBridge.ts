@@ -49,7 +49,7 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
     LANE_PADDING_TOP,
     MIXTAPE_WAVEFORM_Y_OFFSET
   } = ctx
-  const isStemMixMode = () => mixtapeMixMode?.value !== 'traditional'
+  const isStemMixMode = () => mixtapeMixMode?.value !== 'eq'
 
   const getWaveformRenderWorker = () => waveformRenderWorkerRef.value as Worker | null
   const getWaveformTileCacheTick = () => Number(waveformTileCacheTickRef.value || 0)

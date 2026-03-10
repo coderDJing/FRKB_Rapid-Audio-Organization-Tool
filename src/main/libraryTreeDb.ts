@@ -765,14 +765,19 @@ export function findLibraryNodeByPath(relPath: string, dbRoot?: string): Library
   if (parts.length === 0) return null
   const root = getRootNode(db)
   if (!root) return null
+  const isWin = process.platform === 'win32'
+  const equalsPart = (left: string, right: string) =>
+    isWin ? String(left).toLowerCase() === String(right).toLowerCase() : left === right
   let index = 0
-  if (parts[0] === root.dirName) {
+  if (equalsPart(parts[0], root.dirName)) {
     if (parts.length === 1) return root
     index = 1
   }
   let current: LibraryNodeRow = root
   const stmt = db.prepare(
-    'SELECT uuid, parent_uuid, dir_name, node_type, sort_order FROM library_nodes WHERE parent_uuid = ? AND dir_name = ? LIMIT 1'
+    isWin
+      ? 'SELECT uuid, parent_uuid, dir_name, node_type, sort_order FROM library_nodes WHERE parent_uuid = ? AND dir_name = ? COLLATE NOCASE LIMIT 1'
+      : 'SELECT uuid, parent_uuid, dir_name, node_type, sort_order FROM library_nodes WHERE parent_uuid = ? AND dir_name = ? LIMIT 1'
   )
   for (let i = index; i < parts.length; i += 1) {
     const row = stmt.get(current.uuid, parts[i])
@@ -904,8 +909,12 @@ export async function findSongListRootByPath(
 ): Promise<string | null> {
   const rootDir = dbRoot || store.databaseDir
   if (!rootDir || !startDir) return null
+  const isWin = process.platform === 'win32'
   const libRoot = path.join(rootDir, 'library')
-  const relative = path.relative(libRoot, startDir)
+  const relative = path.relative(
+    isWin ? libRoot.toLowerCase() : libRoot,
+    isWin ? startDir.toLowerCase() : startDir
+  )
   if (!relative || relative === '.' || relative.startsWith('..') || path.isAbsolute(relative)) {
     return null
   }
@@ -918,7 +927,9 @@ export async function findSongListRootByPath(
   if (!rootNode) return null
 
   const stmt = db.prepare(
-    'SELECT uuid, parent_uuid, dir_name, node_type, sort_order FROM library_nodes WHERE parent_uuid = ? AND dir_name = ? LIMIT 1'
+    isWin
+      ? 'SELECT uuid, parent_uuid, dir_name, node_type, sort_order FROM library_nodes WHERE parent_uuid = ? AND dir_name = ? COLLATE NOCASE LIMIT 1'
+      : 'SELECT uuid, parent_uuid, dir_name, node_type, sort_order FROM library_nodes WHERE parent_uuid = ? AND dir_name = ? LIMIT 1'
   )
   let current = rootNode
   const walked: string[] = []
@@ -928,7 +939,8 @@ export async function findSongListRootByPath(
     const row = stmt.get(current.uuid, part)
     const next = toNodeRow(row)
     if (!next) break
-    walked.push(part)
+    // 使用库树中的标准目录名，避免大小写漂移导致缓存键不一致
+    walked.push(next.dirName)
     if (next.nodeType === 'songList') {
       lastSongList = [...walked]
     }

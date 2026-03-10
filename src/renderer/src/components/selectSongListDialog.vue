@@ -220,17 +220,10 @@ const searchInputRef = useTemplateRef<HTMLInputElement>('searchInputRef')
 const libraryTitleText = computed(() => toLibraryDisplayName(libraryData.value.dirName))
 const listIcon = listIconAsset
 const resolveMixtapeModeTag = (mixMode?: string) =>
-  mixMode === 'traditional' ? t('mixtape.mixModeTraditionalTag') : t('mixtape.mixModeStemTag')
+  mixMode === 'eq' ? t('mixtape.mixModeEqTag') : t('mixtape.mixModeStemTag')
 const resolveMixtapeModeLabel = (mixMode?: string) =>
-  mixMode === 'traditional' ? t('mixtape.mixModeTraditionalLabel') : t('mixtape.mixModeStemLabel')
-const resolveMixtapeProfileLabel = (profile?: string) =>
-  profile === 'quality'
-    ? `${t('mixtape.stemRealtimeProfile')}：${t('mixtape.stemProfileQualityLabel')}`
-    : `${t('mixtape.stemRealtimeProfile')}：${t('mixtape.stemProfileFastLabel')}`
-const resolveMixtapeBadgeTitle = (mixMode?: string, profile?: string) =>
-  mixMode === 'traditional'
-    ? resolveMixtapeModeLabel(mixMode)
-    : `${resolveMixtapeModeLabel(mixMode)} · ${resolveMixtapeProfileLabel(profile)}`
+  mixMode === 'eq' ? t('mixtape.mixModeEqLabel') : t('mixtape.mixModeStemLabel')
+const resolveMixtapeBadgeTitle = (mixMode?: string) => resolveMixtapeModeLabel(mixMode)
 
 const menuArr = ref([
   isMixtapeDialog.value
@@ -267,8 +260,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
         type: 'mixtapeList',
         dirName: '',
         mixMode: projectMode.mixMode,
-        stemRealtimeProfile: projectMode.stemRealtimeProfile,
-        stemExportProfile: projectMode.stemExportProfile
+        stemProfile: projectMode.stemProfile
       })
       setPendingMixtapeProjectMode(newUuid, projectMode)
       runtime.dialogSelectedSongListUUID = newUuid
@@ -348,12 +340,7 @@ const createNow = async () => {
     type: isMixtapeDialog.value ? 'mixtapeList' : 'songList',
     dirName: name,
     mixMode: isMixtapeDialog.value ? projectMode?.mixMode || 'stem' : undefined,
-    stemRealtimeProfile: isMixtapeDialog.value
-      ? projectMode?.stemRealtimeProfile || 'fast'
-      : undefined,
-    stemExportProfile: isMixtapeDialog.value
-      ? projectMode?.stemExportProfile || 'quality'
-      : undefined,
+    stemProfile: isMixtapeDialog.value ? projectMode?.stemProfile || 'quality' : undefined,
     order: 1,
     children: []
   } as IDir)
@@ -712,20 +699,12 @@ watch(
                         <span
                           class="mixModeBadge"
                           :class="{
-                            'is-traditional': item.mixMode === 'traditional',
-                            'is-stem': item.mixMode !== 'traditional'
+                            'is-eq': item.mixMode === 'eq',
+                            'is-stem': item.mixMode !== 'eq'
                           }"
-                          :title="resolveMixtapeBadgeTitle(item.mixMode, item.stemRealtimeProfile)"
+                          :title="resolveMixtapeBadgeTitle(item.mixMode)"
                         >
                           <span>{{ resolveMixtapeModeTag(item.mixMode) }}</span>
-                          <span
-                            v-if="item.mixMode !== 'traditional'"
-                            class="mixModeBadgeDot"
-                            :class="{
-                              'is-quality': item.stemRealtimeProfile === 'quality',
-                              'is-fast': item.stemRealtimeProfile !== 'quality'
-                            }"
-                          ></span>
                         </span>
                       </span>
                       <span
@@ -918,7 +897,7 @@ watch(
   box-sizing: border-box;
 }
 
-.mixModeBadge.is-traditional {
+.mixModeBadge.is-eq {
   background-color: rgba(255, 184, 77, 0.18);
   color: #d98300;
 }
@@ -926,21 +905,6 @@ watch(
 .mixModeBadge.is-stem {
   background-color: rgba(91, 173, 255, 0.18);
   color: #2f85d8;
-}
-
-.mixModeBadgeDot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex: 0 0 auto;
-}
-
-.mixModeBadgeDot.is-fast {
-  background-color: #d98300;
-}
-
-.mixModeBadgeDot.is-quality {
-  background-color: #2d8b40;
 }
 
 .countBadge {

@@ -16,6 +16,7 @@ import type {
   StemWaveformBatchRequestItem,
   TimelineWaveformData
 } from '@renderer/composables/mixtape/timelineRenderAndLoadTypes'
+import { FIXED_MIXTAPE_STEM_MODE } from '@shared/mixtapeStemMode'
 
 export const createTimelineRenderAndLoadModule = (ctx: any) => {
   const {
@@ -98,7 +99,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     useRawWaveform,
     waveformVersion
   } = ctx
-  const isStemMixMode = () => mixtapeMixMode?.value !== 'traditional'
+  const isStemMixMode = () => mixtapeMixMode?.value !== 'eq'
   // Stem 场景仅渲染 raw 波形，关闭低分辨率预览波形数据生成/加载
   const ENABLE_STEM_PREVIEW_WAVEFORM = false
   const isStemWaveformData = (value: unknown): value is StemWaveformData =>
@@ -725,8 +726,8 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
       const requiredPaths = [
         stemPaths.vocalPath,
         stemPaths.instPath,
-        stemPaths.drumsPath,
-        ...(item.stemMode === '4stems' ? [stemPaths.bassPath] : [])
+        stemPaths.bassPath,
+        stemPaths.drumsPath
       ]
         .map((value) => String(value || '').trim())
         .filter(Boolean)
@@ -940,7 +941,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
       })
       if (!pendingSources.length) continue
       const sourceFilePath = String(track.filePath || '').trim()
-      const stemMode: '4stems' = '4stems'
+      const stemMode = FIXED_MIXTAPE_STEM_MODE
       const requestKey = [
         sourceFilePath,
         stemMode,
@@ -1151,7 +1152,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
       }
       const sourceFilePath = String(track.filePath || '').trim()
       if (!sourceFilePath) continue
-      const stemMode: '4stems' = '4stems'
+      const stemMode = FIXED_MIXTAPE_STEM_MODE
       const requestKey = [
         sourceFilePath,
         stemMode,
