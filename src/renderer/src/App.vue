@@ -5,7 +5,8 @@ import scanNewSongDialog from '@renderer/components/scanNewSongDialog'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import bottomInfoArea from './pages/modules/bottomInfoArea.vue'
 import manualAddSongFingerprintDialog from './components/manualAddSongFingerprintDialog.vue'
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import globalSongSearchDialog from './components/globalSongSearchDialog.vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import hotkeys from 'hotkeys-js'
 import utils from './utils/utils'
 import exportSongFingerprintDialog from './components/exportSongFingerprintDialog.vue'
@@ -23,7 +24,7 @@ import { createClickThroughGuard } from '@renderer/utils/clickThroughGuard'
 const runtime = useRuntimeStore()
 const contextMenuClickThroughGuard = createClickThroughGuard()
 const CONTEXT_MENU_SELECTOR = '[data-frkb-context-menu="true"]'
-// 使用全局设置中的平台标记进行映射，避免依赖 userAgent
+// 濞达綀娉曢弫銈夊礂閵娿儳婀伴悹浣稿⒔閻ゅ棙绋夐鐘崇暠妤犵偛鍟胯ぐ鎾冀閸ヮ亶鍞堕弶鈺傜椤㈡垿寮伴悩鑼闁挎稑鐭傛导鈺呭礂瀹ュ嫮璐╅悹?userAgent
 {
   const p = runtime.setting?.platform
   runtime.platform = p === 'darwin' ? 'Mac' : p === 'win32' ? 'Windows' : 'Unknown'
@@ -40,6 +41,172 @@ const fileOpPending = ref(0)
 const fileOpBatchId = ref('')
 const fileOpSuccessSoFar = ref(0)
 const fileOpFailedSoFar = ref(0)
+const CTRL_DOUBLE_TAP_MS = 260
+
+type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
+type GlobalSongSearchItem = {
+  id: string
+  filePath: string
+  fileName: string
+  title: string
+  artist: string
+  album: string
+  genre: string
+  label: string
+  duration: string
+  keyText: string
+  bpm?: number
+  container: string
+  songListUUID: string
+  songListName: string
+  songListPath: string
+  libraryName: CoreLibraryName
+  score: number
+}
+
+let ctrlTapAt = 0
+let ctrlDown = false
+let ctrlComboDirty = false
+
+const normalizePath = (value: string) =>
+  String(value || '')
+    .replace(/\//g, '\\')
+    .toLowerCase()
+const markSongSearchDirty = (reason: string) => {
+  void window.electron.ipcRenderer.invoke('song-search:mark-dirty', { reason }).catch(() => {})
+}
+
+const safeStringify = (value: unknown) => {
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+const traceGlobalSongSearch = (event: string, payload?: Record<string, unknown>) => {
+  try {
+    const suffix = payload ? ` ${safeStringify(payload)}` : ''
+    window.electron.ipcRenderer.send('outputLog', `[gss-app] ${event}${suffix}`)
+  } catch {}
+}
+
+const focusSongFromGlobalSearch = async (
+  payload: GlobalSongSearchItem,
+  autoPlay: boolean,
+  flashLocate = false
+) => {
+  traceGlobalSongSearch('focus-start', {
+    libraryName: payload.libraryName,
+    songListUUID: payload.songListUUID,
+    filePath: payload.filePath,
+    autoPlay,
+    flashLocate,
+    currentLibrary: runtime.libraryAreaSelected,
+    currentSongListUUID: runtime.songsArea.songListUUID
+  })
+  if (
+    payload.libraryName === 'FilterLibrary' ||
+    payload.libraryName === 'CuratedLibrary' ||
+    payload.libraryName === 'MixtapeLibrary'
+  ) {
+    runtime.lastSongListUUIDByLibrary[payload.libraryName] = payload.songListUUID
+  }
+  runtime.libraryAreaSelected = payload.libraryName
+  if (runtime.songsArea.songListUUID !== payload.songListUUID) {
+    runtime.songsArea.songListUUID = payload.songListUUID
+  }
+  traceGlobalSongSearch('focus-dispatch', {
+    currentLibrary: runtime.libraryAreaSelected,
+    currentSongListUUID: runtime.songsArea.songListUUID,
+    targetSongListUUID: payload.songListUUID
+  })
+  emitter.emit('songsArea/focus-song', {
+    songListUUID: payload.songListUUID,
+    filePath: payload.filePath,
+    autoPlay,
+    flash: flashLocate
+  })
+}
+
+const isEditableElement = (target: EventTarget | null) => {
+  const element = target as HTMLElement | null
+  if (!element) return false
+  const tagName = element.tagName?.toLowerCase() || ''
+  if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return true
+  return Boolean(element.closest('[contenteditable="true"]'))
+}
+
+const handleCtrlDoubleTapKeyDown = (event: KeyboardEvent) => {
+  if (event.key === 'Control') {
+    if (event.repeat) return
+    ctrlDown = true
+    ctrlComboDirty = false
+    return
+  }
+  if (ctrlDown) {
+    ctrlComboDirty = true
+  }
+}
+
+const handleCtrlDoubleTapKeyUp = (event: KeyboardEvent) => {
+  if (event.key !== 'Control') return
+  if (!ctrlDown) return
+  ctrlDown = false
+  if (ctrlComboDirty) {
+    ctrlTapAt = 0
+    ctrlComboDirty = false
+    return
+  }
+  if (isEditableElement(event.target) || runtime.confirmShow) {
+    ctrlTapAt = 0
+    ctrlComboDirty = false
+    return
+  }
+  const now = Date.now()
+  if (now - ctrlTapAt <= CTRL_DOUBLE_TAP_MS) {
+    ctrlTapAt = 0
+    void openDialog('menu.globalSongSearch')
+  } else {
+    ctrlTapAt = now
+  }
+  ctrlComboDirty = false
+}
+
+const handleSongsRemovedForGlobalSearch = (payload: any) => {
+  try {
+    const paths: string[] = Array.isArray(payload?.paths) ? payload.paths : []
+    const listUUID: string | undefined = payload?.listUUID
+    if (!paths.length) return
+    if (listUUID && listUUID !== runtime.playingData.playingSongListUUID) return
+    const normalizedSet = new Set(paths.map((p) => normalizePath(p)).filter(Boolean))
+
+    runtime.playingData.playingSongListData = (
+      runtime.playingData.playingSongListData || []
+    ).filter((song: any) => !normalizedSet.has(normalizePath(song.filePath)))
+
+    if (
+      runtime.playingData.playingSong &&
+      normalizedSet.has(normalizePath(runtime.playingData.playingSong.filePath))
+    ) {
+      runtime.playingData.playingSong = null
+    }
+
+    markSongSearchDirty('songs-removed')
+  } catch {}
+}
+
+const handleMetadataBatchUpdatedForGlobalSearch = () => {
+  markSongSearchDirty('metadata-batch-updated')
+}
+
+const handleSongMetadataUpdatedForGlobalSearch = () => {
+  markSongSearchDirty('song-metadata-updated')
+}
+
+const handlePlaylistCacheClearedForGlobalSearch = () => {
+  markSongSearchDirty('playlist-cache-cleared')
+}
 
 const sendFileOpControl = (action: 'resume' | 'cancel') => {
   fileOpDialogVisible.value = false
@@ -50,19 +217,20 @@ const sendFileOpControl = (action: 'resume' | 'cancel') => {
 }
 
 const openDialog = async (item: string) => {
-  // 统一将中文项映射为 i18n 键，避免不同语言下判断不一致
-  if (item === '关于') item = 'menu.about'
-  if (item === '第三方许可') item = 'menu.thirdPartyNotices'
-  if (item === '访问 GitHub') item = 'menu.visitGithub'
-  if (item === '访问官网') item = 'menu.visitWebsite'
-  if (item === '检查更新') item = 'menu.checkUpdate'
-  if (item === '更新日志') item = 'menu.whatsNew'
-  if (item === '退出') item = 'menu.exit'
-  if (item === '云同步设置') item = 'cloudSync.settings'
-  if (item === '同步曲目指纹库') item = 'cloudSync.syncFingerprints'
-  if (item === '手动添加曲目指纹') item = 'fingerprints.manualAdd'
-  if (item === '导出曲目指纹库文件') item = 'fingerprints.exportDatabase'
-  if (item === '导入曲目指纹库文件') item = 'fingerprints.importDatabase'
+  // ??????????????????? key
+  if (item === '??') item = 'menu.about'
+  if (item === '?????') item = 'menu.thirdPartyNotices'
+  if (item === '?? GitHub') item = 'menu.visitGithub'
+  if (item === '????') item = 'menu.visitWebsite'
+  if (item === '????') item = 'menu.checkUpdate'
+  if (item === '????') item = 'menu.whatsNew'
+  if (item === '??') item = 'menu.exit'
+  if (item === '?????') item = 'cloudSync.settings'
+  if (item === '???????') item = 'cloudSync.syncFingerprints'
+  if (item === '????????') item = 'fingerprints.manualAdd'
+  if (item === '?????????') item = 'fingerprints.exportDatabase'
+  if (item === '?????????') item = 'fingerprints.importDatabase'
+  if (item === '????') item = 'menu.globalSongSearch'
 
   if (item === 'menu.about') {
     const version = String((pkg as any).version || '')
@@ -108,6 +276,11 @@ const openDialog = async (item: string) => {
     window.electron.ipcRenderer.send('showWhatsNew')
     return
   }
+  if (item === 'menu.globalSongSearch') {
+    activeDialog.value = 'search.globalSong'
+    await nextTick()
+    return
+  }
   if (item === 'menu.exit') {
     if (runtime.isProgressing === true) {
       await confirm({
@@ -130,6 +303,27 @@ const openDialog = async (item: string) => {
   }
   activeDialog.value = item
 }
+
+const handleGlobalSongSearchLocate = async (item: GlobalSongSearchItem) => {
+  traceGlobalSongSearch('locate-click', {
+    libraryName: item.libraryName,
+    songListUUID: item.songListUUID,
+    filePath: item.filePath
+  })
+  activeDialog.value = ''
+  await focusSongFromGlobalSearch(item, false, true)
+}
+
+const handleGlobalSongSearchPlay = async (item: GlobalSongSearchItem) => {
+  traceGlobalSongSearch('play-click', {
+    libraryName: item.libraryName,
+    songListUUID: item.songListUUID,
+    filePath: item.filePath
+  })
+  activeDialog.value = ''
+  await focusSongFromGlobalSearch(item, true)
+}
+
 const documentHandleClick = () => {
   runtime.activeMenuUUID = ''
 }
@@ -165,6 +359,7 @@ const getLibrary = async () => {
 }
 getLibrary()
 onMounted(() => {
+  void window.electron.ipcRenderer.invoke('song-search:warmup').catch(() => {})
   hotkeys('F1', 'windowGlobal', () => {
     openDialog('menu.visitGithub')
   })
@@ -190,8 +385,7 @@ onMounted(() => {
   })
   hotkeys('esc', () => {
     runtime.activeMenuUUID = ''
-  })
-  // F2/Enter 触发重命名（Windows: F2；Mac: Enter）
+  }) // F2/Enter ??????Windows ? F2?Mac ? Enter
   const triggerRename = () => {
     try {
       if (runtime.selectSongListDialogShow) {
@@ -216,10 +410,12 @@ onMounted(() => {
       return false
     })
   }
-  utils.setHotkeysScpoe('windowGlobal')
-  // 通过 Tray 菜单触发
+  utils.setHotkeysScpoe('windowGlobal') // ?????????????
   window.electron.ipcRenderer.on('openDialogFromTray', async (_e, key: string) => {
     await openDialog(key)
+  })
+  window.electron.ipcRenderer.on('open-global-song-search', async () => {
+    await openDialog('menu.globalSongSearch')
   })
   window.electron.ipcRenderer.on('tray-action', async (_e, action: string) => {
     if (action === 'import-new-filter') {
@@ -242,9 +438,7 @@ onMounted(() => {
       window.electron.ipcRenderer.send('toggle-close')
       return
     }
-  })
-  // 不再显示“结束后的汇总提示”
-  // 监听批处理被中断（等待用户选择 继续/取消）
+  }) // ????????????????????
   window.electron.ipcRenderer.on('external-open/imported', async (_e, payload) => {
     try {
       const rawPaths = Array.isArray(payload?.paths) ? payload.paths : []
@@ -252,6 +446,7 @@ onMounted(() => {
       if (songs.length) {
         emitter.emit('external-open/play', { songs, startIndex: 0 })
       }
+      markSongSearchDirty('external-open-imported')
     } catch (error) {
       console.error('[external-open] failed to prepare playlist', error)
     }
@@ -273,55 +468,42 @@ onMounted(() => {
       if (tree) {
         runtime.libraryTree = tree
         runtime.oldLibraryTree = JSON.parse(JSON.stringify(tree))
+        markSongSearchDirty('library-tree-updated')
         return
       }
       await getLibrary()
+      markSongSearchDirty('library-tree-reloaded')
     } catch (_err) {}
   })
 
   window.addEventListener('pointerdown', handleContextMenuPointerDownCapture, true)
   window.addEventListener('click', handleContextMenuClickCapture, true)
+  window.addEventListener('keydown', handleCtrlDoubleTapKeyDown, true)
+  window.addEventListener('keyup', handleCtrlDoubleTapKeyUp, true)
 
-  // 全局同步：当有 songsRemoved 事件触发时，若针对当前播放歌单，则同步清理播放列表快照
-  emitter.on('songsRemoved', (payload: any) => {
-    try {
-      const paths: string[] = Array.isArray(payload?.paths) ? payload.paths : []
-      const listUUID: string | undefined = payload?.listUUID
-      if (!paths.length) return
-      if (listUUID && listUUID !== runtime.playingData.playingSongListUUID) return
-      const normalizePath = (p: string | undefined | null) =>
-        (p || '').replace(/\//g, '\\').toLowerCase()
-      const normalizedSet = new Set(paths.map((p) => normalizePath(p)).filter(Boolean))
-
-      // 过滤当前播放列表数据中的已删除项
-      runtime.playingData.playingSongListData = (
-        runtime.playingData.playingSongListData || []
-      ).filter((s: any) => !normalizedSet.has(normalizePath(s.filePath)))
-
-      // 若当前播放的歌曲被删除，清空当前播放
-      if (
-        runtime.playingData.playingSong &&
-        normalizedSet.has(normalizePath(runtime.playingData.playingSong.filePath))
-      ) {
-        runtime.playingData.playingSong = null
-      }
-    } catch {}
-  })
+  emitter.on('songsRemoved', handleSongsRemovedForGlobalSearch)
+  emitter.on('metadataBatchUpdated', handleMetadataBatchUpdatedForGlobalSearch)
+  emitter.on('songMetadataUpdated', handleSongMetadataUpdatedForGlobalSearch)
+  emitter.on('playlistCacheCleared', handlePlaylistCacheClearedForGlobalSearch)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('pointerdown', handleContextMenuPointerDownCapture, true)
   window.removeEventListener('click', handleContextMenuClickCapture, true)
+  window.removeEventListener('keydown', handleCtrlDoubleTapKeyDown, true)
+  window.removeEventListener('keyup', handleCtrlDoubleTapKeyUp, true)
+  emitter.off('songsRemoved', handleSongsRemovedForGlobalSearch)
+  emitter.off('metadataBatchUpdated', handleMetadataBatchUpdatedForGlobalSearch)
+  emitter.off('songMetadataUpdated', handleSongMetadataUpdatedForGlobalSearch)
+  emitter.off('playlistCacheCleared', handlePlaylistCacheClearedForGlobalSearch)
   contextMenuClickThroughGuard.clear()
-})
-// 供子组件触发打开对话框（例如同步面板引导打开设置）
+}) // ???????????????
 window.addEventListener('openDialogFromChild', (e: any) => {
   const detail = e?.detail
   if (typeof detail === 'string') {
     openDialog(detail)
   }
-})
-// 云同步状态驱动全局进行中标记，禁用指纹库相关操作
+}) // ?????????????
 window.electron.ipcRenderer.on('cloudSync/state', (_e, state) => {
   if (state === 'syncing') runtime.isProgressing = true
   if (state === 'success' || state === 'failed' || state === 'cancelled')
@@ -369,6 +551,12 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
   <cloudSyncSyncDialog
     v-if="activeDialog == 'cloudSync.syncFingerprints'"
     @cancel="activeDialog = ''"
+  />
+  <globalSongSearchDialog
+    v-if="activeDialog == 'search.globalSong'"
+    @cancel="activeDialog = ''"
+    @locate="handleGlobalSongSearchLocate"
+    @play="handleGlobalSongSearchPlay"
   />
   <FileOpInterruptedDialog
     :visible="fileOpDialogVisible"

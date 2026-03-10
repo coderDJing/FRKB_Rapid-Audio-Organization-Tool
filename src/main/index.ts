@@ -39,6 +39,7 @@ import { registerClipboardHandlers } from './ipc/clipboardHandlers'
 import { registerExportHandlers } from './ipc/exportHandlers'
 import { registerKeyAnalysisHandlers } from './ipc/keyAnalysisHandlers'
 import { registerMixtapeHandlers } from './ipc/mixtapeHandlers'
+import { registerSongSearchHandlers } from './ipc/songSearchHandlers'
 import { maybeShowWhatsNew, registerWhatsNewHandlers } from './services/whatsNew'
 import * as LibraryCacheDb from './libraryCacheDb'
 import path from 'path'
@@ -61,6 +62,7 @@ import {
   startBackgroundOrchestrator,
   stopBackgroundOrchestrator
 } from './services/backgroundOrchestrator'
+import globalSongSearchEngine from './services/globalSongSearch'
 import { registerBackgroundForegroundBusyProvider } from './services/backgroundIdleGate'
 // import AudioFeatureExtractor from './mfccTest'
 
@@ -228,6 +230,7 @@ registerClipboardHandlers()
 registerExportHandlers()
 registerKeyAnalysisHandlers()
 registerMixtapeHandlers()
+registerSongSearchHandlers()
 
 keyAnalysisEvents.on('key-updated', (payload) => {
   if (mainWindow.instance) {
@@ -440,6 +443,7 @@ app.whenReady().then(async () => {
   startKeyAnalysisBackground()
   startMixtapeWaveformHiresBackground()
   startMixtapeStemBackgroundResume()
+  void globalSongSearchEngine.warmup().catch(() => {})
   LibraryCacheDb.scheduleCacheKeyMigration()
   await processExternalOpenQueue()
   setTimeout(() => {

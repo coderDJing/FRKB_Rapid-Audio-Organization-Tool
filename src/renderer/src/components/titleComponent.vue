@@ -129,6 +129,7 @@ const defaultMenus: MenuConfig[] = [
           action: 'import-new-curated'
         }
       ],
+      [{ name: 'menu.globalSongSearch', shortcutKey: 'Ctrl,Ctrl' }],
       [{ name: 'fingerprints.manualAdd', action: 'manual-add-fingerprint' }],
       [{ name: 'menu.exit', action: 'exit' }]
     ]

@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import {
   PropType,
   computed,
@@ -38,6 +38,14 @@ const props = defineProps({
   playingSongFilePath: {
     type: String as PropType<string | undefined>,
     default: undefined
+  },
+  flashRowKey: {
+    type: String,
+    default: ''
+  },
+  flashRowToken: {
+    type: Number,
+    default: 0
   },
   totalWidth: {
     type: Number,
@@ -540,7 +548,7 @@ onUnmounted(() => {
     @mouseover="onRowsMouseOver"
     @mouseleave="onRowsMouseLeave"
   >
-    <!-- 使用占位高度撑开总可滚动高度，内部仅渲染可视窗口行 -->
+    <!-- 娴ｈ法鏁ら崡鐘辩秴妤傛ê瀹抽幘鎴濈磻閹褰插姘З妤傛ê瀹抽敍灞藉敶闁劋绮庡〒鍙夌厠閸欘垵顫嬬粣妤€褰涚悰?-->
     <div :style="{ height: contentHeight + 'px', position: 'relative' }">
       <div :style="{ position: 'absolute', top: offsetTopPx + 'px', left: 0, right: 0 }">
         <div
@@ -569,7 +577,13 @@ onUnmounted(() => {
               darkBackground:
                 item.idx % 2 === 0 && !selectedSongFilePaths.includes(getRowKey(item.song)),
               selectedSong: selectedSongFilePaths.includes(getRowKey(item.song)),
-              playingSong: getRowKey(item.song) === playingSongFilePath
+              playingSong: getRowKey(item.song) === playingSongFilePath,
+              globalSearchFlashA:
+                flashRowKey === getRowKey(item.song) &&
+                flashRowToken > 0 &&
+                flashRowToken % 2 === 1,
+              globalSearchFlashB:
+                flashRowKey === getRowKey(item.song) && flashRowToken > 0 && flashRowToken % 2 === 0
             }"
             :style="{ 'min-width': `var(--songs-total-width, ${totalWidth}px)` }"
           >
@@ -755,6 +769,7 @@ onUnmounted(() => {
   display: flex;
   height: 30px; // Standard row height
   contain: content;
+  position: relative;
 
   &.lightBackground {
     background-color: var(--bg-elev);
@@ -763,11 +778,81 @@ onUnmounted(() => {
     background-color: var(--bg);
   }
   &.selectedSong {
-    background-color: var(--hover);
+    background-color: rgba(0, 120, 212, 0.2);
+  }
+  &.selectedSong::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--accent);
+    z-index: 1;
   }
   &.playingSong {
     color: var(--accent) !important;
     font-weight: bold;
+  }
+  &.globalSearchFlashA,
+  &.globalSearchFlashB {
+    animation-duration: 320ms;
+    animation-timing-function: cubic-bezier(0.32, 0, 0.2, 1);
+    animation-iteration-count: 3;
+  }
+  &.globalSearchFlashA::before,
+  &.globalSearchFlashB::before {
+    animation-duration: 320ms;
+    animation-timing-function: cubic-bezier(0.32, 0, 0.2, 1);
+    animation-iteration-count: 3;
+  }
+  &.globalSearchFlashA {
+    animation-name: global-search-locate-flash-a;
+  }
+  &.globalSearchFlashB {
+    animation-name: global-search-locate-flash-b;
+  }
+  &.globalSearchFlashA::before,
+  &.globalSearchFlashB::before {
+    animation-name: global-search-locate-flash-bar;
+  }
+}
+
+@keyframes global-search-locate-flash-a {
+  0%,
+  100% {
+    background-color: rgba(0, 120, 212, 0.2);
+    box-shadow: none;
+  }
+  50% {
+    background-color: rgba(74, 176, 255, 0.52);
+    box-shadow: inset 0 0 0 1px rgba(120, 205, 255, 0.72);
+  }
+}
+
+@keyframes global-search-locate-flash-b {
+  0%,
+  100% {
+    background-color: rgba(0, 120, 212, 0.2);
+    box-shadow: none;
+  }
+  50% {
+    background-color: rgba(74, 176, 255, 0.52);
+    box-shadow: inset 0 0 0 1px rgba(120, 205, 255, 0.72);
+  }
+}
+
+@keyframes global-search-locate-flash-bar {
+  0%,
+  100% {
+    width: 3px;
+    background: var(--accent);
+    box-shadow: none;
+  }
+  50% {
+    width: 6px;
+    background: #80d0ff;
+    box-shadow: 0 0 12px rgba(128, 208, 255, 0.45);
   }
 }
 
@@ -900,8 +985,7 @@ onUnmounted(() => {
 .cover-wrapper {
   width: 100%;
   height: 100%;
-  overflow: hidden; // 保持单元格原有宽度
-  display: flex;
+  overflow: hidden; // 娣囨繃瀵旈崡鏇炲帗閺嶇厧甯張澶婎啍鎼?  display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
@@ -909,11 +993,8 @@ onUnmounted(() => {
 .cover-wrapper img {
   width: 100%;
   height: 100%;
-  object-fit: cover; // 填满容器
-  display: block;
-  pointer-events: none; // 禁止拦截事件，防止拖拽
-  -webkit-user-drag: none; // CSS 方式禁用拖拽
-  user-select: none;
+  object-fit: cover; // 婵夘偅寮х€圭懓娅?  display: block;
+  pointer-events: none; // 缁備焦顒涢幏锔藉焻娴滃娆㈤敍宀勬Щ濮濄垺瀚嬮幏?  -webkit-user-drag: none; // CSS 閺傜懓绱＄粋浣烘暏閹锋牗瀚?  user-select: none;
 }
 .cover-skeleton {
   width: 100%;
@@ -926,7 +1007,6 @@ onUnmounted(() => {
 .cover-preview-overlay {
   position: fixed;
   background-color: var(--bg-elev);
-  // 通过双重阴影模拟描边，避免占用额外像素
   box-shadow:
     0 0 0 2px var(--accent),
     0 10px 30px rgba(0, 0, 0, 0.45);

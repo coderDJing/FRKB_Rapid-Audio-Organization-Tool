@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, useTemplateRef, onUnmounted, watch, markRaw } from 'vue'
+import {
+  ref,
+  shallowRef,
+  computed,
+  useTemplateRef,
+  onUnmounted,
+  watch,
+  markRaw,
+  nextTick
+} from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
@@ -7,7 +16,7 @@ import { t } from '@renderer/utils/translate'
 import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 
-// 组件导入
+// 缁勪欢瀵煎叆
 import confirm from '@renderer/components/confirmDialog'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import welcomePage from '@renderer/components/welcomePage.vue'
@@ -32,14 +41,15 @@ import { useAutoScrollToCurrent } from '@renderer/pages/modules/songsArea/compos
 import { useParentRafSampler } from '@renderer/pages/modules/songsArea/composables/useParentRafSampler'
 import { useSongsAreaEvents } from '@renderer/pages/modules/songsArea/composables/useSongsAreaEvents'
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
+import { useGlobalSearchFocus } from '@renderer/pages/modules/songsArea/composables/useGlobalSearchFocus'
 
-// 资源导入
+// 璧勬簮瀵煎叆
 import ascendingOrderAsset from '@renderer/assets/ascending-order.svg?asset'
 import descendingOrderAsset from '@renderer/assets/descending-order.svg?asset'
 
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 
-// 类型定义，以便正确引用 OverlayScrollbarsComponent 实例
+// 绫诲瀷瀹氫箟锛屼互渚挎纭紩鐢?OverlayScrollbarsComponent 瀹炰緥
 type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
 const ascendingOrder = ascendingOrderAsset
 const descendingOrder = descendingOrderAsset
@@ -69,10 +79,10 @@ const songListRootDir = computed(() =>
     ? ''
     : libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID) || ''
 )
-// 使用浅响应+markRaw，避免为上千行数据创建深层 Proxy，降低 flushJobs 峰值
+// ?? shallowRef + markRaw????????????
 const originalSongInfoArr = shallowRef<ISongInfo[]>([])
 
-// 父级滚动采样
+// 鐖剁骇婊氬姩閲囨牱
 const { externalScrollTop, externalViewportHeight } = useParentRafSampler({ songsAreaRef })
 
 // Initialize composables
@@ -175,7 +185,7 @@ const attachModifierKeyListeners = () => {
   }
 }
 
-// 集中列、筛选、排序与列头交互逻辑
+// 闆嗕腑鍒椼€佺瓫閫夈€佹帓搴忎笌鍒楀ご浜や簰閫昏緫
 const {
   columnData,
   columnDataArr,
@@ -189,10 +199,10 @@ const {
   applyFiltersAndSorting
 } = useSongsAreaColumns({ runtime, originalSongInfoArr })
 
-// 封面清理
+// 灏侀潰娓呯悊
 const { scheduleSweepCovers } = useSweepCovers({ runtime })
 
-// 歌曲加载与渐进渲染
+// ???????????
 const { loadingShow, isRequesting, openSongList } = useSongsLoader({
   runtime,
   originalSongInfoArr,
@@ -232,18 +242,18 @@ const handleMetadataBatchUpdatedFromEvent = async (payload: {
 }
 emitter.on('metadataBatchUpdated', handleMetadataBatchUpdatedFromEvent)
 
-// 键盘与鼠标选择
+// 閿洏涓庨紶鏍囬€夋嫨
 const { songClick } = useKeyboardSelection({
   runtime,
   externalViewportHeight,
   scheduleSweepCovers
 })
 
-// 手动滚动到当前播放
+// ????????????
 const { scrollToIndex, scrollToIndexIfNeeded } = useAutoScrollToCurrent({ runtime, songsAreaRef })
 attachModifierKeyListeners()
 
-// 事件订阅与同步
+// ???? songsArea ????
 useSongsAreaEvents({
   runtime,
   originalSongInfoArr,
@@ -267,12 +277,13 @@ onUnmounted(() => {
     modifierKeyCleanup()
     modifierKeyCleanup = null
   }
+  clearGlobalSearchFlashSchedule()
 })
-// 上述列、加载、事件与封面清理已由组合函数提供
+// 涓婅堪鍒椼€佸姞杞姐€佷簨浠朵笌灏侀潰娓呯悊宸茬敱缁勫悎鍑芥暟鎻愪緵
 
-// 移除残留的 perfLog
+// 绉婚櫎娈嬬暀鐨?perfLog
 
-// songClick 已由 useKeyboardSelection 提供
+// songClick 宸茬敱 useKeyboardSelection 鎻愪緵
 
 const applyMetadataUpdate = async (
   updatedSong: ISongInfo | undefined,
@@ -495,13 +506,67 @@ const songDblClick = async (song: ISongInfo) => {
   runtime.playingData.playingSong = normalizedSong
 }
 
-// 删除键处理由 useKeyboardSelection 绑定
+const globalSearchFlashRowKey = ref('')
+const globalSearchFlashToken = ref(0)
+let globalSearchFlashTimer: ReturnType<typeof setTimeout> | null = null
+let globalSearchFlashRafA: number | null = null
+let globalSearchFlashRafB: number | null = null
+const clearGlobalSearchFlashSchedule = () => {
+  if (globalSearchFlashTimer) {
+    clearTimeout(globalSearchFlashTimer)
+    globalSearchFlashTimer = null
+  }
+  if (globalSearchFlashRafA !== null) {
+    cancelAnimationFrame(globalSearchFlashRafA)
+    globalSearchFlashRafA = null
+  }
+  if (globalSearchFlashRafB !== null) {
+    cancelAnimationFrame(globalSearchFlashRafB)
+    globalSearchFlashRafB = null
+  }
+}
+const triggerGlobalSearchFlash = (rowKey: string) => {
+  if (!rowKey) return
+  clearGlobalSearchFlashSchedule()
+  globalSearchFlashRowKey.value = ''
+  globalSearchFlashToken.value += 1
+  const flashToken = globalSearchFlashToken.value
+  void nextTick().then(() => {
+    globalSearchFlashRafA = requestAnimationFrame(() => {
+      globalSearchFlashRafA = null
+      globalSearchFlashRafB = requestAnimationFrame(() => {
+        globalSearchFlashRafB = null
+        if (globalSearchFlashToken.value !== flashToken) return
+        globalSearchFlashRowKey.value = rowKey
+      })
+    })
+  })
+  globalSearchFlashTimer = setTimeout(() => {
+    if (globalSearchFlashToken.value === flashToken && globalSearchFlashRowKey.value === rowKey) {
+      globalSearchFlashRowKey.value = ''
+    }
+    globalSearchFlashTimer = null
+  }, 1400)
+}
 
-// 键盘 Shift 范围选择与快捷键绑定由 useKeyboardSelection 管理
+useGlobalSearchFocus({
+  runtime,
+  originalSongInfoArr,
+  columnData,
+  applyFiltersAndSorting,
+  getRowKey,
+  scrollToIndex,
+  songDblClick,
+  onFocusHit: triggerGlobalSearchFlash
+})
 
-// 排序、筛选与列点击等逻辑由 useSongsAreaColumns 提供
+// 鍒犻櫎閿鐞嗙敱 useKeyboardSelection 缁戝畾
 
-// --- 新增计算属性给 SongListRows ---
+// 閿洏 Shift 鑼冨洿閫夋嫨涓庡揩鎹烽敭缁戝畾鐢?useKeyboardSelection 绠＄悊
+
+// 鎺掑簭銆佺瓫閫変笌鍒楃偣鍑荤瓑閫昏緫鐢?useSongsAreaColumns 鎻愪緵
+
+// --- 鏂板璁＄畻灞炴€х粰 SongListRows ---
 const playingSongFilePathForRows = computed(() => {
   const playingSong = runtime.playingData.playingSong
   if (!playingSong) return undefined
@@ -557,11 +622,11 @@ const handleScrollToPlaying = () => {
   scrollToIndex(currentPlayingIndex.value)
 }
 
-// 父级采样由 useParentRafSampler 提供
+// 鐖剁骇閲囨牱鐢?useParentRafSampler 鎻愪緵
 
-// 自动滚动逻辑由 useAutoScrollToCurrent 提供
+// 鑷姩婊氬姩閫昏緫鐢?useAutoScrollToCurrent 鎻愪緵
 
-// 新增：处理移动歌曲对话框确认后的逻辑
+// 鏂板锛氬鐞嗙Щ鍔ㄦ瓕鏇插璇濇纭鍚庣殑閫昏緫
 async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
   const pathsEffectivelyMoved = [...runtime.songsArea.selectedSongFilePath]
   const currentListUuid = runtime.songsArea.songListUUID
@@ -571,16 +636,16 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
     selectSongListDialogTargetLibraryName.value === 'MixtapeLibrary'
 
   if (pathsEffectivelyMoved.length === 0) {
-    // 如果没有选中的歌曲，让 composable 的 handleMoveSongsConfirm 处理（它可能会直接关闭对话框或不做任何事）
+    // ????????????? composable ????????
     await handleMoveSongsConfirm(targetSongListUuid)
     return
   }
 
-  // 调用 composable 中的函数来执行移动操作 (IPC, 关闭对话框, 清空选择等)
-  // handleMoveSongsConfirm 应该会处理 isDialogVisible 和 selectedSongFilePath
+  // 璋冪敤 composable 涓殑鍑芥暟鏉ユ墽琛岀Щ鍔ㄦ搷浣?(IPC, 鍏抽棴瀵硅瘽妗? 娓呯┖閫夋嫨绛?
+  // handleMoveSongsConfirm 搴旇浼氬鐞?isDialogVisible 鍜?selectedSongFilePath
   await handleMoveSongsConfirm(targetSongListUuid)
   if (isMixtapeTarget || targetSongListUuid === currentListUuid) return
-  // 本地同步移除：基于移动前的路径快照，立即从 original 中剔除并统一重建，避免偶发事件竞态导致“复活”
+  // ???????????????????????????????
   if (pathsEffectivelyMoved.length > 0) {
     const normalizePath = (p: string | undefined | null) =>
       (p || '').replace(/\//g, '\\').toLowerCase()
@@ -590,7 +655,7 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
     )
     applyFiltersAndSorting()
 
-    // 若当前播放列表即为当前视图，同步快照（与其他删除路径保持一致）
+    // 鑻ュ綋鍓嶆挱鏀惧垪琛ㄥ嵆涓哄綋鍓嶈鍥撅紝鍚屾蹇収锛堜笌鍏朵粬鍒犻櫎璺緞淇濇寔涓€鑷达級
     if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
       runtime.playingData.playingSongListData = [...runtime.songsArea.songInfoArr]
       if (
@@ -610,7 +675,7 @@ const shouldShowEmptyState = computed(() => {
     runtime.songsArea.songInfoArr.length === 0
   )
 })
-// 是否存在任意激活的筛选条件
+// ???????????????
 const hasActiveFilter = computed(() => columnData.value.some((c) => !!c.filterActive))
 const isRecycleBinView = computed(() => runtime.songsArea.songListUUID === RECYCLE_BIN_UUID)
 const emptyTitleText = computed(() => {
@@ -643,18 +708,17 @@ const dragHintDesc = computed(() => {
         target: dragHintTarget.value
       })
 })
-// --- END 新增计算属性 ---
+// --- END 鏂板璁＄畻灞炴€?---
 
-// 拖拽相关函数
+// 鎷栨嫿鐩稿叧鍑芥暟
 const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
   if (!runtime.songsArea.songListUUID) return
-
-  // 确保拖拽的歌曲在选中列表中
+  // ?????????????????
   const rowKey = getRowKey(song)
   const isSelected = runtime.songsArea.selectedSongFilePath.includes(rowKey)
 
   if (!isSelected || runtime.songsArea.selectedSongFilePath.length === 0) {
-    // 如果这首歌没有被选中，或者没有选中任何歌曲，就选中这首歌
+    // ????????????????????
     runtime.songsArea.selectedSongFilePath = [rowKey]
   }
 
@@ -736,8 +800,7 @@ const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
 
   showDragHint('internal')
   startDragSongs(song, runtime.libraryAreaSelected, runtime.songsArea.songListUUID)
-
-  // 设置拖拽数据以支持内部拖放
+  // ???????????????
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'copyMove'
     event.dataTransfer.setData(
@@ -799,7 +862,7 @@ const handleMixtapeReorder = async (payload: { sourceItemIds: string[]; targetIn
   }
 }
 
-// 播放列表同步由 useSongsAreaEvents 管理
+// 鎾斁鍒楄〃鍚屾鐢?useSongsAreaEvents 绠＄悊
 </script>
 <template>
   <div class="songs-area-root">
@@ -844,7 +907,7 @@ const handleMixtapeReorder = async (payload: { sourceItemIds: string[]; targetIn
             @drag-end="runtime.dragTableHeader = false"
           />
 
-          <!-- 使用 SongListRows 组件渲染歌曲列表 -->
+          <!-- 浣跨敤 SongListRows 缁勪欢娓叉煋姝屾洸鍒楄〃 -->
           <SongListRows
             v-if="runtime.songsArea.songInfoArr.length > 0"
             :key="runtime.songsArea.songListUUID"
@@ -852,6 +915,8 @@ const handleMixtapeReorder = async (payload: { sourceItemIds: string[]; targetIn
             :visible-columns="columnDataArr"
             :selected-song-file-paths="runtime.songsArea.selectedSongFilePath"
             :playing-song-file-path="playingSongFilePathForRows"
+            :flash-row-key="globalSearchFlashRowKey"
+            :flash-row-token="globalSearchFlashToken"
             :total-width="totalColumnsWidth"
             :source-library-name="runtime.libraryAreaSelected"
             :source-song-list-u-u-i-d="runtime.songsArea.songListUUID"
@@ -894,7 +959,7 @@ const handleMixtapeReorder = async (payload: { sourceItemIds: string[]; targetIn
           </div>
         </Transition>
 
-        <!-- Empty State Overlay: 独立于滚动内容，始终居中在可视区域 -->
+        <!-- Empty State Overlay: 鐙珛浜庢粴鍔ㄥ唴瀹癸紝濮嬬粓灞呬腑鍦ㄥ彲瑙嗗尯鍩?-->
         <div v-if="shouldShowEmptyState" class="songs-area-empty-overlay unselectable">
           <div class="empty-box">
             <div class="title">

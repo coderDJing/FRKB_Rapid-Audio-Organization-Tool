@@ -84,6 +84,12 @@ const buildFullMenu = () =>
         },
         { type: 'separator' },
         {
+          label: tMenu('menu.globalSongSearch'),
+          click: () =>
+            mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.globalSongSearch')
+        },
+        { type: 'separator' },
+        {
           label: tMenu('fingerprints.manualAdd'),
           click: () =>
             mainWindow.instance?.webContents.send('openDialogFromTray', 'fingerprints.manualAdd')
