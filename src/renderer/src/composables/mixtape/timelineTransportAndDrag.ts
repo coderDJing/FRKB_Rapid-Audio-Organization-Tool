@@ -248,6 +248,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     cleanupTransportAudioData
   } = createTimelineTransportAudioDataModule({
     tracks,
+    playheadSec,
     normalizedRenderZoom,
     timelineLayout,
     resolveRenderPxPerSec,

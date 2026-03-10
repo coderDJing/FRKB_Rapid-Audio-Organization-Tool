@@ -25,6 +25,7 @@ type TimelineSequentialLayoutEntry = {
 
 type TimelineTransportAudioDataCtx = {
   tracks: Ref<MixtapeTrack[]>
+  playheadSec: Ref<number>
   normalizedRenderZoom: Ref<number>
   timelineLayout: Ref<{ totalWidth: number }>
   resolveRenderPxPerSec: (zoom: number) => number
@@ -69,6 +70,8 @@ export type TransportStemAudioRef = {
   audioBuffer: AudioBuffer | null
 }
 
+type PreloadAudioRef = TransportAudioRef | TransportStemAudioRef
+
 export type TransportEntry = {
   trackId: string
   filePath: string
@@ -89,6 +92,8 @@ export type TransportEntry = {
   audioRef?: TransportAudioRef
   stemAudioById?: Partial<Record<TransportStemId, TransportStemAudioRef>>
 }
+
+const TRANSPORT_PRELOAD_PRIORITY_TRACK_LIMIT = 3
 
 const normalizePcmData = (pcmData: unknown): Float32Array => {
   if (!pcmData) return new Float32Array(0)
@@ -229,6 +234,26 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
     if (!transportPreloadTimer) return
     clearTimeout(transportPreloadTimer)
     transportPreloadTimer = null
+  }
+
+  const resetTransportPreloadProgress = () => {
+    ctx.transportPreloadTotal.value = 0
+    ctx.transportPreloadDone.value = 0
+    ctx.transportPreloadFailed.value = 0
+  }
+
+  const resolveTransportPreloadConcurrencyCap = () => {
+    const logicalCpuCount =
+      typeof navigator !== 'undefined' ? Math.max(1, Number(navigator.hardwareConcurrency) || 1) : 4
+    return logicalCpuCount >= 16
+      ? 8
+      : logicalCpuCount >= 12
+        ? 6
+        : logicalCpuCount >= 8
+          ? 5
+          : logicalCpuCount >= 4
+            ? 4
+            : 3
   }
 
   const cancelTransportPreload = () => {
@@ -402,34 +427,7 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
     return buffer
   }
 
-  const ensureDecodedStemAudio = async (stemAudio: TransportStemAudioRef): Promise<void> => {
-    const cached = readTransportBufferCache(stemAudio.filePath)
-    if (cached) {
-      stemAudio.audioBuffer = cached
-      return
-    }
-    const filePath = stemAudio.filePath
-    let inflight = transportDecodeInflight.get(filePath)
-    if (!inflight) {
-      inflight = (async () => {
-        const buffer =
-          stemAudio.decodeMode === 'browser'
-            ? await decodeBrowser(filePath).catch(async (error) => {
-                console.warn('[mixtape-transport] 浏览器解码失败，回退 IPC 解码:', filePath, error)
-                return await decodeIpc(filePath)
-              })
-            : await decodeIpc(filePath)
-        writeTransportBufferCache(filePath, buffer)
-        return buffer
-      })().finally(() => {
-        transportDecodeInflight.delete(filePath)
-      })
-      transportDecodeInflight.set(filePath, inflight)
-    }
-    stemAudio.audioBuffer = await inflight
-  }
-
-  const ensureDecodedAudioRef = async (audioRef: TransportAudioRef): Promise<void> => {
+  const ensureDecodedAudio = async (audioRef: PreloadAudioRef): Promise<void> => {
     const cached = readTransportBufferCache(audioRef.filePath)
     if (cached) {
       audioRef.audioBuffer = cached
@@ -454,6 +452,14 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
       transportDecodeInflight.set(filePath, inflight)
     }
     audioRef.audioBuffer = await inflight
+  }
+
+  const ensureDecodedStemAudio = async (stemAudio: TransportStemAudioRef): Promise<void> => {
+    await ensureDecodedAudio(stemAudio)
+  }
+
+  const ensureDecodedAudioRef = async (audioRef: TransportAudioRef): Promise<void> => {
+    await ensureDecodedAudio(audioRef)
   }
 
   const ensureDecodedTransportEntry = async (entry: TransportEntry): Promise<void> => {
@@ -527,20 +533,10 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
     return failCount
   }
 
-  const preloadTransportBuffers = async () => {
-    if (ctx.isStemMixMode() && !isStemAutoPreloadReady()) {
-      ctx.transportPreloading.value = false
-      ctx.transportPreloadTotal.value = 0
-      ctx.transportPreloadDone.value = 0
-      ctx.transportPreloadFailed.value = 0
-      return
-    }
-    const version = ++transportPreloadVersion
-    const plan = buildTransportEntries()
-    const useStemMode = ctx.isStemMixMode()
-    const uniqueAudioRefs = new Map<string, TransportAudioRef>()
-    if (useStemMode) {
-      for (const entry of plan.entries) {
+  const collectUniqueTransportAudios = (entries: TransportEntry[]): PreloadAudioRef[] => {
+    const uniqueAudioRefs = new Map<string, PreloadAudioRef>()
+    if (ctx.isStemMixMode()) {
+      for (const entry of entries) {
         for (const stemId of ctx.resolveStemIdsForMode()) {
           const stemAudio = entry.stemAudioById?.[stemId]
           const stemPath = String(stemAudio?.filePath || '').trim()
@@ -548,89 +544,178 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
           uniqueAudioRefs.set(stemPath, stemAudio)
         }
       }
-    } else {
-      for (const entry of plan.entries) {
-        const audioRef = entry.audioRef
-        const filePath = String(audioRef?.filePath || '').trim()
-        if (!audioRef || !filePath || uniqueAudioRefs.has(filePath)) continue
-        uniqueAudioRefs.set(filePath, audioRef)
-      }
+      return Array.from(uniqueAudioRefs.values())
     }
-    const uniqueAudios = Array.from(uniqueAudioRefs.values())
-    const keepPaths = new Set(uniqueAudios.map((item) => item.filePath))
-    for (const key of Array.from(transportDecodedBufferCache.keys())) {
-      if (!keepPaths.has(key)) {
-        transportDecodedBufferCache.delete(key)
-      }
+
+    for (const entry of entries) {
+      const audioRef = entry.audioRef
+      const filePath = String(audioRef?.filePath || '').trim()
+      if (!audioRef || !filePath || uniqueAudioRefs.has(filePath)) continue
+      uniqueAudioRefs.set(filePath, audioRef)
     }
-    ctx.transportPreloadTotal.value = uniqueAudios.length
-    ctx.transportPreloadDone.value = 0
-    ctx.transportPreloadFailed.value = 0
-    if (!uniqueAudios.length) {
-      ctx.transportPreloading.value = false
-      return
-    }
-    ctx.transportPreloading.value = true
-    const pendingAudios: TransportAudioRef[] = []
-    for (const audioRef of uniqueAudios) {
-      const cached = readTransportBufferCache(audioRef.filePath)
-      if (cached) {
-        audioRef.audioBuffer = cached
-        ctx.transportPreloadDone.value += 1
+    return Array.from(uniqueAudioRefs.values())
+  }
+
+  const collectPriorityPreloadPaths = (entries: TransportEntry[]): Set<string> => {
+    const selectedEntries: TransportEntry[] = []
+    const selectedTrackIds = new Set<string>()
+    const focusSec = Math.max(0, Number(ctx.playheadSec.value) || 0)
+    const priorityTrackLimit = ctx.isStemMixMode() ? 2 : TRANSPORT_PRELOAD_PRIORITY_TRACK_LIMIT
+    const overlapping: TransportEntry[] = []
+    const upcoming: TransportEntry[] = []
+    const previous: TransportEntry[] = []
+
+    for (const entry of entries) {
+      const startSec = Math.max(0, Number(entry.startSec) || 0)
+      const endSec = startSec + Math.max(0, Number(entry.duration) || 0)
+      if (focusSec >= startSec && focusSec < endSec) {
+        overlapping.push(entry)
         continue
       }
-      pendingAudios.push(audioRef)
+      if (startSec >= focusSec) {
+        upcoming.push(entry)
+        continue
+      }
+      previous.push(entry)
     }
-    if (!pendingAudios.length) {
-      ctx.transportPreloading.value = false
-      return
+
+    overlapping.sort((a, b) => a.startSec - b.startSec)
+    upcoming.sort((a, b) => a.startSec - b.startSec)
+    previous.sort((a, b) => b.startSec - a.startSec)
+
+    const appendEntries = (candidates: TransportEntry[]) => {
+      for (const entry of candidates) {
+        if (selectedEntries.length >= priorityTrackLimit) return
+        if (selectedTrackIds.has(entry.trackId)) continue
+        selectedTrackIds.add(entry.trackId)
+        selectedEntries.push(entry)
+      }
     }
+
+    appendEntries(overlapping)
+    appendEntries(upcoming)
+    appendEntries(previous)
+    if (!selectedEntries.length) {
+      appendEntries([...entries].sort((a, b) => a.startSec - b.startSec))
+    }
+
+    const priorityPaths = new Set<string>()
+    for (const entry of selectedEntries) {
+      if (ctx.isStemMixMode()) {
+        for (const stemId of ctx.resolveStemIdsForMode()) {
+          const stemPath = String(entry.stemAudioById?.[stemId]?.filePath || '').trim()
+          if (stemPath) {
+            priorityPaths.add(stemPath)
+          }
+        }
+        continue
+      }
+      const filePath = String(entry.audioRef?.filePath || '').trim()
+      if (filePath) {
+        priorityPaths.add(filePath)
+      }
+    }
+    return priorityPaths
+  }
+
+  const runTransportPreloadBatch = async (
+    audioRefs: PreloadAudioRef[],
+    version: number,
+    trackVisibleProgress: boolean
+  ) => {
+    if (!audioRefs.length) return
     let cursor = 0
-    const logicalCpuCount =
-      typeof navigator !== 'undefined' ? Math.max(1, Number(navigator.hardwareConcurrency) || 1) : 4
-    const preloadConcurrencyCap =
-      logicalCpuCount >= 16
-        ? 8
-        : logicalCpuCount >= 12
-          ? 6
-          : logicalCpuCount >= 8
-            ? 5
-            : logicalCpuCount >= 4
-              ? 4
-              : 3
-    const workerCount = Math.max(1, Math.min(preloadConcurrencyCap, pendingAudios.length))
+    const workerCount = Math.max(
+      1,
+      Math.min(resolveTransportPreloadConcurrencyCap(), audioRefs.length)
+    )
     const workers = Array.from({ length: workerCount }, async () => {
       while (true) {
         if (version !== transportPreloadVersion) return
         const index = cursor
         cursor += 1
-        if (index >= pendingAudios.length) return
-        const audioRef = pendingAudios[index]
+        if (index >= audioRefs.length) return
+        const audioRef = audioRefs[index]
         try {
-          await ensureDecodedAudioRef(audioRef)
+          await ensureDecodedAudio(audioRef)
         } catch (error) {
           console.error('[mixtape-transport] 预解码失败:', audioRef.filePath, error)
-          if (version === transportPreloadVersion) {
+          if (trackVisibleProgress && version === transportPreloadVersion) {
             ctx.transportPreloadFailed.value += 1
           }
         } finally {
-          if (version === transportPreloadVersion) {
+          if (trackVisibleProgress && version === transportPreloadVersion) {
             ctx.transportPreloadDone.value += 1
           }
         }
       }
     })
     await Promise.all(workers)
+  }
+
+  const preloadTransportBuffers = async () => {
+    if (ctx.isStemMixMode() && !isStemAutoPreloadReady()) {
+      ctx.transportPreloading.value = false
+      resetTransportPreloadProgress()
+      return
+    }
+    const version = ++transportPreloadVersion
+    const plan = buildTransportEntries()
+    const uniqueAudios = collectUniqueTransportAudios(plan.entries)
+    const keepPaths = new Set(uniqueAudios.map((item) => item.filePath))
+    for (const key of Array.from(transportDecodedBufferCache.keys())) {
+      if (!keepPaths.has(key)) {
+        transportDecodedBufferCache.delete(key)
+      }
+    }
+    if (!uniqueAudios.length) {
+      ctx.transportPreloading.value = false
+      resetTransportPreloadProgress()
+      return
+    }
+    const priorityPaths = collectPriorityPreloadPaths(plan.entries)
+    let visibleDone = 0
+    const priorityPending: PreloadAudioRef[] = []
+    const backgroundPending: PreloadAudioRef[] = []
+    for (const audioRef of uniqueAudios) {
+      const cached = readTransportBufferCache(audioRef.filePath)
+      if (cached) {
+        audioRef.audioBuffer = cached
+        if (priorityPaths.has(audioRef.filePath)) {
+          visibleDone += 1
+        }
+        continue
+      }
+      if (priorityPaths.has(audioRef.filePath)) {
+        priorityPending.push(audioRef)
+      } else {
+        backgroundPending.push(audioRef)
+      }
+    }
+    ctx.transportPreloadTotal.value = visibleDone + priorityPending.length
+    ctx.transportPreloadDone.value = visibleDone
+    ctx.transportPreloadFailed.value = 0
+    if (!priorityPending.length) {
+      ctx.transportPreloading.value = false
+      resetTransportPreloadProgress()
+      if (backgroundPending.length) {
+        await runTransportPreloadBatch(backgroundPending, version, false)
+      }
+      return
+    }
+    ctx.transportPreloading.value = true
+    await runTransportPreloadBatch(priorityPending, version, true)
     if (version !== transportPreloadVersion) return
     ctx.transportPreloading.value = false
+    resetTransportPreloadProgress()
+    if (!backgroundPending.length) return
+    await runTransportPreloadBatch(backgroundPending, version, false)
   }
 
   const scheduleTransportPreload = () => {
     if (ctx.isStemMixMode() && !isStemAutoPreloadReady()) {
       cancelTransportPreload()
-      ctx.transportPreloadTotal.value = 0
-      ctx.transportPreloadDone.value = 0
-      ctx.transportPreloadFailed.value = 0
+      resetTransportPreloadProgress()
       return
     }
     clearTransportPreloadTimer()
