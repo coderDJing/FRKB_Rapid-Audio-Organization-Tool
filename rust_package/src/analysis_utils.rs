@@ -3,11 +3,7 @@ use std::borrow::Cow;
 pub const K_ANALYSIS_FRAMES_PER_CHUNK: usize = 4096;
 pub const K_FAST_ANALYSIS_SECONDS: usize = 60;
 
-pub fn calc_frames_to_process(
-  total_frames: usize,
-  sample_rate: u32,
-  fast_analysis: bool,
-) -> usize {
+pub fn calc_frames_to_process(total_frames: usize, sample_rate: u32, fast_analysis: bool) -> usize {
   if sample_rate == 0 {
     return 0;
   }

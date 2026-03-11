@@ -55,6 +55,9 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     if (typeof progress.decodeMs === 'number') trace.decodeMs = progress.decodeMs
     if (typeof progress.analyzeMs === 'number') trace.analyzeMs = progress.analyzeMs
     if (typeof progress.waveformMs === 'number') trace.waveformMs = progress.waveformMs
+    if (typeof progress.decodeBackend === 'string' && progress.decodeBackend.trim()) {
+      trace.decodeBackend = progress.decodeBackend.trim()
+    }
     if (typeof progress.sampleRate === 'number') trace.sampleRate = progress.sampleRate
     if (typeof progress.channels === 'number') trace.channels = progress.channels
     if (typeof progress.totalFrames === 'number') trace.totalFrames = progress.totalFrames
@@ -66,6 +69,48 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     job.trace = trace
 
     deps.onJobProgress(worker, job, progress)
+  }
+
+  const persistAnalyzePartialResult = async (
+    job: KeyAnalysisJob,
+    progress: KeyAnalysisProgress
+  ) => {
+    if (progress.stage !== 'analyze-done') return
+    const partialResult = progress.partialResult
+    if (!partialResult) return
+
+    let keyPersisted = false
+    let bpmPersisted = false
+
+    if (!partialResult.keyError && isValidKeyText(partialResult.keyText)) {
+      await deps.persistence.persistKey(job.filePath, partialResult.keyText)
+      keyPersisted = true
+    }
+
+    if (!partialResult.bpmError && isValidBpm(partialResult.bpm)) {
+      await deps.persistence.persistBpm(job.filePath, partialResult.bpm)
+      bpmPersisted = true
+    }
+
+    job.trace = {
+      ...(job.trace || {}),
+      partialKeyPersisted: job.trace?.partialKeyPersisted || keyPersisted,
+      partialBpmPersisted: job.trace?.partialBpmPersisted || bpmPersisted
+    }
+
+    if (job.source === 'background') {
+      log.info('[闲时分析] 分析阶段完成并已落盘', {
+        filePath: job.filePath,
+        fileName: path.basename(job.filePath),
+        decodeBackend: job.trace?.decodeBackend || 'unknown',
+        fastAnalysis: job.fastAnalysis,
+        keyPersisted,
+        bpmPersisted,
+        decodeMs: job.trace?.decodeMs,
+        analyzeMs: job.trace?.analyzeMs,
+        detail: job.trace?.detail
+      })
+    }
   }
 
   const handleWorkerFailure = (worker: Worker, error: Error) => {
@@ -105,6 +150,9 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
             decodeMs: trace?.decodeMs,
             analyzeMs: trace?.analyzeMs,
             waveformMs: trace?.waveformMs,
+            decodeBackend: trace?.decodeBackend || 'unknown',
+            partialKeyPersisted: trace?.partialKeyPersisted === true,
+            partialBpmPersisted: trace?.partialBpmPersisted === true,
             detail: trace?.detail
           })
         }
@@ -152,6 +200,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     if (payloadProgress) {
       if (job) {
         applyWorkerProgress(worker, job, payloadProgress)
+        await persistAnalyzePartialResult(job, payloadProgress)
       } else {
         log.warn('[闲时分析] 收到进度但任务不存在', {
           jobId,
@@ -203,6 +252,20 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
           const elapsed = job.startTime ? Date.now() - job.startTime : 0
           const statusMsg = `[闲时分析] 任务完成但有错误 - ${path.basename(job.filePath)} (耗时: ${elapsed}ms) 错误: ${errors.join('; ')}`
           log.warn(statusMsg)
+        } else {
+          log.info('[闲时分析] 后台任务完成摘要', {
+            filePath: job.filePath,
+            fileName: path.basename(job.filePath),
+            decodeBackend: job.trace?.decodeBackend || 'unknown',
+            fastAnalysis: job.fastAnalysis,
+            decodeMs: job.trace?.decodeMs,
+            analyzeMs: job.trace?.analyzeMs,
+            waveformMs: job.trace?.waveformMs,
+            elapsedMs: job.startTime ? Date.now() - job.startTime : 0,
+            keyPersisted: job.trace?.partialKeyPersisted === true || results.includes('key'),
+            bpmPersisted: job.trace?.partialBpmPersisted === true || results.includes('bpm'),
+            waveformPersisted: results.includes('waveform')
+          })
         }
         deps.background.unmarkProcessing(job.jobId)
         deps.background.emitBackgroundStatus()
@@ -285,7 +348,20 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
   const maybePreemptBackground = () => {
     if (deps.idle.length > 0) return
     if (deps.workers.length <= 1) return
-    if (deps.getForegroundWorker()) return
+    const foregroundWorker = deps.getForegroundWorker()
+    if (foregroundWorker && !deps.busy.has(foregroundWorker)) return
+
+    if (foregroundWorker) {
+      const foregroundJobId = deps.busy.get(foregroundWorker)
+      const foregroundJob =
+        typeof foregroundJobId === 'number' ? deps.inFlight.get(foregroundJobId) : null
+      if (foregroundJob && foregroundJob.source === 'background') {
+        deps.preemptedJobIds.add(foregroundJobId!)
+        void foregroundWorker.terminate().catch(() => {})
+        return
+      }
+    }
+
     for (const [worker, jobId] of deps.busy.entries()) {
       const job = deps.inFlight.get(jobId)
       if (job && job.source === 'background') {

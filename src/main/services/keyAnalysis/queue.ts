@@ -168,7 +168,7 @@ export class KeyAnalysisQueue {
       filePath,
       normalizedPath,
       priority,
-      fastAnalysis: options.fastAnalysis ?? true,
+      fastAnalysis: options.fastAnalysis ?? false,
       source
     }
     this.addPending(job, options.urgent)
@@ -423,11 +423,14 @@ export class KeyAnalysisQueue {
           source: job.source,
           reason,
           stage: job.trace?.lastStage || 'unknown',
+          decodeBackend: job.trace?.decodeBackend || 'unknown',
           inferredCause: current?.inferredCause || this.inferFailureCause(job, reason),
           failCount: current?.failCount,
           decodeMs: job.trace?.decodeMs,
           analyzeMs: job.trace?.analyzeMs,
           waveformMs: job.trace?.waveformMs,
+          partialKeyPersisted: job.trace?.partialKeyPersisted === true,
+          partialBpmPersisted: job.trace?.partialBpmPersisted === true,
           ...probe
         })
       } catch (error) {
@@ -474,7 +477,10 @@ export class KeyAnalysisQueue {
         reason,
         inferredCause,
         stage: job.trace?.lastStage || 'unknown',
+        decodeBackend: job.trace?.decodeBackend || 'unknown',
         failCount,
+        partialKeyPersisted: job.trace?.partialKeyPersisted === true,
+        partialBpmPersisted: job.trace?.partialBpmPersisted === true,
         detail: record.lastDetail
       })
     }
@@ -487,9 +493,12 @@ export class KeyAnalysisQueue {
         reason,
         inferredCause,
         stage: job.trace?.lastStage || 'unknown',
+        decodeBackend: job.trace?.decodeBackend || 'unknown',
         failCount,
         cooldownMs,
         nextRetryAt: new Date(nextRetryAt).toISOString(),
+        partialKeyPersisted: job.trace?.partialKeyPersisted === true,
+        partialBpmPersisted: job.trace?.partialBpmPersisted === true,
         detail: record.lastDetail
       })
     }
@@ -693,10 +702,13 @@ export class KeyAnalysisQueue {
         decodeMs: trace?.decodeMs,
         analyzeMs: trace?.analyzeMs,
         waveformMs: trace?.waveformMs,
+        decodeBackend: trace?.decodeBackend || 'unknown',
         sampleRate: trace?.sampleRate,
         channels: trace?.channels,
         totalFrames: trace?.totalFrames,
         framesToProcess: trace?.framesToProcess,
+        partialKeyPersisted: trace?.partialKeyPersisted === true,
+        partialBpmPersisted: trace?.partialBpmPersisted === true,
         detail: trace?.detail,
         timeoutMs,
         estimatedDurationSec
@@ -728,11 +740,20 @@ export class KeyAnalysisQueue {
     while (this.idle.length > 0) {
       const hasForegroundPending =
         this.pendingHigh.length > 0 || this.pendingMedium.length > 0 || this.pendingLow.length > 0
+      const allowAggressiveBackgroundConcurrency =
+        !hasForegroundPending &&
+        this.pendingBackground.length > 0 &&
+        this.background.canUseAggressiveConcurrency()
       if (!hasForegroundPending && this.pendingBackground.length > 0) {
-        if (this.countBackgroundInFlight() >= BACKGROUND_MAX_INFLIGHT) break
+        const maxBackgroundInFlight = allowAggressiveBackgroundConcurrency
+          ? Math.max(BACKGROUND_MAX_INFLIGHT, this.workers.length)
+          : BACKGROUND_MAX_INFLIGHT
+        if (this.countBackgroundInFlight() >= maxBackgroundInFlight) break
       }
       const worker = this.workerPool.getIdleWorker(
-        hasForegroundPending || !this.workerPool.getReservedWorker()
+        hasForegroundPending ||
+          !this.workerPool.getReservedWorker() ||
+          allowAggressiveBackgroundConcurrency
       )
       if (!worker) break
       const job = this.popNextJob()

@@ -21,6 +21,7 @@ export type KeyAnalysisProgress = {
   decodeMs?: number
   analyzeMs?: number
   waveformMs?: number
+  decodeBackend?: string
   sampleRate?: number
   channels?: number
   totalFrames?: number
@@ -29,6 +30,7 @@ export type KeyAnalysisProgress = {
   needsBpm?: boolean
   needsWaveform?: boolean
   detail?: string
+  partialResult?: KeyAnalysisWorkerPartialResult
 }
 
 export type KeyAnalysisJobTrace = {
@@ -38,12 +40,15 @@ export type KeyAnalysisJobTrace = {
   decodeMs?: number
   analyzeMs?: number
   waveformMs?: number
+  decodeBackend?: string
   sampleRate?: number
   channels?: number
   totalFrames?: number
   framesToProcess?: number
   detail?: string
   timedOutAt?: number
+  partialKeyPersisted?: boolean
+  partialBpmPersisted?: boolean
 }
 
 export type KeyAnalysisPrepareDetails = {
@@ -124,15 +129,20 @@ export type WorkerPayload = {
   jobId: number
   filePath: string
   progress?: KeyAnalysisProgress
-  result?: {
-    keyText?: string
-    keyError?: string
-    bpm?: number
-    firstBeatMs?: number
-    bpmError?: string
-    mixxxWaveformData?: MixxxWaveformData | null
-  }
+  result?: KeyAnalysisWorkerResult
   error?: string
+}
+
+export type KeyAnalysisWorkerPartialResult = {
+  keyText?: string
+  keyError?: string
+  bpm?: number
+  firstBeatMs?: number
+  bpmError?: string
+}
+
+export type KeyAnalysisWorkerResult = KeyAnalysisWorkerPartialResult & {
+  mixxxWaveformData?: MixxxWaveformData | null
 }
 
 export type KeyAnalysisBackgroundStatus = {

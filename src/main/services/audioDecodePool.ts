@@ -34,6 +34,7 @@ export type DecodeAudioResult = {
   sampleRate: number
   channels: number
   totalFrames: number
+  decoderBackend?: string
   mixxxWaveformData?: MixxxWaveformData | null
   rawWaveformData?: SharedRawWaveformData | null
   keyText?: string

@@ -34,6 +34,7 @@ type KeyProgressPayload = {
   decodeMs?: number
   analyzeMs?: number
   waveformMs?: number
+  decodeBackend?: string
   sampleRate?: number
   channels?: number
   totalFrames?: number
@@ -42,6 +43,7 @@ type KeyProgressPayload = {
   needsBpm?: boolean
   needsWaveform?: boolean
   detail?: string
+  partialResult?: Omit<KeyResultPayload, 'mixxxWaveformData'>
 }
 
 type KeyResponse = {
@@ -212,6 +214,7 @@ const loadRust = () => {
       sampleRate: number
       channels: number
       totalFrames: number
+      decoderBackend?: string
       error?: string
     }
     analyzeKeyFromPcm?: (
@@ -259,10 +262,15 @@ const analyzeKeyForFile = (
     throw new Error(decoded.error)
   }
   const decodeMs = Date.now() - decodeStartAt
-  const framesToProcess = estimateFramesToProcess(decoded.totalFrames, decoded.sampleRate, false)
+  const framesToProcess = estimateFramesToProcess(
+    decoded.totalFrames,
+    decoded.sampleRate,
+    options.fastAnalysis
+  )
   reportProgress({
     stage: 'decode-done',
     decodeMs,
+    decodeBackend: decoded.decoderBackend,
     sampleRate: decoded.sampleRate,
     channels: decoded.channels,
     totalFrames: decoded.totalFrames,
@@ -276,9 +284,15 @@ const analyzeKeyForFile = (
   if (needsKey || needsBpm) {
     const analyzePlanDetail = needsKey
       ? needsBpm
-        ? 'key+bpm-full-shared'
-        : 'key-full'
-      : 'bpm-full'
+        ? options.fastAnalysis
+          ? 'key+bpm-fast-shared'
+          : 'key+bpm-full-shared'
+        : options.fastAnalysis
+          ? 'key-fast'
+          : 'key-full'
+      : options.fastAnalysis
+        ? 'bpm-fast'
+        : 'bpm-full'
     reportProgress({
       stage: 'analyze-start',
       needsKey,
@@ -295,7 +309,7 @@ const analyzeKeyForFile = (
         decoded.pcmData,
         decoded.sampleRate,
         decoded.channels,
-        false
+        options.fastAnalysis
       )
       if (needsKey) {
         result.keyText = analysis.keyText
@@ -349,7 +363,12 @@ const analyzeKeyForFile = (
       if (typeof analyzeKey !== 'function') {
         throw new Error('analyzeKeyAndBpmFromPcm not available')
       }
-      const keyOnly = analyzeKey(decoded.pcmData, decoded.sampleRate, decoded.channels, false)
+      const keyOnly = analyzeKey(
+        decoded.pcmData,
+        decoded.sampleRate,
+        decoded.channels,
+        options.fastAnalysis
+      )
       result.keyText = keyOnly.keyText
       result.keyError = keyOnly.error
       if (keyOnly.error) {
@@ -362,7 +381,14 @@ const analyzeKeyForFile = (
     reportProgress({
       stage: 'analyze-done',
       analyzeMs: Date.now() - analyzeStartAt,
-      detail: hasAnalysisError ? 'analysis-has-errors' : undefined
+      detail: hasAnalysisError ? 'analysis-has-errors' : undefined,
+      partialResult: {
+        keyText: result.keyText,
+        keyError: result.keyError,
+        bpm: result.bpm,
+        firstBeatMs: result.firstBeatMs,
+        bpmError: result.bpmError
+      }
     })
   }
 

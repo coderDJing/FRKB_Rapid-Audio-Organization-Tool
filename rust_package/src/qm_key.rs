@@ -45,7 +45,8 @@ impl KeyDetector {
     if channels != 2 {
       return Err("channels is not 2".to_string());
     }
-    let ok = unsafe { qm_key_process(self.handle, interleaved.as_ptr(), frames, channels as c_int) };
+    let ok =
+      unsafe { qm_key_process(self.handle, interleaved.as_ptr(), frames, channels as c_int) };
     if ok == 0 {
       return Err("qm_key_process failed".to_string());
     }
@@ -106,8 +107,10 @@ pub fn analyze_key_id_from_pcm(
   let stereo_samples = stereo.as_ref();
   let mut offset_frames = 0usize;
   while offset_frames < frames_to_process {
-    let chunk_frames =
-      min(K_ANALYSIS_FRAMES_PER_CHUNK, frames_to_process - offset_frames);
+    let chunk_frames = min(
+      K_ANALYSIS_FRAMES_PER_CHUNK,
+      frames_to_process - offset_frames,
+    );
     let start = offset_frames * 2;
     let end = start + chunk_frames * 2;
     detector.process(&stereo_samples[start..end], chunk_frames, 2)?;

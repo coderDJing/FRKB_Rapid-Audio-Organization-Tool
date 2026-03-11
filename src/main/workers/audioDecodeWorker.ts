@@ -27,6 +27,7 @@ type DecodeResultPayload = {
   sampleRate: number
   channels: number
   totalFrames: number
+  decoderBackend?: string
   mixxxWaveformData?: MixxxWaveformData | null
   rawWaveformData?: RawWaveformData | null
   keyText?: string
@@ -54,6 +55,7 @@ const loadRust = () => {
       sampleRate: number
       channels: number
       totalFrames: number
+      decoderBackend?: string
       error?: string
     }
     computeMixxxWaveform?: (
@@ -251,6 +253,7 @@ const decodeWithCache = async (
     sampleRate: result.sampleRate,
     channels: result.channels,
     totalFrames: result.totalFrames,
+    decoderBackend: result.decoderBackend,
     mixxxWaveformData,
     rawWaveformData,
     keyText,

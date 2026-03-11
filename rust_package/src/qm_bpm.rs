@@ -48,7 +48,8 @@ impl BpmDetector {
     if channels != 2 {
       return Err("channels is not 2".to_string());
     }
-    let ok = unsafe { qm_bpm_process(self.handle, interleaved.as_ptr(), frames, channels as c_int) };
+    let ok =
+      unsafe { qm_bpm_process(self.handle, interleaved.as_ptr(), frames, channels as c_int) };
     if ok == 0 {
       return Err("qm_bpm_process failed".to_string());
     }

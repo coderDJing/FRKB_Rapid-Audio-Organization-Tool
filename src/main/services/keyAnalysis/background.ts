@@ -12,6 +12,7 @@ import {
 } from '../../libraryTreeDb'
 import { log } from '../../log'
 import { requestBackgroundTaskExecution } from '../backgroundOrchestrator'
+import { getBackgroundIdleSnapshot } from '../backgroundIdleGate'
 import store from '../../store'
 import type { KeyAnalysisPersistence } from './persistence'
 import {
@@ -109,6 +110,13 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
   const getBackgroundStatusSnapshot = (): KeyAnalysisBackgroundStatus => getBackgroundStatus()
 
   const isEnabled = () => backgroundEnabled
+
+  const canUseAggressiveConcurrency = () => {
+    if (!backgroundEnabled) return false
+    if (deps.hasForegroundWork()) return false
+    const idleSnapshot = getBackgroundIdleSnapshot()
+    return idleSnapshot.allowed && idleSnapshot.profile === 'deep-idle'
+  }
 
   const touchForeground = () => {
     lastForegroundAt = Date.now()
@@ -604,8 +612,12 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       scheduleBackgroundScan()
       return
     }
+    const idleSnapshot = getBackgroundIdleSnapshot()
     debugDev('开始一轮闲时扫描', {
-      batchSize: BACKGROUND_BATCH_SIZE
+      batchSize: BACKGROUND_BATCH_SIZE,
+      idleProfile: idleSnapshot.profile,
+      systemIdleSeconds: idleSnapshot.systemIdleSeconds,
+      aggressiveConcurrency: canUseAggressiveConcurrency()
     })
     backgroundScanInProgress = true
     backgroundLastScanAt = now
@@ -642,6 +654,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
     emitBackgroundStatus,
     getBackgroundStatusSnapshot,
     isEnabled,
+    canUseAggressiveConcurrency,
     markProcessing,
     scheduleBackgroundScan,
     startBackgroundSweep,

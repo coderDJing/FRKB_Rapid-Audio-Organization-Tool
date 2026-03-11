@@ -9,7 +9,12 @@ const MIXXX_HIGHPASS_MIN_HZ: f64 = 4000.0;
 const MIXXX_HIGH_SCALE_EXP: f64 = 0.632;
 const MAXPZ: usize = 64;
 const TWOPI: f64 = 2.0 * PI;
-const BESSEL_4: [f64; 4] = [-0.99520876435, 1.25710573945, -1.37006783055, 0.410249717494];
+const BESSEL_4: [f64; 4] = [
+  -0.99520876435,
+  1.25710573945,
+  -1.37006783055,
+  0.410249717494,
+];
 
 type Complex = [f64; 2];
 
@@ -140,7 +145,9 @@ fn create_context() -> MkFilterContext {
 
 fn bessel(ctx: &mut MkFilterContext, order: usize) -> Result<()> {
   if order != 4 {
-    return Err(Error::from_reason("Mixxx Bessel filter only supports order 4"));
+    return Err(Error::from_reason(
+      "Mixxx Bessel filter only supports order 4",
+    ));
   }
   ctx.n_pol = order;
   for i in 0..order {
@@ -192,7 +199,9 @@ fn bandpass(ctx: &mut MkFilterContext, freq1: f64, freq2: f64) -> Result<()> {
   let w0 = TWOPI * (freq1 * freq2).sqrt();
   let bw = 0.5 * TWOPI * (freq2 - freq1);
   if ctx.n_pol * 2 > MAXPZ {
-    return Err(Error::from_reason("Mixxx Bessel bandpass order exceeds MAXPZ"));
+    return Err(Error::from_reason(
+      "Mixxx Bessel bandpass order exceeds MAXPZ",
+    ));
   }
 
   let mut a = ctx.n_pol;
@@ -240,7 +249,11 @@ fn bandpass(ctx: &mut MkFilterContext, freq1: f64, freq2: f64) -> Result<()> {
   ctx.n_zero = ctx.n_pol;
   for i in 0..ctx.n_zero {
     ctx.zertyp[i] = 1;
-    ctx.zer[i] = if i < ctx.n_zero / 2 { 0.0 } else { f64::NEG_INFINITY };
+    ctx.zer[i] = if i < ctx.n_zero / 2 {
+      0.0
+    } else {
+      f64::NEG_INFINITY
+    };
   }
   Ok(())
 }
@@ -303,7 +316,11 @@ fn z2fidfilter(ctx: &MkFilterContext, gain: f64, cbm: i32) -> Vec<FidFilter> {
         typ: 'I',
         cbm: 0,
         len: 3,
-        val: vec![1.0, -(ctx.pol[a] + ctx.pol[a + 1]), ctx.pol[a] * ctx.pol[a + 1]],
+        val: vec![
+          1.0,
+          -(ctx.pol[a] + ctx.pol[a + 1]),
+          ctx.pol[a] * ctx.pol[a + 1],
+        ],
       })
     } else if ctx.poltyp[a] == 2 {
       filters.push(FidFilter {
@@ -326,7 +343,11 @@ fn z2fidfilter(ctx: &MkFilterContext, gain: f64, cbm: i32) -> Vec<FidFilter> {
           typ: 'F',
           cbm,
           len: 3,
-          val: vec![1.0, -(ctx.zer[a] + ctx.zer[a + 1]), ctx.zer[a] * ctx.zer[a + 1]],
+          val: vec![
+            1.0,
+            -(ctx.zer[a] + ctx.zer[a + 1]),
+            ctx.zer[a] * ctx.zer[a + 1],
+          ],
         })
       }
     } else if ctx.zertyp[a] == 2 {
@@ -335,7 +356,11 @@ fn z2fidfilter(ctx: &MkFilterContext, gain: f64, cbm: i32) -> Vec<FidFilter> {
           typ: 'F',
           cbm,
           len: 3,
-          val: vec![1.0, -2.0 * ctx.zer[a], ctx.zer[a] * ctx.zer[a] + ctx.zer[a + 1] * ctx.zer[a + 1]],
+          val: vec![
+            1.0,
+            -2.0 * ctx.zer[a],
+            ctx.zer[a] * ctx.zer[a] + ctx.zer[a + 1] * ctx.zer[a + 1],
+          ],
         })
       }
     } else {
@@ -508,13 +533,18 @@ fn design_coefficients(filters: &[FidFilter], n_coef: usize) -> Result<(f64, Vec
   }
 
   if coefficients.len() != n_coef {
-    return Err(Error::from_reason("Mixxx Bessel coefficient length mismatch"));
+    return Err(Error::from_reason(
+      "Mixxx Bessel coefficient length mismatch",
+    ));
   }
 
   Ok((gain, coefficients))
 }
 
-fn design_mixxx_bessel_lowpass(sample_rate: f64, cutoff_hz: f64) -> Result<MixxxBesselCoefficients> {
+fn design_mixxx_bessel_lowpass(
+  sample_rate: f64,
+  cutoff_hz: f64,
+) -> Result<MixxxBesselCoefficients> {
   let mut ctx = create_context();
   bessel(&mut ctx, 4)?;
   let freq = cutoff_hz / sample_rate;
@@ -522,10 +552,16 @@ fn design_mixxx_bessel_lowpass(sample_rate: f64, cutoff_hz: f64) -> Result<Mixxx
   let (gain, coefficients) = design_coefficients(&filters, 4)?;
   let mut out = vec![gain];
   out.extend(coefficients);
-  Ok(MixxxBesselCoefficients { coefficients: out, order: 4 })
+  Ok(MixxxBesselCoefficients {
+    coefficients: out,
+    order: 4,
+  })
 }
 
-fn design_mixxx_bessel_highpass(sample_rate: f64, cutoff_hz: f64) -> Result<MixxxBesselCoefficients> {
+fn design_mixxx_bessel_highpass(
+  sample_rate: f64,
+  cutoff_hz: f64,
+) -> Result<MixxxBesselCoefficients> {
   let mut ctx = create_context();
   bessel(&mut ctx, 4)?;
   let freq = cutoff_hz / sample_rate;
@@ -533,10 +569,17 @@ fn design_mixxx_bessel_highpass(sample_rate: f64, cutoff_hz: f64) -> Result<Mixx
   let (gain, coefficients) = design_coefficients(&filters, 4)?;
   let mut out = vec![gain];
   out.extend(coefficients);
-  Ok(MixxxBesselCoefficients { coefficients: out, order: 4 })
+  Ok(MixxxBesselCoefficients {
+    coefficients: out,
+    order: 4,
+  })
 }
 
-fn design_mixxx_bessel_bandpass(sample_rate: f64, low_hz: f64, high_hz: f64) -> Result<MixxxBesselCoefficients> {
+fn design_mixxx_bessel_bandpass(
+  sample_rate: f64,
+  low_hz: f64,
+  high_hz: f64,
+) -> Result<MixxxBesselCoefficients> {
   let mut ctx = create_context();
   bessel(&mut ctx, 4)?;
   let low = low_hz / sample_rate;
@@ -545,7 +588,10 @@ fn design_mixxx_bessel_bandpass(sample_rate: f64, low_hz: f64, high_hz: f64) -> 
   let (gain, coefficients) = design_coefficients(&filters, 8)?;
   let mut out = vec![gain];
   out.extend(coefficients);
-  Ok(MixxxBesselCoefficients { coefficients: out, order: 8 })
+  Ok(MixxxBesselCoefficients {
+    coefficients: out,
+    order: 8,
+  })
 }
 
 fn process_mixxx_lowpass_sample(coefficients: &[f64], state: &mut [f64], value: f64) -> f64 {
@@ -713,8 +759,10 @@ fn downsample_mixxx_band(
       left_sample
     };
 
-    let l = process_mixxx_band_sample(band, &coeffs.coefficients, &mut left_state, left_sample).abs();
-    let r = process_mixxx_band_sample(band, &coeffs.coefficients, &mut right_state, right_sample).abs();
+    let l =
+      process_mixxx_band_sample(band, &coeffs.coefficients, &mut left_state, left_sample).abs();
+    let r =
+      process_mixxx_band_sample(band, &coeffs.coefficients, &mut right_state, right_sample).abs();
 
     if l > left_peak {
       left_peak = l;
@@ -835,11 +883,12 @@ fn compute_mixxx_waveform_with_summary_rate(
   }
 
   let sample_rate_f = sample_rate as f64;
-  let mut visual_rate = if summary_visual_sample_rate.is_finite() && summary_visual_sample_rate > 0.0 {
-    summary_visual_sample_rate
-  } else {
-    MIXXX_WAVEFORM_POINTS_PER_SECOND
-  };
+  let mut visual_rate =
+    if summary_visual_sample_rate.is_finite() && summary_visual_sample_rate > 0.0 {
+      summary_visual_sample_rate
+    } else {
+      MIXXX_WAVEFORM_POINTS_PER_SECOND
+    };
   if visual_rate > sample_rate_f {
     visual_rate = sample_rate_f;
   }

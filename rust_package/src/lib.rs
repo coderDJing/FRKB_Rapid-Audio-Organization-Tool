@@ -11,11 +11,11 @@ use std::borrow::Cow;
 use std::convert::TryInto;
 use std::fs::File;
 use std::io::Read;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::process::Command;
-use std::sync::Arc;
-use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::result::Result as StdResult;
+use std::sync::Arc;
 
 // 并行处理
 use num_cpus;
@@ -37,9 +37,9 @@ use symphonia::core::probe::Hint;
 use symphonia::default::get_probe;
 
 // 哈希
+use bytemuck::{cast_slice, try_cast_slice};
 use hex;
 use ring::digest::{Context, SHA256};
-use bytemuck::{cast_slice, try_cast_slice};
 
 // 常量（已不再需要文件级哈希缓冲区）
 
@@ -89,6 +89,8 @@ pub struct DecodeAudioResult {
   pub channels: u8,
   /// 总帧数
   pub total_frames: f64,
+  /// 解码后端（symphonia / ffmpeg / ffmpeg-fallback）
+  pub decoder_backend: Option<String>,
   /// 错误描述（当解码失败时）
   pub error: Option<String>,
 }
@@ -210,7 +212,10 @@ pub async fn calculate_file_hashes_with_progress(
           for path in chunk {
             let result = calculate_file_hash_for_file(path);
             let current = processed.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-            let progress = ProcessProgress { processed: current, total };
+            let progress = ProcessProgress {
+              processed: current,
+              total,
+            };
             callback.call(Ok(progress), ThreadsafeFunctionCallMode::Blocking);
             local_results.push(result);
           }
@@ -250,18 +255,23 @@ pub fn decode_audio_file(file_path: String) -> DecodeAudioResult {
   // 已知仅 FFmpeg 覆盖较好的格式：避免多此一举的探测/失败再回退
   // 仍保留兜底回退用于异常情况（伪装扩展名/损坏文件等）
   let ffmpeg_only_exts = [
-    "wma", "ac3", "dts", "mka", "webm", "ape", "tak", "tta", "wv",
+    "wma", "ac3", "dts", "mka", "webm", "ape", "tak", "tta",
+    "wv",
     // 其他非常见格式如 voc/au/amr/gsm/ra/spx/mp2/mp1/mpc/shn/thd/dtshd 如后续加入设置也会被 FFmpeg 覆盖
   ];
 
   if ffmpeg_only_exts.contains(&ext.as_str()) {
     return match decode_with_ffmpeg(path) {
-      Ok(result) => result,
+      Ok(mut result) => {
+        result.decoder_backend = Some("ffmpeg".to_string());
+        result
+      }
       Err(ffmpeg_err) => DecodeAudioResult {
         pcm_data: Buffer::from(vec![]),
         sample_rate: 0,
         channels: 0,
         total_frames: 0.0,
+        decoder_backend: Some("ffmpeg".to_string()),
         error: Some(format!("FFmpeg 解码失败: {}", ffmpeg_err)),
       },
     };
@@ -269,14 +279,21 @@ pub fn decode_audio_file(file_path: String) -> DecodeAudioResult {
 
   // 其他情况优先走 Symphonia，失败再兜底 FFmpeg
   match decode_with_symphonia(path) {
-    Ok(result) => result,
+    Ok(mut result) => {
+      result.decoder_backend = Some("symphonia".to_string());
+      result
+    }
     Err(symphonia_err) => match decode_with_ffmpeg(path) {
-      Ok(result) => result,
+      Ok(mut result) => {
+        result.decoder_backend = Some("ffmpeg-fallback".to_string());
+        result
+      }
       Err(ffmpeg_err) => DecodeAudioResult {
         pcm_data: Buffer::from(vec![]),
         sample_rate: 0,
         channels: 0,
         total_frames: 0.0,
+        decoder_backend: None,
         error: Some(format!(
           "Symphonia 解码失败: {}; FFmpeg 解码失败: {}",
           symphonia_err, ffmpeg_err
@@ -338,12 +355,7 @@ pub fn analyze_key_from_pcm(
     }
   };
 
-  match qm_key::analyze_key_id_from_pcm(
-    pcm_f32.as_ref(),
-    sample_rate,
-    channels,
-    fast_analysis,
-  ) {
+  match qm_key::analyze_key_id_from_pcm(pcm_f32.as_ref(), sample_rate, channels, fast_analysis) {
     Ok(key_id) => KeyAnalysisResult {
       key_text: key_id_to_id3_text(key_id),
       error: None,
@@ -476,7 +488,10 @@ pub fn analyze_key_and_bpm_from_pcm(
 
   let mut offset_frames = 0usize;
   while offset_frames < frames_to_process {
-    let chunk_frames = std::cmp::min(K_ANALYSIS_FRAMES_PER_CHUNK, frames_to_process - offset_frames);
+    let chunk_frames = std::cmp::min(
+      K_ANALYSIS_FRAMES_PER_CHUNK,
+      frames_to_process - offset_frames,
+    );
     let start = offset_frames * 2;
     let end = start + chunk_frames * 2;
     if let Some(detector) = key_detector.as_mut() {
@@ -537,31 +552,9 @@ pub fn analyze_key_and_bpm_from_pcm(
 
 fn key_id_to_id3_text(key_id: i32) -> String {
   const ID3_KEYS: [&str; 25] = [
-    "o",  // INVALID
-    "C",
-    "Db",
-    "D",
-    "Eb",
-    "E",
-    "F",
-    "F#",
-    "G",
-    "Ab",
-    "A",
-    "Bb",
-    "B",
-    "Cm",
-    "C#m",
-    "Dm",
-    "Ebm",
-    "Em",
-    "Fm",
-    "F#m",
-    "Gm",
-    "G#m",
-    "Am",
-    "Bbm",
-    "Bm",
+    "o", // INVALID
+    "C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B", "Cm", "C#m", "Dm", "Ebm",
+    "Em", "Fm", "F#m", "Gm", "G#m", "Am", "Bbm", "Bm",
   ];
   let index = if key_id >= 0 && key_id < ID3_KEYS.len() as i32 {
     key_id as usize
@@ -620,8 +613,8 @@ fn decode_audio_to_pcm(mut format: Box<dyn FormatReader>) -> napi::Result<Decode
             // i24 转 f32 并交错
             for frame_idx in 0..frame_count {
               for ch in 0..channels as usize {
-            let sample = buf.chan(ch)[frame_idx].inner();
-            all_samples.push(sample as f32 / 8388608.0);
+                let sample = buf.chan(ch)[frame_idx].inner();
+                all_samples.push(sample as f32 / 8388608.0);
               }
             }
           }
@@ -658,6 +651,7 @@ fn decode_audio_to_pcm(mut format: Box<dyn FormatReader>) -> napi::Result<Decode
     sample_rate,
     channels,
     total_frames: total_frames as f64,
+    decoder_backend: None,
     error: None,
   })
 }
@@ -711,6 +705,7 @@ fn decode_with_ffmpeg(path: &Path) -> StdResult<DecodeAudioResult, String> {
     sample_rate: ffmpeg_pcm.sample_rate,
     channels: channels_u8,
     total_frames: ffmpeg_pcm.total_frames as f64,
+    decoder_backend: None,
     error: None,
   })
 }
@@ -782,20 +777,14 @@ fn parse_wav_s16le(bytes: &[u8]) -> StdResult<FfmpegPcmData, String> {
         if offset + chunk_size > bytes.len() || chunk_size < 16 {
           return Err("FFmpeg 输出无效：fmt chunk 长度错误".to_string());
         }
-        channels = Some(u16::from_le_bytes([
-          bytes[offset + 2],
-          bytes[offset + 3],
-        ]));
+        channels = Some(u16::from_le_bytes([bytes[offset + 2], bytes[offset + 3]]));
         sample_rate = Some(u32::from_le_bytes([
           bytes[offset + 4],
           bytes[offset + 5],
           bytes[offset + 6],
           bytes[offset + 7],
         ]));
-        bits_per_sample = Some(u16::from_le_bytes([
-          bytes[offset + 14],
-          bytes[offset + 15],
-        ]));
+        bits_per_sample = Some(u16::from_le_bytes([bytes[offset + 14], bytes[offset + 15]]));
       }
       b"data" => {
         let available = bytes.len().saturating_sub(offset);
@@ -814,18 +803,15 @@ fn parse_wav_s16le(bytes: &[u8]) -> StdResult<FfmpegPcmData, String> {
   }
 
   let channels = channels.ok_or_else(|| "FFmpeg 输出无效：缺少声道信息".to_string())?;
-  let sample_rate =
-    sample_rate.ok_or_else(|| "FFmpeg 输出无效：缺少采样率信息".to_string())?;
+  let sample_rate = sample_rate.ok_or_else(|| "FFmpeg 输出无效：缺少采样率信息".to_string())?;
   let bits_per_sample =
     bits_per_sample.ok_or_else(|| "FFmpeg 输出无效：缺少位深信息".to_string())?;
   if bits_per_sample != 16 {
     return Err("FFmpeg 输出的位深不是 16bit PCM".to_string());
   }
 
-  let data_offset =
-    data_offset.ok_or_else(|| "FFmpeg 输出无效：缺少数据块".to_string())?;
-  let data_size =
-    data_size.ok_or_else(|| "FFmpeg 输出无效：数据块长度不足".to_string())?;
+  let data_offset = data_offset.ok_or_else(|| "FFmpeg 输出无效：缺少数据块".to_string())?;
+  let data_size = data_size.ok_or_else(|| "FFmpeg 输出无效：数据块长度不足".to_string())?;
   if data_offset + data_size > bytes.len() {
     return Err("FFmpeg 输出无效：数据块越界".to_string());
   }
@@ -960,7 +946,9 @@ fn calculate_hash_with_symphonia(path: &Path) -> StdResult<String, String> {
     .map_err(|e| format!("探测音频格式失败: {}", e))?;
 
   let mut temp_result = AudioFileResult::with_path(path);
-  match catch_unwind(AssertUnwindSafe(|| extract_audio_features(probed.format, &mut temp_result))) {
+  match catch_unwind(AssertUnwindSafe(|| {
+    extract_audio_features(probed.format, &mut temp_result)
+  })) {
     Ok(Ok(())) => {
       if temp_result.sha256_hash.is_empty() {
         Err("Symphonia 解码未生成哈希".to_string())
