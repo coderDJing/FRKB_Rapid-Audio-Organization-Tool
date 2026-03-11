@@ -811,7 +811,7 @@
     "playlistUnknown": "Untitled playlist",
     "addedToMixtape": "Added to Mixtape ({count} tracks)",
     "waveformLoading": "(Waveform pending)",
-    "rawWaveformLoading": "Building",
+    "rawWaveformLoading": "Loading",
     "waveformPreparing": "Pre-rendering waveforms",
     "bpmAnalyzing": "Re-analyzing BPM...",
     "bpmAnalyzingHint": "This may take a while on first load",

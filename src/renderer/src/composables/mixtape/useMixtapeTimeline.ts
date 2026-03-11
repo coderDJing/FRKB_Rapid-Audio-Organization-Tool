@@ -231,6 +231,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     rawWaveformPyramidMap,
     timelineLayoutCache,
     timelineLayoutVersion,
+    waveformVersion,
     overviewWidth,
     timelineVisualScale,
     waveformTileCache,

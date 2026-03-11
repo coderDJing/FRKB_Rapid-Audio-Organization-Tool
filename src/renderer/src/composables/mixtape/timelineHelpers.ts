@@ -70,6 +70,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
     rawWaveformPyramidMap,
     timelineLayoutCache,
     timelineLayoutVersion,
+    waveformVersion,
     overviewWidth,
     timelineVisualScale,
     waveformTileCache,
@@ -545,6 +546,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
     Array.from(new Set(resolveTrackWaveformSources(track).map((item) => item.filePath)))
 
   const isWaveformReady = (track: MixtapeTrack) => {
+    void waveformVersion?.value
     const sources = resolveTrackWaveformSources(track)
     if (!sources.length) return false
     for (const source of sources) {
@@ -561,6 +563,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
   }
 
   const isRawWaveformLoading = (track: MixtapeTrack) => {
+    void waveformVersion?.value
     if (!useRawWaveform.value) return false
     const sources = resolveTrackWaveformSources(track)
     if (!sources.length) return false

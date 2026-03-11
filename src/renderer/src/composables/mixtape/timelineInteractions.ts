@@ -140,6 +140,9 @@ export const createTimelineInteractionsModule = (ctx: any) => {
     const nextWidth = Number(viewport.clientWidth || 0)
     const nextHeight = Number(viewport.clientHeight || 0)
     const nextScrollWidth = Number(viewport.scrollWidth || nextWidth || 0)
+    const widthChanged = !nearlyEqual(nextWidth, Number(timelineViewportWidth.value || 0))
+    const heightChanged = !nearlyEqual(nextHeight, Number(timelineViewportHeight.value || 0))
+    const scrollWidthChanged = !nearlyEqual(nextScrollWidth, Number(timelineScrollWidth.value || 0))
     const movedScroll =
       !nearlyEqual(nextLeft, Number(timelineScrollLeft.value || 0)) ||
       !nearlyEqual(nextTop, Number(timelineScrollTop.value || 0))
@@ -152,20 +155,20 @@ export const createTimelineInteractionsModule = (ctx: any) => {
       timelineScrollTop.value = nextTop
       changed = true
     }
-    if (!nearlyEqual(nextWidth, Number(timelineViewportWidth.value || 0))) {
+    if (widthChanged) {
       timelineViewportWidth.value = nextWidth
       changed = true
     }
-    if (!nearlyEqual(nextHeight, Number(timelineViewportHeight.value || 0))) {
+    if (heightChanged) {
       timelineViewportHeight.value = nextHeight
       changed = true
     }
-    if (!nearlyEqual(nextScrollWidth, Number(timelineScrollWidth.value || 0))) {
+    if (scrollWidthChanged) {
       timelineScrollWidth.value = nextScrollWidth
       changed = true
     }
     if (changed) {
-      if (movedScroll) {
+      if (movedScroll || widthChanged || scrollWidthChanged) {
         markTimelineInteracting()
         scheduleWaveformLoad()
       }

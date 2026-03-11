@@ -815,7 +815,7 @@
     "playlistUnknown": "未命名歌单",
     "addedToMixtape": "已加入混音库（{count}首）",
     "waveformLoading": "（波形生成中）",
-    "rawWaveformLoading": "生成中",
+    "rawWaveformLoading": "加载中",
     "waveformPreparing": "预生成波形",
     "bpmAnalyzing": "BPM 分析中…",
     "bpmAnalyzingHint": "首次打开可能较慢，请稍候",

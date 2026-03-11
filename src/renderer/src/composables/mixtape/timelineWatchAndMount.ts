@@ -66,7 +66,10 @@ export const createTimelineWatchAndMountModule = (ctx: any) => {
       } catch {}
     }
     updateTimelineWidth()
-    nextTick(() => scheduleWaveformDraw())
+    nextTick(() => {
+      scheduleWaveformLoad()
+      scheduleWaveformDraw()
+    })
     return true
   }
 
