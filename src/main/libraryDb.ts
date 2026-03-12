@@ -4,7 +4,7 @@ import store from './store'
 import { log } from './log'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
-const SCHEMA_VERSION = 20
+const SCHEMA_VERSION = 21
 
 type SqliteDatabase = any
 
@@ -498,6 +498,14 @@ function createDatabase(dbPath: string): SqliteDatabase {
         CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_mode ON mixtape_projects(stem_mode);
         CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_profile ON mixtape_projects(stem_profile);
       `)
+    }
+  }
+  if (userVersion < 21) {
+    const projectColumns = listTableColumns(instance, 'mixtape_projects')
+    if (!projectColumns.has('info_json')) {
+      try {
+        instance.exec(`ALTER TABLE mixtape_projects ADD COLUMN info_json TEXT`)
+      } catch {}
     }
   }
   if (userVersion < SCHEMA_VERSION) {
