@@ -1,3 +1,4 @@
+import { is } from '@electron-toolkit/utils'
 import { log } from '../log'
 import { getBackgroundIdleSnapshot } from './backgroundIdleGate'
 
@@ -20,9 +21,9 @@ type BackgroundTaskRunningState = {
 }
 
 const CATEGORY_PRIORITY: Record<BackgroundTaskCategory, number> = {
-  'key-analysis': 400,
-  'mixtape-stem-resume': 300,
-  'mixtape-waveform-hires': 200
+  'mixtape-stem-resume': 400,
+  'mixtape-waveform-hires': 350,
+  'key-analysis': 300
 }
 
 const ORCHESTRATOR_TICK_MS = 5000
@@ -33,6 +34,31 @@ let tickTimer: ReturnType<typeof setInterval> | null = null
 let started = false
 let flushInProgress = false
 let flushRequested = false
+let lastIdleBlockedSignature = ''
+
+const debugDev = (message: string, payload?: unknown) => {
+  if (!is.dev) return
+  if (payload === undefined) {
+    log.debug(`[background-orchestrator][dev] ${message}`)
+    return
+  }
+  log.debug(`[background-orchestrator][dev] ${message}`, payload)
+}
+
+const listPendingCategories = (): Array<{
+  category: BackgroundTaskCategory
+  trigger: string
+  waitMs: number
+  priority: number
+}> =>
+  Array.from(pendingRequestMap.values())
+    .map((request) => ({
+      category: request.category,
+      trigger: request.trigger,
+      waitMs: Math.max(0, Date.now() - request.requestedAt),
+      priority: CATEGORY_PRIORITY[request.category] || 0
+    }))
+    .sort((a, b) => b.priority - a.priority || a.waitMs - b.waitMs)
 
 const pickNextRequest = (): BackgroundTaskRequest | null => {
   if (pendingRequestMap.size === 0) return null
@@ -56,12 +82,19 @@ const pickNextRequest = (): BackgroundTaskRequest | null => {
 }
 
 const runRequest = async (request: BackgroundTaskRequest) => {
+  const waitMs = Math.max(0, Date.now() - request.requestedAt)
   const currentRunning: BackgroundTaskRunningState = {
     category: request.category,
     startedAt: Date.now(),
     trigger: request.trigger
   }
   runningState = currentRunning
+  debugDev('开始执行后台任务', {
+    category: request.category,
+    trigger: request.trigger,
+    waitMs,
+    pendingCategories: listPendingCategories()
+  })
   try {
     await request.run()
   } catch (error) {
@@ -71,6 +104,11 @@ const runRequest = async (request: BackgroundTaskRequest) => {
       error
     })
   } finally {
+    debugDev('后台任务执行结束', {
+      category: request.category,
+      trigger: request.trigger,
+      durationMs: Date.now() - currentRunning.startedAt
+    })
     runningState = null
   }
 }
@@ -88,8 +126,26 @@ const flushPendingRequests = async () => {
       if (pendingRequestMap.size === 0) return
       const idleSnapshot = getBackgroundIdleSnapshot()
       if (!idleSnapshot.allowed) {
+        const signature = JSON.stringify({
+          profile: idleSnapshot.profile,
+          systemIdleState: idleSnapshot.systemIdleState,
+          systemIdleSeconds: idleSnapshot.systemIdleSeconds,
+          foregroundBusy: idleSnapshot.foregroundBusy,
+          pending: Array.from(pendingRequestMap.keys()).sort()
+        })
+        if (signature !== lastIdleBlockedSignature) {
+          lastIdleBlockedSignature = signature
+          debugDev('后台任务等待闲置许可', {
+            idleProfile: idleSnapshot.profile,
+            systemIdleState: idleSnapshot.systemIdleState,
+            systemIdleSeconds: idleSnapshot.systemIdleSeconds,
+            foregroundBusy: idleSnapshot.foregroundBusy,
+            pendingCategories: listPendingCategories()
+          })
+        }
         return
       }
+      lastIdleBlockedSignature = ''
       const nextRequest = pickNextRequest()
       if (!nextRequest) return
       pendingRequestMap.delete(nextRequest.category)
@@ -126,7 +182,14 @@ export const requestBackgroundTaskExecution = (params: {
       await Promise.resolve(params.run())
     }
   }
+  const replacedExisting = pendingRequestMap.has(category)
   pendingRequestMap.set(category, request)
+  debugDev('收到后台任务请求', {
+    category,
+    trigger: request.trigger,
+    replacedExisting,
+    pendingCategories: listPendingCategories()
+  })
   void flushPendingRequests()
 }
 

@@ -1,3 +1,4 @@
+import nodeFs from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { EventEmitter } from 'node:events'
@@ -56,6 +57,21 @@ type KeyAnalysisBackgroundDeps = {
   activeByPath: Map<string, KeyAnalysisJob>
   doneByPath: Map<string, DoneEntry>
   persistence: KeyAnalysisPersistence
+}
+
+type BackgroundCandidateDebugSummary = {
+  count: number
+  limit: number
+  missingKeyCount: number
+  missingBpmCount: number
+  missingWaveformCount: number
+  uniqueListRootCount: number
+  sampleListRoots: string[]
+}
+
+type BackgroundCandidateCollectionResult = {
+  filePaths: string[]
+  summary: BackgroundCandidateDebugSummary
 }
 
 export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => {
@@ -256,18 +272,110 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
     return roots
   }
 
+  const resolveSongListRootsFromFs = (): string[] => {
+    const rootDir = store.databaseDir
+    if (!rootDir) return []
+    const libraryRoot = path.join(rootDir, 'library')
+    let libraryEntries: nodeFs.Dirent[] = []
+    try {
+      libraryEntries = nodeFs.readdirSync(libraryRoot, { withFileTypes: true })
+    } catch {
+      return []
+    }
+
+    const roots: string[] = []
+    for (const libraryEntry of libraryEntries) {
+      if (!libraryEntry.isDirectory()) continue
+      if (libraryEntry.name.startsWith('.')) continue
+      if (libraryEntry.name === 'MixtapeLibrary' || libraryEntry.name === 'RecycleBin') continue
+      const libraryDir = path.join(libraryRoot, libraryEntry.name)
+      let songListEntries: nodeFs.Dirent[] = []
+      try {
+        songListEntries = nodeFs.readdirSync(libraryDir, { withFileTypes: true })
+      } catch {
+        continue
+      }
+      for (const songListEntry of songListEntries) {
+        if (!songListEntry.isDirectory()) continue
+        if (songListEntry.name.startsWith('.') || songListEntry.name === '.frkb_covers') continue
+        roots.push(path.join(libraryDir, songListEntry.name))
+      }
+    }
+
+    return roots
+  }
+
+  const mergeSongListRoots = (...groups: string[][]): string[] => {
+    const deduped = new Map<string, string>()
+    for (const group of groups) {
+      for (const root of group) {
+        const normalized = normalizePath(root)
+        if (!normalized || deduped.has(normalized)) continue
+        deduped.set(normalized, root)
+      }
+    }
+    return Array.from(deduped.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([, root]) => root)
+  }
+
+  const formatDebugListRoot = (listRoot: string): string => {
+    const normalizedRoot = normalizePath(listRoot)
+    const databaseDir = normalizePath(store.databaseDir || '')
+    if (!databaseDir) return normalizedRoot
+    const relative = path.relative(databaseDir, listRoot)
+    if (!relative || relative.startsWith('..')) return normalizedRoot
+    return relative.replace(/\\/g, '/')
+  }
+
+  const createCandidateDebugSummary = (params: {
+    filePaths: string[]
+    limit: number
+    missingKeyCount: number
+    missingBpmCount: number
+    missingWaveformCount: number
+    listRoots: Iterable<string>
+  }): BackgroundCandidateDebugSummary => {
+    const uniqueListRoots = Array.from(new Set(params.listRoots))
+    const sampleListRoots = uniqueListRoots
+      .map((root) => formatDebugListRoot(root))
+      .sort((a, b) => a.localeCompare(b))
+      .slice(0, 5)
+
+    return {
+      count: params.filePaths.length,
+      limit: params.limit,
+      missingKeyCount: params.missingKeyCount,
+      missingBpmCount: params.missingBpmCount,
+      missingWaveformCount: params.missingWaveformCount,
+      uniqueListRootCount: uniqueListRoots.length,
+      sampleListRoots
+    }
+  }
+
   const refreshBackgroundRoots = (): string[] => {
     const now = Date.now()
     const shouldRefresh =
       now - backgroundRootsLastRefresh >= BACKGROUND_FS_REFRESH_MS || backgroundRoots.length === 0
     if (!shouldRefresh) return backgroundRoots
-    const nextRoots = resolveSongListRoots()
+    const nodeRoots = resolveSongListRoots()
+    const fsRoots = resolveSongListRootsFromFs()
+    const nextRoots = mergeSongListRoots(nodeRoots, fsRoots)
     const signature = nextRoots.join('|')
     if (signature !== backgroundRootsSignature) {
       backgroundDirQueue = []
       backgroundRootIndex = 0
       backgroundRootsSignature = signature
-      debugDev('歌单根目录集合发生变化', { rootCount: nextRoots.length })
+      const nodeRootSet = new Set(nodeRoots.map((root) => normalizePath(root)))
+      const fsOnlyRoots = nextRoots.filter((root) => !nodeRootSet.has(normalizePath(root)))
+      debugDev('歌单根目录集合发生变化', {
+        rootCount: nextRoots.length,
+        libraryNodeRootCount: nodeRoots.length,
+        fileSystemRootCount: fsRoots.length,
+        fileSystemOnlyRootCount: fsOnlyRoots.length,
+        sampleRoots: nextRoots.slice(0, 5).map((root) => formatDebugListRoot(root)),
+        sampleFsOnlyRoots: fsOnlyRoots.slice(0, 5).map((root) => formatDebugListRoot(root))
+      })
     }
     backgroundRoots = nextRoots
     backgroundRootsLastRefresh = now
@@ -352,22 +460,52 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
   const collectBackgroundCandidates = async (limit: number): Promise<string[]> => {
     if (!backgroundEnabled) return []
     const fromCache = await collectBackgroundCacheCandidates(limit)
-    if (fromCache.length > 0) {
-      debugDev('候选来源：缓存数据库', { count: fromCache.length, limit })
-      return fromCache
+    if (fromCache.filePaths.length > 0) {
+      debugDev('候选来源：缓存数据库', fromCache.summary)
+      return fromCache.filePaths
     }
     const fromFs = await collectBackgroundFsCandidates(limit)
-    if (fromFs.length > 0) {
-      debugDev('候选来源：文件系统回退扫描', { count: fromFs.length, limit })
+    if (fromFs.filePaths.length > 0) {
+      debugDev('候选来源：文件系统回退扫描', fromFs.summary)
     }
-    return fromFs
+    return fromFs.filePaths
   }
 
-  const collectBackgroundCacheCandidates = async (limit: number): Promise<string[]> => {
+  const collectBackgroundCacheCandidates = async (
+    limit: number
+  ): Promise<BackgroundCandidateCollectionResult> => {
     const results: string[] = []
-    if (limit <= 0) return results
+    const selectedRoots = new Set<string>()
+    let missingKeyCount = 0
+    let missingBpmCount = 0
+    let missingWaveformCount = 0
+    if (limit <= 0) {
+      return {
+        filePaths: results,
+        summary: createCandidateDebugSummary({
+          filePaths: results,
+          limit,
+          missingKeyCount,
+          missingBpmCount,
+          missingWaveformCount,
+          listRoots: selectedRoots
+        })
+      }
+    }
     const db = getLibraryDb()
-    if (!db) return results
+    if (!db) {
+      return {
+        filePaths: results,
+        summary: createCandidateDebugSummary({
+          filePaths: results,
+          limit,
+          missingKeyCount,
+          missingBpmCount,
+          missingWaveformCount,
+          listRoots: selectedRoots
+        })
+      }
+    }
     let rows: Array<{
       rowId: number
       list_root: string
@@ -382,14 +520,34 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       )
       rows = stmt.all(backgroundCursor, BACKGROUND_SCAN_ROW_LIMIT)
     } catch {
-      return results
+      return {
+        filePaths: results,
+        summary: createCandidateDebugSummary({
+          filePaths: results,
+          limit,
+          missingKeyCount,
+          missingBpmCount,
+          missingWaveformCount,
+          listRoots: selectedRoots
+        })
+      }
     }
     if (!rows || rows.length === 0) {
       if (backgroundCursor !== 0) {
         backgroundCursor = 0
       }
       debugDev('缓存扫描无数据，重置游标')
-      return results
+      return {
+        filePaths: results,
+        summary: createCandidateDebugSummary({
+          filePaths: results,
+          limit,
+          missingKeyCount,
+          missingBpmCount,
+          missingWaveformCount,
+          listRoots: selectedRoots
+        })
+      }
     }
     let processedAll = true
     let lastRowId = backgroundCursor
@@ -409,6 +567,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       const hasBpm = isValidBpm(info?.bpm)
       const listRoot = typeof row?.list_root === 'string' ? row.list_root.trim() : ''
       if (!listRoot) continue
+      const absListRoot = LibraryCacheDb.resolveCacheListRootAbs(listRoot) || listRoot
       const absFilePath = LibraryCacheDb.resolveCacheFilePath(listRoot, filePath)
       if (!absFilePath) continue
       const size = Number(row?.size)
@@ -423,6 +582,10 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
         )
       }
       if (!hasKey || !hasBpm || !hasWaveform) {
+        selectedRoots.add(absListRoot)
+        if (!hasKey) missingKeyCount += 1
+        if (!hasBpm) missingBpmCount += 1
+        if (!hasWaveform) missingWaveformCount += 1
         results.push(absFilePath)
         if (results.length >= limit) {
           processedAll = false
@@ -440,18 +603,68 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       processedAll,
       nextCursor: backgroundCursor
     })
-    return results
+    return {
+      filePaths: results,
+      summary: createCandidateDebugSummary({
+        filePaths: results,
+        limit,
+        missingKeyCount,
+        missingBpmCount,
+        missingWaveformCount,
+        listRoots: selectedRoots
+      })
+    }
   }
 
-  const collectBackgroundFsCandidates = async (limit: number): Promise<string[]> => {
+  const collectBackgroundFsCandidates = async (
+    limit: number
+  ): Promise<BackgroundCandidateCollectionResult> => {
     const results: string[] = []
-    if (limit <= 0) return results
-    if (!store.databaseDir) return results
-    if (deps.hasForegroundWork()) return results
+    const selectedRoots = new Set<string>()
+    let missingKeyCount = 0
+    let missingBpmCount = 0
+    let missingWaveformCount = 0
+    if (limit <= 0 || !store.databaseDir || deps.hasForegroundWork()) {
+      return {
+        filePaths: results,
+        summary: createCandidateDebugSummary({
+          filePaths: results,
+          limit,
+          missingKeyCount,
+          missingBpmCount,
+          missingWaveformCount,
+          listRoots: selectedRoots
+        })
+      }
+    }
     const roots = refreshBackgroundRoots()
-    if (roots.length === 0) return results
+    if (roots.length === 0) {
+      return {
+        filePaths: results,
+        summary: createCandidateDebugSummary({
+          filePaths: results,
+          limit,
+          missingKeyCount,
+          missingBpmCount,
+          missingWaveformCount,
+          listRoots: selectedRoots
+        })
+      }
+    }
     const audioExts = getAudioExtensions()
-    if (audioExts.size === 0) return results
+    if (audioExts.size === 0) {
+      return {
+        filePaths: results,
+        summary: createCandidateDebugSummary({
+          filePaths: results,
+          limit,
+          missingKeyCount,
+          missingBpmCount,
+          missingWaveformCount,
+          listRoots: selectedRoots
+        })
+      }
+    }
 
     let dirsProcessed = 0
     while (results.length < limit && dirsProcessed < BACKGROUND_FS_DIR_LIMIT) {
@@ -492,7 +705,12 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
             continue
           }
           const done = deps.doneByPath.get(normalizedPath)
-          if (done && isValidKeyText(done.keyText) && isValidBpm(done.bpm)) {
+          if (
+            done &&
+            done.hasWaveform === true &&
+            isValidKeyText(done.keyText) &&
+            isValidBpm(done.bpm)
+          ) {
             continue
           }
           const cached = await LibraryCacheDb.loadSongCacheEntry(current.listRoot, filePath)
@@ -511,6 +729,10 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
             )
           }
           if (!cached || !hasKey || !hasBpm || !hasWaveform) {
+            selectedRoots.add(current.listRoot)
+            if (!hasKey) missingKeyCount += 1
+            if (!hasBpm) missingBpmCount += 1
+            if (!hasWaveform) missingWaveformCount += 1
             results.push(filePath)
             if (results.length >= limit) break
           }
@@ -521,7 +743,17 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
         } catch {}
       }
     }
-    return results
+    return {
+      filePaths: results,
+      summary: createCandidateDebugSummary({
+        filePaths: results,
+        limit,
+        missingKeyCount,
+        missingBpmCount,
+        missingWaveformCount,
+        listRoots: selectedRoots
+      })
+    }
   }
 
   const cleanupMissingCacheEntries = async (limit: number): Promise<number> => {
@@ -630,7 +862,13 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
           deps.enqueueList(candidates, 'background', { source: 'background' })
         } else {
           const cleaned = await cleanupMissingCacheEntries(BACKGROUND_CLEAN_BATCH_SIZE)
-          debugDev('本轮无候选，执行缓存清理', { cleaned })
+          debugDev('本轮无候选，执行缓存清理', {
+            cleaned,
+            cacheCursor: backgroundCursor,
+            rootCount: backgroundRoots.length,
+            nextRootIndex: backgroundRootIndex,
+            pendingDirCount: backgroundDirQueue.length
+          })
           if (cleaned === 0 && !deps.hasForegroundWork()) {
             debugDev('执行闲时维护任务')
             await runPeriodicMaintenanceTasks(now)
