@@ -9,42 +9,24 @@ import {
 } from '@renderer/composables/mixtape/timelineTransportRenderWav'
 import { createTimelineTransportTrackDragModule } from '@renderer/composables/mixtape/timelineTransportTrackDrag'
 import { createTimelineTransportResolversModule } from '@renderer/composables/mixtape/timelineTransportResolvers'
+import { ensureTransportKeyLockWorkletModule } from '@renderer/composables/mixtape/timelineTransportPlayableSource'
+import {
+  startTransportTrackGraphNode,
+  type TrackGraphNode
+} from '@renderer/composables/mixtape/timelineTransportPlaybackNodes'
 import {
   createTimelineTransportAudioDataModule,
   type TransportAudioRef,
   type TransportEntry,
-  type TransportStemAudioRef,
   type TransportStemId
 } from '@renderer/composables/mixtape/timelineTransportAudioData'
-import { FIXED_MIXTAPE_STEM_MODE } from '@shared/mixtapeStemMode'
 import type {
   MixtapeEnvelopeParamId,
   MixtapeMixMode,
   MixtapeMuteSegment,
-  MixtapeStemMode,
   MixtapeTrack,
   MixtapeStemStatus
 } from '@renderer/composables/mixtape/types'
-
-type TrackStemGraphNode = {
-  stemId: TransportStemId
-  source: AudioBufferSourceNode
-  stemGain: GainNode
-}
-
-// ── 单轨音频图节点（(StemSource -> StemGain)... -> StemBus -> Volume -> Gain -> destination）
-type TrackGraphNode = {
-  trackId: string
-  entry: TransportEntry
-  source: AudioBufferSourceNode
-  stemNodes: TrackStemGraphNode[]
-  stemBus: GainNode | null
-  eqHigh: BiquadFilterNode | null
-  eqMid: BiquadFilterNode | null
-  eqLow: BiquadFilterNode | null
-  volume: GainNode
-  gain: GainNode
-}
 
 export type { MixtapeOutputProgressPayload, MixtapeRenderedWavResult }
 
@@ -53,13 +35,6 @@ const MIX_ENVELOPE_PARAMS_TRADITIONAL: MixtapeEnvelopeParamId[] = [
   'high',
   'mid',
   'low',
-  'volume'
-]
-const MIX_ENVELOPE_PARAMS_3STEMS: MixtapeEnvelopeParamId[] = [
-  'gain',
-  'vocal',
-  'inst',
-  'drums',
   'volume'
 ]
 const MIX_ENVELOPE_PARAMS_4STEMS: MixtapeEnvelopeParamId[] = [
@@ -114,13 +89,11 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   let transportStartedAt = 0
   let transportAudioStartAt = 0
   let transportDurationSec = 0
-  // 共享 AudioContext（贯穿整个混音 transport 生命周期）
   let transportAudioCtx: AudioContext | null = null
-  // 当前活跃的音频图节点列表
   let transportGraphNodes: TrackGraphNode[] = []
   let transportMasterTrackId = ''
-  // 版本号，用于取消过期的异步解码操作
   let transportVersion = 0
+  let transportKeyLockWorkletReady = false
 
   const clampNumber = (value: number, min: number, max: number) =>
     Math.max(min, Math.min(max, value))
@@ -140,7 +113,6 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   }
   const isStemMixMode = (): boolean =>
     (mixtapeMixMode?.value as MixtapeMixMode | undefined) === 'stem'
-  const resolveStemMode = (): MixtapeStemMode => FIXED_MIXTAPE_STEM_MODE
   const resolveMixEnvelopeParams = (): MixtapeEnvelopeParamId[] =>
     isStemMixMode() ? MIX_ENVELOPE_PARAMS_4STEMS : MIX_ENVELOPE_PARAMS_TRADITIONAL
   const resolveStemIdsForMode = (): TransportStemId[] => STEM_IDS_4STEMS
@@ -150,6 +122,8 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     if (stemId === 'bass') return String(track.stemBassPath || '').trim()
     return String(track.stemDrumsPath || '').trim()
   }
+  const shouldUseRealtimeKeyLock = (entry: TransportEntry) =>
+    entry.masterTempo && transportKeyLockWorkletReady
 
   const persistTrackStartSec = async (
     entries: Array<{
@@ -272,7 +246,6 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     transportPreloadFailed
   })
 
-  // ── AudioContext 管理 ─────────────────────────────────────────
   const ensureTransportAudioContext = (sampleRate?: number): AudioContext => {
     if (transportAudioCtx && transportAudioCtx.state !== 'closed') {
       return transportAudioCtx
@@ -436,209 +409,19 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     ) => mirrorTransportStemPlaybackRates(nodes, audioCtx, automationAtSec)
   })
 
-  // ── 启动单轨音频图播放（(StemSource -> StemGain)... -> StemBus -> Volume -> Gain）─────
-  const startTransportTrack = (entry: TransportEntry, offsetSourceSec: number, whenSec: number) => {
-    if (isStemMixMode()) {
-      const stemIds = resolveStemIdsForMode()
-      const stemAudios = stemIds
-        .map((stemId) => entry.stemAudioById?.[stemId])
-        .filter((item): item is TransportStemAudioRef => !!item && !!item.audioBuffer)
-      if (!stemAudios.length) return
-      try {
-        const sampleRate = Number(stemAudios[0]?.audioBuffer?.sampleRate || 0) || undefined
-        const ctx = ensureTransportAudioContext(sampleRate)
-        if (ctx.state === 'suspended') {
-          void ctx.resume()
+  const resolveTransportPlanSampleRate = (entries: TransportEntry[]) => {
+    for (const entry of entries) {
+      if (isStemMixMode()) {
+        for (const stemId of resolveStemIdsForMode()) {
+          const sampleRate = Number(entry.stemAudioById?.[stemId]?.audioBuffer?.sampleRate || 0)
+          if (Number.isFinite(sampleRate) && sampleRate > 0) return sampleRate
         }
-
-        const stemBus = ctx.createGain()
-        const volume = ctx.createGain()
-        const gain = ctx.createGain()
-        const offsetTimelineSec = offsetSourceSec / Math.max(0.01, entry.tempoRatio)
-        volume.gain.value = resolveEntryEnvelopeValue(entry, 'volume', offsetTimelineSec)
-        gain.gain.value = resolveEntryEnvelopeValue(entry, 'gain', offsetTimelineSec)
-        stemBus.gain.value = 1
-        stemBus.connect(volume)
-        volume.connect(gain)
-        gain.connect(ctx.destination)
-
-        const stemNodes: TrackStemGraphNode[] = []
-        for (const stemAudio of stemAudios) {
-          const source = ctx.createBufferSource()
-          source.buffer = stemAudio.audioBuffer
-          source.playbackRate.value = entry.tempoRatio
-          const stemGain = ctx.createGain()
-          stemGain.gain.value = resolveEntryEnvelopeValue(
-            entry,
-            stemAudio.stemId,
-            offsetTimelineSec
-          )
-          source.connect(stemGain)
-          stemGain.connect(stemBus)
-          stemNodes.push({
-            stemId: stemAudio.stemId,
-            source,
-            stemGain
-          })
-        }
-        const primaryStemNode = stemNodes[0]
-        if (!primaryStemNode) {
-          try {
-            stemBus.disconnect()
-          } catch {}
-          try {
-            volume.disconnect()
-          } catch {}
-          try {
-            gain.disconnect()
-          } catch {}
-          return
-        }
-
-        const safeWhen = Number.isFinite(whenSec)
-          ? Math.max(ctx.currentTime, whenSec)
-          : ctx.currentTime
-        for (const stemNode of stemNodes) {
-          const stemDuration = Number(stemNode.source.buffer?.duration || 0)
-          const safeOffset = clampNumber(offsetSourceSec, 0, Math.max(0, stemDuration - 0.02))
-          stemNode.source.start(safeWhen, safeOffset)
-        }
-
-        const graphNode: TrackGraphNode = {
-          trackId: entry.trackId,
-          entry,
-          source: primaryStemNode.source,
-          stemNodes,
-          stemBus,
-          eqHigh: null,
-          eqMid: null,
-          eqLow: null,
-          volume,
-          gain
-        }
-        transportGraphNodes.push(graphNode)
-
-        let cleaned = false
-        const cleanupNode = () => {
-          if (cleaned) return
-          cleaned = true
-          const idx = transportGraphNodes.indexOf(graphNode)
-          if (idx >= 0) transportGraphNodes.splice(idx, 1)
-          for (const stemNode of stemNodes) {
-            try {
-              stemNode.source.disconnect()
-            } catch {}
-            try {
-              stemNode.stemGain.disconnect()
-            } catch {}
-          }
-          try {
-            stemBus.disconnect()
-          } catch {}
-          try {
-            volume.disconnect()
-          } catch {}
-          try {
-            gain.disconnect()
-          } catch {}
-        }
-        primaryStemNode.source.onended = cleanupNode
-      } catch (error) {
-        console.error('[mixtape-transport] 播放启动失败:', entry.filePath, error)
+        continue
       }
-      return
+      const sampleRate = Number(entry.audioRef?.audioBuffer?.sampleRate || 0)
+      if (Number.isFinite(sampleRate) && sampleRate > 0) return sampleRate
     }
-
-    const audioBuffer = entry.audioRef?.audioBuffer
-    if (!audioBuffer) return
-    try {
-      const ctx = ensureTransportAudioContext(audioBuffer.sampleRate)
-      if (ctx.state === 'suspended') {
-        void ctx.resume()
-      }
-
-      const source = ctx.createBufferSource()
-      source.buffer = audioBuffer
-      source.playbackRate.value = entry.tempoRatio
-
-      const eqLow = ctx.createBiquadFilter()
-      eqLow.type = 'lowshelf'
-      eqLow.frequency.value = 220
-
-      const eqMid = ctx.createBiquadFilter()
-      eqMid.type = 'peaking'
-      eqMid.frequency.value = 1000
-      eqMid.Q.value = 0.9
-
-      const eqHigh = ctx.createBiquadFilter()
-      eqHigh.type = 'highshelf'
-      eqHigh.frequency.value = 3200
-
-      const volume = ctx.createGain()
-      const gain = ctx.createGain()
-      const offsetTimelineSec = offsetSourceSec / Math.max(0.01, entry.tempoRatio)
-      eqHigh.gain.value = resolveEntryEqDbValue(entry, 'high', offsetTimelineSec)
-      eqMid.gain.value = resolveEntryEqDbValue(entry, 'mid', offsetTimelineSec)
-      eqLow.gain.value = resolveEntryEqDbValue(entry, 'low', offsetTimelineSec)
-      volume.gain.value = resolveEntryEnvelopeValue(entry, 'volume', offsetTimelineSec)
-      gain.gain.value = resolveEntryEnvelopeValue(entry, 'gain', offsetTimelineSec)
-
-      source.connect(eqLow)
-      eqLow.connect(eqMid)
-      eqMid.connect(eqHigh)
-      eqHigh.connect(volume)
-      volume.connect(gain)
-      gain.connect(ctx.destination)
-
-      const safeWhen = Number.isFinite(whenSec)
-        ? Math.max(ctx.currentTime, whenSec)
-        : ctx.currentTime
-      const safeOffset = clampNumber(offsetSourceSec, 0, Math.max(0, audioBuffer.duration - 0.02))
-      source.start(safeWhen, safeOffset)
-
-      const graphNode: TrackGraphNode = {
-        trackId: entry.trackId,
-        entry,
-        source,
-        stemNodes: [],
-        stemBus: null,
-        eqHigh,
-        eqMid,
-        eqLow,
-        volume,
-        gain
-      }
-      transportGraphNodes.push(graphNode)
-
-      let cleaned = false
-      const cleanupNode = () => {
-        if (cleaned) return
-        cleaned = true
-        const idx = transportGraphNodes.indexOf(graphNode)
-        if (idx >= 0) transportGraphNodes.splice(idx, 1)
-        try {
-          source.disconnect()
-        } catch {}
-        try {
-          eqLow.disconnect()
-        } catch {}
-        try {
-          eqMid.disconnect()
-        } catch {}
-        try {
-          eqHigh.disconnect()
-        } catch {}
-        try {
-          volume.disconnect()
-        } catch {}
-        try {
-          gain.disconnect()
-        } catch {}
-      }
-      source.onended = cleanupNode
-    } catch (error) {
-      console.error('[mixtape-transport] 播放启动失败:', entry.filePath, error)
-    }
+    return undefined
   }
 
   const applyTransportMixParamsAtTimelineSec = (
@@ -713,14 +496,12 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     }
   }
 
-  // ── 核心：从指定时间点开始播放 ────────────────────────────────
   const startTransportFrom = async (rawStartSec: number) => {
     const plan = buildTransportEntries()
     stopTransport()
     const version = ++transportVersion
     const entries = plan.entries
 
-    // 解码所有轨道（浏览器可解码的走 fetch + decodeAudioData，其余走 IPC）
     if (entries.length) {
       const useStemMode = isStemMixMode()
       const pendingAudioRefs: TransportAudioRef[] = []
@@ -741,13 +522,10 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
           pendingAudioRefs.push(audioRef)
         }
       }
-      // 仅当存在需要 IPC 解码的轨道时才显示"解码中"提示
-      // 浏览器 fetch + decodeAudioData 通常很快，不需要提示
       if (pendingAudioRefs.length > 0) {
         const hasIpcEntries = pendingAudioRefs.some((e) => e.decodeMode === 'ipc')
         if (hasIpcEntries) transportDecoding.value = true
         const failCount = await decodeAllTransportEntries(entries)
-        // 检查是否被取消（用户在解码过程中点了停止或再次点击播放）
         if (transportVersion !== version) {
           transportDecoding.value = false
           return
@@ -777,7 +555,6 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       }
     }
 
-    // 过滤掉解码失败的轨道
     const playableEntries = entries.filter((entry) => {
       if (isStemMixMode()) {
         const requiredStemIds = resolveStemIdsForMode()
@@ -785,6 +562,24 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       }
       return Boolean(entry.audioRef?.audioBuffer)
     })
+    transportKeyLockWorkletReady = false
+    if (playableEntries.some((entry) => entry.masterTempo)) {
+      const sampleRate = resolveTransportPlanSampleRate(playableEntries)
+      const transportCtx = ensureTransportAudioContext(sampleRate)
+      if (transportCtx.state === 'suspended') {
+        try {
+          await transportCtx.resume()
+        } catch {}
+      }
+      try {
+        await ensureTransportKeyLockWorkletModule(transportCtx)
+        transportKeyLockWorkletReady = true
+      } catch (error) {
+        transportKeyLockWorkletReady = false
+        console.error('[mixtape-transport] key lock worklet unavailable, fallback to rate', error)
+      }
+      if (transportVersion !== version) return
+    }
 
     const duration = playableEntries.reduce(
       (max, entry) => Math.max(max, entry.startSec + entry.duration),
@@ -856,7 +651,18 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       const delaySec = Math.max(0, entry.startSec - startSec)
       const offsetTimelineSec = Math.max(0, startSec - entry.startSec)
       const offsetSourceSec = offsetTimelineSec * entry.tempoRatio
-      startTransportTrack(entry, offsetSourceSec, scheduleStartAt + delaySec)
+      startTransportTrackGraphNode({
+        entry,
+        offsetSourceSec,
+        whenSec: scheduleStartAt + delaySec,
+        transportGraphNodes,
+        isStemMixMode,
+        resolveStemIdsForMode,
+        ensureTransportAudioContext,
+        shouldUseRealtimeKeyLock,
+        resolveEntryEnvelopeValue: resolveEntryEnvelopeValue as any,
+        resolveEntryEqDbValue
+      })
     }
 
     const tick = () => {

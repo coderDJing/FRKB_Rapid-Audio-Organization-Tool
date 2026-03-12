@@ -26,6 +26,13 @@ import {
   resolveTempoRatioByBpm
 } from '@renderer/composables/mixtape/mixxxSyncModel'
 import {
+  buildTrackVisibleGridLines,
+  normalizeTrackBpmEnvelopePoints,
+  resolveTrackBpmEnvelopeBaseValue,
+  resolveTrackGridSourceBpm
+} from '@renderer/composables/mixtape/trackBpmEnvelope'
+import { resolveTrackTimelineDurationFromSource } from '@renderer/composables/mixtape/trackBpmEnvelope'
+import {
   buildGainEnvelopePolylineByControlPoints,
   normalizeGainEnvelopePoints,
   MIXTAPE_GAIN_KNOB_MAX_DB,
@@ -260,23 +267,46 @@ export const createTimelineHelpersModule = (ctx: any) => {
   }
 
   const resolveTrackSourceDurationSeconds = (track: MixtapeTrack) => {
-    const candidateFilePaths = isStemMixMode()
-      ? resolveWaveformStemIds()
-          .map((stemId) => resolveTrackStemFilePath(track, stemId))
-          .filter(Boolean)
-      : [String(track.filePath || '').trim()].filter(Boolean)
+    void waveformVersion?.value
+    const candidateFilePaths = [
+      ...(isStemMixMode()
+        ? resolveWaveformStemIds()
+            .map((stemId) => resolveTrackStemFilePath(track, stemId))
+            .filter(Boolean)
+        : []),
+      ...[String(track.filePath || '').trim()].filter(Boolean)
+    ]
     for (const filePath of candidateFilePaths) {
       const data = waveformDataMap.get(filePath) || null
       if (data && Number.isFinite(data.duration) && data.duration > 0) {
         return data.duration
+      }
+      const rawData = rawWaveformDataMap.get(filePath) || null
+      if (rawData && Number.isFinite(rawData.duration) && rawData.duration > 0) {
+        return rawData.duration
       }
     }
     return parseDurationToSeconds(track.duration)
   }
 
   const resolveTrackDurationSeconds = (track: MixtapeTrack) => {
+    void waveformVersion?.value
     const sourceDuration = resolveTrackSourceDurationSeconds(track)
     if (!Number.isFinite(sourceDuration) || sourceDuration <= 0) return 0
+    if (Array.isArray(track.bpmEnvelope) && track.bpmEnvelope.length >= 2) {
+      const fallbackRatio = resolveTrackTempoRatio(track)
+      const fallbackDuration =
+        Number.isFinite(fallbackRatio) && fallbackRatio > 0
+          ? sourceDuration / fallbackRatio
+          : sourceDuration
+      return resolveTrackTimelineDurationFromSource({
+        rawPoints: track.bpmEnvelope,
+        sourceDurationSec: sourceDuration,
+        originalBpm: Number(track.originalBpm) || Number(track.bpm) || 0,
+        fallbackBpm: resolveTrackBpmEnvelopeBaseValue(track),
+        fallbackDurationSec: fallbackDuration
+      })
+    }
     const ratio = resolveTrackTempoRatio(track)
     if (!Number.isFinite(ratio) || ratio <= 0) return sourceDuration
     return sourceDuration / ratio
@@ -448,50 +478,51 @@ export const createTimelineHelpersModule = (ctx: any) => {
     context: CanvasRenderingContext2D,
     width: number,
     height: number,
-    bpm: number,
-    firstBeatMs: number,
+    track: MixtapeTrack,
+    durationSec: number,
+    trackWidth: number,
     barBeatOffset: number,
     range: { start: number; end: number },
-    renderPx: number,
     barOnly: boolean,
     zoomValue: number
   ) => {
-    const bpmValue = Number(bpm)
-    if (!Number.isFinite(bpmValue) || bpmValue <= 0) return
+    const safeDurationSec = Math.max(0, Number(durationSec) || 0)
+    const safeTrackWidth = Math.max(0, Number(trackWidth) || 0)
+    if (safeDurationSec <= 0) return
+    const baseBpm = resolveTrackBpmEnvelopeBaseValue(track)
+    const bpmEnvelope = normalizeTrackBpmEnvelopePoints(track.bpmEnvelope, safeDurationSec, baseBpm)
+    const sourceDurationSec = Math.max(0, Number(resolveTrackSourceDurationSeconds(track)) || 0)
+    const visibleGridLines = buildTrackVisibleGridLines({
+      points: bpmEnvelope,
+      durationSec: safeDurationSec,
+      sourceDurationSec,
+      firstBeatSourceSec: Math.max(0, Number(track.firstBeatMs) || 0) / 1000,
+      beatSourceSec: 60 / Math.max(1, resolveTrackGridSourceBpm(track)),
+      barBeatOffset,
+      zoom: zoomValue,
+      originalBpm: Number(track.originalBpm) || Number(track.bpm) || 0,
+      fallbackBpm: baseBpm
+    })
+    if (!visibleGridLines.length) return
 
-    const interval = (60 / bpmValue) * renderPx
-    if (!interval || !Number.isFinite(interval)) return
-
-    const offsetPx = (Number(firstBeatMs) / 1000) * renderPx
     const startX = range.start
     const endX = range.end
     if (endX <= startX || width <= 0 || height <= 0) return
 
-    const normalizedBarOffset = normalizeBeatOffset(barBeatOffset, 32)
-    const startIndex = Math.floor((startX - offsetPx) / interval) - 2
-    const endIndex = Math.ceil((endX - offsetPx) / interval) + 2
     const barWidth = resolveGridBarWidth(zoomValue)
-    const showBeat4Grid = zoomValue >= GRID_BEAT4_LINE_ZOOM
-    const showBeatGrid = zoomValue >= GRID_BEAT_LINE_ZOOM
 
     context.save()
-    for (let i = startIndex; i <= endIndex; i += 1) {
-      const rawX = offsetPx + i * interval
-      if (rawX < startX - interval || rawX > endX + interval) continue
-      const shiftedIndex = i - normalizedBarOffset
-      const mod32 = ((shiftedIndex % 32) + 32) % 32
-      const mod4 = ((shiftedIndex % 4) + 4) % 4
-      const level = mod32 === 0 ? 'bar' : mod4 === 0 ? 'beat4' : 'beat'
-      if (barOnly && level !== 'bar') continue
-      if (!showBeat4Grid && level !== 'bar') continue
-      if (!showBeatGrid && level === 'beat') continue
+    for (const line of visibleGridLines) {
+      const rawX = (line.sec / safeDurationSec) * safeTrackWidth
+      if (rawX < startX - 64 || rawX > endX + 64) continue
+      if (barOnly && line.level !== 'bar') continue
       const x = Math.round(rawX - startX)
 
-      if (level === 'bar') {
+      if (line.level === 'bar') {
         context.globalAlpha = 0.95
         context.fillStyle = 'rgba(0, 110, 220, 0.98)'
         context.fillRect(x, 0, barWidth, height)
-      } else if (level === 'beat4') {
+      } else if (line.level === 'beat4') {
         context.globalAlpha = 0.85
         context.fillStyle = 'rgba(120, 200, 255, 0.98)'
         context.fillRect(x, 0, 1.8, height)
@@ -584,6 +615,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
   }
 
   const computeTimelineDuration = () => {
+    void waveformVersion?.value
     let cursor = 0
     let maxEnd = 0
     for (const track of tracks.value) {

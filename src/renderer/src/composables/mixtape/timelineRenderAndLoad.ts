@@ -16,6 +16,11 @@ import type {
   StemWaveformBatchRequestItem,
   TimelineWaveformData
 } from '@renderer/composables/mixtape/timelineRenderAndLoadTypes'
+import {
+  normalizeTrackBpmEnvelopePoints,
+  resolveTrackBpmEnvelopeBaseValue,
+  resolveTrackSourceTimeAtLocalSec
+} from '@renderer/composables/mixtape/trackBpmEnvelope'
 import { FIXED_MIXTAPE_STEM_MODE } from '@shared/mixtapeStemMode'
 
 export const createTimelineRenderAndLoadModule = (ctx: any) => {
@@ -42,6 +47,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     resolveTrackRenderWidthPx,
     resolveRenderPxPerSec,
     resolveRawWaveformLevel,
+    resolveTrackWaveformFilePaths,
     resolveWaveformSubLaneMetrics,
     useHalfWaveform,
     waveformDataMap,
@@ -251,17 +257,6 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
       }
       const visibleWidth = Math.max(0, localEnd - localStart)
       if (showGridLines && visibleWidth > 0) {
-        const renderPxPerSecSafe = Math.max(0.0001, resolveRenderPxPerSec(zoomValue))
-        const trackStartSecFromPx = Math.max(
-          0,
-          (trackStartX - TIMELINE_SIDE_PADDING_PX) / renderPxPerSecSafe
-        )
-        const trackStartSec =
-          Number.isFinite(Number(item.startSec)) && Number(item.startSec) >= 0
-            ? Number(item.startSec)
-            : trackStartSecFromPx
-        const adjustedFirstBeatMs =
-          resolveTrackFirstBeatMs(track) + (trackStartSec - trackStartSecFromPx) * 1000
         for (const waveformSource of waveformSources) {
           const subLane = resolveWaveformSubLaneMetrics(
             laneH,
@@ -276,11 +271,11 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
             ctx,
             visibleWidth,
             subLane.height,
-            Number(track.bpm) || 0,
-            adjustedFirstBeatMs,
+            track,
+            resolveTrackDurationSeconds(track),
+            trackWidth,
             Number(track.barBeatOffset) || 0,
             { start: localStart, end: localEnd },
-            renderPxPerSecSafe,
             barOnlyGrid,
             zoomValue
           )
@@ -442,11 +437,39 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
       rawData && Number.isFinite(rawData.duration) && rawData.duration > 0 ? rawData.duration : 0
     const waveformDurationSeconds =
       rawDurationSeconds > 0 ? rawDurationSeconds : sourceDurationSeconds
+    const localStartSec = render.durationSeconds
+      ? (tile.start / Math.max(1, trackWidth)) * render.durationSeconds
+      : 0
+    const localEndSec = render.durationSeconds
+      ? ((tile.start + tile.width) / Math.max(1, trackWidth)) * render.durationSeconds
+      : 0
     const startTime = waveformDurationSeconds
-      ? (tile.start / Math.max(1, trackWidth)) * waveformDurationSeconds
+      ? resolveTrackSourceTimeAtLocalSec({
+          points: normalizeTrackBpmEnvelopePoints(
+            render.track.bpmEnvelope,
+            render.durationSeconds,
+            resolveTrackBpmEnvelopeBaseValue(render.track)
+          ),
+          localSec: localStartSec,
+          durationSec: render.durationSeconds,
+          sourceDurationSec: waveformDurationSeconds,
+          originalBpm: Number(render.track.originalBpm) || Number(render.track.bpm) || 0,
+          fallbackBpm: resolveTrackBpmEnvelopeBaseValue(render.track)
+        })
       : 0
     const endTime = waveformDurationSeconds
-      ? ((tile.start + tile.width) / Math.max(1, trackWidth)) * waveformDurationSeconds
+      ? resolveTrackSourceTimeAtLocalSec({
+          points: normalizeTrackBpmEnvelopePoints(
+            render.track.bpmEnvelope,
+            render.durationSeconds,
+            resolveTrackBpmEnvelopeBaseValue(render.track)
+          ),
+          localSec: localEndSec,
+          durationSec: render.durationSeconds,
+          sourceDurationSec: waveformDurationSeconds,
+          originalBpm: Number(render.track.originalBpm) || Number(render.track.bpm) || 0,
+          fallbackBpm: resolveTrackBpmEnvelopeBaseValue(render.track)
+        })
       : 0
 
     const pixelRatio = window.devicePixelRatio || 1
@@ -1008,10 +1031,8 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
         const pushTarget = (filePath: string, listRoot?: string) => {
           const normalizedFilePath = String(filePath || '').trim()
           if (!normalizedFilePath) return
-          if (
-            rawWaveformDataMap.has(normalizedFilePath) ||
-            rawWaveformInflight.has(normalizedFilePath)
-          ) {
+          const existingRaw = rawWaveformDataMap.get(normalizedFilePath)
+          if (existingRaw || rawWaveformInflight.has(normalizedFilePath)) {
             return
           }
           const normalizedListRoot = String(listRoot || '').trim()
@@ -1032,12 +1053,13 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
         if (viewportWidth <= 0) {
           const fallbackLimit = Math.max(RAW_WAVEFORM_BATCH_SIZE, RAW_WAVEFORM_BATCH_SIZE * 2)
           for (const track of tracks.value) {
-            const waveformSources = resolveTrackWaveformSources(track)
-            for (const waveformSource of waveformSources) {
-              pushTarget(
-                waveformSource.filePath,
-                waveformSource.listRoot || resolveWaveformListRoot(track)
-              )
+            const listRoot = resolveWaveformListRoot(track)
+            const filePaths = resolveTrackWaveformFilePaths(track)
+            for (const filePath of filePaths) {
+              pushTarget(filePath, listRoot)
+            }
+            if (isStemMixMode()) {
+              pushTarget(String(track.filePath || '').trim(), listRoot)
             }
             if (targets.length >= fallbackLimit) break
           }
@@ -1055,12 +1077,13 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
           visibleStart,
           visibleEnd,
           (item: TimelineTrackLayout) => {
-            const waveformSources = resolveTrackWaveformSources(item.track)
-            for (const waveformSource of waveformSources) {
-              pushTarget(
-                waveformSource.filePath,
-                waveformSource.listRoot || resolveWaveformListRoot(item.track)
-              )
+            const listRoot = resolveWaveformListRoot(item.track)
+            const filePaths = resolveTrackWaveformFilePaths(item.track)
+            for (const filePath of filePaths) {
+              pushTarget(filePath, listRoot)
+            }
+            if (isStemMixMode()) {
+              pushTarget(String(item.track.filePath || '').trim(), listRoot)
             }
           }
         )

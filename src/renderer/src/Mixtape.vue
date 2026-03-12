@@ -2,14 +2,11 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import titleComponent from '@renderer/components/titleComponent.vue'
-import MixtapeOutputDialog from '@renderer/components/mixtapeOutputDialog.vue'
-import MixtapeBeatAlignDialog from '@renderer/components/MixtapeBeatAlignDialog.vue'
-import ColumnHeaderContextMenu from '@renderer/pages/modules/songsArea/ColumnHeaderContextMenu.vue'
-import SongListHeader from '@renderer/pages/modules/songsArea/SongListHeader.vue'
-import SongListRows from '@renderer/pages/modules/songsArea/SongListRows.vue'
+import MixtapeDialogsLayer from '@renderer/components/MixtapeDialogsLayer.vue'
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
 import { useMixtape } from '@renderer/composables/useMixtape'
 import { createMixtapeGainEnvelopeEditor } from '@renderer/composables/mixtape/useGainEnvelopeEditor'
+import { createMixtapeTrackBpmEnvelopeEditor } from '@renderer/composables/mixtape/useMixtapeTrackBpmEnvelopeEditor'
 import { useMixtapeAutoGainDialog } from '@renderer/composables/mixtape/useMixtapeAutoGainDialog'
 import { useMixtapeEnvelopePreview } from '@renderer/composables/mixtape/useMixtapeEnvelopePreview'
 import {
@@ -36,11 +33,17 @@ const {
   mixtapeMixMode,
   mixtapeStemMode,
   tracks,
+  clearTimelineLayoutCache,
+  updateTimelineWidth,
+  scheduleTimelineDraw,
+  scheduleFullPreRender,
+  scheduleWorkerPreRender,
   laneIndices,
   laneHeight,
   laneTracks,
   renderZoomLevel,
   resolveTrackDurationSeconds,
+  resolveTrackSourceDurationSeconds,
   resolveTrackFirstBeatSeconds,
   resolveTrackBlockStyle,
   resolveTrackTitle,
@@ -144,6 +147,7 @@ type MixParamId =
   | 'bass'
   | 'drums'
   | 'volume'
+  | 'bpm'
 type MixParamOption = {
   id: MixParamId
   labelKey: string
@@ -162,6 +166,10 @@ const mixParamOptions = computed<MixParamOption[]>(() => {
       {
         id: 'gain',
         labelKey: 'mixtape.mixParamGain'
+      },
+      {
+        id: 'bpm',
+        labelKey: 'mixtape.mixParamBpm'
       },
       {
         id: 'high',
@@ -192,6 +200,10 @@ const mixParamOptions = computed<MixParamOption[]>(() => {
       labelKey: 'mixtape.mixParamGain'
     },
     {
+      id: 'bpm',
+      labelKey: 'mixtape.mixParamBpm'
+    },
+    {
       id: 'vocal',
       labelKey: 'mixtape.mixParamVocal'
     },
@@ -220,6 +232,7 @@ const mixParamOptions = computed<MixParamOption[]>(() => {
 const selectedMixParam = ref<MixParamId>('position')
 const isTrackPositionMode = computed(() => selectedMixParam.value === 'position')
 const isGainParamMode = computed(() => selectedMixParam.value === 'gain')
+const isBpmParamMode = computed(() => selectedMixParam.value === 'bpm')
 const isVolumeParamMode = computed(() => selectedMixParam.value === 'volume')
 const isStemParamMode = computed(() => STEM_PARAM_SET.has(selectedMixParam.value))
 const isEnvelopeParamMode = computed(() => !isTrackPositionMode.value)
@@ -228,8 +241,13 @@ const segmentSelectionMode = ref(false)
 const isSegmentSelectionActive = computed(
   () => isStemParamMode.value || (isSegmentSelectionSupported.value && segmentSelectionMode.value)
 )
-const showEnvelopeCurve = computed(() => isEnvelopeParamMode.value && !isStemParamMode.value)
+const showEnvelopeCurve = computed(
+  () => isEnvelopeParamMode.value && !isStemParamMode.value && !isBpmParamMode.value
+)
 const envelopeHintKey = computed(() => {
+  if (isBpmParamMode.value) {
+    return 'mixtape.bpmEnvelopeHint'
+  }
   if (isSegmentSelectionActive.value) {
     return 'mixtape.segmentMuteHint'
   }
@@ -252,11 +270,12 @@ const {
   timelineContentWidth,
   timelineScrollLeft,
   tracks,
-  resolveTrackDurationSeconds
+  resolveTrackDurationSeconds,
+  resolveTrackSourceDurationSeconds
 })
 
 watch(selectedMixParam, (nextParam) => {
-  if (nextParam === 'position' || nextParam === 'gain') {
+  if (nextParam === 'position' || nextParam === 'gain' || nextParam === 'bpm') {
     segmentSelectionMode.value = false
     return
   }
@@ -295,12 +314,9 @@ const handleLaneTrackMouseDown = (item: TimelineTrackLayout, event: MouseEvent) 
   )
 }
 useWaveformPreviewPlayer()
-type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
 const ascendingOrder = ascendingOrderAsset
 const descendingOrder = descendingOrderAsset
 const autoGainHeaderTranslate = (key: string) => t(key)
-
-const autoGainSongListScrollRef = ref<OverlayScrollbarsComponentRef>(null)
 const {
   autoGainColumnMenuVisible,
   autoGainColumnMenuEvent,
@@ -357,11 +373,46 @@ const {
   tracks,
   renderZoomLevel,
   resolveTrackDurationSeconds,
+  resolveTrackSourceDurationSeconds,
   resolveTrackFirstBeatSeconds,
   resolveActiveParam: () =>
-    isEnvelopeParamMode.value ? (selectedMixParam.value as MixtapeEnvelopeParamId) : null,
+    isEnvelopeParamMode.value && !isBpmParamMode.value
+      ? (selectedMixParam.value as MixtapeEnvelopeParamId)
+      : null,
   isSegmentSelectionMode: () => isSegmentSelectionActive.value,
   isEditable: () => envelopeEditable.value
+})
+
+const bpmEnvelopeEditable = computed(() => isBpmParamMode.value)
+const {
+  resolveActiveBpmEnvelopePolyline,
+  resolveActiveBpmEnvelopePointDots,
+  handleBpmEnvelopePointMouseDown,
+  handleBpmEnvelopeStageMouseDown,
+  handleBpmEnvelopePointDoubleClick,
+  handleBpmEnvelopePointContextMenu,
+  cleanupTrackBpmEnvelopeEditor
+} = createMixtapeTrackBpmEnvelopeEditor({
+  tracks,
+  laneTracks,
+  renderZoomLevel,
+  resolveTrackDurationSeconds,
+  resolveTrackSourceDurationSeconds,
+  resolveTrackFirstBeatSeconds,
+  isEditable: () => bpmEnvelopeEditable.value,
+  pushExternalUndoStep,
+  onEnvelopePreviewChanged: () => {
+    clearTimelineLayoutCache()
+    updateTimelineWidth(false)
+    scheduleTimelineDraw()
+  },
+  onEnvelopeCommitted: () => {
+    clearTimelineLayoutCache()
+    updateTimelineWidth(false)
+    scheduleTimelineDraw()
+    scheduleFullPreRender()
+    scheduleWorkerPreRender()
+  }
 })
 
 const isEditableEventTarget = (target: EventTarget | null) => {
@@ -374,6 +425,36 @@ const isEditableEventTarget = (target: EventTarget | null) => {
 
 const handleUndoMixParam = () => {
   undoLastMixParamChange()
+}
+
+const resolveEnvelopePointLabel = (point: unknown) => {
+  const candidate = point as { bpm?: number; label?: string }
+  return typeof candidate.label === 'string'
+    ? candidate.label
+    : typeof candidate.bpm === 'number'
+      ? String(Math.round(candidate.bpm))
+      : ''
+}
+
+const resolveBpmPointLabelPlacement = (point: unknown) => {
+  const candidate = point as { labelPlacement?: string }
+  return candidate.labelPlacement === 'below' ? 'below' : 'above'
+}
+
+const resolveBpmPointLabelAlign = (point: unknown) => {
+  const candidate = point as { labelAlign?: string }
+  if (candidate.labelAlign === 'left') return 'left'
+  if (candidate.labelAlign === 'right') return 'right'
+  return 'center'
+}
+
+const resolveEnvelopePointBoundaryClass = (point: unknown) => {
+  const candidate = point as { x?: number }
+  const x = Number(candidate.x)
+  if (!Number.isFinite(x)) return ''
+  if (x <= 0.001) return 'is-boundary-start'
+  if (x >= 99.999) return 'is-boundary-end'
+  return ''
 }
 
 const handleUndoKeydown = (event: KeyboardEvent) => {
@@ -399,6 +480,7 @@ onBeforeUnmount(() => {
     window.removeEventListener('keydown', handleUndoKeydown)
   } catch {}
   cleanupGainEnvelopeEditor()
+  cleanupTrackBpmEnvelopeEditor()
 })
 </script>
 
@@ -612,7 +694,7 @@ onBeforeUnmount(() => {
                               >
                                 <line
                                   class="lane-track__envelope-midline"
-                                  :class="{ 'is-hidden': !showEnvelopeCurve }"
+                                  :class="{ 'is-hidden': !(showEnvelopeCurve || isBpmParamMode) }"
                                   x1="0"
                                   y1="50"
                                   x2="100"
@@ -620,8 +702,12 @@ onBeforeUnmount(() => {
                                 ></line>
                                 <polyline
                                   class="lane-track__envelope-line"
-                                  :class="{ 'is-hidden': !showEnvelopeCurve }"
-                                  :points="resolveActiveEnvelopePolyline(item)"
+                                  :class="{ 'is-hidden': !(showEnvelopeCurve || isBpmParamMode) }"
+                                  :points="
+                                    isBpmParamMode
+                                      ? resolveActiveBpmEnvelopePolyline(item)
+                                      : resolveActiveEnvelopePolyline(item)
+                                  "
                                 ></polyline>
                               </svg>
                               <div class="lane-track__mute-segments">
@@ -641,34 +727,60 @@ onBeforeUnmount(() => {
                                 :class="{
                                   'is-segment-mute-mode': isSegmentSelectionActive
                                 }"
-                                @mousedown.stop.prevent="handleEnvelopeStageMouseDown(item, $event)"
+                                @mousedown.stop.prevent="
+                                  isBpmParamMode
+                                    ? handleBpmEnvelopeStageMouseDown(item, $event)
+                                    : handleEnvelopeStageMouseDown(item, $event)
+                                "
                               >
                                 <template
                                   v-if="
-                                    showEnvelopeCurve &&
+                                    (showEnvelopeCurve || isBpmParamMode) &&
                                     !(isVolumeParamMode && isSegmentSelectionActive)
                                   "
                                 >
                                   <button
-                                    v-for="point in resolveActiveEnvelopePointDots(item)"
+                                    v-for="point in isBpmParamMode
+                                      ? resolveActiveBpmEnvelopePointDots(item)
+                                      : resolveActiveEnvelopePointDots(item)"
                                     :key="`point-${item.track.id}-${point.index}`"
                                     class="lane-track__envelope-point"
-                                    :class="{ 'is-boundary': point.isBoundary }"
+                                    :class="[
+                                      { 'is-boundary': point.isBoundary },
+                                      resolveEnvelopePointBoundaryClass(point)
+                                    ]"
                                     type="button"
                                     :style="{
                                       left: `${point.x}%`,
                                       top: `${point.y}%`
                                     }"
                                     @mousedown.stop.prevent="
-                                      handleEnvelopePointMouseDown(item, point.index, $event)
+                                      isBpmParamMode
+                                        ? handleBpmEnvelopePointMouseDown(item, point.index, $event)
+                                        : handleEnvelopePointMouseDown(item, point.index, $event)
                                     "
                                     @dblclick.stop.prevent="
-                                      handleEnvelopePointDoubleClick(item, point.index)
+                                      isBpmParamMode
+                                        ? handleBpmEnvelopePointDoubleClick(item, point.index)
+                                        : handleEnvelopePointDoubleClick(item, point.index)
                                     "
                                     @contextmenu.stop.prevent="
-                                      handleEnvelopePointContextMenu(item, point.index)
+                                      isBpmParamMode
+                                        ? handleBpmEnvelopePointContextMenu(item, point.index)
+                                        : handleEnvelopePointContextMenu(item, point.index)
                                     "
-                                  ></button>
+                                  >
+                                    <span
+                                      v-if="isBpmParamMode"
+                                      class="lane-track__envelope-point-label"
+                                      :class="[
+                                        `is-${resolveBpmPointLabelPlacement(point)}`,
+                                        `is-align-${resolveBpmPointLabelAlign(point)}`
+                                      ]"
+                                    >
+                                      {{ resolveEnvelopePointLabel(point) }}
+                                    </span>
+                                  </button>
                                 </template>
                               </div>
                               <div v-if="isTrackPositionMode" class="lane-track__meta">
@@ -826,231 +938,68 @@ onBeforeUnmount(() => {
         </div>
       </section>
     </div>
-    <div v-if="transportPreloading" class="mixtape-decode-mask">
-      <div class="bpm-loading-card">
-        <div class="bpm-loading-title">{{ t('mixtape.transportPreloading') }}</div>
-        <div class="bpm-loading-sub">{{ t('mixtape.transportPreloadingHint') }}</div>
-        <div class="bpm-loading-sub">
-          {{
-            t('mixtape.transportPreloadingProgress', {
-              done: transportPreloadDone,
-              total: transportPreloadTotal,
-              percent: transportPreloadPercent
-            })
-          }}
-        </div>
-      </div>
-    </div>
-    <div v-if="stemSeparationProgressVisible" class="mixtape-stem-progress-mask">
-      <div class="bpm-loading-card">
-        <div class="bpm-loading-title">{{ t('mixtape.stemSeparationBlockingTitle') }}</div>
-        <div class="bpm-loading-sub">{{ t('mixtape.stemSeparationBlockingHint') }}</div>
-        <div class="bpm-loading-sub">{{ t('mixtape.stemSeparationLifecycleHint') }}</div>
-        <div class="mixtape-stem-progress-mask__bar">
-          <div
-            class="mixtape-stem-progress-mask__bar-fill"
-            :style="{ width: `${stemSeparationProgressPercent}%` }"
-          ></div>
-        </div>
-        <div class="bpm-loading-sub">{{ stemSeparationProgressText }}</div>
-        <div
-          v-if="stemSeparationRunningProgressLines.length > 0"
-          class="mixtape-stem-progress-mask__detail-list"
-        >
-          <div
-            v-for="(line, index) in stemSeparationRunningProgressLines"
-            :key="`stem-running-progress-${index}`"
-            class="mixtape-stem-progress-mask__detail-item"
-          >
-            {{ line }}
-          </div>
-        </div>
-      </div>
-    </div>
-    <div v-if="bpmAnalysisActive" class="mixtape-bpm-mask">
-      <div class="bpm-loading-card">
-        <div class="bpm-loading-title">{{ t('mixtape.bpmAnalyzing') }}</div>
-        <div class="bpm-loading-sub">{{ t('mixtape.bpmAnalyzingHint') }}</div>
-      </div>
-    </div>
-    <div v-else-if="bpmAnalysisFailed" class="mixtape-bpm-failed">
-      <div class="bpm-loading-card is-error">
-        <div class="bpm-loading-title">{{ t('mixtape.bpmAnalyzeFailed') }}</div>
-        <div class="bpm-loading-sub">
-          {{ t('mixtape.bpmAnalyzeFailedHint', { count: bpmAnalysisFailedCount }) }}
-        </div>
-        <div v-if="bpmAnalysisFailedReason" class="bpm-loading-sub">
-          {{ t('mixtape.bpmAnalyzeFailedReasonHint', { reason: bpmAnalysisFailedReason }) }}
-        </div>
-        <div class="bpm-loading-actions">
-          <div
-            class="button bpm-loading-action-btn"
-            role="button"
-            tabindex="0"
-            @click="retryBpmAnalysis"
-          >
-            {{ t('common.retry') }}
-          </div>
-          <div
-            class="button bpm-loading-action-btn"
-            role="button"
-            tabindex="0"
-            @click="dismissBpmAnalysisFailure"
-          >
-            {{ t('common.close') }}
-          </div>
-        </div>
-      </div>
-    </div>
-    <div v-if="autoGainBusy && !autoGainDialogVisible" class="mixtape-auto-gain-mask">
-      <div class="bpm-loading-card">
-        <div class="bpm-loading-title">{{ t('mixtape.autoGainRunning') }}</div>
-        <div class="bpm-loading-sub">{{ autoGainProgressText }}</div>
-      </div>
-    </div>
-    <div v-if="outputRunning" class="mixtape-output-mask">
-      <div class="bpm-loading-card">
-        <div class="bpm-loading-title">{{ t('mixtape.outputRunning') }}</div>
-        <div class="bpm-loading-sub">{{ outputProgressText }}</div>
-        <div class="preload-bar">
-          <div class="preload-bar__fill" :style="{ width: `${outputProgressPercent}%` }"></div>
-        </div>
-      </div>
-    </div>
-    <div v-if="autoGainDialogVisible" class="mixtape-auto-gain-dialog">
-      <div class="mixtape-auto-gain-dialog__card">
-        <div class="mixtape-auto-gain-dialog__title">{{ t('mixtape.autoGainDialogTitle') }}</div>
-        <div class="mixtape-auto-gain-dialog__hint">{{ t('mixtape.autoGainDialogHint') }}</div>
-        <div v-if="autoGainReferenceFeedback" class="mixtape-auto-gain-dialog__feedback">
-          {{ autoGainReferenceFeedback }}
-        </div>
-        <div class="mixtape-auto-gain-dialog__song-list-host">
-          <OverlayScrollbarsComponent
-            ref="autoGainSongListScrollRef"
-            class="mixtape-auto-gain-dialog__songs-scroll"
-            :options="{
-              scrollbars: {
-                autoHide: 'leave' as const,
-                autoHideDelay: 50,
-                clickScroll: true
-              } as const,
-              overflow: {
-                x: 'scroll',
-                y: 'scroll'
-              } as const
-            }"
-            element="div"
-            defer
-          >
-            <SongListHeader
-              :columns="autoGainDialogColumns"
-              :t="autoGainHeaderTranslate"
-              :ascending-order="ascendingOrder"
-              :descending-order="descendingOrder"
-              :total-width="autoGainSongTotalWidth"
-              @update:columns="handleAutoGainColumnsUpdate"
-              @column-click="handleAutoGainColumnClick"
-              @header-contextmenu="handleAutoGainHeaderContextMenu"
-            />
-            <div class="mixtape-auto-gain-dialog__song-list">
-              <SongListRows
-                :songs="autoGainDialogSongs"
-                :visible-columns="autoGainSongColumns"
-                :selected-song-file-paths="autoGainSelectedRowKeys"
-                :total-width="autoGainSongTotalWidth"
-                source-library-name="mixtape-auto-gain"
-                :source-song-list-u-u-i-d="mixtapePlaylistId"
-                :scroll-host-element="autoGainSongListScrollRef?.osInstance()?.elements().viewport"
-                song-list-root-dir=""
-                @song-click="handleAutoGainSongClick"
-                @song-dragstart="handleAutoGainSongDragStart"
-              />
-            </div>
-          </OverlayScrollbarsComponent>
-          <ColumnHeaderContextMenu
-            v-model="autoGainColumnMenuVisible"
-            :target-event="autoGainColumnMenuEvent"
-            :columns="autoGainDialogColumns"
-            :scroll-host-element="autoGainSongListScrollRef?.osInstance()?.elements().host"
-            @toggle-column-visibility="handleAutoGainToggleColumnVisibility"
-          />
-        </div>
-        <div class="mixtape-auto-gain-dialog__actions">
-          <button
-            type="button"
-            :disabled="autoGainBusy || autoGainDialogSongs.length < 2"
-            @click="handleAutoGainSelectLoudestReferenceClick"
-          >
-            {{ t('mixtape.autoGainSelectLoudestAction') }}
-          </button>
-          <button
-            type="button"
-            :disabled="autoGainBusy || autoGainDialogSongs.length < 2"
-            @click="handleAutoGainSelectQuietestReferenceClick"
-          >
-            {{ t('mixtape.autoGainSelectQuietestAction') }}
-          </button>
-          <button type="button" :disabled="autoGainBusy" @click="handleAutoGainDialogCancelClick">
-            {{ t('common.cancel') }}
-          </button>
-          <button
-            type="button"
-            :disabled="autoGainBusy || !autoGainReferenceTrackId"
-            @click="handleAutoGainDialogConfirmClick"
-          >
-            {{ t('common.confirm') }}
-          </button>
-        </div>
-        <div v-if="autoGainBusy" class="mixtape-auto-gain-dialog__busy-mask">
-          <div class="bpm-loading-card">
-            <div class="bpm-loading-title">{{ t('mixtape.autoGainRunning') }}</div>
-            <div class="bpm-loading-sub">{{ autoGainProgressText }}</div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <MixtapeOutputDialog
-      v-if="outputDialogVisible"
+    <MixtapeDialogsLayer
+      :t="t"
+      :transport-preloading="transportPreloading"
+      :transport-preload-done="transportPreloadDone"
+      :transport-preload-total="transportPreloadTotal"
+      :transport-preload-percent="transportPreloadPercent"
+      :stem-separation-progress-visible="stemSeparationProgressVisible"
+      :stem-separation-progress-percent="stemSeparationProgressPercent"
+      :stem-separation-progress-text="stemSeparationProgressText"
+      :stem-separation-running-progress-lines="stemSeparationRunningProgressLines"
+      :bpm-analysis-active="bpmAnalysisActive"
+      :bpm-analysis-failed="bpmAnalysisFailed"
+      :bpm-analysis-failed-count="bpmAnalysisFailedCount"
+      :bpm-analysis-failed-reason="bpmAnalysisFailedReason"
+      :retry-bpm-analysis="retryBpmAnalysis"
+      :dismiss-bpm-analysis-failure="dismissBpmAnalysisFailure"
+      :auto-gain-busy="autoGainBusy"
+      :auto-gain-dialog-visible="autoGainDialogVisible"
+      :auto-gain-progress-text="autoGainProgressText"
+      :output-running="outputRunning"
+      :output-progress-text="outputProgressText"
+      :output-progress-percent="outputProgressPercent"
+      :auto-gain-reference-feedback="autoGainReferenceFeedback"
+      :auto-gain-dialog-columns="autoGainDialogColumns"
+      :auto-gain-song-columns="autoGainSongColumns"
+      :auto-gain-song-total-width="autoGainSongTotalWidth"
+      :auto-gain-dialog-songs="autoGainDialogSongs"
+      :auto-gain-selected-row-keys="autoGainSelectedRowKeys"
+      :auto-gain-column-menu-visible="autoGainColumnMenuVisible"
+      @update:auto-gain-column-menu-visible="autoGainColumnMenuVisible = $event"
+      :auto-gain-column-menu-event="autoGainColumnMenuEvent"
+      :auto-gain-header-translate="autoGainHeaderTranslate"
+      :ascending-order="ascendingOrder"
+      :descending-order="descendingOrder"
+      :mixtape-playlist-id="mixtapePlaylistId"
+      :handle-auto-gain-columns-update="handleAutoGainColumnsUpdate"
+      :handle-auto-gain-column-click="handleAutoGainColumnClick"
+      :handle-auto-gain-header-context-menu="handleAutoGainHeaderContextMenu"
+      :handle-auto-gain-toggle-column-visibility="handleAutoGainToggleColumnVisibility"
+      :handle-auto-gain-song-click="handleAutoGainSongClick"
+      :handle-auto-gain-song-drag-start="handleAutoGainSongDragStart"
+      :handle-auto-gain-select-loudest-reference-click="handleAutoGainSelectLoudestReferenceClick"
+      :handle-auto-gain-select-quietest-reference-click="handleAutoGainSelectQuietestReferenceClick"
+      :handle-auto-gain-dialog-cancel-click="handleAutoGainDialogCancelClick"
+      :handle-auto-gain-dialog-confirm-click="handleAutoGainDialogConfirmClick"
+      :auto-gain-reference-track-id="autoGainReferenceTrackId"
+      :output-dialog-visible="outputDialogVisible"
       :output-path="outputPath"
       :output-format="outputFormat"
       :output-filename="outputFilename"
-      @confirm="handleOutputDialogConfirm"
-      @cancel="handleOutputDialogCancel"
-    />
-    <div
-      v-if="trackContextMenuVisible"
-      data-frkb-context-menu="true"
-      class="mixtape-track-menu"
-      :style="trackContextMenuStyle"
-      @contextmenu.stop.prevent
-    >
-      <button class="mixtape-track-menu__item" type="button" @click="handleTrackMenuAdjustGrid">
-        {{ t('mixtape.adjustGridMenu') }}
-      </button>
-      <button
-        class="mixtape-track-menu__item"
-        type="button"
-        @click="handleTrackMenuToggleMasterTempo"
-      >
-        <span class="mixtape-track-menu__check">{{ trackMenuMasterTempoChecked ? '?' : '' }}</span>
-        <span>{{ t('mixtape.masterTempoMenu') }}</span>
-      </button>
-    </div>
-    <MixtapeBeatAlignDialog
-      v-if="beatAlignDialogVisible && beatAlignTrack"
-      :track-title="resolveTrackTitle(beatAlignTrack)"
-      :track-key="beatAlignTrack.key"
-      :file-path="beatAlignTrack.filePath"
-      :bpm="
-        Number(beatAlignTrack.gridBaseBpm) ||
-        Number(beatAlignTrack.originalBpm) ||
-        Number(beatAlignTrack.bpm) ||
-        128
-      "
-      :first-beat-ms="Number(beatAlignTrack.firstBeatMs) || 0"
-      :bar-beat-offset="Number(beatAlignTrack.barBeatOffset) || 0"
-      @save-grid-definition="handleBeatAlignGridDefinitionSave"
-      @cancel="handleBeatAlignDialogCancel"
+      :handle-output-dialog-confirm="handleOutputDialogConfirm"
+      :handle-output-dialog-cancel="handleOutputDialogCancel"
+      :track-context-menu-visible="trackContextMenuVisible"
+      :track-context-menu-style="trackContextMenuStyle"
+      :handle-track-menu-adjust-grid="handleTrackMenuAdjustGrid"
+      :handle-track-menu-toggle-master-tempo="handleTrackMenuToggleMasterTempo"
+      :track-menu-master-tempo-checked="trackMenuMasterTempoChecked"
+      :beat-align-dialog-visible="beatAlignDialogVisible"
+      :beat-align-track="beatAlignTrack"
+      :resolve-track-title="resolveTrackTitle"
+      :handle-beat-align-grid-definition-save="handleBeatAlignGridDefinitionSave"
+      :handle-beat-align-dialog-cancel="handleBeatAlignDialogCancel"
     />
   </div>
 </template>

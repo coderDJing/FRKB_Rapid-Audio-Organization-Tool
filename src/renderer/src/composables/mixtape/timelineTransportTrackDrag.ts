@@ -119,6 +119,7 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
     snapAnchorSec: number
     currentAnchorRawSec: number
     stepSec: number
+    boundaryCandidates?: number[]
   }) => {
     const stepSec = Number(payload.stepSec)
     if (!Number.isFinite(stepSec) || stepSec <= 0) return null
@@ -145,7 +146,26 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
 
     const snappedStartSec = startOffsetSec + snapAnchorSec + nearestIndex * stepSec
     if (!Number.isFinite(snappedStartSec)) return null
-    return clampNumber(snappedStartSec, minStartSec, maxStartSec)
+    const candidates = [
+      clampNumber(snappedStartSec, minStartSec, maxStartSec),
+      ...(Array.isArray(payload.boundaryCandidates)
+        ? payload.boundaryCandidates
+            .map((candidate) => Number(candidate))
+            .filter((candidate) => Number.isFinite(candidate))
+            .map((candidate) => clampNumber(candidate, minStartSec, maxStartSec))
+        : [])
+    ]
+    let nearestSec = candidates[0]
+    let nearestDiff = Math.abs(nearestSec - rawStartSec)
+    for (let index = 1; index < candidates.length; index += 1) {
+      const candidate = candidates[index]
+      const diff = Math.abs(candidate - rawStartSec)
+      if (diff < nearestDiff) {
+        nearestSec = candidate
+        nearestDiff = diff
+      }
+    }
+    return nearestSec
   }
 
   const handleTrackDragMove = (event: MouseEvent) => {
@@ -189,7 +209,8 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
             maxStartSec: dragBounds.maxStart,
             snapAnchorSec: snapAnchor,
             currentAnchorRawSec,
-            stepSec: snapStepSec
+            stepSec: snapStepSec,
+            boundaryCandidates: [dragBounds.minStart]
           })
           if (typeof snappedStartSec === 'number') {
             nextStartSec = snappedStartSec
@@ -216,7 +237,8 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
           maxStartSec: dragBounds.maxStart,
           snapAnchorSec: 0,
           currentAnchorRawSec,
-          stepSec: snapStepSec
+          stepSec: snapStepSec,
+          boundaryCandidates: [dragBounds.minStart]
         })
         if (typeof snappedStartSec === 'number') {
           nextStartSec = snappedStartSec

@@ -24,6 +24,7 @@ import {
   upsertMixtapeProjectStemProfile,
   updateMixtapeItemFilePathsById,
   upsertMixtapeItemBpmByFilePath,
+  upsertMixtapeItemBpmEnvelopeById,
   upsertMixtapeItemGridByFilePath,
   upsertMixtapeItemGainEnvelopeById,
   upsertMixtapeItemMixEnvelopeById,
@@ -1208,6 +1209,43 @@ export function registerMixtapeHandlers() {
                     point.sec >= 0 &&
                     Number.isFinite(point.gain) &&
                     point.gain > 0
+                )
+            : []
+        }))
+      )
+    }
+  )
+
+  ipcMain.handle(
+    'mixtape:update-bpm-envelope',
+    async (
+      _e,
+      payload?: {
+        entries?: Array<{
+          itemId?: string
+          bpmEnvelope?: Array<{ sec?: number; bpm?: number }>
+          bpmEnvelopeDurationSec?: number
+        }>
+      }
+    ) => {
+      const entries = Array.isArray(payload?.entries) ? payload.entries : []
+      return upsertMixtapeItemBpmEnvelopeById(
+        entries.map((item) => ({
+          itemId: typeof item?.itemId === 'string' ? item.itemId : '',
+          bpmEnvelopeDurationSec: Number(item?.bpmEnvelopeDurationSec),
+          bpmEnvelope: Array.isArray(item?.bpmEnvelope)
+            ? item.bpmEnvelope
+                .map((point) => ({
+                  sec: Number(point?.sec),
+                  bpm: Number(point?.bpm),
+                  sourceSec: Number((point as any)?.sourceSec)
+                }))
+                .filter(
+                  (point) =>
+                    Number.isFinite(point.sec) &&
+                    point.sec >= 0 &&
+                    Number.isFinite(point.bpm) &&
+                    point.bpm > 0
                 )
             : []
         }))

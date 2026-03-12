@@ -63,6 +63,7 @@ export type CreateMixtapeGainEnvelopeEditorParams = {
   tracks: Ref<MixtapeTrack[]>
   renderZoomLevel: Ref<number>
   resolveTrackDurationSeconds: (track: MixtapeTrack) => number
+  resolveTrackSourceDurationSeconds: (track: MixtapeTrack) => number
   resolveTrackFirstBeatSeconds: (track: MixtapeTrack) => number
   resolveActiveParam: () => MixtapeEnvelopeParamId | null
   isSegmentSelectionMode: () => boolean

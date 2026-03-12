@@ -7,8 +7,10 @@ import {
   resolveGridAnchorSec
 } from '@renderer/composables/mixtape/mixxxSyncModel'
 import { MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM } from '@renderer/composables/mixtape/gainEnvelope'
+import { normalizeTrackBpmEnvelopePoints } from '@renderer/composables/mixtape/trackBpmEnvelope'
 import { normalizeVolumeMuteSegments } from '@renderer/composables/mixtape/volumeMuteSegments'
 import type {
+  MixtapeBpmPoint,
   MixtapeEnvelopeParamId,
   MixtapeGainPoint,
   MixtapeMuteSegment,
@@ -77,6 +79,8 @@ export type TransportEntry = {
   filePath: string
   startSec: number
   bpm: number
+  originalBpm: number
+  bpmEnvelope: MixtapeBpmPoint[]
   beatSec: number
   firstBeatSec: number
   barBeatOffset: number
@@ -293,9 +297,15 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
           return null
         }
         const bpm = Number(track.bpm)
+        const originalBpm = Number(track.originalBpm) || bpm
         const beatSec = resolveBeatSecByBpm(bpm)
         const tempoRatio = ctx.resolveTrackTempoRatio(track)
         const duration = sourceDuration / Math.max(0.01, tempoRatio)
+        const bpmEnvelope = normalizeTrackBpmEnvelopePoints(
+          track.bpmEnvelope,
+          duration,
+          bpm || track.gridBaseBpm || track.originalBpm || 128
+        )
         const firstBeatSec = resolveFirstBeatTimelineSec(track.firstBeatMs, tempoRatio)
         const barBeatOffset = normalizeBeatOffset(track.barBeatOffset, 32)
         const masterTempo = track.masterTempo !== false
@@ -331,6 +341,8 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
             filePath,
             startSec,
             bpm,
+            originalBpm,
+            bpmEnvelope,
             beatSec,
             firstBeatSec,
             barBeatOffset,
@@ -370,6 +382,8 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
           filePath,
           startSec,
           bpm,
+          originalBpm,
+          bpmEnvelope,
           beatSec,
           firstBeatSec,
           barBeatOffset,

@@ -4,6 +4,13 @@ import {
   buildMixEnvelopePolylineByControlPoints,
   normalizeMixEnvelopePoints
 } from '@renderer/composables/mixtape/gainEnvelope'
+import {
+  buildTrackBpmEnvelopePolylineByControlPoints,
+  normalizeTrackBpmEnvelopePoints,
+  resolveTrackBpmEnvelopeBaseValue,
+  resolveTrackBpmEnvelopeRenderablePoints,
+  resolveTrackBpmEnvelopeVisualRange
+} from '@renderer/composables/mixtape/trackBpmEnvelope'
 import type {
   MixtapeEnvelopeParamId,
   MixtapeTrack,
@@ -20,18 +27,23 @@ type UseMixtapeEnvelopePreviewOptions = {
   timelineScrollLeft: MaybeRef<number>
   tracks: Readonly<Ref<MixtapeTrack[]>>
   resolveTrackDurationSeconds: (track: MixtapeTrack) => number
+  resolveTrackSourceDurationSeconds: (track: MixtapeTrack) => number
 }
 
 type TrackEnvelopePreviewLine = {
-  key: MixtapeEnvelopeParamId
+  key: MixtapeEnvelopeParamId | 'bpm'
   points: string
   color: string
   strokeWidth: number
 }
 
-const TRACK_ENVELOPE_PREVIEW_PARAMS: MixtapeEnvelopeParamId[] = ['gain', 'volume']
+const TRACK_ENVELOPE_PREVIEW_PARAMS: Array<MixtapeEnvelopeParamId | 'bpm'> = [
+  'gain',
+  'volume',
+  'bpm'
+]
 
-const TRACK_ENVELOPE_PREVIEW_COLORS: Record<MixtapeEnvelopeParamId, string> = {
+const TRACK_ENVELOPE_PREVIEW_COLORS: Record<MixtapeEnvelopeParamId | 'bpm', string> = {
   gain: '#f2f6ff',
   high: '#4f8bff',
   mid: '#45d07e',
@@ -40,10 +52,11 @@ const TRACK_ENVELOPE_PREVIEW_COLORS: Record<MixtapeEnvelopeParamId, string> = {
   inst: '#14b8a6',
   bass: '#a855f7',
   drums: '#f97316',
-  volume: '#ffc94a'
+  volume: '#ffc94a',
+  bpm: '#7de2ff'
 }
 
-const TRACK_ENVELOPE_PREVIEW_STROKES: Record<MixtapeEnvelopeParamId, number> = {
+const TRACK_ENVELOPE_PREVIEW_STROKES: Record<MixtapeEnvelopeParamId | 'bpm', number> = {
   gain: 1.2,
   high: 1.08,
   mid: 1.08,
@@ -52,7 +65,8 @@ const TRACK_ENVELOPE_PREVIEW_STROKES: Record<MixtapeEnvelopeParamId, number> = {
   inst: 1.08,
   bass: 1.08,
   drums: 1.08,
-  volume: 0.95
+  volume: 0.95,
+  bpm: 1.08
 }
 
 const TRACK_ENVELOPE_PREVIEW_EDGE_INSET_PERCENT = 1.2
@@ -125,6 +139,44 @@ export const useMixtapeEnvelopePreview = (options: UseMixtapeEnvelopePreviewOpti
     const durationSec = Math.max(0, Number(options.resolveTrackDurationSeconds(currentTrack)) || 0)
     if (!durationSec) return []
     return TRACK_ENVELOPE_PREVIEW_PARAMS.map((param) => {
+      if (param === 'bpm') {
+        const sourceDurationSec = Math.max(
+          0,
+          Number(options.resolveTrackSourceDurationSeconds(currentTrack)) || 0
+        )
+        const baseBpm = resolveTrackBpmEnvelopeBaseValue(currentTrack)
+        const normalizedPoints = normalizeTrackBpmEnvelopePoints(
+          currentTrack.bpmEnvelope,
+          durationSec,
+          baseBpm
+        )
+        if (normalizedPoints.length < 2) return null
+        const renderPoints = resolveTrackBpmEnvelopeRenderablePoints({
+          track: currentTrack,
+          points: normalizedPoints,
+          durationSec,
+          sourceDurationSec
+        })
+        const bpmRange = resolveTrackBpmEnvelopeVisualRange({
+          track: currentTrack,
+          tracks: options.tracks.value,
+          resolveDurationSec: options.resolveTrackDurationSeconds
+        })
+        const points = buildTrackBpmEnvelopePolylineByControlPoints({
+          points: renderPoints,
+          durationSec,
+          baseBpm,
+          minBpm: bpmRange.minBpm,
+          maxBpm: bpmRange.maxBpm
+        })
+        if (!points) return null
+        return {
+          key: param,
+          points: normalizeEnvelopePreviewPolyline(points),
+          color: TRACK_ENVELOPE_PREVIEW_COLORS[param],
+          strokeWidth: TRACK_ENVELOPE_PREVIEW_STROKES[param]
+        }
+      }
       const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
       const normalizedPoints = normalizeMixEnvelopePoints(
         param,

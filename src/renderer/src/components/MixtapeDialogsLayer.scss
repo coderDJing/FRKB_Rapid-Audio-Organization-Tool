@@ -1,0 +1,97 @@
+@use '../styles/mixtape/auto-gain-dialog';
+@use '../styles/mixtape/tracks';
+
+.mixtape-decode-mask,
+.mixtape-bpm-mask,
+.mixtape-bpm-failed,
+.mixtape-auto-gain-mask,
+.mixtape-output-mask,
+.mixtape-stem-progress-mask {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.mixtape-decode-mask {
+  z-index: 24;
+  pointer-events: auto;
+  cursor: progress;
+  background: rgba(8, 8, 12, 0.9);
+}
+
+.mixtape-bpm-mask {
+  padding: 12px;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.mixtape-bpm-failed {
+  padding: 12px;
+  z-index: 21;
+  pointer-events: none;
+}
+
+.mixtape-bpm-failed .bpm-loading-card {
+  pointer-events: auto;
+}
+
+.mixtape-auto-gain-mask {
+  z-index: 25;
+  pointer-events: auto;
+  cursor: progress;
+  background: rgba(8, 8, 12, 0.85);
+}
+
+.mixtape-output-mask {
+  z-index: 27;
+  pointer-events: auto;
+  cursor: progress;
+  background: rgba(8, 8, 12, 0.88);
+}
+
+.mixtape-stem-progress-mask {
+  padding: 12px;
+  z-index: 22;
+  pointer-events: auto;
+  background: rgba(8, 8, 12, 0.84);
+}
+
+.mixtape-stem-progress-mask__bar {
+  width: min(420px, 100%);
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.mixtape-stem-progress-mask__bar-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.mixtape-stem-progress-mask__detail-list {
+  width: min(560px, 100%);
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 170px;
+  overflow: hidden;
+}
+
+.mixtape-stem-progress-mask__detail-item {
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

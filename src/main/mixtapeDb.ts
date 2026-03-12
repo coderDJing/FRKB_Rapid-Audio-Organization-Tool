@@ -749,6 +749,7 @@ export function upsertMixtapeItemGridByFilePath(
 
 export type { MixtapeMixEnvelopeParam } from './mixtapeDbInfoJson'
 export {
+  upsertMixtapeItemBpmEnvelopeById,
   upsertMixtapeItemMixEnvelopeById,
   upsertMixtapeItemGainEnvelopeById,
   upsertMixtapeItemVolumeMuteSegmentsById,

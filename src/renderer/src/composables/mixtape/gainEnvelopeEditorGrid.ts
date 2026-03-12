@@ -231,7 +231,7 @@ export const snapSecToVisibleGrid = ({
       candidates.push(beatSecPoint)
     }
   }
-  if (!candidates.length) return null
+  if (!candidates.length) return Number(safeSec.toFixed(4))
   let nearest = candidates[0]
   let minDiff = Math.abs(nearest - safeSec)
   for (let index = 1; index < candidates.length; index += 1) {

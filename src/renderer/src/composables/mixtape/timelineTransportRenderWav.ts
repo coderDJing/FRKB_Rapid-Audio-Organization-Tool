@@ -1,4 +1,10 @@
 import { applyMixxxTransportSync } from '@renderer/composables/mixtape/timelineTransportSync'
+import {
+  createTransportBufferSource,
+  createTransportKeyLockSource,
+  ensureTransportKeyLockWorkletModule,
+  type TransportPlayableSource
+} from '@renderer/composables/mixtape/timelineTransportPlayableSource'
 
 export type MixtapeOutputProgressPayload = {
   stageKey: string
@@ -22,6 +28,7 @@ type TransportEntry = {
   duration: number
   sourceDuration: number
   tempoRatio: number
+  masterTempo?: boolean
   audioRef?: TransportAudioRef
   stemAudioById?: Partial<Record<TransportStemId, TransportStemAudioRef>>
 }
@@ -43,14 +50,14 @@ type TransportStemAudioRef = {
 
 type TrackStemGraphNode = {
   stemId: TransportStemId
-  source: AudioBufferSourceNode
+  source: TransportPlayableSource
   stemGain: GainNode
 }
 
 type TrackGraphNode = {
   trackId: string
   entry: TransportEntry
-  source: AudioBufferSourceNode
+  source: TransportPlayableSource
   stemNodes: TrackStemGraphNode[]
   stemBus: GainNode | null
   eqHigh: BiquadFilterNode | null
@@ -262,7 +269,8 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
 
   const buildOutputTrackNodes = (
     offlineCtx: OfflineAudioContext,
-    entries: TransportEntry[]
+    entries: TransportEntry[],
+    useRealtimeKeyLock: boolean
   ): TrackGraphNode[] => {
     const nodes: TrackGraphNode[] = []
     const useStemMode = isStemMixMode()
@@ -288,8 +296,13 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
 
         const stemNodes: TrackStemGraphNode[] = []
         for (const stemAudio of stemAudios) {
-          const source = offlineCtx.createBufferSource()
-          source.buffer = stemAudio.audioBuffer
+          const source =
+            useRealtimeKeyLock && entry.masterTempo
+              ? createTransportKeyLockSource(
+                  offlineCtx as any,
+                  stemAudio.audioBuffer as AudioBuffer
+                )
+              : createTransportBufferSource(offlineCtx as any, stemAudio.audioBuffer as AudioBuffer)
           source.playbackRate.value = entry.tempoRatio
           const stemGain = offlineCtx.createGain()
           stemGain.gain.value = resolveEntryEnvelopeValue(entry, stemAudio.stemId, initialLocalSec)
@@ -322,8 +335,10 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
 
       const audioBuffer = entry.audioRef?.audioBuffer
       if (!audioBuffer) continue
-      const source = offlineCtx.createBufferSource()
-      source.buffer = audioBuffer
+      const source =
+        useRealtimeKeyLock && entry.masterTempo
+          ? createTransportKeyLockSource(offlineCtx as any, audioBuffer)
+          : createTransportBufferSource(offlineCtx as any, audioBuffer)
       source.playbackRate.value = entry.tempoRatio
 
       const eqLow = offlineCtx.createBiquadFilter()
@@ -507,7 +522,17 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
     const outputChannels = resolveOutputChannels(playableEntries)
     const frameCount = Math.max(1, Math.ceil(durationSec * sampleRate))
     const offlineCtx = new OfflineAudioContext(outputChannels, frameCount, sampleRate)
-    const nodes = buildOutputTrackNodes(offlineCtx, playableEntries)
+    let offlineKeyLockWorkletReady = false
+    if (playableEntries.some((entry) => entry.masterTempo)) {
+      try {
+        await ensureTransportKeyLockWorkletModule(offlineCtx as any)
+        offlineKeyLockWorkletReady = true
+      } catch (error) {
+        offlineKeyLockWorkletReady = false
+        console.error('[mixtape-output] key lock worklet unavailable, fallback to rate', error)
+      }
+    }
+    const nodes = buildOutputTrackNodes(offlineCtx, playableEntries, offlineKeyLockWorkletReady)
 
     emitProgress({
       stageKey: 'mixtape.outputProgressScheduling',

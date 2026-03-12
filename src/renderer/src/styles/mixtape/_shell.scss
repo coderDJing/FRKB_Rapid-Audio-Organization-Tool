@@ -263,6 +263,11 @@
   --mix-tab-accent: #ffc94a;
 }
 
+.mixtape-param-bar__tab--bpm {
+  --mix-tab-accent-rgb: 255, 116, 163;
+  --mix-tab-accent: #ff74a3;
+}
+
 .mixtape-param-bar__tab--vocal {
   --mix-tab-accent-rgb: 59, 130, 246;
   --mix-tab-accent: #3b82f6;
@@ -311,6 +316,11 @@
 :global(.theme-light) .mixtape-param-bar__tab--volume {
   --mix-tab-accent-rgb: 176, 112, 0;
   --mix-tab-accent: #b07000;
+}
+
+:global(.theme-light) .mixtape-param-bar__tab--bpm {
+  --mix-tab-accent-rgb: 219, 39, 119;
+  --mix-tab-accent: #db2777;
 }
 
 :global(.theme-light) .mixtape-param-bar__tab--vocal {

@@ -247,6 +247,44 @@
   background: rgba(255, 255, 255, 0.95);
   pointer-events: auto;
   cursor: grab;
+  overflow: visible;
+}
+
+.lane-track__envelope-point-label {
+  position: absolute;
+  min-width: 24px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.78);
+  color: rgba(255, 255, 255, 0.96);
+  font-size: 10px;
+  line-height: 1.3;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.lane-track__envelope-point-label.is-above {
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+}
+
+.lane-track__envelope-point-label.is-below {
+  left: 50%;
+  top: calc(100% + 6px);
+  transform: translateX(-50%);
+}
+
+.lane-track__envelope-point-label.is-align-left {
+  left: 0;
+  transform: none;
+}
+
+.lane-track__envelope-point-label.is-align-right {
+  left: auto;
+  right: 0;
+  transform: none;
 }
 
 .lane-track__envelope-point:hover {
@@ -262,6 +300,14 @@
   width: 7px;
   height: 7px;
   background: rgba(226, 234, 247, 0.95);
+}
+
+.lane-track__envelope-point.is-boundary-start {
+  transform: translate(0, -50%);
+}
+
+.lane-track__envelope-point.is-boundary-end {
+  transform: translate(-100%, -50%);
 }
 
 .lane-track__meta {
