@@ -12,6 +12,7 @@ export type MixtapeWindowPayload = {
 
 const mixtapeWindows = new Map<string, BrowserWindow>()
 const payloadByKey = new Map<string, MixtapeWindowPayload>()
+const allClosedListeners = new Set<() => void>()
 let ipcBound = false
 
 const MIXTAPE_WINDOW_DEFAULT_WIDTH = 1100
@@ -113,6 +114,14 @@ const sendPayloadToWindow = (target: BrowserWindow | null, payload?: MixtapeWind
   } catch {}
 }
 
+const notifyAllClosedListeners = () => {
+  for (const listener of allClosedListeners) {
+    try {
+      listener()
+    } catch {}
+  }
+}
+
 const createWindow = (payload: MixtapeWindowPayload, windowKey: string) => {
   ensureIpcHandlers()
   const bounds = resolveMixtapeWindowBounds()
@@ -212,6 +221,9 @@ const createWindow = (payload: MixtapeWindowPayload, windowKey: string) => {
   mixtapeWindow.on('closed', () => {
     mixtapeWindows.delete(windowKey)
     payloadByKey.delete(windowKey)
+    if (mixtapeWindows.size === 0) {
+      notifyAllClosedListeners()
+    }
   })
 
   return mixtapeWindow
@@ -254,11 +266,20 @@ function open(payload: MixtapeWindowPayload) {
   return createWindow(payload || {}, windowKey)
 }
 
+function onAllClosed(listener: () => void) {
+  if (typeof listener !== 'function') return () => {}
+  allClosedListeners.add(listener)
+  return () => {
+    allClosedListeners.delete(listener)
+  }
+}
+
 export default {
   get instance() {
     return mixtapeWindows.values().next().value || null
   },
   open,
   sendPayloadIfAny,
-  broadcast
+  broadcast,
+  onAllClosed
 }

@@ -18,6 +18,7 @@ import { log } from '../log'
 import * as shared from './mixtapeStemSeparationShared'
 import * as probe from './mixtapeStemSeparationProbe'
 import { decodeAudioShared } from './audioDecodePool'
+import { runPersistentXpuStemInference } from './mixtapeStemPersistentXpuWorker'
 import type {
   MixtapeStemComputeDevice,
   MixtapeStemCpuFallbackReasonCode,
@@ -583,6 +584,35 @@ export const runStemSeparation = async (params: {
             segmentSec: split ? Math.max(1, Number(demucsSegmentSec) || 1) : null,
             jobs: 1,
             sourcePath: filePath
+          }
+          if (device === 'xpu') {
+            try {
+              await runPersistentXpuStemInference({
+                pythonPath,
+                env,
+                timeoutMs: processTimeoutMs,
+                traceLabel: `mixtape-stem-waveform:${demucsModelName}:${device}`,
+                payload,
+                onStderrChunk: handleStderrChunk
+              })
+              return
+            } catch (error) {
+              const errorCode = normalizeText((error as any)?.code, 80) || 'XPU_WORKER_FALLBACK'
+              const errorMessage = normalizeText(
+                error instanceof Error
+                  ? error.message
+                  : String(error || 'persistent xpu worker failed'),
+                800
+              )
+              log.warn('[mixtape-stem] persistent xpu worker fallback to legacy process', {
+                file: filePath,
+                demucsModel: demucsModelName,
+                errorCode,
+                errorMessage
+              })
+              await fs.promises.rm(rawOutputRoot, { recursive: true, force: true }).catch(() => {})
+              await fs.promises.mkdir(rawOutputRoot, { recursive: true })
+            }
           }
           await runDemucsWaveformInference({
             pythonPath,
