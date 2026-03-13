@@ -4,6 +4,7 @@ import { resolveBundledFfmpegPath } from '../ffmpeg'
 import {
   resolveBundledDemucsModelsPath,
   resolveBundledDemucsPythonPath,
+  resolveBundledDemucsRootPath,
   resolveBundledDemucsRuntimeDir
 } from '../demucs'
 import type { MixtapeStemMode } from '../mixtapeDb'
@@ -16,6 +17,7 @@ import {
 import { log } from '../log'
 import * as shared from './mixtapeStemSeparationShared'
 import * as probe from './mixtapeStemSeparationProbe'
+import { decodeAudioShared } from './audioDecodePool'
 import type {
   MixtapeStemComputeDevice,
   MixtapeStemCpuFallbackReasonCode,
@@ -49,16 +51,46 @@ const {
   resolveDemucsDeviceArg
 } = probe
 
+const resolveDemucsBootstrapPath = () =>
+  path.join(resolveBundledDemucsRootPath(), 'bootstrap', 'mixtape_demucs_bootstrap.py')
+
+type DemucsWaveformBootstrapInput = {
+  pcmPath: string
+  inputSampleRate: number
+  inputChannels: number
+  inputFrames: number
+  pcmBytes: number
+  decoderBackend: string
+}
+
+type DemucsWaveformBootstrapPayload = {
+  mode: 'waveform_inference'
+  inputPcmPath: string
+  inputSampleRate: number
+  inputChannels: number
+  inputFrames: number
+  device: string
+  modelName: string
+  modelRepoPath: string
+  outputDir: string
+  shifts: number
+  overlap: number
+  split: boolean
+  segmentSec: number | null
+  jobs: number
+  sourcePath: string
+}
+
 const runDemucsSeparate = async (params: {
   pythonPath: string
   demucsArgs: string[]
   env: NodeJS.ProcessEnv
   timeoutMs: number
   traceLabel: string
-  useDirectmlBootstrap: boolean
+  useBootstrap: boolean
   onStderrChunk?: (chunk: string) => void
 }) => {
-  if (!params.useDirectmlBootstrap) {
+  if (!params.useBootstrap) {
     await runProcess(params.pythonPath, ['-m', 'demucs.separate', ...params.demucsArgs], {
       env: params.env,
       timeoutMs: params.timeoutMs,
@@ -69,15 +101,75 @@ const runDemucsSeparate = async (params: {
     return
   }
   const argvPayload = JSON.stringify(['demucs.separate', ...params.demucsArgs])
-  const bootstrapScript = [
-    'import json',
-    'import runpy',
-    'import sys',
-    'import torch_directml',
-    `sys.argv = json.loads(${JSON.stringify(argvPayload)})`,
-    "runpy.run_module('demucs.separate', run_name='__main__')"
-  ].join('\n')
-  await runProcess(params.pythonPath, ['-c', bootstrapScript], {
+  const bootstrapPath = resolveDemucsBootstrapPath()
+  if (!fs.existsSync(bootstrapPath)) {
+    await runProcess(params.pythonPath, ['-m', 'demucs.separate', ...params.demucsArgs], {
+      env: params.env,
+      timeoutMs: params.timeoutMs,
+      traceLabel: params.traceLabel,
+      progressIntervalMs: 30_000,
+      onStderrChunk: params.onStderrChunk
+    })
+    return
+  }
+  await runProcess(params.pythonPath, [bootstrapPath, argvPayload], {
+    env: params.env,
+    timeoutMs: params.timeoutMs,
+    traceLabel: params.traceLabel,
+    progressIntervalMs: 30_000,
+    onStderrChunk: params.onStderrChunk
+  })
+}
+
+const prepareDemucsWaveformBootstrapInput = async (params: {
+  filePath: string
+  inputDir: string
+}): Promise<DemucsWaveformBootstrapInput> => {
+  const decoded = await decodeAudioShared(params.filePath, {
+    traceLabel: 'mixtape-stem-waveform-bootstrap',
+    priority: 'high'
+  })
+  const pcmData = Buffer.isBuffer(decoded.pcmData) ? decoded.pcmData : Buffer.from(decoded.pcmData)
+  const inputSampleRate = Math.max(0, Math.floor(Number(decoded.sampleRate) || 0))
+  const inputChannels = Math.max(0, Math.floor(Number(decoded.channels) || 0))
+  const inputFrames = Math.max(0, Math.floor(Number(decoded.totalFrames) || 0))
+  const expectedBytes = inputFrames * inputChannels * 4
+  if (!pcmData.byteLength || inputSampleRate <= 0 || inputChannels <= 0 || inputFrames <= 0) {
+    throw createStemError('STEM_DECODE_INVALID', 'Stem 输入解码结果无效')
+  }
+  if (expectedBytes > 0 && pcmData.byteLength !== expectedBytes) {
+    throw createStemError(
+      'STEM_DECODE_INVALID',
+      `Stem 输入 PCM 字节数异常: expected=${expectedBytes} actual=${pcmData.byteLength}`
+    )
+  }
+  await fs.promises.mkdir(params.inputDir, { recursive: true })
+  const pcmPath = path.join(params.inputDir, 'input.f32')
+  await fs.promises.writeFile(pcmPath, pcmData)
+  return {
+    pcmPath,
+    inputSampleRate,
+    inputChannels,
+    inputFrames,
+    pcmBytes: pcmData.byteLength,
+    decoderBackend: normalizeText(decoded.decoderBackend, 80) || 'unknown'
+  }
+}
+
+const runDemucsWaveformInference = async (params: {
+  pythonPath: string
+  env: NodeJS.ProcessEnv
+  timeoutMs: number
+  traceLabel: string
+  payload: DemucsWaveformBootstrapPayload
+  onStderrChunk?: (chunk: string) => void
+}) => {
+  const bootstrapPath = resolveDemucsBootstrapPath()
+  if (!fs.existsSync(bootstrapPath)) {
+    throw createStemError('STEM_BOOTSTRAP_MISSING', `未找到 Demucs bootstrap: ${bootstrapPath}`)
+  }
+  const payloadJson = JSON.stringify(params.payload)
+  await runProcess(params.pythonPath, [bootstrapPath, payloadJson], {
     env: params.env,
     timeoutMs: params.timeoutMs,
     traceLabel: params.traceLabel,
@@ -98,12 +190,20 @@ const shouldRetryWithNextDevice = (error: unknown): boolean => {
     'no cuda gpus are available',
     'invalid device string',
     'expected one of cpu',
+    'weights_only',
+    'weights only load failed',
+    'unpickler',
+    'unsupported global',
     'mps backend',
     'device type mps',
     'is not available for this process',
     'out of memory',
     'cudnn',
     'hip',
+    'torchcodec',
+    'libtorchcodec',
+    'libtorio',
+    'ffmpeg',
     'xpu',
     'oneapi',
     'level zero',
@@ -280,7 +380,9 @@ export const runStemSeparation = async (params: {
     stemMode: params.stemMode
   })
   const rawOutputRoot = path.join(stemCacheDir, '__raw')
+  const bootstrapInputDir = path.join(stemCacheDir, '__input')
   await fs.promises.rm(rawOutputRoot, { recursive: true, force: true }).catch(() => {})
+  await fs.promises.rm(bootstrapInputDir, { recursive: true, force: true }).catch(() => {})
   await fs.promises.mkdir(rawOutputRoot, { recursive: true })
 
   const inputDurationSec = await probeAudioDurationSeconds(ffprobePath, filePath)
@@ -304,6 +406,32 @@ export const runStemSeparation = async (params: {
     )
   }
   const env = buildStemProcessEnv(runtimeDir, ffmpegPath)
+  let waveformBootstrapInput: DemucsWaveformBootstrapInput | null = null
+  let waveformBootstrapReady = false
+  try {
+    waveformBootstrapInput = await prepareDemucsWaveformBootstrapInput({
+      filePath,
+      inputDir: bootstrapInputDir
+    })
+    waveformBootstrapReady = fs.existsSync(resolveDemucsBootstrapPath())
+    log.info('[mixtape-stem] waveform bootstrap input ready', {
+      file: filePath,
+      runtimeKey: deviceSnapshot.runtimeKey,
+      sampleRate: waveformBootstrapInput.inputSampleRate,
+      channels: waveformBootstrapInput.inputChannels,
+      totalFrames: waveformBootstrapInput.inputFrames,
+      pcmBytes: waveformBootstrapInput.pcmBytes,
+      decoderBackend: waveformBootstrapInput.decoderBackend,
+      bootstrapReady: waveformBootstrapReady
+    })
+  } catch (error) {
+    log.warn('[mixtape-stem] waveform bootstrap input unavailable, fallback to cli', {
+      file: filePath,
+      runtimeKey: deviceSnapshot.runtimeKey,
+      errorCode: normalizeText((error as any)?.code, 80) || null,
+      errorMessage: normalizeText(error instanceof Error ? error.message : String(error || ''), 600)
+    })
+  }
 
   const demucsModelCandidates = resolveDemucsModelCandidates({
     requestedModel: requestedDemucsModelName,
@@ -434,17 +562,54 @@ export const runStemSeparation = async (params: {
               : null,
           etaSec: null
         })
-        const allowNoSplit = preferNoSplit && device !== 'cpu'
-        if (!allowNoSplit) {
+        const allowNoSplit = preferNoSplit && device !== 'cpu' && device !== 'xpu'
+        const runWaveformBootstrap = async (split: boolean) => {
+          if (!waveformBootstrapInput || !waveformBootstrapReady) {
+            throw createStemError('STEM_BOOTSTRAP_UNAVAILABLE', 'Waveform bootstrap 不可用')
+          }
+          const payload: DemucsWaveformBootstrapPayload = {
+            mode: 'waveform_inference',
+            inputPcmPath: waveformBootstrapInput.pcmPath,
+            inputSampleRate: waveformBootstrapInput.inputSampleRate,
+            inputChannels: waveformBootstrapInput.inputChannels,
+            inputFrames: waveformBootstrapInput.inputFrames,
+            device: demucsDeviceArg,
+            modelName: demucsModelName,
+            modelRepoPath,
+            outputDir: rawOutputRoot,
+            shifts: Math.max(1, Number(profileOptions.shifts) || 1),
+            overlap: Math.max(0, Number(profileOptions.overlap) || 0),
+            split,
+            segmentSec: split ? Math.max(1, Number(demucsSegmentSec) || 1) : null,
+            jobs: 1,
+            sourcePath: filePath
+          }
+          await runDemucsWaveformInference({
+            pythonPath,
+            env,
+            timeoutMs: processTimeoutMs,
+            traceLabel: `mixtape-stem-waveform:${demucsModelName}:${device}`,
+            payload,
+            onStderrChunk: handleStderrChunk
+          })
+        }
+        const runDeviceInference = async (split: boolean) => {
+          if (waveformBootstrapInput && waveformBootstrapReady) {
+            await runWaveformBootstrap(split)
+            return
+          }
           await runDemucsSeparate({
             pythonPath,
-            demucsArgs: demucsSplitArgs,
+            demucsArgs: split ? demucsSplitArgs : demucsNoSplitArgs,
             env,
             timeoutMs: processTimeoutMs,
             traceLabel: `mixtape-stem-demucs:${demucsModelName}:${device}`,
-            useDirectmlBootstrap: device === 'directml',
+            useBootstrap: device !== 'cpu',
             onStderrChunk: handleStderrChunk
           })
+        }
+        if (!allowNoSplit) {
+          await runDeviceInference(true)
           emitProgress({
             percent: 100,
             processedSec:
@@ -460,15 +625,7 @@ export const runStemSeparation = async (params: {
           return
         }
         try {
-          await runDemucsSeparate({
-            pythonPath,
-            demucsArgs: demucsNoSplitArgs,
-            env,
-            timeoutMs: processTimeoutMs,
-            traceLabel: `mixtape-stem-demucs:${demucsModelName}:${device}`,
-            useDirectmlBootstrap: device === 'directml',
-            onStderrChunk: handleStderrChunk
-          })
+          await runDeviceInference(false)
           emitProgress({
             percent: 100,
             processedSec:
@@ -494,15 +651,7 @@ export const runStemSeparation = async (params: {
               600
             )
           })
-          await runDemucsSeparate({
-            pythonPath,
-            demucsArgs: demucsSplitArgs,
-            env,
-            timeoutMs: processTimeoutMs,
-            traceLabel: `mixtape-stem-demucs:${demucsModelName}:${device}`,
-            useDirectmlBootstrap: device === 'directml',
-            onStderrChunk: handleStderrChunk
-          })
+          await runDeviceInference(true)
           emitProgress({
             percent: 100,
             processedSec:
@@ -615,6 +764,7 @@ export const runStemSeparation = async (params: {
     }
   } catch (error) {
     await fs.promises.rm(rawOutputRoot, { recursive: true, force: true }).catch(() => {})
+    await fs.promises.rm(bootstrapInputDir, { recursive: true, force: true }).catch(() => {})
     throw error
   }
   try {
@@ -654,9 +804,8 @@ export const runStemSeparation = async (params: {
     const bassOutputPath = path.join(stemCacheDir, 'bass.wav')
     await fs.promises.copyFile(vocalsPath, vocalOutputPath)
     await fs.promises.copyFile(drumsPath, drumsOutputPath)
-
-    await fs.promises.copyFile(otherPath, instOutputPath)
     await fs.promises.copyFile(bassPath, bassOutputPath)
+    await fs.promises.copyFile(otherPath, instOutputPath)
 
     log.info('[mixtape-stem] demucs split done', {
       file: filePath,
@@ -675,5 +824,6 @@ export const runStemSeparation = async (params: {
     }
   } finally {
     await fs.promises.rm(rawOutputRoot, { recursive: true, force: true }).catch(() => {})
+    await fs.promises.rm(bootstrapInputDir, { recursive: true, force: true }).catch(() => {})
   }
 }

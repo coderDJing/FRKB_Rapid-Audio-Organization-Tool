@@ -67,7 +67,7 @@ export const DEMUCS_PROFILE_OPTIONS: Record<
   }
 }
 export const DEFAULT_STEM_MODEL = resolveMixtapeStemModelByProfile(DEFAULT_MIXTAPE_STEM_PROFILE)
-export const DEFAULT_STEM_VERSION = 'demucs-cli-builtin-20260309-stem-v1'
+export const DEFAULT_STEM_VERSION = 'demucs-waveform-builtin-20260313-stem-v2'
 export const STEM_CACHE_DIR_NAME = 'stems'
 
 export type MixtapeStemQueueTarget = {

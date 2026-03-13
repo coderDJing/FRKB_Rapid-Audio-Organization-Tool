@@ -2,7 +2,7 @@ import { app } from 'electron'
 import fs from 'node:fs'
 import path = require('path')
 
-const resolveDemucsPlatformDir = () => {
+export const resolveDemucsPlatformDir = () => {
   if (process.platform === 'win32') return 'win32-x64'
   if (process.platform === 'darwin') return process.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64'
   return process.arch === 'arm64' ? 'linux-arm64' : 'linux-x64'
@@ -13,6 +13,14 @@ export function resolveBundledDemucsRootPath(): string {
     return path.join(process.resourcesPath, 'demucs')
   }
   return path.resolve(__dirname, '../../vendor/demucs')
+}
+
+export function resolveInstalledDemucsRootPath(): string {
+  return path.join(app.getPath('userData'), 'demucs-runtimes')
+}
+
+export function resolveInstalledDemucsPlatformRootPath(): string {
+  return path.join(resolveInstalledDemucsRootPath(), resolveDemucsPlatformDir())
 }
 
 export function resolveBundledDemucsRuntimeDir(): string {
@@ -55,8 +63,9 @@ const resolveRuntimeDirNameCandidates = (): string[] => {
   return ['runtime-cuda', 'runtime-rocm', 'runtime-cpu', 'runtime']
 }
 
-export function resolveBundledDemucsRuntimeCandidates(): BundledDemucsRuntimeCandidate[] {
-  const platformRoot = path.join(resolveBundledDemucsRootPath(), resolveDemucsPlatformDir())
+const resolveRuntimeCandidatesFromPlatformRoot = (
+  platformRoot: string
+): BundledDemucsRuntimeCandidate[] => {
   const candidates: BundledDemucsRuntimeCandidate[] = []
   const seen = new Set<string>()
   for (const key of resolveRuntimeDirNameCandidates()) {
@@ -71,6 +80,23 @@ export function resolveBundledDemucsRuntimeCandidates(): BundledDemucsRuntimeCan
       runtimeDir,
       pythonPath
     })
+  }
+  return candidates
+}
+
+export function resolveBundledDemucsRuntimeCandidates(): BundledDemucsRuntimeCandidate[] {
+  const candidates: BundledDemucsRuntimeCandidate[] = []
+  const seen = new Set<string>()
+  const platformRoots = [
+    resolveInstalledDemucsPlatformRootPath(),
+    path.join(resolveBundledDemucsRootPath(), resolveDemucsPlatformDir())
+  ]
+  for (const platformRoot of platformRoots) {
+    for (const candidate of resolveRuntimeCandidatesFromPlatformRoot(platformRoot)) {
+      if (seen.has(candidate.runtimeDir)) continue
+      seen.add(candidate.runtimeDir)
+      candidates.push(candidate)
+    }
   }
   if (candidates.length > 0) return candidates
   const runtimeDir = resolveBundledDemucsRuntimeDir()

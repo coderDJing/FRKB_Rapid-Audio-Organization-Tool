@@ -37,6 +37,10 @@ const props = defineProps<{
   outputRunning: boolean
   outputProgressText: string
   outputProgressPercent: number
+  stemRuntimeDownloadVisible: boolean
+  stemRuntimeDownloadPercent: number
+  stemRuntimeDownloadTitle: string
+  stemRuntimeDownloadText: string
   autoGainReferenceFeedback: string
   autoGainDialogColumns: any[]
   autoGainSongColumns: any[]
@@ -176,6 +180,15 @@ const autoGainColumnMenuVisibleModel = computed({
       </div>
     </div>
   </div>
+  <div v-if="stemRuntimeDownloadVisible" class="mixtape-runtime-download-toast">
+    <div class="bpm-loading-card mixtape-runtime-download-toast__card">
+      <div class="bpm-loading-title">{{ stemRuntimeDownloadTitle }}</div>
+      <div class="bpm-loading-sub">{{ stemRuntimeDownloadText }}</div>
+      <div class="preload-bar">
+        <div class="preload-bar__fill" :style="{ width: `${stemRuntimeDownloadPercent}%` }"></div>
+      </div>
+    </div>
+  </div>
   <div v-if="autoGainDialogVisible" class="mixtape-auto-gain-dialog">
     <div class="mixtape-auto-gain-dialog__card">
       <div class="mixtape-auto-gain-dialog__title">{{ t('mixtape.autoGainDialogTitle') }}</div>
@@ -291,7 +304,7 @@ const autoGainColumnMenuVisibleModel = computed({
       type="button"
       @click="handleTrackMenuToggleMasterTempo"
     >
-      <span class="mixtape-track-menu__check">{{ trackMenuMasterTempoChecked ? '?' : '' }}</span>
+      <span class="mixtape-track-menu__check">{{ trackMenuMasterTempoChecked ? '✓' : '' }}</span>
       <span>{{ t('mixtape.masterTempoMenu') }}</span>
     </button>
   </div>

@@ -19,10 +19,6 @@
       {
         "from": "vendor/chromaprint",
         "to": "chromaprint"
-      },
-      {
-        "from": "vendor/demucs",
-        "to": "demucs"
       }
     ],
     "appId": "com.electron.frkb",
@@ -30,6 +26,9 @@
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "files": [
       "**/*",
+      "!vendor{,/**/*}",
+      "!drafts{,/**/*}",
+      "!tmp{,/**/*}",
       "!rust_package/target{,/**/*}",
       "!node_modules/rust_package/target{,/**/*}"
     ],
@@ -63,7 +62,21 @@
     ],
     "win": {
       "artifactName": "${productName}-Setup-${version}.${ext}",
-      "executableName": "FRKB"
+      "executableName": "FRKB",
+      "extraResources": [
+        {
+          "from": "vendor/demucs/models",
+          "to": "demucs/models"
+        },
+        {
+          "from": "vendor/demucs/bootstrap",
+          "to": "demucs/bootstrap"
+        },
+        {
+          "from": "vendor/demucs/win32-x64/runtime-cpu",
+          "to": "demucs/win32-x64/runtime-cpu"
+        }
+      ]
     },
     "nsis": {
       "uninstallDisplayName": "FRKB",
@@ -73,8 +86,58 @@
       "allowElevation": true
     },
     "mac": {
+      "extraResources": [
+        {
+          "from": "vendor/demucs/models",
+          "to": "demucs/models"
+        },
+        {
+          "from": "vendor/demucs/bootstrap",
+          "to": "demucs/bootstrap"
+        },
+        {
+          "from": "vendor/demucs/darwin-arm64",
+          "to": "demucs/darwin-arm64",
+          "filter": [
+            "runtime*/**"
+          ]
+        },
+        {
+          "from": "vendor/demucs/darwin-x64",
+          "to": "demucs/darwin-x64",
+          "filter": [
+            "runtime*/**"
+          ]
+        }
+      ],
       "x64ArchFiles": "Contents/Resources/{ffmpeg,chromaprint}/darwin/{ffmpeg,fpcalc}",
       "artifactName": "${productName}-${version}-universal.${ext}"
+    },
+    "linux": {
+      "extraResources": [
+        {
+          "from": "vendor/demucs/models",
+          "to": "demucs/models"
+        },
+        {
+          "from": "vendor/demucs/bootstrap",
+          "to": "demucs/bootstrap"
+        },
+        {
+          "from": "vendor/demucs/linux-x64",
+          "to": "demucs/linux-x64",
+          "filter": [
+            "runtime*/**"
+          ]
+        },
+        {
+          "from": "vendor/demucs/linux-arm64",
+          "to": "demucs/linux-arm64",
+          "filter": [
+            "runtime*/**"
+          ]
+        }
+      ]
     }
   },
   "scripts": {
@@ -94,6 +157,7 @@
     "build:linux": "npm run clean && npm run build && electron-builder --linux",
     "demucs:runtime:prepare": "node scripts/prepare-demucs-runtimes.mjs",
     "demucs:runtime:ensure": "node scripts/ensure-demucs-runtime.mjs",
+    "demucs:runtime:package": "node scripts/package-demucs-runtime-assets.mjs",
     "lint-staged": "lint-staged",
     "prepare": "husky"
   },

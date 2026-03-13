@@ -117,6 +117,10 @@ const {
   outputRunning,
   outputProgressText,
   outputProgressPercent,
+  stemRuntimeDownloadVisible,
+  stemRuntimeDownloadPercent,
+  stemRuntimeDownloadTitle,
+  stemRuntimeDownloadText,
   handleOutputDialogConfirm,
   handleOutputDialogCancel,
   stemSeparationProgressVisible,
@@ -960,6 +964,10 @@ onBeforeUnmount(() => {
       :output-running="outputRunning"
       :output-progress-text="outputProgressText"
       :output-progress-percent="outputProgressPercent"
+      :stem-runtime-download-visible="stemRuntimeDownloadVisible"
+      :stem-runtime-download-percent="stemRuntimeDownloadPercent"
+      :stem-runtime-download-title="stemRuntimeDownloadTitle"
+      :stem-runtime-download-text="stemRuntimeDownloadText"
       :auto-gain-reference-feedback="autoGainReferenceFeedback"
       :auto-gain-dialog-columns="autoGainDialogColumns"
       :auto-gain-song-columns="autoGainSongColumns"

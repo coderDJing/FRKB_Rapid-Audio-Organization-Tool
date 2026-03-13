@@ -1,0 +1,108 @@
+name: Demucs Runtime Assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub Release tag used to host runtime assets
+        required: true
+        default: demucs-runtime-assets
+      profiles:
+        description: Runtime profiles to build and package
+        required: true
+        default: cpu,cuda,directml,xpu
+      asset_version:
+        description: Optional runtime asset version suffix
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build_runtime_assets_win:
+    runs-on: windows-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Ensure setuptools available
+        run: python -m pip install --upgrade pip setuptools wheel
+
+      - name: Restore Demucs runtime cache (Windows)
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor/demucs/models
+            vendor/demucs/win32-x64/runtime
+            vendor/demucs/win32-x64/runtime-cpu
+            vendor/demucs/win32-x64/runtime-cuda
+            vendor/demucs/win32-x64/runtime-directml
+            vendor/demucs/win32-x64/runtime-xpu
+            vendor/demucs/bootstrap
+          key: demucs-runtime-assets-${{ runner.os }}-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs', 'scripts/package-demucs-runtime-assets.mjs') }}
+          restore-keys: |
+            demucs-runtime-assets-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Ensure selected Demucs runtimes
+        run: pnpm run demucs:runtime:ensure -- --ci --profiles "${{ inputs.profiles }}"
+
+      - name: Package runtime assets
+        shell: pwsh
+        run: |
+          $args = @(
+            "scripts/package-demucs-runtime-assets.mjs",
+            "--platform", "win32-x64",
+            "--profiles", "${{ inputs.profiles }}",
+            "--output-root", "dist/demucs-runtime-assets",
+            "--release-tag", "${{ inputs.release_tag }}"
+          )
+          if ("${{ inputs.asset_version }}".Trim()) {
+            $args += @("--asset-version", "${{ inputs.asset_version }}")
+          }
+          node @args
+
+      - name: Show packaged runtime assets
+        shell: pwsh
+        run: Get-ChildItem -Path "dist/demucs-runtime-assets" -Force
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: demucs-runtime-assets-win32-x64
+          path: |
+            dist/demucs-runtime-assets/*.zip
+            dist/demucs-runtime-assets/demucs-runtime-manifest.json
+
+      - name: Create or update GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          files: |
+            dist/demucs-runtime-assets/*.zip
+            dist/demucs-runtime-assets/demucs-runtime-manifest.json
+          draft: false
+          prerelease: false
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -31,11 +31,8 @@ jobs:
         with:
           path: |
             vendor/demucs/models
-            vendor/demucs/win32-x64/runtime
             vendor/demucs/win32-x64/runtime-cpu
-            vendor/demucs/win32-x64/runtime-cuda
-            vendor/demucs/win32-x64/runtime-directml
-            vendor/demucs/win32-x64/runtime-xpu
+            vendor/demucs/bootstrap
           key: demucs-${{ runner.os }}-win32-x64-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs') }}
           restore-keys: |
             demucs-${{ runner.os }}-win32-x64-
@@ -59,7 +56,7 @@ jobs:
         run: pnpm install --frozen-lockfile=false
 
       - name: Ensure Demucs runtimes (Windows)
-        run: pnpm run demucs:runtime:ensure -- --ci --profiles cpu,cuda,directml
+        run: pnpm run demucs:runtime:ensure -- --ci --profiles cpu
 
       - name: Typecheck (vue-tsc)
         run: npx vue-tsc --noEmit
@@ -115,12 +112,10 @@ jobs:
           }
 
           $required = @(
+            "demucs/bootstrap/mixtape_demucs_bootstrap.py",
             "demucs/models/htdemucs.yaml",
             "demucs/models/955717e8-8726e21a.th",
-            "demucs/win32-x64/runtime/python.exe",
-            "demucs/win32-x64/runtime-cpu/python.exe",
-            "demucs/win32-x64/runtime-cuda/python.exe",
-            "demucs/win32-x64/runtime-directml/python.exe"
+            "demucs/win32-x64/runtime-cpu/python.exe"
           )
 
           $missing = @()

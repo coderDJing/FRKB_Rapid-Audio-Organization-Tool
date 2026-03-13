@@ -38,7 +38,15 @@
       },
       "xpu": {
         "targetDir": "runtime-xpu",
-        "pipInstall": []
+        "pipInstall": [
+          "--index-url",
+          "https://download.pytorch.org/whl/xpu",
+          "--extra-index-url",
+          "https://pypi.org/simple",
+          "torch==2.10.0",
+          "torchaudio==2.10.0",
+          "torchvision==0.25.0"
+        ]
       }
     }
   },

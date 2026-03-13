@@ -25,6 +25,7 @@ class MixtapeTransportKeyLockProcessor extends AudioWorkletProcessor {
   constructor() {
     super()
     this.sourceChannels = []
+    this.sourceChunks = []
     this.frameCount = 0
     this.sourceSampleRate = sampleRate
     this.sourceToOutputRate = 1
@@ -48,6 +49,7 @@ class MixtapeTransportKeyLockProcessor extends AudioWorkletProcessor {
       if (data.type === 'set-source') {
         const channels = Array.isArray(data.channels) ? data.channels : []
         this.sourceChannels = channels.filter((item) => item instanceof Float32Array)
+        this.sourceChunks = []
         this.frameCount = Math.max(0, Number(data.frameCount) || 0)
         this.sourceSampleRate = Math.max(1, Number(data.sampleRate) || sampleRate)
         this.sourceToOutputRate = this.sourceSampleRate / Math.max(1, sampleRate)
@@ -55,6 +57,36 @@ class MixtapeTransportKeyLockProcessor extends AudioWorkletProcessor {
           1,
           Number(data.outputChannels) || this.sourceChannels.length || 2
         )
+        this.resetState()
+      } else if (data.type === 'set-source-meta') {
+        this.sourceChannels = []
+        this.sourceChunks = []
+        this.frameCount = Math.max(0, Number(data.frameCount) || 0)
+        this.sourceSampleRate = Math.max(1, Number(data.sampleRate) || sampleRate)
+        this.sourceToOutputRate = this.sourceSampleRate / Math.max(1, sampleRate)
+        this.outputChannels = Math.max(1, Number(data.outputChannels) || 2)
+        this.resetState()
+      } else if (data.type === 'append-chunk') {
+        const channels = Array.isArray(data.channels) ? data.channels : []
+        const normalizedChannels = channels.filter((item) => item instanceof Float32Array)
+        const startFrame = Math.max(0, Math.floor(Number(data.startFrame) || 0))
+        const frameCount = Math.max(0, Math.floor(Number(data.frameCount) || 0))
+        if (!normalizedChannels.length || frameCount <= 0) return
+        const endFrame = startFrame + frameCount
+        this.sourceChunks = this.sourceChunks.filter((chunk) => chunk.startFrame !== startFrame)
+        this.sourceChunks.push({
+          startFrame,
+          endFrame,
+          channels: normalizedChannels
+        })
+        this.sourceChunks.sort((a, b) => a.startFrame - b.startFrame)
+      } else if (data.type === 'trim-before-frame') {
+        const frame = Math.max(0, Math.floor(Number(data.frame) || 0))
+        this.sourceChunks = this.sourceChunks.filter((chunk) => chunk.endFrame > frame)
+      } else if (data.type === 'dispose') {
+        this.sourceChannels = []
+        this.sourceChunks = []
+        this.frameCount = 0
         this.resetState()
       } else if (data.type === 'start') {
         const startFrame = clamp(Number(data.startFrame) || 0, 0, Math.max(0, this.frameCount - 1))
@@ -97,15 +129,36 @@ class MixtapeTransportKeyLockProcessor extends AudioWorkletProcessor {
     this.reportCounter = 0
   }
 
-  sampleAt(channelData, frame) {
+  resolveDiscreteSample(channelIndex, frameIndex) {
+    const safeFrame = clamp(frameIndex, 0, Math.max(0, this.frameCount - 1))
+    if (this.sourceChannels.length > 0) {
+      const sourceIndex = Math.min(this.sourceChannels.length - 1, channelIndex)
+      const channelData = this.sourceChannels[Math.max(0, sourceIndex)]
+      return channelData?.[safeFrame] || 0
+    }
+    if (!this.sourceChunks.length) return 0
+    const sourceIndex = Math.max(0, channelIndex)
+    for (let index = 0; index < this.sourceChunks.length; index += 1) {
+      const chunk = this.sourceChunks[index]
+      if (safeFrame < chunk.startFrame || safeFrame >= chunk.endFrame) continue
+      const channelData =
+        chunk.channels[Math.min(chunk.channels.length - 1, sourceIndex)] ||
+        chunk.channels[Math.max(0, Math.min(chunk.channels.length - 1, 0))]
+      if (!channelData) return 0
+      return channelData[safeFrame - chunk.startFrame] || 0
+    }
+    return 0
+  }
+
+  sampleAt(channelIndex, frame) {
     const maxFrame = this.frameCount - 1
     const readFrame = clamp(frame, 0, Math.max(0, maxFrame))
     if (this.frameCount < 4) {
       const baseIndex = Math.floor(readFrame)
       const nextIndex = Math.min(maxFrame, baseIndex + 1)
       const frac = readFrame - baseIndex
-      const a = channelData[baseIndex] || 0
-      const b = channelData[nextIndex] || 0
+      const a = this.resolveDiscreteSample(channelIndex, baseIndex)
+      const b = this.resolveDiscreteSample(channelIndex, nextIndex)
       return a + (b - a) * frac
     }
     const baseIndex = Math.floor(readFrame)
@@ -116,10 +169,10 @@ class MixtapeTransportKeyLockProcessor extends AudioWorkletProcessor {
     const x2Index = clamp(baseIndex + 2, 0, maxFrame)
     return cubicHermite(
       frac,
-      channelData[xm1Index] || 0,
-      channelData[x0Index] || 0,
-      channelData[x1Index] || 0,
-      channelData[x2Index] || 0
+      this.resolveDiscreteSample(channelIndex, xm1Index),
+      this.resolveDiscreteSample(channelIndex, x0Index),
+      this.resolveDiscreteSample(channelIndex, x1Index),
+      this.resolveDiscreteSample(channelIndex, x2Index)
     )
   }
 
@@ -138,17 +191,13 @@ class MixtapeTransportKeyLockProcessor extends AudioWorkletProcessor {
 
   renderSample(channelIndex) {
     if (!this.activeGrains.length) return 0
-    const sourceIndex = Math.min(this.sourceChannels.length - 1, channelIndex)
-    const channelData = this.sourceChannels[Math.max(0, sourceIndex)]
-    if (!channelData) return 0
-
     let sum = 0
     let weight = 0
     for (const grain of this.activeGrains) {
       if (grain.age >= GRAIN_SIZE) continue
       const window = hannWindow(grain.age, GRAIN_SIZE)
       const readFrame = grain.sourceStartFrame + grain.age * this.sourceToOutputRate
-      sum += this.sampleAt(channelData, readFrame) * window
+      sum += this.sampleAt(channelIndex, readFrame) * window
       weight += window
     }
     if (weight <= 0.000001) return 0
@@ -159,7 +208,11 @@ class MixtapeTransportKeyLockProcessor extends AudioWorkletProcessor {
     const output = outputs[0]
     if (!output || output.length === 0) return true
     const outputFrames = output[0]?.length || 0
-    if (!this.sourceChannels.length || this.frameCount <= 1 || outputFrames <= 0) {
+    if (
+      (!this.sourceChannels.length && !this.sourceChunks.length) ||
+      this.frameCount <= 1 ||
+      outputFrames <= 0
+    ) {
       for (let ch = 0; ch < output.length; ch += 1) {
         output[ch].fill(0)
       }

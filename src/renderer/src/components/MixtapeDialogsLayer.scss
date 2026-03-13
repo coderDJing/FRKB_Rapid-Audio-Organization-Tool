@@ -52,6 +52,22 @@
   background: rgba(8, 8, 12, 0.88);
 }
 
+.mixtape-runtime-download-toast {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  width: min(420px, calc(100% - 36px));
+  z-index: 28;
+  pointer-events: none;
+}
+
+.mixtape-runtime-download-toast__card {
+  pointer-events: auto;
+  padding: 14px 16px;
+  gap: 10px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.32);
+}
+
 .mixtape-stem-progress-mask {
   padding: 12px;
   z-index: 22;

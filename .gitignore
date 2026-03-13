@@ -39,3 +39,10 @@ docs/.vitepress/cache
 *.sw?
 
 vendor/
+!vendor/
+vendor/*
+!vendor/demucs/
+vendor/demucs/*
+!vendor/demucs/bootstrap/
+vendor/demucs/bootstrap/*
+!vendor/demucs/bootstrap/mixtape_demucs_bootstrap.py

@@ -40,6 +40,7 @@ const {
 } = shared
 let stemDeviceProbeSnapshot: MixtapeStemDeviceProbeSnapshot | null = null
 let stemDeviceProbePromise: Promise<MixtapeStemDeviceProbeSnapshot> | null = null
+const getCachedStemDeviceProbeSnapshot = () => stemDeviceProbeSnapshot
 export const probeWindowsGpuAdapters = async () => {
   const emptyResult = {
     names: [] as string[],
@@ -536,6 +537,7 @@ const parseDemucsProgressText = (
   }
 }
 export {
+  getCachedStemDeviceProbeSnapshot,
   probeTorchDeviceCompatibility,
   probeDirectmlDemucsCompatibility,
   probeXpuDemucsCompatibility,

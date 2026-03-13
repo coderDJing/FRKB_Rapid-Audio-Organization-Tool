@@ -38,9 +38,21 @@ import {
 import { findSongListRoot } from './cacheMaintenance'
 import { runStemSeparation } from './mixtapeStemSeparationRun'
 import { getStemBackgroundConcurrencyHint } from './backgroundIdleGate'
+import { getCachedStemDeviceProbeSnapshot } from './mixtapeStemSeparationProbe'
+import type {
+  MixtapeStemComputeDevice,
+  MixtapeStemCpuFallbackReasonCode,
+  MixtapeStemSeparationResult
+} from './mixtapeStemSeparationShared'
+import {
+  STEM_FREE_MEMORY_GB_FOR_GPU_CONCURRENCY_2,
+  STEM_FREE_MEMORY_GB_FOR_GPU_CONCURRENCY_3,
+  STEM_SYSTEM_MEMORY_GB_FOR_GPU_CONCURRENCY_2,
+  STEM_SYSTEM_MEMORY_GB_FOR_GPU_CONCURRENCY_3
+} from './mixtapeStemSeparationShared'
 
 const DEFAULT_STEM_MODEL = resolveMixtapeStemModelByProfile(DEFAULT_MIXTAPE_STEM_PROFILE)
-const DEFAULT_STEM_VERSION = 'demucs-cli-builtin-20260309-stem-v1'
+const DEFAULT_STEM_VERSION = 'demucs-waveform-builtin-20260313-stem-v2'
 
 type MixtapeStemQueueTarget = {
   playlistId: string
@@ -56,46 +68,6 @@ type MixtapeStemQueueJob = {
   source: MixtapeStemEnqueueSource
   listRoot: string
   targets: Map<string, Set<string>>
-}
-
-type MixtapeStemSeparationResult = {
-  vocalPath?: string | null
-  instPath?: string | null
-  bassPath?: string | null
-  drumsPath?: string | null
-}
-
-type MixtapeStemComputeDevice = 'cuda' | 'mps' | 'xpu' | 'directml' | 'cpu'
-type MixtapeStemCpuFallbackReasonCode = 'gpu_unavailable' | 'gpu_failed' | 'gpu_backend_missing'
-type MixtapeStemRuntimeProgress = {
-  device: MixtapeStemComputeDevice
-  percent: number
-  processedSec: number | null
-  totalSec: number | null
-  etaSec: number | null
-}
-
-type MixtapeStemDeviceProbeSnapshot = {
-  checkedAt: number
-  runtimeKey: string
-  runtimeDir: string
-  pythonPath: string
-  devices: MixtapeStemComputeDevice[]
-  cudaAvailable: boolean
-  mpsAvailable: boolean
-  xpuAvailable: boolean
-  xpuBackendInstalled: boolean
-  xpuDemucsCompatible: boolean
-  anyXpuBackendInstalled: boolean
-  directmlAvailable: boolean
-  directmlBackendInstalled: boolean
-  directmlDemucsCompatible: boolean
-  anyDirectmlBackendInstalled: boolean
-  directmlDevice: string
-  windowsAdapterNames: string[]
-  windowsHasIntelAdapter: boolean
-  windowsHasAmdAdapter: boolean
-  windowsHasNvidiaAdapter: boolean
 }
 
 type MixtapeStemEnqueueSource = 'foreground' | 'background'
@@ -470,6 +442,44 @@ const prewarmStemWaveformBundleFromPaths = (params: {
 
 const STEM_QUEUE_CPU_JOB_CONCURRENCY_MAX = 4
 const STEM_QUEUE_CPU_JOB_CORE_DIVISOR = 2
+const STEM_QUEUE_XPU_JOB_CONCURRENCY_MAX = 2
+const STEM_QUEUE_DIRECTML_JOB_CONCURRENCY_MAX = 1
+
+const hasBundledXpuRuntimeCandidate = () =>
+  resolveBundledDemucsRuntimeCandidates().some((candidate) => {
+    const runtimeKey = normalizeText(candidate?.key, 64).toLowerCase()
+    return runtimeKey === 'runtime-xpu'
+  })
+
+const resolveGpuDeviceCap = (preferredDevice: MixtapeStemComputeDevice) => {
+  const totalMemoryGb = Math.max(1, Math.floor(os.totalmem() / 1024 ** 3))
+  const freeMemoryGb = Math.max(0, Math.floor(os.freemem() / 1024 ** 3))
+  let cap = 1
+  if (
+    totalMemoryGb >= STEM_SYSTEM_MEMORY_GB_FOR_GPU_CONCURRENCY_2 &&
+    freeMemoryGb >= STEM_FREE_MEMORY_GB_FOR_GPU_CONCURRENCY_2
+  ) {
+    cap = 2
+  }
+  if (
+    preferredDevice === 'cuda' &&
+    totalMemoryGb >= STEM_SYSTEM_MEMORY_GB_FOR_GPU_CONCURRENCY_3 &&
+    freeMemoryGb >= STEM_FREE_MEMORY_GB_FOR_GPU_CONCURRENCY_3
+  ) {
+    cap = 3
+  }
+  if (preferredDevice === 'xpu') {
+    cap = Math.min(cap, STEM_QUEUE_XPU_JOB_CONCURRENCY_MAX)
+  }
+  if (preferredDevice === 'directml') {
+    cap = STEM_QUEUE_DIRECTML_JOB_CONCURRENCY_MAX
+  }
+  return {
+    cap,
+    totalMemoryGb,
+    freeMemoryGb
+  }
+}
 
 const resolveStemQueueConcurrency = () => {
   const cpuCount = Math.max(1, os.cpus().length || 1)
@@ -480,18 +490,30 @@ const resolveStemQueueConcurrency = () => {
       Math.floor(cpuCount / STEM_QUEUE_CPU_JOB_CORE_DIVISOR)
     )
   )
+  const deviceSnapshot = getCachedStemDeviceProbeSnapshot()
+  const preferredDevice =
+    deviceSnapshot?.devices.find((device) => device !== 'cpu') ||
+    (process.platform === 'win32' && hasBundledXpuRuntimeCandidate() ? 'xpu' : 'cpu')
+  const gpuDevice = preferredDevice !== 'cpu'
+  const gpuDeviceCap = gpuDevice ? resolveGpuDeviceCap(preferredDevice) : null
+  const deviceCap = preferredDevice === 'cpu' ? cpuCap : gpuDeviceCap?.cap || 1
   const hasForegroundQueueJob = pendingQueue.some((job) => job.source === 'foreground')
   const hasForegroundInFlightJob = Array.from(inFlightJobMap.values()).some(
     (job) => job.source === 'foreground'
   )
   const hasForegroundDemand = hasForegroundQueueJob || hasForegroundInFlightJob
   const idleHint = getStemBackgroundConcurrencyHint()
-  const backgroundTarget = Math.max(1, Math.min(cpuCap, idleHint.target))
-  const maxWorkers = hasForegroundDemand ? cpuCap : backgroundTarget
+  const backgroundTarget = Math.max(1, Math.min(deviceCap, idleHint.target))
+  const maxWorkers = hasForegroundDemand ? deviceCap : backgroundTarget
   return {
     maxWorkers,
     cpuCount,
     cpuCap,
+    deviceCap,
+    preferredDevice,
+    totalMemoryGb:
+      gpuDeviceCap?.totalMemoryGb || Math.max(1, Math.floor(os.totalmem() / 1024 ** 3)),
+    freeMemoryGb: gpuDeviceCap?.freeMemoryGb || Math.max(0, Math.floor(os.freemem() / 1024 ** 3)),
     hasForegroundDemand,
     backgroundTarget,
     idleTarget: idleHint.target,
@@ -512,6 +534,10 @@ const runQueueLoop = () => {
       maxWorkers,
       cpuCount: concurrency.cpuCount,
       cpuCap: concurrency.cpuCap,
+      deviceCap: concurrency.deviceCap,
+      preferredDevice: concurrency.preferredDevice,
+      totalMemoryGb: concurrency.totalMemoryGb,
+      freeMemoryGb: concurrency.freeMemoryGb,
       hasForegroundDemand: concurrency.hasForegroundDemand,
       backgroundTarget: concurrency.backgroundTarget,
       idleTarget: concurrency.idleTarget,

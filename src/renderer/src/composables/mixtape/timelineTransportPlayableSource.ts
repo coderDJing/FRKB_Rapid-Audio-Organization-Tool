@@ -30,6 +30,9 @@ type KeyLockWorkletMessage =
     }
 
 const workletModuleByContext = new WeakMap<TransportPlayableAudioContext, Promise<void>>()
+const STREAMING_CHUNK_FRAMES = 44100 * 6
+const STREAMING_LOOKAHEAD_CHUNKS = 3
+const STREAMING_KEEP_BEHIND_FRAMES = 44100 * 2
 
 const cloneBufferChannels = (buffer: AudioBuffer) => {
   const channels: Float32Array[] = []
@@ -124,7 +127,13 @@ export const createTransportKeyLockSource = (
     },
     disconnect() {
       try {
+        node.port.postMessage({ type: 'dispose' })
+      } catch {}
+      try {
         node.port.onmessage = null
+      } catch {}
+      try {
+        node.port.close()
       } catch {}
       try {
         node.disconnect()
@@ -139,6 +148,156 @@ export const createTransportKeyLockSource = (
         type: 'start',
         startTimeSec,
         startFrame: safeOffset * buffer.sampleRate,
+        rate: playbackRate.value
+      })
+    },
+    stop(when?: number) {
+      const stopTimeSec =
+        Number.isFinite(Number(when)) && Number(when) > audioCtx.currentTime
+          ? Number(when)
+          : audioCtx.currentTime
+      node.port.postMessage({
+        type: 'stop',
+        stopTimeSec
+      })
+    }
+  }
+}
+
+export const createTransportStreamingKeyLockSource = (
+  audioCtx: TransportPlayableAudioContext,
+  buffer: AudioBuffer
+): TransportPlayableSource => {
+  const outputChannels = Math.max(1, Math.min(2, buffer.numberOfChannels || 1))
+  const node = new AudioWorkletNode(audioCtx, WORKLET_NAME, {
+    numberOfInputs: 0,
+    numberOfOutputs: 1,
+    outputChannelCount: [outputChannels]
+  })
+  node.port.postMessage({
+    type: 'set-source-meta',
+    sampleRate: buffer.sampleRate,
+    frameCount: buffer.length,
+    outputChannels
+  })
+
+  let endedHandler: (() => void) | null = null
+  let nextChunkStartFrame = 0
+  let loadedUntilFrame = 0
+  let trimmedBeforeFrame = 0
+
+  const enqueueChunk = (startFrame: number) => {
+    const safeStartFrame = Math.max(0, Math.floor(startFrame))
+    if (safeStartFrame >= buffer.length) return
+    const endFrame = Math.min(buffer.length, safeStartFrame + STREAMING_CHUNK_FRAMES)
+    if (endFrame <= safeStartFrame) return
+    const channels: Float32Array[] = []
+    for (let channelIndex = 0; channelIndex < outputChannels; channelIndex += 1) {
+      const sourceIndex = Math.min(buffer.numberOfChannels - 1, channelIndex)
+      const source = buffer.getChannelData(Math.max(0, sourceIndex))
+      channels.push(source.slice(safeStartFrame, endFrame))
+    }
+    node.port.postMessage(
+      {
+        type: 'append-chunk',
+        startFrame: safeStartFrame,
+        frameCount: endFrame - safeStartFrame,
+        channels
+      },
+      channels.map((channel) => channel.buffer)
+    )
+    nextChunkStartFrame = endFrame
+    loadedUntilFrame = Math.max(loadedUntilFrame, endFrame)
+  }
+
+  const ensureLookaheadChunks = (frame: number) => {
+    const targetFrame =
+      Math.max(0, Math.floor(frame)) + STREAMING_CHUNK_FRAMES * STREAMING_LOOKAHEAD_CHUNKS
+    while (loadedUntilFrame < Math.min(buffer.length, targetFrame)) {
+      enqueueChunk(nextChunkStartFrame)
+    }
+  }
+
+  const trimChunks = (frame: number) => {
+    const trimBefore = Math.max(0, Math.floor(frame) - STREAMING_KEEP_BEHIND_FRAMES)
+    if (trimBefore <= trimmedBeforeFrame) return
+    trimmedBeforeFrame = trimBefore
+    node.port.postMessage({
+      type: 'trim-before-frame',
+      frame: trimBefore
+    })
+  }
+
+  const playbackRate: TransportPlaybackRateControl = {
+    value: 1,
+    setTargetAtTime(value: number, startTime: number, timeConstant: number) {
+      playbackRate.value = Number(value) || 1
+      node.port.postMessage({
+        type: 'set-rate',
+        rate: playbackRate.value,
+        startTimeSec: Number(startTime) || audioCtx.currentTime,
+        timeConstant: Number(timeConstant) || 0.04
+      })
+    }
+  }
+
+  node.port.onmessage = (event: MessageEvent<KeyLockWorkletMessage>) => {
+    const data = event.data
+    if (!data) return
+    if (data.type === 'position') {
+      const frame = Math.max(0, Math.floor(Number(data.frame) || 0))
+      ensureLookaheadChunks(frame)
+      trimChunks(frame)
+      return
+    }
+    if (data.type === 'ended') {
+      endedHandler?.()
+    }
+  }
+
+  return {
+    buffer,
+    playbackRate,
+    get onended() {
+      return endedHandler
+    },
+    set onended(handler: (() => void) | null) {
+      endedHandler = typeof handler === 'function' ? handler : null
+    },
+    connect(destination: AudioNode) {
+      node.connect(destination)
+    },
+    disconnect() {
+      try {
+        node.port.postMessage({ type: 'dispose' })
+      } catch {}
+      try {
+        node.port.onmessage = null
+      } catch {}
+      try {
+        node.port.close()
+      } catch {}
+      try {
+        node.disconnect()
+      } catch {}
+    },
+    start(when?: number, offset?: number) {
+      const startTimeSec = Number.isFinite(Number(when))
+        ? Math.max(audioCtx.currentTime, Number(when))
+        : audioCtx.currentTime
+      const safeOffset = Math.max(0, Number(offset) || 0)
+      const startFrame = Math.min(
+        buffer.length > 0 ? buffer.length - 1 : 0,
+        Math.max(0, Math.floor(safeOffset * buffer.sampleRate))
+      )
+      nextChunkStartFrame = Math.floor(startFrame / STREAMING_CHUNK_FRAMES) * STREAMING_CHUNK_FRAMES
+      loadedUntilFrame = nextChunkStartFrame
+      trimmedBeforeFrame = 0
+      ensureLookaheadChunks(startFrame)
+      node.port.postMessage({
+        type: 'start',
+        startTimeSec,
+        startFrame,
         rate: playbackRate.value
       })
     },

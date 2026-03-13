@@ -9,6 +9,8 @@ const runtimeProfilesPath = path.resolve('./scripts/demucs-runtime-profiles.json
 const runtimeProfilesRaw = fs.readFileSync(runtimeProfilesPath, 'utf8')
 const runtimeProfiles = JSON.parse(runtimeProfilesRaw)
 const modelManifestPath = path.resolve('./scripts/demucs-model-manifest.json')
+const DEFAULT_DEMUCS_RUNTIME_MANIFEST_URL =
+  'https://github.com/coderDjing/FRKB_Rapid-Audio-Organization-Tool/releases/download/demucs-runtime-assets/demucs-runtime-manifest.json'
 
 const platformDefault = (() => {
   if (process.platform === 'win32') return 'win32-x64'
@@ -54,11 +56,20 @@ const modelTimeoutSecArg = Number(getArgValue('--model-timeout-sec', '600'))
 const install = !hasFlag('--no-install')
 const strict = hasFlag('--strict') || hasFlag('--ci')
 const force = hasFlag('--force')
+const preferRemoteAssets =
+  !strict ||
+  hasFlag('--prefer-remote-assets') ||
+  process.env.FRKB_DEMUCS_RUNTIME_PREFER_REMOTE === '1' ||
+  process.env.FRKB_DEMUCS_RUNTIME_PREFER_REMOTE === 'true'
 const skip =
   process.env.FRKB_SKIP_DEMUCS_RUNTIME_ENSURE === '1' ||
   process.env.FRKB_SKIP_DEMUCS_RUNTIME_ENSURE === 'true'
 
 const runtimeRoot = path.resolve(runtimeRootArg)
+const runtimeAssetManifestUrl =
+  getArgValue('--runtime-manifest-url', '').trim() ||
+  String(process.env.FRKB_DEMUCS_RUNTIME_MANIFEST_URL || '').trim() ||
+  DEFAULT_DEMUCS_RUNTIME_MANIFEST_URL
 
 const resolveRuntimePythonPath = (runtimeDir) => {
   if (process.platform === 'win32') {
@@ -73,6 +84,27 @@ const resolveRuntimePythonPath = (runtimeDir) => {
   const binPython = path.join(runtimeDir, 'bin', 'python')
   if (fs.existsSync(binPython)) return binPython
   return binPython3
+}
+
+const buildRuntimeEnv = (runtimeDir) => {
+  const env = {
+    ...process.env
+  }
+  const pathEntries =
+    process.platform === 'win32'
+      ? [path.join(runtimeDir, 'Scripts'), path.join(runtimeDir, 'Library', 'bin')]
+      : [path.join(runtimeDir, 'bin')]
+  env.PATH = [...pathEntries, process.env.PATH || ''].filter(Boolean).join(path.delimiter)
+  if (process.platform === 'linux') {
+    env.LD_LIBRARY_PATH = [path.join(runtimeDir, 'lib'), process.env.LD_LIBRARY_PATH || '']
+      .filter(Boolean)
+      .join(path.delimiter)
+  } else if (process.platform === 'darwin') {
+    env.DYLD_LIBRARY_PATH = [path.join(runtimeDir, 'lib'), process.env.DYLD_LIBRARY_PATH || '']
+      .filter(Boolean)
+      .join(path.delimiter)
+  }
+  return env
 }
 
 const run = (command, commandArgs, options = {}) => {
@@ -108,14 +140,15 @@ const addUniqueItem = (target, value) => {
   target.push(normalized)
 }
 
-const probeRuntimeModules = (pythonPath) => {
+const probeRuntimeModules = (pythonPath, runtimeDir) => {
+  const env = buildRuntimeEnv(runtimeDir)
   const result = runQuiet(
     pythonPath,
     [
       '-c',
       [
         'import json',
-        'payload = {"demucs": False, "torch": False, "torchaudio": False, "onnxruntime": False, "torch_directml": False, "onnxruntime_directml_provider": False}',
+        'payload = {"demucs": False, "torch": False, "torchaudio": False, "onnxruntime": False, "torch_directml": False, "onnxruntime_directml_provider": False, "torch_version": "", "xpu_backend": False, "xpu_available": False}',
         'try:',
         '  import demucs',
         '  payload["demucs"] = True',
@@ -124,6 +157,13 @@ const probeRuntimeModules = (pythonPath) => {
         'try:',
         '  import torch',
         '  payload["torch"] = True',
+        '  payload["torch_version"] = str(getattr(torch, "__version__", ""))',
+        '  xpu_api = getattr(torch, "xpu", None)',
+        '  payload["xpu_backend"] = bool(xpu_api) and ("+cpu" not in payload["torch_version"].lower())',
+        '  try:',
+        '    payload["xpu_available"] = bool(payload["xpu_backend"] and xpu_api and xpu_api.is_available())',
+        '  except Exception as exc:',
+        '    payload["xpu_available_error"] = str(exc)',
         'except Exception as exc:',
         '  payload["torch_error"] = str(exc)',
         'try:',
@@ -147,7 +187,8 @@ const probeRuntimeModules = (pythonPath) => {
       ].join('\n')
     ],
     {
-      timeout: 20_000
+      timeout: 20_000,
+      env
     }
   )
   if (result.status !== 0) {
@@ -183,6 +224,120 @@ const probeRuntimeModules = (pythonPath) => {
       payload: null,
       error: toShortText(error instanceof Error ? error.message : String(error || ''))
     }
+  }
+}
+
+const readRuntimeAssetManifest = async () => {
+  if (!preferRemoteAssets) return null
+  try {
+    const response = await fetch(runtimeAssetManifestUrl, {
+      headers: {
+        Accept: 'application/json'
+      }
+    })
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+    const manifest = await response.json()
+    if (!manifest || !Array.isArray(manifest.assets)) {
+      throw new Error('manifest assets missing')
+    }
+    return manifest
+  } catch (error) {
+    console.warn(
+      `[demucs-runtime-ensure] Runtime asset manifest unavailable: ${
+        toShortText(error instanceof Error ? error.message : String(error || 'unknown'))
+      }`
+    )
+    return null
+  }
+}
+
+const resolveRuntimeAssetEntry = (manifest, profileName) => {
+  if (!manifest || !Array.isArray(manifest.assets)) return null
+  return (
+    manifest.assets.find(
+      (item) =>
+        String(item?.platform || '').trim() === platformArg &&
+        String(item?.profile || '').trim() === profileName
+    ) || null
+  )
+}
+
+const downloadRuntimeAssetArchive = async (entry, archivePath) => {
+  const response = await fetch(String(entry.archiveUrl || ''))
+  if (!response.ok || !response.body) {
+    throw new Error(`download failed: HTTP ${response.status}`)
+  }
+  fs.mkdirSync(path.dirname(archivePath), { recursive: true })
+  await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(archivePath))
+}
+
+const extractRuntimeAssetArchive = (archivePath, targetDir) => {
+  fs.mkdirSync(targetDir, { recursive: true })
+  run('tar.exe', ['-xf', archivePath, '-C', targetDir])
+}
+
+const installRuntimeProfileFromAsset = async (entry, profileName, runtimeDir) => {
+  const archiveName = String(entry?.archiveName || '').trim()
+  const archiveSha256 = normalizeSha256(entry?.archiveSha256)
+  const archiveSize = Number(entry?.archiveSize) || 0
+  const runtimeKey = String(entry?.runtimeKey || '').trim()
+  const pythonRelativePath = normalizeRelativePath(entry?.pythonRelativePath || '')
+  if (!archiveName || !archiveSha256 || !runtimeKey || !pythonRelativePath) {
+    throw new Error(`asset metadata invalid (${profileName})`)
+  }
+
+  const downloadCacheDir = path.resolve(runtimeRoot, '.downloads')
+  const archivePath = path.join(downloadCacheDir, archiveName)
+  const extractRoot = path.join(downloadCacheDir, `extract-${profileName}-${Date.now()}`)
+  const extractedRuntimeDir = path.join(extractRoot, runtimeKey)
+  const extractedPythonPath = path.join(extractedRuntimeDir, pythonRelativePath)
+
+  console.log(
+    `[demucs-runtime-ensure] Downloading runtime asset (${profileName}) from GitHub release`
+  )
+  await downloadRuntimeAssetArchive(entry, archivePath)
+  const stat = fs.statSync(archivePath)
+  if (archiveSize > 0 && stat.size !== archiveSize) {
+    throw new Error(
+      `runtime asset size mismatch (${profileName}): expected=${archiveSize} actual=${stat.size}`
+    )
+  }
+  const actualSha256 = await computeFileSha256(archivePath)
+  if (actualSha256 !== archiveSha256) {
+    throw new Error(
+      `runtime asset sha256 mismatch (${profileName}): expected=${archiveSha256} actual=${actualSha256}`
+    )
+  }
+
+  fs.rmSync(extractRoot, { recursive: true, force: true })
+  extractRuntimeAssetArchive(archivePath, extractRoot)
+  if (!fs.existsSync(extractedPythonPath)) {
+    throw new Error(`runtime asset python missing (${profileName}): ${pythonRelativePath}`)
+  }
+
+  fs.rmSync(runtimeDir, { recursive: true, force: true })
+  fs.mkdirSync(path.dirname(runtimeDir), { recursive: true })
+  fs.renameSync(extractedRuntimeDir, runtimeDir)
+  fs.rmSync(extractRoot, { recursive: true, force: true })
+  console.log(`[demucs-runtime-ensure] Installed runtime asset (${profileName}) -> ${runtimeDir}`)
+  return true
+}
+
+const tryInstallProfileFromRemoteAsset = async (manifest, profileName, runtimeDir) => {
+  if (!preferRemoteAssets) return false
+  const entry = resolveRuntimeAssetEntry(manifest, profileName)
+  if (!entry) return false
+  try {
+    return await installRuntimeProfileFromAsset(entry, profileName, runtimeDir)
+  } catch (error) {
+    console.warn(
+      `[demucs-runtime-ensure] Runtime asset install failed (${profileName}), fallback to local build: ${
+        toShortText(error instanceof Error ? error.message : String(error || 'unknown'))
+      }`
+    )
+    return false
   }
 }
 
@@ -488,9 +643,15 @@ const probeWindowsGpuAdapters = () => {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-  const joined = names.join(' ').toLowerCase()
+  const effectiveNames = names.filter((name) => {
+    const lowered = name.toLowerCase()
+    if (lowered.includes('microsoft basic render')) return false
+    if (lowered.includes('microsoft remote display')) return false
+    return true
+  })
+  const joined = effectiveNames.join(' ').toLowerCase()
   return {
-    names,
+    names: effectiveNames,
     hasNvidia: joined.includes('nvidia') || joined.includes('geforce') || joined.includes('quadro'),
     hasIntel: joined.includes('intel') || joined.includes('arc'),
     hasAmd:
@@ -505,7 +666,8 @@ const resolveAutoProfiles = (platformKey, platformConfig) => {
   if (platformKey === 'win32-x64') {
     const adapters = probeWindowsGpuAdapters()
     if (adapters.hasNvidia) profileSet.add('cuda')
-    if (adapters.hasIntel || adapters.hasAmd) profileSet.add('directml')
+    if (adapters.hasIntel) profileSet.add('xpu')
+    if (adapters.hasAmd) profileSet.add('directml')
   } else if (platformKey === 'darwin-arm64') {
     profileSet.add('mps')
   } else if (platformKey.startsWith('linux')) {
@@ -522,6 +684,7 @@ const ensureBaseRuntime = (platformKey, platformConfig) => {
   const baseRuntimeDir = path.resolve(runtimeRoot, platformKey, baseRuntimeDirName)
   const basePipInstallArgs = normalizeList(platformConfig?.basePipInstall)
   const basePythonPath = resolveRuntimePythonPath(baseRuntimeDir)
+  const baseEnv = buildRuntimeEnv(baseRuntimeDir)
 
   if (!fs.existsSync(basePythonPath)) {
     const pythonCommand = resolveSystemPythonCommand()
@@ -539,12 +702,18 @@ const ensureBaseRuntime = (platformKey, platformConfig) => {
   }
 
   if (install) {
-    const baseProbe = runQuiet(resolvedBasePython, ['-c', 'import demucs, torch, torchaudio, onnxruntime'])
+    const baseProbe = runQuiet(
+      resolvedBasePython,
+      ['-c', 'import demucs, torch, torchaudio, onnxruntime'],
+      { env: baseEnv }
+    )
     if (baseProbe.status !== 0 && basePipInstallArgs.length > 0) {
       console.log(
         `[demucs-runtime-ensure] Installing base runtime deps: ${basePipInstallArgs.join(' ')}`
       )
-      run(resolvedBasePython, ['-m', 'pip', 'install', '--upgrade', ...basePipInstallArgs])
+      run(resolvedBasePython, ['-m', 'pip', 'install', '--upgrade', ...basePipInstallArgs], {
+        env: baseEnv
+      })
     }
   }
 
@@ -601,6 +770,7 @@ const main = async () => {
     explicitProfiles.length > 0
       ? explicitProfiles.filter((profileName) => !!platformConfig.profiles?.[profileName])
       : resolveAutoProfiles(platformArg, platformConfig)
+  const runtimeAssetManifest = await readRuntimeAssetManifest()
 
   if (selectedProfiles.length === 0) {
     console.log('[demucs-runtime-ensure] No matching profiles selected, skip')
@@ -624,18 +794,36 @@ const main = async () => {
     const pipInstallArgs = normalizeList(profileConfig.pipInstall)
 
     if (!fs.existsSync(pythonPath)) {
+      const restored = await tryInstallProfileFromRemoteAsset(
+        runtimeAssetManifest,
+        profileName,
+        runtimeDir
+      )
+      if (restored) continue
       missingProfiles.push(profileName)
       continue
     }
 
     if (install && pipInstallArgs.length > 0 && !fs.existsSync(metadataPath)) {
+      const restored = await tryInstallProfileFromRemoteAsset(
+        runtimeAssetManifest,
+        profileName,
+        runtimeDir
+      )
+      if (restored) continue
       addUniqueItem(rebuildProfiles, profileName)
       continue
     }
 
     if (!install) continue
-    const probe = probeRuntimeModules(pythonPath)
+    const probe = probeRuntimeModules(pythonPath, runtimeDir)
     if (!probe.ok || !probe.payload) {
+      const restored = await tryInstallProfileFromRemoteAsset(
+        runtimeAssetManifest,
+        profileName,
+        runtimeDir
+      )
+      if (restored) continue
       addUniqueItem(brokenProfiles, profileName)
       addUniqueItem(rebuildProfiles, profileName)
       console.warn(
@@ -648,12 +836,20 @@ const main = async () => {
     const payload = probe.payload
     const baseReady = !!payload.demucs && !!payload.torch && !!payload.torchaudio
     const requiresDirectml = profileName === 'directml'
+    const requiresXpu = profileName === 'xpu'
     const directmlReady = !requiresDirectml ? true : !!payload.torch_directml
-    if (!baseReady || !directmlReady) {
+    const xpuReady = !requiresXpu ? true : !!payload.xpu_backend
+    if (!baseReady || !directmlReady || !xpuReady) {
+      const restored = await tryInstallProfileFromRemoteAsset(
+        runtimeAssetManifest,
+        profileName,
+        runtimeDir
+      )
+      if (restored) continue
       addUniqueItem(brokenProfiles, profileName)
       addUniqueItem(rebuildProfiles, profileName)
       console.warn(
-        `[demucs-runtime-ensure] Runtime deps incomplete (${profileName}), will rebuild: demucs=${payload.demucs} torch=${payload.torch} torchaudio=${payload.torchaudio} torch_directml=${payload.torch_directml}`
+        `[demucs-runtime-ensure] Runtime deps incomplete (${profileName}), will rebuild: demucs=${payload.demucs} torch=${payload.torch} torchaudio=${payload.torchaudio} torch_version=${payload.torch_version || ''} xpu_backend=${payload.xpu_backend} torch_directml=${payload.torch_directml}`
       )
     }
   }

@@ -1,6 +1,7 @@
 import {
   createTransportBufferSource,
   createTransportKeyLockSource,
+  createTransportStreamingKeyLockSource,
   type TransportPlayableSource
 } from '@renderer/composables/mixtape/timelineTransportPlayableSource'
 import type {
@@ -90,7 +91,7 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
       const stemNodes: TrackStemGraphNode[] = []
       for (const stemAudio of stemAudios) {
         const source = shouldUseRealtimeKeyLock(entry)
-          ? createTransportKeyLockSource(ctx, stemAudio.audioBuffer as AudioBuffer)
+          ? createTransportStreamingKeyLockSource(ctx, stemAudio.audioBuffer as AudioBuffer)
           : createTransportBufferSource(ctx, stemAudio.audioBuffer as AudioBuffer)
         source.playbackRate.value = entry.tempoRatio
         const stemGain = ctx.createGain()
@@ -180,7 +181,7 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
     }
 
     const source = shouldUseRealtimeKeyLock(entry)
-      ? createTransportKeyLockSource(ctx, audioBuffer)
+      ? createTransportStreamingKeyLockSource(ctx, audioBuffer)
       : createTransportBufferSource(ctx, audioBuffer)
     source.playbackRate.value = entry.tempoRatio
 
