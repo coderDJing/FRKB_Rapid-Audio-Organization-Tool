@@ -210,7 +210,8 @@ export const normalizePositiveTimestamp = (value: unknown): number => {
 export const toDemucsSegmentSecArg = (value: number): string => {
   const parsed = Number(value)
   const safeValue = Number.isFinite(parsed) && parsed > 0 ? parsed : 7
-  return String(Math.max(1, Math.floor(safeValue)))
+  const rounded = Math.max(1, Math.round(safeValue * 10) / 10)
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
 }
 
 export const resolveDemucsSegmentSec = (params: {
