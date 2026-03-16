@@ -57,30 +57,41 @@ onUnmounted(() => {
 // 下载相关状态
 const showWin = ref(false)
 const showMac = ref(false)
-const winUrl = ref('#')
-const macUrl = ref('#')
+const latestReleaseApi =
+  'https://api.github.com/repos/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases/latest'
+const latestReleasePage =
+  'https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases/latest'
+const winUrl = ref(latestReleasePage)
+const macUrl = ref(latestReleasePage)
 const version = ref('')
 const isLoadingDownloads = ref(true)
+
+const findAssetUrl = (assets, matchers) => {
+  for (const matcher of matchers) {
+    const match = assets.find((asset) => matcher.test(asset.name))
+    if (match?.browser_download_url) return match.browser_download_url
+  }
+  return ''
+}
+
+const resolveWindowsDownloadUrl = (assets) =>
+  findAssetUrl(assets, [/setup.*\.exe$/i, /\.exe$/i, /\.msi$/i])
+
+const resolveMacDownloadUrl = (assets) => findAssetUrl(assets, [/\.dmg$/i, /\.pkg$/i, /\.zip$/i])
 
 // 初始化下载按钮
 const initDownloadButtons = async () => {
   try {
-    const api =
-      'https://api.github.com/repos/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases/latest'
-    const res = await fetch(api)
+    const res = await fetch(latestReleaseApi)
     if (!res.ok) throw new Error('Failed to fetch')
 
     const data = await res.json()
     const assets = data.assets || []
+    const releaseUrl =
+      typeof data.html_url === 'string' && data.html_url ? data.html_url : latestReleasePage
 
-    const win = assets.find((a) => /win.*\.(exe|msi)$/i.test(a.name))
-    const mac = assets.find(
-      (a) =>
-        /\.(dmg|pkg|zip)$/i.test(a.name) && /(mac|osx|darwin|universal|arm64|x64)/i.test(a.name)
-    )
-
-    if (win) winUrl.value = win.browser_download_url
-    if (mac) macUrl.value = mac.browser_download_url
+    winUrl.value = resolveWindowsDownloadUrl(assets) || releaseUrl
+    macUrl.value = resolveMacDownloadUrl(assets) || releaseUrl
 
     if (data.tag_name) {
       version.value = data.tag_name.startsWith('v') ? data.tag_name : `v${data.tag_name}`
@@ -489,7 +500,13 @@ const enFaq = [
 
           <!-- 下载按钮 -->
           <div v-else class="cta-panel">
-            <a v-if="showWin" class="download-btn" :href="winUrl" target="_blank" rel="nofollow">
+            <a
+              v-if="showWin"
+              class="download-btn"
+              :href="winUrl"
+              target="_blank"
+              rel="nofollow noopener noreferrer"
+            >
               <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
                 <path
                   d="M0 3.449L9.75 2.1V11.7H0V3.449zm0 17.1L9.75 21.9V12.3H0v8.249zM10.5 1.8L24 0v11.7H10.5V1.8zm0 20.4L24 24V12.3H10.5v9.9z"
@@ -508,7 +525,13 @@ const enFaq = [
               </span>
             </a>
 
-            <a v-if="showMac" class="download-btn" :href="macUrl" target="_blank" rel="nofollow">
+            <a
+              v-if="showMac"
+              class="download-btn"
+              :href="macUrl"
+              target="_blank"
+              rel="nofollow noopener noreferrer"
+            >
               <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
                 <path
                   d="M17.057 12.781c.032 2.588 2.254 3.462 2.287 3.477-.025.065-.338 1.15-1.118 2.273-.679.973-1.381 1.94-2.486 1.96-1.087.02-1.391-.651-2.629-.651-1.241 0-1.609.63-2.67.67-.1.04-1.766-.02-2.527-1.12-1.554-2.245-2.657-6.333-1.055-9.09.795-1.373 2.215-2.248 3.76-2.268 1.171-.025 2.212.748 2.927.748.717 0 1.98-.923 3.342-.782.572.022 2.181.23 3.213 1.731-.082.051-1.922 1.112-1.902 3.33zm-2.404-7.334c.615-.747 1.026-1.783.912-2.821-.892.036-1.972.593-2.612 1.341-.571.659-1.072 1.716-.938 2.731.996.078 2.016-.491 2.638-1.251z"
