@@ -138,14 +138,16 @@ const contextmenuEvent = async (event: MouseEvent) => {
   if (result !== 'cancel') {
     if (result.menuName == 'library.createPlaylist') {
       const newUuid = uuidV4()
-      libraryData.children?.unshift({
+      libraryData.children = libraryData.children || []
+      libraryData.children.unshift({
         uuid: newUuid,
         type: 'songList',
         dirName: ''
       })
       // 不在此时标记“创建中”，等待命名确认开始写盘时再标记
     } else if (result.menuName == 'library.createFolder') {
-      libraryData.children?.unshift({
+      libraryData.children = libraryData.children || []
+      libraryData.children.unshift({
         uuid: uuidV4(),
         type: 'dir',
         dirName: ''

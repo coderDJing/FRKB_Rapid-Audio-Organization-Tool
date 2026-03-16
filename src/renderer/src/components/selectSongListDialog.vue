@@ -224,7 +224,8 @@ const contextmenuEvent = async (event: MouseEvent) => {
   if (result !== 'cancel') {
     if (result.menuName == 'library.createPlaylist') {
       const newUuid = uuidV4()
-      libraryData.value.children?.unshift({
+      libraryData.value.children = libraryData.value.children || []
+      libraryData.value.children.unshift({
         uuid: newUuid,
         type: 'songList',
         dirName: ''
@@ -233,7 +234,8 @@ const contextmenuEvent = async (event: MouseEvent) => {
       runtime.dialogSelectedSongListUUID = newUuid
       selectedArea.value = 'tree'
     } else if (result.menuName == 'library.createFolder') {
-      libraryData.value.children?.unshift({
+      libraryData.value.children = libraryData.value.children || []
+      libraryData.value.children.unshift({
         uuid: uuidV4(),
         type: 'dir',
         dirName: ''

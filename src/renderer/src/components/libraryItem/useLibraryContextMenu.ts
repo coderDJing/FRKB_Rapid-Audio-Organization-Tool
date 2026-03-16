@@ -153,7 +153,8 @@ export function useLibraryContextMenu({
         dirChildRendered.value = true
         dirChildShow.value = true
         const newUuid = uuidV4()
-        dirData.children?.unshift({
+        dirData.children = dirData.children || []
+        dirData.children.unshift({
           uuid: newUuid,
           dirName: '',
           type: 'songList'
@@ -164,7 +165,8 @@ export function useLibraryContextMenu({
       case 'library.createFolder': {
         dirChildRendered.value = true
         dirChildShow.value = true
-        dirData.children?.unshift({
+        dirData.children = dirData.children || []
+        dirData.children.unshift({
           uuid: uuidV4(),
           dirName: '',
           type: 'dir'

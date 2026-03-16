@@ -222,18 +222,18 @@ const contextmenuEvent = async (event: MouseEvent) => {
       dirChildRendered.value = true
       dirChildShow.value = true
       const newUuid = uuidV4()
-      if (dirData.children) {
-        dirData.children.unshift({
-          uuid: newUuid,
-          dirName: '',
-          type: 'songList'
-        })
-      }
+      dirData.children = dirData.children || []
+      dirData.children.unshift({
+        uuid: newUuid,
+        dirName: '',
+        type: 'songList'
+      })
       // 不在此时标记“创建中”，等待命名确认开始写盘时再标记
     } else if (result.menuName == '新建文件夹') {
       dirChildRendered.value = true
       dirChildShow.value = true
-      dirData.children?.unshift({
+      dirData.children = dirData.children || []
+      dirData.children.unshift({
         uuid: uuidV4(),
         dirName: '',
         type: 'dir'

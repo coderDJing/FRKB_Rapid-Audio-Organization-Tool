@@ -21,6 +21,18 @@ function hasSubdirectories(targetPath: fs.PathLike) {
   }
 }
 
+function resolveDemoMusicPath(fileName: string) {
+  const packedPath = path.join(__dirname, '../../resources/demoMusic', fileName)
+  const unpackedPath = packedPath.replace('app.asar', 'app.asar.unpacked')
+  if (fs.pathExistsSync(unpackedPath)) {
+    return unpackedPath
+  }
+  if (fs.pathExistsSync(packedPath)) {
+    return packedPath
+  }
+  return unpackedPath
+}
+
 export async function initDatabaseStructure(
   dirPath: string,
   options: { createSamples?: boolean } = {}
@@ -64,15 +76,12 @@ export async function initDatabaseStructure(
     !hasSubdirectories(curatedLibraryPath)
   ) {
     await fs.ensureDir(path.join(filterLibraryPath, 'House'))
-    const filterLibrarySonglistSongDemo1 = path
-      .join(
-        __dirname,
-        '../../resources/demoMusic/Oden & Fatzo, Poppy Baskcomb - Tell Me What You Want (Extended Mix).mp3'
-      )
-      .replace('app.asar', 'app.asar.unpacked')
-    const filterLibrarySonglistSongDemo2 = path
-      .join(__dirname, '../../resources/demoMusic/War - Low Rider (Kyle Watson Remix).mp3')
-      .replace('app.asar', 'app.asar.unpacked')
+    const filterLibrarySonglistSongDemo1 = resolveDemoMusicPath(
+      'Oden & Fatzo, Poppy Baskcomb - Tell Me What You Want (Extended Mix).mp3'
+    )
+    const filterLibrarySonglistSongDemo2 = resolveDemoMusicPath(
+      'War - Low Rider (Kyle Watson Remix).mp3'
+    )
     if (fs.pathExistsSync(filterLibrarySonglistSongDemo1)) {
       await fs.copy(
         filterLibrarySonglistSongDemo1,
@@ -91,12 +100,9 @@ export async function initDatabaseStructure(
     }
 
     await fs.ensureDir(path.join(curatedLibraryPath, 'House Nice'))
-    const curatedLibrarySonglistSongDemo1 = path
-      .join(
-        __dirname,
-        '../../resources/demoMusic/Armand Van Helden - I Want Your Soul (AVH Rework).mp3'
-      )
-      .replace('app.asar', 'app.asar.unpacked')
+    const curatedLibrarySonglistSongDemo1 = resolveDemoMusicPath(
+      'Armand Van Helden - I Want Your Soul (AVH Rework).mp3'
+    )
     if (fs.pathExistsSync(curatedLibrarySonglistSongDemo1)) {
       await fs.copy(
         curatedLibrarySonglistSongDemo1,
