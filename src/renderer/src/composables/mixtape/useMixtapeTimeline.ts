@@ -44,6 +44,7 @@ import type {
   MixtapeWaveformStemId,
   RawWaveformData,
   RawWaveformLevel,
+  SerializedTrackTempoSnapshot,
   StemWaveformData,
   TimelineLayoutSnapshot,
   TimelineRenderPayload,
@@ -186,6 +187,8 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     resolveTrackTempoRatio,
     resolveTrackFirstBeatSeconds,
     resolveTrackFirstBeatMs,
+    resolveTrackTimeMapSignature,
+    resolveTrackGridSignature,
     resolveTrackRenderWidthPx,
     clearTimelineLayoutCache,
     resolveFirstVisibleLayoutIndex,
@@ -387,7 +390,8 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
               renderZoomValue,
               Math.max(1, Math.floor(tileWidth)),
               height,
-              pixelRatio
+              pixelRatio,
+              ctx.tempoSnapshot.signature
             )
             if (waveformTileCache.has(cacheKey) || waveformTilePending.has(cacheKey)) continue
             queue.push({
@@ -460,8 +464,10 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
       tileWidth: number
       trackWidth: number
       durationSeconds: number
+      tempoSnapshot: SerializedTrackTempoSnapshot
       laneHeight: number
       pixelRatio: number
+      timeMapSignature?: string
     }> = []
     if (!tracks.value.length) return tasks
     const pixelRatio = window.devicePixelRatio || 1
@@ -524,7 +530,8 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
               level,
               Math.max(1, Math.floor(tileWidth)),
               height,
-              pixelRatio
+              pixelRatio,
+              ctx.tempoSnapshot.signature
             )
             tasks.push({
               cacheKey,
@@ -536,8 +543,10 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
               tileWidth,
               trackWidth: ctx.trackWidth,
               durationSeconds: ctx.sourceDurationSeconds,
+              tempoSnapshot: ctx.tempoSnapshot,
               laneHeight: ctx.laneHeight,
-              pixelRatio
+              pixelRatio,
+              timeMapSignature: ctx.tempoSnapshot.signature
             })
           }
         }
@@ -757,8 +766,11 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     forEachVisibleLayoutItem,
     resolveTrackWaveformSources,
     resolveWaveformSubLaneMetrics,
+    resolveTrackDurationSeconds,
     resolveTrackSourceDurationSeconds,
     resolveTrackFirstBeatMs,
+    resolveTrackTimeMapSignature,
+    resolveTrackGridSignature,
     resolveRenderPxPerSec,
     resolveTimelineBufferId,
     resolveLaneHeightForZoom,
@@ -821,6 +833,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     resolveTrackDurationSeconds,
     resolveTrackSourceDurationSeconds,
     resolveTrackFirstBeatMs,
+    resolveTrackTimeMapSignature,
     resolveTrackRenderWidthPx,
     resolveRenderPxPerSec,
     resolveRawWaveformLevel,
@@ -954,6 +967,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     mixtapeMixMode,
     mixtapeStemMode,
     resolveTrackWaveformFilePaths,
+    resolveTrackGridSignature,
     isTrackDragging,
     bpmAnalysisActive,
     timelineDurationSec,

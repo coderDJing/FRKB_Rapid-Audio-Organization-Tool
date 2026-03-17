@@ -743,6 +743,7 @@ export const useMixtape = () => {
     handleTrackContextMenu,
     handleTrackMenuAdjustGrid,
     handleTrackMenuToggleMasterTempo,
+    handleTrackMenuRemoveFromMixtape,
     handleBeatAlignDialogCancel,
     handleBeatAlignGridDefinitionSave,
     handleGlobalPointerDown,
@@ -845,6 +846,14 @@ export const useMixtape = () => {
       ? eventPayload.uuids.filter(Boolean)
       : []
     if (!uuids.includes(playlistId)) return
+    schedulePlaylistReload()
+  }
+  const handleMixtapeItemsRemoved = (_e: unknown, eventPayload: any) => {
+    const playlistId = String(payload.value.playlistId || '').trim()
+    if (!playlistId) return
+    const targetPlaylistId =
+      typeof eventPayload?.playlistId === 'string' ? eventPayload.playlistId.trim() : ''
+    if (!targetPlaylistId || targetPlaylistId !== playlistId) return
     schedulePlaylistReload()
   }
   const handleMixtapeStemStatusUpdated = (_e: unknown, eventPayload: any) => {
@@ -1144,6 +1153,7 @@ export const useMixtape = () => {
       handleMixtapeStemRuntimeDownloadState
     )
     window.electron.ipcRenderer.on('mixtape-output:progress', handleMixtapeOutputProgress)
+    window.electron.ipcRenderer.on('mixtape-items-removed', handleMixtapeItemsRemoved)
     window.electron.ipcRenderer.on('mixtapeWindow-max', (_e, next: boolean) => {
       runtime.isWindowMaximized = !!next
     })
@@ -1189,6 +1199,9 @@ export const useMixtape = () => {
         'mixtape-output:progress',
         handleMixtapeOutputProgress
       )
+    } catch {}
+    try {
+      window.electron.ipcRenderer.removeListener('mixtape-items-removed', handleMixtapeItemsRemoved)
     } catch {}
     try {
       window.electron.ipcRenderer.removeAllListeners('mixtapeWindow-max')
@@ -1256,6 +1269,7 @@ export const useMixtape = () => {
     trackContextMenuStyle,
     handleTrackMenuAdjustGrid,
     handleTrackMenuToggleMasterTempo,
+    handleTrackMenuRemoveFromMixtape,
     trackMenuMasterTempoChecked,
     beatAlignDialogVisible,
     beatAlignTrack,

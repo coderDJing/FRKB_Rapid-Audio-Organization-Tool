@@ -29,6 +29,24 @@ export type RawWaveformLevel = RawWaveformData & {
   factor: number
 }
 
+export type SerializedWorkerTrackTempoSnapshot = {
+  signature: string
+  durationSec: number
+  sourceDurationSec: number
+  baseBpm: number
+  gridSourceBpm: number
+  originalBpm: number
+  firstBeatSourceSec: number
+  beatSourceSec: number
+  barBeatOffset: number
+  controlPoints: Array<{ sec: number; bpm: number; sourceSec?: number; allowOffGrid?: boolean }>
+  overrideLines: Array<{ sec: number; sourceSec: number; level: 'bar' | 'beat4' | 'beat' }>
+  overrideRange?: {
+    startSec: number
+    endSec: number
+  }
+}
+
 export type RenderTilePayload = {
   cacheKey: string
   filePath: string
@@ -39,6 +57,7 @@ export type RenderTilePayload = {
   tileWidth: number
   trackWidth: number
   durationSeconds: number
+  tempoSnapshot: SerializedWorkerTrackTempoSnapshot
   laneHeight: number
   pixelRatio: number
 }
@@ -53,15 +72,14 @@ export type RenderFrameTrack = {
   waveformFilePath?: string
   waveformStemId: WaveformStemId
   durationSeconds: number
+  timelineDurationSeconds: number
   trackWidth: number
   startSec: number
   startX: number
   laneIndex: number
   laneOffsetY?: number
   laneHeight?: number
-  bpm: number
-  firstBeatMs: number
-  barBeatOffset: number
+  tempoSnapshot: SerializedWorkerTrackTempoSnapshot
 }
 
 export type RenderFramePayload = {

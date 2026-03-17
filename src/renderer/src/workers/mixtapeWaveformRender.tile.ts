@@ -2,9 +2,11 @@ import type {
   RawWaveformData,
   RawWaveformLevel,
   RenderTilePayload,
+  SerializedWorkerTrackTempoSnapshot,
   StemWaveformData,
   WaveformStemId
 } from './mixtapeWaveformRender.types'
+import { createTrackTimeMap } from '../composables/mixtape/trackTimeMapCore'
 
 type CreateTileRendererOptions = {
   stemWaveformCache: Map<string, StemWaveformData>
@@ -43,12 +45,6 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
   const STEM_WAVEFORM_RAW_ALPHA = 1
   const resolveStemWaveformColor = (stemId?: WaveformStemId) =>
     STEM_WAVEFORM_COLORS[stemId || 'inst'] || STEM_WAVEFORM_COLORS.inst
-  const normalizeBeatOffset = (value: number, interval: number) => {
-    const safeInterval = Math.max(1, Math.floor(Number(interval) || 1))
-    const numeric = Number(value)
-    const rounded = Number.isFinite(numeric) ? Math.round(numeric) : 0
-    return ((rounded % safeInterval) + safeInterval) % safeInterval
-  }
 
   const ensureCanvas = (
     target: OffscreenCanvas | null,
@@ -337,6 +333,41 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     ctx.fillRect(0, y, width, barHeight)
   }
 
+  const createTimeMapFromTempoSnapshot = (tempoSnapshot: SerializedWorkerTrackTempoSnapshot) =>
+    createTrackTimeMap({
+      controlPoints: tempoSnapshot.controlPoints.map((point) => ({
+        sec: Number(point.sec),
+        bpm: Number(point.bpm),
+        sourceSec:
+          Number.isFinite(Number(point.sourceSec)) && Number(point.sourceSec) >= 0
+            ? Number(point.sourceSec)
+            : undefined,
+        allowOffGrid: point.allowOffGrid === true ? true : undefined
+      })),
+      durationSec: Number(tempoSnapshot.durationSec) || 0,
+      sourceDurationSec: Number(tempoSnapshot.sourceDurationSec) || 0,
+      originalBpm: Number(tempoSnapshot.originalBpm) || 0,
+      fallbackBpm: Number(tempoSnapshot.baseBpm) || 128,
+      firstBeatSourceSec: Number(tempoSnapshot.firstBeatSourceSec) || 0,
+      beatSourceSec: Number(tempoSnapshot.beatSourceSec) || 0,
+      barBeatOffset: Number(tempoSnapshot.barBeatOffset) || 0,
+      overrideLines: Array.isArray(tempoSnapshot.overrideLines)
+        ? tempoSnapshot.overrideLines.map((line) => ({
+            sec: Number(line.sec),
+            sourceSec: Number(line.sourceSec),
+            level: line.level
+          }))
+        : [],
+      overrideRange:
+        Number.isFinite(Number(tempoSnapshot.overrideRange?.startSec)) &&
+        Number.isFinite(Number(tempoSnapshot.overrideRange?.endSec))
+          ? {
+              startSec: Number(tempoSnapshot.overrideRange?.startSec),
+              endSec: Number(tempoSnapshot.overrideRange?.endSec)
+            }
+          : undefined
+    })
+
   const renderTileBitmap = (payload: RenderTilePayload): ImageBitmap | null => {
     const {
       filePath,
@@ -346,6 +377,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       tileWidth,
       trackWidth,
       durationSeconds,
+      tempoSnapshot,
       laneHeight,
       pixelRatio
     } = payload
@@ -379,12 +411,16 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     const rawDurationSeconds =
       rawData && Number.isFinite(rawData.duration) && rawData.duration > 0 ? rawData.duration : 0
     const waveformDurationSeconds = rawDurationSeconds > 0 ? rawDurationSeconds : durationSeconds
-    const startTime = waveformDurationSeconds
-      ? (tileStart / Math.max(1, trackWidth)) * waveformDurationSeconds
+    const safeTimelineDurationSeconds = Math.max(0, Number(tempoSnapshot.durationSec) || 0)
+    const timeMap = createTimeMapFromTempoSnapshot(tempoSnapshot)
+    const localStartSec = safeTimelineDurationSeconds
+      ? (tileStart / Math.max(1, trackWidth)) * safeTimelineDurationSeconds
       : 0
-    const endTime = waveformDurationSeconds
-      ? ((tileStart + tileWidth) / Math.max(1, trackWidth)) * waveformDurationSeconds
+    const localEndSec = safeTimelineDurationSeconds
+      ? ((tileStart + tileWidth) / Math.max(1, trackWidth)) * safeTimelineDurationSeconds
       : 0
+    const startTime = waveformDurationSeconds ? timeMap.mapLocalToSource(localStartSec) : 0
+    const endTime = waveformDurationSeconds ? timeMap.mapLocalToSource(localEndSec) : 0
     const rawSpan = Math.max(0, endTime - startTime)
     const rawSamplesPerPixel =
       rawData && rawSpan > 0 ? (rawData.rate * rawSpan) / Math.max(1, tileWidth * pixelRatio) : 0
@@ -451,38 +487,37 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     ctx: OffscreenCanvasRenderingContext2D,
     width: number,
     height: number,
-    bpm: number,
-    firstBeatMs: number,
-    barBeatOffset: number,
+    track: {
+      tempoSnapshot: SerializedWorkerTrackTempoSnapshot
+      trackWidth: number
+      durationSeconds: number
+    },
     range: { start: number; end: number },
-    renderPx: number,
     barOnly: boolean,
     showBeat4: boolean,
     showBeat: boolean,
     barWidth: number
   ) => {
-    if (!Number.isFinite(bpm) || bpm <= 0) return
-    const interval = (60 / bpm) * renderPx
-    if (!interval || !Number.isFinite(interval)) return
-    const offsetPx = (Number(firstBeatMs) / 1000) * renderPx
+    const trackWidth = Math.max(0, Number(track.trackWidth) || 0)
+    const timelineDurationSeconds = Math.max(0, Number(track.tempoSnapshot.durationSec) || 0)
+    const sourceDurationSeconds = Math.max(0, Number(track.durationSeconds) || 0)
     const startX = range.start
     const endX = range.end
-    if (endX <= startX || width <= 0 || height <= 0) return
-    const normalizedBarOffset = normalizeBeatOffset(barBeatOffset, 32)
-    const startIndex = Math.floor((startX - offsetPx) / interval) - 2
-    const endIndex = Math.ceil((endX - offsetPx) / interval) + 2
+    if (endX <= startX || width <= 0 || height <= 0 || trackWidth <= 0) return
+    if (timelineDurationSeconds <= 0 || sourceDurationSeconds <= 0) return
+    const visibleGridLines = createTimeMapFromTempoSnapshot(
+      track.tempoSnapshot
+    ).buildVisibleGridLines(Number.POSITIVE_INFINITY)
+    if (!visibleGridLines.length) return
 
     ctx.save()
-    for (let i = startIndex; i <= endIndex; i += 1) {
-      const rawX = offsetPx + i * interval
-      if (rawX < startX - interval || rawX > endX + interval) continue
-      const shiftedIndex = i - normalizedBarOffset
-      const mod32 = ((shiftedIndex % 32) + 32) % 32
-      const mod4 = ((shiftedIndex % 4) + 4) % 4
-      const level = mod32 === 0 ? 'bar' : mod4 === 0 ? 'beat4' : 'beat'
+    for (const line of visibleGridLines) {
+      const level = line.level
       if (barOnly && level !== 'bar') continue
       if (!showBeat4 && level !== 'bar') continue
       if (!showBeat && level === 'beat') continue
+      const rawX = (line.sec / timelineDurationSeconds) * trackWidth
+      if (rawX < startX - 64 || rawX > endX + 64) continue
       const x = Math.round(rawX - startX)
       if (level === 'bar') {
         ctx.globalAlpha = 0.95

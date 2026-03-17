@@ -3,17 +3,19 @@ import { canPlayHtmlAudio, toPreviewUrl } from '@renderer/pages/modules/songPlay
 import {
   normalizeBeatOffset as normalizeBeatOffsetByMixxx,
   resolveBeatSecByBpm,
-  resolveFirstBeatTimelineSec,
   resolveGridAnchorSec
 } from '@renderer/composables/mixtape/mixxxSyncModel'
 import { MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM } from '@renderer/composables/mixtape/gainEnvelope'
-import { normalizeTrackBpmEnvelopePoints } from '@renderer/composables/mixtape/trackBpmEnvelope'
+import {
+  buildTrackRuntimeTempoSnapshot,
+  serializeTrackRuntimeTempoSnapshot
+} from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
 import { normalizeVolumeMuteSegments } from '@renderer/composables/mixtape/volumeMuteSegments'
 import type {
-  MixtapeBpmPoint,
   MixtapeEnvelopeParamId,
   MixtapeGainPoint,
   MixtapeMuteSegment,
+  SerializedTrackTempoSnapshot,
   MixtapeTrack
 } from '@renderer/composables/mixtape/types'
 
@@ -80,7 +82,7 @@ export type TransportEntry = {
   startSec: number
   bpm: number
   originalBpm: number
-  bpmEnvelope: MixtapeBpmPoint[]
+  tempoSnapshot: SerializedTrackTempoSnapshot
   beatSec: number
   firstBeatSec: number
   barBeatOffset: number
@@ -298,24 +300,34 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
         }
         const bpm = Number(track.bpm)
         const originalBpm = Number(track.originalBpm) || bpm
+        const runtimeTempoSnapshot = buildTrackRuntimeTempoSnapshot({
+          track,
+          sourceDurationSec: sourceDuration
+        })
+        const tempoSnapshot = serializeTrackRuntimeTempoSnapshot(runtimeTempoSnapshot)
         const beatSec = resolveBeatSecByBpm(bpm)
-        const tempoRatio = ctx.resolveTrackTempoRatio(track)
-        const duration = sourceDuration / Math.max(0.01, tempoRatio)
-        const bpmEnvelope = normalizeTrackBpmEnvelopePoints(
-          track.bpmEnvelope,
-          duration,
-          bpm || track.gridBaseBpm || track.originalBpm || 128
+        const tempoRatio =
+          sourceDuration > 0 ? sourceDuration / Math.max(0.01, runtimeTempoSnapshot.durationSec) : 1
+        const duration = tempoSnapshot.durationSec
+        const firstBeatSec = runtimeTempoSnapshot.timeMap.mapSourceToLocal(
+          runtimeTempoSnapshot.firstBeatSourceSec
         )
-        const firstBeatSec = resolveFirstBeatTimelineSec(track.firstBeatMs, tempoRatio)
         const barBeatOffset = normalizeBeatOffset(track.barBeatOffset, 32)
         const masterTempo = track.masterTempo !== false
         const startSec = startSecById.get(track.id) ?? ctx.resolveTrackStartSec(track)
-        const syncAnchorSec = resolveGridAnchorSec({
-          startSec,
-          firstBeatSec,
-          beatSec,
-          barBeatOffset
-        })
+        const firstBarLine =
+          runtimeTempoSnapshot.timeMap
+            .buildVisibleGridLines(Number.POSITIVE_INFINITY)
+            .find((line) => line.level === 'bar') || null
+        const syncAnchorSec =
+          typeof firstBarLine?.sec === 'number'
+            ? Number((startSec + firstBarLine.sec).toFixed(4))
+            : resolveGridAnchorSec({
+                startSec,
+                firstBeatSec,
+                beatSec,
+                barBeatOffset
+              })
         const activeParams = ctx.resolveMixEnvelopeParams()
         const mixEnvelopes = activeParams.reduce(
           (acc, param) => {
@@ -342,7 +354,7 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
             startSec,
             bpm,
             originalBpm,
-            bpmEnvelope,
+            tempoSnapshot,
             beatSec,
             firstBeatSec,
             barBeatOffset,
@@ -383,7 +395,7 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
           startSec,
           bpm,
           originalBpm,
-          bpmEnvelope,
+          tempoSnapshot,
           beatSec,
           firstBeatSec,
           barBeatOffset,

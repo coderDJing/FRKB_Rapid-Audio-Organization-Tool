@@ -5,23 +5,26 @@ import type {
   TimelineTrackLayout
 } from '@renderer/composables/mixtape/types'
 import {
-  buildTrackBpmEnvelopePolylineByControlPoints,
   cloneTrackBpmPoints,
+  hasMeaningfulBpmEnvelopeTrack,
+  isRedundantFlatEnvelopeTrack,
+  normalizeTrackBpmEnvelopePoints,
+  resolveTrackBpmEnvelopeBaseValue,
+  resolveTrackBpmEnvelopeClampRange
+} from '@renderer/composables/mixtape/trackTempoModel'
+import {
+  buildTrackBpmEnvelopePolylineByControlPoints,
   mapTrackBpmToYPercent,
   mapTrackBpmYPercentToValue,
-  normalizeTrackBpmEnvelopePoints,
-  rebuildTrackBpmEnvelopePointsFromSourceAnchors,
-  resolveTrackBpmEnvelopeBaseValue,
-  resolveTrackBpmEnvelopeClampRange,
-  resolveNearestTrackVisibleGridLine,
-  resolveTrackBpmEnvelopeRenderablePoints,
-  resolveTrackBpmEnvelopeVisualRange,
-  resolveTrackGridSourceBpm,
-  resolveTrackLocalSecAtSourceTime,
-  resolveTrackSourceTimeAtLocalSec,
-  snapTrackLocalSecToBeatGrid,
-  sampleTrackBpmEnvelopeAtSec
-} from '@renderer/composables/mixtape/trackBpmEnvelope'
+  resolveTrackBpmEnvelopeVisualRange
+} from '@renderer/composables/mixtape/trackTempoVisual'
+import { buildTrackRuntimeTempoSnapshot } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
+import {
+  createMixtapePhaseSyncTrackState,
+  rebuildTrackPointsBySourceAnchors,
+  syncTargetTrackBpmSegmentToSourcePhase,
+  type MixtapePhaseSyncTrackState
+} from '@renderer/composables/mixtape/mixtapePhaseSync'
 
 type BpmEnvelopePointDot = {
   index: number
@@ -54,6 +57,8 @@ type PendingBpmPersistEntry = {
   durationSec: number
 }
 
+type MixtapeBpmResyncTrigger = 'track-position' | 'bpm-edit'
+
 type CreateMixtapeTrackBpmEnvelopeEditorParams = {
   tracks: Ref<MixtapeTrack[]>
   laneTracks: Ref<TimelineTrackLayout[][]>
@@ -73,6 +78,20 @@ const BPM_PERSIST_DEBOUNCE_MS = 220
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
 const buildSignature = (points: MixtapeBpmPoint[]) => JSON.stringify(points)
+const buildGridLineSignature = (lines: MixtapeTrack['phaseSyncGridLines']) =>
+  JSON.stringify(lines ?? [])
+const buildGridRangeSignature = (track: {
+  phaseSyncGridRangeStartSec?: number
+  phaseSyncGridRangeEndSec?: number
+}) =>
+  JSON.stringify([
+    Number.isFinite(Number(track.phaseSyncGridRangeStartSec))
+      ? Number(track.phaseSyncGridRangeStartSec)
+      : null,
+    Number.isFinite(Number(track.phaseSyncGridRangeEndSec))
+      ? Number(track.phaseSyncGridRangeEndSec)
+      : null
+  ])
 
 export const createMixtapeTrackBpmEnvelopeEditor = (
   params: CreateMixtapeTrackBpmEnvelopeEditorParams
@@ -92,6 +111,22 @@ export const createMixtapeTrackBpmEnvelopeEditor = (
     const startSec = Number(track?.startSec)
     if (Number.isFinite(startSec) && startSec >= 0) return startSec
     return 0
+  }
+
+  const buildWorkingTrackTimelineStates = (inputTracks: MixtapeTrack[]) => {
+    let cursorSec = 0
+    return inputTracks.map((track) => {
+      const durationSec = Math.max(0, Number(params.resolveTrackDurationSeconds(track)) || 0)
+      const rawStartSec = Number(track.startSec)
+      const startSec =
+        Number.isFinite(rawStartSec) && rawStartSec >= 0 ? Math.max(0, rawStartSec) : cursorSec
+      cursorSec = Math.max(cursorSec, startSec + durationSec)
+      return {
+        track,
+        startSec,
+        durationSec
+      }
+    })
   }
 
   const resolveTrackState = (trackId: string, options?: { includeDraft?: boolean }) => {
@@ -152,7 +187,8 @@ export const createMixtapeTrackBpmEnvelopeEditor = (
         sourceSec:
           Number.isFinite(Number(point.sourceSec)) && Number(point.sourceSec) >= 0
             ? Number(Number(point.sourceSec).toFixed(4))
-            : undefined
+            : undefined,
+        allowOffGrid: point.allowOffGrid === true ? true : undefined
       })),
       bpmEnvelopeDurationSec: Number(entry.durationSec)
     }))
@@ -186,94 +222,44 @@ export const createMixtapeTrackBpmEnvelopeEditor = (
     }, BPM_PERSIST_DEBOUNCE_MS)
   }
 
-  const buildMappedSourceSegment = (paramsInput: {
-    sourcePoints: MixtapeBpmPoint[]
-    sourceStartSec: number
-    targetStartSec: number
-    overlapStartSec: number
-    overlapEndSec: number
-    sourceFallbackBpm: number
+  const buildPhaseSyncState = (paramsInput: {
+    track: MixtapeTrack
+    points: MixtapeBpmPoint[]
+    durationSec: number
+    startSec: number
   }) => {
-    const {
-      sourcePoints,
-      sourceStartSec,
-      targetStartSec,
-      overlapStartSec,
-      overlapEndSec,
-      sourceFallbackBpm
-    } = paramsInput
-    const sourceLocalStart = overlapStartSec - sourceStartSec
-    const sourceLocalEnd = overlapEndSec - sourceStartSec
-    const mapped: MixtapeBpmPoint[] = [
-      {
-        sec: Number((overlapStartSec - targetStartSec).toFixed(4)),
-        bpm: sampleTrackBpmEnvelopeAtSec(sourcePoints, sourceLocalStart, sourceFallbackBpm)
-      }
-    ]
-    for (const point of sourcePoints) {
-      if (point.sec <= sourceLocalStart + BPM_POINT_SEC_EPSILON) continue
-      if (point.sec >= sourceLocalEnd - BPM_POINT_SEC_EPSILON) continue
-      mapped.push({
-        sec: Number((sourceStartSec + point.sec - targetStartSec).toFixed(4)),
-        bpm: point.bpm
+    const { track, points, durationSec, startSec } = paramsInput
+    const sourceDurationSec = Math.max(
+      0,
+      Number(params.resolveTrackSourceDurationSeconds(track)) || 0
+    )
+    return createMixtapePhaseSyncTrackState({
+      track,
+      startSec,
+      snapshot: buildTrackRuntimeTempoSnapshot({
+        track,
+        sourceDurationSec,
+        durationSec,
+        rawPoints: points
       })
-    }
-    mapped.push({
-      sec: Number((overlapEndSec - targetStartSec).toFixed(4)),
-      bpm: sampleTrackBpmEnvelopeAtSec(sourcePoints, sourceLocalEnd, sourceFallbackBpm)
-    })
-    return mapped
+    }) satisfies MixtapePhaseSyncTrackState
   }
 
-  const replaceTrackSegment = (paramsInput: {
+  const buildTempoSnapshotForState = (paramsInput: {
     track: MixtapeTrack
-    currentPoints: MixtapeBpmPoint[]
-    replacementPoints: MixtapeBpmPoint[]
-    segmentStartSec: number
-    segmentEndSec: number
+    points: MixtapeBpmPoint[]
     durationSec: number
-  }) => {
-    const { track, currentPoints, replacementPoints, segmentStartSec, segmentEndSec, durationSec } =
-      paramsInput
-    const fallbackBpm = resolveTrackBpmEnvelopeBaseValue(track)
-    const safeStartSec = clampNumber(segmentStartSec, 0, durationSec)
-    const safeEndSec = clampNumber(segmentEndSec, safeStartSec, durationSec)
-    const beforeValue = sampleTrackBpmEnvelopeAtSec(
-      currentPoints,
-      Math.max(0, safeStartSec - BPM_POINT_SEC_EPSILON),
-      fallbackBpm
-    )
-    const afterValue = sampleTrackBpmEnvelopeAtSec(
-      currentPoints,
-      Math.min(durationSec, safeEndSec + BPM_POINT_SEC_EPSILON),
-      fallbackBpm
-    )
-    const nextPoints: MixtapeBpmPoint[] = []
-    for (const point of currentPoints) {
-      if (point.sec < safeStartSec - BPM_POINT_SEC_EPSILON) {
-        nextPoints.push(point)
-      }
-    }
-    if (safeStartSec > BPM_POINT_SEC_EPSILON) {
-      nextPoints.push({
-        sec: Number(safeStartSec.toFixed(4)),
-        bpm: beforeValue
-      })
-    }
-    nextPoints.push(...replacementPoints)
-    if (safeEndSec < durationSec - BPM_POINT_SEC_EPSILON) {
-      nextPoints.push({
-        sec: Number(safeEndSec.toFixed(4)),
-        bpm: afterValue
-      })
-    }
-    for (const point of currentPoints) {
-      if (point.sec > safeEndSec + BPM_POINT_SEC_EPSILON) {
-        nextPoints.push(point)
-      }
-    }
-    return normalizeTrackBpmEnvelopePoints(nextPoints, durationSec, fallbackBpm)
-  }
+  }) =>
+    buildTrackRuntimeTempoSnapshot({
+      track: paramsInput.track,
+      sourceDurationSec: Math.max(
+        0,
+        Number(params.resolveTrackSourceDurationSeconds(paramsInput.track)) || 0
+      ),
+      durationSec: paramsInput.durationSec,
+      rawPoints: paramsInput.points,
+      zoom: Number(params.renderZoomLevel.value) || 0
+    })
 
   const captureSnapshots = (trackIds: string[]) =>
     trackIds
@@ -287,88 +273,6 @@ export const createMixtapeTrackBpmEnvelopeEditor = (
       })
       .filter(Boolean) as TrackBpmEnvelopeSnapshot[]
 
-  const rebuildTrackPointsBySourceAnchors = (paramsInput: {
-    track: MixtapeTrack
-    previousPoints: MixtapeBpmPoint[]
-    previousDurationSec: number
-    nextPoints: MixtapeBpmPoint[]
-  }) => {
-    const { track, previousPoints, previousDurationSec, nextPoints } = paramsInput
-    const fallbackBpm = resolveTrackBpmEnvelopeBaseValue(track)
-    const normalizedNextPoints = normalizeTrackBpmEnvelopePoints(
-      nextPoints,
-      previousDurationSec,
-      fallbackBpm
-    )
-    const sourceDurationSec = Math.max(
-      0,
-      Number(params.resolveTrackSourceDurationSeconds(track)) || 0
-    )
-    if (
-      sourceDurationSec <= BPM_POINT_SEC_EPSILON ||
-      previousPoints.length < 2 ||
-      normalizedNextPoints.length < 2
-    ) {
-      return normalizedNextPoints
-    }
-    const originalBpm = Number(track.originalBpm) || Number(track.bpm) || 0
-    const sourceAnchorsSec = normalizedNextPoints.map((point, index) => {
-      if (Number.isFinite(Number(point.sourceSec)) && Number(point.sourceSec) >= 0) {
-        return Number(Number(point.sourceSec).toFixed(4))
-      }
-      if (index <= 0) return 0
-      if (index >= normalizedNextPoints.length - 1) return Number(sourceDurationSec.toFixed(4))
-      return Number(
-        resolveTrackSourceTimeAtLocalSec({
-          points: previousPoints,
-          localSec: point.sec,
-          durationSec: previousDurationSec,
-          sourceDurationSec,
-          originalBpm,
-          fallbackBpm
-        }).toFixed(4)
-      )
-    })
-    const rebuiltPoints = rebuildTrackBpmEnvelopePointsFromSourceAnchors({
-      sourceAnchorsSec,
-      bpms: normalizedNextPoints.map((point) => point.bpm),
-      sourceDurationSec,
-      originalBpm,
-      fallbackBpm
-    })
-    const rebuiltDurationSec =
-      rebuiltPoints[rebuiltPoints.length - 1]?.sec ?? Number(previousDurationSec.toFixed(4))
-    const refinedPoints = rebuiltPoints.map((point, index) => {
-      if (index === 0) {
-        return {
-          sec: 0,
-          bpm: point.bpm,
-          sourceSec: 0
-        }
-      }
-      if (index === rebuiltPoints.length - 1) {
-        return {
-          sec: Number(rebuiltDurationSec.toFixed(4)),
-          bpm: point.bpm,
-          sourceSec: Number(sourceDurationSec.toFixed(4))
-        }
-      }
-      return {
-        sec: resolveTrackLocalSecAtSourceTime({
-          points: rebuiltPoints,
-          sourceSec: sourceAnchorsSec[index] ?? 0,
-          durationSec: rebuiltDurationSec,
-          sourceDurationSec,
-          originalBpm,
-          fallbackBpm
-        }),
-        bpm: point.bpm,
-        sourceSec: sourceAnchorsSec[index]
-      }
-    })
-    return normalizeTrackBpmEnvelopePoints(refinedPoints, rebuiltDurationSec, fallbackBpm)
-  }
-
   const applyTrackBpmEnvelopeChange = (
     trackId: string,
     nextPoints: MixtapeBpmPoint[],
@@ -379,72 +283,182 @@ export const createMixtapeTrackBpmEnvelopeEditor = (
   ) => {
     const sourceState = resolveTrackState(trackId)
     if (!sourceState.track || !sourceState.durationSec) return [] as string[]
+    const sourceDurationSec = Math.max(
+      0,
+      Number(params.resolveTrackSourceDurationSeconds(sourceState.track)) || 0
+    )
     const normalizedSource = rebuildTrackPointsBySourceAnchors({
       track: sourceState.track,
       previousPoints: sourceState.points,
       previousDurationSec: sourceState.durationSec,
-      nextPoints
+      nextPoints,
+      sourceDurationSec
     })
-    const updates = new Map<string, MixtapeBpmPoint[]>()
-    updates.set(sourceState.track.id, normalizedSource)
+    const sourcePointsChanged =
+      buildSignature(sourceState.points) !== buildSignature(normalizedSource)
+    if (sourcePointsChanged) {
+      params.tracks.value = params.tracks.value.map((track) => {
+        if (track.id !== sourceState.track!.id) return track
+        if (options?.persist !== false) {
+          schedulePersist(track.id, normalizedSource)
+        }
+        return {
+          ...track,
+          bpmEnvelope: normalizedSource,
+          phaseSyncGridLines: undefined,
+          phaseSyncGridRangeStartSec: undefined,
+          phaseSyncGridRangeEndSec: undefined
+        } satisfies MixtapeTrack
+      })
+    }
+    const changedTrackIds = sourcePointsChanged ? [sourceState.track.id] : []
     if (options?.syncOverlaps !== false) {
-      const sourceRangeStart = sourceState.startSec
-      const sourceRangeEnd =
-        sourceState.startSec +
-        (normalizedSource[normalizedSource.length - 1]?.sec ?? sourceState.durationSec)
-      for (const targetTrack of params.tracks.value) {
-        if (targetTrack.id === sourceState.track.id) continue
-        const targetState = resolveTrackState(targetTrack.id)
-        if (!targetState.track || !targetState.durationSec) continue
-        const overlapStartSec = Math.max(sourceRangeStart, targetState.startSec)
-        const overlapEndSec = Math.min(
-          sourceRangeEnd,
-          targetState.startSec + targetState.durationSec
-        )
-        if (overlapEndSec - overlapStartSec <= BPM_POINT_SEC_EPSILON) continue
-        const replacementPoints = buildMappedSourceSegment({
-          sourcePoints: normalizedSource,
-          sourceStartSec: sourceState.startSec,
-          targetStartSec: targetState.startSec,
-          overlapStartSec,
-          overlapEndSec,
-          sourceFallbackBpm: resolveTrackBpmEnvelopeBaseValue(sourceState.track)
-        })
-        const nextTargetPoints = replaceTrackSegment({
-          track: targetState.track,
-          currentPoints: targetState.points,
-          replacementPoints,
-          segmentStartSec: overlapStartSec - targetState.startSec,
-          segmentEndSec: overlapEndSec - targetState.startSec,
-          durationSec: targetState.durationSec
-        })
-        const rebuiltTargetPoints = rebuildTrackPointsBySourceAnchors({
-          track: targetState.track,
-          previousPoints: targetState.points,
-          previousDurationSec: targetState.durationSec,
-          nextPoints: nextTargetPoints
-        })
-        if (buildSignature(rebuiltTargetPoints) === buildSignature(targetState.points)) continue
-        updates.set(targetState.track.id, rebuiltTargetPoints)
+      const resyncedTrackIds = resyncTrackBpmOverlaps('bpm-edit')
+      for (const changedTrackId of resyncedTrackIds) {
+        if (!changedTrackIds.includes(changedTrackId)) {
+          changedTrackIds.push(changedTrackId)
+        }
       }
     }
-    const changedTrackIds: string[] = []
-    if (!updates.size) return changedTrackIds
-    params.tracks.value = params.tracks.value.map((track) => {
-      const nextTrackPoints = updates.get(track.id)
-      if (!nextTrackPoints) return track
-      const currentState = resolveTrackState(track.id)
-      if (buildSignature(currentState.points) === buildSignature(nextTrackPoints)) return track
-      changedTrackIds.push(track.id)
-      if (options?.persist !== false) {
-        schedulePersist(track.id, nextTrackPoints)
-      }
-      return {
-        ...track,
-        bpmEnvelope: nextTrackPoints
-      } satisfies MixtapeTrack
-    })
     return changedTrackIds
+  }
+
+  const resyncTrackBpmOverlaps = (trigger: MixtapeBpmResyncTrigger = 'bpm-edit') => {
+    if (dragState.value) return [] as string[]
+    const workingTracks: MixtapeTrack[] = params.tracks.value.map((track) => ({
+      ...track,
+      phaseSyncGridLines: undefined,
+      phaseSyncGridRangeStartSec: undefined,
+      phaseSyncGridRangeEndSec: undefined
+    }))
+    const changedTrackIds = new Set<string>()
+    const persistEnvelopePoints = new Map<string, MixtapeBpmPoint[]>()
+    const sortByTimeline = (input: ReturnType<typeof buildWorkingTrackTimelineStates>) =>
+      [...input].sort((left, right) => {
+        if (Math.abs(left.startSec - right.startSec) > BPM_POINT_SEC_EPSILON) {
+          return left.startSec - right.startSec
+        }
+        if (left.track.mixOrder !== right.track.mixOrder) {
+          return left.track.mixOrder - right.track.mixOrder
+        }
+        return String(left.track.id).localeCompare(String(right.track.id))
+      })
+
+    const orderedStates = sortByTimeline(buildWorkingTrackTimelineStates(workingTracks))
+    for (let sourceIndex = 0; sourceIndex < orderedStates.length; sourceIndex += 1) {
+      const sourceState = orderedStates[sourceIndex]
+      if (!sourceState?.track || sourceState.durationSec <= BPM_POINT_SEC_EPSILON) continue
+      const sourceTrack = workingTracks.find((track) => track.id === sourceState.track.id)
+      if (!sourceTrack) continue
+      const sourceDurationSec = Math.max(
+        0,
+        Number(params.resolveTrackDurationSeconds(sourceTrack)) || 0
+      )
+      if (sourceDurationSec <= BPM_POINT_SEC_EPSILON) continue
+      const sourceFallbackBpm = resolveTrackBpmEnvelopeBaseValue(sourceTrack)
+      const sourcePoints = normalizeTrackBpmEnvelopePoints(
+        sourceTrack.bpmEnvelope,
+        sourceDurationSec,
+        sourceFallbackBpm
+      )
+      const sourceRangeStart = sourceState.startSec
+      const sourceRangeEnd = sourceRangeStart + sourceDurationSec
+
+      for (
+        let targetIndex = sourceIndex + 1;
+        targetIndex < orderedStates.length;
+        targetIndex += 1
+      ) {
+        const targetState = orderedStates[targetIndex]
+        if (!targetState?.track || targetState.track.id === sourceTrack.id) continue
+        const targetTrack = workingTracks.find((track) => track.id === targetState.track.id)
+        if (!targetTrack) continue
+        const sourceHasExplicitEnvelope = hasMeaningfulBpmEnvelopeTrack(sourceTrack)
+        const clearedRedundantFlatEnvelope =
+          !sourceHasExplicitEnvelope && isRedundantFlatEnvelopeTrack(targetTrack)
+        if (clearedRedundantFlatEnvelope) {
+          targetTrack.bpmEnvelope = undefined
+        }
+        const targetDurationSec = Math.max(
+          0,
+          Number(params.resolveTrackDurationSeconds(targetTrack)) || 0
+        )
+        if (targetDurationSec <= BPM_POINT_SEC_EPSILON) continue
+        const overlapStartSec = Math.max(sourceRangeStart, targetState.startSec)
+        const overlapEndSec = Math.min(sourceRangeEnd, targetState.startSec + targetDurationSec)
+        if (overlapEndSec - overlapStartSec <= BPM_POINT_SEC_EPSILON) continue
+        const targetFallbackBpm = resolveTrackBpmEnvelopeBaseValue(targetTrack)
+        const targetPoints = normalizeTrackBpmEnvelopePoints(
+          targetTrack.bpmEnvelope,
+          targetDurationSec,
+          targetFallbackBpm
+        )
+        const triggerAllowsEnvelopeMutation = trigger === 'bpm-edit'
+        const mutateEnvelope = triggerAllowsEnvelopeMutation && sourceHasExplicitEnvelope
+        const sourcePhaseState = buildPhaseSyncState({
+          track: sourceTrack,
+          points: sourcePoints,
+          durationSec: sourceDurationSec,
+          startSec: sourceRangeStart
+        })
+        const targetPhaseState = buildPhaseSyncState({
+          track: targetTrack,
+          points: targetPoints,
+          durationSec: targetDurationSec,
+          startSec: targetState.startSec
+        })
+        const syncResult = syncTargetTrackBpmSegmentToSourcePhase({
+          sourceState: sourcePhaseState,
+          targetState: targetPhaseState,
+          overlapStartSec,
+          overlapEndSec,
+          mutateEnvelope
+        })
+        if (!syncResult) continue
+        const {
+          nextPoints: rebuiltTargetPoints,
+          phaseSyncGridLines,
+          phaseSyncGridRangeStartSec,
+          phaseSyncGridRangeEndSec
+        } = syncResult
+        if (
+          buildSignature(rebuiltTargetPoints) === buildSignature(targetPoints) &&
+          buildGridLineSignature(phaseSyncGridLines) ===
+            buildGridLineSignature(targetTrack.phaseSyncGridLines) &&
+          buildGridRangeSignature({
+            phaseSyncGridRangeStartSec,
+            phaseSyncGridRangeEndSec
+          }) === buildGridRangeSignature(targetTrack)
+        ) {
+          continue
+        }
+        if (mutateEnvelope) {
+          targetTrack.bpmEnvelope = rebuiltTargetPoints
+          persistEnvelopePoints.set(targetTrack.id, rebuiltTargetPoints)
+        } else if (isRedundantFlatEnvelopeTrack(targetTrack)) {
+          targetTrack.bpmEnvelope = undefined
+        }
+        if (clearedRedundantFlatEnvelope) {
+          persistEnvelopePoints.set(targetTrack.id, [])
+        }
+        targetTrack.phaseSyncGridLines = phaseSyncGridLines
+        targetTrack.phaseSyncGridRangeStartSec = phaseSyncGridRangeStartSec
+        targetTrack.phaseSyncGridRangeEndSec = phaseSyncGridRangeEndSec
+        changedTrackIds.add(targetTrack.id)
+      }
+    }
+
+    if (!changedTrackIds.size) return [] as string[]
+    params.tracks.value = params.tracks.value.map((track) => {
+      const nextTrack = workingTracks.find((item) => item.id === track.id)
+      return nextTrack ? nextTrack : track
+    })
+    for (const trackId of changedTrackIds) {
+      if (!persistEnvelopePoints.has(trackId)) continue
+      schedulePersist(trackId, persistEnvelopePoints.get(trackId) || [])
+    }
+    params.onEnvelopeCommitted?.()
+    return Array.from(changedTrackIds)
   }
 
   const restoreSnapshots = (snapshots: TrackBpmEnvelopeSnapshot[]) => {
@@ -507,11 +521,10 @@ export const createMixtapeTrackBpmEnvelopeEditor = (
       includeDraft: false
     })
     if (!track || !durationSec || points.length < 2) return ''
-    const renderPoints = resolveTrackBpmEnvelopeRenderablePoints({
+    const tempoSnapshot = buildTempoSnapshotForState({
       track,
       points,
-      durationSec,
-      sourceDurationSec: params.resolveTrackSourceDurationSeconds(track)
+      durationSec
     })
     const baseBpm = resolveTrackBpmEnvelopeBaseValue(track)
     const bpmRange = resolveTrackBpmEnvelopeVisualRange({
@@ -520,7 +533,7 @@ export const createMixtapeTrackBpmEnvelopeEditor = (
       resolveDurationSec: params.resolveTrackDurationSeconds
     })
     return buildTrackBpmEnvelopePolylineByControlPoints({
-      points: renderPoints,
+      points: tempoSnapshot.timeMap.renderPoints,
       durationSec,
       baseBpm,
       minBpm: bpmRange.minBpm,
@@ -533,12 +546,12 @@ export const createMixtapeTrackBpmEnvelopeEditor = (
       includeDraft: false
     })
     if (!track || !durationSec || points.length < 2) return []
-    const renderPoints = resolveTrackBpmEnvelopeRenderablePoints({
+    const tempoSnapshot = buildTempoSnapshotForState({
       track,
       points,
-      durationSec,
-      sourceDurationSec: params.resolveTrackSourceDurationSeconds(track)
+      durationSec
     })
+    const renderPoints = tempoSnapshot.timeMap.renderPoints
     const baseBpm = resolveTrackBpmEnvelopeBaseValue(track)
     const bpmRange = resolveTrackBpmEnvelopeVisualRange({
       track,
@@ -579,35 +592,20 @@ export const createMixtapeTrackBpmEnvelopeEditor = (
     const xRatio = clampNumber((event.clientX - rect.left) / rect.width, 0, 1)
     const yRatio = clampNumber((event.clientY - rect.top) / rect.height, 0, 1)
     const rawSec = xRatio * durationSec
+    const tempoSnapshot = buildTempoSnapshotForState({
+      track,
+      points,
+      durationSec
+    })
     const baseBpm = resolveTrackBpmEnvelopeBaseValue(track)
-    const sourceDurationSec = Math.max(
-      0,
-      Number(params.resolveTrackSourceDurationSeconds(track)) || 0
+    const nearestGridLine = tempoSnapshot.timeMap.resolveNearestGridLine(
+      rawSec,
+      Number(params.renderZoomLevel.value) || 0
     )
-    const nearestGridLine = resolveNearestTrackVisibleGridLine({
-      points,
-      localSec: rawSec,
-      durationSec,
-      sourceDurationSec,
-      firstBeatSourceSec: Math.max(0, Number(track.firstBeatMs) || 0) / 1000,
-      beatSourceSec: 60 / Math.max(1, resolveTrackGridSourceBpm(track)),
-      barBeatOffset: Number(track.barBeatOffset) || 0,
-      zoom: Number(params.renderZoomLevel.value) || 0,
-      originalBpm: Number(track.originalBpm) || Number(track.bpm) || 0,
-      fallbackBpm: baseBpm
-    })
-    const snappedSec = snapTrackLocalSecToBeatGrid({
-      points,
-      localSec: rawSec,
-      durationSec,
-      sourceDurationSec,
-      firstBeatSourceSec: Math.max(0, Number(track.firstBeatMs) || 0) / 1000,
-      beatSourceSec: 60 / Math.max(1, resolveTrackGridSourceBpm(track)),
-      barBeatOffset: Number(track.barBeatOffset) || 0,
-      zoom: Number(params.renderZoomLevel.value) || 0,
-      originalBpm: Number(track.originalBpm) || Number(track.bpm) || 0,
-      fallbackBpm: baseBpm
-    })
+    const snappedSec = tempoSnapshot.timeMap.snapLocalSec(
+      rawSec,
+      Number(params.renderZoomLevel.value) || 0
+    )
     const bpmRange = resolveTrackBpmEnvelopeVisualRange({
       track,
       tracks: params.tracks.value,
@@ -721,7 +719,8 @@ export const createMixtapeTrackBpmEnvelopeEditor = (
     nextPoints.push({
       sec: pointer.sec,
       bpm: pointer.bpm,
-      sourceSec: pointer.sourceSec
+      sourceSec: pointer.sourceSec,
+      allowOffGrid: undefined
     })
     const normalizedDraftPoints = normalizeTrackBpmEnvelopePoints(
       nextPoints,
@@ -776,6 +775,7 @@ export const createMixtapeTrackBpmEnvelopeEditor = (
     handleBpmEnvelopeStageMouseDown,
     handleBpmEnvelopePointDoubleClick,
     handleBpmEnvelopePointContextMenu,
+    resyncTrackBpmOverlaps,
     cleanupTrackBpmEnvelopeEditor
   }
 }

@@ -734,6 +734,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       normalizedRenderZoom,
       resolveRenderPxPerSec,
       resolveTrackDurationSeconds,
+      resolveTrackSourceDurationSeconds,
       resolveTrackFirstBeatSeconds,
       resolveTrackStartSecById,
       resolveTimelineSecByX,

@@ -6,11 +6,9 @@ import {
 } from '@renderer/composables/mixtape/gainEnvelope'
 import {
   buildTrackBpmEnvelopePolylineByControlPoints,
-  normalizeTrackBpmEnvelopePoints,
-  resolveTrackBpmEnvelopeBaseValue,
-  resolveTrackBpmEnvelopeRenderablePoints,
   resolveTrackBpmEnvelopeVisualRange
-} from '@renderer/composables/mixtape/trackBpmEnvelope'
+} from '@renderer/composables/mixtape/trackTempoVisual'
+import { buildTrackRuntimeTempoSnapshot } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
 import type {
   MixtapeEnvelopeParamId,
   MixtapeTrack,
@@ -144,28 +142,21 @@ export const useMixtapeEnvelopePreview = (options: UseMixtapeEnvelopePreviewOpti
           0,
           Number(options.resolveTrackSourceDurationSeconds(currentTrack)) || 0
         )
-        const baseBpm = resolveTrackBpmEnvelopeBaseValue(currentTrack)
-        const normalizedPoints = normalizeTrackBpmEnvelopePoints(
-          currentTrack.bpmEnvelope,
-          durationSec,
-          baseBpm
-        )
-        if (normalizedPoints.length < 2) return null
-        const renderPoints = resolveTrackBpmEnvelopeRenderablePoints({
+        const tempoSnapshot = buildTrackRuntimeTempoSnapshot({
           track: currentTrack,
-          points: normalizedPoints,
-          durationSec,
-          sourceDurationSec
+          sourceDurationSec,
+          durationSec
         })
+        if (tempoSnapshot.timeMap.renderPoints.length < 2) return null
         const bpmRange = resolveTrackBpmEnvelopeVisualRange({
           track: currentTrack,
           tracks: options.tracks.value,
           resolveDurationSec: options.resolveTrackDurationSeconds
         })
         const points = buildTrackBpmEnvelopePolylineByControlPoints({
-          points: renderPoints,
+          points: tempoSnapshot.timeMap.renderPoints,
           durationSec,
-          baseBpm,
+          baseBpm: tempoSnapshot.baseBpm,
           minBpm: bpmRange.minBpm,
           maxBpm: bpmRange.maxBpm
         })

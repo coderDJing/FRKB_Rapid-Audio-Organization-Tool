@@ -175,8 +175,28 @@ const handleCtrlDoubleTapKeyUp = (event: KeyboardEvent) => {
 
 const handleSongsRemovedForGlobalSearch = (payload: any) => {
   try {
-    const paths: string[] = Array.isArray(payload?.paths) ? payload.paths : []
+    const itemIds: string[] = Array.isArray(payload?.itemIds) ? payload.itemIds : []
     const listUUID: string | undefined = payload?.listUUID
+    if (itemIds.length > 0) {
+      if (listUUID && listUUID !== runtime.playingData.playingSongListUUID) return
+      const idSet = new Set(itemIds)
+
+      runtime.playingData.playingSongListData = (
+        runtime.playingData.playingSongListData || []
+      ).filter((song: any) => !idSet.has(song?.mixtapeItemId || ''))
+
+      if (
+        runtime.playingData.playingSong &&
+        idSet.has(runtime.playingData.playingSong.mixtapeItemId || '')
+      ) {
+        runtime.playingData.playingSong = null
+      }
+
+      markSongSearchDirty('mixtape-items-removed')
+      return
+    }
+
+    const paths: string[] = Array.isArray(payload?.paths) ? payload.paths : []
     if (!paths.length) return
     if (listUUID && listUUID !== runtime.playingData.playingSongListUUID) return
     const normalizedSet = new Set(paths.map((p) => normalizePath(p)).filter(Boolean))
@@ -194,6 +214,18 @@ const handleSongsRemovedForGlobalSearch = (payload: any) => {
 
     markSongSearchDirty('songs-removed')
   } catch {}
+}
+const handleMixtapeItemsRemoved = (_e: unknown, payload: any) => {
+  const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId.trim() : ''
+  const itemIds = Array.isArray(payload?.itemIds) ? payload.itemIds : []
+  const removedPaths = Array.isArray(payload?.removedPaths) ? payload.removedPaths : []
+  if (!playlistId || (!itemIds.length && !removedPaths.length)) return
+  emitter.emit('playlistContentChanged', { uuids: [playlistId] })
+  emitter.emit('songsRemoved', {
+    listUUID: playlistId,
+    itemIds,
+    paths: removedPaths
+  })
 }
 
 const handleMetadataBatchUpdatedForGlobalSearch = () => {
@@ -481,6 +513,7 @@ onMounted(() => {
   window.addEventListener('keydown', handleCtrlDoubleTapKeyDown, true)
   window.addEventListener('keyup', handleCtrlDoubleTapKeyUp, true)
 
+  window.electron.ipcRenderer.on('mixtape-items-removed', handleMixtapeItemsRemoved)
   emitter.on('songsRemoved', handleSongsRemovedForGlobalSearch)
   emitter.on('metadataBatchUpdated', handleMetadataBatchUpdatedForGlobalSearch)
   emitter.on('songMetadataUpdated', handleSongMetadataUpdatedForGlobalSearch)
@@ -492,6 +525,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('click', handleContextMenuClickCapture, true)
   window.removeEventListener('keydown', handleCtrlDoubleTapKeyDown, true)
   window.removeEventListener('keyup', handleCtrlDoubleTapKeyUp, true)
+  window.electron.ipcRenderer.removeListener('mixtape-items-removed', handleMixtapeItemsRemoved)
   emitter.off('songsRemoved', handleSongsRemovedForGlobalSearch)
   emitter.off('metadataBatchUpdated', handleMetadataBatchUpdatedForGlobalSearch)
   emitter.off('songMetadataUpdated', handleSongMetadataUpdatedForGlobalSearch)

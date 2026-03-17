@@ -3,9 +3,9 @@ import {
   resolveTempoRatioByBpm,
   resolveSyncPlaybackRateWithDiagnostics
 } from '@renderer/composables/mixtape/mixxxSyncModel'
-import { sampleTrackBpmEnvelopeAtSec } from '@renderer/composables/mixtape/trackBpmEnvelope'
+import { createTrackTimeMapFromSnapshotPayload } from '@renderer/composables/mixtape/trackTimeMapCore'
 import type { TransportPlayableSource } from '@renderer/composables/mixtape/timelineTransportPlayableSource'
-import type { MixtapeBpmPoint } from '@renderer/composables/mixtape/types'
+import type { SerializedTrackTempoSnapshot } from '@renderer/composables/mixtape/types'
 
 export type TransportSyncEntry = {
   trackId: string
@@ -14,7 +14,7 @@ export type TransportSyncEntry = {
   duration: number
   bpm: number
   originalBpm?: number
-  bpmEnvelope?: MixtapeBpmPoint[]
+  tempoSnapshot: SerializedTrackTempoSnapshot
   beatSec: number
   masterTempo: boolean
   syncAnchorSec: number
@@ -78,6 +78,20 @@ type TransientLagDiagnostics = {
 const TRANSIENT_PROBE_WINDOW_SAMPLES = 2048
 const TRANSIENT_PROBE_MAX_LAG_SAMPLES = 192
 const TRANSIENT_MIN_CORRELATION = 0.08
+const transportTimeMapCache = new Map<
+  string,
+  ReturnType<typeof createTrackTimeMapFromSnapshotPayload>
+>()
+
+const resolveEntryTimeMap = (entry: TransportSyncEntry) => {
+  const signature = String(entry.tempoSnapshot?.signature || '')
+  const cacheKey = signature || `${entry.trackId}:${entry.startSec}:${entry.duration}`
+  const cached = transportTimeMapCache.get(cacheKey)
+  if (cached) return cached
+  const next = createTrackTimeMapFromSnapshotPayload(entry.tempoSnapshot)
+  transportTimeMapCache.set(cacheKey, next)
+  return next
+}
 
 const resolveNodeSourceDurationSec = (node: TransportSyncNode) => {
   const bufferDuration = Number(node.source.buffer?.duration)
@@ -93,11 +107,7 @@ const resolveEntryBpmAtTimelineSec = (entry: TransportSyncEntry, timelineSec: nu
     0,
     Math.max(0, Number(entry.duration) || 0)
   )
-  return sampleTrackBpmEnvelopeAtSec(
-    Array.isArray(entry.bpmEnvelope) ? entry.bpmEnvelope : [],
-    localTimelineSec,
-    Number(entry.bpm) || 0
-  )
+  return resolveEntryTimeMap(entry).sampleBpmAtLocal(localTimelineSec)
 }
 
 const resolveEntryBasePlaybackRateAtTimelineSec = (

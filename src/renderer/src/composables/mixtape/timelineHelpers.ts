@@ -25,13 +25,7 @@ import {
   resolveFirstBeatTimelineSec,
   resolveTempoRatioByBpm
 } from '@renderer/composables/mixtape/mixxxSyncModel'
-import {
-  buildTrackVisibleGridLines,
-  normalizeTrackBpmEnvelopePoints,
-  resolveTrackBpmEnvelopeBaseValue,
-  resolveTrackGridSourceBpm
-} from '@renderer/composables/mixtape/trackBpmEnvelope'
-import { resolveTrackTimelineDurationFromSource } from '@renderer/composables/mixtape/trackBpmEnvelope'
+import { buildTrackRuntimeTempoSnapshot } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
 import {
   buildGainEnvelopePolylineByControlPoints,
   normalizeGainEnvelopePoints,
@@ -255,8 +249,48 @@ export const createTimelineHelpersModule = (ctx: any) => {
     return resolveTempoRatioByBpm(target, original)
   }
 
+  const resolveTrackTimeMapSignature = (track: MixtapeTrack, durationSec?: number) => {
+    const sourceDurationSec = resolveTrackSourceDurationSeconds(track)
+    return buildTrackRuntimeTempoSnapshot({
+      track,
+      sourceDurationSec,
+      durationSec
+    }).signature
+  }
+
+  const resolveTrackGridSignature = (track: MixtapeTrack, durationSec?: number) =>
+    [
+      resolveTrackTimeMapSignature(track, durationSec),
+      Math.round((Math.max(0, Number(track.firstBeatMs) || 0) || 0) * 1000),
+      Math.round(Number(track.barBeatOffset) || 0)
+    ].join('|')
+
   const resolveTrackFirstBeatSeconds = (track: MixtapeTrack, targetBpm?: number) => {
-    const ratio = resolveTrackTempoRatio(track, targetBpm)
+    const firstBeatSourceSec = Math.max(0, Number(track.firstBeatMs) || 0) / 1000
+    if (!Number.isFinite(firstBeatSourceSec) || firstBeatSourceSec <= 0) return 0
+
+    const hasTargetBpm =
+      typeof targetBpm === 'number' && Number.isFinite(targetBpm) && Number(targetBpm) > 0
+    const effectiveTrack =
+      hasTargetBpm && (!Array.isArray(track.bpmEnvelope) || track.bpmEnvelope.length < 2)
+        ? ({ ...track, bpm: Number(targetBpm) } satisfies MixtapeTrack)
+        : track
+    const sourceDurationSec = resolveTrackSourceDurationSeconds(track)
+    const snapshot = buildTrackRuntimeTempoSnapshot({
+      track: effectiveTrack,
+      sourceDurationSec
+    })
+    if (
+      sourceDurationSec > 0 &&
+      snapshot.durationSec > 0 &&
+      snapshot.timeMap.renderPoints.length >= 2
+    ) {
+      return snapshot.timeMap.mapSourceToLocal(firstBeatSourceSec)
+    }
+    const ratio = resolveTrackTempoRatio(
+      effectiveTrack,
+      hasTargetBpm ? Number(targetBpm) : undefined
+    )
     return resolveFirstBeatTimelineSec(track.firstBeatMs, ratio)
   }
 
@@ -293,23 +327,10 @@ export const createTimelineHelpersModule = (ctx: any) => {
     void waveformVersion?.value
     const sourceDuration = resolveTrackSourceDurationSeconds(track)
     if (!Number.isFinite(sourceDuration) || sourceDuration <= 0) return 0
-    if (Array.isArray(track.bpmEnvelope) && track.bpmEnvelope.length >= 2) {
-      const fallbackRatio = resolveTrackTempoRatio(track)
-      const fallbackDuration =
-        Number.isFinite(fallbackRatio) && fallbackRatio > 0
-          ? sourceDuration / fallbackRatio
-          : sourceDuration
-      return resolveTrackTimelineDurationFromSource({
-        rawPoints: track.bpmEnvelope,
-        sourceDurationSec: sourceDuration,
-        originalBpm: Number(track.originalBpm) || Number(track.bpm) || 0,
-        fallbackBpm: resolveTrackBpmEnvelopeBaseValue(track),
-        fallbackDurationSec: fallbackDuration
-      })
-    }
-    const ratio = resolveTrackTempoRatio(track)
-    if (!Number.isFinite(ratio) || ratio <= 0) return sourceDuration
-    return sourceDuration / ratio
+    return buildTrackRuntimeTempoSnapshot({
+      track,
+      sourceDurationSec: sourceDuration
+    }).durationSec
   }
 
   const resolveTrackRenderWidthPx = (track: MixtapeTrack, zoomValue?: number) => {
@@ -489,20 +510,14 @@ export const createTimelineHelpersModule = (ctx: any) => {
     const safeDurationSec = Math.max(0, Number(durationSec) || 0)
     const safeTrackWidth = Math.max(0, Number(trackWidth) || 0)
     if (safeDurationSec <= 0) return
-    const baseBpm = resolveTrackBpmEnvelopeBaseValue(track)
-    const bpmEnvelope = normalizeTrackBpmEnvelopePoints(track.bpmEnvelope, safeDurationSec, baseBpm)
     const sourceDurationSec = Math.max(0, Number(resolveTrackSourceDurationSeconds(track)) || 0)
-    const visibleGridLines = buildTrackVisibleGridLines({
-      points: bpmEnvelope,
-      durationSec: safeDurationSec,
+    const snapshot = buildTrackRuntimeTempoSnapshot({
+      track,
       sourceDurationSec,
-      firstBeatSourceSec: Math.max(0, Number(track.firstBeatMs) || 0) / 1000,
-      beatSourceSec: 60 / Math.max(1, resolveTrackGridSourceBpm(track)),
-      barBeatOffset,
-      zoom: zoomValue,
-      originalBpm: Number(track.originalBpm) || Number(track.bpm) || 0,
-      fallbackBpm: baseBpm
+      durationSec: safeDurationSec,
+      zoom: zoomValue
     })
+    const visibleGridLines = snapshot.visibleGridLines
     if (!visibleGridLines.length) return
 
     const startX = range.start
@@ -817,12 +832,15 @@ export const createTimelineHelpersModule = (ctx: any) => {
     zoomValue: number,
     width: number,
     height: number,
-    pixelRatio: number
+    pixelRatio: number,
+    timeMapSignature?: string
   ) => {
     const zoomKey = Math.round(zoomValue * 1000)
     const ratioKey = Math.round(pixelRatio * 100)
     const waveformHeightScaleKey = Math.round(MIXTAPE_WAVEFORM_HEIGHT_SCALE * 1000)
-    return `${filePath}::${stemId}::${tileIndex}::${zoomKey}::${width}x${height}@${ratioKey}::h${waveformHeightScaleKey}`
+    const normalizedTimeMapSignature =
+      typeof timeMapSignature === 'string' && timeMapSignature ? timeMapSignature : 'default'
+    return `${filePath}::${stemId}::${tileIndex}::${zoomKey}::${width}x${height}@${ratioKey}::h${waveformHeightScaleKey}::tm:${normalizedTimeMapSignature}`
   }
 
   const touchWaveformTileCache = (key: string) => {
@@ -902,6 +920,8 @@ export const createTimelineHelpersModule = (ctx: any) => {
     resolveTrackTempoRatio,
     resolveTrackFirstBeatSeconds,
     resolveTrackFirstBeatMs,
+    resolveTrackTimeMapSignature,
+    resolveTrackGridSignature,
     resolveTrackRenderWidthPx,
     clearTimelineLayoutCache,
     resolveFirstVisibleLayoutIndex,

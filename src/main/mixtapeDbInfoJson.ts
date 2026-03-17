@@ -155,7 +155,7 @@ export function upsertMixtapeItemGainEnvelopeById(
 export function upsertMixtapeItemBpmEnvelopeById(
   entries: Array<{
     itemId: string
-    bpmEnvelope: Array<{ sec: number; bpm: number; sourceSec?: number }>
+    bpmEnvelope: Array<{ sec: number; bpm: number; sourceSec?: number; allowOffGrid?: boolean }>
     bpmEnvelopeDurationSec?: number
   }>
 ): { updated: number } {
@@ -180,16 +180,19 @@ export function upsertMixtapeItemBpmEnvelopeById(
               sourceSec:
                 Number.isFinite(sourceSec) && sourceSec >= 0
                   ? Number(sourceSec.toFixed(4))
-                  : undefined
+                  : undefined,
+              allowOffGrid: (item as any)?.allowOffGrid === true ? true : undefined
             }
           })
           .filter(Boolean)
       : []
-    if (!points.length) return [] as Array<{ sec: number; bpm: number; sourceSec?: number }>
-    const sorted = (points as Array<{ sec: number; bpm: number; sourceSec?: number }>).sort(
-      (a, b) => a.sec - b.sec
-    )
-    const limited: Array<{ sec: number; bpm: number; sourceSec?: number }> = []
+    if (!points.length)
+      return [] as Array<{ sec: number; bpm: number; sourceSec?: number; allowOffGrid?: boolean }>
+    const sorted = (
+      points as Array<{ sec: number; bpm: number; sourceSec?: number; allowOffGrid?: boolean }>
+    ).sort((a, b) => a.sec - b.sec)
+    const limited: Array<{ sec: number; bpm: number; sourceSec?: number; allowOffGrid?: boolean }> =
+      []
     let bucketStartIndex = -1
     let bucketSec = Number.NaN
     let bucketCount = 0
@@ -214,13 +217,24 @@ export function upsertMixtapeItemBpmEnvelopeById(
 
   const envelopeById = new Map<
     string,
-    { points: Array<{ sec: number; bpm: number; sourceSec?: number }>; durationSec: number }
+    {
+      clear: boolean
+      points: Array<{ sec: number; bpm: number; sourceSec?: number; allowOffGrid?: boolean }>
+      durationSec: number
+    }
   >()
   for (const item of entries) {
     const itemId = typeof item?.itemId === 'string' ? item.itemId.trim() : ''
     if (!itemId) continue
     const normalizedEnvelope = normalizeEnvelope(item?.bpmEnvelope)
-    if (normalizedEnvelope.length < 2) continue
+    if (normalizedEnvelope.length < 2) {
+      envelopeById.set(itemId, {
+        clear: true,
+        points: [],
+        durationSec: 0
+      })
+      continue
+    }
     const explicitDurationSec = Number(item?.bpmEnvelopeDurationSec)
     const inferredDurationSec = normalizedEnvelope.reduce(
       (result, point) => (point.sec > result ? point.sec : result),
@@ -231,6 +245,7 @@ export function upsertMixtapeItemBpmEnvelopeById(
         ? explicitDurationSec
         : inferredDurationSec
     envelopeById.set(itemId, {
+      clear: false,
       points: normalizedEnvelope,
       durationSec: Number(durationSec.toFixed(4))
     })
@@ -254,8 +269,7 @@ export function upsertMixtapeItemBpmEnvelopeById(
           const itemId = typeof row?.id === 'string' ? row.id.trim() : ''
           if (!itemId) continue
           const nextEnvelopeEntry = envelopeById.get(itemId)
-          if (!nextEnvelopeEntry || nextEnvelopeEntry.points.length < 2) continue
-          const nextEnvelope = nextEnvelopeEntry.points
+          if (!nextEnvelopeEntry) continue
           let info: Record<string, any> = {}
           if (row?.info_json) {
             try {
@@ -267,6 +281,19 @@ export function upsertMixtapeItemBpmEnvelopeById(
           }
           const currentEnvelope = normalizeEnvelope(info.bpmEnvelope)
           const currentDurationSec = Number(info.bpmEnvelopeDurationSec)
+          if (nextEnvelopeEntry.clear) {
+            const hasCurrentDuration =
+              Number.isFinite(currentDurationSec) && Math.abs(currentDurationSec) > 0.0001
+            if (!currentEnvelope.length && !hasCurrentDuration) continue
+            delete info.bpmEnvelope
+            delete info.bpmEnvelopeDurationSec
+            info.bpmEnvelopeUpdatedAt = Date.now()
+            updateStmt.run(JSON.stringify(info), itemId)
+            updated += 1
+            continue
+          }
+          if (nextEnvelopeEntry.points.length < 2) continue
+          const nextEnvelope = nextEnvelopeEntry.points
           const currentSignature = JSON.stringify(currentEnvelope)
           const nextSignature = JSON.stringify(nextEnvelope)
           const durationChanged =

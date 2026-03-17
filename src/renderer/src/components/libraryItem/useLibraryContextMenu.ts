@@ -6,12 +6,10 @@ import scanNewSongDialog from '@renderer/components/scanNewSongDialog'
 import exportDialog from '@renderer/components/exportDialog'
 import { t } from '@renderer/utils/translate'
 import libraryUtils from '@renderer/utils/libraryUtils'
+import { DEFAULT_MIXTAPE_STEM_PROFILE } from '@shared/mixtapeStemProfiles'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
-import {
-  chooseMixtapeProjectModeForCreate,
-  setPendingMixtapeProjectMode
-} from '@renderer/composables/mixtape/stemMode'
+import { setPendingMixtapeProjectMode } from '@renderer/composables/mixtape/stemMode'
 import type { IMetadataAutoFillSummary } from '../../../../types/globals'
 
 interface UseLibraryContextMenuOptions {
@@ -56,7 +54,11 @@ export function useLibraryContextMenu({
     if (dirData.type === 'dir') {
       if (runtime.libraryAreaSelected === 'MixtapeLibrary') {
         return [
-          [{ menuName: 'library.createMixtape' }, { menuName: 'library.createFolder' }],
+          [
+            { menuName: 'library.createStemMixtape' },
+            { menuName: 'library.createEqMixtape' },
+            { menuName: 'library.createFolder' }
+          ],
           [{ menuName: 'common.rename' }, { menuName: 'common.delete' }]
         ]
       }
@@ -183,11 +185,11 @@ export function useLibraryContextMenu({
         runtime.songsArea.songListUUID = newUuid
         break
       }
-      case 'library.createMixtape': {
+      case 'library.createStemMixtape':
+      case 'library.createEqMixtape': {
         const currentDirData = getDirData()
         if (!currentDirData) break
-        const projectMode = await chooseMixtapeProjectModeForCreate()
-        if (!projectMode) break
+        const mixMode = result.menuName === 'library.createEqMixtape' ? 'eq' : 'stem'
         dirChildRendered.value = true
         dirChildShow.value = true
         const newUuid = uuidV4()
@@ -196,10 +198,13 @@ export function useLibraryContextMenu({
           uuid: newUuid,
           dirName: '',
           type: 'mixtapeList',
-          mixMode: projectMode.mixMode,
-          stemProfile: projectMode.stemProfile
+          mixMode,
+          stemProfile: DEFAULT_MIXTAPE_STEM_PROFILE
         })
-        setPendingMixtapeProjectMode(newUuid, projectMode)
+        setPendingMixtapeProjectMode(newUuid, {
+          mixMode,
+          stemProfile: DEFAULT_MIXTAPE_STEM_PROFILE
+        })
         runtime.songsArea.songListUUID = newUuid
         break
       }

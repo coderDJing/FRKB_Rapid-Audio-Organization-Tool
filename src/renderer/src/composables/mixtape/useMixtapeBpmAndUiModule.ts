@@ -339,8 +339,8 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     if (!trackId) return
     event.preventDefault()
     event.stopPropagation()
-    const menuWidth = 150
-    const menuHeight = 70
+    const menuWidth = 190
+    const menuHeight = 108
     const { x, y } = resolveContextMenuPoint(
       {
         clickX: event.clientX,
@@ -397,6 +397,30 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     }
     closeTrackContextMenu()
     scheduleTimelineDraw()
+  }
+
+  const handleTrackMenuRemoveFromMixtape = async () => {
+    const playlistId = String(payload.value.playlistId || '').trim()
+    const trackId = String(trackContextTrackId.value || '').trim()
+    closeTrackContextMenu()
+    if (!playlistId || !trackId || !window?.electron?.ipcRenderer?.invoke) return
+    try {
+      await window.electron.ipcRenderer.invoke('mixtape:remove', {
+        playlistId,
+        itemIds: [trackId]
+      })
+    } catch (error) {
+      console.error('[mixtape] remove track failed', {
+        playlistId,
+        itemId: trackId,
+        error
+      })
+      await confirmDialog({
+        title: t('common.error'),
+        content: [t('mixtape.removeFromPlaylistFailed')],
+        confirmShow: false
+      })
+    }
   }
 
   const handleBeatAlignDialogCancel = () => {
@@ -472,9 +496,14 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
             ? Number(normalizedInputBpm)
             : fallbackGridBaseBpm,
         bpm:
-          shouldPersistBpm && normalizedInputBpm !== null ? Number(normalizedInputBpm) : track.bpm
+          shouldPersistBpm && normalizedInputBpm !== null ? Number(normalizedInputBpm) : track.bpm,
+        originalBpm:
+          shouldPersistBpm && normalizedInputBpm !== null
+            ? Number(normalizedInputBpm)
+            : track.originalBpm
       }
       if (!shouldResetEnvelope) return nextTrack
+      nextTrack.bpmEnvelope = undefined
       for (const param of activeEnvelopeParams) {
         const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
         ;(nextTrack as any)[envelopeField] = buildFlatMixEnvelope(
@@ -487,6 +516,8 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
       return nextTrack
     })
     tracks.value = nextTracks
+    clearTimelineLayoutCache()
+    updateTimelineWidth(false)
     scheduleTimelineDraw()
     scheduleFullPreRender()
     scheduleWorkerPreRender()
@@ -554,7 +585,27 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
             entries: muteSegmentUpdateEntries
           })
         : Promise.resolve(null)
-    void Promise.all([...envelopeUpdateTasks, muteSegmentUpdateTask]).catch((error: unknown) => {
+    const originalBpmUpdateTask =
+      bpmChanged && normalizedInputBpm !== null
+        ? window.electron.ipcRenderer.invoke('mixtape:update-track-start-sec', {
+            entries: affectedTracks.map((track: any) => ({
+              itemId: track.id,
+              originalBpm: Number(normalizedInputBpm)
+            }))
+          })
+        : Promise.resolve(null)
+    const bpmEnvelopeResetTask = window.electron.ipcRenderer.invoke('mixtape:update-bpm-envelope', {
+      entries: affectedTracks.map((track: any) => ({
+        itemId: track.id,
+        bpmEnvelope: []
+      }))
+    })
+    void Promise.all([
+      ...envelopeUpdateTasks,
+      muteSegmentUpdateTask,
+      originalBpmUpdateTask,
+      bpmEnvelopeResetTask
+    ]).catch((error: unknown) => {
       console.error('[mixtape] reset mix envelope after grid update failed', {
         trackCount: affectedTracks.length,
         error
@@ -804,6 +855,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     handleTrackContextMenu,
     handleTrackMenuAdjustGrid,
     handleTrackMenuToggleMasterTempo,
+    handleTrackMenuRemoveFromMixtape,
     handleBeatAlignDialogCancel,
     handleBeatAlignGridDefinitionSave,
     handleGlobalPointerDown,

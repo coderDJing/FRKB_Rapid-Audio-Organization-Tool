@@ -5,6 +5,10 @@ import type {
   TimelineRenderTrack,
   WaveformPreRenderTask
 } from '@renderer/composables/mixtape/types'
+import {
+  buildTrackRuntimeTempoSnapshot,
+  serializeTrackRuntimeTempoSnapshot
+} from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
 
 export const createTimelineWorkerBridgeModule = (ctx: any) => {
   const {
@@ -33,8 +37,8 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
     forEachVisibleLayoutItem,
     resolveTrackWaveformSources,
     resolveWaveformSubLaneMetrics,
+    resolveTrackDurationSeconds,
     resolveTrackSourceDurationSeconds,
-    resolveTrackFirstBeatMs,
     resolveRenderPxPerSec,
     resolveTimelineBufferId,
     resolveLaneHeightForZoom,
@@ -197,6 +201,7 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
         tileWidth: tile.width,
         trackWidth: render.trackWidth,
         durationSeconds: render.sourceDurationSeconds,
+        tempoSnapshot: render.tempoSnapshot,
         laneHeight: render.laneHeight,
         pixelRatio: window.devicePixelRatio || 1
       }
@@ -258,9 +263,15 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
       const trackEndX = trackStartX + trackWidth
       if (trackEndX < renderStartX || trackStartX > renderEndX) return
       const durationSeconds = resolveTrackSourceDurationSeconds(track)
-      const bpmValue = typeof track.bpm === 'number' ? track.bpm : 0
-      const firstBeatMs = resolveTrackFirstBeatMs(track)
-      const barBeatOffset = Number(track.barBeatOffset) || 0
+      const timelineDurationSeconds = resolveTrackDurationSeconds(track)
+      const tempoSnapshot = serializeTrackRuntimeTempoSnapshot(
+        buildTrackRuntimeTempoSnapshot({
+          track,
+          sourceDurationSec: durationSeconds,
+          durationSec: timelineDurationSeconds,
+          zoom: zoomValue
+        })
+      )
       const waveformSources = resolveTrackWaveformSources(track)
       if (!waveformSources.length) return
       for (const waveformSource of waveformSources) {
@@ -276,15 +287,14 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
           waveformFilePath: waveformSource.filePath,
           waveformStemId: waveformSource.stemId,
           durationSeconds,
+          timelineDurationSeconds,
           trackWidth,
           startSec: Number(item.startSec) || 0,
           startX: item.startX,
           laneIndex: item.laneIndex,
           laneOffsetY: subLane.offset,
           laneHeight: subLane.height,
-          bpm: Number(bpmValue) || 0,
-          firstBeatMs,
-          barBeatOffset
+          tempoSnapshot
         })
       }
     })

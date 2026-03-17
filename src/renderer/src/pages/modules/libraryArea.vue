@@ -11,8 +11,8 @@ import emitter from '../../utils/mitt'
 import { handleLibraryAreaEmptySpaceDrop } from '@renderer/utils/dragUtils'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import { DEFAULT_MIXTAPE_STEM_PROFILE } from '@shared/mixtapeStemProfiles'
 import {
-  chooseMixtapeProjectModeForCreate,
   persistMixtapeProjectMode,
   setPendingMixtapeProjectMode
 } from '@renderer/composables/mixtape/stemMode'
@@ -124,6 +124,26 @@ const showCreateNow = computed(() => {
   return !exactMatchExists.value && !directNameConflictExists.value
 })
 const isMixtapeLibrary = computed(() => runtime.libraryAreaSelected === 'MixtapeLibrary')
+const createPendingMixtapeList = (mixMode: 'stem' | 'eq') => {
+  const newUuid = uuidV4()
+  for (let item of libraryData.value.children || []) {
+    if (item.order) item.order++
+  }
+  libraryData.value.children = libraryData.value.children || []
+  libraryData.value.children.unshift({
+    uuid: newUuid,
+    type: 'mixtapeList',
+    dirName: '',
+    mixMode,
+    stemProfile: DEFAULT_MIXTAPE_STEM_PROFILE,
+    order: 1,
+    children: []
+  } as IDir)
+  setPendingMixtapeProjectMode(newUuid, {
+    mixMode,
+    stemProfile: DEFAULT_MIXTAPE_STEM_PROFILE
+  })
+}
 const createNow = async () => {
   const name = String(playlistSearch.value || '').trim()
   if (!name) return
@@ -144,10 +164,6 @@ const createNow = async () => {
     })
     return
   }
-  const projectMode = isMixtapeLibrary.value ? await chooseMixtapeProjectModeForCreate() : null
-  if (isMixtapeLibrary.value && !projectMode) {
-    return
-  }
   const newUuid = uuidV4()
   for (let item of libraryData.value.children || []) {
     if (item.order) item.order++
@@ -157,16 +173,19 @@ const createNow = async () => {
     uuid: newUuid,
     type: isMixtapeLibrary.value ? 'mixtapeList' : 'songList',
     dirName: name,
-    mixMode: isMixtapeLibrary.value ? projectMode?.mixMode || 'stem' : undefined,
-    stemProfile: isMixtapeLibrary.value ? projectMode?.stemProfile || 'quality' : undefined,
+    mixMode: isMixtapeLibrary.value ? 'stem' : undefined,
+    stemProfile: isMixtapeLibrary.value ? DEFAULT_MIXTAPE_STEM_PROFILE : undefined,
     order: 1,
     children: []
   } as IDir)
   let success = false
   try {
     success = await libraryUtils.diffLibraryTreeExecuteFileOperation()
-    if (success && projectMode) {
-      await persistMixtapeProjectMode(newUuid, projectMode)
+    if (success && isMixtapeLibrary.value) {
+      await persistMixtapeProjectMode(newUuid, {
+        mixMode: 'stem',
+        stemProfile: DEFAULT_MIXTAPE_STEM_PROFILE
+      })
     }
   } catch {}
   // 创建完成后清空搜索
@@ -180,7 +199,13 @@ const contextmenuEvent = async (event: MouseEvent) => {
   if (runtime.libraryAreaSelected === 'RecycleBin') {
     menuArr.value = [[{ menuName: 'recycleBin.emptyRecycleBin' }]]
   } else if (runtime.libraryAreaSelected === 'MixtapeLibrary') {
-    menuArr.value = [[{ menuName: 'library.createMixtape' }, { menuName: 'library.createFolder' }]]
+    menuArr.value = [
+      [
+        { menuName: 'library.createStemMixtape' },
+        { menuName: 'library.createEqMixtape' },
+        { menuName: 'library.createFolder' }
+      ]
+    ]
   } else {
     menuArr.value = [[{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]]
   }
@@ -195,21 +220,13 @@ const contextmenuEvent = async (event: MouseEvent) => {
         dirName: ''
       })
       // 不在此时标记“创建中”，等待命名确认开始写盘时再标记
-    } else if (result.menuName == 'library.createMixtape') {
-      const projectMode = await chooseMixtapeProjectModeForCreate()
-      if (!projectMode) return
-      const newUuid = uuidV4()
+    } else if (result.menuName == 'library.createStemMixtape') {
+      createPendingMixtapeList('stem')
+    } else if (result.menuName == 'library.createEqMixtape') {
+      createPendingMixtapeList('eq')
+    } else if (result.menuName == 'library.createFolder') {
       libraryData.value.children = libraryData.value.children || []
       libraryData.value.children.unshift({
-        uuid: newUuid,
-        type: 'mixtapeList',
-        dirName: '',
-        mixMode: projectMode.mixMode,
-        stemProfile: projectMode.stemProfile
-      })
-      setPendingMixtapeProjectMode(newUuid, projectMode)
-    } else if (result.menuName == 'library.createFolder') {
-      libraryData.value.children?.unshift({
         uuid: uuidV4(),
         type: 'dir',
         dirName: ''

@@ -62,6 +62,7 @@ const {
   trackContextMenuStyle,
   handleTrackMenuAdjustGrid,
   handleTrackMenuToggleMasterTempo,
+  handleTrackMenuRemoveFromMixtape,
   trackMenuMasterTempoChecked,
   beatAlignDialogVisible,
   beatAlignTrack,
@@ -313,6 +314,7 @@ const handleLaneTrackMouseDown = (item: TimelineTrackLayout, event: MouseEvent) 
       const afterSnapshot = buildTrackTimingUndoSnapshot(latestTrack, fallbackStartSec)
       if (isTrackTimingSnapshotSame(beforeSnapshot, afterSnapshot)) return
       pushExternalUndoStep(() => restoreTrackTimingUndoSnapshot(tracks, beforeSnapshot))
+      resyncTrackBpmOverlaps('track-position')
     },
     { once: true }
   )
@@ -395,6 +397,7 @@ const {
   handleBpmEnvelopeStageMouseDown,
   handleBpmEnvelopePointDoubleClick,
   handleBpmEnvelopePointContextMenu,
+  resyncTrackBpmOverlaps,
   cleanupTrackBpmEnvelopeEditor
 } = createMixtapeTrackBpmEnvelopeEditor({
   tracks,
@@ -795,7 +798,7 @@ onBeforeUnmount(() => {
                                 <div class="lane-track__meta-sub">
                                   {{ t('mixtape.bpm') }} {{ formatTrackBpm(item.track.bpm) }}
                                   <template v-if="formatTrackKey(item.track.key)">
-                                    閻?{{ t('columns.key') }} {{ formatTrackKey(item.track.key) }}
+                                    | {{ t('columns.key') }} {{ formatTrackKey(item.track.key) }}
                                   </template>
                                 </div>
                               </div>
@@ -1002,6 +1005,7 @@ onBeforeUnmount(() => {
       :track-context-menu-style="trackContextMenuStyle"
       :handle-track-menu-adjust-grid="handleTrackMenuAdjustGrid"
       :handle-track-menu-toggle-master-tempo="handleTrackMenuToggleMasterTempo"
+      :handle-track-menu-remove-from-mixtape="handleTrackMenuRemoveFromMixtape"
       :track-menu-master-tempo-checked="trackMenuMasterTempoChecked"
       :beat-align-dialog-visible="beatAlignDialogVisible"
       :beat-align-track="beatAlignTrack"

@@ -9,6 +9,7 @@ import { v4 as uuidV4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 import emitter from '../../utils/mitt'
+import { DEFAULT_MIXTAPE_STEM_PROFILE } from '@shared/mixtapeStemProfiles'
 import {
   handleDragStart,
   handleDragOver,
@@ -18,7 +19,6 @@ import {
   type DragState
 } from '../../utils/dragUtils'
 import {
-  chooseMixtapeProjectModeForCreate,
   clearPendingMixtapeProjectMode,
   consumePendingMixtapeProjectMode,
   persistMixtapeProjectMode,
@@ -176,7 +176,13 @@ const rightClickMenuShow = ref(false)
 const menuArr = ref(
   dirData?.type == 'dir'
     ? [
-        [{ menuName: '新建歌单' }, { menuName: '新建文件夹' }],
+        isMixtapeDialog.value
+          ? [
+              { menuName: '新建Stem混音歌单' },
+              { menuName: '新建EQ混音歌单' },
+              { menuName: '新建文件夹' }
+            ]
+          : [{ menuName: '新建歌单' }, { menuName: '新建文件夹' }],
         [{ menuName: '重命名' }, { menuName: '删除' }]
       ]
     : [[{ menuName: '重命名' }, { menuName: '删除歌单' }]]
@@ -250,8 +256,6 @@ const contextmenuEvent = async (event: MouseEvent) => {
   rightClickMenuShow.value = false
   if (result !== 'cancel') {
     if (result.menuName == '新建歌单') {
-      const projectMode = isMixtapeDialog.value ? await chooseMixtapeProjectModeForCreate() : null
-      if (isMixtapeDialog.value && !projectMode) return
       dirChildRendered.value = true
       dirChildShow.value = true
       const newUuid = uuidV4()
@@ -259,14 +263,26 @@ const contextmenuEvent = async (event: MouseEvent) => {
       dirData.children.unshift({
         uuid: newUuid,
         dirName: '',
-        type: isMixtapeDialog.value ? 'mixtapeList' : 'songList',
-        mixMode: isMixtapeDialog.value ? projectMode?.mixMode || 'stem' : undefined,
-        stemProfile: isMixtapeDialog.value ? projectMode?.stemProfile || 'quality' : undefined
+        type: 'songList'
       })
-      if (projectMode) {
-        setPendingMixtapeProjectMode(newUuid, projectMode)
-      }
       // 不在此时标记“创建中”，等待命名确认开始写盘时再标记
+    } else if (result.menuName == '新建Stem混音歌单' || result.menuName == '新建EQ混音歌单') {
+      dirChildRendered.value = true
+      dirChildShow.value = true
+      const newUuid = uuidV4()
+      const mixMode = result.menuName == '新建EQ混音歌单' ? 'eq' : 'stem'
+      dirData.children = dirData.children || []
+      dirData.children.unshift({
+        uuid: newUuid,
+        dirName: '',
+        type: 'mixtapeList',
+        mixMode,
+        stemProfile: DEFAULT_MIXTAPE_STEM_PROFILE
+      })
+      setPendingMixtapeProjectMode(newUuid, {
+        mixMode,
+        stemProfile: DEFAULT_MIXTAPE_STEM_PROFILE
+      })
     } else if (result.menuName == '新建文件夹') {
       dirChildRendered.value = true
       dirChildShow.value = true

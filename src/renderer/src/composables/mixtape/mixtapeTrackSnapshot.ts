@@ -5,7 +5,7 @@ import {
 import {
   normalizeTrackBpmEnvelopePoints,
   resolveTrackBpmEnvelopeBaseValue
-} from '@renderer/composables/mixtape/trackBpmEnvelope'
+} from '@renderer/composables/mixtape/trackTempoModel'
 import { normalizeVolumeMuteSegments } from '@renderer/composables/mixtape/volumeMuteSegments'
 import type {
   MixtapeRawItem,
@@ -79,6 +79,15 @@ const resolvePersistedBpmEnvelopeDurationSec = (info: Record<string, any> | null
     return legacyDurationSec
   }
   return 0
+}
+
+const hasPersistedBpmEnvelope = (info: Record<string, any> | null) => {
+  if (!Array.isArray(info?.bpmEnvelope)) return false
+  return info.bpmEnvelope.some((item: any) => {
+    const sec = Number(item?.sec)
+    const bpm = Number(item?.bpm)
+    return Number.isFinite(sec) && sec >= 0 && Number.isFinite(bpm) && bpm > 0
+  })
 }
 
 export const normalizeUniquePaths = (values: unknown[]) => {
@@ -159,12 +168,13 @@ export const parseSnapshot = (
     gridBaseBpm: parsedBpm,
     originalBpm: parsedOriginalBpm
   } as MixtapeTrack
-  const persistedBpmEnvelopeDurationSec = resolvePersistedBpmEnvelopeDurationSec(info)
-  const parsedBpmEnvelope = normalizeTrackBpmEnvelopePoints(
-    info?.bpmEnvelope,
-    persistedBpmEnvelopeDurationSec,
-    resolveTrackBpmEnvelopeBaseValue(bpmEnvelopeBaseTrack)
-  )
+  const parsedBpmEnvelope = hasPersistedBpmEnvelope(info)
+    ? normalizeTrackBpmEnvelopePoints(
+        info?.bpmEnvelope,
+        resolvePersistedBpmEnvelopeDurationSec(info),
+        resolveTrackBpmEnvelopeBaseValue(bpmEnvelopeBaseTrack)
+      )
+    : undefined
   return {
     id: String(raw?.id || `${filePath}-${index}`),
     mixOrder: Number(raw?.mixOrder) || index + 1,
@@ -177,7 +187,7 @@ export const parseSnapshot = (
     key: parsedKey || undefined,
     originalKey: parsedOriginalKey,
     bpm: parsedBpm,
-    bpmEnvelope: parsedBpmEnvelope.length ? parsedBpmEnvelope : undefined,
+    bpmEnvelope: parsedBpmEnvelope?.length ? parsedBpmEnvelope : undefined,
     gridBaseBpm: parsedBpm,
     originalBpm: parsedOriginalBpm,
     masterTempo: parsedMasterTempo,

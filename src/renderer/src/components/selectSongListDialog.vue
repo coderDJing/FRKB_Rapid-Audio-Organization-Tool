@@ -227,14 +227,22 @@ const resolveMixtapeBadgeTitle = (mixMode?: string) => resolveMixtapeModeLabel(m
 
 const menuArr = ref([
   isMixtapeDialog.value
-    ? [{ menuName: 'library.createMixtape' }, { menuName: 'library.createFolder' }]
+    ? [
+        { menuName: 'library.createStemMixtape' },
+        { menuName: 'library.createEqMixtape' },
+        { menuName: 'library.createFolder' }
+      ]
     : [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]
 ])
 const contextmenuEvent = async (event: MouseEvent) => {
   if (!libraryData.value) return
   menuArr.value = [
     isMixtapeDialog.value
-      ? [{ menuName: 'library.createMixtape' }, { menuName: 'library.createFolder' }]
+      ? [
+          { menuName: 'library.createStemMixtape' },
+          { menuName: 'library.createEqMixtape' },
+          { menuName: 'library.createFolder' }
+        ]
       : [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]
   ]
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
@@ -250,9 +258,14 @@ const contextmenuEvent = async (event: MouseEvent) => {
       // 新建后在对话框中仅定位高亮，不触发双击
       runtime.dialogSelectedSongListUUID = newUuid
       selectedArea.value = 'tree'
-    } else if (result.menuName == 'library.createMixtape') {
-      const projectMode = await chooseMixtapeProjectModeForCreate()
-      if (!projectMode) return
+    } else if (
+      result.menuName == 'library.createStemMixtape' ||
+      result.menuName == 'library.createEqMixtape'
+    ) {
+      const projectMode =
+        result.menuName == 'library.createEqMixtape'
+          ? { mixMode: 'eq' as const, stemProfile: 'quality' as const }
+          : { mixMode: 'stem' as const, stemProfile: 'quality' as const }
       const newUuid = uuidV4()
       libraryData.value.children = libraryData.value.children || []
       libraryData.value.children.unshift({

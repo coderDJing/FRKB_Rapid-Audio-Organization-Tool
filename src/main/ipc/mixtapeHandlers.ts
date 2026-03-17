@@ -1,5 +1,6 @@
 ﻿import { ipcMain } from 'electron'
 import os from 'node:os'
+import { is } from '@electron-toolkit/utils'
 import fs from 'node:fs'
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
@@ -605,6 +606,22 @@ const reconcileMixtapeMissingFiles = async (
 }
 
 export function registerMixtapeHandlers() {
+  const broadcastMixtapeItemsRemoved = (
+    sender: Electron.WebContents | null,
+    payload: {
+      playlistId: string
+      itemIds: string[]
+      removedPaths: string[]
+      removed: number
+    }
+  ) => {
+    if (!payload.playlistId || payload.removed <= 0) return
+    if (mainWindow.instance && mainWindow.instance.webContents !== sender) {
+      mainWindow.instance.webContents.send('mixtape-items-removed', payload)
+    }
+    mixtapeWindow.broadcast?.('mixtape-items-removed', payload)
+  }
+
   ipcMain.on('mixtape:open', (_e, payload: MixtapeWindowPayload) => {
     mixtapeWindow.open(payload || {})
   })
@@ -1046,10 +1063,22 @@ export function registerMixtapeHandlers() {
         const removedPaths = listMixtapeFilePathsByItemIds(playlistId, itemIds)
         const result = removeMixtapeItemsById(playlistId, itemIds)
         await cleanupMixtapeWaveformCache(removedPaths)
+        broadcastMixtapeItemsRemoved(_e.sender, {
+          playlistId,
+          itemIds,
+          removedPaths,
+          removed: Number(result?.removed || 0)
+        })
         return result
       }
       const result = removeMixtapeItemsByFilePath(playlistId, filePaths)
       await cleanupMixtapeWaveformCache(filePaths)
+      broadcastMixtapeItemsRemoved(_e.sender, {
+        playlistId,
+        itemIds: [],
+        removedPaths: filePaths,
+        removed: Number(result?.removed || 0)
+      })
       return result
     }
   )
@@ -1243,7 +1272,12 @@ export function registerMixtapeHandlers() {
       payload?: {
         entries?: Array<{
           itemId?: string
-          bpmEnvelope?: Array<{ sec?: number; bpm?: number }>
+          bpmEnvelope?: Array<{
+            sec?: number
+            bpm?: number
+            sourceSec?: number
+            allowOffGrid?: boolean
+          }>
           bpmEnvelopeDurationSec?: number
         }>
       }
@@ -1258,7 +1292,8 @@ export function registerMixtapeHandlers() {
                 .map((point) => ({
                   sec: Number(point?.sec),
                   bpm: Number(point?.bpm),
-                  sourceSec: Number((point as any)?.sourceSec)
+                  sourceSec: Number((point as any)?.sourceSec),
+                  allowOffGrid: (point as any)?.allowOffGrid === true ? true : undefined
                 }))
                 .filter(
                   (point) =>

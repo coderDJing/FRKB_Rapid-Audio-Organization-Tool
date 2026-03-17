@@ -4,12 +4,16 @@ import type {
   RenderTilePayload,
   WaveformStemId
 } from './mixtapeWaveformRender.types'
+import {
+  buildWaveformTileCacheKey,
+  resolveFrameBufferMultiplier,
+  resolveGridBarWidth
+} from './mixtapeWaveformRender.cache'
 
 type CreateFrameRendererOptions = {
   mixTapeWebglEnabled: boolean
   mixTapeBufferMultiplier: number
   debugTrackLines: boolean
-  timelineSidePaddingPx: number
   rawWaveformMinZoom: number
   waveformHeightScale: number
   gridBarOnlyZoom: number
@@ -24,11 +28,8 @@ type CreateFrameRendererOptions = {
     ctx: OffscreenCanvasRenderingContext2D,
     width: number,
     height: number,
-    bpm: number,
-    firstBeatMs: number,
-    barBeatOffset: number,
+    track: RenderFramePayload['tracks'][number],
     range: { start: number; end: number },
-    renderPx: number,
     barOnly: boolean,
     showBeat4: boolean,
     showBeat: boolean,
@@ -41,7 +42,6 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
     mixTapeWebglEnabled,
     mixTapeBufferMultiplier,
     debugTrackLines,
-    timelineSidePaddingPx,
     rawWaveformMinZoom,
     waveformHeightScale,
     gridBarOnlyZoom,
@@ -83,43 +83,6 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
     uColor: WebGLUniformLocation | null
   } | null = null
   let glActiveProgram: WebGLProgram | null = null
-
-  const resolveFrameBufferMultiplier = (zoom: number) => {
-    const safeZoom = Number.isFinite(zoom) ? zoom : 1
-    if (safeZoom >= 6) return 4
-    if (safeZoom >= 3) return 3.5
-    return mixTapeBufferMultiplier
-  }
-  const resolveGridBarWidth = (zoom: number) => {
-    const safeZoom = Number.isFinite(zoom) ? zoom : 1
-    const minZoom = rawWaveformMinZoom
-    const maxZoom = gridBarWidthMaxZoom
-    if (safeZoom <= minZoom) return gridBarWidthMin
-    if (safeZoom >= maxZoom) return gridBarWidthMax
-    const ratio = (safeZoom - minZoom) / Math.max(0.0001, maxZoom - minZoom)
-    return gridBarWidthMin + (gridBarWidthMax - gridBarWidthMin) * ratio
-  }
-  const normalizeBeatOffset = (value: number, interval: number) => {
-    const safeInterval = Math.max(1, Math.floor(Number(interval) || 1))
-    const numeric = Number(value)
-    const rounded = Number.isFinite(numeric) ? Math.round(numeric) : 0
-    return ((rounded % safeInterval) + safeInterval) % safeInterval
-  }
-
-  const buildTileCacheKey = (
-    filePath: string,
-    stemId: WaveformStemId,
-    tileIndex: number,
-    zoomValue: number,
-    width: number,
-    height: number,
-    pixelRatio: number
-  ) => {
-    const zoomKey = Math.round(zoomValue * 1000)
-    const ratioKey = Math.round(pixelRatio * 100)
-    const waveformHeightScaleKey = Math.round(waveformHeightScale * 1000)
-    return `${filePath}::${stemId}::${tileIndex}::${zoomKey}::${width}x${height}@${ratioKey}::h${waveformHeightScaleKey}`
-  }
 
   const touchTileCache = (key: string) => {
     const entry = tileCache.get(key)
@@ -293,9 +256,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
             Number(track.startX) || 0
           )}:${Math.round((Number(track.startSec) || 0) * 1000)}:${track.laneIndex}:${Math.round(
             Number(track.laneOffsetY) || 0
-          )}:${Math.round(Number(track.laneHeight) || payload.laneHeight)}:${Math.round(track.bpm * 100)}:${Math.round(
-            track.firstBeatMs
-          )}:${Math.round(track.barBeatOffset)}`
+          )}:${Math.round(Number(track.laneHeight) || payload.laneHeight)}:${track.tempoSnapshot.signature}`
       )
       .join('|')
     return [
@@ -328,7 +289,13 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
     const barOnlyGrid = payload.zoom <= gridBarOnlyZoom
     const showBeat4Grid = payload.zoom >= gridBeat4LineZoom
     const showBeatGrid = payload.zoom >= gridBeatLineZoom
-    const barWidth = resolveGridBarWidth(payload.zoom)
+    const barWidth = resolveGridBarWidth({
+      zoom: payload.zoom,
+      rawWaveformMinZoom,
+      gridBarWidthMin,
+      gridBarWidthMax,
+      gridBarWidthMaxZoom
+    })
     const laneStride = payload.laneHeight + payload.laneGap
     const endX = viewStartX + viewWidth
 
@@ -370,6 +337,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
               tileWidth,
               trackWidth,
               durationSeconds: track.durationSeconds,
+              tempoSnapshot: track.tempoSnapshot,
               laneHeight: trackLaneHeight,
               pixelRatio: payload.pixelRatio
             })
@@ -390,28 +358,14 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
 
       const visibleWidth = Math.max(0, localEnd - localStart)
       if (showGridLines && visibleWidth > 0) {
-        const renderPxPerSecSafe = Math.max(0.0001, payload.renderPxPerSec)
-        const trackStartSecFromPx = Math.max(
-          0,
-          (trackStartX - timelineSidePaddingPx) / renderPxPerSecSafe
-        )
-        const trackStartSec =
-          Number.isFinite(Number(track.startSec)) && Number(track.startSec) >= 0
-            ? Number(track.startSec)
-            : trackStartSecFromPx
-        const adjustedFirstBeatMs =
-          Number(track.firstBeatMs) + (trackStartSec - trackStartSecFromPx) * 1000
         ctx.save()
         ctx.translate(trackStartX + localStart - viewStartX, trackY)
         drawTrackGridLines(
           ctx,
           visibleWidth,
           trackLaneHeight,
-          track.bpm,
-          adjustedFirstBeatMs,
-          track.barBeatOffset,
+          track,
           { start: localStart, end: localEnd },
-          payload.renderPxPerSec,
           barOnlyGrid,
           showBeat4Grid,
           showBeatGrid,
@@ -439,7 +393,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
   ) => {
     const { width, height, pixelRatio, startX, startY } = payload
     const key = buildFrameKey(payload)
-    const bufferMultiplier = resolveFrameBufferMultiplier(payload.zoom)
+    const bufferMultiplier = resolveFrameBufferMultiplier(payload.zoom, mixTapeBufferMultiplier)
     const bufferTargetWidth = Math.max(1, Math.floor(width * bufferMultiplier))
     const bufferMargin = Math.floor(((bufferMultiplier - 1) * width) / 2)
     const desiredBufferStart = Math.max(0, Math.floor(startX - bufferMargin))
@@ -656,6 +610,19 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
     return texture
   }
 
+  const createTextureFromCanvas = (canvas: OffscreenCanvas) => {
+    if (!gl) return null
+    const texture = gl.createTexture()
+    if (!texture) return null
+    gl.bindTexture(gl.TEXTURE_2D, texture)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas)
+    return texture
+  }
+
   const ensureBufferTexture = (
     slot: FrameBufferSlot,
     width: number,
@@ -712,19 +679,23 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
     tileWidth: number,
     trackWidth: number,
     durationSeconds: number,
+    tempoSnapshot: RenderTilePayload['tempoSnapshot'],
     laneHeight: number,
     pixelRatio: number,
+    signature?: string,
     allowBuild: boolean = true
   ) => {
-    const cacheKey = buildTileCacheKey(
+    const cacheKey = buildWaveformTileCacheKey({
       filePath,
       stemId,
       tileIndex,
-      zoom,
-      Math.max(1, Math.floor(tileWidth)),
-      Math.max(1, Math.floor(laneHeight)),
-      pixelRatio
-    )
+      zoomValue: zoom,
+      width: Math.max(1, Math.floor(tileWidth)),
+      height: Math.max(1, Math.floor(laneHeight)),
+      pixelRatio,
+      signature,
+      waveformHeightScale
+    })
     let cached = tileCache.get(cacheKey)
     if (!cached) {
       if (!allowBuild) return null
@@ -738,6 +709,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
         tileWidth,
         trackWidth,
         durationSeconds,
+        tempoSnapshot,
         laneHeight,
         pixelRatio
       })
@@ -773,7 +745,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
     const scaledWidth = Math.max(1, Math.floor(width * pixelRatio))
     const scaledHeight = Math.max(1, Math.floor(height * pixelRatio))
     const key = buildFrameKey(payload)
-    const bufferMultiplier = resolveFrameBufferMultiplier(payload.zoom)
+    const bufferMultiplier = resolveFrameBufferMultiplier(payload.zoom, mixTapeBufferMultiplier)
     const bufferTargetWidth = Math.max(1, Math.floor(width * bufferMultiplier))
     const bufferMargin = Math.floor(((bufferMultiplier - 1) * width) / 2)
     const desiredBufferStart = Math.max(0, Math.floor(startX - bufferMargin))
@@ -840,8 +812,10 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
             tileWidth,
             trackWidth,
             track.durationSeconds,
+            track.tempoSnapshot,
             trackLaneHeight,
             payload.pixelRatio,
+            track.tempoSnapshot.signature,
             allowTileBuild
           )
           if (texture) {
@@ -861,7 +835,13 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
         const barOnlyGrid = payload.zoom <= gridBarOnlyZoom
         const showBeat4Grid = payload.zoom >= gridBeat4LineZoom
         const showBeatGrid = payload.zoom >= gridBeatLineZoom
-        const barWidth = resolveGridBarWidth(payload.zoom)
+        const barWidth = resolveGridBarWidth({
+          zoom: payload.zoom,
+          rawWaveformMinZoom,
+          gridBarWidthMin,
+          gridBarWidthMax,
+          gridBarWidthMaxZoom
+        })
         for (const track of payload.tracks) {
           const trackWidth = track.trackWidth
           if (!trackWidth || !Number.isFinite(trackWidth)) continue
@@ -877,56 +857,36 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
           if (visibleEnd <= visibleStart) continue
           const localStart = visibleStart - trackStartX
           const localEnd = visibleEnd - trackStartX
-          const interval = (60 / track.bpm) * payload.renderPxPerSec
-          if (!Number.isFinite(interval) || interval <= 0) continue
-          const renderPxPerSecSafe = Math.max(0.0001, payload.renderPxPerSec)
-          const trackStartSecFromPx = Math.max(
-            0,
-            (trackStartX - timelineSidePaddingPx) / renderPxPerSecSafe
+          const gridCanvas = new OffscreenCanvas(
+            Math.max(1, Math.ceil(visibleEnd - visibleStart + barWidth + 4)),
+            Math.max(1, Math.ceil(trackLaneHeight))
           )
-          const trackStartSec =
-            Number.isFinite(Number(track.startSec)) && Number(track.startSec) >= 0
-              ? Number(track.startSec)
-              : trackStartSecFromPx
-          const adjustedFirstBeatMs =
-            Number(track.firstBeatMs) + (trackStartSec - trackStartSecFromPx) * 1000
-          const offsetPx = (adjustedFirstBeatMs / 1000) * payload.renderPxPerSec
-          const normalizedBarOffset = normalizeBeatOffset(track.barBeatOffset, 32)
-          const startIndex = Math.floor((localStart - offsetPx) / interval) - 2
-          const endIndex = Math.ceil((localEnd - offsetPx) / interval) + 2
-          for (let i = startIndex; i <= endIndex; i += 1) {
-            const rawX = offsetPx + i * interval
-            if (rawX < localStart - interval || rawX > localEnd + interval) continue
-            const shiftedIndex = i - normalizedBarOffset
-            const mod32 = ((shiftedIndex % 32) + 32) % 32
-            const mod4 = ((shiftedIndex % 4) + 4) % 4
-            const level = mod32 === 0 ? 'bar' : mod4 === 0 ? 'beat4' : 'beat'
-            if (barOnlyGrid && level !== 'bar') continue
-            if (!showBeat4Grid && level !== 'bar') continue
-            if (!showBeatGrid && level === 'beat') continue
-            const x = Math.round(rawX + trackStartX - slot.startX)
-            if (level === 'bar') {
-              drawColorRect(x, trackY, barWidth, trackLaneHeight, {
-                r: 0,
-                g: 0.43,
-                b: 0.86,
-                a: 0.95
-              })
-            } else if (level === 'beat4') {
-              drawColorRect(x, trackY, 1.5, trackLaneHeight, {
-                r: 0.47,
-                g: 0.78,
-                b: 1,
-                a: 0.85
-              })
-            } else {
-              drawColorRect(x, trackY, 1.3, trackLaneHeight, {
-                r: 0.71,
-                g: 0.88,
-                b: 1,
-                a: 0.8
-              })
-            }
+          const gridCtx = gridCanvas.getContext('2d')
+          if (!gridCtx) continue
+          drawTrackGridLines(
+            gridCtx,
+            Math.max(0, localEnd - localStart),
+            trackLaneHeight,
+            track,
+            { start: localStart, end: localEnd },
+            barOnlyGrid,
+            showBeat4Grid,
+            showBeatGrid,
+            barWidth
+          )
+          const gridTexture = createTextureFromCanvas(gridCanvas)
+          if (!gridTexture) continue
+          drawTextureRect(
+            gridTexture,
+            trackStartX + localStart - slot.startX,
+            trackY,
+            Math.max(1, Math.ceil(visibleEnd - visibleStart + barWidth + 4)),
+            trackLaneHeight
+          )
+          if (gl) {
+            try {
+              gl.deleteTexture(gridTexture)
+            } catch {}
           }
         }
       }
@@ -1006,8 +966,10 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
       task.tileWidth,
       task.trackWidth,
       task.durationSeconds,
+      task.tempoSnapshot,
       task.laneHeight,
-      task.pixelRatio
+      task.pixelRatio,
+      task.tempoSnapshot.signature
     )
   }
 

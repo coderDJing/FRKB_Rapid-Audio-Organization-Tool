@@ -94,6 +94,10 @@ export type MixtapeTrack = {
   firstBeatMs?: number
   // 大节线相位偏移（以拍为单位，仅改变网格线定义，不改变网格线位置）
   barBeatOffset?: number
+  // 重叠相位同步后的网格覆盖线（仅运行期使用）
+  phaseSyncGridLines?: MixtapeGridLineOverride[]
+  phaseSyncGridRangeStartSec?: number
+  phaseSyncGridRangeEndSec?: number
   // Stem 素材状态（pending/running/ready/failed）
   stemStatus?: MixtapeStemStatus
   stemError?: string
@@ -115,6 +119,31 @@ export type MixtapeBpmPoint = {
   sec: number
   bpm: number
   sourceSec?: number
+  allowOffGrid?: boolean
+}
+
+export type MixtapeGridLineOverride = {
+  sec: number
+  sourceSec: number
+  level: 'bar' | 'beat4' | 'beat'
+}
+
+export type SerializedTrackTempoSnapshot = {
+  signature: string
+  durationSec: number
+  sourceDurationSec: number
+  baseBpm: number
+  gridSourceBpm: number
+  originalBpm: number
+  firstBeatSourceSec: number
+  beatSourceSec: number
+  barBeatOffset: number
+  controlPoints: MixtapeBpmPoint[]
+  overrideLines: MixtapeGridLineOverride[]
+  overrideRange?: {
+    startSec: number
+    endSec: number
+  }
 }
 
 export type MixtapeMuteSegment = {
@@ -155,6 +184,7 @@ export type WaveformRenderContext = {
   trackWidth: number
   sourceDurationSeconds: number
   durationSeconds: number
+  tempoSnapshot: SerializedTrackTempoSnapshot
   data: StemWaveformData | MixxxWaveformData | null
   frameCount: number
   rawData: RawWaveformData | null
@@ -183,15 +213,14 @@ export type TimelineRenderTrack = {
   waveformFilePath?: string
   waveformStemId: MixtapeWaveformStemId
   durationSeconds: number
+  timelineDurationSeconds: number
   trackWidth: number
   startSec: number
   startX: number
   laneIndex: number
   laneOffsetY?: number
   laneHeight?: number
-  bpm: number
-  firstBeatMs: number
-  barBeatOffset: number
+  tempoSnapshot: SerializedTrackTempoSnapshot
 }
 
 export type TimelineRenderPayload = {
