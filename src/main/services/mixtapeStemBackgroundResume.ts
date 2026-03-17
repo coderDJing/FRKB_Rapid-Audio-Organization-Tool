@@ -1,5 +1,4 @@
 import fs from 'node:fs'
-import { is } from '@electron-toolkit/utils'
 import type { MixtapeStemMode } from '../mixtapeDb'
 import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
 import { getLibraryDb } from '../libraryDb'
@@ -24,15 +23,6 @@ type MixtapeStemBackgroundResumeGroup = {
 let backgroundResumeEnabled = false
 let backgroundResumeTimer: ReturnType<typeof setTimeout> | null = null
 let backgroundResumeRunning = false
-
-const debugDev = (message: string, payload?: unknown) => {
-  if (!is.dev) return
-  if (payload === undefined) {
-    log.debug(`[mixtape-stem][dev] ${message}`)
-    return
-  }
-  log.debug(`[mixtape-stem][dev] ${message}`, payload)
-}
 
 const normalizeText = (value: unknown, maxLen = 2000): string => {
   if (typeof value !== 'string') return ''
@@ -161,10 +151,8 @@ const scheduleNextBackgroundResumeScan = (delayMs = STEM_BACKGROUND_SCAN_INTERVA
   if (!backgroundResumeEnabled) return
   if (backgroundResumeTimer) return
   const safeDelay = Math.max(1000, Number(delayMs) || STEM_BACKGROUND_SCAN_INTERVAL_MS)
-  debugDev('调度下一轮后台续跑扫描', { delayMs: safeDelay })
   backgroundResumeTimer = setTimeout(() => {
     backgroundResumeTimer = null
-    debugDev('触发后台续跑扫描定时器')
     requestBackgroundTaskExecution({
       category: 'mixtape-stem-resume',
       trigger: 'mixtape-stem-resume-timer',
@@ -178,16 +166,8 @@ const runBackgroundResumeScan = async () => {
   if (backgroundResumeRunning) return
   backgroundResumeRunning = true
   try {
-    debugDev('开始后台续跑扫描')
     const groups = collectBackgroundResumeGroups()
-    if (!groups.length) {
-      debugDev('扫描未命中可续跑任务')
-      return
-    }
-    debugDev('扫描命中可续跑任务', {
-      groupCount: groups.length,
-      trackCount: groups.reduce((sum, group) => sum + group.filePaths.length, 0)
-    })
+    if (!groups.length) return
     let touchedGroups = 0
     let touchedTracks = 0
     let queued = 0
@@ -210,14 +190,6 @@ const runBackgroundResumeScan = async () => {
       queued += result.queued
       merged += result.merged
       readyFromCache += result.readyFromCache
-      debugDev('后台续跑分组入队结果', {
-        playlistId: group.playlistId,
-        trackCount: group.filePaths.length,
-        queued: result.queued,
-        merged: result.merged,
-        readyFromCache: result.readyFromCache,
-        skipped: result.skipped
-      })
     }
     if (queued > 0 || merged > 0) {
       log.info('[mixtape-stem] background resume scan enqueued', {
@@ -225,13 +197,6 @@ const runBackgroundResumeScan = async () => {
         touchedTracks,
         queued,
         merged,
-        readyFromCache
-      })
-    }
-    if (queued === 0 && merged === 0) {
-      debugDev('本轮扫描未产生新入队任务', {
-        touchedGroups,
-        touchedTracks,
         readyFromCache
       })
     }
@@ -246,17 +211,10 @@ const runBackgroundResumeScan = async () => {
 export function startMixtapeStemBackgroundResume(): void {
   if (backgroundResumeEnabled) return
   backgroundResumeEnabled = true
-  debugDev('启动后台续跑服务', {
-    initialDelayMs: STEM_BACKGROUND_INITIAL_DELAY_MS,
-    scanIntervalMs: STEM_BACKGROUND_SCAN_INTERVAL_MS,
-    trackLimit: STEM_BACKGROUND_SCAN_TRACK_LIMIT,
-    playlistLimit: STEM_BACKGROUND_SCAN_PLAYLIST_LIMIT
-  })
   scheduleNextBackgroundResumeScan(STEM_BACKGROUND_INITIAL_DELAY_MS)
 }
 
 export function stopMixtapeStemBackgroundResume(): void {
   backgroundResumeEnabled = false
   clearBackgroundResumeTimer()
-  debugDev('停止后台续跑服务')
 }

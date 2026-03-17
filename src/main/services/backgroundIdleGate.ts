@@ -31,15 +31,6 @@ const resolveIdleThresholdSec = (): number =>
 const resolveDeepIdleThresholdSec = (): number =>
   is.dev ? DEV_SYSTEM_DEEP_IDLE_THRESHOLD_SEC : SYSTEM_DEEP_IDLE_THRESHOLD_SEC
 
-const debugDev = (message: string, payload?: unknown) => {
-  if (!is.dev) return
-  if (payload === undefined) {
-    log.debug(`[background-idle-gate][dev] ${message}`)
-    return
-  }
-  log.debug(`[background-idle-gate][dev] ${message}`, payload)
-}
-
 const normalizeSystemIdleState = (value: unknown): SystemIdleState => {
   if (value === 'active') return 'active'
   if (value === 'idle') return 'idle'
@@ -90,14 +81,12 @@ export const registerBackgroundForegroundBusyProvider = (
   const normalizedName = String(providerName || '').trim()
   if (!normalizedName || typeof provider !== 'function') return
   foregroundBusyProviderMap.set(normalizedName, provider)
-  debugDev('注册前台繁忙状态提供器', { providerName: normalizedName })
 }
 
 export const unregisterBackgroundForegroundBusyProvider = (providerName: string) => {
   const normalizedName = String(providerName || '').trim()
   if (!normalizedName) return
   if (!foregroundBusyProviderMap.delete(normalizedName)) return
-  debugDev('移除前台繁忙状态提供器', { providerName: normalizedName })
 }
 
 export const getBackgroundIdleSnapshot = (): BackgroundIdleSnapshot => {

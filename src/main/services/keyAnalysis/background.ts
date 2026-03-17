@@ -2,7 +2,6 @@ import nodeFs from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { EventEmitter } from 'node:events'
-import { is } from '@electron-toolkit/utils'
 import { sweepSongListCovers } from '../covers'
 import * as LibraryCacheDb from '../../libraryCacheDb'
 import { getLibraryDb } from '../../libraryDb'
@@ -59,21 +58,6 @@ type KeyAnalysisBackgroundDeps = {
   persistence: KeyAnalysisPersistence
 }
 
-type BackgroundCandidateDebugSummary = {
-  count: number
-  limit: number
-  missingKeyCount: number
-  missingBpmCount: number
-  missingWaveformCount: number
-  uniqueListRootCount: number
-  sampleListRoots: string[]
-}
-
-type BackgroundCandidateCollectionResult = {
-  filePaths: string[]
-  summary: BackgroundCandidateDebugSummary
-}
-
 export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => {
   let backgroundTimer: ReturnType<typeof setTimeout> | null = null
   let backgroundScanInProgress = false
@@ -93,15 +77,6 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
   let lastLibraryTreeCleanupAt = 0
   let lastCoverCleanupAt = 0
   let coverCleanupRootIndex = 0
-
-  const debugDev = (message: string, payload?: unknown) => {
-    if (!is.dev) return
-    if (payload === undefined) {
-      log.debug(`[闲时分析][dev] ${message}`)
-      return
-    }
-    log.debug(`[闲时分析][dev] ${message}`, payload)
-  }
 
   const getBackgroundStatus = (): KeyAnalysisBackgroundStatus => {
     const pending = deps.getPendingBackgroundCount()
@@ -160,16 +135,8 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
     const idleDelay = Math.max(BACKGROUND_IDLE_DELAY_MS - (now - lastForegroundAt), 0)
     const cooldownDelay = Math.max(BACKGROUND_SCAN_COOLDOWN_MS - (now - backgroundLastScanAt), 0)
     const delay = Math.max(idleDelay, cooldownDelay)
-    debugDev('调度下次扫描', {
-      delayMs: delay,
-      idleDelayMs: idleDelay,
-      cooldownDelayMs: cooldownDelay,
-      sinceLastForegroundMs: now - lastForegroundAt,
-      sinceLastScanMs: now - backgroundLastScanAt
-    })
     backgroundTimer = setTimeout(() => {
       backgroundTimer = null
-      debugDev('触发扫描定时器')
       requestBackgroundTaskExecution({
         category: 'key-analysis',
         trigger: 'key-analysis-timer',
@@ -190,7 +157,6 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
   const cancelBackgroundWork = (pauseMs?: number) => {
     const resumeDelay = Number.isFinite(pauseMs) && pauseMs && pauseMs > 0 ? pauseMs : 0
     backgroundEnabled = false
-    debugDev('暂停闲时分析', { resumeDelayMs: resumeDelay })
     clearBackgroundTimer()
     clearBackgroundResumeTimer()
     deps.clearPendingBackground()
@@ -198,7 +164,6 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       backgroundResumeTimer = setTimeout(() => {
         backgroundEnabled = true
         backgroundResumeTimer = null
-        debugDev('恢复闲时分析', { afterPauseMs: resumeDelay })
         emitBackgroundStatus()
         if (deps.isIdle()) {
           scheduleBackgroundScan()
@@ -319,40 +284,6 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       .map(([, root]) => root)
   }
 
-  const formatDebugListRoot = (listRoot: string): string => {
-    const normalizedRoot = normalizePath(listRoot)
-    const databaseDir = normalizePath(store.databaseDir || '')
-    if (!databaseDir) return normalizedRoot
-    const relative = path.relative(databaseDir, listRoot)
-    if (!relative || relative.startsWith('..')) return normalizedRoot
-    return relative.replace(/\\/g, '/')
-  }
-
-  const createCandidateDebugSummary = (params: {
-    filePaths: string[]
-    limit: number
-    missingKeyCount: number
-    missingBpmCount: number
-    missingWaveformCount: number
-    listRoots: Iterable<string>
-  }): BackgroundCandidateDebugSummary => {
-    const uniqueListRoots = Array.from(new Set(params.listRoots))
-    const sampleListRoots = uniqueListRoots
-      .map((root) => formatDebugListRoot(root))
-      .sort((a, b) => a.localeCompare(b))
-      .slice(0, 5)
-
-    return {
-      count: params.filePaths.length,
-      limit: params.limit,
-      missingKeyCount: params.missingKeyCount,
-      missingBpmCount: params.missingBpmCount,
-      missingWaveformCount: params.missingWaveformCount,
-      uniqueListRootCount: uniqueListRoots.length,
-      sampleListRoots
-    }
-  }
-
   const refreshBackgroundRoots = (): string[] => {
     const now = Date.now()
     const shouldRefresh =
@@ -366,16 +297,6 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       backgroundDirQueue = []
       backgroundRootIndex = 0
       backgroundRootsSignature = signature
-      const nodeRootSet = new Set(nodeRoots.map((root) => normalizePath(root)))
-      const fsOnlyRoots = nextRoots.filter((root) => !nodeRootSet.has(normalizePath(root)))
-      debugDev('歌单根目录集合发生变化', {
-        rootCount: nextRoots.length,
-        libraryNodeRootCount: nodeRoots.length,
-        fileSystemRootCount: fsRoots.length,
-        fileSystemOnlyRootCount: fsOnlyRoots.length,
-        sampleRoots: nextRoots.slice(0, 5).map((root) => formatDebugListRoot(root)),
-        sampleFsOnlyRoots: fsOnlyRoots.slice(0, 5).map((root) => formatDebugListRoot(root))
-      })
     }
     backgroundRoots = nextRoots
     backgroundRootsLastRefresh = now
@@ -460,52 +381,15 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
   const collectBackgroundCandidates = async (limit: number): Promise<string[]> => {
     if (!backgroundEnabled) return []
     const fromCache = await collectBackgroundCacheCandidates(limit)
-    if (fromCache.filePaths.length > 0) {
-      debugDev('候选来源：缓存数据库', fromCache.summary)
-      return fromCache.filePaths
-    }
-    const fromFs = await collectBackgroundFsCandidates(limit)
-    if (fromFs.filePaths.length > 0) {
-      debugDev('候选来源：文件系统回退扫描', fromFs.summary)
-    }
-    return fromFs.filePaths
+    if (fromCache.length > 0) return fromCache
+    return collectBackgroundFsCandidates(limit)
   }
 
-  const collectBackgroundCacheCandidates = async (
-    limit: number
-  ): Promise<BackgroundCandidateCollectionResult> => {
+  const collectBackgroundCacheCandidates = async (limit: number): Promise<string[]> => {
     const results: string[] = []
-    const selectedRoots = new Set<string>()
-    let missingKeyCount = 0
-    let missingBpmCount = 0
-    let missingWaveformCount = 0
-    if (limit <= 0) {
-      return {
-        filePaths: results,
-        summary: createCandidateDebugSummary({
-          filePaths: results,
-          limit,
-          missingKeyCount,
-          missingBpmCount,
-          missingWaveformCount,
-          listRoots: selectedRoots
-        })
-      }
-    }
+    if (limit <= 0) return results
     const db = getLibraryDb()
-    if (!db) {
-      return {
-        filePaths: results,
-        summary: createCandidateDebugSummary({
-          filePaths: results,
-          limit,
-          missingKeyCount,
-          missingBpmCount,
-          missingWaveformCount,
-          listRoots: selectedRoots
-        })
-      }
-    }
+    if (!db) return results
     let rows: Array<{
       rowId: number
       list_root: string
@@ -520,34 +404,13 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       )
       rows = stmt.all(backgroundCursor, BACKGROUND_SCAN_ROW_LIMIT)
     } catch {
-      return {
-        filePaths: results,
-        summary: createCandidateDebugSummary({
-          filePaths: results,
-          limit,
-          missingKeyCount,
-          missingBpmCount,
-          missingWaveformCount,
-          listRoots: selectedRoots
-        })
-      }
+      return results
     }
     if (!rows || rows.length === 0) {
       if (backgroundCursor !== 0) {
         backgroundCursor = 0
       }
-      debugDev('缓存扫描无数据，重置游标')
-      return {
-        filePaths: results,
-        summary: createCandidateDebugSummary({
-          filePaths: results,
-          limit,
-          missingKeyCount,
-          missingBpmCount,
-          missingWaveformCount,
-          listRoots: selectedRoots
-        })
-      }
+      return results
     }
     let processedAll = true
     let lastRowId = backgroundCursor
@@ -567,7 +430,6 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       const hasBpm = isValidBpm(info?.bpm)
       const listRoot = typeof row?.list_root === 'string' ? row.list_root.trim() : ''
       if (!listRoot) continue
-      const absListRoot = LibraryCacheDb.resolveCacheListRootAbs(listRoot) || listRoot
       const absFilePath = LibraryCacheDb.resolveCacheFilePath(listRoot, filePath)
       if (!absFilePath) continue
       const size = Number(row?.size)
@@ -582,10 +444,6 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
         )
       }
       if (!hasKey || !hasBpm || !hasWaveform) {
-        selectedRoots.add(absListRoot)
-        if (!hasKey) missingKeyCount += 1
-        if (!hasBpm) missingBpmCount += 1
-        if (!hasWaveform) missingWaveformCount += 1
         results.push(absFilePath)
         if (results.length >= limit) {
           processedAll = false
@@ -597,74 +455,16 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
     if (processedAll && rows.length < BACKGROUND_SCAN_ROW_LIMIT) {
       backgroundCursor = 0
     }
-    debugDev('缓存扫描完成', {
-      scannedRows: rows.length,
-      selected: results.length,
-      processedAll,
-      nextCursor: backgroundCursor
-    })
-    return {
-      filePaths: results,
-      summary: createCandidateDebugSummary({
-        filePaths: results,
-        limit,
-        missingKeyCount,
-        missingBpmCount,
-        missingWaveformCount,
-        listRoots: selectedRoots
-      })
-    }
+    return results
   }
 
-  const collectBackgroundFsCandidates = async (
-    limit: number
-  ): Promise<BackgroundCandidateCollectionResult> => {
+  const collectBackgroundFsCandidates = async (limit: number): Promise<string[]> => {
     const results: string[] = []
-    const selectedRoots = new Set<string>()
-    let missingKeyCount = 0
-    let missingBpmCount = 0
-    let missingWaveformCount = 0
-    if (limit <= 0 || !store.databaseDir || deps.hasForegroundWork()) {
-      return {
-        filePaths: results,
-        summary: createCandidateDebugSummary({
-          filePaths: results,
-          limit,
-          missingKeyCount,
-          missingBpmCount,
-          missingWaveformCount,
-          listRoots: selectedRoots
-        })
-      }
-    }
+    if (limit <= 0 || !store.databaseDir || deps.hasForegroundWork()) return results
     const roots = refreshBackgroundRoots()
-    if (roots.length === 0) {
-      return {
-        filePaths: results,
-        summary: createCandidateDebugSummary({
-          filePaths: results,
-          limit,
-          missingKeyCount,
-          missingBpmCount,
-          missingWaveformCount,
-          listRoots: selectedRoots
-        })
-      }
-    }
+    if (roots.length === 0) return results
     const audioExts = getAudioExtensions()
-    if (audioExts.size === 0) {
-      return {
-        filePaths: results,
-        summary: createCandidateDebugSummary({
-          filePaths: results,
-          limit,
-          missingKeyCount,
-          missingBpmCount,
-          missingWaveformCount,
-          listRoots: selectedRoots
-        })
-      }
-    }
+    if (audioExts.size === 0) return results
 
     let dirsProcessed = 0
     while (results.length < limit && dirsProcessed < BACKGROUND_FS_DIR_LIMIT) {
@@ -729,10 +529,6 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
             )
           }
           if (!cached || !hasKey || !hasBpm || !hasWaveform) {
-            selectedRoots.add(current.listRoot)
-            if (!hasKey) missingKeyCount += 1
-            if (!hasBpm) missingBpmCount += 1
-            if (!hasWaveform) missingWaveformCount += 1
             results.push(filePath)
             if (results.length >= limit) break
           }
@@ -743,17 +539,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
         } catch {}
       }
     }
-    return {
-      filePaths: results,
-      summary: createCandidateDebugSummary({
-        filePaths: results,
-        limit,
-        missingKeyCount,
-        missingBpmCount,
-        missingWaveformCount,
-        listRoots: selectedRoots
-      })
-    }
+    return results
   }
 
   const cleanupMissingCacheEntries = async (limit: number): Promise<number> => {
@@ -829,28 +615,13 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
     if (!deps.isIdle()) return
     const now = Date.now()
     if (now - lastForegroundAt < BACKGROUND_IDLE_DELAY_MS) {
-      debugDev('跳过扫描：未达到闲置阈值', {
-        sinceLastForegroundMs: now - lastForegroundAt,
-        requiredIdleMs: BACKGROUND_IDLE_DELAY_MS
-      })
       scheduleBackgroundScan()
       return
     }
     if (now - backgroundLastScanAt < BACKGROUND_SCAN_COOLDOWN_MS) {
-      debugDev('跳过扫描：冷却中', {
-        sinceLastScanMs: now - backgroundLastScanAt,
-        cooldownMs: BACKGROUND_SCAN_COOLDOWN_MS
-      })
       scheduleBackgroundScan()
       return
     }
-    const idleSnapshot = getBackgroundIdleSnapshot()
-    debugDev('开始一轮闲时扫描', {
-      batchSize: BACKGROUND_BATCH_SIZE,
-      idleProfile: idleSnapshot.profile,
-      systemIdleSeconds: idleSnapshot.systemIdleSeconds,
-      aggressiveConcurrency: canUseAggressiveConcurrency()
-    })
     backgroundScanInProgress = true
     backgroundLastScanAt = now
     emitBackgroundStatus()
@@ -858,19 +629,10 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       const candidates = await collectBackgroundCandidates(BACKGROUND_BATCH_SIZE)
       if (backgroundEnabled) {
         if (candidates.length > 0) {
-          debugDev('入队后台分析任务', { count: candidates.length })
           deps.enqueueList(candidates, 'background', { source: 'background' })
         } else {
           const cleaned = await cleanupMissingCacheEntries(BACKGROUND_CLEAN_BATCH_SIZE)
-          debugDev('本轮无候选，执行缓存清理', {
-            cleaned,
-            cacheCursor: backgroundCursor,
-            rootCount: backgroundRoots.length,
-            nextRootIndex: backgroundRootIndex,
-            pendingDirCount: backgroundDirQueue.length
-          })
           if (cleaned === 0 && !deps.hasForegroundWork()) {
-            debugDev('执行闲时维护任务')
             await runPeriodicMaintenanceTasks(now)
           }
         }
