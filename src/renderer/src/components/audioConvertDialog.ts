@@ -1,12 +1,16 @@
 import { createVNode, render } from 'vue'
 import AudioConvertDialogVue from './audioConvertDialog.vue'
 import { attachAppContext } from '@renderer/utils/appContext'
+import type {
+  AudioConvertDialogResult,
+  OpenAudioConvertDialogArgs
+} from './audioConvertDialog.types'
 
-export default (args: { sourceExts?: string[] }) => {
-  return new Promise((resolve) => {
+export default (args: OpenAudioConvertDialogArgs = {}) => {
+  return new Promise<AudioConvertDialogResult>((resolve) => {
     const div = document.createElement('div')
     document.body.appendChild(div)
-    const confirmCallback = (payload: any) => {
+    const confirmCallback = (payload: AudioConvertDialogResult) => {
       render(null, div)
       div.remove()
       resolve(payload)
@@ -19,7 +23,8 @@ export default (args: { sourceExts?: string[] }) => {
     const vnode = createVNode(AudioConvertDialogVue, {
       confirmCallback,
       cancelCallback,
-      sourceExts: args?.sourceExts || []
+      sourceExts: args?.sourceExts || [],
+      standaloneMode: Boolean(args?.standaloneMode)
     })
     attachAppContext(vnode)
     render(vnode, div)

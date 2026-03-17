@@ -130,6 +130,7 @@ const defaultMenus: MenuConfig[] = [
         }
       ],
       [{ name: 'menu.globalSongSearch', shortcutKey: 'Ctrl,Ctrl' }],
+      [{ name: 'menu.formatConversionTool' }],
       [{ name: 'fingerprints.manualAdd', action: 'manual-add-fingerprint' }],
       [{ name: 'menu.exit', action: 'exit' }]
     ]

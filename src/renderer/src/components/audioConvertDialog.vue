@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, useTemplateRef } from 'vue'
+import { ref, onMounted, onUnmounted, computed, useTemplateRef, watch } from 'vue'
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { t } from '@renderer/utils/translate'
 import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
@@ -15,32 +16,28 @@ import {
   METADATA_PRESERVABLE_FORMATS
 } from '../../../shared/audioFormats'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
+import type { ConvertOptions, StandaloneConvertPayload } from './audioConvertDialog.types'
 const hintIcon = hintIconAsset
 
 const props = defineProps<{
-  confirmCallback?: (payload: any) => void
+  confirmCallback?: (payload: ConvertOptions | StandaloneConvertPayload) => void
   cancelCallback?: () => void
   sourceExts?: string[]
+  standaloneMode?: boolean
 }>()
 const uuid = uuidV4()
 
 const isSupportedAudioFormat = (fmt: string): fmt is SupportedAudioFormat =>
   (SUPPORTED_AUDIO_FORMATS as readonly string[]).includes(fmt)
 
-type ConvertDefaults = {
-  targetFormat: SupportedAudioFormat
-  bitrateKbps?: number
-  sampleRate?: 44100 | 48000
-  channels?: 1 | 2
-  preserveMetadata?: boolean
-  normalize?: boolean
-  strategy: 'new_file' | 'replace'
-  overwrite?: boolean
-  backupOnReplace?: boolean
-  addFingerprint?: boolean
-}
-
+type ConvertDefaults = ConvertOptions
+const isStandaloneMode = computed(() => Boolean(props.standaloneMode))
+const selectedFiles = ref<string[]>([])
+const outputDir = ref('')
 const supportedFormats = ref<SupportedAudioFormat[]>([])
+const availableTargetFormats = ref<SupportedAudioFormat[]>(
+  SUPPORTED_AUDIO_FORMATS.filter(isSupportedAudioFormat)
+)
 const formatOptions = computed(() =>
   supportedFormats.value.map((fmt) => ({
     label: fmt.toUpperCase(),
@@ -65,6 +62,36 @@ const metadataCapableFormats = new Set<SupportedAudioFormat>(METADATA_PRESERVABL
 const metadataHint = computed(() => t('convert.metadataHint'))
 const metadataHintRef = useTemplateRef<HTMLImageElement>('metadataHintRef')
 const { dialogVisible, closeWithAnimation } = useDialogTransition()
+const selectedFilesLabel = computed(() => {
+  const count = selectedFiles.value.length
+  if (count === 0) return t('convert.selectSourceFiles')
+  return t('convert.selectedFiles', { count })
+})
+const selectedFilesTooltip = computed(() => {
+  if (selectedFiles.value.length === 0) return t('convert.selectSourceFiles')
+  return selectedFiles.value.join('\n')
+})
+const outputDirLabel = computed(() => outputDir.value || t('convert.selectOutputDir'))
+const outputDirTooltip = computed(() => outputDir.value || t('convert.selectOutputDir'))
+const shouldShowOutputDir = computed(
+  () => !isStandaloneMode.value || form.value.strategy === 'new_file'
+)
+const selectedFileItems = computed(() =>
+  selectedFiles.value.map((filePath) => {
+    const parts = filePath.split(/[/\\]/)
+    const fileName = parts[parts.length - 1] || filePath
+    const lastSeparatorIndex = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'))
+    return {
+      filePath,
+      fileName,
+      parentPath: lastSeparatorIndex > 0 ? filePath.slice(0, lastSeparatorIndex) : ''
+    }
+  })
+)
+const scrollbarOptions = {
+  scrollbars: { autoHide: 'leave' as const, autoHideDelay: 50, clickScroll: true },
+  overflow: { x: 'hidden', y: 'scroll' } as const
+}
 
 // 必填闪烁提示（参考项目其他弹窗）
 const flashArea = ref('')
@@ -80,10 +107,10 @@ const flashBorder = (flashAreaName: string) => {
   }, 500)
 }
 
-const filterSupportedFormats = (available: SupportedAudioFormat[]) => {
+const filterSupportedFormats = (available: SupportedAudioFormat[], sourceExts: string[]) => {
   // 过滤与源相同的格式（简单化：移除所有所选文件扩展名对应的目标格式）
   const srcSet = new Set(
-    (props.sourceExts || [])
+    sourceExts
       .map((e) => String(e || '').toLowerCase())
       .map((e) => e.replace(/^\./, ''))
       .filter(Boolean) as Array<string>
@@ -103,6 +130,77 @@ const filterSupportedFormats = (available: SupportedAudioFormat[]) => {
   return filtered
 }
 
+const resolvedSourceExts = computed(() => {
+  if (!isStandaloneMode.value) return props.sourceExts || []
+  return Array.from(
+    new Set(
+      selectedFiles.value
+        .map((filePath) => filePath.match(/\.[^\\\/\.]+$/)?.[0] || '')
+        .filter(Boolean)
+    )
+  )
+})
+
+const applySupportedFormats = () => {
+  supportedFormats.value = filterSupportedFormats(
+    availableTargetFormats.value,
+    resolvedSourceExts.value
+  )
+  if (
+    supportedFormats.value.length > 0 &&
+    !supportedFormats.value.includes(form.value.targetFormat)
+  ) {
+    form.value.targetFormat = supportedFormats.value[0]
+  }
+}
+
+watch(resolvedSourceExts, () => {
+  applySupportedFormats()
+})
+
+const normalizeUniquePaths = (values: string[]) =>
+  Array.from(new Set(values.map((item) => String(item || '').trim()).filter(Boolean)))
+
+let clickChooseFileFlag = false
+const clickChooseFiles = async () => {
+  if (clickChooseFileFlag) return
+  clickChooseFileFlag = true
+  try {
+    const filePaths = (await window.electron.ipcRenderer.invoke('select-audio-files')) as
+      | string[]
+      | null
+    if (Array.isArray(filePaths) && filePaths.length > 0) {
+      selectedFiles.value = normalizeUniquePaths([...selectedFiles.value, ...filePaths])
+    }
+  } finally {
+    clickChooseFileFlag = false
+  }
+}
+
+let clickChooseOutputDirFlag = false
+const clickChooseOutputDir = async () => {
+  if (clickChooseOutputDirFlag) return
+  clickChooseOutputDirFlag = true
+  try {
+    const folderPath = (await window.electron.ipcRenderer.invoke('select-folder', false)) as
+      | string[]
+      | null
+    if (Array.isArray(folderPath) && folderPath[0]) {
+      outputDir.value = folderPath[0]
+    }
+  } finally {
+    clickChooseOutputDirFlag = false
+  }
+}
+
+const removeSelectedFile = (filePath: string) => {
+  selectedFiles.value = selectedFiles.value.filter((item) => item !== filePath)
+}
+
+const clearSelectedFiles = () => {
+  selectedFiles.value = []
+}
+
 onMounted(async () => {
   hotkeys('E,Enter', uuid, () => {
     confirm()
@@ -115,9 +213,8 @@ onMounted(async () => {
   utils.setHotkeysScpoe(uuid)
 
   // 先给一个可用列表，避免弹窗首次打开卡顿
-  supportedFormats.value = filterSupportedFormats(
-    SUPPORTED_AUDIO_FORMATS.filter(isSupportedAudioFormat)
-  )
+  availableTargetFormats.value = SUPPORTED_AUDIO_FORMATS.filter(isSupportedAudioFormat)
+  applySupportedFormats()
 
   const setting = await window.electron.ipcRenderer.invoke('getSetting')
   try {
@@ -125,8 +222,8 @@ onMounted(async () => {
     const targetFormats: string[] = await window.electron.ipcRenderer.invoke(
       'audio:convert:list-target-formats'
     )
-    let allowed = targetFormats.filter(isSupportedAudioFormat)
-    supportedFormats.value = filterSupportedFormats(allowed)
+    availableTargetFormats.value = targetFormats.filter(isSupportedAudioFormat)
+    applySupportedFormats()
   } catch (err) {
     console.error('[AudioConvertDialog] list-target-formats failed:', err)
   }
@@ -138,12 +235,7 @@ onMounted(async () => {
     }
     form.value = { ...form.value, ...next }
   }
-  if (
-    supportedFormats.value.length > 0 &&
-    !supportedFormats.value.includes(form.value.targetFormat)
-  ) {
-    form.value.targetFormat = supportedFormats.value[0]
-  }
+  applySupportedFormats()
 })
 
 onUnmounted(() => {
@@ -151,18 +243,40 @@ onUnmounted(() => {
 })
 
 const confirm = async () => {
+  if (isStandaloneMode.value && selectedFiles.value.length === 0) {
+    if (!flashArea.value) flashBorder('selectedFiles')
+    return
+  }
+  if (isStandaloneMode.value && shouldShowOutputDir.value && outputDir.value.trim().length === 0) {
+    if (!flashArea.value) flashBorder('outputDir')
+    return
+  }
   // 校验：目标格式必选且在可选列表中
   if (!supportedFormats.value.includes(form.value.targetFormat)) {
     if (!flashArea.value) flashBorder('targetFormat')
     return
   }
+  const payloadOptions: ConvertOptions = isStandaloneMode.value
+    ? {
+        ...form.value,
+        outputDir: shouldShowOutputDir.value ? outputDir.value.trim() : undefined
+      }
+    : { ...form.value }
   try {
     const setting = await window.electron.ipcRenderer.invoke('getSetting')
     const next = { ...setting, convertDefaults: { ...form.value } }
     await window.electron.ipcRenderer.invoke('setSetting', next)
   } catch {}
   closeWithAnimation(() => {
-    props.confirmCallback?.({ ...form.value })
+    if (isStandaloneMode.value) {
+      props.confirmCallback?.({
+        files: [...selectedFiles.value],
+        outputDir: outputDir.value.trim(),
+        options: payloadOptions
+      })
+      return
+    }
+    props.confirmCallback?.(payloadOptions)
   })
 }
 const cancel = () => {
@@ -176,57 +290,147 @@ const cancel = () => {
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
       v-dialog-drag="'.dialog-title'"
-      style="width: 500px; height: 450px; display: flex; flex-direction: column"
+      style="
+        width: 560px;
+        height: min(90vh, 800px);
+        min-height: 520px;
+        display: flex;
+        flex-direction: column;
+      "
       class="inner"
     >
       <div class="dialog-title dialog-header">
-        <span>{{ t('convert.title') }}</span>
+        <span>{{ t(isStandaloneMode ? 'menu.formatConversionTool' : 'convert.title') }}</span>
       </div>
-      <div style="padding: 20px; font-size: 14px; flex: 1; overflow-y: auto">
-        <div>{{ t('convert.targetFormat') }}：</div>
-        <div style="margin-top: 10px">
-          <BaseSelect
-            v-model="form.targetFormat"
-            :options="formatOptions"
-            :width="200"
-            class="flashing-border"
-            :class="{ 'is-flashing': flashArea == 'targetFormat' }"
-          />
-        </div>
+      <OverlayScrollbarsComponent
+        class="dialog-content-scroll"
+        :options="scrollbarOptions"
+        element="div"
+      >
+        <div class="dialog-content">
+          <template v-if="isStandaloneMode">
+            <div>{{ t('convert.sourceFiles') }}：</div>
+            <div class="standalone-actions">
+              <div
+                class="picker-box flashing-border"
+                :class="{ 'is-flashing': flashArea == 'selectedFiles' }"
+                :title="selectedFilesTooltip"
+                @click="clickChooseFiles()"
+              >
+                {{ selectedFilesLabel }}
+              </div>
+              <div class="button action-button" @click="clickChooseFiles()">
+                {{ t('convert.chooseFiles') }}
+              </div>
+              <div
+                class="button action-button"
+                :class="{ 'action-button-disabled': selectedFiles.length === 0 }"
+                @click="selectedFiles.length > 0 && clearSelectedFiles()"
+              >
+                {{ t('fileSelector.clearAll') }}
+              </div>
+            </div>
 
-        <div style="margin-top: 20px">{{ t('convert.strategy') }}：</div>
-        <div style="margin-top: 10px">
-          <singleRadioGroup
-            v-model="(form as any).strategy"
-            name="convertStrategy"
-            :options="[
-              { label: t('convert.newFile'), value: 'new_file' },
-              { label: t('convert.replaceOriginal'), value: 'replace' }
-            ]"
-            :option-font-size="12"
-          />
-        </div>
+            <div class="selected-files-panel">
+              <div class="selected-files-header">{{ t('convert.selectedFilesTitle') }}</div>
+              <div class="selected-files-body">
+                <div v-if="selectedFileItems.length === 0" class="selected-files-empty">
+                  {{ t('convert.noSelectedFiles') }}
+                </div>
+                <OverlayScrollbarsComponent
+                  v-else
+                  class="selected-files-scroll"
+                  :options="scrollbarOptions"
+                  element="div"
+                >
+                  <div class="selected-files-list">
+                    <div
+                      v-for="item in selectedFileItems"
+                      :key="item.filePath"
+                      class="selected-file-item"
+                    >
+                      <div class="selected-file-meta">
+                        <div class="selected-file-name" :title="item.fileName">
+                          {{ item.fileName }}
+                        </div>
+                        <div class="selected-file-path" :title="item.filePath">
+                          {{ item.parentPath || item.filePath }}
+                        </div>
+                      </div>
+                      <div
+                        class="button action-button delete-button"
+                        @click="removeSelectedFile(item.filePath)"
+                      >
+                        {{ t('common.delete') }}
+                      </div>
+                    </div>
+                  </div>
+                </OverlayScrollbarsComponent>
+              </div>
+            </div>
 
-        <div style="margin-top: 20px">
-          {{ t('convert.preserveMetadata') }}：
-          <img
-            ref="metadataHintRef"
-            :src="hintIcon"
-            style="width: 15px; height: 15px; margin-left: 6px"
-            :draggable="false"
-            class="theme-icon"
-          />
-          <bubbleBox :dom="metadataHintRef || undefined" :title="metadataHint" :max-width="240" />
-        </div>
-        <div style="margin-top: 10px">
-          <singleCheckbox v-model="(form as any).preserveMetadata" />
-        </div>
+            <template v-if="shouldShowOutputDir">
+              <div style="margin-top: 20px">{{ t('convert.outputDir') }}：</div>
+              <div style="margin-top: 10px">
+                <div
+                  class="picker-box flashing-border"
+                  :class="{ 'is-flashing': flashArea == 'outputDir' }"
+                  :title="outputDirTooltip"
+                  @click="clickChooseOutputDir()"
+                >
+                  {{ outputDirLabel }}
+                </div>
+              </div>
+            </template>
+          </template>
 
-        <div style="margin-top: 20px">{{ t('convert.addFingerprint') }}：</div>
-        <div style="margin-top: 10px">
-          <singleCheckbox v-model="(form as any).addFingerprint" />
+          <div :style="{ marginTop: isStandaloneMode ? '20px' : '0' }">
+            {{ t('convert.targetFormat') }}：
+          </div>
+          <div style="margin-top: 10px">
+            <BaseSelect
+              v-model="form.targetFormat"
+              :options="formatOptions"
+              :width="220"
+              class="flashing-border"
+              :class="{ 'is-flashing': flashArea == 'targetFormat' }"
+            />
+          </div>
+
+          <div style="margin-top: 20px">{{ t('convert.strategy') }}：</div>
+          <div style="margin-top: 10px">
+            <singleRadioGroup
+              v-model="(form as any).strategy"
+              name="convertStrategy"
+              :options="[
+                { label: t('convert.newFile'), value: 'new_file' },
+                { label: t('convert.replaceOriginal'), value: 'replace' }
+              ]"
+              :option-font-size="12"
+            />
+          </div>
+
+          <div style="margin-top: 20px">
+            {{ t('convert.preserveMetadata') }}：
+            <img
+              ref="metadataHintRef"
+              :src="hintIcon"
+              style="width: 15px; height: 15px; margin-left: 6px"
+              :draggable="false"
+              class="theme-icon"
+            />
+            <bubbleBox :dom="metadataHintRef || undefined" :title="metadataHint" :max-width="240" />
+          </div>
+          <div style="margin-top: 10px">
+            <singleCheckbox v-model="(form as any).preserveMetadata" />
+          </div>
+
+          <div style="margin-top: 20px">{{ t('convert.addFingerprint') }}：</div>
+          <div style="margin-top: 10px">
+            <singleCheckbox v-model="(form as any).addFingerprint" />
+          </div>
         </div>
-      </div>
+      </OverlayScrollbarsComponent>
       <div class="dialog-footer">
         <div class="button" style="width: 90px; text-align: center" @click="confirm()">
           {{ t('common.confirm') }} (E)
@@ -244,5 +448,149 @@ const cancel = () => {
   text-align: left;
   font-size: 14px;
   width: 140px;
+}
+
+.dialog-content-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.dialog-content {
+  padding: 20px;
+  font-size: 14px;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+.picker-box {
+  min-height: 36px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background-color: var(--bg-elev);
+  color: var(--text);
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover {
+    background-color: var(--hover);
+    border-color: var(--accent);
+  }
+}
+
+.standalone-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.standalone-actions .picker-box {
+  flex: 1;
+}
+
+.action-button {
+  min-width: 68px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.action-button-disabled {
+  pointer-events: none;
+  color: var(--text-weak);
+  background-color: var(--bg);
+}
+
+.selected-files-panel {
+  margin-top: 12px;
+  height: 192px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background-color: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+.selected-files-header {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.selected-files-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.selected-files-empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 12px;
+  box-sizing: border-box;
+  color: var(--text-weak);
+}
+
+.selected-files-scroll {
+  height: 100%;
+}
+
+.selected-files-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.selected-file-item {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.selected-file-item:last-child {
+  border-bottom: none;
+}
+
+.selected-file-meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.selected-file-name,
+.selected-file-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-file-name {
+  color: var(--text);
+}
+
+.selected-file-path {
+  margin-top: 4px;
+  color: var(--text-weak);
+  font-size: 12px;
+}
+
+.delete-button {
+  min-width: 56px;
+  background-color: #dc3545;
+  color: #ffffff;
+}
+
+.delete-button:hover {
+  background-color: #c82333;
+  color: #ffffff;
 }
 </style>

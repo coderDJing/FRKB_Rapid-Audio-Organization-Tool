@@ -13,11 +13,36 @@ import {
 } from '../databaseManifest'
 import store from '../store'
 import { mapRendererPathToFsPath, getCoreFsDirName } from '../utils'
+import { SUPPORTED_AUDIO_FORMATS } from '../../shared/audioFormats'
 
 export function registerFilesystemHandlers() {
   ipcMain.handle('select-folder', async (_event, multiSelections: boolean = true) => {
     const result = await dialog.showOpenDialog({
       properties: multiSelections ? ['openDirectory', 'multiSelections'] : ['openDirectory']
+    })
+    if (result.canceled) {
+      return null
+    }
+    return result.filePaths
+  })
+
+  ipcMain.handle('select-audio-files', async () => {
+    const configuredExts = Array.isArray(store.settingConfig?.audioExt)
+      ? store.settingConfig.audioExt
+          .map((ext) =>
+            String(ext || '')
+              .trim()
+              .replace(/^\./, '')
+              .toLowerCase()
+          )
+          .filter(Boolean)
+      : []
+    const extensions = Array.from(
+      new Set(configuredExts.length > 0 ? configuredExts : [...SUPPORTED_AUDIO_FORMATS])
+    )
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: 'Audio Files', extensions }]
     })
     if (result.canceled) {
       return null

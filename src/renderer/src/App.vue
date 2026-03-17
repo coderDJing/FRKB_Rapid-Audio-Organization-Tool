@@ -313,6 +313,24 @@ const openDialog = async (item: string) => {
     await nextTick()
     return
   }
+  if (item === 'menu.formatConversionTool') {
+    const { default: openConvertDialog } = await import('@renderer/components/audioConvertDialog')
+    const dialogResult = await openConvertDialog({ standaloneMode: true })
+    if (
+      dialogResult &&
+      dialogResult !== 'cancel' &&
+      'files' in dialogResult &&
+      'options' in dialogResult
+    ) {
+      try {
+        await window.electron.ipcRenderer.invoke('audio:convert:start', {
+          files: dialogResult.files,
+          options: dialogResult.options
+        })
+      } catch {}
+    }
+    return
+  }
   if (item === 'menu.exit') {
     if (runtime.isProgressing === true) {
       await confirm({

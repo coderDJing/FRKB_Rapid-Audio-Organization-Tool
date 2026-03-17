@@ -42,6 +42,7 @@ type ConvertJobOptions = {
   preserveMetadata?: boolean
   normalize?: boolean
   strategy: 'new_file' | 'replace'
+  outputDir?: string
   overwrite?: boolean
   backupOnReplace?: boolean
   addFingerprint?: boolean
@@ -55,8 +56,8 @@ type StartPayload = {
 
 const jobIdToChildren = new Map<string, child_process.ChildProcess>()
 
-function buildNonConflictTarget(src: string, fmt: string): string {
-  const dir = path.dirname(src)
+function buildNonConflictTarget(src: string, fmt: string, outputDir?: string): string {
+  const dir = outputDir || path.dirname(src)
   const base = path.basename(src, path.extname(src))
   const suffix = ` [${fmt}]`
   let candidate = path.join(dir, `${base}${suffix}.${fmt}`)
@@ -284,6 +285,9 @@ export async function startAudioConversion(
   const { files, options, songListUUID } = payload
   const ffmpegPath = resolveBundledFfmpegPath()
   await ensureExecutableOnMac(ffmpegPath)
+  if (options.strategy === 'new_file' && options.outputDir) {
+    await fs.ensureDir(options.outputDir)
+  }
 
   const startedAt = Date.now()
   // 任务开始即推送一次全局进度，确保底部进度条立刻显示
@@ -490,7 +494,7 @@ export async function startAudioConversion(
           } catch {}
         }
       } else {
-        dest = buildNonConflictTarget(src, options.targetFormat)
+        dest = buildNonConflictTarget(src, options.targetFormat, options.outputDir)
         const tmp = path.join(
           path.dirname(dest),
           `.${path.basename(dest)}.tmp.${options.targetFormat}`

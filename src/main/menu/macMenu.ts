@@ -90,6 +90,12 @@ const buildFullMenu = () =>
         },
         { type: 'separator' },
         {
+          label: tMenu('menu.formatConversionTool'),
+          click: () =>
+            mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.formatConversionTool')
+        },
+        { type: 'separator' },
+        {
           label: tMenu('fingerprints.manualAdd'),
           click: () =>
             mainWindow.instance?.webContents.send('openDialogFromTray', 'fingerprints.manualAdd')
