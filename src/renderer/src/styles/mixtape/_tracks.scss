@@ -179,7 +179,8 @@
   stroke: var(--mix-envelope-line-color);
   stroke-width: 1.6;
   vector-effect: non-scaling-stroke;
-  opacity: 0.96;
+  opacity: 1;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.82));
 }
 
 .lane-track__envelope-midline {
@@ -188,7 +189,7 @@
   stroke-dasharray: 5 3;
   stroke-linecap: round;
   vector-effect: non-scaling-stroke;
-  opacity: 0.82;
+  opacity: 0.5;
 }
 
 .lane-track__envelope-line.is-hidden {

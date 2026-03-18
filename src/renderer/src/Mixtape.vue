@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import titleComponent from '@renderer/components/titleComponent.vue'
 import MixtapeDialogsLayer from '@renderer/components/MixtapeDialogsLayer.vue'
+import MixtapeEnvelopePreviewTrack from '@renderer/components/mixtape/MixtapeEnvelopePreviewTrack.vue'
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
 import { useMixtape } from '@renderer/composables/useMixtape'
 import { createMixtapeGainEnvelopeEditor } from '@renderer/composables/mixtape/useGainEnvelopeEditor'
@@ -249,6 +250,9 @@ const isSegmentSelectionActive = computed(
 const showEnvelopeCurve = computed(
   () => isEnvelopeParamMode.value && !isStemParamMode.value && !isBpmParamMode.value
 )
+const envelopePreviewLineKeys = computed<Array<MixtapeEnvelopeParamId | 'bpm'>>(() =>
+  isStemMixMode.value ? ['gain', 'volume', 'bpm'] : ['gain', 'high', 'mid', 'low', 'volume', 'bpm']
+)
 const envelopeHintKey = computed(() => {
   if (isBpmParamMode.value) {
     return 'mixtape.bpmEnvelopeHint'
@@ -267,15 +271,20 @@ const {
   timelineTrackAreaHeight,
   timelineAdaptiveStyle,
   resolveTrackEnvelopePreviewLines,
+  resolveTrackStemPreviewRows,
   trackEnvelopePreviewViewportStyle
 } = useMixtapeEnvelopePreview({
   laneIndices,
   laneHeight,
+  renderZoomLevel,
+  showStemPreviewRows: isStemMixMode,
+  previewParams: envelopePreviewLineKeys,
   timelineVisualScale,
   timelineContentWidth,
   timelineScrollLeft,
   tracks,
   resolveTrackDurationSeconds,
+  resolveTrackFirstBeatSeconds,
   resolveTrackSourceDurationSeconds
 })
 
@@ -868,38 +877,17 @@ onBeforeUnmount(() => {
                         :key="`envelope-preview-${laneIndex}`"
                         class="timeline-envelope-preview__lane"
                       >
-                        <div
+                        <MixtapeEnvelopePreviewTrack
                           v-for="item in laneTracks[laneIndex]"
                           :key="`envelope-preview-${item.track.id}`"
-                          class="timeline-envelope-preview__track"
-                          :style="resolveTrackBlockStyle(item)"
-                        >
-                          <div class="timeline-envelope-preview__mute-segments">
-                            <div
-                              v-for="segment in resolveActiveSegmentMasks(item)"
-                              :key="`envelope-preview-mute-${item.track.id}-${segment.key}`"
-                              class="timeline-envelope-preview__mute-segment"
-                              :style="{
-                                left: `${segment.left}%`,
-                                width: `${segment.width}%`
-                              }"
-                            ></div>
-                          </div>
-                          <svg
-                            class="timeline-envelope-preview__track-svg"
-                            viewBox="0 0 100 100"
-                            preserveAspectRatio="none"
-                          >
-                            <polyline
-                              v-for="line in resolveTrackEnvelopePreviewLines(item)"
-                              :key="`envelope-preview-${item.track.id}-${line.key}`"
-                              class="timeline-envelope-preview__line"
-                              :class="`timeline-envelope-preview__line--${line.key}`"
-                              :points="line.points"
-                              :style="{ stroke: line.color, strokeWidth: line.strokeWidth }"
-                            ></polyline>
-                          </svg>
-                        </div>
+                          :item="item"
+                          :track-style="resolveTrackBlockStyle(item)"
+                          :lines="resolveTrackEnvelopePreviewLines(item)"
+                          :stem-rows="resolveTrackStemPreviewRows(item)"
+                          :mute-segments="resolveActiveSegmentMasks(item)"
+                          :show-stem-rows="isStemMixMode"
+                          :show-mute-segments="!isStemMixMode || isVolumeParamMode"
+                        />
                       </div>
                     </div>
                   </div>

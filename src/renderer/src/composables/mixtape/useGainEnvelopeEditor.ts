@@ -170,7 +170,6 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
   const resolveActiveEnvelopePolyline = (item: TimelineTrackLayout) => {
     const param = resolveCurrentParam()
     if (!param) return ''
-    if (isStemSegmentParam(param)) return ''
     const { track, durationSec, points } = resolveTrackEnvelopeState(item.track.id, param)
     if (!track || !durationSec || points.length < 2) return ''
     return buildMixEnvelopePolylineByControlPoints({

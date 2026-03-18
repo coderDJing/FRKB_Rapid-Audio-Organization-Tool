@@ -4,14 +4,19 @@ import {
   buildMixEnvelopePolylineByControlPoints,
   normalizeMixEnvelopePoints
 } from '@renderer/composables/mixtape/gainEnvelope'
+import { createGainEnvelopeTrackStateModule } from '@renderer/composables/mixtape/gainEnvelopeTrackState'
+import { resolveVolumeMuteSegmentMasks } from '@renderer/composables/mixtape/gainEnvelopeEditorGrid'
 import {
   buildTrackBpmEnvelopePolylineByControlPoints,
   resolveTrackBpmEnvelopeVisualRange
 } from '@renderer/composables/mixtape/trackTempoVisual'
 import { buildTrackRuntimeTempoSnapshot } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
+import { resolveStemWaveformColor } from '@renderer/composables/mixtape/waveformDraw'
+import type { MixSegmentMask } from '@renderer/composables/mixtape/gainEnvelopeEditorTypes'
 import type {
   MixtapeEnvelopeParamId,
   MixtapeTrack,
+  MixtapeWaveformStemId,
   TimelineTrackLayout
 } from '@renderer/composables/mixtape/types'
 
@@ -20,26 +25,43 @@ type MaybeRef<T> = Readonly<Ref<T>> | T
 type UseMixtapeEnvelopePreviewOptions = {
   laneIndices: MaybeRef<number[]>
   laneHeight: MaybeRef<number>
+  renderZoomLevel: MaybeRef<number>
+  previewParams?: MaybeRef<Array<MixtapeEnvelopeParamId | 'bpm'>>
+  showStemPreviewRows: MaybeRef<boolean>
   timelineVisualScale: MaybeRef<number>
   timelineContentWidth: MaybeRef<number>
   timelineScrollLeft: MaybeRef<number>
   tracks: Readonly<Ref<MixtapeTrack[]>>
   resolveTrackDurationSeconds: (track: MixtapeTrack) => number
+  resolveTrackFirstBeatSeconds: (track: MixtapeTrack) => number
   resolveTrackSourceDurationSeconds: (track: MixtapeTrack) => number
 }
 
-type TrackEnvelopePreviewLine = {
+export type TrackEnvelopePreviewLine = {
   key: MixtapeEnvelopeParamId | 'bpm'
   points: string
   color: string
   strokeWidth: number
 }
 
-const TRACK_ENVELOPE_PREVIEW_PARAMS: Array<MixtapeEnvelopeParamId | 'bpm'> = [
+export type TrackStemPreviewRow = {
+  key: MixtapeWaveformStemId
+  fillColor: string
+  muteSegments: MixSegmentMask[]
+}
+
+type TrackPreviewCacheEntry = {
+  lines: TrackEnvelopePreviewLine[]
+  stemRows: TrackStemPreviewRow[]
+}
+
+const DEFAULT_TRACK_ENVELOPE_PREVIEW_PARAMS: Array<MixtapeEnvelopeParamId | 'bpm'> = [
   'gain',
   'volume',
   'bpm'
 ]
+const STEM_PREVIEW_ROW_ORDER: MixtapeWaveformStemId[] = ['vocal', 'inst', 'bass', 'drums']
+const STEM_PREVIEW_FILL_ALPHA = 0.18
 
 const TRACK_ENVELOPE_PREVIEW_COLORS: Record<MixtapeEnvelopeParamId | 'bpm', string> = {
   gain: '#f2f6ff',
@@ -55,7 +77,7 @@ const TRACK_ENVELOPE_PREVIEW_COLORS: Record<MixtapeEnvelopeParamId | 'bpm', stri
 }
 
 const TRACK_ENVELOPE_PREVIEW_STROKES: Record<MixtapeEnvelopeParamId | 'bpm', number> = {
-  gain: 1.2,
+  gain: 2.4,
   high: 1.08,
   mid: 1.08,
   low: 1.08,
@@ -63,8 +85,8 @@ const TRACK_ENVELOPE_PREVIEW_STROKES: Record<MixtapeEnvelopeParamId | 'bpm', num
   inst: 1.08,
   bass: 1.08,
   drums: 1.08,
-  volume: 0.95,
-  bpm: 1.08
+  volume: 1.85,
+  bpm: 2.05
 }
 
 const TRACK_ENVELOPE_PREVIEW_EDGE_INSET_PERCENT = 1.2
@@ -97,11 +119,40 @@ const unwrapMaybeRef = <T>(value: MaybeRef<T>): T => {
 }
 
 export const useMixtapeEnvelopePreview = (options: UseMixtapeEnvelopePreviewOptions) => {
-  const trackEnvelopePreviewLegend = TRACK_ENVELOPE_PREVIEW_PARAMS.map((param) => ({
-    key: param,
-    label: param.toUpperCase(),
-    color: TRACK_ENVELOPE_PREVIEW_COLORS[param]
-  }))
+  const EMPTY_TRACK_LINES: TrackEnvelopePreviewLine[] = []
+  const EMPTY_STEM_ROWS: TrackStemPreviewRow[] = []
+  const previewParams = computed<Array<MixtapeEnvelopeParamId | 'bpm'>>(() => {
+    const params = options.previewParams
+      ? unwrapMaybeRef(options.previewParams)
+      : DEFAULT_TRACK_ENVELOPE_PREVIEW_PARAMS
+    if (!Array.isArray(params) || params.length === 0) {
+      return DEFAULT_TRACK_ENVELOPE_PREVIEW_PARAMS
+    }
+    return params
+  })
+  const trackEnvelopePreviewLegend = computed(() =>
+    previewParams.value.map((param) => ({
+      key: param,
+      label: param.toUpperCase(),
+      color: TRACK_ENVELOPE_PREVIEW_COLORS[param]
+    }))
+  )
+  const trackStateModule = createGainEnvelopeTrackStateModule({
+    tracks: options.tracks,
+    resolveRenderZoom: () => Math.max(0, Number(unwrapMaybeRef(options.renderZoomLevel)) || 0),
+    resolveTrackDurationSeconds: options.resolveTrackDurationSeconds,
+    resolveTrackSourceDurationSeconds: options.resolveTrackSourceDurationSeconds,
+    resolveTrackFirstBeatSeconds: options.resolveTrackFirstBeatSeconds,
+    isStemSegmentParam: (param) => STEM_PREVIEW_ROW_ORDER.includes(param as MixtapeWaveformStemId)
+  })
+  const { resolveTrackStemSegmentState } = trackStateModule
+
+  const toStemPreviewColor = (stemId: MixtapeWaveformStemId, alpha: number) => {
+    const { r, g, b } = resolveStemWaveformColor(stemId)
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`
+  }
+
+  const showStemPreviewRows = computed(() => Boolean(unwrapMaybeRef(options.showStemPreviewRows)))
 
   const timelineTrackAreaHeight = computed(() => {
     const laneIndices = unwrapMaybeRef(options.laneIndices)
@@ -129,66 +180,99 @@ export const useMixtapeEnvelopePreview = (options: UseMixtapeEnvelopePreviewOpti
     }
   })
 
+  const trackPreviewCache = computed(() => {
+    const cache = new Map<string, TrackPreviewCacheEntry>()
+    const showStemRows = showStemPreviewRows.value
+    for (const track of options.tracks.value) {
+      const trackId = String(track?.id || '').trim()
+      if (!trackId) continue
+      const durationSec = Math.max(0, Number(options.resolveTrackDurationSeconds(track)) || 0)
+      if (!durationSec) {
+        cache.set(trackId, { lines: EMPTY_TRACK_LINES, stemRows: EMPTY_STEM_ROWS })
+        continue
+      }
+      const lines = previewParams.value
+        .map((param) => {
+          if (param === 'bpm') {
+            const sourceDurationSec = Math.max(
+              0,
+              Number(options.resolveTrackSourceDurationSeconds(track)) || 0
+            )
+            const tempoSnapshot = buildTrackRuntimeTempoSnapshot({
+              track,
+              sourceDurationSec,
+              durationSec
+            })
+            if (tempoSnapshot.timeMap.renderPoints.length < 2) return null
+            const bpmRange = resolveTrackBpmEnvelopeVisualRange({
+              track,
+              tracks: options.tracks.value,
+              resolveDurationSec: options.resolveTrackDurationSeconds
+            })
+            const points = buildTrackBpmEnvelopePolylineByControlPoints({
+              points: tempoSnapshot.timeMap.renderPoints,
+              durationSec,
+              baseBpm: tempoSnapshot.baseBpm,
+              minBpm: bpmRange.minBpm,
+              maxBpm: bpmRange.maxBpm
+            })
+            if (!points) return null
+            return {
+              key: param,
+              points: normalizeEnvelopePreviewPolyline(points),
+              color: TRACK_ENVELOPE_PREVIEW_COLORS[param],
+              strokeWidth: TRACK_ENVELOPE_PREVIEW_STROKES[param]
+            }
+          }
+          const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
+          const normalizedPoints = normalizeMixEnvelopePoints(
+            param,
+            (track as Record<string, unknown>)[envelopeField],
+            durationSec
+          )
+          if (normalizedPoints.length < 2) return null
+          const points = buildMixEnvelopePolylineByControlPoints({
+            param,
+            points: normalizedPoints,
+            durationSec
+          })
+          if (!points) return null
+          return {
+            key: param,
+            points: normalizeEnvelopePreviewPolyline(points),
+            color: TRACK_ENVELOPE_PREVIEW_COLORS[param],
+            strokeWidth: TRACK_ENVELOPE_PREVIEW_STROKES[param]
+          }
+        })
+        .filter((line): line is TrackEnvelopePreviewLine => line !== null)
+      const stemRows = showStemRows
+        ? STEM_PREVIEW_ROW_ORDER.map((stemId) => {
+            const { durationSec: stemDurationSec, segments } = resolveTrackStemSegmentState(
+              trackId,
+              stemId
+            )
+            return {
+              key: stemId,
+              fillColor: toStemPreviewColor(stemId, STEM_PREVIEW_FILL_ALPHA),
+              muteSegments: resolveVolumeMuteSegmentMasks(stemDurationSec, segments)
+            }
+          })
+        : EMPTY_STEM_ROWS
+      cache.set(trackId, {
+        lines: lines.length ? lines : EMPTY_TRACK_LINES,
+        stemRows
+      })
+    }
+    return cache
+  })
+
   const resolveTrackEnvelopePreviewLines = (
     item: TimelineTrackLayout
-  ): TrackEnvelopePreviewLine[] => {
-    const currentTrack =
-      options.tracks.value.find((track) => track.id === item.track.id) || item.track
-    const durationSec = Math.max(0, Number(options.resolveTrackDurationSeconds(currentTrack)) || 0)
-    if (!durationSec) return []
-    return TRACK_ENVELOPE_PREVIEW_PARAMS.map((param) => {
-      if (param === 'bpm') {
-        const sourceDurationSec = Math.max(
-          0,
-          Number(options.resolveTrackSourceDurationSeconds(currentTrack)) || 0
-        )
-        const tempoSnapshot = buildTrackRuntimeTempoSnapshot({
-          track: currentTrack,
-          sourceDurationSec,
-          durationSec
-        })
-        if (tempoSnapshot.timeMap.renderPoints.length < 2) return null
-        const bpmRange = resolveTrackBpmEnvelopeVisualRange({
-          track: currentTrack,
-          tracks: options.tracks.value,
-          resolveDurationSec: options.resolveTrackDurationSeconds
-        })
-        const points = buildTrackBpmEnvelopePolylineByControlPoints({
-          points: tempoSnapshot.timeMap.renderPoints,
-          durationSec,
-          baseBpm: tempoSnapshot.baseBpm,
-          minBpm: bpmRange.minBpm,
-          maxBpm: bpmRange.maxBpm
-        })
-        if (!points) return null
-        return {
-          key: param,
-          points: normalizeEnvelopePreviewPolyline(points),
-          color: TRACK_ENVELOPE_PREVIEW_COLORS[param],
-          strokeWidth: TRACK_ENVELOPE_PREVIEW_STROKES[param]
-        }
-      }
-      const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
-      const normalizedPoints = normalizeMixEnvelopePoints(
-        param,
-        (currentTrack as Record<string, unknown>)[envelopeField],
-        durationSec
-      )
-      if (normalizedPoints.length < 2) return null
-      const points = buildMixEnvelopePolylineByControlPoints({
-        param,
-        points: normalizedPoints,
-        durationSec
-      })
-      if (!points) return null
-      return {
-        key: param,
-        points: normalizeEnvelopePreviewPolyline(points),
-        color: TRACK_ENVELOPE_PREVIEW_COLORS[param],
-        strokeWidth: TRACK_ENVELOPE_PREVIEW_STROKES[param]
-      }
-    }).filter((line): line is TrackEnvelopePreviewLine => line !== null)
-  }
+  ): TrackEnvelopePreviewLine[] =>
+    trackPreviewCache.value.get(item.track.id)?.lines || EMPTY_TRACK_LINES
+
+  const resolveTrackStemPreviewRows = (item: TimelineTrackLayout): TrackStemPreviewRow[] =>
+    trackPreviewCache.value.get(item.track.id)?.stemRows || EMPTY_STEM_ROWS
 
   const trackEnvelopePreviewViewportStyle = computed(() => {
     const safeWidth = Math.max(0, Number(unwrapMaybeRef(options.timelineContentWidth)) || 0)
@@ -204,6 +288,7 @@ export const useMixtapeEnvelopePreview = (options: UseMixtapeEnvelopePreviewOpti
     timelineTrackAreaHeight,
     timelineAdaptiveStyle,
     resolveTrackEnvelopePreviewLines,
+    resolveTrackStemPreviewRows,
     trackEnvelopePreviewViewportStyle
   }
 }
