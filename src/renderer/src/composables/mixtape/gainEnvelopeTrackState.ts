@@ -28,44 +28,128 @@ export const createGainEnvelopeTrackStateModule = (params: {
   resolveTrackFirstBeatSeconds: (track: MixtapeTrack) => number
   isStemSegmentParam: (param: MixtapeEnvelopeParamId) => boolean
 }) => {
-  const resolveDynamicVisibleGridLines = (track: MixtapeTrack, durationSec: number) => {
+  type TrackGridRuntimeCacheEntry = {
+    durationSec: number
+    sourceDurationSec: number
+    zoom: number
+    bpmEnvelopeRef: unknown
+    phaseSyncGridLinesRef: unknown
+    phaseSyncGridRangeStartSec?: number
+    phaseSyncGridRangeEndSec?: number
+    bpm?: number
+    gridBaseBpm?: number
+    originalBpm?: number
+    firstBeatMs?: number
+    barBeatOffset?: number
+    visibleGridLines: ReturnType<
+      ReturnType<typeof buildTrackRuntimeTempoSnapshot>['timeMap']['buildVisibleGridLines']
+    >
+    visibleGridSegments: MixtapeMuteSegment[]
+    snapshot: ReturnType<typeof buildTrackRuntimeTempoSnapshot>
+  }
+
+  const trackGridRuntimeCache = new WeakMap<MixtapeTrack, TrackGridRuntimeCacheEntry>()
+  const ROUND_UNIT = 10000
+  const roundSecToUnit = (sec: number, maxUnit?: number) => {
+    const rounded = Math.round(Math.max(0, Number(sec) || 0) * ROUND_UNIT)
+    if (typeof maxUnit === 'number') {
+      return Math.max(0, Math.min(maxUnit, rounded))
+    }
+    return Math.max(0, rounded)
+  }
+
+  const buildVisibleGridSegmentsFromLines = (
+    visibleGridLines: TrackGridRuntimeCacheEntry['visibleGridLines'],
+    durationSec: number
+  ) => {
+    const safeDurationSec = Math.max(0, Number(durationSec) || 0)
+    if (!safeDurationSec) return [] as MixtapeMuteSegment[]
+    const durationUnit = roundSecToUnit(safeDurationSec)
+    let previousUnit = 0
+    const segments: MixtapeMuteSegment[] = []
+    for (const line of visibleGridLines) {
+      const nextUnit = roundSecToUnit(line.sec, durationUnit)
+      if (nextUnit - previousUnit <= 0) continue
+      if ((nextUnit - previousUnit) / ROUND_UNIT > VOLUME_MUTE_SEGMENT_EPSILON) {
+        segments.push({
+          startSec: previousUnit / ROUND_UNIT,
+          endSec: nextUnit / ROUND_UNIT
+        })
+      }
+      previousUnit = nextUnit
+    }
+    if ((durationUnit - previousUnit) / ROUND_UNIT > VOLUME_MUTE_SEGMENT_EPSILON) {
+      segments.push({
+        startSec: previousUnit / ROUND_UNIT,
+        endSec: durationUnit / ROUND_UNIT
+      })
+    }
+    return segments
+  }
+
+  const resolveTrackGridRuntime = (track: MixtapeTrack, durationSec: number) => {
+    const safeDurationSec = Math.max(0, Number(durationSec) || 0)
     const sourceDurationSec = Math.max(
       0,
       Number(params.resolveTrackSourceDurationSeconds(track)) || 0
     )
-    return buildTrackRuntimeTempoSnapshot({
+    const zoom = Number(params.resolveRenderZoom()) || 0
+    const cached = trackGridRuntimeCache.get(track)
+    if (
+      cached &&
+      cached.durationSec === safeDurationSec &&
+      cached.sourceDurationSec === sourceDurationSec &&
+      cached.zoom === zoom &&
+      cached.bpmEnvelopeRef === track.bpmEnvelope &&
+      cached.phaseSyncGridLinesRef === track.phaseSyncGridLines &&
+      cached.phaseSyncGridRangeStartSec === track.phaseSyncGridRangeStartSec &&
+      cached.phaseSyncGridRangeEndSec === track.phaseSyncGridRangeEndSec &&
+      cached.bpm === track.bpm &&
+      cached.gridBaseBpm === track.gridBaseBpm &&
+      cached.originalBpm === track.originalBpm &&
+      cached.firstBeatMs === track.firstBeatMs &&
+      cached.barBeatOffset === track.barBeatOffset
+    ) {
+      return cached
+    }
+    const snapshot = buildTrackRuntimeTempoSnapshot({
       track,
       sourceDurationSec,
-      durationSec,
-      zoom: params.resolveRenderZoom()
-    }).visibleGridLines
+      durationSec: safeDurationSec,
+      zoom
+    })
+    const next: TrackGridRuntimeCacheEntry = {
+      durationSec: safeDurationSec,
+      sourceDurationSec,
+      zoom,
+      bpmEnvelopeRef: track.bpmEnvelope,
+      phaseSyncGridLinesRef: track.phaseSyncGridLines,
+      phaseSyncGridRangeStartSec: track.phaseSyncGridRangeStartSec,
+      phaseSyncGridRangeEndSec: track.phaseSyncGridRangeEndSec,
+      bpm: track.bpm,
+      gridBaseBpm: track.gridBaseBpm,
+      originalBpm: track.originalBpm,
+      firstBeatMs: track.firstBeatMs,
+      barBeatOffset: track.barBeatOffset,
+      visibleGridLines: snapshot.visibleGridLines,
+      visibleGridSegments: buildVisibleGridSegmentsFromLines(
+        snapshot.visibleGridLines,
+        safeDurationSec
+      ),
+      snapshot
+    }
+    trackGridRuntimeCache.set(track, next)
+    return next
+  }
+
+  const resolveDynamicVisibleGridLines = (track: MixtapeTrack, durationSec: number) => {
+    return resolveTrackGridRuntime(track, durationSec).visibleGridLines
   }
 
   const resolveVisibleGridSegments = (track: MixtapeTrack, durationSec: number) => {
     const safeDurationSec = Math.max(0, Number(durationSec) || 0)
     if (!safeDurationSec) return [] as MixtapeMuteSegment[]
-    const boundaries = Array.from(
-      new Set(
-        [
-          0,
-          ...resolveDynamicVisibleGridLines(track, safeDurationSec).map((line) => line.sec),
-          safeDurationSec
-        ]
-          .map((sec) => Number(sec.toFixed(4)))
-          .filter((sec) => Number.isFinite(sec) && sec >= 0 && sec <= safeDurationSec)
-      )
-    ).sort((a, b) => a - b)
-    const segments: MixtapeMuteSegment[] = []
-    for (let index = 0; index < boundaries.length - 1; index += 1) {
-      const startSec = boundaries[index]
-      const endSec = boundaries[index + 1]
-      if (endSec - startSec <= VOLUME_MUTE_SEGMENT_EPSILON) continue
-      segments.push({
-        startSec: Number(startSec.toFixed(4)),
-        endSec: Number(endSec.toFixed(4))
-      })
-    }
-    return segments
+    return resolveTrackGridRuntime(track, safeDurationSec).visibleGridSegments
   }
 
   const resolveVolumeMuteGrid = (track: MixtapeTrack, durationSec: number) => {
@@ -122,16 +206,7 @@ export const createGainEnvelopeTrackStateModule = (params: {
     minSec?: number
     maxSec?: number
   }) => {
-    const sourceDurationSec = Math.max(
-      0,
-      Number(params.resolveTrackSourceDurationSeconds(payload.track)) || 0
-    )
-    const snapshot = buildTrackRuntimeTempoSnapshot({
-      track: payload.track,
-      sourceDurationSec,
-      durationSec: payload.durationSec,
-      zoom: params.resolveRenderZoom()
-    })
+    const snapshot = resolveTrackGridRuntime(payload.track, payload.durationSec).snapshot
     const nearest = snapshot.timeMap.resolveNearestGridLine(
       payload.sec,
       params.resolveRenderZoom(),

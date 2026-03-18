@@ -2,6 +2,7 @@ import type { MixtapeBpmPoint, MixtapeTrack } from '@renderer/composables/mixtap
 
 export const BPM_POINT_SEC_EPSILON = 0.0001
 export const BPM_MIN_VALUE = 1
+const TRACK_TEMPO_ROUND_FACTOR = 10000
 
 const BPM_MAX_POINTS_PER_SEC = 2
 const BPM_CLAMP_MIN_MULTIPLIER = 0.25
@@ -10,7 +11,18 @@ const BPM_VISUAL_MAX_MULTIPLIER = 2
 export const clampTrackTempoNumber = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value))
 
-export const roundTrackTempoSec = (value: number) => Number(value.toFixed(4))
+export const roundTrackTempoSec = (value: number) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return 0
+  if (numeric >= 0) {
+    return (
+      Math.round((numeric + Number.EPSILON) * TRACK_TEMPO_ROUND_FACTOR) / TRACK_TEMPO_ROUND_FACTOR
+    )
+  }
+  return (
+    -Math.round((-numeric + Number.EPSILON) * TRACK_TEMPO_ROUND_FACTOR) / TRACK_TEMPO_ROUND_FACTOR
+  )
+}
 
 const normalizeTrackBpmPointValue = (value: unknown): number | null => {
   const numeric = Number(value)

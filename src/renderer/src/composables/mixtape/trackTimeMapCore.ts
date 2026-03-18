@@ -149,6 +149,188 @@ export const resolveTrackTempoRatioAtSec = (params: {
     : 1
 }
 
+type TempoRatioIntegralSegment = {
+  startSec: number
+  endSec: number
+  ratio: number
+  integralBefore: number
+  integralAfter: number
+}
+
+type TempoRatioIntegralCache =
+  | {
+      mode: 'linear'
+      durationSec: number
+      totalIntegral: number
+    }
+  | {
+      mode: 'constant'
+      durationSec: number
+      totalIntegral: number
+      constantRatio: number
+    }
+  | {
+      mode: 'piecewise'
+      durationSec: number
+      totalIntegral: number
+      segments: TempoRatioIntegralSegment[]
+      segmentEndSecs: number[]
+    }
+
+const buildTempoRatioIntegralCache = (params: {
+  points: MixtapeBpmPoint[]
+  durationSec: number
+  originalBpm: number
+  fallbackBpm: number
+}): TempoRatioIntegralCache => {
+  const durationSec = Math.max(0, Number(params.durationSec) || 0)
+  if (durationSec <= 0) {
+    return {
+      mode: 'linear',
+      durationSec,
+      totalIntegral: 0
+    }
+  }
+  const originalBpm = normalizeTrackBpmValue(params.originalBpm)
+  if (originalBpm === null) {
+    return {
+      mode: 'linear',
+      durationSec,
+      totalIntegral: durationSec
+    }
+  }
+  const points = params.points
+  if (points.length < 2) {
+    const constantRatio = resolveTrackTempoRatioAtSec({
+      points,
+      sec: 0,
+      originalBpm,
+      fallbackBpm: params.fallbackBpm
+    })
+    return {
+      mode: 'constant',
+      durationSec,
+      totalIntegral: durationSec * constantRatio,
+      constantRatio
+    }
+  }
+
+  const segments: TempoRatioIntegralSegment[] = []
+  const segmentEndSecs: number[] = []
+  let totalIntegral = 0
+
+  for (let index = 1; index < points.length; index += 1) {
+    const left = points[index - 1]
+    const right = points[index]
+    const span = Number(right.sec) - Number(left.sec)
+    if (!Number.isFinite(span) || span <= BPM_POINT_SEC_EPSILON) continue
+    const startSec = Math.max(0, Number(left.sec) || 0)
+    const endSec = Math.min(durationSec, Number(right.sec) || 0)
+    if (endSec <= startSec) continue
+    const leftRatio = clampTrackTempoNumber(left.bpm / originalBpm, 0.25, 4)
+    const rightRatio = clampTrackTempoNumber(right.bpm / originalBpm, 0.25, 4)
+    const ratio = (leftRatio + rightRatio) / 2
+    const deltaSec = endSec - startSec
+    const integralBefore = totalIntegral
+    totalIntegral += ratio * deltaSec
+    segments.push({
+      startSec,
+      endSec,
+      ratio,
+      integralBefore,
+      integralAfter: totalIntegral
+    })
+    segmentEndSecs.push(endSec)
+  }
+
+  const lastPoint = points[points.length - 1]
+  if (lastPoint && durationSec > lastPoint.sec + BPM_POINT_SEC_EPSILON) {
+    const startSec = Math.max(0, Number(lastPoint.sec) || 0)
+    const endSec = durationSec
+    if (endSec > startSec) {
+      const lastRatio = clampTrackTempoNumber(lastPoint.bpm / originalBpm, 0.25, 4)
+      const deltaSec = endSec - startSec
+      const integralBefore = totalIntegral
+      totalIntegral += lastRatio * deltaSec
+      segments.push({
+        startSec,
+        endSec,
+        ratio: lastRatio,
+        integralBefore,
+        integralAfter: totalIntegral
+      })
+      segmentEndSecs.push(endSec)
+    }
+  }
+
+  return {
+    mode: 'piecewise',
+    durationSec,
+    totalIntegral,
+    segments,
+    segmentEndSecs
+  }
+}
+
+const findTempoRatioIntegralSegmentIndex = (segmentEndSecs: number[], localSec: number): number => {
+  let left = 0
+  let right = segmentEndSecs.length - 1
+  let answer = -1
+  while (left <= right) {
+    const middle = (left + right) >> 1
+    if ((segmentEndSecs[middle] || 0) >= localSec - BPM_POINT_SEC_EPSILON) {
+      answer = middle
+      right = middle - 1
+    } else {
+      left = middle + 1
+    }
+  }
+  return answer
+}
+
+const findTempoRatioIntegralSegmentByIntegral = (
+  segments: TempoRatioIntegralSegment[],
+  targetIntegral: number
+): TempoRatioIntegralSegment | null => {
+  let left = 0
+  let right = segments.length - 1
+  let answer = -1
+  while (left <= right) {
+    const middle = (left + right) >> 1
+    if ((segments[middle]?.integralAfter || 0) >= targetIntegral - BPM_POINT_SEC_EPSILON) {
+      answer = middle
+      right = middle - 1
+    } else {
+      left = middle + 1
+    }
+  }
+  return answer >= 0 ? segments[answer] || null : null
+}
+
+const resolveTempoRatioIntegralAtLocalSec = (cache: TempoRatioIntegralCache, localSec: number) => {
+  const safeLocalSec = clampTrackTempoNumber(Number(localSec) || 0, 0, cache.durationSec)
+  if (safeLocalSec <= 0) return 0
+  if (cache.mode === 'linear') {
+    return safeLocalSec
+  }
+  if (cache.mode === 'constant') {
+    return safeLocalSec * cache.constantRatio
+  }
+  if (!cache.segments.length) return 0
+  const segmentIndex = findTempoRatioIntegralSegmentIndex(cache.segmentEndSecs, safeLocalSec)
+  if (segmentIndex < 0) return cache.totalIntegral
+  const segment = cache.segments[segmentIndex]
+  if (!segment) return cache.totalIntegral
+  if (safeLocalSec <= segment.startSec + BPM_POINT_SEC_EPSILON) {
+    return segment.integralBefore
+  }
+  const deltaSec = Math.min(
+    segment.endSec - segment.startSec,
+    Math.max(0, safeLocalSec - segment.startSec)
+  )
+  return segment.integralBefore + segment.ratio * deltaSec
+}
+
 const integrateTempoRatioToSec = (params: {
   points: MixtapeBpmPoint[]
   endSec: number
@@ -253,7 +435,23 @@ export const resolveTrackSourceProgressAtLocalSec = (params: {
   durationSec: number
   originalBpm: number
   fallbackBpm: number
+  integralCache?: TempoRatioIntegralCache
 }) => {
+  if (params.integralCache) {
+    const totalIntegral = params.integralCache.totalIntegral
+    if (!Number.isFinite(totalIntegral) || totalIntegral <= BPM_POINT_SEC_EPSILON) {
+      return clampTrackTempoNumber(
+        params.localSec / Math.max(BPM_POINT_SEC_EPSILON, params.durationSec),
+        0,
+        1
+      )
+    }
+    const partialIntegral = resolveTempoRatioIntegralAtLocalSec(
+      params.integralCache,
+      params.localSec
+    )
+    return clampTrackTempoNumber(partialIntegral / totalIntegral, 0, 1)
+  }
   const totalIntegral = integrateTempoRatioToSec({
     points: params.points,
     endSec: params.durationSec,
@@ -285,14 +483,36 @@ export const resolveTrackSourceTimeAtLocalSec = (params: {
   sourceDurationSec: number
   originalBpm: number
   fallbackBpm: number
-}) =>
-  resolveTrackSourceProgressAtLocalSec({
-    points: params.points,
-    localSec: params.localSec,
-    durationSec: params.durationSec,
-    originalBpm: params.originalBpm,
-    fallbackBpm: params.fallbackBpm
-  }) * Math.max(0, params.sourceDurationSec)
+  integralCache?: TempoRatioIntegralCache
+}) => {
+  const safeSourceDurationSec = Math.max(0, Number(params.sourceDurationSec) || 0)
+  if (!params.integralCache) {
+    return (
+      resolveTrackSourceProgressAtLocalSec({
+        points: params.points,
+        localSec: params.localSec,
+        durationSec: params.durationSec,
+        originalBpm: params.originalBpm,
+        fallbackBpm: params.fallbackBpm
+      }) * safeSourceDurationSec
+    )
+  }
+  const totalIntegral = params.integralCache.totalIntegral
+  if (!Number.isFinite(totalIntegral) || totalIntegral <= BPM_POINT_SEC_EPSILON) {
+    return (
+      clampTrackTempoNumber(
+        Number(params.localSec) || 0,
+        0,
+        Math.max(0, Number(params.durationSec) || 0)
+      ) *
+      (safeSourceDurationSec / Math.max(BPM_POINT_SEC_EPSILON, Number(params.durationSec) || 0))
+    )
+  }
+  return (
+    resolveTempoRatioIntegralAtLocalSec(params.integralCache, params.localSec) *
+    (safeSourceDurationSec / totalIntegral)
+  )
+}
 
 export const resolveTrackLocalSecAtSourceTime = (params: {
   points: MixtapeBpmPoint[]
@@ -301,6 +521,7 @@ export const resolveTrackLocalSecAtSourceTime = (params: {
   sourceDurationSec: number
   originalBpm: number
   fallbackBpm: number
+  integralCache?: TempoRatioIntegralCache
 }) => {
   const safeDurationSec = Math.max(0, Number(params.durationSec) || 0)
   const safeSourceDurationSec = Math.max(0, Number(params.sourceDurationSec) || 0)
@@ -312,6 +533,38 @@ export const resolveTrackLocalSecAtSourceTime = (params: {
     0,
     safeSourceDurationSec
   )
+  if (params.integralCache) {
+    const totalIntegral = params.integralCache.totalIntegral
+    if (!Number.isFinite(totalIntegral) || totalIntegral <= BPM_POINT_SEC_EPSILON) {
+      return roundTrackTempoSec((targetSourceSec / safeSourceDurationSec) * safeDurationSec)
+    }
+    if (params.integralCache.mode === 'linear') {
+      return roundTrackTempoSec((targetSourceSec / safeSourceDurationSec) * safeDurationSec)
+    }
+    const targetIntegral = (targetSourceSec / safeSourceDurationSec) * totalIntegral
+    if (params.integralCache.mode === 'constant') {
+      return roundTrackTempoSec(
+        clampTrackTempoNumber(
+          targetIntegral / Math.max(BPM_POINT_SEC_EPSILON, params.integralCache.constantRatio),
+          0,
+          safeDurationSec
+        )
+      )
+    }
+    if (!params.integralCache.segments.length) return 0
+    const segment = findTempoRatioIntegralSegmentByIntegral(
+      params.integralCache.segments,
+      targetIntegral
+    )
+    if (!segment) return roundTrackTempoSec(safeDurationSec)
+    if (targetIntegral <= segment.integralBefore + BPM_POINT_SEC_EPSILON) {
+      return roundTrackTempoSec(segment.startSec)
+    }
+    const localSec =
+      segment.startSec +
+      (targetIntegral - segment.integralBefore) / Math.max(BPM_POINT_SEC_EPSILON, segment.ratio)
+    return roundTrackTempoSec(clampTrackTempoNumber(localSec, segment.startSec, segment.endSec))
+  }
   let leftSec = 0
   let rightSec = safeDurationSec
   for (let index = 0; index < 28; index += 1) {
@@ -322,7 +575,8 @@ export const resolveTrackLocalSecAtSourceTime = (params: {
       durationSec: safeDurationSec,
       sourceDurationSec: safeSourceDurationSec,
       originalBpm: params.originalBpm,
-      fallbackBpm: params.fallbackBpm
+      fallbackBpm: params.fallbackBpm,
+      integralCache: params.integralCache
     })
     if (mappedSourceSec < targetSourceSec) {
       leftSec = middleSec
@@ -424,6 +678,12 @@ export const resolveTrackBpmEnvelopeRenderablePoints = (params: {
   const safeDurationSec = Math.max(0, Number(params.durationSec) || 0)
   const safeSourceDurationSec = Math.max(0, Number(params.sourceDurationSec) || 0)
   if (!safeDurationSec || params.points.length < 2 || !safeSourceDurationSec) return params.points
+  const tempoRatioIntegralCache = buildTempoRatioIntegralCache({
+    points: params.points,
+    durationSec: safeDurationSec,
+    originalBpm: params.originalBpm,
+    fallbackBpm: params.fallbackBpm
+  })
   return params.points.map((point, index) => {
     if (index === 0) return { ...point, sec: 0, sourceSec: 0 }
     if (index === params.points.length - 1) {
@@ -454,7 +714,8 @@ export const resolveTrackBpmEnvelopeRenderablePoints = (params: {
         durationSec: safeDurationSec,
         sourceDurationSec: safeSourceDurationSec,
         originalBpm: params.originalBpm,
-        fallbackBpm: params.fallbackBpm
+        fallbackBpm: params.fallbackBpm,
+        integralCache: tempoRatioIntegralCache
       })
     }
   })
@@ -473,6 +734,12 @@ export const resolveTrackBpmEnvelopeSourceAnchors = (params: {
       clampTrackTempoNumber(Number(point.sec) || 0, 0, Math.max(0, Number(params.durationSec) || 0))
     )
   }
+  const tempoRatioIntegralCache = buildTempoRatioIntegralCache({
+    points: params.points,
+    durationSec: params.durationSec,
+    originalBpm: params.originalBpm,
+    fallbackBpm: params.fallbackBpm
+  })
   return params.points.map((point) =>
     roundTrackTempoSec(
       resolveTrackSourceTimeAtLocalSec({
@@ -481,7 +748,8 @@ export const resolveTrackBpmEnvelopeSourceAnchors = (params: {
         durationSec: params.durationSec,
         sourceDurationSec: safeSourceDuration,
         originalBpm: params.originalBpm,
-        fallbackBpm: params.fallbackBpm
+        fallbackBpm: params.fallbackBpm,
+        integralCache: tempoRatioIntegralCache
       })
     )
   )
@@ -582,6 +850,12 @@ const buildTrackBeatPositionsFromSourceGrid = (params: {
       anchorIndex: 0
     }
   }
+  const tempoRatioIntegralCache = buildTempoRatioIntegralCache({
+    points: params.points,
+    durationSec: safeDurationSec,
+    originalBpm: params.originalBpm,
+    fallbackBpm: params.fallbackBpm
+  })
   for (let beatIndex = minIndex; beatIndex <= maxIndex; beatIndex += 1) {
     const sourceSec = firstBeatSourceSec + beatIndex * beatSourceSec
     const localSec = resolveTrackLocalSecAtSourceTime({
@@ -590,7 +864,8 @@ const buildTrackBeatPositionsFromSourceGrid = (params: {
       durationSec: safeDurationSec,
       sourceDurationSec: safeSourceDurationSec,
       originalBpm: params.originalBpm,
-      fallbackBpm: params.fallbackBpm
+      fallbackBpm: params.fallbackBpm,
+      integralCache: tempoRatioIntegralCache
     })
     positions.push(roundTrackTempoSec(localSec))
   }
@@ -693,6 +968,35 @@ export const snapTrackLocalSecToBeatGrid = (params: {
     maxLocalSec: params.maxLocalSec
   })
 
+const TRACK_TIME_MAP_SNAPSHOT_CACHE_LIMIT = 180
+const trackTimeMapSnapshotCache = new Map<string, TrackTimeMap>()
+
+const buildSerializedTrackTimeMapCacheKey = (snapshot: SerializedTrackTempoSnapshot) =>
+  [
+    String(snapshot.signature || ''),
+    Math.round((Number(snapshot.sourceDurationSec) || 0) * 1000),
+    Math.round((Number(snapshot.firstBeatSourceSec) || 0) * 1000),
+    Math.round((Number(snapshot.beatSourceSec) || 0) * 1000),
+    Math.round((Number(snapshot.barBeatOffset) || 0) * 1000)
+  ].join('|')
+
+const readTrackTimeMapSnapshotCache = (key: string) => {
+  const cached = trackTimeMapSnapshotCache.get(key)
+  if (!cached) return null
+  trackTimeMapSnapshotCache.delete(key)
+  trackTimeMapSnapshotCache.set(key, cached)
+  return cached
+}
+
+const writeTrackTimeMapSnapshotCache = (key: string, value: TrackTimeMap) => {
+  trackTimeMapSnapshotCache.set(key, value)
+  if (trackTimeMapSnapshotCache.size <= TRACK_TIME_MAP_SNAPSHOT_CACHE_LIMIT) return
+  const oldestKey = trackTimeMapSnapshotCache.keys().next().value
+  if (typeof oldestKey === 'string') {
+    trackTimeMapSnapshotCache.delete(oldestKey)
+  }
+}
+
 export const createTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap => {
   const durationSec = Math.max(0, Number(input.durationSec) || 0)
   const sourceDurationSec = Math.max(0, Number(input.sourceDurationSec) || 0)
@@ -703,6 +1007,12 @@ export const createTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap => {
     points: input.controlPoints,
     durationSec,
     sourceDurationSec,
+    originalBpm: input.originalBpm,
+    fallbackBpm: input.fallbackBpm
+  })
+  const tempoRatioIntegralCache = buildTempoRatioIntegralCache({
+    points: renderPoints,
+    durationSec,
     originalBpm: input.originalBpm,
     fallbackBpm: input.fallbackBpm
   })
@@ -754,7 +1064,8 @@ export const createTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap => {
         durationSec,
         sourceDurationSec,
         originalBpm: input.originalBpm,
-        fallbackBpm: input.fallbackBpm
+        fallbackBpm: input.fallbackBpm,
+        integralCache: tempoRatioIntegralCache
       }),
     mapSourceToLocal: (sourceSec: number) =>
       resolveTrackLocalSecAtSourceTime({
@@ -763,7 +1074,8 @@ export const createTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap => {
         durationSec,
         sourceDurationSec,
         originalBpm: input.originalBpm,
-        fallbackBpm: input.fallbackBpm
+        fallbackBpm: input.fallbackBpm,
+        integralCache: tempoRatioIntegralCache
       }),
     sampleBpmAtLocal: (localSec: number) =>
       sampleTrackBpmEnvelopeAtSec(renderPoints, localSec, input.fallbackBpm),
@@ -776,7 +1088,8 @@ export const createTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap => {
           durationSec,
           sourceDurationSec,
           originalBpm: input.originalBpm,
-          fallbackBpm: input.fallbackBpm
+          fallbackBpm: input.fallbackBpm,
+          integralCache: tempoRatioIntegralCache
         }),
         input.fallbackBpm
       ),
@@ -823,8 +1136,11 @@ export const createTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap => {
 
 export const createTrackTimeMapFromSnapshotPayload = (
   snapshot: SerializedTrackTempoSnapshot
-): TrackTimeMap =>
-  createTrackTimeMap({
+): TrackTimeMap => {
+  const cacheKey = buildSerializedTrackTimeMapCacheKey(snapshot)
+  const cached = readTrackTimeMapSnapshotCache(cacheKey)
+  if (cached) return cached
+  const next = createTrackTimeMap({
     controlPoints: snapshot.controlPoints.map((point) => ({
       sec: Number(point.sec),
       bpm: Number(point.bpm),
@@ -857,3 +1173,6 @@ export const createTrackTimeMapFromSnapshotPayload = (
           }
         : undefined
   })
+  writeTrackTimeMapSnapshotCache(cacheKey, next)
+  return next
+}
