@@ -45,6 +45,10 @@
 .timeline-envelope-preview__stage {
   position: relative;
   width: 100%;
+  min-height: calc(
+    var(--envelope-preview-lane-height) * 2 + var(--envelope-preview-lane-gap) +
+      var(--envelope-preview-lane-padding-y) * 2
+  );
   background: rgba(0, 0, 0, 0.16);
   overflow: hidden;
   cursor: grab;
@@ -65,10 +69,19 @@
 }
 
 .timeline-envelope-preview__empty {
+  min-height: inherit;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   padding: 14px 0;
   font-size: 11px;
   color: var(--text-weak);
+}
+
+.timeline-envelope-preview__empty.is-loading {
+  letter-spacing: 0.04em;
 }
 
 .timeline-envelope-preview__viewport {

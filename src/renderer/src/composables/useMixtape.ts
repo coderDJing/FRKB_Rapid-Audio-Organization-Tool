@@ -93,6 +93,27 @@ type StemRuntimeDownloadInfo = {
   releaseTag: string
   state: StemRuntimeDownloadState
 }
+const decodeMixtapeQueryValue = (value: string | null): string | undefined => {
+  if (!value) return undefined
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+const resolveInitialMixtapePayload = (): MixtapeOpenPayload => {
+  if (typeof window === 'undefined') return {}
+  try {
+    const params = new URLSearchParams(window.location.search)
+    return {
+      playlistId: params.get('playlistId') || undefined,
+      playlistPath: decodeMixtapeQueryValue(params.get('playlistPath')),
+      playlistName: decodeMixtapeQueryValue(params.get('playlistName'))
+    }
+  } catch {
+    return {}
+  }
+}
 const createEmptyStemSummary = (): MixtapeStemSummary => ({
   pending: 0,
   running: 0,
@@ -117,12 +138,13 @@ const STEM_RUNTIME_PROGRESS_MAX_VISIBLE_ITEMS = 6
 export const useMixtape = () => {
   const contextMenuClickThroughGuard = createClickThroughGuard()
   const CONTEXT_MENU_SELECTOR = '[data-frkb-context-menu="true"]'
-  const payload = ref<MixtapeOpenPayload>({})
+  const payload = ref<MixtapeOpenPayload>(resolveInitialMixtapePayload())
   const mixtapeMixMode = ref<MixtapeMixMode>('stem')
   const mixtapeStemMode = ref<MixtapeStemMode>(FIXED_MIXTAPE_STEM_MODE)
   const mixtapeStemProfile = ref<RendererMixtapeStemProfile>(DEFAULT_MIXTAPE_STEM_PROFILE)
   const tracks = ref<MixtapeTrack[]>([])
   const mixtapeRawItems = ref<MixtapeRawItem[]>([])
+  const mixtapeItemsLoading = ref(!!payload.value.playlistId)
   const selectedTrackId = ref('')
   const runtime = useRuntimeStore()
   const outputPath = ref('')
@@ -756,6 +778,7 @@ export const useMixtape = () => {
     payload,
     tracks,
     mixtapeRawItems,
+    mixtapeItemsLoading,
     selectedTrackId,
     mixtapeMixMode,
     mixtapeStemMode,
@@ -1129,17 +1152,7 @@ export const useMixtape = () => {
     { immediate: true }
   )
   onMounted(() => {
-    try {
-      const params = new URLSearchParams(window.location.search)
-      const playlistId = params.get('playlistId')
-      const playlistPath = params.get('playlistPath')
-      const playlistName = params.get('playlistName')
-      applyPayload({
-        playlistId: playlistId || undefined,
-        playlistPath: playlistPath ? decodeURIComponent(playlistPath) : undefined,
-        playlistName: playlistName ? decodeURIComponent(playlistName) : undefined
-      })
-    } catch {}
+    applyPayload(resolveInitialMixtapePayload())
     window.electron.ipcRenderer.on('mixtape-open', handleOpen)
     window.electron.ipcRenderer.on('mixtape-bpm-batch-ready', handleBpmBatchReady)
     window.electron.ipcRenderer.on('mixtape-stem-status-updated', handleMixtapeStemStatusUpdated)
@@ -1237,6 +1250,7 @@ export const useMixtape = () => {
     mixtapeMenus,
     handleTitleOpenDialog,
     mixtapeRawItems,
+    mixtapeItemsLoading,
     tracks,
     clearTimelineLayoutCache,
     updateTimelineWidth,

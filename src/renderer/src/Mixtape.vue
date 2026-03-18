@@ -31,6 +31,7 @@ const {
   mixtapeMenus,
   handleTitleOpenDialog,
   mixtapeRawItems,
+  mixtapeItemsLoading,
   mixtapeMixMode,
   mixtapeStemMode,
   tracks,
@@ -682,8 +683,12 @@ onBeforeUnmount(() => {
                   >
                     <div class="timeline-lanes">
                       <div v-if="tracks.length === 0" class="timeline-empty">
-                        <div>{{ t('mixtape.trackEmpty') }}</div>
-                        <div class="timeline-empty-hint">{{ t('mixtape.trackEmptyHint') }}</div>
+                        <div>
+                          {{ mixtapeItemsLoading ? t('mixtape.loading') : t('mixtape.trackEmpty') }}
+                        </div>
+                        <div v-if="!mixtapeItemsLoading" class="timeline-empty-hint">
+                          {{ t('mixtape.trackEmptyHint') }}
+                        </div>
                       </div>
                       <template v-else>
                         <div
@@ -863,8 +868,12 @@ onBeforeUnmount(() => {
                   :class="{ 'is-dragging': isTimelinePanning }"
                   @mousedown="handleTimelineHorizontalPanStart"
                 >
-                  <div v-if="tracks.length === 0" class="timeline-envelope-preview__empty">
-                    {{ t('mixtape.trackEmptyHint') }}
+                  <div
+                    v-if="tracks.length === 0"
+                    class="timeline-envelope-preview__empty"
+                    :class="{ 'is-loading': mixtapeItemsLoading }"
+                  >
+                    {{ mixtapeItemsLoading ? t('mixtape.loading') : t('mixtape.trackEmptyHint') }}
                   </div>
                   <div
                     v-else

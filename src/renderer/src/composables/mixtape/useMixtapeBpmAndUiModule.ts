@@ -7,6 +7,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     payload,
     tracks,
     mixtapeRawItems,
+    mixtapeItemsLoading,
     selectedTrackId,
     mixtapeMixMode,
     mixtapeStemMode,
@@ -84,6 +85,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
 
   let bpmAnalysisToken = 0
   let lastBpmAnalysisKey = ''
+  let mixtapeItemsRequestToken = 0
 
   const normalizeBpmFailureReason = (value: unknown): string => {
     const text = typeof value === 'string' ? value.trim() : ''
@@ -221,7 +223,10 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
   }
 
   const loadMixtapeItems = async () => {
-    if (!payload.value.playlistId) {
+    const requestToken = ++mixtapeItemsRequestToken
+    const playlistId = String(payload.value.playlistId || '').trim()
+    if (!playlistId) {
+      mixtapeItemsLoading.value = false
       mixtapeRawItems.value = []
       mixtapeMixMode.value = 'stem'
       mixtapeStemMode.value = FIXED_MIXTAPE_STEM_MODE
@@ -236,90 +241,108 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
       lastBpmAnalysisKey = ''
       return
     }
-    const result = await window.electron.ipcRenderer.invoke('mixtape:list', {
-      playlistId: payload.value.playlistId
-    })
-    mixtapeMixMode.value = normalizeMixtapeMixMode(result?.mixMode)
-    mixtapeStemMode.value = FIXED_MIXTAPE_STEM_MODE
-    mixtapeStemProfile.value = normalizeStemProfile(
-      result?.stemProfile,
-      DEFAULT_MIXTAPE_STEM_PROFILE
-    )
-    stemSummary.value = normalizeStemSummary(result?.stemSummary)
-    const rawItems = Array.isArray(result?.items) ? result.items : []
-    mixtapeRawItems.value = rawItems
-    const removedPaths = Array.isArray(result?.recovery?.removedPaths)
-      ? normalizeUniquePaths(result.recovery.removedPaths)
-      : []
-    tracks.value = rawItems.map((item: any, index: number) =>
-      parseSnapshot(item, index, t('tracks.unknownTrack'))
-    )
-    pruneStemRuntimeProgressByTracks(tracks.value)
-    const stemMode = FIXED_MIXTAPE_STEM_MODE
-    const currentPlaylistId = String(payload.value.playlistId || '').trim()
-
-    if (mixtapeMixMode.value === 'stem') {
-      const missingStemAssetReadyTracks = tracks.value.filter(
-        (track: any) =>
-          normalizeMixtapeStemStatus(track.stemStatus) === 'ready' &&
-          !hasTrackStemPathsReady(track, stemMode)
-      )
-      if (missingStemAssetReadyTracks.length > 0 && window?.electron?.ipcRenderer?.invoke) {
-        const repairFilePaths = Array.from(
-          new Set(
-            missingStemAssetReadyTracks
-              .map((track: any) => normalizeMixtapeFilePath(track.filePath))
-              .filter(Boolean)
-          )
-        )
-        if (repairFilePaths.length > 0) {
-          void window.electron.ipcRenderer
-            .invoke('mixtape:stem:enqueue', {
-              playlistId: payload.value.playlistId,
-              filePaths: repairFilePaths,
-              stemMode,
-              profile: mixtapeStemProfile.value,
-              force: false
-            })
-            .catch((error: unknown) => {
-              console.error('[mixtape] stem path backfill enqueue failed', {
-                playlistId: payload.value.playlistId,
-                count: repairFilePaths.length,
-                error
-              })
-            })
-        }
-      }
-      if (currentPlaylistId) {
-        const includeRunning = !stemResumeBootstrappedPlaylistIdSet.has(currentPlaylistId)
-        await autoResumePendingStemJobs({
-          playlistId: currentPlaylistId,
-          stemMode,
-          trackList: tracks.value,
-          includeRunning
-        })
-        stemResumeBootstrappedPlaylistIdSet.add(currentPlaylistId)
-      }
-    } else if (currentPlaylistId) {
-      stemResumeBootstrappedPlaylistIdSet.delete(currentPlaylistId)
-      stemResumeSignatureByPlaylistId.delete(currentPlaylistId)
-      console.info('[mixtape] stem auto enqueue skipped: non-stem mode or strategy not confirmed', {
-        playlistId: currentPlaylistId
+    mixtapeItemsLoading.value = true
+    try {
+      const result = await window.electron.ipcRenderer.invoke('mixtape:list', {
+        playlistId
       })
+      if (requestToken !== mixtapeItemsRequestToken) return
+      mixtapeMixMode.value = normalizeMixtapeMixMode(result?.mixMode)
+      mixtapeStemMode.value = FIXED_MIXTAPE_STEM_MODE
+      mixtapeStemProfile.value = normalizeStemProfile(
+        result?.stemProfile,
+        DEFAULT_MIXTAPE_STEM_PROFILE
+      )
+      stemSummary.value = normalizeStemSummary(result?.stemSummary)
+      const rawItems = Array.isArray(result?.items) ? result.items : []
+      mixtapeRawItems.value = rawItems
+      const removedPaths = Array.isArray(result?.recovery?.removedPaths)
+        ? normalizeUniquePaths(result.recovery.removedPaths)
+        : []
+      tracks.value = rawItems.map((item: any, index: number) =>
+        parseSnapshot(item, index, t('tracks.unknownTrack'))
+      )
+      pruneStemRuntimeProgressByTracks(tracks.value)
+      const stemMode = FIXED_MIXTAPE_STEM_MODE
+      const currentPlaylistId = playlistId
+
+      if (mixtapeMixMode.value === 'stem') {
+        const missingStemAssetReadyTracks = tracks.value.filter(
+          (track: any) =>
+            normalizeMixtapeStemStatus(track.stemStatus) === 'ready' &&
+            !hasTrackStemPathsReady(track, stemMode)
+        )
+        if (missingStemAssetReadyTracks.length > 0 && window?.electron?.ipcRenderer?.invoke) {
+          const repairFilePaths = Array.from(
+            new Set(
+              missingStemAssetReadyTracks
+                .map((track: any) => normalizeMixtapeFilePath(track.filePath))
+                .filter(Boolean)
+            )
+          )
+          if (repairFilePaths.length > 0) {
+            void window.electron.ipcRenderer
+              .invoke('mixtape:stem:enqueue', {
+                playlistId,
+                filePaths: repairFilePaths,
+                stemMode,
+                profile: mixtapeStemProfile.value,
+                force: false
+              })
+              .catch((error: unknown) => {
+                console.error('[mixtape] stem path backfill enqueue failed', {
+                  playlistId,
+                  count: repairFilePaths.length,
+                  error
+                })
+              })
+          }
+        }
+        if (currentPlaylistId) {
+          const includeRunning = !stemResumeBootstrappedPlaylistIdSet.has(currentPlaylistId)
+          await autoResumePendingStemJobs({
+            playlistId: currentPlaylistId,
+            stemMode,
+            trackList: tracks.value,
+            includeRunning
+          })
+          if (requestToken !== mixtapeItemsRequestToken) return
+          stemResumeBootstrappedPlaylistIdSet.add(currentPlaylistId)
+        }
+      } else if (currentPlaylistId) {
+        stemResumeBootstrappedPlaylistIdSet.delete(currentPlaylistId)
+        stemResumeSignatureByPlaylistId.delete(currentPlaylistId)
+        console.info(
+          '[mixtape] stem auto enqueue skipped: non-stem mode or strategy not confirmed',
+          {
+            playlistId: currentPlaylistId
+          }
+        )
+      }
+      if (!tracks.value.some((track: any) => track.id === selectedTrackId.value)) {
+        selectedTrackId.value = tracks.value[0]?.id || ''
+      }
+      syncAutoGainReferenceTrack()
+      if (!tracks.value.some((track: any) => track.id === beatAlignTrackId.value)) {
+        beatAlignDialogVisible.value = false
+        beatAlignTrackId.value = ''
+      }
+      closeTrackContextMenu()
+      if (removedPaths.length > 0) {
+        void notifyMissingTracksRemoved(playlistId, removedPaths)
+      }
+      void requestMixtapeBpmAnalysis()
+    } catch (error) {
+      if (requestToken !== mixtapeItemsRequestToken) return
+      console.error('[mixtape] load mixtape items failed', {
+        playlistId,
+        error
+      })
+    } finally {
+      if (requestToken === mixtapeItemsRequestToken) {
+        mixtapeItemsLoading.value = false
+      }
     }
-    if (!tracks.value.some((track: any) => track.id === selectedTrackId.value)) {
-      selectedTrackId.value = tracks.value[0]?.id || ''
-    }
-    syncAutoGainReferenceTrack()
-    if (!tracks.value.some((track: any) => track.id === beatAlignTrackId.value)) {
-      beatAlignDialogVisible.value = false
-      beatAlignTrackId.value = ''
-    }
-    closeTrackContextMenu()
-    if (removedPaths.length > 0) {
-      void notifyMissingTracksRemoved(payload.value.playlistId || '', removedPaths)
-    }
-    void requestMixtapeBpmAnalysis()
   }
 
   const closeTrackContextMenu = () => {
