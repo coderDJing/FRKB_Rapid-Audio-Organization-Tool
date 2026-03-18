@@ -4,10 +4,10 @@ import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import titleComponent from '@renderer/components/titleComponent.vue'
 import MixtapeDialogsLayer from '@renderer/components/MixtapeDialogsLayer.vue'
 import MixtapeEnvelopePreviewTrack from '@renderer/components/mixtape/MixtapeEnvelopePreviewTrack.vue'
+import MixtapeGlobalBpmEditor from '@renderer/components/mixtape/MixtapeGlobalBpmEditor.vue'
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
 import { useMixtape } from '@renderer/composables/useMixtape'
 import { createMixtapeGainEnvelopeEditor } from '@renderer/composables/mixtape/useGainEnvelopeEditor'
-import { createMixtapeTrackBpmEnvelopeEditor } from '@renderer/composables/mixtape/useMixtapeTrackBpmEnvelopeEditor'
 import { useMixtapeAutoGainDialog } from '@renderer/composables/mixtape/useMixtapeAutoGainDialog'
 import { useMixtapeEnvelopePreview } from '@renderer/composables/mixtape/useMixtapeEnvelopePreview'
 import {
@@ -243,6 +243,7 @@ const isBpmParamMode = computed(() => selectedMixParam.value === 'bpm')
 const isVolumeParamMode = computed(() => selectedMixParam.value === 'volume')
 const isStemParamMode = computed(() => STEM_PARAM_SET.has(selectedMixParam.value))
 const isEnvelopeParamMode = computed(() => !isTrackPositionMode.value)
+const showTrackEnvelopeEditor = computed(() => isEnvelopeParamMode.value && !isBpmParamMode.value)
 const isSegmentSelectionSupported = computed(() => isVolumeParamMode.value || isStemParamMode.value)
 const segmentSelectionMode = ref(false)
 const isSegmentSelectionActive = computed(
@@ -324,7 +325,6 @@ const handleLaneTrackMouseDown = (item: TimelineTrackLayout, event: MouseEvent) 
       const afterSnapshot = buildTrackTimingUndoSnapshot(latestTrack, fallbackStartSec)
       if (isTrackTimingSnapshotSame(beforeSnapshot, afterSnapshot)) return
       pushExternalUndoStep(() => restoreTrackTimingUndoSnapshot(tracks, beforeSnapshot))
-      resyncTrackBpmOverlaps('track-position')
     },
     { once: true }
   )
@@ -399,39 +399,6 @@ const {
   isEditable: () => envelopeEditable.value
 })
 
-const bpmEnvelopeEditable = computed(() => isBpmParamMode.value)
-const {
-  resolveActiveBpmEnvelopePolyline,
-  resolveActiveBpmEnvelopePointDots,
-  handleBpmEnvelopePointMouseDown,
-  handleBpmEnvelopeStageMouseDown,
-  handleBpmEnvelopePointDoubleClick,
-  handleBpmEnvelopePointContextMenu,
-  resyncTrackBpmOverlaps,
-  cleanupTrackBpmEnvelopeEditor
-} = createMixtapeTrackBpmEnvelopeEditor({
-  tracks,
-  laneTracks,
-  renderZoomLevel,
-  resolveTrackDurationSeconds,
-  resolveTrackSourceDurationSeconds,
-  resolveTrackFirstBeatSeconds,
-  isEditable: () => bpmEnvelopeEditable.value,
-  pushExternalUndoStep,
-  onEnvelopePreviewChanged: () => {
-    clearTimelineLayoutCache()
-    updateTimelineWidth(false)
-    scheduleTimelineDraw()
-  },
-  onEnvelopeCommitted: () => {
-    clearTimelineLayoutCache()
-    updateTimelineWidth(false)
-    scheduleTimelineDraw()
-    scheduleFullPreRender()
-    scheduleWorkerPreRender()
-  }
-})
-
 const isEditableEventTarget = (target: EventTarget | null) => {
   const element = target as HTMLElement | null
   if (!element) return false
@@ -442,27 +409,6 @@ const isEditableEventTarget = (target: EventTarget | null) => {
 
 const handleUndoMixParam = () => {
   undoLastMixParamChange()
-}
-
-const resolveEnvelopePointLabel = (point: unknown) => {
-  const candidate = point as { bpm?: number; label?: string }
-  return typeof candidate.label === 'string'
-    ? candidate.label
-    : typeof candidate.bpm === 'number'
-      ? String(Math.round(candidate.bpm))
-      : ''
-}
-
-const resolveBpmPointLabelPlacement = (point: unknown) => {
-  const candidate = point as { labelPlacement?: string }
-  return candidate.labelPlacement === 'below' ? 'below' : 'above'
-}
-
-const resolveBpmPointLabelAlign = (point: unknown) => {
-  const candidate = point as { labelAlign?: string }
-  if (candidate.labelAlign === 'left') return 'left'
-  if (candidate.labelAlign === 'right') return 'right'
-  return 'center'
 }
 
 const resolveEnvelopePointBoundaryClass = (point: unknown) => {
@@ -497,8 +443,15 @@ onBeforeUnmount(() => {
     window.removeEventListener('keydown', handleUndoKeydown)
   } catch {}
   cleanupGainEnvelopeEditor()
-  cleanupTrackBpmEnvelopeEditor()
 })
+
+const timelineTrackAreaStyle = computed(() => ({
+  height: `${timelineTrackAreaHeight.value + (isBpmParamMode.value ? 96 : 0)}px`
+}))
+
+const handleGlobalBpmTrackTargetsSync = (nextTracks: MixtapeTrack[]) => {
+  tracks.value = nextTracks
+}
 </script>
 
 <template>
@@ -662,7 +615,7 @@ onBeforeUnmount(() => {
                 ref="timelineScrollWrapRef"
                 class="timeline-scroll-wrap"
                 :class="{ 'is-panning': isTimelinePanning }"
-                :style="{ height: `${timelineTrackAreaHeight}px` }"
+                :style="timelineTrackAreaStyle"
                 @mousedown="handleTimelinePanStart"
               >
                 <OverlayScrollbarsComponent
@@ -681,6 +634,31 @@ onBeforeUnmount(() => {
                       '--timeline-viewport-width': `${timelineViewportWidth}px`
                     }"
                   >
+                    <MixtapeGlobalBpmEditor
+                      :visible="isBpmParamMode"
+                      :playlist-id="mixtapePlaylistId"
+                      :tracks="tracks"
+                      :timeline-content-width="timelineContentWidth"
+                      :resolve-track-duration-seconds="resolveTrackDurationSeconds"
+                      :push-external-undo-step="pushExternalUndoStep"
+                      :on-tracks-sync="handleGlobalBpmTrackTargetsSync"
+                      :on-envelope-preview-changed="
+                        () => {
+                          clearTimelineLayoutCache()
+                          updateTimelineWidth(false)
+                          scheduleTimelineDraw()
+                        }
+                      "
+                      :on-envelope-committed="
+                        () => {
+                          clearTimelineLayoutCache()
+                          updateTimelineWidth(false)
+                          scheduleTimelineDraw()
+                          scheduleFullPreRender()
+                          scheduleWorkerPreRender()
+                        }
+                      "
+                    />
                     <div class="timeline-lanes">
                       <div v-if="tracks.length === 0" class="timeline-empty">
                         <div>
@@ -715,7 +693,7 @@ onBeforeUnmount(() => {
                               >
                                 <line
                                   class="lane-track__envelope-midline"
-                                  :class="{ 'is-hidden': !(showEnvelopeCurve || isBpmParamMode) }"
+                                  :class="{ 'is-hidden': !showEnvelopeCurve }"
                                   x1="0"
                                   y1="50"
                                   x2="100"
@@ -723,12 +701,8 @@ onBeforeUnmount(() => {
                                 ></line>
                                 <polyline
                                   class="lane-track__envelope-line"
-                                  :class="{ 'is-hidden': !(showEnvelopeCurve || isBpmParamMode) }"
-                                  :points="
-                                    isBpmParamMode
-                                      ? resolveActiveBpmEnvelopePolyline(item)
-                                      : resolveActiveEnvelopePolyline(item)
-                                  "
+                                  :class="{ 'is-hidden': !showEnvelopeCurve }"
+                                  :points="resolveActiveEnvelopePolyline(item)"
                                 ></polyline>
                               </svg>
                               <div class="lane-track__mute-segments">
@@ -743,27 +717,21 @@ onBeforeUnmount(() => {
                                 ></div>
                               </div>
                               <div
-                                v-if="isEnvelopeParamMode"
+                                v-if="showTrackEnvelopeEditor"
                                 class="lane-track__envelope-points"
                                 :class="{
                                   'is-segment-mute-mode': isSegmentSelectionActive
                                 }"
-                                @mousedown.stop.prevent="
-                                  isBpmParamMode
-                                    ? handleBpmEnvelopeStageMouseDown(item, $event)
-                                    : handleEnvelopeStageMouseDown(item, $event)
-                                "
+                                @mousedown.stop.prevent="handleEnvelopeStageMouseDown(item, $event)"
                               >
                                 <template
                                   v-if="
-                                    (showEnvelopeCurve || isBpmParamMode) &&
+                                    showEnvelopeCurve &&
                                     !(isVolumeParamMode && isSegmentSelectionActive)
                                   "
                                 >
                                   <button
-                                    v-for="point in isBpmParamMode
-                                      ? resolveActiveBpmEnvelopePointDots(item)
-                                      : resolveActiveEnvelopePointDots(item)"
+                                    v-for="point in resolveActiveEnvelopePointDots(item)"
                                     :key="`point-${item.track.id}-${point.index}`"
                                     class="lane-track__envelope-point"
                                     :class="[
@@ -776,32 +744,15 @@ onBeforeUnmount(() => {
                                       top: `${point.y}%`
                                     }"
                                     @mousedown.stop.prevent="
-                                      isBpmParamMode
-                                        ? handleBpmEnvelopePointMouseDown(item, point.index, $event)
-                                        : handleEnvelopePointMouseDown(item, point.index, $event)
+                                      handleEnvelopePointMouseDown(item, point.index, $event)
                                     "
                                     @dblclick.stop.prevent="
-                                      isBpmParamMode
-                                        ? handleBpmEnvelopePointDoubleClick(item, point.index)
-                                        : handleEnvelopePointDoubleClick(item, point.index)
+                                      handleEnvelopePointDoubleClick(item, point.index)
                                     "
                                     @contextmenu.stop.prevent="
-                                      isBpmParamMode
-                                        ? handleBpmEnvelopePointContextMenu(item, point.index)
-                                        : handleEnvelopePointContextMenu(item, point.index)
+                                      handleEnvelopePointContextMenu(item, point.index)
                                     "
-                                  >
-                                    <span
-                                      v-if="isBpmParamMode"
-                                      class="lane-track__envelope-point-label"
-                                      :class="[
-                                        `is-${resolveBpmPointLabelPlacement(point)}`,
-                                        `is-align-${resolveBpmPointLabelAlign(point)}`
-                                      ]"
-                                    >
-                                      {{ resolveEnvelopePointLabel(point) }}
-                                    </span>
-                                  </button>
+                                  ></button>
                                 </template>
                               </div>
                               <div v-if="isTrackPositionMode" class="lane-track__meta">

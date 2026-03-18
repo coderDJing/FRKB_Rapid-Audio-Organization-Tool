@@ -32,10 +32,6 @@ export const createGainEnvelopeTrackStateModule = (params: {
     durationSec: number
     sourceDurationSec: number
     zoom: number
-    bpmEnvelopeRef: unknown
-    phaseSyncGridLinesRef: unknown
-    phaseSyncGridRangeStartSec?: number
-    phaseSyncGridRangeEndSec?: number
     bpm?: number
     gridBaseBpm?: number
     originalBpm?: number
@@ -100,10 +96,6 @@ export const createGainEnvelopeTrackStateModule = (params: {
       cached.durationSec === safeDurationSec &&
       cached.sourceDurationSec === sourceDurationSec &&
       cached.zoom === zoom &&
-      cached.bpmEnvelopeRef === track.bpmEnvelope &&
-      cached.phaseSyncGridLinesRef === track.phaseSyncGridLines &&
-      cached.phaseSyncGridRangeStartSec === track.phaseSyncGridRangeStartSec &&
-      cached.phaseSyncGridRangeEndSec === track.phaseSyncGridRangeEndSec &&
       cached.bpm === track.bpm &&
       cached.gridBaseBpm === track.gridBaseBpm &&
       cached.originalBpm === track.originalBpm &&
@@ -122,10 +114,6 @@ export const createGainEnvelopeTrackStateModule = (params: {
       durationSec: safeDurationSec,
       sourceDurationSec,
       zoom,
-      bpmEnvelopeRef: track.bpmEnvelope,
-      phaseSyncGridLinesRef: track.phaseSyncGridLines,
-      phaseSyncGridRangeStartSec: track.phaseSyncGridRangeStartSec,
-      phaseSyncGridRangeEndSec: track.phaseSyncGridRangeEndSec,
       bpm: track.bpm,
       gridBaseBpm: track.gridBaseBpm,
       originalBpm: track.originalBpm,

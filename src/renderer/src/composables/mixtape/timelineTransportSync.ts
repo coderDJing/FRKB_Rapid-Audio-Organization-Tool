@@ -3,7 +3,7 @@ import {
   resolveTempoRatioByBpm,
   resolveSyncPlaybackRateWithDiagnostics
 } from '@renderer/composables/mixtape/mixxxSyncModel'
-import { createTrackTimeMapFromSnapshotPayload } from '@renderer/composables/mixtape/trackTimeMapCore'
+import { createTrackTimeMapFromSnapshotPayload } from '@renderer/composables/mixtape/trackTimeMapFactory'
 import type { TransportPlayableSource } from '@renderer/composables/mixtape/timelineTransportPlayableSource'
 import type { SerializedTrackTempoSnapshot } from '@renderer/composables/mixtape/types'
 

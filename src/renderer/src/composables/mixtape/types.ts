@@ -62,8 +62,6 @@ export type MixtapeTrack = {
   originalKey?: string
   // 当前目标 BPM（可能由吸附对齐自动改写）
   bpm?: number
-  // BPM 包络线（轨道内时间 -> 真实 BPM）
-  bpmEnvelope?: MixtapeBpmPoint[]
   // 节拍对齐基准 BPM（原始值或用户手动校正值，不受临时吸附改写影响）
   gridBaseBpm?: number
   // 首次加载时的原始 BPM，用于计算变速比率
@@ -94,10 +92,6 @@ export type MixtapeTrack = {
   firstBeatMs?: number
   // 大节线相位偏移（以拍为单位，仅改变网格线定义，不改变网格线位置）
   barBeatOffset?: number
-  // 重叠相位同步后的网格覆盖线（仅运行期使用）
-  phaseSyncGridLines?: MixtapeGridLineOverride[]
-  phaseSyncGridRangeStartSec?: number
-  phaseSyncGridRangeEndSec?: number
   // Stem 素材状态（pending/running/ready/failed）
   stemStatus?: MixtapeStemStatus
   stemError?: string
@@ -122,10 +116,9 @@ export type MixtapeBpmPoint = {
   allowOffGrid?: boolean
 }
 
-export type MixtapeGridLineOverride = {
-  sec: number
-  sourceSec: number
-  level: 'bar' | 'beat4' | 'beat'
+export type MixtapeProjectBpmEnvelopeSnapshot = {
+  bpmEnvelope: MixtapeBpmPoint[]
+  bpmEnvelopeDurationSec: number
 }
 
 export type SerializedTrackTempoSnapshot = {
@@ -139,11 +132,6 @@ export type SerializedTrackTempoSnapshot = {
   beatSourceSec: number
   barBeatOffset: number
   controlPoints: MixtapeBpmPoint[]
-  overrideLines: MixtapeGridLineOverride[]
-  overrideRange?: {
-    startSec: number
-    endSec: number
-  }
 }
 
 export type MixtapeMuteSegment = {

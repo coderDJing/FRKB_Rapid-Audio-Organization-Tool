@@ -2,10 +2,7 @@ import {
   normalizeGainEnvelopePoints,
   normalizeMixEnvelopePoints
 } from '@renderer/composables/mixtape/gainEnvelope'
-import {
-  normalizeTrackBpmEnvelopePoints,
-  resolveTrackBpmEnvelopeBaseValue
-} from '@renderer/composables/mixtape/trackTempoModel'
+import { normalizeTrackBpmValue } from '@renderer/composables/mixtape/trackTempoModel'
 import { normalizeVolumeMuteSegments } from '@renderer/composables/mixtape/volumeMuteSegments'
 import type {
   MixtapeRawItem,
@@ -60,34 +57,6 @@ const normalizeTimestampMs = (value: unknown): number | undefined => {
   const numeric = Number(value)
   if (!Number.isFinite(numeric) || numeric <= 0) return undefined
   return Math.floor(numeric)
-}
-
-const resolvePersistedBpmEnvelopeDurationSec = (info: Record<string, any> | null) => {
-  const explicitDurationSec = Number(info?.bpmEnvelopeDurationSec)
-  if (Number.isFinite(explicitDurationSec) && explicitDurationSec > 0) {
-    return explicitDurationSec
-  }
-  const maxPointSec = Array.isArray(info?.bpmEnvelope)
-    ? info.bpmEnvelope.reduce((result: number, item: any) => {
-        const sec = Number(item?.sec)
-        return Number.isFinite(sec) && sec > result ? sec : result
-      }, 0)
-    : 0
-  if (maxPointSec > 0) return maxPointSec
-  const legacyDurationSec = Number(info?.durationSec)
-  if (Number.isFinite(legacyDurationSec) && legacyDurationSec > 0) {
-    return legacyDurationSec
-  }
-  return 0
-}
-
-const hasPersistedBpmEnvelope = (info: Record<string, any> | null) => {
-  if (!Array.isArray(info?.bpmEnvelope)) return false
-  return info.bpmEnvelope.some((item: any) => {
-    const sec = Number(item?.sec)
-    const bpm = Number(item?.bpm)
-    return Number.isFinite(sec) && sec >= 0 && Number.isFinite(bpm) && bpm > 0
-  })
 }
 
 export const normalizeUniquePaths = (values: unknown[]) => {
@@ -163,18 +132,6 @@ export const parseSnapshot = (
   const parsedStemInstPath = normalizeMixtapeFilePath(info?.stemInstPath) || undefined
   const parsedStemBassPath = normalizeMixtapeFilePath(info?.stemBassPath) || undefined
   const parsedStemDrumsPath = normalizeMixtapeFilePath(info?.stemDrumsPath) || undefined
-  const bpmEnvelopeBaseTrack = {
-    bpm: parsedBpm,
-    gridBaseBpm: parsedBpm,
-    originalBpm: parsedOriginalBpm
-  } as MixtapeTrack
-  const parsedBpmEnvelope = hasPersistedBpmEnvelope(info)
-    ? normalizeTrackBpmEnvelopePoints(
-        info?.bpmEnvelope,
-        resolvePersistedBpmEnvelopeDurationSec(info),
-        resolveTrackBpmEnvelopeBaseValue(bpmEnvelopeBaseTrack)
-      )
-    : undefined
   return {
     id: String(raw?.id || `${filePath}-${index}`),
     mixOrder: Number(raw?.mixOrder) || index + 1,
@@ -187,8 +144,7 @@ export const parseSnapshot = (
     key: parsedKey || undefined,
     originalKey: parsedOriginalKey,
     bpm: parsedBpm,
-    bpmEnvelope: parsedBpmEnvelope?.length ? parsedBpmEnvelope : undefined,
-    gridBaseBpm: parsedBpm,
+    gridBaseBpm: normalizeTrackBpmValue(info?.gridBaseBpm) ?? parsedBpm,
     originalBpm: parsedOriginalBpm,
     masterTempo: parsedMasterTempo,
     startSec: parsedStartSec,

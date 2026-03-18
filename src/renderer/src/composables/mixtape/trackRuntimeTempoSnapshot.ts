@@ -1,17 +1,24 @@
 import { resolveTempoRatioByBpm } from '@renderer/composables/mixtape/mixxxSyncModel'
 import {
-  createTrackTimeMap,
-  resolveTrackTimelineDurationFromSource,
   type TrackTimeMap,
   type TrackTimeMapInput
 } from '@renderer/composables/mixtape/trackTimeMapCore'
+import { createTrackTimeMap } from '@renderer/composables/mixtape/trackTimeMapFactory'
 import {
   BPM_POINT_SEC_EPSILON,
+  buildFlatTrackBpmEnvelope,
   normalizeTrackBpmEnvelopePoints,
   resolveTrackBpmEnvelopeBaseValue,
   resolveTrackGridSourceBpm
 } from '@renderer/composables/mixtape/trackTempoModel'
-import { normalizeTrackVisibleGridOverrides } from '@renderer/composables/mixtape/trackVisibleGridOverrides'
+import {
+  projectMixtapeGlobalBpmEnvelopeToTrack,
+  sampleMixtapeGlobalBpmAtSec
+} from '@renderer/composables/mixtape/mixtapeGlobalTempoModel'
+import {
+  isMixtapeGlobalTempoReady,
+  mixtapeGlobalTempoEnvelope
+} from '@renderer/composables/mixtape/mixtapeGlobalTempoState'
 import type {
   MixtapeTrack,
   SerializedTrackTempoSnapshot
@@ -49,36 +56,17 @@ const buildBpmEnvelopeSignature = (
     .join(';')
 
 const buildGridOverrideSignature = (snapshot: {
-  timeMapInput: TrackTimeMapInput
   durationSec: number
   baseBpm: number
   gridSourceBpm: number
   originalBpm: number
-}) => {
-  const overrideLines = snapshot.timeMapInput.overrideLines || []
-  const overrideRange = snapshot.timeMapInput.overrideRange
-  const linesSignature = overrideLines
-    .map((line) => {
-      const sec = Math.round((Number(line?.sec) || 0) * 1000)
-      const sourceSec = Math.round((Number(line?.sourceSec) || 0) * 1000)
-      const level = String(line?.level || '')
-      return `${sec}:${sourceSec}:${level}`
-    })
-    .join(';')
-  return [
+}) =>
+  [
     Math.round(snapshot.durationSec * 1000),
     Math.round(snapshot.baseBpm * 1000),
     Math.round(snapshot.gridSourceBpm * 1000),
-    Math.round(snapshot.originalBpm * 1000),
-    linesSignature,
-    Number.isFinite(Number(overrideRange?.startSec))
-      ? Math.round(Number(overrideRange?.startSec) * 1000)
-      : -1,
-    Number.isFinite(Number(overrideRange?.endSec))
-      ? Math.round(Number(overrideRange?.endSec) * 1000)
-      : -1
+    Math.round(snapshot.originalBpm * 1000)
   ].join('|')
-}
 
 const resolveFallbackTimelineDuration = (track: MixtapeTrack, sourceDurationSec: number) => {
   const targetBpm = Number(track.bpm)
@@ -124,18 +112,7 @@ export const serializeTrackRuntimeTempoSnapshot = (
         ? Number(point.sourceSec)
         : undefined,
     allowOffGrid: point.allowOffGrid === true ? true : undefined
-  })),
-  overrideLines: (snapshot.timeMapInput.overrideLines || []).map((line) => ({
-    sec: Number(line.sec),
-    sourceSec: Number(line.sourceSec),
-    level: line.level
-  })),
-  overrideRange: snapshot.timeMapInput.overrideRange
-    ? {
-        startSec: Number(snapshot.timeMapInput.overrideRange.startSec),
-        endSec: Number(snapshot.timeMapInput.overrideRange.endSec)
-      }
-    : undefined
+  }))
 })
 
 export const buildTrackRuntimeTempoSnapshot = (params: {
@@ -147,35 +124,41 @@ export const buildTrackRuntimeTempoSnapshot = (params: {
 }) => {
   const track = params.track
   const sourceDurationSec = Math.max(0, Number(params.sourceDurationSec) || 0)
-  const baseBpm = resolveTrackBpmEnvelopeBaseValue(track)
+  const fallbackTrackBpm = resolveTrackBpmEnvelopeBaseValue(track)
   const gridSourceBpm = resolveTrackGridSourceBpm(track)
-  const originalBpm = Number(track.originalBpm) || Number(track.bpm) || baseBpm
+  const originalBpm =
+    Number(track.originalBpm) || Number(track.gridBaseBpm) || Number(track.bpm) || fallbackTrackBpm
+  const hasExplicitRawPoints = params.rawPoints !== undefined && params.rawPoints !== null
+  const shouldUseGlobalTempo = !hasExplicitRawPoints && isMixtapeGlobalTempoReady()
+  const projectedGlobalTempo = shouldUseGlobalTempo
+    ? projectMixtapeGlobalBpmEnvelopeToTrack({
+        track,
+        globalPoints: mixtapeGlobalTempoEnvelope.value,
+        sourceDurationSec,
+        originalBpm,
+        fallbackBpm: fallbackTrackBpm
+      })
+    : null
   const durationSec =
     typeof params.durationSec === 'number' &&
     Number.isFinite(params.durationSec) &&
     params.durationSec > 0
       ? Math.max(0, params.durationSec)
-      : resolveTrackTimelineDurationFromSource({
-          rawPoints: params.rawPoints ?? track.bpmEnvelope,
-          sourceDurationSec,
-          originalBpm,
-          fallbackBpm: baseBpm,
-          fallbackDurationSec: resolveFallbackTimelineDuration(track, sourceDurationSec)
-        })
-  const controlPoints = normalizeTrackBpmEnvelopePoints(
-    params.rawPoints ?? track.bpmEnvelope,
-    durationSec,
-    baseBpm
-  )
-  const overrideLines = normalizeTrackVisibleGridOverrides(track.phaseSyncGridLines)
-  const overrideRange =
-    Number.isFinite(Number(track.phaseSyncGridRangeStartSec)) &&
-    Number.isFinite(Number(track.phaseSyncGridRangeEndSec))
-      ? {
-          startSec: Number(track.phaseSyncGridRangeStartSec),
-          endSec: Number(track.phaseSyncGridRangeEndSec)
-        }
-      : undefined
+      : projectedGlobalTempo
+        ? projectedGlobalTempo.durationSec
+        : resolveFallbackTimelineDuration(track, sourceDurationSec)
+  const baseBpm = projectedGlobalTempo
+    ? sampleMixtapeGlobalBpmAtSec(
+        mixtapeGlobalTempoEnvelope.value,
+        Number(track.startSec) || 0,
+        projectedGlobalTempo.bpmAtStart
+      )
+    : fallbackTrackBpm
+  const controlPoints = projectedGlobalTempo
+    ? normalizeTrackBpmEnvelopePoints(projectedGlobalTempo.points, durationSec, baseBpm)
+    : params.rawPoints !== undefined && params.rawPoints !== null
+      ? normalizeTrackBpmEnvelopePoints(params.rawPoints, durationSec, baseBpm)
+      : buildFlatTrackBpmEnvelope(durationSec, baseBpm)
   const timeMapInput: TrackTimeMapInput = {
     controlPoints,
     durationSec,
@@ -184,9 +167,7 @@ export const buildTrackRuntimeTempoSnapshot = (params: {
     fallbackBpm: baseBpm,
     firstBeatSourceSec: Math.max(0, Number(track.firstBeatMs) || 0) / 1000,
     beatSourceSec: 60 / Math.max(1, gridSourceBpm),
-    barBeatOffset: Number(track.barBeatOffset) || 0,
-    overrideLines,
-    overrideRange
+    barBeatOffset: Number(track.barBeatOffset) || 0
   }
   const timeMap = createTrackTimeMap(timeMapInput)
   const visibleGridLines = timeMap.buildVisibleGridLines(Number(params.zoom) || 0)

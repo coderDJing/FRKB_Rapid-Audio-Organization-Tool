@@ -9,7 +9,6 @@ import {
   resolveGridAnchorSec
 } from '@renderer/composables/mixtape/mixxxSyncModel'
 import { buildTrackRuntimeTempoSnapshot } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
-import { normalizeVolumeMuteSegments } from '@renderer/composables/mixtape/volumeMuteSegments'
 import type { MixtapeTrack, TimelineTrackLayout } from '@renderer/composables/mixtape/types'
 
 export const createTimelineTransportTrackDragModule = (ctx: any) => {
@@ -26,8 +25,6 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
     scheduleFullPreRender,
     scheduleWorkerPreRender,
     persistTrackStartSec,
-    persistTrackVolumeMuteSegments,
-    remapVolumeMuteSegmentsForBpm,
     normalizeStartSec,
     clampNumber,
     normalizeBeatOffset
@@ -259,47 +256,30 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
     const dragBounds = resolveTrackDragBounds(trackDragState.snapshotTracks, trackDragState.trackId)
     const clampedRawStartSec = clampNumber(rawStartSec, dragBounds.minStart, dragBounds.maxStart)
     let nextStartSec = clampedRawStartSec
-    let nextBpm: number | undefined
     const currentTrackForSnap = findTrack(trackDragState.trackId)
     const snapStepBeats = resolveVisibleGridSnapStepBeats()
     const previousTrack = findTrack(trackDragState.previousTrackId)
     if (previousTrack) {
-      const previousBpm = Number(previousTrack.bpm)
-      if (Number.isFinite(previousBpm) && previousBpm > 0) {
-        const previousStartSec = resolveTrackStartSecById(previousTrack.id)
-        const previousTimelineGridSecs = buildTrackVisibleLocalGridSecs(previousTrack).map((sec) =>
-          Number((previousStartSec + sec).toFixed(4))
-        )
-        const currentTrackAtTargetBpm = currentTrackForSnap
-          ? ({
-              ...currentTrackForSnap,
-              bpm: previousBpm,
-              masterTempo: true,
-              originalBpm:
-                Number.isFinite(Number(currentTrackForSnap.originalBpm)) &&
-                Number(currentTrackForSnap.originalBpm) > 0
-                  ? currentTrackForSnap.originalBpm
-                  : Number(currentTrackForSnap.bpm) || previousBpm
-            } satisfies MixtapeTrack)
-          : null
-        const currentLocalGridSecs = currentTrackAtTargetBpm
-          ? buildTrackVisibleLocalGridSecs(currentTrackAtTargetBpm)
-          : []
-        const snappedStartSec = resolveSnappedStartSecByVisibleGrid({
-          rawStartSec: clampedRawStartSec,
-          minStartSec: dragBounds.minStart,
-          maxStartSec: dragBounds.maxStart,
-          currentLocalGridSecs,
-          targetTimelineGridSecs: previousTimelineGridSecs,
-          boundaryCandidates: [dragBounds.minStart]
-        })
-        if (typeof snappedStartSec === 'number') {
-          nextStartSec = snappedStartSec
-          nextBpm = previousBpm
-        }
+      const previousStartSec = resolveTrackStartSecById(previousTrack.id)
+      const previousTimelineGridSecs = buildTrackVisibleLocalGridSecs(previousTrack).map((sec) =>
+        Number((previousStartSec + sec).toFixed(4))
+      )
+      const currentLocalGridSecs = currentTrackForSnap
+        ? buildTrackVisibleLocalGridSecs(currentTrackForSnap)
+        : []
+      const snappedStartSec = resolveSnappedStartSecByVisibleGrid({
+        rawStartSec: clampedRawStartSec,
+        minStartSec: dragBounds.minStart,
+        maxStartSec: dragBounds.maxStart,
+        currentLocalGridSecs,
+        targetTimelineGridSecs: previousTimelineGridSecs,
+        boundaryCandidates: [dragBounds.minStart]
+      })
+      if (typeof snappedStartSec === 'number') {
+        nextStartSec = snappedStartSec
       }
     }
-    if (typeof nextBpm !== 'number' && currentTrackForSnap) {
+    if (currentTrackForSnap) {
       const currentBpm = Number(currentTrackForSnap.bpm)
       if (Number.isFinite(currentBpm) && currentBpm > 0) {
         const beatSec = resolveBeatSecByBpm(currentBpm)
@@ -333,30 +313,12 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
     if (targetIndex < 0) return
     const currentTrack = tracks.value[targetIndex]
     if (!currentTrack) return
-    const snapshotTrack =
-      trackDragState.snapshotTracks.find((item: MixtapeTrack) => item.id === currentTrack.id) ||
-      currentTrack
     const currentStartSec = resolveTrackStartSecById(currentTrack.id)
     const shouldUpdateStart = Math.abs(nextStartSec - currentStartSec) > 0.0001
-    const shouldUpdateBpm =
-      typeof nextBpm === 'number' &&
-      Number.isFinite(nextBpm) &&
-      nextBpm > 0 &&
-      Math.abs((Number(currentTrack.bpm) || 0) - nextBpm) > 0.0001
-    if (!shouldUpdateStart && !shouldUpdateBpm) return
+    if (!shouldUpdateStart) return
     const nextTrack: MixtapeTrack = {
       ...currentTrack,
       startSec: nextStartSec
-    }
-    if (shouldUpdateBpm) {
-      const safeNextBpm = Number(nextBpm)
-      nextTrack.bpm = safeNextBpm
-      nextTrack.masterTempo = true
-      nextTrack.originalBpm =
-        Number.isFinite(Number(currentTrack.originalBpm)) && Number(currentTrack.originalBpm) > 0
-          ? currentTrack.originalBpm
-          : Number(currentTrack.bpm) || safeNextBpm
-      nextTrack.volumeMuteSegments = remapVolumeMuteSegmentsForBpm(snapshotTrack, safeNextBpm)
     }
     const nextTracks = [...tracks.value]
     nextTracks.splice(targetIndex, 1, nextTrack)
@@ -372,17 +334,6 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
     const currentTrack = findTrack(targetTrackId)
     const previousStartSec = normalizeStartSec(previousTrack?.startSec)
     const currentStartSec = normalizeStartSec(currentTrack?.startSec)
-    const normalizeTrackBpm = (value: unknown) => {
-      const numeric = Number(value)
-      if (!Number.isFinite(numeric) || numeric <= 0) return null
-      return Number(numeric.toFixed(6))
-    }
-    const previousBpm = normalizeTrackBpm(previousTrack?.bpm)
-    const currentBpm = normalizeTrackBpm(currentTrack?.bpm)
-    const previousOriginalBpm = normalizeTrackBpm(previousTrack?.originalBpm)
-    const currentOriginalBpm = normalizeTrackBpm(currentTrack?.originalBpm)
-    const previousMasterTempo = previousTrack?.masterTempo !== false
-    const currentMasterTempo = currentTrack?.masterTempo !== false
     isTrackDragging.value = false
     trackDragState = null
     window.removeEventListener('mousemove', handleTrackDragMove as EventListener)
@@ -393,46 +344,13 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
     const startChanged =
       currentStartSec !== null &&
       (previousStartSec === null || Math.abs(previousStartSec - currentStartSec) > 0.0001)
-    const bpmChanged =
-      currentBpm !== null && (previousBpm === null || Math.abs(previousBpm - currentBpm) > 0.0001)
-    const originalBpmChanged =
-      currentOriginalBpm !== null &&
-      (previousOriginalBpm === null || Math.abs(previousOriginalBpm - currentOriginalBpm) > 0.0001)
-    const masterTempoChanged = previousMasterTempo !== currentMasterTempo
-    if (!startChanged && !bpmChanged && !originalBpmChanged && !masterTempoChanged) return
+    if (!startChanged) return
     void persistTrackStartSec([
       {
         itemId: targetTrackId,
-        ...(startChanged ? { startSec: Number(currentStartSec) } : {}),
-        ...(bpmChanged ? { bpm: Number(currentBpm) } : {}),
-        ...(originalBpmChanged ? { originalBpm: Number(currentOriginalBpm) } : {}),
-        ...(masterTempoChanged ? { masterTempo: currentMasterTempo } : {})
+        startSec: Number(currentStartSec)
       }
     ])
-    if (bpmChanged) {
-      const currentDuration = resolveTrackDurationSeconds(currentTrack)
-      const previousDuration = previousTrack ? resolveTrackDurationSeconds(previousTrack) : 0
-      const currentSegments = normalizeVolumeMuteSegments(
-        currentTrack.volumeMuteSegments,
-        currentDuration
-      )
-      const previousSegments = normalizeVolumeMuteSegments(
-        previousTrack?.volumeMuteSegments,
-        previousDuration
-      )
-      if (
-        JSON.stringify(currentSegments) !== JSON.stringify(previousSegments) ||
-        currentSegments.length > 0 ||
-        previousSegments.length > 0
-      ) {
-        void persistTrackVolumeMuteSegments([
-          {
-            itemId: targetTrackId,
-            segments: currentSegments
-          }
-        ])
-      }
-    }
   }
 
   const handleTrackDragStart = (item: TimelineTrackLayout, event: MouseEvent) => {

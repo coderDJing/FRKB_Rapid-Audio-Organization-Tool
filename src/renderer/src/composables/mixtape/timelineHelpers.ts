@@ -26,6 +26,7 @@ import {
   resolveTempoRatioByBpm
 } from '@renderer/composables/mixtape/mixxxSyncModel'
 import { buildTrackRuntimeTempoSnapshot } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
+import { buildFlatTrackBpmEnvelope } from '@renderer/composables/mixtape/trackTempoModel'
 import {
   buildGainEnvelopePolylineByControlPoints,
   normalizeGainEnvelopePoints,
@@ -271,14 +272,21 @@ export const createTimelineHelpersModule = (ctx: any) => {
 
     const hasTargetBpm =
       typeof targetBpm === 'number' && Number.isFinite(targetBpm) && Number(targetBpm) > 0
-    const effectiveTrack =
-      hasTargetBpm && (!Array.isArray(track.bpmEnvelope) || track.bpmEnvelope.length < 2)
-        ? ({ ...track, bpm: Number(targetBpm) } satisfies MixtapeTrack)
-        : track
     const sourceDurationSec = resolveTrackSourceDurationSeconds(track)
+    const effectiveTrack = hasTargetBpm
+      ? ({ ...track, bpm: Number(targetBpm) } satisfies MixtapeTrack)
+      : track
+    const explicitRawPoints =
+      hasTargetBpm && sourceDurationSec > 0
+        ? buildFlatTrackBpmEnvelope(
+            sourceDurationSec / Math.max(0.01, resolveTrackTempoRatio(track, Number(targetBpm))),
+            Number(targetBpm)
+          )
+        : undefined
     const snapshot = buildTrackRuntimeTempoSnapshot({
       track: effectiveTrack,
-      sourceDurationSec
+      sourceDurationSec,
+      rawPoints: explicitRawPoints
     })
     if (
       sourceDurationSec > 0 &&

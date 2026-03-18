@@ -33,7 +33,7 @@ export const buildMixtapeBpmTargets = (tracks: MixtapeTrack[]) => {
   for (const track of tracks) {
     const filePath = normalizeMixtapeFilePath(track.filePath)
     if (!filePath || unique.has(filePath)) continue
-    const bpmValue = Number(track.bpm)
+    const bpmValue = Number(track.gridBaseBpm ?? track.originalBpm ?? track.bpm)
     const firstBeatMsValue = Number(track.firstBeatMs)
     const hasValidBpm = Number.isFinite(bpmValue) && bpmValue > 0
     const hasValidFirstBeatMs = Number.isFinite(firstBeatMsValue) && firstBeatMsValue >= 0
@@ -51,7 +51,7 @@ export const resolveMissingBpmTrackCount = (tracks: MixtapeTrack[], bpmTargets: 
   return tracks.filter((track) => {
     const trackPath = normalizeMixtapeFilePath(track.filePath)
     if (!trackPath || !bpmTargets.has(trackPath)) return false
-    const bpmValue = Number(track.bpm)
+    const bpmValue = Number(track.gridBaseBpm ?? track.originalBpm ?? track.bpm)
     const firstBeatMsValue = Number(track.firstBeatMs)
     const missingBpm = !Number.isFinite(bpmValue) || bpmValue <= 0
     const missingFirstBeat = !Number.isFinite(firstBeatMsValue) || firstBeatMsValue < 0
@@ -74,7 +74,7 @@ export const applyBpmResultsToTracks = (tracks: MixtapeTrack[], results: unknown
     const trackPath = normalizeMixtapeFilePath(track.filePath)
     const trackAnalysis = trackPath ? analysisMap.get(trackPath) : undefined
     if (!trackAnalysis) return track
-    const currentBpm = Number(track.bpm)
+    const currentBpm = Number(track.gridBaseBpm ?? track.originalBpm ?? track.bpm)
     const hasCurrentFirstBeatMs =
       typeof track.firstBeatMs === 'number' &&
       Number.isFinite(track.firstBeatMs) &&
@@ -88,7 +88,6 @@ export const applyBpmResultsToTracks = (tracks: MixtapeTrack[], results: unknown
     changedCount += 1
     return {
       ...track,
-      bpm: trackAnalysis.bpm,
       gridBaseBpm:
         normalizeBpm(track.gridBaseBpm) ?? normalizeBpm(track.originalBpm) ?? trackAnalysis.bpm,
       originalBpm:

@@ -20,7 +20,7 @@ import {
   buildTrackRuntimeTempoSnapshot,
   serializeTrackRuntimeTempoSnapshot
 } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
-import { createTrackTimeMapFromSnapshotPayload } from '@renderer/composables/mixtape/trackTimeMapCore'
+import { createTrackTimeMapFromSnapshotPayload } from '@renderer/composables/mixtape/trackTimeMapFactory'
 import { createTimelineWaveformLoadingModule } from '@renderer/composables/mixtape/timelineWaveformLoading'
 
 export const createTimelineRenderAndLoadModule = (ctx: any) => {

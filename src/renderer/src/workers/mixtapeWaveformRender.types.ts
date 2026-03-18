@@ -40,11 +40,6 @@ export type SerializedWorkerTrackTempoSnapshot = {
   beatSourceSec: number
   barBeatOffset: number
   controlPoints: Array<{ sec: number; bpm: number; sourceSec?: number; allowOffGrid?: boolean }>
-  overrideLines: Array<{ sec: number; sourceSec: number; level: 'bar' | 'beat4' | 'beat' }>
-  overrideRange?: {
-    startSec: number
-    endSec: number
-  }
 }
 
 export type RenderTilePayload = {

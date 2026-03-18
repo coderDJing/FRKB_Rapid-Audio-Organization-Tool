@@ -39,6 +39,7 @@ import { registerClipboardHandlers } from './ipc/clipboardHandlers'
 import { registerExportHandlers } from './ipc/exportHandlers'
 import { registerKeyAnalysisHandlers } from './ipc/keyAnalysisHandlers'
 import { registerMixtapeHandlers } from './ipc/mixtapeHandlers'
+import { registerMixtapeProjectTempoHandlers } from './ipc/mixtapeProjectTempoHandlers'
 import { registerSongSearchHandlers } from './ipc/songSearchHandlers'
 import { maybeShowWhatsNew, registerWhatsNewHandlers } from './services/whatsNew'
 import * as LibraryCacheDb from './libraryCacheDb'
@@ -230,6 +231,7 @@ registerClipboardHandlers()
 registerExportHandlers()
 registerKeyAnalysisHandlers()
 registerMixtapeHandlers()
+registerMixtapeProjectTempoHandlers()
 registerSongSearchHandlers()
 
 keyAnalysisEvents.on('key-updated', (payload) => {

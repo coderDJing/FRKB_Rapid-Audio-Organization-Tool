@@ -1,6 +1,19 @@
 import { nextTick } from 'vue'
 import { resolveContextMenuPoint } from '@renderer/utils/contextMenuPosition'
 import { FIXED_MIXTAPE_STEM_MODE } from '@shared/mixtapeStemMode'
+import {
+  applyMixtapeGlobalTempoTargetsToTracks,
+  buildDefaultMixtapeGlobalBpmEnvelopeSnapshot,
+  normalizeMixtapeGlobalBpmEnvelopePoints,
+  resolveDefaultGlobalBpmFromTracks
+} from '@renderer/composables/mixtape/mixtapeGlobalTempoModel'
+import {
+  applyMixtapeGlobalTempoSnapshot,
+  isMixtapeGlobalTempoReady,
+  mixtapeGlobalTempoEnvelope,
+  mixtapeGlobalTempoSource,
+  resetMixtapeGlobalTempoState
+} from '@renderer/composables/mixtape/mixtapeGlobalTempoState'
 
 export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
   const {
@@ -87,17 +100,112 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
   let lastBpmAnalysisKey = ''
   let mixtapeItemsRequestToken = 0
 
+  const syncTracksWithGlobalTempo = () => {
+    if (!isMixtapeGlobalTempoReady()) return
+    tracks.value = applyMixtapeGlobalTempoTargetsToTracks(
+      tracks.value,
+      mixtapeGlobalTempoEnvelope.value
+    )
+  }
+
+  const refreshTimelineForGlobalTempoChange = (options?: {
+    redrawOnly?: boolean
+    refreshWaveform?: boolean
+  }) => {
+    syncTracksWithGlobalTempo()
+    clearTimelineLayoutCache()
+    updateTimelineWidth(false)
+    scheduleTimelineDraw()
+    if (options?.redrawOnly) return
+    if (options?.refreshWaveform !== false) {
+      scheduleFullPreRender()
+      scheduleWorkerPreRender()
+    }
+  }
+
+  const ensureDefaultGlobalTempoEnvelope = (
+    playlistId: string,
+    options?: { refreshWaveform?: boolean }
+  ) => {
+    const normalizedPlaylistId = typeof playlistId === 'string' ? playlistId.trim() : ''
+    if (!normalizedPlaylistId || !tracks.value.length) return
+    if (
+      mixtapeGlobalTempoSource.value === 'persisted' ||
+      mixtapeGlobalTempoSource.value === 'user'
+    ) {
+      return
+    }
+    const nextSnapshot = buildDefaultMixtapeGlobalBpmEnvelopeSnapshot({
+      tracks: tracks.value,
+      resolveTrackDurationSeconds
+    })
+    applyMixtapeGlobalTempoSnapshot({
+      playlistId: normalizedPlaylistId,
+      snapshot: nextSnapshot,
+      source: 'generated'
+    })
+    refreshTimelineForGlobalTempoChange({
+      refreshWaveform: options?.refreshWaveform !== false
+    })
+  }
+
+  const loadProjectGlobalTempoEnvelope = async (playlistId: string) => {
+    const normalizedPlaylistId = typeof playlistId === 'string' ? playlistId.trim() : ''
+    if (!normalizedPlaylistId || !window?.electron?.ipcRenderer?.invoke) {
+      resetMixtapeGlobalTempoState(normalizedPlaylistId)
+      return
+    }
+    try {
+      const result = await window.electron.ipcRenderer.invoke('mixtape:project:get-bpm-envelope', {
+        playlistId: normalizedPlaylistId
+      })
+      const defaultBpm = resolveDefaultGlobalBpmFromTracks(tracks.value)
+      const normalizedSnapshot = {
+        bpmEnvelope: normalizeMixtapeGlobalBpmEnvelopePoints(
+          result?.bpmEnvelope,
+          Number(result?.bpmEnvelopeDurationSec) || 0,
+          defaultBpm
+        ),
+        bpmEnvelopeDurationSec: Math.max(0, Number(result?.bpmEnvelopeDurationSec) || 0)
+      }
+      if (
+        normalizedSnapshot.bpmEnvelope.length >= 2 &&
+        normalizedSnapshot.bpmEnvelopeDurationSec > 0
+      ) {
+        applyMixtapeGlobalTempoSnapshot({
+          playlistId: normalizedPlaylistId,
+          snapshot: normalizedSnapshot,
+          source: 'persisted'
+        })
+        refreshTimelineForGlobalTempoChange()
+        return
+      }
+    } catch (error) {
+      console.error('[mixtape] load project bpm envelope failed', {
+        playlistId: normalizedPlaylistId,
+        error
+      })
+    }
+    ensureDefaultGlobalTempoEnvelope(normalizedPlaylistId)
+  }
+
   const normalizeBpmFailureReason = (value: unknown): string => {
     const text = typeof value === 'string' ? value.trim() : ''
     if (!text) return ''
     return text.length <= 240 ? text : `${text.slice(0, 240)}...`
   }
 
-  const handleBpmBatchReady = (_e: unknown, payload: any) => {
-    const results = Array.isArray(payload?.results) ? payload.results : []
+  const handleBpmBatchReady = (_e: unknown, eventPayload: any) => {
+    const results = Array.isArray(eventPayload?.results) ? eventPayload.results : []
     if (!results.length) return
     const { resolvedCount } = applyBpmAnalysisToTracks(results)
     if (resolvedCount <= 0) return
+    const playlistId = String(payload.value.playlistId || '').trim()
+    if (playlistId) {
+      ensureDefaultGlobalTempoEnvelope(playlistId)
+    } else if (isMixtapeGlobalTempoReady()) {
+      syncTracksWithGlobalTempo()
+    }
     const filePaths = buildBpmTargets()
     const bpmTargets = new Set(filePaths)
     const missingTrackCount = resolveMissingBpmCount(bpmTargets)
@@ -239,6 +347,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
       bpmAnalysisActive.value = false
       dismissBpmAnalysisFailure()
       lastBpmAnalysisKey = ''
+      resetMixtapeGlobalTempoState()
       return
     }
     mixtapeItemsLoading.value = true
@@ -262,6 +371,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
       tracks.value = rawItems.map((item: any, index: number) =>
         parseSnapshot(item, index, t('tracks.unknownTrack'))
       )
+      await loadProjectGlobalTempoEnvelope(playlistId)
       pruneStemRuntimeProgressByTracks(tracks.value)
       const stemMode = FIXED_MIXTAPE_STEM_MODE
       const currentPlaylistId = playlistId
@@ -451,20 +561,21 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     beatAlignTrackId.value = ''
   }
 
-  const handleBeatAlignGridDefinitionSave = async (payload: {
+  const handleBeatAlignGridDefinitionSave = async (nextGrid: {
     barBeatOffset: number
     firstBeatMs: number
     bpm: number
   }) => {
+    const playlistId = String(payload.value.playlistId || '').trim()
     const trackId = beatAlignTrackId.value
     if (!trackId) return
     const targetIndex = tracks.value.findIndex((track: any) => track.id === trackId)
     if (targetIndex < 0) return
     const currentTrack = tracks.value[targetIndex]
     if (!currentTrack) return
-    const normalizedOffset = normalizeBarBeatOffset(payload?.barBeatOffset)
-    const normalizedFirstBeatMs = normalizeFirstBeatMs(payload?.firstBeatMs)
-    const normalizedInputBpm = normalizeBpm(payload?.bpm)
+    const normalizedOffset = normalizeBarBeatOffset(nextGrid?.barBeatOffset)
+    const normalizedFirstBeatMs = normalizeFirstBeatMs(nextGrid?.firstBeatMs)
+    const normalizedInputBpm = normalizeBpm(nextGrid?.bpm)
     const currentOffset = normalizeBarBeatOffset(currentTrack.barBeatOffset)
     const currentFirstBeatMs = normalizeFirstBeatMs(currentTrack.firstBeatMs)
     const offsetChanged = normalizedOffset !== currentOffset
@@ -518,15 +629,12 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
           shouldPersistBpm && normalizedInputBpm !== null
             ? Number(normalizedInputBpm)
             : fallbackGridBaseBpm,
-        bpm:
-          shouldPersistBpm && normalizedInputBpm !== null ? Number(normalizedInputBpm) : track.bpm,
         originalBpm:
           shouldPersistBpm && normalizedInputBpm !== null
             ? Number(normalizedInputBpm)
             : track.originalBpm
       }
       if (!shouldResetEnvelope) return nextTrack
-      nextTrack.bpmEnvelope = undefined
       for (const param of activeEnvelopeParams) {
         const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
         ;(nextTrack as any)[envelopeField] = buildFlatMixEnvelope(
@@ -539,11 +647,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
       return nextTrack
     })
     tracks.value = nextTracks
-    clearTimelineLayoutCache()
-    updateTimelineWidth(false)
-    scheduleTimelineDraw()
-    scheduleFullPreRender()
-    scheduleWorkerPreRender()
+    refreshTimelineForGlobalTempoChange()
     if (!window?.electron?.ipcRenderer?.invoke) return
 
     if (targetFilePath) {
@@ -617,22 +721,16 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
             }))
           })
         : Promise.resolve(null)
-    const bpmEnvelopeResetTask = window.electron.ipcRenderer.invoke('mixtape:update-bpm-envelope', {
-      entries: affectedTracks.map((track: any) => ({
-        itemId: track.id,
-        bpmEnvelope: []
-      }))
-    })
-    void Promise.all([
-      ...envelopeUpdateTasks,
-      muteSegmentUpdateTask,
-      originalBpmUpdateTask,
-      bpmEnvelopeResetTask
-    ]).catch((error: unknown) => {
-      console.error('[mixtape] reset mix envelope after grid update failed', {
-        trackCount: affectedTracks.length,
-        error
-      })
+    void Promise.all([...envelopeUpdateTasks, muteSegmentUpdateTask, originalBpmUpdateTask]).catch(
+      (error: unknown) => {
+        console.error('[mixtape] reset mix envelope after grid update failed', {
+          trackCount: affectedTracks.length,
+          error
+        })
+      }
+    )
+    ensureDefaultGlobalTempoEnvelope(playlistId, {
+      refreshWaveform: false
     })
   }
 

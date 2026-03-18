@@ -6,7 +6,7 @@ import type {
   StemWaveformData,
   WaveformStemId
 } from './mixtapeWaveformRender.types'
-import { createTrackTimeMap } from '../composables/mixtape/trackTimeMapCore'
+import { createTrackTimeMap } from '../composables/mixtape/trackTimeMapFactory'
 
 type CreateTileRendererOptions = {
   stemWaveformCache: Map<string, StemWaveformData>
@@ -350,22 +350,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       fallbackBpm: Number(tempoSnapshot.baseBpm) || 128,
       firstBeatSourceSec: Number(tempoSnapshot.firstBeatSourceSec) || 0,
       beatSourceSec: Number(tempoSnapshot.beatSourceSec) || 0,
-      barBeatOffset: Number(tempoSnapshot.barBeatOffset) || 0,
-      overrideLines: Array.isArray(tempoSnapshot.overrideLines)
-        ? tempoSnapshot.overrideLines.map((line) => ({
-            sec: Number(line.sec),
-            sourceSec: Number(line.sourceSec),
-            level: line.level
-          }))
-        : [],
-      overrideRange:
-        Number.isFinite(Number(tempoSnapshot.overrideRange?.startSec)) &&
-        Number.isFinite(Number(tempoSnapshot.overrideRange?.endSec))
-          ? {
-              startSec: Number(tempoSnapshot.overrideRange?.startSec),
-              endSec: Number(tempoSnapshot.overrideRange?.endSec)
-            }
-          : undefined
+      barBeatOffset: Number(tempoSnapshot.barBeatOffset) || 0
     })
 
   const renderTileBitmap = (payload: RenderTilePayload): ImageBitmap | null => {

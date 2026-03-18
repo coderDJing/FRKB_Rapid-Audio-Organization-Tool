@@ -210,22 +210,3 @@ export const cloneTrackBpmPoints = (points: MixtapeBpmPoint[]) =>
         : undefined,
     allowOffGrid: point.allowOffGrid === true ? true : undefined
   }))
-
-export const isRedundantFlatTrackBpmEnvelope = (
-  points: MixtapeBpmPoint[] | undefined,
-  baseBpm: number
-) => {
-  if (!Array.isArray(points) || points.length < 2) return false
-  if (!Number.isFinite(baseBpm) || baseBpm <= 0) return false
-  return points.every((point) => Math.abs(Number(point?.bpm) - baseBpm) <= 0.01)
-}
-
-export const isRedundantFlatEnvelopeTrack = (track: MixtapeTrack) => {
-  const baseBpm = Number(track.bpm)
-  return isRedundantFlatTrackBpmEnvelope(track.bpmEnvelope, baseBpm)
-}
-
-export const hasMeaningfulBpmEnvelopeTrack = (track: MixtapeTrack) =>
-  Array.isArray(track.bpmEnvelope) &&
-  track.bpmEnvelope.length >= 2 &&
-  !isRedundantFlatEnvelopeTrack(track)
