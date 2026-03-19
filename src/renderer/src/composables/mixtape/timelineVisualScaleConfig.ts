@@ -5,7 +5,7 @@ import {
   MIXTAPE_OVERVIEW_BASE_LANE_HEIGHT
 } from '@renderer/composables/mixtape/constants'
 
-export const TIMELINE_VISUAL_SCALE_MIN = 1
+export const TIMELINE_VISUAL_SCALE_MIN = 0.56
 export const TIMELINE_VISUAL_SCALE_MAX = 3
 
 const TIMELINE_TRACK_LANE_BORDER_PX = 2

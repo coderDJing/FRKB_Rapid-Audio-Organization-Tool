@@ -31,6 +31,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     timelineCanvasRef,
     timelineScrollWrapRef,
     timelineScrollRef,
+    timelineViewport,
     timelineViewportWidth,
     timelineViewportHeight,
     timelineScrollLeft,
@@ -41,6 +42,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     normalizedRenderZoom,
     clampZoomValue,
     resolveLaneHeightForZoom,
+    resolveGridBarWidth,
     resolveTrackDurationSeconds,
     resolveTrackSourceDurationSeconds,
     resolveTrackRenderWidthPx,
@@ -112,6 +114,12 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
   const isMixxxWaveformData = (value: unknown): value is MixxxWaveformData =>
     Boolean(value && typeof value === 'object' && (value as MixxxWaveformData).bands)
 
+  const resolveTrackContentTop = () => {
+    const root = timelineViewport?.value || null
+    const lanes = root?.querySelector?.('.timeline-lanes') as HTMLElement | null
+    return Math.max(0, Math.round(Number(lanes?.offsetTop) || 0))
+  }
+
   const getWaveformTileCacheTick = () => Number(waveformTileCacheTickRef.value || 0)
   const setWaveformTileCacheTick = (value: number) => {
     waveformTileCacheTickRef.value = value
@@ -166,11 +174,11 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     const laneH = resolveLaneHeightForZoom(zoomValue)
     if (!laneH || laneH <= 0) return
     const laneStride = laneH + LANE_GAP
+    const trackContentTop = resolveTrackContentTop()
     const lanePaddingTop = LANE_PADDING_TOP + MIXTAPE_WAVEFORM_Y_OFFSET
     const pixelRatio = window.devicePixelRatio || 1
     const showGridLines = SHOW_GRID_LINES && !bpmAnalysisActive.value && !bpmAnalysisFailed.value
     const allowTileBuild = true
-    const barOnlyGrid = zoomValue <= GRID_BAR_ONLY_ZOOM
     const snapshot = buildSequentialLayoutForZoom(zoomValue)
 
     forEachVisibleLayoutItem(snapshot, renderStartX, renderEndX, (item: TimelineTrackLayout) => {
@@ -182,7 +190,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
       const trackStartX = item.startX
       const trackEndX = trackStartX + trackWidth
       if (trackEndX < renderStartX || trackStartX > renderEndX) return
-      const trackY = lanePaddingTop + item.laneIndex * laneStride - startY
+      const trackY = trackContentTop + lanePaddingTop + item.laneIndex * laneStride - startY
       const visibleStart = Math.max(trackStartX, startX)
       const visibleEnd = Math.min(trackEndX, endX)
       if (visibleEnd <= visibleStart) return
@@ -274,8 +282,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
             trackWidth,
             Number(track.barBeatOffset) || 0,
             { start: localStart, end: localEnd },
-            barOnlyGrid,
-            zoomValue
+            resolveGridBarWidth(zoomValue)
           )
           ctx.restore()
         }

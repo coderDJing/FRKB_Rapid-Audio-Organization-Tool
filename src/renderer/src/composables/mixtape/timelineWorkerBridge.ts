@@ -16,6 +16,7 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
     waveformRenderWorkerRef,
     timelineWorkerReady,
     timelineCanvasRef,
+    timelineViewport,
     timelineOffscreenCanvasRef,
     waveformTileCache,
     waveformTileCacheIndex,
@@ -54,6 +55,12 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
     MIXTAPE_WAVEFORM_Y_OFFSET
   } = ctx
   const isStemMixMode = () => mixtapeMixMode?.value !== 'eq'
+
+  const resolveTrackContentTop = () => {
+    const root = timelineViewport?.value || null
+    const lanes = root?.querySelector?.('.timeline-lanes') as HTMLElement | null
+    return Math.max(0, Math.round(Number(lanes?.offsetTop) || 0))
+  }
 
   const getWaveformRenderWorker = () => waveformRenderWorkerRef.value as Worker | null
   const getWaveformTileCacheTick = () => Number(waveformTileCacheTickRef.value || 0)
@@ -249,6 +256,7 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
     const bufferId = resolveTimelineBufferId(zoomValue)
     const laneH = resolveLaneHeightForZoom(zoomValue)
     if (!laneH || laneH <= 0) return null
+    const trackContentTop = resolveTrackContentTop()
     const lanePaddingTop = LANE_PADDING_TOP + MIXTAPE_WAVEFORM_Y_OFFSET
     const endX = startX + widthPx
     const renderStartX = Math.max(0, Math.floor(startX - RENDER_X_BUFFER_PX))
@@ -310,6 +318,7 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
       zoom: zoomValue,
       laneHeight: laneH,
       laneGap: LANE_GAP,
+      trackContentTop,
       lanePaddingTop,
       renderPxPerSec: resolveRenderPxPerSec(zoomValue),
       renderVersion: waveformVersion.value,

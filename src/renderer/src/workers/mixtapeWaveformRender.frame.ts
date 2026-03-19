@@ -265,6 +265,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
       Math.round(payload.zoom * 1000),
       Math.round(payload.laneHeight * 10),
       Math.round(payload.laneGap * 10),
+      Math.round(payload.trackContentTop * 10),
       Math.round(payload.lanePaddingTop * 10),
       Math.round(payload.renderPxPerSec * 100),
       Math.round(payload.pixelRatio * 100),
@@ -309,7 +310,11 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
       const trackStartX = Number(track.startX) || 0
       const trackEndX = trackStartX + trackWidth
       const trackY =
-        payload.lanePaddingTop + track.laneIndex * laneStride + trackLaneOffset - viewStartY
+        payload.trackContentTop +
+        payload.lanePaddingTop +
+        track.laneIndex * laneStride +
+        trackLaneOffset -
+        viewStartY
       if (trackY > viewHeight || trackY + trackLaneHeight < 0) continue
       const visibleStart = Math.max(trackStartX, viewStartX)
       const visibleEnd = Math.min(trackEndX, endX)
@@ -786,7 +791,11 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
         const trackStartX = Number(track.startX) || 0
         const trackEndX = trackStartX + trackWidth
         const trackY =
-          payload.lanePaddingTop + track.laneIndex * laneStride + trackLaneOffset - startY
+          payload.trackContentTop +
+          payload.lanePaddingTop +
+          track.laneIndex * laneStride +
+          trackLaneOffset -
+          startY
         if (trackY > slot.height || trackY + trackLaneHeight < 0) continue
         const visibleStart = Math.max(trackStartX, slot.startX)
         const visibleEnd = Math.min(trackEndX, endX)
@@ -850,7 +859,11 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
           const trackLaneHeight = Math.max(1, Number(track.laneHeight) || payload.laneHeight)
           const trackLaneOffset = Math.max(0, Number(track.laneOffsetY) || 0)
           const trackY =
-            payload.lanePaddingTop + track.laneIndex * laneStride + trackLaneOffset - startY
+            payload.trackContentTop +
+            payload.lanePaddingTop +
+            track.laneIndex * laneStride +
+            trackLaneOffset -
+            startY
           if (trackY > slot.height || trackY + trackLaneHeight < 0) continue
           const visibleStart = Math.max(trackStartX, slot.startX)
           const visibleEnd = Math.min(trackEndX, endX)
@@ -898,7 +911,11 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
           const trackLaneHeight = Math.max(1, Number(track.laneHeight) || payload.laneHeight)
           const trackLaneOffset = Math.max(0, Number(track.laneOffsetY) || 0)
           const trackY =
-            payload.lanePaddingTop + track.laneIndex * laneStride + trackLaneOffset - startY
+            payload.trackContentTop +
+            payload.lanePaddingTop +
+            track.laneIndex * laneStride +
+            trackLaneOffset -
+            startY
           if (trackY > slot.height || trackY + trackLaneHeight < 0) continue
           drawColorRect(0, Math.round(trackY), slot.width, 1, { r: 1, g: 0.25, b: 0.25, a: 0.9 })
           drawColorRect(0, Math.round(trackY + trackLaneHeight - 1), slot.width, 1, {

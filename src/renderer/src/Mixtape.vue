@@ -77,6 +77,7 @@ const {
   transportPreloadTotal,
   transportPreloadPercent,
   playheadVisible,
+  playheadSec,
   followPlayheadEnabled,
   playheadTimeLabel,
   timelineDurationLabel,
@@ -154,7 +155,6 @@ type MixParamId =
   | 'bass'
   | 'drums'
   | 'volume'
-  | 'bpm'
 type MixParamOption = {
   id: MixParamId
   labelKey: string
@@ -173,10 +173,6 @@ const mixParamOptions = computed<MixParamOption[]>(() => {
       {
         id: 'gain',
         labelKey: 'mixtape.mixParamGain'
-      },
-      {
-        id: 'bpm',
-        labelKey: 'mixtape.mixParamBpm'
       },
       {
         id: 'high',
@@ -207,10 +203,6 @@ const mixParamOptions = computed<MixParamOption[]>(() => {
       labelKey: 'mixtape.mixParamGain'
     },
     {
-      id: 'bpm',
-      labelKey: 'mixtape.mixParamBpm'
-    },
-    {
       id: 'vocal',
       labelKey: 'mixtape.mixParamVocal'
     },
@@ -239,26 +231,20 @@ const mixParamOptions = computed<MixParamOption[]>(() => {
 const selectedMixParam = ref<MixParamId>('position')
 const isTrackPositionMode = computed(() => selectedMixParam.value === 'position')
 const isGainParamMode = computed(() => selectedMixParam.value === 'gain')
-const isBpmParamMode = computed(() => selectedMixParam.value === 'bpm')
 const isVolumeParamMode = computed(() => selectedMixParam.value === 'volume')
 const isStemParamMode = computed(() => STEM_PARAM_SET.has(selectedMixParam.value))
 const isEnvelopeParamMode = computed(() => !isTrackPositionMode.value)
-const showTrackEnvelopeEditor = computed(() => isEnvelopeParamMode.value && !isBpmParamMode.value)
+const showTrackEnvelopeEditor = computed(() => isEnvelopeParamMode.value)
 const isSegmentSelectionSupported = computed(() => isVolumeParamMode.value || isStemParamMode.value)
 const segmentSelectionMode = ref(false)
 const isSegmentSelectionActive = computed(
   () => isStemParamMode.value || (isSegmentSelectionSupported.value && segmentSelectionMode.value)
 )
-const showEnvelopeCurve = computed(
-  () => isEnvelopeParamMode.value && !isStemParamMode.value && !isBpmParamMode.value
-)
-const envelopePreviewLineKeys = computed<Array<MixtapeEnvelopeParamId | 'bpm'>>(() =>
-  isStemMixMode.value ? ['gain', 'volume', 'bpm'] : ['gain', 'high', 'mid', 'low', 'volume', 'bpm']
+const showEnvelopeCurve = computed(() => isEnvelopeParamMode.value && !isStemParamMode.value)
+const envelopePreviewLineKeys = computed<MixtapeEnvelopeParamId[]>(() =>
+  isStemMixMode.value ? ['gain', 'volume'] : ['gain', 'high', 'mid', 'low', 'volume']
 )
 const envelopeHintKey = computed(() => {
-  if (isBpmParamMode.value) {
-    return 'mixtape.bpmEnvelopeHint'
-  }
   if (isSegmentSelectionActive.value) {
     return 'mixtape.segmentMuteHint'
   }
@@ -291,7 +277,7 @@ const {
 })
 
 watch(selectedMixParam, (nextParam) => {
-  if (nextParam === 'position' || nextParam === 'gain' || nextParam === 'bpm') {
+  if (nextParam === 'position' || nextParam === 'gain') {
     segmentSelectionMode.value = false
     return
   }
@@ -392,9 +378,7 @@ const {
   resolveTrackSourceDurationSeconds,
   resolveTrackFirstBeatSeconds,
   resolveActiveParam: () =>
-    isEnvelopeParamMode.value && !isBpmParamMode.value
-      ? (selectedMixParam.value as MixtapeEnvelopeParamId)
-      : null,
+    isEnvelopeParamMode.value ? (selectedMixParam.value as MixtapeEnvelopeParamId) : null,
   isSegmentSelectionMode: () => isSegmentSelectionActive.value,
   isEditable: () => envelopeEditable.value
 })
@@ -445,8 +429,17 @@ onBeforeUnmount(() => {
   cleanupGainEnvelopeEditor()
 })
 
+const MASTER_TEMPO_LANE_BASE_HEIGHT = 84
+const MASTER_TEMPO_LANE_MIN_HEIGHT = 68
+
+const masterTempoLaneHeight = computed(() => {
+  if (!tracks.value.length) return 0
+  const scale = Math.min(1, Math.max(0.5, Number(timelineVisualScale.value) || 1))
+  return Math.max(MASTER_TEMPO_LANE_MIN_HEIGHT, Math.round(MASTER_TEMPO_LANE_BASE_HEIGHT * scale))
+})
+
 const timelineTrackAreaStyle = computed(() => ({
-  height: `${timelineTrackAreaHeight.value + (isBpmParamMode.value ? 96 : 0)}px`
+  height: `${timelineTrackAreaHeight.value + masterTempoLaneHeight.value}px`
 }))
 
 const handleGlobalBpmTrackTargetsSync = (nextTracks: MixtapeTrack[]) => {
@@ -635,11 +628,18 @@ const handleGlobalBpmTrackTargetsSync = (nextTracks: MixtapeTrack[]) => {
                     }"
                   >
                     <MixtapeGlobalBpmEditor
-                      :visible="isBpmParamMode"
+                      :visible="tracks.length > 0"
                       :playlist-id="mixtapePlaylistId"
                       :tracks="tracks"
+                      :height-px="masterTempoLaneHeight"
+                      :render-zoom-level="renderZoomLevel"
+                      :timeline-scroll-left="timelineScrollLeft"
+                      :timeline-viewport-width="timelineViewportWidth"
+                      :playhead-sec="playheadSec"
+                      :playhead-visible="playheadVisible"
                       :timeline-content-width="timelineContentWidth"
                       :resolve-track-duration-seconds="resolveTrackDurationSeconds"
+                      :resolve-track-source-duration-seconds="resolveTrackSourceDurationSeconds"
                       :push-external-undo-step="pushExternalUndoStep"
                       :on-tracks-sync="handleGlobalBpmTrackTargetsSync"
                       :on-envelope-preview-changed="

@@ -1,10 +1,18 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
+import { t } from '@renderer/utils/translate'
+import {
+  BASE_PX_PER_SEC,
+  MIXTAPE_WIDTH_SCALE,
+  TIMELINE_SIDE_PADDING_PX
+} from '@renderer/composables/mixtape/constants'
 import {
   applyMixtapeGlobalTempoTargetsToTracks,
+  buildFlatMixtapeGlobalBpmEnvelope,
   normalizeMixtapeGlobalBpmEnvelopePoints,
   resolveDefaultGlobalBpmFromTracks,
-  resolveMixtapeGlobalBpmVisualRange
+  resolveMixtapeGlobalBpmVisualRange,
+  sampleMixtapeGlobalBpmAtSec
 } from '@renderer/composables/mixtape/mixtapeGlobalTempoModel'
 import {
   applyMixtapeGlobalTempoSnapshot,
@@ -12,17 +20,24 @@ import {
 } from '@renderer/composables/mixtape/mixtapeGlobalTempoState'
 import {
   mapTrackBpmToYPercent,
-  mapTrackBpmYPercentToValue,
-  buildTrackBpmEnvelopePolylineByControlPoints
+  mapTrackBpmYPercentToValue
 } from '@renderer/composables/mixtape/trackTempoVisual'
+import { buildTrackRuntimeTempoSnapshot } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
 import type { MixtapeBpmPoint, MixtapeTrack } from '@renderer/composables/mixtape/types'
 
 const props = defineProps<{
   visible: boolean
   playlistId: string
   tracks: MixtapeTrack[]
+  heightPx: number
+  renderZoomLevel: number
+  timelineScrollLeft: number
+  timelineViewportWidth: number
+  playheadSec: number
+  playheadVisible: boolean
   timelineContentWidth: number
   resolveTrackDurationSeconds: (track: MixtapeTrack) => number
+  resolveTrackSourceDurationSeconds: (track: MixtapeTrack) => number
   pushExternalUndoStep: (undo: (() => boolean) | null | undefined) => void
   onTracksSync?: (nextTracks: MixtapeTrack[]) => void
   onEnvelopePreviewChanged?: () => void
@@ -36,16 +51,26 @@ type DragState = {
 
 type PointDot = {
   index: number
-  x: number
+  xPx: number
   y: number
   bpm: number
   labelPlacement: 'above' | 'below'
   labelAlign: 'center' | 'left' | 'right'
   isBoundary: boolean
+  edge: 'start' | 'end' | null
+}
+
+type ProjectedTrackGridLine = {
+  key: string
+  leftPx: number
+  level: 'bar' | 'beat4' | 'beat'
 }
 
 const dragState = ref<DragState | null>(null)
+const stageRef = ref<HTMLElement | null>(null)
 let persistTimer: ReturnType<typeof setTimeout> | null = null
+
+const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
 const timelineDurationSec = computed(() =>
   Math.max(
@@ -59,7 +84,29 @@ const timelineDurationSec = computed(() =>
   )
 )
 
+const shouldRender = computed(() => props.visible && timelineDurationSec.value > 0)
 const defaultBpm = computed(() => resolveDefaultGlobalBpmFromTracks(props.tracks))
+const pxPerSec = computed(
+  () => BASE_PX_PER_SEC * MIXTAPE_WIDTH_SCALE * Math.max(0.1, Number(props.renderZoomLevel) || 0.1)
+)
+
+const resolveTimelineXPx = (sec: number) =>
+  clampNumber(
+    TIMELINE_SIDE_PADDING_PX + Math.max(0, Number(sec) || 0) * pxPerSec.value,
+    TIMELINE_SIDE_PADDING_PX,
+    Math.max(
+      TIMELINE_SIDE_PADDING_PX,
+      Number(props.timelineContentWidth) - TIMELINE_SIDE_PADDING_PX
+    )
+  )
+
+const resolveTimelineSecByLocalXPx = (xPx: number) => {
+  return clampNumber(
+    Math.max(0, Number(xPx) - TIMELINE_SIDE_PADDING_PX) / Math.max(0.0001, pxPerSec.value),
+    0,
+    Math.max(0, timelineDurationSec.value)
+  )
+}
 
 const effectivePoints = computed(() =>
   normalizeMixtapeGlobalBpmEnvelopePoints(
@@ -69,6 +116,10 @@ const effectivePoints = computed(() =>
   )
 )
 
+const flatReferencePoints = computed(() =>
+  buildFlatMixtapeGlobalBpmEnvelope(timelineDurationSec.value, defaultBpm.value)
+)
+
 const visualRange = computed(() =>
   resolveMixtapeGlobalBpmVisualRange({
     tracks: props.tracks,
@@ -76,37 +127,136 @@ const visualRange = computed(() =>
   })
 )
 
-const bpmPolyline = computed(() =>
-  buildTrackBpmEnvelopePolylineByControlPoints({
-    points: effectivePoints.value,
-    durationSec: timelineDurationSec.value,
-    baseBpm: visualRange.value.baseBpm,
-    minBpm: visualRange.value.minBpm,
-    maxBpm: visualRange.value.maxBpm
-  })
-)
+const bpmPolyline = computed(() => {
+  if (!effectivePoints.value.length || props.timelineContentWidth <= 0) return ''
+  return effectivePoints.value
+    .map((point) => {
+      const x = resolveTimelineXPx(Number(point.sec)).toFixed(3)
+      const y = mapTrackBpmToYPercent(
+        Number(point.bpm),
+        visualRange.value.baseBpm,
+        visualRange.value.minBpm,
+        visualRange.value.maxBpm
+      ).toFixed(3)
+      return `${x},${y}`
+    })
+    .join(' ')
+})
 
 const pointDots = computed<PointDot[]>(() =>
   effectivePoints.value.map((point, index) => {
-    const durationSec = Math.max(0.0001, timelineDurationSec.value)
-    const x = Math.max(0, Math.min(100, (Number(point.sec) / durationSec) * 100))
+    const xPx = resolveTimelineXPx(Number(point.sec))
     const y = mapTrackBpmToYPercent(
       Number(point.bpm),
       visualRange.value.baseBpm,
       visualRange.value.minBpm,
       visualRange.value.maxBpm
     )
+    const totalWidth = Math.max(1, Number(props.timelineContentWidth) || 1)
+    const xRatio = xPx / totalWidth
+    const isBoundary = index === 0 || index === effectivePoints.value.length - 1
     return {
       index,
-      x,
+      xPx,
       y,
       bpm: Number(point.bpm),
       labelPlacement: y <= 16 ? 'below' : 'above',
-      labelAlign: x <= 6 ? 'left' : x >= 94 ? 'right' : 'center',
-      isBoundary: index === 0 || index === effectivePoints.value.length - 1
+      labelAlign: xRatio <= 0.08 ? 'left' : xRatio >= 0.92 ? 'right' : 'center',
+      isBoundary,
+      edge: !isBoundary ? null : index === 0 ? 'start' : 'end'
     }
   })
 )
+
+const visibleGridLines = computed<ProjectedTrackGridLine[]>(() => {
+  const viewportStartSec = resolveTimelineSecByLocalXPx(Number(props.timelineScrollLeft) || 0)
+  const viewportEndSec = resolveTimelineSecByLocalXPx(
+    Math.max(0, Number(props.timelineScrollLeft) || 0) +
+      Math.max(0, Number(props.timelineViewportWidth) || 0)
+  )
+  const beatBufferSec = (32 * 60) / Math.max(1, defaultBpm.value)
+  const minSec = Math.max(0, viewportStartSec - beatBufferSec)
+  const maxSec = Math.min(Math.max(0, timelineDurationSec.value), viewportEndSec + beatBufferSec)
+  const linePriority = {
+    beat: 0,
+    beat4: 1,
+    bar: 2
+  } as const
+  const linesByPixel = new Map<string, ProjectedTrackGridLine>()
+
+  for (const track of props.tracks) {
+    const startSec = Math.max(0, Number(track.startSec) || 0)
+    const sourceDurationSec = Math.max(
+      0,
+      Number(props.resolveTrackSourceDurationSeconds(track)) || 0
+    )
+    const durationSec = Math.max(0, Number(props.resolveTrackDurationSeconds(track)) || 0)
+    if (sourceDurationSec <= 0 || durationSec <= 0) continue
+    const snapshot = buildTrackRuntimeTempoSnapshot({
+      track,
+      sourceDurationSec,
+      durationSec,
+      zoom: Number(props.renderZoomLevel) || 0
+    })
+    for (const line of snapshot.visibleGridLines) {
+      const timelineSec = startSec + Number(line.sec)
+      if (timelineSec < minSec - 0.0001 || timelineSec > maxSec + 0.0001) continue
+      const leftPx = resolveTimelineXPx(timelineSec)
+      const dedupeKey = `${Math.round(leftPx)}`
+      const nextLine: ProjectedTrackGridLine = {
+        key: `${track.id}:${line.level}:${Math.round(timelineSec * 1000)}`,
+        leftPx,
+        level: line.level
+      }
+      const previous = linesByPixel.get(dedupeKey)
+      if (!previous || linePriority[nextLine.level] > linePriority[previous.level]) {
+        linesByPixel.set(dedupeKey, nextLine)
+      }
+    }
+  }
+
+  return Array.from(linesByPixel.values()).sort((left, right) => left.leftPx - right.leftPx)
+})
+
+const isEdited = computed(
+  () => JSON.stringify(effectivePoints.value) !== JSON.stringify(flatReferencePoints.value)
+)
+
+const currentPlayheadSec = computed(() =>
+  clampNumber(Number(props.playheadSec) || 0, 0, Math.max(0, timelineDurationSec.value))
+)
+
+const currentBpmValue = computed(() =>
+  sampleMixtapeGlobalBpmAtSec(effectivePoints.value, currentPlayheadSec.value, defaultBpm.value)
+)
+
+const formatBpmLabel = (value: number) => {
+  const rounded = Math.round((Number(value) || 0) * 10) / 10
+  if (Math.abs(rounded - Math.round(rounded)) <= 0.05) {
+    return Math.round(rounded).toString()
+  }
+  return rounded.toFixed(1)
+}
+
+const currentBpmLabel = computed(() => formatBpmLabel(currentBpmValue.value))
+const currentBpmText = computed(() =>
+  t('mixtape.masterTempoLaneCurrentBpm', { bpm: currentBpmLabel.value })
+)
+
+const playheadMarker = computed(() => {
+  const xPx = resolveTimelineXPx(currentPlayheadSec.value)
+  const width = Math.max(1, Number(props.timelineContentWidth) || 1)
+  const ratio = xPx / width
+  return {
+    xPx,
+    align: ratio <= 0.08 ? 'left' : ratio >= 0.92 ? 'right' : 'center'
+  }
+})
+
+const laneStyle = computed(() => ({
+  width: `${Math.max(0, Number(props.timelineContentWidth) || 0)}px`,
+  height: `${Math.max(0, Number(props.heightPx) || 0)}px`
+}))
 
 const clonePoints = (points: MixtapeBpmPoint[]) =>
   points.map((point) => ({
@@ -215,9 +365,9 @@ const resolveStagePointFromMouse = (event: MouseEvent) => {
   const target = event.currentTarget as HTMLElement | null
   const rect = target?.getBoundingClientRect()
   if (!rect || rect.width <= 0 || rect.height <= 0) return null
-  const xRatio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
+  const xPx = clampNumber(event.clientX - rect.left, 0, rect.width)
   const yRatio = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
-  const sec = Number((xRatio * Math.max(0, timelineDurationSec.value)).toFixed(4))
+  const sec = Number(resolveTimelineSecByLocalXPx(xPx).toFixed(4))
   const bpm = Number(
     mapTrackBpmYPercentToValue(
       yRatio * 100,
@@ -230,7 +380,7 @@ const resolveStagePointFromMouse = (event: MouseEvent) => {
 }
 
 const handleStageMouseDown = (event: MouseEvent) => {
-  if (!props.visible) return
+  if (!shouldRender.value) return
   const point = resolveStagePointFromMouse(event)
   if (!point) return
   const beforePoints = clonePoints(effectivePoints.value)
@@ -257,10 +407,9 @@ const handleWindowMouseMove = (event: MouseEvent) => {
   const currentDragState = dragState.value
   if (!currentDragState) return
   event.preventDefault()
-  const stage = document.querySelector('.timeline-master-bpm__stage') as HTMLElement | null
-  const rect = stage?.getBoundingClientRect()
+  const rect = stageRef.value?.getBoundingClientRect()
   if (!rect || rect.width <= 0 || rect.height <= 0) return
-  const xRatio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
+  const xPx = clampNumber(event.clientX - rect.left, 0, rect.width)
   const yRatio = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
   const nextPoints = clonePoints(effectivePoints.value)
   const targetPoint = nextPoints[currentDragState.pointIndex]
@@ -268,7 +417,7 @@ const handleWindowMouseMove = (event: MouseEvent) => {
   const isBoundary =
     currentDragState.pointIndex === 0 || currentDragState.pointIndex === nextPoints.length - 1
   if (!isBoundary) {
-    targetPoint.sec = Number((xRatio * Math.max(0, timelineDurationSec.value)).toFixed(4))
+    targetPoint.sec = Number(resolveTimelineSecByLocalXPx(xPx).toFixed(4))
   }
   targetPoint.bpm = Number(
     mapTrackBpmYPercentToValue(
@@ -327,25 +476,64 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-if="visible" class="timeline-master-bpm">
+  <div v-if="shouldRender" class="timeline-master-bpm" :style="laneStyle">
     <div
+      ref="stageRef"
       class="timeline-master-bpm__stage"
-      :style="{ width: `${timelineContentWidth}px` }"
       @mousedown.stop.prevent="handleStageMouseDown"
     >
-      <div class="timeline-master-bpm__title">MASTER BPM</div>
-      <svg class="timeline-master-bpm__svg" viewBox="0 0 100 100" preserveAspectRatio="none">
-        <line class="timeline-master-bpm__midline" x1="0" y1="50" x2="100" y2="50"></line>
+      <div class="timeline-master-bpm__header">
+        <div class="timeline-master-bpm__title-wrap">
+          <div class="timeline-master-bpm__title">{{ t('mixtape.masterBpm') }}</div>
+          <div v-if="isEdited" class="timeline-master-bpm__edited-badge">
+            {{ t('mixtape.masterTempoLaneEdited') }}
+          </div>
+        </div>
+        <div class="timeline-master-bpm__readout">{{ currentBpmText }}</div>
+      </div>
+
+      <div class="timeline-master-bpm__grid">
+        <div
+          v-for="line in visibleGridLines"
+          :key="line.key"
+          class="timeline-master-bpm__grid-line"
+          :class="[`is-${line.level}`]"
+          :style="{ left: `${line.leftPx}px` }"
+        ></div>
+      </div>
+
+      <svg
+        class="timeline-master-bpm__svg"
+        :viewBox="`0 0 ${Math.max(1, timelineContentWidth)} 100`"
+        preserveAspectRatio="none"
+      >
+        <line
+          class="timeline-master-bpm__midline"
+          :x1="TIMELINE_SIDE_PADDING_PX"
+          y1="50"
+          :x2="Math.max(TIMELINE_SIDE_PADDING_PX, timelineContentWidth - TIMELINE_SIDE_PADDING_PX)"
+          y2="50"
+        ></line>
         <polyline class="timeline-master-bpm__line" :points="bpmPolyline"></polyline>
       </svg>
+
+      <div
+        v-if="props.playheadVisible"
+        class="timeline-master-bpm__playhead-chip"
+        :class="[`is-align-${playheadMarker.align}`]"
+        :style="{ left: `${playheadMarker.xPx}px` }"
+      >
+        {{ currentBpmLabel }}
+      </div>
+
       <div class="timeline-master-bpm__points">
         <button
           v-for="point in pointDots"
           :key="`mix-bpm-${point.index}`"
           class="timeline-master-bpm__point"
-          :class="{ 'is-boundary': point.isBoundary }"
+          :class="[{ 'is-boundary': point.isBoundary }, point.edge ? `is-edge-${point.edge}` : '']"
           type="button"
-          :style="{ left: `${point.x}%`, top: `${point.y}%` }"
+          :style="{ left: `${point.xPx}px`, top: `${point.y}%` }"
           @mousedown.stop.prevent="resolvePointIndexFromEvent($event, point.index)"
           @dblclick.stop.prevent="handlePointDoubleClick(point.index)"
           @contextmenu.stop.prevent="handlePointContextMenu(point.index, $event)"
@@ -354,7 +542,7 @@ onBeforeUnmount(() => {
             class="timeline-master-bpm__point-label"
             :class="[`is-${point.labelPlacement}`, `is-align-${point.labelAlign}`]"
           >
-            {{ Math.round(point.bpm) }}
+            {{ formatBpmLabel(point.bpm) }}
           </span>
         </button>
       </div>
@@ -365,77 +553,180 @@ onBeforeUnmount(() => {
 <style scoped lang="scss">
 .timeline-master-bpm {
   position: relative;
-  height: 88px;
-  padding: 8px 0 12px;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--bg);
 }
 
 .timeline-master-bpm__stage {
   position: relative;
+  width: 100%;
   height: 100%;
-  border-radius: 12px;
-  background: linear-gradient(180deg, rgba(29, 46, 66, 0.95), rgba(15, 26, 40, 0.98));
-  border: 1px solid rgba(125, 226, 255, 0.24);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  border-radius: 0;
+  border: 1px solid var(--border);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0.01) 100%),
+    var(--bg-elev);
   overflow: hidden;
   cursor: crosshair;
+  border-color: var(--accent);
+}
+
+.timeline-master-bpm__header {
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px 0;
+  pointer-events: none;
+}
+
+.timeline-master-bpm__title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .timeline-master-bpm__title {
-  position: absolute;
-  left: 12px;
-  top: 8px;
-  z-index: 2;
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  color: rgba(213, 244, 255, 0.82);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--text-weak);
+  text-transform: uppercase;
 }
 
+.timeline-master-bpm__edited-badge {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 10px;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.timeline-master-bpm__readout {
+  flex-shrink: 0;
+  max-width: 44%;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-weak);
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.timeline-master-bpm__grid,
 .timeline-master-bpm__svg,
 .timeline-master-bpm__points {
   position: absolute;
   inset: 0;
 }
 
+.timeline-master-bpm__grid {
+  z-index: 1;
+  pointer-events: none;
+}
+
+.timeline-master-bpm__grid-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.timeline-master-bpm__grid-line.is-bar {
+  width: 2px;
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.timeline-master-bpm__grid-line.is-beat4 {
+  background: rgba(255, 255, 255, 0.16);
+}
+
 .timeline-master-bpm__midline {
-  stroke: rgba(255, 255, 255, 0.1);
+  stroke: var(--border);
   stroke-width: 0.8;
   stroke-dasharray: 3 3;
+  opacity: 0.8;
 }
 
 .timeline-master-bpm__line {
   fill: none;
-  stroke: #7de2ff;
-  stroke-width: 1.8;
+  stroke: var(--accent);
+  stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
+  opacity: 0.95;
+}
+
+.timeline-master-bpm__playhead-chip {
+  position: absolute;
+  top: 24px;
+  z-index: 3;
+  min-width: 34px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.78);
+  color: var(--text);
+  font-size: 10px;
+  line-height: 1.2;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.timeline-master-bpm__playhead-chip.is-align-left {
+  transform: none;
+}
+
+.timeline-master-bpm__playhead-chip.is-align-right {
+  transform: translateX(-100%);
 }
 
 .timeline-master-bpm__point {
   position: absolute;
-  width: 12px;
-  height: 12px;
-  margin-left: -6px;
-  margin-top: -6px;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, -50%);
   border-radius: 999px;
-  border: 2px solid #09131f;
-  background: #7de2ff;
-  box-shadow: 0 0 0 2px rgba(125, 226, 255, 0.18);
+  border: 1px solid rgba(0, 0, 0, 0.65);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: none;
+}
+
+.timeline-master-bpm__point.is-edge-start {
+  transform: translate(0, -50%);
+}
+
+.timeline-master-bpm__point.is-edge-end {
+  transform: translate(-100%, -50%);
 }
 
 .timeline-master-bpm__point.is-boundary {
-  background: #ffd86e;
-  box-shadow: 0 0 0 2px rgba(255, 216, 110, 0.18);
+  background: var(--accent);
+  border-color: rgba(0, 0, 0, 0.75);
 }
 
 .timeline-master-bpm__point-label {
   position: absolute;
   left: 50%;
   min-width: 28px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.78);
   transform: translateX(-50%);
   font-size: 10px;
   line-height: 1;
-  color: rgba(240, 248, 255, 0.88);
+  color: rgba(255, 255, 255, 0.96);
   pointer-events: none;
 }
 

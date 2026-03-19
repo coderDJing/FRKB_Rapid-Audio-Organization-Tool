@@ -223,6 +223,7 @@ export type TimelineRenderPayload = {
   zoom: number
   laneHeight: number
   laneGap: number
+  trackContentTop: number
   lanePaddingTop: number
   renderPxPerSec: number
   renderVersion: number

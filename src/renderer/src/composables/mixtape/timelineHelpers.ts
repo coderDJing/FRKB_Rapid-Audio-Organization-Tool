@@ -156,7 +156,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
   const resolveTimelineVisualScale = () => {
     const numeric = Number(timelineVisualScale?.value)
     if (!Number.isFinite(numeric) || numeric <= 0) return 1
-    return Math.max(1, numeric)
+    return Math.max(0.56, numeric)
   }
 
   const resolveLaneHeightForZoom = (_value: number) =>
@@ -512,9 +512,10 @@ export const createTimelineHelpersModule = (ctx: any) => {
     trackWidth: number,
     barBeatOffset: number,
     range: { start: number; end: number },
-    barOnly: boolean,
-    zoomValue: number
+    barWidth: number
   ) => {
+    const startX = range.start
+    const endX = range.end
     const safeDurationSec = Math.max(0, Number(durationSec) || 0)
     const safeTrackWidth = Math.max(0, Number(trackWidth) || 0)
     if (safeDurationSec <= 0) return
@@ -523,22 +524,15 @@ export const createTimelineHelpersModule = (ctx: any) => {
       track,
       sourceDurationSec,
       durationSec: safeDurationSec,
-      zoom: zoomValue
+      zoom: normalizedRenderZoom.value
     })
     const visibleGridLines = snapshot.visibleGridLines
-    if (!visibleGridLines.length) return
-
-    const startX = range.start
-    const endX = range.end
-    if (endX <= startX || width <= 0 || height <= 0) return
-
-    const barWidth = resolveGridBarWidth(zoomValue)
+    if (endX <= startX || width <= 0 || height <= 0 || !visibleGridLines.length) return
 
     context.save()
     for (const line of visibleGridLines) {
       const rawX = (line.sec / safeDurationSec) * safeTrackWidth
       if (rawX < startX - 64 || rawX > endX + 64) continue
-      if (barOnly && line.level !== 'bar') continue
       const x = Math.round(rawX - startX)
 
       if (line.level === 'bar') {

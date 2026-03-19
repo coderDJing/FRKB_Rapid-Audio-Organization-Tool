@@ -195,6 +195,32 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     return text.length <= 240 ? text : `${text.slice(0, 240)}...`
   }
 
+  const materializeSequentialTrackStartSecs = (inputTracks: any[]) => {
+    let cursorSec = 0
+    const persistedEntries: Array<{ itemId: string; startSec: number }> = []
+    const nextTracks = inputTracks.map((track: any) => {
+      const rawStartSec = Number(track?.startSec)
+      const hasExplicitStartSec = Number.isFinite(rawStartSec) && rawStartSec >= 0
+      const startSec = hasExplicitStartSec
+        ? Number(rawStartSec.toFixed(4))
+        : Number(cursorSec.toFixed(4))
+      const nextTrack = hasExplicitStartSec ? track : { ...track, startSec }
+      const durationSec = Math.max(0, Number(resolveTrackDurationSeconds(nextTrack)) || 0)
+      cursorSec = Math.max(cursorSec, startSec + durationSec)
+      if (!hasExplicitStartSec && nextTrack?.id) {
+        persistedEntries.push({
+          itemId: String(nextTrack.id),
+          startSec
+        })
+      }
+      return nextTrack
+    })
+    return {
+      tracks: nextTracks,
+      persistedEntries
+    }
+  }
+
   const handleBpmBatchReady = (_e: unknown, eventPayload: any) => {
     const results = Array.isArray(eventPayload?.results) ? eventPayload.results : []
     if (!results.length) return
@@ -352,6 +378,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     }
     mixtapeItemsLoading.value = true
     try {
+      resetMixtapeGlobalTempoState(playlistId)
       const result = await window.electron.ipcRenderer.invoke('mixtape:list', {
         playlistId
       })
@@ -368,9 +395,25 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
       const removedPaths = Array.isArray(result?.recovery?.removedPaths)
         ? normalizeUniquePaths(result.recovery.removedPaths)
         : []
-      tracks.value = rawItems.map((item: any, index: number) =>
+      const parsedTracks = rawItems.map((item: any, index: number) =>
         parseSnapshot(item, index, t('tracks.unknownTrack'))
       )
+      const { tracks: hydratedTracks, persistedEntries } =
+        materializeSequentialTrackStartSecs(parsedTracks)
+      tracks.value = hydratedTracks
+      if (persistedEntries.length > 0 && window?.electron?.ipcRenderer?.invoke) {
+        void window.electron.ipcRenderer
+          .invoke('mixtape:update-track-start-sec', {
+            entries: persistedEntries
+          })
+          .catch((error: unknown) => {
+            console.error('[mixtape] persist generated track start sec failed', {
+              playlistId,
+              count: persistedEntries.length,
+              error
+            })
+          })
+      }
       await loadProjectGlobalTempoEnvelope(playlistId)
       pruneStemRuntimeProgressByTracks(tracks.value)
       const stemMode = FIXED_MIXTAPE_STEM_MODE
