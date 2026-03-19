@@ -23,6 +23,7 @@ import {
   mapTrackBpmYPercentToValue
 } from '@renderer/composables/mixtape/trackTempoVisual'
 import { buildTrackRuntimeTempoSnapshot } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
+import { roundTrackTempoSec } from '@renderer/composables/mixtape/trackTempoModel'
 import type { MixtapeBpmPoint, MixtapeTrack } from '@renderer/composables/mixtape/types'
 
 const props = defineProps<{
@@ -53,6 +54,7 @@ type PointDot = {
   index: number
   xPx: number
   y: number
+  yPx: number
   bpm: number
   labelPlacement: 'above' | 'below'
   labelAlign: 'center' | 'left' | 'right'
@@ -62,6 +64,7 @@ type PointDot = {
 
 type ProjectedTrackGridLine = {
   key: string
+  sec: number
   leftPx: number
   level: 'bar' | 'beat4' | 'beat'
 }
@@ -108,6 +111,14 @@ const resolveTimelineSecByLocalXPx = (xPx: number) => {
   )
 }
 
+const resolveRoundedTimelineSec = (sec: number) =>
+  roundTrackTempoSec(clampNumber(Number(sec) || 0, 0, Math.max(0, timelineDurationSec.value)))
+
+const plotHeightPx = computed(() => Math.max(1, Math.max(0, Number(props.heightPx) || 0) - 2))
+
+const resolvePlotYPx = (yPercent: number) =>
+  Number(((clampNumber(Number(yPercent) || 0, 0, 100) / 100) * plotHeightPx.value).toFixed(3))
+
 const effectivePoints = computed(() =>
   normalizeMixtapeGlobalBpmEnvelopePoints(
     mixtapeGlobalTempoEnvelope.value,
@@ -132,12 +143,13 @@ const bpmPolyline = computed(() => {
   return effectivePoints.value
     .map((point) => {
       const x = resolveTimelineXPx(Number(point.sec)).toFixed(3)
-      const y = mapTrackBpmToYPercent(
+      const yPercent = mapTrackBpmToYPercent(
         Number(point.bpm),
         visualRange.value.baseBpm,
         visualRange.value.minBpm,
         visualRange.value.maxBpm
-      ).toFixed(3)
+      )
+      const y = resolvePlotYPx(yPercent).toFixed(3)
       return `${x},${y}`
     })
     .join(' ')
@@ -159,6 +171,7 @@ const pointDots = computed<PointDot[]>(() =>
       index,
       xPx,
       y,
+      yPx: resolvePlotYPx(y),
       bpm: Number(point.bpm),
       labelPlacement: y <= 16 ? 'below' : 'above',
       labelAlign: xRatio <= 0.08 ? 'left' : xRatio >= 0.92 ? 'right' : 'center',
@@ -183,6 +196,24 @@ const visibleGridLines = computed<ProjectedTrackGridLine[]>(() => {
     bar: 2
   } as const
   const linesByPixel = new Map<string, ProjectedTrackGridLine>()
+  const pushGridLine = (line: ProjectedTrackGridLine) => {
+    const dedupeKey = `${Math.round(line.leftPx)}`
+    const previous = linesByPixel.get(dedupeKey)
+    if (!previous || linePriority[line.level] > linePriority[previous.level]) {
+      linesByPixel.set(dedupeKey, line)
+    }
+  }
+  const pushBoundaryGridLine = (sec: number) => {
+    const safeSec = resolveRoundedTimelineSec(sec)
+    if (safeSec < minSec - 0.0001 || safeSec > maxSec + 0.0001) return
+    const boundaryLine: ProjectedTrackGridLine = {
+      key: `boundary:bar:${Math.round(safeSec * 1000)}`,
+      sec: safeSec,
+      leftPx: resolveTimelineXPx(safeSec),
+      level: 'bar'
+    }
+    linesByPixel.set(`${Math.round(boundaryLine.leftPx)}`, boundaryLine)
+  }
 
   for (const track of props.tracks) {
     const startSec = Math.max(0, Number(track.startSec) || 0)
@@ -201,22 +232,62 @@ const visibleGridLines = computed<ProjectedTrackGridLine[]>(() => {
     for (const line of snapshot.visibleGridLines) {
       const timelineSec = startSec + Number(line.sec)
       if (timelineSec < minSec - 0.0001 || timelineSec > maxSec + 0.0001) continue
-      const leftPx = resolveTimelineXPx(timelineSec)
-      const dedupeKey = `${Math.round(leftPx)}`
-      const nextLine: ProjectedTrackGridLine = {
+      pushGridLine({
         key: `${track.id}:${line.level}:${Math.round(timelineSec * 1000)}`,
-        leftPx,
+        sec: resolveRoundedTimelineSec(timelineSec),
+        leftPx: resolveTimelineXPx(timelineSec),
         level: line.level
-      }
-      const previous = linesByPixel.get(dedupeKey)
-      if (!previous || linePriority[nextLine.level] > linePriority[previous.level]) {
-        linesByPixel.set(dedupeKey, nextLine)
-      }
+      })
     }
   }
 
+  pushBoundaryGridLine(0)
+  pushBoundaryGridLine(timelineDurationSec.value)
+
   return Array.from(linesByPixel.values()).sort((left, right) => left.leftPx - right.leftPx)
 })
+
+const resolveSnappedTimelineSec = (
+  sec: number,
+  range?: {
+    minSec?: number
+    maxSec?: number
+  }
+) => {
+  const safeDurationSec = Math.max(0, timelineDurationSec.value)
+  const safeMinSec = clampNumber(Number(range?.minSec) || 0, 0, safeDurationSec)
+  const safeMaxSec = clampNumber(
+    Number.isFinite(Number(range?.maxSec)) ? Number(range?.maxSec) : safeDurationSec,
+    safeMinSec,
+    safeDurationSec
+  )
+  const safeSec = clampNumber(Number(sec) || 0, safeMinSec, safeMaxSec)
+  const candidateMap = new Map<number, number>()
+  const pushCandidate = (candidateSec: number) => {
+    const roundedSec = roundTrackTempoSec(candidateSec)
+    if (roundedSec < safeMinSec - 0.0001 || roundedSec > safeMaxSec + 0.0001) return
+    candidateMap.set(Math.round(roundedSec * 10000), roundedSec)
+  }
+
+  for (const line of visibleGridLines.value) {
+    pushCandidate(line.sec)
+  }
+
+  const candidates = Array.from(candidateMap.values())
+  if (!candidates.length) return roundTrackTempoSec(safeSec)
+
+  let nearest = candidates[0]
+  let minDiff = Math.abs(nearest - safeSec)
+  for (let index = 1; index < candidates.length; index += 1) {
+    const candidate = candidates[index]
+    const diff = Math.abs(candidate - safeSec)
+    if (diff < minDiff) {
+      nearest = candidate
+      minDiff = diff
+    }
+  }
+  return roundTrackTempoSec(clampNumber(nearest, safeMinSec, safeMaxSec))
+}
 
 const isEdited = computed(
   () => JSON.stringify(effectivePoints.value) !== JSON.stringify(flatReferencePoints.value)
@@ -383,6 +454,7 @@ const handleStageMouseDown = (event: MouseEvent) => {
   if (!shouldRender.value) return
   const point = resolveStagePointFromMouse(event)
   if (!point) return
+  point.sec = resolveSnappedTimelineSec(point.sec)
   const beforePoints = clonePoints(effectivePoints.value)
   const nextPoints = normalizeMixtapeGlobalBpmEnvelopePoints(
     [...effectivePoints.value, point],
@@ -417,7 +489,12 @@ const handleWindowMouseMove = (event: MouseEvent) => {
   const isBoundary =
     currentDragState.pointIndex === 0 || currentDragState.pointIndex === nextPoints.length - 1
   if (!isBoundary) {
-    targetPoint.sec = Number(resolveTimelineSecByLocalXPx(xPx).toFixed(4))
+    const prevPoint = nextPoints[currentDragState.pointIndex - 1]
+    const nextPoint = nextPoints[currentDragState.pointIndex + 1]
+    targetPoint.sec = resolveSnappedTimelineSec(resolveTimelineSecByLocalXPx(xPx), {
+      minSec: prevPoint?.sec,
+      maxSec: nextPoint?.sec
+    })
   }
   targetPoint.bpm = Number(
     mapTrackBpmYPercentToValue(
@@ -504,15 +581,15 @@ onBeforeUnmount(() => {
 
       <svg
         class="timeline-master-bpm__svg"
-        :viewBox="`0 0 ${Math.max(1, timelineContentWidth)} 100`"
+        :viewBox="`0 0 ${Math.max(1, timelineContentWidth)} ${Math.max(1, plotHeightPx)}`"
         preserveAspectRatio="none"
       >
         <line
           class="timeline-master-bpm__midline"
           :x1="TIMELINE_SIDE_PADDING_PX"
-          y1="50"
+          :y1="resolvePlotYPx(50)"
           :x2="Math.max(TIMELINE_SIDE_PADDING_PX, timelineContentWidth - TIMELINE_SIDE_PADDING_PX)"
-          y2="50"
+          :y2="resolvePlotYPx(50)"
         ></line>
         <polyline class="timeline-master-bpm__line" :points="bpmPolyline"></polyline>
       </svg>
@@ -533,7 +610,7 @@ onBeforeUnmount(() => {
           class="timeline-master-bpm__point"
           :class="[{ 'is-boundary': point.isBoundary }, point.edge ? `is-edge-${point.edge}` : '']"
           type="button"
-          :style="{ left: `${point.xPx}px`, top: `${point.y}%` }"
+          :style="{ left: `${point.xPx}px`, top: `${point.yPx}px` }"
           @mousedown.stop.prevent="resolvePointIndexFromEvent($event, point.index)"
           @dblclick.stop.prevent="handlePointDoubleClick(point.index)"
           @contextmenu.stop.prevent="handlePointContextMenu(point.index, $event)"
@@ -635,6 +712,15 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
+.timeline-master-bpm__svg {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.timeline-master-bpm__points {
+  z-index: 3;
+}
+
 .timeline-master-bpm__grid-line {
   position: absolute;
   top: 0;
@@ -696,19 +782,16 @@ onBeforeUnmount(() => {
   position: absolute;
   width: 10px;
   height: 10px;
+  padding: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
   transform: translate(-50%, -50%);
   border-radius: 999px;
   border: 1px solid rgba(0, 0, 0, 0.65);
   background: rgba(255, 255, 255, 0.96);
   box-shadow: none;
-}
-
-.timeline-master-bpm__point.is-edge-start {
-  transform: translate(0, -50%);
-}
-
-.timeline-master-bpm__point.is-edge-end {
-  transform: translate(-100%, -50%);
+  overflow: visible;
 }
 
 .timeline-master-bpm__point.is-boundary {
