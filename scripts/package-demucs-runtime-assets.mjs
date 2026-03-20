@@ -100,6 +100,18 @@ const readRuntimeMeta = (runtimeDir) => {
   }
 }
 
+const resolveRuntimePythonRelativePath = (runtimeDir) => {
+  const candidates = platformKey.startsWith('win32')
+    ? ['python.exe', 'Scripts/python.exe']
+    : ['bin/python3', 'bin/python']
+  for (const relativePath of candidates) {
+    const absolutePath = path.join(runtimeDir, ...relativePath.split('/'))
+    if (!fs.existsSync(absolutePath)) continue
+    return relativePath
+  }
+  throw new Error(`[demucs-runtime-package] Python entry missing in runtime: ${runtimeDir}`)
+}
+
 const createArchive = (params) => {
   const archivePath = params.archivePath
   if (fs.existsSync(archivePath)) {
@@ -131,6 +143,7 @@ for (const profileName of profileNames) {
   const archiveStat = fs.statSync(archivePath)
   const archiveSha256 = await computeFileSha256(archivePath)
   const runtimeMeta = readRuntimeMeta(runtimeDir)
+  const pythonRelativePath = resolveRuntimePythonRelativePath(runtimeDir)
   assets.push({
     platform: platformKey,
     profile: profileName,
@@ -140,7 +153,7 @@ for (const profileName of profileNames) {
     archiveUrl: `https://github.com/${githubOwner}/${githubRepo}/releases/download/${releaseTag}/${archiveName}`,
     archiveSha256,
     archiveSize: archiveStat.size,
-    pythonRelativePath: platformKey.startsWith('win32') ? 'python.exe' : 'bin/python3',
+    pythonRelativePath,
     generatedAt: new Date().toISOString(),
     torchVersion: String(runtimeMeta?.torchVersion || runtimeMeta?.probe?.torch_version || '')
   })

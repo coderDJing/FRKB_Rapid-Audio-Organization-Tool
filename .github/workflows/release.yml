@@ -114,8 +114,11 @@ jobs:
           $required = @(
             "demucs/bootstrap/mixtape_demucs_bootstrap.py",
             "demucs/models/htdemucs.yaml",
-            "demucs/models/955717e8-8726e21a.th",
-            "demucs/win32-x64/runtime-cpu/python.exe"
+            "demucs/models/955717e8-8726e21a.th"
+          )
+          $pythonCandidates = @(
+            "demucs/win32-x64/runtime-cpu/python.exe",
+            "demucs/win32-x64/runtime-cpu/Scripts/python.exe"
           )
 
           $missing = @()
@@ -125,6 +128,12 @@ jobs:
               $missing += $relativePath
             }
           }
+          $resolvedPython = $pythonCandidates |
+            Where-Object { Test-Path (Join-Path $resourcesRoot $_) } |
+            Select-Object -First 1
+          if (-not $resolvedPython) {
+            $missing += "demucs/win32-x64/runtime-cpu/{python.exe|Scripts/python.exe}"
+          }
 
           if ($missing.Count -gt 0) {
             Write-Error "Missing packaged Demucs resources (Windows):"
@@ -132,6 +141,7 @@ jobs:
             exit 1
           }
 
+          Write-Host "Windows Demucs Python path: $resolvedPython"
           Write-Host "Packaged Demucs resources verified (Windows)."
 
       # 不再复制 rc.yml，严格遵循 GitHub provider 读取 latest.yml / latest-mac.yml
