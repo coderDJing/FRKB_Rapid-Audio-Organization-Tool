@@ -261,12 +261,20 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: demucs-runtime-darwin-x64
-          path: vendor/demucs
+          path: vendor/demucs/darwin-x64
+
+      - name: Normalize Demucs x64 runtime artifact layout
+        run: |
+          set -euo pipefail
+          if [ -d "vendor/demucs/darwin-x64/darwin-x64" ]; then
+            find "vendor/demucs/darwin-x64/darwin-x64" -mindepth 1 -maxdepth 1 -exec mv {} "vendor/demucs/darwin-x64/" \;
+            rmdir "vendor/demucs/darwin-x64/darwin-x64"
+          fi
 
       - name: Show prepared Demucs runtimes (macOS)
         run: |
           set -euo pipefail
-          find vendor/demucs -maxdepth 3 -type f | sort | grep -E 'darwin-(arm64|x64)/runtime|models/htdemucs.yaml|bootstrap/mixtape_demucs_bootstrap.py' || true
+          find vendor/demucs -maxdepth 4 -type f | sort | grep -E 'darwin-(arm64|x64)/runtime|models/htdemucs.yaml|bootstrap/mixtape_demucs_bootstrap.py' || true
 
       - name: Typecheck (vue-tsc)
         run: npx vue-tsc --noEmit
