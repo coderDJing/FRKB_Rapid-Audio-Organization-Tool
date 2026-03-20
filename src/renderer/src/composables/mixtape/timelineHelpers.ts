@@ -25,6 +25,7 @@ import {
   resolveFirstBeatTimelineSec,
   resolveTempoRatioByBpm
 } from '@renderer/composables/mixtape/mixxxSyncModel'
+import { resolveRoundedTrackLocalPx } from '@renderer/composables/mixtape/timelinePixelMath'
 import { buildTrackRuntimeTempoSnapshot } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
 import { buildFlatTrackBpmEnvelope } from '@renderer/composables/mixtape/trackTempoModel'
 import {
@@ -508,16 +509,17 @@ export const createTimelineHelpersModule = (ctx: any) => {
     width: number,
     height: number,
     track: MixtapeTrack,
-    durationSec: number,
-    trackWidth: number,
+    trackStartSec: number,
+    renderPxPerSec: number,
     barBeatOffset: number,
     range: { start: number; end: number },
     barWidth: number
   ) => {
     const startX = range.start
     const endX = range.end
-    const safeDurationSec = Math.max(0, Number(durationSec) || 0)
-    const safeTrackWidth = Math.max(0, Number(trackWidth) || 0)
+    const safeTrackStartSec = Math.max(0, Number(trackStartSec) || 0)
+    const safeRenderPxPerSec = Math.max(0, Number(renderPxPerSec) || 0)
+    const safeDurationSec = Math.max(0, Number(resolveTrackDurationSeconds(track)) || 0)
     if (safeDurationSec <= 0) return
     const sourceDurationSec = Math.max(0, Number(resolveTrackSourceDurationSeconds(track)) || 0)
     const snapshot = buildTrackRuntimeTempoSnapshot({
@@ -531,7 +533,11 @@ export const createTimelineHelpersModule = (ctx: any) => {
 
     context.save()
     for (const line of visibleGridLines) {
-      const rawX = (line.sec / safeDurationSec) * safeTrackWidth
+      const rawX = resolveRoundedTrackLocalPx({
+        trackStartSec: safeTrackStartSec,
+        localSec: line.sec,
+        pxPerSec: safeRenderPxPerSec
+      })
       if (rawX < startX - 64 || rawX > endX + 64) continue
       const x = Math.round(rawX - startX)
 

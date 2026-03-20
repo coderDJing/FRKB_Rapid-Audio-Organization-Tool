@@ -39,7 +39,17 @@ export type SerializedWorkerTrackTempoSnapshot = {
   firstBeatSourceSec: number
   beatSourceSec: number
   barBeatOffset: number
+  mappingMode?: 'tempoEnvelope' | 'masterGrid'
+  trackStartSec?: number
+  masterGridFallbackBpm?: number
+  masterGridPoints?: Array<{ sec: number; bpm: number }>
   controlPoints: Array<{ sec: number; bpm: number; sourceSec?: number; allowOffGrid?: boolean }>
+}
+
+export type SerializedWorkerVisibleGridLine = {
+  sec: number
+  sourceSec: number
+  level: 'bar' | 'beat4' | 'beat'
 }
 
 export type RenderTilePayload = {
@@ -75,6 +85,8 @@ export type RenderFrameTrack = {
   laneOffsetY?: number
   laneHeight?: number
   tempoSnapshot: SerializedWorkerTrackTempoSnapshot
+  visibleGridLines: SerializedWorkerVisibleGridLine[]
+  visibleGridSignature: string
 }
 
 export type RenderFramePayload = {

@@ -278,8 +278,8 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
             visibleWidth,
             subLane.height,
             track,
-            resolveTrackDurationSeconds(track),
-            trackWidth,
+            Number(item.startSec) || 0,
+            resolveRenderPxPerSec(zoomValue),
             Number(track.barBeatOffset) || 0,
             { start: localStart, end: localEnd },
             resolveGridBarWidth(zoomValue)

@@ -29,6 +29,10 @@ export type TrackTimeMapInput = {
   firstBeatSourceSec: number
   beatSourceSec: number
   barBeatOffset?: number
+  mappingMode?: 'tempoEnvelope' | 'masterGrid'
+  trackStartSec?: number
+  masterGridFallbackBpm?: number
+  masterGridPoints?: MixtapeBpmPoint[]
 }
 
 export type TrackTimeMap = {
@@ -147,7 +151,8 @@ export const resolveTrackTempoRatioAtSec = (params: {
 type TempoRatioIntegralSegment = {
   startSec: number
   endSec: number
-  ratio: number
+  startRatio: number
+  endRatio: number
   integralBefore: number
   integralAfter: number
 }
@@ -171,6 +176,56 @@ type TempoRatioIntegralCache =
       segments: TempoRatioIntegralSegment[]
       segmentEndSecs: number[]
     }
+
+const resolveLinearTempoRatioIntegral = (params: {
+  startRatio: number
+  endRatio: number
+  spanSec: number
+  deltaSec: number
+}) => {
+  const spanSec = Math.max(BPM_POINT_SEC_EPSILON, Number(params.spanSec) || 0)
+  const deltaSec = clampTrackTempoNumber(Number(params.deltaSec) || 0, 0, spanSec)
+  const startRatio = Number(params.startRatio) || 0
+  const endRatio = Number(params.endRatio) || startRatio
+  const ratioSlope = (endRatio - startRatio) / spanSec
+  return startRatio * deltaSec + 0.5 * ratioSlope * deltaSec * deltaSec
+}
+
+const resolveLinearTempoRatioDeltaSec = (params: {
+  startRatio: number
+  endRatio: number
+  spanSec: number
+  targetIntegral: number
+}) => {
+  const spanSec = Math.max(BPM_POINT_SEC_EPSILON, Number(params.spanSec) || 0)
+  const targetIntegral = Math.max(0, Number(params.targetIntegral) || 0)
+  const startRatio = Number(params.startRatio) || 0
+  const endRatio = Number(params.endRatio) || startRatio
+  const ratioSlope = (endRatio - startRatio) / spanSec
+  if (Math.abs(ratioSlope) <= 1e-9) {
+    return clampTrackTempoNumber(
+      targetIntegral / Math.max(BPM_POINT_SEC_EPSILON, startRatio),
+      0,
+      spanSec
+    )
+  }
+  const a = 0.5 * ratioSlope
+  const b = startRatio
+  const c = -targetIntegral
+  const discriminant = Math.max(0, b * b - 4 * a * c)
+  const sqrtDiscriminant = Math.sqrt(discriminant)
+  const candidates = [(-b + sqrtDiscriminant) / (2 * a), (-b - sqrtDiscriminant) / (2 * a)]
+  for (const candidate of candidates) {
+    if (Number.isFinite(candidate) && candidate >= -BPM_POINT_SEC_EPSILON) {
+      return clampTrackTempoNumber(candidate, 0, spanSec)
+    }
+  }
+  return clampTrackTempoNumber(
+    targetIntegral / Math.max(BPM_POINT_SEC_EPSILON, startRatio),
+    0,
+    spanSec
+  )
+}
 
 export const buildTempoRatioIntegralCache = (params: {
   points: MixtapeBpmPoint[]
@@ -224,14 +279,19 @@ export const buildTempoRatioIntegralCache = (params: {
     if (endSec <= startSec) continue
     const leftRatio = clampTrackTempoNumber(left.bpm / originalBpm, 0.25, 4)
     const rightRatio = clampTrackTempoNumber(right.bpm / originalBpm, 0.25, 4)
-    const ratio = (leftRatio + rightRatio) / 2
     const deltaSec = endSec - startSec
     const integralBefore = totalIntegral
-    totalIntegral += ratio * deltaSec
+    totalIntegral += resolveLinearTempoRatioIntegral({
+      startRatio: leftRatio,
+      endRatio: rightRatio,
+      spanSec: deltaSec,
+      deltaSec
+    })
     segments.push({
       startSec,
       endSec,
-      ratio,
+      startRatio: leftRatio,
+      endRatio: rightRatio,
       integralBefore,
       integralAfter: totalIntegral
     })
@@ -250,7 +310,8 @@ export const buildTempoRatioIntegralCache = (params: {
       segments.push({
         startSec,
         endSec,
-        ratio: lastRatio,
+        startRatio: lastRatio,
+        endRatio: lastRatio,
         integralBefore,
         integralAfter: totalIntegral
       })
@@ -323,7 +384,15 @@ const resolveTempoRatioIntegralAtLocalSec = (cache: TempoRatioIntegralCache, loc
     segment.endSec - segment.startSec,
     Math.max(0, safeLocalSec - segment.startSec)
   )
-  return segment.integralBefore + segment.ratio * deltaSec
+  return (
+    segment.integralBefore +
+    resolveLinearTempoRatioIntegral({
+      startRatio: segment.startRatio,
+      endRatio: segment.endRatio,
+      spanSec: segment.endSec - segment.startSec,
+      deltaSec
+    })
+  )
 }
 
 const integrateTempoRatioToSec = (params: {
@@ -358,7 +427,12 @@ const integrateTempoRatioToSec = (params: {
     if (segmentEnd <= segmentStart) continue
     const leftRatio = clampTrackTempoNumber(left.bpm / originalBpm, 0.25, 4)
     const rightRatio = clampTrackTempoNumber(right.bpm / originalBpm, 0.25, 4)
-    integral += ((leftRatio + rightRatio) / 2) * (segmentEnd - segmentStart)
+    integral += resolveLinearTempoRatioIntegral({
+      startRatio: leftRatio,
+      endRatio: rightRatio,
+      spanSec: Math.max(BPM_POINT_SEC_EPSILON, right.sec - left.sec),
+      deltaSec: segmentEnd - segmentStart
+    })
     if (right.sec >= safeEndSec - BPM_POINT_SEC_EPSILON) break
   }
   const lastPoint = points[points.length - 1]
@@ -409,11 +483,23 @@ export const resolveTrackTimelineDurationFromSource = (params: {
     if (span <= BPM_POINT_SEC_EPSILON) continue
     const leftRatio = clampTrackTempoNumber(left.bpm / originalBpm, 0.25, 4)
     const rightRatio = clampTrackTempoNumber(right.bpm / originalBpm, 0.25, 4)
-    const avgRatio = (leftRatio + rightRatio) / 2
-    const segmentIntegral = avgRatio * span
+    const segmentIntegral = resolveLinearTempoRatioIntegral({
+      startRatio: leftRatio,
+      endRatio: rightRatio,
+      spanSec: span,
+      deltaSec: span
+    })
     if (accumulated + segmentIntegral >= sourceDurationSec - BPM_POINT_SEC_EPSILON) {
       const remaining = Math.max(0, sourceDurationSec - accumulated)
-      return roundTrackTempoSec(left.sec + remaining / Math.max(BPM_POINT_SEC_EPSILON, avgRatio))
+      return roundTrackTempoSec(
+        left.sec +
+          resolveLinearTempoRatioDeltaSec({
+            startRatio: leftRatio,
+            endRatio: rightRatio,
+            spanSec: span,
+            targetIntegral: remaining
+          })
+      )
     }
     accumulated += segmentIntegral
   }
@@ -557,7 +643,12 @@ export const resolveTrackLocalSecAtSourceTime = (params: {
     }
     const localSec =
       segment.startSec +
-      (targetIntegral - segment.integralBefore) / Math.max(BPM_POINT_SEC_EPSILON, segment.ratio)
+      resolveLinearTempoRatioDeltaSec({
+        startRatio: segment.startRatio,
+        endRatio: segment.endRatio,
+        spanSec: segment.endSec - segment.startSec,
+        targetIntegral: targetIntegral - segment.integralBefore
+      })
     return roundTrackTempoSec(clampTrackTempoNumber(localSec, segment.startSec, segment.endSec))
   }
   let leftSec = 0

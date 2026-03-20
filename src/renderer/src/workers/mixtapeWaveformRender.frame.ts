@@ -29,6 +29,7 @@ type CreateFrameRendererOptions = {
     width: number,
     height: number,
     track: RenderFramePayload['tracks'][number],
+    renderPxPerSec: number,
     range: { start: number; end: number },
     barOnly: boolean,
     showBeat4: boolean,
@@ -256,7 +257,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
             Number(track.startX) || 0
           )}:${Math.round((Number(track.startSec) || 0) * 1000)}:${track.laneIndex}:${Math.round(
             Number(track.laneOffsetY) || 0
-          )}:${Math.round(Number(track.laneHeight) || payload.laneHeight)}:${track.tempoSnapshot.signature}`
+          )}:${Math.round(Number(track.laneHeight) || payload.laneHeight)}:${track.tempoSnapshot.signature}:${track.visibleGridSignature || ''}`
       )
       .join('|')
     return [
@@ -370,6 +371,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
           visibleWidth,
           trackLaneHeight,
           track,
+          payload.renderPxPerSec,
           { start: localStart, end: localEnd },
           barOnlyGrid,
           showBeat4Grid,
@@ -881,6 +883,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
             Math.max(0, localEnd - localStart),
             trackLaneHeight,
             track,
+            payload.renderPxPerSec,
             { start: localStart, end: localEnd },
             barOnlyGrid,
             showBeat4Grid,

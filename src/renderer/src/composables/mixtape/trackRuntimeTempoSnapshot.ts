@@ -12,9 +12,12 @@ import {
   resolveTrackGridSourceBpm
 } from '@renderer/composables/mixtape/trackTempoModel'
 import {
-  projectMixtapeGlobalBpmEnvelopeToTrack,
-  sampleMixtapeGlobalBpmAtSec
-} from '@renderer/composables/mixtape/mixtapeGlobalTempoModel'
+  buildMixtapeMasterGridSignature,
+  buildProjectedMasterGridTempoPoints,
+  createMixtapeMasterGrid,
+  resolveTrackTimelineDurationOnMasterGrid,
+  sampleMixtapeMasterGridBpmAtSec
+} from '@renderer/composables/mixtape/mixtapeMasterGrid'
 import {
   isMixtapeGlobalTempoReady,
   mixtapeGlobalTempoEnvelope
@@ -68,6 +71,9 @@ const buildGridOverrideSignature = (snapshot: {
     Math.round(snapshot.originalBpm * 1000)
   ].join('|')
 
+const buildTrackStartSignature = (track: Pick<MixtapeTrack, 'startSec'>) =>
+  Math.round((Math.max(0, Number(track.startSec) || 0) || 0) * 1000)
+
 const resolveFallbackTimelineDuration = (track: MixtapeTrack, sourceDurationSec: number) => {
   const targetBpm = Number(track.bpm)
   const originalBpm = Number(track.originalBpm)
@@ -87,10 +93,18 @@ const resolveFallbackTimelineDuration = (track: MixtapeTrack, sourceDurationSec:
 }
 
 export const buildTrackTimeMapSignature = (snapshot: TrackRuntimeTempoSnapshot) =>
-  [
-    buildBpmEnvelopeSignature(snapshot.timeMapInput.controlPoints),
-    buildGridOverrideSignature(snapshot)
-  ].join('|')
+  snapshot.timeMapInput.mappingMode === 'masterGrid'
+    ? [
+        'masterGrid',
+        buildMixtapeMasterGridSignature(snapshot.timeMapInput.masterGridPoints || []),
+        buildTrackStartSignature(snapshot.track),
+        buildGridOverrideSignature(snapshot)
+      ].join('|')
+    : [
+        'tempoEnvelope',
+        buildBpmEnvelopeSignature(snapshot.timeMapInput.controlPoints),
+        buildGridOverrideSignature(snapshot)
+      ].join('|')
 
 export const serializeTrackRuntimeTempoSnapshot = (
   snapshot: TrackRuntimeTempoSnapshot
@@ -104,6 +118,15 @@ export const serializeTrackRuntimeTempoSnapshot = (
   firstBeatSourceSec: snapshot.firstBeatSourceSec,
   beatSourceSec: snapshot.timeMapInput.beatSourceSec,
   barBeatOffset: snapshot.barBeatOffset,
+  mappingMode: snapshot.timeMapInput.mappingMode,
+  trackStartSec: snapshot.timeMapInput.trackStartSec,
+  masterGridFallbackBpm: snapshot.timeMapInput.masterGridFallbackBpm,
+  masterGridPoints: Array.isArray(snapshot.timeMapInput.masterGridPoints)
+    ? snapshot.timeMapInput.masterGridPoints.map((point) => ({
+        sec: Number(point.sec),
+        bpm: Number(point.bpm)
+      }))
+    : undefined,
   controlPoints: snapshot.timeMapInput.controlPoints.map((point) => ({
     sec: Number(point.sec),
     bpm: Number(point.bpm),
@@ -129,33 +152,50 @@ export const buildTrackRuntimeTempoSnapshot = (params: {
   const originalBpm =
     Number(track.originalBpm) || Number(track.gridBaseBpm) || Number(track.bpm) || fallbackTrackBpm
   const hasExplicitRawPoints = params.rawPoints !== undefined && params.rawPoints !== null
-  const shouldUseGlobalTempo = !hasExplicitRawPoints && isMixtapeGlobalTempoReady()
-  const projectedGlobalTempo = shouldUseGlobalTempo
-    ? projectMixtapeGlobalBpmEnvelopeToTrack({
-        track,
-        globalPoints: mixtapeGlobalTempoEnvelope.value,
-        sourceDurationSec,
-        originalBpm,
-        fallbackBpm: fallbackTrackBpm
-      })
-    : null
+  const shouldUseMasterGrid = !hasExplicitRawPoints && isMixtapeGlobalTempoReady()
+  const trackStartSec = Math.max(0, Number(track.startSec) || 0)
+  const beatSourceSec = 60 / Math.max(1, gridSourceBpm)
+  const masterGrid =
+    shouldUseMasterGrid && mixtapeGlobalTempoEnvelope.value.length >= 2
+      ? createMixtapeMasterGrid({
+          points: mixtapeGlobalTempoEnvelope.value,
+          fallbackBpm:
+            Number(mixtapeGlobalTempoEnvelope.value[0]?.bpm) ||
+            Number(track.bpm) ||
+            fallbackTrackBpm
+        })
+      : null
   const durationSec =
     typeof params.durationSec === 'number' &&
     Number.isFinite(params.durationSec) &&
     params.durationSec > 0
       ? Math.max(0, params.durationSec)
-      : projectedGlobalTempo
-        ? projectedGlobalTempo.durationSec
+      : masterGrid
+        ? resolveTrackTimelineDurationOnMasterGrid({
+            grid: masterGrid,
+            trackStartSec,
+            sourceDurationSec,
+            beatSourceSec
+          })
         : resolveFallbackTimelineDuration(track, sourceDurationSec)
-  const baseBpm = projectedGlobalTempo
-    ? sampleMixtapeGlobalBpmAtSec(
+  const baseBpm = masterGrid
+    ? sampleMixtapeMasterGridBpmAtSec(
         mixtapeGlobalTempoEnvelope.value,
-        Number(track.startSec) || 0,
-        projectedGlobalTempo.bpmAtStart
+        trackStartSec,
+        fallbackTrackBpm
       )
     : fallbackTrackBpm
-  const controlPoints = projectedGlobalTempo
-    ? normalizeTrackBpmEnvelopePoints(projectedGlobalTempo.points, durationSec, baseBpm)
+  const controlPoints = masterGrid
+    ? normalizeTrackBpmEnvelopePoints(
+        buildProjectedMasterGridTempoPoints({
+          points: mixtapeGlobalTempoEnvelope.value,
+          trackStartSec,
+          durationSec,
+          fallbackBpm: baseBpm
+        }),
+        durationSec,
+        baseBpm
+      )
     : params.rawPoints !== undefined && params.rawPoints !== null
       ? normalizeTrackBpmEnvelopePoints(params.rawPoints, durationSec, baseBpm)
       : buildFlatTrackBpmEnvelope(durationSec, baseBpm)
@@ -166,8 +206,12 @@ export const buildTrackRuntimeTempoSnapshot = (params: {
     originalBpm,
     fallbackBpm: baseBpm,
     firstBeatSourceSec: Math.max(0, Number(track.firstBeatMs) || 0) / 1000,
-    beatSourceSec: 60 / Math.max(1, gridSourceBpm),
-    barBeatOffset: Number(track.barBeatOffset) || 0
+    beatSourceSec,
+    barBeatOffset: Number(track.barBeatOffset) || 0,
+    mappingMode: masterGrid ? 'masterGrid' : 'tempoEnvelope',
+    trackStartSec: trackStartSec,
+    masterGridFallbackBpm: masterGrid ? masterGrid.tailBpm : undefined,
+    masterGridPoints: masterGrid ? mixtapeGlobalTempoEnvelope.value : undefined
   }
   const timeMap = createTrackTimeMap(timeMapInput)
   const visibleGridLines = timeMap.buildVisibleGridLines(Number(params.zoom) || 0)

@@ -131,7 +131,17 @@ export type SerializedTrackTempoSnapshot = {
   firstBeatSourceSec: number
   beatSourceSec: number
   barBeatOffset: number
+  mappingMode?: 'tempoEnvelope' | 'masterGrid'
+  trackStartSec?: number
+  masterGridFallbackBpm?: number
+  masterGridPoints?: MixtapeBpmPoint[]
   controlPoints: MixtapeBpmPoint[]
+}
+
+export type SerializedVisibleGridLine = {
+  sec: number
+  sourceSec: number
+  level: 'bar' | 'beat4' | 'beat'
 }
 
 export type MixtapeMuteSegment = {
@@ -209,6 +219,8 @@ export type TimelineRenderTrack = {
   laneOffsetY?: number
   laneHeight?: number
   tempoSnapshot: SerializedTrackTempoSnapshot
+  visibleGridLines: SerializedVisibleGridLine[]
+  visibleGridSignature: string
 }
 
 export type TimelineRenderPayload = {

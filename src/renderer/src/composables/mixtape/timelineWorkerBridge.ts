@@ -262,6 +262,17 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
     const renderStartX = Math.max(0, Math.floor(startX - RENDER_X_BUFFER_PX))
     const renderEndX = Math.max(renderStartX, Math.ceil(endX + RENDER_X_BUFFER_PX))
     const renderTracks: TimelineRenderTrack[] = []
+    const buildVisibleGridSignature = (
+      lines: Array<{ sec: number; sourceSec: number; level: string }>
+    ) =>
+      lines
+        .map(
+          (line) =>
+            `${line.level}:${Math.round((Number(line.sec) || 0) * 1000)}:${Math.round(
+              (Number(line.sourceSec) || 0) * 1000
+            )}`
+        )
+        .join('|')
     const snapshot = buildSequentialLayoutForZoom(zoomValue)
     forEachVisibleLayoutItem(snapshot, renderStartX, renderEndX, (item: any) => {
       const track = item.track
@@ -272,14 +283,19 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
       if (trackEndX < renderStartX || trackStartX > renderEndX) return
       const durationSeconds = resolveTrackSourceDurationSeconds(track)
       const timelineDurationSeconds = resolveTrackDurationSeconds(track)
-      const tempoSnapshot = serializeTrackRuntimeTempoSnapshot(
-        buildTrackRuntimeTempoSnapshot({
-          track,
-          sourceDurationSec: durationSeconds,
-          durationSec: timelineDurationSeconds,
-          zoom: zoomValue
-        })
-      )
+      const runtimeSnapshot = buildTrackRuntimeTempoSnapshot({
+        track,
+        sourceDurationSec: durationSeconds,
+        durationSec: timelineDurationSeconds,
+        zoom: zoomValue
+      })
+      const tempoSnapshot = serializeTrackRuntimeTempoSnapshot(runtimeSnapshot)
+      const visibleGridLines = runtimeSnapshot.visibleGridLines.map((line) => ({
+        sec: Number(line.sec),
+        sourceSec: Number(line.sourceSec),
+        level: line.level
+      }))
+      const visibleGridSignature = buildVisibleGridSignature(visibleGridLines)
       const waveformSources = resolveTrackWaveformSources(track)
       if (!waveformSources.length) return
       for (const waveformSource of waveformSources) {
@@ -302,7 +318,9 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
           laneIndex: item.laneIndex,
           laneOffsetY: subLane.offset,
           laneHeight: subLane.height,
-          tempoSnapshot
+          tempoSnapshot,
+          visibleGridLines,
+          visibleGridSignature
         })
       }
     })

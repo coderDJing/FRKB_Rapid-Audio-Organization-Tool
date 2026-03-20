@@ -1,4 +1,9 @@
 import { resolveTempoRatioByBpm } from '@renderer/composables/mixtape/mixxxSyncModel'
+import {
+  buildProjectedMasterGridTempoPoints,
+  mapMixtapeMasterGridTimelineSec,
+  sampleMixtapeMasterGridBpmAtSec
+} from '@renderer/composables/mixtape/mixtapeMasterGrid'
 import { resolveTrackTimelineDurationFromSource } from '@renderer/composables/mixtape/trackTimeMapCore'
 import {
   BPM_MIN_VALUE,
@@ -8,8 +13,6 @@ import {
   roundTrackTempoSec
 } from '@renderer/composables/mixtape/trackTempoModel'
 import type { MixtapeBpmPoint, MixtapeTrack } from '@renderer/composables/mixtape/types'
-
-const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
 const normalizeBpm = (value: unknown) => {
   const numeric = Number(value)
@@ -74,24 +77,15 @@ export const sampleMixtapeGlobalBpmAtSec = (
   points: MixtapeBpmPoint[],
   sec: number,
   fallbackBpm: number
-) => {
-  if (!points.length) return Math.max(BPM_MIN_VALUE, Number(fallbackBpm) || 128)
-  const safeSec = Math.max(0, Number(sec) || 0)
-  if (safeSec <= points[0].sec + BPM_POINT_SEC_EPSILON) {
-    return Number(points[0].bpm) || fallbackBpm
-  }
-  for (let index = 1; index < points.length; index += 1) {
-    const current = points[index]
-    const previous = points[index - 1]
-    if (safeSec > current.sec + BPM_POINT_SEC_EPSILON) continue
-    const span = Math.max(BPM_POINT_SEC_EPSILON, Number(current.sec) - Number(previous.sec))
-    const ratio = clampNumber((safeSec - Number(previous.sec)) / span, 0, 1)
-    return Number(
-      (Number(previous.bpm) + (Number(current.bpm) - Number(previous.bpm)) * ratio).toFixed(4)
-    )
-  }
-  return Number(points[points.length - 1]?.bpm) || fallbackBpm
-}
+) => sampleMixtapeMasterGridBpmAtSec(points, sec, fallbackBpm)
+
+export const mapMixtapeGlobalTimelineSec = (params: {
+  fromPoints: MixtapeBpmPoint[]
+  toPoints: MixtapeBpmPoint[]
+  sec: number
+  fromFallbackBpm: number
+  toFallbackBpm: number
+}) => mapMixtapeMasterGridTimelineSec(params)
 
 const resolveProjectedTrackDurationFallback = (params: {
   startBpm: number
@@ -110,35 +104,11 @@ const resolveProjectedTrackDurationFallback = (params: {
 }
 
 const buildProjectedTrackEnvelopePoints = (params: {
-  globalPoints: MixtapeBpmPoint[]
+  points: MixtapeBpmPoint[]
   trackStartSec: number
   durationSec: number
   fallbackBpm: number
-}) => {
-  const startSec = Math.max(0, Number(params.trackStartSec) || 0)
-  const durationSec = Math.max(0, Number(params.durationSec) || 0)
-  const endSec = roundTrackTempoSec(startSec + durationSec)
-  const points = [
-    {
-      sec: 0,
-      bpm: sampleMixtapeGlobalBpmAtSec(params.globalPoints, startSec, params.fallbackBpm)
-    }
-  ]
-  for (const point of params.globalPoints) {
-    const absoluteSec = Number(point.sec)
-    if (absoluteSec <= startSec + BPM_POINT_SEC_EPSILON) continue
-    if (absoluteSec >= endSec - BPM_POINT_SEC_EPSILON) continue
-    points.push({
-      sec: roundTrackTempoSec(absoluteSec - startSec),
-      bpm: Number(point.bpm)
-    })
-  }
-  points.push({
-    sec: roundTrackTempoSec(durationSec),
-    bpm: sampleMixtapeGlobalBpmAtSec(params.globalPoints, endSec, params.fallbackBpm)
-  })
-  return points
-}
+}) => buildProjectedMasterGridTempoPoints(params)
 
 export const projectMixtapeGlobalBpmEnvelopeToTrack = (params: {
   track: MixtapeTrack
@@ -173,7 +143,7 @@ export const projectMixtapeGlobalBpmEnvelopeToTrack = (params: {
 
   for (let index = 0; index < 8; index += 1) {
     const rawPoints = buildProjectedTrackEnvelopePoints({
-      globalPoints: params.globalPoints,
+      points: params.globalPoints,
       trackStartSec,
       durationSec,
       fallbackBpm
@@ -193,7 +163,7 @@ export const projectMixtapeGlobalBpmEnvelopeToTrack = (params: {
   }
 
   const projectedPoints = buildProjectedTrackEnvelopePoints({
-    globalPoints: params.globalPoints,
+    points: params.globalPoints,
     trackStartSec,
     durationSec,
     fallbackBpm

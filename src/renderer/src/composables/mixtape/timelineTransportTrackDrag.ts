@@ -8,6 +8,13 @@ import {
   resolveBeatSecByBpm,
   resolveGridAnchorSec
 } from '@renderer/composables/mixtape/mixxxSyncModel'
+import { outputMixtapeGridDebugLog } from '@renderer/composables/mixtape/debugLog'
+import { createMixtapeMasterGrid } from '@renderer/composables/mixtape/mixtapeMasterGrid'
+import {
+  isMixtapeGlobalTempoReady,
+  mixtapeGlobalTempoEnvelope
+} from '@renderer/composables/mixtape/mixtapeGlobalTempoState'
+import { resolveSnappedStartSecByVisibleGrid } from '@renderer/composables/mixtape/trackGridSnap'
 import { buildTrackRuntimeTempoSnapshot } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
 import type { MixtapeTrack, TimelineTrackLayout } from '@renderer/composables/mixtape/types'
 
@@ -38,6 +45,7 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
     initialStartSec: number
     previousTrackId: string
     snapshotTracks: MixtapeTrack[]
+    lastDebug: Record<string, unknown> | null
   } | null = null
 
   const resolvePreviousTrackId = (trackId: string) => {
@@ -111,34 +119,47 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
     return 32
   }
 
-  const findNearestSortedValues = (values: number[], target: number) => {
-    if (!values.length) return [] as number[]
-    let left = 0
-    let right = values.length - 1
-    while (left < right) {
-      const middle = Math.floor((left + right) / 2)
-      if ((values[middle] || 0) < target) {
-        left = middle + 1
-      } else {
-        right = middle
-      }
-    }
-    const result = new Set<number>()
-    if (values[left] !== undefined) result.add(values[left] as number)
-    if (left > 0 && values[left - 1] !== undefined) result.add(values[left - 1] as number)
-    if (left + 1 < values.length && values[left + 1] !== undefined) {
-      result.add(values[left + 1] as number)
-    }
-    return Array.from(result)
+  const buildGlobalTimelineGridSecs = (
+    snapshotTracks: MixtapeTrack[],
+    options?: { minSec?: number; maxSec?: number }
+  ) => {
+    if (!isMixtapeGlobalTempoReady()) return [] as number[]
+    const fallbackBpm =
+      Number(mixtapeGlobalTempoEnvelope.value[0]?.bpm) ||
+      snapshotTracks.find((track) => Number(track.bpm) > 0)?.bpm ||
+      128
+    const grid = createMixtapeMasterGrid({
+      points: mixtapeGlobalTempoEnvelope.value,
+      fallbackBpm
+    })
+    const timelineEndSec = buildTrackTimingSnapshot(snapshotTracks).reduce(
+      (maxSec, item) => Math.max(maxSec, Number(item.endSec) || 0),
+      0
+    )
+    const maxSec =
+      Number.isFinite(Number(options?.maxSec)) && Number(options?.maxSec) > 0
+        ? Number(options?.maxSec)
+        : timelineEndSec
+    const beatBufferSec = (32 * 60) / Math.max(1, fallbackBpm)
+    return grid
+      .buildVisibleGridLines(Number(normalizedRenderZoom.value) || 0, {
+        minSec: Math.max(0, (Number(options?.minSec) || 0) - beatBufferSec),
+        maxSec: Math.max(0, maxSec + beatBufferSec)
+      })
+      .map((line) => Number(line.sec.toFixed(4)))
   }
 
-  const buildTrackVisibleLocalGridSecs = (track: MixtapeTrack) => {
-    const durationSec = resolveTrackDurationSeconds(track)
-    const sourceDurationSec = resolveTrackSourceDurationSeconds(track)
+  const buildTrackVisibleLocalGridSecs = (track: MixtapeTrack, options?: { startSec?: number }) => {
+    const projectedTrack =
+      typeof options?.startSec === 'number' && Number.isFinite(options.startSec)
+        ? ({ ...track, startSec: options.startSec } satisfies MixtapeTrack)
+        : track
+    const durationSec = resolveTrackDurationSeconds(projectedTrack)
+    const sourceDurationSec = resolveTrackSourceDurationSeconds(projectedTrack)
     if (!Number.isFinite(durationSec) || durationSec <= 0) return [] as number[]
     if (!Number.isFinite(sourceDurationSec) || sourceDurationSec <= 0) return [] as number[]
     const lines = buildTrackRuntimeTempoSnapshot({
-      track,
+      track: projectedTrack,
       sourceDurationSec,
       durationSec,
       zoom: Number(normalizedRenderZoom.value) || 0
@@ -146,13 +167,31 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
     return lines.map((line) => Number(line.sec.toFixed(4)))
   }
 
-  const resolveSnappedStartSecByVisibleGrid = (payload: {
+  const summarizeGridSecs = (gridSecs: number[]) =>
+    gridSecs.slice(0, 8).map((sec) => Number(sec.toFixed(4)))
+
+  const resolveGridNeighborhood = (values: number[], target: number, radius: number = 2) => {
+    if (!values.length) return [] as number[]
+    let nearestIndex = 0
+    let nearestDiff = Math.abs((values[0] || 0) - target)
+    for (let index = 1; index < values.length; index += 1) {
+      const diff = Math.abs((values[index] || 0) - target)
+      if (diff < nearestDiff) {
+        nearestIndex = index
+        nearestDiff = diff
+      }
+    }
+    const start = Math.max(0, nearestIndex - radius)
+    const end = Math.min(values.length, nearestIndex + radius + 1)
+    return values.slice(start, end).map((value) => Number(value.toFixed(4)))
+  }
+
+  const resolveNearestVisibleGridPair = (payload: {
     rawStartSec: number
     minStartSec: number
     maxStartSec: number
     currentLocalGridSecs: number[]
     targetTimelineGridSecs: number[]
-    boundaryCandidates?: number[]
   }) => {
     const rawStartSec = Math.max(0, Number(payload.rawStartSec) || 0)
     const minStartSec = Math.max(0, Number(payload.minStartSec) || 0)
@@ -160,36 +199,111 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
       ? Math.max(minStartSec, Number(payload.maxStartSec))
       : Number.POSITIVE_INFINITY
     if (!payload.currentLocalGridSecs.length || !payload.targetTimelineGridSecs.length) return null
-
-    let nearestSec: number | null = null
-    let nearestDiff = Number.POSITIVE_INFINITY
+    let best: {
+      localSec: number
+      targetTimelineSec: number
+      snappedStartSec: number
+      startDeltaSec: number
+      alignErrorSec: number
+    } | null = null
     for (const localSec of payload.currentLocalGridSecs) {
       const safeLocalSec = Number(localSec)
       if (!Number.isFinite(safeLocalSec) || safeLocalSec < 0) continue
-      const nearestTargets = findNearestSortedValues(
-        payload.targetTimelineGridSecs,
-        rawStartSec + safeLocalSec
+      const nearestTargets = resolveSnappedStartSecByVisibleGrid({
+        rawStartSec,
+        minStartSec,
+        maxStartSec,
+        currentLocalGridSecs: [safeLocalSec],
+        targetTimelineGridSecs: payload.targetTimelineGridSecs
+      })
+      if (typeof nearestTargets !== 'number') continue
+      const snappedStartSec = clampNumber(nearestTargets, minStartSec, maxStartSec)
+      const snappedTimelineSec = snappedStartSec + safeLocalSec
+      let matchedTargetTimelineSec = payload.targetTimelineGridSecs[0] || 0
+      let matchedDiffSec = Math.abs(snappedTimelineSec - matchedTargetTimelineSec)
+      for (const targetTimelineSec of payload.targetTimelineGridSecs) {
+        const diffSec = Math.abs(snappedTimelineSec - targetTimelineSec)
+        if (diffSec < matchedDiffSec) {
+          matchedTargetTimelineSec = targetTimelineSec
+          matchedDiffSec = diffSec
+        }
+      }
+      const startDeltaSec = Math.abs(snappedStartSec - rawStartSec)
+      if (
+        !best ||
+        startDeltaSec < best.startDeltaSec - 0.0001 ||
+        (Math.abs(startDeltaSec - best.startDeltaSec) <= 0.0001 &&
+          matchedDiffSec < best.alignErrorSec - 0.0001)
+      ) {
+        best = {
+          localSec: safeLocalSec,
+          targetTimelineSec: matchedTargetTimelineSec,
+          snappedStartSec,
+          startDeltaSec: Number(startDeltaSec.toFixed(4)),
+          alignErrorSec: Number(matchedDiffSec.toFixed(4))
+        }
+      }
+    }
+    return best
+  }
+
+  const resolveSnappedStartSecByProjectedGrid = (payload: {
+    track: MixtapeTrack
+    rawStartSec: number
+    minStartSec: number
+    maxStartSec: number
+    targetTimelineGridSecs: number[]
+    boundaryCandidates?: number[]
+  }) => {
+    let candidateStartSec = clampNumber(
+      Number(payload.rawStartSec) || 0,
+      payload.minStartSec,
+      payload.maxStartSec
+    )
+    let currentLocalGridSecs = buildTrackVisibleLocalGridSecs(payload.track, {
+      startSec: candidateStartSec
+    })
+    let snappedStartSec = resolveSnappedStartSecByVisibleGrid({
+      rawStartSec: candidateStartSec,
+      minStartSec: payload.minStartSec,
+      maxStartSec: payload.maxStartSec,
+      currentLocalGridSecs,
+      targetTimelineGridSecs: payload.targetTimelineGridSecs,
+      boundaryCandidates: payload.boundaryCandidates
+    })
+    for (let iteration = 0; iteration < 3; iteration += 1) {
+      if (typeof snappedStartSec !== 'number') break
+      const stabilizedStartSec = clampNumber(
+        snappedStartSec,
+        payload.minStartSec,
+        payload.maxStartSec
       )
-      for (const targetSec of nearestTargets) {
-        const snappedStartSec = clampNumber(targetSec - safeLocalSec, minStartSec, maxStartSec)
-        const diff = Math.abs(snappedStartSec - rawStartSec)
-        if (diff < nearestDiff) {
-          nearestSec = snappedStartSec
-          nearestDiff = diff
-        }
+      if (Math.abs(stabilizedStartSec - candidateStartSec) <= 0.0001) {
+        candidateStartSec = stabilizedStartSec
+        currentLocalGridSecs = buildTrackVisibleLocalGridSecs(payload.track, {
+          startSec: candidateStartSec
+        })
+        snappedStartSec = stabilizedStartSec
+        break
       }
+      candidateStartSec = stabilizedStartSec
+      currentLocalGridSecs = buildTrackVisibleLocalGridSecs(payload.track, {
+        startSec: candidateStartSec
+      })
+      snappedStartSec = resolveSnappedStartSecByVisibleGrid({
+        rawStartSec: candidateStartSec,
+        minStartSec: payload.minStartSec,
+        maxStartSec: payload.maxStartSec,
+        currentLocalGridSecs,
+        targetTimelineGridSecs: payload.targetTimelineGridSecs,
+        boundaryCandidates: payload.boundaryCandidates
+      })
     }
-    if (Array.isArray(payload.boundaryCandidates)) {
-      for (const candidate of payload.boundaryCandidates) {
-        const safeCandidate = clampNumber(Number(candidate) || 0, minStartSec, maxStartSec)
-        const diff = Math.abs(safeCandidate - rawStartSec)
-        if (diff < nearestDiff) {
-          nearestSec = safeCandidate
-          nearestDiff = diff
-        }
-      }
+    return {
+      snappedStartSec: typeof snappedStartSec === 'number' ? snappedStartSec : null,
+      currentLocalGridSecs,
+      candidateStartSec
     }
-    return nearestSec
   }
 
   const resolveSnappedStartSec = (payload: {
@@ -259,27 +373,101 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
     const currentTrackForSnap = findTrack(trackDragState.trackId)
     const snapStepBeats = resolveVisibleGridSnapStepBeats()
     const previousTrack = findTrack(trackDragState.previousTrackId)
+    let currentLocalGridSecs = currentTrackForSnap
+      ? buildTrackVisibleLocalGridSecs(currentTrackForSnap)
+      : []
+    let previousTimelineGridSecs: number[] = []
+    let snappedByPreviousTrack: number | null = null
+    let snappedByFixedGrid: number | null = null
+    let selectedVisibleGridPair: ReturnType<typeof resolveNearestVisibleGridPair> = null
     if (previousTrack) {
       const previousStartSec = resolveTrackStartSecById(previousTrack.id)
-      const previousTimelineGridSecs = buildTrackVisibleLocalGridSecs(previousTrack).map((sec) =>
-        Number((previousStartSec + sec).toFixed(4))
-      )
-      const currentLocalGridSecs = currentTrackForSnap
-        ? buildTrackVisibleLocalGridSecs(currentTrackForSnap)
-        : []
-      const snappedStartSec = resolveSnappedStartSecByVisibleGrid({
+      previousTimelineGridSecs = isMixtapeGlobalTempoReady()
+        ? buildGlobalTimelineGridSecs(trackDragState.snapshotTracks, {
+            minSec: dragBounds.minStart,
+            maxSec: clampNumber(
+              clampedRawStartSec +
+                resolveTrackDurationSeconds(currentTrackForSnap || previousTrack),
+              dragBounds.minStart,
+              Number.isFinite(dragBounds.maxStart)
+                ? Math.max(dragBounds.minStart, dragBounds.maxStart)
+                : clampedRawStartSec +
+                    resolveTrackDurationSeconds(currentTrackForSnap || previousTrack)
+            )
+          })
+        : buildTrackVisibleLocalGridSecs(previousTrack).map((sec) =>
+            Number((previousStartSec + sec).toFixed(4))
+          )
+      if (currentTrackForSnap && isMixtapeGlobalTempoReady()) {
+        const projectedSnap = resolveSnappedStartSecByProjectedGrid({
+          track: currentTrackForSnap,
+          rawStartSec: clampedRawStartSec,
+          minStartSec: dragBounds.minStart,
+          maxStartSec: dragBounds.maxStart,
+          targetTimelineGridSecs: previousTimelineGridSecs,
+          boundaryCandidates: [dragBounds.minStart]
+        })
+        currentLocalGridSecs = projectedSnap.currentLocalGridSecs
+        selectedVisibleGridPair = resolveNearestVisibleGridPair({
+          rawStartSec: clampedRawStartSec,
+          minStartSec: dragBounds.minStart,
+          maxStartSec: dragBounds.maxStart,
+          currentLocalGridSecs,
+          targetTimelineGridSecs: previousTimelineGridSecs
+        })
+        if (typeof projectedSnap.snappedStartSec === 'number') {
+          snappedByPreviousTrack = projectedSnap.snappedStartSec
+          nextStartSec = projectedSnap.snappedStartSec
+        }
+      } else {
+        const snappedStartSec = resolveSnappedStartSecByVisibleGrid({
+          rawStartSec: clampedRawStartSec,
+          minStartSec: dragBounds.minStart,
+          maxStartSec: dragBounds.maxStart,
+          currentLocalGridSecs,
+          targetTimelineGridSecs: previousTimelineGridSecs,
+          boundaryCandidates: [dragBounds.minStart]
+        })
+        selectedVisibleGridPair = resolveNearestVisibleGridPair({
+          rawStartSec: clampedRawStartSec,
+          minStartSec: dragBounds.minStart,
+          maxStartSec: dragBounds.maxStart,
+          currentLocalGridSecs,
+          targetTimelineGridSecs: previousTimelineGridSecs
+        })
+        if (typeof snappedStartSec === 'number') {
+          snappedByPreviousTrack = snappedStartSec
+          nextStartSec = snappedStartSec
+        }
+      }
+    }
+    if (currentTrackForSnap && isMixtapeGlobalTempoReady() && !previousTrack) {
+      previousTimelineGridSecs = buildGlobalTimelineGridSecs(trackDragState.snapshotTracks, {
+        minSec: dragBounds.minStart,
+        maxSec: clampedRawStartSec + resolveTrackDurationSeconds(currentTrackForSnap)
+      })
+      const projectedSnap = resolveSnappedStartSecByProjectedGrid({
+        track: currentTrackForSnap,
+        rawStartSec: clampedRawStartSec,
+        minStartSec: dragBounds.minStart,
+        maxStartSec: dragBounds.maxStart,
+        targetTimelineGridSecs: previousTimelineGridSecs,
+        boundaryCandidates: [dragBounds.minStart]
+      })
+      currentLocalGridSecs = projectedSnap.currentLocalGridSecs
+      selectedVisibleGridPair = resolveNearestVisibleGridPair({
         rawStartSec: clampedRawStartSec,
         minStartSec: dragBounds.minStart,
         maxStartSec: dragBounds.maxStart,
         currentLocalGridSecs,
-        targetTimelineGridSecs: previousTimelineGridSecs,
-        boundaryCandidates: [dragBounds.minStart]
+        targetTimelineGridSecs: previousTimelineGridSecs
       })
-      if (typeof snappedStartSec === 'number') {
-        nextStartSec = snappedStartSec
+      if (typeof projectedSnap.snappedStartSec === 'number') {
+        snappedByPreviousTrack = projectedSnap.snappedStartSec
+        nextStartSec = projectedSnap.snappedStartSec
       }
     }
-    if (currentTrackForSnap) {
+    if (currentTrackForSnap && !isMixtapeGlobalTempoReady()) {
       const currentBpm = Number(currentTrackForSnap.bpm)
       if (Number.isFinite(currentBpm) && currentBpm > 0) {
         const beatSec = resolveBeatSecByBpm(currentBpm)
@@ -301,11 +489,46 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
           boundaryCandidates: [dragBounds.minStart]
         })
         if (typeof snappedStartSec === 'number') {
+          snappedByFixedGrid = snappedStartSec
           nextStartSec = snappedStartSec
         }
       }
     }
     nextStartSec = clampNumber(nextStartSec, dragBounds.minStart, dragBounds.maxStart)
+    trackDragState.lastDebug = {
+      trackId: trackDragState.trackId,
+      previousTrackId: trackDragState.previousTrackId,
+      globalTempoReady: isMixtapeGlobalTempoReady(),
+      currentTrackBpm: Number(currentTrackForSnap?.bpm) || 0,
+      currentTrackOriginalBpm: Number(currentTrackForSnap?.originalBpm) || 0,
+      currentTrackGridBaseBpm: Number(currentTrackForSnap?.gridBaseBpm) || 0,
+      previousTrackBpm: Number(previousTrack?.bpm) || 0,
+      previousTrackOriginalBpm: Number(previousTrack?.originalBpm) || 0,
+      previousTrackGridBaseBpm: Number(previousTrack?.gridBaseBpm) || 0,
+      rawStartSec,
+      clampedRawStartSec,
+      nextStartSec,
+      dragBounds,
+      snappedByPreviousTrack,
+      snappedByFixedGrid,
+      selectedVisibleGridPair,
+      currentTimelineGridNeighborhood:
+        selectedVisibleGridPair && currentLocalGridSecs.length
+          ? resolveGridNeighborhood(
+              currentLocalGridSecs.map((sec) => Number((nextStartSec + sec).toFixed(4))),
+              selectedVisibleGridPair.targetTimelineSec
+            )
+          : [],
+      previousTimelineGridNeighborhood:
+        selectedVisibleGridPair && previousTimelineGridSecs.length
+          ? resolveGridNeighborhood(
+              previousTimelineGridSecs,
+              selectedVisibleGridPair.targetTimelineSec
+            )
+          : [],
+      currentLocalGridSample: summarizeGridSecs(currentLocalGridSecs),
+      previousTimelineGridSample: summarizeGridSecs(previousTimelineGridSecs)
+    }
 
     const targetIndex = tracks.value.findIndex(
       (item: MixtapeTrack) => item.id === trackDragState?.trackId
@@ -328,6 +551,7 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
 
   const handleTrackDragEnd = () => {
     if (!trackDragState) return
+    const dragDebug = trackDragState.lastDebug
     const targetTrackId = trackDragState.trackId
     const previousTrack =
       trackDragState.snapshotTracks.find((item: MixtapeTrack) => item.id === targetTrackId) || null
@@ -340,6 +564,11 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
     window.removeEventListener('mouseup', handleTrackDragEnd as EventListener)
     scheduleFullPreRender()
     scheduleWorkerPreRender()
+    outputMixtapeGridDebugLog('track-drag-end', {
+      ...dragDebug,
+      previousStartSec,
+      currentStartSec
+    })
     if (!currentTrack) return
     const startChanged =
       currentStartSec !== null &&
@@ -371,7 +600,8 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
           ? Number(item.startSec)
           : resolveTimelineSecByX(item.startX, pxPerSec),
       previousTrackId: resolvePreviousTrackId(trackId),
-      snapshotTracks: tracks.value.map((trackItem: MixtapeTrack) => ({ ...trackItem }))
+      snapshotTracks: tracks.value.map((trackItem: MixtapeTrack) => ({ ...trackItem })),
+      lastDebug: null
     }
     isTrackDragging.value = true
     window.addEventListener('mousemove', handleTrackDragMove, { passive: false })

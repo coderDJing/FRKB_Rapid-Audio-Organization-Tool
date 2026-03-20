@@ -6,6 +6,8 @@ import {
   MIXTAPE_WIDTH_SCALE,
   TIMELINE_SIDE_PADDING_PX
 } from '@renderer/composables/mixtape/constants'
+import { outputMixtapeGridDebugLog } from '@renderer/composables/mixtape/debugLog'
+import { resolveRoundedTimelineAbsolutePx } from '@renderer/composables/mixtape/timelinePixelMath'
 import {
   applyMixtapeGlobalTempoTargetsToTracks,
   buildFlatMixtapeGlobalBpmEnvelope,
@@ -14,6 +16,7 @@ import {
   resolveMixtapeGlobalBpmVisualRange,
   sampleMixtapeGlobalBpmAtSec
 } from '@renderer/composables/mixtape/mixtapeGlobalTempoModel'
+import { createMixtapeMasterGrid } from '@renderer/composables/mixtape/mixtapeMasterGrid'
 import {
   applyMixtapeGlobalTempoSnapshot,
   mixtapeGlobalTempoEnvelope
@@ -22,7 +25,6 @@ import {
   mapTrackBpmToYPercent,
   mapTrackBpmYPercentToValue
 } from '@renderer/composables/mixtape/trackTempoVisual'
-import { buildTrackRuntimeTempoSnapshot } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
 import { roundTrackTempoSec } from '@renderer/composables/mixtape/trackTempoModel'
 import type { MixtapeBpmPoint, MixtapeTrack } from '@renderer/composables/mixtape/types'
 
@@ -48,6 +50,8 @@ const props = defineProps<{
 type DragState = {
   pointIndex: number
   beforePoints: MixtapeBpmPoint[]
+  beforeTracks: MixtapeTrack[]
+  startBeatByTrackId: Map<string, number>
 }
 
 type PointDot = {
@@ -72,6 +76,8 @@ type ProjectedTrackGridLine = {
 const dragState = ref<DragState | null>(null)
 const stageRef = ref<HTMLElement | null>(null)
 let persistTimer: ReturnType<typeof setTimeout> | null = null
+let previewTrackSyncRaf = 0
+const pendingTrackStartSecPersist = new Map<string, number>()
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
@@ -95,7 +101,7 @@ const pxPerSec = computed(
 
 const resolveTimelineXPx = (sec: number) =>
   clampNumber(
-    TIMELINE_SIDE_PADDING_PX + Math.max(0, Number(sec) || 0) * pxPerSec.value,
+    resolveRoundedTimelineAbsolutePx(sec, pxPerSec.value),
     TIMELINE_SIDE_PADDING_PX,
     Math.max(
       TIMELINE_SIDE_PADDING_PX,
@@ -187,64 +193,27 @@ const visibleGridLines = computed<ProjectedTrackGridLine[]>(() => {
     Math.max(0, Number(props.timelineScrollLeft) || 0) +
       Math.max(0, Number(props.timelineViewportWidth) || 0)
   )
+  const masterGrid = createMixtapeMasterGrid({
+    points: effectivePoints.value,
+    fallbackBpm: defaultBpm.value
+  })
   const beatBufferSec = (32 * 60) / Math.max(1, defaultBpm.value)
   const minSec = Math.max(0, viewportStartSec - beatBufferSec)
-  const maxSec = Math.min(Math.max(0, timelineDurationSec.value), viewportEndSec + beatBufferSec)
-  const linePriority = {
-    beat: 0,
-    beat4: 1,
-    bar: 2
-  } as const
-  const linesByPixel = new Map<string, ProjectedTrackGridLine>()
-  const pushGridLine = (line: ProjectedTrackGridLine) => {
-    const dedupeKey = `${Math.round(line.leftPx)}`
-    const previous = linesByPixel.get(dedupeKey)
-    if (!previous || linePriority[line.level] > linePriority[previous.level]) {
-      linesByPixel.set(dedupeKey, line)
-    }
-  }
-  const pushBoundaryGridLine = (sec: number) => {
-    const safeSec = resolveRoundedTimelineSec(sec)
-    if (safeSec < minSec - 0.0001 || safeSec > maxSec + 0.0001) return
-    const boundaryLine: ProjectedTrackGridLine = {
-      key: `boundary:bar:${Math.round(safeSec * 1000)}`,
-      sec: safeSec,
-      leftPx: resolveTimelineXPx(safeSec),
-      level: 'bar'
-    }
-    linesByPixel.set(`${Math.round(boundaryLine.leftPx)}`, boundaryLine)
-  }
-
-  for (const track of props.tracks) {
-    const startSec = Math.max(0, Number(track.startSec) || 0)
-    const sourceDurationSec = Math.max(
-      0,
-      Number(props.resolveTrackSourceDurationSeconds(track)) || 0
-    )
-    const durationSec = Math.max(0, Number(props.resolveTrackDurationSeconds(track)) || 0)
-    if (sourceDurationSec <= 0 || durationSec <= 0) continue
-    const snapshot = buildTrackRuntimeTempoSnapshot({
-      track,
-      sourceDurationSec,
-      durationSec,
-      zoom: Number(props.renderZoomLevel) || 0
+  const maxSec = Math.max(Math.max(0, timelineDurationSec.value), viewportEndSec + beatBufferSec)
+  return masterGrid
+    .buildVisibleGridLines(Number(props.renderZoomLevel) || 0, {
+      minSec,
+      maxSec
     })
-    for (const line of snapshot.visibleGridLines) {
-      const timelineSec = startSec + Number(line.sec)
-      if (timelineSec < minSec - 0.0001 || timelineSec > maxSec + 0.0001) continue
-      pushGridLine({
-        key: `${track.id}:${line.level}:${Math.round(timelineSec * 1000)}`,
-        sec: resolveRoundedTimelineSec(timelineSec),
-        leftPx: resolveTimelineXPx(timelineSec),
+    .map((line) => {
+      const safeSec = resolveRoundedTimelineSec(line.sec)
+      return {
+        key: `master:${line.level}:${Math.round(safeSec * 1000)}`,
+        sec: safeSec,
+        leftPx: resolveTimelineXPx(safeSec),
         level: line.level
-      })
-    }
-  }
-
-  pushBoundaryGridLine(0)
-  pushBoundaryGridLine(timelineDurationSec.value)
-
-  return Array.from(linesByPixel.values()).sort((left, right) => left.leftPx - right.leftPx)
+      }
+    })
 })
 
 const resolveSnappedTimelineSec = (
@@ -335,6 +304,56 @@ const clonePoints = (points: MixtapeBpmPoint[]) =>
     bpm: Number(point.bpm)
   }))
 
+const cloneTracks = (tracks: MixtapeTrack[]) => tracks.map((track) => ({ ...track }))
+
+const resolveTrackStartSec = (track: Pick<MixtapeTrack, 'startSec'> | null | undefined) => {
+  const numeric = Number(track?.startSec)
+  if (!Number.isFinite(numeric) || numeric < 0) return 0
+  return roundTrackTempoSec(numeric)
+}
+
+const buildTrackTargetSignature = (tracks: MixtapeTrack[]) =>
+  JSON.stringify(tracks.map((track) => `${Number(track.bpm) || 0}:${resolveTrackStartSec(track)}`))
+
+const buildTrackStartBeatById = (tracks: MixtapeTrack[], points: MixtapeBpmPoint[]) => {
+  const masterGrid = createMixtapeMasterGrid({
+    points,
+    fallbackBpm: defaultBpm.value
+  })
+  return new Map(
+    tracks.map((track) => [
+      String(track.id || ''),
+      masterGrid.mapSecToBeats(resolveTrackStartSec(track))
+    ])
+  )
+}
+
+const queueTrackStartSecPersist = (beforeTracks: MixtapeTrack[], afterTracks: MixtapeTrack[]) => {
+  const beforeStartSecById = new Map(
+    beforeTracks.map((track) => [track.id, resolveTrackStartSec(track)])
+  )
+  for (const track of afterTracks) {
+    const itemId = String(track.id || '').trim()
+    if (!itemId) continue
+    const beforeStartSec = beforeStartSecById.get(itemId) ?? 0
+    const afterStartSec = resolveTrackStartSec(track)
+    if (Math.abs(beforeStartSec - afterStartSec) <= 0.0001) {
+      pendingTrackStartSecPersist.delete(itemId)
+      continue
+    }
+    pendingTrackStartSecPersist.set(itemId, afterStartSec)
+  }
+}
+
+const summarizeTrackGridState = (track: MixtapeTrack) => ({
+  id: String(track.id || ''),
+  title: String(track.title || '').trim(),
+  startSec: resolveTrackStartSec(track),
+  bpm: Number(track.bpm) || 0,
+  originalBpm: Number(track.originalBpm) || 0,
+  gridBaseBpm: Number(track.gridBaseBpm) || 0
+})
+
 const applyPoints = (points: MixtapeBpmPoint[], options?: { persist?: boolean }) => {
   const nextPoints = normalizeMixtapeGlobalBpmEnvelopePoints(
     points,
@@ -363,20 +382,49 @@ const flushPersist = async () => {
   }
   const playlistId = String(props.playlistId || '').trim()
   if (!playlistId || !window?.electron?.ipcRenderer?.invoke) return
-  try {
-    await window.electron.ipcRenderer.invoke('mixtape:project:set-bpm-envelope', {
+  const startSecEntries = Array.from(pendingTrackStartSecPersist.entries()).map(
+    ([itemId, startSec]) => ({
+      itemId,
+      startSec
+    })
+  )
+  const [bpmEnvelopePersistResult, trackStartPersistResult] = await Promise.allSettled([
+    window.electron.ipcRenderer.invoke('mixtape:project:set-bpm-envelope', {
       playlistId,
       bpmEnvelope: effectivePoints.value.map((point) => ({
         sec: Number(point.sec),
         bpm: Number(point.bpm)
       })),
       bpmEnvelopeDurationSec: timelineDurationSec.value
-    })
-  } catch (error) {
+    }),
+    startSecEntries.length > 0
+      ? window.electron.ipcRenderer.invoke('mixtape:update-track-start-sec', {
+          entries: startSecEntries
+        })
+      : Promise.resolve(null)
+  ])
+  outputMixtapeGridDebugLog('persist-envelope', {
+    playlistId,
+    pointCount: effectivePoints.value.length,
+    pointsSample: effectivePoints.value.slice(0, 8),
+    startSecEntries
+  })
+  if (bpmEnvelopePersistResult.status === 'rejected') {
     console.error('[mixtape] persist global bpm envelope failed', {
       playlistId,
-      error
+      error: bpmEnvelopePersistResult.reason
     })
+  }
+  if (trackStartPersistResult.status === 'rejected') {
+    console.error('[mixtape] persist track start sec after global bpm edit failed', {
+      playlistId,
+      count: startSecEntries.length,
+      error: trackStartPersistResult.reason
+    })
+    return
+  }
+  for (const entry of startSecEntries) {
+    pendingTrackStartSecPersist.delete(entry.itemId)
   }
 }
 
@@ -390,16 +438,89 @@ const schedulePersist = () => {
   }, 220)
 }
 
-const syncTrackTargets = () => {
+const syncTrackTargets = (params?: {
+  previousGlobalPoints?: MixtapeBpmPoint[]
+  sourceTracks?: MixtapeTrack[]
+  sourceStartBeatByTrackId?: Map<string, number>
+  preview?: boolean
+}) => {
   if (!effectivePoints.value.length) return
-  const nextTracks = applyMixtapeGlobalTempoTargetsToTracks(props.tracks, effectivePoints.value)
-  if (
-    JSON.stringify(nextTracks.map((track) => track.bpm)) ===
-    JSON.stringify(props.tracks.map((track) => track.bpm))
-  ) {
+  const previousGlobalPoints = params?.previousGlobalPoints || effectivePoints.value
+  const sourceTracks = params?.sourceTracks || props.tracks
+  const sourceStartBeatByTrackId =
+    params?.sourceStartBeatByTrackId || buildTrackStartBeatById(sourceTracks, previousGlobalPoints)
+  const nextMasterGrid = createMixtapeMasterGrid({
+    points: effectivePoints.value,
+    fallbackBpm: defaultBpm.value
+  })
+  const warpedTracks = sourceTracks.map((track) => {
+    const trackId = String(track.id || '')
+    const startBeat =
+      sourceStartBeatByTrackId.get(trackId) ??
+      nextMasterGrid.mapSecToBeats(resolveTrackStartSec(track))
+    return {
+      ...track,
+      startSec: roundTrackTempoSec(nextMasterGrid.mapBeatsToSec(startBeat))
+    }
+  })
+  const nextTracks = applyMixtapeGlobalTempoTargetsToTracks(warpedTracks, effectivePoints.value)
+  const nextSignature = buildTrackTargetSignature(nextTracks)
+  const currentSignature = buildTrackTargetSignature(props.tracks)
+  const sourceSignature = buildTrackTargetSignature(sourceTracks)
+  const changedFromCurrent = nextSignature !== currentSignature
+  const changedFromSource = nextSignature !== sourceSignature
+
+  if (!params?.preview) {
+    queueTrackStartSecPersist(sourceTracks, nextTracks)
+  }
+  if (!changedFromSource && !changedFromCurrent) {
     return
   }
-  props.onTracksSync?.(nextTracks)
+  if (!params?.preview) {
+    outputMixtapeGridDebugLog('sync-track-targets', {
+      previousPointCount: previousGlobalPoints.length,
+      nextPointCount: effectivePoints.value.length,
+      previousPointsSample: previousGlobalPoints.slice(0, 8),
+      nextPointsSample: effectivePoints.value.slice(0, 8),
+      beforeTracks: sourceTracks.map((track) => summarizeTrackGridState(track)),
+      afterTracks: nextTracks.map((track) => summarizeTrackGridState(track))
+    })
+  }
+  if (changedFromCurrent) {
+    props.onTracksSync?.(nextTracks)
+  }
+}
+
+const cancelPreviewTrackSync = () => {
+  if (!previewTrackSyncRaf || typeof cancelAnimationFrame !== 'function') {
+    previewTrackSyncRaf = 0
+    return
+  }
+  cancelAnimationFrame(previewTrackSyncRaf)
+  previewTrackSyncRaf = 0
+}
+
+const flushPreviewTrackSync = () => {
+  previewTrackSyncRaf = 0
+  const currentDragState = dragState.value
+  if (!currentDragState) return
+  syncTrackTargets({
+    previousGlobalPoints: currentDragState.beforePoints,
+    sourceTracks: currentDragState.beforeTracks,
+    sourceStartBeatByTrackId: currentDragState.startBeatByTrackId,
+    preview: true
+  })
+}
+
+const schedulePreviewTrackSync = () => {
+  if (typeof requestAnimationFrame !== 'function') {
+    flushPreviewTrackSync()
+    return
+  }
+  if (previewTrackSyncRaf) return
+  previewTrackSyncRaf = requestAnimationFrame(() => {
+    flushPreviewTrackSync()
+  })
 }
 
 const pushUndoSnapshot = (beforePoints: MixtapeBpmPoint[]) => {
@@ -413,7 +534,9 @@ const pushUndoSnapshot = (beforePoints: MixtapeBpmPoint[]) => {
       },
       source: 'user'
     })
-    syncTrackTargets()
+    syncTrackTargets({
+      previousGlobalPoints: snapshot
+    })
     props.onEnvelopePreviewChanged?.()
     props.onEnvelopeCommitted?.()
     void flushPersist()
@@ -426,7 +549,9 @@ const resolvePointIndexFromEvent = (event: MouseEvent, pointIndex: number) => {
   event.stopPropagation()
   dragState.value = {
     pointIndex,
-    beforePoints: clonePoints(effectivePoints.value)
+    beforePoints: clonePoints(effectivePoints.value),
+    beforeTracks: cloneTracks(props.tracks),
+    startBeatByTrackId: buildTrackStartBeatById(props.tracks, effectivePoints.value)
   }
   window.addEventListener('mousemove', handleWindowMouseMove, { passive: false })
   window.addEventListener('mouseup', handleWindowMouseUp, { passive: true })
@@ -469,8 +594,11 @@ const handleStageMouseDown = (event: MouseEvent) => {
   applyPoints(nextPoints)
   dragState.value = {
     pointIndex: pointIndex >= 0 ? pointIndex : nextPoints.length - 1,
-    beforePoints
+    beforePoints,
+    beforeTracks: cloneTracks(props.tracks),
+    startBeatByTrackId: buildTrackStartBeatById(props.tracks, beforePoints)
   }
+  schedulePreviewTrackSync()
   window.addEventListener('mousemove', handleWindowMouseMove, { passive: false })
   window.addEventListener('mouseup', handleWindowMouseUp, { passive: true })
 }
@@ -505,15 +633,21 @@ const handleWindowMouseMove = (event: MouseEvent) => {
     ).toFixed(4)
   )
   applyPoints(nextPoints)
+  schedulePreviewTrackSync()
 }
 
 const handleWindowMouseUp = () => {
   const currentDragState = dragState.value
+  cancelPreviewTrackSync()
   dragState.value = null
   window.removeEventListener('mousemove', handleWindowMouseMove as EventListener)
   window.removeEventListener('mouseup', handleWindowMouseUp as EventListener)
   if (!currentDragState) return
-  syncTrackTargets()
+  syncTrackTargets({
+    previousGlobalPoints: currentDragState.beforePoints,
+    sourceTracks: currentDragState.beforeTracks,
+    sourceStartBeatByTrackId: currentDragState.startBeatByTrackId
+  })
   props.onEnvelopeCommitted?.()
   schedulePersist()
   if (JSON.stringify(currentDragState.beforePoints) !== JSON.stringify(effectivePoints.value)) {
@@ -528,7 +662,9 @@ const removePointAtIndex = (pointIndex: number) => {
     effectivePoints.value.filter((_, index) => index !== pointIndex),
     { persist: true }
   )
-  syncTrackTargets()
+  syncTrackTargets({
+    previousGlobalPoints: beforePoints
+  })
   pushUndoSnapshot(beforePoints)
 }
 
@@ -547,6 +683,7 @@ onBeforeUnmount(() => {
     clearTimeout(persistTimer)
     persistTimer = null
   }
+  cancelPreviewTrackSync()
   window.removeEventListener('mousemove', handleWindowMouseMove as EventListener)
   window.removeEventListener('mouseup', handleWindowMouseUp as EventListener)
 })

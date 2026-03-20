@@ -2,11 +2,13 @@ import type {
   RawWaveformData,
   RawWaveformLevel,
   RenderTilePayload,
+  SerializedWorkerVisibleGridLine,
   SerializedWorkerTrackTempoSnapshot,
   StemWaveformData,
   WaveformStemId
 } from './mixtapeWaveformRender.types'
-import { createTrackTimeMap } from '../composables/mixtape/trackTimeMapFactory'
+import { createTrackTimeMapFromSnapshotPayload } from '../composables/mixtape/trackTimeMapFactory'
+import { resolveRoundedTrackLocalPx } from '../composables/mixtape/timelinePixelMath'
 
 type CreateTileRendererOptions = {
   stemWaveformCache: Map<string, StemWaveformData>
@@ -334,7 +336,25 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
   }
 
   const createTimeMapFromTempoSnapshot = (tempoSnapshot: SerializedWorkerTrackTempoSnapshot) =>
-    createTrackTimeMap({
+    createTrackTimeMapFromSnapshotPayload({
+      signature: String(tempoSnapshot.signature || ''),
+      durationSec: Number(tempoSnapshot.durationSec) || 0,
+      sourceDurationSec: Number(tempoSnapshot.sourceDurationSec) || 0,
+      baseBpm: Number(tempoSnapshot.baseBpm) || 128,
+      gridSourceBpm: Number(tempoSnapshot.gridSourceBpm) || 0,
+      originalBpm: Number(tempoSnapshot.originalBpm) || 0,
+      firstBeatSourceSec: Number(tempoSnapshot.firstBeatSourceSec) || 0,
+      beatSourceSec: Number(tempoSnapshot.beatSourceSec) || 0,
+      barBeatOffset: Number(tempoSnapshot.barBeatOffset) || 0,
+      mappingMode: tempoSnapshot.mappingMode,
+      trackStartSec: Number(tempoSnapshot.trackStartSec) || 0,
+      masterGridFallbackBpm: Number(tempoSnapshot.masterGridFallbackBpm) || 128,
+      masterGridPoints: Array.isArray(tempoSnapshot.masterGridPoints)
+        ? tempoSnapshot.masterGridPoints.map((point) => ({
+            sec: Number(point.sec),
+            bpm: Number(point.bpm)
+          }))
+        : undefined,
       controlPoints: tempoSnapshot.controlPoints.map((point) => ({
         sec: Number(point.sec),
         bpm: Number(point.bpm),
@@ -343,14 +363,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
             ? Number(point.sourceSec)
             : undefined,
         allowOffGrid: point.allowOffGrid === true ? true : undefined
-      })),
-      durationSec: Number(tempoSnapshot.durationSec) || 0,
-      sourceDurationSec: Number(tempoSnapshot.sourceDurationSec) || 0,
-      originalBpm: Number(tempoSnapshot.originalBpm) || 0,
-      fallbackBpm: Number(tempoSnapshot.baseBpm) || 128,
-      firstBeatSourceSec: Number(tempoSnapshot.firstBeatSourceSec) || 0,
-      beatSourceSec: Number(tempoSnapshot.beatSourceSec) || 0,
-      barBeatOffset: Number(tempoSnapshot.barBeatOffset) || 0
+      }))
     })
 
   const renderTileBitmap = (payload: RenderTilePayload): ImageBitmap | null => {
@@ -476,7 +489,10 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       tempoSnapshot: SerializedWorkerTrackTempoSnapshot
       trackWidth: number
       durationSeconds: number
+      startSec: number
+      visibleGridLines?: SerializedWorkerVisibleGridLine[]
     },
+    renderPxPerSec: number,
     range: { start: number; end: number },
     barOnly: boolean,
     showBeat4: boolean,
@@ -490,9 +506,12 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     const endX = range.end
     if (endX <= startX || width <= 0 || height <= 0 || trackWidth <= 0) return
     if (timelineDurationSeconds <= 0 || sourceDurationSeconds <= 0) return
-    const visibleGridLines = createTimeMapFromTempoSnapshot(
-      track.tempoSnapshot
-    ).buildVisibleGridLines(Number.POSITIVE_INFINITY)
+    const visibleGridLines =
+      Array.isArray(track.visibleGridLines) && track.visibleGridLines.length > 0
+        ? track.visibleGridLines
+        : createTimeMapFromTempoSnapshot(track.tempoSnapshot).buildVisibleGridLines(
+            Number.POSITIVE_INFINITY
+          )
     if (!visibleGridLines.length) return
 
     ctx.save()
@@ -501,7 +520,11 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       if (barOnly && level !== 'bar') continue
       if (!showBeat4 && level !== 'bar') continue
       if (!showBeat && level === 'beat') continue
-      const rawX = (line.sec / timelineDurationSeconds) * trackWidth
+      const rawX = resolveRoundedTrackLocalPx({
+        trackStartSec: Number(track.startSec) || 0,
+        localSec: line.sec,
+        pxPerSec: renderPxPerSec
+      })
       if (rawX < startX - 64 || rawX > endX + 64) continue
       const x = Math.round(rawX - startX)
       if (level === 'bar') {
