@@ -156,7 +156,54 @@ jobs:
             dist/*.blockmap
             dist/*.yml
 
+  prepare_demucs_runtime_mac_x64:
+    runs-on: macos-13
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Ensure setuptools available
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+
+      - name: Restore Demucs cache (macOS x64 runtime)
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor/demucs/darwin-x64/runtime
+            vendor/demucs/darwin-x64/runtime-cpu
+          key: demucs-${{ runner.os }}-${{ runner.arch }}-darwin-x64-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs') }}
+          restore-keys: |
+            demucs-${{ runner.os }}-${{ runner.arch }}-darwin-x64-
+
+      - name: Ensure Demucs runtimes (macOS x64)
+        run: node scripts/ensure-demucs-runtime.mjs --ci --platform darwin-x64 --profiles cpu
+
+      - name: Show prepared Demucs x64 runtime
+        run: |
+          set -euo pipefail
+          find vendor/demucs/darwin-x64 -maxdepth 2 -type f | sort | sed -n '1,40p'
+
+      - name: Upload Demucs x64 runtime artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: demucs-runtime-darwin-x64
+          path: |
+            vendor/demucs/darwin-x64
+          if-no-files-found: error
+
   build_mac:
+    needs: [prepare_demucs_runtime_mac_x64]
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -181,8 +228,7 @@ jobs:
             vendor/demucs/darwin-arm64/runtime
             vendor/demucs/darwin-arm64/runtime-cpu
             vendor/demucs/darwin-arm64/runtime-mps
-            vendor/demucs/darwin-x64/runtime
-            vendor/demucs/darwin-x64/runtime-cpu
+            vendor/demucs/bootstrap
           key: demucs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs') }}
           restore-keys: |
             demucs-${{ runner.os }}-${{ runner.arch }}-
@@ -210,6 +256,17 @@ jobs:
 
       - name: Ensure Demucs runtimes (macOS)
         run: pnpm run demucs:runtime:ensure -- --ci --profiles cpu,mps
+
+      - name: Download Demucs x64 runtime artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: demucs-runtime-darwin-x64
+          path: vendor/demucs
+
+      - name: Show prepared Demucs runtimes (macOS)
+        run: |
+          set -euo pipefail
+          find vendor/demucs -maxdepth 3 -type f | sort | grep -E 'darwin-(arm64|x64)/runtime|models/htdemucs.yaml|bootstrap/mixtape_demucs_bootstrap.py' || true
 
       - name: Typecheck (vue-tsc)
         run: npx vue-tsc --noEmit
@@ -357,21 +414,16 @@ jobs:
             exit 1
           fi
 
-          ARCH="$(uname -m)"
-          PLATFORM_KEY="darwin-arm64"
-          REQUIRED_RUNTIMES="runtime runtime-cpu runtime-mps"
-          if [ "$ARCH" = "x86_64" ]; then
-            PLATFORM_KEY="darwin-x64"
-            REQUIRED_RUNTIMES="runtime runtime-cpu"
-          fi
-
           REQUIRED_PATHS=(
+            "demucs/bootstrap/mixtape_demucs_bootstrap.py"
             "demucs/models/htdemucs.yaml"
             "demucs/models/955717e8-8726e21a.th"
+            "demucs/darwin-arm64/runtime/bin/python3"
+            "demucs/darwin-arm64/runtime-cpu/bin/python3"
+            "demucs/darwin-arm64/runtime-mps/bin/python3"
+            "demucs/darwin-x64/runtime/bin/python3"
+            "demucs/darwin-x64/runtime-cpu/bin/python3"
           )
-          for runtime_dir in $REQUIRED_RUNTIMES; do
-            REQUIRED_PATHS+=("demucs/${PLATFORM_KEY}/${runtime_dir}/bin/python3")
-          done
 
           MISSING=0
           for relative_path in "${REQUIRED_PATHS[@]}"; do
@@ -386,7 +438,7 @@ jobs:
             exit 1
           fi
 
-          echo "Packaged Demucs resources verified (macOS) for ${PLATFORM_KEY}."
+          echo "Packaged Demucs resources verified (macOS universal)."
 
       # 不再复制 rc.yml / rc-mac.yml，保持标准文件名
 
