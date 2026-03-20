@@ -266,7 +266,7 @@ export const createTimelineTransportResolversModule = (ctx: any) => {
 
   const resolveTrackStartSec = (track: MixtapeTrack) => {
     const numeric = Number(track.startSec)
-    if (Number.isFinite(numeric) && numeric >= 0) return numeric
+    if (Number.isFinite(numeric)) return numeric
     return 0
   }
 
@@ -279,7 +279,7 @@ export const createTimelineTransportResolversModule = (ctx: any) => {
     )
     if (!item) return 0
     const layoutStartSec = Number(item.startSec)
-    if (Number.isFinite(layoutStartSec) && layoutStartSec >= 0) return layoutStartSec
+    if (Number.isFinite(layoutStartSec)) return layoutStartSec
     return resolveTimelineSecByX(item.startX, pxPerSec)
   }
 

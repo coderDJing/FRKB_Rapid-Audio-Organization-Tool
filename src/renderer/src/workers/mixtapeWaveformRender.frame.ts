@@ -9,6 +9,7 @@ import {
   resolveFrameBufferMultiplier,
   resolveGridBarWidth
 } from './mixtapeWaveformRender.cache'
+import { resolveCanvasScaleMetrics, resizeCanvasWithScaleMetrics } from '../utils/canvasScale'
 
 type CreateFrameRendererOptions = {
   mixTapeWebglEnabled: boolean
@@ -211,17 +212,14 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
 
   const ensureOutputCanvas = (width: number, height: number, pixelRatio: number) => {
     if (!outputCanvas) return { canvas: null, ctx: null }
-    const scaledWidth = Math.max(1, Math.floor(width * pixelRatio))
-    const scaledHeight = Math.max(1, Math.floor(height * pixelRatio))
-    if (outputCanvas.width !== scaledWidth) outputCanvas.width = scaledWidth
-    if (outputCanvas.height !== scaledHeight) outputCanvas.height = scaledHeight
+    const metrics = resolveCanvasScaleMetrics(width, height, pixelRatio)
+    if (outputCanvas.width !== metrics.scaledWidth) outputCanvas.width = metrics.scaledWidth
+    if (outputCanvas.height !== metrics.scaledHeight) outputCanvas.height = metrics.scaledHeight
     if (!outputCtx) {
       outputCtx = outputCanvas.getContext('2d')
     }
     if (outputCtx) {
-      outputCtx.setTransform(1, 0, 0, 1, 0, 0)
-      outputCtx.clearRect(0, 0, scaledWidth, scaledHeight)
-      outputCtx.scale(pixelRatio, pixelRatio)
+      resizeCanvasWithScaleMetrics(outputCanvas, outputCtx, width, height, pixelRatio)
     }
     return { canvas: outputCanvas, ctx: outputCtx }
   }
@@ -232,19 +230,16 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
     height: number,
     pixelRatio: number
   ) => {
-    const scaledWidth = Math.max(1, Math.floor(width * pixelRatio))
-    const scaledHeight = Math.max(1, Math.floor(height * pixelRatio))
+    const metrics = resolveCanvasScaleMetrics(width, height, pixelRatio)
     if (!slot.canvas) {
-      slot.canvas = new OffscreenCanvas(scaledWidth, scaledHeight)
+      slot.canvas = new OffscreenCanvas(metrics.scaledWidth, metrics.scaledHeight)
       slot.ctx = slot.canvas.getContext('2d')
     } else {
-      if (slot.canvas.width !== scaledWidth) slot.canvas.width = scaledWidth
-      if (slot.canvas.height !== scaledHeight) slot.canvas.height = scaledHeight
+      if (slot.canvas.width !== metrics.scaledWidth) slot.canvas.width = metrics.scaledWidth
+      if (slot.canvas.height !== metrics.scaledHeight) slot.canvas.height = metrics.scaledHeight
     }
     if (slot.ctx) {
-      slot.ctx.setTransform(1, 0, 0, 1, 0, 0)
-      slot.ctx.clearRect(0, 0, scaledWidth, scaledHeight)
-      slot.ctx.scale(pixelRatio, pixelRatio)
+      resizeCanvasWithScaleMetrics(slot.canvas, slot.ctx, width, height, pixelRatio)
     }
     return { canvas: slot.canvas, ctx: slot.ctx }
   }
@@ -426,10 +421,11 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
     const output = ensureOutputCanvas(width, height, pixelRatio)
     const ctx = output.ctx
     if (!ctx || !slot.canvas) return
-    const srcX = Math.max(0, Math.floor((startX - slot.startX) * pixelRatio))
+    const bufferMetrics = resolveCanvasScaleMetrics(slot.width, slot.height, pixelRatio)
+    const srcX = Math.max(0, Math.round((startX - slot.startX) * bufferMetrics.scaleX))
     const srcY = 0
-    const srcW = Math.max(1, Math.floor(width * pixelRatio))
-    const srcH = Math.max(1, Math.floor(height * pixelRatio))
+    const srcW = Math.max(1, Math.round(width * bufferMetrics.scaleX))
+    const srcH = Math.max(1, Math.round(height * bufferMetrics.scaleY))
     ctx.drawImage(slot.canvas, srcX, srcY, srcW, srcH, 0, 0, width, height)
   }
 
@@ -637,8 +633,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
     pixelRatio: number
   ) => {
     if (!gl) return null
-    const scaledWidth = Math.max(1, Math.floor(width * pixelRatio))
-    const scaledHeight = Math.max(1, Math.floor(height * pixelRatio))
+    const { scaledWidth, scaledHeight } = resolveCanvasScaleMetrics(width, height, pixelRatio)
     if (!slot.texture) {
       slot.texture = gl.createTexture()
       if (!slot.texture) return null
@@ -749,8 +744,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
     const { width, height, pixelRatio, startX, startY } = payload
     const showGridLines = payload.showGridLines !== false
     const allowTileBuild = payload.allowTileBuild !== false
-    const scaledWidth = Math.max(1, Math.floor(width * pixelRatio))
-    const scaledHeight = Math.max(1, Math.floor(height * pixelRatio))
+    const { scaledWidth, scaledHeight } = resolveCanvasScaleMetrics(width, height, pixelRatio)
     const key = buildFrameKey(payload)
     const bufferMultiplier = resolveFrameBufferMultiplier(payload.zoom, mixTapeBufferMultiplier)
     const bufferTargetWidth = Math.max(1, Math.floor(width * bufferMultiplier))

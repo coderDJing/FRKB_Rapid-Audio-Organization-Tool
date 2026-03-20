@@ -210,21 +210,23 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
   const scheduleOfflineAutomation = async (params: {
     nodes: TrackGraphNode[]
     durationSec: number
+    timelineOriginSec: number
     offlineCtx: OfflineAudioContext
     emitProgress: (payload: MixtapeOutputProgressPayload) => void
   }) => {
-    const { nodes, durationSec, offlineCtx, emitProgress } = params
+    const { nodes, durationSec, timelineOriginSec, offlineCtx, emitProgress } = params
     let masterTrackId = ''
     const stepSec = 1 / 120
     const totalSteps = Math.max(1, Math.ceil(durationSec / stepSec))
     const schedulingNodes = nodes as any[]
     let lastYieldAt = getNowMs()
     for (let step = 0; step <= totalSteps; step += 1) {
-      const timelineSec = Math.min(durationSec, step * stepSec)
+      const renderSec = Math.min(durationSec, step * stepSec)
+      const timelineSec = timelineOriginSec + renderSec
       applyTransportMixParamsAtTimelineSec(timelineSec, {
         nodes,
         audioCtx: offlineCtx,
-        automationAtSec: timelineSec
+        automationAtSec: renderSec
       })
       const syncResult = applyMixxxTransportSync({
         nodes: schedulingNodes,
@@ -270,6 +272,7 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
   const buildOutputTrackNodes = (
     offlineCtx: OfflineAudioContext,
     entries: TransportEntry[],
+    timelineOriginSec: number,
     useRealtimeKeyLock: boolean
   ): TrackGraphNode[] => {
     const nodes: TrackGraphNode[] = []
@@ -285,7 +288,7 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
         const volume = offlineCtx.createGain()
         const gain = offlineCtx.createGain()
 
-        const initialTimelineSec = 0
+        const initialTimelineSec = timelineOriginSec
         const initialLocalSec = Math.max(0, initialTimelineSec - entry.startSec)
         volume.gain.value = resolveEntryEnvelopeValue(entry, 'volume', initialLocalSec)
         gain.gain.value = resolveEntryEnvelopeValue(entry, 'gain', initialLocalSec)
@@ -308,7 +311,7 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
           stemGain.gain.value = resolveEntryEnvelopeValue(entry, stemAudio.stemId, initialLocalSec)
           source.connect(stemGain)
           stemGain.connect(stemBus)
-          source.start(entry.startSec, 0)
+          source.start(Math.max(0, entry.startSec - timelineOriginSec), 0)
           stemNodes.push({
             stemId: stemAudio.stemId,
             source,
@@ -356,7 +359,7 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
 
       const volume = offlineCtx.createGain()
       const gain = offlineCtx.createGain()
-      const initialTimelineSec = 0
+      const initialTimelineSec = timelineOriginSec
       const initialLocalSec = Math.max(0, initialTimelineSec - entry.startSec)
       eqHigh.gain.value = resolveEntryEqDbValue(entry, 'high', initialLocalSec)
       eqMid.gain.value = resolveEntryEqDbValue(entry, 'mid', initialLocalSec)
@@ -370,7 +373,7 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
       eqHigh.connect(volume)
       volume.connect(gain)
       gain.connect(offlineCtx.destination)
-      source.start(entry.startSec, 0)
+      source.start(Math.max(0, entry.startSec - timelineOriginSec), 0)
 
       nodes.push({
         trackId: entry.trackId,
@@ -510,8 +513,12 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
         ? requiredStemIds.every((stemId) => !!entry.stemAudioById?.[stemId]?.audioBuffer)
         : Boolean(entry.audioRef?.audioBuffer)
     )
+    const timelineOriginSec = playableEntries.reduce(
+      (min, entry) => Math.min(min, Number(entry.startSec) || 0),
+      0
+    )
     const durationSec = playableEntries.reduce(
-      (max, entry) => Math.max(max, entry.startSec + entry.duration),
+      (max, entry) => Math.max(max, entry.startSec + entry.duration - timelineOriginSec),
       0
     )
     if (!durationSec || !Number.isFinite(durationSec) || durationSec <= 0) {
@@ -532,7 +539,12 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
         console.error('[mixtape-output] key lock worklet unavailable, fallback to rate', error)
       }
     }
-    const nodes = buildOutputTrackNodes(offlineCtx, playableEntries, offlineKeyLockWorkletReady)
+    const nodes = buildOutputTrackNodes(
+      offlineCtx,
+      playableEntries,
+      timelineOriginSec,
+      offlineKeyLockWorkletReady
+    )
 
     emitProgress({
       stageKey: 'mixtape.outputProgressScheduling',
@@ -543,6 +555,7 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
     await scheduleOfflineAutomation({
       nodes,
       durationSec,
+      timelineOriginSec,
       offlineCtx,
       emitProgress
     })

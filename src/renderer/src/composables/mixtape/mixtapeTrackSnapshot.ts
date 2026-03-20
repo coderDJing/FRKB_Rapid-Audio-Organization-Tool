@@ -114,10 +114,9 @@ export const parseSnapshot = (
     Number(info?.durationSec)
   )
   const parsedStartSecRaw = Number(info?.startSec)
-  const parsedStartSec =
-    Number.isFinite(parsedStartSecRaw) && parsedStartSecRaw >= 0
-      ? Number(parsedStartSecRaw.toFixed(4))
-      : undefined
+  const parsedStartSec = Number.isFinite(parsedStartSecRaw)
+    ? Number(parsedStartSecRaw.toFixed(4))
+    : undefined
   const parsedStemStatus = normalizeStemStatus(info?.stemStatus, 'ready')
   const parsedStemError =
     typeof info?.stemError === 'string' && info.stemError.trim() ? info.stemError.trim() : undefined

@@ -72,7 +72,7 @@ const collapseBoundaryBpmPoints = (
 export const normalizeTrackBpmValue = (value: unknown): number | null => {
   const numeric = Number(value)
   if (!Number.isFinite(numeric) || numeric <= BPM_MIN_VALUE) return null
-  return Math.max(BPM_MIN_VALUE, Math.round(numeric))
+  return Math.max(BPM_MIN_VALUE, Number(numeric.toFixed(4)))
 }
 
 export const resolveTrackBpmEnvelopeBaseValue = (

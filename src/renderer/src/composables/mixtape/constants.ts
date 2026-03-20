@@ -33,6 +33,8 @@ export const GRID_BEAT_LINE_ZOOM = GRID_DETAIL_SPLIT_MIN_ZOOM + (GRID_DETAIL_SPL
 export const GRID_BAR_WIDTH_MIN = 1.6
 export const GRID_BAR_WIDTH_MAX = 2.6
 export const GRID_BAR_WIDTH_MAX_ZOOM = 1.2
+export const GRID_BEAT4_LINE_WIDTH = 1.8
+export const GRID_BEAT_LINE_WIDTH = 1.3
 export const MIXTAPE_WAVEFORM_HEIGHT_SCALE = 0.72
 export const MIXTAPE_WAVEFORM_SUPERSAMPLE = 2
 export const RAW_WAVEFORM_TARGET_RATE = 2400
@@ -47,4 +49,14 @@ export const MIXXX_RGB_COMPONENTS = {
   low: { r: 1, g: 0, b: 0 },
   mid: { r: 0, g: 1, b: 0 },
   high: { r: 0, g: 0, b: 1 }
+}
+
+export const resolveTimelineGridBarWidth = (zoomValue: number) => {
+  const safeZoom = Number.isFinite(zoomValue) ? zoomValue : 1
+  const minZoom = ZOOM_MIN
+  const maxZoom = GRID_BAR_WIDTH_MAX_ZOOM
+  if (safeZoom <= minZoom) return GRID_BAR_WIDTH_MIN
+  if (safeZoom >= maxZoom) return GRID_BAR_WIDTH_MAX
+  const ratio = (safeZoom - minZoom) / Math.max(0.0001, maxZoom - minZoom)
+  return GRID_BAR_WIDTH_MIN + (GRID_BAR_WIDTH_MAX - GRID_BAR_WIDTH_MIN) * ratio
 }

@@ -1,6 +1,7 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import { drawBeatAlignRekordboxWaveform } from '@renderer/components/mixtapeBeatAlignWaveform'
+import { resizeCanvasWithScaleMetrics } from '@renderer/utils/canvasScale'
 
 type BeatAlignPreviewRenderInput = {
   canvas: HTMLCanvasElement
@@ -23,6 +24,8 @@ type CanvasMetrics = {
   pixelRatio: number
   scaledWidth: number
   scaledHeight: number
+  scaleX: number
+  scaleY: number
   resized: boolean
 }
 
@@ -52,22 +55,26 @@ const ensureCanvasMetrics = (
 ): CanvasMetrics => {
   const cssWidth = Math.max(1, Math.floor(wrap.clientWidth))
   const cssHeight = Math.max(1, Math.floor(wrap.clientHeight))
-  const pixelRatio = window.devicePixelRatio || 1
-  const scaledWidth = Math.max(1, Math.floor(cssWidth * pixelRatio))
-  const scaledHeight = Math.max(1, Math.floor(cssHeight * pixelRatio))
-  const resized = canvas.width !== scaledWidth || canvas.height !== scaledHeight
-  if (resized) {
-    canvas.width = scaledWidth
-    canvas.height = scaledHeight
-  }
-  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
+  const previousWidth = canvas.width
+  const previousHeight = canvas.height
+  const metrics = resizeCanvasWithScaleMetrics(
+    canvas,
+    ctx,
+    cssWidth,
+    cssHeight,
+    window.devicePixelRatio || 1
+  )
+  const scaledWidth = metrics.scaledWidth
+  const scaledHeight = metrics.scaledHeight
   return {
     cssWidth,
     cssHeight,
-    pixelRatio,
+    pixelRatio: metrics.pixelRatio,
     scaledWidth,
     scaledHeight,
-    resized
+    scaleX: metrics.scaleX,
+    scaleY: metrics.scaleY,
+    resized: previousWidth !== scaledWidth || previousHeight !== scaledHeight
   }
 }
 
@@ -148,7 +155,7 @@ export const createBeatAlignPreviewRenderer = () => {
       1,
       Math.max(1, metrics.cssWidth - safeSegmentX)
     )
-    const scaledSegmentWidth = Math.max(1, Math.ceil(safeSegmentWidth * metrics.pixelRatio))
+    const scaledSegmentWidth = Math.max(1, Math.ceil(safeSegmentWidth * metrics.scaleX))
     const segment = ensureSegmentCanvas(scaledSegmentWidth, metrics.scaledHeight)
     if (!segment) return
 
@@ -156,7 +163,7 @@ export const createBeatAlignPreviewRenderer = () => {
       state.rangeStartSec + (safeSegmentX / metrics.cssWidth) * state.rangeDurationSec
     const segmentDurationSec = (safeSegmentWidth / metrics.cssWidth) * state.rangeDurationSec
 
-    segment.ctx.setTransform(metrics.pixelRatio, 0, 0, metrics.pixelRatio, 0, 0)
+    segment.ctx.setTransform(metrics.scaleX, 0, 0, metrics.scaleY, 0, 0)
     segment.ctx.clearRect(0, 0, safeSegmentWidth, metrics.cssHeight)
     drawBeatAlignRekordboxWaveform(segment.ctx, {
       width: safeSegmentWidth,
@@ -245,9 +252,9 @@ export const createBeatAlignPreviewRenderer = () => {
             if (shiftPx > 0) {
               ctx.drawImage(
                 scratch.canvas,
-                absShiftPx * metrics.pixelRatio,
+                absShiftPx * metrics.scaleX,
                 0,
-                keepWidth * metrics.pixelRatio,
+                keepWidth * metrics.scaleX,
                 metrics.scaledHeight,
                 0,
                 0,
@@ -259,7 +266,7 @@ export const createBeatAlignPreviewRenderer = () => {
                 scratch.canvas,
                 0,
                 0,
-                keepWidth * metrics.pixelRatio,
+                keepWidth * metrics.scaleX,
                 metrics.scaledHeight,
                 absShiftPx,
                 0,

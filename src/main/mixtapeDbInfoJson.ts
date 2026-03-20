@@ -267,7 +267,7 @@ export function upsertMixtapeItemStartSecById(
 
   const normalizeStartSec = (value: unknown) => {
     const numeric = Number(value)
-    if (!Number.isFinite(numeric) || numeric < 0) return null
+    if (!Number.isFinite(numeric)) return null
     return Number(numeric.toFixed(4))
   }
 

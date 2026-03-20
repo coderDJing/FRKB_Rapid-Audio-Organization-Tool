@@ -22,6 +22,7 @@ import {
 } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
 import { createTrackTimeMapFromSnapshotPayload } from '@renderer/composables/mixtape/trackTimeMapFactory'
 import { createTimelineWaveformLoadingModule } from '@renderer/composables/mixtape/timelineWaveformLoading'
+import { resizeCanvasWithScaleMetrics } from '@renderer/utils/canvasScale'
 
 export const createTimelineRenderAndLoadModule = (ctx: any) => {
   const {
@@ -148,16 +149,16 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     if (!width || !height) return
     const wrapRect = wrap.getBoundingClientRect()
     const viewRect = viewport.getBoundingClientRect()
-    const left = Math.max(0, Math.round(viewRect.left - wrapRect.left))
-    const top = Math.max(0, Math.round(viewRect.top - wrapRect.top))
+    const left = Math.max(0, viewRect.left - wrapRect.left)
+    const top = Math.max(0, viewRect.top - wrapRect.top)
     const widthPx = Math.max(0, Math.floor(width))
     const heightPx = Math.max(0, Math.floor(height))
     if (canvas.style.left !== `${left}px`) canvas.style.left = `${left}px`
     if (canvas.style.top !== `${top}px`) canvas.style.top = `${top}px`
     if (canvas.style.width !== `${widthPx}px`) canvas.style.width = `${widthPx}px`
     if (canvas.style.height !== `${heightPx}px`) canvas.style.height = `${heightPx}px`
-    const startX = Math.round(viewport.scrollLeft || 0)
-    const startY = Math.round(viewport.scrollTop || 0)
+    const startX = Math.max(0, Number(viewport.scrollLeft || 0))
+    const startY = Math.max(0, Number(viewport.scrollTop || 0))
 
     if (isStemMixMode() && timelineWorkerReady.value) {
       requestTimelineWorkerRender(widthPx, heightPx, startX, startY)
@@ -314,16 +315,7 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     width: number,
     height: number
   ) => {
-    const pixelRatio = window.devicePixelRatio || 1
-    const scaledWidth = Math.max(1, Math.floor(width * pixelRatio))
-    const scaledHeight = Math.max(1, Math.floor(height * pixelRatio))
-    if (canvas.width !== scaledWidth || canvas.height !== scaledHeight) {
-      canvas.width = scaledWidth
-      canvas.height = scaledHeight
-    }
-    ctx.setTransform(1, 0, 0, 1, 0, 0)
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    ctx.scale(pixelRatio, pixelRatio)
+    resizeCanvasWithScaleMetrics(canvas, ctx, width, height, window.devicePixelRatio || 1)
   }
 
   const ensureWaveformScratch = (width: number, height: number) => {

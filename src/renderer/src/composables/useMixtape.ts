@@ -821,6 +821,8 @@ export const useMixtape = () => {
     clearTimelineLayoutCache,
     updateTimelineWidth,
     resolveTrackDurationSeconds,
+    resolveTrackSourceDurationSeconds,
+    resolveTrackFirstBeatSeconds,
     resolveTrackTitle,
     renderMixtapeOutputWav,
     normalizeMixtapeFilePath,

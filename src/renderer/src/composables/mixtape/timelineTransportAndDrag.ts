@@ -102,7 +102,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   }
   const normalizeStartSec = (value: unknown) => {
     const numeric = Number(value)
-    if (!Number.isFinite(numeric) || numeric < 0) return null
+    if (!Number.isFinite(numeric)) return null
     return Number(numeric.toFixed(4))
   }
   const normalizeMixtapeStemStatus = (value: unknown): MixtapeStemStatus => {
@@ -356,6 +356,16 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     playheadSec.value = total
   }
 
+  const resolveTransportMinStartSec = () => {
+    const snapshot = buildSequentialLayoutForZoom(normalizedRenderZoom.value)
+    if (!snapshot.layout.length) return 0
+    return snapshot.layout.reduce((minSec: number, item: { startSec: number }) => {
+      const startSec = Number(item.startSec)
+      if (!Number.isFinite(startSec)) return minSec
+      return Math.min(minSec, startSec)
+    }, 0)
+  }
+
   const handleTransportStop = () => {
     stopTransport()
     playheadVisible.value = false
@@ -364,8 +374,9 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   const resolveTransportRestartSec = () => {
     const total = resolveTransportDuration()
     if (!total) return 0
-    if (playheadSec.value >= total - 0.05) return 0
-    return clampNumber(playheadSec.value, 0, total)
+    const minStartSec = resolveTransportMinStartSec()
+    if (playheadSec.value >= total - 0.05) return minStartSec
+    return clampNumber(playheadSec.value, minStartSec, total)
   }
 
   const resolveRulerSeekSec = (event: MouseEvent) => {
@@ -586,7 +597,11 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       0
     )
     transportDurationSec = duration
-    const startSec = clampNumber(rawStartSec, 0, Math.max(0, duration))
+    const minStartSec = playableEntries.reduce(
+      (min, entry) => Math.min(min, Number(entry.startSec) || 0),
+      0
+    )
+    const startSec = clampNumber(rawStartSec, minStartSec, Math.max(minStartSec, duration))
     transportError.value = ''
     if (!playableEntries.length || duration <= 0 || startSec >= duration) {
       playheadVisible.value = false
@@ -703,7 +718,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
   }
 
   const handleTransportPlayFromStart = () => {
-    void startTransportFrom(0)
+    void startTransportFrom(resolveTransportMinStartSec())
   }
 
   const handleRulerSeek = (event: MouseEvent) => {

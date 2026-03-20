@@ -3,10 +3,12 @@ import { resolveContextMenuPoint } from '@renderer/utils/contextMenuPosition'
 import { FIXED_MIXTAPE_STEM_MODE } from '@shared/mixtapeStemMode'
 import {
   applyMixtapeGlobalTempoTargetsToTracks,
+  buildFlatMixtapeGlobalBpmEnvelope,
   buildDefaultMixtapeGlobalBpmEnvelopeSnapshot,
   normalizeMixtapeGlobalBpmEnvelopePoints,
   resolveDefaultGlobalBpmFromTracks
 } from '@renderer/composables/mixtape/mixtapeGlobalTempoModel'
+import { createMixtapeMasterGrid } from '@renderer/composables/mixtape/mixtapeMasterGrid'
 import {
   applyMixtapeGlobalTempoSnapshot,
   isMixtapeGlobalTempoReady,
@@ -14,6 +16,12 @@ import {
   mixtapeGlobalTempoSource,
   resetMixtapeGlobalTempoState
 } from '@renderer/composables/mixtape/mixtapeGlobalTempoState'
+import { resolveBeatSecByBpm } from '@renderer/composables/mixtape/mixxxSyncModel'
+import {
+  BPM_POINT_SEC_EPSILON,
+  resolveTrackGridSourceBpm,
+  roundTrackTempoSec
+} from '@renderer/composables/mixtape/trackTempoModel'
 
 export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
   const {
@@ -62,6 +70,8 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     clearTimelineLayoutCache,
     updateTimelineWidth,
     resolveTrackDurationSeconds,
+    resolveTrackSourceDurationSeconds,
+    resolveTrackFirstBeatSeconds,
     resolveTrackTitle,
     renderMixtapeOutputWav,
     normalizeMixtapeFilePath,
@@ -149,17 +159,16 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     })
   }
 
-  const loadProjectGlobalTempoEnvelope = async (playlistId: string) => {
+  const readNormalizedProjectGlobalTempoSnapshot = async (playlistId: string, trackList: any[]) => {
     const normalizedPlaylistId = typeof playlistId === 'string' ? playlistId.trim() : ''
     if (!normalizedPlaylistId || !window?.electron?.ipcRenderer?.invoke) {
-      resetMixtapeGlobalTempoState(normalizedPlaylistId)
-      return
+      return null
     }
     try {
       const result = await window.electron.ipcRenderer.invoke('mixtape:project:get-bpm-envelope', {
         playlistId: normalizedPlaylistId
       })
-      const defaultBpm = resolveDefaultGlobalBpmFromTracks(tracks.value)
+      const defaultBpm = resolveDefaultGlobalBpmFromTracks(trackList)
       const normalizedSnapshot = {
         bpmEnvelope: normalizeMixtapeGlobalBpmEnvelopePoints(
           result?.bpmEnvelope,
@@ -172,13 +181,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
         normalizedSnapshot.bpmEnvelope.length >= 2 &&
         normalizedSnapshot.bpmEnvelopeDurationSec > 0
       ) {
-        applyMixtapeGlobalTempoSnapshot({
-          playlistId: normalizedPlaylistId,
-          snapshot: normalizedSnapshot,
-          source: 'persisted'
-        })
-        refreshTimelineForGlobalTempoChange()
-        return
+        return normalizedSnapshot
       }
     } catch (error) {
       console.error('[mixtape] load project bpm envelope failed', {
@@ -186,27 +189,74 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
         error
       })
     }
-    ensureDefaultGlobalTempoEnvelope(normalizedPlaylistId)
+    return null
   }
 
-  const normalizeBpmFailureReason = (value: unknown): string => {
-    const text = typeof value === 'string' ? value.trim() : ''
-    if (!text) return ''
-    return text.length <= 240 ? text : `${text.slice(0, 240)}...`
-  }
-
-  const materializeSequentialTrackStartSecs = (inputTracks: any[]) => {
+  const materializeGridAlignedTrackStartSecs = (
+    inputTracks: any[],
+    globalPoints: Array<{ sec: number; bpm: number }>
+  ) => {
+    const GRID_ALIGN_BAR_INTERVAL = 32
+    const fallbackBpm = resolveDefaultGlobalBpmFromTracks(inputTracks)
+    const safePoints =
+      Array.isArray(globalPoints) && globalPoints.length >= 2
+        ? globalPoints
+        : buildFlatMixtapeGlobalBpmEnvelope(0, fallbackBpm)
+    const masterGrid = createMixtapeMasterGrid({
+      points: safePoints,
+      fallbackBpm
+    })
     let cursorSec = 0
     const persistedEntries: Array<{ itemId: string; startSec: number }> = []
     const nextTracks = inputTracks.map((track: any) => {
       const rawStartSec = Number(track?.startSec)
-      const hasExplicitStartSec = Number.isFinite(rawStartSec) && rawStartSec >= 0
-      const startSec = hasExplicitStartSec
-        ? Number(rawStartSec.toFixed(4))
-        : Number(cursorSec.toFixed(4))
+      const hasExplicitStartSec = Number.isFinite(rawStartSec)
+      const sourceDurationSec = Math.max(0, Number(resolveTrackSourceDurationSeconds(track)) || 0)
+      const gridSourceBpm = resolveTrackGridSourceBpm(track)
+      const beatSourceSec = Math.max(BPM_POINT_SEC_EPSILON, resolveBeatSecByBpm(gridSourceBpm))
+      const currentBeatSec = Math.max(
+        BPM_POINT_SEC_EPSILON,
+        resolveBeatSecByBpm(Number(track?.bpm) || gridSourceBpm)
+      )
+      const firstBeatSourceSec = Math.max(0, Number(track?.firstBeatMs) || 0) / 1000
+      const firstBeatSourceBeats = firstBeatSourceSec / beatSourceSec
+      const sourceDurationBeats = sourceDurationSec / beatSourceSec
+      const normalizedBarBeatOffset = normalizeBarBeatOffset(track?.barBeatOffset)
+      const firstBarLineSourceBeats = firstBeatSourceBeats + normalizedBarBeatOffset
+      const hasVisibleBarLine =
+        firstBarLineSourceBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
+      const sourceAnchorBeats = hasVisibleBarLine ? firstBarLineSourceBeats : firstBeatSourceBeats
+      const anchorIntervalBeats = hasVisibleBarLine ? GRID_ALIGN_BAR_INTERVAL : 1
+      const firstBeatLocalSec = Math.max(0, Number(resolveTrackFirstBeatSeconds(track)) || 0)
+      const localAnchorSec = hasVisibleBarLine
+        ? firstBeatLocalSec + normalizedBarBeatOffset * currentBeatSec
+        : firstBeatLocalSec
+      const shouldPlaceFirstAnchorAtTimelineZero = cursorSec <= BPM_POINT_SEC_EPSILON
+      const nextGlobalAnchorIndex = shouldPlaceFirstAnchorAtTimelineZero
+        ? 0
+        : Math.floor(
+            (masterGrid.mapSecToBeats(cursorSec) + BPM_POINT_SEC_EPSILON) / anchorIntervalBeats
+          ) + 1
+      const desiredAnchorBeat = nextGlobalAnchorIndex * anchorIntervalBeats
+      const minimumAnchorBeat = shouldPlaceFirstAnchorAtTimelineZero
+        ? 0
+        : Math.max(anchorIntervalBeats, Math.ceil(sourceAnchorBeats - BPM_POINT_SEC_EPSILON))
+      const startBeat = Math.max(
+        0,
+        Math.max(desiredAnchorBeat, minimumAnchorBeat) - sourceAnchorBeats
+      )
+      const generatedStartSec = shouldPlaceFirstAnchorAtTimelineZero
+        ? roundTrackTempoSec(-localAnchorSec)
+        : roundTrackTempoSec(masterGrid.mapBeatsToSec(startBeat))
+      const startSec = hasExplicitStartSec ? roundTrackTempoSec(rawStartSec) : generatedStartSec
       const nextTrack = hasExplicitStartSec ? track : { ...track, startSec }
-      const durationSec = Math.max(0, Number(resolveTrackDurationSeconds(nextTrack)) || 0)
-      cursorSec = Math.max(cursorSec, startSec + durationSec)
+      const trackStartBeat = masterGrid.mapSecToBeats(startSec)
+      const trackEndSec = roundTrackTempoSec(
+        beatSourceSec > BPM_POINT_SEC_EPSILON
+          ? masterGrid.mapBeatsToSec(trackStartBeat + sourceDurationBeats)
+          : startSec + sourceDurationSec
+      )
+      cursorSec = Math.max(cursorSec, trackEndSec)
       if (!hasExplicitStartSec && nextTrack?.id) {
         persistedEntries.push({
           itemId: String(nextTrack.id),
@@ -219,6 +269,12 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
       tracks: nextTracks,
       persistedEntries
     }
+  }
+
+  const normalizeBpmFailureReason = (value: unknown): string => {
+    const text = typeof value === 'string' ? value.trim() : ''
+    if (!text) return ''
+    return text.length <= 240 ? text : `${text.slice(0, 240)}...`
   }
 
   const handleBpmBatchReady = (_e: unknown, eventPayload: any) => {
@@ -398,8 +454,19 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
       const parsedTracks = rawItems.map((item: any, index: number) =>
         parseSnapshot(item, index, t('tracks.unknownTrack'))
       )
-      const { tracks: hydratedTracks, persistedEntries } =
-        materializeSequentialTrackStartSecs(parsedTracks)
+      const persistedGlobalSnapshot = await readNormalizedProjectGlobalTempoSnapshot(
+        playlistId,
+        parsedTracks
+      )
+      const generatedGlobalSnapshot = buildDefaultMixtapeGlobalBpmEnvelopeSnapshot({
+        tracks: parsedTracks,
+        resolveTrackDurationSeconds
+      })
+      const defaultLayoutSnapshot = persistedGlobalSnapshot || generatedGlobalSnapshot
+      const { tracks: hydratedTracks, persistedEntries } = materializeGridAlignedTrackStartSecs(
+        parsedTracks,
+        defaultLayoutSnapshot.bpmEnvelope
+      )
       tracks.value = hydratedTracks
       if (persistedEntries.length > 0 && window?.electron?.ipcRenderer?.invoke) {
         void window.electron.ipcRenderer
@@ -414,7 +481,16 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
             })
           })
       }
-      await loadProjectGlobalTempoEnvelope(playlistId)
+      if (persistedGlobalSnapshot) {
+        applyMixtapeGlobalTempoSnapshot({
+          playlistId,
+          snapshot: persistedGlobalSnapshot,
+          source: 'persisted'
+        })
+        refreshTimelineForGlobalTempoChange()
+      } else {
+        ensureDefaultGlobalTempoEnvelope(playlistId)
+      }
       pruneStemRuntimeProgressByTracks(tracks.value)
       const stemMode = FIXED_MIXTAPE_STEM_MODE
       const currentPlaylistId = playlistId
@@ -465,12 +541,6 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
       } else if (currentPlaylistId) {
         stemResumeBootstrappedPlaylistIdSet.delete(currentPlaylistId)
         stemResumeSignatureByPlaylistId.delete(currentPlaylistId)
-        console.info(
-          '[mixtape] stem auto enqueue skipped: non-stem mode or strategy not confirmed',
-          {
-            playlistId: currentPlaylistId
-          }
-        )
       }
       if (!tracks.value.some((track: any) => track.id === selectedTrackId.value)) {
         selectedTrackId.value = tracks.value[0]?.id || ''

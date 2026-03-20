@@ -8,7 +8,6 @@ import {
   resolveBeatSecByBpm,
   resolveGridAnchorSec
 } from '@renderer/composables/mixtape/mixxxSyncModel'
-import { outputMixtapeGridDebugLog } from '@renderer/composables/mixtape/debugLog'
 import { createMixtapeMasterGrid } from '@renderer/composables/mixtape/mixtapeMasterGrid'
 import {
   isMixtapeGlobalTempoReady,
@@ -551,7 +550,6 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
 
   const handleTrackDragEnd = () => {
     if (!trackDragState) return
-    const dragDebug = trackDragState.lastDebug
     const targetTrackId = trackDragState.trackId
     const previousTrack =
       trackDragState.snapshotTracks.find((item: MixtapeTrack) => item.id === targetTrackId) || null
@@ -564,11 +562,6 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
     window.removeEventListener('mouseup', handleTrackDragEnd as EventListener)
     scheduleFullPreRender()
     scheduleWorkerPreRender()
-    outputMixtapeGridDebugLog('track-drag-end', {
-      ...dragDebug,
-      previousStartSec,
-      currentStartSec
-    })
     if (!currentTrack) return
     const startChanged =
       currentStartSec !== null &&
@@ -595,10 +588,9 @@ export const createTimelineTransportTrackDragModule = (ctx: any) => {
     trackDragState = {
       trackId,
       startClientX: event.clientX,
-      initialStartSec:
-        Number.isFinite(Number(item.startSec)) && Number(item.startSec) >= 0
-          ? Number(item.startSec)
-          : resolveTimelineSecByX(item.startX, pxPerSec),
+      initialStartSec: Number.isFinite(Number(item.startSec))
+        ? Number(item.startSec)
+        : resolveTimelineSecByX(item.startX, pxPerSec),
       previousTrackId: resolvePreviousTrackId(trackId),
       snapshotTracks: tracks.value.map((trackItem: MixtapeTrack) => ({ ...trackItem })),
       lastDebug: null

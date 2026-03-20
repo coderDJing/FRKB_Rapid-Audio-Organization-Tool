@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { t } from '@renderer/utils/translate'
 import {
   BASE_PX_PER_SEC,
+  GRID_BEAT4_LINE_WIDTH,
+  GRID_BEAT_LINE_WIDTH,
   MIXTAPE_WIDTH_SCALE,
+  resolveTimelineGridBarWidth,
   TIMELINE_SIDE_PADDING_PX
 } from '@renderer/composables/mixtape/constants'
-import { outputMixtapeGridDebugLog } from '@renderer/composables/mixtape/debugLog'
 import { resolveRoundedTimelineAbsolutePx } from '@renderer/composables/mixtape/timelinePixelMath'
 import {
   applyMixtapeGlobalTempoTargetsToTracks,
@@ -27,6 +29,7 @@ import {
 } from '@renderer/composables/mixtape/trackTempoVisual'
 import { roundTrackTempoSec } from '@renderer/composables/mixtape/trackTempoModel'
 import type { MixtapeBpmPoint, MixtapeTrack } from '@renderer/composables/mixtape/types'
+import { resizeCanvasWithScaleMetrics } from '@renderer/utils/canvasScale'
 
 const props = defineProps<{
   visible: boolean
@@ -75,8 +78,10 @@ type ProjectedTrackGridLine = {
 
 const dragState = ref<DragState | null>(null)
 const stageRef = ref<HTMLElement | null>(null)
+const gridCanvasRef = ref<HTMLCanvasElement | null>(null)
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 let previewTrackSyncRaf = 0
+let gridCanvasRaf = 0
 const pendingTrackStartSecPersist = new Map<string, number>()
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
@@ -298,6 +303,50 @@ const laneStyle = computed(() => ({
   height: `${Math.max(0, Number(props.heightPx) || 0)}px`
 }))
 
+const gridCanvasStyle = computed(() => ({
+  left: `${Math.max(0, Number(props.timelineScrollLeft) || 0)}px`,
+  width: `${Math.max(0, Number(props.timelineViewportWidth) || 0)}px`,
+  height: `${Math.max(0, Number(props.heightPx) || 0)}px`
+}))
+
+const resolveGridLineVisual = (level: ProjectedTrackGridLine['level']) => {
+  if (level === 'bar') {
+    return {
+      width: resolveTimelineGridBarWidth(Number(props.renderZoomLevel) || 0),
+      color: 'rgba(255, 255, 255, 0.26)'
+    }
+  }
+  if (level === 'beat4') return { width: GRID_BEAT4_LINE_WIDTH, color: 'rgba(255, 255, 255, 0.16)' }
+  return { width: GRID_BEAT_LINE_WIDTH, color: 'rgba(255, 255, 255, 0.12)' }
+}
+
+const drawGridCanvas = () => {
+  const canvas = gridCanvasRef.value
+  if (!canvas || !shouldRender.value) return
+  const width = Math.max(0, Math.floor(Number(props.timelineViewportWidth) || 0))
+  const height = Math.max(0, Math.floor(Number(props.heightPx) || 0))
+  if (!width || !height) return
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  resizeCanvasWithScaleMetrics(canvas, ctx, width, height, window.devicePixelRatio || 1)
+  const scrollLeft = Math.max(0, Number(props.timelineScrollLeft) || 0)
+  for (const line of visibleGridLines.value) {
+    const visual = resolveGridLineVisual(line.level)
+    const x = line.leftPx - scrollLeft - visual.width / 2
+    if (x + visual.width < -2 || x > width + 2) continue
+    ctx.fillStyle = visual.color
+    ctx.fillRect(x, 0, visual.width, height)
+  }
+}
+
+const scheduleGridCanvasDraw = () => {
+  if (gridCanvasRaf) return
+  gridCanvasRaf = requestAnimationFrame(() => {
+    gridCanvasRaf = 0
+    drawGridCanvas()
+  })
+}
+
 const clonePoints = (points: MixtapeBpmPoint[]) =>
   points.map((point) => ({
     sec: Number(point.sec),
@@ -344,15 +393,6 @@ const queueTrackStartSecPersist = (beforeTracks: MixtapeTrack[], afterTracks: Mi
     pendingTrackStartSecPersist.set(itemId, afterStartSec)
   }
 }
-
-const summarizeTrackGridState = (track: MixtapeTrack) => ({
-  id: String(track.id || ''),
-  title: String(track.title || '').trim(),
-  startSec: resolveTrackStartSec(track),
-  bpm: Number(track.bpm) || 0,
-  originalBpm: Number(track.originalBpm) || 0,
-  gridBaseBpm: Number(track.gridBaseBpm) || 0
-})
 
 const applyPoints = (points: MixtapeBpmPoint[], options?: { persist?: boolean }) => {
   const nextPoints = normalizeMixtapeGlobalBpmEnvelopePoints(
@@ -403,12 +443,6 @@ const flushPersist = async () => {
         })
       : Promise.resolve(null)
   ])
-  outputMixtapeGridDebugLog('persist-envelope', {
-    playlistId,
-    pointCount: effectivePoints.value.length,
-    pointsSample: effectivePoints.value.slice(0, 8),
-    startSecEntries
-  })
   if (bpmEnvelopePersistResult.status === 'rejected') {
     console.error('[mixtape] persist global bpm envelope failed', {
       playlistId,
@@ -475,16 +509,6 @@ const syncTrackTargets = (params?: {
   }
   if (!changedFromSource && !changedFromCurrent) {
     return
-  }
-  if (!params?.preview) {
-    outputMixtapeGridDebugLog('sync-track-targets', {
-      previousPointCount: previousGlobalPoints.length,
-      nextPointCount: effectivePoints.value.length,
-      previousPointsSample: previousGlobalPoints.slice(0, 8),
-      nextPointsSample: effectivePoints.value.slice(0, 8),
-      beforeTracks: sourceTracks.map((track) => summarizeTrackGridState(track)),
-      afterTracks: nextTracks.map((track) => summarizeTrackGridState(track))
-    })
   }
   if (changedFromCurrent) {
     props.onTracksSync?.(nextTracks)
@@ -679,6 +703,10 @@ const handlePointContextMenu = (pointIndex: number, event: MouseEvent) => {
 }
 
 onBeforeUnmount(() => {
+  if (gridCanvasRaf) {
+    cancelAnimationFrame(gridCanvasRaf)
+    gridCanvasRaf = 0
+  }
   if (persistTimer) {
     clearTimeout(persistTimer)
     persistTimer = null
@@ -687,6 +715,28 @@ onBeforeUnmount(() => {
   window.removeEventListener('mousemove', handleWindowMouseMove as EventListener)
   window.removeEventListener('mouseup', handleWindowMouseUp as EventListener)
 })
+
+onMounted(() => {
+  scheduleGridCanvasDraw()
+})
+
+watch(
+  () => [
+    props.visible,
+    props.timelineScrollLeft,
+    props.timelineViewportWidth,
+    props.heightPx,
+    props.renderZoomLevel,
+    props.timelineContentWidth,
+    visibleGridLines.value
+      .map((line) => `${line.level}:${Number(line.leftPx).toFixed(4)}`)
+      .join('|')
+  ],
+  () => {
+    scheduleGridCanvasDraw()
+  },
+  { immediate: true, flush: 'post' }
+)
 </script>
 
 <template>
@@ -706,15 +756,11 @@ onBeforeUnmount(() => {
         <div class="timeline-master-bpm__readout">{{ currentBpmText }}</div>
       </div>
 
-      <div class="timeline-master-bpm__grid">
-        <div
-          v-for="line in visibleGridLines"
-          :key="line.key"
-          class="timeline-master-bpm__grid-line"
-          :class="[`is-${line.level}`]"
-          :style="{ left: `${line.leftPx}px` }"
-        ></div>
-      </div>
+      <canvas
+        ref="gridCanvasRef"
+        class="timeline-master-bpm__grid-canvas"
+        :style="gridCanvasStyle"
+      ></canvas>
 
       <svg
         class="timeline-master-bpm__svg"
@@ -776,14 +822,15 @@ onBeforeUnmount(() => {
   position: relative;
   width: 100%;
   height: 100%;
+  box-sizing: border-box;
   border-radius: 0;
-  border: 1px solid var(--border);
+  border: 0;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0.01) 100%),
     var(--bg-elev);
   overflow: hidden;
   cursor: crosshair;
-  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .timeline-master-bpm__header {
@@ -837,14 +884,14 @@ onBeforeUnmount(() => {
   text-align: right;
 }
 
-.timeline-master-bpm__grid,
+.timeline-master-bpm__grid-canvas,
 .timeline-master-bpm__svg,
 .timeline-master-bpm__points {
   position: absolute;
   inset: 0;
 }
 
-.timeline-master-bpm__grid {
+.timeline-master-bpm__grid-canvas {
   z-index: 1;
   pointer-events: none;
 }
@@ -856,23 +903,6 @@ onBeforeUnmount(() => {
 
 .timeline-master-bpm__points {
   z-index: 3;
-}
-
-.timeline-master-bpm__grid-line {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.timeline-master-bpm__grid-line.is-bar {
-  width: 2px;
-  background: rgba(255, 255, 255, 0.26);
-}
-
-.timeline-master-bpm__grid-line.is-beat4 {
-  background: rgba(255, 255, 255, 0.16);
 }
 
 .timeline-master-bpm__midline {

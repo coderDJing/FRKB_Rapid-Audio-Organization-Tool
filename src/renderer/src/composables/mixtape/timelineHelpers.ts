@@ -2,11 +2,10 @@ import { computed } from 'vue'
 import {
   BASE_PX_PER_SEC,
   FALLBACK_TRACK_WIDTH,
+  GRID_BEAT4_LINE_WIDTH,
   GRID_BEAT4_LINE_ZOOM,
+  GRID_BEAT_LINE_WIDTH,
   GRID_BEAT_LINE_ZOOM,
-  GRID_BAR_WIDTH_MAX,
-  GRID_BAR_WIDTH_MAX_ZOOM,
-  GRID_BAR_WIDTH_MIN,
   LANE_COUNT,
   MIXXX_MAX_RGB_ENERGY,
   MIXTAPE_BASE_TRACK_LANE_HEIGHT,
@@ -16,6 +15,7 @@ import {
   MIXTAPE_WIDTH_SCALE,
   RAW_WAVEFORM_MIN_ZOOM,
   RENDER_ZOOM_STEP,
+  resolveTimelineGridBarWidth,
   WAVEFORM_TILE_WIDTH,
   ZOOM_MAX,
   ZOOM_MIN
@@ -145,13 +145,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
   const alignZoomToRenderLevel = (value: number) => resolveRenderZoomLevel(value)
 
   const resolveGridBarWidth = (zoomValue: number) => {
-    const safeZoom = Number.isFinite(zoomValue) ? zoomValue : 1
-    const minZoom = ZOOM_MIN
-    const maxZoom = GRID_BAR_WIDTH_MAX_ZOOM
-    if (safeZoom <= minZoom) return GRID_BAR_WIDTH_MIN
-    if (safeZoom >= maxZoom) return GRID_BAR_WIDTH_MAX
-    const ratio = (safeZoom - minZoom) / Math.max(0.0001, maxZoom - minZoom)
-    return GRID_BAR_WIDTH_MIN + (GRID_BAR_WIDTH_MAX - GRID_BAR_WIDTH_MIN) * ratio
+    return resolveTimelineGridBarWidth(zoomValue)
   }
 
   const resolveTimelineVisualScale = () => {
@@ -412,8 +406,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
       const width = resolveTrackRenderWidthPx(track, resolvedZoom)
       const durationSec = resolveTrackDurationSeconds(track)
       const rawStartSec = Number(track.startSec)
-      const startSec =
-        Number.isFinite(rawStartSec) && rawStartSec >= 0 ? Math.max(0, rawStartSec) : cursorSec
+      const startSec = Number.isFinite(rawStartSec) ? rawStartSec : cursorSec
       const startX = TIMELINE_SIDE_PADDING_PX + Math.round(startSec * px)
       const endX = startX + width
       cursorPx = Math.max(cursorPx, endX)
@@ -539,20 +532,26 @@ export const createTimelineHelpersModule = (ctx: any) => {
         pxPerSec: safeRenderPxPerSec
       })
       if (rawX < startX - 64 || rawX > endX + 64) continue
-      const x = Math.round(rawX - startX)
+      const lineWidth =
+        line.level === 'bar'
+          ? barWidth
+          : line.level === 'beat4'
+            ? GRID_BEAT4_LINE_WIDTH
+            : GRID_BEAT_LINE_WIDTH
+      const x = rawX - startX - lineWidth / 2
 
       if (line.level === 'bar') {
         context.globalAlpha = 0.95
         context.fillStyle = 'rgba(0, 110, 220, 0.98)'
-        context.fillRect(x, 0, barWidth, height)
+        context.fillRect(x, 0, lineWidth, height)
       } else if (line.level === 'beat4') {
         context.globalAlpha = 0.85
         context.fillStyle = 'rgba(120, 200, 255, 0.98)'
-        context.fillRect(x, 0, 1.8, height)
+        context.fillRect(x, 0, lineWidth, height)
       } else {
         context.globalAlpha = 0.8
         context.fillStyle = 'rgba(180, 225, 255, 0.95)'
-        context.fillRect(x, 0, 1.3, height)
+        context.fillRect(x, 0, lineWidth, height)
       }
     }
     context.restore()
@@ -645,8 +644,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
       const duration = resolveTrackDurationSeconds(track)
       if (!Number.isFinite(duration) || duration <= 0) continue
       const startSec = Number(track.startSec)
-      const start =
-        Number.isFinite(startSec) && startSec >= 0 ? Math.max(0, startSec) : Math.max(0, cursor)
+      const start = Number.isFinite(startSec) ? startSec : cursor
       const end = start + duration
       maxEnd = Math.max(maxEnd, end)
       cursor = Math.max(cursor, end)

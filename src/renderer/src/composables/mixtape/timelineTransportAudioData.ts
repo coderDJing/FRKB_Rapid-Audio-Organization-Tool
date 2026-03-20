@@ -276,7 +276,7 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
       const layoutStartSec = Number(item.startSec)
       startSecById.set(
         item.track.id,
-        Number.isFinite(layoutStartSec) && layoutStartSec >= 0
+        Number.isFinite(layoutStartSec)
           ? layoutStartSec
           : ctx.resolveTimelineSecByX(item.startX, pxPerSec)
       )

@@ -1,4 +1,5 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import { resizeCanvasWithScaleMetrics } from '@renderer/utils/canvasScale'
 
 export const PREVIEW_MIN_ZOOM = 50
 export const PREVIEW_MAX_ZOOM = 100
@@ -153,16 +154,7 @@ export const resizePreviewCanvasByPixelRatio = (
   width: number,
   height: number
 ) => {
-  const pixelRatio = window.devicePixelRatio || 1
-  const scaledWidth = Math.max(1, Math.floor(width * pixelRatio))
-  const scaledHeight = Math.max(1, Math.floor(height * pixelRatio))
-  if (canvas.width !== scaledWidth || canvas.height !== scaledHeight) {
-    canvas.width = scaledWidth
-    canvas.height = scaledHeight
-  }
-  ctx.setTransform(1, 0, 0, 1, 0, 0)
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
-  ctx.scale(pixelRatio, pixelRatio)
+  resizeCanvasWithScaleMetrics(canvas, ctx, width, height, window.devicePixelRatio || 1)
 }
 
 export const isEditableEventTarget = (target: EventTarget | null) => {

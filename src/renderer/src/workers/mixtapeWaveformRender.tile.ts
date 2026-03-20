@@ -7,8 +7,10 @@ import type {
   StemWaveformData,
   WaveformStemId
 } from './mixtapeWaveformRender.types'
+import { GRID_BEAT4_LINE_WIDTH, GRID_BEAT_LINE_WIDTH } from '../composables/mixtape/constants'
 import { createTrackTimeMapFromSnapshotPayload } from '../composables/mixtape/trackTimeMapFactory'
 import { resolveRoundedTrackLocalPx } from '../composables/mixtape/timelinePixelMath'
+import { resizeCanvasWithScaleMetrics } from '../utils/canvasScale'
 
 type CreateTileRendererOptions = {
   stemWaveformCache: Map<string, StemWaveformData>
@@ -55,19 +57,14 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     height: number,
     pixelRatio: number
   ) => {
-    const scaledWidth = Math.max(1, Math.floor(width * pixelRatio))
-    const scaledHeight = Math.max(1, Math.floor(height * pixelRatio))
+    const safeWidth = Math.max(1, Math.floor(width))
+    const safeHeight = Math.max(1, Math.floor(height))
     if (!target) {
-      target = new OffscreenCanvas(scaledWidth, scaledHeight)
+      target = new OffscreenCanvas(safeWidth, safeHeight)
       ctx = target.getContext('2d')
-    } else if (target.width !== scaledWidth || target.height !== scaledHeight) {
-      target.width = scaledWidth
-      target.height = scaledHeight
     }
     if (ctx) {
-      ctx.setTransform(1, 0, 0, 1, 0, 0)
-      ctx.clearRect(0, 0, scaledWidth, scaledHeight)
-      ctx.scale(pixelRatio, pixelRatio)
+      resizeCanvasWithScaleMetrics(target, ctx, safeWidth, safeHeight, pixelRatio)
     }
     return { canvas: target, ctx }
   }
@@ -526,19 +523,25 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
         pxPerSec: renderPxPerSec
       })
       if (rawX < startX - 64 || rawX > endX + 64) continue
-      const x = Math.round(rawX - startX)
+      const lineWidth =
+        level === 'bar'
+          ? barWidth
+          : level === 'beat4'
+            ? GRID_BEAT4_LINE_WIDTH
+            : GRID_BEAT_LINE_WIDTH
+      const x = rawX - startX - lineWidth / 2
       if (level === 'bar') {
         ctx.globalAlpha = 0.95
         ctx.fillStyle = 'rgba(0, 110, 220, 0.98)'
-        ctx.fillRect(x, 0, barWidth, height)
+        ctx.fillRect(x, 0, lineWidth, height)
       } else if (level === 'beat4') {
         ctx.globalAlpha = 0.85
         ctx.fillStyle = 'rgba(120, 200, 255, 0.98)'
-        ctx.fillRect(x, 0, 1.8, height)
+        ctx.fillRect(x, 0, lineWidth, height)
       } else {
         ctx.globalAlpha = 0.8
         ctx.fillStyle = 'rgba(180, 225, 255, 0.95)'
-        ctx.fillRect(x, 0, 1.3, height)
+        ctx.fillRect(x, 0, lineWidth, height)
       }
     }
     ctx.restore()
