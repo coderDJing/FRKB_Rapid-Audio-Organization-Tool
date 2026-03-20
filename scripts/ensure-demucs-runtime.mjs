@@ -343,34 +343,66 @@ const tryInstallProfileFromRemoteAsset = async (manifest, profileName, runtimeDi
 
 const resolveSystemPythonCommand = () => {
   const candidates = []
-  const envPython = String(process.env.PYTHON || '').trim()
-  if (envPython) {
+  const candidateKeys = new Set()
+
+  const addCandidate = (command, args = [], source = '') => {
+    const normalizedCommand = String(command || '').trim()
+    const normalizedArgs = Array.isArray(args)
+      ? args.map((item) => String(item || '').trim()).filter(Boolean)
+      : []
+    if (!normalizedCommand) return
+    const key = JSON.stringify([normalizedCommand, normalizedArgs])
+    if (candidateKeys.has(key)) return
+    candidateKeys.add(key)
     candidates.push({
-      command: envPython,
-      args: []
+      command: normalizedCommand,
+      args: normalizedArgs,
+      source: String(source || '').trim()
     })
   }
-  if (process.platform === 'win32') {
-    candidates.push({
-      command: 'py',
-      args: ['-3']
-    })
-  }
-  candidates.push(
-    {
-      command: 'python3',
-      args: []
-    },
-    {
-      command: 'python',
-      args: []
+
+  const addEnvPythonCandidate = (rawValue, source) => {
+    const normalized = String(rawValue || '').trim()
+    if (!normalized) return
+    if (fs.existsSync(normalized)) {
+      const stat = fs.statSync(normalized)
+      if (stat.isDirectory()) {
+        const derivedPaths =
+          process.platform === 'win32'
+            ? [path.join(normalized, 'python.exe'), path.join(normalized, 'Scripts', 'python.exe')]
+            : [path.join(normalized, 'bin', 'python3'), path.join(normalized, 'bin', 'python')]
+        for (const derivedPath of derivedPaths) {
+          if (fs.existsSync(derivedPath)) {
+            addCandidate(derivedPath, [], source)
+          }
+        }
+        return
+      }
     }
-  )
+    addCandidate(normalized, [], source)
+  }
+
+  addEnvPythonCandidate(process.env.PYTHON, 'env:PYTHON')
+  addEnvPythonCandidate(process.env.npm_config_python, 'env:npm_config_python')
+  addEnvPythonCandidate(process.env.pythonLocation, 'env:pythonLocation')
+
+  if (process.platform === 'win32') {
+    addCandidate('python', [], 'path:python')
+    addCandidate('python3', [], 'path:python3')
+    addCandidate('py', ['-3'], 'launcher:py -3')
+  } else {
+    addCandidate('python3', [], 'path:python3')
+    addCandidate('python', [], 'path:python')
+  }
 
   for (const candidate of candidates) {
     const result = runQuiet(candidate.command, [...candidate.args, '--version'])
     if (result.status !== 0) continue
-    return candidate
+    const version = toShortText(result.stdout || result.stderr || '', 80)
+    return {
+      ...candidate,
+      version
+    }
   }
   return null
 }
@@ -692,7 +724,13 @@ const ensureBaseRuntime = (platformKey, platformConfig) => {
       throw new Error('[demucs-runtime-ensure] No system Python found for bootstrap')
     }
     fs.mkdirSync(path.dirname(baseRuntimeDir), { recursive: true })
+    const bootstrapCommandText = [pythonCommand.command, ...pythonCommand.args].join(' ')
+    const bootstrapVersionText = pythonCommand.version ? ` (${pythonCommand.version})` : ''
+    const bootstrapSourceText = pythonCommand.source ? ` via ${pythonCommand.source}` : ''
     console.log(`[demucs-runtime-ensure] Creating base runtime: ${baseRuntimeDir}`)
+    console.log(
+      `[demucs-runtime-ensure] Bootstrap Python${bootstrapSourceText}: ${bootstrapCommandText}${bootstrapVersionText}`
+    )
     run(pythonCommand.command, [...pythonCommand.args, '-m', 'venv', baseRuntimeDir])
   }
 
