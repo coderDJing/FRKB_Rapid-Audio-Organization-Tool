@@ -113,7 +113,7 @@
           ]
         }
       ],
-      "x64ArchFiles": "{Contents/Resources/{ffmpeg,chromaprint}/darwin/{ffmpeg,fpcalc},Contents/Resources/demucs/**}",
+      "x64ArchFiles": "{Contents/Resources/{ffmpeg,chromaprint}/darwin/{ffmpeg,fpcalc},Contents/Resources/demucs/**,Contents/Resources/demucs/**/.*/**}",
       "artifactName": "${productName}-${version}-universal.${ext}"
     },
     "linux": {
