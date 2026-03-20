@@ -727,11 +727,17 @@ const ensureBaseRuntime = (platformKey, platformConfig) => {
     const bootstrapCommandText = [pythonCommand.command, ...pythonCommand.args].join(' ')
     const bootstrapVersionText = pythonCommand.version ? ` (${pythonCommand.version})` : ''
     const bootstrapSourceText = pythonCommand.source ? ` via ${pythonCommand.source}` : ''
+    const venvArgs = [...pythonCommand.args, '-m', 'venv']
+    if (process.platform === 'darwin') {
+      // macOS universal packaging chokes on venv symlinks that resolve outside the app bundle.
+      venvArgs.push('--copies')
+    }
+    venvArgs.push(baseRuntimeDir)
     console.log(`[demucs-runtime-ensure] Creating base runtime: ${baseRuntimeDir}`)
     console.log(
       `[demucs-runtime-ensure] Bootstrap Python${bootstrapSourceText}: ${bootstrapCommandText}${bootstrapVersionText}`
     )
-    run(pythonCommand.command, [...pythonCommand.args, '-m', 'venv', baseRuntimeDir])
+    run(pythonCommand.command, venvArgs)
   }
 
   const resolvedBasePython = resolveRuntimePythonPath(baseRuntimeDir)
