@@ -56,6 +56,7 @@ const modelTimeoutSecArg = Number(getArgValue('--model-timeout-sec', '600'))
 const install = !hasFlag('--no-install')
 const strict = hasFlag('--strict') || hasFlag('--ci')
 const force = hasFlag('--force')
+const modelsOnly = hasFlag('--models-only')
 const preferRemoteAssets =
   !strict ||
   hasFlag('--prefer-remote-assets') ||
@@ -813,6 +814,12 @@ const main = async () => {
   const platformConfig = runtimeProfiles?.[platformArg]
   if (!platformConfig || typeof platformConfig !== 'object') {
     throw new Error(`[demucs-runtime-ensure] Unsupported platform key: ${platformArg}`)
+  }
+
+  if (modelsOnly) {
+    await ensureDemucsModels()
+    console.log('[demucs-runtime-ensure] Completed (models only)')
+    return
   }
 
   ensureBaseRuntime(platformArg, platformConfig)

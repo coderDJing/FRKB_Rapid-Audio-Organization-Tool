@@ -24,7 +24,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'pnpm'
+
+      - name: Restore Demucs models cache (Windows)
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor/demucs/models
+          key: demucs-models-${{ runner.os }}-${{ hashFiles('scripts/demucs-model-manifest.json', 'scripts/ensure-demucs-runtime.mjs') }}
+          restore-keys: |
+            demucs-models-${{ runner.os }}-
 
       - name: Setup Python (for node-gyp)
         uses: actions/setup-python@v5
@@ -42,6 +50,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile=false
+
+      - name: Ensure Demucs models (Windows)
+        run: node scripts/ensure-demucs-runtime.mjs --models-only --ci
 
       - name: Typecheck (vue-tsc)
         run: npx vue-tsc --noEmit
@@ -149,7 +160,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'pnpm'
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -204,7 +214,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'pnpm'
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -258,6 +267,15 @@ jobs:
         with:
           node-version: 20
           cache: 'pnpm'
+
+      - name: Restore Demucs models cache (macOS)
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor/demucs/models
+          key: demucs-models-${{ runner.os }}-${{ hashFiles('scripts/demucs-model-manifest.json', 'scripts/ensure-demucs-runtime.mjs') }}
+          restore-keys: |
+            demucs-models-${{ runner.os }}-
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -374,6 +392,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile=false
+
+      - name: Ensure Demucs models (macOS)
+        run: node scripts/ensure-demucs-runtime.mjs --models-only --ci
 
       - name: Typecheck (vue-tsc)
         run: npx vue-tsc --noEmit
