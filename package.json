@@ -1,6 +1,6 @@
 {
   "name": "frkb",
-  "version": "1.1.5-rc.202603211730",
+  "version": "1.1.5-rc.202603212056",
   "description": "Rapid Audio Organization Tool",
   "license": "GPL-2.0-or-later",
   "main": "./out/main/index.js",
@@ -75,13 +75,6 @@
           "from": "vendor/demucs/bootstrap",
           "to": "demucs/bootstrap"
         },
-        {
-          "from": "vendor/demucs",
-          "to": "demucs",
-          "filter": [
-            "win32-x64/runtime-cpu/**"
-          ]
-        }
       ]
     },
     "nsis": {
@@ -101,16 +94,8 @@
           "from": "vendor/demucs/bootstrap",
           "to": "demucs/bootstrap"
         },
-        {
-          "from": "vendor/demucs",
-          "to": "demucs",
-          "filter": [
-            "darwin-arm64/runtime-cpu/**",
-            "darwin-x64/runtime-cpu/**"
-          ]
-        }
       ],
-      "x64ArchFiles": "Contents/Resources/{ffmpeg/darwin/ffmpeg,chromaprint/darwin/fpcalc,demucs/**{,/*,/**/*,/**/.*/**/*}}",
+      "x64ArchFiles": "Contents/Resources/{ffmpeg,chromaprint}/darwin/{ffmpeg,fpcalc}",
       "artifactName": "${productName}-${version}-universal.${ext}"
     },
     "linux": {

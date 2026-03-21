@@ -174,8 +174,8 @@ export const useMixtape = () => {
   const stemResumeBootstrappedPlaylistIdSet = new Set<string>()
   const stemResumeSignatureByPlaylistId = new Map<string, string>()
   const stemCpuSlowHintShownPlaylistIdSet = new Set<string>()
-  const stemRuntimeDownloadPromptedKeySet = new Set<string>()
-  let stemRuntimeDownloadPromptBusy = false
+  const stemRuntimeDownloadAttemptedKeySet = new Set<string>()
+  let stemRuntimeDownloadAttemptBusy = false
   let playlistUpdateTimer: ReturnType<typeof setTimeout> | null = null
   const { notifyMissingTracksRemoved } = createMixtapeMissingTracksNotifier()
   const {
@@ -619,6 +619,17 @@ export const useMixtape = () => {
   }) => {
     const playlistId = String(params.playlistId || '').trim()
     if (!playlistId || !window?.electron?.ipcRenderer?.invoke) return
+    await refreshStemRuntimeDownloadStatus()
+    const runtimeStatus = stemRuntimeDownloadState.value.status
+    if (
+      runtimeStatus === 'available' ||
+      runtimeStatus === 'downloading' ||
+      runtimeStatus === 'extracting' ||
+      runtimeStatus === 'failed'
+    ) {
+      stemResumeSignatureByPlaylistId.delete(playlistId)
+      return
+    }
     const includeRunning = !!params.includeRunning
     const resumeCandidates = params.trackList.filter((track) => {
       const status = normalizeMixtapeStemStatus(track.stemStatus)
@@ -973,7 +984,7 @@ export const useMixtape = () => {
     }
     stemRuntimeProgressByTrackId.value = next
   }
-  const maybePromptStemRuntimeDownload = async (info: StemRuntimeDownloadInfo | null) => {
+  const maybeAutoDownloadStemRuntime = async (info: StemRuntimeDownloadInfo | null) => {
     const playlistId = String(payload.value.playlistId || '').trim()
     if (!playlistId || mixtapeMixMode.value !== 'stem') return
     if (
@@ -984,30 +995,13 @@ export const useMixtape = () => {
       return
     }
     if (!info?.supported || !info.downloadable || info.alreadyAvailable) return
-    if (!info.profile || info.profile === 'cpu') return
-    if (stemRuntimeDownloadPromptBusy) return
-    const promptKey = `${playlistId}::${info.profile}::${info.version}`
-    if (stemRuntimeDownloadPromptedKeySet.has(promptKey)) return
-    stemRuntimeDownloadPromptedKeySet.add(promptKey)
-    stemRuntimeDownloadPromptBusy = true
+    if (!info.profile) return
+    if (stemRuntimeDownloadAttemptBusy) return
+    const attemptKey = `${info.profile}::${info.version}`
+    if (stemRuntimeDownloadAttemptedKeySet.has(attemptKey)) return
+    stemRuntimeDownloadAttemptedKeySet.add(attemptKey)
+    stemRuntimeDownloadAttemptBusy = true
     try {
-      const result = await confirmDialog({
-        title: t('mixtape.stemRuntimeDownloadPromptTitle'),
-        content: [
-          t('mixtape.stemRuntimeDownloadPromptBody', {
-            title: info.title || info.profile.toUpperCase(),
-            size: formatStemRuntimeBytes(info.archiveSize)
-          }),
-          t('mixtape.stemRuntimeDownloadPromptHint')
-        ],
-        confirmShow: true,
-        confirmText: t('mixtape.stemRuntimeDownloadConfirm'),
-        cancelText: t('mixtape.stemRuntimeDownloadSkip'),
-        textAlign: 'left',
-        innerWidth: 560,
-        innerHeight: 0
-      })
-      if (result !== 'confirm') return
       const response = await window.electron.ipcRenderer.invoke(
         'mixtape:stem:runtime:download-preferred'
       )
@@ -1021,7 +1015,7 @@ export const useMixtape = () => {
         error
       })
     } finally {
-      stemRuntimeDownloadPromptBusy = false
+      stemRuntimeDownloadAttemptBusy = false
     }
   }
   const refreshStemRuntimeDownloadStatus = async () => {
@@ -1034,7 +1028,7 @@ export const useMixtape = () => {
         response?.preferred && typeof response.preferred === 'object'
           ? (response.preferred as StemRuntimeDownloadInfo)
           : null
-      await maybePromptStemRuntimeDownload(preferred)
+      await maybeAutoDownloadStemRuntime(preferred)
     } catch (error) {
       console.error('[mixtape] refresh stem runtime download status failed', {
         playlistId,
@@ -1153,6 +1147,15 @@ export const useMixtape = () => {
       void refreshStemRuntimeDownloadStatus()
     },
     { immediate: true }
+  )
+  watch(
+    () => stemRuntimeDownloadState.value.status,
+    (nextStatus, prevStatus) => {
+      if (nextStatus !== 'ready' || prevStatus === 'ready') return
+      if (!String(payload.value.playlistId || '').trim()) return
+      if (mixtapeMixMode.value !== 'stem') return
+      void loadMixtapeItems()
+    }
   )
   onMounted(() => {
     applyPayload(resolveInitialMixtapePayload())

@@ -19,6 +19,7 @@ import * as shared from './mixtapeStemSeparationShared'
 import * as probe from './mixtapeStemSeparationProbe'
 import { decodeAudioShared } from './audioDecodePool'
 import { runPersistentXpuStemInference } from './mixtapeStemPersistentXpuWorker'
+import { downloadPreferredStemRuntime } from './mixtapeStemRuntimeDownload'
 import type {
   MixtapeStemComputeDevice,
   MixtapeStemCpuFallbackReasonCode,
@@ -47,6 +48,7 @@ const {
 
 const {
   parseDemucsProgressText,
+  invalidateStemDeviceProbeCache,
   probeDemucsDevices,
   resolveCpuFallbackReason,
   resolveDemucsDeviceArg
@@ -373,7 +375,7 @@ export const runStemSeparation = async (params: {
   if (!fs.existsSync(ffprobePath)) {
     throw createStemError('STEM_FFPROBE_MISSING', `未找到 ffprobe: ${ffprobePath}`)
   }
-  const deviceSnapshot = await probeDemucsDevices(ffmpegPath)
+  let deviceSnapshot = await probeDemucsDevices(ffmpegPath)
 
   const stemCacheDir = await resolveStemCacheDir({
     filePath,
@@ -396,10 +398,18 @@ export const runStemSeparation = async (params: {
     normalizeText(parsedModel.demucsModel, 128) || DEFAULT_MIXTAPE_STEM_BASE_MODEL
   const stemProfile = normalizeStemProfile(parsedModel.profile, DEFAULT_MIXTAPE_STEM_PROFILE)
 
-  const runtimeDir =
-    normalizeFilePath(deviceSnapshot.runtimeDir) || resolveBundledDemucsRuntimeDir()
-  const pythonPath =
-    normalizeFilePath(deviceSnapshot.pythonPath) || resolveBundledDemucsPythonPath(runtimeDir)
+  let runtimeDir = normalizeFilePath(deviceSnapshot.runtimeDir) || resolveBundledDemucsRuntimeDir()
+  let pythonPath = normalizeFilePath(deviceSnapshot.pythonPath) || resolveBundledDemucsPythonPath(runtimeDir)
+  if (!fs.existsSync(pythonPath)) {
+    const downloaded = await downloadPreferredStemRuntime()
+    if (downloaded) {
+      invalidateStemDeviceProbeCache()
+      deviceSnapshot = await probeDemucsDevices(ffmpegPath)
+      runtimeDir = normalizeFilePath(deviceSnapshot.runtimeDir) || resolveBundledDemucsRuntimeDir()
+      pythonPath =
+        normalizeFilePath(deviceSnapshot.pythonPath) || resolveBundledDemucsPythonPath(runtimeDir)
+    }
+  }
   if (!fs.existsSync(pythonPath)) {
     throw createStemError(
       'STEM_ENGINE_MISSING',

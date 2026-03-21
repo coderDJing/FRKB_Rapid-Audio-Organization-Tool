@@ -41,6 +41,10 @@ const {
 let stemDeviceProbeSnapshot: MixtapeStemDeviceProbeSnapshot | null = null
 let stemDeviceProbePromise: Promise<MixtapeStemDeviceProbeSnapshot> | null = null
 const getCachedStemDeviceProbeSnapshot = () => stemDeviceProbeSnapshot
+const invalidateStemDeviceProbeCache = () => {
+  stemDeviceProbeSnapshot = null
+  stemDeviceProbePromise = null
+}
 export const probeWindowsGpuAdapters = async () => {
   const emptyResult = {
     names: [] as string[],
@@ -538,6 +542,7 @@ const parseDemucsProgressText = (
 }
 export {
   getCachedStemDeviceProbeSnapshot,
+  invalidateStemDeviceProbeCache,
   probeTorchDeviceCompatibility,
   probeDirectmlDemucsCompatibility,
   probeXpuDemucsCompatibility,
