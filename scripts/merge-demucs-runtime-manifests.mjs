@@ -65,13 +65,31 @@ for (const { root, manifest } of manifests) {
       console.error(`[demucs-runtime-merge] Asset archiveName missing: ${assetKey}`)
       process.exit(1)
     }
-    const sourceArchivePath = path.join(root, archiveName)
-    const targetArchivePath = path.join(outputRoot, archiveName)
-    if (!fs.existsSync(sourceArchivePath)) {
-      console.error(`[demucs-runtime-merge] Missing archive: ${sourceArchivePath}`)
-      process.exit(1)
+    const archiveParts = Array.isArray(asset?.archiveParts) ? asset.archiveParts : []
+    if (archiveParts.length > 0) {
+      for (const part of archiveParts) {
+        const partName = String(part?.archiveName || '').trim()
+        if (!partName) {
+          console.error(`[demucs-runtime-merge] Missing archive part name: ${assetKey}`)
+          process.exit(1)
+        }
+        const sourcePartPath = path.join(root, partName)
+        const targetPartPath = path.join(outputRoot, partName)
+        if (!fs.existsSync(sourcePartPath)) {
+          console.error(`[demucs-runtime-merge] Missing archive part: ${sourcePartPath}`)
+          process.exit(1)
+        }
+        fs.copyFileSync(sourcePartPath, targetPartPath)
+      }
+    } else {
+      const sourceArchivePath = path.join(root, archiveName)
+      const targetArchivePath = path.join(outputRoot, archiveName)
+      if (!fs.existsSync(sourceArchivePath)) {
+        console.error(`[demucs-runtime-merge] Missing archive: ${sourceArchivePath}`)
+        process.exit(1)
+      }
+      fs.copyFileSync(sourceArchivePath, targetArchivePath)
     }
-    fs.copyFileSync(sourceArchivePath, targetArchivePath)
     mergedAssets.push(asset)
   }
 }

@@ -71,6 +71,8 @@ const resolvedAssetVersion =
     .replace(/\.\d+Z$/, '')
     .replace('T', '')
 
+const MAX_RELEASE_ASSET_SIZE = 2_000_000_000
+
 const run = (command, commandArgs, options = {}) => {
   const result = spawnSync(command, commandArgs, {
     stdio: 'inherit',
@@ -89,6 +91,53 @@ const computeFileSha256 = async (filePath) => {
     stream.once('error', reject)
     stream.once('end', () => resolve(hash.digest('hex')))
   })
+}
+
+const splitArchiveIfNeeded = async (archivePath) => {
+  const archiveStat = fs.statSync(archivePath)
+  if (archiveStat.size <= MAX_RELEASE_ASSET_SIZE) {
+    return {
+      archiveSize: archiveStat.size,
+      archiveSha256: await computeFileSha256(archivePath),
+      archiveParts: []
+    }
+  }
+
+  const archiveDir = path.dirname(archivePath)
+  const archiveBaseName = path.basename(archivePath)
+  const fileHandle = await fs.promises.open(archivePath, 'r')
+  const archiveParts = []
+  let offset = 0
+  let index = 0
+
+  try {
+    while (offset < archiveStat.size) {
+      const chunkSize = Math.min(MAX_RELEASE_ASSET_SIZE, archiveStat.size - offset)
+      const chunkBuffer = Buffer.allocUnsafe(chunkSize)
+      await fileHandle.read(chunkBuffer, 0, chunkSize, offset)
+      const partName = `${archiveBaseName}.part${String(index + 1).padStart(3, '0')}`
+      const partPath = path.join(archiveDir, partName)
+      fs.writeFileSync(partPath, chunkBuffer)
+      archiveParts.push({
+        index: index + 1,
+        archiveName: partName,
+        archiveSize: chunkSize,
+        archiveSha256: await computeFileSha256(partPath)
+      })
+      offset += chunkSize
+      index += 1
+    }
+  } finally {
+    await fileHandle.close()
+  }
+
+  const archiveSha256 = await computeFileSha256(archivePath)
+  fs.rmSync(archivePath, { force: true })
+  return {
+    archiveSize: archiveStat.size,
+    archiveSha256,
+    archiveParts
+  }
 }
 
 const readRuntimeMeta = (runtimeDir) => {
@@ -153,8 +202,7 @@ for (const profileName of profileNames) {
     runtimeKey,
     archivePath
   })
-  const archiveStat = fs.statSync(archivePath)
-  const archiveSha256 = await computeFileSha256(archivePath)
+  const archiveOutput = await splitArchiveIfNeeded(archivePath)
   const runtimeMeta = readRuntimeMeta(runtimeDir)
   const pythonRelativePath = resolveRuntimePythonRelativePath(runtimeDir)
   assets.push({
@@ -163,17 +211,27 @@ for (const profileName of profileNames) {
     runtimeKey,
     version: resolvedAssetVersion,
     archiveName,
-    archiveUrl: `https://github.com/${githubOwner}/${githubRepo}/releases/download/${releaseTag}/${archiveName}`,
-    archiveSha256,
-    archiveSize: archiveStat.size,
+    archiveUrl:
+      archiveOutput.archiveParts.length > 0
+        ? ''
+        : `https://github.com/${githubOwner}/${githubRepo}/releases/download/${releaseTag}/${archiveName}`,
+    archiveSha256: archiveOutput.archiveSha256,
+    archiveSize: archiveOutput.archiveSize,
+    archiveParts: archiveOutput.archiveParts.map((item) => ({
+      index: item.index,
+      archiveName: item.archiveName,
+      archiveUrl: `https://github.com/${githubOwner}/${githubRepo}/releases/download/${releaseTag}/${item.archiveName}`,
+      archiveSha256: item.archiveSha256,
+      archiveSize: item.archiveSize
+    })),
     pythonRelativePath,
     generatedAt: new Date().toISOString(),
     torchVersion: String(runtimeMeta?.torchVersion || runtimeMeta?.probe?.torch_version || '')
   })
   console.log(
     `[demucs-runtime-package] Packed ${profileName} -> ${archiveName} (${Math.round(
-      archiveStat.size / 1024 / 1024
-    )} MB)`
+      archiveOutput.archiveSize / 1024 / 1024
+    )} MB${archiveOutput.archiveParts.length > 0 ? `, split=${archiveOutput.archiveParts.length}` : ''})`
   )
 }
 

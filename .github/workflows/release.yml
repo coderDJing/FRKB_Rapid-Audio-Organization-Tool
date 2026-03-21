@@ -338,8 +338,7 @@ jobs:
         with:
           tag_name: demucs-runtime-assets
           files: |
-            dist/demucs-runtime-assets/*.zip
-            dist/demucs-runtime-assets/demucs-runtime-manifest.json
+            dist/demucs-runtime-assets/*
           draft: false
           prerelease: false
           overwrite_files: true

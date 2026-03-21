@@ -28,6 +28,13 @@ type RuntimeAssetEntry = {
   archiveUrl: string
   archiveSha256: string
   archiveSize: number
+  archiveParts?: Array<{
+    index: number
+    archiveName: string
+    archiveUrl: string
+    archiveSha256: string
+    archiveSize: number
+  }>
   pythonRelativePath: string
   generatedAt: string
   torchVersion?: string
@@ -220,21 +227,24 @@ const isRuntimeAlreadyAvailable = async (entry: RuntimeAssetEntry) => {
   return false
 }
 
-const downloadRuntimeArchive = async (
-  entry: RuntimeAssetEntry,
-  archivePath: string,
-  onProgress?: (payload: { downloadedBytes: number; totalBytes: number; percent: number }) => void
+const downloadRuntimeArchivePart = async (
+  params: {
+    archiveUrl: string
+    archivePath: string
+    archiveSha256: string
+    archiveSize: number
+  },
+  onProgress?: (payload: { downloadedBytes: number; totalBytes: number }) => void
 ) => {
-  const response = await fetch(entry.archiveUrl)
+  const response = await fetch(params.archiveUrl)
   if (!response.ok || !response.body) {
     throw new Error(`download failed: HTTP ${response.status}`)
   }
-  await fs.promises.mkdir(path.dirname(archivePath), { recursive: true })
-  const totalBytes = Math.max(
+  const expectedBytes = Math.max(
     0,
-    Number(response.headers.get('content-length') || 0) || Number(entry.archiveSize) || 0
+    Number(response.headers.get('content-length') || 0) || Number(params.archiveSize) || 0
   )
-  const writer = fs.createWriteStream(archivePath)
+  const writer = fs.createWriteStream(params.archivePath)
   let downloadedBytes = 0
   for await (const chunk of Readable.fromWeb(response.body as any)) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
@@ -242,18 +252,95 @@ const downloadRuntimeArchive = async (
     if (!writer.write(buffer)) {
       await once(writer, 'drain')
     }
-    const percent =
-      totalBytes > 0
-        ? Math.max(0, Math.min(90, Math.round((downloadedBytes / totalBytes) * 90)))
-        : 0
     onProgress?.({
       downloadedBytes,
-      totalBytes,
-      percent
+      totalBytes: expectedBytes
     })
   }
   writer.end()
   await once(writer, 'finish')
+  const archiveStat = await fs.promises.stat(params.archivePath)
+  if (params.archiveSize > 0 && archiveStat.size !== params.archiveSize) {
+    throw new Error(
+      `download size mismatch: expected=${params.archiveSize} actual=${archiveStat.size}`
+    )
+  }
+  const archiveSha256 = await computeFileSha256(params.archivePath)
+  if (archiveSha256 !== params.archiveSha256) {
+    throw new Error(
+      `download sha256 mismatch: expected=${params.archiveSha256} actual=${archiveSha256}`
+    )
+  }
+}
+
+const downloadRuntimeArchive = async (
+  entry: RuntimeAssetEntry,
+  archivePath: string,
+  onProgress?: (payload: { downloadedBytes: number; totalBytes: number; percent: number }) => void
+) => {
+  await fs.promises.mkdir(path.dirname(archivePath), { recursive: true })
+  const archiveParts = Array.isArray(entry.archiveParts) ? entry.archiveParts : []
+  const totalBytes = Math.max(0, Number(entry.archiveSize) || 0)
+  if (archiveParts.length > 0) {
+    let downloadedBytes = 0
+    await fs.promises.rm(archivePath, { force: true }).catch(() => {})
+    for (const part of archiveParts.sort((a, b) => Number(a.index) - Number(b.index))) {
+      const partPath = `${archivePath}.part-${part.index}`
+      await downloadRuntimeArchivePart(
+        {
+          archiveUrl: part.archiveUrl,
+          archivePath: partPath,
+          archiveSha256: part.archiveSha256,
+          archiveSize: part.archiveSize
+        },
+        (progress) => {
+          const nextDownloaded = downloadedBytes + progress.downloadedBytes
+          const percent =
+            totalBytes > 0
+              ? Math.max(0, Math.min(90, Math.round((nextDownloaded / totalBytes) * 90)))
+              : 0
+          onProgress?.({
+            downloadedBytes: nextDownloaded,
+            totalBytes,
+            percent
+          })
+        }
+      )
+      const writer = fs.createWriteStream(archivePath, {
+        flags: downloadedBytes > 0 ? 'a' : 'w'
+      })
+      const reader = fs.createReadStream(partPath)
+      for await (const chunk of reader) {
+        if (!writer.write(chunk)) {
+          await once(writer, 'drain')
+        }
+      }
+      writer.end()
+      await once(writer, 'finish')
+      downloadedBytes += Number(part.archiveSize) || 0
+      await fs.promises.rm(partPath, { force: true }).catch(() => {})
+    }
+    return
+  }
+  await downloadRuntimeArchivePart(
+    {
+      archiveUrl: entry.archiveUrl,
+      archivePath,
+      archiveSha256: entry.archiveSha256,
+      archiveSize: entry.archiveSize
+    },
+    (progress) => {
+      const percent =
+        totalBytes > 0
+          ? Math.max(0, Math.min(90, Math.round((progress.downloadedBytes / totalBytes) * 90)))
+          : 0
+      onProgress?.({
+        downloadedBytes: progress.downloadedBytes,
+        totalBytes,
+        percent
+      })
+    }
+  )
 }
 
 const extractRuntimeArchive = async (archivePath: string, outputDir: string) => {
