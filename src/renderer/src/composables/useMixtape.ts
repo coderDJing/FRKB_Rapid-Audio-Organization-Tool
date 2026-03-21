@@ -819,6 +819,9 @@ export const useMixtape = () => {
     stemResumeBootstrappedPlaylistIdSet,
     stemResumeSignatureByPlaylistId,
     autoGainDialogVisible,
+    transportPreloading,
+    stemSeparationProgressVisible,
+    stemRuntimeDownloadVisible,
     transportPlaying,
     transportDecoding,
     createEmptyStemSummary,
@@ -1053,17 +1056,21 @@ export const useMixtape = () => {
     }
     if (nextState.status === 'failed' && prevStatus !== 'failed') {
       const content = [t('mixtape.stemRuntimeDownloadFailedHint')]
+      content.push(t('mixtape.stemRuntimeDownloadFailedCloseHint'))
       if (nextState.error) {
         content.push(t('mixtape.stemRuntimeDownloadErrorHint', { error: nextState.error }))
       }
-      void confirmDialog({
-        title: t('common.warning'),
-        content,
-        confirmShow: false,
-        textAlign: 'left',
-        innerWidth: 560,
-        innerHeight: 0
-      })
+      void (async () => {
+        await confirmDialog({
+          title: t('common.warning'),
+          content,
+          confirmShow: false,
+          textAlign: 'left',
+          innerWidth: 560,
+          innerHeight: 0
+        })
+        window.electron.ipcRenderer.send('mixtapeWindow-toggle-close')
+      })()
     }
   }
   const handleOpen = (_e: any, next: MixtapeOpenPayload) => {

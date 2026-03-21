@@ -6,7 +6,8 @@
 .mixtape-bpm-failed,
 .mixtape-auto-gain-mask,
 .mixtape-output-mask,
-.mixtape-stem-progress-mask {
+.mixtape-stem-progress-mask,
+.mixtape-runtime-download-mask {
   position: absolute;
   inset: 0;
   display: flex;
@@ -52,19 +53,21 @@
   background: rgba(8, 8, 12, 0.88);
 }
 
-.mixtape-runtime-download-toast {
-  position: absolute;
-  right: 18px;
-  bottom: 18px;
-  width: min(420px, calc(100% - 36px));
+.mixtape-runtime-download-mask {
+  padding: 12px;
   z-index: 28;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: progress;
+  background: rgba(8, 8, 12, 0.84);
 }
 
-.mixtape-runtime-download-toast__card {
-  pointer-events: auto;
+.mixtape-runtime-download-mask__card {
+  width: min(480px, 100%);
   padding: 14px 16px;
   gap: 10px;
+  text-align: left;
+  background: rgba(0, 0, 0, 0.62);
+  border-color: rgba(255, 255, 255, 0.12);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.32);
 }
 

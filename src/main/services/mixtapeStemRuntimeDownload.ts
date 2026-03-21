@@ -4,12 +4,14 @@ import crypto from 'node:crypto'
 import { once } from 'node:events'
 import { Readable } from 'node:stream'
 import { app } from 'electron'
+import { ProxyAgent } from 'undici'
 import {
   resolveBundledDemucsRuntimeCandidates,
   resolveDemucsPlatformDir,
   resolveInstalledDemucsPlatformRootPath
 } from '../demucs'
 import { log } from '../log'
+import { getSystemProxy } from '../utils'
 import mixtapeWindow from '../window/mixtapeWindow'
 import { createStemError, normalizeText, runProcess } from './mixtapeStemSeparationShared'
 import { probeWindowsGpuAdapters } from './mixtapeStemSeparationProbe'
@@ -79,6 +81,8 @@ export type MixtapeStemRuntimeDownloadInfo = {
 
 let runtimeManifestPromise: Promise<RuntimeAssetManifest | null> | null = null
 const runtimeEnsurePromiseByProfile = new Map<string, Promise<boolean>>()
+let runtimeDownloadProxyDispatcher: ProxyAgent | undefined
+let runtimeDownloadProxyInitialized = false
 let runtimeDownloadState: MixtapeStemRuntimeDownloadState = {
   status: 'idle',
   profile: '',
@@ -112,6 +116,27 @@ const resolveRuntimeDownloadCacheDir = () =>
 
 const resolveRuntimeInstalledVersionPath = (runtimeDir: string) =>
   path.join(runtimeDir, '.frkb-runtime-download.json')
+
+const ensureRuntimeDownloadProxyInitialized = async () => {
+  if (runtimeDownloadProxyInitialized) return
+  runtimeDownloadProxyInitialized = true
+
+  const proxyUrl = await getSystemProxy()
+  if (proxyUrl) {
+    runtimeDownloadProxyDispatcher = new ProxyAgent(proxyUrl)
+  }
+}
+
+const fetchRuntimeAsset = async (url: string, init?: RequestInit) => {
+  await ensureRuntimeDownloadProxyInitialized()
+  const requestInit: RequestInit & { dispatcher?: ProxyAgent } = {
+    ...init
+  }
+  if (runtimeDownloadProxyDispatcher) {
+    requestInit.dispatcher = runtimeDownloadProxyDispatcher
+  }
+  return await fetch(url, requestInit)
+}
 
 const fileExists = async (targetPath: string) => {
   try {
@@ -161,7 +186,7 @@ const readRuntimeManifest = async (): Promise<RuntimeAssetManifest | null> => {
   runtimeManifestPromise = (async () => {
     const manifestUrl = resolveRuntimeManifestUrl()
     try {
-      const response = await fetch(manifestUrl, {
+      const response = await fetchRuntimeAsset(manifestUrl, {
         headers: {
           Accept: 'application/json'
         }
@@ -236,7 +261,7 @@ const downloadRuntimeArchivePart = async (
   },
   onProgress?: (payload: { downloadedBytes: number; totalBytes: number }) => void
 ) => {
-  const response = await fetch(params.archiveUrl)
+  const response = await fetchRuntimeAsset(params.archiveUrl)
   if (!response.ok || !response.body) {
     throw new Error(`download failed: HTTP ${response.status}`)
   }

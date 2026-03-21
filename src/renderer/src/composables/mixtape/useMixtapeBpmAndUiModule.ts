@@ -57,6 +57,9 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     stemResumeBootstrappedPlaylistIdSet,
     stemResumeSignatureByPlaylistId,
     autoGainDialogVisible,
+    transportPreloading,
+    stemSeparationProgressVisible,
+    stemRuntimeDownloadVisible,
     transportPlaying,
     transportDecoding,
     createEmptyStemSummary,
@@ -873,6 +876,9 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     if (isEditableEventTarget(event.target)) return
     if (
       beatAlignDialogVisible.value ||
+      transportPreloading.value ||
+      stemSeparationProgressVisible.value ||
+      stemRuntimeDownloadVisible.value ||
       outputDialogVisible.value ||
       outputRunning.value ||
       autoGainDialogVisible.value
