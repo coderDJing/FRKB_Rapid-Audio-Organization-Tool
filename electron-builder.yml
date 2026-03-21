@@ -76,7 +76,7 @@ mac:
       filter:
         - darwin-arm64/runtime-cpu/**
         - darwin-x64/runtime-cpu/**
-  x64ArchFiles: 'Contents/Resources/{ffmpeg/darwin/ffmpeg,chromaprint/darwin/fpcalc,demucs/darwin-arm64/runtime-cpu/**/*,demucs/darwin-x64/runtime-cpu/**/*}'
+  x64ArchFiles: 'Contents/Resources/{ffmpeg/darwin/ffmpeg,chromaprint/darwin/fpcalc,demucs/**{,/*,/**/*,/**/.*/**/*}}'
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
