@@ -340,7 +340,7 @@ jobs:
           files: |
             dist/demucs-runtime-assets/*
           draft: false
-          prerelease: false
+          prerelease: true
           overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -583,11 +583,17 @@ jobs:
     needs: [build_win, build_mac, publish_runtime_assets]
     runs-on: ubuntu-latest
     steps:
-      - name: Download all artifacts
+      - name: Download Windows artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
-          merge-multiple: true
+          name: win-artifacts
+          path: artifacts/win
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-artifacts
+          path: artifacts/mac
 
       - name: Show downloaded files
         run: ls -R artifacts | cat
@@ -596,11 +602,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/*.exe
-            artifacts/*.dmg
-            artifacts/*.yml
-            artifacts/*.zip
-            artifacts/*.blockmap
+            artifacts/win/*.exe
+            artifacts/win/*.yml
+            artifacts/win/*.blockmap
+            artifacts/mac/*.dmg
+            artifacts/mac/*.yml
+            artifacts/mac/*.zip
+            artifacts/mac/*.blockmap
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
         env:
