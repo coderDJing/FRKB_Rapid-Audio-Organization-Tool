@@ -233,64 +233,30 @@ jobs:
           install -m 755 "$ARM64_FFPROBE_PATH" vendor/ffmpeg/darwin-arm64/ffprobe
 
           # 从多个源尝试下载 x64 版本
-          X64_DOWNLOADED=false
-
-          # 方案1: 尝试 ffbinaries.com
-          echo "Trying to download x64 ffmpeg from ffbinaries..."
-          if curl -L "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v4.4.1/ffmpeg-4.4.1-osx-64.zip" -o ffmpeg-x64.zip && [ -f ffmpeg-x64.zip ]; then
-            unzip -q ffmpeg-x64.zip -d ffmpeg-x64-temp || true
-            X64_FFMPEG_PATH="$(find ffmpeg-x64-temp -type f -name ffmpeg | head -n 1 || true)"
-            X64_FFPROBE_PATH="$(find ffmpeg-x64-temp -type f -name ffprobe | head -n 1 || true)"
-            if [ -n "$X64_FFMPEG_PATH" ] && [ -n "$X64_FFPROBE_PATH" ]; then
-              file "$X64_FFMPEG_PATH"
-              file "$X64_FFPROBE_PATH"
-              if file "$X64_FFMPEG_PATH" | grep -q "x86_64" && file "$X64_FFPROBE_PATH" | grep -q "x86_64"; then
-                install -m 755 "$X64_FFMPEG_PATH" vendor/ffmpeg/darwin-x64/ffmpeg
-                install -m 755 "$X64_FFPROBE_PATH" vendor/ffmpeg/darwin-x64/ffprobe
-                X64_DOWNLOADED=true
-                echo "✓ Successfully downloaded x64 ffmpeg/ffprobe from ffbinaries"
-              else
-                echo "ffbinaries artifacts are not x86_64"
-              fi
-            else
-              echo "ffbinaries archive missing ffmpeg/ffprobe binary"
-            fi
-            rm -rf ffmpeg-x64-temp ffmpeg-x64.zip
-          fi
-
-          # 方案2: 如果方案1失败,尝试从 npm ffmpeg-static 提取
-          if [ "$X64_DOWNLOADED" = false ]; then
-            echo "Trying to extract x64 ffmpeg/ffprobe from npm package..."
-            mkdir -p ffmpeg-npm-temp
-            pushd ffmpeg-npm-temp
-            npm init -y >/dev/null 2>&1
-            # 临时安装 x64 ffmpeg / ffprobe 并指定 darwin-x64 架构
-            FFMPEG_PLATFORM=darwin FFMPEG_ARCH=x64 npm install --no-save ffmpeg-static@5.2.0 ffprobe-static || true
-            X64_FFMPEG_PATH="$(find node_modules -type f -name ffmpeg | head -n 1 || true)"
-            X64_FFPROBE_PATH="$(find node_modules -type f -name ffprobe | head -n 1 || true)"
-            if [ -n "$X64_FFMPEG_PATH" ] && [ -n "$X64_FFPROBE_PATH" ]; then
-              file "$X64_FFMPEG_PATH"
-              file "$X64_FFPROBE_PATH"
-              if file "$X64_FFMPEG_PATH" | grep -q "x86_64" && file "$X64_FFPROBE_PATH" | grep -q "x86_64"; then
-                install -m 755 "$X64_FFMPEG_PATH" ../vendor/ffmpeg/darwin-x64/ffmpeg
-                install -m 755 "$X64_FFPROBE_PATH" ../vendor/ffmpeg/darwin-x64/ffprobe
-                X64_DOWNLOADED=true
-                echo "✓ Successfully extracted x64 ffmpeg/ffprobe from npm"
-              else
-                echo "npm ffmpeg/ffprobe artifacts are not x86_64"
-              fi
-            else
-              echo "npm packages did not produce ffmpeg/ffprobe binaries"
-            fi
-            popd
-            rm -rf ffmpeg-npm-temp
-          fi
-
-          # 验证是否成功获取 x64 版本
-          if [ "$X64_DOWNLOADED" = false ]; then
-            echo "ERROR: Failed to obtain x64 ffmpeg from all sources"
+          echo "Downloading x64 ffmpeg/ffprobe from ffbinaries..."
+          curl -L "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v4.4.1/ffmpeg-4.4.1-osx-64.zip" -o ffmpeg-x64.zip
+          curl -L "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v4.4.1/ffprobe-4.4.1-osx-64.zip" -o ffprobe-x64.zip
+          unzip -q ffmpeg-x64.zip -d ffmpeg-x64-temp
+          unzip -q ffprobe-x64.zip -d ffprobe-x64-temp
+          X64_FFMPEG_PATH="$(find ffmpeg-x64-temp -type f -name ffmpeg | head -n 1 || true)"
+          X64_FFPROBE_PATH="$(find ffprobe-x64-temp -type f -name ffprobe | head -n 1 || true)"
+          if [ -z "$X64_FFMPEG_PATH" ] || [ -z "$X64_FFPROBE_PATH" ]; then
+            echo "ERROR: x64 ffmpeg/ffprobe binary missing from downloaded archives"
             exit 1
           fi
+          file "$X64_FFMPEG_PATH"
+          file "$X64_FFPROBE_PATH"
+          if ! file "$X64_FFMPEG_PATH" | grep -q "x86_64"; then
+            echo "ERROR: x64 ffmpeg artifact is not x86_64"
+            exit 1
+          fi
+          if ! file "$X64_FFPROBE_PATH" | grep -q "x86_64"; then
+            echo "ERROR: x64 ffprobe artifact is not x86_64"
+            exit 1
+          fi
+          install -m 755 "$X64_FFMPEG_PATH" vendor/ffmpeg/darwin-x64/ffmpeg
+          install -m 755 "$X64_FFPROBE_PATH" vendor/ffmpeg/darwin-x64/ffprobe
+          rm -rf ffmpeg-x64-temp ffprobe-x64-temp ffmpeg-x64.zip ffprobe-x64.zip
           if [ ! -f vendor/ffmpeg/darwin-x64/ffprobe ]; then
             echo "ERROR: x64 ffprobe is missing"
             exit 1
