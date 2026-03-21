@@ -78,7 +78,15 @@ jobs:
           Invoke-WebRequest -Uri $asset.browser_download_url -OutFile ffmpeg.zip
           Expand-Archive -Path ffmpeg.zip -DestinationPath ffmpeg_unzip -Force
           $ff = (Get-ChildItem -Recurse -Filter ffmpeg.exe ffmpeg_unzip | Select-Object -First 1).FullName
+          $ffprobe = (Get-ChildItem -Recurse -Filter ffprobe.exe ffmpeg_unzip | Select-Object -First 1).FullName
+          if (-not $ff) {
+            throw "ffmpeg.exe not found in downloaded archive."
+          }
+          if (-not $ffprobe) {
+            throw "ffprobe.exe not found in downloaded archive."
+          }
           Copy-Item -Path $ff -Destination vendor/ffmpeg/win32-x64/ffmpeg.exe -Force
+          Copy-Item -Path $ffprobe -Destination vendor/ffmpeg/win32-x64/ffprobe.exe -Force
           Remove-Item ffmpeg.zip -Force
           Remove-Item ffmpeg_unzip -Recurse -Force
 
@@ -121,6 +129,8 @@ jobs:
           }
 
           $required = @(
+            "ffmpeg/win32-x64/ffmpeg.exe",
+            "ffmpeg/win32-x64/ffprobe.exe",
             "demucs/bootstrap/mixtape_demucs_bootstrap.py",
             "demucs/models/htdemucs.yaml",
             "demucs/models/955717e8-8726e21a.th"
@@ -216,8 +226,11 @@ jobs:
           brew update
           brew install ffmpeg
           ARM64_FFMPEG_PATH="$(brew --prefix)/bin/ffmpeg"
+          ARM64_FFPROBE_PATH="$(brew --prefix)/bin/ffprobe"
           file "$ARM64_FFMPEG_PATH"
+          file "$ARM64_FFPROBE_PATH"
           install -m 755 "$ARM64_FFMPEG_PATH" vendor/ffmpeg/darwin-arm64/ffmpeg
+          install -m 755 "$ARM64_FFPROBE_PATH" vendor/ffmpeg/darwin-arm64/ffprobe
 
           # 从多个源尝试下载 x64 版本
           X64_DOWNLOADED=false
@@ -226,39 +239,48 @@ jobs:
           echo "Trying to download x64 ffmpeg from ffbinaries..."
           if curl -L "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v4.4.1/ffmpeg-4.4.1-osx-64.zip" -o ffmpeg-x64.zip && [ -f ffmpeg-x64.zip ]; then
             unzip -q ffmpeg-x64.zip -d ffmpeg-x64-temp || true
-            if [ -f ffmpeg-x64-temp/ffmpeg ]; then
-              file ffmpeg-x64-temp/ffmpeg
-              if file ffmpeg-x64-temp/ffmpeg | grep -q "x86_64"; then
-                install -m 755 ffmpeg-x64-temp/ffmpeg vendor/ffmpeg/darwin-x64/ffmpeg
+            X64_FFMPEG_PATH="$(find ffmpeg-x64-temp -type f -name ffmpeg | head -n 1 || true)"
+            X64_FFPROBE_PATH="$(find ffmpeg-x64-temp -type f -name ffprobe | head -n 1 || true)"
+            if [ -n "$X64_FFMPEG_PATH" ] && [ -n "$X64_FFPROBE_PATH" ]; then
+              file "$X64_FFMPEG_PATH"
+              file "$X64_FFPROBE_PATH"
+              if file "$X64_FFMPEG_PATH" | grep -q "x86_64" && file "$X64_FFPROBE_PATH" | grep -q "x86_64"; then
+                install -m 755 "$X64_FFMPEG_PATH" vendor/ffmpeg/darwin-x64/ffmpeg
+                install -m 755 "$X64_FFPROBE_PATH" vendor/ffmpeg/darwin-x64/ffprobe
                 X64_DOWNLOADED=true
-                echo "✓ Successfully downloaded x64 ffmpeg from ffbinaries"
+                echo "✓ Successfully downloaded x64 ffmpeg/ffprobe from ffbinaries"
               else
-                echo "ffbinaries artifact is not x86_64"
+                echo "ffbinaries artifacts are not x86_64"
               fi
             else
-              echo "ffbinaries archive missing ffmpeg binary"
+              echo "ffbinaries archive missing ffmpeg/ffprobe binary"
             fi
             rm -rf ffmpeg-x64-temp ffmpeg-x64.zip
           fi
 
           # 方案2: 如果方案1失败,尝试从 npm ffmpeg-static 提取
           if [ "$X64_DOWNLOADED" = false ]; then
-            echo "Trying to extract x64 ffmpeg from npm package..."
+            echo "Trying to extract x64 ffmpeg/ffprobe from npm package..."
             mkdir -p ffmpeg-npm-temp
             pushd ffmpeg-npm-temp
             # 临时安装 ffmpeg-static 并指定 x64 架构
             FFMPEG_PLATFORM=darwin FFMPEG_ARCH=x64 npm install --no-save ffmpeg-static@5.2.0 || true
-            if [ -f node_modules/ffmpeg-static/ffmpeg ]; then
-              file node_modules/ffmpeg-static/ffmpeg
-              if file node_modules/ffmpeg-static/ffmpeg | grep -q "x86_64"; then
-                install -m 755 node_modules/ffmpeg-static/ffmpeg ../vendor/ffmpeg/darwin-x64/ffmpeg
+            FFMPEG_PLATFORM=darwin FFMPEG_ARCH=x64 npm install --no-save ffprobe-static || true
+            X64_FFMPEG_PATH="$(find node_modules -type f -name ffmpeg | head -n 1 || true)"
+            X64_FFPROBE_PATH="$(find node_modules -type f -name ffprobe | head -n 1 || true)"
+            if [ -n "$X64_FFMPEG_PATH" ] && [ -n "$X64_FFPROBE_PATH" ]; then
+              file "$X64_FFMPEG_PATH"
+              file "$X64_FFPROBE_PATH"
+              if file "$X64_FFMPEG_PATH" | grep -q "x86_64" && file "$X64_FFPROBE_PATH" | grep -q "x86_64"; then
+                install -m 755 "$X64_FFMPEG_PATH" ../vendor/ffmpeg/darwin-x64/ffmpeg
+                install -m 755 "$X64_FFPROBE_PATH" ../vendor/ffmpeg/darwin-x64/ffprobe
                 X64_DOWNLOADED=true
-                echo "✓ Successfully extracted x64 ffmpeg from npm"
+                echo "✓ Successfully extracted x64 ffmpeg/ffprobe from npm"
               else
-                echo "npm ffmpeg-static artifact is not x86_64"
+                echo "npm ffmpeg/ffprobe artifacts are not x86_64"
               fi
             else
-              echo "npm ffmpeg-static did not produce ffmpeg binary"
+              echo "npm packages did not produce ffmpeg/ffprobe binaries"
             fi
             popd
             rm -rf ffmpeg-npm-temp
@@ -269,18 +291,28 @@ jobs:
             echo "ERROR: Failed to obtain x64 ffmpeg from all sources"
             exit 1
           fi
+          if [ ! -f vendor/ffmpeg/darwin-x64/ffprobe ]; then
+            echo "ERROR: x64 ffprobe is missing"
+            exit 1
+          fi
 
           # 输出原始二进制信息
           echo "=== Raw arm64 binary ==="
           file vendor/ffmpeg/darwin-arm64/ffmpeg
+          file vendor/ffmpeg/darwin-arm64/ffprobe
           ls -lh vendor/ffmpeg/darwin-arm64/ffmpeg
+          ls -lh vendor/ffmpeg/darwin-arm64/ffprobe
           shasum -a 256 vendor/ffmpeg/darwin-arm64/ffmpeg || true
+          shasum -a 256 vendor/ffmpeg/darwin-arm64/ffprobe || true
           lipo -archs vendor/ffmpeg/darwin-arm64/ffmpeg || true
 
           echo "=== Raw x64 binary ==="
           file vendor/ffmpeg/darwin-x64/ffmpeg
+          file vendor/ffmpeg/darwin-x64/ffprobe
           ls -lh vendor/ffmpeg/darwin-x64/ffmpeg
+          ls -lh vendor/ffmpeg/darwin-x64/ffprobe
           shasum -a 256 vendor/ffmpeg/darwin-x64/ffmpeg || true
+          shasum -a 256 vendor/ffmpeg/darwin-x64/ffprobe || true
           lipo -archs vendor/ffmpeg/darwin-x64/ffmpeg || true
 
           # 生成通用二进制并放入固定目录
@@ -288,13 +320,22 @@ jobs:
           lipo -create -output vendor/ffmpeg/darwin/ffmpeg \
             vendor/ffmpeg/darwin-arm64/ffmpeg \
             vendor/ffmpeg/darwin-x64/ffmpeg
+          echo "Creating universal ffprobe via lipo"
+          lipo -create -output vendor/ffmpeg/darwin/ffprobe \
+            vendor/ffmpeg/darwin-arm64/ffprobe \
+            vendor/ffmpeg/darwin-x64/ffprobe
           chmod +x vendor/ffmpeg/darwin/ffmpeg
+          chmod +x vendor/ffmpeg/darwin/ffprobe
 
           echo "=== Universal binary ==="
           file vendor/ffmpeg/darwin/ffmpeg
+          file vendor/ffmpeg/darwin/ffprobe
           ls -lh vendor/ffmpeg/darwin/ffmpeg
+          ls -lh vendor/ffmpeg/darwin/ffprobe
           shasum -a 256 vendor/ffmpeg/darwin/ffmpeg || true
+          shasum -a 256 vendor/ffmpeg/darwin/ffprobe || true
           lipo -archs vendor/ffmpeg/darwin/ffmpeg || true
+          lipo -archs vendor/ffmpeg/darwin/ffprobe || true
 
           # 清理单架构副本
           rm -rf vendor/ffmpeg/darwin-arm64 vendor/ffmpeg/darwin-x64
@@ -346,6 +387,8 @@ jobs:
           fi
 
           REQUIRED_PATHS=(
+            "ffmpeg/darwin/ffmpeg"
+            "ffmpeg/darwin/ffprobe"
             "demucs/bootstrap/mixtape_demucs_bootstrap.py"
             "demucs/models/htdemucs.yaml"
             "demucs/models/955717e8-8726e21a.th"
