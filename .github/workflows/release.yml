@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   build_win:
+    needs: [build_runtime_assets_win]
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -53,6 +54,28 @@ jobs:
 
       - name: Ensure Demucs models (Windows)
         run: node scripts/ensure-demucs-runtime.mjs --models-only --ci
+
+      - name: Download Demucs runtime assets (Windows)
+        uses: actions/download-artifact@v4
+        with:
+          name: demucs-runtime-assets-win32-x64
+          path: artifacts/demucs-runtime-assets-win32-x64
+
+      - name: Restore CPU runtime for packaging (Windows)
+        shell: pwsh
+        run: |
+          $artifactRoot = "artifacts/demucs-runtime-assets-win32-x64"
+          $cpuArchive = Get-ChildItem -Path $artifactRoot -Recurse -Filter "frkb-demucs-runtime-win32-x64-cpu-*.zip" | Select-Object -First 1
+          if (-not $cpuArchive) {
+            throw "Windows CPU runtime archive not found under $artifactRoot"
+          }
+          $platformRoot = "vendor/demucs/win32-x64"
+          New-Item -ItemType Directory -Force -Path $platformRoot | Out-Null
+          Remove-Item -Path (Join-Path $platformRoot "runtime-cpu") -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -Path $cpuArchive.FullName -DestinationPath $platformRoot -Force
+          if (-not (Test-Path (Join-Path $platformRoot "runtime-cpu"))) {
+            throw "Windows CPU runtime was not extracted to $platformRoot/runtime-cpu"
+          }
 
       - name: Typecheck (vue-tsc)
         run: npx vue-tsc --noEmit
@@ -110,7 +133,8 @@ jobs:
           $required = @(
             "demucs/bootstrap/mixtape_demucs_bootstrap.py",
             "demucs/models/htdemucs.yaml",
-            "demucs/models/955717e8-8726e21a.th"
+            "demucs/models/955717e8-8726e21a.th",
+            "demucs/win32-x64/runtime-cpu"
           )
 
           $missing = @()
@@ -120,10 +144,6 @@ jobs:
               $missing += $relativePath
             }
           }
-          $unexpectedRuntimeRoot = Join-Path $resourcesRoot "demucs/win32-x64"
-          if (Test-Path $unexpectedRuntimeRoot) {
-            $missing += "unexpected:demucs/win32-x64"
-          }
 
           if ($missing.Count -gt 0) {
             Write-Error "Missing packaged Demucs resources (Windows):"
@@ -131,7 +151,7 @@ jobs:
             exit 1
           }
 
-          Write-Host "Packaged Demucs resources verified (Windows, runtime excluded)."
+          Write-Host "Packaged Demucs resources verified (Windows, CPU runtime included)."
 
       # 不再复制 rc.yml，严格遵循 GitHub provider 读取 latest.yml / latest-mac.yml
 
@@ -346,6 +366,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build_mac:
+    needs: [build_runtime_assets_mac_arm64, build_runtime_assets_mac_x64]
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -384,6 +405,47 @@ jobs:
 
       - name: Ensure Demucs models (macOS)
         run: node scripts/ensure-demucs-runtime.mjs --models-only --ci
+
+      - name: Download Demucs runtime assets (macOS arm64)
+        uses: actions/download-artifact@v4
+        with:
+          name: demucs-runtime-assets-darwin-arm64
+          path: artifacts/demucs-runtime-assets-darwin-arm64
+
+      - name: Download Demucs runtime assets (macOS x64)
+        uses: actions/download-artifact@v4
+        with:
+          name: demucs-runtime-assets-darwin-x64
+          path: artifacts/demucs-runtime-assets-darwin-x64
+
+      - name: Restore CPU runtimes for packaging (macOS)
+        run: |
+          set -euxo pipefail
+          mkdir -p vendor/demucs/darwin-arm64 vendor/demucs/darwin-x64
+
+          ARM64_ARCHIVE="$(find artifacts/demucs-runtime-assets-darwin-arm64 -name 'frkb-demucs-runtime-darwin-arm64-cpu-*.zip' | head -n 1)"
+          if [ -z "${ARM64_ARCHIVE}" ]; then
+            echo "macOS arm64 CPU runtime archive not found"
+            exit 1
+          fi
+          rm -rf vendor/demucs/darwin-arm64/runtime-cpu
+          ditto -x -k "${ARM64_ARCHIVE}" vendor/demucs/darwin-arm64
+          if [ ! -d vendor/demucs/darwin-arm64/runtime-cpu ]; then
+            echo "macOS arm64 CPU runtime extraction failed"
+            exit 1
+          fi
+
+          X64_ARCHIVE="$(find artifacts/demucs-runtime-assets-darwin-x64 -name 'frkb-demucs-runtime-darwin-x64-cpu-*.zip' | head -n 1)"
+          if [ -z "${X64_ARCHIVE}" ]; then
+            echo "macOS x64 CPU runtime archive not found"
+            exit 1
+          fi
+          rm -rf vendor/demucs/darwin-x64/runtime-cpu
+          ditto -x -k "${X64_ARCHIVE}" vendor/demucs/darwin-x64
+          if [ ! -d vendor/demucs/darwin-x64/runtime-cpu ]; then
+            echo "macOS x64 CPU runtime extraction failed"
+            exit 1
+          fi
 
       - name: Typecheck (vue-tsc)
         run: npx vue-tsc --noEmit
@@ -535,10 +597,10 @@ jobs:
             "demucs/bootstrap/mixtape_demucs_bootstrap.py"
             "demucs/models/htdemucs.yaml"
             "demucs/models/955717e8-8726e21a.th"
+            "demucs/darwin-arm64/runtime-cpu"
+            "demucs/darwin-x64/runtime-cpu"
           )
           UNEXPECTED_PATHS=(
-            "demucs/darwin-arm64"
-            "demucs/darwin-x64"
             "demucs/win32-x64"
           )
 
@@ -562,7 +624,7 @@ jobs:
             exit 1
           fi
 
-          echo "Packaged Demucs resources verified (macOS, runtime excluded)."
+          echo "Packaged Demucs resources verified (macOS, CPU runtimes included)."
 
       # 不再复制 rc.yml / rc-mac.yml，保持标准文件名
 

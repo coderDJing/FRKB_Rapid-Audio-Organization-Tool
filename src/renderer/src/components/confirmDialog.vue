@@ -132,15 +132,13 @@ onUnmounted(() => {
         </div>
       </div>
       <div v-if="confirmShow" class="dialog-footer">
-        <div class="button" style="width: 90px; text-align: center" @click="confirm()">
-          {{ confirmLabel }} (E)
-        </div>
-        <div class="button" style="width: 90px; text-align: center" @click="cancel()">
-          {{ cancelLabel }} (Esc)
-        </div>
+        <div class="button confirm-dialog__button" @click="confirm()">{{ confirmLabel }} (E)</div>
+        <div class="button confirm-dialog__button" @click="cancel()">{{ cancelLabel }} (Esc)</div>
       </div>
       <div v-if="!confirmShow" class="dialog-footer">
-        <div class="button" @click="cancel()">{{ t('common.close') }} (Esc)</div>
+        <div class="button confirm-dialog__button" @click="cancel()">
+          {{ t('common.close') }} (Esc)
+        </div>
       </div>
     </div>
   </div>
@@ -148,5 +146,14 @@ onUnmounted(() => {
 <style lang="scss" scoped>
 .dialog-footer {
   justify-content: center;
+  flex-wrap: wrap;
+}
+
+.confirm-dialog__button {
+  min-width: 132px;
+  padding: 0 14px;
+  box-sizing: border-box;
+  text-align: center;
+  white-space: nowrap;
 }
 </style>
