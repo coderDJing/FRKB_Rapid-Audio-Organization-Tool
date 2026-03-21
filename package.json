@@ -74,10 +74,6 @@
         {
           "from": "vendor/demucs/bootstrap",
           "to": "demucs/bootstrap"
-        },
-        {
-          "from": "vendor/demucs/win32-x64/runtime-cpu",
-          "to": "demucs/win32-x64/runtime-cpu"
         }
       ]
     },
@@ -97,23 +93,9 @@
         {
           "from": "vendor/demucs/bootstrap",
           "to": "demucs/bootstrap"
-        },
-        {
-          "from": "vendor/demucs/darwin-arm64",
-          "to": "demucs/darwin-arm64",
-          "filter": [
-            "runtime*/**"
-          ]
-        },
-        {
-          "from": "vendor/demucs/darwin-x64",
-          "to": "demucs/darwin-x64",
-          "filter": [
-            "runtime*/**"
-          ]
         }
       ],
-      "x64ArchFiles": "{Contents/Resources/{ffmpeg,chromaprint}/darwin/{ffmpeg,fpcalc},Contents/Resources/demucs/**,Contents/Resources/demucs/**/.*/**}",
+      "x64ArchFiles": "Contents/Resources/{ffmpeg,chromaprint}/darwin/{ffmpeg,fpcalc}",
       "artifactName": "${productName}-${version}-universal.${ext}"
     },
     "linux": {

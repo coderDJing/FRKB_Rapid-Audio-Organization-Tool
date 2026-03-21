@@ -26,18 +26,6 @@ jobs:
           node-version: 20
           cache: 'pnpm'
 
-      - name: Restore Demucs cache (Windows)
-        uses: actions/cache@v4
-        with:
-          path: |
-            vendor/demucs/models
-            vendor/demucs/win32-x64/runtime-cpu
-            vendor/demucs/bootstrap
-          key: demucs-${{ runner.os }}-win32-x64-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs') }}
-          restore-keys: |
-            demucs-${{ runner.os }}-win32-x64-
-            demucs-${{ runner.os }}-
-
       - name: Setup Python (for node-gyp)
         uses: actions/setup-python@v5
         with:
@@ -54,9 +42,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile=false
-
-      - name: Ensure Demucs runtimes (Windows)
-        run: pnpm run demucs:runtime:ensure -- --ci --profiles cpu
 
       - name: Typecheck (vue-tsc)
         run: npx vue-tsc --noEmit
@@ -116,10 +101,6 @@ jobs:
             "demucs/models/htdemucs.yaml",
             "demucs/models/955717e8-8726e21a.th"
           )
-          $pythonCandidates = @(
-            "demucs/win32-x64/runtime-cpu/python.exe",
-            "demucs/win32-x64/runtime-cpu/Scripts/python.exe"
-          )
 
           $missing = @()
           foreach ($relativePath in $required) {
@@ -128,11 +109,9 @@ jobs:
               $missing += $relativePath
             }
           }
-          $resolvedPython = $pythonCandidates |
-            Where-Object { Test-Path (Join-Path $resourcesRoot $_) } |
-            Select-Object -First 1
-          if (-not $resolvedPython) {
-            $missing += "demucs/win32-x64/runtime-cpu/{python.exe|Scripts/python.exe}"
+          $unexpectedRuntimeRoot = Join-Path $resourcesRoot "demucs/win32-x64"
+          if (Test-Path $unexpectedRuntimeRoot) {
+            $missing += "unexpected:demucs/win32-x64"
           }
 
           if ($missing.Count -gt 0) {
@@ -141,8 +120,7 @@ jobs:
             exit 1
           }
 
-          Write-Host "Windows Demucs Python path: $resolvedPython"
-          Write-Host "Packaged Demucs resources verified (Windows)."
+          Write-Host "Packaged Demucs resources verified (Windows, runtime excluded)."
 
       # 不再复制 rc.yml，严格遵循 GitHub provider 读取 latest.yml / latest-mac.yml
 
@@ -156,7 +134,109 @@ jobs:
             dist/*.blockmap
             dist/*.yml
 
-  prepare_demucs_runtime_mac_x64:
+  build_runtime_assets_win:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Ensure setuptools available
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+
+      - name: Restore Demucs runtime cache (Windows)
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor/demucs/win32-x64/runtime
+            vendor/demucs/win32-x64/runtime-cpu
+            vendor/demucs/win32-x64/runtime-cuda
+            vendor/demucs/win32-x64/runtime-directml
+            vendor/demucs/win32-x64/runtime-xpu
+          key: demucs-runtime-assets-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs', 'scripts/package-demucs-runtime-assets.mjs') }}
+          restore-keys: |
+            demucs-runtime-assets-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Ensure Demucs runtimes (Windows assets)
+        run: pnpm run demucs:runtime:ensure -- --ci --profiles cpu,cuda,directml,xpu
+
+      - name: Package Demucs runtime assets (Windows)
+        run: node scripts/package-demucs-runtime-assets.mjs --platform win32-x64 --profiles cpu,cuda,directml,xpu --output-root dist/demucs-runtime-assets-win32-x64 --release-tag demucs-runtime-assets --asset-version ${{ github.ref_name }}
+
+      - name: Upload Demucs runtime assets (Windows)
+        uses: actions/upload-artifact@v4
+        with:
+          name: demucs-runtime-assets-win32-x64
+          path: |
+            dist/demucs-runtime-assets-win32-x64
+
+  build_runtime_assets_mac_arm64:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Ensure setuptools available
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+
+      - name: Restore Demucs runtime cache (macOS arm64)
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor/demucs/darwin-arm64/runtime
+            vendor/demucs/darwin-arm64/runtime-cpu
+            vendor/demucs/darwin-arm64/runtime-mps
+          key: demucs-runtime-assets-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs', 'scripts/package-demucs-runtime-assets.mjs') }}
+          restore-keys: |
+            demucs-runtime-assets-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Ensure Demucs runtimes (macOS arm64 assets)
+        run: node scripts/ensure-demucs-runtime.mjs --ci --platform darwin-arm64 --profiles cpu,mps
+
+      - name: Package Demucs runtime assets (macOS arm64)
+        run: node scripts/package-demucs-runtime-assets.mjs --platform darwin-arm64 --profiles cpu,mps --output-root dist/demucs-runtime-assets-darwin-arm64 --release-tag demucs-runtime-assets --asset-version ${{ github.ref_name }}
+
+      - name: Upload Demucs runtime assets (macOS arm64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: demucs-runtime-assets-darwin-arm64
+          path: |
+            dist/demucs-runtime-assets-darwin-arm64
+
+  build_runtime_assets_mac_x64:
     runs-on: macos-15-intel
     steps:
       - name: Checkout
@@ -176,7 +256,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools wheel
 
-      - name: Restore Demucs cache (macOS x64 runtime)
+      - name: Restore Demucs runtime cache (macOS x64)
         uses: actions/cache@v4
         with:
           path: |
@@ -186,24 +266,67 @@ jobs:
           restore-keys: |
             demucs-${{ runner.os }}-${{ runner.arch }}-darwin-x64-
 
-      - name: Ensure Demucs runtimes (macOS x64)
+      - name: Ensure Demucs runtimes (macOS x64 assets)
         run: node scripts/ensure-demucs-runtime.mjs --ci --platform darwin-x64 --profiles cpu
 
-      - name: Show prepared Demucs x64 runtime
-        run: |
-          set -euo pipefail
-          find vendor/demucs/darwin-x64 -maxdepth 2 -type f | sort | sed -n '1,40p'
+      - name: Package Demucs runtime assets (macOS x64)
+        run: node scripts/package-demucs-runtime-assets.mjs --platform darwin-x64 --profiles cpu --output-root dist/demucs-runtime-assets-darwin-x64 --release-tag demucs-runtime-assets --asset-version ${{ github.ref_name }}
 
-      - name: Upload Demucs x64 runtime artifact
+      - name: Upload Demucs runtime assets (macOS x64)
         uses: actions/upload-artifact@v4
         with:
-          name: demucs-runtime-darwin-x64
+          name: demucs-runtime-assets-darwin-x64
           path: |
-            vendor/demucs/darwin-x64
-          if-no-files-found: error
+            dist/demucs-runtime-assets-darwin-x64
+
+  publish_runtime_assets:
+    needs:
+      - build_runtime_assets_win
+      - build_runtime_assets_mac_arm64
+      - build_runtime_assets_mac_x64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download runtime assets (Windows)
+        uses: actions/download-artifact@v4
+        with:
+          name: demucs-runtime-assets-win32-x64
+          path: artifacts/demucs-runtime-assets-win32-x64
+
+      - name: Download runtime assets (macOS arm64)
+        uses: actions/download-artifact@v4
+        with:
+          name: demucs-runtime-assets-darwin-arm64
+          path: artifacts/demucs-runtime-assets-darwin-arm64
+
+      - name: Download runtime assets (macOS x64)
+        uses: actions/download-artifact@v4
+        with:
+          name: demucs-runtime-assets-darwin-x64
+          path: artifacts/demucs-runtime-assets-darwin-x64
+
+      - name: Merge Demucs runtime manifests
+        run: node scripts/merge-demucs-runtime-manifests.mjs --input-roots artifacts/demucs-runtime-assets-win32-x64,artifacts/demucs-runtime-assets-darwin-arm64,artifacts/demucs-runtime-assets-darwin-x64 --output-root dist/demucs-runtime-assets --release-tag demucs-runtime-assets
+
+      - name: Show merged runtime assets
+        run: find dist/demucs-runtime-assets -maxdepth 1 -type f | sort
+
+      - name: Publish Demucs runtime assets release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: demucs-runtime-assets
+          files: |
+            dist/demucs-runtime-assets/*.zip
+            dist/demucs-runtime-assets/demucs-runtime-manifest.json
+          draft: false
+          prerelease: false
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build_mac:
-    needs: [prepare_demucs_runtime_mac_x64]
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -219,20 +342,6 @@ jobs:
         with:
           node-version: 20
           cache: 'pnpm'
-
-      - name: Restore Demucs cache (macOS)
-        uses: actions/cache@v4
-        with:
-          path: |
-            vendor/demucs/models
-            vendor/demucs/darwin-arm64/runtime
-            vendor/demucs/darwin-arm64/runtime-cpu
-            vendor/demucs/darwin-arm64/runtime-mps
-            vendor/demucs/bootstrap
-          key: demucs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs') }}
-          restore-keys: |
-            demucs-${{ runner.os }}-${{ runner.arch }}-
-            demucs-${{ runner.os }}-
 
       - name: Setup Python (for node-gyp)
         uses: actions/setup-python@v5
@@ -253,28 +362,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile=false
-
-      - name: Ensure Demucs runtimes (macOS)
-        run: pnpm run demucs:runtime:ensure -- --ci --profiles cpu,mps
-
-      - name: Download Demucs x64 runtime artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: demucs-runtime-darwin-x64
-          path: vendor/demucs/darwin-x64
-
-      - name: Normalize Demucs x64 runtime artifact layout
-        run: |
-          set -euo pipefail
-          if [ -d "vendor/demucs/darwin-x64/darwin-x64" ]; then
-            find "vendor/demucs/darwin-x64/darwin-x64" -mindepth 1 -maxdepth 1 -exec mv {} "vendor/demucs/darwin-x64/" \;
-            rmdir "vendor/demucs/darwin-x64/darwin-x64"
-          fi
-
-      - name: Show prepared Demucs runtimes (macOS)
-        run: |
-          set -euo pipefail
-          find vendor/demucs -maxdepth 4 -type f | sort | grep -E 'darwin-(arm64|x64)/runtime|models/htdemucs.yaml|bootstrap/mixtape_demucs_bootstrap.py' || true
 
       - name: Typecheck (vue-tsc)
         run: npx vue-tsc --noEmit
@@ -426,11 +513,11 @@ jobs:
             "demucs/bootstrap/mixtape_demucs_bootstrap.py"
             "demucs/models/htdemucs.yaml"
             "demucs/models/955717e8-8726e21a.th"
-            "demucs/darwin-arm64/runtime/bin/python3"
-            "demucs/darwin-arm64/runtime-cpu/bin/python3"
-            "demucs/darwin-arm64/runtime-mps/bin/python3"
-            "demucs/darwin-x64/runtime/bin/python3"
-            "demucs/darwin-x64/runtime-cpu/bin/python3"
+          )
+          UNEXPECTED_PATHS=(
+            "demucs/darwin-arm64"
+            "demucs/darwin-x64"
+            "demucs/win32-x64"
           )
 
           MISSING=0
@@ -441,12 +528,19 @@ jobs:
               MISSING=1
             fi
           done
+          for relative_path in "${UNEXPECTED_PATHS[@]}"; do
+            target_path="${RESOURCES_DIR}/${relative_path}"
+            if [ -e "$target_path" ]; then
+              echo "Unexpected packaged Demucs runtime (macOS): ${relative_path}"
+              MISSING=1
+            fi
+          done
 
           if [ "$MISSING" -ne 0 ]; then
             exit 1
           fi
 
-          echo "Packaged Demucs resources verified (macOS universal)."
+          echo "Packaged Demucs resources verified (macOS, runtime excluded)."
 
       # 不再复制 rc.yml / rc-mac.yml，保持标准文件名
 
@@ -464,7 +558,7 @@ jobs:
             dist/*.zip
 
   release:
-    needs: [build_win, build_mac]
+    needs: [build_win, build_mac, publish_runtime_assets]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts

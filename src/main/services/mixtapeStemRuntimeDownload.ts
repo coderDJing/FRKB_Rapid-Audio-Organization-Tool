@@ -181,17 +181,17 @@ const readRuntimeManifest = async (): Promise<RuntimeAssetManifest | null> => {
 }
 
 const resolvePreferredRuntimeProfiles = async (): Promise<RuntimeProfileName[]> => {
-  if (process.platform !== 'win32') return []
-  const adapters = await probeWindowsGpuAdapters()
-  if (adapters.hasNvidia) return ['cuda', 'cpu']
-  if (adapters.hasIntel) return ['xpu', 'cpu']
-  if (adapters.hasAmd) return ['directml', 'cpu']
-  return ['cpu']
-}
-
-const resolvePreferredGpuRuntimeProfile = async (): Promise<RuntimeProfileName | null> => {
-  const preferredProfiles = await resolvePreferredRuntimeProfiles()
-  return preferredProfiles.find((profile) => profile !== 'cpu') || null
+  if (process.platform === 'win32') {
+    const adapters = await probeWindowsGpuAdapters()
+    if (adapters.hasNvidia) return ['cuda', 'cpu']
+    if (adapters.hasIntel) return ['xpu', 'cpu']
+    if (adapters.hasAmd) return ['directml', 'cpu']
+    return ['cpu']
+  }
+  if (process.platform === 'darwin') {
+    return process.arch === 'arm64' ? ['mps', 'cpu'] : ['cpu']
+  }
+  return []
 }
 
 const resolveInstalledRuntimeDir = (runtimeKey: string) =>
@@ -258,7 +258,21 @@ const downloadRuntimeArchive = async (
 
 const extractRuntimeArchive = async (archivePath: string, outputDir: string) => {
   await fs.promises.mkdir(outputDir, { recursive: true })
-  await runProcess('tar.exe', ['-xf', archivePath, '-C', outputDir], {
+  if (process.platform === 'win32') {
+    await runProcess('tar.exe', ['-xf', archivePath, '-C', outputDir], {
+      timeoutMs: 30 * 60 * 1000,
+      traceLabel: 'mixtape-stem-runtime-extract'
+    })
+    return
+  }
+  if (process.platform === 'darwin') {
+    await runProcess('ditto', ['-x', '-k', archivePath, outputDir], {
+      timeoutMs: 30 * 60 * 1000,
+      traceLabel: 'mixtape-stem-runtime-extract'
+    })
+    return
+  }
+  await runProcess('unzip', ['-q', archivePath, '-d', outputDir], {
     timeoutMs: 30 * 60 * 1000,
     traceLabel: 'mixtape-stem-runtime-extract'
   })
@@ -464,7 +478,8 @@ const ensureRuntimeProfileAvailable = async (
 
 export const getPreferredStemRuntimeDownloadInfo =
   async (): Promise<MixtapeStemRuntimeDownloadInfo> => {
-    if (process.platform !== 'win32') {
+    const preferredProfiles = await resolvePreferredRuntimeProfiles()
+    if (preferredProfiles.length === 0) {
       return {
         supported: false,
         downloadable: false,
@@ -480,54 +495,43 @@ export const getPreferredStemRuntimeDownloadInfo =
         state: getStemRuntimeDownloadState()
       }
     }
-    const profile = await resolvePreferredGpuRuntimeProfile()
-    if (!profile) {
-      return {
-        supported: false,
-        downloadable: false,
-        alreadyAvailable: false,
-        profile: '',
-        runtimeKey: '',
-        version: '',
-        archiveSize: 0,
-        title: '',
-        reason: 'no preferred gpu runtime',
-        manifestUrl: resolveRuntimeManifestUrl(),
-        releaseTag: '',
-        state: getStemRuntimeDownloadState()
-      }
-    }
     const manifest = await readRuntimeManifest()
     if (!manifest) {
       return {
         supported: true,
         downloadable: false,
         alreadyAvailable: false,
-        profile,
+        profile: preferredProfiles[0] || '',
         runtimeKey: '',
         version: '',
         archiveSize: 0,
-        title: resolveRuntimeProfileTitle(profile),
+        title: resolveRuntimeProfileTitle(preferredProfiles[0] || ''),
         reason: 'manifest unavailable',
         manifestUrl: resolveRuntimeManifestUrl(),
         releaseTag: '',
         state: getStemRuntimeDownloadState()
       }
     }
+    const platform = resolveDemucsPlatformDir()
     const entry =
-      manifest.assets.find(
-        (item) => item.platform === resolveDemucsPlatformDir() && item.profile === profile
-      ) || null
+      preferredProfiles
+        .map(
+          (profile) =>
+            manifest.assets.find(
+              (item) => item.platform === platform && item.profile === profile
+            ) || null
+        )
+        .find(Boolean) || null
     if (!entry) {
       return {
         supported: true,
         downloadable: false,
         alreadyAvailable: false,
-        profile,
+        profile: preferredProfiles[0] || '',
         runtimeKey: '',
         version: '',
         archiveSize: 0,
-        title: resolveRuntimeProfileTitle(profile),
+        title: resolveRuntimeProfileTitle(preferredProfiles[0] || ''),
         reason: 'runtime asset missing',
         manifestUrl: resolveRuntimeManifestUrl(),
         releaseTag: manifest.releaseTag || '',
@@ -553,7 +557,7 @@ export const getPreferredStemRuntimeDownloadInfo =
 
 export const downloadPreferredStemRuntime = async (): Promise<boolean> => {
   const info = await getPreferredStemRuntimeDownloadInfo()
-  if (!info.supported || !info.profile || info.profile === 'cpu') return false
+  if (!info.supported || !info.profile) return false
   if (info.alreadyAvailable) {
     updateRuntimeDownloadState({
       status: 'ready',

@@ -46,8 +46,6 @@ win:
       to: demucs/models
     - from: vendor/demucs/bootstrap
       to: demucs/bootstrap
-    - from: vendor/demucs/win32-x64/runtime-cpu
-      to: demucs/win32-x64/runtime-cpu
   # requestedExecutionLevel: 'requireAdministrator'
 nsis:
   oneClick: false
@@ -69,14 +67,6 @@ mac:
       to: demucs/models
     - from: vendor/demucs/bootstrap
       to: demucs/bootstrap
-    - from: vendor/demucs/darwin-arm64
-      to: demucs/darwin-arm64
-      filter:
-        - runtime*/**
-    - from: vendor/demucs/darwin-x64
-      to: demucs/darwin-x64
-      filter:
-        - runtime*/**
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.

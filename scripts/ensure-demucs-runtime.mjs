@@ -275,7 +275,15 @@ const downloadRuntimeAssetArchive = async (entry, archivePath) => {
 
 const extractRuntimeAssetArchive = (archivePath, targetDir) => {
   fs.mkdirSync(targetDir, { recursive: true })
-  run('tar.exe', ['-xf', archivePath, '-C', targetDir])
+  if (process.platform === 'win32') {
+    run('tar.exe', ['-xf', archivePath, '-C', targetDir])
+    return
+  }
+  if (process.platform === 'darwin') {
+    run('ditto', ['-x', '-k', archivePath, targetDir])
+    return
+  }
+  run('unzip', ['-q', archivePath, '-d', targetDir])
 }
 
 const installRuntimeProfileFromAsset = async (entry, profileName, runtimeDir) => {

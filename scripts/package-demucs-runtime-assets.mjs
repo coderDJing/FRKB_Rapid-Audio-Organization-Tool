@@ -71,10 +71,11 @@ const resolvedAssetVersion =
     .replace(/\.\d+Z$/, '')
     .replace('T', '')
 
-const run = (command, commandArgs) => {
+const run = (command, commandArgs, options = {}) => {
   const result = spawnSync(command, commandArgs, {
     stdio: 'inherit',
-    windowsHide: true
+    windowsHide: true,
+    ...options
   })
   if (result.status === 0) return
   throw new Error(`${command} ${commandArgs.join(' ')} -> exit ${result.status ?? -1}`)
@@ -118,7 +119,19 @@ const createArchive = (params) => {
     fs.rmSync(archivePath, { force: true })
   }
   fs.mkdirSync(path.dirname(archivePath), { recursive: true })
-  run('tar.exe', ['-a', '-cf', archivePath, '-C', params.platformRoot, params.runtimeKey])
+  if (process.platform === 'win32') {
+    run('tar.exe', ['-a', '-cf', archivePath, '-C', params.platformRoot, params.runtimeKey])
+    return
+  }
+  if (process.platform === 'darwin') {
+    run('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', params.runtimeKey, archivePath], {
+      cwd: params.platformRoot
+    })
+    return
+  }
+  run('zip', ['-qr', archivePath, params.runtimeKey], {
+    cwd: params.platformRoot
+  })
 }
 
 const assets = []
