@@ -263,9 +263,9 @@ jobs:
             echo "Trying to extract x64 ffmpeg/ffprobe from npm package..."
             mkdir -p ffmpeg-npm-temp
             pushd ffmpeg-npm-temp
-            # 临时安装 ffmpeg-static 并指定 x64 架构
-            FFMPEG_PLATFORM=darwin FFMPEG_ARCH=x64 npm install --no-save ffmpeg-static@5.2.0 || true
-            FFMPEG_PLATFORM=darwin FFMPEG_ARCH=x64 npm install --no-save ffprobe-static || true
+            npm init -y >/dev/null 2>&1
+            # 临时安装 x64 ffmpeg / ffprobe 并指定 darwin-x64 架构
+            FFMPEG_PLATFORM=darwin FFMPEG_ARCH=x64 npm install --no-save ffmpeg-static@5.2.0 ffprobe-static || true
             X64_FFMPEG_PATH="$(find node_modules -type f -name ffmpeg | head -n 1 || true)"
             X64_FFPROBE_PATH="$(find node_modules -type f -name ffprobe | head -n 1 || true)"
             if [ -n "$X64_FFMPEG_PATH" ] && [ -n "$X64_FFPROBE_PATH" ]; then
