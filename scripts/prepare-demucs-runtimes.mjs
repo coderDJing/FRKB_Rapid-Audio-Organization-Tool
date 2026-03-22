@@ -52,6 +52,9 @@ const baseRuntimeDir = path.resolve(
   platformArg,
   String(platformConfig.baseRuntimeDir || 'runtime')
 )
+const basePipInstallArgs = Array.isArray(platformConfig.basePipInstall)
+  ? platformConfig.basePipInstall.map((item) => String(item).trim()).filter(Boolean)
+  : []
 if (!fs.existsSync(baseRuntimeDir)) {
   console.error(`[demucs-runtime] Base runtime not found: ${baseRuntimeDir}`)
   process.exit(1)
@@ -467,6 +470,7 @@ for (const [profileName, profileConfig] of selectedProfiles) {
     platform: platformArg,
     generatedAt: new Date().toISOString(),
     installExecuted: install,
+    basePipInstallArgs,
     pipInstallArgs,
     torchVersion: String(probe?.torch_version || ''),
     xpuAvailable: !!probe?.xpu,

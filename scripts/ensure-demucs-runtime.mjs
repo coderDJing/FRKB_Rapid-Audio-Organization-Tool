@@ -11,6 +11,7 @@ const runtimeProfiles = JSON.parse(runtimeProfilesRaw)
 const modelManifestPath = path.resolve('./scripts/demucs-model-manifest.json')
 const DEFAULT_DEMUCS_RUNTIME_MANIFEST_URL =
   'https://github.com/coderDjing/FRKB_Rapid-Audio-Organization-Tool/releases/download/demucs-runtime-assets/demucs-runtime-manifest.json'
+const BASE_RUNTIME_METADATA_FILE = '.frkb-base-runtime-meta.json'
 
 const platformDefault = (() => {
   if (process.platform === 'win32') return 'win32-x64'
@@ -350,6 +351,25 @@ const addUniqueItem = (target, value) => {
   if (!normalized) return
   if (target.includes(normalized)) return
   target.push(normalized)
+}
+
+const readJsonFileIfExists = (filePath) => {
+  try {
+    if (!fs.existsSync(filePath)) return null
+    const raw = fs.readFileSync(filePath, 'utf8')
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+const normalizeStringArray = (value) =>
+  Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : []
+
+const arraysEqual = (left, right) => {
+  if (left.length !== right.length) return false
+  return left.every((item, index) => item === right[index])
 }
 
 const probeRuntimeModules = (pythonPath, runtimeDir) => {
@@ -931,6 +951,8 @@ const ensureBaseRuntime = (platformKey, platformConfig) => {
   const basePipInstallArgs = normalizeList(platformConfig?.basePipInstall)
   const basePythonPath = resolveRuntimePythonPath(baseRuntimeDir)
   const baseEnv = buildRuntimeEnv(baseRuntimeDir)
+  const baseMetadataPath = path.join(baseRuntimeDir, BASE_RUNTIME_METADATA_FILE)
+  const baseMetadata = readJsonFileIfExists(baseMetadataPath)
 
   let needsBootstrap = !fs.existsSync(basePythonPath)
   if (!needsBootstrap && process.platform === 'win32') {
@@ -942,6 +964,17 @@ const ensureBaseRuntime = (platformKey, platformConfig) => {
       fs.rmSync(baseRuntimeDir, { recursive: true, force: true })
       needsBootstrap = true
     }
+  }
+  if (
+    !needsBootstrap &&
+    install &&
+    !arraysEqual(normalizeStringArray(baseMetadata?.pipInstallArgs), basePipInstallArgs)
+  ) {
+    console.warn(
+      `[demucs-runtime-ensure] Rebuilding base runtime due to dependency change: ${baseRuntimeDir}`
+    )
+    fs.rmSync(baseRuntimeDir, { recursive: true, force: true })
+    needsBootstrap = true
   }
 
   if (needsBootstrap) {
@@ -1000,13 +1033,28 @@ const ensureBaseRuntime = (platformKey, platformConfig) => {
         env: baseEnv
       })
     }
+    fs.writeFileSync(
+      baseMetadataPath,
+      `${JSON.stringify(
+        {
+          generatedAt: new Date().toISOString(),
+          platform: platformKey,
+          baseRuntimeDir: baseRuntimeDirName,
+          pipInstallArgs: basePipInstallArgs
+        },
+        null,
+        2
+      )}\n`,
+      'utf8'
+    )
   }
 
   ensureModelsDir()
 
   return {
     baseRuntimeDir,
-    basePythonPath: resolvedBasePython
+    basePythonPath: resolvedBasePython,
+    basePipInstallArgs
   }
 }
 
@@ -1054,7 +1102,7 @@ const main = async () => {
     return
   }
 
-  ensureBaseRuntime(platformArg, platformConfig)
+  const baseRuntimeInfo = ensureBaseRuntime(platformArg, platformConfig)
 
   const explicitProfiles = parseCsv(profileArg)
   const selectedProfiles =
@@ -1083,6 +1131,7 @@ const main = async () => {
     const pythonPath = resolveRuntimePythonPath(runtimeDir)
     const metadataPath = path.join(runtimeDir, '.frkb-runtime-meta.json')
     const pipInstallArgs = normalizeList(profileConfig.pipInstall)
+    const metadata = readJsonFileIfExists(metadataPath)
 
     if (!fs.existsSync(pythonPath)) {
       const restored = await tryInstallProfileFromRemoteAsset(
@@ -1095,7 +1144,7 @@ const main = async () => {
       continue
     }
 
-    if (install && pipInstallArgs.length > 0 && !fs.existsSync(metadataPath)) {
+    if (install && !fs.existsSync(metadataPath)) {
       const restored = await tryInstallProfileFromRemoteAsset(
         runtimeAssetManifest,
         profileName,
@@ -1103,6 +1152,28 @@ const main = async () => {
       )
       if (restored) continue
       addUniqueItem(rebuildProfiles, profileName)
+      continue
+    }
+
+    if (
+      install &&
+      metadata &&
+      (!arraysEqual(normalizeStringArray(metadata?.pipInstallArgs), pipInstallArgs) ||
+        !arraysEqual(
+          normalizeStringArray(metadata?.basePipInstallArgs),
+          baseRuntimeInfo.basePipInstallArgs
+        ))
+    ) {
+      const restored = await tryInstallProfileFromRemoteAsset(
+        runtimeAssetManifest,
+        profileName,
+        runtimeDir
+      )
+      if (restored) continue
+      addUniqueItem(rebuildProfiles, profileName)
+      console.warn(
+        `[demucs-runtime-ensure] Runtime metadata changed (${profileName}), will rebuild`
+      )
       continue
     }
 
