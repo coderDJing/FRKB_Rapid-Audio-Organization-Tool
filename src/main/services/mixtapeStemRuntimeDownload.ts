@@ -238,6 +238,41 @@ const resolvePreferredRuntimeProfiles = async (): Promise<RuntimeProfileName[]> 
 const resolveInstalledRuntimeDir = (runtimeKey: string) =>
   path.join(resolveInstalledDemucsPlatformRootPath(), runtimeKey)
 
+const cleanupRuntimeDownloadArtifacts = async (params: {
+  entry: RuntimeAssetEntry
+  keepArchiveName?: string
+}) => {
+  const downloadCacheDir = resolveRuntimeDownloadCacheDir()
+  if (!(await fileExists(downloadCacheDir))) return
+  const archivePrefix = `frkb-demucs-runtime-${params.entry.platform}-${params.entry.profile}-`
+  const keepArchiveName = normalizeText(params.keepArchiveName, 260)
+  const dirEntries = await fs.promises
+    .readdir(downloadCacheDir, { withFileTypes: true })
+    .catch(() => [])
+  await Promise.all(
+    dirEntries.map(async (entry) => {
+      const entryName = normalizeText(entry.name, 260)
+      if (!entryName) return
+      const absolutePath = path.join(downloadCacheDir, entry.name)
+      if (entry.isDirectory()) {
+        if (!entryName.startsWith(`extract-${params.entry.profile}-`)) return
+        await fs.promises.rm(absolutePath, { recursive: true, force: true }).catch(() => {})
+        return
+      }
+      if (!entryName.startsWith(archivePrefix)) return
+      if (keepArchiveName && entryName === keepArchiveName) return
+      if (
+        keepArchiveName &&
+        (entryName === `${keepArchiveName}.part-1` ||
+          entryName.startsWith(`${keepArchiveName}.part-`))
+      ) {
+        return
+      }
+      await fs.promises.rm(absolutePath, { force: true }).catch(() => {})
+    })
+  )
+}
+
 const readInstalledRuntimeVersionInfo = async (
   runtimeDir: string
 ): Promise<InstalledRuntimeVersionInfo | null> => {
@@ -530,6 +565,9 @@ const installRuntimeFromManifestEntry = async (
     'utf8'
   )
   await fs.promises.rm(tempExtractRoot, { recursive: true, force: true }).catch(() => {})
+  await cleanupRuntimeDownloadArtifacts({
+    entry
+  }).catch(() => {})
   onState?.({
     status: 'ready',
     profile: entry.profile,
