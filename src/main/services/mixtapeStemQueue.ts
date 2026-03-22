@@ -38,7 +38,7 @@ import {
 import { findSongListRoot } from './cacheMaintenance'
 import { runStemSeparation } from './mixtapeStemSeparationRun'
 import { getStemBackgroundConcurrencyHint } from './backgroundIdleGate'
-import { getCachedStemDeviceProbeSnapshot } from './mixtapeStemSeparationProbe'
+import { getCachedStemDeviceProbeSnapshot, probeDemucsDevices } from './mixtapeStemSeparationProbe'
 import type {
   MixtapeStemComputeDevice,
   MixtapeStemCpuFallbackReasonCode,
@@ -106,6 +106,7 @@ const pendingJobMap = new Map<string, MixtapeStemQueueJob>()
 const inFlightJobMap = new Map<string, MixtapeStemQueueJob>()
 let activeWorkers = 0
 let stemQueueConcurrencySnapshot = 0
+let stemQueueProbeWarmupPromise: Promise<void> | null = null
 const cpuSlowHintNotifiedPlaylistIdSet = new Set<string>()
 
 const normalizeStemMode = (_value: unknown): MixtapeStemMode => FIXED_MIXTAPE_STEM_MODE
@@ -451,6 +452,24 @@ const hasBundledXpuRuntimeCandidate = () =>
     return runtimeKey === 'runtime-xpu'
   })
 
+const ensureStemQueueDeviceProbe = () => {
+  if (getCachedStemDeviceProbeSnapshot()) return
+  if (stemQueueProbeWarmupPromise) return
+  const ffmpegPath = resolveBundledFfmpegPath()
+  if (!ffmpegPath || !fs.existsSync(ffmpegPath)) return
+  stemQueueProbeWarmupPromise = probeDemucsDevices(ffmpegPath)
+    .catch((error) => {
+      log.warn('[mixtape-stem] queue device probe warmup failed', {
+        error: normalizeText(error instanceof Error ? error.message : String(error || ''), 800)
+      })
+    })
+    .then(() => undefined)
+    .finally(() => {
+      stemQueueProbeWarmupPromise = null
+      runQueueLoop()
+    })
+}
+
 const resolveGpuDeviceCap = (preferredDevice: MixtapeStemComputeDevice) => {
   const totalMemoryGb = Math.max(1, Math.floor(os.totalmem() / 1024 ** 3))
   const freeMemoryGb = Math.max(0, Math.floor(os.freemem() / 1024 ** 3))
@@ -491,19 +510,24 @@ const resolveStemQueueConcurrency = () => {
     )
   )
   const deviceSnapshot = getCachedStemDeviceProbeSnapshot()
+  const probePending = !deviceSnapshot
+  if (probePending) {
+    ensureStemQueueDeviceProbe()
+  }
   const preferredDevice =
     deviceSnapshot?.devices.find((device) => device !== 'cpu') ||
     (process.platform === 'win32' && hasBundledXpuRuntimeCandidate() ? 'xpu' : 'cpu')
   const gpuDevice = preferredDevice !== 'cpu'
   const gpuDeviceCap = gpuDevice ? resolveGpuDeviceCap(preferredDevice) : null
-  const deviceCap = preferredDevice === 'cpu' ? cpuCap : gpuDeviceCap?.cap || 1
+  const resolvedDeviceCap = preferredDevice === 'cpu' ? cpuCap : gpuDeviceCap?.cap || 1
+  const deviceCap = probePending ? 1 : resolvedDeviceCap
   const hasForegroundQueueJob = pendingQueue.some((job) => job.source === 'foreground')
   const hasForegroundInFlightJob = Array.from(inFlightJobMap.values()).some(
     (job) => job.source === 'foreground'
   )
   const hasForegroundDemand = hasForegroundQueueJob || hasForegroundInFlightJob
   const idleHint = getStemBackgroundConcurrencyHint()
-  const backgroundTarget = Math.max(1, Math.min(deviceCap, idleHint.target))
+  const backgroundTarget = probePending ? 1 : Math.max(1, Math.min(deviceCap, idleHint.target))
   const maxWorkers = hasForegroundDemand ? deviceCap : backgroundTarget
   return {
     maxWorkers,
@@ -511,6 +535,7 @@ const resolveStemQueueConcurrency = () => {
     cpuCap,
     deviceCap,
     preferredDevice,
+    probePending,
     totalMemoryGb:
       gpuDeviceCap?.totalMemoryGb || Math.max(1, Math.floor(os.totalmem() / 1024 ** 3)),
     freeMemoryGb: gpuDeviceCap?.freeMemoryGb || Math.max(0, Math.floor(os.freemem() / 1024 ** 3)),
@@ -536,6 +561,7 @@ const runQueueLoop = () => {
       cpuCap: concurrency.cpuCap,
       deviceCap: concurrency.deviceCap,
       preferredDevice: concurrency.preferredDevice,
+      probePending: concurrency.probePending,
       totalMemoryGb: concurrency.totalMemoryGb,
       freeMemoryGb: concurrency.freeMemoryGb,
       hasForegroundDemand: concurrency.hasForegroundDemand,
