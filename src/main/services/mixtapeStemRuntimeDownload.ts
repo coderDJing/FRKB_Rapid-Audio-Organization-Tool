@@ -5,6 +5,7 @@ import { once } from 'node:events'
 import { Readable } from 'node:stream'
 import { app } from 'electron'
 import { ProxyAgent } from 'undici'
+import { resolveBundledFfmpegPath } from '../ffmpeg'
 import {
   resolveBundledDemucsRuntimeCandidates,
   resolveDemucsPlatformDir,
@@ -13,7 +14,14 @@ import {
 import { log } from '../log'
 import { getSystemProxy } from '../utils'
 import mixtapeWindow from '../window/mixtapeWindow'
-import { createStemError, normalizeText, runProcess } from './mixtapeStemSeparationShared'
+import {
+  STEM_RUNTIME_INSTALL_VALIDATION_TIMEOUT_MS,
+  buildStemProcessEnv,
+  createStemError,
+  normalizeText,
+  runProbeProcess,
+  runProcess
+} from './mixtapeStemSeparationShared'
 import { probeWindowsGpuAdapters } from './mixtapeStemSeparationProbe'
 
 const DEFAULT_DEMUCS_RUNTIME_MANIFEST_URL =
@@ -271,6 +279,87 @@ const cleanupRuntimeDownloadArtifacts = async (params: {
       await fs.promises.rm(absolutePath, { force: true }).catch(() => {})
     })
   )
+}
+
+const validateInstalledRuntime = async (entry: RuntimeAssetEntry, runtimeDir: string) => {
+  const pythonPath = path.join(runtimeDir, entry.pythonRelativePath)
+  if (!(await fileExists(pythonPath))) {
+    throw createStemError(
+      'STEM_RUNTIME_DOWNLOAD_INVALID',
+      `运行时包缺少 Python: ${entry.pythonRelativePath}`
+    )
+  }
+  const ffmpegPath = resolveBundledFfmpegPath()
+  const env = buildStemProcessEnv(runtimeDir, ffmpegPath)
+  const probeScript = [
+    'import json',
+    'payload = {',
+    '  "torch": False,',
+    '  "torchaudio": False,',
+    '  "demucs": False,',
+    '  "cuda": False,',
+    '  "error": ""',
+    '}',
+    'try:',
+    '  import torch',
+    '  payload["torch"] = True',
+    '  payload["cuda"] = bool(getattr(torch, "cuda", None) and torch.cuda.is_available())',
+    '  import torchaudio',
+    '  payload["torchaudio"] = True',
+    '  import demucs',
+    '  payload["demucs"] = True',
+    'except Exception as exc:',
+    '  payload["error"] = str(exc)',
+    'print(json.dumps(payload))'
+  ].join('\n')
+  const result = await runProbeProcess({
+    command: pythonPath,
+    args: ['-c', probeScript],
+    env,
+    timeoutMs: STEM_RUNTIME_INSTALL_VALIDATION_TIMEOUT_MS,
+    maxStdoutLen: 4000,
+    maxStderrLen: 4000
+  })
+  const stdoutText = normalizeText(result.stdout, 3000)
+  const stderrText = normalizeText(result.stderr, 3000)
+  const lastLine =
+    stdoutText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .at(-1) || ''
+  if (result.timedOut) {
+    throw createStemError(
+      'STEM_RUNTIME_DOWNLOAD_INVALID',
+      `运行时安装校验超时: ${entry.runtimeKey} (${STEM_RUNTIME_INSTALL_VALIDATION_TIMEOUT_MS}ms)`
+    )
+  }
+  if (result.status !== 0 || !lastLine) {
+    throw createStemError(
+      'STEM_RUNTIME_DOWNLOAD_INVALID',
+      `运行时安装校验失败: ${result.error || stderrText || stdoutText || `exit=${result.status ?? -1}`}`
+    )
+  }
+  let payload: { torch?: boolean; torchaudio?: boolean; demucs?: boolean; error?: string } = {}
+  try {
+    payload = JSON.parse(lastLine)
+  } catch (error) {
+    throw createStemError(
+      'STEM_RUNTIME_DOWNLOAD_INVALID',
+      `运行时安装校验结果不可解析: ${error instanceof Error ? error.message : String(error || '')}`
+    )
+  }
+  if (
+    !payload.torch ||
+    !payload.torchaudio ||
+    !payload.demucs ||
+    normalizeText(payload.error, 500)
+  ) {
+    throw createStemError(
+      'STEM_RUNTIME_DOWNLOAD_INVALID',
+      `运行时安装校验失败: ${normalizeText(payload.error, 500) || JSON.stringify(payload)}`
+    )
+  }
 }
 
 const readInstalledRuntimeVersionInfo = async (
@@ -548,6 +637,12 @@ const installRuntimeFromManifestEntry = async (
   })
   await fs.promises.rm(runtimeDir, { recursive: true, force: true }).catch(() => {})
   await fs.promises.rename(extractedRuntimeDir, runtimeDir)
+  try {
+    await validateInstalledRuntime(entry, runtimeDir)
+  } catch (error) {
+    await fs.promises.rm(runtimeDir, { recursive: true, force: true }).catch(() => {})
+    throw error
+  }
   await fs.promises.writeFile(
     versionPath,
     `${JSON.stringify(

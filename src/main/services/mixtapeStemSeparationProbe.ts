@@ -239,7 +239,9 @@ const probeDemucsDevicesForRuntime = async (params: {
         }
       }
     } else {
-      probeError = result.error || stderrText || stdoutText || `probe exit ${result.status ?? -1}`
+      probeError = result.timedOut
+        ? `probe timed out after ${STEM_DEVICE_PROBE_TIMEOUT_MS}ms`
+        : result.error || stderrText || stdoutText || `probe exit ${result.status ?? -1}`
     }
   } catch (error) {
     probeError = normalizeText(error instanceof Error ? error.message : String(error || ''), 400)
