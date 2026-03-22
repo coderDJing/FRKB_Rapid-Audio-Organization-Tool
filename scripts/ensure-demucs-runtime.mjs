@@ -202,6 +202,30 @@ const validatePortableWindowsRuntime = (runtimeDir) => {
       error: ''
     }
   }
+  try {
+    const aliasNames = fs
+      .readdirSync(runtimeDir)
+      .filter((name) => /^python[\w.-]*\.exe$/i.test(String(name || '').trim()))
+    for (const aliasName of aliasNames) {
+      const aliasPath = path.join(runtimeDir, aliasName)
+      const stat = fs.lstatSync(aliasPath)
+      if (!stat.isSymbolicLink()) continue
+      const linkTarget = fs.readlinkSync(aliasPath)
+      return {
+        ok: false,
+        payload: null,
+        error: `python alias symlink present: ${aliasName} -> ${linkTarget}`
+      }
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      payload: null,
+      error: `inspect runtime aliases failed: ${toShortText(
+        error instanceof Error ? error.message : String(error || 'unknown')
+      )}`
+    }
+  }
   const pythonPath = resolveRuntimePythonPath(runtimeDir)
   if (!fs.existsSync(pythonPath)) {
     return {
@@ -271,7 +295,10 @@ const bootstrapPortableWindowsRuntime = (pythonCommand, targetRuntimeDir) => {
   }
   fs.rmSync(targetRuntimeDir, { recursive: true, force: true })
   fs.mkdirSync(path.dirname(targetRuntimeDir), { recursive: true })
-  fs.cpSync(sourceRuntimeDir, targetRuntimeDir, { recursive: true })
+  fs.cpSync(sourceRuntimeDir, targetRuntimeDir, {
+    recursive: true,
+    dereference: true
+  })
   const pyvenvCfgPath = path.join(targetRuntimeDir, 'pyvenv.cfg')
   if (fs.existsSync(pyvenvCfgPath)) {
     fs.rmSync(pyvenvCfgPath, { force: true })

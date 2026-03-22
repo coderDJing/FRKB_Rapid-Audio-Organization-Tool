@@ -213,6 +213,28 @@ const validatePortableWindowsRuntime = (runtimeDir) => {
       error: ''
     }
   }
+  try {
+    const aliasNames = fs
+      .readdirSync(runtimeDir)
+      .filter((name) => /^python[\w.-]*\.exe$/i.test(String(name || '').trim()))
+    for (const aliasName of aliasNames) {
+      const aliasPath = path.join(runtimeDir, aliasName)
+      const stat = fs.lstatSync(aliasPath)
+      if (!stat.isSymbolicLink()) continue
+      const linkTarget = fs.readlinkSync(aliasPath)
+      return {
+        ok: false,
+        error: `python alias symlink present: ${aliasName} -> ${linkTarget}`
+      }
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: `inspect runtime aliases failed: ${
+        error instanceof Error ? error.message : String(error || 'unknown')
+      }`
+    }
+  }
   const pythonPath = resolveRuntimePythonPath(runtimeDir)
   if (!fs.existsSync(pythonPath)) {
     return {
