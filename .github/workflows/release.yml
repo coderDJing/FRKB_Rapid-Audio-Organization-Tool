@@ -432,10 +432,10 @@ jobs:
           shopt -s nullglob
           assets=(
             artifacts/win/*.exe
-            artifacts/win/*.yml
+            artifacts/win/latest.yml
             artifacts/win/*.blockmap
             artifacts/mac/*.dmg
-            artifacts/mac/*.yml
+            artifacts/mac/latest-mac.yml
             artifacts/mac/*.zip
             artifacts/mac/*.blockmap
           )
