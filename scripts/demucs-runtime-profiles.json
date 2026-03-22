@@ -6,6 +6,7 @@
       "https://download.pytorch.org/whl/cpu",
       "--extra-index-url",
       "https://pypi.org/simple",
+      "numpy<2",
       "torch==2.3.1",
       "torchaudio==2.3.1",
       "demucs==4.0.1",
@@ -19,6 +20,7 @@
       "directml": {
         "targetDir": "runtime-directml",
         "pipInstall": [
+          "numpy<2",
           "torch==2.4.1",
           "torch-directml",
           "torchaudio==2.4.1",
@@ -32,6 +34,7 @@
           "https://download.pytorch.org/whl/cu121",
           "--extra-index-url",
           "https://pypi.org/simple",
+          "numpy<2",
           "torch==2.3.1",
           "torchaudio==2.3.1"
         ]
@@ -43,6 +46,7 @@
           "https://download.pytorch.org/whl/xpu",
           "--extra-index-url",
           "https://pypi.org/simple",
+          "numpy<2",
           "torch==2.10.0",
           "torchaudio==2.10.0",
           "torchvision==0.25.0"
@@ -52,7 +56,13 @@
   },
   "darwin-arm64": {
     "baseRuntimeDir": "runtime",
-    "basePipInstall": ["torch==2.3.1", "torchaudio==2.3.1", "demucs==4.0.1", "onnxruntime==1.20.1"],
+    "basePipInstall": [
+      "numpy<2",
+      "torch==2.3.1",
+      "torchaudio==2.3.1",
+      "demucs==4.0.1",
+      "onnxruntime==1.20.1"
+    ],
     "profiles": {
       "mps": {
         "targetDir": "runtime-mps",
@@ -66,7 +76,13 @@
   },
   "darwin-x64": {
     "baseRuntimeDir": "runtime",
-    "basePipInstall": ["torch==2.2.2", "torchaudio==2.2.2", "demucs==4.0.1", "onnxruntime==1.16.3"],
+    "basePipInstall": [
+      "numpy<2",
+      "torch==2.2.2",
+      "torchaudio==2.2.2",
+      "demucs==4.0.1",
+      "onnxruntime==1.16.3"
+    ],
     "profiles": {
       "cpu": {
         "targetDir": "runtime-cpu",
@@ -81,6 +97,7 @@
       "https://download.pytorch.org/whl/cpu",
       "--extra-index-url",
       "https://pypi.org/simple",
+      "numpy<2",
       "torch==2.3.1",
       "torchaudio==2.3.1",
       "demucs==4.0.1",
@@ -94,6 +111,7 @@
           "https://download.pytorch.org/whl/cu121",
           "--extra-index-url",
           "https://pypi.org/simple",
+          "numpy<2",
           "torch==2.3.1",
           "torchaudio==2.3.1"
         ]
@@ -105,6 +123,7 @@
           "https://download.pytorch.org/whl/rocm6.0",
           "--extra-index-url",
           "https://pypi.org/simple",
+          "numpy<2",
           "torch==2.3.1",
           "torchaudio==2.3.1"
         ]
@@ -117,7 +136,13 @@
   },
   "linux-arm64": {
     "baseRuntimeDir": "runtime",
-    "basePipInstall": ["torch==2.3.1", "torchaudio==2.3.1", "demucs==4.0.1", "onnxruntime==1.20.1"],
+    "basePipInstall": [
+      "numpy<2",
+      "torch==2.3.1",
+      "torchaudio==2.3.1",
+      "demucs==4.0.1",
+      "onnxruntime==1.20.1"
+    ],
     "profiles": {
       "cpu": {
         "targetDir": "runtime-cpu",
