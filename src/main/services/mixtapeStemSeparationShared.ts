@@ -110,6 +110,8 @@ export type MixtapeStemDeviceProbeSnapshot = {
   runtimeKey: string
   runtimeDir: string
   pythonPath: string
+  runtimeUsable: boolean
+  probeError: string
   devices: MixtapeStemComputeDevice[]
   cudaAvailable: boolean
   mpsAvailable: boolean

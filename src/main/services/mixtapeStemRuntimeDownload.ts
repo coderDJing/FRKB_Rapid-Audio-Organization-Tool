@@ -49,6 +49,15 @@ type RuntimeAssetManifest = {
   assets: RuntimeAssetEntry[]
 }
 
+type InstalledRuntimeVersionInfo = {
+  profile?: string
+  runtimeKey?: string
+  version?: string
+  archiveUrl?: string
+  archiveSha256?: string
+  installedAt?: string
+}
+
 export type MixtapeStemRuntimeDownloadState = {
   status: 'idle' | 'available' | 'downloading' | 'extracting' | 'ready' | 'failed'
   profile: RuntimeProfileName | ''
@@ -229,22 +238,50 @@ const resolvePreferredRuntimeProfiles = async (): Promise<RuntimeProfileName[]> 
 const resolveInstalledRuntimeDir = (runtimeKey: string) =>
   path.join(resolveInstalledDemucsPlatformRootPath(), runtimeKey)
 
+const readInstalledRuntimeVersionInfo = async (
+  runtimeDir: string
+): Promise<InstalledRuntimeVersionInfo | null> => {
+  const versionPath = resolveRuntimeInstalledVersionPath(runtimeDir)
+  if (!(await fileExists(versionPath))) return null
+  try {
+    const installedRaw = await fs.promises.readFile(versionPath, 'utf8')
+    const installed = JSON.parse(installedRaw) as InstalledRuntimeVersionInfo
+    return installed && typeof installed === 'object' ? installed : null
+  } catch {
+    return null
+  }
+}
+
+const doesInstalledRuntimeMatchEntry = (
+  installed: InstalledRuntimeVersionInfo | null,
+  entry: RuntimeAssetEntry
+) => {
+  if (!installed) return false
+  const installedRuntimeKey = normalizeText(installed.runtimeKey, 120)
+  const installedProfile = normalizeText(installed.profile, 120)
+  const installedVersion = normalizeText(installed.version, 120)
+  const installedArchiveSha256 = normalizeText(installed.archiveSha256, 120).toLowerCase()
+  if (installedRuntimeKey && installedRuntimeKey !== entry.runtimeKey) return false
+  if (installedProfile && installedProfile !== entry.profile) return false
+  if (installedVersion !== entry.version) return false
+  if (
+    installedArchiveSha256 !==
+    String(entry.archiveSha256 || '')
+      .trim()
+      .toLowerCase()
+  )
+    return false
+  return true
+}
+
 const isRuntimeAlreadyAvailable = async (entry: RuntimeAssetEntry) => {
   const candidate = resolveBundledDemucsRuntimeCandidates().find(
     (item) => item.key === entry.runtimeKey
   )
   if (candidate?.pythonPath && fs.existsSync(candidate.pythonPath)) {
     if (candidate.runtimeDir.startsWith(resolveInstalledDemucsPlatformRootPath())) {
-      const versionPath = resolveRuntimeInstalledVersionPath(candidate.runtimeDir)
-      if (await fileExists(versionPath)) {
-        try {
-          const installedRaw = await fs.promises.readFile(versionPath, 'utf8')
-          const installed = JSON.parse(installedRaw) as { version?: string }
-          if (normalizeText(installed?.version, 120) === entry.version) {
-            return true
-          }
-        } catch {}
-      }
+      const installed = await readInstalledRuntimeVersionInfo(candidate.runtimeDir)
+      if (doesInstalledRuntimeMatchEntry(installed, entry)) return true
     } else {
       return true
     }

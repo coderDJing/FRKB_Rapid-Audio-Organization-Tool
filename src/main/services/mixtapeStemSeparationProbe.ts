@@ -121,6 +121,7 @@ const probeDemucsDevicesForRuntime = async (params: {
 }): Promise<MixtapeStemDeviceProbeSnapshot> => {
   const priority = resolveStemDevicePriority()
   const env = buildStemProcessEnv(params.runtimeCandidate.runtimeDir, params.ffmpegPath)
+  let runtimeUsable = false
   let cudaAvailable = false
   let mpsAvailable = false
   let xpuAvailable = false
@@ -201,6 +202,7 @@ const probeDemucsDevicesForRuntime = async (params: {
         directml_error?: unknown
         directml_import_error?: unknown
       }
+      const torchImportError = normalizeText(parsed?.error, 400)
       cudaAvailable = !!parsed?.cuda
       mpsAvailable = !!parsed?.mps
       xpuAvailable = !!parsed?.xpu
@@ -208,8 +210,9 @@ const probeDemucsDevicesForRuntime = async (params: {
       directmlAvailable = !!parsed?.directml
       directmlBackendInstalled = !!parsed?.directml_backend_installed
       directmlDevice = normalizeText(parsed?.directml_device, 80)
+      runtimeUsable = !torchImportError
       probeError = normalizeText(
-        parsed?.error || parsed?.directml_error || parsed?.directml_import_error,
+        torchImportError || parsed?.directml_error || parsed?.directml_import_error,
         400
       )
       if (xpuAvailable) {
@@ -241,18 +244,21 @@ const probeDemucsDevicesForRuntime = async (params: {
   } catch (error) {
     probeError = normalizeText(error instanceof Error ? error.message : String(error || ''), 400)
   }
-  const available = new Set<MixtapeStemComputeDevice>(['cpu'])
+  const available = new Set<MixtapeStemComputeDevice>()
+  if (runtimeUsable) available.add('cpu')
   if (cudaAvailable) available.add('cuda')
   if (mpsAvailable) available.add('mps')
   if (xpuAvailable) available.add('xpu')
   if (directmlAvailable) available.add('directml')
   const devices = priority.filter((device) => available.has(device))
-  if (!devices.includes('cpu')) devices.push('cpu')
+  if (runtimeUsable && !devices.includes('cpu')) devices.push('cpu')
   const snapshot: MixtapeStemDeviceProbeSnapshot = {
     checkedAt: params.checkedAt,
     runtimeKey: normalizeText(params.runtimeCandidate.key, 64) || 'runtime',
     runtimeDir: params.runtimeCandidate.runtimeDir,
     pythonPath: params.runtimeCandidate.pythonPath,
+    runtimeUsable,
+    probeError,
     devices,
     cudaAvailable,
     mpsAvailable,
@@ -274,6 +280,7 @@ const probeDemucsDevicesForRuntime = async (params: {
     runtimeKey: snapshot.runtimeKey,
     runtimeDir: snapshot.runtimeDir,
     pythonPath: snapshot.pythonPath,
+    runtimeUsable: snapshot.runtimeUsable,
     devices: snapshot.devices,
     cudaAvailable,
     mpsAvailable,
@@ -284,11 +291,14 @@ const probeDemucsDevicesForRuntime = async (params: {
     directmlBackendInstalled,
     directmlDemucsCompatible,
     directmlDevice: snapshot.directmlDevice,
-    probeError: probeError || null
+    probeError: snapshot.probeError || null
   })
   return snapshot
 }
 const resolveProbeSnapshotDeviceScore = (snapshot: MixtapeStemDeviceProbeSnapshot): number => {
+  if (!snapshot.runtimeUsable || snapshot.devices.length === 0) {
+    return Number.MAX_SAFE_INTEGER
+  }
   const priority = resolveStemDevicePriority()
   const targetDevice = snapshot.devices.find((device) => device !== 'cpu') || 'cpu'
   const score = priority.findIndex((device) => device === targetDevice)
@@ -296,6 +306,7 @@ const resolveProbeSnapshotDeviceScore = (snapshot: MixtapeStemDeviceProbeSnapsho
   return Number.MAX_SAFE_INTEGER
 }
 const resolveProbeSnapshotTieBreakScore = (snapshot: MixtapeStemDeviceProbeSnapshot): number => {
+  if (!snapshot.runtimeUsable || snapshot.devices.length === 0) return Number.MAX_SAFE_INTEGER
   const hasNonCpuDevice = snapshot.devices.some((device) => device !== 'cpu')
   if (hasNonCpuDevice) return 0
   const runtimeKey = normalizeText(snapshot.runtimeKey, 64).toLowerCase()
@@ -357,7 +368,9 @@ const probeDemucsDevices = async (ffmpegPath: string): Promise<MixtapeStemDevice
       runtimeKey: fallbackCandidate.key,
       runtimeDir: fallbackCandidate.runtimeDir,
       pythonPath: fallbackCandidate.pythonPath,
-      devices: ['cpu'],
+      runtimeUsable: false,
+      probeError: '',
+      devices: [],
       cudaAvailable: false,
       mpsAvailable: false,
       xpuAvailable: false,
@@ -391,9 +404,13 @@ const probeDemucsDevices = async (ffmpegPath: string): Promise<MixtapeStemDevice
       runtimeKey: snapshot.runtimeKey,
       runtimeDir: snapshot.runtimeDir,
       pythonPath: snapshot.pythonPath,
+      runtimeUsable: snapshot.runtimeUsable,
+      probeError: snapshot.probeError,
       devices: snapshot.devices,
       runtimeCandidates: runtimeSnapshots.map((item) => ({
         runtimeKey: item.runtimeKey,
+        runtimeUsable: item.runtimeUsable,
+        probeError: item.probeError,
         devices: item.devices,
         xpuDemucsCompatible: item.xpuDemucsCompatible,
         directmlDemucsCompatible: item.directmlDemucsCompatible

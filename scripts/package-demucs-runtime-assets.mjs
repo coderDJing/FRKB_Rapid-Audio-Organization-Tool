@@ -83,6 +83,141 @@ const run = (command, commandArgs, options = {}) => {
   throw new Error(`${command} ${commandArgs.join(' ')} -> exit ${result.status ?? -1}`)
 }
 
+const normalizeResolvedPath = (value) => {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  try {
+    return path.resolve(text)
+  } catch {
+    return ''
+  }
+}
+
+const isPathInside = (rootDir, targetPath) => {
+  const normalizedRoot = normalizeResolvedPath(rootDir)
+  const normalizedTarget = normalizeResolvedPath(targetPath)
+  if (!normalizedRoot || !normalizedTarget) return false
+  const relativePath = path.relative(normalizedRoot, normalizedTarget)
+  return (
+    relativePath === '' ||
+    (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))
+  )
+}
+
+const inspectPythonRuntime = (pythonPath, runtimeDir) => {
+  const result = spawnSync(
+    pythonPath,
+    [
+      '-c',
+      [
+        'import json',
+        'import os',
+        'import sys',
+        'payload = {',
+        '  "executable": os.path.abspath(sys.executable),',
+        '  "prefix": os.path.abspath(sys.prefix),',
+        '  "base_prefix": os.path.abspath(getattr(sys, "base_prefix", sys.prefix))',
+        '}',
+        'print(json.dumps(payload))'
+      ].join('\n')
+    ],
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 12_000,
+      env: {
+        ...process.env,
+        PATH:
+          process.platform === 'win32'
+            ? [path.join(runtimeDir, 'Scripts'), path.join(runtimeDir, 'Library', 'bin'), process.env.PATH || '']
+                .filter(Boolean)
+                .join(path.delimiter)
+            : process.env.PATH || ''
+      }
+    }
+  )
+  if (result.status !== 0) {
+    return {
+      ok: false,
+      payload: null,
+      error: String(result.stderr || result.stdout || `inspect exit ${result.status ?? -1}`).trim()
+    }
+  }
+  const output = String(result.stdout || '')
+  const lastLine = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .at(-1)
+  if (!lastLine) {
+    return {
+      ok: false,
+      payload: null,
+      error: 'inspect output empty'
+    }
+  }
+  try {
+    return {
+      ok: true,
+      payload: JSON.parse(lastLine),
+      error: ''
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      payload: null,
+      error: error instanceof Error ? error.message : String(error || '')
+    }
+  }
+}
+
+const validatePortableWindowsRuntime = (runtimeDir) => {
+  if (!platformKey.startsWith('win32')) {
+    return {
+      ok: true,
+      error: ''
+    }
+  }
+  const rootPythonPath = path.join(runtimeDir, 'python.exe')
+  if (!fs.existsSync(rootPythonPath)) {
+    return {
+      ok: false,
+      error: `portable root python missing: ${rootPythonPath}`
+    }
+  }
+  const pyvenvCfgPath = path.join(runtimeDir, 'pyvenv.cfg')
+  if (fs.existsSync(pyvenvCfgPath)) {
+    return {
+      ok: false,
+      error: `venv marker present: ${pyvenvCfgPath}`
+    }
+  }
+  const identity = inspectPythonRuntime(rootPythonPath, runtimeDir)
+  if (!identity.ok) {
+    return {
+      ok: false,
+      error: identity.error || `inspect failed: ${rootPythonPath}`
+    }
+  }
+  const relevantPaths = [
+    identity.payload?.executable,
+    identity.payload?.prefix,
+    identity.payload?.base_prefix
+  ]
+    .map((entry) => normalizeResolvedPath(entry))
+    .filter(Boolean)
+  if (relevantPaths.length > 0 && relevantPaths.every((entry) => isPathInside(runtimeDir, entry))) {
+    return {
+      ok: true,
+      error: ''
+    }
+  }
+  return {
+    ok: false,
+    error: `non-portable runtime: ${relevantPaths.join(' | ')}`
+  }
+}
+
 const computeFileSha256 = async (filePath) => {
   const hash = crypto.createHash('sha256')
   const stream = fs.createReadStream(filePath)
@@ -151,6 +286,14 @@ const readRuntimeMeta = (runtimeDir) => {
 }
 
 const resolveRuntimePythonRelativePath = (runtimeDir) => {
+  if (platformKey.startsWith('win32')) {
+    const portableCheck = validatePortableWindowsRuntime(runtimeDir)
+    if (!portableCheck.ok) {
+      throw new Error(
+        `[demucs-runtime-package] Windows runtime is not portable: ${portableCheck.error}`
+      )
+    }
+  }
   const candidates = platformKey.startsWith('win32')
     ? ['python.exe', 'Scripts/python.exe']
     : ['bin/python3', 'bin/python']

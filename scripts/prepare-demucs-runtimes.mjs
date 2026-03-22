@@ -129,6 +129,123 @@ const run = (command, commandArgs, options = {}) => {
   throw new Error(`${command} ${commandArgs.join(' ')} -> exit ${result.status ?? -1}`)
 }
 
+const normalizeResolvedPath = (value) => {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  try {
+    return path.resolve(text)
+  } catch {
+    return ''
+  }
+}
+
+const isPathInside = (rootDir, targetPath) => {
+  const normalizedRoot = normalizeResolvedPath(rootDir)
+  const normalizedTarget = normalizeResolvedPath(targetPath)
+  if (!normalizedRoot || !normalizedTarget) return false
+  const relativePath = path.relative(normalizedRoot, normalizedTarget)
+  return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))
+}
+
+const inspectPythonRuntime = (pythonPath, runtimeDir) => {
+  const result = spawnSync(
+    pythonPath,
+    [
+      '-c',
+      [
+        'import json',
+        'import os',
+        'import sys',
+        'payload = {',
+        '  "executable": os.path.abspath(sys.executable),',
+        '  "prefix": os.path.abspath(sys.prefix),',
+        '  "base_prefix": os.path.abspath(getattr(sys, "base_prefix", sys.prefix))',
+        '}',
+        'print(json.dumps(payload))'
+      ].join('\n')
+    ],
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 12_000,
+      env: buildRuntimeEnv(runtimeDir)
+    }
+  )
+  if (result.status !== 0) {
+    return {
+      ok: false,
+      payload: null,
+      error: String(result.stderr || result.stdout || `inspect exit ${result.status ?? -1}`).trim()
+    }
+  }
+  const output = String(result.stdout || '')
+  const lastLine = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .at(-1)
+  if (!lastLine) {
+    return {
+      ok: false,
+      payload: null,
+      error: 'inspect output empty'
+    }
+  }
+  try {
+    return {
+      ok: true,
+      payload: JSON.parse(lastLine),
+      error: ''
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      payload: null,
+      error: error instanceof Error ? error.message : String(error || '')
+    }
+  }
+}
+
+const validatePortableWindowsRuntime = (runtimeDir) => {
+  if (process.platform !== 'win32') {
+    return {
+      ok: true,
+      error: ''
+    }
+  }
+  const pythonPath = resolveRuntimePythonPath(runtimeDir)
+  if (!fs.existsSync(pythonPath)) {
+    return {
+      ok: false,
+      error: `python missing: ${pythonPath}`
+    }
+  }
+  const identity = inspectPythonRuntime(pythonPath, runtimeDir)
+  if (!identity.ok) {
+    return {
+      ok: false,
+      error: identity.error || `inspect failed: ${pythonPath}`
+    }
+  }
+  const relevantPaths = [
+    identity.payload?.executable,
+    identity.payload?.prefix,
+    identity.payload?.base_prefix
+  ]
+    .map((entry) => normalizeResolvedPath(entry))
+    .filter(Boolean)
+  if (relevantPaths.length > 0 && relevantPaths.every((entry) => isPathInside(runtimeDir, entry))) {
+    return {
+      ok: true,
+      error: ''
+    }
+  }
+  return {
+    ok: false,
+    error: `non-portable runtime: ${relevantPaths.join(' | ')}`
+  }
+}
+
 const runProbe = ({ pythonPath, runtimeDir, runtimeKey }) => {
   const env = buildRuntimeEnv(runtimeDir)
   const script = [
@@ -216,6 +333,18 @@ for (const [profileName, profileConfig] of selectedProfiles) {
     .filter(Boolean)
 
   if (fs.existsSync(targetRuntimeDir)) {
+    if (process.platform === 'win32') {
+      const portableCheck = validatePortableWindowsRuntime(targetRuntimeDir)
+      if (!portableCheck.ok) {
+        fs.rmSync(targetRuntimeDir, { recursive: true, force: true })
+        console.log(
+          `[demucs-runtime] Removed non-portable runtime (${profileName}): ${portableCheck.error}`
+        )
+      }
+    }
+  }
+
+  if (fs.existsSync(targetRuntimeDir)) {
     if (!force) {
       console.log(`[demucs-runtime] Skip existing runtime (${profileName}): ${targetRuntimeDir}`)
     } else {
@@ -232,6 +361,14 @@ for (const [profileName, profileConfig] of selectedProfiles) {
   const pythonPath = resolveRuntimePythonPath(targetRuntimeDir)
   if (!fs.existsSync(pythonPath)) {
     throw new Error(`[demucs-runtime] Python not found for ${profileName}: ${pythonPath}`)
+  }
+  if (process.platform === 'win32') {
+    const portableCheck = validatePortableWindowsRuntime(targetRuntimeDir)
+    if (!portableCheck.ok) {
+      throw new Error(
+        `[demucs-runtime] Runtime is not portable for ${profileName}: ${portableCheck.error}`
+      )
+    }
   }
   const runtimeEnv = buildRuntimeEnv(targetRuntimeDir)
 
@@ -259,11 +396,11 @@ for (const [profileName, profileConfig] of selectedProfiles) {
       pythonPath,
       runtimeDir: targetRuntimeDir,
       scriptLines: [
-      'import torch',
-      'import torch_directml',
-      'x = torch.randn(2048, device="privateuseone:0")',
-      '_ = torch.fft.rfft(x)',
-      'print("ok")'
+        'import torch',
+        'import torch_directml',
+        'x = torch.randn(2048, device="privateuseone:0")',
+        '_ = torch.fft.rfft(x)',
+        'print("ok")'
       ]
     })
   } else {
@@ -274,12 +411,12 @@ for (const [profileName, profileConfig] of selectedProfiles) {
       pythonPath,
       runtimeDir: targetRuntimeDir,
       scriptLines: [
-      'import torch',
-      'xpu_backend = getattr(torch, "xpu", None)',
-      'assert xpu_backend and xpu_backend.is_available()',
-      'x = torch.randn(2048, device="xpu")',
-      '_ = torch.fft.rfft(x)',
-      'print("ok")'
+        'import torch',
+        'xpu_backend = getattr(torch, "xpu", None)',
+        'assert xpu_backend and xpu_backend.is_available()',
+        'x = torch.randn(2048, device="xpu")',
+        '_ = torch.fft.rfft(x)',
+        'print("ok")'
       ]
     })
   } else {

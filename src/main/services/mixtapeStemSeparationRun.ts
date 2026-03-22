@@ -399,7 +399,8 @@ export const runStemSeparation = async (params: {
   const stemProfile = normalizeStemProfile(parsedModel.profile, DEFAULT_MIXTAPE_STEM_PROFILE)
 
   let runtimeDir = normalizeFilePath(deviceSnapshot.runtimeDir) || resolveBundledDemucsRuntimeDir()
-  let pythonPath = normalizeFilePath(deviceSnapshot.pythonPath) || resolveBundledDemucsPythonPath(runtimeDir)
+  let pythonPath =
+    normalizeFilePath(deviceSnapshot.pythonPath) || resolveBundledDemucsPythonPath(runtimeDir)
   if (!fs.existsSync(pythonPath)) {
     const downloaded = await downloadPreferredStemRuntime()
     if (downloaded) {
@@ -414,6 +415,12 @@ export const runStemSeparation = async (params: {
     throw createStemError(
       'STEM_ENGINE_MISSING',
       `未找到 Demucs 运行时: ${pythonPath} (runtime=${deviceSnapshot.runtimeKey})`
+    )
+  }
+  if (!deviceSnapshot.runtimeUsable) {
+    throw createStemError(
+      'STEM_ENGINE_BROKEN',
+      `Demucs 运行时不可用: ${deviceSnapshot.probeError || `runtime=${deviceSnapshot.runtimeKey}`}`
     )
   }
   const env = buildStemProcessEnv(runtimeDir, ffmpegPath)
@@ -448,8 +455,7 @@ export const runStemSeparation = async (params: {
     requestedModel: requestedDemucsModelName,
     modelRepoPath
   })
-  const deviceCandidates: MixtapeStemComputeDevice[] =
-    deviceSnapshot.devices.length > 0 ? deviceSnapshot.devices : ['cpu']
+  const deviceCandidates: MixtapeStemComputeDevice[] = deviceSnapshot.devices
   const timeoutHintMsByDevice = Object.fromEntries(
     deviceCandidates.map((device) => [
       device,

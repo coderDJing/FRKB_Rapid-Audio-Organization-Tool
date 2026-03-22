@@ -125,6 +125,171 @@ const runQuiet = (command, commandArgs, options = {}) =>
     ...options
   })
 
+const normalizeResolvedPath = (value) => {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  try {
+    return path.resolve(text)
+  } catch {
+    return ''
+  }
+}
+
+const isPathInside = (rootDir, targetPath) => {
+  const normalizedRoot = normalizeResolvedPath(rootDir)
+  const normalizedTarget = normalizeResolvedPath(targetPath)
+  if (!normalizedRoot || !normalizedTarget) return false
+  const relativePath = path.relative(normalizedRoot, normalizedTarget)
+  return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))
+}
+
+const inspectPythonRuntime = (command, commandArgs = [], options = {}) => {
+  const script = [
+    'import json',
+    'import os',
+    'import sys',
+    'payload = {',
+    '  "executable": os.path.abspath(sys.executable),',
+    '  "prefix": os.path.abspath(sys.prefix),',
+    '  "base_prefix": os.path.abspath(getattr(sys, "base_prefix", sys.prefix))',
+    '}',
+    'print(json.dumps(payload))'
+  ].join('\n')
+  const result = runQuiet(command, [...commandArgs, '-c', script], {
+    timeout: 12_000,
+    ...options
+  })
+  if (result.status !== 0) {
+    return {
+      ok: false,
+      payload: null,
+      error: toShortText(result.stderr || result.stdout || `inspect exit ${result.status ?? -1}`)
+    }
+  }
+  const output = String(result.stdout || '')
+  const lastLine = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .at(-1)
+  if (!lastLine) {
+    return {
+      ok: false,
+      payload: null,
+      error: 'inspect output empty'
+    }
+  }
+  try {
+    return {
+      ok: true,
+      payload: JSON.parse(lastLine),
+      error: ''
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      payload: null,
+      error: toShortText(error instanceof Error ? error.message : String(error || ''))
+    }
+  }
+}
+
+const validatePortableWindowsRuntime = (runtimeDir) => {
+  if (process.platform !== 'win32') {
+    return {
+      ok: true,
+      payload: null,
+      error: ''
+    }
+  }
+  const pythonPath = resolveRuntimePythonPath(runtimeDir)
+  if (!fs.existsSync(pythonPath)) {
+    return {
+      ok: false,
+      payload: null,
+      error: `python missing: ${pythonPath}`
+    }
+  }
+  const identity = inspectPythonRuntime(pythonPath, [], {
+    env: buildRuntimeEnv(runtimeDir)
+  })
+  if (!identity.ok) {
+    return {
+      ok: false,
+      payload: null,
+      error: identity.error || `inspect failed: ${pythonPath}`
+    }
+  }
+  const relevantPaths = [
+    identity.payload?.executable,
+    identity.payload?.prefix,
+    identity.payload?.base_prefix
+  ]
+    .map((entry) => normalizeResolvedPath(entry))
+    .filter(Boolean)
+  if (relevantPaths.length > 0 && relevantPaths.every((entry) => isPathInside(runtimeDir, entry))) {
+    return {
+      ok: true,
+      payload: identity.payload,
+      error: ''
+    }
+  }
+  return {
+    ok: false,
+    payload: identity.payload,
+    error: `non-portable runtime: ${relevantPaths.join(' | ')}`
+  }
+}
+
+const bootstrapPortableWindowsRuntime = (pythonCommand, targetRuntimeDir) => {
+  const identity = inspectPythonRuntime(pythonCommand.command, pythonCommand.args)
+  if (!identity.ok || !identity.payload) {
+    throw new Error(
+      `[demucs-runtime-ensure] Unable to inspect bootstrap Python: ${
+        identity.error || 'unknown error'
+      }`
+    )
+  }
+  const candidateDirs = []
+  const addCandidateDir = (value) => {
+    const normalized = normalizeResolvedPath(value)
+    if (!normalized || candidateDirs.includes(normalized)) return
+    candidateDirs.push(normalized)
+  }
+  addCandidateDir(identity.payload.base_prefix)
+  addCandidateDir(identity.payload.prefix)
+  addCandidateDir(path.dirname(normalizeResolvedPath(identity.payload.executable)))
+  const sourceRuntimeDir = candidateDirs.find((candidateDir) =>
+    fs.existsSync(path.join(candidateDir, 'python.exe'))
+  )
+  if (!sourceRuntimeDir) {
+    throw new Error(
+      `[demucs-runtime-ensure] Unable to locate portable Windows Python root from ${
+        identity.payload.executable || pythonCommand.command
+      }`
+    )
+  }
+  fs.rmSync(targetRuntimeDir, { recursive: true, force: true })
+  fs.mkdirSync(path.dirname(targetRuntimeDir), { recursive: true })
+  fs.cpSync(sourceRuntimeDir, targetRuntimeDir, { recursive: true })
+  const pyvenvCfgPath = path.join(targetRuntimeDir, 'pyvenv.cfg')
+  if (fs.existsSync(pyvenvCfgPath)) {
+    fs.rmSync(pyvenvCfgPath, { force: true })
+  }
+  const portableCheck = validatePortableWindowsRuntime(targetRuntimeDir)
+  if (!portableCheck.ok) {
+    throw new Error(
+      `[demucs-runtime-ensure] Portable Windows runtime validation failed: ${
+        portableCheck.error || 'unknown error'
+      }`
+    )
+  }
+  return {
+    sourceRuntimeDir,
+    payload: portableCheck.payload
+  }
+}
+
 const probeCommand = (command, commandArgs) => {
   try {
     const result = runQuiet(command, commandArgs)
@@ -246,9 +411,9 @@ const readRuntimeAssetManifest = async () => {
     return manifest
   } catch (error) {
     console.warn(
-      `[demucs-runtime-ensure] Runtime asset manifest unavailable: ${
-        toShortText(error instanceof Error ? error.message : String(error || 'unknown'))
-      }`
+      `[demucs-runtime-ensure] Runtime asset manifest unavailable: ${toShortText(
+        error instanceof Error ? error.message : String(error || 'unknown')
+      )}`
     )
     return null
   }
@@ -342,9 +507,9 @@ const tryInstallProfileFromRemoteAsset = async (manifest, profileName, runtimeDi
     return await installRuntimeProfileFromAsset(entry, profileName, runtimeDir)
   } catch (error) {
     console.warn(
-      `[demucs-runtime-ensure] Runtime asset install failed (${profileName}), fallback to local build: ${
-        toShortText(error instanceof Error ? error.message : String(error || 'unknown'))
-      }`
+      `[demucs-runtime-ensure] Runtime asset install failed (${profileName}), fallback to local build: ${toShortText(
+        error instanceof Error ? error.message : String(error || 'unknown')
+      )}`
     )
     return false
   }
@@ -557,7 +722,9 @@ const downloadToFile = async ({ url, targetPath, timeoutSec, retries }) => {
       }
     }
   }
-  const reason = toShortText(lastError instanceof Error ? lastError.message : String(lastError || ''))
+  const reason = toShortText(
+    lastError instanceof Error ? lastError.message : String(lastError || '')
+  )
   throw new Error(`[demucs-runtime-ensure] Download failed: ${url} (${reason || 'unknown'})`)
 }
 
@@ -569,13 +736,7 @@ const ensureModelYaml = (modelsDir, modelEntry) => {
   fs.writeFileSync(yamlPath, expectedYaml, 'utf8')
 }
 
-const ensureModelFile = async ({
-  modelsDir,
-  modelName,
-  modelFile,
-  retries,
-  timeoutSec
-}) => {
+const ensureModelFile = async ({ modelsDir, modelName, modelFile, retries, timeoutSec }) => {
   const relativePath = normalizeRelativePath(modelFile.name)
   if (!relativePath) {
     throw new Error(
@@ -630,9 +791,7 @@ const ensureDemucsModels = async () => {
 
   const { selectedModels, unknownModels } = resolveRequestedModels(modelEntries)
   if (unknownModels.length > 0) {
-    console.warn(
-      `[demucs-runtime-ensure] Unknown models ignored: ${unknownModels.join(', ')}`
-    )
+    console.warn(`[demucs-runtime-ensure] Unknown models ignored: ${unknownModels.join(', ')}`)
   }
   if (selectedModels.length === 0) {
     console.log('[demucs-runtime-ensure] No matching models selected, skip')
@@ -727,7 +886,19 @@ const ensureBaseRuntime = (platformKey, platformConfig) => {
   const basePythonPath = resolveRuntimePythonPath(baseRuntimeDir)
   const baseEnv = buildRuntimeEnv(baseRuntimeDir)
 
-  if (!fs.existsSync(basePythonPath)) {
+  let needsBootstrap = !fs.existsSync(basePythonPath)
+  if (!needsBootstrap && process.platform === 'win32') {
+    const portableCheck = validatePortableWindowsRuntime(baseRuntimeDir)
+    if (!portableCheck.ok) {
+      console.warn(
+        `[demucs-runtime-ensure] Rebuilding non-portable Windows base runtime: ${portableCheck.error}`
+      )
+      fs.rmSync(baseRuntimeDir, { recursive: true, force: true })
+      needsBootstrap = true
+    }
+  }
+
+  if (needsBootstrap) {
     const pythonCommand = resolveSystemPythonCommand()
     if (!pythonCommand) {
       throw new Error('[demucs-runtime-ensure] No system Python found for bootstrap')
@@ -746,12 +917,27 @@ const ensureBaseRuntime = (platformKey, platformConfig) => {
     console.log(
       `[demucs-runtime-ensure] Bootstrap Python${bootstrapSourceText}: ${bootstrapCommandText}${bootstrapVersionText}`
     )
-    run(pythonCommand.command, venvArgs)
+    if (process.platform === 'win32') {
+      const bootstrapResult = bootstrapPortableWindowsRuntime(pythonCommand, baseRuntimeDir)
+      console.log(
+        `[demucs-runtime-ensure] Copied portable Windows runtime from ${bootstrapResult.sourceRuntimeDir}`
+      )
+    } else {
+      run(pythonCommand.command, venvArgs)
+    }
   }
 
   const resolvedBasePython = resolveRuntimePythonPath(baseRuntimeDir)
   if (!fs.existsSync(resolvedBasePython)) {
     throw new Error(`[demucs-runtime-ensure] Base runtime python missing: ${resolvedBasePython}`)
+  }
+  if (process.platform === 'win32') {
+    const portableCheck = validatePortableWindowsRuntime(baseRuntimeDir)
+    if (!portableCheck.ok) {
+      throw new Error(
+        `[demucs-runtime-ensure] Windows base runtime is not portable: ${portableCheck.error}`
+      )
+    }
   }
 
   if (install) {
