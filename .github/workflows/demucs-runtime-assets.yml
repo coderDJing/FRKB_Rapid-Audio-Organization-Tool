@@ -33,7 +33,7 @@ jobs:
     timeout-minutes: 180
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -41,13 +41,13 @@ jobs:
           version: 9
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: pnpm
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -55,7 +55,7 @@ jobs:
         run: python -m pip install --upgrade pip setuptools wheel
 
       - name: Restore Demucs runtime cache (Windows)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             vendor/demucs/models
@@ -91,7 +91,7 @@ jobs:
           node @args
 
       - name: Upload workflow artifact (Windows)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: demucs-runtime-assets-win32-x64
           path: |
@@ -102,7 +102,7 @@ jobs:
     timeout-minutes: 180
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -110,13 +110,13 @@ jobs:
           version: 9
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: pnpm
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -124,7 +124,7 @@ jobs:
         run: python -m pip install --upgrade pip setuptools wheel
 
       - name: Restore Demucs runtime cache (macOS arm64)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             vendor/demucs/models
@@ -157,7 +157,7 @@ jobs:
           node "${args[@]}"
 
       - name: Upload workflow artifact (macOS arm64)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: demucs-runtime-assets-darwin-arm64
           path: |
@@ -168,7 +168,7 @@ jobs:
     timeout-minutes: 180
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -176,13 +176,13 @@ jobs:
           version: 9
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: pnpm
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -190,7 +190,7 @@ jobs:
         run: python -m pip install --upgrade pip setuptools wheel
 
       - name: Restore Demucs runtime cache (macOS x64)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             vendor/demucs/models
@@ -222,7 +222,7 @@ jobs:
           node "${args[@]}"
 
       - name: Upload workflow artifact (macOS x64)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: demucs-runtime-assets-darwin-x64
           path: |
@@ -236,22 +236,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download runtime assets (Windows)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: demucs-runtime-assets-win32-x64
           path: artifacts/demucs-runtime-assets-win32-x64
 
       - name: Download runtime assets (macOS arm64)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: demucs-runtime-assets-darwin-arm64
           path: artifacts/demucs-runtime-assets-darwin-arm64
 
       - name: Download runtime assets (macOS x64)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: demucs-runtime-assets-darwin-x64
           path: artifacts/demucs-runtime-assets-darwin-x64
@@ -267,13 +267,21 @@ jobs:
         run: find dist/demucs-runtime-assets -maxdepth 1 -type f | sort
 
       - name: Create or update GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.release_tag }}
-          files: |
-            dist/demucs-runtime-assets/*
-          draft: false
-          prerelease: false
-          overwrite_files: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(dist/demucs-runtime-assets/*)
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "No runtime assets found."
+            exit 1
+          fi
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" "${assets[@]}" --clobber
+            gh release edit "$TAG_NAME" --title "$TAG_NAME"
+          else
+            gh release create "$TAG_NAME" "${assets[@]}" --title "$TAG_NAME" --verify-tag
+          fi

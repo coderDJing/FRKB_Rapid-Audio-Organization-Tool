@@ -13,7 +13,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -21,12 +21,12 @@ jobs:
           version: 9
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
 
       - name: Restore Demucs models cache (Windows)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             vendor/demucs/models
@@ -35,7 +35,7 @@ jobs:
             demucs-models-${{ runner.os }}-
 
       - name: Setup Python (for node-gyp)
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -160,7 +160,7 @@ jobs:
       # 不再复制 rc.yml，严格遵循 GitHub provider 读取 latest.yml / latest-mac.yml
 
       - name: Upload dist artifacts (Windows)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: win-artifacts
@@ -173,7 +173,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -181,13 +181,13 @@ jobs:
           version: 9
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: 'pnpm'
 
       - name: Setup Python (for node-gyp)
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -390,7 +390,7 @@ jobs:
       # 不再复制 rc.yml / rc-mac.yml，保持标准文件名
 
       - name: Upload dist artifacts (macOS)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: mac-artifacts
@@ -407,13 +407,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download Windows artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: win-artifacts
           path: artifacts/win
 
       - name: Download macOS artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: mac-artifacts
           path: artifacts/mac
@@ -422,9 +422,14 @@ jobs:
         run: ls -R artifacts | cat
 
       - name: Create/Update GitHub Release and upload assets
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+          PRERELEASE: ${{ contains(github.ref_name, '-') }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(
             artifacts/win/*.exe
             artifacts/win/*.yml
             artifacts/win/*.blockmap
@@ -432,7 +437,23 @@ jobs:
             artifacts/mac/*.yml
             artifacts/mac/*.zip
             artifacts/mac/*.blockmap
-          draft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          )
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "No release assets found."
+            exit 1
+          fi
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" "${assets[@]}" --clobber
+            if [ "$PRERELEASE" = "true" ]; then
+              gh release edit "$TAG_NAME" --title "$TAG_NAME" --prerelease
+            else
+              gh release edit "$TAG_NAME" --title "$TAG_NAME" --latest
+            fi
+          else
+            if [ "$PRERELEASE" = "true" ]; then
+              gh release create "$TAG_NAME" "${assets[@]}" --title "$TAG_NAME" --prerelease --verify-tag
+            else
+              gh release create "$TAG_NAME" "${assets[@]}" --title "$TAG_NAME" --latest --verify-tag
+            fi
+          fi
