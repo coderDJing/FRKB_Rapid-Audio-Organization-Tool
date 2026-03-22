@@ -209,10 +209,20 @@ const validatePortableWindowsRuntime = (runtimeDir) => {
     for (const aliasName of aliasNames) {
       const aliasPath = path.join(runtimeDir, aliasName)
       const stat = fs.lstatSync(aliasPath)
-      if (!stat.isSymbolicLink()) continue
       const lowerAliasName = aliasName.toLowerCase()
+      if (lowerAliasName === 'python.exe' || lowerAliasName === 'pythonw.exe') {
+        if (stat.isSymbolicLink()) {
+          const linkTarget = fs.readlinkSync(aliasPath)
+          return {
+            ok: false,
+            payload: null,
+            error: `canonical python symlink present: ${aliasName} -> ${linkTarget}`
+          }
+        }
+        continue
+      }
       const fallbackSourcePath =
-        lowerAliasName === 'pythonw.exe' || lowerAliasName.startsWith('pythonw')
+        lowerAliasName.startsWith('pythonw')
           ? path.join(runtimeDir, 'pythonw.exe')
           : path.join(runtimeDir, 'python.exe')
       if (!fs.existsSync(fallbackSourcePath)) {
