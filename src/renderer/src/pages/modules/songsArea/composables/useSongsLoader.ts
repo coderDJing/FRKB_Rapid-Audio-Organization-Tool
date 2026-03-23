@@ -19,6 +19,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
 
   const loadingShow = ref(false)
   const isRequesting = ref<boolean>(false)
+  let lastAppliedSongListUUID = ''
 
   // 渐进式渲染（当前行数）
   const renderCount = ref(0)
@@ -27,6 +28,12 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     const node = libraryUtils.getLibraryTreeByUUID(runtime.songsArea.songListUUID)
     return node?.type === 'mixtapeList'
   }
+  const isMixtapeListUUID = (songListUUID: string) =>
+    libraryUtils.getLibraryTreeByUUID(songListUUID)?.type === 'mixtapeList'
+  const normalizeSongPath = (value: string | undefined | null) =>
+    String(value || '')
+      .replace(/\//g, '\\')
+      .toLowerCase()
 
   const notifySongSearchDirty = (reason: string) => {
     void window.electron.ipcRenderer.invoke('song-search:mark-dirty', { reason }).catch(() => {})
@@ -75,13 +82,50 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     } catch {}
   }
 
-  const applySongListData = async (scanData: ISongInfo[]) => {
+  const syncSelectedKeysAfterReload = (scanData: ISongInfo[], songListUUID: string) => {
+    const currentSelection = runtime.songsArea.selectedSongFilePath.filter(Boolean)
+    if (!currentSelection.length) return
+
+    if (isMixtapeListUUID(songListUUID)) {
+      const validIds = new Set(
+        scanData
+          .map((song) => song.mixtapeItemId)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      )
+      runtime.songsArea.selectedSongFilePath = currentSelection.filter((key) => validIds.has(key))
+      return
+    }
+
+    const filePathMap = new Map<string, string>()
+    for (const song of scanData) {
+      const filePath = song.filePath
+      if (!filePath) continue
+      filePathMap.set(normalizeSongPath(filePath), filePath)
+    }
+
+    const nextSelection: string[] = []
+    const seen = new Set<string>()
+    for (const key of currentSelection) {
+      const nextKey = filePathMap.get(normalizeSongPath(key))
+      if (!nextKey || seen.has(nextKey)) continue
+      seen.add(nextKey)
+      nextSelection.push(nextKey)
+    }
+    runtime.songsArea.selectedSongFilePath = nextSelection
+  }
+
+  const applySongListData = async (
+    scanData: ISongInfo[],
+    songListUUID = runtime.songsArea.songListUUID
+  ) => {
     originalSongInfoArr.value = markRaw(scanData)
     applyFiltersAndSorting()
+    syncSelectedKeysAfterReload(scanData, songListUUID)
+    lastAppliedSongListUUID = songListUUID
     try {
-      emitter.emit('playlistContentChanged', { uuids: [runtime.songsArea.songListUUID] })
+      emitter.emit('playlistContentChanged', { uuids: [songListUUID] })
     } catch {}
-    if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+    if (runtime.playingData.playingSongListUUID === songListUUID) {
       runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
     }
     await hydrateRenderCount()
@@ -108,15 +152,21 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       libraryAreaSelected: runtime.libraryAreaSelected
     })
     isRequesting.value = true
-    runtime.songsArea.songInfoArr = []
-    runtime.songsArea.totalSongCount = 0
-    originalSongInfoArr.value = []
-    await nextTick()
+    const shouldResetVisibleList = lastAppliedSongListUUID !== requestUUID
+    if (shouldResetVisibleList) {
+      runtime.songsArea.songInfoArr = []
+      runtime.songsArea.totalSongCount = 0
+      originalSongInfoArr.value = []
+      renderCount.value = 0
+      await nextTick()
+    }
 
     if (runtime.songsArea.songListUUID === EXTERNAL_PLAYLIST_UUID) {
       const songs = runtime.externalPlaylist.songs || []
       originalSongInfoArr.value = markRaw([...songs])
       applyFiltersAndSorting()
+      syncSelectedKeysAfterReload(runtime.songsArea.songInfoArr, requestUUID)
+      lastAppliedSongListUUID = requestUUID
       isRequesting.value = false
       loadingShow.value = false
       traceGlobalSongSearch('open-external-hit', {
@@ -136,6 +186,8 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         if (songListUUID !== runtime.songsArea.songListUUID) return
         originalSongInfoArr.value = markRaw(scanData)
         applyFiltersAndSorting()
+        syncSelectedKeysAfterReload(scanData, songListUUID)
+        lastAppliedSongListUUID = songListUUID
       } finally {
         isRequesting.value = false
         clearTimeout(loadingSetTimeout)
@@ -165,6 +217,8 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         )
         originalSongInfoArr.value = markRaw(songs)
         applyFiltersAndSorting()
+        syncSelectedKeysAfterReload(songs, requestUUID)
+        lastAppliedSongListUUID = requestUUID
 
         if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
           runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
