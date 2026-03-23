@@ -14,8 +14,8 @@ const STEM_IDS_4: StemWaveformStemId[] = ['vocal', 'inst', 'bass', 'drums']
 const DEFAULT_STEM_MODEL = 'htdemucs'
 const DEFAULT_STEM_VERSION = 'unknown'
 const DEFAULT_TARGET_RATE = 441
-// 关闭 stem 低分辨率预览波形数据生成，统一走 raw 波形渲染
-const ENABLE_STEM_PREVIEW_WAVEFORM = false
+// Stem 场景保留低分辨率预览波形，避免远端轨道长时间只显示加载态
+const ENABLE_STEM_PREVIEW_WAVEFORM = true
 
 type StemWaveformPaths = {
   vocalPath?: string | null

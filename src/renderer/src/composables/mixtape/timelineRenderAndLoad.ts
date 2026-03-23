@@ -108,8 +108,8 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
     waveformVersion
   } = ctx
   const isStemMixMode = () => mixtapeMixMode?.value !== 'eq'
-  // Stem 场景仅渲染 raw 波形，关闭低分辨率预览波形数据生成/加载
-  const ENABLE_STEM_PREVIEW_WAVEFORM = false
+  // Stem 场景先用低分辨率预览波形兜底，raw 波形继续按可见区细化
+  const ENABLE_STEM_PREVIEW_WAVEFORM = true
   const isStemWaveformData = (value: unknown): value is StemWaveformData =>
     Boolean(value && typeof value === 'object' && (value as StemWaveformData).all)
   const isMixxxWaveformData = (value: unknown): value is MixxxWaveformData =>

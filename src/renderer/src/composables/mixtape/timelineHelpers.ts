@@ -623,8 +623,9 @@ export const createTimelineHelpersModule = (ctx: any) => {
     for (const source of sources) {
       const filePath = source.filePath
       if (!filePath) continue
-      if (rawWaveformInflight.has(filePath)) return true
-      if (!rawWaveformDataMap.has(filePath)) return true
+      const hasPreviewWaveform = Boolean(waveformDataMap.get(filePath))
+      if (rawWaveformInflight.has(filePath) && !hasPreviewWaveform) return true
+      if (!rawWaveformDataMap.has(filePath) && !hasPreviewWaveform) return true
     }
     return false
   }
