@@ -476,6 +476,8 @@ export const runStemSeparation = async (params: {
         demucsModel: demucsModelName,
         requestedSegmentSec: profileOptions.segmentSec
       })
+      const isHtDemucsModel = normalizeText(demucsModelName, 128).toLowerCase().includes('htdemucs')
+      const noSplitDisabledReason = isHtDemucsModel ? 'htdemucs_requires_segmented_inference' : null
       log.info('[mixtape-stem] demucs profile', {
         file: filePath,
         model: params.model,
@@ -491,6 +493,8 @@ export const runStemSeparation = async (params: {
         timeoutHintMsByDevice,
         shifts: Number(profileOptions.shifts),
         overlap: Number(profileOptions.overlap),
+        noSplitSupported: !noSplitDisabledReason,
+        noSplitDisabledReason,
         requestedSegmentSec: Number(profileOptions.segmentSec),
         segmentSec: Number(demucsSegmentSec)
       })
@@ -579,7 +583,19 @@ export const runStemSeparation = async (params: {
               : null,
           etaSec: null
         })
-        const allowNoSplit = preferNoSplit && device !== 'cpu' && device !== 'xpu'
+        const allowNoSplit =
+          preferNoSplit && device !== 'cpu' && device !== 'xpu' && !noSplitDisabledReason
+        if (preferNoSplit && !allowNoSplit && noSplitDisabledReason && device !== 'cpu') {
+          log.info('[mixtape-stem] demucs no-split disabled', {
+            file: filePath,
+            model: params.model,
+            demucsModel: demucsModelName,
+            stemProfile,
+            device,
+            reason: noSplitDisabledReason,
+            maxSegmentSec: Number(demucsSegmentSec)
+          })
+        }
         const runWaveformBootstrap = async (split: boolean) => {
           if (!waveformBootstrapInput || !waveformBootstrapReady) {
             throw createStemError('STEM_BOOTSTRAP_UNAVAILABLE', 'Waveform bootstrap 不可用')
