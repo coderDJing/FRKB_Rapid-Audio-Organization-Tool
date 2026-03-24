@@ -5,8 +5,8 @@ export const BPM_MIN_VALUE = 1
 const TRACK_TEMPO_ROUND_FACTOR = 10000
 
 const BPM_MAX_POINTS_PER_SEC = 2
-const BPM_CLAMP_MIN_MULTIPLIER = 0.25
-const BPM_VISUAL_MAX_MULTIPLIER = 2
+const BPM_CLAMP_MIN_MULTIPLIER = 0.01
+const BPM_CLAMP_MAX_MULTIPLIER = 2
 
 export const clampTrackTempoNumber = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value))
@@ -98,8 +98,8 @@ export const resolveTrackGridSourceBpm = (
 }
 
 export const resolveTrackBpmEnvelopeClampRange = (baseBpm: number) => ({
-  minBpm: Math.max(BPM_MIN_VALUE, Math.round(baseBpm * BPM_CLAMP_MIN_MULTIPLIER)),
-  maxBpm: Math.max(BPM_MIN_VALUE, Math.round(baseBpm * BPM_VISUAL_MAX_MULTIPLIER))
+  minBpm: Math.max(BPM_MIN_VALUE, Number((baseBpm * BPM_CLAMP_MIN_MULTIPLIER).toFixed(4))),
+  maxBpm: Math.max(BPM_MIN_VALUE, Number((baseBpm * BPM_CLAMP_MAX_MULTIPLIER).toFixed(4)))
 })
 
 export const buildFlatTrackBpmEnvelope = (durationSec: number, bpm: number): MixtapeBpmPoint[] => {

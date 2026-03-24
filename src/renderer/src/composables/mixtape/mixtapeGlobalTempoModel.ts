@@ -10,6 +10,7 @@ import {
   BPM_POINT_SEC_EPSILON,
   buildFlatTrackBpmEnvelope,
   normalizeTrackBpmEnvelopePoints,
+  resolveTrackBpmEnvelopeClampRange,
   roundTrackTempoSec
 } from '@renderer/composables/mixtape/trackTempoModel'
 import type { MixtapeBpmPoint, MixtapeTrack } from '@renderer/composables/mixtape/types'
@@ -196,27 +197,11 @@ export const resolveMixtapeGlobalBpmVisualRange = (params: {
   tracks: MixtapeTrack[]
   points: MixtapeBpmPoint[]
 }) => {
-  const values = [
-    ...params.points.map((point) => Number(point.bpm)),
-    ...params.tracks.flatMap((track) => [
-      Number(track.bpm),
-      Number(track.gridBaseBpm),
-      Number(track.originalBpm)
-    ])
-  ].filter((value) => Number.isFinite(value) && value > 0)
-  if (!values.length) {
-    return {
-      baseBpm: 128,
-      minBpm: 64,
-      maxBpm: 192
-    }
-  }
-  const minValue = Math.min(...values)
-  const maxValue = Math.max(...values)
-  const baseBpm = Number((params.points[0]?.bpm || values[0] || 128).toFixed(2))
+  const baseBpm = resolveDefaultGlobalBpmFromTracks(params.tracks)
+  const clampRange = resolveTrackBpmEnvelopeClampRange(baseBpm)
   return {
     baseBpm,
-    minBpm: Math.max(40, Math.floor(minValue * 0.85)),
-    maxBpm: Math.max(80, Math.ceil(maxValue * 1.15))
+    minBpm: clampRange.minBpm,
+    maxBpm: clampRange.maxBpm
   }
 }
