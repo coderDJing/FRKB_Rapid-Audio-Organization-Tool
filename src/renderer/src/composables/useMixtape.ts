@@ -247,7 +247,9 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     handleOverviewMouseDown,
     handleOverviewClick,
     resolveOverviewTrackStyle,
-    overviewViewportStyle
+    overviewViewportStyle,
+    setZoomValue,
+    applyRenderZoomImmediate
   } = useMixtapeTimeline({
     tracks,
     bpmAnalysisActive,
@@ -1382,6 +1384,8 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     handleAutoGainDialogCancel,
     handleAutoGainDialogConfirm,
     handleAutoGainSelectLoudestReference,
-    handleAutoGainSelectQuietestReference
+    handleAutoGainSelectQuietestReference,
+    setZoomValue,
+    applyRenderZoomImmediate
   }
 }

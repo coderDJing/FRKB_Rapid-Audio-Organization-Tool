@@ -10,14 +10,18 @@ export type EnvelopePointDot = {
   index: number
   x: number
   y: number
+  gainDb: number
+  isActive: boolean
   isBoundary: boolean
 }
 
 export type EnvelopeDragState = {
   param: MixtapeEnvelopeParamId
   trackId: string
-  pointIndex: number
+  pointIndices: number[]
   stageEl: HTMLElement
+  startPointer?: { sec: number; gain: number }
+  basePoints?: MixtapeGainPoint[]
 }
 
 export type MixSegmentMask = {

@@ -1112,6 +1112,8 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     handleRulerSeek,
     handleToggleFollowPlayhead,
     transportError,
-    renderMixtapeOutputWav
+    renderMixtapeOutputWav,
+    setZoomValue,
+    applyRenderZoomImmediate
   }
 }

@@ -673,6 +673,8 @@
     "deduplicateProgressFailed": "Fingerprint deduplication failed"
   },
   "mixtape": {
+    "zoomIn": "Zoom In",
+    "zoomOut": "Zoom Out",
     "title": "Auto Mix",
     "mixModeCreateTitle": "Choose Mix Mode",
     "mixModeCreateHint": "This mode is saved to the project and cannot be changed after creation.",

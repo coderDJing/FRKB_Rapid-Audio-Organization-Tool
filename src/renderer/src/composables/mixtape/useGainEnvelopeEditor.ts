@@ -7,7 +7,8 @@ import {
   mapMixEnvelopeGainToYPercent,
   mapMixEnvelopeYPercentToGain,
   normalizeMixEnvelopePoints,
-  sampleMixEnvelopeAtSec
+  sampleMixEnvelopeAtSec,
+  linearGainToDb
 } from '@renderer/composables/mixtape/gainEnvelope'
 import {
   GAIN_ENVELOPE_LOCKED_SEC_EPSILON,
@@ -62,6 +63,11 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
   const pendingVolumeMutePersist = new Map<string, Array<{ startSec: number; endSec: number }>>()
   const envelopeDragState = ref<EnvelopeDragState | null>(null)
   const segmentSelectionState = ref<SegmentSelectionState | null>(null)
+  const ghostPointState = ref<{
+    trackId: string
+    sec: number
+    gain: number
+  } | null>(null)
   const undoStack = ref<MixParamUndoEntry[]>([])
   const canUndoMixParam = computed(() => undoStack.value.length > 0)
   const envelopeUndoSeed = ref<EnvelopeUndoSeed | null>(null)
@@ -185,12 +191,23 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
     if (isStemSegmentParam(param)) return []
     const { durationSec, points } = resolveTrackEnvelopeState(item.track.id, param)
     if (!durationSec || points.length < 2) return []
-    return points.map((point, index) => ({
-      index,
-      x: Number((clampNumber(point.sec / durationSec, 0, 1) * 100).toFixed(3)),
-      y: Number(mapMixEnvelopeGainToYPercent(param, point.gain).toFixed(3)),
-      isBoundary: index === 0 || index === points.length - 1
-    }))
+
+    const dragState = envelopeDragState.value
+    const isDraggingTrack = dragState?.trackId === item.track.id
+
+    return points.map((point, index) => {
+      const db = linearGainToDb(point.gain)
+      const isDragging = isDraggingTrack && dragState.pointIndices.includes(index)
+
+      return {
+        index,
+        x: Number((clampNumber(point.sec / durationSec, 0, 1) * 100).toFixed(3)),
+        y: Number(mapMixEnvelopeGainToYPercent(param, point.gain).toFixed(3)),
+        gainDb: db,
+        isActive: isDragging,
+        isBoundary: index === 0 || index === points.length - 1
+      }
+    })
   }
 
   const resolveActiveSegmentMasks = (item: TimelineTrackLayout): MixSegmentMask[] => {
@@ -554,34 +571,76 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
 
   function handleEnvelopePointDragMove(event: MouseEvent) {
     const state = envelopeDragState.value
-    if (!state) return
+    if (!state || !state.pointIndices.length) return
     event.preventDefault()
     const { track, durationSec, points } = resolveTrackEnvelopeState(state.trackId, state.param)
     if (!track || !durationSec || points.length < 2) return
-    if (state.pointIndex < 0 || state.pointIndex >= points.length) return
     const pointer = resolveEnvelopePointer(state.param, state.stageEl, event, durationSec)
     if (!pointer) return
 
     const minGapSec = resolveEnvelopeMinGapSec(durationSec)
-    let nextSec = pointer.sec
-    if (state.pointIndex === 0) {
-      nextSec = 0
-    } else if (state.pointIndex === points.length - 1) {
-      nextSec = durationSec
-    } else {
-      const currentSec = points[state.pointIndex]?.sec ?? pointer.sec
-      nextSec = currentSec
-    }
+    const isFineTune = event.shiftKey
 
-    const nextPoints = points.map((point, index) =>
-      index === state.pointIndex
-        ? {
-            sec: Number(nextSec.toFixed(4)),
-            gain: Number(clampMixEnvelopeGain(state.param, pointer.gain).toFixed(6))
+    if (state.pointIndices.length === 1) {
+      const pointIndex = state.pointIndices[0]
+      if (pointIndex < 0 || pointIndex >= points.length) return
+
+      let nextSec = pointer.sec
+      if (pointIndex === 0) {
+        nextSec = 0
+      } else if (pointIndex === points.length - 1) {
+        nextSec = durationSec
+      } else {
+        const currentSec = points[pointIndex]?.sec ?? pointer.sec
+        nextSec = currentSec
+      }
+
+      let nextGain = pointer.gain
+      if (isFineTune && state.startPointer && state.basePoints) {
+        const deltaGain = pointer.gain - state.startPointer.gain
+        nextGain = state.basePoints[pointIndex].gain + deltaGain * 0.1
+      }
+
+      let finalGain = clampMixEnvelopeGain(state.param, nextGain)
+
+      const centerGain = mapMixEnvelopeYPercentToGain(state.param, 50)
+      const yPercent = mapMixEnvelopeGainToYPercent(state.param, finalGain)
+      if (Math.abs(yPercent - 50) < 2) {
+        finalGain = centerGain
+      }
+
+      const nextPoints = points.map((point, index) =>
+        index === pointIndex
+          ? {
+              sec: Number(nextSec.toFixed(4)),
+              gain: Number(finalGain.toFixed(6))
+            }
+          : point
+      )
+      updateTrackMixEnvelope(state.param, track.id, nextPoints)
+    } else {
+      if (!state.startPointer || !state.basePoints) return
+      let deltaGain = pointer.gain - state.startPointer.gain
+      if (isFineTune) {
+        deltaGain *= 0.1
+      }
+
+      const nextPoints = points.map((point, index) => {
+        if (state.pointIndices.includes(index)) {
+          let rawGain = state.basePoints![index].gain + deltaGain
+          let yPercent = mapMixEnvelopeGainToYPercent(state.param, rawGain)
+          if (Math.abs(yPercent - 50) < 2) {
+            rawGain = mapMixEnvelopeYPercentToGain(state.param, 50)
           }
-        : point
-    )
-    updateTrackMixEnvelope(state.param, track.id, nextPoints)
+          return {
+            sec: point.sec,
+            gain: Number(clampMixEnvelopeGain(state.param, rawGain).toFixed(6))
+          }
+        }
+        return point
+      })
+      updateTrackMixEnvelope(state.param, track.id, nextPoints)
+    }
   }
 
   function handleEnvelopePointDragEnd() {
@@ -594,16 +653,20 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
   function startEnvelopePointDrag(
     param: MixtapeEnvelopeParamId,
     trackId: string,
-    pointIndex: number,
-    stageEl: HTMLElement
+    pointIndices: number[],
+    stageEl: HTMLElement,
+    startPointer?: { sec: number; gain: number },
+    basePoints?: MixtapeGainPoint[]
   ) {
     beginEnvelopeUndoSeed(param, trackId)
     stopEnvelopePointDrag()
     envelopeDragState.value = {
       param,
       trackId,
-      pointIndex,
-      stageEl
+      pointIndices,
+      stageEl,
+      startPointer,
+      basePoints
     }
     window.addEventListener('mousemove', handleEnvelopePointDragMove)
     window.addEventListener('mouseup', handleEnvelopePointDragEnd)
@@ -621,13 +684,73 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
     const currentTarget = event.currentTarget as HTMLElement | null
     const stageEl = currentTarget?.closest('.lane-track__envelope-points') as HTMLElement | null
     if (!stageEl) return
-    startEnvelopePointDrag(param, item.track.id, pointIndex, stageEl)
+
+    const { durationSec, points } = resolveTrackEnvelopeState(item.track.id, param)
+    const pointer = resolveEnvelopePointer(param, stageEl, event, durationSec) || undefined
+    startEnvelopePointDrag(
+      param,
+      item.track.id,
+      [pointIndex],
+      stageEl,
+      pointer,
+      cloneGainPoints(points)
+    )
   }
 
-  const handleEnvelopeStageMouseDown = (item: TimelineTrackLayout, event: MouseEvent) => {
+  const handleEnvelopeSegmentMouseDown = (item: TimelineTrackLayout, event: MouseEvent) => {
     const param = resolveCurrentParam()
     if (!params.isEditable() || !param || event.button !== 0) return
-    const stageEl = event.currentTarget as HTMLElement | null
+    if (isStemSegmentParam(param) || (param === 'volume' && params.isSegmentSelectionMode())) return
+
+    if (event.detail >= 2 || event.altKey) {
+      handleEnvelopeStageMouseDown(item, event)
+      return
+    }
+
+    const stageEl = (event.currentTarget as HTMLElement)
+      ?.closest('.lane-track')
+      ?.querySelector('.lane-track__envelope-points') as HTMLElement | null
+    if (!stageEl) return
+
+    const { track, durationSec, points } = resolveTrackEnvelopeState(item.track.id, param)
+    if (!track || !durationSec || points.length < 2) return
+    const pointer = resolveEnvelopePointer(param, stageEl, event, durationSec)
+    if (!pointer) return
+
+    let leftIndex = -1
+    let rightIndex = -1
+    for (let i = 0; i < points.length - 1; i++) {
+      if (pointer.sec >= points[i].sec && pointer.sec <= points[i + 1].sec) {
+        leftIndex = i
+        rightIndex = i + 1
+        break
+      }
+    }
+    if (leftIndex < 0 || rightIndex < 0) return
+
+    startEnvelopePointDrag(
+      param,
+      item.track.id,
+      [leftIndex, rightIndex],
+      stageEl,
+      pointer,
+      cloneGainPoints(points)
+    )
+  }
+
+  const handleEnvelopeStageMouseDown = (
+    item: TimelineTrackLayout,
+    event: MouseEvent,
+    overrideStageEl?: HTMLElement
+  ) => {
+    const param = resolveCurrentParam()
+    if (!params.isEditable() || !param || event.button !== 0) return
+    let stageEl = overrideStageEl || (event.currentTarget as HTMLElement | null)
+    if (stageEl && !stageEl.classList.contains('lane-track__envelope-points')) {
+      stageEl = stageEl
+        .closest('.lane-track')
+        ?.querySelector('.lane-track__envelope-points') as HTMLElement | null
+    }
     if (!stageEl) return
     if (isSegmentModeParam(param) && params.isSegmentSelectionMode()) {
       const { track, durationSec } = resolveTrackSegmentState(item.track.id, param)
@@ -644,6 +767,9 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
       return
     }
     if (isStemSegmentParam(param)) return
+
+    if (event.detail < 2 && !event.altKey) return
+
     beginEnvelopeUndoSeed(param, item.track.id)
     const { track, durationSec, points } = resolveTrackEnvelopeState(item.track.id, param)
     if (!track || !durationSec || points.length < 2) return
@@ -657,7 +783,9 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
       durationSec
     })
     if (typeof safeSec !== 'number') return
-    const safeGain = clampMixEnvelopeGain(param, pointer.gain)
+
+    const lineGain = sampleMixEnvelopeAtSec(param, points, safeSec, pointer.gain)
+    const safeGain = clampMixEnvelopeGain(param, lineGain)
     const safeSecRounded = Number(safeSec.toFixed(4))
     const safeGainRounded = Number(safeGain.toFixed(6))
     const nextPoints = points.map((point) => ({ ...point }))
@@ -750,7 +878,14 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
           gain: safeGainRounded
         })
         updateTrackMixEnvelope(param, track.id, nextPoints)
-        startEnvelopePointDrag(param, track.id, targetPointIndex, stageEl)
+        startEnvelopePointDrag(
+          param,
+          track.id,
+          [targetPointIndex],
+          stageEl,
+          pointer,
+          cloneGainPoints(nextPoints)
+        )
         return
       }
       if (bucket.sameSecCount >= GAIN_ENVELOPE_MAX_POINTS_PER_SEC) {
@@ -760,7 +895,14 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
           gain: safeGainRounded
         }
         updateTrackMixEnvelope(param, track.id, nextPoints)
-        startEnvelopePointDrag(param, track.id, targetPointIndex, stageEl)
+        startEnvelopePointDrag(
+          param,
+          track.id,
+          [targetPointIndex],
+          stageEl,
+          pointer,
+          cloneGainPoints(nextPoints)
+        )
         return
       }
       let insertIndex = bucket.insertIndex
@@ -791,7 +933,14 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
     }
 
     updateTrackMixEnvelope(param, track.id, nextPoints)
-    startEnvelopePointDrag(param, track.id, targetPointIndex, stageEl)
+    startEnvelopePointDrag(
+      param,
+      track.id,
+      [targetPointIndex],
+      stageEl,
+      pointer,
+      cloneGainPoints(nextPoints)
+    )
   }
 
   const removeTrackEnvelopePoint = (
@@ -815,7 +964,14 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
     commitEnvelopeUndoSeed()
   }
 
-  const handleEnvelopePointContextMenu = (_item: TimelineTrackLayout, _pointIndex: number) => {}
+  const handleEnvelopePointContextMenu = (item: TimelineTrackLayout, pointIndex: number) => {
+    const param = resolveCurrentParam()
+    if (!params.isEditable() || !param) return
+    if (isStemSegmentParam(param)) return
+    beginEnvelopeUndoSeed(param, item.track.id)
+    removeTrackEnvelopePoint(param, item.track.id, pointIndex)
+    commitEnvelopeUndoSeed()
+  }
 
   const restoreEnvelopeUndoEntry = (entry: Extract<MixParamUndoEntry, { type: 'envelope' }>) => {
     const { track, durationSec, points } = resolveTrackEnvelopeState(entry.trackId, entry.param)
@@ -902,12 +1058,83 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
     void flushPendingVolumeMutePersist()
   }
 
+  const resolveActiveEnvelopePolygon = (item: TimelineTrackLayout) => {
+    const polyline = resolveActiveEnvelopePolyline(item)
+    if (!polyline) return ''
+    return `0,100 ${polyline} 100,100`
+  }
+
+  const handleEnvelopeStageMouseMove = (item: TimelineTrackLayout, event: MouseEvent) => {
+    const param = resolveCurrentParam()
+    if (
+      !params.isEditable() ||
+      !param ||
+      isStemSegmentParam(param) ||
+      (param === 'volume' && params.isSegmentSelectionMode())
+    ) {
+      ghostPointState.value = null
+      return
+    }
+    const stageEl = event.currentTarget as HTMLElement | null
+    if (!stageEl) return
+
+    // If Alt key is pressed, we could add visual feedback
+    if (event.altKey) {
+      stageEl.style.cursor = 'crosshair'
+    } else {
+      stageEl.style.cursor = ''
+    }
+
+    const { track, durationSec, points } = resolveTrackEnvelopeState(item.track.id, param)
+    if (!track || !durationSec || points.length < 2) return
+
+    const pointer = resolveEnvelopePointer(param, stageEl, event, durationSec)
+    if (!pointer) return
+
+    const lineGain = sampleMixEnvelopeAtSec(param, points, pointer.sec, pointer.gain)
+
+    ghostPointState.value = {
+      trackId: item.track.id,
+      sec: pointer.sec,
+      gain: lineGain
+    }
+  }
+
+  const handleEnvelopeStageMouseLeave = (event: MouseEvent) => {
+    ghostPointState.value = null
+    const stageEl = event.currentTarget as HTMLElement | null
+    if (stageEl) stageEl.style.cursor = ''
+  }
+
+  const resolveActiveGhostPointDot = (item: TimelineTrackLayout): EnvelopePointDot | null => {
+    const state = ghostPointState.value
+    if (!state || state.trackId !== item.track.id) return null
+    const param = resolveCurrentParam()
+    if (!param) return null
+    const { durationSec } = resolveTrackEnvelopeState(item.track.id, param)
+    if (!durationSec) return null
+
+    return {
+      index: -1,
+      x: Number((clampNumber(state.sec / durationSec, 0, 1) * 100).toFixed(3)),
+      y: Number(mapMixEnvelopeGainToYPercent(param, state.gain).toFixed(3)),
+      gainDb: linearGainToDb(state.gain),
+      isActive: false,
+      isBoundary: false
+    }
+  }
+
   return {
     resolveActiveEnvelopePolyline,
+    resolveActiveEnvelopePolygon,
+    resolveActiveGhostPointDot,
     resolveActiveEnvelopePointDots,
     resolveActiveSegmentMasks,
+    handleEnvelopeSegmentMouseDown,
     handleEnvelopePointMouseDown,
     handleEnvelopeStageMouseDown,
+    handleEnvelopeStageMouseMove,
+    handleEnvelopeStageMouseLeave,
     handleEnvelopePointDoubleClick,
     handleEnvelopePointContextMenu,
     canUndoMixParam,

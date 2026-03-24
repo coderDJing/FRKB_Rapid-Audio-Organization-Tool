@@ -189,6 +189,17 @@
   z-index: 10;
 }
 
+.timeline-primary-playhead::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 9px solid rgba(255, 84, 84, 0.95);
+}
+
 .timeline-scroll {
   flex: 1;
   min-height: 0;

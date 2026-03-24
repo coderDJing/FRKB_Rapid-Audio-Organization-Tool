@@ -246,6 +246,29 @@
   display: none;
 }
 
+.lane-track__envelope-fill {
+  fill: var(--mix-envelope-line-color);
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+.lane-track__envelope-fill.is-hidden {
+  display: none;
+}
+
+.lane-track__envelope-segment-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+  vector-effect: non-scaling-stroke;
+  pointer-events: stroke;
+  cursor: ns-resize;
+}
+
+.lane-track__envelope-segment-hit.is-hidden {
+  display: none;
+}
+
 .lane-track__mute-segments {
   position: absolute;
   left: calc(-1 * var(--lane-track-border-width));
@@ -262,7 +285,16 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  background: rgba(210, 58, 58, 0.2);
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      rgba(210, 58, 58, 0.15) 0,
+      rgba(210, 58, 58, 0.15) 6px,
+      rgba(210, 58, 58, 0.28) 6px,
+      rgba(210, 58, 58, 0.28) 12px
+    ),
+    rgba(210, 58, 58, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(210, 58, 58, 0.3);
 }
 
 .lane-track__envelope-points {
@@ -281,6 +313,31 @@
   cursor: pointer;
 }
 
+.lane-track__envelope-ghost-point {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.2);
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.lane-track:hover .lane-track__envelope-ghost-point {
+  opacity: 1;
+}
+
+.lane-track__envelope-point-wrap {
+  position: absolute;
+  width: 0;
+  height: 0;
+  z-index: 5;
+}
+
 .lane-track__envelope-point {
   position: absolute;
   width: 8px;
@@ -295,6 +352,29 @@
   pointer-events: auto;
   cursor: grab;
   overflow: visible;
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    transform 0.1s ease,
+    box-shadow 0.1s ease;
+}
+
+.lane-track:hover .lane-track__envelope-point,
+.lane-track.is-selected .lane-track__envelope-point {
+  opacity: 1;
+}
+
+.lane-track__envelope-point::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border-radius: 50%;
+  cursor: inherit;
 }
 
 .lane-track__envelope-point-label {
@@ -337,10 +417,14 @@
 .lane-track__envelope-point:hover {
   background: rgba(255, 255, 255, 1);
   border-color: rgba(64, 163, 255, 0.98);
+  transform: translate(-50%, -50%) scale(1.2);
 }
 
+.lane-track__envelope-point.is-active,
 .lane-track__envelope-point:active {
   cursor: grabbing;
+  transform: translate(-50%, -50%) scale(1.5);
+  box-shadow: 0 0 0 4px rgba(64, 163, 255, 0.3);
 }
 
 .lane-track__envelope-point.is-boundary {
@@ -357,29 +441,53 @@
   transform: translate(-100%, -50%);
 }
 
+.lane-track__envelope-point.is-boundary-start:hover {
+  transform: translate(0, -50%) scale(1.2);
+}
+
+.lane-track__envelope-point.is-boundary-end:hover {
+  transform: translate(-100%, -50%) scale(1.2);
+}
+
+.lane-track__envelope-point.is-boundary-start:active {
+  transform: translate(0, -50%) scale(1.5);
+}
+
+.lane-track__envelope-point.is-boundary-end:active {
+  transform: translate(-100%, -50%) scale(1.5);
+}
+
 .lane-track__meta {
   position: absolute;
+  /* Make it sticky horizontally regardless of scroll */
   left: max(6px, calc(var(--timeline-scroll-left, 0px) - var(--track-start, 0px) + 6px));
   top: 6px;
-  padding: 4px 8px;
-  border-radius: 0;
+  padding: 5px 10px;
+  border-radius: 6px;
   display: inline-flex;
   flex-direction: column;
   align-items: flex-start;
   font-size: 11px;
-  color: rgba(230, 230, 230, 0.98);
-  background: #2b2b2b;
+  color: rgba(255, 255, 255, 0.98);
+  background: rgba(30, 30, 30, 0.65);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   pointer-events: none;
   z-index: 6;
   width: max-content;
   max-width: none;
   min-width: 0;
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .lane-track:hover .lane-track__meta {
   opacity: 1;
+  transform: translateY(0);
 }
 
 .lane-track__meta-title {

@@ -677,6 +677,8 @@
     "deduplicateProgressFailed": "指纹去重失败"
   },
   "mixtape": {
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
     "title": "自动混音",
     "mixModeCreateTitle": "选择混音模式",
     "mixModeCreateHint": "该模式将写入混音工程，创建后不可切换。",
