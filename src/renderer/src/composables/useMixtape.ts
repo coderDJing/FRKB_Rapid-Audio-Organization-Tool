@@ -1268,6 +1268,7 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     mixtapePlaylistId,
     mixtapeMixMode,
     mixtapeStemMode,
+    mixtapeStemProfile,
     mixtapeMenus,
     handleTitleOpenDialog,
     mixtapeRawItems,

@@ -10,6 +10,7 @@ import { useMixtape } from '@renderer/composables/useMixtape'
 import { createMixtapeGainEnvelopeEditor } from '@renderer/composables/mixtape/useGainEnvelopeEditor'
 import { useMixtapeAutoGainDialog } from '@renderer/composables/mixtape/useMixtapeAutoGainDialog'
 import { useMixtapeEnvelopePreview } from '@renderer/composables/mixtape/useMixtapeEnvelopePreview'
+import { useMixtapeOutputAvailability } from '@renderer/composables/mixtape/useMixtapeOutputAvailability'
 import {
   normalizeMixtapeGlobalBpmEnvelopePoints,
   resolveDefaultGlobalBpmFromTracks
@@ -38,12 +39,12 @@ const {
   t,
   titleLabel,
   mixtapePlaylistId,
-  mixtapeMenus,
   handleTitleOpenDialog,
   mixtapeRawItems,
   mixtapeItemsLoading,
   mixtapeMixMode,
   mixtapeStemMode,
+  mixtapeStemProfile,
   tracks,
   clearTimelineLayoutCache,
   updateTimelineWidth,
@@ -157,6 +158,32 @@ const {
 } = useMixtape({
   layoutScaleDeps: [masterTempoLaneExpanded]
 })
+
+const { canOutput: canOutputFromTitle } = useMixtapeOutputAvailability({
+  tracks,
+  mixtapeItemsLoading,
+  mixtapeMixMode,
+  mixtapeStemProfile,
+  bpmAnalysisActive,
+  transportDecoding,
+  transportPreloading,
+  outputRunning,
+  resolveTrackSourceDurationSeconds
+})
+
+const titleMenus = computed(() => [
+  {
+    name: 'mixtape.menuOutput',
+    subMenu: [],
+    directAction: 'mixtape.menuOutput',
+    disabled: !canOutputFromTitle.value
+  }
+])
+
+const handleTitleMenuOpen = (key: string) => {
+  if (key === 'mixtape.menuOutput' && !canOutputFromTitle.value) return
+  handleTitleOpenDialog(key)
+}
 
 type MixParamId =
   | 'position'
@@ -541,9 +568,9 @@ watch(
         control-prefix="mixtapeWindow"
         max-event-channel="mixtapeWindow-max"
         :title-text="titleLabel"
-        :menu-override="mixtapeMenus"
+        :menu-override="titleMenus"
         :enable-menu-hotkeys="false"
-        @open-dialog="handleTitleOpenDialog"
+        @open-dialog="handleTitleMenuOpen"
       >
       </titleComponent>
     </div>
