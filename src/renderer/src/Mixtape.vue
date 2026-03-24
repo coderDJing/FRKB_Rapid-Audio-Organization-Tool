@@ -11,6 +11,15 @@ import { createMixtapeGainEnvelopeEditor } from '@renderer/composables/mixtape/u
 import { useMixtapeAutoGainDialog } from '@renderer/composables/mixtape/useMixtapeAutoGainDialog'
 import { useMixtapeEnvelopePreview } from '@renderer/composables/mixtape/useMixtapeEnvelopePreview'
 import {
+  buildFlatMixtapeGlobalBpmEnvelope,
+  normalizeMixtapeGlobalBpmEnvelopePoints,
+  resolveDefaultGlobalBpmFromTracks
+} from '@renderer/composables/mixtape/mixtapeGlobalTempoModel'
+import {
+  mixtapeGlobalTempoEnvelope,
+  mixtapeGlobalTempoPlaylistId
+} from '@renderer/composables/mixtape/mixtapeGlobalTempoState'
+import {
   buildTrackTimingUndoSnapshot,
   isTrackTimingSnapshotSame,
   restoreTrackTimingUndoSnapshot
@@ -23,6 +32,8 @@ import type {
   TimelineTrackLayout
 } from '@renderer/composables/mixtape/types'
 import type { TrackTimingUndoSnapshot } from '@renderer/composables/mixtape/mixtapeTrackTimingUndo'
+
+const masterTempoLaneExpanded = ref(false)
 
 const {
   t,
@@ -142,7 +153,9 @@ const {
   handleAutoGainDialogConfirm,
   handleAutoGainSelectLoudestReference,
   handleAutoGainSelectQuietestReference
-} = useMixtape()
+} = useMixtape({
+  layoutScaleDeps: [masterTempoLaneExpanded]
+})
 
 type MixParamId =
   | 'position'
@@ -431,20 +444,84 @@ onBeforeUnmount(() => {
 
 const MASTER_TEMPO_LANE_BASE_HEIGHT = 84
 const MASTER_TEMPO_LANE_MIN_HEIGHT = 68
+const MASTER_TEMPO_LANE_COLLAPSED_HEIGHT = 24
+const MASTER_TEMPO_LANE_DIVIDER_HEIGHT = 24
 
 const masterTempoLaneHeight = computed(() => {
   if (!tracks.value.length) return 0
+  if (!masterTempoLaneExpanded.value) return MASTER_TEMPO_LANE_COLLAPSED_HEIGHT
   const scale = Math.min(1, Math.max(0.5, Number(timelineVisualScale.value) || 1))
   return Math.max(MASTER_TEMPO_LANE_MIN_HEIGHT, Math.round(MASTER_TEMPO_LANE_BASE_HEIGHT * scale))
 })
 
+const masterTempoTimelineDurationSec = computed(() =>
+  Math.max(
+    0,
+    ...tracks.value.map((track) => {
+      const startSec = Number(track.startSec)
+      const durationSec = Math.max(0, Number(resolveTrackDurationSeconds(track)) || 0)
+      const safeStartSec = Number.isFinite(startSec) && startSec >= 0 ? startSec : 0
+      return safeStartSec + durationSec
+    })
+  )
+)
+
+const masterTempoDefaultBpm = computed(() => resolveDefaultGlobalBpmFromTracks(tracks.value))
+
+const masterTempoEffectivePoints = computed(() =>
+  normalizeMixtapeGlobalBpmEnvelopePoints(
+    mixtapeGlobalTempoPlaylistId.value === mixtapePlaylistId.value
+      ? mixtapeGlobalTempoEnvelope.value
+      : [],
+    masterTempoTimelineDurationSec.value,
+    masterTempoDefaultBpm.value
+  )
+)
+
+const masterTempoFlatReferencePoints = computed(() =>
+  buildFlatMixtapeGlobalBpmEnvelope(
+    masterTempoTimelineDurationSec.value,
+    masterTempoDefaultBpm.value
+  )
+)
+
+const masterTempoEdited = computed(
+  () =>
+    JSON.stringify(masterTempoEffectivePoints.value) !==
+    JSON.stringify(masterTempoFlatReferencePoints.value)
+)
+
 const timelineTrackAreaStyle = computed(() => ({
-  height: `${timelineTrackAreaHeight.value + masterTempoLaneHeight.value}px`
+  height: `${
+    timelineTrackAreaHeight.value +
+    masterTempoLaneHeight.value +
+    (tracks.value.length ? MASTER_TEMPO_LANE_DIVIDER_HEIGHT : 0)
+  }px`
 }))
 
 const handleGlobalBpmTrackTargetsSync = (nextTracks: MixtapeTrack[]) => {
   tracks.value = nextTracks
 }
+
+const handleToggleMasterTempoLane = () => {
+  if (!tracks.value.length) return
+  masterTempoLaneExpanded.value = !masterTempoLaneExpanded.value
+}
+
+watch(
+  () => [mixtapePlaylistId.value, tracks.value.length] as const,
+  ([playlistId, trackCount], previousValue) => {
+    const [previousPlaylistId, previousTrackCount] = previousValue ?? ['', 0]
+    if (trackCount === 0) {
+      masterTempoLaneExpanded.value = false
+      return
+    }
+    if (playlistId !== previousPlaylistId || (!previousTrackCount && trackCount > 0)) {
+      masterTempoLaneExpanded.value = false
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <template>
@@ -477,6 +554,26 @@ const handleGlobalBpmTrackTargetsSync = (nextTracks: MixtapeTrack[]) => {
               @click="selectedMixParam = item.id"
             >
               {{ t(item.labelKey) }}
+            </button>
+            <button
+              class="mixtape-param-bar__tab mixtape-param-bar__tab--bpm"
+              :class="{ 'is-active': masterTempoLaneExpanded }"
+              type="button"
+              :disabled="!tracks.length"
+              :aria-pressed="masterTempoLaneExpanded"
+              @click="handleToggleMasterTempoLane"
+            >
+              <span class="mixtape-param-bar__toggle-dot" aria-hidden="true"></span>
+              <span class="mixtape-param-bar__toggle-label">{{ t('mixtape.bpm') }}</span>
+              <span class="mixtape-param-bar__toggle-state">
+                {{
+                  t(
+                    masterTempoLaneExpanded
+                      ? 'mixtape.masterTempoLaneSwitchOn'
+                      : 'mixtape.masterTempoLaneSwitchOff'
+                  )
+                }}
+              </span>
             </button>
           </div>
           <div v-if="isEnvelopeParamMode" class="mixtape-param-bar__hint">
@@ -627,8 +724,19 @@ const handleGlobalBpmTrackTargetsSync = (nextTracks: MixtapeTrack[]) => {
                       '--timeline-viewport-width': `${timelineViewportWidth}px`
                     }"
                   >
+                    <div v-if="tracks.length > 0" class="timeline-master-bpm-divider">
+                      <div class="timeline-master-bpm-divider__inner">
+                        <span class="timeline-master-bpm-divider__title">
+                          {{ t('mixtape.masterBpm') }}
+                        </span>
+                        <span v-if="masterTempoEdited" class="timeline-master-bpm-divider__badge">
+                          {{ t('mixtape.masterTempoLaneEdited') }}
+                        </span>
+                      </div>
+                    </div>
                     <MixtapeGlobalBpmEditor
                       :visible="tracks.length > 0"
+                      :expanded="masterTempoLaneExpanded"
                       :playlist-id="mixtapePlaylistId"
                       :tracks="tracks"
                       :height-px="masterTempoLaneHeight"

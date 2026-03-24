@@ -95,6 +95,52 @@
   z-index: 4;
 }
 
+.timeline-master-bpm-divider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+  pointer-events: none;
+  z-index: 4;
+}
+
+.timeline-master-bpm-divider__inner {
+  position: relative;
+  left: calc(var(--timeline-scroll-left) + 10px);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 8px;
+  min-height: 18px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(6px);
+}
+
+.timeline-master-bpm-divider__title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-weak);
+  text-transform: uppercase;
+}
+
+.timeline-master-bpm-divider__badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font-size: 10px;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .timeline-playhead {
   position: absolute;
   top: 0;

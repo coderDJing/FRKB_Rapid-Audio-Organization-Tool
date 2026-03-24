@@ -50,6 +50,7 @@ import type {
   MixtapeTrack,
   TimelineTrackLayout
 } from '@renderer/composables/mixtape/types'
+import type { Ref } from 'vue'
 type MixtapeStemSummary = {
   pending: number
   running: number
@@ -135,7 +136,11 @@ const createEmptyStemRuntimeDownloadState = (): StemRuntimeDownloadState => ({
   updatedAt: 0
 })
 const STEM_RUNTIME_PROGRESS_MAX_VISIBLE_ITEMS = 6
-export const useMixtape = () => {
+type UseMixtapeOptions = {
+  layoutScaleDeps?: Ref<unknown>[]
+}
+
+export const useMixtape = (options: UseMixtapeOptions = {}) => {
   const contextMenuClickThroughGuard = createClickThroughGuard()
   const CONTEXT_MENU_SELECTOR = '[data-frkb-context-menu="true"]'
   const payload = ref<MixtapeOpenPayload>(resolveInitialMixtapePayload())
@@ -248,7 +253,8 @@ export const useMixtape = () => {
     bpmAnalysisActive,
     bpmAnalysisFailed,
     mixtapeMixMode,
-    mixtapeStemMode
+    mixtapeStemMode,
+    layoutScaleDeps: options.layoutScaleDeps
   })
   const displayName = computed(() => {
     return (

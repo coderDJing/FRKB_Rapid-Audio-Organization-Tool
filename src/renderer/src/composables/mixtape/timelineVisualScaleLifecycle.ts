@@ -10,6 +10,7 @@ export const setupTimelineVisualScaleLifecycle = (ctx: any) => {
     timelineRootRef,
     transportError,
     timelineVisualScale,
+    layoutScaleDeps,
     resolveTimelineScalableBaseHeight,
     timelineVisualScaleMin,
     timelineVisualScaleMax,
@@ -40,6 +41,7 @@ export const setupTimelineVisualScaleLifecycle = (ctx: any) => {
     timelineRootRef: BridgeRef<HTMLElement | null>
     transportError: BridgeRef<string>
     timelineVisualScale: BridgeRef<number>
+    layoutScaleDeps: Array<BridgeRef<unknown>>
     resolveTimelineScalableBaseHeight: () => number
     timelineVisualScaleMin: number
     timelineVisualScaleMax: number
@@ -151,6 +153,13 @@ export const setupTimelineVisualScaleLifecycle = (ctx: any) => {
 
   watch(
     () => transportError.value,
+    () => {
+      scheduleTimelineVisualScaleUpdate()
+    }
+  )
+
+  watch(
+    () => layoutScaleDeps.map((dep) => dep.value),
     () => {
       scheduleTimelineVisualScaleUpdate()
     }

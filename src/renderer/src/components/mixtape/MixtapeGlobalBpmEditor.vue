@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { t } from '@renderer/utils/translate'
 import {
   BASE_PX_PER_SEC,
   GRID_BEAT4_LINE_WIDTH,
@@ -12,7 +11,6 @@ import {
 import { resolveRoundedTimelineAbsolutePx } from '@renderer/composables/mixtape/timelinePixelMath'
 import {
   applyMixtapeGlobalTempoTargetsToTracks,
-  buildFlatMixtapeGlobalBpmEnvelope,
   normalizeMixtapeGlobalBpmEnvelopePoints,
   resolveDefaultGlobalBpmFromTracks,
   resolveMixtapeGlobalBpmVisualRange,
@@ -33,6 +31,7 @@ import { resizeCanvasWithScaleMetrics } from '@renderer/utils/canvasScale'
 
 const props = defineProps<{
   visible: boolean
+  expanded: boolean
   playlistId: string
   tracks: MixtapeTrack[]
   heightPx: number
@@ -98,7 +97,8 @@ const timelineDurationSec = computed(() =>
   )
 )
 
-const shouldRender = computed(() => props.visible && timelineDurationSec.value > 0)
+const shouldShowLane = computed(() => props.visible && timelineDurationSec.value > 0)
+const shouldRenderEditor = computed(() => shouldShowLane.value && props.expanded)
 const defaultBpm = computed(() => resolveDefaultGlobalBpmFromTracks(props.tracks))
 const pxPerSec = computed(
   () => BASE_PX_PER_SEC * MIXTAPE_WIDTH_SCALE * Math.max(0.1, Number(props.renderZoomLevel) || 0.1)
@@ -136,10 +136,6 @@ const effectivePoints = computed(() =>
     timelineDurationSec.value,
     defaultBpm.value
   )
-)
-
-const flatReferencePoints = computed(() =>
-  buildFlatMixtapeGlobalBpmEnvelope(timelineDurationSec.value, defaultBpm.value)
 )
 
 const visualRange = computed(() =>
@@ -263,10 +259,6 @@ const resolveSnappedTimelineSec = (
   return roundTrackTempoSec(clampNumber(nearest, safeMinSec, safeMaxSec))
 }
 
-const isEdited = computed(
-  () => JSON.stringify(effectivePoints.value) !== JSON.stringify(flatReferencePoints.value)
-)
-
 const currentPlayheadSec = computed(() =>
   clampNumber(Number(props.playheadSec) || 0, 0, Math.max(0, timelineDurationSec.value))
 )
@@ -284,9 +276,7 @@ const formatBpmLabel = (value: number) => {
 }
 
 const currentBpmLabel = computed(() => formatBpmLabel(currentBpmValue.value))
-const currentBpmText = computed(() =>
-  t('mixtape.masterTempoLaneCurrentBpm', { bpm: currentBpmLabel.value })
-)
+const currentBpmText = computed(() => `bpm:${currentBpmLabel.value}`)
 
 const playheadMarker = computed(() => {
   const xPx = resolveTimelineXPx(currentPlayheadSec.value)
@@ -322,7 +312,7 @@ const resolveGridLineVisual = (level: ProjectedTrackGridLine['level']) => {
 
 const drawGridCanvas = () => {
   const canvas = gridCanvasRef.value
-  if (!canvas || !shouldRender.value) return
+  if (!canvas || !shouldRenderEditor.value) return
   const width = Math.max(0, Math.floor(Number(props.timelineViewportWidth) || 0))
   const height = Math.max(0, Math.floor(Number(props.heightPx) || 0))
   if (!width || !height) return
@@ -600,7 +590,7 @@ const resolveStagePointFromMouse = (event: MouseEvent) => {
 }
 
 const handleStageMouseDown = (event: MouseEvent) => {
-  if (!shouldRender.value) return
+  if (!shouldRenderEditor.value) return
   const point = resolveStagePointFromMouse(event)
   if (!point) return
   point.sec = resolveSnappedTimelineSec(point.sec)
@@ -723,6 +713,7 @@ onMounted(() => {
 watch(
   () => [
     props.visible,
+    props.expanded,
     props.timelineScrollLeft,
     props.timelineViewportWidth,
     props.heightPx,
@@ -737,30 +728,44 @@ watch(
   },
   { immediate: true, flush: 'post' }
 )
+
+watch(
+  () => props.expanded,
+  (expanded) => {
+    if (expanded) {
+      scheduleGridCanvasDraw()
+      return
+    }
+    if (dragState.value) {
+      handleWindowMouseUp()
+      return
+    }
+    cancelPreviewTrackSync()
+    dragState.value = null
+    window.removeEventListener('mousemove', handleWindowMouseMove as EventListener)
+    window.removeEventListener('mouseup', handleWindowMouseUp as EventListener)
+  }
+)
 </script>
 
 <template>
-  <div v-if="shouldRender" class="timeline-master-bpm" :style="laneStyle">
-    <div
-      ref="stageRef"
-      class="timeline-master-bpm__stage"
-      @mousedown.stop.prevent="handleStageMouseDown"
-    >
-      <div class="timeline-master-bpm__header">
-        <div class="timeline-master-bpm__title-wrap">
-          <div class="timeline-master-bpm__title">{{ t('mixtape.masterBpm') }}</div>
-          <div v-if="isEdited" class="timeline-master-bpm__edited-badge">
-            {{ t('mixtape.masterTempoLaneEdited') }}
-          </div>
-        </div>
-        <div class="timeline-master-bpm__readout">{{ currentBpmText }}</div>
-      </div>
-
+  <div
+    v-if="shouldShowLane"
+    class="timeline-master-bpm"
+    :class="{ 'is-expanded': props.expanded }"
+    :style="laneStyle"
+  >
+    <div v-if="props.expanded" ref="stageRef" class="timeline-master-bpm__stage">
       <canvas
         ref="gridCanvasRef"
         class="timeline-master-bpm__grid-canvas"
         :style="gridCanvasStyle"
       ></canvas>
+
+      <div
+        class="timeline-master-bpm__stage-hit-area"
+        @mousedown.stop.prevent="handleStageMouseDown"
+      ></div>
 
       <svg
         class="timeline-master-bpm__svg"
@@ -783,7 +788,7 @@ watch(
         :class="[`is-align-${playheadMarker.align}`]"
         :style="{ left: `${playheadMarker.xPx}px` }"
       >
-        {{ currentBpmLabel }}
+        {{ currentBpmText }}
       </div>
 
       <div class="timeline-master-bpm__points">
@@ -807,6 +812,23 @@ watch(
         </button>
       </div>
     </div>
+
+    <div
+      v-else
+      class="timeline-master-bpm__collapsed-stage"
+      @mousedown.stop.prevent
+      @click.stop.prevent
+    >
+      <div
+        v-if="props.playheadVisible"
+        class="timeline-master-bpm__playhead-chip is-collapsed"
+        :class="[`is-align-${playheadMarker.align}`]"
+        :style="{ left: `${playheadMarker.xPx}px` }"
+      >
+        {{ currentBpmText }}
+      </div>
+      <div v-else class="timeline-master-bpm__collapsed-readout">{{ currentBpmText }}</div>
+    </div>
   </div>
 </template>
 
@@ -815,94 +837,83 @@ watch(
   position: relative;
   box-sizing: border-box;
   overflow: hidden;
+  background: transparent;
+}
+
+.timeline-master-bpm.is-expanded {
   background: var(--bg);
 }
 
 .timeline-master-bpm__stage {
-  position: relative;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
   box-sizing: border-box;
   border-radius: 0;
   border: 0;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0.01) 100%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.038) 0%, rgba(255, 255, 255, 0.012) 100%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018) 0%, rgba(255, 255, 255, 0) 56%),
     var(--bg-elev);
   overflow: hidden;
-  cursor: crosshair;
-  box-shadow: inset 0 0 0 1px var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
-.timeline-master-bpm__header {
+.timeline-master-bpm__collapsed-stage {
   position: absolute;
-  inset: 0 0 auto 0;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 6px 10px 0;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.022) 0%, rgba(255, 255, 255, 0.008) 100%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.012) 0%, rgba(255, 255, 255, 0) 100%),
+    var(--bg-elev);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  cursor: default;
+}
+
+.timeline-master-bpm__collapsed-readout {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(14, 18, 28, 0.92);
+  color: var(--text);
+  font-size: 10px;
+  line-height: 1.2;
+  transform: translate(-50%, -50%);
   pointer-events: none;
 }
 
-.timeline-master-bpm__title-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+.timeline-master-bpm__stage-hit-area {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  cursor: crosshair;
 }
 
-.timeline-master-bpm__title {
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  color: var(--text-weak);
-  text-transform: uppercase;
+.timeline-master-bpm__grid-canvas {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
 }
 
-.timeline-master-bpm__edited-badge {
-  padding: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--accent);
-  font-size: 10px;
-  line-height: 1.2;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.timeline-master-bpm__readout {
-  flex-shrink: 0;
-  max-width: 44%;
-  padding: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--text-weak);
-  font-size: 11px;
-  line-height: 1.2;
-  white-space: nowrap;
-  text-align: right;
-}
-
-.timeline-master-bpm__grid-canvas,
 .timeline-master-bpm__svg,
 .timeline-master-bpm__points {
   position: absolute;
   inset: 0;
 }
 
-.timeline-master-bpm__grid-canvas {
-  z-index: 1;
-  pointer-events: none;
-}
-
 .timeline-master-bpm__svg {
-  z-index: 2;
+  z-index: 3;
   pointer-events: none;
 }
 
 .timeline-master-bpm__points {
-  z-index: 3;
+  z-index: 5;
 }
 
 .timeline-master-bpm__midline {
@@ -923,41 +934,56 @@ watch(
 
 .timeline-master-bpm__playhead-chip {
   position: absolute;
-  top: 24px;
-  z-index: 3;
-  min-width: 34px;
-  padding: 2px 6px;
+  top: 4px;
+  z-index: 4;
+  min-width: 52px;
+  padding: 2px 7px;
   border-radius: 999px;
-  border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.76);
   color: var(--text);
   font-size: 10px;
   line-height: 1.2;
   pointer-events: none;
-  transform: translateX(-50%);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
+  transform: translateX(10px);
 }
 
 .timeline-master-bpm__playhead-chip.is-align-left {
-  transform: none;
+  transform: translateX(10px);
 }
 
 .timeline-master-bpm__playhead-chip.is-align-right {
-  transform: translateX(-100%);
+  transform: translateX(calc(-100% - 10px));
+}
+
+.timeline-master-bpm__playhead-chip.is-collapsed {
+  top: 50%;
+  background: rgba(14, 18, 28, 0.92);
+  transform: translate(10px, -50%);
+}
+
+.timeline-master-bpm__playhead-chip.is-collapsed.is-align-left {
+  transform: translate(10px, -50%);
+}
+
+.timeline-master-bpm__playhead-chip.is-collapsed.is-align-right {
+  transform: translate(calc(-100% - 10px), -50%);
 }
 
 .timeline-master-bpm__point {
   position: absolute;
-  width: 10px;
-  height: 10px;
+  width: 11px;
+  height: 11px;
   padding: 0;
   appearance: none;
   -webkit-appearance: none;
   box-sizing: border-box;
   transform: translate(-50%, -50%);
   border-radius: 999px;
-  border: 1px solid rgba(0, 0, 0, 0.65);
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: none;
+  border: 1px solid rgba(0, 0, 0, 0.55);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
   overflow: visible;
 }
 
@@ -970,9 +996,9 @@ watch(
   position: absolute;
   left: 50%;
   min-width: 28px;
-  padding: 1px 5px;
+  padding: 2px 6px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.78);
+  background: rgba(0, 0, 0, 0.76);
   transform: translateX(-50%);
   font-size: 10px;
   line-height: 1;

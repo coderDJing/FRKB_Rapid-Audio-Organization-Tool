@@ -266,6 +266,81 @@
 .mixtape-param-bar__tab--bpm {
   --mix-tab-accent-rgb: 255, 116, 163;
   --mix-tab-accent: #ff74a3;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px 0 8px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.mixtape-param-bar__toggle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(var(--mix-tab-accent-rgb), 0.36);
+  box-shadow:
+    inset 0 0 0 1px rgba(var(--mix-tab-accent-rgb), 0.12),
+    0 0 0 1px rgba(0, 0, 0, 0.18);
+  transition:
+    background 0.12s ease,
+    box-shadow 0.12s ease,
+    transform 0.12s ease;
+}
+
+.mixtape-param-bar__toggle-label {
+  color: inherit;
+}
+
+.mixtape-param-bar__toggle-state {
+  min-width: 24px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 10px;
+  line-height: 16px;
+  letter-spacing: 0.08em;
+  text-align: center;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.mixtape-param-bar__tab--bpm:hover .mixtape-param-bar__toggle-dot {
+  background: rgba(var(--mix-tab-accent-rgb), 0.64);
+}
+
+.mixtape-param-bar__tab--bpm.is-active {
+  background: linear-gradient(
+    180deg,
+    rgba(var(--mix-tab-accent-rgb), 0.34) 0%,
+    rgba(var(--mix-tab-accent-rgb), 0.18) 100%
+  );
+  box-shadow:
+    inset 0 0 0 1px rgba(var(--mix-tab-accent-rgb), 0.28),
+    0 0 0 1px rgba(0, 0, 0, 0.18),
+    0 6px 16px rgba(var(--mix-tab-accent-rgb), 0.14);
+}
+
+.mixtape-param-bar__tab--bpm.is-active .mixtape-param-bar__toggle-dot {
+  background: rgb(var(--mix-tab-accent-rgb));
+  box-shadow:
+    0 0 0 4px rgba(var(--mix-tab-accent-rgb), 0.18),
+    0 0 14px rgba(var(--mix-tab-accent-rgb), 0.42);
+  transform: scale(1.02);
+}
+
+.mixtape-param-bar__tab--bpm.is-active .mixtape-param-bar__toggle-state {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--mix-tab-accent);
+  box-shadow: inset 0 0 0 1px rgba(var(--mix-tab-accent-rgb), 0.24);
+}
+
+.mixtape-param-bar__tab--bpm:disabled .mixtape-param-bar__toggle-dot,
+.mixtape-param-bar__tab--bpm:disabled .mixtape-param-bar__toggle-state {
+  box-shadow: none;
 }
 
 .mixtape-param-bar__tab--vocal {
@@ -321,6 +396,11 @@
 :global(.theme-light) .mixtape-param-bar__tab--bpm {
   --mix-tab-accent-rgb: 219, 39, 119;
   --mix-tab-accent: #db2777;
+}
+
+:global(.theme-light) .mixtape-param-bar__toggle-state {
+  background: rgba(15, 23, 42, 0.06);
+  color: rgba(15, 23, 42, 0.66);
 }
 
 :global(.theme-light) .mixtape-param-bar__tab--vocal {

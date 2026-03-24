@@ -76,10 +76,18 @@ type UseMixtapeTimelineOptions = {
   bpmAnalysisFailed: Ref<boolean>
   mixtapeMixMode: Ref<MixtapeMixMode>
   mixtapeStemMode: Ref<MixtapeStemMode>
+  layoutScaleDeps?: Ref<unknown>[]
 }
 
 export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
-  const { tracks, bpmAnalysisActive, bpmAnalysisFailed, mixtapeMixMode, mixtapeStemMode } = options
+  const {
+    tracks,
+    bpmAnalysisActive,
+    bpmAnalysisFailed,
+    mixtapeMixMode,
+    mixtapeStemMode,
+    layoutScaleDeps = []
+  } = options
   const isStemMixMode = () => mixtapeMixMode.value === 'stem'
   const zoom = ref(ZOOM_MIN)
   const renderZoom = ref(ZOOM_MIN)
@@ -1011,6 +1019,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     timelineRootRef,
     transportError,
     timelineVisualScale,
+    layoutScaleDeps,
     resolveTimelineScalableBaseHeight,
     timelineVisualScaleMin: TIMELINE_VISUAL_SCALE_MIN,
     timelineVisualScaleMax: TIMELINE_VISUAL_SCALE_MAX,
