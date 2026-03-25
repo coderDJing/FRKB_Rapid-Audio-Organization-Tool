@@ -484,7 +484,7 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     }
     playlistUpdateTimer = setTimeout(() => {
       playlistUpdateTimer = null
-      loadMixtapeItems()
+      loadMixtapeItems({ background: true })
     }, 120)
   }
   const handlePlaylistContentChanged = (eventPayload: any) => {
@@ -581,7 +581,7 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
       if (nextStatus !== 'ready' || prevStatus === 'ready') return
       if (!String(payload.value.playlistId || '').trim()) return
       if (mixtapeMixMode.value !== 'stem') return
-      void loadMixtapeItems()
+      void loadMixtapeItems({ background: true })
     }
   )
   onMounted(() => {

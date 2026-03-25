@@ -415,7 +415,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     }
   }
 
-  const loadMixtapeItems = async () => {
+  const loadMixtapeItems = async (options?: { background?: boolean }) => {
     const requestToken = ++mixtapeItemsRequestToken
     const playlistId = String(payload.value.playlistId || '').trim()
     if (!playlistId) {
@@ -435,7 +435,11 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
       resetMixtapeGlobalTempoState()
       return
     }
-    mixtapeItemsLoading.value = true
+    const hasVisibleItems = tracks.value.length > 0 || mixtapeRawItems.value.length > 0
+    const showLoading = !options?.background || !hasVisibleItems
+    if (showLoading) {
+      mixtapeItemsLoading.value = true
+    }
     try {
       resetMixtapeGlobalTempoState(playlistId)
       const result = await window.electron.ipcRenderer.invoke('mixtape:list', {
@@ -565,7 +569,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
         error
       })
     } finally {
-      if (requestToken === mixtapeItemsRequestToken) {
+      if (showLoading && requestToken === mixtapeItemsRequestToken) {
         mixtapeItemsLoading.value = false
       }
     }
