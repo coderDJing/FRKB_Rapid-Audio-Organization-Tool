@@ -1,7 +1,7 @@
 import childProcess from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { resolveBundledDemucsRootPath } from '../demucs'
+import { resolveBundledDemucsBootstrapDirPath } from '../demucs'
 import { log } from '../log'
 import mixtapeWindow from '../window/mixtapeWindow'
 
@@ -416,8 +416,7 @@ class PersistentXpuStemWorkerSlot {
 
 class PersistentXpuStemWorkerManager {
   private readonly workerScriptPath = path.join(
-    resolveBundledDemucsRootPath(),
-    'bootstrap',
+    resolveBundledDemucsBootstrapDirPath(),
     'mixtape_demucs_worker.py'
   )
   private readonly slots = Array.from(

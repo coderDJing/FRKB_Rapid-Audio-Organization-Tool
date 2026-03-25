@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { resolveBundledFfmpegPath } from '../ffmpeg'
 import {
+  resolveBundledDemucsBootstrapDirPath,
   resolveBundledDemucsModelsPath,
   resolveBundledDemucsPythonPath,
   resolveBundledDemucsRootPath,
@@ -55,7 +56,7 @@ const {
 } = probe
 
 const resolveDemucsBootstrapPath = () =>
-  path.join(resolveBundledDemucsRootPath(), 'bootstrap', 'mixtape_demucs_bootstrap.py')
+  path.join(resolveBundledDemucsBootstrapDirPath(), 'mixtape_demucs_bootstrap.py')
 
 type DemucsWaveformBootstrapInput = {
   pcmPath: string
@@ -332,9 +333,10 @@ const resolveDemucsModelCandidates = (params: {
   }
   if (!availableCandidates.length) {
     const reason = skippedDetails.map((item) => `${item.model}:${item.reason}`).join(' | ')
+    const modelRepoPath = resolveBundledDemucsModelsPath()
     throw createStemError(
       'STEM_MODEL_MISSING',
-      `未找到可用的本地 Demucs 模型，请检查 vendor/demucs/models: ${reason || 'none'}`
+      `未找到可用的本地 Demucs 模型，请检查 ${modelRepoPath}: ${reason || 'none'}`
     )
   }
   if (skippedDetails.length > 0) {

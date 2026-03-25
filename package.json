@@ -132,7 +132,8 @@
     "docs:preview": "vitepress preview docs",
     "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
     "start": "electron-vite preview",
-    "dev": "node scripts/ensure-demucs-runtime.mjs && electron-vite dev",
+    "dev": "node scripts/run-frkb-dev.mjs",
+    "dev:release-runtime": "node scripts/run-frkb-dev.mjs --release-runtime",
     "build": "electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "clean": "rimraf dist",
@@ -142,6 +143,7 @@
     "build:linux": "npm run clean && npm run build && electron-builder --linux",
     "demucs:runtime:prepare": "node scripts/prepare-demucs-runtimes.mjs",
     "demucs:runtime:ensure": "node scripts/ensure-demucs-runtime.mjs",
+    "demucs:runtime:sync-remote": "node scripts/ensure-demucs-runtime.mjs --runtime-root vendor/demucs-release --prefer-remote-assets --sync-remote-assets --strict",
     "demucs:runtime:package": "node scripts/package-demucs-runtime-assets.mjs",
     "lint-staged": "lint-staged",
     "prepare": "husky"

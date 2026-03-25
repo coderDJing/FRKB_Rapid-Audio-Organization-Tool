@@ -2,17 +2,58 @@ import { app } from 'electron'
 import fs from 'node:fs'
 import path = require('path')
 
+const DEMUCS_DEV_ROOT_ENV = 'FRKB_DEMUCS_ROOT'
+
 export const resolveDemucsPlatformDir = () => {
   if (process.platform === 'win32') return 'win32-x64'
   if (process.platform === 'darwin') return process.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64'
   return process.arch === 'arm64' ? 'linux-arm64' : 'linux-x64'
 }
 
-export function resolveBundledDemucsRootPath(): string {
+const resolveDefaultBundledDemucsRootPath = (): string => {
   if (app.isPackaged) {
     return path.join(process.resourcesPath, 'demucs')
   }
   return path.resolve(__dirname, '../../vendor/demucs')
+}
+
+const resolveDevDemucsRootOverridePath = (): string => {
+  if (app.isPackaged) return ''
+  const configuredRoot = String(process.env[DEMUCS_DEV_ROOT_ENV] || '').trim()
+  if (!configuredRoot) return ''
+  return path.isAbsolute(configuredRoot)
+    ? path.normalize(configuredRoot)
+    : path.resolve(process.cwd(), configuredRoot)
+}
+
+const resolveBundledDemucsRootCandidates = (): string[] => {
+  const candidates: string[] = []
+  const seen = new Set<string>()
+
+  const addCandidate = (candidatePath: string) => {
+    const normalizedPath = String(candidatePath || '').trim()
+    if (!normalizedPath || seen.has(normalizedPath)) return
+    seen.add(normalizedPath)
+    candidates.push(normalizedPath)
+  }
+
+  addCandidate(resolveDevDemucsRootOverridePath())
+  addCandidate(resolveDefaultBundledDemucsRootPath())
+  return candidates
+}
+
+const resolveExistingBundledDemucsSubPath = (segments: string[]): string => {
+  const candidates = resolveBundledDemucsRootCandidates().map((rootPath) =>
+    path.join(rootPath, ...segments)
+  )
+  for (const candidatePath of candidates) {
+    if (fs.existsSync(candidatePath)) return candidatePath
+  }
+  return candidates[0] || path.join(resolveDefaultBundledDemucsRootPath(), ...segments)
+}
+
+export function resolveBundledDemucsRootPath(): string {
+  return resolveBundledDemucsRootCandidates()[0] || resolveDefaultBundledDemucsRootPath()
 }
 
 export function resolveInstalledDemucsRootPath(): string {
@@ -25,6 +66,10 @@ export function resolveInstalledDemucsPlatformRootPath(): string {
 
 export function resolveBundledDemucsRuntimeDir(): string {
   return path.join(resolveBundledDemucsRootPath(), resolveDemucsPlatformDir(), 'runtime')
+}
+
+export function resolveBundledDemucsBootstrapDirPath(): string {
+  return resolveExistingBundledDemucsSubPath(['bootstrap'])
 }
 
 export function resolveBundledDemucsPythonPath(runtimeDir?: string): string {
@@ -44,7 +89,7 @@ export function resolveBundledDemucsPythonPath(runtimeDir?: string): string {
 }
 
 export function resolveBundledDemucsModelsPath(): string {
-  return path.join(resolveBundledDemucsRootPath(), 'models')
+  return resolveExistingBundledDemucsSubPath(['models'])
 }
 
 export type BundledDemucsRuntimeCandidate = {
@@ -87,10 +132,14 @@ const resolveRuntimeCandidatesFromPlatformRoot = (
 export function resolveBundledDemucsRuntimeCandidates(): BundledDemucsRuntimeCandidate[] {
   const candidates: BundledDemucsRuntimeCandidate[] = []
   const seen = new Set<string>()
-  const platformRoots = [
-    resolveInstalledDemucsPlatformRootPath(),
-    path.join(resolveBundledDemucsRootPath(), resolveDemucsPlatformDir())
-  ]
+  const platformRoots: string[] = []
+  const customRoot = resolveDevDemucsRootOverridePath()
+  if (customRoot) {
+    platformRoots.push(path.join(customRoot, resolveDemucsPlatformDir()))
+  } else {
+    platformRoots.push(resolveInstalledDemucsPlatformRootPath())
+    platformRoots.push(path.join(resolveDefaultBundledDemucsRootPath(), resolveDemucsPlatformDir()))
+  }
   for (const platformRoot of platformRoots) {
     for (const candidate of resolveRuntimeCandidatesFromPlatformRoot(platformRoot)) {
       if (seen.has(candidate.runtimeDir)) continue

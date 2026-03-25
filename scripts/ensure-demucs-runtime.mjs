@@ -1,9 +1,15 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { pipeline } from 'node:stream/promises'
-import { Readable } from 'node:stream'
 import { createHash } from 'node:crypto'
+import { Readable } from 'node:stream'
+import {
+  createConsoleDownloadProgressReporter,
+  createRemoteRuntimeAssetInstaller,
+  fetchWithRuntimeProxy,
+  probeRuntimeModules,
+  readJsonFileIfExists
+} from './lib/demucs-runtime-support.mjs'
 
 const runtimeProfilesPath = path.resolve('./scripts/demucs-runtime-profiles.json')
 const runtimeProfilesRaw = fs.readFileSync(runtimeProfilesPath, 'utf8')
@@ -58,7 +64,9 @@ const install = !hasFlag('--no-install')
 const strict = hasFlag('--strict') || hasFlag('--ci')
 const force = hasFlag('--force')
 const modelsOnly = hasFlag('--models-only')
+const syncRemoteAssets = hasFlag('--sync-remote-assets')
 const preferRemoteAssets =
+  syncRemoteAssets ||
   !strict ||
   hasFlag('--prefer-remote-assets') ||
   process.env.FRKB_DEMUCS_RUNTIME_PREFER_REMOTE === '1' ||
@@ -222,10 +230,9 @@ const validatePortableWindowsRuntime = (runtimeDir) => {
         }
         continue
       }
-      const fallbackSourcePath =
-        lowerAliasName.startsWith('pythonw')
-          ? path.join(runtimeDir, 'pythonw.exe')
-          : path.join(runtimeDir, 'python.exe')
+      const fallbackSourcePath = lowerAliasName.startsWith('pythonw')
+        ? path.join(runtimeDir, 'pythonw.exe')
+        : path.join(runtimeDir, 'python.exe')
       if (!fs.existsSync(fallbackSourcePath)) {
         const linkTarget = fs.readlinkSync(aliasPath)
         return {
@@ -353,232 +360,12 @@ const addUniqueItem = (target, value) => {
   target.push(normalized)
 }
 
-const readJsonFileIfExists = (filePath) => {
-  try {
-    if (!fs.existsSync(filePath)) return null
-    const raw = fs.readFileSync(filePath, 'utf8')
-    const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? parsed : null
-  } catch {
-    return null
-  }
-}
-
 const normalizeStringArray = (value) =>
   Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : []
 
 const arraysEqual = (left, right) => {
   if (left.length !== right.length) return false
   return left.every((item, index) => item === right[index])
-}
-
-const probeRuntimeModules = (pythonPath, runtimeDir) => {
-  const env = buildRuntimeEnv(runtimeDir)
-  const result = runQuiet(
-    pythonPath,
-    [
-      '-c',
-      [
-        'import json',
-        'payload = {"demucs": False, "torch": False, "torchaudio": False, "onnxruntime": False, "torch_directml": False, "onnxruntime_directml_provider": False, "torch_version": "", "xpu_backend": False, "xpu_available": False}',
-        'try:',
-        '  import demucs',
-        '  payload["demucs"] = True',
-        'except Exception as exc:',
-        '  payload["demucs_error"] = str(exc)',
-        'try:',
-        '  import torch',
-        '  payload["torch"] = True',
-        '  payload["torch_version"] = str(getattr(torch, "__version__", ""))',
-        '  xpu_api = getattr(torch, "xpu", None)',
-        '  payload["xpu_backend"] = bool(xpu_api) and ("+cpu" not in payload["torch_version"].lower())',
-        '  try:',
-        '    payload["xpu_available"] = bool(payload["xpu_backend"] and xpu_api and xpu_api.is_available())',
-        '  except Exception as exc:',
-        '    payload["xpu_available_error"] = str(exc)',
-        'except Exception as exc:',
-        '  payload["torch_error"] = str(exc)',
-        'try:',
-        '  import torchaudio',
-        '  payload["torchaudio"] = True',
-        'except Exception as exc:',
-        '  payload["torchaudio_error"] = str(exc)',
-        'try:',
-        '  import onnxruntime as ort',
-        '  payload["onnxruntime"] = True',
-        '  providers = list(ort.get_available_providers())',
-        '  payload["onnxruntime_directml_provider"] = "DmlExecutionProvider" in providers',
-        'except Exception as exc:',
-        '  payload["onnxruntime_error"] = str(exc)',
-        'try:',
-        '  import torch_directml',
-        '  payload["torch_directml"] = True',
-        'except Exception as exc:',
-        '  payload["torch_directml_error"] = str(exc)',
-        'print(json.dumps(payload))'
-      ].join('\n')
-    ],
-    {
-      timeout: 20_000,
-      env
-    }
-  )
-  if (result.status !== 0) {
-    return {
-      ok: false,
-      payload: null,
-      error: toShortText(result.stderr || result.stdout || `probe exit ${result.status ?? -1}`)
-    }
-  }
-  const stdout = String(result.stdout || '')
-  const lines = stdout
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-  const lastLine = lines.at(-1) || ''
-  if (!lastLine) {
-    return {
-      ok: false,
-      payload: null,
-      error: 'probe output empty'
-    }
-  }
-  try {
-    const payload = JSON.parse(lastLine)
-    return {
-      ok: true,
-      payload,
-      error: ''
-    }
-  } catch (error) {
-    return {
-      ok: false,
-      payload: null,
-      error: toShortText(error instanceof Error ? error.message : String(error || ''))
-    }
-  }
-}
-
-const readRuntimeAssetManifest = async () => {
-  if (!preferRemoteAssets) return null
-  try {
-    const response = await fetch(runtimeAssetManifestUrl, {
-      headers: {
-        Accept: 'application/json'
-      }
-    })
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`)
-    }
-    const manifest = await response.json()
-    if (!manifest || !Array.isArray(manifest.assets)) {
-      throw new Error('manifest assets missing')
-    }
-    return manifest
-  } catch (error) {
-    console.warn(
-      `[demucs-runtime-ensure] Runtime asset manifest unavailable: ${toShortText(
-        error instanceof Error ? error.message : String(error || 'unknown')
-      )}`
-    )
-    return null
-  }
-}
-
-const resolveRuntimeAssetEntry = (manifest, profileName) => {
-  if (!manifest || !Array.isArray(manifest.assets)) return null
-  return (
-    manifest.assets.find(
-      (item) =>
-        String(item?.platform || '').trim() === platformArg &&
-        String(item?.profile || '').trim() === profileName
-    ) || null
-  )
-}
-
-const downloadRuntimeAssetArchive = async (entry, archivePath) => {
-  const response = await fetch(String(entry.archiveUrl || ''))
-  if (!response.ok || !response.body) {
-    throw new Error(`download failed: HTTP ${response.status}`)
-  }
-  fs.mkdirSync(path.dirname(archivePath), { recursive: true })
-  await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(archivePath))
-}
-
-const extractRuntimeAssetArchive = (archivePath, targetDir) => {
-  fs.mkdirSync(targetDir, { recursive: true })
-  if (process.platform === 'win32') {
-    run('tar.exe', ['-xf', archivePath, '-C', targetDir])
-    return
-  }
-  if (process.platform === 'darwin') {
-    run('ditto', ['-x', '-k', archivePath, targetDir])
-    return
-  }
-  run('unzip', ['-q', archivePath, '-d', targetDir])
-}
-
-const installRuntimeProfileFromAsset = async (entry, profileName, runtimeDir) => {
-  const archiveName = String(entry?.archiveName || '').trim()
-  const archiveSha256 = normalizeSha256(entry?.archiveSha256)
-  const archiveSize = Number(entry?.archiveSize) || 0
-  const runtimeKey = String(entry?.runtimeKey || '').trim()
-  const pythonRelativePath = normalizeRelativePath(entry?.pythonRelativePath || '')
-  if (!archiveName || !archiveSha256 || !runtimeKey || !pythonRelativePath) {
-    throw new Error(`asset metadata invalid (${profileName})`)
-  }
-
-  const downloadCacheDir = path.resolve(runtimeRoot, '.downloads')
-  const archivePath = path.join(downloadCacheDir, archiveName)
-  const extractRoot = path.join(downloadCacheDir, `extract-${profileName}-${Date.now()}`)
-  const extractedRuntimeDir = path.join(extractRoot, runtimeKey)
-  const extractedPythonPath = path.join(extractedRuntimeDir, pythonRelativePath)
-
-  console.log(
-    `[demucs-runtime-ensure] Downloading runtime asset (${profileName}) from GitHub release`
-  )
-  await downloadRuntimeAssetArchive(entry, archivePath)
-  const stat = fs.statSync(archivePath)
-  if (archiveSize > 0 && stat.size !== archiveSize) {
-    throw new Error(
-      `runtime asset size mismatch (${profileName}): expected=${archiveSize} actual=${stat.size}`
-    )
-  }
-  const actualSha256 = await computeFileSha256(archivePath)
-  if (actualSha256 !== archiveSha256) {
-    throw new Error(
-      `runtime asset sha256 mismatch (${profileName}): expected=${archiveSha256} actual=${actualSha256}`
-    )
-  }
-
-  fs.rmSync(extractRoot, { recursive: true, force: true })
-  extractRuntimeAssetArchive(archivePath, extractRoot)
-  if (!fs.existsSync(extractedPythonPath)) {
-    throw new Error(`runtime asset python missing (${profileName}): ${pythonRelativePath}`)
-  }
-
-  fs.rmSync(runtimeDir, { recursive: true, force: true })
-  fs.mkdirSync(path.dirname(runtimeDir), { recursive: true })
-  fs.renameSync(extractedRuntimeDir, runtimeDir)
-  fs.rmSync(extractRoot, { recursive: true, force: true })
-  console.log(`[demucs-runtime-ensure] Installed runtime asset (${profileName}) -> ${runtimeDir}`)
-  return true
-}
-
-const tryInstallProfileFromRemoteAsset = async (manifest, profileName, runtimeDir) => {
-  if (!preferRemoteAssets) return false
-  const entry = resolveRuntimeAssetEntry(manifest, profileName)
-  if (!entry) return false
-  try {
-    return await installRuntimeProfileFromAsset(entry, profileName, runtimeDir)
-  } catch (error) {
-    console.warn(
-      `[demucs-runtime-ensure] Runtime asset install failed (${profileName}), fallback to local build: ${toShortText(
-        error instanceof Error ? error.message : String(error || 'unknown')
-      )}`
-    )
-    return false
-  }
 }
 
 const resolveSystemPythonCommand = () => {
@@ -753,10 +540,52 @@ const computeFileSha256 = async (filePath) => {
   })
 }
 
+const tryInstallProfileFromRemoteAsset = createRemoteRuntimeAssetInstaller({
+  preferRemoteAssets,
+  syncRemoteAssets,
+  runtimeAssetManifestUrl,
+  platformArg,
+  runtimeRoot,
+  run,
+  normalizeSha256,
+  normalizeRelativePath,
+  computeFileSha256,
+  toShortText
+})
+
 const ensureInsideDir = (baseDir, targetPath) => {
   const relativePath = path.relative(baseDir, targetPath)
   return !!relativePath && !relativePath.startsWith('..') && !path.isAbsolute(relativePath)
 }
+
+const waitForWriterDrain = async (writer) =>
+  await new Promise((resolve, reject) => {
+    const onDrain = () => {
+      writer.off('error', onError)
+      resolve()
+    }
+    const onError = (error) => {
+      writer.off('drain', onDrain)
+      reject(error)
+    }
+    writer.once('drain', onDrain)
+    writer.once('error', onError)
+  })
+
+const closeWriter = async (writer) =>
+  await new Promise((resolve, reject) => {
+    const onFinish = () => {
+      writer.off('error', onError)
+      resolve()
+    }
+    const onError = (error) => {
+      writer.off('finish', onFinish)
+      reject(error)
+    }
+    writer.once('finish', onFinish)
+    writer.once('error', onError)
+    writer.end()
+  })
 
 const downloadToFile = async ({ url, targetPath, timeoutSec, retries }) => {
   const timeoutMs = timeoutSec * 1000
@@ -765,20 +594,43 @@ const downloadToFile = async ({ url, targetPath, timeoutSec, retries }) => {
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
+    let writer = null
     try {
-      const response = await fetch(url, {
+      const response = await fetchWithRuntimeProxy(url, {
         signal: controller.signal,
         redirect: 'follow'
       })
       if (!response.ok || !response.body) {
         throw new Error(`HTTP ${response.status}`)
       }
-      await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(tempPath))
+      const totalBytes = Number(response.headers.get('content-length') || 0)
+      const reportProgress = createConsoleDownloadProgressReporter({
+        label: `model file ${path.basename(targetPath)}`,
+        totalBytes
+      })
+      writer = fs.createWriteStream(tempPath)
+      let downloadedBytes = 0
+      for await (const chunk of Readable.fromWeb(response.body)) {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+        downloadedBytes += buffer.byteLength
+        if (!writer.write(buffer)) {
+          await waitForWriterDrain(writer)
+        }
+        reportProgress({ downloadedBytes })
+      }
+      await closeWriter(writer)
+      reportProgress({ downloadedBytes, done: true })
+      if (fs.existsSync(targetPath)) {
+        fs.rmSync(targetPath, { force: true })
+      }
       fs.renameSync(tempPath, targetPath)
       clearTimeout(timer)
       return
     } catch (error) {
       clearTimeout(timer)
+      try {
+        writer?.destroy()
+      } catch {}
       if (fs.existsSync(tempPath)) fs.rmSync(tempPath, { force: true })
       lastError = error
       if (attempt < retries) {
@@ -1102,14 +954,17 @@ const main = async () => {
     return
   }
 
-  const baseRuntimeInfo = ensureBaseRuntime(platformArg, platformConfig)
+  const baseRuntimeInfo = syncRemoteAssets
+    ? {
+        basePipInstallArgs: []
+      }
+    : ensureBaseRuntime(platformArg, platformConfig)
 
   const explicitProfiles = parseCsv(profileArg)
   const selectedProfiles =
     explicitProfiles.length > 0
       ? explicitProfiles.filter((profileName) => !!platformConfig.profiles?.[profileName])
       : resolveAutoProfiles(platformArg, platformConfig)
-  const runtimeAssetManifest = await readRuntimeAssetManifest()
 
   if (selectedProfiles.length === 0) {
     console.log('[demucs-runtime-ensure] No matching profiles selected, skip')
@@ -1133,23 +988,23 @@ const main = async () => {
     const pipInstallArgs = normalizeList(profileConfig.pipInstall)
     const metadata = readJsonFileIfExists(metadataPath)
 
+    if (syncRemoteAssets) {
+      const synced = await tryInstallProfileFromRemoteAsset(profileName, runtimeDir)
+      if (!synced) {
+        throw new Error(`[demucs-runtime-ensure] Runtime asset sync failed (${profileName})`)
+      }
+      continue
+    }
+
     if (!fs.existsSync(pythonPath)) {
-      const restored = await tryInstallProfileFromRemoteAsset(
-        runtimeAssetManifest,
-        profileName,
-        runtimeDir
-      )
+      const restored = await tryInstallProfileFromRemoteAsset(profileName, runtimeDir)
       if (restored) continue
       missingProfiles.push(profileName)
       continue
     }
 
     if (install && !fs.existsSync(metadataPath)) {
-      const restored = await tryInstallProfileFromRemoteAsset(
-        runtimeAssetManifest,
-        profileName,
-        runtimeDir
-      )
+      const restored = await tryInstallProfileFromRemoteAsset(profileName, runtimeDir)
       if (restored) continue
       addUniqueItem(rebuildProfiles, profileName)
       continue
@@ -1164,11 +1019,7 @@ const main = async () => {
           baseRuntimeInfo.basePipInstallArgs
         ))
     ) {
-      const restored = await tryInstallProfileFromRemoteAsset(
-        runtimeAssetManifest,
-        profileName,
-        runtimeDir
-      )
+      const restored = await tryInstallProfileFromRemoteAsset(profileName, runtimeDir)
       if (restored) continue
       addUniqueItem(rebuildProfiles, profileName)
       console.warn(
@@ -1178,13 +1029,15 @@ const main = async () => {
     }
 
     if (!install) continue
-    const probe = probeRuntimeModules(pythonPath, runtimeDir)
+    const probe = probeRuntimeModules({
+      pythonPath,
+      runtimeDir,
+      buildRuntimeEnv,
+      runQuiet,
+      toShortText
+    })
     if (!probe.ok || !probe.payload) {
-      const restored = await tryInstallProfileFromRemoteAsset(
-        runtimeAssetManifest,
-        profileName,
-        runtimeDir
-      )
+      const restored = await tryInstallProfileFromRemoteAsset(profileName, runtimeDir)
       if (restored) continue
       addUniqueItem(brokenProfiles, profileName)
       addUniqueItem(rebuildProfiles, profileName)
@@ -1202,11 +1055,7 @@ const main = async () => {
     const directmlReady = !requiresDirectml ? true : !!payload.torch_directml
     const xpuReady = !requiresXpu ? true : !!payload.xpu_backend
     if (!baseReady || !directmlReady || !xpuReady) {
-      const restored = await tryInstallProfileFromRemoteAsset(
-        runtimeAssetManifest,
-        profileName,
-        runtimeDir
-      )
+      const restored = await tryInstallProfileFromRemoteAsset(profileName, runtimeDir)
       if (restored) continue
       addUniqueItem(brokenProfiles, profileName)
       addUniqueItem(rebuildProfiles, profileName)
