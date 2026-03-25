@@ -158,7 +158,7 @@ export const useMixtapeAutoGainDialog = (options: UseMixtapeAutoGainDialogOption
   }
 
   const handleAutoGainColumnClick = (_column: ISongsAreaColumn) => {
-    // 与主窗口混音歌单一致：列头点击不触发排序
+    // 与主窗口 Mixtape 自动录制歌单一致：列头点击不触发排序
   }
 
   const handleAutoGainHeaderContextMenu = (event: MouseEvent) => {

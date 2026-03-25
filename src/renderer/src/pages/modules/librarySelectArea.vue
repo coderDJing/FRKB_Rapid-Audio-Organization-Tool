@@ -375,7 +375,7 @@ const iconDragEnter = (event: DragEvent, item: Icon) => {
   // 检查是否是歌曲拖拽
   const isSongDrag = event.dataTransfer?.types?.includes('application/x-song-drag')
   if (!isSongDrag || item.name === selectedIcon.value.name) return
-  // 混音歌单来源仅允许在混音库内投放，不应悬浮切换到其他库
+  // Mixtape 自动录制歌单来源仅允许在 Mixtape 自动录制库内投放，不应悬浮切换到其他库
   if (isMixtapeSourceSongDrag() && item.name !== 'MixtapeLibrary') return
   // 当拖拽歌曲时，自动切换到对应的库
   clickIcon(item)

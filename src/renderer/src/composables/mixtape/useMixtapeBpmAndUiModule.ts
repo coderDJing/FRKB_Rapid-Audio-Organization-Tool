@@ -1041,7 +1041,8 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
         innerWidth: 500
       })
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error || t('common.error'))
+      const rawMessage = error instanceof Error ? error.message : String(error || t('common.error'))
+      const message = t(rawMessage)
       applyOutputProgressPayload({
         stageKey: 'mixtape.outputProgressFailed',
         done: 100,

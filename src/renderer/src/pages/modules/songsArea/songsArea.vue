@@ -655,7 +655,7 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
     )
     applyFiltersAndSorting()
 
-    // 鑻ュ綋鍓嶆挱鏀惧垪琛ㄥ嵆涓哄綋鍓嶈鍥撅紝鍚屾蹇収锛堜笌鍏朵粬鍒犻櫎璺緞淇濇寔涓€鑷达級
+    // 若当前播放列表即为当前视图，同步快照（与其他删除路径保持一致）
     if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
       runtime.playingData.playingSongListData = [...runtime.songsArea.songInfoArr]
       if (

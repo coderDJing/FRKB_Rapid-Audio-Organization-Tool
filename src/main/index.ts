@@ -552,7 +552,7 @@ ipcMain.on('openLog', async () => {
 ipcMain.handle('clearTracksFingerprintLibrary', async (_e) => {
   try {
     if (!store.databaseDir) {
-      return { success: false, message: '尚未配置数据库位置' }
+      return { success: false, message: 'database.notConfigured' }
     }
     store.songFingerprintList = []
     await saveList(store.songFingerprintList)

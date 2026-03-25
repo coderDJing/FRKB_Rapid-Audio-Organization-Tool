@@ -62,6 +62,13 @@ const resolveMixtapeModeTag = (mixMode?: string) =>
 const resolveMixtapeModeLabel = (mixMode?: string) =>
   mixMode === 'eq' ? t('mixtape.mixModeEqLabel') : t('mixtape.mixModeStemLabel')
 const resolveMixtapeBadgeTitle = (mixMode?: string) => resolveMixtapeModeLabel(mixMode)
+const createPlaylistMenuKey = 'library.createPlaylist'
+const createStemMixtapeMenuKey = 'library.createStemMixtape'
+const createEqMixtapeMenuKey = 'library.createEqMixtape'
+const createFolderMenuKey = 'library.createFolder'
+const renameMenuKey = 'common.rename'
+const deleteMenuKey = 'common.delete'
+const deletePlaylistMenuKey = 'playlist.deletePlaylist'
 const myInputHandleInput = () => {
   const newName = operationInputValue.value
   const invalidCharsRegex = /[<>:"/\\|?*\u0000-\u001F]/
@@ -178,14 +185,14 @@ const menuArr = ref(
     ? [
         isMixtapeDialog.value
           ? [
-              { menuName: '新建Stem混音歌单' },
-              { menuName: '新建EQ混音歌单' },
-              { menuName: '新建文件夹' }
+              { menuName: createStemMixtapeMenuKey },
+              { menuName: createEqMixtapeMenuKey },
+              { menuName: createFolderMenuKey }
             ]
-          : [{ menuName: '新建歌单' }, { menuName: '新建文件夹' }],
-        [{ menuName: '重命名' }, { menuName: '删除' }]
+          : [{ menuName: createPlaylistMenuKey }, { menuName: createFolderMenuKey }],
+        [{ menuName: renameMenuKey }, { menuName: deleteMenuKey }]
       ]
-    : [[{ menuName: '重命名' }, { menuName: '删除歌单' }]]
+    : [[{ menuName: renameMenuKey }, { menuName: deletePlaylistMenuKey }]]
 )
 const deleteDir = async () => {
   if (dirData?.type === 'mixtapeList') {
@@ -255,7 +262,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
   rightClickMenuShow.value = false
   if (result !== 'cancel') {
-    if (result.menuName == '新建歌单') {
+    if (result.menuName == createPlaylistMenuKey) {
       dirChildRendered.value = true
       dirChildShow.value = true
       const newUuid = uuidV4()
@@ -266,11 +273,14 @@ const contextmenuEvent = async (event: MouseEvent) => {
         type: 'songList'
       })
       // 不在此时标记“创建中”，等待命名确认开始写盘时再标记
-    } else if (result.menuName == '新建Stem混音歌单' || result.menuName == '新建EQ混音歌单') {
+    } else if (
+      result.menuName == createStemMixtapeMenuKey ||
+      result.menuName == createEqMixtapeMenuKey
+    ) {
       dirChildRendered.value = true
       dirChildShow.value = true
       const newUuid = uuidV4()
-      const mixMode = result.menuName == '新建EQ混音歌单' ? 'eq' : 'stem'
+      const mixMode = result.menuName == createEqMixtapeMenuKey ? 'eq' : 'stem'
       dirData.children = dirData.children || []
       dirData.children.unshift({
         uuid: newUuid,
@@ -283,7 +293,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
         mixMode,
         stemProfile: DEFAULT_MIXTAPE_STEM_PROFILE
       })
-    } else if (result.menuName == '新建文件夹') {
+    } else if (result.menuName == createFolderMenuKey) {
       dirChildRendered.value = true
       dirChildShow.value = true
       dirData.children = dirData.children || []
@@ -292,12 +302,12 @@ const contextmenuEvent = async (event: MouseEvent) => {
         dirName: '',
         type: 'dir'
       })
-    } else if (result.menuName == '重命名') {
+    } else if (result.menuName == renameMenuKey) {
       renameDivShow.value = true
       renameDivValue.value = dirData.dirName
       await nextTick()
       myRenameInput.value?.focus()
-    } else if (result.menuName === '删除' || result.menuName === '删除歌单') {
+    } else if (result.menuName === deleteMenuKey || result.menuName === deletePlaylistMenuKey) {
       deleteDir()
     }
   }

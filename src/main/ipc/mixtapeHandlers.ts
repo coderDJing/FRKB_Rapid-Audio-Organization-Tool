@@ -483,7 +483,7 @@ export function registerMixtapeHandlers() {
         }
         const bpmAnalyzeFilePaths = Array.from(bpmAnalyzeFilePathSet)
         if (bpmAnalyzeFilePaths.length > 0) {
-          // 预分�?BPM（后台，不阻塞返回）
+          // 预分析 BPM（后台，不阻塞返回）
           void analyzeMixtapeBpmBatchShared(bpmAnalyzeFilePaths)
             .then((bpmResult) => {
               if (bpmResult.results.length > 0) {
@@ -584,7 +584,7 @@ export function registerMixtapeHandlers() {
         ...result
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error || '导出失败')
+      const message = error instanceof Error ? error.message : String(error || 'common.error')
       sendProgress({
         stageKey: 'mixtape.outputProgressFailed',
         done: 100,

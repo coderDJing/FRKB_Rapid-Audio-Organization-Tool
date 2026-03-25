@@ -98,6 +98,8 @@ const languageOptions = computed(() => [
   { label: 'English', value: 'enUS' }
 ])
 
+const translateMaybeKey = (message: unknown) => t(String(message || ''))
+
 const waveformStyleOptions = computed(() => [
   { label: t('player.waveformStyleSoundCloud'), value: 'SoundCloud' },
   { label: t('player.waveformStyleFine'), value: 'Fine' },
@@ -356,14 +358,14 @@ const clearTracksFingerprintLibrary = async () => {
       } else {
         await confirm({
           title: t('common.setting'),
-          content: [t('fingerprints.clearFailed'), String(result?.message || '')],
+          content: [t('fingerprints.clearFailed'), translateMaybeKey(result?.message || '')],
           confirmShow: false
         })
       }
     } catch (error) {
       await confirm({
         title: t('common.setting'),
-        content: [t('fingerprints.clearFailed'), String((error as any)?.message || '')],
+        content: [t('fingerprints.clearFailed'), translateMaybeKey((error as any)?.message || '')],
         confirmShow: false
       })
     }

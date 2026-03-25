@@ -1,4 +1,6 @@
 import { execFile, execFileSync } from 'child_process'
+import zhCNLocale from '../../renderer/src/i18n/locales/zh-CN.json'
+import enUSLocale from '../../renderer/src/i18n/locales/en-US.json'
 import store from '../store'
 import { log } from '../log'
 import { persistSettingConfig } from '../settingsPersistence'
@@ -46,9 +48,27 @@ const removeLegacyWindowsContextMenu = async (): Promise<void> => {
   } catch {}
 }
 
+const getCurrentLocaleId = (): 'zh-CN' | 'en-US' =>
+  (store.settingConfig as any)?.language === 'enUS' ? 'en-US' : 'zh-CN'
+
+const tContextMenu = (key: string): string => {
+  const messages: Record<'zh-CN' | 'en-US', any> = {
+    'zh-CN': zhCNLocale as any,
+    'en-US': enUSLocale as any
+  }
+  const localeId = getCurrentLocaleId()
+  const parts = key.split('.')
+  let current: any = messages[localeId]
+  for (const part of parts) {
+    if (current && typeof current === 'object' && part in current) current = current[part]
+    else return key
+  }
+  return typeof current === 'string' ? current : key
+}
+
 export async function ensureWindowsContextMenu(): Promise<void> {
   if (process.platform !== 'win32') return
-  const displayName = '在 FRKB 中播放'
+  const displayName = tContextMenu('settings.explorerContextMenuLabel')
   const command = `"${process.execPath.replace(/"/g, '\\"')}" "%1"`
   const shellPaths = getWindowsContextMenuPaths()
   const commandPaths = getWindowsContextMenuCommandPaths()
@@ -70,7 +90,8 @@ const buildContextMenuSignature = (): string => {
   if (process.platform !== 'win32') return ''
   const payload = {
     execPath: process.execPath || '',
-    exts: getNormalizedExtensions()
+    exts: getNormalizedExtensions(),
+    label: tContextMenu('settings.explorerContextMenuLabel')
   }
   return JSON.stringify(payload)
 }

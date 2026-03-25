@@ -118,9 +118,9 @@ const {
                 <div v-else-if="item.type === 'directory'" class="item-type">
                   {{
                     (item as any).isSpecial
-                      ? '常用文件夹'
+                      ? t('fileSelector.commonFolder')
                       : isDrive(item)
-                        ? '驱动器'
+                        ? t('fileSelector.drive')
                         : t('fileSelector.folder')
                   }}
                 </div>

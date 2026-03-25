@@ -261,7 +261,7 @@ export function useDragSongs() {
         try {
           emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
         } catch {}
-        // 混音歌单目标始终为复制，不回传“移动”结果
+        // Mixtape 自动录制歌单目标始终为复制，不回传“移动”结果
         return []
       }
 

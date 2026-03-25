@@ -432,7 +432,7 @@ export const runMixtapeOutput = async (params: {
   const payload = params.payload || {}
   const outputDir = typeof payload.outputPath === 'string' ? payload.outputPath.trim() : ''
   if (!outputDir) {
-    throw new Error('输出目录不能为空')
+    throw new Error('mixtape.outputPathRequired')
   }
   const outputFormat: MixtapeOutputFormat = payload.outputFormat === 'mp3' ? 'mp3' : 'wav'
   const outputFilePath = await resolveOutputFilePath(
@@ -490,7 +490,7 @@ export const runMixtapeOutput = async (params: {
   const tracks = Array.isArray(payload.tracks) ? payload.tracks : []
   const normalizedTracks = await normalizeTracks(tracks)
   if (!normalizedTracks.length) {
-    throw new Error('没有可导出的音轨')
+    throw new Error('mixtape.outputNoTracks')
   }
 
   const estimatedDurationSec = resolveEstimatedDurationSec(normalizedTracks)
