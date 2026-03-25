@@ -92,45 +92,54 @@ export function useLibraryContextMenu({
   const menuArr = ref<any[][]>(buildMenuArr())
 
   const deleteDir = async () => {
+    if (runtime.isProgressing) {
+      await confirmTaskBusy()
+      return
+    }
     const dirData = getDirData()
     const fatherDirData = getFatherDirData()
     if (!dirData || !fatherDirData) return
-    if (dirData?.type === 'mixtapeList') {
-      const allowed = await libraryUtils.ensureMixtapeDeleteAllowed(props.uuid)
-      if (!allowed) return
-    }
-    const libraryTree = libraryUtils.getLibraryTreeByUUID(props.uuid)
-    if (libraryTree === null) {
-      throw new Error(`libraryTree error: ${JSON.stringify(libraryTree)}`)
-    }
-    const uuids = libraryUtils.getAllUuids(libraryTree)
-    if (uuids.indexOf(runtime.songsArea.songListUUID) !== -1) {
-      runtime.songsArea.songListUUID = ''
-    }
-    if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
-      runtime.playingData.playingSongListUUID = ''
-      runtime.playingData.playingSongListData = []
-      runtime.playingData.playingSong = null
-    }
-    if (!Array.isArray(fatherDirData.children)) {
-      throw new Error(`fatherDirData.children error: ${JSON.stringify(fatherDirData.children)}`)
-    }
-    let deleteIndex: number | undefined
-    for (const index in fatherDirData.children) {
-      if (fatherDirData.children[index]?.uuid === dirData.uuid) {
-        deleteIndex = Number(index)
-        continue
+    runtime.isProgressing = true
+    try {
+      if (dirData?.type === 'mixtapeList') {
+        const allowed = await libraryUtils.ensureMixtapeDeleteAllowed(props.uuid)
+        if (!allowed) return
       }
-      if (fatherDirData.children[index].order && dirData.order) {
-        if (fatherDirData.children[index].order > dirData.order) {
-          fatherDirData.children[index].order--
+      const libraryTree = libraryUtils.getLibraryTreeByUUID(props.uuid)
+      if (libraryTree === null) {
+        throw new Error(`libraryTree error: ${JSON.stringify(libraryTree)}`)
+      }
+      const uuids = libraryUtils.getAllUuids(libraryTree)
+      if (uuids.indexOf(runtime.songsArea.songListUUID) !== -1) {
+        runtime.songsArea.songListUUID = ''
+      }
+      if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
+        runtime.playingData.playingSongListUUID = ''
+        runtime.playingData.playingSongListData = []
+        runtime.playingData.playingSong = null
+      }
+      if (!Array.isArray(fatherDirData.children)) {
+        throw new Error(`fatherDirData.children error: ${JSON.stringify(fatherDirData.children)}`)
+      }
+      let deleteIndex: number | undefined
+      for (const index in fatherDirData.children) {
+        if (fatherDirData.children[index]?.uuid === dirData.uuid) {
+          deleteIndex = Number(index)
+          continue
+        }
+        if (fatherDirData.children[index].order && dirData.order) {
+          if (fatherDirData.children[index].order > dirData.order) {
+            fatherDirData.children[index].order--
+          }
         }
       }
+      if (deleteIndex !== undefined) {
+        fatherDirData.children.splice(deleteIndex, 1)
+      }
+      await libraryUtils.diffLibraryTreeExecuteFileOperation()
+    } finally {
+      runtime.isProgressing = false
     }
-    if (deleteIndex !== undefined) {
-      fatherDirData.children.splice(deleteIndex, 1)
-    }
-    await libraryUtils.diffLibraryTreeExecuteFileOperation()
   }
 
   const confirmTaskBusy = async () => {

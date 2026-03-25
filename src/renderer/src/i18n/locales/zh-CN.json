@@ -212,7 +212,11 @@
     "nameRequired": "必须提供歌单或文件夹名。",
     "nameAlreadyExists": "此位置已存在歌单或文件夹{name}。请选择其他名称",
     "nameInvalidChars": "名称不能包含以下字符: < > : \" / \\ | ? * 或控制字符",
-    "notExistOnDisk": "此歌单/文件夹在磁盘中不存在，可能已被手动删除"
+    "notExistOnDisk": "此歌单/文件夹在磁盘中不存在，可能已被手动删除",
+    "deleteProgressScanning": "正在扫描待删除内容",
+    "deleteProgressRemoving": "正在移入回收站",
+    "deleteProgressFinished": "删除完成",
+    "deleteProgressFailed": "删除未完成"
   },
   "tracks": {
     "title": "曲目",
@@ -895,6 +899,10 @@
     "deleteSummaryTitle": "删除结果",
     "deleteSummarySuccess": "成功删除 {count} 首曲目",
     "deleteSummaryFailed": "失败 {count} 首曲目",
+    "progressScanning": "正在扫描回收站内容",
+    "progressDeleting": "正在彻底删除回收站内容",
+    "progressFinished": "回收站清空完成",
+    "progressFailed": "回收站清空未完成",
     "restoreSummaryTitle": "恢复结果",
     "restoreSummarySuccess": "成功恢复 {count} 首曲目",
     "restoreSummaryMissingPlaylist": "原歌单不存在 {count} 首曲目",

@@ -41,8 +41,17 @@ import {
 import { isMixtapeWindowOpenByPlaylistId } from '../mixtapeWindow'
 
 const MIXTAPE_WINDOW_OPEN_ERROR_CODE = 'MIXTAPE_WINDOW_OPEN'
+const FILE_BATCH_CONCURRENCY = 8
+const FILE_BATCH_YIELD_EVERY = 8
 
 export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null) {
+  const sendProgress = (payload: Record<string, unknown>) => {
+    getWindow()?.webContents.send('progressSet', payload)
+  }
+
+  const createProgressId = (prefix: string) =>
+    `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
+
   const cleanupOrphanedMixtapeVaultFiles = async (filePaths: string[]) => {
     const vaultRoot = getMixtapeVaultRootAbs()
     if (!vaultRoot) return
@@ -113,8 +122,9 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
     })
     const batchId = `emptyDir_${Date.now()}`
     const { success, failed, hasENOSPC, skipped } = await runWithConcurrency(tasks, {
-      concurrency: 16,
+      concurrency: FILE_BATCH_CONCURRENCY,
       stopOnENOSPC: true,
+      yieldEvery: FILE_BATCH_YIELD_EVERY,
       onInterrupted: async (payload) =>
         waitForUserDecision(getWindow(), batchId, 'emptyDir', payload)
     })
@@ -136,10 +146,19 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
   ipcMain.handle('emptyRecycleBin', async () => {
     const recycleBinPath = getRecycleBinRootAbs()
     if (!recycleBinPath) return
+    const progressId = createProgressId('recycle_bin_empty')
     try {
       if (!(await fs.pathExists(recycleBinPath))) return
-      const deleteTasks: Array<Promise<any>> = []
-      const walkAndDeleteFiles = async (targetDir: string) => {
+      sendProgress({
+        id: progressId,
+        titleKey: 'recycleBin.progressScanning',
+        now: 0,
+        total: 0,
+        isInitial: true,
+        noProgress: true
+      })
+      const deleteTasks: Array<() => Promise<boolean>> = []
+      const walkAndCollectFiles = async (targetDir: string) => {
         let entries: fs.Dirent[] = []
         try {
           entries = await fs.readdir(targetDir, { withFileTypes: true })
@@ -149,19 +168,50 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
         for (const entry of entries) {
           const entryPath = path.join(targetDir, entry.name)
           if (entry.isDirectory()) {
-            await walkAndDeleteFiles(entryPath)
+            await walkAndCollectFiles(entryPath)
             try {
               await fs.remove(entryPath)
             } catch {}
             continue
           }
           if (entry.isFile()) {
-            deleteTasks.push(permanentlyDeleteFile(entryPath))
+            deleteTasks.push(async () => {
+              const deleted = await permanentlyDeleteFile(entryPath)
+              if (!deleted) {
+                throw new Error(`permanently delete failed: ${entryPath}`)
+              }
+              return true
+            })
           }
         }
       }
-      await walkAndDeleteFiles(recycleBinPath)
-      await Promise.all(deleteTasks)
+      await walkAndCollectFiles(recycleBinPath)
+      if (deleteTasks.length > 0) {
+        sendProgress({
+          id: progressId,
+          titleKey: 'recycleBin.progressDeleting',
+          now: 0,
+          total: deleteTasks.length,
+          noProgress: false
+        })
+      }
+      const { failed, skipped } =
+        deleteTasks.length > 0
+          ? await runWithConcurrency(deleteTasks, {
+              concurrency: FILE_BATCH_CONCURRENCY,
+              stopOnENOSPC: false,
+              yieldEvery: FILE_BATCH_YIELD_EVERY,
+              onProgress: (done: number, total: number) => {
+                sendProgress({
+                  id: progressId,
+                  titleKey: 'recycleBin.progressDeleting',
+                  now: done,
+                  total,
+                  noProgress: false
+                })
+              }
+            })
+          : { failed: 0, skipped: 0 }
       const libraryRoot = path.join(store.databaseDir, 'library')
       const records = listRecycleBinRecords()
       const missingRecords: string[] = []
@@ -176,11 +226,34 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
       if (missingRecords.length > 0) {
         deleteRecycleBinRecords(missingRecords)
       }
-      const parentNode = findLibraryNodeByPath(path.join('library', getCoreFsDirName('RecycleBin')))
-      if (parentNode) {
-        removeLibraryNodesByParentUuid(parentNode.uuid)
+      const recycleBinEmpty = await isDirectoryEffectivelyEmpty(
+        recycleBinPath,
+        store.settingConfig.audioExt
+      )
+      if (recycleBinEmpty) {
+        const parentNode = findLibraryNodeByPath(
+          path.join('library', getCoreFsDirName('RecycleBin'))
+        )
+        if (parentNode) {
+          removeLibraryNodesByParentUuid(parentNode.uuid)
+        }
       }
+      sendProgress({
+        id: progressId,
+        titleKey:
+          failed === 0 && skipped === 0
+            ? 'recycleBin.progressFinished'
+            : 'recycleBin.progressFailed',
+        now: 1,
+        total: 1
+      })
     } catch (error) {
+      sendProgress({
+        id: progressId,
+        titleKey: 'recycleBin.progressFailed',
+        now: 1,
+        total: 1
+      })
       console.error('清空回收站失败:', error)
     }
   })
@@ -244,6 +317,15 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
             operationStatus = 'rename_failed_source_not_found'
           }
         } else if (item.type === 'delete') {
+          const progressId = createProgressId(`library_delete_${item.uuid}`)
+          sendProgress({
+            id: progressId,
+            titleKey: 'library.deleteProgressScanning',
+            now: 0,
+            total: 0,
+            isInitial: true,
+            noProgress: true
+          })
           const mixtapeFilePaths =
             item.nodeType === 'mixtapeList' ? listMixtapeFilePathsByPlaylist(item.uuid) : []
           const mappedPath = mapRendererPathToFsPath(item.path)
@@ -256,6 +338,12 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
             if (item.nodeType === 'mixtapeList') {
               await finalizeMixtapePlaylistRemoval(item.uuid, mixtapeFilePaths)
             }
+            sendProgress({
+              id: progressId,
+              titleKey: 'library.deleteProgressFinished',
+              now: 1,
+              total: 1
+            })
           } else {
             try {
               const audioExts = store.settingConfig.audioExt
@@ -267,10 +355,27 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
                 }
                 return result
               })
+              sendProgress({
+                id: progressId,
+                titleKey: 'library.deleteProgressRemoving',
+                now: 0,
+                total: tasks.length,
+                noProgress: false
+              })
               const batchId = `recycleMove_${Date.now()}`
               const { success, failed, hasENOSPC, skipped } = await runWithConcurrency(tasks, {
-                concurrency: 16,
+                concurrency: FILE_BATCH_CONCURRENCY,
                 stopOnENOSPC: true,
+                yieldEvery: FILE_BATCH_YIELD_EVERY,
+                onProgress: (done: number, total: number) => {
+                  sendProgress({
+                    id: progressId,
+                    titleKey: 'library.deleteProgressRemoving',
+                    now: done,
+                    total,
+                    noProgress: false
+                  })
+                },
                 onInterrupted: async (payload) =>
                   waitForUserDecision(getWindow(), batchId, 'recycleMove', payload)
               })
@@ -284,6 +389,14 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
                 }
               }
               operationStatus = allAudioMoved ? 'recycled' : 'recycle_failed'
+              sendProgress({
+                id: progressId,
+                titleKey: allAudioMoved
+                  ? 'library.deleteProgressFinished'
+                  : 'library.deleteProgressFailed',
+                now: 1,
+                total: 1
+              })
               if (hasENOSPC && getWindow()) {
                 getWindow()?.webContents.send('file-batch-summary', {
                   context: 'recycleMove',
@@ -296,6 +409,12 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
                 })
               }
             } catch (moveError) {
+              sendProgress({
+                id: progressId,
+                titleKey: 'library.deleteProgressFailed',
+                now: 1,
+                total: 1
+              })
               console.error(`Error moving ${item.path} to recycle bin:`, moveError)
               operationStatus = 'recycle_failed'
             }

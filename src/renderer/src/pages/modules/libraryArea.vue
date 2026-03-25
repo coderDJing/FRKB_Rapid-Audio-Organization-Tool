@@ -55,6 +55,14 @@ const collapseButtonRef = useTemplateRef<HTMLDivElement>('collapseButtonRef')
 const libraryTitleText = computed(() => toLibraryDisplayName(libraryData.value.dirName))
 
 const emptyRecycleBinHandleClick = async () => {
+  if (runtime.isProgressing) {
+    await confirm({
+      title: t('dialog.hint'),
+      content: [t('import.waitForTask')],
+      confirmShow: false
+    })
+    return
+  }
   let res = await confirm({
     title: t('recycleBin.emptyRecycleBin'),
     content: [t('recycleBin.confirmEmpty'), t('tracks.deleteHint')]
@@ -63,21 +71,26 @@ const emptyRecycleBinHandleClick = async () => {
     return
   }
 
-  await window.electron.ipcRenderer.invoke('emptyRecycleBin')
+  runtime.isProgressing = true
+  try {
+    await window.electron.ipcRenderer.invoke('emptyRecycleBin')
 
-  // 若当前打开回收站，则刷新列表
-  if (runtime.songsArea.songListUUID === RECYCLE_BIN_UUID) {
-    runtime.songsArea.songListUUID = ''
-    runtime.songsArea.selectedSongFilePath.length = 0
-    await nextTick()
-    runtime.songsArea.songListUUID = RECYCLE_BIN_UUID
-  }
+    // 若当前打开回收站，则刷新列表
+    if (runtime.songsArea.songListUUID === RECYCLE_BIN_UUID) {
+      runtime.songsArea.songListUUID = ''
+      runtime.songsArea.selectedSongFilePath.length = 0
+      await nextTick()
+      runtime.songsArea.songListUUID = RECYCLE_BIN_UUID
+    }
 
-  // 若当前正在播放来自回收站，则停止播放并清空播放列表
-  if (runtime.playingData.playingSongListUUID === RECYCLE_BIN_UUID) {
-    runtime.playingData.playingSong = null
-    runtime.playingData.playingSongListUUID = ''
-    runtime.playingData.playingSongListData = []
+    // 若当前正在播放来自回收站，则停止播放并清空播放列表
+    if (runtime.playingData.playingSongListUUID === RECYCLE_BIN_UUID) {
+      runtime.playingData.playingSong = null
+      runtime.playingData.playingSongListUUID = ''
+      runtime.playingData.playingSongListData = []
+    }
+  } finally {
+    runtime.isProgressing = false
   }
 }
 
@@ -232,7 +245,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
         dirName: ''
       })
     } else if (result.menuName == 'recycleBin.emptyRecycleBin') {
-      emptyRecycleBinHandleClick()
+      await emptyRecycleBinHandleClick()
     }
   }
 }

@@ -211,7 +211,11 @@
     "nameRequired": "Name is required.",
     "nameAlreadyExists": "'{name}' already exists here. Use another.",
     "nameInvalidChars": "Name cannot contain: < > : \" / \\ | ? * or control characters",
-    "notExistOnDisk": "This item is missing on disk; it may have been deleted."
+    "notExistOnDisk": "This item is missing on disk; it may have been deleted.",
+    "deleteProgressScanning": "Scanning items to delete",
+    "deleteProgressRemoving": "Moving items to recycle bin",
+    "deleteProgressFinished": "Deletion completed",
+    "deleteProgressFailed": "Deletion did not finish"
   },
   "tracks": {
     "title": "Tracks",
@@ -891,6 +895,10 @@
     "deleteSummaryTitle": "Delete Summary",
     "deleteSummarySuccess": "Deleted {count} track(s)",
     "deleteSummaryFailed": "Failed {count} track(s)",
+    "progressScanning": "Scanning recycle bin items",
+    "progressDeleting": "Permanently deleting recycle bin items",
+    "progressFinished": "Recycle bin cleared",
+    "progressFailed": "Recycle bin clear did not finish",
     "restoreSummaryTitle": "Restore Summary",
     "restoreSummarySuccess": "Restored {count} track(s)",
     "restoreSummaryMissingPlaylist": "Original playlist missing: {count}",

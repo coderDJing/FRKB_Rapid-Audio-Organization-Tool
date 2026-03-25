@@ -384,6 +384,7 @@ export async function runWithConcurrency<T>(
       failedSoFar: number
     }) => Promise<InterruptedDecision>
     stopOnENOSPC?: boolean
+    yieldEvery?: number
   } = {}
 ): Promise<{
   results: Array<T | Error>
@@ -393,6 +394,7 @@ export async function runWithConcurrency<T>(
   skipped: number
 }> {
   const concurrency = Math.max(1, Math.min(16, options.concurrency ?? 16))
+  const yieldEvery = Math.max(0, Math.floor(options.yieldEvery ?? 0))
   const total = tasks.length
   const results: Array<T | Error> = new Array(total)
   let nextIndex = 0
@@ -419,6 +421,11 @@ export async function runWithConcurrency<T>(
         gateResolve = resolve
       })
     }
+  }
+
+  const maybeYieldToEventLoop = async () => {
+    if (yieldEvery <= 0 || completed === 0 || completed % yieldEvery !== 0) return
+    await new Promise<void>((resolve) => setImmediate(resolve))
   }
 
   const getNextTaskIndex = async (): Promise<number | null> => {
@@ -488,6 +495,7 @@ export async function runWithConcurrency<T>(
         results[idx] = val === undefined ? (true as any) : val
         completed++
         if (options.onProgress) options.onProgress(completed, total)
+        await maybeYieldToEventLoop()
       } catch (err: any) {
         if (isENOSPCError(err)) {
           await handleENOSPC(idx, err)
@@ -497,12 +505,14 @@ export async function runWithConcurrency<T>(
             results[idx] = err instanceof Error ? err : new Error(String(err))
             completed++
             if (options.onProgress) options.onProgress(completed, total)
+            await maybeYieldToEventLoop()
           }
         } else {
           // 非 ENOSPC 失败，立即记入结果
           results[idx] = err instanceof Error ? err : new Error(String(err))
           completed++
           if (options.onProgress) options.onProgress(completed, total)
+          await maybeYieldToEventLoop()
         }
       } finally {
         inFlight--

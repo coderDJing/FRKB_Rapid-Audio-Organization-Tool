@@ -271,25 +271,38 @@ const clearCachesForLibrary = async (libraryName: string) => {
 }
 
 const emptyRecycleBinHandleClick = async () => {
+  if (runtime.isProgressing) {
+    await confirm({
+      title: t('dialog.hint'),
+      content: [t('import.waitForTask')],
+      confirmShow: false
+    })
+    return
+  }
   const res = await confirm({
     title: t('recycleBin.emptyRecycleBin'),
     content: [t('recycleBin.confirmEmpty'), t('tracks.deleteHint')]
   })
   if (res !== 'confirm') return
 
-  await window.electron.ipcRenderer.invoke('emptyRecycleBin')
+  runtime.isProgressing = true
+  try {
+    await window.electron.ipcRenderer.invoke('emptyRecycleBin')
 
-  if (runtime.songsArea.songListUUID === RECYCLE_BIN_UUID) {
-    runtime.songsArea.songListUUID = ''
-    runtime.songsArea.selectedSongFilePath.length = 0
-    await nextTick()
-    runtime.songsArea.songListUUID = RECYCLE_BIN_UUID
-  }
+    if (runtime.songsArea.songListUUID === RECYCLE_BIN_UUID) {
+      runtime.songsArea.songListUUID = ''
+      runtime.songsArea.selectedSongFilePath.length = 0
+      await nextTick()
+      runtime.songsArea.songListUUID = RECYCLE_BIN_UUID
+    }
 
-  if (runtime.playingData.playingSongListUUID === RECYCLE_BIN_UUID) {
-    runtime.playingData.playingSong = null
-    runtime.playingData.playingSongListUUID = ''
-    runtime.playingData.playingSongListData = []
+    if (runtime.playingData.playingSongListUUID === RECYCLE_BIN_UUID) {
+      runtime.playingData.playingSong = null
+      runtime.playingData.playingSongListUUID = ''
+      runtime.playingData.playingSongListData = []
+    }
+  } finally {
+    runtime.isProgressing = false
   }
 }
 
