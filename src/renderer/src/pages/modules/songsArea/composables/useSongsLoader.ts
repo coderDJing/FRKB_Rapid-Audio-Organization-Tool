@@ -14,6 +14,15 @@ interface UseSongsLoaderParams {
   applyFiltersAndSorting: () => void
 }
 
+interface LoadSongListFromDiskOptions {
+  forceNotifySongSearchDirty?: boolean
+}
+
+interface SongListDiffSummary {
+  hasIgnoredOnlyDiffs: boolean
+  hasMeaningfulDiffs: boolean
+}
+
 export function useSongsLoader(params: UseSongsLoaderParams) {
   const { runtime, originalSongInfoArr, applyFiltersAndSorting } = params
 
@@ -34,24 +43,22 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     String(value || '')
       .replace(/\//g, '\\')
       .toLowerCase()
+  const normalizeComparableText = (value: unknown) => String(value || '').trim()
+  const normalizeComparableFileName = (value: unknown) => {
+    const normalized = normalizeComparableText(value)
+    if ((runtime.setting?.platform || runtime.platform) === 'win32') {
+      return normalized.toLowerCase()
+    }
+    return normalized
+  }
+  const normalizeComparableNumber = (value: unknown) =>
+    typeof value === 'number' && Number.isFinite(value) ? value : null
+  const getSongIdentityKey = (song: ISongInfo) =>
+    normalizeComparableText(song.mixtapeItemId) || normalizeSongPath(song.filePath)
+  const ignoredSongListRefreshDiffFields = new Set(['key', 'bpm'])
 
   const notifySongSearchDirty = (reason: string) => {
     void window.electron.ipcRenderer.invoke('song-search:mark-dirty', { reason }).catch(() => {})
-  }
-
-  const safeStringify = (value: unknown) => {
-    try {
-      return JSON.stringify(value)
-    } catch {
-      return String(value)
-    }
-  }
-
-  const traceGlobalSongSearch = (event: string, payload?: Record<string, unknown>) => {
-    try {
-      const suffix = payload ? ` ${safeStringify(payload)}` : ''
-      window.electron.ipcRenderer.send('outputLog', `[gss-loader] ${event}${suffix}`)
-    } catch {}
   }
 
   const hydrateRenderCount = async () => {
@@ -114,6 +121,184 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     runtime.songsArea.selectedSongFilePath = nextSelection
   }
 
+  const isEquivalentSongInfo = (left: ISongInfo, right: ISongInfo) => {
+    return (
+      getSongIdentityKey(left) === getSongIdentityKey(right) &&
+      normalizeSongPath(left.filePath) === normalizeSongPath(right.filePath) &&
+      normalizeComparableFileName(left.fileName) === normalizeComparableFileName(right.fileName) &&
+      normalizeComparableText(left.fileFormat).toUpperCase() ===
+        normalizeComparableText(right.fileFormat).toUpperCase() &&
+      normalizeComparableText(left.title) === normalizeComparableText(right.title) &&
+      normalizeComparableText(left.artist) === normalizeComparableText(right.artist) &&
+      normalizeComparableText(left.album) === normalizeComparableText(right.album) &&
+      normalizeComparableText(left.duration) === normalizeComparableText(right.duration) &&
+      normalizeComparableText(left.genre) === normalizeComparableText(right.genre) &&
+      normalizeComparableText(left.label) === normalizeComparableText(right.label) &&
+      normalizeComparableNumber(left.bitrate) === normalizeComparableNumber(right.bitrate) &&
+      normalizeComparableText(left.container).toUpperCase() ===
+        normalizeComparableText(right.container).toUpperCase() &&
+      normalizeComparableText(left.key) === normalizeComparableText(right.key) &&
+      normalizeComparableNumber(left.bpm) === normalizeComparableNumber(right.bpm) &&
+      normalizeComparableNumber(left.mixOrder) === normalizeComparableNumber(right.mixOrder) &&
+      normalizeComparableText(left.mixtapeItemId) ===
+        normalizeComparableText(right.mixtapeItemId) &&
+      normalizeComparableNumber(left.deletedAtMs) ===
+        normalizeComparableNumber(right.deletedAtMs) &&
+      normalizeComparableText(left.originalPlaylistPath) ===
+        normalizeComparableText(right.originalPlaylistPath) &&
+      normalizeComparableText(left.recycleBinSourceType) ===
+        normalizeComparableText(right.recycleBinSourceType)
+    )
+  }
+
+  const getSongInfoDiffFields = (left: ISongInfo, right: ISongInfo) => {
+    const fields: string[] = []
+    if (getSongIdentityKey(left) !== getSongIdentityKey(right)) fields.push('__identity__')
+    if (normalizeSongPath(left.filePath) !== normalizeSongPath(right.filePath))
+      fields.push('filePath')
+    if (
+      normalizeComparableFileName(left.fileName) !== normalizeComparableFileName(right.fileName)
+    ) {
+      fields.push('fileName')
+    }
+    if (
+      normalizeComparableText(left.fileFormat).toUpperCase() !==
+      normalizeComparableText(right.fileFormat).toUpperCase()
+    ) {
+      fields.push('fileFormat')
+    }
+    if (normalizeComparableText(left.title) !== normalizeComparableText(right.title)) {
+      fields.push('title')
+    }
+    if (normalizeComparableText(left.artist) !== normalizeComparableText(right.artist)) {
+      fields.push('artist')
+    }
+    if (normalizeComparableText(left.album) !== normalizeComparableText(right.album)) {
+      fields.push('album')
+    }
+    if (normalizeComparableText(left.duration) !== normalizeComparableText(right.duration)) {
+      fields.push('duration')
+    }
+    if (normalizeComparableText(left.genre) !== normalizeComparableText(right.genre)) {
+      fields.push('genre')
+    }
+    if (normalizeComparableText(left.label) !== normalizeComparableText(right.label)) {
+      fields.push('label')
+    }
+    if (normalizeComparableNumber(left.bitrate) !== normalizeComparableNumber(right.bitrate)) {
+      fields.push('bitrate')
+    }
+    if (
+      normalizeComparableText(left.container).toUpperCase() !==
+      normalizeComparableText(right.container).toUpperCase()
+    ) {
+      fields.push('container')
+    }
+    if (normalizeComparableText(left.key) !== normalizeComparableText(right.key)) {
+      fields.push('key')
+    }
+    if (normalizeComparableNumber(left.bpm) !== normalizeComparableNumber(right.bpm)) {
+      fields.push('bpm')
+    }
+    if (normalizeComparableNumber(left.mixOrder) !== normalizeComparableNumber(right.mixOrder)) {
+      fields.push('mixOrder')
+    }
+    if (
+      normalizeComparableText(left.mixtapeItemId) !== normalizeComparableText(right.mixtapeItemId)
+    ) {
+      fields.push('mixtapeItemId')
+    }
+    if (
+      normalizeComparableNumber(left.deletedAtMs) !== normalizeComparableNumber(right.deletedAtMs)
+    ) {
+      fields.push('deletedAtMs')
+    }
+    if (
+      normalizeComparableText(left.originalPlaylistPath) !==
+      normalizeComparableText(right.originalPlaylistPath)
+    ) {
+      fields.push('originalPlaylistPath')
+    }
+    if (
+      normalizeComparableText(left.recycleBinSourceType) !==
+      normalizeComparableText(right.recycleBinSourceType)
+    ) {
+      fields.push('recycleBinSourceType')
+    }
+    return fields
+  }
+
+  const isEquivalentSongListSnapshot = (nextData: ISongInfo[], currentData: ISongInfo[]) => {
+    if (nextData.length !== currentData.length) return false
+    if (nextData.length === 0) return true
+
+    const currentByKey = new Map<string, ISongInfo>()
+    for (const song of currentData) {
+      const key = getSongIdentityKey(song)
+      if (!key || currentByKey.has(key)) return false
+      currentByKey.set(key, song)
+    }
+
+    let matchedCount = 0
+    for (const song of nextData) {
+      const key = getSongIdentityKey(song)
+      if (!key) return false
+      const current = currentByKey.get(key)
+      if (!current || !isEquivalentSongInfo(song, current)) return false
+      matchedCount += 1
+    }
+
+    return matchedCount === currentByKey.size
+  }
+
+  const summarizeSongListDiff = (
+    nextData: ISongInfo[],
+    currentData: ISongInfo[]
+  ): SongListDiffSummary => {
+    let hasMeaningfulDiffs = false
+    let hasIgnoredOnlyDiffs = false
+
+    if (nextData.length !== currentData.length) {
+      return {
+        hasIgnoredOnlyDiffs: false,
+        hasMeaningfulDiffs: true
+      }
+    }
+
+    const currentByKey = new Map<string, ISongInfo>()
+    for (const song of currentData) {
+      const key = getSongIdentityKey(song)
+      if (!key || currentByKey.has(key)) {
+        return {
+          hasIgnoredOnlyDiffs: false,
+          hasMeaningfulDiffs: true
+        }
+      }
+      currentByKey.set(key, song)
+    }
+
+    for (const song of nextData) {
+      const key = getSongIdentityKey(song)
+      const current = key ? currentByKey.get(key) : undefined
+      const fields = !key || !current ? ['__missing__'] : getSongInfoDiffFields(song, current)
+      if (!fields.length) continue
+
+      const hasNonIgnoredField = fields.some(
+        (field) => !ignoredSongListRefreshDiffFields.has(field)
+      )
+      if (hasNonIgnoredField) {
+        hasMeaningfulDiffs = true
+      } else {
+        hasIgnoredOnlyDiffs = true
+      }
+    }
+
+    return {
+      hasIgnoredOnlyDiffs,
+      hasMeaningfulDiffs
+    }
+  }
+
   const applySongListData = async (
     scanData: ISongInfo[],
     songListUUID = runtime.songsArea.songListUUID
@@ -131,13 +316,33 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     await hydrateRenderCount()
   }
 
-  const loadSongListFromDisk = async (songListPath: string, songListUUID: string) => {
+  const loadSongListFromDisk = async (
+    songListPath: string,
+    songListUUID: string,
+    options?: LoadSongListFromDiskOptions
+  ) => {
     const { scanData, songListUUID: loadedUUID } = await window.electron.ipcRenderer.invoke(
       'scanSongList',
       songListPath,
       songListUUID
     )
     if (loadedUUID !== runtime.songsArea.songListUUID) return false
+    const unchanged = isEquivalentSongListSnapshot(scanData, originalSongInfoArr.value)
+    if (unchanged) {
+      lastAppliedSongListUUID = loadedUUID
+      if (options?.forceNotifySongSearchDirty) {
+        notifySongSearchDirty('scanSongList')
+      }
+      return true
+    }
+    const diffSummary = summarizeSongListDiff(scanData, originalSongInfoArr.value)
+    if (!diffSummary.hasMeaningfulDiffs && diffSummary.hasIgnoredOnlyDiffs) {
+      lastAppliedSongListUUID = loadedUUID
+      if (options?.forceNotifySongSearchDirty) {
+        notifySongSearchDirty('scanSongList')
+      }
+      return true
+    }
     await applySongListData(scanData)
     scheduleCoverSweepForCurrentList()
     notifySongSearchDirty('scanSongList')
@@ -145,12 +350,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
   }
 
   const openSongList = async () => {
-    const requestStartedAt = Date.now()
     const requestUUID = runtime.songsArea.songListUUID
-    traceGlobalSongSearch('open-start', {
-      songListUUID: requestUUID,
-      libraryAreaSelected: runtime.libraryAreaSelected
-    })
     isRequesting.value = true
     const shouldResetVisibleList = lastAppliedSongListUUID !== requestUUID
     if (shouldResetVisibleList) {
@@ -169,10 +369,6 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       lastAppliedSongListUUID = requestUUID
       isRequesting.value = false
       loadingShow.value = false
-      traceGlobalSongSearch('open-external-hit', {
-        songListUUID: requestUUID,
-        costMs: Date.now() - requestStartedAt
-      })
       return
     }
     if (runtime.songsArea.songListUUID === RECYCLE_BIN_UUID) {
@@ -192,10 +388,6 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         isRequesting.value = false
         clearTimeout(loadingSetTimeout)
         loadingShow.value = false
-        traceGlobalSongSearch('open-recycle-finish', {
-          songListUUID: requestUUID,
-          costMs: Date.now() - requestStartedAt
-        })
       }
       return
     }
@@ -244,10 +436,6 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         isRequesting.value = false
         clearTimeout(loadingSetTimeout)
         loadingShow.value = false
-        traceGlobalSongSearch('open-mixtape-finish', {
-          songListUUID: requestUUID,
-          costMs: Date.now() - requestStartedAt
-        })
       }
       return
     }
@@ -268,19 +456,10 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         await applySongListData(fastItems)
         isRequesting.value = false
         loadingShow.value = false
-        traceGlobalSongSearch('open-fast-hit', {
-          songListUUID: requestUUID,
-          itemCount: fastItems.length,
-          costMs: Date.now() - requestStartedAt
-        })
         // 后台刷新一次磁盘结果，保证索引与磁盘一致
         void loadSongListFromDisk(songListPath, runtime.songsArea.songListUUID).catch(() => {})
         return
       }
-      traceGlobalSongSearch('open-fast-miss', {
-        songListUUID: requestUUID,
-        costMs: Date.now() - requestStartedAt
-      })
     } catch {}
 
     loadingShow.value = false
@@ -289,15 +468,13 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     }, 100)
 
     try {
-      await loadSongListFromDisk(songListPath, runtime.songsArea.songListUUID)
+      await loadSongListFromDisk(songListPath, runtime.songsArea.songListUUID, {
+        forceNotifySongSearchDirty: true
+      })
     } finally {
       isRequesting.value = false
       clearTimeout(loadingSetTimeout)
       loadingShow.value = false
-      traceGlobalSongSearch('open-disk-finish', {
-        songListUUID: requestUUID,
-        costMs: Date.now() - requestStartedAt
-      })
     }
   }
 

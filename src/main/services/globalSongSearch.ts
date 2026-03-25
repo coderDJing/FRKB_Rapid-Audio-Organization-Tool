@@ -283,8 +283,8 @@ const toSongInfo = (rawInfo: Partial<ISongInfo> | null, filePath: string): ISong
     container,
     key,
     bpm,
-    analysisOnly: rawInfo?.analysisOnly === true,
-    autoFilled: rawInfo?.autoFilled === true
+    analysisOnly: rawInfo?.analysisOnly === true ? true : undefined,
+    autoFilled: rawInfo?.autoFilled === true ? true : undefined
   }
 }
 
@@ -357,11 +357,8 @@ class GlobalSongSearchEngine {
   private lastBuiltAt = 0
   private buildingPromise: Promise<void> | null = null
 
-  markDirty(reason?: string) {
+  markDirty(_reason?: string) {
     this.dirty = true
-    if (reason) {
-      log.info(`[song-search] mark dirty: ${reason}`)
-    }
   }
 
   getStats() {
@@ -525,7 +522,6 @@ class GlobalSongSearchEngine {
   }
 
   private async rebuild() {
-    const started = Date.now()
     const db = getLibraryDb()
     if (!db) {
       this.docs = []
@@ -681,11 +677,6 @@ class GlobalSongSearchEngine {
     this.lastBuiltAt = Date.now()
     this.ready = true
     this.dirty = false
-    log.info(
-      `[song-search] index rebuilt, docs=${docs.length}, playlists=${playlistSongs.size}, costMs=${
-        Date.now() - started
-      }`
-    )
   }
 
   private getIndexedCandidatesByToken(token: string) {
