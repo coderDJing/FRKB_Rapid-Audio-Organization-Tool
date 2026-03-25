@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from '@renderer/composables/useI18n'
 import {
   BASE_PX_PER_SEC,
   GRID_BEAT4_LINE_WIDTH,
@@ -27,6 +28,7 @@ import {
 } from '@renderer/composables/mixtape/trackTempoVisual'
 import { roundTrackTempoSec } from '@renderer/composables/mixtape/trackTempoModel'
 import {
+  MASTER_BPM_DRAG_STEP_PX,
   buildPointGridBeatMap,
   buildTrackStartBeatById,
   buildTrackTargetSignature,
@@ -82,6 +84,12 @@ type PointDot = {
   edge: 'start' | 'end' | null
 }
 
+type CollapsedPointChip = {
+  key: string
+  xPx: number
+  label: string
+}
+
 type ProjectedTrackGridLine = {
   key: string
   sec: number
@@ -97,6 +105,7 @@ let persistTimer: ReturnType<typeof setTimeout> | null = null
 let previewTrackSyncRaf = 0
 let gridCanvasRaf = 0
 const pendingTrackStartSecPersist = new Map<string, number>()
+const { t } = useI18n()
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
@@ -195,6 +204,7 @@ const pointDots = computed<PointDot[]>(() => {
       visualRange.value.minBpm,
       visualRange.value.maxBpm
     )
+    const yPx = resolvePlotYPx(y)
     const totalWidth = Math.max(1, Number(props.timelineContentWidth) || 1)
     const xRatio = xPx / totalWidth
     const isBoundary = index === 0 || index === effectivePoints.value.length - 1
@@ -203,15 +213,72 @@ const pointDots = computed<PointDot[]>(() => {
       index,
       xPx,
       y,
-      yPx: resolvePlotYPx(y),
+      yPx,
       bpm: Number(point.bpm),
-      labelPlacement: y <= 16 ? 'below' : 'above',
+      labelPlacement: yPx <= 34 ? 'below' : 'above',
       labelAlign: xRatio <= 0.08 ? 'left' : xRatio >= 0.92 ? 'right' : 'center',
       isBoundary,
       isActive,
       edge: !isBoundary ? null : index === 0 ? 'start' : 'end'
     }
   })
+})
+
+const estimateCollapsedChipWidth = (label: string) => Math.max(58, 18 + label.length * 6)
+
+const buildCollapsedChipLabel = (bpms: number[]) => {
+  const labels = Array.from(new Set(bpms.map((bpm) => formatBpmLabel(bpm))))
+  if (!labels.length) return currentBpmText.value
+  if (labels.length === 1) return `BPM ${labels[0]}`
+  return labels.length === 2
+    ? `BPM ${labels[0]}/${labels[1]}`
+    : `BPM ${labels[0]}+${labels.length - 1}`
+}
+
+const collapsedPointChips = computed<CollapsedPointChip[]>(() => {
+  const displayPoints = effectivePoints.value.filter(
+    (point, index, points) =>
+      index === 0 || formatBpmLabel(point.bpm) !== formatBpmLabel(points[index - 1]?.bpm)
+  )
+  if (!displayPoints.length) return []
+
+  const chips: CollapsedPointChip[] = []
+  const gapPx = 10
+  let cluster: { indices: number[]; startXPx: number; bpms: number[] } | null = null
+
+  const flushCluster = () => {
+    if (!cluster) return
+    const label = buildCollapsedChipLabel(cluster.bpms)
+    chips.push({ key: `collapsed-bpm-${cluster.indices.join('-')}`, xPx: cluster.startXPx, label })
+    cluster = null
+  }
+
+  for (let index = 0; index < displayPoints.length; index += 1) {
+    const point = displayPoints[index]
+    const xPx = resolveTimelineXPx(Number(point.sec))
+    const label = `BPM ${formatBpmLabel(point.bpm)}`
+    const estimatedWidth = estimateCollapsedChipWidth(label)
+    if (!cluster) {
+      cluster = { indices: [index], startXPx: xPx, bpms: [Number(point.bpm)] }
+      continue
+    }
+
+    const clusterLabel = buildCollapsedChipLabel(cluster.bpms)
+    const clusterWidth = estimateCollapsedChipWidth(clusterLabel)
+    const clusterRight = cluster.startXPx + clusterWidth
+    const nextLeft = xPx
+    if (nextLeft <= clusterRight + gapPx) {
+      cluster.indices.push(index)
+      cluster.bpms.push(Number(point.bpm))
+      continue
+    }
+
+    flushCluster()
+    cluster = { indices: [index], startXPx: xPx, bpms: [Number(point.bpm)] }
+  }
+
+  flushCluster()
+  return chips
 })
 
 const ghostPointDot = computed(() => {
@@ -309,16 +376,11 @@ const currentBpmValue = computed(() =>
   sampleMixtapeGlobalBpmAtSec(effectivePoints.value, currentPlayheadSec.value, defaultBpm.value)
 )
 
-const formatBpmLabel = (value: number) => {
-  const rounded = Math.round((Number(value) || 0) * 10) / 10
-  if (Math.abs(rounded - Math.round(rounded)) <= 0.05) {
-    return Math.round(rounded).toString()
-  }
-  return rounded.toFixed(1)
-}
+const formatBpmLabel = (value: number) => Math.max(1, Math.round(Number(value) || 0)).toString()
 
 const currentBpmLabel = computed(() => formatBpmLabel(currentBpmValue.value))
-const currentBpmText = computed(() => `bpm:${currentBpmLabel.value}`)
+const currentBpmText = computed(() => `BPM ${currentBpmLabel.value}`)
+const interactionHintText = computed(() => t('mixtape.masterTempoLaneDragHint'))
 
 const playheadMarker = computed(() => {
   const xPx = resolveTimelineXPx(currentPlayheadSec.value)
@@ -607,20 +669,11 @@ const resolveStagePointFromMouse = (event: MouseEvent) => {
       visualRange.value.maxBpm
     ).toFixed(4)
   )
-  return { sec, bpm }
+  return { sec, bpm, clientY: event.clientY }
 }
 
 const handleStageMouseMove = (event: MouseEvent) => {
   if (!shouldRenderEditor.value) return
-  const stageEl = event.currentTarget as HTMLElement | null
-  if (!stageEl) return
-
-  if (event.altKey) {
-    stageEl.style.cursor = 'crosshair'
-  } else {
-    stageEl.style.cursor = ''
-  }
-
   const point = resolveStagePointFromMouse(event)
   if (!point) return
 
@@ -635,20 +688,20 @@ const handleStageMouseMove = (event: MouseEvent) => {
 
 const handleStageMouseLeave = (event: MouseEvent) => {
   ghostPointState.value = null
-  const stageEl = event.currentTarget as HTMLElement | null
-  if (stageEl) stageEl.style.cursor = ''
 }
 
 const handleStageMouseDown = (event: MouseEvent) => {
   if (!shouldRenderEditor.value || event.button !== 0) return
 
-  if (event.detail < 2 && !event.altKey) return
+  if (event.detail < 2) return
 
   const point = resolveStagePointFromMouse(event)
   if (!point) return
   point.sec = resolveSnappedTimelineSec(point.sec)
 
-  const lineBpm = sampleMixtapeGlobalBpmAtSec(effectivePoints.value, point.sec, defaultBpm.value)
+  const lineBpm = Math.round(
+    sampleMixtapeGlobalBpmAtSec(effectivePoints.value, point.sec, defaultBpm.value)
+  )
   point.bpm = lineBpm
 
   const undoPoints = clonePoints(effectivePoints.value)
@@ -680,65 +733,26 @@ const handleStageMouseDown = (event: MouseEvent) => {
 
 const handleWindowMouseMove = (event: MouseEvent) => {
   const currentDragState = dragState.value
-  if (!currentDragState || !currentDragState.pointIndices.length) return
+  if (!currentDragState || !currentDragState.pointIndices.length || !currentDragState.startPointer)
+    return
   event.preventDefault()
-  const rect = stageRef.value?.getBoundingClientRect()
-  if (!rect || rect.width <= 0 || rect.height <= 0) return
-  const yRatio = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
   const nextPoints = clonePoints(currentDragState.basePoints)
+  const deltaBpm = Math.round(
+    ((currentDragState.startPointer.clientY ?? event.clientY) - event.clientY) /
+      MASTER_BPM_DRAG_STEP_PX
+  )
 
-  const isFineTune = event.shiftKey
-  const snapThreshold = (visualRange.value.maxBpm - visualRange.value.minBpm) * 0.02
-
-  if (currentDragState.pointIndices.length === 1) {
-    const pointIndex = currentDragState.pointIndices[0]
+  for (const pointIndex of currentDragState.pointIndices) {
     const targetPoint = nextPoints[pointIndex]
-    if (!targetPoint) return
-
-    let targetBpm = Number(
-      mapTrackBpmYPercentToValue(
-        yRatio * 100,
-        visualRange.value.baseBpm,
+    const basePoint = currentDragState.basePoints[pointIndex]
+    if (!targetPoint || !basePoint) continue
+    targetPoint.bpm = Math.round(
+      clampNumber(
+        Math.round(basePoint.bpm) + deltaBpm,
         visualRange.value.minBpm,
         visualRange.value.maxBpm
-      ).toFixed(4)
+      )
     )
-
-    if (isFineTune && currentDragState.startPointer) {
-      const deltaBpm = targetBpm - currentDragState.startPointer.bpm
-      targetBpm = currentDragState.basePoints[pointIndex].bpm + deltaBpm * 0.1
-    }
-
-    if (Math.abs(targetBpm - defaultBpm.value) < snapThreshold) {
-      targetBpm = defaultBpm.value
-    }
-
-    targetPoint.bpm = clampNumber(targetBpm, visualRange.value.minBpm, visualRange.value.maxBpm)
-  } else {
-    if (!currentDragState.startPointer) return
-    let rawBpm = Number(
-      mapTrackBpmYPercentToValue(
-        yRatio * 100,
-        visualRange.value.baseBpm,
-        visualRange.value.minBpm,
-        visualRange.value.maxBpm
-      ).toFixed(4)
-    )
-    let deltaBpm = rawBpm - currentDragState.startPointer.bpm
-    if (isFineTune) {
-      deltaBpm *= 0.1
-    }
-
-    for (const pointIndex of currentDragState.pointIndices) {
-      const targetPoint = nextPoints[pointIndex]
-      if (targetPoint) {
-        let newBpm = currentDragState.basePoints[pointIndex].bpm + deltaBpm
-        if (Math.abs(newBpm - defaultBpm.value) < snapThreshold) {
-          newBpm = defaultBpm.value
-        }
-        targetPoint.bpm = clampNumber(newBpm, visualRange.value.minBpm, visualRange.value.maxBpm)
-      }
-    }
   }
 
   if (currentDragState.pointGridBeats.size > 0) {
@@ -942,6 +956,13 @@ watch(
           >
             {{ formatBpmLabel(point.bpm) }}
           </span>
+          <span
+            v-else
+            class="timeline-master-bpm__point-hint"
+            :class="[`is-${point.labelPlacement}`, `is-align-${point.labelAlign}`]"
+          >
+            {{ interactionHintText }}
+          </span>
         </div>
       </div>
     </div>
@@ -952,14 +973,16 @@ watch(
       @mousedown.stop.prevent
       @click.stop.prevent
     >
-      <div
-        v-if="props.playheadVisible"
-        class="timeline-master-bpm__playhead-chip is-collapsed"
-        :class="[`is-align-${playheadMarker.align}`]"
-        :style="{ left: `${playheadMarker.xPx}px` }"
-      >
-        {{ currentBpmText }}
-      </div>
+      <template v-if="collapsedPointChips.length">
+        <div
+          v-for="chip in collapsedPointChips"
+          :key="chip.key"
+          class="timeline-master-bpm__collapsed-chip"
+          :style="{ left: `${chip.xPx}px` }"
+        >
+          {{ chip.label }}
+        </div>
+      </template>
       <div v-else class="timeline-master-bpm__collapsed-readout">{{ currentBpmText }}</div>
     </div>
   </div>

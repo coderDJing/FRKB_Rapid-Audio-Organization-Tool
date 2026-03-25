@@ -787,6 +787,7 @@
     "envelopeEditHint": "Click to add, drag to adjust, double-click to delete",
     "masterTempoLaneEdited": "Edited",
     "masterTempoLaneCurrentBpm": "Current {bpm} BPM",
+    "masterTempoLaneDragHint": "Double-click or right-click a point to remove it.",
     "masterTempoLaneExpandAction": "Show envelope",
     "masterTempoLaneCollapseAction": "Hide envelope",
     "masterTempoLaneSwitchOn": "ON",

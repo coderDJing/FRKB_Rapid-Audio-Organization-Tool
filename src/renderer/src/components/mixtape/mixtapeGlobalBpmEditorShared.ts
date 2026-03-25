@@ -9,7 +9,10 @@ import type { MixtapeBpmPoint, MixtapeTrack } from '@renderer/composables/mixtap
 export type BpmDragPointer = {
   sec: number
   bpm: number
+  clientY?: number
 }
+
+export const MASTER_BPM_DRAG_STEP_PX = 8
 
 const resolveLockedGridBeat = (beat: number) => {
   const numeric = Number(beat)

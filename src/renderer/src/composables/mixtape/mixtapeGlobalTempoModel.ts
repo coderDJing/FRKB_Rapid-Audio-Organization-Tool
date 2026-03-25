@@ -21,6 +21,8 @@ const normalizeBpm = (value: unknown) => {
   return Number(numeric.toFixed(4))
 }
 
+const roundGlobalBpm = (value: number) => Math.max(BPM_MIN_VALUE, Math.round(Number(value) || 0))
+
 const resolveTrackStartSec = (track: MixtapeTrack) => {
   const numeric = Number(track.startSec)
   if (!Number.isFinite(numeric) || numeric < 0) return 0
@@ -32,16 +34,16 @@ export const resolveDefaultGlobalBpmFromTracks = (tracks: MixtapeTrack[]) => {
     const candidates = [track.bpm, track.gridBaseBpm, track.originalBpm]
     for (const candidate of candidates) {
       const normalized = normalizeBpm(candidate)
-      if (normalized !== null) return normalized
+      if (normalized !== null) return roundGlobalBpm(normalized)
     }
   }
   return 128
 }
 
 export const buildFlatMixtapeGlobalBpmEnvelope = (durationSec: number, bpm: number) =>
-  buildFlatTrackBpmEnvelope(durationSec, bpm).map((point) => ({
+  buildFlatTrackBpmEnvelope(durationSec, roundGlobalBpm(bpm)).map((point) => ({
     sec: Number(point.sec),
-    bpm: Number(point.bpm)
+    bpm: roundGlobalBpm(Number(point.bpm))
   }))
 
 export const buildDefaultMixtapeGlobalBpmEnvelopeSnapshot = (params: {
@@ -68,11 +70,28 @@ export const normalizeMixtapeGlobalBpmEnvelopePoints = (
   value: unknown,
   durationSec: number,
   defaultBpm: number
-) =>
-  normalizeTrackBpmEnvelopePoints(value, durationSec, defaultBpm).map((point) => ({
+) => {
+  const normalizedPoints = normalizeTrackBpmEnvelopePoints(
+    value,
+    durationSec,
+    roundGlobalBpm(defaultBpm)
+  ).map((point) => ({
     sec: Number(point.sec),
-    bpm: Number(point.bpm)
+    bpm: roundGlobalBpm(Number(point.bpm))
   }))
+
+  if (
+    normalizedPoints.length >= 2 &&
+    normalizedPoints.every((point) => point.bpm === normalizedPoints[0]?.bpm)
+  ) {
+    return buildFlatMixtapeGlobalBpmEnvelope(
+      durationSec,
+      normalizedPoints[0]?.bpm ?? roundGlobalBpm(defaultBpm)
+    )
+  }
+
+  return normalizedPoints
+}
 
 export const sampleMixtapeGlobalBpmAtSec = (
   points: MixtapeBpmPoint[],

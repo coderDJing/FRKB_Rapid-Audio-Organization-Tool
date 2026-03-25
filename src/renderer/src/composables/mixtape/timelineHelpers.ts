@@ -11,6 +11,7 @@ import {
   MIXTAPE_BASE_TRACK_LANE_HEIGHT,
   MIXTAPE_WAVEFORM_HEIGHT_SCALE,
   MIN_TRACK_WIDTH,
+  TIMELINE_END_EXTENSION_PX,
   TIMELINE_SIDE_PADDING_PX,
   MIXTAPE_WIDTH_SCALE,
   RAW_WAVEFORM_MIN_ZOOM,
@@ -438,7 +439,10 @@ export const createTimelineHelpersModule = (ctx: any) => {
     const timelineEndX = Math.max(cursorPx, lastEnd)
     const snapshot = {
       layout,
-      totalWidth: Math.max(TIMELINE_SIDE_PADDING_PX * 2, timelineEndX + TIMELINE_SIDE_PADDING_PX),
+      totalWidth: Math.max(
+        TIMELINE_SIDE_PADDING_PX * 2,
+        timelineEndX + TIMELINE_SIDE_PADDING_PX + TIMELINE_END_EXTENSION_PX
+      ),
       startOffsets,
       endOffsets
     }
