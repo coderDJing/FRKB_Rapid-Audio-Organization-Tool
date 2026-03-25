@@ -97,20 +97,6 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       partialKeyPersisted: job.trace?.partialKeyPersisted || keyPersisted,
       partialBpmPersisted: job.trace?.partialBpmPersisted || bpmPersisted
     }
-
-    if (job.source === 'background') {
-      log.info('[闲时分析] 分析阶段完成并已落盘', {
-        filePath: job.filePath,
-        fileName: path.basename(job.filePath),
-        decodeBackend: job.trace?.decodeBackend || 'unknown',
-        fastAnalysis: job.fastAnalysis,
-        keyPersisted,
-        bpmPersisted,
-        decodeMs: job.trace?.decodeMs,
-        analyzeMs: job.trace?.analyzeMs,
-        detail: job.trace?.detail
-      })
-    }
   }
 
   const handleWorkerFailure = (worker: Worker, error: Error) => {
@@ -239,33 +225,15 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     if (job) {
       deps.activeByPath.delete(job.normalizedPath)
       if (job.source === 'background') {
-        const results: string[] = []
         const errors: string[] = []
-        if (payloadResult?.keyText && !payloadResult.keyError) results.push('key')
-        else if (payloadResult?.keyError) errors.push(`key: ${payloadResult.keyError}`)
-        if (payloadResult?.bpm && !payloadResult.bpmError) results.push('bpm')
-        else if (payloadResult?.bpmError) errors.push(`bpm: ${payloadResult.bpmError}`)
-        if (payloadResult?.mixxxWaveformData) results.push('waveform')
+        if (payloadResult?.keyError) errors.push(`key: ${payloadResult.keyError}`)
+        if (payloadResult?.bpmError) errors.push(`bpm: ${payloadResult.bpmError}`)
         if (payloadError) errors.push(`worker错误: ${payloadError}`)
 
         if (errors.length > 0) {
           const elapsed = job.startTime ? Date.now() - job.startTime : 0
           const statusMsg = `[闲时分析] 任务完成但有错误 - ${path.basename(job.filePath)} (耗时: ${elapsed}ms) 错误: ${errors.join('; ')}`
           log.warn(statusMsg)
-        } else {
-          log.info('[闲时分析] 后台任务完成摘要', {
-            filePath: job.filePath,
-            fileName: path.basename(job.filePath),
-            decodeBackend: job.trace?.decodeBackend || 'unknown',
-            fastAnalysis: job.fastAnalysis,
-            decodeMs: job.trace?.decodeMs,
-            analyzeMs: job.trace?.analyzeMs,
-            waveformMs: job.trace?.waveformMs,
-            elapsedMs: job.startTime ? Date.now() - job.startTime : 0,
-            keyPersisted: job.trace?.partialKeyPersisted === true || results.includes('key'),
-            bpmPersisted: job.trace?.partialBpmPersisted === true || results.includes('bpm'),
-            waveformPersisted: results.includes('waveform')
-          })
         }
         deps.background.unmarkProcessing(job.jobId)
         deps.background.emitBackgroundStatus()

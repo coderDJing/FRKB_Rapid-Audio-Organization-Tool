@@ -123,19 +123,6 @@ onUnmounted(() => {
 
 let librarySelected = ref('FilterLibrary')
 type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary'
-const safeStringify = (value: unknown) => {
-  try {
-    return JSON.stringify(value)
-  } catch {
-    return String(value)
-  }
-}
-const traceGlobalSongSearch = (event: string, payload?: Record<string, unknown>) => {
-  try {
-    const suffix = payload ? ` ${safeStringify(payload)}` : ''
-    window.electron.ipcRenderer.send('outputLog', `[gss-home] ${event}${suffix}`)
-  } catch {}
-}
 const normalizeLibraryPath = (value: string) => (value || '').replace(/\\/g, '/')
 const isCoreLibraryName = (value: string): value is CoreLibraryName =>
   ['FilterLibrary', 'CuratedLibrary', 'MixtapeLibrary'].includes(value)
@@ -162,12 +149,7 @@ const resolveStoredSongListUUID = (libraryName: CoreLibraryName): string => {
 
 watch(
   () => runtime.songsArea.songListUUID,
-  (uuid, oldUuid) => {
-    traceGlobalSongSearch('songListUUID-changed', {
-      oldSongListUUID: oldUuid || '',
-      songListUUID: uuid || '',
-      libraryAreaSelected: runtime.libraryAreaSelected
-    })
+  (uuid) => {
     if (!uuid || uuid === EXTERNAL_PLAYLIST_UUID || uuid === RECYCLE_BIN_UUID) return
     const currentLibrary = runtime.libraryAreaSelected
     if (!isCoreLibraryName(currentLibrary)) return
@@ -178,27 +160,14 @@ watch(
 watch(
   () => runtime.libraryAreaSelected,
   (val, oldVal) => {
-    traceGlobalSongSearch('library-changed', {
-      oldLibrary: oldVal || '',
-      library: val || '',
-      songListUUID: runtime.songsArea.songListUUID || ''
-    })
     librarySelected.value = val
     if (val === 'ExternalPlaylist') {
       if (runtime.songsArea.songListUUID !== EXTERNAL_PLAYLIST_UUID) {
-        traceGlobalSongSearch('set-external-playlist', {
-          from: runtime.songsArea.songListUUID || '',
-          to: EXTERNAL_PLAYLIST_UUID
-        })
         runtime.songsArea.songListUUID = EXTERNAL_PLAYLIST_UUID
       }
     }
     if (val === 'RecycleBin') {
       if (runtime.songsArea.songListUUID !== RECYCLE_BIN_UUID) {
-        traceGlobalSongSearch('set-recycle-playlist', {
-          from: runtime.songsArea.songListUUID || '',
-          to: RECYCLE_BIN_UUID
-        })
         runtime.songsArea.songListUUID = RECYCLE_BIN_UUID
       }
     } else if (isCoreLibraryName(val)) {
@@ -207,11 +176,6 @@ watch(
       const hasCurrent = isPlaylistUnderLibrary(currentUuid, val)
       if (storedUuid) {
         if (currentUuid !== storedUuid) {
-          traceGlobalSongSearch('restore-stored-playlist', {
-            library: val,
-            from: currentUuid || '',
-            to: storedUuid
-          })
           runtime.songsArea.songListUUID = storedUuid
         }
       } else if (hasCurrent) {
@@ -222,10 +186,6 @@ watch(
           currentUuid === EXTERNAL_PLAYLIST_UUID ||
           currentUuid
         ) {
-          traceGlobalSongSearch('clear-invalid-playlist', {
-            library: val,
-            from: currentUuid || ''
-          })
           runtime.songsArea.songListUUID = ''
         }
       }

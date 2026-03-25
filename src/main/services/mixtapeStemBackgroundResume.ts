@@ -168,17 +168,10 @@ const runBackgroundResumeScan = async () => {
   try {
     const groups = collectBackgroundResumeGroups()
     if (!groups.length) return
-    let touchedGroups = 0
-    let touchedTracks = 0
-    let queued = 0
-    let merged = 0
-    let readyFromCache = 0
     for (const group of groups) {
       if (!backgroundResumeEnabled) break
       if (!group.filePaths.length) continue
-      touchedGroups += 1
-      touchedTracks += group.filePaths.length
-      const result = await enqueueMixtapeStemJobs({
+      await enqueueMixtapeStemJobs({
         playlistId: group.playlistId,
         filePaths: group.filePaths,
         stemMode: group.stemMode,
@@ -186,18 +179,6 @@ const runBackgroundResumeScan = async () => {
         model: group.model,
         stemVersion: group.stemVersion,
         source: 'background'
-      })
-      queued += result.queued
-      merged += result.merged
-      readyFromCache += result.readyFromCache
-    }
-    if (queued > 0 || merged > 0) {
-      log.info('[mixtape-stem] background resume scan enqueued', {
-        touchedGroups,
-        touchedTracks,
-        queued,
-        merged,
-        readyFromCache
       })
     }
   } catch (error) {

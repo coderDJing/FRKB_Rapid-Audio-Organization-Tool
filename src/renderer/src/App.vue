@@ -76,35 +76,11 @@ const markSongSearchDirty = (reason: string) => {
   void window.electron.ipcRenderer.invoke('song-search:mark-dirty', { reason }).catch(() => {})
 }
 
-const safeStringify = (value: unknown) => {
-  try {
-    return JSON.stringify(value)
-  } catch {
-    return String(value)
-  }
-}
-
-const traceGlobalSongSearch = (event: string, payload?: Record<string, unknown>) => {
-  try {
-    const suffix = payload ? ` ${safeStringify(payload)}` : ''
-    window.electron.ipcRenderer.send('outputLog', `[gss-app] ${event}${suffix}`)
-  } catch {}
-}
-
 const focusSongFromGlobalSearch = async (
   payload: GlobalSongSearchItem,
   autoPlay: boolean,
   flashLocate = false
 ) => {
-  traceGlobalSongSearch('focus-start', {
-    libraryName: payload.libraryName,
-    songListUUID: payload.songListUUID,
-    filePath: payload.filePath,
-    autoPlay,
-    flashLocate,
-    currentLibrary: runtime.libraryAreaSelected,
-    currentSongListUUID: runtime.songsArea.songListUUID
-  })
   if (
     payload.libraryName === 'FilterLibrary' ||
     payload.libraryName === 'CuratedLibrary' ||
@@ -116,11 +92,6 @@ const focusSongFromGlobalSearch = async (
   if (runtime.songsArea.songListUUID !== payload.songListUUID) {
     runtime.songsArea.songListUUID = payload.songListUUID
   }
-  traceGlobalSongSearch('focus-dispatch', {
-    currentLibrary: runtime.libraryAreaSelected,
-    currentSongListUUID: runtime.songsArea.songListUUID,
-    targetSongListUUID: payload.songListUUID
-  })
   emitter.emit('songsArea/focus-song', {
     songListUUID: payload.songListUUID,
     filePath: payload.filePath,
@@ -355,21 +326,11 @@ const openDialog = async (item: string) => {
 }
 
 const handleGlobalSongSearchLocate = async (item: GlobalSongSearchItem) => {
-  traceGlobalSongSearch('locate-click', {
-    libraryName: item.libraryName,
-    songListUUID: item.songListUUID,
-    filePath: item.filePath
-  })
   activeDialog.value = ''
   await focusSongFromGlobalSearch(item, false, true)
 }
 
 const handleGlobalSongSearchPlay = async (item: GlobalSongSearchItem) => {
-  traceGlobalSongSearch('play-click', {
-    libraryName: item.libraryName,
-    songListUUID: item.songListUUID,
-    filePath: item.filePath
-  })
   activeDialog.value = ''
   await focusSongFromGlobalSearch(item, true)
 }

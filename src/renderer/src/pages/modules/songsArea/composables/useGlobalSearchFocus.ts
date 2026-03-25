@@ -30,14 +30,6 @@ const normalizeSongPath = (value: string | undefined | null) =>
     .replace(/\//g, '\\')
     .toLowerCase()
 
-const safeStringify = (value: unknown) => {
-  try {
-    return JSON.stringify(value)
-  } catch {
-    return String(value)
-  }
-}
-
 export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
   const {
     runtime,
@@ -58,13 +50,6 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
   let focusHasHit = false
   let focusAutoPlayed = false
   let focusStabilizeUntil = 0
-
-  const trace = (event: string, data?: Record<string, unknown>) => {
-    try {
-      const suffix = data ? ` ${safeStringify(data)}` : ''
-      window.electron.ipcRenderer.send('outputLog', `[gss-focus] ${event}${suffix}`)
-    } catch {}
-  }
 
   const findVisibleSongIndexByPath = (targetPath: string) =>
     runtime.songsArea.songInfoArr.findIndex(
@@ -96,29 +81,14 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
       filterNumber: undefined
     }))
     applyFiltersAndSorting()
-    trace('clear-filters', {
-      listUUID: runtime.songsArea.songListUUID,
-      visibleCount: runtime.songsArea.songInfoArr.length,
-      originalCount: originalSongInfoArr.value.length
-    })
     return true
   }
 
   const applyFocusSongPayload = async (payload: FocusSongPayload, attemptNo: number) => {
     const targetPath = normalizeSongPath(payload?.filePath)
     const targetListUUID = String(payload?.songListUUID || '')
-    if (!targetPath) {
-      trace('skip-empty-path', { attemptNo })
-      return false
-    }
+    if (!targetPath) return false
     if (targetListUUID && targetListUUID !== runtime.songsArea.songListUUID) {
-      if (attemptNo <= 2 || attemptNo % 8 === 0) {
-        trace('waiting-list-switch', {
-          attemptNo,
-          targetListUUID,
-          currentListUUID: runtime.songsArea.songListUUID
-        })
-      }
       return false
     }
     let targetIndex = findVisibleSongIndexByPath(targetPath)
@@ -130,15 +100,6 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
       }
     }
     if (targetIndex < 0) {
-      if (attemptNo <= 2 || attemptNo % 8 === 0) {
-        trace('waiting-song-visible', {
-          attemptNo,
-          targetPath,
-          listUUID: runtime.songsArea.songListUUID,
-          visibleCount: runtime.songsArea.songInfoArr.length,
-          originalCount: originalSongInfoArr.value.length
-        })
-      }
       return false
     }
     const targetSong = runtime.songsArea.songInfoArr[targetIndex]
@@ -153,13 +114,6 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
     if (!focusHasHit) {
       focusHasHit = true
       focusStabilizeUntil = Date.now() + FOCUS_STABILIZE_MS
-      trace('focus-hit', {
-        attemptNo,
-        targetIndex,
-        rowKey,
-        autoPlay: payload.autoPlay === true,
-        flash: payload.flash === true
-      })
     }
     if (Date.now() < focusStabilizeUntil) {
       return false
@@ -167,12 +121,6 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
     if (payload.flash) {
       onFocusHit?.(rowKey)
     }
-    trace('focus-stable', {
-      attemptNo,
-      targetIndex,
-      rowKey,
-      flash: payload.flash === true
-    })
     return true
   }
 
@@ -190,21 +138,6 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
       return
     }
     if (Date.now() > focusRetryDeadline) {
-      if (focusHasHit) {
-        trace('focus-stabilize-timeout', {
-          targetListUUID: payload.songListUUID || '',
-          targetPath: payload.filePath || '',
-          currentListUUID: runtime.songsArea.songListUUID
-        })
-      } else {
-        trace('focus-timeout', {
-          targetListUUID: payload.songListUUID || '',
-          targetPath: payload.filePath || '',
-          currentListUUID: runtime.songsArea.songListUUID,
-          visibleCount: runtime.songsArea.songInfoArr.length,
-          originalCount: originalSongInfoArr.value.length
-        })
-      }
       pendingFocusPayload.value = null
       stopFocusRetryLoop()
       return
@@ -239,12 +172,6 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
     focusAutoPlayed = false
     focusStabilizeUntil = 0
     pendingFocusPayload.value = payload
-    trace('focus-request', {
-      targetListUUID: payload.songListUUID || '',
-      targetPath: payload.filePath || '',
-      autoPlay: payload.autoPlay === true,
-      currentListUUID: runtime.songsArea.songListUUID
-    })
     ensureFocusRetryLoop()
     runPendingFocusAttempt()
   }
