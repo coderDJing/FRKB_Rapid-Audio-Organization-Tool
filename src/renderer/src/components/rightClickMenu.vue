@@ -188,7 +188,9 @@ onUnmounted(() => {
   background-color: var(--bg-elev);
   border: 1px solid var(--border);
   font-size: 14px;
-  width: 250px;
+  min-width: 250px;
+  width: max-content;
+  max-width: calc(100vw - 12px);
   border-radius: 5px;
   z-index: 10060; // 高于 .dialog(9999) 与 .frkb-bubble(10050) 与封面弹框(10010)
 
@@ -197,8 +199,10 @@ onUnmounted(() => {
     padding: 5px 5px;
 
     .menuButton {
-      display: flex;
-      justify-content: space-between;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      column-gap: 24px;
       padding: 5px 20px;
       border-radius: 5px;
       color: var(--text);
@@ -207,6 +211,15 @@ onUnmounted(() => {
         background-color: var(--accent);
         color: #ffffff;
       }
+    }
+
+    .menuButton > span {
+      white-space: nowrap;
+    }
+
+    .menuButton > span:first-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .menuButtonOver {

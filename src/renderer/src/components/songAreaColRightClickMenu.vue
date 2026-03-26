@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { watch, ref, PropType, onMounted, onUnmounted } from 'vue'
+import { watch, ref, PropType, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidV4 } from 'uuid'
 import tickIconAsset from '@renderer/assets/tickIcon.svg?asset'
 import { t } from '@renderer/utils/translate'
 import { ISongsAreaColumn } from '../../../types/globals'
+import { resolveContextMenuPoint } from '@renderer/utils/contextMenuPosition'
 const uuid = uuidV4()
 const runtime = useRuntimeStore()
 const tickIcon = tickIconAsset
@@ -28,17 +29,24 @@ const props = defineProps({
     type: Boolean,
     required: true
   },
-  clickPosition: {
-    type: Object as PropType<{ x: number; y: number }>,
-    required: true
+  clickEvent: {
+    type: Object as PropType<MouseEvent | null>,
+    default: null
+  },
+  scrollHostElement: {
+    type: Object as PropType<HTMLElement | null | undefined>,
+    default: null
   }
 })
 
 watch(
   () => props.modelValue,
-  () => {
-    if (props.modelValue == true) {
+  (visible) => {
+    if (visible) {
       runtime.activeMenuUUID = uuid
+      positionLeft.value = -9999
+      positionTop.value = -9999
+      void updateMenuPosition()
     }
   }
 )
@@ -57,13 +65,48 @@ const closeMenu = () => {
   emits('update:modelValue', false)
 }
 
-let positionTop = ref(0)
-let positionLeft = ref(0)
+let positionTop = ref(-9999)
+let positionLeft = ref(-9999)
+
+const updateMenuPosition = async () => {
+  if (!props.modelValue || !props.clickEvent) return
+
+  await nextTick()
+  if (!menuRef.value) return
+
+  const { x, y } = resolveContextMenuPoint({
+    clickX: props.clickEvent.clientX,
+    clickY: props.clickEvent.clientY,
+    menuWidth: menuRef.value.offsetWidth,
+    menuHeight: menuRef.value.offsetHeight
+  })
+
+  if (props.scrollHostElement) {
+    const hostRect = props.scrollHostElement.getBoundingClientRect()
+    positionLeft.value = x - hostRect.left
+    positionTop.value = Math.max(0, y - hostRect.top)
+    return
+  }
+
+  positionLeft.value = x
+  positionTop.value = y
+}
+
 watch(
-  () => props.clickPosition,
-  (newPosition) => {
-    positionLeft.value = newPosition.x
-    positionTop.value = newPosition.y
+  () => props.clickEvent,
+  () => {
+    if (props.modelValue) {
+      void updateMenuPosition()
+    }
+  }
+)
+
+watch(
+  () => props.scrollHostElement,
+  () => {
+    if (props.modelValue) {
+      void updateMenuPosition()
+    }
   }
 )
 
@@ -93,18 +136,10 @@ onUnmounted(() => {
   >
     <div v-for="item of props.columnData" class="menuGroup">
       <div class="menuButton" @click="menuButtonClick(item)" @contextmenu="menuButtonClick(item)">
-        <div
-          style="
-            width: 19px;
-            height: 19px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-          "
-        >
+        <div class="menuButtonIcon">
           <img v-if="item.show" :src="tickIcon" style="width: 16px" class="theme-icon" />
         </div>
-        <div style="margin-left: 10px">
+        <div class="menuButtonLabel">
           <span>{{ t(item.columnName) }}</span>
         </div>
       </div>
@@ -117,7 +152,9 @@ onUnmounted(() => {
   background-color: var(--bg-elev);
   border: 1px solid var(--border);
   font-size: 14px;
-  width: 250px;
+  min-width: 250px;
+  width: max-content;
+  max-width: calc(100vw - 12px);
   border-radius: 5px;
   z-index: 10010; // 高于全局 .dialog(9999)
 
@@ -127,13 +164,38 @@ onUnmounted(() => {
 
     .menuButton {
       display: flex;
+      align-items: center;
+      gap: 10px;
       padding: 5px 20px;
       border-radius: 5px;
+      white-space: nowrap;
 
       &:hover {
         background-color: var(--accent);
         color: #ffffff;
       }
+    }
+
+    .menuButtonIcon {
+      width: 19px;
+      height: 19px;
+      flex: 0 0 19px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .menuButtonLabel {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .menuButtonLabel span {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
   }
 
