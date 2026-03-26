@@ -37,10 +37,6 @@ export interface MetadataBatchUpdatedAction {
   updates: Array<{ song: ISongInfo; oldFilePath?: string }>
 }
 
-export interface PlaylistCacheClearedAction {
-  action: 'playlistCacheCleared'
-}
-
 export interface TrackCacheClearedAction {
   action: 'trackCacheCleared'
 }
@@ -145,7 +141,6 @@ export function useSongItemContextMenu(
     | SongsRemovedAction
     | MetadataUpdatedAction
     | MetadataBatchUpdatedAction
-    | PlaylistCacheClearedAction
     | TrackCacheClearedAction
     | null
   > => {

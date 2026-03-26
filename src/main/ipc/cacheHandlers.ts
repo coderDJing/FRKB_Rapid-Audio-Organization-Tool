@@ -3,7 +3,6 @@ import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import {
-  clearSongListCaches as svcClearSongListCaches,
   clearTrackCache as svcClearTrackCache,
   findSongListRoot
 } from '../services/cacheMaintenance'
@@ -53,10 +52,6 @@ export function registerCacheHandlers() {
     const requiredRate = Math.max(1, Math.min(requestedRate, cappedSampleRate))
     return cachedRate >= requiredRate
   }
-
-  ipcMain.handle('playlist:cache:clear', async (_e, songListPath: string) => {
-    await svcClearSongListCaches(songListPath)
-  })
 
   ipcMain.handle('track:cache:clear', async (_e, filePath: string) => {
     await svcClearTrackCache(filePath)

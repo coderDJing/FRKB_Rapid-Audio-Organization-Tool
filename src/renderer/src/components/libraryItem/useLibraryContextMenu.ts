@@ -82,7 +82,6 @@ export function useLibraryContextMenu({
       ],
       [{ menuName: 'tracks.showInFileExplorer' }],
       [{ menuName: 'metadata.autoFillMenu' }],
-      [{ menuName: 'playlist.clearCache' }],
       [{ menuName: 'playlist.fingerprintDeduplicate' }],
       [{ menuName: 'tracks.convertFormat' }],
       [{ menuName: 'fingerprints.analyzeAndAdd' }]
@@ -422,15 +421,6 @@ export function useLibraryContextMenu({
           return
         }
         await analyzeFingerprintsForPaths(files, { origin: 'playlist' })
-        break
-      }
-      case 'playlist.clearCache': {
-        const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
-        await window.electron.ipcRenderer.invoke('playlist:cache:clear', dirPath || '')
-        trackCount.value = null
-        try {
-          emitter.emit('playlistCacheCleared', { uuid: props.uuid })
-        } catch {}
         break
       }
       case 'playlist.fingerprintDeduplicate': {

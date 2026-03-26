@@ -242,31 +242,6 @@ export async function purgeCoverCacheForTrack(filePath: string, oldFilePath?: st
   } catch {}
 }
 
-export async function clearSongListCaches(songListPath: string | null | undefined) {
-  try {
-    if (!songListPath || typeof songListPath !== 'string') return
-    let input = songListPath
-    if (process.platform === 'win32' && /^\//.test(input)) input = input.replace(/^\/+/, '')
-    const mapped = path.isAbsolute(input) ? input : mapRendererPathToFsPath(input)
-    const resolvedRoot = path.isAbsolute(mapped) ? mapped : path.join(store.databaseDir, mapped)
-    const songsCache = path.join(resolvedRoot, '.songs.cache.json')
-    const coversDir = path.join(resolvedRoot, '.frkb_covers')
-    await LibraryCacheDb.clearSongCache(resolvedRoot)
-    await LibraryCacheDb.clearCoverIndex(resolvedRoot)
-    await LibraryCacheDb.clearWaveformCache(resolvedRoot)
-    await LibraryCacheDb.clearMixtapeWaveformCache(resolvedRoot)
-    await LibraryCacheDb.clearMixtapeRawWaveformCache(resolvedRoot)
-    await LibraryCacheDb.clearMixtapeWaveformHiresCache(resolvedRoot)
-    await LibraryCacheDb.clearMixtapeStemWaveformCache(resolvedRoot)
-    if (await fs.pathExists(songsCache)) {
-      await fs.remove(songsCache)
-    }
-    if (await fs.pathExists(coversDir)) {
-      await fs.remove(coversDir)
-    }
-  } catch {}
-}
-
 export async function clearTrackCache(filePath: string) {
   try {
     const songListRoot = await findSongListRoot(path.dirname(filePath))

@@ -255,21 +255,6 @@ const handleAutoFillForLibrary = async (libraryName: string) => {
   }
 }
 
-const clearCachesForLibrary = async (libraryName: string) => {
-  const libraryNode = findLibraryNode(libraryName)
-  const songLists = collectSongLists(libraryNode)
-  if (!songLists.length) return
-  for (const list of songLists) {
-    try {
-      const dirPath = libraryUtils.findDirPathByUuid(list.uuid)
-      await window.electron.ipcRenderer.invoke('playlist:cache:clear', dirPath || '')
-      emitter.emit('playlistCacheCleared', { uuid: list.uuid })
-    } catch (error) {
-      console.error('[librarySelectArea] clear playlist cache failed', error)
-    }
-  }
-}
-
 const emptyRecycleBinHandleClick = async () => {
   if (runtime.isProgressing) {
     await confirm({
@@ -307,10 +292,7 @@ const emptyRecycleBinHandleClick = async () => {
 }
 
 const buildMenuArr = (item: Icon) => {
-  const commonMenus = [
-    [{ menuName: 'metadata.autoFillMenu' }],
-    [{ menuName: 'playlist.clearCache' }]
-  ]
+  const commonMenus = [[{ menuName: 'metadata.autoFillMenu' }]]
   if (item.name === 'RecycleBin') {
     return [[{ menuName: 'recycleBin.emptyRecycleBin' }], ...commonMenus]
   }
@@ -326,9 +308,6 @@ const handleIconContextmenu = async (event: MouseEvent, item: Icon) => {
   switch (result.menuName) {
     case 'metadata.autoFillMenu':
       await handleAutoFillForLibrary(item.name)
-      break
-    case 'playlist.clearCache':
-      await clearCachesForLibrary(item.name)
       break
     case 'recycleBin.emptyRecycleBin':
       await emptyRecycleBinHandleClick()

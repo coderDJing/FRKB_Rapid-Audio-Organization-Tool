@@ -28,7 +28,6 @@ import ColumnHeaderContextMenu from './ColumnHeaderContextMenu.vue'
 import {
   useSongItemContextMenu,
   type MetadataUpdatedAction,
-  type PlaylistCacheClearedAction,
   type TrackCacheClearedAction
 } from '@renderer/pages/modules/songsArea/composables/useSongItemContextMenu'
 import { useSelectAndMoveSongs } from '@renderer/pages/modules/songsArea/composables/useSelectAndMoveSongs'
@@ -209,14 +208,6 @@ const { loadingShow, isRequesting, openSongList } = useSongsLoader({
   applyFiltersAndSorting
 })
 
-const handlePlaylistCacheCleared = async (payload: { uuid?: string }) => {
-  if (!payload || payload.uuid !== runtime.songsArea.songListUUID) return
-  const selectionBeforeReload = [...runtime.songsArea.selectedSongFilePath]
-  await openSongList()
-  runtime.songsArea.selectedSongFilePath = selectionBeforeReload.filter(Boolean)
-}
-emitter.on('playlistCacheCleared', handlePlaylistCacheCleared)
-
 const handleMetadataBatchUpdatedFromEvent = async (payload: {
   updates?: Array<{ song: ISongInfo; oldFilePath?: string }>
 }) => {
@@ -265,7 +256,6 @@ useWaveformPreviewPlayer()
 emitter.on('songsArea/clipboardHint', handleClipboardHint)
 
 onUnmounted(() => {
-  emitter.off('playlistCacheCleared', handlePlaylistCacheCleared)
   emitter.off('metadataBatchUpdated', handleMetadataBatchUpdatedFromEvent)
   emitter.off('songsArea/clipboardHint', handleClipboardHint)
   hideDragHint()
@@ -459,13 +449,6 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
   }
 
   if (result.action === 'trackCacheCleared') {
-    const selectionBeforeReload = [...runtime.songsArea.selectedSongFilePath]
-    await openSongList()
-    runtime.songsArea.selectedSongFilePath = selectionBeforeReload.filter(Boolean)
-    return
-  }
-
-  if (result.action === 'playlistCacheCleared') {
     const selectionBeforeReload = [...runtime.songsArea.selectedSongFilePath]
     await openSongList()
     runtime.songsArea.selectedSongFilePath = selectionBeforeReload.filter(Boolean)

@@ -661,7 +661,6 @@
     "globalSongPlayNow": "Play now"
   },
   "playlist": {
-    "clearCache": "Clear playlist cache",
     "deletePlaylist": "Delete playlist",
     "emptyPlaylist": "Empty playlist",
     "collapsibleFolder": "Collapsible folder",

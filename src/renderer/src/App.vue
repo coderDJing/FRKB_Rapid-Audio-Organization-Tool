@@ -207,10 +207,6 @@ const handleSongMetadataUpdatedForGlobalSearch = () => {
   markSongSearchDirty('song-metadata-updated')
 }
 
-const handlePlaylistCacheClearedForGlobalSearch = () => {
-  markSongSearchDirty('playlist-cache-cleared')
-}
-
 const sendFileOpControl = (action: 'resume' | 'cancel') => {
   fileOpDialogVisible.value = false
   ;(window as any).electron.ipcRenderer.send('file-op-control', {
@@ -496,7 +492,6 @@ onMounted(() => {
   emitter.on('songsRemoved', handleSongsRemovedForGlobalSearch)
   emitter.on('metadataBatchUpdated', handleMetadataBatchUpdatedForGlobalSearch)
   emitter.on('songMetadataUpdated', handleSongMetadataUpdatedForGlobalSearch)
-  emitter.on('playlistCacheCleared', handlePlaylistCacheClearedForGlobalSearch)
 })
 
 onBeforeUnmount(() => {
@@ -508,7 +503,6 @@ onBeforeUnmount(() => {
   emitter.off('songsRemoved', handleSongsRemovedForGlobalSearch)
   emitter.off('metadataBatchUpdated', handleMetadataBatchUpdatedForGlobalSearch)
   emitter.off('songMetadataUpdated', handleSongMetadataUpdatedForGlobalSearch)
-  emitter.off('playlistCacheCleared', handlePlaylistCacheClearedForGlobalSearch)
   contextMenuClickThroughGuard.clear()
 }) // ???????????????
 window.addEventListener('openDialogFromChild', (e: any) => {

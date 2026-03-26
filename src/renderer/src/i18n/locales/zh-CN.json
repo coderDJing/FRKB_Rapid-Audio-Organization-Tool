@@ -661,7 +661,6 @@
     "globalSongPlayNow": "立即播放"
   },
   "playlist": {
-    "clearCache": "清除歌单缓存",
     "deletePlaylist": "删除歌单",
     "emptyPlaylist": "清空歌单",
     "collapsibleFolder": "折叠文件夹",
