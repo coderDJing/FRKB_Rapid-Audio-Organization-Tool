@@ -15,6 +15,10 @@ export default defineConfig({
           index: resolve(__dirname, 'src/main/index.ts'),
           audioDecodeWorker: resolve(__dirname, 'src/main/workers/audioDecodeWorker.ts'),
           keyAnalysisWorker: resolve(__dirname, 'src/main/workers/keyAnalysisWorker.ts'),
+          pioneerDeviceLibraryWorker: resolve(
+            __dirname,
+            'src/main/workers/pioneerDeviceLibraryWorker.ts'
+          ),
           mixtapeWaveformWorker: resolve(__dirname, 'src/main/workers/mixtapeWaveformWorker.ts'),
           mixtapeRawWaveformWorker: resolve(
             __dirname,
@@ -28,6 +32,9 @@ export default defineConfig({
             }
             if (chunk.name === 'keyAnalysisWorker') {
               return 'workers/keyAnalysisWorker.js'
+            }
+            if (chunk.name === 'pioneerDeviceLibraryWorker') {
+              return 'workers/pioneerDeviceLibraryWorker.js'
             }
             if (chunk.name === 'mixtapeWaveformWorker') {
               return 'workers/mixtapeWaveformWorker.js'

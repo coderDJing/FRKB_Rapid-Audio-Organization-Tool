@@ -1,7 +1,12 @@
 import { computed, markRaw, nextTick, onBeforeUnmount, ref, watch, type Ref } from 'vue'
-import type { ISongInfo, ISongsAreaColumn } from '../../../../../../types/globals'
+import type {
+  IPioneerPreviewWaveformData,
+  ISongInfo,
+  ISongsAreaColumn
+} from '../../../../../../types/globals'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
+import { t } from '@renderer/utils/translate'
 import type {
   MixxxWaveformData,
   RGBWaveformBandKey,
@@ -14,6 +19,19 @@ type MinMaxSample = {
   min: number
   max: number
 }
+
+type WaveformCacheEntry =
+  | {
+      kind: 'mixxx'
+      data: MixxxWaveformData
+    }
+  | {
+      kind: 'pioneer'
+      data: IPioneerPreviewWaveformData
+    }
+  | null
+
+type WaveformPlaceholderState = 'loading' | 'unavailable' | 'ready'
 
 type MixxxColumnMetrics = {
   amplitudeLeft: number
@@ -28,6 +46,7 @@ const WAVEFORM_STYLE_RGB: WaveformStyle = 'RGB'
 const MIXXX_MAX_RGB_ENERGY = Math.sqrt(255 * 255 * 3)
 const MIXXX_RGB_BRIGHTNESS_SCALE = 0.95
 const MIXXX_RGB_PROGRESS_BRIGHTNESS_SCALE = 0.6
+const PIONEER_WAVEFORM_EAGER_COUNT = 8
 const MIXXX_RGB_COMPONENTS: Record<RGBWaveformBandKey, { r: number; g: number; b: number }> = {
   low: { r: 1, g: 0, b: 0 },
   mid: { r: 0, g: 1, b: 0 },
@@ -204,12 +223,90 @@ const computeMixxxColumnMetrics = (
   return columns
 }
 
+const clamp01 = (value: number) => (Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0)
+
+const drawPioneerPreviewWaveform = (
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  waveformData: IPioneerPreviewWaveformData,
+  playedPercent: number,
+  progressColor: string
+) => {
+  const columns = Array.isArray(waveformData?.columns) ? waveformData.columns : []
+  const maxHeight = Math.max(
+    1,
+    Number(waveformData?.maxHeight) ||
+      columns.reduce((value, column) => Math.max(value, Number(column?.backHeight) || 0), 0)
+  )
+  if (!columns.length || width <= 0 || height <= 0 || maxHeight <= 0) return
+
+  const columnCount = Math.max(1, Math.floor(width))
+  const samplesPerColumn = columns.length / columnCount
+  const spacing = width / columnCount
+  const drawWidth = Math.max(1, spacing)
+  const scaleY = height / maxHeight
+
+  for (let index = 0; index < columnCount; index++) {
+    const start = Math.floor(index * samplesPerColumn)
+    const end = Math.min(
+      columns.length,
+      Math.max(start + 1, Math.floor((index + 1) * samplesPerColumn))
+    )
+    let selected = columns[start] || null
+    for (let i = start; i < end; i++) {
+      const candidate = columns[i]
+      if (!candidate) continue
+      if (!selected || (candidate.backHeight || 0) >= (selected.backHeight || 0)) {
+        selected = candidate
+      }
+    }
+    if (!selected) continue
+
+    const backHeight = Math.max(0, Number(selected.backHeight) || 0)
+    const frontHeight = Math.max(0, Number(selected.frontHeight) || 0)
+    const x = Math.min(width - drawWidth, index * spacing)
+
+    if (backHeight > 0) {
+      const backPixelHeight = Math.max(1, backHeight * scaleY)
+      ctx.fillStyle = `rgb(${selected.backColorR || 0}, ${selected.backColorG || 0}, ${selected.backColorB || 0})`
+      ctx.fillRect(x, height - backPixelHeight, drawWidth, backPixelHeight)
+    }
+
+    if (frontHeight > 0) {
+      const frontPixelHeight = Math.max(1, frontHeight * scaleY)
+      ctx.fillStyle = `rgb(${selected.frontColorR || 0}, ${selected.frontColorG || 0}, ${selected.frontColorB || 0})`
+      ctx.fillRect(x, height - frontPixelHeight, drawWidth, frontPixelHeight)
+    }
+  }
+
+  const clampedPlayed = clamp01(playedPercent)
+  if (clampedPlayed <= 0) return
+
+  ctx.save()
+  ctx.globalCompositeOperation = 'source-atop'
+  ctx.globalAlpha = 0.32
+  ctx.fillStyle = progressColor
+  ctx.fillRect(0, 0, width * clampedPlayed, height)
+  ctx.restore()
+}
+
 export function useWaveformPreview(params: {
   visibleSongsWithIndex: Ref<VisibleSongItem[]>
   visibleColumns: Ref<ISongsAreaColumn[]>
   songListRootDir: Ref<string | undefined>
+  pioneerDeviceRootPath: Ref<string | undefined>
+  actualVisibleStartIndex: Ref<number>
+  actualVisibleEndIndex: Ref<number>
 }) {
-  const { visibleSongsWithIndex, visibleColumns, songListRootDir } = params
+  const {
+    visibleSongsWithIndex,
+    visibleColumns,
+    songListRootDir,
+    pioneerDeviceRootPath,
+    actualVisibleStartIndex,
+    actualVisibleEndIndex
+  } = params
   const runtime = useRuntimeStore()
 
   const waveformColumn = computed(() =>
@@ -219,7 +316,9 @@ export function useWaveformPreview(params: {
   const waveformColumnWidth = computed(() => waveformColumn.value?.width ?? 0)
 
   const canvasMap = markRaw(new Map<string, HTMLCanvasElement>())
-  const dataMap = markRaw(new Map<string, MixxxWaveformData | null>())
+  const dataMap = markRaw(new Map<string, WaveformCacheEntry>())
+  const placeholderStateMap = markRaw(new Map<string, WaveformPlaceholderState>())
+  const placeholderReasonMap = markRaw(new Map<string, string>())
   const minMaxCache = markRaw(
     new Map<string, { source: MixxxWaveformData; samples: MinMaxSample[] }>()
   )
@@ -231,9 +330,11 @@ export function useWaveformPreview(params: {
   const previewActive = ref(false)
   const previewFilePath = ref<string | null>(null)
   const previewPercent = ref(0)
+  let activePioneerStreamRequestId = ''
+  const pioneerStreamFilePathMap = markRaw(new Map<string, string[]>())
 
   const useHalfWaveform = () => (runtime.setting?.waveformMode ?? 'half') !== 'full'
-  const clamp01 = (value: number) => (Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0)
+  const resolvePioneerRootPath = () => String(pioneerDeviceRootPath.value || '').trim()
 
   const setWaveformCanvasRef = (filePath: string, el: HTMLCanvasElement | null) => {
     if (!filePath) return
@@ -255,6 +356,61 @@ export function useWaveformPreview(params: {
       paths.push(filePath)
     }
     return paths
+  }
+
+  const resolveVisibleSongByFilePath = (filePath: string) => {
+    return (
+      visibleSongsWithIndex.value.find((item) => String(item?.song?.filePath || '') === filePath)
+        ?.song || null
+    )
+  }
+
+  const buildPioneerStreamRequestId = () =>
+    `pioneer-waveform:${Date.now()}:${Math.random().toString(36).slice(2)}`
+
+  const resetPioneerStreamState = () => {
+    for (const [, filePaths] of pioneerStreamFilePathMap) {
+      for (const filePath of filePaths) {
+        inflight.delete(filePath)
+      }
+    }
+    activePioneerStreamRequestId = ''
+    pioneerStreamFilePathMap.clear()
+  }
+
+  const orderPioneerRequestsForViewport = (
+    requests: Array<{
+      filePath: string
+      analyzePath: string
+    }>
+  ) => {
+    if (!requests.length) return requests
+    const requestByFilePath = new Map(requests.map((request) => [request.filePath, request]))
+    const eager: typeof requests = []
+    const visibleRest: typeof requests = []
+    const buffered: typeof requests = []
+    let eagerCount = 0
+
+    for (const item of visibleSongsWithIndex.value || []) {
+      const filePath = String(item?.song?.filePath || '').trim()
+      const request = requestByFilePath.get(filePath)
+      if (!request) continue
+      requestByFilePath.delete(filePath)
+      const idx = Number(item.idx)
+      const isActuallyVisible =
+        idx >= actualVisibleStartIndex.value && idx < actualVisibleEndIndex.value
+      if (isActuallyVisible && eagerCount < PIONEER_WAVEFORM_EAGER_COUNT) {
+        eager.push(request)
+        eagerCount += 1
+      } else if (isActuallyVisible) {
+        visibleRest.push(request)
+      } else {
+        buffered.push(request)
+      }
+    }
+
+    const remainder = Array.from(requestByFilePath.values())
+    return [...eager, ...visibleRest, ...buffered, ...remainder]
   }
 
   const getWaveformClickPercent = (filePath: string, clientX: number) => {
@@ -300,7 +456,41 @@ export function useWaveformPreview(params: {
     return samples
   }
 
-  const storeWaveformData = (filePath: string, data: MixxxWaveformData | null) => {
+  const setWaveformPlaceholderLoading = (filePath: string) => {
+    if (!filePath) return
+    placeholderStateMap.set(filePath, 'loading')
+    placeholderReasonMap.delete(filePath)
+  }
+
+  const setWaveformPlaceholderUnavailable = (filePath: string, reason?: string) => {
+    if (!filePath) return
+    placeholderStateMap.set(filePath, 'unavailable')
+    if (reason) {
+      placeholderReasonMap.set(filePath, reason)
+    } else {
+      placeholderReasonMap.delete(filePath)
+    }
+  }
+
+  const setWaveformPlaceholderReady = (filePath: string) => {
+    if (!filePath) return
+    placeholderStateMap.set(filePath, 'ready')
+    placeholderReasonMap.delete(filePath)
+  }
+
+  const getWaveformPlaceholderText = (filePath: string) => {
+    const state = placeholderStateMap.get(filePath)
+    if (state === 'loading') return t('tracks.waveformPreviewLoading')
+    if (state === 'unavailable') return t('tracks.waveformPreviewUnavailable')
+    return ''
+  }
+
+  const getWaveformPlaceholderTitle = (filePath: string) => {
+    if (placeholderStateMap.get(filePath) !== 'unavailable') return ''
+    return placeholderReasonMap.get(filePath) || ''
+  }
+
+  const storeWaveformData = (filePath: string, data: WaveformCacheEntry) => {
     if (!filePath) return
     if (dataMap.has(filePath)) {
       dataMap.delete(filePath)
@@ -312,6 +502,8 @@ export function useWaveformPreview(params: {
         dataMap.delete(oldest)
         minMaxCache.delete(oldest)
         queuedMissing.delete(oldest)
+        placeholderStateMap.delete(oldest)
+        placeholderReasonMap.delete(oldest)
       }
     }
   }
@@ -450,21 +642,26 @@ export function useWaveformPreview(params: {
     const data = dataMap.get(filePath) ?? null
     if (!data) return
 
+    const computedStyle = typeof window !== 'undefined' ? getComputedStyle(canvas) : null
+    const accent = computedStyle?.getPropertyValue('--accent') || ''
+    const progressColor = accent.trim() || '#0078d4'
+    const playedPercent = isWaveformPreviewActive(filePath) ? clamp01(previewPercent.value) : 0
+
+    if (data.kind === 'pioneer') {
+      drawPioneerPreviewWaveform(ctx, width, height, data.data, playedPercent, progressColor)
+      return
+    }
+
     const style = normalizeWaveformStyle(runtime.setting?.waveformStyle)
     const isHalf = useHalfWaveform()
 
     if (style === WAVEFORM_STYLE_RGB) {
-      const playedPercent = isWaveformPreviewActive(filePath) ? clamp01(previewPercent.value) : 0
-      drawRgbWaveform(ctx, width, height, data, isHalf, playedPercent)
+      drawRgbWaveform(ctx, width, height, data.data, isHalf, playedPercent)
       return
     }
 
-    const samples = getMinMaxSamples(filePath, data)
-    const computedStyle = typeof window !== 'undefined' ? getComputedStyle(canvas) : null
+    const samples = getMinMaxSamples(filePath, data.data)
     const baseColor = computedStyle?.color || '#999999'
-    const accent = computedStyle?.getPropertyValue('--accent') || ''
-    const progressColor = accent.trim() || '#0078d4'
-    const playedPercent = isWaveformPreviewActive(filePath) ? clamp01(previewPercent.value) : 0
     drawMinMaxWaveform(
       ctx,
       width,
@@ -502,6 +699,7 @@ export function useWaveformPreview(params: {
     if (!filePaths.length) return
     for (const filePath of filePaths) {
       inflight.add(filePath)
+      setWaveformPlaceholderLoading(filePath)
     }
     const listRoot = (songListRootDir.value || '').trim()
     let response: { items?: Array<{ filePath: string; data: MixxxWaveformData | null }> } | null =
@@ -526,8 +724,17 @@ export function useWaveformPreview(params: {
     const missing: string[] = []
     for (const filePath of filePaths) {
       const data = itemMap.has(filePath) ? itemMap.get(filePath) : null
-      storeWaveformData(filePath, data ?? null)
+      storeWaveformData(
+        filePath,
+        data
+          ? {
+              kind: 'mixxx',
+              data
+            }
+          : null
+      )
       if (data) {
+        setWaveformPlaceholderReady(filePath)
         queuedMissing.delete(filePath)
       } else {
         missing.push(filePath)
@@ -548,6 +755,52 @@ export function useWaveformPreview(params: {
     scheduleDraw()
   }
 
+  const fetchPioneerWaveformStream = async (
+    requests: Array<{
+      filePath: string
+      analyzePath: string
+    }>
+  ) => {
+    if (!requests.length) return
+    const orderedRequests = orderPioneerRequestsForViewport(requests)
+    const rootPath = resolvePioneerRootPath()
+    if (!rootPath) {
+      for (const request of orderedRequests) {
+        inflight.delete(request.filePath)
+      }
+      return
+    }
+
+    resetPioneerStreamState()
+
+    for (const request of orderedRequests) {
+      inflight.add(request.filePath)
+      setWaveformPlaceholderLoading(request.filePath)
+    }
+    const requestId = buildPioneerStreamRequestId()
+    activePioneerStreamRequestId = requestId
+
+    for (const request of orderedRequests) {
+      const list = pioneerStreamFilePathMap.get(request.analyzePath) || []
+      list.push(request.filePath)
+      pioneerStreamFilePathMap.set(request.analyzePath, list)
+    }
+
+    try {
+      window.electron.ipcRenderer.send('pioneer-device-library:stream-preview-waveforms', {
+        requestId,
+        rootPath,
+        analyzePaths: orderedRequests.map((request) => request.analyzePath)
+      })
+    } catch (error) {
+      for (const request of orderedRequests) {
+        inflight.delete(request.filePath)
+      }
+      resetPioneerStreamState()
+      throw error
+    }
+  }
+
   const loadVisible = async () => {
     if (!waveformVisible.value) return
     const paths = getVisiblePaths()
@@ -557,7 +810,35 @@ export function useWaveformPreview(params: {
       scheduleDraw()
       return
     }
-    await fetchWaveformBatch(pending)
+
+    const pioneerRequests: Array<{ filePath: string; analyzePath: string }> = []
+    const libraryFilePaths: string[] = []
+    const pioneerRootPath = resolvePioneerRootPath()
+
+    for (const filePath of pending) {
+      const song = resolveVisibleSongByFilePath(filePath)
+      const analyzePath = String(song?.pioneerAnalyzePath || '').trim()
+      if (pioneerRootPath && analyzePath) {
+        pioneerRequests.push({ filePath, analyzePath })
+      } else if (pioneerRootPath) {
+        storeWaveformData(filePath, null)
+        setWaveformPlaceholderUnavailable(filePath, 'missing analyze path')
+        console.warn('[pioneer-waveform] preview waveform unavailable', {
+          filePath,
+          analyzePath: '',
+          reason: 'missing analyze path'
+        })
+      } else {
+        libraryFilePaths.push(filePath)
+      }
+    }
+
+    if (libraryFilePaths.length) {
+      await fetchWaveformBatch(libraryFilePaths)
+    }
+    if (pioneerRequests.length) {
+      await fetchPioneerWaveformStream(pioneerRequests)
+    }
   }
 
   const scheduleLoad = () => {
@@ -572,9 +853,94 @@ export function useWaveformPreview(params: {
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
     if (!filePath || !waveformVisible.value) return
     if (!canvasMap.has(filePath)) return
+    const song = resolveVisibleSongByFilePath(filePath)
+    if (String(song?.pioneerAnalyzePath || '').trim()) return
+    setWaveformPlaceholderLoading(filePath)
     dataMap.delete(filePath)
     queuedMissing.delete(filePath)
     void fetchWaveformBatch([filePath])
+  }
+
+  const handlePioneerPreviewWaveformItem = (
+    _event: unknown,
+    payload: {
+      requestId?: string
+      analyzePath?: string
+      data?: IPioneerPreviewWaveformData | null
+      error?: string
+    }
+  ) => {
+    const requestId = String(payload?.requestId || '').trim()
+    if (!requestId || requestId !== activePioneerStreamRequestId) return
+    const analyzePath = String(payload?.analyzePath || '').trim()
+    if (!analyzePath) return
+    const filePaths = pioneerStreamFilePathMap.get(analyzePath) || []
+    if (!filePaths.length) return
+
+    const data = payload?.data ?? null
+    for (const filePath of filePaths) {
+      storeWaveformData(
+        filePath,
+        data
+          ? {
+              kind: 'pioneer',
+              data
+            }
+          : null
+      )
+      inflight.delete(filePath)
+      if (data) {
+        setWaveformPlaceholderReady(filePath)
+      } else {
+        setWaveformPlaceholderUnavailable(filePath, payload?.error ? String(payload.error) : '')
+      }
+      if (!data && payload?.error) {
+        console.warn('[pioneer-waveform] preview waveform unavailable', {
+          filePath,
+          analyzePath,
+          reason: String(payload.error)
+        })
+      }
+    }
+
+    pioneerStreamFilePathMap.delete(analyzePath)
+    scheduleDraw()
+  }
+
+  const handlePioneerPreviewWaveformDone = (
+    _event: unknown,
+    payload: {
+      requestId?: string
+      error?: string
+    }
+  ) => {
+    const requestId = String(payload?.requestId || '').trim()
+    if (!requestId || requestId !== activePioneerStreamRequestId) return
+
+    for (const [, filePaths] of pioneerStreamFilePathMap) {
+      for (const filePath of filePaths) {
+        inflight.delete(filePath)
+      }
+    }
+
+    if (payload?.error) {
+      console.warn('[pioneer-waveform] preview waveform stream failed', {
+        requestId,
+        reason: String(payload.error)
+      })
+    }
+
+    for (const [, filePaths] of pioneerStreamFilePathMap) {
+      for (const filePath of filePaths) {
+        setWaveformPlaceholderUnavailable(
+          filePath,
+          payload?.error ? String(payload.error) : 'missing preview waveform item'
+        )
+      }
+    }
+
+    resetPioneerStreamState()
+    scheduleDraw()
   }
 
   const handleWaveformPreviewState = (payload: { filePath?: string; active?: boolean }) => {
@@ -613,6 +979,9 @@ export function useWaveformPreview(params: {
     () => visibleSongsWithIndex.value.map((item) => item.song?.filePath || '').join('|'),
     () => {
       if (!waveformVisible.value) return
+      if (resolvePioneerRootPath()) {
+        resetPioneerStreamState()
+      }
       scheduleLoad()
       nextTick(() => scheduleDraw())
     },
@@ -623,6 +992,22 @@ export function useWaveformPreview(params: {
     () => waveformVisible.value,
     (visible) => {
       if (!visible) return
+      scheduleLoad()
+      nextTick(() => scheduleDraw())
+    }
+  )
+
+  watch(
+    () => resolvePioneerRootPath(),
+    () => {
+      resetPioneerStreamState()
+      dataMap.clear()
+      inflight.clear()
+      minMaxCache.clear()
+      queuedMissing.clear()
+      placeholderStateMap.clear()
+      placeholderReasonMap.clear()
+      if (!waveformVisible.value) return
       scheduleLoad()
       nextTick(() => scheduleDraw())
     }
@@ -654,6 +1039,14 @@ export function useWaveformPreview(params: {
 
   if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
     window.electron.ipcRenderer.on('song-waveform-updated', handleWaveformUpdated)
+    window.electron.ipcRenderer.on(
+      'pioneer-device-library:preview-waveform-item',
+      handlePioneerPreviewWaveformItem
+    )
+    window.electron.ipcRenderer.on(
+      'pioneer-device-library:preview-waveform-done',
+      handlePioneerPreviewWaveformDone
+    )
   }
   emitter.on('waveform-preview:state', handleWaveformPreviewState)
   emitter.on('waveform-preview:progress', handleWaveformPreviewProgress)
@@ -661,8 +1054,17 @@ export function useWaveformPreview(params: {
   onBeforeUnmount(() => {
     if (loadTimer) clearTimeout(loadTimer)
     if (drawRaf) cancelAnimationFrame(drawRaf)
+    resetPioneerStreamState()
     if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
       window.electron.ipcRenderer.removeListener('song-waveform-updated', handleWaveformUpdated)
+      window.electron.ipcRenderer.removeListener(
+        'pioneer-device-library:preview-waveform-item',
+        handlePioneerPreviewWaveformItem
+      )
+      window.electron.ipcRenderer.removeListener(
+        'pioneer-device-library:preview-waveform-done',
+        handlePioneerPreviewWaveformDone
+      )
     }
     emitter.off('waveform-preview:state', handleWaveformPreviewState)
     emitter.off('waveform-preview:progress', handleWaveformPreviewProgress)
@@ -674,6 +1076,8 @@ export function useWaveformPreview(params: {
     requestWaveformPreview,
     stopWaveformPreview,
     isWaveformPreviewActive,
-    getWaveformPreviewPlayheadStyle
+    getWaveformPreviewPlayheadStyle,
+    getWaveformPlaceholderText,
+    getWaveformPlaceholderTitle
   }
 }

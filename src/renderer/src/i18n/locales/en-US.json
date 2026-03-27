@@ -257,6 +257,8 @@
     "unknownArtist": "Unknown Artist",
     "showInExplorer": "Open in Explorer",
     "showInFileExplorer": "Open in Explorer",
+    "waveformPreviewLoading": "Loading...",
+    "waveformPreviewUnavailable": "No preview waveform",
     "saveCoverAs": "Save cover as",
     "convertFormat": "Convert format",
     "editMetadata": "Edit track info",

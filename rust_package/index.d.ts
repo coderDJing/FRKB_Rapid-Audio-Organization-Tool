@@ -70,6 +70,157 @@ export interface KeyBpmAnalysisResult {
   /** BPM 分析错误描述 */
   bpmError?: string
 }
+/** Pioneer 旧 Device Library 调试输出 */
+export interface PioneerExportDebugDump {
+  /** export.pdb 路径 */
+  exportPdbPath: string
+  /** 表摘要 */
+  tableSummaries: Array<string>
+  /** 以树形文本打印的播放列表结构 */
+  playlistTreeLines: Array<string>
+  /** 播放列表树原始行总数 */
+  playlistTreeTotal: number
+  /** 播放列表项原始行总数 */
+  playlistEntryTotal: number
+  /** 曲目原始行总数 */
+  trackTotal: number
+  /** 播放列表项调试文本 */
+  playlistEntries: Array<string>
+  /** 曲目调试文本 */
+  tracks: Array<string>
+  /** 错误描述（失败时） */
+  error?: string
+}
+/** Pioneer 播放列表树节点 */
+export interface PioneerPlaylistTreeNodeRecord {
+  /** 节点 ID */
+  id: number
+  /** 父节点 ID（根为 0） */
+  parentId: number
+  /** 节点名称 */
+  name: string
+  /** 是否为文件夹 */
+  isFolder: boolean
+  /** 读取顺序，用于前端稳定排序 */
+  order: number
+}
+/** Pioneer 播放列表树读取结果 */
+export interface PioneerPlaylistTreeDump {
+  /** export.pdb 路径 */
+  exportPdbPath: string
+  /** 节点总数 */
+  nodeTotal: number
+  /** 文件夹节点数 */
+  folderTotal: number
+  /** 歌单节点数 */
+  playlistTotal: number
+  /** 播放列表树节点 */
+  nodes: Array<PioneerPlaylistTreeNodeRecord>
+  /** 错误描述（失败时） */
+  error?: string
+}
+/** Pioneer 歌单曲目记录 */
+export interface PioneerPlaylistTrackRecord {
+  /** 播放列表 ID */
+  playlistId: number
+  /** 曲目 ID */
+  trackId: number
+  /** 原始 entry_index */
+  entryIndex: number
+  /** 曲目标题 */
+  title: string
+  /** 文件名 */
+  fileName: string
+  /** 文件路径 */
+  filePath: string
+  /** 艺术家 */
+  artist: string
+  /** 专辑 */
+  album: string
+  /** 厂牌 */
+  label: string
+  /** 流派 */
+  genre: string
+  /** 调性文本 */
+  keyText: string
+  /** BPM */
+  bpm: number
+  /** 时长（秒） */
+  durationSec: number
+  /** 比特率 */
+  bitrate: number
+  /** 采样率 */
+  sampleRate: number
+  /** 采样位深 */
+  sampleDepth: number
+  /** 音轨号 */
+  trackNumber: number
+  /** 碟号 */
+  discNumber: number
+  /** 年份 */
+  year: number
+  /** 分析文件路径 */
+  analyzePath: string
+  /** 评论 */
+  comment: string
+  /** 导入日期 */
+  dateAdded: string
+  /** 封面 Artwork ID */
+  artworkId: number
+  /** 封面路径（相对 U 盘根目录的 Pioneer 路径） */
+  artworkPath: string
+}
+/** Pioneer 单歌单曲目读取结果 */
+export interface PioneerPlaylistTrackDump {
+  /** export.pdb 路径 */
+  exportPdbPath: string
+  /** 播放列表 ID */
+  playlistId: number
+  /** 播放列表名称 */
+  playlistName: string
+  /** 曲目总数 */
+  trackTotal: number
+  /** 曲目列表 */
+  tracks: Array<PioneerPlaylistTrackRecord>
+  /** 错误描述（失败时） */
+  error?: string
+}
+/** Pioneer 预览波形单列 */
+export interface PioneerPreviewWaveformColumn {
+  /** 背景层高度 */
+  backHeight: number
+  /** 前景层高度 */
+  frontHeight: number
+  /** 背景层颜色 R */
+  backColorR: number
+  /** 背景层颜色 G */
+  backColorG: number
+  /** 背景层颜色 B */
+  backColorB: number
+  /** 前景层颜色 R */
+  frontColorR: number
+  /** 前景层颜色 G */
+  frontColorG: number
+  /** 前景层颜色 B */
+  frontColorB: number
+}
+/** Pioneer 预览波形读取结果 */
+export interface PioneerPreviewWaveformDump {
+  /** export.pdb 里记录的分析文件路径 */
+  analyzeFilePath: string
+  /** 实际读取的预览文件路径 */
+  previewFilePath: string
+  /** 波形样式（blue / rgb） */
+  style: string
+  /** 波形列数 */
+  columnCount: number
+  /** 最大高度 */
+  maxHeight: number
+  /** 预览波形列 */
+  columns: Array<PioneerPreviewWaveformColumn>
+  /** 错误描述（失败时） */
+  error?: string
+}
 /**
  * 计算音频文件的 SHA256 哈希值，并生成声纹与质量标签
  *
@@ -112,3 +263,7 @@ export declare function analyzeKeyFromPcm(pcmData: Buffer, sampleRate: number, c
  * * `fast_analysis` - 是否启用 fast analysis
  */
 export declare function analyzeKeyAndBpmFromPcm(pcmData: Buffer, sampleRate: number, channels: number, fastAnalysis: boolean): KeyBpmAnalysisResult
+export declare function dumpPioneerExportDebug(exportPdbPath: string, maxRows?: number | undefined | null): PioneerExportDebugDump
+export declare function readPioneerPlaylistTree(exportPdbPath: string): PioneerPlaylistTreeDump
+export declare function readPioneerPreviewWaveform(analyzeFilePath: string): PioneerPreviewWaveformDump
+export declare function readPioneerPlaylistTracks(exportPdbPath: string, playlistId: number, maxRows?: number | undefined | null): PioneerPlaylistTrackDump

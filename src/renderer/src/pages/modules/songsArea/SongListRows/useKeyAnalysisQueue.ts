@@ -4,11 +4,16 @@ import type { ISongInfo } from '../../../../../../types/globals'
 
 interface UseKeyAnalysisQueueOptions {
   visibleSongsWithIndex: Ref<Array<{ song: ISongInfo; idx: number }>>
+  enabled?: Ref<boolean>
 }
 
-export function useKeyAnalysisQueue({ visibleSongsWithIndex }: UseKeyAnalysisQueueOptions) {
+export function useKeyAnalysisQueue({
+  visibleSongsWithIndex,
+  enabled
+}: UseKeyAnalysisQueueOptions) {
   let timer: ReturnType<typeof setTimeout> | null = null
   let lastSignature = ''
+  const isEnabled = () => (enabled ? enabled.value !== false : true)
 
   const buildVisiblePayload = () => {
     const paths: string[] = []
@@ -25,6 +30,7 @@ export function useKeyAnalysisQueue({ visibleSongsWithIndex }: UseKeyAnalysisQue
   }
 
   const flush = () => {
+    if (!isEnabled()) return
     const paths = buildVisiblePayload()
     const signature = paths.join('|')
     if (!paths.length || signature === lastSignature) return
@@ -43,6 +49,7 @@ export function useKeyAnalysisQueue({ visibleSongsWithIndex }: UseKeyAnalysisQue
   const stopWatch = watch(
     () => visibleSongsWithIndex.value.map((item) => item.song?.filePath || '').join('|'),
     () => {
+      if (!isEnabled()) return
       schedule()
     },
     { immediate: true }

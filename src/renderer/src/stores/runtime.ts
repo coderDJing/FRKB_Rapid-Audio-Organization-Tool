@@ -1,11 +1,18 @@
 import { defineStore } from 'pinia'
-import { IDir, ILayoutConfig, ISettingConfig, ISongInfo } from 'src/types/globals'
+import {
+  IDir,
+  ILayoutConfig,
+  IPioneerDeviceLibraryState,
+  ISettingConfig,
+  ISongInfo
+} from 'src/types/globals'
 type LibrarySelection =
   | 'FilterLibrary'
   | 'CuratedLibrary'
   | 'MixtapeLibrary'
   | 'RecycleBin'
   | 'ExternalPlaylist'
+  | 'PioneerDeviceLibrary'
 
 interface Runtime {
   platform: string
@@ -46,6 +53,7 @@ interface Runtime {
     songs: ISongInfo[]
     lastLibrarySelection: Exclude<LibrarySelection, 'ExternalPlaylist'>
   }
+  pioneerDeviceLibrary: IPioneerDeviceLibraryState
   confirmShow: boolean
   hotkeysScopesHeap: string[]
   setting: ISettingConfig
@@ -113,6 +121,14 @@ export const useRuntimeStore = defineStore('runtime', {
       externalPlaylist: {
         songs: [],
         lastLibrarySelection: 'FilterLibrary'
+      },
+      pioneerDeviceLibrary: {
+        selectedDriveKey: '',
+        selectedDriveName: '',
+        selectedDrivePath: '',
+        selectedPlaylistId: 0,
+        loading: false,
+        treeNodes: []
       },
       confirmShow: false, //是否有确认框正在显示
       hotkeysScopesHeap: [], //hotkeys-js的scope组成的堆栈，始终setScope数组的最后一项

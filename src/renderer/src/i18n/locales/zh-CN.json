@@ -257,6 +257,8 @@
     "unknownArtist": "未知艺术家",
     "showInExplorer": "在文件资源管理器中显示",
     "showInFileExplorer": "在文件资源浏览器中显示",
+    "waveformPreviewLoading": "读取中…",
+    "waveformPreviewUnavailable": "无预览波形",
     "saveCoverAs": "封面另存为",
     "convertFormat": "转换格式",
     "editMetadata": "编辑曲目信息",

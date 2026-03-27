@@ -205,6 +205,18 @@ export function useVirtualRows({
     const raw = Math.floor(effectiveScrollTop.value / rowHeight.value) - BUFFER_ROWS
     return Math.max(0, raw)
   })
+  const actualStartIndex = computed(() => {
+    const raw = Math.floor(effectiveScrollTop.value / rowHeight.value)
+    return Math.max(0, raw)
+  })
+  const actualVisibleRowCount = computed(() => {
+    const vh =
+      effectiveViewportHeight.value && effectiveViewportHeight.value > 0
+        ? effectiveViewportHeight.value
+        : rowsRoot.value?.parentElement?.clientHeight ||
+          (typeof window !== 'undefined' ? window.innerHeight : 0)
+    return Math.max(1, Math.ceil(vh / rowHeight.value))
+  })
   const visibleCount = computed(() => {
     const vh =
       effectiveViewportHeight.value && effectiveViewportHeight.value > 0
@@ -216,6 +228,12 @@ export function useVirtualRows({
   })
   const endIndex = computed(() => {
     return Math.min(songsComputed.value.length, startIndex.value + visibleCount.value)
+  })
+  const actualEndIndex = computed(() => {
+    return Math.min(
+      songsComputed.value.length,
+      actualStartIndex.value + actualVisibleRowCount.value
+    )
   })
   const offsetTopPx = computed(() => startIndex.value * rowHeight.value)
   const visibleSongsWithIndex = computed(() => {
@@ -240,6 +258,8 @@ export function useVirtualRows({
     effectiveViewportHeight,
     startIndex,
     endIndex,
+    actualStartIndex,
+    actualEndIndex,
     visibleCount,
     scrollLeft
   }

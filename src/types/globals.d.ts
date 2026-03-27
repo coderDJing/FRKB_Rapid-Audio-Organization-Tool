@@ -47,9 +47,31 @@ interface ISongInfo {
   mixtapeItemId?: string
   analysisOnly?: boolean
   autoFilled?: boolean
+  pioneerCoverPath?: string | null
+  pioneerAnalyzePath?: string | null
   deletedAtMs?: number
   originalPlaylistPath?: string | null
   recycleBinSourceType?: string | null
+}
+
+interface IPioneerPreviewWaveformColumn {
+  backHeight: number
+  frontHeight: number
+  backColorR: number
+  backColorG: number
+  backColorB: number
+  frontColorR: number
+  frontColorG: number
+  frontColorB: number
+}
+
+interface IPioneerPreviewWaveformData {
+  style: 'blue' | 'rgb'
+  analyzeFilePath: string
+  previewFilePath: string
+  columnCount: number
+  maxHeight: number
+  columns: IPioneerPreviewWaveformColumn[]
 }
 
 // 曲目完整元数据明细，用于编辑界面展示
@@ -78,6 +100,57 @@ interface ITrackMetadataDetail {
     dataUrl: string
     format?: string
   } | null
+}
+
+interface IPioneerPlaylistTreeNode {
+  id: number
+  parentId: number
+  name: string
+  isFolder: boolean
+  order: number
+  children?: IPioneerPlaylistTreeNode[]
+}
+
+interface IPioneerDeviceLibraryState {
+  selectedDriveKey: string
+  selectedDriveName: string
+  selectedDrivePath: string
+  selectedPlaylistId: number
+  loading: boolean
+  treeNodes: IPioneerPlaylistTreeNode[]
+}
+
+interface IPioneerPlaylistTrack {
+  rowKey: string
+  playlistId: number
+  playlistName: string
+  trackId: number
+  entryIndex: number
+  title: string
+  artist: string
+  album: string
+  label: string
+  genre: string
+  filePath: string
+  fileName: string
+  fileFormat: string
+  container: string
+  duration: string
+  durationSec: number
+  bpm?: number
+  key?: string
+  bitrate?: number
+  sampleRate?: number
+  sampleDepth?: number
+  trackNumber?: number
+  discNumber?: number
+  year?: number
+  analyzePath?: string
+  comment?: string
+  dateAdded?: string
+  artworkId?: number
+  artworkPath?: string
+  coverPath?: string
 }
 
 interface IMusicBrainzSearchPayload {
@@ -379,7 +452,12 @@ export {
   md5,
   IDir,
   ISongInfo,
+  IPioneerPreviewWaveformColumn,
+  IPioneerPreviewWaveformData,
   ITrackMetadataDetail,
+  IPioneerPlaylistTreeNode,
+  IPioneerDeviceLibraryState,
+  IPioneerPlaylistTrack,
   ITrackMetadataUpdatePayload,
   IMetadataAutoFillRequest,
   IMetadataAutoFillItemResult,

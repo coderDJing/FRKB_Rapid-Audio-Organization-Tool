@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import librarySelectArea from './modules/librarySelectArea.vue'
 import libraryArea from './modules/libraryArea.vue'
+import pioneerDeviceLibraryArea from './modules/pioneerDeviceLibraryArea.vue'
 import songsArea from './modules/songsArea/songsArea.vue'
+import pioneerSongsArea from './modules/pioneerSongsArea.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
 import songPlayer from './modules/songPlayer/songPlayer.vue'
 import dropIntoDialog from '../components/dropIntoDialog'
-import { Icon } from '../../../types/globals'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
@@ -170,6 +171,10 @@ watch(
       if (runtime.songsArea.songListUUID !== RECYCLE_BIN_UUID) {
         runtime.songsArea.songListUUID = RECYCLE_BIN_UUID
       }
+    } else if (val === 'PioneerDeviceLibrary') {
+      if (runtime.songsArea.songListUUID) {
+        runtime.songsArea.songListUUID = ''
+      }
     } else if (isCoreLibraryName(val)) {
       const storedUuid = resolveStoredSongListUUID(val)
       const currentUuid = runtime.songsArea.songListUUID
@@ -194,7 +199,7 @@ watch(
   },
   { immediate: true }
 )
-const librarySelectedChange = (item: Icon) => {
+const librarySelectedChange = (item: { name: string }) => {
   if (item.name == librarySelected.value) {
     return
   }
@@ -204,6 +209,9 @@ let dragOverSongsArea = ref(false)
 const isExternalPlaylistView = computed(() => runtime.libraryAreaSelected === 'ExternalPlaylist')
 const isRecycleBinView = computed(() => runtime.libraryAreaSelected === 'RecycleBin')
 const isMixtapeLibraryView = computed(() => runtime.libraryAreaSelected === 'MixtapeLibrary')
+const isPioneerDeviceLibraryView = computed(
+  () => runtime.libraryAreaSelected === 'PioneerDeviceLibrary'
+)
 const isLibraryPanelHidden = computed(() => isExternalPlaylistView.value || isRecycleBinView.value)
 const isInternalSongDrag = (e: DragEvent) => {
   return (
@@ -422,7 +430,12 @@ const drop = async (e: DragEvent) => {
           :class="{ librarySwitching }"
           :style="'width:' + runtime.layoutConfig.libraryAreaWidth + 'px'"
         >
+          <pioneerDeviceLibraryArea
+            v-if="isPioneerDeviceLibraryView"
+            style="width: 100%; height: 100%"
+          />
           <div
+            v-else
             v-for="item of runtime.libraryTree.children"
             v-show="librarySelected == item.dirName"
             style="width: 100%; height: 100%"
@@ -452,7 +465,11 @@ const drop = async (e: DragEvent) => {
           @dragleave.stop="dragleave"
           @drop.stop.prevent="drop"
         >
-          <songsArea style="width: 100%; height: 100%; min-width: 0" />
+          <pioneerSongsArea
+            v-if="isPioneerDeviceLibraryView"
+            style="width: 100%; height: 100%; min-width: 0"
+          />
+          <songsArea v-else style="width: 100%; height: 100%; min-width: 0" />
         </div>
       </div>
       <div style="height: 50px; border-top: 1px solid var(--border)">

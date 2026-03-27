@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { calculateAudioHashes, calculateAudioHashesWithProgress, calculateFileHashes, calculateFileHashesWithProgress, decodeAudioFile, computeMixxxWaveform, computeMixxxWaveformWithRate, analyzeKeyFromPcm, analyzeKeyAndBpmFromPcm } = nativeBinding
+const { calculateAudioHashes, calculateAudioHashesWithProgress, calculateFileHashes, calculateFileHashesWithProgress, decodeAudioFile, computeMixxxWaveform, computeMixxxWaveformWithRate, analyzeKeyFromPcm, analyzeKeyAndBpmFromPcm, dumpPioneerExportDebug, readPioneerPlaylistTree, readPioneerPreviewWaveform, readPioneerPlaylistTracks } = nativeBinding
 
 module.exports.calculateAudioHashes = calculateAudioHashes
 module.exports.calculateAudioHashesWithProgress = calculateAudioHashesWithProgress
@@ -321,3 +321,7 @@ module.exports.computeMixxxWaveform = computeMixxxWaveform
 module.exports.computeMixxxWaveformWithRate = computeMixxxWaveformWithRate
 module.exports.analyzeKeyFromPcm = analyzeKeyFromPcm
 module.exports.analyzeKeyAndBpmFromPcm = analyzeKeyAndBpmFromPcm
+module.exports.dumpPioneerExportDebug = dumpPioneerExportDebug
+module.exports.readPioneerPlaylistTree = readPioneerPlaylistTree
+module.exports.readPioneerPreviewWaveform = readPioneerPreviewWaveform
+module.exports.readPioneerPlaylistTracks = readPioneerPlaylistTracks

@@ -4,7 +4,8 @@ import likeIconAsset from '@renderer/assets/like.svg?asset'
 import settingIconAsset from '@renderer/assets/setting.svg?asset'
 import trashIconAsset from '@renderer/assets/trash.svg?asset'
 import mixtapeIconAsset from '@renderer/assets/mixtape.svg?asset'
-import { ref, reactive, watch, nextTick } from 'vue'
+import usbDriveIconAsset from '@renderer/assets/usbDrive.svg?asset'
+import { ref, reactive, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import settingDialog from '@renderer/components/settingDialog.vue'
@@ -20,6 +21,31 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 const emit = defineEmits(['librarySelectedChange'])
+
+type HoverableIcon = {
+  name: string
+  grey: string
+  white: string
+  src: string
+  showAlt: boolean
+  i18nKey?: string
+}
+
+type PioneerDriveEntry = {
+  id: string
+  name: string
+  path: string
+  volumeName: string
+  fileSystem: string
+  isUsb: boolean
+  isPioneerDeviceLibrary: boolean
+}
+
+type PioneerDriveIcon = HoverableIcon & {
+  key: string
+  tooltip: string
+  path: string
+}
 
 const externalIcon: Icon = {
   name: 'ExternalPlaylist',
@@ -68,7 +94,7 @@ const baseIcons: Icon[] = [
 
 const iconArr = ref<Icon[]>([...baseIcons])
 
-const selectedIcon = ref(iconArr.value[0])
+const selectedIcon = ref<HoverableIcon>(iconArr.value[0])
 selectedIcon.value.src = selectedIcon.value.white
 
 const runtime = useRuntimeStore()
@@ -90,7 +116,7 @@ const warnAcoustIdMissing = () => {
   })
 }
 
-const updateSelectedIcon = (item: Icon | undefined) => {
+const updateSelectedIcon = (item: HoverableIcon | undefined) => {
   if (!item) return
   if (selectedIcon.value && selectedIcon.value !== item) {
     selectedIcon.value.src = selectedIcon.value.grey
@@ -125,18 +151,18 @@ const setIconRef = (name: string, el: Element | ComponentPublicInstance | null) 
   }
   iconRefMap[name] = dom
 }
-const iconMouseover = (item: Icon | ButtomIcon) => {
+const iconMouseover = (item: HoverableIcon) => {
   if (selectedIcon.value != item) {
     item.src = item.white
   }
 }
-const iconMouseout = (item: Icon | ButtomIcon) => {
+const iconMouseout = (item: HoverableIcon) => {
   if (selectedIcon.value != item) {
     item.src = item.grey
   }
 }
 
-const getIconMaskStyle = (item: Icon | ButtomIcon) => ({
+const getIconMaskStyle = (item: HoverableIcon) => ({
   '--icon-mask': `url("${item.src}")`
 })
 
@@ -322,6 +348,105 @@ type ButtomIcon = {
   showAlt: boolean
   i18nKey?: string
 }
+
+const pioneerDriveIcons = ref<PioneerDriveIcon[]>([])
+let pioneerDriveRefreshTimer: ReturnType<typeof setInterval> | null = null
+
+const buildPioneerDriveTooltip = (drive: PioneerDriveEntry) => {
+  const title = String(drive.volumeName || drive.name || '').trim()
+  if (title) return title
+  return String(drive.path || '').trim() || 'Pioneer USB'
+}
+
+const refreshPioneerDriveIcons = async () => {
+  try {
+    const result = await window.electron.ipcRenderer.invoke(
+      'pioneer-device-library:list-removable-drives'
+    )
+    const drives = Array.isArray(result) ? (result as PioneerDriveEntry[]) : []
+    pioneerDriveIcons.value = drives
+      .filter((item) => item && item.isPioneerDeviceLibrary)
+      .map((item) => {
+        const tooltip = buildPioneerDriveTooltip(item)
+        return {
+          key: `pioneer-drive:${item.id || item.path}`,
+          name: tooltip,
+          grey: usbDriveIconAsset,
+          white: usbDriveIconAsset,
+          src: usbDriveIconAsset,
+          showAlt: false,
+          tooltip,
+          path: item.path
+        } satisfies PioneerDriveIcon
+      })
+    if (runtime.libraryAreaSelected === 'PioneerDeviceLibrary') {
+      const target = pioneerDriveIcons.value.find(
+        (icon) => icon.key === runtime.pioneerDeviceLibrary.selectedDriveKey
+      )
+      if (target) {
+        updateSelectedIcon(target)
+      }
+    }
+  } catch (error) {
+    console.error('[librarySelectArea] refresh pioneer drives failed', error)
+    pioneerDriveIcons.value = []
+  }
+}
+
+const clickPioneerDriveIcon = async (item: PioneerDriveIcon) => {
+  if (!item.path) return
+  runtime.pioneerDeviceLibrary.selectedDriveKey = item.key
+  runtime.pioneerDeviceLibrary.selectedDriveName = item.tooltip
+  runtime.pioneerDeviceLibrary.selectedDrivePath = item.path
+  runtime.pioneerDeviceLibrary.selectedPlaylistId = 0
+  runtime.pioneerDeviceLibrary.loading = true
+  runtime.pioneerDeviceLibrary.treeNodes = []
+  runtime.songsArea.songListUUID = ''
+  updateSelectedIcon(item)
+  runtime.libraryAreaSelected = 'PioneerDeviceLibrary'
+  emit('librarySelectedChange', { name: 'PioneerDeviceLibrary' })
+
+  try {
+    const result = await window.electron.ipcRenderer.invoke(
+      'pioneer-device-library:load-tree',
+      item.path
+    )
+    const treeNodes = Array.isArray(result?.treeNodes) ? result.treeNodes : []
+    runtime.pioneerDeviceLibrary.treeNodes = treeNodes
+    runtime.pioneerDeviceLibrary.selectedDriveName =
+      String(result?.driveName || '').trim() || item.tooltip
+  } catch (error: any) {
+    runtime.pioneerDeviceLibrary.treeNodes = []
+    await confirm({
+      title: t('common.error'),
+      content: [String(error?.message || error || 'Pioneer Device Library 读取失败')],
+      confirmShow: false
+    })
+  } finally {
+    runtime.pioneerDeviceLibrary.loading = false
+  }
+}
+
+const isSelectedPioneerDriveIcon = (item: PioneerDriveIcon) =>
+  runtime.libraryAreaSelected === 'PioneerDeviceLibrary' &&
+  runtime.pioneerDeviceLibrary.selectedDriveKey === item.key
+
+onMounted(() => {
+  void refreshPioneerDriveIcons()
+  pioneerDriveRefreshTimer = setInterval(() => {
+    void refreshPioneerDriveIcons()
+  }, 15000)
+  window.addEventListener('focus', refreshPioneerDriveIcons)
+})
+
+onUnmounted(() => {
+  if (pioneerDriveRefreshTimer) {
+    clearInterval(pioneerDriveRefreshTimer)
+    pioneerDriveRefreshTimer = null
+  }
+  window.removeEventListener('focus', refreshPioneerDriveIcons)
+})
+
 const buttomIconArr = ref<ButtomIcon[]>([
   {
     name: '设置',
@@ -387,6 +512,15 @@ watch(
 watch(
   () => runtime.libraryAreaSelected,
   (val) => {
+    if (val === 'PioneerDeviceLibrary') {
+      const target = pioneerDriveIcons.value.find(
+        (icon) => icon.key === runtime.pioneerDeviceLibrary.selectedDriveKey
+      )
+      if (target) {
+        updateSelectedIcon(target)
+      }
+      return
+    }
     const target = iconArr.value.find((icon) => icon.name === val)
     if (target) {
       updateSelectedIcon(target)
@@ -436,6 +570,44 @@ watch(
           <bubbleBox
             :dom="iconRefMap[item.name] || undefined"
             :title="t((item as any).i18nKey || item.name)"
+          />
+        </div>
+      </div>
+      <div
+        v-for="item of pioneerDriveIcons"
+        :key="item.key"
+        class="iconBox iconBox--device"
+        @click="clickPioneerDriveIcon(item)"
+        @mouseover="iconMouseover(item)"
+        @mouseout="iconMouseout(item)"
+      >
+        <div
+          style="width: 2px; height: 100%"
+          :style="{ backgroundColor: isSelectedPioneerDriveIcon(item) ? 'var(--accent)' : '' }"
+        ></div>
+        <div
+          style="
+            flex-grow: 1;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+          "
+        >
+          <span
+            :ref="(el) => setIconRef(item.key, el)"
+            :style="getIconMaskStyle(item)"
+            :class="[
+              'sidebar-icon',
+              {
+                'is-active': isSelectedPioneerDriveIcon(item)
+              }
+            ]"
+          ></span>
+          <bubbleBox
+            :dom="iconRefMap[item.key] || undefined"
+            :title="item.tooltip"
+            :max-width="320"
           />
         </div>
       </div>

@@ -9,6 +9,7 @@ interface UseCoverThumbnailsOptions {
   endIndex: Ref<number>
   visibleCount: Ref<number>
   songListRootDir?: Ref<string | undefined>
+  enabled?: Ref<boolean>
 }
 
 export function useCoverThumbnails({
@@ -17,7 +18,8 @@ export function useCoverThumbnails({
   startIndex,
   endIndex,
   visibleCount,
-  songListRootDir
+  songListRootDir,
+  enabled
 }: UseCoverThumbnailsOptions) {
   const coverUrlCache = markRaw(new Map<string, string | null>())
   const inflight = markRaw(new Map<string, Promise<string | null>>())
@@ -28,6 +30,9 @@ export function useCoverThumbnails({
 
   const resolveSongs = () => songs.value ?? []
   const resolveRootDir = () => (songListRootDir ? songListRootDir.value : undefined)
+  const isEnabled = () => (enabled ? enabled.value !== false : true)
+  const resolveSongByFilePath = (filePath: string) =>
+    resolveSongs().find((song) => String(song?.filePath || '').trim() === filePath) || null
 
   function pump() {
     while (running < MAX_CONCURRENCY && pendingQueue.length > 0) {
@@ -48,6 +53,7 @@ export function useCoverThumbnails({
   }
 
   function fetchCoverUrl(filePath: string): Promise<string | null> {
+    if (!isEnabled()) return Promise.resolve(null)
     if (!filePath) return Promise.resolve(null)
     const cached = coverUrlCache.get(filePath)
     if (cached !== undefined) return Promise.resolve(cached)
@@ -57,12 +63,27 @@ export function useCoverThumbnails({
     const promise = new Promise<string | null>((resolve) => {
       const run = async () => {
         try {
-          const resp = (await window.electron.ipcRenderer.invoke(
-            'getSongCoverThumb',
-            filePath,
-            48,
-            resolveRootDir()
-          )) as { format?: string; data?: Uint8Array | { data: number[] }; dataUrl?: string } | null
+          const song = resolveSongByFilePath(filePath)
+          const pioneerCoverPath = String((song as any)?.pioneerCoverPath || '').trim()
+          const resp = pioneerCoverPath
+            ? ((await window.electron.ipcRenderer.invoke(
+                'pioneer-device-library:get-cover-thumb',
+                pioneerCoverPath
+              )) as {
+                format?: string
+                data?: Uint8Array | { data: number[] }
+                dataUrl?: string
+              } | null)
+            : ((await window.electron.ipcRenderer.invoke(
+                'getSongCoverThumb',
+                filePath,
+                48,
+                resolveRootDir()
+              )) as {
+                format?: string
+                data?: Uint8Array | { data: number[] }
+                dataUrl?: string
+              } | null)
 
           if (resp && resp.dataUrl) {
             coverUrlCache.set(filePath, resp.dataUrl)
@@ -134,6 +155,7 @@ export function useCoverThumbnails({
   }
 
   function primePrefetchWindow() {
+    if (!isEnabled()) return
     const arr = resolveSongs()
     const start = Math.max(0, startIndex.value - visibleCount.value)
     const end = Math.min(arr.length, endIndex.value + visibleCount.value)
@@ -161,7 +183,9 @@ export function useCoverThumbnails({
   )
 
   onMounted(() => {
-    primePrefetchWindow()
+    if (isEnabled()) {
+      primePrefetchWindow()
+    }
     emitter.on('songMetadataUpdated', handleSongMetadataUpdated)
   })
 

@@ -74,6 +74,22 @@ const props = defineProps({
   songListRootDir: {
     type: String as PropType<string | undefined>,
     default: undefined
+  },
+  pioneerDeviceRootPath: {
+    type: String as PropType<string | undefined>,
+    default: undefined
+  },
+  readOnly: {
+    type: Boolean,
+    default: false
+  },
+  enableCoverThumbnails: {
+    type: Boolean,
+    default: true
+  },
+  enableKeyAnalysisQueue: {
+    type: Boolean,
+    default: true
   }
 })
 
@@ -92,6 +108,9 @@ const scrollHostElementRef = toRef(props, 'scrollHostElement')
 const externalScrollTopRef = toRef(props, 'externalScrollTop')
 const externalViewportHeightRef = toRef(props, 'externalViewportHeight')
 const songListRootDirRef = toRef(props, 'songListRootDir')
+const pioneerDeviceRootPathRef = toRef(props, 'pioneerDeviceRootPath')
+const enableCoverThumbnailsRef = toRef(props, 'enableCoverThumbnails')
+const enableKeyAnalysisQueueRef = toRef(props, 'enableKeyAnalysisQueue')
 const visibleColumnsRef = toRef(props, 'visibleColumns')
 const runtime = useRuntimeStore()
 const isMixtapeList = computed(
@@ -247,6 +266,8 @@ const {
   effectiveViewportHeight,
   startIndex,
   endIndex,
+  actualStartIndex,
+  actualEndIndex,
   visibleCount,
   scrollLeft
 } = useVirtualRows({
@@ -274,10 +295,11 @@ const { coversTick, getCoverUrl, fetchCoverUrl, onImgError } = useCoverThumbnail
   startIndex,
   endIndex,
   visibleCount,
-  songListRootDir: songListRootDirRef
+  songListRootDir: songListRootDirRef,
+  enabled: enableCoverThumbnailsRef
 })
 
-useKeyAnalysisQueue({ visibleSongsWithIndex })
+useKeyAnalysisQueue({ visibleSongsWithIndex, enabled: enableKeyAnalysisQueueRef })
 
 const {
   coverPreviewState,
@@ -307,14 +329,20 @@ const {
   requestWaveformPreview,
   stopWaveformPreview,
   isWaveformPreviewActive,
-  getWaveformPreviewPlayheadStyle
+  getWaveformPreviewPlayheadStyle,
+  getWaveformPlaceholderText,
+  getWaveformPlaceholderTitle
 } = useWaveformPreview({
   visibleSongsWithIndex,
   visibleColumns: visibleColumnsRef,
-  songListRootDir: songListRootDirRef
+  songListRootDir: songListRootDirRef,
+  pioneerDeviceRootPath: pioneerDeviceRootPathRef,
+  actualVisibleStartIndex: actualStartIndex,
+  actualVisibleEndIndex: actualEndIndex
 })
 
 const handleWaveformClick = (song: ISongInfo, event: MouseEvent) => {
+  if (props.readOnly) return
   if (event.button !== 0) return
   const filePath = song?.filePath
   if (!filePath) return
@@ -323,6 +351,7 @@ const handleWaveformClick = (song: ISongInfo, event: MouseEvent) => {
 }
 
 const handleWaveformStopClick = (event: MouseEvent) => {
+  if (props.readOnly) return
   event.stopPropagation()
   event.preventDefault()
   stopWaveformPreview()
@@ -357,6 +386,7 @@ const resolveDragItemIds = (event: DragEvent): string[] => {
 }
 
 const handleRowDragOver = (event: DragEvent, item: { song: ISongInfo; idx: number }) => {
+  if (props.readOnly) return
   if (!isMixtapeList.value) return
   const sourceItemIds = resolveDragItemIds(event)
   if (!sourceItemIds.length) return
@@ -381,6 +411,7 @@ const handleRowDragOver = (event: DragEvent, item: { song: ISongInfo; idx: numbe
 }
 
 const handleEdgeDragOver = (event: DragEvent, edge: 'top' | 'bottom') => {
+  if (props.readOnly) return
   if (!isMixtapeList.value) return
   const sourceItemIds = resolveDragItemIds(event)
   if (!sourceItemIds.length) return
@@ -396,6 +427,7 @@ const handleEdgeDragOver = (event: DragEvent, edge: 'top' | 'bottom') => {
 }
 
 const handleEdgeDrop = (event: DragEvent, edge: 'top' | 'bottom') => {
+  if (props.readOnly) return
   if (!isMixtapeList.value) return
   const sourceItemIds = resolveDragItemIds(event)
   if (!sourceItemIds.length) return
@@ -430,6 +462,7 @@ const handleBottomPadDrop = (event: DragEvent) => {
 }
 
 const handleRowDrop = (event: DragEvent, item: { song: ISongInfo; idx: number }) => {
+  if (props.readOnly) return
   if (!isMixtapeList.value) return
   const sourceItemIds = resolveDragItemIds(event)
   if (!sourceItemIds.length) return
@@ -451,6 +484,7 @@ const handleRowDrop = (event: DragEvent, item: { song: ISongInfo; idx: number })
 }
 
 const handleRowDragEnd = (event: DragEvent) => {
+  if (props.readOnly) return
   draggingItemIds.value = []
   draggingSourceListUUID.value = ''
   clearDragHover()
@@ -460,6 +494,7 @@ const handleRowDragEnd = (event: DragEvent) => {
 }
 
 const handleRowDragStart = (event: DragEvent, item: { song: ISongInfo }) => {
+  if (props.readOnly) return
   if (isMixtapeList.value) {
     const rowKey = getRowKey(item.song)
     const selectedKeys = (props.selectedSongFilePaths || []).filter(Boolean)
@@ -543,8 +578,8 @@ onUnmounted(() => {
     ref="rowsRoot"
     class="song-rows-root"
     @click="onRowsClick"
-    @contextmenu.prevent="onRowsContextmenu"
-    @dblclick="onRowsDblclick"
+    @contextmenu.prevent="!props.readOnly && onRowsContextmenu($event)"
+    @dblclick="!props.readOnly && onRowsDblclick($event)"
     @mouseover="onRowsMouseOver"
     @mouseleave="onRowsMouseLeave"
   >
@@ -563,11 +598,11 @@ onUnmounted(() => {
           }"
           :data-filepath="item.song.filePath"
           :data-rowkey="getRowKey(item.song)"
-          :draggable="true"
-          @dragstart.stop="handleRowDragStart($event, item)"
-          @dragend.stop="handleRowDragEnd"
-          @dragover.stop.prevent="handleRowDragOver($event, item)"
-          @drop.stop="handleRowDrop($event, item)"
+          :draggable="!props.readOnly"
+          @dragstart.stop="!props.readOnly && handleRowDragStart($event, item)"
+          @dragend.stop="!props.readOnly && handleRowDragEnd($event)"
+          @dragover.stop.prevent="!props.readOnly && handleRowDragOver($event, item)"
+          @drop.stop="!props.readOnly && handleRowDrop($event, item)"
         >
           <div
             class="song-row-content"
@@ -593,7 +628,11 @@ onUnmounted(() => {
                 class="cell-title"
                 :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
               >
-                {{ isMixtapeList ? (item.song.mixOrder ?? item.idx + 1) : item.idx + 1 }}
+                {{
+                  typeof item.song.mixOrder === 'number' && item.song.mixOrder > 0
+                    ? item.song.mixOrder
+                    : item.idx + 1
+                }}
               </div>
               <div
                 v-else-if="col.key === 'cover'"
@@ -606,7 +645,7 @@ onUnmounted(() => {
                   :data-ct="coversTick"
                   @mouseenter="onCoverMouseEnter(item.idx, $event)"
                   @mouseleave="onCoverMouseLeave(item.idx, $event)"
-                  @dblclick.stop.prevent="handleCoverDblclick(item.song, $event)"
+                  @dblclick.stop.prevent="!props.readOnly && handleCoverDblclick(item.song, $event)"
                 >
                   <img
                     v-if="getCoverUrl(item.song.filePath)"
@@ -623,7 +662,7 @@ onUnmounted(() => {
                 v-else-if="col.key === 'waveformPreview'"
                 class="cell-waveform"
                 :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
-                @click="handleWaveformClick(item.song, $event)"
+                @click="!props.readOnly && handleWaveformClick(item.song, $event)"
               >
                 <div class="waveform-preview-stop-slot">
                   <button
@@ -631,7 +670,7 @@ onUnmounted(() => {
                     class="waveform-preview-stop"
                     type="button"
                     aria-label="Stop preview"
-                    @click="handleWaveformStopClick"
+                    @click="!props.readOnly && handleWaveformStopClick($event)"
                   ></button>
                 </div>
                 <div class="waveform-preview-shell">
@@ -642,6 +681,13 @@ onUnmounted(() => {
                     "
                     class="waveform-preview-canvas"
                   ></canvas>
+                  <div
+                    v-if="getWaveformPlaceholderText(item.song.filePath)"
+                    class="waveform-preview-placeholder"
+                    :title="getWaveformPlaceholderTitle(item.song.filePath)"
+                  >
+                    {{ getWaveformPlaceholderText(item.song.filePath) }}
+                  </div>
                   <div
                     v-if="isWaveformPreviewActive(item.song.filePath)"
                     class="waveform-preview-playhead"
@@ -700,8 +746,8 @@ onUnmounted(() => {
       }"
       @mousemove="handleCoverPreviewMouseMove"
       @mouseleave="closeCoverPreview"
-      @contextmenu.stop.prevent="handleCoverPreviewContextmenu"
-      @dblclick.stop.prevent="handleCoverPreviewDblclick"
+      @contextmenu.stop.prevent="!props.readOnly && handleCoverPreviewContextmenu($event)"
+      @dblclick.stop.prevent="!props.readOnly && handleCoverPreviewDblclick($event)"
     >
       <img v-if="previewedCoverUrl" :src="previewedCoverUrl" alt="cover preview" decoding="async" />
       <div v-else class="cover-skeleton expanded"></div>
@@ -906,6 +952,22 @@ onUnmounted(() => {
   height: 18px;
   display: block;
   color: var(--text-weak);
+  pointer-events: none;
+}
+
+.waveform-preview-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  color: var(--text-weak);
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   pointer-events: none;
 }
 
