@@ -1,6 +1,7 @@
 ﻿import { ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import path from 'node:path'
+import fs = require('fs-extra')
 import mixtapeWindow, {
   isMixtapeWindowOpenByPlaylistId,
   type MixtapeWindowPayload
@@ -53,6 +54,8 @@ import {
   type MixtapeOutputInput,
   type MixtapeOutputProgressPayload
 } from '../services/mixtapeOutput'
+import { moveOrCopyItemWithCheckIsExist, runWithConcurrency, waitForUserDecision } from '../utils'
+import { getMixtapeVaultRootAbs } from '../recycleBinService'
 
 export function registerMixtapeHandlers() {
   const broadcastMixtapeItemsRemoved = (
@@ -224,6 +227,95 @@ export function registerMixtapeHandlers() {
       started,
       state: getStemRuntimeDownloadState()
     }
+  })
+
+  ipcMain.handle('mixtape:copy-files-to-vault', async (_e, payload?: { filePaths?: string[] }) => {
+    const vaultRoot = getMixtapeVaultRootAbs()
+    if (!vaultRoot) {
+      throw new Error('MIXTAPE_VAULT_UNAVAILABLE')
+    }
+    await fs.ensureDir(vaultRoot)
+
+    const sourcePaths = Array.from(
+      new Set(
+        (Array.isArray(payload?.filePaths) ? payload.filePaths : [])
+          .filter((item): item is string => typeof item === 'string')
+          .map((item) => item.trim())
+          .filter(Boolean)
+      )
+    )
+    if (!sourcePaths.length) {
+      return []
+    }
+
+    const batchId = `mixtape_copy_to_vault_${Date.now()}`
+    try {
+      mainWindow.instance?.webContents.send('progressSet', {
+        id: batchId,
+        titleKey: 'tracks.copyingTracks',
+        now: 0,
+        total: sourcePaths.length,
+        isInitial: true
+      })
+    } catch {}
+
+    const tasks = sourcePaths.map(
+      (sourcePath) => async (): Promise<{ sourcePath: string; targetPath: string }> => {
+        const targetPath = path.join(vaultRoot, path.basename(sourcePath))
+        const copiedPath = await moveOrCopyItemWithCheckIsExist(sourcePath, targetPath, false)
+        return {
+          sourcePath,
+          targetPath: copiedPath
+        }
+      }
+    )
+
+    const { failed, skipped, results } = await runWithConcurrency(tasks, {
+      concurrency: 8,
+      onProgress: (done, total) => {
+        try {
+          mainWindow.instance?.webContents.send('progressSet', {
+            id: batchId,
+            titleKey: 'tracks.copyingTracks',
+            now: done,
+            total
+          })
+        } catch {}
+      },
+      stopOnENOSPC: true,
+      onInterrupted: async (progressPayload) =>
+        waitForUserDecision(
+          mainWindow.instance ?? null,
+          batchId,
+          'mixtapeCopyToVault',
+          progressPayload
+        )
+    })
+
+    try {
+      mainWindow.instance?.webContents.send('progressSet', {
+        id: batchId,
+        titleKey: 'tracks.copyingTracks',
+        now: sourcePaths.length,
+        total: sourcePaths.length
+      })
+    } catch {}
+
+    const successfulResults = results.filter(
+      (item): item is { sourcePath: string; targetPath: string } => !(item instanceof Error)
+    )
+    if (failed > 0 || skipped > 0 || successfulResults.length !== sourcePaths.length) {
+      await Promise.all(
+        successfulResults.map(async (item) => {
+          try {
+            await fs.remove(item.targetPath)
+          } catch {}
+        })
+      )
+      throw new Error('MIXTAPE_COPY_TO_VAULT_FAILED')
+    }
+
+    return successfulResults
   })
 
   ipcMain.handle(

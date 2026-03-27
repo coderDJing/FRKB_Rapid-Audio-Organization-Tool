@@ -6,6 +6,7 @@ import {
   type WaveformStyle,
   type WebAudioPlayerEvents
 } from './webAudioPlayer'
+import type { IPioneerPreviewWaveformData } from 'src/types/globals'
 
 export function useWaveform(params: {
   waveformEl: Ref<HTMLDivElement | null>
@@ -620,6 +621,81 @@ export function useWaveform(params: {
     drawOnCtx(progressCtx, MIXXX_PROGRESS_ALPHA, true)
   }
 
+  const drawPioneerPreviewWaveform = (
+    width: number,
+    height: number,
+    waveformData: IPioneerPreviewWaveformData,
+    progressColor: string,
+    tintProgress = false
+  ) => {
+    const columns = Array.isArray(waveformData?.columns) ? waveformData.columns : []
+    const maxHeight = Math.max(
+      1,
+      Number(waveformData?.maxHeight) ||
+        columns.reduce((value, column) => Math.max(value, Number(column?.backHeight) || 0), 0)
+    )
+    if (!columns.length || width <= 0 || height <= 0 || maxHeight <= 0) {
+      clearCanvases()
+      return
+    }
+
+    const pixelRatio = window.devicePixelRatio || 1
+    resizeCanvas(baseCanvas, baseCtx, width, height, pixelRatio)
+    resizeCanvas(progressCanvas, progressCtx, width, height, pixelRatio)
+
+    const drawToCanvas = (ctx: CanvasRenderingContext2D, applyTint: boolean) => {
+      const columnCount = Math.max(1, Math.floor(width))
+      const samplesPerColumn = columns.length / columnCount
+      const spacing = width / columnCount
+      const drawWidth = Math.max(1, spacing)
+      const scaleY = height / maxHeight
+
+      for (let index = 0; index < columnCount; index++) {
+        const start = Math.floor(index * samplesPerColumn)
+        const end = Math.min(
+          columns.length,
+          Math.max(start + 1, Math.floor((index + 1) * samplesPerColumn))
+        )
+        let selected = columns[start] || null
+        for (let i = start; i < end; i++) {
+          const candidate = columns[i]
+          if (!candidate) continue
+          if (!selected || (candidate.backHeight || 0) >= (selected.backHeight || 0)) {
+            selected = candidate
+          }
+        }
+        if (!selected) continue
+
+        const backHeight = Math.max(0, Number(selected.backHeight) || 0)
+        const frontHeight = Math.max(0, Number(selected.frontHeight) || 0)
+        const x = Math.min(width - drawWidth, index * spacing)
+
+        if (backHeight > 0) {
+          const backPixelHeight = Math.max(1, backHeight * scaleY)
+          ctx.fillStyle = `rgb(${selected.backColorR || 0}, ${selected.backColorG || 0}, ${selected.backColorB || 0})`
+          ctx.fillRect(x, height - backPixelHeight, drawWidth, backPixelHeight)
+        }
+
+        if (frontHeight > 0) {
+          const frontPixelHeight = Math.max(1, frontHeight * scaleY)
+          ctx.fillStyle = `rgb(${selected.frontColorR || 0}, ${selected.frontColorG || 0}, ${selected.frontColorB || 0})`
+          ctx.fillRect(x, height - frontPixelHeight, drawWidth, frontPixelHeight)
+        }
+      }
+
+      if (!applyTint) return
+      ctx.save()
+      ctx.globalCompositeOperation = 'source-atop'
+      ctx.globalAlpha = 0.32
+      ctx.fillStyle = progressColor
+      ctx.fillRect(0, 0, width, height)
+      ctx.restore()
+    }
+
+    drawToCanvas(baseCtx, false)
+    drawToCanvas(progressCtx, tintProgress)
+  }
+
   const drawWaveform = (forceRedraw = false) => {
     if (!waveformEl.value || !audioPlayer.value) return
 
@@ -627,6 +703,7 @@ export function useWaveform(params: {
     const width = container.clientWidth || 1
     const height = waveformHeight
     const player = audioPlayer.value
+    const pioneerPreviewData = player.pioneerPreviewWaveformData ?? null
 
     const duration = player?.getDuration?.() ?? audioBuffer?.duration ?? 0
     const currentTime = player?.getCurrentTime?.() ?? 0
@@ -634,6 +711,11 @@ export function useWaveform(params: {
     updateProgressVisual(progress)
 
     if (!forceRedraw) {
+      return
+    }
+
+    if (pioneerPreviewData) {
+      drawPioneerPreviewWaveform(width, height, pioneerPreviewData, '#0078d4', true)
       return
     }
 
@@ -663,7 +745,8 @@ export function useWaveform(params: {
     const player = audioPlayer.value
     const style = getWaveformStyle()
     const mixxxData = player.mixxxWaveformData ?? null
-    if (!mixxxData) {
+    const pioneerPreviewData = player.pioneerPreviewWaveformData ?? null
+    if (!mixxxData && !pioneerPreviewData) {
       audioBuffer = null
       soundCloudMinMaxData = null
       mixxxMinMaxSource = null
@@ -673,11 +756,20 @@ export function useWaveform(params: {
       return
     }
 
+    if (pioneerPreviewData) {
+      audioBuffer = null
+      soundCloudMinMaxData = null
+      mixxxMinMaxSource = null
+      drawWaveform(true)
+      return
+    }
+
     const buffer = player.audioBuffer ?? null
     audioBuffer = buffer
 
     if (style !== WAVEFORM_STYLE_RGB) {
       if (!soundCloudMinMaxData || mixxxMinMaxSource !== mixxxData) {
+        if (!mixxxData) return
         soundCloudMinMaxData = buildMinMaxDataFromMixxx(mixxxData)
         mixxxMinMaxSource = mixxxData
       }

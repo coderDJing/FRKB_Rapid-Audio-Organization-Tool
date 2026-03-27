@@ -62,6 +62,35 @@ export function usePlayerControlsLogic({
   // 调试日志已清理
   const isFileOperationInProgress = ref(false)
   const songToMoveRef = ref<ISongInfo | null>(null)
+  const isReadOnlyPlaybackSource = () =>
+    String(runtime.playingData.playingSongListUUID || '').startsWith('pioneer:')
+  const buildSongSnapshot = (filePath: string, song: ISongInfo) => {
+    const baseName =
+      String(filePath || '')
+        .split(/[/\\]/)
+        .pop() || ''
+    const parts = baseName.split('.')
+    const ext = parts.length > 1 ? parts.pop() || '' : ''
+    const fileFormat = ext ? ext.toUpperCase() : ''
+    return {
+      filePath,
+      fileName: song?.fileName || baseName,
+      fileFormat: song?.fileFormat || fileFormat,
+      cover: null,
+      title: song?.title ?? baseName,
+      artist: song?.artist,
+      album: song?.album,
+      duration: song?.duration ?? '',
+      genre: song?.genre,
+      label: song?.label,
+      bitrate: song?.bitrate,
+      container: song?.container,
+      key: song?.key,
+      originalKey: song?.key,
+      bpm: song?.bpm,
+      originalBpm: song?.bpm
+    }
+  }
   // 取消长按抑制方案，改由 playerReady 门槛保障
 
   const play = () => {
@@ -237,6 +266,14 @@ export function usePlayerControlsLogic({
     if (isFileOperationInProgress.value || !runtime.playingData.playingSong) {
       return
     }
+    if (isReadOnlyPlaybackSource()) {
+      await confirm({
+        title: t('dialog.hint'),
+        content: [t('tracks.readOnlySourceDeleteNotAllowed')],
+        confirmShow: false
+      })
+      return
+    }
 
     try {
       // New outer try
@@ -400,6 +437,13 @@ export function usePlayerControlsLogic({
     selectSongListDialogShow.value = true
   }
 
+  const moveToMixtapeLibrary = (song?: ISongInfo) => {
+    songToMoveRef.value = song || runtime.playingData.playingSong
+
+    selectSongListDialogLibraryName.value = 'MixtapeLibrary'
+    selectSongListDialogShow.value = true
+  }
+
   // 这个函数在 usePlayerControlsLogic 内部使用，不需要导出
   const handleMoveSong = async (targetListUuid: string) => {
     if (isFileOperationInProgress.value) {
@@ -412,7 +456,11 @@ export function usePlayerControlsLogic({
       return
     }
 
-    if (targetListUuid === runtime.playingData.playingSongListUUID) {
+    const readOnlySource = isReadOnlyPlaybackSource()
+    const targetNode = libraryUtils.getLibraryTreeByUUID(targetListUuid)
+    const isMixtapeTarget = targetNode?.type === 'mixtapeList'
+
+    if (!readOnlySource && targetListUuid === runtime.playingData.playingSongListUUID) {
       // 移动到当前列表，无需操作
       // 重置存储的歌曲信息
       songToMoveRef.value = null
@@ -421,12 +469,12 @@ export function usePlayerControlsLogic({
 
     isFileOperationInProgress.value = true
     const filePathToMove = songToMove.filePath
-    const targetDirPath = libraryUtils.findDirPathByUuid(targetListUuid)
+    const targetDirPath = isMixtapeTarget ? '' : libraryUtils.findDirPathByUuid(targetListUuid)
 
     // 重置存储的歌曲信息
     songToMoveRef.value = null
 
-    if (!targetDirPath) {
+    if (!isMixtapeTarget && !targetDirPath) {
       console.error(
         `[usePlayerControlsLogic] handleMoveSong: 未找到目标目录路径: ${targetListUuid}`
       )
@@ -437,6 +485,49 @@ export function usePlayerControlsLogic({
     try {
       cancelPreloadTimer('handleMoveSong start')
       selectSongListDialogShow.value = false // 关闭对话框
+
+      if (readOnlySource) {
+        if (isMixtapeTarget) {
+          const copiedTracks = (await window.electron.ipcRenderer.invoke(
+            'mixtape:copy-files-to-vault',
+            {
+              filePaths: [filePathToMove]
+            }
+          )) as Array<{ sourcePath: string; targetPath: string }>
+          const copiedPath = copiedTracks[0]?.targetPath
+          if (!copiedPath) {
+            throw new Error('MIXTAPE_COPY_TO_VAULT_FAILED')
+          }
+          await window.electron.ipcRenderer.invoke('mixtape:append', {
+            playlistId: targetListUuid,
+            items: [
+              {
+                filePath: copiedPath,
+                originPathSnapshot: runtime.pioneerDeviceLibrary.selectedDriveName || 'Pioneer USB',
+                info: buildSongSnapshot(copiedPath, songToMove)
+              }
+            ]
+          })
+          emitter.emit('playlistContentChanged', { uuids: [targetListUuid] })
+          emitter.emit('songsArea/clipboardHint', {
+            message: t('mixtape.addedToMixtape', { count: 1 })
+          })
+          isFileOperationInProgress.value = false
+          return
+        }
+
+        await window.electron.ipcRenderer.invoke(
+          'moveSongsToDir',
+          [filePathToMove],
+          targetDirPath,
+          {
+            mode: 'copy'
+          }
+        )
+        emitter.emit('playlistContentChanged', { uuids: [targetListUuid] })
+        isFileOperationInProgress.value = false
+        return
+      }
 
       const currentList = runtime.playingData.playingSongListData
       const currentIndex = currentList.findIndex((song) => song.filePath === filePathToMove)
@@ -549,10 +640,15 @@ export function usePlayerControlsLogic({
     }
 
     // 弹出导出对话框
-    let result = await exportDialog({ title: 'tracks.title' })
+    let result = await exportDialog({
+      title: 'tracks.title',
+      forceCopyOnly: isReadOnlyPlaybackSource()
+    })
     if (result !== 'cancel') {
       let folderPathVal = result.folderPathVal
-      let deleteSongsAfterExport = result.deleteSongsAfterExport
+      let deleteSongsAfterExport = isReadOnlyPlaybackSource()
+        ? false
+        : result.deleteSongsAfterExport
 
       // 深拷贝当前播放歌曲信息，避免后续操作影响原始数据
       const songToExport = JSON.parse(JSON.stringify(runtime.playingData.playingSong))
@@ -634,6 +730,7 @@ export function usePlayerControlsLogic({
     delSong,
     moveToListLibrary,
     moveToLikeLibrary,
+    moveToMixtapeLibrary,
     exportTrack,
     handleMoveSong // 暴露给父组件的 selectSongListDialogConfirm 使用
   }

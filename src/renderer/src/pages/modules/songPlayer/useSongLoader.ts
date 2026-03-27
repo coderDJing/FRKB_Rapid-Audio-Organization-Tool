@@ -7,9 +7,14 @@ import { WebAudioPlayer, type MixxxWaveformData, canPlayHtmlAudio } from './webA
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
+import type { IPioneerPreviewWaveformData } from 'src/types/globals'
 
 type WaveformCacheResponse = {
   items?: Array<{ filePath: string; data: MixxxWaveformData | null }>
+}
+
+type PioneerPreviewWaveformResponse = {
+  items?: Array<{ analyzePath: string; data: IPioneerPreviewWaveformData | null }>
 }
 
 type DecodePayload = {
@@ -172,6 +177,33 @@ export function useSongLoader(params: {
     playerInstance.setMixxxWaveformData(data, filePath)
   }
 
+  const fetchPioneerPreviewWaveform = async (
+    filePath: string,
+    rootPath: string,
+    analyzePath: string,
+    requestId: number
+  ) => {
+    let response: PioneerPreviewWaveformResponse | null = null
+    try {
+      response = await window.electron.ipcRenderer.invoke(
+        'pioneer-device-library:get-preview-waveforms',
+        rootPath,
+        [analyzePath]
+      )
+    } catch {
+      response = null
+    }
+
+    if (requestId !== currentLoadRequestId.value) return
+    if (runtime.playingData.playingSong?.filePath !== filePath) return
+
+    const item = response?.items?.find((entry) => entry.analyzePath === analyzePath)
+    const data = item?.data ?? null
+    const playerInstance = audioPlayer.value
+    if (!playerInstance) return
+    playerInstance.setPioneerPreviewWaveformData(data)
+  }
+
   const startPlaybackWhenReady = (
     playerInstance: WebAudioPlayer,
     filePath: string,
@@ -218,10 +250,16 @@ export function useSongLoader(params: {
     setCoverByIPC(filePath)
     waveformShow.value = true
     resolveBpmValue(options?.preloadedBpm ?? null)
+    playerInstance.setPioneerPreviewWaveformData(null)
 
     isLoadingBlob.value = true
 
     const useHtmlPlayback = canPlayHtmlAudio(filePath)
+    const currentSong = runtime.playingData.playingSong
+    const pioneerAnalyzePath = String(currentSong?.pioneerAnalyzePath || '').trim()
+    const pioneerRootPath = String(
+      currentSong?.pioneerDeviceRootPath || runtime.pioneerDeviceLibrary.selectedDrivePath || ''
+    ).trim()
     try {
       playerInstance.setMixxxWaveformData(null, filePath)
       if (useHtmlPlayback) {
@@ -236,7 +274,11 @@ export function useSongLoader(params: {
 
         startPlaybackWhenReady(playerInstance, filePath, requestId)
 
-        void fetchWaveformCache(filePath, requestId)
+        if (pioneerRootPath && pioneerAnalyzePath) {
+          void fetchPioneerPreviewWaveform(filePath, pioneerRootPath, pioneerAnalyzePath, requestId)
+        } else {
+          void fetchWaveformCache(filePath, requestId)
+        }
       } else {
         window.electron.ipcRenderer.send('readSongFile', filePath, String(requestId))
       }

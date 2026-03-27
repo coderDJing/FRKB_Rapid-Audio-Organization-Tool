@@ -3,9 +3,11 @@ import exportDialog from './exportDialog.vue'
 import { attachAppContext } from '@renderer/utils/appContext'
 
 export default ({
-  title
+  title,
+  forceCopyOnly = false
 }: {
   title: string
+  forceCopyOnly?: boolean
 }): Promise<'cancel' | { folderPathVal: string; deleteSongsAfterExport: boolean }> => {
   return new Promise((resolve, reject) => {
     const div = document.createElement('div')
@@ -24,6 +26,7 @@ export default ({
     }
     const vnode = createVNode(exportDialog, {
       title,
+      forceCopyOnly,
       confirmCallback,
       cancelCallback
     })

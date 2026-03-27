@@ -28,6 +28,9 @@ const volumeMutePng = volumeMutePngAsset
 const shortcutIcon = shortcutIconAsset
 const uuid = uuidV4()
 const runtime = useRuntimeStore()
+const isReadOnlyPlaybackSource = computed(() =>
+  String(runtime.playingData.playingSongListUUID || '').startsWith('pioneer:')
+)
 const playing = ref(true)
 watch(
   () => runtime.activeMenuUUID,
@@ -47,6 +50,7 @@ const emits = defineEmits([
   'delSong',
   'moveToLikeLibrary',
   'moveToListLibrary',
+  'moveToMixtapeLibrary',
   'exportTrack',
   'setVolume'
 ])
@@ -139,6 +143,9 @@ const moveToLikeLibrary = () => {
 const moveToListLibrary = () => {
   emits('moveToListLibrary', runtime.playingData.playingSong)
 }
+const moveToMixtapeLibrary = () => {
+  emits('moveToMixtapeLibrary', runtime.playingData.playingSong)
+}
 const exportTrack = () => {
   emits('exportTrack')
 }
@@ -160,6 +167,15 @@ const handleAnalyzeCurrentSongFingerprint = async () => {
   runtime.activeMenuUUID = ''
   moreMenuShow.value = false
 }
+const exportTrackLabel = computed(() =>
+  isReadOnlyPlaybackSource.value ? t('tracks.exportTracksCopyOnly') : t('tracks.exportTracks')
+)
+const moveToFilterLabel = computed(() =>
+  isReadOnlyPlaybackSource.value ? t('library.copyToFilter') : t('library.moveToFilter')
+)
+const moveToCuratedLabel = computed(() =>
+  isReadOnlyPlaybackSource.value ? t('library.copyToCurated') : t('library.moveToCurated')
+)
 
 // ---------------- 音量控制 ----------------
 const VOLUME_KEY = 'frkb_volume'
@@ -475,13 +491,13 @@ onUnmounted(() => {
       <div v-if="moreMenuShow" class="moreMenu unselectable">
         <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
           <div class="menuButton" @click="exportTrack()">
-            <span>{{ t('tracks.exportTracks') }}</span>
+            <span>{{ exportTrackLabel }}</span>
           </div>
         </div>
         <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
           <div class="menuButton" @click="moveToListLibrary()">
             <div>
-              <span>{{ t('library.moveToFilter') }}</span>
+              <span>{{ moveToFilterLabel }}</span>
             </div>
             <div class="shortcut" style="display: flex; align-items: center">
               <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>Q</span>
@@ -489,14 +505,20 @@ onUnmounted(() => {
           </div>
           <div class="menuButton" @click="moveToLikeLibrary()">
             <div>
-              <span>{{ t('library.moveToCurated') }}</span>
+              <span>{{ moveToCuratedLabel }}</span>
             </div>
             <div class="shortcut" style="display: flex; align-items: center">
               <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>E</span>
             </div>
           </div>
+          <div v-if="isReadOnlyPlaybackSource" class="menuButton" @click="moveToMixtapeLibrary()">
+            <span>{{ t('library.addToMixtapeByCopy') }}</span>
+          </div>
         </div>
-        <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
+        <div
+          v-if="!isReadOnlyPlaybackSource"
+          style="padding: 5px 5px; border-bottom: 1px solid var(--border)"
+        >
           <div class="menuButton" @click="delSong()">
             <div>
               <span>{{ t('tracks.deleteTracks') }} </span>

@@ -49,6 +49,7 @@ interface ISongInfo {
   autoFilled?: boolean
   pioneerCoverPath?: string | null
   pioneerAnalyzePath?: string | null
+  pioneerDeviceRootPath?: string | null
   deletedAtMs?: number
   originalPlaylistPath?: string | null
   recycleBinSourceType?: string | null

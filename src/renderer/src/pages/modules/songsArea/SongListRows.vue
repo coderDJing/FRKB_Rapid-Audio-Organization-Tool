@@ -90,7 +90,9 @@ const props = defineProps({
   enableKeyAnalysisQueue: {
     type: Boolean,
     default: true
-  }
+  },
+  allowContextMenuWhenReadOnly: { type: Boolean, default: false },
+  allowDblclickWhenReadOnly: { type: Boolean, default: false }
 })
 
 const emit = defineEmits<{
@@ -578,12 +580,13 @@ onUnmounted(() => {
     ref="rowsRoot"
     class="song-rows-root"
     @click="onRowsClick"
-    @contextmenu.prevent="!props.readOnly && onRowsContextmenu($event)"
-    @dblclick="!props.readOnly && onRowsDblclick($event)"
+    @contextmenu.prevent="
+      (!props.readOnly || props.allowContextMenuWhenReadOnly) && onRowsContextmenu($event)
+    "
+    @dblclick="(!props.readOnly || props.allowDblclickWhenReadOnly) && onRowsDblclick($event)"
     @mouseover="onRowsMouseOver"
     @mouseleave="onRowsMouseLeave"
   >
-    <!-- 娴ｈ法鏁ら崡鐘辩秴妤傛ê瀹抽幘鎴濈磻閹褰插姘З妤傛ê瀹抽敍灞藉敶闁劋绮庡〒鍙夌厠閸欘垵顫嬬粣妤€褰涚悰?-->
     <div :style="{ height: contentHeight + 'px', position: 'relative' }">
       <div :style="{ position: 'absolute', top: offsetTopPx + 'px', left: 0, right: 0 }">
         <div
@@ -645,7 +648,10 @@ onUnmounted(() => {
                   :data-ct="coversTick"
                   @mouseenter="onCoverMouseEnter(item.idx, $event)"
                   @mouseleave="onCoverMouseLeave(item.idx, $event)"
-                  @dblclick.stop.prevent="!props.readOnly && handleCoverDblclick(item.song, $event)"
+                  @dblclick.stop.prevent="
+                    (!props.readOnly || props.allowDblclickWhenReadOnly) &&
+                    handleCoverDblclick(item.song, $event)
+                  "
                 >
                   <img
                     v-if="getCoverUrl(item.song.filePath)"
@@ -746,8 +752,13 @@ onUnmounted(() => {
       }"
       @mousemove="handleCoverPreviewMouseMove"
       @mouseleave="closeCoverPreview"
-      @contextmenu.stop.prevent="!props.readOnly && handleCoverPreviewContextmenu($event)"
-      @dblclick.stop.prevent="!props.readOnly && handleCoverPreviewDblclick($event)"
+      @contextmenu.stop.prevent="
+        (!props.readOnly || props.allowContextMenuWhenReadOnly) &&
+        handleCoverPreviewContextmenu($event)
+      "
+      @dblclick.stop.prevent="
+        (!props.readOnly || props.allowDblclickWhenReadOnly) && handleCoverPreviewDblclick($event)
+      "
     >
       <img v-if="previewedCoverUrl" :src="previewedCoverUrl" alt="cover preview" decoding="async" />
       <div v-else class="cover-skeleton expanded"></div>

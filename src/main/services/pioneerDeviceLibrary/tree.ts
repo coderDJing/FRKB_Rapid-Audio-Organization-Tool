@@ -281,9 +281,10 @@ export async function loadPioneerPlaylistTracksByDrivePath(
     const playlistIdValue = Number(track?.playlistId ?? track?.playlist_id) || safePlaylistId
     const trackIdValue = Number(track?.trackId ?? track?.track_id) || 0
     const entryIndexValue = Number(track?.entryIndex ?? track?.entry_index) || 0
-    const filePath = String(track?.filePath ?? track?.file_path ?? '').trim()
+    const deviceRelativeFilePath = String(track?.filePath ?? track?.file_path ?? '').trim()
+    const filePath = resolvePioneerDevicePath(rootPath, deviceRelativeFilePath)
     const fileName = String(track?.fileName ?? track?.file_name ?? '').trim()
-    const fileFormat = deriveFileFormat(fileName, filePath)
+    const fileFormat = deriveFileFormat(fileName, deviceRelativeFilePath || filePath)
     const durationSec = Number(track?.durationSec ?? track?.duration_sec) || 0
     const artworkPath = String(track?.artworkPath ?? track?.artwork_path ?? '').trim()
     const coverPath = artworkPath ? resolvePioneerDevicePath(rootPath, artworkPath) : ''
@@ -292,7 +293,7 @@ export async function loadPioneerPlaylistTracksByDrivePath(
     const resolvedArtist = resolvePioneerArtistText({
       mappedArtist,
       fileName,
-      filePath,
+      filePath: deviceRelativeFilePath || filePath,
       album: albumText
     })
     return {

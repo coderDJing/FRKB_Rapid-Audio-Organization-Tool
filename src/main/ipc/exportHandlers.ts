@@ -188,38 +188,41 @@ export function registerExportHandlers() {
     }
   })
 
-  ipcMain.handle('moveSongsToDir', async (_e, srcs, dest) => {
+  ipcMain.handle('moveSongsToDir', async (_e, srcs, dest, options) => {
+    const isMove = options?.mode !== 'copy'
     const tasks: Array<() => Promise<any>> = []
     for (const src of srcs) {
       const matches = src.match(/[^\\]+$/)
       if (Array.isArray(matches) && matches.length > 0) {
         const targetPath = path.join(store.databaseDir, mapRendererPathToFsPath(dest), matches[0])
         tasks.push(async () => {
-          const movedPath = await moveOrCopyItemWithCheckIsExist(src, targetPath, true)
-          replaceMixtapeFilePath(src, movedPath)
-          try {
-            const fromRoot = await findSongListRoot(path.dirname(src))
-            const toRoot = await findSongListRoot(path.dirname(movedPath))
-            await transferTrackCaches({
-              fromRoot,
-              toRoot,
-              fromPath: src,
-              toPath: movedPath
-            })
-          } catch {}
-          if (isInRecycleBinAbsPath(src)) {
-            const rel = toLibraryRelativePath(src)
-            if (rel) deleteRecycleBinRecord(rel)
+          const movedPath = await moveOrCopyItemWithCheckIsExist(src, targetPath, isMove)
+          if (isMove) {
+            replaceMixtapeFilePath(src, movedPath)
+            try {
+              const fromRoot = await findSongListRoot(path.dirname(src))
+              const toRoot = await findSongListRoot(path.dirname(movedPath))
+              await transferTrackCaches({
+                fromRoot,
+                toRoot,
+                fromPath: src,
+                toPath: movedPath
+              })
+            } catch {}
+            if (isInRecycleBinAbsPath(src)) {
+              const rel = toLibraryRelativePath(src)
+              if (rel) deleteRecycleBinRecord(rel)
+            }
           }
           return movedPath
         })
       }
     }
-    const batchId = `moveSongs_${Date.now()}`
+    const batchId = `${isMove ? 'moveSongs' : 'copySongs'}_${Date.now()}`
     if (mainWindow.instance) {
       mainWindow.instance.webContents.send('progressSet', {
         id: batchId,
-        titleKey: 'tracks.movingTracks',
+        titleKey: isMove ? 'tracks.movingTracks' : 'tracks.copyingTracks',
         now: 0,
         total: tasks.length,
         isInitial: true
@@ -231,7 +234,7 @@ export function registerExportHandlers() {
         if (mainWindow.instance) {
           mainWindow.instance.webContents.send('progressSet', {
             id: batchId,
-            titleKey: 'tracks.movingTracks',
+            titleKey: isMove ? 'tracks.movingTracks' : 'tracks.copyingTracks',
             now: done,
             total
           })
@@ -239,11 +242,16 @@ export function registerExportHandlers() {
       },
       stopOnENOSPC: true,
       onInterrupted: async (payload) =>
-        waitForUserDecision(mainWindow.instance ?? null, batchId, 'moveSongs', payload)
+        waitForUserDecision(
+          mainWindow.instance ?? null,
+          batchId,
+          isMove ? 'moveSongs' : 'copySongs',
+          payload
+        )
     })
     if (hasENOSPC && mainWindow.instance) {
       mainWindow.instance.webContents.send('file-batch-summary', {
-        context: 'moveSongs',
+        context: isMove ? 'moveSongs' : 'copySongs',
         total: tasks.length,
         success,
         failed,
@@ -260,13 +268,14 @@ export function registerExportHandlers() {
     if (mainWindow.instance) {
       mainWindow.instance.webContents.send('progressSet', {
         id: batchId,
-        titleKey: 'tracks.movingTracks',
+        titleKey: isMove ? 'tracks.movingTracks' : 'tracks.copyingTracks',
         now: tasks.length,
         total: tasks.length
       })
     }
     if (failed > 0) {
-      throw new Error('moveSongsToDir failed')
+      throw new Error(isMove ? 'moveSongsToDir failed' : 'copySongsToDir failed')
     }
+    return results.filter((item) => !(item instanceof Error))
   })
 }

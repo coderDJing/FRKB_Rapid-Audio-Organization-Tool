@@ -1,4 +1,5 @@
 import mitt from 'mitt'
+import type { IPioneerPreviewWaveformData } from 'src/types/globals'
 
 export type RGBWaveformBandKey = 'low' | 'mid' | 'high'
 export type MixxxWaveformBandKey = RGBWaveformBandKey | 'all'
@@ -172,6 +173,7 @@ const normalizePcmData = (pcmData: unknown): Float32Array => {
 export class WebAudioPlayer {
   public audioBuffer: AudioBuffer | null = null
   public mixxxWaveformData: MixxxWaveformData | null = null
+  public pioneerPreviewWaveformData: IPioneerPreviewWaveformData | null = null
   private emitter = mitt<WebAudioPlayerEvents>()
   private isPlayingFlag = false
   private animationFrameId: number | null = null
@@ -275,6 +277,7 @@ export class WebAudioPlayer {
     this.pendingPlay = false
     this.metadataReady = false
     this.releaseMixxxWaveformData()
+    this.releasePioneerPreviewWaveformData()
 
     const audio = options?.audioElement ?? this.createAudioElement()
     this.attachAudioElement(audio)
@@ -331,6 +334,7 @@ export class WebAudioPlayer {
     this.pendingPlay = false
     this.metadataReady = false
     this.releaseMixxxWaveformData()
+    this.releasePioneerPreviewWaveformData()
 
     const context = this.ensurePcmContext(sampleRate)
     if (!context) {
@@ -538,6 +542,7 @@ export class WebAudioPlayer {
     this.pendingSeekTime = null
     this.metadataReady = false
     this.releaseMixxxWaveformData()
+    this.releasePioneerPreviewWaveformData()
     this.activeFilePath = null
     this.activeSrc = ''
     this.detachAudioElement(true)
@@ -565,11 +570,22 @@ export class WebAudioPlayer {
       this.releaseMixxxWaveformData()
       return
     }
+    this.releasePioneerPreviewWaveformData()
     this.mixxxWaveformData = data
     if (filePath) {
       this.mixxxWaveformFilePath = filePath
       this.mixxxWaveformBytes = this.calculateMixxxWaveformBytes(data)
     }
+    this.emit('mixxxwaveformready')
+  }
+
+  setPioneerPreviewWaveformData(data: IPioneerPreviewWaveformData | null): void {
+    if (!data) {
+      this.releasePioneerPreviewWaveformData()
+      return
+    }
+    this.releaseMixxxWaveformData()
+    this.pioneerPreviewWaveformData = data
     this.emit('mixxxwaveformready')
   }
 
@@ -579,6 +595,10 @@ export class WebAudioPlayer {
       this.mixxxWaveformBytes = 0
     }
     this.mixxxWaveformData = null
+  }
+
+  private releasePioneerPreviewWaveformData(): void {
+    this.pioneerPreviewWaveformData = null
   }
 
   private calculateMixxxWaveformBytes(data: MixxxWaveformData): number {

@@ -6,17 +6,27 @@ import SongListHeader from '@renderer/pages/modules/songsArea/SongListHeader.vue
 import SongListRows from '@renderer/pages/modules/songsArea/SongListRows.vue'
 import ascendingOrderAsset from '@renderer/assets/ascending-order.svg?asset'
 import descendingOrderAsset from '@renderer/assets/descending-order.svg?asset'
+import rightClickMenu from '@renderer/components/rightClickMenu'
+import exportDialog from '@renderer/components/exportDialog'
+import confirm from '@renderer/components/confirmDialog'
+import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
+import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
+import libraryUtils from '@renderer/utils/libraryUtils'
+import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { buildSongsAreaDefaultColumns } from '@renderer/pages/modules/songsArea/composables/useSongsAreaColumns'
 import { getKeyDisplayText, getKeySortText } from '@shared/keyDisplay'
 import { useParentRafSampler } from '@renderer/pages/modules/songsArea/composables/useParentRafSampler'
 import type {
+  IMenu,
   IPioneerPlaylistTrack,
   IPioneerPlaylistTreeNode,
   ISongInfo,
   ISongsAreaColumn
 } from '../../../../types/globals'
+
 type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
+type PioneerTransferTarget = 'CuratedLibrary' | 'FilterLibrary' | 'MixtapeLibrary'
 
 const runtime = useRuntimeStore()
 const songsAreaRef = useTemplateRef<OverlayScrollbarsComponentRef>('songsAreaRef')
@@ -24,12 +34,22 @@ const originalTracks = shallowRef<IPioneerPlaylistTrack[]>([])
 const visibleSongs = ref<ISongInfo[]>([])
 const loading = ref(false)
 const selectedRowKeys = ref<string[]>([])
-const columnData = ref<ISongsAreaColumn[]>(buildSongsAreaDefaultColumns('default'))
+const columnData = ref<ISongsAreaColumn[]>(
+  buildSongsAreaDefaultColumns('default').map((column) =>
+    column.key === 'index' ? { ...column, width: Math.max(column.width, 74) } : column
+  )
+)
+const selectSongListDialogVisible = ref(false)
+const selectSongListDialogTargetLibraryName = ref<PioneerTransferTarget | ''>('')
 
 const ascendingOrder = ascendingOrderAsset
 const descendingOrder = descendingOrderAsset
 const { externalScrollTop, externalViewportHeight } = useParentRafSampler({ songsAreaRef })
 
+const selectedDriveKey = computed(() => runtime.pioneerDeviceLibrary.selectedDriveKey || '')
+const selectedDriveName = computed(
+  () => runtime.pioneerDeviceLibrary.selectedDriveName || 'Pioneer USB'
+)
 const selectedPlaylistId = computed(() => runtime.pioneerDeviceLibrary.selectedPlaylistId || 0)
 const selectedDrivePath = computed(() => runtime.pioneerDeviceLibrary.selectedDrivePath || '')
 const selectedPlaylistNode = computed(() => {
@@ -47,11 +67,38 @@ const selectedPlaylistNode = computed(() => {
   }
   return walk(runtime.pioneerDeviceLibrary.treeNodes || [])
 })
+const currentPlaybackListKey = computed(() => {
+  if (!selectedPlaylistId.value) return ''
+  const driveKey = selectedDriveKey.value || selectedDrivePath.value || 'pioneer'
+  return `pioneer:${driveKey}:${selectedPlaylistId.value}`
+})
 
 const visibleColumns = computed(() => columnData.value.filter((item) => item.show))
 const totalWidth = computed(() =>
   visibleColumns.value.reduce((sum, col) => sum + Number(col.width || 0), 0)
 )
+const playingSongFilePathForRows = computed(() => {
+  if (!currentPlaybackListKey.value) return undefined
+  if (runtime.playingData.playingSongListUUID !== currentPlaybackListKey.value) return undefined
+  const playingSong = runtime.playingData.playingSong
+  return playingSong?.mixtapeItemId || playingSong?.filePath || undefined
+})
+const originPathSnapshot = computed(() => {
+  const driveLabel = selectedDriveName.value || 'Pioneer USB'
+  const playlistLabel = selectedPlaylistNode.value?.name || ''
+  return playlistLabel ? `${driveLabel} / ${playlistLabel}` : driveLabel
+})
+
+const pioneerSongMenuArr: IMenu[][] = [
+  [{ menuName: 'tracks.exportTracksCopyOnly' }],
+  [
+    { menuName: 'library.copyToFilter' },
+    { menuName: 'library.copyToCurated' },
+    { menuName: 'library.addToMixtapeByCopy' }
+  ],
+  [{ menuName: 'tracks.showInFileExplorer' }],
+  [{ menuName: 'fingerprints.analyzeAndAdd' }]
+]
 
 const toSongInfo = (track: IPioneerPlaylistTrack): ISongInfo => ({
   filePath: track.filePath,
@@ -71,8 +118,72 @@ const toSongInfo = (track: IPioneerPlaylistTrack): ISongInfo => ({
   mixOrder: track.entryIndex,
   pioneerCoverPath: track.coverPath || null,
   pioneerAnalyzePath: track.analyzePath || null,
+  pioneerDeviceRootPath: selectedDrivePath.value || null,
   mixtapeItemId: track.rowKey
 })
+
+const normalizePath = (value: string) =>
+  String(value || '')
+    .replace(/\//g, '\\')
+    .toLowerCase()
+
+const resolveSelectedTracks = (fallback?: ISongInfo) => {
+  const selectedKeys = selectedRowKeys.value.length
+    ? [...selectedRowKeys.value]
+    : fallback
+      ? [fallback.mixtapeItemId || fallback.filePath]
+      : []
+  if (!selectedKeys.length) return []
+  const selectedKeySet = new Set(selectedKeys)
+  const tracks = visibleSongs.value.filter((song) =>
+    selectedKeySet.has(song.mixtapeItemId || song.filePath)
+  )
+  if (tracks.length > 0) return tracks
+  return fallback ? [fallback] : []
+}
+
+const resolveFileNameAndFormat = (filePath: string) => {
+  const baseName =
+    String(filePath || '')
+      .split(/[/\\]/)
+      .pop() || ''
+  const parts = baseName.split('.')
+  const ext = parts.length > 1 ? parts.pop() || '' : ''
+  return {
+    fileName: baseName,
+    fileFormat: ext ? ext.toUpperCase() : ''
+  }
+}
+
+const buildSongSnapshot = (filePath: string, song: ISongInfo) => {
+  const meta = resolveFileNameAndFormat(filePath)
+  return {
+    filePath,
+    fileName: meta.fileName,
+    fileFormat: song.fileFormat || meta.fileFormat,
+    cover: null,
+    title: song.title ?? meta.fileName,
+    artist: song.artist,
+    album: song.album,
+    duration: song.duration ?? '',
+    genre: song.genre,
+    label: song.label,
+    bitrate: song.bitrate,
+    container: song.container,
+    key: song.key,
+    originalKey: song.key,
+    bpm: song.bpm,
+    originalBpm: song.bpm
+  }
+}
+
+const showErrorDialog = async (message: string) => {
+  await confirm({
+    title: t('common.error'),
+    content: [message || t('common.unknownError')],
+    confirmShow: false
+  })
+}
 
 const sortArrayByProperty = <T extends Record<string, any>>(
   array: T[],
@@ -251,10 +362,185 @@ watch(
   }
 )
 
-const handleSongClick = (event: MouseEvent, song: ISongInfo) => {
+const handleSongClick = (_event: MouseEvent, song: ISongInfo) => {
   const key = song.mixtapeItemId || song.filePath
   if (!key) return
   selectedRowKeys.value = [key]
+}
+
+const openCopyTargetDialog = (libraryName: PioneerTransferTarget) => {
+  selectSongListDialogTargetLibraryName.value = libraryName
+  selectSongListDialogVisible.value = true
+}
+
+const handleSongContextMenu = async (event: MouseEvent, song: ISongInfo) => {
+  const key = song.mixtapeItemId || song.filePath
+  if (!key) return
+  if (!selectedRowKeys.value.includes(key)) {
+    selectedRowKeys.value = [key]
+  }
+
+  const result = await rightClickMenu({
+    menuArr: pioneerSongMenuArr,
+    clickEvent: event
+  })
+  if (result === 'cancel') return
+
+  const selectedTracks = resolveSelectedTracks(song)
+  if (!selectedTracks.length) return
+
+  switch (result.menuName) {
+    case 'library.copyToCurated':
+      openCopyTargetDialog('CuratedLibrary')
+      return
+    case 'library.copyToFilter':
+      openCopyTargetDialog('FilterLibrary')
+      return
+    case 'library.addToMixtapeByCopy':
+      openCopyTargetDialog('MixtapeLibrary')
+      return
+    case 'fingerprints.analyzeAndAdd':
+      await analyzeFingerprintsForPaths(
+        selectedTracks.map((item) => item.filePath),
+        {
+          origin: 'selection'
+        }
+      )
+      return
+    case 'tracks.exportTracksCopyOnly': {
+      const exportResult = await exportDialog({
+        title: 'tracks.title',
+        forceCopyOnly: true
+      })
+      if (exportResult === 'cancel') return
+      await window.electron.ipcRenderer.invoke(
+        'exportSongsToDir',
+        exportResult.folderPathVal,
+        false,
+        JSON.parse(JSON.stringify(selectedTracks))
+      )
+      return
+    }
+    case 'tracks.showInFileExplorer':
+      window.electron.ipcRenderer.send('show-item-in-folder', selectedTracks[0]?.filePath)
+      return
+  }
+}
+
+const requestImmediateAnalysis = (song: ISongInfo) => {
+  const filePath = song?.filePath
+  if (!filePath) return
+  try {
+    window.electron.ipcRenderer.send('key-analysis:queue-playing', { filePath })
+  } catch {}
+}
+
+const handleSongDblClick = (song: ISongInfo) => {
+  const playbackListKey = currentPlaybackListKey.value
+  if (!playbackListKey) return
+  try {
+    emitter.emit('waveform-preview:stop', { reason: 'switch' })
+  } catch {}
+  runtime.activeMenuUUID = ''
+  selectedRowKeys.value = []
+
+  const normalizedSong = { ...song }
+  requestImmediateAnalysis(normalizedSong)
+  const isSameList = runtime.playingData.playingSongListUUID === playbackListKey
+  const isSameSong =
+    isSameList && runtime.playingData.playingSong?.filePath === normalizedSong.filePath
+
+  runtime.playingData.playingSongListUUID = playbackListKey
+  runtime.playingData.playingSongListData = [...visibleSongs.value]
+
+  if (isSameSong && runtime.playingData.playingSong) {
+    runtime.playingData.playingSong = normalizedSong
+    emitter.emit('player/replay-current-song')
+    return
+  }
+
+  runtime.playingData.playingSong = normalizedSong
+}
+
+const handleSelectSongListDialogConfirm = async (targetSongListUUID: string) => {
+  const targetLibraryName = selectSongListDialogTargetLibraryName.value
+  selectSongListDialogVisible.value = false
+  selectSongListDialogTargetLibraryName.value = ''
+  const selectedTracks = resolveSelectedTracks()
+  if (!selectedTracks.length || !targetLibraryName) return
+
+  try {
+    if (targetLibraryName === 'MixtapeLibrary') {
+      const copiedTracks = (await window.electron.ipcRenderer.invoke(
+        'mixtape:copy-files-to-vault',
+        {
+          filePaths: selectedTracks.map((item) => item.filePath)
+        }
+      )) as Array<{ sourcePath: string; targetPath: string }>
+
+      const copiedPathMap = new Map(
+        copiedTracks.map((item) => [normalizePath(item.sourcePath), item.targetPath])
+      )
+      const items = selectedTracks
+        .map((track) => {
+          const copiedPath = copiedPathMap.get(normalizePath(track.filePath))
+          if (!copiedPath) return null
+          return {
+            filePath: copiedPath,
+            originPathSnapshot: originPathSnapshot.value,
+            info: buildSongSnapshot(copiedPath, track)
+          }
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null)
+
+      if (!items.length) {
+        throw new Error('MIXTAPE_COPY_TO_VAULT_FAILED')
+      }
+
+      await window.electron.ipcRenderer.invoke('mixtape:append', {
+        playlistId: targetSongListUUID,
+        items
+      })
+      emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
+      emitter.emit('songsArea/clipboardHint', {
+        message: t('mixtape.addedToMixtape', { count: items.length })
+      })
+      return
+    }
+
+    const targetDirPath = libraryUtils.findDirPathByUuid(targetSongListUUID)
+    if (!targetDirPath) {
+      await showErrorDialog(t('library.notExistOnDisk'))
+      return
+    }
+    await window.electron.ipcRenderer.invoke(
+      'moveSongsToDir',
+      selectedTracks.map((item) => item.filePath),
+      targetDirPath,
+      { mode: 'copy' }
+    )
+    emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
+  } catch (error: any) {
+    const messageCode = String(error?.message || '')
+    if (messageCode === 'MIXTAPE_VAULT_UNAVAILABLE') {
+      await showErrorDialog('混音库保底目录不可用。')
+      return
+    }
+    if (messageCode === 'MIXTAPE_COPY_TO_VAULT_FAILED') {
+      await showErrorDialog('复制到混音库失败。')
+      return
+    }
+    if (messageCode === 'copySongsToDir failed') {
+      await showErrorDialog('复制曲目失败。')
+      return
+    }
+    await showErrorDialog(messageCode || t('common.unknownError'))
+  }
+}
+
+const handleSelectSongListDialogCancel = () => {
+  selectSongListDialogVisible.value = false
+  selectSongListDialogTargetLibraryName.value = ''
 }
 
 const placeholderText = computed(() => {
@@ -304,22 +590,34 @@ const placeholderText = computed(() => {
         :songs="visibleSongs"
         :visible-columns="visibleColumns"
         :selected-song-file-paths="selectedRowKeys"
-        :playing-song-file-path="''"
+        :playing-song-file-path="playingSongFilePathForRows"
         :flash-row-key="''"
         :flash-row-token="0"
         :total-width="totalWidth"
         source-library-name="PioneerDeviceLibrary"
-        :source-song-list-u-u-i-d="`pioneer:${selectedPlaylistId}`"
+        :source-song-list-u-u-i-d="currentPlaybackListKey || `pioneer:${selectedPlaylistId}`"
         :scroll-host-element="songsAreaRef?.osInstance()?.elements().viewport"
         :external-scroll-top="externalScrollTop"
         :external-viewport-height="externalViewportHeight"
         :pioneer-device-root-path="selectedDrivePath"
         :read-only="true"
+        :allow-context-menu-when-read-only="true"
+        :allow-dblclick-when-read-only="true"
         :enable-cover-thumbnails="true"
         :enable-key-analysis-queue="false"
         @song-click="handleSongClick"
+        @song-contextmenu="handleSongContextMenu"
+        @song-dblclick="handleSongDblClick"
       />
     </OverlayScrollbarsComponent>
+    <Teleport to="body">
+      <selectSongListDialog
+        v-if="selectSongListDialogVisible"
+        :library-name="selectSongListDialogTargetLibraryName"
+        @confirm="handleSelectSongListDialogConfirm"
+        @cancel="handleSelectSongListDialogCancel"
+      />
+    </Teleport>
   </div>
 </template>
 
@@ -330,15 +628,6 @@ const placeholderText = computed(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
-}
-
-.songsAreaHeader {
-  flex: 0 0 auto;
-}
-
-.songsAreaBody {
-  flex: 1 1 auto;
-  min-height: 0;
 }
 
 .songsAreaPlaceholder {

@@ -19,6 +19,10 @@ const props = defineProps({
   cancelCallback: {
     type: Function,
     required: true
+  },
+  forceCopyOnly: {
+    type: Boolean,
+    default: false
   }
 })
 const flashArea = ref('') // 控制动画是否正在播放
@@ -63,6 +67,9 @@ if (localStorageData === null) {
   const parsedLocalStorageData = JSON.parse(localStorageData) as { deleteSongsAfterExport: boolean }
   deleteSongsAfterExport.value = parsedLocalStorageData.deleteSongsAfterExport
 }
+if (props.forceCopyOnly) {
+  deleteSongsAfterExport.value = false
+}
 
 const confirm = () => {
   if (folderPathVal.value === '') {
@@ -74,13 +81,13 @@ const confirm = () => {
   localStorage.setItem(
     'exportDialog',
     JSON.stringify({
-      deleteSongsAfterExport: deleteSongsAfterExport.value
+      deleteSongsAfterExport: props.forceCopyOnly ? false : deleteSongsAfterExport.value
     })
   )
   closeWithAnimation(() => {
     props.confirmCallback({
       folderPathVal: folderPathVal.value,
-      deleteSongsAfterExport: deleteSongsAfterExport.value
+      deleteSongsAfterExport: props.forceCopyOnly ? false : deleteSongsAfterExport.value
     })
   })
 }
@@ -89,7 +96,7 @@ const cancel = () => {
   localStorage.setItem(
     'exportDialog',
     JSON.stringify({
-      deleteSongsAfterExport: deleteSongsAfterExport.value
+      deleteSongsAfterExport: props.forceCopyOnly ? false : deleteSongsAfterExport.value
     })
   )
   closeWithAnimation(() => {
@@ -147,13 +154,16 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-        <div style="display: flex">
+        <div v-if="!props.forceCopyOnly" style="display: flex">
           <div class="formLabel" style="text-align: right">
             <span>{{ t('tracks.deleteAfterExport') }}：</span>
           </div>
           <div style="flex: 1; width: 21px; height: 21px; display: flex; align-items: center">
             <singleCheckbox v-model="deleteSongsAfterExport" />
           </div>
+        </div>
+        <div v-else class="copyOnlyHint">
+          {{ t('tracks.exportCopyOnlyHint') }}
         </div>
       </div>
       <div class="dialog-footer">
@@ -187,5 +197,11 @@ onUnmounted(() => {
 .formLabel {
   text-align: left;
   font-size: 14px;
+}
+
+.copyOnlyHint {
+  font-size: 13px;
+  color: var(--text-weak);
+  line-height: 1.5;
 }
 </style>

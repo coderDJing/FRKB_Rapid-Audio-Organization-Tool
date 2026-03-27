@@ -709,6 +709,7 @@ watch(
             @del-song="playerActions.delSong"
             @move-to-list-library="(song) => playerActions.moveToListLibrary(song)"
             @move-to-like-library="(song) => playerActions.moveToLikeLibrary(song)"
+            @move-to-mixtape-library="(song) => playerActions.moveToMixtapeLibrary(song)"
             @export-track="playerActions.exportTrack"
             @set-volume="
               (v) => {
