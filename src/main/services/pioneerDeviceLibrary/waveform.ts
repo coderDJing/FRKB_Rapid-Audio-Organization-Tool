@@ -1,8 +1,10 @@
+import fs from 'node:fs/promises'
 import path from 'node:path'
 import type {
   IPioneerPreviewWaveformData,
   IPioneerPreviewWaveformColumn
 } from '../../../types/globals'
+import * as LibraryCacheDb from '../../libraryCacheDb'
 import { readPioneerPreviewWaveformsInWorker } from './workerPool'
 
 type RustPioneerPreviewWaveformColumn = {
@@ -49,12 +51,50 @@ export type PioneerPreviewWaveformLoadItem = {
   error?: string
 }
 
+type PreparedAnalyzePathItem = {
+  analyzePath: string
+  absoluteAnalyzePath: string
+  signature: string
+}
+
 const resolvePioneerDevicePath = (rootPath: string, devicePath: string) => {
   const normalizedRoot = String(rootPath || '').trim()
   const normalizedDevicePath = String(devicePath || '').trim()
   if (!normalizedRoot || !normalizedDevicePath) return ''
   const sanitized = normalizedDevicePath.replace(/^[/\\]+/, '')
   return path.join(normalizedRoot, sanitized)
+}
+
+const buildPreviewCandidatePaths = (absoluteAnalyzePath: string) => {
+  const normalized = String(absoluteAnalyzePath || '').trim()
+  if (!normalized) return []
+  const candidates = new Set<string>()
+  const parsed = path.parse(normalized)
+  const extensions = ['.EXT', '.DAT', '.2EX']
+  for (const ext of extensions) {
+    candidates.add(path.join(parsed.dir, `${parsed.name}${ext}`))
+  }
+  candidates.add(normalized)
+  return Array.from(candidates)
+}
+
+const normalizeSignaturePath = (value: string) => {
+  const normalized = path.resolve(String(value || '').trim())
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
+}
+
+const buildPreviewFileSignature = async (absoluteAnalyzePath: string) => {
+  const candidatePaths = buildPreviewCandidatePaths(absoluteAnalyzePath)
+  const parts: string[] = []
+  for (const candidatePath of candidatePaths) {
+    try {
+      const stat = await fs.stat(candidatePath)
+      parts.push(
+        `${normalizeSignaturePath(candidatePath)}|${stat.size}|${Math.round(Number(stat.mtimeMs) || 0)}`
+      )
+    } catch {}
+  }
+  return parts.length ? parts.join('||') : 'missing'
 }
 
 const normalizeWaveformColumn = (
@@ -105,13 +145,7 @@ const normalizeWaveformData = (
   }
 }
 
-export async function loadPioneerPreviewWaveformsByDrivePath(
-  rootPath: string,
-  analyzePaths: string[]
-): Promise<{
-  drivePath: string
-  items: PioneerPreviewWaveformLoadItem[]
-}> {
+const prepareAnalyzePathItems = async (rootPath: string, analyzePaths: string[]) => {
   const normalizedRootPath = String(rootPath || '').trim()
   const normalizedAnalyzePaths = Array.isArray(analyzePaths)
     ? Array.from(
@@ -123,30 +157,68 @@ export async function loadPioneerPreviewWaveformsByDrivePath(
       )
     : []
 
-  const items = new Map<string, PioneerPreviewWaveformLoadItem>()
-  for (const analyzePath of normalizedAnalyzePaths) {
-    items.set(analyzePath, {
-      analyzePath,
-      data: null
-    })
-  }
+  const preparedItems = new Map<string, PreparedAnalyzePathItem>()
+  const invalidItems = new Map<string, PioneerPreviewWaveformLoadItem>()
 
-  const absoluteAnalyzePathByRelative = new Map<string, string>()
-  const relativeAnalyzePathByAbsolute = new Map<string, string>()
-  const absoluteAnalyzePaths: string[] = []
   for (const analyzePath of normalizedAnalyzePaths) {
     const absoluteAnalyzePath = resolvePioneerDevicePath(normalizedRootPath, analyzePath)
     if (!absoluteAnalyzePath) {
-      items.set(analyzePath, {
+      invalidItems.set(analyzePath, {
         analyzePath,
         data: null,
         error: 'invalid analyze path'
       })
       continue
     }
-    absoluteAnalyzePathByRelative.set(analyzePath, absoluteAnalyzePath)
-    relativeAnalyzePathByAbsolute.set(absoluteAnalyzePath, analyzePath)
-    absoluteAnalyzePaths.push(absoluteAnalyzePath)
+    preparedItems.set(analyzePath, {
+      analyzePath,
+      absoluteAnalyzePath,
+      signature: await buildPreviewFileSignature(absoluteAnalyzePath)
+    })
+  }
+
+  return {
+    rootPath: normalizedRootPath,
+    analyzePaths: normalizedAnalyzePaths,
+    preparedItems,
+    invalidItems
+  }
+}
+
+export async function loadPioneerPreviewWaveformsByDrivePath(
+  rootPath: string,
+  analyzePaths: string[]
+): Promise<{
+  drivePath: string
+  items: PioneerPreviewWaveformLoadItem[]
+}> {
+  const prepared = await prepareAnalyzePathItems(rootPath, analyzePaths)
+
+  const items = new Map<string, PioneerPreviewWaveformLoadItem>()
+  for (const analyzePath of prepared.analyzePaths) {
+    items.set(analyzePath, prepared.invalidItems.get(analyzePath) || { analyzePath, data: null })
+  }
+
+  const relativeAnalyzePathByAbsolute = new Map<string, string>()
+  const absoluteAnalyzePaths: string[] = []
+  for (const analyzePath of prepared.analyzePaths) {
+    const preparedItem = prepared.preparedItems.get(analyzePath)
+    if (!preparedItem) continue
+    const cached = await LibraryCacheDb.loadPioneerPreviewWaveformCacheEntry(
+      prepared.rootPath,
+      analyzePath,
+      preparedItem.signature
+    )
+    if (cached) {
+      items.set(analyzePath, {
+        analyzePath,
+        data: cached.status === 'ready' ? cached.data : null,
+        error: cached.error
+      })
+      continue
+    }
+    relativeAnalyzePathByAbsolute.set(preparedItem.absoluteAnalyzePath, analyzePath)
+    absoluteAnalyzePaths.push(preparedItem.absoluteAnalyzePath)
   }
 
   await readPioneerPreviewWaveformsInWorker<{ total?: number }>(
@@ -157,6 +229,16 @@ export async function loadPioneerPreviewWaveformsByDrivePath(
       const analyzePath = relativeAnalyzePathByAbsolute.get(absoluteAnalyzePath)
       if (!analyzePath) return
       const normalized = normalizeWaveformData(item?.dump || null)
+      const preparedItem = prepared.preparedItems.get(analyzePath)
+      if (preparedItem) {
+        void LibraryCacheDb.upsertPioneerPreviewWaveformCacheEntry(prepared.rootPath, analyzePath, {
+          signature: preparedItem.signature,
+          status: normalized.data ? 'ready' : 'missing',
+          previewFilePath: normalized.data?.previewFilePath,
+          data: normalized.data,
+          error: normalized.error || undefined
+        })
+      }
       items.set(analyzePath, {
         analyzePath,
         data: normalized.data,
@@ -165,11 +247,17 @@ export async function loadPioneerPreviewWaveformsByDrivePath(
     }
   )
 
-  for (const analyzePath of normalizedAnalyzePaths) {
-    const absoluteAnalyzePath = absoluteAnalyzePathByRelative.get(analyzePath)
-    if (!absoluteAnalyzePath) continue
+  for (const analyzePath of prepared.analyzePaths) {
+    const preparedItem = prepared.preparedItems.get(analyzePath)
+    if (!preparedItem) continue
     const current = items.get(analyzePath)
     if (current?.data || current?.error) continue
+    void LibraryCacheDb.upsertPioneerPreviewWaveformCacheEntry(prepared.rootPath, analyzePath, {
+      signature: preparedItem.signature,
+      status: 'missing',
+      data: null,
+      error: 'waveform worker returned no item'
+    })
     items.set(analyzePath, {
       analyzePath,
       data: null,
@@ -178,8 +266,8 @@ export async function loadPioneerPreviewWaveformsByDrivePath(
   }
 
   return {
-    drivePath: normalizedRootPath,
-    items: normalizedAnalyzePaths.map(
+    drivePath: prepared.rootPath,
+    items: prepared.analyzePaths.map(
       (analyzePath) =>
         items.get(analyzePath) || {
           analyzePath,
@@ -198,31 +286,33 @@ export async function streamPioneerPreviewWaveformsByDrivePath(
   drivePath: string
   total: number
 }> {
-  const normalizedRootPath = String(rootPath || '').trim()
-  const normalizedAnalyzePaths = Array.isArray(analyzePaths)
-    ? Array.from(
-        new Set(
-          analyzePaths
-            .map((analyzePath) => String(analyzePath || '').trim())
-            .filter((analyzePath) => analyzePath.length > 0)
-        )
-      )
-    : []
+  const prepared = await prepareAnalyzePathItems(rootPath, analyzePaths)
 
   const absoluteAnalyzePaths: string[] = []
   const relativeAnalyzePathByAbsolute = new Map<string, string>()
-  for (const analyzePath of normalizedAnalyzePaths) {
-    const absoluteAnalyzePath = resolvePioneerDevicePath(normalizedRootPath, analyzePath)
-    if (!absoluteAnalyzePath) {
+  for (const analyzePath of prepared.analyzePaths) {
+    const invalidItem = prepared.invalidItems.get(analyzePath)
+    if (invalidItem) {
+      onItem(invalidItem)
+      continue
+    }
+    const preparedItem = prepared.preparedItems.get(analyzePath)
+    if (!preparedItem) continue
+    const cached = await LibraryCacheDb.loadPioneerPreviewWaveformCacheEntry(
+      prepared.rootPath,
+      analyzePath,
+      preparedItem.signature
+    )
+    if (cached) {
       onItem({
         analyzePath,
-        data: null,
-        error: 'invalid analyze path'
+        data: cached.status === 'ready' ? cached.data : null,
+        error: cached.error
       })
       continue
     }
-    absoluteAnalyzePaths.push(absoluteAnalyzePath)
-    relativeAnalyzePathByAbsolute.set(absoluteAnalyzePath, analyzePath)
+    absoluteAnalyzePaths.push(preparedItem.absoluteAnalyzePath)
+    relativeAnalyzePathByAbsolute.set(preparedItem.absoluteAnalyzePath, analyzePath)
   }
 
   await readPioneerPreviewWaveformsInWorker<{ total?: number }>(
@@ -233,6 +323,16 @@ export async function streamPioneerPreviewWaveformsByDrivePath(
       const analyzePath = relativeAnalyzePathByAbsolute.get(absoluteAnalyzePath)
       if (!analyzePath) return
       const normalized = normalizeWaveformData(item?.dump || null)
+      const preparedItem = prepared.preparedItems.get(analyzePath)
+      if (preparedItem) {
+        void LibraryCacheDb.upsertPioneerPreviewWaveformCacheEntry(prepared.rootPath, analyzePath, {
+          signature: preparedItem.signature,
+          status: normalized.data ? 'ready' : 'missing',
+          previewFilePath: normalized.data?.previewFilePath,
+          data: normalized.data,
+          error: normalized.error || undefined
+        })
+      }
       onItem({
         analyzePath,
         data: normalized.data,
@@ -242,7 +342,7 @@ export async function streamPioneerPreviewWaveformsByDrivePath(
   )
 
   return {
-    drivePath: normalizedRootPath,
-    total: normalizedAnalyzePaths.length
+    drivePath: prepared.rootPath,
+    total: prepared.analyzePaths.length
   }
 }

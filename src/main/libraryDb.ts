@@ -4,7 +4,7 @@ import store from './store'
 import { log } from './log'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
-const SCHEMA_VERSION = 21
+const SCHEMA_VERSION = 22
 
 type SqliteDatabase = any
 
@@ -507,6 +507,23 @@ function createDatabase(dbPath: string): SqliteDatabase {
         instance.exec(`ALTER TABLE mixtape_projects ADD COLUMN info_json TEXT`)
       } catch {}
     }
+  }
+  if (userVersion < 22) {
+    instance.exec(`
+      CREATE TABLE IF NOT EXISTS pioneer_preview_waveform_cache (
+        list_root TEXT NOT NULL,
+        analyze_path TEXT NOT NULL,
+        cache_version INTEGER NOT NULL,
+        signature TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('ready', 'missing')),
+        preview_file_path TEXT,
+        data_json TEXT,
+        error TEXT,
+        updated_at_ms INTEGER NOT NULL,
+        PRIMARY KEY (list_root, analyze_path)
+      );
+      CREATE INDEX IF NOT EXISTS idx_pioneer_preview_waveform_cache_root ON pioneer_preview_waveform_cache(list_root);
+    `)
   }
   if (userVersion < SCHEMA_VERSION) {
     instance.pragma('user_version = ' + SCHEMA_VERSION)

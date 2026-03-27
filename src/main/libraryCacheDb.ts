@@ -64,6 +64,12 @@ export {
 } from './libraryCacheDb/mixtapeStemWaveformCache'
 
 export {
+  loadPioneerPreviewWaveformCacheEntry,
+  upsertPioneerPreviewWaveformCacheEntry,
+  clearPioneerPreviewWaveformCache
+} from './libraryCacheDb/pioneerPreviewWaveformCache'
+
+export {
   renameCacheRoot,
   pruneCachesByRoots,
   migrateCacheKeysToRelativeIfNeeded,

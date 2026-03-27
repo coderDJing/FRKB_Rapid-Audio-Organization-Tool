@@ -31,6 +31,7 @@ const DIRTY_DATA_SQL_TABLES = [
   'song_cache',
   'cover_index',
   'waveform_cache',
+  'pioneer_preview_waveform_cache',
   'mixtape_items',
   'mixtape_projects',
   'mixtape_stem_assets',
@@ -55,7 +56,9 @@ function clearDirtyDataSqlTables(db: any): DirtyDataSqlSummary {
   const removedByTable: Record<string, number> = {}
   const missingTables: string[] = []
   let removedRows = 0
-  const existingRows = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{
+  const existingRows = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+    .all() as Array<{
     name: string
   }>
   const existingTableSet = new Set(existingRows.map((row) => String(row.name)))
