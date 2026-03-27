@@ -83,8 +83,6 @@ window.electron.ipcRenderer.on(props.maxEventChannel, (event, bool) => {
   runtime.isWindowMaximized = bool
 })
 
-const fillColor = ref('#9d9d9d')
-
 type Menu = {
   name: string
   show: boolean
@@ -340,18 +338,13 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
       <div class="rightIcon" @click="toggleMaximize()">
         <img :src="runtime.isWindowMaximized ? chromeRestore : chromeMaximize" :draggable="false" />
       </div>
-      <div
-        class="rightIcon closeIcon"
-        @mouseover="fillColor = '#ffffff'"
-        @mouseout="fillColor = '#9d9d9d'"
-        @click="toggleClose()"
-      >
+      <div class="rightIcon closeIcon" @click="toggleClose()">
         <svg
           width="15"
           height="15"
           viewBox="0 0 15 15"
           xmlns="http://www.w3.org/2000/svg"
-          :fill="fillColor"
+          fill="currentColor"
         >
           <path
             fill-rule="evenodd"
@@ -436,14 +429,21 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
     justify-content: center;
     align-items: center;
     height: 35px;
-    transition: background-color 0.15s ease;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
   }
 
   .rightIcon:hover {
     background-color: var(--hover);
   }
 
+  .closeIcon {
+    color: var(--text-weak);
+  }
+
   .closeIcon:hover {
+    color: #ffffff;
     background-color: #e81123;
   }
 }

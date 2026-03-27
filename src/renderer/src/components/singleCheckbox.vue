@@ -110,6 +110,6 @@ input[type='checkbox'] {
 .text {
   cursor: pointer;
   user-select: none;
-  color: var(--font-primary);
+  color: var(--text);
 }
 </style>

@@ -228,7 +228,7 @@ watch(
                 runtime.pioneerDeviceLibrary.loading) &&
               runtime.layoutConfig.libraryAreaWidth !== 0
             "
-            style="font-size: 12px; color: #8c8c8c; position: absolute; bottom: 50vh"
+            style="font-size: 12px; color: var(--text-weak); position: absolute; bottom: 50vh"
           >
             {{ statusText }}
           </span>

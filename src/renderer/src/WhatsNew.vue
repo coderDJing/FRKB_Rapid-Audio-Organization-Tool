@@ -19,7 +19,6 @@ type ReleasePayload = {
 }
 
 const runtime = useRuntimeStore()
-const fillColor = ref('#9d9d9d')
 const loading = ref(true)
 const release = ref<ReleasePayload | null>(null)
 const bodyHtml = ref('')
@@ -106,18 +105,13 @@ const publishedText = computed(() => {
           <div class="toolbar-button" @click="toggleMinimize">
             <img :src="chromeMinimize" :draggable="false" />
           </div>
-          <div
-            class="toolbar-button close-button"
-            @mouseover="fillColor = '#ffffff'"
-            @mouseout="fillColor = '#9d9d9d'"
-            @click="toggleClose"
-          >
+          <div class="toolbar-button close-button" @click="toggleClose">
             <svg
               width="15"
               height="15"
               viewBox="0 0 15 15"
               xmlns="http://www.w3.org/2000/svg"
-              :fill="fillColor"
+              fill="currentColor"
             >
               <path
                 fill-rule="evenodd"
@@ -180,6 +174,9 @@ const publishedText = computed(() => {
 }
 
 .window-root {
+  --whats-new-code-bg: rgba(255, 255, 255, 0.08);
+  --whats-new-pre-bg: rgba(255, 255, 255, 0.06);
+  --whats-new-link: #5aa6ff;
   height: 100%;
   max-height: 100%;
   width: 100%;
@@ -187,6 +184,12 @@ const publishedText = computed(() => {
   flex-direction: column;
   color: var(--text);
   background-color: var(--bg);
+}
+
+:global(.theme-light) .window-root {
+  --whats-new-code-bg: rgba(15, 23, 42, 0.06);
+  --whats-new-pre-bg: rgba(15, 23, 42, 0.045);
+  --whats-new-link: #2b66d9;
 }
 
 .title-bar {
@@ -242,14 +245,21 @@ const publishedText = computed(() => {
   justify-content: center;
   align-items: center;
   height: 35px;
-  transition: background-color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .toolbar-button:hover {
   background-color: var(--hover);
 }
 
+.close-button {
+  color: var(--text-weak);
+}
+
 .close-button:hover {
+  color: #ffffff;
   background-color: #e81123;
 }
 
@@ -369,7 +379,7 @@ const publishedText = computed(() => {
       font-family:
         ui-monospace, SFMono-Regular, SFMono, Menlo, Monaco, Consolas, 'Liberation Mono',
         'Courier New', monospace;
-      background-color: rgba(255, 255, 255, 0.08);
+      background-color: var(--whats-new-code-bg);
       padding: 0.15em 0.35em;
       border-radius: 4px;
     }
@@ -377,12 +387,12 @@ const publishedText = computed(() => {
     pre {
       padding: 12px;
       border-radius: 8px;
-      background-color: rgba(255, 255, 255, 0.06);
+      background-color: var(--whats-new-pre-bg);
       overflow: auto;
     }
 
     a {
-      color: #5aa6ff;
+      color: var(--whats-new-link);
       text-decoration: none;
     }
 

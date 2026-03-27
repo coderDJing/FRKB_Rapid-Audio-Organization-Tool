@@ -51,7 +51,9 @@ body,
   --bg-elev: #1f1f1f;
   --text: #cccccc;
   --text-weak: #a8abb2;
+  --text-secondary: var(--text-weak);
   --border: #3b3b3b;
+  --divider: var(--border);
   --hover: #313131;
   --accent: #0078d4;
   --scrollbar: rgba(255, 255, 255, 0.2);
@@ -64,7 +66,9 @@ body,
   --bg-elev: #ffffff;
   --text: #1f1f1f;
   --text-weak: #3c3c3c;
+  --text-secondary: var(--text-weak);
   --border: #d9d9d9;
+  --divider: var(--border);
   --hover: #e0e0e0;
   --accent: #0078d4;
   --scrollbar: rgba(0, 0, 0, 0.2);

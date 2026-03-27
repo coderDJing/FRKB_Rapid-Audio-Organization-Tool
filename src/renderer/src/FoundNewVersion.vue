@@ -5,7 +5,6 @@ import { ref } from 'vue'
 import { t } from '@renderer/utils/translate'
 import singleCheckbox from './components/singleCheckbox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-const fillColor = ref('#9d9d9d')
 const chromeMiniimize = chromeMiniimizeAsset
 const logo = logoAsset
 
@@ -59,18 +58,13 @@ const checkNow = async () => {
           <div class="rightIcon" @click="toggleMinimize()">
             <img :src="chromeMiniimize" :draggable="false" />
           </div>
-          <div
-            class="rightIcon closeIcon"
-            @mouseover="fillColor = '#ffffff'"
-            @mouseout="fillColor = '#9d9d9d'"
-            @click="toggleClose()"
-          >
+          <div class="rightIcon closeIcon" @click="toggleClose()">
             <svg
               width="15"
               height="15"
               viewBox="0 0 15 15"
               xmlns="http://www.w3.org/2000/svg"
-              :fill="fillColor"
+              fill="currentColor"
             >
               <path
                 fill-rule="evenodd"
@@ -176,14 +170,21 @@ body {
     justify-content: center;
     align-items: center;
     height: 35px;
-    transition: background-color 0.15s ease;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
   }
 
   .rightIcon:hover {
     background-color: var(--hover);
   }
 
+  .closeIcon {
+    color: var(--text-weak);
+  }
+
   .closeIcon:hover {
+    color: #ffffff;
     background-color: #e81123;
   }
 }

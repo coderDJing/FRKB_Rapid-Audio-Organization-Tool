@@ -5,7 +5,6 @@ import { ref } from 'vue'
 import { t } from '@renderer/utils/translate'
 import { UpdateInfo } from 'electron-updater'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-const fillColor = ref('#9d9d9d')
 const chromeMiniimize = chromeMiniimizeAsset
 const logo = logoAsset
 
@@ -109,18 +108,13 @@ const runtime = useRuntimeStore()
           <div class="rightIcon" @click="toggleMinimize()">
             <img :src="chromeMiniimize" :draggable="false" />
           </div>
-          <div
-            class="rightIcon closeIcon"
-            @mouseover="fillColor = '#ffffff'"
-            @mouseout="fillColor = '#9d9d9d'"
-            @click="toggleClose()"
-          >
+          <div class="rightIcon closeIcon" @click="toggleClose()">
             <svg
               width="15"
               height="15"
               viewBox="0 0 15 15"
               xmlns="http://www.w3.org/2000/svg"
-              :fill="fillColor"
+              fill="currentColor"
             >
               <path
                 fill-rule="evenodd"
@@ -205,10 +199,17 @@ const runtime = useRuntimeStore()
       <div>
         {{ t('update.downloadingUpdate') }} {{ convertBytesToUnits(progress.bytesPerSecond) }}
       </div>
-      <div style="width: 90%; margin-top: 15px; border: 1px solid #ccc; position: relative">
+      <div
+        style="width: 90%; margin-top: 15px; border: 1px solid var(--border); position: relative"
+      >
         <div
           :style="{ width: progress.percent.toFixed(2) + '%' }"
-          style="text-align: center; height: 20px; line-height: 20px; background-color: #0078d4"
+          style="
+            text-align: center;
+            height: 20px;
+            line-height: 20px;
+            background-color: var(--accent);
+          "
         ></div>
         <div
           style="
@@ -297,14 +298,21 @@ body {
     justify-content: center;
     align-items: center;
     height: 35px;
-    transition: background-color 0.15s ease;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
   }
 
   .rightIcon:hover {
     background-color: var(--hover);
   }
 
+  .closeIcon {
+    color: var(--text-weak);
+  }
+
   .closeIcon:hover {
+    color: #ffffff;
     background-color: #e81123;
   }
 }

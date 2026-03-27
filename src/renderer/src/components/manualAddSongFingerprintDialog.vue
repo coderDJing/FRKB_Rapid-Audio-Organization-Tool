@@ -114,7 +114,7 @@ onUnmounted(() => {
           </div>
           <bubbleBox :dom="chooseDirRef || undefined" :title="folderPathTooltip" :max-width="320" />
         </div>
-        <div style="margin-top: 20px; font-size: 12px; color: #999">
+        <div style="margin-top: 20px; font-size: 12px; color: var(--text-secondary)">
           {{ t('fingerprints.analysisHint') }}
         </div>
       </div>

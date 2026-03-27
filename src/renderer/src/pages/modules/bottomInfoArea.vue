@@ -526,7 +526,7 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
 }
 
 .loading.la-dark {
-  color: #333;
+  color: var(--text);
 }
 
 .loading > div {
@@ -648,7 +648,7 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   transition: all 0.15s ease;
 }
 .cancel-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--hover);
   border-color: var(--text-weak);
 }
 .cancel-btn:disabled {
@@ -713,7 +713,7 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   top: 7px;
   left: 0;
   height: 5px;
-  background: linear-gradient(90deg, #3a7afe, #4da3ff);
+  background: linear-gradient(90deg, var(--task-progress-start), var(--task-progress-end));
   background-size: 200% 100%;
   animation: slideBg 3s linear infinite;
   border-radius: 3px;
@@ -728,8 +728,8 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   inset: 0;
   background-image: repeating-linear-gradient(
     45deg,
-    rgba(255, 255, 255, 0.12) 0 8px,
-    rgba(255, 255, 255, 0.04) 8px 16px
+    var(--task-progress-stripe-strong) 0 8px,
+    var(--task-progress-stripe-soft) 8px 16px
   );
   mix-blend-mode: overlay;
   animation: moveStripes 2s linear infinite;
@@ -743,7 +743,7 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   background: linear-gradient(
     90deg,
     rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.25) 50%,
+    var(--task-progress-shine) 50%,
     rgba(255, 255, 255, 0) 100%
   );
   transform: translateX(-100%);
@@ -782,6 +782,11 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
 }
 
 .bottom-info-area {
+  --task-progress-start: #3a7afe;
+  --task-progress-end: #4da3ff;
+  --task-progress-stripe-strong: rgba(255, 255, 255, 0.12);
+  --task-progress-stripe-soft: rgba(255, 255, 255, 0.04);
+  --task-progress-shine: rgba(255, 255, 255, 0.25);
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -795,6 +800,14 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
     max-height 0.3s ease,
     padding 0.3s ease,
     opacity 0.2s ease;
+}
+
+:global(.theme-light) .bottom-info-area {
+  --task-progress-start: #2b66d9;
+  --task-progress-end: #4b88ff;
+  --task-progress-stripe-strong: rgba(255, 255, 255, 0.18);
+  --task-progress-stripe-soft: rgba(255, 255, 255, 0.08);
+  --task-progress-shine: rgba(255, 255, 255, 0.32);
 }
 .bottom-info-area.empty {
   max-height: 24px;

@@ -824,7 +824,7 @@ const clearLibraryDirtyData = async () => {
                   <span class="label">{{ opt.label }}</span>
                 </template>
               </singleRadioGroup>
-              <div style="margin-top: 6px; font-size: 12px; color: #999">
+              <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary)">
                 {{ t('settings.songListBubble.hint') }}
               </div>
             </div>
@@ -874,7 +874,7 @@ const clearLibraryDirtyData = async () => {
             </div>
             <template v-if="isDevOrPrerelease">
               <div style="margin-top: 20px">{{ t('settings.clearDirtyData.title') }}：</div>
-              <div style="margin-top: 6px; font-size: 12px; color: #999">
+              <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary)">
                 {{ t('settings.clearDirtyData.desc') }}
               </div>
               <div style="margin-top: 10px">
@@ -917,7 +917,7 @@ const clearLibraryDirtyData = async () => {
                   />
                 </template>
               </singleRadioGroup>
-              <div style="margin-top: 8px; font-size: 12px; color: #999">
+              <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary)">
                 {{ t('fingerprints.modeIncompatibleWarning') }}
               </div>
             </div>
