@@ -15,6 +15,7 @@ import { t } from '@renderer/utils/translate'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { buildSongsAreaDefaultColumns } from '@renderer/pages/modules/songsArea/composables/useSongsAreaColumns'
+import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
 import { getKeyDisplayText, getKeySortText } from '@shared/keyDisplay'
 import { useParentRafSampler } from '@renderer/pages/modules/songsArea/composables/useParentRafSampler'
 import type {
@@ -45,6 +46,7 @@ const selectSongListDialogTargetLibraryName = ref<PioneerTransferTarget | ''>(''
 const ascendingOrder = ascendingOrderAsset
 const descendingOrder = descendingOrderAsset
 const { externalScrollTop, externalViewportHeight } = useParentRafSampler({ songsAreaRef })
+useWaveformPreviewPlayer()
 
 const selectedDriveKey = computed(() => runtime.pioneerDeviceLibrary.selectedDriveKey || '')
 const selectedDriveName = computed(
@@ -350,6 +352,9 @@ const loadPlaylistTracks = async () => {
 watch(
   () => [selectedDrivePath.value, selectedPlaylistId.value] as const,
   () => {
+    try {
+      emitter.emit('waveform-preview:stop', { reason: 'switch' })
+    } catch {}
     void loadPlaylistTracks()
   },
   { immediate: true }
@@ -603,6 +608,7 @@ const placeholderText = computed(() => {
         :read-only="true"
         :allow-context-menu-when-read-only="true"
         :allow-dblclick-when-read-only="true"
+        :allow-waveform-preview-when-read-only="true"
         :enable-cover-thumbnails="true"
         :enable-key-analysis-queue="false"
         @song-click="handleSongClick"

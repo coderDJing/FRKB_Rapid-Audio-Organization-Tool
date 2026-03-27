@@ -92,7 +92,8 @@ const props = defineProps({
     default: true
   },
   allowContextMenuWhenReadOnly: { type: Boolean, default: false },
-  allowDblclickWhenReadOnly: { type: Boolean, default: false }
+  allowDblclickWhenReadOnly: { type: Boolean, default: false },
+  allowWaveformPreviewWhenReadOnly: { type: Boolean, default: false }
 })
 
 const emit = defineEmits<{
@@ -118,6 +119,7 @@ const runtime = useRuntimeStore()
 const isMixtapeList = computed(
   () => libraryUtils.getLibraryTreeByUUID(props.sourceSongListUUID)?.type === 'mixtapeList'
 )
+const canPreviewWaveform = computed(() => !props.readOnly || props.allowWaveformPreviewWhenReadOnly)
 
 const cellRefMap = markRaw({} as Record<string, HTMLElement | null>)
 const coverCellRefMap = markRaw(new Map<string, HTMLElement | null>())
@@ -344,7 +346,7 @@ const {
 })
 
 const handleWaveformClick = (song: ISongInfo, event: MouseEvent) => {
-  if (props.readOnly) return
+  if (!canPreviewWaveform.value) return
   if (event.button !== 0) return
   const filePath = song?.filePath
   if (!filePath) return
@@ -353,7 +355,7 @@ const handleWaveformClick = (song: ISongInfo, event: MouseEvent) => {
 }
 
 const handleWaveformStopClick = (event: MouseEvent) => {
-  if (props.readOnly) return
+  if (!canPreviewWaveform.value) return
   event.stopPropagation()
   event.preventDefault()
   stopWaveformPreview()
@@ -668,7 +670,7 @@ onUnmounted(() => {
                 v-else-if="col.key === 'waveformPreview'"
                 class="cell-waveform"
                 :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
-                @click="!props.readOnly && handleWaveformClick(item.song, $event)"
+                @click="canPreviewWaveform && handleWaveformClick(item.song, $event)"
               >
                 <div class="waveform-preview-stop-slot">
                   <button
@@ -676,7 +678,7 @@ onUnmounted(() => {
                     class="waveform-preview-stop"
                     type="button"
                     aria-label="Stop preview"
-                    @click="!props.readOnly && handleWaveformStopClick($event)"
+                    @click="canPreviewWaveform && handleWaveformStopClick($event)"
                   ></button>
                 </div>
                 <div class="waveform-preview-shell">
