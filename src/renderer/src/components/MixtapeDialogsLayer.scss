@@ -20,7 +20,7 @@
   z-index: 24;
   pointer-events: auto;
   cursor: progress;
-  background: rgba(8, 8, 12, 0.9);
+  background: var(--mixtape-mask-overlay-strong);
 }
 
 .mixtape-bpm-mask {
@@ -43,14 +43,14 @@
   z-index: 25;
   pointer-events: auto;
   cursor: progress;
-  background: rgba(8, 8, 12, 0.85);
+  background: var(--mixtape-mask-overlay);
 }
 
 .mixtape-output-mask {
   z-index: 27;
   pointer-events: auto;
   cursor: progress;
-  background: rgba(8, 8, 12, 0.88);
+  background: var(--mixtape-mask-overlay-strong);
 }
 
 .mixtape-runtime-download-mask {
@@ -58,7 +58,7 @@
   z-index: 28;
   pointer-events: auto;
   cursor: progress;
-  background: rgba(8, 8, 12, 0.84);
+  background: var(--mixtape-mask-overlay);
 }
 
 .mixtape-runtime-download-mask__card {
@@ -66,8 +66,8 @@
   padding: 14px 16px;
   gap: 10px;
   text-align: left;
-  background: rgba(0, 0, 0, 0.62);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: var(--mixtape-mask-card-bg);
+  border-color: var(--mixtape-mask-card-border);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.32);
 }
 
@@ -75,7 +75,7 @@
   padding: 12px;
   z-index: 22;
   pointer-events: auto;
-  background: rgba(8, 8, 12, 0.8);
+  background: var(--mixtape-mask-overlay);
 }
 
 .mixtape-stem-progress-mask__card {
@@ -83,8 +83,8 @@
   gap: 8px;
   padding: 14px 16px;
   text-align: left;
-  background: rgba(0, 0, 0, 0.6);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: var(--mixtape-mask-card-bg);
+  border-color: var(--mixtape-mask-card-border);
   box-shadow: 0 18px 36px rgba(0, 0, 0, 0.32);
 }
 
@@ -103,15 +103,15 @@
   min-height: 28px;
   padding: 0 10px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--mixtape-mask-pill-border);
+  background: var(--mixtape-mask-surface);
+  color: var(--mixtape-mask-text);
   font-size: 12px;
   letter-spacing: 0.04em;
 }
 
 .mixtape-stem-progress-mask__status-pill.is-indeterminate {
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--mixtape-mask-text-muted);
 }
 
 .mixtape-stem-progress-mask__status-dot {
@@ -127,12 +127,12 @@
   font-size: 18px;
   line-height: 1;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--mixtape-mask-text-soft);
   font-variant-numeric: tabular-nums;
 }
 
 .mixtape-stem-progress-mask__status-hint {
-  color: rgba(255, 255, 255, 0.74);
+  color: var(--mixtape-mask-text-soft);
 }
 
 .mixtape-stem-progress-mask__bar {
@@ -140,9 +140,9 @@
   height: 6px;
   border-radius: 999px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--mixtape-mask-rail);
   position: relative;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 0 0 1px var(--mixtape-mask-surface-line);
 }
 
 .mixtape-stem-progress-mask__bar-fill {
@@ -155,7 +155,7 @@
 .mixtape-stem-progress-mask__bar-fill.is-indeterminate {
   width: 34%;
   border-radius: inherit;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.18), var(--accent));
+  background: linear-gradient(90deg, var(--mixtape-mask-indeterminate-start), var(--accent));
   opacity: 0.88;
   animation: mixtape-stem-progress-indeterminate 2.6s ease-in-out infinite;
 }
@@ -164,7 +164,7 @@
   width: 100%;
   margin-top: 2px;
   padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 1px solid var(--mixtape-mask-separator);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -178,14 +178,14 @@
   gap: 8px;
   min-height: 0;
   padding: 0;
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--mixtape-mask-text-muted);
   font-size: 12px;
   line-height: 1.4;
   text-align: left;
 }
 
 .mixtape-stem-progress-mask__detail-item.is-placeholder {
-  color: rgba(255, 255, 255, 0.58);
+  color: var(--mixtape-mask-text-faint);
 }
 
 .mixtape-stem-progress-mask__detail-item span:last-child {
@@ -200,11 +200,11 @@
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.42);
+  background: var(--mixtape-mask-dot);
 }
 
 .mixtape-stem-progress-mask__detail-item.is-placeholder .mixtape-stem-progress-mask__detail-dot {
-  background: rgba(255, 255, 255, 0.24);
+  background: var(--mixtape-mask-dot-muted);
 }
 
 @keyframes mixtape-stem-progress-pulse {

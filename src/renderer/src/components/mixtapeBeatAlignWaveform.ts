@@ -31,7 +31,6 @@ const MIXXX_MAX_RGB_ENERGY = Math.sqrt(255 * 255 * 3)
 const MIXXX_RGB_BRIGHTNESS_SCALE = 0.95
 const BAR_BEAT_INTERVAL = 32
 const BEAT4_INTERVAL = 4
-const BAR_LINE_COLOR = 'rgba(0, 110, 220, 0.98)'
 const RAW_FFT_MIN_SIZE = 128
 const RAW_FFT_MAX_SIZE = 512
 const RAW_FFT_LOW_RATIO = 0.18
@@ -52,6 +51,39 @@ type RawFftScratch = {
   sinTable: Float64Array
 }
 
+type BeatAlignWaveformPalette = {
+  backgroundStart: string
+  backgroundEnd: string
+  backgroundStripe: string
+  barLine: string
+  majorGrid: string
+  minorGrid: string
+  detailHighlightBase: string
+  centerLine: string
+}
+
+const DARK_WAVEFORM_PALETTE: BeatAlignWaveformPalette = {
+  backgroundStart: '#0f1b2e',
+  backgroundEnd: '#0a1322',
+  backgroundStripe: 'rgba(255, 255, 255, 0.03)',
+  barLine: 'rgba(0, 110, 220, 0.98)',
+  majorGrid: 'rgba(184, 220, 255, 0.34)',
+  minorGrid: 'rgba(255, 255, 255, 0.15)',
+  detailHighlightBase: '255, 255, 255',
+  centerLine: 'rgba(210, 236, 255, 0.28)'
+}
+
+const LIGHT_WAVEFORM_PALETTE: BeatAlignWaveformPalette = {
+  backgroundStart: '#eef4fb',
+  backgroundEnd: '#dde7f4',
+  backgroundStripe: 'rgba(15, 23, 42, 0.03)',
+  barLine: 'rgba(0, 110, 220, 0.9)',
+  majorGrid: 'rgba(43, 102, 217, 0.18)',
+  minorGrid: 'rgba(15, 23, 42, 0.12)',
+  detailHighlightBase: '15, 23, 42',
+  centerLine: 'rgba(43, 102, 217, 0.18)'
+}
+
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 const toColorChannel = (value: number) => clamp(Math.round(value), 0, 255)
 const normalizeBeatOffset = (value: number, interval: number) => {
@@ -61,14 +93,28 @@ const normalizeBeatOffset = (value: number, interval: number) => {
   return ((rounded % safeInterval) + safeInterval) % safeInterval
 }
 
-const drawBackground = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+const resolveWaveformPalette = (ctx: CanvasRenderingContext2D): BeatAlignWaveformPalette => {
+  const doc = ctx.canvas?.ownerDocument
+  const htmlEl = doc?.documentElement
+  const bodyEl = doc?.body
+  const isLight =
+    !!htmlEl?.classList.contains('theme-light') || !!bodyEl?.classList.contains('theme-light')
+  return isLight ? LIGHT_WAVEFORM_PALETTE : DARK_WAVEFORM_PALETTE
+}
+
+const drawBackground = (
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  palette: BeatAlignWaveformPalette
+) => {
   const gradient = ctx.createLinearGradient(0, 0, 0, height)
-  gradient.addColorStop(0, '#0f1b2e')
-  gradient.addColorStop(1, '#0a1322')
+  gradient.addColorStop(0, palette.backgroundStart)
+  gradient.addColorStop(1, palette.backgroundEnd)
   ctx.fillStyle = gradient
   ctx.fillRect(0, 0, width, height)
 
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.03)'
+  ctx.fillStyle = palette.backgroundStripe
   for (let y = 0; y < height; y += 4) {
     ctx.fillRect(0, y, width, 1)
   }
@@ -82,7 +128,8 @@ const drawBeatGrid = (
   firstBeatMs: number,
   barBeatOffset: number,
   rangeStartSec: number,
-  rangeDurationSec: number
+  rangeDurationSec: number,
+  palette: BeatAlignWaveformPalette
 ) => {
   if (!Number.isFinite(bpm) || bpm <= 0 || rangeDurationSec <= 0) return
   const beatSec = 60 / bpm
@@ -103,16 +150,16 @@ const drawBeatGrid = (
     const modBar = ((shiftedIndex % BAR_BEAT_INTERVAL) + BAR_BEAT_INTERVAL) % BAR_BEAT_INTERVAL
     const mod4 = ((shiftedIndex % BEAT4_INTERVAL) + BEAT4_INTERVAL) % BEAT4_INTERVAL
     if (modBar === 0) {
-      ctx.fillStyle = BAR_LINE_COLOR
+      ctx.fillStyle = palette.barLine
       ctx.fillRect(x, 0, 2, height)
       continue
     }
     if (mod4 === 0) {
-      ctx.fillStyle = 'rgba(184, 220, 255, 0.34)'
+      ctx.fillStyle = palette.majorGrid
       ctx.fillRect(x, 0, 1, height)
       continue
     }
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)'
+    ctx.fillStyle = palette.minorGrid
     ctx.fillRect(x, 0, 1, height)
   }
 }
@@ -523,12 +570,14 @@ const drawWaveformColumns = (
   options?: {
     showDetailHighlights?: boolean
     showCenterLine?: boolean
+    palette?: BeatAlignWaveformPalette
   }
 ) => {
   const centerY = Math.round(height / 2)
   const ampScale = Math.max(1, centerY - 2)
   const showDetailHighlights = options?.showDetailHighlights !== false
   const showCenterLine = options?.showCenterLine !== false
+  const palette = options?.palette || DARK_WAVEFORM_PALETTE
   ctx.imageSmoothingEnabled = false
 
   for (let x = 0; x < width; x += 1) {
@@ -546,14 +595,16 @@ const drawWaveformColumns = (
     if (showDetailHighlights) {
       const topHighlight = Math.max(0, y)
       const bottomHighlight = Math.min(height - 1, y + h - 1)
-      ctx.fillStyle = `rgba(255, 255, 255, ${0.14 + Math.max(column.ampTop, column.ampBottom) * 0.3})`
+      ctx.fillStyle = `rgba(${palette.detailHighlightBase}, ${
+        0.14 + Math.max(column.ampTop, column.ampBottom) * 0.3
+      })`
       ctx.fillRect(x, topHighlight, 1, 1)
       ctx.fillRect(x, bottomHighlight, 1, 1)
     }
   }
 
   if (showCenterLine) {
-    ctx.fillStyle = 'rgba(210, 236, 255, 0.28)'
+    ctx.fillStyle = palette.centerLine
     ctx.fillRect(0, centerY, width, 1)
   }
 }
@@ -578,9 +629,10 @@ export const drawBeatAlignRekordboxWaveform = (
     showCenterLine
   } = options
   if (width <= 0 || height <= 0) return false
+  const palette = resolveWaveformPalette(ctx)
 
   if (showBackground !== false) {
-    drawBackground(ctx, width, height)
+    drawBackground(ctx, width, height, palette)
   }
   drawBeatGrid(
     ctx,
@@ -590,7 +642,8 @@ export const drawBeatAlignRekordboxWaveform = (
     firstBeatMs,
     Number(barBeatOffset) || 0,
     rangeStartSec,
-    rangeDurationSec
+    rangeDurationSec,
+    palette
   )
 
   if (!isValidMixxxWaveformData(mixxxData)) return false
@@ -606,7 +659,8 @@ export const drawBeatAlignRekordboxWaveform = (
 
   drawWaveformColumns(ctx, width, height, columns, {
     showDetailHighlights,
-    showCenterLine
+    showCenterLine,
+    palette
   })
   return true
 }

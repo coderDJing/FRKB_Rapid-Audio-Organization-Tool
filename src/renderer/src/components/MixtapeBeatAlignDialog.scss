@@ -1,9 +1,78 @@
 .dialog-body {
+  --beat-align-frame-border: rgba(124, 166, 212, 0.3);
+  --beat-align-barline: rgba(0, 110, 220, 0.98);
+  --beat-align-barline-glow-primary: rgba(0, 110, 220, 0.95);
+  --beat-align-barline-glow-secondary: rgba(64, 158, 255, 0.58);
+  --beat-align-anchor-line: rgba(255, 233, 141, 0.7);
+  --beat-align-anchor-line-active: rgba(255, 227, 122, 0.94);
+  --beat-align-anchor-shadow: rgba(0, 0, 0, 0.22);
+  --beat-align-overview-bg: linear-gradient(
+    180deg,
+    rgba(20, 32, 47, 0.72) 0%,
+    rgba(10, 16, 24, 0.88) 100%
+  );
+  --beat-align-overview-inset-top: rgba(255, 255, 255, 0.03);
+  --beat-align-overview-inset-bottom: rgba(0, 0, 0, 0.22);
+  --beat-align-viewport-border: rgba(131, 197, 240, 0.68);
+  --beat-align-viewport-bg: linear-gradient(
+    180deg,
+    rgba(122, 185, 236, 0.18) 0%,
+    rgba(81, 150, 218, 0.08) 100%
+  );
+  --beat-align-viewport-inset: rgba(255, 255, 255, 0.08);
+  --beat-align-viewport-outline: rgba(16, 28, 43, 0.34);
+  --beat-align-viewport-shadow: rgba(72, 144, 225, 0.16);
+  --beat-align-viewport-border-active: rgba(152, 214, 248, 0.82);
+  --beat-align-viewport-bg-active: linear-gradient(
+    180deg,
+    rgba(134, 200, 239, 0.24) 0%,
+    rgba(92, 163, 228, 0.11) 100%
+  );
+  --beat-align-viewport-inset-active: rgba(255, 255, 255, 0.12);
+  --beat-align-viewport-outline-active: rgba(20, 36, 56, 0.4);
+  --beat-align-viewport-shadow-active: rgba(80, 156, 238, 0.2);
+  --beat-align-status-bg: rgba(5, 10, 16, 0.6);
   padding: 16px 20px 0;
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+:global(.theme-light) .dialog-body {
+  --beat-align-frame-border: rgba(54, 101, 177, 0.24);
+  --beat-align-barline: rgba(0, 110, 220, 0.9);
+  --beat-align-barline-glow-primary: rgba(0, 110, 220, 0.52);
+  --beat-align-barline-glow-secondary: rgba(43, 102, 217, 0.2);
+  --beat-align-anchor-line: rgba(198, 138, 16, 0.56);
+  --beat-align-anchor-line-active: rgba(198, 138, 16, 0.82);
+  --beat-align-anchor-shadow: rgba(255, 255, 255, 0.46);
+  --beat-align-overview-bg: linear-gradient(
+    180deg,
+    rgba(236, 242, 249, 0.98) 0%,
+    rgba(223, 232, 242, 0.98) 100%
+  );
+  --beat-align-overview-inset-top: rgba(255, 255, 255, 0.78);
+  --beat-align-overview-inset-bottom: rgba(87, 109, 136, 0.12);
+  --beat-align-viewport-border: rgba(43, 102, 217, 0.44);
+  --beat-align-viewport-bg: linear-gradient(
+    180deg,
+    rgba(43, 102, 217, 0.12) 0%,
+    rgba(43, 102, 217, 0.04) 100%
+  );
+  --beat-align-viewport-inset: rgba(255, 255, 255, 0.38);
+  --beat-align-viewport-outline: rgba(43, 102, 217, 0.12);
+  --beat-align-viewport-shadow: rgba(43, 102, 217, 0.1);
+  --beat-align-viewport-border-active: rgba(43, 102, 217, 0.58);
+  --beat-align-viewport-bg-active: linear-gradient(
+    180deg,
+    rgba(43, 102, 217, 0.16) 0%,
+    rgba(43, 102, 217, 0.06) 100%
+  );
+  --beat-align-viewport-inset-active: rgba(255, 255, 255, 0.52);
+  --beat-align-viewport-outline-active: rgba(43, 102, 217, 0.16);
+  --beat-align-viewport-shadow-active: rgba(43, 102, 217, 0.12);
+  --beat-align-status-bg: rgba(255, 255, 255, 0.82);
 }
 
 .track-name {
@@ -25,7 +94,7 @@
 .preview-canvas-wrap {
   position: relative;
   height: 176px;
-  border: 1px solid rgba(124, 166, 212, 0.3);
+  border: 1px solid var(--beat-align-frame-border);
   border-radius: 6px;
   background: transparent;
   cursor: grab;
@@ -52,10 +121,10 @@
   bottom: 0;
   width: 2px;
   margin-left: -1px;
-  background: rgba(0, 110, 220, 0.98);
+  background: var(--beat-align-barline);
   box-shadow:
-    0 0 10px rgba(0, 110, 220, 0.95),
-    0 0 24px rgba(64, 158, 255, 0.58);
+    0 0 10px var(--beat-align-barline-glow-primary),
+    0 0 24px var(--beat-align-barline-glow-secondary);
   pointer-events: none;
   z-index: 3;
 }
@@ -66,25 +135,25 @@
   bottom: 0;
   width: 2px;
   margin-left: -1px;
-  background: rgba(255, 233, 141, 0.7);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.22);
+  background: var(--beat-align-anchor-line);
+  box-shadow: 0 0 0 1px var(--beat-align-anchor-shadow);
   pointer-events: none;
   z-index: 4;
 }
 
 .preview-anchor-line.is-active {
-  background: rgba(255, 227, 122, 0.94);
+  background: var(--beat-align-anchor-line-active);
 }
 
 .overview-canvas-wrap {
   position: relative;
   height: 66px;
-  border: 1px solid rgba(124, 166, 212, 0.28);
+  border: 1px solid var(--beat-align-frame-border);
   border-radius: 6px;
-  background: linear-gradient(180deg, rgba(20, 32, 47, 0.72) 0%, rgba(10, 16, 24, 0.88) 100%);
+  background: var(--beat-align-overview-bg);
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.03) inset,
-    0 -1px 0 rgba(0, 0, 0, 0.22) inset;
+    0 1px 0 var(--beat-align-overview-inset-top) inset,
+    0 -1px 0 var(--beat-align-overview-inset-bottom) inset;
   overflow: hidden;
   cursor: grab;
 }
@@ -104,13 +173,13 @@
   top: 0;
   bottom: 0;
   left: 0;
-  border: 1px solid rgba(131, 197, 240, 0.68);
-  background: linear-gradient(180deg, rgba(122, 185, 236, 0.18) 0%, rgba(81, 150, 218, 0.08) 100%);
+  border: 1px solid var(--beat-align-viewport-border);
+  background: var(--beat-align-viewport-bg);
   border-radius: 0;
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.08) inset,
-    0 0 0 1px rgba(16, 28, 43, 0.34),
-    0 4px 10px rgba(72, 144, 225, 0.16);
+    0 0 0 1px var(--beat-align-viewport-inset) inset,
+    0 0 0 1px var(--beat-align-viewport-outline),
+    0 4px 10px var(--beat-align-viewport-shadow);
   pointer-events: none;
   will-change: transform;
   transition:
@@ -120,12 +189,12 @@
 }
 
 .overview-canvas-wrap.is-dragging .overview-viewport {
-  border-color: rgba(152, 214, 248, 0.82);
-  background: linear-gradient(180deg, rgba(134, 200, 239, 0.24) 0%, rgba(92, 163, 228, 0.11) 100%);
+  border-color: var(--beat-align-viewport-border-active);
+  background: var(--beat-align-viewport-bg-active);
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.12) inset,
-    0 0 0 1px rgba(20, 36, 56, 0.4),
-    0 6px 12px rgba(80, 156, 238, 0.2);
+    0 0 0 1px var(--beat-align-viewport-inset-active) inset,
+    0 0 0 1px var(--beat-align-viewport-outline-active),
+    0 6px 12px var(--beat-align-viewport-shadow-active);
 }
 
 .preview-status {
@@ -135,7 +204,7 @@
   transform: translate(-50%, -50%);
   font-size: 12px;
   color: var(--text-weak);
-  background: rgba(5, 10, 16, 0.6);
+  background: var(--beat-align-status-bg);
   padding: 6px 10px;
   border-radius: 4px;
   pointer-events: none;

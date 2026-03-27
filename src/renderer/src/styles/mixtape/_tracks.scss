@@ -2,8 +2,8 @@
   min-width: 240px;
   padding: 10px 14px;
   border-radius: 8px;
-  background: rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--mixtape-mask-card-bg);
+  border: 1px solid var(--mixtape-mask-card-border);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -19,7 +19,7 @@
   width: 240px;
   height: 6px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--mixtape-mask-rail);
   overflow: hidden;
 }
 
@@ -42,8 +42,8 @@
   box-sizing: border-box;
   padding: 10px 14px;
   border-radius: 8px;
-  background: rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--mixtape-mask-card-bg);
+  border: 1px solid var(--mixtape-mask-card-border);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -51,8 +51,8 @@
 }
 
 .bpm-loading-card.is-error {
-  background: rgba(80, 10, 10, 0.7);
-  border-color: rgba(255, 120, 120, 0.25);
+  background: var(--mixtape-mask-card-error-bg);
+  border-color: var(--mixtape-mask-card-error-border);
 }
 
 .bpm-loading-title {

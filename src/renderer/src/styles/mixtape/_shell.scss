@@ -11,6 +11,25 @@
 
 .mixtape-shell {
   --mix-envelope-line-color: #ffffff;
+  --mixtape-mask-overlay-strong: rgba(8, 8, 12, 0.9);
+  --mixtape-mask-overlay: rgba(8, 8, 12, 0.84);
+  --mixtape-mask-card-bg: rgba(0, 0, 0, 0.62);
+  --mixtape-mask-card-border: rgba(255, 255, 255, 0.12);
+  --mixtape-mask-card-error-bg: rgba(80, 10, 10, 0.7);
+  --mixtape-mask-card-error-border: rgba(255, 120, 120, 0.25);
+  --mixtape-mask-rail: rgba(255, 255, 255, 0.12);
+  --mixtape-mask-surface: rgba(255, 255, 255, 0.04);
+  --mixtape-mask-surface-strong: rgba(255, 255, 255, 0.12);
+  --mixtape-mask-surface-line: rgba(255, 255, 255, 0.03);
+  --mixtape-mask-pill-border: rgba(255, 255, 255, 0.08);
+  --mixtape-mask-text: rgba(255, 255, 255, 0.88);
+  --mixtape-mask-text-muted: rgba(255, 255, 255, 0.8);
+  --mixtape-mask-text-soft: rgba(255, 255, 255, 0.74);
+  --mixtape-mask-text-faint: rgba(255, 255, 255, 0.58);
+  --mixtape-mask-dot: rgba(255, 255, 255, 0.42);
+  --mixtape-mask-dot-muted: rgba(255, 255, 255, 0.24);
+  --mixtape-mask-separator: rgba(255, 255, 255, 0.12);
+  --mixtape-mask-indeterminate-start: rgba(255, 255, 255, 0.18);
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -19,6 +38,25 @@
 
 :global(.theme-light) .mixtape-shell {
   --mix-envelope-line-color: #000000;
+  --mixtape-mask-overlay-strong: rgba(238, 242, 247, 0.88);
+  --mixtape-mask-overlay: rgba(238, 242, 247, 0.82);
+  --mixtape-mask-card-bg: rgba(255, 255, 255, 0.94);
+  --mixtape-mask-card-border: rgba(25, 35, 48, 0.12);
+  --mixtape-mask-card-error-bg: rgba(255, 236, 236, 0.94);
+  --mixtape-mask-card-error-border: rgba(190, 17, 0, 0.24);
+  --mixtape-mask-rail: rgba(15, 23, 42, 0.1);
+  --mixtape-mask-surface: rgba(15, 23, 42, 0.05);
+  --mixtape-mask-surface-strong: rgba(15, 23, 42, 0.12);
+  --mixtape-mask-surface-line: rgba(15, 23, 42, 0.04);
+  --mixtape-mask-pill-border: rgba(15, 23, 42, 0.1);
+  --mixtape-mask-text: rgba(15, 23, 42, 0.9);
+  --mixtape-mask-text-muted: rgba(15, 23, 42, 0.78);
+  --mixtape-mask-text-soft: rgba(15, 23, 42, 0.66);
+  --mixtape-mask-text-faint: rgba(15, 23, 42, 0.52);
+  --mixtape-mask-dot: rgba(15, 23, 42, 0.36);
+  --mixtape-mask-dot-muted: rgba(15, 23, 42, 0.18);
+  --mixtape-mask-separator: rgba(15, 23, 42, 0.1);
+  --mixtape-mask-indeterminate-start: rgba(15, 23, 42, 0.12);
 }
 
 :global(.theme-dark) .mixtape-shell {
