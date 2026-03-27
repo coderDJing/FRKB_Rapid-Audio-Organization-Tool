@@ -1,7 +1,10 @@
 import { ipcMain } from 'electron'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { listPioneerRemovableDrives } from '../services/pioneerDeviceLibrary/deviceDetection'
+import {
+  ejectPioneerRemovableDrive,
+  listPioneerRemovableDrives
+} from '../services/pioneerDeviceLibrary/deviceDetection'
 import {
   buildPioneerPlaylistTree,
   loadPioneerPlaylistTracksByDrivePath,
@@ -26,6 +29,10 @@ export function registerPioneerDeviceLibraryHandlers() {
 
   ipcMain.handle('pioneer-device-library:list-removable-drives', async () => {
     return await listPioneerRemovableDrives()
+  })
+
+  ipcMain.handle('pioneer-device-library:eject-drive', async (_event, rootPath: string) => {
+    return await ejectPioneerRemovableDrive(rootPath)
   })
 
   ipcMain.handle('pioneer-device-library:load-tree', async (_event, rootPath: string) => {

@@ -217,7 +217,12 @@
     "deleteProgressScanning": "Scanning items to delete",
     "deleteProgressRemoving": "Moving items to recycle bin",
     "deleteProgressFinished": "Deletion completed",
-    "deleteProgressFailed": "Deletion did not finish"
+    "deleteProgressFailed": "Deletion did not finish",
+    "ejectUsbDrive": "Eject USB drive",
+    "ejectUsbDriveProgress": "Ejecting USB drive...",
+    "ejectUsbDriveFailed": "Failed to eject the USB drive.",
+    "ejectUsbDriveFailedHint": "Close files, playback, or background tasks that may still be using this drive, then try again.",
+    "ejectUsbDriveInvalidPath": "No ejectable USB drive path was found."
   },
   "tracks": {
     "title": "Tracks",

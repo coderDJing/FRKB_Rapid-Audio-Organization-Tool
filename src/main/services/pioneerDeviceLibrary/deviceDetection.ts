@@ -2,8 +2,14 @@ import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import path = require('path')
 import fs = require('fs-extra')
+import iconv = require('iconv-lite')
 import { log } from '../../log'
-import type { PioneerDeviceLibraryProbe, PioneerRemovableDriveInfo } from './types'
+import type {
+  PioneerDeviceLibraryProbe,
+  PioneerDriveEjectFailureCode,
+  PioneerDriveEjectResult,
+  PioneerRemovableDriveInfo
+} from './types'
 
 const execFileAsync = promisify(execFile)
 
@@ -31,6 +37,19 @@ const WINDOWS_DRIVE_TYPE_LABELS: Record<number, string> = {
   6: 'ramdisk'
 }
 
+const DRIVE_EJECT_WAIT_MS = 6000
+const DRIVE_EJECT_POLL_MS = 400
+const WINDOWS_SHELL_EJECT_WAIT_MS = 1600
+
+function isChineseLocale(): boolean {
+  try {
+    const locale = Intl.DateTimeFormat().resolvedOptions().locale || ''
+    return /^zh(-|$)/i.test(locale)
+  } catch {
+    return false
+  }
+}
+
 const normalizeDriveRoot = (value: string) => {
   const raw = String(value || '').trim()
   if (!raw) return ''
@@ -50,6 +69,130 @@ const toSafeInt = (value: unknown) => {
   if (!Number.isFinite(parsed) || parsed < 0) return 0
   return Math.round(parsed)
 }
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const trimOutput = (value: unknown) => String(value || '').trim()
+
+const decodeExecOutput = (value: unknown) => {
+  if (Buffer.isBuffer(value)) {
+    const decoded = iconv.decode(value, isChineseLocale() ? 'gbk' : 'utf8')
+    return trimOutput(decoded)
+  }
+  return trimOutput(value)
+}
+
+const execFileBufferAsync = (
+  file: string,
+  args: string[],
+  options: Record<string, unknown> = {}
+): Promise<{ stdout: Buffer; stderr: Buffer }> =>
+  new Promise((resolve, reject) => {
+    execFile(
+      file,
+      args,
+      {
+        ...options,
+        encoding: 'buffer'
+      },
+      (error, stdout, stderr) => {
+        const stdoutBuffer = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout || '')
+        const stderrBuffer = Buffer.isBuffer(stderr) ? stderr : Buffer.from(stderr || '')
+        if (error) {
+          Object.assign(error, {
+            stdout: stdoutBuffer,
+            stderr: stderrBuffer
+          })
+          reject(error)
+          return
+        }
+        resolve({
+          stdout: stdoutBuffer,
+          stderr: stderrBuffer
+        })
+      }
+    )
+  })
+
+const extractExecErrorDetail = (error: unknown) => {
+  const err = error as {
+    stderr?: string | Buffer
+    stdout?: string | Buffer
+    message?: string
+  }
+  return (
+    decodeExecOutput(err?.stderr) ||
+    decodeExecOutput(err?.stdout) ||
+    trimOutput(err?.message) ||
+    'unknown error'
+  )
+}
+
+const createDriveEjectFailure = (
+  rootPath: string,
+  code: PioneerDriveEjectFailureCode,
+  detail = ''
+): PioneerDriveEjectResult => ({
+  success: false,
+  path: normalizeDriveRoot(rootPath),
+  code,
+  detail: trimOutput(detail)
+})
+
+const createDriveEjectSuccess = (rootPath: string): PioneerDriveEjectResult => ({
+  success: true,
+  path: normalizeDriveRoot(rootPath)
+})
+
+const getWindowsDriveLetter = (rootPath: string) => {
+  const normalized = normalizeDriveRoot(rootPath)
+  const match = normalized.match(/^([A-Z]:)\//)
+  return match?.[1] || ''
+}
+
+const quotePowerShellLiteral = (value: string) => String(value || '').replace(/'/g, "''")
+
+const joinDriveEjectDetail = (...parts: Array<unknown>) =>
+  Array.from(new Set(parts.map((part) => trimOutput(part)).filter((part) => part.length > 0))).join(
+    ' | '
+  )
+
+type WindowsDeviceEjectAttempt = {
+  level?: number
+  cr?: number
+  vetoType?: number
+  vetoName?: string
+}
+
+type WindowsDeviceEjectScriptResult = {
+  success?: boolean
+  instanceId?: string
+  attempts?: WindowsDeviceEjectAttempt[]
+}
+
+const parseJsonOutput = <T>(value: string): T | null => {
+  try {
+    return JSON.parse(value) as T
+  } catch {
+    return null
+  }
+}
+
+const formatWindowsDeviceEjectAttempts = (attempts: WindowsDeviceEjectAttempt[] = []) =>
+  attempts
+    .map((attempt) => {
+      const parts = [`level=${Number(attempt.level) || 0}`, `cr=${Number(attempt.cr) || 0}`]
+      if (Number.isFinite(Number(attempt.vetoType)) && Number(attempt.vetoType) !== 0) {
+        parts.push(`vetoType=${Number(attempt.vetoType)}`)
+      }
+      const vetoName = trimOutput(attempt.vetoName)
+      if (vetoName) {
+        parts.push(`veto=${vetoName}`)
+      }
+      return parts.join(', ')
+    })
+    .filter(Boolean)
+    .join(' | ')
 
 export const probePioneerDeviceLibraryRoot = async (
   rootPath: string
@@ -151,6 +294,16 @@ async function listWindowsRemovableDrives(): Promise<BaseDriveRow[]> {
     '    Get-CimAssociatedInstance -InputObject $partition -Association Win32_LogicalDiskToPartition -ErrorAction SilentlyContinue | ForEach-Object {',
     '      $id = [string]$_.DeviceID',
     '      if ($id) { [void]$usbLetters.Add($id.ToUpperInvariant()) }',
+    '    }',
+    '  }',
+    '}',
+    'if (Get-Command Get-Disk -ErrorAction SilentlyContinue) {',
+    "  Get-Disk | Where-Object { $_.BusType -eq 'USB' } | ForEach-Object {",
+    '    $diskNumber = $_.Number',
+    '    Get-Partition -DiskNumber $diskNumber -ErrorAction SilentlyContinue | ForEach-Object {',
+    '      if ($_.DriveLetter) {',
+    "        [void]$usbLetters.Add((([string]$_.DriveLetter + ':').ToUpperInvariant()))",
+    '      }',
     '    }',
     '  }',
     '}',
@@ -341,15 +494,235 @@ async function listMacRemovableDrives(): Promise<BaseDriveRow[]> {
   }
 }
 
-export async function listPioneerRemovableDrives(): Promise<PioneerRemovableDriveInfo[]> {
-  let baseRows: BaseDriveRow[] = []
+async function listPlatformRemovableDrives(): Promise<BaseDriveRow[]> {
   if (process.platform === 'win32') {
-    baseRows = await listWindowsRemovableDrives()
-  } else if (process.platform === 'linux') {
-    baseRows = await listLinuxRemovableDrives()
-  } else if (process.platform === 'darwin') {
-    baseRows = await listMacRemovableDrives()
+    return await listWindowsRemovableDrives()
   }
+  if (process.platform === 'linux') {
+    return await listLinuxRemovableDrives()
+  }
+  if (process.platform === 'darwin') {
+    return await listMacRemovableDrives()
+  }
+  return []
+}
+
+const isDriveDetached = async (rootPath: string) => {
+  const normalizedRoot = normalizeDriveRoot(rootPath)
+  if (!normalizedRoot) return false
+
+  try {
+    const exists = await fs.pathExists(normalizedRoot)
+    if (!exists) return true
+  } catch {}
+
+  const rows = await listPlatformRemovableDrives()
+  return !rows.some((row) => normalizeDriveRoot(row.path) === normalizedRoot)
+}
+
+const waitForDriveDetach = async (rootPath: string, timeoutMs = DRIVE_EJECT_WAIT_MS) => {
+  const normalizedRoot = normalizeDriveRoot(rootPath)
+  if (!normalizedRoot) return false
+
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (await isDriveDetached(normalizedRoot)) return true
+    await sleep(DRIVE_EJECT_POLL_MS)
+  }
+
+  return await isDriveDetached(normalizedRoot)
+}
+
+async function ejectWindowsRemovableDrive(rootPath: string): Promise<PioneerDriveEjectResult> {
+  const normalizedRoot = normalizeDriveRoot(rootPath)
+  const driveLetter = getWindowsDriveLetter(normalizedRoot)
+  if (!driveLetter) {
+    return createDriveEjectFailure(rootPath, 'INVALID_PATH')
+  }
+
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    `$driveLetter = '${quotePowerShellLiteral(driveLetter)}'`,
+    '$logicalDisk = Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID = \'" + $driveLetter + "\'")',
+    'if (-not $logicalDisk) { throw "WINDOWS_DRIVE_NOT_FOUND:$driveLetter" }',
+    '$disk = Get-CimAssociatedInstance -InputObject $logicalDisk -Association Win32_LogicalDiskToPartition -ErrorAction Stop |',
+    '  ForEach-Object {',
+    '    Get-CimAssociatedInstance -InputObject $_ -Association Win32_DiskDriveToDiskPartition -ErrorAction Stop',
+    '  } | Select-Object -First 1',
+    'if (-not $disk) { throw "WINDOWS_DISK_ASSOCIATION_NOT_FOUND:$driveLetter" }',
+    '$instanceId = [string]$disk.PNPDeviceID',
+    'if (-not $instanceId) { throw "WINDOWS_PNP_DEVICE_ID_NOT_FOUND:$driveLetter" }',
+    'Add-Type -TypeDefinition @"',
+    'using System;',
+    'using System.Runtime.InteropServices;',
+    'using System.Text;',
+    'public static class FrkbDeviceEjectNative {',
+    '  [DllImport("CfgMgr32.dll", CharSet = CharSet.Unicode)]',
+    '  public static extern uint CM_Locate_DevNodeW(out uint pdnDevInst, string pDeviceID, uint ulFlags);',
+    '  [DllImport("CfgMgr32.dll", CharSet = CharSet.Unicode)]',
+    '  public static extern uint CM_Get_Parent(out uint pdnDevInst, uint dnDevInst, uint ulFlags);',
+    '  [DllImport("CfgMgr32.dll", CharSet = CharSet.Unicode)]',
+    '  public static extern uint CM_Request_Device_EjectW(uint dnDevInst, out uint pVetoType, StringBuilder pszVetoName, int ulNameLength, uint ulFlags);',
+    '}',
+    '"@',
+    '$devInst = 0',
+    '$locateCr = [FrkbDeviceEjectNative]::CM_Locate_DevNodeW([ref]$devInst, $instanceId, 0)',
+    'if ($locateCr -ne 0) { throw "WINDOWS_CM_LOCATE_FAILED:${locateCr}:${instanceId}" }',
+    '$attempts = @()',
+    'for ($level = 0; $level -lt 6 -and $devInst -ne 0; $level++) {',
+    '  $vetoType = 0',
+    '  $vetoName = New-Object System.Text.StringBuilder 512',
+    '  $requestCr = [FrkbDeviceEjectNative]::CM_Request_Device_EjectW($devInst, [ref]$vetoType, $vetoName, $vetoName.Capacity, 0)',
+    '  $attempts += [PSCustomObject]@{',
+    '    level = $level',
+    '    cr = $requestCr',
+    '    vetoType = $vetoType',
+    '    vetoName = $vetoName.ToString()',
+    '  }',
+    '  if ($requestCr -eq 0) {',
+    '    [PSCustomObject]@{ success = $true; instanceId = $instanceId; attempts = $attempts } | ConvertTo-Json -Compress -Depth 6',
+    '    exit',
+    '  }',
+    '  $parentDevInst = 0',
+    '  $parentCr = [FrkbDeviceEjectNative]::CM_Get_Parent([ref]$parentDevInst, $devInst, 0)',
+    '  if ($parentCr -ne 0 -or $parentDevInst -eq 0 -or $parentDevInst -eq $devInst) { break }',
+    '  $devInst = $parentDevInst',
+    '}',
+    '[PSCustomObject]@{ success = $false; instanceId = $instanceId; attempts = $attempts } | ConvertTo-Json -Compress -Depth 6'
+  ].join('\n')
+
+  let scriptResult: WindowsDeviceEjectScriptResult | null = null
+  let commandDetail = ''
+  try {
+    const { stdout } = await execFileBufferAsync(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+      {
+        windowsHide: true,
+        maxBuffer: 1024 * 1024 * 8
+      }
+    )
+    scriptResult = parseJsonOutput<WindowsDeviceEjectScriptResult>(decodeExecOutput(stdout))
+    if (!scriptResult) {
+      commandDetail = 'WINDOWS_EJECT_RESULT_PARSE_FAILED'
+    }
+  } catch (error) {
+    commandDetail = extractExecErrorDetail(error)
+  }
+
+  if (!commandDetail && scriptResult?.success) {
+    const detached = await waitForDriveDetach(normalizedRoot, WINDOWS_SHELL_EJECT_WAIT_MS)
+    if (detached) {
+      return createDriveEjectSuccess(normalizedRoot)
+    }
+    return createDriveEjectFailure(
+      rootPath,
+      'EJECT_TIMEOUT',
+      joinDriveEjectDetail(
+        formatWindowsDeviceEjectAttempts(scriptResult.attempts),
+        'CM_Request_Device_EjectW returned success but the drive is still mounted.'
+      )
+    )
+  }
+
+  const attemptDetail = formatWindowsDeviceEjectAttempts(scriptResult?.attempts || [])
+  const detail = joinDriveEjectDetail(commandDetail, attemptDetail)
+  if (detail) {
+    return createDriveEjectFailure(rootPath, 'EJECT_COMMAND_FAILED', detail)
+  }
+
+  const detachedWithoutDetail = await waitForDriveDetach(
+    normalizedRoot,
+    WINDOWS_SHELL_EJECT_WAIT_MS
+  )
+  if (detachedWithoutDetail) {
+    return createDriveEjectSuccess(normalizedRoot)
+  }
+
+  return createDriveEjectFailure(rootPath, 'EJECT_TIMEOUT', 'Device eject request timed out.')
+}
+
+async function ejectMacRemovableDrive(rootPath: string): Promise<PioneerDriveEjectResult> {
+  const normalizedRoot = normalizeDriveRoot(rootPath)
+  if (!normalizedRoot) {
+    return createDriveEjectFailure(rootPath, 'INVALID_PATH')
+  }
+
+  try {
+    await execFileAsync('diskutil', ['eject', normalizedRoot], {
+      maxBuffer: 1024 * 1024 * 8
+    })
+  } catch (error) {
+    return createDriveEjectFailure(rootPath, 'EJECT_COMMAND_FAILED', extractExecErrorDetail(error))
+  }
+
+  const detached = await waitForDriveDetach(normalizedRoot)
+  if (!detached) {
+    return createDriveEjectFailure(rootPath, 'EJECT_TIMEOUT')
+  }
+
+  return createDriveEjectSuccess(normalizedRoot)
+}
+
+const resolveLinuxBlockDeviceByMountPoint = async (rootPath: string) => {
+  const normalizedRoot = normalizeDriveRoot(rootPath)
+  if (!normalizedRoot) return ''
+  const { stdout } = await execFileAsync('findmnt', ['-no', 'SOURCE', '--target', normalizedRoot], {
+    maxBuffer: 1024 * 1024 * 2
+  })
+  return trimOutput(stdout)
+}
+
+const resolveLinuxBaseBlockDevice = async (devicePath: string) => {
+  const normalizedDevicePath = trimOutput(devicePath)
+  if (!normalizedDevicePath) return ''
+  const { stdout } = await execFileAsync('lsblk', ['-no', 'PKNAME', normalizedDevicePath], {
+    maxBuffer: 1024 * 1024 * 2
+  })
+  const parentName = trimOutput(stdout)
+  if (!parentName) return normalizedDevicePath
+  return parentName.startsWith('/dev/') ? parentName : `/dev/${parentName}`
+}
+
+async function ejectLinuxRemovableDrive(rootPath: string): Promise<PioneerDriveEjectResult> {
+  const normalizedRoot = normalizeDriveRoot(rootPath)
+  if (!normalizedRoot) {
+    return createDriveEjectFailure(rootPath, 'INVALID_PATH')
+  }
+
+  let devicePath = ''
+  try {
+    devicePath = await resolveLinuxBlockDeviceByMountPoint(normalizedRoot)
+    if (!devicePath) {
+      return createDriveEjectFailure(
+        rootPath,
+        'EJECT_COMMAND_FAILED',
+        `No block device found for mount point: ${normalizedRoot}`
+      )
+    }
+
+    await execFileAsync('udisksctl', ['unmount', '-b', devicePath], {
+      maxBuffer: 1024 * 1024 * 8
+    })
+
+    const baseDevicePath = await resolveLinuxBaseBlockDevice(devicePath)
+    await execFileAsync('udisksctl', ['power-off', '-b', baseDevicePath || devicePath], {
+      maxBuffer: 1024 * 1024 * 8
+    })
+  } catch (error) {
+    return createDriveEjectFailure(rootPath, 'EJECT_COMMAND_FAILED', extractExecErrorDetail(error))
+  }
+
+  const detached = await waitForDriveDetach(normalizedRoot)
+  if (!detached) {
+    return createDriveEjectFailure(rootPath, 'EJECT_TIMEOUT')
+  }
+
+  return createDriveEjectSuccess(normalizedRoot)
+}
+
+export async function listPioneerRemovableDrives(): Promise<PioneerRemovableDriveInfo[]> {
+  const baseRows = await listPlatformRemovableDrives()
 
   const results: PioneerRemovableDriveInfo[] = []
   for (const baseRow of baseRows) {
@@ -385,4 +758,34 @@ export async function listPioneerRemovableDrives(): Promise<PioneerRemovableDriv
   return results.sort((left, right) =>
     left.path.localeCompare(right.path, undefined, { sensitivity: 'base' })
   )
+}
+
+export async function ejectPioneerRemovableDrive(
+  rootPath: string
+): Promise<PioneerDriveEjectResult> {
+  const normalizedRoot = normalizeDriveRoot(rootPath)
+  if (!normalizedRoot) {
+    return createDriveEjectFailure(rootPath, 'INVALID_PATH')
+  }
+
+  let result: PioneerDriveEjectResult
+  if (process.platform === 'win32') {
+    result = await ejectWindowsRemovableDrive(normalizedRoot)
+  } else if (process.platform === 'darwin') {
+    result = await ejectMacRemovableDrive(normalizedRoot)
+  } else if (process.platform === 'linux') {
+    result = await ejectLinuxRemovableDrive(normalizedRoot)
+  } else {
+    result = createDriveEjectFailure(normalizedRoot, 'UNSUPPORTED_PLATFORM', process.platform)
+  }
+
+  if (!result.success) {
+    log.warn('[pioneer-device-library] eject removable drive failed', {
+      rootPath: normalizedRoot,
+      code: result.code,
+      detail: result.detail
+    })
+  }
+
+  return result
 }

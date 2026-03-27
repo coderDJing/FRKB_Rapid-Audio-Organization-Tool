@@ -11,7 +11,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import settingDialog from '@renderer/components/settingDialog.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { t } from '@renderer/utils/translate'
-import type { Icon, IDir } from '../../../../types/globals'
+import type { Icon, IDir, IPioneerDeviceLibraryState } from '../../../../types/globals'
 import tempListIconAsset from '@renderer/assets/tempList.svg?asset'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import confirm from '@renderer/components/confirmDialog'
@@ -39,6 +39,13 @@ type PioneerDriveEntry = {
   fileSystem: string
   isUsb: boolean
   isPioneerDeviceLibrary: boolean
+}
+
+type PioneerDriveEjectResult = {
+  success: boolean
+  path: string
+  code?: 'INVALID_PATH' | 'EJECT_COMMAND_FAILED' | 'EJECT_TIMEOUT' | 'UNSUPPORTED_PLATFORM'
+  detail?: string
 }
 
 type PioneerDriveIcon = HoverableIcon & {
@@ -99,6 +106,7 @@ selectedIcon.value.src = selectedIcon.value.white
 
 const runtime = useRuntimeStore()
 const hasWarnedAcoustId = ref(false)
+const waitForUiIdle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const hasAcoustIdKey = () => {
   const key = (runtime.setting?.acoustIdClientKey || '').trim()
   return key.length > 0
@@ -351,6 +359,58 @@ type ButtomIcon = {
 
 const pioneerDriveIcons = ref<PioneerDriveIcon[]>([])
 let pioneerDriveRefreshTimer: ReturnType<typeof setInterval> | null = null
+const ejectingDriveKeys = ref<string[]>([])
+
+const isEjectingPioneerDriveIcon = (item: PioneerDriveIcon) =>
+  ejectingDriveKeys.value.includes(item.key)
+
+const restorePioneerDriveSelection = (snapshot: IPioneerDeviceLibraryState) => {
+  runtime.pioneerDeviceLibrary.selectedDriveKey = snapshot.selectedDriveKey
+  runtime.pioneerDeviceLibrary.selectedDriveName = snapshot.selectedDriveName
+  runtime.pioneerDeviceLibrary.selectedDrivePath = snapshot.selectedDrivePath
+  runtime.pioneerDeviceLibrary.selectedPlaylistId = snapshot.selectedPlaylistId
+  runtime.pioneerDeviceLibrary.loading = snapshot.loading
+  runtime.pioneerDeviceLibrary.treeNodes = Array.isArray(snapshot.treeNodes)
+    ? [...snapshot.treeNodes]
+    : []
+}
+
+const clearPioneerDriveSelection = () => {
+  runtime.pioneerDeviceLibrary.selectedDriveKey = ''
+  runtime.pioneerDeviceLibrary.selectedDriveName = ''
+  runtime.pioneerDeviceLibrary.selectedDrivePath = ''
+  runtime.pioneerDeviceLibrary.selectedPlaylistId = 0
+  runtime.pioneerDeviceLibrary.loading = false
+  runtime.pioneerDeviceLibrary.treeNodes = []
+}
+
+const suspendSelectedPioneerDriveBeforeEject = async (item: PioneerDriveIcon) => {
+  if (runtime.pioneerDeviceLibrary.selectedDriveKey !== item.key) return null
+
+  const snapshot: IPioneerDeviceLibraryState = {
+    selectedDriveKey: runtime.pioneerDeviceLibrary.selectedDriveKey,
+    selectedDriveName: runtime.pioneerDeviceLibrary.selectedDriveName,
+    selectedDrivePath: runtime.pioneerDeviceLibrary.selectedDrivePath,
+    selectedPlaylistId: runtime.pioneerDeviceLibrary.selectedPlaylistId,
+    loading: runtime.pioneerDeviceLibrary.loading,
+    treeNodes: Array.isArray(runtime.pioneerDeviceLibrary.treeNodes)
+      ? [...runtime.pioneerDeviceLibrary.treeNodes]
+      : []
+  }
+
+  runtime.pioneerDeviceLibrary.selectedDriveKey = ''
+  runtime.pioneerDeviceLibrary.selectedDrivePath = ''
+  runtime.pioneerDeviceLibrary.selectedPlaylistId = 0
+  runtime.pioneerDeviceLibrary.loading = false
+  runtime.pioneerDeviceLibrary.treeNodes = []
+  if (runtime.libraryAreaSelected === 'PioneerDeviceLibrary') {
+    runtime.songsArea.songListUUID = ''
+  }
+
+  await nextTick()
+  await waitForUiIdle(250)
+  return snapshot
+}
 
 const buildPioneerDriveTooltip = (drive: PioneerDriveEntry) => {
   const title = String(drive.volumeName || drive.name || '').trim()
@@ -364,7 +424,7 @@ const refreshPioneerDriveIcons = async () => {
       'pioneer-device-library:list-removable-drives'
     )
     const drives = Array.isArray(result) ? (result as PioneerDriveEntry[]) : []
-    pioneerDriveIcons.value = drives
+    const nextIcons = drives
       .filter((item) => item && item.isPioneerDeviceLibrary)
       .map((item) => {
         const tooltip = buildPioneerDriveTooltip(item)
@@ -379,11 +439,17 @@ const refreshPioneerDriveIcons = async () => {
           path: item.path
         } satisfies PioneerDriveIcon
       })
-    if (runtime.libraryAreaSelected === 'PioneerDeviceLibrary') {
-      const target = pioneerDriveIcons.value.find(
+    pioneerDriveIcons.value = nextIcons
+
+    if (runtime.pioneerDeviceLibrary.selectedDriveKey) {
+      const target = nextIcons.find(
         (icon) => icon.key === runtime.pioneerDeviceLibrary.selectedDriveKey
       )
-      if (target) {
+      if (!target) {
+        clearPioneerDriveSelection()
+        return
+      }
+      if (runtime.libraryAreaSelected === 'PioneerDeviceLibrary') {
         updateSelectedIcon(target)
       }
     }
@@ -424,6 +490,87 @@ const clickPioneerDriveIcon = async (item: PioneerDriveIcon) => {
     })
   } finally {
     runtime.pioneerDeviceLibrary.loading = false
+  }
+}
+
+const buildPioneerDriveMenuArr = () => [[{ menuName: 'library.ejectUsbDrive' }]]
+
+const buildPioneerDriveEjectErrorContent = (result?: PioneerDriveEjectResult) => {
+  if (result?.code === 'INVALID_PATH') {
+    return [t('library.ejectUsbDriveInvalidPath')]
+  }
+
+  const content = [t('library.ejectUsbDriveFailed')]
+  const detail = String(result?.detail || '').trim()
+  if (detail) {
+    content.push(detail)
+  }
+  if (result?.code === 'EJECT_TIMEOUT' || result?.code === 'EJECT_COMMAND_FAILED') {
+    content.push(t('library.ejectUsbDriveFailedHint'))
+  }
+  return content
+}
+
+const ejectPioneerDriveIcon = async (item: PioneerDriveIcon) => {
+  if (isEjectingPioneerDriveIcon(item)) return
+  ejectingDriveKeys.value = [...ejectingDriveKeys.value, item.key]
+  const suspendedSelection = await suspendSelectedPioneerDriveBeforeEject(item)
+  try {
+    const result = (await window.electron.ipcRenderer.invoke(
+      'pioneer-device-library:eject-drive',
+      item.path
+    )) as PioneerDriveEjectResult
+
+    if (!result?.success) {
+      await confirm({
+        title: t('common.error'),
+        content: buildPioneerDriveEjectErrorContent(result),
+        confirmShow: false,
+        innerHeight: 0,
+        canCopyText: true
+      })
+      if (suspendedSelection) {
+        restorePioneerDriveSelection(suspendedSelection)
+      }
+      return
+    }
+
+    if (runtime.pioneerDeviceLibrary.selectedDriveKey === item.key) {
+      clearPioneerDriveSelection()
+    }
+    pioneerDriveIcons.value = pioneerDriveIcons.value.filter((icon) => icon.key !== item.key)
+    await refreshPioneerDriveIcons()
+  } catch (error: any) {
+    if (suspendedSelection) {
+      restorePioneerDriveSelection(suspendedSelection)
+    }
+    await confirm({
+      title: t('common.error'),
+      content: buildPioneerDriveEjectErrorContent({
+        success: false,
+        path: item.path,
+        code: 'EJECT_COMMAND_FAILED',
+        detail: String(error?.message || error || '')
+      }),
+      confirmShow: false,
+      innerHeight: 0,
+      canCopyText: true
+    })
+  } finally {
+    ejectingDriveKeys.value = ejectingDriveKeys.value.filter((key) => key !== item.key)
+  }
+}
+
+const handlePioneerDriveContextmenu = async (event: MouseEvent, item: PioneerDriveIcon) => {
+  if (isEjectingPioneerDriveIcon(item)) return
+  event.preventDefault()
+  const result = await rightClickMenu({
+    menuArr: buildPioneerDriveMenuArr(),
+    clickEvent: event
+  })
+  if (result === 'cancel') return
+  if (result.menuName === 'library.ejectUsbDrive') {
+    await ejectPioneerDriveIcon(item)
   }
 }
 
@@ -577,7 +724,9 @@ watch(
         v-for="item of pioneerDriveIcons"
         :key="item.key"
         class="iconBox iconBox--device"
-        @click="clickPioneerDriveIcon(item)"
+        :class="{ 'is-ejecting': isEjectingPioneerDriveIcon(item) }"
+        @click="isEjectingPioneerDriveIcon(item) ? null : clickPioneerDriveIcon(item)"
+        @contextmenu.stop.prevent="handlePioneerDriveContextmenu($event, item)"
         @mouseover="iconMouseover(item)"
         @mouseout="iconMouseout(item)"
       >
@@ -600,13 +749,16 @@ watch(
             :class="[
               'sidebar-icon',
               {
-                'is-active': isSelectedPioneerDriveIcon(item)
+                'is-active': isSelectedPioneerDriveIcon(item),
+                'is-ejecting': isEjectingPioneerDriveIcon(item)
               }
             ]"
           ></span>
           <bubbleBox
             :dom="iconRefMap[item.key] || undefined"
-            :title="item.tooltip"
+            :title="
+              isEjectingPioneerDriveIcon(item) ? t('library.ejectUsbDriveProgress') : item.tooltip
+            "
             :max-width="320"
           />
         </div>
@@ -677,6 +829,7 @@ watch(
       width: 25px;
       height: 25px;
       display: inline-block;
+      position: relative;
       opacity: 0.55;
       background-color: currentColor;
       color: var(--text);
@@ -693,6 +846,24 @@ watch(
         color 0.15s ease;
     }
 
+    .sidebar-icon.is-ejecting {
+      opacity: 0.82;
+    }
+
+    .sidebar-icon.is-ejecting::after {
+      content: '';
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      right: -2px;
+      bottom: -1px;
+      border-radius: 999px;
+      background-color: var(--accent);
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 24%, transparent);
+      animation: usb-drive-eject-dot 1.15s ease-in-out infinite;
+      pointer-events: none;
+    }
+
     &:hover .sidebar-icon {
       opacity: 0.85;
     }
@@ -704,6 +875,10 @@ watch(
     .sidebar-icon.is-playing {
       opacity: 1;
       color: var(--accent);
+    }
+
+    &.iconBox--device.is-ejecting {
+      cursor: progress;
     }
   }
 
@@ -729,6 +904,19 @@ watch(
     border-top: 5px solid transparent;
     border-bottom: 5px solid transparent;
     border-right: 5px solid var(--border);
+  }
+
+  @keyframes usb-drive-eject-dot {
+    0%,
+    100% {
+      opacity: 0.45;
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+
+    50% {
+      opacity: 1;
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 0%, transparent);
+    }
   }
 }
 </style>

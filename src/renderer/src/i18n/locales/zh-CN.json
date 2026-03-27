@@ -217,7 +217,12 @@
     "deleteProgressScanning": "正在扫描待删除内容",
     "deleteProgressRemoving": "正在移入回收站",
     "deleteProgressFinished": "删除完成",
-    "deleteProgressFailed": "删除未完成"
+    "deleteProgressFailed": "删除未完成",
+    "ejectUsbDrive": "弹出 U 盘",
+    "ejectUsbDriveProgress": "正在弹出 U 盘...",
+    "ejectUsbDriveFailed": "U 盘弹出失败。",
+    "ejectUsbDriveFailedHint": "请关闭正在占用该 U 盘的文件、播放或后台任务后重试。",
+    "ejectUsbDriveInvalidPath": "未找到可弹出的 U 盘路径。"
   },
   "tracks": {
     "title": "曲目",
