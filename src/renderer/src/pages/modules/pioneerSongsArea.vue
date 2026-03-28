@@ -54,6 +54,9 @@ const selectedDriveName = computed(
 )
 const selectedPlaylistId = computed(() => runtime.pioneerDeviceLibrary.selectedPlaylistId || 0)
 const selectedDrivePath = computed(() => runtime.pioneerDeviceLibrary.selectedDrivePath || '')
+const selectedLibraryType = computed(
+  () => runtime.pioneerDeviceLibrary.selectedLibraryType || 'deviceLibrary'
+)
 const selectedPlaylistNode = computed(() => {
   const targetId = selectedPlaylistId.value
   if (!targetId) return null
@@ -336,7 +339,8 @@ const loadPlaylistTracks = async () => {
     const result = await window.electron.ipcRenderer.invoke(
       'pioneer-device-library:load-playlist-tracks',
       selectedDrivePath.value,
-      selectedPlaylistId.value
+      selectedPlaylistId.value,
+      selectedLibraryType.value
     )
     originalTracks.value = Array.isArray(result?.tracks) ? result.tracks : []
     applyFiltersAndSorting()

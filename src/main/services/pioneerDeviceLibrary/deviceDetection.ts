@@ -8,6 +8,7 @@ import type {
   PioneerDeviceLibraryProbe,
   PioneerDriveEjectFailureCode,
   PioneerDriveEjectResult,
+  PioneerLibraryKind,
   PioneerRemovableDriveInfo
 } from './types'
 
@@ -194,44 +195,73 @@ const formatWindowsDeviceEjectAttempts = (attempts: WindowsDeviceEjectAttempt[] 
     .filter(Boolean)
     .join(' | ')
 
+const EMPTY_PIONEER_PROBE: PioneerDeviceLibraryProbe = {
+  hasPioneerFolder: false,
+  hasRekordboxFolder: false,
+  hasExportPdb: false,
+  hasOneLibraryDb: false,
+  hasUsbAnlzFolder: false,
+  pioneerFolderPath: null,
+  rekordboxFolderPath: null,
+  exportPdbPath: null,
+  oneLibraryDbPath: null,
+  usbAnlzPath: null,
+  libraryTypes: []
+}
+
+const collectPioneerLibraryTypes = (probe: {
+  hasExportPdb?: boolean
+  hasOneLibraryDb?: boolean
+}): PioneerLibraryKind[] => {
+  const result: PioneerLibraryKind[] = []
+  if (probe?.hasExportPdb) {
+    result.push('deviceLibrary')
+  }
+  if (probe?.hasOneLibraryDb) {
+    result.push('oneLibrary')
+  }
+  return result
+}
+
 export const probePioneerDeviceLibraryRoot = async (
   rootPath: string
 ): Promise<PioneerDeviceLibraryProbe> => {
   const normalizedRoot = normalizeDriveRoot(rootPath)
   if (!normalizedRoot) {
-    return {
-      hasPioneerFolder: false,
-      hasRekordboxFolder: false,
-      hasExportPdb: false,
-      hasUsbAnlzFolder: false,
-      pioneerFolderPath: null,
-      rekordboxFolderPath: null,
-      exportPdbPath: null,
-      usbAnlzPath: null
-    }
+    return { ...EMPTY_PIONEER_PROBE }
   }
 
   const pioneerFolderPath = path.join(normalizedRoot, 'PIONEER')
   const rekordboxFolderPath = path.join(pioneerFolderPath, 'rekordbox')
   const exportPdbPath = path.join(rekordboxFolderPath, 'export.pdb')
+  const oneLibraryDbPath = path.join(rekordboxFolderPath, 'exportLibrary.db')
   const usbAnlzPath = path.join(pioneerFolderPath, 'USBANLZ')
 
-  const [hasPioneerFolder, hasRekordboxFolder, hasExportPdb, hasUsbAnlzFolder] = await Promise.all([
-    fs.pathExists(pioneerFolderPath),
-    fs.pathExists(rekordboxFolderPath),
-    fs.pathExists(exportPdbPath),
-    fs.pathExists(usbAnlzPath)
-  ])
+  const [hasPioneerFolder, hasRekordboxFolder, hasExportPdb, hasOneLibraryDb, hasUsbAnlzFolder] =
+    await Promise.all([
+      fs.pathExists(pioneerFolderPath),
+      fs.pathExists(rekordboxFolderPath),
+      fs.pathExists(exportPdbPath),
+      fs.pathExists(oneLibraryDbPath),
+      fs.pathExists(usbAnlzPath)
+    ])
 
+  const libraryTypes = collectPioneerLibraryTypes({
+    hasExportPdb,
+    hasOneLibraryDb
+  })
   return {
     hasPioneerFolder,
     hasRekordboxFolder,
     hasExportPdb,
+    hasOneLibraryDb,
     hasUsbAnlzFolder,
     pioneerFolderPath: hasPioneerFolder ? pioneerFolderPath : null,
     rekordboxFolderPath: hasRekordboxFolder ? rekordboxFolderPath : null,
     exportPdbPath: hasExportPdb ? exportPdbPath : null,
-    usbAnlzPath: hasUsbAnlzFolder ? usbAnlzPath : null
+    oneLibraryDbPath: hasOneLibraryDb ? oneLibraryDbPath : null,
+    usbAnlzPath: hasUsbAnlzFolder ? usbAnlzPath : null,
+    libraryTypes
   }
 }
 
@@ -730,7 +760,8 @@ export async function listPioneerRemovableDrives(): Promise<PioneerRemovableDriv
       const pioneer = await probePioneerDeviceLibraryRoot(baseRow.path)
       results.push({
         ...baseRow,
-        isPioneerDeviceLibrary: pioneer.hasExportPdb,
+        isPioneerDeviceLibrary: pioneer.libraryTypes.length > 0,
+        supportedLibraryTypes: pioneer.libraryTypes,
         pioneer
       })
     } catch (error) {
@@ -741,16 +772,8 @@ export async function listPioneerRemovableDrives(): Promise<PioneerRemovableDriv
       results.push({
         ...baseRow,
         isPioneerDeviceLibrary: false,
-        pioneer: {
-          hasPioneerFolder: false,
-          hasRekordboxFolder: false,
-          hasExportPdb: false,
-          hasUsbAnlzFolder: false,
-          pioneerFolderPath: null,
-          rekordboxFolderPath: null,
-          exportPdbPath: null,
-          usbAnlzPath: null
-        }
+        supportedLibraryTypes: [],
+        pioneer: { ...EMPTY_PIONEER_PROBE }
       })
     }
   }

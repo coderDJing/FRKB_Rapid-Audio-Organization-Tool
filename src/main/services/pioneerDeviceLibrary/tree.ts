@@ -1,8 +1,17 @@
 import path from 'node:path'
 import { log } from '../../log'
 import { probePioneerDeviceLibraryRoot } from './deviceDetection'
+import { readOneLibraryPlaylistTracks, readOneLibraryPlaylistTree } from './oneLibraryDb'
 import { readPioneerPlaylistTracksInWorker, readPioneerPlaylistTreeInWorker } from './workerPool'
 import type { IPioneerPlaylistTrack, IPioneerPlaylistTreeNode } from '../../../types/globals'
+import type {
+  PioneerDeviceLibraryProbe,
+  PioneerLibraryKind,
+  PioneerPlaylistNodeRecord,
+  PioneerPlaylistTrackLoadResult,
+  PioneerPlaylistTrackRecordRaw,
+  PioneerPlaylistTreeLoadResult
+} from './types'
 
 type RustPioneerPlaylistTreeNode = {
   id: number
@@ -82,29 +91,22 @@ type RustPioneerPlaylistTrackDump = {
   error?: string
 }
 
-export async function loadPioneerPlaylistTreeByDrivePath(rootPath: string): Promise<{
-  drivePath: string
-  driveName: string
-  exportPdbPath: string
-  nodeTotal: number
-  folderTotal: number
-  playlistTotal: number
-  nodes: IPioneerPlaylistTreeNode[]
-}> {
-  const probe = await probePioneerDeviceLibraryRoot(rootPath)
-  if (!probe.hasExportPdb || !probe.exportPdbPath) {
-    throw new Error('未找到 Pioneer Device Library 的 export.pdb')
+const resolvePioneerDatabasePath = (
+  probe: PioneerDeviceLibraryProbe,
+  libraryType: PioneerLibraryKind
+) => {
+  if (libraryType === 'oneLibrary') {
+    return probe.oneLibraryDbPath
   }
+  return probe.exportPdbPath
+}
 
-  const result = await readPioneerPlaylistTreeInWorker<RustPioneerPlaylistTreeDump>(
-    probe.exportPdbPath
-  )
-  if (result?.error) {
-    throw new Error(String(result.error))
-  }
-
+const normalizePioneerPlaylistTreeDump = (
+  result: RustPioneerPlaylistTreeDump,
+  fallbackDatabasePath: string
+): PioneerPlaylistTreeLoadResult => {
   const rawNodes = Array.isArray(result?.nodes) ? result.nodes : []
-  const nodes = rawNodes.map((node) => ({
+  const nodes: PioneerPlaylistNodeRecord[] = rawNodes.map((node) => ({
     id: Number(node?.id) || 0,
     parentId: Number(node?.parentId ?? node?.parent_id) || 0,
     name: String(node?.name || '').trim(),
@@ -113,13 +115,103 @@ export async function loadPioneerPlaylistTreeByDrivePath(rootPath: string): Prom
   }))
 
   return {
-    drivePath: rootPath,
-    driveName: '',
-    exportPdbPath: String(result?.exportPdbPath ?? result?.export_pdb_path ?? probe.exportPdbPath),
+    databasePath: String(
+      result?.exportPdbPath ?? result?.export_pdb_path ?? fallbackDatabasePath
+    ).trim(),
     nodeTotal: Number(result?.nodeTotal ?? result?.node_total) || nodes.length,
     folderTotal: Number(result?.folderTotal ?? result?.folder_total) || 0,
     playlistTotal: Number(result?.playlistTotal ?? result?.playlist_total) || 0,
     nodes
+  }
+}
+
+const normalizePioneerPlaylistTrackDump = (
+  result: RustPioneerPlaylistTrackDump,
+  playlistId: number,
+  fallbackDatabasePath: string
+): PioneerPlaylistTrackLoadResult => {
+  const rawTracks = Array.isArray(result?.tracks) ? result.tracks : []
+  const tracks: PioneerPlaylistTrackRecordRaw[] = rawTracks.map((track) => ({
+    playlistId: Number(track?.playlistId ?? track?.playlist_id) || playlistId,
+    trackId: Number(track?.trackId ?? track?.track_id) || 0,
+    entryIndex: Number(track?.entryIndex ?? track?.entry_index) || 0,
+    title: String(track?.title || '').trim(),
+    artist: String(track?.artist || '').trim(),
+    album: String(track?.album || '').trim(),
+    label: String(track?.label || '').trim(),
+    genre: String(track?.genre || '').trim(),
+    filePath: String(track?.filePath ?? track?.file_path ?? '').trim(),
+    fileName: String(track?.fileName ?? track?.file_name ?? '').trim(),
+    keyText: String(track?.keyText ?? track?.key_text ?? '').trim(),
+    bpm: Number(track?.bpm) || undefined,
+    durationSec: Number(track?.durationSec ?? track?.duration_sec) || 0,
+    bitrate: Number(track?.bitrate) || undefined,
+    sampleRate: Number(track?.sampleRate ?? track?.sample_rate) || undefined,
+    sampleDepth: Number(track?.sampleDepth ?? track?.sample_depth) || undefined,
+    trackNumber: Number(track?.trackNumber ?? track?.track_number) || undefined,
+    discNumber: Number(track?.discNumber ?? track?.disc_number) || undefined,
+    year: Number(track?.year) || undefined,
+    analyzePath: String(track?.analyzePath ?? track?.analyze_path ?? '').trim(),
+    comment: String(track?.comment || '').trim(),
+    dateAdded: String(track?.dateAdded ?? track?.date_added ?? '').trim(),
+    artworkId: Number(track?.artworkId ?? track?.artwork_id) || undefined,
+    artworkPath: String(track?.artworkPath ?? track?.artwork_path ?? '').trim()
+  }))
+
+  return {
+    databasePath: String(
+      result?.exportPdbPath ?? result?.export_pdb_path ?? fallbackDatabasePath
+    ).trim(),
+    playlistId: Number(result?.playlistId ?? result?.playlist_id) || playlistId,
+    playlistName: String(result?.playlistName ?? result?.playlist_name ?? '').trim(),
+    trackTotal: Number(result?.trackTotal ?? result?.track_total) || tracks.length,
+    tracks
+  }
+}
+
+export async function loadPioneerPlaylistTreeByDrivePath(
+  rootPath: string,
+  libraryType: PioneerLibraryKind = 'deviceLibrary'
+): Promise<{
+  drivePath: string
+  driveName: string
+  libraryType: PioneerLibraryKind
+  databasePath: string
+  nodeTotal: number
+  folderTotal: number
+  playlistTotal: number
+  nodes: IPioneerPlaylistTreeNode[]
+}> {
+  const probe = await probePioneerDeviceLibraryRoot(rootPath)
+  const databasePath = resolvePioneerDatabasePath(probe, libraryType)
+  if (!databasePath) {
+    throw new Error(
+      libraryType === 'oneLibrary'
+        ? '未找到 Pioneer OneLibrary 的 exportLibrary.db'
+        : '未找到 Pioneer Device Library 的 export.pdb'
+    )
+  }
+
+  let loaded: PioneerPlaylistTreeLoadResult
+  if (libraryType === 'oneLibrary') {
+    loaded = readOneLibraryPlaylistTree(databasePath)
+  } else {
+    const result = await readPioneerPlaylistTreeInWorker<RustPioneerPlaylistTreeDump>(databasePath)
+    if (result?.error) {
+      throw new Error(String(result.error))
+    }
+    loaded = normalizePioneerPlaylistTreeDump(result, databasePath)
+  }
+
+  return {
+    drivePath: rootPath,
+    driveName: '',
+    libraryType,
+    databasePath: loaded.databasePath,
+    nodeTotal: loaded.nodeTotal,
+    folderTotal: loaded.folderTotal,
+    playlistTotal: loaded.playlistTotal,
+    nodes: loaded.nodes
   }
 }
 
@@ -171,12 +263,16 @@ export function buildPioneerPlaylistTree(
   return roots
 }
 
-export async function debugWritePioneerPlaylistTreeLog(rootPath: string): Promise<void> {
+export async function debugWritePioneerPlaylistTreeLog(
+  rootPath: string,
+  libraryType: PioneerLibraryKind = 'deviceLibrary'
+): Promise<void> {
   try {
-    const loaded = await loadPioneerPlaylistTreeByDrivePath(rootPath)
+    const loaded = await loadPioneerPlaylistTreeByDrivePath(rootPath, libraryType)
     log.info('[pioneer-device-library] playlist tree loaded', {
       drivePath: rootPath,
-      exportPdbPath: loaded.exportPdbPath,
+      libraryType,
+      databasePath: loaded.databasePath,
       nodeTotal: loaded.nodeTotal,
       folderTotal: loaded.folderTotal,
       playlistTotal: loaded.playlistTotal
@@ -249,44 +345,57 @@ const resolvePioneerArtistText = (params: {
 
 export async function loadPioneerPlaylistTracksByDrivePath(
   rootPath: string,
-  playlistId: number
+  playlistId: number,
+  libraryType: PioneerLibraryKind = 'deviceLibrary'
 ): Promise<{
   drivePath: string
-  exportPdbPath: string
+  libraryType: PioneerLibraryKind
+  databasePath: string
   playlistId: number
   playlistName: string
   trackTotal: number
   tracks: IPioneerPlaylistTrack[]
 }> {
   const probe = await probePioneerDeviceLibraryRoot(rootPath)
-  if (!probe.hasExportPdb || !probe.exportPdbPath) {
-    throw new Error('未找到 Pioneer Device Library 的 export.pdb')
+  const databasePath = resolvePioneerDatabasePath(probe, libraryType)
+  if (!databasePath) {
+    throw new Error(
+      libraryType === 'oneLibrary'
+        ? '未找到 Pioneer OneLibrary 的 exportLibrary.db'
+        : '未找到 Pioneer Device Library 的 export.pdb'
+    )
   }
   const safePlaylistId = Number(playlistId) || 0
   if (safePlaylistId <= 0) {
     throw new Error('playlistId 无效')
   }
 
-  const result = await readPioneerPlaylistTracksInWorker<RustPioneerPlaylistTrackDump>(
-    probe.exportPdbPath,
-    safePlaylistId
-  )
-  if (result?.error) {
-    throw new Error(String(result.error))
+  let loaded: PioneerPlaylistTrackLoadResult
+  if (libraryType === 'oneLibrary') {
+    loaded = readOneLibraryPlaylistTracks(databasePath, safePlaylistId)
+  } else {
+    const result = await readPioneerPlaylistTracksInWorker<RustPioneerPlaylistTrackDump>(
+      databasePath,
+      safePlaylistId
+    )
+    if (result?.error) {
+      throw new Error(String(result.error))
+    }
+    loaded = normalizePioneerPlaylistTrackDump(result, safePlaylistId, databasePath)
   }
 
-  const playlistName = String(result?.playlistName ?? result?.playlist_name ?? '').trim()
-  const rawTracks = Array.isArray(result?.tracks) ? result.tracks : []
+  const playlistName = String(loaded.playlistName || '').trim()
+  const rawTracks = Array.isArray(loaded?.tracks) ? loaded.tracks : []
   const tracks: IPioneerPlaylistTrack[] = rawTracks.map((track) => {
-    const playlistIdValue = Number(track?.playlistId ?? track?.playlist_id) || safePlaylistId
-    const trackIdValue = Number(track?.trackId ?? track?.track_id) || 0
-    const entryIndexValue = Number(track?.entryIndex ?? track?.entry_index) || 0
-    const deviceRelativeFilePath = String(track?.filePath ?? track?.file_path ?? '').trim()
+    const playlistIdValue = Number(track?.playlistId) || safePlaylistId
+    const trackIdValue = Number(track?.trackId) || 0
+    const entryIndexValue = Number(track?.entryIndex) || 0
+    const deviceRelativeFilePath = String(track?.filePath || '').trim()
     const filePath = resolvePioneerDevicePath(rootPath, deviceRelativeFilePath)
-    const fileName = String(track?.fileName ?? track?.file_name ?? '').trim()
+    const fileName = String(track?.fileName || '').trim()
     const fileFormat = deriveFileFormat(fileName, deviceRelativeFilePath || filePath)
-    const durationSec = Number(track?.durationSec ?? track?.duration_sec) || 0
-    const artworkPath = String(track?.artworkPath ?? track?.artwork_path ?? '').trim()
+    const durationSec = Number(track?.durationSec) || 0
+    const artworkPath = String(track?.artworkPath || '').trim()
     const coverPath = artworkPath ? resolvePioneerDevicePath(rootPath, artworkPath) : ''
     const albumText = String(track?.album || '').trim()
     const mappedArtist = String(track?.artist || '').trim()
@@ -314,17 +423,17 @@ export async function loadPioneerPlaylistTracksByDrivePath(
       duration: formatDuration(durationSec),
       durationSec,
       bpm: Number(track?.bpm) || undefined,
-      key: String(track?.keyText ?? track?.key_text ?? '').trim() || undefined,
+      key: String(track?.keyText || '').trim() || undefined,
       bitrate: Number(track?.bitrate) || undefined,
-      sampleRate: Number(track?.sampleRate ?? track?.sample_rate) || undefined,
-      sampleDepth: Number(track?.sampleDepth ?? track?.sample_depth) || undefined,
-      trackNumber: Number(track?.trackNumber ?? track?.track_number) || undefined,
-      discNumber: Number(track?.discNumber ?? track?.disc_number) || undefined,
+      sampleRate: Number(track?.sampleRate) || undefined,
+      sampleDepth: Number(track?.sampleDepth) || undefined,
+      trackNumber: Number(track?.trackNumber) || undefined,
+      discNumber: Number(track?.discNumber) || undefined,
       year: Number(track?.year) || undefined,
-      analyzePath: String(track?.analyzePath ?? track?.analyze_path ?? '').trim() || undefined,
+      analyzePath: String(track?.analyzePath || '').trim() || undefined,
       comment: String(track?.comment || '').trim() || undefined,
-      dateAdded: String(track?.dateAdded ?? track?.date_added ?? '').trim() || undefined,
-      artworkId: Number(track?.artworkId ?? track?.artwork_id) || undefined,
+      dateAdded: String(track?.dateAdded || '').trim() || undefined,
+      artworkId: Number(track?.artworkId) || undefined,
       artworkPath: artworkPath || undefined,
       coverPath: coverPath || undefined
     }
@@ -332,10 +441,11 @@ export async function loadPioneerPlaylistTracksByDrivePath(
 
   return {
     drivePath: rootPath,
-    exportPdbPath: String(result?.exportPdbPath ?? result?.export_pdb_path ?? probe.exportPdbPath),
-    playlistId: Number(result?.playlistId ?? result?.playlist_id) || safePlaylistId,
+    libraryType,
+    databasePath: loaded.databasePath,
+    playlistId: Number(loaded.playlistId) || safePlaylistId,
     playlistName,
-    trackTotal: Number(result?.trackTotal ?? result?.track_total) || tracks.length,
+    trackTotal: Number(loaded.trackTotal) || tracks.length,
     tracks
   }
 }

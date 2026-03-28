@@ -5,13 +5,18 @@ import settingIconAsset from '@renderer/assets/setting.svg?asset'
 import trashIconAsset from '@renderer/assets/trash.svg?asset'
 import mixtapeIconAsset from '@renderer/assets/mixtape.svg?asset'
 import usbDriveIconAsset from '@renderer/assets/usbDrive.svg?asset'
-import { ref, reactive, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { computed, ref, reactive, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import settingDialog from '@renderer/components/settingDialog.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { t } from '@renderer/utils/translate'
-import type { Icon, IDir, IPioneerDeviceLibraryState } from '../../../../types/globals'
+import type {
+  Icon,
+  IDir,
+  IPioneerDeviceLibraryKind,
+  IPioneerDeviceLibraryState
+} from '../../../../types/globals'
 import tempListIconAsset from '@renderer/assets/tempList.svg?asset'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import confirm from '@renderer/components/confirmDialog'
@@ -39,6 +44,7 @@ type PioneerDriveEntry = {
   fileSystem: string
   isUsb: boolean
   isPioneerDeviceLibrary: boolean
+  supportedLibraryTypes?: IPioneerDeviceLibraryKind[]
 }
 
 type PioneerDriveEjectResult = {
@@ -52,6 +58,13 @@ type PioneerDriveIcon = HoverableIcon & {
   key: string
   tooltip: string
   path: string
+  libraryType: IPioneerDeviceLibraryKind
+}
+
+type PioneerDriveGroup = {
+  key: string
+  path: string
+  icons: PioneerDriveIcon[]
 }
 
 const externalIcon: Icon = {
@@ -358,16 +371,47 @@ type ButtomIcon = {
 }
 
 const pioneerDriveIcons = ref<PioneerDriveIcon[]>([])
+const pioneerDriveTypeOrder: Record<IPioneerDeviceLibraryKind, number> = {
+  deviceLibrary: 0,
+  oneLibrary: 1
+}
+const pioneerDriveGroups = computed<PioneerDriveGroup[]>(() => {
+  const groupMap = new Map<string, PioneerDriveGroup>()
+  for (const icon of pioneerDriveIcons.value) {
+    const groupKey = `pioneer-group:${icon.path || icon.key}`
+    const existing = groupMap.get(groupKey)
+    if (existing) {
+      existing.icons.push(icon)
+      continue
+    }
+    groupMap.set(groupKey, {
+      key: groupKey,
+      path: icon.path,
+      icons: [icon]
+    })
+  }
+  return Array.from(groupMap.values()).map((group) => ({
+    ...group,
+    icons: [...group.icons].sort(
+      (left, right) =>
+        pioneerDriveTypeOrder[left.libraryType] - pioneerDriveTypeOrder[right.libraryType]
+    )
+  }))
+})
 let pioneerDriveRefreshTimer: ReturnType<typeof setInterval> | null = null
 const ejectingDriveKeys = ref<string[]>([])
 
 const isEjectingPioneerDriveIcon = (item: PioneerDriveIcon) =>
   ejectingDriveKeys.value.includes(item.key)
 
+const getPioneerLibraryTypeLabel = (libraryType: IPioneerDeviceLibraryKind) =>
+  libraryType === 'oneLibrary' ? t('pioneer.oneLibraryLabel') : t('pioneer.deviceLibraryLabel')
+
 const restorePioneerDriveSelection = (snapshot: IPioneerDeviceLibraryState) => {
   runtime.pioneerDeviceLibrary.selectedDriveKey = snapshot.selectedDriveKey
   runtime.pioneerDeviceLibrary.selectedDriveName = snapshot.selectedDriveName
   runtime.pioneerDeviceLibrary.selectedDrivePath = snapshot.selectedDrivePath
+  runtime.pioneerDeviceLibrary.selectedLibraryType = snapshot.selectedLibraryType
   runtime.pioneerDeviceLibrary.selectedPlaylistId = snapshot.selectedPlaylistId
   runtime.pioneerDeviceLibrary.loading = snapshot.loading
   runtime.pioneerDeviceLibrary.treeNodes = Array.isArray(snapshot.treeNodes)
@@ -379,6 +423,7 @@ const clearPioneerDriveSelection = () => {
   runtime.pioneerDeviceLibrary.selectedDriveKey = ''
   runtime.pioneerDeviceLibrary.selectedDriveName = ''
   runtime.pioneerDeviceLibrary.selectedDrivePath = ''
+  runtime.pioneerDeviceLibrary.selectedLibraryType = ''
   runtime.pioneerDeviceLibrary.selectedPlaylistId = 0
   runtime.pioneerDeviceLibrary.loading = false
   runtime.pioneerDeviceLibrary.treeNodes = []
@@ -391,6 +436,7 @@ const suspendSelectedPioneerDriveBeforeEject = async (item: PioneerDriveIcon) =>
     selectedDriveKey: runtime.pioneerDeviceLibrary.selectedDriveKey,
     selectedDriveName: runtime.pioneerDeviceLibrary.selectedDriveName,
     selectedDrivePath: runtime.pioneerDeviceLibrary.selectedDrivePath,
+    selectedLibraryType: runtime.pioneerDeviceLibrary.selectedLibraryType,
     selectedPlaylistId: runtime.pioneerDeviceLibrary.selectedPlaylistId,
     loading: runtime.pioneerDeviceLibrary.loading,
     treeNodes: Array.isArray(runtime.pioneerDeviceLibrary.treeNodes)
@@ -399,7 +445,9 @@ const suspendSelectedPioneerDriveBeforeEject = async (item: PioneerDriveIcon) =>
   }
 
   runtime.pioneerDeviceLibrary.selectedDriveKey = ''
+  runtime.pioneerDeviceLibrary.selectedDriveName = ''
   runtime.pioneerDeviceLibrary.selectedDrivePath = ''
+  runtime.pioneerDeviceLibrary.selectedLibraryType = ''
   runtime.pioneerDeviceLibrary.selectedPlaylistId = 0
   runtime.pioneerDeviceLibrary.loading = false
   runtime.pioneerDeviceLibrary.treeNodes = []
@@ -412,10 +460,13 @@ const suspendSelectedPioneerDriveBeforeEject = async (item: PioneerDriveIcon) =>
   return snapshot
 }
 
-const buildPioneerDriveTooltip = (drive: PioneerDriveEntry) => {
+const buildPioneerDriveTooltip = (
+  drive: PioneerDriveEntry,
+  libraryType: IPioneerDeviceLibraryKind
+) => {
   const title = String(drive.volumeName || drive.name || '').trim()
-  if (title) return title
-  return String(drive.path || '').trim() || 'Pioneer USB'
+  const base = title || String(drive.path || '').trim() || 'Pioneer USB'
+  return `${base} · ${getPioneerLibraryTypeLabel(libraryType)}`
 }
 
 const refreshPioneerDriveIcons = async () => {
@@ -426,18 +477,24 @@ const refreshPioneerDriveIcons = async () => {
     const drives = Array.isArray(result) ? (result as PioneerDriveEntry[]) : []
     const nextIcons = drives
       .filter((item) => item && item.isPioneerDeviceLibrary)
-      .map((item) => {
-        const tooltip = buildPioneerDriveTooltip(item)
-        return {
-          key: `pioneer-drive:${item.id || item.path}`,
-          name: tooltip,
-          grey: usbDriveIconAsset,
-          white: usbDriveIconAsset,
-          src: usbDriveIconAsset,
-          showAlt: false,
-          tooltip,
-          path: item.path
-        } satisfies PioneerDriveIcon
+      .flatMap((item) => {
+        const libraryTypes = Array.isArray(item.supportedLibraryTypes)
+          ? item.supportedLibraryTypes
+          : []
+        return libraryTypes.map((libraryType) => {
+          const tooltip = buildPioneerDriveTooltip(item, libraryType)
+          return {
+            key: `pioneer-drive:${item.id || item.path}:${libraryType}`,
+            name: tooltip,
+            grey: usbDriveIconAsset,
+            white: usbDriveIconAsset,
+            src: usbDriveIconAsset,
+            showAlt: false,
+            tooltip,
+            path: item.path,
+            libraryType
+          } satisfies PioneerDriveIcon
+        })
       })
     pioneerDriveIcons.value = nextIcons
 
@@ -464,6 +521,7 @@ const clickPioneerDriveIcon = async (item: PioneerDriveIcon) => {
   runtime.pioneerDeviceLibrary.selectedDriveKey = item.key
   runtime.pioneerDeviceLibrary.selectedDriveName = item.tooltip
   runtime.pioneerDeviceLibrary.selectedDrivePath = item.path
+  runtime.pioneerDeviceLibrary.selectedLibraryType = item.libraryType
   runtime.pioneerDeviceLibrary.selectedPlaylistId = 0
   runtime.pioneerDeviceLibrary.loading = true
   runtime.pioneerDeviceLibrary.treeNodes = []
@@ -475,7 +533,8 @@ const clickPioneerDriveIcon = async (item: PioneerDriveIcon) => {
   try {
     const result = await window.electron.ipcRenderer.invoke(
       'pioneer-device-library:load-tree',
-      item.path
+      item.path,
+      item.libraryType
     )
     const treeNodes = Array.isArray(result?.treeNodes) ? result.treeNodes : []
     runtime.pioneerDeviceLibrary.treeNodes = treeNodes
@@ -721,46 +780,61 @@ watch(
         </div>
       </div>
       <div
-        v-for="item of pioneerDriveIcons"
-        :key="item.key"
-        class="iconBox iconBox--device"
-        :class="{ 'is-ejecting': isEjectingPioneerDriveIcon(item) }"
-        @click="isEjectingPioneerDriveIcon(item) ? null : clickPioneerDriveIcon(item)"
-        @contextmenu.stop.prevent="handlePioneerDriveContextmenu($event, item)"
-        @mouseover="iconMouseover(item)"
-        @mouseout="iconMouseout(item)"
+        v-for="group of pioneerDriveGroups"
+        :key="group.key"
+        class="deviceGroup"
+        :class="{
+          'deviceGroup--selected': group.icons.some((item) => isSelectedPioneerDriveIcon(item))
+        }"
       >
-        <div
-          style="width: 2px; height: 100%"
-          :style="{ backgroundColor: isSelectedPioneerDriveIcon(item) ? 'var(--accent)' : '' }"
-        ></div>
-        <div
-          style="
-            flex-grow: 1;
-            height: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-          "
-        >
-          <span
-            :ref="(el) => setIconRef(item.key, el)"
-            :style="getIconMaskStyle(item)"
-            :class="[
-              'sidebar-icon',
-              {
-                'is-active': isSelectedPioneerDriveIcon(item),
-                'is-ejecting': isEjectingPioneerDriveIcon(item)
-              }
-            ]"
-          ></span>
-          <bubbleBox
-            :dom="iconRefMap[item.key] || undefined"
-            :title="
-              isEjectingPioneerDriveIcon(item) ? t('library.ejectUsbDriveProgress') : item.tooltip
-            "
-            :max-width="320"
-          />
+        <div class="deviceGroupInner">
+          <template v-for="item of group.icons" :key="item.key">
+            <div
+              class="iconBox iconBox--device iconBox--device-group"
+              :class="{ 'is-ejecting': isEjectingPioneerDriveIcon(item) }"
+              @click="isEjectingPioneerDriveIcon(item) ? null : clickPioneerDriveIcon(item)"
+              @contextmenu.stop.prevent="handlePioneerDriveContextmenu($event, item)"
+              @mouseover="iconMouseover(item)"
+              @mouseout="iconMouseout(item)"
+            >
+              <div
+                style="width: 2px; height: 100%"
+                :style="{
+                  backgroundColor: isSelectedPioneerDriveIcon(item) ? 'var(--accent)' : ''
+                }"
+              ></div>
+              <div
+                style="
+                  flex-grow: 1;
+                  height: 100%;
+                  display: flex;
+                  justify-content: center;
+                  align-items: center;
+                "
+              >
+                <span
+                  :ref="(el) => setIconRef(item.key, el)"
+                  :style="getIconMaskStyle(item)"
+                  :class="[
+                    'sidebar-icon',
+                    {
+                      'is-active': isSelectedPioneerDriveIcon(item),
+                      'is-ejecting': isEjectingPioneerDriveIcon(item)
+                    }
+                  ]"
+                ></span>
+                <bubbleBox
+                  :dom="iconRefMap[item.key] || undefined"
+                  :title="
+                    isEjectingPioneerDriveIcon(item)
+                      ? t('library.ejectUsbDriveProgress')
+                      : item.tooltip
+                  "
+                  :max-width="320"
+                />
+              </div>
+            </div>
+          </template>
         </div>
       </div>
     </div>
@@ -880,6 +954,40 @@ watch(
     &.iconBox--device.is-ejecting {
       cursor: progress;
     }
+
+    &.iconBox--device-group {
+      height: 39px;
+    }
+  }
+
+  .deviceGroup {
+    width: 45px;
+    display: flex;
+    justify-content: center;
+    padding: 4px 0;
+  }
+
+  .deviceGroupInner {
+    width: 45px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .deviceGroupInner::before {
+    content: '';
+    position: absolute;
+    top: 9px;
+    bottom: 9px;
+    left: 22px;
+    width: 1px;
+    background: color-mix(in srgb, var(--border) 85%, transparent);
+    pointer-events: none;
+  }
+
+  .deviceGroup--selected .deviceGroupInner::before {
+    background: color-mix(in srgb, var(--accent) 52%, var(--border));
   }
 
   .bubbleBox {

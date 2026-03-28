@@ -126,6 +126,7 @@ export const useRuntimeStore = defineStore('runtime', {
         selectedDriveKey: '',
         selectedDriveName: '',
         selectedDrivePath: '',
+        selectedLibraryType: '',
         selectedPlaylistId: 0,
         loading: false,
         treeNodes: []

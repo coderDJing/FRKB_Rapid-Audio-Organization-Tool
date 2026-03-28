@@ -228,8 +228,8 @@
     "ejectUsbDriveInvalidPath": "No ejectable USB drive path was found."
   },
   "pioneer": {
-    "loadTreeFailed": "Failed to load Pioneer Device Library.",
-    "loadingPlaylistTree": "Loading Pioneer USB playlist tree...",
+    "loadTreeFailed": "Failed to load the Pioneer USB library.",
+    "loadingPlaylistTree": "Loading the Pioneer USB playlist tree...",
     "noMatchingPlaylists": "No matching playlists.",
     "emptyPlaylistTree": "There are no visible playlists on this USB drive yet.",
     "loadingPlaylistTracks": "Loading Pioneer playlist tracks...",
@@ -237,7 +237,9 @@
     "emptyPlaylist": "There are no visible tracks in this playlist yet.",
     "mixtapeVaultUnavailable": "The Mixtape vault fallback directory is unavailable.",
     "copyToMixtapeFailed": "Failed to copy tracks into the Mixtape vault.",
-    "copyTracksFailed": "Failed to copy tracks."
+    "copyTracksFailed": "Failed to copy tracks.",
+    "deviceLibraryLabel": "Device Library",
+    "oneLibraryLabel": "OneLibrary"
   },
   "tracks": {
     "title": "Tracks",

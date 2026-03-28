@@ -32,6 +32,21 @@ if ((ensureResult.status ?? 1) !== 0) {
   process.exit(ensureResult.status ?? 1)
 }
 
+const electronBuilderCliPath = path.resolve('./node_modules/electron-builder/out/cli/cli.js')
+const nativeDepsResult = spawnSync(
+  process.execPath,
+  [electronBuilderCliPath, 'install-app-deps'],
+  {
+    stdio: 'inherit',
+    windowsHide: false,
+    env
+  }
+)
+
+if ((nativeDepsResult.status ?? 1) !== 0) {
+  process.exit(nativeDepsResult.status ?? 1)
+}
+
 const electronViteCliPath = path.resolve('./node_modules/electron-vite/bin/electron-vite.js')
 const child = spawn(process.execPath, [electronViteCliPath, 'dev', ...forwardedArgs], {
   stdio: 'inherit',

@@ -112,10 +112,13 @@ interface IPioneerPlaylistTreeNode {
   children?: IPioneerPlaylistTreeNode[]
 }
 
+type IPioneerDeviceLibraryKind = 'deviceLibrary' | 'oneLibrary'
+
 interface IPioneerDeviceLibraryState {
   selectedDriveKey: string
   selectedDriveName: string
   selectedDrivePath: string
+  selectedLibraryType: IPioneerDeviceLibraryKind | ''
   selectedPlaylistId: number
   loading: boolean
   treeNodes: IPioneerPlaylistTreeNode[]
@@ -457,6 +460,7 @@ export {
   IPioneerPreviewWaveformColumn,
   IPioneerPreviewWaveformData,
   ITrackMetadataDetail,
+  IPioneerDeviceLibraryKind,
   IPioneerPlaylistTreeNode,
   IPioneerDeviceLibraryState,
   IPioneerPlaylistTrack,

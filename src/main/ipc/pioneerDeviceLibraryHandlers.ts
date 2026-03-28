@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import type { PioneerLibraryKind } from '../services/pioneerDeviceLibrary/types'
 import {
   ejectPioneerRemovableDrive,
   listPioneerRemovableDrives
@@ -35,18 +36,21 @@ export function registerPioneerDeviceLibraryHandlers() {
     return await ejectPioneerRemovableDrive(rootPath)
   })
 
-  ipcMain.handle('pioneer-device-library:load-tree', async (_event, rootPath: string) => {
-    const loaded = await loadPioneerPlaylistTreeByDrivePath(rootPath)
-    return {
-      ...loaded,
-      treeNodes: buildPioneerPlaylistTree(loaded.nodes)
+  ipcMain.handle(
+    'pioneer-device-library:load-tree',
+    async (_event, rootPath: string, libraryType?: PioneerLibraryKind) => {
+      const loaded = await loadPioneerPlaylistTreeByDrivePath(rootPath, libraryType)
+      return {
+        ...loaded,
+        treeNodes: buildPioneerPlaylistTree(loaded.nodes)
+      }
     }
-  })
+  )
 
   ipcMain.handle(
     'pioneer-device-library:load-playlist-tracks',
-    async (_event, rootPath: string, playlistId: number) => {
-      return await loadPioneerPlaylistTracksByDrivePath(rootPath, playlistId)
+    async (_event, rootPath: string, playlistId: number, libraryType?: PioneerLibraryKind) => {
+      return await loadPioneerPlaylistTracksByDrivePath(rootPath, playlistId, libraryType)
     }
   )
 

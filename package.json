@@ -153,6 +153,7 @@
     "@electron-toolkit/utils": "^4.0.0",
     "audio-decode": "^2.2.2",
     "better-sqlite3": "^12.5.0",
+    "better-sqlite3-multiple-ciphers": "^12.8.0",
     "dotenv": "^16.4.5",
     "electron-log": "^5.2.0",
     "electron-updater": "^6.3.9",
@@ -207,6 +208,7 @@
     "onlyBuiltDependencies": [
       "@parcel/watcher",
       "better-sqlite3",
+      "better-sqlite3-multiple-ciphers",
       "electron",
       "esbuild",
       "vue-demi"
