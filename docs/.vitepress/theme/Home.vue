@@ -117,9 +117,9 @@ const zhContent = {
   ],
   hero: {
     eyebrow: '开源桌面音频工作流',
-    titleLines: ['把音频整理、', '自动混音 Beta 与 Pioneer U 盘', '塞进一个工具里'],
+    titleLines: ['把音频整理、', '自动录制 Beta 与 Pioneer U 盘', '塞进一个工具里'],
     description:
-      'FRKB 面向 DJ 与音频整理场景，把快速筛歌、指纹去重、波形试听，以及 Mixtape 自动混音、Stem 分轨、Pioneer U 盘库浏览、全局搜歌这些 Beta 模块整合到同一个桌面应用里。',
+      'FRKB 面向 DJ 与音频整理场景，把快速筛歌、指纹去重、波形试听，以及 Mixtape 自动录制、Stem 分轨、Pioneer U 盘库浏览、全局搜歌这些 Beta 模块整合到同一个桌面应用里。',
     pills: ['键盘优先', '内容指纹去重', '真实文件映射'],
     stableNote: '支持 Windows 与 macOS，下载按钮会自动优先匹配当前平台。',
     progressNote: '以下新模块当前按 Beta 标注，后续还会继续打磨交互和稳定性。',
@@ -128,11 +128,11 @@ const zhContent = {
   },
   releasePanel: {
     kicker: '产品概览',
-    title: '从整理到混音准备，一条链做完',
+    title: '从整理到自动录制准备，一条链做完',
     description:
-      'FRKB 不只管文件整理，也把自动混音准备、Stem 分轨和 Pioneer 设备库这些仍在 Beta 的高频工作收到了同一个界面里。',
+      'FRKB 不只管文件整理，也把自动录制准备、Stem 分轨和 Pioneer 设备库这些仍在 Beta 的高频工作收到了同一个界面里。',
     bullets: [
-      'Mixtape 自动混音时间线 Beta',
+      'Mixtape 自动录制时间线 Beta',
       'Stem 分轨运行时与加速 Beta',
       'Pioneer Device Library / OneLibrary Beta'
     ]
@@ -142,14 +142,14 @@ const zhContent = {
     eyebrow: 'Beta 功能',
     title: '这些新模块当前按 Beta 提供',
     description:
-      '从自动混音准备、设备库浏览到分轨和转换，这些新模块已经可用，但当前仍按 Beta 口径持续迭代。'
+      '从自动录制准备、设备库浏览到分轨和转换，这些新模块已经可用，但当前仍按 Beta 口径持续迭代。'
   },
   updates: [
     {
       kicker: 'Mixtape Beta',
-      title: '自动混音工作台（Beta）',
+      title: '自动录制工作台（Beta）',
       description:
-        '独立自动混音窗口和双轨时间线，先把“排混音、听效果、改参数、再导出”这套动作收进一个界面，当前仍在继续打磨。',
+        '独立自动录制窗口和双轨时间线，先把“排录制、听效果、改参数、再导出”这套动作收进一个界面，当前仍在继续打磨。',
       bullets: [
         '节拍对齐波形、首拍分析、四拍步进',
         '节拍器、BPM 草稿保存、时间线缩放与跟随',
@@ -160,7 +160,7 @@ const zhContent = {
       kicker: 'Stem Beta',
       title: '分轨运行时体系（Beta）',
       description:
-        '把运行时管理、缓存、预热和多后端加速收拢起来，给混音准备素材省很多事，但当前仍按 Beta 模块维护。',
+        '把运行时管理、缓存、预热和多后端加速收拢起来，给自动录制准备素材省很多事，但当前仍按 Beta 模块维护。',
       bullets: [
         'Demucs 运行时管理与缓存',
         'ONNX fast 分离 + DirectML 调度',
@@ -197,7 +197,7 @@ const zhContent = {
     eyebrow: '核心能力',
     title: '基础能力继续顶着，高频能力也补齐了',
     description:
-      '去重、试听、文件映射、标签维护这些老本行还在，而且现在和自动混音、分轨、设备库浏览这些能力被收到了更完整的一套流程里。'
+      '去重、试听、文件映射、标签维护这些老本行还在，而且现在和自动录制、分轨、设备库浏览这些能力被收到了更完整的一套流程里。'
   },
   core: [
     {
@@ -228,7 +228,7 @@ const zhContent = {
   workflowIntro: {
     eyebrow: '工作流',
     title: '现在的 FRKB 更像一条完整音频处理链',
-    description: '从导入、分析、搜歌到混音准备和导出，入口更集中，操作更顺手。'
+    description: '从导入、分析、搜歌到自动录制准备和导出，入口更集中，操作更顺手。'
   },
   workflow: [
     {
@@ -243,7 +243,7 @@ const zhContent = {
     },
     {
       step: '03',
-      title: '做混音准备',
+      title: '做自动录制准备',
       description: '进 Mixtape 时间线调包络、对齐网格，或者跑 Stem 分轨，把素材先准备干净。'
     },
     {
@@ -277,11 +277,11 @@ const zhContent = {
     },
     {
       q: '这软件主要适合什么场景？',
-      a: '适合 DJ、电子音乐整理、样本管理和需要频繁筛歌、做混音准备的人用。'
+      a: '适合 DJ、电子音乐整理、样本管理和需要频繁筛歌、做自动录制准备的人用。'
     },
     {
       q: '哪些功能现在按 Beta 提供？',
-      a: 'Mixtape 自动混音、Stem 分轨、Pioneer U 盘库、全局搜歌、独立转换和闲时调度目前都按 Beta 标注。'
+      a: 'Mixtape 自动录制、Stem 分轨、Pioneer U 盘库、全局搜歌、独立转换和闲时调度目前都按 Beta 标注。'
     },
     {
       q: 'OneLibrary 和旧 Device Library 都能看吗？',
@@ -308,9 +308,13 @@ const enContent = {
   ],
   hero: {
     eyebrow: 'Open-source desktop audio workflow',
-    titleLines: ['Bring audio organization,', 'auto-mixing beta and Pioneer USB', 'into one tool'],
+    titleLines: [
+      'Bring audio organization,',
+      'auto-recording beta and Pioneer USB',
+      'into one tool'
+    ],
     description:
-      'FRKB is built for DJs and audio-heavy workflows. It combines fast screening, fingerprint deduplication, waveform-driven preview, plus beta modules for Mixtape auto-mix preparation, stem separation, Pioneer USB library browsing, and global search in one desktop app.',
+      'FRKB is built for DJs and audio-heavy workflows. It combines fast screening, fingerprint deduplication, waveform-driven preview, plus beta modules for Mixtape auto-recording, stem separation, Pioneer USB library browsing, and global search in one desktop app.',
     pills: ['Keyboard-first', 'Content fingerprint dedup', 'True file mapping'],
     stableNote:
       'Windows and macOS are supported, and download buttons adapt to your current platform.',
@@ -321,11 +325,11 @@ const enContent = {
   },
   releasePanel: {
     kicker: 'Product Scope',
-    title: 'From organization to mix prep in one chain',
+    title: 'From organization to auto-recording prep in one chain',
     description:
-      'FRKB does more than organize files. It also pulls beta workflows for auto-mix prep, stem separation, and Pioneer device libraries into the same workspace.',
+      'FRKB does more than organize files. It also pulls beta workflows for auto-recording, stem separation, and Pioneer device libraries into the same workspace.',
     bullets: [
-      'Mixtape auto-mix timeline beta',
+      'Mixtape auto-recording timeline beta',
       'Stem runtime + acceleration beta',
       'Pioneer Device Library / OneLibrary beta'
     ]
@@ -335,14 +339,14 @@ const enContent = {
     eyebrow: 'Beta Features',
     title: 'These newer modules are currently in beta',
     description:
-      'Auto-mix prep, device-library browsing, stem work, search, conversion, and idle scheduling are already usable here, but they are still presented as beta features.'
+      'Auto-recording, device-library browsing, stem work, search, conversion, and idle scheduling are already usable here, but they are still presented as beta features.'
   },
   updates: [
     {
       kicker: 'Mixtape Beta',
-      title: 'Auto-mix workspace (Beta)',
+      title: 'Auto-recording workspace (Beta)',
       description:
-        'A dedicated auto-mix window and dual-track timeline keep arranging, previewing, tweaking, and exporting inside one workspace, and the workflow is still being refined.',
+        'A dedicated auto-recording window and dual-track timeline keep arranging, previewing, tweaking, and exporting inside one workspace, and the workflow is still being refined.',
       bullets: [
         'Beat-grid waveform view, first-downbeat analysis, four-beat stepping',
         'Metronome, BPM draft saving, timeline zoom and follow-scroll',
@@ -353,7 +357,7 @@ const enContent = {
       kicker: 'Stem Beta',
       title: 'Managed separation runtime (Beta)',
       description:
-        'Stem prep is handled by a managed runtime stack with caching, warm-up, and accelerated backends for mix preparation, and it is still treated as a beta module.',
+        'Stem prep is handled by a managed runtime stack with caching, warm-up, and accelerated backends for auto-recording preparation, and it is still treated as a beta module.',
       bullets: [
         'Demucs runtime management and caching',
         'ONNX fast separation + DirectML scheduling',
@@ -398,7 +402,7 @@ const enContent = {
     eyebrow: 'Core Capabilities',
     title: 'The fundamentals still carry the workflow',
     description:
-      'Dedup, preview, file mapping, metadata cleanup, and export still matter, and they now sit alongside mix prep, stem work, and device-library browsing in one flow.'
+      'Dedup, preview, file mapping, metadata cleanup, and export still matter, and they now sit alongside auto-recording prep, stem work, and device-library browsing in one flow.'
   },
   core: [
     {
@@ -436,7 +440,7 @@ const enContent = {
     eyebrow: 'Workflow',
     title: 'FRKB behaves more like a full audio-processing chain',
     description:
-      'Import, analyze, search, prepare stems, shape a mix, and export without bouncing across five different apps unless you really want to.'
+      'Import, analyze, search, prepare stems, shape an auto-recording workflow, and export without bouncing across five different apps unless you really want to.'
   },
   workflow: [
     {
@@ -453,9 +457,9 @@ const enContent = {
     },
     {
       step: '03',
-      title: 'Prepare the mix',
+      title: 'Prepare auto-recording',
       description:
-        'Open the Mixtape timeline to shape envelopes and grids, or run stem separation before mixing.'
+        'Open the Mixtape timeline to shape envelopes and grids, or run stem separation before export.'
     },
     {
       step: '04',
@@ -490,11 +494,11 @@ const enContent = {
     },
     {
       q: 'Who is this built for?',
-      a: 'DJs, electronic music collectors, sample-heavy libraries, and anyone who spends real time screening tracks and preparing mixes.'
+      a: 'DJs, electronic music collectors, sample-heavy libraries, and anyone who spends real time screening tracks and preparing auto-recordings.'
     },
     {
       q: 'Which features are currently beta?',
-      a: 'Mixtape auto-mix, stem separation, Pioneer USB libraries, global search, standalone conversion, and idle scheduling are currently labeled as beta.'
+      a: 'Mixtape auto-recording, stem separation, Pioneer USB libraries, global search, standalone conversion, and idle scheduling are currently labeled as beta.'
     },
     {
       q: 'Can it read both OneLibrary and the older Device Library?',
