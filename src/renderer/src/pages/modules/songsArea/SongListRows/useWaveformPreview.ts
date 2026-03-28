@@ -330,11 +330,13 @@ export function useWaveformPreview(params: {
   const previewActive = ref(false)
   const previewFilePath = ref<string | null>(null)
   const previewPercent = ref(0)
+  const placeholderVersion = ref(0)
   let activePioneerStreamRequestId = ''
   const pioneerStreamFilePathMap = markRaw(new Map<string, string[]>())
 
   const useHalfWaveform = () => (runtime.setting?.waveformMode ?? 'half') !== 'full'
   const resolvePioneerRootPath = () => String(pioneerDeviceRootPath.value || '').trim()
+  const touchPlaceholderState = () => (placeholderVersion.value += 1)
 
   const setWaveformCanvasRef = (filePath: string, el: HTMLCanvasElement | null) => {
     if (!filePath) return
@@ -460,6 +462,7 @@ export function useWaveformPreview(params: {
     if (!filePath) return
     placeholderStateMap.set(filePath, 'loading')
     placeholderReasonMap.delete(filePath)
+    touchPlaceholderState()
   }
 
   const setWaveformPlaceholderUnavailable = (filePath: string, reason?: string) => {
@@ -470,15 +473,18 @@ export function useWaveformPreview(params: {
     } else {
       placeholderReasonMap.delete(filePath)
     }
+    touchPlaceholderState()
   }
 
   const setWaveformPlaceholderReady = (filePath: string) => {
     if (!filePath) return
     placeholderStateMap.set(filePath, 'ready')
     placeholderReasonMap.delete(filePath)
+    touchPlaceholderState()
   }
 
   const getWaveformPlaceholderText = (filePath: string) => {
+    placeholderVersion.value
     const state = placeholderStateMap.get(filePath)
     if (state === 'loading') return t('tracks.waveformPreviewLoading')
     if (state === 'unavailable') return t('tracks.waveformPreviewUnavailable')
@@ -486,6 +492,7 @@ export function useWaveformPreview(params: {
   }
 
   const getWaveformPlaceholderTitle = (filePath: string) => {
+    placeholderVersion.value
     if (placeholderStateMap.get(filePath) !== 'unavailable') return ''
     return placeholderReasonMap.get(filePath) || ''
   }
