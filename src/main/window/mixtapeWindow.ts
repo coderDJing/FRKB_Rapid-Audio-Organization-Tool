@@ -15,10 +15,10 @@ const payloadByKey = new Map<string, MixtapeWindowPayload>()
 const allClosedListeners = new Set<() => void>()
 let ipcBound = false
 
-const MIXTAPE_WINDOW_DEFAULT_WIDTH = 1100
-const MIXTAPE_WINDOW_DEFAULT_HEIGHT = 780
-const MIXTAPE_WINDOW_MIN_WIDTH = 900
-const MIXTAPE_WINDOW_MIN_HEIGHT = 600
+const MIXTAPE_WINDOW_DEFAULT_WIDTH = 1200
+const MIXTAPE_WINDOW_DEFAULT_HEIGHT = 820
+const MIXTAPE_WINDOW_MIN_WIDTH = 1000
+const MIXTAPE_WINDOW_MIN_HEIGHT = 640
 const MIXTAPE_WINDOW_MARGIN = 24
 
 const resolveMixtapeWindowBounds = () => {
