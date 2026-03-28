@@ -4,13 +4,13 @@ import path = require('path')
 import fs = require('fs-extra')
 import { execFile } from 'child_process'
 import { log } from '../log'
-import url from '../url'
 import {
   readManifestFile,
   MANIFEST_FILE_NAME,
   looksLikeLegacyStructure,
   isManifestCompatible
 } from '../databaseManifest'
+import { mergeLayoutConfig, persistLayoutConfig } from '../layoutConfig'
 import store from '../store'
 import { mapRendererPathToFsPath, getCoreFsDirName } from '../utils'
 import { SUPPORTED_AUDIO_FORMATS } from '../../shared/audioFormats'
@@ -280,6 +280,18 @@ export function registerFilesystemHandlers() {
   })
 
   ipcMain.on('layoutConfigChanged', (_e, layoutConfig) => {
-    fs.outputJson(url.layoutConfigFileUrl, JSON.parse(layoutConfig))
+    try {
+      const parsed = JSON.parse(layoutConfig)
+      const nextLayoutConfig = mergeLayoutConfig(store.layoutConfig, {
+        libraryAreaWidth:
+          parsed && typeof parsed === 'object' && 'libraryAreaWidth' in parsed
+            ? (parsed as { libraryAreaWidth?: unknown }).libraryAreaWidth
+            : store.layoutConfig.libraryAreaWidth
+      })
+      store.layoutConfig = nextLayoutConfig
+      void persistLayoutConfig(nextLayoutConfig)
+    } catch (error) {
+      log.error('[layoutConfig] 保存布局配置失败', error)
+    }
   })
 }

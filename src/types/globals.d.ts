@@ -302,6 +302,7 @@ interface ILayoutConfig {
   isMaxMainWin: boolean
   mainWindowWidth: number
   mainWindowHeight: number
+  mainWindowSizeMigrationVersion?: number
 }
 
 type PlayerGlobalShortcutAction = 'fastForward' | 'fastBackward' | 'nextSong' | 'previousSong'

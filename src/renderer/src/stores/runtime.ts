@@ -74,8 +74,8 @@ export const useRuntimeStore = defineStore('runtime', {
       layoutConfig: {
         libraryAreaWidth: 200,
         isMaxMainWin: false, //上次关闭前是否最大化
-        mainWindowWidth: 900, //上次关闭前窗口化时的宽
-        mainWindowHeight: 600 //上次关闭前窗口化时的高
+        mainWindowWidth: 1200, //上次关闭前窗口化时的宽
+        mainWindowHeight: 720 //上次关闭前窗口化时的高
       },
       dragItemData: null,
       dragTableHeader: false, //是否正在拖拽表头

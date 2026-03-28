@@ -4,7 +4,6 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { log, getLogPath, clearLogFileSync } from './log'
 import './cloudSync'
 import errorReport from './errorReport'
-import url from './url'
 import { saveList } from './fingerprintStore'
 import { initDatabaseStructure } from './initDatabase'
 import mainWindow from './window/mainWindow'
@@ -26,6 +25,7 @@ import {
   hasWindowsContextMenu,
   removeWindowsContextMenu
 } from './platform/windowsContextMenu'
+import { loadLayoutConfigSync } from './layoutConfig'
 import { resolveBundledFfmpegPath, ensureExecutableOnMac } from './ffmpeg'
 import { resolveBundledFpcalcPath, ensureFpcalcExecutable } from './chromaprint'
 import { processExternalOpenQueue, queueExternalAudioFiles } from './services/externalOpenQueue'
@@ -202,16 +202,7 @@ const fpcalcPath = resolveBundledFpcalcPath()
 process.env.FRKB_FPCALC_PATH = fpcalcPath
 void ensureFpcalcExecutable(fpcalcPath)
 // 不再使用 Tray，改用应用菜单
-if (!fs.pathExistsSync(url.layoutConfigFileUrl)) {
-  fs.outputJsonSync(url.layoutConfigFileUrl, {
-    libraryAreaWidth: 175,
-    isMaxMainWin: false,
-    mainWindowWidth: 900,
-    mainWindowHeight: 600
-  })
-}
-
-store.layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
+store.layoutConfig = loadLayoutConfigSync()
 loadInitialSettings({ getWindowsContextMenuStatus: hasWindowsContextMenu })
 maybeClearLogAfterUpgrade()
 errorReport.setup()

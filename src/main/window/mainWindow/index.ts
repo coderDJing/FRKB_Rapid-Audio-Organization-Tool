@@ -4,7 +4,6 @@ import icon from '../../../../resources/icon.png?asset'
 import path = require('path')
 import fs = require('fs-extra')
 import store from '../../store'
-import url from '../../url'
 import updateWindow from '../updateWindow'
 import databaseInitWindow from '../databaseInitWindow'
 import { registerAudioDecodeHandlers } from './audioDecodeHandlers'
@@ -16,6 +15,12 @@ import { createProgressSender } from './progress'
 import { startLibraryTreeWatcher, stopLibraryTreeWatcher } from '../../libraryTreeWatcher'
 import { startKeyAnalysisBackground } from '../../services/keyAnalysisQueue'
 import type { IPlayerGlobalShortcuts, PlayerGlobalShortcutAction } from 'src/types/globals'
+import {
+  MAIN_WINDOW_MIN_HEIGHT,
+  MAIN_WINDOW_MIN_WIDTH,
+  mergeLayoutConfig,
+  persistLayoutConfig
+} from '../../layoutConfig'
 import { persistSettingConfig } from '../../settingsPersistence'
 
 let mainWindow: BrowserWindow | null = null
@@ -200,8 +205,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: store.layoutConfig.mainWindowWidth,
     height: store.layoutConfig.mainWindowHeight,
-    minWidth: 900,
-    minHeight: 600,
+    minWidth: MAIN_WINDOW_MIN_WIDTH,
+    minHeight: MAIN_WINDOW_MIN_HEIGHT,
     frame: process.platform === 'darwin' ? true : false,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     transparent: false,
@@ -351,6 +356,16 @@ function createWindow() {
 
   let mainWindowWidth = store.layoutConfig.mainWindowWidth
   let mainWindowHeight = store.layoutConfig.mainWindowHeight
+  const persistMainWindowLayout = async () => {
+    const nextLayoutConfig = mergeLayoutConfig(store.layoutConfig, {
+      isMaxMainWin: !!mainWindow?.isMaximized(),
+      mainWindowWidth,
+      mainWindowHeight
+    })
+    store.layoutConfig = nextLayoutConfig
+    await persistLayoutConfig(nextLayoutConfig)
+  }
+
   mainWindow.on('resized', () => {
     const size = mainWindow?.getSize()
     if (size) {
@@ -376,11 +391,7 @@ function createWindow() {
   })
 
   ipcMain.on('toggle-close', async () => {
-    const layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
-    layoutConfig.isMaxMainWin = !!mainWindow?.isMaximized()
-    layoutConfig.mainWindowWidth = mainWindowWidth
-    layoutConfig.mainWindowHeight = mainWindowHeight
-    await fs.outputJson(url.layoutConfigFileUrl, layoutConfig)
+    await persistMainWindowLayout()
     mainWindow?.close()
   })
 
@@ -437,11 +448,7 @@ function createWindow() {
 
   ipcMain.handle('reSelectLibrary', async () => {
     databaseInitWindow.createWindow()
-    const layoutConfig = fs.readJSONSync(url.layoutConfigFileUrl)
-    layoutConfig.isMaxMainWin = !!mainWindow?.isMaximized()
-    layoutConfig.mainWindowWidth = mainWindowWidth
-    layoutConfig.mainWindowHeight = mainWindowHeight
-    await fs.outputJson(url.layoutConfigFileUrl, layoutConfig)
+    await persistMainWindowLayout()
     mainWindow?.close()
   })
 
