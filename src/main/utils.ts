@@ -9,7 +9,7 @@ import {
   ProcessProgress,
   decodeAudioFile
 } from 'rust_package'
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain, session } from 'electron'
 import {
   ensureLibraryTreeBaseline,
   loadLibraryNodes,
@@ -554,8 +554,31 @@ export function waitForUserDecision(
   })
 }
 
+const normalizeProxyUrl = (proxyUrl: string, scheme = 'http') => {
+  const normalized = String(proxyUrl || '').trim()
+  if (!normalized) return ''
+  if (/^[a-z]+:\/\//i.test(normalized)) return normalized
+  return `${scheme}://${normalized}`
+}
+
+const parseResolvedProxyRules = (proxyRules: string): string => {
+  const rules = String(proxyRules || '')
+    .split(';')
+    .map((item) => item.trim())
+    .filter(Boolean)
+  for (const rule of rules) {
+    const match = rule.match(/^(PROXY|HTTP|HTTPS)\s+(.+)$/i)
+    if (!match) continue
+    const protocol = match[1].toUpperCase()
+    const target = match[2].trim()
+    if (!target) continue
+    return normalizeProxyUrl(target, protocol === 'HTTPS' ? 'https' : 'http')
+  }
+  return ''
+}
+
 /**
- * Detect system proxy settings on Windows
+ * Detect system proxy settings
  * Returns proxy URL (e.g., "http://127.0.0.1:7890") or empty string if not configured
  */
 export async function getSystemProxy(): Promise<string> {
@@ -563,6 +586,17 @@ export async function getSystemProxy(): Promise<string> {
   const envProxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || ''
   if (envProxy) {
     return envProxy
+  }
+
+  // Chromium session proxy supports PAC / system proxy on macOS and other platforms
+  try {
+    const resolvedProxy = await session.defaultSession.resolveProxy('https://github.com/')
+    const normalizedProxy = parseResolvedProxyRules(resolvedProxy)
+    if (normalizedProxy) {
+      return normalizedProxy
+    }
+  } catch {
+    // Ignore and fall back to platform-specific probing
   }
 
   // On Windows, read from registry
@@ -600,26 +634,23 @@ export async function getSystemProxy(): Promise<string> {
           for (const part of parts) {
             if (part.startsWith('https=')) {
               const addr = part.substring(6)
-              return addr.startsWith('http') ? addr : `http://${addr}`
+              return normalizeProxyUrl(addr)
             }
           }
           for (const part of parts) {
             if (part.startsWith('http=')) {
               const addr = part.substring(5)
-              return addr.startsWith('http') ? addr : `http://${addr}`
+              return normalizeProxyUrl(addr)
             }
           }
         }
         // Simple format: "127.0.0.1:7890"
-        return proxyServer.startsWith('http') ? proxyServer : `http://${proxyServer}`
+        return normalizeProxyUrl(proxyServer)
       }
     } catch {
       // Registry read failed, return empty
     }
   }
-
-  // macOS: read from scutil (future support)
-  // Linux: typically uses environment variables only
 
   return ''
 }

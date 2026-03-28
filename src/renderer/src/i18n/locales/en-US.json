@@ -747,6 +747,8 @@
     "stemRuntimeDownloadProgressText": "Downloaded {downloaded} / {total} ({percent}%)",
     "stemRuntimeExtractingText": "Download finished. Extracting and installing…",
     "stemRuntimeDownloadReadyHint": "{title} is ready. Future stem separation will automatically use this runtime.",
+    "stemRuntimeManifestUnavailableHint": "Unable to fetch the stem runtime manifest. This is usually caused by network, GitHub access, or proxy configuration issues.",
+    "stemRuntimeNetworkHint": "Check your network connection. If GitHub is unreachable from the current network, try enabling a VPN or make sure the system proxy / PAC is applied to FRKB.",
     "stemRuntimeDownloadFailedHint": "Failed to download the required stem runtime. Stem separation is currently unavailable.",
     "stemRuntimeDownloadFailedCloseHint": "After closing this message, the current Mixtape Auto-Recording window will close automatically.",
     "stemRuntimeDownloadErrorHint": "Details: {error}",

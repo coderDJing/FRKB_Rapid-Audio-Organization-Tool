@@ -93,6 +93,7 @@ export type MixtapeStemRuntimeDownloadInfo = {
   reason: string
   manifestUrl: string
   releaseTag: string
+  error: string
   state: MixtapeStemRuntimeDownloadState
 }
 
@@ -100,6 +101,7 @@ let runtimeManifestPromise: Promise<RuntimeAssetManifest | null> | null = null
 const runtimeEnsurePromiseByProfile = new Map<string, Promise<boolean>>()
 let runtimeDownloadProxyDispatcher: ProxyAgent | undefined
 let runtimeDownloadProxyInitialized = false
+let runtimeManifestLastError = ''
 let runtimeDownloadState: MixtapeStemRuntimeDownloadState = {
   status: 'idle',
   profile: '',
@@ -215,11 +217,17 @@ const readRuntimeManifest = async (): Promise<RuntimeAssetManifest | null> => {
       if (!manifest || !Array.isArray(manifest.assets)) {
         throw new Error('manifest assets missing')
       }
+      runtimeManifestLastError = ''
       return manifest
     } catch (error) {
+      const errorText = normalizeText(
+        error instanceof Error ? error.message : String(error || ''),
+        400
+      )
+      runtimeManifestLastError = errorText
       log.warn('[mixtape-stem] runtime manifest fetch failed', {
         manifestUrl,
-        error: normalizeText(error instanceof Error ? error.message : String(error || ''), 400)
+        error: errorText
       })
       return null
     }
@@ -774,6 +782,7 @@ export const getPreferredStemRuntimeDownloadInfo =
         reason: 'platform unsupported',
         manifestUrl: resolveRuntimeManifestUrl(),
         releaseTag: '',
+        error: '',
         state: getStemRuntimeDownloadState()
       }
     }
@@ -791,6 +800,7 @@ export const getPreferredStemRuntimeDownloadInfo =
         reason: 'manifest unavailable',
         manifestUrl: resolveRuntimeManifestUrl(),
         releaseTag: '',
+        error: runtimeManifestLastError,
         state: getStemRuntimeDownloadState()
       }
     }
@@ -817,6 +827,7 @@ export const getPreferredStemRuntimeDownloadInfo =
         reason: 'runtime asset missing',
         manifestUrl: resolveRuntimeManifestUrl(),
         releaseTag: manifest.releaseTag || '',
+        error: '',
         state: getStemRuntimeDownloadState()
       }
     }
@@ -833,12 +844,29 @@ export const getPreferredStemRuntimeDownloadInfo =
       reason: alreadyAvailable ? 'already available' : '',
       manifestUrl: resolveRuntimeManifestUrl(),
       releaseTag: manifest.releaseTag || '',
+      error: '',
       state: getStemRuntimeDownloadState()
     }
   }
 
 export const downloadPreferredStemRuntime = async (): Promise<boolean> => {
   const info = await getPreferredStemRuntimeDownloadInfo()
+  if (info.reason === 'manifest unavailable') {
+    updateRuntimeDownloadState({
+      status: 'failed',
+      profile: info.profile,
+      runtimeKey: info.runtimeKey,
+      version: info.version,
+      archiveSize: info.archiveSize,
+      totalBytes: 0,
+      downloadedBytes: 0,
+      percent: 0,
+      title: info.title || resolveRuntimeProfileTitle(info.profile),
+      message: '无法获取 Stem 运行时下载清单',
+      error: info.error || 'manifest unavailable'
+    })
+    return false
+  }
   if (!info.supported || !info.profile) return false
   if (info.alreadyAvailable) {
     updateRuntimeDownloadState({

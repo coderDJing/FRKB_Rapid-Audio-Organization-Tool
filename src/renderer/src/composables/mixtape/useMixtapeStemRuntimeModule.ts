@@ -61,6 +61,7 @@ type StemRuntimeDownloadInfo = {
   reason: string
   manifestUrl: string
   releaseTag: string
+  error: string
   state: StemRuntimeDownloadState
 }
 
@@ -110,6 +111,7 @@ export const createUseMixtapeStemRuntimeModule = (
   const stemResumeSignatureByPlaylistId = new Map<string, string>()
   const stemCpuSlowHintShownPlaylistIdSet = new Set<string>()
   const stemRuntimeDownloadAttemptedKeySet = new Set<string>()
+  const stemRuntimeFailureNoticeKeyByPlaylistId = new Map<string, string>()
 
   let stemRuntimeDownloadAttemptBusy = false
 
@@ -406,6 +408,7 @@ export const createUseMixtapeStemRuntimeModule = (
     if (prevId && prevId !== nextId) {
       stemResumeBootstrappedPlaylistIdSet.delete(prevId)
       stemResumeSignatureByPlaylistId.delete(prevId)
+      stemRuntimeFailureNoticeKeyByPlaylistId.delete(prevId)
     }
     if (nextId !== prevId) {
       stemSummary.value = createEmptyStemSummary()
@@ -466,6 +469,51 @@ export const createUseMixtapeStemRuntimeModule = (
         response?.preferred && typeof response.preferred === 'object'
           ? (response.preferred as StemRuntimeDownloadInfo)
           : null
+      if (preferred?.reason === 'manifest unavailable') {
+        const failureKey = [
+          'manifest',
+          preferred.profile,
+          preferred.version,
+          preferred.error || preferred.manifestUrl
+        ].join('::')
+        stemRuntimeDownloadState.value = {
+          ...stemRuntimeDownloadState.value,
+          status: 'failed',
+          profile: preferred.profile || stemRuntimeDownloadState.value.profile,
+          runtimeKey: preferred.runtimeKey || stemRuntimeDownloadState.value.runtimeKey,
+          version: preferred.version || stemRuntimeDownloadState.value.version,
+          archiveSize: preferred.archiveSize || stemRuntimeDownloadState.value.archiveSize,
+          title: preferred.title || stemRuntimeDownloadState.value.title,
+          message: options.t('mixtape.stemRuntimeManifestUnavailableHint'),
+          error: preferred.error || stemRuntimeDownloadState.value.error,
+          updatedAt: Date.now()
+        }
+        if (stemRuntimeFailureNoticeKeyByPlaylistId.get(playlistId) !== failureKey) {
+          stemRuntimeFailureNoticeKeyByPlaylistId.set(playlistId, failureKey)
+          const content = [
+            options.t('mixtape.stemRuntimeManifestUnavailableHint'),
+            options.t('mixtape.stemRuntimeNetworkHint'),
+            options.t('mixtape.stemRuntimeDownloadFailedCloseHint')
+          ]
+          if (preferred.error) {
+            content.push(
+              options.t('mixtape.stemRuntimeDownloadErrorHint', { error: preferred.error })
+            )
+          }
+          void (async () => {
+            await options.confirmDialog({
+              title: options.t('common.warning'),
+              content,
+              confirmShow: false,
+              textAlign: 'left',
+              innerWidth: 560,
+              innerHeight: 0
+            })
+            window.electron.ipcRenderer.send('mixtapeWindow-toggle-close')
+          })()
+        }
+        return
+      }
       await maybeAutoDownloadStemRuntime(preferred)
     } catch (error) {
       console.error('[mixtape] refresh stem runtime download status failed', {
@@ -674,6 +722,7 @@ export const createUseMixtapeStemRuntimeModule = (
   }
 
   const handleMixtapeStemRuntimeDownloadState = (_e: unknown, eventPayload: any) => {
+    const playlistId = String(options.payload.value.playlistId || '').trim()
     const prevStatus = stemRuntimeDownloadState.value.status
     const nextState = normalizeStemRuntimeDownloadState(eventPayload)
     stemRuntimeDownloadState.value = nextState
@@ -689,6 +738,19 @@ export const createUseMixtapeStemRuntimeModule = (
       return
     }
     if (nextState.status === 'failed' && prevStatus !== 'failed') {
+      const failureKey = [
+        'runtime',
+        nextState.profile,
+        nextState.runtimeKey,
+        nextState.version,
+        nextState.error
+      ].join('::')
+      if (playlistId && stemRuntimeFailureNoticeKeyByPlaylistId.get(playlistId) === failureKey) {
+        return
+      }
+      if (playlistId) {
+        stemRuntimeFailureNoticeKeyByPlaylistId.set(playlistId, failureKey)
+      }
       const content = [options.t('mixtape.stemRuntimeDownloadFailedHint')]
       content.push(options.t('mixtape.stemRuntimeDownloadFailedCloseHint'))
       if (nextState.error) {

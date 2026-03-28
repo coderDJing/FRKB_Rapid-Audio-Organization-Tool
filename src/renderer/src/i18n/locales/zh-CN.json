@@ -747,6 +747,8 @@
     "stemRuntimeDownloadProgressText": "已下载 {downloaded} / {total}（{percent}%）",
     "stemRuntimeExtractingText": "下载完成，正在解压并安装…",
     "stemRuntimeDownloadReadyHint": "{title} 组件已准备完成，后续 Stem 分离会自动使用该运行时。",
+    "stemRuntimeManifestUnavailableHint": "无法获取 Stem 运行时下载清单，通常是网络连接、GitHub 访问或代理配置异常导致。",
+    "stemRuntimeNetworkHint": "请检查网络连接；如当前网络无法访问 GitHub，可尝试开启 VPN，或确认系统代理 / PAC 已对 FRKB 生效。",
     "stemRuntimeDownloadFailedHint": "所需 Stem 运行时下载失败，当前无法使用 Stem 分离。",
     "stemRuntimeDownloadFailedCloseHint": "关闭提示后将自动关闭当前 Mixtape 自动录制窗口。",
     "stemRuntimeDownloadErrorHint": "错误详情：{error}",
