@@ -11,6 +11,61 @@
 
 .mixtape-shell {
   --mix-envelope-line-color: #ffffff;
+  --mixtape-ruler-bg: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0.06),
+    rgba(255, 255, 255, 0.01)
+  );
+  --mixtape-ruler-inactive-bg: rgba(255, 255, 255, 0.1);
+  --mixtape-control-chip-bg: rgba(0, 0, 0, 0.22);
+  --mixtape-control-chip-bg-strong: rgba(255, 255, 255, 0.08);
+  --mixtape-control-chip-muted-bg: rgba(255, 255, 255, 0.06);
+  --mixtape-control-chip-muted-text: rgba(255, 255, 255, 0.72);
+  --mixtape-panel-border-soft: rgba(255, 255, 255, 0.08);
+  --mixtape-panel-gradient-soft: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.01) 100%
+  );
+  --mixtape-surface-soft: rgba(0, 0, 0, 0.16);
+  --mixtape-surface-soft-strong: rgba(0, 0, 0, 0.25);
+  --mixtape-surface-lane: rgba(255, 255, 255, 0.07);
+  --mixtape-surface-overlay: rgba(30, 30, 30, 0.65);
+  --mixtape-surface-overlay-border: rgba(255, 255, 255, 0.12);
+  --mixtape-surface-overlay-shadow: rgba(0, 0, 0, 0.2);
+  --mixtape-surface-overlay-text: rgba(255, 255, 255, 0.98);
+  --mixtape-surface-overlay-subtext: rgba(255, 255, 255, 0.72);
+  --mixtape-point-ghost-border: rgba(255, 255, 255, 0.4);
+  --mixtape-point-ghost-bg: rgba(255, 255, 255, 0.2);
+  --mixtape-point-border: rgba(0, 0, 0, 0.65);
+  --mixtape-point-bg: rgba(255, 255, 255, 0.95);
+  --mixtape-point-boundary-bg: rgba(226, 234, 247, 0.95);
+  --mixtape-point-label-bg: rgba(0, 0, 0, 0.78);
+  --mixtape-point-label-text: rgba(255, 255, 255, 0.96);
+  --mixtape-point-line-shadow: rgba(0, 0, 0, 0.82);
+  --mixtape-preview-border-soft: rgba(255, 255, 255, 0.08);
+  --mixtape-preview-bg: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(0, 0, 0, 0.14) 45%,
+    rgba(0, 0, 0, 0.08) 100%
+  );
+  --mixtape-preview-stage-bg: rgba(0, 0, 0, 0.16);
+  --mixtape-preview-lane-bg: rgba(255, 255, 255, 0.07);
+  --mixtape-preview-stem-base-bg: rgba(7, 11, 16, 0.98);
+  --mixtape-preview-grid-line: rgba(255, 255, 255, 0.22);
+  --mixtape-preview-legend-shadow: rgba(0, 0, 0, 0.4);
+  --mixtape-preview-line-shadow: rgba(0, 0, 0, 0.75);
+  --mixtape-overview-stage-bg: rgba(0, 0, 0, 0.18);
+  --mixtape-overview-lane-bg: rgba(255, 255, 255, 0.08);
+  --mixtape-overview-viewport-scrim: rgba(0, 0, 0, 0.65);
+  --mixtape-danger-soft-bg: rgba(193, 58, 58, 0.2);
+  --mixtape-danger-soft-text: #ffd6d6;
+  --mixtape-error-soft: #f08989;
+  --mixtape-menu-shadow: rgba(0, 0, 0, 0.38);
+  --mixtape-grid-line-bar: rgba(255, 255, 255, 0.26);
+  --mixtape-grid-line-beat4: rgba(255, 255, 255, 0.16);
+  --mixtape-grid-line-beat: rgba(255, 255, 255, 0.12);
   --mixtape-mask-overlay-strong: rgba(8, 8, 12, 0.9);
   --mixtape-mask-overlay: rgba(8, 8, 12, 0.84);
   --mixtape-mask-card-bg: rgba(0, 0, 0, 0.62);
@@ -36,8 +91,62 @@
   position: relative;
 }
 
-:global(.theme-light) .mixtape-shell {
+.mixtape-shell.is-light-theme {
   --mix-envelope-line-color: #000000;
+  --mixtape-ruler-bg: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0.92),
+    rgba(228, 235, 245, 0.96)
+  );
+  --mixtape-ruler-inactive-bg: rgba(15, 23, 42, 0.08);
+  --mixtape-control-chip-bg: rgba(255, 255, 255, 0.78);
+  --mixtape-control-chip-bg-strong: rgba(15, 23, 42, 0.08);
+  --mixtape-control-chip-muted-bg: rgba(15, 23, 42, 0.08);
+  --mixtape-control-chip-muted-text: rgba(15, 23, 42, 0.72);
+  --mixtape-panel-border-soft: rgba(15, 23, 42, 0.08);
+  --mixtape-panel-gradient-soft: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.86) 0%,
+    rgba(236, 242, 249, 0.94) 100%
+  );
+  --mixtape-surface-soft: rgba(15, 23, 42, 0.06);
+  --mixtape-surface-soft-strong: rgba(15, 23, 42, 0.08);
+  --mixtape-surface-lane: rgba(15, 23, 42, 0.05);
+  --mixtape-surface-overlay: rgba(255, 255, 255, 0.9);
+  --mixtape-surface-overlay-border: rgba(15, 23, 42, 0.1);
+  --mixtape-surface-overlay-shadow: rgba(15, 23, 42, 0.12);
+  --mixtape-surface-overlay-text: rgba(15, 23, 42, 0.92);
+  --mixtape-surface-overlay-subtext: rgba(15, 23, 42, 0.68);
+  --mixtape-point-ghost-border: rgba(43, 102, 217, 0.28);
+  --mixtape-point-ghost-bg: rgba(43, 102, 217, 0.12);
+  --mixtape-point-border: rgba(86, 103, 128, 0.55);
+  --mixtape-point-bg: rgba(255, 255, 255, 0.98);
+  --mixtape-point-boundary-bg: rgba(226, 234, 247, 0.95);
+  --mixtape-point-label-bg: rgba(255, 255, 255, 0.94);
+  --mixtape-point-label-text: rgba(15, 23, 42, 0.92);
+  --mixtape-point-line-shadow: rgba(255, 255, 255, 0.35);
+  --mixtape-preview-border-soft: rgba(15, 23, 42, 0.08);
+  --mixtape-preview-bg: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.88) 0%,
+    rgba(236, 242, 249, 0.94) 100%
+  );
+  --mixtape-preview-stage-bg: rgba(15, 23, 42, 0.06);
+  --mixtape-preview-lane-bg: rgba(15, 23, 42, 0.05);
+  --mixtape-preview-stem-base-bg: rgba(236, 242, 249, 0.98);
+  --mixtape-preview-grid-line: rgba(15, 23, 42, 0.14);
+  --mixtape-preview-legend-shadow: rgba(15, 23, 42, 0.16);
+  --mixtape-preview-line-shadow: rgba(255, 255, 255, 0.45);
+  --mixtape-overview-stage-bg: rgba(15, 23, 42, 0.06);
+  --mixtape-overview-lane-bg: rgba(15, 23, 42, 0.08);
+  --mixtape-overview-viewport-scrim: rgba(247, 249, 252, 0.46);
+  --mixtape-danger-soft-bg: rgba(196, 59, 59, 0.12);
+  --mixtape-danger-soft-text: #a12626;
+  --mixtape-error-soft: #b42318;
+  --mixtape-menu-shadow: rgba(15, 23, 42, 0.16);
+  --mixtape-grid-line-bar: rgba(15, 23, 42, 0.22);
+  --mixtape-grid-line-beat4: rgba(15, 23, 42, 0.14);
+  --mixtape-grid-line-beat: rgba(15, 23, 42, 0.1);
   --mixtape-mask-overlay-strong: rgba(238, 242, 247, 0.88);
   --mixtape-mask-overlay: rgba(238, 242, 247, 0.82);
   --mixtape-mask-card-bg: rgba(255, 255, 255, 0.94);
@@ -59,7 +168,7 @@
   --mixtape-mask-indeterminate-start: rgba(15, 23, 42, 0.12);
 }
 
-:global(.theme-dark) .mixtape-shell {
+.mixtape-shell.is-dark-theme {
   --mix-envelope-line-color: #ffffff;
 }
 
@@ -125,7 +234,7 @@
 .mixtape-param-bar {
   min-height: 32px;
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0) 100%);
+  background: var(--mixtape-panel-gradient-soft);
   padding: 3px 10px;
   display: flex;
   align-items: center;
@@ -187,10 +296,16 @@
   padding: 0 9px;
   font-size: 11px;
   border-radius: 4px;
-  border: 0;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elev) 92%, transparent);
   color: var(--text);
   cursor: pointer;
   white-space: nowrap;
+  transition:
+    border-color 0.12s ease,
+    color 0.12s ease,
+    background 0.12s ease,
+    box-shadow 0.12s ease;
 }
 
 .mixtape-param-bar__action-btn--icon {
@@ -217,9 +332,15 @@
   cursor: not-allowed;
 }
 
+.mixtape-param-bar__action-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+  background: color-mix(in srgb, var(--bg-elev) 82%, var(--accent) 18%);
+}
+
 .mixtape-param-bar__action-btn.is-active {
-  background: rgba(193, 58, 58, 0.2);
-  color: #ffd6d6;
+  background: var(--mixtape-danger-soft-bg);
+  color: var(--mixtape-danger-soft-text);
+  border-color: color-mix(in srgb, var(--mixtape-danger-soft-text) 24%, var(--border));
 }
 
 .mixtape-param-bar__tab {
@@ -244,6 +365,7 @@
     color 0.12s ease,
     background 0.12s ease,
     box-shadow 0.12s ease;
+  box-shadow: inset 0 0 0 1px transparent;
 }
 
 .mixtape-param-bar__tab:hover {
@@ -401,62 +523,150 @@
   --mix-tab-accent: #f97316;
 }
 
-:global(.theme-light) .mixtape-param-bar__tab--position {
-  --mix-tab-accent-rgb: 82, 97, 117;
-  --mix-tab-accent: #526175;
+.mixtape-shell.is-light-theme .mixtape-param-bar__tab--position {
+  --mix-tab-accent-rgb: 44, 56, 72;
+  --mix-tab-accent: #243041;
 }
 
-:global(.theme-light) .mixtape-param-bar__tab--gain {
+.mixtape-shell.is-light-theme .mixtape-param-bar__tab--gain {
   --mix-tab-accent-rgb: 93, 106, 124;
   --mix-tab-accent: #5f6e82;
 }
 
-:global(.theme-light) .mixtape-param-bar__tab--high {
+.mixtape-shell.is-light-theme .mixtape-param-bar__tab--high {
   --mix-tab-accent-rgb: 43, 102, 217;
   --mix-tab-accent: #2b66d9;
 }
 
-:global(.theme-light) .mixtape-param-bar__tab--mid {
+.mixtape-shell.is-light-theme .mixtape-param-bar__tab--mid {
   --mix-tab-accent-rgb: 16, 138, 79;
   --mix-tab-accent: #108a4f;
 }
 
-:global(.theme-light) .mixtape-param-bar__tab--low {
+.mixtape-shell.is-light-theme .mixtape-param-bar__tab--low {
   --mix-tab-accent-rgb: 196, 59, 59;
   --mix-tab-accent: #c43b3b;
 }
 
-:global(.theme-light) .mixtape-param-bar__tab--volume {
+.mixtape-shell.is-light-theme .mixtape-param-bar__tab--volume {
   --mix-tab-accent-rgb: 176, 112, 0;
   --mix-tab-accent: #b07000;
 }
 
-:global(.theme-light) .mixtape-param-bar__tab--bpm {
+.mixtape-shell.is-light-theme .mixtape-param-bar__tab--bpm {
   --mix-tab-accent-rgb: 219, 39, 119;
   --mix-tab-accent: #db2777;
 }
 
-:global(.theme-light) .mixtape-param-bar__toggle-state {
+.mixtape-shell.is-light-theme .mixtape-param-bar__toggle-state {
   background: rgba(15, 23, 42, 0.06);
   color: rgba(15, 23, 42, 0.66);
 }
 
-:global(.theme-light) .mixtape-param-bar__tab--vocal {
+.mixtape-shell.is-light-theme .mixtape-param-bar__action-btn {
+  border-color: rgba(15, 23, 42, 0.14);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(239, 244, 250, 0.98) 100%);
+  color: rgba(15, 23, 42, 0.88);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.68),
+    0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.mixtape-shell.is-light-theme .mixtape-param-bar__action-btn:hover:not(:disabled) {
+  border-color: rgba(43, 102, 217, 0.34);
+  background: linear-gradient(180deg, rgba(232, 240, 252, 0.98) 0%, rgba(222, 233, 248, 0.98) 100%);
+  color: rgba(15, 23, 42, 0.92);
+}
+
+.mixtape-shell.is-light-theme .mixtape-param-bar__action-btn.is-active {
+  border-color: rgba(196, 59, 59, 0.24);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.45),
+    0 1px 2px rgba(196, 59, 59, 0.08);
+}
+
+.mixtape-shell.is-light-theme .mixtape-param-bar__tab {
+  border-color: rgba(15, 23, 42, 0.14);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(241, 245, 251, 0.98) 100%);
+  color: rgba(15, 23, 42, 0.82);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.72),
+    0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.mixtape-shell.is-light-theme .mixtape-param-bar__tab:hover {
+  color: rgba(15, 23, 42, 0.92);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.66),
+    0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.mixtape-shell.is-light-theme .mixtape-param-bar__tab.is-active {
+  border-color: rgba(var(--mix-tab-accent-rgb), 0.42);
+  background: linear-gradient(
+    180deg,
+    rgba(var(--mix-tab-accent-rgb), 0.24) 0%,
+    rgba(var(--mix-tab-accent-rgb), 0.12) 100%
+  );
+  color: rgba(15, 23, 42, 0.96);
+  font-weight: 600;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.56),
+    0 2px 6px rgba(var(--mix-tab-accent-rgb), 0.14);
+}
+
+.mixtape-shell.is-light-theme .mixtape-param-bar__tab--position.is-active {
+  border-color: rgba(44, 56, 72, 0.62) !important;
+  background: linear-gradient(
+    180deg,
+    rgba(148, 163, 184, 0.34) 0%,
+    rgba(148, 163, 184, 0.18) 100%
+  ) !important;
+  color: rgba(15, 23, 42, 0.98) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.74),
+    0 2px 6px rgba(44, 56, 72, 0.18) !important;
+  text-shadow: none !important;
+}
+
+.mixtape-shell.is-light-theme .mixtape-param-bar__tab--position.is-active:hover {
+  color: rgba(15, 23, 42, 1) !important;
+  background: linear-gradient(
+    180deg,
+    rgba(148, 163, 184, 0.42) 0%,
+    rgba(148, 163, 184, 0.24) 100%
+  ) !important;
+}
+
+.mixtape-shell.is-light-theme .mixtape-param-bar__tab--bpm .mixtape-param-bar__toggle-state {
+  background: rgba(15, 23, 42, 0.08);
+  color: rgba(15, 23, 42, 0.72);
+}
+
+.mixtape-shell.is-light-theme
+  .mixtape-param-bar__tab--bpm.is-active
+  .mixtape-param-bar__toggle-state {
+  background: rgba(255, 255, 255, 0.7);
+  color: rgba(15, 23, 42, 0.94);
+  font-weight: 600;
+}
+
+.mixtape-shell.is-light-theme .mixtape-param-bar__tab--vocal {
   --mix-tab-accent-rgb: 37, 99, 235;
   --mix-tab-accent: #2563eb;
 }
 
-:global(.theme-light) .mixtape-param-bar__tab--inst {
+.mixtape-shell.is-light-theme .mixtape-param-bar__tab--inst {
   --mix-tab-accent-rgb: 13, 148, 136;
   --mix-tab-accent: #0d9488;
 }
 
-:global(.theme-light) .mixtape-param-bar__tab--bass {
+.mixtape-shell.is-light-theme .mixtape-param-bar__tab--bass {
   --mix-tab-accent-rgb: 147, 51, 234;
   --mix-tab-accent: #9333ea;
 }
 
-:global(.theme-light) .mixtape-param-bar__tab--drums {
+.mixtape-shell.is-light-theme .mixtape-param-bar__tab--drums {
   --mix-tab-accent-rgb: 234, 88, 12;
   --mix-tab-accent: #ea580c;
 }

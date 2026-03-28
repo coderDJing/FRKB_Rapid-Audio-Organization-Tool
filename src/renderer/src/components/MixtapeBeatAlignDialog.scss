@@ -32,6 +32,7 @@
   --beat-align-viewport-outline-active: rgba(20, 36, 56, 0.4);
   --beat-align-viewport-shadow-active: rgba(80, 156, 238, 0.2);
   --beat-align-status-bg: rgba(5, 10, 16, 0.6);
+  --beat-align-status-error: #f6a2a2;
   padding: 16px 20px 0;
   flex: 1 1 auto;
   display: flex;
@@ -73,6 +74,7 @@
   --beat-align-viewport-outline-active: rgba(43, 102, 217, 0.16);
   --beat-align-viewport-shadow-active: rgba(43, 102, 217, 0.12);
   --beat-align-status-bg: rgba(255, 255, 255, 0.82);
+  --beat-align-status-error: #b42318;
 }
 
 .track-name {
@@ -211,5 +213,5 @@
 }
 
 .preview-status.is-error {
-  color: #f6a2a2;
+  color: var(--beat-align-status-error);
 }

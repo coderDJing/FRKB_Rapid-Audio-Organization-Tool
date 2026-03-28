@@ -144,64 +144,103 @@ function normalizeAudioExtensions(input?: string[]): Set<string> {
 }
 
 export function registerLibraryMaintenanceHandlers() {
+  const executeDelSongs = async (
+    payload: { filePaths: string[]; songListPath?: string; sourceType?: string } | string[]
+  ) => {
+    const filePaths = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.filePaths)
+        ? payload.filePaths
+        : []
+    if (!filePaths.length) {
+      return {
+        total: 0,
+        success: 0,
+        failed: 0,
+        skipped: 0,
+        hasENOSPC: false,
+        removedPaths: [] as string[]
+      }
+    }
+    const originalPlaylistPath =
+      payload && !Array.isArray(payload) && payload.songListPath
+        ? normalizeRendererPlaylistPath(payload.songListPath)
+        : null
+    const sourceType =
+      payload && !Array.isArray(payload) && payload.sourceType ? payload.sourceType : null
+    const uniquePaths = Array.from(new Set(filePaths.filter(Boolean)))
+    const tasks: Array<() => Promise<any>> = []
+    for (const item of uniquePaths) {
+      tasks.push(async () => {
+        const result = await moveFileToRecycleBin(item, {
+          originalPlaylistPath,
+          sourceType
+        })
+        if (result.status === 'failed') {
+          throw new Error(result.error || 'move to recycle bin failed')
+        }
+        return result
+      })
+    }
+    const batchId = `delSongs_${Date.now()}`
+    const { success, failed, hasENOSPC, skipped, results } = await runWithConcurrency(tasks, {
+      concurrency: 16,
+      stopOnENOSPC: true,
+      onInterrupted: async (interruptPayload) =>
+        waitForUserDecision(mainWindow.instance ?? null, batchId, 'delSongs', interruptPayload)
+    })
+    if (hasENOSPC && mainWindow.instance) {
+      mainWindow.instance.webContents.send('file-batch-summary', {
+        context: 'delSongs',
+        total: tasks.length,
+        success,
+        failed,
+        hasENOSPC,
+        skipped,
+        errorSamples: results
+          .map((r, i) =>
+            r instanceof Error ? { code: (r as any).code, message: r.message, index: i } : null
+          )
+          .filter(Boolean)
+          .slice(0, 3)
+      })
+    }
+    const removedPaths = results
+      .filter(
+        (item): item is { status: string; srcPath: string } =>
+          !!item && !(item instanceof Error) && typeof (item as any).srcPath === 'string'
+      )
+      .map((item) => item.srcPath)
+    return {
+      total: tasks.length,
+      success,
+      failed,
+      skipped,
+      hasENOSPC,
+      removedPaths
+    }
+  }
+
   ipcMain.on(
     'delSongs',
     async (
       _e,
       payload: { filePaths: string[]; songListPath?: string; sourceType?: string } | string[]
     ) => {
-      const filePaths = Array.isArray(payload)
-        ? payload
-        : Array.isArray(payload?.filePaths)
-          ? payload.filePaths
-          : []
-      if (!filePaths.length) return
-      const originalPlaylistPath =
-        payload && !Array.isArray(payload) && payload.songListPath
-          ? normalizeRendererPlaylistPath(payload.songListPath)
-          : null
-      const sourceType =
-        payload && !Array.isArray(payload) && payload.sourceType ? payload.sourceType : null
-      const uniquePaths = Array.from(new Set(filePaths.filter(Boolean)))
-      const tasks: Array<() => Promise<any>> = []
-      for (const item of uniquePaths) {
-        tasks.push(async () => {
-          const result = await moveFileToRecycleBin(item, {
-            originalPlaylistPath,
-            sourceType
-          })
-          if (result.status === 'failed') {
-            throw new Error(result.error || 'move to recycle bin failed')
-          }
-          return result
-        })
-      }
-      const batchId = `delSongs_${Date.now()}`
-      const { success, failed, hasENOSPC, skipped, results } = await runWithConcurrency(tasks, {
-        concurrency: 16,
-        stopOnENOSPC: true,
-        onInterrupted: async (payload) =>
-          waitForUserDecision(mainWindow.instance ?? null, batchId, 'delSongs', payload)
-      })
-      if (hasENOSPC && mainWindow.instance) {
-        mainWindow.instance.webContents.send('file-batch-summary', {
-          context: 'delSongs',
-          total: tasks.length,
-          success,
-          failed,
-          hasENOSPC,
-          skipped,
-          errorSamples: results
-            .map((r, i) =>
-              r instanceof Error ? { code: (r as any).code, message: r.message, index: i } : null
-            )
-            .filter(Boolean)
-            .slice(0, 3)
-        })
-      }
-      if (failed > 0) {
+      const summary = await executeDelSongs(payload)
+      if (summary.failed > 0) {
         throw new Error('delSongs failed')
       }
+    }
+  )
+
+  ipcMain.handle(
+    'delSongsAwaitable',
+    async (
+      _e,
+      payload: { filePaths: string[]; songListPath?: string; sourceType?: string } | string[]
+    ) => {
+      return await executeDelSongs(payload)
     }
   )
 

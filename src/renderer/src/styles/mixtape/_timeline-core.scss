@@ -59,7 +59,7 @@
   height: 22px;
   width: 22px;
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--mixtape-control-chip-bg);
   color: var(--text);
   border-radius: 999px;
   display: inline-flex;
@@ -93,7 +93,7 @@
   flex: 1;
   height: 30px;
   border: 1px solid var(--border);
-  background: linear-gradient(to right, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.01));
+  background: var(--mixtape-ruler-bg);
   cursor: pointer;
   overflow: hidden;
   user-select: none;
@@ -164,7 +164,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--mixtape-ruler-inactive-bg);
   pointer-events: none;
   z-index: 0;
 }
@@ -262,7 +262,7 @@
   justify-content: center;
   z-index: 22;
   pointer-events: auto;
-  background: rgba(8, 8, 12, 0.84);
+  background: var(--mixtape-mask-overlay);
 }
 
 .mixtape-stem-progress-mask__bar {
@@ -270,7 +270,7 @@
   height: 8px;
   border-radius: 999px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--mixtape-mask-rail);
 }
 
 .mixtape-stem-progress-mask__bar-fill {
@@ -284,7 +284,7 @@
   width: min(560px, 100%);
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 1px solid var(--mixtape-mask-separator);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -293,7 +293,7 @@
 }
 
 .mixtape-stem-progress-mask__detail-item {
-  color: rgba(255, 255, 255, 0.86);
+  color: var(--mixtape-mask-text-muted);
   font-size: 12px;
   line-height: 1.35;
   text-align: left;
@@ -311,7 +311,7 @@
   z-index: 24;
   pointer-events: auto;
   cursor: progress;
-  background: rgba(8, 8, 12, 0.9);
+  background: var(--mixtape-mask-overlay-strong);
 }
 
 .mixtape-bpm-failed {
@@ -339,7 +339,7 @@
   z-index: 25;
   pointer-events: auto;
   cursor: progress;
-  background: rgba(8, 8, 12, 0.85);
+  background: var(--mixtape-mask-overlay);
 }
 
 .mixtape-output-mask {
@@ -351,5 +351,5 @@
   z-index: 27;
   pointer-events: auto;
   cursor: progress;
-  background: rgba(8, 8, 12, 0.88);
+  background: var(--mixtape-mask-overlay-strong);
 }

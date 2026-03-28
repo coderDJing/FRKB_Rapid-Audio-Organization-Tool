@@ -227,6 +227,18 @@
     "ejectUsbDriveFailedHint": "Close files, playback, or background tasks that may still be using this drive, then try again.",
     "ejectUsbDriveInvalidPath": "No ejectable USB drive path was found."
   },
+  "pioneer": {
+    "loadTreeFailed": "Failed to load Pioneer Device Library.",
+    "loadingPlaylistTree": "Loading Pioneer USB playlist tree...",
+    "noMatchingPlaylists": "No matching playlists.",
+    "emptyPlaylistTree": "There are no visible playlists on this USB drive yet.",
+    "loadingPlaylistTracks": "Loading Pioneer playlist tracks...",
+    "selectPlaylistPrompt": "Select a Pioneer playlist from the left first.",
+    "emptyPlaylist": "There are no visible tracks in this playlist yet.",
+    "mixtapeVaultUnavailable": "The Mixtape vault fallback directory is unavailable.",
+    "copyToMixtapeFailed": "Failed to copy tracks into the Mixtape vault.",
+    "copyTracksFailed": "Failed to copy tracks."
+  },
   "tracks": {
     "title": "Tracks",
     "noTracks": "No tracks",
@@ -535,7 +547,12 @@
     "audioOutputDeviceUnavailable": "The selected output device is unavailable. Reverted to system default.",
     "audioOutputNotSupported": "Output device switching is not supported in this environment.",
     "audioOutputRefreshing": "Refreshing available output devices...",
-    "audioOutputRefreshFailed": "Failed to refresh output devices: {reason}"
+    "audioOutputRefreshFailed": "Failed to refresh output devices: {reason}",
+    "audioErrorAborted": "MEDIA_ERR_ABORTED - Loading was aborted",
+    "audioErrorNetwork": "MEDIA_ERR_NETWORK - Network error",
+    "audioErrorDecode": "MEDIA_ERR_DECODE - Decode failed",
+    "audioErrorSourceNotSupported": "MEDIA_ERR_SRC_NOT_SUPPORTED - Unsupported source or format",
+    "audioErrorUnknownWithCode": "Unknown error (code: {code})"
   },
   "bottomInfo": {
     "totalDurationLabel": "Total duration: ",

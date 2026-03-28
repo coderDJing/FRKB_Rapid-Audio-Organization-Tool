@@ -78,11 +78,11 @@ const showHint = computed(
 )
 
 const statusText = computed(() => {
-  if (runtime.pioneerDeviceLibrary.loading) return '正在读取 Pioneer U 盘歌单树...'
+  if (runtime.pioneerDeviceLibrary.loading) return t('pioneer.loadingPlaylistTree')
   if (String(playlistSearch.value || '').trim() && !visibleTreeNodes.value.length) {
-    return '没有匹配的歌单。'
+    return t('pioneer.noMatchingPlaylists')
   }
-  return '这个 U 盘里暂时没有可显示的歌单树。'
+  return t('pioneer.emptyPlaylistTree')
 })
 
 const toggleFolder = (node: IPioneerPlaylistTreeNode) => {

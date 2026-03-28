@@ -143,7 +143,7 @@ const clickIcon = (item: Icon) => {
 
 const settingDialogShow = ref(false)
 const clickButtomIcon = (item: ButtomIcon) => {
-  if (item.name == '设置') {
+  if (item.name === 'settings') {
     settingDialogShow.value = true
   }
 }
@@ -349,7 +349,7 @@ const handleIconContextmenu = async (event: MouseEvent, item: Icon) => {
   }
 }
 type ButtomIcon = {
-  name: '设置'
+  name: 'settings'
   grey: string
   white: string
   src: string
@@ -485,7 +485,7 @@ const clickPioneerDriveIcon = async (item: PioneerDriveIcon) => {
     runtime.pioneerDeviceLibrary.treeNodes = []
     await confirm({
       title: t('common.error'),
-      content: [String(error?.message || error || 'Pioneer Device Library 读取失败')],
+      content: [String(error?.message || error || t('pioneer.loadTreeFailed'))],
       confirmShow: false
     })
   } finally {
@@ -596,7 +596,7 @@ onUnmounted(() => {
 
 const buttomIconArr = ref<ButtomIcon[]>([
   {
-    name: '设置',
+    name: 'settings',
     grey: settingIconAsset,
     white: settingIconAsset,
     src: settingIconAsset,

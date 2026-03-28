@@ -210,6 +210,13 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
       }
       return paths
     }
+    const requestDeleteSongs = async (paths: string[]) => {
+      const summary = await window.electron.ipcRenderer.invoke(
+        'delSongsAwaitable',
+        buildDelSongsPayload(paths)
+      )
+      return Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
+    }
 
     const showDeleteSummaryIfNeeded = async (summary: {
       total?: number
@@ -253,7 +260,7 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
         removedPathsForEvent = removedPaths
         await showDeleteSummaryIfNeeded(summary)
       } else {
-        window.electron.ipcRenderer.send('delSongs', buildDelSongsPayload(resolvedSelectedPaths))
+        removedPathsForEvent = await requestDeleteSongs(resolvedSelectedPaths)
       }
 
       runtime.songsArea.selectedSongFilePath.length = 0

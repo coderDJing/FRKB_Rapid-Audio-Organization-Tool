@@ -172,6 +172,13 @@ export function useSongItemContextMenu(
       }
       return paths
     }
+    const requestDeleteSongs = async (paths: string[]) => {
+      const summary = await window.electron.ipcRenderer.invoke(
+        'delSongsAwaitable',
+        buildDelSongsPayload(paths)
+      )
+      return Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
+    }
 
     const showDeleteSummaryIfNeeded = async (summary: {
       total?: number
@@ -417,7 +424,7 @@ export function useSongItemContextMenu(
           removedPathsForEvent = removedPaths
           await showDeleteSummaryIfNeeded(summary)
         } else {
-          window.electron.ipcRenderer.send('delSongs', buildDelSongsPayload([...delPaths]))
+          removedPathsForEvent = await requestDeleteSongs([...delPaths])
         }
 
         // 7. UI 操作 (滚动到顶部)
@@ -484,10 +491,7 @@ export function useSongItemContextMenu(
               removedPathsForEvent = removedPaths
               await showDeleteSummaryIfNeeded(summary)
             } else {
-              window.electron.ipcRenderer.send(
-                'delSongs',
-                buildDelSongsPayload([...resolvedSelectedPaths])
-              )
+              removedPathsForEvent = await requestDeleteSongs([...resolvedSelectedPaths])
             }
 
             runtime.songsArea.selectedSongFilePath.length = 0

@@ -99,7 +99,7 @@ defineProps<{
 }
 
 .timeline-envelope-preview__track.is-stem-mode {
-  background: rgba(7, 11, 16, 0.98);
+  background: var(--mixtape-preview-stem-base-bg);
 }
 
 .timeline-envelope-preview__track::after {
@@ -108,7 +108,7 @@ defineProps<{
   left: 0;
   right: 0;
   top: 50%;
-  border-top: 1px dashed rgba(255, 255, 255, 0.28);
+  border-top: 1px dashed var(--mixtape-preview-grid-line);
   transform: translateY(-0.5px);
   pointer-events: none;
   z-index: 1;
@@ -151,7 +151,7 @@ defineProps<{
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.015) 0%, rgba(0, 0, 0, 0.16) 100%),
     linear-gradient(90deg, var(--stem-preview-fill, rgba(255, 255, 255, 0.12)) 0 100%);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mixtape-preview-grid-line) 50%, transparent);
 }
 
 .timeline-envelope-preview__stem-mute-segments {
@@ -170,7 +170,11 @@ defineProps<{
       rgba(255, 255, 255, 0.22) 0 5px,
       rgba(255, 255, 255, 0) 5px 10px
     ),
-    linear-gradient(135deg, rgba(10, 14, 22, 0.78) 0%, rgba(13, 16, 25, 0.96) 100%);
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--mixtape-preview-stem-base-bg) 78%, transparent) 0%,
+      color-mix(in srgb, var(--mixtape-preview-stem-base-bg) 96%, transparent) 100%
+    );
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.16),
     inset 0 0 12px rgba(0, 0, 0, 0.32);
@@ -201,7 +205,7 @@ defineProps<{
   stroke-linecap: round;
   stroke-linejoin: round;
   opacity: 1;
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.75));
+  filter: drop-shadow(0 0 1px var(--mixtape-preview-line-shadow));
 }
 
 .timeline-envelope-preview__line--gain {

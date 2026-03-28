@@ -482,7 +482,7 @@ export function useLibraryContextMenu({
             confirmShow: false
           })
         } catch (error: any) {
-          const message = error?.message ? String(error.message) : '发生未知错误'
+          const message = error?.message ? String(error.message) : t('common.unknownError')
           await confirm({
             title: t('common.error'),
             content: [message],

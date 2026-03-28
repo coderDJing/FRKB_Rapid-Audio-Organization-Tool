@@ -7,7 +7,7 @@
   align-items: center;
   justify-content: center;
   z-index: 26;
-  background: rgba(8, 8, 12, 0.72);
+  background: var(--mixtape-mask-overlay);
 }
 
 .mixtape-auto-gain-dialog__card {
@@ -34,7 +34,7 @@
   justify-content: center;
   z-index: 8;
   pointer-events: auto;
-  background: rgba(8, 8, 12, 0.62);
+  background: var(--mixtape-mask-overlay-strong);
 }
 
 .mixtape-auto-gain-dialog__title {
@@ -55,7 +55,7 @@
 
 .mixtape-auto-gain-dialog__song-list-host {
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.16);
+  background: var(--mixtape-surface-soft);
   min-height: 0;
   flex: 1;
   overflow: hidden;

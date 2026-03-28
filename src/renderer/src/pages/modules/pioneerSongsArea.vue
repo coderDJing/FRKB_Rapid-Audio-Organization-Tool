@@ -528,15 +528,15 @@ const handleSelectSongListDialogConfirm = async (targetSongListUUID: string) => 
   } catch (error: any) {
     const messageCode = String(error?.message || '')
     if (messageCode === 'MIXTAPE_VAULT_UNAVAILABLE') {
-      await showErrorDialog('混音库保底目录不可用。')
+      await showErrorDialog(t('pioneer.mixtapeVaultUnavailable'))
       return
     }
     if (messageCode === 'MIXTAPE_COPY_TO_VAULT_FAILED') {
-      await showErrorDialog('复制到混音库失败。')
+      await showErrorDialog(t('pioneer.copyToMixtapeFailed'))
       return
     }
     if (messageCode === 'copySongsToDir failed') {
-      await showErrorDialog('复制曲目失败。')
+      await showErrorDialog(t('pioneer.copyTracksFailed'))
       return
     }
     await showErrorDialog(messageCode || t('common.unknownError'))
@@ -549,9 +549,9 @@ const handleSelectSongListDialogCancel = () => {
 }
 
 const placeholderText = computed(() => {
-  if (loading.value) return '正在读取 Pioneer 歌单内容...'
-  if (!selectedPlaylistId.value) return '先在左侧选择一个 Pioneer 歌单。'
-  if (!visibleSongs.value.length) return '这个歌单里暂时没有可显示的曲目。'
+  if (loading.value) return t('pioneer.loadingPlaylistTracks')
+  if (!selectedPlaylistId.value) return t('pioneer.selectPlaylistPrompt')
+  if (!visibleSongs.value.length) return t('pioneer.emptyPlaylist')
   return ''
 })
 </script>

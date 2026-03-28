@@ -1,5 +1,6 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import type { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
+import { detectSongsAreaScrollCarrier } from './scrollCarrier'
 
 type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
 
@@ -16,10 +17,16 @@ export function useParentRafSampler(params: UseParentRafSamplerParams) {
   function startParentRafSampler() {
     cancelAnimationFrame(parentRafId)
     const tick = () => {
-      const vp = songsAreaRef.value?.osInstance()?.elements().viewport as HTMLElement | undefined
-      if (vp) {
-        externalScrollTop.value = vp.scrollTop
-        externalViewportHeight.value = vp.clientHeight
+      const scrollElements = songsAreaRef.value?.osInstance()?.elements()
+      const explicitViewport = scrollElements?.viewport as HTMLElement | undefined
+      const explicitHost = scrollElements?.host as HTMLElement | undefined
+      const { height, top } = detectSongsAreaScrollCarrier(
+        explicitViewport || explicitHost || null,
+        explicitHost || null
+      )
+      if (height > 0) {
+        externalScrollTop.value = top
+        externalViewportHeight.value = height
       }
       parentRafId = requestAnimationFrame(tick)
     }

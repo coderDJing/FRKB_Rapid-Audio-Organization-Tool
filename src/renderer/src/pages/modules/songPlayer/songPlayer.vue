@@ -193,6 +193,7 @@ const bindPlayerEvents = (player: WebAudioPlayer) => {
   disposers.push(() => player.off('ready', onReady))
 
   const onError = async (error: any) => {
+    if (isIgnorablePlayerInterruptionError(error)) return
     const currentPath = runtime.playingData.playingSong?.filePath ?? null
     const errorMsg = error?.message || String(error)
     await handleSongLoadError(currentPath, false, errorMsg)
@@ -221,6 +222,18 @@ const initAudioPlayer = () => {
   audioPlayer.value = player
   teardownPlayerEvents = bindPlayerEvents(player)
   void applyAudioOutputDevice(pendingAudioOutputDeviceId)
+}
+
+const isIgnorablePlayerInterruptionError = (error: unknown) => {
+  const name = String((error as any)?.name || '').trim()
+  const message = String((error as any)?.message || error || '')
+    .trim()
+    .toLowerCase()
+  if (name === 'AbortError') return true
+  return (
+    message.includes('play() request was interrupted by a call to pause()') ||
+    message.includes('play() request was interrupted by a new load request')
+  )
 }
 
 // 封面与右键保存

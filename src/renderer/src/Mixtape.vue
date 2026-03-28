@@ -5,6 +5,7 @@ import titleComponent from '@renderer/components/titleComponent.vue'
 import MixtapeDialogsLayer from '@renderer/components/MixtapeDialogsLayer.vue'
 import MixtapeEnvelopePreviewTrack from '@renderer/components/mixtape/MixtapeEnvelopePreviewTrack.vue'
 import MixtapeGlobalBpmEditor from '@renderer/components/mixtape/MixtapeGlobalBpmEditor.vue'
+import { useRuntimeStore } from '@renderer/stores/runtime'
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
 import { useMixtape } from '@renderer/composables/useMixtape'
 import { createMixtapeGainEnvelopeEditor } from '@renderer/composables/mixtape/useGainEnvelopeEditor'
@@ -34,6 +35,10 @@ import type {
 import type { TrackTimingUndoSnapshot } from '@renderer/composables/mixtape/mixtapeTrackTimingUndo'
 
 const masterTempoLaneExpanded = ref(false)
+const runtime = useRuntimeStore()
+const systemPrefersDark = ref(false)
+let systemThemeMedia: MediaQueryList | null = null
+let removeSystemThemeListener: (() => void) | null = null
 
 const {
   t,
@@ -269,6 +274,13 @@ const mixParamOptions = computed<MixParamOption[]>(() => {
   return options
 })
 
+const isLightTheme = computed(() => {
+  const themeMode = String((runtime.setting as any).themeMode || 'system')
+  if (themeMode === 'light') return true
+  if (themeMode === 'dark') return false
+  return !systemPrefersDark.value
+})
+
 const selectedMixParam = ref<MixParamId>('position')
 const isTrackPositionMode = computed(() => selectedMixParam.value === 'position')
 const isGainParamMode = computed(() => selectedMixParam.value === 'gain')
@@ -475,10 +487,33 @@ const handleUndoKeydown = (event: KeyboardEvent) => {
 }
 
 onMounted(() => {
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)')
+    systemPrefersDark.value = !!systemThemeMedia.matches
+    const handleThemeChange = (event: MediaQueryListEvent) => {
+      systemPrefersDark.value = !!event.matches
+    }
+    if (typeof systemThemeMedia.addEventListener === 'function') {
+      systemThemeMedia.addEventListener('change', handleThemeChange)
+      removeSystemThemeListener = () => {
+        systemThemeMedia?.removeEventListener('change', handleThemeChange)
+      }
+    } else if (typeof systemThemeMedia.addListener === 'function') {
+      systemThemeMedia.addListener(handleThemeChange)
+      removeSystemThemeListener = () => {
+        systemThemeMedia?.removeListener(handleThemeChange)
+      }
+    }
+  }
   window.addEventListener('keydown', handleUndoKeydown)
 })
 
 onBeforeUnmount(() => {
+  if (removeSystemThemeListener) {
+    removeSystemThemeListener()
+    removeSystemThemeListener = null
+  }
+  systemThemeMedia = null
   try {
     window.removeEventListener('keydown', handleUndoKeydown)
   } catch {}
@@ -562,7 +597,10 @@ watch(
 </script>
 
 <template>
-  <div class="mixtape-shell">
+  <div
+    class="mixtape-shell"
+    :class="{ 'is-light-theme': isLightTheme, 'is-dark-theme': !isLightTheme }"
+  >
     <div class="mixtape-title-wrap">
       <titleComponent
         control-prefix="mixtapeWindow"

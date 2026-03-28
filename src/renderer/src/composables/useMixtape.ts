@@ -322,7 +322,7 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     }
     return applied
   }
-  // BPM銆佽彍鍗曚笌瀵煎嚭閫昏緫宸叉媶鍒嗗埌 useMixtapeBpmAndUiModule
+  // BPM、菜单与导出逻辑已拆分到 useMixtapeBpmAndUiModule
   const persistGainEnvelope = async (
     entries: Array<{ itemId: string; gainEnvelope: Array<{ sec: number; gain: number }> }>
   ) => {

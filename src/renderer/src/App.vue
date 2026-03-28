@@ -24,7 +24,7 @@ import { createClickThroughGuard } from '@renderer/utils/clickThroughGuard'
 const runtime = useRuntimeStore()
 const contextMenuClickThroughGuard = createClickThroughGuard()
 const CONTEXT_MENU_SELECTOR = '[data-frkb-context-menu="true"]'
-// 濞达綀娉曢弫銈夊礂閵娿儳婀伴悹浣稿⒔閻ゅ棙绋夐鐘崇暠妤犵偛鍟胯ぐ鎾冀閸ヮ亶鍞堕弶鈺傜椤㈡垿寮伴悩鑼闁挎稑鐭傛导鈺呭礂瀹ュ嫮璐╅悹?userAgent
+// 运行期平台展示优先取持久化设置，避免依赖不稳定的 userAgent
 {
   const p = runtime.setting?.platform
   runtime.platform = p === 'darwin' ? 'Mac' : p === 'win32' ? 'Windows' : 'Unknown'
@@ -216,20 +216,20 @@ const sendFileOpControl = (action: 'resume' | 'cancel') => {
 }
 
 const openDialog = async (item: string) => {
-  // ??????????????????? key
-  if (item === '??') item = 'menu.about'
-  if (item === '?????') item = 'menu.thirdPartyNotices'
-  if (item === '?? GitHub') item = 'menu.visitGithub'
-  if (item === '????') item = 'menu.visitWebsite'
-  if (item === '????') item = 'menu.checkUpdate'
-  if (item === '????') item = 'menu.whatsNew'
-  if (item === '??') item = 'menu.exit'
-  if (item === '?????') item = 'cloudSync.settings'
-  if (item === '???????') item = 'cloudSync.syncFingerprints'
-  if (item === '????????') item = 'fingerprints.manualAdd'
-  if (item === '?????????') item = 'fingerprints.exportDatabase'
-  if (item === '?????????') item = 'fingerprints.importDatabase'
-  if (item === '????') item = 'menu.globalSongSearch'
+  // 兼容旧的中文菜单文案，统一映射到 i18n key
+  if (item === '关于') item = 'menu.about'
+  if (item === '第三方许可') item = 'menu.thirdPartyNotices'
+  if (item === '访问 GitHub') item = 'menu.visitGithub'
+  if (item === '访问官网') item = 'menu.visitWebsite'
+  if (item === '检查更新') item = 'menu.checkUpdate'
+  if (item === '更新日志') item = 'menu.whatsNew'
+  if (item === '退出') item = 'menu.exit'
+  if (item === '云同步设置') item = 'cloudSync.settings'
+  if (item === '同步曲目指纹库') item = 'cloudSync.syncFingerprints'
+  if (item === '手动添加曲目指纹') item = 'fingerprints.manualAdd'
+  if (item === '导出曲目指纹库文件') item = 'fingerprints.exportDatabase'
+  if (item === '导入曲目指纹库文件') item = 'fingerprints.importDatabase'
+  if (item === '全局搜歌') item = 'menu.globalSongSearch'
 
   if (item === 'menu.about') {
     const version = String((pkg as any).version || '')
@@ -392,7 +392,8 @@ onMounted(() => {
   })
   hotkeys('esc', () => {
     runtime.activeMenuUUID = ''
-  }) // F2/Enter ??????Windows ? F2?Mac ? Enter
+  })
+  // F2/Enter 重命名快捷键：Windows 用 F2，Mac 用 Enter
   const triggerRename = () => {
     try {
       if (runtime.selectSongListDialogShow) {
@@ -417,7 +418,8 @@ onMounted(() => {
       return false
     })
   }
-  utils.setHotkeysScpoe('windowGlobal') // ?????????????
+  // 初始化全局窗口快捷键作用域
+  utils.setHotkeysScpoe('windowGlobal')
   window.electron.ipcRenderer.on('openDialogFromTray', async (_e, key: string) => {
     await openDialog(key)
   })
@@ -445,7 +447,7 @@ onMounted(() => {
       window.electron.ipcRenderer.send('toggle-close')
       return
     }
-  }) // ????????????????????
+  })
   window.electron.ipcRenderer.on('external-open/imported', async (_e, payload) => {
     try {
       const rawPaths = Array.isArray(payload?.paths) ? payload.paths : []
@@ -504,13 +506,13 @@ onBeforeUnmount(() => {
   emitter.off('metadataBatchUpdated', handleMetadataBatchUpdatedForGlobalSearch)
   emitter.off('songMetadataUpdated', handleSongMetadataUpdatedForGlobalSearch)
   contextMenuClickThroughGuard.clear()
-}) // ???????????????
+}) // 清理全局事件监听与跨组件订阅
 window.addEventListener('openDialogFromChild', (e: any) => {
   const detail = e?.detail
   if (typeof detail === 'string') {
     openDialog(detail)
   }
-}) // ?????????????
+}) // 响应子窗口发起的对话框打开请求
 window.electron.ipcRenderer.on('cloudSync/state', (_e, state) => {
   if (state === 'syncing') runtime.isProgressing = true
   if (state === 'success' || state === 'failed' || state === 'cancelled')

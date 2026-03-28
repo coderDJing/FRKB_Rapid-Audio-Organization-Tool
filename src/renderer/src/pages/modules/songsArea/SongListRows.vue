@@ -1060,7 +1060,8 @@ onUnmounted(() => {
 .cover-wrapper {
   width: 100%;
   height: 100%;
-  overflow: hidden; // 娣囨繃瀵旈崡鏇炲帗閺嶇厧甯張澶婎啍鎼?  display: flex;
+  overflow: hidden;
+  display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
@@ -1068,8 +1069,11 @@ onUnmounted(() => {
 .cover-wrapper img {
   width: 100%;
   height: 100%;
-  object-fit: cover; // 婵夘偅寮х€圭懓娅?  display: block;
-  pointer-events: none; // 缁備焦顒涢幏锔藉焻娴滃娆㈤敍宀勬Щ濮濄垺瀚嬮幏?  -webkit-user-drag: none; // CSS 閺傜懓绱＄粋浣烘暏閹锋牗瀚?  user-select: none;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+  -webkit-user-drag: none;
+  user-select: none;
 }
 .cover-skeleton {
   width: 100%;

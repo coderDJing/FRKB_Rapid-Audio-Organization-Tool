@@ -16,7 +16,7 @@ import { t } from '@renderer/utils/translate'
 import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 
-// 缁勪欢瀵煎叆
+// 组件导入
 import confirm from '@renderer/components/confirmDialog'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import welcomePage from '@renderer/components/welcomePage.vue'
@@ -42,13 +42,13 @@ import { useSongsAreaEvents } from '@renderer/pages/modules/songsArea/composable
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
 import { useGlobalSearchFocus } from '@renderer/pages/modules/songsArea/composables/useGlobalSearchFocus'
 
-// 璧勬簮瀵煎叆
+// 资源导入
 import ascendingOrderAsset from '@renderer/assets/ascending-order.svg?asset'
 import descendingOrderAsset from '@renderer/assets/descending-order.svg?asset'
 
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 
-// 绫诲瀷瀹氫箟锛屼互渚挎纭紩鐢?OverlayScrollbarsComponent 瀹炰緥
+// 类型定义，便于正确引用 OverlayScrollbarsComponent 实例
 type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
 const ascendingOrder = ascendingOrderAsset
 const descendingOrder = descendingOrderAsset
@@ -78,10 +78,10 @@ const songListRootDir = computed(() =>
     ? ''
     : libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID) || ''
 )
-// ?? shallowRef + markRaw????????????
+// 使用 shallowRef 承载原始列表，避免不必要的深层响应式开销
 const originalSongInfoArr = shallowRef<ISongInfo[]>([])
 
-// 鐖剁骇婊氬姩閲囨牱
+// 父级滚动采样
 const { externalScrollTop, externalViewportHeight } = useParentRafSampler({ songsAreaRef })
 
 // Initialize composables
@@ -184,7 +184,7 @@ const attachModifierKeyListeners = () => {
   }
 }
 
-// 闆嗕腑鍒椼€佺瓫閫夈€佹帓搴忎笌鍒楀ご浜や簰閫昏緫
+// 列、筛选、排序与表头交互
 const {
   columnData,
   columnDataArr,
@@ -198,10 +198,10 @@ const {
   applyFiltersAndSorting
 } = useSongsAreaColumns({ runtime, originalSongInfoArr })
 
-// 灏侀潰娓呯悊
+// 封面清理
 const { scheduleSweepCovers } = useSweepCovers({ runtime })
 
-// ???????????
+// 歌单加载
 const { loadingShow, isRequesting, openSongList } = useSongsLoader({
   runtime,
   originalSongInfoArr,
@@ -233,18 +233,18 @@ const handleMetadataBatchUpdatedFromEvent = async (payload: {
 }
 emitter.on('metadataBatchUpdated', handleMetadataBatchUpdatedFromEvent)
 
-// 閿洏涓庨紶鏍囬€夋嫨
+// 键盘与鼠标选择
 const { songClick } = useKeyboardSelection({
   runtime,
   externalViewportHeight,
   scheduleSweepCovers
 })
 
-// ????????????
+// 自动滚动到当前播放项
 const { scrollToIndex, scrollToIndexIfNeeded } = useAutoScrollToCurrent({ runtime, songsAreaRef })
 attachModifierKeyListeners()
 
-// ???? songsArea ????
+// songsArea 相关事件
 useSongsAreaEvents({
   runtime,
   originalSongInfoArr,
@@ -269,9 +269,9 @@ onUnmounted(() => {
   }
   clearGlobalSearchFlashSchedule()
 })
-// 涓婅堪鍒椼€佸姞杞姐€佷簨浠朵笌灏侀潰娓呯悊宸茬敱缁勫悎鍑芥暟鎻愪緵
+// 上述列处理、加载、事件与封面清理均由 composable 提供
 
-// 绉婚櫎娈嬬暀鐨?perfLog
+// 已移除残留 perfLog
 
 // songClick 宸茬敱 useKeyboardSelection 鎻愪緵
 
@@ -373,50 +373,7 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
   }
 
   if (result.action === 'songsRemoved') {
-    const itemIdsToRemove = Array.isArray(result.itemIds) ? result.itemIds : []
-    if (itemIdsToRemove.length > 0) {
-      const idSet = new Set(itemIdsToRemove)
-      originalSongInfoArr.value = originalSongInfoArr.value.filter(
-        (item) => !idSet.has(item.mixtapeItemId || '')
-      )
-      applyFiltersAndSorting()
-      if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-        runtime.playingData.playingSongListData = [...runtime.songsArea.songInfoArr]
-      }
-      if (
-        runtime.playingData.playingSong &&
-        idSet.has(runtime.playingData.playingSong.mixtapeItemId || '')
-      ) {
-        runtime.playingData.playingSong = null
-      }
-      runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
-        (key) => !idSet.has(key)
-      )
-      return
-    }
-
-    const pathsToRemove = result.paths
-    if (Array.isArray(pathsToRemove) && pathsToRemove.length > 0) {
-      originalSongInfoArr.value = originalSongInfoArr.value.filter(
-        (item) => !pathsToRemove.includes(item.filePath)
-      )
-
-      applyFiltersAndSorting()
-
-      if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-        runtime.playingData.playingSongListData = [...runtime.songsArea.songInfoArr]
-      }
-      if (
-        runtime.playingData.playingSong &&
-        pathsToRemove.includes(runtime.playingData.playingSong.filePath)
-      ) {
-        runtime.playingData.playingSong = null
-      }
-
-      runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
-        (path) => !pathsToRemove.includes(path)
-      )
-    }
+    // songsRemoved 已由 useSongItemContextMenu 内部通过 emitter 统一处理，避免这里再次删一遍
     return
   }
 
@@ -543,16 +500,21 @@ useGlobalSearchFocus({
   onFocusHit: triggerGlobalSearchFlash
 })
 
-// 鍒犻櫎閿鐞嗙敱 useKeyboardSelection 缁戝畾
+// 删除按键处理由 useKeyboardSelection 绑定
 
-// 閿洏 Shift 鑼冨洿閫夋嫨涓庡揩鎹烽敭缁戝畾鐢?useKeyboardSelection 绠＄悊
+// 键盘 Shift 范围选择与快捷键绑定由 useKeyboardSelection 管理
 
-// 鎺掑簭銆佺瓫閫変笌鍒楃偣鍑荤瓑閫昏緫鐢?useSongsAreaColumns 鎻愪緵
+// 排序、筛选与列表头点击等逻辑由 useSongsAreaColumns 提供
 
-// --- 鏂板璁＄畻灞炴€х粰 SongListRows ---
+// 提供给 SongListRows 的派生状态
 const playingSongFilePathForRows = computed(() => {
   const playingSong = runtime.playingData.playingSong
   if (!playingSong) return undefined
+  return getRowKey(playingSong)
+})
+const currentPlayingRowKey = computed(() => {
+  const playingSong = runtime.playingData.playingSong
+  if (!playingSong) return ''
   return getRowKey(playingSong)
 })
 
@@ -563,9 +525,9 @@ const viewState = computed<'welcome' | 'loading' | 'list'>(() => {
 })
 
 const currentPlayingIndex = computed(() => {
-  const currentPath = runtime.playingData.playingSong?.filePath
-  if (!currentPath) return -1
-  return runtime.songsArea.songInfoArr.findIndex((song) => song.filePath === currentPath)
+  const rowKey = currentPlayingRowKey.value
+  if (!rowKey) return -1
+  return runtime.songsArea.songInfoArr.findIndex((song) => getRowKey(song) === rowKey)
 })
 
 const showScrollToPlaying = computed(() => {
@@ -576,8 +538,7 @@ const lastAutoScrollKey = ref('')
 const autoScrollPresence = computed(() => (currentPlayingIndex.value >= 0 ? '1' : '0'))
 const autoScrollKey = computed(() => {
   const listUUID = runtime.songsArea.songListUUID || ''
-  const playingPath = runtime.playingData.playingSong?.filePath || ''
-  return `${listUUID}|${playingPath}|${autoScrollPresence.value}`
+  return `${listUUID}|${currentPlayingRowKey.value}|${autoScrollPresence.value}`
 })
 const autoScrollTriggerKey = computed(() => {
   if (!runtime.setting.autoScrollToCurrentSong) return ''
@@ -605,11 +566,11 @@ const handleScrollToPlaying = () => {
   scrollToIndex(currentPlayingIndex.value)
 }
 
-// 鐖剁骇閲囨牱鐢?useParentRafSampler 鎻愪緵
+// 父级滚动采样由 useParentRafSampler 提供
 
-// 鑷姩婊氬姩閫昏緫鐢?useAutoScrollToCurrent 鎻愪緵
+// 自动滚动逻辑由 useAutoScrollToCurrent 提供
 
-// 鏂板锛氬鐞嗙Щ鍔ㄦ瓕鏇插璇濇纭鍚庣殑閫昏緫
+// 处理移动歌曲对话框确认后的逻辑
 async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
   const pathsEffectivelyMoved = [...runtime.songsArea.selectedSongFilePath]
   const currentListUuid = runtime.songsArea.songListUUID
@@ -619,16 +580,15 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
     selectSongListDialogTargetLibraryName.value === 'MixtapeLibrary'
 
   if (pathsEffectivelyMoved.length === 0) {
-    // ????????????? composable ????????
+    // 无有效移动项时，直接走 composable 默认逻辑
     await handleMoveSongsConfirm(targetSongListUuid)
     return
   }
 
-  // 璋冪敤 composable 涓殑鍑芥暟鏉ユ墽琛岀Щ鍔ㄦ搷浣?(IPC, 鍏抽棴瀵硅瘽妗? 娓呯┖閫夋嫨绛?
-  // handleMoveSongsConfirm 搴旇浼氬鐞?isDialogVisible 鍜?selectedSongFilePath
+  // 调用 composable 执行移动操作，并处理对话框关闭与选中清理
   await handleMoveSongsConfirm(targetSongListUuid)
   if (isMixtapeTarget || targetSongListUuid === currentListUuid) return
-  // ???????????????????????????????
+  // 非 Mixtape 目标时，从当前列表中同步移除已移动项
   if (pathsEffectivelyMoved.length > 0) {
     const normalizePath = (p: string | undefined | null) =>
       (p || '').replace(/\//g, '\\').toLowerCase()
@@ -658,7 +618,7 @@ const shouldShowEmptyState = computed(() => {
     runtime.songsArea.songInfoArr.length === 0
   )
 })
-// ???????????????
+// 空状态相关计算
 const hasActiveFilter = computed(() => columnData.value.some((c) => !!c.filterActive))
 const isRecycleBinView = computed(() => runtime.songsArea.songListUUID === RECYCLE_BIN_UUID)
 const emptyTitleText = computed(() => {
@@ -691,17 +651,17 @@ const dragHintDesc = computed(() => {
         target: dragHintTarget.value
       })
 })
-// --- END 鏂板璁＄畻灞炴€?---
+// 派生状态结束
 
-// 鎷栨嫿鐩稿叧鍑芥暟
+// 拖拽相关函数
 const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
   if (!runtime.songsArea.songListUUID) return
-  // ?????????????????
+  // 若当前拖拽行未选中，则先切换选中项
   const rowKey = getRowKey(song)
   const isSelected = runtime.songsArea.selectedSongFilePath.includes(rowKey)
 
   if (!isSelected || runtime.songsArea.selectedSongFilePath.length === 0) {
-    // ????????????????????
+    // 保证拖拽时至少有一个明确的选中项
     runtime.songsArea.selectedSongFilePath = [rowKey]
   }
 
@@ -783,7 +743,7 @@ const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
 
   showDragHint('internal')
   startDragSongs(song, runtime.libraryAreaSelected, runtime.songsArea.songListUUID)
-  // ???????????????
+  // 标记当前拖拽来源
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'copyMove'
     event.dataTransfer.setData(
@@ -845,7 +805,7 @@ const handleMixtapeReorder = async (payload: { sourceItemIds: string[]; targetIn
   }
 }
 
-// 鎾斁鍒楄〃鍚屾鐢?useSongsAreaEvents 绠＄悊
+// 播放列表同步由 useSongsAreaEvents 管理
 </script>
 <template>
   <div class="songs-area-root">
@@ -890,7 +850,7 @@ const handleMixtapeReorder = async (payload: { sourceItemIds: string[]; targetIn
             @drag-end="runtime.dragTableHeader = false"
           />
 
-          <!-- 浣跨敤 SongListRows 缁勪欢娓叉煋姝屾洸鍒楄〃 -->
+          <!-- 使用 SongListRows 组件渲染歌曲列表 -->
           <SongListRows
             v-if="runtime.songsArea.songInfoArr.length > 0"
             :key="runtime.songsArea.songListUUID"

@@ -3,15 +3,10 @@
   --envelope-preview-lane-gap: 2px;
   --envelope-preview-lane-padding-y: 1px;
   flex: 0 0 auto;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--mixtape-preview-border-soft);
+  border-bottom: 1px solid var(--mixtape-preview-border-soft);
   padding: 6px 0 3px;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.03) 0%,
-    rgba(0, 0, 0, 0.14) 45%,
-    rgba(0, 0, 0, 0.08) 100%
-  );
+  background: var(--mixtape-preview-bg);
 }
 
 .timeline-envelope-preview__legend {
@@ -39,7 +34,7 @@
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4) inset;
+  box-shadow: 0 0 0 1px var(--mixtape-preview-legend-shadow) inset;
 }
 
 .timeline-envelope-preview__stage {
@@ -49,7 +44,7 @@
     var(--envelope-preview-lane-height) * 2 + var(--envelope-preview-lane-gap) +
       var(--envelope-preview-lane-padding-y) * 2
   );
-  background: rgba(0, 0, 0, 0.16);
+  background: var(--mixtape-preview-stage-bg);
   overflow: hidden;
   cursor: grab;
 }
@@ -99,7 +94,7 @@
 .timeline-envelope-preview__lane {
   position: relative;
   height: var(--envelope-preview-lane-height);
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--mixtape-preview-lane-bg);
   overflow: hidden;
 }
 
@@ -138,7 +133,7 @@
       rgba(249, 115, 22, 0.44) 75%,
       rgba(249, 115, 22, 0.44) 100%
     ),
-    rgba(7, 11, 16, 0.98);
+    var(--mixtape-preview-stem-base-bg);
 }
 
 .timeline-envelope-preview__track::after {
@@ -147,7 +142,7 @@
   left: 0;
   right: 0;
   top: 50%;
-  border-top: 1px dashed rgba(255, 255, 255, 0.22);
+  border-top: 1px dashed var(--mixtape-preview-grid-line);
   transform: translateY(-0.5px);
   pointer-events: none;
   z-index: 1;
@@ -209,7 +204,11 @@
       rgba(255, 255, 255, 0.22) 0 5px,
       rgba(255, 255, 255, 0) 5px 10px
     ),
-    linear-gradient(135deg, rgba(10, 14, 22, 0.78) 0%, rgba(13, 16, 25, 0.96) 100%);
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--mixtape-preview-stem-base-bg) 78%, transparent) 0%,
+      color-mix(in srgb, var(--mixtape-preview-stem-base-bg) 96%, transparent) 100%
+    );
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.16),
     inset 0 0 12px rgba(0, 0, 0, 0.32);
@@ -240,7 +239,7 @@
   stroke-linecap: round;
   stroke-linejoin: round;
   opacity: 1;
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.72));
+  filter: drop-shadow(0 0 1px var(--mixtape-preview-line-shadow));
 }
 
 .timeline-envelope-preview__track-svg {
@@ -268,7 +267,7 @@
   stroke-linecap: round;
   stroke-linejoin: round;
   opacity: 1;
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.75));
+  filter: drop-shadow(0 0 1px var(--mixtape-preview-line-shadow));
 }
 
 .timeline-envelope-preview__line--gain {
@@ -289,7 +288,7 @@
 .overview-stage {
   position: relative;
   width: 100%;
-  background: rgba(0, 0, 0, 0.18);
+  background: var(--mixtape-overview-stage-bg);
   cursor: grab;
   user-select: none;
 }
@@ -308,7 +307,7 @@
 .overview-lane {
   position: relative;
   height: var(--timeline-overview-lane-height, 12px);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--mixtape-overview-lane-bg);
   overflow: hidden;
 }
 
@@ -340,7 +339,7 @@
   background: rgba(0, 120, 212, 0.12);
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.2) inset,
-    0 0 0 9999px rgba(0, 0, 0, 0.65);
+    0 0 0 9999px var(--mixtape-overview-viewport-scrim);
   opacity: 1;
   transition: opacity 0.12s ease;
   pointer-events: none;

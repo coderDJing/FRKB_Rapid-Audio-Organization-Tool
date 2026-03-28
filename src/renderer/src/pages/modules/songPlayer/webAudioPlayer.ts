@@ -1,5 +1,6 @@
 import mitt from 'mitt'
 import type { IPioneerPreviewWaveformData } from 'src/types/globals'
+import { t } from '@renderer/utils/translate'
 
 export type RGBWaveformBandKey = 'low' | 'mid' | 'high'
 export type MixxxWaveformBandKey = RGBWaveformBandKey | 'all'
@@ -53,6 +54,17 @@ export type WebAudioPlayerEvents = {
 } & Record<string, unknown>
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+
+const isIgnorablePlayInterruptionError = (error: unknown) => {
+  const name = String((error as any)?.name || '').trim()
+  const message = String((error as any)?.message || error || '').trim()
+  if (name === 'AbortError') return true
+  const lowered = message.toLowerCase()
+  return (
+    lowered.includes('play() request was interrupted by a call to pause()') ||
+    lowered.includes('play() request was interrupted by a new load request')
+  )
+}
 
 const AUDIO_MIME_BY_EXTENSION: Record<string, string> = {
   aac: 'audio/aac',
@@ -785,6 +797,9 @@ export class WebAudioPlayer {
     const playPromise = audio.play()
     if (playPromise && typeof playPromise.catch === 'function') {
       playPromise.catch((error: any) => {
+        if (isIgnorablePlayInterruptionError(error)) {
+          return
+        }
         this.emit('error', error)
       })
     }
@@ -838,12 +853,13 @@ export class WebAudioPlayer {
     let errorMessage = 'Audio error'
     if (error) {
       const errorCodes: Record<number, string> = {
-        1: 'MEDIA_ERR_ABORTED - 加载被中止',
-        2: 'MEDIA_ERR_NETWORK - 网络错误',
-        3: 'MEDIA_ERR_DECODE - 解码失败',
-        4: 'MEDIA_ERR_SRC_NOT_SUPPORTED - 不支持的格式或源'
+        1: t('player.audioErrorAborted'),
+        2: t('player.audioErrorNetwork'),
+        3: t('player.audioErrorDecode'),
+        4: t('player.audioErrorSourceNotSupported')
       }
-      errorMessage = errorCodes[error.code] || `未知错误 (code: ${error.code})`
+      errorMessage =
+        errorCodes[error.code] || t('player.audioErrorUnknownWithCode', { code: error.code })
       if (error.message) {
         errorMessage += ` - ${error.message}`
       }

@@ -407,11 +407,13 @@ const resolveGridLineVisual = (level: ProjectedTrackGridLine['level']) => {
   if (level === 'bar') {
     return {
       width: resolveTimelineGridBarWidth(Number(props.renderZoomLevel) || 0),
-      color: 'rgba(255, 255, 255, 0.26)'
+      color: 'var(--mixtape-grid-line-bar)'
     }
   }
-  if (level === 'beat4') return { width: GRID_BEAT4_LINE_WIDTH, color: 'rgba(255, 255, 255, 0.16)' }
-  return { width: GRID_BEAT_LINE_WIDTH, color: 'rgba(255, 255, 255, 0.12)' }
+  if (level === 'beat4') {
+    return { width: GRID_BEAT4_LINE_WIDTH, color: 'var(--mixtape-grid-line-beat4)' }
+  }
+  return { width: GRID_BEAT_LINE_WIDTH, color: 'var(--mixtape-grid-line-beat)' }
 }
 
 const drawGridCanvas = () => {
