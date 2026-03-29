@@ -7,6 +7,7 @@ const isEn = computed(() => String(localeIndex.value || '') === 'en')
 
 const theme = ref('dark')
 const glowRef = ref(null)
+const currentYear = new Date().getFullYear()
 
 const latestReleaseApi =
   'https://api.github.com/repos/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases/latest'
@@ -19,7 +20,6 @@ const winUrl = ref(latestReleasePage)
 const macUrl = ref(latestReleasePage)
 const version = ref('')
 const isLoadingDownloads = ref(true)
-const currentYear = new Date().getFullYear()
 
 const applyTheme = (nextTheme) => {
   const root = document.documentElement
@@ -110,161 +110,131 @@ const togglePlatform = (event) => {
 
 const zhContent = {
   nav: [
-    { label: 'Beta 功能', href: '#highlights' },
-    { label: '核心能力', href: '#core' },
+    { label: '核心特性', href: '#features' },
+    { label: '新功能', href: '#new-features' },
     { label: '工作流', href: '#workflow' },
     { label: 'FAQ', href: '#faq' }
   ],
   hero: {
-    eyebrow: '开源桌面音频工作流',
-    titleLines: ['把音频整理、', '自动录制 Beta 与 Pioneer U 盘', '塞进一个工具里'],
+    kicker: '开源桌面音频工作流',
+    titleTop: '符合人机工学的',
+    titleBottom: '开源音频快速整理工具',
     description:
-      'FRKB 面向 DJ 与音频整理场景，把快速筛歌、指纹去重、波形试听，以及 Mixtape 自动录制、Stem 分轨、Pioneer U 盘库浏览、全局搜歌这些 Beta 模块整合到同一个桌面应用里。',
+      'FRKB 还是那个以键盘效率、指纹去重和真实文件映射为核心的整理工具，只把最近补上的 Mixtape 自动录制、Stem 分轨、Pioneer U 盘库这些新能力集中说明清楚。',
     pills: ['键盘优先', '内容指纹去重', '真实文件映射'],
-    stableNote: '支持 Windows 与 macOS，下载按钮会自动优先匹配当前平台。',
-    progressNote: '以下新模块当前按 Beta 标注，后续还会继续打磨交互和稳定性。',
-    releasesLabel: '查看 Releases',
-    releasesHref: 'https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases'
+    notes: [
+      '支持 Windows 与 macOS，下载按钮会自动优先匹配当前平台。',
+      '下方“新功能说明”只补最近新增模块，不再把首页堆成一坨功能墙。'
+    ],
+    releasesLabel: '查看 Releases'
   },
-  releasePanel: {
-    kicker: '产品概览',
-    title: '从整理到自动录制准备，一条链做完',
-    description:
-      'FRKB 不只管文件整理，也把自动录制准备、Stem 分轨和 Pioneer 设备库这些仍在 Beta 的高频工作收到了同一个界面里。',
-    bullets: [
-      'Mixtape 自动录制时间线 Beta',
-      'Stem 分轨运行时与加速 Beta',
-      'Pioneer Device Library / OneLibrary Beta'
-    ]
+  featuresIntro: {
+    kicker: '核心特性',
+    title: '旧版的主干体验还在',
+    description: '导入、试听、去重、整理、导出这些高频动作，还是按最顺手的节奏来。'
   },
-  snapshotTags: ['Mixtape Beta', 'Stem Beta', 'Pioneer USB Beta', '全局搜歌 Beta'],
-  updatesIntro: {
-    eyebrow: 'Beta 功能',
-    title: '这些新模块当前按 Beta 提供',
-    description:
-      '从自动录制准备、设备库浏览到分轨和转换，这些新模块已经可用，但当前仍按 Beta 口径持续迭代。'
-  },
-  updates: [
+  features: [
     {
-      kicker: 'Mixtape Beta',
-      title: '自动录制工作台（Beta）',
-      description:
-        '独立自动录制窗口和双轨时间线，先把“排录制、听效果、改参数、再导出”这套动作收进一个界面，当前仍在继续打磨。',
-      bullets: [
-        '节拍对齐波形、首拍分析、四拍步进',
-        '节拍器、BPM 草稿保存、时间线缩放与跟随',
-        '增益/BPM 包络、段落静音、撤销与导出一致'
-      ]
+      title: '键盘优先效率',
+      details: '高频操作可通过快捷键完成，减少鼠标来回折返。'
     },
-    {
-      kicker: 'Stem Beta',
-      title: '分轨运行时体系（Beta）',
-      description:
-        '把运行时管理、缓存、预热和多后端加速收拢起来，给自动录制准备素材省很多事，但当前仍按 Beta 模块维护。',
-      bullets: [
-        'Demucs 运行时管理与缓存',
-        'ONNX fast 分离 + DirectML 调度',
-        'XPU 分离、双 XPU worker、按需下载'
-      ]
-    },
-    {
-      kicker: 'Pioneer Beta',
-      title: 'U 盘库支持（Beta）',
-      description:
-        '直接处理更多真实设备场景，不只盯着本地库，还能把 Pioneer 设备库工作流一起接进来，当前按 Beta 持续完善。',
-      bullets: [
-        '旧 Device Library 歌单与预览波形',
-        'U 盘库播放、受限操作、只读列表波形预听',
-        '多盘识别、弹出链路与 OneLibrary 入口分组'
-      ]
-    },
-    {
-      kicker: 'Search & Convert Beta',
-      title: '全局搜歌与独立转换（Beta）',
-      description:
-        '把两个日常高频入口补齐，让找歌和转格式不用在一堆面板里绕圈，当前也仍按 Beta 提供。',
-      bullets: ['全局搜歌入口', '更稳定的定位反馈', '独立格式转换工具']
-    },
-    {
-      kicker: 'Background Beta',
-      title: '闲时分析调度（Beta）',
-      description:
-        '统一闲时任务调度与限流，让后台分析别一股脑乱冲，尽量少去抢前台交互的资源，目前也按 Beta 标注。',
-      bullets: ['统一闲时任务调度', '空闲限流', '后台分析完成率与稳定性提升']
-    }
-  ],
-  coreIntro: {
-    eyebrow: '核心能力',
-    title: '基础能力继续顶着，高频能力也补齐了',
-    description:
-      '去重、试听、文件映射、标签维护这些老本行还在，而且现在和自动录制、分轨、设备库浏览这些能力被收到了更完整的一套流程里。'
-  },
-  core: [
     {
       title: '指纹去重',
-      description: '内容指纹 / 文件哈希双模式，导入去重、歌单去重和指纹库同步一条链。'
+      details: '导入去重、歌单去重和指纹库维护都能跑，支持内容指纹与文件哈希两种模式。'
     },
     {
       title: '真实文件映射',
-      description: '界面里的筛选库、精选库和磁盘目录保持同步，整理结果不是假把式。'
+      details: '界面里的筛选库、精选库和磁盘目录保持同步，整理结果直接落在真实文件系统里。'
     },
     {
       title: '波形与试听',
-      description: 'SoundCloud、细节波形、RGB 能量波形，再加列表预览和区间播放，扫歌很快。'
+      details: 'SoundCloud、细节波形、RGB 波形和列表预览都在，扫歌速度不会掉。'
     },
     {
       title: 'BPM / 调性分析',
-      description: '后台分析 + Tap Tempo 校正，Classic 和 Camelot 两套展示都能切。'
+      details: '后台分析 BPM 和调性，Tap Tempo 还能手动修正，数据不是死的。'
     },
     {
       title: '元数据与封面',
-      description: 'MusicBrainz / AcoustID 接入、批量补齐、封面替换和另存都已经打通。'
+      details: '标签编辑、封面替换与另存、MusicBrainz / AcoustID 自动补齐都能接上。'
+    }
+  ],
+  newFeaturesIntro: {
+    kicker: '新功能说明',
+    title: '最近新增的能力，只补说明不改调性',
+    description:
+      '官网视觉恢复成之前这套克制样子，新功能单独放一节讲明白，够看就行，不再拿首页做功能展销会。'
+  },
+  newFeatures: [
+    {
+      title: 'Mixtape 自动录制',
+      description:
+        '新增独立自动录制工作台，把排时间线、听效果、改参数、导出这一串动作收进同一块界面。',
+      bullets: [
+        '双轨时间线、节拍对齐波形、首拍分析',
+        '节拍器、BPM 草稿保存、时间线缩放与跟随',
+        '增益 / BPM 包络、段落静音、撤销和导出一致性'
+      ]
     },
     {
-      title: '回收与导出',
-      description: '回收站恢复、导出到文件夹、导出后删除等动作都围着真实文件在转。'
+      title: 'Stem 分轨运行时',
+      description: 'Stem 能力不再是零散按钮，而是完整的运行时管理链路，包含缓存、预热和按需下载。',
+      bullets: [
+        'Demucs 运行时管理与缓存',
+        'ONNX fast 分离与 DirectML / XPU 加速',
+        '缺啥下啥，避免主安装包继续发胖'
+      ]
+    },
+    {
+      title: 'Pioneer U 盘库',
+      description: '现在可以直接浏览 Pioneer 设备库，不必再只围着本地库转，真实 DJ 场景顺手很多。',
+      bullets: [
+        '支持 Device Library 与 OneLibrary 两条链路',
+        '歌单树、预览波形、只读预听和播放入口',
+        '多盘识别、设备弹出与入口分组'
+      ]
+    },
+    {
+      title: '搜歌、转换与闲时分析',
+      description: '顺手补了几个高频入口，找歌、转格式和后台分析不再东一榔头西一棒槌。',
+      bullets: [
+        '全局搜歌入口与更稳定的定位反馈',
+        '独立格式转换工具',
+        '统一闲时调度与空闲限流，后台分析更稳'
+      ]
     }
   ],
   workflowIntro: {
-    eyebrow: '工作流',
-    title: '现在的 FRKB 更像一条完整音频处理链',
-    description: '从导入、分析、搜歌到自动录制准备和导出，入口更集中，操作更顺手。'
+    kicker: '工作流',
+    title: '四步走完一轮音频整理',
+    description: '导入、判断、处理、落盘，流程还是之前那种直接、不绕。'
   },
   workflow: [
     {
       step: '01',
       title: '导入本地库或设备库',
-      description: '拖拽导入本地文件夹，或者接入 Pioneer U 盘库，把素材先拉进工作流。'
+      description: '拖拽导入本地文件夹，或者接入 Pioneer U 盘库，把素材先收进同一条链路。'
     },
     {
       step: '02',
-      title: '搜歌、试听、分析',
-      description: '用全局搜歌、波形预览、BPM / 调性分析和快捷键，快速做筛选判断。'
+      title: '试听、搜歌、分析',
+      description: '用波形预览、全局搜歌、BPM / 调性分析和快捷键，快速做筛选判断。'
     },
     {
       step: '03',
-      title: '做自动录制准备',
+      title: '做自动录制或分轨准备',
       description: '进 Mixtape 时间线调包络、对齐网格，或者跑 Stem 分轨，把素材先准备干净。'
     },
     {
       step: '04',
-      title: '导出或回写整理结果',
-      description: '导出文件、移动歌单、回收误删内容，最后把结果稳稳落回真实文件系统。'
+      title: '导出并回写整理结果',
+      description: '导出文件、移动歌单、回收误删内容，最后把结果落回真实文件系统。'
     }
   ],
-  specs: {
-    eyebrow: '环境与格式',
-    title: '系统要求与格式覆盖',
-    systems: ['Windows 10 或更高版本（x64）', 'macOS 12 或更高版本', '暂无 Linux 正式版'],
-    formats:
-      'MP3, WAV, FLAC, AIF, AIFF, OGG, OPUS, AAC, M4A, MP4, WMA, AC3, DTS, MKA, WEBM, APE, TAK, TTA, WV',
-    formatsNote: '扫描格式可在设置里配置，转换链路基于内建 FFmpeg 管线。'
-  },
   faqIntro: {
-    eyebrow: 'FAQ',
-    title: '有些事先说明白，省得后面扯皮',
-    description:
-      '同步范围、联网要求、这些 Beta 模块的定位，以及 Pioneer 库支持和运行时下载这些问题，这里直接说人话。'
+    kicker: 'FAQ',
+    title: '该提前说明的事直接说',
+    description: '隐私、联网、这些新模块的定位和 Pioneer 库支持，免得后面来回扯。'
   },
   faqs: [
     {
@@ -276,243 +246,207 @@ const zhContent = {
       a: '本地整理、播放、去重可以离线；在线补齐、云同步、检查更新这些能力才需要联网。'
     },
     {
-      q: '这软件主要适合什么场景？',
-      a: '适合 DJ、电子音乐整理、样本管理和需要频繁筛歌、做自动录制准备的人用。'
-    },
-    {
-      q: '哪些功能现在按 Beta 提供？',
-      a: 'Mixtape 自动录制、Stem 分轨、Pioneer U 盘库、全局搜歌、独立转换和闲时调度目前都按 Beta 标注。'
+      q: '最近新增了哪些模块？',
+      a: 'Mixtape 自动录制、Stem 分轨运行时、Pioneer U 盘库、全局搜歌、独立转换和闲时分析调度。'
     },
     {
       q: 'OneLibrary 和旧 Device Library 都能看吗？',
-      a: '支持，但当前属于 Pioneer U 盘库 Beta 能力的一部分，这两条链路都已经接进来，并补了入口分组和预览能力。'
+      a: '支持，两条链路都已经接进来，也补了入口分组、歌单树和预览能力。'
+    },
+    {
+      q: '运行时下载是干嘛的？',
+      a: 'Stem 分轨需要额外运行时组件，现在按需下载，避免主安装包膨胀得没边。'
     },
     {
       q: '有 Linux 版本吗？',
       a: '暂无 Linux 正式版。'
-    },
-    {
-      q: '运行时下载是干嘛的？',
-      a: 'Stem 分轨这类功能需要额外运行时，现在按需下载，避免主安装包无限膨胀。'
     }
   ],
+  specs: {
+    title: '系统要求与格式覆盖',
+    systems: ['Windows 10 或更高版本（x64）', 'macOS 12 或更高版本', '暂无 Linux 正式版'],
+    formats:
+      'MP3, WAV, FLAC, AIF, AIFF, OGG, OPUS, AAC, M4A, MP4, WMA, AC3, DTS, MKA, WEBM, APE, TAK, TTA, WV',
+    formatsNote: '扫描格式可在设置里配置，转换链路基于内建 FFmpeg 管线。'
+  },
   footer: '为 DJ 与音频整理场景做的开源桌面工具'
 }
 
 const enContent = {
   nav: [
-    { label: 'Beta Features', href: '#highlights' },
-    { label: 'Core', href: '#core' },
+    { label: 'Core', href: '#features' },
+    { label: 'New Features', href: '#new-features' },
     { label: 'Workflow', href: '#workflow' },
     { label: 'FAQ', href: '#faq' }
   ],
   hero: {
-    eyebrow: 'Open-source desktop audio workflow',
-    titleLines: [
-      'Bring audio organization,',
-      'auto-recording beta and Pioneer USB',
-      'into one tool'
-    ],
+    kicker: 'Open-source desktop audio workflow',
+    titleTop: 'Ergonomic',
+    titleBottom: 'Fast Audio Organization Tool',
     description:
-      'FRKB is built for DJs and audio-heavy workflows. It combines fast screening, fingerprint deduplication, waveform-driven preview, plus beta modules for Mixtape auto-recording, stem separation, Pioneer USB library browsing, and global search in one desktop app.',
+      'FRKB keeps the same keyboard-first organization workflow built around fingerprint dedup and true file mapping, while the newer Mixtape, stem, and Pioneer USB additions are explained below without turning the homepage into a bloated feature wall.',
     pills: ['Keyboard-first', 'Content fingerprint dedup', 'True file mapping'],
-    stableNote:
+    notes: [
       'Windows and macOS are supported, and download buttons adapt to your current platform.',
-    progressNote:
-      'The modules below are currently marked as beta while their workflows and stability continue to evolve.',
-    releasesLabel: 'Browse Releases',
-    releasesHref: 'https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases'
+      'The newer modules are documented below, while the homepage keeps the earlier, simpler visual style.'
+    ],
+    releasesLabel: 'Browse Releases'
   },
-  releasePanel: {
-    kicker: 'Product Scope',
-    title: 'From organization to auto-recording prep in one chain',
+  featuresIntro: {
+    kicker: 'Core Features',
+    title: 'The original workflow remains the backbone',
     description:
-      'FRKB does more than organize files. It also pulls beta workflows for auto-recording, stem separation, and Pioneer device libraries into the same workspace.',
-    bullets: [
-      'Mixtape auto-recording timeline beta',
-      'Stem runtime + acceleration beta',
-      'Pioneer Device Library / OneLibrary beta'
-    ]
+      'Import, preview, dedup, organize, and export still sit at the center of the product.'
   },
-  snapshotTags: ['Mixtape beta', 'Stem beta', 'Pioneer USB beta', 'Global search beta'],
-  updatesIntro: {
-    eyebrow: 'Beta Features',
-    title: 'These newer modules are currently in beta',
-    description:
-      'Auto-recording, device-library browsing, stem work, search, conversion, and idle scheduling are already usable here, but they are still presented as beta features.'
-  },
-  updates: [
+  features: [
     {
-      kicker: 'Mixtape Beta',
-      title: 'Auto-recording workspace (Beta)',
-      description:
-        'A dedicated auto-recording window and dual-track timeline keep arranging, previewing, tweaking, and exporting inside one workspace, and the workflow is still being refined.',
-      bullets: [
-        'Beat-grid waveform view, first-downbeat analysis, four-beat stepping',
-        'Metronome, BPM draft saving, timeline zoom and follow-scroll',
-        'Gain/BPM envelopes, mute segments, undo, and timeline-accurate export'
-      ]
+      title: 'Keyboard-first speed',
+      details: 'Frequent actions are mapped to shortcuts so screening tracks stays fast.'
     },
-    {
-      kicker: 'Stem Beta',
-      title: 'Managed separation runtime (Beta)',
-      description:
-        'Stem prep is handled by a managed runtime stack with caching, warm-up, and accelerated backends for auto-recording preparation, and it is still treated as a beta module.',
-      bullets: [
-        'Demucs runtime management and caching',
-        'ONNX fast separation + DirectML scheduling',
-        'XPU separation, dual XPU workers, on-demand downloads'
-      ]
-    },
-    {
-      kicker: 'Pioneer Beta',
-      title: 'USB library support (Beta)',
-      description:
-        'The app can deal with real Pioneer USB workflows instead of only local libraries, and this capability is still labeled beta.',
-      bullets: [
-        'Legacy Device Library playlists and preview waveforms',
-        'USB playback, guarded operations, and waveform preview on read-only lists',
-        'Multi-drive recognition, eject handling, and OneLibrary grouping'
-      ]
-    },
-    {
-      kicker: 'Search & Convert Beta',
-      title: 'Global search and standalone conversion (Beta)',
-      description:
-        'Two high-frequency entry points help users find tracks faster and run batch conversion without bouncing through unrelated views, and both are currently beta.',
-      bullets: [
-        'Global track search',
-        'More reliable locate feedback',
-        'Standalone format conversion tool'
-      ]
-    },
-    {
-      kicker: 'Background Beta',
-      title: 'Idle analysis scheduling (Beta)',
-      description:
-        'Background jobs are coordinated through a unified idle scheduler with throttling so they stop fighting the foreground quite as much, and the scheduler is still marked beta.',
-      bullets: [
-        'Unified idle-task scheduling',
-        'Idle throttling',
-        'Better background analysis completion and stability'
-      ]
-    }
-  ],
-  coreIntro: {
-    eyebrow: 'Core Capabilities',
-    title: 'The fundamentals still carry the workflow',
-    description:
-      'Dedup, preview, file mapping, metadata cleanup, and export still matter, and they now sit alongside auto-recording prep, stem work, and device-library browsing in one flow.'
-  },
-  core: [
     {
       title: 'Fingerprint dedup',
-      description:
-        'Content-fingerprint and file-hash modes cover import dedup, playlist cleanup, and fingerprint database workflows.'
+      details:
+        'Import dedup, playlist cleanup, and fingerprint-library workflows support both content fingerprints and file hashes.'
     },
     {
       title: 'True file mapping',
-      description:
-        'Filter and curated libraries stay aligned with real folders, so organization results are not just virtual references.'
+      details:
+        'Filter and curated libraries stay aligned with real folders, so organization changes land on disk.'
     },
     {
       title: 'Waveforms and preview',
-      description:
-        'SoundCloud, detailed, and RGB energy views combine with list previews and playback range control for rapid screening.'
+      details:
+        'SoundCloud, detailed, and RGB waveform views plus list preview keep fast listening intact.'
     },
     {
       title: 'BPM / key analysis',
-      description:
-        'Background analysis plus Tap Tempo correction keep BPM and key data editable instead of frozen.'
+      details: 'Background BPM/key analysis stays editable with Tap Tempo correction.'
     },
     {
       title: 'Metadata and artwork',
+      details:
+        'Tag editing, cover replacement, and MusicBrainz / AcoustID assisted cleanup are all part of the flow.'
+    }
+  ],
+  newFeaturesIntro: {
+    kicker: 'What Is New',
+    title: 'New modules are documented without changing the whole tone',
+    description:
+      'The older visual direction is back. Recent additions are listed in one place instead of being spread across an oversized landing page.'
+  },
+  newFeatures: [
+    {
+      title: 'Mixtape auto-recording',
       description:
-        'MusicBrainz and AcoustID integration support metadata cleanup, batch fill, cover replacement, and local artwork saving.'
+        'A dedicated Mixtape workspace now keeps arrangement, preview, parameter tuning, and export inside one timeline-driven surface.',
+      bullets: [
+        'Dual-track timeline, beat-aligned waveforms, first-downbeat analysis',
+        'Metronome, BPM draft saving, zoom, and follow-scroll',
+        'Gain / BPM envelopes, mute sections, undo, and export consistency'
+      ]
     },
     {
-      title: 'Recycle and export',
+      title: 'Managed stem runtime',
       description:
-        'Recycle Bin restore, folder export, and delete-after-export all stay tied to the real file system.'
+        'Stem preparation is now treated as a full runtime workflow with caching, warm-up, and on-demand dependencies.',
+      bullets: [
+        'Demucs runtime management and caching',
+        'ONNX fast separation plus DirectML / XPU acceleration',
+        'Download only what is needed instead of bloating the main installer'
+      ]
+    },
+    {
+      title: 'Pioneer USB libraries',
+      description:
+        'FRKB can now work directly with Pioneer USB libraries instead of limiting the workflow to local folders only.',
+      bullets: [
+        'Supports both Device Library and OneLibrary paths',
+        'Playlist tree, preview waveforms, read-only preview, and playback entry points',
+        'Multi-drive detection, grouped entries, and eject handling'
+      ]
+    },
+    {
+      title: 'Search, conversion, and idle scheduling',
+      description:
+        'A few high-frequency gaps were filled so searching, converting, and background analysis feel less scattered.',
+      bullets: [
+        'Global track search with more reliable locate feedback',
+        'Standalone format-conversion tool',
+        'Unified idle scheduling and throttling for steadier background analysis'
+      ]
     }
   ],
   workflowIntro: {
-    eyebrow: 'Workflow',
-    title: 'FRKB behaves more like a full audio-processing chain',
+    kicker: 'Workflow',
+    title: 'A four-step flow is still the default rhythm',
     description:
-      'Import, analyze, search, prepare stems, shape an auto-recording workflow, and export without bouncing across five different apps unless you really want to.'
+      'Import, decide, process, and land results back on disk without unnecessary detours.'
   },
   workflow: [
     {
       step: '01',
       title: 'Import local or device libraries',
       description:
-        'Drag in local folders or connect Pioneer USB libraries to pull sources into one flow.'
+        'Drag in local folders or connect Pioneer USB libraries to bring sources into one flow.'
     },
     {
       step: '02',
-      title: 'Search, preview, analyze',
+      title: 'Preview, search, analyze',
       description:
-        'Use global search, waveform previews, BPM/key analysis, and shortcuts to make decisions quickly.'
+        'Use waveform previews, global search, BPM/key analysis, and shortcuts to make decisions quickly.'
     },
     {
       step: '03',
-      title: 'Prepare auto-recording',
-      description:
-        'Open the Mixtape timeline to shape envelopes and grids, or run stem separation before export.'
+      title: 'Prepare recording or stems',
+      description: 'Open the Mixtape timeline or run stem separation before moving on to output.'
     },
     {
       step: '04',
       title: 'Export and write changes back',
       description:
-        'Export files, move playlists, or recover mistakes, then land everything back on the real file system.'
+        'Export files, move playlists, recover mistakes, and keep everything aligned with the file system.'
     }
   ],
-  specs: {
-    eyebrow: 'Platforms & Formats',
-    title: 'System requirements and format coverage',
-    systems: ['Windows 10 or later (x64)', 'macOS 12 or later', 'No official Linux build yet'],
-    formats:
-      'MP3, WAV, FLAC, AIF, AIFF, OGG, OPUS, AAC, M4A, MP4, WMA, AC3, DTS, MKA, WEBM, APE, TAK, TTA, WV',
-    formatsNote:
-      'Scanned formats can be configured in Settings. Conversion runs on the built-in FFmpeg pipeline.'
-  },
   faqIntro: {
-    eyebrow: 'FAQ',
-    title: 'A few things are better stated plainly',
+    kicker: 'FAQ',
+    title: 'The useful answers are stated plainly',
     description:
-      'Privacy, connectivity, which modules are beta, Pioneer library support, and runtime downloads are all easier to explain directly than to bury in scattered notes.'
+      'Privacy, connectivity, new modules, and Pioneer support are easier to explain directly.'
   },
   faqs: [
     {
       q: 'Does FRKB upload my audio?',
-      a: 'No. Cloud Sync only syncs SHA256 fingerprints, not the audio files or their tags.'
+      a: 'No. Cloud Sync only syncs SHA256 fingerprints, not audio files or tags.'
     },
     {
       q: 'Do I need internet?',
       a: 'Local organization, playback, and dedup work offline. Metadata fill, cloud sync, and update checks need a connection.'
     },
     {
-      q: 'Who is this built for?',
-      a: 'DJs, electronic music collectors, sample-heavy libraries, and anyone who spends real time screening tracks and preparing auto-recordings.'
-    },
-    {
-      q: 'Which features are currently beta?',
-      a: 'Mixtape auto-recording, stem separation, Pioneer USB libraries, global search, standalone conversion, and idle scheduling are currently labeled as beta.'
+      q: 'Which modules were added recently?',
+      a: 'Mixtape auto-recording, managed stem runtime, Pioneer USB libraries, global search, standalone conversion, and idle scheduling.'
     },
     {
       q: 'Can it read both OneLibrary and the older Device Library?',
-      a: 'Yes. Both Pioneer USB library paths are supported, including grouped entries and preview-oriented handling, and they currently sit inside the Pioneer beta workflow.'
+      a: 'Yes. Both Pioneer paths are supported, including grouped entries, playlist browsing, and preview-oriented handling.'
+    },
+    {
+      q: 'Why is runtime download mentioned here?',
+      a: 'Stem separation needs extra runtime assets, so they are downloaded on demand instead of inflating the main installer.'
     },
     {
       q: 'Is there a Linux build?',
       a: 'No official Linux build yet.'
-    },
-    {
-      q: 'Why is runtime download mentioned here?',
-      a: 'Stem separation needs extra runtime assets, so they are downloaded on demand instead of bloating the main installer.'
     }
   ],
+  specs: {
+    title: 'System requirements and format coverage',
+    systems: ['Windows 10 or later (x64)', 'macOS 12 or later', 'No official Linux build yet'],
+    formats:
+      'MP3, WAV, FLAC, AIF, AIFF, OGG, OPUS, AAC, M4A, MP4, WMA, AC3, DTS, MKA, WEBM, APE, TAK, TTA, WV',
+    formatsNote:
+      'Scanned formats can be configured in Settings, and conversion runs on the built-in FFmpeg pipeline.'
+  },
   footer: 'An open-source desktop tool built for DJs and audio organization'
 }
 
@@ -534,12 +468,10 @@ onUnmounted(() => {
 <template>
   <div class="custom-home">
     <div ref="glowRef" class="mouse-glow"></div>
-    <div class="ambient ambient-a"></div>
-    <div class="ambient ambient-b"></div>
 
     <nav class="site-nav">
-      <div class="shell nav-shell">
-        <a class="brand" :href="withBase('/')">
+      <div class="container nav-inner">
+        <a class="brand" :href="withBase(isEn ? '/en/' : '/')">
           <img :src="withBase('/assets/icon.webp')" alt="FRKB" />
           <span>FRKB</span>
         </a>
@@ -571,139 +503,141 @@ onUnmounted(() => {
       </div>
     </nav>
 
-    <main>
-      <section class="hero-section">
-        <div class="shell hero-grid">
-          <div class="hero-copy">
-            <p class="eyebrow">{{ pageContent.hero.eyebrow }}</p>
-            <h1 class="hero-title">
-              <span>{{ pageContent.hero.titleLines[0] }}</span>
-              <span class="accent">{{ pageContent.hero.titleLines[1] }}</span>
-              <span>{{ pageContent.hero.titleLines[2] }}</span>
-            </h1>
-            <p class="hero-description">
-              {{ pageContent.hero.description }}
-            </p>
+    <header class="hero">
+      <div class="container hero-inner">
+        <p class="hero-kicker">{{ pageContent.hero.kicker }}</p>
+        <h1 class="hero-title">
+          <span>{{ pageContent.hero.titleTop }}</span>
+          <span class="accent">{{ pageContent.hero.titleBottom }}</span>
+        </h1>
+        <p class="hero-description">{{ pageContent.hero.description }}</p>
 
-            <div class="pill-row">
-              <span v-for="pill in pageContent.hero.pills" :key="pill" class="pill">{{
-                pill
-              }}</span>
-            </div>
+        <div class="hero-pills">
+          <span v-for="pill in pageContent.hero.pills" :key="pill" class="pill">{{ pill }}</span>
+        </div>
 
-            <div class="cta-block">
-              <div v-if="isLoadingDownloads" class="download-skeleton"></div>
-              <div v-else class="download-group">
-                <a
-                  v-if="showWin"
-                  class="download-btn primary"
-                  :href="winUrl"
-                  target="_blank"
-                  rel="nofollow noopener noreferrer"
-                >
-                  <span class="download-platform">Windows</span>
-                  <strong>{{
-                    isEn
-                      ? version
-                        ? `Download ${version}`
-                        : 'Download'
-                      : version
-                        ? `下载 ${version}`
-                        : '下载'
-                  }}</strong>
-                </a>
-
-                <a
-                  v-if="showMac"
-                  class="download-btn secondary"
-                  :href="macUrl"
-                  target="_blank"
-                  rel="nofollow noopener noreferrer"
-                >
-                  <span class="download-platform">macOS</span>
-                  <strong>{{
-                    isEn
-                      ? version
-                        ? `Download ${version}`
-                        : 'Download'
-                      : version
-                        ? `下载 ${version}`
-                        : '下载'
-                  }}</strong>
-                </a>
-              </div>
-
-              <div class="cta-row">
-                <a
-                  class="ghost-btn"
-                  :href="pageContent.hero.releasesHref"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {{ pageContent.hero.releasesLabel }}
-                </a>
-
-                <a v-if="!isLoadingDownloads" href="#" class="switch-link" @click="togglePlatform">
-                  {{ isEn ? 'Switch platform' : '切换平台' }}
-                </a>
-              </div>
-
-              <p class="hero-note">{{ pageContent.hero.stableNote }}</p>
-              <p class="hero-note">{{ pageContent.hero.progressNote }}</p>
-            </div>
+        <div class="cta">
+          <div v-if="isLoadingDownloads" class="cta-skeleton">
+            <div class="skeleton-pill"></div>
           </div>
 
-          <div class="hero-side">
-            <div class="release-panel card-surface">
-              <p class="panel-kicker">{{ pageContent.releasePanel.kicker }}</p>
-              <h2>{{ pageContent.releasePanel.title }}</h2>
-              <p>{{ pageContent.releasePanel.description }}</p>
-              <ul class="bullet-list compact">
-                <li v-for="item in pageContent.releasePanel.bullets" :key="item">{{ item }}</li>
-              </ul>
-            </div>
+          <div v-else class="cta-group">
+            <a
+              v-if="showWin"
+              class="download-btn"
+              :href="winUrl"
+              target="_blank"
+              rel="nofollow noopener noreferrer"
+            >
+              <span class="download-os">Windows</span>
+              <strong>{{
+                isEn
+                  ? version
+                    ? `Download ${version}`
+                    : 'Download'
+                  : version
+                    ? `下载 ${version}`
+                    : '下载'
+              }}</strong>
+            </a>
 
-            <div class="snapshot card-surface">
-              <img
-                class="snapshot-image"
-                :src="
-                  withBase(
-                    theme === 'light'
-                      ? isEn
-                        ? '/assets/softwareScreenshot_light.webp'
-                        : '/assets/softwareScreenshot_cn_light.webp'
-                      : isEn
-                        ? '/assets/softwareScreenshot.webp'
-                        : '/assets/softwareScreenshot_cn.webp'
-                  )
-                "
-                alt="FRKB UI"
-              />
-              <div class="snapshot-tags">
-                <span v-for="tag in pageContent.snapshotTags" :key="tag">{{ tag }}</span>
-              </div>
-            </div>
+            <a
+              v-if="showMac"
+              class="download-btn secondary"
+              :href="macUrl"
+              target="_blank"
+              rel="nofollow noopener noreferrer"
+            >
+              <span class="download-os">macOS</span>
+              <strong>{{
+                isEn
+                  ? version
+                    ? `Download ${version}`
+                    : 'Download'
+                  : version
+                    ? `下载 ${version}`
+                    : '下载'
+              }}</strong>
+            </a>
+          </div>
+
+          <div class="hero-links">
+            <a
+              class="subtle-link"
+              href="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {{ pageContent.hero.releasesLabel }}
+            </a>
+            <a v-if="!isLoadingDownloads" href="#" class="subtle-link" @click="togglePlatform">
+              {{ isEn ? 'Switch platform' : '切换平台' }}
+            </a>
+          </div>
+
+          <div class="hero-notes">
+            <p v-for="note in pageContent.hero.notes" :key="note" class="hero-note">{{ note }}</p>
+          </div>
+        </div>
+
+        <div class="hero-frame">
+          <img
+            class="hero-image"
+            :src="
+              withBase(
+                theme === 'light'
+                  ? isEn
+                    ? '/assets/softwareScreenshot_light.webp'
+                    : '/assets/softwareScreenshot_cn_light.webp'
+                  : isEn
+                    ? '/assets/softwareScreenshot.webp'
+                    : '/assets/softwareScreenshot_cn.webp'
+              )
+            "
+            alt="FRKB UI"
+          />
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section id="features" class="section">
+        <div class="container">
+          <div class="section-header">
+            <p class="section-kicker">{{ pageContent.featuresIntro.kicker }}</p>
+            <h2>{{ pageContent.featuresIntro.title }}</h2>
+            <p>{{ pageContent.featuresIntro.description }}</p>
+          </div>
+
+          <div class="card-grid">
+            <article
+              v-for="item in pageContent.features"
+              :key="item.title"
+              class="card feature-card"
+            >
+              <h3>{{ item.title }}</h3>
+              <p>{{ item.details }}</p>
+            </article>
           </div>
         </div>
       </section>
 
-      <section id="highlights" class="section-block">
-        <div class="shell">
-          <div class="section-head">
-            <p class="eyebrow">{{ pageContent.updatesIntro.eyebrow }}</p>
-            <h2>{{ pageContent.updatesIntro.title }}</h2>
-            <p>{{ pageContent.updatesIntro.description }}</p>
+      <section id="new-features" class="section section-tinted">
+        <div class="container">
+          <div class="section-header">
+            <p class="section-kicker">{{ pageContent.newFeaturesIntro.kicker }}</p>
+            <h2>{{ pageContent.newFeaturesIntro.title }}</h2>
+            <p>{{ pageContent.newFeaturesIntro.description }}</p>
           </div>
 
-          <div class="update-grid">
+          <div class="new-feature-grid">
             <article
-              v-for="item in pageContent.updates"
+              v-for="item in pageContent.newFeatures"
               :key="item.title"
-              class="update-card card-surface"
+              class="card new-feature-card"
             >
-              <p class="card-kicker">{{ item.kicker }}</p>
               <h3>{{ item.title }}</h3>
-              <p class="card-description">{{ item.description }}</p>
+              <p>{{ item.description }}</p>
               <ul class="bullet-list">
                 <li v-for="bullet in item.bullets" :key="bullet">{{ bullet }}</li>
               </ul>
@@ -712,31 +646,10 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <section id="core" class="section-block core-block">
-        <div class="shell">
-          <div class="section-head">
-            <p class="eyebrow">{{ pageContent.coreIntro.eyebrow }}</p>
-            <h2>{{ pageContent.coreIntro.title }}</h2>
-            <p>{{ pageContent.coreIntro.description }}</p>
-          </div>
-
-          <div class="core-grid">
-            <article
-              v-for="item in pageContent.core"
-              :key="item.title"
-              class="core-card card-surface"
-            >
-              <h3>{{ item.title }}</h3>
-              <p>{{ item.description }}</p>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section id="workflow" class="section-block">
-        <div class="shell">
-          <div class="section-head">
-            <p class="eyebrow">{{ pageContent.workflowIntro.eyebrow }}</p>
+      <section id="workflow" class="section">
+        <div class="container">
+          <div class="section-header">
+            <p class="section-kicker">{{ pageContent.workflowIntro.kicker }}</p>
             <h2>{{ pageContent.workflowIntro.title }}</h2>
             <p>{{ pageContent.workflowIntro.description }}</p>
           </div>
@@ -745,7 +658,7 @@ onUnmounted(() => {
             <article
               v-for="item in pageContent.workflow"
               :key="item.step"
-              class="workflow-card card-surface"
+              class="card workflow-card"
             >
               <span class="workflow-step">{{ item.step }}</span>
               <h3>{{ item.title }}</h3>
@@ -755,10 +668,10 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <section id="faq" class="section-block faq-block">
-        <div class="shell faq-layout">
-          <div class="specs-card card-surface">
-            <p class="eyebrow">{{ pageContent.specs.eyebrow }}</p>
+      <section id="faq" class="section faq-section">
+        <div class="container info-grid">
+          <div class="card specs-card">
+            <p class="section-kicker">{{ isEn ? 'Platforms & Formats' : '环境与格式' }}</p>
             <h2>{{ pageContent.specs.title }}</h2>
             <ul class="bullet-list compact">
               <li v-for="item in pageContent.specs.systems" :key="item">{{ item }}</li>
@@ -771,14 +684,14 @@ onUnmounted(() => {
           </div>
 
           <div>
-            <div class="section-head left">
-              <p class="eyebrow">{{ pageContent.faqIntro.eyebrow }}</p>
+            <div class="section-header left">
+              <p class="section-kicker">{{ pageContent.faqIntro.kicker }}</p>
               <h2>{{ pageContent.faqIntro.title }}</h2>
               <p>{{ pageContent.faqIntro.description }}</p>
             </div>
 
             <div class="faq-grid">
-              <article v-for="item in pageContent.faqs" :key="item.q" class="faq-card card-surface">
+              <article v-for="item in pageContent.faqs" :key="item.q" class="card faq-card">
                 <h3>{{ item.q }}</h3>
                 <p>{{ item.a }}</p>
               </article>
@@ -789,7 +702,7 @@ onUnmounted(() => {
     </main>
 
     <footer class="site-footer">
-      <div class="shell footer-shell">
+      <div class="container footer-inner">
         <p>{{ pageContent.footer }}</p>
         <small>© {{ currentYear }} FRKB Project</small>
       </div>
