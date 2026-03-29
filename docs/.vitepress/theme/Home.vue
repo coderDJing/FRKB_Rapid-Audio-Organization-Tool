@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useData, withBase } from 'vitepress'
 
 const { localeIndex } = useData()
@@ -57,10 +57,20 @@ onUnmounted(() => {
 // 下载相关状态
 const showWin = ref(false)
 const showMac = ref(false)
-const winUrl = ref('#')
-const macUrl = ref('#')
+const latestReleasePage =
+  'https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases/latest'
+const winUrl = ref(latestReleasePage)
+const macUrl = ref(latestReleasePage)
 const version = ref('')
 const isLoadingDownloads = ref(true)
+
+const findAssetUrl = (assets, matchers) => {
+  for (const matcher of matchers) {
+    const match = assets.find((asset) => matcher.test(asset.name))
+    if (match?.browser_download_url) return match.browser_download_url
+  }
+  return ''
+}
 
 // 初始化下载按钮
 const initDownloadButtons = async () => {
@@ -72,15 +82,11 @@ const initDownloadButtons = async () => {
 
     const data = await res.json()
     const assets = data.assets || []
+    const releaseUrl =
+      typeof data.html_url === 'string' && data.html_url ? data.html_url : latestReleasePage
 
-    const win = assets.find((a) => /win.*\.(exe|msi)$/i.test(a.name))
-    const mac = assets.find(
-      (a) =>
-        /\.(dmg|pkg|zip)$/i.test(a.name) && /(mac|osx|darwin|universal|arm64|x64)/i.test(a.name)
-    )
-
-    if (win) winUrl.value = win.browser_download_url
-    if (mac) macUrl.value = mac.browser_download_url
+    winUrl.value = findAssetUrl(assets, [/setup.*\.exe$/i, /\.exe$/i, /\.msi$/i]) || releaseUrl
+    macUrl.value = findAssetUrl(assets, [/\.dmg$/i, /\.pkg$/i, /\.zip$/i]) || releaseUrl
 
     if (data.tag_name) {
       version.value = data.tag_name.startsWith('v') ? data.tag_name : `v${data.tag_name}`
@@ -118,60 +124,216 @@ const togglePlatform = (e) => {
   showMac.value = !winHidden
 }
 
-// 功能特性配置 - 仅文字展示
-const zhFeatures = [
-  {
-    title: '键盘优先的人机工学',
-    details: '大幅减少鼠标移动与点击，所有高频操作均可通过快捷键完成。'
+const zhContent = {
+  nav: [
+    { label: '特性', href: '#features' },
+    { label: '工作流', href: '#workflow' }
+  ],
+  hero: {
+    titleTop: '符合人机工学的',
+    titleBottom: '开源音频快速整理工具',
+    subtitle:
+      '从内容感知去重、真实文件映射、波形试听，到 Mixtape 自动录制、Stem 分轨、Pioneer U 盘库、全局搜歌与格式转换，一套桌面应用把音频整理和后续处理串起来。'
   },
-  {
-    title: '内容感知去重',
-    details: '基于音频指纹技术，精准识别内容重复的文件。'
+  featuresIntro: {
+    title: '核心能力',
+    description: '整理、分析、试听、录制准备和导出都在同一套流程里，不需要来回换工具。'
   },
-  {
-    title: '所见即所得的映射',
-    details: '界面上的分组与目录即是真实的磁盘结构，同步生效。'
+  features: [
+    {
+      title: '键盘优先的人机工学',
+      details: '大幅减少鼠标移动与点击，所有高频操作均可通过快捷键完成。'
+    },
+    {
+      title: '内容感知去重',
+      details: '基于音频指纹技术，精准识别内容重复的文件。'
+    },
+    {
+      title: '所见即所得的映射',
+      details: '界面上的分组与目录即是真实的磁盘结构，同步生效。'
+    },
+    {
+      title: '波形试听与筛歌',
+      details: '支持 SoundCloud、细节与 RGB 波形，配合区间播放和列表预览快速筛歌。'
+    },
+    {
+      title: 'BPM 与调性分析',
+      details: '精准分析曲目速度与调性，支持 Tap Tempo 手动修正。'
+    },
+    {
+      title: '元数据与封面',
+      details: '支持标签整理、封面替换与 MusicBrainz / AcoustID 自动补齐。'
+    },
+    {
+      title: 'Mixtape 自动录制',
+      details: '独立时间线工作台用于排录制、听效果、调参数并直接导出结果。'
+    },
+    {
+      title: 'Stem 分轨运行时',
+      details: '支持按需下载、缓存和加速运行时，把分轨准备和导出接入主流程。'
+    },
+    {
+      title: 'Pioneer U 盘库',
+      details: '支持 Device Library 与 OneLibrary 浏览、歌单树、预览波形和只读预听。'
+    },
+    {
+      title: '全局搜歌与格式转换',
+      details: '全局搜歌、定位反馈和独立格式转换工具都已收进桌面端入口。'
+    },
+    {
+      title: '闲时分析调度',
+      details: '后台分析统一走闲时调度与限流，尽量少抢前台操作资源。'
+    },
+    {
+      title: '云端同步与便携',
+      details: '支持 SHA256 指纹双向云同步，数据库轻量便携。'
+    }
+  ],
+  workflowIntro: {
+    title: '完整工作流',
+    description: '导入、判断、准备、输出一路顺下来，功能都是围着实际音频整理场景收拢的。'
   },
-  {
-    title: '云端同步与便携',
-    details: '支持 SHA256 指纹双向云同步，数据库轻量便携。'
-  },
-  {
-    title: '全局人机工学快键',
-    details: '支持全局播放控制，即使应用最小化也能快速切歌。'
-  },
-  {
-    title: 'BPM 与调性分析',
-    details: '精准分析曲目速度与调性，支持 Tap Tempo 手动修正。'
+  workflow: [
+    {
+      step: '01',
+      title: '导入本地库或设备库',
+      details: '拖拽导入本地目录，或者直接读取 Pioneer U 盘库，把素材先拉进统一工作区。'
+    },
+    {
+      step: '02',
+      title: '搜歌、试听、分析',
+      details: '用全局搜歌、波形试听、BPM / 调性分析和快捷键，快速完成筛选与判断。'
+    },
+    {
+      step: '03',
+      title: '准备自动录制与分轨',
+      details: '在 Mixtape 时间线里调整包络与节拍，或运行 Stem 分轨把素材准备干净。'
+    },
+    {
+      step: '04',
+      title: '转换、导出并回写结果',
+      details: '格式转换、导出文件、移动歌单与目录映射都会稳稳落回真实文件系统。'
+    }
+  ],
+  specs: {
+    title: '系统要求',
+    systems: ['Windows 10 或更高版本 (x64)', 'macOS 12 或更高版本', '暂无 Linux 正式版'],
+    formatsTitle: '支持格式',
+    formats:
+      'MP3, WAV, FLAC, AIFF, OGG, OPUS, AAC, M4A, MP4, WMA, AC3, DTS, MKA, WEBM, APE, TAK, TTA, WV'
   }
-]
+}
 
-const enFeatures = [
-  {
-    title: 'Keyboard-First Ergonomics',
-    details: 'Minimize mouse movement. All frequent operations are accessible via shortcuts.'
+const enContent = {
+  nav: [
+    { label: 'Features', href: '#features' },
+    { label: 'Workflow', href: '#workflow' }
+  ],
+  hero: {
+    titleTop: 'Ergonomic',
+    titleBottom: 'Fast Audio Organization Tool',
+    subtitle:
+      'Content-aware dedup, true file mapping, waveform-driven preview, Mixtape auto-recording, stem separation, Pioneer USB libraries, global search, and format conversion all live inside one desktop workflow.'
   },
-  {
-    title: 'Content-Aware Dedup',
-    details: 'Identify duplicates based on audio characteristics.'
+  featuresIntro: {
+    title: 'Core Capabilities',
+    description:
+      'Organization, analysis, preview, recording prep, and export are all handled inside one consistent workflow.'
   },
-  {
-    title: 'WYSIWYG Mapping',
-    details: 'UI groups and directories reflect the true disk structure.'
+  features: [
+    {
+      title: 'Keyboard-First Ergonomics',
+      details: 'Minimize mouse movement. All frequent operations are accessible via shortcuts.'
+    },
+    {
+      title: 'Content-Aware Dedup',
+      details: 'Identify duplicates based on audio characteristics.'
+    },
+    {
+      title: 'WYSIWYG Mapping',
+      details: 'UI groups and directories reflect the true disk structure.'
+    },
+    {
+      title: 'Waveform Preview',
+      details: 'SoundCloud, detailed, and RGB waveforms with range playback keep screening fast.'
+    },
+    {
+      title: 'BPM & Key Analysis',
+      details: 'Precise analysis with Tap Tempo support.'
+    },
+    {
+      title: 'Metadata & Artwork',
+      details:
+        'Tag cleanup, cover replacement, and MusicBrainz / AcoustID assisted metadata filling.'
+    },
+    {
+      title: 'Mixtape Auto-Recording',
+      details:
+        'A dedicated timeline workspace for arranging, previewing, tweaking, and exporting mixes.'
+    },
+    {
+      title: 'Managed Stem Runtime',
+      details:
+        'On-demand runtime downloads, caching, and acceleration keep stem prep inside the app.'
+    },
+    {
+      title: 'Pioneer USB Libraries',
+      details:
+        'Browse Device Library and OneLibrary data with playlist trees, preview waveforms, and guarded preview.'
+    },
+    {
+      title: 'Global Search & Conversion',
+      details:
+        'Global search, locate feedback, and a standalone format conversion tool are built in.'
+    },
+    {
+      title: 'Idle Analysis Scheduling',
+      details: 'Background analysis runs through unified idle scheduling and throttling.'
+    },
+    {
+      title: 'Cloud Sync & Portability',
+      details: 'SHA256-based fingerprint sync for secure backups and portable library state.'
+    }
+  ],
+  workflowIntro: {
+    title: 'Complete Workflow',
+    description:
+      'Import, decide, prepare, and export in one pass. The product is shaped around real audio-organization work.'
   },
-  {
-    title: 'Cloud Sync & Portability',
-    details: 'SHA256-based fingerprint sync for secure backups.'
-  },
-  {
-    title: 'Global & Ergonomic Shortcuts',
-    details: 'Full playback control even when minimized.'
-  },
-  {
-    title: 'BPM & Key Analysis',
-    details: 'Precise analysis with Tap Tempo support.'
+  workflow: [
+    {
+      step: '01',
+      title: 'Import local or device libraries',
+      details: 'Drag in local folders or read Pioneer USB libraries inside the same workspace.'
+    },
+    {
+      step: '02',
+      title: 'Search, preview, analyze',
+      details:
+        'Use global search, waveform preview, BPM/key analysis, and shortcuts to make decisions quickly.'
+    },
+    {
+      step: '03',
+      title: 'Prepare recording and stems',
+      details: 'Shape the Mixtape timeline or run stem separation before output.'
+    },
+    {
+      step: '04',
+      title: 'Convert, export, write back',
+      details:
+        'Format conversion, export, playlist movement, and file mapping all land back on the real file system.'
+    }
+  ],
+  specs: {
+    title: 'System Requirements',
+    systems: ['Windows 10 or later (x64)', 'macOS 12 or later', 'No official Linux build yet'],
+    formatsTitle: 'Supported Formats',
+    formats:
+      'MP3, WAV, FLAC, AIFF, OGG, OPUS, AAC, M4A, MP4, WMA, AC3, DTS, MKA, WEBM, APE, TAK, TTA, WV'
   }
-]
+}
+
+const pageContent = computed(() => (isEn.value ? enContent : zhContent))
 </script>
 
 <template>
@@ -187,7 +349,7 @@ const enFeatures = [
           FRKB
         </a>
         <div class="nav-left">
-          <a href="#features">{{ isEn ? 'Features' : '特性' }}</a>
+          <a v-for="item in pageContent.nav" :key="item.href" :href="item.href">{{ item.label }}</a>
           <a href="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool" target="_blank"
             >GitHub</a
           >
@@ -225,15 +387,10 @@ const enFeatures = [
     <header class="hero">
       <div class="container hero-inner">
         <h1 class="reveal is-visible">
-          <template v-if="!isEn">符合人机工学的<br /><span>开源音频快速整理工具</span></template>
-          <template v-else>Ergonomic<br /><span>Fast Audio Organization Tool</span></template>
+          {{ pageContent.hero.titleTop }}<br /><span>{{ pageContent.hero.titleBottom }}</span>
         </h1>
         <p class="subtitle reveal is-visible">
-          {{
-            isEn
-              ? 'Built for audio professionals seeking ultimate efficiency. Content-aware dedup and WYSIWYG file mapping.'
-              : '专为追求极致效率的音频工作者打造。内容感知去重，所见即所得的文件映射。'
-          }}
+          {{ pageContent.hero.subtitle }}
         </p>
 
         <div class="cta reveal is-visible">
@@ -315,16 +472,33 @@ const enFeatures = [
     <section id="features" class="features">
       <div class="container">
         <div class="features-header reveal is-visible">
-          <h2>{{ isEn ? 'Key Features' : '核心特性' }}</h2>
+          <h2>{{ pageContent.featuresIntro.title }}</h2>
+          <p>{{ pageContent.featuresIntro.description }}</p>
         </div>
         <div class="grid">
-          <div
-            class="card reveal is-visible"
-            v-for="f in isEn ? enFeatures : zhFeatures"
-            :key="f.title"
-          >
+          <div class="card reveal is-visible" v-for="f in pageContent.features" :key="f.title">
             <h3>{{ f.title }}</h3>
             <p>{{ f.details }}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="workflow" class="workflow">
+      <div class="container">
+        <div class="workflow-header reveal is-visible">
+          <h2>{{ pageContent.workflowIntro.title }}</h2>
+          <p>{{ pageContent.workflowIntro.description }}</p>
+        </div>
+        <div class="workflow-grid">
+          <div
+            class="card workflow-card reveal is-visible"
+            v-for="item in pageContent.workflow"
+            :key="item.step"
+          >
+            <span class="workflow-step">{{ item.step }}</span>
+            <h3>{{ item.title }}</h3>
+            <p>{{ item.details }}</p>
           </div>
         </div>
       </div>
@@ -335,21 +509,14 @@ const enFeatures = [
       <div class="container">
         <div class="specs-grid">
           <div>
-            <h2>{{ isEn ? 'System Requirements' : '系统要求' }}</h2>
+            <h2>{{ pageContent.specs.title }}</h2>
             <ul>
-              <li>{{ isEn ? 'Windows 10 or later (x64)' : 'Windows 10 或更高版本 (x64)' }}</li>
-              <li>{{ isEn ? 'macOS 12 or later' : 'macOS 12 或更高版本' }}</li>
+              <li v-for="item in pageContent.specs.systems" :key="item">{{ item }}</li>
             </ul>
           </div>
           <div>
-            <h2>{{ isEn ? 'Supported Formats' : '支持格式' }}</h2>
-            <p>
-              {{
-                isEn
-                  ? 'MP3, WAV, FLAC, AIFF, OGG, OPUS, AAC, M4A, MP4, WMA, AC3, DTS, MKA, WEBM, APE, TAK, TTA, WV'
-                  : 'MP3, WAV, FLAC, AIFF, OGG, OPUS, AAC, M4A, MP4, WMA, AC3, DTS, MKA, WEBM, APE, TAK, TTA, WV'
-              }}
-            </p>
+            <h2>{{ pageContent.specs.formatsTitle }}</h2>
+            <p>{{ pageContent.specs.formats }}</p>
           </div>
         </div>
       </div>

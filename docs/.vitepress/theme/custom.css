@@ -173,10 +173,10 @@ body {
 }
 
 .hero h1 {
-  font-size: clamp(56px, 10vw, 112px);
+  font-size: clamp(44px, 8vw, 96px);
   font-weight: 900;
   letter-spacing: -0.06em;
-  line-height: 0.9;
+  line-height: 0.96;
   margin-bottom: 32px;
   background: linear-gradient(to bottom, var(--text) 50%, var(--text-dim));
   -webkit-background-clip: text;
@@ -184,6 +184,7 @@ body {
 }
 
 .hero h1 span {
+  display: inline-block;
   background: var(--gradient-primary);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -305,6 +306,15 @@ body {
   letter-spacing: -0.04em;
 }
 
+.features-header p,
+.workflow-header p {
+  max-width: 760px;
+  margin: 20px auto 0;
+  color: var(--text-dim);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -339,6 +349,46 @@ body {
   font-size: 15px;
   line-height: 1.6;
   flex-grow: 1;
+}
+
+.workflow {
+  padding: 160px 0;
+  border-top: 1px solid var(--glass-border);
+}
+
+.workflow-header {
+  text-align: center;
+  margin-bottom: 100px;
+}
+
+.workflow-header h2 {
+  font-size: 56px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 32px;
+}
+
+.workflow-card {
+  min-height: 240px;
+}
+
+.workflow-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
 }
 
 .shot-container {
@@ -424,6 +474,9 @@ body {
   .grid {
     grid-template-columns: repeat(2, 1fr);
   }
+  .workflow-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
   .specs-grid {
     grid-template-columns: 1fr;
     gap: 48px;
@@ -434,8 +487,40 @@ body {
   .grid {
     grid-template-columns: 1fr;
   }
+  .workflow-grid {
+    grid-template-columns: 1fr;
+  }
   .hero h1 {
-    font-size: 56px;
+    font-size: 44px;
+  }
+  .nav {
+    width: min(calc(100% - 24px), 1280px);
+    top: 12px;
+  }
+  .nav-inner {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 16px 20px;
+    gap: 16px;
+  }
+  .nav-left {
+    margin-left: 0;
+    width: 100%;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .nav-right {
+    margin-left: 0;
+  }
+  .hero {
+    padding-top: 180px;
+  }
+  .hero .subtitle,
+  .features-header p,
+  .workflow-header p,
+  .specs p,
+  .specs li {
+    font-size: 16px;
   }
 }
 
