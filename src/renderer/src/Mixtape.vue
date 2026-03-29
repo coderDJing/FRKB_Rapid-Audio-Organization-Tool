@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, type CSSProperties } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import titleComponent from '@renderer/components/titleComponent.vue'
 import MixtapeDialogsLayer from '@renderer/components/MixtapeDialogsLayer.vue'
@@ -30,6 +30,7 @@ import descendingOrderAsset from '@renderer/assets/descending-order.svg?asset'
 import type {
   MixtapeEnvelopeParamId,
   MixtapeTrack,
+  MixtapeWaveformStemId,
   TimelineTrackLayout
 } from '@renderer/composables/mixtape/types'
 import type { TrackTimingUndoSnapshot } from '@renderer/composables/mixtape/mixtapeTrackTimingUndo'
@@ -208,6 +209,7 @@ type MixParamOption = {
 
 const STEM_PARAM_SET = new Set<MixParamId>(['vocal', 'inst', 'bass', 'drums'])
 const isStemMixMode = computed(() => mixtapeMixMode.value === 'stem')
+const STEM_WAVEFORM_ROW_ORDER: MixtapeWaveformStemId[] = ['vocal', 'inst', 'bass', 'drums']
 
 const mixParamOptions = computed<MixParamOption[]>(() => {
   if (!isStemMixMode.value) {
@@ -330,13 +332,11 @@ const {
 })
 
 watch(selectedMixParam, (nextParam) => {
-  if (nextParam === 'position' || nextParam === 'gain') {
-    segmentSelectionMode.value = false
-    return
-  }
   if (STEM_PARAM_SET.has(nextParam)) {
     segmentSelectionMode.value = true
+    return
   }
+  segmentSelectionMode.value = false
 })
 
 watch(mixParamOptions, (nextOptions) => {
@@ -409,6 +409,28 @@ const handleToggleSegmentSelectionMode = () => {
     return
   }
   segmentSelectionMode.value = !segmentSelectionMode.value
+}
+
+const resolveStemMuteOverlayRows = (item: TimelineTrackLayout) => {
+  if (!isStemParamMode.value) return []
+  const rows = resolveTrackStemPreviewRows(item)
+  const rowCount = rows.length
+  if (!rowCount) return []
+  const safeLaneHeight = Math.max(1, Math.round(Number(laneHeight.value) || 0))
+  return rows.map((row, rowIndex) => {
+    const start = Math.floor((safeLaneHeight * rowIndex) / rowCount)
+    const end = Math.floor((safeLaneHeight * (rowIndex + 1)) / rowCount)
+    const rowHeight = Math.max(1, end - start)
+    return {
+      key: row.key,
+      segments: row.muteSegments,
+      isActive: row.key === selectedMixParam.value,
+      style: {
+        top: `${(start / safeLaneHeight) * 100}%`,
+        height: `${(rowHeight / safeLaneHeight) * 100}%`
+      } satisfies CSSProperties
+    }
+  })
 }
 
 const envelopeEditable = computed(() => isEnvelopeParamMode.value)
@@ -934,15 +956,36 @@ watch(
                                 ></polyline>
                               </svg>
                               <div class="lane-track__mute-segments">
-                                <div
-                                  v-for="segment in resolveActiveSegmentMasks(item)"
-                                  :key="`mute-${item.track.id}-${segment.key}`"
-                                  class="lane-track__mute-segment"
-                                  :style="{
-                                    left: `${segment.left}%`,
-                                    width: `${segment.width}%`
-                                  }"
-                                ></div>
+                                <template v-if="isStemParamMode">
+                                  <div
+                                    v-for="row in resolveStemMuteOverlayRows(item)"
+                                    :key="`mute-row-${item.track.id}-${row.key}`"
+                                    class="lane-track__stem-mute-row"
+                                    :class="{ 'is-active': row.isActive }"
+                                    :style="row.style"
+                                  >
+                                    <div
+                                      v-for="segment in row.segments"
+                                      :key="`mute-${item.track.id}-${row.key}-${segment.key}`"
+                                      class="lane-track__mute-segment"
+                                      :style="{
+                                        left: `${segment.left}%`,
+                                        width: `${segment.width}%`
+                                      }"
+                                    ></div>
+                                  </div>
+                                </template>
+                                <template v-else>
+                                  <div
+                                    v-for="segment in resolveActiveSegmentMasks(item)"
+                                    :key="`mute-${item.track.id}-${segment.key}`"
+                                    class="lane-track__mute-segment"
+                                    :style="{
+                                      left: `${segment.left}%`,
+                                      width: `${segment.width}%`
+                                    }"
+                                  ></div>
+                                </template>
                               </div>
                               <div
                                 v-if="showTrackEnvelopeEditor"

@@ -281,6 +281,17 @@
   pointer-events: none;
 }
 
+.lane-track__stem-mute-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  overflow: hidden;
+}
+
+.lane-track__stem-mute-row:not(.is-active) {
+  opacity: 0.6;
+}
+
 .lane-track__mute-segment {
   position: absolute;
   top: 0;
