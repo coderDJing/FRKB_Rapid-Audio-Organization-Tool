@@ -2,10 +2,14 @@ import { app } from 'electron'
 import type { ResolvedUpdateFileInfo, UpdateInfo } from 'electron-updater'
 import { once } from 'events'
 import { Readable } from 'stream'
+import { ProxyAgent } from 'undici'
 import fs = require('fs-extra')
 import path = require('path')
+import { getSystemProxy } from '../utils'
 
 const MANUAL_UPDATE_DIR_NAME = 'FRKB Updates'
+let manualUpdateProxyDispatcher: ProxyAgent | undefined
+let manualUpdateProxyInitialized = false
 
 export type ManualMacUpdateAssetKind = 'dmg' | 'pkg' | 'zip' | 'other'
 
@@ -75,6 +79,27 @@ const getUniqueTargetPath = async (downloadDir: string, fileName: string): Promi
   }
 }
 
+const ensureManualUpdateProxyInitialized = async () => {
+  if (manualUpdateProxyInitialized) return
+  manualUpdateProxyInitialized = true
+
+  const proxyUrl = await getSystemProxy()
+  if (proxyUrl) {
+    manualUpdateProxyDispatcher = new ProxyAgent(proxyUrl)
+  }
+}
+
+const fetchManualUpdateAsset = async (url: string, init?: RequestInit) => {
+  await ensureManualUpdateProxyInitialized()
+  const requestInit: RequestInit & { dispatcher?: ProxyAgent } = {
+    ...init
+  }
+  if (manualUpdateProxyDispatcher) {
+    requestInit.dispatcher = manualUpdateProxyDispatcher
+  }
+  return await fetch(url, requestInit)
+}
+
 export const pickManualMacUpdateAsset = (
   updateInfo: UpdateInfo,
   resolvedFiles: ResolvedUpdateFileInfo[]
@@ -123,7 +148,7 @@ export const downloadManualMacUpdate = async (
   await fs.remove(tempPath).catch(() => {})
 
   try {
-    const response = await fetch(asset.downloadUrl)
+    const response = await fetchManualUpdateAsset(asset.downloadUrl)
     if (!response.ok || !response.body) {
       throw new Error(`download failed: HTTP ${response.status}`)
     }
