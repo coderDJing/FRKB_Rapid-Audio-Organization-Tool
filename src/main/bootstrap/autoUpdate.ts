@@ -3,6 +3,7 @@ import electronUpdater = require('electron-updater')
 import updateWindow from '../window/updateWindow'
 import foundNewVersionWindow from '../window/foundNewVersionWindow'
 import store from '../store'
+import { log } from '../log'
 
 export function setupAutoUpdate() {
   const autoUpdater = electronUpdater.autoUpdater
@@ -22,10 +23,14 @@ export function setupAutoUpdate() {
 
   if (store.settingConfig.nextCheckUpdateTime) {
     if (new Date() > new Date(store.settingConfig.nextCheckUpdateTime)) {
-      autoUpdater.checkForUpdates()
+      void autoUpdater.checkForUpdates().catch((error) => {
+        log.error('[autoUpdate] initial check failed', error)
+      })
     }
   } else {
-    autoUpdater.checkForUpdates()
+    void autoUpdater.checkForUpdates().catch((error) => {
+      log.error('[autoUpdate] initial check failed', error)
+    })
   }
 
   autoUpdater.on('update-available', (info) => {

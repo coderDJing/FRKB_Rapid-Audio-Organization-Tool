@@ -1,12 +1,26 @@
 <script setup lang="ts">
 import chromeMiniimizeAsset from '@renderer/assets/chrome-minimize.svg?asset'
 import logoAsset from '@renderer/assets/logo.png?asset'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { t } from '@renderer/utils/translate'
-import { UpdateInfo } from 'electron-updater'
+import type { UpdateInfo } from 'electron-updater'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 const chromeMiniimize = chromeMiniimizeAsset
 const logo = logoAsset
+
+type UpdateErrorPayload = {
+  kind?: 'network' | 'signature' | 'install' | 'unknown'
+  message?: string
+  manualUrl?: string
+}
+
+type UpdateDownloadedPayload = {
+  mode?: 'auto' | 'manual'
+  kind?: 'dmg' | 'pkg' | 'zip' | 'other'
+  fileName?: string
+  filePath?: string
+  downloadDir?: string
+}
 
 const toggleMinimize = () => {
   window.electron.ipcRenderer.send('updateWindow-toggle-minimize')
@@ -17,6 +31,18 @@ const toggleClose = () => {
 }
 
 let state = ref('isRequesting')
+const errorInfo = ref<Required<UpdateErrorPayload>>({
+  kind: 'network',
+  message: '',
+  manualUrl: ''
+})
+const downloadedInfo = ref<Required<UpdateDownloadedPayload>>({
+  mode: 'auto',
+  kind: 'other',
+  fileName: '',
+  filePath: '',
+  downloadDir: ''
+})
 
 let latestVersion = ref('')
 window.electron.ipcRenderer.once('isLatestVersion', (event, version) => {
@@ -36,7 +62,12 @@ window.electron.ipcRenderer.once('newVersion', (event, versionInfo: UpdateInfo) 
   state.value = 'isNewVersion'
 })
 
-window.electron.ipcRenderer.once('isError', (event) => {
+window.electron.ipcRenderer.on('isError', (_event, payload?: UpdateErrorPayload) => {
+  errorInfo.value = {
+    kind: payload?.kind || 'unknown',
+    message: typeof payload?.message === 'string' ? payload.message : '',
+    manualUrl: typeof payload?.manualUrl === 'string' ? payload.manualUrl : ''
+  }
   state.value = 'isError'
 })
 
@@ -57,10 +88,19 @@ const startDownload = () => {
 }
 let progress = ref({
   percent: 0,
-  bytesPerSecond: 0
+  bytesPerSecond: 0,
+  transferredBytes: 0,
+  totalBytes: 0,
+  fileName: ''
 })
 window.electron.ipcRenderer.on('updateProgress', (event, progressObj) => {
-  progress.value = progressObj
+  progress.value = {
+    percent: Number(progressObj?.percent) || 0,
+    bytesPerSecond: Number(progressObj?.bytesPerSecond) || 0,
+    transferredBytes: Math.max(0, Number(progressObj?.transferredBytes) || 0),
+    totalBytes: Math.max(0, Number(progressObj?.totalBytes) || 0),
+    fileName: typeof progressObj?.fileName === 'string' ? progressObj.fileName : ''
+  }
   state.value = 'isUpdateProgress'
 })
 
@@ -77,11 +117,89 @@ function convertBytesToUnits(bytesPerSecond: number) {
   return `${convertedValue.toFixed(2)} ${units[unitIndex]}`
 }
 
-window.electron.ipcRenderer.on('updateDownloaded', (event) => {
+window.electron.ipcRenderer.on('updateDownloaded', (_event, payload?: UpdateDownloadedPayload) => {
+  downloadedInfo.value = {
+    mode: payload?.mode || 'auto',
+    kind: payload?.kind || 'other',
+    fileName: typeof payload?.fileName === 'string' ? payload.fileName : '',
+    filePath: typeof payload?.filePath === 'string' ? payload.filePath : '',
+    downloadDir: typeof payload?.downloadDir === 'string' ? payload.downloadDir : ''
+  }
   state.value = 'isUpdateDownloaded'
 })
 
 const runtime = useRuntimeStore()
+const errorHintText = computed(() => {
+  switch (errorInfo.value.kind) {
+    case 'signature':
+      return t('update.signatureIssue')
+    case 'install':
+      return t('update.installIssue')
+    case 'unknown':
+      return t('update.unknownIssue')
+    default:
+      return t('update.networkIssue')
+  }
+})
+
+const hasManualDownload = computed(() => !!errorInfo.value.manualUrl)
+const isManualMacUpdate = computed(
+  () => runtime.setting.platform === 'darwin' && downloadedInfo.value.mode === 'manual'
+)
+const startUpdateText = computed(() =>
+  runtime.setting.platform === 'darwin' ? t('update.downloadUpdate') : t('update.startUpdate')
+)
+const downloadedText = computed(() =>
+  isManualMacUpdate.value ? t('update.manualReadyTitle') : t('update.updateDownloaded')
+)
+const savedLocationText = computed(
+  () => downloadedInfo.value.filePath || downloadedInfo.value.downloadDir
+)
+const manualSteps = computed(() => [
+  t('update.manualStepOpenFile'),
+  t('update.manualStepCloseApp'),
+  t('update.manualStepReplaceApp'),
+  t('update.manualStepReplaceConfirm'),
+  t('update.manualStepOpenFromApps'),
+  t('update.manualStepRightClickOpen')
+])
+
+function formatBytes(bytes: number) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let unitIndex = 0
+  let value = Math.max(0, Number(bytes) || 0)
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex++
+  }
+  return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
+}
+
+const progressAmountText = computed(() => {
+  if (progress.value.transferredBytes <= 0 && progress.value.totalBytes <= 0) return ''
+  const downloaded = formatBytes(progress.value.transferredBytes)
+  const total =
+    progress.value.totalBytes > 0
+      ? formatBytes(progress.value.totalBytes)
+      : t('update.totalUnknown')
+  return t('update.downloadProgressAmount', { downloaded, total })
+})
+
+const openManualDownload = () => {
+  window.electron.ipcRenderer.send('updateWindow-open-manual-download')
+}
+
+const openDownloadedFile = () => {
+  window.electron.ipcRenderer.send('updateWindow-open-downloaded-file')
+}
+
+const openDownloadFolder = () => {
+  window.electron.ipcRenderer.send('updateWindow-open-download-folder')
+}
+
+const openApplicationsFolder = () => {
+  window.electron.ipcRenderer.send('updateWindow-open-applications-folder')
+}
 </script>
 <template>
   <div
@@ -92,6 +210,7 @@ const runtime = useRuntimeStore()
       <div class="title unselectable">{{ t('menu.checkUpdate') }}</div>
       <div class="titleComponent unselectable">
         <div
+          v-if="runtime.setting.platform !== 'darwin'"
           style="
             z-index: 1;
             padding-left: 10px;
@@ -165,7 +284,27 @@ const runtime = useRuntimeStore()
       <div
         style="margin-top: 15px; max-width: 80%; word-wrap: break-word; overflow-wrap: break-word"
       >
-        {{ t('update.networkIssue') }}
+        {{ errorHintText }}
+      </div>
+      <div
+        v-if="errorInfo.message"
+        style="
+          margin-top: 12px;
+          max-width: 88%;
+          font-size: 12px;
+          color: var(--text-weak);
+          word-wrap: break-word;
+          overflow-wrap: break-word;
+          text-align: center;
+        "
+      >
+        {{ errorInfo.message }}
+      </div>
+      <div
+        v-if="hasManualDownload"
+        style="margin-top: 20px; display: flex; justify-content: center"
+      >
+        <div class="button" @click="openManualDownload()">{{ t('update.manualDownload') }}</div>
       </div>
     </div>
     <div
@@ -183,7 +322,7 @@ const runtime = useRuntimeStore()
         {{ t('update.releaseDate') }} {{ convertISOToCustomFormat(newVersionInfo.releaseDate) }}
       </div>
       <div style="margin-top: 20px; display: flex; justify-content: center">
-        <div class="button" @click="startDownload()">{{ t('update.startUpdate') }}</div>
+        <div class="button" @click="startDownload()">{{ startUpdateText }}</div>
       </div>
     </div>
     <div
@@ -198,6 +337,12 @@ const runtime = useRuntimeStore()
     >
       <div>
         {{ t('update.downloadingUpdate') }} {{ convertBytesToUnits(progress.bytesPerSecond) }}
+      </div>
+      <div
+        v-if="progressAmountText"
+        style="margin-top: 10px; font-size: 12px; color: var(--text-weak)"
+      >
+        {{ progressAmountText }}
       </div>
       <div
         style="width: 90%; margin-top: 15px; border: 1px solid var(--border); position: relative"
@@ -237,8 +382,68 @@ const runtime = useRuntimeStore()
       "
     >
       <div style="max-width: 80%; word-wrap: break-word; overflow-wrap: break-word">
-        {{ t('update.updateDownloaded') }}
+        {{ downloadedText }}
       </div>
+      <template v-if="isManualMacUpdate">
+        <div
+          v-if="savedLocationText"
+          style="
+            margin-top: 14px;
+            max-width: 88%;
+            font-size: 12px;
+            color: var(--text-weak);
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            text-align: center;
+          "
+        >
+          {{ t('update.savedTo') }} {{ savedLocationText }}
+        </div>
+        <div
+          style="
+            margin-top: 16px;
+            max-width: 86%;
+            padding: 10px 12px;
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+            border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+            text-align: center;
+          "
+        >
+          {{ t('update.manualCloseWarning') }}
+        </div>
+        <div
+          style="
+            margin-top: 18px;
+            max-width: 86%;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            text-align: left;
+          "
+        >
+          <div v-for="step in manualSteps" :key="step">{{ step }}</div>
+        </div>
+        <div
+          style="
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 12px;
+          "
+        >
+          <div class="button" @click="openDownloadedFile()">
+            {{ t('update.openDownloadedFile') }}
+          </div>
+          <div class="button" @click="openDownloadFolder()">
+            {{ t('update.openDownloadFolder') }}
+          </div>
+          <div class="button" @click="openApplicationsFolder()">
+            {{ t('update.openApplicationsFolder') }}
+          </div>
+        </div>
+      </template>
     </div>
   </div>
 </template>

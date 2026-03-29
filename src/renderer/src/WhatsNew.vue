@@ -97,7 +97,7 @@ const publishedText = computed(() => {
     <div class="title-bar">
       <div class="title">{{ t('whatsNew.title') }}</div>
       <div class="toolbar">
-        <div class="logo-area">
+        <div v-if="runtime.setting.platform !== 'darwin'" class="logo-area">
           <img :src="logo" style="width: 20px" :draggable="false" class="theme-icon" />
         </div>
         <div class="drag-zone canDrag"></div>

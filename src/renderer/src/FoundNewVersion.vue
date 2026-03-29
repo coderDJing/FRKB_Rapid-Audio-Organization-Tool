@@ -42,6 +42,7 @@ const checkNow = async () => {
       <div class="title unselectable">{{ t('update.newVersionFound') }}</div>
       <div class="titleComponent unselectable">
         <div
+          v-if="runtime.setting.platform !== 'darwin'"
           style="
             z-index: 1;
             padding-left: 10px;
