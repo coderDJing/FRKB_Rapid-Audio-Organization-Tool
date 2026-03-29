@@ -16,7 +16,9 @@ export function useAutoScrollToCurrent(params: UseAutoScrollParams) {
   const ROW_HEIGHT = 30
   const SCROLL_TOLERANCE_PX = 2
   const TOP_VISIBILITY_MARGIN_PX = 2
-  const MAX_SCROLL_RETRIES = 4
+  const MAX_SCROLL_RETRIES = 8
+  const FOLLOW_UP_CHECK_DELAY_MS = 120
+  let activeScrollToken = 0
 
   const resolveScrollContext = () => {
     const scrollElements = songsAreaRef.value?.osInstance()?.elements()
@@ -231,6 +233,24 @@ export function useAutoScrollToCurrent(params: UseAutoScrollParams) {
     return 'done'
   }
 
+  const needsFollowUpCheck = (
+    index: number,
+    viewportElement: HTMLElement,
+    scrollElement: HTMLElement,
+    options?: {
+      behavior?: ScrollBehavior
+      align?: 'center' | 'nearest'
+      onlyIfNeeded?: boolean
+    }
+  ) => {
+    if (options?.onlyIfNeeded) {
+      return !isIndexVisible(index, viewportElement, scrollElement)
+    }
+    const align = options?.align ?? 'center'
+    const targetTop = getTargetTop(index, viewportElement, scrollElement, align)
+    return Math.abs(scrollElement.scrollTop - targetTop) > SCROLL_TOLERANCE_PX
+  }
+
   const queueScroll = (
     index: number,
     options: {
@@ -238,22 +258,46 @@ export function useAutoScrollToCurrent(params: UseAutoScrollParams) {
       align?: 'center' | 'nearest'
       onlyIfNeeded?: boolean
     },
-    attempt = 0
+    attempt = 0,
+    token = activeScrollToken
   ) => {
-    if (!songsAreaRef.value) return
+    if (!songsAreaRef.value || token !== activeScrollToken) return
     nextTick(() => {
+      if (token !== activeScrollToken) return
       const result = runScroll(index, options)
-      if (result !== 'retry' || attempt >= MAX_SCROLL_RETRIES) return
-      requestAnimationFrame(() => queueScroll(index, options, attempt + 1))
+      if (result === 'retry') {
+        if (attempt >= MAX_SCROLL_RETRIES) return
+        requestAnimationFrame(() => queueScroll(index, options, attempt + 1, token))
+        return
+      }
+      if (attempt >= MAX_SCROLL_RETRIES) return
+      window.setTimeout(() => {
+        if (token !== activeScrollToken) return
+        nextTick(() => {
+          if (token !== activeScrollToken) return
+          const scrollContext = resolveScrollContext()
+          if (!scrollContext) {
+            requestAnimationFrame(() =>
+              queueScroll(index, { ...options, behavior: 'auto' }, attempt + 1, token)
+            )
+            return
+          }
+          const { viewportElement, scrollElement } = scrollContext
+          if (!needsFollowUpCheck(index, viewportElement, scrollElement, options)) return
+          queueScroll(index, { ...options, behavior: 'auto' }, attempt + 1, token)
+        })
+      }, FOLLOW_UP_CHECK_DELAY_MS)
     })
   }
 
   const scrollToIndex = (index: number, behavior: ScrollBehavior = 'smooth') => {
-    queueScroll(index, { behavior, align: 'center' })
+    activeScrollToken += 1
+    queueScroll(index, { behavior, align: 'center' }, 0, activeScrollToken)
   }
 
   const scrollToIndexIfNeeded = (index: number, align: 'center' | 'nearest' = 'center') => {
-    queueScroll(index, { onlyIfNeeded: true, align })
+    activeScrollToken += 1
+    queueScroll(index, { onlyIfNeeded: true, align }, 0, activeScrollToken)
   }
 
   const scrollToSong = (filePath?: string | null) => {

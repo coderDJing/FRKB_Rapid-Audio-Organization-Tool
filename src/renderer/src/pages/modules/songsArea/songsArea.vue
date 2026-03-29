@@ -536,9 +536,12 @@ const showScrollToPlaying = computed(() => {
 
 const lastAutoScrollKey = ref('')
 const autoScrollPresence = computed(() => (currentPlayingIndex.value >= 0 ? '1' : '0'))
+const autoScrollIndexToken = computed(() =>
+  currentPlayingIndex.value >= 0 ? String(currentPlayingIndex.value) : 'missing'
+)
 const autoScrollKey = computed(() => {
   const listUUID = runtime.songsArea.songListUUID || ''
-  return `${listUUID}|${currentPlayingRowKey.value}|${autoScrollPresence.value}`
+  return `${listUUID}|${currentPlayingRowKey.value}|${autoScrollPresence.value}|${autoScrollIndexToken.value}`
 })
 const autoScrollTriggerKey = computed(() => {
   if (!runtime.setting.autoScrollToCurrentSong) return ''
@@ -552,7 +555,7 @@ watch(
       lastAutoScrollKey.value = ''
       return
     }
-    if (key.endsWith('|0')) return
+    if (currentPlayingIndex.value < 0) return
     if (key === lastAutoScrollKey.value) return
     if (runtime.playingData.playingSongListUUID !== runtime.songsArea.songListUUID) return
     lastAutoScrollKey.value = key
