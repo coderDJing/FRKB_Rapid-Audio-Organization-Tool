@@ -35,16 +35,7 @@
 As a DJ, I frequently need to organize large numbers of music files. However, existing audio file management software often falls short. Many require excessive mouse operations, leading to shoulder and neck pain. Others have poorly designed shortcuts that do not conform to ergonomic principles. Additionally, some only manage file references, leaving the actual file manager cluttered and disorganized. Furthermore, I often end up downloading duplicate songs, which wastes time during the selection process. Therefore, I decided to develop a more user-friendly software solution to address these issues.The ultimate goal of this project is to incorporate AI models that will learn users' classification behavior patterns and automatically categorize songs into libraries, which will save me God knows how much time.
 
 ### Introduction
-**FRKB** is a cross-platform desktop audio workflow tool designed for audio professionals such as DJs. It combines rapid library organization, fingerprint deduplication, waveform-driven preview, and a set of beta workflow modules for auto-recording, stem separation, Pioneer USB library support, and global search in one desktop app for Windows and macOS.
-
-### Beta Highlights
-The modules below are currently marked as beta while the workflows keep evolving.
-
-- **Mixtape Auto-Recording Workspace (Beta)**: A dedicated auto-recording window with a dual-track timeline, beat-grid alignment, first-downbeat analysis, metronome tools, gain/BPM envelopes, mute segments, undo support, and exports that match what you hear on the timeline.
-- **Stem Separation Pipeline (Beta)**: Stem mode with separation cache management, Demucs runtime management, ONNX fast separation, DirectML scheduling, XPU acceleration, and on-demand runtime downloads.
-- **Pioneer USB Library Workflow (Beta)**: Read legacy Device Library content and OneLibrary entries, cache preview waveforms, recognize multiple drives, and support playback with guarded operations.
-- **Global Search & Standalone Conversion (Beta)**: Search tracks across the app with stable locate feedback, then run standalone format conversion without leaving the workflow.
-- **Idle Background Scheduling (Beta)**: Unified idle-task scheduling and throttling keep background analysis more predictable while you keep working in the foreground.
+**FRKB** is a cross-platform desktop audio workflow tool designed for audio professionals such as DJs. It combines rapid library organization, fingerprint deduplication, waveform-driven preview, auto-recording, stem separation, Pioneer USB library support, global search, and standalone conversion in one desktop app for Windows and macOS.
 
 ### System Requirements
 
@@ -74,11 +65,12 @@ The modules below are currently marked as beta while the workflows keep evolving
 - **Save Cover Image**: Right-click the enlarged cover to save the image locally.
 - **Metadata Editing & Online Fill**: Edit tags and cover art with MusicBrainz criteria search and AcoustID fingerprint matching, plus batch auto-fill for track info.
 - **Song Filtering**: Filter by title, artist, album, duration, format, BPM, and more, with optional persistence after restart.
-- **Wide Format Playback & Conversion**: Built-in FFmpeg pipeline plays instantly and batch-converts 20+ mainstream and pro audio formats.
-- **Mixtape Timeline Editing (Beta)**: Dedicated auto-recording workspace with beat-grid editing, preview sync, parameter envelopes, and timeline-accurate export.
-- **Stem Runtime & Separation (Beta)**: Managed stem runtimes, cached separation, and accelerated separation backends for auto-recording workflows.
-- **Pioneer USB Library Support (Beta)**: Read more Pioneer USB library variants, including legacy Device Library content and OneLibrary entry grouping.
-- **Global Track Search (Beta)**: Search songs across the app and jump back to the matching location with clearer feedback.
+- **Wide Format Playback & Conversion**: Built-in FFmpeg pipeline plays instantly, supports standalone conversion workflows, and batch-converts 20+ mainstream and pro audio formats.
+- **Mixtape Timeline Editing**: Dedicated auto-recording workspace with a dual-track timeline, beat-grid editing, first-downbeat analysis, metronome tools, preview sync, gain/BPM envelopes, mute segments, undo support, and timeline-accurate export.
+- **Stem Runtime & Separation**: Stem mode, managed runtimes, separation cache management, ONNX fast separation, DirectML/XPU acceleration, and on-demand runtime downloads for auto-recording workflows.
+- **Pioneer USB Library Support**: Read more Pioneer USB library variants, including legacy Device Library and OneLibrary entries, with preview waveform caching, multi-drive recognition, playback, and guarded operations.
+- **Global Track Search**: Search songs across the app and jump back to the matching location with clearer and more stable locate feedback.
+- **Idle Background Scheduling**: Unified idle-task scheduling and throttling keep background analysis predictable while reducing contention with foreground work.
 
   | Format | Scan/Playback | Conversion |
   | ------ | ------------- | ---------- |
