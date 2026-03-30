@@ -8,9 +8,6 @@ on:
 permissions:
   contents: write
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-
 jobs:
   build_win:
     runs-on: windows-latest
@@ -18,15 +15,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup PNPM
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: 20
+          cache: pnpm
+
+      - name: Setup PNPM
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
 
       - name: Restore Demucs models cache (Windows)
         uses: actions/cache@v5
@@ -178,16 +176,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup PNPM
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: 'pnpm'
+
+      - name: Setup PNPM
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
 
       - name: Setup Python (for node-gyp)
         uses: actions/setup-python@v6
