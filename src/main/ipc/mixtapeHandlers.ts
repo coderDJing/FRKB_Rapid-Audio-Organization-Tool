@@ -499,13 +499,10 @@ export function registerMixtapeHandlers() {
       const filePathSet = new Set<string>()
       const bpmAnalyzeFilePathSet = new Set<string>()
       const stemEnqueueFilePathSet = new Set<string>()
-      let invalidPathCount = 0
-
       for (const item of inputItems) {
         const filePath = normalizeText(item?.filePath)
         if (!filePath) continue
         if (!isLikelyAudioFilePath(filePath)) {
-          invalidPathCount += 1
           continue
         }
         const sourcePlaylistId =
@@ -535,14 +532,6 @@ export function registerMixtapeHandlers() {
           stemEnqueueFilePathSet.add(filePath)
         }
       }
-      if (invalidPathCount > 0) {
-        log.warn('[mixtape] skip append items with invalid file path', {
-          playlistId,
-          invalidPathCount,
-          inputCount: inputItems.length
-        })
-      }
-
       const result = appendMixtapeItems(playlistId, normalizedItems)
       const filePaths = Array.from(filePathSet)
       if (filePaths.length > 0) {
@@ -551,13 +540,6 @@ export function registerMixtapeHandlers() {
         queueMixtapeWaveformHires(filePaths)
         const stemEnqueueFilePaths = Array.from(stemEnqueueFilePathSet)
         if (stemEnqueueFilePaths.length > 0) {
-          log.info('[mixtape-stem] enqueue after append request', {
-            playlistId,
-            fileCount: stemEnqueueFilePaths.length,
-            mixMode: targetStemConfig.mixMode,
-            stemMode: FIXED_MIXTAPE_STEM_MODE,
-            appended: result?.inserted ?? 0
-          })
           void enqueueMixtapeStemJobs({
             playlistId,
             filePaths: stemEnqueueFilePaths,
@@ -569,11 +551,6 @@ export function registerMixtapeHandlers() {
               fileCount: stemEnqueueFilePaths.length,
               error
             })
-          })
-        } else {
-          log.info('[mixtape-stem] skip enqueue after append: no pending stem paths', {
-            playlistId,
-            fileCount: stemEnqueueFilePaths.length
           })
         }
         const bpmAnalyzeFilePaths = Array.from(bpmAnalyzeFilePathSet)

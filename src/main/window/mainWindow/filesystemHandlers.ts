@@ -582,7 +582,7 @@ async function syncMixtapePathReferencesAfterDirChange(
     })
     await runWithConcurrency(tasks, { concurrency: 8, stopOnENOSPC: false })
   } catch (error) {
-    console.warn('mixtape path sync failed:', error)
+    void error
   }
 }
 

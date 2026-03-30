@@ -7,7 +7,6 @@ import {
   resolveBundledDemucsRuntimeDir,
   type BundledDemucsRuntimeCandidate
 } from '../demucs'
-import { log } from '../log'
 import * as shared from './mixtapeStemSeparationShared'
 import {
   probeDirectmlDemucsCompatibility,
@@ -68,9 +67,6 @@ export const probeWindowsGpuAdapters = async () => {
     const stdoutText = normalizeText(result.stdout, 2400)
     const stderrText = normalizeText(result.stderr, 1200)
     if ((result.status !== 0 || result.timedOut) && !stdoutText) {
-      log.warn('[mixtape-stem] windows gpu adapter probe failed', {
-        error: result.error || stderrText || `exit=${result.status ?? -1}`
-      })
       return emptyResult
     }
     const names = Array.from(
@@ -104,9 +100,6 @@ export const probeWindowsGpuAdapters = async () => {
       hasNvidia
     }
   } catch (error) {
-    log.warn('[mixtape-stem] windows gpu adapter probe exception', {
-      error: normalizeText(error instanceof Error ? error.message : String(error || ''), 400)
-    })
     return emptyResult
   }
 }
@@ -278,23 +271,6 @@ const probeDemucsDevicesForRuntime = async (params: {
     windowsHasAmdAdapter: params.windowsHasAmdAdapter,
     windowsHasNvidiaAdapter: params.windowsHasNvidiaAdapter
   }
-  log.info('[mixtape-stem] demucs runtime probe', {
-    runtimeKey: snapshot.runtimeKey,
-    runtimeDir: snapshot.runtimeDir,
-    pythonPath: snapshot.pythonPath,
-    runtimeUsable: snapshot.runtimeUsable,
-    devices: snapshot.devices,
-    cudaAvailable,
-    mpsAvailable,
-    xpuAvailable,
-    xpuBackendInstalled,
-    xpuDemucsCompatible,
-    directmlAvailable,
-    directmlBackendInstalled,
-    directmlDemucsCompatible,
-    directmlDevice: snapshot.directmlDevice,
-    probeError: snapshot.probeError || null
-  })
   return snapshot
 }
 const resolveProbeSnapshotDeviceScore = (snapshot: MixtapeStemDeviceProbeSnapshot): number => {
@@ -402,28 +378,6 @@ const probeDemucsDevices = async (ffmpegPath: string): Promise<MixtapeStemDevice
       anyDirectmlBackendInstalled
     }
     stemDeviceProbeSnapshot = snapshot
-    log.info('[mixtape-stem] demucs runtime selected', {
-      runtimeKey: snapshot.runtimeKey,
-      runtimeDir: snapshot.runtimeDir,
-      pythonPath: snapshot.pythonPath,
-      runtimeUsable: snapshot.runtimeUsable,
-      probeError: snapshot.probeError,
-      devices: snapshot.devices,
-      runtimeCandidates: runtimeSnapshots.map((item) => ({
-        runtimeKey: item.runtimeKey,
-        runtimeUsable: item.runtimeUsable,
-        probeError: item.probeError,
-        devices: item.devices,
-        xpuDemucsCompatible: item.xpuDemucsCompatible,
-        directmlDemucsCompatible: item.directmlDemucsCompatible
-      })),
-      anyXpuBackendInstalled,
-      anyDirectmlBackendInstalled,
-      windowsAdapterNames: snapshot.windowsAdapterNames,
-      windowsHasIntelAdapter: snapshot.windowsHasIntelAdapter,
-      windowsHasAmdAdapter: snapshot.windowsHasAmdAdapter,
-      windowsHasNvidiaAdapter: snapshot.windowsHasNvidiaAdapter
-    })
     return snapshot
   })().finally(() => {
     stemDeviceProbePromise = null

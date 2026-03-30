@@ -2,7 +2,6 @@ import child_process from 'node:child_process'
 import path from 'node:path'
 import fs from 'fs-extra'
 import { ensureExecutableOnMac, resolveBundledFfmpegPath } from '../ffmpeg'
-import { log } from '../log'
 
 const INVALID_FILENAME_CHARS_REG = /[<>:"/\\|?*\u0000-\u001f]/g
 const TIME_PROGRESS_REG = /time=(\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)/g
@@ -475,12 +474,6 @@ export const runMixtapeOutput = async (params: {
       }
     }
 
-    log.info('[mixtape-output] export completed from rendered wav', {
-      outputPath: outputFilePath,
-      outputFormat,
-      byteLength: renderedWavBuffer.length,
-      durationSec
-    })
     return {
       outputPath: outputFilePath,
       trackCount: 0
@@ -524,13 +517,6 @@ export const runMixtapeOutput = async (params: {
     done: 98,
     total: 100,
     percent: 98
-  })
-
-  log.info('[mixtape-output] export completed', {
-    outputPath: outputFilePath,
-    outputFormat,
-    trackCount: normalizedTracks.length,
-    estimatedDurationSec: Number(estimatedDurationSec.toFixed(3))
   })
 
   return {

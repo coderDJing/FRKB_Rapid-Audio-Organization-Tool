@@ -1,5 +1,4 @@
 import fs from 'node:fs/promises'
-import { log } from '../log'
 import { replaceMixtapeFilePath } from '../mixtapeDb'
 import { replaceMixtapeStemAssetFilePath } from '../mixtapeStemDb'
 import {
@@ -31,7 +30,7 @@ const pathExists = async (filePath: string): Promise<boolean> => {
 
 export const resolveMixtapeFilePathWithFallback = async (
   filePath: string,
-  context: 'waveform' | 'raw-waveform' | 'hires-waveform'
+  _context: 'waveform' | 'raw-waveform' | 'hires-waveform'
 ): Promise<MixtapeFallbackResult | null> => {
   const normalized = typeof filePath === 'string' ? filePath.trim() : ''
   if (!normalized) return null
@@ -51,21 +50,11 @@ export const resolveMixtapeFilePathWithFallback = async (
 
   const replaceResult = replaceMixtapeFilePath(normalized, recoveredPath)
   const libraryRoot = getLibraryRootAbs()
-  const stemAssetResult = libraryRoot
-    ? replaceMixtapeStemAssetFilePath({
-        libraryRoot,
-        oldFilePath: normalized,
-        newFilePath: recoveredPath
-      })
-    : { updated: 0 }
-  if (replaceResult.updated > 0) {
-    log.info('[mixtape] file path recovered via fallback', {
-      context,
-      fromPath: normalized,
-      toPath: recoveredPath,
-      source: resolved.source,
-      updated: replaceResult.updated,
-      stemAssetUpdated: stemAssetResult.updated
+  if (libraryRoot) {
+    replaceMixtapeStemAssetFilePath({
+      libraryRoot,
+      oldFilePath: normalized,
+      newFilePath: recoveredPath
     })
   }
 

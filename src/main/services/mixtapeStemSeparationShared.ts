@@ -3,7 +3,6 @@ import path from 'node:path'
 import os from 'node:os'
 import childProcess from 'node:child_process'
 import { resolveBundledFfmpegPath } from '../ffmpeg'
-import { log } from '../log'
 import mixtapeWindow from '../window/mixtapeWindow'
 import type { MixtapeStemMode } from '../mixtapeDb'
 import { listMixtapeItems } from '../mixtapeDb'
@@ -570,10 +569,8 @@ export const runProcess = async (
   }
 ) => {
   await new Promise<void>((resolve, reject) => {
-    const traceLabel = normalizeText(options?.traceLabel, 120) || 'mixtape-stem-process'
     const startedAt = Date.now()
     let lastActivityAt = startedAt
-    const progressIntervalMs = Math.max(10_000, Number(options?.progressIntervalMs) || 30_000)
     const child = childProcess.spawn(command, args, {
       cwd: options?.cwd,
       env: options?.env,
@@ -591,15 +588,6 @@ export const runProcess = async (
         Math.max(Number(options?.absoluteTimeoutMs) || 0, timeoutMs * 4)
       )
     )
-    const progressTimer = setInterval(() => {
-      const now = Date.now()
-      log.info(`[${traceLabel}] process running`, {
-        elapsedMs: now - startedAt,
-        idleMs: now - lastActivityAt,
-        timeoutMs,
-        absoluteTimeoutMs
-      })
-    }, progressIntervalMs)
     const timeoutWatcher = setInterval(() => {
       if (timedOut) return
       const now = Date.now()
@@ -646,12 +634,10 @@ export const runProcess = async (
     })
     child.on('error', (error) => {
       clearInterval(timeoutWatcher)
-      clearInterval(progressTimer)
       reject(error)
     })
     child.on('exit', (code) => {
       clearInterval(timeoutWatcher)
-      clearInterval(progressTimer)
       if (timedOut) {
         const output = normalizeText(`${stderrText}\n${stdoutText}`, 3000)
         const timeoutText =
@@ -664,9 +650,6 @@ export const runProcess = async (
         return
       }
       if (code === 0) {
-        log.info(`[${traceLabel}] process done`, {
-          elapsedMs: Date.now() - startedAt
-        })
         resolve()
         return
       }

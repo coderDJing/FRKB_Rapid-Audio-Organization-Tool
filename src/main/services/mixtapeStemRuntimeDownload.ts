@@ -11,7 +11,6 @@ import {
   resolveDemucsPlatformDir,
   resolveInstalledDemucsPlatformRootPath
 } from '../demucs'
-import { log } from '../log'
 import { getSystemProxy } from '../utils'
 import mixtapeWindow from '../window/mixtapeWindow'
 import {
@@ -226,10 +225,6 @@ const readRuntimeManifest = async (): Promise<RuntimeAssetManifest | null> => {
         400
       )
       runtimeManifestLastError = errorText
-      log.warn('[mixtape-stem] runtime manifest fetch failed', {
-        manifestUrl,
-        error: errorText
-      })
       return null
     }
   })().finally(() => {
@@ -744,21 +739,10 @@ const ensureRuntimeProfileAvailable = async (
       return true
     }
     try {
-      log.info('[mixtape-stem] downloading runtime asset', {
-        profile: entry.profile,
-        runtimeKey: entry.runtimeKey,
-        version: entry.version,
-        archiveUrl: entry.archiveUrl
-      })
       await installRuntimeFromManifestEntry(
         entry,
         options?.emitState ? updateRuntimeDownloadState : undefined
       )
-      log.info('[mixtape-stem] runtime asset installed', {
-        profile: entry.profile,
-        runtimeKey: entry.runtimeKey,
-        version: entry.version
-      })
       return true
     } catch (error) {
       if (options?.emitState) {
@@ -773,12 +757,6 @@ const ensureRuntimeProfileAvailable = async (
           error: normalizeText(error instanceof Error ? error.message : String(error || ''), 500)
         })
       }
-      log.warn('[mixtape-stem] runtime asset install failed', {
-        profile: entry.profile,
-        runtimeKey: entry.runtimeKey,
-        version: entry.version,
-        error: normalizeText(error instanceof Error ? error.message : String(error || ''), 500)
-      })
       return false
     }
   })().finally(() => {

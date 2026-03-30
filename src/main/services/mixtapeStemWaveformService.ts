@@ -287,14 +287,6 @@ export async function ensureMixtapeStemWaveformBundle(
       stems: stemMap
     }
   )
-  if (!stored) {
-    log.warn?.('[mixtape-stem-waveform] bundle cache store skipped', {
-      sourceFilePath,
-      stemMode,
-      stemModel,
-      stemVersion
-    })
-  }
   return {
     sourceFilePath,
     listRoot,

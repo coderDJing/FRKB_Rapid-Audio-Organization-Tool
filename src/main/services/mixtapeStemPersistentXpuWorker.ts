@@ -2,7 +2,6 @@ import childProcess from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { resolveBundledDemucsBootstrapDirPath } from '../demucs'
-import { log } from '../log'
 import mixtapeWindow from '../window/mixtapeWindow'
 
 const XPU_WORKER_POOL_SIZE = 2
@@ -232,11 +231,7 @@ class PersistentXpuStemWorkerSlot {
         }
         this.settleInflight(message)
       } catch (error) {
-        log.warn('[mixtape-stem] persistent xpu worker stdout parse failed', {
-          slotId: this.slotId,
-          line: normalized.slice(0, 300),
-          error: normalizeText(error instanceof Error ? error.message : String(error || ''), 400)
-        })
+        void error
       }
     }
   }

@@ -107,7 +107,6 @@ const pendingQueue: MixtapeStemQueueJob[] = []
 const pendingJobMap = new Map<string, MixtapeStemQueueJob>()
 const inFlightJobMap = new Map<string, MixtapeStemQueueJob>()
 let activeWorkers = 0
-let stemQueueConcurrencySnapshot = 0
 let stemQueueProbeWarmupPromise: Promise<void> | null = null
 const cpuSlowHintNotifiedPlaylistIdSet = new Set<string>()
 
@@ -152,6 +151,19 @@ const normalizeStemVersion = (value: unknown, model?: string): string => {
 const normalizeEnqueueSource = (value: unknown): MixtapeStemEnqueueSource =>
   value === 'background' ? 'background' : 'foreground'
 
+const hasExistingStemAnalysisState = (info: Record<string, any> | null): boolean => {
+  if (!info || typeof info !== 'object') return false
+  const stemStatus = normalizeText(info?.stemStatus, 32)
+  if (stemStatus === 'ready') return true
+  if (normalizeText(info?.stemModel, 128)) return true
+  if (normalizeText(info?.stemVocalPath, 4000)) return true
+  if (normalizeText(info?.stemInstPath, 4000)) return true
+  if (normalizeText(info?.stemBassPath, 4000)) return true
+  if (normalizeText(info?.stemDrumsPath, 4000)) return true
+  const stemReadyAt = Number(info?.stemReadyAt)
+  return Number.isFinite(stemReadyAt) && stemReadyAt > 0
+}
+
 const shouldBypassReadyCacheForLegacyStemVersion = (params: {
   playlistId: string
   itemIds: string[]
@@ -169,11 +181,13 @@ const shouldBypassReadyCacheForLegacyStemVersion = (params: {
       if (!itemId || !targetItemIdSet.has(itemId)) continue
       const infoJsonRaw = normalizeText((item as any)?.infoJson, 200_000)
       if (!infoJsonRaw) {
-        // 历史数据缺少 stemVersion 字段时，强制重算一次，避免旧缓存误命中。
-        return true
+        continue
       }
       try {
         const info = JSON.parse(infoJsonRaw)
+        if (!hasExistingStemAnalysisState(info)) {
+          continue
+        }
         const currentStemVersion = normalizeText(info?.stemVersion, 128)
         if (!currentStemVersion) {
           return true
@@ -460,11 +474,7 @@ const ensureStemQueueDeviceProbe = () => {
   const ffmpegPath = resolveBundledFfmpegPath()
   if (!ffmpegPath || !fs.existsSync(ffmpegPath)) return
   stemQueueProbeWarmupPromise = probeDemucsDevices(ffmpegPath)
-    .catch((error) => {
-      log.warn('[mixtape-stem] queue device probe warmup failed', {
-        error: normalizeText(error instanceof Error ? error.message : String(error || ''), 800)
-      })
-    })
+    .catch(() => {})
     .then(() => undefined)
     .finally(() => {
       stemQueueProbeWarmupPromise = null
@@ -555,27 +565,6 @@ const resolveStemQueueConcurrency = () => {
 const runQueueLoop = () => {
   const concurrency = resolveStemQueueConcurrency()
   const maxWorkers = concurrency.maxWorkers
-  if (stemQueueConcurrencySnapshot !== maxWorkers) {
-    stemQueueConcurrencySnapshot = maxWorkers
-    log.info('[mixtape-stem] queue concurrency updated', {
-      maxWorkers,
-      cpuCount: concurrency.cpuCount,
-      cpuCap: concurrency.cpuCap,
-      deviceCap: concurrency.deviceCap,
-      preferredDevice: concurrency.preferredDevice,
-      probePending: concurrency.probePending,
-      totalMemoryGb: concurrency.totalMemoryGb,
-      freeMemoryGb: concurrency.freeMemoryGb,
-      hasForegroundDemand: concurrency.hasForegroundDemand,
-      backgroundTarget: concurrency.backgroundTarget,
-      idleTarget: concurrency.idleTarget,
-      idleProfile: concurrency.idleProfile,
-      idleAllowed: concurrency.idleAllowed,
-      foregroundBusy: concurrency.foregroundBusy,
-      systemIdleSeconds: concurrency.systemIdleSeconds,
-      systemIdleState: concurrency.systemIdleState
-    })
-  }
   while (activeWorkers < maxWorkers && pendingQueue.length > 0) {
     const job = pendingQueue.shift()
     if (!job) continue
@@ -790,13 +779,6 @@ export async function enqueueMixtapeStemJobs(
 
   const targetByPath = collectTargetsForFilePaths(playlistId, inputPaths)
   const total = targetByPath.size
-  if (total === 0) {
-    log.warn('[mixtape-stem] enqueue: no mixtape items matched file paths', {
-      playlistId,
-      stemMode,
-      inputCount: inputPaths.length
-    })
-  }
   let queued = 0
   let merged = 0
   let readyFromCache = 0
@@ -830,16 +812,6 @@ export async function enqueueMixtapeStemJobs(
       itemIds,
       stemVersion
     })
-    if (bypassReadyCache) {
-      log.info('[mixtape-stem] bypass ready cache for outdated stem version', {
-        playlistId,
-        file: filePath,
-        stemMode,
-        model,
-        stemVersion,
-        targetCount: itemIds.length
-      })
-    }
     if (!force) {
       if (!bypassReadyCache) {
         const cachedAsset = getMixtapeStemAsset({

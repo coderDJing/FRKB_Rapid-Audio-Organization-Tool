@@ -180,19 +180,11 @@ function syncMixtapeFilePathReference(fromPath: string, toPath: string): number 
   if (normalizePathForCompare(sourcePath) === normalizePathForCompare(targetPath)) return 0
   const result = replaceMixtapeFilePath(sourcePath, targetPath)
   const libraryRoot = getLibraryRootAbs()
-  const stemAssetResult = libraryRoot
-    ? replaceMixtapeStemAssetFilePath({
-        libraryRoot,
-        oldFilePath: sourcePath,
-        newFilePath: targetPath
-      })
-    : { updated: 0 }
-  if (result.updated > 0) {
-    log.info('[mixtape] file path reference synced', {
-      fromPath: sourcePath,
-      toPath: targetPath,
-      updated: result.updated,
-      stemAssetUpdated: stemAssetResult.updated
+  if (libraryRoot) {
+    replaceMixtapeStemAssetFilePath({
+      libraryRoot,
+      oldFilePath: sourcePath,
+      newFilePath: targetPath
     })
   }
   return result.updated
@@ -505,10 +497,6 @@ export async function permanentlyDeleteFile(filePath: string): Promise<boolean> 
           if (recordKey) {
             deleteRecycleBinRecord(recordKey)
           }
-          log.warn('[recycleBin] referenced mixtape file missing before vault move', {
-            filePath: srcPath,
-            refs: mixtapeRefs.length
-          })
           return true
         }
         log.error('[recycleBin] move referenced mixtape file to vault failed', {
@@ -523,11 +511,6 @@ export async function permanentlyDeleteFile(filePath: string): Promise<boolean> 
       if (recordKey) {
         deleteRecycleBinRecord(recordKey)
       }
-      log.info('[recycleBin] referenced mixtape track moved to vault', {
-        srcPath,
-        destPath: moveResult.destPath,
-        refs: mixtapeRefs.length
-      })
       return true
     } catch (error) {
       log.error('[recycleBin] move referenced mixtape file to vault failed', {

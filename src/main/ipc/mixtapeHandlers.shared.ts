@@ -95,22 +95,7 @@ const analyzeMixtapeBpmBatch = async (
 
   const fastAnalysis = options.fastAnalysis === true
   const stage = options.stage || (fastAnalysis ? 'retry-fast' : 'primary')
-  const attempt = Number.isFinite(Number(options.attempt)) ? Number(options.attempt) : 1
-  const totalAttempts = Number.isFinite(Number(options.totalAttempts))
-    ? Number(options.totalAttempts)
-    : 1
   const jobTimeoutMs = resolveBpmJobTimeoutMs(fastAnalysis)
-  const startedAt = Date.now()
-  log.info('[mixtape] BPM analyze start', {
-    requested: filePaths.length,
-    unique: unique.length,
-    stage,
-    fastAnalysis,
-    attempt,
-    totalAttempts,
-    jobTimeoutMs,
-    sample: unique.slice(0, 3).map((item) => path.basename(item))
-  })
 
   const maxWorkers = Math.max(1, Math.min(2, os.cpus().length, unique.length))
   const workers: Worker[] = []
@@ -162,11 +147,6 @@ const analyzeMixtapeBpmBatch = async (
       } catch {}
       const idx = workers.indexOf(worker)
       if (idx !== -1) workers.splice(idx, 1)
-      log.warn('[mixtape] BPM worker failed', {
-        error: error instanceof Error ? error.message : String(error || 'worker failure'),
-        busyWorkers: busy.size,
-        pendingJobs: unique.length - cursor
-      })
       if (!finished && cursor < unique.length) {
         const replacement = createWorker()
         if (replacement) {
@@ -186,13 +166,6 @@ const analyzeMixtapeBpmBatch = async (
         const activeJobId = busy.get(worker)
         if (activeJobId !== currentJobId) return
         markUnresolvedReason(filePath, 'analysis timeout')
-        log.warn('[mixtape] BPM worker job timeout', {
-          jobId: currentJobId,
-          file: path.basename(filePath),
-          stage,
-          fastAnalysis,
-          timeoutMs: jobTimeoutMs
-        })
         handleFailure(worker, new Error(`analysis timeout (${jobTimeoutMs}ms)`))
       }, jobTimeoutMs)
       workerJobTimerMap.set(worker, timer)
@@ -216,43 +189,16 @@ const analyzeMixtapeBpmBatch = async (
       jobMap.clear()
     }
 
-    const finish = (reason: 'completed' = 'completed') => {
+    const finish = () => {
       if (finished) return
       finished = true
 
       cleanup()
       const unresolvedList = Array.from(unresolved)
-      if (unresolvedList.length > 0) {
-        const sample = unresolvedList.slice(0, 5).map((filePath) => ({
-          file: path.basename(filePath),
-          reason: unresolvedReasons.get(filePath) || 'unknown error'
-        }))
-        log.warn('[mixtape] BPM analyze finished with unresolved tracks', {
-          requested: unique.length,
-          resolved: results.length,
-          unresolved: unresolvedList.length,
-          stage,
-          fastAnalysis,
-          attempt,
-          totalAttempts,
-          reason,
-          sample
-        })
-      }
       const unresolvedDetails = unresolvedList.map((filePath) => ({
         filePath,
         reason: unresolvedReasons.get(filePath) || 'unknown error'
       }))
-      log.info('[mixtape] BPM analyze finish', {
-        requested: unique.length,
-        resolved: results.length,
-        unresolved: unresolvedList.length,
-        stage,
-        fastAnalysis,
-        attempt,
-        totalAttempts,
-        elapsedMs: Date.now() - startedAt
-      })
       resolve({ results, unresolved: unresolvedList, unresolvedDetails })
     }
 
@@ -361,7 +307,7 @@ const analyzeMixtapeBpmBatch = async (
         workerPath,
         requested: unique.length
       })
-      finish('completed')
+      finish()
       return
     }
 
@@ -429,17 +375,6 @@ export const analyzeMixtapeBpmBatchShared = async (filePaths: string[]) => {
         retryCandidates.push(detail.filePath)
       }
       pending = buildBpmBatchInput(retryCandidates)
-
-      if (pending.length > 0 && index < plans.length - 1) {
-        log.info('[mixtape] BPM analyze retry pending', {
-          requested: input.length,
-          resolved: resultMap.size,
-          pending: pending.length,
-          nextAttempt: index + 2,
-          totalAttempts: plans.length,
-          sample: pending.slice(0, 3).map((item) => path.basename(item))
-        })
-      }
     }
 
     const unresolved = pending
@@ -450,19 +385,6 @@ export const analyzeMixtapeBpmBatchShared = async (filePaths: string[]) => {
         reason: unresolvedReasonMap.get(normalizedPath) || 'unknown error'
       }
     })
-
-    if (unresolved.length > 0) {
-      log.warn('[mixtape] BPM analyze unresolved after retries', {
-        requested: input.length,
-        resolved: resultMap.size,
-        unresolved: unresolved.length,
-        retries: plans.length - 1,
-        sample: unresolved.slice(0, 5).map((filePath) => ({
-          file: path.basename(filePath),
-          reason: unresolvedReasonMap.get(normalizePathForBatchKey(filePath)) || 'unknown error'
-        }))
-      })
-    }
 
     return {
       results: Array.from(resultMap.values()),

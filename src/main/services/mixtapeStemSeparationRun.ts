@@ -15,7 +15,6 @@ import {
   parseMixtapeStemModel,
   resolveMixtapeStemBaseModelByProfile
 } from '../../shared/mixtapeStemProfiles'
-import { log } from '../log'
 import * as shared from './mixtapeStemSeparationShared'
 import * as probe from './mixtapeStemSeparationProbe'
 import { decodeAudioShared } from './audioDecodePool'
@@ -342,12 +341,6 @@ const resolveDemucsModelCandidates = (params: {
       `未找到可用的本地 Demucs 模型，请检查 ${modelRepoPath}: ${reason || 'none'}`
     )
   }
-  if (skippedDetails.length > 0) {
-    log.warn('[mixtape-stem] skip non-local demucs model', {
-      requestedCandidates,
-      skipped: skippedDetails
-    })
-  }
   return availableCandidates
 }
 
@@ -447,23 +440,8 @@ export const runStemSeparation = async (params: {
       inputDir: bootstrapInputDir
     })
     waveformBootstrapReady = fs.existsSync(resolveDemucsBootstrapPath())
-    log.info('[mixtape-stem] waveform bootstrap input ready', {
-      file: filePath,
-      runtimeKey: deviceSnapshot.runtimeKey,
-      sampleRate: waveformBootstrapInput.inputSampleRate,
-      channels: waveformBootstrapInput.inputChannels,
-      totalFrames: waveformBootstrapInput.inputFrames,
-      pcmBytes: waveformBootstrapInput.pcmBytes,
-      decoderBackend: waveformBootstrapInput.decoderBackend,
-      bootstrapReady: waveformBootstrapReady
-    })
   } catch (error) {
-    log.warn('[mixtape-stem] waveform bootstrap input unavailable, fallback to cli', {
-      file: filePath,
-      runtimeKey: deviceSnapshot.runtimeKey,
-      errorCode: normalizeText((error as any)?.code, 80) || null,
-      errorMessage: normalizeText(error instanceof Error ? error.message : String(error || ''), 600)
-    })
+    void error
   }
 
   const demucsModelCandidates = resolveDemucsModelCandidates({
@@ -471,15 +449,6 @@ export const runStemSeparation = async (params: {
     modelRepoPath
   })
   const deviceCandidates: MixtapeStemComputeDevice[] = deviceSnapshot.devices
-  const timeoutHintMsByDevice = Object.fromEntries(
-    deviceCandidates.map((device) => [
-      device,
-      resolveStemProcessTimeoutMs({
-        device,
-        inputDurationSec
-      })
-    ])
-  )
   let selectedDevice: MixtapeStemComputeDevice | null = null
   let selectedDemucsModelName = ''
   let lastModelError: unknown = null
@@ -493,26 +462,6 @@ export const runStemSeparation = async (params: {
       })
       const isHtDemucsModel = normalizeText(demucsModelName, 128).toLowerCase().includes('htdemucs')
       const noSplitDisabledReason = isHtDemucsModel ? 'htdemucs_requires_segmented_inference' : null
-      log.info('[mixtape-stem] demucs profile', {
-        file: filePath,
-        model: params.model,
-        demucsModel: demucsModelName,
-        stemProfile,
-        runtimeKey: deviceSnapshot.runtimeKey,
-        runtimeDir: deviceSnapshot.runtimeDir,
-        preferNoSplit,
-        cpuNoSplitEnabled: false,
-        modelRepo: modelRepoPath,
-        inputDurationSec,
-        deviceCandidates,
-        timeoutHintMsByDevice,
-        shifts: Number(profileOptions.shifts),
-        overlap: Number(profileOptions.overlap),
-        noSplitSupported: !noSplitDisabledReason,
-        noSplitDisabledReason,
-        requestedSegmentSec: Number(profileOptions.segmentSec),
-        segmentSec: Number(demucsSegmentSec)
-      })
       const runDemucsForDevice = async (device: MixtapeStemComputeDevice) => {
         const processTimeoutMs = resolveStemProcessTimeoutMs({
           device,
@@ -546,16 +495,6 @@ export const runStemSeparation = async (params: {
         const demucsNoSplitArgs = [...demucsBaseArgs, '--no-split', filePath]
         await fs.promises.rm(rawOutputRoot, { recursive: true, force: true }).catch(() => {})
         await fs.promises.mkdir(rawOutputRoot, { recursive: true })
-        log.info('[mixtape-stem] demucs split start', {
-          file: filePath,
-          stemMode: params.stemMode,
-          model: params.model,
-          demucsModel: demucsModelName,
-          stemProfile,
-          device,
-          demucsDeviceArg,
-          timeoutMs: processTimeoutMs
-        })
         let lastProgressEmitAt = 0
         let lastProgressPercent = -1
         const emitProgress = (parsed: {
@@ -600,17 +539,6 @@ export const runStemSeparation = async (params: {
         })
         const allowNoSplit =
           preferNoSplit && device !== 'cpu' && device !== 'xpu' && !noSplitDisabledReason
-        if (preferNoSplit && !allowNoSplit && noSplitDisabledReason && device !== 'cpu') {
-          log.info('[mixtape-stem] demucs no-split disabled', {
-            file: filePath,
-            model: params.model,
-            demucsModel: demucsModelName,
-            stemProfile,
-            device,
-            reason: noSplitDisabledReason,
-            maxSegmentSec: Number(demucsSegmentSec)
-          })
-        }
         const runWaveformBootstrap = async (split: boolean) => {
           if (!waveformBootstrapInput || !waveformBootstrapReady) {
             throw createStemError('STEM_BOOTSTRAP_UNAVAILABLE', 'Waveform bootstrap 不可用')
@@ -651,12 +579,6 @@ export const runStemSeparation = async (params: {
                   : String(error || 'persistent xpu worker failed'),
                 800
               )
-              log.warn('[mixtape-stem] persistent xpu worker fallback to legacy process', {
-                file: filePath,
-                demucsModel: demucsModelName,
-                errorCode,
-                errorMessage
-              })
               await fs.promises.rm(rawOutputRoot, { recursive: true, force: true }).catch(() => {})
               await fs.promises.mkdir(rawOutputRoot, { recursive: true })
             }
@@ -716,18 +638,6 @@ export const runStemSeparation = async (params: {
             etaSec: 0
           })
         } catch (error) {
-          log.warn('[mixtape-stem] demucs no-split failed, fallback to split', {
-            file: filePath,
-            model: params.model,
-            demucsModel: demucsModelName,
-            stemProfile,
-            device,
-            errorCode: normalizeText((error as any)?.code, 80) || null,
-            errorMessage: normalizeText(
-              error instanceof Error ? error.message : String(error || ''),
-              600
-            )
-          })
           await runDeviceInference(true)
           emitProgress({
             percent: 100,
@@ -781,16 +691,6 @@ export const runStemSeparation = async (params: {
               error instanceof Error ? error.message : String(error || ''),
               800
             )
-            log.warn('[mixtape-stem] demucs device failed', {
-              file: filePath,
-              model: params.model,
-              demucsModel: demucsModelName,
-              stemProfile,
-              device,
-              errorCode: normalizedErrorCode || null,
-              errorMessage: normalizedErrorMessage,
-              retryWithNextDevice: retryable
-            })
             if (retryable) {
               retryableDeviceFailures.push({
                 device,
@@ -816,18 +716,6 @@ export const runStemSeparation = async (params: {
         lastModelError = error
         const hasNextModel = modelIndex < demucsModelCandidates.length - 1
         const retryWithFallbackModel = hasNextModel && shouldRetryWithFallbackModel(error)
-        log.warn('[mixtape-stem] demucs model failed', {
-          file: filePath,
-          requestedModel: requestedDemucsModelName,
-          demucsModel: demucsModelName,
-          stemProfile,
-          errorCode: normalizeText((error as any)?.code, 80) || null,
-          errorMessage: normalizeText(
-            error instanceof Error ? error.message : String(error || ''),
-            800
-          ),
-          retryWithFallbackModel
-        })
         if (retryWithFallbackModel) {
           continue
         }
@@ -883,16 +771,6 @@ export const runStemSeparation = async (params: {
     await fs.promises.copyFile(drumsPath, drumsOutputPath)
     await fs.promises.copyFile(bassPath, bassOutputPath)
     await fs.promises.copyFile(otherPath, instOutputPath)
-
-    log.info('[mixtape-stem] demucs split done', {
-      file: filePath,
-      stemMode: params.stemMode,
-      model: params.model,
-      demucsModel: selectedDemucsModelName,
-      stemProfile,
-      device: selectedDevice,
-      outputDir: stemCacheDir
-    })
     return {
       vocalPath: vocalOutputPath,
       instPath: instOutputPath,
