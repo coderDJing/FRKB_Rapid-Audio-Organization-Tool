@@ -29,6 +29,7 @@ type Task = {
   cancelPayload?: any
   canceling?: boolean
   removing?: boolean
+  disableProgressTransition?: boolean
 }
 const tasks = ref<Task[]>([])
 const showTotalRow = ref(tasks.value.length === 0)
@@ -36,6 +37,7 @@ const cancelMenuTaskId = ref<string | null>(null)
 const backgroundTaskId = 'key-analysis.background'
 const BACKGROUND_HIDE_DELAY_MS = 6000
 let backgroundHideTimer: ReturnType<typeof setTimeout> | null = null
+const progressTransitionRestoreFrames = new Map<string, number>()
 // 组件内部通过 CSS 控制显隐（empty => display:none），无需向上层发事件
 
 const clearBackgroundHideTimer = () => {
@@ -51,6 +53,44 @@ const dismissBackgroundTaskNow = () => {
   }
   tasks.value = tasks.value.filter((item) => item.id !== backgroundTaskId)
 }
+
+const getProgressPercent = (now: number, total: number) => {
+  if (total <= 0) return 0
+  return Math.max(0, Math.min(100, (now / total) * 100))
+}
+
+const clearProgressTransitionRestoreFrame = (taskId: string) => {
+  const frameId = progressTransitionRestoreFrames.get(taskId)
+  if (frameId === undefined) return
+  cancelAnimationFrame(frameId)
+  progressTransitionRestoreFrames.delete(taskId)
+}
+
+const scheduleProgressTransitionRestore = (taskId: string) => {
+  clearProgressTransitionRestoreFrame(taskId)
+  const frameId = requestAnimationFrame(() => {
+    progressTransitionRestoreFrames.delete(taskId)
+    const task = tasks.value.find((item) => item.id === taskId)
+    if (task) task.disableProgressTransition = false
+  })
+  progressTransitionRestoreFrames.set(taskId, frameId)
+}
+
+const updateTaskProgress = (task: Task, nowNum: number, total: number) => {
+  const previousPercent = getProgressPercent(task.now, task.total)
+  const nextPercent = getProgressPercent(nowNum, total)
+  if (nextPercent < previousPercent) {
+    task.disableProgressTransition = true
+    scheduleProgressTransitionRestore(task.id)
+  }
+  task.now = nowNum
+  task.total = total
+}
+
+const getTaskProgressStyle = (task: Task) => ({
+  width: `${getProgressPercent(task.now, task.total)}%`,
+  transition: task.disableProgressTransition ? 'none' : ''
+})
 
 const playlistTotalDaysHoursSeconds = computed(() => {
   const list = (runtime.songsArea?.songInfoArr || []) as Array<{ duration?: string }>
@@ -102,14 +142,14 @@ function upsertTask(titleKey: string, nowNum: number, total: number, noNumFlag?:
       total,
       noNum: !!noNumFlag,
       startedAt: Date.now(),
-      lastUpdateAt: Date.now()
+      lastUpdateAt: Date.now(),
+      disableProgressTransition: false
     })
   } else {
     const task = tasks.value[idx]
     task.titleKey = titleKey
     task.title = t(titleKey as any)
-    task.now = nowNum
-    task.total = total
+    updateTaskProgress(task, nowNum, total)
     task.noNum = !!noNumFlag
     task.lastUpdateAt = Date.now()
   }
@@ -187,14 +227,14 @@ const applyProgressPayload = (payload: any) => {
       cancelable,
       cancelChannel,
       cancelPayload,
-      canceling: false
+      canceling: false,
+      disableProgressTransition: false
     })
   } else {
     const task = tasks.value[idx]
     task.titleKey = titleKey
     task.title = t(titleKey as any)
-    task.now = nowNum
-    task.total = total
+    updateTaskProgress(task, nowNum, total)
     task.noNum = noNumFlag
     task.lastUpdateAt = Date.now()
     if (hasProgressMeta) {
@@ -344,6 +384,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleDocumentClick)
   clearBackgroundHideTimer()
+  for (const frameId of progressTransitionRestoreFrames.values()) {
+    cancelAnimationFrame(frameId)
+  }
+  progressTransitionRestoreFrames.clear()
 })
 window.electron.ipcRenderer.on(
   'importFinished',
@@ -458,10 +502,7 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
         </div>
         <div class="container">
           <div v-if="!task.noProgress" class="progress">
-            <div
-              class="progress-bar"
-              :style="'width:' + (task.total ? (task.now / task.total) * 100 : 0) + '%'"
-            />
+            <div class="progress-bar" :style="getTaskProgressStyle(task)" />
           </div>
         </div>
         <div v-if="task.cancelable" class="actions">
