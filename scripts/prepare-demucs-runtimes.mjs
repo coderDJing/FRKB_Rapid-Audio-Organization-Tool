@@ -397,6 +397,11 @@ const writeJson = (filePath, data) => {
   fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf8')
 }
 
+const buildPortableRuntimeCopyOptions = () => ({
+  recursive: true,
+  ...(process.platform === 'darwin' ? { verbatimSymlinks: true } : {})
+})
+
 for (const [profileName, profileConfig] of selectedProfiles) {
   const targetDirName = String(profileConfig.targetDir || `runtime-${profileName}`)
   const targetRuntimeDir = path.resolve(runtimeRoot, platformArg, targetDirName)
@@ -435,7 +440,7 @@ for (const [profileName, profileConfig] of selectedProfiles) {
   }
 
   if (!fs.existsSync(targetRuntimeDir)) {
-    fs.cpSync(baseRuntimeDir, targetRuntimeDir, { recursive: true })
+    fs.cpSync(baseRuntimeDir, targetRuntimeDir, buildPortableRuntimeCopyOptions())
     console.log(`[demucs-runtime] Copied base runtime -> ${targetDirName}`)
   }
 

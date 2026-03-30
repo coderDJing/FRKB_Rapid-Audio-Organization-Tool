@@ -111,6 +111,68 @@ const inspectDarwinBinaryDependencies = ({ binaryPath }) => {
   }
 }
 
+const inspectDarwinRuntimeSymlinks = ({ runtimeDir }) => {
+  const issues = []
+  const visitDir = (currentDir) => {
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true })
+    for (const entry of entries) {
+      const entryPath = path.join(currentDir, entry.name)
+      const relativePath = path.relative(runtimeDir, entryPath).replace(/\\/g, '/')
+      const stat = fs.lstatSync(entryPath)
+      if (stat.isSymbolicLink()) {
+        let rawTarget = ''
+        try {
+          rawTarget = fs.readlinkSync(entryPath)
+        } catch (error) {
+          issues.push(
+            `${relativePath} -> <unreadable> (${toErrorText(
+              error instanceof Error ? error.message : String(error || 'unknown')
+            )})`
+          )
+          continue
+        }
+        const normalizedTarget = String(rawTarget || '').trim()
+        if (!normalizedTarget) {
+          issues.push(`${relativePath} -> <empty>`)
+          continue
+        }
+        if (path.isAbsolute(normalizedTarget)) {
+          issues.push(`${relativePath} -> ${normalizedTarget} (absolute symlink)`)
+          continue
+        }
+        const resolvedTarget = path.resolve(path.dirname(entryPath), normalizedTarget)
+        if (!isPathInside(runtimeDir, resolvedTarget)) {
+          issues.push(`${relativePath} -> ${normalizedTarget} (escapes runtime root)`)
+          continue
+        }
+        if (!fs.existsSync(resolvedTarget)) {
+          issues.push(`${relativePath} -> ${normalizedTarget} (missing target)`)
+        }
+        continue
+      }
+      if (stat.isDirectory()) {
+        visitDir(entryPath)
+      }
+    }
+  }
+
+  try {
+    visitDir(runtimeDir)
+  } catch (error) {
+    return {
+      ok: false,
+      issues: [],
+      error: toErrorText(error instanceof Error ? error.message : String(error || 'unknown'))
+    }
+  }
+
+  return {
+    ok: issues.length === 0,
+    issues,
+    error: ''
+  }
+}
+
 const isAllowedDarwinDependency = (runtimeDir, dependencyPath) => {
   const normalizedDependency = String(dependencyPath || '').trim()
   if (!normalizedDependency) return true
@@ -201,6 +263,21 @@ export const validatePortableDarwinRuntime = ({ runtimeDir, pythonPath, env }) =
       error: pythonFrameworkDependency
         ? `external Python.framework dependency: ${pythonFrameworkDependency}`
         : `external dylib dependencies: ${externalDependencies.join(' | ')}`
+    }
+  }
+
+  const symlinkCheck = inspectDarwinRuntimeSymlinks({
+    runtimeDir
+  })
+  if (!symlinkCheck.ok) {
+    const symlinkIssue = symlinkCheck.issues.slice(0, 5).join(' | ')
+    return {
+      ok: false,
+      payload: {
+        ...identity.payload,
+        dependencies: dependencyCheck.dependencies
+      },
+      error: symlinkCheck.error || `runtime symlink issues: ${symlinkIssue}`
     }
   }
 

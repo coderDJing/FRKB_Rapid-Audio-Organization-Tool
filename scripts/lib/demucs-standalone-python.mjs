@@ -16,6 +16,12 @@ const DARWIN_TARGET_TRIPLE_BY_PLATFORM = {
   'darwin-x64': 'x86_64-apple-darwin'
 }
 
+const buildPortableRuntimeCopyOptions = () => ({
+  recursive: true,
+  force: true,
+  verbatimSymlinks: true
+})
+
 const resolveStandaloneArchiveSpec = (platformKey) => {
   const targetTriple = DARWIN_TARGET_TRIPLE_BY_PLATFORM[platformKey]
   if (!targetTriple) {
@@ -115,10 +121,7 @@ export const bootstrapPortableDarwinPython = async ({
       throw error
     }
     await fs.promises.rm(targetRuntimeDir, { recursive: true, force: true }).catch(() => {})
-    fs.cpSync(extractedRuntimeDir, targetRuntimeDir, {
-      recursive: true,
-      force: true
-    })
+    fs.cpSync(extractedRuntimeDir, targetRuntimeDir, buildPortableRuntimeCopyOptions())
     await fs.promises.rm(extractedRuntimeDir, { recursive: true, force: true }).catch(() => {})
   } finally {
     await fs.promises.rm(extractRoot, { recursive: true, force: true }).catch(() => {})

@@ -9,6 +9,12 @@ let runtimeDownloadProxyInitialized = false
 let runtimeDownloadProxyDispatcher
 let runtimeDownloadProxySource = ''
 
+const buildPortableRuntimeCopyOptions = () => ({
+  recursive: true,
+  force: true,
+  ...(process.platform === 'darwin' ? { verbatimSymlinks: true } : {})
+})
+
 const formatErrorWithCause = (error, toShortText) => {
   const parts = []
   let current = error
@@ -556,7 +562,7 @@ const installRuntimeProfileFromAsset = async ({
       throw error
     }
     fs.rmSync(runtimeDir, { recursive: true, force: true })
-    fs.cpSync(extractedRuntimeDir, runtimeDir, { recursive: true, force: true })
+    fs.cpSync(extractedRuntimeDir, runtimeDir, buildPortableRuntimeCopyOptions())
     fs.rmSync(extractedRuntimeDir, { recursive: true, force: true })
   }
   writeRemoteAssetState(runtimeDir, entry)
