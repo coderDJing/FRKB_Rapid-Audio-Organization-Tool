@@ -1,7 +1,7 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import { drawBeatAlignRekordboxWaveform } from '@renderer/components/mixtapeBeatAlignWaveform'
-import { resizeCanvasWithScaleMetrics } from '@renderer/utils/canvasScale'
+import { resolveCanvasScaleMetrics } from '@renderer/utils/canvasScale'
 
 type BeatAlignPreviewRenderInput = {
   canvas: HTMLCanvasElement
@@ -57,15 +57,17 @@ const ensureCanvasMetrics = (
   const cssHeight = Math.max(1, Math.floor(wrap.clientHeight))
   const previousWidth = canvas.width
   const previousHeight = canvas.height
-  const metrics = resizeCanvasWithScaleMetrics(
-    canvas,
-    ctx,
-    cssWidth,
-    cssHeight,
-    window.devicePixelRatio || 1
-  )
+  const metrics = resolveCanvasScaleMetrics(cssWidth, cssHeight, window.devicePixelRatio || 1)
   const scaledWidth = metrics.scaledWidth
   const scaledHeight = metrics.scaledHeight
+  if (previousWidth !== scaledWidth) {
+    canvas.width = scaledWidth
+  }
+  if (previousHeight !== scaledHeight) {
+    canvas.height = scaledHeight
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.setTransform(metrics.scaleX, 0, 0, metrics.scaleY, 0, 0)
   return {
     cssWidth,
     cssHeight,
