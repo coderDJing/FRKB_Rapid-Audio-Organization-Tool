@@ -6,6 +6,15 @@ import store from '../store'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { findSongListRootByPath, loadLibraryNodes } from '../libraryTreeDb'
 import type { LibraryNodeRow } from '../libraryTreeDb'
+import {
+  getLibraryRootAbs,
+  isUnderPath,
+  removeLibraryStemAssetFiles
+} from './libraryStemAssetStorage'
+import {
+  removeMixtapeStemAssetsByFilePath,
+  replaceMixtapeStemAssetFilePath
+} from '../mixtapeStemDb'
 
 const normalizePath = (value: string): string => {
   if (!value) return ''
@@ -33,6 +42,16 @@ async function findSongListRoot(startDir: string): Promise<string | null> {
     }
   }
   return await findSongListRootByPath(startDir)
+}
+
+async function findMixtapeCacheRoot(startDir: string): Promise<string | null> {
+  const songListRoot = await findSongListRoot(startDir)
+  if (songListRoot) return songListRoot
+  const libraryRoot = getLibraryRootAbs()
+  if (libraryRoot && isUnderPath(libraryRoot, startDir)) {
+    return libraryRoot
+  }
+  return null
 }
 
 function normalizeSongInfoForCache(info: ISongInfo): ISongInfo {
@@ -142,7 +161,21 @@ export async function transferTrackCaches(params: {
   toPath: string
 }): Promise<void> {
   const { fromRoot, toRoot, fromPath, toPath } = params
-  if (!fromRoot || !toRoot || !fromPath || !toPath) return
+  if (!fromPath || !toPath) return
+  if (normalizePath(fromPath) === normalizePath(toPath)) return
+
+  const libraryRoot = getLibraryRootAbs()
+  if (libraryRoot) {
+    try {
+      replaceMixtapeStemAssetFilePath({
+        libraryRoot,
+        oldFilePath: fromPath,
+        newFilePath: toPath
+      })
+    } catch {}
+  }
+
+  if (!fromRoot || !toRoot) return
   if (
     normalizePath(fromRoot) === normalizePath(toRoot) &&
     normalizePath(fromPath) === normalizePath(toPath)
@@ -244,14 +277,34 @@ export async function purgeCoverCacheForTrack(filePath: string, oldFilePath?: st
 
 export async function clearTrackCache(filePath: string) {
   try {
-    const songListRoot = await findSongListRoot(path.dirname(filePath))
-    if (!songListRoot) return
-    await LibraryCacheDb.removeSongCacheEntry(songListRoot, filePath)
-    await LibraryCacheDb.removeWaveformCacheEntry(songListRoot, filePath)
-    await LibraryCacheDb.removeMixtapeWaveformCacheEntry(songListRoot, filePath)
-    await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(songListRoot, filePath)
-    await LibraryCacheDb.removeMixtapeWaveformHiresCacheEntry(songListRoot, filePath)
-    await LibraryCacheDb.removeMixtapeStemWaveformCacheByFilePath(songListRoot, filePath)
+    const cacheRoot = await findMixtapeCacheRoot(path.dirname(filePath))
+    if (cacheRoot) {
+      await LibraryCacheDb.removeSongCacheEntry(cacheRoot, filePath)
+      await LibraryCacheDb.removeWaveformCacheEntry(cacheRoot, filePath)
+      await LibraryCacheDb.removeMixtapeWaveformCacheEntry(cacheRoot, filePath)
+      await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(cacheRoot, filePath)
+      await LibraryCacheDb.removeMixtapeWaveformHiresCacheEntry(cacheRoot, filePath)
+      await LibraryCacheDb.removeMixtapeStemWaveformCacheByFilePath(cacheRoot, filePath)
+    }
+
+    const libraryRoot = getLibraryRootAbs()
+    if (libraryRoot && isUnderPath(libraryRoot, filePath)) {
+      const removedAssets = removeMixtapeStemAssetsByFilePath({
+        libraryRoot,
+        filePath
+      })
+      if (removedAssets.length > 0) {
+        await removeLibraryStemAssetFiles(
+          removedAssets.flatMap((item) => [
+            item.vocalPath,
+            item.instPath,
+            item.bassPath,
+            item.drumsPath
+          ])
+        )
+      }
+    }
+
     await purgeCoverCacheForTrack(filePath)
   } catch {}
 }
@@ -309,4 +362,4 @@ export async function pruneOrphanedSongListCaches(dbRoot?: string): Promise<{
   }
 }
 
-export { findSongListRoot }
+export { findSongListRoot, findMixtapeCacheRoot }

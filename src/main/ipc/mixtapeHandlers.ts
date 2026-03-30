@@ -34,7 +34,10 @@ import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
 import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { queueMixtapeRawWaveforms } from '../services/mixtapeRawWaveformQueue'
 import { queueMixtapeWaveformHires } from '../services/mixtapeWaveformHiresQueue'
-import { cleanupMixtapeWaveformCache } from '../services/mixtapeWaveformMaintenance'
+import {
+  cleanupMixtapeWaveformCache,
+  cleanupOrphanedMixtapeVaultFiles
+} from '../services/mixtapeWaveformMaintenance'
 import {
   enqueueMixtapeStemJobs,
   getMixtapeStemStatusSnapshot,
@@ -604,6 +607,7 @@ export function registerMixtapeHandlers() {
         const removedPaths = listMixtapeFilePathsByItemIds(playlistId, itemIds)
         const result = removeMixtapeItemsById(playlistId, itemIds)
         await cleanupMixtapeWaveformCache(removedPaths)
+        await cleanupOrphanedMixtapeVaultFiles(removedPaths)
         broadcastMixtapeItemsRemoved(_e.sender, {
           playlistId,
           itemIds,
@@ -614,6 +618,7 @@ export function registerMixtapeHandlers() {
       }
       const result = removeMixtapeItemsByFilePath(playlistId, filePaths)
       await cleanupMixtapeWaveformCache(filePaths)
+      await cleanupOrphanedMixtapeVaultFiles(filePaths)
       broadcastMixtapeItemsRemoved(_e.sender, {
         playlistId,
         itemIds: [],

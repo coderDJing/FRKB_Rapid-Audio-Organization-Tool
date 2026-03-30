@@ -1,9 +1,7 @@
 import fs from 'node:fs'
-import crypto from 'node:crypto'
 import path from 'node:path'
 import os from 'node:os'
 import childProcess from 'node:child_process'
-import { app } from 'electron'
 import { resolveBundledFfmpegPath } from '../ffmpeg'
 import { log } from '../log'
 import mixtapeWindow from '../window/mixtapeWindow'
@@ -33,6 +31,11 @@ import {
   upsertMixtapeStemAsset
 } from '../mixtapeStemDb'
 import { findSongListRoot } from './cacheMaintenance'
+import {
+  computeLibraryStemSourceSignature,
+  resolveLibraryStemCacheDir,
+  toSafeStemPathSegment
+} from './libraryStemAssetStorage'
 
 export const STEM_GPU_JOB_CONCURRENCY_MIN = 1
 export const STEM_GPU_JOB_CONCURRENCY_MAX = 3
@@ -516,37 +519,24 @@ export const createStemError = (code: string, message: string): Error & { code: 
 }
 
 export const toSafePathSegment = (value: string, fallback = 'default') => {
-  const cleaned = normalizeText(value, 128)
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-')
-    .trim()
-  return cleaned || fallback
+  return toSafeStemPathSegment(value, fallback)
 }
 
-export const buildStemSourceHash = async (filePath: string): Promise<string> => {
-  const stat = await fs.promises.stat(filePath)
-  const source = [
-    normalizePathKey(filePath),
-    String(Math.max(0, Number(stat.size) || 0)),
-    String(Math.max(0, Math.floor(Number(stat.mtimeMs) || 0)))
-  ].join('\n')
-  return crypto.createHash('sha1').update(source).digest('hex')
-}
+export const buildStemSourceHash = async (filePath: string): Promise<string> =>
+  await computeLibraryStemSourceSignature(filePath)
 
 export const resolveStemCacheDir = async (params: {
   filePath: string
+  sourceSignature?: string
   model: string
   stemMode: MixtapeStemMode
-}) => {
-  const sourceHash = await buildStemSourceHash(params.filePath)
-  const modelDirName = toSafePathSegment(params.model, DEFAULT_STEM_MODEL)
-  return path.join(
-    app.getPath('userData'),
-    STEM_CACHE_DIR_NAME,
-    sourceHash,
-    modelDirName,
-    params.stemMode
-  )
-}
+}) =>
+  await resolveLibraryStemCacheDir({
+    filePath: params.filePath,
+    sourceSignature: normalizeText(params.sourceSignature, 160),
+    model: params.model,
+    stemMode: params.stemMode
+  })
 
 export const resolveDemucsRawStemPath = (params: {
   rawOutputRoot: string

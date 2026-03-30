@@ -4,14 +4,15 @@ import type { MixtapeStemMode } from './mixtapeDb'
 import { FIXED_MIXTAPE_STEM_MODE } from '../shared/mixtapeStemMode'
 
 const ITEM_TABLE = 'mixtape_items'
-const STEM_ASSET_TABLE = 'mixtape_stem_assets'
+const STEM_ASSET_TABLE = 'library_stem_assets'
 
 export type MixtapeStemStatus = 'pending' | 'running' | 'ready' | 'failed'
 
 export type MixtapeStemSummary = Record<MixtapeStemStatus, number>
 
 export type MixtapeStemAssetRecord = {
-  listRoot: string
+  libraryRoot: string
+  sourceSignature: string
   filePath: string
   stemMode: MixtapeStemMode
   model: string
@@ -27,7 +28,8 @@ export type MixtapeStemAssetRecord = {
 }
 
 export type MixtapeStemAssetUpsertInput = {
-  listRoot: string
+  libraryRoot: string
+  sourceSignature: string
   filePath: string
   stemMode: MixtapeStemMode
   model: string
@@ -91,6 +93,7 @@ const normalizeText = (value: unknown, maxLen = 800): string => {
 }
 
 const normalizeFilePath = (value: unknown) => normalizeText(value, 4000)
+const normalizeSourceSignature = (value: unknown) => normalizeText(value, 160)
 
 const normalizeTimestampMs = (value: unknown): number | null => {
   const numeric = Number(value)
@@ -110,12 +113,14 @@ const parseInfoJson = (raw: unknown): Record<string, any> => {
 }
 
 const toAssetRecord = (row: any): MixtapeStemAssetRecord | null => {
-  const listRoot = normalizeText(row?.list_root, 2000)
+  const libraryRoot = normalizeText(row?.library_root, 2000)
+  const sourceSignature = normalizeSourceSignature(row?.source_signature)
   const filePath = normalizeFilePath(row?.file_path)
   const model = normalizeText(row?.model, 128)
-  if (!listRoot || !filePath || !model) return null
+  if (!libraryRoot || !sourceSignature || !filePath || !model) return null
   return {
-    listRoot,
+    libraryRoot,
+    sourceSignature,
     filePath,
     stemMode: normalizeStemMode(row?.stem_mode),
     model,
@@ -139,12 +144,13 @@ export const resolveMixtapeStemStatusFromInfo = (infoJson: unknown): MixtapeStem
 }
 
 export function upsertMixtapeStemAsset(input: MixtapeStemAssetUpsertInput): { updated: number } {
-  const listRoot = normalizeText(input?.listRoot, 2000)
+  const libraryRoot = normalizeText(input?.libraryRoot, 2000)
+  const sourceSignature = normalizeSourceSignature(input?.sourceSignature)
   const filePath = normalizeFilePath(input?.filePath)
   const stemMode = normalizeStemMode(input?.stemMode)
   const model = normalizeText(input?.model, 128)
   const status = normalizeStemStatus(input?.status, 'pending')
-  if (!listRoot || !filePath || !model) return { updated: 0 }
+  if (!libraryRoot || !sourceSignature || !filePath || !model) return { updated: 0 }
   const db = getLibraryDb()
   if (!db) return { updated: 0 }
   const now = Date.now()
@@ -152,11 +158,12 @@ export function upsertMixtapeStemAsset(input: MixtapeStemAssetUpsertInput): { up
     const info = db
       .prepare(
         `INSERT INTO ${STEM_ASSET_TABLE} (
-          list_root, file_path, stem_mode, model, status,
+          library_root, source_signature, file_path, stem_mode, model, status,
           vocal_path, inst_path, bass_path, drums_path,
           error_code, error_message, created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(list_root, file_path, stem_mode, model) DO UPDATE SET
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(library_root, source_signature, stem_mode, model) DO UPDATE SET
+          file_path = excluded.file_path,
           status = excluded.status,
           vocal_path = excluded.vocal_path,
           inst_path = excluded.inst_path,
@@ -167,7 +174,8 @@ export function upsertMixtapeStemAsset(input: MixtapeStemAssetUpsertInput): { up
           updated_at_ms = excluded.updated_at_ms`
       )
       .run(
-        listRoot,
+        libraryRoot,
+        sourceSignature,
         filePath,
         stemMode,
         model,
@@ -184,7 +192,8 @@ export function upsertMixtapeStemAsset(input: MixtapeStemAssetUpsertInput): { up
     return { updated: Number(info?.changes || 0) }
   } catch (error) {
     log.error('[sqlite] mixtape stem asset upsert failed', {
-      listRoot,
+      libraryRoot,
+      sourceSignature,
       filePath,
       stemMode,
       model,
@@ -195,38 +204,107 @@ export function upsertMixtapeStemAsset(input: MixtapeStemAssetUpsertInput): { up
 }
 
 export function getMixtapeStemAsset(params: {
-  listRoot: string
-  filePath: string
+  libraryRoot: string
+  sourceSignature: string
   stemMode: MixtapeStemMode
   model: string
 }): MixtapeStemAssetRecord | null {
-  const listRoot = normalizeText(params?.listRoot, 2000)
-  const filePath = normalizeFilePath(params?.filePath)
+  const libraryRoot = normalizeText(params?.libraryRoot, 2000)
+  const sourceSignature = normalizeSourceSignature(params?.sourceSignature)
   const stemMode = normalizeStemMode(params?.stemMode)
   const model = normalizeText(params?.model, 128)
-  if (!listRoot || !filePath || !model) return null
+  if (!libraryRoot || !sourceSignature || !model) return null
   const db = getLibraryDb()
   if (!db) return null
   try {
     const row = db
       .prepare(
-        `SELECT list_root, file_path, stem_mode, model, status,
+        `SELECT library_root, source_signature, file_path, stem_mode, model, status,
                 vocal_path, inst_path, bass_path, drums_path,
                 error_code, error_message, created_at_ms, updated_at_ms
          FROM ${STEM_ASSET_TABLE}
-         WHERE list_root = ? AND file_path = ? AND stem_mode = ? AND model = ?`
+         WHERE library_root = ? AND source_signature = ? AND stem_mode = ? AND model = ?`
       )
-      .get(listRoot, filePath, stemMode, model)
+      .get(libraryRoot, sourceSignature, stemMode, model)
     return toAssetRecord(row)
   } catch (error) {
     log.error('[sqlite] mixtape stem asset get failed', {
-      listRoot,
-      filePath,
+      libraryRoot,
+      sourceSignature,
       stemMode,
       model,
       error
     })
     return null
+  }
+}
+
+export function replaceMixtapeStemAssetFilePath(params: {
+  libraryRoot: string
+  oldFilePath: string
+  newFilePath: string
+}): { updated: number } {
+  const libraryRoot = normalizeText(params?.libraryRoot, 2000)
+  const oldFilePath = normalizeFilePath(params?.oldFilePath)
+  const newFilePath = normalizeFilePath(params?.newFilePath)
+  if (!libraryRoot || !oldFilePath || !newFilePath || oldFilePath === newFilePath) {
+    return { updated: 0 }
+  }
+  const db = getLibraryDb()
+  if (!db) return { updated: 0 }
+  try {
+    const info = db
+      .prepare(
+        `UPDATE ${STEM_ASSET_TABLE}
+         SET file_path = ?, updated_at_ms = ?
+         WHERE library_root = ? AND file_path = ?`
+      )
+      .run(newFilePath, Date.now(), libraryRoot, oldFilePath)
+    return { updated: Number(info?.changes || 0) }
+  } catch (error) {
+    log.error('[sqlite] mixtape stem asset file path replace failed', {
+      libraryRoot,
+      oldFilePath,
+      newFilePath,
+      error
+    })
+    return { updated: 0 }
+  }
+}
+
+export function removeMixtapeStemAssetsByFilePath(params: {
+  libraryRoot: string
+  filePath: string
+}): MixtapeStemAssetRecord[] {
+  const libraryRoot = normalizeText(params?.libraryRoot, 2000)
+  const filePath = normalizeFilePath(params?.filePath)
+  if (!libraryRoot || !filePath) return []
+  const db = getLibraryDb()
+  if (!db) return []
+  try {
+    const rows = db
+      .prepare(
+        `SELECT library_root, source_signature, file_path, stem_mode, model, status,
+                vocal_path, inst_path, bass_path, drums_path,
+                error_code, error_message, created_at_ms, updated_at_ms
+         FROM ${STEM_ASSET_TABLE}
+         WHERE library_root = ? AND file_path = ?`
+      )
+      .all(libraryRoot, filePath)
+    const records = rows.map(toAssetRecord).filter(Boolean) as MixtapeStemAssetRecord[]
+    if (!records.length) return []
+    db.prepare(`DELETE FROM ${STEM_ASSET_TABLE} WHERE library_root = ? AND file_path = ?`).run(
+      libraryRoot,
+      filePath
+    )
+    return records
+  } catch (error) {
+    log.error('[sqlite] mixtape stem asset delete by file path failed', {
+      libraryRoot,
+      filePath,
+      error
+    })
+    return []
   }
 }
 

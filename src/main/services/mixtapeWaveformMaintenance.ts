@@ -1,7 +1,9 @@
 import path from 'node:path'
-import { findSongListRoot } from './cacheMaintenance'
+import fs = require('fs-extra')
+import { clearTrackCache, findMixtapeCacheRoot } from './cacheMaintenance'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { listMixtapeFilePathsInUse } from '../mixtapeDb'
+import { getMixtapeVaultRootAbs, isUnderPath } from './libraryStemAssetStorage'
 
 const normalizeUniquePaths = (values: unknown[]): string[] => {
   if (!Array.isArray(values)) return []
@@ -24,12 +26,36 @@ export async function cleanupMixtapeWaveformCache(filePaths: string[]): Promise<
 
   for (const filePath of unused) {
     try {
-      const listRoot = await findSongListRoot(path.dirname(filePath))
+      const listRoot = await findMixtapeCacheRoot(path.dirname(filePath))
       if (!listRoot) continue
       await LibraryCacheDb.removeMixtapeWaveformCacheEntry(listRoot, filePath)
       await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(listRoot, filePath)
       await LibraryCacheDb.removeMixtapeWaveformHiresCacheEntry(listRoot, filePath)
       await LibraryCacheDb.removeMixtapeStemWaveformCacheByFilePath(listRoot, filePath)
+    } catch {}
+  }
+}
+
+export async function cleanupOrphanedMixtapeVaultFiles(filePaths: string[]): Promise<void> {
+  const vaultRoot = getMixtapeVaultRootAbs()
+  if (!vaultRoot) return
+  const normalizedPaths = normalizeUniquePaths(filePaths).filter((filePath) =>
+    isUnderPath(vaultRoot, filePath)
+  )
+  if (normalizedPaths.length === 0) return
+
+  const inUse = new Set(listMixtapeFilePathsInUse(normalizedPaths))
+  const orphaned = normalizedPaths.filter((filePath) => !inUse.has(filePath))
+  if (orphaned.length === 0) return
+
+  for (const filePath of orphaned) {
+    try {
+      await clearTrackCache(filePath)
+    } catch {}
+    try {
+      if (await fs.pathExists(filePath)) {
+        await fs.remove(filePath)
+      }
     } catch {}
   }
 }

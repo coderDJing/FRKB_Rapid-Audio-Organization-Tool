@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { getLibraryDb } from '../libraryDb'
 import { log } from '../log'
-import { findSongListRoot } from './cacheMaintenance'
+import { findMixtapeCacheRoot } from './cacheMaintenance'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { requestMixtapeWaveform } from './mixtapeWaveformQueue'
 import mixtapeWindow from '../window/mixtapeWindow'
@@ -86,7 +86,8 @@ export async function ensureMixtapeWaveformHires(
       return { data: null, source: 'missing-file' }
     }
     const preferredRoot = providedRoot && !resolved?.recovered ? providedRoot : ''
-    const resolvedRoot = preferredRoot || (await findSongListRoot(path.dirname(targetPath))) || ''
+    const resolvedRoot =
+      preferredRoot || (await findMixtapeCacheRoot(path.dirname(targetPath))) || ''
     if (resolvedRoot) {
       const cached = await LibraryCacheDb.loadMixtapeWaveformHiresCacheData(
         resolvedRoot,
@@ -196,7 +197,7 @@ async function runBackgroundScan(targetRate: number): Promise<void> {
       if (!filePath) continue
       const stat = await fs.stat(filePath).catch(() => null)
       if (!stat) continue
-      const listRoot = await findSongListRoot(path.dirname(filePath))
+      const listRoot = await findMixtapeCacheRoot(path.dirname(filePath))
       if (!listRoot) continue
       const cached = await LibraryCacheDb.loadMixtapeWaveformHiresCacheData(
         listRoot,

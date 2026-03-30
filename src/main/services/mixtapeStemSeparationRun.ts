@@ -353,6 +353,7 @@ const resolveDemucsModelCandidates = (params: {
 
 export const runStemSeparation = async (params: {
   filePath: string
+  sourceSignature?: string
   stemMode: MixtapeStemMode
   model: string
   onDeviceStart?: (
@@ -384,6 +385,7 @@ export const runStemSeparation = async (params: {
 
   const stemCacheDir = await resolveStemCacheDir({
     filePath,
+    sourceSignature: normalizeText(params.sourceSignature, 160),
     model: params.model,
     stemMode: params.stemMode
   })

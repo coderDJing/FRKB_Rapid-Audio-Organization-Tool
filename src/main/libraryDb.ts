@@ -4,7 +4,7 @@ import store from './store'
 import { log } from './log'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
-const SCHEMA_VERSION = 22
+const SCHEMA_VERSION = 23
 
 type SqliteDatabase = any
 
@@ -392,6 +392,30 @@ function createDatabase(dbPath: string): SqliteDatabase {
       CREATE INDEX IF NOT EXISTS idx_mixtape_projects_mix_mode ON mixtape_projects(mix_mode);
       CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_mode ON mixtape_projects(stem_mode);
       CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_profile ON mixtape_projects(stem_profile);
+    `)
+  }
+  if (userVersion < 23) {
+    instance.exec(`
+      CREATE TABLE IF NOT EXISTS library_stem_assets (
+        library_root TEXT NOT NULL,
+        source_signature TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        stem_mode TEXT NOT NULL CHECK (stem_mode IN ('3stems', '4stems')),
+        model TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'ready', 'failed')),
+        vocal_path TEXT,
+        inst_path TEXT,
+        bass_path TEXT,
+        drums_path TEXT,
+        error_code TEXT,
+        error_message TEXT,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        PRIMARY KEY (library_root, source_signature, stem_mode, model)
+      );
+      CREATE INDEX IF NOT EXISTS idx_library_stem_assets_root ON library_stem_assets(library_root);
+      CREATE INDEX IF NOT EXISTS idx_library_stem_assets_file ON library_stem_assets(file_path);
+      CREATE INDEX IF NOT EXISTS idx_library_stem_assets_status ON library_stem_assets(status);
     `)
   }
   if (userVersion < 19) {

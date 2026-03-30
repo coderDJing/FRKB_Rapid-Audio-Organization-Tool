@@ -1,10 +1,12 @@
 import fs from 'node:fs/promises'
 import { log } from '../log'
 import { replaceMixtapeFilePath } from '../mixtapeDb'
+import { replaceMixtapeStemAssetFilePath } from '../mixtapeStemDb'
 import {
   resolveMissingMixtapeFilePath,
   type MixtapeMissingResolveSource
 } from '../recycleBinService'
+import { getLibraryRootAbs } from './libraryStemAssetStorage'
 
 type MixtapeFallbackResult = {
   filePath: string
@@ -48,13 +50,22 @@ export const resolveMixtapeFilePathWithFallback = async (
   if (!(await pathExists(recoveredPath))) return null
 
   const replaceResult = replaceMixtapeFilePath(normalized, recoveredPath)
+  const libraryRoot = getLibraryRootAbs()
+  const stemAssetResult = libraryRoot
+    ? replaceMixtapeStemAssetFilePath({
+        libraryRoot,
+        oldFilePath: normalized,
+        newFilePath: recoveredPath
+      })
+    : { updated: 0 }
   if (replaceResult.updated > 0) {
     log.info('[mixtape] file path recovered via fallback', {
       context,
       fromPath: normalized,
       toPath: recoveredPath,
       source: resolved.source,
-      updated: replaceResult.updated
+      updated: replaceResult.updated,
+      stemAssetUpdated: stemAssetResult.updated
     })
   }
 

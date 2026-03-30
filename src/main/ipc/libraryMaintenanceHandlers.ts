@@ -26,6 +26,7 @@ import {
 import { scanSongList as svcScanSongList } from '../services/scanSongs'
 import { RECYCLE_BIN_UUID } from '../../shared/recycleBin'
 import { getLibraryDb } from '../libraryDb'
+import { getLibraryStemCacheRootAbs } from '../services/libraryStemAssetStorage'
 
 const DIRTY_DATA_SQL_TABLES = [
   'song_cache',
@@ -35,6 +36,7 @@ const DIRTY_DATA_SQL_TABLES = [
   'mixtape_items',
   'mixtape_projects',
   'mixtape_stem_assets',
+  'library_stem_assets',
   'mixtape_waveform_cache',
   'mixtape_raw_waveform_cache',
   'mixtape_waveform_hires_cache',
@@ -186,7 +188,7 @@ export function registerLibraryMaintenanceHandlers() {
     if (mainWindow.instance) {
       mainWindow.instance.webContents.send('progressSet', {
         id: batchId,
-        titleKey: 'tracks.deleteProgressRemoving',
+        titleKey: 'library.deleteProgressRemoving',
         now: 0,
         total: tasks.length,
         isInitial: true
@@ -198,7 +200,7 @@ export function registerLibraryMaintenanceHandlers() {
         if (mainWindow.instance) {
           mainWindow.instance.webContents.send('progressSet', {
             id: batchId,
-            titleKey: 'tracks.deleteProgressRemoving',
+            titleKey: 'library.deleteProgressRemoving',
             now: done,
             total
           })
@@ -227,7 +229,7 @@ export function registerLibraryMaintenanceHandlers() {
     if (mainWindow.instance) {
       mainWindow.instance.webContents.send('progressSet', {
         id: batchId,
-        titleKey: 'tracks.deleteProgressRemoving',
+        titleKey: 'library.deleteProgressRemoving',
         now: tasks.length,
         total: tasks.length
       })
@@ -506,8 +508,12 @@ export function registerLibraryMaintenanceHandlers() {
       getCoreFsDirName('MixtapeLibrary'),
       '.mixtape_vault'
     )
+    const libraryStemCachePath = getLibraryStemCacheRootAbs()
     const libraryDirtyTargets = await collectLibraryDirtyCacheTargets(libraryRoot)
     libraryDirtyTargets.push(mixtapeVaultPath)
+    if (libraryStemCachePath) {
+      libraryDirtyTargets.push(libraryStemCachePath)
+    }
     const libraryCache = await removeExistingPaths(libraryDirtyTargets)
 
     const userDataRoot = app.getPath('userData')

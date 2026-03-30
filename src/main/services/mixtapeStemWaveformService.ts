@@ -8,7 +8,7 @@ import type { MixxxWaveformData } from '../waveformCache'
 import type { StemWaveformDataLite, StemWaveformStemId } from '../stemWaveformCache'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { requestMixtapeWaveform } from './mixtapeWaveformQueue'
-import { findSongListRoot } from './cacheMaintenance'
+import { findMixtapeCacheRoot } from './cacheMaintenance'
 
 const STEM_IDS_4: StemWaveformStemId[] = ['vocal', 'inst', 'bass', 'drums']
 const DEFAULT_STEM_MODEL = 'htdemucs'
@@ -128,7 +128,7 @@ const resolveListRootForSourceFile = async (
   const sourcePath = normalizeFilePath(sourceFilePath)
   if (!sourcePath) return ''
   try {
-    const detected = await findSongListRoot(path.dirname(sourcePath))
+    const detected = await findMixtapeCacheRoot(path.dirname(sourcePath))
     return normalizeFilePath(detected)
   } catch {
     return ''

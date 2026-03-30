@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { log } from '../log'
 import { decodeAudioShared, type SharedRawWaveformData } from './audioDecodePool'
-import { findSongListRoot } from './cacheMaintenance'
+import { findMixtapeCacheRoot } from './cacheMaintenance'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { isMissingFileDecodeError } from './decodeErrorUtils'
 import { resolveMixtapeFilePathWithFallback } from './mixtapeFileFallback'
@@ -60,7 +60,7 @@ const computeMixtapeRawWaveform = async (
     let resolvedRoot = listRoot?.trim() || ''
     if (!resolvedRoot || resolved?.recovered) {
       const probePath = targetPath || normalized
-      resolvedRoot = (await findSongListRoot(path.dirname(probePath))) || resolvedRoot
+      resolvedRoot = (await findMixtapeCacheRoot(path.dirname(probePath))) || resolvedRoot
     }
     if (!resolvedRoot) return
     if (!targetPath) {

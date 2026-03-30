@@ -18,6 +18,7 @@ import {
 import { findSongListRootByPath } from './libraryTreeDb'
 import { invalidateKeyAnalysisCache } from './services/keyAnalysisQueue'
 import { listMixtapeItemsByFilePath, replaceMixtapeFilePath } from './mixtapeDb'
+import { replaceMixtapeStemAssetFilePath } from './mixtapeStemDb'
 
 export type RecycleBinSourceType = 'external' | 'import_dedup' | 'unknown'
 
@@ -178,11 +179,20 @@ function syncMixtapeFilePathReference(fromPath: string, toPath: string): number 
   if (!sourcePath || !targetPath) return 0
   if (normalizePathForCompare(sourcePath) === normalizePathForCompare(targetPath)) return 0
   const result = replaceMixtapeFilePath(sourcePath, targetPath)
+  const libraryRoot = getLibraryRootAbs()
+  const stemAssetResult = libraryRoot
+    ? replaceMixtapeStemAssetFilePath({
+        libraryRoot,
+        oldFilePath: sourcePath,
+        newFilePath: targetPath
+      })
+    : { updated: 0 }
   if (result.updated > 0) {
     log.info('[mixtape] file path reference synced', {
       fromPath: sourcePath,
       toPath: targetPath,
-      updated: result.updated
+      updated: result.updated,
+      stemAssetUpdated: stemAssetResult.updated
     })
   }
   return result.updated

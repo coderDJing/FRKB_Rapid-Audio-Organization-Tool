@@ -10,7 +10,10 @@ import {
   waitForUserDecision
 } from '../../utils'
 import { transferTrackCaches } from '../../services/cacheMaintenance'
-import { cleanupMixtapeWaveformCache } from '../../services/mixtapeWaveformMaintenance'
+import {
+  cleanupMixtapeWaveformCache,
+  cleanupOrphanedMixtapeVaultFiles
+} from '../../services/mixtapeWaveformMaintenance'
 import { renameCacheRoot } from '../../libraryCacheDb'
 import { FileSystemOperation } from '@renderer/utils/diffLibraryTree'
 import {
@@ -26,7 +29,6 @@ import {
 } from '../../libraryTreeDb'
 import {
   getRecycleBinRootAbs,
-  getMixtapeVaultRootAbs,
   moveFileToRecycleBin,
   normalizeRendererPlaylistPath,
   permanentlyDeleteFile
@@ -34,10 +36,11 @@ import {
 import { listRecycleBinRecords, deleteRecycleBinRecords } from '../../recycleBinDb'
 import {
   listMixtapeFilePathsByPlaylist,
-  listMixtapeFilePathsInUse,
   removeMixtapeItemsByPlaylist,
   replaceMixtapeFilePath
 } from '../../mixtapeDb'
+import { replaceMixtapeStemAssetFilePath } from '../../mixtapeStemDb'
+import { getLibraryRootAbs } from '../../services/libraryStemAssetStorage'
 import { isMixtapeWindowOpenByPlaylistId } from '../mixtapeWindow'
 
 const MIXTAPE_WINDOW_OPEN_ERROR_CODE = 'MIXTAPE_WINDOW_OPEN'
@@ -51,36 +54,6 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
 
   const createProgressId = (prefix: string) =>
     `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
-
-  const cleanupOrphanedMixtapeVaultFiles = async (filePaths: string[]) => {
-    const vaultRoot = getMixtapeVaultRootAbs()
-    if (!vaultRoot) return
-    const normalized = Array.from(
-      new Set(
-        (Array.isArray(filePaths) ? filePaths : [])
-          .filter((item) => typeof item === 'string')
-          .map((item) => String(item).trim())
-          .filter(Boolean)
-      )
-    )
-    if (!normalized.length) return
-    const vaultCandidates = normalized.filter((filePath) => isUnderPath(vaultRoot, filePath))
-    if (!vaultCandidates.length) return
-    const inUse = new Set(listMixtapeFilePathsInUse(vaultCandidates))
-    const orphaned = vaultCandidates.filter((filePath) => !inUse.has(filePath))
-    if (!orphaned.length) return
-    await Promise.all(
-      orphaned.map(async (targetPath) => {
-        try {
-          if (await fs.pathExists(targetPath)) {
-            await fs.remove(targetPath)
-          }
-        } catch (error) {
-          console.warn('清理混音保底目录残留文件失败:', targetPath, error)
-        }
-      })
-    )
-  }
 
   const finalizeMixtapePlaylistRemoval = async (playlistId: string, filePaths: string[]) => {
     if (!playlistId) return
@@ -593,11 +566,19 @@ async function syncMixtapePathReferencesAfterDirChange(
 ): Promise<void> {
   if (!Array.isArray(movedFiles) || movedFiles.length === 0) return
   try {
+    const libraryRoot = getLibraryRootAbs()
     const tasks: Array<() => Promise<void>> = movedFiles.map((newFilePath) => async () => {
       const rel = path.relative(newFullPath, newFilePath)
       if (!rel || rel.startsWith('..')) return
       const oldFilePath = path.join(oldFullPath, rel)
       replaceMixtapeFilePath(oldFilePath, newFilePath)
+      if (libraryRoot) {
+        replaceMixtapeStemAssetFilePath({
+          libraryRoot,
+          oldFilePath,
+          newFilePath
+        })
+      }
     })
     await runWithConcurrency(tasks, { concurrency: 8, stopOnENOSPC: false })
   } catch (error) {

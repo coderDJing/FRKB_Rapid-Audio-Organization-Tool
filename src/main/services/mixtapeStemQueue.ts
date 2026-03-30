@@ -36,6 +36,7 @@ import {
   upsertMixtapeStemAsset
 } from '../mixtapeStemDb'
 import { findSongListRoot } from './cacheMaintenance'
+import { computeLibraryStemSourceSignature, getLibraryRootAbs } from './libraryStemAssetStorage'
 import { runStemSeparation } from './mixtapeStemSeparationRun'
 import { getStemBackgroundConcurrencyHint } from './backgroundIdleGate'
 import { getCachedStemDeviceProbeSnapshot, probeDemucsDevices } from './mixtapeStemSeparationProbe'
@@ -61,12 +62,13 @@ type MixtapeStemQueueTarget = {
 
 type MixtapeStemQueueJob = {
   key: string
+  sourceSignature: string
   filePath: string
   stemMode: MixtapeStemMode
   model: string
   stemVersion: string
   source: MixtapeStemEnqueueSource
-  listRoot: string
+  libraryRoot: string
   targets: Map<string, Set<string>>
 }
 
@@ -192,14 +194,14 @@ const normalizePathKey = (value: string): string => {
 }
 
 const buildJobKey = (params: {
-  listRoot: string
-  filePath: string
+  libraryRoot: string
+  sourceSignature: string
   stemMode: MixtapeStemMode
   model: string
 }) => {
-  const rootKey = normalizePathKey(params.listRoot)
-  const fileKey = normalizePathKey(params.filePath)
-  return `${rootKey}::${fileKey}::${params.stemMode}::${params.model}`
+  const rootKey = normalizePathKey(params.libraryRoot)
+  const sourceKey = normalizeText(params.sourceSignature, 160).toLowerCase()
+  return `${rootKey}::${sourceKey}::${params.stemMode}::${params.model}`
 }
 
 const notifyStemStatusUpdated = (params: {
@@ -416,7 +418,7 @@ const hasReadyStemAssets = (
 }
 
 const prewarmStemWaveformBundleFromPaths = (params: {
-  listRoot: string
+  libraryRoot: string
   sourceFilePath: string
   stemMode: MixtapeStemMode
   stemModel: string
@@ -427,7 +429,7 @@ const prewarmStemWaveformBundleFromPaths = (params: {
   drumsPath?: string | null
 }) => {
   prewarmMixtapeStemWaveformBundle({
-    listRoot: params.listRoot,
+    listRoot: params.libraryRoot,
     sourceFilePath: params.sourceFilePath,
     stemMode: params.stemMode,
     stemModel: params.stemModel,
@@ -614,7 +616,8 @@ const processQueueJob = async (job: MixtapeStemQueueJob) => {
     filePath: job.filePath
   })
   upsertMixtapeStemAsset({
-    listRoot: job.listRoot,
+    libraryRoot: job.libraryRoot,
+    sourceSignature: job.sourceSignature,
     filePath: job.filePath,
     stemMode: job.stemMode,
     model: job.model,
@@ -625,6 +628,7 @@ const processQueueJob = async (job: MixtapeStemQueueJob) => {
   try {
     const separation = await runStemSeparation({
       filePath: job.filePath,
+      sourceSignature: job.sourceSignature,
       stemMode: job.stemMode,
       model: job.model,
       onDeviceStart: (device, context) => {
@@ -662,7 +666,8 @@ const processQueueJob = async (job: MixtapeStemQueueJob) => {
       throw missingError
     }
     upsertMixtapeStemAsset({
-      listRoot: job.listRoot,
+      libraryRoot: job.libraryRoot,
+      sourceSignature: job.sourceSignature,
       filePath: job.filePath,
       stemMode: job.stemMode,
       model: job.model,
@@ -686,7 +691,7 @@ const processQueueJob = async (job: MixtapeStemQueueJob) => {
       filePath: job.filePath
     })
     prewarmStemWaveformBundleFromPaths({
-      listRoot: job.listRoot,
+      libraryRoot: job.libraryRoot,
       sourceFilePath: job.filePath,
       stemMode: job.stemMode,
       stemModel: job.model,
@@ -710,7 +715,8 @@ const processQueueJob = async (job: MixtapeStemQueueJob) => {
       errorMessage
     })
     upsertMixtapeStemAsset({
-      listRoot: job.listRoot,
+      libraryRoot: job.libraryRoot,
+      sourceSignature: job.sourceSignature,
       filePath: job.filePath,
       stemMode: job.stemMode,
       model: job.model,
@@ -749,9 +755,11 @@ const mergeJobTargets = (job: MixtapeStemQueueJob, targets: MixtapeStemQueueTarg
   }
 }
 
-const resolveListRootForFile = async (filePath: string): Promise<string> => {
+const resolveLibraryRootForFile = async (filePath: string): Promise<string> => {
   const normalizedPath = normalizeFilePath(filePath)
   if (!normalizedPath) return ''
+  const libraryRoot = normalizeFilePath(getLibraryRootAbs() || '')
+  if (libraryRoot) return libraryRoot
   try {
     const resolved = await findSongListRoot(path.dirname(normalizedPath))
     if (resolved) return normalizeFilePath(resolved)
@@ -799,16 +807,21 @@ export async function enqueueMixtapeStemJobs(
       skipped += 1
       continue
     }
-    const listRoot = await resolveListRootForFile(filePath)
-    if (!listRoot) {
+    const libraryRoot = await resolveLibraryRootForFile(filePath)
+    if (!libraryRoot) {
+      skipped += 1
+      continue
+    }
+    const sourceSignature = await computeLibraryStemSourceSignature(filePath)
+    if (!sourceSignature) {
       skipped += 1
       continue
     }
 
     const queueTargets: MixtapeStemQueueTarget[] = [{ playlistId, itemIds }]
     const jobKey = buildJobKey({
-      listRoot,
-      filePath,
+      libraryRoot,
+      sourceSignature,
       stemMode,
       model
     })
@@ -830,8 +843,8 @@ export async function enqueueMixtapeStemJobs(
     if (!force) {
       if (!bypassReadyCache) {
         const cachedAsset = getMixtapeStemAsset({
-          listRoot,
-          filePath,
+          libraryRoot,
+          sourceSignature,
           stemMode,
           model
         })
@@ -849,7 +862,7 @@ export async function enqueueMixtapeStemJobs(
             filePath
           })
           prewarmStemWaveformBundleFromPaths({
-            listRoot,
+            libraryRoot,
             sourceFilePath: filePath,
             stemMode,
             stemModel: model,
@@ -876,7 +889,8 @@ export async function enqueueMixtapeStemJobs(
       filePath
     })
     upsertMixtapeStemAsset({
-      listRoot,
+      libraryRoot,
+      sourceSignature,
       filePath,
       stemMode,
       model,
@@ -905,12 +919,13 @@ export async function enqueueMixtapeStemJobs(
     }
     const job: MixtapeStemQueueJob = {
       key: jobKey,
+      sourceSignature,
       filePath,
       stemMode,
       model,
       stemVersion,
       source,
-      listRoot,
+      libraryRoot,
       targets: new Map<string, Set<string>>()
     }
     mergeJobTargets(job, queueTargets)

@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { log } from '../log'
 import { decodeAudioShared } from './audioDecodePool'
-import { findSongListRoot } from './cacheMaintenance'
+import { findMixtapeCacheRoot } from './cacheMaintenance'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import mixtapeWindow from '../window/mixtapeWindow'
 import type { MixxxWaveformData } from '../waveformCache'
@@ -68,7 +68,7 @@ const computeMixtapeWaveform = async (filePath: string, listRoot?: string) => {
     let resolvedRoot = listRoot?.trim() || ''
     if (!resolvedRoot || resolved?.recovered) {
       const probePath = targetPath || normalized
-      resolvedRoot = (await findSongListRoot(path.dirname(probePath))) || resolvedRoot
+      resolvedRoot = (await findMixtapeCacheRoot(path.dirname(probePath))) || resolvedRoot
     }
     if (!resolvedRoot) return
     if (!targetPath) {
