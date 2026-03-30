@@ -17,6 +17,18 @@ type PreloadHit = {
   bpm: number | string | null
 } | null
 
+type DeleteSummary = {
+  total?: number
+  success?: number
+  failed?: number
+  removedPaths?: string[]
+}
+
+type OptimisticRestoreItem = {
+  song: ISongInfo
+  index: number
+}
+
 // 定义 usePlayerControls 的参数类型
 interface UsePlayerControlsOptions {
   audioPlayer: Ref<WebAudioPlayer | null>
@@ -62,6 +74,8 @@ export function usePlayerControlsLogic({
   // 调试日志已清理
   const isFileOperationInProgress = ref(false)
   const songToMoveRef = ref<ISongInfo | null>(null)
+  const normalizePath = (p: string | undefined | null) =>
+    (p || '').replace(/\//g, '\\').toLowerCase()
   const isReadOnlyPlaybackSource = () =>
     String(runtime.playingData.playingSongListUUID || '').startsWith('pioneer:')
   const buildSongSnapshot = (filePath: string, song: ISongInfo) => {
@@ -90,6 +104,68 @@ export function usePlayerControlsLogic({
       bpm: song?.bpm,
       originalBpm: song?.bpm
     }
+  }
+  const showDeleteSummaryIfNeeded = async (
+    summary: {
+      total?: number
+      success?: number
+      failed?: number
+    },
+    options?: {
+      restoredFailed?: boolean
+    }
+  ) => {
+    const total = Number(summary?.total || 0)
+    const success = Number(summary?.success || 0)
+    const failed = Number(summary?.failed || 0)
+    if (total <= 1 && failed === 0) return
+    const content: string[] = []
+    content.push(t('recycleBin.deleteSummarySuccess', { count: success }))
+    if (failed > 0) {
+      content.push(t('recycleBin.deleteSummaryFailed', { count: failed }))
+      if (options?.restoredFailed) {
+        content.push(t('recycleBin.deleteSummaryRestoredFailed', { count: failed }))
+      }
+    }
+    await confirm({
+      title: t('recycleBin.deleteSummaryTitle'),
+      content,
+      confirmShow: false
+    })
+  }
+  const buildSongsAreaOptimisticRestoreItems = (
+    listUUID: string,
+    filePaths: string[]
+  ): OptimisticRestoreItem[] => {
+    if (!listUUID || runtime.songsArea.songListUUID !== listUUID) return []
+    const pathSet = new Set(filePaths.map((item) => normalizePath(item)))
+    return runtime.songsArea.songInfoArr
+      .map((item, index) => ({ song: { ...item }, index }))
+      .filter((item) => pathSet.has(normalizePath(item.song.filePath)))
+  }
+  const clearPlayerStateForDelete = () => {
+    try {
+      emitter.emit('waveform-preview:stop', { reason: 'switch' })
+    } catch {}
+    cancelPreloadTimer('delSong clear player state')
+    preloadApi.clearAllCaches()
+    runtime.playerReady = false
+    runtime.isSwitchingSong = false
+    if (audioPlayer.value) {
+      if (audioPlayer.value.isPlaying()) {
+        audioPlayer.value.pause()
+      }
+      ignoreNextEmptyError.value = true
+      audioPlayer.value.empty()
+    }
+    waveformShow.value = false
+    bpm.value = ''
+    isInternalSongChange.value = true
+    runtime.playingData.playingSong = null
+  }
+  const finalizeDestroyedPlayerState = () => {
+    runtime.playingData.playingSongListUUID = ''
+    runtime.playingData.playingSongListData = []
   }
   // 取消长按抑制方案，改由 playerReady 门槛保障
 
@@ -276,24 +352,15 @@ export function usePlayerControlsLogic({
     }
 
     try {
-      // New outer try
       isFileOperationInProgress.value = true
       const filePathToDelete = runtime.playingData.playingSong.filePath
+      let shouldFinalizeDestroyedPlayerState = false
 
       try {
-        // Existing inner try
         cancelPreloadTimer('delSong start')
 
         const currentSongListUUID = runtime.playingData.playingSongListUUID
         preloadApi.forgetCachesForFile(filePathToDelete)
-        const currentList = runtime.playingData.playingSongListData
-        const currentIndex = currentList.findIndex((item) => item.filePath === filePathToDelete)
-
-        if (currentIndex === -1) {
-          console.error(`[delSong] 未找到要删除的歌曲: ${filePathToDelete}`)
-          // isFileOperationInProgress.value = false; // Now handled by outer finally
-          return
-        }
 
         // 检查是否在回收站
         const isInRecycleBin = currentSongListUUID === RECYCLE_BIN_UUID
@@ -319,83 +386,87 @@ export function usePlayerControlsLogic({
         }
 
         if (!performDelete) {
-          // isFileOperationInProgress.value = false; // Now handled by outer finally
           return // 用户取消操作
         }
 
-        // 停止播放并清空播放器
-        if (audioPlayer.value) {
-          if (audioPlayer.value.isPlaying()) {
-            audioPlayer.value.pause()
-          }
-          ignoreNextEmptyError.value = true
-          audioPlayer.value.empty()
-        }
-        waveformShow.value = false
-        bpm.value = '' // 清空 BPM 显示
-
-        // 从当前播放列表中移除歌曲
-        currentList.splice(currentIndex, 1)
-
-        // 确定下一首要播放的歌曲
-        let nextPlayingSong: ISongInfo | null = null
-        let nextPlayingSongPath: string | null = null
-        if (currentList.length > 0) {
-          const nextIndex = Math.min(currentIndex, currentList.length - 1) // 如果删除的是最后一首，则播放新的最后一首
-          nextPlayingSong = currentList[nextIndex]
-          nextPlayingSongPath = nextPlayingSong?.filePath ?? null
-        }
-
-        let preloadHit: PreloadHit = null
-        if (nextPlayingSongPath) {
-          preloadHit = preloadApi.takePreloadedData(nextPlayingSongPath)
-        }
-
-        if (nextPlayingSongPath && preloadHit) {
-          isInternalSongChange.value = true // 标记内部切换
-          runtime.playingData.playingSong = nextPlayingSong // 更新当前播放歌曲
-          requestLoadSong(nextPlayingSongPath, {
-            preloadedAudio: preloadHit.audio,
-            preloadedBpm: preloadHit.bpm ?? undefined
-          })
-          preloadApi.refreshPreloadWindow()
-        } else if (nextPlayingSong) {
-          // 列表未空，但未命中预加载
-          isInternalSongChange.value = true
-          runtime.playingData.playingSong = nextPlayingSong
-          requestLoadSong(nextPlayingSong.filePath)
-          preloadApi.refreshPreloadWindow()
-        } else {
-          // 列表已空
-          isInternalSongChange.value = true
-          runtime.playingData.playingSong = null
-          runtime.playingData.playingSongListUUID = '' // 清空播放列表 UUID
-          waveformShow.value = false // 确保波形图隐藏
-          preloadApi.clearAllCaches()
-        }
+        const optimisticRestoreItems = buildSongsAreaOptimisticRestoreItems(currentSongListUUID, [
+          filePathToDelete
+        ])
+        clearPlayerStateForDelete()
+        shouldFinalizeDestroyedPlayerState = true
+        emitter.emit('songsArea/optimistic-remove', {
+          listUUID: currentSongListUUID,
+          paths: [filePathToDelete]
+        })
 
         // 执行删除操作（移动到回收站或彻底删除）
         let removedPathsForEvent = [filePathToDelete]
-        if (permanently) {
-          const summary = await window.electron.ipcRenderer.invoke('permanentlyDelSongs', [
-            filePathToDelete
-          ])
-          const removedPaths = Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
-          if (removedPaths.length > 0) {
-            removedPathsForEvent = removedPaths
+        try {
+          let deleteSummary: DeleteSummary
+          if (permanently) {
+            const summary = await window.electron.ipcRenderer.invoke('permanentlyDelSongs', [
+              filePathToDelete
+            ])
+            deleteSummary = {
+              total: Number(summary?.total || 0),
+              success: Number(summary?.success || 0),
+              failed: Number(summary?.failed || 0),
+              removedPaths: Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
+            }
           } else {
-            removedPathsForEvent = []
+            const payload = isExternalView
+              ? { filePaths: [filePathToDelete], sourceType: 'external' }
+              : (() => {
+                  const songListPath = libraryUtils.findDirPathByUuid(currentSongListUUID)
+                  return songListPath
+                    ? { filePaths: [filePathToDelete], songListPath }
+                    : [filePathToDelete]
+                })()
+            const summary = await window.electron.ipcRenderer.invoke('delSongsAwaitable', payload)
+            deleteSummary = {
+              total: Number(summary?.total || 0),
+              success: Number(summary?.success || 0),
+              failed: Number(summary?.failed || 0),
+              removedPaths: Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
+            }
           }
-        } else {
-          const payload = isExternalView
-            ? { filePaths: [filePathToDelete], sourceType: 'external' }
-            : (() => {
-                const songListPath = libraryUtils.findDirPathByUuid(currentSongListUUID)
-                return songListPath
-                  ? { filePaths: [filePathToDelete], songListPath }
-                  : [filePathToDelete]
-              })()
-          window.electron.ipcRenderer.send('delSongs', payload)
+          removedPathsForEvent = deleteSummary.removedPaths || []
+          const removedNormalizedSet = new Set(
+            removedPathsForEvent.map((item) => normalizePath(item))
+          )
+          const failedRestoreItems =
+            Number(deleteSummary.failed || 0) > 0
+              ? optimisticRestoreItems.filter(
+                  (item) => !removedNormalizedSet.has(normalizePath(item.song.filePath))
+                )
+              : []
+          if (failedRestoreItems.length > 0) {
+            emitter.emit('songsArea/optimistic-restore', {
+              listUUID: currentSongListUUID,
+              items: failedRestoreItems
+            })
+          }
+          if (Number(deleteSummary.failed || 0) > 0) {
+            await showDeleteSummaryIfNeeded(deleteSummary, {
+              restoredFailed: failedRestoreItems.length > 0
+            })
+          }
+        } catch {
+          if (optimisticRestoreItems.length > 0) {
+            emitter.emit('songsArea/optimistic-restore', {
+              listUUID: currentSongListUUID,
+              items: optimisticRestoreItems
+            })
+          }
+          await showDeleteSummaryIfNeeded(
+            {
+              total: 1,
+              success: 0,
+              failed: 1
+            },
+            { restoredFailed: optimisticRestoreItems.length > 0 }
+          )
+          return
         }
 
         // 广播删除，保证当前 songsArea 若显示同一歌单可同步移除
@@ -406,17 +477,20 @@ export function usePlayerControlsLogic({
             paths: removedPathsForEvent
           })
         }
-        emitter.emit('playlistContentChanged', { uuids: [listUuidAtDeleteStart] })
+        if (listUuidAtDeleteStart) {
+          emitter.emit('playlistContentChanged', { uuids: [listUuidAtDeleteStart] })
+        }
 
         await nextTick() // 等待 DOM 更新
       } catch (error) {
         console.error(`[delSong] 删除歌曲过程中发生错误 (${filePathToDelete}):`, error)
-        // 出错时也应该重置标志，以防万一
         ignoreNextEmptyError.value = false
-        // isFileOperationInProgress.value = false; // Now handled by outer finally
+      } finally {
+        if (shouldFinalizeDestroyedPlayerState) {
+          finalizeDestroyedPlayerState()
+        }
       }
     } finally {
-      // New outer finally
       isFileOperationInProgress.value = false
     }
   }
@@ -469,6 +543,7 @@ export function usePlayerControlsLogic({
 
     isFileOperationInProgress.value = true
     const filePathToMove = songToMove.filePath
+    const sourceListUuid = runtime.playingData.playingSongListUUID
     const targetDirPath = isMixtapeTarget ? '' : libraryUtils.findDirPathByUuid(targetListUuid)
 
     // 重置存储的歌曲信息
@@ -568,19 +643,46 @@ export function usePlayerControlsLogic({
       // 先执行移动操作，因为这可能会影响状态或触发其他事件
       await window.electron.ipcRenderer.invoke('moveSongsToDir', [filePathToMove], targetDirPath)
 
+      // 先切到下一首，再广播移除事件，避免全局 songsRemoved 监听把当前播放上下文误清空。
+      let preloadHit: PreloadHit = null
+      if (nextPlayingSongPath) {
+        preloadHit = preloadApi.takePreloadedData(nextPlayingSongPath)
+      }
+
+      if (nextPlayingSongPath && preloadHit) {
+        isInternalSongChange.value = true
+        runtime.playingData.playingSongListUUID = sourceListUuid
+        runtime.playingData.playingSong = nextPlayingSong
+        requestLoadSong(nextPlayingSongPath, {
+          preloadedAudio: preloadHit.audio,
+          preloadedBpm: preloadHit.bpm ?? undefined
+        })
+        preloadApi.refreshPreloadWindow()
+      } else if (nextPlayingSong) {
+        isInternalSongChange.value = true
+        runtime.playingData.playingSongListUUID = sourceListUuid
+        runtime.playingData.playingSong = nextPlayingSong
+        requestLoadSong(nextPlayingSong.filePath)
+        preloadApi.refreshPreloadWindow()
+      } else {
+        isInternalSongChange.value = true
+        runtime.playingData.playingSong = null
+        runtime.playingData.playingSongListUUID = '' // 清空播放列表 UUID
+        preloadApi.clearAllCaches()
+      }
+
       // 广播源/目标歌单变化
       emitter.emit('playlistContentChanged', {
-        uuids: [runtime.playingData.playingSongListUUID, targetListUuid].filter(Boolean)
+        uuids: [sourceListUuid, targetListUuid].filter(Boolean)
       })
 
       // 广播删除（从源列表移除当前播放歌曲），确保 songsArea 能同步剔除并重建
       try {
-        const listUuidAtMoveStart = runtime.playingData.playingSongListUUID
         const normalizePath = (p: string | undefined | null) =>
           (p || '').replace(/\//g, '\\').toLowerCase()
         const normalizedPath = normalizePath(filePathToMove)
         emitter.emit('songsRemoved', {
-          listUUID: listUuidAtMoveStart,
+          listUUID: sourceListUuid,
           paths: [normalizedPath]
         })
       } catch {}
@@ -593,32 +695,6 @@ export function usePlayerControlsLogic({
         runtime.songsArea.songListUUID = currentSongsAreaUUID // 再设置回来，触发更新
       }
       await nextTick() // 等待可能的其他更新
-
-      // 现在检查预加载并确定如何加载下一首
-      let preloadHit: PreloadHit = null
-      if (nextPlayingSongPath) {
-        preloadHit = preloadApi.takePreloadedData(nextPlayingSongPath)
-      }
-
-      if (nextPlayingSongPath && preloadHit) {
-        isInternalSongChange.value = true
-        runtime.playingData.playingSong = nextPlayingSong
-        requestLoadSong(nextPlayingSongPath, {
-          preloadedAudio: preloadHit.audio,
-          preloadedBpm: preloadHit.bpm ?? undefined
-        })
-        preloadApi.refreshPreloadWindow()
-      } else if (nextPlayingSong) {
-        isInternalSongChange.value = true
-        runtime.playingData.playingSong = nextPlayingSong
-        requestLoadSong(nextPlayingSong.filePath)
-        preloadApi.refreshPreloadWindow()
-      } else {
-        isInternalSongChange.value = true
-        runtime.playingData.playingSong = null
-        runtime.playingData.playingSongListUUID = '' // 清空播放列表 UUID
-        preloadApi.clearAllCaches()
-      }
 
       isFileOperationInProgress.value = false
     } catch (error) {
@@ -692,6 +768,7 @@ export function usePlayerControlsLogic({
 
             // 更新播放状态
             isInternalSongChange.value = true
+            runtime.playingData.playingSongListUUID = listUuidAtExportStart
             runtime.playingData.playingSong = nextPlayingSong
 
             // 加载下一首歌或清空列表

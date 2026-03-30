@@ -65,7 +65,7 @@ jobs:
             vendor/demucs/win32-x64/runtime-directml
             vendor/demucs/win32-x64/runtime-xpu
             vendor/demucs/bootstrap
-          key: demucs-runtime-assets-${{ runner.os }}-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs', 'scripts/package-demucs-runtime-assets.mjs', 'scripts/merge-demucs-runtime-manifests.mjs') }}
+          key: demucs-runtime-assets-${{ runner.os }}-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs', 'scripts/package-demucs-runtime-assets.mjs', 'scripts/merge-demucs-runtime-manifests.mjs', 'scripts/lib/*.mjs') }}
           restore-keys: |
             demucs-runtime-assets-${{ runner.os }}-
 
@@ -132,7 +132,7 @@ jobs:
             vendor/demucs/darwin-arm64/runtime-cpu
             vendor/demucs/darwin-arm64/runtime-mps
             vendor/demucs/bootstrap
-          key: demucs-runtime-assets-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs', 'scripts/package-demucs-runtime-assets.mjs', 'scripts/merge-demucs-runtime-manifests.mjs') }}
+          key: demucs-runtime-assets-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs', 'scripts/package-demucs-runtime-assets.mjs', 'scripts/merge-demucs-runtime-manifests.mjs', 'scripts/lib/*.mjs') }}
           restore-keys: |
             demucs-runtime-assets-${{ runner.os }}-${{ runner.arch }}-
 
@@ -197,7 +197,7 @@ jobs:
             vendor/demucs/darwin-x64/runtime
             vendor/demucs/darwin-x64/runtime-cpu
             vendor/demucs/bootstrap
-          key: demucs-runtime-assets-${{ runner.os }}-${{ runner.arch }}-darwin-x64-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs', 'scripts/package-demucs-runtime-assets.mjs', 'scripts/merge-demucs-runtime-manifests.mjs') }}
+          key: demucs-runtime-assets-${{ runner.os }}-${{ runner.arch }}-darwin-x64-${{ hashFiles('scripts/demucs-runtime-profiles.json', 'scripts/demucs-model-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/prepare-demucs-runtimes.mjs', 'scripts/package-demucs-runtime-assets.mjs', 'scripts/merge-demucs-runtime-manifests.mjs', 'scripts/lib/*.mjs') }}
           restore-keys: |
             demucs-runtime-assets-${{ runner.os }}-${{ runner.arch }}-darwin-x64-
 

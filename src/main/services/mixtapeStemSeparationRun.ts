@@ -20,7 +20,10 @@ import * as shared from './mixtapeStemSeparationShared'
 import * as probe from './mixtapeStemSeparationProbe'
 import { decodeAudioShared } from './audioDecodePool'
 import { runPersistentXpuStemInference } from './mixtapeStemPersistentXpuWorker'
-import { downloadPreferredStemRuntime } from './mixtapeStemRuntimeDownload'
+import {
+  downloadPreferredStemRuntime,
+  getStemRuntimeDownloadState
+} from './mixtapeStemRuntimeDownload'
 import type {
   MixtapeStemComputeDevice,
   MixtapeStemCpuFallbackReasonCode,
@@ -411,6 +414,14 @@ export const runStemSeparation = async (params: {
       runtimeDir = normalizeFilePath(deviceSnapshot.runtimeDir) || resolveBundledDemucsRuntimeDir()
       pythonPath =
         normalizeFilePath(deviceSnapshot.pythonPath) || resolveBundledDemucsPythonPath(runtimeDir)
+    } else {
+      const runtimeDownloadState = getStemRuntimeDownloadState()
+      const downloadError =
+        normalizeText(runtimeDownloadState.error, 600) ||
+        normalizeText(runtimeDownloadState.message, 240)
+      if (runtimeDownloadState.status === 'failed' && downloadError) {
+        throw createStemError('STEM_ENGINE_BROKEN', `Demucs 运行时安装失败: ${downloadError}`)
+      }
     }
   }
   if (!fs.existsSync(pythonPath)) {

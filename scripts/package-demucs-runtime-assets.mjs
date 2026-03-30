@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { spawnSync } from 'node:child_process'
+import { validatePortableDarwinRuntime } from './lib/demucs-runtime-portability.mjs'
 
 const runtimeProfilesPath = path.resolve('./scripts/demucs-runtime-profiles.json')
 const packageJsonPath = path.resolve('./package.json')
@@ -81,6 +82,33 @@ const run = (command, commandArgs, options = {}) => {
   })
   if (result.status === 0) return
   throw new Error(`${command} ${commandArgs.join(' ')} -> exit ${result.status ?? -1}`)
+}
+
+const toShortText = (value, maxLen = 400) => {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  return text.length <= maxLen ? text : text.slice(0, maxLen)
+}
+
+const buildRuntimeEnv = (runtimeDir) => {
+  const env = {
+    ...process.env
+  }
+  const pathEntries =
+    process.platform === 'win32'
+      ? [path.join(runtimeDir, 'Scripts'), path.join(runtimeDir, 'Library', 'bin')]
+      : [path.join(runtimeDir, 'bin')]
+  env.PATH = [...pathEntries, process.env.PATH || ''].filter(Boolean).join(path.delimiter)
+  if (process.platform === 'linux') {
+    env.LD_LIBRARY_PATH = [path.join(runtimeDir, 'lib'), process.env.LD_LIBRARY_PATH || '']
+      .filter(Boolean)
+      .join(path.delimiter)
+  } else if (process.platform === 'darwin') {
+    env.DYLD_LIBRARY_PATH = [path.join(runtimeDir, 'lib'), process.env.DYLD_LIBRARY_PATH || '']
+      .filter(Boolean)
+      .join(path.delimiter)
+  }
+  return env
 }
 
 const normalizeResolvedPath = (value) => {
@@ -326,6 +354,20 @@ const readRuntimeMeta = (runtimeDir) => {
 }
 
 const resolveRuntimePythonRelativePath = (runtimeDir) => {
+  const candidates = platformKey.startsWith('win32')
+    ? ['python.exe', 'Scripts/python.exe']
+    : ['bin/python3', 'bin/python']
+  let resolvedPythonRelativePath = ''
+  for (const relativePath of candidates) {
+    const absolutePath = path.join(runtimeDir, ...relativePath.split('/'))
+    if (!fs.existsSync(absolutePath)) continue
+    resolvedPythonRelativePath = relativePath
+    break
+  }
+  if (!resolvedPythonRelativePath) {
+    throw new Error(`[demucs-runtime-package] Python entry missing in runtime: ${runtimeDir}`)
+  }
+  const absolutePythonPath = path.join(runtimeDir, ...resolvedPythonRelativePath.split('/'))
   if (platformKey.startsWith('win32')) {
     const portableCheck = validatePortableWindowsRuntime(runtimeDir)
     if (!portableCheck.ok) {
@@ -333,16 +375,21 @@ const resolveRuntimePythonRelativePath = (runtimeDir) => {
         `[demucs-runtime-package] Windows runtime is not portable: ${portableCheck.error}`
       )
     }
+  } else if (platformKey.startsWith('darwin')) {
+    const portableCheck = validatePortableDarwinRuntime({
+      runtimeDir,
+      pythonPath: absolutePythonPath,
+      env: buildRuntimeEnv(runtimeDir)
+    })
+    if (!portableCheck.ok) {
+      throw new Error(
+        `[demucs-runtime-package] Darwin runtime is not portable: ${
+          portableCheck.error || toShortText(JSON.stringify(portableCheck.payload || {}))
+        }`
+      )
+    }
   }
-  const candidates = platformKey.startsWith('win32')
-    ? ['python.exe', 'Scripts/python.exe']
-    : ['bin/python3', 'bin/python']
-  for (const relativePath of candidates) {
-    const absolutePath = path.join(runtimeDir, ...relativePath.split('/'))
-    if (!fs.existsSync(absolutePath)) continue
-    return relativePath
-  }
-  throw new Error(`[demucs-runtime-package] Python entry missing in runtime: ${runtimeDir}`)
+  return resolvedPythonRelativePath
 }
 
 const createArchive = (params) => {

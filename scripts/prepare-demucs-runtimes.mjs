@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { validatePortableDarwinRuntime } from './lib/demucs-runtime-portability.mjs'
 
 const runtimeProfilesPath = path.resolve('./scripts/demucs-runtime-profiles.json')
 const runtimeProfilesRaw = fs.readFileSync(runtimeProfilesPath, 'utf8')
@@ -348,6 +349,39 @@ const runProbe = ({ pythonPath, runtimeDir, runtimeKey }) => {
   return JSON.parse(lastLine)
 }
 
+const validateRuntimePortability = ({ runtimeDir, pythonPath, profileName, stage }) => {
+  if (process.platform === 'win32') {
+    const portableCheck = validatePortableWindowsRuntime(runtimeDir)
+    if (!portableCheck.ok) {
+      return {
+        ok: false,
+        error: `[demucs-runtime] Runtime is not portable for ${profileName} (${stage}): ${portableCheck.error}`
+      }
+    }
+    return {
+      ok: true,
+      error: ''
+    }
+  }
+  if (process.platform === 'darwin') {
+    const portableCheck = validatePortableDarwinRuntime({
+      runtimeDir,
+      pythonPath,
+      env: buildRuntimeEnv(runtimeDir)
+    })
+    if (!portableCheck.ok) {
+      return {
+        ok: false,
+        error: `[demucs-runtime] Runtime is not portable for ${profileName} (${stage}): ${portableCheck.error}`
+      }
+    }
+  }
+  return {
+    ok: true,
+    error: ''
+  }
+}
+
 const runCompatibilityProbe = ({ pythonPath, runtimeDir, scriptLines }) => {
   const env = buildRuntimeEnv(runtimeDir)
   const result = spawnSync(pythonPath, ['-c', scriptLines.join('\n')], {
@@ -376,14 +410,18 @@ for (const [profileName, profileConfig] of selectedProfiles) {
     .filter(Boolean)
 
   if (fs.existsSync(targetRuntimeDir)) {
-    if (process.platform === 'win32') {
-      const portableCheck = validatePortableWindowsRuntime(targetRuntimeDir)
-      if (!portableCheck.ok) {
-        fs.rmSync(targetRuntimeDir, { recursive: true, force: true })
-        console.log(
-          `[demucs-runtime] Removed non-portable runtime (${profileName}): ${portableCheck.error}`
-        )
-      }
+    const existingPythonPath = resolveRuntimePythonPath(targetRuntimeDir)
+    const portabilityCheck = validateRuntimePortability({
+      runtimeDir: targetRuntimeDir,
+      pythonPath: existingPythonPath,
+      profileName,
+      stage: 'existing'
+    })
+    if (!portabilityCheck.ok) {
+      fs.rmSync(targetRuntimeDir, { recursive: true, force: true })
+      console.log(
+        `[demucs-runtime] Removed non-portable runtime (${profileName}): ${portabilityCheck.error}`
+      )
     }
   }
 
@@ -405,13 +443,14 @@ for (const [profileName, profileConfig] of selectedProfiles) {
   if (!fs.existsSync(pythonPath)) {
     throw new Error(`[demucs-runtime] Python not found for ${profileName}: ${pythonPath}`)
   }
-  if (process.platform === 'win32') {
-    const portableCheck = validatePortableWindowsRuntime(targetRuntimeDir)
-    if (!portableCheck.ok) {
-      throw new Error(
-        `[demucs-runtime] Runtime is not portable for ${profileName}: ${portableCheck.error}`
-      )
-    }
+  const runtimePortabilityCheck = validateRuntimePortability({
+    runtimeDir: targetRuntimeDir,
+    pythonPath,
+    profileName,
+    stage: 'prepared'
+  })
+  if (!runtimePortabilityCheck.ok) {
+    throw new Error(runtimePortabilityCheck.error)
   }
   const runtimeEnv = buildRuntimeEnv(targetRuntimeDir)
 

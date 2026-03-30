@@ -25,6 +25,98 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     scheduleSweepCovers
   } = params
 
+  const onSongsOptimisticallyRemoved = (payload: { listUUID?: string; paths?: string[] }) => {
+    const listUUID = payload?.listUUID
+    const currentListUUID = runtime.songsArea.songListUUID
+    if (listUUID && listUUID !== currentListUUID) return
+    const pathsToRemove: string[] = Array.isArray(payload?.paths) ? payload.paths : []
+    if (!pathsToRemove.length) return
+    const normalizedSet = new Set<string>(
+      pathsToRemove.map((p: string) => normalizePath(p)).filter(Boolean)
+    )
+    const hasIntersection = originalSongInfoArr.value.some((s) =>
+      normalizedSet.has(normalizePath(s.filePath))
+    )
+    if (!hasIntersection) return
+
+    originalSongInfoArr.value = originalSongInfoArr.value.filter(
+      (song) => !normalizedSet.has(normalizePath(song.filePath))
+    )
+    applyFiltersAndSorting()
+
+    if (runtime.playingData.playingSongListUUID === currentListUUID) {
+      runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+    }
+
+    runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
+      (path) => !normalizedSet.has(normalizePath(path))
+    )
+    scheduleSweepCovers()
+  }
+
+  const onSongsOptimisticallyRestored = (payload: {
+    listUUID?: string
+    items?: Array<{ song: ISongInfo; index: number }>
+  }) => {
+    const listUUID = payload?.listUUID
+    const currentListUUID = runtime.songsArea.songListUUID
+    if (listUUID && listUUID !== currentListUUID) return
+    const items = Array.isArray(payload?.items) ? payload.items : []
+    if (!items.length) return
+
+    const current = [...originalSongInfoArr.value]
+    const existingSet = new Set(current.map((song) => normalizePath(song.filePath)))
+    const filteredItems = items
+      .filter(
+        (item): item is { song: ISongInfo; index: number } =>
+          !!item?.song && typeof item.index === 'number' && Number.isFinite(item.index)
+      )
+      .filter((item) => !existingSet.has(normalizePath(item.song.filePath)))
+      .sort((left, right) => left.index - right.index)
+    if (!filteredItems.length) return
+
+    const totalLength = current.length + filteredItems.length
+    const restoreBuckets = new Map<number, ISongInfo[]>()
+    for (const item of filteredItems) {
+      const targetIndex = Math.max(0, Math.min(totalLength, Math.floor(item.index)))
+      const bucket = restoreBuckets.get(targetIndex) || []
+      bucket.push({ ...item.song })
+      restoreBuckets.set(targetIndex, bucket)
+    }
+
+    const rebuilt: ISongInfo[] = []
+    let currentIndex = 0
+    for (let index = 0; index < totalLength; index++) {
+      const bucket = restoreBuckets.get(index)
+      if (bucket?.length) {
+        rebuilt.push(...bucket)
+        continue
+      }
+      const currentSong = current[currentIndex]
+      if (currentSong) {
+        rebuilt.push(currentSong)
+        currentIndex += 1
+      }
+    }
+    const trailingBucket = restoreBuckets.get(totalLength)
+    if (trailingBucket?.length) {
+      rebuilt.push(...trailingBucket)
+    }
+    while (currentIndex < current.length) {
+      rebuilt.push(current[currentIndex])
+      currentIndex += 1
+    }
+
+    originalSongInfoArr.value = markRaw(rebuilt)
+    applyFiltersAndSorting()
+
+    if (runtime.playingData.playingSongListUUID === currentListUUID) {
+      runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+    }
+
+    scheduleSweepCovers()
+  }
+
   const onSongsRemoved = (payload: { listUUID?: string; paths?: string[]; itemIds?: string[] }) => {
     const listUUID = payload?.listUUID
     const itemIds: string[] = Array.isArray(payload?.itemIds) ? payload.itemIds : []
@@ -221,6 +313,8 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
   }
 
   onMounted(() => {
+    emitter.on('songsArea/optimistic-remove', onSongsOptimisticallyRemoved)
+    emitter.on('songsArea/optimistic-restore', onSongsOptimisticallyRestored)
     emitter.on('songsRemoved', onSongsRemoved)
     emitter.on('songsMovedByDrag', onSongsMovedByDrag)
     emitter.on('external-playlist/refresh', onExternalPlaylistRefresh)
@@ -229,6 +323,8 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
   })
 
   onUnmounted(() => {
+    emitter.off('songsArea/optimistic-remove', onSongsOptimisticallyRemoved)
+    emitter.off('songsArea/optimistic-restore', onSongsOptimisticallyRestored)
     emitter.off('songsRemoved', onSongsRemoved)
     emitter.off('songsMovedByDrag', onSongsMovedByDrag)
     emitter.off('external-playlist/refresh', onExternalPlaylistRefresh)

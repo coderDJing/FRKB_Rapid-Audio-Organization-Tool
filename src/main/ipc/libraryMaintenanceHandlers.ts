@@ -183,8 +183,27 @@ export function registerLibraryMaintenanceHandlers() {
       })
     }
     const batchId = `delSongs_${Date.now()}`
+    if (mainWindow.instance) {
+      mainWindow.instance.webContents.send('progressSet', {
+        id: batchId,
+        titleKey: 'tracks.deleteProgressRemoving',
+        now: 0,
+        total: tasks.length,
+        isInitial: true
+      })
+    }
     const { success, failed, hasENOSPC, skipped, results } = await runWithConcurrency(tasks, {
       concurrency: 16,
+      onProgress: (done, total) => {
+        if (mainWindow.instance) {
+          mainWindow.instance.webContents.send('progressSet', {
+            id: batchId,
+            titleKey: 'tracks.deleteProgressRemoving',
+            now: done,
+            total
+          })
+        }
+      },
       stopOnENOSPC: true,
       onInterrupted: async (interruptPayload) =>
         waitForUserDecision(mainWindow.instance ?? null, batchId, 'delSongs', interruptPayload)
@@ -203,6 +222,14 @@ export function registerLibraryMaintenanceHandlers() {
           )
           .filter(Boolean)
           .slice(0, 3)
+      })
+    }
+    if (mainWindow.instance) {
+      mainWindow.instance.webContents.send('progressSet', {
+        id: batchId,
+        titleKey: 'tracks.deleteProgressRemoving',
+        now: tasks.length,
+        total: tasks.length
       })
     }
     const removedPaths = results
@@ -251,19 +278,47 @@ export function registerLibraryMaintenanceHandlers() {
     if (uniquePaths.length === 0) {
       return { total: 0, success: 0, failed: 0, removedPaths: [] }
     }
-    const tasks = uniquePaths.map(async (item) => {
+    const tasks = uniquePaths.map((item) => async () => {
       const ok = await permanentlyDeleteFile(item)
       if (!ok) {
         throw new Error('delete failed')
       }
       return item
     })
-    const results = await Promise.allSettled(tasks)
+    const batchId = `permanentlyDelSongs_${Date.now()}`
+    if (mainWindow.instance) {
+      mainWindow.instance.webContents.send('progressSet', {
+        id: batchId,
+        titleKey: 'recycleBin.progressDeleting',
+        now: 0,
+        total: tasks.length,
+        isInitial: true
+      })
+    }
+    const { results, success, failed } = await runWithConcurrency(tasks, {
+      concurrency: 16,
+      onProgress: (done, total) => {
+        if (mainWindow.instance) {
+          mainWindow.instance.webContents.send('progressSet', {
+            id: batchId,
+            titleKey: 'recycleBin.progressDeleting',
+            now: done,
+            total
+          })
+        }
+      }
+    })
+    if (mainWindow.instance) {
+      mainWindow.instance.webContents.send('progressSet', {
+        id: batchId,
+        titleKey: 'recycleBin.progressDeleting',
+        now: tasks.length,
+        total: tasks.length
+      })
+    }
     const removedPaths = results
-      .filter((r) => r.status === 'fulfilled')
-      .map((r) => (r as any).value as string)
-    const failed = results.filter((r) => r.status === 'rejected').length
-    const success = results.length - failed
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item)
     return { total: results.length, success, failed, removedPaths }
   })
 

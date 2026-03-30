@@ -11,6 +11,18 @@ import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 
 type ClipboardOperation = 'copy' | 'cut'
 
+type DeleteSummary = {
+  total?: number
+  success?: number
+  failed?: number
+  removedPaths?: string[]
+}
+
+type OptimisticRestoreItem = {
+  song: ISongInfo
+  index: number
+}
+
 interface UseKeyboardSelectionParams {
   runtime: ReturnType<typeof useRuntimeStore>
   externalViewportHeight: { value: number }
@@ -26,6 +38,8 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
   let cutPollInFlight = false
   let pendingCutPaths = new Set<string>()
   let pendingCutListUUID = ''
+  const normalizePath = (p: string | undefined | null) =>
+    (p || '').replace(/\//g, '\\').toLowerCase()
 
   const isMixtapeView = () =>
     libraryUtils.getLibraryTreeByUUID(runtime.songsArea.songListUUID)?.type === 'mixtapeList'
@@ -47,6 +61,20 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
     return selectedKeys
       .map((key) => map.get(key) || key)
       .filter((p) => typeof p === 'string' && p.length > 0)
+  }
+
+  const clearPlayingStateIfTouched = (normalizedPathSet: Set<string>) => {
+    const touchesCurrentPlaying =
+      runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID &&
+      normalizedPathSet.has(normalizePath(runtime.playingData.playingSong?.filePath))
+    if (!touchesCurrentPlaying) return false
+    try {
+      emitter.emit('waveform-preview:stop', { reason: 'switch' })
+    } catch {}
+    runtime.playingData.playingSongListUUID = ''
+    runtime.playingData.playingSongListData = []
+    runtime.playingData.playingSong = null
+    return true
   }
 
   const songClick = (event: MouseEvent, song: ISongInfo) => {
@@ -215,14 +243,24 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
         'delSongsAwaitable',
         buildDelSongsPayload(paths)
       )
-      return Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
+      return {
+        total: Number(summary?.total || 0),
+        success: Number(summary?.success || 0),
+        failed: Number(summary?.failed || 0),
+        removedPaths: Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
+      } as DeleteSummary
     }
 
-    const showDeleteSummaryIfNeeded = async (summary: {
-      total?: number
-      success?: number
-      failed?: number
-    }) => {
+    const showDeleteSummaryIfNeeded = async (
+      summary: {
+        total?: number
+        success?: number
+        failed?: number
+      },
+      options?: {
+        restoredFailed?: boolean
+      }
+    ) => {
       const total = Number(summary?.total || 0)
       const success = Number(summary?.success || 0)
       const failed = Number(summary?.failed || 0)
@@ -231,6 +269,9 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
       content.push(t('recycleBin.deleteSummarySuccess', { count: success }))
       if (failed > 0) {
         content.push(t('recycleBin.deleteSummaryFailed', { count: failed }))
+        if (options?.restoredFailed) {
+          content.push(t('recycleBin.deleteSummaryRestoredFailed', { count: failed }))
+        }
       }
       await confirm({
         title: t('recycleBin.deleteSummaryTitle'),
@@ -249,22 +290,76 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
     }
 
     if (shouldDelete) {
+      const selectedSnapshot = [...runtime.songsArea.songInfoArr]
       const resolvedSelectedPaths = resolveSelectedFilePaths(selectedKeys)
       let removedPathsForEvent = [...resolvedSelectedPaths]
-      if (isInRecycleBin) {
-        const summary = await window.electron.ipcRenderer.invoke(
-          'permanentlyDelSongs',
-          resolvedSelectedPaths
+      const selectedPathSet = new Set(resolvedSelectedPaths.map((item) => normalizePath(item)))
+      const optimisticRestoreItems: OptimisticRestoreItem[] = selectedSnapshot
+        .map((item, index) => ({ song: { ...item }, index }))
+        .filter((item) => selectedPathSet.has(normalizePath(item.song.filePath)))
+
+      clearPlayingStateIfTouched(selectedPathSet)
+      emitter.emit('songsArea/optimistic-remove', {
+        listUUID: runtime.songsArea.songListUUID,
+        paths: resolvedSelectedPaths
+      })
+
+      try {
+        let deleteSummary: DeleteSummary
+        if (isInRecycleBin) {
+          const summary = await window.electron.ipcRenderer.invoke(
+            'permanentlyDelSongs',
+            resolvedSelectedPaths
+          )
+          deleteSummary = {
+            total: Number(summary?.total || 0),
+            success: Number(summary?.success || 0),
+            failed: Number(summary?.failed || 0),
+            removedPaths: Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
+          }
+        } else {
+          deleteSummary = await requestDeleteSongs(resolvedSelectedPaths)
+        }
+        removedPathsForEvent = deleteSummary.removedPaths || []
+        const removedNormalizedSet = new Set(
+          removedPathsForEvent.map((item) => normalizePath(item))
         )
-        const removedPaths = Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
-        removedPathsForEvent = removedPaths
-        await showDeleteSummaryIfNeeded(summary)
-      } else {
-        removedPathsForEvent = await requestDeleteSongs(resolvedSelectedPaths)
+        const failedRestoreItems =
+          Number(deleteSummary.failed || 0) > 0
+            ? optimisticRestoreItems.filter(
+                (item) => !removedNormalizedSet.has(normalizePath(item.song.filePath))
+              )
+            : []
+        if (failedRestoreItems.length > 0) {
+          emitter.emit('songsArea/optimistic-restore', {
+            listUUID: runtime.songsArea.songListUUID,
+            items: failedRestoreItems
+          })
+        }
+        if (isInRecycleBin || Number(deleteSummary.failed || 0) > 0) {
+          await showDeleteSummaryIfNeeded(deleteSummary, {
+            restoredFailed: failedRestoreItems.length > 0
+          })
+        }
+      } catch {
+        if (optimisticRestoreItems.length > 0) {
+          emitter.emit('songsArea/optimistic-restore', {
+            listUUID: runtime.songsArea.songListUUID,
+            items: optimisticRestoreItems
+          })
+        }
+        await showDeleteSummaryIfNeeded(
+          {
+            total: resolvedSelectedPaths.length,
+            success: 0,
+            failed: resolvedSelectedPaths.length
+          },
+          { restoredFailed: optimisticRestoreItems.length > 0 }
+        )
+        return false
       }
 
       runtime.songsArea.selectedSongFilePath.length = 0
-      scheduleSweepCovers()
       if (removedPathsForEvent.length > 0) {
         emitter.emit('songsRemoved', {
           listUUID: runtime.songsArea.songListUUID,

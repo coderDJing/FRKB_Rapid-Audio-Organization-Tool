@@ -30,7 +30,7 @@ jobs:
         with:
           path: |
             vendor/demucs/models
-          key: demucs-models-${{ runner.os }}-${{ hashFiles('scripts/demucs-model-manifest.json', 'scripts/ensure-demucs-runtime.mjs') }}
+          key: demucs-models-${{ runner.os }}-${{ hashFiles('scripts/demucs-model-manifest.json', 'scripts/ensure-demucs-runtime.mjs', 'scripts/lib/*.mjs') }}
           restore-keys: |
             demucs-models-${{ runner.os }}-
 

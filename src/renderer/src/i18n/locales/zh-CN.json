@@ -954,6 +954,7 @@
     "deleteSummaryTitle": "删除结果",
     "deleteSummarySuccess": "成功删除 {count} 首曲目",
     "deleteSummaryFailed": "失败 {count} 首曲目",
+    "deleteSummaryRestoredFailed": "未成功删除的 {count} 首曲目已恢复到列表中",
     "progressScanning": "正在扫描回收站内容",
     "progressDeleting": "正在彻底删除回收站内容",
     "progressFinished": "回收站清空完成",

@@ -26,6 +26,7 @@ import { probeWindowsGpuAdapters } from './mixtapeStemSeparationProbe'
 
 const DEFAULT_DEMUCS_RUNTIME_MANIFEST_URL =
   'https://github.com/coderDjing/FRKB_Rapid-Audio-Organization-Tool/releases/download/demucs-runtime-assets/demucs-runtime-manifest.json'
+const FAILED_RUNTIME_RETRY_COOLDOWN_MS = 5 * 60 * 1000
 
 type RuntimeProfileName = 'cuda' | 'xpu' | 'directml' | 'cpu' | 'mps' | 'rocm'
 
@@ -289,6 +290,24 @@ const cleanupRuntimeDownloadArtifacts = async (params: {
   )
 }
 
+const summarizeRuntimeInstallValidationFailure = (rawError: string) => {
+  const errorText = normalizeText(rawError, 3000)
+  if (!errorText) return ''
+  if (
+    process.platform === 'darwin' &&
+    errorText.includes('Library not loaded:') &&
+    errorText.includes('Python.framework')
+  ) {
+    const missingLibrary =
+      errorText
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => line.startsWith('Library not loaded:')) || ''
+    return `macOS 运行时不是便携包，仍依赖系统 Python.framework。${missingLibrary || errorText}`
+  }
+  return errorText
+}
+
 const validateInstalledRuntime = async (entry: RuntimeAssetEntry, runtimeDir: string) => {
   const pythonPath = path.join(runtimeDir, entry.pythonRelativePath)
   if (!(await fileExists(pythonPath))) {
@@ -343,9 +362,12 @@ const validateInstalledRuntime = async (entry: RuntimeAssetEntry, runtimeDir: st
     )
   }
   if (result.status !== 0 || !lastLine) {
+    const validationError = summarizeRuntimeInstallValidationFailure(
+      result.error || stderrText || stdoutText || `exit=${result.status ?? -1}`
+    )
     throw createStemError(
       'STEM_RUNTIME_DOWNLOAD_INVALID',
-      `运行时安装校验失败: ${result.error || stderrText || stdoutText || `exit=${result.status ?? -1}`}`
+      `运行时安装校验失败: ${validationError || `exit=${result.status ?? -1}`}`
     )
   }
   let payload: { torch?: boolean; torchaudio?: boolean; demucs?: boolean; error?: string } = {}
@@ -883,6 +905,16 @@ export const downloadPreferredStemRuntime = async (): Promise<boolean> => {
       error: ''
     })
     return true
+  }
+  const failedState = getStemRuntimeDownloadState()
+  if (
+    failedState.status === 'failed' &&
+    failedState.profile === info.profile &&
+    failedState.runtimeKey === info.runtimeKey &&
+    failedState.version === info.version &&
+    Date.now() - failedState.updatedAt < FAILED_RUNTIME_RETRY_COOLDOWN_MS
+  ) {
+    return false
   }
   updateRuntimeDownloadState({
     status: 'available',

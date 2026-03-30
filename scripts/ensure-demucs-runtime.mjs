@@ -2,14 +2,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { Readable } from 'node:stream'
 import {
-  createConsoleDownloadProgressReporter,
   createRemoteRuntimeAssetInstaller,
-  fetchWithRuntimeProxy,
   probeRuntimeModules,
   readJsonFileIfExists
 } from './lib/demucs-runtime-support.mjs'
+import { ensureDemucsModels } from './lib/demucs-model-ensure.mjs'
+import { bootstrapPortableDarwinPython } from './lib/demucs-standalone-python.mjs'
+import { validatePortableDarwinRuntime } from './lib/demucs-runtime-portability.mjs'
 
 const runtimeProfilesPath = path.resolve('./scripts/demucs-runtime-profiles.json')
 const runtimeProfilesRaw = fs.readFileSync(runtimeProfilesPath, 'utf8')
@@ -437,18 +437,6 @@ const resolveSystemPythonCommand = () => {
 const normalizeList = (input) =>
   Array.isArray(input) ? input.map((item) => String(item).trim()).filter(Boolean) : []
 
-const normalizeModelName = (value) => {
-  const modelName = String(value || '').trim()
-  if (!modelName) return ''
-  return /^[a-zA-Z0-9_-]+$/.test(modelName) ? modelName : ''
-}
-
-const normalizeFileName = (value) => {
-  const fileName = String(value || '').trim()
-  if (!fileName) return ''
-  return /^[a-zA-Z0-9._-]+$/.test(fileName) ? fileName : ''
-}
-
 const normalizeRelativePath = (value) => {
   const relativePath = String(value || '')
     .trim()
@@ -460,74 +448,11 @@ const normalizeRelativePath = (value) => {
   return relativePath
 }
 
-const normalizeUrl = (value) => {
-  const url = String(value || '').trim()
-  if (!url) return ''
-  if (!/^https?:\/\//i.test(url)) return ''
-  return url
-}
-
 const normalizeSha256 = (value) => {
   const hash = String(value || '')
     .trim()
     .toLowerCase()
   return /^[0-9a-f]{64}$/.test(hash) ? hash : ''
-}
-
-const ensureModelsDir = () => {
-  const modelsDir = path.resolve(runtimeRoot, 'models')
-  fs.mkdirSync(modelsDir, { recursive: true })
-}
-
-const parseModelManifest = () => {
-  const raw = fs.readFileSync(modelManifestPath, 'utf8')
-  const parsed = JSON.parse(raw)
-  const modelEntries = Array.isArray(parsed?.models) ? parsed.models : []
-  return modelEntries
-    .map((entry) => {
-      const modelName = normalizeModelName(entry?.name)
-      const yaml = typeof entry?.yaml === 'string' ? entry.yaml : ''
-      const files = Array.isArray(entry?.files)
-        ? entry.files
-            .map((file) => ({
-              name: normalizeFileName(file?.name),
-              url: normalizeUrl(file?.url),
-              sha256: normalizeSha256(file?.sha256)
-            }))
-            .filter((file) => !!file.name && !!file.url)
-        : []
-      return {
-        name: modelName,
-        yaml,
-        files
-      }
-    })
-    .filter((entry) => !!entry.name && !!entry.yaml)
-}
-
-const resolveRequestedModels = (manifestEntries) => {
-  const requestedModels = parseCsv(modelsArg)
-    .map((item) => normalizeModelName(item))
-    .filter(Boolean)
-  if (requestedModels.length === 0) {
-    return {
-      selectedModels: manifestEntries,
-      unknownModels: []
-    }
-  }
-  const availableModelSet = new Set(manifestEntries.map((entry) => entry.name))
-  const selectedModelSet = new Set(requestedModels)
-  return {
-    selectedModels: manifestEntries.filter((entry) => selectedModelSet.has(entry.name)),
-    unknownModels: requestedModels.filter((item) => !availableModelSet.has(item))
-  }
-}
-
-const parsePositiveInteger = (value, fallback) => {
-  if (!Number.isFinite(value)) return fallback
-  const rounded = Math.trunc(value)
-  if (rounded <= 0) return fallback
-  return rounded
 }
 
 const computeFileSha256 = async (filePath) => {
@@ -553,186 +478,36 @@ const tryInstallProfileFromRemoteAsset = createRemoteRuntimeAssetInstaller({
   toShortText
 })
 
-const ensureInsideDir = (baseDir, targetPath) => {
-  const relativePath = path.relative(baseDir, targetPath)
-  return !!relativePath && !relativePath.startsWith('..') && !path.isAbsolute(relativePath)
-}
-
-const waitForWriterDrain = async (writer) =>
-  await new Promise((resolve, reject) => {
-    const onDrain = () => {
-      writer.off('error', onError)
-      resolve()
+const validateRuntimePortability = ({ runtimeDir, pythonPath, label }) => {
+  if (process.platform === 'win32') {
+    const portableCheck = validatePortableWindowsRuntime(runtimeDir)
+    if (!portableCheck.ok) {
+      throw new Error(`[demucs-runtime-ensure] ${label} is not portable: ${portableCheck.error}`)
     }
-    const onError = (error) => {
-      writer.off('drain', onDrain)
-      reject(error)
-    }
-    writer.once('drain', onDrain)
-    writer.once('error', onError)
-  })
-
-const closeWriter = async (writer) =>
-  await new Promise((resolve, reject) => {
-    const onFinish = () => {
-      writer.off('error', onError)
-      resolve()
-    }
-    const onError = (error) => {
-      writer.off('finish', onFinish)
-      reject(error)
-    }
-    writer.once('finish', onFinish)
-    writer.once('error', onError)
-    writer.end()
-  })
-
-const downloadToFile = async ({ url, targetPath, timeoutSec, retries }) => {
-  const timeoutMs = timeoutSec * 1000
-  const tempPath = `${targetPath}.tmp-${process.pid}-${Date.now()}`
-  let lastError = null
-  for (let attempt = 1; attempt <= retries; attempt += 1) {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), timeoutMs)
-    let writer = null
-    try {
-      const response = await fetchWithRuntimeProxy(url, {
-        signal: controller.signal,
-        redirect: 'follow'
-      })
-      if (!response.ok || !response.body) {
-        throw new Error(`HTTP ${response.status}`)
-      }
-      const totalBytes = Number(response.headers.get('content-length') || 0)
-      const reportProgress = createConsoleDownloadProgressReporter({
-        label: `model file ${path.basename(targetPath)}`,
-        totalBytes
-      })
-      writer = fs.createWriteStream(tempPath)
-      let downloadedBytes = 0
-      for await (const chunk of Readable.fromWeb(response.body)) {
-        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-        downloadedBytes += buffer.byteLength
-        if (!writer.write(buffer)) {
-          await waitForWriterDrain(writer)
-        }
-        reportProgress({ downloadedBytes })
-      }
-      await closeWriter(writer)
-      reportProgress({ downloadedBytes, done: true })
-      if (fs.existsSync(targetPath)) {
-        fs.rmSync(targetPath, { force: true })
-      }
-      fs.renameSync(tempPath, targetPath)
-      clearTimeout(timer)
-      return
-    } catch (error) {
-      clearTimeout(timer)
-      try {
-        writer?.destroy()
-      } catch {}
-      if (fs.existsSync(tempPath)) fs.rmSync(tempPath, { force: true })
-      lastError = error
-      if (attempt < retries) {
-        console.warn(
-          `[demucs-runtime-ensure] Download retry (${attempt}/${retries}): ${path.basename(targetPath)} -> ${toShortText(error instanceof Error ? error.message : String(error || ''))}`
-        )
-      }
-    }
+    return
   }
-  const reason = toShortText(
-    lastError instanceof Error ? lastError.message : String(lastError || '')
-  )
-  throw new Error(`[demucs-runtime-ensure] Download failed: ${url} (${reason || 'unknown'})`)
-}
-
-const ensureModelYaml = (modelsDir, modelEntry) => {
-  const yamlPath = path.resolve(modelsDir, `${modelEntry.name}.yaml`)
-  const expectedYaml = String(modelEntry.yaml || '')
-  const currentYaml = fs.existsSync(yamlPath) ? fs.readFileSync(yamlPath, 'utf8') : ''
-  if (currentYaml === expectedYaml) return
-  fs.writeFileSync(yamlPath, expectedYaml, 'utf8')
-}
-
-const ensureModelFile = async ({ modelsDir, modelName, modelFile, retries, timeoutSec }) => {
-  const relativePath = normalizeRelativePath(modelFile.name)
-  if (!relativePath) {
-    throw new Error(
-      `[demucs-runtime-ensure] Invalid model file path: ${modelFile.name || '<empty>'}`
-    )
-  }
-
-  const targetPath = path.resolve(modelsDir, relativePath)
-  if (!ensureInsideDir(modelsDir, targetPath)) {
-    throw new Error(`[demucs-runtime-ensure] Illegal model file path: ${modelFile.name}`)
-  }
-
-  fs.mkdirSync(path.dirname(targetPath), { recursive: true })
-
-  let needsDownload = !fs.existsSync(targetPath)
-  if (!needsDownload && modelFile.sha256) {
-    const existingHash = await computeFileSha256(targetPath)
-    if (existingHash !== modelFile.sha256) {
-      console.warn(
-        `[demucs-runtime-ensure] Hash mismatch, re-downloading: ${modelName}/${relativePath}`
-      )
-      needsDownload = true
-    }
-  }
-
-  if (needsDownload) {
-    console.log(`[demucs-runtime-ensure] Fetching model file: ${modelName}/${relativePath}`)
-    await downloadToFile({
-      url: modelFile.url,
-      targetPath,
-      timeoutSec,
-      retries
+  if (process.platform === 'darwin') {
+    const portableCheck = validatePortableDarwinRuntime({
+      runtimeDir,
+      pythonPath,
+      env: buildRuntimeEnv(runtimeDir)
     })
-  }
-
-  if (modelFile.sha256) {
-    const downloadedHash = await computeFileSha256(targetPath)
-    if (downloadedHash !== modelFile.sha256) {
-      throw new Error(
-        `[demucs-runtime-ensure] SHA256 mismatch after download: ${modelName}/${relativePath}`
-      )
+    if (!portableCheck.ok) {
+      throw new Error(`[demucs-runtime-ensure] ${label} is not portable: ${portableCheck.error}`)
     }
   }
 }
 
-const ensureDemucsModels = async () => {
-  const modelEntries = parseModelManifest()
-  if (modelEntries.length === 0) {
-    console.log('[demucs-runtime-ensure] No models declared, skip')
-    return
-  }
-
-  const { selectedModels, unknownModels } = resolveRequestedModels(modelEntries)
-  if (unknownModels.length > 0) {
-    console.warn(`[demucs-runtime-ensure] Unknown models ignored: ${unknownModels.join(', ')}`)
-  }
-  if (selectedModels.length === 0) {
-    console.log('[demucs-runtime-ensure] No matching models selected, skip')
-    return
-  }
-
-  const retries = parsePositiveInteger(modelRetriesArg, 3)
-  const timeoutSec = parsePositiveInteger(modelTimeoutSecArg, 600)
-  const modelsDir = path.resolve(runtimeRoot, 'models')
-  fs.mkdirSync(modelsDir, { recursive: true })
-
-  for (const modelEntry of selectedModels) {
-    ensureModelYaml(modelsDir, modelEntry)
-    for (const modelFile of modelEntry.files) {
-      await ensureModelFile({
-        modelsDir,
-        modelName: modelEntry.name,
-        modelFile,
-        retries,
-        timeoutSec
-      })
-    }
-  }
+const tryRestorePortableProfileFromRemoteAsset = async (profileName, runtimeDir) => {
+  const restored = await tryInstallProfileFromRemoteAsset(profileName, runtimeDir)
+  if (!restored) return false
+  const pythonPath = resolveRuntimePythonPath(runtimeDir)
+  validateRuntimePortability({
+    runtimeDir,
+    pythonPath,
+    label: `Runtime asset (${profileName})`
+  })
+  return true
 }
 
 const probeWindowsGpuAdapters = () => {
@@ -797,7 +572,7 @@ const resolveAutoProfiles = (platformKey, platformConfig) => {
   return Array.from(profileSet).filter((item) => !!platformConfig?.profiles?.[item])
 }
 
-const ensureBaseRuntime = (platformKey, platformConfig) => {
+const ensureBaseRuntime = async (platformKey, platformConfig) => {
   const baseRuntimeDirName = String(platformConfig?.baseRuntimeDir || 'runtime')
   const baseRuntimeDir = path.resolve(runtimeRoot, platformKey, baseRuntimeDirName)
   const basePipInstallArgs = normalizeList(platformConfig?.basePipInstall)
@@ -805,13 +580,21 @@ const ensureBaseRuntime = (platformKey, platformConfig) => {
   const baseEnv = buildRuntimeEnv(baseRuntimeDir)
   const baseMetadataPath = path.join(baseRuntimeDir, BASE_RUNTIME_METADATA_FILE)
   const baseMetadata = readJsonFileIfExists(baseMetadataPath)
+  let bootstrapMetadata = {}
 
   let needsBootstrap = !fs.existsSync(basePythonPath)
-  if (!needsBootstrap && process.platform === 'win32') {
-    const portableCheck = validatePortableWindowsRuntime(baseRuntimeDir)
-    if (!portableCheck.ok) {
+  if (!needsBootstrap) {
+    try {
+      validateRuntimePortability({
+        runtimeDir: baseRuntimeDir,
+        pythonPath: basePythonPath,
+        label: 'Base runtime'
+      })
+    } catch (error) {
       console.warn(
-        `[demucs-runtime-ensure] Rebuilding non-portable Windows base runtime: ${portableCheck.error}`
+        `[demucs-runtime-ensure] Rebuilding non-portable base runtime: ${
+          toShortText(error instanceof Error ? error.message : String(error || 'unknown'))
+        }`
       )
       fs.rmSync(baseRuntimeDir, { recursive: true, force: true })
       needsBootstrap = true
@@ -830,31 +613,58 @@ const ensureBaseRuntime = (platformKey, platformConfig) => {
   }
 
   if (needsBootstrap) {
-    const pythonCommand = resolveSystemPythonCommand()
-    if (!pythonCommand) {
-      throw new Error('[demucs-runtime-ensure] No system Python found for bootstrap')
-    }
     fs.mkdirSync(path.dirname(baseRuntimeDir), { recursive: true })
-    const bootstrapCommandText = [pythonCommand.command, ...pythonCommand.args].join(' ')
-    const bootstrapVersionText = pythonCommand.version ? ` (${pythonCommand.version})` : ''
-    const bootstrapSourceText = pythonCommand.source ? ` via ${pythonCommand.source}` : ''
-    const venvArgs = [...pythonCommand.args, '-m', 'venv']
     if (process.platform === 'darwin') {
-      // macOS universal packaging chokes on venv symlinks that resolve outside the app bundle.
-      venvArgs.push('--copies')
-    }
-    venvArgs.push(baseRuntimeDir)
-    console.log(`[demucs-runtime-ensure] Creating base runtime: ${baseRuntimeDir}`)
-    console.log(
-      `[demucs-runtime-ensure] Bootstrap Python${bootstrapSourceText}: ${bootstrapCommandText}${bootstrapVersionText}`
-    )
-    if (process.platform === 'win32') {
-      const bootstrapResult = bootstrapPortableWindowsRuntime(pythonCommand, baseRuntimeDir)
+      console.log(`[demucs-runtime-ensure] Creating portable Darwin base runtime: ${baseRuntimeDir}`)
+      const bootstrapResult = await bootstrapPortableDarwinPython({
+        platformKey,
+        runtimeRoot,
+        targetRuntimeDir: baseRuntimeDir,
+        run
+      })
       console.log(
-        `[demucs-runtime-ensure] Copied portable Windows runtime from ${bootstrapResult.sourceRuntimeDir}`
+        `[demucs-runtime-ensure] Installed standalone Darwin runtime from ${bootstrapResult.assetName}`
       )
+      bootstrapMetadata = {
+        bootstrapProvider: 'python-build-standalone',
+        bootstrapReleaseTag: bootstrapResult.releaseTag,
+        bootstrapPythonVersion: bootstrapResult.pythonVersion,
+        bootstrapTargetTriple: bootstrapResult.targetTriple,
+        bootstrapAssetName: bootstrapResult.assetName
+      }
     } else {
-      run(pythonCommand.command, venvArgs)
+      const pythonCommand = resolveSystemPythonCommand()
+      if (!pythonCommand) {
+        throw new Error('[demucs-runtime-ensure] No system Python found for bootstrap')
+      }
+      const bootstrapCommandText = [pythonCommand.command, ...pythonCommand.args].join(' ')
+      const bootstrapVersionText = pythonCommand.version ? ` (${pythonCommand.version})` : ''
+      const bootstrapSourceText = pythonCommand.source ? ` via ${pythonCommand.source}` : ''
+      const venvArgs = [...pythonCommand.args, '-m', 'venv', baseRuntimeDir]
+      console.log(`[demucs-runtime-ensure] Creating base runtime: ${baseRuntimeDir}`)
+      console.log(
+        `[demucs-runtime-ensure] Bootstrap Python${bootstrapSourceText}: ${bootstrapCommandText}${bootstrapVersionText}`
+      )
+      if (process.platform === 'win32') {
+        const bootstrapResult = bootstrapPortableWindowsRuntime(pythonCommand, baseRuntimeDir)
+        console.log(
+          `[demucs-runtime-ensure] Copied portable Windows runtime from ${bootstrapResult.sourceRuntimeDir}`
+        )
+        bootstrapMetadata = {
+          bootstrapProvider: 'system-python-copy',
+          bootstrapCommand: bootstrapCommandText,
+          bootstrapSource: pythonCommand.source || '',
+          bootstrapVersion: pythonCommand.version || ''
+        }
+      } else {
+        run(pythonCommand.command, venvArgs)
+        bootstrapMetadata = {
+          bootstrapProvider: 'system-python-venv',
+          bootstrapCommand: bootstrapCommandText,
+          bootstrapSource: pythonCommand.source || '',
+          bootstrapVersion: pythonCommand.version || ''
+        }
+      }
     }
   }
 
@@ -862,14 +672,11 @@ const ensureBaseRuntime = (platformKey, platformConfig) => {
   if (!fs.existsSync(resolvedBasePython)) {
     throw new Error(`[demucs-runtime-ensure] Base runtime python missing: ${resolvedBasePython}`)
   }
-  if (process.platform === 'win32') {
-    const portableCheck = validatePortableWindowsRuntime(baseRuntimeDir)
-    if (!portableCheck.ok) {
-      throw new Error(
-        `[demucs-runtime-ensure] Windows base runtime is not portable: ${portableCheck.error}`
-      )
-    }
-  }
+  validateRuntimePortability({
+    runtimeDir: baseRuntimeDir,
+    pythonPath: resolvedBasePython,
+    label: 'Base runtime'
+  })
 
   if (install) {
     const baseProbe = runQuiet(
@@ -892,7 +699,8 @@ const ensureBaseRuntime = (platformKey, platformConfig) => {
           generatedAt: new Date().toISOString(),
           platform: platformKey,
           baseRuntimeDir: baseRuntimeDirName,
-          pipInstallArgs: basePipInstallArgs
+          pipInstallArgs: basePipInstallArgs,
+          ...bootstrapMetadata
         },
         null,
         2
@@ -901,7 +709,7 @@ const ensureBaseRuntime = (platformKey, platformConfig) => {
     )
   }
 
-  ensureModelsDir()
+  fs.mkdirSync(path.resolve(runtimeRoot, 'models'), { recursive: true })
 
   return {
     baseRuntimeDir,
@@ -949,7 +757,14 @@ const main = async () => {
   }
 
   if (modelsOnly) {
-    await ensureDemucsModels()
+    await ensureDemucsModels({
+      runtimeRoot,
+      modelManifestPath,
+      modelsArg,
+      modelRetriesArg,
+      modelTimeoutSecArg,
+      toShortText
+    })
     console.log('[demucs-runtime-ensure] Completed (models only)')
     return
   }
@@ -958,7 +773,7 @@ const main = async () => {
     ? {
         basePipInstallArgs: []
       }
-    : ensureBaseRuntime(platformArg, platformConfig)
+    : await ensureBaseRuntime(platformArg, platformConfig)
 
   const explicitProfiles = parseCsv(profileArg)
   const selectedProfiles =
@@ -989,7 +804,7 @@ const main = async () => {
     const metadata = readJsonFileIfExists(metadataPath)
 
     if (syncRemoteAssets) {
-      const synced = await tryInstallProfileFromRemoteAsset(profileName, runtimeDir)
+      const synced = await tryRestorePortableProfileFromRemoteAsset(profileName, runtimeDir)
       if (!synced) {
         throw new Error(`[demucs-runtime-ensure] Runtime asset sync failed (${profileName})`)
       }
@@ -997,14 +812,14 @@ const main = async () => {
     }
 
     if (!fs.existsSync(pythonPath)) {
-      const restored = await tryInstallProfileFromRemoteAsset(profileName, runtimeDir)
+      const restored = await tryRestorePortableProfileFromRemoteAsset(profileName, runtimeDir)
       if (restored) continue
       missingProfiles.push(profileName)
       continue
     }
 
     if (install && !fs.existsSync(metadataPath)) {
-      const restored = await tryInstallProfileFromRemoteAsset(profileName, runtimeDir)
+      const restored = await tryRestorePortableProfileFromRemoteAsset(profileName, runtimeDir)
       if (restored) continue
       addUniqueItem(rebuildProfiles, profileName)
       continue
@@ -1019,7 +834,7 @@ const main = async () => {
           baseRuntimeInfo.basePipInstallArgs
         ))
     ) {
-      const restored = await tryInstallProfileFromRemoteAsset(profileName, runtimeDir)
+      const restored = await tryRestorePortableProfileFromRemoteAsset(profileName, runtimeDir)
       if (restored) continue
       addUniqueItem(rebuildProfiles, profileName)
       console.warn(
@@ -1029,6 +844,24 @@ const main = async () => {
     }
 
     if (!install) continue
+    try {
+      validateRuntimePortability({
+        runtimeDir,
+        pythonPath,
+        label: `Runtime (${profileName})`
+      })
+    } catch (error) {
+      const restored = await tryRestorePortableProfileFromRemoteAsset(profileName, runtimeDir)
+      if (restored) continue
+      addUniqueItem(brokenProfiles, profileName)
+      addUniqueItem(rebuildProfiles, profileName)
+      console.warn(
+        `[demucs-runtime-ensure] Runtime portability check failed (${profileName}), will rebuild: ${
+          toShortText(error instanceof Error ? error.message : String(error || 'unknown'))
+        }`
+      )
+      continue
+    }
     const probe = probeRuntimeModules({
       pythonPath,
       runtimeDir,
@@ -1037,7 +870,7 @@ const main = async () => {
       toShortText
     })
     if (!probe.ok || !probe.payload) {
-      const restored = await tryInstallProfileFromRemoteAsset(profileName, runtimeDir)
+      const restored = await tryRestorePortableProfileFromRemoteAsset(profileName, runtimeDir)
       if (restored) continue
       addUniqueItem(brokenProfiles, profileName)
       addUniqueItem(rebuildProfiles, profileName)
@@ -1055,7 +888,7 @@ const main = async () => {
     const directmlReady = !requiresDirectml ? true : !!payload.torch_directml
     const xpuReady = !requiresXpu ? true : !!payload.xpu_backend
     if (!baseReady || !directmlReady || !xpuReady) {
-      const restored = await tryInstallProfileFromRemoteAsset(profileName, runtimeDir)
+      const restored = await tryRestorePortableProfileFromRemoteAsset(profileName, runtimeDir)
       if (restored) continue
       addUniqueItem(brokenProfiles, profileName)
       addUniqueItem(rebuildProfiles, profileName)
@@ -1076,7 +909,14 @@ const main = async () => {
     runPrepare(missingProfiles, { force })
   }
 
-  await ensureDemucsModels()
+  await ensureDemucsModels({
+    runtimeRoot,
+    modelManifestPath,
+    modelsArg,
+    modelRetriesArg,
+    modelTimeoutSecArg,
+    toShortText
+  })
 
   console.log('[demucs-runtime-ensure] Completed')
 }

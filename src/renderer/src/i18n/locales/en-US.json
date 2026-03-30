@@ -954,6 +954,7 @@
     "deleteSummaryTitle": "Delete Summary",
     "deleteSummarySuccess": "Deleted {count} track(s)",
     "deleteSummaryFailed": "Failed {count} track(s)",
+    "deleteSummaryRestoredFailed": "{count} track(s) that failed to delete were restored to the list",
     "progressScanning": "Scanning recycle bin items",
     "progressDeleting": "Permanently deleting recycle bin items",
     "progressFinished": "Recycle bin cleared",
