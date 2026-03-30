@@ -812,6 +812,7 @@
     "outputPathRequired": "请先选择输出目录。",
     "outputFilenameRequired": "请输入输出文件名。",
     "outputNoTracks": "当前没有可导出的录制轨道。",
+    "outputKeyLockUnavailable": "当前导出包含启用 Master Tempo 的轨道，但离线 Key Lock 不可用。为避免导出错误结果，已中止导出。",
     "stemNotReadyForExport": "有 {count} 首曲目的 Stem 仍未就绪，暂时不能导出。",
     "exportStemPreparing": "已按导出档开始准备 Stem（{count} 首），请等待完成后再导出。",
     "outputProgressPreparing": "正在准备导出任务",

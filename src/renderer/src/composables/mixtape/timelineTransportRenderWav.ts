@@ -535,8 +535,8 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
         await ensureTransportKeyLockWorkletModule(offlineCtx as any)
         offlineKeyLockWorkletReady = true
       } catch (error) {
-        offlineKeyLockWorkletReady = false
-        console.error('[mixtape-output] key lock worklet unavailable, fallback to rate', error)
+        console.error('[mixtape-output] key lock worklet unavailable, export aborted', error)
+        throw new Error(t('mixtape.outputKeyLockUnavailable'))
       }
     }
     const nodes = buildOutputTrackNodes(

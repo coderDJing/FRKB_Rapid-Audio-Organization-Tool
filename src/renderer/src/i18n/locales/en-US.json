@@ -812,6 +812,7 @@
     "outputPathRequired": "Please choose an output folder first.",
     "outputFilenameRequired": "Please enter an output file name.",
     "outputNoTracks": "There are no tracks to export in this recording.",
+    "outputKeyLockUnavailable": "This export contains track(s) with Master Tempo enabled, but offline Key Lock is unavailable. Export was aborted to avoid producing incorrect output.",
     "stemNotReadyForExport": "{count} track(s) still have stems not ready and cannot be exported yet.",
     "exportStemPreparing": "Started preparing export-profile stems ({count} track(s)). Export again after it finishes.",
     "outputProgressPreparing": "Preparing export task",
