@@ -103,7 +103,7 @@ export async function resolveLibraryStemCacheDir(params: {
   if (!sourceSignature) return ''
   return path.join(
     cacheRoot,
-    sourceSignature,
+    toSafeStemPathSegment(sourceSignature, 'source'),
     toSafeStemPathSegment(params.model, 'htdemucs'),
     toSafeStemPathSegment(params.stemMode, '4stems')
   )
