@@ -119,6 +119,7 @@ export type MixtapeBpmPoint = {
 export type MixtapeProjectBpmEnvelopeSnapshot = {
   bpmEnvelope: MixtapeBpmPoint[]
   bpmEnvelopeDurationSec: number
+  gridPhaseOffsetSec?: number
 }
 
 export type SerializedTrackTempoSnapshot = {
@@ -134,6 +135,7 @@ export type SerializedTrackTempoSnapshot = {
   mappingMode?: 'tempoEnvelope' | 'masterGrid'
   trackStartSec?: number
   masterGridFallbackBpm?: number
+  masterGridPhaseOffsetSec?: number
   masterGridPoints?: MixtapeBpmPoint[]
   controlPoints: MixtapeBpmPoint[]
 }

@@ -21,6 +21,7 @@ export function registerMixtapeProjectTempoHandlers() {
         playlistId?: string
         bpmEnvelope?: Array<{ sec?: number; bpm?: number }>
         bpmEnvelopeDurationSec?: number
+        gridPhaseOffsetSec?: number
       }
     ) => {
       const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
@@ -31,7 +32,8 @@ export function registerMixtapeProjectTempoHandlers() {
               bpm: Number(point?.bpm)
             }))
           : [],
-        bpmEnvelopeDurationSec: Number(payload?.bpmEnvelopeDurationSec)
+        bpmEnvelopeDurationSec: Number(payload?.bpmEnvelopeDurationSec),
+        gridPhaseOffsetSec: Number(payload?.gridPhaseOffsetSec)
       })
     }
   )

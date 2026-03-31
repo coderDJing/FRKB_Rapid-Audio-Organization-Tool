@@ -1,5 +1,9 @@
 import { resolveTempoRatioByBpm } from '@renderer/composables/mixtape/mixxxSyncModel'
 import {
+  normalizeBeatOffset,
+  resolveBeatSecByBpm
+} from '@renderer/composables/mixtape/mixxxSyncModel'
+import {
   buildProjectedMasterGridTempoPoints,
   mapMixtapeMasterGridTimelineSec,
   sampleMixtapeMasterGridBpmAtSec
@@ -10,6 +14,7 @@ import {
   BPM_POINT_SEC_EPSILON,
   buildFlatTrackBpmEnvelope,
   normalizeTrackBpmEnvelopePoints,
+  resolveTrackGridSourceBpm,
   resolveTrackBpmEnvelopeClampRange,
   roundTrackTempoSec
 } from '@renderer/composables/mixtape/trackTempoModel'
@@ -46,9 +51,73 @@ export const buildFlatMixtapeGlobalBpmEnvelope = (durationSec: number, bpm: numb
     bpm: roundGlobalBpm(Number(point.bpm))
   }))
 
+const resolveTrackVisibleAnchorLocalSec = (params: {
+  track: MixtapeTrack
+  resolveTrackSourceDurationSeconds: (track: MixtapeTrack) => number
+  resolveTrackFirstBeatSeconds: (track: MixtapeTrack) => number
+}) => {
+  const track = params.track
+  const gridSourceBpm = resolveTrackGridSourceBpm(track)
+  const beatSourceSec = Math.max(BPM_POINT_SEC_EPSILON, resolveBeatSecByBpm(gridSourceBpm))
+  if (!Number.isFinite(beatSourceSec) || beatSourceSec <= BPM_POINT_SEC_EPSILON) return null
+  const sourceDurationSec = Math.max(
+    0,
+    Number(params.resolveTrackSourceDurationSeconds(track)) || 0
+  )
+  const sourceDurationBeats = sourceDurationSec / beatSourceSec
+  const firstBeatSourceSec = Math.max(0, Number(track.firstBeatMs) || 0) / 1000
+  const firstBeatSourceBeats = firstBeatSourceSec / beatSourceSec
+  const normalizedBarBeatOffset = normalizeBeatOffset(track.barBeatOffset, 32)
+  const firstBarLineSourceBeats = firstBeatSourceBeats + normalizedBarBeatOffset
+  const hasVisibleBarLine = firstBarLineSourceBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
+  const currentBeatSec = Math.max(
+    BPM_POINT_SEC_EPSILON,
+    resolveBeatSecByBpm(Number(track.bpm) || gridSourceBpm)
+  )
+  const firstBeatLocalSec = Math.max(0, Number(params.resolveTrackFirstBeatSeconds(track)) || 0)
+  return roundTrackTempoSec(
+    hasVisibleBarLine
+      ? firstBeatLocalSec + normalizedBarBeatOffset * currentBeatSec
+      : firstBeatLocalSec
+  )
+}
+
+export const resolveDefaultMixtapeGlobalGridPhaseOffsetSec = (params: {
+  tracks: MixtapeTrack[]
+  resolveTrackSourceDurationSeconds: (track: MixtapeTrack) => number
+  resolveTrackFirstBeatSeconds: (track: MixtapeTrack) => number
+}) => {
+  const orderedTracks = [...params.tracks].sort((left, right) => {
+    const leftStartSec = Number(left.startSec)
+    const rightStartSec = Number(right.startSec)
+    const leftHasExplicitStartSec = Number.isFinite(leftStartSec)
+    const rightHasExplicitStartSec = Number.isFinite(rightStartSec)
+    if (leftHasExplicitStartSec && rightHasExplicitStartSec) {
+      if (Math.abs(leftStartSec - rightStartSec) > BPM_POINT_SEC_EPSILON) {
+        return leftStartSec - rightStartSec
+      }
+    } else if (leftHasExplicitStartSec !== rightHasExplicitStartSec) {
+      return leftHasExplicitStartSec ? -1 : 1
+    }
+    return (Number(left.mixOrder) || 0) - (Number(right.mixOrder) || 0)
+  })
+  for (const track of orderedTracks) {
+    const localAnchorSec = resolveTrackVisibleAnchorLocalSec({
+      track,
+      resolveTrackSourceDurationSeconds: params.resolveTrackSourceDurationSeconds,
+      resolveTrackFirstBeatSeconds: params.resolveTrackFirstBeatSeconds
+    })
+    if (localAnchorSec === null) continue
+    return roundTrackTempoSec(resolveTrackStartSec(track) + localAnchorSec)
+  }
+  return 0
+}
+
 export const buildDefaultMixtapeGlobalBpmEnvelopeSnapshot = (params: {
   tracks: MixtapeTrack[]
   resolveTrackDurationSeconds: (track: MixtapeTrack) => number
+  resolveTrackSourceDurationSeconds: (track: MixtapeTrack) => number
+  resolveTrackFirstBeatSeconds: (track: MixtapeTrack) => number
 }) => {
   const defaultBpm = resolveDefaultGlobalBpmFromTracks(params.tracks)
   const durationSec = Math.max(
@@ -62,7 +131,12 @@ export const buildDefaultMixtapeGlobalBpmEnvelopeSnapshot = (params: {
   )
   return {
     bpmEnvelope: buildFlatMixtapeGlobalBpmEnvelope(durationSec, defaultBpm),
-    bpmEnvelopeDurationSec: durationSec
+    bpmEnvelopeDurationSec: durationSec,
+    gridPhaseOffsetSec: resolveDefaultMixtapeGlobalGridPhaseOffsetSec({
+      tracks: params.tracks,
+      resolveTrackSourceDurationSeconds: params.resolveTrackSourceDurationSeconds,
+      resolveTrackFirstBeatSeconds: params.resolveTrackFirstBeatSeconds
+    })
   }
 }
 

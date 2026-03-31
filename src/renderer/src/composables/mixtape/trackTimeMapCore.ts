@@ -32,6 +32,7 @@ export type TrackTimeMapInput = {
   mappingMode?: 'tempoEnvelope' | 'masterGrid'
   trackStartSec?: number
   masterGridFallbackBpm?: number
+  masterGridPhaseOffsetSec?: number
   masterGridPoints?: MixtapeBpmPoint[]
 }
 

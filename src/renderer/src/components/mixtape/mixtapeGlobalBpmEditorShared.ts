@@ -40,11 +40,13 @@ export const buildTrackTargetSignature = (tracks: MixtapeTrack[]) =>
 export const buildTrackStartBeatById = (
   tracks: MixtapeTrack[],
   points: MixtapeBpmPoint[],
-  fallbackBpm: number
+  fallbackBpm: number,
+  phaseOffsetSec: number = 0
 ) => {
   const masterGrid = createMixtapeMasterGrid({
     points,
-    fallbackBpm
+    fallbackBpm,
+    phaseOffsetSec
   })
   return new Map(
     tracks.map((track) => [
@@ -54,8 +56,12 @@ export const buildTrackStartBeatById = (
   )
 }
 
-export const buildPointGridBeatMap = (points: MixtapeBpmPoint[], fallbackBpm: number) => {
-  const grid = createMixtapeMasterGrid({ points, fallbackBpm })
+export const buildPointGridBeatMap = (
+  points: MixtapeBpmPoint[],
+  fallbackBpm: number,
+  phaseOffsetSec: number = 0
+) => {
+  const grid = createMixtapeMasterGrid({ points, fallbackBpm, phaseOffsetSec })
   const map = new Map<number, number>()
   for (let index = 0; index < points.length; index += 1) {
     const point = points[index]

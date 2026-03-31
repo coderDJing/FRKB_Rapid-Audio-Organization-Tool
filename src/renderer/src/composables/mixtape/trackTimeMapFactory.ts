@@ -31,7 +31,8 @@ const buildSerializedTrackTimeMapCacheKey = (snapshot: SerializedTrackTempoSnaps
     Math.round((Number(snapshot.sourceDurationSec) || 0) * 1000),
     Math.round((Number(snapshot.firstBeatSourceSec) || 0) * 1000),
     Math.round((Number(snapshot.beatSourceSec) || 0) * 1000),
-    Math.round((Number(snapshot.barBeatOffset) || 0) * 1000)
+    Math.round((Number(snapshot.barBeatOffset) || 0) * 1000),
+    Math.round((Number(snapshot.masterGridPhaseOffsetSec) || 0) * 1000)
   ].join('|')
 
 const readTrackTimeMapSnapshotCache = (key: string) => {
@@ -221,6 +222,7 @@ const createMasterGridTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap =>
   const trackStartSec = Math.max(0, Number(input.trackStartSec) || 0)
   const masterGrid = createMixtapeMasterGrid({
     points: input.masterGridPoints || [],
+    phaseOffsetSec: input.masterGridPhaseOffsetSec,
     fallbackBpm: Number(input.masterGridFallbackBpm) || Number(input.fallbackBpm) || 128
   })
   const renderPoints = input.controlPoints.map((point) => ({
@@ -327,6 +329,7 @@ export const createTrackTimeMapFromSnapshotPayload = (
     trackStartSec: Number(snapshot.trackStartSec) || 0,
     masterGridFallbackBpm:
       Number(snapshot.masterGridFallbackBpm) || Number(snapshot.baseBpm) || 128,
+    masterGridPhaseOffsetSec: Number(snapshot.masterGridPhaseOffsetSec) || 0,
     masterGridPoints: Array.isArray(snapshot.masterGridPoints)
       ? snapshot.masterGridPoints.map((point) => ({
           sec: Number(point.sec),

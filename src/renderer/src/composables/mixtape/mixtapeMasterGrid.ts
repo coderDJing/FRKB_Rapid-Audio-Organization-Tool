@@ -38,6 +38,12 @@ type MixtapeMasterGridRange = {
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
+export const normalizeMixtapeMasterGridPhaseOffsetSec = (value: unknown) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric < 0) return 0
+  return roundTrackTempoSec(numeric)
+}
+
 export const sampleMixtapeMasterGridBpmAtSec = (
   points: MixtapeBpmPoint[],
   sec: number,
@@ -108,7 +114,10 @@ const buildMixtapeMasterGridIntegralCache = (
   }
 }
 
-const resolveMixtapeMasterGridBeatsAtSec = (cache: MixtapeMasterGridIntegralCache, sec: number) => {
+const resolveMixtapeMasterGridRawBeatsAtSec = (
+  cache: MixtapeMasterGridIntegralCache,
+  sec: number
+) => {
   const safeSec = Math.max(0, Number(sec) || 0)
   if (safeSec <= 0) return 0
   if (!cache.segments.length) {
@@ -132,7 +141,7 @@ const resolveMixtapeMasterGridBeatsAtSec = (cache: MixtapeMasterGridIntegralCach
   return cache.totalBeats
 }
 
-const resolveMixtapeMasterGridSecByBeats = (
+const resolveMixtapeMasterGridSecByRawBeats = (
   cache: MixtapeMasterGridIntegralCache,
   beats: number
 ) => {
@@ -185,18 +194,25 @@ const resolveMasterGridVisibility = (zoom: number) => ({
 const resolveMasterGridTailBpm = (points: MixtapeBpmPoint[], fallbackBpm: number) =>
   sampleMixtapeMasterGridBpmAtSec(points, Number(points[points.length - 1]?.sec) || 0, fallbackBpm)
 
-export const buildMixtapeMasterGridSignature = (points: MixtapeBpmPoint[]) =>
-  points
-    .map((point) => {
-      const sec = Math.round((Number(point?.sec) || 0) * 1000)
-      const bpm = Math.round((Number(point?.bpm) || 0) * 1000)
-      return `${sec}:${bpm}`
-    })
-    .join(';')
+export const buildMixtapeMasterGridSignature = (
+  points: MixtapeBpmPoint[],
+  phaseOffsetSec: number = 0
+) =>
+  [
+    Math.round(normalizeMixtapeMasterGridPhaseOffsetSec(phaseOffsetSec) * 1000),
+    points
+      .map((point) => {
+        const sec = Math.round((Number(point?.sec) || 0) * 1000)
+        const bpm = Math.round((Number(point?.bpm) || 0) * 1000)
+        return `${sec}:${bpm}`
+      })
+      .join(';')
+  ].join('|')
 
 export const createMixtapeMasterGrid = (params: {
   points: MixtapeBpmPoint[]
   fallbackBpm: number
+  phaseOffsetSec?: number
 }) => {
   const points = Array.isArray(params.points)
     ? params.points.map((point) => ({
@@ -207,6 +223,12 @@ export const createMixtapeMasterGrid = (params: {
   const fallbackBpm = Math.max(BPM_MIN_VALUE, Number(params.fallbackBpm) || 128)
   const cache = buildMixtapeMasterGridIntegralCache(points, fallbackBpm)
   const tailBpm = resolveMasterGridTailBpm(points, fallbackBpm)
+  const phaseOffsetSec = normalizeMixtapeMasterGridPhaseOffsetSec(params.phaseOffsetSec)
+  const phaseOffsetBeats = resolveMixtapeMasterGridRawBeatsAtSec(cache, phaseOffsetSec)
+  const mapSecToBeats = (sec: number) =>
+    resolveMixtapeMasterGridRawBeatsAtSec(cache, sec) - phaseOffsetBeats
+  const mapBeatsToSec = (beats: number) =>
+    resolveMixtapeMasterGridSecByRawBeats(cache, Number(beats) + phaseOffsetBeats)
 
   const buildVisibleGridLines = (zoom: number, range?: MixtapeMasterGridRange) => {
     const visibility = resolveMasterGridVisibility(Number(zoom) || 0)
@@ -215,12 +237,8 @@ export const createMixtapeMasterGrid = (params: {
       minSec,
       Number.isFinite(Number(range?.maxSec)) ? Number(range?.maxSec) : cache.durationSec
     )
-    const minBeat = Math.ceil(
-      resolveMixtapeMasterGridBeatsAtSec(cache, minSec) - BPM_POINT_SEC_EPSILON
-    )
-    const maxBeat = Math.floor(
-      resolveMixtapeMasterGridBeatsAtSec(cache, maxSec) + BPM_POINT_SEC_EPSILON
-    )
+    const minBeat = Math.ceil(mapSecToBeats(minSec) - BPM_POINT_SEC_EPSILON)
+    const maxBeat = Math.floor(mapSecToBeats(maxSec) + BPM_POINT_SEC_EPSILON)
     const lines: MixtapeMasterGridLine[] = []
     for (let beat = minBeat; beat <= maxBeat; beat += 1) {
       const mod32 = ((beat % 32) + 32) % 32
@@ -229,7 +247,7 @@ export const createMixtapeMasterGrid = (params: {
         mod32 === 0 ? 'bar' : mod4 === 0 ? 'beat4' : 'beat'
       if (level === 'beat' && !visibility.showBeat) continue
       if (level === 'beat4' && !visibility.showBeat4) continue
-      const sec = resolveMixtapeMasterGridSecByBeats(cache, beat)
+      const sec = mapBeatsToSec(beat)
       if (sec < minSec - BPM_POINT_SEC_EPSILON || sec > maxSec + BPM_POINT_SEC_EPSILON) continue
       lines.push({
         sec,
@@ -245,10 +263,11 @@ export const createMixtapeMasterGrid = (params: {
     durationSec: cache.durationSec,
     totalBeats: cache.totalBeats,
     tailBpm,
-    signature: buildMixtapeMasterGridSignature(points),
+    phaseOffsetSec,
+    signature: buildMixtapeMasterGridSignature(points, phaseOffsetSec),
     sampleBpmAtSec: (sec: number) => sampleMixtapeMasterGridBpmAtSec(points, sec, fallbackBpm),
-    mapSecToBeats: (sec: number) => resolveMixtapeMasterGridBeatsAtSec(cache, sec),
-    mapBeatsToSec: (beats: number) => resolveMixtapeMasterGridSecByBeats(cache, beats),
+    mapSecToBeats,
+    mapBeatsToSec,
     buildVisibleGridLines
   }
 }
@@ -259,14 +278,18 @@ export const mapMixtapeMasterGridTimelineSec = (params: {
   sec: number
   fromFallbackBpm: number
   toFallbackBpm: number
+  fromPhaseOffsetSec?: number
+  toPhaseOffsetSec?: number
 }) => {
   const fromGrid = createMixtapeMasterGrid({
     points: params.fromPoints,
-    fallbackBpm: params.fromFallbackBpm
+    fallbackBpm: params.fromFallbackBpm,
+    phaseOffsetSec: params.fromPhaseOffsetSec
   })
   const toGrid = createMixtapeMasterGrid({
     points: params.toPoints,
-    fallbackBpm: params.toFallbackBpm
+    fallbackBpm: params.toFallbackBpm,
+    phaseOffsetSec: params.toPhaseOffsetSec
   })
   return toGrid.mapBeatsToSec(fromGrid.mapSecToBeats(Number(params.sec) || 0))
 }

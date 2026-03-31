@@ -346,6 +346,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       mappingMode: tempoSnapshot.mappingMode,
       trackStartSec: Number(tempoSnapshot.trackStartSec) || 0,
       masterGridFallbackBpm: Number(tempoSnapshot.masterGridFallbackBpm) || 128,
+      masterGridPhaseOffsetSec: Number(tempoSnapshot.masterGridPhaseOffsetSec) || 0,
       masterGridPoints: Array.isArray(tempoSnapshot.masterGridPoints)
         ? tempoSnapshot.masterGridPoints.map((point) => ({
             sec: Number(point.sec),

@@ -42,6 +42,7 @@ export type SerializedWorkerTrackTempoSnapshot = {
   mappingMode?: 'tempoEnvelope' | 'masterGrid'
   trackStartSec?: number
   masterGridFallbackBpm?: number
+  masterGridPhaseOffsetSec?: number
   masterGridPoints?: Array<{ sec: number; bpm: number }>
   controlPoints: Array<{ sec: number; bpm: number; sourceSec?: number; allowOffGrid?: boolean }>
 }

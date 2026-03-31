@@ -9,12 +9,14 @@ export type MixtapeGlobalTempoSource = 'empty' | 'persisted' | 'generated' | 'us
 export const mixtapeGlobalTempoPlaylistId = ref('')
 export const mixtapeGlobalTempoEnvelope = ref<MixtapeBpmPoint[]>([])
 export const mixtapeGlobalTempoDurationSec = ref(0)
+export const mixtapeGlobalTempoPhaseOffsetSec = ref(0)
 export const mixtapeGlobalTempoSource = ref<MixtapeGlobalTempoSource>('empty')
 
 export const resetMixtapeGlobalTempoState = (playlistId: string = '') => {
   mixtapeGlobalTempoPlaylistId.value = typeof playlistId === 'string' ? playlistId.trim() : ''
   mixtapeGlobalTempoEnvelope.value = []
   mixtapeGlobalTempoDurationSec.value = 0
+  mixtapeGlobalTempoPhaseOffsetSec.value = 0
   mixtapeGlobalTempoSource.value = 'empty'
 }
 
@@ -34,6 +36,10 @@ export const applyMixtapeGlobalTempoSnapshot = (params: {
   mixtapeGlobalTempoDurationSec.value = Math.max(
     0,
     Number(params.snapshot?.bpmEnvelopeDurationSec) || 0
+  )
+  mixtapeGlobalTempoPhaseOffsetSec.value = Math.max(
+    0,
+    Number(params.snapshot?.gridPhaseOffsetSec) || 0
   )
   mixtapeGlobalTempoSource.value = params.source
 }

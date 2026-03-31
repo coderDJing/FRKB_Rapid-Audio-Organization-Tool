@@ -20,7 +20,8 @@ import {
 } from '@renderer/composables/mixtape/mixtapeMasterGrid'
 import {
   isMixtapeGlobalTempoReady,
-  mixtapeGlobalTempoEnvelope
+  mixtapeGlobalTempoEnvelope,
+  mixtapeGlobalTempoPhaseOffsetSec
 } from '@renderer/composables/mixtape/mixtapeGlobalTempoState'
 import type {
   MixtapeTrack,
@@ -96,7 +97,10 @@ export const buildTrackTimeMapSignature = (snapshot: TrackRuntimeTempoSnapshot) 
   snapshot.timeMapInput.mappingMode === 'masterGrid'
     ? [
         'masterGrid',
-        buildMixtapeMasterGridSignature(snapshot.timeMapInput.masterGridPoints || []),
+        buildMixtapeMasterGridSignature(
+          snapshot.timeMapInput.masterGridPoints || [],
+          Number(snapshot.timeMapInput.masterGridPhaseOffsetSec) || 0
+        ),
         buildTrackStartSignature(snapshot.track),
         buildGridOverrideSignature(snapshot)
       ].join('|')
@@ -121,6 +125,7 @@ export const serializeTrackRuntimeTempoSnapshot = (
   mappingMode: snapshot.timeMapInput.mappingMode,
   trackStartSec: snapshot.timeMapInput.trackStartSec,
   masterGridFallbackBpm: snapshot.timeMapInput.masterGridFallbackBpm,
+  masterGridPhaseOffsetSec: snapshot.timeMapInput.masterGridPhaseOffsetSec,
   masterGridPoints: Array.isArray(snapshot.timeMapInput.masterGridPoints)
     ? snapshot.timeMapInput.masterGridPoints.map((point) => ({
         sec: Number(point.sec),
@@ -159,6 +164,7 @@ export const buildTrackRuntimeTempoSnapshot = (params: {
     shouldUseMasterGrid && mixtapeGlobalTempoEnvelope.value.length >= 2
       ? createMixtapeMasterGrid({
           points: mixtapeGlobalTempoEnvelope.value,
+          phaseOffsetSec: mixtapeGlobalTempoPhaseOffsetSec.value,
           fallbackBpm:
             Number(mixtapeGlobalTempoEnvelope.value[0]?.bpm) ||
             Number(track.bpm) ||
@@ -211,6 +217,7 @@ export const buildTrackRuntimeTempoSnapshot = (params: {
     mappingMode: masterGrid ? 'masterGrid' : 'tempoEnvelope',
     trackStartSec: trackStartSec,
     masterGridFallbackBpm: masterGrid ? masterGrid.tailBpm : undefined,
+    masterGridPhaseOffsetSec: masterGrid ? mixtapeGlobalTempoPhaseOffsetSec.value : undefined,
     masterGridPoints: masterGrid ? mixtapeGlobalTempoEnvelope.value : undefined
   }
   const timeMap = createTrackTimeMap(timeMapInput)

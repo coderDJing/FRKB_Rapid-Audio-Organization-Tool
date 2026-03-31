@@ -15,6 +15,7 @@ export type MixtapeProjectBpmPoint = {
 export type MixtapeProjectBpmEnvelopeSnapshot = {
   bpmEnvelope: MixtapeProjectBpmPoint[]
   bpmEnvelopeDurationSec: number
+  gridPhaseOffsetSec?: number
 }
 
 const parseProjectInfoJson = (raw: unknown): Record<string, any> => {
@@ -62,6 +63,12 @@ const normalizeProjectBpmEnvelope = (raw: unknown) => {
 const normalizeDurationSec = (value: unknown) => {
   const numeric = Number(value)
   if (!Number.isFinite(numeric) || numeric <= 0) return 0
+  return Number(numeric.toFixed(4))
+}
+
+const normalizePhaseOffsetSec = (value: unknown) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric < 0) return 0
   return Number(numeric.toFixed(4))
 }
 
@@ -142,7 +149,8 @@ export function getMixtapeProjectBpmEnvelope(
   )
   return {
     bpmEnvelope,
-    bpmEnvelopeDurationSec: explicitDurationSec || inferredDurationSec
+    bpmEnvelopeDurationSec: explicitDurationSec || inferredDurationSec,
+    gridPhaseOffsetSec: normalizePhaseOffsetSec(info.mixBpmEnvelopePhaseOffsetSec)
   }
 }
 
@@ -156,19 +164,24 @@ export function upsertMixtapeProjectBpmEnvelope(
   if (!row) return { updated: 0 }
   const nextEnvelope = normalizeProjectBpmEnvelope(nextSnapshot?.bpmEnvelope)
   const nextDurationSec = normalizeDurationSec(nextSnapshot?.bpmEnvelopeDurationSec)
+  const nextPhaseOffsetSec = normalizePhaseOffsetSec(nextSnapshot?.gridPhaseOffsetSec)
   try {
     const info = parseProjectInfoJson(row.info_json)
     const currentEnvelope = normalizeProjectBpmEnvelope(info.mixBpmEnvelope)
     const currentDurationSec = normalizeDurationSec(info.mixBpmEnvelopeDurationSec)
+    const currentPhaseOffsetSec = normalizePhaseOffsetSec(info.mixBpmEnvelopePhaseOffsetSec)
     const sameEnvelope = JSON.stringify(currentEnvelope) === JSON.stringify(nextEnvelope)
     const sameDuration = Math.abs(currentDurationSec - nextDurationSec) <= SAME_SEC_EPSILON
-    if (sameEnvelope && sameDuration) return { updated: 0 }
+    const samePhaseOffset = Math.abs(currentPhaseOffsetSec - nextPhaseOffsetSec) <= SAME_SEC_EPSILON
+    if (sameEnvelope && sameDuration && samePhaseOffset) return { updated: 0 }
     if (nextEnvelope.length >= 2 && nextDurationSec > 0) {
       info.mixBpmEnvelope = nextEnvelope
       info.mixBpmEnvelopeDurationSec = nextDurationSec
+      info.mixBpmEnvelopePhaseOffsetSec = nextPhaseOffsetSec
     } else {
       delete info.mixBpmEnvelope
       delete info.mixBpmEnvelopeDurationSec
+      delete info.mixBpmEnvelopePhaseOffsetSec
     }
     info.mixBpmEnvelopeUpdatedAt = Date.now()
     const updatedAtMs = Date.now()

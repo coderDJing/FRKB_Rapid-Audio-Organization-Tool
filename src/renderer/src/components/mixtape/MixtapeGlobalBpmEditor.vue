@@ -20,7 +20,8 @@ import {
 import { createMixtapeMasterGrid } from '@renderer/composables/mixtape/mixtapeMasterGrid'
 import {
   applyMixtapeGlobalTempoSnapshot,
-  mixtapeGlobalTempoEnvelope
+  mixtapeGlobalTempoEnvelope,
+  mixtapeGlobalTempoPhaseOffsetSec
 } from '@renderer/composables/mixtape/mixtapeGlobalTempoState'
 import {
   mapTrackBpmToYPercent,
@@ -305,6 +306,7 @@ const visibleGridLines = computed<ProjectedTrackGridLine[]>(() => {
   )
   const masterGrid = createMixtapeMasterGrid({
     points: effectivePoints.value,
+    phaseOffsetSec: mixtapeGlobalTempoPhaseOffsetSec.value,
     fallbackBpm: defaultBpm.value
   })
   const beatBufferSec = (32 * 60) / Math.max(1, defaultBpm.value)
@@ -470,7 +472,8 @@ const applyPoints = (points: MixtapeBpmPoint[], options?: { persist?: boolean })
     playlistId: props.playlistId,
     snapshot: {
       bpmEnvelope: nextPoints,
-      bpmEnvelopeDurationSec: timelineDurationSec.value
+      bpmEnvelopeDurationSec: timelineDurationSec.value,
+      gridPhaseOffsetSec: mixtapeGlobalTempoPhaseOffsetSec.value
     },
     source: 'user'
   })
@@ -501,7 +504,8 @@ const flushPersist = async () => {
         sec: Number(point.sec),
         bpm: Number(point.bpm)
       })),
-      bpmEnvelopeDurationSec: timelineDurationSec.value
+      bpmEnvelopeDurationSec: timelineDurationSec.value,
+      gridPhaseOffsetSec: mixtapeGlobalTempoPhaseOffsetSec.value
     }),
     startSecEntries.length > 0
       ? window.electron.ipcRenderer.invoke('mixtape:update-track-start-sec', {
@@ -549,9 +553,15 @@ const syncTrackTargets = (params?: {
   const sourceTracks = params?.sourceTracks || props.tracks
   const sourceStartBeatByTrackId =
     params?.sourceStartBeatByTrackId ||
-    buildTrackStartBeatById(sourceTracks, previousGlobalPoints, defaultBpm.value)
+    buildTrackStartBeatById(
+      sourceTracks,
+      previousGlobalPoints,
+      defaultBpm.value,
+      mixtapeGlobalTempoPhaseOffsetSec.value
+    )
   const nextMasterGrid = createMixtapeMasterGrid({
     points: effectivePoints.value,
+    phaseOffsetSec: mixtapeGlobalTempoPhaseOffsetSec.value,
     fallbackBpm: defaultBpm.value
   })
   const warpedTracks = sourceTracks.map((track) => {
@@ -621,7 +631,8 @@ const pushUndoSnapshot = (beforePoints: MixtapeBpmPoint[]) => {
       playlistId: props.playlistId,
       snapshot: {
         bpmEnvelope: snapshot,
-        bpmEnvelopeDurationSec: timelineDurationSec.value
+        bpmEnvelopeDurationSec: timelineDurationSec.value,
+        gridPhaseOffsetSec: mixtapeGlobalTempoPhaseOffsetSec.value
       },
       source: 'user'
     })
@@ -648,9 +659,18 @@ const resolvePointIndexFromEvent = (
     undoPoints: currentPoints,
     basePoints: currentPoints,
     beforeTracks: cloneTracks(props.tracks),
-    startBeatByTrackId: buildTrackStartBeatById(props.tracks, currentPoints, defaultBpm.value),
+    startBeatByTrackId: buildTrackStartBeatById(
+      props.tracks,
+      currentPoints,
+      defaultBpm.value,
+      mixtapeGlobalTempoPhaseOffsetSec.value
+    ),
     startPointer,
-    pointGridBeats: buildPointGridBeatMap(currentPoints, defaultBpm.value)
+    pointGridBeats: buildPointGridBeatMap(
+      currentPoints,
+      defaultBpm.value,
+      mixtapeGlobalTempoPhaseOffsetSec.value
+    )
   }
   window.addEventListener('mousemove', handleWindowMouseMove, { passive: false })
   window.addEventListener('mouseup', handleWindowMouseUp, { passive: true })
@@ -724,9 +744,18 @@ const handleStageMouseDown = (event: MouseEvent) => {
     undoPoints,
     basePoints: clonePoints(nextPoints),
     beforeTracks: cloneTracks(props.tracks),
-    startBeatByTrackId: buildTrackStartBeatById(props.tracks, undoPoints, defaultBpm.value),
+    startBeatByTrackId: buildTrackStartBeatById(
+      props.tracks,
+      undoPoints,
+      defaultBpm.value,
+      mixtapeGlobalTempoPhaseOffsetSec.value
+    ),
     startPointer: point,
-    pointGridBeats: buildPointGridBeatMap(nextPoints, defaultBpm.value)
+    pointGridBeats: buildPointGridBeatMap(
+      nextPoints,
+      defaultBpm.value,
+      mixtapeGlobalTempoPhaseOffsetSec.value
+    )
   }
   schedulePreviewTrackSync()
   window.addEventListener('mousemove', handleWindowMouseMove, { passive: false })

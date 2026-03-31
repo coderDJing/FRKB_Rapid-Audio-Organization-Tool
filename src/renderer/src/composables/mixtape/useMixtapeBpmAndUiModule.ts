@@ -6,6 +6,7 @@ import {
   buildFlatMixtapeGlobalBpmEnvelope,
   buildDefaultMixtapeGlobalBpmEnvelopeSnapshot,
   normalizeMixtapeGlobalBpmEnvelopePoints,
+  resolveDefaultMixtapeGlobalGridPhaseOffsetSec,
   resolveDefaultGlobalBpmFromTracks
 } from '@renderer/composables/mixtape/mixtapeGlobalTempoModel'
 import { createMixtapeMasterGrid } from '@renderer/composables/mixtape/mixtapeMasterGrid'
@@ -150,7 +151,9 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     }
     const nextSnapshot = buildDefaultMixtapeGlobalBpmEnvelopeSnapshot({
       tracks: tracks.value,
-      resolveTrackDurationSeconds
+      resolveTrackDurationSeconds,
+      resolveTrackSourceDurationSeconds,
+      resolveTrackFirstBeatSeconds
     })
     applyMixtapeGlobalTempoSnapshot({
       playlistId: normalizedPlaylistId,
@@ -172,13 +175,23 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
         playlistId: normalizedPlaylistId
       })
       const defaultBpm = resolveDefaultGlobalBpmFromTracks(trackList)
+      const derivedPhaseOffsetSec = resolveDefaultMixtapeGlobalGridPhaseOffsetSec({
+        tracks: trackList,
+        resolveTrackSourceDurationSeconds,
+        resolveTrackFirstBeatSeconds
+      })
       const normalizedSnapshot = {
         bpmEnvelope: normalizeMixtapeGlobalBpmEnvelopePoints(
           result?.bpmEnvelope,
           Number(result?.bpmEnvelopeDurationSec) || 0,
           defaultBpm
         ),
-        bpmEnvelopeDurationSec: Math.max(0, Number(result?.bpmEnvelopeDurationSec) || 0)
+        bpmEnvelopeDurationSec: Math.max(0, Number(result?.bpmEnvelopeDurationSec) || 0),
+        gridPhaseOffsetSec:
+          Number.isFinite(Number(result?.gridPhaseOffsetSec)) &&
+          Number(result?.gridPhaseOffsetSec) >= 0
+            ? roundTrackTempoSec(Number(result?.gridPhaseOffsetSec))
+            : derivedPhaseOffsetSec
       }
       if (
         normalizedSnapshot.bpmEnvelope.length >= 2 &&
@@ -197,17 +210,21 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
 
   const materializeGridAlignedTrackStartSecs = (
     inputTracks: any[],
-    globalPoints: Array<{ sec: number; bpm: number }>
+    globalSnapshot: {
+      bpmEnvelope?: Array<{ sec: number; bpm: number }>
+      gridPhaseOffsetSec?: number
+    }
   ) => {
     const GRID_ALIGN_BAR_INTERVAL = 32
     const fallbackBpm = resolveDefaultGlobalBpmFromTracks(inputTracks)
     const safePoints =
-      Array.isArray(globalPoints) && globalPoints.length >= 2
-        ? globalPoints
+      Array.isArray(globalSnapshot?.bpmEnvelope) && globalSnapshot.bpmEnvelope.length >= 2
+        ? globalSnapshot.bpmEnvelope
         : buildFlatMixtapeGlobalBpmEnvelope(0, fallbackBpm)
     const masterGrid = createMixtapeMasterGrid({
       points: safePoints,
-      fallbackBpm
+      fallbackBpm,
+      phaseOffsetSec: globalSnapshot?.gridPhaseOffsetSec
     })
     let cursorSec = 0
     const persistedEntries: Array<{ itemId: string; startSec: number }> = []
@@ -217,10 +234,6 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
       const sourceDurationSec = Math.max(0, Number(resolveTrackSourceDurationSeconds(track)) || 0)
       const gridSourceBpm = resolveTrackGridSourceBpm(track)
       const beatSourceSec = Math.max(BPM_POINT_SEC_EPSILON, resolveBeatSecByBpm(gridSourceBpm))
-      const currentBeatSec = Math.max(
-        BPM_POINT_SEC_EPSILON,
-        resolveBeatSecByBpm(Number(track?.bpm) || gridSourceBpm)
-      )
       const firstBeatSourceSec = Math.max(0, Number(track?.firstBeatMs) || 0) / 1000
       const firstBeatSourceBeats = firstBeatSourceSec / beatSourceSec
       const sourceDurationBeats = sourceDurationSec / beatSourceSec
@@ -230,26 +243,19 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
         firstBarLineSourceBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
       const sourceAnchorBeats = hasVisibleBarLine ? firstBarLineSourceBeats : firstBeatSourceBeats
       const anchorIntervalBeats = hasVisibleBarLine ? GRID_ALIGN_BAR_INTERVAL : 1
-      const firstBeatLocalSec = Math.max(0, Number(resolveTrackFirstBeatSeconds(track)) || 0)
-      const localAnchorSec = hasVisibleBarLine
-        ? firstBeatLocalSec + normalizedBarBeatOffset * currentBeatSec
-        : firstBeatLocalSec
-      const shouldPlaceFirstAnchorAtTimelineZero = cursorSec <= BPM_POINT_SEC_EPSILON
-      const nextGlobalAnchorIndex = shouldPlaceFirstAnchorAtTimelineZero
+      const shouldPlaceTrackAtTimelineStart = cursorSec <= BPM_POINT_SEC_EPSILON
+      const nextGlobalAnchorIndex = shouldPlaceTrackAtTimelineStart
         ? 0
         : Math.floor(
             (masterGrid.mapSecToBeats(cursorSec) + BPM_POINT_SEC_EPSILON) / anchorIntervalBeats
           ) + 1
       const desiredAnchorBeat = nextGlobalAnchorIndex * anchorIntervalBeats
-      const minimumAnchorBeat = shouldPlaceFirstAnchorAtTimelineZero
+      const minimumAnchorBeat = shouldPlaceTrackAtTimelineStart
         ? 0
         : Math.max(anchorIntervalBeats, Math.ceil(sourceAnchorBeats - BPM_POINT_SEC_EPSILON))
-      const startBeat = Math.max(
-        0,
-        Math.max(desiredAnchorBeat, minimumAnchorBeat) - sourceAnchorBeats
-      )
-      const generatedStartSec = shouldPlaceFirstAnchorAtTimelineZero
-        ? roundTrackTempoSec(-localAnchorSec)
+      const startBeat = Math.max(desiredAnchorBeat, minimumAnchorBeat) - sourceAnchorBeats
+      const generatedStartSec = shouldPlaceTrackAtTimelineStart
+        ? 0
         : roundTrackTempoSec(masterGrid.mapBeatsToSec(startBeat))
       const startSec = hasExplicitStartSec ? roundTrackTempoSec(rawStartSec) : generatedStartSec
       const nextTrack = hasExplicitStartSec ? track : { ...track, startSec }
@@ -467,12 +473,14 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
       )
       const generatedGlobalSnapshot = buildDefaultMixtapeGlobalBpmEnvelopeSnapshot({
         tracks: parsedTracks,
-        resolveTrackDurationSeconds
+        resolveTrackDurationSeconds,
+        resolveTrackSourceDurationSeconds,
+        resolveTrackFirstBeatSeconds
       })
       const defaultLayoutSnapshot = persistedGlobalSnapshot || generatedGlobalSnapshot
       const { tracks: hydratedTracks, persistedEntries } = materializeGridAlignedTrackStartSecs(
         parsedTracks,
-        defaultLayoutSnapshot.bpmEnvelope
+        defaultLayoutSnapshot
       )
       tracks.value = hydratedTracks
       if (persistedEntries.length > 0 && window?.electron?.ipcRenderer?.invoke) {
