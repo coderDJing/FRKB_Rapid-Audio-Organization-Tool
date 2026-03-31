@@ -385,7 +385,6 @@ const getDecodePool = () => {
             ? 5
             : 3
   const workerCount = Math.max(2, Math.min(10, cpuBudget, memoryBudget))
-  log.info('[decode-pool] initialize worker pool', { cpuCount, totalMemoryGb, workerCount })
   decodePool = new AudioDecodeWorkerPool(workerCount)
   return decodePool
 }
