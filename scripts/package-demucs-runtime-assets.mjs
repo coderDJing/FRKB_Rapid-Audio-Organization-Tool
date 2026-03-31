@@ -58,7 +58,8 @@ if (!platformConfig || typeof platformConfig !== 'object') {
   process.exit(1)
 }
 
-const profileNames = profilesArg.length > 0 ? profilesArg : Object.keys(platformConfig.profiles || {})
+const profileNames =
+  profilesArg.length > 0 ? profilesArg : Object.keys(platformConfig.profiles || {})
 if (profileNames.length === 0) {
   console.error('[demucs-runtime-package] No profiles selected')
   process.exit(1)
@@ -126,10 +127,7 @@ const isPathInside = (rootDir, targetPath) => {
   const normalizedTarget = normalizeResolvedPath(targetPath)
   if (!normalizedRoot || !normalizedTarget) return false
   const relativePath = path.relative(normalizedRoot, normalizedTarget)
-  return (
-    relativePath === '' ||
-    (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))
-  )
+  return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))
 }
 
 const inspectPythonRuntime = (pythonPath, runtimeDir) => {
@@ -157,7 +155,11 @@ const inspectPythonRuntime = (pythonPath, runtimeDir) => {
         ...process.env,
         PATH:
           process.platform === 'win32'
-            ? [path.join(runtimeDir, 'Scripts'), path.join(runtimeDir, 'Library', 'bin'), process.env.PATH || '']
+            ? [
+                path.join(runtimeDir, 'Scripts'),
+                path.join(runtimeDir, 'Library', 'bin'),
+                process.env.PATH || ''
+              ]
                 .filter(Boolean)
                 .join(path.delimiter)
             : process.env.PATH || ''
@@ -224,10 +226,9 @@ const validatePortableWindowsRuntime = (runtimeDir) => {
         }
         continue
       }
-      const fallbackSourcePath =
-        lowerAliasName.startsWith('pythonw')
-          ? path.join(runtimeDir, 'pythonw.exe')
-          : path.join(runtimeDir, 'python.exe')
+      const fallbackSourcePath = lowerAliasName.startsWith('pythonw')
+        ? path.join(runtimeDir, 'pythonw.exe')
+        : path.join(runtimeDir, 'python.exe')
       if (!fs.existsSync(fallbackSourcePath)) {
         const linkTarget = fs.readlinkSync(aliasPath)
         return {
@@ -353,6 +354,39 @@ const readRuntimeMeta = (runtimeDir) => {
   }
 }
 
+const normalizeHashText = (value) => String(value || '').trim()
+
+const normalizeHashList = (value) =>
+  Array.isArray(value) ? value.map((item) => normalizeHashText(item)).filter(Boolean) : []
+
+const createRuntimeContentHash = (params) => {
+  const runtimeMeta =
+    params?.runtimeMeta && typeof params.runtimeMeta === 'object' ? params.runtimeMeta : {}
+  const probe = runtimeMeta?.probe && typeof runtimeMeta.probe === 'object' ? runtimeMeta.probe : {}
+  const payload = {
+    schemaVersion: 1,
+    platform: normalizeHashText(params?.platform || runtimeMeta?.platform),
+    profile: normalizeHashText(params?.profile),
+    runtimeKey: normalizeHashText(params?.runtimeKey || runtimeMeta?.runtimeKey),
+    pythonRelativePath: normalizeHashText(params?.pythonRelativePath),
+    basePipInstallArgs: normalizeHashList(runtimeMeta?.basePipInstallArgs),
+    pipInstallArgs: normalizeHashList(runtimeMeta?.pipInstallArgs),
+    torchVersion: normalizeHashText(runtimeMeta?.torchVersion || probe?.torch_version),
+    xpuAvailable: !!(runtimeMeta?.xpuAvailable ?? probe?.xpu),
+    xpuBackendInstalled: !!(runtimeMeta?.xpuBackendInstalled ?? probe?.xpu_backend_installed),
+    xpuDemucsCompatible: !!(runtimeMeta?.xpuDemucsCompatible ?? probe?.xpu_demucs_compatible),
+    directmlInstalled: !!(runtimeMeta?.directmlInstalled ?? probe?.directml_installed),
+    directmlDemucsCompatible: !!(
+      runtimeMeta?.directmlDemucsCompatible ?? probe?.directml_demucs_compatible
+    ),
+    onnxruntimeInstalled: !!probe?.onnxruntime_installed,
+    onnxruntimeDirectmlInstalled: !!probe?.onnxruntime_directml_installed,
+    cudaAvailable: !!probe?.cuda,
+    mpsAvailable: !!probe?.mps
+  }
+  return crypto.createHash('sha256').update(JSON.stringify(payload), 'utf8').digest('hex')
+}
+
 const resolveRuntimePythonRelativePath = (runtimeDir) => {
   const candidates = platformKey.startsWith('win32')
     ? ['python.exe', 'Scripts/python.exe']
@@ -435,6 +469,13 @@ for (const profileName of profileNames) {
   const archiveOutput = await splitArchiveIfNeeded(archivePath)
   const runtimeMeta = readRuntimeMeta(runtimeDir)
   const pythonRelativePath = resolveRuntimePythonRelativePath(runtimeDir)
+  const contentHash = createRuntimeContentHash({
+    platform: platformKey,
+    profile: profileName,
+    runtimeKey,
+    pythonRelativePath,
+    runtimeMeta
+  })
   assets.push({
     platform: platformKey,
     profile: profileName,
@@ -456,7 +497,8 @@ for (const profileName of profileNames) {
     })),
     pythonRelativePath,
     generatedAt: new Date().toISOString(),
-    torchVersion: String(runtimeMeta?.torchVersion || runtimeMeta?.probe?.torch_version || '')
+    torchVersion: String(runtimeMeta?.torchVersion || runtimeMeta?.probe?.torch_version || ''),
+    contentHash
   })
   console.log(
     `[demucs-runtime-package] Packed ${profileName} -> ${archiveName} (${Math.round(
@@ -484,4 +526,7 @@ fs.writeFileSync(
   'utf8'
 )
 
-console.log('[demucs-runtime-package] Manifest written:', path.join(outputRoot, 'demucs-runtime-manifest.json'))
+console.log(
+  '[demucs-runtime-package] Manifest written:',
+  path.join(outputRoot, 'demucs-runtime-manifest.json')
+)

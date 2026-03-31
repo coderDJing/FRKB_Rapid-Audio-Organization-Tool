@@ -24,53 +24,73 @@ const parseCsv = (value) =>
 const inputRoots = parseCsv(getArgValue('--input-roots', ''))
 const outputRoot = path.resolve(getArgValue('--output-root', 'dist/demucs-runtime-assets'))
 const releaseTag = getArgValue('--release-tag', 'demucs-runtime-assets')
+const baseManifestPath = getArgValue('--base-manifest', '').trim()
 
 if (inputRoots.length === 0) {
   console.error('[demucs-runtime-merge] No input roots provided')
   process.exit(1)
 }
 
+const normalizeText = (value) => String(value || '').trim()
+const toAssetIdentityKey = (asset) =>
+  [asset?.platform, asset?.profile, asset?.runtimeKey].map((item) => normalizeText(item)).join(':')
+
+const readManifest = (manifestPath) => {
+  const resolvedManifestPath = path.resolve(manifestPath)
+  if (!fs.existsSync(resolvedManifestPath)) {
+    console.error(`[demucs-runtime-merge] Missing manifest: ${resolvedManifestPath}`)
+    process.exit(1)
+  }
+  return JSON.parse(fs.readFileSync(resolvedManifestPath, 'utf8'))
+}
+
 const manifests = []
 for (const rawRoot of inputRoots) {
   const root = path.resolve(rawRoot)
   const manifestPath = path.join(root, 'demucs-runtime-manifest.json')
-  if (!fs.existsSync(manifestPath)) {
-    console.error(`[demucs-runtime-merge] Missing manifest: ${manifestPath}`)
-    process.exit(1)
-  }
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+  const manifest = readManifest(manifestPath)
   manifests.push({
     root,
     manifest
   })
 }
 
-const mergedAssets = []
-const seenKeys = new Set()
+const mergedAssetsByKey = new Map()
+const seenIncomingKeys = new Set()
 
 fs.mkdirSync(outputRoot, { recursive: true })
+
+if (baseManifestPath) {
+  const baseManifest = readManifest(baseManifestPath)
+  const baseAssets = Array.isArray(baseManifest?.assets) ? baseManifest.assets : []
+  for (const asset of baseAssets) {
+    const assetIdentityKey = toAssetIdentityKey(asset)
+    if (!assetIdentityKey || assetIdentityKey === '::') continue
+    mergedAssetsByKey.set(assetIdentityKey, asset)
+  }
+}
 
 for (const { root, manifest } of manifests) {
   const assets = Array.isArray(manifest?.assets) ? manifest.assets : []
   for (const asset of assets) {
-    const assetKey = [asset?.platform, asset?.profile, asset?.runtimeKey, asset?.version].join(':')
-    if (seenKeys.has(assetKey)) {
-      console.error(`[demucs-runtime-merge] Duplicate asset key: ${assetKey}`)
+    const assetIdentityKey = toAssetIdentityKey(asset)
+    if (seenIncomingKeys.has(assetIdentityKey)) {
+      console.error(`[demucs-runtime-merge] Duplicate asset identity: ${assetIdentityKey}`)
       process.exit(1)
     }
-    seenKeys.add(assetKey)
+    seenIncomingKeys.add(assetIdentityKey)
 
-    const archiveName = String(asset?.archiveName || '').trim()
+    const archiveName = normalizeText(asset?.archiveName)
     if (!archiveName) {
-      console.error(`[demucs-runtime-merge] Asset archiveName missing: ${assetKey}`)
+      console.error(`[demucs-runtime-merge] Asset archiveName missing: ${assetIdentityKey}`)
       process.exit(1)
     }
     const archiveParts = Array.isArray(asset?.archiveParts) ? asset.archiveParts : []
     if (archiveParts.length > 0) {
       for (const part of archiveParts) {
-        const partName = String(part?.archiveName || '').trim()
+        const partName = normalizeText(part?.archiveName)
         if (!partName) {
-          console.error(`[demucs-runtime-merge] Missing archive part name: ${assetKey}`)
+          console.error(`[demucs-runtime-merge] Missing archive part name: ${assetIdentityKey}`)
           process.exit(1)
         }
         const sourcePartPath = path.join(root, partName)
@@ -90,9 +110,17 @@ for (const { root, manifest } of manifests) {
       }
       fs.copyFileSync(sourceArchivePath, targetArchivePath)
     }
-    mergedAssets.push(asset)
+    mergedAssetsByKey.set(assetIdentityKey, asset)
   }
 }
+
+const mergedAssets = Array.from(mergedAssetsByKey.values()).sort((a, b) => {
+  const left = [a?.platform, a?.profile, a?.runtimeKey].map((item) => normalizeText(item)).join(':')
+  const right = [b?.platform, b?.profile, b?.runtimeKey]
+    .map((item) => normalizeText(item))
+    .join(':')
+  return left.localeCompare(right)
+})
 
 const mergedManifest = {
   schemaVersion: 1,
@@ -104,6 +132,4 @@ const mergedManifest = {
 const outputManifestPath = path.join(outputRoot, 'demucs-runtime-manifest.json')
 fs.writeFileSync(outputManifestPath, `${JSON.stringify(mergedManifest, null, 2)}\n`, 'utf8')
 
-console.log(
-  `[demucs-runtime-merge] merged ${mergedAssets.length} assets -> ${outputManifestPath}`
-)
+console.log(`[demucs-runtime-merge] merged ${mergedAssets.length} assets -> ${outputManifestPath}`)

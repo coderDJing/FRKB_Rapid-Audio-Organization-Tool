@@ -48,6 +48,7 @@ type RuntimeAssetEntry = {
   pythonRelativePath: string
   generatedAt: string
   torchVersion?: string
+  contentHash?: string
 }
 
 type RuntimeAssetManifest = {
@@ -63,6 +64,7 @@ type InstalledRuntimeVersionInfo = {
   version?: string
   archiveUrl?: string
   archiveSha256?: string
+  contentHash?: string
   installedAt?: string
 }
 
@@ -135,6 +137,53 @@ const resolveRuntimeDownloadCacheDir = () =>
 
 const resolveRuntimeInstalledVersionPath = (runtimeDir: string) =>
   path.join(runtimeDir, '.frkb-runtime-download.json')
+
+const resolveRuntimeMetaPath = (runtimeDir: string) =>
+  path.join(runtimeDir, '.frkb-runtime-meta.json')
+
+const normalizeRuntimeContentHashText = (value: unknown) => String(value || '').trim()
+
+const normalizeRuntimeContentHashList = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.map((item) => normalizeRuntimeContentHashText(item)).filter(Boolean)
+    : []
+
+const createRuntimeContentHash = (params: {
+  platform?: unknown
+  profile?: unknown
+  runtimeKey?: unknown
+  pythonRelativePath?: unknown
+  runtimeMeta?: Record<string, unknown> | null
+}) => {
+  const runtimeMeta =
+    params.runtimeMeta && typeof params.runtimeMeta === 'object' ? params.runtimeMeta : {}
+  const probe =
+    runtimeMeta.probe && typeof runtimeMeta.probe === 'object'
+      ? (runtimeMeta.probe as Record<string, unknown>)
+      : {}
+  const payload = {
+    schemaVersion: 1,
+    platform: normalizeRuntimeContentHashText(params.platform || runtimeMeta.platform),
+    profile: normalizeRuntimeContentHashText(params.profile),
+    runtimeKey: normalizeRuntimeContentHashText(params.runtimeKey || runtimeMeta.runtimeKey),
+    pythonRelativePath: normalizeRuntimeContentHashText(params.pythonRelativePath),
+    basePipInstallArgs: normalizeRuntimeContentHashList(runtimeMeta.basePipInstallArgs),
+    pipInstallArgs: normalizeRuntimeContentHashList(runtimeMeta.pipInstallArgs),
+    torchVersion: normalizeRuntimeContentHashText(runtimeMeta.torchVersion || probe.torch_version),
+    xpuAvailable: !!(runtimeMeta.xpuAvailable ?? probe.xpu),
+    xpuBackendInstalled: !!(runtimeMeta.xpuBackendInstalled ?? probe.xpu_backend_installed),
+    xpuDemucsCompatible: !!(runtimeMeta.xpuDemucsCompatible ?? probe.xpu_demucs_compatible),
+    directmlInstalled: !!(runtimeMeta.directmlInstalled ?? probe.directml_installed),
+    directmlDemucsCompatible: !!(
+      runtimeMeta.directmlDemucsCompatible ?? probe.directml_demucs_compatible
+    ),
+    onnxruntimeInstalled: !!probe.onnxruntime_installed,
+    onnxruntimeDirectmlInstalled: !!probe.onnxruntime_directml_installed,
+    cudaAvailable: !!probe.cuda,
+    mpsAvailable: !!probe.mps
+  }
+  return crypto.createHash('sha256').update(JSON.stringify(payload), 'utf8').digest('hex')
+}
 
 const ensureRuntimeDownloadProxyInitialized = async () => {
   if (runtimeDownloadProxyInitialized) return
@@ -401,7 +450,77 @@ const readInstalledRuntimeVersionInfo = async (
   }
 }
 
-const doesInstalledRuntimeMatchEntry = (
+const readRuntimeMetaFile = async (runtimeDir: string): Promise<Record<string, unknown> | null> => {
+  const runtimeMetaPath = resolveRuntimeMetaPath(runtimeDir)
+  if (!(await fileExists(runtimeMetaPath))) return null
+  try {
+    const raw = await fs.promises.readFile(runtimeMetaPath, 'utf8')
+    return raw && typeof raw === 'string' ? (JSON.parse(raw) as Record<string, unknown>) : null
+  } catch {
+    return null
+  }
+}
+
+const resolveInstalledRuntimeContentHash = async (
+  runtimeDir: string,
+  installed: InstalledRuntimeVersionInfo | null,
+  entry: RuntimeAssetEntry
+) => {
+  const installedContentHash = normalizeText(installed?.contentHash, 120).toLowerCase()
+  if (installedContentHash) return installedContentHash
+  if (!normalizeText(entry.contentHash, 120)) return ''
+  const runtimeMeta = await readRuntimeMetaFile(runtimeDir)
+  if (!runtimeMeta) return ''
+  try {
+    return createRuntimeContentHash({
+      platform: entry.platform,
+      profile: entry.profile,
+      runtimeKey: entry.runtimeKey,
+      pythonRelativePath: entry.pythonRelativePath,
+      runtimeMeta
+    })
+  } catch {
+    return ''
+  }
+}
+
+const isInstalledRuntimeLegacyCompatible = async (
+  runtimeDir: string,
+  installed: InstalledRuntimeVersionInfo | null,
+  entry: RuntimeAssetEntry
+) => {
+  const runtimeMeta = await readRuntimeMetaFile(runtimeDir)
+  if (!runtimeMeta) return false
+  const probe =
+    runtimeMeta.probe && typeof runtimeMeta.probe === 'object'
+      ? (runtimeMeta.probe as Record<string, unknown>)
+      : {}
+  const runtimeKeyFromInstalled = normalizeText(installed?.runtimeKey, 120)
+  const profileFromInstalled = normalizeText(installed?.profile, 120)
+  const torchVersionFromMeta = normalizeText(runtimeMeta.torchVersion || probe.torch_version, 120)
+  const expectedTorchVersion = normalizeText(entry.torchVersion, 120)
+  if (runtimeKeyFromInstalled && runtimeKeyFromInstalled !== entry.runtimeKey) return false
+  if (profileFromInstalled && profileFromInstalled !== entry.profile) return false
+  if (
+    expectedTorchVersion &&
+    torchVersionFromMeta &&
+    torchVersionFromMeta !== expectedTorchVersion
+  ) {
+    return false
+  }
+  if (entry.profile === 'directml') {
+    const directmlInstalled = !!(runtimeMeta.directmlInstalled ?? probe.directml_installed)
+    if (!directmlInstalled) return false
+  }
+  if (entry.profile === 'xpu') {
+    const xpuBackendInstalled = !!(runtimeMeta.xpuBackendInstalled ?? probe.xpu_backend_installed)
+    if (!xpuBackendInstalled) return false
+  }
+  return true
+}
+
+const doesInstalledRuntimeMatchEntry = async (
+  runtimeDir: string,
   installed: InstalledRuntimeVersionInfo | null,
   entry: RuntimeAssetEntry
 ) => {
@@ -410,8 +529,25 @@ const doesInstalledRuntimeMatchEntry = (
   const installedProfile = normalizeText(installed.profile, 120)
   const installedVersion = normalizeText(installed.version, 120)
   const installedArchiveSha256 = normalizeText(installed.archiveSha256, 120).toLowerCase()
+  const expectedContentHash = normalizeText(entry.contentHash, 120).toLowerCase()
   if (installedRuntimeKey && installedRuntimeKey !== entry.runtimeKey) return false
   if (installedProfile && installedProfile !== entry.profile) return false
+  if (expectedContentHash) {
+    const installedContentHash = await resolveInstalledRuntimeContentHash(
+      runtimeDir,
+      installed,
+      entry
+    )
+    return !!installedContentHash && installedContentHash === expectedContentHash
+  }
+  const legacyExactMatched =
+    installedVersion === entry.version &&
+    installedArchiveSha256 ===
+      String(entry.archiveSha256 || '')
+        .trim()
+        .toLowerCase()
+  if (legacyExactMatched) return true
+  if (await isInstalledRuntimeLegacyCompatible(runtimeDir, installed, entry)) return true
   if (installedVersion !== entry.version) return false
   if (
     installedArchiveSha256 !==
@@ -430,7 +566,7 @@ const isRuntimeAlreadyAvailable = async (entry: RuntimeAssetEntry) => {
   if (candidate?.pythonPath && fs.existsSync(candidate.pythonPath)) {
     if (candidate.runtimeDir.startsWith(resolveInstalledDemucsPlatformRootPath())) {
       const installed = await readInstalledRuntimeVersionInfo(candidate.runtimeDir)
-      if (doesInstalledRuntimeMatchEntry(installed, entry)) return true
+      if (await doesInstalledRuntimeMatchEntry(candidate.runtimeDir, installed, entry)) return true
     } else {
       return true
     }
@@ -668,6 +804,7 @@ const installRuntimeFromManifestEntry = async (
     await fs.promises.rm(runtimeDir, { recursive: true, force: true }).catch(() => {})
     throw error
   }
+  const runtimeMeta = await readRuntimeMetaFile(runtimeDir)
   await fs.promises.writeFile(
     versionPath,
     `${JSON.stringify(
@@ -677,6 +814,15 @@ const installRuntimeFromManifestEntry = async (
         version: entry.version,
         archiveUrl: entry.archiveUrl,
         archiveSha256: entry.archiveSha256,
+        contentHash:
+          normalizeText(entry.contentHash, 120).toLowerCase() ||
+          createRuntimeContentHash({
+            platform: entry.platform,
+            profile: entry.profile,
+            runtimeKey: entry.runtimeKey,
+            pythonRelativePath: entry.pythonRelativePath,
+            runtimeMeta
+          }),
         installedAt: new Date().toISOString()
       },
       null,

@@ -23,12 +23,28 @@ on:
         description: Optional runtime asset version suffix
         required: false
         default: ''
+      build_win:
+        description: Build Windows runtime assets
+        required: true
+        type: boolean
+        default: false
+      build_mac_arm64:
+        description: Build macOS arm64 runtime assets
+        required: true
+        type: boolean
+        default: false
+      build_mac_x64:
+        description: Build macOS x64 runtime assets
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
   build_runtime_assets_win:
+    if: ${{ inputs.build_win }}
     runs-on: windows-latest
     timeout-minutes: 180
     steps:
@@ -97,6 +113,7 @@ jobs:
             dist/demucs-runtime-assets-win32-x64
 
   build_runtime_assets_mac_arm64:
+    if: ${{ inputs.build_mac_arm64 }}
     runs-on: macos-latest
     timeout-minutes: 180
     steps:
@@ -162,6 +179,7 @@ jobs:
             dist/demucs-runtime-assets-darwin-arm64
 
   build_runtime_assets_mac_x64:
+    if: ${{ inputs.build_mac_x64 }}
     runs-on: macos-15-intel
     timeout-minutes: 180
     steps:
@@ -230,35 +248,98 @@ jobs:
       - build_runtime_assets_win
       - build_runtime_assets_mac_arm64
       - build_runtime_assets_mac_x64
+    if: >-
+      ${{
+        always() &&
+        !cancelled() &&
+        (needs.build_runtime_assets_win.result == 'success' || needs.build_runtime_assets_win.result == 'skipped') &&
+        (needs.build_runtime_assets_mac_arm64.result == 'success' || needs.build_runtime_assets_mac_arm64.result == 'skipped') &&
+        (needs.build_runtime_assets_mac_x64.result == 'success' || needs.build_runtime_assets_mac_x64.result == 'skipped') &&
+        (
+          needs.build_runtime_assets_win.result == 'success' ||
+          needs.build_runtime_assets_mac_arm64.result == 'success' ||
+          needs.build_runtime_assets_mac_x64.result == 'success'
+        )
+      }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Download existing release manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/existing-release
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release download "$TAG_NAME" \
+              --pattern demucs-runtime-manifest.json \
+              --dir artifacts/existing-release \
+              --clobber || true
+          fi
+
       - name: Download runtime assets (Windows)
+        if: ${{ inputs.build_win }}
         uses: actions/download-artifact@v8
         with:
           name: demucs-runtime-assets-win32-x64
           path: artifacts/demucs-runtime-assets-win32-x64
 
       - name: Download runtime assets (macOS arm64)
+        if: ${{ inputs.build_mac_arm64 }}
         uses: actions/download-artifact@v8
         with:
           name: demucs-runtime-assets-darwin-arm64
           path: artifacts/demucs-runtime-assets-darwin-arm64
 
       - name: Download runtime assets (macOS x64)
+        if: ${{ inputs.build_mac_x64 }}
         uses: actions/download-artifact@v8
         with:
           name: demucs-runtime-assets-darwin-x64
           path: artifacts/demucs-runtime-assets-darwin-x64
 
       - name: Merge runtime manifests
+        shell: bash
         run: |
-          node scripts/merge-demucs-runtime-manifests.mjs \
-            --input-roots artifacts/demucs-runtime-assets-win32-x64,artifacts/demucs-runtime-assets-darwin-arm64,artifacts/demucs-runtime-assets-darwin-x64 \
-            --output-root dist/demucs-runtime-assets \
-            --release-tag "${{ inputs.release_tag }}"
+          set -euo pipefail
+          input_roots=()
+          if [ -d artifacts/demucs-runtime-assets-win32-x64 ]; then
+            input_roots+=("artifacts/demucs-runtime-assets-win32-x64")
+          fi
+          if [ -d artifacts/demucs-runtime-assets-darwin-arm64 ]; then
+            input_roots+=("artifacts/demucs-runtime-assets-darwin-arm64")
+          fi
+          if [ -d artifacts/demucs-runtime-assets-darwin-x64 ]; then
+            input_roots+=("artifacts/demucs-runtime-assets-darwin-x64")
+          fi
+          if [ ${#input_roots[@]} -eq 0 ]; then
+            echo "No runtime asset roots selected."
+            exit 1
+          fi
+
+          base_manifest="artifacts/existing-release/demucs-runtime-manifest.json"
+          if [ ! -f "$base_manifest" ]; then
+            if [ "${{ inputs.build_win }}" != "true" ] || [ "${{ inputs.build_mac_arm64 }}" != "true" ] || [ "${{ inputs.build_mac_x64 }}" != "true" ]; then
+              echo "Existing release manifest not found. Initial publish must build all platforms."
+              exit 1
+            fi
+          fi
+
+          args=(
+            "scripts/merge-demucs-runtime-manifests.mjs"
+            "--input-roots" "$(IFS=,; echo "${input_roots[*]}")"
+            "--output-root" "dist/demucs-runtime-assets"
+            "--release-tag" "${{ inputs.release_tag }}"
+          )
+          if [ -f "$base_manifest" ]; then
+            args+=("--base-manifest" "$base_manifest")
+          fi
+          node "${args[@]}"
 
       - name: Show packaged runtime assets
         run: find dist/demucs-runtime-assets -maxdepth 1 -type f | sort
