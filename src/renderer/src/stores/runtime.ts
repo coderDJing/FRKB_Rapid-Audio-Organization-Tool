@@ -23,6 +23,7 @@ interface Runtime {
   dragItemData: null | IDir
   dragTableHeader: boolean
   songDragActive: boolean
+  songDragMode: '' | 'internal' | 'external'
   draggingSongFilePaths: string[]
   dragSourceSongListUUID: string
   dragSourceMixtapeItemIds: string[]
@@ -80,6 +81,7 @@ export const useRuntimeStore = defineStore('runtime', {
       dragItemData: null,
       dragTableHeader: false, //是否正在拖拽表头
       songDragActive: false,
+      songDragMode: '',
       draggingSongFilePaths: [],
       dragSourceSongListUUID: '',
       dragSourceMixtapeItemIds: [],

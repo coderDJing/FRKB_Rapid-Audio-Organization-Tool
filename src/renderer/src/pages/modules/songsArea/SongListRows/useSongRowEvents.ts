@@ -6,13 +6,15 @@ interface UseSongRowEventsOptions {
   emitSongClick: (e: MouseEvent, song: ISongInfo) => void
   emitSongContextmenu: (e: MouseEvent, song: ISongInfo) => void
   emitSongDblclick: (song: ISongInfo) => void
+  shouldSuppressPointerAction?: (event: MouseEvent) => boolean
 }
 
 export function useSongRowEvents({
   songs,
   emitSongClick,
   emitSongContextmenu,
-  emitSongDblclick
+  emitSongDblclick,
+  shouldSuppressPointerAction
 }: UseSongRowEventsOptions) {
   const resolveSongs = () => songs.value ?? []
 
@@ -29,6 +31,7 @@ export function useSongRowEvents({
 
   const onRowsClick = (e: MouseEvent) => {
     e.stopPropagation()
+    if (shouldSuppressPointerAction?.(e)) return
     const song = getSongFromTarget(e.target)
     if (song) emitSongClick(e, song)
   }
@@ -41,6 +44,7 @@ export function useSongRowEvents({
 
   const onRowsDblclick = (e: MouseEvent) => {
     e.stopPropagation()
+    if (shouldSuppressPointerAction?.(e)) return
     const song = getSongFromTarget(e.target)
     if (song) emitSongDblclick(song)
   }

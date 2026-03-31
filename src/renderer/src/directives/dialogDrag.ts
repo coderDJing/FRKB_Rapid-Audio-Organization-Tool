@@ -22,8 +22,7 @@ const getHandleElement = (el: HTMLElement, binding: DirectiveBinding<BindingValu
   if (!binding.value) return el
   try {
     return (el.querySelector(binding.value) as HTMLElement) || el
-  } catch (error) {
-    console.warn('[dialog-drag] 无法解析选择器:', binding.value, error)
+  } catch {
     return el
   }
 }

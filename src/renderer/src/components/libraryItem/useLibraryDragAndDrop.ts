@@ -68,7 +68,11 @@ export function useLibraryDragAndDrop({
   const isInternalSongDrag = (e: DragEvent) => {
     if (runtime.dragItemData) return false
     if (e.dataTransfer?.types?.includes('application/x-song-drag')) return true
-    return runtime.songDragActive && runtime.draggingSongFilePaths.length > 0
+    return (
+      runtime.songDragMode === 'internal' &&
+      runtime.songDragActive &&
+      runtime.draggingSongFilePaths.length > 0
+    )
   }
 
   const suppressNextLibraryClick = (delayMs: number = 450) => {

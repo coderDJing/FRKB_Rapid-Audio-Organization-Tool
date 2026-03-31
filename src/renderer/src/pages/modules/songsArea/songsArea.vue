@@ -422,6 +422,7 @@ const requestImmediateAnalysis = (song: ISongInfo) => {
 }
 
 const songDblClick = async (song: ISongInfo) => {
+  if (runtime.songDragSuppressClickUntilMs > Date.now()) return
   try {
     emitter.emit('waveform-preview:stop', { reason: 'switch' })
   } catch {}
@@ -682,16 +683,16 @@ const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
       (typeof event.getModifierState === 'function' && event.getModifierState('Control'))
 
   if (hasExternalModifier) {
-    showDragHint('external')
-    console.info('[external-drag] request', {
-      fileCount: songFilePaths.length,
-      sample: songFilePaths[0] || '',
-      platform: runtime.setting.platform
+    startDragSongs(song, runtime.libraryAreaSelected, runtime.songsArea.songListUUID, {
+      songFilePaths,
+      dragMode: 'external'
     })
+    showDragHint('external')
     event.preventDefault()
-    window.electron.ipcRenderer.sendSync('startExternalSongDrag', {
+    window.electron.ipcRenderer.send('startExternalSongDrag', {
       filePaths: songFilePaths
     })
+    scheduleDragCleanup(30000)
     return
   }
 

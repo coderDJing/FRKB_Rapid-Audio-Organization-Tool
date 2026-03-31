@@ -286,11 +286,19 @@ const contentHeight = computed(() => {
   return Math.max(totalHeight.value, vh)
 })
 
+const shouldSuppressPointerAction = (event?: MouseEvent) => {
+  if (runtime.songDragSuppressClickUntilMs <= Date.now()) return false
+  event?.stopPropagation()
+  event?.preventDefault()
+  return true
+}
+
 const { onRowsClick, onRowsContextmenu, onRowsDblclick } = useSongRowEvents({
   songs: songsRef,
   emitSongClick: (e, song) => emit('song-click', e, song),
   emitSongContextmenu: (e, song) => emit('song-contextmenu', e, song),
-  emitSongDblclick: (song) => emit('song-dblclick', song)
+  emitSongDblclick: (song) => emit('song-dblclick', song),
+  shouldSuppressPointerAction
 })
 
 const { coversTick, getCoverUrl, fetchCoverUrl, onImgError } = useCoverThumbnails({
@@ -346,6 +354,7 @@ const {
 })
 
 const handleWaveformClick = (song: ISongInfo, event: MouseEvent) => {
+  if (shouldSuppressPointerAction(event)) return
   if (!canPreviewWaveform.value) return
   if (event.button !== 0) return
   const filePath = song?.filePath
@@ -355,11 +364,17 @@ const handleWaveformClick = (song: ISongInfo, event: MouseEvent) => {
 }
 
 const handleWaveformStopClick = (event: MouseEvent) => {
+  if (shouldSuppressPointerAction(event)) return
   if (!canPreviewWaveform.value) return
   event.stopPropagation()
   event.preventDefault()
   stopWaveformPreview()
 }
+
+const isSelfExternalSongDrag = () =>
+  runtime.songDragMode === 'external' &&
+  runtime.songDragActive &&
+  runtime.draggingSongFilePaths.length > 0
 
 const resolveDragPayload = (event: DragEvent) => {
   if (
@@ -391,6 +406,15 @@ const resolveDragItemIds = (event: DragEvent): string[] => {
 
 const handleRowDragOver = (event: DragEvent, item: { song: ISongInfo; idx: number }) => {
   if (props.readOnly) return
+  if (isSelfExternalSongDrag()) {
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'none'
+    }
+    clearDragHover()
+    return
+  }
   if (!isMixtapeList.value) return
   const sourceItemIds = resolveDragItemIds(event)
   if (!sourceItemIds.length) return
@@ -401,6 +425,7 @@ const handleRowDragOver = (event: DragEvent, item: { song: ISongInfo; idx: numbe
     return
   }
   event.preventDefault()
+  event.stopPropagation()
   if (event.dataTransfer) {
     event.dataTransfer.dropEffect = 'move'
   }
@@ -467,9 +492,17 @@ const handleBottomPadDrop = (event: DragEvent) => {
 
 const handleRowDrop = (event: DragEvent, item: { song: ISongInfo; idx: number }) => {
   if (props.readOnly) return
+  if (isSelfExternalSongDrag()) {
+    event.preventDefault()
+    event.stopPropagation()
+    clearDragHover()
+    return
+  }
   if (!isMixtapeList.value) return
   const sourceItemIds = resolveDragItemIds(event)
   if (!sourceItemIds.length) return
+  event.preventDefault()
+  event.stopPropagation()
   const targetId = item.song?.mixtapeItemId
   if (targetId && sourceItemIds.includes(targetId)) {
     clearDragHover()
@@ -539,6 +572,7 @@ const onRowsMouseLeave = (e: MouseEvent) => {
 }
 
 const handleCoverDblclick = (song: ISongInfo, event: MouseEvent) => {
+  if (shouldSuppressPointerAction(event)) return
   event.stopPropagation()
   event.preventDefault()
   closeCoverPreview()
@@ -546,6 +580,7 @@ const handleCoverDblclick = (song: ISongInfo, event: MouseEvent) => {
 }
 
 const handleCoverPreviewDblclick = (event: MouseEvent) => {
+  if (shouldSuppressPointerAction(event)) return
   event.stopPropagation()
   event.preventDefault()
   const idx =
@@ -606,8 +641,8 @@ onUnmounted(() => {
           :draggable="!props.readOnly"
           @dragstart.stop="!props.readOnly && handleRowDragStart($event, item)"
           @dragend.stop="!props.readOnly && handleRowDragEnd($event)"
-          @dragover.stop.prevent="!props.readOnly && handleRowDragOver($event, item)"
-          @drop.stop="!props.readOnly && handleRowDrop($event, item)"
+          @dragover="!props.readOnly && handleRowDragOver($event, item)"
+          @drop="!props.readOnly && handleRowDrop($event, item)"
         >
           <div
             class="song-row-content"

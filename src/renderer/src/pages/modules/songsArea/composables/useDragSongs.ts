@@ -11,9 +11,12 @@ export interface DragSongData {
   sourceMixtapeItemIds?: string[]
 }
 
+type SongDragMode = 'internal' | 'external'
+
 type StartDragSongsOptions = {
   songFilePaths?: string[]
   sourceMixtapeItemIds?: string[]
+  dragMode?: SongDragMode
 }
 
 export function useDragSongs() {
@@ -31,15 +34,18 @@ export function useDragSongs() {
   const setRuntimeDragState = (
     filePaths: string[],
     sourceSongListUUID: string,
-    sourceMixtapeItemIds: string[] = []
+    sourceMixtapeItemIds: string[] = [],
+    dragMode: SongDragMode = 'internal'
   ) => {
     runtime.songDragActive = true
+    runtime.songDragMode = dragMode
     runtime.draggingSongFilePaths = [...filePaths]
     runtime.dragSourceSongListUUID = sourceSongListUUID
     runtime.dragSourceMixtapeItemIds = [...sourceMixtapeItemIds]
   }
   const clearRuntimeDragState = () => {
     runtime.songDragActive = false
+    runtime.songDragMode = ''
     runtime.draggingSongFilePaths = []
     runtime.dragSourceSongListUUID = ''
     runtime.dragSourceMixtapeItemIds = []
@@ -110,6 +116,7 @@ export function useDragSongs() {
     const sourceMixtapeItemIds = normalizeUniqueStrings(
       Array.isArray(options?.sourceMixtapeItemIds) ? options.sourceMixtapeItemIds : []
     )
+    const dragMode: SongDragMode = options?.dragMode === 'external' ? 'external' : 'internal'
 
     if (optionPaths.length > 0) {
       songFilePaths = optionPaths
@@ -137,7 +144,7 @@ export function useDragSongs() {
       sourceMixtapeItemIds
     }
     isDragging.value = true
-    setRuntimeDragState(songFilePaths, sourceSongListUUID, sourceMixtapeItemIds)
+    setRuntimeDragState(songFilePaths, sourceSongListUUID, sourceMixtapeItemIds, dragMode)
     return songFilePaths
   }
 

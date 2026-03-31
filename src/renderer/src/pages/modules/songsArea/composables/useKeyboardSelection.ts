@@ -78,6 +78,11 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
   }
 
   const songClick = (event: MouseEvent, song: ISongInfo) => {
+    if (runtime.songDragSuppressClickUntilMs > Date.now()) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
     runtime.activeMenuUUID = ''
     const rowKey = getRowKey(song)
     if (event.ctrlKey) {

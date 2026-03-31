@@ -40,6 +40,53 @@ const fallbackPlayerShortcuts: IPlayerGlobalShortcuts = {
   nextSong: 'Shift+Alt+Down',
   previousSong: 'Shift+Alt+Up'
 }
+const transparentDragIcon = nativeImage.createFromDataURL(
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQImWNgYGD4DwABBAEAHFqRSgAAAABJRU5ErkJggg=='
+)
+const externalDragFileIconCache = new Map<
+  string,
+  ReturnType<typeof nativeImage.createFromDataURL>
+>()
+
+const resolveExternalDragIconCacheKey = (filePath: string) => {
+  const parsedPath = path.parse(filePath)
+  const normalizedExt = parsedPath.ext.toLowerCase()
+  if (normalizedExt) {
+    return `${process.platform}:ext:${normalizedExt}`
+  }
+  return `${process.platform}:file:${parsedPath.base.toLowerCase()}`
+}
+
+const resolveExternalDragIcon = async (filePath: string) => {
+  const cacheKey = resolveExternalDragIconCacheKey(filePath)
+  const cachedIcon = externalDragFileIconCache.get(cacheKey)
+  if (cachedIcon && !cachedIcon.isEmpty()) {
+    return cachedIcon
+  }
+  try {
+    const fileIcon = await app.getFileIcon(filePath, { size: 'normal' })
+    if (!fileIcon.isEmpty()) {
+      externalDragFileIconCache.set(cacheKey, fileIcon)
+      return fileIcon
+    }
+  } catch {}
+  return transparentDragIcon
+}
+
+const normalizeExistingExternalDragPaths = (rawPaths: unknown): string[] => {
+  const sourcePaths = Array.isArray(rawPaths) ? rawPaths : []
+  const existingPaths: string[] = []
+  for (const filePath of sourcePaths) {
+    if (typeof filePath !== 'string' || !filePath.trim()) {
+      continue
+    }
+    const normalized = path.normalize(filePath)
+    if (fs.existsSync(normalized)) {
+      existingPaths.push(normalized)
+    }
+  }
+  return existingPaths
+}
 const registeredPlaybackShortcuts = new Map<PlayerGlobalShortcutAction, string>()
 const screenshotShortcut = is.dev && process.platform === 'win32' ? 'F9' : ''
 const screenshotCss = `
@@ -263,72 +310,28 @@ function createWindow() {
 
   ipcMain.on('startExternalSongDrag', (event, payload: { filePaths?: string[] }) => {
     const rawPaths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
-    console.info('[external-drag] start request', {
-      count: rawPaths.length,
-      sample: rawPaths[0] || ''
-    })
-    if (rawPaths.length === 0) {
-      console.info('[external-drag] abort: empty payload')
-      event.returnValue = false
-      return
-    }
-    const existingPaths: string[] = []
-    for (const filePath of rawPaths) {
-      if (typeof filePath !== 'string' || !filePath.trim()) {
-        continue
+    void (async () => {
+      if (rawPaths.length === 0) {
+        return
       }
-      const normalized = path.normalize(filePath)
-      if (fs.existsSync(normalized)) {
-        existingPaths.push(normalized)
+      const existingPaths = normalizeExistingExternalDragPaths(payload?.filePaths)
+      if (existingPaths.length === 0) {
+        return
       }
-    }
-    if (existingPaths.length === 0) {
-      console.info('[external-drag] abort: no existing paths')
-      event.returnValue = false
-      return
-    }
-    const iconCandidates = [
-      icon,
-      path.resolve(process.cwd(), 'resources', 'icon.png'),
-      path.resolve(process.cwd(), 'build', 'icon.png'),
-      path.resolve(app.getAppPath(), 'resources', 'icon.png'),
-      path.resolve(app.getAppPath(), 'build', 'icon.png'),
-      path.resolve(process.resourcesPath, 'icon.png')
-    ]
-    let dragIcon: ReturnType<typeof nativeImage.createFromPath> | null = null
-    for (const candidate of iconCandidates) {
-      if (typeof candidate !== 'string' || !candidate) {
-        continue
+      try {
+        const dragIcon = await resolveExternalDragIcon(existingPaths[0])
+        if (event.sender.isDestroyed()) {
+          return
+        }
+        event.sender.startDrag({
+          file: existingPaths[0],
+          files: existingPaths,
+          icon: dragIcon
+        })
+      } catch (error) {
+        console.error('[startExternalSongDrag] failed', error)
       }
-      if (!fs.existsSync(candidate)) {
-        continue
-      }
-      const image = nativeImage.createFromPath(candidate)
-      if (!image.isEmpty()) {
-        dragIcon = image
-        break
-      }
-    }
-    if (!dragIcon || dragIcon.isEmpty()) {
-      dragIcon = nativeImage.createFromDataURL(
-        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQImWNgYGD4DwABBAEAHFqRSgAAAABJRU5ErkJggg=='
-      )
-    }
-    try {
-      console.info('[external-drag] startDrag', {
-        count: existingPaths.length,
-        first: existingPaths[0]
-      })
-      event.sender.startDrag({
-        file: existingPaths[0],
-        files: existingPaths,
-        icon: dragIcon
-      })
-      event.returnValue = true
-    } catch (error) {
-      console.error('[startExternalSongDrag] failed', error)
-      event.returnValue = false
-    }
+    })()
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
