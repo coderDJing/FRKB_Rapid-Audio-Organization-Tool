@@ -469,6 +469,25 @@ export const createUseMixtapeStemRuntimeModule = (
         response?.preferred && typeof response.preferred === 'object'
           ? (response.preferred as StemRuntimeDownloadInfo)
           : null
+      if (preferred?.alreadyAvailable) {
+        stemRuntimeFailureNoticeKeyByPlaylistId.delete(playlistId)
+        stemRuntimeDownloadState.value = {
+          ...stemRuntimeDownloadState.value,
+          status: 'ready',
+          profile: preferred.profile || stemRuntimeDownloadState.value.profile,
+          runtimeKey: preferred.runtimeKey || stemRuntimeDownloadState.value.runtimeKey,
+          version: preferred.version || stemRuntimeDownloadState.value.version,
+          archiveSize: preferred.archiveSize || stemRuntimeDownloadState.value.archiveSize,
+          totalBytes: preferred.archiveSize || stemRuntimeDownloadState.value.totalBytes,
+          downloadedBytes: preferred.archiveSize || stemRuntimeDownloadState.value.downloadedBytes,
+          percent: 100,
+          title: preferred.title || stemRuntimeDownloadState.value.title,
+          message: '',
+          error: '',
+          updatedAt: Date.now()
+        }
+        return
+      }
       if (preferred?.reason === 'manifest unavailable') {
         const failureKey = [
           'manifest',

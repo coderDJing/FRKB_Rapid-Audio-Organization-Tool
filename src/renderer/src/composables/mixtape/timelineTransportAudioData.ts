@@ -287,9 +287,12 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
     const useStemMode = ctx.isStemMixMode()
     const entries = ctx.tracks.value
       .map((track: MixtapeTrack) => {
-        if (useStemMode && ctx.normalizeMixtapeStemStatus((track as any)?.stemStatus) !== 'ready') {
+        const stemStatus = useStemMode
+          ? ctx.normalizeMixtapeStemStatus((track as any)?.stemStatus)
+          : 'ready'
+        const stemReadyForPlayback = !useStemMode || stemStatus === 'ready'
+        if (useStemMode && !stemReadyForPlayback) {
           stemNotReadyCount += 1
-          return null
         }
         const filePath = String(track.filePath || '').trim()
         if (!filePath) return null
@@ -375,18 +378,26 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
           } as TransportEntry
         }
         const stemIds = ctx.resolveStemIdsForMode()
-        const stemAudioById: Partial<Record<TransportStemId, TransportStemAudioRef>> = {}
-        for (const stemId of stemIds) {
-          const stemFilePath = ctx.resolveTrackStemFilePath(track, stemId)
-          if (!stemFilePath) {
-            missingStemAssetCount += 1
-            return null
+        let stemAudioById: Partial<Record<TransportStemId, TransportStemAudioRef>> | undefined
+        if (stemReadyForPlayback) {
+          const nextStemAudioById: Partial<Record<TransportStemId, TransportStemAudioRef>> = {}
+          let stemAssetsMissing = false
+          for (const stemId of stemIds) {
+            const stemFilePath = ctx.resolveTrackStemFilePath(track, stemId)
+            if (!stemFilePath) {
+              missingStemAssetCount += 1
+              stemAssetsMissing = true
+              break
+            }
+            nextStemAudioById[stemId] = {
+              stemId,
+              filePath: stemFilePath,
+              decodeMode: canPlayHtmlAudio(stemFilePath) ? 'browser' : 'ipc',
+              audioBuffer: null
+            }
           }
-          stemAudioById[stemId] = {
-            stemId,
-            filePath: stemFilePath,
-            decodeMode: canPlayHtmlAudio(stemFilePath) ? 'browser' : 'ipc',
-            audioBuffer: null
+          if (!stemAssetsMissing) {
+            stemAudioById = nextStemAudioById
           }
         }
         return {
@@ -680,11 +691,6 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
   }
 
   const preloadTransportBuffers = async () => {
-    if (ctx.isStemMixMode() && !isStemAutoPreloadReady()) {
-      ctx.transportPreloading.value = false
-      resetTransportPreloadProgress()
-      return
-    }
     const version = ++transportPreloadVersion
     const plan = buildTransportEntries()
     const uniqueAudios = collectUniqueTransportAudios(plan.entries)
@@ -739,26 +745,11 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
   }
 
   const scheduleTransportPreload = () => {
-    if (ctx.isStemMixMode() && !isStemAutoPreloadReady()) {
-      cancelTransportPreload()
-      resetTransportPreloadProgress()
-      return
-    }
     clearTransportPreloadTimer()
     transportPreloadTimer = setTimeout(() => {
       transportPreloadTimer = null
       void preloadTransportBuffers()
     }, 80)
-  }
-
-  const isStemAutoPreloadReady = () => {
-    if (!ctx.isStemMixMode()) return false
-    if (!ctx.tracks.value.length) return false
-    for (const track of ctx.tracks.value) {
-      const stemStatus = ctx.normalizeMixtapeStemStatus((track as any)?.stemStatus)
-      if (stemStatus !== 'ready') return false
-    }
-    return true
   }
 
   const cleanupTransportAudioData = () => {

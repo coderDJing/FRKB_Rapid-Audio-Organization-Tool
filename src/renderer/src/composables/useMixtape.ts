@@ -96,6 +96,7 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
   const outputProgressPercent = ref(0)
   const outputProgressDone = ref(0)
   const outputProgressTotal = ref(100)
+  const stemRetryingTrackIdMap = ref<Record<string, boolean>>({})
   const trackContextMenuVisible = ref(false)
   const trackContextMenuX = ref(0)
   const trackContextMenuY = ref(0)
@@ -428,7 +429,6 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     stemResumeSignatureByPlaylistId,
     autoGainDialogVisible,
     transportPreloading,
-    stemSeparationProgressVisible,
     stemRuntimeDownloadVisible,
     transportPlaying,
     transportDecoding,
@@ -518,6 +518,45 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
   }
   const handleMixtapeOutputProgress = (_e: unknown, payload: any) => {
     applyOutputProgressPayload(payload)
+  }
+  const handleRetryTrackStem = async (trackId: string) => {
+    const playlistId = String(payload.value.playlistId || '').trim()
+    const normalizedTrackId = String(trackId || '').trim()
+    if (!playlistId || !normalizedTrackId || !window?.electron?.ipcRenderer?.invoke) return
+    const targetTrack = tracks.value.find((track) => track.id === normalizedTrackId)
+    if (!targetTrack) return
+    if (stemRetryingTrackIdMap.value[normalizedTrackId]) return
+    const filePath = normalizeMixtapeFilePath(targetTrack.filePath)
+    stemRetryingTrackIdMap.value = {
+      ...stemRetryingTrackIdMap.value,
+      [normalizedTrackId]: true
+    }
+    try {
+      await window.electron.ipcRenderer.invoke('mixtape:stem:retry', {
+        playlistId,
+        stemMode: mixtapeStemMode.value,
+        itemIds: [normalizedTrackId],
+        filePaths: filePath ? [filePath] : [],
+        profile: mixtapeStemProfile.value
+      })
+      await loadMixtapeItems({ background: true })
+    } catch (error) {
+      console.error('[mixtape] retry track stem failed', {
+        playlistId,
+        trackId: normalizedTrackId,
+        filePath,
+        error
+      })
+      await confirmDialog({
+        title: t('common.error'),
+        content: [t('mixtape.stemRetryFailed')],
+        confirmShow: false
+      })
+    } finally {
+      const next = { ...stemRetryingTrackIdMap.value }
+      delete next[normalizedTrackId]
+      stemRetryingTrackIdMap.value = next
+    }
   }
   const handleTitleOpenDialog = (key: string) => {
     if (!key) return
@@ -776,6 +815,8 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     outputRunning,
     outputProgressText,
     outputProgressPercent,
+    stemRetryingTrackIdMap,
+    stemRuntimeProgressByTrackId,
     stemRuntimeDownloadVisible,
     stemRuntimeDownloadPercent,
     stemRuntimeDownloadTitle,
@@ -786,6 +827,7 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     stemSeparationProgressPercent,
     stemSeparationProgressText,
     stemSeparationRunningProgressLines,
+    handleRetryTrackStem,
     autoGainDialogVisible,
     autoGainReferenceTrackId,
     autoGainReferenceFeedback,

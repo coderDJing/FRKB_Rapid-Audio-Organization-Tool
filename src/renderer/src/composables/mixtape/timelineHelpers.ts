@@ -306,14 +306,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
 
   const resolveTrackSourceDurationSeconds = (track: MixtapeTrack) => {
     void waveformVersion?.value
-    const candidateFilePaths = [
-      ...(isStemMixMode()
-        ? resolveWaveformStemIds()
-            .map((stemId) => resolveTrackStemFilePath(track, stemId))
-            .filter(Boolean)
-        : []),
-      ...[String(track.filePath || '').trim()].filter(Boolean)
-    ]
+    const candidateFilePaths = [String(track.filePath || '').trim()].filter(Boolean)
     for (const filePath of candidateFilePaths) {
       const data = waveformDataMap.get(filePath) || null
       if (data && Number.isFinite(data.duration) && data.duration > 0) {
@@ -569,12 +562,12 @@ export const createTimelineHelpersModule = (ctx: any) => {
 
   const resolveTrackWaveformSources = (track: MixtapeTrack): TrackWaveformSource[] => {
     const listRoot = resolveWaveformListRoot(track)
+    const fallbackFilePath = String(track.filePath || '').trim()
     if (!isStemMixMode()) {
-      const filePath = String(track.filePath || '').trim()
-      if (!filePath) return []
+      if (!fallbackFilePath) return []
       return [
         {
-          filePath,
+          filePath: fallbackFilePath,
           listRoot,
           laneIndex: 0,
           laneCount: 1,
@@ -586,7 +579,18 @@ export const createTimelineHelpersModule = (ctx: any) => {
     const stemSources: Array<{ stemId: MixtapeWaveformStemId; filePath: string }> = []
     for (const stemId of stemIds) {
       const filePath = resolveTrackStemFilePath(track, stemId)
-      if (!filePath) return []
+      if (!filePath) {
+        if (!fallbackFilePath) return []
+        return [
+          {
+            filePath: fallbackFilePath,
+            listRoot,
+            laneIndex: 0,
+            laneCount: 1,
+            stemId: 'inst'
+          }
+        ]
+      }
       stemSources.push({ stemId, filePath })
     }
     const laneCount = stemSources.length

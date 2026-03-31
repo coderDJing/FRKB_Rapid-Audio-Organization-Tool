@@ -138,6 +138,8 @@ const {
   outputRunning,
   outputProgressText,
   outputProgressPercent,
+  stemRetryingTrackIdMap,
+  stemRuntimeProgressByTrackId,
   stemRuntimeDownloadVisible,
   stemRuntimeDownloadPercent,
   stemRuntimeDownloadTitle,
@@ -148,6 +150,7 @@ const {
   stemSeparationProgressPercent,
   stemSeparationProgressText,
   stemSeparationRunningProgressLines,
+  handleRetryTrackStem,
   autoGainDialogVisible,
   autoGainReferenceTrackId,
   autoGainReferenceFeedback,
@@ -190,6 +193,108 @@ const handleTitleMenuOpen = (key: string) => {
   if (key === 'mixtape.menuOutput' && !canOutputFromTitle.value) return
   handleTitleOpenDialog(key)
 }
+
+type TrackStemPlaceholderState = {
+  kind: 'pending' | 'running' | 'failed'
+  label: string
+  detail: string
+  percent: number | null
+}
+
+const normalizeTrackStemStatus = (value: unknown) => {
+  if (value === 'pending' || value === 'running' || value === 'ready' || value === 'failed') {
+    return value
+  }
+  return 'ready'
+}
+
+const hasTrackStemAssetsReady = (track: MixtapeTrack) =>
+  Boolean(
+    String(track.stemVocalPath || '').trim() &&
+      String(track.stemInstPath || '').trim() &&
+      String(track.stemBassPath || '').trim() &&
+      String(track.stemDrumsPath || '').trim()
+  )
+
+const clampStemProgressPercent = (value: unknown) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return 0
+  return Math.max(0, Math.min(100, Math.round(numeric)))
+}
+
+const formatStemRuntimeTime = (value: unknown) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric < 0) return '--:--'
+  const totalSeconds = Math.floor(numeric)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+const stemPlaceholderStateByTrackId = computed<Record<string, TrackStemPlaceholderState>>(() => {
+  const next: Record<string, TrackStemPlaceholderState> = {}
+  if (mixtapeMixMode.value !== 'stem') return next
+  for (const track of tracks.value) {
+    const trackId = String(track?.id || '').trim()
+    if (!trackId) continue
+    if (stemRetryingTrackIdMap.value[trackId]) {
+      next[trackId] = {
+        kind: 'pending',
+        label: t('mixtape.stemTrackRetrying'),
+        detail: t('mixtape.stemTrackSilentHint'),
+        percent: null
+      }
+      continue
+    }
+    const stemStatus = normalizeTrackStemStatus(track.stemStatus)
+    const stemAssetsReady = hasTrackStemAssetsReady(track)
+    if (stemStatus === 'ready' && stemAssetsReady) continue
+
+    if (stemStatus === 'failed') {
+      const failureDetail =
+        typeof track.stemError === 'string' && track.stemError.trim()
+          ? track.stemError.trim()
+          : t('mixtape.stemTrackFailedHint')
+      next[trackId] = {
+        kind: 'failed',
+        label: t('mixtape.stemTrackStatusFailed'),
+        detail: failureDetail,
+        percent: null
+      }
+      continue
+    }
+
+    if (stemStatus === 'running') {
+      const runtimeProgress = stemRuntimeProgressByTrackId.value[trackId]
+      const percent = clampStemProgressPercent(runtimeProgress?.percent)
+      const device =
+        typeof runtimeProgress?.device === 'string' && runtimeProgress.device.trim()
+          ? runtimeProgress.device.trim().toUpperCase()
+          : 'CPU'
+      const processed = formatStemRuntimeTime(runtimeProgress?.processedSec)
+      const total = formatStemRuntimeTime(runtimeProgress?.totalSec)
+      next[trackId] = {
+        kind: 'running',
+        label: t('mixtape.stemTrackStatusRunning', { percent }),
+        detail: t('mixtape.stemTrackRunningHint', { device, processed, total }),
+        percent
+      }
+      continue
+    }
+
+    next[trackId] = {
+      kind: 'pending',
+      label: t(
+        stemStatus === 'ready' && !stemAssetsReady
+          ? 'mixtape.stemTrackStatusPreparing'
+          : 'mixtape.stemTrackStatusQueued'
+      ),
+      detail: t('mixtape.stemTrackSilentHint'),
+      percent: null
+    }
+  }
+  return next
+})
 
 type MixParamId =
   | 'position'
@@ -919,6 +1024,14 @@ watch(
                               v-for="item in laneTracks[laneIndex]"
                               :key="`${item.track.id}-${item.startX}`"
                               class="lane-track"
+                              :class="{
+                                'is-stem-pending':
+                                  stemPlaceholderStateByTrackId[item.track.id]?.kind === 'pending',
+                                'is-stem-running':
+                                  stemPlaceholderStateByTrackId[item.track.id]?.kind === 'running',
+                                'is-stem-failed':
+                                  stemPlaceholderStateByTrackId[item.track.id]?.kind === 'failed'
+                              }"
                               :style="resolveTrackBlockStyle(item)"
                               @mousedown.stop="handleLaneTrackMouseDown(item, $event)"
                               @contextmenu.stop.prevent="handleTrackContextMenu(item, $event)"
@@ -1055,6 +1168,77 @@ watch(
                                     </div>
                                   </div>
                                 </template>
+                              </div>
+                              <div
+                                v-if="stemPlaceholderStateByTrackId[item.track.id]"
+                                class="lane-track__stem-placeholder"
+                                :class="`is-${stemPlaceholderStateByTrackId[item.track.id].kind}`"
+                              >
+                                <div class="lane-track__stem-placeholder-top">
+                                  <span class="lane-track__stem-placeholder-pill">
+                                    {{ stemPlaceholderStateByTrackId[item.track.id].label }}
+                                  </span>
+                                  <span
+                                    v-if="
+                                      stemPlaceholderStateByTrackId[item.track.id].percent !== null
+                                    "
+                                    class="lane-track__stem-placeholder-percent"
+                                  >
+                                    {{ stemPlaceholderStateByTrackId[item.track.id].percent }}%
+                                  </span>
+                                </div>
+                                <div class="lane-track__stem-placeholder-detail">
+                                  {{ stemPlaceholderStateByTrackId[item.track.id].detail }}
+                                </div>
+                                <div
+                                  class="lane-track__stem-placeholder-bar"
+                                  :class="{
+                                    'is-indeterminate':
+                                      stemPlaceholderStateByTrackId[item.track.id].kind ===
+                                      'pending'
+                                  }"
+                                >
+                                  <div
+                                    class="lane-track__stem-placeholder-fill"
+                                    :class="{
+                                      'is-indeterminate':
+                                        stemPlaceholderStateByTrackId[item.track.id].kind ===
+                                        'pending'
+                                    }"
+                                    :style="
+                                      stemPlaceholderStateByTrackId[item.track.id].kind !==
+                                      'running'
+                                        ? undefined
+                                        : {
+                                            width: `${stemPlaceholderStateByTrackId[item.track.id].percent}%`
+                                          }
+                                    "
+                                  ></div>
+                                </div>
+                                <div
+                                  v-if="
+                                    stemPlaceholderStateByTrackId[item.track.id].kind !== 'failed'
+                                  "
+                                  class="lane-track__stem-placeholder-skeleton"
+                                >
+                                  <span class="is-wide"></span>
+                                  <span class="is-mid"></span>
+                                </div>
+                                <div
+                                  v-if="
+                                    stemPlaceholderStateByTrackId[item.track.id].kind === 'failed'
+                                  "
+                                  class="lane-track__stem-placeholder-actions"
+                                >
+                                  <button
+                                    class="lane-track__stem-retry-btn"
+                                    type="button"
+                                    @mousedown.stop.prevent
+                                    @click.stop="handleRetryTrackStem(item.track.id)"
+                                  >
+                                    {{ t('common.retry') }}
+                                  </button>
+                                </div>
                               </div>
                               <div v-if="isTrackPositionMode" class="lane-track__meta">
                                 <div class="lane-track__meta-title">

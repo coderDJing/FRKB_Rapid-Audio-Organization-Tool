@@ -592,32 +592,31 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       if (transportVersion !== version) return
     }
 
-    const duration = playableEntries.reduce(
+    const duration = entries.reduce(
       (max, entry) => Math.max(max, entry.startSec + entry.duration),
       0
     )
     transportDurationSec = duration
-    const minStartSec = playableEntries.reduce(
+    const minStartSec = entries.reduce(
       (min, entry) => Math.min(min, Number(entry.startSec) || 0),
       0
     )
     const startSec = clampNumber(rawStartSec, minStartSec, Math.max(minStartSec, duration))
+    const silentStemTrackCount = isStemMixMode()
+      ? Math.max(0, plan.missingStemAssetCount) + Math.max(0, plan.stemNotReadyCount)
+      : 0
     transportError.value = ''
-    if (!playableEntries.length || duration <= 0 || startSec >= duration) {
+    if (!entries.length || duration <= 0 || startSec >= duration) {
       playheadVisible.value = false
       playheadSec.value = startSec
-      if (!playableEntries.length) {
+      if (!entries.length) {
         if (plan.decodeFailedCount > 0) {
           transportError.value = t('mixtape.transportDecodeFailed', {
             count: plan.decodeFailedCount
           })
-        } else if (isStemMixMode() && plan.missingStemAssetCount > 0) {
+        } else if (isStemMixMode() && silentStemTrackCount > 0) {
           transportError.value = t('mixtape.transportStemNotReady', {
-            count: plan.missingStemAssetCount
-          })
-        } else if (isStemMixMode() && plan.stemNotReadyCount > 0) {
-          transportError.value = t('mixtape.transportStemNotReady', {
-            count: plan.stemNotReadyCount
+            count: silentStemTrackCount
           })
         } else if (plan.missingDurationCount > 0) {
           transportError.value = t('mixtape.transportMissingDuration', {
@@ -633,31 +632,27 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
       transportError.value = t('mixtape.transportPartialDecodeFailed', {
         count: plan.decodeFailedCount
       })
-    } else if (isStemMixMode() && plan.missingStemAssetCount > 0) {
-      transportError.value = t('mixtape.transportStemNotReadySkipped', {
-        count: plan.missingStemAssetCount
-      })
-    } else if (isStemMixMode() && plan.stemNotReadyCount > 0) {
-      transportError.value = t('mixtape.transportStemNotReadySkipped', {
-        count: plan.stemNotReadyCount
+    } else if (isStemMixMode() && silentStemTrackCount > 0) {
+      transportError.value = t('mixtape.transportStemSilentHint', {
+        count: silentStemTrackCount
       })
     }
 
     playheadVisible.value = true
     playheadSec.value = startSec
     syncTimelineScrollByPlayhead(startSec)
-    const transportCtx = ensureTransportAudioContext()
-    if (transportCtx.state === 'suspended') {
+    const transportCtx = playableEntries.length > 0 ? ensureTransportAudioContext() : null
+    if (transportCtx?.state === 'suspended') {
       try {
         await transportCtx.resume()
       } catch {}
     }
     if (transportVersion !== version) return
     const scheduleLeadSec = 0.03
-    const scheduleStartAt = transportCtx.currentTime + scheduleLeadSec
+    const scheduleStartAt = transportCtx ? transportCtx.currentTime + scheduleLeadSec : 0
     transportBaseSec = startSec
     transportStartedAt = performance.now() + scheduleLeadSec * 1000
-    transportAudioStartAt = scheduleStartAt
+    transportAudioStartAt = transportCtx ? scheduleStartAt : 0
     transportPlaying.value = true
 
     for (const entry of playableEntries) {

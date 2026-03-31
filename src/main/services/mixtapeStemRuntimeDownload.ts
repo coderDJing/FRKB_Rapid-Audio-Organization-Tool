@@ -22,6 +22,7 @@ import {
   runProcess
 } from './mixtapeStemSeparationShared'
 import { probeWindowsGpuAdapters } from './mixtapeStemSeparationProbe'
+import { getCachedStemDeviceProbeSnapshot, probeDemucsDevices } from './mixtapeStemSeparationProbe'
 
 const DEFAULT_DEMUCS_RUNTIME_MANIFEST_URL =
   'https://github.com/coderDjing/FRKB_Rapid-Audio-Organization-Tool/releases/download/demucs-runtime-assets/demucs-runtime-manifest.json'
@@ -130,6 +131,17 @@ const resolveRuntimeProfileTitle = (profile: RuntimeProfileName | '') => {
   if (profile === 'mps') return 'Apple Metal'
   if (profile === 'rocm') return 'AMD ROCm'
   return 'CPU'
+}
+
+const resolveRuntimeProfileByRuntimeKey = (runtimeKey: string): RuntimeProfileName | '' => {
+  const normalizedKey = normalizeText(runtimeKey, 120).toLowerCase()
+  if (normalizedKey.includes('cuda')) return 'cuda'
+  if (normalizedKey.includes('xpu')) return 'xpu'
+  if (normalizedKey.includes('directml')) return 'directml'
+  if (normalizedKey.includes('mps')) return 'mps'
+  if (normalizedKey.includes('rocm')) return 'rocm'
+  if (normalizedKey.includes('cpu') || normalizedKey === 'runtime') return 'cpu'
+  return ''
 }
 
 const resolveRuntimeDownloadCacheDir = () =>
@@ -574,6 +586,67 @@ const isRuntimeAlreadyAvailable = async (entry: RuntimeAssetEntry) => {
   return false
 }
 
+const resolveAnyLocalRuntimeAvailability = async (): Promise<{
+  alreadyAvailable: boolean
+  profile: RuntimeProfileName | ''
+  runtimeKey: string
+  title: string
+}> => {
+  const runtimeCandidates = resolveBundledDemucsRuntimeCandidates().filter(
+    (candidate) => !!normalizeText(candidate.key, 120) && fs.existsSync(candidate.pythonPath)
+  )
+  if (runtimeCandidates.length <= 0) {
+    return {
+      alreadyAvailable: false,
+      profile: '',
+      runtimeKey: '',
+      title: ''
+    }
+  }
+
+  const cachedProbe = getCachedStemDeviceProbeSnapshot()
+  if (
+    cachedProbe?.runtimeUsable &&
+    normalizeText(cachedProbe.runtimeKey, 120) &&
+    fs.existsSync(cachedProbe.pythonPath)
+  ) {
+    const profile = resolveRuntimeProfileByRuntimeKey(cachedProbe.runtimeKey)
+    return {
+      alreadyAvailable: true,
+      profile,
+      runtimeKey: cachedProbe.runtimeKey,
+      title: resolveRuntimeProfileTitle(profile)
+    }
+  }
+
+  try {
+    const runtimeSnapshot = await probeDemucsDevices(resolveBundledFfmpegPath())
+    if (
+      runtimeSnapshot.runtimeUsable &&
+      normalizeText(runtimeSnapshot.runtimeKey, 120) &&
+      fs.existsSync(runtimeSnapshot.pythonPath)
+    ) {
+      const profile = resolveRuntimeProfileByRuntimeKey(runtimeSnapshot.runtimeKey)
+      return {
+        alreadyAvailable: true,
+        profile,
+        runtimeKey: runtimeSnapshot.runtimeKey,
+        title: resolveRuntimeProfileTitle(profile)
+      }
+    }
+  } catch {}
+
+  const fallbackCandidate = runtimeCandidates[0]
+  const fallbackRuntimeKey = normalizeText(fallbackCandidate?.key, 120)
+  const fallbackProfile = resolveRuntimeProfileByRuntimeKey(fallbackRuntimeKey)
+  return {
+    alreadyAvailable: true,
+    profile: fallbackProfile,
+    runtimeKey: fallbackRuntimeKey,
+    title: resolveRuntimeProfileTitle(fallbackProfile)
+  }
+}
+
 const downloadRuntimeArchivePart = async (
   params: {
     archiveUrl: string
@@ -934,16 +1007,18 @@ export const getPreferredStemRuntimeDownloadInfo =
     }
     const manifest = await readRuntimeManifest()
     if (!manifest) {
+      const localRuntime = await resolveAnyLocalRuntimeAvailability()
+      const fallbackProfile = localRuntime.profile || preferredProfiles[0] || ''
       return {
         supported: true,
-        downloadable: false,
-        alreadyAvailable: false,
-        profile: preferredProfiles[0] || '',
-        runtimeKey: '',
+        downloadable: !localRuntime.alreadyAvailable,
+        alreadyAvailable: localRuntime.alreadyAvailable,
+        profile: fallbackProfile,
+        runtimeKey: localRuntime.runtimeKey,
         version: '',
         archiveSize: 0,
-        title: resolveRuntimeProfileTitle(preferredProfiles[0] || ''),
-        reason: 'manifest unavailable',
+        title: localRuntime.title || resolveRuntimeProfileTitle(fallbackProfile),
+        reason: localRuntime.alreadyAvailable ? 'already available' : 'manifest unavailable',
         manifestUrl: resolveRuntimeManifestUrl(),
         releaseTag: '',
         error: runtimeManifestLastError,

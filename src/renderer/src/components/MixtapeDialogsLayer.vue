@@ -87,51 +87,6 @@ const autoGainColumnMenuVisibleModel = computed({
   get: () => props.autoGainColumnMenuVisible,
   set: (value: boolean) => emit('update:autoGainColumnMenuVisible', value)
 })
-
-const stemSeparationIndeterminate = computed(() => props.stemSeparationProgressPercent <= 0)
-
-const stemSeparationStatusLabel = computed(() =>
-  stemSeparationIndeterminate.value
-    ? props.t('mixtape.stemSeparationStagePreparing')
-    : props.t('mixtape.stemSeparationStageRunning')
-)
-
-const stemSeparationStatusHint = computed(() => {
-  if (!stemSeparationIndeterminate.value) {
-    return props.t('mixtape.stemSeparationRunningHint', {
-      count: props.stemSeparationRunningProgressLines.length
-    })
-  }
-  return props.t('mixtape.stemSeparationPreparingHint')
-})
-
-const stemSeparationProgressLabel = computed(() =>
-  stemSeparationIndeterminate.value ? '--' : `${props.stemSeparationProgressPercent}%`
-)
-
-const stemSeparationDisplayLines = computed(() => {
-  if (props.stemSeparationRunningProgressLines.length > 0) {
-    return props.stemSeparationRunningProgressLines.slice(0, 3).map((line) => ({
-      text: line,
-      placeholder: false
-    }))
-  }
-  return [
-    props.t('mixtape.stemSeparationPreparingStepQueue'),
-    props.t('mixtape.stemSeparationPreparingStepRuntime'),
-    props.t('mixtape.stemSeparationPreparingStepWaveform')
-  ].map((text) => ({
-    text,
-    placeholder: true
-  }))
-})
-
-const stemSeparationBarFillStyle = computed(() => {
-  if (stemSeparationIndeterminate.value) return undefined
-  return {
-    width: `${Math.max(0, Math.min(100, props.stemSeparationProgressPercent))}%`
-  }
-})
 </script>
 
 <template>
@@ -147,50 +102,6 @@ const stemSeparationBarFillStyle = computed(() => {
             percent: transportPreloadPercent
           })
         }}
-      </div>
-    </div>
-  </div>
-  <div v-if="stemSeparationProgressVisible" class="mixtape-stem-progress-mask">
-    <div class="bpm-loading-card mixtape-stem-progress-mask__card">
-      <div class="bpm-loading-title">{{ t('mixtape.stemSeparationBlockingTitle') }}</div>
-      <div class="bpm-loading-sub">{{ t('mixtape.stemSeparationBlockingHint') }}</div>
-      <div class="mixtape-stem-progress-mask__status-row">
-        <div
-          class="mixtape-stem-progress-mask__status-pill"
-          :class="{ 'is-indeterminate': stemSeparationIndeterminate }"
-        >
-          <span class="mixtape-stem-progress-mask__status-dot"></span>
-          <span>{{ stemSeparationStatusLabel }}</span>
-        </div>
-        <div class="mixtape-stem-progress-mask__status-percent">
-          {{ stemSeparationProgressLabel }}
-        </div>
-      </div>
-      <div class="bpm-loading-sub mixtape-stem-progress-mask__status-hint">
-        {{ stemSeparationStatusHint }}
-      </div>
-      <div class="bpm-loading-sub">{{ t('mixtape.stemSeparationLifecycleHint') }}</div>
-      <div
-        class="mixtape-stem-progress-mask__bar"
-        :class="{ 'is-indeterminate': stemSeparationIndeterminate }"
-      >
-        <div
-          class="mixtape-stem-progress-mask__bar-fill"
-          :class="{ 'is-indeterminate': stemSeparationIndeterminate }"
-          :style="stemSeparationBarFillStyle"
-        ></div>
-      </div>
-      <div class="bpm-loading-sub">{{ stemSeparationProgressText }}</div>
-      <div class="mixtape-stem-progress-mask__detail-list">
-        <div
-          v-for="(line, index) in stemSeparationDisplayLines"
-          :key="`stem-running-progress-${index}`"
-          class="mixtape-stem-progress-mask__detail-item"
-          :class="{ 'is-placeholder': line.placeholder }"
-        >
-          <span class="mixtape-stem-progress-mask__detail-dot"></span>
-          <span>{{ line.text }}</span>
-        </div>
       </div>
     </div>
   </div>
