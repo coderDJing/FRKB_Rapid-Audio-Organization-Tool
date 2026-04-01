@@ -118,10 +118,19 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
 
   ipcMain.handle('emptyRecycleBin', async () => {
     const recycleBinPath = getRecycleBinRootAbs()
-    if (!recycleBinPath) return
+    if (!recycleBinPath) {
+      return { total: 0, success: 0, failed: 0, removedPaths: [] }
+    }
     const progressId = createProgressId('recycle_bin_empty')
+    const deleteTasks: Array<() => Promise<string>> = []
+    const emptyDirCandidates: string[] = []
+    let success = 0
+    let failed = 0
+    let removedPaths: string[] = []
     try {
-      if (!(await fs.pathExists(recycleBinPath))) return
+      if (!(await fs.pathExists(recycleBinPath))) {
+        return { total: 0, success: 0, failed: 0, removedPaths: [] }
+      }
       sendProgress({
         id: progressId,
         titleKey: 'recycleBin.progressScanning',
@@ -130,7 +139,6 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
         isInitial: true,
         noProgress: true
       })
-      const deleteTasks: Array<() => Promise<boolean>> = []
       const walkAndCollectFiles = async (targetDir: string) => {
         let entries: fs.Dirent[] = []
         try {
@@ -142,9 +150,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
           const entryPath = path.join(targetDir, entry.name)
           if (entry.isDirectory()) {
             await walkAndCollectFiles(entryPath)
-            try {
-              await fs.remove(entryPath)
-            } catch {}
+            emptyDirCandidates.push(entryPath)
             continue
           }
           if (entry.isFile()) {
@@ -153,7 +159,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
               if (!deleted) {
                 throw new Error(`permanently delete failed: ${entryPath}`)
               }
-              return true
+              return entryPath
             })
           }
         }
@@ -168,23 +174,35 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
           noProgress: false
         })
       }
-      const { failed, skipped } =
-        deleteTasks.length > 0
-          ? await runWithConcurrency(deleteTasks, {
-              concurrency: FILE_BATCH_CONCURRENCY,
-              stopOnENOSPC: false,
-              yieldEvery: FILE_BATCH_YIELD_EVERY,
-              onProgress: (done: number, total: number) => {
-                sendProgress({
-                  id: progressId,
-                  titleKey: 'recycleBin.progressDeleting',
-                  now: done,
-                  total,
-                  noProgress: false
-                })
-              }
-            })
-          : { failed: 0, skipped: 0 }
+      const emptyResults: Array<string | Error> = []
+      const {
+        results,
+        success: runSuccess,
+        failed: runFailed,
+        skipped
+      } = deleteTasks.length > 0
+        ? await runWithConcurrency(deleteTasks, {
+            concurrency: FILE_BATCH_CONCURRENCY,
+            stopOnENOSPC: false,
+            yieldEvery: FILE_BATCH_YIELD_EVERY,
+            onProgress: (done: number, total: number) => {
+              sendProgress({
+                id: progressId,
+                titleKey: 'recycleBin.progressDeleting',
+                now: done,
+                total,
+                noProgress: false
+              })
+            }
+          })
+        : { results: emptyResults, success: 0, failed: 0, skipped: 0 }
+      success = runSuccess
+      failed = runFailed
+      for (const dirPath of emptyDirCandidates.sort((left, right) => right.length - left.length)) {
+        try {
+          await fs.remove(dirPath)
+        } catch {}
+      }
       const libraryRoot = path.join(store.databaseDir, 'library')
       const records = listRecycleBinRecords()
       const missingRecords: string[] = []
@@ -199,6 +217,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
       if (missingRecords.length > 0) {
         deleteRecycleBinRecords(missingRecords)
       }
+      removedPaths = results.filter((item): item is string => typeof item === 'string')
       const recycleBinEmpty = await isDirectoryEffectivelyEmpty(
         recycleBinPath,
         store.settingConfig.audioExt
@@ -220,6 +239,12 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
         now: 1,
         total: 1
       })
+      return {
+        total: deleteTasks.length,
+        success,
+        failed,
+        removedPaths
+      }
     } catch (error) {
       sendProgress({
         id: progressId,
@@ -228,6 +253,12 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
         total: 1
       })
       console.error('清空回收站失败:', error)
+      return {
+        total: deleteTasks.length,
+        success,
+        failed: failed || Math.max(0, deleteTasks.length - success),
+        removedPaths
+      }
     }
   })
 

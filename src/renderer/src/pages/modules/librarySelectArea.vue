@@ -23,6 +23,7 @@ import confirm from '@renderer/components/confirmDialog'
 import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
 import emitter from '@renderer/utils/mitt'
 import libraryUtils from '@renderer/utils/libraryUtils'
+import { emptyRecycleBinWithOptimisticUpdate } from '@renderer/utils/recycleBinActions'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 const emit = defineEmits(['librarySelectedChange'])
@@ -303,39 +304,7 @@ const handleAutoFillForLibrary = async (libraryName: string) => {
 }
 
 const emptyRecycleBinHandleClick = async () => {
-  if (runtime.isProgressing) {
-    await confirm({
-      title: t('dialog.hint'),
-      content: [t('import.waitForTask')],
-      confirmShow: false
-    })
-    return
-  }
-  const res = await confirm({
-    title: t('recycleBin.emptyRecycleBin'),
-    content: [t('recycleBin.confirmEmpty'), t('tracks.deleteHint')]
-  })
-  if (res !== 'confirm') return
-
-  runtime.isProgressing = true
-  try {
-    await window.electron.ipcRenderer.invoke('emptyRecycleBin')
-
-    if (runtime.songsArea.songListUUID === RECYCLE_BIN_UUID) {
-      runtime.songsArea.songListUUID = ''
-      runtime.songsArea.selectedSongFilePath.length = 0
-      await nextTick()
-      runtime.songsArea.songListUUID = RECYCLE_BIN_UUID
-    }
-
-    if (runtime.playingData.playingSongListUUID === RECYCLE_BIN_UUID) {
-      runtime.playingData.playingSong = null
-      runtime.playingData.playingSongListUUID = ''
-      runtime.playingData.playingSongListData = []
-    }
-  } finally {
-    runtime.isProgressing = false
-  }
+  await emptyRecycleBinWithOptimisticUpdate(runtime)
 }
 
 const buildMenuArr = (item: Icon) => {

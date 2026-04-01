@@ -12,6 +12,7 @@ import { handleLibraryAreaEmptySpaceDrop } from '@renderer/utils/dragUtils'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { DEFAULT_MIXTAPE_STEM_PROFILE } from '@shared/mixtapeStemProfiles'
+import { emptyRecycleBinWithOptimisticUpdate } from '@renderer/utils/recycleBinActions'
 import {
   persistMixtapeProjectMode,
   setPendingMixtapeProjectMode
@@ -55,43 +56,7 @@ const collapseButtonRef = useTemplateRef<HTMLDivElement>('collapseButtonRef')
 const libraryTitleText = computed(() => toLibraryDisplayName(libraryData.value.dirName))
 
 const emptyRecycleBinHandleClick = async () => {
-  if (runtime.isProgressing) {
-    await confirm({
-      title: t('dialog.hint'),
-      content: [t('import.waitForTask')],
-      confirmShow: false
-    })
-    return
-  }
-  let res = await confirm({
-    title: t('recycleBin.emptyRecycleBin'),
-    content: [t('recycleBin.confirmEmpty'), t('tracks.deleteHint')]
-  })
-  if (res !== 'confirm') {
-    return
-  }
-
-  runtime.isProgressing = true
-  try {
-    await window.electron.ipcRenderer.invoke('emptyRecycleBin')
-
-    // 若当前打开回收站，则刷新列表
-    if (runtime.songsArea.songListUUID === RECYCLE_BIN_UUID) {
-      runtime.songsArea.songListUUID = ''
-      runtime.songsArea.selectedSongFilePath.length = 0
-      await nextTick()
-      runtime.songsArea.songListUUID = RECYCLE_BIN_UUID
-    }
-
-    // 若当前正在播放来自回收站，则停止播放并清空播放列表
-    if (runtime.playingData.playingSongListUUID === RECYCLE_BIN_UUID) {
-      runtime.playingData.playingSong = null
-      runtime.playingData.playingSongListUUID = ''
-      runtime.playingData.playingSongListData = []
-    }
-  } finally {
-    runtime.isProgressing = false
-  }
+  await emptyRecycleBinWithOptimisticUpdate(runtime)
 }
 
 // 歌单筛选关键词（仅匹配歌单名）
