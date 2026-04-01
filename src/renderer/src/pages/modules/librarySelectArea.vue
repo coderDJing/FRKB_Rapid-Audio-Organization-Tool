@@ -718,19 +718,10 @@ watch(
         @dragenter="iconDragEnter($event, item)"
       >
         <div
-          style="width: 2px; height: 100%"
+          class="iconBoxAccent"
           :style="{ backgroundColor: item.name == selectedIcon.name ? 'var(--accent)' : '' }"
         ></div>
-        <div
-          style="
-            flex-grow: 1;
-            height: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-          "
-          @click="libraryHandleClick(item)"
-        >
+        <div class="iconBoxContent" @click="libraryHandleClick(item)">
           <span
             :ref="(el) => setIconRef(item.name, el)"
             :style="getIconMaskStyle(item)"
@@ -753,7 +744,8 @@ watch(
         :key="group.key"
         class="deviceGroup"
         :class="{
-          'deviceGroup--selected': group.icons.some((item) => isSelectedPioneerDriveIcon(item))
+          'deviceGroup--selected': group.icons.some((item) => isSelectedPioneerDriveIcon(item)),
+          'deviceGroup--multi': group.icons.length > 1
         }"
       >
         <div class="deviceGroupInner">
@@ -767,20 +759,12 @@ watch(
               @mouseout="iconMouseout(item)"
             >
               <div
-                style="width: 2px; height: 100%"
+                class="iconBoxAccent"
                 :style="{
                   backgroundColor: isSelectedPioneerDriveIcon(item) ? 'var(--accent)' : ''
                 }"
               ></div>
-              <div
-                style="
-                  flex-grow: 1;
-                  height: 100%;
-                  display: flex;
-                  justify-content: center;
-                  align-items: center;
-                "
-              >
+              <div class="iconBoxContent">
                 <span
                   :ref="(el) => setIconRef(item.key, el)"
                   :style="getIconMaskStyle(item)"
@@ -816,16 +800,8 @@ watch(
         @mouseover="iconMouseover(item)"
         @mouseout="iconMouseout(item)"
       >
-        <div style="width: 2px; height: 100%"></div>
-        <div
-          style="
-            flex-grow: 1;
-            height: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-          "
-        >
+        <div class="iconBoxAccent"></div>
+        <div class="iconBoxContent">
           <span
             :ref="(el) => setIconRef(item.name, el)"
             :style="getIconMaskStyle(item)"
@@ -867,6 +843,23 @@ watch(
     display: flex;
     justify-content: center;
     align-items: center;
+    position: relative;
+
+    .iconBoxAccent {
+      width: 2px;
+      height: 100%;
+      flex: 0 0 2px;
+    }
+
+    .iconBoxContent {
+      flex-grow: 1;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      box-sizing: border-box;
+      position: relative;
+    }
 
     .sidebar-icon {
       width: 25px;
@@ -930,6 +923,8 @@ watch(
   }
 
   .deviceGroup {
+    --device-connector-x: 6px;
+    --device-connector-branch-width: 4px;
     width: 45px;
     display: flex;
     justify-content: center;
@@ -942,20 +937,36 @@ watch(
     display: flex;
     flex-direction: column;
     align-items: stretch;
+    gap: 2px;
   }
 
-  .deviceGroupInner::before {
+  .deviceGroup--multi .deviceGroupInner::before {
     content: '';
     position: absolute;
-    top: 9px;
-    bottom: 9px;
-    left: 22px;
-    width: 1px;
-    background: color-mix(in srgb, var(--border) 85%, transparent);
+    top: 19.5px;
+    bottom: 19.5px;
+    left: var(--device-connector-x);
+    width: 1.5px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--border) 78%, transparent);
     pointer-events: none;
   }
 
-  .deviceGroup--selected .deviceGroupInner::before {
+  .deviceGroup--multi .iconBox--device-group::before {
+    content: '';
+    position: absolute;
+    left: var(--device-connector-x);
+    top: 50%;
+    width: var(--device-connector-branch-width);
+    height: 1.5px;
+    transform: translateY(-50%);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--border) 78%, transparent);
+    pointer-events: none;
+  }
+
+  .deviceGroup--selected.deviceGroup--multi .deviceGroupInner::before,
+  .deviceGroup--selected.deviceGroup--multi .iconBox--device-group::before {
     background: color-mix(in srgb, var(--accent) 52%, var(--border));
   }
 
