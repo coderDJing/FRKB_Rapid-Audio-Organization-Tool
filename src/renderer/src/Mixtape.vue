@@ -1,45 +1,30 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch, type CSSProperties } from 'vue'
+import { computed, ref, type CSSProperties } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import titleComponent from '@renderer/components/titleComponent.vue'
 import MixtapeDialogsLayer from '@renderer/components/MixtapeDialogsLayer.vue'
 import MixtapeEnvelopePreviewTrack from '@renderer/components/mixtape/MixtapeEnvelopePreviewTrack.vue'
 import MixtapeGlobalBpmEditor from '@renderer/components/mixtape/MixtapeGlobalBpmEditor.vue'
-import { useRuntimeStore } from '@renderer/stores/runtime'
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
 import { useMixtape } from '@renderer/composables/useMixtape'
 import { createMixtapeGainEnvelopeEditor } from '@renderer/composables/mixtape/useGainEnvelopeEditor'
 import { useMixtapeAutoGainDialog } from '@renderer/composables/mixtape/useMixtapeAutoGainDialog'
 import { useMixtapeEnvelopePreview } from '@renderer/composables/mixtape/useMixtapeEnvelopePreview'
+import { useMixtapeMixParamUi } from '@renderer/composables/mixtape/useMixtapeMixParamUi'
+import { useMixtapeMasterTempoLane } from '@renderer/composables/mixtape/useMixtapeMasterTempoLane'
 import { useMixtapeOutputAvailability } from '@renderer/composables/mixtape/useMixtapeOutputAvailability'
-import {
-  normalizeMixtapeGlobalBpmEnvelopePoints,
-  resolveDefaultGlobalBpmFromTracks
-} from '@renderer/composables/mixtape/mixtapeGlobalTempoModel'
-import {
-  mixtapeGlobalTempoEnvelope,
-  mixtapeGlobalTempoPlaylistId
-} from '@renderer/composables/mixtape/mixtapeGlobalTempoState'
-import {
-  buildTrackTimingUndoSnapshot,
-  isTrackTimingSnapshotSame,
-  restoreTrackTimingUndoSnapshot
-} from '@renderer/composables/mixtape/mixtapeTrackTimingUndo'
+import { useMixtapeShellUi } from '@renderer/composables/mixtape/useMixtapeShellUi'
+import { useMixtapeStemPlaceholderState } from '@renderer/composables/mixtape/useMixtapeStemPlaceholderState'
+import { useMixtapeTrackDragUndo } from '@renderer/composables/mixtape/useMixtapeTrackDragUndo'
 import ascendingOrderAsset from '@renderer/assets/ascending-order.svg?asset'
 import descendingOrderAsset from '@renderer/assets/descending-order.svg?asset'
 import type {
   MixtapeEnvelopeParamId,
   MixtapeTrack,
-  MixtapeWaveformStemId,
   TimelineTrackLayout
 } from '@renderer/composables/mixtape/types'
-import type { TrackTimingUndoSnapshot } from '@renderer/composables/mixtape/mixtapeTrackTimingUndo'
 
 const masterTempoLaneExpanded = ref(false)
-const runtime = useRuntimeStore()
-const systemPrefersDark = ref(false)
-let systemThemeMedia: MediaQueryList | null = null
-let removeSystemThemeListener: (() => void) | null = null
 
 const {
   t,
@@ -194,224 +179,33 @@ const handleTitleMenuOpen = (key: string) => {
   handleTitleOpenDialog(key)
 }
 
-type TrackStemPlaceholderState = {
-  kind: 'pending' | 'running' | 'failed'
-  label: string
-  detail: string
-  percent: number | null
-}
-
-const normalizeTrackStemStatus = (value: unknown) => {
-  if (value === 'pending' || value === 'running' || value === 'ready' || value === 'failed') {
-    return value
-  }
-  return 'ready'
-}
-
-const hasTrackStemAssetsReady = (track: MixtapeTrack) =>
-  Boolean(
-    String(track.stemVocalPath || '').trim() &&
-      String(track.stemInstPath || '').trim() &&
-      String(track.stemBassPath || '').trim() &&
-      String(track.stemDrumsPath || '').trim()
-  )
-
-const clampStemProgressPercent = (value: unknown) => {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return 0
-  return Math.max(0, Math.min(100, Math.round(numeric)))
-}
-
-const formatStemRuntimeTime = (value: unknown) => {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric) || numeric < 0) return '--:--'
-  const totalSeconds = Math.floor(numeric)
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `${minutes}:${String(seconds).padStart(2, '0')}`
-}
-
-const stemPlaceholderStateByTrackId = computed<Record<string, TrackStemPlaceholderState>>(() => {
-  const next: Record<string, TrackStemPlaceholderState> = {}
-  if (mixtapeMixMode.value !== 'stem') return next
-  for (const track of tracks.value) {
-    const trackId = String(track?.id || '').trim()
-    if (!trackId) continue
-    if (stemRetryingTrackIdMap.value[trackId]) {
-      next[trackId] = {
-        kind: 'pending',
-        label: t('mixtape.stemTrackRetrying'),
-        detail: t('mixtape.stemTrackSilentHint'),
-        percent: null
-      }
-      continue
-    }
-    const stemStatus = normalizeTrackStemStatus(track.stemStatus)
-    const stemAssetsReady = hasTrackStemAssetsReady(track)
-    if (stemStatus === 'ready' && stemAssetsReady) continue
-
-    if (stemStatus === 'failed') {
-      const failureDetail =
-        typeof track.stemError === 'string' && track.stemError.trim()
-          ? track.stemError.trim()
-          : t('mixtape.stemTrackFailedHint')
-      next[trackId] = {
-        kind: 'failed',
-        label: t('mixtape.stemTrackStatusFailed'),
-        detail: failureDetail,
-        percent: null
-      }
-      continue
-    }
-
-    if (stemStatus === 'running') {
-      const runtimeProgress = stemRuntimeProgressByTrackId.value[trackId]
-      const percent = clampStemProgressPercent(runtimeProgress?.percent)
-      const device =
-        typeof runtimeProgress?.device === 'string' && runtimeProgress.device.trim()
-          ? runtimeProgress.device.trim().toUpperCase()
-          : 'CPU'
-      const processed = formatStemRuntimeTime(runtimeProgress?.processedSec)
-      const total = formatStemRuntimeTime(runtimeProgress?.totalSec)
-      next[trackId] = {
-        kind: 'running',
-        label: t('mixtape.stemTrackStatusRunning', { percent }),
-        detail: t('mixtape.stemTrackRunningHint', { device, processed, total }),
-        percent
-      }
-      continue
-    }
-
-    next[trackId] = {
-      kind: 'pending',
-      label: t(
-        stemStatus === 'ready' && !stemAssetsReady
-          ? 'mixtape.stemTrackStatusPreparing'
-          : 'mixtape.stemTrackStatusQueued'
-      ),
-      detail: t('mixtape.stemTrackSilentHint'),
-      percent: null
-    }
-  }
-  return next
+const stemPlaceholderStateByTrackId = useMixtapeStemPlaceholderState({
+  mixtapeMixMode,
+  tracks,
+  stemRetryingTrackIdMap,
+  stemRuntimeProgressByTrackId,
+  t
 })
 
-type MixParamId =
-  | 'position'
-  | 'gain'
-  | 'high'
-  | 'mid'
-  | 'low'
-  | 'vocal'
-  | 'inst'
-  | 'bass'
-  | 'drums'
-  | 'volume'
-type MixParamOption = {
-  id: MixParamId
-  labelKey: string
-}
-
-const STEM_PARAM_SET = new Set<MixParamId>(['vocal', 'inst', 'bass', 'drums'])
-const isStemMixMode = computed(() => mixtapeMixMode.value === 'stem')
-const STEM_WAVEFORM_ROW_ORDER: MixtapeWaveformStemId[] = ['vocal', 'inst', 'bass', 'drums']
-
-const mixParamOptions = computed<MixParamOption[]>(() => {
-  if (!isStemMixMode.value) {
-    return [
-      {
-        id: 'position',
-        labelKey: 'mixtape.mixParamPosition'
-      },
-      {
-        id: 'gain',
-        labelKey: 'mixtape.mixParamGain'
-      },
-      {
-        id: 'high',
-        labelKey: 'mixtape.mixParamHigh'
-      },
-      {
-        id: 'mid',
-        labelKey: 'mixtape.mixParamMid'
-      },
-      {
-        id: 'low',
-        labelKey: 'mixtape.mixParamLow'
-      },
-      {
-        id: 'volume',
-        labelKey: 'mixtape.mixParamVolume'
-      }
-    ]
-  }
-
-  const options: MixParamOption[] = [
-    {
-      id: 'position',
-      labelKey: 'mixtape.mixParamPosition'
-    },
-    {
-      id: 'gain',
-      labelKey: 'mixtape.mixParamGain'
-    },
-    {
-      id: 'vocal',
-      labelKey: 'mixtape.mixParamVocal'
-    },
-    {
-      id: 'inst',
-      labelKey: 'mixtape.mixParamInst'
-    }
-  ]
-  options.push(
-    {
-      id: 'bass',
-      labelKey: 'mixtape.mixParamBass'
-    },
-    {
-      id: 'drums',
-      labelKey: 'mixtape.mixParamDrums'
-    },
-    {
-      id: 'volume',
-      labelKey: 'mixtape.mixParamVolume'
-    }
-  )
-  return options
-})
-
-const isLightTheme = computed(() => {
-  const themeMode = String((runtime.setting as any).themeMode || 'system')
-  if (themeMode === 'light') return true
-  if (themeMode === 'dark') return false
-  return !systemPrefersDark.value
-})
-
-const selectedMixParam = ref<MixParamId>('position')
-const isTrackPositionMode = computed(() => selectedMixParam.value === 'position')
-const isGainParamMode = computed(() => selectedMixParam.value === 'gain')
-const isVolumeParamMode = computed(() => selectedMixParam.value === 'volume')
-const isStemParamMode = computed(() => STEM_PARAM_SET.has(selectedMixParam.value))
-const isEnvelopeParamMode = computed(() => !isTrackPositionMode.value)
-const showTrackEnvelopeEditor = computed(() => isEnvelopeParamMode.value)
-const isSegmentSelectionSupported = computed(() => isVolumeParamMode.value || isStemParamMode.value)
-const segmentSelectionMode = ref(false)
-const isSegmentSelectionActive = computed(
-  () => isStemParamMode.value || (isSegmentSelectionSupported.value && segmentSelectionMode.value)
-)
-const showEnvelopeCurve = computed(() => isEnvelopeParamMode.value && !isStemParamMode.value)
-const envelopePreviewLineKeys = computed<MixtapeEnvelopeParamId[]>(() =>
-  isStemMixMode.value ? ['gain', 'volume'] : ['gain', 'high', 'mid', 'low', 'volume']
-)
-const envelopeHintKey = computed(() => {
-  if (isSegmentSelectionActive.value) {
-    return 'mixtape.segmentMuteHint'
-  }
-  if (isStemParamMode.value) {
-    return 'mixtape.stemSegmentHint'
-  }
-  return 'mixtape.envelopeEditHint'
+const {
+  envelopeHintKey,
+  envelopePreviewLineKeys,
+  isEnvelopeParamMode,
+  isGainParamMode,
+  isSegmentSelectionActive,
+  isSegmentSelectionSupported,
+  isStemMixMode,
+  isStemParamMode,
+  isTrackPositionMode,
+  isVolumeParamMode,
+  handleToggleSegmentSelectionMode,
+  mixParamOptions,
+  selectedMixParam,
+  showEnvelopeCurve,
+  showTrackEnvelopeEditor
+} = useMixtapeMixParamUi({
+  mixtapeMixMode,
+  t
 })
 
 const {
@@ -436,43 +230,20 @@ const {
   resolveTrackSourceDurationSeconds
 })
 
-watch(selectedMixParam, (nextParam) => {
-  if (STEM_PARAM_SET.has(nextParam)) {
-    segmentSelectionMode.value = true
-    return
-  }
-  segmentSelectionMode.value = false
+const {
+  handleToggleMasterTempoLane,
+  masterTempoEdited,
+  masterTempoLaneHeight,
+  timelineTrackAreaStyle
+} = useMixtapeMasterTempoLane({
+  masterTempoLaneExpanded,
+  tracks,
+  timelineVisualScale,
+  timelineTrackAreaHeight,
+  mixtapePlaylistId,
+  resolveTrackDurationSeconds
 })
 
-watch(mixParamOptions, (nextOptions) => {
-  const availableIds = new Set(nextOptions.map((option) => option.id))
-  if (!availableIds.has(selectedMixParam.value)) {
-    selectedMixParam.value = 'position'
-  }
-})
-
-const handleLaneTrackMouseDown = (item: TimelineTrackLayout, event: MouseEvent) => {
-  if (!isTrackPositionMode.value) return
-  const targetTrackId = item?.track?.id || ''
-  const fallbackStartSec = Number(item?.startSec) || 0
-  const currentTrack = tracks.value.find((track) => track.id === targetTrackId) || null
-  const beforeSnapshot = currentTrack
-    ? buildTrackTimingUndoSnapshot(currentTrack, fallbackStartSec)
-    : null
-  handleTrackDragStart(item, event)
-  if (!beforeSnapshot) return
-  window.addEventListener(
-    'mouseup',
-    () => {
-      const latestTrack = tracks.value.find((track) => track.id === targetTrackId) || null
-      if (!latestTrack) return
-      const afterSnapshot = buildTrackTimingUndoSnapshot(latestTrack, fallbackStartSec)
-      if (isTrackTimingSnapshotSame(beforeSnapshot, afterSnapshot)) return
-      pushExternalUndoStep(() => restoreTrackTimingUndoSnapshot(tracks, beforeSnapshot))
-    },
-    { once: true }
-  )
-}
 useWaveformPreviewPlayer()
 const ascendingOrder = ascendingOrderAsset
 const descendingOrder = descendingOrderAsset
@@ -507,15 +278,6 @@ const {
   handleAutoGainSelectQuietestReference
 })
 
-const handleToggleSegmentSelectionMode = () => {
-  if (!isSegmentSelectionSupported.value) return
-  if (isStemParamMode.value) {
-    segmentSelectionMode.value = true
-    return
-  }
-  segmentSelectionMode.value = !segmentSelectionMode.value
-}
-
 const resolveStemMuteOverlayRows = (item: TimelineTrackLayout) => {
   if (!isStemParamMode.value) return []
   const rows = resolveTrackStemPreviewRows(item)
@@ -538,7 +300,6 @@ const resolveStemMuteOverlayRows = (item: TimelineTrackLayout) => {
   })
 }
 
-const envelopeEditable = computed(() => isEnvelopeParamMode.value)
 const {
   resolveActiveEnvelopePolyline,
   resolveActiveEnvelopePolygon,
@@ -565,30 +326,32 @@ const {
   resolveActiveParam: () =>
     isEnvelopeParamMode.value ? (selectedMixParam.value as MixtapeEnvelopeParamId) : null,
   isSegmentSelectionMode: () => isSegmentSelectionActive.value,
-  isEditable: () => envelopeEditable.value
+  isEditable: () => isEnvelopeParamMode.value
 })
 
-const isEditableEventTarget = (target: EventTarget | null) => {
-  const element = target as HTMLElement | null
-  if (!element) return false
-  if (element.isContentEditable) return true
-  const tag = element.tagName?.toLowerCase() || ''
-  return tag === 'input' || tag === 'textarea' || tag === 'select'
+const trackDragUndoMouseDown = useMixtapeTrackDragUndo({
+  tracks,
+  handleTrackDragStart,
+  pushExternalUndoStep
+})
+
+const handleLaneTrackMouseDown = (item: TimelineTrackLayout, event: MouseEvent) => {
+  if (!isTrackPositionMode.value) return
+  trackDragUndoMouseDown(item, event)
 }
 
-const handleUndoMixParam = () => {
-  undoLastMixParamChange()
-}
-
-const handleZoomIn = () => {
-  setZoomValue(renderZoomLevel.value * 1.5)
-  applyRenderZoomImmediate()
-}
-
-const handleZoomOut = () => {
-  setZoomValue(renderZoomLevel.value / 1.5)
-  applyRenderZoomImmediate()
-}
+const handleUndoMixParam = () => undoLastMixParamChange()
+const { handleZoomIn, handleZoomOut, isLightTheme } = useMixtapeShellUi({
+  renderZoomLevel,
+  setZoomValue,
+  applyRenderZoomImmediate,
+  canUndoMixParam,
+  handleUndoMixParam,
+  beatAlignDialogVisible,
+  outputDialogVisible,
+  autoGainDialogVisible,
+  cleanupGainEnvelopeEditor
+})
 
 const resolveEnvelopePointBoundaryClass = (point: unknown) => {
   const candidate = point as { x?: number }
@@ -599,128 +362,9 @@ const resolveEnvelopePointBoundaryClass = (point: unknown) => {
   return ''
 }
 
-const handleUndoKeydown = (event: KeyboardEvent) => {
-  if (event.defaultPrevented) return
-  if (event.isComposing || event.repeat) return
-  if (isEditableEventTarget(event.target)) return
-  if (beatAlignDialogVisible.value || outputDialogVisible.value || autoGainDialogVisible.value)
-    return
-  const key = String(event.key || '').toLowerCase()
-  const isUndoShortcut = (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey
-  if (!isUndoShortcut || key !== 'z') return
-  if (!canUndoMixParam.value) return
-  event.preventDefault()
-  handleUndoMixParam()
-}
-
-onMounted(() => {
-  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
-    systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)')
-    systemPrefersDark.value = !!systemThemeMedia.matches
-    const handleThemeChange = (event: MediaQueryListEvent) => {
-      systemPrefersDark.value = !!event.matches
-    }
-    if (typeof systemThemeMedia.addEventListener === 'function') {
-      systemThemeMedia.addEventListener('change', handleThemeChange)
-      removeSystemThemeListener = () => {
-        systemThemeMedia?.removeEventListener('change', handleThemeChange)
-      }
-    } else if (typeof systemThemeMedia.addListener === 'function') {
-      systemThemeMedia.addListener(handleThemeChange)
-      removeSystemThemeListener = () => {
-        systemThemeMedia?.removeListener(handleThemeChange)
-      }
-    }
-  }
-  window.addEventListener('keydown', handleUndoKeydown)
-})
-
-onBeforeUnmount(() => {
-  if (removeSystemThemeListener) {
-    removeSystemThemeListener()
-    removeSystemThemeListener = null
-  }
-  systemThemeMedia = null
-  try {
-    window.removeEventListener('keydown', handleUndoKeydown)
-  } catch {}
-  cleanupGainEnvelopeEditor()
-})
-
-const MASTER_TEMPO_LANE_BASE_HEIGHT = 84
-const MASTER_TEMPO_LANE_MIN_HEIGHT = 68
-const MASTER_TEMPO_LANE_COLLAPSED_HEIGHT = 24
-const MASTER_TEMPO_LANE_DIVIDER_HEIGHT = 24
-
-const masterTempoLaneHeight = computed(() => {
-  if (!tracks.value.length) return 0
-  if (!masterTempoLaneExpanded.value) return MASTER_TEMPO_LANE_COLLAPSED_HEIGHT
-  const scale = Math.min(1, Math.max(0.5, Number(timelineVisualScale.value) || 1))
-  return Math.max(MASTER_TEMPO_LANE_MIN_HEIGHT, Math.round(MASTER_TEMPO_LANE_BASE_HEIGHT * scale))
-})
-
-const masterTempoTimelineDurationSec = computed(() =>
-  Math.max(
-    0,
-    ...tracks.value.map((track) => {
-      const startSec = Number(track.startSec)
-      const durationSec = Math.max(0, Number(resolveTrackDurationSeconds(track)) || 0)
-      const safeStartSec = Number.isFinite(startSec) && startSec >= 0 ? startSec : 0
-      return safeStartSec + durationSec
-    })
-  )
-)
-
-const masterTempoDefaultBpm = computed(() => resolveDefaultGlobalBpmFromTracks(tracks.value))
-
-const masterTempoEffectivePoints = computed(() =>
-  normalizeMixtapeGlobalBpmEnvelopePoints(
-    mixtapeGlobalTempoPlaylistId.value === mixtapePlaylistId.value
-      ? mixtapeGlobalTempoEnvelope.value
-      : [],
-    masterTempoTimelineDurationSec.value,
-    masterTempoDefaultBpm.value
-  )
-)
-
-const masterTempoEdited = computed(() => {
-  const points = masterTempoEffectivePoints.value
-  if (points.length < 2) return false
-  const baseBpm = masterTempoDefaultBpm.value
-  return points.some((point) => Math.abs(Number(point.bpm) - baseBpm) > 0.01)
-})
-
-const timelineTrackAreaStyle = computed(() => ({
-  height: `${
-    timelineTrackAreaHeight.value +
-    masterTempoLaneHeight.value +
-    (tracks.value.length ? MASTER_TEMPO_LANE_DIVIDER_HEIGHT : 0)
-  }px`
-}))
-
 const handleGlobalBpmTrackTargetsSync = (nextTracks: MixtapeTrack[]) => {
   tracks.value = nextTracks
 }
-
-const handleToggleMasterTempoLane = () => {
-  if (!tracks.value.length) return
-  masterTempoLaneExpanded.value = !masterTempoLaneExpanded.value
-}
-
-watch(
-  () => [mixtapePlaylistId.value, tracks.value.length] as const,
-  ([playlistId, trackCount], previousValue) => {
-    const [previousPlaylistId, previousTrackCount] = previousValue ?? ['', 0]
-    if (trackCount === 0) {
-      masterTempoLaneExpanded.value = false
-      return
-    }
-    if (playlistId !== previousPlaylistId || (!previousTrackCount && trackCount > 0)) {
-      masterTempoLaneExpanded.value = false
-    }
-  },
-  { immediate: true }
-)
 </script>
 
 <template>
