@@ -22,6 +22,7 @@ type MenuItem = {
   shortcutKey?: string
   i18nParams?: Record<string, any>
   action?: string
+  checked?: boolean
 }
 
 type MenuConfig = {
@@ -38,13 +39,15 @@ const props = withDefaults(
     titleText?: string
     menuOverride?: MenuConfig[]
     enableMenuHotkeys?: boolean
+    hideLogo?: boolean
   }>(),
   {
     controlPrefix: '',
     maxEventChannel: 'mainWin-max',
     titleText: '',
     menuOverride: undefined,
-    enableMenuHotkeys: true
+    enableMenuHotkeys: true,
+    hideLogo: false
   }
 )
 
@@ -57,6 +60,7 @@ const displayTitle = computed(() => {
   const custom = String(props.titleText || '').trim()
   return custom || `FRKB - ${t('app.name')}`
 })
+const showLogo = computed(() => runtime.platform !== 'Mac' && !props.hideLogo)
 
 const toggleMaximize = () => {
   window.electron.ipcRenderer.send(resolveChannel('maximize'))
@@ -109,7 +113,7 @@ const buildMenuArr = (configs: MenuConfig[]): Menu[] => {
   }))
 }
 
-const defaultMenus: MenuConfig[] = [
+const defaultMenuConfigs = computed<MenuConfig[]>(() => [
   {
     name: 'menu.file',
     subMenu: [
@@ -134,6 +138,21 @@ const defaultMenus: MenuConfig[] = [
     ]
   },
   {
+    name: 'menu.browseMode',
+    subMenu: [
+      [
+        {
+          name: 'menu.fullBrowseMode',
+          checked: runtime.mainWindowBrowseMode === 'browser'
+        },
+        {
+          name: 'menu.horizontalBrowseMode',
+          checked: runtime.mainWindowBrowseMode === 'horizontal'
+        }
+      ]
+    ]
+  },
+  {
     name: 'menu.migration',
     subMenu: [[{ name: 'fingerprints.exportDatabase' }, { name: 'fingerprints.importDatabase' }]]
   },
@@ -155,23 +174,27 @@ const defaultMenus: MenuConfig[] = [
       ...(isDevOrPrerelease.value ? [[{ name: 'menu.openLog', action: 'open-log' }]] : [])
     ]
   }
-]
+])
 
-const menuArr = ref<Menu[]>(
-  buildMenuArr(
-    Array.isArray(props.menuOverride) && props.menuOverride.length > 0
-      ? props.menuOverride
-      : defaultMenus
-  )
-)
+const resolvedMenuConfigs = computed<MenuConfig[]>(() => {
+  if (Array.isArray(props.menuOverride) && props.menuOverride.length > 0) {
+    return props.menuOverride
+  }
+  return defaultMenuConfigs.value
+})
+
+const menuArr = ref<Menu[]>(buildMenuArr(resolvedMenuConfigs.value))
 
 watch(
-  () => props.menuOverride,
-  (next: MenuConfig[] | undefined) => {
-    if (Array.isArray(next) && next.length > 0) {
-      menuArr.value = buildMenuArr(next)
-    }
-  }
+  resolvedMenuConfigs,
+  (nextConfigs) => {
+    const openMenuName = menuArr.value.find((item) => item.show)?.name || ''
+    menuArr.value = buildMenuArr(nextConfigs).map((item) => ({
+      ...item,
+      show: item.name === openMenuName
+    }))
+  },
+  { deep: true }
 )
 
 if (props.enableMenuHotkeys) {
@@ -186,6 +209,14 @@ if (props.enableMenuHotkeys) {
   hotkeys('alt+g', 'windowGlobal', () => {
     menuArr.value.forEach((item) => {
       if (item.name === 'menu.migration') {
+        item.show = true
+        return
+      }
+    })
+  })
+  hotkeys('alt+m', 'windowGlobal', () => {
+    menuArr.value.forEach((item) => {
+      if (item.name === 'menu.browseMode') {
         item.show = true
         return
       }
@@ -291,7 +322,7 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
   <div class="title unselectable">{{ displayTitle }}</div>
   <div class="titleComponent unselectable" v-bind="$attrs">
     <div
-      v-if="runtime.platform !== 'Mac'"
+      v-if="showLogo"
       style="
         z-index: 1;
         padding-left: 10px;

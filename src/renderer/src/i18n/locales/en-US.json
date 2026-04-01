@@ -29,6 +29,9 @@
   },
   "menu": {
     "file": "File(F)",
+    "browseMode": "Browse Mode(M)",
+    "fullBrowseMode": "Full Browser Mode",
+    "horizontalBrowseMode": "Dual-Track Horizontal Mode",
     "migration": "Migrate(G)",
     "help": "Help(H)",
     "cloudSync": "Sync(C)",

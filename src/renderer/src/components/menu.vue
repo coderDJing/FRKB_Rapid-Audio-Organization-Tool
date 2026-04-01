@@ -21,7 +21,13 @@ const props = defineProps({
   menuArr: {
     // 支持 i18n 参数与动作标识
     type: Array as PropType<
-      { name: string; shortcutKey?: string; i18nParams?: Record<string, any>; action?: string }[][]
+      {
+        name: string
+        shortcutKey?: string
+        i18nParams?: Record<string, any>
+        action?: string
+        checked?: boolean
+      }[][]
     >,
     required: true
   },
@@ -116,14 +122,27 @@ onUnmounted(() => {
   window.removeEventListener('pointerdown', handleGlobalPointerDown, true)
 })
 
-const menuButtonClick = (item: { name: string; shortcutKey?: string; action?: string }) => {
+const menuButtonClick = (item: {
+  name: string
+  shortcutKey?: string
+  action?: string
+  checked?: boolean
+}) => {
   runtime.activeMenuUUID = ''
   emits('menuButtonClick', item)
 }
 const selectedMenuButton = ref('')
+const groupHasCheckmark = (
+  group: Array<{ checked?: boolean; name: string; shortcutKey?: string; action?: string }>
+) => group.some((button) => typeof button.checked === 'boolean')
 
 // 生成菜单项唯一键，避免同名项同时高亮
-function getButtonKey(button: { name: string; shortcutKey?: string; action?: string }) {
+function getButtonKey(button: {
+  name: string
+  shortcutKey?: string
+  action?: string
+  checked?: boolean
+}) {
   return `${button.name}|${button.shortcutKey || ''}|${button.action || ''}`
 }
 </script>
@@ -150,7 +169,7 @@ function getButtonKey(button: { name: string; shortcutKey?: string; action?: str
         "
         @contextmenu="menuButtonClick(button)"
       >
-        <span>
+        <span class="menuButtonLabel">
           {{
             t(
               button.name as any,
@@ -160,7 +179,12 @@ function getButtonKey(button: { name: string; shortcutKey?: string; action?: str
             )
           }}
         </span>
-        <span>{{ button.shortcutKey }}</span>
+        <span class="menuButtonTail">
+          <span class="menuButtonShortcut">{{ button.shortcutKey }}</span>
+          <span v-if="groupHasCheckmark(item)" class="menuButtonCheck">
+            {{ button.checked ? '✓' : '' }}
+          </span>
+        </span>
       </div>
     </div>
   </div>
@@ -182,8 +206,44 @@ function getButtonKey(button: { name: string; shortcutKey?: string; action?: str
     .menuButton {
       display: flex;
       justify-content: space-between;
+      align-items: center;
       padding: 5px 20px;
       border-radius: 5px;
+    }
+
+    .menuButtonLabel {
+      display: inline-block;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+
+    .menuButtonTail {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-left: 12px;
+      flex: 0 0 auto;
+      min-width: 24px;
+    }
+
+    .menuButtonShortcut {
+      color: inherit;
+    }
+
+    .menuButtonCheck {
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      width: 14px;
+      font-size: 13px;
+      line-height: 1;
+      flex-shrink: 0;
+      color: var(--accent);
+    }
+
+    .menuButtonHover .menuButtonCheck {
+      color: inherit;
     }
 
     .menuButtonHover {

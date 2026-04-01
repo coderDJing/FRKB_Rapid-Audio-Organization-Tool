@@ -14,9 +14,12 @@ type LibrarySelection =
   | 'ExternalPlaylist'
   | 'PioneerDeviceLibrary'
 
+type MainWindowBrowseMode = 'browser' | 'horizontal'
+
 interface Runtime {
   platform: string
   isWindowMaximized: boolean | null
+  mainWindowBrowseMode: MainWindowBrowseMode
   libraryAreaSelected: LibrarySelection
   activeMenuUUID: string
   layoutConfig: ILayoutConfig
@@ -70,6 +73,7 @@ export const useRuntimeStore = defineStore('runtime', {
     return {
       platform: '', //使用平台
       isWindowMaximized: null,
+      mainWindowBrowseMode: 'browser',
       libraryAreaSelected: 'FilterLibrary',
       activeMenuUUID: '',
       layoutConfig: {

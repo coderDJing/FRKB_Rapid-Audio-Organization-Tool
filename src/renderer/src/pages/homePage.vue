@@ -14,6 +14,7 @@ import { t } from '@renderer/utils/translate'
 import { appendExternalPlaylistFromPaths } from '@renderer/utils/externalPlaylist'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
+import emitter from '@renderer/utils/mitt'
 const runtime = useRuntimeStore()
 let startX = 0
 let isResizing = false
@@ -213,6 +214,33 @@ const isPioneerDeviceLibraryView = computed(
   () => runtime.libraryAreaSelected === 'PioneerDeviceLibrary'
 )
 const isLibraryPanelHidden = computed(() => isExternalPlaylistView.value || isRecycleBinView.value)
+const showMainSongPlayer = computed(() => runtime.mainWindowBrowseMode !== 'horizontal')
+
+const clearMainPlayerPlaybackState = () => {
+  const hasPlayingState =
+    Boolean(runtime.playingData.playingSong) ||
+    Boolean(runtime.playingData.playingSongListUUID) ||
+    runtime.playingData.playingSongListData.length > 0
+  if (!hasPlayingState) return
+  try {
+    emitter.emit('waveform-preview:stop', { reason: 'switch' })
+  } catch {}
+  runtime.playerReady = false
+  runtime.isSwitchingSong = false
+  runtime.playingData.playingSong = null
+  runtime.playingData.playingSongListUUID = ''
+  runtime.playingData.playingSongListData = []
+}
+
+watch(
+  () => runtime.mainWindowBrowseMode,
+  (mode, previousMode) => {
+    if (mode === 'horizontal' && previousMode !== 'horizontal') {
+      clearMainPlayerPlaybackState()
+    }
+  }
+)
+
 const isInternalSongDrag = (e: DragEvent) => {
   return (
     (runtime.songDragActive && runtime.draggingSongFilePaths.length > 0) ||
@@ -414,15 +442,7 @@ const drop = async (e: DragEvent) => {
       @library-selected-change="librarySelectedChange"
     ></librarySelectArea>
     <div style="flex-grow: 1; min-width: 0; overflow: hidden">
-      <div
-        style="
-          display: flex;
-          height: calc(100% - 51px);
-          min-width: 0;
-          overflow: hidden;
-          position: relative;
-        "
-      >
+      <div class="mainContent" :class="{ 'mainContent--with-player': showMainSongPlayer }">
         <div
           v-show="!isLibraryPanelHidden"
           class="libraryPanel"
@@ -472,13 +492,25 @@ const drop = async (e: DragEvent) => {
           <songsArea v-else style="width: 100%; height: 100%; min-width: 0" />
         </div>
       </div>
-      <div style="height: 50px; border-top: 1px solid var(--border)">
+      <div v-if="showMainSongPlayer" style="height: 50px; border-top: 1px solid var(--border)">
         <songPlayer />
       </div>
     </div>
   </div>
 </template>
 <style lang="scss" scoped>
+.mainContent {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+
+  &.mainContent--with-player {
+    height: calc(100% - 51px);
+  }
+}
+
 .libraryPanel {
   &.librarySwitching {
     animation: librarySwitchFade 220ms ease;

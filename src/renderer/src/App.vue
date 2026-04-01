@@ -6,7 +6,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import bottomInfoArea from './pages/modules/bottomInfoArea.vue'
 import manualAddSongFingerprintDialog from './components/manualAddSongFingerprintDialog.vue'
 import globalSongSearchDialog from './components/globalSongSearchDialog.vue'
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import hotkeys from 'hotkeys-js'
 import utils from './utils/utils'
 import exportSongFingerprintDialog from './components/exportSongFingerprintDialog.vue'
@@ -42,6 +42,15 @@ const fileOpBatchId = ref('')
 const fileOpSuccessSoFar = ref(0)
 const fileOpFailedSoFar = ref(0)
 const CTRL_DOUBLE_TAP_MS = 260
+const horizontalModeTopSpacerHeight = 180
+const showHorizontalModeTopSpacer = computed(() => runtime.mainWindowBrowseMode === 'horizontal')
+const horizontalModeTopSpacerStyle = computed(() => ({
+  height: `${horizontalModeTopSpacerHeight}px`,
+  flex: `0 0 ${horizontalModeTopSpacerHeight}px`,
+  backgroundColor: 'var(--bg)',
+  borderBottom: '1px solid var(--border)',
+  boxSizing: 'border-box' as const
+}))
 
 type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
 type GlobalSongSearchItem = {
@@ -231,6 +240,14 @@ const openDialog = async (item: string) => {
   if (item === '导入曲目指纹库文件') item = 'fingerprints.importDatabase'
   if (item === '全局搜歌') item = 'menu.globalSongSearch'
 
+  if (item === 'menu.fullBrowseMode') {
+    runtime.mainWindowBrowseMode = 'browser'
+    return
+  }
+  if (item === 'menu.horizontalBrowseMode') {
+    runtime.mainWindowBrowseMode = 'horizontal'
+    return
+  }
   if (item === 'menu.about') {
     const version = String((pkg as any).version || '')
     const isPrerelease = version.includes('-')
@@ -525,8 +542,9 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
 <template>
   <div style="height: 100%; max-height: 100%; width: 100%; display: flex; flex-direction: column">
     <div style="height: 35px">
-      <titleComponent @open-dialog="openDialog" />
+      <titleComponent :hide-logo="showHorizontalModeTopSpacer" @open-dialog="openDialog" />
     </div>
+    <div v-if="showHorizontalModeTopSpacer" :style="horizontalModeTopSpacerStyle"></div>
     <div style="flex: 1 1 auto; min-height: 0">
       <homePage />
     </div>

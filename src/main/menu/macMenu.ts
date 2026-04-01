@@ -8,6 +8,10 @@ import mainWindow from '../window/mainWindow'
 import { getLogPath, log } from '../log'
 import fs from 'fs-extra'
 
+type MainWindowBrowseMode = 'browser' | 'horizontal'
+
+let mainWindowBrowseMode: MainWindowBrowseMode = 'browser'
+
 // 依据当前设置返回语言 ID
 const getCurrentLocaleId = (): 'zh-CN' | 'en-US' =>
   (store.settingConfig as any)?.language === 'enUS' ? 'en-US' : 'zh-CN'
@@ -37,6 +41,10 @@ const labelImportTo = (libraryKey: 'library.filter' | 'library.curated') => {
   const tpl = tMenu('library.importNewTracks')
   const lib = tMenu(libraryKey)
   return tpl.replace('{libraryType}', lib)
+}
+
+const setMacMainWindowBrowseMode = (mode: MainWindowBrowseMode) => {
+  mainWindowBrowseMode = mode
 }
 
 const buildAppOnlyMenu = () =>
@@ -99,6 +107,31 @@ const buildFullMenu = () =>
           label: tMenu('fingerprints.manualAdd'),
           click: () =>
             mainWindow.instance?.webContents.send('openDialogFromTray', 'fingerprints.manualAdd')
+        }
+      ]
+    },
+    {
+      label: sanitizeLabelForMac(tMenu('menu.browseMode')),
+      submenu: [
+        {
+          label: tMenu('menu.fullBrowseMode'),
+          type: 'checkbox',
+          checked: mainWindowBrowseMode === 'browser',
+          click: () => {
+            setMacMainWindowBrowseMode('browser')
+            mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.fullBrowseMode')
+            rebuildMacMenusForCurrentFocus()
+          }
+        },
+        {
+          label: tMenu('menu.horizontalBrowseMode'),
+          type: 'checkbox',
+          checked: mainWindowBrowseMode === 'horizontal',
+          click: () => {
+            setMacMainWindowBrowseMode('horizontal')
+            mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.horizontalBrowseMode')
+            rebuildMacMenusForCurrentFocus()
+          }
         }
       ]
     },
@@ -232,5 +265,6 @@ export const rebuildMacMenusForCurrentFocus = () => {
 
 export default {
   setupMacMenus,
-  rebuildMacMenusForCurrentFocus
+  rebuildMacMenusForCurrentFocus,
+  setMacMainWindowBrowseMode
 }

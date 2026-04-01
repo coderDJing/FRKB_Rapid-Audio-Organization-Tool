@@ -29,6 +29,9 @@
   },
   "menu": {
     "file": "文件(F)",
+    "browseMode": "浏览模式(M)",
+    "fullBrowseMode": "完整浏览模式",
+    "horizontalBrowseMode": "双轨横推模式",
     "migration": "迁移(G)",
     "help": "帮助(H)",
     "cloudSync": "云同步(C)",
