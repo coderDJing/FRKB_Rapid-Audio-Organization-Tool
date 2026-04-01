@@ -132,7 +132,7 @@ const buildUpdateErrorPayload = (error: unknown): UpdateErrorPayload => {
 const registerAutoUpdaterListeners = () => {
   if (autoUpdaterListenersRegistered) return
   autoUpdaterListenersRegistered = true
-  autoUpdater.logger = log
+  autoUpdater.logger = null
 
   autoUpdater.on('update-available', (info) => {
     const currentIsPrerelease = app.getVersion().includes('-')

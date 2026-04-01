@@ -100,26 +100,14 @@ function isRetriableError(err: any) {
   )
 }
 
-async function withRetry<T>(fn: () => Promise<T>, meta: { url: string; type: 'json' | 'buffer' }) {
+async function withRetry<T>(fn: () => Promise<T>) {
   let lastError: any
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    if (attempt > 1) {
-      log.info('[musicbrainz] retrying request', { url: meta.url, type: meta.type, attempt })
-    }
     try {
       return await fn()
     } catch (err: any) {
       lastError = err
-      const code = getErrorCode(err)
       const willRetry = attempt < MAX_RETRIES && isRetriableError(err)
-      log.warn('[musicbrainz] request failed', {
-        url: meta.url,
-        type: meta.type,
-        attempt,
-        code,
-        message: err?.message,
-        willRetry
-      })
       if (!willRetry) throw err
     }
   }
@@ -245,11 +233,6 @@ async function requestJson<T>(url: string, headers?: HeadersInit, timeoutMs?: nu
           throw new Error('MUSICBRAINZ_ABORTED')
         }
         if (err?.code === 'ECONNRESET' || err?.message?.includes('fetch failed')) {
-          log.warn('[musicbrainz] request JSON network error', {
-            url,
-            code: err?.code,
-            message: err?.message
-          })
           throw new Error('MUSICBRAINZ_NETWORK')
         }
         throw err
@@ -260,7 +243,7 @@ async function requestJson<T>(url: string, headers?: HeadersInit, timeoutMs?: nu
         }
       }
     })
-  return withRetry(attempt, { url, type: 'json' })
+  return withRetry(attempt)
 }
 
 async function requestBuffer(
@@ -301,11 +284,6 @@ async function requestBuffer(
           throw new Error('MUSICBRAINZ_ABORTED')
         }
         if (err?.code === 'ECONNRESET' || err?.message?.includes('fetch failed')) {
-          log.warn('[musicbrainz] request buffer network error', {
-            url,
-            code: err?.code,
-            message: err?.message
-          })
           throw new Error('MUSICBRAINZ_NETWORK')
         }
         throw err
@@ -316,7 +294,7 @@ async function requestBuffer(
         }
       }
     })
-  return withRetry(attempt, { url, type: 'buffer' })
+  return withRetry(attempt)
 }
 
 function normalizeText(value?: string | null): string | undefined {
@@ -517,12 +495,6 @@ async function fetchCoverDataUrl(releaseId: string): Promise<string | null> {
     if (err?.message === 'MUSICBRAINZ_ABORTED') {
       throw err
     }
-    // For network errors, log and return null (graceful degradation)
-    // This allows other metadata to be returned even if cover fetch fails
-    log.warn('[musicbrainz] cover fetch failed, returning null', {
-      releaseId,
-      message: err?.message
-    })
     return null
   }
 }
@@ -635,10 +607,6 @@ export async function fetchMusicBrainzSuggestion(
           if (!fallbackReleaseDetail) {
             fallbackReleaseDetail = { releaseId, detail: releaseDetail }
           }
-          log.warn('[musicbrainz] recording not found in release, fallback allowed', {
-            recordingId,
-            releaseId
-          })
           continue
         }
         throw trackErr

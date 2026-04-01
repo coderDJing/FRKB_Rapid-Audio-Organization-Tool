@@ -270,8 +270,6 @@ export async function autoFillTrackMetadata(
               code === 'ACOUSTID_CLIENT_INVALID'
             ) {
               fingerprintDisabledCode = code
-            } else {
-              log.warn('[metadata-auto] fingerprint match failed', { filePath, code })
             }
           }
         }
