@@ -2,6 +2,7 @@
 import { ref, nextTick, useTemplateRef, reactive, onMounted, watch, computed } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem/index.vue'
+import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import listIconAsset from '@renderer/assets/listIcon.svg?asset'
 import libraryUtils from '@renderer/utils/libraryUtils'
@@ -62,6 +63,9 @@ const resolveMixtapeModeTag = (mixMode?: string) =>
 const resolveMixtapeModeLabel = (mixMode?: string) =>
   mixMode === 'eq' ? t('mixtape.mixModeEqLabel') : t('mixtape.mixModeStemLabel')
 const resolveMixtapeBadgeTitle = (mixMode?: string) => resolveMixtapeModeLabel(mixMode)
+const nameTextRef = ref<HTMLElement | null>(null)
+const nameTextHovered = ref(false)
+const onlyShowBubbleWhenOverflow = computed(() => !(runtime as any).setting.songListBubbleAlways)
 const createPlaylistMenuKey = 'library.createPlaylist'
 const createStemMixtapeMenuKey = 'library.createStemMixtape'
 const createEqMixtapeMenuKey = 'library.createEqMixtape'
@@ -667,7 +671,19 @@ watch(
     </div>
     <div style="height: 23px; width: calc(100% - 20px)">
       <div v-if="dirData.dirName && !renameDivShow" class="nameRow">
-        <span class="nameText">{{ dirData.dirName }}</span>
+        <span
+          ref="nameTextRef"
+          class="nameText"
+          @mouseenter="isDialogListType(dirData) && (nameTextHovered = true)"
+          @mouseleave="nameTextHovered = false"
+          >{{ dirData.dirName }}</span
+        >
+        <bubbleBox
+          v-if="isDialogListType(dirData) && nameTextHovered && dirData.dirName"
+          :dom="nameTextRef || undefined"
+          :title="dirData.dirName"
+          :only-when-overflow="onlyShowBubbleWhenOverflow"
+        />
         <span v-if="dirData.type === 'mixtapeList'" class="mixtapeBadgeGroup">
           <span
             class="mixModeBadge"

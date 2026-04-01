@@ -105,33 +105,35 @@ function clearTimers() {
   }
 }
 
-function onAnchorMouseEnter(e: MouseEvent) {
+function isAnchorOverflow(anchor: HTMLElement) {
+  return anchor.scrollWidth > anchor.clientWidth || anchor.scrollHeight > anchor.clientHeight
+}
+
+function queueShowForAnchor(anchor: HTMLElement | null) {
+  if (!anchor) return
   if (hideTimer.value) {
     clearTimeout(hideTimer.value)
     hideTimer.value = null
   }
-  // 记录进入时的鼠标坐标，避免延时期间位置偏差
-  mouseX.value = e.clientX
-  mouseY.value = e.clientY
   if (hoverTimer.value) clearTimeout(hoverTimer.value)
   hoverTimer.value = setTimeout(async () => {
-    // 若要求仅在文本溢出时显示，则进行判断
-    if (props.onlyWhenOverflow && props.dom) {
-      const el = props.dom as HTMLElement
-      const isOverflow = el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight
-      if (!isOverflow) {
-        return
-      }
-    }
+    if (props.dom !== anchor) return
+    if (props.onlyWhenOverflow && !isAnchorOverflow(anchor)) return
     visible.value = true
     await nextTick()
     updatePosition()
-    // 再次确保隐藏计时器被清理，防止竞态
     if (hideTimer.value) {
       clearTimeout(hideTimer.value)
       hideTimer.value = null
     }
   }, props.showDelay)
+}
+
+function onAnchorMouseEnter(e: MouseEvent) {
+  // 记录进入时的鼠标坐标，避免延时期间位置偏差
+  mouseX.value = e.clientX
+  mouseY.value = e.clientY
+  queueShowForAnchor(props.dom)
 }
 
 function onAnchorMouseLeave(e: MouseEvent) {
@@ -259,6 +261,12 @@ function addAnchorListeners(anchor: HTMLElement | null) {
   anchor.addEventListener('mouseenter', onAnchorMouseEnter)
   anchor.addEventListener('mouseleave', onAnchorMouseLeave)
   anchor.addEventListener('mousemove', onAnchorMouseMove)
+  // 条件渲染下，气泡组件挂载时锚点可能已经处于 hover 中，这里补一次显示调度。
+  if (anchor.matches(':hover')) {
+    mouseX.value = null
+    mouseY.value = null
+    queueShowForAnchor(anchor)
+  }
 }
 
 function removeAnchorListeners(anchor: HTMLElement | null) {

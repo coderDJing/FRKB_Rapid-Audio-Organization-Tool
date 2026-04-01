@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, shallowRef } from 'vue'
 import libraryItem from '@renderer/components/libraryItem/index.vue'
+import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import listIconAsset from '@renderer/assets/listIcon.svg?asset'
 import libraryUtils from '@renderer/utils/libraryUtils'
@@ -248,6 +249,9 @@ const displayDirName = computed(() => {
 
 // 供模板使用的名称（不带数量）
 const nameForDisplay = computed(() => displayDirName.value)
+const nameTextRef = ref<HTMLElement | null>(null)
+const nameTextHovered = ref(false)
+const onlyShowBubbleWhenOverflow = computed(() => !(runtime as any).setting.songListBubbleAlways)
 </script>
 <template>
   <div
@@ -334,7 +338,19 @@ const nameForDisplay = computed(() => displayDirName.value)
         class="nameRow"
         :class="{ isPlaying: isPlaying }"
       >
-        <span class="nameText">{{ nameForDisplay }}</span>
+        <span
+          ref="nameTextRef"
+          class="nameText"
+          @mouseenter="isPlaylist && (nameTextHovered = true)"
+          @mouseleave="nameTextHovered = false"
+          >{{ nameForDisplay }}</span
+        >
+        <bubbleBox
+          v-if="isPlaylist && nameTextHovered && nameForDisplay"
+          :dom="nameTextRef || undefined"
+          :title="nameForDisplay"
+          :only-when-overflow="onlyShowBubbleWhenOverflow"
+        />
         <span v-if="dirData.type === 'mixtapeList'" class="mixtapeBadgeGroup">
           <span
             class="mixModeBadge"
