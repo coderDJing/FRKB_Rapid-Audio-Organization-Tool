@@ -398,6 +398,11 @@ const clearPioneerDriveSelection = () => {
   runtime.pioneerDeviceLibrary.treeNodes = []
 }
 
+const switchBackToFilterLibraryAfterPioneerExit = () => {
+  if (runtime.libraryAreaSelected !== 'PioneerDeviceLibrary') return
+  runtime.libraryAreaSelected = 'FilterLibrary'
+}
+
 const suspendSelectedPioneerDriveBeforeEject = async (item: PioneerDriveIcon) => {
   if (runtime.pioneerDeviceLibrary.selectedDriveKey !== item.key) return null
 
@@ -473,6 +478,7 @@ const refreshPioneerDriveIcons = async () => {
       )
       if (!target) {
         clearPioneerDriveSelection()
+        switchBackToFilterLibraryAfterPioneerExit()
         return
       }
       if (runtime.libraryAreaSelected === 'PioneerDeviceLibrary') {
@@ -563,8 +569,9 @@ const ejectPioneerDriveIcon = async (item: PioneerDriveIcon) => {
       return
     }
 
-    if (runtime.pioneerDeviceLibrary.selectedDriveKey === item.key) {
+    if (suspendedSelection || runtime.pioneerDeviceLibrary.selectedDriveKey === item.key) {
       clearPioneerDriveSelection()
+      switchBackToFilterLibraryAfterPioneerExit()
     }
     pioneerDriveIcons.value = pioneerDriveIcons.value.filter((icon) => icon.key !== item.key)
     await refreshPioneerDriveIcons()
