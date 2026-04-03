@@ -5,8 +5,18 @@ import settingIconAsset from '@renderer/assets/setting.svg?asset'
 import trashIconAsset from '@renderer/assets/trash.svg?asset'
 import mixtapeIconAsset from '@renderer/assets/mixtape.svg?asset'
 import usbDriveIconAsset from '@renderer/assets/usbDrive.svg?asset'
-import { computed, ref, reactive, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import {
+  computed,
+  ref,
+  reactive,
+  watch,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  useTemplateRef
+} from 'vue'
 import type { ComponentPublicInstance } from 'vue'
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import settingDialog from '@renderer/components/settingDialog.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
@@ -68,6 +78,8 @@ type PioneerDriveGroup = {
   icons: PioneerDriveIcon[]
 }
 
+type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
+
 const externalIcon: Icon = {
   name: 'ExternalPlaylist',
   grey: tempListIconAsset,
@@ -114,6 +126,14 @@ const baseIcons: Icon[] = [
 ]
 
 const iconArr = ref<Icon[]>([...baseIcons])
+const coreIconNameSet = new Set(['FilterLibrary', 'CuratedLibrary', 'MixtapeLibrary', 'RecycleBin'])
+const coreIconArr = computed(() => iconArr.value.filter((item) => coreIconNameSet.has(item.name)))
+const dynamicIconArr = computed(() =>
+  iconArr.value.filter((item) => !coreIconNameSet.has(item.name))
+)
+const hasDynamicEntries = computed(
+  () => dynamicIconArr.value.length > 0 || pioneerDriveGroups.value.length > 0
+)
 
 const selectedIcon = ref<HoverableIcon>(iconArr.value[0])
 selectedIcon.value.src = selectedIcon.value.white
@@ -162,7 +182,8 @@ const clickButtomIcon = (item: ButtomIcon) => {
   }
 }
 const iconRefMap = reactive<Record<string, HTMLElement | null>>({})
-const setIconRef = (name: string, el: Element | ComponentPublicInstance | null) => {
+const scrollItemRefMap = reactive<Record<string, HTMLElement | null>>({})
+const resolveRefDom = (el: Element | ComponentPublicInstance | null) => {
   let dom: HTMLElement | null = null
   if (el) {
     if (el instanceof HTMLElement) {
@@ -171,7 +192,15 @@ const setIconRef = (name: string, el: Element | ComponentPublicInstance | null) 
       dom = (el as any).$el as HTMLElement
     }
   }
+  return dom
+}
+const setIconRef = (name: string, el: Element | ComponentPublicInstance | null) => {
+  const dom = resolveRefDom(el)
   iconRefMap[name] = dom
+}
+const setScrollItemRef = (name: string, el: Element | ComponentPublicInstance | null) => {
+  const dom = resolveRefDom(el)
+  scrollItemRefMap[name] = dom
 }
 const iconMouseover = (item: HoverableIcon) => {
   if (selectedIcon.value != item) {
@@ -367,6 +396,63 @@ const pioneerDriveGroups = computed<PioneerDriveGroup[]>(() => {
     )
   }))
 })
+const dynamicIconsScrollRef = useTemplateRef<OverlayScrollbarsComponentRef>('dynamicIconsScrollRef')
+const dynamicScrollState = reactive({
+  canScroll: false,
+  atTop: true,
+  atBottom: true
+})
+let dynamicScrollViewportEl: HTMLElement | null = null
+const updateDynamicScrollState = () => {
+  const viewport = dynamicIconsScrollRef.value?.osInstance()?.elements().viewport as
+    | HTMLElement
+    | undefined
+  if (!viewport) {
+    dynamicScrollState.canScroll = false
+    dynamicScrollState.atTop = true
+    dynamicScrollState.atBottom = true
+    return
+  }
+  const maxScrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+  dynamicScrollState.canScroll = maxScrollTop > 1
+  dynamicScrollState.atTop = viewport.scrollTop <= 1
+  dynamicScrollState.atBottom = viewport.scrollTop >= maxScrollTop - 1
+}
+const handleDynamicScroll = () => {
+  updateDynamicScrollState()
+}
+const syncDynamicScrollViewport = async () => {
+  await nextTick()
+  const viewport = dynamicIconsScrollRef.value?.osInstance()?.elements().viewport as
+    | HTMLElement
+    | undefined
+  if (dynamicScrollViewportEl !== viewport) {
+    dynamicScrollViewportEl?.removeEventListener('scroll', handleDynamicScroll)
+    dynamicScrollViewportEl = viewport || null
+    dynamicScrollViewportEl?.addEventListener('scroll', handleDynamicScroll, { passive: true })
+  }
+  updateDynamicScrollState()
+}
+const selectedDynamicScrollKey = computed(() => {
+  if (runtime.libraryAreaSelected === 'PioneerDeviceLibrary') {
+    return runtime.pioneerDeviceLibrary.selectedDriveKey || ''
+  }
+  return dynamicIconArr.value.some((item) => item.name === runtime.libraryAreaSelected)
+    ? runtime.libraryAreaSelected
+    : ''
+})
+const scrollSelectedDynamicIconIntoView = async () => {
+  const key = selectedDynamicScrollKey.value
+  if (!key) return
+  await nextTick()
+  const viewport = dynamicIconsScrollRef.value?.osInstance()?.elements().viewport as
+    | HTMLElement
+    | undefined
+  const target = scrollItemRefMap[key]
+  if (!viewport || !target) return
+  target.scrollIntoView({ block: 'nearest' })
+  updateDynamicScrollState()
+}
 let pioneerDriveRefreshTimer: ReturnType<typeof setInterval> | null = null
 const ejectingDriveKeys = ref<string[]>([])
 
@@ -615,6 +701,7 @@ const isSelectedPioneerDriveIcon = (item: PioneerDriveIcon) =>
 
 onMounted(() => {
   void refreshPioneerDriveIcons()
+  void syncDynamicScrollViewport()
   pioneerDriveRefreshTimer = setInterval(() => {
     void refreshPioneerDriveIcons()
   }, 15000)
@@ -622,6 +709,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  dynamicScrollViewportEl?.removeEventListener('scroll', handleDynamicScroll)
+  dynamicScrollViewportEl = null
   if (pioneerDriveRefreshTimer) {
     clearInterval(pioneerDriveRefreshTimer)
     pioneerDriveRefreshTimer = null
@@ -710,12 +799,33 @@ watch(
   },
   { immediate: true }
 )
+
+watch(
+  () => [
+    hasDynamicEntries.value,
+    dynamicIconArr.value.map((item) => item.name).join('|'),
+    pioneerDriveGroups.value.map((group) => group.icons.map((item) => item.key).join(',')).join('|')
+  ],
+  () => {
+    void syncDynamicScrollViewport()
+    void scrollSelectedDynamicIconIntoView()
+  },
+  { flush: 'post' }
+)
+
+watch(
+  () => selectedDynamicScrollKey.value,
+  () => {
+    void scrollSelectedDynamicIconIntoView()
+  },
+  { flush: 'post' }
+)
 </script>
 <template>
   <div class="librarySelectArea unselectable">
-    <div>
+    <div class="librarySelectAreaCore">
       <div
-        v-for="item of iconArr"
+        v-for="item of coreIconArr"
         :key="item.name"
         class="iconBox"
         @click="clickIcon(item)"
@@ -746,59 +856,128 @@ watch(
           />
         </div>
       </div>
-      <div
-        v-for="group of pioneerDriveGroups"
-        :key="group.key"
-        class="deviceGroup"
-        :class="{
-          'deviceGroup--selected': group.icons.some((item) => isSelectedPioneerDriveIcon(item)),
-          'deviceGroup--multi': group.icons.length > 1
-        }"
-      >
-        <div class="deviceGroupInner">
-          <template v-for="item of group.icons" :key="item.key">
+    </div>
+
+    <div
+      class="librarySelectAreaDynamic"
+      :class="{ 'librarySelectAreaDynamic--with-divider': hasDynamicEntries }"
+    >
+      <div v-if="hasDynamicEntries" class="librarySelectAreaDynamicScrollShell">
+        <div
+          v-show="dynamicScrollState.canScroll && !dynamicScrollState.atTop"
+          class="librarySelectAreaScrollFade librarySelectAreaScrollFade--top"
+        ></div>
+        <OverlayScrollbarsComponent
+          ref="dynamicIconsScrollRef"
+          class="librarySelectAreaDynamicScroller"
+          :options="{
+            scrollbars: {
+              autoHide: 'leave' as const,
+              autoHideDelay: 50,
+              clickScroll: true
+            } as const,
+            overflow: {
+              x: 'hidden',
+              y: 'scroll'
+            } as const
+          }"
+          element="div"
+          defer
+        >
+          <div
+            v-for="item of dynamicIconArr"
+            :key="item.name"
+            :ref="(el) => setScrollItemRef(item.name, el)"
+            class="iconBox"
+            @click="clickIcon(item)"
+            @contextmenu.stop.prevent="handleIconContextmenu($event, item)"
+            @mouseover="iconMouseover(item)"
+            @mouseout="iconMouseout(item)"
+            @dragenter="iconDragEnter($event, item)"
+          >
             <div
-              class="iconBox iconBox--device iconBox--device-group"
-              :class="{ 'is-ejecting': isEjectingPioneerDriveIcon(item) }"
-              @click="isEjectingPioneerDriveIcon(item) ? null : clickPioneerDriveIcon(item)"
-              @contextmenu.stop.prevent="handlePioneerDriveContextmenu($event, item)"
-              @mouseover="iconMouseover(item)"
-              @mouseout="iconMouseout(item)"
-            >
-              <div
-                class="iconBoxAccent"
-                :style="{
-                  backgroundColor: isSelectedPioneerDriveIcon(item) ? 'var(--accent)' : ''
-                }"
-              ></div>
-              <div class="iconBoxContent">
-                <span
-                  :ref="(el) => setIconRef(item.key, el)"
-                  :style="getIconMaskStyle(item)"
-                  :class="[
-                    'sidebar-icon',
-                    {
-                      'is-active': isSelectedPioneerDriveIcon(item),
-                      'is-ejecting': isEjectingPioneerDriveIcon(item)
-                    }
-                  ]"
-                ></span>
-                <bubbleBox
-                  :dom="iconRefMap[item.key] || undefined"
-                  :title="
-                    isEjectingPioneerDriveIcon(item)
-                      ? t('library.ejectUsbDriveProgress')
-                      : item.tooltip
-                  "
-                  :max-width="320"
-                />
-              </div>
+              class="iconBoxAccent"
+              :style="{ backgroundColor: item.name == selectedIcon.name ? 'var(--accent)' : '' }"
+            ></div>
+            <div class="iconBoxContent" @click="libraryHandleClick(item)">
+              <span
+                :ref="(el) => setIconRef(item.name, el)"
+                :style="getIconMaskStyle(item)"
+                :class="[
+                  'sidebar-icon',
+                  {
+                    'is-active': item.name === selectedIcon.name,
+                    'is-playing': isPlayingLibraryIcon(item)
+                  }
+                ]"
+              ></span>
+              <bubbleBox
+                :dom="iconRefMap[item.name] || undefined"
+                :title="t((item as any).i18nKey || item.name)"
+              />
             </div>
-          </template>
-        </div>
+          </div>
+          <div
+            v-for="group of pioneerDriveGroups"
+            :key="group.key"
+            class="deviceGroup"
+            :class="{
+              'deviceGroup--selected': group.icons.some((item) => isSelectedPioneerDriveIcon(item)),
+              'deviceGroup--multi': group.icons.length > 1
+            }"
+          >
+            <div class="deviceGroupInner">
+              <template v-for="item of group.icons" :key="item.key">
+                <div
+                  :ref="(el) => setScrollItemRef(item.key, el)"
+                  class="iconBox iconBox--device iconBox--device-group"
+                  :class="{ 'is-ejecting': isEjectingPioneerDriveIcon(item) }"
+                  @click="isEjectingPioneerDriveIcon(item) ? null : clickPioneerDriveIcon(item)"
+                  @contextmenu.stop.prevent="handlePioneerDriveContextmenu($event, item)"
+                  @mouseover="iconMouseover(item)"
+                  @mouseout="iconMouseout(item)"
+                >
+                  <div
+                    class="iconBoxAccent"
+                    :style="{
+                      backgroundColor: isSelectedPioneerDriveIcon(item) ? 'var(--accent)' : ''
+                    }"
+                  ></div>
+                  <div class="iconBoxContent">
+                    <span
+                      :ref="(el) => setIconRef(item.key, el)"
+                      :style="getIconMaskStyle(item)"
+                      :class="[
+                        'sidebar-icon',
+                        {
+                          'is-active': isSelectedPioneerDriveIcon(item),
+                          'is-ejecting': isEjectingPioneerDriveIcon(item)
+                        }
+                      ]"
+                    ></span>
+                    <bubbleBox
+                      :dom="iconRefMap[item.key] || undefined"
+                      :title="
+                        isEjectingPioneerDriveIcon(item)
+                          ? t('library.ejectUsbDriveProgress')
+                          : item.tooltip
+                      "
+                      :max-width="320"
+                    />
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </OverlayScrollbarsComponent>
+        <div
+          v-show="dynamicScrollState.canScroll && !dynamicScrollState.atBottom"
+          class="librarySelectAreaScrollFade librarySelectAreaScrollFade--bottom"
+        ></div>
       </div>
     </div>
-    <div>
+
+    <div class="librarySelectAreaFooter">
       <div
         v-for="item of buttomIconArr"
         :key="item.name"
@@ -831,8 +1010,70 @@ watch(
   border-right: 1px solid var(--border);
   background-color: var(--bg);
   display: flex;
-  justify-content: space-between;
   flex-direction: column;
+  align-items: stretch;
+
+  .librarySelectAreaCore,
+  .librarySelectAreaFooter {
+    flex: 0 0 auto;
+  }
+
+  .librarySelectAreaDynamic {
+    flex: 1 1 auto;
+    min-height: 0;
+    position: relative;
+  }
+
+  .librarySelectAreaDynamic--with-divider::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: color-mix(in srgb, var(--border) 88%, transparent);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .librarySelectAreaDynamicScrollShell {
+    height: 100%;
+    position: relative;
+  }
+
+  .librarySelectAreaDynamicScroller {
+    height: 100%;
+    width: 100%;
+  }
+
+  .librarySelectAreaFooter {
+    padding-top: 0;
+    border-top: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    background: linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--bg) 88%, transparent),
+      var(--bg)
+    );
+  }
+
+  .librarySelectAreaScrollFade {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 18px;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .librarySelectAreaScrollFade--top {
+    top: 0;
+    background: linear-gradient(to bottom, var(--bg), transparent);
+  }
+
+  .librarySelectAreaScrollFade--bottom {
+    bottom: 0;
+    background: linear-gradient(to top, var(--bg), transparent);
+  }
 
   .fade-enter-active,
   .fade-leave-active {
@@ -945,6 +1186,10 @@ watch(
     flex-direction: column;
     align-items: stretch;
     gap: 2px;
+  }
+
+  :deep(.librarySelectAreaDynamicScroller .os-viewport) {
+    overscroll-behavior: contain;
   }
 
   .deviceGroup--multi .deviceGroupInner::before {
