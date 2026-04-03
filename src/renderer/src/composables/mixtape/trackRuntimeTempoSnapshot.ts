@@ -50,7 +50,7 @@ const buildBpmEnvelopeSignature = (
   points
     .map((point) => {
       const sec = Math.round((Number(point?.sec) || 0) * 1000)
-      const bpm = Math.round((Number(point?.bpm) || 0) * 1000)
+      const bpm = Math.round((Number(point?.bpm) || 0) * 1000000)
       const sourceSec = Number.isFinite(Number(point?.sourceSec))
         ? Math.round(Number(point?.sourceSec) * 1000)
         : -1
@@ -67,9 +67,9 @@ const buildGridOverrideSignature = (snapshot: {
 }) =>
   [
     Math.round(snapshot.durationSec * 1000),
-    Math.round(snapshot.baseBpm * 1000),
-    Math.round(snapshot.gridSourceBpm * 1000),
-    Math.round(snapshot.originalBpm * 1000)
+    Math.round(snapshot.baseBpm * 1000000),
+    Math.round(snapshot.gridSourceBpm * 1000000),
+    Math.round(snapshot.originalBpm * 1000000)
   ].join('|')
 
 const buildTrackStartSignature = (track: Pick<MixtapeTrack, 'startSec'>) =>

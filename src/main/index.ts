@@ -10,7 +10,11 @@ import mainWindow from './window/mainWindow'
 import databaseInitWindow from './window/databaseInitWindow'
 import { is } from '@electron-toolkit/utils'
 import store from './store'
-import { setupMacMenus } from './menu/macMenu'
+import {
+  rebuildMacMenusForCurrentFocus,
+  setMacMainWindowBrowseMode,
+  setupMacMenus
+} from './menu/macMenu'
 import { prepareAndOpenMainWindow } from './bootstrap/prepareDatabase'
 import { setupAutoUpdate } from './bootstrap/autoUpdate'
 import {
@@ -52,6 +56,7 @@ import {
   startKeyAnalysisBackground,
   type KeyAnalysisBackgroundStatus
 } from './services/keyAnalysisQueue'
+import { songGridEvents } from './services/songGridEvents'
 import {
   isMixtapeWaveformHiresQueueBusy,
   startMixtapeWaveformHiresBackground
@@ -239,6 +244,14 @@ keyAnalysisEvents.on('bpm-updated', (payload) => {
   if (mainWindow.instance) {
     try {
       mainWindow.instance.webContents.send('song-bpm-updated', payload)
+    } catch {}
+  }
+})
+
+songGridEvents.on('grid-updated', (payload) => {
+  if (mainWindow.instance) {
+    try {
+      mainWindow.instance.webContents.send('song-grid-updated', payload)
     } catch {}
   }
 })
@@ -540,6 +553,12 @@ ipcMain.on('openLog', async () => {
       await shell.showItemInFolder(logPath)
     } catch {}
   }
+})
+
+ipcMain.on('main-window-browse-mode-updated', (_e, mode: 'browser' | 'horizontal') => {
+  if (mode !== 'browser' && mode !== 'horizontal') return
+  setMacMainWindowBrowseMode(mode)
+  rebuildMacMenusForCurrentFocus()
 })
 
 ipcMain.handle('clearTracksFingerprintLibrary', async (_e) => {

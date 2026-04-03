@@ -122,6 +122,7 @@ export type DoneEntry = {
   mtimeMs: number
   keyText?: string
   bpm?: number
+  firstBeatMs?: number
   hasWaveform?: boolean
 }
 
@@ -174,6 +175,9 @@ export const isValidKeyText = (value: unknown): value is string =>
 
 export const isValidBpm = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0
+
+export const isValidFirstBeatMs = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0
 
 export const BACKGROUND_IDLE_DELAY_MS = 3000
 export const BACKGROUND_SCAN_COOLDOWN_MS = 5000

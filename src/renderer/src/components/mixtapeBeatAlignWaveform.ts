@@ -33,6 +33,11 @@ const MIXXX_MAX_RGB_ENERGY = Math.sqrt(255 * 255 * 3)
 const MIXXX_RGB_BRIGHTNESS_SCALE = 0.95
 const BAR_BEAT_INTERVAL = 32
 const BEAT4_INTERVAL = 4
+const BAR_GRID_LINE_WIDTH = 2
+const MAJOR_GRID_LINE_WIDTH = 1
+const MINOR_GRID_LINE_WIDTH = 1
+const GRID_LINE_VERTICAL_OVERSCAN = 2
+const HALF_WAVEFORM_AMPLITUDE_RATIO = 0.8
 const RAW_FFT_MIN_SIZE = 128
 const RAW_FFT_MAX_SIZE = 512
 const RAW_FFT_LOW_RATIO = 0.18
@@ -68,9 +73,9 @@ const DARK_WAVEFORM_PALETTE: BeatAlignWaveformPalette = {
   backgroundStart: '#0f1b2e',
   backgroundEnd: '#0a1322',
   backgroundStripe: 'rgba(255, 255, 255, 0.03)',
-  barLine: 'rgba(0, 110, 220, 0.98)',
-  majorGrid: 'rgba(184, 220, 255, 0.34)',
-  minorGrid: 'rgba(255, 255, 255, 0.15)',
+  barLine: '#48b2ff',
+  majorGrid: '#ffbf47',
+  minorGrid: '#f0f4f8',
   detailHighlightBase: '255, 255, 255',
   centerLine: 'rgba(210, 236, 255, 0.28)'
 }
@@ -79,9 +84,9 @@ const LIGHT_WAVEFORM_PALETTE: BeatAlignWaveformPalette = {
   backgroundStart: '#eef4fb',
   backgroundEnd: '#dde7f4',
   backgroundStripe: 'rgba(15, 23, 42, 0.03)',
-  barLine: 'rgba(0, 110, 220, 0.9)',
-  majorGrid: 'rgba(43, 102, 217, 0.18)',
-  minorGrid: 'rgba(15, 23, 42, 0.12)',
+  barLine: '#0068d8',
+  majorGrid: '#c97800',
+  minorGrid: '#556274',
   detailHighlightBase: '15, 23, 42',
   centerLine: 'rgba(43, 102, 217, 0.18)'
 }
@@ -137,6 +142,22 @@ const drawBeatGrid = (
   const beatSec = 60 / bpm
   if (!Number.isFinite(beatSec) || beatSec <= 0) return
 
+  const drawVerticalLine = (x: number, lineWidth: number, color: string) => {
+    const safeWidth = Math.max(1, lineWidth)
+    const halfWidth = safeWidth * 0.5
+    if (x < -halfWidth || x > width + halfWidth) return
+    const left = Math.max(0, Math.round(x - safeWidth * 0.5))
+    const right = Math.min(width, left + safeWidth)
+    if (right <= left) return
+    ctx.fillStyle = color
+    ctx.fillRect(
+      left,
+      -GRID_LINE_VERTICAL_OVERSCAN,
+      right - left,
+      height + GRID_LINE_VERTICAL_OVERSCAN * 2
+    )
+  }
+
   const firstBeatSec = (Number(firstBeatMs) || 0) / 1000
   const normalizedBarOffset = normalizeBeatOffset(barBeatOffset, BAR_BEAT_INTERVAL)
   const rangeEndSec = rangeStartSec + rangeDurationSec
@@ -147,22 +168,19 @@ const drawBeatGrid = (
     const beatTime = firstBeatSec + i * beatSec
     if (beatTime < 0) continue
     if (beatTime < rangeStartSec - beatSec || beatTime > rangeEndSec + beatSec) continue
-    const x = Math.round(((beatTime - rangeStartSec) / rangeDurationSec) * width)
+    const x = ((beatTime - rangeStartSec) / rangeDurationSec) * width
     const shiftedIndex = i - normalizedBarOffset
     const modBar = ((shiftedIndex % BAR_BEAT_INTERVAL) + BAR_BEAT_INTERVAL) % BAR_BEAT_INTERVAL
     const mod4 = ((shiftedIndex % BEAT4_INTERVAL) + BEAT4_INTERVAL) % BEAT4_INTERVAL
     if (modBar === 0) {
-      ctx.fillStyle = palette.barLine
-      ctx.fillRect(x, 0, 2, height)
+      drawVerticalLine(x, BAR_GRID_LINE_WIDTH, palette.barLine)
       continue
     }
     if (mod4 === 0) {
-      ctx.fillStyle = palette.majorGrid
-      ctx.fillRect(x, 0, 1, height)
+      drawVerticalLine(x, MAJOR_GRID_LINE_WIDTH, palette.majorGrid)
       continue
     }
-    ctx.fillStyle = palette.minorGrid
-    ctx.fillRect(x, 0, 1, height)
+    drawVerticalLine(x, MINOR_GRID_LINE_WIDTH, palette.minorGrid)
   }
 }
 
@@ -581,7 +599,10 @@ const drawWaveformColumns = (
   const showCenterLine = options?.showCenterLine !== false
   const palette = options?.palette || DARK_WAVEFORM_PALETTE
   const waveformLayout = options?.waveformLayout || 'full'
-  const ampScale = waveformLayout === 'full' ? Math.max(1, centerY - 2) : Math.max(1, height - 2)
+  const ampScale =
+    waveformLayout === 'full'
+      ? Math.max(1, centerY - 2)
+      : Math.max(1, Math.floor((height - 2) * HALF_WAVEFORM_AMPLITUDE_RATIO))
   ctx.imageSmoothingEnabled = false
 
   for (let x = 0; x < width; x += 1) {
@@ -659,6 +680,55 @@ export const drawBeatAlignRekordboxWaveform = (
   if (showBackground !== false) {
     drawBackground(ctx, width, height, palette)
   }
+
+  if (!isValidMixxxWaveformData(mixxxData)) {
+    if (showBeatGrid !== false) {
+      drawBeatGrid(
+        ctx,
+        width,
+        height,
+        bpm,
+        firstBeatMs,
+        Number(barBeatOffset) || 0,
+        rangeStartSec,
+        rangeDurationSec,
+        palette
+      )
+    }
+    return false
+  }
+  const columns = buildWaveformColumns(
+    width,
+    mixxxData,
+    rawData || null,
+    rangeStartSec,
+    rangeDurationSec,
+    maxSamplesPerPixel
+  )
+  if (!columns.length) {
+    if (showBeatGrid !== false) {
+      drawBeatGrid(
+        ctx,
+        width,
+        height,
+        bpm,
+        firstBeatMs,
+        Number(barBeatOffset) || 0,
+        rangeStartSec,
+        rangeDurationSec,
+        palette
+      )
+    }
+    return false
+  }
+
+  drawWaveformColumns(ctx, width, height, columns, {
+    showDetailHighlights,
+    showCenterLine,
+    palette,
+    waveformLayout
+  })
+
   if (showBeatGrid !== false) {
     drawBeatGrid(
       ctx,
@@ -672,23 +742,5 @@ export const drawBeatAlignRekordboxWaveform = (
       palette
     )
   }
-
-  if (!isValidMixxxWaveformData(mixxxData)) return false
-  const columns = buildWaveformColumns(
-    width,
-    mixxxData,
-    rawData || null,
-    rangeStartSec,
-    rangeDurationSec,
-    maxSamplesPerPixel
-  )
-  if (!columns.length) return false
-
-  drawWaveformColumns(ctx, width, height, columns, {
-    showDetailHighlights,
-    showCenterLine,
-    palette,
-    waveformLayout
-  })
   return true
 }

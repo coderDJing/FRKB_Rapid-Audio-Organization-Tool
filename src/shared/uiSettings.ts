@@ -1,4 +1,5 @@
 export const UI_SETTING_KEYS = [
+  'mainWindowBrowseMode',
   'hiddenPlayControlArea',
   'waveformStyle',
   'waveformMode',

@@ -5,6 +5,10 @@ import HorizontalBrowseDeckInfoCard from '@renderer/components/HorizontalBrowseD
 import HorizontalBrowseRawWaveformDetail from '@renderer/components/HorizontalBrowseRawWaveformDetail.vue'
 import HorizontalBrowseWaveformOverview from '@renderer/components/HorizontalBrowseWaveformOverview.vue'
 import MixtapeBeatAlignGridAdjustToolbar from '@renderer/components/mixtapeBeatAlignGridAdjustToolbar.vue'
+import {
+  PREVIEW_MAX_ZOOM,
+  PREVIEW_MIN_ZOOM
+} from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
@@ -14,15 +18,43 @@ type HorizontalBrowseLoadSongPayload = {
   deck?: DeckKey
   song?: ISongInfo | null
 }
+type SharedSongGridPayload = {
+  filePath?: string
+  bpm?: number
+  firstBeatMs?: number
+  barBeatOffset?: number
+} | null
+type DeckToolbarState = {
+  disabled: boolean
+  bpmInputValue: string
+  bpmStep: number
+  bpmMin: number
+  bpmMax: number
+  barLinePicking: boolean
+}
+
+const createDefaultDeckToolbarState = (): DeckToolbarState => ({
+  disabled: true,
+  bpmInputValue: '128.00',
+  bpmStep: 0.01,
+  bpmMin: 1,
+  bpmMax: 300,
+  barLinePicking: false
+})
 
 const runtime = useRuntimeStore()
 const topDeckSong = ref<ISongInfo | null>(null)
 const bottomDeckSong = ref<ISongInfo | null>(null)
+const topDetailRef = ref<any | null>(null)
+const bottomDetailRef = ref<any | null>(null)
+const topDeckToolbarState = ref<DeckToolbarState>(createDefaultDeckToolbarState())
+const bottomDeckToolbarState = ref<DeckToolbarState>(createDefaultDeckToolbarState())
 const topDeckBeatSyncActive = ref(false)
 const topDeckMasterActive = ref(true)
 const bottomDeckBeatSyncActive = ref(false)
 const bottomDeckMasterActive = ref(false)
 const hoveredDeckKey = ref<DeckKey | null>(null)
+const sharedDetailZoom = ref(PREVIEW_MIN_ZOOM)
 const regionDragDepth = reactive<Record<number, number>>({
   1: 0,
   2: 0,
@@ -41,6 +73,10 @@ const faderTicks = Array.from({ length: 9 }, (_, index) => ({
 
 const topOverviewRegions = [1, 2, 3]
 const bottomOverviewRegions = [6, 7, 8]
+const deckHydrateToken = reactive<Record<DeckKey, number>>({
+  top: 0,
+  bottom: 0
+})
 
 const resetRegionDragState = () => {
   hoveredDeckKey.value = null
@@ -91,12 +127,124 @@ const resolveDraggedSong = () => {
   return buildSongSnapshot(filePath)
 }
 
-const assignSongToDeck = (deck: DeckKey, song: ISongInfo) => {
+const mergeSongWithSharedGrid = (song: ISongInfo, payload: SharedSongGridPayload): ISongInfo => {
+  if (!payload) return song
+  const filePath = String(payload.filePath || '').trim()
+  if (!filePath || filePath !== song.filePath) return song
+
+  let touched = false
+  const nextSong: ISongInfo = { ...song }
+  if (
+    typeof payload.bpm === 'number' &&
+    Number.isFinite(payload.bpm) &&
+    nextSong.bpm !== payload.bpm
+  ) {
+    nextSong.bpm = payload.bpm
+    touched = true
+  }
+  if (
+    typeof payload.firstBeatMs === 'number' &&
+    Number.isFinite(payload.firstBeatMs) &&
+    nextSong.firstBeatMs !== payload.firstBeatMs
+  ) {
+    nextSong.firstBeatMs = payload.firstBeatMs
+    touched = true
+  }
+  if (
+    typeof payload.barBeatOffset === 'number' &&
+    Number.isFinite(payload.barBeatOffset) &&
+    nextSong.barBeatOffset !== payload.barBeatOffset
+  ) {
+    nextSong.barBeatOffset = payload.barBeatOffset
+    touched = true
+  }
+  return touched ? nextSong : song
+}
+
+const setDeckSong = (deck: DeckKey, song: ISongInfo | null) => {
   if (deck === 'top') {
     topDeckSong.value = song
     return
   }
   bottomDeckSong.value = song
+}
+
+const hydrateDeckSongSharedGrid = async (deck: DeckKey, song: ISongInfo) => {
+  const filePath = String(song.filePath || '').trim()
+  if (!filePath) return
+
+  const token = ++deckHydrateToken[deck]
+  try {
+    const payload = (await window.electron.ipcRenderer.invoke('song:get-shared-grid-definition', {
+      filePath
+    })) as SharedSongGridPayload
+    if (deckHydrateToken[deck] !== token) return
+    const currentSong = deck === 'top' ? topDeckSong.value : bottomDeckSong.value
+    if (!currentSong || currentSong.filePath !== filePath) return
+    const nextSong = mergeSongWithSharedGrid(currentSong, payload)
+    if (nextSong !== currentSong) {
+      setDeckSong(deck, nextSong)
+    }
+  } catch {}
+}
+
+const assignSongToDeck = (deck: DeckKey, song: ISongInfo) => {
+  const nextSong = { ...song }
+  setDeckSong(deck, nextSong)
+  void hydrateDeckSongSharedGrid(deck, nextSong)
+}
+
+const resolveDetailRef = (deck: DeckKey) =>
+  deck === 'top' ? topDetailRef.value : bottomDetailRef.value
+
+const handleSharedDetailZoomChange = (value: number) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) return
+  sharedDetailZoom.value = Math.max(PREVIEW_MIN_ZOOM, Math.min(PREVIEW_MAX_ZOOM, numeric))
+}
+
+const handleToolbarStateChange = (deck: DeckKey, value: DeckToolbarState) => {
+  if (deck === 'top') {
+    topDeckToolbarState.value = { ...value }
+    return
+  }
+  bottomDeckToolbarState.value = { ...value }
+}
+
+const handleDeckBarLinePickingToggle = (deck: DeckKey) => {
+  resolveDetailRef(deck)?.toggleBarLinePicking?.()
+}
+
+const handleDeckSetBarLineAtPlayhead = (deck: DeckKey) => {
+  resolveDetailRef(deck)?.setBarLineAtPlayhead?.()
+}
+
+const handleDeckGridShiftLargeLeft = (deck: DeckKey) => {
+  resolveDetailRef(deck)?.shiftGridLargeLeft?.()
+}
+
+const handleDeckGridShiftSmallLeft = (deck: DeckKey) => {
+  resolveDetailRef(deck)?.shiftGridSmallLeft?.()
+}
+
+const handleDeckGridShiftSmallRight = (deck: DeckKey) => {
+  resolveDetailRef(deck)?.shiftGridSmallRight?.()
+}
+
+const handleDeckGridShiftLargeRight = (deck: DeckKey) => {
+  resolveDetailRef(deck)?.shiftGridLargeRight?.()
+}
+
+const handleDeckBpmInputUpdate = (deck: DeckKey, value: string) => {
+  resolveDetailRef(deck)?.updateBpmInput?.(value)
+}
+
+const handleDeckBpmInputBlur = (deck: DeckKey) => {
+  resolveDetailRef(deck)?.blurBpmInput?.()
+}
+
+const handleDeckTapBpm = (deck: DeckKey) => {
+  resolveDetailRef(deck)?.tapBpm?.()
 }
 
 const toggleDeckMaster = (deck: DeckKey) => {
@@ -169,16 +317,36 @@ const handleExternalDeckSongLoad = (payload: HorizontalBrowseLoadSongPayload) =>
   assignSongToDeck(deck, { ...song })
 }
 
+const handleSongGridUpdated = (_event: unknown, payload: SharedSongGridPayload) => {
+  const topSong = topDeckSong.value
+  if (topSong) {
+    const nextTopSong = mergeSongWithSharedGrid(topSong, payload)
+    if (nextTopSong !== topSong) {
+      topDeckSong.value = nextTopSong
+    }
+  }
+
+  const bottomSong = bottomDeckSong.value
+  if (bottomSong) {
+    const nextBottomSong = mergeSongWithSharedGrid(bottomSong, payload)
+    if (nextBottomSong !== bottomSong) {
+      bottomDeckSong.value = nextBottomSong
+    }
+  }
+}
+
 onMounted(() => {
   window.addEventListener('drop', handleGlobalDragFinish, true)
   window.addEventListener('dragend', handleGlobalDragFinish, true)
   emitter.on('horizontalBrowse/load-song', handleExternalDeckSongLoad)
+  window.electron.ipcRenderer.on('song-grid-updated', handleSongGridUpdated)
 })
 
 onUnmounted(() => {
   window.removeEventListener('drop', handleGlobalDragFinish, true)
   window.removeEventListener('dragend', handleGlobalDragFinish, true)
   emitter.off('horizontalBrowse/load-song', handleExternalDeckSongLoad)
+  window.electron.ipcRenderer.removeListener('song-grid-updated', handleSongGridUpdated)
 })
 </script>
 
@@ -258,13 +426,32 @@ onUnmounted(() => {
           <HorizontalBrowseWaveformOverview v-else-if="regionId === 2" :song="topDeckSong" />
           <div v-else-if="regionId === 3" class="overview__toolbar-row">
             <MixtapeBeatAlignGridAdjustToolbar
-              bpm-input-value="128.00"
-              :bpm-step="0.01"
-              :bpm-min="1"
-              :bpm-max="300"
+              :disabled="topDeckToolbarState.disabled"
+              :bpm-input-value="topDeckToolbarState.bpmInputValue"
+              :bpm-step="topDeckToolbarState.bpmStep"
+              :bpm-min="topDeckToolbarState.bpmMin"
+              :bpm-max="topDeckToolbarState.bpmMax"
+              @set-bar-line="handleDeckSetBarLineAtPlayhead('top')"
+              @shift-left-large="handleDeckGridShiftLargeLeft('top')"
+              @shift-left-small="handleDeckGridShiftSmallLeft('top')"
+              @shift-right-small="handleDeckGridShiftSmallRight('top')"
+              @shift-right-large="handleDeckGridShiftLargeRight('top')"
+              @update-bpm-input="handleDeckBpmInputUpdate('top', $event)"
+              @blur-bpm-input="handleDeckBpmInputBlur('top')"
+              @tap-bpm="handleDeckTapBpm('top')"
             />
-            <button type="button" class="overview__set-bar-btn">
-              {{ t('mixtape.gridAdjustSetBarLine') }}
+            <button
+              type="button"
+              class="overview__set-bar-btn"
+              :class="{ 'is-active': topDeckToolbarState.barLinePicking }"
+              :disabled="topDeckToolbarState.disabled"
+              @click="handleDeckBarLinePickingToggle('top')"
+            >
+              {{
+                topDeckToolbarState.barLinePicking
+                  ? t('mixtape.gridAdjustSetBarLineCancel')
+                  : t('mixtape.gridAdjustSetBarLine')
+              }}
             </button>
           </div>
         </div>
@@ -279,7 +466,14 @@ onUnmounted(() => {
           @dragleave.stop="handleRegionDragLeave(4, $event)"
           @drop.stop.prevent="handleRegionDrop(4, $event)"
         >
-          <HorizontalBrowseRawWaveformDetail :song="topDeckSong" direction="up" />
+          <HorizontalBrowseRawWaveformDetail
+            ref="topDetailRef"
+            :song="topDeckSong"
+            :shared-zoom="sharedDetailZoom"
+            direction="up"
+            @toolbar-state-change="handleToolbarStateChange('top', $event)"
+            @zoom-change="handleSharedDetailZoomChange"
+          />
         </div>
 
         <div
@@ -290,7 +484,14 @@ onUnmounted(() => {
           @dragleave.stop="handleRegionDragLeave(5, $event)"
           @drop.stop.prevent="handleRegionDrop(5, $event)"
         >
-          <HorizontalBrowseRawWaveformDetail :song="bottomDeckSong" direction="down" />
+          <HorizontalBrowseRawWaveformDetail
+            ref="bottomDetailRef"
+            :song="bottomDeckSong"
+            :shared-zoom="sharedDetailZoom"
+            direction="down"
+            @toolbar-state-change="handleToolbarStateChange('bottom', $event)"
+            @zoom-change="handleSharedDetailZoomChange"
+          />
         </div>
       </section>
 
@@ -314,13 +515,32 @@ onUnmounted(() => {
         >
           <div v-if="regionId === 6" class="overview__toolbar-row">
             <MixtapeBeatAlignGridAdjustToolbar
-              bpm-input-value="128.00"
-              :bpm-step="0.01"
-              :bpm-min="1"
-              :bpm-max="300"
+              :disabled="bottomDeckToolbarState.disabled"
+              :bpm-input-value="bottomDeckToolbarState.bpmInputValue"
+              :bpm-step="bottomDeckToolbarState.bpmStep"
+              :bpm-min="bottomDeckToolbarState.bpmMin"
+              :bpm-max="bottomDeckToolbarState.bpmMax"
+              @set-bar-line="handleDeckSetBarLineAtPlayhead('bottom')"
+              @shift-left-large="handleDeckGridShiftLargeLeft('bottom')"
+              @shift-left-small="handleDeckGridShiftSmallLeft('bottom')"
+              @shift-right-small="handleDeckGridShiftSmallRight('bottom')"
+              @shift-right-large="handleDeckGridShiftLargeRight('bottom')"
+              @update-bpm-input="handleDeckBpmInputUpdate('bottom', $event)"
+              @blur-bpm-input="handleDeckBpmInputBlur('bottom')"
+              @tap-bpm="handleDeckTapBpm('bottom')"
             />
-            <button type="button" class="overview__set-bar-btn">
-              {{ t('mixtape.gridAdjustSetBarLine') }}
+            <button
+              type="button"
+              class="overview__set-bar-btn"
+              :class="{ 'is-active': bottomDeckToolbarState.barLinePicking }"
+              :disabled="bottomDeckToolbarState.disabled"
+              @click="handleDeckBarLinePickingToggle('bottom')"
+            >
+              {{
+                bottomDeckToolbarState.barLinePicking
+                  ? t('mixtape.gridAdjustSetBarLineCancel')
+                  : t('mixtape.gridAdjustSetBarLine')
+              }}
             </button>
           </div>
           <HorizontalBrowseWaveformOverview v-else-if="regionId === 7" :song="bottomDeckSong" />
@@ -575,6 +795,17 @@ onUnmounted(() => {
   background: var(--hover);
 }
 
+.overview__set-bar-btn.is-active {
+  border-color: rgba(145, 205, 255, 0.95);
+  box-shadow: 0 0 0 1px rgba(145, 205, 255, 0.25) inset;
+  background: rgba(145, 205, 255, 0.12);
+}
+
+.overview__set-bar-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .overview.is-deck-hover,
 .detail-lane.is-deck-hover {
   background: var(--shell-drop-hover);
@@ -591,6 +822,7 @@ onUnmounted(() => {
 .detail-pair {
   display: grid;
   grid-template-rows: repeat(2, minmax(0, 1fr));
+  row-gap: 2px;
   min-width: 0;
   min-height: 0;
   background: var(--shell-panel);

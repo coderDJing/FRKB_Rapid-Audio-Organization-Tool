@@ -65,7 +65,7 @@ export const sampleMixtapeMasterGridBpmAtSec = (
     const ratio = clampNumber((safeSec - startSec) / spanSec, 0, 1)
     const startBpm = Math.max(BPM_MIN_VALUE, Number(previous?.bpm) || safeFallbackBpm)
     const endBpm = Math.max(BPM_MIN_VALUE, Number(current?.bpm) || startBpm)
-    return Number((startBpm + (endBpm - startBpm) * ratio).toFixed(4))
+    return Number((startBpm + (endBpm - startBpm) * ratio).toFixed(6))
   }
   return Math.max(BPM_MIN_VALUE, Number(points[points.length - 1]?.bpm) || safeFallbackBpm)
 }
@@ -203,7 +203,7 @@ export const buildMixtapeMasterGridSignature = (
     points
       .map((point) => {
         const sec = Math.round((Number(point?.sec) || 0) * 1000)
-        const bpm = Math.round((Number(point?.bpm) || 0) * 1000)
+        const bpm = Math.round((Number(point?.bpm) || 0) * 1000000)
         return `${sec}:${bpm}`
       })
       .join(';')

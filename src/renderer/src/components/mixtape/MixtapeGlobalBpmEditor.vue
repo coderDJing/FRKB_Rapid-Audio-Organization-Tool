@@ -27,7 +27,11 @@ import {
   mapTrackBpmToYPercent,
   mapTrackBpmYPercentToValue
 } from '@renderer/composables/mixtape/trackTempoVisual'
-import { roundTrackTempoSec } from '@renderer/composables/mixtape/trackTempoModel'
+import {
+  formatTrackBpmDisplay,
+  normalizeTrackBpmValue,
+  roundTrackTempoSec
+} from '@renderer/composables/mixtape/trackTempoModel'
 import {
   MASTER_BPM_DRAG_STEP_PX,
   buildPointGridBeatMap,
@@ -378,7 +382,7 @@ const currentBpmValue = computed(() =>
   sampleMixtapeGlobalBpmAtSec(effectivePoints.value, currentPlayheadSec.value, defaultBpm.value)
 )
 
-const formatBpmLabel = (value: number) => Math.max(1, Math.round(Number(value) || 0)).toString()
+const formatBpmLabel = (value: number) => formatTrackBpmDisplay(value, '--')
 
 const currentBpmLabel = computed(() => formatBpmLabel(currentBpmValue.value))
 const currentBpmText = computed(() => `BPM ${currentBpmLabel.value}`)
@@ -704,7 +708,7 @@ const handleStageMouseMove = (event: MouseEvent) => {
 
   ghostPointState.value = {
     sec: point.sec,
-    bpm: lineBpm
+    bpm: normalizeTrackBpmValue(lineBpm) ?? defaultBpm.value
   }
 }
 
@@ -721,10 +725,10 @@ const handleStageMouseDown = (event: MouseEvent) => {
   if (!point) return
   point.sec = resolveSnappedTimelineSec(point.sec)
 
-  const lineBpm = Math.round(
-    sampleMixtapeGlobalBpmAtSec(effectivePoints.value, point.sec, defaultBpm.value)
-  )
-  point.bpm = lineBpm
+  point.bpm =
+    normalizeTrackBpmValue(
+      sampleMixtapeGlobalBpmAtSec(effectivePoints.value, point.sec, defaultBpm.value)
+    ) ?? defaultBpm.value
 
   const undoPoints = clonePoints(effectivePoints.value)
   const nextPoints = normalizeMixtapeGlobalBpmEnvelopePoints(
@@ -768,22 +772,18 @@ const handleWindowMouseMove = (event: MouseEvent) => {
     return
   event.preventDefault()
   const nextPoints = clonePoints(currentDragState.basePoints)
-  const deltaBpm = Math.round(
+  const deltaBpm =
     ((currentDragState.startPointer.clientY ?? event.clientY) - event.clientY) /
-      MASTER_BPM_DRAG_STEP_PX
-  )
+    MASTER_BPM_DRAG_STEP_PX
 
   for (const pointIndex of currentDragState.pointIndices) {
     const targetPoint = nextPoints[pointIndex]
     const basePoint = currentDragState.basePoints[pointIndex]
     if (!targetPoint || !basePoint) continue
-    targetPoint.bpm = Math.round(
-      clampNumber(
-        Math.round(basePoint.bpm) + deltaBpm,
-        visualRange.value.minBpm,
-        visualRange.value.maxBpm
-      )
-    )
+    targetPoint.bpm =
+      normalizeTrackBpmValue(
+        clampNumber(basePoint.bpm + deltaBpm, visualRange.value.minBpm, visualRange.value.maxBpm)
+      ) ?? basePoint.bpm
   }
 
   if (currentDragState.pointGridBeats.size > 0) {

@@ -101,44 +101,6 @@ std::vector<ConstRegion> retrieve_const_regions(const std::vector<double>& coars
     return constantRegions;
 }
 
-bool try_snap(double minBpm, double centerBpm, double maxBpm, double fraction, double* outBpm) {
-    const double snapped = std::round(centerBpm * fraction) / fraction;
-    if (snapped > minBpm && snapped < maxBpm) {
-        *outBpm = snapped;
-        return true;
-    }
-    return false;
-}
-
-double round_bpm_within_range(double minBpm, double centerBpm, double maxBpm) {
-    double snapped = 0.0;
-    if (try_snap(minBpm, centerBpm, maxBpm, 1.0, &snapped)) {
-        return snapped;
-    }
-
-    if (centerBpm < 85.0) {
-        if (try_snap(minBpm, centerBpm, maxBpm, 2.0, &snapped)) {
-            return snapped;
-        }
-    }
-
-    if (centerBpm > 127.0) {
-        if (try_snap(minBpm, centerBpm, maxBpm, 2.0 / 3.0, &snapped)) {
-            return snapped;
-        }
-    }
-
-    if (try_snap(minBpm, centerBpm, maxBpm, 3.0, &snapped)) {
-        return snapped;
-    }
-
-    if (try_snap(minBpm, centerBpm, maxBpm, 12.0, &snapped)) {
-        return snapped;
-    }
-
-    return centerBpm;
-}
-
 double make_const_bpm(const std::vector<ConstRegion>& constantRegions, double sampleRate) {
     if (constantRegions.empty()) {
         return 0.0;
@@ -257,11 +219,11 @@ double make_const_bpm(const std::vector<ConstRegion>& constantRegions, double sa
     longestRegionBeatLengthMax = longestRegionBeatLength +
             ((kMaxSecsPhaseError * sampleRate) / longestRegionNumberOfBeats);
 
-    const double minRoundBpm = 60.0 * sampleRate / longestRegionBeatLengthMax;
-    const double maxRoundBpm = 60.0 * sampleRate / longestRegionBeatLengthMin;
     const double centerBpm = 60.0 * sampleRate / longestRegionBeatLength;
 
-    return round_bpm_within_range(minRoundBpm, centerBpm, maxRoundBpm);
+    // Keep the raw tempo estimate for downstream grid math instead of snapping it to
+    // "nice" BPM values like integers or coarse fractions.
+    return centerBpm;
 }
 
 double calculate_bpm(const std::vector<double>& beats, double sampleRate) {

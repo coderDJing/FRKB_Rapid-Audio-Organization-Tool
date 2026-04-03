@@ -64,6 +64,14 @@ export const mapMixtapeSnapshotToSongInfo = (
     container: info?.container,
     key: info?.key,
     bpm: info?.bpm,
+    firstBeatMs:
+      typeof info?.firstBeatMs === 'number' && Number.isFinite(info.firstBeatMs)
+        ? info.firstBeatMs
+        : undefined,
+    barBeatOffset:
+      typeof info?.barBeatOffset === 'number' && Number.isFinite(info.barBeatOffset)
+        ? info.barBeatOffset
+        : undefined,
     mixOrder: Number(raw?.mixOrder) || fallbackIndex + 1,
     mixtapeItemId: raw?.id ? String(raw.id) : undefined,
     originalPlaylistPath: originByUuid || originPathSnapshot

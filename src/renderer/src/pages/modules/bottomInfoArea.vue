@@ -897,6 +897,8 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   color: var(--text-weak);
   white-space: nowrap;
   margin-bottom: 2px;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .progress-fade-enter-from,

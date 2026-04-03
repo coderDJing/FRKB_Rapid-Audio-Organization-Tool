@@ -7,8 +7,11 @@ import { applyLiteDefaults, buildLiteSongInfo } from '../songInfoLite'
 import { log } from '../../log'
 import type { ISongInfo } from '../../../types/globals'
 import type { MixxxWaveformData } from '../../waveformCache'
+import { persistSharedSongGridDefinition } from '../sharedSongGrid'
+import { emitSongGridUpdated } from '../songGridEvents'
 import {
   isValidBpm,
+  isValidFirstBeatMs,
   isValidKeyText,
   normalizePath,
   type BpmAnalysisResult,
@@ -44,7 +47,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
   const ensureSongCacheEntry = async (
     listRoot: string,
     filePath: string,
-    payload: { keyText?: string; bpm?: number },
+    payload: { keyText?: string; bpm?: number; firstBeatMs?: number },
     stat?: { size: number; mtimeMs: number }
   ) => {
     if (!listRoot || !filePath) return
@@ -75,6 +78,9 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     if (payload.bpm !== undefined) {
       info.bpm = payload.bpm
     }
+    if (payload.firstBeatMs !== undefined) {
+      info.firstBeatMs = payload.firstBeatMs
+    }
     await LibraryCacheDb.upsertSongCacheEntry(listRoot, filePath, {
       size: fileStat.size,
       mtimeMs: fileStat.mtimeMs,
@@ -92,6 +98,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         mtimeMs: stat.mtimeMs,
         keyText,
         bpm: existing?.bpm,
+        firstBeatMs: existing?.firstBeatMs,
         hasWaveform: existing?.hasWaveform
       })
 
@@ -117,6 +124,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         mtimeMs: 0,
         keyText,
         bpm: existing?.bpm,
+        firstBeatMs: existing?.firstBeatMs,
         hasWaveform: existing?.hasWaveform
       })
       const payload: KeyAnalysisResult = { filePath, keyText }
@@ -128,9 +136,12 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     }
   }
 
-  const persistBpm = async (filePath: string, bpm: number) => {
+  const persistBpm = async (filePath: string, bpm: number, firstBeatMs?: number) => {
     const normalizedPath = normalizePath(filePath)
-    const normalizedBpm = Number(bpm.toFixed(2))
+    const normalizedBpm = Number(bpm.toFixed(6))
+    const normalizedFirstBeatMs = isValidFirstBeatMs(firstBeatMs)
+      ? Number(firstBeatMs.toFixed(3))
+      : undefined
     try {
       const stat = await fs.stat(filePath)
       const existing = deps.doneByPath.get(normalizedPath)
@@ -139,23 +150,24 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         mtimeMs: stat.mtimeMs,
         keyText: existing?.keyText,
         bpm: normalizedBpm,
+        firstBeatMs: normalizedFirstBeatMs ?? existing?.firstBeatMs,
         hasWaveform: existing?.hasWaveform
       })
 
-      const listRoot = await findSongListRoot(path.dirname(filePath))
-      if (listRoot) {
-        const updated = await LibraryCacheDb.updateSongCacheBpm(listRoot, filePath, normalizedBpm)
-        if (!updated) {
-          await ensureSongCacheEntry(
-            listRoot,
-            filePath,
-            { bpm: normalizedBpm },
-            { size: stat.size, mtimeMs: stat.mtimeMs }
-          )
-        }
+      const sharedGrid = await persistSharedSongGridDefinition({
+        filePath,
+        bpm: normalizedBpm,
+        firstBeatMs: normalizedFirstBeatMs
+      })
+      if (sharedGrid) {
+        emitSongGridUpdated(sharedGrid)
       }
 
-      const payload: BpmAnalysisResult = { filePath, bpm: normalizedBpm }
+      const payload: BpmAnalysisResult = {
+        filePath,
+        bpm: normalizedBpm,
+        firstBeatMs: normalizedFirstBeatMs
+      }
       deps.events.emit('bpm-updated', payload)
     } catch (error) {
       const existing = deps.doneByPath.get(normalizedPath)
@@ -164,9 +176,19 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         mtimeMs: 0,
         keyText: existing?.keyText,
         bpm: normalizedBpm,
+        firstBeatMs: normalizedFirstBeatMs ?? existing?.firstBeatMs,
         hasWaveform: existing?.hasWaveform
       })
-      const payload: BpmAnalysisResult = { filePath, bpm: normalizedBpm }
+      const payload: BpmAnalysisResult = {
+        filePath,
+        bpm: normalizedBpm,
+        firstBeatMs: normalizedFirstBeatMs
+      }
+      emitSongGridUpdated({
+        filePath,
+        bpm: normalizedBpm,
+        firstBeatMs: normalizedFirstBeatMs
+      })
       deps.events.emit('bpm-updated', payload)
       log.warn('[闲时分析] persistBpm 失败，已写入内存兜底', {
         filePath,
@@ -186,6 +208,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         mtimeMs: stat.mtimeMs,
         keyText: existing?.keyText,
         bpm: existing?.bpm,
+        firstBeatMs: existing?.firstBeatMs,
         hasWaveform: true
       })
 
@@ -214,6 +237,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         mtimeMs: 0,
         keyText: existing?.keyText,
         bpm: existing?.bpm,
+        firstBeatMs: existing?.firstBeatMs,
         hasWaveform: true
       })
       log.warn('[闲时分析] persistWaveform 失败，已写入内存兜底', {
@@ -266,10 +290,12 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     const done = deps.doneByPath.get(job.normalizedPath)
     if (done && done.size === stat.size && Math.abs(done.mtimeMs - stat.mtimeMs) < 1) {
       doneEntryHit = true
+      const hasDoneBpm = isValidBpm(done.bpm)
+      const hasDoneFirstBeatMs = isValidFirstBeatMs(done.firstBeatMs)
       if (isValidKeyText(done.keyText)) {
         needsKey = false
       }
-      if (isValidBpm(done.bpm)) {
+      if (hasDoneBpm && hasDoneFirstBeatMs) {
         needsBpm = false
       }
       if (done.hasWaveform) {
@@ -301,21 +327,24 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         songCacheHit = true
         const cachedKey = (cached.info as any)?.key
         const cachedBpm = (cached.info as any)?.bpm
+        const cachedFirstBeatMs = (cached.info as any)?.firstBeatMs
         const hasKey = isValidKeyText(cachedKey)
         const hasBpm = isValidBpm(cachedBpm)
-        if (hasKey || hasBpm) {
+        const hasFirstBeatMs = isValidFirstBeatMs(cachedFirstBeatMs)
+        if (hasKey || hasBpm || hasFirstBeatMs) {
           deps.doneByPath.set(job.normalizedPath, {
             size: stat.size,
             mtimeMs: stat.mtimeMs,
             keyText: hasKey ? cachedKey : undefined,
             bpm: hasBpm ? cachedBpm : undefined,
+            firstBeatMs: hasFirstBeatMs ? cachedFirstBeatMs : undefined,
             hasWaveform: done?.hasWaveform
           })
         }
         if (needsKey && hasKey) {
           needsKey = false
         }
-        if (needsBpm && hasBpm) {
+        if (needsBpm && hasBpm && hasFirstBeatMs) {
           needsBpm = false
         }
         const hasWaveform = await LibraryCacheDb.hasWaveformCacheEntry(listRoot, filePath, stat)
@@ -327,6 +356,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             mtimeMs: stat.mtimeMs,
             keyText: existingDone?.keyText,
             bpm: existingDone?.bpm,
+            firstBeatMs: existingDone?.firstBeatMs,
             hasWaveform: true
           })
           needsWaveform = false

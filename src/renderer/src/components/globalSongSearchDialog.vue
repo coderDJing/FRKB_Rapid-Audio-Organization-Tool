@@ -71,7 +71,9 @@ const getMetaLineText = (item: GlobalSongSearchDialogItem) => {
   if (item.container) parts.push(item.container)
   if (item.duration) parts.push(item.duration)
   if (item.keyText) parts.push(item.keyText)
-  if (typeof item.bpm === 'number' && Number.isFinite(item.bpm)) parts.push(`BPM ${item.bpm}`)
+  if (typeof item.bpm === 'number' && Number.isFinite(item.bpm)) {
+    parts.push(`BPM ${item.bpm.toFixed(2)}`)
+  }
   return parts.join(' · ')
 }
 

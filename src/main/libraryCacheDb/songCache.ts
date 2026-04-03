@@ -681,7 +681,7 @@ export async function updateSongCacheBpm(
   filePath: string,
   bpm: number
 ): Promise<boolean> {
-  const normalizedBpm = Number.isFinite(bpm) ? Number(bpm.toFixed(2)) : null
+  const normalizedBpm = Number.isFinite(bpm) ? Number(bpm.toFixed(6)) : null
   if (normalizedBpm === null) return false
   try {
     const entry = await loadSongCacheEntry(listRoot, filePath)

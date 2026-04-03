@@ -142,6 +142,7 @@ export const useRuntimeStore = defineStore('runtime', {
       setting: {
         platform: 'win32',
         language: '',
+        mainWindowBrowseMode: 'browser',
         themeMode: 'system',
         audioExt: [
           '.mp3',

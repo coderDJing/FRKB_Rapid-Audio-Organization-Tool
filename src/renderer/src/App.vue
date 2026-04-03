@@ -6,7 +6,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import bottomInfoArea from './pages/modules/bottomInfoArea.vue'
 import manualAddSongFingerprintDialog from './components/manualAddSongFingerprintDialog.vue'
 import globalSongSearchDialog from './components/globalSongSearchDialog.vue'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import hotkeys from 'hotkeys-js'
 import utils from './utils/utils'
 import exportSongFingerprintDialog from './components/exportSongFingerprintDialog.vue'
@@ -25,11 +25,31 @@ import HorizontalBrowseModeShell from '@renderer/components/HorizontalBrowseMode
 const runtime = useRuntimeStore()
 const contextMenuClickThroughGuard = createClickThroughGuard()
 const CONTEXT_MENU_SELECTOR = '[data-frkb-context-menu="true"]'
+const normalizeMainWindowBrowseMode = (value: unknown): 'browser' | 'horizontal' =>
+  value === 'horizontal' ? 'horizontal' : 'browser'
 // 运行期平台展示优先取持久化设置，避免依赖不稳定的 userAgent
 {
   const p = runtime.setting?.platform
   runtime.platform = p === 'darwin' ? 'Mac' : p === 'win32' ? 'Windows' : 'Unknown'
 }
+runtime.mainWindowBrowseMode = normalizeMainWindowBrowseMode(
+  (runtime.setting as any)?.mainWindowBrowseMode
+)
+watch(
+  () => runtime.mainWindowBrowseMode,
+  (mode) => {
+    const normalizedMode = normalizeMainWindowBrowseMode(mode)
+    if (runtime.mainWindowBrowseMode !== normalizedMode) {
+      runtime.mainWindowBrowseMode = normalizedMode
+      return
+    }
+    if ((runtime.setting as any)?.mainWindowBrowseMode !== normalizedMode) {
+      ;(runtime.setting as any).mainWindowBrowseMode = normalizedMode
+    }
+    window.electron.ipcRenderer.send('main-window-browse-mode-updated', normalizedMode)
+  },
+  { immediate: true }
+)
 window.electron.ipcRenderer.on('layoutConfigReaded', (event, layoutConfig) => {
   runtime.layoutConfig = layoutConfig
 })
@@ -545,7 +565,7 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
 </script>
 <template>
   <div style="height: 100%; max-height: 100%; width: 100%; display: flex; flex-direction: column">
-    <div style="height: 35px">
+    <div style="height: 35px; position: relative; z-index: 10100; overflow: visible">
       <titleComponent @open-dialog="openDialog" />
     </div>
     <div v-if="showHorizontalModeTopSpacer" :style="horizontalModeTopSpacerStyle">

@@ -10,23 +10,17 @@ import {
 } from '@renderer/composables/mixtape/mixtapeMasterGrid'
 import { resolveTrackTimelineDurationFromSource } from '@renderer/composables/mixtape/trackTimeMapCore'
 import {
+  clampTrackTempoNumber,
   BPM_MIN_VALUE,
   BPM_POINT_SEC_EPSILON,
   buildFlatTrackBpmEnvelope,
+  normalizeTrackBpmValue,
   normalizeTrackBpmEnvelopePoints,
   resolveTrackGridSourceBpm,
   resolveTrackBpmEnvelopeClampRange,
   roundTrackTempoSec
 } from '@renderer/composables/mixtape/trackTempoModel'
 import type { MixtapeBpmPoint, MixtapeTrack } from '@renderer/composables/mixtape/types'
-
-const normalizeBpm = (value: unknown) => {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric) || numeric <= BPM_MIN_VALUE) return null
-  return Number(numeric.toFixed(4))
-}
-
-const roundGlobalBpm = (value: number) => Math.max(BPM_MIN_VALUE, Math.round(Number(value) || 0))
 
 const resolveTrackStartSec = (track: MixtapeTrack) => {
   const numeric = Number(track.startSec)
@@ -38,17 +32,17 @@ export const resolveDefaultGlobalBpmFromTracks = (tracks: MixtapeTrack[]) => {
   for (const track of tracks) {
     const candidates = [track.bpm, track.gridBaseBpm, track.originalBpm]
     for (const candidate of candidates) {
-      const normalized = normalizeBpm(candidate)
-      if (normalized !== null) return roundGlobalBpm(normalized)
+      const normalized = normalizeTrackBpmValue(candidate)
+      if (normalized !== null) return normalized
     }
   }
   return 128
 }
 
 export const buildFlatMixtapeGlobalBpmEnvelope = (durationSec: number, bpm: number) =>
-  buildFlatTrackBpmEnvelope(durationSec, roundGlobalBpm(bpm)).map((point) => ({
+  buildFlatTrackBpmEnvelope(durationSec, normalizeTrackBpmValue(bpm) ?? 128).map((point) => ({
     sec: Number(point.sec),
-    bpm: roundGlobalBpm(Number(point.bpm))
+    bpm: Number(point.bpm)
   }))
 
 const resolveTrackVisibleAnchorLocalSec = (params: {
@@ -145,13 +139,14 @@ export const normalizeMixtapeGlobalBpmEnvelopePoints = (
   durationSec: number,
   defaultBpm: number
 ) => {
+  const normalizedDefaultBpm = normalizeTrackBpmValue(defaultBpm) ?? 128
   const normalizedPoints = normalizeTrackBpmEnvelopePoints(
     value,
     durationSec,
-    roundGlobalBpm(defaultBpm)
+    normalizedDefaultBpm
   ).map((point) => ({
     sec: Number(point.sec),
-    bpm: roundGlobalBpm(Number(point.bpm))
+    bpm: Number(point.bpm)
   }))
 
   if (
@@ -160,7 +155,7 @@ export const normalizeMixtapeGlobalBpmEnvelopePoints = (
   ) {
     return buildFlatMixtapeGlobalBpmEnvelope(
       durationSec,
-      normalizedPoints[0]?.bpm ?? roundGlobalBpm(defaultBpm)
+      normalizedPoints[0]?.bpm ?? normalizedDefaultBpm
     )
   }
 
@@ -276,13 +271,18 @@ export const applyMixtapeGlobalTempoTargetsToTracks = (
 ) =>
   tracks.map((track) => {
     const fallbackBpm =
-      normalizeBpm(track.gridBaseBpm) ??
-      normalizeBpm(track.originalBpm) ??
-      normalizeBpm(track.bpm) ??
+      normalizeTrackBpmValue(track.gridBaseBpm) ??
+      normalizeTrackBpmValue(track.originalBpm) ??
+      normalizeTrackBpmValue(track.bpm) ??
       128
+    const clampRange = resolveTrackBpmEnvelopeClampRange(fallbackBpm)
     return {
       ...track,
-      bpm: sampleMixtapeGlobalBpmAtSec(globalPoints, resolveTrackStartSec(track), fallbackBpm)
+      bpm: clampTrackTempoNumber(
+        sampleMixtapeGlobalBpmAtSec(globalPoints, resolveTrackStartSec(track), fallbackBpm),
+        clampRange.minBpm,
+        clampRange.maxBpm
+      )
     }
   })
 

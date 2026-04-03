@@ -14,7 +14,8 @@ export const PREVIEW_MAX_SAMPLES_PER_PIXEL = 180
 export const PREVIEW_PLAY_MAX_SAMPLES_PER_PIXEL = 20
 export const PREVIEW_PLAY_ANCHOR_RATIO = 1 / 3
 export const PREVIEW_SHORTCUT_FALLBACK_BPM = 128
-export const PREVIEW_BPM_DECIMALS = 2
+export const PREVIEW_BPM_INTERNAL_DECIMALS = 6
+export const PREVIEW_BPM_DISPLAY_DECIMALS = 2
 export const PREVIEW_BPM_STEP = 0.01
 export const PREVIEW_BPM_MIN = 1
 export const PREVIEW_BPM_MAX = 300
@@ -48,11 +49,11 @@ export const normalizePreviewBpm = (value: unknown) => {
   const numeric = Number(value)
   if (!Number.isFinite(numeric) || numeric <= 0) return PREVIEW_SHORTCUT_FALLBACK_BPM
   const clamped = Math.max(PREVIEW_BPM_MIN, Math.min(PREVIEW_BPM_MAX, numeric))
-  return Number(clamped.toFixed(PREVIEW_BPM_DECIMALS))
+  return Number(clamped.toFixed(PREVIEW_BPM_INTERNAL_DECIMALS))
 }
 
 export const formatPreviewBpm = (value: unknown) =>
-  normalizePreviewBpm(value).toFixed(PREVIEW_BPM_DECIMALS)
+  normalizePreviewBpm(value).toFixed(PREVIEW_BPM_DISPLAY_DECIMALS)
 
 export const parsePreviewBpmInput = (value: string) => {
   const normalized = String(value || '')

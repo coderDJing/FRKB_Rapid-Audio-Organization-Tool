@@ -312,6 +312,72 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     }
   }
 
+  const onSongGridUpdated = (
+    _e: unknown,
+    payload: {
+      filePath?: string
+      bpm?: number
+      firstBeatMs?: number
+      barBeatOffset?: number
+    }
+  ) => {
+    const filePath = typeof payload?.filePath === 'string' ? payload.filePath : ''
+    if (!filePath) return
+
+    const hasBpm = typeof payload?.bpm === 'number' && Number.isFinite(payload.bpm)
+    const hasFirstBeatMs =
+      typeof payload?.firstBeatMs === 'number' && Number.isFinite(payload.firstBeatMs)
+    const hasBarBeatOffset =
+      typeof payload?.barBeatOffset === 'number' && Number.isFinite(payload.barBeatOffset)
+    if (!hasBpm && !hasFirstBeatMs && !hasBarBeatOffset) return
+
+    const applyGridPatch = (song: ISongInfo): ISongInfo => {
+      let touched = false
+      const nextSong: ISongInfo = { ...song }
+      if (hasBpm && nextSong.bpm !== payload.bpm) {
+        nextSong.bpm = payload.bpm
+        touched = true
+      }
+      if (hasFirstBeatMs && nextSong.firstBeatMs !== payload.firstBeatMs) {
+        nextSong.firstBeatMs = payload.firstBeatMs
+        touched = true
+      }
+      if (hasBarBeatOffset && nextSong.barBeatOffset !== payload.barBeatOffset) {
+        nextSong.barBeatOffset = payload.barBeatOffset
+        touched = true
+      }
+      return touched ? nextSong : song
+    }
+
+    let touched = false
+    const nextOriginal = originalSongInfoArr.value.map((item) => {
+      if (item.filePath !== filePath) return item
+      const nextItem = applyGridPatch(item)
+      if (nextItem !== item) touched = true
+      return nextItem
+    })
+    if (touched) {
+      originalSongInfoArr.value = markRaw(nextOriginal)
+      scheduleApply()
+    }
+
+    if (runtime.playingData.playingSong?.filePath === filePath) {
+      runtime.playingData.playingSong = applyGridPatch(runtime.playingData.playingSong)
+    }
+
+    if (runtime.playingData.playingSongListData.length > 0) {
+      runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map(
+        (item) => (item.filePath === filePath ? applyGridPatch(item) : item)
+      )
+    }
+
+    if (runtime.externalPlaylist.songs.length > 0) {
+      runtime.externalPlaylist.songs = runtime.externalPlaylist.songs.map((item) =>
+        item.filePath === filePath ? applyGridPatch(item) : item
+      )
+    }
+  }
+
   onMounted(() => {
     emitter.on('songsArea/optimistic-remove', onSongsOptimisticallyRemoved)
     emitter.on('songsArea/optimistic-restore', onSongsOptimisticallyRestored)
@@ -320,6 +386,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     emitter.on('external-playlist/refresh', onExternalPlaylistRefresh)
     window.electron.ipcRenderer.on('song-key-updated', onSongKeyUpdated)
     window.electron.ipcRenderer.on('song-bpm-updated', onSongBpmUpdated)
+    window.electron.ipcRenderer.on('song-grid-updated', onSongGridUpdated)
   })
 
   onUnmounted(() => {
@@ -330,6 +397,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     emitter.off('external-playlist/refresh', onExternalPlaylistRefresh)
     window.electron.ipcRenderer.removeListener('song-key-updated', onSongKeyUpdated)
     window.electron.ipcRenderer.removeListener('song-bpm-updated', onSongBpmUpdated)
+    window.electron.ipcRenderer.removeListener('song-grid-updated', onSongGridUpdated)
   })
 
   // 导入完成后重新打开歌单

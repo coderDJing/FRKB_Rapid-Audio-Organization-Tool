@@ -28,7 +28,10 @@ import {
 } from '@renderer/composables/mixtape/mixxxSyncModel'
 import { resolveRoundedTrackLocalPx } from '@renderer/composables/mixtape/timelinePixelMath'
 import { buildTrackRuntimeTempoSnapshot } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
-import { buildFlatTrackBpmEnvelope } from '@renderer/composables/mixtape/trackTempoModel'
+import {
+  buildFlatTrackBpmEnvelope,
+  formatTrackBpmDisplay
+} from '@renderer/composables/mixtape/trackTempoModel'
 import {
   buildGainEnvelopePolylineByControlPoints,
   normalizeGainEnvelopePoints,
@@ -201,8 +204,7 @@ export const createTimelineHelpersModule = (ctx: any) => {
   }
 
   const formatTrackBpm = (value?: number) => {
-    if (typeof value !== 'number' || !Number.isFinite(value)) return 'N/A'
-    return value.toFixed(3).replace(/\.?0+$/, '')
+    return formatTrackBpmDisplay(value)
   }
 
   const useHalfWaveform = () => false

@@ -2,6 +2,8 @@ import type { MixtapeBpmPoint, MixtapeTrack } from '@renderer/composables/mixtap
 
 export const BPM_POINT_SEC_EPSILON = 0.0001
 export const BPM_MIN_VALUE = 1
+export const TRACK_BPM_INTERNAL_DECIMALS = 6
+export const TRACK_BPM_DISPLAY_DECIMALS = 2
 const TRACK_TEMPO_ROUND_FACTOR = 10000
 
 const BPM_MAX_POINTS_PER_SEC = 2
@@ -24,10 +26,13 @@ export const roundTrackTempoSec = (value: number) => {
   )
 }
 
+const roundTrackBpmInternal = (value: number) =>
+  Number(Number(value).toFixed(TRACK_BPM_INTERNAL_DECIMALS))
+
 const normalizeTrackBpmPointValue = (value: unknown): number | null => {
   const numeric = Number(value)
   if (!Number.isFinite(numeric) || numeric <= BPM_MIN_VALUE) return null
-  return Math.max(BPM_MIN_VALUE, Number(numeric.toFixed(4)))
+  return Math.max(BPM_MIN_VALUE, roundTrackBpmInternal(numeric))
 }
 
 const collapseBoundaryBpmPoints = (
@@ -72,7 +77,13 @@ const collapseBoundaryBpmPoints = (
 export const normalizeTrackBpmValue = (value: unknown): number | null => {
   const numeric = Number(value)
   if (!Number.isFinite(numeric) || numeric <= BPM_MIN_VALUE) return null
-  return Math.max(BPM_MIN_VALUE, Number(numeric.toFixed(4)))
+  return Math.max(BPM_MIN_VALUE, roundTrackBpmInternal(numeric))
+}
+
+export const formatTrackBpmDisplay = (value: unknown, fallback: string = 'N/A') => {
+  const normalized = normalizeTrackBpmValue(value)
+  if (normalized === null) return fallback
+  return normalized.toFixed(TRACK_BPM_DISPLAY_DECIMALS).replace(/\.?0+$/, '')
 }
 
 export const resolveTrackBpmEnvelopeBaseValue = (
@@ -98,8 +109,8 @@ export const resolveTrackGridSourceBpm = (
 }
 
 export const resolveTrackBpmEnvelopeClampRange = (baseBpm: number) => ({
-  minBpm: Math.max(BPM_MIN_VALUE, Number((baseBpm * BPM_CLAMP_MIN_MULTIPLIER).toFixed(4))),
-  maxBpm: Math.max(BPM_MIN_VALUE, Number((baseBpm * BPM_CLAMP_MAX_MULTIPLIER).toFixed(4)))
+  minBpm: Math.max(BPM_MIN_VALUE, roundTrackBpmInternal(baseBpm * BPM_CLAMP_MIN_MULTIPLIER)),
+  maxBpm: Math.max(BPM_MIN_VALUE, roundTrackBpmInternal(baseBpm * BPM_CLAMP_MAX_MULTIPLIER))
 })
 
 export const buildFlatTrackBpmEnvelope = (durationSec: number, bpm: number): MixtapeBpmPoint[] => {

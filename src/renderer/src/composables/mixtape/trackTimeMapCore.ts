@@ -132,7 +132,7 @@ export const sampleTrackBpmEnvelopeAtSec = (
     const prev = points[Math.max(0, index - 1)] || points[0]
     const span = Math.max(BPM_POINT_SEC_EPSILON, point.sec - prev.sec)
     const ratio = clampTrackTempoNumber((safeSec - prev.sec) / span, 0, 1)
-    return Number((prev.bpm + (point.bpm - prev.bpm) * ratio).toFixed(4))
+    return Number((prev.bpm + (point.bpm - prev.bpm) * ratio).toFixed(6))
   }
   return points[points.length - 1]?.bpm ?? fallbackBpm
 }

@@ -39,6 +39,11 @@ const sanitizeUiSettings = (input: Record<string, unknown>): UiSettings => {
   for (const key of UI_SETTING_KEYS) {
     const value = input[key]
     switch (key) {
+      case 'mainWindowBrowseMode':
+        if (value === 'browser' || value === 'horizontal') {
+          output[key] = value
+        }
+        break
       case 'hiddenPlayControlArea':
       case 'autoPlayNextSong':
       case 'enablePlaybackRange':

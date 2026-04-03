@@ -53,6 +53,12 @@ import {
   reconcileMixtapeMissingFiles
 } from './mixtapeHandlers.shared'
 import {
+  loadSharedSongGridDefinition,
+  persistSharedSongGridDefinition,
+  type SharedSongGridDefinition
+} from '../services/sharedSongGrid'
+import { emitSongGridUpdated } from '../services/songGridEvents'
+import {
   runMixtapeOutput,
   type MixtapeOutputInput,
   type MixtapeOutputProgressPayload
@@ -61,6 +67,31 @@ import { moveOrCopyItemWithCheckIsExist, runWithConcurrency, waitForUserDecision
 import { getMixtapeVaultRootAbs } from '../recycleBinService'
 
 export function registerMixtapeHandlers() {
+  const persistAndBroadcastSharedGridBatch = async (
+    entries: SharedSongGridDefinition[]
+  ): Promise<void> => {
+    const normalizedEntries = entries.filter(
+      (item) =>
+        typeof item?.filePath === 'string' &&
+        item.filePath.trim().length > 0 &&
+        (item.bpm !== undefined ||
+          item.firstBeatMs !== undefined ||
+          item.barBeatOffset !== undefined)
+    )
+    if (!normalizedEntries.length) return
+    const results = await Promise.allSettled(
+      normalizedEntries.map((item) => persistSharedSongGridDefinition(item))
+    )
+    for (let index = 0; index < results.length; index += 1) {
+      const result = results[index]
+      if (result.status === 'fulfilled' && result.value) {
+        emitSongGridUpdated(result.value)
+        continue
+      }
+      emitSongGridUpdated(normalizedEntries[index])
+    }
+  }
+
   const broadcastMixtapeItemsRemoved = (
     sender: Electron.WebContents | null,
     payload: {
@@ -560,6 +591,13 @@ export function registerMixtapeHandlers() {
             .then((bpmResult) => {
               if (bpmResult.results.length > 0) {
                 upsertMixtapeItemBpmByFilePath(bpmResult.results)
+                void persistAndBroadcastSharedGridBatch(
+                  bpmResult.results.map((item) => ({
+                    filePath: item.filePath,
+                    bpm: item.bpm,
+                    firstBeatMs: item.firstBeatMs
+                  }))
+                )
                 try {
                   mixtapeWindow.broadcast?.('mixtape-bpm-batch-ready', {
                     results: bpmResult.results
@@ -621,6 +659,13 @@ export function registerMixtapeHandlers() {
       const result = await analyzeMixtapeBpmBatchShared(input)
       if (result.results.length > 0) {
         upsertMixtapeItemBpmByFilePath(result.results)
+        await persistAndBroadcastSharedGridBatch(
+          result.results.map((item) => ({
+            filePath: item.filePath,
+            bpm: item.bpm,
+            firstBeatMs: item.firstBeatMs
+          }))
+        )
       }
       return result
     } catch (error) {
@@ -673,6 +718,12 @@ export function registerMixtapeHandlers() {
     }
   })
 
+  ipcMain.handle('song:get-shared-grid-definition', async (_e, payload?: { filePath?: string }) => {
+    const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
+    if (!filePath) return null
+    return loadSharedSongGridDefinition(filePath)
+  })
+
   ipcMain.handle(
     'mixtape:update-grid-definition',
     async (
@@ -689,7 +740,7 @@ export function registerMixtapeHandlers() {
       if (!filePath || (!hasOffset && !hasFirstBeatMs && !hasBpm)) {
         return { updated: 0 }
       }
-      return upsertMixtapeItemGridByFilePath([
+      const result = upsertMixtapeItemGridByFilePath([
         {
           filePath,
           barBeatOffset: hasOffset ? rawOffset : 0,
@@ -697,6 +748,15 @@ export function registerMixtapeHandlers() {
           bpm: hasBpm ? rawBpm : undefined
         }
       ])
+      await persistAndBroadcastSharedGridBatch([
+        {
+          filePath,
+          barBeatOffset: hasOffset ? rawOffset : undefined,
+          firstBeatMs: hasFirstBeatMs ? rawFirstBeatMs : undefined,
+          bpm: hasBpm ? rawBpm : undefined
+        }
+      ])
+      return result
     }
   )
 

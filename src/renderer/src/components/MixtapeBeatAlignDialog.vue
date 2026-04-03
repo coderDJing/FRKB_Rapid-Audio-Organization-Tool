@@ -16,7 +16,7 @@ import {
   OVERVIEW_WAVEFORM_VERTICAL_PADDING,
   PREVIEW_BAR_BEAT_INTERVAL,
   PREVIEW_BAR_LINE_HIT_RADIUS_PX,
-  PREVIEW_BPM_DECIMALS,
+  PREVIEW_BPM_DISPLAY_DECIMALS,
   PREVIEW_BPM_MAX,
   PREVIEW_BPM_MIN,
   PREVIEW_BPM_STEP,
@@ -134,7 +134,10 @@ const createRawPlaceholderMixxxData = (rawData: RawWaveformData): MixxxWaveformD
   return {
     duration: Math.max(0, Number(rawData.duration) || 0),
     sampleRate: Math.max(1, Number(rawData.sampleRate) || 1),
-    step: Math.max(1, Math.floor((Number(rawData.sampleRate) || 1) / Math.max(1, Number(rawData.rate) || 1))),
+    step: Math.max(
+      1,
+      Math.floor((Number(rawData.sampleRate) || 1) / Math.max(1, Number(rawData.rate) || 1))
+    ),
     bands: {
       low: { left: single(low), right: single(low) },
       mid: { left: single(mid), right: single(mid) },
@@ -149,7 +152,7 @@ const previewRenderer = createBeatAlignPreviewRenderer()
 const bpmDisplay = computed(() => {
   const bpmValue = Number(previewBpm.value)
   if (!Number.isFinite(bpmValue) || bpmValue <= 0) return 'N/A'
-  return bpmValue.toFixed(PREVIEW_BPM_DECIMALS)
+  return bpmValue.toFixed(PREVIEW_BPM_DISPLAY_DECIMALS)
 })
 
 const trackKeyDisplay = computed(() => {

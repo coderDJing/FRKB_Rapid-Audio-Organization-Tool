@@ -18,6 +18,7 @@ type BeatAlignPreviewRenderInput = {
   showCenterLine: boolean
   showBackground?: boolean
   showBeatGrid?: boolean
+  allowScrollReuse?: boolean
   waveformLayout?: 'full' | 'top-half' | 'bottom-half'
 }
 
@@ -50,9 +51,17 @@ type FrameState = {
   waveformLayout: 'full' | 'top-half' | 'bottom-half'
 }
 
-const SCROLL_SHIFT_EPSILON_PX = 0.05
-
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+
+const applyCanvasScaleTransform = (
+  ctx: CanvasRenderingContext2D,
+  scaleX: number,
+  scaleY: number
+) => {
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.imageSmoothingEnabled = false
+  ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0)
+}
 
 const ensureCanvasMetrics = (
   canvas: HTMLCanvasElement,
@@ -72,8 +81,7 @@ const ensureCanvasMetrics = (
   if (previousHeight !== scaledHeight) {
     canvas.height = scaledHeight
   }
-  ctx.setTransform(1, 0, 0, 1, 0, 0)
-  ctx.setTransform(metrics.scaleX, 0, 0, metrics.scaleY, 0, 0)
+  applyCanvasScaleTransform(ctx, metrics.scaleX, metrics.scaleY)
   return {
     cssWidth,
     cssHeight,
@@ -173,7 +181,7 @@ export const createBeatAlignPreviewRenderer = () => {
       state.rangeStartSec + (safeSegmentX / metrics.cssWidth) * state.rangeDurationSec
     const segmentDurationSec = (safeSegmentWidth / metrics.cssWidth) * state.rangeDurationSec
 
-    segment.ctx.setTransform(metrics.scaleX, 0, 0, metrics.scaleY, 0, 0)
+    applyCanvasScaleTransform(segment.ctx, metrics.scaleX, metrics.scaleY)
     segment.ctx.clearRect(0, 0, safeSegmentWidth, metrics.cssHeight)
     drawBeatAlignRekordboxWaveform(segment.ctx, {
       width: safeSegmentWidth,
@@ -251,55 +259,66 @@ export const createBeatAlignPreviewRenderer = () => {
     }
 
     let reused = false
-    if (canReusePreviousFrame(state, metrics) && lastFrame) {
-      const shiftPx =
+    if (input.allowScrollReuse !== false && canReusePreviousFrame(state, metrics) && lastFrame) {
+      const shiftScaledPx = Math.round(
         ((state.rangeStartSec - lastFrame.rangeStartSec) / state.rangeDurationSec) *
-        metrics.cssWidth
-      const absShiftPx = Math.abs(shiftPx)
-      if (absShiftPx >= SCROLL_SHIFT_EPSILON_PX && absShiftPx < metrics.cssWidth - 0.5) {
+          metrics.scaledWidth
+      )
+      const absShiftScaledPx = Math.abs(shiftScaledPx)
+      if (absShiftScaledPx >= 1 && absShiftScaledPx < metrics.scaledWidth) {
         const scratch = ensureScrollScratch(metrics.scaledWidth, metrics.scaledHeight)
         if (scratch) {
           scratch.ctx.setTransform(1, 0, 0, 1, 0, 0)
+          scratch.ctx.imageSmoothingEnabled = false
           scratch.ctx.clearRect(0, 0, metrics.scaledWidth, metrics.scaledHeight)
           scratch.ctx.drawImage(input.canvas, 0, 0)
 
-          ctx.clearRect(0, 0, metrics.cssWidth, metrics.cssHeight)
+          ctx.setTransform(1, 0, 0, 1, 0, 0)
+          ctx.imageSmoothingEnabled = false
+          ctx.clearRect(0, 0, metrics.scaledWidth, metrics.scaledHeight)
 
-          const keepWidth = Math.max(0, metrics.cssWidth - absShiftPx)
-          if (keepWidth > 0) {
-            if (shiftPx > 0) {
+          const keepScaledWidth = Math.max(0, metrics.scaledWidth - absShiftScaledPx)
+          if (keepScaledWidth > 0) {
+            if (shiftScaledPx > 0) {
               ctx.drawImage(
                 scratch.canvas,
-                absShiftPx * metrics.scaleX,
+                absShiftScaledPx,
                 0,
-                keepWidth * metrics.scaleX,
+                keepScaledWidth,
                 metrics.scaledHeight,
                 0,
                 0,
-                keepWidth,
-                metrics.cssHeight
+                keepScaledWidth,
+                metrics.scaledHeight
               )
             } else {
               ctx.drawImage(
                 scratch.canvas,
                 0,
                 0,
-                keepWidth * metrics.scaleX,
+                keepScaledWidth,
                 metrics.scaledHeight,
-                absShiftPx,
+                absShiftScaledPx,
                 0,
-                keepWidth,
-                metrics.cssHeight
+                keepScaledWidth,
+                metrics.scaledHeight
               )
             }
           }
 
-          if (shiftPx > 0) {
-            const segmentX = Math.max(0, Math.floor(keepWidth) - 1)
+          applyCanvasScaleTransform(ctx, metrics.scaleX, metrics.scaleY)
+
+          const absShiftCssPx = absShiftScaledPx / metrics.scaleX
+          if (shiftScaledPx > 0) {
+            const keepCssWidth = Math.max(0, metrics.cssWidth - absShiftCssPx)
+            const segmentX = Math.max(0, Math.floor(keepCssWidth) - 1)
             const segmentWidth = Math.max(1, metrics.cssWidth - segmentX)
             drawSegment(ctx, metrics, state, segmentX, segmentWidth)
           } else {
-            const segmentWidth = Math.max(1, Math.min(metrics.cssWidth, Math.ceil(absShiftPx) + 1))
+            const segmentWidth = Math.max(
+              1,
+              Math.min(metrics.cssWidth, Math.ceil(absShiftCssPx) + 1)
+            )
             drawSegment(ctx, metrics, state, 0, segmentWidth)
           }
           reused = true

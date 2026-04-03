@@ -40,7 +40,7 @@ export const normalizeFirstBeatMs = (value: unknown) => {
 export const normalizeBpm = (value: unknown) => {
   const numeric = Number(value)
   if (!Number.isFinite(numeric) || numeric <= 0) return null
-  return Number(numeric.toFixed(2))
+  return Number(numeric.toFixed(6))
 }
 
 const normalizeStemStatus = (

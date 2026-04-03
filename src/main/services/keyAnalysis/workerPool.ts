@@ -88,7 +88,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     }
 
     if (!partialResult.bpmError && isValidBpm(partialResult.bpm)) {
-      await deps.persistence.persistBpm(job.filePath, partialResult.bpm)
+      await deps.persistence.persistBpm(job.filePath, partialResult.bpm, partialResult.firstBeatMs)
       bpmPersisted = true
     }
 
@@ -250,7 +250,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     if (job && payloadResult && !payloadResult.bpmError) {
       const bpmValue = payloadResult.bpm
       if (isValidBpm(bpmValue)) {
-        await deps.persistence.persistBpm(job.filePath, bpmValue)
+        await deps.persistence.persistBpm(job.filePath, bpmValue, payloadResult.firstBeatMs)
       }
     }
 

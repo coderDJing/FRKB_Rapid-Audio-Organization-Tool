@@ -43,7 +43,7 @@ const labelImportTo = (libraryKey: 'library.filter' | 'library.curated') => {
   return tpl.replace('{libraryType}', lib)
 }
 
-const setMacMainWindowBrowseMode = (mode: MainWindowBrowseMode) => {
+export const setMacMainWindowBrowseMode = (mode: MainWindowBrowseMode) => {
   mainWindowBrowseMode = mode
 }
 

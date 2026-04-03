@@ -255,6 +255,10 @@ const getCellValue = (song: ISongInfo, colKey: string): string | number => {
     return getOriginalPlaylistDisplay(song)
   }
   const raw = (song as any)[colKey]
+  if (colKey === 'bpm') {
+    const bpm = Number(raw)
+    return Number.isFinite(bpm) && bpm > 0 ? bpm.toFixed(2) : ''
+  }
   if (raw === undefined || raw === null) return ''
   return raw as string | number
 }

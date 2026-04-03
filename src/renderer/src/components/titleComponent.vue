@@ -425,6 +425,8 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
 }
 
 .titleComponent {
+  position: relative;
+  z-index: 10100;
   width: 100vw;
   height: 35px;
   display: flex;

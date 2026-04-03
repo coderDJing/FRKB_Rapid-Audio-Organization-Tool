@@ -144,6 +144,7 @@ const remainingText = computed(() => `-${formatSeconds(remainingSeconds.value)}`
 watch(
   () => props.song?.filePath ?? '',
   () => {
+    hoverCardVisible.value = false
     void loadCover()
   },
   { immediate: true }
@@ -158,7 +159,7 @@ onUnmounted(() => {
   <div class="deck-info-card">
     <div
       class="deck-info-card__cover-anchor"
-      @mouseenter="hoverCardVisible = true"
+      @mouseenter="props.song && (hoverCardVisible = true)"
       @mouseleave="hoverCardVisible = false"
     >
       <div class="deck-info-card__cover">
@@ -167,8 +168,8 @@ onUnmounted(() => {
       </div>
 
       <transition name="fade">
-        <div v-if="hoverCardVisible" class="deck-info-card__hover-card">
-          <div class="deck-info-card__hover-cover unselectable">
+        <div v-if="props.song && hoverCardVisible" class="deck-info-card__hover-card">
+          <div class="deck-info-card__hover-cover">
             <img
               v-if="coverUrl"
               :src="coverUrl"
@@ -293,6 +294,8 @@ onUnmounted(() => {
   box-sizing: border-box;
   color: var(--text);
   z-index: 10050;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .deck-info-card__hover-cover {
