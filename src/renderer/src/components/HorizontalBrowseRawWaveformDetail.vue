@@ -1037,6 +1037,7 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
     ></canvas>
     <div class="raw-detail-waveform__playhead"></div>
     <HorizontalBrowseCueMarker
+      v-if="props.song"
       :cue-seconds="props.cueSeconds"
       :preview-start-sec="previewStartSec"
       :visible-duration-sec="resolveVisibleDurationSec()"

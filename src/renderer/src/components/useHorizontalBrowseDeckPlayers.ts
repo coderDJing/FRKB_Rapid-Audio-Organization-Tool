@@ -29,9 +29,11 @@ type CreateDeckControllerResult = {
   playing: Ref<boolean>
   ready: Ref<boolean>
   cuePointSeconds: Ref<number>
+  volume: Ref<number>
   loadSong: (song: ISongInfo | null) => void
   syncDefaultCue: (song: ISongInfo | null, force?: boolean) => void
   seekTo: (seconds: number) => void
+  setVolume: (volume: number) => void
   togglePlayPause: () => void
   cue: (song: ISongInfo | null) => void
   stop: () => void
@@ -50,11 +52,14 @@ const createDeckController = (deck: HorizontalBrowseDeckKey): CreateDeckControll
   const playing = ref(false)
   const ready = ref(false)
   const cuePointSeconds = ref(0)
+  const volume = ref(1)
   const cueCustomized = ref(false)
   let requestSerial = 0
   let activeRequestId = ''
   let activeFilePath = ''
   let lastPublishedAt = 0
+
+  player.setVolume(volume.value)
 
   const resetState = () => {
     currentSeconds.value = 0
@@ -194,6 +199,12 @@ const createDeckController = (deck: HorizontalBrowseDeckKey): CreateDeckControll
     currentSeconds.value = nextCuePoint
   }
 
+  const setVolume = (nextVolume: number) => {
+    const safeVolume = Number.isFinite(nextVolume) && nextVolume >= 0 ? Math.min(1, nextVolume) : 0
+    volume.value = safeVolume
+    player.setVolume(safeVolume)
+  }
+
   const matchesRequestId = (requestId: string) =>
     normalizeRequestId(requestId) !== '' && normalizeRequestId(requestId) === activeRequestId
 
@@ -230,9 +241,11 @@ const createDeckController = (deck: HorizontalBrowseDeckKey): CreateDeckControll
     playing,
     ready,
     cuePointSeconds,
+    volume,
     loadSong,
     syncDefaultCue,
     seekTo,
+    setVolume,
     togglePlayPause,
     cue,
     stop,
@@ -292,10 +305,12 @@ export const useHorizontalBrowseDeckPlayers = () => {
     topDeckDurationSeconds: topDeck.durationSeconds,
     topDeckPlaying: topDeck.playing,
     topDeckCuePointSeconds: topDeck.cuePointSeconds,
+    topDeckVolume: topDeck.volume,
     bottomDeckCurrentSeconds: bottomDeck.currentSeconds,
     bottomDeckDurationSeconds: bottomDeck.durationSeconds,
     bottomDeckPlaying: bottomDeck.playing,
     bottomDeckCuePointSeconds: bottomDeck.cuePointSeconds,
+    bottomDeckVolume: bottomDeck.volume,
     loadDeckSong: (deck: HorizontalBrowseDeckKey, song: ISongInfo | null) => {
       if (deck === 'top') {
         topDeck.loadSong(song)
@@ -316,6 +331,13 @@ export const useHorizontalBrowseDeckPlayers = () => {
         return
       }
       bottomDeck.seekTo(seconds)
+    },
+    setDeckVolume: (deck: HorizontalBrowseDeckKey, volume: number) => {
+      if (deck === 'top') {
+        topDeck.setVolume(volume)
+        return
+      }
+      bottomDeck.setVolume(volume)
     },
     toggleDeckPlayPause: (deck: HorizontalBrowseDeckKey) => {
       if (deck === 'top') {

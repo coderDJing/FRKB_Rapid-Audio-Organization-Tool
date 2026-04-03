@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
 import HorizontalBrowseDeckInfoCard from '@renderer/components/HorizontalBrowseDeckInfoCard.vue'
 import HorizontalBrowseRawWaveformDetail from '@renderer/components/HorizontalBrowseRawWaveformDetail.vue'
@@ -53,12 +53,14 @@ const createDefaultDeckToolbarState = (): DeckToolbarState => ({
   bpmMax: 300,
   barLinePicking: false
 })
+const FADER_TRAVEL_INSET_RATIO = 0.17
 
 const runtime = useRuntimeStore()
 const topDeckSong = ref<ISongInfo | null>(null)
 const bottomDeckSong = ref<ISongInfo | null>(null)
 const topDetailRef = ref<any | null>(null)
 const bottomDetailRef = ref<any | null>(null)
+const faderRef = ref<HTMLElement | null>(null)
 const topDeckToolbarState = ref<DeckToolbarState>(createDefaultDeckToolbarState())
 const bottomDeckToolbarState = ref<DeckToolbarState>(createDefaultDeckToolbarState())
 const topDeckBeatSyncActive = ref(false)
@@ -66,6 +68,8 @@ const topDeckMasterActive = ref(true)
 const bottomDeckBeatSyncActive = ref(false)
 const bottomDeckMasterActive = ref(false)
 const hoveredDeckKey = ref<DeckKey | null>(null)
+const faderDragging = ref(false)
+const faderValue = ref(0)
 const sharedDetailZoomState = ref<SharedDetailZoomState>({
   value: HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM,
   anchorRatio: 0.5,
@@ -85,7 +89,8 @@ const regionDragDepth = reactive<Record<number, number>>({
 
 const faderTicks = Array.from({ length: 9 }, (_, index) => ({
   id: index,
-  major: index === 0 || index === 4 || index === 8
+  major: index === 0 || index === 4 || index === 8,
+  center: index === 4
 }))
 
 // 双轨横推区域编号约定，后续对话里默认按这套指代：
@@ -113,12 +118,89 @@ const {
   bottomDeckPlaying,
   bottomDeckCuePointSeconds,
   loadDeckSong,
+  setDeckVolume,
   syncDeckDefaultCue,
   seekDeck,
   toggleDeckPlayPause,
   cueDeck,
   stopDeck
 } = useHorizontalBrowseDeckPlayers()
+
+const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+
+const resolveCrossfaderVolumes = (value: number) => {
+  const safeValue = clampNumber(value, -1, 1)
+  if (safeValue <= 0) {
+    return {
+      top: 1 + safeValue,
+      bottom: 1
+    }
+  }
+  return {
+    top: 1,
+    bottom: 1 - safeValue
+  }
+}
+
+const applyCrossfaderVolumes = (value: number) => {
+  const volumes = resolveCrossfaderVolumes(value)
+  setDeckVolume('top', volumes.top)
+  setDeckVolume('bottom', volumes.bottom)
+}
+
+const syncCrossfaderValue = (value: number) => {
+  faderValue.value = clampNumber(value, -1, 1)
+  applyCrossfaderVolumes(faderValue.value)
+}
+
+const resolveCrossfaderValueByClientY = (clientY: number) => {
+  const rect = faderRef.value?.getBoundingClientRect()
+  if (!rect || rect.height <= 0) return faderValue.value
+  const travelInsetPx = rect.height * FADER_TRAVEL_INSET_RATIO
+  const travelHeight = Math.max(1, rect.height - travelInsetPx * 2)
+  const relativeY = clampNumber(clientY - rect.top - travelInsetPx, 0, travelHeight)
+  return (relativeY / travelHeight) * 2 - 1
+}
+
+const stopFaderDragging = () => {
+  if (!faderDragging.value) return
+  faderDragging.value = false
+  window.removeEventListener('pointermove', handleWindowFaderPointerMove)
+  window.removeEventListener('pointerup', handleWindowFaderPointerUp)
+  window.removeEventListener('pointercancel', handleWindowFaderPointerUp)
+}
+
+const handleWindowFaderPointerMove = (event: PointerEvent) => {
+  if (!faderDragging.value) return
+  syncCrossfaderValue(resolveCrossfaderValueByClientY(event.clientY))
+}
+
+const handleWindowFaderPointerUp = () => {
+  stopFaderDragging()
+}
+
+const handleFaderPointerDown = (event: PointerEvent) => {
+  if (event.button !== 0) return
+  event.preventDefault()
+  faderDragging.value = true
+  syncCrossfaderValue(resolveCrossfaderValueByClientY(event.clientY))
+  window.addEventListener('pointermove', handleWindowFaderPointerMove)
+  window.addEventListener('pointerup', handleWindowFaderPointerUp)
+  window.addEventListener('pointercancel', handleWindowFaderPointerUp)
+}
+
+const handleFaderDoubleClick = () => {
+  stopFaderDragging()
+  syncCrossfaderValue(0)
+}
+
+const faderThumbStyle = computed(() => {
+  const travelPercent = FADER_TRAVEL_INSET_RATIO * 100
+  const usablePercent = 100 - travelPercent * 2
+  return {
+    top: `${travelPercent + (faderValue.value + 1) * 0.5 * usablePercent}%`
+  }
+})
 
 const resetRegionDragState = () => {
   hoveredDeckKey.value = null
@@ -419,6 +501,7 @@ const handleSongGridUpdated = (_event: unknown, payload: SharedSongGridPayload) 
 }
 
 onMounted(() => {
+  syncCrossfaderValue(0)
   window.addEventListener('drop', handleGlobalDragFinish, true)
   window.addEventListener('dragend', handleGlobalDragFinish, true)
   emitter.on('horizontalBrowse/load-song', handleExternalDeckSongLoad)
@@ -426,6 +509,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  stopFaderDragging()
   window.removeEventListener('drop', handleGlobalDragFinish, true)
   window.removeEventListener('dragend', handleGlobalDragFinish, true)
   emitter.off('horizontalBrowse/load-song', handleExternalDeckSongLoad)
@@ -462,20 +546,26 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <div class="fader">
+      <div
+        ref="faderRef"
+        class="fader"
+        :class="{ 'is-dragging': faderDragging }"
+        @pointerdown="handleFaderPointerDown"
+        @dblclick.prevent="handleFaderDoubleClick"
+      >
         <div class="fader__scale">
           <div class="fader__scale-inner">
             <span
               v-for="tick in faderTicks"
               :key="`left-${tick.id}`"
               class="fader__tick"
-              :class="{ 'is-major': tick.major }"
+              :class="{ 'is-major': tick.major, 'is-center': tick.center }"
             ></span>
           </div>
         </div>
         <div class="fader__rail">
           <div class="fader__slot"></div>
-          <div class="fader__thumb"></div>
+          <div class="fader__thumb" :style="faderThumbStyle"></div>
         </div>
         <div class="fader__scale">
           <div class="fader__scale-inner">
@@ -483,7 +573,7 @@ onUnmounted(() => {
               v-for="tick in faderTicks"
               :key="`right-${tick.id}`"
               class="fader__tick"
-              :class="{ 'is-major': tick.major }"
+              :class="{ 'is-major': tick.major, 'is-center': tick.center }"
             ></span>
           </div>
         </div>
@@ -792,6 +882,7 @@ onUnmounted(() => {
   padding: 2px 0;
   column-gap: 2px;
   box-sizing: border-box;
+  touch-action: none;
 }
 
 .fader__scale {
@@ -823,6 +914,12 @@ onUnmounted(() => {
   background: var(--shell-grid-major);
 }
 
+.fader__tick.is-center {
+  width: 6px;
+  height: 2px;
+  background: var(--text);
+}
+
 .fader__rail {
   position: relative;
   min-height: 0;
@@ -849,6 +946,18 @@ onUnmounted(() => {
   border: 1px solid var(--shell-border);
   border-radius: 999px;
   background: var(--text);
+  transition: top 0.08s ease;
+}
+
+.fader:hover .fader__thumb,
+.fader.is-dragging .fader__thumb {
+  border-color: color-mix(in srgb, var(--accent) 72%, var(--border));
+  background: color-mix(in srgb, var(--accent) 88%, var(--bg));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.fader.is-dragging .fader__thumb {
+  transition: none;
 }
 
 .waveform-stack {
