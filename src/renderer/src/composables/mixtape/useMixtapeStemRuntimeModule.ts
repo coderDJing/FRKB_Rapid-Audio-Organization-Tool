@@ -443,6 +443,26 @@ export const createUseMixtapeStemRuntimeModule = (
     stemRuntimeDownloadAttemptedKeySet.add(attemptKey)
     stemRuntimeDownloadAttemptBusy = true
     try {
+      const confirmResult = await options.confirmDialog({
+        title: options.t('mixtape.stemRuntimeDownloadPromptTitle'),
+        content: [
+          options.t('mixtape.stemRuntimeDownloadPromptBody', {
+            title: info.title,
+            size: formatStemRuntimeBytes(info.archiveSize)
+          }),
+          options.t('mixtape.stemRuntimeDownloadPromptHint')
+        ],
+        confirmShow: true,
+        confirmText: options.t('mixtape.stemRuntimeDownloadConfirm'),
+        cancelText: options.t('mixtape.stemRuntimeDownloadSkip'),
+        textAlign: 'left',
+        innerWidth: 560,
+        innerHeight: 0
+      })
+      if (confirmResult !== 'confirm') {
+        window.electron.ipcRenderer.send('mixtapeWindow-toggle-close')
+        return
+      }
       const response = await window.electron.ipcRenderer.invoke(
         'mixtape:stem:runtime:download-preferred'
       )
