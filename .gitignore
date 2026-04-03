@@ -46,3 +46,5 @@ vendor/demucs/*
 !vendor/demucs/bootstrap/
 vendor/demucs/bootstrap/*
 !vendor/demucs/bootstrap/mixtape_demucs_bootstrap.py
+
+.codex_tmp

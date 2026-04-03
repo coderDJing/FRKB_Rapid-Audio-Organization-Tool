@@ -28,7 +28,7 @@ function parseList(value, defaults) {
 function parseArgs(argv) {
   const args = {
     root: '.',
-    gt: 1100,
+    gt: 1200,
     ext: ['.ts', '.tsx', '.js', '.jsx', '.vue', '.css', '.scss', '.json', '.md'],
     exclude: ['node_modules', 'dist', 'out', '.git', '.vitepress','vendor'],
     json: false
