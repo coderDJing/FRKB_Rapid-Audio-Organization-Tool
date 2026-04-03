@@ -14,12 +14,15 @@ const globalShortcut = computed(() => {
     needSeparator: true
   }))
 })
+
+const showWelcomeLogo = computed(() => runtime.mainWindowBrowseMode !== 'horizontal')
 </script>
 
 <template>
   <div class="welcome-container">
-    <div class="welcome-content">
+    <div class="welcome-content" :class="{ 'welcome-content--compact': !showWelcomeLogo }">
       <img
+        v-if="showWelcomeLogo"
         :src="welcomeLogo"
         width="150"
         height="150"
@@ -159,6 +162,10 @@ const globalShortcut = computed(() => {
   color: var(--text-weak);
   width: 430px;
   flex-shrink: 0;
+}
+
+.welcome-content--compact {
+  justify-content: center;
 }
 
 .welcome-logo {

@@ -421,7 +421,7 @@ const requestImmediateAnalysis = (song: ISongInfo) => {
   } catch {}
 }
 
-const songDblClick = async (song: ISongInfo) => {
+const songDblClick = async (song: ISongInfo, event?: MouseEvent) => {
   if (runtime.songDragSuppressClickUntilMs > Date.now()) return
   try {
     emitter.emit('waveform-preview:stop', { reason: 'switch' })
@@ -431,6 +431,13 @@ const songDblClick = async (song: ISongInfo) => {
 
   const normalizedSong = { ...song }
   requestImmediateAnalysis(normalizedSong)
+  if (runtime.mainWindowBrowseMode === 'horizontal') {
+    emitter.emit('horizontalBrowse/load-song', {
+      deck: event?.altKey ? 'bottom' : 'top',
+      song: normalizedSong
+    })
+    return
+  }
   const isSameList = runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID
   const isSameSong =
     isSameList && runtime.playingData.playingSong?.filePath === normalizedSong.filePath

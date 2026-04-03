@@ -444,9 +444,7 @@ const requestImmediateAnalysis = (song: ISongInfo) => {
   } catch {}
 }
 
-const handleSongDblClick = (song: ISongInfo) => {
-  const playbackListKey = currentPlaybackListKey.value
-  if (!playbackListKey) return
+const handleSongDblClick = (song: ISongInfo, event?: MouseEvent) => {
   try {
     emitter.emit('waveform-preview:stop', { reason: 'switch' })
   } catch {}
@@ -455,6 +453,15 @@ const handleSongDblClick = (song: ISongInfo) => {
 
   const normalizedSong = { ...song }
   requestImmediateAnalysis(normalizedSong)
+  if (runtime.mainWindowBrowseMode === 'horizontal') {
+    emitter.emit('horizontalBrowse/load-song', {
+      deck: event?.altKey ? 'bottom' : 'top',
+      song: normalizedSong
+    })
+    return
+  }
+  const playbackListKey = currentPlaybackListKey.value
+  if (!playbackListKey) return
   const isSameList = runtime.playingData.playingSongListUUID === playbackListKey
   const isSameSong =
     isSameList && runtime.playingData.playingSong?.filePath === normalizedSong.filePath

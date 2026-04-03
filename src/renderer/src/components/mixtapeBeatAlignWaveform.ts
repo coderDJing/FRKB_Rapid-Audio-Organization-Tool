@@ -15,6 +15,8 @@ type DrawWaveformOptions = {
   maxSamplesPerPixel?: number
   showDetailHighlights?: boolean
   showCenterLine?: boolean
+  showBeatGrid?: boolean
+  waveformLayout?: 'full' | 'top-half' | 'bottom-half'
 }
 
 type WaveformColumn = {
@@ -571,13 +573,15 @@ const drawWaveformColumns = (
     showDetailHighlights?: boolean
     showCenterLine?: boolean
     palette?: BeatAlignWaveformPalette
+    waveformLayout?: 'full' | 'top-half' | 'bottom-half'
   }
 ) => {
   const centerY = Math.round(height / 2)
-  const ampScale = Math.max(1, centerY - 2)
   const showDetailHighlights = options?.showDetailHighlights !== false
   const showCenterLine = options?.showCenterLine !== false
   const palette = options?.palette || DARK_WAVEFORM_PALETTE
+  const waveformLayout = options?.waveformLayout || 'full'
+  const ampScale = waveformLayout === 'full' ? Math.max(1, centerY - 2) : Math.max(1, height - 2)
   ctx.imageSmoothingEnabled = false
 
   for (let x = 0; x < width; x += 1) {
@@ -586,11 +590,23 @@ const drawWaveformColumns = (
     const { r, g, b } = column.color
     const topHeight = Math.max(1, Math.round(column.ampTop * ampScale))
     const bottomHeight = Math.max(1, Math.round(column.ampBottom * ampScale))
-    const y = centerY - topHeight
-    const h = topHeight + bottomHeight
+    const singleHeight = Math.max(topHeight, bottomHeight)
+    let y = centerY - topHeight
+    let h = topHeight + bottomHeight
 
     ctx.fillStyle = `rgb(${r}, ${g}, ${b})`
-    ctx.fillRect(x, y, 1, h)
+
+    if (waveformLayout === 'top-half') {
+      y = Math.max(0, height - singleHeight)
+      h = singleHeight
+      ctx.fillRect(x, y, 1, h)
+    } else if (waveformLayout === 'bottom-half') {
+      y = 0
+      h = singleHeight
+      ctx.fillRect(x, y, 1, h)
+    } else {
+      ctx.fillRect(x, y, 1, h)
+    }
 
     if (showDetailHighlights) {
       const topHighlight = Math.max(0, y)
@@ -598,12 +614,19 @@ const drawWaveformColumns = (
       ctx.fillStyle = `rgba(${palette.detailHighlightBase}, ${
         0.14 + Math.max(column.ampTop, column.ampBottom) * 0.3
       })`
-      ctx.fillRect(x, topHighlight, 1, 1)
-      ctx.fillRect(x, bottomHighlight, 1, 1)
+
+      if (waveformLayout === 'top-half') {
+        ctx.fillRect(x, topHighlight, 1, 1)
+      } else if (waveformLayout === 'bottom-half') {
+        ctx.fillRect(x, bottomHighlight, 1, 1)
+      } else {
+        ctx.fillRect(x, topHighlight, 1, 1)
+        ctx.fillRect(x, bottomHighlight, 1, 1)
+      }
     }
   }
 
-  if (showCenterLine) {
+  if (showCenterLine && waveformLayout === 'full') {
     ctx.fillStyle = palette.centerLine
     ctx.fillRect(0, centerY, width, 1)
   }
@@ -626,7 +649,9 @@ export const drawBeatAlignRekordboxWaveform = (
     showBackground,
     maxSamplesPerPixel,
     showDetailHighlights,
-    showCenterLine
+    showCenterLine,
+    showBeatGrid,
+    waveformLayout
   } = options
   if (width <= 0 || height <= 0) return false
   const palette = resolveWaveformPalette(ctx)
@@ -634,17 +659,19 @@ export const drawBeatAlignRekordboxWaveform = (
   if (showBackground !== false) {
     drawBackground(ctx, width, height, palette)
   }
-  drawBeatGrid(
-    ctx,
-    width,
-    height,
-    bpm,
-    firstBeatMs,
-    Number(barBeatOffset) || 0,
-    rangeStartSec,
-    rangeDurationSec,
-    palette
-  )
+  if (showBeatGrid !== false) {
+    drawBeatGrid(
+      ctx,
+      width,
+      height,
+      bpm,
+      firstBeatMs,
+      Number(barBeatOffset) || 0,
+      rangeStartSec,
+      rangeDurationSec,
+      palette
+    )
+  }
 
   if (!isValidMixxxWaveformData(mixxxData)) return false
   const columns = buildWaveformColumns(
@@ -660,7 +687,8 @@ export const drawBeatAlignRekordboxWaveform = (
   drawWaveformColumns(ctx, width, height, columns, {
     showDetailHighlights,
     showCenterLine,
-    palette
+    palette,
+    waveformLayout
   })
   return true
 }

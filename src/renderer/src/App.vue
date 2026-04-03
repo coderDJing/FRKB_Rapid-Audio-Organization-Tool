@@ -20,6 +20,7 @@ import FileOpInterruptedDialog from './components/fileOpInterruptedDialog.vue'
 import emitter from './utils/mitt'
 import { replaceExternalPlaylistFromPaths } from '@renderer/utils/externalPlaylist'
 import { createClickThroughGuard } from '@renderer/utils/clickThroughGuard'
+import HorizontalBrowseModeShell from '@renderer/components/HorizontalBrowseModeShell.vue'
 
 const runtime = useRuntimeStore()
 const contextMenuClickThroughGuard = createClickThroughGuard()
@@ -42,14 +43,17 @@ const fileOpBatchId = ref('')
 const fileOpSuccessSoFar = ref(0)
 const fileOpFailedSoFar = ref(0)
 const CTRL_DOUBLE_TAP_MS = 260
-const horizontalModeTopSpacerHeight = 180
+const horizontalModeTopSpacerHeight = 372
 const showHorizontalModeTopSpacer = computed(() => runtime.mainWindowBrowseMode === 'horizontal')
 const horizontalModeTopSpacerStyle = computed(() => ({
   height: `${horizontalModeTopSpacerHeight}px`,
   flex: `0 0 ${horizontalModeTopSpacerHeight}px`,
   backgroundColor: 'var(--bg)',
   borderBottom: '1px solid var(--border)',
-  boxSizing: 'border-box' as const
+  boxSizing: 'border-box' as const,
+  position: 'relative' as const,
+  overflow: 'visible' as const,
+  zIndex: 20
 }))
 
 type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
@@ -542,9 +546,11 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
 <template>
   <div style="height: 100%; max-height: 100%; width: 100%; display: flex; flex-direction: column">
     <div style="height: 35px">
-      <titleComponent :hide-logo="showHorizontalModeTopSpacer" @open-dialog="openDialog" />
+      <titleComponent @open-dialog="openDialog" />
     </div>
-    <div v-if="showHorizontalModeTopSpacer" :style="horizontalModeTopSpacerStyle"></div>
+    <div v-if="showHorizontalModeTopSpacer" :style="horizontalModeTopSpacerStyle">
+      <HorizontalBrowseModeShell />
+    </div>
     <div style="flex: 1 1 auto; min-height: 0">
       <homePage />
     </div>

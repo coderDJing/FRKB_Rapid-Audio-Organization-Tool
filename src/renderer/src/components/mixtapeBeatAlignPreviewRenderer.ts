@@ -16,6 +16,9 @@ type BeatAlignPreviewRenderInput = {
   maxSamplesPerPixel: number
   showDetailHighlights: boolean
   showCenterLine: boolean
+  showBackground?: boolean
+  showBeatGrid?: boolean
+  waveformLayout?: 'full' | 'top-half' | 'bottom-half'
 }
 
 type CanvasMetrics = {
@@ -42,6 +45,9 @@ type FrameState = {
   maxSamplesPerPixel: number
   showDetailHighlights: boolean
   showCenterLine: boolean
+  showBackground: boolean
+  showBeatGrid: boolean
+  waveformLayout: 'full' | 'top-half' | 'bottom-half'
 }
 
 const SCROLL_SHIFT_EPSILON_PX = 0.05
@@ -137,10 +143,12 @@ export const createBeatAlignPreviewRenderer = () => {
       rangeDurationSec,
       mixxxData: input.mixxxData,
       rawData: input.rawData,
-      showBackground: false,
+      showBackground: input.showBackground !== false,
+      showBeatGrid: input.showBeatGrid !== false,
       maxSamplesPerPixel: input.maxSamplesPerPixel,
       showDetailHighlights: input.showDetailHighlights,
-      showCenterLine: input.showCenterLine
+      showCenterLine: input.showCenterLine,
+      waveformLayout: input.waveformLayout || 'full'
     })
   }
 
@@ -177,10 +185,12 @@ export const createBeatAlignPreviewRenderer = () => {
       rangeDurationSec: segmentDurationSec,
       mixxxData: state.mixxxData,
       rawData: state.rawData,
-      showBackground: false,
+      showBackground: state.showBackground,
+      showBeatGrid: state.showBeatGrid,
       maxSamplesPerPixel: state.maxSamplesPerPixel,
       showDetailHighlights: state.showDetailHighlights,
-      showCenterLine: state.showCenterLine
+      showCenterLine: state.showCenterLine,
+      waveformLayout: state.waveformLayout
     })
     ctx.drawImage(
       segment.canvas,
@@ -208,7 +218,10 @@ export const createBeatAlignPreviewRenderer = () => {
       lastFrame.rawData === current.rawData &&
       lastFrame.maxSamplesPerPixel === current.maxSamplesPerPixel &&
       lastFrame.showDetailHighlights === current.showDetailHighlights &&
-      lastFrame.showCenterLine === current.showCenterLine
+      lastFrame.showCenterLine === current.showCenterLine &&
+      lastFrame.showBackground === current.showBackground &&
+      lastFrame.showBeatGrid === current.showBeatGrid &&
+      lastFrame.waveformLayout === current.waveformLayout
     )
   }
 
@@ -231,7 +244,10 @@ export const createBeatAlignPreviewRenderer = () => {
       rawData: input.rawData,
       maxSamplesPerPixel: input.maxSamplesPerPixel,
       showDetailHighlights: input.showDetailHighlights,
-      showCenterLine: input.showCenterLine
+      showCenterLine: input.showCenterLine,
+      showBackground: input.showBackground !== false,
+      showBeatGrid: input.showBeatGrid !== false,
+      waveformLayout: input.waveformLayout || 'full'
     }
 
     let reused = false

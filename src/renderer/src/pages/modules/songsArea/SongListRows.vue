@@ -20,6 +20,7 @@ import { useSongRowEvents } from './SongListRows/useSongRowEvents'
 import { useCoverThumbnails } from './SongListRows/useCoverThumbnails'
 import { useKeyAnalysisQueue } from './SongListRows/useKeyAnalysisQueue'
 import { useCoverPreview } from './SongListRows/useCoverPreview'
+import { useSongRowHoverInteractions } from './SongListRows/useSongRowHoverInteractions'
 import { useWaveformPreview } from './SongListRows/useWaveformPreview'
 
 const props = defineProps({
@@ -99,7 +100,7 @@ const props = defineProps({
 const emit = defineEmits<{
   (e: 'song-click', event: MouseEvent, song: ISongInfo): void
   (e: 'song-contextmenu', event: MouseEvent, song: ISongInfo): void
-  (e: 'song-dblclick', song: ISongInfo): void
+  (e: 'song-dblclick', song: ISongInfo, event: MouseEvent): void
   (e: 'song-dragstart', event: DragEvent, song: ISongInfo): void
   (e: 'song-dragend', event: DragEvent): void
   (e: 'mixtape-reorder', payload: { sourceItemIds: string[]; targetIndex: number }): void
@@ -281,10 +282,9 @@ const {
   externalViewportHeight: externalViewportHeightRef
 })
 
-const contentHeight = computed(() => {
-  const vh = effectiveViewportHeight.value || 0
-  return Math.max(totalHeight.value, vh)
-})
+const contentHeight = computed(() =>
+  Math.max(totalHeight.value, effectiveViewportHeight.value || 0)
+)
 
 const shouldSuppressPointerAction = (event?: MouseEvent) => {
   if (runtime.songDragSuppressClickUntilMs <= Date.now()) return false
@@ -297,7 +297,7 @@ const { onRowsClick, onRowsContextmenu, onRowsDblclick } = useSongRowEvents({
   songs: songsRef,
   emitSongClick: (e, song) => emit('song-click', e, song),
   emitSongContextmenu: (e, song) => emit('song-contextmenu', e, song),
-  emitSongDblclick: (song) => emit('song-dblclick', song),
+  emitSongDblclick: (song, event) => emit('song-dblclick', song, event),
   shouldSuppressPointerAction
 })
 
@@ -554,58 +554,21 @@ const handleRowDragStart = (event: DragEvent, item: { song: ISongInfo }) => {
   emit('song-dragstart', event, item.song)
 }
 
-const onRowsMouseOver = (e: MouseEvent) => {
-  const cell = (e.target as HTMLElement)?.closest('.cell-title') as HTMLElement | null
-  if (!cell) return
-  const key = cell.dataset.key
-  if (key) hoveredCellKey.value = key
-}
-const onRowsMouseLeave = (e: MouseEvent) => {
-  const rt = (e && (e.relatedTarget as HTMLElement | null)) || null
-  if (rt && typeof rt.closest === 'function') {
-    if (rt.closest('.frkb-bubble') || rt.closest('.cover-preview-overlay')) {
-      return
-    }
-  }
-  hoveredCellKey.value = null
-  closeCoverPreview()
-}
-
-const handleCoverDblclick = (song: ISongInfo, event: MouseEvent) => {
-  if (shouldSuppressPointerAction(event)) return
-  event.stopPropagation()
-  event.preventDefault()
-  closeCoverPreview()
-  emit('song-dblclick', song)
-}
-
-const handleCoverPreviewDblclick = (event: MouseEvent) => {
-  if (shouldSuppressPointerAction(event)) return
-  event.stopPropagation()
-  event.preventDefault()
-  const idx =
-    coverPreviewState.anchorIndex >= 0
-      ? coverPreviewState.anchorIndex
-      : coverPreviewState.displayIndex
-  const song = typeof idx === 'number' ? songsRef.value?.[idx] : null
-  if (song) {
-    closeCoverPreview()
-    emit('song-dblclick', song)
-  }
-}
-
-const handleCoverPreviewContextmenu = (event: MouseEvent) => {
-  event.stopPropagation()
-  event.preventDefault()
-  const idx =
-    coverPreviewState.displayIndex >= 0
-      ? coverPreviewState.displayIndex
-      : coverPreviewState.anchorIndex
-  const song = typeof idx === 'number' ? songsRef.value?.[idx] : null
-  if (song) {
-    emit('song-contextmenu', event, song)
-  }
-}
+const {
+  onRowsMouseOver,
+  onRowsMouseLeave,
+  handleCoverDblclick,
+  handleCoverPreviewDblclick,
+  handleCoverPreviewContextmenu
+} = useSongRowHoverInteractions({
+  hoveredCellKey,
+  songs: songsRef,
+  coverPreviewState,
+  closeCoverPreview,
+  emitSongContextmenu: (event, song) => emit('song-contextmenu', event, song),
+  emitSongDblclick: (song, event) => emit('song-dblclick', song, event),
+  shouldSuppressPointerAction
+})
 
 onUnmounted(() => {
   coverCellRefMap.clear()

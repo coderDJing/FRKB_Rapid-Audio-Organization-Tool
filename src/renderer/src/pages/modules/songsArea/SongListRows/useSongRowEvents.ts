@@ -5,7 +5,7 @@ interface UseSongRowEventsOptions {
   songs: Ref<ISongInfo[] | undefined>
   emitSongClick: (e: MouseEvent, song: ISongInfo) => void
   emitSongContextmenu: (e: MouseEvent, song: ISongInfo) => void
-  emitSongDblclick: (song: ISongInfo) => void
+  emitSongDblclick: (song: ISongInfo, event: MouseEvent) => void
   shouldSuppressPointerAction?: (event: MouseEvent) => boolean
 }
 
@@ -46,7 +46,7 @@ export function useSongRowEvents({
     e.stopPropagation()
     if (shouldSuppressPointerAction?.(e)) return
     const song = getSongFromTarget(e.target)
-    if (song) emitSongDblclick(song)
+    if (song) emitSongDblclick(song, e)
   }
 
   return {
