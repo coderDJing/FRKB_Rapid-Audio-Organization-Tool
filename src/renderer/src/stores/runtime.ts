@@ -183,7 +183,7 @@ export const useRuntimeStore = defineStore('runtime', {
         },
         nextCheckUpdateTime: '',
         hiddenPlayControlArea: false,
-        waveformStyle: 'SoundCloud',
+        waveformStyle: 'RGB',
         waveformMode: 'half',
         keyDisplayStyle: 'Classic',
         autoPlayNextSong: false,

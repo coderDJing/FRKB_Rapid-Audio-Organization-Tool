@@ -101,9 +101,9 @@ const languageOptions = computed(() => [
 const translateMaybeKey = (message: unknown) => t(String(message || ''))
 
 const waveformStyleOptions = computed(() => [
+  { label: t('player.waveformStyleRGB'), value: 'RGB' },
   { label: t('player.waveformStyleSoundCloud'), value: 'SoundCloud' },
-  { label: t('player.waveformStyleFine'), value: 'Fine' },
-  { label: t('player.waveformStyleRGB'), value: 'RGB' }
+  { label: t('player.waveformStyleFine'), value: 'Fine' }
 ])
 
 const waveformModeOptions = computed(() => [

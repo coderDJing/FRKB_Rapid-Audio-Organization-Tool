@@ -60,7 +60,7 @@ const defaultSettings = {
     platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
   playerGlobalShortcuts: { ...defaultPlayerGlobalShortcuts },
   hiddenPlayControlArea: false,
-  waveformStyle: 'SoundCloud' as 'SoundCloud' | 'Fine' | 'RGB',
+  waveformStyle: 'RGB' as 'SoundCloud' | 'Fine' | 'RGB',
   waveformMode: 'half',
   keyDisplayStyle: 'Classic' as 'Classic' | 'Camelot',
   showIdleAnalysisStatus: false,
@@ -145,7 +145,7 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
       normalizedWaveformStyle === 'Fine' ||
       normalizedWaveformStyle === 'RGB'
         ? normalizedWaveformStyle
-        : 'SoundCloud',
+        : 'RGB',
     waveformMode: mergedSettings.waveformMode === 'full' ? 'full' : 'half',
     keyDisplayStyle: mergedSettings.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
   }

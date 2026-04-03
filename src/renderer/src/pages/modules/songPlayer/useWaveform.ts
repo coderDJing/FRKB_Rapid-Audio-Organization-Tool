@@ -60,7 +60,7 @@ export function useWaveform(params: {
     ) {
       return style
     }
-    return WAVEFORM_STYLE_SOUND_CLOUD
+    return WAVEFORM_STYLE_RGB
   }
 
   type MinMaxSample = {

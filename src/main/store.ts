@@ -41,7 +41,7 @@ let settingConfig: ISettingConfig = {
   },
   nextCheckUpdateTime: '',
   hiddenPlayControlArea: false,
-  waveformStyle: 'SoundCloud' as 'SoundCloud' | 'Fine' | 'RGB',
+  waveformStyle: 'RGB' as 'SoundCloud' | 'Fine' | 'RGB',
   waveformMode: 'half',
   keyDisplayStyle: 'Classic' as 'Classic' | 'Camelot',
   autoPlayNextSong: false,

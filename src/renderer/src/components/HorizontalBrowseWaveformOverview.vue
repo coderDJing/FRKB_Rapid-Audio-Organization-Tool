@@ -164,7 +164,7 @@ const normalizeWaveformStyle = (
   ) {
     return style
   }
-  return WAVEFORM_STYLE_SOUND_CLOUD
+  return WAVEFORM_STYLE_RGB
 }
 
 const getWaveformStyle = () => normalizeWaveformStyle(runtime.setting?.waveformStyle)
