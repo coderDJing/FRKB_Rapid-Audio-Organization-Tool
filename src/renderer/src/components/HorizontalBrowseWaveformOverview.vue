@@ -686,12 +686,8 @@ onUnmounted(() => {
   height: 100%;
   min-width: 0;
   min-height: 0;
-  cursor: ew-resize;
+  cursor: default;
   touch-action: none;
-}
-
-.overview-waveform.is-scrubbing {
-  cursor: grabbing;
 }
 
 .overview-waveform__canvas {

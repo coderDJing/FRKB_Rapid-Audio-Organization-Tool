@@ -945,14 +945,18 @@ onUnmounted(() => {
   transform: translate(-50%, -50%);
   border: 1px solid var(--shell-border);
   border-radius: 999px;
-  background: var(--text);
-  transition: top 0.08s ease;
+  background-color: var(--text);
+  transition:
+    top 0.08s ease,
+    border-color 0.18s ease,
+    background-color 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
-.fader:hover .fader__thumb,
+.fader__thumb:hover,
 .fader.is-dragging .fader__thumb {
   border-color: color-mix(in srgb, var(--accent) 72%, var(--border));
-  background: color-mix(in srgb, var(--accent) 88%, var(--bg));
+  background-color: color-mix(in srgb, var(--accent) 88%, var(--bg));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 

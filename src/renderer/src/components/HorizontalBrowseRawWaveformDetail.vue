@@ -1058,11 +1058,7 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   height: 84%;
   min-width: 0;
   min-height: 0;
-  cursor: grab;
-}
-
-.raw-detail-waveform.is-dragging {
-  cursor: grabbing;
+  cursor: default;
 }
 
 .raw-detail-waveform--up {
