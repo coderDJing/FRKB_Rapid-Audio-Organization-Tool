@@ -88,6 +88,22 @@ const playingSongFilePathForRows = computed(() => {
   const playingSong = runtime.playingData.playingSong
   return playingSong?.mixtapeItemId || playingSong?.filePath || undefined
 })
+const playingSongFilePathsForRows = computed(() => {
+  const keys = new Set<string>()
+  const mainRowKey = playingSongFilePathForRows.value
+  if (mainRowKey) keys.add(mainRowKey)
+  const topDeckSong = runtime.horizontalBrowseDecks.topSong
+  if (topDeckSong) {
+    const key = String(topDeckSong.mixtapeItemId || topDeckSong.filePath || '').trim()
+    if (key) keys.add(key)
+  }
+  const bottomDeckSong = runtime.horizontalBrowseDecks.bottomSong
+  if (bottomDeckSong) {
+    const key = String(bottomDeckSong.mixtapeItemId || bottomDeckSong.filePath || '').trim()
+    if (key) keys.add(key)
+  }
+  return [...keys]
+})
 const originPathSnapshot = computed(() => {
   const driveLabel = selectedDriveName.value || 'Pioneer USB'
   const playlistLabel = selectedPlaylistNode.value?.name || ''
@@ -607,6 +623,7 @@ const placeholderText = computed(() => {
         :visible-columns="visibleColumns"
         :selected-song-file-paths="selectedRowKeys"
         :playing-song-file-path="playingSongFilePathForRows"
+        :playing-song-file-paths="playingSongFilePathsForRows"
         :flash-row-key="''"
         :flash-row-token="0"
         :total-width="totalWidth"

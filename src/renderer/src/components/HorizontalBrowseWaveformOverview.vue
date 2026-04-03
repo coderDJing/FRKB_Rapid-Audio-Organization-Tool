@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import type { IPioneerPreviewWaveformData, ISongInfo } from 'src/types/globals'
 import type {
@@ -10,6 +10,12 @@ import type {
 
 const props = defineProps<{
   song: ISongInfo | null
+  currentSeconds?: number
+  durationSeconds?: number
+}>()
+
+const emit = defineEmits<{
+  (event: 'seek', value: number): void
 }>()
 
 type MinMaxSample = {
@@ -38,6 +44,7 @@ const containerRef = ref<HTMLDivElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const waveformData = ref<MixxxWaveformData | null>(null)
 const pioneerPreviewData = ref<IPioneerPreviewWaveformData | null>(null)
+const scrubbing = ref(false)
 
 const WAVEFORM_STYLE_SOUND_CLOUD: WaveformStyle = 'SoundCloud'
 const WAVEFORM_STYLE_FINE: WaveformStyle = 'Fine'
@@ -52,6 +59,99 @@ const MIXXX_RGB_COMPONENTS: Record<RGBWaveformBandKey, { r: number; g: number; b
 
 let resizeObserver: ResizeObserver | null = null
 let loadToken = 0
+let seekRaf = 0
+let pendingSeekSeconds: number | null = null
+
+const parseDurationToSeconds = (input: unknown) => {
+  const raw = String(input || '').trim()
+  if (!raw) return 0
+  if (/^\d+(\.\d+)?$/.test(raw)) return Math.max(0, Number(raw) || 0)
+  const parts = raw
+    .split(':')
+    .map((part) => Number(part))
+    .filter((part) => Number.isFinite(part))
+  if (!parts.length) return 0
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]
+  if (parts.length === 2) return parts[0] * 60 + parts[1]
+  return parts[0]
+}
+
+const totalSeconds = computed(() => {
+  const explicit = Number(props.durationSeconds)
+  if (Number.isFinite(explicit) && explicit > 0) return explicit
+  return parseDurationToSeconds(props.song?.duration)
+})
+
+const playheadLeft = computed(() => {
+  if (!props.song || totalSeconds.value <= 0) return null
+  const current = Number(props.currentSeconds)
+  const ratio = Number.isFinite(current)
+    ? Math.max(0, Math.min(1, current / totalSeconds.value))
+    : 0
+  return `${ratio * 100}%`
+})
+
+const flushPendingSeek = () => {
+  seekRaf = 0
+  if (pendingSeekSeconds === null) return
+  emit('seek', pendingSeekSeconds)
+}
+
+const scheduleSeek = (seconds: number, immediate = false) => {
+  pendingSeekSeconds = seconds
+  if (immediate) {
+    if (seekRaf) {
+      cancelAnimationFrame(seekRaf)
+      seekRaf = 0
+    }
+    flushPendingSeek()
+    return
+  }
+  if (seekRaf) return
+  seekRaf = requestAnimationFrame(flushPendingSeek)
+}
+
+const resolveSeekSecondsByClientX = (clientX: number) => {
+  const container = containerRef.value
+  if (!container || totalSeconds.value <= 0) return null
+  const rect = container.getBoundingClientRect()
+  if (rect.width <= 0) return null
+  const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+  return ratio * totalSeconds.value
+}
+
+const handlePointerMove = (event: PointerEvent) => {
+  if (!scrubbing.value) return
+  const seconds = resolveSeekSecondsByClientX(event.clientX)
+  if (seconds === null) return
+  scheduleSeek(seconds)
+}
+
+const stopScrubbing = () => {
+  if (!scrubbing.value) return
+  scrubbing.value = false
+  window.removeEventListener('pointermove', handlePointerMove)
+  window.removeEventListener('pointerup', handlePointerUp)
+  window.removeEventListener('pointercancel', handlePointerUp)
+}
+
+const handlePointerUp = (event: PointerEvent) => {
+  const seconds = resolveSeekSecondsByClientX(event.clientX)
+  if (seconds !== null) scheduleSeek(seconds, true)
+  stopScrubbing()
+}
+
+const handlePointerDown = (event: PointerEvent) => {
+  if (event.button !== 0 || !props.song || totalSeconds.value <= 0) return
+  const seconds = resolveSeekSecondsByClientX(event.clientX)
+  if (seconds === null) return
+  scrubbing.value = true
+  scheduleSeek(seconds, true)
+  window.addEventListener('pointermove', handlePointerMove, { passive: true })
+  window.addEventListener('pointerup', handlePointerUp, { passive: true })
+  window.addEventListener('pointercancel', handlePointerUp, { passive: true })
+  event.preventDefault()
+}
 
 const normalizeWaveformStyle = (
   style?: WaveformStyle | 'RekordboxMini' | 'Mixxx'
@@ -551,6 +651,11 @@ onMounted(() => {
 
 onUnmounted(() => {
   loadToken += 1
+  stopScrubbing()
+  if (seekRaf) {
+    cancelAnimationFrame(seekRaf)
+    seekRaf = 0
+  }
   if (resizeObserver) {
     resizeObserver.disconnect()
     resizeObserver = null
@@ -559,23 +664,55 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div ref="containerRef" class="overview-waveform">
+  <div
+    ref="containerRef"
+    class="overview-waveform"
+    :class="{ 'is-scrubbing': scrubbing }"
+    @pointerdown.stop="handlePointerDown"
+  >
     <canvas ref="canvasRef" class="overview-waveform__canvas"></canvas>
+    <div
+      v-if="playheadLeft !== null"
+      class="overview-waveform__playhead"
+      :style="{ left: playheadLeft }"
+    ></div>
   </div>
 </template>
 
 <style scoped lang="scss">
 .overview-waveform {
+  position: relative;
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
-  pointer-events: none;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.overview-waveform.is-scrubbing {
+  cursor: grabbing;
 }
 
 .overview-waveform__canvas {
   display: block;
   width: 100%;
   height: 100%;
+  pointer-events: none;
+}
+
+.overview-waveform__playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+  pointer-events: none;
+}
+
+:global(.theme-light) .overview-waveform__playhead {
+  background: rgba(22, 22, 22, 0.92);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.24);
 }
 </style>

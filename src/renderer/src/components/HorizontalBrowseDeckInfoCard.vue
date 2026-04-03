@@ -10,6 +10,7 @@ const props = defineProps<{
   beatSyncActive: boolean
   masterActive: boolean
   currentSeconds?: number
+  durationSeconds?: number
 }>()
 
 const emit = defineEmits<{
@@ -131,7 +132,13 @@ const bpmText = computed(() => {
   const bpm = Number(props.song?.bpm)
   return Number.isFinite(bpm) && bpm > 0 ? bpm.toFixed(2) : '--'
 })
-const totalSeconds = computed(() => parseDurationToSeconds(props.song?.duration))
+const totalSeconds = computed(() => {
+  const explicit = Number(props.durationSeconds)
+  if (Number.isFinite(explicit) && explicit > 0) {
+    return explicit
+  }
+  return parseDurationToSeconds(props.song?.duration)
+})
 const elapsedSeconds = computed(() => {
   const current = Number(props.currentSeconds)
   if (!Number.isFinite(current) || current < 0) return 0

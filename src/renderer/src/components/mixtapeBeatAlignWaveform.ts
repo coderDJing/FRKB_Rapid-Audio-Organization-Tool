@@ -17,6 +17,7 @@ type DrawWaveformOptions = {
   showCenterLine?: boolean
   showBeatGrid?: boolean
   waveformLayout?: 'full' | 'top-half' | 'bottom-half'
+  themeVariant?: 'light' | 'dark'
 }
 
 type WaveformColumn = {
@@ -69,6 +70,8 @@ type BeatAlignWaveformPalette = {
   centerLine: string
 }
 
+type BeatAlignCanvasContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
+
 const DARK_WAVEFORM_PALETTE: BeatAlignWaveformPalette = {
   backgroundStart: '#0f1b2e',
   backgroundEnd: '#0a1322',
@@ -100,8 +103,14 @@ const normalizeBeatOffset = (value: number, interval: number) => {
   return ((rounded % safeInterval) + safeInterval) % safeInterval
 }
 
-const resolveWaveformPalette = (ctx: CanvasRenderingContext2D): BeatAlignWaveformPalette => {
-  const doc = ctx.canvas?.ownerDocument
+const resolveWaveformPalette = (
+  ctx: BeatAlignCanvasContext,
+  themeVariant?: 'light' | 'dark'
+): BeatAlignWaveformPalette => {
+  if (themeVariant === 'light') return LIGHT_WAVEFORM_PALETTE
+  if (themeVariant === 'dark') return DARK_WAVEFORM_PALETTE
+  const canvas = ctx.canvas as HTMLCanvasElement | OffscreenCanvas | undefined
+  const doc = canvas && 'ownerDocument' in canvas ? canvas.ownerDocument : null
   const htmlEl = doc?.documentElement
   const bodyEl = doc?.body
   const isLight =
@@ -110,7 +119,7 @@ const resolveWaveformPalette = (ctx: CanvasRenderingContext2D): BeatAlignWavefor
 }
 
 const drawBackground = (
-  ctx: CanvasRenderingContext2D,
+  ctx: BeatAlignCanvasContext,
   width: number,
   height: number,
   palette: BeatAlignWaveformPalette
@@ -128,7 +137,7 @@ const drawBackground = (
 }
 
 const drawBeatGrid = (
-  ctx: CanvasRenderingContext2D,
+  ctx: BeatAlignCanvasContext,
   width: number,
   height: number,
   bpm: number,
@@ -583,7 +592,7 @@ const buildWaveformColumns = (
 }
 
 const drawWaveformColumns = (
-  ctx: CanvasRenderingContext2D,
+  ctx: BeatAlignCanvasContext,
   width: number,
   height: number,
   columns: WaveformColumn[],
@@ -654,7 +663,7 @@ const drawWaveformColumns = (
 }
 
 export const drawBeatAlignRekordboxWaveform = (
-  ctx: CanvasRenderingContext2D,
+  ctx: BeatAlignCanvasContext,
   options: DrawWaveformOptions
 ) => {
   const {
@@ -672,10 +681,11 @@ export const drawBeatAlignRekordboxWaveform = (
     showDetailHighlights,
     showCenterLine,
     showBeatGrid,
-    waveformLayout
+    waveformLayout,
+    themeVariant
   } = options
   if (width <= 0 || height <= 0) return false
-  const palette = resolveWaveformPalette(ctx)
+  const palette = resolveWaveformPalette(ctx, themeVariant)
 
   if (showBackground !== false) {
     drawBackground(ctx, width, height, palette)

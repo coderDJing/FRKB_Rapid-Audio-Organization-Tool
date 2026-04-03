@@ -40,6 +40,10 @@ const props = defineProps({
     type: String as PropType<string | undefined>,
     default: undefined
   },
+  playingSongFilePaths: {
+    type: Array as PropType<string[]>,
+    default: () => []
+  },
   flashRowKey: {
     type: String,
     default: ''
@@ -117,6 +121,17 @@ const enableCoverThumbnailsRef = toRef(props, 'enableCoverThumbnails')
 const enableKeyAnalysisQueueRef = toRef(props, 'enableKeyAnalysisQueue')
 const visibleColumnsRef = toRef(props, 'visibleColumns')
 const runtime = useRuntimeStore()
+const playingSongRowKeySet = computed(
+  () =>
+    new Set(
+      [
+        ...(Array.isArray(props.playingSongFilePaths) ? props.playingSongFilePaths : []),
+        props.playingSongFilePath
+      ]
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+    )
+)
 const isMixtapeList = computed(
   () => libraryUtils.getLibraryTreeByUUID(props.sourceSongListUUID)?.type === 'mixtapeList'
 )
@@ -619,7 +634,7 @@ onUnmounted(() => {
               darkBackground:
                 item.idx % 2 === 0 && !selectedSongFilePaths.includes(getRowKey(item.song)),
               selectedSong: selectedSongFilePaths.includes(getRowKey(item.song)),
-              playingSong: getRowKey(item.song) === playingSongFilePath,
+              playingSong: playingSongRowKeySet.has(getRowKey(item.song)),
               globalSearchFlashA:
                 flashRowKey === getRowKey(item.song) &&
                 flashRowToken > 0 &&

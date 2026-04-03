@@ -520,6 +520,16 @@ const playingSongFilePathForRows = computed(() => {
   if (!playingSong) return undefined
   return getRowKey(playingSong)
 })
+const playingSongFilePathsForRows = computed(() => {
+  const keys = new Set<string>()
+  const mainRowKey = playingSongFilePathForRows.value
+  if (mainRowKey) keys.add(mainRowKey)
+  const topDeckSong = runtime.horizontalBrowseDecks.topSong
+  if (topDeckSong) keys.add(getRowKey(topDeckSong))
+  const bottomDeckSong = runtime.horizontalBrowseDecks.bottomSong
+  if (bottomDeckSong) keys.add(getRowKey(bottomDeckSong))
+  return [...keys]
+})
 const currentPlayingRowKey = computed(() => {
   const playingSong = runtime.playingData.playingSong
   if (!playingSong) return ''
@@ -869,6 +879,7 @@ const handleMixtapeReorder = async (payload: { sourceItemIds: string[]; targetIn
             :visible-columns="columnDataArr"
             :selected-song-file-paths="runtime.songsArea.selectedSongFilePath"
             :playing-song-file-path="playingSongFilePathForRows"
+            :playing-song-file-paths="playingSongFilePathsForRows"
             :flash-row-key="globalSearchFlashRowKey"
             :flash-row-token="globalSearchFlashToken"
             :total-width="totalColumnsWidth"

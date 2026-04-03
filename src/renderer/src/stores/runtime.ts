@@ -53,6 +53,10 @@ interface Runtime {
     playingSongListUUID: string
     playingSongListData: ISongInfo[]
   }
+  horizontalBrowseDecks: {
+    topSong: null | ISongInfo
+    bottomSong: null | ISongInfo
+  }
   externalPlaylist: {
     songs: ISongInfo[]
     lastLibrarySelection: Exclude<LibrarySelection, 'ExternalPlaylist'>
@@ -123,6 +127,10 @@ export const useRuntimeStore = defineStore('runtime', {
         playingSong: null, //正在播放的歌曲信息
         playingSongListUUID: '', //正在播放的歌单的UUID
         playingSongListData: [] //正在播放的歌单的曲目数组
+      },
+      horizontalBrowseDecks: {
+        topSong: null,
+        bottomSong: null
       },
       externalPlaylist: {
         songs: [],
