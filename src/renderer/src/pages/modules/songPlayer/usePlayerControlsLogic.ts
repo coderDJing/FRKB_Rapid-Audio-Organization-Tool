@@ -9,6 +9,7 @@ import emitter from '@renderer/utils/mitt'
 import { WebAudioPlayer } from './webAudioPlayer'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
+import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
 
 type PreloadHit = {
   source: 'next' | 'previous'
@@ -77,7 +78,10 @@ export function usePlayerControlsLogic({
   const normalizePath = (p: string | undefined | null) =>
     (p || '').replace(/\//g, '\\').toLowerCase()
   const isReadOnlyPlaybackSource = () =>
-    String(runtime.playingData.playingSongListUUID || '').startsWith('pioneer:')
+    isRekordboxExternalPlaybackSource(
+      runtime.playingData.playingSongListUUID,
+      runtime.playingData.playingSong
+    )
   const buildSongSnapshot = (filePath: string, song: ISongInfo) => {
     const baseName =
       String(filePath || '')

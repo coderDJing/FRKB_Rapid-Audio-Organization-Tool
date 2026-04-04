@@ -16,6 +16,7 @@ import shortcutIconAsset from '@renderer/assets/shortcutIcon.svg?asset'
 import { t } from '@renderer/utils/translate'
 import confirm from '@renderer/components/confirmDialog'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
+import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
 const previousSong = previousSongAsset
 const fastBackward = fastBackwardAsset
 const play = playAsset
@@ -29,7 +30,10 @@ const shortcutIcon = shortcutIconAsset
 const uuid = uuidV4()
 const runtime = useRuntimeStore()
 const isReadOnlyPlaybackSource = computed(() =>
-  String(runtime.playingData.playingSongListUUID || '').startsWith('pioneer:')
+  isRekordboxExternalPlaybackSource(
+    runtime.playingData.playingSongListUUID,
+    runtime.playingData.playingSong
+  )
 )
 const playing = ref(true)
 watch(

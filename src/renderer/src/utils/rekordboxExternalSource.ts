@@ -12,8 +12,21 @@ type ResolvedExternalWaveformSource = {
   rootPath: string
 }
 
-const normalizeSourceKind = (value: unknown): RekordboxSourceKind | null => {
+export const normalizeRekordboxSourceKind = (value: unknown): RekordboxSourceKind | null => {
   return value === 'desktop' || value === 'usb' ? value : null
+}
+
+export const isRekordboxExternalPlaybackSource = (
+  songListUUID: string | null | undefined,
+  song: ISongInfo | null | undefined
+): boolean => {
+  const sourceKind = normalizeRekordboxSourceKind(song?.externalSourceKind)
+  if (sourceKind) return true
+
+  const normalizedSongListUUID = String(songListUUID || '')
+    .trim()
+    .toLowerCase()
+  return normalizedSongListUUID.startsWith('desktop:') || normalizedSongListUUID.startsWith('usb:')
 }
 
 export const resolveSongExternalWaveformSource = (
@@ -32,8 +45,8 @@ export const resolveSongExternalWaveformSource = (
   if (!externalAnalyzePath || !externalRootPath) return null
 
   const sourceKind =
-    normalizeSourceKind(song?.externalSourceKind) ||
-    normalizeSourceKind(fallback?.sourceKind) ||
+    normalizeRekordboxSourceKind(song?.externalSourceKind) ||
+    normalizeRekordboxSourceKind(fallback?.sourceKind) ||
     'usb'
 
   return {

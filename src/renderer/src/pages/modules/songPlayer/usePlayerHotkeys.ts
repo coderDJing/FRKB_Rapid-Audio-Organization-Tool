@@ -2,6 +2,7 @@ import { onMounted, onUnmounted, Ref, ref } from 'vue'
 import hotkeys, { KeyHandler } from 'hotkeys-js'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
+import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
 
 // 使用 ReturnType 获取 useRuntimeStore 的返回类型，模拟 Store 类型
 type RuntimeStoreType = ReturnType<typeof useRuntimeStore>
@@ -41,6 +42,11 @@ export function usePlayerHotkeys(
 ) {
   // 将 showDelConfirm 的管理移到内部，因为它是快捷键触发的副作用
   const internalShowDelConfirm = ref(false)
+  const isReadOnlyPlaybackSource = () =>
+    isRekordboxExternalPlaybackSource(
+      runtime.playingData.playingSongListUUID,
+      runtime.playingData.playingSong
+    )
 
   const setupHotkeys = () => {
     const scope = 'windowGlobal' // 定义快捷键作用域
@@ -118,6 +124,9 @@ export function usePlayerHotkeys(
       // 检查是否是 Delete 键触发，并且歌曲列表区有选中的歌曲
       if (handler.key === 'delete' && state.songsAreaSelectedCount.value > 0) {
         return // 如果列表区有选中，则此快捷键不响应，让列表区的删除逻辑处理
+      }
+      if (isReadOnlyPlaybackSource()) {
+        return
       }
       // 防止重复触发确认框
       if (internalShowDelConfirm.value || state.confirmShow.value) {
