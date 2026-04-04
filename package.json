@@ -103,7 +103,7 @@
           "to": "demucs/bootstrap"
         }
       ],
-      "x64ArchFiles": "Contents/Resources/{ffmpeg,chromaprint}/darwin/{ffmpeg,ffprobe,fpcalc}",
+      "x64ArchFiles": "{Contents/Resources/{ffmpeg,chromaprint}/darwin/{ffmpeg,ffprobe,fpcalc},Contents/Resources/rekordboxDesktopRuntime/darwin-x64/**/*}",
       "artifactName": "${productName}-${version}-universal.${ext}"
     },
     "linux": {

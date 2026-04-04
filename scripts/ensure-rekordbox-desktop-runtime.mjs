@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { bootstrapPortableDarwinPython } from './lib/demucs-standalone-python.mjs'
 
 const args = process.argv.slice(2)
 
@@ -108,10 +109,21 @@ if (!force && isRuntimeReady()) {
   process.exit(0)
 }
 
-const launcher = resolvePythonLauncher()
-
 console.log(`[rekordbox-runtime] Preparing runtime -> ${runtimeDir}`)
-run(launcher.command, [...launcher.args, '-m', 'venv', runtimeDir])
+if (process.platform === 'darwin') {
+  const bootstrapResult = await bootstrapPortableDarwinPython({
+    platformKey,
+    runtimeRoot,
+    targetRuntimeDir: runtimeDir,
+    run
+  })
+  console.log(
+    `[rekordbox-runtime] Installed standalone Darwin runtime from ${bootstrapResult.assetName}`
+  )
+} else {
+  const launcher = resolvePythonLauncher()
+  run(launcher.command, [...launcher.args, '-m', 'venv', runtimeDir])
+}
 
 const runtimePython = resolveRuntimePython()
 run(runtimePython, ['-m', 'pip', 'install', '--upgrade', 'pip', 'setuptools', 'wheel'])

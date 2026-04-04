@@ -39,7 +39,7 @@ jobs:
         with:
           path: |
             vendor/rekordbox-desktop-runtime/win32-x64/python
-          key: rekordbox-runtime-${{ runner.os }}-${{ hashFiles('scripts/ensure-rekordbox-desktop-runtime.mjs', 'scripts/rekordbox-desktop-runtime-requirements.txt') }}
+          key: rekordbox-runtime-${{ runner.os }}-${{ hashFiles('scripts/ensure-rekordbox-desktop-runtime.mjs', 'scripts/rekordbox-desktop-runtime-requirements.txt', 'scripts/lib/demucs-standalone-python.mjs', 'scripts/lib/demucs-runtime-support.mjs') }}
           restore-keys: |
             rekordbox-runtime-${{ runner.os }}-
 
@@ -200,7 +200,7 @@ jobs:
         with:
           path: |
             vendor/rekordbox-desktop-runtime/darwin-x64/python
-          key: rekordbox-runtime-${{ runner.os }}-${{ runner.arch }}-darwin-x64-${{ hashFiles('scripts/ensure-rekordbox-desktop-runtime.mjs', 'scripts/rekordbox-desktop-runtime-requirements.txt') }}
+          key: rekordbox-runtime-${{ runner.os }}-${{ runner.arch }}-darwin-x64-${{ hashFiles('scripts/ensure-rekordbox-desktop-runtime.mjs', 'scripts/rekordbox-desktop-runtime-requirements.txt', 'scripts/lib/demucs-standalone-python.mjs', 'scripts/lib/demucs-runtime-support.mjs') }}
           restore-keys: |
             rekordbox-runtime-${{ runner.os }}-${{ runner.arch }}-darwin-x64-
 
@@ -248,7 +248,7 @@ jobs:
         with:
           path: |
             vendor/rekordbox-desktop-runtime/darwin-arm64/python
-          key: rekordbox-runtime-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/ensure-rekordbox-desktop-runtime.mjs', 'scripts/rekordbox-desktop-runtime-requirements.txt') }}
+          key: rekordbox-runtime-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/ensure-rekordbox-desktop-runtime.mjs', 'scripts/rekordbox-desktop-runtime-requirements.txt', 'scripts/lib/demucs-standalone-python.mjs', 'scripts/lib/demucs-runtime-support.mjs') }}
           restore-keys: |
             rekordbox-runtime-${{ runner.os }}-${{ runner.arch }}-
 
