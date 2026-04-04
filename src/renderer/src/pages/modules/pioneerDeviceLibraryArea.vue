@@ -122,11 +122,32 @@ const lastTreeSignature = ref('')
 const buildTreeSignature = (nodes: IPioneerPlaylistTreeNode[]) =>
   nodes.map((node) => `${node.id}:${node.order}:${node.children?.length || 0}`).join('|')
 
+const hasPlaylistInTree = (nodes: IPioneerPlaylistTreeNode[], playlistId: number): boolean => {
+  if (!playlistId) return false
+  const walk = (items: IPioneerPlaylistTreeNode[]): boolean => {
+    for (const item of items) {
+      if (!item.isFolder && item.id === playlistId) return true
+      if (Array.isArray(item.children) && item.children.length > 0 && walk(item.children)) {
+        return true
+      }
+    }
+    return false
+  }
+  return walk(nodes)
+}
+
 const syncExpandedWhenTreeChanges = () => {
   const signature = buildTreeSignature(originalTreeNodes.value)
   if (signature === lastTreeSignature.value) return
   lastTreeSignature.value = signature
   ensureExpandedFromTree(originalTreeNodes.value)
+  const currentSelectedPlaylistId = Number(runtime.pioneerDeviceLibrary.selectedPlaylistId) || 0
+  if (
+    currentSelectedPlaylistId > 0 &&
+    hasPlaylistInTree(originalTreeNodes.value, currentSelectedPlaylistId)
+  ) {
+    return
+  }
   runtime.pioneerDeviceLibrary.selectedPlaylistId = 0
 }
 

@@ -67,7 +67,7 @@ export async function probeRekordboxDesktopLibrary(
 }
 
 export async function requireRekordboxDesktopLibraryProbe() {
-  const probe = await probeRekordboxDesktopLibrary(true)
+  const probe = await probeRekordboxDesktopLibrary(false)
   if (!probe.available) {
     throw new Error(probe.errorMessage || '未检测到可读的 Rekordbox 本机库。')
   }

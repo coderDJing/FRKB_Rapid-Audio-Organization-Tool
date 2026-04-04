@@ -14,6 +14,13 @@ import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
+import {
+  buildRekordboxSourceCacheKey,
+  getCachedRekordboxPlaylistTracks,
+  rememberRekordboxSourceSelectedPlaylist,
+  setCachedRekordboxPlaylistTracks,
+  shouldRefreshRekordboxPlaylistTracks
+} from '@renderer/utils/rekordboxLibraryCache'
 import { buildSongsAreaDefaultColumns } from '@renderer/pages/modules/songsArea/composables/useSongsAreaColumns'
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
 import { getKeyDisplayText, getKeySortText } from '@shared/keyDisplay'
@@ -44,6 +51,7 @@ const columnData = ref<ISongsAreaColumn[]>(
 )
 const selectSongListDialogVisible = ref(false)
 const selectSongListDialogTargetLibraryName = ref<PioneerTransferTarget | ''>('')
+let playlistTracksRequestToken = 0
 
 const ascendingOrder = ascendingOrderAsset
 const descendingOrder = descendingOrderAsset
@@ -89,6 +97,14 @@ const currentPlaybackListKey = computed(() => {
   const sourceKind = selectedSourceKind.value || 'usb'
   return `${sourceKind}:${sourceKey}:${selectedPlaylistId.value}`
 })
+const selectedSourceCacheKey = computed(() =>
+  buildRekordboxSourceCacheKey({
+    sourceKind: selectedSourceKind.value,
+    sourceKey: selectedSourceKey.value,
+    rootPath: selectedSourceRootPath.value,
+    libraryType: selectedLibraryType.value
+  })
+)
 
 const visibleColumns = computed(() => columnData.value.filter((item) => item.show))
 const totalWidth = computed(() =>
@@ -358,36 +374,102 @@ const handleColumnClick = (column: ISongsAreaColumn) => {
   applyFiltersAndSorting()
 }
 
+const isCurrentPlaylistLoadTarget = (sourceCacheKey: string, playlistId: number) =>
+  selectedSourceCacheKey.value === sourceCacheKey && selectedPlaylistId.value === playlistId
+
+const fetchPlaylistTracks = async (params: {
+  sourceCacheKey: string
+  playlistId: number
+  sourceKind: IRekordboxSourceKind
+  rootPath: string
+  libraryType: string
+  hasCachedTracks: boolean
+}) => {
+  const requestToken = ++playlistTracksRequestToken
+  const { sourceCacheKey, playlistId, sourceKind, rootPath, libraryType, hasCachedTracks } = params
+
+  try {
+    const result =
+      sourceKind === 'desktop'
+        ? await window.electron.ipcRenderer.invoke(
+            buildRekordboxSourceChannel('desktop', 'load-playlist-tracks'),
+            playlistId
+          )
+        : await window.electron.ipcRenderer.invoke(
+            buildRekordboxSourceChannel('usb', 'load-playlist-tracks'),
+            rootPath,
+            playlistId,
+            libraryType
+          )
+    const tracks = Array.isArray(result?.tracks) ? result.tracks : []
+    setCachedRekordboxPlaylistTracks(sourceCacheKey, playlistId, tracks)
+
+    if (!isCurrentPlaylistLoadTarget(sourceCacheKey, playlistId)) return
+    if (requestToken !== playlistTracksRequestToken) return
+
+    originalTracks.value = tracks
+    applyFiltersAndSorting()
+  } catch (error) {
+    if (!isCurrentPlaylistLoadTarget(sourceCacheKey, playlistId)) return
+    if (requestToken !== playlistTracksRequestToken) return
+
+    console.error('[pioneerSongsArea] load playlist tracks failed', error)
+    if (!hasCachedTracks) {
+      originalTracks.value = []
+      visibleSongs.value = []
+    }
+  } finally {
+    if (!isCurrentPlaylistLoadTarget(sourceCacheKey, playlistId)) return
+    if (requestToken !== playlistTracksRequestToken) return
+    loading.value = false
+  }
+}
+
 const loadPlaylistTracks = async () => {
-  if (!selectedSourceRootPath.value || !selectedPlaylistId.value) {
+  const sourceCacheKey = selectedSourceCacheKey.value
+  const playlistId = selectedPlaylistId.value
+  const sourceKind = selectedSourceKind.value || 'usb'
+  const rootPath = selectedSourceRootPath.value
+  const libraryType = selectedLibraryType.value
+
+  if (!rootPath || !playlistId || !sourceCacheKey) {
+    playlistTracksRequestToken += 1
+    loading.value = false
     originalTracks.value = []
     visibleSongs.value = []
     selectedRowKeys.value = []
     return
   }
-  loading.value = true
+
   selectedRowKeys.value = []
-  try {
-    const result =
-      selectedSourceKind.value === 'desktop'
-        ? await window.electron.ipcRenderer.invoke(
-            buildRekordboxSourceChannel('desktop', 'load-playlist-tracks'),
-            selectedPlaylistId.value
-          )
-        : await window.electron.ipcRenderer.invoke(
-            buildRekordboxSourceChannel('usb', 'load-playlist-tracks'),
-            selectedSourceRootPath.value,
-            selectedPlaylistId.value,
-            selectedLibraryType.value
-          )
-    originalTracks.value = Array.isArray(result?.tracks) ? result.tracks : []
+
+  const cachedTracks = getCachedRekordboxPlaylistTracks(sourceCacheKey, playlistId)
+  if (cachedTracks) {
+    originalTracks.value = cachedTracks.tracks
     applyFiltersAndSorting()
-  } catch (error) {
-    console.error('[pioneerSongsArea] load playlist tracks failed', error)
+    loading.value = false
+  } else {
+    loading.value = true
     originalTracks.value = []
     visibleSongs.value = []
-  } finally {
-    loading.value = false
+  }
+
+  if (cachedTracks && !shouldRefreshRekordboxPlaylistTracks(sourceCacheKey, playlistId)) {
+    return
+  }
+
+  const task = fetchPlaylistTracks({
+    sourceCacheKey,
+    playlistId,
+    sourceKind,
+    rootPath,
+    libraryType,
+    hasCachedTracks: Boolean(cachedTracks)
+  })
+  if (!cachedTracks) {
+    await task
+  } else {
+    void task
   }
 }
 
@@ -398,6 +480,23 @@ watch(
       emitter.emit('waveform-preview:stop', { reason: 'switch' })
     } catch {}
     void loadPlaylistTracks()
+  },
+  { immediate: true }
+)
+
+watch(
+  () =>
+    [
+      selectedSourceCacheKey.value,
+      selectedPlaylistId.value,
+      Array.isArray(runtime.pioneerDeviceLibrary.treeNodes)
+        ? runtime.pioneerDeviceLibrary.treeNodes.length
+        : 0
+    ] as const,
+  ([sourceCacheKey, playlistId, treeNodeCount]) => {
+    if (!sourceCacheKey) return
+    if (playlistId <= 0 && treeNodeCount <= 0) return
+    rememberRekordboxSourceSelectedPlaylist(sourceCacheKey, playlistId)
   },
   { immediate: true }
 )
