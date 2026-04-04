@@ -249,9 +249,25 @@ const displayDirName = computed(() => {
 
 // 供模板使用的名称（不带数量）
 const nameForDisplay = computed(() => displayDirName.value)
+const showTrackCount = computed(
+  () =>
+    dirData.value?.type === 'songList' &&
+    runtime.setting.showPlaylistTrackCount &&
+    trackCount.value !== null
+)
 const nameTextRef = ref<HTMLElement | null>(null)
 const nameTextHovered = ref(false)
 const onlyShowBubbleWhenOverflow = computed(() => !(runtime as any).setting.songListBubbleAlways)
+const openMixtapeHandleClick = () => {
+  const currentDirData = dirDataRef.value
+  if (!currentDirData || currentDirData.type !== 'mixtapeList') return
+  const playlistPath = libraryUtils.findDirPathByUuid(props.uuid)
+  window.electron.ipcRenderer.send('mixtape:open', {
+    playlistId: props.uuid,
+    playlistPath,
+    playlistName: currentDirData.dirName
+  })
+}
 </script>
 <template>
   <div
@@ -340,7 +356,13 @@ const onlyShowBubbleWhenOverflow = computed(() => !(runtime as any).setting.song
       >
         <span
           ref="nameTextRef"
-          class="nameText"
+          :class="[
+            'nameText',
+            {
+              'nameText--with-count': showTrackCount,
+              'nameText--with-mixtape-action': dirData.type === 'mixtapeList'
+            }
+          ]"
           @mouseenter="isPlaylist && (nameTextHovered = true)"
           @mouseleave="nameTextHovered = false"
           >{{ nameForDisplay }}</span
@@ -351,8 +373,13 @@ const onlyShowBubbleWhenOverflow = computed(() => !(runtime as any).setting.song
           :title="nameForDisplay"
           :only-when-overflow="onlyShowBubbleWhenOverflow"
         />
-        <span v-if="dirData.type === 'mixtapeList'" class="mixtapeBadgeGroup">
+        <span
+          v-if="dirData.type === 'mixtapeList' || showTrackCount"
+          class="rowActions"
+          @click.stop
+        >
           <span
+            v-if="dirData.type === 'mixtapeList'"
             class="mixModeBadge"
             :class="{
               'is-eq': dirData.mixMode === 'eq',
@@ -363,18 +390,28 @@ const onlyShowBubbleWhenOverflow = computed(() => !(runtime as any).setting.song
           >
             <span>{{ resolveMixtapeModeTag(dirData.mixMode) }}</span>
           </span>
+          <button
+            v-if="dirData.type === 'mixtapeList'"
+            type="button"
+            class="recordButton"
+            :class="{ isPlaying: isPlaying }"
+            :title="t('mixtape.openRecordWindow')"
+            draggable="false"
+            @mousedown.stop
+            @click.stop="openMixtapeHandleClick"
+            @dragstart.stop.prevent
+            @contextmenu.stop
+          >
+            {{ t('mixtape.recordButton') }}
+          </button>
+          <span
+            v-if="showTrackCount"
+            class="countBadge"
+            :class="{ isPlaying: isPlaying }"
+            :title="t('tracks.title')"
+            >{{ trackCount }}</span
+          >
         </span>
-        <span
-          v-if="
-            dirData.type === 'songList' &&
-            runtime.setting.showPlaylistTrackCount &&
-            trackCount !== null
-          "
-          class="countBadge"
-          :class="{ isPlaying: isPlaying }"
-          :title="t('tracks.title')"
-          >{{ trackCount }}</span
-        >
       </div>
       <div v-if="!dirData.dirName">
         <input
@@ -459,13 +496,21 @@ const onlyShowBubbleWhenOverflow = computed(() => !(runtime as any).setting.song
 .nameText {
   flex: 1 1 auto;
   min-width: 0;
-  padding-right: 72px; // 为右侧单徽标/数量徽标预留空间
+  padding-right: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.mixtapeBadgeGroup {
+.nameText--with-count {
+  padding-right: 42px;
+}
+
+.nameText--with-mixtape-action {
+  padding-right: 116px;
+}
+
+.rowActions {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -503,6 +548,39 @@ const onlyShowBubbleWhenOverflow = computed(() => !(runtime as any).setting.song
 .isPlaying.mixModeBadge {
   background-color: var(--accent);
   color: #ffffff !important;
+}
+
+.recordButton {
+  height: 18px;
+  min-width: 36px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  border-radius: 9px;
+  background-color: color-mix(in srgb, var(--bg-elev) 92%, transparent);
+  color: var(--text-weak);
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.recordButton:hover {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.recordButton:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, #ffffff);
+  outline-offset: 1px;
+}
+
+.recordButton.isPlaying {
+  border-color: color-mix(in srgb, var(--accent) 78%, transparent);
+  color: var(--accent);
 }
 
 .countBadge {

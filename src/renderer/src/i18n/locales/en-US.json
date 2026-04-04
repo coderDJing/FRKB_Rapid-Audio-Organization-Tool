@@ -739,6 +739,8 @@
     "zoomIn": "Zoom In",
     "zoomOut": "Zoom Out",
     "title": "Mixtape Auto-Recording",
+    "recordButton": "Record",
+    "openRecordWindow": "Open recording window",
     "mixModeCreateTitle": "Choose Mix Mode",
     "mixModeCreateHint": "This mode is saved to the current project and cannot be changed after creation.",
     "mixModeStemLabel": "Stem Mix",

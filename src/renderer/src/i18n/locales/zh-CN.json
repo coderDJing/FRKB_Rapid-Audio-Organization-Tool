@@ -739,6 +739,8 @@
     "zoomIn": "放大",
     "zoomOut": "缩小",
     "title": "Mixtape 自动录制",
+    "recordButton": "录制",
+    "openRecordWindow": "打开录制窗口",
     "mixModeCreateTitle": "选择混音模式",
     "mixModeCreateHint": "该模式将写入当前工程，创建后不可切换。",
     "mixModeStemLabel": "Stem混音",
