@@ -80,7 +80,7 @@ const props = defineProps({
     type: String as PropType<string | undefined>,
     default: undefined
   },
-  pioneerDeviceRootPath: {
+  externalWaveformRootPath: {
     type: String as PropType<string | undefined>,
     default: undefined
   },
@@ -116,7 +116,7 @@ const scrollHostElementRef = toRef(props, 'scrollHostElement')
 const externalScrollTopRef = toRef(props, 'externalScrollTop')
 const externalViewportHeightRef = toRef(props, 'externalViewportHeight')
 const songListRootDirRef = toRef(props, 'songListRootDir')
-const pioneerDeviceRootPathRef = toRef(props, 'pioneerDeviceRootPath')
+const externalWaveformRootPathRef = toRef(props, 'externalWaveformRootPath')
 const enableCoverThumbnailsRef = toRef(props, 'enableCoverThumbnails')
 const enableKeyAnalysisQueueRef = toRef(props, 'enableKeyAnalysisQueue')
 const visibleColumnsRef = toRef(props, 'visibleColumns')
@@ -367,7 +367,7 @@ const {
   visibleSongsWithIndex,
   visibleColumns: visibleColumnsRef,
   songListRootDir: songListRootDirRef,
-  pioneerDeviceRootPath: pioneerDeviceRootPathRef,
+  externalWaveformRootPath: externalWaveformRootPathRef,
   actualVisibleStartIndex: actualStartIndex,
   actualVisibleEndIndex: actualEndIndex
 })

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import {
   IDir,
   ILayoutConfig,
-  IPioneerDeviceLibraryState,
+  IRekordboxLibraryBrowserState,
   ISettingConfig,
   ISongInfo
 } from 'src/types/globals'
@@ -61,7 +61,7 @@ interface Runtime {
     songs: ISongInfo[]
     lastLibrarySelection: Exclude<LibrarySelection, 'ExternalPlaylist'>
   }
-  pioneerDeviceLibrary: IPioneerDeviceLibraryState
+  pioneerDeviceLibrary: IRekordboxLibraryBrowserState
   confirmShow: boolean
   hotkeysScopesHeap: string[]
   setting: ISettingConfig
@@ -137,9 +137,10 @@ export const useRuntimeStore = defineStore('runtime', {
         lastLibrarySelection: 'FilterLibrary'
       },
       pioneerDeviceLibrary: {
-        selectedDriveKey: '',
-        selectedDriveName: '',
-        selectedDrivePath: '',
+        selectedSourceKey: '',
+        selectedSourceName: '',
+        selectedSourceRootPath: '',
+        selectedSourceKind: '',
         selectedLibraryType: '',
         selectedPlaylistId: 0,
         loading: false,

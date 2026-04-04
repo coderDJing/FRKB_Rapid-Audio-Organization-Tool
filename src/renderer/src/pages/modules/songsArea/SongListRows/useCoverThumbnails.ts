@@ -1,6 +1,7 @@
 import { markRaw, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
 import type { ISongInfo } from '../../../../../../types/globals'
 import emitter from '@renderer/utils/mitt'
+import { getRekordboxCoverThumbChannel } from '@renderer/utils/rekordboxExternalSource'
 
 interface UseCoverThumbnailsOptions {
   songs: Ref<ISongInfo[] | undefined>
@@ -65,9 +66,13 @@ export function useCoverThumbnails({
         try {
           const song = resolveSongByFilePath(filePath)
           const pioneerCoverPath = String((song as any)?.pioneerCoverPath || '').trim()
+          const sourceKind =
+            song?.externalSourceKind === 'desktop' || song?.externalSourceKind === 'usb'
+              ? song.externalSourceKind
+              : 'usb'
           const resp = pioneerCoverPath
             ? ((await window.electron.ipcRenderer.invoke(
-                'pioneer-device-library:get-cover-thumb',
+                getRekordboxCoverThumbChannel(sourceKind),
                 pioneerCoverPath
               )) as {
                 format?: string

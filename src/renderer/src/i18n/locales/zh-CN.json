@@ -184,6 +184,7 @@
     "filter": "筛选库",
     "curated": "精选库",
     "mixtapeLibrary": "Mixtape 自动录制",
+    "rekordboxDesktopLibrary": "Rekordbox 本机库",
     "externalPlaylist": "外部曲目",
     "recentlyUsed": "最近使用",
     "allPlaylists": "全部歌单",
@@ -243,6 +244,14 @@
     "copyTracksFailed": "复制曲目失败。",
     "deviceLibraryLabel": "Device Library",
     "oneLibraryLabel": "OneLibrary"
+  },
+  "rekordboxDesktop": {
+    "loadTreeFailed": "读取 Rekordbox 本机库失败",
+    "loadingPlaylistTree": "正在读取 Rekordbox 本机库歌单树...",
+    "emptyPlaylistTree": "这个 Rekordbox 本机库里暂时没有可显示的歌单树。",
+    "loadingPlaylistTracks": "正在读取 Rekordbox 本机库曲目...",
+    "selectPlaylistPrompt": "先在左侧选择一个 Rekordbox 歌单。",
+    "emptyPlaylist": "这个 Rekordbox 歌单里暂时没有可显示的曲目。"
   },
   "tracks": {
     "title": "曲目",

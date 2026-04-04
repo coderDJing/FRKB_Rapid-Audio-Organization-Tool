@@ -11,8 +11,16 @@ const runtime = useRuntimeStore()
 const collapseButtonRef = useTemplateRef<HTMLDivElement>('collapseButtonRef')
 const playlistSearch = ref('')
 const expandedFolderIds = ref<Set<number>>(new Set())
+const isDesktopSource = computed(
+  () => runtime.pioneerDeviceLibrary.selectedSourceKind === 'desktop'
+)
 
-const title = computed(() => runtime.pioneerDeviceLibrary.selectedDriveName || 'Pioneer USB')
+const title = computed(() => {
+  if (runtime.pioneerDeviceLibrary.selectedSourceName) {
+    return runtime.pioneerDeviceLibrary.selectedSourceName
+  }
+  return isDesktopSource.value ? 'Rekordbox 本机库' : 'Pioneer USB'
+})
 const originalTreeNodes = computed(() => runtime.pioneerDeviceLibrary.treeNodes || [])
 
 const collectAllFolderIds = (nodes: IPioneerPlaylistTreeNode[]): number[] => {
@@ -78,11 +86,17 @@ const showHint = computed(
 )
 
 const statusText = computed(() => {
-  if (runtime.pioneerDeviceLibrary.loading) return t('pioneer.loadingPlaylistTree')
+  if (runtime.pioneerDeviceLibrary.loading) {
+    return isDesktopSource.value
+      ? t('rekordboxDesktop.loadingPlaylistTree')
+      : t('pioneer.loadingPlaylistTree')
+  }
   if (String(playlistSearch.value || '').trim() && !visibleTreeNodes.value.length) {
     return t('pioneer.noMatchingPlaylists')
   }
-  return t('pioneer.emptyPlaylistTree')
+  return isDesktopSource.value
+    ? t('rekordboxDesktop.emptyPlaylistTree')
+    : t('pioneer.emptyPlaylistTree')
 })
 
 const toggleFolder = (node: IPioneerPlaylistTreeNode) => {

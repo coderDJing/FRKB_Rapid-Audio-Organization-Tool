@@ -5,6 +5,7 @@ import settingIconAsset from '@renderer/assets/setting.svg?asset'
 import trashIconAsset from '@renderer/assets/trash.svg?asset'
 import mixtapeIconAsset from '@renderer/assets/mixtape.svg?asset'
 import usbDriveIconAsset from '@renderer/assets/usbDrive.svg?asset'
+import rekordboxDesktopIconAsset from '@renderer/assets/rekordboxDesktop.svg?asset'
 import {
   computed,
   ref,
@@ -21,12 +22,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import settingDialog from '@renderer/components/settingDialog.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { t } from '@renderer/utils/translate'
-import type {
-  Icon,
-  IDir,
-  IPioneerDeviceLibraryKind,
-  IPioneerDeviceLibraryState
-} from '../../../../types/globals'
+import type { Icon, IDir } from '../../../../types/globals'
 import tempListIconAsset from '@renderer/assets/tempList.svg?asset'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import confirm from '@renderer/components/confirmDialog'
@@ -36,6 +32,7 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import { emptyRecycleBinWithOptimisticUpdate } from '@renderer/utils/recycleBinActions'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
+import { useRekordboxSourceIcons } from './librarySelectArea/useRekordboxSourceIcons'
 const emit = defineEmits(['librarySelectedChange'])
 
 type HoverableIcon = {
@@ -45,37 +42,6 @@ type HoverableIcon = {
   src: string
   showAlt: boolean
   i18nKey?: string
-}
-
-type PioneerDriveEntry = {
-  id: string
-  name: string
-  path: string
-  volumeName: string
-  fileSystem: string
-  isUsb: boolean
-  isPioneerDeviceLibrary: boolean
-  supportedLibraryTypes?: IPioneerDeviceLibraryKind[]
-}
-
-type PioneerDriveEjectResult = {
-  success: boolean
-  path: string
-  code?: 'INVALID_PATH' | 'EJECT_COMMAND_FAILED' | 'EJECT_TIMEOUT' | 'UNSUPPORTED_PLATFORM'
-  detail?: string
-}
-
-type PioneerDriveIcon = HoverableIcon & {
-  key: string
-  tooltip: string
-  path: string
-  libraryType: IPioneerDeviceLibraryKind
-}
-
-type PioneerDriveGroup = {
-  key: string
-  path: string
-  icons: PioneerDriveIcon[]
 }
 
 type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
@@ -132,7 +98,10 @@ const dynamicIconArr = computed(() =>
   iconArr.value.filter((item) => !coreIconNameSet.has(item.name))
 )
 const hasDynamicEntries = computed(
-  () => dynamicIconArr.value.length > 0 || pioneerDriveGroups.value.length > 0
+  () =>
+    dynamicIconArr.value.length > 0 ||
+    Boolean(desktopLibraryIcon.value) ||
+    pioneerDriveGroups.value.length > 0
 )
 
 const selectedIcon = ref<HoverableIcon>(iconArr.value[0])
@@ -368,33 +337,22 @@ type ButtomIcon = {
   i18nKey?: string
 }
 
-const pioneerDriveIcons = ref<PioneerDriveIcon[]>([])
-const pioneerDriveTypeOrder: Record<IPioneerDeviceLibraryKind, number> = {
-  deviceLibrary: 0,
-  oneLibrary: 1
-}
-const pioneerDriveGroups = computed<PioneerDriveGroup[]>(() => {
-  const groupMap = new Map<string, PioneerDriveGroup>()
-  for (const icon of pioneerDriveIcons.value) {
-    const groupKey = `pioneer-group:${icon.path || icon.key}`
-    const existing = groupMap.get(groupKey)
-    if (existing) {
-      existing.icons.push(icon)
-      continue
-    }
-    groupMap.set(groupKey, {
-      key: groupKey,
-      path: icon.path,
-      icons: [icon]
-    })
-  }
-  return Array.from(groupMap.values()).map((group) => ({
-    ...group,
-    icons: [...group.icons].sort(
-      (left, right) =>
-        pioneerDriveTypeOrder[left.libraryType] - pioneerDriveTypeOrder[right.libraryType]
-    )
-  }))
+const {
+  pioneerDriveGroups,
+  desktopLibraryIcon,
+  clickPioneerDriveIcon,
+  clickDesktopLibraryIcon,
+  handlePioneerDriveContextmenu,
+  isEjectingPioneerDriveIcon,
+  isSelectedPioneerDriveIcon,
+  isSelectedDesktopLibraryIcon
+} = useRekordboxSourceIcons({
+  runtime,
+  usbDriveIconAsset,
+  rekordboxDesktopIconAsset,
+  updateSelectedIcon,
+  waitForUiIdle,
+  emitLibrarySelectedChange: (payload) => emit('librarySelectedChange', payload)
 })
 const dynamicIconsScrollRef = useTemplateRef<OverlayScrollbarsComponentRef>('dynamicIconsScrollRef')
 const dynamicScrollState = reactive({
@@ -435,7 +393,7 @@ const syncDynamicScrollViewport = async () => {
 }
 const selectedDynamicScrollKey = computed(() => {
   if (runtime.libraryAreaSelected === 'PioneerDeviceLibrary') {
-    return runtime.pioneerDeviceLibrary.selectedDriveKey || ''
+    return runtime.pioneerDeviceLibrary.selectedSourceKey || ''
   }
   return dynamicIconArr.value.some((item) => item.name === runtime.libraryAreaSelected)
     ? runtime.libraryAreaSelected
@@ -453,269 +411,13 @@ const scrollSelectedDynamicIconIntoView = async () => {
   target.scrollIntoView({ block: 'nearest' })
   updateDynamicScrollState()
 }
-let pioneerDriveRefreshTimer: ReturnType<typeof setInterval> | null = null
-const ejectingDriveKeys = ref<string[]>([])
-
-const isEjectingPioneerDriveIcon = (item: PioneerDriveIcon) =>
-  ejectingDriveKeys.value.includes(item.key)
-
-const getPioneerLibraryTypeLabel = (libraryType: IPioneerDeviceLibraryKind) =>
-  libraryType === 'oneLibrary' ? t('pioneer.oneLibraryLabel') : t('pioneer.deviceLibraryLabel')
-
-const restorePioneerDriveSelection = (snapshot: IPioneerDeviceLibraryState) => {
-  runtime.pioneerDeviceLibrary.selectedDriveKey = snapshot.selectedDriveKey
-  runtime.pioneerDeviceLibrary.selectedDriveName = snapshot.selectedDriveName
-  runtime.pioneerDeviceLibrary.selectedDrivePath = snapshot.selectedDrivePath
-  runtime.pioneerDeviceLibrary.selectedLibraryType = snapshot.selectedLibraryType
-  runtime.pioneerDeviceLibrary.selectedPlaylistId = snapshot.selectedPlaylistId
-  runtime.pioneerDeviceLibrary.loading = snapshot.loading
-  runtime.pioneerDeviceLibrary.treeNodes = Array.isArray(snapshot.treeNodes)
-    ? [...snapshot.treeNodes]
-    : []
-}
-
-const clearPioneerDriveSelection = () => {
-  runtime.pioneerDeviceLibrary.selectedDriveKey = ''
-  runtime.pioneerDeviceLibrary.selectedDriveName = ''
-  runtime.pioneerDeviceLibrary.selectedDrivePath = ''
-  runtime.pioneerDeviceLibrary.selectedLibraryType = ''
-  runtime.pioneerDeviceLibrary.selectedPlaylistId = 0
-  runtime.pioneerDeviceLibrary.loading = false
-  runtime.pioneerDeviceLibrary.treeNodes = []
-}
-
-const switchBackToFilterLibraryAfterPioneerExit = () => {
-  if (runtime.libraryAreaSelected !== 'PioneerDeviceLibrary') return
-  runtime.libraryAreaSelected = 'FilterLibrary'
-}
-
-const suspendSelectedPioneerDriveBeforeEject = async (item: PioneerDriveIcon) => {
-  if (runtime.pioneerDeviceLibrary.selectedDriveKey !== item.key) return null
-
-  const snapshot: IPioneerDeviceLibraryState = {
-    selectedDriveKey: runtime.pioneerDeviceLibrary.selectedDriveKey,
-    selectedDriveName: runtime.pioneerDeviceLibrary.selectedDriveName,
-    selectedDrivePath: runtime.pioneerDeviceLibrary.selectedDrivePath,
-    selectedLibraryType: runtime.pioneerDeviceLibrary.selectedLibraryType,
-    selectedPlaylistId: runtime.pioneerDeviceLibrary.selectedPlaylistId,
-    loading: runtime.pioneerDeviceLibrary.loading,
-    treeNodes: Array.isArray(runtime.pioneerDeviceLibrary.treeNodes)
-      ? [...runtime.pioneerDeviceLibrary.treeNodes]
-      : []
-  }
-
-  runtime.pioneerDeviceLibrary.selectedDriveKey = ''
-  runtime.pioneerDeviceLibrary.selectedDriveName = ''
-  runtime.pioneerDeviceLibrary.selectedDrivePath = ''
-  runtime.pioneerDeviceLibrary.selectedLibraryType = ''
-  runtime.pioneerDeviceLibrary.selectedPlaylistId = 0
-  runtime.pioneerDeviceLibrary.loading = false
-  runtime.pioneerDeviceLibrary.treeNodes = []
-  if (runtime.libraryAreaSelected === 'PioneerDeviceLibrary') {
-    runtime.songsArea.songListUUID = ''
-  }
-
-  await nextTick()
-  await waitForUiIdle(250)
-  return snapshot
-}
-
-const buildPioneerDriveTooltip = (
-  drive: PioneerDriveEntry,
-  libraryType: IPioneerDeviceLibraryKind
-) => {
-  const title = String(drive.volumeName || drive.name || '').trim()
-  const base = title || String(drive.path || '').trim() || 'Pioneer USB'
-  return `${base} · ${getPioneerLibraryTypeLabel(libraryType)}`
-}
-
-const refreshPioneerDriveIcons = async () => {
-  try {
-    const result = await window.electron.ipcRenderer.invoke(
-      'pioneer-device-library:list-removable-drives'
-    )
-    const drives = Array.isArray(result) ? (result as PioneerDriveEntry[]) : []
-    const nextIcons = drives
-      .filter((item) => item && item.isPioneerDeviceLibrary)
-      .flatMap((item) => {
-        const libraryTypes = Array.isArray(item.supportedLibraryTypes)
-          ? item.supportedLibraryTypes
-          : []
-        return libraryTypes.map((libraryType) => {
-          const tooltip = buildPioneerDriveTooltip(item, libraryType)
-          return {
-            key: `pioneer-drive:${item.id || item.path}:${libraryType}`,
-            name: tooltip,
-            grey: usbDriveIconAsset,
-            white: usbDriveIconAsset,
-            src: usbDriveIconAsset,
-            showAlt: false,
-            tooltip,
-            path: item.path,
-            libraryType
-          } satisfies PioneerDriveIcon
-        })
-      })
-    pioneerDriveIcons.value = nextIcons
-
-    if (runtime.pioneerDeviceLibrary.selectedDriveKey) {
-      const target = nextIcons.find(
-        (icon) => icon.key === runtime.pioneerDeviceLibrary.selectedDriveKey
-      )
-      if (!target) {
-        clearPioneerDriveSelection()
-        switchBackToFilterLibraryAfterPioneerExit()
-        return
-      }
-      if (runtime.libraryAreaSelected === 'PioneerDeviceLibrary') {
-        updateSelectedIcon(target)
-      }
-    }
-  } catch (error) {
-    console.error('[librarySelectArea] refresh pioneer drives failed', error)
-    pioneerDriveIcons.value = []
-  }
-}
-
-const clickPioneerDriveIcon = async (item: PioneerDriveIcon) => {
-  if (!item.path) return
-  runtime.pioneerDeviceLibrary.selectedDriveKey = item.key
-  runtime.pioneerDeviceLibrary.selectedDriveName = item.tooltip
-  runtime.pioneerDeviceLibrary.selectedDrivePath = item.path
-  runtime.pioneerDeviceLibrary.selectedLibraryType = item.libraryType
-  runtime.pioneerDeviceLibrary.selectedPlaylistId = 0
-  runtime.pioneerDeviceLibrary.loading = true
-  runtime.pioneerDeviceLibrary.treeNodes = []
-  runtime.songsArea.songListUUID = ''
-  updateSelectedIcon(item)
-  runtime.libraryAreaSelected = 'PioneerDeviceLibrary'
-  emit('librarySelectedChange', { name: 'PioneerDeviceLibrary' })
-
-  try {
-    const result = await window.electron.ipcRenderer.invoke(
-      'pioneer-device-library:load-tree',
-      item.path,
-      item.libraryType
-    )
-    const treeNodes = Array.isArray(result?.treeNodes) ? result.treeNodes : []
-    runtime.pioneerDeviceLibrary.treeNodes = treeNodes
-    runtime.pioneerDeviceLibrary.selectedDriveName =
-      String(result?.driveName || '').trim() || item.tooltip
-  } catch (error: any) {
-    runtime.pioneerDeviceLibrary.treeNodes = []
-    await confirm({
-      title: t('common.error'),
-      content: [String(error?.message || error || t('pioneer.loadTreeFailed'))],
-      confirmShow: false
-    })
-  } finally {
-    runtime.pioneerDeviceLibrary.loading = false
-  }
-}
-
-const buildPioneerDriveMenuArr = () => [[{ menuName: 'library.ejectUsbDrive' }]]
-
-const buildPioneerDriveEjectErrorContent = (result?: PioneerDriveEjectResult) => {
-  if (result?.code === 'INVALID_PATH') {
-    return [t('library.ejectUsbDriveInvalidPath')]
-  }
-
-  const content = [t('library.ejectUsbDriveFailed')]
-  const detail = String(result?.detail || '').trim()
-  if (detail) {
-    content.push(detail)
-  }
-  if (result?.code === 'EJECT_TIMEOUT' || result?.code === 'EJECT_COMMAND_FAILED') {
-    content.push(t('library.ejectUsbDriveFailedHint'))
-  }
-  return content
-}
-
-const ejectPioneerDriveIcon = async (item: PioneerDriveIcon) => {
-  if (isEjectingPioneerDriveIcon(item)) return
-  ejectingDriveKeys.value = [...ejectingDriveKeys.value, item.key]
-  const suspendedSelection = await suspendSelectedPioneerDriveBeforeEject(item)
-  try {
-    const result = (await window.electron.ipcRenderer.invoke(
-      'pioneer-device-library:eject-drive',
-      item.path
-    )) as PioneerDriveEjectResult
-
-    if (!result?.success) {
-      await confirm({
-        title: t('common.error'),
-        content: buildPioneerDriveEjectErrorContent(result),
-        confirmShow: false,
-        innerHeight: 0,
-        canCopyText: true
-      })
-      if (suspendedSelection) {
-        restorePioneerDriveSelection(suspendedSelection)
-      }
-      return
-    }
-
-    if (suspendedSelection || runtime.pioneerDeviceLibrary.selectedDriveKey === item.key) {
-      clearPioneerDriveSelection()
-      switchBackToFilterLibraryAfterPioneerExit()
-    }
-    pioneerDriveIcons.value = pioneerDriveIcons.value.filter((icon) => icon.key !== item.key)
-    await refreshPioneerDriveIcons()
-  } catch (error: any) {
-    if (suspendedSelection) {
-      restorePioneerDriveSelection(suspendedSelection)
-    }
-    await confirm({
-      title: t('common.error'),
-      content: buildPioneerDriveEjectErrorContent({
-        success: false,
-        path: item.path,
-        code: 'EJECT_COMMAND_FAILED',
-        detail: String(error?.message || error || '')
-      }),
-      confirmShow: false,
-      innerHeight: 0,
-      canCopyText: true
-    })
-  } finally {
-    ejectingDriveKeys.value = ejectingDriveKeys.value.filter((key) => key !== item.key)
-  }
-}
-
-const handlePioneerDriveContextmenu = async (event: MouseEvent, item: PioneerDriveIcon) => {
-  if (isEjectingPioneerDriveIcon(item)) return
-  event.preventDefault()
-  const result = await rightClickMenu({
-    menuArr: buildPioneerDriveMenuArr(),
-    clickEvent: event
-  })
-  if (result === 'cancel') return
-  if (result.menuName === 'library.ejectUsbDrive') {
-    await ejectPioneerDriveIcon(item)
-  }
-}
-
-const isSelectedPioneerDriveIcon = (item: PioneerDriveIcon) =>
-  runtime.libraryAreaSelected === 'PioneerDeviceLibrary' &&
-  runtime.pioneerDeviceLibrary.selectedDriveKey === item.key
-
 onMounted(() => {
-  void refreshPioneerDriveIcons()
   void syncDynamicScrollViewport()
-  pioneerDriveRefreshTimer = setInterval(() => {
-    void refreshPioneerDriveIcons()
-  }, 15000)
-  window.addEventListener('focus', refreshPioneerDriveIcons)
 })
 
 onUnmounted(() => {
   dynamicScrollViewportEl?.removeEventListener('scroll', handleDynamicScroll)
   dynamicScrollViewportEl = null
-  if (pioneerDriveRefreshTimer) {
-    clearInterval(pioneerDriveRefreshTimer)
-    pioneerDriveRefreshTimer = null
-  }
-  window.removeEventListener('focus', refreshPioneerDriveIcons)
 })
 
 const buttomIconArr = ref<ButtomIcon[]>([
@@ -784,9 +486,13 @@ watch(
   () => runtime.libraryAreaSelected,
   (val) => {
     if (val === 'PioneerDeviceLibrary') {
-      const target = pioneerDriveIcons.value.find(
-        (icon) => icon.key === runtime.pioneerDeviceLibrary.selectedDriveKey
-      )
+      const target =
+        (runtime.pioneerDeviceLibrary.selectedSourceKind === 'desktop'
+          ? desktopLibraryIcon.value
+          : null) ||
+        pioneerDriveGroups.value
+          .flatMap((group) => group.icons)
+          .find((icon) => icon.key === runtime.pioneerDeviceLibrary.selectedSourceKey)
       if (target) {
         updateSelectedIcon(target)
       }
@@ -804,6 +510,7 @@ watch(
   () => [
     hasDynamicEntries.value,
     dynamicIconArr.value.map((item) => item.name).join('|'),
+    desktopLibraryIcon.value?.key || '',
     pioneerDriveGroups.value.map((group) => group.icons.map((item) => item.key).join(',')).join('|')
   ],
   () => {
@@ -914,6 +621,36 @@ watch(
               <bubbleBox
                 :dom="iconRefMap[item.name] || undefined"
                 :title="t((item as any).i18nKey || item.name)"
+              />
+            </div>
+          </div>
+          <div
+            v-if="desktopLibraryIcon"
+            :ref="(el) => setScrollItemRef(desktopLibraryIcon?.key || '', el)"
+            class="iconBox iconBox--device"
+            @click="clickDesktopLibraryIcon()"
+            @mouseover="iconMouseover(desktopLibraryIcon)"
+            @mouseout="iconMouseout(desktopLibraryIcon)"
+          >
+            <div
+              class="iconBoxAccent"
+              :style="{ backgroundColor: isSelectedDesktopLibraryIcon ? 'var(--accent)' : '' }"
+            ></div>
+            <div class="iconBoxContent">
+              <span
+                :ref="(el) => setIconRef(desktopLibraryIcon?.key || '', el)"
+                :style="getIconMaskStyle(desktopLibraryIcon)"
+                :class="[
+                  'sidebar-icon',
+                  {
+                    'is-active': isSelectedDesktopLibraryIcon
+                  }
+                ]"
+              ></span>
+              <bubbleBox
+                :dom="iconRefMap[desktopLibraryIcon?.key || ''] || undefined"
+                :title="desktopLibraryIcon?.tooltip || ''"
+                :max-width="320"
               />
             </div>
           </div>

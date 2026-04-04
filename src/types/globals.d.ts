@@ -2,6 +2,7 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import { PreloadApi } from '../preload/index'
 import { IPicture } from 'music-metadata'
+import type { RekordboxSourceKind, RekordboxSourceLibraryType } from '../shared/rekordboxSources'
 
 interface IDir {
   uuid: string
@@ -49,6 +50,9 @@ interface ISongInfo {
   mixtapeItemId?: string
   analysisOnly?: boolean
   autoFilled?: boolean
+  externalAnalyzePath?: string | null
+  externalWaveformRootPath?: string | null
+  externalSourceKind?: RekordboxSourceKind | null
   pioneerCoverPath?: string | null
   pioneerAnalyzePath?: string | null
   pioneerDeviceRootPath?: string | null
@@ -116,15 +120,22 @@ interface IPioneerPlaylistTreeNode {
 
 type IPioneerDeviceLibraryKind = 'deviceLibrary' | 'oneLibrary'
 
-interface IPioneerDeviceLibraryState {
-  selectedDriveKey: string
-  selectedDriveName: string
-  selectedDrivePath: string
-  selectedLibraryType: IPioneerDeviceLibraryKind | ''
+type IRekordboxSourceKind = RekordboxSourceKind
+
+type IRekordboxSourceLibraryType = RekordboxSourceLibraryType
+
+interface IRekordboxLibraryBrowserState {
+  selectedSourceKey: string
+  selectedSourceName: string
+  selectedSourceRootPath: string
+  selectedSourceKind: RekordboxSourceKind | ''
+  selectedLibraryType: RekordboxSourceLibraryType | ''
   selectedPlaylistId: number
   loading: boolean
   treeNodes: IPioneerPlaylistTreeNode[]
 }
+
+type IPioneerDeviceLibraryState = IRekordboxLibraryBrowserState
 
 interface IPioneerPlaylistTrack {
   rowKey: string
@@ -463,6 +474,9 @@ export {
   IPioneerPreviewWaveformColumn,
   IPioneerPreviewWaveformData,
   ITrackMetadataDetail,
+  IRekordboxSourceKind,
+  IRekordboxSourceLibraryType,
+  IRekordboxLibraryBrowserState,
   IPioneerDeviceLibraryKind,
   IPioneerPlaylistTreeNode,
   IPioneerDeviceLibraryState,

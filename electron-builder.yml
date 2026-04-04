@@ -15,6 +15,10 @@ extraResources:
     to: licenses/THIRD_PARTY_NOTICES.md
   - from: LICENSE
     to: licenses/LICENSE
+  - from: vendor/rekordbox-desktop-runtime
+    to: rekordboxDesktopRuntime
+  - from: resources/rekordboxDesktopLibrary
+    to: rekordboxDesktopLibrary
 fileAssociations:
   - ext:
       - mp3

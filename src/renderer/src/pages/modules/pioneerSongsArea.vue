@@ -18,10 +18,12 @@ import { buildSongsAreaDefaultColumns } from '@renderer/pages/modules/songsArea/
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
 import { getKeyDisplayText, getKeySortText } from '@shared/keyDisplay'
 import { useParentRafSampler } from '@renderer/pages/modules/songsArea/composables/useParentRafSampler'
+import { buildRekordboxSourceChannel, type RekordboxSourceKind } from '@shared/rekordboxSources'
 import type {
   IMenu,
   IPioneerPlaylistTrack,
   IPioneerPlaylistTreeNode,
+  IRekordboxSourceKind,
   ISongInfo,
   ISongsAreaColumn
 } from '../../../../types/globals'
@@ -48,12 +50,21 @@ const descendingOrder = descendingOrderAsset
 const { externalScrollTop, externalViewportHeight } = useParentRafSampler({ songsAreaRef })
 useWaveformPreviewPlayer()
 
-const selectedDriveKey = computed(() => runtime.pioneerDeviceLibrary.selectedDriveKey || '')
-const selectedDriveName = computed(
-  () => runtime.pioneerDeviceLibrary.selectedDriveName || 'Pioneer USB'
+const selectedSourceKey = computed(() => runtime.pioneerDeviceLibrary.selectedSourceKey || '')
+const selectedSourceKind = computed<IRekordboxSourceKind | ''>(
+  () => runtime.pioneerDeviceLibrary.selectedSourceKind || ''
 )
+const isDesktopSource = computed(() => selectedSourceKind.value === 'desktop')
+const selectedSourceName = computed(() => {
+  if (runtime.pioneerDeviceLibrary.selectedSourceName) {
+    return runtime.pioneerDeviceLibrary.selectedSourceName
+  }
+  return isDesktopSource.value ? 'Rekordbox 本机库' : 'Pioneer USB'
+})
 const selectedPlaylistId = computed(() => runtime.pioneerDeviceLibrary.selectedPlaylistId || 0)
-const selectedDrivePath = computed(() => runtime.pioneerDeviceLibrary.selectedDrivePath || '')
+const selectedSourceRootPath = computed(
+  () => runtime.pioneerDeviceLibrary.selectedSourceRootPath || ''
+)
 const selectedLibraryType = computed(
   () => runtime.pioneerDeviceLibrary.selectedLibraryType || 'deviceLibrary'
 )
@@ -74,8 +85,9 @@ const selectedPlaylistNode = computed(() => {
 })
 const currentPlaybackListKey = computed(() => {
   if (!selectedPlaylistId.value) return ''
-  const driveKey = selectedDriveKey.value || selectedDrivePath.value || 'pioneer'
-  return `pioneer:${driveKey}:${selectedPlaylistId.value}`
+  const sourceKey = selectedSourceKey.value || selectedSourceRootPath.value || 'rekordbox'
+  const sourceKind = selectedSourceKind.value || 'usb'
+  return `${sourceKind}:${sourceKey}:${selectedPlaylistId.value}`
 })
 
 const visibleColumns = computed(() => columnData.value.filter((item) => item.show))
@@ -105,7 +117,7 @@ const playingSongFilePathsForRows = computed(() => {
   return [...keys]
 })
 const originPathSnapshot = computed(() => {
-  const driveLabel = selectedDriveName.value || 'Pioneer USB'
+  const driveLabel = selectedSourceName.value || 'Pioneer USB'
   const playlistLabel = selectedPlaylistNode.value?.name || ''
   return playlistLabel ? `${driveLabel} / ${playlistLabel}` : driveLabel
 })
@@ -137,9 +149,13 @@ const toSongInfo = (track: IPioneerPlaylistTrack): ISongInfo => ({
   key: track.key,
   bpm: track.bpm,
   mixOrder: track.entryIndex,
+  externalAnalyzePath: track.analyzePath || null,
+  externalWaveformRootPath: selectedSourceRootPath.value || null,
+  externalSourceKind: (selectedSourceKind.value || 'usb') as RekordboxSourceKind,
   pioneerCoverPath: track.coverPath || null,
-  pioneerAnalyzePath: track.analyzePath || null,
-  pioneerDeviceRootPath: selectedDrivePath.value || null,
+  pioneerAnalyzePath: selectedSourceKind.value === 'usb' ? track.analyzePath || null : null,
+  pioneerDeviceRootPath:
+    selectedSourceKind.value === 'usb' ? selectedSourceRootPath.value || null : null,
   mixtapeItemId: track.rowKey
 })
 
@@ -343,7 +359,7 @@ const handleColumnClick = (column: ISongsAreaColumn) => {
 }
 
 const loadPlaylistTracks = async () => {
-  if (!selectedDrivePath.value || !selectedPlaylistId.value) {
+  if (!selectedSourceRootPath.value || !selectedPlaylistId.value) {
     originalTracks.value = []
     visibleSongs.value = []
     selectedRowKeys.value = []
@@ -352,12 +368,18 @@ const loadPlaylistTracks = async () => {
   loading.value = true
   selectedRowKeys.value = []
   try {
-    const result = await window.electron.ipcRenderer.invoke(
-      'pioneer-device-library:load-playlist-tracks',
-      selectedDrivePath.value,
-      selectedPlaylistId.value,
-      selectedLibraryType.value
-    )
+    const result =
+      selectedSourceKind.value === 'desktop'
+        ? await window.electron.ipcRenderer.invoke(
+            buildRekordboxSourceChannel('desktop', 'load-playlist-tracks'),
+            selectedPlaylistId.value
+          )
+        : await window.electron.ipcRenderer.invoke(
+            buildRekordboxSourceChannel('usb', 'load-playlist-tracks'),
+            selectedSourceRootPath.value,
+            selectedPlaylistId.value,
+            selectedLibraryType.value
+          )
     originalTracks.value = Array.isArray(result?.tracks) ? result.tracks : []
     applyFiltersAndSorting()
   } catch (error) {
@@ -370,7 +392,7 @@ const loadPlaylistTracks = async () => {
 }
 
 watch(
-  () => [selectedDrivePath.value, selectedPlaylistId.value] as const,
+  () => [selectedSourceRootPath.value, selectedPlaylistId.value, selectedSourceKind.value] as const,
   () => {
     try {
       emitter.emit('waveform-preview:stop', { reason: 'switch' })
@@ -576,9 +598,19 @@ const handleSelectSongListDialogCancel = () => {
 }
 
 const placeholderText = computed(() => {
-  if (loading.value) return t('pioneer.loadingPlaylistTracks')
-  if (!selectedPlaylistId.value) return t('pioneer.selectPlaylistPrompt')
-  if (!visibleSongs.value.length) return t('pioneer.emptyPlaylist')
+  if (loading.value) {
+    return isDesktopSource.value
+      ? t('rekordboxDesktop.loadingPlaylistTracks')
+      : t('pioneer.loadingPlaylistTracks')
+  }
+  if (!selectedPlaylistId.value) {
+    return isDesktopSource.value
+      ? t('rekordboxDesktop.selectPlaylistPrompt')
+      : t('pioneer.selectPlaylistPrompt')
+  }
+  if (!visibleSongs.value.length) {
+    return isDesktopSource.value ? t('rekordboxDesktop.emptyPlaylist') : t('pioneer.emptyPlaylist')
+  }
   return ''
 })
 </script>
@@ -628,11 +660,13 @@ const placeholderText = computed(() => {
         :flash-row-token="0"
         :total-width="totalWidth"
         source-library-name="PioneerDeviceLibrary"
-        :source-song-list-u-u-i-d="currentPlaybackListKey || `pioneer:${selectedPlaylistId}`"
+        :source-song-list-u-u-i-d="
+          currentPlaybackListKey || `${selectedSourceKind || 'usb'}:${selectedPlaylistId}`
+        "
         :scroll-host-element="songsAreaRef?.osInstance()?.elements().viewport"
         :external-scroll-top="externalScrollTop"
         :external-viewport-height="externalViewportHeight"
-        :pioneer-device-root-path="selectedDrivePath"
+        :external-waveform-root-path="selectedSourceRootPath"
         :read-only="true"
         :allow-context-menu-when-read-only="true"
         :allow-dblclick-when-read-only="true"

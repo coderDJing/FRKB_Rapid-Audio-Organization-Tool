@@ -2,6 +2,10 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import type { IPioneerPreviewWaveformData, ISongInfo } from 'src/types/globals'
+import {
+  getRekordboxPreviewWaveformRequestChannel,
+  resolveSongExternalWaveformSource
+} from '@renderer/utils/rekordboxExternalSource'
 import type {
   MixxxWaveformData,
   RGBWaveformBandKey,
@@ -573,22 +577,23 @@ const loadWaveform = async () => {
   const filePath = String(currentSong?.filePath || '').trim()
   if (!filePath) return
 
-  const pioneerAnalyzePath = String(currentSong?.pioneerAnalyzePath || '').trim()
-  const pioneerRootPath = String(
-    currentSong?.pioneerDeviceRootPath || runtime.pioneerDeviceLibrary.selectedDrivePath || ''
-  ).trim()
+  const externalWaveformSource = resolveSongExternalWaveformSource(currentSong, {
+    rootPath: runtime.pioneerDeviceLibrary.selectedSourceRootPath,
+    sourceKind: runtime.pioneerDeviceLibrary.selectedSourceKind || undefined
+  })
 
-  if (pioneerAnalyzePath && pioneerRootPath) {
+  if (externalWaveformSource) {
     try {
       const response = (await window.electron.ipcRenderer.invoke(
-        'pioneer-device-library:get-preview-waveforms',
-        pioneerRootPath,
-        [pioneerAnalyzePath]
+        getRekordboxPreviewWaveformRequestChannel(externalWaveformSource.sourceKind),
+        externalWaveformSource.rootPath,
+        [externalWaveformSource.analyzePath]
       )) as PioneerPreviewWaveformResponse | null
 
       if (currentToken !== loadToken) return
       const preview =
-        response?.items?.find((item) => item.analyzePath === pioneerAnalyzePath)?.data ?? null
+        response?.items?.find((item) => item.analyzePath === externalWaveformSource.analyzePath)
+          ?.data ?? null
       if (preview) {
         pioneerPreviewData.value = preview
         drawWaveform()
@@ -616,8 +621,8 @@ const loadWaveform = async () => {
 watch(
   () => [
     props.song?.filePath ?? '',
-    props.song?.pioneerAnalyzePath ?? '',
-    props.song?.pioneerDeviceRootPath ?? ''
+    props.song?.externalAnalyzePath ?? props.song?.pioneerAnalyzePath ?? '',
+    props.song?.externalWaveformRootPath ?? props.song?.pioneerDeviceRootPath ?? ''
   ],
   () => {
     void loadWaveform()

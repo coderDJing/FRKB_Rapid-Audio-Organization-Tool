@@ -6,20 +6,24 @@ import type {
 } from '../../../../../../types/globals'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
+import {
+  getRekordboxPreviewWaveformDoneEventChannel,
+  getRekordboxPreviewWaveformItemEventChannel,
+  getRekordboxPreviewWaveformStreamChannel,
+  resolveSongExternalWaveformSource
+} from '@renderer/utils/rekordboxExternalSource'
 import { t } from '@renderer/utils/translate'
 import type {
   MixxxWaveformData,
   RGBWaveformBandKey,
   WaveformStyle
 } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
-
+import type { RekordboxSourceKind } from '@shared/rekordboxSources'
 type VisibleSongItem = { song: ISongInfo; idx: number }
-
 type MinMaxSample = {
   min: number
   max: number
 }
-
 type WaveformCacheEntry =
   | {
       kind: 'mixxx'
@@ -30,16 +34,13 @@ type WaveformCacheEntry =
       data: IPioneerPreviewWaveformData
     }
   | null
-
 type WaveformPlaceholderState = 'loading' | 'unavailable' | 'ready'
-
 type MixxxColumnMetrics = {
   amplitudeLeft: number
   amplitudeRight: number
   color: { r: number; g: number; b: number }
   progressColor: { r: number; g: number; b: number }
 }
-
 const WAVEFORM_STYLE_SOUND_CLOUD: WaveformStyle = 'SoundCloud'
 const WAVEFORM_STYLE_FINE: WaveformStyle = 'Fine'
 const WAVEFORM_STYLE_RGB: WaveformStyle = 'RGB'
@@ -53,7 +54,6 @@ const MIXXX_RGB_COMPONENTS: Record<RGBWaveformBandKey, { r: number; g: number; b
   high: { r: 0, g: 0, b: 1 }
 }
 const toColorChannel = (value: number) => Math.max(0, Math.min(255, Math.round(value)))
-
 const normalizeWaveformStyle = (
   style?: WaveformStyle | 'RekordboxMini' | 'Mixxx'
 ): WaveformStyle => {
@@ -67,7 +67,6 @@ const normalizeWaveformStyle = (
   }
   return WAVEFORM_STYLE_RGB
 }
-
 const buildMinMaxDataFromMixxx = (waveformData: MixxxWaveformData): MinMaxSample[] => {
   const low = waveformData.bands.low
   const mid = waveformData.bands.mid
@@ -81,9 +80,7 @@ const buildMinMaxDataFromMixxx = (waveformData: MixxxWaveformData): MinMaxSample
     high.right.length
   )
   if (!frameCount) return []
-
   const data = new Array<MinMaxSample>(frameCount)
-
   for (let i = 0; i < frameCount; i++) {
     const lowLeft = low.peakLeft ? low.peakLeft[i] : low.left[i]
     const lowRight = low.peakRight ? low.peakRight[i] : low.right[i]
@@ -91,28 +88,22 @@ const buildMinMaxDataFromMixxx = (waveformData: MixxxWaveformData): MinMaxSample
     const midRight = mid.peakRight ? mid.peakRight[i] : mid.right[i]
     const highLeft = high.peakLeft ? high.peakLeft[i] : high.left[i]
     const highRight = high.peakRight ? high.peakRight[i] : high.right[i]
-
     const leftEnergy = Math.sqrt(lowLeft * lowLeft + midLeft * midLeft + highLeft * highLeft)
     const rightEnergy = Math.sqrt(lowRight * lowRight + midRight * midRight + highRight * highRight)
-
     const leftAmplitude = Math.min(1, leftEnergy / MIXXX_MAX_RGB_ENERGY)
     const rightAmplitude = Math.min(1, rightEnergy / MIXXX_MAX_RGB_ENERGY)
-
     data[i] = {
       min: -rightAmplitude,
       max: leftAmplitude
     }
   }
-
   return data
 }
-
 const computeMixxxColumnMetrics = (
   columnCount: number,
   waveformData: MixxxWaveformData | null
 ): MixxxColumnMetrics[] => {
   if (!waveformData || columnCount <= 0) return []
-
   const low = waveformData.bands.low
   const mid = waveformData.bands.mid
   const high = waveformData.bands.high
@@ -125,17 +116,14 @@ const computeMixxxColumnMetrics = (
     high.right.length
   )
   if (frameCount === 0) return []
-
   const columns: MixxxColumnMetrics[] = new Array(columnCount)
   const dataSize = frameCount * 2
   const gain = dataSize / Math.max(1, columnCount)
   const lastVisualFrame = frameCount - 1
-
   for (let x = 0; x < columnCount; x++) {
     const xSampleWidth = gain * x
     const xVisualSampleIndex = xSampleWidth
     const maxSamplingRange = gain / 2
-
     let visualFrameStart = Math.floor(xVisualSampleIndex / 2 - maxSamplingRange + 0.5)
     let visualFrameStop = Math.floor(xVisualSampleIndex / 2 + maxSamplingRange + 0.5)
     if (visualFrameStart < 0) visualFrameStart = 0
@@ -143,13 +131,11 @@ const computeMixxxColumnMetrics = (
     if (visualFrameStop < visualFrameStart) {
       visualFrameStop = visualFrameStart
     }
-
     let maxLow = 0
     let maxMid = 0
     let maxHigh = 0
     let maxAllLeft = 0
     let maxAllRight = 0
-
     for (let i = visualFrameStart; i <= visualFrameStop; i++) {
       const lowLeft = low.left[i]
       const lowRight = low.right[i]
@@ -163,21 +149,18 @@ const computeMixxxColumnMetrics = (
       const midRightAmp = mid.peakRight ? mid.peakRight[i] : midRight
       const highLeftAmp = high.peakLeft ? high.peakLeft[i] : highLeft
       const highRightAmp = high.peakRight ? high.peakRight[i] : highRight
-
       if (lowLeft > maxLow) maxLow = lowLeft
       if (lowRight > maxLow) maxLow = lowRight
       if (midLeft > maxMid) maxMid = midLeft
       if (midRight > maxMid) maxMid = midRight
       if (highLeft > maxHigh) maxHigh = highLeft
       if (highRight > maxHigh) maxHigh = highRight
-
       const allLeft = lowLeftAmp * lowLeftAmp + midLeftAmp * midLeftAmp + highLeftAmp * highLeftAmp
       const allRight =
         lowRightAmp * lowRightAmp + midRightAmp * midRightAmp + highRightAmp * highRightAmp
       if (allLeft > maxAllLeft) maxAllLeft = allLeft
       if (allRight > maxAllRight) maxAllRight = allRight
     }
-
     const red =
       maxLow * MIXXX_RGB_COMPONENTS.low.r +
       maxMid * MIXXX_RGB_COMPONENTS.mid.r +
@@ -190,7 +173,6 @@ const computeMixxxColumnMetrics = (
       maxLow * MIXXX_RGB_COMPONENTS.low.b +
       maxMid * MIXXX_RGB_COMPONENTS.mid.b +
       maxHigh * MIXXX_RGB_COMPONENTS.high.b
-
     const maxColor = Math.max(red, green, blue)
     const color =
       maxColor > 0
@@ -208,10 +190,8 @@ const computeMixxxColumnMetrics = (
             b: toColorChannel((blue / maxColor) * 255 * MIXXX_RGB_PROGRESS_BRIGHTNESS_SCALE)
           }
         : { r: 0, g: 0, b: 0 }
-
     const amplitudeLeft = Math.min(1, Math.sqrt(maxAllLeft) / MIXXX_MAX_RGB_ENERGY)
     const amplitudeRight = Math.min(1, Math.sqrt(maxAllRight) / MIXXX_MAX_RGB_ENERGY)
-
     columns[x] = {
       amplitudeLeft,
       amplitudeRight,
@@ -219,12 +199,9 @@ const computeMixxxColumnMetrics = (
       progressColor
     }
   }
-
   return columns
 }
-
 const clamp01 = (value: number) => (Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0)
-
 const drawPioneerPreviewWaveform = (
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -240,13 +217,11 @@ const drawPioneerPreviewWaveform = (
       columns.reduce((value, column) => Math.max(value, Number(column?.backHeight) || 0), 0)
   )
   if (!columns.length || width <= 0 || height <= 0 || maxHeight <= 0) return
-
   const columnCount = Math.max(1, Math.floor(width))
   const samplesPerColumn = columns.length / columnCount
   const spacing = width / columnCount
   const drawWidth = Math.max(1, spacing)
   const scaleY = height / maxHeight
-
   for (let index = 0; index < columnCount; index++) {
     const start = Math.floor(index * samplesPerColumn)
     const end = Math.min(
@@ -262,27 +237,22 @@ const drawPioneerPreviewWaveform = (
       }
     }
     if (!selected) continue
-
     const backHeight = Math.max(0, Number(selected.backHeight) || 0)
     const frontHeight = Math.max(0, Number(selected.frontHeight) || 0)
     const x = Math.min(width - drawWidth, index * spacing)
-
     if (backHeight > 0) {
       const backPixelHeight = Math.max(1, backHeight * scaleY)
       ctx.fillStyle = `rgb(${selected.backColorR || 0}, ${selected.backColorG || 0}, ${selected.backColorB || 0})`
       ctx.fillRect(x, height - backPixelHeight, drawWidth, backPixelHeight)
     }
-
     if (frontHeight > 0) {
       const frontPixelHeight = Math.max(1, frontHeight * scaleY)
       ctx.fillStyle = `rgb(${selected.frontColorR || 0}, ${selected.frontColorG || 0}, ${selected.frontColorB || 0})`
       ctx.fillRect(x, height - frontPixelHeight, drawWidth, frontPixelHeight)
     }
   }
-
   const clampedPlayed = clamp01(playedPercent)
   if (clampedPlayed <= 0) return
-
   ctx.save()
   ctx.globalCompositeOperation = 'source-atop'
   ctx.globalAlpha = 0.32
@@ -290,12 +260,11 @@ const drawPioneerPreviewWaveform = (
   ctx.fillRect(0, 0, width * clampedPlayed, height)
   ctx.restore()
 }
-
 export function useWaveformPreview(params: {
   visibleSongsWithIndex: Ref<VisibleSongItem[]>
   visibleColumns: Ref<ISongsAreaColumn[]>
   songListRootDir: Ref<string | undefined>
-  pioneerDeviceRootPath: Ref<string | undefined>
+  externalWaveformRootPath: Ref<string | undefined>
   actualVisibleStartIndex: Ref<number>
   actualVisibleEndIndex: Ref<number>
 }) {
@@ -303,18 +272,16 @@ export function useWaveformPreview(params: {
     visibleSongsWithIndex,
     visibleColumns,
     songListRootDir,
-    pioneerDeviceRootPath,
+    externalWaveformRootPath,
     actualVisibleStartIndex,
     actualVisibleEndIndex
   } = params
   const runtime = useRuntimeStore()
-
   const waveformColumn = computed(() =>
     visibleColumns.value.find((col) => col.key === 'waveformPreview')
   )
   const waveformVisible = computed(() => Boolean(waveformColumn.value))
   const waveformColumnWidth = computed(() => waveformColumn.value?.width ?? 0)
-
   const canvasMap = markRaw(new Map<string, HTMLCanvasElement>())
   const dataMap = markRaw(new Map<string, WaveformCacheEntry>())
   const placeholderStateMap = markRaw(new Map<string, WaveformPlaceholderState>())
@@ -333,11 +300,9 @@ export function useWaveformPreview(params: {
   const placeholderVersion = ref(0)
   let activePioneerStreamRequestId = ''
   const pioneerStreamFilePathMap = markRaw(new Map<string, string[]>())
-
   const useHalfWaveform = () => (runtime.setting?.waveformMode ?? 'half') !== 'full'
-  const resolvePioneerRootPath = () => String(pioneerDeviceRootPath.value || '').trim()
+  const resolveExternalRootPath = () => String(externalWaveformRootPath.value || '').trim()
   const touchPlaceholderState = () => (placeholderVersion.value += 1)
-
   const setWaveformCanvasRef = (filePath: string, el: HTMLCanvasElement | null) => {
     if (!filePath) return
     if (el) {
@@ -347,7 +312,6 @@ export function useWaveformPreview(params: {
       canvasMap.delete(filePath)
     }
   }
-
   const getVisiblePaths = (): string[] => {
     const paths: string[] = []
     const seen = new Set<string>()
@@ -359,17 +323,14 @@ export function useWaveformPreview(params: {
     }
     return paths
   }
-
   const resolveVisibleSongByFilePath = (filePath: string) => {
     return (
       visibleSongsWithIndex.value.find((item) => String(item?.song?.filePath || '') === filePath)
         ?.song || null
     )
   }
-
   const buildPioneerStreamRequestId = () =>
     `pioneer-waveform:${Date.now()}:${Math.random().toString(36).slice(2)}`
-
   const resetPioneerStreamState = () => {
     for (const [, filePaths] of pioneerStreamFilePathMap) {
       for (const filePath of filePaths) {
@@ -379,11 +340,11 @@ export function useWaveformPreview(params: {
     activePioneerStreamRequestId = ''
     pioneerStreamFilePathMap.clear()
   }
-
   const orderPioneerRequestsForViewport = (
     requests: Array<{
       filePath: string
       analyzePath: string
+      sourceKind: RekordboxSourceKind
     }>
   ) => {
     if (!requests.length) return requests
@@ -392,7 +353,6 @@ export function useWaveformPreview(params: {
     const visibleRest: typeof requests = []
     const buffered: typeof requests = []
     let eagerCount = 0
-
     for (const item of visibleSongsWithIndex.value || []) {
       const filePath = String(item?.song?.filePath || '').trim()
       const request = requestByFilePath.get(filePath)
@@ -410,11 +370,9 @@ export function useWaveformPreview(params: {
         buffered.push(request)
       }
     }
-
     const remainder = Array.from(requestByFilePath.values())
     return [...eager, ...visibleRest, ...buffered, ...remainder]
   }
-
   const getWaveformClickPercent = (filePath: string, clientX: number) => {
     const canvas = canvasMap.get(filePath)
     if (!canvas) return 0
@@ -422,7 +380,6 @@ export function useWaveformPreview(params: {
     if (!rect.width) return 0
     return clamp01((clientX - rect.left) / rect.width)
   }
-
   const requestWaveformPreview = (song: ISongInfo, startPercent: number) => {
     const filePath = typeof song?.filePath === 'string' ? song.filePath : ''
     if (!filePath) return
@@ -434,14 +391,11 @@ export function useWaveformPreview(params: {
     previewFilePath.value = filePath
     previewPercent.value = clamp01(startPercent)
   }
-
   const stopWaveformPreview = () => {
     emitter.emit('waveform-preview:stop', { reason: 'explicit' })
   }
-
   const isWaveformPreviewActive = (filePath: string) =>
     previewActive.value && previewFilePath.value === filePath
-
   const getWaveformPreviewPlayheadStyle = (filePath: string) => {
     if (!isWaveformPreviewActive(filePath)) return {}
     const percent = clamp01(previewPercent.value)
@@ -449,7 +403,6 @@ export function useWaveformPreview(params: {
       left: `${percent * 100}%`
     }
   }
-
   const getMinMaxSamples = (filePath: string, data: MixxxWaveformData): MinMaxSample[] => {
     const cached = minMaxCache.get(filePath)
     if (cached && cached.source === data) return cached.samples
@@ -457,14 +410,12 @@ export function useWaveformPreview(params: {
     minMaxCache.set(filePath, { source: data, samples })
     return samples
   }
-
   const setWaveformPlaceholderLoading = (filePath: string) => {
     if (!filePath) return
     placeholderStateMap.set(filePath, 'loading')
     placeholderReasonMap.delete(filePath)
     touchPlaceholderState()
   }
-
   const setWaveformPlaceholderUnavailable = (filePath: string, reason?: string) => {
     if (!filePath) return
     placeholderStateMap.set(filePath, 'unavailable')
@@ -475,14 +426,12 @@ export function useWaveformPreview(params: {
     }
     touchPlaceholderState()
   }
-
   const setWaveformPlaceholderReady = (filePath: string) => {
     if (!filePath) return
     placeholderStateMap.set(filePath, 'ready')
     placeholderReasonMap.delete(filePath)
     touchPlaceholderState()
   }
-
   const getWaveformPlaceholderText = (filePath: string) => {
     placeholderVersion.value
     const state = placeholderStateMap.get(filePath)
@@ -490,13 +439,11 @@ export function useWaveformPreview(params: {
     if (state === 'unavailable') return t('tracks.waveformPreviewUnavailable')
     return ''
   }
-
   const getWaveformPlaceholderTitle = (filePath: string) => {
     placeholderVersion.value
     if (placeholderStateMap.get(filePath) !== 'unavailable') return ''
     return placeholderReasonMap.get(filePath) || ''
   }
-
   const storeWaveformData = (filePath: string, data: WaveformCacheEntry) => {
     if (!filePath) return
     if (dataMap.has(filePath)) {
@@ -514,7 +461,6 @@ export function useWaveformPreview(params: {
       }
     }
   }
-
   const resizeCanvas = (
     canvas: HTMLCanvasElement,
     ctx: CanvasRenderingContext2D,
@@ -532,7 +478,6 @@ export function useWaveformPreview(params: {
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.scale(pixelRatio, pixelRatio)
   }
-
   const drawMinMaxWaveform = (
     ctx: CanvasRenderingContext2D,
     width: number,
@@ -553,13 +498,10 @@ export function useWaveformPreview(params: {
     const spacing = width / columnCount
     const drawWidth = Math.max(0.5, Math.min(barWidth, spacing))
     const offset = spacing > drawWidth ? (spacing - drawWidth) / 2 : 0
-
     const midY = height / 2
     const baselineY = isHalf ? height : midY
     const scaleY = isHalf ? baselineY : midY
-
     const rects: Array<{ x: number; y: number; width: number; height: number }> = []
-
     for (let index = 0; index < columnCount; index++) {
       const start = Math.floor(index * samplesPerColumn)
       const end = Math.min(
@@ -567,29 +509,24 @@ export function useWaveformPreview(params: {
         Math.max(start + 1, Math.floor((index + 1) * samplesPerColumn))
       )
       let peak = 0
-
       for (let i = start; i < end; i++) {
         const { min, max } = samples[i]
         const amplitude = Math.max(Math.abs(min), Math.abs(max))
         if (amplitude > peak) peak = amplitude
       }
-
       const amplitudePx = Math.max(1, peak * scaleY)
       const rectHeight = isHalf ? Math.max(1, amplitudePx) : Math.max(1, amplitudePx * 2)
       const y = isHalf ? baselineY - rectHeight : baselineY - amplitudePx
       const x = Math.max(0, Math.min(width - drawWidth, index * spacing + offset))
       rects.push({ x, y, width: drawWidth, height: rectHeight })
     }
-
     const paintRects = (fillStyle: string) => {
       ctx.fillStyle = fillStyle || '#999999'
       for (const rect of rects) {
         ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
       }
     }
-
     paintRects(baseColor)
-
     const clampedPlayed = clamp01(playedPercent)
     if (clampedPlayed > 0) {
       const playedWidth = width * clampedPlayed
@@ -601,7 +538,6 @@ export function useWaveformPreview(params: {
       ctx.restore()
     }
   }
-
   const drawRgbWaveform = (
     ctx: CanvasRenderingContext2D,
     width: number,
@@ -612,31 +548,26 @@ export function useWaveformPreview(params: {
   ) => {
     const columns = computeMixxxColumnMetrics(Math.max(1, Math.floor(width)), waveformData)
     if (!columns.length) return
-
     const centerY = height / 2
     const maxAmplitude = isHalf ? height : centerY
     const playedColumns = Math.min(
       columns.length,
       Math.max(0, Math.floor(columns.length * playedPercent))
     )
-
     for (let x = 0; x < columns.length; x++) {
       const column = columns[x]
       const { r, g, b } = x < playedColumns ? column.progressColor : column.color
       if (!r && !g && !b) continue
-
       const amplitudeTop = Math.max(1, column.amplitudeLeft * maxAmplitude)
       const amplitudeBottom = Math.max(1, column.amplitudeRight * maxAmplitude)
       const rectHeight = isHalf
         ? Math.max(amplitudeTop, amplitudeBottom)
         : amplitudeTop + amplitudeBottom
       const yTop = isHalf ? height - rectHeight : centerY - amplitudeTop
-
       ctx.fillStyle = `rgb(${r}, ${g}, ${b})`
       ctx.fillRect(x, yTop, 1, rectHeight)
     }
   }
-
   const drawWaveform = (filePath: string) => {
     const canvas = canvasMap.get(filePath)
     if (!canvas) return
@@ -645,28 +576,22 @@ export function useWaveformPreview(params: {
     const width = canvas.clientWidth || 1
     const height = canvas.clientHeight || 1
     resizeCanvas(canvas, ctx, width, height)
-
     const data = dataMap.get(filePath) ?? null
     if (!data) return
-
     const computedStyle = typeof window !== 'undefined' ? getComputedStyle(canvas) : null
     const accent = computedStyle?.getPropertyValue('--accent') || ''
     const progressColor = accent.trim() || '#0078d4'
     const playedPercent = isWaveformPreviewActive(filePath) ? clamp01(previewPercent.value) : 0
-
     if (data.kind === 'pioneer') {
       drawPioneerPreviewWaveform(ctx, width, height, data.data, playedPercent, progressColor)
       return
     }
-
     const style = normalizeWaveformStyle(runtime.setting?.waveformStyle)
     const isHalf = useHalfWaveform()
-
     if (style === WAVEFORM_STYLE_RGB) {
       drawRgbWaveform(ctx, width, height, data.data, isHalf, playedPercent)
       return
     }
-
     const samples = getMinMaxSamples(filePath, data.data)
     const baseColor = computedStyle?.color || '#999999'
     drawMinMaxWaveform(
@@ -681,7 +606,6 @@ export function useWaveformPreview(params: {
       playedPercent
     )
   }
-
   const drawVisible = () => {
     if (!waveformVisible.value) return
     const paths = getVisiblePaths()
@@ -689,7 +613,6 @@ export function useWaveformPreview(params: {
       drawWaveform(filePath)
     }
   }
-
   const scheduleDraw = () => {
     if (typeof requestAnimationFrame === 'undefined') {
       drawVisible()
@@ -701,7 +624,6 @@ export function useWaveformPreview(params: {
       drawVisible()
     })
   }
-
   const fetchWaveformBatch = async (filePaths: string[]) => {
     if (!filePaths.length) return
     for (const filePath of filePaths) {
@@ -726,7 +648,6 @@ export function useWaveformPreview(params: {
       }
       return
     }
-
     const itemMap = new Map(items.map((item) => [item.filePath, item.data ?? null]))
     const missing: string[] = []
     for (const filePath of filePaths) {
@@ -748,7 +669,6 @@ export function useWaveformPreview(params: {
       }
       inflight.delete(filePath)
     }
-
     if (missing.length) {
       const toQueue = missing.filter((filePath) => !queuedMissing.has(filePath))
       if (toQueue.length) {
@@ -758,43 +678,39 @@ export function useWaveformPreview(params: {
         window.electron.ipcRenderer.send('key-analysis:queue-visible', { filePaths: toQueue })
       }
     }
-
     scheduleDraw()
   }
-
-  const fetchPioneerWaveformStream = async (
+  const fetchExternalWaveformStream = async (
     requests: Array<{
       filePath: string
       analyzePath: string
+      sourceKind: RekordboxSourceKind
     }>
   ) => {
     if (!requests.length) return
     const orderedRequests = orderPioneerRequestsForViewport(requests)
-    const rootPath = resolvePioneerRootPath()
+    const sourceKind = orderedRequests[0].sourceKind
+    const rootPath = resolveExternalRootPath()
     if (!rootPath) {
       for (const request of orderedRequests) {
         inflight.delete(request.filePath)
       }
       return
     }
-
     resetPioneerStreamState()
-
     for (const request of orderedRequests) {
       inflight.add(request.filePath)
       setWaveformPlaceholderLoading(request.filePath)
     }
     const requestId = buildPioneerStreamRequestId()
     activePioneerStreamRequestId = requestId
-
     for (const request of orderedRequests) {
       const list = pioneerStreamFilePathMap.get(request.analyzePath) || []
       list.push(request.filePath)
       pioneerStreamFilePathMap.set(request.analyzePath, list)
     }
-
     try {
-      window.electron.ipcRenderer.send('pioneer-device-library:stream-preview-waveforms', {
+      window.electron.ipcRenderer.send(getRekordboxPreviewWaveformStreamChannel(sourceKind), {
         requestId,
         rootPath,
         analyzePaths: orderedRequests.map((request) => request.analyzePath)
@@ -807,7 +723,6 @@ export function useWaveformPreview(params: {
       throw error
     }
   }
-
   const loadVisible = async () => {
     if (!waveformVisible.value) return
     const paths = getVisiblePaths()
@@ -817,20 +732,29 @@ export function useWaveformPreview(params: {
       scheduleDraw()
       return
     }
-
-    const pioneerRequests: Array<{ filePath: string; analyzePath: string }> = []
+    const externalRequests: Array<{
+      filePath: string
+      analyzePath: string
+      sourceKind: RekordboxSourceKind
+    }> = []
     const libraryFilePaths: string[] = []
-    const pioneerRootPath = resolvePioneerRootPath()
-
+    const fallbackSourceKind = runtime.pioneerDeviceLibrary.selectedSourceKind || undefined
     for (const filePath of pending) {
       const song = resolveVisibleSongByFilePath(filePath)
-      const analyzePath = String(song?.pioneerAnalyzePath || '').trim()
-      if (pioneerRootPath && analyzePath) {
-        pioneerRequests.push({ filePath, analyzePath })
-      } else if (pioneerRootPath) {
+      const source = resolveSongExternalWaveformSource(song, {
+        rootPath: resolveExternalRootPath(),
+        sourceKind: fallbackSourceKind
+      })
+      if (source) {
+        externalRequests.push({
+          filePath,
+          analyzePath: source.analyzePath,
+          sourceKind: source.sourceKind
+        })
+      } else if (resolveExternalRootPath()) {
         storeWaveformData(filePath, null)
         setWaveformPlaceholderUnavailable(filePath, 'missing analyze path')
-        console.warn('[pioneer-waveform] preview waveform unavailable', {
+        console.warn('[external-waveform] preview waveform unavailable', {
           filePath,
           analyzePath: '',
           reason: 'missing analyze path'
@@ -839,15 +763,13 @@ export function useWaveformPreview(params: {
         libraryFilePaths.push(filePath)
       }
     }
-
     if (libraryFilePaths.length) {
       await fetchWaveformBatch(libraryFilePaths)
     }
-    if (pioneerRequests.length) {
-      await fetchPioneerWaveformStream(pioneerRequests)
+    if (externalRequests.length) {
+      await fetchExternalWaveformStream(externalRequests)
     }
   }
-
   const scheduleLoad = () => {
     if (loadTimer) clearTimeout(loadTimer)
     loadTimer = setTimeout(() => {
@@ -855,19 +777,24 @@ export function useWaveformPreview(params: {
       void loadVisible()
     }, 120)
   }
-
   const handleWaveformUpdated = (_event: unknown, payload: { filePath?: string }) => {
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
     if (!filePath || !waveformVisible.value) return
     if (!canvasMap.has(filePath)) return
     const song = resolveVisibleSongByFilePath(filePath)
-    if (String(song?.pioneerAnalyzePath || '').trim()) return
+    if (
+      resolveSongExternalWaveformSource(song, {
+        rootPath: resolveExternalRootPath(),
+        sourceKind: runtime.pioneerDeviceLibrary.selectedSourceKind || undefined
+      })
+    ) {
+      return
+    }
     setWaveformPlaceholderLoading(filePath)
     dataMap.delete(filePath)
     queuedMissing.delete(filePath)
     void fetchWaveformBatch([filePath])
   }
-
   const handlePioneerPreviewWaveformItem = (
     _event: unknown,
     payload: {
@@ -883,7 +810,6 @@ export function useWaveformPreview(params: {
     if (!analyzePath) return
     const filePaths = pioneerStreamFilePathMap.get(analyzePath) || []
     if (!filePaths.length) return
-
     const data = payload?.data ?? null
     for (const filePath of filePaths) {
       storeWaveformData(
@@ -909,11 +835,9 @@ export function useWaveformPreview(params: {
         })
       }
     }
-
     pioneerStreamFilePathMap.delete(analyzePath)
     scheduleDraw()
   }
-
   const handlePioneerPreviewWaveformDone = (
     _event: unknown,
     payload: {
@@ -923,20 +847,17 @@ export function useWaveformPreview(params: {
   ) => {
     const requestId = String(payload?.requestId || '').trim()
     if (!requestId || requestId !== activePioneerStreamRequestId) return
-
     for (const [, filePaths] of pioneerStreamFilePathMap) {
       for (const filePath of filePaths) {
         inflight.delete(filePath)
       }
     }
-
     if (payload?.error) {
       console.warn('[pioneer-waveform] preview waveform stream failed', {
         requestId,
         reason: String(payload.error)
       })
     }
-
     for (const [, filePaths] of pioneerStreamFilePathMap) {
       for (const filePath of filePaths) {
         setWaveformPlaceholderUnavailable(
@@ -945,11 +866,9 @@ export function useWaveformPreview(params: {
         )
       }
     }
-
     resetPioneerStreamState()
     scheduleDraw()
   }
-
   const handleWaveformPreviewState = (payload: { filePath?: string; active?: boolean }) => {
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath : ''
     const isActive = Boolean(payload?.active)
@@ -971,7 +890,6 @@ export function useWaveformPreview(params: {
       drawWaveform(filePath)
     }
   }
-
   const handleWaveformPreviewProgress = (payload: { filePath?: string; percent?: number }) => {
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath : ''
     if (!filePath) return
@@ -981,12 +899,11 @@ export function useWaveformPreview(params: {
     previewPercent.value = clamp01(percentRaw)
     drawWaveform(filePath)
   }
-
   watch(
     () => visibleSongsWithIndex.value.map((item) => item.song?.filePath || '').join('|'),
     () => {
       if (!waveformVisible.value) return
-      if (resolvePioneerRootPath()) {
+      if (resolveExternalRootPath()) {
         resetPioneerStreamState()
       }
       scheduleLoad()
@@ -994,7 +911,6 @@ export function useWaveformPreview(params: {
     },
     { immediate: true }
   )
-
   watch(
     () => waveformVisible.value,
     (visible) => {
@@ -1003,9 +919,8 @@ export function useWaveformPreview(params: {
       nextTick(() => scheduleDraw())
     }
   )
-
   watch(
-    () => resolvePioneerRootPath(),
+    () => resolveExternalRootPath(),
     () => {
       resetPioneerStreamState()
       dataMap.clear()
@@ -1019,7 +934,6 @@ export function useWaveformPreview(params: {
       nextTick(() => scheduleDraw())
     }
   )
-
   watch(
     () => waveformColumnWidth.value,
     () => {
@@ -1027,7 +941,6 @@ export function useWaveformPreview(params: {
       scheduleDraw()
     }
   )
-
   watch(
     () => runtime.setting?.waveformStyle,
     () => {
@@ -1035,7 +948,6 @@ export function useWaveformPreview(params: {
       scheduleDraw()
     }
   )
-
   watch(
     () => runtime.setting?.waveformMode,
     () => {
@@ -1043,40 +955,41 @@ export function useWaveformPreview(params: {
       scheduleDraw()
     }
   )
-
   if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
     window.electron.ipcRenderer.on('song-waveform-updated', handleWaveformUpdated)
-    window.electron.ipcRenderer.on(
-      'pioneer-device-library:preview-waveform-item',
-      handlePioneerPreviewWaveformItem
-    )
-    window.electron.ipcRenderer.on(
-      'pioneer-device-library:preview-waveform-done',
-      handlePioneerPreviewWaveformDone
-    )
+    for (const sourceKind of ['usb', 'desktop'] as const) {
+      window.electron.ipcRenderer.on(
+        getRekordboxPreviewWaveformItemEventChannel(sourceKind),
+        handlePioneerPreviewWaveformItem
+      )
+      window.electron.ipcRenderer.on(
+        getRekordboxPreviewWaveformDoneEventChannel(sourceKind),
+        handlePioneerPreviewWaveformDone
+      )
+    }
   }
   emitter.on('waveform-preview:state', handleWaveformPreviewState)
   emitter.on('waveform-preview:progress', handleWaveformPreviewProgress)
-
   onBeforeUnmount(() => {
     if (loadTimer) clearTimeout(loadTimer)
     if (drawRaf) cancelAnimationFrame(drawRaf)
     resetPioneerStreamState()
     if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
       window.electron.ipcRenderer.removeListener('song-waveform-updated', handleWaveformUpdated)
-      window.electron.ipcRenderer.removeListener(
-        'pioneer-device-library:preview-waveform-item',
-        handlePioneerPreviewWaveformItem
-      )
-      window.electron.ipcRenderer.removeListener(
-        'pioneer-device-library:preview-waveform-done',
-        handlePioneerPreviewWaveformDone
-      )
+      for (const sourceKind of ['usb', 'desktop'] as const) {
+        window.electron.ipcRenderer.removeListener(
+          getRekordboxPreviewWaveformItemEventChannel(sourceKind),
+          handlePioneerPreviewWaveformItem
+        )
+        window.electron.ipcRenderer.removeListener(
+          getRekordboxPreviewWaveformDoneEventChannel(sourceKind),
+          handlePioneerPreviewWaveformDone
+        )
+      }
     }
     emitter.off('waveform-preview:state', handleWaveformPreviewState)
     emitter.off('waveform-preview:progress', handleWaveformPreviewProgress)
   })
-
   return {
     setWaveformCanvasRef,
     getWaveformClickPercent,

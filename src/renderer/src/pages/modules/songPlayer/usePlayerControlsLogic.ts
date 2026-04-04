@@ -578,7 +578,8 @@ export function usePlayerControlsLogic({
             items: [
               {
                 filePath: copiedPath,
-                originPathSnapshot: runtime.pioneerDeviceLibrary.selectedDriveName || 'Pioneer USB',
+                originPathSnapshot:
+                  runtime.pioneerDeviceLibrary.selectedSourceName || 'Pioneer USB',
                 info: buildSongSnapshot(copiedPath, songToMove)
               }
             ]

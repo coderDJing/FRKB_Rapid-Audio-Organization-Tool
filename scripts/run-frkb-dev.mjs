@@ -10,6 +10,17 @@ const env = {
   ...process.env
 }
 
+const rekordboxEnsureArgs = [path.resolve('./scripts/ensure-rekordbox-desktop-runtime.mjs')]
+const rekordboxEnsureResult = spawnSync(process.execPath, rekordboxEnsureArgs, {
+  stdio: 'inherit',
+  windowsHide: false,
+  env
+})
+
+if ((rekordboxEnsureResult.status ?? 1) !== 0) {
+  process.exit(rekordboxEnsureResult.status ?? 1)
+}
+
 const ensureArgs = [path.resolve('./scripts/ensure-demucs-runtime.mjs')]
 if (releaseRuntime) {
   env.FRKB_DEMUCS_ROOT = releaseRuntimeRoot

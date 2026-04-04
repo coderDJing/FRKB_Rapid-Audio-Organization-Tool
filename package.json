@@ -1,6 +1,6 @@
 {
   "name": "frkb",
-  "version": "1.1.7-rc.202604020044",
+  "version": "1.1.7-rc.202604041848",
   "description": "Rapid Audio Organization Tool",
   "license": "GPL-2.0-or-later",
   "main": "./out/main/index.js",
@@ -19,6 +19,14 @@
       {
         "from": "vendor/chromaprint",
         "to": "chromaprint"
+      },
+      {
+        "from": "vendor/rekordbox-desktop-runtime",
+        "to": "rekordboxDesktopRuntime"
+      },
+      {
+        "from": "resources/rekordboxDesktopLibrary",
+        "to": "rekordboxDesktopLibrary"
       }
     ],
     "appId": "com.electron.frkb",
@@ -137,12 +145,13 @@
     "build": "electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "clean": "rimraf dist",
-    "build:unpack": "npm run build && electron-builder --dir",
-    "build:win": "npm run clean && npm run build && electron-builder --win",
-    "build:mac": "npm run clean && npm run build && electron-builder --mac",
+    "build:unpack": "npm run build && npm run rekordbox:runtime:ensure && electron-builder --dir",
+    "build:win": "npm run clean && npm run build && npm run rekordbox:runtime:ensure && electron-builder --win",
+    "build:mac": "npm run clean && npm run build && npm run rekordbox:runtime:ensure && electron-builder --mac",
     "build:linux": "npm run clean && npm run build && electron-builder --linux",
     "demucs:runtime:prepare": "node scripts/prepare-demucs-runtimes.mjs",
     "demucs:runtime:ensure": "node scripts/ensure-demucs-runtime.mjs",
+    "rekordbox:runtime:ensure": "node scripts/ensure-rekordbox-desktop-runtime.mjs",
     "demucs:runtime:sync-remote": "node scripts/ensure-demucs-runtime.mjs --runtime-root vendor/demucs-release --prefer-remote-assets --sync-remote-assets --strict",
     "demucs:runtime:package": "node scripts/package-demucs-runtime-assets.mjs",
     "lint-staged": "lint-staged",

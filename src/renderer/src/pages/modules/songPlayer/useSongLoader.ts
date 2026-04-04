@@ -3,6 +3,10 @@ import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 import emitter from '@renderer/utils/mitt'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import {
+  getRekordboxPreviewWaveformRequestChannel,
+  resolveSongExternalWaveformSource
+} from '@renderer/utils/rekordboxExternalSource'
 import { WebAudioPlayer, type MixxxWaveformData, canPlayHtmlAudio } from './webAudioPlayer'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
@@ -179,6 +183,7 @@ export function useSongLoader(params: {
 
   const fetchPioneerPreviewWaveform = async (
     filePath: string,
+    sourceKind: 'usb' | 'desktop',
     rootPath: string,
     analyzePath: string,
     requestId: number
@@ -186,7 +191,7 @@ export function useSongLoader(params: {
     let response: PioneerPreviewWaveformResponse | null = null
     try {
       response = await window.electron.ipcRenderer.invoke(
-        'pioneer-device-library:get-preview-waveforms',
+        getRekordboxPreviewWaveformRequestChannel(sourceKind),
         rootPath,
         [analyzePath]
       )
@@ -256,10 +261,10 @@ export function useSongLoader(params: {
 
     const useHtmlPlayback = canPlayHtmlAudio(filePath)
     const currentSong = runtime.playingData.playingSong
-    const pioneerAnalyzePath = String(currentSong?.pioneerAnalyzePath || '').trim()
-    const pioneerRootPath = String(
-      currentSong?.pioneerDeviceRootPath || runtime.pioneerDeviceLibrary.selectedDrivePath || ''
-    ).trim()
+    const externalWaveformSource = resolveSongExternalWaveformSource(currentSong, {
+      rootPath: runtime.pioneerDeviceLibrary.selectedSourceRootPath,
+      sourceKind: runtime.pioneerDeviceLibrary.selectedSourceKind || undefined
+    })
     try {
       playerInstance.setMixxxWaveformData(null, filePath)
       if (useHtmlPlayback) {
@@ -274,8 +279,14 @@ export function useSongLoader(params: {
 
         startPlaybackWhenReady(playerInstance, filePath, requestId)
 
-        if (pioneerRootPath && pioneerAnalyzePath) {
-          void fetchPioneerPreviewWaveform(filePath, pioneerRootPath, pioneerAnalyzePath, requestId)
+        if (externalWaveformSource) {
+          void fetchPioneerPreviewWaveform(
+            filePath,
+            externalWaveformSource.sourceKind,
+            externalWaveformSource.rootPath,
+            externalWaveformSource.analyzePath,
+            requestId
+          )
         } else {
           void fetchWaveformCache(filePath, requestId)
         }
