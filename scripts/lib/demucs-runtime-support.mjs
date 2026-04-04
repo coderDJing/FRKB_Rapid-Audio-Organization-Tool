@@ -2,7 +2,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { Readable } from 'node:stream'
-import { ProxyAgent } from 'undici'
 
 const REMOTE_ASSET_STATE_FILE = '.frkb-runtime-asset.json'
 let runtimeDownloadProxyInitialized = false
@@ -199,6 +198,19 @@ const ensureRuntimeDownloadProxyInitialized = async () => {
   runtimeDownloadProxyInitialized = true
   const proxyUrl = resolveRuntimeDownloadProxyUrl()
   if (!proxyUrl) return
+  let ProxyAgent = null
+  try {
+    const undiciModule = await import('undici')
+    ProxyAgent = undiciModule.ProxyAgent || null
+  } catch (error) {
+    console.warn(
+      `[demucs-runtime-ensure] Proxy support unavailable (undici missing): ${
+        error instanceof Error ? error.message : String(error || 'unknown')
+      }`
+    )
+    return
+  }
+  if (!ProxyAgent) return
   runtimeDownloadProxySource =
     process.env.HTTPS_PROXY ||
     process.env.https_proxy ||
