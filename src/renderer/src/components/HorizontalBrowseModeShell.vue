@@ -53,6 +53,14 @@ type SharedDetailZoomState = {
   sourceDirection: 'up' | 'down' | null
   revision: number
 }
+type DeckCuePreviewState = {
+  active: boolean
+  pointerId: number | null
+  cueSeconds: number
+  syncEnabledBefore: boolean
+  syncLockBefore: string
+  token: number
+}
 
 const createDefaultDeckToolbarState = (): DeckToolbarState => ({
   disabled: true,
@@ -62,7 +70,16 @@ const createDefaultDeckToolbarState = (): DeckToolbarState => ({
   bpmMax: 300,
   barLinePicking: false
 })
+const createDefaultDeckCuePreviewState = (): DeckCuePreviewState => ({
+  active: false,
+  pointerId: null,
+  cueSeconds: 0,
+  syncEnabledBefore: false,
+  syncLockBefore: 'off',
+  token: 0
+})
 const FADER_TRAVEL_INSET_RATIO = 0.17
+const CUE_POINT_TRIGGER_EPSILON_SEC = 0.05
 
 const runtime = useRuntimeStore()
 const topDeckSong = ref<ISongInfo | null>(null)
@@ -117,6 +134,11 @@ const deckHydrateToken = reactive<Record<DeckKey, number>>({
   top: 0,
   bottom: 0
 })
+const deckCuePreviewState = reactive<Record<DeckKey, DeckCuePreviewState>>({
+  top: createDefaultDeckCuePreviewState(),
+  bottom: createDefaultDeckCuePreviewState()
+})
+const suppressDeckCueClick = reactive<Record<DeckKey, boolean>>({ top: false, bottom: false })
 
 const resolveCrossfaderVolumes = (value: number) => {
   const safeValue = clampNumber(value, -1, 1)
@@ -326,6 +348,9 @@ const parseDurationToSeconds = (input: unknown) => {
 }
 const resolveTransportDeckSnapshot = (deck: DeckKey) =>
   deck === 'top' ? nativeTransport.state.top : nativeTransport.state.bottom
+const resolveDeckCuePointRef = (deck: DeckKey) =>
+  deck === 'top' ? topDeckCuePointSeconds : bottomDeckCuePointSeconds
+const resolveDeckCuePreviewRuntimeState = (deck: DeckKey) => deckCuePreviewState[deck]
 const resolveDeckCurrentSeconds = (deck: DeckKey) =>
   Number(resolveTransportDeckSnapshot(deck).currentSec) || 0
 const resolveDeckDurationSeconds = (deck: DeckKey) => {
@@ -355,20 +380,27 @@ const resolveDeckGridBpm = (deck: DeckKey) => {
 }
 const topDeckGridBpm = computed(() => resolveDeckGridBpm('top'))
 const bottomDeckGridBpm = computed(() => resolveDeckGridBpm('bottom'))
+const resolveDeckSyncUiEnabled = (deck: DeckKey) =>
+  resolveTransportDeckSnapshot(deck).syncEnabled ||
+  (resolveDeckCuePreviewRuntimeState(deck).active &&
+    resolveDeckCuePreviewRuntimeState(deck).syncEnabledBefore)
+const resolveDeckSyncUiLock = (deck: DeckKey) => {
+  const cuePreviewState = resolveDeckCuePreviewRuntimeState(deck)
+  return cuePreviewState.active && cuePreviewState.syncEnabledBefore
+    ? cuePreviewState.syncLockBefore
+    : resolveTransportDeckSnapshot(deck).syncLock
+}
 const syncDeckDefaultCue = (deck: DeckKey, song: ISongInfo | null, force = false) => {
-  const target = deck === 'top' ? topDeckCuePointSeconds : bottomDeckCuePointSeconds
+  const target = resolveDeckCuePointRef(deck)
   if (!force && target.value > 0.000001) return
   target.value = resolveHorizontalBrowseDefaultCuePointSec(song, resolveDeckDurationSeconds(deck))
 }
 const resolveDeckToolbarBpmInputValue = (deck: DeckKey) => {
   const toolbarState = deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value
-  return deck === 'top'
-    ? nativeTransport.state.top.syncEnabled
-      ? (Number(nativeTransport.state.top.effectiveBpm) || 0).toFixed(2)
-      : toolbarState.bpmInputValue
-    : nativeTransport.state.bottom.syncEnabled
-      ? (Number(nativeTransport.state.bottom.effectiveBpm) || 0).toFixed(2)
-      : toolbarState.bpmInputValue
+  if (!resolveDeckSyncUiEnabled(deck)) {
+    return toolbarState.bpmInputValue
+  }
+  return (Number(resolveTransportDeckSnapshot(deck).effectiveBpm) || 0).toFixed(2)
 }
 let renderSyncRaf = 0
 
@@ -544,22 +576,129 @@ const handleDeckPlayheadSeek = (deck: DeckKey, seconds: number) => {
   })
 }
 
-const handleDeckCue = (deck: DeckKey) => {
-  const cueRef = deck === 'top' ? topDeckCuePointSeconds : bottomDeckCuePointSeconds
+const isDeckStoppedAtCuePoint = (deck: DeckKey) => {
+  if (resolveDeckPlaying(deck) || !resolveDeckSong(deck)) return false
+  const cueSeconds = resolveDeckCuePointRef(deck).value
+  return Math.abs(resolveDeckCurrentSeconds(deck) - cueSeconds) <= CUE_POINT_TRIGGER_EPSILON_SEC
+}
+
+const handleDeckBackCue = async (
+  deck: DeckKey,
+  cueSeconds = resolveDeckCuePointRef(deck).value
+) => {
+  await nativeTransport.setPlaying(deck, false)
+  await nativeTransport.seek(deck, cueSeconds)
+  syncDeckRenderState()
+}
+
+const handleDeckSetCueFromCurrentPosition = async (deck: DeckKey) => {
+  const cueRef = resolveDeckCuePointRef(deck)
   const song = resolveDeckSong(deck)
-  if (resolveDeckPlaying(deck)) {
-    void nativeTransport.setPlaying(deck, false).then(() => {
-      void nativeTransport.seek(deck, cueRef.value)
-    })
-    return
-  }
   const nextCuePoint = resolveHorizontalBrowseCuePointSec(
     song,
     resolveDeckCurrentSeconds(deck),
     resolveDeckDurationSeconds(deck)
   )
   cueRef.value = nextCuePoint
-  void nativeTransport.seek(deck, nextCuePoint)
+  await nativeTransport.seek(deck, nextCuePoint)
+  syncDeckRenderState()
+}
+
+const startDeckCuePreview = (deck: DeckKey, pointerId: number) => {
+  const cuePreviewState = resolveDeckCuePreviewRuntimeState(deck)
+  if (cuePreviewState.active) return
+
+  const snapshot = resolveTransportDeckSnapshot(deck)
+  cuePreviewState.active = true
+  cuePreviewState.pointerId = pointerId
+  cuePreviewState.cueSeconds = resolveDeckCuePointRef(deck).value
+  cuePreviewState.syncEnabledBefore = snapshot.syncEnabled
+  cuePreviewState.syncLockBefore = snapshot.syncLock
+  cuePreviewState.token += 1
+
+  const token = cuePreviewState.token
+  const syncEnabledBefore = cuePreviewState.syncEnabledBefore
+  void (async () => {
+    if (syncEnabledBefore) {
+      await nativeTransport.setSyncEnabled(deck, false)
+    }
+    const latestState = resolveDeckCuePreviewRuntimeState(deck)
+    if (!latestState.active || latestState.token !== token) return
+    await nativeTransport.setPlaying(deck, true)
+    if (resolveDeckCuePreviewRuntimeState(deck).token !== token) return
+    syncDeckRenderState()
+  })()
+}
+
+const stopDeckCuePreview = (deck: DeckKey, pointerId?: number) => {
+  const cuePreviewState = resolveDeckCuePreviewRuntimeState(deck)
+  if (!cuePreviewState.active) return
+  if (typeof pointerId === 'number' && cuePreviewState.pointerId !== pointerId) return
+
+  const cueSeconds = cuePreviewState.cueSeconds
+  const syncEnabledBefore = cuePreviewState.syncEnabledBefore
+  cuePreviewState.active = false
+  cuePreviewState.pointerId = null
+  cuePreviewState.cueSeconds = 0
+  cuePreviewState.syncEnabledBefore = false
+  cuePreviewState.syncLockBefore = 'off'
+  cuePreviewState.token += 1
+
+  void (async () => {
+    await nativeTransport.setPlaying(deck, false).catch(() => {})
+    await nativeTransport.seek(deck, cueSeconds).catch(() => {})
+    if (syncEnabledBefore) {
+      await nativeTransport.setSyncEnabled(deck, true).catch(() => {})
+    }
+    syncDeckRenderState()
+  })()
+}
+
+const stopAllDeckCuePreview = () => {
+  stopDeckCuePreview('top')
+  stopDeckCuePreview('bottom')
+  suppressDeckCueClick.top = suppressDeckCueClick.bottom = false
+}
+
+const clearDeckCueClickSuppressSoon = () =>
+  requestAnimationFrame(() => {
+    suppressDeckCueClick.top = false
+    suppressDeckCueClick.bottom = false
+  })
+
+const handleWindowDeckCuePointerUp = (event: PointerEvent) => {
+  stopDeckCuePreview('top', event.pointerId)
+  stopDeckCuePreview('bottom', event.pointerId)
+  clearDeckCueClickSuppressSoon()
+}
+
+const handleDeckCuePointerDown = (deck: DeckKey, event: PointerEvent) => {
+  if (event.button !== 0) return
+  suppressDeckCueClick[deck] = true
+  event.preventDefault()
+
+  if (resolveDeckPlaying(deck)) {
+    void handleDeckBackCue(deck)
+    return
+  }
+  if (isDeckStoppedAtCuePoint(deck)) {
+    startDeckCuePreview(deck, event.pointerId)
+    return
+  }
+  void handleDeckSetCueFromCurrentPosition(deck)
+}
+
+const handleDeckCueClick = (deck: DeckKey) => {
+  if (suppressDeckCueClick[deck]) {
+    suppressDeckCueClick[deck] = false
+    return
+  }
+  if (resolveDeckPlaying(deck)) {
+    void handleDeckBackCue(deck)
+    return
+  }
+  if (isDeckStoppedAtCuePoint(deck)) return
+  void handleDeckSetCueFromCurrentPosition(deck)
 }
 
 const handleDeckPlayPauseToggle = (deck: DeckKey) => {
@@ -676,15 +815,22 @@ onMounted(() => {
   startRenderSyncLoop()
   window.addEventListener('drop', handleGlobalDragFinish, true)
   window.addEventListener('dragend', handleGlobalDragFinish, true)
+  window.addEventListener('pointerup', handleWindowDeckCuePointerUp)
+  window.addEventListener('pointercancel', handleWindowDeckCuePointerUp)
+  window.addEventListener('blur', stopAllDeckCuePreview)
   emitter.on('horizontalBrowse/load-song', handleExternalDeckSongLoad)
   window.electron.ipcRenderer.on('song-grid-updated', handleSongGridUpdated)
 })
 
 onUnmounted(() => {
+  stopAllDeckCuePreview()
   stopRenderSyncLoop()
   stopFaderDragging()
   window.removeEventListener('drop', handleGlobalDragFinish, true)
   window.removeEventListener('dragend', handleGlobalDragFinish, true)
+  window.removeEventListener('pointerup', handleWindowDeckCuePointerUp)
+  window.removeEventListener('pointercancel', handleWindowDeckCuePointerUp)
+  window.removeEventListener('blur', stopAllDeckCuePreview)
   emitter.off('horizontalBrowse/load-song', handleExternalDeckSongLoad)
   window.electron.ipcRenderer.removeListener('song-grid-updated', handleSongGridUpdated)
   runtime.horizontalBrowseDecks.topSong = null
@@ -696,7 +842,12 @@ onUnmounted(() => {
   <div class="horizontal-shell">
     <div class="controls">
       <div class="deck-controls">
-        <button type="button" class="deck-button deck-button--cue" @click="handleDeckCue('top')">
+        <button
+          type="button"
+          class="deck-button deck-button--cue"
+          @pointerdown="handleDeckCuePointerDown('top', $event)"
+          @click="handleDeckCueClick('top')"
+        >
           CUE
         </button>
         <button
@@ -751,7 +902,12 @@ onUnmounted(() => {
       </div>
 
       <div class="deck-controls">
-        <button type="button" class="deck-button deck-button--cue" @click="handleDeckCue('bottom')">
+        <button
+          type="button"
+          class="deck-button deck-button--cue"
+          @pointerdown="handleDeckCuePointerDown('bottom', $event)"
+          @click="handleDeckCueClick('bottom')"
+        >
           CUE
         </button>
         <button
@@ -790,8 +946,8 @@ onUnmounted(() => {
           <HorizontalBrowseDeckInfoCard
             v-if="regionId === 1"
             :song="topDeckSong"
-            :beat-sync-enabled="deckSyncState.top.syncEnabled"
-            :beat-sync-blinking="deckSyncState.top.syncLock === 'tempo-only'"
+            :beat-sync-enabled="resolveDeckSyncUiEnabled('top')"
+            :beat-sync-blinking="resolveDeckSyncUiLock('top') === 'tempo-only'"
             :master-active="deckSyncState.leaderDeck === 'top'"
             :current-seconds="topDeckRenderCurrentSeconds"
             :duration-seconds="topDeckDurationSeconds"
@@ -948,8 +1104,8 @@ onUnmounted(() => {
           <HorizontalBrowseDeckInfoCard
             v-else-if="regionId === 8"
             :song="bottomDeckSong"
-            :beat-sync-enabled="deckSyncState.bottom.syncEnabled"
-            :beat-sync-blinking="deckSyncState.bottom.syncLock === 'tempo-only'"
+            :beat-sync-enabled="resolveDeckSyncUiEnabled('bottom')"
+            :beat-sync-blinking="resolveDeckSyncUiLock('bottom') === 'tempo-only'"
             :master-active="deckSyncState.leaderDeck === 'bottom'"
             :current-seconds="bottomDeckRenderCurrentSeconds"
             :duration-seconds="bottomDeckDurationSeconds"
