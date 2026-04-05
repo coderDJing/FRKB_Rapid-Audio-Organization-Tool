@@ -77,6 +77,23 @@ export const createHorizontalBrowseNativeTransport = () => {
     applySnapshot(createEmptySnapshot())
   }
 
+  const setDeckState = async (deck: HorizontalBrowseDeckKey, payload: LocalDeckState) => {
+    const nowMs = performance.now()
+    const snapshot = await invoke('horizontal-browse-transport:set-deck-state', deck, nowMs, {
+      filePath: payload.song?.filePath || '',
+      title: payload.song?.title || payload.song?.fileName || '',
+      bpm: Number(payload.song?.bpm) || 0,
+      firstBeatMs: Number(payload.song?.firstBeatMs) || 0,
+      durationSec: Number(payload.durationSec) || 0,
+      currentSec: Number(payload.currentSec) || 0,
+      lastObservedAtMs: Number(payload.lastObservedAtMs) || 0,
+      playing: Boolean(payload.playing),
+      playbackRate: Number(payload.playbackRate) || 1
+    })
+    applySnapshot(snapshot)
+    return snapshot
+  }
+
   const setState = async (payload: { top: LocalDeckState; bottom: LocalDeckState }) => {
     const nowMs = performance.now()
     const snapshot = await invoke('horizontal-browse-transport:set-state', {
@@ -172,6 +189,7 @@ export const createHorizontalBrowseNativeTransport = () => {
   return {
     state,
     reset,
+    setDeckState,
     setState,
     beatsync,
     setSyncEnabled,

@@ -90,7 +90,9 @@ const props = defineProps<{
   currentSeconds?: number
   playing?: boolean
   playbackRate?: number
+  gridBpm?: number
   cueSeconds?: number
+  deferWaveformLoad?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -123,6 +125,7 @@ const WAVEFORM_TILE_WIDTH = 256
 const WAVEFORM_TILE_OVERSCAN = 1
 const WAVEFORM_TILE_CACHE_LIMIT = 72
 const WAVEFORM_PREWARM_STEP_COUNT = 2
+const HORIZONTAL_BROWSE_DEFERRED_RAW_TARGET_RATE = Math.min(PREVIEW_RAW_TARGET_RATE, 2400)
 let resizeObserver: ResizeObserver | null = null
 let loadToken = 0
 let drawRaf = 0
@@ -156,9 +159,15 @@ const resolveVisibleDurationSec = () =>
   Math.max(
     0.001,
     (HORIZONTAL_BROWSE_DETAIL_VISIBLE_DURATION_BASE_SEC *
-      Math.max(0.25, Number(props.playbackRate) || 1)) /
+      (props.playing ? Math.max(0.25, Number(props.playbackRate) || 1) : 1)) /
       Number(previewZoom.value || HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
   )
+
+const resolveDisplayGridBpm = () => {
+  const override = Number(props.gridBpm)
+  if (Number.isFinite(override) && override > 0) return normalizePreviewBpm(override)
+  return normalizePreviewBpm(props.song?.bpm)
+}
 
 const resolvePreviewAnchorSec = () => {
   const duration = resolvePreviewDurationSec()
@@ -626,7 +635,7 @@ const schedulePersistGridDefinition = () => {
 }
 
 const syncGridStateFromSong = () => {
-  previewBpm.value = normalizePreviewBpm(props.song?.bpm)
+  previewBpm.value = resolveDisplayGridBpm()
   previewBpmInput.value = formatPreviewBpm(previewBpm.value)
   previewFirstBeatMs.value = Math.max(0, Number(props.song?.firstBeatMs) || 0)
   previewBarBeatOffset.value = normalizeBeatOffset(
@@ -847,10 +856,13 @@ const loadWaveform = async () => {
 
   try {
     previewLoading.value = true
+    const targetRate = props.deferWaveformLoad
+      ? HORIZONTAL_BROWSE_DEFERRED_RAW_TARGET_RATE
+      : PREVIEW_RAW_TARGET_RATE
     const response = await window.electron.ipcRenderer.invoke('mixtape-waveform-raw:batch', {
       filePaths: [filePath],
-      targetRate: PREVIEW_RAW_TARGET_RATE,
-      preferSharedDecode: true
+      targetRate,
+      preferSharedDecode: false
     })
 
     if (currentToken !== loadToken) return
@@ -896,7 +908,8 @@ watch(
 )
 
 watch(
-  () => [props.song?.bpm, props.song?.firstBeatMs, props.song?.barBeatOffset] as const,
+  () =>
+    [props.song?.bpm, props.song?.firstBeatMs, props.song?.barBeatOffset, props.gridBpm] as const,
   () => {
     syncGridStateFromSong()
     gridRenderer.reset()
@@ -911,6 +924,17 @@ watch(
     clearWaveformTileCache()
     gridRenderer.reset()
     scheduleDraw()
+  }
+)
+
+watch(
+  () => !!props.deferWaveformLoad,
+  (deferred, previous) => {
+    if (!previous || deferred) return
+    if (!props.song?.filePath) return
+    const currentRate = Number(rawData.value?.rate) || 0
+    if (rawData.value && currentRate >= PREVIEW_RAW_TARGET_RATE) return
+    void loadWaveform()
   }
 )
 

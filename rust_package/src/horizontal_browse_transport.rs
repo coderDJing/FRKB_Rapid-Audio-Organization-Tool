@@ -79,10 +79,10 @@ pub struct HorizontalBrowseTransportSnapshot {
   pub bottom: HorizontalBrowseTransportDeckSnapshot,
 }
 
-#[derive(Clone, Default)]
 struct DeckState {
   file_path: Option<String>,
   loaded_file_path: Option<String>,
+  pending_decode_file_path: Option<String>,
   title: Option<String>,
   bpm: Option<f64>,
   first_beat_ms: Option<f64>,
@@ -91,10 +91,40 @@ struct DeckState {
   last_observed_at_ms: f64,
   playing: bool,
   playback_rate: f64,
+  decode_request_id: u64,
   pcm_data: Vec<f32>,
   sample_rate: u32,
   channels: u16,
   gain: f32,
+}
+
+impl Default for DeckState {
+  fn default() -> Self {
+    Self {
+      file_path: None,
+      loaded_file_path: None,
+      pending_decode_file_path: None,
+      title: None,
+      bpm: None,
+      first_beat_ms: None,
+      duration_sec: 0.0,
+      current_sec: 0.0,
+      last_observed_at_ms: 0.0,
+      playing: false,
+      playback_rate: 1.0,
+      decode_request_id: 0,
+      pcm_data: Vec::new(),
+      sample_rate: 0,
+      channels: 0,
+      gain: 1.0,
+    }
+  }
+}
+
+struct DecodeRequest {
+  deck: DeckId,
+  file_path: String,
+  request_id: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -146,7 +176,31 @@ impl Default for HorizontalBrowseTransportEngine {
 }
 
 impl HorizontalBrowseTransportEngine {
-  fn prepare_decode_request(&mut self, deck: DeckId) -> Option<String> {
+  fn auto_select_leader_from_playback(&mut self) {
+    let top_playing = self.deck(DeckId::Top).playing;
+    let bottom_playing = self.deck(DeckId::Bottom).playing;
+    match (top_playing, bottom_playing) {
+      (true, false) => {
+        if self.leader.is_none() || !self.deck(self.leader.unwrap()).playing {
+          self.leader = Some(DeckId::Top);
+        }
+      }
+      (false, true) => {
+        if self.leader.is_none() || !self.deck(self.leader.unwrap()).playing {
+          self.leader = Some(DeckId::Bottom);
+        }
+      }
+      _ => {
+        if let Some(leader) = self.leader {
+          if !self.is_loaded(leader) {
+            self.leader = None;
+          }
+        }
+      }
+    }
+  }
+
+  fn prepare_decode_request(&mut self, deck: DeckId) -> Option<DecodeRequest> {
     let file_path = self
       .deck(deck)
       .file_path
@@ -156,6 +210,7 @@ impl HorizontalBrowseTransportEngine {
     if file_path.is_empty() {
       let target = self.deck_mut(deck);
       target.loaded_file_path = None;
+      target.pending_decode_file_path = None;
       target.pcm_data.clear();
       target.sample_rate = 0;
       target.channels = 0;
@@ -168,36 +223,62 @@ impl HorizontalBrowseTransportEngine {
     {
       return None;
     }
+    if self.deck(deck).pending_decode_file_path.as_deref() == Some(file_path.as_str()) {
+      return None;
+    }
     let target = self.deck_mut(deck);
+    target.decode_request_id = target.decode_request_id.wrapping_add(1);
+    let request_id = target.decode_request_id;
     target.loaded_file_path = None;
+    target.pending_decode_file_path = Some(file_path.clone());
     target.pcm_data.clear();
     target.sample_rate = 0;
     target.channels = 0;
-    Some(file_path)
+    Some(DecodeRequest {
+      deck,
+      file_path,
+      request_id,
+    })
   }
 
   fn apply_decoded_audio(
     &mut self,
     deck: DeckId,
     file_path: &str,
+    request_id: u64,
     samples: Vec<f32>,
     sample_rate: u32,
     channels: u16,
   ) {
-    let current_file_path = self
-      .deck(deck)
+    let current_state = self.deck(deck);
+    let current_file_path = current_state
       .file_path
       .as_ref()
       .map(|value| value.trim())
       .unwrap_or("");
-    if current_file_path != file_path {
+    if current_file_path != file_path || current_state.decode_request_id != request_id {
       return;
     }
     let target = self.deck_mut(deck);
+    target.pending_decode_file_path = None;
     target.loaded_file_path = Some(file_path.to_string());
     target.pcm_data = samples;
     target.sample_rate = sample_rate;
     target.channels = channels;
+  }
+
+  fn mark_decode_finished(&mut self, deck: DeckId, file_path: &str, request_id: u64) {
+    let current_state = self.deck(deck);
+    let current_file_path = current_state
+      .file_path
+      .as_ref()
+      .map(|value| value.trim())
+      .unwrap_or("");
+    if current_file_path != file_path || current_state.decode_request_id != request_id {
+      return;
+    }
+    let target = self.deck_mut(deck);
+    target.pending_decode_file_path = None;
   }
 
   fn ensure_output_stream(&mut self) -> napi::Result<()> {
@@ -407,14 +488,23 @@ impl HorizontalBrowseTransportEngine {
     };
   }
 
-  fn beat_grid(&self, deck: DeckId) -> Option<BeatGridSnapshot> {
+  fn original_beat_grid(&self, deck: DeckId) -> Option<BeatGridSnapshot> {
     let deck_state = self.deck(deck);
     let bpm = deck_state.bpm?;
     if !bpm.is_finite() || bpm <= 0.0 {
       return None;
     }
+    Some(BeatGridSnapshot {
+      bpm,
+      beat_sec: 60.0 / bpm,
+      first_beat_sec: (deck_state.first_beat_ms.unwrap_or(0.0).max(0.0)) / 1000.0,
+    })
+  }
+
+  fn beat_grid(&self, deck: DeckId) -> Option<BeatGridSnapshot> {
+    let original = self.original_beat_grid(deck)?;
     let multiplier = self.bpm_multiplier[Self::deck_index(deck)];
-    let adjusted_bpm = bpm
+    let adjusted_bpm = original.bpm
       * if multiplier.is_finite() && multiplier > 0.0 {
         multiplier
       } else {
@@ -426,8 +516,21 @@ impl HorizontalBrowseTransportEngine {
     Some(BeatGridSnapshot {
       bpm: adjusted_bpm,
       beat_sec: 60.0 / adjusted_bpm,
-      first_beat_sec: (deck_state.first_beat_ms.unwrap_or(0.0).max(0.0)) / 1000.0,
+      first_beat_sec: original.first_beat_sec,
     })
+  }
+
+  fn effective_bpm_for_deck(&self, deck: DeckId) -> f64 {
+    let Some(grid) = self.beat_grid(deck) else {
+      return 0.0;
+    };
+    let playback_rate = self.deck(deck).playback_rate;
+    grid.bpm
+      * if playback_rate.is_finite() && playback_rate > 0.0 {
+        playback_rate
+      } else {
+        1.0
+      }
   }
 
   fn estimate_current_sec(deck: &DeckState, now_ms: f64) -> f64 {
@@ -436,6 +539,9 @@ impl HorizontalBrowseTransportEngine {
     } else {
       0.0
     };
+    if deck.pcm_data.is_empty() || deck.sample_rate == 0 || deck.channels == 0 {
+      return base;
+    }
     if !deck.playing {
       return base;
     }
@@ -479,7 +585,7 @@ impl HorizontalBrowseTransportEngine {
   }
 
   fn resolve_bpm_multiplier(&self, deck: DeckId, master_effective_bpm: f64) -> f64 {
-    let Some(grid) = self.beat_grid(deck) else {
+    let Some(grid) = self.original_beat_grid(deck) else {
       return 1.0;
     };
     let candidates = [0.5_f64, 1.0, 2.0];
@@ -504,17 +610,15 @@ impl HorizontalBrowseTransportEngine {
       self.bpm_multiplier = [1.0, 1.0];
       return;
     };
-    let Some(leader_grid) = self.beat_grid(leader) else {
+    if self.original_beat_grid(leader).is_none() {
       self.bpm_multiplier = [1.0, 1.0];
       return;
-    };
-    let leader_rate = self.deck(leader).playback_rate;
-    let leader_effective_bpm = leader_grid.bpm
-      * if leader_rate.is_finite() && leader_rate > 0.0 {
-        leader_rate
-      } else {
-        1.0
-      };
+    }
+    let leader_effective_bpm = self.effective_bpm_for_deck(leader);
+    if !leader_effective_bpm.is_finite() || leader_effective_bpm <= 0.0 {
+      self.bpm_multiplier = [1.0, 1.0];
+      return;
+    }
     for deck in [DeckId::Top, DeckId::Bottom] {
       let index = Self::deck_index(deck);
       self.bpm_multiplier[index] = if deck == leader {
@@ -528,21 +632,16 @@ impl HorizontalBrowseTransportEngine {
   fn derive_state(&self, deck: DeckId, now_ms: f64) -> DeckDerivedState {
     let deck_state = self.deck(deck);
     let current_sec = Self::estimate_current_sec(deck_state, now_ms);
-    let Some(grid) = self.beat_grid(deck) else {
+    if self.beat_grid(deck).is_none() {
       return DeckDerivedState {
         estimated_current_sec: current_sec,
         effective_bpm: 0.0,
         render_current_sec: current_sec,
       };
-    };
+    }
     DeckDerivedState {
       estimated_current_sec: current_sec,
-      effective_bpm: grid.bpm
-        * if deck_state.playback_rate.is_finite() && deck_state.playback_rate > 0.0 {
-          deck_state.playback_rate
-        } else {
-          1.0
-        },
+      effective_bpm: self.effective_bpm_for_deck(deck),
       render_current_sec: current_sec,
     }
   }
@@ -576,6 +675,24 @@ impl HorizontalBrowseTransportEngine {
 
   fn target_sec_from_beat_distance(grid: BeatGridSnapshot, beat_distance: f64) -> f64 {
     grid.first_beat_sec + beat_distance * grid.beat_sec
+  }
+
+  fn nearest_valid_beat_distance_with_phase(
+    current_beat_distance: f64,
+    leader_beat_distance: f64,
+    min_beat_distance: f64,
+    max_beat_distance: f64,
+  ) -> f64 {
+    let leader_phase = leader_beat_distance.rem_euclid(1.0);
+    let min_index = (min_beat_distance - leader_phase).ceil();
+    let max_index = (max_beat_distance - leader_phase).floor();
+    if min_index > max_index {
+      return current_beat_distance.clamp(min_beat_distance, max_beat_distance);
+    }
+    let snapped_index = (current_beat_distance - leader_phase)
+      .round()
+      .clamp(min_index, max_index);
+    leader_phase + snapped_index
   }
 
   fn snapshot(&self, now_ms: f64) -> HorizontalBrowseTransportSnapshot {
@@ -619,6 +736,7 @@ impl HorizontalBrowseTransportEngine {
   }
 
   fn refresh(&mut self) {
+    self.auto_select_leader_from_playback();
     self.update_multipliers();
     self.recompute_distances();
     for deck in [DeckId::Top, DeckId::Bottom] {
@@ -658,25 +776,24 @@ impl HorizontalBrowseTransportEngine {
         let Some(target_grid) = self.beat_grid(deck) else {
           continue;
         };
-        let target_snapshot = self.deck(deck).clone();
-        let target_current_sec = Self::estimate_current_sec(&target_snapshot, now_ms);
+        let target_current_sec = Self::estimate_current_sec(self.deck(deck), now_ms);
         let target_beat_distance =
           (target_current_sec - target_grid.first_beat_sec) / target_grid.beat_sec;
         self.target_beat_distance[deck_index] = leader_target_beat_distance;
 
-        let leader_effective_bpm = leader_grid.bpm
-          * if self.deck(leader).playback_rate.is_finite() && self.deck(leader).playback_rate > 0.0
-          {
-            self.deck(leader).playback_rate
-          } else {
-            1.0
-          };
+        let leader_effective_bpm = self.effective_bpm_for_deck(leader);
         if let Some(tempo_rate) = {
           let multiplier = self.resolve_bpm_multiplier(deck, leader_effective_bpm);
           self.bpm_multiplier[deck_index] = multiplier;
-          self.beat_grid(deck).and_then(|grid| {
-            if grid.bpm.is_finite() && grid.bpm > 0.0 {
-              Some((leader_effective_bpm / grid.bpm).clamp(0.25, 4.0))
+          self.original_beat_grid(deck).and_then(|grid| {
+            let adjusted_target_bpm = grid.bpm
+              * if multiplier.is_finite() && multiplier > 0.0 {
+                multiplier
+              } else {
+                1.0
+              };
+            if adjusted_target_bpm.is_finite() && adjusted_target_bpm > 0.0 {
+              Some((leader_effective_bpm / adjusted_target_bpm).clamp(0.25, 4.0))
             } else {
               None
             }
@@ -685,7 +802,10 @@ impl HorizontalBrowseTransportEngine {
           self.deck_mut(deck).playback_rate = tempo_rate;
         }
 
-        if self.sync_lock[deck_index] == "full" && self.quantize_enabled[deck_index] {
+        if self.sync_lock[deck_index] == "full"
+          && self.quantize_enabled[deck_index]
+          && self.deck(deck).playing
+        {
           let target_phase = ((target_beat_distance % 1.0) + 1.0) % 1.0 * target_grid.beat_sec;
           let leader_phase =
             ((leader_target_beat_distance % 1.0) + 1.0) % 1.0 * target_grid.beat_sec;
@@ -707,10 +827,7 @@ impl HorizontalBrowseTransportEngine {
   }
 
   fn sync_deck_to_now(&mut self, deck: DeckId, now_ms: f64) {
-    let estimated = {
-      let snapshot = self.deck(deck).clone();
-      Self::estimate_current_sec(&snapshot, now_ms)
-    };
+    let estimated = Self::estimate_current_sec(self.deck(deck), now_ms);
     let target = self.deck_mut(deck);
     target.current_sec = estimated;
     target.last_observed_at_ms = now_ms;
@@ -769,26 +886,34 @@ impl HorizontalBrowseTransportEngine {
     self.sync_enabled[Self::deck_index(deck)] = true;
     self.set_sync_lock(deck, "full");
     let now_ms = self.last_now_ms;
+    let leader_index = Self::deck_index(leader);
+    let deck_index = Self::deck_index(deck);
+    self.bpm_multiplier[leader_index] = 1.0;
+    let leader_effective_bpm = self.effective_bpm_for_deck(leader);
+    self.bpm_multiplier[deck_index] = self.resolve_bpm_multiplier(deck, leader_effective_bpm);
     if let (Some(leader_grid), Some(target_grid)) = (self.beat_grid(leader), self.beat_grid(deck)) {
       let leader_current_sec = Self::estimate_current_sec(self.deck(leader), now_ms);
       let leader_beat_distance =
         (leader_current_sec - leader_grid.first_beat_sec) / leader_grid.beat_sec;
-      let target_sec = Self::target_sec_from_beat_distance(target_grid, leader_beat_distance);
+      let target_current_sec = Self::estimate_current_sec(self.deck(deck), now_ms);
+      let target_current_beat_distance =
+        (target_current_sec - target_grid.first_beat_sec) / target_grid.beat_sec;
+      let target_duration_sec = self.deck(deck).duration_sec.max(0.0);
+      let min_target_beat_distance = (0.0 - target_grid.first_beat_sec) / target_grid.beat_sec;
+      let max_target_beat_distance =
+        (target_duration_sec - target_grid.first_beat_sec) / target_grid.beat_sec;
+      let snapped_target_beat_distance = Self::nearest_valid_beat_distance_with_phase(
+        target_current_beat_distance,
+        leader_beat_distance,
+        min_target_beat_distance,
+        max_target_beat_distance,
+      );
+      let target_sec =
+        Self::target_sec_from_beat_distance(target_grid, snapped_target_beat_distance);
       let target = self.deck_mut(deck);
       target.current_sec = target_sec.clamp(0.0, target.duration_sec.max(0.0));
       target.last_observed_at_ms = now_ms;
-      let leader_effective_bpm = leader_grid.bpm
-        * if self.deck(leader).playback_rate.is_finite() && self.deck(leader).playback_rate > 0.0 {
-          self.deck(leader).playback_rate
-        } else {
-          1.0
-        };
-      self.bpm_multiplier[Self::deck_index(deck)] =
-        self.resolve_bpm_multiplier(deck, leader_effective_bpm);
-      if let Some(adjusted_target_grid) = self.beat_grid(deck) {
-        self.deck_mut(deck).playback_rate =
-          (leader_effective_bpm / adjusted_target_grid.bpm).clamp(0.25, 4.0);
-      }
+      self.deck_mut(deck).playback_rate = (leader_effective_bpm / target_grid.bpm).clamp(0.25, 4.0);
     }
     self.refresh();
   }
@@ -810,6 +935,29 @@ fn decode_transport_audio_file(file_path: &str) -> Option<(Vec<f32>, u32, u16)> 
   Some((samples, result.sample_rate, result.channels as u16))
 }
 
+fn schedule_decode_request(request: DecodeRequest) {
+  thread::spawn(move || {
+    let decoded = decode_transport_audio_file(&request.file_path);
+    let mut engine_guard = engine().lock();
+    match decoded {
+      Some((samples, sample_rate, channels)) => {
+        engine_guard.apply_decoded_audio(
+          request.deck,
+          &request.file_path,
+          request.request_id,
+          samples,
+          sample_rate,
+          channels,
+        );
+      }
+      None => {
+        engine_guard.mark_decode_finished(request.deck, &request.file_path, request.request_id);
+      }
+    }
+    engine_guard.refresh();
+  });
+}
+
 static HORIZONTAL_BROWSE_TRANSPORT: OnceLock<Mutex<HorizontalBrowseTransportEngine>> =
   OnceLock::new();
 static OUTPUT_THREAD_STARTED: OnceLock<()> = OnceLock::new();
@@ -821,6 +969,38 @@ fn engine() -> &'static Mutex<HorizontalBrowseTransportEngine> {
 #[napi]
 pub fn horizontal_browse_transport_reset() {
   *engine().lock() = HorizontalBrowseTransportEngine::default();
+}
+
+#[napi]
+pub fn horizontal_browse_transport_set_deck_state(
+  deck: String,
+  now_ms: Option<f64>,
+  payload: HorizontalBrowseTransportDeckInput,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine_guard = engine().lock();
+  engine_guard.last_now_ms = now_ms.unwrap_or(payload.last_observed_at_ms);
+  {
+    let target = engine_guard.deck_mut(deck_id);
+    target.file_path = payload.file_path;
+    target.title = payload.title;
+    target.bpm = payload.bpm;
+    target.first_beat_ms = payload.first_beat_ms;
+    target.duration_sec = payload.duration_sec;
+    target.current_sec = payload.current_sec;
+    target.last_observed_at_ms = payload.last_observed_at_ms;
+    target.playing = payload.playing;
+    target.playback_rate = payload.playback_rate;
+  }
+  let decode_request = engine_guard.prepare_decode_request(deck_id);
+  let _ = engine_guard.ensure_output_stream();
+  engine_guard.refresh();
+  let snapshot = engine_guard.snapshot(engine_guard.last_now_ms);
+  drop(engine_guard);
+  if let Some(request) = decode_request {
+    schedule_decode_request(request);
+  }
+  Ok(snapshot)
 }
 
 #[napi]
@@ -846,7 +1026,6 @@ pub fn horizontal_browse_transport_set_state(
     top.last_observed_at_ms = payload.top.last_observed_at_ms;
     top.playing = payload.top.playing;
     top.playback_rate = payload.top.playback_rate;
-    top.gain = 1.0;
   }
   {
     let bottom = engine_guard.deck_mut(DeckId::Bottom);
@@ -859,29 +1038,20 @@ pub fn horizontal_browse_transport_set_state(
     bottom.last_observed_at_ms = payload.bottom.last_observed_at_ms;
     bottom.playing = payload.bottom.playing;
     bottom.playback_rate = payload.bottom.playback_rate;
-    bottom.gain = 1.0;
   }
   let top_decode_request = engine_guard.prepare_decode_request(DeckId::Top);
   let bottom_decode_request = engine_guard.prepare_decode_request(DeckId::Bottom);
   let _ = engine_guard.ensure_output_stream();
-  drop(engine_guard);
-
-  if let Some(file_path) = top_decode_request {
-    if let Some((samples, sample_rate, channels)) = decode_transport_audio_file(&file_path) {
-      let mut engine_guard = engine().lock();
-      engine_guard.apply_decoded_audio(DeckId::Top, &file_path, samples, sample_rate, channels);
-    }
-  }
-  if let Some(file_path) = bottom_decode_request {
-    if let Some((samples, sample_rate, channels)) = decode_transport_audio_file(&file_path) {
-      let mut engine_guard = engine().lock();
-      engine_guard.apply_decoded_audio(DeckId::Bottom, &file_path, samples, sample_rate, channels);
-    }
-  }
-
-  let mut engine_guard = engine().lock();
   engine_guard.refresh();
-  engine_guard.snapshot(engine_guard.last_now_ms)
+  let snapshot = engine_guard.snapshot(engine_guard.last_now_ms);
+  drop(engine_guard);
+  if let Some(request) = top_decode_request {
+    schedule_decode_request(request);
+  }
+  if let Some(request) = bottom_decode_request {
+    schedule_decode_request(request);
+  }
+  snapshot
 }
 
 #[napi]
@@ -1047,6 +1217,9 @@ mod tests {
       top.last_observed_at_ms = 1000.0;
       top.playing = true;
       top.playback_rate = 2.0;
+      top.sample_rate = 44100;
+      top.channels = 2;
+      top.pcm_data = vec![0.0, 0.0, 0.0, 0.0];
     }
 
     let snapshot = engine.snapshot(2000.0);
@@ -1071,6 +1244,102 @@ mod tests {
 
     let snapshot = engine.snapshot(2500.0);
     assert!((snapshot.top.current_sec - 5.0).abs() < 0.0001);
+  }
+
+  #[test]
+  fn beatsync_with_multiplier_snaps_to_nearest_phase_aligned_beat() {
+    let mut engine = HorizontalBrowseTransportEngine::default();
+    engine.last_now_ms = 1000.0;
+    {
+      let top = engine.deck_mut(DeckId::Top);
+      top.file_path = Some("leader.mp3".to_string());
+      top.bpm = Some(140.0);
+      top.first_beat_ms = Some(0.0);
+      top.duration_sec = 60.0;
+      top.current_sec = 10.32;
+      top.last_observed_at_ms = 1000.0;
+      top.playing = true;
+      top.playback_rate = 1.0;
+      top.sample_rate = 44100;
+      top.channels = 2;
+      top.pcm_data = vec![0.0, 0.0, 0.0, 0.0];
+    }
+    {
+      let bottom = engine.deck_mut(DeckId::Bottom);
+      bottom.file_path = Some("follower.mp3".to_string());
+      bottom.bpm = Some(70.0);
+      bottom.first_beat_ms = Some(0.0);
+      bottom.duration_sec = 60.0;
+      bottom.current_sec = 3.14;
+      bottom.last_observed_at_ms = 1000.0;
+      bottom.playing = false;
+      bottom.playback_rate = 1.0;
+    }
+
+    engine.set_leader(Some(DeckId::Top));
+    engine.beatsync(DeckId::Bottom);
+
+    let leader_grid = engine.beat_grid(DeckId::Top).unwrap();
+    let follower_grid = engine.beat_grid(DeckId::Bottom).unwrap();
+    let leader_distance =
+      (engine.deck(DeckId::Top).current_sec - leader_grid.first_beat_sec) / leader_grid.beat_sec;
+    let follower_distance = (engine.deck(DeckId::Bottom).current_sec
+      - follower_grid.first_beat_sec)
+      / follower_grid.beat_sec;
+    let original_follower_distance = 3.14 / follower_grid.beat_sec;
+    let phase_delta = (leader_distance - follower_distance).rem_euclid(1.0);
+    let nearest_delta = (follower_distance - original_follower_distance).abs();
+
+    assert!(phase_delta < 0.0001 || (1.0 - phase_delta) < 0.0001);
+    assert!(nearest_delta <= 0.5 + 0.0001);
+  }
+
+  #[test]
+  fn beatsync_near_track_start_keeps_nearest_valid_grid_line() {
+    let mut engine = HorizontalBrowseTransportEngine::default();
+    engine.last_now_ms = 1000.0;
+    {
+      let top = engine.deck_mut(DeckId::Top);
+      top.file_path = Some("leader.mp3".to_string());
+      top.bpm = Some(135.0);
+      top.first_beat_ms = Some(75.465);
+      top.duration_sec = 60.0;
+      top.current_sec = 4.85;
+      top.last_observed_at_ms = 1000.0;
+      top.playing = true;
+      top.playback_rate = 1.0;
+      top.sample_rate = 44100;
+      top.channels = 2;
+      top.pcm_data = vec![0.0, 0.0, 0.0, 0.0];
+    }
+    {
+      let bottom = engine.deck_mut(DeckId::Bottom);
+      bottom.file_path = Some("follower.mp3".to_string());
+      bottom.bpm = Some(142.0);
+      bottom.first_beat_ms = Some(63.855);
+      bottom.duration_sec = 60.0;
+      bottom.current_sec = 0.063855;
+      bottom.last_observed_at_ms = 1000.0;
+      bottom.playing = false;
+      bottom.playback_rate = 0.950704;
+    }
+
+    engine.set_leader(Some(DeckId::Top));
+    engine.bpm_multiplier[HorizontalBrowseTransportEngine::deck_index(DeckId::Bottom)] = 1.0;
+    engine.beatsync(DeckId::Bottom);
+
+    let leader_grid = engine.beat_grid(DeckId::Top).unwrap();
+    let follower_grid = engine.beat_grid(DeckId::Bottom).unwrap();
+    let leader_distance =
+      (engine.deck(DeckId::Top).current_sec - leader_grid.first_beat_sec) / leader_grid.beat_sec;
+    let follower_distance = (engine.deck(DeckId::Bottom).current_sec
+      - follower_grid.first_beat_sec)
+      / follower_grid.beat_sec;
+    let phase_delta = (leader_distance - follower_distance).rem_euclid(1.0);
+
+    assert!(phase_delta < 0.0001 || (1.0 - phase_delta) < 0.0001);
+    assert!(engine.deck(DeckId::Bottom).current_sec >= 0.0);
+    assert!(engine.deck(DeckId::Bottom).current_sec > 0.05);
   }
 
   #[test]

@@ -21,6 +21,11 @@ type HorizontalBrowseTransportStateInput = {
 
 type RustHorizontalBrowseTransportBinding = {
   horizontalBrowseTransportReset?: () => void
+  horizontalBrowseTransportSetDeckState?: (
+    deck: string,
+    nowMs: number | undefined,
+    payload: HorizontalBrowseTransportDeckInput
+  ) => unknown
   horizontalBrowseTransportSetState?: (payload: HorizontalBrowseTransportStateInput) => unknown
   horizontalBrowseTransportSetSyncEnabled?: (
     deck: string,
@@ -61,6 +66,20 @@ export function registerHorizontalBrowseTransportHandlers() {
     const fn = requireFn(binding, 'horizontalBrowseTransportReset')
     return fn()
   })
+
+  ipcMain.handle(
+    'horizontal-browse-transport:set-deck-state',
+    async (
+      _event,
+      deck: string,
+      nowMs: number | undefined,
+      payload: HorizontalBrowseTransportDeckInput
+    ) => {
+      const binding = resolveBinding()
+      const fn = requireFn(binding, 'horizontalBrowseTransportSetDeckState')
+      return fn(deck, nowMs, payload)
+    }
+  )
 
   ipcMain.handle(
     'horizontal-browse-transport:set-state',

@@ -39,6 +39,7 @@ export interface HorizontalBrowseTransportSnapshot {
   bottom: HorizontalBrowseTransportDeckSnapshot
 }
 export declare function horizontalBrowseTransportReset(): void
+export declare function horizontalBrowseTransportSetDeckState(deck: string, nowMs: number | undefined | null, payload: HorizontalBrowseTransportDeckInput): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetState(payload: HorizontalBrowseTransportStateInput): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetSyncEnabled(deck: string, nowMs: number | undefined | null, enabled: boolean): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportBeatsync(deck: string, nowMs?: number | undefined | null): HorizontalBrowseTransportSnapshot

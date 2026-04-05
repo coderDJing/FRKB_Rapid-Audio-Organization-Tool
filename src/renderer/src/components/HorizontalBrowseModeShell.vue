@@ -291,14 +291,12 @@ const setDeckSong = (deck: DeckKey, song: ISongInfo | null) => {
   }
   if (!song) {
     const nowMs = performance.now()
-    void commitDeckStatesToNative({
-      [deck]: {
-        currentSec: 0,
-        lastObservedAtMs: nowMs,
-        durationSec: 0,
-        playing: false,
-        playbackRate: 1
-      }
+    void commitDeckStateToNative(deck, {
+      currentSec: 0,
+      lastObservedAtMs: nowMs,
+      durationSec: 0,
+      playing: false,
+      playbackRate: 1
     })
   }
 }
@@ -340,6 +338,23 @@ const resolveDeckPlaybackRate = (deck: DeckKey) =>
   Number(resolveTransportDeckSnapshot(deck).playbackRate) || 1
 const topDeckUiPlaying = computed(() => resolveDeckPlaying('top'))
 const bottomDeckUiPlaying = computed(() => resolveDeckPlaying('bottom'))
+const topDeckShouldDeferWaveformLoad = computed(
+  () => bottomDeckUiPlaying.value && !topDeckUiPlaying.value
+)
+const bottomDeckShouldDeferWaveformLoad = computed(
+  () => topDeckUiPlaying.value && !bottomDeckUiPlaying.value
+)
+const resolveDeckGridBpm = (deck: DeckKey) => {
+  const snapshot = resolveTransportDeckSnapshot(deck)
+  const effectiveBpm = Number(snapshot.effectiveBpm) || 0
+  const playbackRate = Number(snapshot.playbackRate) || 1
+  if (effectiveBpm > 0 && playbackRate > 0) {
+    return effectiveBpm / playbackRate
+  }
+  return Number(resolveDeckSong(deck)?.bpm) || 0
+}
+const topDeckGridBpm = computed(() => resolveDeckGridBpm('top'))
+const bottomDeckGridBpm = computed(() => resolveDeckGridBpm('bottom'))
 const syncDeckDefaultCue = (deck: DeckKey, song: ISongInfo | null, force = false) => {
   const target = deck === 'top' ? topDeckCuePointSeconds : bottomDeckCuePointSeconds
   if (!force && target.value > 0.000001) return
@@ -365,6 +380,11 @@ const buildDeckStateForNative = (deck: DeckKey, override?: DeckTransportStateOve
   playing: override?.playing ?? resolveDeckPlaying(deck),
   playbackRate: override?.playbackRate ?? resolveDeckPlaybackRate(deck)
 })
+
+const commitDeckStateToNative = async (deck: DeckKey, override?: DeckTransportStateOverride) => {
+  await nativeTransport.setDeckState(deck, buildDeckStateForNative(deck, override))
+  syncDeckRenderState()
+}
 
 const commitDeckStatesToNative = async (
   overrides?: Partial<Record<DeckKey, DeckTransportStateOverride>>
@@ -417,7 +437,7 @@ const hydrateDeckSongSharedGrid = async (deck: DeckKey, song: ISongInfo) => {
     if (nextSong !== currentSong) {
       setDeckSong(deck, nextSong)
       syncDeckDefaultCue(deck, nextSong)
-      void commitDeckStatesToNative()
+      void commitDeckStateToNative(deck)
     }
   } catch {}
 }
@@ -427,14 +447,12 @@ const assignSongToDeck = (deck: DeckKey, song: ISongInfo) => {
   setDeckSong(deck, nextSong)
   syncDeckDefaultCue(deck, nextSong, true)
   const nowMs = performance.now()
-  void commitDeckStatesToNative({
-    [deck]: {
-      currentSec: 0,
-      lastObservedAtMs: nowMs,
-      durationSec: parseDurationToSeconds(nextSong.duration),
-      playing: false,
-      playbackRate: 1
-    }
+  void commitDeckStateToNative(deck, {
+    currentSec: 0,
+    lastObservedAtMs: nowMs,
+    durationSec: parseDurationToSeconds(nextSong.duration),
+    playing: false,
+    playbackRate: 1
   })
   void hydrateDeckSongSharedGrid(deck, nextSong)
 }
@@ -506,7 +524,7 @@ const handleDeckBpmInputUpdate = (deck: DeckKey, value: string) => {
       const nextSong = { ...currentSong, bpm: parsed }
       setDeckSong(deck, nextSong)
       syncDeckDefaultCue(deck, nextSong)
-      void commitDeckStatesToNative()
+      void commitDeckStateToNative(deck)
     }
   }
   resolveDetailRef(deck)?.updateBpmInput?.(value)
@@ -546,9 +564,14 @@ const handleDeckCue = (deck: DeckKey) => {
 
 const handleDeckPlayPauseToggle = (deck: DeckKey) => {
   const nextPlaying = deck === 'top' ? !topDeckUiPlaying.value : !bottomDeckUiPlaying.value
-  void nativeTransport.setPlaying(deck, nextPlaying).then(() => {
+  void (async () => {
+    if (nextPlaying && resolveTransportDeckSnapshot(deck).syncEnabled) {
+      await commitDeckStatesToNative()
+      await nativeTransport.beatsync(deck)
+    }
+    await nativeTransport.setPlaying(deck, nextPlaying)
     syncDeckRenderState()
-  })
+  })()
 }
 
 const toggleDeckMaster = async (deck: DeckKey) => {
@@ -565,8 +588,10 @@ const triggerDeckBeatSync = async (deck: DeckKey) => {
     syncDeckRenderState()
     return
   }
-  await nativeTransport.beatsync(deck)
   await nativeTransport.setSyncEnabled(deck, true)
+  if (resolveDeckPlaying(deck)) {
+    await nativeTransport.beatsync(deck)
+  }
   syncDeckRenderState()
 }
 
@@ -829,7 +854,9 @@ onUnmounted(() => {
             :current-seconds="topDeckRenderCurrentSeconds"
             :playing="topDeckUiPlaying"
             :playback-rate="topDeckPlaybackRate"
+            :grid-bpm="topDeckGridBpm"
             :cue-seconds="topDeckCuePointSeconds"
+            :defer-waveform-load="topDeckShouldDeferWaveformLoad"
             direction="up"
             @toolbar-state-change="handleToolbarStateChange('top', $event)"
             @zoom-change="handleSharedDetailZoomChange"
@@ -852,7 +879,9 @@ onUnmounted(() => {
             :current-seconds="bottomDeckRenderCurrentSeconds"
             :playing="bottomDeckUiPlaying"
             :playback-rate="bottomDeckPlaybackRate"
+            :grid-bpm="bottomDeckGridBpm"
             :cue-seconds="bottomDeckCuePointSeconds"
+            :defer-waveform-load="bottomDeckShouldDeferWaveformLoad"
             direction="down"
             @toolbar-state-change="handleToolbarStateChange('bottom', $event)"
             @zoom-change="handleSharedDetailZoomChange"
