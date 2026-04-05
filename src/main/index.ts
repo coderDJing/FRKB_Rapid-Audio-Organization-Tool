@@ -47,6 +47,7 @@ import { registerMixtapeProjectTempoHandlers } from './ipc/mixtapeProjectTempoHa
 import { registerSongSearchHandlers } from './ipc/songSearchHandlers'
 import { registerPioneerDeviceLibraryHandlers } from './ipc/pioneerDeviceLibraryHandlers'
 import { registerRekordboxDesktopLibraryHandlers } from './ipc/rekordboxDesktopLibraryHandlers'
+import { registerHorizontalBrowseTransportHandlers } from './ipc/horizontalBrowseTransportHandlers'
 import { maybeShowWhatsNew, registerWhatsNewHandlers } from './services/whatsNew'
 import * as LibraryCacheDb from './libraryCacheDb'
 import path from 'path'
@@ -233,6 +234,7 @@ registerMixtapeProjectTempoHandlers()
 registerSongSearchHandlers()
 registerPioneerDeviceLibraryHandlers()
 registerRekordboxDesktopLibraryHandlers()
+registerHorizontalBrowseTransportHandlers()
 
 keyAnalysisEvents.on('key-updated', (payload) => {
   if (mainWindow.instance) {

@@ -7,14 +7,15 @@ import musicIconAsset from '@renderer/assets/musicIcon.svg?asset'
 
 const props = defineProps<{
   song: ISongInfo | null
-  beatSyncActive: boolean
+  beatSyncEnabled: boolean
+  beatSyncBlinking: boolean
   masterActive: boolean
   currentSeconds?: number
   durationSeconds?: number
 }>()
 
 const emit = defineEmits<{
-  (event: 'toggle-beat-sync'): void
+  (event: 'trigger-beat-sync'): void
   (event: 'toggle-master'): void
 }>()
 
@@ -228,8 +229,8 @@ onUnmounted(() => {
       <button
         type="button"
         class="deck-info-action"
-        :class="{ 'is-active': props.beatSyncActive }"
-        @click.stop="emit('toggle-beat-sync')"
+        :class="{ 'is-active': props.beatSyncEnabled, 'is-blinking': props.beatSyncBlinking }"
+        @click.stop="emit('trigger-beat-sync')"
       >
         BEAT SYNC
       </button>
@@ -471,6 +472,21 @@ onUnmounted(() => {
   box-shadow:
     0 0 0 1px rgba(12, 84, 156, 0.32),
     inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.deck-info-action.is-blinking {
+  animation: deck-info-action-sync-blink 0.85s steps(2, end) infinite;
+}
+
+@keyframes deck-info-action-sync-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.38;
+  }
 }
 
 .fade-enter-active,

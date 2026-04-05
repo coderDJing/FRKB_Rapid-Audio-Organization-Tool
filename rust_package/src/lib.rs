@@ -50,11 +50,13 @@ use ring::digest::{Context, SHA256};
 extern crate napi_derive;
 
 mod analysis_utils;
+mod horizontal_browse_transport;
 mod mixxx_waveform;
 mod qm_bpm;
 mod qm_key;
 
 use crate::analysis_utils::{calc_frames_to_process, to_stereo, K_ANALYSIS_FRAMES_PER_CHUNK};
+pub use crate::horizontal_browse_transport::*;
 use crate::mixxx_waveform::MixxxWaveformData;
 use rekordcrate::anlz::{Content as RekordcrateAnlzContent, ANLZ};
 use rekordcrate::pdb::{

@@ -9,7 +9,6 @@ import {
   clampHorizontalBrowsePreviewStartByVisibleDuration,
   resolveHorizontalBrowsePlaybackAlignedStart
 } from '@renderer/components/horizontalBrowseDetailMath'
-import { useHorizontalBrowsePlaybackAnimation } from '@renderer/components/useHorizontalBrowsePlaybackAnimation'
 import { createBeatAlignPreviewRenderer } from '@renderer/components/mixtapeBeatAlignPreviewRenderer'
 import { createRawPlaceholderMixxxData } from '@renderer/components/mixtapeBeatAlignWaveformPlaceholder'
 import {
@@ -90,6 +89,7 @@ const props = defineProps<{
   sharedZoomState?: HorizontalBrowseSharedZoomState
   currentSeconds?: number
   playing?: boolean
+  playbackRate?: number
   cueSeconds?: number
 }>()
 
@@ -155,7 +155,8 @@ const resolvePreviewDurationSec = () => {
 const resolveVisibleDurationSec = () =>
   Math.max(
     0.001,
-    HORIZONTAL_BROWSE_DETAIL_VISIBLE_DURATION_BASE_SEC /
+    (HORIZONTAL_BROWSE_DETAIL_VISIBLE_DURATION_BASE_SEC *
+      Math.max(0.25, Number(props.playbackRate) || 1)) /
       Number(previewZoom.value || HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
   )
 
@@ -174,6 +175,18 @@ const clampPreviewStart = (value: number) => {
   const duration = resolvePreviewDurationSec()
   const visibleDuration = resolveVisibleDurationSec()
   return clampHorizontalBrowsePreviewStartByVisibleDuration(value, duration, visibleDuration)
+}
+
+const resolveSnappedRenderStartSec = (visibleDuration: number) => {
+  const wrap = wrapRef.value
+  const clampedStart = clampPreviewStart(previewStartSec.value)
+  if (!wrap || visibleDuration <= 0) return clampedStart
+  const cssWidth = Math.max(1, Math.floor(wrap.clientWidth))
+  const pixelRatio = window.devicePixelRatio || 1
+  const scaledWidth = Math.max(1, Math.round(cssWidth * pixelRatio))
+  const secPerPixel = visibleDuration / scaledWidth
+  if (!Number.isFinite(secPerPixel) || secPerPixel <= 0) return clampedStart
+  return clampPreviewStart(Math.round(clampedStart / secPerPixel) * secPerPixel)
 }
 
 const normalizeSharedZoom = (value: unknown) => {
@@ -347,6 +360,7 @@ const buildWaveformRenderPlan = (options: {
   cssWidth: number
   cssHeight: number
   pixelRatio: number
+  rangeStartSec: number
   themeVariant: HorizontalBrowseWaveformThemeVariant
 }) => {
   const duration = resolvePreviewDurationSec()
@@ -357,7 +371,7 @@ const buildWaveformRenderPlan = (options: {
     cssWidth: options.cssWidth,
     cssHeight: options.cssHeight,
     pixelRatio: options.pixelRatio,
-    rangeStartSec: previewStartSec.value,
+    rangeStartSec: options.rangeStartSec,
     rangeDurationSec: visibleDuration,
     themeVariant: options.themeVariant,
     overscanTiles: WAVEFORM_TILE_OVERSCAN
@@ -435,7 +449,7 @@ const requestWaveformTileBatch = (requests: HorizontalBrowseDetailWaveformTileRe
   worker.postMessage(message)
 }
 
-const drawWaveformTiles = () => {
+const drawWaveformTiles = (viewStartSec: number, visibleDuration: number) => {
   const wrap = wrapRef.value
   const canvas = waveformCanvasRef.value
   if (!wrap || !canvas) return
@@ -460,15 +474,6 @@ const drawWaveformTiles = () => {
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.clearRect(0, 0, metrics.scaledWidth, metrics.scaledHeight)
   ctx.imageSmoothingEnabled = false
-  ctx.setTransform(metrics.scaleX, 0, 0, metrics.scaleY, 0, 0)
-
-  const duration = resolvePreviewDurationSec()
-  const visibleDuration = Math.max(0.001, resolveVisibleDurationSec() || duration || 0.001)
-  previewStartSec.value = clampHorizontalBrowsePreviewStartByVisibleDuration(
-    previewStartSec.value,
-    duration,
-    visibleDuration
-  )
 
   const filePath = String(props.song?.filePath || '').trim()
   const themeVariant = resolveHorizontalBrowseWaveformThemeVariant()
@@ -477,10 +482,10 @@ const drawWaveformTiles = () => {
     cssWidth: metrics.cssWidth,
     cssHeight: metrics.cssHeight,
     pixelRatio: metrics.pixelRatio,
+    rangeStartSec: viewStartSec,
     themeVariant
   })
 
-  const viewStartSec = previewStartSec.value
   const viewEndSec = viewStartSec + visibleDuration
   for (const request of visibleRequests) {
     const entry = waveformTileCache.get(request.cacheKey)
@@ -494,23 +499,31 @@ const drawWaveformTiles = () => {
     waveformTileCacheTick += 1
     entry.used = waveformTileCacheTick
     const srcScaleX = entry.width > 0 ? entry.bitmap.width / entry.width : entry.pixelRatio || 1
-    const srcX =
+    const srcLeftPx = Math.round(
       ((overlapStartSec - tileStartSec) / request.rangeDurationSec) * entry.width * srcScaleX
-    const srcWidth =
-      ((overlapEndSec - overlapStartSec) / request.rangeDurationSec) * entry.width * srcScaleX
-    const destX = ((overlapStartSec - viewStartSec) / visibleDuration) * metrics.cssWidth
-    const destWidth = ((overlapEndSec - overlapStartSec) / visibleDuration) * metrics.cssWidth
+    )
+    const srcRightPx = Math.round(
+      ((overlapEndSec - tileStartSec) / request.rangeDurationSec) * entry.width * srcScaleX
+    )
+    const destLeftPx = Math.round(
+      ((overlapStartSec - viewStartSec) / visibleDuration) * metrics.scaledWidth
+    )
+    const destRightPx = Math.round(
+      ((overlapEndSec - viewStartSec) / visibleDuration) * metrics.scaledWidth
+    )
+    const srcWidth = srcRightPx - srcLeftPx
+    const destWidth = destRightPx - destLeftPx
     if (srcWidth <= 0 || destWidth <= 0) continue
     ctx.drawImage(
       entry.bitmap,
-      srcX,
+      srcLeftPx,
       0,
       srcWidth,
       entry.bitmap.height,
-      destX,
+      destLeftPx,
       0,
       destWidth,
-      metrics.cssHeight
+      metrics.scaledHeight
     )
   }
 
@@ -531,7 +544,8 @@ const drawWaveform = () => {
   const duration = resolvePreviewDurationSec()
   const visibleDuration = Math.max(0.001, resolveVisibleDurationSec() || duration || 0.001)
   previewStartSec.value = clampPreviewStart(previewStartSec.value)
-  drawWaveformTiles()
+  const renderStartSec = resolveSnappedRenderStartSec(visibleDuration)
+  drawWaveformTiles(renderStartSec, visibleDuration)
 
   gridRenderer.draw({
     canvas: gridCanvas,
@@ -539,7 +553,7 @@ const drawWaveform = () => {
     bpm: Number(previewBpm.value) || 128,
     firstBeatMs: Number(previewFirstBeatMs.value) || 0,
     barBeatOffset: Number(previewBarBeatOffset.value) || 0,
-    rangeStartSec: previewStartSec.value,
+    rangeStartSec: renderStartSec,
     rangeDurationSec: visibleDuration,
     mixxxData: null,
     rawData: null,
@@ -664,7 +678,6 @@ const handleMouseDown = (event: MouseEvent) => {
     schedulePersistGridDefinition()
     return
   }
-  stopPlaybackAnimation()
   dragging.value = true
   dragStartClientX = event.clientX
   dragStartSec = previewStartSec.value
@@ -740,17 +753,6 @@ const {
   schedulePreviewDraw: scheduleDraw,
   barBeatInterval: PREVIEW_BAR_BEAT_INTERVAL,
   barLineHitRadiusPx: PREVIEW_BAR_LINE_HIT_RADIUS_PX
-})
-
-const applyPlaybackFrame = (seconds: number) => {
-  previewStartSec.value = resolvePlaybackAlignedStart(Math.max(0, seconds))
-  lastZoomAnchorSec = Math.max(0, seconds)
-  lastZoomAnchorRatio = HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
-  scheduleDraw()
-}
-
-const { syncPlaybackState, stopPlaybackAnimation } = useHorizontalBrowsePlaybackAnimation({
-  onFrame: applyPlaybackFrame
 })
 
 const handlePreviewBpmInputUpdate = (value: string) => {
@@ -940,10 +942,35 @@ watch(
 )
 
 watch(
+  () => !!props.playing,
+  (playing) => {
+    previewPlaying.value = playing
+  },
+  { immediate: true }
+)
+
+watch(
   () => [Number(props.currentSeconds) || 0, !!props.playing, props.song?.filePath ?? ''] as const,
   ([seconds, playing, songKey]) => {
     if (dragging.value) return
-    syncPlaybackState({ seconds: Math.max(0, seconds), playing, songKey })
+    const safeSongKey = String(songKey || '').trim()
+    const safeSeconds = Math.max(0, seconds)
+    if (!safeSongKey) {
+      previewStartSec.value = resolvePlaybackAlignedStart(0)
+      scheduleDraw()
+      return
+    }
+    if (!playing) {
+      previewStartSec.value = resolvePlaybackAlignedStart(safeSeconds)
+      lastZoomAnchorSec = safeSeconds
+      lastZoomAnchorRatio = HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
+      scheduleDraw()
+      return
+    }
+    previewStartSec.value = resolvePlaybackAlignedStart(safeSeconds)
+    lastZoomAnchorSec = safeSeconds
+    lastZoomAnchorRatio = HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
+    scheduleDraw()
   }
 )
 
@@ -985,7 +1012,6 @@ onUnmounted(() => {
   clearPersistTimer()
   clearBpmTapResetTimer()
   stopDragging()
-  stopPlaybackAnimation()
   clearWaveformWorkerQueue()
   clearWaveformTileCache()
   gridRenderer.dispose()

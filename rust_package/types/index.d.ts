@@ -72,6 +72,40 @@ export interface MixxxWaveformData {
   step: number
   bands: MixxxWaveformBands
 }
+export interface HorizontalBrowseTransportDeckInput {
+  filePath?: string
+  title?: string
+  bpm?: number
+  firstBeatMs?: number
+  durationSec: number
+  currentSec: number
+  lastObservedAtMs: number
+  playing: boolean
+  playbackRate: number
+}
+export interface HorizontalBrowseTransportDeckSnapshot {
+  deck: string
+  label: string
+  playing: boolean
+  currentSec: number
+  durationSec: number
+  playbackRate: number
+  bpm: number
+  effectiveBpm: number
+  renderCurrentSec: number
+  syncEnabled: boolean
+  syncLock: string
+  leader: boolean
+}
+export interface HorizontalBrowseTransportSnapshot {
+  leaderDeck?: string
+  top: HorizontalBrowseTransportDeckSnapshot
+  bottom: HorizontalBrowseTransportDeckSnapshot
+}
+export interface HorizontalBrowseTransportStateInput {
+  top: HorizontalBrowseTransportDeckInput
+  bottom: HorizontalBrowseTransportDeckInput
+}
 /**
  * 计算音频文件的 SHA256 哈希值，并生成声纹与质量标签
  *
@@ -147,5 +181,36 @@ export declare function analyzeKeyAndBpmFromPcm(
   channels: number,
   fastAnalysis: boolean
 ): KeyBpmAnalysisResult
+export declare function horizontalBrowseTransportReset(): void
+export declare function horizontalBrowseTransportSetState(
+  payload: HorizontalBrowseTransportStateInput
+): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetSyncEnabled(
+  deck: string,
+  enabled: boolean
+): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportBeatsync(
+  deck: string
+): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetLeader(
+  deck?: string
+): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetPlaying(
+  deck: string,
+  nowMs: number,
+  playing: boolean
+): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSeek(
+  deck: string,
+  nowMs: number,
+  currentSec: number
+): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetGain(
+  deck: string,
+  gain: number
+): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSnapshot(
+  nowMs?: number
+): HorizontalBrowseTransportSnapshot
 
 export {}
