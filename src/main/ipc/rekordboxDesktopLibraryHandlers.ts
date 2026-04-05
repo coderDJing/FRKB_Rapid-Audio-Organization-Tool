@@ -23,7 +23,7 @@ export function registerRekordboxDesktopLibraryHandlers() {
             : 'image/jpeg'
 
   ipcMain.handle('rekordbox-desktop-library:probe', async () => {
-    return await probeRekordboxDesktopLibrary(true)
+    return await probeRekordboxDesktopLibrary(false)
   })
 
   ipcMain.handle('rekordbox-desktop-library:load-tree', async () => {

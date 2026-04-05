@@ -1,4 +1,4 @@
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
 import confirm from '@renderer/components/confirmDialog'
 import rightClickMenu from '@renderer/components/rightClickMenu'
@@ -76,6 +76,8 @@ type UseRekordboxSourceIconsOptions = {
   emitLibrarySelectedChange: (payload: { name: string }) => void
 }
 
+const SOURCE_ICON_AUTO_REFRESH_INTERVAL_MS = 60_000
+
 export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions) {
   const {
     runtime,
@@ -91,6 +93,7 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
   const ejectingDriveKeys = ref<string[]>([])
   let refreshTimer: ReturnType<typeof setInterval> | null = null
   let sourceTreeRequestToken = 0
+  let refreshInFlight: Promise<void> | null = null
 
   const pioneerDriveTypeOrder: Record<IPioneerDeviceLibraryKind, number> = {
     deviceLibrary: 0,
@@ -422,8 +425,36 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
     }
   }
 
-  const refreshRekordboxSourceIcons = async () => {
-    await Promise.all([refreshPioneerDriveIcons(), refreshDesktopLibraryIcon()])
+  const shouldAutoRefreshSources = () => {
+    if (runtime.libraryAreaSelected !== 'PioneerDeviceLibrary') return false
+    if (typeof document === 'undefined') return true
+    if (document.visibilityState !== 'visible') return false
+    try {
+      if (typeof document.hasFocus === 'function' && !document.hasFocus()) {
+        return false
+      }
+    } catch {}
+    return true
+  }
+
+  const refreshRekordboxSourceIcons = async (options: { force?: boolean } = {}) => {
+    if (!options.force && !shouldAutoRefreshSources()) return
+    if (refreshInFlight) {
+      await refreshInFlight
+      return
+    }
+
+    const task = (async () => {
+      await Promise.all([refreshPioneerDriveIcons(), refreshDesktopLibraryIcon()])
+    })()
+    refreshInFlight = task
+    try {
+      await task
+    } finally {
+      if (refreshInFlight === task) {
+        refreshInFlight = null
+      }
+    }
   }
 
   const clickPioneerDriveIcon = async (item: PioneerDriveIcon) => {
@@ -642,12 +673,25 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
       runtime.pioneerDeviceLibrary.selectedSourceKey === desktopLibraryIcon.value?.key
   )
 
-  onMounted(() => {
+  const handleWindowFocus = () => {
     void refreshRekordboxSourceIcons()
+  }
+
+  const handleDocumentVisibilityChange = () => {
+    if (typeof document === 'undefined') return
+    if (document.visibilityState !== 'visible') return
+    void refreshRekordboxSourceIcons()
+  }
+
+  onMounted(() => {
+    void refreshRekordboxSourceIcons({ force: true })
     refreshTimer = setInterval(() => {
       void refreshRekordboxSourceIcons()
-    }, 15000)
-    window.addEventListener('focus', refreshRekordboxSourceIcons)
+    }, SOURCE_ICON_AUTO_REFRESH_INTERVAL_MS)
+    window.addEventListener('focus', handleWindowFocus)
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleDocumentVisibilityChange)
+    }
   })
 
   onUnmounted(() => {
@@ -655,8 +699,19 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
       clearInterval(refreshTimer)
       refreshTimer = null
     }
-    window.removeEventListener('focus', refreshRekordboxSourceIcons)
+    window.removeEventListener('focus', handleWindowFocus)
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', handleDocumentVisibilityChange)
+    }
   })
+
+  watch(
+    () => runtime.libraryAreaSelected,
+    (next) => {
+      if (next !== 'PioneerDeviceLibrary') return
+      void refreshRekordboxSourceIcons({ force: true })
+    }
+  )
 
   return {
     pioneerDriveIcons,
