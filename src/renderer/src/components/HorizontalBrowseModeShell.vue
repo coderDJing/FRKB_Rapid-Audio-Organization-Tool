@@ -333,16 +333,6 @@ const setDeckSong = (deck: DeckKey, song: ISongInfo | null) => {
     bottomDeckSong.value = song
     runtime.horizontalBrowseDecks.bottomSong = song ? { ...song } : null
   }
-  if (!song) {
-    const nowMs = performance.now()
-    void commitDeckStateToNative(deck, {
-      currentSec: 0,
-      lastObservedAtMs: nowMs,
-      durationSec: 0,
-      playing: false,
-      playbackRate: 1
-    })
-  }
 }
 
 const resolveDeckSong = (deck: DeckKey) =>
@@ -403,10 +393,12 @@ const resolveDeckGridBpm = (deck: DeckKey) => {
 const topDeckGridBpm = computed(() => resolveDeckGridBpm('top'))
 const bottomDeckGridBpm = computed(() => resolveDeckGridBpm('bottom'))
 const resolveDeckSyncUiEnabled = (deck: DeckKey) =>
-  resolveTransportDeckSnapshot(deck).syncEnabled ||
-  (resolveDeckCuePreviewRuntimeState(deck).active &&
-    resolveDeckCuePreviewRuntimeState(deck).syncEnabledBefore)
+  Boolean(resolveDeckSong(deck)) &&
+  (resolveTransportDeckSnapshot(deck).syncEnabled ||
+    (resolveDeckCuePreviewRuntimeState(deck).active &&
+      resolveDeckCuePreviewRuntimeState(deck).syncEnabledBefore))
 const resolveDeckSyncUiLock = (deck: DeckKey) => {
+  if (!resolveDeckSong(deck)) return 'off'
   const cuePreviewState = resolveDeckCuePreviewRuntimeState(deck)
   return cuePreviewState.active && cuePreviewState.syncEnabledBefore
     ? cuePreviewState.syncLockBefore
@@ -509,6 +501,31 @@ const assignSongToDeck = (deck: DeckKey, song: ISongInfo) => {
     playbackRate: 1
   })
   void hydrateDeckSongSharedGrid(deck, nextSong)
+}
+
+const handleDeckEjectSong = async (deck: DeckKey) => {
+  const cuePreviewState = resolveDeckCuePreviewRuntimeState(deck)
+  cuePreviewState.active = false
+  cuePreviewState.pointerId = null
+  cuePreviewState.cueSeconds = 0
+  cuePreviewState.syncEnabledBefore = false
+  cuePreviewState.syncLockBefore = 'off'
+  cuePreviewState.token += 1
+  suppressDeckCueClick[deck] = false
+
+  if (resolveTransportDeckSnapshot(deck).syncEnabled) {
+    await nativeTransport.setSyncEnabled(deck, false)
+  }
+
+  setDeckSong(deck, null)
+  const nowMs = performance.now()
+  await commitDeckStateToNative(deck, {
+    currentSec: 0,
+    lastObservedAtMs: nowMs,
+    durationSec: 0,
+    playing: false,
+    playbackRate: 1
+  })
 }
 
 const resolveDetailRef = (deck: DeckKey) =>
@@ -1019,13 +1036,16 @@ onUnmounted(() => {
           <HorizontalBrowseDeckInfoCard
             v-if="regionId === 1"
             :song="topDeckSong"
-            :beat-sync-enabled="resolveDeckSyncUiEnabled('top')"
-            :beat-sync-blinking="resolveDeckSyncUiLock('top') === 'tempo-only'"
-            :master-active="deckSyncState.leaderDeck === 'top'"
+            :beat-sync-enabled="topDeckSong ? resolveDeckSyncUiEnabled('top') : false"
+            :beat-sync-blinking="
+              topDeckSong ? resolveDeckSyncUiLock('top') === 'tempo-only' : false
+            "
+            :master-active="topDeckSong ? deckSyncState.leaderDeck === 'top' : false"
             :current-seconds="topDeckRenderCurrentSeconds"
             :duration-seconds="topDeckDurationSeconds"
             @trigger-beat-sync="triggerDeckBeatSync('top')"
             @toggle-master="toggleDeckMaster('top')"
+            @eject-song="handleDeckEjectSong('top')"
           />
           <HorizontalBrowseWaveformOverview
             v-else-if="regionId === 2"
@@ -1179,13 +1199,16 @@ onUnmounted(() => {
           <HorizontalBrowseDeckInfoCard
             v-else-if="regionId === 8"
             :song="bottomDeckSong"
-            :beat-sync-enabled="resolveDeckSyncUiEnabled('bottom')"
-            :beat-sync-blinking="resolveDeckSyncUiLock('bottom') === 'tempo-only'"
-            :master-active="deckSyncState.leaderDeck === 'bottom'"
+            :beat-sync-enabled="bottomDeckSong ? resolveDeckSyncUiEnabled('bottom') : false"
+            :beat-sync-blinking="
+              bottomDeckSong ? resolveDeckSyncUiLock('bottom') === 'tempo-only' : false
+            "
+            :master-active="bottomDeckSong ? deckSyncState.leaderDeck === 'bottom' : false"
             :current-seconds="bottomDeckRenderCurrentSeconds"
             :duration-seconds="bottomDeckDurationSeconds"
             @trigger-beat-sync="triggerDeckBeatSync('bottom')"
             @toggle-master="toggleDeckMaster('bottom')"
+            @eject-song="handleDeckEjectSong('bottom')"
           />
         </div>
       </section>

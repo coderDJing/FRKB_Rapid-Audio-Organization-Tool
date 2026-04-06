@@ -3,7 +3,7 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { getKeyDisplayText } from '@shared/keyDisplay'
-import musicIconAsset from '@renderer/assets/musicIcon.svg?asset'
+import { t } from '@renderer/utils/translate'
 
 const props = defineProps<{
   song: ISongInfo | null
@@ -17,12 +17,11 @@ const props = defineProps<{
 const emit = defineEmits<{
   (event: 'trigger-beat-sync'): void
   (event: 'toggle-master'): void
+  (event: 'eject-song'): void
 }>()
 
 const runtime = useRuntimeStore()
-const musicIcon = musicIconAsset
 const coverUrl = ref('')
-const hoverCardVisible = ref(false)
 
 const revokeCoverUrl = () => {
   if (coverUrl.value && coverUrl.value.startsWith('blob:')) {
@@ -119,8 +118,6 @@ const titleText = computed(
   () => String(props.song?.title || props.song?.fileName || '').trim() || '--'
 )
 const artistText = computed(() => String(props.song?.artist || '').trim() || '--')
-const albumText = computed(() => String(props.song?.album || '').trim() || '--')
-const labelText = computed(() => String(props.song?.label || '').trim() || '--')
 const keyDisplayText = computed(() => {
   const raw = String(props.song?.key || '').trim()
   if (!raw) return '--'
@@ -151,10 +148,7 @@ const remainingText = computed(() => `-${formatSeconds(remainingSeconds.value)}`
 
 watch(
   () => props.song?.filePath ?? '',
-  () => {
-    hoverCardVisible.value = false
-    void loadCover()
-  },
+  () => void loadCover(),
   { immediate: true }
 )
 
@@ -165,46 +159,25 @@ onUnmounted(() => {
 
 <template>
   <div class="deck-info-card">
-    <div
-      class="deck-info-card__cover-anchor"
-      @mouseenter="props.song && (hoverCardVisible = true)"
-      @mouseleave="hoverCardVisible = false"
-    >
+    <div class="deck-info-card__cover-anchor">
       <div class="deck-info-card__cover">
         <img v-if="coverUrl" :src="coverUrl" alt="" draggable="false" />
         <div v-else class="deck-info-card__cover-placeholder"></div>
       </div>
-
-      <transition name="fade">
-        <div v-if="props.song && hoverCardVisible" class="deck-info-card__hover-card">
-          <div class="deck-info-card__hover-cover">
-            <img
-              v-if="coverUrl"
-              :src="coverUrl"
-              class="deck-info-card__hover-cover-image"
-              draggable="false"
-            />
-            <img
-              v-else
-              :src="musicIcon"
-              class="deck-info-card__hover-cover-fallback"
-              draggable="false"
-            />
-          </div>
-          <div class="deck-info-card__hover-info deck-info-card__hover-info--title">
-            {{ titleText }}
-          </div>
-          <div class="deck-info-card__hover-info deck-info-card__hover-info--artist">
-            {{ artistText }}
-          </div>
-          <div class="deck-info-card__hover-info deck-info-card__hover-info--meta">
-            {{ albumText }}
-          </div>
-          <div class="deck-info-card__hover-info deck-info-card__hover-info--meta">
-            {{ labelText }}
-          </div>
-        </div>
-      </transition>
+      <button
+        v-if="props.song"
+        type="button"
+        class="deck-info-card__eject-btn"
+        :title="t('common.eject')"
+        :aria-label="t('common.eject')"
+        @pointerdown.stop
+        @click.stop="emit('eject-song')"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M8 2.5 13 9H3z" fill="currentColor" />
+          <rect x="3" y="10.75" width="10" height="2.25" rx="0.8" fill="currentColor" />
+        </svg>
+      </button>
     </div>
 
     <div class="deck-info-card__content">
@@ -230,6 +203,7 @@ onUnmounted(() => {
         type="button"
         class="deck-info-action"
         :class="{ 'is-active': props.beatSyncEnabled, 'is-blinking': props.beatSyncBlinking }"
+        :disabled="!props.song"
         @click.stop="emit('trigger-beat-sync')"
       >
         BEAT SYNC
@@ -238,6 +212,7 @@ onUnmounted(() => {
         type="button"
         class="deck-info-action deck-info-action--master"
         :class="{ 'is-active': props.masterActive }"
+        :disabled="!props.song"
         @click.stop="emit('toggle-master')"
       >
         MASTER
@@ -289,63 +264,46 @@ onUnmounted(() => {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
 }
 
-.deck-info-card__hover-card {
+.deck-info-card__eject-btn {
   position: absolute;
-  left: 0;
-  top: 25px;
-  width: 300px;
-  height: 370px;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
+  inset: 0;
+  padding: 0;
+  border: 0;
   border-radius: 3px;
-  padding-top: 10px;
-  box-sizing: border-box;
-  color: var(--text);
-  z-index: 10050;
-  user-select: text;
-  -webkit-user-select: text;
-}
-
-.deck-info-card__hover-cover {
-  width: 100%;
-  height: 280px;
-  display: flex;
-  justify-content: center;
+  background: rgba(7, 11, 18, 0.56);
+  color: #f5f7fa;
+  display: inline-flex;
   align-items: center;
-}
-
-.deck-info-card__hover-cover-image {
-  width: 280px;
-  height: 280px;
-  display: block;
-}
-
-.deck-info-card__hover-cover-fallback {
-  width: 48px;
-  height: 48px;
-  display: block;
-}
-
-.deck-info-card__hover-info {
-  width: 100%;
-  padding: 5px 10px 0;
+  justify-content: center;
+  opacity: 0;
+  transform: none;
+  pointer-events: none;
+  cursor: pointer;
   box-sizing: border-box;
-  white-space: nowrap;
-  text-align: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  transition:
+    opacity 0.14s ease,
+    background-color 0.14s ease,
+    box-shadow 0.14s ease;
 }
 
-.deck-info-card__hover-info--title {
-  font-size: 14px;
+.deck-info-card__cover-anchor:hover .deck-info-card__eject-btn,
+.deck-info-card__cover-anchor:focus-within .deck-info-card__eject-btn {
+  opacity: 1;
+  pointer-events: auto;
 }
 
-.deck-info-card__hover-info--artist {
-  font-size: 12px;
+.deck-info-card__eject-btn:hover,
+.deck-info-card__eject-btn:focus-visible {
+  background: rgba(7, 11, 18, 0.72);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, white);
+  outline: none;
 }
 
-.deck-info-card__hover-info--meta {
-  font-size: 10px;
+.deck-info-card__eject-btn svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.28));
 }
 
 .deck-info-card__title-line,
@@ -465,6 +423,15 @@ onUnmounted(() => {
   border-color: rgba(255, 255, 255, 0.22);
 }
 
+.deck-info-action:disabled {
+  opacity: 0.46;
+  cursor: not-allowed;
+}
+
+.deck-info-action:disabled:hover {
+  border-color: var(--border);
+}
+
 .deck-info-action.is-active {
   color: #ffffff;
   border-color: rgba(42, 144, 255, 0.95);
@@ -503,15 +470,5 @@ onUnmounted(() => {
   50% {
     opacity: 0.38;
   }
-}
-
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.15s;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
 }
 </style>
