@@ -62,6 +62,18 @@ type DeckCuePreviewState = {
   token: number
 }
 
+type DeckWaveformDragState = {
+  active: boolean
+  wasPlaying: boolean
+  syncEnabledBefore: boolean
+  token: number
+}
+
+type DeckWaveformDragEndPayload = {
+  anchorSec: number
+  committed: boolean
+}
+
 const createDefaultDeckToolbarState = (): DeckToolbarState => ({
   disabled: true,
   bpmInputValue: '128.00',
@@ -76,6 +88,12 @@ const createDefaultDeckCuePreviewState = (): DeckCuePreviewState => ({
   cueSeconds: 0,
   syncEnabledBefore: false,
   syncLockBefore: 'off',
+  token: 0
+})
+const createDefaultDeckWaveformDragState = (): DeckWaveformDragState => ({
+  active: false,
+  wasPlaying: false,
+  syncEnabledBefore: false,
   token: 0
 })
 const FADER_TRAVEL_INSET_RATIO = 0.17
@@ -137,6 +155,10 @@ const deckHydrateToken = reactive<Record<DeckKey, number>>({
 const deckCuePreviewState = reactive<Record<DeckKey, DeckCuePreviewState>>({
   top: createDefaultDeckCuePreviewState(),
   bottom: createDefaultDeckCuePreviewState()
+})
+const deckWaveformDragState = reactive<Record<DeckKey, DeckWaveformDragState>>({
+  top: createDefaultDeckWaveformDragState(),
+  bottom: createDefaultDeckWaveformDragState()
 })
 const suppressDeckCueClick = reactive<Record<DeckKey, boolean>>({ top: false, bottom: false })
 
@@ -568,6 +590,57 @@ const handleDeckBpmInputBlur = (deck: DeckKey) => {
 
 const handleDeckTapBpm = (deck: DeckKey) => {
   resolveDetailRef(deck)?.tapBpm?.()
+}
+
+const handleDeckRawWaveformDragStart = (deck: DeckKey) => {
+  const dragState = deckWaveformDragState[deck]
+  if (dragState.active) return
+
+  const snapshot = resolveTransportDeckSnapshot(deck)
+  dragState.active = true
+  dragState.wasPlaying = snapshot.playing
+  dragState.syncEnabledBefore = snapshot.syncEnabled
+  dragState.token += 1
+
+  if (!dragState.wasPlaying) return
+
+  const token = dragState.token
+  void nativeTransport
+    .setPlaying(deck, false)
+    .then(() => {
+      if (!deckWaveformDragState[deck].active || deckWaveformDragState[deck].token !== token) return
+      syncDeckRenderState()
+    })
+    .catch(() => {})
+}
+
+const handleDeckRawWaveformDragEnd = (deck: DeckKey, payload: DeckWaveformDragEndPayload) => {
+  const dragState = deckWaveformDragState[deck]
+  const shouldResume = dragState.wasPlaying
+  const syncEnabledBefore = dragState.syncEnabledBefore
+
+  dragState.active = false
+  dragState.wasPlaying = false
+  dragState.syncEnabledBefore = false
+  dragState.token += 1
+
+  if (!payload?.committed) return
+
+  const token = dragState.token
+  const targetSec = Math.max(0, Number(payload.anchorSec) || 0)
+  void (async () => {
+    await nativeTransport.seek(deck, targetSec)
+    if (deckWaveformDragState[deck].token !== token) return
+    if (shouldResume) {
+      if (syncEnabledBefore) {
+        await nativeTransport.beatsync(deck)
+        if (deckWaveformDragState[deck].token !== token) return
+      }
+      await nativeTransport.setPlaying(deck, true)
+      if (deckWaveformDragState[deck].token !== token) return
+    }
+    syncDeckRenderState()
+  })().catch(() => {})
 }
 
 const handleDeckPlayheadSeek = (deck: DeckKey, seconds: number) => {
@@ -1016,7 +1089,8 @@ onUnmounted(() => {
             direction="up"
             @toolbar-state-change="handleToolbarStateChange('top', $event)"
             @zoom-change="handleSharedDetailZoomChange"
-            @playhead-seek="handleDeckPlayheadSeek('top', $event)"
+            @drag-session-start="handleDeckRawWaveformDragStart('top')"
+            @drag-session-end="handleDeckRawWaveformDragEnd('top', $event)"
           />
         </div>
 
@@ -1041,7 +1115,8 @@ onUnmounted(() => {
             direction="down"
             @toolbar-state-change="handleToolbarStateChange('bottom', $event)"
             @zoom-change="handleSharedDetailZoomChange"
-            @playhead-seek="handleDeckPlayheadSeek('bottom', $event)"
+            @drag-session-start="handleDeckRawWaveformDragStart('bottom')"
+            @drag-session-end="handleDeckRawWaveformDragEnd('bottom', $event)"
           />
         </div>
       </section>

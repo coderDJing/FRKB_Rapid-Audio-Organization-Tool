@@ -71,6 +71,11 @@ type HorizontalBrowseSharedZoomState = {
   revision: number
 }
 
+type HorizontalBrowseDragSessionEndPayload = {
+  anchorSec: number
+  committed: boolean
+}
+
 const props = defineProps<{
   song: ISongInfo | null
   direction: 'up' | 'down'
@@ -89,7 +94,8 @@ const emit = defineEmits<{
     event: 'zoom-change',
     value: { value: number; anchorRatio: number; sourceDirection: 'up' | 'down' }
   ): void
-  (event: 'playhead-seek', value: number): void
+  (event: 'drag-session-start'): void
+  (event: 'drag-session-end', value: HorizontalBrowseDragSessionEndPayload): void
 }>()
 
 const runtime = useRuntimeStore()
@@ -621,10 +627,14 @@ const scheduleDraw = () => {
 
 const stopDragging = (commitPlayhead = false) => {
   if (!dragging.value) return
+  const finalAnchorSec = resolvePreviewAnchorSec()
   dragging.value = false
   window.removeEventListener('mousemove', handleDragMove)
   window.removeEventListener('mouseup', handleWindowMouseUp)
-  if (commitPlayhead && props.song) emit('playhead-seek', resolvePreviewAnchorSec())
+  emit('drag-session-end', {
+    anchorSec: finalAnchorSec,
+    committed: commitPlayhead && Boolean(props.song)
+  })
 }
 
 const handleWindowMouseUp = () => stopDragging(true)
@@ -654,6 +664,7 @@ const handleMouseDown = (event: MouseEvent) => {
   dragging.value = true
   dragStartClientX = event.clientX
   dragStartSec = previewStartSec.value
+  emit('drag-session-start')
   window.addEventListener('mousemove', handleDragMove, { passive: false })
   window.addEventListener('mouseup', handleWindowMouseUp, { passive: true })
   event.preventDefault()
