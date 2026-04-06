@@ -5,6 +5,7 @@
   --shell-grid-major: rgba(255, 255, 255, 0.1);
   --shell-overview-waveform-bg: rgba(255, 255, 255, 0.06);
   --shell-play: #9fd6b3;
+  --shell-cue-accent: #d98921;
   --shell-drop-hover: rgba(0, 120, 212, 0.08);
   --shell-drop-border: rgba(0, 120, 212, 0.32);
   --fader-travel-inset: 17%;
@@ -64,7 +65,7 @@
 }
 
 .deck-button--cue {
-  color: #d98921;
+  color: var(--shell-cue-accent);
 }
 
 .deck-button--play {

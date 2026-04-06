@@ -34,7 +34,7 @@ const cueMarkerLeft = computed(() => {
   width: 10px;
   height: 7px;
   transform: translateX(-50%);
-  background: #d98921;
+  background: var(--shell-cue-accent, #d98921);
   pointer-events: none;
   z-index: 3;
 }

@@ -27,6 +27,7 @@ export const buildHorizontalBrowseWaveformTileCacheKey = (params: {
   waveformLayout: 'top-half' | 'bottom-half'
   themeVariant: HorizontalBrowseWaveformThemeVariant
   zoom: number
+  timeScale: number
   cssWidth: number
   cssHeight: number
   pixelRatio: number
@@ -37,6 +38,7 @@ export const buildHorizontalBrowseWaveformTileCacheKey = (params: {
     params.waveformLayout,
     params.themeVariant,
     Number(params.zoom || 0).toFixed(6),
+    Number(params.timeScale || 1).toFixed(6),
     Math.max(1, Math.floor(params.cssWidth)),
     Math.max(1, Math.floor(params.cssHeight)),
     Number(params.pixelRatio || 1).toFixed(3),

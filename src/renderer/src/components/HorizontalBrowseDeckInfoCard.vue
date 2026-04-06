@@ -236,7 +236,7 @@ onUnmounted(() => {
       </button>
       <button
         type="button"
-        class="deck-info-action"
+        class="deck-info-action deck-info-action--master"
         :class="{ 'is-active': props.masterActive }"
         @click.stop="emit('toggle-master')"
       >
@@ -472,6 +472,22 @@ onUnmounted(() => {
   box-shadow:
     0 0 0 1px rgba(12, 84, 156, 0.32),
     inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.deck-info-action--master {
+  color: var(--text-weak);
+}
+
+.deck-info-action--master:hover {
+  border-color: color-mix(in srgb, var(--shell-cue-accent, #d98921) 38%, transparent);
+  color: var(--text-weak);
+}
+
+.deck-info-action--master.is-active {
+  color: var(--shell-cue-accent, #d98921);
+  border-color: color-mix(in srgb, var(--shell-cue-accent, #d98921) 88%, white);
+  background: transparent;
+  box-shadow: none;
 }
 
 .deck-info-action.is-blinking {

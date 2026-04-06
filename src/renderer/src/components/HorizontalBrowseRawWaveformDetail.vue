@@ -24,16 +24,14 @@ import {
   normalizeHorizontalBrowsePathKey,
   resolveHorizontalBrowseWaveformThemeVariant
 } from '@renderer/components/horizontalBrowseWaveformDetail.utils'
+import {
+  useHorizontalBrowseGridToolbar,
+  type HorizontalBrowseGridToolbarState
+} from '@renderer/components/useHorizontalBrowseGridToolbar'
 import { useMixtapeBeatAlignGridAdjust } from '@renderer/components/mixtapeBeatAlignGridAdjust'
 import {
   PREVIEW_BAR_BEAT_INTERVAL,
   PREVIEW_BAR_LINE_HIT_RADIUS_PX,
-  PREVIEW_BPM_MAX,
-  PREVIEW_BPM_MIN,
-  PREVIEW_BPM_STEP,
-  PREVIEW_BPM_TAP_MAX_COUNT,
-  PREVIEW_BPM_TAP_MAX_DELTA_MS,
-  PREVIEW_BPM_TAP_MIN_DELTA_MS,
   PREVIEW_BPM_TAP_RESET_MS,
   PREVIEW_GRID_SHIFT_LARGE_MS,
   PREVIEW_GRID_SHIFT_SMALL_MS,
@@ -42,8 +40,7 @@ import {
   clampNumber,
   formatPreviewBpm,
   normalizeBeatOffset,
-  normalizePreviewBpm,
-  parsePreviewBpmInput
+  normalizePreviewBpm
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import { pickRawDataByFile } from '@renderer/components/mixtapeBeatAlignRawWaveform'
 import { resolveCanvasScaleMetrics } from '@renderer/utils/canvasScale'
@@ -54,15 +51,6 @@ import type {
   HorizontalBrowseWaveformThemeVariant
 } from '@renderer/workers/horizontalBrowseDetailWaveform.types'
 import { createHorizontalBrowseDetailWaveformWorker } from '@renderer/workers/horizontalBrowseDetailWaveform.workerClient'
-
-type HorizontalBrowseGridToolbarState = {
-  disabled: boolean
-  bpmInputValue: string
-  bpmStep: number
-  bpmMin: number
-  bpmMax: number
-  barLinePicking: boolean
-}
 
 type HorizontalBrowseRawWaveformDetailExpose = {
   toggleBarLinePicking: () => void
@@ -155,19 +143,19 @@ const resolvePreviewDurationSec = () => {
   return Number.isFinite(duration) && duration > 0 ? duration : 0
 }
 
+const resolvePreviewTimeScale = () => Math.max(0.25, Number(props.playbackRate) || 1)
+
 const resolveVisibleDurationSec = () =>
   Math.max(
     0.001,
-    (HORIZONTAL_BROWSE_DETAIL_VISIBLE_DURATION_BASE_SEC *
-      (props.playing ? Math.max(0.25, Number(props.playbackRate) || 1) : 1)) /
+    (HORIZONTAL_BROWSE_DETAIL_VISIBLE_DURATION_BASE_SEC * resolvePreviewTimeScale()) /
       Number(previewZoom.value || HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
   )
 
-const resolveDisplayGridBpm = () => {
-  const override = Number(props.gridBpm)
-  if (Number.isFinite(override) && override > 0) return normalizePreviewBpm(override)
-  return normalizePreviewBpm(props.song?.bpm)
-}
+const resolveDisplayGridBpm = () =>
+  Number.isFinite(Number(props.gridBpm)) && Number(props.gridBpm) > 0
+    ? normalizePreviewBpm(Number(props.gridBpm))
+    : normalizePreviewBpm(props.song?.bpm)
 
 const resolvePreviewAnchorSec = () => {
   const duration = resolvePreviewDurationSec()
@@ -346,6 +334,7 @@ const buildWaveformTileRequests = (options: {
         waveformLayout: resolveWaveformLayout(),
         themeVariant: options.themeVariant,
         zoom: options.zoom,
+        timeScale: resolvePreviewTimeScale(),
         cssWidth: safeCssWidth,
         cssHeight: safeCssHeight,
         pixelRatio: options.pixelRatio,
@@ -410,7 +399,7 @@ const buildWaveformRenderPlan = (options: {
       if (Math.abs(nextZoom - previewZoom.value) <= 0.000001) continue
       const nextVisibleDuration = Math.max(
         0.001,
-        HORIZONTAL_BROWSE_DETAIL_VISIBLE_DURATION_BASE_SEC / nextZoom
+        (HORIZONTAL_BROWSE_DETAIL_VISIBLE_DURATION_BASE_SEC * resolvePreviewTimeScale()) / nextZoom
       )
       const nextStartSec = clampHorizontalBrowsePreviewStartByVisibleDuration(
         anchorSec - nextVisibleDuration * anchorRatio,
@@ -581,7 +570,6 @@ const clearPersistTimer = () => {
   clearTimeout(persistTimer)
   persistTimer = null
 }
-
 const clearBpmTapResetTimer = () => {
   if (!bpmTapResetTimer) return
   clearTimeout(bpmTapResetTimer)
@@ -599,17 +587,6 @@ const schedulePreviewBpmTapReset = () => {
     bpmTapResetTimer = null
     bpmTapTimestamps.value = []
   }, PREVIEW_BPM_TAP_RESET_MS)
-}
-
-const emitToolbarState = () => {
-  emit('toolbar-state-change', {
-    disabled: !canAdjustGrid.value,
-    bpmInputValue: previewBpmInput.value,
-    bpmStep: PREVIEW_BPM_STEP,
-    bpmMin: PREVIEW_BPM_MIN,
-    bpmMax: PREVIEW_BPM_MAX,
-    barLinePicking: previewBarLinePicking.value
-  })
 }
 
 const persistGridDefinition = async () => {
@@ -632,19 +609,6 @@ const schedulePersistGridDefinition = () => {
     persistTimer = null
     void persistGridDefinition()
   }, 120)
-}
-
-const syncGridStateFromSong = () => {
-  previewBpm.value = resolveDisplayGridBpm()
-  previewBpmInput.value = formatPreviewBpm(previewBpm.value)
-  previewFirstBeatMs.value = Math.max(0, Number(props.song?.firstBeatMs) || 0)
-  previewBarBeatOffset.value = normalizeBeatOffset(
-    Number(props.song?.barBeatOffset) || 0,
-    PREVIEW_BAR_BEAT_INTERVAL
-  )
-  resetPreviewBpmTap()
-  resetBarLinePicking()
-  emitToolbarState()
 }
 
 const scheduleDraw = () => {
@@ -764,74 +728,38 @@ const {
   barLineHitRadiusPx: PREVIEW_BAR_LINE_HIT_RADIUS_PX
 })
 
-const handlePreviewBpmInputUpdate = (value: string) => {
-  const parsed = parsePreviewBpmInput(value)
-  if (parsed === null) {
-    previewBpmInput.value = formatPreviewBpm(previewBpm.value)
-    emitToolbarState()
-    return
-  }
-  previewBpm.value = parsed
-  previewBpmInput.value = formatPreviewBpm(parsed)
-  resetPreviewBpmTap()
-  emitToolbarState()
-  scheduleDraw()
-  schedulePersistGridDefinition()
-}
-
-const handlePreviewBpmInputBlur = () => {
-  previewBpmInput.value = formatPreviewBpm(previewBpm.value)
-  emitToolbarState()
-  void persistGridDefinition()
-}
-
-const handlePreviewBpmTap = () => {
-  if (!canAdjustGrid.value) return
-  const now = Date.now()
-  const lastTap = bpmTapTimestamps.value[bpmTapTimestamps.value.length - 1]
-  if (lastTap && now - lastTap > PREVIEW_BPM_TAP_RESET_MS) {
-    bpmTapTimestamps.value = []
-  }
-  bpmTapTimestamps.value.push(now)
-  if (bpmTapTimestamps.value.length > PREVIEW_BPM_TAP_MAX_COUNT) {
-    bpmTapTimestamps.value = bpmTapTimestamps.value.slice(-PREVIEW_BPM_TAP_MAX_COUNT)
-  }
-  schedulePreviewBpmTapReset()
-
-  if (bpmTapTimestamps.value.length < 2) return
-  const deltas: number[] = []
-  for (let index = 1; index < bpmTapTimestamps.value.length; index += 1) {
-    const delta = bpmTapTimestamps.value[index] - bpmTapTimestamps.value[index - 1]
-    if (delta > PREVIEW_BPM_TAP_MIN_DELTA_MS && delta < PREVIEW_BPM_TAP_MAX_DELTA_MS) {
-      deltas.push(delta)
-    }
-  }
-  if (!deltas.length) return
-  const avgMs = deltas.reduce((sum, delta) => sum + delta, 0) / deltas.length
-  if (!Number.isFinite(avgMs) || avgMs <= 0) return
-  previewBpm.value = normalizePreviewBpm(60000 / avgMs)
-  previewBpmInput.value = formatPreviewBpm(previewBpm.value)
-  emitToolbarState()
-  scheduleDraw()
-  schedulePersistGridDefinition()
-}
-
-const toggleBarLinePicking = () => {
-  handleBarLinePickingToggle()
-  emitToolbarState()
-}
-
-const setBarLineAtPlayhead = () => {
-  handleSetBarLineAtPlayhead()
-  emitToolbarState()
-  schedulePersistGridDefinition()
-}
-
-const shiftGrid = (deltaMs: number) => {
-  handleGridShift(deltaMs)
-  emitToolbarState()
-  schedulePersistGridDefinition()
-}
+const {
+  emitToolbarState,
+  syncGridStateFromSong,
+  handlePreviewBpmInputUpdate,
+  handlePreviewBpmInputBlur,
+  handlePreviewBpmTap,
+  toggleBarLinePicking,
+  setBarLineAtPlayhead,
+  shiftGrid
+} = useHorizontalBrowseGridToolbar({
+  canAdjustGrid,
+  previewLoading,
+  previewBpm,
+  previewBpmInput,
+  previewFirstBeatMs,
+  previewBarBeatOffset,
+  bpmTapTimestamps,
+  previewBarLinePicking,
+  emitToolbarStateChange: (value) => emit('toolbar-state-change', value),
+  resolveDisplayGridBpm,
+  resolveSongFirstBeatMs: () => Number(props.song?.firstBeatMs) || 0,
+  resolveSongBarBeatOffset: () => Number(props.song?.barBeatOffset) || 0,
+  scheduleDraw,
+  schedulePreviewBpmTapReset,
+  persistGridDefinition,
+  schedulePersistGridDefinition,
+  resetPreviewBpmTap,
+  resetBarLinePicking,
+  handleBarLinePickingToggle,
+  handleSetBarLineAtPlayhead,
+  handleGridShift
+})
 
 const loadWaveform = async () => {
   const currentSong = props.song
@@ -919,6 +847,16 @@ watch(
 
 watch(
   () => props.direction,
+  () => {
+    clearWaveformWorkerQueue()
+    clearWaveformTileCache()
+    gridRenderer.reset()
+    scheduleDraw()
+  }
+)
+
+watch(
+  () => resolvePreviewTimeScale(),
   () => {
     clearWaveformWorkerQueue()
     clearWaveformTileCache()
