@@ -48,11 +48,19 @@ type ShiftEventName =
 
 const HOLD_START_DELAY_MS = 1000
 const HOLD_INTERVAL_MS = 250
+const BPM_DRAG_THRESHOLD_PX = 4
+const BPM_DRAG_BPM_PER_SCREEN = 40
 
 let holdStartTimer: ReturnType<typeof setTimeout> | null = null
 let holdRepeatTimer: ReturnType<typeof setInterval> | null = null
 let holdEventName: ShiftEventName | null = null
 let suppressNextClick = false
+let bpmDragPointerId: number | null = null
+let bpmDragStartY = 0
+let bpmDragStartValue = 0
+let bpmDragActive = false
+let bpmDragInputTarget: HTMLInputElement | null = null
+let bodyUserSelectBeforeBpmDrag = ''
 
 const clearShiftHold = () => {
   if (holdStartTimer) {
@@ -122,8 +130,128 @@ const handleBpmInputEnter = (event: KeyboardEvent) => {
   target?.blur()
 }
 
+const resolveBpmStep = () => {
+  const numeric = Number(props.bpmStep)
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 1
+}
+
+const resolveBpmStepDecimals = () => {
+  const stepText = String(props.bpmStep ?? '')
+  const decimalIndex = stepText.indexOf('.')
+  return decimalIndex >= 0 ? Math.max(0, stepText.length - decimalIndex - 1) : 0
+}
+
+const snapDraggedBpmValue = (value: number) => {
+  const step = resolveBpmStep()
+  const snapped = Math.round(value / step) * step
+  return Number(snapped.toFixed(resolveBpmStepDecimals()))
+}
+
+const formatDraggedBpmValue = (value: number) => value.toFixed(resolveBpmStepDecimals())
+
+const clampDraggedBpmValue = (value: number) => {
+  const min = Number(props.bpmMin)
+  const max = Number(props.bpmMax)
+  let next = value
+  if (Number.isFinite(min)) {
+    next = Math.max(min, next)
+  }
+  if (Number.isFinite(max)) {
+    next = Math.min(max, next)
+  }
+  return next
+}
+
+const resolveBpmDragStartValue = (target: HTMLInputElement | null) => {
+  const directValue = Number(target?.value)
+  if (Number.isFinite(directValue)) {
+    return clampDraggedBpmValue(directValue)
+  }
+  const propValue = Number(props.bpmInputValue)
+  if (Number.isFinite(propValue)) {
+    return clampDraggedBpmValue(propValue)
+  }
+  const min = Number(props.bpmMin)
+  return Number.isFinite(min) ? min : 0
+}
+
+const resolveBpmDragScreenHeight = () => {
+  if (typeof window === 'undefined') return 900
+  const rawHeight = Number(window.screen?.availHeight || window.screen?.height || 0)
+  return Number.isFinite(rawHeight) && rawHeight > 0 ? rawHeight : 900
+}
+
+const clearBpmDrag = () => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('pointermove', handleWindowBpmDragMove)
+    window.removeEventListener('pointerup', handleWindowBpmDragEnd)
+    window.removeEventListener('pointercancel', handleWindowBpmDragEnd)
+  }
+  if (typeof document !== 'undefined') {
+    document.body.style.userSelect = bodyUserSelectBeforeBpmDrag
+  }
+  if (
+    bpmDragInputTarget &&
+    bpmDragPointerId !== null &&
+    bpmDragInputTarget.hasPointerCapture?.(bpmDragPointerId)
+  ) {
+    bpmDragInputTarget.releasePointerCapture?.(bpmDragPointerId)
+  }
+  bpmDragPointerId = null
+  bpmDragInputTarget = null
+  bpmDragActive = false
+}
+
+function handleWindowBpmDragMove(event: PointerEvent) {
+  if (bpmDragPointerId === null || event.pointerId !== bpmDragPointerId || props.disabled) return
+  const deltaY = bpmDragStartY - event.clientY
+  if (!bpmDragActive && Math.abs(deltaY) >= BPM_DRAG_THRESHOLD_PX) {
+    bpmDragActive = true
+  }
+  if (!bpmDragActive) return
+  const bpmOffset = (deltaY / resolveBpmDragScreenHeight()) * BPM_DRAG_BPM_PER_SCREEN
+  const nextValue = clampDraggedBpmValue(snapDraggedBpmValue(bpmDragStartValue + bpmOffset))
+  emit('update-bpm-input', formatDraggedBpmValue(nextValue))
+}
+
+function handleWindowBpmDragEnd(event: PointerEvent) {
+  if (bpmDragPointerId === null || event.pointerId !== bpmDragPointerId) return
+  const target = bpmDragInputTarget
+  const didDrag = bpmDragActive
+  clearBpmDrag()
+  if (didDrag) {
+    emit('blur-bpm-input')
+    return
+  }
+  target?.focus()
+  target?.select()
+}
+
+const handleBpmPointerDown = (event: PointerEvent) => {
+  if (props.disabled || event.button !== 0 || event.pointerType === 'touch') return
+  const target = event.target as HTMLInputElement | null
+  if (!target) return
+  event.preventDefault()
+  clearBpmDrag()
+  bpmDragPointerId = event.pointerId
+  bpmDragStartY = event.clientY
+  bpmDragStartValue = resolveBpmDragStartValue(target)
+  bpmDragActive = false
+  bpmDragInputTarget = target
+  bodyUserSelectBeforeBpmDrag =
+    typeof document !== 'undefined' ? document.body.style.userSelect : ''
+  if (typeof document !== 'undefined') {
+    document.body.style.userSelect = 'none'
+  }
+  target.setPointerCapture?.(event.pointerId)
+  window.addEventListener('pointermove', handleWindowBpmDragMove)
+  window.addEventListener('pointerup', handleWindowBpmDragEnd)
+  window.addEventListener('pointercancel', handleWindowBpmDragEnd)
+}
+
 onBeforeUnmount(() => {
   clearShiftHold()
+  clearBpmDrag()
 })
 </script>
 
@@ -168,6 +296,20 @@ onBeforeUnmount(() => {
       class="grid-adjust-icon-btn"
       type="button"
       :disabled="disabled"
+      :title="t('mixtape.gridAdjustSetBarLineAtPlayhead')"
+      :aria-label="t('mixtape.gridAdjustSetBarLineAtPlayhead')"
+      @click="emit('set-bar-line')"
+    >
+      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <path d="M3 2v12"></path>
+        <path d="M8 1v14"></path>
+        <path d="M13 2v12"></path>
+      </svg>
+    </button>
+    <button
+      class="grid-adjust-icon-btn"
+      type="button"
+      :disabled="disabled"
       :title="t('mixtape.gridAdjustShiftRightSmall')"
       :aria-label="t('mixtape.gridAdjustShiftRightSmall')"
       @click="handleShiftClick('shift-right-small')"
@@ -179,20 +321,6 @@ onBeforeUnmount(() => {
     >
       <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
         <path d="M5.5 3.5 10 8l-4.5 4.5"></path>
-      </svg>
-    </button>
-    <button
-      class="grid-adjust-icon-btn"
-      type="button"
-      :disabled="disabled"
-      :title="t('mixtape.gridAdjustSetBarLineAtPlayhead')"
-      :aria-label="t('mixtape.gridAdjustSetBarLineAtPlayhead')"
-      @click="emit('set-bar-line')"
-    >
-      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-        <path d="M3 2v12"></path>
-        <path d="M8 1v14"></path>
-        <path d="M13 2v12"></path>
       </svg>
     </button>
     <button
@@ -224,6 +352,7 @@ onBeforeUnmount(() => {
       :value="bpmInputValue"
       :title="t('mixtape.bpm')"
       :aria-label="t('mixtape.bpm')"
+      @pointerdown="handleBpmPointerDown"
       @input="handleBpmInput"
       @blur="emit('blur-bpm-input')"
       @keydown.enter.prevent="handleBpmInputEnter"
@@ -302,6 +431,8 @@ onBeforeUnmount(() => {
 }
 
 .grid-adjust-bpm-input {
+  appearance: textfield;
+  -moz-appearance: textfield;
   width: 62px;
   height: 24px;
   padding: 0 6px;
@@ -312,6 +443,20 @@ onBeforeUnmount(() => {
   font-size: 12px;
   line-height: 24px;
   text-align: center;
+}
+
+.grid-adjust-bpm-input::-webkit-outer-spin-button,
+.grid-adjust-bpm-input::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.grid-adjust-bpm-input:not(:focus) {
+  cursor: ns-resize;
+}
+
+.grid-adjust-bpm-input:focus {
+  cursor: text;
 }
 
 .grid-adjust-bpm-input:focus {

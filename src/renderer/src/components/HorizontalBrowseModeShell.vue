@@ -183,6 +183,10 @@ const deckTempoInputDirty = reactive<Record<DeckKey, boolean>>({
   top: false,
   bottom: false
 })
+const deckTempoCommitToken = reactive<Record<DeckKey, number>>({
+  top: 0,
+  bottom: 0
+})
 const deckCuePreviewState = reactive<Record<DeckKey, DeckCuePreviewState>>({
   top: createDefaultDeckCuePreviewState(),
   bottom: createDefaultDeckCuePreviewState()
@@ -564,28 +568,51 @@ const handleDeckGridShiftLargeRight = (deck: DeckKey) => {
 
 const handleDeckBpmInputUpdate = (deck: DeckKey, value: string) => {
   const nextToolbarState = deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value
+  deckTempoCommitToken[deck] += 1
   deckTempoInputDirty[deck] = true
-  const parsed = parsePreviewBpmInput(value)
   if (deck === 'top') {
     topDeckToolbarState.value = { ...nextToolbarState, bpmInputValue: value }
   } else {
     bottomDeckToolbarState.value = { ...nextToolbarState, bpmInputValue: value }
   }
-  if (parsed !== null) {
-    // 横推 BPM 输入只改当前 deck 的速度，不能把曲库里的原始 BPM 一起写脏。
-    void setDeckTargetBpm(deck, parsed)
-  }
 }
 
 const handleDeckBpmInputBlur = (deck: DeckKey) => {
-  deckTempoInputDirty[deck] = false
   const nextToolbarState = deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value
-  const bpmInputValue = resolveDeckToolbarBpmInputValue(deck)
-  if (deck === 'top') {
-    topDeckToolbarState.value = { ...nextToolbarState, bpmInputValue }
+  const parsed = parsePreviewBpmInput(nextToolbarState.bpmInputValue)
+  if (parsed === null) {
+    deckTempoInputDirty[deck] = false
+    deckTempoCommitToken[deck] += 1
+    const bpmInputValue = resolveDeckToolbarBpmInputValue(deck)
+    if (deck === 'top') {
+      topDeckToolbarState.value = { ...nextToolbarState, bpmInputValue }
+      return
+    }
+    bottomDeckToolbarState.value = { ...nextToolbarState, bpmInputValue }
     return
   }
-  bottomDeckToolbarState.value = { ...nextToolbarState, bpmInputValue }
+
+  const token = deckTempoCommitToken[deck] + 1
+  deckTempoCommitToken[deck] = token
+  if (deck === 'top') {
+    topDeckToolbarState.value = { ...nextToolbarState, bpmInputValue: formatPreviewBpm(parsed) }
+  } else {
+    bottomDeckToolbarState.value = { ...nextToolbarState, bpmInputValue: formatPreviewBpm(parsed) }
+  }
+
+  // 横推 BPM 输入只在失焦时提交，输入过程中只维护草稿值。
+  void setDeckTargetBpm(deck, parsed).finally(() => {
+    if (deckTempoCommitToken[deck] !== token) return
+    deckTempoInputDirty[deck] = false
+    const latestToolbarState =
+      deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value
+    const bpmInputValue = resolveDeckToolbarBpmInputValue(deck)
+    if (deck === 'top') {
+      topDeckToolbarState.value = { ...latestToolbarState, bpmInputValue }
+      return
+    }
+    bottomDeckToolbarState.value = { ...latestToolbarState, bpmInputValue }
+  })
 }
 
 const handleDeckRawWaveformDragStart = (deck: DeckKey) => {
