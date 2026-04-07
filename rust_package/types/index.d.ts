@@ -82,6 +82,7 @@ export interface HorizontalBrowseTransportDeckInput {
   lastObservedAtMs: number
   playing: boolean
   playbackRate: number
+  masterTempoEnabled: boolean
 }
 export interface HorizontalBrowseTransportDeckSnapshot {
   deck: string
@@ -90,6 +91,7 @@ export interface HorizontalBrowseTransportDeckSnapshot {
   currentSec: number
   durationSec: number
   playbackRate: number
+  masterTempoEnabled: boolean
   bpm: number
   effectiveBpm: number
   renderCurrentSec: number

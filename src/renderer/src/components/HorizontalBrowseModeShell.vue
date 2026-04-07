@@ -17,6 +17,10 @@ import {
   resolveHorizontalBrowseDeckSyncUiEnabled,
   resolveHorizontalBrowseDeckSyncUiLock
 } from '@renderer/components/horizontalBrowseShellState'
+import {
+  buildHorizontalBrowseSongSnapshot,
+  mergeHorizontalBrowseSongWithSharedGrid
+} from '@renderer/components/horizontalBrowseShellSongs'
 import { parsePreviewBpmInput } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
 import { createHorizontalBrowseNativeTransport } from '@renderer/components/horizontalBrowseNativeTransport'
@@ -27,6 +31,7 @@ import {
 import { createHorizontalBrowseDeckEjectHandler } from '@renderer/components/useHorizontalBrowseDeckEject'
 import { useHorizontalBrowseDeckMove } from '@renderer/components/useHorizontalBrowseDeckMove'
 import { useHorizontalBrowseDeckSongs } from '@renderer/components/useHorizontalBrowseDeckSongs'
+import { useHorizontalBrowseDeckTempoControls } from '@renderer/components/useHorizontalBrowseDeckTempoControls'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
 
@@ -47,6 +52,7 @@ type DeckTransportStateOverride = Partial<{
   durationSec: number
   playing: boolean
   playbackRate: number
+  masterTempoEnabled: boolean
 }>
 
 type SharedDetailZoomState = {
@@ -264,28 +270,6 @@ const isSongDrag = (event: DragEvent) =>
 
 const resolveDeckByRegion = (regionId: number): DeckKey => (regionId <= 4 ? 'top' : 'bottom')
 
-const buildSongSnapshot = (filePath: string): ISongInfo => {
-  const normalizedPath = String(filePath || '').trim()
-  const fileName = normalizedPath.split(/[/\\]/).pop() || ''
-  const parts = fileName.split('.')
-  const extension = parts.length > 1 ? parts.pop() || '' : ''
-
-  return {
-    filePath: normalizedPath,
-    fileName,
-    fileFormat: extension.toUpperCase(),
-    cover: null,
-    title: fileName,
-    artist: '',
-    album: '',
-    duration: '',
-    genre: '',
-    label: '',
-    bitrate: undefined,
-    container: undefined
-  }
-}
-
 const resolveDraggedSong = () => {
   const filePath = String(runtime.draggingSongFilePaths?.[0] || '').trim()
   if (!filePath) return null
@@ -298,41 +282,7 @@ const resolveDraggedSong = () => {
     return { ...currentSong }
   }
 
-  return buildSongSnapshot(filePath)
-}
-
-const mergeSongWithSharedGrid = (song: ISongInfo, payload: SharedSongGridPayload): ISongInfo => {
-  if (!payload) return song
-  const filePath = String(payload.filePath || '').trim()
-  if (!filePath || filePath !== song.filePath) return song
-
-  let touched = false
-  const nextSong: ISongInfo = { ...song }
-  if (
-    typeof payload.bpm === 'number' &&
-    Number.isFinite(payload.bpm) &&
-    nextSong.bpm !== payload.bpm
-  ) {
-    nextSong.bpm = payload.bpm
-    touched = true
-  }
-  if (
-    typeof payload.firstBeatMs === 'number' &&
-    Number.isFinite(payload.firstBeatMs) &&
-    nextSong.firstBeatMs !== payload.firstBeatMs
-  ) {
-    nextSong.firstBeatMs = payload.firstBeatMs
-    touched = true
-  }
-  if (
-    typeof payload.barBeatOffset === 'number' &&
-    Number.isFinite(payload.barBeatOffset) &&
-    nextSong.barBeatOffset !== payload.barBeatOffset
-  ) {
-    nextSong.barBeatOffset = payload.barBeatOffset
-    touched = true
-  }
-  return touched ? nextSong : song
+  return buildHorizontalBrowseSongSnapshot(filePath)
 }
 
 const nativeTransport = createHorizontalBrowseNativeTransport()
@@ -414,7 +364,8 @@ const buildDeckStateForNative = (deck: DeckKey, override?: DeckTransportStateOve
   lastObservedAtMs: override?.lastObservedAtMs ?? performance.now(),
   durationSec: override?.durationSec ?? resolveDeckDurationSeconds(deck),
   playing: override?.playing ?? resolveDeckPlaying(deck),
-  playbackRate: override?.playbackRate ?? resolveDeckPlaybackRate(deck)
+  playbackRate: override?.playbackRate ?? resolveDeckPlaybackRate(deck),
+  masterTempoEnabled: override?.masterTempoEnabled ?? isDeckMasterTempoEnabled(deck)
 })
 
 const commitDeckStateToNative = async (deck: DeckKey, override?: DeckTransportStateOverride) => {
@@ -469,7 +420,7 @@ const hydrateDeckSongSharedGrid = async (deck: DeckKey, song: ISongInfo) => {
     if (deckHydrateToken[deck] !== token) return
     const currentSong = deck === 'top' ? topDeckSong.value : bottomDeckSong.value
     if (!currentSong || currentSong.filePath !== filePath) return
-    const nextSong = mergeSongWithSharedGrid(currentSong, payload)
+    const nextSong = mergeHorizontalBrowseSongWithSharedGrid(currentSong, payload)
     if (nextSong !== currentSong) {
       setDeckSong(deck, nextSong)
       syncDeckDefaultCue(deck, nextSong)
@@ -504,6 +455,21 @@ const {
   getDeckSong: resolveDeckSong,
   setDeckSong
 })
+
+const { isDeckMasterTempoEnabled, toggleDeckMasterTempo, resetDeckTempo } =
+  useHorizontalBrowseDeckTempoControls({
+    resolveDeckSong,
+    resolveTransportDeckSnapshot,
+    nativeTransport,
+    commitDeckStateToNative
+  })
+
+const handleDeckMasterTempoToggle = (deck: DeckKey) => {
+  toggleDeckMasterTempo(deck)
+  void commitDeckStateToNative(deck, {
+    masterTempoEnabled: isDeckMasterTempoEnabled(deck)
+  })
+}
 
 const handleDeckEjectSong = createHorizontalBrowseDeckEjectHandler({
   resolveDeckCuePreviewRuntimeState,
@@ -869,7 +835,7 @@ const handleExternalDeckSongLoad = (payload: HorizontalBrowseLoadSongPayload) =>
 const handleSongGridUpdated = (_event: unknown, payload: SharedSongGridPayload) => {
   const topSong = topDeckSong.value
   if (topSong) {
-    const nextTopSong = mergeSongWithSharedGrid(topSong, payload)
+    const nextTopSong = mergeHorizontalBrowseSongWithSharedGrid(topSong, payload)
     if (nextTopSong !== topSong) {
       setDeckSong('top', nextTopSong)
       syncDeckDefaultCue('top', nextTopSong)
@@ -878,7 +844,7 @@ const handleSongGridUpdated = (_event: unknown, payload: SharedSongGridPayload) 
 
   const bottomSong = bottomDeckSong.value
   if (bottomSong) {
-    const nextBottomSong = mergeSongWithSharedGrid(bottomSong, payload)
+    const nextBottomSong = mergeHorizontalBrowseSongWithSharedGrid(bottomSong, payload)
     if (nextBottomSong !== bottomSong) {
       setDeckSong('bottom', nextBottomSong)
       syncDeckDefaultCue('bottom', nextBottomSong)
@@ -984,6 +950,7 @@ onUnmounted(() => {
         :duration-seconds="topDeckDurationSeconds"
         :toolbar-state="resolveDeckToolbarState('top')"
         :read-only-source="isDeckSongReadOnly('top')"
+        :master-tempo-enabled="isDeckMasterTempoEnabled('top')"
         @region-drag-enter="handleRegionDragEnter"
         @region-drag-over="handleRegionDragOver"
         @region-drag-leave="handleRegionDragLeave"
@@ -1001,6 +968,8 @@ onUnmounted(() => {
         @blur-bpm-input="handleDeckBpmInputBlur('top')"
         @tap-bpm="handleDeckTapBpm('top')"
         @toggle-bar-line-picking="handleDeckBarLinePickingToggle('top')"
+        @toggle-master-tempo="handleDeckMasterTempoToggle('top')"
+        @reset-tempo="resetDeckTempo('top')"
         @select-move-target="openDeckMoveDialog('top', $event)"
       />
 
@@ -1067,6 +1036,7 @@ onUnmounted(() => {
         :duration-seconds="bottomDeckDurationSeconds"
         :toolbar-state="resolveDeckToolbarState('bottom')"
         :read-only-source="isDeckSongReadOnly('bottom')"
+        :master-tempo-enabled="isDeckMasterTempoEnabled('bottom')"
         @region-drag-enter="handleRegionDragEnter"
         @region-drag-over="handleRegionDragOver"
         @region-drag-leave="handleRegionDragLeave"
@@ -1084,6 +1054,8 @@ onUnmounted(() => {
         @blur-bpm-input="handleDeckBpmInputBlur('bottom')"
         @tap-bpm="handleDeckTapBpm('bottom')"
         @toggle-bar-line-picking="handleDeckBarLinePickingToggle('bottom')"
+        @toggle-master-tempo="handleDeckMasterTempoToggle('bottom')"
+        @reset-tempo="resetDeckTempo('bottom')"
         @select-move-target="openDeckMoveDialog('bottom', $event)"
       />
     </div>

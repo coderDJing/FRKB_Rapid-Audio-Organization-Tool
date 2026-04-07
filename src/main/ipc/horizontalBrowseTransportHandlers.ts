@@ -11,6 +11,7 @@ type HorizontalBrowseTransportDeckInput = {
   lastObservedAtMs: number
   playing: boolean
   playbackRate: number
+  masterTempoEnabled: boolean
 }
 
 type HorizontalBrowseTransportStateInput = {

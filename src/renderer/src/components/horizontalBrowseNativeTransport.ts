@@ -10,6 +10,7 @@ export type HorizontalBrowseTransportDeckSnapshot = {
   currentSec: number
   durationSec: number
   playbackRate: number
+  masterTempoEnabled: boolean
   bpm: number
   effectiveBpm: number
   renderCurrentSec: number
@@ -31,6 +32,7 @@ type LocalDeckState = {
   durationSec: number
   playing: boolean
   playbackRate: number
+  masterTempoEnabled: boolean
 }
 
 const createEmptyDeckSnapshot = (
@@ -42,6 +44,7 @@ const createEmptyDeckSnapshot = (
   currentSec: 0,
   durationSec: 0,
   playbackRate: 1,
+  masterTempoEnabled: true,
   bpm: 0,
   effectiveBpm: 0,
   renderCurrentSec: 0,
@@ -88,7 +91,8 @@ export const createHorizontalBrowseNativeTransport = () => {
       currentSec: Number(payload.currentSec) || 0,
       lastObservedAtMs: Number(payload.lastObservedAtMs) || 0,
       playing: Boolean(payload.playing),
-      playbackRate: Number(payload.playbackRate) || 1
+      playbackRate: Number(payload.playbackRate) || 1,
+      masterTempoEnabled: payload.masterTempoEnabled !== false
     })
     applySnapshot(snapshot)
     return snapshot
@@ -107,7 +111,8 @@ export const createHorizontalBrowseNativeTransport = () => {
         currentSec: Number(payload.top.currentSec) || 0,
         lastObservedAtMs: Number(payload.top.lastObservedAtMs) || 0,
         playing: Boolean(payload.top.playing),
-        playbackRate: Number(payload.top.playbackRate) || 1
+        playbackRate: Number(payload.top.playbackRate) || 1,
+        masterTempoEnabled: payload.top.masterTempoEnabled !== false
       },
       bottom: {
         filePath: payload.bottom.song?.filePath || '',
@@ -118,7 +123,8 @@ export const createHorizontalBrowseNativeTransport = () => {
         currentSec: Number(payload.bottom.currentSec) || 0,
         lastObservedAtMs: Number(payload.bottom.lastObservedAtMs) || 0,
         playing: Boolean(payload.bottom.playing),
-        playbackRate: Number(payload.bottom.playbackRate) || 1
+        playbackRate: Number(payload.bottom.playbackRate) || 1,
+        masterTempoEnabled: payload.bottom.masterTempoEnabled !== false
       }
     })
     applySnapshot(snapshot)

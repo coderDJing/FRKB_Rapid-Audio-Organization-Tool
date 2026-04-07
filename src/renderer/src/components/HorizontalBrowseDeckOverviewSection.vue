@@ -28,6 +28,7 @@ const props = defineProps<{
   durationSeconds: number
   toolbarState: DeckToolbarState
   readOnlySource: boolean
+  masterTempoEnabled: boolean
 }>()
 
 const emit = defineEmits<{
@@ -48,6 +49,8 @@ const emit = defineEmits<{
   (event: 'blur-bpm-input'): void
   (event: 'tap-bpm'): void
   (event: 'toggle-bar-line-picking'): void
+  (event: 'toggle-master-tempo'): void
+  (event: 'reset-tempo'): void
   (event: 'select-move-target', target: HorizontalBrowseDeckMoveTargetLibrary): void
 }>()
 
@@ -105,6 +108,7 @@ const isTop = props.position === 'top'
         :bar-line-picking="props.toolbarState.barLinePicking"
         :song-present="!!props.song"
         :read-only-source="props.readOnlySource"
+        :master-tempo-enabled="props.masterTempoEnabled"
         @set-bar-line="emit('set-bar-line')"
         @shift-left-large="emit('shift-left-large')"
         @shift-left-small="emit('shift-left-small')"
@@ -114,6 +118,8 @@ const isTop = props.position === 'top'
         @blur-bpm-input="emit('blur-bpm-input')"
         @tap-bpm="emit('tap-bpm')"
         @toggle-bar-line-picking="emit('toggle-bar-line-picking')"
+        @toggle-master-tempo="emit('toggle-master-tempo')"
+        @reset-tempo="emit('reset-tempo')"
         @select-move-target="emit('select-move-target', $event)"
       />
     </div>
