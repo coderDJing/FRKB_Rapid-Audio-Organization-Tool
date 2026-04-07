@@ -21,7 +21,10 @@ import {
   buildHorizontalBrowseSongSnapshot,
   mergeHorizontalBrowseSongWithSharedGrid
 } from '@renderer/components/horizontalBrowseShellSongs'
-import { parsePreviewBpmInput } from '@renderer/components/MixtapeBeatAlignDialog.constants'
+import {
+  formatPreviewBpm,
+  parsePreviewBpmInput
+} from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
 import { createHorizontalBrowseNativeTransport } from '@renderer/components/horizontalBrowseNativeTransport'
 import {
@@ -145,6 +148,7 @@ const regionDragDepth = reactive<Record<number, number>>({
 })
 
 const setDeckSong = (deck: DeckKey, song: ISongInfo | null) => {
+  deckTempoInputDirty[deck] = false
   if (!song) {
     if (deck === 'top') {
       topDeckCuePointSeconds.value = 0
@@ -174,6 +178,10 @@ const bottomOverviewRegions = [6, 7, 8]
 const deckHydrateToken = reactive<Record<DeckKey, number>>({
   top: 0,
   bottom: 0
+})
+const deckTempoInputDirty = reactive<Record<DeckKey, boolean>>({
+  top: false,
+  bottom: false
 })
 const deckCuePreviewState = reactive<Record<DeckKey, DeckCuePreviewState>>({
   top: createDefaultDeckCuePreviewState(),
@@ -346,10 +354,18 @@ const syncDeckDefaultCue = (deck: DeckKey, song: ISongInfo | null, force = false
 }
 const resolveDeckToolbarBpmInputValue = (deck: DeckKey) => {
   const toolbarState = deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value
-  if (!resolveDeckSyncUiEnabled(deck)) {
+  if (deckTempoInputDirty[deck]) {
     return toolbarState.bpmInputValue
   }
-  return (Number(resolveTransportDeckSnapshot(deck).effectiveBpm) || 0).toFixed(2)
+  const effectiveBpm = Number(resolveTransportDeckSnapshot(deck).effectiveBpm)
+  if (Number.isFinite(effectiveBpm) && effectiveBpm > 0) {
+    return formatPreviewBpm(effectiveBpm)
+  }
+  const baseGridBpm = Number(resolveDeckGridBpm(deck))
+  if (Number.isFinite(baseGridBpm) && baseGridBpm > 0) {
+    return formatPreviewBpm(baseGridBpm)
+  }
+  return toolbarState.bpmInputValue
 }
 const resolveDeckToolbarState = (deck: DeckKey) =>
   buildHorizontalBrowseDeckToolbarState(
@@ -456,9 +472,10 @@ const {
   setDeckSong
 })
 
-const { isDeckMasterTempoEnabled, toggleDeckMasterTempo, resetDeckTempo } =
+const { isDeckMasterTempoEnabled, toggleDeckMasterTempo, setDeckTargetBpm, resetDeckTempo } =
   useHorizontalBrowseDeckTempoControls({
     resolveDeckSong,
+    resolveDeckGridBpm,
     resolveTransportDeckSnapshot,
     nativeTransport,
     commitDeckStateToNative
@@ -505,11 +522,20 @@ const handleToolbarStateChange = (
   deck: DeckKey,
   value: ReturnType<typeof createDefaultDeckToolbarState>
 ) => {
+  const nextValue = deckTempoInputDirty[deck]
+    ? {
+        ...value,
+        bpmInputValue:
+          deck === 'top'
+            ? topDeckToolbarState.value.bpmInputValue
+            : bottomDeckToolbarState.value.bpmInputValue
+      }
+    : { ...value }
   if (deck === 'top') {
-    topDeckToolbarState.value = { ...value }
+    topDeckToolbarState.value = nextValue
     return
   }
-  bottomDeckToolbarState.value = { ...value }
+  bottomDeckToolbarState.value = nextValue
 }
 
 const handleDeckBarLinePickingToggle = (deck: DeckKey) => {
@@ -538,6 +564,7 @@ const handleDeckGridShiftLargeRight = (deck: DeckKey) => {
 
 const handleDeckBpmInputUpdate = (deck: DeckKey, value: string) => {
   const nextToolbarState = deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value
+  deckTempoInputDirty[deck] = true
   const parsed = parsePreviewBpmInput(value)
   if (deck === 'top') {
     topDeckToolbarState.value = { ...nextToolbarState, bpmInputValue: value }
@@ -545,23 +572,20 @@ const handleDeckBpmInputUpdate = (deck: DeckKey, value: string) => {
     bottomDeckToolbarState.value = { ...nextToolbarState, bpmInputValue: value }
   }
   if (parsed !== null) {
-    const currentSong = deck === 'top' ? topDeckSong.value : bottomDeckSong.value
-    if (currentSong) {
-      const nextSong = { ...currentSong, bpm: parsed }
-      setDeckSong(deck, nextSong)
-      syncDeckDefaultCue(deck, nextSong)
-      void commitDeckStateToNative(deck)
-    }
+    // 横推 BPM 输入只改当前 deck 的速度，不能把曲库里的原始 BPM 一起写脏。
+    void setDeckTargetBpm(deck, parsed)
   }
-  resolveDetailRef(deck)?.updateBpmInput?.(value)
 }
 
 const handleDeckBpmInputBlur = (deck: DeckKey) => {
-  resolveDetailRef(deck)?.blurBpmInput?.()
-}
-
-const handleDeckTapBpm = (deck: DeckKey) => {
-  resolveDetailRef(deck)?.tapBpm?.()
+  deckTempoInputDirty[deck] = false
+  const nextToolbarState = deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value
+  const bpmInputValue = resolveDeckToolbarBpmInputValue(deck)
+  if (deck === 'top') {
+    topDeckToolbarState.value = { ...nextToolbarState, bpmInputValue }
+    return
+  }
+  bottomDeckToolbarState.value = { ...nextToolbarState, bpmInputValue }
 }
 
 const handleDeckRawWaveformDragStart = (deck: DeckKey) => {
@@ -966,7 +990,6 @@ onUnmounted(() => {
         @shift-right-large="handleDeckGridShiftLargeRight('top')"
         @update-bpm-input="handleDeckBpmInputUpdate('top', $event)"
         @blur-bpm-input="handleDeckBpmInputBlur('top')"
-        @tap-bpm="handleDeckTapBpm('top')"
         @toggle-bar-line-picking="handleDeckBarLinePickingToggle('top')"
         @toggle-master-tempo="handleDeckMasterTempoToggle('top')"
         @reset-tempo="resetDeckTempo('top')"
@@ -1052,7 +1075,6 @@ onUnmounted(() => {
         @shift-right-large="handleDeckGridShiftLargeRight('bottom')"
         @update-bpm-input="handleDeckBpmInputUpdate('bottom', $event)"
         @blur-bpm-input="handleDeckBpmInputBlur('bottom')"
-        @tap-bpm="handleDeckTapBpm('bottom')"
         @toggle-bar-line-picking="handleDeckBarLinePickingToggle('bottom')"
         @toggle-master-tempo="handleDeckMasterTempoToggle('bottom')"
         @reset-tempo="resetDeckTempo('bottom')"

@@ -22,6 +22,10 @@ const props = defineProps({
   bpmMax: {
     type: Number,
     default: 300
+  },
+  showTapButton: {
+    type: Boolean,
+    default: true
   }
 })
 
@@ -129,20 +133,6 @@ onBeforeUnmount(() => {
       class="grid-adjust-icon-btn"
       type="button"
       :disabled="disabled"
-      :title="t('mixtape.gridAdjustSetBarLineAtPlayhead')"
-      :aria-label="t('mixtape.gridAdjustSetBarLineAtPlayhead')"
-      @click="emit('set-bar-line')"
-    >
-      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-        <path d="M3 2v12"></path>
-        <path d="M8 1v14"></path>
-        <path d="M13 2v12"></path>
-      </svg>
-    </button>
-    <button
-      class="grid-adjust-icon-btn"
-      type="button"
-      :disabled="disabled"
       :title="t('mixtape.gridAdjustShiftLeftLarge')"
       :aria-label="t('mixtape.gridAdjustShiftLeftLarge')"
       @click="handleShiftClick('shift-left-large')"
@@ -195,6 +185,20 @@ onBeforeUnmount(() => {
       class="grid-adjust-icon-btn"
       type="button"
       :disabled="disabled"
+      :title="t('mixtape.gridAdjustSetBarLineAtPlayhead')"
+      :aria-label="t('mixtape.gridAdjustSetBarLineAtPlayhead')"
+      @click="emit('set-bar-line')"
+    >
+      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <path d="M3 2v12"></path>
+        <path d="M8 1v14"></path>
+        <path d="M13 2v12"></path>
+      </svg>
+    </button>
+    <button
+      class="grid-adjust-icon-btn"
+      type="button"
+      :disabled="disabled"
       :title="t('mixtape.gridAdjustShiftRightLarge')"
       :aria-label="t('mixtape.gridAdjustShiftRightLarge')"
       @click="handleShiftClick('shift-right-large')"
@@ -225,6 +229,7 @@ onBeforeUnmount(() => {
       @keydown.enter.prevent="handleBpmInputEnter"
     />
     <button
+      v-if="showTapButton"
       class="grid-adjust-tap-btn"
       type="button"
       :disabled="disabled"

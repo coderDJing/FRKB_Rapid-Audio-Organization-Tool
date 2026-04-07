@@ -24,7 +24,6 @@ const emit = defineEmits<{
   (event: 'shift-right-large'): void
   (event: 'update-bpm-input', value: string): void
   (event: 'blur-bpm-input'): void
-  (event: 'tap-bpm'): void
   (event: 'toggle-bar-line-picking'): void
   (event: 'toggle-master-tempo'): void
   (event: 'reset-tempo'): void
@@ -41,6 +40,7 @@ const emit = defineEmits<{
         :bpm-step="props.bpmStep"
         :bpm-min="props.bpmMin"
         :bpm-max="props.bpmMax"
+        :show-tap-button="false"
         @set-bar-line="emit('set-bar-line')"
         @shift-left-large="emit('shift-left-large')"
         @shift-left-small="emit('shift-left-small')"
@@ -48,7 +48,6 @@ const emit = defineEmits<{
         @shift-right-large="emit('shift-right-large')"
         @update-bpm-input="emit('update-bpm-input', $event)"
         @blur-bpm-input="emit('blur-bpm-input')"
-        @tap-bpm="emit('tap-bpm')"
       />
       <button
         type="button"
