@@ -1,14 +1,22 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
-import HorizontalBrowseDeckInfoCard from '@renderer/components/HorizontalBrowseDeckInfoCard.vue'
-import HorizontalBrowseRawWaveformDetail from '@renderer/components/HorizontalBrowseRawWaveformDetail.vue'
-import HorizontalBrowseWaveformOverview from '@renderer/components/HorizontalBrowseWaveformOverview.vue'
+import HorizontalBrowseDeckButtons from '@renderer/components/HorizontalBrowseDeckButtons.vue'
+import HorizontalBrowseDeckDetailLane from '@renderer/components/HorizontalBrowseDeckDetailLane.vue'
+import HorizontalBrowseDeckMoveDialog from '@renderer/components/HorizontalBrowseDeckMoveDialog.vue'
+import HorizontalBrowseDeckOverviewSection from '@renderer/components/HorizontalBrowseDeckOverviewSection.vue'
 import {
   HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM,
   HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM
 } from '@renderer/components/horizontalBrowseWaveform.constants'
-import MixtapeBeatAlignGridAdjustToolbar from '@renderer/components/mixtapeBeatAlignGridAdjustToolbar.vue'
+import {
+  buildHorizontalBrowseDeckToolbarState,
+  parseHorizontalBrowseDurationToSeconds,
+  resolveHorizontalBrowseDeckDurationSeconds,
+  resolveHorizontalBrowseDeckGridBpm,
+  resolveHorizontalBrowseDeckSyncUiEnabled,
+  resolveHorizontalBrowseDeckSyncUiLock
+} from '@renderer/components/horizontalBrowseShellState'
 import { parsePreviewBpmInput } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
 import { createHorizontalBrowseNativeTransport } from '@renderer/components/horizontalBrowseNativeTransport'
@@ -16,9 +24,11 @@ import {
   resolveHorizontalBrowseCuePointSec,
   resolveHorizontalBrowseDefaultCuePointSec
 } from '@renderer/components/horizontalBrowseDetailMath'
+import { createHorizontalBrowseDeckEjectHandler } from '@renderer/components/useHorizontalBrowseDeckEject'
+import { useHorizontalBrowseDeckMove } from '@renderer/components/useHorizontalBrowseDeckMove'
+import { useHorizontalBrowseDeckSongs } from '@renderer/components/useHorizontalBrowseDeckSongs'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
-import { t } from '@renderer/utils/translate'
 
 type DeckKey = HorizontalBrowseDeckKey
 type HorizontalBrowseLoadSongPayload = {
@@ -31,14 +41,6 @@ type SharedSongGridPayload = {
   firstBeatMs?: number
   barBeatOffset?: number
 } | null
-type DeckToolbarState = {
-  disabled: boolean
-  bpmInputValue: string
-  bpmStep: number
-  bpmMin: number
-  bpmMax: number
-  barLinePicking: boolean
-}
 type DeckTransportStateOverride = Partial<{
   currentSec: number
   lastObservedAtMs: number
@@ -74,7 +76,7 @@ type DeckWaveformDragEndPayload = {
   committed: boolean
 }
 
-const createDefaultDeckToolbarState = (): DeckToolbarState => ({
+const createDefaultDeckToolbarState = () => ({
   disabled: true,
   bpmInputValue: '128.00',
   bpmStep: 0.01,
@@ -100,16 +102,20 @@ const FADER_TRAVEL_INSET_RATIO = 0.17
 const CUE_POINT_TRIGGER_EPSILON_SEC = 0.05
 
 const runtime = useRuntimeStore()
-const topDeckSong = ref<ISongInfo | null>(null)
-const bottomDeckSong = ref<ISongInfo | null>(null)
+const {
+  topDeckSong,
+  bottomDeckSong,
+  setDeckSong: setDeckSongState,
+  resolveDeckSong
+} = useHorizontalBrowseDeckSongs()
 const topDeckCuePointSeconds = ref(0)
 const bottomDeckCuePointSeconds = ref(0)
 const topDetailRef = ref<any | null>(null)
 const bottomDetailRef = ref<any | null>(null)
 const faderRef = ref<HTMLElement | null>(null)
 const faderRailRef = ref<HTMLElement | null>(null)
-const topDeckToolbarState = ref<DeckToolbarState>(createDefaultDeckToolbarState())
-const bottomDeckToolbarState = ref<DeckToolbarState>(createDefaultDeckToolbarState())
+const topDeckToolbarState = ref(createDefaultDeckToolbarState())
+const bottomDeckToolbarState = ref(createDefaultDeckToolbarState())
 const hoveredDeckKey = ref<DeckKey | null>(null)
 const faderDragging = ref(false)
 const faderValue = ref(0)
@@ -131,6 +137,17 @@ const regionDragDepth = reactive<Record<number, number>>({
   7: 0,
   8: 0
 })
+
+const setDeckSong = (deck: DeckKey, song: ISongInfo | null) => {
+  if (!song) {
+    if (deck === 'top') {
+      topDeckCuePointSeconds.value = 0
+    } else {
+      bottomDeckCuePointSeconds.value = 0
+    }
+  }
+  setDeckSongState(deck, song)
+}
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 const resolveFaderTravelPercentByValue = (value: number) => {
@@ -318,25 +335,6 @@ const mergeSongWithSharedGrid = (song: ISongInfo, payload: SharedSongGridPayload
   return touched ? nextSong : song
 }
 
-const setDeckSong = (deck: DeckKey, song: ISongInfo | null) => {
-  if (!song) {
-    if (deck === 'top') {
-      topDeckCuePointSeconds.value = 0
-    } else {
-      bottomDeckCuePointSeconds.value = 0
-    }
-  }
-  if (deck === 'top') {
-    topDeckSong.value = song
-    runtime.horizontalBrowseDecks.topSong = song ? { ...song } : null
-  } else {
-    bottomDeckSong.value = song
-    runtime.horizontalBrowseDecks.bottomSong = song ? { ...song } : null
-  }
-}
-
-const resolveDeckSong = (deck: DeckKey) =>
-  deck === 'top' ? topDeckSong.value : bottomDeckSong.value
 const nativeTransport = createHorizontalBrowseNativeTransport()
 const deckSyncState = nativeTransport.state
 const topDeckPlaybackRate = computed(() => Number(nativeTransport.state.top.playbackRate) || 1)
@@ -345,19 +343,6 @@ const bottomDeckPlaybackRate = computed(
 )
 const topDeckDurationSeconds = computed(() => resolveDeckDurationSeconds('top'))
 const bottomDeckDurationSeconds = computed(() => resolveDeckDurationSeconds('bottom'))
-const parseDurationToSeconds = (input: unknown) => {
-  const raw = String(input || '').trim()
-  if (!raw) return 0
-  if (/^\d+(\.\d+)?$/.test(raw)) return Math.max(0, Number(raw) || 0)
-  const parts = raw
-    .split(':')
-    .map((part) => Number(part))
-    .filter((part) => Number.isFinite(part))
-  if (!parts.length) return 0
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]
-  if (parts.length === 2) return parts[0] * 60 + parts[1]
-  return parts[0]
-}
 const resolveTransportDeckSnapshot = (deck: DeckKey) =>
   deck === 'top' ? nativeTransport.state.top : nativeTransport.state.bottom
 const resolveDeckCuePointRef = (deck: DeckKey) =>
@@ -365,11 +350,11 @@ const resolveDeckCuePointRef = (deck: DeckKey) =>
 const resolveDeckCuePreviewRuntimeState = (deck: DeckKey) => deckCuePreviewState[deck]
 const resolveDeckCurrentSeconds = (deck: DeckKey) =>
   Number(resolveTransportDeckSnapshot(deck).currentSec) || 0
-const resolveDeckDurationSeconds = (deck: DeckKey) => {
-  const explicit = Number(resolveTransportDeckSnapshot(deck).durationSec)
-  if (Number.isFinite(explicit) && explicit > 0) return explicit
-  return parseDurationToSeconds(resolveDeckSong(deck)?.duration)
-}
+const resolveDeckDurationSeconds = (deck: DeckKey) =>
+  resolveHorizontalBrowseDeckDurationSeconds(
+    resolveTransportDeckSnapshot(deck).durationSec,
+    resolveDeckSong(deck)?.duration
+  )
 const resolveDeckPlaying = (deck: DeckKey) => Boolean(resolveTransportDeckSnapshot(deck).playing)
 const resolveDeckPlaybackRate = (deck: DeckKey) =>
   Number(resolveTransportDeckSnapshot(deck).playbackRate) || 1
@@ -381,29 +366,29 @@ const topDeckShouldDeferWaveformLoad = computed(
 const bottomDeckShouldDeferWaveformLoad = computed(
   () => topDeckUiPlaying.value && !bottomDeckUiPlaying.value
 )
-const resolveDeckGridBpm = (deck: DeckKey) => {
-  const snapshot = resolveTransportDeckSnapshot(deck)
-  const effectiveBpm = Number(snapshot.effectiveBpm) || 0
-  const playbackRate = Number(snapshot.playbackRate) || 1
-  if (effectiveBpm > 0 && playbackRate > 0) {
-    return effectiveBpm / playbackRate
-  }
-  return Number(resolveDeckSong(deck)?.bpm) || 0
-}
+const resolveDeckGridBpm = (deck: DeckKey) =>
+  resolveHorizontalBrowseDeckGridBpm(
+    resolveTransportDeckSnapshot(deck).effectiveBpm,
+    resolveTransportDeckSnapshot(deck).playbackRate,
+    resolveDeckSong(deck)?.bpm
+  )
 const topDeckGridBpm = computed(() => resolveDeckGridBpm('top'))
 const bottomDeckGridBpm = computed(() => resolveDeckGridBpm('bottom'))
 const resolveDeckSyncUiEnabled = (deck: DeckKey) =>
-  Boolean(resolveDeckSong(deck)) &&
-  (resolveTransportDeckSnapshot(deck).syncEnabled ||
-    (resolveDeckCuePreviewRuntimeState(deck).active &&
-      resolveDeckCuePreviewRuntimeState(deck).syncEnabledBefore))
-const resolveDeckSyncUiLock = (deck: DeckKey) => {
-  if (!resolveDeckSong(deck)) return 'off'
-  const cuePreviewState = resolveDeckCuePreviewRuntimeState(deck)
-  return cuePreviewState.active && cuePreviewState.syncEnabledBefore
-    ? cuePreviewState.syncLockBefore
-    : resolveTransportDeckSnapshot(deck).syncLock
-}
+  resolveHorizontalBrowseDeckSyncUiEnabled(
+    Boolean(resolveDeckSong(deck)),
+    resolveTransportDeckSnapshot(deck).syncEnabled,
+    resolveDeckCuePreviewRuntimeState(deck).active,
+    resolveDeckCuePreviewRuntimeState(deck).syncEnabledBefore
+  )
+const resolveDeckSyncUiLock = (deck: DeckKey) =>
+  resolveHorizontalBrowseDeckSyncUiLock(
+    Boolean(resolveDeckSong(deck)),
+    resolveTransportDeckSnapshot(deck).syncLock,
+    resolveDeckCuePreviewRuntimeState(deck).active,
+    resolveDeckCuePreviewRuntimeState(deck).syncEnabledBefore,
+    resolveDeckCuePreviewRuntimeState(deck).syncLockBefore
+  )
 const syncDeckDefaultCue = (deck: DeckKey, song: ISongInfo | null, force = false) => {
   const target = resolveDeckCuePointRef(deck)
   if (!force && target.value > 0.000001) return
@@ -416,6 +401,11 @@ const resolveDeckToolbarBpmInputValue = (deck: DeckKey) => {
   }
   return (Number(resolveTransportDeckSnapshot(deck).effectiveBpm) || 0).toFixed(2)
 }
+const resolveDeckToolbarState = (deck: DeckKey) =>
+  buildHorizontalBrowseDeckToolbarState(
+    deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value,
+    resolveDeckToolbarBpmInputValue(deck)
+  )
 let renderSyncRaf = 0
 
 const buildDeckStateForNative = (deck: DeckKey, override?: DeckTransportStateOverride) => ({
@@ -496,37 +486,33 @@ const assignSongToDeck = (deck: DeckKey, song: ISongInfo) => {
   void commitDeckStateToNative(deck, {
     currentSec: 0,
     lastObservedAtMs: nowMs,
-    durationSec: parseDurationToSeconds(nextSong.duration),
+    durationSec: parseHorizontalBrowseDurationToSeconds(nextSong.duration),
     playing: false,
     playbackRate: 1
   })
   void hydrateDeckSongSharedGrid(deck, nextSong)
 }
 
-const handleDeckEjectSong = async (deck: DeckKey) => {
-  const cuePreviewState = resolveDeckCuePreviewRuntimeState(deck)
-  cuePreviewState.active = false
-  cuePreviewState.pointerId = null
-  cuePreviewState.cueSeconds = 0
-  cuePreviewState.syncEnabledBefore = false
-  cuePreviewState.syncLockBefore = 'off'
-  cuePreviewState.token += 1
-  suppressDeckCueClick[deck] = false
+const {
+  selectSongListDialogVisible,
+  selectSongListDialogTargetLibraryName,
+  isDeckSongReadOnly,
+  openDeckMoveDialog,
+  handleDeckMoveSong,
+  handleDeckMoveDialogCancel
+} = useHorizontalBrowseDeckMove({
+  getDeckSong: resolveDeckSong,
+  setDeckSong
+})
 
-  if (resolveTransportDeckSnapshot(deck).syncEnabled) {
-    await nativeTransport.setSyncEnabled(deck, false)
-  }
-
-  setDeckSong(deck, null)
-  const nowMs = performance.now()
-  await commitDeckStateToNative(deck, {
-    currentSec: 0,
-    lastObservedAtMs: nowMs,
-    durationSec: 0,
-    playing: false,
-    playbackRate: 1
-  })
-}
+const handleDeckEjectSong = createHorizontalBrowseDeckEjectHandler({
+  resolveDeckCuePreviewRuntimeState,
+  resolveTransportDeckSnapshot,
+  nativeTransport,
+  setDeckSong,
+  commitDeckStateToNative,
+  suppressDeckCueClick
+})
 
 const resolveDetailRef = (deck: DeckKey) =>
   deck === 'top' ? topDetailRef.value : bottomDetailRef.value
@@ -549,7 +535,10 @@ const handleSharedDetailZoomChange = (payload: {
   }
 }
 
-const handleToolbarStateChange = (deck: DeckKey, value: DeckToolbarState) => {
+const handleToolbarStateChange = (
+  deck: DeckKey,
+  value: ReturnType<typeof createDefaultDeckToolbarState>
+) => {
   if (deck === 'top') {
     topDeckToolbarState.value = { ...value }
     return
@@ -931,30 +920,12 @@ onUnmounted(() => {
 <template>
   <div class="horizontal-shell">
     <div class="controls">
-      <div class="deck-controls">
-        <button
-          type="button"
-          class="deck-button deck-button--cue"
-          @pointerdown="handleDeckCuePointerDown('top', $event)"
-          @click="handleDeckCueClick('top')"
-        >
-          CUE
-        </button>
-        <button
-          type="button"
-          class="deck-button deck-button--play"
-          :class="{ 'is-active': topDeckUiPlaying }"
-          @click="handleDeckPlayPauseToggle('top')"
-        >
-          <svg v-if="topDeckUiPlaying" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-            <rect x="4.25" y="3.5" width="2.75" height="9"></rect>
-            <rect x="9" y="3.5" width="2.75" height="9"></rect>
-          </svg>
-          <svg v-else viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-            <polygon points="5,3.5 12.5,8 5,12.5"></polygon>
-          </svg>
-        </button>
-      </div>
+      <HorizontalBrowseDeckButtons
+        :playing="topDeckUiPlaying"
+        @cue-pointer-down="handleDeckCuePointerDown('top', $event)"
+        @cue-click="handleDeckCueClick('top')"
+        @play-toggle="handleDeckPlayPauseToggle('top')"
+      />
 
       <div
         ref="faderRef"
@@ -991,228 +962,138 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div class="deck-controls">
-        <button
-          type="button"
-          class="deck-button deck-button--cue"
-          @pointerdown="handleDeckCuePointerDown('bottom', $event)"
-          @click="handleDeckCueClick('bottom')"
-        >
-          CUE
-        </button>
-        <button
-          type="button"
-          class="deck-button deck-button--play"
-          :class="{ 'is-active': bottomDeckUiPlaying }"
-          @click="handleDeckPlayPauseToggle('bottom')"
-        >
-          <svg v-if="bottomDeckUiPlaying" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-            <rect x="4.25" y="3.5" width="2.75" height="9"></rect>
-            <rect x="9" y="3.5" width="2.75" height="9"></rect>
-          </svg>
-          <svg v-else viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-            <polygon points="5,3.5 12.5,8 5,12.5"></polygon>
-          </svg>
-        </button>
-      </div>
+      <HorizontalBrowseDeckButtons
+        :playing="bottomDeckUiPlaying"
+        @cue-pointer-down="handleDeckCuePointerDown('bottom', $event)"
+        @cue-click="handleDeckCueClick('bottom')"
+        @play-toggle="handleDeckPlayPauseToggle('bottom')"
+      />
     </div>
 
     <div class="waveform-stack">
-      <section class="overview overview--top" :class="{ 'is-deck-hover': isDeckHovered('top') }">
-        <div
-          v-for="regionId in topOverviewRegions"
-          :key="regionId"
-          class="overview__region drop-zone"
-          :class="{
-            'overview__region--deck-info': regionId === 1,
-            'overview__region--muted': regionId === 3,
-            'overview__region--toolbar': regionId === 3
-          }"
-          @dragenter.stop.prevent="handleRegionDragEnter(regionId, $event)"
-          @dragover.stop.prevent="handleRegionDragOver(regionId, $event)"
-          @dragleave.stop="handleRegionDragLeave(regionId, $event)"
-          @drop.stop.prevent="handleRegionDrop(regionId, $event)"
-        >
-          <HorizontalBrowseDeckInfoCard
-            v-if="regionId === 1"
-            :song="topDeckSong"
-            :beat-sync-enabled="topDeckSong ? resolveDeckSyncUiEnabled('top') : false"
-            :beat-sync-blinking="
-              topDeckSong ? resolveDeckSyncUiLock('top') === 'tempo-only' : false
-            "
-            :master-active="topDeckSong ? deckSyncState.leaderDeck === 'top' : false"
-            :current-seconds="topDeckRenderCurrentSeconds"
-            :duration-seconds="topDeckDurationSeconds"
-            @trigger-beat-sync="triggerDeckBeatSync('top')"
-            @toggle-master="toggleDeckMaster('top')"
-            @eject-song="handleDeckEjectSong('top')"
-          />
-          <HorizontalBrowseWaveformOverview
-            v-else-if="regionId === 2"
-            :song="topDeckSong"
-            :current-seconds="topDeckRenderCurrentSeconds"
-            :duration-seconds="topDeckDurationSeconds"
-            @seek="handleDeckPlayheadSeek('top', $event)"
-          />
-          <div v-else-if="regionId === 3" class="overview__toolbar-row">
-            <MixtapeBeatAlignGridAdjustToolbar
-              :disabled="topDeckToolbarState.disabled"
-              :bpm-input-value="resolveDeckToolbarBpmInputValue('top')"
-              :bpm-step="topDeckToolbarState.bpmStep"
-              :bpm-min="topDeckToolbarState.bpmMin"
-              :bpm-max="topDeckToolbarState.bpmMax"
-              @set-bar-line="handleDeckSetBarLineAtPlayhead('top')"
-              @shift-left-large="handleDeckGridShiftLargeLeft('top')"
-              @shift-left-small="handleDeckGridShiftSmallLeft('top')"
-              @shift-right-small="handleDeckGridShiftSmallRight('top')"
-              @shift-right-large="handleDeckGridShiftLargeRight('top')"
-              @update-bpm-input="handleDeckBpmInputUpdate('top', $event)"
-              @blur-bpm-input="handleDeckBpmInputBlur('top')"
-              @tap-bpm="handleDeckTapBpm('top')"
-            />
-            <button
-              type="button"
-              class="overview__set-bar-btn"
-              :class="{ 'is-active': topDeckToolbarState.barLinePicking }"
-              :disabled="topDeckToolbarState.disabled"
-              @click="handleDeckBarLinePickingToggle('top')"
-            >
-              {{
-                topDeckToolbarState.barLinePicking
-                  ? t('mixtape.gridAdjustSetBarLineCancel')
-                  : t('mixtape.gridAdjustSetBarLine')
-              }}
-            </button>
-          </div>
-        </div>
-      </section>
+      <HorizontalBrowseDeckOverviewSection
+        position="top"
+        :region-ids="topOverviewRegions"
+        deck="top"
+        :deck-hovered="isDeckHovered('top')"
+        :song="topDeckSong"
+        :beat-sync-enabled="topDeckSong ? resolveDeckSyncUiEnabled('top') : false"
+        :beat-sync-blinking="topDeckSong ? resolveDeckSyncUiLock('top') === 'tempo-only' : false"
+        :master-active="topDeckSong ? deckSyncState.leaderDeck === 'top' : false"
+        :current-seconds="topDeckRenderCurrentSeconds"
+        :duration-seconds="topDeckDurationSeconds"
+        :toolbar-state="resolveDeckToolbarState('top')"
+        :read-only-source="isDeckSongReadOnly('top')"
+        @region-drag-enter="handleRegionDragEnter"
+        @region-drag-over="handleRegionDragOver"
+        @region-drag-leave="handleRegionDragLeave"
+        @region-drop="handleRegionDrop"
+        @trigger-beat-sync="triggerDeckBeatSync('top')"
+        @toggle-master="toggleDeckMaster('top')"
+        @eject-song="handleDeckEjectSong('top')"
+        @seek="handleDeckPlayheadSeek('top', $event)"
+        @set-bar-line="handleDeckSetBarLineAtPlayhead('top')"
+        @shift-left-large="handleDeckGridShiftLargeLeft('top')"
+        @shift-left-small="handleDeckGridShiftSmallLeft('top')"
+        @shift-right-small="handleDeckGridShiftSmallRight('top')"
+        @shift-right-large="handleDeckGridShiftLargeRight('top')"
+        @update-bpm-input="handleDeckBpmInputUpdate('top', $event)"
+        @blur-bpm-input="handleDeckBpmInputBlur('top')"
+        @tap-bpm="handleDeckTapBpm('top')"
+        @toggle-bar-line-picking="handleDeckBarLinePickingToggle('top')"
+        @select-move-target="openDeckMoveDialog('top', $event)"
+      />
 
       <section class="detail-pair">
-        <div
-          class="detail-lane drop-zone"
-          :class="{ 'is-deck-hover': isDeckHovered('top') }"
-          @dragenter.stop.prevent="handleRegionDragEnter(4, $event)"
-          @dragover.stop.prevent="handleRegionDragOver(4, $event)"
-          @dragleave.stop="handleRegionDragLeave(4, $event)"
-          @drop.stop.prevent="handleRegionDrop(4, $event)"
-        >
-          <HorizontalBrowseRawWaveformDetail
-            ref="topDetailRef"
-            :song="topDeckSong"
-            :shared-zoom-state="sharedDetailZoomState"
-            :current-seconds="topDeckRenderCurrentSeconds"
-            :playing="topDeckUiPlaying"
-            :playback-rate="topDeckPlaybackRate"
-            :grid-bpm="topDeckGridBpm"
-            :cue-seconds="topDeckCuePointSeconds"
-            :defer-waveform-load="topDeckShouldDeferWaveformLoad"
-            direction="up"
-            @toolbar-state-change="handleToolbarStateChange('top', $event)"
-            @zoom-change="handleSharedDetailZoomChange"
-            @drag-session-start="handleDeckRawWaveformDragStart('top')"
-            @drag-session-end="handleDeckRawWaveformDragEnd('top', $event)"
-          />
-        </div>
+        <HorizontalBrowseDeckDetailLane
+          ref="topDetailRef"
+          :song="topDeckSong"
+          :shared-zoom-state="sharedDetailZoomState"
+          :current-seconds="topDeckRenderCurrentSeconds"
+          :playing="topDeckUiPlaying"
+          :playback-rate="topDeckPlaybackRate"
+          :grid-bpm="topDeckGridBpm"
+          :cue-seconds="topDeckCuePointSeconds"
+          :defer-waveform-load="topDeckShouldDeferWaveformLoad"
+          direction="up"
+          :deck-hovered="isDeckHovered('top')"
+          :region-id="4"
+          @region-drag-enter="handleRegionDragEnter"
+          @region-drag-over="handleRegionDragOver"
+          @region-drag-leave="handleRegionDragLeave"
+          @region-drop="handleRegionDrop"
+          @toolbar-state-change="handleToolbarStateChange('top', $event)"
+          @zoom-change="handleSharedDetailZoomChange"
+          @drag-session-start="handleDeckRawWaveformDragStart('top')"
+          @drag-session-end="handleDeckRawWaveformDragEnd('top', $event)"
+        />
 
-        <div
-          class="detail-lane drop-zone"
-          :class="{ 'is-deck-hover': isDeckHovered('bottom') }"
-          @dragenter.stop.prevent="handleRegionDragEnter(5, $event)"
-          @dragover.stop.prevent="handleRegionDragOver(5, $event)"
-          @dragleave.stop="handleRegionDragLeave(5, $event)"
-          @drop.stop.prevent="handleRegionDrop(5, $event)"
-        >
-          <HorizontalBrowseRawWaveformDetail
-            ref="bottomDetailRef"
-            :song="bottomDeckSong"
-            :shared-zoom-state="sharedDetailZoomState"
-            :current-seconds="bottomDeckRenderCurrentSeconds"
-            :playing="bottomDeckUiPlaying"
-            :playback-rate="bottomDeckPlaybackRate"
-            :grid-bpm="bottomDeckGridBpm"
-            :cue-seconds="bottomDeckCuePointSeconds"
-            :defer-waveform-load="bottomDeckShouldDeferWaveformLoad"
-            direction="down"
-            @toolbar-state-change="handleToolbarStateChange('bottom', $event)"
-            @zoom-change="handleSharedDetailZoomChange"
-            @drag-session-start="handleDeckRawWaveformDragStart('bottom')"
-            @drag-session-end="handleDeckRawWaveformDragEnd('bottom', $event)"
-          />
-        </div>
+        <HorizontalBrowseDeckDetailLane
+          ref="bottomDetailRef"
+          :song="bottomDeckSong"
+          :shared-zoom-state="sharedDetailZoomState"
+          :current-seconds="bottomDeckRenderCurrentSeconds"
+          :playing="bottomDeckUiPlaying"
+          :playback-rate="bottomDeckPlaybackRate"
+          :grid-bpm="bottomDeckGridBpm"
+          :cue-seconds="bottomDeckCuePointSeconds"
+          :defer-waveform-load="bottomDeckShouldDeferWaveformLoad"
+          direction="down"
+          :deck-hovered="isDeckHovered('bottom')"
+          :region-id="5"
+          @region-drag-enter="handleRegionDragEnter"
+          @region-drag-over="handleRegionDragOver"
+          @region-drag-leave="handleRegionDragLeave"
+          @region-drop="handleRegionDrop"
+          @toolbar-state-change="handleToolbarStateChange('bottom', $event)"
+          @zoom-change="handleSharedDetailZoomChange"
+          @drag-session-start="handleDeckRawWaveformDragStart('bottom')"
+          @drag-session-end="handleDeckRawWaveformDragEnd('bottom', $event)"
+        />
       </section>
 
-      <section
-        class="overview overview--bottom"
-        :class="{ 'is-deck-hover': isDeckHovered('bottom') }"
-      >
-        <div
-          v-for="regionId in bottomOverviewRegions"
-          :key="regionId"
-          class="overview__region drop-zone"
-          :class="{
-            'overview__region--deck-info': regionId === 8,
-            'overview__region--muted': regionId === 6,
-            'overview__region--toolbar': regionId === 6
-          }"
-          @dragenter.stop.prevent="handleRegionDragEnter(regionId, $event)"
-          @dragover.stop.prevent="handleRegionDragOver(regionId, $event)"
-          @dragleave.stop="handleRegionDragLeave(regionId, $event)"
-          @drop.stop.prevent="handleRegionDrop(regionId, $event)"
-        >
-          <div v-if="regionId === 6" class="overview__toolbar-row">
-            <MixtapeBeatAlignGridAdjustToolbar
-              :disabled="bottomDeckToolbarState.disabled"
-              :bpm-input-value="resolveDeckToolbarBpmInputValue('bottom')"
-              :bpm-step="bottomDeckToolbarState.bpmStep"
-              :bpm-min="bottomDeckToolbarState.bpmMin"
-              :bpm-max="bottomDeckToolbarState.bpmMax"
-              @set-bar-line="handleDeckSetBarLineAtPlayhead('bottom')"
-              @shift-left-large="handleDeckGridShiftLargeLeft('bottom')"
-              @shift-left-small="handleDeckGridShiftSmallLeft('bottom')"
-              @shift-right-small="handleDeckGridShiftSmallRight('bottom')"
-              @shift-right-large="handleDeckGridShiftLargeRight('bottom')"
-              @update-bpm-input="handleDeckBpmInputUpdate('bottom', $event)"
-              @blur-bpm-input="handleDeckBpmInputBlur('bottom')"
-              @tap-bpm="handleDeckTapBpm('bottom')"
-            />
-            <button
-              type="button"
-              class="overview__set-bar-btn"
-              :class="{ 'is-active': bottomDeckToolbarState.barLinePicking }"
-              :disabled="bottomDeckToolbarState.disabled"
-              @click="handleDeckBarLinePickingToggle('bottom')"
-            >
-              {{
-                bottomDeckToolbarState.barLinePicking
-                  ? t('mixtape.gridAdjustSetBarLineCancel')
-                  : t('mixtape.gridAdjustSetBarLine')
-              }}
-            </button>
-          </div>
-          <HorizontalBrowseWaveformOverview
-            v-else-if="regionId === 7"
-            :song="bottomDeckSong"
-            :current-seconds="bottomDeckRenderCurrentSeconds"
-            :duration-seconds="bottomDeckDurationSeconds"
-            @seek="handleDeckPlayheadSeek('bottom', $event)"
-          />
-          <HorizontalBrowseDeckInfoCard
-            v-else-if="regionId === 8"
-            :song="bottomDeckSong"
-            :beat-sync-enabled="bottomDeckSong ? resolveDeckSyncUiEnabled('bottom') : false"
-            :beat-sync-blinking="
-              bottomDeckSong ? resolveDeckSyncUiLock('bottom') === 'tempo-only' : false
-            "
-            :master-active="bottomDeckSong ? deckSyncState.leaderDeck === 'bottom' : false"
-            :current-seconds="bottomDeckRenderCurrentSeconds"
-            :duration-seconds="bottomDeckDurationSeconds"
-            @trigger-beat-sync="triggerDeckBeatSync('bottom')"
-            @toggle-master="toggleDeckMaster('bottom')"
-            @eject-song="handleDeckEjectSong('bottom')"
-          />
-        </div>
-      </section>
+      <HorizontalBrowseDeckOverviewSection
+        position="bottom"
+        :region-ids="bottomOverviewRegions"
+        deck="bottom"
+        :deck-hovered="isDeckHovered('bottom')"
+        :song="bottomDeckSong"
+        :beat-sync-enabled="bottomDeckSong ? resolveDeckSyncUiEnabled('bottom') : false"
+        :beat-sync-blinking="
+          bottomDeckSong ? resolveDeckSyncUiLock('bottom') === 'tempo-only' : false
+        "
+        :master-active="bottomDeckSong ? deckSyncState.leaderDeck === 'bottom' : false"
+        :current-seconds="bottomDeckRenderCurrentSeconds"
+        :duration-seconds="bottomDeckDurationSeconds"
+        :toolbar-state="resolveDeckToolbarState('bottom')"
+        :read-only-source="isDeckSongReadOnly('bottom')"
+        @region-drag-enter="handleRegionDragEnter"
+        @region-drag-over="handleRegionDragOver"
+        @region-drag-leave="handleRegionDragLeave"
+        @region-drop="handleRegionDrop"
+        @trigger-beat-sync="triggerDeckBeatSync('bottom')"
+        @toggle-master="toggleDeckMaster('bottom')"
+        @eject-song="handleDeckEjectSong('bottom')"
+        @seek="handleDeckPlayheadSeek('bottom', $event)"
+        @set-bar-line="handleDeckSetBarLineAtPlayhead('bottom')"
+        @shift-left-large="handleDeckGridShiftLargeLeft('bottom')"
+        @shift-left-small="handleDeckGridShiftSmallLeft('bottom')"
+        @shift-right-small="handleDeckGridShiftSmallRight('bottom')"
+        @shift-right-large="handleDeckGridShiftLargeRight('bottom')"
+        @update-bpm-input="handleDeckBpmInputUpdate('bottom', $event)"
+        @blur-bpm-input="handleDeckBpmInputBlur('bottom')"
+        @tap-bpm="handleDeckTapBpm('bottom')"
+        @toggle-bar-line-picking="handleDeckBarLinePickingToggle('bottom')"
+        @select-move-target="openDeckMoveDialog('bottom', $event)"
+      />
     </div>
+
+    <HorizontalBrowseDeckMoveDialog
+      :visible="selectSongListDialogVisible"
+      :library-name="selectSongListDialogTargetLibraryName"
+      @confirm="handleDeckMoveSong"
+      @cancel="handleDeckMoveDialogCancel"
+    />
   </div>
 </template>
 

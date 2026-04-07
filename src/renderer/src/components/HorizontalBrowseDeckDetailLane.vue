@@ -1,0 +1,75 @@
+<script setup lang="ts">
+import { ref } from 'vue'
+import type { ISongInfo } from 'src/types/globals'
+import HorizontalBrowseRawWaveformDetail from '@renderer/components/HorizontalBrowseRawWaveformDetail.vue'
+
+const props = defineProps<{
+  song: ISongInfo | null
+  sharedZoomState: any
+  currentSeconds: number
+  playing: boolean
+  playbackRate: number
+  gridBpm: number
+  cueSeconds: number
+  deferWaveformLoad: boolean
+  direction: 'up' | 'down'
+  deckHovered: boolean
+  regionId: number
+}>()
+
+const emit = defineEmits<{
+  (event: 'region-drag-enter', regionId: number, dragEvent: DragEvent): void
+  (event: 'region-drag-over', regionId: number, dragEvent: DragEvent): void
+  (event: 'region-drag-leave', regionId: number, dragEvent: DragEvent): void
+  (event: 'region-drop', regionId: number, dragEvent: DragEvent): void
+  (event: 'toolbar-state-change', value: any): void
+  (
+    event: 'zoom-change',
+    value: { value: number; anchorRatio: number; sourceDirection: 'up' | 'down' }
+  ): void
+  (event: 'drag-session-start'): void
+  (event: 'drag-session-end', payload: { anchorSec: number; committed: boolean }): void
+}>()
+
+const detailRef = ref<any | null>(null)
+
+defineExpose({
+  toggleBarLinePicking: () => detailRef.value?.toggleBarLinePicking?.(),
+  setBarLineAtPlayhead: () => detailRef.value?.setBarLineAtPlayhead?.(),
+  shiftGridLargeLeft: () => detailRef.value?.shiftGridLargeLeft?.(),
+  shiftGridSmallLeft: () => detailRef.value?.shiftGridSmallLeft?.(),
+  shiftGridSmallRight: () => detailRef.value?.shiftGridSmallRight?.(),
+  shiftGridLargeRight: () => detailRef.value?.shiftGridLargeRight?.(),
+  updateBpmInput: (value: string) => detailRef.value?.updateBpmInput?.(value),
+  blurBpmInput: () => detailRef.value?.blurBpmInput?.(),
+  tapBpm: () => detailRef.value?.tapBpm?.()
+})
+</script>
+
+<template>
+  <div
+    class="detail-lane drop-zone"
+    :class="{ 'is-deck-hover': props.deckHovered }"
+    @dragenter.stop.prevent="emit('region-drag-enter', props.regionId, $event)"
+    @dragover.stop.prevent="emit('region-drag-over', props.regionId, $event)"
+    @dragleave.stop="emit('region-drag-leave', props.regionId, $event)"
+    @drop.stop.prevent="emit('region-drop', props.regionId, $event)"
+  >
+    <HorizontalBrowseRawWaveformDetail
+      ref="detailRef"
+      :song="props.song"
+      :shared-zoom-state="props.sharedZoomState"
+      :current-seconds="props.currentSeconds"
+      :playing="props.playing"
+      :playback-rate="props.playbackRate"
+      :grid-bpm="props.gridBpm"
+      :cue-seconds="props.cueSeconds"
+      :defer-waveform-load="props.deferWaveformLoad"
+      :direction="props.direction"
+      @toolbar-state-change="emit('toolbar-state-change', $event)"
+      @zoom-change="emit('zoom-change', $event)"
+      @drag-session-start="emit('drag-session-start')"
+      @drag-session-end="emit('drag-session-end', $event)"
+    />
+  </div>
+</template>

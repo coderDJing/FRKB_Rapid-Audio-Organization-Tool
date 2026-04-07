@@ -195,6 +195,7 @@
     "createEqMixtape": "新建 EQ Mixtape 自动录制歌单",
     "createFolder": "新建文件夹",
     "rightClickToCreate": "右键新建歌单",
+    "moveSong": "移动歌曲",
     "moveToFilter": "移动到筛选库",
     "moveToCurated": "移动到精选库",
     "addToMixtape": "加入 Mixtape 自动录制",

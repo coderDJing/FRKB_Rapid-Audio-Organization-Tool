@@ -14,6 +14,7 @@ import {
 } from '../utils'
 import { isSupportedAudioPath } from '../services/externalOpenQueue'
 import { moveFileToRecycleBin, normalizeRendererPlaylistPath } from '../recycleBinService'
+import { findLibraryNodeByPath, findSongListRootByPath } from '../libraryTreeDb'
 
 export function registerPlaylistHandlers() {
   ipcMain.handle(
@@ -60,6 +61,28 @@ export function registerPlaylistHandlers() {
       return Array.isArray(files) ? files.length : 0
     } catch {
       return 0
+    }
+  })
+
+  ipcMain.handle('songList:resolve-by-file-path', async (_e, rawFilePath?: string) => {
+    try {
+      const filePath = String(rawFilePath || '').trim()
+      if (!filePath) {
+        return { songListUuid: '', songListPath: '' }
+      }
+      const songListRoot = await findSongListRootByPath(path.dirname(filePath))
+      if (!songListRoot) {
+        return { songListUuid: '', songListPath: '' }
+      }
+      const relativeSongListPath = path.relative(store.databaseDir, songListRoot)
+      const node = findLibraryNodeByPath(relativeSongListPath)
+      return {
+        songListUuid: String(node?.uuid || ''),
+        songListPath: relativeSongListPath
+      }
+    } catch (error) {
+      log.warn('songList:resolve-by-file-path failed', error)
+      return { songListUuid: '', songListPath: '' }
     }
   })
 
