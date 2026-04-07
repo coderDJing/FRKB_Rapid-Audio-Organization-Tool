@@ -30,6 +30,7 @@ import {
   type KeyAnalysisFailureReason,
   type KeyAnalysisFailureRecord,
   type KeyAnalysisJob,
+  type KeyAnalysisPreemptionKind,
   type KeyAnalysisPriority,
   type KeyAnalysisProgress,
   type KeyAnalysisSource
@@ -49,7 +50,8 @@ export class KeyAnalysisQueue {
   private activeByPath = new Map<string, KeyAnalysisJob>()
   private busy = new Map<Worker, number>()
   private inFlight = new Map<number, KeyAnalysisJob>()
-  private preemptedJobIds = new Set<number>()
+  private preemptedJobs = new Map<number, KeyAnalysisPreemptionKind>()
+  private focusPathBySlot = new Map<string, string>()
   private doneByPath = new Map<string, DoneEntry>()
   private failedByPath = new Map<string, KeyAnalysisFailureRecord>()
   private failureProbeInFlight = new Set<string>()
@@ -95,7 +97,7 @@ export class KeyAnalysisQueue {
       busy: this.busy,
       inFlight: this.inFlight,
       activeByPath: this.activeByPath,
-      preemptedJobIds: this.preemptedJobIds,
+      preemptedJobs: this.preemptedJobs,
       getForegroundWorker: () => this.foregroundWorker,
       setForegroundWorker: (worker) => {
         this.foregroundWorker = worker
@@ -134,6 +136,7 @@ export class KeyAnalysisQueue {
       urgent?: boolean
       source?: KeyAnalysisSource
       fastAnalysis?: boolean
+      focusSlot?: string
     } = {}
   ) {
     if (!filePath) return
@@ -141,10 +144,18 @@ export class KeyAnalysisQueue {
     this.background.clearBackgroundTimer()
     const normalizedPath = normalizePath(filePath)
     const source = options.source || (priority === 'background' ? 'background' : 'foreground')
+    const focusSlot = this.normalizeFocusSlot(options.focusSlot)
     if (source === 'foreground') {
       this.background.touchForeground()
     }
-    if (this.activeByPath.has(normalizedPath)) return
+    if (focusSlot) {
+      this.releaseFocusSlotFromPreviousAssignment(focusSlot, normalizedPath)
+    }
+    const active = this.activeByPath.get(normalizedPath)
+    if (active) {
+      this.addFocusSlotToJob(active, focusSlot)
+      return
+    }
     const existing = this.pendingByPath.get(normalizedPath)
     if (existing) {
       if (this.isHigherPriority(priority, existing.priority)) {
@@ -154,7 +165,10 @@ export class KeyAnalysisQueue {
         if (options.fastAnalysis !== undefined) {
           existing.fastAnalysis = options.fastAnalysis
         }
+        this.addFocusSlotToJob(existing, focusSlot)
         this.addPending(existing, options.urgent)
+      } else {
+        this.addFocusSlotToJob(existing, focusSlot)
       }
       if (options.urgent && existing.priority === 'high') {
         this.removePending(existing)
@@ -171,6 +185,7 @@ export class KeyAnalysisQueue {
       fastAnalysis: options.fastAnalysis ?? false,
       source
     }
+    this.addFocusSlotToJob(job, focusSlot)
     this.addPending(job, options.urgent)
     if (source === 'foreground') {
       this.workerPool.maybePreemptBackground()
@@ -185,6 +200,7 @@ export class KeyAnalysisQueue {
       urgent?: boolean
       source?: KeyAnalysisSource
       fastAnalysis?: boolean
+      focusSlot?: string
     } = {}
   ) {
     if (!Array.isArray(filePaths) || filePaths.length === 0) return
@@ -215,6 +231,73 @@ export class KeyAnalysisQueue {
   private isHigherPriority(next: KeyAnalysisPriority, current: KeyAnalysisPriority): boolean {
     const rank = { high: 4, medium: 3, low: 2, background: 1 }
     return rank[next] > rank[current]
+  }
+
+  private normalizeFocusSlot(value: unknown): string {
+    if (typeof value !== 'string') return ''
+    return value.trim().toLowerCase()
+  }
+
+  private addFocusSlotToJob(job: KeyAnalysisJob, focusSlot?: string) {
+    const normalizedSlot = this.normalizeFocusSlot(focusSlot)
+    if (!normalizedSlot) return
+    const currentSlots = Array.isArray(job.focusSlots) ? job.focusSlots.filter(Boolean) : []
+    if (!currentSlots.includes(normalizedSlot)) {
+      job.focusSlots = [...currentSlots, normalizedSlot]
+    } else {
+      job.focusSlots = currentSlots
+    }
+    this.focusPathBySlot.set(normalizedSlot, job.normalizedPath)
+  }
+
+  private removeFocusSlotFromJob(job: KeyAnalysisJob, focusSlot: string) {
+    const normalizedSlot = this.normalizeFocusSlot(focusSlot)
+    if (!normalizedSlot || !Array.isArray(job.focusSlots) || job.focusSlots.length === 0) return
+    const nextSlots = job.focusSlots.filter(
+      (slot) => this.normalizeFocusSlot(slot) !== normalizedSlot
+    )
+    job.focusSlots = nextSlots.length > 0 ? nextSlots : undefined
+  }
+
+  private hasActiveFocusSlot(job: KeyAnalysisJob): boolean {
+    return Array.isArray(job.focusSlots) && job.focusSlots.length > 0
+  }
+
+  private findWorkerByJobId(jobId: number): Worker | null {
+    for (const [worker, activeJobId] of this.busy.entries()) {
+      if (activeJobId === jobId) {
+        return worker
+      }
+    }
+    return null
+  }
+
+  private releaseFocusSlotFromPreviousAssignment(focusSlot: string, nextNormalizedPath: string) {
+    const previousNormalizedPath = this.focusPathBySlot.get(focusSlot)
+    if (!previousNormalizedPath || previousNormalizedPath === nextNormalizedPath) {
+      this.focusPathBySlot.set(focusSlot, nextNormalizedPath)
+      return
+    }
+
+    const previousJob =
+      this.activeByPath.get(previousNormalizedPath) ||
+      this.pendingByPath.get(previousNormalizedPath)
+    if (previousJob) {
+      this.removeFocusSlotFromJob(previousJob, focusSlot)
+      if (!this.hasActiveFocusSlot(previousJob)) {
+        if (this.pendingByPath.get(previousNormalizedPath) === previousJob) {
+          this.removePending(previousJob)
+        } else {
+          const worker = this.findWorkerByJobId(previousJob.jobId)
+          if (worker) {
+            this.preemptedJobs.set(previousJob.jobId, 'focus-superseded')
+            void worker.terminate().catch(() => {})
+          }
+        }
+      }
+    }
+
+    this.focusPathBySlot.set(focusSlot, nextNormalizedPath)
   }
 
   private addPending(job: KeyAnalysisJob, urgent?: boolean) {

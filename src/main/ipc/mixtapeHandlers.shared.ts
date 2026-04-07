@@ -18,7 +18,7 @@ import { resolveMissingMixtapeFilePath } from '../recycleBinService'
 const resolveKeyAnalysisWorkerPath = () => path.join(__dirname, 'workers', 'keyAnalysisWorker.js')
 
 export type MixtapeBpmAnalyzeResult = {
-  results: Array<{ filePath: string; bpm: number; firstBeatMs: number }>
+  results: Array<{ filePath: string; bpm: number; firstBeatMs: number; barBeatOffset?: number }>
   unresolved: string[]
   unresolvedDetails: Array<{ filePath: string; reason: string }>
 }
@@ -102,7 +102,12 @@ const analyzeMixtapeBpmBatch = async (
   const busy = new Map<Worker, number>()
   const jobMap = new Map<number, string>()
   const unresolved = new Set<string>(unique)
-  const results: Array<{ filePath: string; bpm: number; firstBeatMs: number }> = []
+  const results: Array<{
+    filePath: string
+    bpm: number
+    firstBeatMs: number
+    barBeatOffset?: number
+  }> = []
   const unresolvedReasons = new Map<string, string>()
   let cursor = 0
   let jobId = 0
@@ -254,7 +259,11 @@ const analyzeMixtapeBpmBatch = async (
             Number.isFinite(rawFirstBeatMs) && rawFirstBeatMs >= 0
               ? Number(rawFirstBeatMs.toFixed(3))
               : 0
-          results.push({ filePath, bpm: bpmValue, firstBeatMs })
+          const rawBarBeatOffset = Number(payload?.result?.barBeatOffset)
+          const barBeatOffset = Number.isFinite(rawBarBeatOffset)
+            ? ((Math.round(rawBarBeatOffset) % 32) + 32) % 32
+            : undefined
+          results.push({ filePath, bpm: bpmValue, firstBeatMs, barBeatOffset })
           unresolved.delete(filePath)
         } else {
           const reason =
@@ -338,6 +347,7 @@ export const analyzeMixtapeBpmBatchShared = async (filePaths: string[]) => {
         filePath: string
         bpm: number
         firstBeatMs: number
+        barBeatOffset?: number
       }
     >()
     const unresolvedReasonMap = new Map<string, string>()
@@ -362,7 +372,11 @@ export const analyzeMixtapeBpmBatchShared = async (filePaths: string[]) => {
         resultMap.set(normalizedPath, {
           filePath: item.filePath,
           bpm: item.bpm,
-          firstBeatMs: Number(item.firstBeatMs.toFixed(3))
+          firstBeatMs: Number(item.firstBeatMs.toFixed(3)),
+          barBeatOffset:
+            typeof item.barBeatOffset === 'number' && Number.isFinite(item.barBeatOffset)
+              ? ((Math.round(item.barBeatOffset) % 32) + 32) % 32
+              : undefined
         })
         unresolvedReasonMap.delete(normalizedPath)
       }

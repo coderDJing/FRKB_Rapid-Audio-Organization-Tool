@@ -7,7 +7,7 @@ notices are provided to comply with their respective licenses.
 - Project: Mixxx DJ software
 - Source: https://github.com/mixxxdj/mixxx
 - License: GPL-2.0-or-later
-- Usage: Mixxx RGB waveform analysis logic and Bessel filter design aligned with Mixxx 2.5.4
+- Usage: Mixxx RGB waveform analysis logic, beatgrid anchor/phase adjustment logic, and Bessel filter design aligned with Mixxx 2.5.4
 
 ## QM DSP Library
 - Project: QM DSP Library (Queen Mary University of London)

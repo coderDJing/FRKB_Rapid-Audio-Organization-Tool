@@ -61,7 +61,8 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
 
   const syncGridStateFromSong = () => {
     params.previewBpm.value = params.resolveDisplayGridBpm()
-    params.previewBpmInput.value = formatPreviewBpm(params.previewBpm.value)
+    params.previewBpmInput.value =
+      params.previewBpm.value > 0 ? formatPreviewBpm(params.previewBpm.value) : ''
     params.previewFirstBeatMs.value = Math.max(0, params.resolveSongFirstBeatMs())
     params.previewBarBeatOffset.value = normalizeBeatOffset(
       params.resolveSongBarBeatOffset(),

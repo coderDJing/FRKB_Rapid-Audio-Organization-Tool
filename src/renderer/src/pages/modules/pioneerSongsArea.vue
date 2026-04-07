@@ -576,8 +576,12 @@ const handleSongContextMenu = async (event: MouseEvent, song: ISongInfo) => {
 const requestImmediateAnalysis = (song: ISongInfo) => {
   const filePath = song?.filePath
   if (!filePath) return
+  if (runtime.mainWindowBrowseMode === 'horizontal') return
   try {
-    window.electron.ipcRenderer.send('key-analysis:queue-playing', { filePath })
+    window.electron.ipcRenderer.send('key-analysis:queue-playing', {
+      filePath,
+      focusSlot: 'main-player'
+    })
   } catch {}
 }
 

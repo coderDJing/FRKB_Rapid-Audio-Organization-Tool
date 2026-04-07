@@ -109,8 +109,8 @@ const previewStartSec = ref(0)
 const dragging = ref(false)
 const previewBarBeatOffset = ref(0)
 const previewFirstBeatMs = ref(0)
-const previewBpm = ref(normalizePreviewBpm(128))
-const previewBpmInput = ref(formatPreviewBpm(128))
+const previewBpm = ref(0)
+const previewBpmInput = ref('')
 const bpmTapTimestamps = ref<number[]>([])
 const previewZoom = ref(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
 const gridRenderer = createBeatAlignPreviewRenderer()
@@ -161,7 +161,9 @@ const resolveVisibleDurationSec = () =>
 const resolveDisplayGridBpm = () =>
   Number.isFinite(Number(props.gridBpm)) && Number(props.gridBpm) > 0
     ? normalizePreviewBpm(Number(props.gridBpm))
-    : normalizePreviewBpm(props.song?.bpm)
+    : Number.isFinite(Number(props.song?.bpm)) && Number(props.song?.bpm) > 0
+      ? normalizePreviewBpm(Number(props.song?.bpm))
+      : 0
 
 const resolvePreviewAnchorSec = () => {
   const duration = resolvePreviewDurationSec()
@@ -554,7 +556,7 @@ const drawWaveform = () => {
   gridRenderer.draw({
     canvas: gridCanvas,
     wrap,
-    bpm: Number(previewBpm.value) || 128,
+    bpm: Number(previewBpm.value) || 0,
     firstBeatMs: Number(previewFirstBeatMs.value) || 0,
     barBeatOffset: Number(previewBarBeatOffset.value) || 0,
     rangeStartSec: renderStartSec,
@@ -565,7 +567,7 @@ const drawWaveform = () => {
     showDetailHighlights: false,
     showCenterLine: false,
     showBackground: false,
-    showBeatGrid: true,
+    showBeatGrid: Number(previewBpm.value) > 0,
     allowScrollReuse: false,
     waveformLayout: resolveWaveformLayout()
   })

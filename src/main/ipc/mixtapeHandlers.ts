@@ -20,7 +20,6 @@ import {
   reorderMixtapeItems,
   upsertMixtapeProjectMixMode,
   upsertMixtapeProjectStemProfile,
-  upsertMixtapeItemBpmByFilePath,
   upsertMixtapeItemGridByFilePath,
   upsertMixtapeItemGainEnvelopeById,
   upsertMixtapeItemMixEnvelopeById,
@@ -590,12 +589,13 @@ export function registerMixtapeHandlers() {
           void analyzeMixtapeBpmBatchShared(bpmAnalyzeFilePaths)
             .then((bpmResult) => {
               if (bpmResult.results.length > 0) {
-                upsertMixtapeItemBpmByFilePath(bpmResult.results)
+                upsertMixtapeItemGridByFilePath(bpmResult.results)
                 void persistAndBroadcastSharedGridBatch(
                   bpmResult.results.map((item) => ({
                     filePath: item.filePath,
                     bpm: item.bpm,
-                    firstBeatMs: item.firstBeatMs
+                    firstBeatMs: item.firstBeatMs,
+                    barBeatOffset: item.barBeatOffset
                   }))
                 )
                 try {
@@ -658,12 +658,13 @@ export function registerMixtapeHandlers() {
     try {
       const result = await analyzeMixtapeBpmBatchShared(input)
       if (result.results.length > 0) {
-        upsertMixtapeItemBpmByFilePath(result.results)
+        upsertMixtapeItemGridByFilePath(result.results)
         await persistAndBroadcastSharedGridBatch(
           result.results.map((item) => ({
             filePath: item.filePath,
             bpm: item.bpm,
-            firstBeatMs: item.firstBeatMs
+            firstBeatMs: item.firstBeatMs,
+            barBeatOffset: item.barBeatOffset
           }))
         )
       }

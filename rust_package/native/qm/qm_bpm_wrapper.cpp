@@ -26,6 +26,17 @@ struct ConstRegion {
     double beatLength;
 };
 
+struct BeatGridEstimate {
+    double bpm = 0.0;
+    double beatLength = 0.0;
+    double firstBeat = std::numeric_limits<double>::quiet_NaN();
+
+    bool isValid() const {
+        return bpm > 0.0 && beatLength > 0.0 &&
+                std::isfinite(firstBeat) && firstBeat >= 0.0;
+    }
+};
+
 DFConfig make_detection_function_config(int stepSizeFrames, int windowSize) {
     DFConfig config;
     config.DFType = DF_COMPLEXSD;
@@ -44,6 +55,60 @@ double calculate_average_bpm(int numberOfBeats, double sampleRate, double lowerF
         return 0.0;
     }
     return 60.0 * numberOfBeats * sampleRate / frames;
+}
+
+double normalize_first_beat(double firstBeat, double beatLength) {
+    if (!std::isfinite(firstBeat) || !std::isfinite(beatLength) || beatLength <= 0.0) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    double normalized = std::fmod(firstBeat, beatLength);
+    if (normalized < 0.0) {
+        normalized += beatLength;
+    }
+    if (normalized >= beatLength) {
+        normalized = std::fmod(normalized, beatLength);
+    }
+    return normalized;
+}
+
+// Adapted from Mixxx BeatUtils/BeatFactory: the BPM estimate may stay raw,
+// but the anchor beat should be folded back near track start and phase-fitted
+// against all detected beats instead of blindly taking the first detected beat.
+double adjust_phase(double firstBeat,
+        double beatLength,
+        const std::vector<double>& beats,
+        double sampleRate) {
+    const double normalizedFirstBeat = normalize_first_beat(firstBeat, beatLength);
+    if (!std::isfinite(normalizedFirstBeat) || beats.empty() || sampleRate <= 0.0) {
+        return normalizedFirstBeat;
+    }
+
+    double offsetAdjust = 0.0;
+    int offsetAdjustCount = 0;
+    for (double beat : beats) {
+        if (!std::isfinite(beat)) {
+            continue;
+        }
+        double offset = std::fmod(beat - normalizedFirstBeat, beatLength);
+        if (offset < 0.0) {
+            offset += beatLength;
+        }
+        if (offset > beatLength / 2.0) {
+            offset -= beatLength;
+        }
+        if (std::fabs(offset) < (kMaxSecsPhaseError * sampleRate)) {
+            offsetAdjust += offset;
+            offsetAdjustCount++;
+        }
+    }
+
+    if (offsetAdjustCount <= 0) {
+        return normalizedFirstBeat;
+    }
+
+    return normalize_first_beat(
+            normalizedFirstBeat + (offsetAdjust / offsetAdjustCount),
+            beatLength);
 }
 
 std::vector<ConstRegion> retrieve_const_regions(const std::vector<double>& coarseBeats, double sampleRate) {
@@ -101,9 +166,9 @@ std::vector<ConstRegion> retrieve_const_regions(const std::vector<double>& coars
     return constantRegions;
 }
 
-double make_const_bpm(const std::vector<ConstRegion>& constantRegions, double sampleRate) {
+BeatGridEstimate make_const_grid(const std::vector<ConstRegion>& constantRegions, double sampleRate) {
     if (constantRegions.empty()) {
-        return 0.0;
+        return {};
     }
 
     int midRegionIndex = 0;
@@ -119,7 +184,7 @@ double make_const_bpm(const std::vector<ConstRegion>& constantRegions, double sa
     }
 
     if (longestRegionLength == 0.0 || longestRegionBeatLength == 0.0) {
-        return 0.0;
+        return {};
     }
 
     int longestRegionNumberOfBeats = static_cast<int>(
@@ -223,23 +288,53 @@ double make_const_bpm(const std::vector<ConstRegion>& constantRegions, double sa
 
     // Keep the raw tempo estimate for downstream grid math instead of snapping it to
     // "nice" BPM values like integers or coarse fractions.
-    return centerBpm;
+    return {
+        centerBpm,
+        longestRegionBeatLength,
+        normalize_first_beat(constantRegions[startRegionIndex].firstBeat, longestRegionBeatLength)
+    };
 }
 
-double calculate_bpm(const std::vector<double>& beats, double sampleRate) {
+BeatGridEstimate calculate_beat_grid(const std::vector<double>& beats, double sampleRate) {
     if (beats.size() < 2 || sampleRate <= 0.0) {
-        return 0.0;
+        return {};
     }
 
-    if (beats.size() < kMinRegionBeatCount) {
-        return calculate_average_bpm(static_cast<int>(beats.size()) - 1,
+    if (beats.size() < kMinRegionBeatCount || beats.front() >= beats.back()) {
+        const double bpm = calculate_average_bpm(static_cast<int>(beats.size()) - 1,
                 sampleRate,
                 beats.front(),
                 beats.back());
+        if (bpm <= 0.0) {
+            return {};
+        }
+        const double beatLength = (beats.back() - beats.front()) /
+                static_cast<double>(beats.size() - 1);
+        const double firstBeat = adjust_phase(beats.front(), beatLength, beats, sampleRate);
+        return {bpm, beatLength, firstBeat};
     }
 
     const auto constantRegions = retrieve_const_regions(beats, sampleRate);
-    return make_const_bpm(constantRegions, sampleRate);
+    auto estimate = make_const_grid(constantRegions, sampleRate);
+    if (!estimate.isValid()) {
+        const double bpm = calculate_average_bpm(static_cast<int>(beats.size()) - 1,
+                sampleRate,
+                beats.front(),
+                beats.back());
+        if (bpm <= 0.0) {
+            return {};
+        }
+        const double beatLength = (beats.back() - beats.front()) /
+                static_cast<double>(beats.size() - 1);
+        const double firstBeat = adjust_phase(beats.front(), beatLength, beats, sampleRate);
+        return {bpm, beatLength, firstBeat};
+    }
+    estimate.firstBeat = adjust_phase(
+            estimate.firstBeat,
+            estimate.beatLength,
+            beats,
+            sampleRate);
+    return estimate;
 }
 
 } // namespace
@@ -310,11 +405,15 @@ class QmBpmDetector {
         for (double beat : beats) {
             beatPositions.push_back((beat * m_stepSizeFrames) + m_stepSizeFrames / 2.0);
         }
+        const auto estimate = calculate_beat_grid(beatPositions, m_sampleRate);
+        if (estimate.isValid()) {
+            m_firstBeatFrame = estimate.firstBeat;
+            return estimate.bpm;
+        }
         if (!beatPositions.empty()) {
             m_firstBeatFrame = beatPositions.front();
         }
-
-        return calculate_bpm(beatPositions, m_sampleRate);
+        return 0.0;
     }
 
     double firstBeatFrame() const {

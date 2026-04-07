@@ -77,6 +77,7 @@ export type KeyAnalysisJob = {
   priority: KeyAnalysisPriority
   fastAnalysis: boolean
   source: KeyAnalysisSource
+  focusSlots?: string[]
   needsKey?: boolean
   needsBpm?: boolean
   needsWaveform?: boolean
@@ -91,6 +92,8 @@ export type KeyAnalysisJob = {
 }
 
 export type KeyAnalysisFailureReason = 'timeout' | 'worker-exit' | 'worker-error'
+
+export type KeyAnalysisPreemptionKind = 'background-resume' | 'focus-superseded'
 
 export type KeyAnalysisFailureRecord = {
   size: number
@@ -115,6 +118,7 @@ export type BpmAnalysisResult = {
   filePath: string
   bpm: number
   firstBeatMs?: number
+  barBeatOffset?: number
 }
 
 export type DoneEntry = {
@@ -123,6 +127,7 @@ export type DoneEntry = {
   keyText?: string
   bpm?: number
   firstBeatMs?: number
+  barBeatOffset?: number
   hasWaveform?: boolean
 }
 
@@ -139,6 +144,7 @@ export type KeyAnalysisWorkerPartialResult = {
   keyError?: string
   bpm?: number
   firstBeatMs?: number
+  barBeatOffset?: number
   bpmError?: string
 }
 
@@ -178,6 +184,9 @@ export const isValidBpm = (value: unknown): value is number =>
 
 export const isValidFirstBeatMs = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0
+
+export const isValidBarBeatOffset = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value)
 
 export const BACKGROUND_IDLE_DELAY_MS = 3000
 export const BACKGROUND_SCAN_COOLDOWN_MS = 5000

@@ -40,7 +40,7 @@ export function enqueueKeyAnalysisList(
 
 export function enqueueKeyAnalysisImmediate(
   filePath: string,
-  options: { fastAnalysis?: boolean } = {}
+  options: { fastAnalysis?: boolean; focusSlot?: string } = {}
 ) {
   getQueue().enqueue(filePath, 'high', { urgent: true, ...options })
 }

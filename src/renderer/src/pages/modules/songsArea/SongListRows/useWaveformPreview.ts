@@ -282,6 +282,10 @@ export function useWaveformPreview(params: {
   )
   const waveformVisible = computed(() => Boolean(waveformColumn.value))
   const waveformColumnWidth = computed(() => waveformColumn.value?.width ?? 0)
+  const normalizePath = (value: string | undefined | null) =>
+    String(value || '')
+      .replace(/\//g, '\\')
+      .toLowerCase()
   const canvasMap = markRaw(new Map<string, HTMLCanvasElement>())
   const dataMap = markRaw(new Map<string, WaveformCacheEntry>())
   const placeholderStateMap = markRaw(new Map<string, WaveformPlaceholderState>())
@@ -324,9 +328,11 @@ export function useWaveformPreview(params: {
     return paths
   }
   const resolveVisibleSongByFilePath = (filePath: string) => {
+    const normalizedTargetPath = normalizePath(filePath)
     return (
-      visibleSongsWithIndex.value.find((item) => String(item?.song?.filePath || '') === filePath)
-        ?.song || null
+      visibleSongsWithIndex.value.find(
+        (item) => normalizePath(String(item?.song?.filePath || '')) === normalizedTargetPath
+      )?.song || null
     )
   }
   const buildPioneerStreamRequestId = () =>
@@ -780,8 +786,10 @@ export function useWaveformPreview(params: {
   const handleWaveformUpdated = (_event: unknown, payload: { filePath?: string }) => {
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
     if (!filePath || !waveformVisible.value) return
-    if (!canvasMap.has(filePath)) return
     const song = resolveVisibleSongByFilePath(filePath)
+    const visibleFilePath = typeof song?.filePath === 'string' ? song.filePath : ''
+    if (!visibleFilePath) return
+    if (!canvasMap.has(visibleFilePath)) return
     if (
       resolveSongExternalWaveformSource(song, {
         rootPath: resolveExternalRootPath(),
@@ -790,10 +798,10 @@ export function useWaveformPreview(params: {
     ) {
       return
     }
-    setWaveformPlaceholderLoading(filePath)
-    dataMap.delete(filePath)
-    queuedMissing.delete(filePath)
-    void fetchWaveformBatch([filePath])
+    setWaveformPlaceholderLoading(visibleFilePath)
+    dataMap.delete(visibleFilePath)
+    queuedMissing.delete(visibleFilePath)
+    void fetchWaveformBatch([visibleFilePath])
   }
   const handlePioneerPreviewWaveformItem = (
     _event: unknown,

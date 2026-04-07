@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import type { IPioneerPreviewWaveformData, ISongInfo } from 'src/types/globals'
+import { isSameHorizontalBrowseSongFilePath } from '@renderer/components/horizontalBrowseShellSongs'
 import {
   getRekordboxPreviewWaveformRequestChannel,
   resolveSongExternalWaveformSource
@@ -644,6 +645,14 @@ watch(
   }
 )
 
+const handleSongWaveformUpdated = (_event: unknown, payload: { filePath?: string }) => {
+  const filePath = String(payload?.filePath || '').trim()
+  const currentSongFilePath = String(props.song?.filePath || '').trim()
+  if (!filePath || !currentSongFilePath) return
+  if (!isSameHorizontalBrowseSongFilePath(filePath, currentSongFilePath)) return
+  void loadWaveform()
+}
+
 onMounted(() => {
   if (containerRef.value) {
     resizeObserver = new ResizeObserver(() => {
@@ -651,6 +660,7 @@ onMounted(() => {
     })
     resizeObserver.observe(containerRef.value)
   }
+  window.electron.ipcRenderer.on('song-waveform-updated', handleSongWaveformUpdated)
   drawWaveform()
 })
 
@@ -665,6 +675,7 @@ onUnmounted(() => {
     resizeObserver.disconnect()
     resizeObserver = null
   }
+  window.electron.ipcRenderer.removeListener('song-waveform-updated', handleSongWaveformUpdated)
 })
 </script>
 

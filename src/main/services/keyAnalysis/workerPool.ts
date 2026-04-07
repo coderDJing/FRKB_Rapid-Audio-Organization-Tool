@@ -9,6 +9,7 @@ import {
   isValidKeyText,
   type KeyAnalysisFailureReason,
   type KeyAnalysisJob,
+  type KeyAnalysisPreemptionKind,
   type KeyAnalysisProgress,
   type KeyAnalysisPriority,
   type WorkerPayload
@@ -20,7 +21,7 @@ type KeyAnalysisWorkerPoolDeps = {
   busy: Map<Worker, number>
   inFlight: Map<number, KeyAnalysisJob>
   activeByPath: Map<string, KeyAnalysisJob>
-  preemptedJobIds: Set<number>
+  preemptedJobs: Map<number, KeyAnalysisPreemptionKind>
   getForegroundWorker: () => Worker | null
   setForegroundWorker: (worker: Worker | null) => void
   persistence: KeyAnalysisPersistence
@@ -88,7 +89,12 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     }
 
     if (!partialResult.bpmError && isValidBpm(partialResult.bpm)) {
-      await deps.persistence.persistBpm(job.filePath, partialResult.bpm, partialResult.firstBeatMs)
+      await deps.persistence.persistBpm(
+        job.filePath,
+        partialResult.bpm,
+        partialResult.firstBeatMs,
+        partialResult.barBeatOffset
+      )
       bpmPersisted = true
     }
 
@@ -101,7 +107,8 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
 
   const handleWorkerFailure = (worker: Worker, error: Error) => {
     const jobId = deps.busy.get(worker)
-    const wasPreempted = typeof jobId === 'number' && deps.preemptedJobIds.has(jobId)
+    const preemptionKind = typeof jobId === 'number' ? deps.preemptedJobs.get(jobId) : undefined
+    const wasPreempted = preemptionKind !== undefined
     const wasForegroundWorker = deps.getForegroundWorker() === worker
     let preemptedJob: KeyAnalysisJob | null = null
     let job: KeyAnalysisJob | undefined
@@ -146,8 +153,8 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
         deps.inFlight.delete(jobId)
       }
       if (wasPreempted) {
-        deps.preemptedJobIds.delete(jobId)
-        if (job) {
+        deps.preemptedJobs.delete(jobId)
+        if (job && preemptionKind === 'background-resume') {
           preemptedJob = job
         }
       }
@@ -160,11 +167,8 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     removeWorkerFromList(deps.workers, worker)
     removeWorkerFromList(deps.idle, worker)
 
-    let replacement: Worker | null = null
-    if (!wasPreempted) {
-      replacement = createWorker()
-      deps.workers.push(replacement)
-    }
+    const replacement = createWorker()
+    deps.workers.push(replacement)
     if (wasForegroundWorker) {
       deps.setForegroundWorker(replacement)
     }
@@ -217,7 +221,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     }
 
     if (typeof jobId === 'number') {
-      deps.preemptedJobIds.delete(jobId)
+      deps.preemptedJobs.delete(jobId)
     }
     deps.inFlight.delete(jobId)
     deps.busy.delete(worker)
@@ -250,7 +254,12 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     if (job && payloadResult && !payloadResult.bpmError) {
       const bpmValue = payloadResult.bpm
       if (isValidBpm(bpmValue)) {
-        await deps.persistence.persistBpm(job.filePath, bpmValue, payloadResult.firstBeatMs)
+        await deps.persistence.persistBpm(
+          job.filePath,
+          bpmValue,
+          payloadResult.firstBeatMs,
+          payloadResult.barBeatOffset
+        )
       }
     }
 
@@ -323,8 +332,12 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       const foregroundJobId = deps.busy.get(foregroundWorker)
       const foregroundJob =
         typeof foregroundJobId === 'number' ? deps.inFlight.get(foregroundJobId) : null
-      if (foregroundJob && foregroundJob.source === 'background') {
-        deps.preemptedJobIds.add(foregroundJobId!)
+      if (
+        typeof foregroundJobId === 'number' &&
+        foregroundJob &&
+        foregroundJob.source === 'background'
+      ) {
+        deps.preemptedJobs.set(foregroundJobId, 'background-resume')
         void foregroundWorker.terminate().catch(() => {})
         return
       }
@@ -333,7 +346,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     for (const [worker, jobId] of deps.busy.entries()) {
       const job = deps.inFlight.get(jobId)
       if (job && job.source === 'background') {
-        deps.preemptedJobIds.add(jobId)
+        deps.preemptedJobs.set(jobId, 'background-resume')
         void worker.terminate().catch(() => {})
         return
       }

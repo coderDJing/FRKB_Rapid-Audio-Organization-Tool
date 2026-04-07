@@ -91,6 +91,8 @@ export const parseSnapshot = (
       : parsedBpm
   const parsedMasterTempo = info?.masterTempo !== false
   const hasFirstBeatField = !!info && Object.prototype.hasOwnProperty.call(info, 'firstBeatMs')
+  const hasBarBeatOffsetField =
+    !!info && Object.prototype.hasOwnProperty.call(info, 'barBeatOffset')
   const parsedFirstBeatMsValue = Number(info?.firstBeatMs)
   const parsedFirstBeatMs =
     hasFirstBeatField && Number.isFinite(parsedFirstBeatMsValue) && parsedFirstBeatMsValue >= 0
@@ -99,7 +101,9 @@ export const parseSnapshot = (
   const parsedKey = typeof info?.key === 'string' ? info.key.trim() : ''
   const parsedOriginalKeyRaw = typeof info?.originalKey === 'string' ? info.originalKey.trim() : ''
   const parsedOriginalKey = parsedOriginalKeyRaw || parsedKey || undefined
-  const parsedBarBeatOffset = normalizeBarBeatOffset(info?.barBeatOffset)
+  const parsedBarBeatOffset = hasBarBeatOffsetField
+    ? normalizeBarBeatOffset(info?.barBeatOffset)
+    : undefined
   const parsedGainEnvelope = normalizeGainEnvelopePoints(info?.gainEnvelope)
   const parsedHighEnvelope = normalizeMixEnvelopePoints('high', info?.highEnvelope)
   const parsedMidEnvelope = normalizeMixEnvelopePoints('mid', info?.midEnvelope)

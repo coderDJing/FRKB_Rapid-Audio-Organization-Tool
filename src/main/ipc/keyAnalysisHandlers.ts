@@ -18,11 +18,15 @@ export function registerKeyAnalysisHandlers() {
     enqueueKeyAnalysisList(normalized, 'medium')
   })
 
-  ipcMain.on('key-analysis:queue-playing', (_e, payload: { filePath?: string }) => {
-    const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
-    if (!filePath) return
-    enqueueKeyAnalysisImmediate(filePath)
-  })
+  ipcMain.on(
+    'key-analysis:queue-playing',
+    (_e, payload: { filePath?: string; focusSlot?: string }) => {
+      const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
+      const focusSlot = typeof payload?.focusSlot === 'string' ? payload.focusSlot.trim() : ''
+      if (!filePath) return
+      enqueueKeyAnalysisImmediate(filePath, { focusSlot })
+    }
+  )
 
   ipcMain.handle('key-analysis:cancel-background', (_e, payload?: { mode?: string }) => {
     const mode = String(payload?.mode || '')

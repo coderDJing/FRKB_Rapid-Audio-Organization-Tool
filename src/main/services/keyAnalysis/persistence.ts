@@ -11,6 +11,7 @@ import { persistSharedSongGridDefinition } from '../sharedSongGrid'
 import { emitSongGridUpdated } from '../songGridEvents'
 import {
   isValidBpm,
+  isValidBarBeatOffset,
   isValidFirstBeatMs,
   isValidKeyText,
   normalizePath,
@@ -26,6 +27,13 @@ type KeyAnalysisPersistenceDeps = {
 }
 
 export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) => {
+  const normalizeBarBeatOffset = (value: unknown) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) return undefined
+    const rounded = Math.round(numeric)
+    return ((rounded % 32) + 32) % 32
+  }
+
   const buildPrepareDetails = (params: {
     listRootResolved: boolean
     doneEntryHit: boolean
@@ -47,7 +55,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
   const ensureSongCacheEntry = async (
     listRoot: string,
     filePath: string,
-    payload: { keyText?: string; bpm?: number; firstBeatMs?: number },
+    payload: { keyText?: string; bpm?: number; firstBeatMs?: number; barBeatOffset?: number },
     stat?: { size: number; mtimeMs: number }
   ) => {
     if (!listRoot || !filePath) return
@@ -81,6 +89,9 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     if (payload.firstBeatMs !== undefined) {
       info.firstBeatMs = payload.firstBeatMs
     }
+    if (payload.barBeatOffset !== undefined) {
+      info.barBeatOffset = payload.barBeatOffset
+    }
     await LibraryCacheDb.upsertSongCacheEntry(listRoot, filePath, {
       size: fileStat.size,
       mtimeMs: fileStat.mtimeMs,
@@ -99,6 +110,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         keyText,
         bpm: existing?.bpm,
         firstBeatMs: existing?.firstBeatMs,
+        barBeatOffset: existing?.barBeatOffset,
         hasWaveform: existing?.hasWaveform
       })
 
@@ -125,6 +137,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         keyText,
         bpm: existing?.bpm,
         firstBeatMs: existing?.firstBeatMs,
+        barBeatOffset: existing?.barBeatOffset,
         hasWaveform: existing?.hasWaveform
       })
       const payload: KeyAnalysisResult = { filePath, keyText }
@@ -136,12 +149,18 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     }
   }
 
-  const persistBpm = async (filePath: string, bpm: number, firstBeatMs?: number) => {
+  const persistBpm = async (
+    filePath: string,
+    bpm: number,
+    firstBeatMs?: number,
+    barBeatOffset?: number
+  ) => {
     const normalizedPath = normalizePath(filePath)
     const normalizedBpm = Number(bpm.toFixed(6))
     const normalizedFirstBeatMs = isValidFirstBeatMs(firstBeatMs)
       ? Number(firstBeatMs.toFixed(3))
       : undefined
+    const normalizedBarBeatOffset = normalizeBarBeatOffset(barBeatOffset)
     try {
       const stat = await fs.stat(filePath)
       const existing = deps.doneByPath.get(normalizedPath)
@@ -151,13 +170,15 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         keyText: existing?.keyText,
         bpm: normalizedBpm,
         firstBeatMs: normalizedFirstBeatMs ?? existing?.firstBeatMs,
+        barBeatOffset: normalizedBarBeatOffset ?? existing?.barBeatOffset,
         hasWaveform: existing?.hasWaveform
       })
 
       const sharedGrid = await persistSharedSongGridDefinition({
         filePath,
         bpm: normalizedBpm,
-        firstBeatMs: normalizedFirstBeatMs
+        firstBeatMs: normalizedFirstBeatMs,
+        barBeatOffset: normalizedBarBeatOffset
       })
       if (sharedGrid) {
         emitSongGridUpdated(sharedGrid)
@@ -166,7 +187,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       const payload: BpmAnalysisResult = {
         filePath,
         bpm: normalizedBpm,
-        firstBeatMs: normalizedFirstBeatMs
+        firstBeatMs: normalizedFirstBeatMs,
+        barBeatOffset: normalizedBarBeatOffset
       }
       deps.events.emit('bpm-updated', payload)
     } catch (error) {
@@ -177,17 +199,20 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         keyText: existing?.keyText,
         bpm: normalizedBpm,
         firstBeatMs: normalizedFirstBeatMs ?? existing?.firstBeatMs,
+        barBeatOffset: normalizedBarBeatOffset ?? existing?.barBeatOffset,
         hasWaveform: existing?.hasWaveform
       })
       const payload: BpmAnalysisResult = {
         filePath,
         bpm: normalizedBpm,
-        firstBeatMs: normalizedFirstBeatMs
+        firstBeatMs: normalizedFirstBeatMs,
+        barBeatOffset: normalizedBarBeatOffset
       }
       emitSongGridUpdated({
         filePath,
         bpm: normalizedBpm,
-        firstBeatMs: normalizedFirstBeatMs
+        firstBeatMs: normalizedFirstBeatMs,
+        barBeatOffset: normalizedBarBeatOffset
       })
       deps.events.emit('bpm-updated', payload)
       log.warn('[闲时分析] persistBpm 失败，已写入内存兜底', {
@@ -209,6 +234,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         keyText: existing?.keyText,
         bpm: existing?.bpm,
         firstBeatMs: existing?.firstBeatMs,
+        barBeatOffset: existing?.barBeatOffset,
         hasWaveform: true
       })
 
@@ -238,6 +264,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         keyText: existing?.keyText,
         bpm: existing?.bpm,
         firstBeatMs: existing?.firstBeatMs,
+        barBeatOffset: existing?.barBeatOffset,
         hasWaveform: true
       })
       log.warn('[闲时分析] persistWaveform 失败，已写入内存兜底', {
@@ -292,10 +319,11 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       doneEntryHit = true
       const hasDoneBpm = isValidBpm(done.bpm)
       const hasDoneFirstBeatMs = isValidFirstBeatMs(done.firstBeatMs)
+      const hasDoneBarBeatOffset = isValidBarBeatOffset(done.barBeatOffset)
       if (isValidKeyText(done.keyText)) {
         needsKey = false
       }
-      if (hasDoneBpm && hasDoneFirstBeatMs) {
+      if (hasDoneBpm && hasDoneFirstBeatMs && hasDoneBarBeatOffset) {
         needsBpm = false
       }
       if (done.hasWaveform) {
@@ -328,23 +356,28 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         const cachedKey = (cached.info as any)?.key
         const cachedBpm = (cached.info as any)?.bpm
         const cachedFirstBeatMs = (cached.info as any)?.firstBeatMs
+        const cachedBarBeatOffset = (cached.info as any)?.barBeatOffset
         const hasKey = isValidKeyText(cachedKey)
         const hasBpm = isValidBpm(cachedBpm)
         const hasFirstBeatMs = isValidFirstBeatMs(cachedFirstBeatMs)
-        if (hasKey || hasBpm || hasFirstBeatMs) {
+        const hasBarBeatOffset = isValidBarBeatOffset(cachedBarBeatOffset)
+        if (hasKey || hasBpm || hasFirstBeatMs || hasBarBeatOffset) {
           deps.doneByPath.set(job.normalizedPath, {
             size: stat.size,
             mtimeMs: stat.mtimeMs,
             keyText: hasKey ? cachedKey : undefined,
             bpm: hasBpm ? cachedBpm : undefined,
             firstBeatMs: hasFirstBeatMs ? cachedFirstBeatMs : undefined,
+            barBeatOffset: hasBarBeatOffset
+              ? normalizeBarBeatOffset(cachedBarBeatOffset)
+              : undefined,
             hasWaveform: done?.hasWaveform
           })
         }
         if (needsKey && hasKey) {
           needsKey = false
         }
-        if (needsBpm && hasBpm && hasFirstBeatMs) {
+        if (needsBpm && hasBpm && hasFirstBeatMs && hasBarBeatOffset) {
           needsBpm = false
         }
         const hasWaveform = await LibraryCacheDb.hasWaveformCacheEntry(listRoot, filePath, stat)
@@ -357,6 +390,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             keyText: existingDone?.keyText,
             bpm: existingDone?.bpm,
             firstBeatMs: existingDone?.firstBeatMs,
+            barBeatOffset: existingDone?.barBeatOffset,
             hasWaveform: true
           })
           needsWaveform = false

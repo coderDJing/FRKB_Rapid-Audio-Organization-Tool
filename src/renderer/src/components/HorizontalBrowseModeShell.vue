@@ -19,6 +19,7 @@ import {
 } from '@renderer/components/horizontalBrowseShellState'
 import {
   buildHorizontalBrowseSongSnapshot,
+  isSameHorizontalBrowseSongFilePath,
   mergeHorizontalBrowseSongWithSharedGrid
 } from '@renderer/components/horizontalBrowseShellSongs'
 import {
@@ -87,7 +88,7 @@ type DeckWaveformDragEndPayload = {
 
 const createDefaultDeckToolbarState = () => ({
   disabled: true,
-  bpmInputValue: '128.00',
+  bpmInputValue: '',
   bpmStep: 0.01,
   bpmMin: 1,
   bpmMax: 300,
@@ -449,9 +450,19 @@ const hydrateDeckSongSharedGrid = async (deck: DeckKey, song: ISongInfo) => {
   } catch {}
 }
 
+const queueDeckSongPriorityAnalysis = (deck: DeckKey, song: ISongInfo | null | undefined) => {
+  const filePath = String(song?.filePath || '').trim()
+  if (!filePath) return
+  window.electron.ipcRenderer.send('key-analysis:queue-playing', {
+    filePath,
+    focusSlot: `horizontal-browse-${deck}`
+  })
+}
+
 const assignSongToDeck = (deck: DeckKey, song: ISongInfo) => {
   const nextSong = { ...song }
   setDeckSong(deck, nextSong)
+  queueDeckSongPriorityAnalysis(deck, nextSong)
   syncDeckDefaultCue(deck, nextSong, true)
   const nowMs = performance.now()
   void commitDeckStateToNative(deck, {
@@ -905,6 +916,29 @@ const handleSongGridUpdated = (_event: unknown, payload: SharedSongGridPayload) 
   void commitDeckStatesToNative()
 }
 
+const handleSongKeyUpdated = (
+  _event: unknown,
+  payload: { filePath?: string; keyText?: string }
+) => {
+  const filePath = String(payload?.filePath || '').trim()
+  const keyText = String(payload?.keyText || '').trim()
+  if (!filePath || !keyText) return
+
+  const patchDeckSongKey = (deck: DeckKey) => {
+    const currentSong = resolveDeckSong(deck)
+    if (!currentSong) return
+    if (!isSameHorizontalBrowseSongFilePath(currentSong.filePath, filePath)) return
+    if (String(currentSong.key || '').trim() === keyText) return
+    setDeckSong(deck, {
+      ...currentSong,
+      key: keyText
+    })
+  }
+
+  patchDeckSongKey('top')
+  patchDeckSongKey('bottom')
+}
+
 onMounted(() => {
   syncCrossfaderValue(0)
   void nativeTransport.reset()
@@ -916,6 +950,7 @@ onMounted(() => {
   window.addEventListener('blur', stopAllDeckCuePreview)
   emitter.on('horizontalBrowse/load-song', handleExternalDeckSongLoad)
   window.electron.ipcRenderer.on('song-grid-updated', handleSongGridUpdated)
+  window.electron.ipcRenderer.on('song-key-updated', handleSongKeyUpdated)
 })
 
 onUnmounted(() => {
@@ -929,6 +964,7 @@ onUnmounted(() => {
   window.removeEventListener('blur', stopAllDeckCuePreview)
   emitter.off('horizontalBrowse/load-song', handleExternalDeckSongLoad)
   window.electron.ipcRenderer.removeListener('song-grid-updated', handleSongGridUpdated)
+  window.electron.ipcRenderer.removeListener('song-key-updated', handleSongKeyUpdated)
   runtime.horizontalBrowseDecks.topSong = null
   runtime.horizontalBrowseDecks.bottomSong = null
 })

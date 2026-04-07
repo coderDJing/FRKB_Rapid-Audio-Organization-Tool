@@ -7,6 +7,19 @@ type SharedSongGridPayload = {
   barBeatOffset?: number
 } | null
 
+export const isSameHorizontalBrowseSongFilePath = (left: unknown, right: unknown) => {
+  const normalize = (value: unknown) => {
+    const normalized = String(value || '')
+      .trim()
+      .replace(/\//g, '\\')
+    if (!normalized) return ''
+    return /win/i.test(navigator.platform) ? normalized.toLowerCase() : normalized
+  }
+  const leftPath = normalize(left)
+  const rightPath = normalize(right)
+  return !!leftPath && leftPath === rightPath
+}
+
 export const buildHorizontalBrowseSongSnapshot = (filePath: string): ISongInfo => {
   const normalizedPath = String(filePath || '').trim()
   const fileName = normalizedPath.split(/[/\\]/).pop() || ''
@@ -35,7 +48,7 @@ export const mergeHorizontalBrowseSongWithSharedGrid = (
 ): ISongInfo => {
   if (!payload) return song
   const filePath = String(payload.filePath || '').trim()
-  if (!filePath || filePath !== song.filePath) return song
+  if (!filePath || !isSameHorizontalBrowseSongFilePath(filePath, song.filePath)) return song
 
   let touched = false
   const nextSong: ISongInfo = { ...song }

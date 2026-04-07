@@ -242,10 +242,11 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     const filePath = payload?.filePath
     const keyText = payload?.keyText
     if (!filePath || typeof keyText !== 'string') return
+    const normalizedTargetPath = normalizePath(filePath)
 
     let touched = false
     const nextOriginal = originalSongInfoArr.value.map((item) => {
-      if (item.filePath !== filePath) return item
+      if (normalizePath(item.filePath) !== normalizedTargetPath) return item
       if (item.key === keyText) return item
       touched = true
       return { ...item, key: keyText }
@@ -255,22 +256,27 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       scheduleApply()
     }
 
-    if (runtime.playingData.playingSong?.filePath === filePath) {
+    const currentPlayingSongForKey = runtime.playingData.playingSong
+    if (
+      currentPlayingSongForKey &&
+      normalizePath(currentPlayingSongForKey.filePath) === normalizedTargetPath
+    ) {
       runtime.playingData.playingSong = {
-        ...runtime.playingData.playingSong,
+        ...currentPlayingSongForKey,
         key: keyText
       }
     }
 
     if (runtime.playingData.playingSongListData.length > 0) {
       runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map(
-        (item) => (item.filePath === filePath ? { ...item, key: keyText } : item)
+        (item) =>
+          normalizePath(item.filePath) === normalizedTargetPath ? { ...item, key: keyText } : item
       )
     }
 
     if (runtime.externalPlaylist.songs.length > 0) {
       runtime.externalPlaylist.songs = runtime.externalPlaylist.songs.map((item) =>
-        item.filePath === filePath ? { ...item, key: keyText } : item
+        normalizePath(item.filePath) === normalizedTargetPath ? { ...item, key: keyText } : item
       )
     }
   }
@@ -279,10 +285,11 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     const filePath = payload?.filePath
     const bpmValue = payload?.bpm
     if (!filePath || typeof bpmValue !== 'number' || !Number.isFinite(bpmValue)) return
+    const normalizedTargetPath = normalizePath(filePath)
 
     let touched = false
     const nextOriginal = originalSongInfoArr.value.map((item) => {
-      if (item.filePath !== filePath) return item
+      if (normalizePath(item.filePath) !== normalizedTargetPath) return item
       if (item.bpm === bpmValue) return item
       touched = true
       return { ...item, bpm: bpmValue }
@@ -292,22 +299,27 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       scheduleApply()
     }
 
-    if (runtime.playingData.playingSong?.filePath === filePath) {
+    const currentPlayingSongForBpm = runtime.playingData.playingSong
+    if (
+      currentPlayingSongForBpm &&
+      normalizePath(currentPlayingSongForBpm.filePath) === normalizedTargetPath
+    ) {
       runtime.playingData.playingSong = {
-        ...runtime.playingData.playingSong,
+        ...currentPlayingSongForBpm,
         bpm: bpmValue
       }
     }
 
     if (runtime.playingData.playingSongListData.length > 0) {
       runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map(
-        (item) => (item.filePath === filePath ? { ...item, bpm: bpmValue } : item)
+        (item) =>
+          normalizePath(item.filePath) === normalizedTargetPath ? { ...item, bpm: bpmValue } : item
       )
     }
 
     if (runtime.externalPlaylist.songs.length > 0) {
       runtime.externalPlaylist.songs = runtime.externalPlaylist.songs.map((item) =>
-        item.filePath === filePath ? { ...item, bpm: bpmValue } : item
+        normalizePath(item.filePath) === normalizedTargetPath ? { ...item, bpm: bpmValue } : item
       )
     }
   }
@@ -323,6 +335,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
   ) => {
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath : ''
     if (!filePath) return
+    const normalizedTargetPath = normalizePath(filePath)
 
     const hasBpm = typeof payload?.bpm === 'number' && Number.isFinite(payload.bpm)
     const hasFirstBeatMs =
@@ -351,7 +364,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
 
     let touched = false
     const nextOriginal = originalSongInfoArr.value.map((item) => {
-      if (item.filePath !== filePath) return item
+      if (normalizePath(item.filePath) !== normalizedTargetPath) return item
       const nextItem = applyGridPatch(item)
       if (nextItem !== item) touched = true
       return nextItem
@@ -361,19 +374,24 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       scheduleApply()
     }
 
-    if (runtime.playingData.playingSong?.filePath === filePath) {
-      runtime.playingData.playingSong = applyGridPatch(runtime.playingData.playingSong)
+    const currentPlayingSongForGrid = runtime.playingData.playingSong
+    if (
+      currentPlayingSongForGrid &&
+      normalizePath(currentPlayingSongForGrid.filePath) === normalizedTargetPath
+    ) {
+      runtime.playingData.playingSong = applyGridPatch(currentPlayingSongForGrid)
     }
 
     if (runtime.playingData.playingSongListData.length > 0) {
       runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map(
-        (item) => (item.filePath === filePath ? applyGridPatch(item) : item)
+        (item) =>
+          normalizePath(item.filePath) === normalizedTargetPath ? applyGridPatch(item) : item
       )
     }
 
     if (runtime.externalPlaylist.songs.length > 0) {
       runtime.externalPlaylist.songs = runtime.externalPlaylist.songs.map((item) =>
-        item.filePath === filePath ? applyGridPatch(item) : item
+        normalizePath(item.filePath) === normalizedTargetPath ? applyGridPatch(item) : item
       )
     }
   }

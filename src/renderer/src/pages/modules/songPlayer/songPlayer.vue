@@ -589,7 +589,8 @@ watch(
     if (newSong?.filePath && newSong.filePath !== oldSong?.filePath) {
       try {
         window.electron.ipcRenderer.send('key-analysis:queue-playing', {
-          filePath: newSong.filePath
+          filePath: newSong.filePath,
+          focusSlot: 'main-player'
         })
       } catch {}
     }
