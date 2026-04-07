@@ -5,6 +5,7 @@ import {
   ensureTransportKeyLockWorkletModule,
   type TransportPlayableSource
 } from '@renderer/composables/mixtape/timelineTransportPlayableSource'
+import { processMixtapeAudioBufferWithSoundTouch } from '@renderer/composables/mixtape/mixtapeSoundTouch'
 
 export type MixtapeOutputProgressPayload = {
   stageKey: string
@@ -29,6 +30,7 @@ type TransportEntry = {
   sourceDuration: number
   tempoRatio: number
   masterTempo?: boolean
+  soundTouchRendered?: boolean
   audioRef?: TransportAudioRef
   stemAudioById?: Partial<Record<TransportStemId, TransportStemAudioRef>>
 }
@@ -306,7 +308,7 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
                   stemAudio.audioBuffer as AudioBuffer
                 )
               : createTransportBufferSource(offlineCtx as any, stemAudio.audioBuffer as AudioBuffer)
-          source.playbackRate.value = entry.tempoRatio
+          source.playbackRate.value = entry.soundTouchRendered ? 1 : entry.tempoRatio
           const stemGain = offlineCtx.createGain()
           stemGain.gain.value = resolveEntryEnvelopeValue(entry, stemAudio.stemId, initialLocalSec)
           source.connect(stemGain)
@@ -342,7 +344,7 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
         useRealtimeKeyLock && entry.masterTempo
           ? createTransportKeyLockSource(offlineCtx as any, audioBuffer)
           : createTransportBufferSource(offlineCtx as any, audioBuffer)
-      source.playbackRate.value = entry.tempoRatio
+      source.playbackRate.value = entry.soundTouchRendered ? 1 : entry.tempoRatio
 
       const eqLow = offlineCtx.createBiquadFilter()
       eqLow.type = 'lowshelf'
@@ -389,6 +391,49 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
       })
     }
     return nodes
+  }
+
+  const preprocessEntriesWithSoundTouch = async (
+    offlineCtx: OfflineAudioContext,
+    entries: TransportEntry[]
+  ) => {
+    for (const entry of entries) {
+      if (!entry.masterTempo || Math.abs(Number(entry.tempoRatio) - 1) <= 0.0001) {
+        entry.soundTouchRendered = false
+        continue
+      }
+      try {
+        if (isStemMixMode()) {
+          for (const stemId of resolveStemIds()) {
+            const stemAudio = entry.stemAudioById?.[stemId]
+            if (!stemAudio?.audioBuffer) continue
+            stemAudio.audioBuffer = await processMixtapeAudioBufferWithSoundTouch(
+              stemAudio.filePath,
+              stemAudio.audioBuffer,
+              entry.tempoRatio,
+              (channels, frameCount, sampleRate) =>
+                offlineCtx.createBuffer(channels, frameCount, sampleRate)
+            )
+          }
+        } else if (entry.audioRef?.audioBuffer) {
+          entry.audioRef.audioBuffer = await processMixtapeAudioBufferWithSoundTouch(
+            entry.audioRef.filePath,
+            entry.audioRef.audioBuffer,
+            entry.tempoRatio,
+            (channels, frameCount, sampleRate) =>
+              offlineCtx.createBuffer(channels, frameCount, sampleRate)
+          )
+        }
+        entry.soundTouchRendered = true
+      } catch (error) {
+        entry.soundTouchRendered = false
+        console.error('[mixtape-output] SoundTouch preprocess failed, fallback to worklet', {
+          filePath: entry.filePath,
+          tempoRatio: entry.tempoRatio,
+          error
+        })
+      }
+    }
   }
 
   const renderMixtapeOutputWav = async (options?: {
@@ -529,8 +574,9 @@ export const createTimelineTransportRenderWavModule = (ctx: any) => {
     const outputChannels = resolveOutputChannels(playableEntries)
     const frameCount = Math.max(1, Math.ceil(durationSec * sampleRate))
     const offlineCtx = new OfflineAudioContext(outputChannels, frameCount, sampleRate)
+    await preprocessEntriesWithSoundTouch(offlineCtx, playableEntries)
     let offlineKeyLockWorkletReady = false
-    if (playableEntries.some((entry) => entry.masterTempo)) {
+    if (playableEntries.some((entry) => entry.masterTempo && !entry.soundTouchRendered)) {
       try {
         await ensureTransportKeyLockWorkletModule(offlineCtx as any)
         offlineKeyLockWorkletReady = true

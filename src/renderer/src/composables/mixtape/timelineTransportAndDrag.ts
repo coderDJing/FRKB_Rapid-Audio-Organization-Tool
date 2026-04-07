@@ -9,7 +9,7 @@ import {
 } from '@renderer/composables/mixtape/timelineTransportRenderWav'
 import { createTimelineTransportTrackDragModule } from '@renderer/composables/mixtape/timelineTransportTrackDrag'
 import { createTimelineTransportResolversModule } from '@renderer/composables/mixtape/timelineTransportResolvers'
-import { ensureTransportKeyLockWorkletModule } from '@renderer/composables/mixtape/timelineTransportPlayableSource'
+import { ensureTransportSoundTouchWorkletModule } from '@renderer/composables/mixtape/timelineTransportPlayableSource'
 import {
   startTransportTrackGraphNode,
   type TrackGraphNode
@@ -583,11 +583,11 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
         } catch {}
       }
       try {
-        await ensureTransportKeyLockWorkletModule(transportCtx)
+        await ensureTransportSoundTouchWorkletModule(transportCtx)
         transportKeyLockWorkletReady = true
       } catch (error) {
         transportKeyLockWorkletReady = false
-        console.error('[mixtape-transport] key lock worklet unavailable, fallback to rate', error)
+        console.error('[mixtape-transport] soundtouch worklet unavailable, fallback to rate', error)
       }
       if (transportVersion !== version) return
     }

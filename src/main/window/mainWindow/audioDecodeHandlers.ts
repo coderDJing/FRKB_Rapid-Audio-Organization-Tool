@@ -164,6 +164,78 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
     }
   )
 
+  ipcMain.handle(
+    'mixtape:process-soundtouch-pcm',
+    async (
+      _e,
+      payload?: {
+        pcmData?: unknown
+        sampleRate?: number
+        channels?: number
+        tempoRatio?: number
+      }
+    ): Promise<{
+      pcmData: unknown
+      sampleRate: number
+      channels: number
+      totalFrames: number
+      error?: string
+    }> => {
+      try {
+        const binding = require('rust_package') as {
+          processSoundtouchPcm?: (
+            pcmData: Buffer,
+            sampleRate: number,
+            channels: number,
+            tempoRatio: number
+          ) => {
+            pcmData?: unknown
+            sampleRate?: number
+            channels?: number
+            totalFrames?: number
+            error?: string
+          }
+        }
+        if (typeof binding.processSoundtouchPcm !== 'function') {
+          return {
+            pcmData: new Uint8Array(0),
+            sampleRate: Number(payload?.sampleRate) || 44100,
+            channels: Math.max(1, Number(payload?.channels) || 1),
+            totalFrames: 0,
+            error: 'rust_package.processSoundtouchPcm unavailable'
+          }
+        }
+        const pcmData = clonePcmData(payload?.pcmData)
+        const pcmBuffer = Buffer.from(
+          pcmData.buffer.slice(pcmData.byteOffset, pcmData.byteOffset + pcmData.byteLength)
+        )
+        const result = binding.processSoundtouchPcm(
+          pcmBuffer,
+          Number(payload?.sampleRate) || 44100,
+          Math.max(1, Number(payload?.channels) || 1),
+          Number(payload?.tempoRatio) || 1
+        )
+        return {
+          pcmData: result?.pcmData ?? new Uint8Array(0),
+          sampleRate: Number(result?.sampleRate) || Number(payload?.sampleRate) || 44100,
+          channels: Math.max(1, Number(result?.channels) || Number(payload?.channels) || 1),
+          totalFrames: Math.max(0, Number(result?.totalFrames) || 0),
+          error: result?.error ? String(result.error) : undefined
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        log.error('[mixtape] process soundtouch pcm failed', { error: message })
+        return {
+          pcmData: new Uint8Array(0),
+          sampleRate: Number(payload?.sampleRate) || 44100,
+          channels: Math.max(1, Number(payload?.channels) || 1),
+          totalFrames: 0,
+          error: message
+        }
+      }
+    }
+  )
+
   ipcMain.on('readSongFile', handleDecode('readSongFile', 'readedSongFile', 'readSongFileError'))
   ipcMain.on(
     'readNextSongFile',

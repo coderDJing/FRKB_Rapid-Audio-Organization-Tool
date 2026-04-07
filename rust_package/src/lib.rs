@@ -54,6 +54,7 @@ mod horizontal_browse_transport;
 mod mixxx_waveform;
 mod qm_bpm;
 mod qm_key;
+mod soundtouch_native;
 
 use crate::analysis_utils::{calc_frames_to_process, to_stereo, K_ANALYSIS_FRAMES_PER_CHUNK};
 pub use crate::horizontal_browse_transport::*;
@@ -100,6 +101,21 @@ pub struct DecodeAudioResult {
   /// 解码后端（symphonia / ffmpeg / ffmpeg-fallback）
   pub decoder_backend: Option<String>,
   /// 错误描述（当解码失败时）
+  pub error: Option<String>,
+}
+
+/// SoundTouch 处理结果
+#[napi(object)]
+pub struct SoundTouchProcessResult {
+  /// PCM 数据（Buffer，内部为 f32 小端序）
+  pub pcm_data: Buffer,
+  /// 采样率
+  pub sample_rate: u32,
+  /// 声道数
+  pub channels: u8,
+  /// 总帧数
+  pub total_frames: u32,
+  /// 错误描述（失败时）
   pub error: Option<String>,
 }
 
@@ -473,6 +489,49 @@ pub fn decode_audio_file(file_path: String) -> DecodeAudioResult {
         )),
       },
     },
+  }
+}
+
+/// 使用 SoundTouch 对交错 PCM 做不变调变速
+#[napi]
+pub fn process_soundtouch_pcm(
+  pcm_data: Buffer,
+  sample_rate: u32,
+  channels: u8,
+  tempo_ratio: f64,
+) -> napi::Result<SoundTouchProcessResult> {
+  let pcm_bytes = pcm_data.as_ref();
+  let pcm_f32 = try_cast_slice::<u8, f32>(pcm_bytes).map_err(|_| {
+    Error::from_reason("PCM buffer length is not aligned to f32 for SoundTouch processing")
+  })?;
+  let safe_channels = usize::from(channels.max(1));
+  if pcm_f32.len() % safe_channels != 0 {
+    return Ok(SoundTouchProcessResult {
+      pcm_data: Buffer::from(Vec::<u8>::new()),
+      sample_rate,
+      channels,
+      total_frames: 0,
+      error: Some("PCM buffer is not aligned to channel count".to_string()),
+    });
+  }
+  match soundtouch_native::process_interleaved_f32(pcm_f32, sample_rate, safe_channels, tempo_ratio) {
+    Ok(processed) => {
+      let total_frames = (processed.len() / safe_channels) as u32;
+      Ok(SoundTouchProcessResult {
+        pcm_data: Buffer::from(cast_slice(&processed).to_vec()),
+        sample_rate,
+        channels,
+        total_frames,
+        error: None,
+      })
+    }
+    Err(message) => Ok(SoundTouchProcessResult {
+      pcm_data: Buffer::from(Vec::<u8>::new()),
+      sample_rate,
+      channels,
+      total_frames: 0,
+      error: Some(message),
+    }),
   }
 }
 

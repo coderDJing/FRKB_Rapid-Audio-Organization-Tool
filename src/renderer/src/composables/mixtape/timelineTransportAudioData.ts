@@ -544,6 +544,14 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
           }
         })
       )
+      for (const entry of entries) {
+        try {
+          await ensureDecodedTransportEntry(entry)
+        } catch (error) {
+          console.error('[mixtape-transport] stem entry preprocess failed:', entry.filePath, error)
+          failCount += 1
+        }
+      }
       return failCount
     }
     const audioRefByPath = new Map<string, TransportAudioRef>()
@@ -567,6 +575,14 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
         }
       })
     )
+    for (const entry of entries) {
+      try {
+        await ensureDecodedTransportEntry(entry)
+      } catch (error) {
+        console.error('[mixtape-transport] entry preprocess failed:', entry.filePath, error)
+        failCount += 1
+      }
+    }
     return failCount
   }
 

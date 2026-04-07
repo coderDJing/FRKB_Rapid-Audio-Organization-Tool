@@ -97,6 +97,19 @@ export interface DecodeAudioResult {
   /** 错误描述（当解码失败时） */
   error?: string
 }
+/** SoundTouch 处理结果 */
+export interface SoundTouchProcessResult {
+  /** PCM 数据（Buffer，内部为 f32 小端序） */
+  pcmData: Buffer
+  /** 采样率 */
+  sampleRate: number
+  /** 声道数 */
+  channels: number
+  /** 总帧数 */
+  totalFrames: number
+  /** 错误描述（失败时） */
+  error?: string
+}
 /** 调性分析结果 */
 export interface KeyAnalysisResult {
   /** ID3v2 ASCII key 文本 */
@@ -294,6 +307,8 @@ export declare function calculateFileHashesWithProgress(filePaths: Array<string>
  * * 包含 PCM 数据和元数据的解码结果
  */
 export declare function decodeAudioFile(filePath: string): DecodeAudioResult
+/** 使用 SoundTouch 对交错 PCM 做不变调变速 */
+export declare function processSoundtouchPcm(pcmData: Buffer, sampleRate: number, channels: number, tempoRatio: number): SoundTouchProcessResult
 /** 基于 PCM 计算 Mixxx RGB 波形 */
 export declare function computeMixxxWaveform(pcmData: Buffer, sampleRate: number, channels: number): MixxxWaveformData
 /** 基于 PCM 计算 Mixxx RGB 波形（指定可视采样率） */

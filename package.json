@@ -160,6 +160,7 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^4.0.0",
+    "@soundtouchjs/audio-worklet": "^1.0.10",
     "audio-decode": "^2.2.2",
     "better-sqlite3": "^12.5.0",
     "better-sqlite3-multiple-ciphers": "^12.8.0",

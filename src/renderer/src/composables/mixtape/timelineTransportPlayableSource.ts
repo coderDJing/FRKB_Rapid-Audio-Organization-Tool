@@ -1,3 +1,6 @@
+import { SoundTouchNode } from '@soundtouchjs/audio-worklet'
+import soundTouchProcessorUrl from '@soundtouchjs/audio-worklet/processor?url'
+
 export type TransportPlaybackRateControl = {
   value: number
   setTargetAtTime: (value: number, startTime: number, timeConstant: number) => void
@@ -30,6 +33,7 @@ type KeyLockWorkletMessage =
     }
 
 const workletModuleByContext = new WeakMap<TransportPlayableAudioContext, Promise<void>>()
+const soundTouchModuleByContext = new WeakMap<TransportPlayableAudioContext, Promise<void>>()
 const STREAMING_CHUNK_FRAMES = 44100 * 6
 const STREAMING_LOOKAHEAD_CHUNKS = 3
 const STREAMING_KEEP_BEHIND_FRAMES = 44100 * 2
@@ -59,6 +63,22 @@ export const ensureTransportKeyLockWorkletModule = async (
   const moduleUrl = new URL('../../workers/mixtapeTransportKeyLock.worklet.js', import.meta.url)
   const task = audioCtx.audioWorklet.addModule(moduleUrl.href)
   workletModuleByContext.set(audioCtx, task)
+  await task
+}
+
+export const ensureTransportSoundTouchWorkletModule = async (
+  audioCtx: TransportPlayableAudioContext
+) => {
+  if (!audioCtx.audioWorklet) {
+    throw new Error('AudioWorklet is unavailable')
+  }
+  const existing = soundTouchModuleByContext.get(audioCtx)
+  if (existing) {
+    await existing
+    return
+  }
+  const task = SoundTouchNode.register(audioCtx, soundTouchProcessorUrl)
+  soundTouchModuleByContext.set(audioCtx, task)
   await task
 }
 
@@ -310,6 +330,82 @@ export const createTransportStreamingKeyLockSource = (
         type: 'stop',
         stopTimeSec
       })
+    }
+  }
+}
+
+export const createTransportSoundTouchPreviewSource = (
+  audioCtx: TransportPlayableAudioContext,
+  buffer: AudioBuffer
+): TransportPlayableSource => {
+  const source = audioCtx.createBufferSource()
+  source.buffer = buffer
+
+  const node = new SoundTouchNode(audioCtx)
+  node.pitch.value = 1
+  node.pitchSemitones.value = 0
+  node.tempo.value = 1
+  node.rate.value = 1
+  node.playbackRate.value = 1
+  source.connect(node)
+
+  let endedHandler: (() => void) | null = null
+  source.onended = () => {
+    endedHandler?.()
+  }
+
+  const playbackRate: TransportPlaybackRateControl = {
+    value: 1,
+    setTargetAtTime(value: number, startTime: number, timeConstant: number) {
+      const nextValue = Number(value) || 1
+      const nextStartTime = Number(startTime) || audioCtx.currentTime
+      const nextTimeConstant = Number(timeConstant) || 0.04
+      playbackRate.value = nextValue
+      try {
+        source.playbackRate.setTargetAtTime(nextValue, nextStartTime, nextTimeConstant)
+      } catch {}
+      try {
+        node.playbackRate.setTargetAtTime(nextValue, nextStartTime, nextTimeConstant)
+      } catch {}
+    }
+  }
+
+  return {
+    buffer,
+    playbackRate,
+    get onended() {
+      return endedHandler
+    },
+    set onended(handler: (() => void) | null) {
+      endedHandler = typeof handler === 'function' ? handler : null
+    },
+    connect(destination: AudioNode) {
+      node.connect(destination)
+    },
+    disconnect() {
+      try {
+        source.onended = null
+      } catch {}
+      try {
+        source.disconnect()
+      } catch {}
+      try {
+        node.disconnect()
+      } catch {}
+    },
+    start(when?: number, offset?: number) {
+      const startTimeSec = Number.isFinite(Number(when))
+        ? Math.max(audioCtx.currentTime, Number(when))
+        : audioCtx.currentTime
+      const safeOffset = Math.max(0, Number(offset) || 0)
+      source.start(startTimeSec, safeOffset)
+    },
+    stop(when?: number) {
+      const stopTimeSec =
+        Number.isFinite(Number(when)) && Number(when) > audioCtx.currentTime
+          ? Number(when)
+          : audioCtx.currentTime
+      source.stop(stopTimeSec)
     }
   }
 }

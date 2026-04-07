@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { horizontalBrowseTransportReset, horizontalBrowseTransportSetDeckState, horizontalBrowseTransportSetState, horizontalBrowseTransportSetSyncEnabled, horizontalBrowseTransportBeatsync, horizontalBrowseTransportSetLeader, horizontalBrowseTransportSetPlaying, horizontalBrowseTransportSeek, horizontalBrowseTransportSetGain, horizontalBrowseTransportSnapshot, calculateAudioHashes, calculateAudioHashesWithProgress, calculateFileHashes, calculateFileHashesWithProgress, decodeAudioFile, computeMixxxWaveform, computeMixxxWaveformWithRate, analyzeKeyFromPcm, analyzeKeyAndBpmFromPcm, dumpPioneerExportDebug, readPioneerPlaylistTree, readPioneerPreviewWaveform, readPioneerPlaylistTracks } = nativeBinding
+const { horizontalBrowseTransportReset, horizontalBrowseTransportSetDeckState, horizontalBrowseTransportSetState, horizontalBrowseTransportSetSyncEnabled, horizontalBrowseTransportBeatsync, horizontalBrowseTransportSetLeader, horizontalBrowseTransportSetPlaying, horizontalBrowseTransportSeek, horizontalBrowseTransportSetGain, horizontalBrowseTransportSnapshot, calculateAudioHashes, calculateAudioHashesWithProgress, calculateFileHashes, calculateFileHashesWithProgress, decodeAudioFile, processSoundtouchPcm, computeMixxxWaveform, computeMixxxWaveformWithRate, analyzeKeyFromPcm, analyzeKeyAndBpmFromPcm, dumpPioneerExportDebug, readPioneerPlaylistTree, readPioneerPreviewWaveform, readPioneerPlaylistTracks } = nativeBinding
 
 module.exports.horizontalBrowseTransportReset = horizontalBrowseTransportReset
 module.exports.horizontalBrowseTransportSetDeckState = horizontalBrowseTransportSetDeckState
@@ -327,6 +327,7 @@ module.exports.calculateAudioHashesWithProgress = calculateAudioHashesWithProgre
 module.exports.calculateFileHashes = calculateFileHashes
 module.exports.calculateFileHashesWithProgress = calculateFileHashesWithProgress
 module.exports.decodeAudioFile = decodeAudioFile
+module.exports.processSoundtouchPcm = processSoundtouchPcm
 module.exports.computeMixxxWaveform = computeMixxxWaveform
 module.exports.computeMixxxWaveformWithRate = computeMixxxWaveformWithRate
 module.exports.analyzeKeyFromPcm = analyzeKeyFromPcm

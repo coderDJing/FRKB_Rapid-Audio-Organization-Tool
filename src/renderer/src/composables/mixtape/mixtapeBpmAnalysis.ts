@@ -88,12 +88,10 @@ export const applyBpmResultsToTracks = (tracks: MixtapeTrack[], results: unknown
     changedCount += 1
     return {
       ...track,
-      gridBaseBpm:
-        normalizeBpm(track.gridBaseBpm) ?? normalizeBpm(track.originalBpm) ?? trackAnalysis.bpm,
-      originalBpm:
-        Number.isFinite(Number(track.originalBpm)) && Number(track.originalBpm) > 0
-          ? track.originalBpm
-          : trackAnalysis.bpm,
+      // BPM 分析结果代表音频本身的真实原始速度，必须覆盖旧的脏 originalBpm。
+      gridBaseBpm: trackAnalysis.bpm,
+      originalBpm: trackAnalysis.bpm,
+      bpm: trackAnalysis.bpm,
       masterTempo: track.masterTempo !== false,
       firstBeatMs: trackAnalysis.firstBeatMs
     }
