@@ -1,6 +1,10 @@
 import { parentPort } from 'node:worker_threads'
 import type { MixxxWaveformData } from '../waveformCache'
-import { estimateBarBeatOffsetFromPcm, estimateFirstBeatMsFromPcm } from './keyAnalysisBeatGrid'
+import {
+  estimateBarBeatOffsetFromPcm,
+  estimateFirstBeatMsFromPcm,
+  refineHalfBeatFirstBeatMsFromPcm
+} from './keyAnalysisBeatGrid'
 
 type KeyJob = {
   jobId: number
@@ -208,7 +212,25 @@ const analyzeKeyForFile = (
             result.firstBeatMs = estimatedFirstBeatMs
           }
         }
-        const resolvedFirstBeatMs = Number(result.firstBeatMs)
+        let resolvedFirstBeatMs = Number(result.firstBeatMs)
+        if (
+          Number.isFinite(resolvedFirstBeatMs) &&
+          resolvedFirstBeatMs >= 0 &&
+          Number.isFinite(bpmValue) &&
+          bpmValue > 0
+        ) {
+          const correctedFirstBeatMs = refineHalfBeatFirstBeatMsFromPcm(
+            decoded.pcmData,
+            decoded.sampleRate,
+            decoded.channels,
+            bpmValue,
+            resolvedFirstBeatMs
+          )
+          if (typeof correctedFirstBeatMs === 'number' && Number.isFinite(correctedFirstBeatMs)) {
+            result.firstBeatMs = correctedFirstBeatMs
+            resolvedFirstBeatMs = correctedFirstBeatMs
+          }
+        }
         if (
           Number.isFinite(resolvedFirstBeatMs) &&
           resolvedFirstBeatMs >= 0 &&
