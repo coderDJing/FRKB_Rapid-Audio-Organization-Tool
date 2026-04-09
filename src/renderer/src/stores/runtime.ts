@@ -15,6 +15,43 @@ type LibrarySelection =
   | 'PioneerDeviceLibrary'
 
 type MainWindowBrowseMode = 'browser' | 'horizontal'
+type AnalysisRuntimeDownloadStatus =
+  | 'idle'
+  | 'available'
+  | 'downloading'
+  | 'extracting'
+  | 'ready'
+  | 'failed'
+
+type AnalysisRuntimeDownloadState = {
+  status: AnalysisRuntimeDownloadStatus
+  profile: string
+  runtimeKey: string
+  version: string
+  percent: number
+  downloadedBytes: number
+  totalBytes: number
+  archiveSize: number
+  title: string
+  message: string
+  error: string
+  updatedAt: number
+}
+
+type AnalysisRuntimePreferredInfo = {
+  supported: boolean
+  downloadable: boolean
+  alreadyAvailable: boolean
+  profile: string
+  runtimeKey: string
+  version: string
+  archiveSize: number
+  title: string
+  reason: string
+  manifestUrl: string
+  releaseTag: string
+  error: string
+}
 
 interface Runtime {
   platform: string
@@ -48,6 +85,11 @@ interface Runtime {
   }
   importingSongListUUID: string
   isProgressing: boolean
+  analysisRuntime: {
+    available: boolean
+    preferred: AnalysisRuntimePreferredInfo
+    state: AnalysisRuntimeDownloadState
+  }
   playingData: {
     playingSong: null | ISongInfo
     playingSongListUUID: string
@@ -122,6 +164,37 @@ export const useRuntimeStore = defineStore('runtime', {
       importingSongListUUID: '', //正在执行导入中的歌单
       creatingSongListUUID: '', //正在创建中的歌单（用于微动效）
       isProgressing: false, //正在执行某计算或IO任务
+      analysisRuntime: {
+        available: false,
+        preferred: {
+          supported: false,
+          downloadable: false,
+          alreadyAvailable: false,
+          profile: '',
+          runtimeKey: '',
+          version: '',
+          archiveSize: 0,
+          title: '',
+          reason: '',
+          manifestUrl: '',
+          releaseTag: '',
+          error: ''
+        },
+        state: {
+          status: 'idle',
+          profile: '',
+          runtimeKey: '',
+          version: '',
+          percent: 0,
+          downloadedBytes: 0,
+          totalBytes: 0,
+          archiveSize: 0,
+          title: '',
+          message: '',
+          error: '',
+          updatedAt: 0
+        }
+      },
       playingData: {
         //播放器相关
         playingSong: null, //正在播放的歌曲信息

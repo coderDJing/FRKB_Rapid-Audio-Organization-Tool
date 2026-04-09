@@ -42,6 +42,7 @@ import { registerFilesystemHandlers } from './ipc/filesystemHandlers'
 import { registerClipboardHandlers } from './ipc/clipboardHandlers'
 import { registerExportHandlers } from './ipc/exportHandlers'
 import { registerKeyAnalysisHandlers } from './ipc/keyAnalysisHandlers'
+import { registerAnalysisRuntimeHandlers } from './ipc/analysisRuntimeHandlers'
 import { registerMixtapeHandlers } from './ipc/mixtapeHandlers'
 import { registerMixtapeProjectTempoHandlers } from './ipc/mixtapeProjectTempoHandlers'
 import { registerSongSearchHandlers } from './ipc/songSearchHandlers'
@@ -64,6 +65,7 @@ import {
   isMixtapeWaveformHiresQueueBusy,
   startMixtapeWaveformHiresBackground
 } from './services/mixtapeWaveformHiresQueue'
+import { analysisRuntimeDownloadEvents } from './services/analysisRuntimeDownload'
 import { startMixtapeStemBackgroundResume } from './services/mixtapeStemBackgroundResume'
 import { isMixtapeStemQueueBusy } from './services/mixtapeStemQueue'
 import { isMixtapeWaveformQueueBusy } from './services/mixtapeWaveformQueue'
@@ -140,6 +142,11 @@ const ensurePrimaryWindowVisible = async (): Promise<void> => {
 
 const maybeClearLogAfterUpgrade = () => {
   try {
+    if (is.dev) {
+      clearLogFileSync()
+      return
+    }
+
     const currentVersion = app.getVersion()
     const setting = store.settingConfig || ({} as any)
     const lastVersion =
@@ -230,6 +237,7 @@ registerFilesystemHandlers()
 registerClipboardHandlers()
 registerExportHandlers()
 registerKeyAnalysisHandlers()
+registerAnalysisRuntimeHandlers()
 registerMixtapeHandlers()
 registerMixtapeProjectTempoHandlers()
 registerSongSearchHandlers()
@@ -239,7 +247,6 @@ registerHorizontalBrowseTransportHandlers()
 registerDevSongListTraceHandlers()
 
 keyAnalysisEvents.on('key-updated', (payload) => {
-  log.info('[key-analysis] emit song-key-updated', payload)
   if (mainWindow.instance) {
     try {
       mainWindow.instance.webContents.send('song-key-updated', payload)
@@ -248,7 +255,6 @@ keyAnalysisEvents.on('key-updated', (payload) => {
 })
 
 keyAnalysisEvents.on('bpm-updated', (payload) => {
-  log.info('[key-analysis] emit song-bpm-updated', payload)
   if (mainWindow.instance) {
     try {
       mainWindow.instance.webContents.send('song-bpm-updated', payload)
@@ -265,10 +271,17 @@ songGridEvents.on('grid-updated', (payload) => {
 })
 
 keyAnalysisEvents.on('waveform-updated', (payload) => {
-  log.info('[key-analysis] emit song-waveform-updated', payload)
   if (mainWindow.instance) {
     try {
       mainWindow.instance.webContents.send('song-waveform-updated', payload)
+    } catch {}
+  }
+})
+
+analysisRuntimeDownloadEvents.on('state', (payload) => {
+  if (mainWindow.instance) {
+    try {
+      mainWindow.instance.webContents.send('analysis-runtime-download-state', payload)
     } catch {}
   }
 })

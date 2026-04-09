@@ -153,7 +153,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
           const trace = job.trace
           const stageElapsedMs =
             typeof trace?.lastUpdateAt === 'number' ? Date.now() - trace.lastUpdateAt : undefined
-          log.warn('[闲时分析] 前台任务 worker 异常退出', {
+          const logPayload = {
             filePath: job.filePath,
             fileName: path.basename(job.filePath),
             workerThreadId: worker.threadId,
@@ -167,7 +167,10 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
             partialKeyPersisted: trace?.partialKeyPersisted === true,
             partialBpmPersisted: trace?.partialBpmPersisted === true,
             detail: trace?.detail
-          })
+          }
+          if (!wasPreempted) {
+            log.warn('[闲时分析] 前台任务 worker 异常退出', logPayload)
+          }
         }
         deps.activeByPath.delete(job.normalizedPath)
         deps.inFlight.delete(jobId)
@@ -292,23 +295,6 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     if (job && payloadResult?.mixxxWaveformData && job.needsWaveform) {
       await deps.persistence.persistWaveform(job.filePath, payloadResult.mixxxWaveformData)
       deps.events.emit('waveform-updated', { filePath: job.filePath })
-    }
-
-    if (job) {
-      log.info('[key-analysis] job-finished', {
-        filePath: job.filePath,
-        source: job.source,
-        priority: job.priority,
-        needsKey: job.needsKey,
-        needsBpm: job.needsBpm,
-        needsWaveform: job.needsWaveform,
-        keyText: payloadResult?.keyText,
-        bpm: payloadResult?.bpm,
-        bpmError: payloadResult?.bpmError,
-        keyError: payloadResult?.keyError,
-        hasWaveform: Boolean(payloadResult?.mixxxWaveformData),
-        workerError: payloadError || ''
-      })
     }
 
     deps.drain()

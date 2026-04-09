@@ -1,11 +1,44 @@
+import os
 import json
 import math
 import statistics
 import sys
 from typing import Any
 
+ENV_BEAT_THIS_EXTRA_SITE_DIRS = "FRKB_BEAT_THIS_EXTRA_SITE_DIRS"
+ENV_BEAT_THIS_EXTRA_DLL_DIRS = "FRKB_BEAT_THIS_EXTRA_DLL_DIRS"
+_DLL_DIR_HANDLES: list[Any] = []
+
+
+def _split_env_paths(env_name: str) -> list[str]:
+    raw_value = str(os.environ.get(env_name) or "").strip()
+    if not raw_value:
+        return []
+    return [part for part in raw_value.split(os.pathsep) if part]
+
+
+def _bootstrap_extra_paths() -> None:
+    if os.name == "nt" and hasattr(os, "add_dll_directory"):
+        for dll_dir in _split_env_paths(ENV_BEAT_THIS_EXTRA_DLL_DIRS):
+            try:
+                if os.path.isdir(dll_dir):
+                    _DLL_DIR_HANDLES.append(os.add_dll_directory(dll_dir))
+            except Exception:
+                continue
+
+    for site_dir in _split_env_paths(ENV_BEAT_THIS_EXTRA_SITE_DIRS):
+        if os.path.isdir(site_dir) and site_dir not in sys.path:
+            sys.path.append(site_dir)
+
+
+_bootstrap_extra_paths()
+
 import numpy as np
-from beat_this.inference import Audio2Beats
+import soxr
+import torch
+
+from beat_this.inference import Audio2Beats, split_predict_aggregate
+from beat_this.preprocessing import LogMelSpect
 
 
 def _emit(payload: dict[str, Any]) -> None:
@@ -132,8 +165,57 @@ def _decode_signal(pcm_bytes: bytes, channels: int) -> np.ndarray:
     return signal.reshape((-1, channels)).astype("float64", copy=False)
 
 
+def _uses_accelerated_device(device: str) -> bool:
+    normalized = str(device or "").strip().lower()
+    return normalized not in {"", "cpu"}
+
+
+def _predict_beats_with_accelerated_device(
+    predictor: Audio2Beats,
+    cpu_spect: LogMelSpect,
+    signal: np.ndarray,
+    sample_rate: int,
+) -> tuple[Any, Any]:
+    if signal.ndim == 2:
+        signal = signal.mean(1)
+    elif signal.ndim != 1:
+        raise RuntimeError(f"expected mono/stereo signal, got shape {signal.shape}")
+
+    if sample_rate != 22050:
+        signal = soxr.resample(signal, in_rate=sample_rate, out_rate=22050)
+
+    signal_tensor = torch.tensor(signal, dtype=torch.float32, device="cpu")
+    spect = cpu_spect(signal_tensor).detach().to(predictor.device)
+
+    with torch.no_grad():
+        model_prediction = split_predict_aggregate(
+            spect=spect,
+            chunk_size=1500,
+            border_size=6,
+            overlap_mode="keep_first",
+            model=predictor.model,
+        )
+        beat_logits = model_prediction["beat"].float()
+        downbeat_logits = model_prediction["downbeat"].float()
+
+    return predictor.frames2beats(beat_logits, downbeat_logits)
+
+
+def _predict_beats(
+    predictor: Audio2Beats,
+    signal: np.ndarray,
+    sample_rate: int,
+    device: str,
+    cpu_spect: LogMelSpect | None,
+) -> tuple[Any, Any]:
+    if cpu_spect is None or not _uses_accelerated_device(device):
+        return predictor(signal, sample_rate)
+    return _predict_beats_with_accelerated_device(predictor, cpu_spect, signal, sample_rate)
+
+
 def serve(device: str, dbn: bool) -> int:
     predictor = Audio2Beats(checkpoint_path="final0", device=device, dbn=dbn)
+    cpu_spect = LogMelSpect(device="cpu") if _uses_accelerated_device(device) else None
     _emit({"type": "ready"})
 
     while True:
@@ -178,7 +260,7 @@ def serve(device: str, dbn: bool) -> int:
             pcm_bytes = _read_exact(byte_length)
             signal = _decode_signal(pcm_bytes, channels)
             duration_sec = signal.shape[0] / float(sample_rate) if sample_rate > 0 else 0.0
-            beats, downbeats = predictor(signal, sample_rate)
+            beats, downbeats = _predict_beats(predictor, signal, sample_rate, device, cpu_spect)
             beat_list = _to_float_list(beats)
             downbeat_list = _to_float_list(downbeats)
             bpm = _derive_bpm(beat_list)

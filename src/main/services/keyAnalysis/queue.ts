@@ -245,15 +245,6 @@ export class KeyAnalysisQueue {
       this.removePending(job)
     }
 
-    for (const job of Array.from(this.activeByPath.values())) {
-      if (job.category !== 'visible') continue
-      if (keepSet.has(job.normalizedPath)) continue
-      const worker = this.findWorkerByJobId(job.jobId)
-      if (!worker) continue
-      this.preemptedJobs.set(job.jobId, 'visible-superseded')
-      void worker.terminate().catch(() => {})
-    }
-
     this.enqueueList(filePaths, 'low', {
       source: 'foreground',
       preemptible: true,

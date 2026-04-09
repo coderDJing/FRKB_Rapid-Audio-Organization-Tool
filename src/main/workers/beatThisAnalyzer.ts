@@ -1,12 +1,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import childProcess, { type ChildProcessWithoutNullStreams } from 'node:child_process'
-
-type BeatThisPythonCommand = {
-  command: string
-  args: string[]
-  source: 'env-python' | 'local-runtime' | 'dev-launcher'
-}
+import {
+  buildBeatThisChildEnv,
+  normalizeBeatThisFsPath,
+  resolveBeatThisProjectRoot,
+  resolveBeatThisRuntime
+} from './beatThisRuntime'
 
 type BeatThisAnalyzeResult = {
   bpm: number
@@ -50,11 +50,8 @@ type PendingRequest = {
   reject: (error: Error) => void
 }
 
-const ENV_BEAT_THIS_PYTHON = 'FRKB_BEAT_THIS_PYTHON'
 const ENV_BEAT_THIS_BRIDGE = 'FRKB_BEAT_THIS_BRIDGE'
-const ENV_BEAT_THIS_DEVICE = 'FRKB_BEAT_THIS_DEVICE'
 const ENV_BEAT_THIS_DBN = 'FRKB_BEAT_THIS_DBN'
-const LOCAL_RUNTIME_DIR = 'grid-analysis-lab/beat-this-runtime'
 const LOCAL_BRIDGE_PATH = 'scripts/beat_this_bridge.py'
 const DEFAULT_WINDOW_SEC = 30
 const DEFAULT_MAX_SCAN_SEC = 120
@@ -62,23 +59,17 @@ const WINDOW_MIN_DURATION_SEC = 8
 const QUALITY_EARLY_STOP_THRESHOLD = 0.72
 const QUALITY_MIN_BEAT_COUNT = 32
 
-let cachedProjectRoot = ''
 let cachedBridgePath = ''
-let cachedPythonCommand: BeatThisPythonCommand | null | undefined
 let bridgeChild: ChildProcessWithoutNullStreams | null = null
 let bridgeReadyPromise: Promise<void> | null = null
 let bridgeReadyResolve: (() => void) | null = null
 let bridgeReadyReject: ((error: Error) => void) | null = null
 let bridgeStdoutBuffer = ''
+let bridgeStderrBuffer = ''
 let bridgeNextRequestId = 0
 let bridgeRequestQueue: Promise<unknown> = Promise.resolve()
 const bridgePendingRequests = new Map<string, PendingRequest>()
 let cleanupHooksRegistered = false
-
-const normalizeFsPath = (value: string) => {
-  const normalized = String(value || '').trim()
-  return normalized ? path.normalize(normalized) : ''
-}
 
 const toFloat32ArrayFromBuffer = (input: Buffer): Float32Array => {
   if (!input || input.length < 4) return new Float32Array(0)
@@ -94,144 +85,18 @@ const toFloat32ArrayFromBuffer = (input: Buffer): Float32Array => {
   return new Float32Array(copied.buffer)
 }
 
-const resolveProjectRoot = () => {
-  if (cachedProjectRoot) return cachedProjectRoot
-
-  const candidates = [
-    process.cwd(),
-    path.resolve(__dirname, '../..'),
-    path.resolve(__dirname, '../../..'),
-    path.resolve(__dirname, '../../../..')
-  ]
-
-  for (const candidate of candidates) {
-    let current = path.resolve(candidate)
-    for (let depth = 0; depth < 8; depth += 1) {
-      const packageJsonPath = path.join(current, 'package.json')
-      if (fs.existsSync(packageJsonPath)) {
-        cachedProjectRoot = current
-        return current
-      }
-      const parent = path.dirname(current)
-      if (!parent || parent === current) break
-      current = parent
-    }
-  }
-
-  cachedProjectRoot = path.resolve(process.cwd())
-  return cachedProjectRoot
-}
-
 const resolveBridgeScriptPath = () => {
   if (cachedBridgePath) return cachedBridgePath
 
-  const envBridge = normalizeFsPath(process.env[ENV_BEAT_THIS_BRIDGE] || '')
+  const envBridge = normalizeBeatThisFsPath(process.env[ENV_BEAT_THIS_BRIDGE] || '')
   if (envBridge && fs.existsSync(envBridge)) {
     cachedBridgePath = envBridge
     return envBridge
   }
 
-  const localBridge = path.join(resolveProjectRoot(), LOCAL_BRIDGE_PATH)
+  const localBridge = path.join(resolveBeatThisProjectRoot(), LOCAL_BRIDGE_PATH)
   cachedBridgePath = localBridge
   return localBridge
-}
-
-const resolveLocalRuntimePythonCandidates = () => {
-  const projectRoot = resolveProjectRoot()
-  const runtimeCandidates: string[] = [path.join(projectRoot, LOCAL_RUNTIME_DIR)]
-  if (process.platform === 'win32') {
-    runtimeCandidates.push(
-      path.join(projectRoot, 'vendor', 'demucs', 'win32-x64', 'runtime'),
-      path.join(projectRoot, 'vendor', 'demucs', 'win32-x64', 'runtime-cpu')
-    )
-  }
-
-  const pythonCandidates: string[] = []
-  for (const runtimeDir of runtimeCandidates) {
-    if (process.platform === 'win32') {
-      pythonCandidates.push(
-        path.join(runtimeDir, 'Scripts', 'python.exe'),
-        path.join(runtimeDir, 'python.exe')
-      )
-      continue
-    }
-    pythonCandidates.push(
-      path.join(runtimeDir, 'bin', 'python3'),
-      path.join(runtimeDir, 'bin', 'python')
-    )
-  }
-  return pythonCandidates
-}
-
-const probePythonCommand = (candidate: BeatThisPythonCommand) => {
-  const bridgePath = resolveBridgeScriptPath()
-  if (!bridgePath || !fs.existsSync(bridgePath)) return false
-
-  const probeCode = 'import beat_this, soundfile; print("ok")'
-  const result = childProcess.spawnSync(candidate.command, [...candidate.args, '-c', probeCode], {
-    windowsHide: true,
-    encoding: 'utf8',
-    env: {
-      ...process.env,
-      PYTHONUTF8: '1',
-      PYTHONIOENCODING: 'utf-8'
-    }
-  })
-
-  if (result.error) return false
-  return (
-    result.status === 0 &&
-    String(result.stdout || '')
-      .trim()
-      .includes('ok')
-  )
-}
-
-const resolvePythonCommand = (): BeatThisPythonCommand | null => {
-  if (cachedPythonCommand !== undefined) return cachedPythonCommand
-
-  const envPython = normalizeFsPath(process.env[ENV_BEAT_THIS_PYTHON] || '')
-  if (envPython && fs.existsSync(envPython)) {
-    const envCandidate: BeatThisPythonCommand = {
-      command: envPython,
-      args: [],
-      source: 'env-python'
-    }
-    if (probePythonCommand(envCandidate)) {
-      cachedPythonCommand = envCandidate
-      return envCandidate
-    }
-  }
-
-  for (const pythonPath of resolveLocalRuntimePythonCandidates()) {
-    if (!pythonPath || !fs.existsSync(pythonPath)) continue
-    const localCandidate: BeatThisPythonCommand = {
-      command: pythonPath,
-      args: [],
-      source: 'local-runtime'
-    }
-    if (probePythonCommand(localCandidate)) {
-      cachedPythonCommand = localCandidate
-      return localCandidate
-    }
-  }
-
-  const devCandidates: BeatThisPythonCommand[] =
-    process.platform === 'win32'
-      ? [
-          { command: 'py', args: ['-3.11'], source: 'dev-launcher' },
-          { command: 'py', args: ['-3'], source: 'dev-launcher' }
-        ]
-      : [{ command: 'python3', args: [], source: 'dev-launcher' }]
-
-  for (const candidate of devCandidates) {
-    if (!probePythonCommand(candidate)) continue
-    cachedPythonCommand = candidate
-    return candidate
-  }
-
-  cachedPythonCommand = null
-  return null
 }
 
 const normalizeBeatThisResult = (input: BeatThisAnalyzeResult): BeatThisAnalyzeResult | null => {
@@ -295,6 +160,7 @@ const rejectAllPendingRequests = (error: Error) => {
 const resetBridgeProcessState = (error?: Error) => {
   bridgeChild = null
   bridgeStdoutBuffer = ''
+  bridgeStderrBuffer = ''
   if (bridgeReadyResolve || bridgeReadyReject) {
     settleBridgeReady(error || new Error('Beat This! bridge terminated before ready'))
   }
@@ -389,17 +255,18 @@ const ensureBridgeProcess = async () => {
     return bridgeChild
   }
 
-  const pythonCommand = resolvePythonCommand()
-  if (!pythonCommand) {
+  const resolvedRuntime = resolveBeatThisRuntime()
+  if (!resolvedRuntime) {
     throw new Error('Beat This! Python runtime not available')
   }
+  const pythonCommand = resolvedRuntime.candidate
 
   const bridgePath = resolveBridgeScriptPath()
   if (!bridgePath || !fs.existsSync(bridgePath)) {
     throw new Error(`Beat This! bridge missing: ${bridgePath || '<empty>'}`)
   }
 
-  const device = String(process.env[ENV_BEAT_THIS_DEVICE] || '').trim() || 'cpu'
+  const device = resolvedRuntime.selectedDeviceArg || 'cpu'
   const dbnEnabled = /^(1|true|yes|on)$/i.test(String(process.env[ENV_BEAT_THIS_DBN] || '').trim())
   const child = childProcess.spawn(
     pythonCommand.command,
@@ -407,11 +274,7 @@ const ensureBridgeProcess = async () => {
     {
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        PYTHONUTF8: '1',
-        PYTHONIOENCODING: 'utf-8'
-      }
+      env: buildBeatThisChildEnv(pythonCommand)
     }
   )
 
@@ -423,7 +286,12 @@ const ensureBridgeProcess = async () => {
   })
 
   child.stdout.on('data', handleBridgeStdoutChunk)
-  child.stderr.on('data', () => {})
+  child.stderr.on('data', (chunk: Buffer | string) => {
+    bridgeStderrBuffer += chunk.toString()
+    if (bridgeStderrBuffer.length > 4000) {
+      bridgeStderrBuffer = bridgeStderrBuffer.slice(-4000)
+    }
+  })
   child.once('error', (error) => {
     const startupError = new Error(
       `Beat This! bridge process failed: ${error instanceof Error ? error.message : String(error)}`
@@ -431,8 +299,11 @@ const ensureBridgeProcess = async () => {
     resetBridgeProcessState(startupError)
   })
   child.once('exit', (code, signal) => {
+    const stderrTail = bridgeStderrBuffer.trim()
     const exitError = new Error(
-      `Beat This! bridge exited unexpectedly (code=${String(code ?? '')}, signal=${String(signal ?? '')})`
+      `Beat This! bridge exited unexpectedly (code=${String(code ?? '')}, signal=${String(signal ?? '')})${
+        stderrTail ? ` stderr=${stderrTail}` : ''
+      }`
     )
     resetBridgeProcessState(exitError)
   })

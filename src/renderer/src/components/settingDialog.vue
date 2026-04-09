@@ -510,6 +510,58 @@ const clearLibraryDirtyData = async () => {
     })
   }
 }
+
+const clearAnalysisRuntime = async () => {
+  if (runtime.isProgressing) {
+    await confirm({
+      title: t('common.setting'),
+      content: [t('import.waitForTask')],
+      confirmShow: false
+    })
+    return
+  }
+  const resConfirm = await confirm({
+    title: t('common.warning'),
+    content: [
+      t('settings.clearAnalysisRuntime.confirmLine1'),
+      t('settings.clearAnalysisRuntime.confirmLine2')
+    ]
+  })
+  if (resConfirm !== 'confirm') return
+  try {
+    await window.electron.ipcRenderer.invoke('analysis-runtime:clear-local')
+    runtime.analysisRuntime.available = false
+    runtime.analysisRuntime.preferred.alreadyAvailable = false
+    runtime.analysisRuntime.state = {
+      status: 'idle',
+      profile: '',
+      runtimeKey: '',
+      version: '',
+      percent: 0,
+      downloadedBytes: 0,
+      totalBytes: 0,
+      archiveSize: 0,
+      title: '',
+      message: '',
+      error: '',
+      updatedAt: Date.now()
+    }
+    await confirm({
+      title: t('common.success'),
+      content: [
+        t('settings.clearAnalysisRuntime.successLine1'),
+        t('settings.clearAnalysisRuntime.successLine2')
+      ],
+      confirmShow: false
+    })
+  } catch (error) {
+    await confirm({
+      title: t('common.error'),
+      content: [t('settings.clearAnalysisRuntime.failed'), String((error as any)?.message || '')],
+      confirmShow: false
+    })
+  }
+}
 </script>
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
@@ -884,6 +936,19 @@ const clearLibraryDirtyData = async () => {
                   @click="clearLibraryDirtyData()"
                 >
                   {{ t('settings.clearDirtyData.button') }}
+                </div>
+              </div>
+              <div style="margin-top: 20px">{{ t('settings.clearAnalysisRuntime.title') }}：</div>
+              <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary)">
+                {{ t('settings.clearAnalysisRuntime.desc') }}
+              </div>
+              <div style="margin-top: 10px">
+                <div
+                  class="dangerButton"
+                  style="width: 120px; text-align: center"
+                  @click="clearAnalysisRuntime()"
+                >
+                  {{ t('settings.clearAnalysisRuntime.button') }}
                 </div>
               </div>
             </template>

@@ -35,10 +35,6 @@ export function useKeyAnalysisQueue({
     const signature = paths.join('|')
     if (!paths.length || signature === lastSignature) return
     lastSignature = signature
-    console.info('[songs-key-analysis] queue-visible', {
-      count: paths.length,
-      signature
-    })
     window.electron.ipcRenderer.send('key-analysis:queue-visible', { filePaths: paths })
   }
 

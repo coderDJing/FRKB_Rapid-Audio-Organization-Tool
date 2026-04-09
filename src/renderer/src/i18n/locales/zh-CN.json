@@ -42,6 +42,7 @@
     "visitGithub": "访问 GitHub",
     "visitWebsite": "访问官网",
     "checkUpdate": "检查更新",
+    "downloadAnalysisRuntime": "下载分析运行时",
     "whatsNew": "更新日志",
     "thirdPartyNotices": "第三方许可",
     "about": "关于",
@@ -972,6 +973,21 @@
     "deleteBlockedWindowOpen": "当前 Mixtape 自动录制窗口正在打开，无法删除该 Mixtape 自动录制歌单。",
     "deleteBlockedWindowOpenHint": "请先关闭该 Mixtape 自动录制窗口，再执行删除。"
   },
+  "analysisRuntime": {
+    "promptTitle": "检测到可用的分析运行时组件",
+    "promptBody": "当前电脑支持使用 {title} 加速 BPM/网格分析、双轨横推与 Stem 分离。现在可下载安装该组件（约 {size}）；未完成安装前，上述功能不可用。",
+    "promptHint": "如当前网络无法访问 GitHub，可尝试开启 VPN，或确认系统代理 / PAC 已对 FRKB 生效。",
+    "downloadNow": "立即下载",
+    "downloadLater": "暂不下载",
+    "readyHint": "{title} 组件已准备完成，后续 BPM/网格分析、双轨横推与 Stem 分离会自动使用该运行时。",
+    "unsupportedTitle": "分析运行时不可用",
+    "unsupportedHint": "当前电脑暂不支持可下载的分析运行时，BPM/网格分析、双轨横推与 Stem 分离暂不可用。",
+    "manifestUnavailableHint": "无法获取分析运行时下载清单，通常是网络连接、GitHub 访问或代理配置异常导致。",
+    "downloadFailedHint": "分析运行时下载失败，当前无法使用 BPM/网格分析、双轨横推与 Stem 分离。",
+    "downloadErrorHint": "错误详情：{error}",
+    "horizontalBlockedHint": "未安装分析运行时，暂不可进入双轨横推模式。请先下载可用的运行时组件。",
+    "helpButtonHint": "下载后可启用 BPM/网格分析、双轨横推与 Stem 分离。"
+  },
   "recycleBin": {
     "recycleBin": "回收站",
     "emptyRecycleBin": "清空回收站",
@@ -1053,6 +1069,16 @@
       "successLine1": "脏数据清理完成。",
       "successLine2": "SQLite 删除 {sqliteRows} 条，库内缓存删除 {libraryItems} 项，userData 缓存删除 {userDataItems} 项。",
       "failed": "清理脏数据失败"
+    },
+    "clearAnalysisRuntime": {
+      "title": "清除本地分析运行时（仅开发/预发布）",
+      "desc": "删除本机已下载的分析/Stem 共用运行时与下载缓存。删除后会回到“像刚安装且从未下载过运行时”的状态。",
+      "button": "清除运行时",
+      "confirmLine1": "将删除本地已下载的分析运行时和下载缓存。",
+      "confirmLine2": "删除后 BPM/网格分析、双轨横推与 Stem 分离将重新提示下载安装。建议清除后重启软件。",
+      "successLine1": "本地分析运行时已清除。",
+      "successLine2": "已移除运行时目录与下载缓存。重启软件后将重新按首次安装状态提示下载。",
+      "failed": "清除本地分析运行时失败"
     }
   },
   "fileSelector": {

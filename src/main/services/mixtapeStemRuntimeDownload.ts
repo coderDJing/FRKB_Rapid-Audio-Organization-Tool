@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { once } from 'node:events'
+import { EventEmitter } from 'node:events'
 import { Readable } from 'node:stream'
 import { app } from 'electron'
 import { ProxyAgent } from 'undici'
@@ -9,6 +10,7 @@ import { resolveBundledFfmpegPath } from '../ffmpeg'
 import {
   resolveBundledDemucsRuntimeCandidates,
   resolveDemucsPlatformDir,
+  resolveInstalledDemucsRootPath,
   resolveInstalledDemucsPlatformRootPath
 } from '../demucs'
 import { getSystemProxy } from '../utils'
@@ -23,6 +25,7 @@ import {
 } from './mixtapeStemSeparationShared'
 import { probeWindowsGpuAdapters } from './mixtapeStemSeparationProbe'
 import { getCachedStemDeviceProbeSnapshot, probeDemucsDevices } from './mixtapeStemSeparationProbe'
+import { invalidateStemDeviceProbeCache } from './mixtapeStemSeparationProbe'
 
 const DEFAULT_DEMUCS_RUNTIME_MANIFEST_URL =
   'https://github.com/coderDjing/FRKB_Rapid-Audio-Organization-Tool/releases/download/demucs-runtime-assets/demucs-runtime-manifest.json'
@@ -119,6 +122,7 @@ let runtimeDownloadState: MixtapeStemRuntimeDownloadState = {
   error: '',
   updatedAt: Date.now()
 }
+export const stemRuntimeDownloadEvents = new EventEmitter()
 
 const resolveRuntimeManifestUrl = () =>
   normalizeText(process.env.FRKB_DEMUCS_RUNTIME_MANIFEST_URL, 2000) ||
@@ -239,6 +243,11 @@ const computeFileSha256 = async (filePath: string): Promise<string> => {
 
 const emitRuntimeDownloadState = () => {
   try {
+    stemRuntimeDownloadEvents.emit('state', {
+      ...runtimeDownloadState
+    })
+  } catch {}
+  try {
     mixtapeWindow.broadcast?.('mixtape-stem-runtime-download-state', {
       ...runtimeDownloadState
     })
@@ -260,6 +269,47 @@ const updateRuntimeDownloadState = (
 export const getStemRuntimeDownloadState = (): MixtapeStemRuntimeDownloadState => ({
   ...runtimeDownloadState
 })
+
+export const resetStemRuntimeDownloadState = () => {
+  runtimeEnsurePromiseByProfile.clear()
+  runtimeManifestPromise = null
+  runtimeManifestLastError = ''
+  runtimeDownloadState = {
+    status: 'idle',
+    profile: '',
+    runtimeKey: '',
+    version: '',
+    percent: 0,
+    downloadedBytes: 0,
+    totalBytes: 0,
+    archiveSize: 0,
+    title: '',
+    message: '',
+    error: '',
+    updatedAt: Date.now()
+  }
+  invalidateStemDeviceProbeCache()
+  emitRuntimeDownloadState()
+}
+
+export const clearInstalledStemRuntimes = async (): Promise<{
+  removedInstalledRoot: boolean
+  removedDownloadCache: boolean
+}> => {
+  const installedRoot = resolveInstalledDemucsRootPath()
+  const downloadCacheDir = resolveRuntimeDownloadCacheDir()
+  let removedInstalledRoot = false
+  let removedDownloadCache = false
+  await fs.promises.rm(installedRoot, { recursive: true, force: true }).catch(() => {})
+  removedInstalledRoot = !(await fileExists(installedRoot))
+  await fs.promises.rm(downloadCacheDir, { recursive: true, force: true }).catch(() => {})
+  removedDownloadCache = !(await fileExists(downloadCacheDir))
+  resetStemRuntimeDownloadState()
+  return {
+    removedInstalledRoot,
+    removedDownloadCache
+  }
+}
 
 const readRuntimeManifest = async (): Promise<RuntimeAssetManifest | null> => {
   if (runtimeManifestPromise) return await runtimeManifestPromise

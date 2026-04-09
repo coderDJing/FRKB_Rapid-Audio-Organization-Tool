@@ -1,5 +1,4 @@
 import { ipcMain } from 'electron'
-import { log } from '../log'
 import {
   cancelKeyAnalysisBackground,
   enqueueKeyAnalysisImmediate,
@@ -16,10 +15,6 @@ export function registerKeyAnalysisHandlers() {
     const paths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
     const normalized = paths.filter((p) => typeof p === 'string' && p.trim().length > 0)
     if (normalized.length === 0) return
-    log.info('[key-analysis] queue-visible', {
-      count: normalized.length,
-      sample: normalized.slice(0, 5)
-    })
     replaceVisibleKeyAnalysisList(normalized)
   })
 
@@ -29,10 +24,6 @@ export function registerKeyAnalysisHandlers() {
       const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
       const focusSlot = typeof payload?.focusSlot === 'string' ? payload.focusSlot.trim() : ''
       if (!filePath) return
-      log.info('[key-analysis] queue-playing', {
-        filePath,
-        focusSlot
-      })
       enqueueKeyAnalysisImmediate(filePath, { focusSlot })
     }
   )

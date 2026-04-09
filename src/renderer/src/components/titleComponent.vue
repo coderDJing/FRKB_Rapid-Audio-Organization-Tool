@@ -159,6 +159,9 @@ const defaultMenuConfigs = computed<MenuConfig[]>(() => [
       [{ name: 'menu.visitGithub', shortcutKey: 'F1' }, { name: 'menu.visitWebsite' }],
       [
         { name: 'menu.checkUpdate' },
+        ...(!runtime.analysisRuntime.available
+          ? [{ name: 'menu.downloadAnalysisRuntime', action: 'download-analysis-runtime' }]
+          : []),
         { name: 'menu.whatsNew' },
         { name: 'menu.thirdPartyNotices' },
         { name: 'menu.about' }
@@ -288,6 +291,10 @@ const menuButtonClick = async (item: MenuItem) => {
   }
   if (item.action === 'open-log') {
     window.electron.ipcRenderer.send('openLog')
+    return
+  }
+  if (item.action === 'download-analysis-runtime') {
+    emit('openDialog', 'menu.downloadAnalysisRuntime')
     return
   }
   if (item.action === 'dev-songlist-trace-start') {

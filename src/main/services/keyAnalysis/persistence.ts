@@ -9,6 +9,7 @@ import type { ISongInfo } from '../../../types/globals'
 import type { MixxxWaveformData } from '../../waveformCache'
 import { persistSharedSongGridDefinition } from '../sharedSongGrid'
 import { emitSongGridUpdated } from '../songGridEvents'
+import { isBeatThisRuntimeAvailableLocally } from '../../workers/beatThisRuntime'
 import {
   isValidBpm,
   isValidBarBeatOffset,
@@ -414,6 +415,10 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       }
     } else {
       needsWaveform = false
+    }
+
+    if (needsBpm && !isBeatThisRuntimeAvailableLocally()) {
+      needsBpm = false
     }
 
     job.needsKey = needsKey

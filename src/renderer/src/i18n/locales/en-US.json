@@ -42,6 +42,7 @@
     "visitGithub": "Visit GitHub",
     "visitWebsite": "Visit Website",
     "checkUpdate": "Check for Update",
+    "downloadAnalysisRuntime": "Download Analysis Runtime",
     "whatsNew": "Release Notes",
     "thirdPartyNotices": "Third-Party Notices",
     "about": "About",
@@ -972,6 +973,21 @@
     "deleteBlockedWindowOpen": "This Mixtape Auto-Recording window is currently open, so the Mixtape Auto-Recording playlist cannot be deleted.",
     "deleteBlockedWindowOpenHint": "Please close the Mixtape Auto-Recording window first, then try deleting again."
   },
+  "analysisRuntime": {
+    "promptTitle": "An analysis runtime component is available",
+    "promptBody": "This computer supports using {title} to accelerate BPM/grid analysis, dual-track horizontal browse, and stem separation. You can download this component ({size}) now. Until it is installed, those features stay unavailable.",
+    "promptHint": "If GitHub is unreachable from the current network, try enabling a VPN or make sure the system proxy / PAC is applied to FRKB.",
+    "downloadNow": "Download now",
+    "downloadLater": "Later",
+    "readyHint": "{title} is ready. Future BPM/grid analysis, dual-track horizontal browse, and stem separation will use this runtime automatically.",
+    "unsupportedTitle": "Analysis runtime unavailable",
+    "unsupportedHint": "This computer does not currently support a downloadable analysis runtime. BPM/grid analysis, dual-track horizontal browse, and stem separation are unavailable.",
+    "manifestUnavailableHint": "Unable to fetch the analysis runtime manifest. This is usually caused by network, GitHub access, or proxy configuration issues.",
+    "downloadFailedHint": "Failed to download the analysis runtime. BPM/grid analysis, dual-track horizontal browse, and stem separation are unavailable right now.",
+    "downloadErrorHint": "Details: {error}",
+    "horizontalBlockedHint": "Dual-track horizontal browse is unavailable until the analysis runtime is installed.",
+    "helpButtonHint": "Download this runtime to enable BPM/grid analysis, dual-track horizontal browse, and stem separation."
+  },
   "recycleBin": {
     "recycleBin": "Recycle Bin",
     "emptyRecycleBin": "Empty Recycle Bin",
@@ -1053,6 +1069,16 @@
       "successLine1": "Dirty data cleanup completed.",
       "successLine2": "Deleted {sqliteRows} SQLite rows, removed {libraryItems} library cache items, and removed {userDataItems} userData cache items.",
       "failed": "Failed to clean dirty data"
+    },
+    "clearAnalysisRuntime": {
+      "title": "Clear Local Analysis Runtime (Dev/Prerelease only)",
+      "desc": "Remove the downloaded shared runtime and download cache used by BPM/grid analysis and stem separation. After clearing, the app behaves like a fresh install that has never downloaded a runtime.",
+      "button": "Clear Runtime",
+      "confirmLine1": "This will delete the local analysis runtime and its download cache.",
+      "confirmLine2": "After clearing, BPM/grid analysis, dual-track horizontal browse, and stem separation will prompt for download again. Restarting the app afterwards is recommended.",
+      "successLine1": "The local analysis runtime has been cleared.",
+      "successLine2": "The runtime directory and download cache were removed. After restarting, the app will prompt again as if no runtime had ever been downloaded.",
+      "failed": "Failed to clear the local analysis runtime"
     }
   },
   "fileSelector": {

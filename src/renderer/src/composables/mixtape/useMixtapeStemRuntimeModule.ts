@@ -464,7 +464,7 @@ export const createUseMixtapeStemRuntimeModule = (
         return
       }
       const response = await window.electron.ipcRenderer.invoke(
-        'mixtape:stem:runtime:download-preferred'
+        'analysis-runtime:download-preferred'
       )
       stemRuntimeDownloadState.value = normalizeStemRuntimeDownloadState(response?.state)
     } catch (error) {
@@ -483,7 +483,7 @@ export const createUseMixtapeStemRuntimeModule = (
     const playlistId = String(options.payload.value.playlistId || '').trim()
     if (!playlistId || options.mixtapeMixMode.value !== 'stem') return
     try {
-      const response = await window.electron.ipcRenderer.invoke('mixtape:stem:runtime:get-status')
+      const response = await window.electron.ipcRenderer.invoke('analysis-runtime:get-status')
       stemRuntimeDownloadState.value = normalizeStemRuntimeDownloadState(response?.state)
       const preferred =
         response?.preferred && typeof response.preferred === 'object'

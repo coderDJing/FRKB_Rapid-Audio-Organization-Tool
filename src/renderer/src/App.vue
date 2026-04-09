@@ -75,6 +75,234 @@ const horizontalModeTopSpacerStyle = computed(() => ({
   overflow: 'visible' as const,
   zIndex: 20
 }))
+type AnalysisRuntimeDownloadStatus =
+  | 'idle'
+  | 'available'
+  | 'downloading'
+  | 'extracting'
+  | 'ready'
+  | 'failed'
+
+type AnalysisRuntimeDownloadState = {
+  status: AnalysisRuntimeDownloadStatus
+  profile: string
+  runtimeKey: string
+  version: string
+  percent: number
+  downloadedBytes: number
+  totalBytes: number
+  archiveSize: number
+  title: string
+  message: string
+  error: string
+  updatedAt: number
+}
+
+type AnalysisRuntimePreferredInfo = {
+  supported: boolean
+  downloadable: boolean
+  alreadyAvailable: boolean
+  profile: string
+  runtimeKey: string
+  version: string
+  archiveSize: number
+  title: string
+  reason: string
+  manifestUrl: string
+  releaseTag: string
+  error: string
+}
+
+let analysisRuntimePromptBusy = false
+
+const normalizeAnalysisRuntimeDownloadStatus = (value: unknown): AnalysisRuntimeDownloadStatus => {
+  return value === 'available' ||
+    value === 'downloading' ||
+    value === 'extracting' ||
+    value === 'ready' ||
+    value === 'failed'
+    ? value
+    : 'idle'
+}
+
+const normalizeAnalysisRuntimeDownloadState = (value: unknown): AnalysisRuntimeDownloadState => {
+  const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+  return {
+    status: normalizeAnalysisRuntimeDownloadStatus(raw.status),
+    profile: typeof raw.profile === 'string' ? raw.profile.trim() : '',
+    runtimeKey: typeof raw.runtimeKey === 'string' ? raw.runtimeKey.trim() : '',
+    version: typeof raw.version === 'string' ? raw.version.trim() : '',
+    percent: Math.max(0, Math.min(100, Math.round(Number(raw.percent) || 0))),
+    downloadedBytes: Math.max(0, Number(raw.downloadedBytes) || 0),
+    totalBytes: Math.max(0, Number(raw.totalBytes) || 0),
+    archiveSize: Math.max(0, Number(raw.archiveSize) || 0),
+    title: typeof raw.title === 'string' ? raw.title.trim() : '',
+    message: typeof raw.message === 'string' ? raw.message.trim() : '',
+    error: typeof raw.error === 'string' ? raw.error.trim() : '',
+    updatedAt: Math.max(0, Math.floor(Number(raw.updatedAt) || 0))
+  }
+}
+
+const normalizeAnalysisRuntimePreferredInfo = (value: unknown): AnalysisRuntimePreferredInfo => {
+  const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+  return {
+    supported: raw.supported === true,
+    downloadable: raw.downloadable === true,
+    alreadyAvailable: raw.alreadyAvailable === true,
+    profile: typeof raw.profile === 'string' ? raw.profile.trim() : '',
+    runtimeKey: typeof raw.runtimeKey === 'string' ? raw.runtimeKey.trim() : '',
+    version: typeof raw.version === 'string' ? raw.version.trim() : '',
+    archiveSize: Math.max(0, Number(raw.archiveSize) || 0),
+    title: typeof raw.title === 'string' ? raw.title.trim() : '',
+    reason: typeof raw.reason === 'string' ? raw.reason.trim() : '',
+    manifestUrl: typeof raw.manifestUrl === 'string' ? raw.manifestUrl.trim() : '',
+    releaseTag: typeof raw.releaseTag === 'string' ? raw.releaseTag.trim() : '',
+    error: typeof raw.error === 'string' ? raw.error.trim() : ''
+  }
+}
+
+const formatAnalysisRuntimeBytes = (bytes: number) => {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = Math.max(0, Number(bytes) || 0)
+  let unitIndex = 0
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+  const digits = unitIndex === 0 ? 0 : unitIndex === 1 ? 1 : 2
+  return `${value.toFixed(digits)} ${units[unitIndex]}`
+}
+
+const applyAnalysisRuntimeStatus = (params: { preferred?: unknown; state?: unknown }) => {
+  const preferred = normalizeAnalysisRuntimePreferredInfo(params.preferred)
+  const state = normalizeAnalysisRuntimeDownloadState(params.state)
+  runtime.analysisRuntime.preferred = preferred
+  runtime.analysisRuntime.state = state
+  runtime.analysisRuntime.available =
+    preferred.alreadyAvailable || state.status === 'ready' || state.status === 'extracting'
+  if (!runtime.analysisRuntime.available && runtime.mainWindowBrowseMode === 'horizontal') {
+    runtime.mainWindowBrowseMode = 'browser'
+  }
+  return {
+    preferred,
+    state
+  }
+}
+
+const refreshAnalysisRuntimeStatus = async () => {
+  const response = await window.electron.ipcRenderer.invoke('analysis-runtime:get-status')
+  return applyAnalysisRuntimeStatus({
+    preferred: response?.preferred,
+    state: response?.state
+  })
+}
+
+const promptAnalysisRuntimeDownload = async (
+  source: 'startup' | 'help' | 'horizontal'
+): Promise<boolean> => {
+  if (analysisRuntimePromptBusy) return runtime.analysisRuntime.available
+  analysisRuntimePromptBusy = true
+  try {
+    const { preferred, state } = await refreshAnalysisRuntimeStatus()
+    if (runtime.analysisRuntime.available) return true
+    if (state.status === 'downloading' || state.status === 'extracting') return false
+
+    if (!preferred.supported) {
+      if (source !== 'startup') {
+        await confirm({
+          title: t('analysisRuntime.unsupportedTitle'),
+          content: [t('analysisRuntime.unsupportedHint')],
+          confirmShow: false,
+          textAlign: 'left',
+          innerWidth: 560,
+          innerHeight: 0
+        })
+      }
+      return false
+    }
+
+    if (preferred.reason === 'manifest unavailable') {
+      if (source !== 'startup') {
+        const content = [
+          t('analysisRuntime.manifestUnavailableHint'),
+          t('mixtape.stemRuntimeNetworkHint')
+        ]
+        if (preferred.error) {
+          content.push(t('analysisRuntime.downloadErrorHint', { error: preferred.error }))
+        }
+        await confirm({
+          title: t('analysisRuntime.unsupportedTitle'),
+          content,
+          confirmShow: false,
+          textAlign: 'left',
+          innerWidth: 560,
+          innerHeight: 0
+        })
+      }
+      return false
+    }
+
+    if (!preferred.downloadable || !preferred.profile) return false
+
+    const confirmResult = await confirm({
+      title: t('analysisRuntime.promptTitle'),
+      content: [
+        t('analysisRuntime.promptBody', {
+          title: preferred.title,
+          size: formatAnalysisRuntimeBytes(preferred.archiveSize)
+        }),
+        t('analysisRuntime.promptHint')
+      ],
+      confirmShow: true,
+      confirmText: t('analysisRuntime.downloadNow'),
+      cancelText: t('analysisRuntime.downloadLater'),
+      textAlign: 'left',
+      innerWidth: 560,
+      innerHeight: 0
+    })
+    if (confirmResult !== 'confirm') return false
+
+    const response = await window.electron.ipcRenderer.invoke('analysis-runtime:download-preferred')
+    applyAnalysisRuntimeStatus({
+      preferred,
+      state: response?.state
+    })
+    return false
+  } catch (error) {
+    if (source !== 'startup') {
+      await confirm({
+        title: t('analysisRuntime.unsupportedTitle'),
+        content: [
+          t('analysisRuntime.downloadFailedHint'),
+          t('analysisRuntime.downloadErrorHint', {
+            error: error instanceof Error ? error.message : String(error || 'unknown')
+          })
+        ],
+        confirmShow: false,
+        textAlign: 'left',
+        innerWidth: 560,
+        innerHeight: 0
+      })
+    }
+    return false
+  } finally {
+    analysisRuntimePromptBusy = false
+  }
+}
+
+const ensureAnalysisRuntimeForHorizontalMode = async () => {
+  const allowed = await promptAnalysisRuntimeDownload('horizontal')
+  if (allowed || runtime.analysisRuntime.available) return true
+  await confirm({
+    title: t('analysisRuntime.unsupportedTitle'),
+    content: [t('analysisRuntime.horizontalBlockedHint')],
+    confirmShow: false,
+    textAlign: 'left',
+    innerWidth: 560,
+    innerHeight: 0
+  })
+  return false
+}
 
 type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
 type GlobalSongSearchItem = {
@@ -430,7 +658,13 @@ const openDialog = async (item: string) => {
     return
   }
   if (item === 'menu.horizontalBrowseMode') {
+    const canEnterHorizontalMode = await ensureAnalysisRuntimeForHorizontalMode()
+    if (!canEnterHorizontalMode) return
     runtime.mainWindowBrowseMode = 'horizontal'
+    return
+  }
+  if (item === 'menu.downloadAnalysisRuntime') {
+    await promptAnalysisRuntimeDownload('help')
     return
   }
   if (item === 'menu.about') {
@@ -633,6 +867,38 @@ onMounted(() => {
   window.electron.ipcRenderer.on('openDialogFromTray', async (_e, key: string) => {
     await openDialog(key)
   })
+  window.electron.ipcRenderer.on('analysis-runtime-download-state', (_e, payload) => {
+    const prevStatus = runtime.analysisRuntime.state.status
+    const next = applyAnalysisRuntimeStatus({
+      preferred: runtime.analysisRuntime.preferred,
+      state: payload
+    })
+    if (next.state.status === 'ready' && prevStatus !== 'ready' && next.state.title) {
+      void confirm({
+        title: t('common.success'),
+        content: [t('analysisRuntime.readyHint', { title: next.state.title })],
+        confirmShow: false,
+        textAlign: 'left',
+        innerWidth: 520,
+        innerHeight: 0
+      })
+      return
+    }
+    if (next.state.status === 'failed' && prevStatus !== 'failed') {
+      const content = [t('analysisRuntime.downloadFailedHint')]
+      if (next.state.error) {
+        content.push(t('analysisRuntime.downloadErrorHint', { error: next.state.error }))
+      }
+      void confirm({
+        title: t('common.warning'),
+        content,
+        confirmShow: false,
+        textAlign: 'left',
+        innerWidth: 560,
+        innerHeight: 0
+      })
+    }
+  })
   window.electron.ipcRenderer.on('open-global-song-search', async () => {
     await openDialog('menu.globalSongSearch')
   })
@@ -707,6 +973,10 @@ onMounted(() => {
   emitter.on('songsRemoved', handleSongsRemovedForGlobalSearch)
   emitter.on('metadataBatchUpdated', handleMetadataBatchUpdatedForGlobalSearch)
   emitter.on('songMetadataUpdated', handleSongMetadataUpdatedForGlobalSearch)
+  void (async () => {
+    await refreshAnalysisRuntimeStatus()
+    await promptAnalysisRuntimeDownload('startup')
+  })()
 })
 
 onBeforeUnmount(() => {
@@ -727,6 +997,7 @@ onBeforeUnmount(() => {
     'dev-songlist-trace:error',
     handleDevSongListTraceError
   )
+  window.electron.ipcRenderer.removeAllListeners('analysis-runtime-download-state')
   emitter.off('songsRemoved', handleSongsRemovedForGlobalSearch)
   emitter.off('metadataBatchUpdated', handleMetadataBatchUpdatedForGlobalSearch)
   emitter.off('songMetadataUpdated', handleSongMetadataUpdatedForGlobalSearch)

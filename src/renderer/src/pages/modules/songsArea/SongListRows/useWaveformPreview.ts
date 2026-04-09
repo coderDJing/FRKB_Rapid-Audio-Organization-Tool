@@ -793,9 +793,6 @@ export function useWaveformPreview(params: {
     }
     const items = Array.isArray(response?.items) ? response!.items : null
     if (!items) {
-      console.warn('[songs-waveform] waveform-cache:batch returned no items', {
-        fileCount: filePaths.length
-      })
       for (const filePath of filePaths) {
         inflight.delete(filePath)
       }
@@ -823,10 +820,6 @@ export function useWaveformPreview(params: {
       inflight.delete(filePath)
     }
     if (missing.length) {
-      console.info('[songs-waveform] waveform-cache misses', {
-        missingCount: missing.length,
-        sample: missing.slice(0, 5)
-      })
       const toQueue = missing.filter((filePath) => !queuedMissing.has(filePath))
       if (toQueue.length) {
         for (const filePath of toQueue) {
@@ -834,11 +827,6 @@ export function useWaveformPreview(params: {
         }
         window.electron.ipcRenderer.send('key-analysis:queue-visible', { filePaths: toQueue })
       }
-    } else {
-      console.info('[songs-waveform] waveform-cache hits', {
-        fileCount: filePaths.length,
-        sample: filePaths.slice(0, 5)
-      })
     }
     scheduleDraw()
   }
@@ -916,11 +904,6 @@ export function useWaveformPreview(params: {
       } else if (resolveExternalRootPath()) {
         storeWaveformData(filePath, null)
         setWaveformPlaceholderUnavailable(filePath, 'missing analyze path')
-        console.warn('[external-waveform] preview waveform unavailable', {
-          filePath,
-          analyzePath: '',
-          reason: 'missing analyze path'
-        })
       } else {
         libraryFilePaths.push(filePath)
       }
@@ -942,7 +925,6 @@ export function useWaveformPreview(params: {
   const handleWaveformUpdated = (_event: unknown, payload: { filePath?: string }) => {
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
     if (!filePath || !waveformVisible.value) return
-    console.info('[songs-waveform] song-waveform-updated', { filePath })
     const song = resolveVisibleSongByFilePath(filePath)
     const visibleFilePath = typeof song?.filePath === 'string' ? song.filePath : ''
     if (!visibleFilePath) return
@@ -997,13 +979,6 @@ export function useWaveformPreview(params: {
       } else {
         setWaveformPlaceholderUnavailable(filePath, payload?.error ? String(payload.error) : '')
       }
-      if (!data && payload?.error) {
-        console.warn('[pioneer-waveform] preview waveform unavailable', {
-          filePath,
-          analyzePath,
-          reason: String(payload.error)
-        })
-      }
     }
     pioneerStreamFilePathMap.delete(analyzePath)
     scheduleDraw()
@@ -1021,12 +996,6 @@ export function useWaveformPreview(params: {
       for (const filePath of filePaths) {
         inflight.delete(filePath)
       }
-    }
-    if (payload?.error) {
-      console.warn('[pioneer-waveform] preview waveform stream failed', {
-        requestId,
-        reason: String(payload.error)
-      })
     }
     for (const [, filePaths] of pioneerStreamFilePathMap) {
       for (const filePath of filePaths) {
