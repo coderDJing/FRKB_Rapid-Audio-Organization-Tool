@@ -137,6 +137,8 @@ export class KeyAnalysisQueue {
       source?: KeyAnalysisSource
       fastAnalysis?: boolean
       focusSlot?: string
+      preemptible?: boolean
+      category?: 'visible'
     } = {}
   ) {
     if (!filePath) return
@@ -165,9 +167,21 @@ export class KeyAnalysisQueue {
         if (options.fastAnalysis !== undefined) {
           existing.fastAnalysis = options.fastAnalysis
         }
+        if (options.preemptible !== undefined) {
+          existing.preemptible = options.preemptible
+        }
+        if (options.category !== undefined) {
+          existing.category = options.category
+        }
         this.addFocusSlotToJob(existing, focusSlot)
         this.addPending(existing, options.urgent)
       } else {
+        if (options.preemptible !== undefined) {
+          existing.preemptible = options.preemptible
+        }
+        if (options.category !== undefined) {
+          existing.category = options.category
+        }
         this.addFocusSlotToJob(existing, focusSlot)
       }
       if (options.urgent && existing.priority === 'high') {
@@ -183,12 +197,14 @@ export class KeyAnalysisQueue {
       normalizedPath,
       priority,
       fastAnalysis: options.fastAnalysis ?? false,
-      source
+      source,
+      preemptible: options.preemptible === true,
+      category: options.category
     }
     this.addFocusSlotToJob(job, focusSlot)
     this.addPending(job, options.urgent)
     if (source === 'foreground') {
-      this.workerPool.maybePreemptBackground()
+      this.workerPool.maybePreemptForJob(job)
     }
     this.drain()
   }
@@ -201,12 +217,48 @@ export class KeyAnalysisQueue {
       source?: KeyAnalysisSource
       fastAnalysis?: boolean
       focusSlot?: string
+      preemptible?: boolean
+      category?: 'visible'
     } = {}
   ) {
     if (!Array.isArray(filePaths) || filePaths.length === 0) return
     for (const filePath of filePaths) {
       this.enqueue(filePath, priority, options)
     }
+  }
+
+  replaceVisibleList(filePaths: string[]) {
+    const normalizedIncoming = Array.from(
+      new Set(
+        (Array.isArray(filePaths) ? filePaths : [])
+          .filter((filePath) => typeof filePath === 'string')
+          .map((filePath) => filePath.trim())
+          .filter(Boolean)
+          .map((filePath) => normalizePath(filePath))
+      )
+    )
+    const keepSet = new Set(normalizedIncoming)
+
+    for (const job of Array.from(this.pendingByPath.values())) {
+      if (job.category !== 'visible') continue
+      if (keepSet.has(job.normalizedPath)) continue
+      this.removePending(job)
+    }
+
+    for (const job of Array.from(this.activeByPath.values())) {
+      if (job.category !== 'visible') continue
+      if (keepSet.has(job.normalizedPath)) continue
+      const worker = this.findWorkerByJobId(job.jobId)
+      if (!worker) continue
+      this.preemptedJobs.set(job.jobId, 'visible-superseded')
+      void worker.terminate().catch(() => {})
+    }
+
+    this.enqueueList(filePaths, 'low', {
+      source: 'foreground',
+      preemptible: true,
+      category: 'visible'
+    })
   }
 
   cancelBackgroundWork(pauseMs?: number) {

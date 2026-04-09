@@ -242,6 +242,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     const filePath = payload?.filePath
     const keyText = payload?.keyText
     if (!filePath || typeof keyText !== 'string') return
+    console.info('[songs-ui] song-key-updated', { filePath, keyText })
     const normalizedTargetPath = normalizePath(filePath)
 
     let touched = false
@@ -254,6 +255,16 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     if (touched) {
       originalSongInfoArr.value = markRaw(nextOriginal)
       scheduleApply()
+    }
+
+    if (runtime.songsArea.songInfoArr.length > 0) {
+      runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.map((item) =>
+        normalizePath(item.filePath) === normalizedTargetPath ? { ...item, key: keyText } : item
+      )
+      console.info('[songs-ui] patched runtime songInfoArr key', {
+        filePath,
+        keyText
+      })
     }
 
     const currentPlayingSongForKey = runtime.playingData.playingSong
@@ -285,6 +296,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     const filePath = payload?.filePath
     const bpmValue = payload?.bpm
     if (!filePath || typeof bpmValue !== 'number' || !Number.isFinite(bpmValue)) return
+    console.info('[songs-ui] song-bpm-updated', { filePath, bpm: bpmValue })
     const normalizedTargetPath = normalizePath(filePath)
 
     let touched = false
@@ -297,6 +309,16 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     if (touched) {
       originalSongInfoArr.value = markRaw(nextOriginal)
       scheduleApply()
+    }
+
+    if (runtime.songsArea.songInfoArr.length > 0) {
+      runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.map((item) =>
+        normalizePath(item.filePath) === normalizedTargetPath ? { ...item, bpm: bpmValue } : item
+      )
+      console.info('[songs-ui] patched runtime songInfoArr bpm', {
+        filePath,
+        bpm: bpmValue
+      })
     }
 
     const currentPlayingSongForBpm = runtime.playingData.playingSong
@@ -335,6 +357,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
   ) => {
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath : ''
     if (!filePath) return
+    console.info('[songs-ui] song-grid-updated', payload)
     const normalizedTargetPath = normalizePath(filePath)
 
     const hasBpm = typeof payload?.bpm === 'number' && Number.isFinite(payload.bpm)
@@ -372,6 +395,13 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     if (touched) {
       originalSongInfoArr.value = markRaw(nextOriginal)
       scheduleApply()
+    }
+
+    if (runtime.songsArea.songInfoArr.length > 0) {
+      runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.map((item) =>
+        normalizePath(item.filePath) === normalizedTargetPath ? applyGridPatch(item) : item
+      )
+      console.info('[songs-ui] patched runtime songInfoArr grid', payload)
     }
 
     const currentPlayingSongForGrid = runtime.playingData.playingSong

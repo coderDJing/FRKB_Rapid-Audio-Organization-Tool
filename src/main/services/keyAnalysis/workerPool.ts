@@ -29,7 +29,12 @@ type KeyAnalysisWorkerPoolDeps = {
   enqueue: (
     filePath: string,
     priority: KeyAnalysisPriority,
-    options?: { urgent?: boolean; source?: 'foreground' | 'background'; fastAnalysis?: boolean }
+    options?: {
+      urgent?: boolean
+      source?: 'foreground' | 'background'
+      fastAnalysis?: boolean
+      preemptible?: boolean
+    }
   ) => void
   onJobProgress: (worker: Worker, job: KeyAnalysisJob, progress: KeyAnalysisProgress) => void
   onJobFailure: (job: KeyAnalysisJob, reason: KeyAnalysisFailureReason, detail?: string) => void
@@ -42,6 +47,21 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
   const removeWorkerFromList = (list: Worker[], worker: Worker) => {
     const idx = list.indexOf(worker)
     if (idx !== -1) list.splice(idx, 1)
+  }
+
+  const reenqueuePreemptedJob = (
+    job: KeyAnalysisJob,
+    preemptionKind: Exclude<KeyAnalysisPreemptionKind, 'focus-superseded' | 'visible-superseded'>
+  ) => {
+    deps.enqueue(
+      job.filePath,
+      preemptionKind === 'background-resume' ? 'background' : job.priority,
+      {
+        source: preemptionKind === 'background-resume' ? 'background' : job.source,
+        fastAnalysis: job.fastAnalysis,
+        preemptible: job.preemptible
+      }
+    )
   }
 
   const applyWorkerProgress = (
@@ -154,7 +174,10 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       }
       if (wasPreempted) {
         deps.preemptedJobs.delete(jobId)
-        if (job && preemptionKind === 'background-resume') {
+        if (
+          job &&
+          (preemptionKind === 'background-resume' || preemptionKind === 'lower-priority-resume')
+        ) {
           preemptedJob = job
         }
       }
@@ -174,8 +197,11 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     }
     refreshForegroundWorker()
     deps.drain()
-    if (preemptedJob) {
-      deps.enqueue(preemptedJob.filePath, 'background', { source: 'background' })
+    if (
+      preemptedJob &&
+      (preemptionKind === 'background-resume' || preemptionKind === 'lower-priority-resume')
+    ) {
+      reenqueuePreemptedJob(preemptedJob, preemptionKind)
     }
     deps.background.emitBackgroundStatus()
   }
@@ -268,6 +294,23 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       deps.events.emit('waveform-updated', { filePath: job.filePath })
     }
 
+    if (job) {
+      log.info('[key-analysis] job-finished', {
+        filePath: job.filePath,
+        source: job.source,
+        priority: job.priority,
+        needsKey: job.needsKey,
+        needsBpm: job.needsBpm,
+        needsWaveform: job.needsWaveform,
+        keyText: payloadResult?.keyText,
+        bpm: payloadResult?.bpm,
+        bpmError: payloadResult?.bpmError,
+        keyError: payloadResult?.keyError,
+        hasWaveform: Boolean(payloadResult?.mixxxWaveformData),
+        workerError: payloadError || ''
+      })
+    }
+
     deps.drain()
   }
 
@@ -322,9 +365,22 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     return worker || null
   }
 
-  const maybePreemptBackground = () => {
+  const maybePreemptForJob = (incomingJob: KeyAnalysisJob) => {
+    if (incomingJob.priority !== 'high') return
     if (deps.idle.length > 0) return
     if (deps.workers.length <= 1) return
+
+    const canPreempt = (job: KeyAnalysisJob | null | undefined) => {
+      if (!job) return false
+      if (job.priority === 'high') return false
+      return job.source === 'background' || job.preemptible === true
+    }
+
+    const resolvePreemptionKind = (
+      job: KeyAnalysisJob
+    ): Exclude<KeyAnalysisPreemptionKind, 'focus-superseded'> =>
+      job.source === 'background' ? 'background-resume' : 'lower-priority-resume'
+
     const foregroundWorker = deps.getForegroundWorker()
     if (foregroundWorker && !deps.busy.has(foregroundWorker)) return
 
@@ -332,12 +388,8 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       const foregroundJobId = deps.busy.get(foregroundWorker)
       const foregroundJob =
         typeof foregroundJobId === 'number' ? deps.inFlight.get(foregroundJobId) : null
-      if (
-        typeof foregroundJobId === 'number' &&
-        foregroundJob &&
-        foregroundJob.source === 'background'
-      ) {
-        deps.preemptedJobs.set(foregroundJobId, 'background-resume')
+      if (typeof foregroundJobId === 'number' && canPreempt(foregroundJob)) {
+        deps.preemptedJobs.set(foregroundJobId, resolvePreemptionKind(foregroundJob!))
         void foregroundWorker.terminate().catch(() => {})
         return
       }
@@ -345,8 +397,8 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
 
     for (const [worker, jobId] of deps.busy.entries()) {
       const job = deps.inFlight.get(jobId)
-      if (job && job.source === 'background') {
-        deps.preemptedJobs.set(jobId, 'background-resume')
+      if (canPreempt(job)) {
+        deps.preemptedJobs.set(jobId, resolvePreemptionKind(job!))
         void worker.terminate().catch(() => {})
         return
       }
@@ -366,7 +418,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     createWorker,
     getIdleWorker,
     getReservedWorker,
-    maybePreemptBackground,
+    maybePreemptForJob,
     refreshForegroundWorker
   }
 }

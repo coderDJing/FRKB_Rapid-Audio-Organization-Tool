@@ -40,6 +40,8 @@ export type HorizontalBrowseDetailWaveformWorkerOutgoing = {
     requestToken: number
     filePath: string
     cacheKey: string
+    rangeStartSec: number
+    rangeDurationSec: number
     width: number
     height: number
     pixelRatio: number

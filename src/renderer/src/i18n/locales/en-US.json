@@ -45,7 +45,9 @@
     "whatsNew": "Release Notes",
     "thirdPartyNotices": "Third-Party Notices",
     "about": "About",
-    "openLog": "Open Log File"
+    "openLog": "Open Log File",
+    "startSongListTrace": "Start Trace Recording",
+    "stopSongListTrace": "Stop Trace And Export"
   },
   "database": {
     "selectLocation": "Set up database",

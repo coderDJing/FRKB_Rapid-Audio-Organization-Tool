@@ -12,6 +12,7 @@ const props = defineProps<{
   gridBpm: number
   cueSeconds: number
   deferWaveformLoad: boolean
+  rawLoadPriorityHint: number
   direction: 'up' | 'down'
   deckHovered: boolean
   regionId: number
@@ -65,6 +66,7 @@ defineExpose({
       :grid-bpm="props.gridBpm"
       :cue-seconds="props.cueSeconds"
       :defer-waveform-load="props.deferWaveformLoad"
+      :raw-load-priority-hint="props.rawLoadPriorityHint"
       :direction="props.direction"
       @toolbar-state-change="emit('toolbar-state-change', $event)"
       @zoom-change="emit('zoom-change', $event)"

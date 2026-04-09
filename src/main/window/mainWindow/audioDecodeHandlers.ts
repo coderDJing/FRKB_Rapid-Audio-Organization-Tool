@@ -4,6 +4,10 @@ import path from 'node:path'
 import { log } from '../../log'
 import { findSongListRoot } from '../../services/cacheMaintenance'
 import { enqueueKeyAnalysis, enqueueKeyAnalysisImmediate } from '../../services/keyAnalysisQueue'
+import {
+  isCompleteSharedSongGridDefinition,
+  loadSharedSongGridDefinition
+} from '../../services/sharedSongGrid'
 import { decodeAudioShared } from '../../services/audioDecodePool'
 import * as LibraryCacheDb from '../../libraryCacheDb'
 import { applyLiteDefaults, buildLiteSongInfo } from '../../services/songInfoLite'
@@ -41,10 +45,14 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
     (eventName: 'readSongFile' | 'readNextSongFile', successEvent: string, errorEvent: string) =>
     async (_e: Electron.IpcMainEvent, filePath: string, requestId: string) => {
       try {
-        if (eventName === 'readSongFile') {
-          enqueueKeyAnalysisImmediate(filePath)
-        } else {
-          enqueueKeyAnalysis(filePath, 'high')
+        const sharedGrid = await loadSharedSongGridDefinition(filePath).catch(() => null)
+        const needsGridAnalysis = !isCompleteSharedSongGridDefinition(sharedGrid)
+        if (needsGridAnalysis) {
+          if (eventName === 'readSongFile') {
+            enqueueKeyAnalysisImmediate(filePath)
+          } else {
+            enqueueKeyAnalysis(filePath, 'high')
+          }
         }
         let stat: { size: number; mtimeMs: number } | null = null
         try {

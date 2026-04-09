@@ -20,6 +20,7 @@ type BeatAlignPreviewRenderInput = {
   showBeatGrid?: boolean
   allowScrollReuse?: boolean
   waveformLayout?: 'full' | 'top-half' | 'bottom-half'
+  preferRawPeaksOnly?: boolean
 }
 
 type CanvasMetrics = {
@@ -49,6 +50,7 @@ type FrameState = {
   showBackground: boolean
   showBeatGrid: boolean
   waveformLayout: 'full' | 'top-half' | 'bottom-half'
+  preferRawPeaksOnly: boolean
 }
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
@@ -93,6 +95,28 @@ const ensureCanvasMetrics = (
     resized: previousWidth !== scaledWidth || previousHeight !== scaledHeight
   }
 }
+
+const buildFrameState = (
+  input: BeatAlignPreviewRenderInput,
+  metrics: CanvasMetrics
+): FrameState => ({
+  width: metrics.cssWidth,
+  height: metrics.cssHeight,
+  bpm: Number(input.bpm) || 0,
+  firstBeatMs: Number(input.firstBeatMs) || 0,
+  barBeatOffset: Number(input.barBeatOffset) || 0,
+  rangeStartSec: Number.isFinite(input.rangeStartSec) ? input.rangeStartSec : 0,
+  rangeDurationSec: Math.max(0.0001, Number(input.rangeDurationSec) || 0.0001),
+  mixxxData: input.mixxxData,
+  rawData: input.rawData,
+  maxSamplesPerPixel: input.maxSamplesPerPixel,
+  showDetailHighlights: input.showDetailHighlights,
+  showCenterLine: input.showCenterLine,
+  showBackground: input.showBackground !== false,
+  showBeatGrid: input.showBeatGrid !== false,
+  waveformLayout: input.waveformLayout || 'full',
+  preferRawPeaksOnly: input.preferRawPeaksOnly === true
+})
 
 export const createBeatAlignPreviewRenderer = () => {
   let lastFrame: FrameState | null = null
@@ -156,7 +180,8 @@ export const createBeatAlignPreviewRenderer = () => {
       maxSamplesPerPixel: input.maxSamplesPerPixel,
       showDetailHighlights: input.showDetailHighlights,
       showCenterLine: input.showCenterLine,
-      waveformLayout: input.waveformLayout || 'full'
+      waveformLayout: input.waveformLayout || 'full',
+      preferRawPeaksOnly: input.preferRawPeaksOnly === true
     })
   }
 
@@ -198,7 +223,8 @@ export const createBeatAlignPreviewRenderer = () => {
       maxSamplesPerPixel: state.maxSamplesPerPixel,
       showDetailHighlights: state.showDetailHighlights,
       showCenterLine: state.showCenterLine,
-      waveformLayout: state.waveformLayout
+      waveformLayout: state.waveformLayout,
+      preferRawPeaksOnly: state.preferRawPeaksOnly
     })
     ctx.drawImage(
       segment.canvas,
@@ -233,30 +259,34 @@ export const createBeatAlignPreviewRenderer = () => {
     )
   }
 
+  const canReuseDirtySegment = (current: FrameState, metrics: CanvasMetrics) => {
+    if (metrics.resized || !lastFrame) return false
+    return (
+      lastFrame.width === current.width &&
+      lastFrame.height === current.height &&
+      lastFrame.bpm === current.bpm &&
+      lastFrame.firstBeatMs === current.firstBeatMs &&
+      lastFrame.barBeatOffset === current.barBeatOffset &&
+      lastFrame.rangeStartSec === current.rangeStartSec &&
+      lastFrame.rangeDurationSec === current.rangeDurationSec &&
+      lastFrame.mixxxData === current.mixxxData &&
+      lastFrame.rawData === current.rawData &&
+      lastFrame.maxSamplesPerPixel === current.maxSamplesPerPixel &&
+      lastFrame.showDetailHighlights === current.showDetailHighlights &&
+      lastFrame.showCenterLine === current.showCenterLine &&
+      lastFrame.showBackground === current.showBackground &&
+      lastFrame.showBeatGrid === current.showBeatGrid &&
+      lastFrame.waveformLayout === current.waveformLayout &&
+      lastFrame.preferRawPeaksOnly === current.preferRawPeaksOnly
+    )
+  }
+
   const draw = (input: BeatAlignPreviewRenderInput) => {
     const ctx = input.canvas.getContext('2d')
     if (!ctx) return
 
     const metrics = ensureCanvasMetrics(input.canvas, input.wrap, ctx)
-    const rangeStartSec = Number.isFinite(input.rangeStartSec) ? input.rangeStartSec : 0
-    const rangeDurationSec = Math.max(0.0001, Number(input.rangeDurationSec) || 0.0001)
-    const state: FrameState = {
-      width: metrics.cssWidth,
-      height: metrics.cssHeight,
-      bpm: Number(input.bpm) || 0,
-      firstBeatMs: Number(input.firstBeatMs) || 0,
-      barBeatOffset: Number(input.barBeatOffset) || 0,
-      rangeStartSec,
-      rangeDurationSec,
-      mixxxData: input.mixxxData,
-      rawData: input.rawData,
-      maxSamplesPerPixel: input.maxSamplesPerPixel,
-      showDetailHighlights: input.showDetailHighlights,
-      showCenterLine: input.showCenterLine,
-      showBackground: input.showBackground !== false,
-      showBeatGrid: input.showBeatGrid !== false,
-      waveformLayout: input.waveformLayout || 'full'
-    }
+    const state = buildFrameState(input, metrics)
 
     let reused = false
     if (input.allowScrollReuse !== false && canReusePreviousFrame(state, metrics) && lastFrame) {
@@ -341,6 +371,47 @@ export const createBeatAlignPreviewRenderer = () => {
     lastFrame = state
   }
 
+  const drawDirtyRange = (
+    input: BeatAlignPreviewRenderInput,
+    dirtyStartSec: number,
+    dirtyEndSec: number
+  ) => {
+    const ctx = input.canvas.getContext('2d')
+    if (!ctx) return
+
+    const metrics = ensureCanvasMetrics(input.canvas, input.wrap, ctx)
+    const state = buildFrameState(input, metrics)
+    if (!canReuseDirtySegment(state, metrics)) {
+      draw(input)
+      return
+    }
+
+    const viewStartSec = state.rangeStartSec
+    const viewEndSec = state.rangeStartSec + state.rangeDurationSec
+    const clampedStartSec = clampNumber(dirtyStartSec, viewStartSec, viewEndSec)
+    const clampedEndSec = clampNumber(dirtyEndSec, clampedStartSec, viewEndSec)
+    if (clampedEndSec <= clampedStartSec) {
+      lastFrame = state
+      return
+    }
+
+    const pxPerSec = metrics.cssWidth / Math.max(0.0001, state.rangeDurationSec)
+    const paddingPx = 2
+    const dirtyStartPx =
+      ((clampedStartSec - viewStartSec) / Math.max(0.0001, state.rangeDurationSec)) *
+      metrics.cssWidth
+    const dirtyEndPx =
+      ((clampedEndSec - viewStartSec) / Math.max(0.0001, state.rangeDurationSec)) * metrics.cssWidth
+    const segmentX = Math.max(0, Math.floor(dirtyStartPx - paddingPx))
+    const segmentEndX = Math.min(
+      metrics.cssWidth,
+      Math.ceil(dirtyEndPx + paddingPx + Math.max(1, pxPerSec))
+    )
+    const segmentWidth = Math.max(1, segmentEndX - segmentX)
+    drawSegment(ctx, metrics, state, segmentX, segmentWidth)
+    lastFrame = state
+  }
+
   const reset = () => {
     lastFrame = null
   }
@@ -355,6 +426,7 @@ export const createBeatAlignPreviewRenderer = () => {
 
   return {
     draw,
+    drawDirtyRange,
     reset,
     dispose
   }

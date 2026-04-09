@@ -23,6 +23,8 @@ export interface HorizontalBrowseTransportStateInput {
 export interface HorizontalBrowseTransportDeckSnapshot {
   deck: string
   label: string
+  loaded: boolean
+  decoding: boolean
   playing: boolean
   currentSec: number
   durationSec: number

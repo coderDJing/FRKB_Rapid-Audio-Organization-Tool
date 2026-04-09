@@ -106,6 +106,8 @@ const scheduleQueueProcessing = (token: number) => {
             requestToken: request.requestToken,
             filePath: request.filePath,
             cacheKey: request.cacheKey,
+            rangeStartSec: request.rangeStartSec,
+            rangeDurationSec: request.rangeDurationSec,
             width: request.width,
             height: request.height,
             pixelRatio: request.pixelRatio,

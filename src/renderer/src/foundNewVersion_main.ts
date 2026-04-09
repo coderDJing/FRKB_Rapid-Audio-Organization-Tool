@@ -4,9 +4,12 @@ import App from './FoundNewVersion.vue'
 import './styles/main.scss'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { i18n } from '@renderer/i18n'
+import { installConsoleLogBridge } from '@renderer/utils/installConsoleLogBridge'
 
 const pinia = createPinia()
 const app = createApp(App)
+
+installConsoleLogBridge('found-new-version')
 
 app.config.errorHandler = (err: Error) => {
   window.electron.ipcRenderer.send('outputLog', `VUE全局错误捕获: ${err.stack}`)

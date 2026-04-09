@@ -13,6 +13,10 @@ import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { queueMixtapeRawWaveforms } from '../services/mixtapeRawWaveformQueue'
 import { queueMixtapeWaveformHires } from '../services/mixtapeWaveformHiresQueue'
 import { cleanupMixtapeWaveformCache } from '../services/mixtapeWaveformMaintenance'
+import {
+  isCompleteSharedSongGridDefinition,
+  loadSharedSongGridDefinitions
+} from '../services/sharedSongGrid'
 import { resolveMissingMixtapeFilePath } from '../recycleBinService'
 
 const resolveKeyAnalysisWorkerPath = () => path.join(__dirname, 'workers', 'keyAnalysisWorker.js')
@@ -355,7 +359,20 @@ export const analyzeMixtapeBpmBatchShared = async (filePaths: string[]) => {
       { stage: 'primary', fastAnalysis: false },
       { stage: 'retry-fast', fastAnalysis: true }
     ]
-    let pending = input
+    const sharedGridMap = await loadSharedSongGridDefinitions(input).catch(() => new Map())
+    for (const filePath of input) {
+      const sharedGrid = sharedGridMap.get(filePath)
+      if (!isCompleteSharedSongGridDefinition(sharedGrid)) continue
+      const normalizedPath = normalizePathForBatchKey(filePath)
+      if (!normalizedPath) continue
+      resultMap.set(normalizedPath, {
+        filePath,
+        bpm: Number(sharedGrid.bpm!.toFixed(6)),
+        firstBeatMs: Number(sharedGrid.firstBeatMs!.toFixed(3)),
+        barBeatOffset: ((Math.round(sharedGrid.barBeatOffset!) % 32) + 32) % 32
+      })
+    }
+    let pending = input.filter((filePath) => !resultMap.has(normalizePathForBatchKey(filePath)))
 
     for (let index = 0; index < plans.length && pending.length > 0; index += 1) {
       const plan = plans[index]!

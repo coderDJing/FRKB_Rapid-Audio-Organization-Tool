@@ -7,9 +7,12 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { i18n } from '@renderer/i18n'
 import dialogDrag from './directives/dialogDrag'
 import { initUiSettings, watchUiSettings } from '@renderer/utils/uiSettingsStorage'
+import { installConsoleLogBridge } from '@renderer/utils/installConsoleLogBridge'
 
 const pinia = createPinia()
 const app = createApp(App)
+
+installConsoleLogBridge('main-window')
 
 app.directive('dialog-drag', dialogDrag)
 

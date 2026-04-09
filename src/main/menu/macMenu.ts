@@ -198,8 +198,8 @@ const buildFullMenu = () =>
           click: () =>
             mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.thirdPartyNotices')
         },
-        // 开发模式或预发布版本显示日志菜单
-        ...(is.dev || app.getVersion().includes('-')
+        // 仅 dev 模式显示开发 trace 菜单
+        ...(is.dev
           ? [
               { type: 'separator' as const },
               {
@@ -223,6 +223,22 @@ const buildFullMenu = () =>
                     } catch {}
                   }
                 }
+              },
+              {
+                label: tMenu('menu.startSongListTrace'),
+                click: () =>
+                  mainWindow.instance?.webContents.send(
+                    'openDialogFromTray',
+                    'menu.startSongListTrace'
+                  )
+              },
+              {
+                label: tMenu('menu.stopSongListTrace'),
+                click: () =>
+                  mainWindow.instance?.webContents.send(
+                    'openDialogFromTray',
+                    'menu.stopSongListTrace'
+                  )
               }
             ]
           : []),

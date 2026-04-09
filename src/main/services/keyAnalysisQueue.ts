@@ -21,6 +21,8 @@ export function enqueueKeyAnalysis(
     urgent?: boolean
     source?: 'foreground' | 'background'
     fastAnalysis?: boolean
+    preemptible?: boolean
+    category?: 'visible'
   } = {}
 ) {
   getQueue().enqueue(filePath, priority, options)
@@ -33,9 +35,15 @@ export function enqueueKeyAnalysisList(
     urgent?: boolean
     source?: 'foreground' | 'background'
     fastAnalysis?: boolean
+    preemptible?: boolean
+    category?: 'visible'
   } = {}
 ) {
   getQueue().enqueueList(filePaths, priority, options)
+}
+
+export function replaceVisibleKeyAnalysisList(filePaths: string[]) {
+  getQueue().replaceVisibleList(filePaths)
 }
 
 export function enqueueKeyAnalysisImmediate(

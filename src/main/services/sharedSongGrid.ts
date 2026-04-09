@@ -13,6 +13,14 @@ export type SharedSongGridDefinition = {
   barBeatOffset?: number
 }
 
+export const isCompleteSharedSongGridDefinition = (
+  value: SharedSongGridDefinition | null | undefined
+): value is SharedSongGridDefinition =>
+  !!value &&
+  value.bpm !== undefined &&
+  value.firstBeatMs !== undefined &&
+  value.barBeatOffset !== undefined
+
 const normalizeBpm = (value: unknown): number | undefined => {
   const numeric = Number(value)
   if (!Number.isFinite(numeric) || numeric <= 0) return undefined
@@ -113,6 +121,30 @@ export async function loadSharedSongGridDefinition(
   }
 
   return hasSharedGridValue(resolved) ? resolved : null
+}
+
+export async function loadSharedSongGridDefinitions(filePaths: string[]) {
+  const resultMap = new Map<string, SharedSongGridDefinition>()
+  const uniquePaths = Array.from(
+    new Set(
+      (Array.isArray(filePaths) ? filePaths : [])
+        .filter((filePath) => typeof filePath === 'string')
+        .map((filePath) => filePath.trim())
+        .filter(Boolean)
+    )
+  )
+  if (uniquePaths.length === 0) return resultMap
+
+  const results = await Promise.all(
+    uniquePaths.map(
+      async (filePath) => [filePath, await loadSharedSongGridDefinition(filePath)] as const
+    )
+  )
+  for (const [filePath, value] of results) {
+    if (!isCompleteSharedSongGridDefinition(value)) continue
+    resultMap.set(filePath, value)
+  }
+  return resultMap
 }
 
 export async function persistSharedSongGridDefinition(

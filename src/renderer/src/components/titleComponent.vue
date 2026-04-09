@@ -11,7 +11,6 @@ import confirm from '@renderer/components/confirmDialog'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog'
 import { t } from '@renderer/utils/translate'
 import hotkeys from 'hotkeys-js'
-import pkg from '../../../../package.json'
 
 const chromeMaximize = chromeMaximizeAsset
 const chromeRestore = chromeRestoreAsset
@@ -95,13 +94,7 @@ type Menu = {
   disabled?: boolean
 }
 
-// 检查是否是 dev 模式或预发布版本
-// dev 模式或预发布版本（版本号包含 '-'）都显示日志菜单
-const isDevOrPrerelease = computed(() => {
-  if (process.env.NODE_ENV === 'development') return true
-  const version = String((pkg as any).version || '')
-  return version.includes('-')
-})
+const isDevMode = computed(() => process.env.NODE_ENV === 'development')
 
 const buildMenuArr = (configs: MenuConfig[]): Menu[] => {
   return configs.map((item) => ({
@@ -170,8 +163,16 @@ const defaultMenuConfigs = computed<MenuConfig[]>(() => [
         { name: 'menu.thirdPartyNotices' },
         { name: 'menu.about' }
       ],
-      // 开发模式或预发布版本才显示日志菜单
-      ...(isDevOrPrerelease.value ? [[{ name: 'menu.openLog', action: 'open-log' }]] : [])
+      // 仅 dev 模式显示开发用 trace 菜单
+      ...(isDevMode.value
+        ? [
+            [
+              { name: 'menu.openLog', action: 'open-log' },
+              { name: 'menu.startSongListTrace', action: 'dev-songlist-trace-start' },
+              { name: 'menu.stopSongListTrace', action: 'dev-songlist-trace-stop' }
+            ]
+          ]
+        : [])
     ]
   }
 ])
@@ -287,6 +288,14 @@ const menuButtonClick = async (item: MenuItem) => {
   }
   if (item.action === 'open-log') {
     window.electron.ipcRenderer.send('openLog')
+    return
+  }
+  if (item.action === 'dev-songlist-trace-start') {
+    emit('openDialog', 'menu.startSongListTrace')
+    return
+  }
+  if (item.action === 'dev-songlist-trace-stop') {
+    emit('openDialog', 'menu.stopSongListTrace')
     return
   }
   emit('openDialog', item.name)

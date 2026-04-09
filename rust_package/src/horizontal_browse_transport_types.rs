@@ -55,6 +55,8 @@ pub struct HorizontalBrowseTransportStateInput {
 pub struct HorizontalBrowseTransportDeckSnapshot {
   pub deck: String,
   pub label: String,
+  pub loaded: bool,
+  pub decoding: bool,
   pub playing: bool,
   pub current_sec: f64,
   pub duration_sec: f64,

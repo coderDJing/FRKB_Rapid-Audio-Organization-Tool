@@ -594,6 +594,8 @@ impl HorizontalBrowseTransportEngine {
             .and_then(|path| path.split(['/', '\\']).last().map(|s| s.to_string()))
             .unwrap_or_default()
         }),
+      loaded: self.is_loaded(deck),
+      decoding: deck_state.pending_decode_file_path.is_some(),
       playing: deck_state.playing,
       current_sec: derived.estimated_current_sec,
       duration_sec: deck_state.duration_sec,

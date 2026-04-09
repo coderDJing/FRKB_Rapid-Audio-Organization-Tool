@@ -45,7 +45,9 @@
     "whatsNew": "更新日志",
     "thirdPartyNotices": "第三方许可",
     "about": "关于",
-    "openLog": "打开日志"
+    "openLog": "打开日志",
+    "startSongListTrace": "开始 Trace 录制",
+    "stopSongListTrace": "结束 Trace 并导出"
   },
   "database": {
     "selectLocation": "请选择数据存储位置",
@@ -1043,10 +1045,10 @@
     "explorerContextMenuLabel": "在 FRKB 中播放",
     "enableExplorerContextMenu": "资源管理器右键菜单“在 FRKB 中播放”",
     "clearDirtyData": {
-      "title": "清理库脏数据（仅开发/预发布）",
-      "desc": "保留歌曲、歌单与库树、指纹、设置、回收站记录；清空分析结果和 Mixtape 自动录制相关数据缓存。",
+      "title": "清理库分析与网格缓存（仅开发/预发布）",
+      "desc": "保留歌曲、歌单与库树、指纹、设置、回收站记录；清空调性、BPM、首拍、小节线、波形缓存及 Mixtape 自动录制相关缓存。",
       "button": "清理脏数据",
-      "confirmLine1": "将清空当前库的分析结果、Mixtape 自动录制歌单数据及相关缓存。",
+      "confirmLine1": "将清空当前库的调性、BPM、首拍、小节线、Mixtape 自动录制歌单数据及相关缓存。",
       "confirmLine2": "会保留歌曲、歌单与库树、指纹、设置、回收站记录。是否继续？",
       "successLine1": "脏数据清理完成。",
       "successLine2": "SQLite 删除 {sqliteRows} 条，库内缓存删除 {libraryItems} 项，userData 缓存删除 {userDataItems} 项。",

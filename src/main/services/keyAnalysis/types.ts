@@ -77,6 +77,8 @@ export type KeyAnalysisJob = {
   priority: KeyAnalysisPriority
   fastAnalysis: boolean
   source: KeyAnalysisSource
+  preemptible?: boolean
+  category?: 'visible'
   focusSlots?: string[]
   needsKey?: boolean
   needsBpm?: boolean
@@ -93,7 +95,11 @@ export type KeyAnalysisJob = {
 
 export type KeyAnalysisFailureReason = 'timeout' | 'worker-exit' | 'worker-error'
 
-export type KeyAnalysisPreemptionKind = 'background-resume' | 'focus-superseded'
+export type KeyAnalysisPreemptionKind =
+  | 'background-resume'
+  | 'focus-superseded'
+  | 'lower-priority-resume'
+  | 'visible-superseded'
 
 export type KeyAnalysisFailureRecord = {
   size: number

@@ -1,0 +1,633 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import childProcess, { type ChildProcessWithoutNullStreams } from 'node:child_process'
+
+type BeatThisPythonCommand = {
+  command: string
+  args: string[]
+  source: 'env-python' | 'local-runtime' | 'dev-launcher'
+}
+
+type BeatThisAnalyzeResult = {
+  bpm: number
+  firstBeatMs: number
+  barBeatOffset: number
+  beatCount: number
+  downbeatCount: number
+  durationSec: number
+  beatIntervalSec: number
+  beatCoverageScore: number
+  beatStabilityScore: number
+  downbeatCoverageScore: number
+  downbeatStabilityScore: number
+  qualityScore: number
+  windowStartSec?: number
+  windowDurationSec?: number
+  windowIndex?: number
+}
+
+type BeatThisBridgeMessage =
+  | {
+      type: 'ready'
+    }
+  | {
+      type: 'result'
+      requestId: string
+      result: BeatThisAnalyzeResult
+    }
+  | {
+      type: 'error' | 'fatal'
+      requestId?: string
+      error?: string
+    }
+  | {
+      type: 'shutdown'
+      requestId?: string
+    }
+
+type PendingRequest = {
+  resolve: (value: BeatThisAnalyzeResult) => void
+  reject: (error: Error) => void
+}
+
+const ENV_BEAT_THIS_PYTHON = 'FRKB_BEAT_THIS_PYTHON'
+const ENV_BEAT_THIS_BRIDGE = 'FRKB_BEAT_THIS_BRIDGE'
+const ENV_BEAT_THIS_DEVICE = 'FRKB_BEAT_THIS_DEVICE'
+const ENV_BEAT_THIS_DBN = 'FRKB_BEAT_THIS_DBN'
+const LOCAL_RUNTIME_DIR = 'grid-analysis-lab/beat-this-runtime'
+const LOCAL_BRIDGE_PATH = 'scripts/beat_this_bridge.py'
+const DEFAULT_WINDOW_SEC = 30
+const DEFAULT_MAX_SCAN_SEC = 120
+const WINDOW_MIN_DURATION_SEC = 8
+const QUALITY_EARLY_STOP_THRESHOLD = 0.72
+const QUALITY_MIN_BEAT_COUNT = 32
+
+let cachedProjectRoot = ''
+let cachedBridgePath = ''
+let cachedPythonCommand: BeatThisPythonCommand | null | undefined
+let bridgeChild: ChildProcessWithoutNullStreams | null = null
+let bridgeReadyPromise: Promise<void> | null = null
+let bridgeReadyResolve: (() => void) | null = null
+let bridgeReadyReject: ((error: Error) => void) | null = null
+let bridgeStdoutBuffer = ''
+let bridgeNextRequestId = 0
+let bridgeRequestQueue: Promise<unknown> = Promise.resolve()
+const bridgePendingRequests = new Map<string, PendingRequest>()
+let cleanupHooksRegistered = false
+
+const normalizeFsPath = (value: string) => {
+  const normalized = String(value || '').trim()
+  return normalized ? path.normalize(normalized) : ''
+}
+
+const toFloat32ArrayFromBuffer = (input: Buffer): Float32Array => {
+  if (!input || input.length < 4) return new Float32Array(0)
+  const byteOffsetAligned = input.byteOffset % 4 === 0
+  const byteLengthAligned = input.byteLength % 4 === 0
+  if (byteOffsetAligned && byteLengthAligned) {
+    return new Float32Array(input.buffer, input.byteOffset, input.byteLength / 4)
+  }
+  const usableBytes = input.byteLength - (input.byteLength % 4)
+  if (usableBytes <= 0) return new Float32Array(0)
+  const copied = new Uint8Array(usableBytes)
+  copied.set(input.subarray(0, usableBytes))
+  return new Float32Array(copied.buffer)
+}
+
+const resolveProjectRoot = () => {
+  if (cachedProjectRoot) return cachedProjectRoot
+
+  const candidates = [
+    process.cwd(),
+    path.resolve(__dirname, '../..'),
+    path.resolve(__dirname, '../../..'),
+    path.resolve(__dirname, '../../../..')
+  ]
+
+  for (const candidate of candidates) {
+    let current = path.resolve(candidate)
+    for (let depth = 0; depth < 8; depth += 1) {
+      const packageJsonPath = path.join(current, 'package.json')
+      if (fs.existsSync(packageJsonPath)) {
+        cachedProjectRoot = current
+        return current
+      }
+      const parent = path.dirname(current)
+      if (!parent || parent === current) break
+      current = parent
+    }
+  }
+
+  cachedProjectRoot = path.resolve(process.cwd())
+  return cachedProjectRoot
+}
+
+const resolveBridgeScriptPath = () => {
+  if (cachedBridgePath) return cachedBridgePath
+
+  const envBridge = normalizeFsPath(process.env[ENV_BEAT_THIS_BRIDGE] || '')
+  if (envBridge && fs.existsSync(envBridge)) {
+    cachedBridgePath = envBridge
+    return envBridge
+  }
+
+  const localBridge = path.join(resolveProjectRoot(), LOCAL_BRIDGE_PATH)
+  cachedBridgePath = localBridge
+  return localBridge
+}
+
+const resolveLocalRuntimePythonCandidates = () => {
+  const projectRoot = resolveProjectRoot()
+  const runtimeCandidates: string[] = [path.join(projectRoot, LOCAL_RUNTIME_DIR)]
+  if (process.platform === 'win32') {
+    runtimeCandidates.push(
+      path.join(projectRoot, 'vendor', 'demucs', 'win32-x64', 'runtime'),
+      path.join(projectRoot, 'vendor', 'demucs', 'win32-x64', 'runtime-cpu')
+    )
+  }
+
+  const pythonCandidates: string[] = []
+  for (const runtimeDir of runtimeCandidates) {
+    if (process.platform === 'win32') {
+      pythonCandidates.push(
+        path.join(runtimeDir, 'Scripts', 'python.exe'),
+        path.join(runtimeDir, 'python.exe')
+      )
+      continue
+    }
+    pythonCandidates.push(
+      path.join(runtimeDir, 'bin', 'python3'),
+      path.join(runtimeDir, 'bin', 'python')
+    )
+  }
+  return pythonCandidates
+}
+
+const probePythonCommand = (candidate: BeatThisPythonCommand) => {
+  const bridgePath = resolveBridgeScriptPath()
+  if (!bridgePath || !fs.existsSync(bridgePath)) return false
+
+  const probeCode = 'import beat_this, soundfile; print("ok")'
+  const result = childProcess.spawnSync(candidate.command, [...candidate.args, '-c', probeCode], {
+    windowsHide: true,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PYTHONUTF8: '1',
+      PYTHONIOENCODING: 'utf-8'
+    }
+  })
+
+  if (result.error) return false
+  return (
+    result.status === 0 &&
+    String(result.stdout || '')
+      .trim()
+      .includes('ok')
+  )
+}
+
+const resolvePythonCommand = (): BeatThisPythonCommand | null => {
+  if (cachedPythonCommand !== undefined) return cachedPythonCommand
+
+  const envPython = normalizeFsPath(process.env[ENV_BEAT_THIS_PYTHON] || '')
+  if (envPython && fs.existsSync(envPython)) {
+    const envCandidate: BeatThisPythonCommand = {
+      command: envPython,
+      args: [],
+      source: 'env-python'
+    }
+    if (probePythonCommand(envCandidate)) {
+      cachedPythonCommand = envCandidate
+      return envCandidate
+    }
+  }
+
+  for (const pythonPath of resolveLocalRuntimePythonCandidates()) {
+    if (!pythonPath || !fs.existsSync(pythonPath)) continue
+    const localCandidate: BeatThisPythonCommand = {
+      command: pythonPath,
+      args: [],
+      source: 'local-runtime'
+    }
+    if (probePythonCommand(localCandidate)) {
+      cachedPythonCommand = localCandidate
+      return localCandidate
+    }
+  }
+
+  const devCandidates: BeatThisPythonCommand[] =
+    process.platform === 'win32'
+      ? [
+          { command: 'py', args: ['-3.11'], source: 'dev-launcher' },
+          { command: 'py', args: ['-3'], source: 'dev-launcher' }
+        ]
+      : [{ command: 'python3', args: [], source: 'dev-launcher' }]
+
+  for (const candidate of devCandidates) {
+    if (!probePythonCommand(candidate)) continue
+    cachedPythonCommand = candidate
+    return candidate
+  }
+
+  cachedPythonCommand = null
+  return null
+}
+
+const normalizeBeatThisResult = (input: BeatThisAnalyzeResult): BeatThisAnalyzeResult | null => {
+  const bpm = Number(input?.bpm)
+  const firstBeatMs = Number(input?.firstBeatMs)
+  const rawBarBeatOffset = Number(input?.barBeatOffset)
+  const beatCount = Math.max(0, Math.floor(Number(input?.beatCount) || 0))
+  const downbeatCount = Math.max(0, Math.floor(Number(input?.downbeatCount) || 0))
+  const durationSec = Math.max(0, Number(input?.durationSec) || 0)
+  const beatIntervalSec = Math.max(0, Number(input?.beatIntervalSec) || 0)
+  const beatCoverageScore = Math.max(0, Math.min(1, Number(input?.beatCoverageScore) || 0))
+  const beatStabilityScore = Math.max(0, Math.min(1, Number(input?.beatStabilityScore) || 0))
+  const downbeatCoverageScore = Math.max(0, Math.min(1, Number(input?.downbeatCoverageScore) || 0))
+  const downbeatStabilityScore = Math.max(
+    0,
+    Math.min(1, Number(input?.downbeatStabilityScore) || 0)
+  )
+  const qualityScore = Math.max(0, Math.min(1, Number(input?.qualityScore) || 0))
+
+  if (!Number.isFinite(bpm) || bpm <= 0) return null
+  if (!Number.isFinite(firstBeatMs) || firstBeatMs < 0) return null
+
+  return {
+    bpm: Number(bpm.toFixed(6)),
+    firstBeatMs: Number(firstBeatMs.toFixed(3)),
+    barBeatOffset: Number.isFinite(rawBarBeatOffset)
+      ? ((Math.round(rawBarBeatOffset) % 32) + 32) % 32
+      : 0,
+    beatCount,
+    downbeatCount,
+    durationSec: Number(durationSec.toFixed(3)),
+    beatIntervalSec: Number(beatIntervalSec.toFixed(6)),
+    beatCoverageScore: Number(beatCoverageScore.toFixed(6)),
+    beatStabilityScore: Number(beatStabilityScore.toFixed(6)),
+    downbeatCoverageScore: Number(downbeatCoverageScore.toFixed(6)),
+    downbeatStabilityScore: Number(downbeatStabilityScore.toFixed(6)),
+    qualityScore: Number(qualityScore.toFixed(6)),
+    windowStartSec: Number(Number(input?.windowStartSec || 0).toFixed(3)),
+    windowDurationSec: Number(Number(input?.windowDurationSec || 0).toFixed(3)),
+    windowIndex: Math.max(0, Math.floor(Number(input?.windowIndex) || 0))
+  }
+}
+
+const settleBridgeReady = (error?: Error) => {
+  if (error) {
+    bridgeReadyReject?.(error)
+  } else {
+    bridgeReadyResolve?.()
+  }
+  bridgeReadyResolve = null
+  bridgeReadyReject = null
+}
+
+const rejectAllPendingRequests = (error: Error) => {
+  for (const pending of bridgePendingRequests.values()) {
+    pending.reject(error)
+  }
+  bridgePendingRequests.clear()
+}
+
+const resetBridgeProcessState = (error?: Error) => {
+  bridgeChild = null
+  bridgeStdoutBuffer = ''
+  if (bridgeReadyResolve || bridgeReadyReject) {
+    settleBridgeReady(error || new Error('Beat This! bridge terminated before ready'))
+  }
+  bridgeReadyPromise = null
+  rejectAllPendingRequests(error || new Error('Beat This! bridge terminated'))
+}
+
+const registerCleanupHooks = () => {
+  if (cleanupHooksRegistered) return
+  cleanupHooksRegistered = true
+  const shutdown = () => {
+    if (!bridgeChild) return
+    try {
+      bridgeChild.kill()
+    } catch {}
+  }
+  process.once('exit', shutdown)
+  process.once('SIGINT', () => {
+    shutdown()
+    process.exit(130)
+  })
+  process.once('SIGTERM', () => {
+    shutdown()
+    process.exit(143)
+  })
+}
+
+const handleBridgeMessage = (message: BeatThisBridgeMessage) => {
+  if (message.type === 'ready') {
+    settleBridgeReady()
+    return
+  }
+
+  if (message.type === 'fatal') {
+    const error = new Error(message.error || 'Beat This! bridge fatal error')
+    if (bridgeReadyResolve || bridgeReadyReject) {
+      settleBridgeReady(error)
+    } else {
+      rejectAllPendingRequests(error)
+    }
+    return
+  }
+
+  const requestId = String(message.requestId || '').trim()
+  if (!requestId) return
+  const pending = bridgePendingRequests.get(requestId)
+  if (!pending) return
+  bridgePendingRequests.delete(requestId)
+
+  if (message.type === 'result') {
+    const normalized = normalizeBeatThisResult(message.result)
+    if (!normalized) {
+      pending.reject(new Error('Beat This! returned invalid beat grid result'))
+      return
+    }
+    pending.resolve(normalized)
+    return
+  }
+
+  const errorText = 'error' in message ? message.error : undefined
+  pending.reject(new Error(errorText || 'Beat This! bridge request ended unexpectedly'))
+}
+
+const handleBridgeStdoutChunk = (chunk: Buffer | string) => {
+  bridgeStdoutBuffer += chunk.toString()
+  while (true) {
+    const lineBreakIndex = bridgeStdoutBuffer.indexOf('\n')
+    if (lineBreakIndex < 0) return
+    const line = bridgeStdoutBuffer.slice(0, lineBreakIndex).trim()
+    bridgeStdoutBuffer = bridgeStdoutBuffer.slice(lineBreakIndex + 1)
+    if (!line) continue
+    try {
+      handleBridgeMessage(JSON.parse(line) as BeatThisBridgeMessage)
+    } catch (error) {
+      const parseError = new Error(
+        `Beat This! bridge returned invalid JSON: ${
+          error instanceof Error ? error.message : String(error || 'unknown parse error')
+        }`
+      )
+      if (bridgeReadyResolve || bridgeReadyReject) {
+        settleBridgeReady(parseError)
+      } else {
+        rejectAllPendingRequests(parseError)
+      }
+    }
+  }
+}
+
+const ensureBridgeProcess = async () => {
+  if (bridgeChild && bridgeReadyPromise) {
+    await bridgeReadyPromise
+    return bridgeChild
+  }
+
+  const pythonCommand = resolvePythonCommand()
+  if (!pythonCommand) {
+    throw new Error('Beat This! Python runtime not available')
+  }
+
+  const bridgePath = resolveBridgeScriptPath()
+  if (!bridgePath || !fs.existsSync(bridgePath)) {
+    throw new Error(`Beat This! bridge missing: ${bridgePath || '<empty>'}`)
+  }
+
+  const device = String(process.env[ENV_BEAT_THIS_DEVICE] || '').trim() || 'cpu'
+  const dbnEnabled = /^(1|true|yes|on)$/i.test(String(process.env[ENV_BEAT_THIS_DBN] || '').trim())
+  const child = childProcess.spawn(
+    pythonCommand.command,
+    [...pythonCommand.args, bridgePath, '--serve', device, dbnEnabled ? 'true' : 'false'],
+    {
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        PYTHONUTF8: '1',
+        PYTHONIOENCODING: 'utf-8'
+      }
+    }
+  )
+
+  bridgeChild = child
+  registerCleanupHooks()
+  bridgeReadyPromise = new Promise<void>((resolve, reject) => {
+    bridgeReadyResolve = resolve
+    bridgeReadyReject = reject
+  })
+
+  child.stdout.on('data', handleBridgeStdoutChunk)
+  child.stderr.on('data', () => {})
+  child.once('error', (error) => {
+    const startupError = new Error(
+      `Beat This! bridge process failed: ${error instanceof Error ? error.message : String(error)}`
+    )
+    resetBridgeProcessState(startupError)
+  })
+  child.once('exit', (code, signal) => {
+    const exitError = new Error(
+      `Beat This! bridge exited unexpectedly (code=${String(code ?? '')}, signal=${String(signal ?? '')})`
+    )
+    resetBridgeProcessState(exitError)
+  })
+
+  await bridgeReadyPromise
+  return child
+}
+
+export const preloadBeatThisAnalyzer = async () => {
+  await ensureBridgeProcess()
+}
+
+export const disposeBeatThisAnalyzer = () => {
+  if (!bridgeChild) return
+  try {
+    bridgeChild.kill()
+  } catch {}
+  resetBridgeProcessState(new Error('Beat This! bridge disposed'))
+}
+
+const writeToBridge = async (child: ChildProcessWithoutNullStreams, chunk: Buffer | string) => {
+  await new Promise<void>((resolve, reject) => {
+    const handleError = (error: Error) => {
+      child.stdin.off('error', handleError)
+      reject(error)
+    }
+    child.stdin.once('error', handleError)
+    const flushed = child.stdin.write(chunk, (error) => {
+      child.stdin.off('error', handleError)
+      if (error) {
+        reject(error)
+        return
+      }
+      resolve()
+    })
+    if (!flushed) {
+      child.stdin.once('drain', () => {})
+    }
+  })
+}
+
+export const analyzeBeatGridWithBeatThisFromPcm = async (params: {
+  pcmData: Buffer
+  sampleRate: number
+  channels: number
+  sourceFilePath?: string
+}) => {
+  const pcmData = Buffer.isBuffer(params.pcmData) ? params.pcmData : Buffer.from(params.pcmData)
+  const totalSamples = Math.floor(pcmData.byteLength / 4)
+  const channels = Math.max(1, Math.floor(Number(params.channels) || 0))
+  const usableSamples = totalSamples - (totalSamples % channels)
+  if (usableSamples <= 0) {
+    throw new Error('decoded PCM is empty')
+  }
+
+  const runRequest = bridgeRequestQueue
+    .catch(() => undefined)
+    .then(async () => {
+      const child = await ensureBridgeProcess()
+      const requestId = `req-${Date.now()}-${++bridgeNextRequestId}`
+      const pcmSlice =
+        usableSamples * 4 === pcmData.byteLength ? pcmData : pcmData.subarray(0, usableSamples * 4)
+      const header = JSON.stringify({
+        type: 'analyze_pcm',
+        requestId,
+        sampleRate: Math.max(1, Math.floor(Number(params.sampleRate) || 0)),
+        channels,
+        byteLength: pcmSlice.byteLength,
+        sourceFilePath: params.sourceFilePath || ''
+      })
+
+      const response = new Promise<BeatThisAnalyzeResult>((resolve, reject) => {
+        bridgePendingRequests.set(requestId, { resolve, reject })
+      })
+
+      try {
+        await writeToBridge(child, `${header}\n`)
+        await writeToBridge(child, pcmSlice)
+        return await response
+      } catch (error) {
+        bridgePendingRequests.delete(requestId)
+        throw error
+      }
+    })
+  bridgeRequestQueue = runRequest.catch(() => undefined)
+  return runRequest
+}
+
+const slicePcmWindow = (params: {
+  pcmData: Buffer
+  sampleRate: number
+  channels: number
+  startSec: number
+  durationSec: number
+}) => {
+  const sampleRate = Math.max(1, Math.floor(Number(params.sampleRate) || 0))
+  const channels = Math.max(1, Math.floor(Number(params.channels) || 0))
+  const totalSamples = Math.floor(params.pcmData.byteLength / 4)
+  const totalFrames = Math.floor(totalSamples / channels)
+  const startFrame = Math.max(0, Math.floor(Math.max(0, params.startSec) * sampleRate))
+  const durationFrames = Math.max(1, Math.floor(Math.max(0, params.durationSec) * sampleRate))
+  const endFrame = Math.min(totalFrames, startFrame + durationFrames)
+  const actualFrames = Math.max(0, endFrame - startFrame)
+  if (actualFrames <= 0) {
+    return {
+      pcmData: Buffer.alloc(0),
+      durationSec: 0
+    }
+  }
+  const byteOffset = startFrame * channels * 4
+  const byteLength = actualFrames * channels * 4
+  return {
+    pcmData: params.pcmData.subarray(byteOffset, byteOffset + byteLength),
+    durationSec: actualFrames / sampleRate
+  }
+}
+
+const isWindowGoodEnough = (result: BeatThisAnalyzeResult) =>
+  result.qualityScore >= QUALITY_EARLY_STOP_THRESHOLD && result.beatCount >= QUALITY_MIN_BEAT_COUNT
+
+const compareWindowResult = (left: BeatThisAnalyzeResult, right: BeatThisAnalyzeResult) => {
+  if (Math.abs(left.qualityScore - right.qualityScore) > 0.000001) {
+    return left.qualityScore - right.qualityScore
+  }
+  if (left.beatCount !== right.beatCount) {
+    return left.beatCount - right.beatCount
+  }
+  return left.downbeatCount - right.downbeatCount
+}
+
+export const analyzeBeatGridWithBeatThisSlidingWindowsFromPcm = async (params: {
+  pcmData: Buffer
+  sampleRate: number
+  channels: number
+  sourceFilePath?: string
+  windowSec?: number
+  maxScanSec?: number
+}) => {
+  const pcmData = Buffer.isBuffer(params.pcmData) ? params.pcmData : Buffer.from(params.pcmData)
+  const sampleRate = Math.max(1, Math.floor(Number(params.sampleRate) || 0))
+  const channels = Math.max(1, Math.floor(Number(params.channels) || 0))
+  const totalSamples = Math.floor(pcmData.byteLength / 4)
+  const totalFrames = Math.floor(totalSamples / channels)
+  const totalDurationSec = totalFrames / sampleRate
+  const windowSec = Math.max(1, Number(params.windowSec) || DEFAULT_WINDOW_SEC)
+  const maxScanSec = Math.max(windowSec, Number(params.maxScanSec) || DEFAULT_MAX_SCAN_SEC)
+  const scanLimitSec = Math.min(totalDurationSec, maxScanSec)
+
+  let bestResult: BeatThisAnalyzeResult | null = null
+  let lastError: Error | null = null
+  let windowIndex = 0
+
+  for (let windowStartSec = 0; windowStartSec < scanLimitSec; windowStartSec += windowSec) {
+    const remainingSec = scanLimitSec - windowStartSec
+    if (remainingSec < WINDOW_MIN_DURATION_SEC) break
+    const windowDurationSec = Math.min(windowSec, remainingSec)
+    const sliced = slicePcmWindow({
+      pcmData,
+      sampleRate,
+      channels,
+      startSec: windowStartSec,
+      durationSec: windowDurationSec
+    })
+    if (sliced.durationSec < WINDOW_MIN_DURATION_SEC || sliced.pcmData.byteLength <= 0) {
+      break
+    }
+
+    try {
+      const localResult = await analyzeBeatGridWithBeatThisFromPcm({
+        pcmData: sliced.pcmData,
+        sampleRate,
+        channels,
+        sourceFilePath: params.sourceFilePath
+      })
+      const absoluteResult: BeatThisAnalyzeResult = {
+        ...localResult,
+        firstBeatMs: Number((localResult.firstBeatMs + windowStartSec * 1000).toFixed(3)),
+        windowStartSec: Number(windowStartSec.toFixed(3)),
+        windowDurationSec: Number(sliced.durationSec.toFixed(3)),
+        windowIndex
+      }
+
+      if (!bestResult || compareWindowResult(absoluteResult, bestResult) > 0) {
+        bestResult = absoluteResult
+      }
+      if (isWindowGoodEnough(absoluteResult)) {
+        return absoluteResult
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error || 'unknown error'))
+    }
+
+    windowIndex += 1
+  }
+
+  if (bestResult) return bestResult
+  throw lastError || new Error('Beat This! sliding-window analysis failed')
+}

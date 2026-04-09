@@ -6,6 +6,8 @@ export type HorizontalBrowseDeckKey = 'top' | 'bottom'
 export type HorizontalBrowseTransportDeckSnapshot = {
   deck: string
   label: string
+  loaded: boolean
+  decoding: boolean
   playing: boolean
   currentSec: number
   durationSec: number
@@ -43,6 +45,8 @@ const createEmptyDeckSnapshot = (
   playing: false,
   currentSec: 0,
   durationSec: 0,
+  loaded: false,
+  decoding: false,
   playbackRate: 1,
   masterTempoEnabled: true,
   bpm: 0,

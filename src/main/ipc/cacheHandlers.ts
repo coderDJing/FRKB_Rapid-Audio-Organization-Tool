@@ -2,6 +2,8 @@ import { ipcMain } from 'electron'
 import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { Worker } from 'node:worker_threads'
+import { log } from '../log'
 import {
   clearTrackCache as svcClearTrackCache,
   findSongListRoot
@@ -17,11 +19,128 @@ import { ensureMixtapeWaveformHires } from '../services/mixtapeWaveformHiresQueu
 import { decodeAudioShared } from '../services/audioDecodePool'
 import { ensureMixtapeStemWaveformBundle } from '../services/mixtapeStemWaveformService'
 
+type MixtapeRawWaveformStreamWorkerPayload = {
+  jobId?: number
+  filePath?: string
+  progress?: {
+    type?: string
+    startFrame?: number
+    frames?: number
+    totalFrames?: number
+    duration?: number
+    sampleRate?: number
+    rate?: number
+    minLeft?: Uint8Array | Buffer
+    maxLeft?: Uint8Array | Buffer
+    minRight?: Uint8Array | Buffer
+    maxRight?: Uint8Array | Buffer
+  }
+  result?: {
+    rawWaveformData?: any
+  }
+  error?: string
+}
+
+type RawWaveformStreamRequest = {
+  requestId: string
+  filePath: string
+  sender: Electron.WebContents
+  listRoot: string
+  stat: { size: number; mtimeMs: number } | null
+  targetRate?: number
+  chunkFrames: number
+  expectedDurationSec: number
+  priorityHint: number
+  enqueuedAt: number
+  worker?: Worker
+  streamStartedAt?: number
+  firstChunkAt?: number
+  chunkCount: number
+}
+
 export function registerCacheHandlers() {
+  const rawWaveformStreamRequests = new Map<string, RawWaveformStreamRequest>()
+  let nextRawWaveformStreamJobId = 0
+  const MAX_ACTIVE_RAW_WAVEFORM_STREAMS = 1
   const resolveRequestedRawRate = (value: unknown) => {
     const parsed = Number(value)
     if (!Number.isFinite(parsed) || parsed <= 0) return undefined
     return parsed
+  }
+
+  const resolveMixtapeRawWaveformWorkerPath = () =>
+    path.join(__dirname, 'workers', 'mixtapeRawWaveformWorker.js')
+
+  const teardownRawWaveformStreamWorker = (worker?: Worker) => {
+    if (!worker) return
+    try {
+      worker.removeAllListeners()
+    } catch {}
+    try {
+      void worker.terminate()
+    } catch {}
+  }
+
+  const resolveRawWaveformStreamPriorityHint = (value: unknown) => {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0
+    return Math.floor(parsed)
+  }
+
+  const isHigherPriorityRawWaveformStreamRequest = (
+    candidate: RawWaveformStreamRequest,
+    current: RawWaveformStreamRequest
+  ) =>
+    candidate.priorityHint > current.priorityHint ||
+    (candidate.priorityHint === current.priorityHint && candidate.enqueuedAt > current.enqueuedAt)
+
+  const listActiveRawWaveformStreamRequests = () =>
+    Array.from(rawWaveformStreamRequests.values()).filter((request) => request.worker)
+
+  const listPendingRawWaveformStreamRequests = () =>
+    Array.from(rawWaveformStreamRequests.values()).filter((request) => !request.worker)
+
+  const getHighestPriorityPendingRawWaveformStreamRequest = () => {
+    const pending = listPendingRawWaveformStreamRequests()
+    if (pending.length === 0) return null
+    pending.sort((left, right) =>
+      isHigherPriorityRawWaveformStreamRequest(left, right)
+        ? -1
+        : isHigherPriorityRawWaveformStreamRequest(right, left)
+          ? 1
+          : 0
+    )
+    return pending[0] || null
+  }
+
+  const getLowestPriorityActiveRawWaveformStreamRequest = () => {
+    const active = listActiveRawWaveformStreamRequests()
+    if (active.length === 0) return null
+    active.sort((left, right) =>
+      isHigherPriorityRawWaveformStreamRequest(left, right)
+        ? -1
+        : isHigherPriorityRawWaveformStreamRequest(right, left)
+          ? 1
+          : 0
+    )
+    return active[active.length - 1] || null
+  }
+
+  const clearRawWaveformStreamRequest = (
+    requestId: string,
+    options: { keepQueued?: boolean } = {}
+  ) => {
+    const request = rawWaveformStreamRequests.get(requestId)
+    if (!request) return
+    const worker = request.worker
+    request.worker = undefined
+    request.streamStartedAt = undefined
+    request.firstChunkAt = undefined
+    request.chunkCount = 0
+    if (!options.keepQueued) {
+      rawWaveformStreamRequests.delete(requestId)
+    }
+    teardownRawWaveformStreamWorker(worker)
   }
 
   const resolveRendererListRoot = (value: unknown) => {
@@ -51,6 +170,162 @@ export function registerCacheHandlers() {
       Number.isFinite(sampleRate) && sampleRate > 0 ? sampleRate : requestedRate
     const requiredRate = Math.max(1, Math.min(requestedRate, cappedSampleRate))
     return cachedRate >= requiredRate
+  }
+
+  const drainRawWaveformStreamQueue = () => {
+    while (listActiveRawWaveformStreamRequests().length < MAX_ACTIVE_RAW_WAVEFORM_STREAMS) {
+      const nextRequest = getHighestPriorityPendingRawWaveformStreamRequest()
+      if (!nextRequest) break
+      if (nextRequest.sender.isDestroyed()) {
+        clearRawWaveformStreamRequest(nextRequest.requestId)
+        continue
+      }
+
+      const workerPath = resolveMixtapeRawWaveformWorkerPath()
+      const worker = new Worker(workerPath)
+      nextRequest.worker = worker
+      nextRequest.streamStartedAt = Date.now()
+      nextRequest.firstChunkAt = undefined
+      nextRequest.chunkCount = 0
+      const jobId = ++nextRawWaveformStreamJobId
+
+      const finishRawWaveformStreamRequest = (payloadDone: Record<string, unknown>) => {
+        const activeRequest = rawWaveformStreamRequests.get(nextRequest.requestId)
+        if (!activeRequest || activeRequest.worker !== worker) return
+        clearRawWaveformStreamRequest(nextRequest.requestId)
+        log.info('[mixtape-raw-stream] finished', {
+          filePath: nextRequest.filePath,
+          requestId: nextRequest.requestId,
+          priorityHint: nextRequest.priorityHint,
+          fromCache: payloadDone.fromCache === true,
+          streamed: payloadDone.streamed === true,
+          chunkCount: nextRequest.chunkCount,
+          firstChunkMs:
+            typeof nextRequest.firstChunkAt === 'number' &&
+            typeof nextRequest.streamStartedAt === 'number'
+              ? nextRequest.firstChunkAt - nextRequest.streamStartedAt
+              : undefined,
+          totalMs:
+            typeof nextRequest.streamStartedAt === 'number'
+              ? Date.now() - nextRequest.streamStartedAt
+              : undefined,
+          error: payloadDone.error
+        })
+        if (!nextRequest.sender.isDestroyed()) {
+          try {
+            nextRequest.sender.send('mixtape-waveform-raw:stream-done', {
+              requestId: nextRequest.requestId,
+              filePath: nextRequest.filePath,
+              ...payloadDone
+            })
+          } catch {}
+        }
+        drainRawWaveformStreamQueue()
+      }
+
+      worker.on('message', async (message: MixtapeRawWaveformStreamWorkerPayload) => {
+        const activeRequest = rawWaveformStreamRequests.get(nextRequest.requestId)
+        if (!activeRequest || activeRequest.worker !== worker) return
+        const progress = message?.progress
+        if (progress?.type === 'chunk') {
+          nextRequest.chunkCount += 1
+          if (nextRequest.firstChunkAt === undefined) {
+            nextRequest.firstChunkAt = Date.now()
+            log.info('[mixtape-raw-stream] first-chunk', {
+              filePath: nextRequest.filePath,
+              requestId: nextRequest.requestId,
+              priorityHint: nextRequest.priorityHint,
+              firstChunkMs:
+                typeof nextRequest.streamStartedAt === 'number'
+                  ? nextRequest.firstChunkAt - nextRequest.streamStartedAt
+                  : undefined,
+              totalFrames: Number(progress.totalFrames) || 0,
+              frames: Number(progress.frames) || 0
+            })
+          }
+          if (!nextRequest.sender.isDestroyed()) {
+            try {
+              nextRequest.sender.send('mixtape-waveform-raw:stream-chunk', {
+                requestId: nextRequest.requestId,
+                filePath: nextRequest.filePath,
+                startFrame: Number(progress.startFrame) || 0,
+                frames: Number(progress.frames) || 0,
+                totalFrames: Number(progress.totalFrames) || 0,
+                duration: Number(progress.duration) || 0,
+                sampleRate: Number(progress.sampleRate) || 0,
+                rate: Number(progress.rate) || 0,
+                minLeft: progress.minLeft,
+                maxLeft: progress.maxLeft,
+                minRight: progress.minRight,
+                maxRight: progress.maxRight
+              })
+            } catch {}
+          }
+          return
+        }
+
+        if (message?.result?.rawWaveformData) {
+          if (nextRequest.listRoot && nextRequest.stat) {
+            await LibraryCacheDb.upsertMixtapeRawWaveformCacheEntry(
+              nextRequest.listRoot,
+              nextRequest.filePath,
+              { size: nextRequest.stat.size, mtimeMs: nextRequest.stat.mtimeMs },
+              message.result.rawWaveformData
+            ).catch(() => {})
+          }
+          finishRawWaveformStreamRequest({
+            streamed: true,
+            fromCache: false,
+            duration: Number(message.result.rawWaveformData.duration) || 0,
+            totalFrames: Number(message.result.rawWaveformData.frames) || 0,
+            sampleRate: Number(message.result.rawWaveformData.sampleRate) || 0,
+            rate: Number(message.result.rawWaveformData.rate) || 0
+          })
+          return
+        }
+
+        if (message?.error) {
+          finishRawWaveformStreamRequest({ error: String(message.error) })
+        }
+      })
+
+      worker.once('error', (error) => {
+        const activeRequest = rawWaveformStreamRequests.get(nextRequest.requestId)
+        if (!activeRequest || activeRequest.worker !== worker) return
+        finishRawWaveformStreamRequest({
+          error: error instanceof Error ? error.message : String(error || 'unknown error')
+        })
+      })
+
+      worker.once('exit', (code) => {
+        const activeRequest = rawWaveformStreamRequests.get(nextRequest.requestId)
+        if (!activeRequest || activeRequest.worker !== worker) return
+        if (code === 0) return
+        finishRawWaveformStreamRequest({ error: `stream worker exited with code ${code}` })
+      })
+
+      worker.postMessage({
+        jobId,
+        filePath: nextRequest.filePath,
+        targetRate: nextRequest.targetRate,
+        streamChunks: true,
+        chunkFrames: nextRequest.chunkFrames,
+        expectedDurationSec: nextRequest.expectedDurationSec
+      })
+    }
+  }
+
+  const rebalanceRawWaveformStreamQueue = () => {
+    const highestPending = getHighestPriorityPendingRawWaveformStreamRequest()
+    const lowestActive = getLowestPriorityActiveRawWaveformStreamRequest()
+    if (
+      highestPending &&
+      lowestActive &&
+      isHigherPriorityRawWaveformStreamRequest(highestPending, lowestActive)
+    ) {
+      clearRawWaveformStreamRequest(lowestActive.requestId, { keepQueued: true })
+    }
+    drainRawWaveformStreamQueue()
   }
 
   ipcMain.handle('track:cache:clear', async (_e, filePath: string) => {
@@ -260,6 +535,7 @@ export function registerCacheHandlers() {
         listRootByFilePath?: Record<string, string>
         targetRate?: number
         preferSharedDecode?: boolean
+        cacheOnly?: boolean
       }
     ) => {
       const filePaths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
@@ -272,6 +548,7 @@ export function registerCacheHandlers() {
 
       const targetRate = resolveRequestedRawRate(payload?.targetRate)
       const preferSharedDecode = Boolean(payload?.preferSharedDecode)
+      const cacheOnly = Boolean(payload?.cacheOnly)
       const inputListRootByFilePath =
         payload?.listRootByFilePath && typeof payload.listRootByFilePath === 'object'
           ? payload.listRootByFilePath
@@ -306,6 +583,10 @@ export function registerCacheHandlers() {
           }
           if (isRawWaveformRateSufficient(cached, targetRate)) {
             items.push({ filePath, data: cached })
+            continue
+          }
+          if (cacheOnly) {
+            items.push({ filePath, data: null })
             continue
           }
 
@@ -364,6 +645,92 @@ export function registerCacheHandlers() {
       return { items }
     }
   )
+
+  ipcMain.on(
+    'mixtape-waveform-raw:stream',
+    async (
+      event,
+      payload: {
+        requestId?: string
+        filePath?: string
+        listRoot?: string
+        targetRate?: number
+        chunkFrames?: number
+        expectedDurationSec?: number
+        priorityHint?: number
+      }
+    ) => {
+      const requestId = String(payload?.requestId || '').trim()
+      const filePath = String(payload?.filePath || '').trim()
+      if (!requestId || !filePath) return
+
+      clearRawWaveformStreamRequest(requestId)
+
+      const targetRate = resolveRequestedRawRate(payload?.targetRate)
+      const chunkFrames = Math.max(2048, Math.floor(Number(payload?.chunkFrames) || 16384))
+      const expectedDurationSec = Math.max(0, Number(payload?.expectedDurationSec) || 0)
+      const priorityHint = resolveRawWaveformStreamPriorityHint(payload?.priorityHint)
+      let listRoot = resolveRendererListRoot(payload?.listRoot)
+      if (!listRoot) {
+        listRoot = (await findSongListRoot(path.dirname(filePath))) || ''
+      }
+      const stat = await fs.stat(filePath).catch(() => null)
+      if (listRoot && stat) {
+        const cached = await LibraryCacheDb.loadMixtapeRawWaveformCacheData(listRoot, filePath, {
+          size: stat.size,
+          mtimeMs: stat.mtimeMs
+        })
+        if (isRawWaveformRateSufficient(cached, targetRate)) {
+          try {
+            event.sender.send('mixtape-waveform-raw:stream-done', {
+              requestId,
+              filePath,
+              data: cached,
+              fromCache: true
+            })
+          } catch {}
+          return
+        }
+      }
+
+      rawWaveformStreamRequests.set(requestId, {
+        requestId,
+        filePath,
+        sender: event.sender,
+        listRoot,
+        stat: stat ? { size: stat.size, mtimeMs: stat.mtimeMs } : null,
+        targetRate,
+        chunkFrames,
+        expectedDurationSec,
+        priorityHint,
+        enqueuedAt: Date.now(),
+        chunkCount: 0
+      })
+      rebalanceRawWaveformStreamQueue()
+    }
+  )
+
+  ipcMain.on(
+    'mixtape-waveform-raw:update-priority',
+    (_event, payload: { requestId?: string; priorityHint?: number }) => {
+      const requestId = String(payload?.requestId || '').trim()
+      if (!requestId) return
+      const request = rawWaveformStreamRequests.get(requestId)
+      if (!request) return
+      request.priorityHint = resolveRawWaveformStreamPriorityHint(payload?.priorityHint)
+      if (!request.worker) {
+        request.enqueuedAt = Date.now()
+      }
+      rebalanceRawWaveformStreamQueue()
+    }
+  )
+
+  ipcMain.on('mixtape-waveform-raw:cancel-stream', (_event, payload: { requestId?: string }) => {
+    const requestId = String(payload?.requestId || '').trim()
+    if (!requestId) return
+    clearRawWaveformStreamRequest(requestId)
+    drainRawWaveformStreamQueue()
+  })
 
   ipcMain.handle(
     'mixtape-waveform-hires:batch',

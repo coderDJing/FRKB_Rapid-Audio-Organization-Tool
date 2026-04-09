@@ -18,6 +18,7 @@ type DrawWaveformOptions = {
   showBeatGrid?: boolean
   waveformLayout?: 'full' | 'top-half' | 'bottom-half'
   themeVariant?: 'light' | 'dark'
+  preferRawPeaksOnly?: boolean
 }
 
 type WaveformColumn = {
@@ -49,6 +50,7 @@ const MIXXX_RGB_COMPONENTS = {
   mid: { r: 0, g: 1, b: 0 },
   high: { r: 0, g: 0, b: 1 }
 }
+const rawMonoSampleCache = new WeakMap<RawWaveformData, Float32Array>()
 
 type RawFftScratch = {
   real: Float64Array
@@ -306,14 +308,28 @@ const resolveRawFftScratch = (size: number) => {
   return created
 }
 
-const resolveRawMonoSampleAtFrame = (rawData: RawWaveformData, frameIndex: number) => {
-  if (frameIndex < 0 || frameIndex >= rawData.frames) return 0
-  const left =
-    ((Number(rawData.minLeft[frameIndex]) || 0) + (Number(rawData.maxLeft[frameIndex]) || 0)) * 0.5
-  const right =
-    ((Number(rawData.minRight[frameIndex]) || 0) + (Number(rawData.maxRight[frameIndex]) || 0)) *
-    0.5
-  return (left + right) * 0.5
+const resolveRawMonoSamples = (rawData: RawWaveformData) => {
+  const cached = rawMonoSampleCache.get(rawData)
+  if (cached && cached.length === rawData.frames) return cached
+
+  const frames = Math.max(
+    0,
+    Math.min(
+      Math.floor(Number(rawData.frames) || 0),
+      rawData.minLeft.length,
+      rawData.maxLeft.length,
+      rawData.minRight.length,
+      rawData.maxRight.length
+    )
+  )
+  const monoSamples = new Float32Array(frames)
+  const { minLeft, maxLeft, minRight, maxRight } = rawData
+  for (let index = 0; index < frames; index += 1) {
+    monoSamples[index] =
+      (minLeft[index] + maxLeft[index] + minRight[index] + maxRight[index]) * 0.25
+  }
+  rawMonoSampleCache.set(rawData, monoSamples)
+  return monoSamples
 }
 
 const resolveRawPeaksByRange = (
@@ -364,6 +380,7 @@ const resolveRawFftRgbColor = (
   const fftSize = resolveRawFftSize(span, maxSamplesPerPixel)
   const scratch = resolveRawFftScratch(fftSize)
   const { real, imag, hann, bitRev, cosTable, sinTable } = scratch
+  const monoSamples = resolveRawMonoSamples(rawData)
   real.fill(0)
   imag.fill(0)
 
@@ -371,7 +388,7 @@ const resolveRawFftRgbColor = (
   const half = fftSize >> 1
   for (let i = 0; i < fftSize; i += 1) {
     const frame = center - half + i
-    const sample = resolveRawMonoSampleAtFrame(rawData, frame)
+    const sample = frame >= 0 && frame < monoSamples.length ? monoSamples[frame] : 0
     const dest = bitRev[i]
     real[dest] = sample * hann[i]
   }
@@ -439,7 +456,8 @@ const buildWaveformColumns = (
   rawData: RawWaveformData | null,
   rangeStartSec: number,
   rangeDurationSec: number,
-  maxSamplesPerPixel?: number
+  maxSamplesPerPixel?: number,
+  preferRawPeaksOnly = false
 ): WaveformColumn[] => {
   const low = mixxxData.bands.low
   const mid = mixxxData.bands.mid
@@ -502,8 +520,6 @@ const buildWaveformColumns = (
       if (rawEndTime <= rawStartTime) continue
       const rawStartFrame = clamp(Math.floor(rawStartTime * rawRate), 0, rawFrames - 1)
       const rawEndFrame = clamp(Math.ceil(rawEndTime * rawRate), rawStartFrame, rawFrames - 1)
-      const color = resolveRawFftRgbColor(rawData, rawStartFrame, rawEndFrame, maxSamplesPerPixel)
-      if (!color) continue
       const rawPeaks = resolveRawPeaksByRange(
         rawData,
         rawStartFrame,
@@ -511,6 +527,10 @@ const buildWaveformColumns = (
         maxSamplesPerPixel
       )
       if (rawPeaks.ampTop <= 0 && rawPeaks.ampBottom <= 0) continue
+      const color = preferRawPeaksOnly
+        ? { r: 235, g: 242, b: 248 }
+        : resolveRawFftRgbColor(rawData, rawStartFrame, rawEndFrame, maxSamplesPerPixel)
+      if (!color) continue
       columns[x] = {
         ampTop: rawPeaks.ampTop,
         ampBottom: rawPeaks.ampBottom,
@@ -682,7 +702,8 @@ export const drawBeatAlignRekordboxWaveform = (
     showCenterLine,
     showBeatGrid,
     waveformLayout,
-    themeVariant
+    themeVariant,
+    preferRawPeaksOnly
   } = options
   if (width <= 0 || height <= 0) return false
   const palette = resolveWaveformPalette(ctx, themeVariant)
@@ -713,7 +734,8 @@ export const drawBeatAlignRekordboxWaveform = (
     rawData || null,
     rangeStartSec,
     rangeDurationSec,
-    maxSamplesPerPixel
+    maxSamplesPerPixel,
+    preferRawPeaksOnly
   )
   if (!columns.length) {
     if (showBeatGrid !== false) {

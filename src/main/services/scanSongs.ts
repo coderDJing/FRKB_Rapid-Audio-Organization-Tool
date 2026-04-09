@@ -184,13 +184,19 @@ export async function scanSongList(
   const hasKey = (value: unknown): boolean => typeof value === 'string' && value.trim() !== ''
   const hasBpm = (value: unknown): boolean =>
     typeof value === 'number' && Number.isFinite(value) && value > 0
+  const hasFirstBeatMs = (value: unknown): boolean =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0
+  const hasBarBeatOffset = (value: unknown): boolean =>
+    typeof value === 'number' && Number.isFinite(value)
+  const hasCompleteGrid = (info: Pick<ISongInfo, 'bpm' | 'firstBeatMs' | 'barBeatOffset'>) =>
+    hasBpm(info.bpm) && hasFirstBeatMs(info.firstBeatMs) && hasBarBeatOffset(info.barBeatOffset)
 
   if (cacheFromDb && cacheRoot && cacheMap.size > 0 && filesStatList.length > 0) {
     for (const st of filesStatList) {
       const entry = cacheMap.get(st.key)
       if (!entry || !entry.info) continue
-      const missingKeyBpm = !hasKey(entry.info.key) || !hasBpm(entry.info.bpm)
-      if (!missingKeyBpm) continue
+      const missingKeyGrid = !hasKey(entry.info.key) || !hasCompleteGrid(entry.info)
+      if (!missingKeyGrid) continue
       const refreshed = await LibraryCacheDb.loadSongCacheEntry(cacheRoot, st.file)
       if (refreshed?.info) {
         cacheMap.set(st.key, refreshed)
@@ -385,11 +391,11 @@ export async function scanSongList(
 
   if (cacheRoot && songInfoArr.length > 0) {
     const pendingKeys = songInfoArr
-      .filter((info) => !hasKey(info.key) || !hasBpm(info.bpm))
+      .filter((info) => !hasKey(info.key) || !hasCompleteGrid(info))
       .map((info) => info.filePath)
       .filter((filePath) => typeof filePath === 'string' && filePath.trim().length > 0)
     if (pendingKeys.length > 0) {
-      enqueueKeyAnalysisList(pendingKeys, 'low')
+      enqueueKeyAnalysisList(pendingKeys, 'background', { source: 'background' })
     }
   }
 

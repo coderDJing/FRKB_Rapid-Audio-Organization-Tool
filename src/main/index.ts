@@ -48,6 +48,7 @@ import { registerSongSearchHandlers } from './ipc/songSearchHandlers'
 import { registerPioneerDeviceLibraryHandlers } from './ipc/pioneerDeviceLibraryHandlers'
 import { registerRekordboxDesktopLibraryHandlers } from './ipc/rekordboxDesktopLibraryHandlers'
 import { registerHorizontalBrowseTransportHandlers } from './ipc/horizontalBrowseTransportHandlers'
+import { registerDevSongListTraceHandlers } from './ipc/devSongListTraceHandlers'
 import { maybeShowWhatsNew, registerWhatsNewHandlers } from './services/whatsNew'
 import * as LibraryCacheDb from './libraryCacheDb'
 import path from 'path'
@@ -235,8 +236,10 @@ registerSongSearchHandlers()
 registerPioneerDeviceLibraryHandlers()
 registerRekordboxDesktopLibraryHandlers()
 registerHorizontalBrowseTransportHandlers()
+registerDevSongListTraceHandlers()
 
 keyAnalysisEvents.on('key-updated', (payload) => {
+  log.info('[key-analysis] emit song-key-updated', payload)
   if (mainWindow.instance) {
     try {
       mainWindow.instance.webContents.send('song-key-updated', payload)
@@ -245,6 +248,7 @@ keyAnalysisEvents.on('key-updated', (payload) => {
 })
 
 keyAnalysisEvents.on('bpm-updated', (payload) => {
+  log.info('[key-analysis] emit song-bpm-updated', payload)
   if (mainWindow.instance) {
     try {
       mainWindow.instance.webContents.send('song-bpm-updated', payload)
@@ -261,6 +265,7 @@ songGridEvents.on('grid-updated', (payload) => {
 })
 
 keyAnalysisEvents.on('waveform-updated', (payload) => {
+  log.info('[key-analysis] emit song-waveform-updated', payload)
   if (mainWindow.instance) {
     try {
       mainWindow.instance.webContents.send('song-waveform-updated', payload)

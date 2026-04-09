@@ -24,6 +24,7 @@ import {
   normalizeHorizontalBrowsePathKey,
   resolveHorizontalBrowseWaveformThemeVariant
 } from '@renderer/components/horizontalBrowseWaveformDetail.utils'
+import { parseHorizontalBrowseDurationToSeconds } from '@renderer/components/horizontalBrowseShellState'
 import {
   useHorizontalBrowseGridToolbar,
   type HorizontalBrowseGridToolbarState
@@ -86,6 +87,7 @@ const props = defineProps<{
   gridBpm?: number
   cueSeconds?: number
   deferWaveformLoad?: boolean
+  rawLoadPriorityHint?: number
 }>()
 
 const emit = defineEmits<{
@@ -114,12 +116,15 @@ const previewBpmInput = ref('')
 const bpmTapTimestamps = ref<number[]>([])
 const previewZoom = ref(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
 const gridRenderer = createBeatAlignPreviewRenderer()
+const streamWaveformRenderer = createBeatAlignPreviewRenderer()
 
 const WAVEFORM_TILE_WIDTH = 256
 const WAVEFORM_TILE_OVERSCAN = 1
 const WAVEFORM_TILE_CACHE_LIMIT = 72
 const WAVEFORM_PREWARM_STEP_COUNT = 2
 const HORIZONTAL_BROWSE_DEFERRED_RAW_TARGET_RATE = Math.min(PREVIEW_RAW_TARGET_RATE, 2400)
+const DRAG_RAW_MAX_SAMPLES_PER_PIXEL = 32
+const RAW_STREAM_REDRAW_INTERVAL_MS = 80
 let resizeObserver: ResizeObserver | null = null
 let loadToken = 0
 let drawRaf = 0
@@ -132,6 +137,16 @@ let waveformTileCacheTick = 0
 let lastWaveformBatchSignature = ''
 let lastZoomAnchorSec = 0
 let lastZoomAnchorRatio = HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
+let rawStreamRequestId = ''
+const rawStreamActive = ref(false)
+let rawStreamStartedAt = 0
+let rawStreamChunkCount = 0
+let streamDrawTimer: ReturnType<typeof setTimeout> | null = null
+let streamDrawRaf = 0
+let nextAllowedStreamDrawAt = 0
+let pendingRawStreamDirtyStartSec: number | null = null
+let pendingRawStreamDirtyEndSec: number | null = null
+let tilePaintRaf = 0
 
 const waveformTilePending = new Set<string>()
 const waveformTileCache = new Map<
@@ -144,9 +159,160 @@ const waveformTileCache = new Map<
     used: number
   }
 >()
+const pendingVisibleTilePaints = new Map<
+  string,
+  {
+    cacheKey: string
+    rangeStartSec: number
+    rangeDurationSec: number
+  }
+>()
 const resolvePreviewDurationSec = () => {
-  const duration = Number(rawData.value?.duration || mixxxData.value?.duration || 0)
+  const duration = Number(
+    rawData.value?.duration ||
+      mixxxData.value?.duration ||
+      parseHorizontalBrowseDurationToSeconds(props.song?.duration) ||
+      0
+  )
   return Number.isFinite(duration) && duration > 0 ? duration : 0
+}
+
+const clearRawStreamDirtyRange = () => {
+  pendingRawStreamDirtyStartSec = null
+  pendingRawStreamDirtyEndSec = null
+}
+
+const clearStreamDrawScheduling = () => {
+  if (streamDrawTimer) {
+    clearTimeout(streamDrawTimer)
+    streamDrawTimer = null
+  }
+  if (streamDrawRaf) {
+    cancelAnimationFrame(streamDrawRaf)
+    streamDrawRaf = 0
+  }
+  clearRawStreamDirtyRange()
+}
+
+const toFloat32Array = (value: unknown) => {
+  if (value instanceof Float32Array) return value
+  if (value instanceof ArrayBuffer) return new Float32Array(value)
+  if (ArrayBuffer.isView(value)) {
+    const view = value as ArrayBufferView
+    return new Float32Array(view.buffer, view.byteOffset, Math.floor(view.byteLength / 4))
+  }
+  return new Float32Array(0)
+}
+
+const cloneRawWaveformData = (value: RawWaveformData): RawWaveformData => ({
+  duration: Number(value.duration) || 0,
+  sampleRate: Number(value.sampleRate) || 0,
+  rate: Number(value.rate) || 0,
+  frames: Math.max(0, Number(value.frames) || 0),
+  minLeft: new Float32Array(value.minLeft),
+  maxLeft: new Float32Array(value.maxLeft),
+  minRight: new Float32Array(value.minRight),
+  maxRight: new Float32Array(value.maxRight)
+})
+
+const ensureRawWaveformCapacity = (
+  requiredFrames: number,
+  meta: { duration: number; sampleRate: number; rate: number }
+) => {
+  const nextFrames = Math.max(0, Math.floor(requiredFrames))
+  if (!nextFrames) return
+  const current = rawData.value
+  if (!current) {
+    rawData.value = {
+      duration: meta.duration,
+      sampleRate: meta.sampleRate,
+      rate: meta.rate,
+      frames: nextFrames,
+      minLeft: new Float32Array(nextFrames),
+      maxLeft: new Float32Array(nextFrames),
+      minRight: new Float32Array(nextFrames),
+      maxRight: new Float32Array(nextFrames)
+    }
+    mixxxData.value = createRawPlaceholderMixxxData(rawData.value)
+    return
+  }
+  if (
+    current.frames >= nextFrames &&
+    current.sampleRate === meta.sampleRate &&
+    current.rate === meta.rate &&
+    Math.abs(current.duration - meta.duration) <= 0.0001
+  ) {
+    return
+  }
+  const grownFrames = Math.max(nextFrames, current.frames)
+  const grow = (source: Float32Array) => {
+    const target = new Float32Array(grownFrames)
+    target.set(source.subarray(0, Math.min(source.length, grownFrames)))
+    return target
+  }
+  rawData.value = {
+    duration: Math.max(current.duration, meta.duration),
+    sampleRate: meta.sampleRate,
+    rate: meta.rate,
+    frames: grownFrames,
+    minLeft: grow(current.minLeft),
+    maxLeft: grow(current.maxLeft),
+    minRight: grow(current.minRight),
+    maxRight: grow(current.maxRight)
+  }
+  mixxxData.value = createRawPlaceholderMixxxData(rawData.value)
+}
+
+const normalizeRawWaveformData = (value: any): RawWaveformData | null => {
+  if (!value) return null
+  const frames = Math.max(0, Number(value.frames) || 0)
+  const duration = Math.max(0, Number(value.duration) || 0)
+  const sampleRate = Math.max(0, Number(value.sampleRate) || 0)
+  const rate = Math.max(0, Number(value.rate) || 0)
+  const minLeft = toFloat32Array(value.minLeft)
+  const maxLeft = toFloat32Array(value.maxLeft)
+  const minRight = toFloat32Array(value.minRight)
+  const maxRight = toFloat32Array(value.maxRight)
+  if (!frames || !duration || !sampleRate || !rate) return null
+  return {
+    duration,
+    sampleRate,
+    rate,
+    frames,
+    minLeft: new Float32Array(minLeft),
+    maxLeft: new Float32Array(maxLeft),
+    minRight: new Float32Array(minRight),
+    maxRight: new Float32Array(maxRight)
+  }
+}
+
+const cancelRawWaveformStream = () => {
+  if (!rawStreamRequestId) return
+  window.electron.ipcRenderer.send('mixtape-waveform-raw:cancel-stream', {
+    requestId: rawStreamRequestId
+  })
+  rawStreamRequestId = ''
+  rawStreamActive.value = false
+  clearStreamDrawScheduling()
+}
+
+const resolveRawLoadPriorityHint = () =>
+  Math.max(0, Math.floor(Number(props.rawLoadPriorityHint) || 0))
+
+const beginRawWaveformStream = (filePath: string, targetRate: number) => {
+  cancelRawWaveformStream()
+  rawStreamRequestId = `horizontal-raw-${props.direction}-${Date.now()}-${loadToken}`
+  rawStreamActive.value = true
+  rawStreamStartedAt = performance.now()
+  rawStreamChunkCount = 0
+  window.electron.ipcRenderer.send('mixtape-waveform-raw:stream', {
+    requestId: rawStreamRequestId,
+    filePath,
+    priorityHint: resolveRawLoadPriorityHint(),
+    targetRate,
+    chunkFrames: 32768,
+    expectedDurationSec: parseHorizontalBrowseDurationToSeconds(props.song?.duration)
+  })
 }
 
 const resolvePreviewTimeScale = () => Math.max(0.25, Number(props.playbackRate) || 1)
@@ -211,6 +377,7 @@ const clearWaveformWorkerQueue = () => {
 
 const clearWaveformTileCache = () => {
   waveformTilePending.clear()
+  pendingVisibleTilePaints.clear()
   lastWaveformBatchSignature = ''
   waveformTileCacheTick = 0
   for (const entry of waveformTileCache.values()) {
@@ -236,6 +403,49 @@ const pruneWaveformTileCache = () => {
     waveformTileCache.delete(oldestKey)
     waveformTilePending.delete(oldestKey)
   }
+}
+
+const flushVisibleTilePaints = () => {
+  tilePaintRaf = 0
+  if (!pendingVisibleTilePaints.size) return
+  const filePath = String(props.song?.filePath || '').trim()
+  const duration = resolvePreviewDurationSec()
+  const visibleDuration = Math.max(0.001, resolveVisibleDurationSec() || duration || 0.001)
+  if (!filePath || !duration || visibleDuration <= 0) {
+    pendingVisibleTilePaints.clear()
+    return
+  }
+  previewStartSec.value = clampPreviewStart(previewStartSec.value)
+  const renderStartSec = resolveSnappedRenderStartSec(visibleDuration)
+  let paintedAnyTile = false
+  for (const payload of pendingVisibleTilePaints.values()) {
+    const entry = waveformTileCache.get(payload.cacheKey)
+    if (!entry) continue
+    paintedAnyTile =
+      drawSingleWaveformTile(
+        entry,
+        payload.rangeStartSec,
+        payload.rangeDurationSec,
+        renderStartSec,
+        visibleDuration
+      ) || paintedAnyTile
+  }
+  pendingVisibleTilePaints.clear()
+  if (!paintedAnyTile) {
+    scheduleDraw()
+  }
+}
+
+const scheduleVisibleTilePaint = (payload: {
+  cacheKey: string
+  rangeStartSec: number
+  rangeDurationSec: number
+}) => {
+  pendingVisibleTilePaints.set(payload.cacheKey, payload)
+  if (drawRaf || tilePaintRaf) return
+  tilePaintRaf = requestAnimationFrame(() => {
+    flushVisibleTilePaints()
+  })
 }
 
 const handleWaveformWorkerMessage = (
@@ -269,13 +479,41 @@ const handleWaveformWorkerMessage = (
     used: waveformTileCacheTick
   })
   pruneWaveformTileCache()
-  scheduleDraw()
+  scheduleVisibleTilePaint({
+    cacheKey: payload.cacheKey,
+    rangeStartSec: Number(payload.rangeStartSec) || 0,
+    rangeDurationSec: Math.max(0.0001, Number(payload.rangeDurationSec) || 0.0001)
+  })
 }
 
 const ensureWaveformWorker = () => {
   if (waveformWorker) return waveformWorker
   waveformWorker = createHorizontalBrowseDetailWaveformWorker()
   waveformWorker.addEventListener('message', handleWaveformWorkerMessage)
+  waveformWorker.addEventListener('error', (event) => {
+    const message = event instanceof ErrorEvent ? event.message : 'unknown worker error'
+    console.error('[horizontal-browse-waveform-worker] error', {
+      message,
+      filename: (event as ErrorEvent)?.filename,
+      lineno: (event as ErrorEvent)?.lineno,
+      colno: (event as ErrorEvent)?.colno
+    })
+    try {
+      window.electron.ipcRenderer.send(
+        'outputLog',
+        `[horizontal-browse-waveform-worker] error: ${message}`
+      )
+    } catch {}
+  })
+  waveformWorker.addEventListener('messageerror', () => {
+    console.error('[horizontal-browse-waveform-worker] messageerror')
+    try {
+      window.electron.ipcRenderer.send(
+        'outputLog',
+        '[horizontal-browse-waveform-worker] messageerror'
+      )
+    } catch {}
+  })
   return waveformWorker
 }
 
@@ -296,6 +534,86 @@ const clearWaveformCanvas = () => {
   if (!ctx) return
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.clearRect(0, 0, canvas.width, canvas.height)
+}
+
+const resolveWaveformCanvasMetrics = () => {
+  const wrap = wrapRef.value
+  const canvas = waveformCanvasRef.value
+  if (!wrap || !canvas) return null
+  const cssWidth = Math.max(1, wrap.clientWidth)
+  const cssHeight = Math.max(1, wrap.clientHeight)
+  const metrics = resolveCanvasScaleMetrics(cssWidth, cssHeight, window.devicePixelRatio || 1)
+  if (canvas.width !== metrics.scaledWidth) {
+    canvas.width = metrics.scaledWidth
+  }
+  if (canvas.height !== metrics.scaledHeight) {
+    canvas.height = metrics.scaledHeight
+  }
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.imageSmoothingEnabled = false
+  return {
+    wrap,
+    canvas,
+    ctx,
+    metrics
+  }
+}
+
+const drawSingleWaveformTile = (
+  entry: {
+    bitmap: ImageBitmap
+    width: number
+    height: number
+    pixelRatio: number
+    used: number
+  },
+  tileRangeStartSec: number,
+  tileRangeDurationSec: number,
+  viewStartSec: number,
+  visibleDuration: number
+) => {
+  const waveformState = resolveWaveformCanvasMetrics()
+  if (!waveformState) return false
+  const { ctx, metrics } = waveformState
+  const tileStartSec = tileRangeStartSec
+  const tileEndSec = tileStartSec + tileRangeDurationSec
+  const viewEndSec = viewStartSec + visibleDuration
+  const overlapStartSec = Math.max(viewStartSec, tileStartSec)
+  const overlapEndSec = Math.min(viewEndSec, tileEndSec)
+  if (overlapEndSec <= overlapStartSec) return false
+
+  waveformTileCacheTick += 1
+  entry.used = waveformTileCacheTick
+  const srcScaleX = entry.width > 0 ? entry.bitmap.width / entry.width : entry.pixelRatio || 1
+  const srcLeftPx = Math.round(
+    ((overlapStartSec - tileStartSec) / tileRangeDurationSec) * entry.width * srcScaleX
+  )
+  const srcRightPx = Math.round(
+    ((overlapEndSec - tileStartSec) / tileRangeDurationSec) * entry.width * srcScaleX
+  )
+  const destLeftPx = Math.round(
+    ((overlapStartSec - viewStartSec) / visibleDuration) * metrics.scaledWidth
+  )
+  const destRightPx = Math.round(
+    ((overlapEndSec - viewStartSec) / visibleDuration) * metrics.scaledWidth
+  )
+  const srcWidth = srcRightPx - srcLeftPx
+  const destWidth = destRightPx - destLeftPx
+  if (srcWidth <= 0 || destWidth <= 0) return false
+  ctx.drawImage(
+    entry.bitmap,
+    srcLeftPx,
+    0,
+    srcWidth,
+    entry.bitmap.height,
+    destLeftPx,
+    0,
+    destWidth,
+    metrics.scaledHeight
+  )
+  return true
 }
 
 const resolveWaveformLayout = () =>
@@ -458,12 +776,12 @@ const requestWaveformTileBatch = (requests: HorizontalBrowseDetailWaveformTileRe
 const drawWaveformTiles = (viewStartSec: number, visibleDuration: number) => {
   const wrap = wrapRef.value
   const canvas = waveformCanvasRef.value
-  if (!wrap || !canvas) return
+  if (!wrap || !canvas) return false
 
   const ctx = canvas.getContext('2d')
   if (!ctx || !rawData.value || !mixxxData.value) {
     clearWaveformCanvas()
-    return
+    return false
   }
 
   const metrics = resolveCanvasScaleMetrics(
@@ -493,6 +811,7 @@ const drawWaveformTiles = (viewStartSec: number, visibleDuration: number) => {
   })
 
   const viewEndSec = viewStartSec + visibleDuration
+  let drewAnyTile = false
   for (const request of visibleRequests) {
     const entry = waveformTileCache.get(request.cacheKey)
     if (!entry) continue
@@ -520,6 +839,7 @@ const drawWaveformTiles = (viewStartSec: number, visibleDuration: number) => {
     const srcWidth = srcRightPx - srcLeftPx
     const destWidth = destRightPx - destLeftPx
     if (srcWidth <= 0 || destWidth <= 0) continue
+    drewAnyTile = true
     ctx.drawImage(
       entry.bitmap,
       srcLeftPx,
@@ -534,24 +854,80 @@ const drawWaveformTiles = (viewStartSec: number, visibleDuration: number) => {
   }
 
   requestWaveformTileBatch([...visibleRequests, ...prewarmRequests])
+  return drewAnyTile
 }
 
 const drawWaveform = () => {
   const wrap = wrapRef.value
+  const waveformCanvas = waveformCanvasRef.value
   const gridCanvas = gridCanvasRef.value
-  if (!wrap || !gridCanvas) return
+  if (!wrap || !gridCanvas || !waveformCanvas) return
 
-  if (!rawData.value || !mixxxData.value) {
+  const duration = resolvePreviewDurationSec()
+  if (!duration) {
     gridRenderer.reset()
     clearCanvas()
     return
   }
-
-  const duration = resolvePreviewDurationSec()
   const visibleDuration = Math.max(0.001, resolveVisibleDurationSec() || duration || 0.001)
   previewStartSec.value = clampPreviewStart(previewStartSec.value)
   const renderStartSec = resolveSnappedRenderStartSec(visibleDuration)
-  drawWaveformTiles(renderStartSec, visibleDuration)
+  let waveformUpdated = false
+
+  if (!rawData.value || !mixxxData.value) {
+    clearWaveformCanvas()
+  } else if (rawStreamActive.value || dragging.value) {
+    streamWaveformRenderer.draw({
+      canvas: waveformCanvas,
+      wrap,
+      bpm: 0,
+      firstBeatMs: 0,
+      barBeatOffset: 0,
+      rangeStartSec: renderStartSec,
+      rangeDurationSec: visibleDuration,
+      mixxxData: mixxxData.value,
+      rawData: rawData.value,
+      maxSamplesPerPixel: DRAG_RAW_MAX_SAMPLES_PER_PIXEL,
+      showDetailHighlights: false,
+      showCenterLine: false,
+      showBackground: false,
+      showBeatGrid: false,
+      allowScrollReuse: true,
+      waveformLayout: resolveWaveformLayout(),
+      preferRawPeaksOnly: false
+    })
+    waveformUpdated = true
+  } else {
+    const drewTiles = drawWaveformTiles(renderStartSec, visibleDuration)
+    if (!drewTiles) {
+      if (dragging.value) {
+        waveformUpdated = false
+      } else {
+        streamWaveformRenderer.draw({
+          canvas: waveformCanvas,
+          wrap,
+          bpm: 0,
+          firstBeatMs: 0,
+          barBeatOffset: 0,
+          rangeStartSec: renderStartSec,
+          rangeDurationSec: visibleDuration,
+          mixxxData: mixxxData.value,
+          rawData: rawData.value,
+          maxSamplesPerPixel: DRAG_RAW_MAX_SAMPLES_PER_PIXEL,
+          showDetailHighlights: false,
+          showCenterLine: false,
+          showBackground: false,
+          showBeatGrid: false,
+          allowScrollReuse: true,
+          waveformLayout: resolveWaveformLayout(),
+          preferRawPeaksOnly: false
+        })
+        waveformUpdated = true
+      }
+    } else {
+      waveformUpdated = true
+    }
+  }
 
   gridRenderer.draw({
     canvas: gridCanvas,
@@ -619,7 +995,101 @@ const schedulePersistGridDefinition = () => {
   }, 120)
 }
 
+const flushRawStreamDirtyDraw = () => {
+  if (streamDrawTimer) {
+    clearTimeout(streamDrawTimer)
+    streamDrawTimer = null
+  }
+  streamDrawRaf = 0
+  const dirtyStartSec = pendingRawStreamDirtyStartSec
+  const dirtyEndSec = pendingRawStreamDirtyEndSec
+  clearRawStreamDirtyRange()
+  nextAllowedStreamDrawAt = performance.now() + RAW_STREAM_REDRAW_INTERVAL_MS
+
+  if (
+    dirtyStartSec === null ||
+    dirtyEndSec === null ||
+    !rawStreamActive.value ||
+    dragging.value ||
+    !rawData.value ||
+    !mixxxData.value ||
+    !waveformCanvasRef.value ||
+    !wrapRef.value
+  ) {
+    scheduleDraw()
+    return
+  }
+
+  const duration = resolvePreviewDurationSec()
+  if (!duration) {
+    scheduleDraw()
+    return
+  }
+  const visibleDuration = Math.max(0.001, resolveVisibleDurationSec() || duration || 0.001)
+  previewStartSec.value = clampPreviewStart(previewStartSec.value)
+  const renderStartSec = resolveSnappedRenderStartSec(visibleDuration)
+  streamWaveformRenderer.drawDirtyRange(
+    {
+      canvas: waveformCanvasRef.value,
+      wrap: wrapRef.value,
+      bpm: 0,
+      firstBeatMs: 0,
+      barBeatOffset: 0,
+      rangeStartSec: renderStartSec,
+      rangeDurationSec: visibleDuration,
+      mixxxData: mixxxData.value,
+      rawData: rawData.value,
+      maxSamplesPerPixel: DRAG_RAW_MAX_SAMPLES_PER_PIXEL,
+      showDetailHighlights: false,
+      showCenterLine: false,
+      showBackground: false,
+      showBeatGrid: false,
+      allowScrollReuse: true,
+      waveformLayout: resolveWaveformLayout(),
+      preferRawPeaksOnly: false
+    },
+    dirtyStartSec,
+    dirtyEndSec
+  )
+}
+
+const scheduleRawStreamDirtyDraw = (dirtyStartSec: number, dirtyEndSec: number) => {
+  const safeStartSec = Math.max(0, Math.min(dirtyStartSec, dirtyEndSec))
+  const safeEndSec = Math.max(safeStartSec, dirtyEndSec)
+  pendingRawStreamDirtyStartSec =
+    pendingRawStreamDirtyStartSec === null
+      ? safeStartSec
+      : Math.min(pendingRawStreamDirtyStartSec, safeStartSec)
+  pendingRawStreamDirtyEndSec =
+    pendingRawStreamDirtyEndSec === null
+      ? safeEndSec
+      : Math.max(pendingRawStreamDirtyEndSec, safeEndSec)
+
+  if (drawRaf || streamDrawRaf || streamDrawTimer) return
+  const now = performance.now()
+  const delayMs = Math.max(0, nextAllowedStreamDrawAt - now)
+  if (delayMs <= 0) {
+    streamDrawRaf = requestAnimationFrame(() => {
+      flushRawStreamDirtyDraw()
+    })
+    return
+  }
+  streamDrawTimer = setTimeout(() => {
+    streamDrawTimer = null
+    if (streamDrawRaf) return
+    streamDrawRaf = requestAnimationFrame(() => {
+      flushRawStreamDirtyDraw()
+    })
+  }, delayMs)
+}
+
 const scheduleDraw = () => {
+  clearStreamDrawScheduling()
+  pendingVisibleTilePaints.clear()
+  if (tilePaintRaf) {
+    cancelAnimationFrame(tilePaintRaf)
+    tilePaintRaf = 0
+  }
   if (drawRaf) return
   drawRaf = requestAnimationFrame(() => {
     drawRaf = 0
@@ -778,9 +1248,12 @@ const loadWaveform = async () => {
   const currentSong = props.song
   const currentToken = ++loadToken
   clearPersistTimer()
+  clearStreamDrawScheduling()
+  cancelRawWaveformStream()
   clearWaveformWorkerQueue()
   clearWaveformTileCache()
   previewLoading.value = false
+  rawStreamActive.value = false
   rawData.value = null
   mixxxData.value = null
   previewStartSec.value = 0
@@ -803,7 +1276,8 @@ const loadWaveform = async () => {
     const response = await window.electron.ipcRenderer.invoke('mixtape-waveform-raw:batch', {
       filePaths: [filePath],
       targetRate,
-      preferSharedDecode: false
+      preferSharedDecode: false,
+      cacheOnly: true
     })
 
     if (currentToken !== loadToken) return
@@ -820,10 +1294,13 @@ const loadWaveform = async () => {
         type: 'storeRaw',
         payload: {
           filePath,
-          data: picked
+          data: cloneRawWaveformData(picked)
         }
       }
       worker.postMessage(message)
+      rawStreamActive.value = false
+    } else {
+      beginRawWaveformStream(filePath, targetRate)
     }
     previewLoading.value = false
     syncGridStateFromSong()
@@ -832,6 +1309,7 @@ const loadWaveform = async () => {
   } catch {
     if (currentToken !== loadToken) return
     previewLoading.value = false
+    rawStreamActive.value = false
     rawData.value = null
     mixxxData.value = null
     gridRenderer.reset()
@@ -886,6 +1364,18 @@ watch(
     const currentRate = Number(rawData.value?.rate) || 0
     if (rawData.value && currentRate >= PREVIEW_RAW_TARGET_RATE) return
     void loadWaveform()
+  }
+)
+
+watch(
+  () => resolveRawLoadPriorityHint(),
+  (priorityHint, previousPriorityHint) => {
+    if (!rawStreamRequestId) return
+    if (priorityHint === previousPriorityHint) return
+    window.electron.ipcRenderer.send('mixtape-waveform-raw:update-priority', {
+      requestId: rawStreamRequestId,
+      priorityHint
+    })
   }
 )
 
@@ -968,6 +1458,131 @@ watch(
   }
 )
 
+const handleRawWaveformStreamChunk = (
+  _event: unknown,
+  payload?: {
+    requestId?: string
+    filePath?: string
+    startFrame?: number
+    frames?: number
+    totalFrames?: number
+    duration?: number
+    sampleRate?: number
+    rate?: number
+    minLeft?: unknown
+    maxLeft?: unknown
+    minRight?: unknown
+    maxRight?: unknown
+  }
+) => {
+  if (String(payload?.requestId || '') !== rawStreamRequestId) return
+  if (
+    normalizeHorizontalBrowsePathKey(payload?.filePath) !==
+    normalizeHorizontalBrowsePathKey(props.song?.filePath)
+  ) {
+    return
+  }
+  const totalFrames = Math.max(0, Number(payload?.totalFrames) || 0)
+  const duration = Math.max(0, Number(payload?.duration) || 0)
+  const sampleRate = Math.max(0, Number(payload?.sampleRate) || 0)
+  const rate = Math.max(0, Number(payload?.rate) || 0)
+  const startFrame = Math.max(0, Number(payload?.startFrame) || 0)
+  const frames = Math.max(0, Number(payload?.frames) || 0)
+  if (!totalFrames || !duration || !sampleRate || !rate || !frames) return
+  rawStreamChunkCount += 1
+
+  ensureRawWaveformCapacity(Math.max(totalFrames, startFrame + frames), {
+    duration,
+    sampleRate,
+    rate
+  })
+  const target = rawData.value
+  if (!target) return
+  const minLeftChunk = toFloat32Array(payload?.minLeft)
+  const maxLeftChunk = toFloat32Array(payload?.maxLeft)
+  const minRightChunk = toFloat32Array(payload?.minRight)
+  const maxRightChunk = toFloat32Array(payload?.maxRight)
+  if (startFrame + minLeftChunk.length > target.minLeft.length) return
+  target.minLeft.set(minLeftChunk, startFrame)
+  target.maxLeft.set(maxLeftChunk, startFrame)
+  target.minRight.set(minRightChunk, startFrame)
+  target.maxRight.set(maxRightChunk, startFrame)
+  if (rawStreamChunkCount === 1) {
+    console.info('[horizontal-raw-stream] first chunk', {
+      filePath: props.song?.filePath,
+      elapsedMs: Number((performance.now() - rawStreamStartedAt).toFixed(1)),
+      totalFrames,
+      frames
+    })
+  }
+  const dirtyStartSec = startFrame / rate
+  const dirtyEndSec = (startFrame + frames) / rate
+  scheduleRawStreamDirtyDraw(dirtyStartSec, dirtyEndSec)
+}
+
+const handleRawWaveformStreamDone = (
+  _event: unknown,
+  payload?: {
+    requestId?: string
+    filePath?: string
+    data?: unknown
+    error?: string
+    fromCache?: boolean
+    streamed?: boolean
+  }
+) => {
+  if (String(payload?.requestId || '') !== rawStreamRequestId) return
+  if (
+    normalizeHorizontalBrowsePathKey(payload?.filePath) !==
+    normalizeHorizontalBrowsePathKey(props.song?.filePath)
+  ) {
+    return
+  }
+  rawStreamRequestId = ''
+  previewLoading.value = false
+  rawStreamActive.value = false
+  console.info('[horizontal-raw-stream] done', {
+    filePath: props.song?.filePath,
+    elapsedMs: Number((performance.now() - rawStreamStartedAt).toFixed(1)),
+    chunkCount: rawStreamChunkCount,
+    fromCache: payload?.fromCache === true,
+    error: payload?.error
+  })
+
+  if (payload?.data) {
+    const normalized = normalizeRawWaveformData(payload.data)
+    if (normalized) {
+      rawData.value = normalized
+      mixxxData.value = createRawPlaceholderMixxxData(normalized)
+    }
+  }
+
+  if (rawData.value) {
+    const duration = Math.max(0, Number((payload as any)?.duration) || 0)
+    const totalFrames = Math.max(0, Number((payload as any)?.totalFrames) || 0)
+    if (duration > 0) {
+      rawData.value.duration = duration
+    }
+    if (totalFrames > 0 && totalFrames <= rawData.value.frames) {
+      rawData.value.frames = totalFrames
+    }
+  }
+
+  if (rawData.value && props.song?.filePath) {
+    const worker = ensureWaveformWorker()
+    const message: HorizontalBrowseDetailWaveformWorkerIncoming = {
+      type: 'storeRaw',
+      payload: {
+        filePath: String(props.song.filePath || '').trim(),
+        data: cloneRawWaveformData(rawData.value)
+      }
+    }
+    worker.postMessage(message)
+  }
+
+  scheduleDraw()
+}
+
 onMounted(() => {
   if (wrapRef.value) {
     resizeObserver = new ResizeObserver(() => {
@@ -978,6 +1593,8 @@ onMounted(() => {
     })
     resizeObserver.observe(wrapRef.value)
   }
+  window.electron.ipcRenderer.on('mixtape-waveform-raw:stream-chunk', handleRawWaveformStreamChunk)
+  window.electron.ipcRenderer.on('mixtape-waveform-raw:stream-done', handleRawWaveformStreamDone)
   emitToolbarState()
   scheduleDraw()
 })
@@ -986,7 +1603,9 @@ onUnmounted(() => {
   loadToken += 1
   clearPersistTimer()
   clearBpmTapResetTimer()
+  clearStreamDrawScheduling()
   stopDragging()
+  cancelRawWaveformStream()
   clearWaveformWorkerQueue()
   clearWaveformTileCache()
   gridRenderer.dispose()
@@ -1003,6 +1622,19 @@ onUnmounted(() => {
     cancelAnimationFrame(drawRaf)
     drawRaf = 0
   }
+  if (tilePaintRaf) {
+    cancelAnimationFrame(tilePaintRaf)
+    tilePaintRaf = 0
+  }
+  window.electron.ipcRenderer.removeListener(
+    'mixtape-waveform-raw:stream-chunk',
+    handleRawWaveformStreamChunk
+  )
+  window.electron.ipcRenderer.removeListener(
+    'mixtape-waveform-raw:stream-done',
+    handleRawWaveformStreamDone
+  )
+  streamWaveformRenderer.dispose()
 })
 
 defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
