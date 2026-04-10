@@ -150,7 +150,7 @@ jobs:
             "demucs/models/htdemucs.yaml",
             "demucs/models/955717e8-8726e21a.th",
             "rekordboxDesktopLibrary/bridge.py",
-            "rekordboxDesktopRuntime/win32-x64/python/Scripts/python.exe",
+            "rekordboxDesktopRuntime/win32-x64/python/python.exe",
             "rekordboxDesktopRuntime/win32-x64/python/Lib/site-packages/pyrekordbox/__init__.py"
           )
 
