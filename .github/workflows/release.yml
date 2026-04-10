@@ -74,9 +74,16 @@ jobs:
 
       - name: Prepare FFmpeg (Windows)
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           New-Item -ItemType Directory -Force -Path vendor/ffmpeg/win32-x64 | Out-Null
-          $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest' -Headers @{ 'User-Agent' = 'FRKB-Release' }
+          $headers = @{
+            'User-Agent' = 'FRKB-Release'
+            'Authorization' = "Bearer $env:GH_TOKEN"
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest' -Headers $headers
           $asset =
             $release.assets |
             Where-Object { $_.name -match '^ffmpeg-N-.*-win64-gpl\.zip$' } |
