@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { log } from '../log'
+import { resolveMainWorkerPath } from '../workerPath'
 import {
   listMixtapeItems,
   removeMixtapeItemsById,
@@ -19,7 +20,7 @@ import {
 } from '../services/sharedSongGrid'
 import { resolveMissingMixtapeFilePath } from '../recycleBinService'
 
-const resolveKeyAnalysisWorkerPath = () => path.join(__dirname, 'workers', 'keyAnalysisWorker.js')
+const resolveKeyAnalysisWorkerPath = () => resolveMainWorkerPath(__dirname, 'keyAnalysisWorker.js')
 
 export type MixtapeBpmAnalyzeResult = {
   results: Array<{ filePath: string; bpm: number; firstBeatMs: number; barBeatOffset?: number }>

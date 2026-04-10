@@ -1,4 +1,4 @@
-import { ref, nextTick, markRaw } from 'vue'
+import { ref, nextTick, markRaw, onUnmounted } from 'vue'
 import type { ShallowRef } from 'vue'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { mapMixtapeSnapshotToSongInfo } from '@renderer/composables/mixtape/mixtapeSnapshotSongMapper'
@@ -29,6 +29,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
   const loadingShow = ref(false)
   const isRequesting = ref<boolean>(false)
   let lastAppliedSongListUUID = ''
+  let backgroundRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
   // 渐进式渲染（当前行数）
   const renderCount = ref(0)
@@ -59,6 +60,21 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
 
   const notifySongSearchDirty = (reason: string) => {
     void window.electron.ipcRenderer.invoke('song-search:mark-dirty', { reason }).catch(() => {})
+  }
+
+  const clearBackgroundRefreshTimer = () => {
+    if (!backgroundRefreshTimer) return
+    clearTimeout(backgroundRefreshTimer)
+    backgroundRefreshTimer = null
+  }
+
+  const scheduleBackgroundSongListRefresh = (songListPath: string, songListUUID: string) => {
+    clearBackgroundRefreshTimer()
+    backgroundRefreshTimer = setTimeout(() => {
+      backgroundRefreshTimer = null
+      if (runtime.songsArea.songListUUID !== songListUUID) return
+      void loadSongListFromDisk(songListPath, songListUUID).catch(() => {})
+    }, 1500)
   }
 
   const hydrateRenderCount = async () => {
@@ -351,6 +367,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
 
   const openSongList = async () => {
     const requestUUID = runtime.songsArea.songListUUID
+    clearBackgroundRefreshTimer()
     isRequesting.value = true
     const shouldResetVisibleList = lastAppliedSongListUUID !== requestUUID
     if (shouldResetVisibleList) {
@@ -457,7 +474,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         isRequesting.value = false
         loadingShow.value = false
         // 后台刷新一次磁盘结果，保证索引与磁盘一致
-        void loadSongListFromDisk(songListPath, runtime.songsArea.songListUUID).catch(() => {})
+        scheduleBackgroundSongListRefresh(songListPath, runtime.songsArea.songListUUID)
         return
       }
     } catch {}
@@ -477,6 +494,10 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       loadingShow.value = false
     }
   }
+
+  onUnmounted(() => {
+    clearBackgroundRefreshTimer()
+  })
 
   return {
     loadingShow,

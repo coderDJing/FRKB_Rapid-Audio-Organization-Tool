@@ -25,6 +25,7 @@ export function useVirtualRows({
   const viewportHeight = ref(0)
   const songsComputed = computed(() => songs.value ?? [])
   const totalHeight = computed(() => songsComputed.value.length * rowHeight.value)
+  const hasExternalVerticalMetrics = !!externalScrollTop && !!externalViewportHeight
 
   function measureRowHeight() {
     const root = rowsRoot.value
@@ -38,9 +39,8 @@ export function useVirtualRows({
 
   let onScrollBound: ((e: Event) => void) | null = null
   let resizeObserver: ResizeObserver | null = null
-  let rafId = 0
-  let lastScrollTop = -1
-  let lastScrollLeft = -1
+  let attachedScrollElements: HTMLElement[] = []
+  let attachRetryTimer: ReturnType<typeof setTimeout> | null = null
 
   function getScrollHostCandidate(): HTMLElement | null | undefined {
     return scrollHostElement ? scrollHostElement.value : undefined
@@ -103,94 +103,135 @@ export function useVirtualRows({
     }
   }
 
-  function attachListeners() {
-    viewportElement.value = resolveViewportEl()
-    if (!viewportElement.value) return
-    const initCarrier = detectScrollCarrier()
-    viewportHeight.value = initCarrier.height
-    scrollTop.value = initCarrier.top
-    scrollLeft.value = initCarrier.left ?? 0
-    lastScrollLeft = scrollLeft.value
-
-    onScrollBound = () => {
-      const carrier = detectScrollCarrier()
+  function applyCarrierSnapshot() {
+    const carrier = detectScrollCarrier()
+    if (!hasExternalVerticalMetrics) {
       scrollTop.value = carrier.top
       viewportHeight.value = carrier.height
-      scrollLeft.value = carrier.left ?? 0
     }
-    viewportElement.value.addEventListener('scroll', onScrollBound, { passive: true })
+    scrollLeft.value = carrier.left ?? 0
+    return carrier
+  }
+
+  function clearAttachRetryTimer() {
+    if (!attachRetryTimer) return
+    clearTimeout(attachRetryTimer)
+    attachRetryTimer = null
+  }
+
+  function attachListeners() {
+    detachListeners()
+    viewportElement.value = resolveViewportEl()
+    if (!viewportElement.value) return false
+    applyCarrierSnapshot()
+    measureRowHeight()
+
+    onScrollBound = () => {
+      applyCarrierSnapshot()
+    }
 
     const host = hostElement.value
     const vp = host?.querySelector('.os-viewport') as HTMLElement | null
     const content = host?.querySelector('.os-content') as HTMLElement | null
-    if (vp && vp !== viewportElement.value)
-      vp.addEventListener('scroll', onScrollBound, { passive: true })
-    if (content && content !== viewportElement.value)
-      content.addEventListener('scroll', onScrollBound, { passive: true })
+    attachedScrollElements = [viewportElement.value, vp, content, host].filter(
+      (element, index, list): element is HTMLElement =>
+        element instanceof HTMLElement && list.indexOf(element) === index
+    )
+    for (const element of attachedScrollElements) {
+      element.addEventListener('scroll', onScrollBound, { passive: true })
+    }
 
     if (typeof window !== 'undefined' && 'ResizeObserver' in window) {
       resizeObserver = new ResizeObserver(() => {
-        const carrier = detectScrollCarrier()
-        viewportHeight.value = carrier.height
+        applyCarrierSnapshot()
+        measureRowHeight()
       })
-      if (viewportElement.value) resizeObserver.observe(viewportElement.value)
-      if (vp && vp !== viewportElement.value) resizeObserver.observe(vp)
-      if (content && content !== viewportElement.value) resizeObserver.observe(content)
+      for (const element of attachedScrollElements) {
+        resizeObserver.observe(element)
+      }
+      if (rowsRoot.value) {
+        resizeObserver.observe(rowsRoot.value)
+      }
     }
 
-    const tick = () => {
-      const carrier = detectScrollCarrier()
-      const st = carrier.top
-      const sl = carrier.left ?? 0
-      if (st !== lastScrollTop) {
-        lastScrollTop = st
-        scrollTop.value = st
-        viewportHeight.value = carrier.height
-        measureRowHeight()
-      }
-      if (sl !== lastScrollLeft) {
-        lastScrollLeft = sl
-        scrollLeft.value = sl
-      }
-      rafId = typeof requestAnimationFrame !== 'undefined' ? requestAnimationFrame(tick) : 0
-    }
-    if (typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(rafId)
-    rafId = typeof requestAnimationFrame !== 'undefined' ? requestAnimationFrame(tick) : 0
+    return true
   }
 
   function detachListeners() {
-    if (viewportElement.value && onScrollBound) {
-      viewportElement.value.removeEventListener('scroll', onScrollBound)
+    clearAttachRetryTimer()
+    if (onScrollBound) {
+      for (const element of attachedScrollElements) {
+        element.removeEventListener('scroll', onScrollBound)
+      }
     }
+    attachedScrollElements = []
     onScrollBound = null
-    if (typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(rafId)
-    if (resizeObserver && viewportElement.value) {
-      try {
-        resizeObserver.unobserve(viewportElement.value)
-      } catch {}
+    if (resizeObserver) {
+      resizeObserver.disconnect()
     }
     resizeObserver = null
     viewportElement.value = null
   }
 
+  function scheduleAttachRetry(attempt = 0) {
+    if (attachRetryTimer || attempt >= 12) return
+    attachRetryTimer = setTimeout(() => {
+      attachRetryTimer = null
+      if (!attachListeners()) {
+        scheduleAttachRetry(attempt + 1)
+      }
+    }, 120)
+  }
+
   onMounted(() => {
-    attachListeners()
-    nextTick(() => {
-      if (!viewportElement.value) attachListeners()
-    })
+    if (!attachListeners()) {
+      nextTick(() => {
+        if (!attachListeners()) {
+          scheduleAttachRetry()
+        }
+      })
+    }
   })
 
-  onUnmounted(() => {
-    detachListeners()
-  })
+  watch(
+    () => rowsRoot.value,
+    (value) => {
+      if (!value) {
+        detachListeners()
+        return
+      }
+      nextTick(() => {
+        if (!attachListeners()) {
+          scheduleAttachRetry()
+        }
+      })
+    }
+  )
 
   watch(
     () => getScrollHostCandidate(),
     () => {
-      detachListeners()
-      nextTick(() => attachListeners())
+      nextTick(() => {
+        if (!attachListeners()) {
+          scheduleAttachRetry()
+        }
+      })
     }
   )
+
+  watch(
+    () => songsComputed.value.length,
+    () => {
+      nextTick(() => {
+        measureRowHeight()
+        applyCarrierSnapshot()
+      })
+    }
+  )
+
+  onUnmounted(() => {
+    detachListeners()
+  })
 
   const effectiveScrollTop = computed(() => {
     const externalTop = externalScrollTop ? externalScrollTop.value : undefined

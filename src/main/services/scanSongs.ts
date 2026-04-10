@@ -5,14 +5,54 @@ import { ISongInfo } from '../../types/globals'
 import { SUPPORTED_AUDIO_FORMATS } from '../../shared/audioFormats'
 import { readWavRiffInfoWindows } from './wavRiffInfo'
 import * as LibraryCacheDb from '../libraryCacheDb'
-import { enqueueKeyAnalysisList } from './keyAnalysisQueue'
-import { sweepSongListCovers } from './covers'
+
+type ScanSongListOptions = {
+  enablePostScanTasks?: boolean
+}
+
+const hasKey = (value: unknown): boolean => typeof value === 'string' && value.trim() !== ''
+const hasBpm = (value: unknown): boolean =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0
+const hasFirstBeatMs = (value: unknown): boolean =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0
+const hasBarBeatOffset = (value: unknown): boolean =>
+  typeof value === 'number' && Number.isFinite(value)
+const hasCompleteGrid = (info: Pick<ISongInfo, 'bpm' | 'firstBeatMs' | 'barBeatOffset'>) =>
+  hasBpm(info.bpm) && hasFirstBeatMs(info.firstBeatMs) && hasBarBeatOffset(info.barBeatOffset)
+
+export const scheduleSongListPostScanTasks = async (
+  scanPath: string | string[],
+  scanData: ISongInfo[]
+) => {
+  const cacheBase =
+    typeof scanPath === 'string' ? scanPath : Array.isArray(scanPath) ? (scanPath[0] ?? '') : ''
+  const cacheRoot =
+    cacheBase && (await fs.pathExists(cacheBase)) && (await fs.stat(cacheBase)).isDirectory()
+      ? cacheBase
+      : ''
+
+  if (!cacheRoot || scanData.length === 0) return
+
+  const pendingKeys = scanData
+    .filter((info) => !hasKey(info.key) || !hasCompleteGrid(info))
+    .map((info) => info.filePath)
+    .filter((filePath) => typeof filePath === 'string' && filePath.trim().length > 0)
+  if (pendingKeys.length > 0) {
+    const { enqueueKeyAnalysisList } = await import('./keyAnalysisQueue')
+    enqueueKeyAnalysisList(pendingKeys, 'background', { source: 'background' })
+  }
+
+  const currentFilePaths = scanData.map((info) => info.filePath)
+  const { sweepSongListCovers } = await import('./covers')
+  sweepSongListCovers(cacheRoot, currentFilePaths).catch(() => {})
+}
 
 // 扫描歌单目录，带 SQLite 缓存
 export async function scanSongList(
   scanPath: string | string[],
   audioExt: string[],
-  songListUUID: string
+  songListUUID: string,
+  options: ScanSongListOptions = {}
 ): Promise<{
   scanData: ISongInfo[]
   songListUUID: string
@@ -180,16 +220,6 @@ export async function scanSongList(
       fileFormat
     }
   }
-
-  const hasKey = (value: unknown): boolean => typeof value === 'string' && value.trim() !== ''
-  const hasBpm = (value: unknown): boolean =>
-    typeof value === 'number' && Number.isFinite(value) && value > 0
-  const hasFirstBeatMs = (value: unknown): boolean =>
-    typeof value === 'number' && Number.isFinite(value) && value >= 0
-  const hasBarBeatOffset = (value: unknown): boolean =>
-    typeof value === 'number' && Number.isFinite(value)
-  const hasCompleteGrid = (info: Pick<ISongInfo, 'bpm' | 'firstBeatMs' | 'barBeatOffset'>) =>
-    hasBpm(info.bpm) && hasFirstBeatMs(info.firstBeatMs) && hasBarBeatOffset(info.barBeatOffset)
 
   if (cacheFromDb && cacheRoot && cacheMap.size > 0 && filesStatList.length > 0) {
     for (const st of filesStatList) {
@@ -389,21 +419,8 @@ export async function scanSongList(
     } catch {}
   }
 
-  if (cacheRoot && songInfoArr.length > 0) {
-    const pendingKeys = songInfoArr
-      .filter((info) => !hasKey(info.key) || !hasCompleteGrid(info))
-      .map((info) => info.filePath)
-      .filter((filePath) => typeof filePath === 'string' && filePath.trim().length > 0)
-    if (pendingKeys.length > 0) {
-      enqueueKeyAnalysisList(pendingKeys, 'background', { source: 'background' })
-    }
-  }
-
-  // 扫描完成后自动清理孤立的封面文件
-  if (cacheRoot) {
-    const currentFilePaths = songInfoArr.map((info) => info.filePath)
-    // 异步执行封面清理，不阻塞返回结果
-    sweepSongListCovers(cacheRoot, currentFilePaths).catch(() => {})
+  if (options.enablePostScanTasks !== false) {
+    void scheduleSongListPostScanTasks(scanPath, songInfoArr)
   }
 
   const perfAllEnd = Date.now()

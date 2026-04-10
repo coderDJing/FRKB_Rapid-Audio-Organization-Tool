@@ -88,6 +88,7 @@ const DEFAULT_LIMIT = 80
 const AUTO_REBUILD_AGE_MS = 20000
 const SEARCH_EXTENDED_FIELD_LIMIT = 240
 const SEARCH_EXTENDED_LYRICS_LIMIT = 800
+const SEARCH_REBUILD_YIELD_EVERY_ROWS = 400
 
 const EXTENDED_SEARCH_FIELD_KEYS = [
   'albumArtist',
@@ -343,6 +344,11 @@ const resolveListRootAbsolute = (listRootRaw: string) => {
   return listRootRaw
 }
 
+const yieldToNodeMainLoop = () =>
+  new Promise<void>((resolve) => {
+    setImmediate(resolve)
+  })
+
 class GlobalSongSearchEngine {
   private docs: SearchDoc[] = []
   private allDocIndices: number[] = []
@@ -460,9 +466,14 @@ class GlobalSongSearchEngine {
 
   async getPlaylistFastLoad(songListUUID: string): Promise<PlaylistFastLoadResult> {
     const started = Date.now()
-    await this.ensureReady(false, { allowDirtyStale: true, allowAgedStale: true })
     const normalizedUuid = String(songListUUID || '').trim()
     if (!normalizedUuid) {
+      return { hit: false, items: [], tookMs: Date.now() - started, snapshotAt: this.lastBuiltAt }
+    }
+    // 打开歌单属于高频交互，不能在点击链路里等待全库索引重建。
+    // 没现成快照就直接 miss，交给既有的 worker 扫描兜住首屏。
+    if (!this.ready) {
+      this.startBackgroundRebuild('playlist-fast-load-cold')
       return { hit: false, items: [], tookMs: Date.now() - started, snapshotAt: this.lastBuiltAt }
     }
     if (!this.knownPlaylists.has(normalizedUuid)) {
@@ -543,9 +554,9 @@ class GlobalSongSearchEngine {
       info_json: string
     }
 
-    const rows = db
-      .prepare('SELECT list_root, file_path, info_json FROM song_cache')
-      .all() as SongCacheRow[]
+    const songCacheStmt = db.prepare('SELECT list_root, file_path, info_json FROM song_cache') as {
+      iterate(): Iterable<SongCacheRow>
+    }
 
     const playlistInfo = this.buildPlaylistMeta()
     const docs: SearchDoc[] = []
@@ -555,7 +566,9 @@ class GlobalSongSearchEngine {
     const playlistSongsMap = new Map<string, Map<string, ISongInfo>>()
     const knownPlaylists = new Set<string>(playlistInfo.knownUuids)
 
-    for (const row of rows) {
+    let processedRows = 0
+    for (const row of songCacheStmt.iterate()) {
+      processedRows += 1
       if (!row || !row.list_root || row.info_json === undefined) continue
 
       const listRootAbs = resolveListRootAbsolute(String(row.list_root))
@@ -654,6 +667,10 @@ class GlobalSongSearchEngine {
         const bucket = playlistSongsMap.get(songListUUID) || new Map<string, ISongInfo>()
         bucket.set(normalizePathForCompare(songInfo.filePath), songInfo)
         playlistSongsMap.set(songListUUID, bucket)
+      }
+
+      if (processedRows % SEARCH_REBUILD_YIELD_EVERY_ROWS === 0) {
+        await yieldToNodeMainLoop()
       }
     }
 

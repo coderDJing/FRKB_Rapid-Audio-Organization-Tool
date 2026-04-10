@@ -648,6 +648,11 @@ export const isBeatThisRuntimeAvailableLocally = (): boolean => {
   }
 }
 
+export const getBeatThisRuntimeAvailabilitySnapshot = (): boolean | null => {
+  if (cachedResolvedRuntime === undefined) return null
+  return cachedResolvedRuntime !== null
+}
+
 export const resetBeatThisRuntimeResolution = () => {
   cachedResolvedRuntime = undefined
   beatThisRuntimeProbeCache.clear()

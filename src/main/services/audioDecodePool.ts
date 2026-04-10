@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { log } from '../log'
+import { resolveMainWorkerPath } from '../workerPath'
 import type { MixxxWaveformData } from '../waveformCache'
 import { isMissingFileDecodeError } from './decodeErrorUtils'
 
@@ -276,7 +277,7 @@ class AudioDecodeWorkerPool {
   }
 
   private createWorker(): Worker {
-    const workerPath = path.join(__dirname, 'workers', 'audioDecodeWorker.js')
+    const workerPath = resolveMainWorkerPath(__dirname, 'audioDecodeWorker.js')
     const worker = new Worker(workerPath)
 
     worker.on('message', (payload: any) => {

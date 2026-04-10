@@ -15,6 +15,7 @@ export default defineConfig({
           index: resolve(__dirname, 'src/main/index.ts'),
           audioDecodeWorker: resolve(__dirname, 'src/main/workers/audioDecodeWorker.ts'),
           keyAnalysisWorker: resolve(__dirname, 'src/main/workers/keyAnalysisWorker.ts'),
+          songListScanWorker: resolve(__dirname, 'src/main/workers/songListScanWorker.ts'),
           pioneerDeviceLibraryWorker: resolve(
             __dirname,
             'src/main/workers/pioneerDeviceLibraryWorker.ts'
@@ -32,6 +33,9 @@ export default defineConfig({
             }
             if (chunk.name === 'keyAnalysisWorker') {
               return 'workers/keyAnalysisWorker.js'
+            }
+            if (chunk.name === 'songListScanWorker') {
+              return 'workers/songListScanWorker.js'
             }
             if (chunk.name === 'pioneerDeviceLibraryWorker') {
               return 'workers/pioneerDeviceLibraryWorker.js'

@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { log } from '../../log'
+import { resolveMainWorkerPath } from '../../workerPath'
 
 type ReadPlaylistTreeJob = {
   jobId: number
@@ -46,7 +47,7 @@ class PioneerDeviceWorkerPool {
 
   private ensureWorker() {
     if (this.worker) return this.worker
-    const workerPath = path.join(__dirname, 'workers', 'pioneerDeviceLibraryWorker.js')
+    const workerPath = resolveMainWorkerPath(__dirname, 'pioneerDeviceLibraryWorker.js')
     const worker = new Worker(workerPath)
 
     worker.on('message', (payload: PioneerWorkerResponse) => {

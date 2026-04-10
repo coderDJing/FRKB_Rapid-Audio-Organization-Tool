@@ -9,7 +9,7 @@ import type { ISongInfo } from '../../../types/globals'
 import type { MixxxWaveformData } from '../../waveformCache'
 import { persistSharedSongGridDefinition } from '../sharedSongGrid'
 import { emitSongGridUpdated } from '../songGridEvents'
-import { isBeatThisRuntimeAvailableLocally } from '../../workers/beatThisRuntime'
+import { getBeatThisRuntimeAvailabilitySnapshot } from '../../workers/beatThisRuntime'
 import {
   isValidBpm,
   isValidBarBeatOffset,
@@ -417,7 +417,10 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       needsWaveform = false
     }
 
-    if (needsBpm && !isBeatThisRuntimeAvailableLocally()) {
+    // 这里绝不能在主线程里现探 Beat This runtime。
+    // 同步 Python 探针会把打开歌单卡成未响应。
+    const beatThisRuntimeAvailable = getBeatThisRuntimeAvailabilitySnapshot()
+    if (needsBpm && beatThisRuntimeAvailable === false) {
       needsBpm = false
     }
 

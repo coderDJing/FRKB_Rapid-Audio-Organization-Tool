@@ -5,7 +5,8 @@ import { log } from '../log'
 import store from '../store'
 import mainWindow from '../window/mainWindow'
 import { EXTERNAL_PLAYLIST_UUID } from '../../shared/externalPlayback'
-import { scanSongList as svcScanSongList } from '../services/scanSongs'
+import { scheduleSongListPostScanTasks } from '../services/scanSongs'
+import { scanSongListOffMainThread } from '../services/songListScanWorker'
 import {
   collectFilesWithExtensions,
   getSongsAnalyseResult,
@@ -17,17 +18,28 @@ import { moveFileToRecycleBin, normalizeRendererPlaylistPath } from '../recycleB
 import { findLibraryNodeByPath, findSongListRootByPath } from '../libraryTreeDb'
 
 export function registerPlaylistHandlers() {
+  const runSongListScan = async (scanPath: string | string[], songListUUID: string) => {
+    const result = await scanSongListOffMainThread({
+      scanPath,
+      audioExt: store.settingConfig.audioExt,
+      songListUUID,
+      databaseDir: store.databaseDir
+    })
+    void scheduleSongListPostScanTasks(scanPath, result.scanData)
+    return result
+  }
+
   ipcMain.handle(
     'scanSongList',
     async (_e, songListPath: string | string[], songListUUID: string) => {
       if (typeof songListPath === 'string') {
         const scanPath = path.join(store.databaseDir, mapRendererPathToFsPath(songListPath))
-        return await svcScanSongList(scanPath, store.settingConfig.audioExt, songListUUID)
+        return await runSongListScan(scanPath, songListUUID)
       } else {
         const scanPaths = songListPath.map((p) =>
           path.join(store.databaseDir, mapRendererPathToFsPath(p))
         )
-        return await svcScanSongList(scanPaths, store.settingConfig.audioExt, songListUUID)
+        return await runSongListScan(scanPaths, songListUUID)
       }
     }
   )
@@ -47,7 +59,7 @@ export function registerPlaylistHandlers() {
       if (!filtered.length) {
         return { scanData: [], songListUUID: EXTERNAL_PLAYLIST_UUID }
       }
-      return await svcScanSongList(filtered, store.settingConfig.audioExt, EXTERNAL_PLAYLIST_UUID)
+      return await runSongListScan(filtered, EXTERNAL_PLAYLIST_UUID)
     } catch (error) {
       log.error('externalPlaylist:scan failed', error)
       return { scanData: [], songListUUID: EXTERNAL_PLAYLIST_UUID }

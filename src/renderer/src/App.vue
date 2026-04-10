@@ -64,6 +64,7 @@ const fileOpPending = ref(0)
 const fileOpBatchId = ref('')
 const fileOpSuccessSoFar = ref(0)
 const fileOpFailedSoFar = ref(0)
+let songSearchWarmupTimer: ReturnType<typeof setTimeout> | null = null
 const CTRL_DOUBLE_TAP_MS = 260
 const horizontalModeTopSpacerHeight = 372
 const showHorizontalModeTopSpacer = computed(() => runtime.mainWindowBrowseMode === 'horizontal')
@@ -598,7 +599,10 @@ const getLibrary = async () => {
 }
 getLibrary()
 onMounted(() => {
-  void window.electron.ipcRenderer.invoke('song-search:warmup').catch(() => {})
+  songSearchWarmupTimer = setTimeout(() => {
+    songSearchWarmupTimer = null
+    void window.electron.ipcRenderer.invoke('song-search:warmup').catch(() => {})
+  }, 5000)
   hotkeys('F1', 'windowGlobal', () => {
     openDialog('menu.visitGithub')
   })
@@ -739,6 +743,10 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (songSearchWarmupTimer) {
+    clearTimeout(songSearchWarmupTimer)
+    songSearchWarmupTimer = null
+  }
   window.removeEventListener('pointerdown', handleContextMenuPointerDownCapture, true)
   window.removeEventListener('click', handleContextMenuClickCapture, true)
   window.removeEventListener('keydown', handleCtrlDoubleTapKeyDown, true)

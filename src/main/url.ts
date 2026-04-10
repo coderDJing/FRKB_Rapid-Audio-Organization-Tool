@@ -1,9 +1,21 @@
 import { app } from 'electron'
 import path = require('path')
 
+const isPackagedRuntime = (() => {
+  try {
+    return !!(app && typeof app.isPackaged === 'boolean' && app.isPackaged)
+  } catch {
+    return false
+  }
+})()
+
 let userDataDir = ''
-if (app.isPackaged) {
-  userDataDir = app.getPath('userData')
+if (isPackagedRuntime) {
+  try {
+    userDataDir = app.getPath('userData')
+  } catch {
+    userDataDir = __dirname
+  }
 } else {
   userDataDir = __dirname
 }

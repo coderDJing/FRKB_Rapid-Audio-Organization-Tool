@@ -2,6 +2,7 @@ import path from 'node:path'
 import type { EventEmitter } from 'node:events'
 import { Worker } from 'node:worker_threads'
 import { log } from '../../log'
+import { resolveMainWorkerPath } from '../../workerPath'
 import type { KeyAnalysisBackground } from './background'
 import type { KeyAnalysisPersistence } from './persistence'
 import {
@@ -301,7 +302,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
   }
 
   const createWorker = (): Worker => {
-    const workerPath = path.join(__dirname, 'workers', 'keyAnalysisWorker.js')
+    const workerPath = resolveMainWorkerPath(__dirname, 'keyAnalysisWorker.js')
     const worker = new Worker(workerPath)
 
     worker.on('message', (payload: WorkerPayload) => {

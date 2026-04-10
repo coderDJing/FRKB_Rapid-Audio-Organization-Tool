@@ -4,6 +4,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { log } from '../log'
+import { resolveMainWorkerPath } from '../workerPath'
 import {
   clearTrackCache as svcClearTrackCache,
   findSongListRoot
@@ -69,7 +70,7 @@ export function registerCacheHandlers() {
   }
 
   const resolveMixtapeRawWaveformWorkerPath = () =>
-    path.join(__dirname, 'workers', 'mixtapeRawWaveformWorker.js')
+    resolveMainWorkerPath(__dirname, 'mixtapeRawWaveformWorker.js')
 
   const teardownRawWaveformStreamWorker = (worker?: Worker) => {
     if (!worker) return
