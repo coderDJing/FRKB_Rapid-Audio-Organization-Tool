@@ -1100,6 +1100,32 @@
       "successLine1": "The local analysis runtime has been cleared.",
       "successLine2": "The runtime directory and download cache were removed. After restarting, the app will prompt again as if no runtime had ever been downloaded.",
       "failed": "Failed to clear the local analysis runtime"
+    },
+    "layout": {
+      "headerHint": "Reordered by usage priority, with high-risk actions isolated at the end.",
+      "quickNavTitle": "Quick Jump",
+      "quickNavDesc": "Jump straight to the area you want instead of scrolling through a long list.",
+      "instantApplyTitle": "Apply Instantly",
+      "instantApplyDesc": "Except for dangerous actions, most settings are saved and applied immediately.",
+      "summaryTitle": "Quick Overview",
+      "summaryDesc": "The settings most likely to be changed repeatedly are surfaced first.",
+      "sectionCommonTitle": "Common Settings",
+      "sectionCommonDesc": "Theme, language, output device, and frequently changed basics stay here first.",
+      "sectionPlaybackTitle": "Playback & Shortcuts",
+      "sectionPlaybackDesc": "Player behavior, waveform display, and global shortcuts live in one place.",
+      "sectionMetadataTitle": "Metadata & Fingerprints",
+      "sectionMetadataDesc": "Manage AcoustID, fingerprint mode, and scan formats without extra hopping around.",
+      "sectionLibraryTitle": "Library & Lists",
+      "sectionLibraryDesc": "Everything that affects list display, curated linkage, and library actions is grouped here.",
+      "sectionSafetyTitle": "Maintenance & Dangerous Actions",
+      "sectionSafetyDesc": "High-risk operations are isolated at the end to reduce accidental clicks.",
+      "statusConfigured": "Configured",
+      "statusNotConfigured": "Not configured",
+      "summaryFormats": "{count}/{total} formats selected",
+      "summaryArtists": "{count} curated artists tracked",
+      "summaryDangerDev": "Includes dev maintenance actions",
+      "summaryDangerNormal": "Dangerous actions isolated",
+      "openCloudSync": "Open Cloud Sync Settings"
     }
   },
   "fileSelector": {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onUnmounted, onMounted, ref, useTemplateRef, reactive, computed, watch } from 'vue'
+import { onUnmounted, onMounted, provide, ref, reactive, computed, watch } from 'vue'
 import hintIconAsset from '@renderer/assets/hint.svg?asset'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
@@ -13,14 +13,11 @@ import globalCallShortcutDialog from './globalCallShortcutDialog'
 import playerGlobalShortcutDialog from './playerGlobalShortcutDialog'
 import dangerConfirmWithInput from './dangerConfirmWithInputDialog'
 import curatedArtistLibraryDialog from './curatedArtistLibraryDialog'
-import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
-import bubbleBox from '@renderer/components/bubbleBox.vue'
-import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
-import BaseSelect from '@renderer/components/BaseSelect.vue'
 import { SUPPORTED_AUDIO_FORMATS } from '../../../shared/audioFormats'
 import type { PlayerGlobalShortcutAction } from 'src/types/globals'
 import { mapAcoustIdClientError } from '@renderer/utils/acoustid'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
+import SettingDialogBody from './settingDialog/SettingDialogBody.vue'
 import {
   AUDIO_OUTPUT_FOLLOW_SYSTEM_ID,
   ensurePlayerGlobalShortcuts,
@@ -459,9 +456,6 @@ const reSelectLibrary = async () => {
     await window.electron.ipcRenderer.invoke('reSelectLibrary')
   }
 }
-const hint1Ref = useTemplateRef<HTMLImageElement>('hint1Ref')
-const hintErrorReportRef = useTemplateRef<HTMLImageElement>('hintErrorReportRef')
-
 // 指纹模式选项的 hint 图标引用
 const fpModeHintRefs = reactive<Record<string, HTMLImageElement | null>>({})
 function setFpModeHintRef(value: string, el: HTMLImageElement | null) {
@@ -478,6 +472,11 @@ const onFingerprintModeChange = async () => {
   await setSetting()
 }
 
+const openCloudSyncSettings = () => {
+  cancel()
+  window.dispatchEvent(new CustomEvent('openDialogFromChild', { detail: 'cloudSync.settings' }))
+}
+
 // 清除云端指纹库
 const clearCloudFingerprints = async () => {
   if (runtime.isProgressing) {
@@ -491,8 +490,7 @@ const clearCloudFingerprints = async () => {
   const cfg = await window.electron.ipcRenderer.invoke('cloudSync/config/get')
   const userKey = cfg?.userKey || ''
   if (!userKey) {
-    cancel()
-    window.dispatchEvent(new CustomEvent('openDialogFromChild', { detail: 'cloudSync.settings' }))
+    openCloudSyncSettings()
     await confirm({
       title: t('cloudSync.settings'),
       content: [t('cloudSync.needUserKeyBeforeDanger')],
@@ -621,610 +619,53 @@ const clearAnalysisRuntime = async () => {
     })
   }
 }
+
+provide('settingDialogContext', {
+  dialogVisible,
+  runtime,
+  cancel,
+  setSetting,
+  songFingerprintListLength,
+  lastValidAcoustIdClientKey,
+  acoustIdKeyValidating,
+  acoustIdKeyErrorText,
+  isWindowsPlatform,
+  curatedArtistFavoritesCount,
+  isDevOrPrerelease,
+  songListBubbleMode,
+  audioOutputDevices,
+  isEnumeratingAudioOutputs,
+  audioOutputError,
+  audioOutputSupported,
+  themeModeOptions,
+  languageOptions,
+  waveformStyleOptions,
+  waveformModeOptions,
+  keyDisplayStyleOptions,
+  audioOutputSelectOptions,
+  handleAudioOutputChange,
+  openAcoustIdSite,
+  handleAcoustIdKeyBlur,
+  updateRecentDialogCacheMaxCount,
+  allFormats,
+  audioExt,
+  extChange,
+  clearTracksFingerprintLibrary,
+  clearCuratedArtistFavorites,
+  openCuratedArtistFavoritesDialog,
+  globalCallShortcutHandle,
+  playerGlobalShortcutHandle,
+  reSelectLibrary,
+  hintIcon,
+  fpModeHintRefs,
+  setFpModeHintRef,
+  onFingerprintModeChange,
+  clearCloudFingerprints,
+  clearLibraryDirtyData,
+  clearAnalysisRuntime,
+  openCloudSyncSettings
+})
 </script>
 <template>
-  <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
-    <div
-      v-dialog-drag="'.dialog-title'"
-      style="width: 60vw; height: 70vh; display: flex; flex-direction: column"
-      class="inner"
-    >
-      <div style="height: 100%; display: flex; flex-direction: column">
-        <div class="dialog-title dialog-header">
-          <span>{{ t('common.setting') }}</span>
-        </div>
-        <OverlayScrollbarsComponent
-          :options="{
-            scrollbars: {
-              autoHide: 'leave' as const,
-              autoHideDelay: 50,
-              clickScroll: true
-            } as const,
-            overflow: {
-              x: 'hidden',
-              y: 'scroll'
-            } as const
-          }"
-          element="div"
-          style="height: 100%; width: 100%"
-          defer
-        >
-          <div style="padding: 20px; font-size: 14px; flex-grow: 1">
-            <div>{{ t('theme.mode') }}：</div>
-            <div style="margin-top: 10px">
-              <BaseSelect
-                v-model="(runtime as any).setting.themeMode"
-                :options="themeModeOptions"
-                @change="setSetting"
-              />
-            </div>
-            <div style="margin-top: 20px">{{ t('common.language') }}：</div>
-            <div style="margin-top: 10px">
-              <BaseSelect
-                v-model="runtime.setting.language"
-                :options="languageOptions"
-                @change="setSetting"
-              />
-            </div>
-            <div style="margin-top: 20px">{{ t('player.audioOutputDevice') }}：</div>
-            <div style="margin-top: 10px">
-              <BaseSelect
-                v-model="runtime.setting.audioOutputDeviceId"
-                :options="audioOutputSelectOptions"
-                :disabled="!audioOutputSupported || isEnumeratingAudioOutputs"
-                @change="handleAudioOutputChange"
-              />
-              <div v-if="audioOutputError" style="margin-top: 6px; font-size: 12px; color: #e81123">
-                {{ audioOutputError }}
-              </div>
-            </div>
-            <div style="margin-top: 20px">{{ t('player.autoPlayNext') }}：</div>
-            <div style="margin-top: 10px">
-              <singleCheckbox v-model="runtime.setting.autoPlayNextSong" @change="setSetting()" />
-            </div>
-            <div style="margin-top: 20px">{{ t('player.autoCenterSong') }}：</div>
-            <div style="margin-top: 10px">
-              <singleCheckbox
-                v-model="runtime.setting.autoScrollToCurrentSong"
-                @change="setSetting()"
-              />
-            </div>
-            <div style="margin-top: 20px">{{ t('player.enablePlaybackRange') }}：</div>
-            <div style="margin-top: 10px">
-              <singleCheckbox
-                v-model="runtime.setting.enablePlaybackRange"
-                @change="setSetting()"
-              />
-            </div>
-            <div style="margin-top: 20px">{{ t('player.hideControlsShowWaveform') }}：</div>
-            <div style="margin-top: 10px">
-              <singleCheckbox
-                v-model="runtime.setting.hiddenPlayControlArea"
-                @change="setSetting()"
-              />
-            </div>
-            <div style="margin-top: 20px">{{ t('player.waveformStyle') }}：</div>
-            <div style="margin-top: 10px">
-              <BaseSelect
-                v-model="(runtime as any).setting.waveformStyle"
-                :options="waveformStyleOptions"
-                @change="setSetting"
-              />
-            </div>
-            <div style="margin-top: 20px">{{ t('player.waveformMode') }}：</div>
-            <div style="margin-top: 10px">
-              <BaseSelect
-                v-model="(runtime as any).setting.waveformMode"
-                :options="waveformModeOptions"
-                @change="setSetting"
-              />
-            </div>
-            <div style="margin-top: 20px">{{ t('player.keyDisplayStyle') }}：</div>
-            <div style="margin-top: 10px">
-              <BaseSelect
-                v-model="(runtime as any).setting.keyDisplayStyle"
-                :options="keyDisplayStyleOptions"
-                @change="setSetting"
-              />
-            </div>
-            <div style="margin-top: 20px">{{ t('player.showIdleAnalysisStatus') }}：</div>
-            <div style="margin-top: 10px">
-              <singleCheckbox
-                v-model="(runtime as any).setting.showIdleAnalysisStatus"
-                @change="setSetting"
-              />
-            </div>
-            <div style="margin-top: 20px">{{ t('fingerprints.scanFormats') }}：</div>
-            <div style="margin-top: 10px">
-              <div style="display: flex; flex-wrap: wrap; gap: 10px">
-                <template v-for="fmt in allFormats" :key="fmt">
-                  <div style="display: flex; align-items: center">
-                    <span style="margin-right: 5px">.{{ fmt }}</span>
-                    <singleCheckbox v-model="(audioExt as any)[fmt]" @change="extChange()" />
-                  </div>
-                </template>
-              </div>
-            </div>
-            <div style="margin-top: 20px">{{ t('shortcuts.globalCallShortcut') }}：</div>
-            <div style="margin-top: 10px">
-              <div
-                class="chooseDirDiv"
-                :title="runtime.setting.globalCallShortcut"
-                @click="globalCallShortcutHandle()"
-              >
-                {{ runtime.setting.globalCallShortcut }}
-              </div>
-            </div>
-            <div style="margin-top: 20px">{{ t('shortcuts.playerGlobalShortcuts') }}：</div>
-            <div class="playerShortcutList">
-              <div class="playerShortcutRow">
-                <div class="playerShortcutLabel">
-                  {{ t('shortcuts.globalFastForwardShortcut') }}
-                </div>
-                <div
-                  class="chooseDirDiv"
-                  :title="runtime.setting.playerGlobalShortcuts.fastForward"
-                  @click="playerGlobalShortcutHandle('fastForward')"
-                >
-                  {{ runtime.setting.playerGlobalShortcuts.fastForward }}
-                </div>
-              </div>
-              <div class="playerShortcutRow">
-                <div class="playerShortcutLabel">
-                  {{ t('shortcuts.globalFastBackwardShortcut') }}
-                </div>
-                <div
-                  class="chooseDirDiv"
-                  :title="runtime.setting.playerGlobalShortcuts.fastBackward"
-                  @click="playerGlobalShortcutHandle('fastBackward')"
-                >
-                  {{ runtime.setting.playerGlobalShortcuts.fastBackward }}
-                </div>
-              </div>
-              <div class="playerShortcutRow">
-                <div class="playerShortcutLabel">{{ t('shortcuts.globalNextShortcut') }}</div>
-                <div
-                  class="chooseDirDiv"
-                  :title="runtime.setting.playerGlobalShortcuts.nextSong"
-                  @click="playerGlobalShortcutHandle('nextSong')"
-                >
-                  {{ runtime.setting.playerGlobalShortcuts.nextSong }}
-                </div>
-              </div>
-              <div class="playerShortcutRow">
-                <div class="playerShortcutLabel">{{ t('shortcuts.globalPreviousShortcut') }}</div>
-                <div
-                  class="chooseDirDiv"
-                  :title="runtime.setting.playerGlobalShortcuts.previousSong"
-                  @click="playerGlobalShortcutHandle('previousSong')"
-                >
-                  {{ runtime.setting.playerGlobalShortcuts.previousSong }}
-                </div>
-              </div>
-            </div>
-            <div class="playerShortcutHint">
-              {{ t('shortcuts.playerGlobalShortcutsHint') }}
-            </div>
-            <div style="margin-top: 20px">{{ t('player.fastForwardTime') }}：</div>
-            <div style="margin-top: 10px">
-              <input
-                v-model="runtime.setting.fastForwardTime"
-                class="myInput"
-                type="number"
-                min="1"
-                step="1"
-                @input="
-                  runtime.setting.fastForwardTime = Math.max(
-                    1,
-                    Math.floor(Number(runtime.setting.fastForwardTime || 1)) // 处理可能为 null 或 undefined 的情况
-                  )
-                "
-                @blur="setSetting()"
-              />
-              {{ t('player.seconds') }}
-            </div>
-            <div style="margin-top: 20px">{{ t('player.fastBackwardTime') }}：</div>
-            <div style="margin-top: 10px">
-              <input
-                v-model="runtime.setting.fastBackwardTime"
-                class="myInput"
-                type="number"
-                max="-1"
-                step="1"
-                @input="
-                  runtime.setting.fastBackwardTime = Math.min(
-                    -1,
-                    Math.floor(Number(runtime.setting.fastBackwardTime || -1)) // 处理可能为 null 或 undefined 的情况
-                  )
-                "
-                @blur="setSetting()"
-              />
-              {{ t('player.seconds') }}
-            </div>
-            <div style="margin-top: 20px">{{ t('player.recentPlaylistCache') }}：</div>
-            <div style="margin-top: 10px">
-              <input
-                v-model="runtime.setting.recentDialogSelectedSongListMaxCount"
-                class="myInput"
-                type="number"
-                min="0"
-                step="1"
-                @input="
-                  runtime.setting.recentDialogSelectedSongListMaxCount = Math.max(
-                    0,
-                    Math.floor(Number(runtime.setting.recentDialogSelectedSongListMaxCount || 0))
-                  )
-                "
-                @blur="updateRecentDialogCacheMaxCount()"
-              />
-            </div>
-            <div style="margin-top: 30px">
-              <div class="section-title">{{ t('metadata.acoustidSettingTitle') }}</div>
-              <div class="setting-hint">{{ t('metadata.acoustidSettingDesc1') }}</div>
-              <div class="setting-hint">{{ t('metadata.acoustidSettingDesc2') }}</div>
-              <div class="setting-hint">{{ t('metadata.acoustidSettingDesc3') }}</div>
-              <div class="acoustid-row">
-                <input
-                  v-model="runtime.setting.acoustIdClientKey"
-                  class="acoustid-input"
-                  :class="{ invalid: acoustIdKeyErrorText }"
-                  :placeholder="t('metadata.acoustidSettingPlaceholder')"
-                  :disabled="acoustIdKeyValidating"
-                  @blur="handleAcoustIdKeyBlur"
-                />
-                <div
-                  class="button"
-                  style="height: 25px; line-height: 25px"
-                  @click="openAcoustIdSite"
-                >
-                  {{ t('metadata.acoustidSettingOpenLink') }}
-                </div>
-              </div>
-              <div v-if="acoustIdKeyValidating" class="setting-hint">
-                {{ t('metadata.acoustidKeyValidating') }}
-              </div>
-              <div v-else-if="acoustIdKeyErrorText" class="error-text">
-                {{ acoustIdKeyErrorText }}
-              </div>
-              <div class="setting-hint">{{ t('metadata.acoustidSettingRateHint') }}</div>
-            </div>
-            <div style="margin-top: 20px">{{ t('metadata.autoFillSkipCompleted') }}：</div>
-            <div style="margin-top: 10px">
-              <singleCheckbox
-                v-model="(runtime as any).setting.autoFillSkipCompleted"
-                @change="setSetting()"
-              />
-            </div>
-            <div class="setting-hint">{{ t('metadata.autoFillSkipCompletedHint') }}</div>
-            <div style="margin-top: 20px">{{ t('filters.persistFiltersAfterRestart') }}：</div>
-            <div style="margin-top: 10px">
-              <singleCheckbox
-                v-model="(runtime as any).setting.persistSongFilters"
-                @change="setSetting()"
-              />
-            </div>
-            <div style="margin-top: 20px">{{ t('settings.curatedArtistTracking.title') }}：</div>
-            <div style="margin-top: 10px">
-              <singleCheckbox
-                v-model="(runtime as any).setting.enableCuratedArtistTracking"
-                @change="setSetting()"
-              />
-            </div>
-            <div class="setting-hint">{{ t('settings.curatedArtistTracking.desc') }}</div>
-            <div style="margin-top: 10px">
-              <div
-                class="button"
-                style="width: 120px; text-align: center"
-                @click="openCuratedArtistFavoritesDialog()"
-              >
-                {{ t('settings.curatedArtistTracking.managerButton') }}
-              </div>
-            </div>
-            <div style="margin-top: 20px">
-              {{ t('settings.curatedArtistTracking.clearTitle') }}：
-            </div>
-            <div class="setting-hint">
-              {{
-                t('settings.curatedArtistTracking.clearDesc', {
-                  count: curatedArtistFavoritesCount
-                })
-              }}
-            </div>
-            <div style="margin-top: 10px">
-              <div
-                class="dangerButton"
-                style="width: 120px; text-align: center"
-                @click="clearCuratedArtistFavorites()"
-              >
-                {{ t('settings.curatedArtistTracking.clearButton') }}
-              </div>
-            </div>
-            <div style="margin-top: 20px">{{ t('settings.showPlaylistTrackCount') }}：</div>
-            <div style="margin-top: 10px">
-              <singleCheckbox
-                v-model="(runtime as any).setting.showPlaylistTrackCount"
-                @change="setSetting()"
-              />
-            </div>
-            <template v-if="isWindowsPlatform">
-              <div style="margin-top: 20px">{{ t('settings.enableExplorerContextMenu') }}</div>
-              <div style="margin-top: 10px">
-                <singleCheckbox
-                  v-model="(runtime as any).setting.enableExplorerContextMenu"
-                  @change="setSetting()"
-                />
-              </div>
-            </template>
-            <div style="margin-top: 20px">{{ t('settings.songListBubble.title') }}：</div>
-            <div style="margin-top: 10px">
-              <singleRadioGroup
-                v-model="songListBubbleMode as any"
-                name="songListBubble"
-                :options="[
-                  { label: t('settings.songListBubble.overflowOnly'), value: 'overflowOnly' },
-                  { label: t('settings.songListBubble.always'), value: 'always' }
-                ]"
-                :option-font-size="12"
-                @change="setSetting()"
-              >
-                <template #option="{ opt }">
-                  <span class="label">{{ opt.label }}</span>
-                </template>
-              </singleRadioGroup>
-              <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary)">
-                {{ t('settings.songListBubble.hint') }}
-              </div>
-            </div>
-            <div style="margin-top: 20px">{{ t('database.reselectLocation') }}：</div>
-            <div style="margin-top: 10px">
-              <div
-                class="button"
-                style="width: 90px; text-align: center"
-                @click="reSelectLibrary()"
-              >
-                {{ t('dialog.reselect') }}
-              </div>
-            </div>
-            <div style="margin-top: 20px">
-              {{ t('fingerprints.clear') }}：
-              <img
-                ref="hint1Ref"
-                :src="hintIcon"
-                style="width: 15px; height: 15px; margin-top: 5px"
-                :draggable="false"
-                class="theme-icon"
-              />
-              <bubbleBox
-                :dom="hint1Ref || undefined"
-                :title="t('fingerprints.currentCount', { count: songFingerprintListLength })"
-                :max-width="220"
-              />
-            </div>
-            <div style="margin-top: 10px">
-              <div
-                class="dangerButton"
-                style="width: 90px; text-align: center"
-                @click="clearTracksFingerprintLibrary()"
-              >
-                {{ t('fingerprints.clearShort') }}
-              </div>
-            </div>
-            <div style="margin-top: 20px">{{ t('cloudSync.reset.sectionTitle') }}：</div>
-            <div style="margin-top: 10px">
-              <div
-                class="dangerButton"
-                style="width: 90px; text-align: center"
-                @click="clearCloudFingerprints()"
-              >
-                {{ t('fingerprints.clearShort') }}
-              </div>
-            </div>
-            <template v-if="isDevOrPrerelease">
-              <div style="margin-top: 20px">{{ t('settings.clearDirtyData.title') }}：</div>
-              <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary)">
-                {{ t('settings.clearDirtyData.desc') }}
-              </div>
-              <div style="margin-top: 10px">
-                <div
-                  class="dangerButton"
-                  style="width: 110px; text-align: center"
-                  @click="clearLibraryDirtyData()"
-                >
-                  {{ t('settings.clearDirtyData.button') }}
-                </div>
-              </div>
-              <div style="margin-top: 20px">{{ t('settings.clearAnalysisRuntime.title') }}：</div>
-              <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary)">
-                {{ t('settings.clearAnalysisRuntime.desc') }}
-              </div>
-              <div style="margin-top: 10px">
-                <div
-                  class="dangerButton"
-                  style="width: 120px; text-align: center"
-                  @click="clearAnalysisRuntime()"
-                >
-                  {{ t('settings.clearAnalysisRuntime.button') }}
-                </div>
-              </div>
-            </template>
-            <div style="margin-top: 20px">{{ t('fingerprints.mode') }}：</div>
-            <div style="margin-top: 10px">
-              <singleRadioGroup
-                v-model="(runtime as any).setting.fingerprintMode as any"
-                name="fpMode"
-                :options="[
-                  { label: t('fingerprints.modePCM'), value: 'pcm' },
-                  { label: t('fingerprints.modeFile'), value: 'file' }
-                ]"
-                @change="onFingerprintModeChange()"
-              >
-                <template #option="{ opt }">
-                  <span class="label">{{ opt.label }}</span>
-                  <img
-                    :ref="(el: any) => setFpModeHintRef(opt.value, el)"
-                    :src="hintIcon"
-                    style="width: 14px; height: 14px; margin-left: 6px"
-                    :draggable="false"
-                  />
-                  <bubbleBox
-                    :dom="(fpModeHintRefs[opt.value] || undefined) as any"
-                    :title="
-                      opt.value === 'pcm'
-                        ? t('fingerprints.modePCMHint')
-                        : t('fingerprints.modeFileHint')
-                    "
-                    :max-width="360"
-                  />
-                </template>
-              </singleRadioGroup>
-              <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary)">
-                {{ t('fingerprints.modeIncompatibleWarning') }}
-              </div>
-            </div>
-            <div style="margin-top: 20px">
-              {{ t('errorReport.enable') }}：
-              <img
-                ref="hintErrorReportRef"
-                :src="hintIcon"
-                style="width: 15px; height: 15px; margin-top: 5px"
-                :draggable="false"
-                class="theme-icon"
-              />
-              <bubbleBox
-                :dom="hintErrorReportRef || undefined"
-                :title="t('errorReport.hint')"
-                :max-width="260"
-              />
-            </div>
-            <div style="margin-top: 10px">
-              <singleCheckbox
-                v-model="(runtime as any).setting.enableErrorReport"
-                @change="setSetting()"
-              />
-            </div>
-          </div>
-        </OverlayScrollbarsComponent>
-        <div class="dialog-footer">
-          <div class="button" @click="cancel">{{ t('common.close') }} (Esc)</div>
-        </div>
-      </div>
-    </div>
-  </div>
+  <SettingDialogBody />
 </template>
-<style lang="scss" scoped>
-.myInput {
-  width: 50px;
-  height: 19px;
-  background-color: var(--bg-elev);
-  border: 1px solid var(--border);
-  outline: none;
-  color: var(--text);
-  border-radius: 3px;
-  padding: 0 6px;
-
-  &:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.25);
-  }
-}
-
-.dangerButton {
-  height: 25px;
-  line-height: 25px;
-  padding: 0 10px;
-  border-radius: 5px;
-  background-color: var(--hover);
-  border: 1px solid var(--border);
-  font-size: 14px;
-
-  &:hover {
-    color: #ffffff;
-    background-color: #e81123;
-  }
-}
-
-.chooseDirDiv {
-  height: 25px;
-  line-height: 25px;
-  background-color: var(--bg-elev);
-  border: 1px solid var(--border);
-  color: var(--text);
-  text-overflow: ellipsis;
-  overflow: hidden;
-  white-space: nowrap;
-  width: 200px;
-  font-size: 14px;
-  padding-left: 5px;
-  box-sizing: border-box;
-
-  &:hover {
-    background-color: var(--hover);
-    border-color: var(--accent);
-  }
-}
-
-.setting-hint {
-  font-size: 12px;
-  color: var(--text-secondary, #8c8c8c);
-  margin-top: 8px;
-  line-height: 1.5;
-}
-
-.acoustid-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-top: 10px;
-}
-
-.acoustid-input {
-  flex: 1;
-  height: 25px;
-  border: 1px solid var(--border);
-  background-color: var(--bg-elev);
-  color: var(--text);
-  border-radius: 3px;
-  padding: 0 8px;
-  outline: none;
-}
-
-.acoustid-input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.25);
-}
-
-.acoustid-input.invalid {
-  border-color: #e81123;
-}
-
-.error-text {
-  color: #e81123;
-  font-size: 12px;
-  margin-top: 6px;
-}
-
-.playerShortcutList {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.playerShortcutRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.playerShortcutLabel {
-  min-width: 130px;
-  font-size: 13px;
-  color: var(--text-weak);
-}
-
-.playerShortcutHint {
-  margin-top: 6px;
-  font-size: 12px;
-  color: var(--text-weak);
-}
-</style>

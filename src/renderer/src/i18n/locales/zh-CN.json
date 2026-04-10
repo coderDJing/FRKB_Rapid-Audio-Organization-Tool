@@ -1100,6 +1100,32 @@
       "successLine1": "本地分析运行时已清除。",
       "successLine2": "已移除运行时目录与下载缓存。重启软件后将重新按首次安装状态提示下载。",
       "failed": "清除本地分析运行时失败"
+    },
+    "layout": {
+      "headerHint": "按使用优先级重新整理，常改项目靠前，危险操作单独隔离。",
+      "quickNavTitle": "快速定位",
+      "quickNavDesc": "左侧直接跳到想改的区域，不用在长列表里来回翻。",
+      "instantApplyTitle": "即时生效",
+      "instantApplyDesc": "除危险操作外，大多数设置改完就会立刻保存并生效。",
+      "summaryTitle": "常用概览",
+      "summaryDesc": "先把最容易被反复调整的关键项放到最上面。",
+      "sectionCommonTitle": "常用设置",
+      "sectionCommonDesc": "主题、语言、输出设备和最常改的基础行为优先放这里。",
+      "sectionPlaybackTitle": "播放与快捷键",
+      "sectionPlaybackDesc": "播放器行为、波形显示和全局快捷键统一归到一组。",
+      "sectionMetadataTitle": "元数据与指纹",
+      "sectionMetadataDesc": "AcoustID、指纹模式和扫描格式集中管理，少绕路。",
+      "sectionLibraryTitle": "资料库与列表",
+      "sectionLibraryDesc": "影响列表展示、精选联动和资料库操作的设置都在这里。",
+      "sectionSafetyTitle": "维护与危险操作",
+      "sectionSafetyDesc": "高风险动作单独放到最后，避免误触。",
+      "statusConfigured": "已配置",
+      "statusNotConfigured": "未配置",
+      "summaryFormats": "已选 {count}/{total} 种格式",
+      "summaryArtists": "已记录 {count} 个精选表演者",
+      "summaryDangerDev": "含开发维护项",
+      "summaryDangerNormal": "危险操作已隔离",
+      "openCloudSync": "打开云同步设置"
     }
   },
   "fileSelector": {
