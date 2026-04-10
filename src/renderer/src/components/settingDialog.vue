@@ -12,6 +12,7 @@ import confirm from '@renderer/components/confirmDialog'
 import globalCallShortcutDialog from './globalCallShortcutDialog'
 import playerGlobalShortcutDialog from './playerGlobalShortcutDialog'
 import dangerConfirmWithInput from './dangerConfirmWithInputDialog'
+import curatedArtistLibraryDialog from './curatedArtistLibraryDialog'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
@@ -55,6 +56,7 @@ const acoustIdKeyValidating = ref(false)
 const acoustIdKeyErrorText = ref('')
 
 const isWindowsPlatform = computed(() => runtime.setting.platform === 'win32')
+const curatedArtistFavoritesCount = computed(() => runtime.curatedArtistFavorites.length)
 const isDevOrPrerelease = computed(() => {
   if (process.env.NODE_ENV === 'development') return true
   const version = String((pkg as any).version || '')
@@ -369,6 +371,63 @@ const clearTracksFingerprintLibrary = async () => {
         confirmShow: false
       })
     }
+  }
+}
+
+const clearCuratedArtistFavorites = async () => {
+  if (curatedArtistFavoritesCount.value <= 0) {
+    await confirm({
+      title: t('common.setting'),
+      content: [t('settings.curatedArtistTracking.emptyHint')],
+      confirmShow: false
+    })
+    return
+  }
+  const resConfirm = await confirm({
+    title: t('common.warning'),
+    content: [
+      t('settings.curatedArtistTracking.clearConfirmLine1'),
+      t('settings.curatedArtistTracking.clearConfirmLine2')
+    ]
+  })
+  if (resConfirm !== 'confirm') return
+  try {
+    const result = await window.electron.ipcRenderer.invoke('curatedArtists:clear')
+    runtime.curatedArtistFavorites = Array.isArray(result?.items) ? result.items : []
+    await confirm({
+      title: t('common.success'),
+      content: [t('settings.curatedArtistTracking.clearSuccess')],
+      confirmShow: false
+    })
+  } catch (error) {
+    await confirm({
+      title: t('common.error'),
+      content: [
+        t('settings.curatedArtistTracking.clearFailed'),
+        String((error as any)?.message || '')
+      ],
+      confirmShow: false
+    })
+  }
+}
+
+const openCuratedArtistFavoritesDialog = async () => {
+  const result = await curatedArtistLibraryDialog(
+    runtime.curatedArtistFavorites.map((item) => ({ ...item }))
+  )
+  if (result === 'cancel') return
+  try {
+    const snapshot = await window.electron.ipcRenderer.invoke('curatedArtists:setAll', result)
+    runtime.curatedArtistFavorites = Array.isArray(snapshot?.items) ? snapshot.items : []
+  } catch (error) {
+    await confirm({
+      title: t('common.error'),
+      content: [
+        t('settings.curatedArtistTracking.managerSaveFailed'),
+        String((error as any)?.message || '')
+      ],
+      confirmShow: false
+    })
   }
 }
 
@@ -843,6 +902,42 @@ const clearAnalysisRuntime = async () => {
                 v-model="(runtime as any).setting.persistSongFilters"
                 @change="setSetting()"
               />
+            </div>
+            <div style="margin-top: 20px">{{ t('settings.curatedArtistTracking.title') }}：</div>
+            <div style="margin-top: 10px">
+              <singleCheckbox
+                v-model="(runtime as any).setting.enableCuratedArtistTracking"
+                @change="setSetting()"
+              />
+            </div>
+            <div class="setting-hint">{{ t('settings.curatedArtistTracking.desc') }}</div>
+            <div style="margin-top: 10px">
+              <div
+                class="button"
+                style="width: 120px; text-align: center"
+                @click="openCuratedArtistFavoritesDialog()"
+              >
+                {{ t('settings.curatedArtistTracking.managerButton') }}
+              </div>
+            </div>
+            <div style="margin-top: 20px">
+              {{ t('settings.curatedArtistTracking.clearTitle') }}：
+            </div>
+            <div class="setting-hint">
+              {{
+                t('settings.curatedArtistTracking.clearDesc', {
+                  count: curatedArtistFavoritesCount
+                })
+              }}
+            </div>
+            <div style="margin-top: 10px">
+              <div
+                class="dangerButton"
+                style="width: 120px; text-align: center"
+                @click="clearCuratedArtistFavorites()"
+              >
+                {{ t('settings.curatedArtistTracking.clearButton') }}
+              </div>
             </div>
             <div style="margin-top: 20px">{{ t('settings.showPlaylistTrackCount') }}：</div>
             <div style="margin-top: 10px">

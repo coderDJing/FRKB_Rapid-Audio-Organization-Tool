@@ -58,6 +58,7 @@ let settingConfig: ISettingConfig = {
   errorReportUsageMsSinceLastSuccess: 0,
   errorReportRetryMsSinceLastFailure: -1,
   persistSongFilters: false,
+  enableCuratedArtistTracking: true,
   enableExplorerContextMenu: false,
   showPlaylistTrackCount: true,
   lastSeenWhatsNewVersion: '',

@@ -74,6 +74,7 @@ const defaultSettings = {
   recentDialogSelectedSongListMaxCount: 10,
   audioOutputDeviceId: '',
   persistSongFilters: false,
+  enableCuratedArtistTracking: true,
   enableExplorerContextMenu: platform === 'win32',
   showPlaylistTrackCount: true,
   nextCheckUpdateTime: '',

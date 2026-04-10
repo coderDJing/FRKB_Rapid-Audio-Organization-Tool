@@ -33,6 +33,8 @@ const ENV_BEAT_THIS_PYTHON = 'FRKB_BEAT_THIS_PYTHON'
 const ENV_BEAT_THIS_DEVICE = 'FRKB_BEAT_THIS_DEVICE'
 const ENV_BEAT_THIS_EXTRA_SITE_DIRS = 'FRKB_BEAT_THIS_EXTRA_SITE_DIRS'
 const ENV_BEAT_THIS_EXTRA_DLL_DIRS = 'FRKB_BEAT_THIS_EXTRA_DLL_DIRS'
+const ENV_DEMUCS_ROOT = 'FRKB_DEMUCS_ROOT'
+const ENV_USER_DATA_DIR = 'FRKB_USER_DATA_DIR'
 const LOCAL_RUNTIME_DIR = 'grid-analysis-lab/beat-this-runtime'
 const BEAT_THIS_PROBE_TIMEOUT_MS = 30_000
 const BEAT_THIS_COMPATIBILITY_TIMEOUT_MS = 90_000
@@ -90,8 +92,70 @@ const resolveDemucsPlatformDir = () => {
   return process.arch === 'arm64' ? 'linux-arm64' : 'linux-x64'
 }
 
-const resolveDemucsPlatformRoot = () =>
-  path.join(resolveBeatThisProjectRoot(), 'vendor', 'demucs', resolveDemucsPlatformDir())
+const resolveConfiguredDemucsRoot = () => {
+  const configuredRoot = normalizeBeatThisFsPath(process.env[ENV_DEMUCS_ROOT] || '')
+  if (!configuredRoot) return ''
+  if (path.isAbsolute(configuredRoot)) {
+    return configuredRoot
+  }
+  return normalizeBeatThisFsPath(path.resolve(process.cwd(), configuredRoot))
+}
+
+const resolveInstalledDemucsPlatformRoot = () => {
+  const userDataDir = normalizeBeatThisFsPath(process.env[ENV_USER_DATA_DIR] || '')
+  if (!userDataDir) return ''
+  return path.join(userDataDir, 'demucs-runtimes', resolveDemucsPlatformDir())
+}
+
+const resolveBundledDemucsRootCandidates = () => {
+  const candidates: string[] = []
+  const seen = new Set<string>()
+  const addCandidate = (candidatePath: string) => {
+    const normalizedPath = normalizeBeatThisFsPath(candidatePath)
+    if (!normalizedPath || seen.has(normalizedPath)) return
+    seen.add(normalizedPath)
+    candidates.push(normalizedPath)
+  }
+
+  const resourcesPath = normalizeBeatThisFsPath(process.resourcesPath || '')
+  if (resourcesPath) {
+    addCandidate(path.join(resourcesPath, 'demucs'))
+  }
+  addCandidate(path.join(resolveBeatThisProjectRoot(), 'vendor', 'demucs'))
+  return candidates
+}
+
+const resolveDemucsPlatformRoots = () => {
+  const configuredRoot = resolveConfiguredDemucsRoot()
+  if (configuredRoot) {
+    return [path.join(configuredRoot, resolveDemucsPlatformDir())]
+  }
+
+  const candidates: string[] = []
+  const seen = new Set<string>()
+  const addCandidate = (candidatePath: string) => {
+    const normalizedPath = normalizeBeatThisFsPath(candidatePath)
+    if (!normalizedPath || seen.has(normalizedPath)) return
+    seen.add(normalizedPath)
+    candidates.push(normalizedPath)
+  }
+
+  addCandidate(resolveInstalledDemucsPlatformRoot())
+  for (const bundledRoot of resolveBundledDemucsRootCandidates()) {
+    addCandidate(path.join(bundledRoot, resolveDemucsPlatformDir()))
+  }
+  return candidates
+}
+
+const resolveRuntimeDirNameCandidates = () => {
+  if (process.platform === 'win32') {
+    return ['runtime-directml', 'runtime-cuda', 'runtime-xpu', 'runtime-cpu', 'runtime']
+  }
+  if (process.platform === 'darwin') {
+    return ['runtime-mps', 'runtime-cpu', 'runtime']
+  }
+  return ['runtime-cuda', 'runtime-rocm', 'runtime-cpu', 'runtime']
+}
 
 const resolveRuntimePythonCandidatesFromDir = (runtimeDir: string) => {
   const normalizedRuntimeDir = normalizeBeatThisFsPath(runtimeDir)
@@ -143,11 +207,12 @@ const runtimeHasBeatThisPackage = (runtimeDir: string) => {
 }
 
 const resolveBeatThisSupportRuntimeDir = () => {
-  const candidates = [
-    path.join(resolveBeatThisProjectRoot(), LOCAL_RUNTIME_DIR),
-    path.join(resolveDemucsPlatformRoot(), 'runtime-cpu'),
-    path.join(resolveDemucsPlatformRoot(), 'runtime')
-  ]
+  const candidates: string[] = [path.join(resolveBeatThisProjectRoot(), LOCAL_RUNTIME_DIR)]
+  for (const platformRoot of resolveDemucsPlatformRoots()) {
+    for (const runtimeKey of resolveRuntimeDirNameCandidates()) {
+      candidates.push(path.join(platformRoot, runtimeKey))
+    }
+  }
   for (const candidate of candidates) {
     if (!runtimeHasBeatThisPackage(candidate)) continue
     return normalizeBeatThisFsPath(candidate)
@@ -179,29 +244,27 @@ const withBeatThisSupportPaths = (
 }
 
 const resolveBundledRuntimeCandidates = () => {
-  const platformRoot = resolveDemucsPlatformRoot()
-  const runtimeDirNames =
-    process.platform === 'win32'
-      ? ['runtime-directml', 'runtime-cuda', 'runtime-xpu', 'runtime-cpu', 'runtime']
-      : process.platform === 'darwin'
-        ? ['runtime-mps', 'runtime-cpu', 'runtime']
-        : ['runtime-cuda', 'runtime-rocm', 'runtime-cpu', 'runtime']
-
   const candidates: BeatThisPythonCommand[] = []
-  for (const runtimeKey of runtimeDirNames) {
-    const runtimeDir = path.join(platformRoot, runtimeKey)
-    for (const pythonPath of resolveRuntimePythonCandidatesFromDir(runtimeDir)) {
-      if (!pythonPath || !fs.existsSync(pythonPath)) continue
-      candidates.push(
-        withBeatThisSupportPaths({
-          command: pythonPath,
-          args: [],
-          source: 'demucs-runtime',
-          runtimeKey,
-          runtimeDir
-        })
-      )
-      break
+  const seen = new Set<string>()
+  for (const platformRoot of resolveDemucsPlatformRoots()) {
+    for (const runtimeKey of resolveRuntimeDirNameCandidates()) {
+      const runtimeDir = path.join(platformRoot, runtimeKey)
+      const normalizedRuntimeDir = normalizeBeatThisFsPath(runtimeDir)
+      if (!normalizedRuntimeDir || seen.has(normalizedRuntimeDir)) continue
+      seen.add(normalizedRuntimeDir)
+      for (const pythonPath of resolveRuntimePythonCandidatesFromDir(runtimeDir)) {
+        if (!pythonPath || !fs.existsSync(pythonPath)) continue
+        candidates.push(
+          withBeatThisSupportPaths({
+            command: pythonPath,
+            args: [],
+            source: 'demucs-runtime',
+            runtimeKey,
+            runtimeDir
+          })
+        )
+        break
+      }
     }
   }
   return candidates

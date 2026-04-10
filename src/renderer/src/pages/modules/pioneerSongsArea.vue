@@ -674,7 +674,10 @@ const handleSelectSongListDialogConfirm = async (targetSongListUUID: string) => 
       'moveSongsToDir',
       selectedTracks.map((item) => item.filePath),
       targetDirPath,
-      { mode: 'copy' }
+      {
+        mode: 'copy',
+        curatedArtistNames: selectedTracks.map((item) => item.artist || '')
+      }
     )
     emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
   } catch (error: any) {

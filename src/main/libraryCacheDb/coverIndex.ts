@@ -11,6 +11,21 @@ import {
 } from './pathResolvers'
 
 const migratedCoverRoots = new Set<string>()
+let coverIndexWriteQueue: Promise<void> = Promise.resolve()
+
+const enqueueCoverIndexWrite = async <T>(task: () => Promise<T> | T): Promise<T> => {
+  const waitForPrevious = coverIndexWriteQueue
+  let releaseCurrent!: () => void
+  coverIndexWriteQueue = new Promise<void>((resolve) => {
+    releaseCurrent = resolve
+  })
+  await waitForPrevious
+  try {
+    return await task()
+  } finally {
+    releaseCurrent()
+  }
+}
 
 export function migrateCoverIndexRows(
   db: any,
@@ -174,23 +189,25 @@ export async function upsertCoverIndexEntry(
       ? resolvedRoot.legacyAbs
       : undefined
   try {
-    await ensureCoverIndexMigrated(db, listRoot)
-    db.prepare(
-      'INSERT INTO cover_index (list_root, file_path, hash, ext) VALUES (?, ?, ?, ?) ON CONFLICT(list_root, file_path) DO UPDATE SET hash = excluded.hash, ext = excluded.ext'
-    ).run(listRootKey, resolvedFile.key, hash, ext || '.jpg')
-    if (resolvedFile.keyRaw && resolvedFile.keyRaw !== resolvedFile.key) {
-      db.prepare('DELETE FROM cover_index WHERE list_root = ? AND file_path = ?').run(
-        listRootKey,
-        resolvedFile.keyRaw
-      )
-    }
-    if (legacyListRoot && resolvedFile.legacyAbs) {
-      db.prepare('DELETE FROM cover_index WHERE list_root = ? AND file_path = ?').run(
-        legacyListRoot,
-        resolvedFile.legacyAbs
-      )
-    }
-    return true
+    return await enqueueCoverIndexWrite(async () => {
+      await ensureCoverIndexMigrated(db, listRoot)
+      db.prepare(
+        'INSERT INTO cover_index (list_root, file_path, hash, ext) VALUES (?, ?, ?, ?) ON CONFLICT(list_root, file_path) DO UPDATE SET hash = excluded.hash, ext = excluded.ext'
+      ).run(listRootKey, resolvedFile.key, hash, ext || '.jpg')
+      if (resolvedFile.keyRaw && resolvedFile.keyRaw !== resolvedFile.key) {
+        db.prepare('DELETE FROM cover_index WHERE list_root = ? AND file_path = ?').run(
+          listRootKey,
+          resolvedFile.keyRaw
+        )
+      }
+      if (legacyListRoot && resolvedFile.legacyAbs) {
+        db.prepare('DELETE FROM cover_index WHERE list_root = ? AND file_path = ?').run(
+          legacyListRoot,
+          resolvedFile.legacyAbs
+        )
+      }
+      return true
+    })
   } catch (error) {
     log.error('[sqlite] cover index upsert failed', error)
     return false
@@ -214,38 +231,40 @@ export async function removeCoverIndexEntry(
       ? resolvedRoot.legacyAbs
       : undefined
   try {
-    await ensureCoverIndexMigrated(db, listRoot)
-    let row = db
-      .prepare('SELECT hash, ext FROM cover_index WHERE list_root = ? AND file_path = ?')
-      .get(listRootKey, resolvedFile.key)
-    if (!row && resolvedFile.keyRaw) {
-      row = db
+    return await enqueueCoverIndexWrite(async () => {
+      await ensureCoverIndexMigrated(db, listRoot)
+      let row = db
         .prepare('SELECT hash, ext FROM cover_index WHERE list_root = ? AND file_path = ?')
-        .get(listRootKey, resolvedFile.keyRaw)
-    }
-    if (!row && legacyListRoot && resolvedFile.legacyAbs) {
-      row = db
-        .prepare('SELECT hash, ext FROM cover_index WHERE list_root = ? AND file_path = ?')
-        .get(legacyListRoot, resolvedFile.legacyAbs)
-    }
-    if (!row || !row.hash) return null
-    db.prepare('DELETE FROM cover_index WHERE list_root = ? AND file_path = ?').run(
-      listRootKey,
-      resolvedFile.key
-    )
-    if (resolvedFile.keyRaw) {
+        .get(listRootKey, resolvedFile.key)
+      if (!row && resolvedFile.keyRaw) {
+        row = db
+          .prepare('SELECT hash, ext FROM cover_index WHERE list_root = ? AND file_path = ?')
+          .get(listRootKey, resolvedFile.keyRaw)
+      }
+      if (!row && legacyListRoot && resolvedFile.legacyAbs) {
+        row = db
+          .prepare('SELECT hash, ext FROM cover_index WHERE list_root = ? AND file_path = ?')
+          .get(legacyListRoot, resolvedFile.legacyAbs)
+      }
+      if (!row || !row.hash) return null
       db.prepare('DELETE FROM cover_index WHERE list_root = ? AND file_path = ?').run(
         listRootKey,
-        resolvedFile.keyRaw
+        resolvedFile.key
       )
-    }
-    if (legacyListRoot && resolvedFile.legacyAbs) {
-      db.prepare('DELETE FROM cover_index WHERE list_root = ? AND file_path = ?').run(
-        legacyListRoot,
-        resolvedFile.legacyAbs
-      )
-    }
-    return { hash: String(row.hash), ext: String(row.ext || '.jpg') }
+      if (resolvedFile.keyRaw) {
+        db.prepare('DELETE FROM cover_index WHERE list_root = ? AND file_path = ?').run(
+          listRootKey,
+          resolvedFile.keyRaw
+        )
+      }
+      if (legacyListRoot && resolvedFile.legacyAbs) {
+        db.prepare('DELETE FROM cover_index WHERE list_root = ? AND file_path = ?').run(
+          legacyListRoot,
+          resolvedFile.legacyAbs
+        )
+      }
+      return { hash: String(row.hash), ext: String(row.ext || '.jpg') }
+    })
   } catch (error) {
     log.error('[sqlite] cover index delete failed', error)
     return undefined
@@ -322,23 +341,25 @@ export async function removeCoverIndexEntries(
       : undefined
   if (!Array.isArray(filePaths) || filePaths.length === 0) return true
   try {
-    await ensureCoverIndexMigrated(db, listRoot)
-    const del = db.prepare('DELETE FROM cover_index WHERE list_root = ? AND file_path = ?')
-    const run = db.transaction((items: string[]) => {
-      for (const fp of items) {
-        const resolvedFile = resolveFilePathInput(listRootAbs, fp)
-        if (!resolvedFile) continue
-        del.run(listRootKey, resolvedFile.key)
-        if (resolvedFile.keyRaw) {
-          del.run(listRootKey, resolvedFile.keyRaw)
+    return await enqueueCoverIndexWrite(async () => {
+      await ensureCoverIndexMigrated(db, listRoot)
+      const del = db.prepare('DELETE FROM cover_index WHERE list_root = ? AND file_path = ?')
+      const run = db.transaction((items: string[]) => {
+        for (const fp of items) {
+          const resolvedFile = resolveFilePathInput(listRootAbs, fp)
+          if (!resolvedFile) continue
+          del.run(listRootKey, resolvedFile.key)
+          if (resolvedFile.keyRaw) {
+            del.run(listRootKey, resolvedFile.keyRaw)
+          }
+          if (legacyListRoot && resolvedFile.legacyAbs) {
+            del.run(legacyListRoot, resolvedFile.legacyAbs)
+          }
         }
-        if (legacyListRoot && resolvedFile.legacyAbs) {
-          del.run(legacyListRoot, resolvedFile.legacyAbs)
-        }
-      }
+      })
+      run(filePaths)
+      return true
     })
-    run(filePaths)
-    return true
   } catch (error) {
     log.error('[sqlite] cover index bulk delete failed', error)
     return false
@@ -356,11 +377,13 @@ export async function clearCoverIndex(listRoot: string): Promise<boolean> {
       ? resolvedRoot.legacyAbs
       : undefined
   try {
-    db.prepare('DELETE FROM cover_index WHERE list_root = ?').run(listRootKey)
-    if (legacyListRoot) {
-      db.prepare('DELETE FROM cover_index WHERE list_root = ?').run(legacyListRoot)
-    }
-    return true
+    return await enqueueCoverIndexWrite(async () => {
+      db.prepare('DELETE FROM cover_index WHERE list_root = ?').run(listRootKey)
+      if (legacyListRoot) {
+        db.prepare('DELETE FROM cover_index WHERE list_root = ?').run(legacyListRoot)
+      }
+      return true
+    })
   } catch (error) {
     log.error('[sqlite] cover index clear failed', error)
     return false

@@ -88,6 +88,15 @@ if (is.dev) {
   }
 }
 
+try {
+  const resolvedUserDataDir = app.getPath('userData')
+  if (resolvedUserDataDir) {
+    process.env.FRKB_USER_DATA_DIR = resolvedUserDataDir
+  }
+} catch (error) {
+  log.warn('[runtime] 同步 userData 到分析 worker 环境失败', error)
+}
+
 const initDevDatabase = false
 const dev_DB = 'D:/FRKB_database'
 const my_real_DB = 'D:/FRKB_database'

@@ -5,7 +5,9 @@ import store from '../../store'
 import FingerprintStore from '../../fingerprintStore'
 import {
   collectFilesWithExtensions,
+  getCoreFsDirName,
   getSongsAnalyseResult,
+  mapRendererPathToFsPath,
   runWithConcurrency,
   waitForUserDecision,
   moveOrCopyItemWithCheckIsExist
@@ -13,6 +15,9 @@ import {
 import type { IImportSongsFormData, md5 } from '../../../types/globals'
 import type { SendProgress } from './progress'
 import { moveFileToRecycleBin } from '../../recycleBinService'
+import { rememberCuratedArtistsForAddedTracks } from '../../curatedArtistLibrary'
+import { log } from '../../log'
+import { markGlobalSongSearchDirty } from '../../services/globalSongSearch'
 
 export function registerImportHandlers(
   sendProgress: SendProgress,
@@ -123,6 +128,14 @@ export function registerImportHandlers(
 
     const tasks: Array<() => Promise<any>> = []
     const fingerprintsToAdd: string[] = []
+    const isCuratedTarget = (() => {
+      const normalizeRelativePath = (value: string) => value.replace(/\\/g, '/')
+      const targetPath = normalizeRelativePath(mapRendererPathToFsPath(formData.songListPath))
+      const curatedRoot = normalizeRelativePath(
+        path.join('library', getCoreFsDirName('CuratedLibrary'))
+      )
+      return targetPath === curatedRoot || targetPath.startsWith(`${curatedRoot}/`)
+    })()
     for (const item of toBeDealSongs) {
       const matchResult = (item as any).file_path
         ? (item as any).file_path.match(/[^\\/]+$/)
@@ -142,7 +155,7 @@ export function registerImportHandlers(
     }
 
     const batchId = `import_${Date.now()}`
-    const { success, failed, hasENOSPC, skipped } = await runWithConcurrency(tasks, {
+    const { success, failed, hasENOSPC, skipped, results } = await runWithConcurrency(tasks, {
       concurrency: 16,
       onProgress: (done, total) =>
         sendProgress(
@@ -207,12 +220,22 @@ export function registerImportHandlers(
       fingerprintMode: ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
     }
 
+    markGlobalSongSearchDirty('importSongs')
     getWindow()?.webContents.send(
       'importFinished',
       formData.songListUUID,
       importSummary,
       progressId
     )
+    if (isCuratedTarget) {
+      const targetPaths = results
+        .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        .map((item) => item.trim())
+      // 导入完成提示和列表刷新优先，精选表演者记录异步补上即可。
+      void rememberCuratedArtistsForAddedTracks({ targetPaths }).catch((error) => {
+        log.warn('[curatedArtists] remember after import failed', error)
+      })
+    }
     if (hasENOSPC) {
       getWindow()?.webContents.send('file-batch-summary', {
         context: 'importSongs',

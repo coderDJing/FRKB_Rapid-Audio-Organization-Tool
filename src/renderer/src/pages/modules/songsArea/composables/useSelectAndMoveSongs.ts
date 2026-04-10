@@ -72,6 +72,7 @@ export function useSelectAndMoveSongs() {
 
     const sourceSongListUUID = runtime.songsArea.songListUUID
     const selectedPaths = JSON.parse(JSON.stringify(runtime.songsArea.selectedSongFilePath))
+    const songMap = new Map(runtime.songsArea.songInfoArr.map((song) => [song.filePath, song]))
     if (!selectedPaths.length) return
 
     const targetNode = libraryUtils.getLibraryTreeByUUID(targetSongListUUID)
@@ -83,7 +84,6 @@ export function useSelectAndMoveSongs() {
         return
       }
       const originPathSnapshot = libraryUtils.buildDisplayPathByUuid(sourceSongListUUID)
-      const songMap = new Map(runtime.songsArea.songInfoArr.map((song) => [song.filePath, song]))
       const mixtapeSongMap = new Map(
         runtime.songsArea.songInfoArr
           .filter((song) => typeof song.mixtapeItemId === 'string' && song.mixtapeItemId.length > 0)
@@ -154,7 +154,12 @@ export function useSelectAndMoveSongs() {
     await window.electron.ipcRenderer.invoke(
       'moveSongsToDir',
       selectedPaths,
-      libraryUtils.findDirPathByUuid(targetSongListUUID)
+      libraryUtils.findDirPathByUuid(targetSongListUUID),
+      {
+        curatedArtistNames: selectedPaths.map(
+          (filePath: string) => songMap.get(filePath)?.artist || ''
+        )
+      }
     )
 
     // 不在此处直接修改 original 或 runtime.songsArea.songInfoArr，

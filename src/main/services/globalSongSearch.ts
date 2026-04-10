@@ -476,6 +476,10 @@ class GlobalSongSearchEngine {
       this.startBackgroundRebuild('playlist-fast-load-cold')
       return { hit: false, items: [], tookMs: Date.now() - started, snapshotAt: this.lastBuiltAt }
     }
+    if (this.dirty) {
+      this.startBackgroundRebuild('playlist-fast-load-dirty')
+      return { hit: false, items: [], tookMs: Date.now() - started, snapshotAt: this.lastBuiltAt }
+    }
     if (!this.knownPlaylists.has(normalizedUuid)) {
       return { hit: false, items: [], tookMs: Date.now() - started, snapshotAt: this.lastBuiltAt }
     }

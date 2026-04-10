@@ -93,6 +93,41 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     deps.onJobProgress(worker, job, progress)
   }
 
+  const collectJobResultErrors = (
+    payloadResult?: WorkerPayload['result'],
+    payloadError?: string
+  ): string[] => {
+    const errors: string[] = []
+    if (payloadResult?.keyError) errors.push(`key: ${payloadResult.keyError}`)
+    if (payloadResult?.bpmError) errors.push(`bpm: ${payloadResult.bpmError}`)
+    if (payloadError) errors.push(`worker错误: ${payloadError}`)
+    return errors
+  }
+
+  const logCompletedJobErrors = (
+    worker: Worker,
+    job: KeyAnalysisJob,
+    payloadResult?: WorkerPayload['result'],
+    payloadError?: string
+  ) => {
+    const errors = collectJobResultErrors(payloadResult, payloadError)
+    if (errors.length <= 0) return
+    const elapsedMs = job.startTime ? Date.now() - job.startTime : job.trace?.elapsedMs
+    log.warn('[闲时分析] 任务完成但有错误', {
+      filePath: job.filePath,
+      fileName: path.basename(job.filePath),
+      source: job.source,
+      workerThreadId: worker.threadId,
+      stage: job.trace?.lastStage || 'unknown',
+      elapsedMs,
+      decodeBackend: job.trace?.decodeBackend || 'unknown',
+      partialKeyPersisted: job.trace?.partialKeyPersisted === true,
+      partialBpmPersisted: job.trace?.partialBpmPersisted === true,
+      detail: job.trace?.detail,
+      errors
+    })
+  }
+
   const persistAnalyzePartialResult = async (
     job: KeyAnalysisJob,
     progress: KeyAnalysisProgress
@@ -258,17 +293,8 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     deps.idle.push(worker)
     if (job) {
       deps.activeByPath.delete(job.normalizedPath)
+      logCompletedJobErrors(worker, job, payloadResult, payloadError)
       if (job.source === 'background') {
-        const errors: string[] = []
-        if (payloadResult?.keyError) errors.push(`key: ${payloadResult.keyError}`)
-        if (payloadResult?.bpmError) errors.push(`bpm: ${payloadResult.bpmError}`)
-        if (payloadError) errors.push(`worker错误: ${payloadError}`)
-
-        if (errors.length > 0) {
-          const elapsed = job.startTime ? Date.now() - job.startTime : 0
-          const statusMsg = `[闲时分析] 任务完成但有错误 - ${path.basename(job.filePath)} (耗时: ${elapsed}ms) 错误: ${errors.join('; ')}`
-          log.warn(statusMsg)
-        }
         deps.background.unmarkProcessing(job.jobId)
         deps.background.emitBackgroundStatus()
       }

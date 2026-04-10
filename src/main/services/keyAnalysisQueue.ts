@@ -87,4 +87,9 @@ export function invalidateKeyAnalysisCache(filePaths: string[] | string) {
   queue.invalidateDoneByPath(list)
 }
 
+export function remapKeyAnalysisTrackedPath(fromPath: string, toPath: string) {
+  if (!queue) return
+  queue.remapTrackedPath(fromPath, toPath)
+}
+
 export type { KeyAnalysisBackgroundStatus } from './keyAnalysis/types'

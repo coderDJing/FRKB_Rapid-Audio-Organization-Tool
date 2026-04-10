@@ -40,6 +40,9 @@ export const ensureSettingDialogRuntimeDefaults = (runtime: any) => {
   if ((runtime as any).setting.persistSongFilters === undefined) {
     ;(runtime as any).setting.persistSongFilters = false
   }
+  if ((runtime as any).setting.enableCuratedArtistTracking === undefined) {
+    ;(runtime as any).setting.enableCuratedArtistTracking = true
+  }
   if ((runtime as any).setting.enableExplorerContextMenu === undefined) {
     ;(runtime as any).setting.enableExplorerContextMenu = runtime.setting.platform === 'win32'
   }

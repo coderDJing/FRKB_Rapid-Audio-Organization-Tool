@@ -958,4 +958,65 @@ export class KeyAnalysisQueue {
       this.probeCache.delete(normalizedPath)
     }
   }
+
+  remapTrackedPath(fromPath: string, toPath: string) {
+    const fromNormalizedPath = normalizePath(fromPath)
+    const toNormalizedPath = normalizePath(toPath)
+    if (!fromNormalizedPath || !toNormalizedPath || fromNormalizedPath === toNormalizedPath) return
+
+    const rebindJobPath = (job: KeyAnalysisJob) => {
+      job.filePath = toPath
+      job.normalizedPath = toNormalizedPath
+    }
+
+    const pendingJob = this.pendingByPath.get(fromNormalizedPath)
+    if (pendingJob) {
+      const hasConflict =
+        this.pendingByPath.has(toNormalizedPath) || this.activeByPath.has(toNormalizedPath)
+      this.pendingByPath.delete(fromNormalizedPath)
+      if (hasConflict) {
+        this.removePending(pendingJob)
+      } else {
+        rebindJobPath(pendingJob)
+        this.pendingByPath.set(toNormalizedPath, pendingJob)
+      }
+    }
+
+    const activeJob = this.activeByPath.get(fromNormalizedPath)
+    if (activeJob) {
+      this.activeByPath.delete(fromNormalizedPath)
+      rebindJobPath(activeJob)
+      this.activeByPath.set(toNormalizedPath, activeJob)
+    }
+
+    const doneEntry = this.doneByPath.get(fromNormalizedPath)
+    if (doneEntry) {
+      this.doneByPath.delete(fromNormalizedPath)
+      if (!this.doneByPath.has(toNormalizedPath)) {
+        this.doneByPath.set(toNormalizedPath, doneEntry)
+      }
+    }
+
+    const failedEntry = this.failedByPath.get(fromNormalizedPath)
+    if (failedEntry) {
+      this.failedByPath.delete(fromNormalizedPath)
+      if (!this.failedByPath.has(toNormalizedPath)) {
+        this.failedByPath.set(toNormalizedPath, failedEntry)
+      }
+    }
+
+    const probeEntry = this.probeCache.get(fromNormalizedPath)
+    if (probeEntry) {
+      this.probeCache.delete(fromNormalizedPath)
+      if (!this.probeCache.has(toNormalizedPath)) {
+        this.probeCache.set(toNormalizedPath, probeEntry)
+      }
+    }
+
+    for (const [focusSlot, normalizedPath] of this.focusPathBySlot.entries()) {
+      if (normalizedPath === fromNormalizedPath) {
+        this.focusPathBySlot.set(focusSlot, toNormalizedPath)
+      }
+    }
+  }
 }

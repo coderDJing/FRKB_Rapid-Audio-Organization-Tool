@@ -8,6 +8,7 @@ import { i18n } from '@renderer/i18n'
 import dialogDrag from './directives/dialogDrag'
 import { initUiSettings, watchUiSettings } from '@renderer/utils/uiSettingsStorage'
 import { installConsoleLogBridge } from '@renderer/utils/installConsoleLogBridge'
+import type { ICuratedArtistFavorite } from 'src/types/globals'
 
 const pinia = createPinia()
 const app = createApp(App)
@@ -23,9 +24,30 @@ app.config.errorHandler = (err: Error) => {
 app.use(pinia)
 app.use(i18n)
 ;(window as any).__FRKB_APP_CONTEXT__ = app._context
+const normalizeCuratedArtistFavorites = (payload: any): ICuratedArtistFavorite[] => {
+  if (Array.isArray(payload?.items)) {
+    return payload.items
+      .map((item: any) => ({
+        name: String(item?.name || '')
+          .trim()
+          .replace(/\s+/g, ' '),
+        count: Math.max(1, Math.round(Number(item?.count) || 1))
+      }))
+      .filter((item: ICuratedArtistFavorite) => item.name.length > 0)
+  }
+  if (Array.isArray(payload?.artists)) {
+    return payload.artists
+      .map((artist: unknown) => String(artist || '').trim())
+      .filter(Boolean)
+      .map((name: string) => ({ name, count: 1 }))
+  }
+  return []
+}
 const initializeApp = async () => {
   const runtime = useRuntimeStore()
   runtime.setting = await window.electron.ipcRenderer.invoke('getSetting')
+  const curatedArtistSnapshot = await window.electron.ipcRenderer.invoke('curatedArtists:get')
+  runtime.curatedArtistFavorites = normalizeCuratedArtistFavorites(curatedArtistSnapshot)
   const { cleanedSetting, needsCleanup } = initUiSettings(runtime.setting)
   if (needsCleanup) {
     void window.electron.ipcRenderer.invoke('setSetting', cleanedSetting)
@@ -64,6 +86,9 @@ const initializeApp = async () => {
     if (((runtime.setting as any).themeMode || 'system') === 'system') {
       applyThemeClass('system', !!payload?.isDark)
     }
+  })
+  window.electron.ipcRenderer.on('curated-artists-updated', (_e, payload) => {
+    runtime.curatedArtistFavorites = normalizeCuratedArtistFavorites(payload)
   })
   // 监听设置中 themeMode 的变化（light/dark/system）
   watch(

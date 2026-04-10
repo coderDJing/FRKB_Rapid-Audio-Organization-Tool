@@ -278,6 +278,58 @@ const getCellValue = (song: ISongInfo, colKey: string): string | number => {
   return raw as string | number
 }
 
+const normalizeArtistName = (value: unknown) =>
+  String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase()
+
+const curatedArtistFavoriteSet = computed(
+  () =>
+    new Map(
+      (runtime.curatedArtistFavorites || [])
+        .map((artist) => {
+          const normalized = normalizeArtistName(artist?.name)
+          if (!normalized) return null
+          return [
+            normalized,
+            {
+              name: String(artist?.name || '').trim(),
+              count: Math.max(1, Math.round(Number(artist?.count) || 1))
+            }
+          ] as const
+        })
+        .filter((item): item is readonly [string, { name: string; count: number }] => !!item)
+    )
+)
+
+const getCuratedArtistFavorite = (song: ISongInfo) =>
+  curatedArtistFavoriteSet.value.get(normalizeArtistName(song.artist)) || null
+
+const isCuratedArtistHit = (song: ISongInfo, colKey: string) => {
+  if (colKey !== 'artist') return false
+  if (props.sourceLibraryName !== 'FilterLibrary') return false
+  if ((runtime.setting as any).enableCuratedArtistTracking === false) return false
+  return curatedArtistFavoriteSet.value.has(normalizeArtistName(song.artist))
+}
+
+const getCuratedArtistBadgeText = (song: ISongInfo, colKey: string) => {
+  if (colKey !== 'artist') return ''
+  const favorite = getCuratedArtistFavorite(song)
+  if (!favorite) return ''
+  return t('tracks.curatedArtistCountBadge', { count: favorite.count })
+}
+
+const getCuratedArtistBadgeTitle = (song: ISongInfo, colKey: string) => {
+  if (colKey !== 'artist') return ''
+  const favorite = getCuratedArtistFavorite(song)
+  if (!favorite) return ''
+  return t('tracks.curatedArtistCountBadgeTitle', {
+    artist: favorite.name || String(song.artist || ''),
+    count: favorite.count
+  })
+}
+
 const {
   rowsRoot,
   hostElement,
@@ -724,10 +776,26 @@ onUnmounted(() => {
                 v-else
                 :ref="(el) => setCellRef(getCellKey(item.song, col.key), el)"
                 class="cell-title"
+                :class="{
+                  'cell-title--curated-artist-hit': isCuratedArtistHit(item.song, col.key)
+                }"
                 :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
                 :data-key="getCellKey(item.song, col.key)"
               >
-                {{ getCellValue(item.song, col.key) }}
+                <template
+                  v-if="col.key === 'artist' && getCuratedArtistBadgeText(item.song, col.key)"
+                >
+                  <span class="cell-title__text">{{ getCellValue(item.song, col.key) }}</span>
+                  <span
+                    class="curated-artist-count-badge"
+                    :title="getCuratedArtistBadgeTitle(item.song, col.key)"
+                  >
+                    {{ getCuratedArtistBadgeText(item.song, col.key) }}
+                  </span>
+                </template>
+                <template v-else>
+                  {{ getCellValue(item.song, col.key) }}
+                </template>
                 <bubbleBox
                   v-if="hoveredCellKey === getCellKey(item.song, col.key)"
                   :dom="cellRefMap[getCellKey(item.song, col.key)] || undefined"
@@ -894,6 +962,17 @@ onUnmounted(() => {
   }
 }
 
+.cell-title--curated-artist-hit {
+  color: #c8a23c;
+  font-weight: 600;
+  text-shadow: 0 0 10px rgba(200, 162, 60, 0.18);
+}
+
+.song-row-content.playingSong .cell-title--curated-artist-hit {
+  color: inherit;
+  text-shadow: none;
+}
+
 @keyframes global-search-locate-flash-a {
   0%,
   100% {
@@ -939,9 +1018,37 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
+  gap: 6px;
   flex-shrink: 0;
   padding-left: 10px;
+  padding-right: 10px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cell-title__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.curated-artist-count-badge {
+  flex: 0 0 auto;
+  margin-left: auto;
+  min-width: 24px;
+  max-width: 56px;
+  height: 16px;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(200, 162, 60, 0.14);
+  border: 1px solid rgba(200, 162, 60, 0.34);
+  color: #a67a08;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
 }

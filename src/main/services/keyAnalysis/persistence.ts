@@ -28,6 +28,14 @@ type KeyAnalysisPersistenceDeps = {
 }
 
 export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) => {
+  const isMissingFileError = (error: unknown) => {
+    const code = String((error as any)?.code || '')
+      .trim()
+      .toUpperCase()
+    const message = String((error as any)?.message || '').trim()
+    return code === 'ENOENT' || /ENOENT|no such file or directory/i.test(message)
+  }
+
   const normalizeBarBeatOffset = (value: unknown) => {
     const numeric = Number(value)
     if (!Number.isFinite(numeric)) return undefined
@@ -131,6 +139,10 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       const payload: KeyAnalysisResult = { filePath, keyText }
       deps.events.emit('key-updated', payload)
     } catch (error) {
+      if (isMissingFileError(error)) {
+        await cleanupMissingPersistTarget(normalizedPath, filePath)
+        return
+      }
       const existing = deps.doneByPath.get(normalizedPath)
       deps.doneByPath.set(normalizedPath, {
         size: 0,
@@ -193,6 +205,10 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       }
       deps.events.emit('bpm-updated', payload)
     } catch (error) {
+      if (isMissingFileError(error)) {
+        await cleanupMissingPersistTarget(normalizedPath, filePath)
+        return
+      }
       const existing = deps.doneByPath.get(normalizedPath)
       deps.doneByPath.set(normalizedPath, {
         size: 0,
@@ -258,6 +274,10 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         )
       }
     } catch (error) {
+      if (isMissingFileError(error)) {
+        await cleanupMissingPersistTarget(normalizedPath, filePath)
+        return
+      }
       const existing = deps.doneByPath.get(normalizedPath)
       deps.doneByPath.set(normalizedPath, {
         size: 0,
@@ -283,6 +303,11 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
       }
     } catch {}
+  }
+
+  const cleanupMissingPersistTarget = async (normalizedPath: string, filePath: string) => {
+    deps.doneByPath.delete(normalizedPath)
+    await handleMissingFile(filePath)
   }
 
   const prepareJob = async (job: KeyAnalysisJob): Promise<boolean> => {

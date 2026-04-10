@@ -287,7 +287,13 @@ export function useDragSongs() {
       await window.electron.ipcRenderer.invoke(
         'moveSongsToDir',
         selectedSongFilePaths,
-        targetDirPath
+        targetDirPath,
+        {
+          curatedArtistNames: selectedSongFilePaths.map((filePath) => {
+            const song = runtime.songsArea.songInfoArr.find((item) => item.filePath === filePath)
+            return song?.artist || ''
+          })
+        }
       )
 
       // 广播：源/目标歌单内容发生变化（用于刷新数量）

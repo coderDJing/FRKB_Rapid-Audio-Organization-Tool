@@ -9,6 +9,12 @@ import {
 import { rebuildMacMenusForCurrentFocus } from '../menu/macMenu'
 import { saveLibrarySettingsFromConfig } from '../librarySettingsDb'
 import { persistSettingConfig } from '../settingsPersistence'
+import {
+  clearCuratedArtistLibrary,
+  getCuratedArtistLibrarySnapshot,
+  replaceCuratedArtistLibrary,
+  removeCuratedArtist
+} from '../curatedArtistLibrary'
 
 type Dependencies = {
   loadFingerprintList: (mode: 'pcm' | 'file') => Promise<string[]>
@@ -52,5 +58,21 @@ export function registerSettingsHandlers(deps: Dependencies) {
         await clearWindowsContextMenuSignature()
       }
     }
+  })
+
+  ipcMain.handle('curatedArtists:get', () => {
+    return getCuratedArtistLibrarySnapshot()
+  })
+
+  ipcMain.handle('curatedArtists:remove', (_event, artistName) => {
+    return removeCuratedArtist(artistName)
+  })
+
+  ipcMain.handle('curatedArtists:clear', () => {
+    return clearCuratedArtistLibrary()
+  })
+
+  ipcMain.handle('curatedArtists:setAll', (_event, artists) => {
+    return replaceCuratedArtistLibrary(artists)
   })
 }

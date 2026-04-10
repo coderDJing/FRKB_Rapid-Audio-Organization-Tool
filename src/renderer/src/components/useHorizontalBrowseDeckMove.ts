@@ -215,9 +215,12 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
         targetDirPath,
         readOnlySource
           ? {
-              mode: 'copy'
+              mode: 'copy',
+              curatedArtistNames: [song.artist || '']
             }
-          : undefined
+          : {
+              curatedArtistNames: [song.artist || '']
+            }
       )) as string[]
       const nextFilePath = String(movedPaths?.[0] || '').trim()
       if (!nextFilePath) {

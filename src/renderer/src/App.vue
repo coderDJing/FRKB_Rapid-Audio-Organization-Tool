@@ -196,6 +196,7 @@ const handleCtrlDoubleTapKeyUp = (event: KeyboardEvent) => {
 
 const handleSongsRemovedForGlobalSearch = (payload: any) => {
   try {
+    markSongSearchDirty('songs-removed')
     const itemIds: string[] = Array.isArray(payload?.itemIds) ? payload.itemIds : []
     const listUUID: string | undefined = payload?.listUUID
     if (itemIds.length > 0) {
@@ -213,7 +214,6 @@ const handleSongsRemovedForGlobalSearch = (payload: any) => {
         runtime.playingData.playingSong = null
       }
 
-      markSongSearchDirty('mixtape-items-removed')
       return
     }
 
@@ -232,8 +232,6 @@ const handleSongsRemovedForGlobalSearch = (payload: any) => {
     ) {
       runtime.playingData.playingSong = null
     }
-
-    markSongSearchDirty('songs-removed')
   } catch {}
 }
 const handleMixtapeItemsRemoved = (_e: unknown, payload: any) => {

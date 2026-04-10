@@ -60,6 +60,11 @@ export function useSongItemContextMenu(
   const runtime = useRuntimeStore() // Use the store directly
   const normalizePath = (p: string | undefined | null) =>
     (p || '').replace(/\//g, '\\').toLowerCase()
+  const normalizeArtistName = (value: unknown) =>
+    String(value || '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .toLocaleLowerCase()
   const isMixtapeView = () =>
     libraryUtils.getLibraryTreeByUUID(runtime.songsArea.songListUUID)?.type === 'mixtapeList'
   const getRowKey = (song: ISongInfo) =>
@@ -104,6 +109,32 @@ export function useSongItemContextMenu(
       ],
       confirmShow: false
     })
+  }
+
+  const cloneMenuArr = (source: IMenu[][]) =>
+    source.map((group) => group.map((item) => ({ ...item })))
+
+  const resolveCuratedArtistMatch = (currentSong: ISongInfo) => {
+    if ((runtime.setting as any).enableCuratedArtistTracking === false) return ''
+    if (runtime.libraryAreaSelected !== 'FilterLibrary') return ''
+    const artistName = String(currentSong?.artist || '')
+      .trim()
+      .replace(/\s+/g, ' ')
+    const normalized = normalizeArtistName(artistName)
+    if (!normalized) return ''
+    return (runtime.curatedArtistFavorites || []).some(
+      (item) => normalizeArtistName(item?.name) === normalized
+    )
+      ? artistName
+      : ''
+  }
+
+  const buildMenuArr = (base: IMenu[][], matchedArtist: string) => {
+    const next = cloneMenuArr(base)
+    if (matchedArtist) {
+      next.splice(2, 0, [{ menuName: 'library.removeCuratedArtistFavorite' }])
+    }
+    return next
   }
 
   const defaultMenuArr: IMenu[][] = [
@@ -160,15 +191,17 @@ export function useSongItemContextMenu(
   > => {
     const isRecycleBinView = runtime.songsArea.songListUUID === RECYCLE_BIN_UUID
     const isExternalView = runtime.songsArea.songListUUID === EXTERNAL_PLAYLIST_UUID
+    const matchedCuratedArtist = resolveCuratedArtistMatch(song)
     if (runtime.songsArea.selectedSongFilePath.indexOf(getRowKey(song)) === -1) {
       runtime.songsArea.selectedSongFilePath = [getRowKey(song)]
     }
 
-    menuArr.value = isMixtapeView()
+    const baseMenuArr = isMixtapeView()
       ? mixtapeMenuArr
       : isRecycleBinView
         ? recycleMenuArr
         : defaultMenuArr
+    menuArr.value = buildMenuArr(baseMenuArr, matchedCuratedArtist)
     const result = await rightClickMenu({
       menuArr: menuArr.value,
       clickEvent: event
@@ -659,6 +692,26 @@ export function useSongItemContextMenu(
       case 'fingerprints.analyzeAndAdd': {
         const files = resolveSelectedFilePaths()
         await analyzeFingerprintsForPaths(files, { origin: 'selection' })
+        return null
+      }
+      case 'library.removeCuratedArtistFavorite': {
+        if (!matchedCuratedArtist) return null
+        const res = await confirm({
+          title: t('library.removeCuratedArtistFavoriteTitle'),
+          content: [
+            t('library.removeCuratedArtistFavoriteConfirm', { artist: matchedCuratedArtist })
+          ]
+        })
+        if (res !== 'confirm') return null
+        try {
+          await window.electron.ipcRenderer.invoke('curatedArtists:remove', matchedCuratedArtist)
+        } catch (error: any) {
+          await confirm({
+            title: t('common.error'),
+            content: [String(error?.message || t('common.unknownError'))],
+            confirmShow: false
+          })
+        }
         return null
       }
       case 'library.moveToCurated':

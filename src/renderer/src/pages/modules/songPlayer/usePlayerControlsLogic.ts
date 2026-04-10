@@ -601,7 +601,8 @@ export function usePlayerControlsLogic({
           [filePathToMove],
           targetDirPath,
           {
-            mode: 'copy'
+            mode: 'copy',
+            curatedArtistNames: [songToMove?.artist || '']
           }
         )
         emitter.emit('playlistContentChanged', { uuids: [targetListUuid] })
@@ -646,7 +647,9 @@ export function usePlayerControlsLogic({
       preloadApi.forgetCachesForFile(filePathToMove)
 
       // 先执行移动操作，因为这可能会影响状态或触发其他事件
-      await window.electron.ipcRenderer.invoke('moveSongsToDir', [filePathToMove], targetDirPath)
+      await window.electron.ipcRenderer.invoke('moveSongsToDir', [filePathToMove], targetDirPath, {
+        curatedArtistNames: [songToMove?.artist || '']
+      })
 
       // 先切到下一首，再广播移除事件，避免全局 songsRemoved 监听把当前播放上下文误清空。
       let preloadHit: PreloadHit = null

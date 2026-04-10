@@ -61,6 +61,11 @@ interface ISongInfo {
   recycleBinSourceType?: string | null
 }
 
+interface ICuratedArtistFavorite {
+  name: string
+  count: number
+}
+
 interface IPioneerPreviewWaveformColumn {
   backHeight: number
   frontHeight: number
@@ -363,6 +368,8 @@ interface ISettingConfig {
   errorReportRetryMsSinceLastFailure: number // -1 表示当前无失败等待窗口
   // 是否在重启后保留“曲目筛选条件”（默认不保留）
   persistSongFilters: boolean
+  // 是否启用“精选表演者联动”（记录精选曲目的表演者并在筛选库高亮）
+  enableCuratedArtistTracking: boolean
   enableExplorerContextMenu?: boolean
   windowsContextMenuSignature?: string
   // 是否在歌单名称后显示曲目数量
@@ -471,6 +478,7 @@ export {
   md5,
   IDir,
   ISongInfo,
+  ICuratedArtistFavorite,
   IPioneerPreviewWaveformColumn,
   IPioneerPreviewWaveformData,
   ITrackMetadataDetail,

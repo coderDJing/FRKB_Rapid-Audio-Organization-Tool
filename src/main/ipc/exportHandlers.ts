@@ -18,6 +18,14 @@ import { deleteRecycleBinRecord } from '../recycleBinDb'
 import { isInRecycleBinAbsPath, toLibraryRelativePath } from '../recycleBinService'
 import { findSongListRoot, transferTrackCaches } from '../services/cacheMaintenance'
 import { replaceMixtapeFilePath } from '../mixtapeDb'
+import { rememberCuratedArtistsForAddedTracks } from '../curatedArtistLibrary'
+import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
+import { remapKeyAnalysisTrackedPath } from '../services/keyAnalysisQueue'
+
+type MoveSongsToDirOptions = {
+  mode?: 'copy' | 'move'
+  curatedArtistNames?: Array<string | null | undefined>
+}
 
 async function findUniqueFolder(inputFolderPath: string) {
   const parts = path.parse(inputFolderPath)
@@ -188,8 +196,14 @@ export function registerExportHandlers() {
     }
   })
 
-  ipcMain.handle('moveSongsToDir', async (_e, srcs, dest, options) => {
+  ipcMain.handle('moveSongsToDir', async (_e, srcs, dest, options: MoveSongsToDirOptions = {}) => {
     const isMove = options?.mode !== 'copy'
+    const normalizeRelativePath = (value: string) => value.replace(/\\/g, '/')
+    const targetDir = normalizeRelativePath(mapRendererPathToFsPath(dest))
+    const curatedRoot = normalizeRelativePath(
+      path.join('library', getCoreFsDirName('CuratedLibrary'))
+    )
+    const isCuratedTarget = targetDir === curatedRoot || targetDir.startsWith(`${curatedRoot}/`)
     const tasks: Array<() => Promise<any>> = []
     for (const src of srcs) {
       const matches = src.match(/[^\\]+$/)
@@ -198,6 +212,7 @@ export function registerExportHandlers() {
         tasks.push(async () => {
           const movedPath = await moveOrCopyItemWithCheckIsExist(src, targetPath, isMove)
           if (isMove) {
+            remapKeyAnalysisTrackedPath(src, movedPath)
             replaceMixtapeFilePath(src, movedPath)
             try {
               const fromRoot = await findSongListRoot(path.dirname(src))
@@ -275,6 +290,30 @@ export function registerExportHandlers() {
     }
     if (failed > 0) {
       throw new Error(isMove ? 'moveSongsToDir failed' : 'copySongsToDir failed')
+    }
+    markGlobalSongSearchDirty(isMove ? 'moveSongsToDir' : 'copySongsToDir')
+    if (isCuratedTarget) {
+      const hintedArtists: string[] = []
+      const targetPathsToScan: string[] = []
+      for (let index = 0; index < results.length; index += 1) {
+        const result = results[index]
+        if (result instanceof Error) continue
+        const movedPath = String(result || '').trim()
+        if (!movedPath) continue
+        const artistHint = String(options?.curatedArtistNames?.[index] || '').trim()
+        if (artistHint) {
+          hintedArtists.push(artistHint)
+        } else {
+          targetPathsToScan.push(movedPath)
+        }
+      }
+      // 记录精选表演者是附加能力，不能卡住主移动流程和前端列表刷新。
+      void rememberCuratedArtistsForAddedTracks({
+        artistNames: hintedArtists,
+        targetPaths: targetPathsToScan
+      }).catch((error) => {
+        log.warn('[curatedArtists] remember after move failed', error)
+      })
     }
     return results.filter((item) => !(item instanceof Error))
   })
