@@ -32,6 +32,16 @@ type ResolvedPythonCommand = {
   runtimeSource: 'bundled' | 'env-python' | 'dev-launcher'
 }
 
+const BENIGN_STDERR_PATTERNS = [/pyrekordbox\.db6\.database:WARNING\s+-\s+Rekordbox is running!/i]
+
+const sanitizeHelperStderr = (stderr: string) =>
+  String(stderr || '')
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !BENIGN_STDERR_PATTERNS.some((pattern) => pattern.test(line)))
+    .join('\n')
+
 const normalizeFsPath = (value: string) => {
   const normalized = String(value || '').trim()
   return normalized ? path.normalize(normalized) : ''
@@ -282,10 +292,12 @@ export async function runRekordboxDesktopHelper<TResult, TPayload extends Record
     child.once('close', (code) => {
       const trimmedStdout = stdout.trim()
       const trimmedStderr = stderr.trim()
+      const sanitizedStderr = sanitizeHelperStderr(trimmedStderr)
       if (!trimmedStdout) {
         finishReject(
           createHelperError(
-            trimmedStderr || `Rekordbox Desktop helper 未返回结果（exit=${String(code ?? '')}）。`,
+            sanitizedStderr ||
+              `Rekordbox Desktop helper 未返回结果（exit=${String(code ?? '')}）。`,
             'HELPER_PROTOCOL_ERROR'
           )
         )
@@ -299,7 +311,7 @@ export async function runRekordboxDesktopHelper<TResult, TPayload extends Record
         log.error('[rekordbox-desktop-library] helper returned invalid JSON', {
           command,
           stdout: trimmedStdout,
-          stderr: trimmedStderr
+          stderr: sanitizedStderr
         })
         finishReject(
           createHelperError(
@@ -315,7 +327,7 @@ export async function runRekordboxDesktopHelper<TResult, TPayload extends Record
         finishReject(
           createHelperError(
             helperError?.message ||
-              trimmedStderr ||
+              sanitizedStderr ||
               `Rekordbox Desktop helper 执行失败（exit=${String(code ?? '')}）。`,
             (helperError?.code || 'HELPER_RUNTIME_ERROR') as RekordboxDesktopLibraryErrorCode
           )
@@ -323,10 +335,10 @@ export async function runRekordboxDesktopHelper<TResult, TPayload extends Record
         return
       }
 
-      if (trimmedStderr) {
+      if (sanitizedStderr) {
         log.warn('[rekordbox-desktop-library] helper stderr', {
           command,
-          stderr: trimmedStderr,
+          stderr: sanitizedStderr,
           runtimeSource: pythonCommand.runtimeSource
         })
       }

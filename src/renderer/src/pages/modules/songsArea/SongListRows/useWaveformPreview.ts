@@ -53,10 +53,94 @@ const MIXXX_MAX_RGB_ENERGY = Math.sqrt(255 * 255 * 3)
 const MIXXX_RGB_BRIGHTNESS_SCALE = 0.95
 const MIXXX_RGB_PROGRESS_BRIGHTNESS_SCALE = 0.6
 const PIONEER_WAVEFORM_EAGER_COUNT = 8
+type WaveformUpdatedPayload = { filePath?: string }
+type PioneerPreviewWaveformItemPayload = {
+  requestId?: string
+  analyzePath?: string
+  data?: IPioneerPreviewWaveformData | null
+  error?: string
+}
+type PioneerPreviewWaveformDonePayload = {
+  requestId?: string
+  error?: string
+}
+type WaveformUpdatedHandler = (_event: unknown, payload: WaveformUpdatedPayload) => void
+type PioneerPreviewWaveformItemHandler = (
+  _event: unknown,
+  payload: PioneerPreviewWaveformItemPayload
+) => void
+type PioneerPreviewWaveformDoneHandler = (
+  _event: unknown,
+  payload: PioneerPreviewWaveformDonePayload
+) => void
 const MIXXX_RGB_COMPONENTS: Record<RGBWaveformBandKey, { r: number; g: number; b: number }> = {
   low: { r: 1, g: 0, b: 0 },
   mid: { r: 0, g: 1, b: 0 },
   high: { r: 0, g: 0, b: 1 }
+}
+const waveformUpdatedSubscribers = new Set<WaveformUpdatedHandler>()
+const pioneerPreviewWaveformItemSubscribers = new Set<PioneerPreviewWaveformItemHandler>()
+const pioneerPreviewWaveformDoneSubscribers = new Set<PioneerPreviewWaveformDoneHandler>()
+let waveformIpcListenersBound = false
+const globalHandleWaveformUpdated = (_event: unknown, payload: WaveformUpdatedPayload) => {
+  for (const handler of waveformUpdatedSubscribers) {
+    handler(_event, payload)
+  }
+}
+const globalHandlePioneerPreviewWaveformItem = (
+  _event: unknown,
+  payload: PioneerPreviewWaveformItemPayload
+) => {
+  for (const handler of pioneerPreviewWaveformItemSubscribers) {
+    handler(_event, payload)
+  }
+}
+const globalHandlePioneerPreviewWaveformDone = (
+  _event: unknown,
+  payload: PioneerPreviewWaveformDonePayload
+) => {
+  for (const handler of pioneerPreviewWaveformDoneSubscribers) {
+    handler(_event, payload)
+  }
+}
+const bindWaveformIpcListeners = () => {
+  if (waveformIpcListenersBound) return
+  if (typeof window === 'undefined' || !window.electron?.ipcRenderer) return
+  window.electron.ipcRenderer.on('song-waveform-updated', globalHandleWaveformUpdated)
+  for (const sourceKind of ['usb', 'desktop'] as const) {
+    window.electron.ipcRenderer.on(
+      getRekordboxPreviewWaveformItemEventChannel(sourceKind),
+      globalHandlePioneerPreviewWaveformItem
+    )
+    window.electron.ipcRenderer.on(
+      getRekordboxPreviewWaveformDoneEventChannel(sourceKind),
+      globalHandlePioneerPreviewWaveformDone
+    )
+  }
+  waveformIpcListenersBound = true
+}
+const unbindWaveformIpcListenersIfIdle = () => {
+  if (!waveformIpcListenersBound) return
+  if (
+    waveformUpdatedSubscribers.size > 0 ||
+    pioneerPreviewWaveformItemSubscribers.size > 0 ||
+    pioneerPreviewWaveformDoneSubscribers.size > 0
+  ) {
+    return
+  }
+  if (typeof window === 'undefined' || !window.electron?.ipcRenderer) return
+  window.electron.ipcRenderer.removeListener('song-waveform-updated', globalHandleWaveformUpdated)
+  for (const sourceKind of ['usb', 'desktop'] as const) {
+    window.electron.ipcRenderer.removeListener(
+      getRekordboxPreviewWaveformItemEventChannel(sourceKind),
+      globalHandlePioneerPreviewWaveformItem
+    )
+    window.electron.ipcRenderer.removeListener(
+      getRekordboxPreviewWaveformDoneEventChannel(sourceKind),
+      globalHandlePioneerPreviewWaveformDone
+    )
+  }
+  waveformIpcListenersBound = false
 }
 const toColorChannel = (value: number) => Math.max(0, Math.min(255, Math.round(value)))
 const normalizeWaveformStyle = (
@@ -922,7 +1006,7 @@ export function useWaveformPreview(params: {
       void loadVisible()
     }, 120)
   }
-  const handleWaveformUpdated = (_event: unknown, payload: { filePath?: string }) => {
+  const handleWaveformUpdated: WaveformUpdatedHandler = (_event, payload) => {
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
     if (!filePath || !waveformVisible.value) return
     const song = resolveVisibleSongByFilePath(filePath)
@@ -947,15 +1031,7 @@ export function useWaveformPreview(params: {
     queuedMissing.delete(visibleFilePath)
     void fetchWaveformBatch([visibleFilePath])
   }
-  const handlePioneerPreviewWaveformItem = (
-    _event: unknown,
-    payload: {
-      requestId?: string
-      analyzePath?: string
-      data?: IPioneerPreviewWaveformData | null
-      error?: string
-    }
-  ) => {
+  const handlePioneerPreviewWaveformItem: PioneerPreviewWaveformItemHandler = (_event, payload) => {
     const requestId = String(payload?.requestId || '').trim()
     if (!requestId || requestId !== activePioneerStreamRequestId) return
     const analyzePath = String(payload?.analyzePath || '').trim()
@@ -983,13 +1059,7 @@ export function useWaveformPreview(params: {
     pioneerStreamFilePathMap.delete(analyzePath)
     scheduleDraw()
   }
-  const handlePioneerPreviewWaveformDone = (
-    _event: unknown,
-    payload: {
-      requestId?: string
-      error?: string
-    }
-  ) => {
+  const handlePioneerPreviewWaveformDone: PioneerPreviewWaveformDoneHandler = (_event, payload) => {
     const requestId = String(payload?.requestId || '').trim()
     if (!requestId || requestId !== activePioneerStreamRequestId) return
     for (const [, filePaths] of pioneerStreamFilePathMap) {
@@ -1105,19 +1175,10 @@ export function useWaveformPreview(params: {
       scheduleDraw()
     }
   )
-  if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
-    window.electron.ipcRenderer.on('song-waveform-updated', handleWaveformUpdated)
-    for (const sourceKind of ['usb', 'desktop'] as const) {
-      window.electron.ipcRenderer.on(
-        getRekordboxPreviewWaveformItemEventChannel(sourceKind),
-        handlePioneerPreviewWaveformItem
-      )
-      window.electron.ipcRenderer.on(
-        getRekordboxPreviewWaveformDoneEventChannel(sourceKind),
-        handlePioneerPreviewWaveformDone
-      )
-    }
-  }
+  waveformUpdatedSubscribers.add(handleWaveformUpdated)
+  pioneerPreviewWaveformItemSubscribers.add(handlePioneerPreviewWaveformItem)
+  pioneerPreviewWaveformDoneSubscribers.add(handlePioneerPreviewWaveformDone)
+  bindWaveformIpcListeners()
   emitter.on('waveform-preview:state', handleWaveformPreviewState)
   emitter.on('waveform-preview:progress', handleWaveformPreviewProgress)
   onBeforeUnmount(() => {
@@ -1129,19 +1190,10 @@ export function useWaveformPreview(params: {
       waveformWorker = null
     }
     workerCanvasMap.clear()
-    if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
-      window.electron.ipcRenderer.removeListener('song-waveform-updated', handleWaveformUpdated)
-      for (const sourceKind of ['usb', 'desktop'] as const) {
-        window.electron.ipcRenderer.removeListener(
-          getRekordboxPreviewWaveformItemEventChannel(sourceKind),
-          handlePioneerPreviewWaveformItem
-        )
-        window.electron.ipcRenderer.removeListener(
-          getRekordboxPreviewWaveformDoneEventChannel(sourceKind),
-          handlePioneerPreviewWaveformDone
-        )
-      }
-    }
+    waveformUpdatedSubscribers.delete(handleWaveformUpdated)
+    pioneerPreviewWaveformItemSubscribers.delete(handlePioneerPreviewWaveformItem)
+    pioneerPreviewWaveformDoneSubscribers.delete(handlePioneerPreviewWaveformDone)
+    unbindWaveformIpcListenersIfIdle()
     emitter.off('waveform-preview:state', handleWaveformPreviewState)
     emitter.off('waveform-preview:progress', handleWaveformPreviewProgress)
   })
