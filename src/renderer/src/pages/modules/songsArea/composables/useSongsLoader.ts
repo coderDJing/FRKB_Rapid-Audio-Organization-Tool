@@ -458,6 +458,13 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     }
 
     const songListPath = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
+    const actualTrackCountPromise =
+      songListPath && typeof songListPath === 'string'
+        ? window.electron.ipcRenderer
+            .invoke('getSongListTrackCount', songListPath)
+            .then((count) => (typeof count === 'number' && Number.isFinite(count) ? count : null))
+            .catch(() => null)
+        : Promise.resolve<number | null>(null)
 
     // 先走主进程内存索引快照，保证首屏秒开
     try {
@@ -470,12 +477,20 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       const hit = Boolean(fastPayload?.hit)
       if (hit) {
         const fastItems = Array.isArray(fastPayload?.items) ? fastPayload.items : []
-        await applySongListData(fastItems)
-        isRequesting.value = false
-        loadingShow.value = false
-        // 后台刷新一次磁盘结果，保证索引与磁盘一致
-        scheduleBackgroundSongListRefresh(songListPath, runtime.songsArea.songListUUID)
-        return
+        const actualTrackCount = await actualTrackCountPromise
+        const fastLoadCountMismatch =
+          typeof actualTrackCount === 'number' &&
+          actualTrackCount >= 0 &&
+          actualTrackCount !== fastItems.length
+        if (!fastLoadCountMismatch) {
+          await applySongListData(fastItems)
+          isRequesting.value = false
+          loadingShow.value = false
+          // 后台刷新一次磁盘结果，保证索引与磁盘一致
+          scheduleBackgroundSongListRefresh(songListPath, runtime.songsArea.songListUUID)
+          return
+        }
+        notifySongSearchDirty('playlist-fast-load-mismatch')
       }
     } catch {}
 
