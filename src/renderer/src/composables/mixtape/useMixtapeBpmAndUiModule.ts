@@ -59,7 +59,6 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     stemResumeSignatureByPlaylistId,
     autoGainDialogVisible,
     transportPreloading,
-    stemRuntimeDownloadVisible,
     transportPlaying,
     transportDecoding,
     createEmptyStemSummary,
@@ -888,7 +887,6 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     if (
       beatAlignDialogVisible.value ||
       transportPreloading.value ||
-      stemRuntimeDownloadVisible.value ||
       outputDialogVisible.value ||
       outputRunning.value ||
       autoGainDialogVisible.value

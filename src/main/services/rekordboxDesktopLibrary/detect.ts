@@ -15,6 +15,39 @@ const toErrorCode = (value: unknown): RekordboxDesktopLibraryProbe['errorCode'] 
   return normalized ? (normalized as RekordboxDesktopLibraryProbe['errorCode']) : undefined
 }
 
+const createUnavailableProbe = (params?: {
+  supported?: boolean
+  errorCode?: RekordboxDesktopLibraryProbe['errorCode']
+  errorMessage?: string
+}): RekordboxDesktopLibraryProbe => ({
+  available: false,
+  supported: params?.supported !== false,
+  sourceKey: 'rekordbox-desktop',
+  sourceName: 'Rekordbox 本机库',
+  sourceRootPath: '',
+  dbPath: '',
+  dbDir: '',
+  shareDir: '',
+  playlistTotal: 0,
+  folderTotal: 0,
+  trackTotal: 0,
+  errorCode: params?.errorCode,
+  errorMessage: toTrimmedString(params?.errorMessage) || undefined
+})
+
+const normalizeProbeError = (error: unknown) => {
+  const code = toErrorCode((error as { code?: unknown } | null)?.code)
+  const message =
+    error instanceof Error
+      ? error.message
+      : toTrimmedString((error as { message?: unknown } | null)?.message || error)
+  return createUnavailableProbe({
+    supported: code !== 'UNSUPPORTED_PLATFORM',
+    errorCode: code,
+    errorMessage: message || '未检测到可读的 Rekordbox 本机库。'
+  })
+}
+
 const normalizeProbe = (
   payload: RekordboxDesktopHelperProbePayload | null | undefined
 ): RekordboxDesktopLibraryProbe => {
@@ -52,12 +85,17 @@ export async function probeRekordboxDesktopLibrary(
     return probeCache.value
   }
 
-  const probe = normalizeProbe(
-    await runRekordboxDesktopHelper<RekordboxDesktopHelperProbePayload, Record<string, never>>(
-      'probe',
-      {}
+  let probe: RekordboxDesktopLibraryProbe
+  try {
+    probe = normalizeProbe(
+      await runRekordboxDesktopHelper<RekordboxDesktopHelperProbePayload, Record<string, never>>(
+        'probe',
+        {}
+      )
     )
-  )
+  } catch (error) {
+    probe = normalizeProbeError(error)
+  }
 
   probeCache = {
     value: probe,

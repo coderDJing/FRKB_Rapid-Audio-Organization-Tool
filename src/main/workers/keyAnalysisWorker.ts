@@ -1,9 +1,6 @@
 import { parentPort } from 'node:worker_threads'
 import type { MixxxWaveformData } from '../waveformCache'
-import {
-  analyzeBeatGridWithBeatThisSlidingWindowsFromPcm,
-  preloadBeatThisAnalyzer
-} from './beatThisAnalyzer'
+import { analyzeBeatGridWithBeatThisSlidingWindowsFromPcm } from './beatThisAnalyzer'
 
 type KeyJob = {
   jobId: number
@@ -61,7 +58,9 @@ type KeyResponse = {
 
 const K_FAST_ANALYSIS_SECONDS = 60
 
-void preloadBeatThisAnalyzer().catch(() => {})
+type RustBinding = ReturnType<typeof loadRust>
+
+let cachedRustBinding: RustBinding | null = null
 
 const estimateFramesToProcess = (
   totalFrames: number,
@@ -100,6 +99,12 @@ const loadRust = () => {
   return binding
 }
 
+const getRustBinding = () => {
+  if (cachedRustBinding) return cachedRustBinding
+  cachedRustBinding = loadRust()
+  return cachedRustBinding
+}
+
 const analyzeKeyForFile = (
   filePath: string,
   options: { fastAnalysis: boolean; needsKey: boolean; needsBpm: boolean; needsWaveform: boolean },
@@ -113,7 +118,7 @@ const analyzeKeyForFileInternal = async (
   options: { fastAnalysis: boolean; needsKey: boolean; needsBpm: boolean; needsWaveform: boolean },
   reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void
 ): Promise<KeyResultPayload> => {
-  const rust = loadRust()
+  const rust = getRustBinding()
   reportProgress({
     stage: 'decode-start',
     needsKey: options.needsKey,

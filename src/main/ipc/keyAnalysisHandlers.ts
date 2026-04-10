@@ -14,7 +14,6 @@ export function registerKeyAnalysisHandlers() {
   ipcMain.on('key-analysis:queue-visible', (_e, payload: VisibleQueuePayload) => {
     const paths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
     const normalized = paths.filter((p) => typeof p === 'string' && p.trim().length > 0)
-    if (normalized.length === 0) return
     replaceVisibleKeyAnalysisList(normalized)
   })
 

@@ -42,11 +42,7 @@ import {
   getMixtapeStemStatusSnapshot,
   retryMixtapeStemJobs
 } from '../services/mixtapeStemQueue'
-import {
-  downloadPreferredStemRuntime,
-  getPreferredStemRuntimeDownloadInfo,
-  getStemRuntimeDownloadState
-} from '../services/mixtapeStemRuntimeDownload'
+import { isAnalysisRuntimeAvailable } from '../services/analysisRuntimeDownload'
 import {
   analyzeMixtapeBpmBatchShared,
   reconcileMixtapeMissingFiles
@@ -107,8 +103,22 @@ export function registerMixtapeHandlers() {
     mixtapeWindow.broadcast?.('mixtape-items-removed', payload)
   }
 
-  ipcMain.on('mixtape:open', (_e, payload: MixtapeWindowPayload) => {
-    mixtapeWindow.open(payload || {})
+  ipcMain.on('mixtape:open', async (_e, payload: MixtapeWindowPayload) => {
+    const nextPayload = payload || {}
+    const playlistId = typeof nextPayload.playlistId === 'string' ? nextPayload.playlistId : ''
+    if (playlistId && getMixtapeProjectMixMode(playlistId) === 'stem') {
+      const runtimeAvailable = await isAnalysisRuntimeAvailable().catch(() => false)
+      if (!runtimeAvailable) {
+        try {
+          mainWindow.instance?.webContents.send(
+            'openDialogFromTray',
+            'menu.downloadAnalysisRuntime'
+          )
+        } catch {}
+        return
+      }
+    }
+    mixtapeWindow.open(nextPayload)
   })
 
   ipcMain.handle('mixtape:is-window-open-by-playlist-id', (_e, playlistId?: string) => {
@@ -245,21 +255,6 @@ export function registerMixtapeHandlers() {
   ipcMain.handle('mixtape:stem:get-status', async (_e, payload?: { playlistId?: string }) => {
     const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
     return getMixtapeStemStatusSnapshot(playlistId)
-  })
-
-  ipcMain.handle('mixtape:stem:runtime:get-status', async () => {
-    return {
-      preferred: await getPreferredStemRuntimeDownloadInfo(),
-      state: getStemRuntimeDownloadState()
-    }
-  })
-
-  ipcMain.handle('mixtape:stem:runtime:download-preferred', async () => {
-    const started = await downloadPreferredStemRuntime()
-    return {
-      started,
-      state: getStemRuntimeDownloadState()
-    }
   })
 
   ipcMain.handle('mixtape:copy-files-to-vault', async (_e, payload?: { filePaths?: string[] }) => {

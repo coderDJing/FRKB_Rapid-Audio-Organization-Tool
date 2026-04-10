@@ -13,6 +13,7 @@
 - `pnpm run dev` starts the Electron + Vite dev workflow.
 - `pnpm run build` builds main/renderer into `out/`.
 - `pnpm run build:win` (or `build:mac`, `build:linux`) packages installers via electron-builder.
+- FRKB 不做 Linux 平台；`build:linux` 仅视为历史残留脚本，禁止将 Linux 作为正式支持、发布、验收或修复目标继续扩展。
 - `pnpm run docs:dev` starts VitePress dev server for documentation site.
 - `pnpm run docs:build` builds VitePress site into `docs/.vitepress/dist/`.
 - `pnpm run docs:preview` previews the built documentation site locally.
@@ -24,6 +25,7 @@
 - Indentation: 2 spaces; LF; trim trailing whitespace; end files with a newline.
 - Prettier: single quotes, no semicolons, `printWidth: 100`.
 - ESLint extends Vue 3 + Electron toolkit; component names may be single-word.
+- 禁止用“兜底 / fallback / 回退到系统环境”代替真正修复；如需临时兜底，必须明确标注为临时措施，并继续修复根因后方可交付。
 - 单个代码文件不应超过 1100 行；超过 1100 行时必须进行拆分，且拆分后的模块放置位置与命名应符合现有项目结构与习惯。
 - 如果用户提出“拆分代码”并指定了行数上限 `N`，则拆分后所有相关文件（包括原文件与新拆出的文件）都必须 `<= N` 行；若用户未指定，则默认执行 `<= 1100` 行规则。
 - “拆分”必须为真拆分：禁止把主体逻辑整体挪到一个新文件后，仅在原文件保留单行转发/导入；原文件必须保留清晰且有实际价值的职责边界与实现。

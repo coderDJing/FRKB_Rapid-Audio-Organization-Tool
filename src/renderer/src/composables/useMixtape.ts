@@ -1,4 +1,4 @@
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
@@ -188,7 +188,6 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     createEmptyStemSummary,
     stemSummary,
     stemRuntimeProgressByTrackId,
-    stemRuntimeDownloadState,
     stemResumeBootstrappedPlaylistIdSet,
     stemResumeSignatureByPlaylistId,
     normalizeStemProfile,
@@ -198,21 +197,15 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     stemSeparationProgressPercent,
     stemSeparationProgressText,
     stemSeparationRunningProgressLines,
-    stemRuntimeDownloadVisible,
-    stemRuntimeDownloadPercent,
-    stemRuntimeDownloadTitle,
-    stemRuntimeDownloadText,
     hasTrackStemPathsReady,
     resolveTrackStemModel,
     pruneStemRuntimeProgressByTracks,
     handlePlaylistIdChange,
     resetStemResumeStateOnReopen,
-    refreshStemRuntimeDownloadStatus,
     autoResumePendingStemJobs,
     handleStemStatusPayload,
     handleMixtapeStemCpuSlowHint,
-    handleMixtapeStemRuntimeProgress,
-    handleMixtapeStemRuntimeDownloadState
+    handleMixtapeStemRuntimeProgress
   } = createUseMixtapeStemRuntimeModule({
     payload,
     tracks,
@@ -429,7 +422,6 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     stemResumeSignatureByPlaylistId,
     autoGainDialogVisible,
     transportPreloading,
-    stemRuntimeDownloadVisible,
     transportPlaying,
     transportDecoding,
     createEmptyStemSummary,
@@ -604,25 +596,6 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     },
     { immediate: true }
   )
-  watch(
-    [mixtapePlaylistId, mixtapeMixMode],
-    async ([nextPlaylistId, nextMixMode]) => {
-      if (!String(nextPlaylistId || '').trim()) return
-      if (nextMixMode !== 'stem') return
-      await nextTick()
-      void refreshStemRuntimeDownloadStatus()
-    },
-    { immediate: true }
-  )
-  watch(
-    () => stemRuntimeDownloadState.value.status,
-    (nextStatus, prevStatus) => {
-      if (nextStatus !== 'ready' || prevStatus === 'ready') return
-      if (!String(payload.value.playlistId || '').trim()) return
-      if (mixtapeMixMode.value !== 'stem') return
-      void loadMixtapeItems({ background: true })
-    }
-  )
   onMounted(() => {
     applyPayload(resolveInitialMixtapePayload())
     window.electron.ipcRenderer.on('mixtape-open', handleOpen)
@@ -632,10 +605,6 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     window.electron.ipcRenderer.on(
       'mixtape-stem-runtime-progress',
       handleMixtapeStemRuntimeProgress
-    )
-    window.electron.ipcRenderer.on(
-      'mixtape-stem-runtime-download-state',
-      handleMixtapeStemRuntimeDownloadState
     )
     window.electron.ipcRenderer.on('mixtape-output:progress', handleMixtapeOutputProgress)
     window.electron.ipcRenderer.on('mixtape-items-removed', handleMixtapeItemsRemoved)
@@ -671,12 +640,6 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
       window.electron.ipcRenderer.removeListener(
         'mixtape-stem-runtime-progress',
         handleMixtapeStemRuntimeProgress
-      )
-    } catch {}
-    try {
-      window.electron.ipcRenderer.removeListener(
-        'mixtape-stem-runtime-download-state',
-        handleMixtapeStemRuntimeDownloadState
       )
     } catch {}
     try {
@@ -817,10 +780,6 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     outputProgressPercent,
     stemRetryingTrackIdMap,
     stemRuntimeProgressByTrackId,
-    stemRuntimeDownloadVisible,
-    stemRuntimeDownloadPercent,
-    stemRuntimeDownloadTitle,
-    stemRuntimeDownloadText,
     handleOutputDialogConfirm,
     handleOutputDialogCancel,
     stemSeparationProgressVisible,

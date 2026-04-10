@@ -95,6 +95,10 @@ type Menu = {
 }
 
 const isDevMode = computed(() => process.env.NODE_ENV === 'development')
+const analysisRuntimeBusy = computed(() => {
+  const status = runtime.analysisRuntime.state.status
+  return status === 'downloading' || status === 'extracting'
+})
 
 const buildMenuArr = (configs: MenuConfig[]): Menu[] => {
   return configs.map((item) => ({
@@ -159,9 +163,10 @@ const defaultMenuConfigs = computed<MenuConfig[]>(() => [
       [{ name: 'menu.visitGithub', shortcutKey: 'F1' }, { name: 'menu.visitWebsite' }],
       [
         { name: 'menu.checkUpdate' },
-        ...(!runtime.analysisRuntime.available
+        ...(!runtime.analysisRuntime.available && !analysisRuntimeBusy.value
           ? [{ name: 'menu.downloadAnalysisRuntime', action: 'download-analysis-runtime' }]
           : []),
+        { name: 'menu.openLog', action: 'open-log' },
         { name: 'menu.whatsNew' },
         { name: 'menu.thirdPartyNotices' },
         { name: 'menu.about' }
@@ -170,7 +175,6 @@ const defaultMenuConfigs = computed<MenuConfig[]>(() => [
       ...(isDevMode.value
         ? [
             [
-              { name: 'menu.openLog', action: 'open-log' },
               { name: 'menu.startSongListTrace', action: 'dev-songlist-trace-start' },
               { name: 'menu.stopSongListTrace', action: 'dev-songlist-trace-stop' }
             ]

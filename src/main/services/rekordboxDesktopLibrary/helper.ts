@@ -193,25 +193,27 @@ const resolvePythonCommand = (): ResolvedPythonCommand | null => {
   return null
 }
 
-const buildHelperError = (
+const createHelperError = (
   message: string,
   code: RekordboxDesktopLibraryErrorCode
-): RekordboxDesktopHelperError => ({
-  code,
-  message
-})
+): Error & RekordboxDesktopHelperError => {
+  const error = new Error(message) as Error & RekordboxDesktopHelperError
+  error.name = 'RekordboxDesktopLibraryError'
+  error.code = code
+  return error
+}
 
 export async function runRekordboxDesktopHelper<TResult, TPayload extends Record<string, unknown>>(
   command: RekordboxDesktopHelperCommand,
   payload: TPayload
 ): Promise<TResult> {
   if (process.platform !== 'win32' && process.platform !== 'darwin') {
-    throw buildHelperError('当前平台暂不支持 Rekordbox 本机库。', 'UNSUPPORTED_PLATFORM')
+    throw createHelperError('当前平台暂不支持 Rekordbox 本机库。', 'UNSUPPORTED_PLATFORM')
   }
 
   const pythonCommand = resolvePythonCommand()
   if (!pythonCommand) {
-    throw buildHelperError(
+    throw createHelperError(
       '未找到 Rekordbox Desktop Runtime 的 Python 运行时。',
       'PYTHON_RUNTIME_MISSING'
     )
@@ -219,7 +221,7 @@ export async function runRekordboxDesktopHelper<TResult, TPayload extends Record
 
   const bridgePath = resolveBridgeScriptPath()
   if (!bridgePath || !fs.existsSync(bridgePath)) {
-    throw buildHelperError(
+    throw createHelperError(
       `未找到 Rekordbox Desktop bridge: ${bridgePath || '<empty>'}`,
       'BRIDGE_SCRIPT_MISSING'
     )
@@ -270,7 +272,7 @@ export async function runRekordboxDesktopHelper<TResult, TPayload extends Record
 
     child.once('error', (error) => {
       finishReject(
-        buildHelperError(
+        createHelperError(
           `启动 Rekordbox Desktop helper 失败: ${error instanceof Error ? error.message : String(error || '')}`,
           'HELPER_RUNTIME_ERROR'
         )
@@ -282,7 +284,7 @@ export async function runRekordboxDesktopHelper<TResult, TPayload extends Record
       const trimmedStderr = stderr.trim()
       if (!trimmedStdout) {
         finishReject(
-          buildHelperError(
+          createHelperError(
             trimmedStderr || `Rekordbox Desktop helper 未返回结果（exit=${String(code ?? '')}）。`,
             'HELPER_PROTOCOL_ERROR'
           )
@@ -300,7 +302,7 @@ export async function runRekordboxDesktopHelper<TResult, TPayload extends Record
           stderr: trimmedStderr
         })
         finishReject(
-          buildHelperError(
+          createHelperError(
             `Rekordbox Desktop helper 返回了无效 JSON: ${error instanceof Error ? error.message : String(error || '')}`,
             'HELPER_PROTOCOL_ERROR'
           )
@@ -310,13 +312,14 @@ export async function runRekordboxDesktopHelper<TResult, TPayload extends Record
 
       if (!response?.ok) {
         const helperError = response?.error
-        finishReject({
-          code: helperError?.code || 'HELPER_RUNTIME_ERROR',
-          message:
+        finishReject(
+          createHelperError(
             helperError?.message ||
-            trimmedStderr ||
-            `Rekordbox Desktop helper 执行失败（exit=${String(code ?? '')}）。`
-        } satisfies RekordboxDesktopHelperError)
+              trimmedStderr ||
+              `Rekordbox Desktop helper 执行失败（exit=${String(code ?? '')}）。`,
+            (helperError?.code || 'HELPER_RUNTIME_ERROR') as RekordboxDesktopLibraryErrorCode
+          )
+        )
         return
       }
 

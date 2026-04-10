@@ -76,7 +76,7 @@ type UseRekordboxSourceIconsOptions = {
   emitLibrarySelectedChange: (payload: { name: string }) => void
 }
 
-const SOURCE_ICON_AUTO_REFRESH_INTERVAL_MS = 60_000
+const SOURCE_ICON_AUTO_REFRESH_INTERVAL_MS = 8_000
 
 export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions) {
   const {
@@ -426,7 +426,6 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
   }
 
   const shouldAutoRefreshSources = () => {
-    if (runtime.libraryAreaSelected !== 'PioneerDeviceLibrary') return false
     if (typeof document === 'undefined') return true
     if (document.visibilityState !== 'visible') return false
     try {

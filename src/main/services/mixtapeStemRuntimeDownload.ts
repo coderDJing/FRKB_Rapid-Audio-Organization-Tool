@@ -14,7 +14,6 @@ import {
   resolveInstalledDemucsPlatformRootPath
 } from '../demucs'
 import { getSystemProxy } from '../utils'
-import mixtapeWindow from '../window/mixtapeWindow'
 import {
   STEM_RUNTIME_INSTALL_VALIDATION_TIMEOUT_MS,
   buildStemProcessEnv,
@@ -244,11 +243,6 @@ const computeFileSha256 = async (filePath: string): Promise<string> => {
 const emitRuntimeDownloadState = () => {
   try {
     stemRuntimeDownloadEvents.emit('state', {
-      ...runtimeDownloadState
-    })
-  } catch {}
-  try {
-    mixtapeWindow.broadcast?.('mixtape-stem-runtime-download-state', {
       ...runtimeDownloadState
     })
   } catch {}

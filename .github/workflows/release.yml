@@ -66,6 +66,9 @@ jobs:
       - name: Ensure Rekordbox Desktop runtime (Windows)
         run: pnpm run rekordbox:runtime:ensure
 
+      - name: Validate Rekordbox Desktop runtime (Windows)
+        run: pnpm run rekordbox:runtime:validate -- --platform-key win32-x64
+
       - name: Typecheck (vue-tsc)
         run: npx vue-tsc --noEmit
 
@@ -210,7 +213,10 @@ jobs:
           python-version: '3.11'
 
       - name: Ensure Rekordbox Desktop runtime (macOS x64)
-        run: node scripts/ensure-rekordbox-desktop-runtime.mjs
+        run: node scripts/ensure-rekordbox-desktop-runtime.mjs --platform-key darwin-x64
+
+      - name: Validate Rekordbox Desktop runtime (macOS x64)
+        run: node scripts/validate-rekordbox-desktop-runtime.mjs --platform-key darwin-x64
 
       - name: Archive Rekordbox Desktop runtime (macOS x64)
         run: |
@@ -290,6 +296,9 @@ jobs:
           mkdir -p vendor/rekordbox-desktop-runtime/darwin-x64
           tar -xzf artifacts/rekordbox-runtime-darwin-x64/rekordbox-runtime-darwin-x64.tar.gz \
             -C vendor/rekordbox-desktop-runtime/darwin-x64
+
+      - name: Validate Rekordbox Desktop runtime (macOS universal)
+        run: pnpm run rekordbox:runtime:validate:mac-universal
 
       - name: Typecheck (vue-tsc)
         run: npx vue-tsc --noEmit

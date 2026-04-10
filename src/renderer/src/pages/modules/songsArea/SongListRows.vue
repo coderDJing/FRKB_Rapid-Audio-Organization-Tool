@@ -330,7 +330,7 @@ const { coversTick, getCoverUrl, fetchCoverUrl, onImgError } = useCoverThumbnail
   enabled: enableCoverThumbnailsRef
 })
 
-useKeyAnalysisQueue({ visibleSongsWithIndex, enabled: enableKeyAnalysisQueueRef })
+useKeyAnalysisQueue({ visibleSongsWithIndex, songs: songsRef, enabled: enableKeyAnalysisQueueRef })
 
 const {
   coverPreviewState,

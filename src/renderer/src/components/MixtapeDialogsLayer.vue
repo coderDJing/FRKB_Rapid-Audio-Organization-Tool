@@ -37,10 +37,6 @@ const props = defineProps<{
   outputRunning: boolean
   outputProgressText: string
   outputProgressPercent: number
-  stemRuntimeDownloadVisible: boolean
-  stemRuntimeDownloadPercent: number
-  stemRuntimeDownloadTitle: string
-  stemRuntimeDownloadText: string
   autoGainReferenceFeedback: string
   autoGainDialogColumns: any[]
   autoGainSongColumns: any[]
@@ -152,16 +148,6 @@ const autoGainColumnMenuVisibleModel = computed({
       <div class="bpm-loading-sub">{{ outputProgressText }}</div>
       <div class="preload-bar">
         <div class="preload-bar__fill" :style="{ width: `${outputProgressPercent}%` }"></div>
-      </div>
-    </div>
-  </div>
-  <div v-if="stemRuntimeDownloadVisible" class="mixtape-runtime-download-mask">
-    <div class="bpm-loading-card mixtape-runtime-download-mask__card">
-      <div class="bpm-loading-title">{{ stemRuntimeDownloadTitle }}</div>
-      <div class="bpm-loading-sub">{{ t('mixtape.stemRuntimeDownloadBlockingHint') }}</div>
-      <div class="bpm-loading-sub">{{ stemRuntimeDownloadText }}</div>
-      <div class="preload-bar">
-        <div class="preload-bar__fill" :style="{ width: `${stemRuntimeDownloadPercent}%` }"></div>
       </div>
     </div>
   </div>

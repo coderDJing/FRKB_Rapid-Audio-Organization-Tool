@@ -34,37 +34,6 @@ export type StemRuntimeProgressEntry = {
   updatedAt: number
 }
 
-export type StemRuntimeDownloadState = {
-  status: 'idle' | 'available' | 'downloading' | 'extracting' | 'ready' | 'failed'
-  profile: string
-  runtimeKey: string
-  version: string
-  percent: number
-  downloadedBytes: number
-  totalBytes: number
-  archiveSize: number
-  title: string
-  message: string
-  error: string
-  updatedAt: number
-}
-
-type StemRuntimeDownloadInfo = {
-  supported: boolean
-  downloadable: boolean
-  alreadyAvailable: boolean
-  profile: string
-  runtimeKey: string
-  version: string
-  archiveSize: number
-  title: string
-  reason: string
-  manifestUrl: string
-  releaseTag: string
-  error: string
-  state: StemRuntimeDownloadState
-}
-
 type CreateUseMixtapeStemRuntimeModuleOptions = {
   payload: Ref<MixtapeOpenPayload>
   tracks: Ref<MixtapeTrack[]>
@@ -84,36 +53,14 @@ export const createEmptyStemSummary = (): MixtapeStemSummary => ({
   failed: 0
 })
 
-const createEmptyStemRuntimeDownloadState = (): StemRuntimeDownloadState => ({
-  status: 'idle',
-  profile: '',
-  runtimeKey: '',
-  version: '',
-  percent: 0,
-  downloadedBytes: 0,
-  totalBytes: 0,
-  archiveSize: 0,
-  title: '',
-  message: '',
-  error: '',
-  updatedAt: 0
-})
-
 export const createUseMixtapeStemRuntimeModule = (
   options: CreateUseMixtapeStemRuntimeModuleOptions
 ) => {
   const stemSummary = ref<MixtapeStemSummary>(createEmptyStemSummary())
   const stemRuntimeProgressByTrackId = ref<Record<string, StemRuntimeProgressEntry>>({})
-  const stemRuntimeDownloadState = ref<StemRuntimeDownloadState>(
-    createEmptyStemRuntimeDownloadState()
-  )
   const stemResumeBootstrappedPlaylistIdSet = new Set<string>()
   const stemResumeSignatureByPlaylistId = new Map<string, string>()
   const stemCpuSlowHintShownPlaylistIdSet = new Set<string>()
-  const stemRuntimeDownloadAttemptedKeySet = new Set<string>()
-  const stemRuntimeFailureNoticeKeyByPlaylistId = new Map<string, string>()
-
-  let stemRuntimeDownloadAttemptBusy = false
 
   const normalizeStemProfile = (
     value: unknown,
@@ -159,48 +106,6 @@ export const createUseMixtapeStemRuntimeModule = (
     const parsed = normalizeStemRuntimeNumber(value)
     if (parsed === null || parsed < 0) return null
     return parsed
-  }
-
-  const normalizeStemRuntimeDownloadStatus = (
-    value: unknown
-  ): StemRuntimeDownloadState['status'] => {
-    return value === 'available' ||
-      value === 'downloading' ||
-      value === 'extracting' ||
-      value === 'ready' ||
-      value === 'failed'
-      ? value
-      : 'idle'
-  }
-
-  const normalizeStemRuntimeDownloadState = (value: unknown): StemRuntimeDownloadState => {
-    const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
-    return {
-      status: normalizeStemRuntimeDownloadStatus(raw.status),
-      profile: typeof raw.profile === 'string' ? raw.profile.trim() : '',
-      runtimeKey: typeof raw.runtimeKey === 'string' ? raw.runtimeKey.trim() : '',
-      version: typeof raw.version === 'string' ? raw.version.trim() : '',
-      percent: normalizeStemRuntimePercent(raw.percent),
-      downloadedBytes: Math.max(0, Number(raw.downloadedBytes) || 0),
-      totalBytes: Math.max(0, Number(raw.totalBytes) || 0),
-      archiveSize: Math.max(0, Number(raw.archiveSize) || 0),
-      title: typeof raw.title === 'string' ? raw.title.trim() : '',
-      message: typeof raw.message === 'string' ? raw.message.trim() : '',
-      error: typeof raw.error === 'string' ? raw.error.trim() : '',
-      updatedAt: Math.max(0, Math.floor(Number(raw.updatedAt) || 0))
-    }
-  }
-
-  const formatStemRuntimeBytes = (bytes: number) => {
-    const units = ['B', 'KB', 'MB', 'GB', 'TB']
-    let value = Math.max(0, Number(bytes) || 0)
-    let unitIndex = 0
-    while (value >= 1024 && unitIndex < units.length - 1) {
-      value /= 1024
-      unitIndex += 1
-    }
-    const digits = unitIndex === 0 ? 0 : unitIndex === 1 ? 1 : 2
-    return `${value.toFixed(digits)} ${units[unitIndex]}`
   }
 
   const resolveStemRuntimeFileName = (filePath: string): string => {
@@ -344,49 +249,6 @@ export const createUseMixtapeStemRuntimeModule = (
     })
   })
 
-  const stemRuntimeDownloadVisible = computed(() => {
-    const status = stemRuntimeDownloadState.value.status
-    return status === 'downloading' || status === 'extracting'
-  })
-
-  const stemRuntimeDownloadPercent = computed(() =>
-    Math.max(0, Math.min(100, normalizeStemRuntimePercent(stemRuntimeDownloadState.value.percent)))
-  )
-
-  const stemRuntimeDownloadTitle = computed(() => {
-    if (stemRuntimeDownloadState.value.title) {
-      return options.t('mixtape.stemRuntimeDownloadTitle', {
-        title: stemRuntimeDownloadState.value.title
-      })
-    }
-    return options.t('mixtape.stemRuntimeDownloadTitleGeneric')
-  })
-
-  const stemRuntimeDownloadText = computed(() => {
-    const state = stemRuntimeDownloadState.value
-    if (state.status === 'downloading') {
-      const totalBytes = state.totalBytes || state.archiveSize
-      if (totalBytes > 0) {
-        return options.t('mixtape.stemRuntimeDownloadProgressText', {
-          downloaded: formatStemRuntimeBytes(state.downloadedBytes),
-          total: formatStemRuntimeBytes(totalBytes),
-          percent: stemRuntimeDownloadPercent.value
-        })
-      }
-    }
-    if (state.status === 'extracting') {
-      return options.t('mixtape.stemRuntimeExtractingText')
-    }
-    return (
-      state.message ||
-      options.t('mixtape.stemRuntimeDownloadProgressText', {
-        downloaded: formatStemRuntimeBytes(state.downloadedBytes),
-        total: formatStemRuntimeBytes(state.totalBytes || state.archiveSize),
-        percent: stemRuntimeDownloadPercent.value
-      })
-    )
-  })
-
   const resolveTrackStemModel = (track: MixtapeTrack) =>
     typeof track?.stemModel === 'string' ? track.stemModel.trim() : ''
 
@@ -408,7 +270,6 @@ export const createUseMixtapeStemRuntimeModule = (
     if (prevId && prevId !== nextId) {
       stemResumeBootstrappedPlaylistIdSet.delete(prevId)
       stemResumeSignatureByPlaylistId.delete(prevId)
-      stemRuntimeFailureNoticeKeyByPlaylistId.delete(prevId)
     }
     if (nextId !== prevId) {
       stemSummary.value = createEmptyStemSummary()
@@ -425,143 +286,6 @@ export const createUseMixtapeStemRuntimeModule = (
     })
   }
 
-  const maybeAutoDownloadStemRuntime = async (info: StemRuntimeDownloadInfo | null) => {
-    const playlistId = String(options.payload.value.playlistId || '').trim()
-    if (!playlistId || options.mixtapeMixMode.value !== 'stem') return
-    if (
-      stemRuntimeDownloadState.value.status === 'downloading' ||
-      stemRuntimeDownloadState.value.status === 'extracting' ||
-      stemRuntimeDownloadState.value.status === 'ready'
-    ) {
-      return
-    }
-    if (!info?.supported || !info.downloadable || info.alreadyAvailable) return
-    if (!info.profile) return
-    if (stemRuntimeDownloadAttemptBusy) return
-    const attemptKey = `${info.profile}::${info.version}`
-    if (stemRuntimeDownloadAttemptedKeySet.has(attemptKey)) return
-    stemRuntimeDownloadAttemptedKeySet.add(attemptKey)
-    stemRuntimeDownloadAttemptBusy = true
-    try {
-      const confirmResult = await options.confirmDialog({
-        title: options.t('mixtape.stemRuntimeDownloadPromptTitle'),
-        content: [
-          options.t('mixtape.stemRuntimeDownloadPromptBody', {
-            title: info.title,
-            size: formatStemRuntimeBytes(info.archiveSize)
-          }),
-          options.t('mixtape.stemRuntimeDownloadPromptHint')
-        ],
-        confirmShow: true,
-        confirmText: options.t('mixtape.stemRuntimeDownloadConfirm'),
-        cancelText: options.t('mixtape.stemRuntimeDownloadSkip'),
-        textAlign: 'left',
-        innerWidth: 560,
-        innerHeight: 0
-      })
-      if (confirmResult !== 'confirm') {
-        window.electron.ipcRenderer.send('mixtapeWindow-toggle-close')
-        return
-      }
-      const response = await window.electron.ipcRenderer.invoke(
-        'analysis-runtime:download-preferred'
-      )
-      stemRuntimeDownloadState.value = normalizeStemRuntimeDownloadState(response?.state)
-    } catch (error) {
-      console.error('[mixtape] runtime download prompt failed', {
-        playlistId,
-        profile: info.profile,
-        version: info.version,
-        error
-      })
-    } finally {
-      stemRuntimeDownloadAttemptBusy = false
-    }
-  }
-
-  const refreshStemRuntimeDownloadStatus = async () => {
-    const playlistId = String(options.payload.value.playlistId || '').trim()
-    if (!playlistId || options.mixtapeMixMode.value !== 'stem') return
-    try {
-      const response = await window.electron.ipcRenderer.invoke('analysis-runtime:get-status')
-      stemRuntimeDownloadState.value = normalizeStemRuntimeDownloadState(response?.state)
-      const preferred =
-        response?.preferred && typeof response.preferred === 'object'
-          ? (response.preferred as StemRuntimeDownloadInfo)
-          : null
-      if (preferred?.alreadyAvailable) {
-        stemRuntimeFailureNoticeKeyByPlaylistId.delete(playlistId)
-        stemRuntimeDownloadState.value = {
-          ...stemRuntimeDownloadState.value,
-          status: 'ready',
-          profile: preferred.profile || stemRuntimeDownloadState.value.profile,
-          runtimeKey: preferred.runtimeKey || stemRuntimeDownloadState.value.runtimeKey,
-          version: preferred.version || stemRuntimeDownloadState.value.version,
-          archiveSize: preferred.archiveSize || stemRuntimeDownloadState.value.archiveSize,
-          totalBytes: preferred.archiveSize || stemRuntimeDownloadState.value.totalBytes,
-          downloadedBytes: preferred.archiveSize || stemRuntimeDownloadState.value.downloadedBytes,
-          percent: 100,
-          title: preferred.title || stemRuntimeDownloadState.value.title,
-          message: '',
-          error: '',
-          updatedAt: Date.now()
-        }
-        return
-      }
-      if (preferred?.reason === 'manifest unavailable') {
-        const failureKey = [
-          'manifest',
-          preferred.profile,
-          preferred.version,
-          preferred.error || preferred.manifestUrl
-        ].join('::')
-        stemRuntimeDownloadState.value = {
-          ...stemRuntimeDownloadState.value,
-          status: 'failed',
-          profile: preferred.profile || stemRuntimeDownloadState.value.profile,
-          runtimeKey: preferred.runtimeKey || stemRuntimeDownloadState.value.runtimeKey,
-          version: preferred.version || stemRuntimeDownloadState.value.version,
-          archiveSize: preferred.archiveSize || stemRuntimeDownloadState.value.archiveSize,
-          title: preferred.title || stemRuntimeDownloadState.value.title,
-          message: options.t('mixtape.stemRuntimeManifestUnavailableHint'),
-          error: preferred.error || stemRuntimeDownloadState.value.error,
-          updatedAt: Date.now()
-        }
-        if (stemRuntimeFailureNoticeKeyByPlaylistId.get(playlistId) !== failureKey) {
-          stemRuntimeFailureNoticeKeyByPlaylistId.set(playlistId, failureKey)
-          const content = [
-            options.t('mixtape.stemRuntimeManifestUnavailableHint'),
-            options.t('mixtape.stemRuntimeNetworkHint'),
-            options.t('mixtape.stemRuntimeDownloadFailedCloseHint')
-          ]
-          if (preferred.error) {
-            content.push(
-              options.t('mixtape.stemRuntimeDownloadErrorHint', { error: preferred.error })
-            )
-          }
-          void (async () => {
-            await options.confirmDialog({
-              title: options.t('common.warning'),
-              content,
-              confirmShow: false,
-              textAlign: 'left',
-              innerWidth: 560,
-              innerHeight: 0
-            })
-            window.electron.ipcRenderer.send('mixtapeWindow-toggle-close')
-          })()
-        }
-        return
-      }
-      await maybeAutoDownloadStemRuntime(preferred)
-    } catch (error) {
-      console.error('[mixtape] refresh stem runtime download status failed', {
-        playlistId,
-        error
-      })
-    }
-  }
-
   const autoResumePendingStemJobs = async (params: {
     playlistId: string
     stemMode: MixtapeStemMode
@@ -570,17 +294,6 @@ export const createUseMixtapeStemRuntimeModule = (
   }) => {
     const playlistId = String(params.playlistId || '').trim()
     if (!playlistId || !window?.electron?.ipcRenderer?.invoke) return
-    await refreshStemRuntimeDownloadStatus()
-    const runtimeStatus = stemRuntimeDownloadState.value.status
-    if (
-      runtimeStatus === 'available' ||
-      runtimeStatus === 'downloading' ||
-      runtimeStatus === 'extracting' ||
-      runtimeStatus === 'failed'
-    ) {
-      stemResumeSignatureByPlaylistId.delete(playlistId)
-      return
-    }
     const includeRunning = !!params.includeRunning
     const resumeCandidates = params.trackList.filter((track) => {
       const status = normalizeMixtapeStemStatus(track.stemStatus)
@@ -760,60 +473,10 @@ export const createUseMixtapeStemRuntimeModule = (
     stemRuntimeProgressByTrackId.value = next
   }
 
-  const handleMixtapeStemRuntimeDownloadState = (_e: unknown, eventPayload: any) => {
-    const playlistId = String(options.payload.value.playlistId || '').trim()
-    const prevStatus = stemRuntimeDownloadState.value.status
-    const nextState = normalizeStemRuntimeDownloadState(eventPayload)
-    stemRuntimeDownloadState.value = nextState
-    if (nextState.status === 'ready' && prevStatus !== 'ready' && nextState.title) {
-      void options.confirmDialog({
-        title: options.t('common.success'),
-        content: [options.t('mixtape.stemRuntimeDownloadReadyHint', { title: nextState.title })],
-        confirmShow: false,
-        textAlign: 'left',
-        innerWidth: 480,
-        innerHeight: 0
-      })
-      return
-    }
-    if (nextState.status === 'failed' && prevStatus !== 'failed') {
-      const failureKey = [
-        'runtime',
-        nextState.profile,
-        nextState.runtimeKey,
-        nextState.version,
-        nextState.error
-      ].join('::')
-      if (playlistId && stemRuntimeFailureNoticeKeyByPlaylistId.get(playlistId) === failureKey) {
-        return
-      }
-      if (playlistId) {
-        stemRuntimeFailureNoticeKeyByPlaylistId.set(playlistId, failureKey)
-      }
-      const content = [options.t('mixtape.stemRuntimeDownloadFailedHint')]
-      content.push(options.t('mixtape.stemRuntimeDownloadFailedCloseHint'))
-      if (nextState.error) {
-        content.push(options.t('mixtape.stemRuntimeDownloadErrorHint', { error: nextState.error }))
-      }
-      void (async () => {
-        await options.confirmDialog({
-          title: options.t('common.warning'),
-          content,
-          confirmShow: false,
-          textAlign: 'left',
-          innerWidth: 560,
-          innerHeight: 0
-        })
-        window.electron.ipcRenderer.send('mixtapeWindow-toggle-close')
-      })()
-    }
-  }
-
   return {
     createEmptyStemSummary,
     stemSummary,
     stemRuntimeProgressByTrackId,
-    stemRuntimeDownloadState,
     stemResumeBootstrappedPlaylistIdSet,
     stemResumeSignatureByPlaylistId,
     normalizeStemProfile,
@@ -823,20 +486,14 @@ export const createUseMixtapeStemRuntimeModule = (
     stemSeparationProgressPercent,
     stemSeparationProgressText,
     stemSeparationRunningProgressLines,
-    stemRuntimeDownloadVisible,
-    stemRuntimeDownloadPercent,
-    stemRuntimeDownloadTitle,
-    stemRuntimeDownloadText,
     hasTrackStemPathsReady,
     resolveTrackStemModel,
     pruneStemRuntimeProgressByTracks,
     handlePlaylistIdChange,
     resetStemResumeStateOnReopen,
-    refreshStemRuntimeDownloadStatus,
     autoResumePendingStemJobs,
     handleStemStatusPayload,
     handleMixtapeStemCpuSlowHint,
-    handleMixtapeStemRuntimeProgress,
-    handleMixtapeStemRuntimeDownloadState
+    handleMixtapeStemRuntimeProgress
   }
 }
