@@ -19,6 +19,18 @@ import { rememberCuratedArtistsForAddedTracks } from '../../curatedArtistLibrary
 import { log } from '../../log'
 import { markGlobalSongSearchDirty } from '../../services/globalSongSearch'
 
+type ImportItem = md5 | string
+
+type FileTaskResult = string
+
+const getFingerprintMode = (): 'pcm' | 'file' =>
+  store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
+
+const isMd5Item = (value: ImportItem): value is md5 =>
+  typeof value !== 'string' &&
+  typeof value?.file_path === 'string' &&
+  typeof value?.sha256_Hash === 'string'
+
 export function registerImportHandlers(
   sendProgress: SendProgress,
   getWindow: () => BrowserWindow | null
@@ -51,16 +63,12 @@ export function registerImportHandlers(
     }
     songFileUrls = Array.from(new Set(songFileUrls))
     let { isComparisonSongFingerprint, isPushSongFingerprintLibrary, isDeleteSourceFile } = formData
-    const incomingDedupMode = (formData as any).deduplicateMode as
-      | 'library'
-      | 'batch'
-      | 'none'
-      | undefined
+    const incomingDedupMode = formData.deduplicateMode
     const dedupMode: 'library' | 'batch' | 'none' =
       incomingDedupMode ?? (isComparisonSongFingerprint ? 'library' : 'none')
     const needAnalyze = dedupMode !== 'none' || isPushSongFingerprintLibrary
     const songFingerprintListLengthBefore = store.songFingerprintList.length
-    let toBeDealSongs: (md5 | string)[] = []
+    let toBeDealSongs: ImportItem[] = []
     let delList: string[] = []
     let songsAnalyseResult: md5[] = []
     let errorSongsAnalyseResult: md5[] = []
@@ -126,7 +134,7 @@ export function registerImportHandlers(
       toBeDealSongs = songFileUrls
     }
 
-    const tasks: Array<() => Promise<any>> = []
+    const tasks: Array<() => Promise<FileTaskResult>> = []
     const fingerprintsToAdd: string[] = []
     const isCuratedTarget = (() => {
       const normalizeRelativePath = (value: string) => value.replace(/\\/g, '/')
@@ -137,20 +145,21 @@ export function registerImportHandlers(
       return targetPath === curatedRoot || targetPath.startsWith(`${curatedRoot}/`)
     })()
     for (const item of toBeDealSongs) {
-      const matchResult = (item as any).file_path
-        ? (item as any).file_path.match(/[^\\/]+$/)
-        : typeof item === 'string'
-          ? item.match(/[^\\/]+$/)
-          : null
+      const sourceFilePath = isMd5Item(item) ? item.file_path : item
+      const matchResult = sourceFilePath.match(/[^\\/]+$/)
       const filename = matchResult ? matchResult[0] : 'unknown_file'
       const targetPath = path.join(store.databaseDir, formData.songListPath, filename)
-      const srcPath = (item as any).file_path ? (item as any).file_path : (item as string)
-      const sha = (item as any)?.sha256_Hash as string | undefined
+      const sha = isMd5Item(item) ? item.sha256_Hash : undefined
       tasks.push(async () => {
-        await moveOrCopyItemWithCheckIsExist(srcPath, targetPath, isDeleteSourceFile)
+        const finalPath = await moveOrCopyItemWithCheckIsExist(
+          sourceFilePath,
+          targetPath,
+          isDeleteSourceFile
+        )
         if (isPushSongFingerprintLibrary && sha) {
           fingerprintsToAdd.push(sha)
         }
+        return finalPath
       })
     }
 
@@ -185,10 +194,7 @@ export function registerImportHandlers(
         new Set([...store.songFingerprintList, ...uniqueToAdd])
       )
       if (store.songFingerprintList.length !== beforeLen) {
-        await FingerprintStore.saveList(
-          store.songFingerprintList,
-          ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
-        )
+        await FingerprintStore.saveList(store.songFingerprintList, getFingerprintMode())
       }
     }
 
@@ -217,7 +223,7 @@ export function registerImportHandlers(
       fingerprintTotalAfter: store.songFingerprintList.length,
       isComparisonSongFingerprint: dedupMode !== 'none',
       isPushSongFingerprintLibrary,
-      fingerprintMode: ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
+      fingerprintMode: getFingerprintMode()
     }
 
     markGlobalSongSearchDirty('importSongs')
@@ -256,7 +262,7 @@ async function moveToRecycleBin(
   getWindow: () => BrowserWindow | null,
   sendProgress: SendProgress
 ) {
-  const tasks: Array<() => Promise<any>> = delList.map((srcPath) => async () => {
+  const tasks: Array<() => Promise<void>> = delList.map((srcPath) => async () => {
     const result = await moveFileToRecycleBin(srcPath, {
       sourceType: 'import_dedup',
       originalPlaylistPath: null
@@ -264,7 +270,6 @@ async function moveToRecycleBin(
     if (result.status === 'failed') {
       throw new Error(result.error || 'move to recycle bin failed')
     }
-    return result
   })
   const batchId = `import_recycle_duplicates_${Date.now()}`
   const { success, failed, hasENOSPC, skipped } = await runWithConcurrency(tasks, {

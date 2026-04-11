@@ -2,12 +2,12 @@ import path = require('path')
 import type { ISongInfo } from '../../types/globals'
 import store from '../store'
 
-export function toNumber(value: any): number | null {
+export function toNumber(value: unknown): number | null {
   const num = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(num) ? num : null
 }
 
-export function normalizeRoot(value: any): string {
+export function normalizeRoot(value: unknown): string {
   let normalized = path.normalize(String(value || ''))
   normalized = normalized.replace(/[\\/]+$/, '')
   if (process.platform === 'win32') {
@@ -16,7 +16,7 @@ export function normalizeRoot(value: any): string {
   return normalized
 }
 
-export function normalizePath(value: any): string {
+export function normalizePath(value: unknown): string {
   if (!value) return ''
   let normalized = path.resolve(String(value))
   if (process.platform === 'win32') {
@@ -170,7 +170,7 @@ export function resolveAbsoluteFilePath(listRootKey: string, fileKey: string): s
   return path.join(listRootAbs, fileKey)
 }
 
-export function normalizeInfoJsonFilePath(raw: any, absFilePath: string): string {
+export function normalizeInfoJsonFilePath(raw: unknown, absFilePath: string): string {
   try {
     const info = JSON.parse(String(raw)) as ISongInfo
     if (info && typeof info === 'object') {

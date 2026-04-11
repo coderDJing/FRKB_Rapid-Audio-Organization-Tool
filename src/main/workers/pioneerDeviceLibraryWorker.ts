@@ -91,7 +91,7 @@ parentPort?.on('message', (request: WorkerRequest) => {
         return
       }
       default:
-        throw new Error(`unknown pioneer worker request: ${(request as any)?.type || 'unknown'}`)
+        throw new Error('unknown pioneer worker request')
     }
   } catch (error) {
     respond({

@@ -4,6 +4,10 @@ const MIN_VALID_GAIN = 0.0001
 const MAX_GAIN_DEFAULT = 16
 const ENVELOPE_SAME_SEC_EPSILON = 0.0001
 const ENVELOPE_MAX_POINTS_PER_SEC = 2
+type GainPointLike = {
+  sec?: unknown
+  gain?: unknown
+}
 
 export const MIXTAPE_GAIN_KNOB_MIN_DB = -26
 export const MIXTAPE_GAIN_KNOB_MAX_DB = 12
@@ -156,8 +160,9 @@ export const normalizeMixEnvelopePoints = (
   const points = Array.isArray(value)
     ? value
         .map((item) => {
-          const sec = Number((item as any)?.sec)
-          const gain = Number((item as any)?.gain)
+          const point = item && typeof item === 'object' ? (item as GainPointLike) : null
+          const sec = Number(point?.sec)
+          const gain = Number(point?.gain)
           if (!Number.isFinite(sec) || sec < 0) return null
           if (!Number.isFinite(gain) || gain <= 0) return null
           return {

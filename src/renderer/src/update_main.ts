@@ -26,7 +26,7 @@ const initializeApp = async () => {
   const rootEl = document.getElementById('app')
   const prefersDarkMedia = window.matchMedia
     ? window.matchMedia('(prefers-color-scheme: dark)')
-    : (null as any)
+    : null
   const getSystemDark = () => {
     try {
       return !!prefersDarkMedia?.matches
@@ -49,14 +49,14 @@ const initializeApp = async () => {
     } catch {}
   }
   // 首次启动按设置（默认 system）或用户选择
-  applyThemeClass(((runtime.setting as any).themeMode || 'system') as any, getSystemDark())
+  applyThemeClass(runtime.setting.themeMode || 'system', getSystemDark())
   try {
     watch(
-      () => (runtime.setting as any).themeMode,
+      () => runtime.setting.themeMode,
       (mode: 'system' | 'light' | 'dark') => applyThemeClass(mode || 'system', getSystemDark())
     )
     prefersDarkMedia?.addEventListener?.('change', (e: MediaQueryListEvent) => {
-      if (((runtime.setting as any).themeMode || 'system') === 'system') {
+      if ((runtime.setting.themeMode || 'system') === 'system') {
         applyThemeClass('system', !!e.matches)
       }
     })

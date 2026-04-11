@@ -81,6 +81,7 @@ const hoverTimer = ref<NodeJS.Timeout | null>(null)
 const hideTimer = ref<NodeJS.Timeout | null>(null)
 const mouseX = ref<number | null>(null)
 const mouseY = ref<number | null>(null)
+const resizeListenerOptions: AddEventListenerOptions = { passive: true }
 
 const hasDefaultSlot = computed(() => {
   // 避免在 setup 直接使用 useSlots 导致类型提示缺失
@@ -287,12 +288,12 @@ watch(
 
 onMounted(() => {
   window.addEventListener('scroll', updatePosition, true)
-  window.addEventListener('resize', updatePosition, { passive: true } as any)
+  window.addEventListener('resize', updatePosition, resizeListenerOptions)
 })
 
 onUnmounted(() => {
   window.removeEventListener('scroll', updatePosition, true)
-  window.removeEventListener('resize', updatePosition as any)
+  window.removeEventListener('resize', updatePosition)
   removeAnchorListeners(props.dom)
   clearTimers()
 })

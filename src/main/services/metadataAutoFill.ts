@@ -25,12 +25,12 @@ type ProgressEmitter = (
   titleKey: string,
   now: number,
   total: number,
-  options?: { isInitial?: boolean; extras?: Record<string, any> }
+  options?: { isInitial?: boolean; extras?: Record<string, unknown> }
 ) => void
 
 function createProgressEmitter(
   progressId: string,
-  baseExtras?: Record<string, any>
+  baseExtras?: Record<string, unknown>
 ): ProgressEmitter {
   return (titleKey, now, total, options) => {
     if (!mainWindow.instance) return
@@ -51,6 +51,18 @@ function normalizeText(value?: string | null): string | undefined {
   const trimmed = value.trim()
   return trimmed === '' ? undefined : trimmed
 }
+
+type ErrorLike = {
+  message?: unknown
+  code?: unknown
+  stderr?: unknown
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value)
+
+const getErrorLike = (value: unknown): ErrorLike | undefined =>
+  isRecord(value) ? (value as ErrorLike) : undefined
 
 function buildSearchPayload(detail: {
   filePath: string
@@ -90,7 +102,7 @@ function buildUpdatePayload(
   const assignString = (key: keyof ITrackMetadataUpdatePayload, value?: string | null) => {
     const normalized = normalizeText(value ?? undefined)
     if (normalized !== undefined) {
-      ;(payload as any)[key] = normalized
+      Reflect.set(payload, key, normalized)
     }
   }
   assignString('title', suggestion.title)
@@ -115,19 +127,22 @@ function buildUpdatePayload(
   return payload
 }
 
-function summarizeErrorMessage(err: any): string {
-  if (!err) return 'UNKNOWN'
-  if (typeof err.message === 'string' && err.message.trim()) {
-    return err.message.trim()
+function summarizeErrorMessage(err: unknown): string {
+  const error = getErrorLike(err)
+  const message =
+    typeof error?.message === 'string'
+      ? error.message.trim()
+      : typeof err === 'string'
+        ? err.trim()
+        : ''
+  if (message) {
+    return message
   }
-  if (typeof err === 'string' && err.trim()) {
-    return err.trim()
-  }
-  if (typeof err.code === 'string') return err.code
+  if (typeof error?.code === 'string') return error.code
   return 'UNKNOWN'
 }
 
-const isCancelledError = (err: any) => {
+const isCancelledError = (err: unknown) => {
   const code = summarizeErrorMessage(err)
   return code === 'MUSICBRAINZ_ABORTED' || code === 'ACOUSTID_ABORTED'
 }
@@ -198,8 +213,8 @@ export async function autoFillTrackMetadata(
     pushProgress('metadata.autoFillProgressPreparing', 0, uniquePaths.length, { isInitial: true })
 
     const configuredAcoustIdKey =
-      typeof (store as any)?.settingConfig?.acoustIdClientKey === 'string'
-        ? String((store as any).settingConfig.acoustIdClientKey).trim()
+      typeof store.settingConfig?.acoustIdClientKey === 'string'
+        ? String(store.settingConfig.acoustIdClientKey).trim()
         : ''
     let fingerprintDisabledCode: string | null = configuredAcoustIdKey
       ? null
@@ -229,7 +244,7 @@ export async function autoFillTrackMetadata(
           normalizeText(detail.title) || normalizeText(detail.fileName) || item.displayName
 
         // Check if track was already auto-filled and skip if setting is enabled
-        const skipCompleted = (store as any)?.settingConfig?.autoFillSkipCompleted !== false
+        const skipCompleted = store.settingConfig?.autoFillSkipCompleted !== false
         if (skipCompleted) {
           try {
             const listRoot = await findSongListRoot(path.dirname(filePath))
@@ -258,7 +273,7 @@ export async function autoFillTrackMetadata(
               match = matches[0]
               method = 'fingerprint'
             }
-          } catch (err: any) {
+          } catch (err: unknown) {
             if (isCancelledError(err)) {
               markItemCancelled(item)
               break
@@ -288,14 +303,14 @@ export async function autoFillTrackMetadata(
               match = matches[0]
               method = 'search'
             }
-          } catch (err: any) {
+          } catch (err: unknown) {
             if (isCancelledError(err)) {
               markItemCancelled(item)
               break
             }
             log.error('[metadata-auto] musicbrainz search failed', {
               filePath,
-              error: err?.message || err
+              error: summarizeErrorMessage(err)
             })
             summary.errors++
             item.status = 'error'
@@ -320,7 +335,7 @@ export async function autoFillTrackMetadata(
             allowFallback: true,
             cancelToken
           })
-        } catch (err: any) {
+        } catch (err: unknown) {
           if (isCancelledError(err)) {
             markItemCancelled(item)
             break
@@ -328,7 +343,7 @@ export async function autoFillTrackMetadata(
           log.error('[metadata-auto] fetch suggestion failed', {
             filePath,
             recordingId: match.recordingId,
-            error: err?.message || err
+            error: summarizeErrorMessage(err)
           })
           summary.errors++
           item.status = 'error'
@@ -386,24 +401,25 @@ export async function autoFillTrackMetadata(
               }
             }
           } catch {}
-        } catch (err: any) {
+        } catch (err: unknown) {
           if (isCancelledError(err)) {
             markItemCancelled(item)
             break
           }
+          const error = getErrorLike(err)
           log.error('[metadata-auto] update metadata failed', {
             filePath,
-            error: err?.message || err,
-            code: err?.code
+            error: summarizeErrorMessage(err),
+            code: error?.code
           })
           summary.errors++
           item.status = 'error'
           item.method = method
-          if (err?.code === 'FFMPEG_METADATA_FAILED') {
+          if (error?.code === 'FFMPEG_METADATA_FAILED') {
             item.messageCode = 'FFMPEG_METADATA_FAILED'
             const detail =
-              typeof err?.stderr === 'string' && err.stderr.trim()
-                ? err.stderr.trim()
+              typeof error?.stderr === 'string' && error.stderr.trim()
+                ? error.stderr.trim()
                 : summarizeErrorMessage(err)
             item.messageDetail = detail
           } else {
@@ -411,12 +427,15 @@ export async function autoFillTrackMetadata(
             item.messageDetail = summarizeErrorMessage(err)
           }
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (isCancelledError(err)) {
           markItemCancelled(item)
           break
         }
-        log.error('[metadata-auto] unexpected error', { filePath, error: err?.message || err })
+        log.error('[metadata-auto] unexpected error', {
+          filePath,
+          error: summarizeErrorMessage(err)
+        })
         summary.errors++
         item.status = 'error'
         item.messageCode = 'UNKNOWN'

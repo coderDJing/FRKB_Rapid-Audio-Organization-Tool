@@ -12,6 +12,7 @@ import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
+import type { AudioConvertDialogResult } from '@renderer/components/audioConvertDialog.types'
 
 // Type for the return value when a dialog needs to be opened by the parent
 export interface OpenDialogAction {
@@ -57,6 +58,8 @@ export function useSongItemContextMenu(
   // runtimeStore: ReturnType<typeof useRuntimeStore>, // Passed implicitly via direct import for now
   songsAreaHostElementRef: Ref<InstanceType<typeof OverlayScrollbarsComponent> | null> // For scrolling
 ) {
+  const getErrorMessage = (error: unknown) =>
+    error instanceof Error ? error.message : String(error || t('common.unknownError'))
   const runtime = useRuntimeStore() // Use the store directly
   const normalizePath = (p: string | undefined | null) =>
     (p || '').replace(/\//g, '\\').toLowerCase()
@@ -115,7 +118,7 @@ export function useSongItemContextMenu(
     source.map((group) => group.map((item) => ({ ...item })))
 
   const resolveCuratedArtistMatch = (currentSong: ISongInfo) => {
-    if ((runtime.setting as any).enableCuratedArtistTracking === false) return ''
+    if (runtime.setting.enableCuratedArtistTracking === false) return ''
     if (runtime.libraryAreaSelected !== 'FilterLibrary') return ''
     const artistName = String(currentSong?.artist || '')
       .trim()
@@ -387,15 +390,11 @@ export function useSongItemContextMenu(
         let hadError = false
         try {
           summary = await invokeMetadataAutoFill(selectedFiles)
-        } catch (error: any) {
+        } catch (error: unknown) {
           hadError = true
-          const message =
-            typeof error?.message === 'string' && error.message.trim().length
-              ? error.message
-              : t('common.unknownError')
           await confirm({
             title: t('common.error'),
-            content: [message],
+            content: [getErrorMessage(error)],
             confirmShow: false
           })
         } finally {
@@ -443,8 +442,8 @@ export function useSongItemContextMenu(
             .filter((e) => runtime.setting.audioExt.includes(e))
         )
         const sourceExts = Array.from(extsSet)
-        const dialogResult: any = await openConvertDialog({ sourceExts })
-        if (dialogResult && dialogResult !== 'cancel') {
+        const dialogResult = (await openConvertDialog({ sourceExts })) as AudioConvertDialogResult
+        if (dialogResult && dialogResult !== 'cancel' && !('files' in dialogResult)) {
           try {
             await window.electron.ipcRenderer.invoke('audio:convert:start', {
               files,
@@ -705,10 +704,10 @@ export function useSongItemContextMenu(
         if (res !== 'confirm') return null
         try {
           await window.electron.ipcRenderer.invoke('curatedArtists:remove', matchedCuratedArtist)
-        } catch (error: any) {
+        } catch (error: unknown) {
           await confirm({
             title: t('common.error'),
-            content: [String(error?.message || t('common.unknownError'))],
+            content: [getErrorMessage(error)],
             confirmShow: false
           })
         }

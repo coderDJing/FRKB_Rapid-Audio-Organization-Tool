@@ -18,6 +18,7 @@ import type {
   MixtapeGainPoint,
   MixtapeMuteSegment,
   MixtapeTrack,
+  TimelineLayoutSnapshot,
   TimelineTrackLayout
 } from '@renderer/composables/mixtape/types'
 
@@ -28,6 +29,29 @@ type TransportEntryLike = {
   mixEnvelopeSources: Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[] | undefined>>
   volumeMuteSegments: MixtapeMuteSegment[]
   volumeMuteSegmentsSource?: MixtapeMuteSegment[]
+}
+
+type ValueRef<T> = {
+  value: T
+}
+
+type TimelineTransportResolversContext = {
+  tracks: ValueRef<MixtapeTrack[]>
+  timelineLayout: ValueRef<TimelineLayoutSnapshot>
+  normalizedRenderZoom: ValueRef<number>
+  timelineScrollLeft: ValueRef<number>
+  timelineViewportWidth: ValueRef<number>
+  rulerRef: ValueRef<HTMLElement | null>
+  playheadSec: ValueRef<number>
+  playheadVisible: ValueRef<boolean>
+  transportPreloadDone: ValueRef<number>
+  transportPreloadTotal: ValueRef<number>
+  transportDurationSecRef: ValueRef<number>
+  computeTimelineDuration: () => number
+  resolveRenderPxPerSec: (zoomValue: number) => number
+  buildSequentialLayoutForZoom: (zoomValue: number) => TimelineLayoutSnapshot
+  clampNumber: (value: number, min: number, max: number) => number
+  segmentMuteGain: number
 }
 
 type RulerTickAlign = 'start' | 'center' | 'end'
@@ -41,7 +65,7 @@ const RULER_TICK_STEPS_SEC = [1, 2, 5, 10, 15, 20, 30, 60, 120, 300, 600, 900, 1
 const RULER_TICK_LABEL_MIN_PX = 30
 const RULER_TICK_MAX_COUNT = 280
 
-export const createTimelineTransportResolversModule = (ctx: any) => {
+export const createTimelineTransportResolversModule = (ctx: TimelineTransportResolversContext) => {
   const {
     tracks,
     timelineLayout,
@@ -290,11 +314,7 @@ export const createTimelineTransportResolversModule = (ctx: any) => {
   ) => {
     const safeDuration = Math.max(0, Number(durationSec) || 0)
     const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
-    const normalized = normalizeMixEnvelopePoints(
-      param,
-      (track as any)?.[envelopeField],
-      safeDuration
-    )
+    const normalized = normalizeMixEnvelopePoints(param, track[envelopeField], safeDuration)
     if (normalized.length > 0) return normalized
     return buildFlatMixEnvelope(param, safeDuration, 1)
   }
@@ -306,9 +326,7 @@ export const createTimelineTransportResolversModule = (ctx: any) => {
   ) => {
     const latestTrack = tracks.value.find((track: MixtapeTrack) => track.id === entry.trackId)
     const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
-    const latestEnvelopeSource = latestTrack
-      ? ((latestTrack as any)?.[envelopeField] as MixtapeGainPoint[] | undefined)
-      : undefined
+    const latestEnvelopeSource = latestTrack ? latestTrack[envelopeField] : undefined
     if (latestTrack && latestEnvelopeSource !== entry.mixEnvelopeSources[param]) {
       entry.mixEnvelopes[param] = resolveTrackMixEnvelope(latestTrack, entry.duration, param)
       entry.mixEnvelopeSources[param] = latestEnvelopeSource

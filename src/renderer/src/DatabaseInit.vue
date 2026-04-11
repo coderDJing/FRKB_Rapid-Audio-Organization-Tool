@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, useTemplateRef, reactive } from 'vue'
+import {
+  ref,
+  onMounted,
+  onUnmounted,
+  computed,
+  useTemplateRef,
+  reactive,
+  type ComponentPublicInstance
+} from 'vue'
 import { t } from '@renderer/utils/translate'
 import { v4 as uuidV4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
@@ -14,6 +22,7 @@ const runtime = useRuntimeStore()
 const uuid = uuidV4()
 const flashArea = ref('') // 控制动画是否正在播放
 const hintIcon = hintIconAsset
+type FingerprintMode = 'pcm' | 'file'
 
 // 模拟闪烁三次的逻辑（使用 setTimeout）
 const flashBorder = (flashAreaName: string) => {
@@ -48,11 +57,28 @@ const manifestDisplayName = computed(() =>
 )
 
 // 必选：指纹模式（'pcm' | 'file'），默认为空，用户必须选择
-const fingerprintMode = ref<'pcm' | 'file' | ''>('')
+const fingerprintMode = ref<FingerprintMode | ''>('')
+const normalizeFingerprintMode = (
+  value: unknown,
+  fallback: FingerprintMode = 'pcm'
+): FingerprintMode => (value === 'file' ? 'file' : value === 'pcm' ? 'pcm' : fallback)
+const fingerprintModeModel = computed<string>({
+  get: () => fingerprintMode.value,
+  set: (value) => {
+    fingerprintMode.value = value === 'file' ? 'file' : value === 'pcm' ? 'pcm' : ''
+  }
+})
 // 单选项级别的 hint 绑定：为每个选项的图标保存一个 ref
-const optionHintRefs = reactive<Record<string, HTMLImageElement | null>>({})
-function setOptionHintRef(value: string, el: HTMLImageElement | null) {
-  if (el) optionHintRefs[value] = el
+const optionHintRefs = reactive<Record<string, HTMLElement | null>>({})
+const resolveTemplateElement = (
+  value: Element | ComponentPublicInstance | null
+): HTMLElement | null => {
+  if (value instanceof HTMLElement) return value
+  if (!value || typeof value !== 'object' || !('$el' in value)) return null
+  return value.$el instanceof HTMLElement ? value.$el : null
+}
+function setOptionHintRef(value: string, el: Element | ComponentPublicInstance | null) {
+  optionHintRefs[value] = resolveTemplateElement(el)
 }
 
 let clickChooseDirFlag = false
@@ -277,7 +303,10 @@ const submitConfirm = async () => {
     await window.electron.ipcRenderer.invoke(
       'databaseInitWindow-InitDataBase',
       runtime.setting.databaseUrl,
-      { createSamples: false, fingerprintMode: (fingerprintMode.value || 'file') as any }
+      {
+        createSamples: false,
+        fingerprintMode: normalizeFingerprintMode(fingerprintMode.value, 'file')
+      }
     )
     return
   }
@@ -291,7 +320,7 @@ const submitConfirm = async () => {
   await window.electron.ipcRenderer.invoke(
     'databaseInitWindow-InitDataBase',
     runtime.setting.databaseUrl,
-    { createSamples: true, fingerprintMode: fingerprintMode.value as any }
+    { createSamples: true, fingerprintMode: normalizeFingerprintMode(fingerprintMode.value) }
   )
 }
 const cancel = () => {
@@ -431,7 +460,7 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
             "
           >
             <singleRadioGroup
-              v-model="fingerprintMode as any"
+              v-model="fingerprintModeModel"
               :options="[
                 { label: t('fingerprints.modePCM'), value: 'pcm' },
                 { label: t('fingerprints.modeFile'), value: 'file' }
@@ -442,14 +471,14 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
               <template #option="{ opt }">
                 <span class="label">{{ opt.label }}</span>
                 <img
-                  :ref="(el: any) => setOptionHintRef(opt.value, el)"
+                  :ref="(el) => setOptionHintRef(opt.value, el)"
                   :src="hintIcon"
                   style="width: 14px; height: 14px; margin-left: 6px"
                   :draggable="false"
                   class="theme-icon"
                 />
                 <bubbleBox
-                  :dom="(optionHintRefs[opt.value] || undefined) as any"
+                  :dom="optionHintRefs[opt.value] ?? null"
                   :title="
                     opt.value === 'pcm'
                       ? t('fingerprints.modePCMHint')

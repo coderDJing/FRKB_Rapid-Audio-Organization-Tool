@@ -48,6 +48,12 @@ type PioneerDriveEjectResult = {
   detail?: string
 }
 
+type RekordboxSourceTreeLoadResult = {
+  treeNodes?: IPioneerPlaylistTreeNode[]
+  driveName?: string
+  sourceRootPath?: string
+}
+
 export type PioneerDriveIcon = HoverableIcon & {
   key: string
   tooltip: string
@@ -235,6 +241,14 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
     runtime.pioneerDeviceLibrary.selectedSourceKey === sourceKey &&
     runtime.pioneerDeviceLibrary.selectedLibraryType === libraryType
 
+  const getErrorMessage = (error: unknown, fallbackMessage: string) => {
+    if (error instanceof Error) {
+      const message = String(error.message || '').trim()
+      return message || fallbackMessage
+    }
+    return String(error || fallbackMessage)
+  }
+
   const loadSourceTree = async (params: {
     sourceKind: IRekordboxSourceKind
     sourceKey: string
@@ -244,10 +258,10 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
     preferredPlaylistId: number
     hasCachedTree: boolean
     fallbackSourceName: string
-    loadTree: () => Promise<any>
+    loadTree: () => Promise<RekordboxSourceTreeLoadResult>
     loadTreeFailedMessage: string
-    resolveSourceName?: (result: any) => string
-    resolveRootPath?: (result: any) => string
+    resolveSourceName?: (result: RekordboxSourceTreeLoadResult) => string
+    resolveRootPath?: (result: RekordboxSourceTreeLoadResult) => string
   }) => {
     const requestToken = ++sourceTreeRequestToken
     const {
@@ -292,7 +306,7 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
       runtime.pioneerDeviceLibrary.selectedSourceName =
         resolveSourceName?.(result) || fallbackSourceName
       runtime.pioneerDeviceLibrary.selectedSourceRootPath = resolveRootPath?.(result) || rootPath
-    } catch (error: any) {
+    } catch (error) {
       if (!isCurrentSelectedSource(sourceKind, sourceKey, libraryType)) return
       if (requestToken !== sourceTreeRequestToken) return
 
@@ -301,7 +315,7 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
         runtime.pioneerDeviceLibrary.selectedPlaylistId = 0
         await confirm({
           title: t('common.error'),
-          content: [String(error?.message || error || loadTreeFailedMessage)],
+          content: [getErrorMessage(error, loadTreeFailedMessage)],
           confirmShow: false
         })
         return
@@ -499,7 +513,7 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
           buildRekordboxSourceChannel('usb', 'load-tree'),
           item.path,
           item.libraryType
-        ),
+        ) as Promise<RekordboxSourceTreeLoadResult>,
       loadTreeFailedMessage: t('pioneer.loadTreeFailed'),
       resolveSourceName: (result) => String(result?.driveName || '').trim() || item.tooltip,
       resolveRootPath: () => item.path
@@ -550,7 +564,9 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
       hasCachedTree: Boolean(cachedTree),
       fallbackSourceName: t('library.rekordboxDesktopLibrary'),
       loadTree: () =>
-        window.electron.ipcRenderer.invoke(buildRekordboxSourceChannel('desktop', 'load-tree')),
+        window.electron.ipcRenderer.invoke(
+          buildRekordboxSourceChannel('desktop', 'load-tree')
+        ) as Promise<RekordboxSourceTreeLoadResult>,
       loadTreeFailedMessage: t('rekordboxDesktop.loadTreeFailed'),
       resolveSourceName: () => t('library.rekordboxDesktopLibrary'),
       resolveRootPath: (result) => String(result?.sourceRootPath || '').trim() || icon.rootPath
@@ -626,7 +642,7 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
       clearRekordboxSourceCache(resolvePioneerDriveSourceCacheKey(item))
       pioneerDriveIcons.value = pioneerDriveIcons.value.filter((icon) => icon.key !== item.key)
       await refreshPioneerDriveIcons()
-    } catch (error: any) {
+    } catch (error) {
       if (suspendedSelection) {
         restoreSelection(suspendedSelection)
       }
@@ -636,7 +652,7 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
           success: false,
           path: item.path,
           code: 'EJECT_COMMAND_FAILED',
-          detail: String(error?.message || error || '')
+          detail: getErrorMessage(error, '')
         }),
         confirmShow: false,
         innerHeight: 0,

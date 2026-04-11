@@ -5,7 +5,7 @@ import type { ISettingConfig } from '../types/globals'
 import { UI_SETTING_KEYS } from '../shared/uiSettings'
 
 export function stripUiSettings<T>(setting: T): T {
-  const next = { ...(setting as any) }
+  const next = { ...(setting as object) } as T & Record<string, unknown>
   for (const key of UI_SETTING_KEYS) {
     if (key in next) delete next[key]
   }

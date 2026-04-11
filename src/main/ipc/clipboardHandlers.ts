@@ -19,14 +19,27 @@ const execFileAsync = promisify(execFile)
 
 const logClipboard = (level: 'debug' | 'warn' | 'error', message: string, payload?: unknown) => {
   const consoleMethod = level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'info'
+  const logWriter: Record<
+    'debug' | 'warn' | 'error',
+    (message: string, payload?: unknown) => void
+  > = {
+    debug: (msg, extra) => log.debug(msg, extra),
+    warn: (msg, extra) => log.warn(msg, extra),
+    error: (msg, extra) => log.error(msg, extra)
+  }
+  const consoleWriter: Record<'info' | 'warn' | 'error', (...args: unknown[]) => void> = {
+    info: (...args) => console.info(...args),
+    warn: (...args) => console.warn(...args),
+    error: (...args) => console.error(...args)
+  }
   try {
-    ;(log as any)[level](message, payload)
+    logWriter[level](message, payload)
   } catch {}
   try {
     if (payload === undefined) {
-      ;(console as any)[consoleMethod](message)
+      consoleWriter[consoleMethod](message)
     } else {
-      ;(console as any)[consoleMethod](message, payload)
+      consoleWriter[consoleMethod](message, payload)
     }
   } catch {}
 }

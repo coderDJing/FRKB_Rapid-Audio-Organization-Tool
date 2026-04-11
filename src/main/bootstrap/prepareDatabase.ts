@@ -49,7 +49,7 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
     const proceed = await ensureLegacyMigration(store.settingConfig.databaseUrl)
     if (!proceed) return
     // 根据设置的模式加载对应列表
-    const mode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
+    const mode = store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
     const list = await loadList(mode)
     store.databaseDir = store.settingConfig.databaseUrl
     store.songFingerprintList = Array.isArray(list) ? list : []

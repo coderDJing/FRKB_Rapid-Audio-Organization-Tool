@@ -32,7 +32,7 @@ export const useMixtapeShellUi = ({
   let removeSystemThemeListener: (() => void) | null = null
 
   const isLightTheme = computed(() => {
-    const themeMode = String((runtime.setting as any).themeMode || 'system')
+    const themeMode = String(runtime.setting.themeMode || 'system')
     if (themeMode === 'light') return true
     if (themeMode === 'dark') return false
     return !systemPrefersDark.value

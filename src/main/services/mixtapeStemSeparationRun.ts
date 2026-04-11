@@ -60,6 +60,11 @@ const {
 const resolveDemucsBootstrapPath = () =>
   path.join(resolveBundledDemucsBootstrapDirPath(), 'mixtape_demucs_bootstrap.py')
 
+const getErrorCode = (error: unknown): string => {
+  if (!error || typeof error !== 'object') return ''
+  return normalizeText(Reflect.get(error, 'code'), 80)
+}
+
 type DemucsWaveformBootstrapInput = {
   pcmPath: string
   inputSampleRate: number
@@ -572,7 +577,7 @@ export const runStemSeparation = async (params: {
               })
               return
             } catch (error) {
-              const errorCode = normalizeText((error as any)?.code, 80) || 'XPU_WORKER_FALLBACK'
+              const errorCode = getErrorCode(error) || 'XPU_WORKER_FALLBACK'
               const errorMessage = normalizeText(
                 error instanceof Error
                   ? error.message
@@ -686,7 +691,7 @@ export const runStemSeparation = async (params: {
             lastDeviceError = error
             const hasNext = index < deviceCandidates.length - 1
             const retryable = hasNext && shouldRetryWithNextDevice(error)
-            const normalizedErrorCode = normalizeText((error as any)?.code, 80)
+            const normalizedErrorCode = getErrorCode(error)
             const normalizedErrorMessage = normalizeText(
               error instanceof Error ? error.message : String(error || ''),
               800

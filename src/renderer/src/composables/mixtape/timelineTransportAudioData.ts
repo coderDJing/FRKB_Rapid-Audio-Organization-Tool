@@ -287,9 +287,7 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
     const useStemMode = ctx.isStemMixMode()
     const entries = ctx.tracks.value
       .map((track: MixtapeTrack) => {
-        const stemStatus = useStemMode
-          ? ctx.normalizeMixtapeStemStatus((track as any)?.stemStatus)
-          : 'ready'
+        const stemStatus = useStemMode ? ctx.normalizeMixtapeStemStatus(track.stemStatus) : 'ready'
         const stemReadyForPlayback = !useStemMode || stemStatus === 'ready'
         if (useStemMode && !stemReadyForPlayback) {
           stemNotReadyCount += 1
@@ -342,7 +340,7 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
         const mixEnvelopeSources = activeParams.reduce(
           (acc, param) => {
             const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
-            acc[param] = (track as any)?.[envelopeField] as MixtapeGainPoint[] | undefined
+            acc[param] = track[envelopeField]
             return acc
           },
           {} as Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[] | undefined>>

@@ -20,7 +20,7 @@ type CreateMixtapeAutoGainControllerParams = {
   transportDecoding: Ref<boolean>
   bpmAnalysisActive: Ref<boolean>
   resolveTrackTitle: (track: MixtapeTrack) => string
-  t: (key: string, payload?: Record<string, any>) => string
+  t: (key: string, payload?: Record<string, unknown>) => string
   onStopTransport: () => void
   onEnvelopeApplied: () => void
   persistGainEnvelope: (entries: PersistEntry[]) => Promise<void>

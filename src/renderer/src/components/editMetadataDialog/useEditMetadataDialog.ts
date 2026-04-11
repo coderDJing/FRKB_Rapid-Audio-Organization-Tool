@@ -6,6 +6,7 @@ import { t } from '@renderer/utils/translate'
 import confirm from '@renderer/components/confirmDialog'
 import showMusicBrainzDialog, { MusicBrainzDialogInitialQuery } from '../musicBrainzDialog'
 import type {
+  ISongInfo,
   ITrackMetadataDetail,
   ITrackMetadataUpdatePayload,
   IMusicBrainzApplyPayload
@@ -16,8 +17,28 @@ const invalidFileNameRegex = /[<>:"/\\|?*\u0000-\u001F]/
 
 interface DialogProps {
   filePath: string
-  confirmCallback: (payload?: any) => void
+  confirmCallback: (payload: {
+    updatedSongInfo: ISongInfo
+    detail: ITrackMetadataDetail
+    oldFilePath: string
+  }) => void
   cancelCallback: () => void
+}
+
+type CoverThumbResponse = {
+  format: string
+  data?: Uint8Array | { data: number[] }
+  dataUrl?: string
+}
+
+type MetadataUpdateResponse = {
+  success: boolean
+  songInfo?: ISongInfo
+  detail?: ITrackMetadataDetail
+  renamedFrom?: string
+  message?: string
+  errorCode?: string
+  errorDetail?: string
 }
 
 export function useEditMetadataDialog(props: DialogProps) {
@@ -70,7 +91,7 @@ export function useEditMetadataDialog(props: DialogProps) {
   )
 
   const flashArea = ref('')
-  let flashTimer: any = null
+  let flashTimer: ReturnType<typeof setInterval> | null = null
   let flashCount = 0
   const musicBrainzDialogOpening = ref(false)
   const appliedMusicBrainzData = ref(false)
@@ -124,14 +145,14 @@ export function useEditMetadataDialog(props: DialogProps) {
         detail.filePath,
         256,
         ''
-      )) as { format: string; data?: Uint8Array | { data: number[] }; dataUrl?: string } | null
+      )) as CoverThumbResponse | null
       if (thumb) {
         if (thumb.dataUrl) {
           coverDataUrl.value = thumb.dataUrl
           originalCoverDataUrl.value = thumb.dataUrl
         } else if (thumb.data) {
-          const raw: any = thumb.data
-          const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw.data || raw)
+          const raw = thumb.data
+          const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw.data || [])
           let binary = ''
           for (let i = 0; i < bytes.length; i++) {
             binary += String.fromCharCode(bytes[i])
@@ -201,11 +222,11 @@ export function useEditMetadataDialog(props: DialogProps) {
   function flashFileNameInput() {
     flashArea.value = 'fileName'
     flashCount = 0
-    clearInterval(flashTimer)
+    if (flashTimer) clearInterval(flashTimer)
     flashTimer = setInterval(() => {
       flashCount++
       if (flashCount >= 3) {
-        clearInterval(flashTimer)
+        if (flashTimer) clearInterval(flashTimer)
         flashArea.value = ''
       }
     }, 500)
@@ -365,15 +386,7 @@ export function useEditMetadataDialog(props: DialogProps) {
       const response = (await window.electron.ipcRenderer.invoke(
         'audio:metadata:update',
         payload
-      )) as {
-        success: boolean
-        songInfo?: any
-        detail?: ITrackMetadataDetail
-        renamedFrom?: string
-        message?: string
-        errorCode?: string
-        errorDetail?: string
-      }
+      )) as MetadataUpdateResponse
       if (!response || response.success !== true || !response.songInfo || !response.detail) {
         const code = response?.errorCode || response?.message
         if (code === 'INVALID_FILE_NAME') {
@@ -419,8 +432,13 @@ export function useEditMetadataDialog(props: DialogProps) {
         oldFilePath: response.renamedFrom ?? previousFilePath
       })
       await maybeShowWavCoverHint()
-    } catch (err: any) {
-      const code = err?.errorCode || err?.message
+    } catch (err: unknown) {
+      const error = (err && typeof err === 'object' ? err : null) as {
+        errorCode?: string
+        message?: string
+        errorDetail?: string
+      } | null
+      const code = error?.errorCode || error?.message
       if (code === 'INVALID_FILE_NAME') {
         fileNameError.value = t('metadata.fileNameInvalid')
         flashFileNameInput()
@@ -428,7 +446,7 @@ export function useEditMetadataDialog(props: DialogProps) {
         fileNameError.value = t('metadata.fileNameExists')
         flashFileNameInput()
       } else if (code === 'FFMPEG_METADATA_FAILED') {
-        const detail = err?.errorDetail?.trim()
+        const detail = error?.errorDetail?.trim()
         const message = detail
           ? t('metadata.ffmpegFailedWithReason', { reason: detail })
           : t('metadata.ffmpegFailed')
@@ -516,7 +534,7 @@ export function useEditMetadataDialog(props: DialogProps) {
 
   onUnmounted(() => {
     utils.delHotkeysScope(uuid)
-    clearInterval(flashTimer)
+    if (flashTimer) clearInterval(flashTimer)
   })
 
   return {

@@ -16,6 +16,19 @@ import type {
   SelectionModifiers
 } from './types'
 
+type DriveInfo = {
+  name: string
+  path: string
+  size?: number
+}
+
+type RawDirectoryItem = {
+  name: string
+  path: string
+  isDirectory: boolean
+  size?: number
+}
+
 const PATH_STORAGE_KEY = 'fileSelector_lastPath'
 const DIRECTORY_CLICK_DELAY = 200
 const scrollbarOptions = {
@@ -414,7 +427,7 @@ export function useCustomFileSelector(
     try {
       const items = await window.electron.ipcRenderer.invoke('read-directory', dirPath)
 
-      const treeItems: FileSystemItem[] = items.map((item: any) => ({
+      const treeItems: FileSystemItem[] = (items as RawDirectoryItem[]).map((item) => ({
         name: item.name,
         path: item.path,
         type: item.isDirectory ? 'directory' : 'file',
@@ -464,7 +477,7 @@ export function useCustomFileSelector(
 
   const loadDrives = async () => {
     try {
-      const drives = await window.electron.ipcRenderer.invoke('get-drives')
+      const drives = (await window.electron.ipcRenderer.invoke('get-drives')) as DriveInfo[]
       const userHome = await window.electron.ipcRenderer.invoke('get-user-home')
       const desktopPath = getDesktopPath(userHome)
 
@@ -480,7 +493,7 @@ export function useCustomFileSelector(
         isSpecial: true
       }
 
-      const driveItems = drives.map((drive: any) => ({
+      const driveItems = drives.map((drive) => ({
         name: drive.name,
         path: drive.path,
         type: 'directory' as const,
@@ -602,11 +615,11 @@ export function useCustomFileSelector(
   }
 
   const isDrive = (item: FileSystemItem) => {
-    return item.name.includes(':') || (item as any).isSpecial
+    return item.name.includes(':') || 'isSpecial' in item
   }
 
   const getItemIcon = (item: FileSystemItem) => {
-    if ((item as any).isSpecial) {
+    if ('isSpecial' in item && item.isSpecial) {
       return desktopIcon
     }
 

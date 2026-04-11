@@ -1,8 +1,13 @@
 import type {
+  MixtapeMixMode,
+  MixtapeTrack,
+  MixtapeWaveformStemId,
   RawWaveformData,
   StemWaveformData,
+  TimelineLayoutSnapshot,
   TimelineRenderPayload,
   TimelineRenderTrack,
+  TimelineTrackLayout,
   WaveformPreRenderTask
 } from '@renderer/composables/mixtape/types'
 import {
@@ -10,7 +15,79 @@ import {
   serializeTrackRuntimeTempoSnapshot
 } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
 
-export const createTimelineWorkerBridgeModule = (ctx: any) => {
+type ValueRef<T> = {
+  value: T
+}
+
+type WaveformCacheEntry = {
+  source: CanvasImageSource
+  used: number
+}
+
+type TimelineWaveformSource = {
+  filePath: string
+  stemId: MixtapeWaveformStemId
+  laneIndex: number
+  laneCount: number
+}
+
+type TimelineWorkerBridgeContext = {
+  mixtapeMixMode: ValueRef<MixtapeMixMode>
+  waveformRenderWorkerRef: ValueRef<Worker | null>
+  timelineWorkerReady: ValueRef<boolean>
+  timelineCanvasRef: ValueRef<HTMLCanvasElement | null>
+  timelineViewport: ValueRef<HTMLElement | null>
+  timelineOffscreenCanvasRef: ValueRef<OffscreenCanvas | null>
+  waveformTileCache: Map<string, WaveformCacheEntry>
+  waveformTileCacheIndex: Map<string, Set<string>>
+  waveformTilePending: Set<string>
+  waveformTileCacheTickRef: ValueRef<number>
+  disposeWaveformCacheEntry: (entry: WaveformCacheEntry | null) => void
+  registerWaveformTileCacheKey: (filePath: string, cacheKey: string) => void
+  pruneWaveformTileCache: () => void
+  preRenderPhase: ValueRef<'idle' | 'tiles' | 'frames'>
+  preRenderTotals: ValueRef<{ tiles: number; frames: number }>
+  preRenderState: ValueRef<{ active: boolean; total: number; done: number }>
+  pendingFramePreRenderTasksRef: ValueRef<TimelineRenderPayload[]>
+  waveformPreRenderRafRef: ValueRef<number>
+  waveformPreRenderCursorRef: ValueRef<number>
+  waveformPreRenderQueueRef: ValueRef<WaveformPreRenderTask[]>
+  scheduleWorkerPreRender: () => void
+  getScheduleTimelineDraw: () => (() => void) | null
+  buildSequentialLayoutForZoom: (zoomValue: number) => TimelineLayoutSnapshot
+  forEachVisibleLayoutItem: (
+    snapshot: TimelineLayoutSnapshot,
+    startX: number,
+    endX: number,
+    callback: (item: TimelineTrackLayout) => void
+  ) => void
+  resolveTrackWaveformSources: (track: MixtapeTrack) => TimelineWaveformSource[]
+  resolveWaveformSubLaneMetrics: (
+    laneHeight: number,
+    laneIndex: number,
+    laneCount: number
+  ) => { offset: number; height: number }
+  resolveTrackDurationSeconds: (track: MixtapeTrack) => number
+  resolveTrackSourceDurationSeconds: (track: MixtapeTrack) => number
+  resolveTrackFirstBeatMs?: (track: MixtapeTrack) => number
+  resolveTrackTimeMapSignature?: (track: MixtapeTrack) => string
+  resolveTrackGridSignature?: (track: MixtapeTrack) => string
+  resolveRenderPxPerSec: (zoomValue: number) => number
+  resolveTimelineBufferId: (zoomValue: number) => string
+  resolveLaneHeightForZoom: (zoomValue: number) => number
+  clampZoomValue: (zoomValue: number) => number
+  normalizedRenderZoom: ValueRef<number>
+  waveformVersion: ValueRef<number>
+  bpmAnalysisActive: ValueRef<boolean>
+  bpmAnalysisFailed: ValueRef<boolean>
+  SHOW_GRID_LINES: boolean
+  RENDER_X_BUFFER_PX: number
+  LANE_GAP: number
+  LANE_PADDING_TOP: number
+  MIXTAPE_WAVEFORM_Y_OFFSET: number
+}
+
+export const createTimelineWorkerBridgeModule = (ctx: TimelineWorkerBridgeContext) => {
   const {
     mixtapeMixMode,
     waveformRenderWorkerRef,
@@ -73,7 +150,7 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
     pendingFramePreRenderTasksRef.value = value
   }
 
-  const postWaveformWorkerMessage = (message: any, transfer?: Transferable[]) => {
+  const postWaveformWorkerMessage = (message: unknown, transfer?: Transferable[]) => {
     const worker = getWaveformRenderWorker()
     if (!worker) return
     try {
@@ -274,7 +351,7 @@ export const createTimelineWorkerBridgeModule = (ctx: any) => {
         )
         .join('|')
     const snapshot = buildSequentialLayoutForZoom(zoomValue)
-    forEachVisibleLayoutItem(snapshot, renderStartX, renderEndX, (item: any) => {
+    forEachVisibleLayoutItem(snapshot, renderStartX, renderEndX, (item: TimelineTrackLayout) => {
       const track = item.track
       const trackWidth = item.width
       if (!trackWidth || !Number.isFinite(trackWidth)) return

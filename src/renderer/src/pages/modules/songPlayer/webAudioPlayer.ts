@@ -49,15 +49,36 @@ export type WebAudioPlayerEvents = {
   seeked: SeekedEventPayload
   timeupdate: number
   decode: number
-  error: any
+  error: unknown
   mixxxwaveformready: undefined
 } & Record<string, unknown>
+
+type ErrorLike = {
+  name?: unknown
+  message?: unknown
+}
+
+interface AudioOutputSinkTarget {
+  setSinkId?(deviceId: string): Promise<void>
+}
+
+type AudioElementWithExtensions = HTMLAudioElement & AudioOutputSinkTarget
+type AudioContextWithExtensions = AudioContext & AudioOutputSinkTarget
+type AudioContextConstructor = new (options?: AudioContextOptions) => AudioContext
+type WindowWithAudioContext = Window & {
+  AudioContext?: AudioContextConstructor
+  webkitAudioContext?: AudioContextConstructor
+}
+
+const getErrorLike = (value: unknown): ErrorLike | null =>
+  value && typeof value === 'object' ? (value as ErrorLike) : null
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
 const isIgnorablePlayInterruptionError = (error: unknown) => {
-  const name = String((error as any)?.name || '').trim()
-  const message = String((error as any)?.message || error || '').trim()
+  const errorLike = getErrorLike(error)
+  const name = String(errorLike?.name || '').trim()
+  const message = String(errorLike?.message || error || '').trim()
   if (name === 'AbortError') return true
   const lowered = message.toLowerCase()
   return (
@@ -201,7 +222,7 @@ export class WebAudioPlayer {
   private suppressPauseEvent = false
   private mode: 'none' | 'html' | 'pcm' = 'none'
 
-  private audioElement: HTMLAudioElement | null = null
+  private audioElement: AudioElementWithExtensions | null = null
   private audioHandlers: {
     loadedmetadata: () => void
     play: () => void
@@ -222,24 +243,24 @@ export class WebAudioPlayer {
     event: K,
     handler: (payload: WebAudioPlayerEvents[K]) => void
   ): void {
-    this.emitter.on(event, handler as any)
+    this.emitter.on(event, handler)
   }
 
   off<K extends keyof WebAudioPlayerEvents>(
     event: K,
     handler: (payload: WebAudioPlayerEvents[K]) => void
   ): void {
-    this.emitter.off(event, handler as any)
+    this.emitter.off(event, handler)
   }
 
   once<K extends keyof WebAudioPlayerEvents>(
     event: K,
     handler: (payload: WebAudioPlayerEvents[K]) => void
   ): void {
-    const wrapper = ((payload: any) => {
-      this.off(event, wrapper as any)
-      ;(handler as any)(payload)
-    }) as any
+    const wrapper = (payload: WebAudioPlayerEvents[K]) => {
+      this.off(event, wrapper)
+      handler(payload)
+    }
     this.on(event, wrapper)
   }
 
@@ -247,12 +268,11 @@ export class WebAudioPlayer {
     event: K,
     payload?: WebAudioPlayerEvents[K]
   ): void {
-    this.emitter.emit(event, payload as any)
+    this.emitter.emit(event, payload as WebAudioPlayerEvents[K])
   }
 
   removeAllListeners<K extends keyof WebAudioPlayerEvents>(event?: K): void {
-    const all = (this.emitter as any).all
-    if (!all) return
+    const all = this.emitter.all
     if (event) {
       all.delete(event)
     } else if (all.clear) {
@@ -502,8 +522,8 @@ export class WebAudioPlayer {
     }
 
     try {
-      if (typeof (audio as any).fastSeek === 'function') {
-        ;(audio as any).fastSeek(nextTime)
+      if (typeof audio.fastSeek === 'function') {
+        audio.fastSeek(nextTime)
       } else {
         audio.currentTime = nextTime
       }
@@ -653,7 +673,7 @@ export class WebAudioPlayer {
     if (!audio) {
       return
     }
-    const setSinkId = (audio as any)?.setSinkId
+    const setSinkId = audio.setSinkId
     if (typeof setSinkId !== 'function') {
       throw new Error('setSinkIdUnsupported')
     }
@@ -667,13 +687,13 @@ export class WebAudioPlayer {
     }
   }
 
-  private createAudioElement(): HTMLAudioElement {
-    const audio = document.createElement('audio')
+  private createAudioElement(): AudioElementWithExtensions {
+    const audio = document.createElement('audio') as AudioElementWithExtensions
     audio.preload = 'auto'
     audio.autoplay = false
     audio.muted = false
     audio.volume = this.volume
-    ;(audio as any).playsInline = true
+    audio.setAttribute('playsinline', 'true')
     audio.style.display = 'none'
     if (!audio.parentNode && typeof document !== 'undefined') {
       document.body.appendChild(audio)
@@ -681,7 +701,7 @@ export class WebAudioPlayer {
     return audio
   }
 
-  private attachAudioElement(audio: HTMLAudioElement): void {
+  private attachAudioElement(audio: AudioElementWithExtensions): void {
     if (this.audioElement === audio) {
       this.ensureAudioElementAttached(audio)
       return
@@ -717,7 +737,7 @@ export class WebAudioPlayer {
     this.audioElement = null
   }
 
-  private ensureAudioElementAttached(audio: HTMLAudioElement): void {
+  private ensureAudioElementAttached(audio: AudioElementWithExtensions): void {
     if (typeof document === 'undefined') return
     if (!audio.parentNode) {
       audio.style.display = 'none'
@@ -725,7 +745,7 @@ export class WebAudioPlayer {
     }
   }
 
-  private bindAudioEvents(audio: HTMLAudioElement): void {
+  private bindAudioEvents(audio: AudioElementWithExtensions): void {
     const handlers = {
       loadedmetadata: () => this.handleMetadataReady(),
       play: () => this.handlePlayEvent(),
@@ -741,7 +761,7 @@ export class WebAudioPlayer {
     this.audioHandlers = handlers
   }
 
-  private unbindAudioEvents(audio: HTMLAudioElement): void {
+  private unbindAudioEvents(audio: AudioElementWithExtensions): void {
     const handlers = this.audioHandlers
     if (!handlers) return
     audio.removeEventListener('loadedmetadata', handlers.loadedmetadata)
@@ -784,8 +804,8 @@ export class WebAudioPlayer {
       const target = this.pendingSeekTime
       this.pendingSeekTime = null
       try {
-        if (typeof (audio as any).fastSeek === 'function') {
-          ;(audio as any).fastSeek(target)
+        if (typeof audio.fastSeek === 'function') {
+          audio.fastSeek(target)
         } else {
           audio.currentTime = target
         }
@@ -796,7 +816,7 @@ export class WebAudioPlayer {
     }
     const playPromise = audio.play()
     if (playPromise && typeof playPromise.catch === 'function') {
-      playPromise.catch((error: any) => {
+      playPromise.catch((error: unknown) => {
         if (isIgnorablePlayInterruptionError(error)) {
           return
         }
@@ -876,8 +896,11 @@ export class WebAudioPlayer {
     this.emit('error', new Error(errorMessage))
   }
 
-  private async applyOutputDevice(audio: HTMLAudioElement, deviceId: string): Promise<void> {
-    const setSinkId = (audio as any)?.setSinkId
+  private async applyOutputDevice(
+    audio: AudioElementWithExtensions,
+    deviceId: string
+  ): Promise<void> {
+    const setSinkId = audio.setSinkId
     if (typeof setSinkId !== 'function') {
       throw new Error('setSinkIdUnsupported')
     }
@@ -898,7 +921,8 @@ export class WebAudioPlayer {
   }
 
   private ensurePcmContext(sampleRate?: number): AudioContext | null {
-    const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext
+    const windowWithAudio = window as WindowWithAudioContext
+    const AudioContextCtor = windowWithAudio.AudioContext || windowWithAudio.webkitAudioContext
     if (!AudioContextCtor) {
       return null
     }
@@ -997,7 +1021,7 @@ export class WebAudioPlayer {
 
     try {
       source.start(0, this.pcmOffset)
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.emit('error', error)
       return
     }
@@ -1064,10 +1088,11 @@ export class WebAudioPlayer {
   }
 
   private async applyOutputDeviceToContext(context: AudioContext, deviceId: string): Promise<void> {
-    const setSinkId = (context as any)?.setSinkId
+    const extendedContext = context as AudioContextWithExtensions
+    const setSinkId = extendedContext.setSinkId
     if (typeof setSinkId !== 'function') {
       throw new Error('setSinkIdUnsupported')
     }
-    await setSinkId.call(context, deviceId)
+    await setSinkId.call(extendedContext, deviceId)
   }
 }

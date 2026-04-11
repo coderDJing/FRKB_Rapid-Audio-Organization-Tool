@@ -83,6 +83,12 @@ type CoreCacheEntry = CoreDecodedData & {
   accessedAt: number
 }
 
+type DecodeWorkerPayload = {
+  jobId?: number
+  error?: string
+  result?: DecodeAudioResult
+}
+
 type CoreKeyResolution = {
   key: string
   source: 'provided-stat' | 'fs-stat' | 'path-only'
@@ -280,8 +286,8 @@ class AudioDecodeWorkerPool {
     const workerPath = resolveMainWorkerPath(__dirname, 'audioDecodeWorker.js')
     const worker = new Worker(workerPath)
 
-    worker.on('message', (payload: any) => {
-      const jobId = payload?.jobId
+    worker.on('message', (payload: DecodeWorkerPayload) => {
+      const jobId = typeof payload?.jobId === 'number' ? payload.jobId : -1
       const job = this.pending.get(jobId)
       if (!job) {
         this.busy.delete(worker)

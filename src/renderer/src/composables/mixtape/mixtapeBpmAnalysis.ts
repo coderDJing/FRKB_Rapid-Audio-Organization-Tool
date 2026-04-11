@@ -13,14 +13,23 @@ type BpmAnalysisEntry = {
 const resolveBpmAnalysisMap = (results: unknown[]) => {
   const analysisMap = new Map<string, BpmAnalysisEntry>()
   for (const item of results) {
-    const filePath = normalizeMixtapeFilePath((item as any)?.filePath)
-    const bpmValue = (item as any)?.bpm
+    const payload =
+      item && typeof item === 'object' && !Array.isArray(item)
+        ? (item as {
+            filePath?: unknown
+            bpm?: unknown
+            firstBeatMs?: unknown
+            barBeatOffset?: unknown
+          })
+        : null
+    const filePath = normalizeMixtapeFilePath(payload?.filePath)
+    const bpmValue = payload?.bpm
     if (!filePath || typeof bpmValue !== 'number' || !Number.isFinite(bpmValue) || bpmValue <= 0) {
       continue
     }
-    const rawFirstBeatMs = Number((item as any)?.firstBeatMs)
+    const rawFirstBeatMs = Number(payload?.firstBeatMs)
     const firstBeatMs = Number.isFinite(rawFirstBeatMs) && rawFirstBeatMs >= 0 ? rawFirstBeatMs : 0
-    const rawBarBeatOffset = Number((item as any)?.barBeatOffset)
+    const rawBarBeatOffset = Number(payload?.barBeatOffset)
     const barBeatOffset = Number.isFinite(rawBarBeatOffset)
       ? ((Math.round(rawBarBeatOffset) % 32) + 32) % 32
       : undefined

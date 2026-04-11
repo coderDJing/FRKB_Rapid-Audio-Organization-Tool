@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import type { MixtapeStemMode } from '../mixtapeDb'
 import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
-import { getLibraryDb } from '../libraryDb'
+import { getLibraryDb, isSqliteRow } from '../libraryDb'
 import { log } from '../log'
 import { resolveMixtapeStemStatusFromInfo } from '../mixtapeStemDb'
 import { requestBackgroundTaskExecution } from './backgroundOrchestrator'
@@ -37,11 +37,11 @@ const normalizePlaylistId = (value: unknown): string => normalizeText(value, 80)
 
 const normalizeStemMode = (_value: unknown): MixtapeStemMode => FIXED_MIXTAPE_STEM_MODE
 
-const parseTrackInfoJson = (raw: unknown): Record<string, any> => {
+const parseTrackInfoJson = (raw: unknown): Record<string, unknown> => {
   if (typeof raw !== 'string' || !raw.trim()) return {}
   try {
     const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? parsed : {}
+    return isSqliteRow(parsed) ? parsed : {}
   } catch {
     return {}
   }
@@ -66,7 +66,12 @@ const collectBackgroundResumeGroups = (
   }> = []
   try {
     rows = db
-      .prepare(
+      .prepare<{
+        playlist_uuid: string
+        stem_mode: string
+        file_path: string
+        info_json?: string | null
+      }>(
         `SELECT i.playlist_uuid, p.stem_mode, i.file_path, i.info_json
          FROM mixtape_items i
          INNER JOIN mixtape_projects p ON p.playlist_uuid = i.playlist_uuid

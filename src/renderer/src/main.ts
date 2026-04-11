@@ -1,4 +1,4 @@
-import { createApp, watch } from 'vue'
+import { createApp, watch, type AppContext } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import 'overlayscrollbars/overlayscrollbars.css'
@@ -9,6 +9,12 @@ import dialogDrag from './directives/dialogDrag'
 import { initUiSettings, watchUiSettings } from '@renderer/utils/uiSettingsStorage'
 import { installConsoleLogBridge } from '@renderer/utils/installConsoleLogBridge'
 import type { ICuratedArtistFavorite } from 'src/types/globals'
+
+declare global {
+  interface Window {
+    __FRKB_APP_CONTEXT__?: AppContext
+  }
+}
 
 const pinia = createPinia()
 const app = createApp(App)
@@ -23,20 +29,27 @@ app.config.errorHandler = (err: Error) => {
 }
 app.use(pinia)
 app.use(i18n)
-;(window as any).__FRKB_APP_CONTEXT__ = app._context
-const normalizeCuratedArtistFavorites = (payload: any): ICuratedArtistFavorite[] => {
-  if (Array.isArray(payload?.items)) {
-    return payload.items
-      .map((item: any) => ({
-        name: String(item?.name || '')
-          .trim()
-          .replace(/\s+/g, ' '),
-        count: Math.max(1, Math.round(Number(item?.count) || 1))
-      }))
+window.__FRKB_APP_CONTEXT__ = app._context
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value)
+
+const normalizeCuratedArtistFavorites = (payload: unknown): ICuratedArtistFavorite[] => {
+  const snapshot = isRecord(payload) ? payload : null
+  if (Array.isArray(snapshot?.items)) {
+    return snapshot.items
+      .map((item) => {
+        const row = isRecord(item) ? item : null
+        return {
+          name: String(row?.name || '')
+            .trim()
+            .replace(/\s+/g, ' '),
+          count: Math.max(1, Math.round(Number(row?.count) || 1))
+        }
+      })
       .filter((item: ICuratedArtistFavorite) => item.name.length > 0)
   }
-  if (Array.isArray(payload?.artists)) {
-    return payload.artists
+  if (Array.isArray(snapshot?.artists)) {
+    return snapshot.artists
       .map((artist: unknown) => String(artist || '').trim())
       .filter(Boolean)
       .map((name: string) => ({ name, count: 1 }))
@@ -71,7 +84,7 @@ const initializeApp = async () => {
   }
   const prefersDarkMedia = window.matchMedia
     ? window.matchMedia('(prefers-color-scheme: dark)')
-    : (null as any)
+    : null
   const getSystemDark = () => {
     try {
       return !!prefersDarkMedia?.matches
@@ -80,10 +93,10 @@ const initializeApp = async () => {
     }
   }
   // 首次启动按设置（默认 system）或用户选择，跟随系统由主进程广播
-  applyThemeClass(((runtime.setting as any).themeMode || 'system') as any, getSystemDark())
+  applyThemeClass(runtime.setting.themeMode || 'system', getSystemDark())
   // 当主进程在 system 模式下广播系统主题变更时，实时更新
   window.electron.ipcRenderer.on('theme/system-updated', (_e, payload: { isDark: boolean }) => {
-    if (((runtime.setting as any).themeMode || 'system') === 'system') {
+    if ((runtime.setting.themeMode || 'system') === 'system') {
       applyThemeClass('system', !!payload?.isDark)
     }
   })
@@ -92,7 +105,7 @@ const initializeApp = async () => {
   })
   // 监听设置中 themeMode 的变化（light/dark/system）
   watch(
-    () => (runtime.setting as any).themeMode,
+    () => runtime.setting.themeMode,
     (mode: 'system' | 'light' | 'dark') => {
       applyThemeClass(mode || 'system', getSystemDark())
     }
@@ -100,7 +113,7 @@ const initializeApp = async () => {
   // 作为兜底：若系统主题变化但主进程广播未到，前端也能感知（仅在 system 模式下）
   try {
     prefersDarkMedia?.addEventListener?.('change', (e: MediaQueryListEvent) => {
-      if (((runtime.setting as any).themeMode || 'system') === 'system') {
+      if ((runtime.setting.themeMode || 'system') === 'system') {
         applyThemeClass('system', !!e.matches)
       }
     })

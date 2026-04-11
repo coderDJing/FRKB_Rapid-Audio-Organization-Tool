@@ -399,7 +399,14 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       mtime_ms: number
     }> = []
     try {
-      const stmt = db.prepare(
+      const stmt = db.prepare<{
+        rowId: number
+        list_root: string
+        file_path: string
+        info_json: string
+        size: number
+        mtime_ms: number
+      }>(
         'SELECT rowid as rowId, list_root, file_path, info_json, size, mtime_ms FROM song_cache WHERE rowid > ? ORDER BY rowid LIMIT ?'
       )
       rows = stmt.all(backgroundCursor, BACKGROUND_SCAN_ROW_LIMIT)
@@ -515,8 +522,8 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
           }
           const cached = await LibraryCacheDb.loadSongCacheEntry(current.listRoot, filePath)
           if (cached === undefined) continue
-          const cachedKey = cached?.info ? (cached.info as any).key : undefined
-          const cachedBpm = cached?.info ? (cached.info as any).bpm : undefined
+          const cachedKey = cached?.info?.key
+          const cachedBpm = cached?.info?.bpm
           const hasKey = isValidKeyText(cachedKey)
           const hasBpm = isValidBpm(cachedBpm)
           let hasWaveform = false
@@ -549,7 +556,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
     if (!db) return 0
     let rows: Array<{ rowId: number; list_root: string; file_path: string }> = []
     try {
-      const stmt = db.prepare(
+      const stmt = db.prepare<{ rowId: number; list_root: string; file_path: string }>(
         'SELECT rowid as rowId, list_root, file_path FROM song_cache WHERE rowid > ? ORDER BY rowid LIMIT ?'
       )
       rows = stmt.all(backgroundCleanCursor, BACKGROUND_CLEAN_ROW_LIMIT)

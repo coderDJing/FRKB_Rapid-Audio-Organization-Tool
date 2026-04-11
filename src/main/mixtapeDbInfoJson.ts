@@ -1,4 +1,5 @@
 import { getLibraryDb } from './libraryDb'
+import { isSqliteRow } from './libraryDb'
 import { log } from './log'
 
 const TABLE = 'mixtape_items'
@@ -38,6 +39,18 @@ const MIXTAPE_ENVELOPE_MAX_GAIN_BY_PARAM: Record<MixtapeMixEnvelopeParam, number
   volume: 1
 }
 
+type MixtapeItemInfoJson = Record<string, unknown>
+
+const parseItemInfoJson = (raw: unknown): MixtapeItemInfoJson => {
+  if (typeof raw !== 'string' || !raw.trim()) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    return isSqliteRow(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
 export function upsertMixtapeItemMixEnvelopeById(
   param: MixtapeMixEnvelopeParam,
   entries: Array<{ itemId: string; gainEnvelope: Array<{ sec: number; gain: number }> }>
@@ -54,8 +67,9 @@ export function upsertMixtapeItemMixEnvelopeById(
     const points = Array.isArray(raw)
       ? raw
           .map((item) => {
-            const sec = Number((item as any)?.sec)
-            const gain = Number((item as any)?.gain)
+            const point = isSqliteRow(item) ? item : null
+            const sec = Number(point?.sec)
+            const gain = Number(point?.gain)
             if (!Number.isFinite(sec) || sec < 0) return null
             if (!Number.isFinite(gain) || gain <= 0) return null
             return {
@@ -63,10 +77,10 @@ export function upsertMixtapeItemMixEnvelopeById(
               gain: Math.max(0.0001, Math.min(maxGain, Number(gain.toFixed(6))))
             }
           })
-          .filter(Boolean)
+          .filter((item): item is { sec: number; gain: number } => !!item)
       : []
-    if (!points.length) return [] as Array<{ sec: number; gain: number }>
-    const sorted = (points as Array<{ sec: number; gain: number }>).sort((a, b) => a.sec - b.sec)
+    if (!points.length) return []
+    const sorted = points.sort((a, b) => a.sec - b.sec)
     const limited: Array<{ sec: number; gain: number }> = []
     let bucketStartIndex = -1
     let bucketSec = NaN
@@ -118,15 +132,7 @@ export function upsertMixtapeItemMixEnvelopeById(
           if (!itemId) continue
           const nextEnvelope = envelopeById.get(itemId)
           if (!nextEnvelope || nextEnvelope.length < 2) continue
-          let info: Record<string, any> = {}
-          if (row?.info_json) {
-            try {
-              const parsed = JSON.parse(String(row.info_json))
-              if (parsed && typeof parsed === 'object') {
-                info = parsed
-              }
-            } catch {}
-          }
+          const info = parseItemInfoJson(row?.info_json)
           const currentEnvelope = normalizeEnvelope(info[envelopeField])
           const currentSignature = JSON.stringify(currentEnvelope)
           const nextSignature = JSON.stringify(nextEnvelope)
@@ -164,8 +170,9 @@ export function upsertMixtapeItemVolumeMuteSegmentsById(
     const points = Array.isArray(raw)
       ? raw
           .map((item) => {
-            const startSec = Number((item as any)?.startSec)
-            const endSec = Number((item as any)?.endSec)
+            const segment = isSqliteRow(item) ? item : null
+            const startSec = Number(segment?.startSec)
+            const endSec = Number(segment?.endSec)
             if (!Number.isFinite(startSec) || !Number.isFinite(endSec)) return null
             const safeStart = Math.max(0, Number(startSec.toFixed(4)))
             const safeEnd = Math.max(0, Number(endSec.toFixed(4)))
@@ -175,10 +182,10 @@ export function upsertMixtapeItemVolumeMuteSegmentsById(
               endSec: safeEnd
             }
           })
-          .filter(Boolean)
+          .filter((item): item is { startSec: number; endSec: number } => !!item)
       : []
-    if (!points.length) return [] as Array<{ startSec: number; endSec: number }>
-    const sorted = (points as Array<{ startSec: number; endSec: number }>).sort((a, b) => {
+    if (!points.length) return []
+    const sorted = points.sort((a, b) => {
       if (Math.abs(a.startSec - b.startSec) > sameSecEpsilon) return a.startSec - b.startSec
       return a.endSec - b.endSec
     })
@@ -224,15 +231,7 @@ export function upsertMixtapeItemVolumeMuteSegmentsById(
           if (!itemId) continue
           const nextSegments = segmentById.get(itemId)
           if (!nextSegments) continue
-          let info: Record<string, any> = {}
-          if (row?.info_json) {
-            try {
-              const parsed = JSON.parse(String(row.info_json))
-              if (parsed && typeof parsed === 'object') {
-                info = parsed
-              }
-            } catch {}
-          }
+          const info = parseItemInfoJson(row?.info_json)
           const currentSegments = normalizeSegments(info.volumeMuteSegments)
           const currentSignature = JSON.stringify(currentSegments)
           const nextSignature = JSON.stringify(nextSegments)
@@ -325,15 +324,7 @@ export function upsertMixtapeItemStartSecById(
           if (!itemId) continue
           const nextPatch = trackPatchById.get(itemId)
           if (!nextPatch) continue
-          let info: Record<string, any> = {}
-          if (row?.info_json) {
-            try {
-              const parsed = JSON.parse(String(row.info_json))
-              if (parsed && typeof parsed === 'object') {
-                info = parsed
-              }
-            } catch {}
-          }
+          const info = parseItemInfoJson(row?.info_json)
           let changed = false
           if (typeof nextPatch.startSec === 'number') {
             const currentStartSec = normalizeStartSec(info.startSec)

@@ -5,6 +5,11 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
 import libraryUtils from '@renderer/utils/libraryUtils'
 
+type BufferLikeData = {
+  type?: unknown
+  data?: unknown
+}
+
 export function useCover(runtime: ReturnType<typeof useRuntimeStore>) {
   const coverBlobUrl = ref('')
   const songInfoShow = ref(false)
@@ -27,15 +32,11 @@ export function useCover(runtime: ReturnType<typeof useRuntimeStore>) {
     if (!raw) return null
     if (raw instanceof Uint8Array) return raw
     if (Array.isArray(raw)) return new Uint8Array(raw as number[])
-    if (typeof raw === 'object' && (raw as any).data && Array.isArray((raw as any).data)) {
-      return new Uint8Array((raw as any).data)
-    }
-    if (
-      typeof raw === 'object' &&
-      (raw as any).type === 'Buffer' &&
-      Array.isArray((raw as any).data)
-    ) {
-      return new Uint8Array((raw as any).data)
+    if (raw && typeof raw === 'object') {
+      const data = raw as BufferLikeData
+      if (Array.isArray(data.data)) {
+        return new Uint8Array(data.data)
+      }
     }
     return null
   }

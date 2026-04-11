@@ -240,7 +240,7 @@ export async function scanSongList(
   const perfParseStart = Date.now()
   const FALLBACK_ONLY_EXTS = new Set(['.ac3', '.dts', '.tak', '.tta'])
 
-  const tasks: Array<() => Promise<any>> = filesToParse.map((url) => async () => {
+  const tasks: Array<() => Promise<ISongInfo>> = filesToParse.map((url) => async () => {
     const extLower = path.extname(url).toLowerCase()
     if (FALLBACK_ONLY_EXTS.has(extLower)) {
       const meta = computeFileMeta(url, extLower.slice(1))

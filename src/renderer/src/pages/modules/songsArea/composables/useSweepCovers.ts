@@ -7,10 +7,12 @@ interface UseSweepCoversParams {
 
 export function useSweepCovers(params: UseSweepCoversParams) {
   const { runtime } = params
-  let sweepTimer: any = null
+  let sweepTimer: ReturnType<typeof setTimeout> | null = null
 
   function scheduleSweepCovers() {
-    clearTimeout(sweepTimer)
+    if (sweepTimer) {
+      clearTimeout(sweepTimer)
+    }
     sweepTimer = setTimeout(() => {
       try {
         const listRootDir = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID) || ''

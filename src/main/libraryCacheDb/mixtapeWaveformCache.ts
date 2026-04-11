@@ -26,7 +26,9 @@ type WaveformCacheMeta = {
 
 const MIXTAPE_WAVEFORM_TABLE = 'mixtape_waveform_cache'
 
-function normalizeWaveformMeta(row: any): WaveformCacheMeta | null {
+function normalizeWaveformMeta(
+  row: Record<string, unknown> | null | undefined
+): WaveformCacheMeta | null {
   if (!row) return null
   const size = toNumber(row.size)
   const mtimeMs = toNumber(row.mtime_ms)

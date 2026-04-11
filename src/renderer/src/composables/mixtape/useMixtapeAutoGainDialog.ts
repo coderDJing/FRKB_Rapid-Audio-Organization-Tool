@@ -90,7 +90,7 @@ const refreshRuntimeSetting = async (runtimeStore: ReturnType<typeof useRuntimeS
     if (latest && typeof latest === 'object') {
       const merged = { ...(latest as Record<string, unknown>) }
       applyUiSettings(merged, readUiSettings())
-      runtimeStore.setting = merged as any
+      runtimeStore.setting = merged as typeof runtimeStore.setting
     }
   } catch {}
 }

@@ -25,13 +25,15 @@ import {
   removeLibraryNodesByParentUuid,
   updateLibraryNodeName,
   updateLibraryNodeOrder,
+  type LibraryNodeType,
   type LibraryNodeRow
 } from '../../libraryTreeDb'
 import {
   getRecycleBinRootAbs,
   moveFileToRecycleBin,
   normalizeRendererPlaylistPath,
-  permanentlyDeleteFile
+  permanentlyDeleteFile,
+  type RecycleBinMoveResult
 } from '../../recycleBinService'
 import { listRecycleBinRecords, deleteRecycleBinRecords } from '../../recycleBinDb'
 import {
@@ -46,6 +48,19 @@ import { isMixtapeWindowOpenByPlaylistId } from '../mixtapeWindow'
 const MIXTAPE_WINDOW_OPEN_ERROR_CODE = 'MIXTAPE_WINDOW_OPEN'
 const FILE_BATCH_CONCURRENCY = 8
 const FILE_BATCH_YIELD_EVERY = 8
+
+const normalizeLibraryNodeType = (value: unknown): LibraryNodeType => {
+  switch (value) {
+    case 'root':
+    case 'library':
+    case 'dir':
+    case 'songList':
+    case 'mixtapeList':
+      return value
+    default:
+      return 'dir'
+  }
+}
 
 export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null) {
   const sendProgress = (payload: Record<string, unknown>) => {
@@ -82,7 +97,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
       await removeNonAudioEntries(absPath, audioExts)
       return
     }
-    const tasks: Array<() => Promise<any>> = songFileUrls.map((srcPath) => {
+    const tasks: Array<() => Promise<RecycleBinMoveResult>> = songFileUrls.map((srcPath) => {
       return async () => {
         const result = await moveFileToRecycleBin(srcPath, {
           originalPlaylistPath
@@ -292,7 +307,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
               uuid: item.uuid,
               parentUuid: parentNode.uuid,
               dirName: path.basename(mappedPath),
-              nodeType: (item.nodeType as any) || 'dir',
+              nodeType: normalizeLibraryNodeType(item.nodeType),
               order: item.order
             })
           }
@@ -352,13 +367,15 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
             try {
               const audioExts = store.settingConfig.audioExt
               const audioFiles = await collectFilesWithExtensions(dirPath, audioExts)
-              const tasks: Array<() => Promise<any>> = audioFiles.map((srcPath) => async () => {
-                const result = await moveFileToRecycleBin(srcPath)
-                if (result.status === 'failed') {
-                  throw new Error(result.error || 'move to recycle bin failed')
+              const tasks: Array<() => Promise<RecycleBinMoveResult>> = audioFiles.map(
+                (srcPath) => async () => {
+                  const result = await moveFileToRecycleBin(srcPath)
+                  if (result.status === 'failed') {
+                    throw new Error(result.error || 'move to recycle bin failed')
+                  }
+                  return result
                 }
-                return result
-              })
+              )
               sendProgress({
                 id: progressId,
                 titleKey: 'library.deleteProgressRemoving',
@@ -538,7 +555,7 @@ async function transferCachesAfterDirChange(params: {
       const files = await collectFilesWithExtensions(newFullPath, audioExts)
       await syncMixtapePathReferencesAfterDirChange(oldFullPath, newFullPath, files)
       if (files.length === 0) return
-      const tasks: Array<() => Promise<any>> = files.map((filePath) => async () => {
+      const tasks: Array<() => Promise<void>> = files.map((filePath) => async () => {
         const rel = path.relative(newFullPath, filePath)
         if (!rel || rel.startsWith('..')) return
         const oldFilePath = path.join(oldFullPath, rel)
@@ -578,7 +595,7 @@ async function transferCachesAfterDirChange(params: {
       }
     }
     if (songListRoots.length === 0) return
-    const tasks: Array<() => Promise<any>> = songListRoots.map((songListRoot) => async () => {
+    const tasks: Array<() => Promise<void>> = songListRoots.map((songListRoot) => async () => {
       const rel = path.relative(newFullPath, songListRoot)
       if (!rel || rel.startsWith('..')) return
       const oldRoot = path.join(oldFullPath, rel)

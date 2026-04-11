@@ -43,7 +43,16 @@ type FieldKey =
   | 'discTotal'
 type FieldKeyWithCover = FieldKey | 'cover'
 
+type ErrorLike = {
+  message?: unknown
+}
+
 export function useMusicBrainzDialog(props: MusicBrainzDialogProps) {
+  const getErrorMessage = (error: unknown) =>
+    error instanceof Error
+      ? error.message
+      : String((error as ErrorLike | null)?.message || error || '')
+
   const uuid = uuidV4()
   const runtime = useRuntimeStore()
   const flashArea = ref('')
@@ -293,9 +302,9 @@ export function useMusicBrainzDialog(props: MusicBrainzDialogProps) {
         pendingFingerprintAfterKey.value = false
         await matchFingerprint()
       }
-    } catch (error) {
+    } catch (error: unknown) {
       acoustIdKeyError.value =
-        mapAcoustIdClientError((error as any)?.message) || t('metadata.acoustidKeySaveFailed')
+        mapAcoustIdClientError(getErrorMessage(error)) || t('metadata.acoustidKeySaveFailed')
     } finally {
       savingAcoustIdKey.value = false
     }
@@ -386,8 +395,8 @@ export function useMusicBrainzDialog(props: MusicBrainzDialogProps) {
       state.textHasSearched = true
       if (!results.length) return
       selectMatch(results[0], 'text')
-    } catch (err: any) {
-      state.searchError = mapError(err?.message)
+    } catch (err: unknown) {
+      state.searchError = mapError(getErrorMessage(err))
       state.textHasSearched = true
     } finally {
       state.searching = false
@@ -426,8 +435,8 @@ export function useMusicBrainzDialog(props: MusicBrainzDialogProps) {
       if (matches.length) {
         await selectMatch(matches[0], 'fingerprint')
       }
-    } catch (err: any) {
-      state.fingerprintError = mapError(err?.message)
+    } catch (err: unknown) {
+      state.fingerprintError = mapError(getErrorMessage(err))
       state.fingerprintHasSearched = true
     } finally {
       if (lookupPhaseTimer) {
@@ -450,8 +459,8 @@ export function useMusicBrainzDialog(props: MusicBrainzDialogProps) {
       })) as IMusicBrainzSuggestionResult
       state.suggestionByTab[tab] = result
       applyFieldSelectionsForSuggestion(result, tab)
-    } catch (err: any) {
-      state.suggestionErrorByTab[tab] = mapError(err?.message)
+    } catch (err: unknown) {
+      state.suggestionErrorByTab[tab] = mapError(getErrorMessage(err))
     } finally {
       state.suggestionLoadingByTab[tab] = false
     }
@@ -581,16 +590,22 @@ export function useMusicBrainzDialog(props: MusicBrainzDialogProps) {
     const suggestion = currentSuggestion.value?.suggestion
     if (!suggestion) return null
     const payload: IMusicBrainzApplyPayload = {}
+    const assignPayloadValue = <K extends keyof IMusicBrainzApplyPayload>(
+      key: K,
+      value: IMusicBrainzApplyPayload[K]
+    ) => {
+      payload[key] = value
+    }
     const setString = (key: keyof IMusicBrainzApplyPayload, value?: string | null) => {
       if (value === undefined || value === null || value === '') return
-      ;(payload as any)[key] = value
+      assignPayloadValue(key, value)
     }
     const applyField = (key: FieldKey, getter: () => string | number | undefined | null) => {
       if (!fieldSelections[key]) return
       const value = getter()
       if (value === undefined || value === null) return
       if (typeof value === 'number') {
-        ;(payload as any)[key] = value
+        assignPayloadValue(key, value)
       } else if (typeof value === 'string') {
         setString(key, value)
       }

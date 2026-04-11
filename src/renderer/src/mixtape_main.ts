@@ -1,4 +1,4 @@
-import { createApp, watch } from 'vue'
+import { createApp, watch, type AppContext } from 'vue'
 import { createPinia } from 'pinia'
 import App from './Mixtape.vue'
 import './styles/main.scss'
@@ -8,6 +8,12 @@ import 'overlayscrollbars/overlayscrollbars.css'
 import dialogDrag from './directives/dialogDrag'
 import { initUiSettings, watchUiSettings } from '@renderer/utils/uiSettingsStorage'
 import { installConsoleLogBridge } from '@renderer/utils/installConsoleLogBridge'
+
+declare global {
+  interface Window {
+    __FRKB_APP_CONTEXT__?: AppContext
+  }
+}
 
 const pinia = createPinia()
 const app = createApp(App)
@@ -23,7 +29,7 @@ app.config.errorHandler = (err: Error) => {
 
 app.use(pinia)
 app.use(i18n)
-;(window as any).__FRKB_APP_CONTEXT__ = app._context
+window.__FRKB_APP_CONTEXT__ = app._context
 
 const initializeApp = async () => {
   const runtime = useRuntimeStore()
@@ -41,7 +47,7 @@ const initializeApp = async () => {
   const rootEl = document.getElementById('app')
   const prefersDarkMedia = window.matchMedia
     ? window.matchMedia('(prefers-color-scheme: dark)')
-    : (null as any)
+    : null
   const getSystemDark = () => {
     try {
       return !!prefersDarkMedia?.matches
@@ -64,14 +70,14 @@ const initializeApp = async () => {
     } catch {}
   }
   // 首次启动按设置（默认 system）或用户选择
-  applyThemeClass(((runtime.setting as any).themeMode || 'system') as any, getSystemDark())
+  applyThemeClass(runtime.setting.themeMode || 'system', getSystemDark())
   try {
     watch(
-      () => (runtime.setting as any).themeMode,
+      () => runtime.setting.themeMode,
       (mode: 'system' | 'light' | 'dark') => applyThemeClass(mode || 'system', getSystemDark())
     )
     prefersDarkMedia?.addEventListener?.('change', (e: MediaQueryListEvent) => {
-      if (((runtime.setting as any).themeMode || 'system') === 'system') {
+      if ((runtime.setting.themeMode || 'system') === 'system') {
         applyThemeClass('system', !!e.matches)
       }
     })

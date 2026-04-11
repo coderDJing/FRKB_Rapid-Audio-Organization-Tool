@@ -48,19 +48,22 @@ const removeLegacyWindowsContextMenu = async (): Promise<void> => {
   } catch {}
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value)
+
 const getCurrentLocaleId = (): 'zh-CN' | 'en-US' =>
-  (store.settingConfig as any)?.language === 'enUS' ? 'en-US' : 'zh-CN'
+  store.settingConfig?.language === 'enUS' ? 'en-US' : 'zh-CN'
 
 const tContextMenu = (key: string): string => {
-  const messages: Record<'zh-CN' | 'en-US', any> = {
-    'zh-CN': zhCNLocale as any,
-    'en-US': enUSLocale as any
+  const messages: Record<'zh-CN' | 'en-US', Record<string, unknown>> = {
+    'zh-CN': zhCNLocale as Record<string, unknown>,
+    'en-US': enUSLocale as Record<string, unknown>
   }
   const localeId = getCurrentLocaleId()
   const parts = key.split('.')
-  let current: any = messages[localeId]
+  let current: unknown = messages[localeId]
   for (const part of parts) {
-    if (current && typeof current === 'object' && part in current) current = current[part]
+    if (isRecord(current) && part in current) current = current[part]
     else return key
   }
   return typeof current === 'string' ? current : key
@@ -100,10 +103,10 @@ export async function ensureWindowsContextMenuIfNeeded(): Promise<void> {
   if (process.platform !== 'win32') return
   const signature = buildContextMenuSignature()
   if (!signature) return
-  const stored = String((store.settingConfig as any).windowsContextMenuSignature || '')
+  const stored = String(store.settingConfig.windowsContextMenuSignature || '')
   if (stored === signature) return
   await ensureWindowsContextMenu()
-  ;(store.settingConfig as any).windowsContextMenuSignature = signature
+  store.settingConfig.windowsContextMenuSignature = signature
   await persistSettingConfig()
 }
 
@@ -122,8 +125,8 @@ export async function removeWindowsContextMenu(): Promise<void> {
 
 export async function clearWindowsContextMenuSignature(): Promise<void> {
   if (process.platform !== 'win32') return
-  if (!('windowsContextMenuSignature' in (store.settingConfig as any))) return
-  delete (store.settingConfig as any).windowsContextMenuSignature
+  if (!('windowsContextMenuSignature' in store.settingConfig)) return
+  delete store.settingConfig.windowsContextMenuSignature
   await persistSettingConfig()
 }
 

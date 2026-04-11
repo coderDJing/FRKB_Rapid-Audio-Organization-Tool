@@ -89,6 +89,16 @@ const scheduleManualSeekReset = () => {
 }
 
 const bindPlayerEvents = (player: WebAudioPlayer) => {
+  type ErrorLike = {
+    name?: unknown
+    message?: unknown
+  }
+
+  const getErrorMessage = (error: unknown) =>
+    error instanceof Error
+      ? error.message
+      : String((error as ErrorLike | null)?.message || error || '')
+
   const disposers: Array<() => void> = []
 
   const onPlay = () => {
@@ -192,10 +202,10 @@ const bindPlayerEvents = (player: WebAudioPlayer) => {
   player.on('ready', onReady)
   disposers.push(() => player.off('ready', onReady))
 
-  const onError = async (error: any) => {
+  const onError = async (error: unknown) => {
     if (isIgnorablePlayerInterruptionError(error)) return
     const currentPath = runtime.playingData.playingSong?.filePath ?? null
-    const errorMsg = error?.message || String(error)
+    const errorMsg = getErrorMessage(error)
     await handleSongLoadError(currentPath, false, errorMsg)
   }
   player.on('error', onError)
@@ -225,8 +235,12 @@ const initAudioPlayer = () => {
 }
 
 const isIgnorablePlayerInterruptionError = (error: unknown) => {
-  const name = String((error as any)?.name || '').trim()
-  const message = String((error as any)?.message || error || '')
+  const err = (error && typeof error === 'object' ? error : null) as {
+    name?: unknown
+    message?: unknown
+  } | null
+  const name = String(err?.name || '').trim()
+  const message = String(err?.message || error || '')
     .trim()
     .toLowerCase()
   if (name === 'AbortError') return true
@@ -322,7 +336,7 @@ onMounted(() => {
     schedulePreloadAfterPlay,
     cancelPreloadTimer,
     playerControlsRef,
-    onError: async (error: any) => {
+    onError: async (_error: unknown) => {
       const currentPath = runtime.playingData.playingSong?.filePath ?? null
       await handleSongLoadError(currentPath, false)
     }

@@ -14,12 +14,15 @@ type DeleteSummary = {
 
 const normalizePath = (p: string | undefined | null) => (p || '').replace(/\//g, '\\').toLowerCase()
 
-const normalizeDeleteSummary = (summary: any): DeleteSummary => ({
-  total: Number(summary?.total || 0),
-  success: Number(summary?.success || 0),
-  failed: Number(summary?.failed || 0),
-  removedPaths: Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
-})
+const normalizeDeleteSummary = (summary: unknown): DeleteSummary => {
+  const payload = summary && typeof summary === 'object' ? (summary as DeleteSummary) : {}
+  return {
+    total: Number(payload.total || 0),
+    success: Number(payload.success || 0),
+    failed: Number(payload.failed || 0),
+    removedPaths: Array.isArray(payload.removedPaths) ? payload.removedPaths : []
+  }
+}
 
 const showDeleteSummaryIfNeeded = async (
   summary: {

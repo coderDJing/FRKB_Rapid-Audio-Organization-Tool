@@ -13,7 +13,7 @@ import exportSongFingerprintDialog from './components/exportSongFingerprintDialo
 import importSongFingerprintDialog from './components/importSongFingerprintDialog.vue'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
-import pkg from '../../../package.json?asset'
+import pkg from '../../../package.json'
 import cloudSyncSettingsDialog from './components/cloudSyncSettingsDialog.vue'
 import cloudSyncSyncDialog from './components/cloudSyncSyncDialog.vue'
 import FileOpInterruptedDialog from './components/fileOpInterruptedDialog.vue'
@@ -34,9 +34,7 @@ const normalizeMainWindowBrowseMode = (value: unknown): 'browser' | 'horizontal'
   const p = runtime.setting?.platform
   runtime.platform = p === 'darwin' ? 'Mac' : p === 'win32' ? 'Windows' : 'Unknown'
 }
-runtime.mainWindowBrowseMode = normalizeMainWindowBrowseMode(
-  (runtime.setting as any)?.mainWindowBrowseMode
-)
+runtime.mainWindowBrowseMode = normalizeMainWindowBrowseMode(runtime.setting?.mainWindowBrowseMode)
 watch(
   () => runtime.mainWindowBrowseMode,
   (mode) => {
@@ -45,8 +43,8 @@ watch(
       runtime.mainWindowBrowseMode = normalizedMode
       return
     }
-    if ((runtime.setting as any)?.mainWindowBrowseMode !== normalizedMode) {
-      ;(runtime.setting as any).mainWindowBrowseMode = normalizedMode
+    if (runtime.setting?.mainWindowBrowseMode !== normalizedMode) {
+      runtime.setting.mainWindowBrowseMode = normalizedMode
     }
     window.electron.ipcRenderer.send('main-window-browse-mode-updated', normalizedMode)
   },
@@ -94,6 +92,16 @@ const {
 })
 
 type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
+type SongsRemovedPayload = {
+  listUUID?: string
+  itemIds?: string[]
+  paths?: string[]
+}
+type MixtapeItemsRemovedPayload = {
+  playlistId?: string
+  itemIds?: string[]
+  removedPaths?: string[]
+}
 type GlobalSongSearchItem = {
   id: string
   filePath: string
@@ -194,7 +202,7 @@ const handleCtrlDoubleTapKeyUp = (event: KeyboardEvent) => {
   ctrlComboDirty = false
 }
 
-const handleSongsRemovedForGlobalSearch = (payload: any) => {
+const handleSongsRemovedForGlobalSearch = (payload: SongsRemovedPayload | null) => {
   try {
     markSongSearchDirty('songs-removed')
     const itemIds: string[] = Array.isArray(payload?.itemIds) ? payload.itemIds : []
@@ -205,7 +213,7 @@ const handleSongsRemovedForGlobalSearch = (payload: any) => {
 
       runtime.playingData.playingSongListData = (
         runtime.playingData.playingSongListData || []
-      ).filter((song: any) => !idSet.has(song?.mixtapeItemId || ''))
+      ).filter((song) => !idSet.has(song?.mixtapeItemId || ''))
 
       if (
         runtime.playingData.playingSong &&
@@ -224,7 +232,7 @@ const handleSongsRemovedForGlobalSearch = (payload: any) => {
 
     runtime.playingData.playingSongListData = (
       runtime.playingData.playingSongListData || []
-    ).filter((song: any) => !normalizedSet.has(normalizePath(song.filePath)))
+    ).filter((song) => !normalizedSet.has(normalizePath(song.filePath)))
 
     if (
       runtime.playingData.playingSong &&
@@ -234,7 +242,7 @@ const handleSongsRemovedForGlobalSearch = (payload: any) => {
     }
   } catch {}
 }
-const handleMixtapeItemsRemoved = (_e: unknown, payload: any) => {
+const handleMixtapeItemsRemoved = (_e: unknown, payload: MixtapeItemsRemovedPayload | null) => {
   const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId.trim() : ''
   const itemIds = Array.isArray(payload?.itemIds) ? payload.itemIds : []
   const removedPaths = Array.isArray(payload?.removedPaths) ? payload.removedPaths : []
@@ -257,7 +265,7 @@ const handleSongMetadataUpdatedForGlobalSearch = () => {
 
 const sendFileOpControl = (action: 'resume' | 'cancel') => {
   fileOpDialogVisible.value = false
-  ;(window as any).electron.ipcRenderer.send('file-op-control', {
+  window.electron.ipcRenderer.send('file-op-control', {
     batchId: fileOpBatchId.value,
     action
   })
@@ -455,7 +463,7 @@ const openDialog = async (item: string) => {
     return
   }
   if (item === 'menu.about') {
-    const version = String((pkg as any).version || '')
+    const version = String(pkg.version || '')
     const isPrerelease = version.includes('-')
     const content: string[] = []
     content.push(t('update.currentVersion') + ' ' + version)
@@ -768,8 +776,8 @@ onBeforeUnmount(() => {
   emitter.off('songMetadataUpdated', handleSongMetadataUpdatedForGlobalSearch)
   contextMenuClickThroughGuard.clear()
 }) // 清理全局事件监听与跨组件订阅
-window.addEventListener('openDialogFromChild', (e: any) => {
-  const detail = e?.detail
+window.addEventListener('openDialogFromChild', (e: Event) => {
+  const detail = (e as CustomEvent<string>).detail
   if (typeof detail === 'string') {
     openDialog(detail)
   }

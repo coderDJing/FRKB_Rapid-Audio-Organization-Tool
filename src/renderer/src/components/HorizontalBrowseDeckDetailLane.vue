@@ -2,10 +2,30 @@
 import { ref } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
 import HorizontalBrowseRawWaveformDetail from '@renderer/components/HorizontalBrowseRawWaveformDetail.vue'
+import type { HorizontalBrowseGridToolbarState } from '@renderer/components/useHorizontalBrowseGridToolbar'
+
+type HorizontalBrowseSharedZoomState = {
+  value: number
+  anchorRatio: number
+  sourceDirection: 'up' | 'down' | null
+  revision: number
+}
+
+type HorizontalBrowseRawWaveformDetailExpose = {
+  toggleBarLinePicking: () => void
+  setBarLineAtPlayhead: () => void
+  shiftGridSmallLeft: () => void
+  shiftGridLargeLeft: () => void
+  shiftGridSmallRight: () => void
+  shiftGridLargeRight: () => void
+  updateBpmInput: (value: string) => void
+  blurBpmInput: () => void
+  tapBpm: () => void
+}
 
 const props = defineProps<{
   song: ISongInfo | null
-  sharedZoomState: any
+  sharedZoomState: HorizontalBrowseSharedZoomState
   currentSeconds: number
   playing: boolean
   playbackRate: number
@@ -23,7 +43,7 @@ const emit = defineEmits<{
   (event: 'region-drag-over', regionId: number, dragEvent: DragEvent): void
   (event: 'region-drag-leave', regionId: number, dragEvent: DragEvent): void
   (event: 'region-drop', regionId: number, dragEvent: DragEvent): void
-  (event: 'toolbar-state-change', value: any): void
+  (event: 'toolbar-state-change', value: HorizontalBrowseGridToolbarState): void
   (
     event: 'zoom-change',
     value: { value: number; anchorRatio: number; sourceDirection: 'up' | 'down' }
@@ -32,7 +52,7 @@ const emit = defineEmits<{
   (event: 'drag-session-end', payload: { anchorSec: number; committed: boolean }): void
 }>()
 
-const detailRef = ref<any | null>(null)
+const detailRef = ref<HorizontalBrowseRawWaveformDetailExpose | null>(null)
 
 defineExpose({
   toggleBarLinePicking: () => detailRef.value?.toggleBarLinePicking?.(),

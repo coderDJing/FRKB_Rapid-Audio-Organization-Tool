@@ -13,6 +13,7 @@ import store from '../store'
 import { getLibrary, mapRendererPathToFsPath } from '../utils'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import type { MixxxWaveformData } from '../waveformCache'
+import type { MixtapeRawWaveformData } from '../libraryCacheDb/mixtapeRawWaveformCache'
 import type { StemWaveformDataLite } from '../stemWaveformCache'
 import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { requestMixtapeRawWaveform } from '../services/mixtapeRawWaveformQueue'
@@ -37,7 +38,7 @@ type MixtapeRawWaveformStreamWorkerPayload = {
     maxRight?: Uint8Array | Buffer
   }
   result?: {
-    rawWaveformData?: any
+    rawWaveformData?: MixtapeRawWaveformData
   }
   error?: string
 }
@@ -161,7 +162,10 @@ export function registerCacheHandlers() {
     return parsed
   }
 
-  const isRawWaveformRateSufficient = (data: any, requestedRate?: number) => {
+  const isRawWaveformRateSufficient = (
+    data: MixtapeRawWaveformData | null | undefined,
+    requestedRate?: number
+  ) => {
     if (!data) return false
     if (!requestedRate) return true
     const cachedRate = Number(data?.rate)
@@ -544,7 +548,7 @@ export function registerCacheHandlers() {
         (filePath) => typeof filePath === 'string' && filePath.trim().length > 0
       )
       if (normalizedPaths.length === 0) {
-        return { items: [] as Array<{ filePath: string; data: any | null }> }
+        return { items: [] as Array<{ filePath: string; data: MixtapeRawWaveformData | null }> }
       }
 
       const targetRate = resolveRequestedRawRate(payload?.targetRate)
@@ -564,7 +568,7 @@ export function registerCacheHandlers() {
         listRootByExactFilePath.set(filePath, listRoot)
         listRootByNormalizedFilePath.set(path.normalize(filePath), listRoot)
       }
-      const items: Array<{ filePath: string; data: any | null }> = []
+      const items: Array<{ filePath: string; data: MixtapeRawWaveformData | null }> = []
       for (const filePath of normalizedPaths) {
         try {
           let listRoot =
@@ -575,7 +579,7 @@ export function registerCacheHandlers() {
             listRoot = (await findSongListRoot(path.dirname(filePath))) || ''
           }
           let stat = await fs.stat(filePath).catch(() => null)
-          let cached: any | null | undefined = null
+          let cached: MixtapeRawWaveformData | null | undefined = null
           if (listRoot && stat) {
             cached = await LibraryCacheDb.loadMixtapeRawWaveformCacheData(listRoot, filePath, {
               size: stat.size,
@@ -583,7 +587,7 @@ export function registerCacheHandlers() {
             })
           }
           if (isRawWaveformRateSufficient(cached, targetRate)) {
-            items.push({ filePath, data: cached })
+            items.push({ filePath, data: cached ?? null })
             continue
           }
           if (cacheOnly) {
@@ -591,7 +595,7 @@ export function registerCacheHandlers() {
             continue
           }
 
-          let data: any | null = null
+          let data: MixtapeRawWaveformData | null = null
           let computedWaveform: MixxxWaveformData | null = null
           if (preferSharedDecode) {
             let needWaveformForShare = true

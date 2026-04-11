@@ -1,15 +1,21 @@
+import type { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import {
   MIXTAPE_WAVEFORM_HEIGHT_SCALE,
   TIMELINE_SIDE_PADDING_PX
 } from '@renderer/composables/mixtape/constants'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type {
+  MinMaxSample,
+  MixtapeMixMode,
   MixtapeTrack,
   MixtapeWaveformStemId,
   RawWaveformData,
+  RawWaveformLevel,
   StemWaveformData,
+  TimelineLayoutSnapshot,
   TimelineTrackLayout,
   WaveformRenderContext,
+  WaveformPreRenderTask,
   WaveformTile
 } from '@renderer/composables/mixtape/types'
 import type {
@@ -24,7 +30,156 @@ import { createTrackTimeMapFromSnapshotPayload } from '@renderer/composables/mix
 import { createTimelineWaveformLoadingModule } from '@renderer/composables/mixtape/timelineWaveformLoading'
 import { resizeCanvasWithScaleMetrics } from '@renderer/utils/canvasScale'
 
-export const createTimelineRenderAndLoadModule = (ctx: any) => {
+type ValueRef<T> = {
+  value: T
+}
+type TimelineScrollHost = InstanceType<typeof OverlayScrollbarsComponent>
+
+type WaveformCacheEntry = {
+  source: CanvasImageSource
+  used: number
+}
+
+type TimelineWaveformSource = {
+  filePath: string
+  listRoot?: string
+  laneIndex: number
+  laneCount: number
+  stemId: MixtapeWaveformStemId
+}
+
+type TimelineRenderAndLoadContext = {
+  mixtapeMixMode: ValueRef<MixtapeMixMode>
+  requestTimelineWorkerRender: (
+    widthPx: number,
+    heightPx: number,
+    startX: number,
+    startY: number
+  ) => void
+  timelineWorkerReady: ValueRef<boolean>
+  timelineCanvasRef: ValueRef<HTMLCanvasElement | null>
+  timelineScrollWrapRef: ValueRef<HTMLElement | null>
+  timelineScrollRef: ValueRef<TimelineScrollHost | null>
+  timelineViewport: ValueRef<HTMLElement | null>
+  timelineViewportWidth: ValueRef<number>
+  timelineViewportHeight: ValueRef<number>
+  timelineScrollLeft: ValueRef<number>
+  timelineScrollTop: ValueRef<number>
+  isTimelineZooming: ValueRef<boolean>
+  timelineCanvasRafRef: ValueRef<number>
+  timelineContentWidth: ValueRef<number>
+  normalizedRenderZoom: ValueRef<number>
+  waveformLoadTimerRef: ValueRef<ReturnType<typeof setTimeout> | null>
+  clampZoomValue: (value: number) => number
+  resolveLaneHeightForZoom: (value: number) => number
+  resolveGridBarWidth: (zoomValue: number) => number
+  resolveTrackDurationSeconds: (track: MixtapeTrack) => number
+  resolveTrackSourceDurationSeconds: (track: MixtapeTrack) => number
+  computeTimelineDuration: () => number
+  resolveTrackFirstBeatMs: (track: MixtapeTrack) => number
+  resolveTrackTimeMapSignature: (track: MixtapeTrack, durationSec?: number) => string
+  resolveTrackRenderWidthPx: (track: MixtapeTrack, zoomValue?: number) => number
+  resolveRenderPxPerSec: (value: number) => number
+  resolveRawWaveformLevel: (
+    filePath: string,
+    raw: RawWaveformData | null,
+    samplesPerPixel: number
+  ) => RawWaveformData | null
+  resolveWaveformSubLaneMetrics: (
+    laneHeight: number,
+    laneIndex: number,
+    laneCount: number
+  ) => { offset: number; height: number }
+  useHalfWaveform: () => boolean
+  isValidWaveformData: (
+    data: StemWaveformData | MixxxWaveformData | null
+  ) => data is StemWaveformData | MixxxWaveformData
+  waveformMinMaxCache: Map<
+    string,
+    { source: StemWaveformData | MixxxWaveformData; samples: MinMaxSample[] }
+  >
+  waveformScratch: {
+    canvas: HTMLCanvasElement | null
+    ctx: CanvasRenderingContext2D | null
+  }
+  waveformRenderWorker: Worker | null
+  waveformTileCache: Map<string, WaveformCacheEntry>
+  waveformTileCacheTickRef: ValueRef<number>
+  registerWaveformTileCacheKey: (filePath: string, cacheKey: string) => void
+  pruneWaveformTileCache: () => void
+  waveformTilePending: Set<string>
+  disposeWaveformCacheEntry: (entry: WaveformCacheEntry | null) => void
+  clearWaveformTileCacheForFile: (filePath: string) => void
+  pushStemWaveformToWorker: (filePath: string, data: StemWaveformData | null) => void
+  pushRawWaveformToWorker: (filePath: string, data: RawWaveformData | null) => void
+  decodeRawWaveformData: (payload: unknown) => RawWaveformData | null
+  buildWaveformTileCacheKey: (
+    filePath: string,
+    stemId: MixtapeWaveformStemId,
+    tileIndex: number,
+    zoomValue: number,
+    width: number,
+    height: number,
+    pixelRatio: number,
+    timeMapSignature?: string
+  ) => string
+  requestWaveformTileRender: (task: WaveformPreRenderTask) => void
+  renderWaveformTileToCache: (task: WaveformPreRenderTask) => void
+  touchWaveformTileCache: (key: string) => void
+  resolveTrackWaveformSources: (track: MixtapeTrack) => TimelineWaveformSource[]
+  resolveTrackWaveformFilePaths: (track: MixtapeTrack) => string[]
+  resolveWaveformListRoot: (track: MixtapeTrack) => string
+  tracks: ValueRef<MixtapeTrack[]>
+  waveformDataMap: Map<string, StemWaveformData | MixxxWaveformData | null>
+  rawWaveformDataMap: Map<string, RawWaveformData | null>
+  waveformInflight: Set<string>
+  waveformQueuedMissing: Set<string>
+  rawWaveformInflight: Set<string>
+  rawWaveformPyramidMap: Map<string, RawWaveformLevel[]>
+  waveformVersion: ValueRef<number>
+  buildRawWaveformPyramid: (raw: RawWaveformData) => RawWaveformLevel[]
+  buildSequentialLayoutForZoom: (zoomValue: number) => TimelineLayoutSnapshot
+  forEachVisibleLayoutItem: (
+    snapshot: TimelineLayoutSnapshot,
+    visibleStart: number,
+    visibleEnd: number,
+    iteratee: (item: TimelineTrackLayout) => void
+  ) => void
+  drawTrackGridLines: (
+    context: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    track: MixtapeTrack,
+    trackStartSec: number,
+    renderPxPerSec: number,
+    barBeatOffset: number,
+    range: { start: number; end: number },
+    barWidth: number
+  ) => void
+  LANE_GAP: number
+  LANE_PADDING_TOP: number
+  MIXTAPE_WAVEFORM_Y_OFFSET: number
+  SHOW_GRID_LINES: boolean
+  GRID_BAR_ONLY_ZOOM: number
+  RENDER_X_BUFFER_PX: number
+  bpmAnalysisActive: ValueRef<boolean>
+  bpmAnalysisFailed: ValueRef<boolean>
+  transportPreloading: ValueRef<boolean>
+  MIXTAPE_SUMMARY_ZOOM: number
+  RAW_WAVEFORM_MIN_ZOOM: number
+  RAW_WAVEFORM_TARGET_RATE: number
+  WAVEFORM_TILE_WIDTH: number
+  WAVEFORM_BATCH_SIZE: number
+  RAW_WAVEFORM_BATCH_SIZE: number
+  MIXTAPE_WAVEFORM_SUPERSAMPLE: number
+  scheduleFullPreRender: () => void
+  scheduleWorkerPreRender: () => void
+  drawMixxxRgbWaveform: (...args: unknown[]) => void
+  drawStemWaveform: (...args: unknown[]) => void
+  useRawWaveform: ValueRef<boolean>
+}
+
+export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadContext) => {
   const {
     mixtapeMixMode,
     requestTimelineWorkerRender,
@@ -585,13 +740,18 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
 
   const decodeStemWaveformData = (payload: unknown): StemWaveformData | null => {
     if (!payload || typeof payload !== 'object') return null
-    const source = payload as Record<string, any>
-    const allRaw = source.all || source.bands?.all
+    const source = payload as Record<string, unknown>
+    const bandsSource =
+      source.bands && typeof source.bands === 'object'
+        ? (source.bands as Record<string, unknown>)
+        : null
+    const allRaw = source.all || bandsSource?.all
     if (!allRaw || typeof allRaw !== 'object') return null
-    const left = decodeUint8Array(allRaw.left)
-    const right = decodeUint8Array(allRaw.right)
-    const peakLeft = decodeUint8Array(allRaw.peakLeft) || left
-    const peakRight = decodeUint8Array(allRaw.peakRight) || right
+    const allRawRecord = allRaw as Record<string, unknown>
+    const left = decodeUint8Array(allRawRecord.left)
+    const right = decodeUint8Array(allRawRecord.right)
+    const peakLeft = decodeUint8Array(allRawRecord.peakLeft) || left
+    const peakRight = decodeUint8Array(allRawRecord.peakRight) || right
     if (!left || !right || !peakLeft || !peakRight) return null
     const frameCount = Math.min(left.length, right.length, peakLeft.length, peakRight.length)
     if (!frameCount) return null
@@ -628,8 +788,11 @@ export const createTimelineRenderAndLoadModule = (ctx: any) => {
 
   const decodeMixxxWaveformData = (payload: unknown): MixxxWaveformData | null => {
     if (!payload || typeof payload !== 'object') return null
-    const source = payload as Record<string, any>
-    const bands = source.bands && typeof source.bands === 'object' ? source.bands : source
+    const source = payload as Record<string, unknown>
+    const bands =
+      source.bands && typeof source.bands === 'object'
+        ? (source.bands as Record<string, unknown>)
+        : source
     const low = decodeMixxxBand(bands?.low)
     const mid = decodeMixxxBand(bands?.mid)
     const high = decodeMixxxBand(bands?.high)

@@ -3,6 +3,7 @@ import store from './store'
 import { getLibraryDb, initLibraryDb, getMetaValue, setMetaValue } from './libraryDb'
 import { log } from './log'
 import { persistSettingConfig } from './settingsPersistence'
+import type { SqliteDatabase } from './libraryDb'
 
 type LibrarySettingValues = Pick<
   ISettingConfig,
@@ -50,7 +51,7 @@ function isArrayEqual(a: string[] | null, b: string[] | null): boolean {
   return true
 }
 
-function readLibrarySettings(db: any): Partial<LibrarySettingValues> {
+function readLibrarySettings(db: SqliteDatabase): Partial<LibrarySettingValues> {
   const result: Partial<LibrarySettingValues> = {}
   try {
     const modeRaw = getMetaValue(db, META_KEYS.fingerprintMode)
@@ -82,7 +83,7 @@ function readLibrarySettings(db: any): Partial<LibrarySettingValues> {
   return result
 }
 
-function writeLibrarySettings(db: any, values: Partial<LibrarySettingValues>): void {
+function writeLibrarySettings(db: SqliteDatabase, values: Partial<LibrarySettingValues>): void {
   try {
     if (values.fingerprintMode) {
       setMetaValue(db, META_KEYS.fingerprintMode, JSON.stringify(values.fingerprintMode))
@@ -96,7 +97,7 @@ function writeLibrarySettings(db: any, values: Partial<LibrarySettingValues>): v
   } catch {}
 }
 
-function getDbForCurrentLibrary(): any | null {
+function getDbForCurrentLibrary(): SqliteDatabase | null {
   const root = store.databaseDir
   if (!root) return null
   if (store.settingConfig?.databaseUrl && store.settingConfig.databaseUrl !== root) return null

@@ -23,6 +23,13 @@ const LOOKUP_META = 'recordings releasegroups releases tracks'
 let proxyDispatcher: ProxyAgent | undefined
 let proxyInitialized = false
 
+type RequestInitWithDispatcher = RequestInit & { dispatcher?: ProxyAgent }
+type ErrorLike = {
+  code?: unknown
+  message?: unknown
+  name?: unknown
+}
+
 async function ensureProxyInitialized(): Promise<void> {
   if (proxyInitialized) return
   proxyInitialized = true
@@ -192,12 +199,13 @@ async function runFpcalc(
     child.stderr.on('data', (chunk) => {
       stderr += chunk.toString()
     })
-    child.once('error', (err: any) => {
+    child.once('error', (err: unknown) => {
       clearTimeout(timer)
-      if (err && (err as any).code === 'ENOENT') {
+      const error = (err && typeof err === 'object' ? err : null) as ErrorLike | null
+      if (error?.code === 'ENOENT') {
         reject(new Error('ACOUSTID_FPCALC_NOT_FOUND'))
       } else {
-        reject(err)
+        reject(err instanceof Error ? err : new Error(String(err)))
       }
     })
     child.once('close', (code) => {
@@ -233,13 +241,13 @@ interface QueueItem<T> {
   reject: (reason?: unknown) => void
 }
 
-const requestQueue: QueueItem<any>[] = []
+const requestQueue: QueueItem<unknown>[] = []
 let requestProcessing = false
 const MIN_LOOKUP_INTERVAL = 400
 let currentLookupAbort: AbortController | null = null
 
 function resolveAcoustIdClientKey(): string {
-  const fromSetting = (store as any)?.settingConfig?.acoustIdClientKey
+  const fromSetting = store.settingConfig?.acoustIdClientKey
   if (typeof fromSetting === 'string') {
     const trimmed = fromSetting.trim()
     if (trimmed) return trimmed
@@ -301,7 +309,7 @@ async function lookupAcoustId(
         fingerprint,
         meta: LOOKUP_META
       })
-      const init: RequestInit & { dispatcher?: any } = {
+      const init: RequestInitWithDispatcher = {
         method: 'POST',
         body,
         headers: {
@@ -316,15 +324,16 @@ async function lookupAcoustId(
       if (res.status === 401 || res.status === 403) throw new Error('ACOUSTID_CLIENT_INVALID')
       if (!res.ok) throw new Error(`ACOUSTID_HTTP_${res.status}`)
       return (await res.json()) as AcoustIdLookupResponse
-    } catch (err: any) {
-      if (err?.name === 'AbortError') {
+    } catch (err: unknown) {
+      const error = (err && typeof err === 'object' ? err : null) as ErrorLike | null
+      if (error?.name === 'AbortError') {
         if (abortedByTimeout) throw new Error('ACOUSTID_TIMEOUT')
         throw new Error('ACOUSTID_ABORTED')
       }
-      if (err?.code === 'ECONNRESET' || err?.message?.includes('fetch failed')) {
+      if (error?.code === 'ECONNRESET' || String(error?.message || '').includes('fetch failed')) {
         throw new Error('ACOUSTID_NETWORK')
       }
-      throw err
+      throw err instanceof Error ? err : new Error(String(err))
     } finally {
       clearTimeout(timer)
       if (currentLookupAbort === controller) {
@@ -506,7 +515,7 @@ export async function validateAcoustIdClientKeyValue(clientKey: string): Promise
       trackid: VALIDATION_TRACK_ID,
       meta: 'recordings'
     })
-    const init: RequestInit & { dispatcher?: any } = {
+    const init: RequestInitWithDispatcher = {
       method: 'POST',
       body,
       headers: {
@@ -528,15 +537,16 @@ export async function validateAcoustIdClientKeyValue(clientKey: string): Promise
       }
       throw new Error(`ACOUSTID_LOOKUP_FAILED:${message}`)
     }
-  } catch (err: any) {
-    if (err?.name === 'AbortError') {
+  } catch (err: unknown) {
+    const error = (err && typeof err === 'object' ? err : null) as ErrorLike | null
+    if (error?.name === 'AbortError') {
       if (abortedByTimeout) throw new Error('ACOUSTID_TIMEOUT')
       throw new Error('ACOUSTID_ABORTED')
     }
-    if (err?.code === 'ECONNRESET' || err?.message?.includes('fetch failed')) {
+    if (error?.code === 'ECONNRESET' || String(error?.message || '').includes('fetch failed')) {
       throw new Error('ACOUSTID_NETWORK')
     }
-    throw err
+    throw err instanceof Error ? err : new Error(String(err))
   } finally {
     clearTimeout(timer)
   }

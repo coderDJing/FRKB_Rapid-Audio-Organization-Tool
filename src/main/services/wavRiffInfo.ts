@@ -215,7 +215,7 @@ export async function readWavRiffInfoWindows(filePath: string): Promise<SimpleTa
           const raw = wav.slice(subDataStart, subDataEnd)
           const text = decodeInfoText(raw)
           const assign = (key: keyof SimpleTags, v: string) => {
-            if (v && !(key in result)) (result as any)[key] = v
+            if (v && !(key in result)) result[key] = v
           }
           if (text) {
             if (fourcc === 'INAM') assign('title', text)

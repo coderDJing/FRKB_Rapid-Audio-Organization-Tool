@@ -46,6 +46,7 @@ export type RecycleBinRestoreResult = {
 }
 
 type RecordLookup = { record: RecycleBinRecord | null; recordKey: string | null }
+type ErrorLike = { message?: unknown }
 
 const MIXTAPE_VAULT_DIR_NAME = '.mixtape_vault'
 
@@ -171,6 +172,12 @@ function resolveRecordByPath(filePath: string): RecordLookup {
   const direct = getRecycleBinRecord(filePath)
   if (direct) return { record: direct, recordKey: filePath }
   return { record: null, recordKey: rel || filePath }
+}
+
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) return error.message
+  const maybeError = error && typeof error === 'object' ? (error as ErrorLike) : null
+  return String(maybeError?.message || error || '')
 }
 
 function syncMixtapeFilePathReference(fromPath: string, toPath: string): number {
@@ -404,9 +411,9 @@ export async function moveFileToRecycleBin(
     })
     syncMixtapeFilePathReference(srcPath, destPath)
     return { status: 'moved', srcPath, destPath, destRelativePath: rel }
-  } catch (error: any) {
+  } catch (error) {
     log.error('[recycleBin] move failed', { srcPath, error })
-    return { status: 'failed', srcPath, error: error?.message || String(error) }
+    return { status: 'failed', srcPath, error: getErrorMessage(error) }
   }
 }
 
@@ -452,9 +459,9 @@ export async function restoreRecycleBinFile(filePath: string): Promise<RecycleBi
     syncMixtapeFilePathReference(srcPath, destPath)
     if (recordKey) deleteRecycleBinRecord(recordKey)
     return { status: 'restored', srcPath, destPath, playlistPath: playlistRel }
-  } catch (error: any) {
+  } catch (error) {
     log.error('[recycleBin] restore failed', { srcPath, error })
-    return { status: 'failed', srcPath, error: error?.message || String(error) }
+    return { status: 'failed', srcPath, error: getErrorMessage(error) }
   }
 }
 

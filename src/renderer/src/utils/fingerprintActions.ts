@@ -8,6 +8,10 @@ interface AnalyzeOptions {
   origin?: FingerprintActionOrigin
 }
 
+type ErrorLike = {
+  message?: unknown
+}
+
 const normalizePaths = (paths: string[]): string[] => {
   return Array.from(
     new Set(
@@ -47,15 +51,17 @@ export const analyzeFingerprintsForPaths = async (
       filePaths: normalized,
       origin: options?.origin || 'selection'
     })
-  } catch (error: any) {
+  } catch (error) {
     runtime.isProgressing = false
     let message: string
-    if (error?.message === 'NO_ELIGIBLE_AUDIO') {
+    const detail = error && typeof error === 'object' ? (error as ErrorLike) : null
+    const errorMessage = String(detail?.message || '')
+    if (errorMessage === 'NO_ELIGIBLE_AUDIO') {
       message = t('fingerprints.noEligibleTracks')
-    } else if (error?.message === 'FINGERPRINT_TASK_RUNNING') {
+    } else if (errorMessage === 'FINGERPRINT_TASK_RUNNING') {
       message = t('import.waitForTask')
     } else {
-      message = String(error?.message || t('common.unknownError'))
+      message = errorMessage || t('common.unknownError')
     }
     await confirm({
       title: t('common.error'),

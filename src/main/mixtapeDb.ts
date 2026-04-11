@@ -1,5 +1,5 @@
 import { v4 as uuidV4 } from 'uuid'
-import { getLibraryDb } from './libraryDb'
+import { getLibraryDb, isSqliteRow } from './libraryDb'
 import { log } from './log'
 import {
   DEFAULT_MIXTAPE_STEM_PROFILE,
@@ -7,6 +7,7 @@ import {
   type MixtapeStemProfile
 } from '../shared/mixtapeStemProfiles'
 import { FIXED_MIXTAPE_STEM_MODE } from '../shared/mixtapeStemMode'
+import type { SqliteDatabase } from './libraryDb'
 
 const TABLE = 'mixtape_items'
 const PROJECT_TABLE = 'mixtape_projects'
@@ -42,7 +43,7 @@ export type MixtapeAppendItem = {
   filePath: string
   originPlaylistUuid?: string | null
   originPathSnapshot?: string | null
-  info?: Record<string, any> | null
+  info?: Record<string, unknown> | null
 }
 
 export type MixtapeFilePathUpdate = {
@@ -62,8 +63,20 @@ function normalizeUniqueStrings(values: unknown[]): string[] {
   )
 }
 
-function toRecord(row: any): MixtapeItemRecord | null {
-  if (!row || !row.id || !row.playlist_uuid || !row.file_path) return null
+type MixtapeItemInfoJson = Record<string, unknown>
+
+function parseMixtapeItemInfoJson(raw: unknown): MixtapeItemInfoJson {
+  if (typeof raw !== 'string' || !raw.trim()) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    return isSqliteRow(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function toRecord(row: unknown): MixtapeItemRecord | null {
+  if (!isSqliteRow(row) || !row.id || !row.playlist_uuid || !row.file_path) return null
   return {
     id: String(row.id),
     playlistUuid: String(row.playlist_uuid),
@@ -80,16 +93,18 @@ function resolveFilePathWhereClause(): string {
   return process.platform === 'win32' ? 'LOWER(file_path) = LOWER(?)' : 'file_path = ?'
 }
 
-function normalizeMixtapeOrder(db: any, playlistUuid: string) {
+function normalizeMixtapeOrder(db: SqliteDatabase, playlistUuid: string) {
   const rows = db
-    .prepare(
+    .prepare<{
+      id: string
+    }>(
       `SELECT id FROM ${TABLE} WHERE playlist_uuid = ? ORDER BY mix_order ASC, created_at_ms ASC, id ASC`
     )
     .all(playlistUuid)
   if (!rows || rows.length === 0) return
   const update = db.prepare(`UPDATE ${TABLE} SET mix_order = ? WHERE id = ?`)
   const tx = db.transaction(() => {
-    rows.forEach((row: any, idx: number) => {
+    rows.forEach((row, idx) => {
       update.run(idx + 1, row.id)
     })
   })
@@ -605,15 +620,7 @@ export function upsertMixtapeItemBpmByFilePath(
           const filePath = typeof row?.file_path === 'string' ? row.file_path.trim() : ''
           const nextAnalysis = analysisMap.get(filePath)
           if (!nextAnalysis) continue
-          let info: Record<string, any> = {}
-          if (row?.info_json) {
-            try {
-              const parsed = JSON.parse(String(row.info_json))
-              if (parsed && typeof parsed === 'object') {
-                info = parsed
-              }
-            } catch {}
-          }
+          const info = parseMixtapeItemInfoJson(row?.info_json)
           const currentBpm = Number(info.bpm)
           const currentFirstBeatMs = Number(info.firstBeatMs)
           const normalizedCurrentBpm = Number.isFinite(currentBpm)
@@ -703,15 +710,7 @@ export function upsertMixtapeItemGridByFilePath(
           const filePath = typeof row?.file_path === 'string' ? row.file_path.trim() : ''
           const nextGrid = offsetMap.get(filePath)
           if (!nextGrid) continue
-          let info: Record<string, any> = {}
-          if (row?.info_json) {
-            try {
-              const parsed = JSON.parse(String(row.info_json))
-              if (parsed && typeof parsed === 'object') {
-                info = parsed
-              }
-            } catch {}
-          }
+          const info = parseMixtapeItemInfoJson(row?.info_json)
           const nextOffset = normalizeBarBeatOffset(nextGrid.barBeatOffset)
           const currentOffset = normalizeBarBeatOffset(Number(info.barBeatOffset) || 0)
           const currentFirstBeatMs = normalizeFirstBeatMs(Number(info.firstBeatMs) || 0)

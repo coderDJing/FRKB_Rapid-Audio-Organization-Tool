@@ -26,7 +26,8 @@ import {
   upsertMixtapeItemVolumeMuteSegmentsById,
   upsertMixtapeItemStartSecById,
   type MixtapeMixMode,
-  type MixtapeStemMode
+  type MixtapeStemMode,
+  type MixtapeStemProfile
 } from '../mixtapeDb'
 import { summarizeMixtapeStemStatusByPlaylist } from '../mixtapeStemDb'
 import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
@@ -60,6 +61,49 @@ import {
 } from '../services/mixtapeOutput'
 import { moveOrCopyItemWithCheckIsExist, runWithConcurrency, waitForUserDecision } from '../utils'
 import { getMixtapeVaultRootAbs } from '../recycleBinService'
+
+type MixtapeAnalysisCopyField =
+  | 'bpm'
+  | 'originalBpm'
+  | 'firstBeatMs'
+  | 'barBeatOffset'
+  | 'key'
+  | 'originalKey'
+  | 'stemStatus'
+  | 'stemReadyAt'
+  | 'stemModel'
+  | 'stemVersion'
+  | 'stemVocalPath'
+  | 'stemInstPath'
+  | 'stemBassPath'
+  | 'stemDrumsPath'
+
+type MixtapeAnalysisInfo = Record<string, unknown> & {
+  bpm?: number
+  originalBpm?: number
+  firstBeatMs?: number
+  barBeatOffset?: number
+  key?: string
+  originalKey?: string
+  stemStatus?: string
+  stemReadyAt?: number
+  stemModel?: string
+  stemVersion?: string
+  stemVocalPath?: string
+  stemInstPath?: string
+  stemBassPath?: string
+  stemDrumsPath?: string
+}
+
+const normalizeStemProfileInput = (
+  value: unknown,
+  fallback: MixtapeStemProfile
+): MixtapeStemProfile => {
+  return value === 'quality' ? 'quality' : fallback
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value)
 
 export function registerMixtapeHandlers() {
   const persistAndBroadcastSharedGridBatch = async (
@@ -186,9 +230,7 @@ export function registerMixtapeHandlers() {
       const current = getMixtapeProjectStemConfig(playlistId)
       return upsertMixtapeProjectStemProfile(
         playlistId,
-        typeof payload?.stemProfile === 'string'
-          ? (payload.stemProfile as any)
-          : current.stemProfile
+        normalizeStemProfileInput(payload?.stemProfile, current.stemProfile)
       )
     }
   )
@@ -208,6 +250,7 @@ export function registerMixtapeHandlers() {
       }
     ) => {
       const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
+      const current = getMixtapeProjectStemConfig(playlistId)
       const filePaths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
       const stemModeRaw =
         typeof payload?.stemMode === 'string' ? payload.stemMode : FIXED_MIXTAPE_STEM_MODE
@@ -218,7 +261,7 @@ export function registerMixtapeHandlers() {
         force: !!payload?.force,
         model: typeof payload?.model === 'string' ? payload.model : undefined,
         stemVersion: typeof payload?.stemVersion === 'string' ? payload.stemVersion : undefined,
-        profile: typeof payload?.profile === 'string' ? (payload.profile as any) : undefined
+        profile: normalizeStemProfileInput(payload?.profile, current.stemProfile)
       })
     }
   )
@@ -238,6 +281,7 @@ export function registerMixtapeHandlers() {
       }
     ) => {
       const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
+      const current = getMixtapeProjectStemConfig(playlistId)
       const stemModeRaw =
         typeof payload?.stemMode === 'string' ? payload.stemMode : FIXED_MIXTAPE_STEM_MODE
       return retryMixtapeStemJobs({
@@ -247,7 +291,7 @@ export function registerMixtapeHandlers() {
         filePaths: Array.isArray(payload?.filePaths) ? payload.filePaths : [],
         model: typeof payload?.model === 'string' ? payload.model : undefined,
         stemVersion: typeof payload?.stemVersion === 'string' ? payload.stemVersion : undefined,
-        profile: typeof payload?.profile === 'string' ? (payload.profile as any) : undefined
+        profile: normalizeStemProfileInput(payload?.profile, current.stemProfile)
       })
     }
   )
@@ -356,7 +400,7 @@ export function registerMixtapeHandlers() {
           filePath: string
           originPlaylistUuid?: string | null
           originPathSnapshot?: string | null
-          info?: Record<string, any> | null
+          info?: MixtapeAnalysisInfo | null
           sourcePlaylistId?: string | null
           sourceItemId?: string | null
         }>
@@ -366,11 +410,11 @@ export function registerMixtapeHandlers() {
       const inputItems = Array.isArray(payload?.items) ? payload.items : []
 
       const normalizeText = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
-      const normalizeInfo = (value: unknown): Record<string, any> | null => {
-        if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-        return value as Record<string, any>
+      const normalizeInfo = (value: unknown): MixtapeAnalysisInfo | null => {
+        if (!isRecord(value)) return null
+        return value
       }
-      const parseInfoJson = (value: unknown): Record<string, any> | null => {
+      const parseInfoJson = (value: unknown): MixtapeAnalysisInfo | null => {
         if (typeof value !== 'string' || !value.trim()) return null
         try {
           const parsed = JSON.parse(value)
@@ -384,7 +428,7 @@ export function registerMixtapeHandlers() {
         if (!normalized) return false
         return path.isAbsolute(normalized)
       }
-      const hasReadyStemPaths = (info: Record<string, any> | null): boolean => {
+      const hasReadyStemPaths = (info: MixtapeAnalysisInfo | null): boolean => {
         if (!info) return false
         const vocal = normalizeText(info.stemVocalPath)
         const inst = normalizeText(info.stemInstPath)
@@ -393,12 +437,12 @@ export function registerMixtapeHandlers() {
         const bass = normalizeText(info.stemBassPath)
         return !!bass
       }
-      const hasBpmReady = (info: Record<string, any> | null): boolean => {
+      const hasBpmReady = (info: MixtapeAnalysisInfo | null): boolean => {
         if (!info) return false
         const bpm = Number(info.bpm)
         return Number.isFinite(bpm) && bpm > 0
       }
-      const ANALYSIS_COPY_FIELDS = [
+      const ANALYSIS_COPY_FIELDS: MixtapeAnalysisCopyField[] = [
         'bpm',
         'originalBpm',
         'firstBeatMs',
@@ -414,27 +458,27 @@ export function registerMixtapeHandlers() {
         'stemBassPath',
         'stemDrumsPath'
       ]
-      const pickAnalysisInfo = (info: Record<string, any> | null): Record<string, any> | null => {
+      const pickAnalysisInfo = (info: MixtapeAnalysisInfo | null): MixtapeAnalysisInfo | null => {
         if (!info) return null
-        const picked: Record<string, any> = {}
+        const picked: MixtapeAnalysisInfo = {}
         for (const key of ANALYSIS_COPY_FIELDS) {
           if (!Object.prototype.hasOwnProperty.call(info, key)) continue
           const value = info[key]
           if (value === undefined || value === null) continue
           if (typeof value === 'string' && !value.trim()) continue
           if (key === 'stemStatus' && value !== 'ready') continue
-          picked[key] = value
+          Reflect.set(picked, key, value)
         }
         return Object.keys(picked).length > 0 ? picked : null
       }
       const mergeInfoWithAnalysis = (
-        baseInfo: Record<string, any> | null,
-        analysisInfo: Record<string, any> | null
-      ): Record<string, any> | null => {
+        baseInfo: MixtapeAnalysisInfo | null,
+        analysisInfo: MixtapeAnalysisInfo | null
+      ): MixtapeAnalysisInfo | null => {
         if (!baseInfo && !analysisInfo) return null
         if (!analysisInfo) return baseInfo
         if (!baseInfo) return { ...analysisInfo }
-        const merged: Record<string, any> = { ...baseInfo }
+        const merged: MixtapeAnalysisInfo = { ...baseInfo }
         for (const key of ANALYSIS_COPY_FIELDS) {
           const nextValue = analysisInfo[key]
           if (nextValue === undefined || nextValue === null) continue
@@ -443,7 +487,7 @@ export function registerMixtapeHandlers() {
             merged[key] === null ||
             (typeof merged[key] === 'string' && !String(merged[key]).trim())
           ) {
-            merged[key] = nextValue
+            Reflect.set(merged, key, nextValue)
           }
         }
         return merged
@@ -474,7 +518,7 @@ export function registerMixtapeHandlers() {
         sourceRefsByPlaylist.get(sourcePlaylistId)?.add(sourceItemId)
       }
 
-      const reusableInfoBySourceKey = new Map<string, Record<string, any>>()
+      const reusableInfoBySourceKey = new Map<string, MixtapeAnalysisInfo>()
       for (const [sourcePlaylistId, sourceItemIdSet] of sourceRefsByPlaylist.entries()) {
         if (resolvePlaylistMixMode(sourcePlaylistId) !== targetPlaylistMixMode) continue
         const sourceItemIds = Array.from(sourceItemIdSet)
@@ -486,7 +530,7 @@ export function registerMixtapeHandlers() {
           reusableInfoBySourceKey.set(`${sourcePlaylistId}::${sourceItemId}`, parsedInfo)
         }
       }
-      const reusableAnalysisByFilePath = new Map<string, Record<string, any>>()
+      const reusableAnalysisByFilePath = new Map<string, MixtapeAnalysisInfo>()
       const uniqueInputFilePaths = Array.from(
         new Set(
           inputItems
@@ -496,7 +540,7 @@ export function registerMixtapeHandlers() {
       )
       for (const filePath of uniqueInputFilePaths) {
         const candidateRows = listMixtapeItemsByFilePath(filePath)
-        let bestAnalysisInfo: Record<string, any> | null = null
+        let bestAnalysisInfo: MixtapeAnalysisInfo | null = null
         let bestScore = -1
         for (const row of candidateRows) {
           const candidatePlaylistId = normalizeText(row?.playlistUuid)
@@ -519,7 +563,7 @@ export function registerMixtapeHandlers() {
         filePath: string
         originPlaylistUuid?: string | null
         originPathSnapshot?: string | null
-        info?: Record<string, any> | null
+        info?: MixtapeAnalysisInfo | null
       }> = []
       const filePathSet = new Set<string>()
       const bpmAnalyzeFilePathSet = new Set<string>()

@@ -1,6 +1,16 @@
+import type { IPlayerGlobalShortcuts, ISettingConfig } from 'src/types/globals'
+
 export const AUDIO_OUTPUT_FOLLOW_SYSTEM_ID = ''
 
-export const ensurePlayerGlobalShortcuts = (runtime: any) => {
+type SettingDialogRuntime = {
+  setting: ISettingConfig & {
+    songListBubbleAlways?: boolean
+  }
+}
+
+export const ensurePlayerGlobalShortcuts = (
+  runtime: SettingDialogRuntime
+): IPlayerGlobalShortcuts => {
   if (!runtime?.setting?.playerGlobalShortcuts) {
     runtime.setting.playerGlobalShortcuts = {
       fastForward: 'Shift+Alt+Right',
@@ -12,7 +22,7 @@ export const ensurePlayerGlobalShortcuts = (runtime: any) => {
   return runtime.setting.playerGlobalShortcuts
 }
 
-export const ensureSettingDialogRuntimeDefaults = (runtime: any) => {
+export const ensureSettingDialogRuntimeDefaults = (runtime: SettingDialogRuntime) => {
   if (runtime.setting.enablePlaybackRange === undefined) {
     runtime.setting.enablePlaybackRange = false
   }
@@ -22,50 +32,50 @@ export const ensureSettingDialogRuntimeDefaults = (runtime: any) => {
   if (runtime.setting.endPlayPercent === undefined) {
     runtime.setting.endPlayPercent = 100
   }
-  if ((runtime as any).setting.showIdleAnalysisStatus === undefined) {
-    ;(runtime as any).setting.showIdleAnalysisStatus = false
+  if (runtime.setting.showIdleAnalysisStatus === undefined) {
+    runtime.setting.showIdleAnalysisStatus = false
   }
   if (runtime.setting.recentDialogSelectedSongListMaxCount === undefined) {
     runtime.setting.recentDialogSelectedSongListMaxCount = 10
   }
-  if ((runtime as any).setting.enableErrorReport === undefined) {
-    ;(runtime as any).setting.enableErrorReport = true
+  if (runtime.setting.enableErrorReport === undefined) {
+    runtime.setting.enableErrorReport = true
   }
-  if ((runtime as any).setting.errorReportUsageMsSinceLastSuccess === undefined) {
-    ;(runtime as any).setting.errorReportUsageMsSinceLastSuccess = 0
+  if (runtime.setting.errorReportUsageMsSinceLastSuccess === undefined) {
+    runtime.setting.errorReportUsageMsSinceLastSuccess = 0
   }
-  if ((runtime as any).setting.errorReportRetryMsSinceLastFailure === undefined) {
-    ;(runtime as any).setting.errorReportRetryMsSinceLastFailure = -1
+  if (runtime.setting.errorReportRetryMsSinceLastFailure === undefined) {
+    runtime.setting.errorReportRetryMsSinceLastFailure = -1
   }
-  if ((runtime as any).setting.persistSongFilters === undefined) {
-    ;(runtime as any).setting.persistSongFilters = false
+  if (runtime.setting.persistSongFilters === undefined) {
+    runtime.setting.persistSongFilters = false
   }
-  if ((runtime as any).setting.enableCuratedArtistTracking === undefined) {
-    ;(runtime as any).setting.enableCuratedArtistTracking = true
+  if (runtime.setting.enableCuratedArtistTracking === undefined) {
+    runtime.setting.enableCuratedArtistTracking = true
   }
-  if ((runtime as any).setting.enableExplorerContextMenu === undefined) {
-    ;(runtime as any).setting.enableExplorerContextMenu = runtime.setting.platform === 'win32'
+  if (runtime.setting.enableExplorerContextMenu === undefined) {
+    runtime.setting.enableExplorerContextMenu = runtime.setting.platform === 'win32'
   }
-  if ((runtime as any).setting.songListBubbleAlways === undefined) {
-    ;(runtime as any).setting.songListBubbleAlways = false
+  if (runtime.setting.songListBubbleAlways === undefined) {
+    runtime.setting.songListBubbleAlways = false
   }
-  if ((runtime as any).setting.acoustIdClientKey === undefined) {
-    ;(runtime as any).setting.acoustIdClientKey = ''
+  if (runtime.setting.acoustIdClientKey === undefined) {
+    runtime.setting.acoustIdClientKey = ''
   }
-  if ((runtime as any).setting.autoFillSkipCompleted === undefined) {
-    ;(runtime as any).setting.autoFillSkipCompleted = true
+  if (runtime.setting.autoFillSkipCompleted === undefined) {
+    runtime.setting.autoFillSkipCompleted = true
   }
   if (runtime.setting.audioOutputDeviceId === undefined) {
     runtime.setting.audioOutputDeviceId = AUDIO_OUTPUT_FOLLOW_SYSTEM_ID
   }
-  if ((runtime as any).setting.waveformStyle === undefined) {
-    ;(runtime as any).setting.waveformStyle = 'RGB'
+  if (runtime.setting.waveformStyle === undefined) {
+    runtime.setting.waveformStyle = 'RGB'
   }
-  if ((runtime as any).setting.waveformMode === undefined) {
-    ;(runtime as any).setting.waveformMode = 'half'
+  if (runtime.setting.waveformMode === undefined) {
+    runtime.setting.waveformMode = 'half'
   }
-  if ((runtime as any).setting.keyDisplayStyle === undefined) {
-    ;(runtime as any).setting.keyDisplayStyle = 'Classic'
+  if (runtime.setting.keyDisplayStyle === undefined) {
+    runtime.setting.keyDisplayStyle = 'Classic'
   }
   ensurePlayerGlobalShortcuts(runtime)
 }

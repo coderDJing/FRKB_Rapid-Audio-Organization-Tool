@@ -1,5 +1,6 @@
 import { nextTick } from 'vue'
 import { resolveContextMenuPoint } from '@renderer/utils/contextMenuPosition'
+import type ConfirmDialog from '@renderer/components/confirmDialog'
 import { FIXED_MIXTAPE_STEM_MODE } from '@shared/mixtapeStemMode'
 import {
   applyMixtapeGlobalTempoTargetsToTracks,
@@ -23,8 +24,172 @@ import {
   resolveTrackGridSourceBpm,
   roundTrackTempoSec
 } from '@renderer/composables/mixtape/trackTempoModel'
+import type {
+  MixtapeEnvelopeParamId,
+  MixtapeGainPoint,
+  MixtapeMixMode,
+  MixtapeOpenPayload,
+  MixtapeRawItem,
+  MixtapeStemProfile,
+  MixtapeStemStatus,
+  MixtapeTrack
+} from '@renderer/composables/mixtape/types'
+import type {
+  MixtapeOutputProgressPayload,
+  MixtapeRenderedWavResult
+} from '@renderer/composables/mixtape/timelineTransportRenderWav'
+import type {
+  MixtapeStemSummary,
+  StemRuntimeProgressEntry
+} from '@renderer/composables/mixtape/useMixtapeStemRuntimeModule'
+import type { MixtapeOutputProgressState } from '@renderer/composables/mixtape/mixtapeOutputProgress'
 
-export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
+type TrackMenuContextItem = {
+  track?: {
+    id?: string | null
+  } | null
+}
+
+type BpmBatchReadyPayload = {
+  results?: BpmAnalysisResultItem[]
+}
+
+type MixtapeListPayload = {
+  items?: MixtapeRawItem[]
+  recovery?: {
+    removedPaths?: string[]
+  }
+  mixMode?: unknown
+  stemProfile?: unknown
+  stemSummary?: unknown
+}
+
+type EnvelopeField =
+  | 'gainEnvelope'
+  | 'highEnvelope'
+  | 'midEnvelope'
+  | 'lowEnvelope'
+  | 'vocalEnvelope'
+  | 'instEnvelope'
+  | 'bassEnvelope'
+  | 'drumsEnvelope'
+  | 'volumeEnvelope'
+
+const getTrackEnvelopeField = (value: unknown): EnvelopeField => value as EnvelopeField
+
+type BpmAnalysisResultItem = {
+  filePath?: unknown
+  bpm?: unknown
+  firstBeatMs?: unknown
+  barBeatOffset?: unknown
+}
+
+type ValueRef<T> = {
+  value: T
+}
+
+type UseMixtapeBpmAndUiModuleContext = {
+  payload: ValueRef<MixtapeOpenPayload>
+  tracks: ValueRef<MixtapeTrack[]>
+  mixtapeRawItems: ValueRef<MixtapeRawItem[]>
+  mixtapeItemsLoading: ValueRef<boolean>
+  selectedTrackId: ValueRef<string>
+  mixtapeMixMode: ValueRef<MixtapeMixMode>
+  mixtapeStemMode: ValueRef<string>
+  mixtapeStemProfile: ValueRef<MixtapeStemProfile>
+  outputDialogVisible: ValueRef<boolean>
+  outputRunning: ValueRef<boolean>
+  outputPath: ValueRef<string>
+  outputFormat: ValueRef<'wav' | 'mp3'>
+  outputFilename: ValueRef<string>
+  outputProgressKey: ValueRef<string>
+  outputProgressPercent: ValueRef<number>
+  outputProgressDone: ValueRef<number>
+  outputProgressTotal: ValueRef<number>
+  trackContextMenuVisible: ValueRef<boolean>
+  trackContextMenuX: ValueRef<number>
+  trackContextMenuY: ValueRef<number>
+  trackContextTrackId: ValueRef<string>
+  beatAlignDialogVisible: ValueRef<boolean>
+  beatAlignTrackId: ValueRef<string>
+  bpmAnalysisActive: ValueRef<boolean>
+  bpmAnalysisFailed: ValueRef<boolean>
+  bpmAnalysisFailedCount: ValueRef<number>
+  bpmAnalysisFailedReason: ValueRef<string>
+  stemSummary: ValueRef<MixtapeStemSummary>
+  stemRuntimeProgressByTrackId: ValueRef<Record<string, StemRuntimeProgressEntry>>
+  stemResumeBootstrappedPlaylistIdSet: Set<string>
+  stemResumeSignatureByPlaylistId: Map<string, unknown>
+  autoGainDialogVisible: ValueRef<boolean>
+  transportPreloading: ValueRef<boolean>
+  transportPlaying: ValueRef<boolean>
+  transportDecoding: ValueRef<boolean>
+  createEmptyStemSummary: () => MixtapeStemSummary
+  applyBpmAnalysisToTracks: (results: BpmAnalysisResultItem[]) => { resolvedCount: number }
+  buildBpmTargets: () => string[]
+  resolveMissingBpmCount: (targets: Set<string>) => number
+  buildMixtapeBpmTargetKey: (filePaths: string[]) => string
+  scheduleTimelineDraw: () => void
+  scheduleFullPreRender: () => void
+  scheduleWorkerPreRender: () => void
+  clearTimelineLayoutCache: () => void
+  updateTimelineWidth: (allowAutoFit?: boolean) => void
+  resolveTrackDurationSeconds: (track: MixtapeTrack) => number
+  resolveTrackSourceDurationSeconds: (track: MixtapeTrack) => number
+  resolveTrackFirstBeatSeconds: (track: MixtapeTrack) => number
+  resolveTrackTitle: (track: MixtapeTrack) => string
+  renderMixtapeOutputWav: (params: {
+    onProgress: (payload: MixtapeOutputProgressPayload) => void
+  }) => Promise<MixtapeRenderedWavResult>
+  normalizeMixtapeFilePath: (value: unknown) => string
+  normalizeMixtapeMixMode: (value: unknown) => MixtapeMixMode
+  normalizeMixtapeStemMode: (value: unknown) => string
+  normalizeStemProfile: (value: unknown, fallback?: MixtapeStemProfile) => MixtapeStemProfile
+  normalizeMixtapeStemStatus: (value: unknown) => MixtapeStemStatus
+  normalizeStemSummary: (value: unknown) => MixtapeStemSummary
+  normalizeUniquePaths: (values: unknown[]) => string[]
+  parseSnapshot: (raw: MixtapeRawItem, index: number, unknownTrackLabel: string) => MixtapeTrack
+  hasTrackStemPathsReady: (track: MixtapeTrack, stemMode: unknown) => boolean
+  autoResumePendingStemJobs: (params: {
+    playlistId: string
+    stemMode: unknown
+    trackList: MixtapeTrack[]
+    includeRunning?: boolean
+  }) => Promise<void>
+  pruneStemRuntimeProgressByTracks: (tracks: MixtapeTrack[]) => void
+  resolveTrackStemModel: (track: MixtapeTrack) => string
+  syncAutoGainReferenceTrack: () => void
+  resetAutoGainState: () => void
+  notifyMissingTracksRemoved: (playlistId: string, removedPaths: string[]) => Promise<void> | void
+  resolveMixtapeStemModelByProfile: (profile: MixtapeStemProfile) => string
+  resolveMixtapeOutputProgressState: (
+    current: MixtapeOutputProgressState,
+    nextPayload?: MixtapeOutputProgressPayload | null
+  ) => MixtapeOutputProgressState
+  normalizeBarBeatOffset: (value: unknown) => number
+  normalizeFirstBeatMs: (value: unknown) => number
+  normalizeBpm: (value: unknown) => number | null
+  MIXTAPE_ENVELOPE_PARAMS_TRADITIONAL: MixtapeEnvelopeParamId[]
+  MIXTAPE_ENVELOPE_PARAMS_STEM: MixtapeEnvelopeParamId[]
+  MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM: Record<MixtapeEnvelopeParamId, EnvelopeField>
+  buildFlatMixEnvelope: (
+    param: MixtapeEnvelopeParamId,
+    durationSec: number,
+    gain?: number
+  ) => MixtapeGainPoint[]
+  normalizeMixEnvelopePoints: (
+    param: MixtapeEnvelopeParamId,
+    value: unknown,
+    durationSec?: number
+  ) => MixtapeGainPoint[]
+  DEFAULT_MIXTAPE_STEM_PROFILE: MixtapeStemProfile
+  confirmDialog: typeof ConfirmDialog
+  t: (key: string, payload?: Record<string, unknown>) => string
+  handleTransportStop: () => void
+  handleTransportPlayFromStart: () => void
+}
+
+export const createUseMixtapeBpmAndUiModule = (ctx: UseMixtapeBpmAndUiModuleContext) => {
   const {
     payload,
     tracks,
@@ -163,7 +328,10 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     })
   }
 
-  const readNormalizedProjectGlobalTempoSnapshot = async (playlistId: string, trackList: any[]) => {
+  const readNormalizedProjectGlobalTempoSnapshot = async (
+    playlistId: string,
+    trackList: MixtapeTrack[]
+  ) => {
     const normalizedPlaylistId = typeof playlistId === 'string' ? playlistId.trim() : ''
     if (!normalizedPlaylistId || !window?.electron?.ipcRenderer?.invoke) {
       return null
@@ -207,7 +375,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
   }
 
   const materializeGridAlignedTrackStartSecs = (
-    inputTracks: any[],
+    inputTracks: MixtapeTrack[],
     globalSnapshot: {
       bpmEnvelope?: Array<{ sec: number; bpm: number }>
       gridPhaseOffsetSec?: number
@@ -226,7 +394,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     })
     let cursorSec = 0
     const persistedEntries: Array<{ itemId: string; startSec: number }> = []
-    const nextTracks = inputTracks.map((track: any) => {
+    const nextTracks = inputTracks.map((track: MixtapeTrack) => {
       const rawStartSec = Number(track?.startSec)
       const hasExplicitStartSec = Number.isFinite(rawStartSec)
       const sourceDurationSec = Math.max(0, Number(resolveTrackSourceDurationSeconds(track)) || 0)
@@ -284,7 +452,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     return text.length <= 240 ? text : `${text.slice(0, 240)}...`
   }
 
-  const handleBpmBatchReady = (_e: unknown, eventPayload: any) => {
+  const handleBpmBatchReady = (_e: unknown, eventPayload: BpmBatchReadyPayload | null) => {
     const results = Array.isArray(eventPayload?.results) ? eventPayload.results : []
     if (!results.length) return
     const { resolvedCount } = applyBpmAnalysisToTracks(results)
@@ -335,7 +503,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     }
     const bpmTargets = new Set(filePaths)
     const missingPathCount = tracks.value.filter(
-      (track: any) => !normalizeMixtapeFilePath(track.filePath)
+      (track: MixtapeTrack) => !normalizeMixtapeFilePath(track.filePath)
     ).length
     if (missingPathCount > 0) {
       console.warn('[mixtape] BPM analyze skipped tracks without file path', { missingPathCount })
@@ -446,9 +614,9 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     }
     try {
       resetMixtapeGlobalTempoState(playlistId)
-      const result = await window.electron.ipcRenderer.invoke('mixtape:list', {
+      const result = (await window.electron.ipcRenderer.invoke('mixtape:list', {
         playlistId
-      })
+      })) as MixtapeListPayload
       if (requestToken !== mixtapeItemsRequestToken) return
       mixtapeMixMode.value = normalizeMixtapeMixMode(result?.mixMode)
       mixtapeStemMode.value = FIXED_MIXTAPE_STEM_MODE
@@ -457,14 +625,14 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
         DEFAULT_MIXTAPE_STEM_PROFILE
       )
       stemSummary.value = normalizeStemSummary(result?.stemSummary)
-      const rawItems = Array.isArray(result?.items) ? result.items : []
+      const rawItems: MixtapeRawItem[] = Array.isArray(result?.items) ? result.items : []
       mixtapeRawItems.value = rawItems
       const removedPaths = Array.isArray(result?.recovery?.removedPaths)
         ? normalizeUniquePaths(result.recovery.removedPaths)
         : []
-      const parsedTracks = rawItems.map((item: any, index: number) =>
+      const parsedTracks = rawItems.map((item: MixtapeRawItem, index: number) =>
         parseSnapshot(item, index, t('tracks.unknownTrack'))
-      )
+      ) as MixtapeTrack[]
       const persistedGlobalSnapshot = await readNormalizedProjectGlobalTempoSnapshot(
         playlistId,
         parsedTracks
@@ -510,7 +678,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
 
       if (mixtapeMixMode.value === 'stem') {
         const missingStemAssetReadyTracks = tracks.value.filter(
-          (track: any) =>
+          (track: MixtapeTrack) =>
             normalizeMixtapeStemStatus(track.stemStatus) === 'ready' &&
             !hasTrackStemPathsReady(track, stemMode)
         )
@@ -518,7 +686,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
           const repairFilePaths = Array.from(
             new Set(
               missingStemAssetReadyTracks
-                .map((track: any) => normalizeMixtapeFilePath(track.filePath))
+                .map((track: MixtapeTrack) => normalizeMixtapeFilePath(track.filePath))
                 .filter(Boolean)
             )
           )
@@ -555,11 +723,11 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
         stemResumeBootstrappedPlaylistIdSet.delete(currentPlaylistId)
         stemResumeSignatureByPlaylistId.delete(currentPlaylistId)
       }
-      if (!tracks.value.some((track: any) => track.id === selectedTrackId.value)) {
+      if (!tracks.value.some((track: MixtapeTrack) => track.id === selectedTrackId.value)) {
         selectedTrackId.value = tracks.value[0]?.id || ''
       }
       syncAutoGainReferenceTrack()
-      if (!tracks.value.some((track: any) => track.id === beatAlignTrackId.value)) {
+      if (!tracks.value.some((track: MixtapeTrack) => track.id === beatAlignTrackId.value)) {
         beatAlignDialogVisible.value = false
         beatAlignTrackId.value = ''
       }
@@ -587,13 +755,16 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
   }
 
   const openBeatAlignDialog = (trackId: string) => {
-    const found = tracks.value.find((track: any) => track.id === trackId)
+    const found = tracks.value.find((track: MixtapeTrack) => track.id === trackId)
     if (!found) return
     beatAlignTrackId.value = trackId
     beatAlignDialogVisible.value = true
   }
 
-  const handleTrackContextMenu = (item: any, event: MouseEvent) => {
+  const handleTrackContextMenu = (
+    item: TrackMenuContextItem | null | undefined,
+    event: MouseEvent
+  ) => {
     const trackId = item?.track?.id || ''
     if (!trackId) return
     event.preventDefault()
@@ -625,7 +796,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
   const handleTrackMenuToggleMasterTempo = () => {
     const trackId = trackContextTrackId.value
     if (!trackId) return
-    const targetIndex = tracks.value.findIndex((track: any) => track.id === trackId)
+    const targetIndex = tracks.value.findIndex((track: MixtapeTrack) => track.id === trackId)
     if (targetIndex < 0) return
     const currentTrack = tracks.value[targetIndex]
     if (!currentTrack) return
@@ -695,7 +866,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     const playlistId = String(payload.value.playlistId || '').trim()
     const trackId = beatAlignTrackId.value
     if (!trackId) return
-    const targetIndex = tracks.value.findIndex((track: any) => track.id === trackId)
+    const targetIndex = tracks.value.findIndex((track: MixtapeTrack) => track.id === trackId)
     if (targetIndex < 0) return
     const currentTrack = tracks.value[targetIndex]
     if (!currentTrack) return
@@ -713,13 +884,13 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     const shouldPersistBpm =
       normalizedInputBpm !== null &&
       (bpmCompareBase === null || Math.abs(normalizedInputBpm - bpmCompareBase) > 0.0001)
-    const isSameTrack = (track: any) =>
+    const isSameTrack = (track: MixtapeTrack) =>
       targetFilePath.length > 0
         ? normalizeMixtapeFilePath(track.filePath) === targetFilePath
         : track.id === trackId
     const bpmChanged =
       shouldPersistBpm &&
-      tracks.value.some((track: any) => {
+      tracks.value.some((track: MixtapeTrack) => {
         if (!isSameTrack(track)) return false
         const trackBpmBase =
           normalizeBpm(track.gridBaseBpm) ??
@@ -743,7 +914,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
         })) === 'confirm'
       : false
     if (gridPositionChanged && !shouldResetEnvelope) return
-    const nextTracks = tracks.value.map((track: any) => {
+    const nextTracks = tracks.value.map((track: MixtapeTrack) => {
       if (!isSameTrack(track)) return track
       const fallbackGridBaseBpm =
         normalizeBpm(track.gridBaseBpm) ?? normalizeBpm(track.originalBpm) ?? track.gridBaseBpm
@@ -761,9 +932,9 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
             : track.originalBpm
       }
       if (!shouldResetEnvelope) return nextTrack
-      for (const param of activeEnvelopeParams) {
-        const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
-        ;(nextTrack as any)[envelopeField] = buildFlatMixEnvelope(
+      for (const param of activeEnvelopeParams as MixtapeEnvelopeParamId[]) {
+        const envelopeField = getTrackEnvelopeField(MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param])
+        nextTrack[envelopeField] = buildFlatMixEnvelope(
           param,
           resolveTrackDurationSeconds(track),
           1
@@ -796,21 +967,21 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     }
 
     if (!shouldResetEnvelope) return
-    const affectedTracks = nextTracks.filter((track: any) => isSameTrack(track))
+    const affectedTracks = nextTracks.filter((track: MixtapeTrack) => isSameTrack(track))
     if (!affectedTracks.length) return
-    const envelopeUpdateTasks = activeEnvelopeParams.map((param: any) => {
-      const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
+    const envelopeUpdateTasks = (activeEnvelopeParams as MixtapeEnvelopeParamId[]).map((param) => {
+      const envelopeField = getTrackEnvelopeField(MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param])
       const entries = affectedTracks
-        .map((track: any) => {
+        .map((track: MixtapeTrack) => {
           const points = normalizeMixEnvelopePoints(
             param,
-            (track as any)?.[envelopeField],
+            track[envelopeField],
             resolveTrackDurationSeconds(track)
-          )
+          ) as MixtapeGainPoint[]
           if (points.length < 2) return null
           return {
             itemId: track.id,
-            gainEnvelope: points.map((point: any) => ({
+            gainEnvelope: points.map((point: MixtapeGainPoint) => ({
               sec: Number(point.sec),
               gain: Number(point.gain)
             }))
@@ -818,7 +989,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
         })
         .filter(
           (
-            item: any
+            item: { itemId: string; gainEnvelope: Array<{ sec: number; gain: number }> } | null
           ): item is { itemId: string; gainEnvelope: Array<{ sec: number; gain: number }> } =>
             item !== null
         )
@@ -828,7 +999,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
         entries
       })
     })
-    const muteSegmentUpdateEntries = affectedTracks.map((track: any) => ({
+    const muteSegmentUpdateEntries = affectedTracks.map((track: MixtapeTrack) => ({
       itemId: track.id,
       segments: []
     }))
@@ -841,7 +1012,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     const originalBpmUpdateTask =
       bpmChanged && normalizedInputBpm !== null
         ? window.electron.ipcRenderer.invoke('mixtape:update-track-start-sec', {
-            entries: affectedTracks.map((track: any) => ({
+            entries: affectedTracks.map((track: MixtapeTrack) => ({
               itemId: track.id,
               originalBpm: Number(normalizedInputBpm)
             }))
@@ -906,7 +1077,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
     outputDialogVisible.value = true
   }
 
-  const applyOutputProgressPayload = (payload: any) => {
+  const applyOutputProgressPayload = (payload: MixtapeOutputProgressPayload | null) => {
     const nextState = resolveMixtapeOutputProgressState(
       {
         stageKey: outputProgressKey.value,
@@ -956,18 +1127,20 @@ export const createUseMixtapeBpmAndUiModule = (ctx: any) => {
         DEFAULT_MIXTAPE_STEM_PROFILE
       )
       const exportModel = resolveMixtapeStemModelByProfile(exportProfile)
-      const notReadyTracks = tracks.value.filter((track: any) => {
+      const notReadyTracks = tracks.value.filter((track: MixtapeTrack) => {
         if (normalizeMixtapeStemStatus(track.stemStatus) !== 'ready') return true
         if (!hasTrackStemPathsReady(track, mixtapeStemMode.value)) return true
         return resolveTrackStemModel(track) !== exportModel
       })
       if (notReadyTracks.length > 0) {
-        const trackSample = notReadyTracks.slice(0, 3).map((track: any) => resolveTrackTitle(track))
+        const trackSample = notReadyTracks
+          .slice(0, 3)
+          .map((track: MixtapeTrack) => resolveTrackTitle(track))
         const filePaths = Array.from(
           new Set(
             notReadyTracks
-              .map((track: any) => normalizeMixtapeFilePath(track.filePath))
-              .filter((filePath: any): filePath is string => !!filePath)
+              .map((track: MixtapeTrack) => normalizeMixtapeFilePath(track.filePath))
+              .filter((filePath: string): filePath is string => !!filePath)
           )
         )
         if (

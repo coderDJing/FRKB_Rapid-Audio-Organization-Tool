@@ -21,6 +21,22 @@ let latestMacManualUpdateAsset: ManualMacUpdateAsset | null = null
 let latestMacManualUpdateResult: ManualMacUpdateResult | null = null
 let manualMacDownloadPromise: Promise<ManualMacUpdateResult> | null = null
 
+type AutoUpdaterProvider = {
+  resolveFiles?: (updateInfo: UpdateInfo) => ResolvedUpdateFileInfo[]
+}
+
+type AutoUpdaterWithExtras = typeof autoUpdater & {
+  updateInfoAndProvider?: {
+    provider?: AutoUpdaterProvider
+  }
+  allowPrerelease?: boolean
+  channel?: string
+}
+
+type BrowserWindowWithVisualEffect = BrowserWindow & {
+  setVisualEffectMaterial?: (material: string) => void
+}
+
 type UpdateErrorKind = 'network' | 'signature' | 'install' | 'unknown'
 
 type UpdateErrorPayload = {
@@ -43,7 +59,7 @@ const sendToUpdateWindow = (channel: string, payload?: unknown) => {
 }
 
 const resolveUpdateFiles = (updateInfo: UpdateInfo): ResolvedUpdateFileInfo[] => {
-  const provider = (autoUpdater as any)?.updateInfoAndProvider?.provider
+  const provider = (autoUpdater as AutoUpdaterWithExtras).updateInfoAndProvider?.provider
   if (provider?.resolveFiles instanceof Function) {
     try {
       return provider.resolveFiles(updateInfo) as ResolvedUpdateFileInfo[]
@@ -136,11 +152,7 @@ const registerAutoUpdaterListeners = () => {
 
   autoUpdater.on('update-available', (info) => {
     const currentIsPrerelease = app.getVersion().includes('-')
-    const remoteIsPrerelease = !!(
-      info &&
-      typeof (info as any).version === 'string' &&
-      (info as any).version.includes('-')
-    )
+    const remoteIsPrerelease = typeof info?.version === 'string' && info.version.includes('-')
     if (currentIsPrerelease !== remoteIsPrerelease) return
     rememberMacManualUpdateAsset(info)
     sendToUpdateWindow('newVersion', info)
@@ -149,7 +161,7 @@ const registerAutoUpdaterListeners = () => {
   autoUpdater.on('update-not-available', (info) => {
     // 当同轨道无更新，才提示“已是最新版本”
     const currentIsPrerelease = app.getVersion().includes('-')
-    const remoteVersion = (info as any)?.version as string | undefined
+    const remoteVersion = info?.version
     const remoteIsPrerelease = !!(remoteVersion && remoteVersion.includes('-'))
     if (remoteVersion && currentIsPrerelease === remoteIsPrerelease) {
       sendToUpdateWindow('isLatestVersion', info.version)
@@ -308,7 +320,7 @@ const createWindow = () => {
       updateWindow.setVibrancy('under-window')
     } catch {}
     try {
-      ;(updateWindow as any).setVisualEffectMaterial?.('under-window')
+      ;(updateWindow as BrowserWindowWithVisualEffect).setVisualEffectMaterial?.('under-window')
     } catch {}
   }
 
@@ -333,11 +345,11 @@ const createWindow = () => {
     const versionString = app.getVersion()
     const isPrerelease = versionString.includes('-')
     try {
-      ;(autoUpdater as any).allowPrerelease = isPrerelease
+      ;(autoUpdater as AutoUpdaterWithExtras).allowPrerelease = isPrerelease
     } catch {}
     try {
       if (isPrerelease && /-rc[.-]/i.test(versionString)) {
-        ;(autoUpdater as any).channel = 'rc'
+        ;(autoUpdater as AutoUpdaterWithExtras).channel = 'rc'
       }
     } catch {}
     void autoUpdater.checkForUpdates().catch((error) => {

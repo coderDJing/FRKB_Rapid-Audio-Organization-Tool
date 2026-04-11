@@ -40,6 +40,18 @@ export type MixtapeMissingRecovery = {
 
 const inFlightBpmBatchMap = new Map<string, Promise<MixtapeBpmAnalyzeResult>>()
 
+type BpmWorkerPayload = {
+  jobId?: number
+  progress?: unknown
+  error?: string
+  result?: {
+    bpm?: unknown
+    bpmError?: unknown
+    firstBeatMs?: unknown
+    barBeatOffset?: unknown
+  }
+}
+
 const normalizePathForBatchKey = (value: string): string => {
   const normalized = String(value || '').trim()
   if (!normalized) return ''
@@ -233,7 +245,7 @@ const analyzeMixtapeBpmBatch = async (
       })
     }
 
-    const handleMessage = (worker: Worker, payload: any) => {
+    const handleMessage = (worker: Worker, payload: BpmWorkerPayload) => {
       const hasProgressPayload =
         payload &&
         typeof payload === 'object' &&

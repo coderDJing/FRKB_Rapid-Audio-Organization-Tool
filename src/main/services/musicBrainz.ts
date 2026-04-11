@@ -24,6 +24,33 @@ const DETAIL_CACHE_TTL = 7 * 24 * 60 * 60 * 1000
 let proxyDispatcher: ProxyAgent | undefined
 let proxyInitialized = false
 
+type JsonObject = Record<string, unknown>
+type RequestInitWithDispatcher = RequestInit & { dispatcher?: ProxyAgent }
+type ErrorLike = {
+  message?: unknown
+  code?: unknown
+  name?: unknown
+}
+type TrackContext = {
+  medium: JsonObject
+  track: JsonObject
+}
+
+const isJsonObject = (value: unknown): value is JsonObject =>
+  !!value && typeof value === 'object' && !Array.isArray(value)
+
+const getString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() ? value.trim() : undefined
+
+const getNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined
+
+const getJsonObject = (value: unknown): JsonObject | undefined =>
+  isJsonObject(value) ? value : undefined
+
+const getJsonObjectArray = (value: unknown): JsonObject[] =>
+  Array.isArray(value) ? value.filter(isJsonObject) : []
+
 async function ensureProxyInitialized(): Promise<void> {
   if (proxyInitialized) return
   proxyInitialized = true
@@ -36,7 +63,7 @@ async function ensureProxyInitialized(): Promise<void> {
 
 const appReady = app.isReady() ? Promise.resolve() : app.whenReady()
 const cacheDirMap = new Map<'search' | 'detail', string>()
-const memoryCache = new Map<string, { expiresAt: number; data: any }>()
+const memoryCache = new Map<string, { expiresAt: number; data: unknown }>()
 
 interface QueueItem<T> {
   fn: () => Promise<T>
@@ -44,7 +71,7 @@ interface QueueItem<T> {
   reject: (reason?: unknown) => void
 }
 
-const requestQueue: QueueItem<any>[] = []
+const requestQueue: QueueItem<unknown>[] = []
 let queueProcessing = false
 let currentAbortController: AbortController | null = null
 
@@ -72,14 +99,16 @@ function processQueue() {
     })
 }
 
-function getErrorCode(err: any) {
-  if (!err) return ''
-  if (typeof err.message === 'string' && err.message.trim()) return err.message.trim()
-  if (typeof err.code === 'string' && err.code.trim()) return err.code.trim()
+function getErrorCode(err: unknown) {
+  const error = getJsonObject(err) as ErrorLike | undefined
+  const message = getString(error?.message)
+  if (message) return message
+  const code = getString(error?.code)
+  if (code) return code
   return ''
 }
 
-function isRetriableError(err: any) {
+function isRetriableError(err: unknown) {
   const code = getErrorCode(err)
   if (!code) return false
   if (code === 'MUSICBRAINZ_RATE_LIMITED' || code === 'MUSICBRAINZ_ABORTED') return false
@@ -100,18 +129,20 @@ function isRetriableError(err: any) {
   )
 }
 
-async function withRetry<T>(fn: () => Promise<T>) {
-  let lastError: any
+async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  let lastError: unknown = null
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       return await fn()
-    } catch (err: any) {
+    } catch (err: unknown) {
       lastError = err
       const willRetry = attempt < MAX_RETRIES && isRetriableError(err)
       if (!willRetry) throw err
     }
   }
-  throw lastError
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(getErrorCode(lastError) || 'MUSICBRAINZ_UNKNOWN')
 }
 
 async function ensureCacheDir(scope: 'search' | 'detail'): Promise<string> {
@@ -214,7 +245,7 @@ async function requestJson<T>(url: string, headers?: HeadersInit, timeoutMs?: nu
         controller.abort()
       }, timeoutMs ?? REQUEST_TIMEOUT)
       try {
-        const init: RequestInit & { dispatcher?: any } = {
+        const init: RequestInitWithDispatcher = {
           headers: mergeHeaders({
             Accept: 'application/json',
             ...headers
@@ -227,15 +258,19 @@ async function requestJson<T>(url: string, headers?: HeadersInit, timeoutMs?: nu
         if (res.status === 503) throw new Error('MUSICBRAINZ_UNAVAILABLE')
         if (!res.ok) throw new Error(`MUSICBRAINZ_HTTP_${res.status}`)
         return (await res.json()) as T
-      } catch (err: any) {
-        if (err?.name === 'AbortError') {
+      } catch (err: unknown) {
+        const error = getJsonObject(err) as ErrorLike | undefined
+        const errorName = getString(error?.name)
+        const errorCode = getString(error?.code)
+        const errorMessage = getString(error?.message)
+        if (errorName === 'AbortError') {
           if (abortedByTimeout) throw new Error('MUSICBRAINZ_TIMEOUT')
           throw new Error('MUSICBRAINZ_ABORTED')
         }
-        if (err?.code === 'ECONNRESET' || err?.message?.includes('fetch failed')) {
+        if (errorCode === 'ECONNRESET' || errorMessage?.includes('fetch failed')) {
           throw new Error('MUSICBRAINZ_NETWORK')
         }
-        throw err
+        throw err instanceof Error ? err : new Error(String(err))
       } finally {
         clearTimeout(timer)
         if (currentAbortController === controller) {
@@ -265,7 +300,7 @@ async function requestBuffer(
         controller.abort()
       }, timeoutMs ?? REQUEST_TIMEOUT)
       try {
-        const init: RequestInit & { dispatcher?: any } = {
+        const init: RequestInitWithDispatcher = {
           headers: mergeHeaders(headers),
           signal: controller.signal
         }
@@ -278,15 +313,19 @@ async function requestBuffer(
         const mime = res.headers.get('content-type') || 'image/jpeg'
         const arrayBuffer = await res.arrayBuffer()
         return { mime, buffer: Buffer.from(arrayBuffer) }
-      } catch (err: any) {
-        if (err?.name === 'AbortError') {
+      } catch (err: unknown) {
+        const error = getJsonObject(err) as ErrorLike | undefined
+        const errorName = getString(error?.name)
+        const errorCode = getString(error?.code)
+        const errorMessage = getString(error?.message)
+        if (errorName === 'AbortError') {
           if (abortedByTimeout) throw new Error('MUSICBRAINZ_TIMEOUT')
           throw new Error('MUSICBRAINZ_ABORTED')
         }
-        if (err?.code === 'ECONNRESET' || err?.message?.includes('fetch failed')) {
+        if (errorCode === 'ECONNRESET' || errorMessage?.includes('fetch failed')) {
           throw new Error('MUSICBRAINZ_NETWORK')
         }
-        throw err
+        throw err instanceof Error ? err : new Error(String(err))
       } finally {
         clearTimeout(timer)
         if (currentAbortController === controller) {
@@ -339,12 +378,14 @@ function buildRecordingQuery(payload: ReturnType<typeof normalizeSearchPayload>)
   return parts.join(' AND ')
 }
 
-function formatArtistCredit(credit: any): string {
+function formatArtistCredit(credit: unknown): string {
   if (!Array.isArray(credit)) return ''
   return credit
-    .map((entry: any) => {
-      const name = entry?.name || entry?.artist?.name
-      const joinphrase = entry?.joinphrase || ''
+    .map((entry) => {
+      const item = getJsonObject(entry)
+      const artist = getJsonObject(item?.artist)
+      const name = getString(item?.name) || getString(artist?.name)
+      const joinphrase = getString(item?.joinphrase) || ''
       return `${name || ''}${joinphrase}`
     })
     .join('')
@@ -352,14 +393,14 @@ function formatArtistCredit(credit: any): string {
 }
 
 function computeMatchedFields(
-  recording: any,
+  recording: JsonObject,
   payload: ReturnType<typeof normalizeSearchPayload>,
-  release?: any
+  release?: JsonObject
 ) {
   const matched: string[] = []
-  const recTitle = normalizeText(recording?.title)?.toLowerCase()
-  const artistCredit = formatArtistCredit(recording?.['artist-credit']).toLowerCase()
-  const releaseTitle = normalizeText(release?.title)?.toLowerCase()
+  const recTitle = normalizeText(getString(recording.title))?.toLowerCase()
+  const artistCredit = formatArtistCredit(recording['artist-credit']).toLowerCase()
+  const releaseTitle = normalizeText(getString(release?.title))?.toLowerCase()
   if (payload.title && recTitle && payload.title.toLowerCase() === recTitle) matched.push('title')
   if (payload.artist && artistCredit && payload.artist.toLowerCase() === artistCredit) {
     matched.push('artist')
@@ -367,39 +408,42 @@ function computeMatchedFields(
   if (payload.album && releaseTitle && payload.album.toLowerCase() === releaseTitle) {
     matched.push('album')
   }
-  if (payload.durationSeconds && typeof recording?.length === 'number') {
-    const diff = Math.abs(Math.round(recording.length / 1000) - payload.durationSeconds)
+  const recordingLength = getNumber(recording.length)
+  if (payload.durationSeconds && recordingLength !== undefined) {
+    const diff = Math.abs(Math.round(recordingLength / 1000) - payload.durationSeconds)
     if (diff <= 2) matched.push('duration')
   }
   return matched
 }
 
-function pickRelease(releases: any[]): any | undefined {
-  if (!Array.isArray(releases) || releases.length === 0) return undefined
-  const scored = releases
+function pickRelease(releases: unknown[]): JsonObject | undefined {
+  const normalizedReleases = getJsonObjectArray(releases)
+  if (normalizedReleases.length === 0) return undefined
+  const scored = normalizedReleases
     .map((release) => ({
       release,
       score:
-        (release?.status === 'Official' ? 20 : 0) +
-        (Array.isArray(release?.media) && release.media.length ? 10 : 0) +
-        (release?.country ? 5 : 0)
+        (getString(release.status) === 'Official' ? 20 : 0) +
+        (getJsonObjectArray(release.media).length ? 10 : 0) +
+        (getString(release.country) ? 5 : 0)
     }))
     .sort((a, b) => b.score - a.score)
-  return scored[0]?.release ?? releases[0]
+  return scored[0]?.release ?? normalizedReleases[0]
 }
 
 function transformRecording(
-  recording: any,
+  recording: JsonObject,
   payload: ReturnType<typeof normalizeSearchPayload>
 ): IMusicBrainzMatch {
-  const release = pickRelease(recording?.releases ?? [])
+  const release = pickRelease(getJsonObjectArray(recording.releases))
+  const recordingLength = getNumber(recording.length)
   const durationSeconds =
-    typeof recording?.length === 'number' ? Math.round(recording.length / 1000) : undefined
+    recordingLength !== undefined ? Math.round(recordingLength / 1000) : undefined
   const durationDiffSeconds =
     payload.durationSeconds && durationSeconds
       ? Math.abs(durationSeconds - payload.durationSeconds)
       : undefined
-  const baseScore = typeof recording?.score === 'number' ? recording.score : 0
+  const baseScore = getNumber(recording.score) ?? 0
   let score = baseScore
   const matchedFields = computeMatchedFields(recording, payload, release)
   score += matchedFields.length * 5
@@ -407,24 +451,24 @@ function transformRecording(
     if (durationDiffSeconds <= 2) score += 10
     else if (durationDiffSeconds > 8) score -= 10
   }
-  if (release?.status === 'Official') score += 5
-  if (release?.country) score += 2
-  if (release?.['release-events']?.length) score += 1
+  if (getString(release?.status) === 'Official') score += 5
+  if (getString(release?.country)) score += 2
+  if (getJsonObjectArray(release?.['release-events']).length) score += 1
   score = Math.max(0, Math.min(100, score))
   return {
-    recordingId: recording?.id,
-    title: recording?.title || '',
-    artist: formatArtistCredit(recording?.['artist-credit']),
-    releaseId: release?.id,
-    releaseTitle: release?.title,
-    releaseDate: release?.date,
-    country: release?.country,
-    disambiguation: recording?.disambiguation,
+    recordingId: getString(recording.id) || '',
+    title: getString(recording.title) || '',
+    artist: formatArtistCredit(recording['artist-credit']),
+    releaseId: getString(release?.id),
+    releaseTitle: getString(release?.title),
+    releaseDate: getString(release?.date),
+    country: getString(release?.country),
+    disambiguation: getString(recording.disambiguation),
     score,
     matchedFields,
     durationSeconds,
     durationDiffSeconds,
-    isrc: Array.isArray(recording?.isrcs) ? recording.isrcs[0] : undefined,
+    isrc: Array.isArray(recording.isrcs) ? getString(recording.isrcs[0]) : undefined,
     source: 'search'
   }
 }
@@ -447,8 +491,8 @@ export async function searchMusicBrainz(
   const cached = await readCache<IMusicBrainzMatch[]>('search', cacheKey)
   if (cached) return cached
   const url = `${MUSICBRAINZ_BASE}/recording?fmt=json&limit=5&inc=releases+artists+isrcs&query=${encodeURIComponent(query)}`
-  const response = await requestJson<any>(url)
-  const recordings: any[] = Array.isArray(response?.recordings) ? response.recordings : []
+  const response = await requestJson<{ recordings?: unknown[] }>(url)
+  const recordings = getJsonObjectArray(response?.recordings)
   const matches = recordings
     .map((rec) => transformRecording(rec, normalized))
     .filter((m) => m.title)
@@ -457,23 +501,22 @@ export async function searchMusicBrainz(
   return matches
 }
 
-async function fetchRecordingDetail(recordingId: string): Promise<any> {
+async function fetchRecordingDetail(recordingId: string): Promise<JsonObject> {
   const url = `${MUSICBRAINZ_BASE}/recording/${recordingId}?fmt=json&inc=releases+artists+isrcs`
-  return await requestJson<any>(url)
+  return await requestJson<JsonObject>(url)
 }
 
-async function fetchReleaseDetail(releaseId: string): Promise<any> {
+async function fetchReleaseDetail(releaseId: string): Promise<JsonObject> {
   const url = `${MUSICBRAINZ_BASE}/release/${releaseId}?fmt=json&inc=recordings+artists+labels+genres+media`
-  return await requestJson<any>(url, undefined, RELEASE_DETAIL_TIMEOUT)
+  return await requestJson<JsonObject>(url, undefined, RELEASE_DETAIL_TIMEOUT)
 }
 
-function findTrackContext(release: any, recordingId: string) {
-  if (!release || !Array.isArray(release.media)) return null
-  for (const medium of release.media) {
-    const trackList = medium?.tracks || medium?.track
-    if (!Array.isArray(trackList)) continue
+function findTrackContext(release: JsonObject, recordingId: string): TrackContext | null {
+  for (const medium of getJsonObjectArray(release.media)) {
+    const trackList = getJsonObjectArray(medium.tracks ?? medium.track)
     for (const track of trackList) {
-      if (track?.recording?.id === recordingId) {
+      const recording = getJsonObject(track.recording)
+      if (getString(recording?.id) === recordingId) {
         return { medium, track }
       }
     }
@@ -490,9 +533,9 @@ async function fetchCoverDataUrl(releaseId: string): Promise<string | null> {
     )
     if (!cover) return null
     return `data:${cover.mime};base64,${cover.buffer.toString('base64')}`
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Only re-throw if user cancelled the request
-    if (err?.message === 'MUSICBRAINZ_ABORTED') {
+    if (getErrorCode(err) === 'MUSICBRAINZ_ABORTED') {
       throw err
     }
     return null
@@ -532,53 +575,60 @@ export async function fetchMusicBrainzSuggestion(
     if (!id) return
     if (!releaseCandidates.includes(id)) releaseCandidates.push(id)
   }
-  const recordingReleases = Array.isArray(recording?.releases) ? recording?.releases : []
+  const recordingReleases = getJsonObjectArray(recording.releases)
   if (params.releaseId) {
     addCandidate(params.releaseId)
   }
   if (!params.releaseId || allowFallback) {
-    addCandidate(pickRelease(recordingReleases || [])?.id)
-    addCandidate(recordingReleases?.[0]?.id)
+    addCandidate(getString(pickRelease(recordingReleases)?.id))
+    addCandidate(getString(recordingReleases[0]?.id))
   }
   for (const rel of recordingReleases) {
-    addCandidate(rel?.id)
+    addCandidate(getString(rel.id))
   }
   if (!releaseCandidates.length) throw new Error('MUSICBRAINZ_RELEASE_NOT_FOUND')
 
-  const buildResultFromRelease = async (releaseDetail: any, releaseId: string, trackCtx?: any) => {
+  const buildResultFromRelease = async (
+    releaseDetail: JsonObject,
+    releaseId: string,
+    trackCtx?: TrackContext | null
+  ) => {
     ensureNotCancelled()
     const hasTrack = !!trackCtx
+    const trackPosition = getNumber(trackCtx?.track.position)
+    const trackNumberText = getString(trackCtx?.track.number)
+    const mediumTrackCount = Number(trackCtx?.medium['track-count'])
+    const mediumPosition = getNumber(trackCtx?.medium.position)
+    const genres = getJsonObjectArray(releaseDetail.genres)
+    const firstGenre = getString(genres[0]?.name)
+    const labelInfo = getJsonObjectArray(releaseDetail['label-info'])
+    const firstLabel = getJsonObject(labelInfo[0]?.label)
+    const coverArchive = getJsonObject(releaseDetail['cover-art-archive'])
     const trackNumber =
-      hasTrack && trackCtx.track?.position
-        ? Number(trackCtx.track.position)
-        : hasTrack && trackCtx.track?.number
-          ? parseInt(trackCtx.track.number, 10) || undefined
+      hasTrack && trackPosition !== undefined
+        ? Number(trackPosition)
+        : hasTrack && trackNumberText
+          ? parseInt(trackNumberText, 10) || undefined
           : undefined
     const suggestion = {
-      title: recording?.title,
-      artist: formatArtistCredit(recording?.['artist-credit']),
-      album: releaseDetail?.title,
-      albumArtist: formatArtistCredit(releaseDetail?.['artist-credit']),
-      year: normalizeText(releaseDetail?.date)?.slice(0, 4),
-      genre: Array.isArray(releaseDetail?.genres) ? releaseDetail.genres[0]?.name : undefined,
-      label: releaseDetail?.['label-info']?.[0]?.label?.name,
-      isrc: Array.isArray(recording?.isrcs) ? recording.isrcs[0] : undefined,
+      title: getString(recording.title),
+      artist: formatArtistCredit(recording['artist-credit']),
+      album: getString(releaseDetail.title),
+      albumArtist: formatArtistCredit(releaseDetail['artist-credit']),
+      year: normalizeText(getString(releaseDetail.date))?.slice(0, 4),
+      genre: firstGenre,
+      label: getString(firstLabel?.name),
+      isrc: Array.isArray(recording.isrcs) ? getString(recording.isrcs[0]) : undefined,
       trackNo: trackNumber,
       trackTotal:
-        hasTrack && typeof trackCtx.medium?.['track-count'] === 'number'
-          ? trackCtx.medium['track-count']
+        hasTrack && Number.isFinite(mediumTrackCount)
+          ? mediumTrackCount
           : hasTrack
-            ? trackCtx.medium?.trackCount
+            ? getNumber(trackCtx?.medium.trackCount)
             : undefined,
-      discNo:
-        hasTrack && typeof trackCtx.medium?.position === 'number'
-          ? trackCtx.medium.position
-          : undefined,
-      discTotal: Array.isArray(releaseDetail?.media) ? releaseDetail.media.length : undefined,
-      coverDataUrl:
-        releaseDetail?.['cover-art-archive']?.front === true
-          ? await fetchCoverDataUrl(releaseId)
-          : null
+      discNo: hasTrack ? mediumPosition : undefined,
+      discTotal: getJsonObjectArray(releaseDetail.media).length || undefined,
+      coverDataUrl: coverArchive?.front === true ? await fetchCoverDataUrl(releaseId) : null
     } as IMusicBrainzSuggestionResult['suggestion']
     return {
       suggestion,
@@ -586,14 +636,14 @@ export async function fetchMusicBrainzSuggestion(
         recordingId: params.recordingId,
         releaseId
       },
-      releaseTitle: releaseDetail?.title,
-      releaseDate: releaseDetail?.date,
-      country: releaseDetail?.country,
+      releaseTitle: getString(releaseDetail.title),
+      releaseDate: getString(releaseDetail.date),
+      country: getString(releaseDetail.country),
       label: suggestion.label,
       artistCredit: suggestion.albumArtist
     } satisfies IMusicBrainzSuggestionResult
   }
-  let fallbackReleaseDetail: { releaseId: string; detail: any } | null = null
+  let fallbackReleaseDetail: { releaseId: string; detail: JsonObject } | null = null
   let lastError: Error | null = null
   for (const releaseId of releaseCandidates) {
     try {
@@ -629,7 +679,7 @@ export async function fetchMusicBrainzSuggestion(
         }
       }
       return result
-    } catch (error: any) {
+    } catch (error: unknown) {
       lastError = error instanceof Error ? error : new Error(String(error))
       const shouldFallback =
         allowFallback && lastError?.message === 'MUSICBRAINZ_RECORDING_NOT_IN_RELEASE'

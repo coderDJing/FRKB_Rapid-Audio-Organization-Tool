@@ -15,17 +15,19 @@ import {
   normalizeRendererPlaylistPath,
   permanentlyDeleteFile,
   restoreRecycleBinFile,
-  toLibraryRelativePath
+  toLibraryRelativePath,
+  type RecycleBinMoveResult
 } from '../recycleBinService'
 import { findLibraryNodeByPath } from '../libraryTreeDb'
 import {
   listRecycleBinRecords,
   deleteRecycleBinRecords,
-  upsertRecycleBinRecord
+  upsertRecycleBinRecord,
+  type RecycleBinRecord
 } from '../recycleBinDb'
 import { scanSongList as svcScanSongList } from '../services/scanSongs'
 import { RECYCLE_BIN_UUID } from '../../shared/recycleBin'
-import { getLibraryDb } from '../libraryDb'
+import { getLibraryDb, type SqliteDatabase } from '../libraryDb'
 import { getLibraryStemCacheRootAbs } from '../services/libraryStemAssetStorage'
 
 const DIRTY_DATA_SQL_TABLES = [
@@ -54,15 +56,26 @@ type DirtyDataPathSummary = {
   removedPaths: string[]
 }
 
-function clearDirtyDataSqlTables(db: any): DirtyDataSqlSummary {
+type ErrorWithCode = Error & {
+  code?: string
+}
+
+const getErrorCode = (error: ErrorWithCode): string => String(error.code || '').trim()
+
+const isRecycleBinMoveResult = (value: unknown): value is RecycleBinMoveResult =>
+  !!value &&
+  typeof value === 'object' &&
+  !Array.isArray(value) &&
+  typeof Reflect.get(value, 'status') === 'string' &&
+  typeof Reflect.get(value, 'srcPath') === 'string'
+
+function clearDirtyDataSqlTables(db: SqliteDatabase): DirtyDataSqlSummary {
   const removedByTable: Record<string, number> = {}
   const missingTables: string[] = []
   let removedRows = 0
   const existingRows = db
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
-    .all() as Array<{
-    name: string
-  }>
+    .prepare<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'")
+    .all()
   const existingTableSet = new Set(existingRows.map((row) => String(row.name)))
   const runDelete = db.transaction(() => {
     for (const table of DIRTY_DATA_SQL_TABLES) {
@@ -71,7 +84,7 @@ function clearDirtyDataSqlTables(db: any): DirtyDataSqlSummary {
         removedByTable[table] = 0
         continue
       }
-      const info = db.prepare(`DELETE FROM ${table}`).run() as { changes?: number }
+      const info = db.prepare(`DELETE FROM ${table}`).run()
       const changes = Number(info?.changes || 0)
       removedByTable[table] = changes
       removedRows += changes
@@ -171,7 +184,7 @@ export function registerLibraryMaintenanceHandlers() {
     const sourceType =
       payload && !Array.isArray(payload) && payload.sourceType ? payload.sourceType : null
     const uniquePaths = Array.from(new Set(filePaths.filter(Boolean)))
-    const tasks: Array<() => Promise<any>> = []
+    const tasks: Array<() => Promise<RecycleBinMoveResult>> = []
     for (const item of uniquePaths) {
       tasks.push(async () => {
         const result = await moveFileToRecycleBin(item, {
@@ -220,7 +233,7 @@ export function registerLibraryMaintenanceHandlers() {
         skipped,
         errorSamples: results
           .map((r, i) =>
-            r instanceof Error ? { code: (r as any).code, message: r.message, index: i } : null
+            r instanceof Error ? { code: getErrorCode(r), message: r.message, index: i } : null
           )
           .filter(Boolean)
           .slice(0, 3)
@@ -236,8 +249,8 @@ export function registerLibraryMaintenanceHandlers() {
     }
     const removedPaths = results
       .filter(
-        (item): item is { status: string; srcPath: string } =>
-          !!item && !(item instanceof Error) && typeof (item as any).srcPath === 'string'
+        (item): item is RecycleBinMoveResult =>
+          !(item instanceof Error) && isRecycleBinMoveResult(item)
       )
       .map((item) => item.srcPath)
     return {
@@ -363,7 +376,7 @@ export function registerLibraryMaintenanceHandlers() {
       }
     }
     const libraryRoot = path.join(rootDir, 'library')
-    const existing: Array<{ record: any; absPath: string }> = []
+    const existing: Array<{ record: RecycleBinRecord; absPath: string }> = []
     const missingRecords: string[] = []
     for (const record of records) {
       const absPath = path.isAbsolute(record.filePath)
@@ -388,7 +401,7 @@ export function registerLibraryMaintenanceHandlers() {
       store.settingConfig.audioExt,
       RECYCLE_BIN_UUID
     )
-    const recordByPath = new Map<string, any>()
+    const recordByPath = new Map<string, RecycleBinRecord>()
     for (const item of existing) {
       recordByPath.set(path.resolve(item.absPath), item.record)
     }

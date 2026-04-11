@@ -1,7 +1,9 @@
 import type { BrowserWindow } from 'electron'
 
+type ProgressPayload = Record<string, unknown>
+
 export type SendProgress = (
-  payloadOrTitle: any,
+  payloadOrTitle: string | ProgressPayload,
   current?: number,
   total?: number,
   isInitial?: boolean,
@@ -10,7 +12,7 @@ export type SendProgress = (
 
 export function createProgressSender(getWindow: () => BrowserWindow | null): SendProgress {
   return (
-    payloadOrTitle: any,
+    payloadOrTitle: string | ProgressPayload,
     current?: number,
     total?: number,
     isInitial = false,

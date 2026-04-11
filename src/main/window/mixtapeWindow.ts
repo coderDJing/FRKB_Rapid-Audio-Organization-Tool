@@ -83,6 +83,12 @@ const sendMaxState = (target: BrowserWindow | null, next: boolean) => {
   } catch {}
 }
 
+const setVisualEffectMaterial = (target: BrowserWindow, material: string) => {
+  const setter = Reflect.get(target, 'setVisualEffectMaterial')
+  if (typeof setter !== 'function') return
+  Reflect.apply(setter, target, [material])
+}
+
 const ensureIpcHandlers = () => {
   if (ipcBound) return
   ipcBound = true
@@ -156,7 +162,7 @@ const createWindow = (payload: MixtapeWindowPayload, windowKey: string) => {
       mixtapeWindow.setVibrancy('under-window')
     } catch {}
     try {
-      ;(mixtapeWindow as any).setVisualEffectMaterial?.('under-window')
+      setVisualEffectMaterial(mixtapeWindow, 'under-window')
     } catch {}
   }
 
@@ -235,7 +241,7 @@ function sendPayloadIfAny() {
   }
 }
 
-function broadcast(channel: string, payload?: any) {
+function broadcast(channel: string, payload?: unknown) {
   if (!channel) return
   for (const win of mixtapeWindows.values()) {
     try {

@@ -23,7 +23,44 @@ import {
 } from '@renderer/composables/mixtape/trackTempoModel'
 import type { MixtapeTrack, TimelineTrackLayout } from '@renderer/composables/mixtape/types'
 
-export const createTimelineTransportTrackDragModule = (ctx: any) => {
+type ValueRef<T> = {
+  value: T
+}
+
+type TimelineTransportTrackDragContext = {
+  tracks: ValueRef<MixtapeTrack[]>
+  normalizedRenderZoom: ValueRef<number>
+  resolveRenderPxPerSec: (zoomValue: number) => number
+  resolveTrackDurationSeconds: (track: MixtapeTrack) => number
+  resolveTrackSourceDurationSeconds: (track: MixtapeTrack) => number
+  resolveTrackFirstBeatSeconds: (track: MixtapeTrack, targetBpm?: number) => number
+  resolveTrackStartSecById: (trackId: string) => number
+  resolveTimelineSecByX: (x: number, pxPerSec: number) => number
+  stopTransportForTrackChange: () => void
+  scheduleFullPreRender: () => void
+  scheduleWorkerPreRender: () => void
+  persistTrackStartSec: (
+    entries: Array<{
+      itemId: string
+      startSec?: number
+      bpm?: number
+      masterTempo?: boolean
+      originalBpm?: number
+    }>
+  ) => Promise<void>
+  persistTrackVolumeMuteSegments?: (
+    entries: Array<{ itemId: string; segments: Array<{ startSec: number; endSec: number }> }>
+  ) => Promise<void>
+  remapVolumeMuteSegmentsForBpm?: (
+    track: MixtapeTrack,
+    targetBpm: number
+  ) => Array<{ startSec: number; endSec: number }>
+  normalizeStartSec: (value: unknown) => number | null
+  clampNumber: (value: number, min: number, max: number) => number
+  normalizeBeatOffset: (value: unknown, interval: number) => number
+}
+
+export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTrackDragContext) => {
   const {
     tracks,
     normalizedRenderZoom,

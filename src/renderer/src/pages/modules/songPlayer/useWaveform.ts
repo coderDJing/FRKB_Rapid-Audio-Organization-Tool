@@ -1,23 +1,25 @@
 import { onMounted, onUnmounted, watch, type Ref } from 'vue'
 import {
   WebAudioPlayer,
+  type SeekedEventPayload,
   type RGBWaveformBandKey,
   type MixxxWaveformData,
   type WaveformStyle,
   type WebAudioPlayerEvents
 } from './webAudioPlayer'
+import type { useRuntimeStore } from '@renderer/stores/runtime'
 import type { IPioneerPreviewWaveformData } from 'src/types/globals'
 
 export function useWaveform(params: {
   waveformEl: Ref<HTMLDivElement | null>
   audioPlayer: Ref<WebAudioPlayer | null>
-  runtime: any
+  runtime: ReturnType<typeof useRuntimeStore>
   updateParentWaveformWidth: () => void
   onNextSong: () => void
   schedulePreloadAfterPlay: () => void
   cancelPreloadTimer: () => void
   playerControlsRef?: { value?: { setPlayingValue?: (v: boolean) => void } | null }
-  onError?: (error: any) => void
+  onError?: (error: unknown) => void
 }) {
   const {
     waveformEl,
@@ -374,19 +376,17 @@ export function useWaveform(params: {
   let hoverEl: HTMLElement | null = null
   let isPointerDown = false
   type AudioEventName = keyof WebAudioPlayerEvents
-  const audioEventHandlers: Array<{
-    player: WebAudioPlayer
-    event: AudioEventName
-    handler: (...args: any[]) => void
-  }> = []
+  const audioEventHandlers: Array<() => void> = []
 
-  const registerPlayerHandler = (
+  const registerPlayerHandler = <K extends AudioEventName>(
     player: WebAudioPlayer,
-    event: AudioEventName,
-    handler: (...args: any[]) => void
+    event: K,
+    handler: (payload: WebAudioPlayerEvents[K]) => void
   ) => {
-    player.on(event as any, handler as any)
-    audioEventHandlers.push({ player, event, handler })
+    player.on(event, handler)
+    audioEventHandlers.push(() => {
+      player.off(event, handler)
+    })
   }
 
   const clamp01 = (value: number) => Math.max(0, Math.min(1, value))
@@ -868,9 +868,9 @@ export function useWaveform(params: {
 
     registerPlayerHandler(player, 'decode', handleDecode)
     registerPlayerHandler(player, 'ready', handleReady)
-    const handleSeeked = (currentTime: number) => {
+    const handleSeeked = (payload: SeekedEventPayload) => {
       drawWaveform()
-      updateTimeDisplay(currentTime)
+      updateTimeDisplay(payload.time)
     }
 
     registerPlayerHandler(player, 'play', handlePlay)
@@ -883,7 +883,7 @@ export function useWaveform(params: {
     })
 
     if (onError) {
-      const handleError = (error: any) => {
+      const handleError = (error: unknown) => {
         onError(error)
       }
       registerPlayerHandler(player, 'error', handleError)
@@ -892,9 +892,9 @@ export function useWaveform(params: {
 
   const detachEventListeners = () => {
     if (audioEventHandlers.length) {
-      for (const { player, event, handler } of audioEventHandlers) {
+      for (const dispose of audioEventHandlers) {
         try {
-          player.off(event as any, handler as any)
+          dispose()
         } catch {}
       }
       audioEventHandlers.length = 0

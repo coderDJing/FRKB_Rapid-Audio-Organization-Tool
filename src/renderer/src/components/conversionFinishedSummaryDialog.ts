@@ -2,7 +2,7 @@ import { createVNode, render } from 'vue'
 import Dialog from './conversionFinishedSummaryDialog.vue'
 import { attachAppContext } from '@renderer/utils/appContext'
 
-export default (summary: any, errors?: any[]) => {
+export default (summary: unknown, errors?: unknown[]) => {
   return new Promise((resolve) => {
     const div = document.createElement('div')
     document.body.appendChild(div)

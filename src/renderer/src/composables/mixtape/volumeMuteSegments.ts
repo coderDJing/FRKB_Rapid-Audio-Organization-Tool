@@ -1,6 +1,10 @@
 import type { MixtapeMuteSegment } from '@renderer/composables/mixtape/types'
 
 const MUTE_SEGMENT_EPSILON = 0.0001
+type MuteSegmentLike = {
+  startSec?: unknown
+  endSec?: unknown
+}
 
 export const normalizeVolumeMuteSegments = (
   value: unknown,
@@ -13,8 +17,9 @@ export const normalizeVolumeMuteSegments = (
   const segments = Array.isArray(value)
     ? value
         .map((item) => {
-          const startSec = Number((item as any)?.startSec)
-          const endSec = Number((item as any)?.endSec)
+          const segment = item && typeof item === 'object' ? (item as MuteSegmentLike) : null
+          const startSec = Number(segment?.startSec)
+          const endSec = Number(segment?.endSec)
           if (!Number.isFinite(startSec) || !Number.isFinite(endSec)) return null
           const safeStart = Math.max(0, startSec)
           const safeEnd = Math.min(safeDuration, endSec)

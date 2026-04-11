@@ -18,22 +18,28 @@ export type MixtapeProjectBpmEnvelopeSnapshot = {
   gridPhaseOffsetSec?: number
 }
 
-const parseProjectInfoJson = (raw: unknown): Record<string, any> => {
+type ProjectInfoJson = Record<string, unknown>
+
+const isProjectInfoJson = (value: unknown): value is ProjectInfoJson =>
+  !!value && typeof value === 'object' && !Array.isArray(value)
+
+const parseProjectInfoJson = (raw: unknown): ProjectInfoJson => {
   if (typeof raw !== 'string' || !raw.trim()) return {}
   try {
     const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? parsed : {}
+    return isProjectInfoJson(parsed) ? parsed : {}
   } catch {
     return {}
   }
 }
 
-const normalizeProjectBpmEnvelope = (raw: unknown) => {
+const normalizeProjectBpmEnvelope = (raw: unknown): MixtapeProjectBpmPoint[] => {
   const points = Array.isArray(raw)
     ? raw
         .map((item) => {
-          const sec = Number((item as any)?.sec)
-          const bpm = Number((item as any)?.bpm)
+          const entry = isProjectInfoJson(item) ? item : null
+          const sec = Number(entry?.sec)
+          const bpm = Number(entry?.bpm)
           if (!Number.isFinite(sec) || sec < 0) return null
           if (!Number.isFinite(bpm) || bpm <= 0) return null
           return {
@@ -41,10 +47,10 @@ const normalizeProjectBpmEnvelope = (raw: unknown) => {
             bpm: Number(bpm.toFixed(4))
           } satisfies MixtapeProjectBpmPoint
         })
-        .filter(Boolean)
+        .filter((item): item is MixtapeProjectBpmPoint => !!item)
     : []
-  if (!points.length) return [] as MixtapeProjectBpmPoint[]
-  const sorted = (points as MixtapeProjectBpmPoint[]).sort((left, right) => {
+  if (!points.length) return []
+  const sorted = points.sort((left, right) => {
     if (Math.abs(left.sec - right.sec) > SAME_SEC_EPSILON) return left.sec - right.sec
     return left.bpm - right.bpm
   })

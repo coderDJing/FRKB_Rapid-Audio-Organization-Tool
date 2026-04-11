@@ -4,6 +4,7 @@ import fs = require('fs-extra')
 import path = require('path')
 import store from './store'
 import { getMetaValue, initLibraryDb, setMetaValue } from './libraryDb'
+import type { SqliteDatabase } from './libraryDb'
 import { collectFilesWithExtensions, getCoreFsDirName } from './utils'
 import {
   scanLegacyCacheRoots,
@@ -58,32 +59,39 @@ type LegacyMigrationPlan = {
   recycleBinNeeded: boolean
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value)
+
 const getCurrentLocaleId = (): 'zh-CN' | 'en-US' =>
-  (store.settingConfig as any)?.language === 'enUS' ? 'en-US' : 'zh-CN'
+  store.settingConfig?.language === 'enUS' ? 'en-US' : 'zh-CN'
 
 const tMigration = (key: string): string => {
-  const MESSAGES: Record<'zh-CN' | 'en-US', any> = {
-    'zh-CN': zhCNLocale as any,
-    'en-US': enUSLocale as any
+  const MESSAGES: Record<'zh-CN' | 'en-US', Record<string, unknown>> = {
+    'zh-CN': zhCNLocale as Record<string, unknown>,
+    'en-US': enUSLocale as Record<string, unknown>
   }
   const localeId = getCurrentLocaleId()
   const parts = key.split('.')
-  let cur: any = MESSAGES[localeId]
+  let cur: unknown = MESSAGES[localeId]
   for (const p of parts) {
-    if (cur && typeof cur === 'object' && p in cur) cur = cur[p]
+    if (isRecord(cur) && p in cur) cur = cur[p]
     else return key
   }
   return typeof cur === 'string' ? cur : key
 }
 
-function hasMetaFlag(db: any, key: string): boolean {
+function hasMetaFlag(db: SqliteDatabase, key: string): boolean {
   return getMetaValue(db, key) === '1'
 }
 
-function hasFingerprintRows(db: any, mode: 'pcm' | 'file'): boolean {
+function hasFingerprintRows(db: SqliteDatabase, mode: 'pcm' | 'file'): boolean {
   try {
-    const row = db.prepare('SELECT COUNT(1) as count FROM fingerprints WHERE mode = ?').get(mode)
-    return row && Number(row.count) > 0
+    const row = db
+      .prepare<{
+        count?: number | string
+      }>('SELECT COUNT(1) as count FROM fingerprints WHERE mode = ?')
+      .get(mode)
+    return !!row && Number(row.count) > 0
   } catch {
     return false
   }
@@ -140,7 +148,7 @@ function toLibraryRelativePathWithRoot(libraryRoot: string, absPath: string): st
   return rel
 }
 
-async function needsRecycleBinMigration(dbRoot: string, db: any): Promise<boolean> {
+async function needsRecycleBinMigration(dbRoot: string, db: SqliteDatabase): Promise<boolean> {
   if (!dbRoot || !db) return false
   const recycleRoot = path.join(dbRoot, 'library', getCoreFsDirName('RecycleBin'))
   if (!(await fs.pathExists(recycleRoot))) return false
@@ -153,7 +161,7 @@ async function needsRecycleBinMigration(dbRoot: string, db: any): Promise<boolea
   return entries.some((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
 }
 
-async function migrateLegacyRecycleBin(dbRoot: string, db: any): Promise<void> {
+async function migrateLegacyRecycleBin(dbRoot: string, db: SqliteDatabase): Promise<void> {
   if (!dbRoot || !db) return
   const libraryRoot = path.join(dbRoot, 'library')
   const recycleRoot = path.join(libraryRoot, getCoreFsDirName('RecycleBin'))
@@ -258,7 +266,10 @@ async function migrateLegacyRecycleBin(dbRoot: string, db: any): Promise<void> {
   }
 }
 
-async function detectLegacyFingerprints(dbRoot: string, db: any): Promise<LegacyFingerprintNeed> {
+async function detectLegacyFingerprints(
+  dbRoot: string,
+  db: SqliteDatabase
+): Promise<LegacyFingerprintNeed> {
   const result: LegacyFingerprintNeed = { pcm: false, file: false }
   if (!dbRoot) return result
   const base = path.join(dbRoot, 'songFingerprint')
@@ -283,7 +294,10 @@ async function detectLegacyFingerprints(dbRoot: string, db: any): Promise<Legacy
   return result
 }
 
-async function buildLegacyMigrationPlan(dbRoot: string, db: any): Promise<LegacyMigrationPlan> {
+async function buildLegacyMigrationPlan(
+  dbRoot: string,
+  db: SqliteDatabase
+): Promise<LegacyMigrationPlan> {
   const cacheDone = hasMetaFlag(db, CACHE_MIGRATION_DONE_KEY)
   const cacheRoots = cacheDone
     ? { songRoots: new Set<string>(), coverRoots: new Set<string>() }
@@ -414,7 +428,7 @@ async function cleanupLegacyFiles(dbRoot: string): Promise<number> {
   return deleted
 }
 
-async function cleanupLegacyWaveformCache(db: any): Promise<void> {
+async function cleanupLegacyWaveformCache(db: SqliteDatabase): Promise<void> {
   if (!db) return
   if (hasMetaFlag(db, WAVEFORM_CACHE_PURGED_KEY)) return
   const cacheDir = path.join(app.getPath('userData'), 'waveforms', 'mixxx-waveform-v1')

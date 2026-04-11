@@ -36,7 +36,12 @@ const postToMain = (
   message: HorizontalBrowseDetailWaveformWorkerOutgoing,
   transfer?: Transferable[]
 ) => {
-  const scope = self as any
+  const scope = self as typeof globalThis & {
+    postMessage: (
+      payload: HorizontalBrowseDetailWaveformWorkerOutgoing,
+      transfer?: Transferable[]
+    ) => void
+  }
   if (transfer?.length) {
     scope.postMessage(message, transfer)
     return

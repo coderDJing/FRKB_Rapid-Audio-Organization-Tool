@@ -76,6 +76,18 @@ const outputDirTooltip = computed(() => outputDir.value || t('convert.selectOutp
 const shouldShowOutputDir = computed(
   () => !isStandaloneMode.value || form.value.strategy === 'new_file'
 )
+const preserveMetadataModel = computed<boolean>({
+  get: () => form.value.preserveMetadata !== false,
+  set: (value) => {
+    form.value.preserveMetadata = value
+  }
+})
+const addFingerprintModel = computed<boolean>({
+  get: () => form.value.addFingerprint === true,
+  set: (value) => {
+    form.value.addFingerprint = value
+  }
+})
 const selectedFileItems = computed(() =>
   selectedFiles.value.map((filePath) => {
     const parts = filePath.split(/[/\\]/)
@@ -400,7 +412,7 @@ const cancel = () => {
           <div style="margin-top: 20px">{{ t('convert.strategy') }}：</div>
           <div style="margin-top: 10px">
             <singleRadioGroup
-              v-model="(form as any).strategy"
+              v-model="form.strategy"
               name="convertStrategy"
               :options="[
                 { label: t('convert.newFile'), value: 'new_file' },
@@ -422,12 +434,12 @@ const cancel = () => {
             <bubbleBox :dom="metadataHintRef || undefined" :title="metadataHint" :max-width="240" />
           </div>
           <div style="margin-top: 10px">
-            <singleCheckbox v-model="(form as any).preserveMetadata" />
+            <singleCheckbox v-model="preserveMetadataModel" />
           </div>
 
           <div style="margin-top: 20px">{{ t('convert.addFingerprint') }}：</div>
           <div style="margin-top: 10px">
-            <singleCheckbox v-model="(form as any).addFingerprint" />
+            <singleCheckbox v-model="addFingerprintModel" />
           </div>
         </div>
       </OverlayScrollbarsComponent>

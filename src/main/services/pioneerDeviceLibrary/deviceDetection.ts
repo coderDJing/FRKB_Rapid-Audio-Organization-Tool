@@ -271,7 +271,7 @@ const normalizeJsonArray = <T>(value: unknown): T[] => {
   return []
 }
 
-const convertPlistToJson = async (input: string): Promise<any> => {
+const convertPlistToJson = async <T>(input: string): Promise<T | null> => {
   return await new Promise((resolve, reject) => {
     const child = spawn('plutil', ['-convert', 'json', '-o', '-', '--', '-'], {
       stdio: ['pipe', 'pipe', 'pipe']
@@ -293,7 +293,7 @@ const convertPlistToJson = async (input: string): Promise<any> => {
         return
       }
       try {
-        resolve(JSON.parse(stdout || 'null'))
+        resolve(JSON.parse(stdout || 'null') as T | null)
       } catch (error) {
         reject(error)
       }
@@ -367,7 +367,7 @@ async function listWindowsRemovableDrives(): Promise<BaseDriveRow[]> {
         maxBuffer: 1024 * 1024 * 8
       }
     )
-    const rows = normalizeJsonArray<any>(JSON.parse(String(stdout || '[]')))
+    const rows = normalizeJsonArray<Record<string, unknown>>(JSON.parse(String(stdout || '[]')))
     const normalizedRows: BaseDriveRow[] = []
     for (const row of rows) {
       const deviceId = String(row?.deviceId || '')
@@ -411,11 +411,11 @@ async function listLinuxRemovableDrives(): Promise<BaseDriveRow[]> {
       }
     )
     const parsed = JSON.parse(String(stdout || '{}')) as {
-      blockdevices?: Array<Record<string, any>>
+      blockdevices?: Array<Record<string, unknown>>
     }
 
     const rows: BaseDriveRow[] = []
-    const walk = (item: Record<string, any>) => {
+    const walk = (item: Record<string, unknown>) => {
       const mountpoint = typeof item?.mountpoint === 'string' ? item.mountpoint.trim() : ''
       const rm = Number(item?.rm) === 1
       const hotplug = Number(item?.hotplug) === 1
@@ -467,8 +467,8 @@ async function listMacRemovableDrives(): Promise<BaseDriveRow[]> {
       try {
         const info = (await runMacPlistCommand('diskutil', ['info', '-plist', rootPath])) as Record<
           string,
-          any
-        >
+          unknown
+        > | null
         const mountPoint = typeof info?.MountPoint === 'string' ? info.MountPoint.trim() : ''
         if (!mountPoint) continue
 

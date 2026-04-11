@@ -138,9 +138,13 @@ export const normalizeTrackBpmEnvelopePoints = (
   const points = Array.isArray(value)
     ? value
         .map((item, index) => {
-          const sec = Number((item as any)?.sec)
-          const bpm = normalizeTrackBpmPointValue((item as any)?.bpm)
-          const sourceSec = Number((item as any)?.sourceSec)
+          const point =
+            item && typeof item === 'object' && !Array.isArray(item)
+              ? (item as Partial<MixtapeBpmPoint>)
+              : null
+          const sec = Number(point?.sec)
+          const bpm = normalizeTrackBpmPointValue(point?.bpm)
+          const sourceSec = Number(point?.sourceSec)
           if (!Number.isFinite(sec) || sec < 0 || bpm === null) return null
           return {
             index,
@@ -150,7 +154,7 @@ export const normalizeTrackBpmEnvelopePoints = (
               Number.isFinite(sourceSec) && sourceSec >= 0
                 ? roundTrackTempoSec(sourceSec)
                 : undefined,
-            allowOffGrid: (item as any)?.allowOffGrid === true ? true : undefined
+            allowOffGrid: point?.allowOffGrid === true ? true : undefined
           }
         })
         .filter(Boolean)

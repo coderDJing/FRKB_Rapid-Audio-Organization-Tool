@@ -10,6 +10,14 @@ import fs = require('fs-extra')
 
 const platform = process.platform
 
+type StoredSettings = Partial<ISettingConfig> & {
+  migratedAudioExtAll?: boolean
+}
+
+type ExtendedSettingConfig = ISettingConfig & {
+  migratedAudioExtAll?: boolean
+}
+
 const defaultConvertDefaults: NonNullable<ISettingConfig['convertDefaults']> = {
   targetFormat: 'mp3',
   bitrateKbps: 320,
@@ -99,7 +107,7 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
   const { getWindowsContextMenuStatus } = options
   const settingFileExisted = fs.pathExistsSync(url.settingConfigFileUrl)
 
-  let loadedSettings: Partial<ISettingConfig> = {}
+  let loadedSettings: StoredSettings = {}
   if (settingFileExisted) {
     try {
       loadedSettings = fs.readJSONSync(url.settingConfigFileUrl)
@@ -132,14 +140,14 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
     }
   }
   mergedSettings.playerGlobalShortcuts = sanitizePlayerShortcuts(
-    (mergedSettings as any).playerGlobalShortcuts
+    mergedSettings.playerGlobalShortcuts
   )
 
-  const rawWaveformStyle = (mergedSettings as any).waveformStyle
+  const rawWaveformStyle = mergedSettings.waveformStyle as string | undefined
   const normalizedWaveformStyle =
     rawWaveformStyle === 'RekordboxMini' || rawWaveformStyle === 'Mixxx' ? 'RGB' : rawWaveformStyle
 
-  const finalSettings: ISettingConfig = {
+  const finalSettings: ExtendedSettingConfig = {
     ...mergedSettings,
     waveformStyle:
       normalizedWaveformStyle === 'SoundCloud' ||
@@ -152,13 +160,13 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
   }
 
   if (process.platform === 'win32') {
-    if (typeof (finalSettings as any).enableExplorerContextMenu !== 'boolean') {
-      ;(finalSettings as any).enableExplorerContextMenu = settingFileExisted
+    if (typeof finalSettings.enableExplorerContextMenu !== 'boolean') {
+      finalSettings.enableExplorerContextMenu = settingFileExisted
         ? getWindowsContextMenuStatus()
         : true
     }
   } else {
-    ;(finalSettings as any).enableExplorerContextMenu = false
+    finalSettings.enableExplorerContextMenu = false
   }
 
   if (typeof finalSettings.acoustIdClientKey !== 'string') {
@@ -166,11 +174,9 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
   }
 
   try {
-    const migrated = (loadedSettings as any)?.migratedAudioExtAll === true
+    const migrated = loadedSettings.migratedAudioExtAll === true
     if (!migrated) {
-      const arr = Array.isArray((finalSettings as any).audioExt)
-        ? ((finalSettings as any).audioExt as string[])
-        : []
+      const arr = Array.isArray(finalSettings.audioExt) ? finalSettings.audioExt : []
       const set = new Set(arr.map((e) => String(e || '').toLowerCase()))
       const allFormats = defaultSettings.audioExt
       let changed = false
@@ -181,8 +187,8 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
         }
       }
       if (changed) {
-        ;(finalSettings as any).audioExt = arr
-        ;(finalSettings as any).migratedAudioExtAll = true
+        finalSettings.audioExt = arr
+        finalSettings.migratedAudioExtAll = true
       }
     }
   } catch {
@@ -196,20 +202,14 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
 
 export function applyThemeFromSettings() {
   try {
-    const mode = ((store as any).settingConfig?.themeMode || 'system') as
-      | 'system'
-      | 'light'
-      | 'dark'
+    const mode = store.settingConfig?.themeMode || 'system'
     nativeTheme.themeSource = mode
   } catch {}
 }
 
 export function broadcastSystemThemeIfNeeded() {
   try {
-    const mode = ((store as any).settingConfig?.themeMode || 'system') as
-      | 'system'
-      | 'light'
-      | 'dark'
+    const mode = store.settingConfig?.themeMode || 'system'
     if (mode === 'system' && mainWindow.instance) {
       mainWindow.instance.webContents.send('theme/system-updated', {
         isDark: nativeTheme.shouldUseDarkColors

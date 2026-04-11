@@ -45,11 +45,20 @@ import type {
   MixtapeOpenPayload,
   MixtapeStemMode,
   MixtapeStemProfile as RendererMixtapeStemProfile,
-  MixtapeRawItem,
   MixtapeTrack,
+  MixtapeRawItem,
   TimelineTrackLayout
 } from '@renderer/composables/mixtape/types'
+import type { MixtapeOutputProgressPayload } from '@renderer/composables/mixtape/timelineTransportRenderWav'
 import type { Ref } from 'vue'
+
+type PlaylistContentChangedPayload = {
+  uuids?: string[]
+}
+
+type MixtapeItemsRemovedPayload = {
+  playlistId?: string
+}
 const decodeMixtapeQueryValue = (value: string | null): string | undefined => {
   if (!value) return undefined
   try {
@@ -247,7 +256,7 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
   const trackMenuMasterTempoChecked = computed(() => trackContextTrack.value?.masterTempo !== false)
   const outputProgressText = computed(() => {
     const stageKey = outputProgressKey.value || 'mixtape.outputProgressPreparing'
-    const stageLabel = t(stageKey as any)
+    const stageLabel = t(stageKey)
     const percent = Math.max(0, Math.min(100, Number(outputProgressPercent.value) || 0))
     const done = Math.max(0, Number(outputProgressDone.value) || 0)
     const total = Math.max(0, Number(outputProgressTotal.value) || 0)
@@ -260,7 +269,7 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     const raw = typeof value === 'string' ? value.trim() : ''
     if (!raw) return ''
     if (raw.toLowerCase() === 'o') return '-'
-    const style = (runtime.setting as any).keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
+    const style = runtime.setting.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
     return formatKeyDisplayText(raw, style)
   }
   const formatTrackOriginalMeta = (track?: MixtapeTrack | null) => {
@@ -479,7 +488,7 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
       loadMixtapeItems({ background: true })
     }, 120)
   }
-  const handlePlaylistContentChanged = (eventPayload: any) => {
+  const handlePlaylistContentChanged = (eventPayload: PlaylistContentChangedPayload | null) => {
     const playlistId = payload.value.playlistId
     if (!playlistId) return
     const uuids: string[] = Array.isArray(eventPayload?.uuids)
@@ -488,7 +497,10 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     if (!uuids.includes(playlistId)) return
     schedulePlaylistReload()
   }
-  const handleMixtapeItemsRemoved = (_e: unknown, eventPayload: any) => {
+  const handleMixtapeItemsRemoved = (
+    _e: unknown,
+    eventPayload: MixtapeItemsRemovedPayload | null
+  ) => {
     const playlistId = String(payload.value.playlistId || '').trim()
     if (!playlistId) return
     const targetPlaylistId =
@@ -496,11 +508,11 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     if (!targetPlaylistId || targetPlaylistId !== playlistId) return
     schedulePlaylistReload()
   }
-  const handleMixtapeStemStatusUpdated = (_e: unknown, eventPayload: any) => {
+  const handleMixtapeStemStatusUpdated = (_e: unknown, eventPayload: unknown) => {
     if (!handleStemStatusPayload(eventPayload)) return
     schedulePlaylistReload()
   }
-  const handleOpen = (_e: any, next: MixtapeOpenPayload) => {
+  const handleOpen = (_e: unknown, next: MixtapeOpenPayload) => {
     if (!next || typeof next !== 'object') return
     const currentPlaylistId = String(payload.value.playlistId || '').trim()
     const nextPlaylistId = String(next.playlistId || '').trim()
@@ -508,7 +520,10 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     applyPayload(next)
     loadMixtapeItems()
   }
-  const handleMixtapeOutputProgress = (_e: unknown, payload: any) => {
+  const handleMixtapeOutputProgress = (
+    _e: unknown,
+    payload: MixtapeOutputProgressPayload | null
+  ) => {
     applyOutputProgressPayload(payload)
   }
   const handleRetryTrackStem = async (trackId: string) => {

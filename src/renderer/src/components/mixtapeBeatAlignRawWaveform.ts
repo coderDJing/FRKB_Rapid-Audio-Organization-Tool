@@ -25,18 +25,35 @@ const decodeRawFloatArray = (input: unknown): Float32Array | null => {
   return null
 }
 
-const decodeRawWaveformData = (payload: any): RawWaveformData | null => {
-  if (!payload) return null
-  const minLeft = decodeRawFloatArray(payload.minLeft ?? payload.min)
-  const maxLeft = decodeRawFloatArray(payload.maxLeft ?? payload.max)
-  const minRight = decodeRawFloatArray(payload.minRight ?? payload.min)
-  const maxRight = decodeRawFloatArray(payload.maxRight ?? payload.max)
+type RawWaveformPayload = {
+  minLeft?: unknown
+  min?: unknown
+  maxLeft?: unknown
+  max?: unknown
+  minRight?: unknown
+  maxRight?: unknown
+  frames?: unknown
+  duration?: unknown
+  sampleRate?: unknown
+  rate?: unknown
+}
+
+const decodeRawWaveformData = (payload: unknown): RawWaveformData | null => {
+  const source =
+    payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? (payload as RawWaveformPayload)
+      : null
+  if (!source) return null
+  const minLeft = decodeRawFloatArray(source.minLeft ?? source.min)
+  const maxLeft = decodeRawFloatArray(source.maxLeft ?? source.max)
+  const minRight = decodeRawFloatArray(source.minRight ?? source.min)
+  const maxRight = decodeRawFloatArray(source.maxRight ?? source.max)
   if (!minLeft || !maxLeft || !minRight || !maxRight) return null
 
   const frames = Math.max(
     0,
     Math.min(
-      Number(payload.frames) || Number.POSITIVE_INFINITY,
+      Number(source.frames) || Number.POSITIVE_INFINITY,
       minLeft.length,
       maxLeft.length,
       minRight.length,
@@ -45,9 +62,9 @@ const decodeRawWaveformData = (payload: any): RawWaveformData | null => {
   )
 
   return {
-    duration: Number(payload.duration) || 0,
-    sampleRate: Number(payload.sampleRate) || 0,
-    rate: Number(payload.rate) || 0,
+    duration: Number(source.duration) || 0,
+    sampleRate: Number(source.sampleRate) || 0,
+    rate: Number(source.rate) || 0,
     frames,
     minLeft,
     maxLeft,
@@ -57,11 +74,11 @@ const decodeRawWaveformData = (payload: any): RawWaveformData | null => {
 }
 
 export const pickRawDataByFile = (
-  response: any,
+  response: { items?: Array<{ filePath?: string; data?: unknown }> } | null | undefined,
   fileKey: string,
   normalizePathKey: (value: unknown) => string
 ): RawWaveformData | null => {
   const items = Array.isArray(response?.items) ? response.items : []
-  const item = items.find((entry: any) => normalizePathKey(entry?.filePath) === fileKey)
+  const item = items.find((entry) => normalizePathKey(entry?.filePath) === fileKey)
   return decodeRawWaveformData(item?.data ?? null)
 }

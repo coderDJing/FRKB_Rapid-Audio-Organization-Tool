@@ -147,6 +147,10 @@ export const buildSongsAreaDefaultColumns = (mode: SongsAreaColumnMode): ISongsA
 export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
   const { runtime, originalSongInfoArr } = params
 
+  const getSongField = (song: ISongInfo, key: string): unknown => {
+    return song[key as keyof ISongInfo]
+  }
+
   const isRecycleBinView = computed(() => runtime.songsArea.songListUUID === RECYCLE_BIN_UUID)
   const isMixtapeView = computed(
     () => libraryUtils.getLibraryTreeByUUID(runtime.songsArea.songListUUID)?.type === 'mixtapeList'
@@ -265,15 +269,15 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
   const columnData = ref<ISongsAreaColumn[]>(loadColumnsFromStorage(columnMode.value))
 
   // --- 工具 ---
-  function sortArrayByProperty<T>(
+  function sortArrayByProperty<T extends object>(
     array: T[],
     property: keyof T,
     order: 'asc' | 'desc' = 'asc'
   ): T[] {
     const collator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
     return [...array].sort((a, b) => {
-      const valueA = String((a as any)[property] || '')
-      const valueB = String((b as any)[property] || '')
+      const valueA = String(a[property] || '')
+      const valueB = String(b[property] || '')
       return order === 'asc' ? collator.compare(valueA, valueB) : collator.compare(valueB, valueA)
     })
   }
@@ -338,12 +342,11 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
         if (!hasInclude && !hasExclude) continue
         const isKeyColumn = col.key === 'key'
         const isOriginalPlaylist = col.key === 'originalPlaylistPath'
-        const keyStyle =
-          (runtime.setting as any).keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
+        const keyStyle = runtime.setting.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
         filtered = filtered.filter((song) => {
           const rawValue = isOriginalPlaylist
             ? getOriginalPlaylistDisplay(song)
-            : String((song as any)[col.key] ?? '')
+            : String(getSongField(song, col.key) ?? '')
           const displayValue = isKeyColumn ? getKeyDisplayText(rawValue, keyStyle) : rawValue
           const value = displayValue.toLowerCase()
           if (hasInclude && !value.includes(keyword)) return false
@@ -353,7 +356,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
       } else if (col.filterType === 'duration' && col.filterOp && col.filterDuration) {
         const target = parseDurationToSeconds(col.filterDuration)
         filtered = filtered.filter((song) => {
-          const dur = parseDurationToSeconds(String((song as any)['duration'] ?? ''))
+          const dur = parseDurationToSeconds(String(song.duration ?? ''))
           if (Number.isNaN(dur) || Number.isNaN(target)) return false
           if (col.filterOp === 'eq') return dur === target
           if (col.filterOp === 'gte') return dur >= target
@@ -363,7 +366,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
       } else if (col.filterType === 'bpm' && col.filterOp && col.filterNumber) {
         const target = parseNumberInput(col.filterNumber)
         filtered = filtered.filter((song) => {
-          const bpm = parseNumberInput((song as any)?.bpm)
+          const bpm = parseNumberInput(song.bpm)
           if (Number.isNaN(bpm) || Number.isNaN(target)) return false
           if (col.filterOp === 'eq') return bpm === target
           if (col.filterOp === 'gte') return bpm >= target
@@ -381,11 +384,11 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     const sortedCol = columnData.value.find((c) => c.order)
     if (sortedCol) {
       if (sortedCol.key === 'key') {
-        const style = (runtime.setting as any).keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
+        const style = runtime.setting.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
         const collator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
         filtered = [...filtered].sort((a, b) => {
-          const valueA = getKeySortText(String((a as any).key || ''), style)
-          const valueB = getKeySortText(String((b as any).key || ''), style)
+          const valueA = getKeySortText(String(a.key || ''), style)
+          const valueB = getKeySortText(String(b.key || ''), style)
           const emptyA = valueA.trim() === ''
           const emptyB = valueB.trim() === ''
           if (emptyA && emptyB) return 0
@@ -397,8 +400,8 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
         })
       } else if (sortedCol.key === 'deletedAtMs') {
         filtered = [...filtered].sort((a, b) => {
-          const valueA = Number((a as any).deletedAtMs)
-          const valueB = Number((b as any).deletedAtMs)
+          const valueA = Number(a.deletedAtMs)
+          const valueB = Number(b.deletedAtMs)
           const validA = Number.isFinite(valueA)
           const validB = Number.isFinite(valueB)
           if (!validA && !validB) return 0
@@ -432,7 +435,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     // 防御性去重：以 filePath 为键去重，避免竞态下重复条目影响渲染与选择
     const seen = new Set<string>()
     filtered = filtered.filter((item) => {
-      const p = (item as any)?.filePath
+      const p = item.filePath
       if (!p) return false
       if (seen.has(p)) return false
       seen.add(p)
@@ -459,7 +462,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
   )
 
   watch(
-    () => (runtime.setting as any).keyDisplayStyle,
+    () => runtime.setting.keyDisplayStyle,
     () => {
       const sortedCol = columnData.value.find((c) => c.order)
       const hasKeyFilter = columnData.value.some((c) => c.key === 'key' && c.filterActive)

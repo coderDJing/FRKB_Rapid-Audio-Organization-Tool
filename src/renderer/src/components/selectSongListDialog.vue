@@ -7,7 +7,8 @@ import {
   computed,
   ComputedRef,
   useTemplateRef,
-  nextTick
+  nextTick,
+  type ComponentPublicInstance
 } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem/index.vue'
@@ -69,6 +70,9 @@ if (recentDialogSelectedSongListUUID.length !== 0) {
 const recentSongListArr = ref<IDir[]>([])
 // 最近使用歌单的曲目数量缓存
 const recentCounts = ref<Record<string, number>>({})
+type PreventableEvent = {
+  preventDefault?: () => void
+}
 let delRecentDialogSelectedSongListUUID: string[] = []
 watch(
   () => runtime.libraryTree,
@@ -83,7 +87,7 @@ watch(
       if (obj) {
         recentSongListArr.value.push(obj)
         // 异步刷新数量
-        if ((runtime as any).setting.showPlaylistTrackCount && obj.type === 'songList') {
+        if (runtime.setting.showPlaylistTrackCount && obj.type === 'songList') {
           const path = libraryUtils.findDirPathByUuid(obj.uuid)
           window.electron.ipcRenderer
             .invoke('getSongListTrackCount', path)
@@ -174,17 +178,24 @@ const moveSelection = (direction: 1 | -1) => {
   selectedArea.value = target.area
   runtime.dialogSelectedSongListUUID = target.uuid
 }
-const handleMoveDown = (e?: KeyboardEvent) => {
+const handleMoveDown = (e?: PreventableEvent | null) => {
   try {
     e?.preventDefault?.()
   } catch {}
   moveSelection(1)
 }
-const handleMoveUp = (e?: KeyboardEvent) => {
+const handleMoveUp = (e?: PreventableEvent | null) => {
   try {
     e?.preventDefault?.()
   } catch {}
   moveSelection(-1)
+}
+const resolveTemplateElement = (
+  value: Element | ComponentPublicInstance | null
+): HTMLElement | null => {
+  if (value instanceof HTMLElement) return value
+  if (!value || typeof value !== 'object' || !('$el' in value)) return null
+  return value.$el instanceof HTMLElement ? value.$el : null
 }
 
 watch(
@@ -416,10 +427,10 @@ onMounted(() => {
   })
   // 兼容上下方向键
   hotkeys('down', uuid, (e) => {
-    handleMoveDown(e as any)
+    handleMoveDown(e)
   })
   hotkeys('up', uuid, (e) => {
-    handleMoveUp(e as any)
+    handleMoveUp(e)
   })
   // 在对话框内统一使用 F2 触发重命名，避免与 Enter 确认冲突
   hotkeys('f2', uuid, (e) => {
@@ -545,8 +556,9 @@ watch(
 // --- 保持选中项可见：对“最近使用”区域进行滚动 ---
 // 记录最近区每一行元素的引用
 const recentRowRefs = new Map<string, HTMLElement>()
-const setRecentRowRef = (uuid: string, el: HTMLElement | null) => {
-  if (el) recentRowRefs.set(uuid, el)
+const setRecentRowRef = (uuid: string, el: Element | ComponentPublicInstance | null) => {
+  const resolved = resolveTemplateElement(el)
+  if (resolved) recentRowRefs.set(uuid, resolved)
   else recentRowRefs.delete(uuid)
 }
 
@@ -681,7 +693,7 @@ watch(
                   <div
                     v-for="item of filteredRecentSongListArr"
                     :key="item.uuid"
-                    :ref="(el: any) => setRecentRowRef(item.uuid, el)"
+                    :ref="(el) => setRecentRowRef(item.uuid, el)"
                     :class="{
                       selectedDir:
                         selectedArea === 'recent' && item.uuid == runtime.dialogSelectedSongListUUID
@@ -721,10 +733,7 @@ watch(
                         </span>
                       </span>
                       <span
-                        v-if="
-                          (runtime as any).setting.showPlaylistTrackCount &&
-                          item.type === 'songList'
-                        "
+                        v-if="runtime.setting.showPlaylistTrackCount && item.type === 'songList'"
                         class="countBadge"
                         >{{ recentCounts[item.uuid] ?? 0 }}</span
                       >

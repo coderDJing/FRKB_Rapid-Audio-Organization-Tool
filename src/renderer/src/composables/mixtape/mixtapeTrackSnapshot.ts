@@ -10,7 +10,7 @@ import type {
   MixtapeTrack
 } from '@renderer/composables/mixtape/types'
 
-const parseSnapshotInfo = (raw: MixtapeRawItem): Record<string, any> | null => {
+const parseSnapshotInfo = (raw: MixtapeRawItem): Record<string, unknown> | null => {
   if (!raw?.infoJson) return null
   try {
     return JSON.parse(String(raw.infoJson))

@@ -3,6 +3,7 @@ export type FileSystemItem = {
   path: string
   type: 'file' | 'directory'
   size?: number
+  isSpecial?: boolean
   children?: FileSystemItem[]
   isExpanded?: boolean
   isSelected?: boolean

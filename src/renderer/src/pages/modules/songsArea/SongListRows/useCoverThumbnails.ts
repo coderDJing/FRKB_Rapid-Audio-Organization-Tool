@@ -13,6 +13,14 @@ interface UseCoverThumbnailsOptions {
   enabled?: Ref<boolean>
 }
 
+type PioneerCoverResponse = {
+  format?: string
+  data?: Uint8Array | { data: number[] } | number[]
+  dataUrl?: string
+}
+
+type QueueTask = (() => void) & { __fp?: string }
+
 export function useCoverThumbnails({
   songs,
   visibleSongsWithIndex,
@@ -24,7 +32,7 @@ export function useCoverThumbnails({
 }: UseCoverThumbnailsOptions) {
   const coverUrlCache = markRaw(new Map<string, string | null>())
   const inflight = markRaw(new Map<string, Promise<string | null>>())
-  const pendingQueue: Array<() => void> = []
+  const pendingQueue: QueueTask[] = []
   const coversTick = ref(0)
   let running = 0
   const MAX_CONCURRENCY = 12
@@ -65,7 +73,7 @@ export function useCoverThumbnails({
       const run = async () => {
         try {
           const song = resolveSongByFilePath(filePath)
-          const pioneerCoverPath = String((song as any)?.pioneerCoverPath || '').trim()
+          const pioneerCoverPath = String(song?.pioneerCoverPath || '').trim()
           const sourceKind =
             song?.externalSourceKind === 'desktop' || song?.externalSourceKind === 'usb'
               ? song.externalSourceKind
@@ -74,21 +82,13 @@ export function useCoverThumbnails({
             ? ((await window.electron.ipcRenderer.invoke(
                 getRekordboxCoverThumbChannel(sourceKind),
                 pioneerCoverPath
-              )) as {
-                format?: string
-                data?: Uint8Array | { data: number[] }
-                dataUrl?: string
-              } | null)
+              )) as PioneerCoverResponse | null)
             : ((await window.electron.ipcRenderer.invoke(
                 'getSongCoverThumb',
                 filePath,
                 48,
                 resolveRootDir()
-              )) as {
-                format?: string
-                data?: Uint8Array | { data: number[] }
-                dataUrl?: string
-              } | null)
+              )) as PioneerCoverResponse | null)
 
           if (resp && resp.dataUrl) {
             coverUrlCache.set(filePath, resp.dataUrl)
@@ -101,7 +101,9 @@ export function useCoverThumbnails({
             const raw =
               rawData instanceof Uint8Array
                 ? rawData
-                : new Uint8Array(((rawData as any)?.data as number[]) || (rawData as any))
+                : Array.isArray(rawData)
+                  ? new Uint8Array(rawData)
+                  : new Uint8Array(rawData.data || [])
             const blob = new Blob([raw.buffer], { type: resp.format || 'image/jpeg' })
             const url = URL.createObjectURL(blob)
             coverUrlCache.set(filePath, url)
@@ -123,8 +125,8 @@ export function useCoverThumbnails({
         }
       }
 
-      if (!pendingQueue.some((fn: any) => fn?.__fp === filePath)) {
-        ;(run as any).__fp = filePath
+      if (!pendingQueue.some((fn) => fn?.__fp === filePath)) {
+        run.__fp = filePath
         pendingQueue.push(run)
       }
       pump()
@@ -137,7 +139,7 @@ export function useCoverThumbnails({
   function clearPendingByPath(filePath?: string) {
     if (!filePath) return
     for (let i = pendingQueue.length - 1; i >= 0; i -= 1) {
-      const task = pendingQueue[i] as any
+      const task = pendingQueue[i]
       if (task?.__fp === filePath) {
         pendingQueue.splice(i, 1)
       }

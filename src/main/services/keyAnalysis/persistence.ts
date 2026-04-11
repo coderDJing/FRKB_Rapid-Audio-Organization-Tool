@@ -28,11 +28,17 @@ type KeyAnalysisPersistenceDeps = {
 }
 
 export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) => {
+  type ErrorLike = {
+    code?: unknown
+    message?: unknown
+  }
+
   const isMissingFileError = (error: unknown) => {
-    const code = String((error as any)?.code || '')
+    const err = (error && typeof error === 'object' ? error : null) as ErrorLike | null
+    const code = String(err?.code || '')
       .trim()
       .toUpperCase()
-    const message = String((error as any)?.message || '').trim()
+    const message = String(err?.message || '').trim()
     return code === 'ENOENT' || /ENOENT|no such file or directory/i.test(message)
   }
 
@@ -379,10 +385,10 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       const cached = await LibraryCacheDb.loadSongCacheEntry(listRoot, filePath)
       if (cached && cached.size === stat.size && Math.abs(cached.mtimeMs - stat.mtimeMs) < 1) {
         songCacheHit = true
-        const cachedKey = (cached.info as any)?.key
-        const cachedBpm = (cached.info as any)?.bpm
-        const cachedFirstBeatMs = (cached.info as any)?.firstBeatMs
-        const cachedBarBeatOffset = (cached.info as any)?.barBeatOffset
+        const cachedKey = cached.info?.key
+        const cachedBpm = cached.info?.bpm
+        const cachedFirstBeatMs = cached.info?.firstBeatMs
+        const cachedBarBeatOffset = cached.info?.barBeatOffset
         const hasKey = isValidKeyText(cachedKey)
         const hasBpm = isValidBpm(cachedBpm)
         const hasFirstBeatMs = isValidFirstBeatMs(cachedFirstBeatMs)

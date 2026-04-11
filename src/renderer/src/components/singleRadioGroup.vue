@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, type CSSProperties } from 'vue'
 
 interface Option {
   label: string
@@ -30,17 +30,24 @@ const optionFontSizeVar = computed(() => {
   if (v === undefined || v === null) return '14px'
   return typeof v === 'number' ? `${v}px` : String(v)
 })
+
+const groupStyle = computed<CSSProperties>(() => ({
+  '--radio-option-font-size': optionFontSizeVar.value
+}))
+
+const currentModel = computed<string>({
+  get: () => current.value,
+  set: (value) => {
+    current.value = value
+  }
+})
 </script>
 
 <template>
-  <div
-    class="radio-group"
-    :aria-disabled="!!disabled"
-    :style="{ '--radio-option-font-size': optionFontSizeVar } as any"
-  >
+  <div class="radio-group" :aria-disabled="!!disabled" :style="groupStyle">
     <label v-for="opt in options" :key="opt.value" class="radio">
       <input
-        v-model="current as any"
+        v-model="currentModel"
         type="radio"
         :name="name || 'single-radio-group'"
         :value="opt.value"

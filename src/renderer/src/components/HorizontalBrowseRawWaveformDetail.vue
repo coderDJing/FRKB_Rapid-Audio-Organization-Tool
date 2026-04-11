@@ -263,16 +263,31 @@ const ensureRawWaveformCapacity = (
   mixxxData.value = createRawPlaceholderMixxxData(rawData.value)
 }
 
-const normalizeRawWaveformData = (value: any): RawWaveformData | null => {
-  if (!value) return null
-  const frames = Math.max(0, Number(value.frames) || 0)
-  const duration = Math.max(0, Number(value.duration) || 0)
-  const sampleRate = Math.max(0, Number(value.sampleRate) || 0)
-  const rate = Math.max(0, Number(value.rate) || 0)
-  const minLeft = toFloat32Array(value.minLeft)
-  const maxLeft = toFloat32Array(value.maxLeft)
-  const minRight = toFloat32Array(value.minRight)
-  const maxRight = toFloat32Array(value.maxRight)
+type HorizontalBrowseRawWaveformPayload = {
+  frames?: unknown
+  duration?: unknown
+  sampleRate?: unknown
+  rate?: unknown
+  minLeft?: unknown
+  maxLeft?: unknown
+  minRight?: unknown
+  maxRight?: unknown
+}
+
+const normalizeRawWaveformData = (value: unknown): RawWaveformData | null => {
+  const payload =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as HorizontalBrowseRawWaveformPayload)
+      : null
+  if (!payload) return null
+  const frames = Math.max(0, Number(payload.frames) || 0)
+  const duration = Math.max(0, Number(payload.duration) || 0)
+  const sampleRate = Math.max(0, Number(payload.sampleRate) || 0)
+  const rate = Math.max(0, Number(payload.rate) || 0)
+  const minLeft = toFloat32Array(payload.minLeft)
+  const maxLeft = toFloat32Array(payload.maxLeft)
+  const minRight = toFloat32Array(payload.minRight)
+  const maxRight = toFloat32Array(payload.maxRight)
   if (!frames || !duration || !sampleRate || !rate) return null
   return {
     duration,
@@ -1526,6 +1541,8 @@ const handleRawWaveformStreamDone = (
     requestId?: string
     filePath?: string
     data?: unknown
+    duration?: unknown
+    totalFrames?: unknown
     error?: string
     fromCache?: boolean
     streamed?: boolean
@@ -1558,8 +1575,8 @@ const handleRawWaveformStreamDone = (
   }
 
   if (rawData.value) {
-    const duration = Math.max(0, Number((payload as any)?.duration) || 0)
-    const totalFrames = Math.max(0, Number((payload as any)?.totalFrames) || 0)
+    const duration = Math.max(0, Number(payload?.duration) || 0)
+    const totalFrames = Math.max(0, Number(payload?.totalFrames) || 0)
     if (duration > 0) {
       rawData.value.duration = duration
     }

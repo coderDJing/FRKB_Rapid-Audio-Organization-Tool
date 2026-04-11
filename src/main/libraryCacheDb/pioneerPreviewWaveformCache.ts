@@ -30,7 +30,7 @@ const normalizeAnalyzePathKey = (analyzePath: string) => {
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized
 }
 
-const normalizeSignature = (signature: string) => String(signature || '').trim()
+const normalizeSignature = (signature: unknown) => String(signature || '').trim()
 
 const parseWaveformDataJson = (value: unknown): IPioneerPreviewWaveformData | null => {
   if (!value) return null
@@ -56,7 +56,14 @@ export async function loadPioneerPreviewWaveformCacheEntry(
 
   try {
     const row = db
-      .prepare(
+      .prepare<{
+        cache_version?: unknown
+        signature?: unknown
+        status?: unknown
+        preview_file_path?: unknown
+        data_json?: unknown
+        error?: unknown
+      }>(
         `SELECT cache_version, signature, status, preview_file_path, data_json, error
          FROM ${PIONEER_PREVIEW_WAVEFORM_CACHE_TABLE}
          WHERE list_root = ? AND analyze_path = ?`

@@ -6,6 +6,7 @@ import os = require('os')
 import {
   calculateAudioHashesWithProgress,
   calculateFileHashesWithProgress,
+  type AudioFileResult,
   ProcessProgress,
   decodeAudioFile
 } from 'rust_package'
@@ -104,8 +105,8 @@ export async function getSongsAnalyseResult(
     }
   }
   // 根据 fingerprintMode 决定调用哪种分析器（暂时仅 PCM，稍后加入整文件哈希）
-  const mode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
-  let results: any[]
+  const mode = store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
+  let results: AudioFileResult[]
   if (mode === 'file') {
     results = await calculateFileHashesWithProgress(songFilePaths, progressCallback)
   } else {
@@ -247,7 +248,7 @@ export async function getLibrary(options: { skipSync?: boolean } = {}) {
 
 export const operateHiddenFile = async (
   filePath: string,
-  operateFunction: () => Promise<any> | any
+  operateFunction: () => Promise<unknown> | unknown
 ) => {
   // 统一 await，无论传入同步/异步
   const run = async () => await Promise.resolve(operateFunction())
@@ -356,10 +357,16 @@ export async function moveOrCopyItemWithCheckIsExist(
   }
 }
 
-export function isENOSPCError(error: any): boolean {
+type ErrorLike = {
+  code?: unknown
+  message?: unknown
+}
+
+export function isENOSPCError(error: unknown): boolean {
   try {
-    const code = (error && (error as any).code) || ''
-    const message = (error && (error as any).message) || ''
+    const err = (error && typeof error === 'object' ? error : null) as ErrorLike | null
+    const code = err?.code || ''
+    const message = err?.message || ''
     return (
       String(code).toUpperCase() === 'ENOSPC' || /no space left on device/i.test(String(message))
     )
@@ -447,7 +454,7 @@ export async function runWithConcurrency<T>(
     return null
   }
 
-  async function handleENOSPC(idx: number, err: any) {
+  async function handleENOSPC(idx: number, err: unknown) {
     hasENOSPC = true
     // 记录待重试
     retryQueue.push(idx)
@@ -492,11 +499,11 @@ export async function runWithConcurrency<T>(
       try {
         const val = await tasks[idx]()
         // 成功：若无返回值也要标记成功，避免统计为 0
-        results[idx] = val === undefined ? (true as any) : val
+        results[idx] = val === undefined ? (true as unknown as T) : val
         completed++
         if (options.onProgress) options.onProgress(completed, total)
         await maybeYieldToEventLoop()
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (isENOSPCError(err)) {
           await handleENOSPC(idx, err)
           // ENOSPC 情况下不计入完成，等待重试或取消

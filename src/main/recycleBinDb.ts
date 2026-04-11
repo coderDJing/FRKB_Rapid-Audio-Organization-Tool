@@ -1,4 +1,4 @@
-import { getLibraryDb } from './libraryDb'
+import { getLibraryDb, isSqliteRow } from './libraryDb'
 import { log } from './log'
 
 export type RecycleBinRecord = {
@@ -11,8 +11,8 @@ export type RecycleBinRecord = {
 
 const TABLE = 'recycle_bin_records'
 
-function normalizeRecord(row: any): RecycleBinRecord | null {
-  if (!row || !row.file_path) return null
+function normalizeRecord(row: unknown): RecycleBinRecord | null {
+  if (!isSqliteRow(row) || !row.file_path) return null
   const deletedAtMs = Number(row.deleted_at_ms)
   if (!Number.isFinite(deletedAtMs)) return null
   return {
@@ -33,9 +33,7 @@ export function listRecycleBinRecords(): RecycleBinRecord[] {
         `SELECT file_path, deleted_at_ms, original_playlist_path, original_file_name, source_type FROM ${TABLE}`
       )
       .all()
-    return (rows || [])
-      .map((row: any) => normalizeRecord(row))
-      .filter(Boolean) as RecycleBinRecord[]
+    return (rows || []).map((row) => normalizeRecord(row)).filter(Boolean) as RecycleBinRecord[]
   } catch (error) {
     log.error('[sqlite] recycle bin list failed', error)
     return []

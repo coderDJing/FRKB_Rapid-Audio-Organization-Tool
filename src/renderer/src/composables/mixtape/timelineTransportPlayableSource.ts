@@ -18,7 +18,7 @@ export type TransportPlayableSource = {
 
 const WORKLET_NAME = 'mixtape-transport-keylock'
 
-type TransportPlayableAudioContext = BaseAudioContext & {
+export type TransportPlayableAudioContext = BaseAudioContext & {
   createBufferSource: () => AudioBufferSourceNode
   audioWorklet?: AudioWorklet
 }

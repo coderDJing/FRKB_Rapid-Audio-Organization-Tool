@@ -12,6 +12,11 @@ const filterIconMaskStyle = {
 
 // 类型定义
 type VDraggableBinding = [list: ISongsAreaColumn[], options?: UseDraggableOptions<ISongsAreaColumn>]
+type FilterDialogType = 'text' | 'duration' | 'bpm'
+type FilterDialogPayload =
+  | { type: 'text'; text: string; excludeText: string }
+  | { type: 'duration'; op: 'eq' | 'gte' | 'lte'; duration: string }
+  | { type: 'bpm'; op: 'eq' | 'gte' | 'lte'; value: string }
 
 // Props
 const props = defineProps({
@@ -377,6 +382,10 @@ function getFilterTooltip(col: ISongsAreaColumn): string {
   return ''
 }
 
+function resolveFilterDialogType(col: ISongsAreaColumn): FilterDialogType {
+  return col.filterType === 'duration' || col.filterType === 'bpm' ? col.filterType : 'text'
+}
+
 // 处理表头区域的右键菜单事件
 const handleContextMenu = (event: MouseEvent) => {
   emit('header-contextmenu', event)
@@ -447,23 +456,23 @@ const handleContextMenu = (event: MouseEvent) => {
       <Teleport to="body">
         <filterDialog
           v-if="filterActiveKey === col.key && col.filterType"
-          :type="col.filterType as any"
+          :type="resolveFilterDialogType(col)"
           :init-text="tempText"
           :init-exclude-text="tempExcludeText"
           :init-op="tempOp"
           :init-duration="tempDuration"
           :init-number="tempNumber"
           @confirm="
-            (payload) => {
+            (payload: FilterDialogPayload) => {
               if (payload.type === 'text') {
-                tempText = (payload as any).text
-                tempExcludeText = (payload as any).excludeText
+                tempText = payload.text
+                tempExcludeText = payload.excludeText
               } else if (payload.type === 'duration') {
-                tempOp = (payload as any).op
-                tempDuration = (payload as any).duration
+                tempOp = payload.op
+                tempDuration = payload.duration
               } else if (payload.type === 'bpm') {
-                tempOp = (payload as any).op
-                tempNumber = (payload as any).value
+                tempOp = payload.op
+                tempNumber = payload.value
               }
               applyFilterConfirm(col)
             }

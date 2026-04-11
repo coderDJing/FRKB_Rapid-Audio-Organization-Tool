@@ -1,12 +1,101 @@
 import { FIXED_MIXTAPE_STEM_MODE } from '@shared/mixtapeStemMode'
-import type { StemWaveformData } from '@renderer/composables/mixtape/types'
+import type {
+  MixtapeTrack,
+  RawWaveformData,
+  RawWaveformLevel,
+  StemWaveformData,
+  TimelineTrackLayout
+} from '@renderer/composables/mixtape/types'
+import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 
 type RawWaveformBatchTarget = {
   filePath: string
   listRoot?: string
 }
 
-export const createTimelineWaveformLoadingModule = (ctx: any) => {
+type ValueRef<T> = {
+  value: T
+}
+
+type TimelineWaveformData = StemWaveformData | MixxxWaveformData
+
+type StemWaveformBundleRequestItem = {
+  listRoot?: string
+  sourceFilePath: string
+  stemMode: typeof FIXED_MIXTAPE_STEM_MODE
+  stemModel?: string
+  stemVersion?: string
+  stemPaths: {
+    vocalPath?: string
+    instPath?: string
+    bassPath?: string
+    drumsPath?: string
+  }
+}
+
+type StemWaveformBundleResponse = {
+  items?: Array<{
+    sourceFilePath?: string
+    stems?: Array<{ stemId?: string; filePath?: string; data?: unknown }>
+  }>
+}
+
+type RawWaveformBatchResponse = {
+  items?: Array<{ filePath: string; data: RawWaveformData | null }>
+}
+
+type TimelineWaveformLoadingCtx = {
+  tracks: ValueRef<MixtapeTrack[]>
+  waveformDataMap: Map<string, TimelineWaveformData | null>
+  waveformQueuedMissing: Set<string>
+  rawWaveformDataMap: Map<string, RawWaveformData | null>
+  rawWaveformPyramidMap: Map<string, RawWaveformLevel[]>
+  waveformInflight: Set<string>
+  rawWaveformInflight: Set<string>
+  waveformVersion: ValueRef<number>
+  pushStemWaveformToWorker: (filePath: string, data: StemWaveformData | null) => void
+  pushRawWaveformToWorker: (filePath: string, data: RawWaveformData | null) => void
+  clearWaveformTileCacheForFile: (filePath: string) => void
+  scheduleWaveformDraw: () => void
+  scheduleFullPreRender: () => void
+  scheduleWorkerPreRender: () => void
+  resolveWaveformListRoot: (track: MixtapeTrack) => string
+  resolveTrackWaveformSources: (
+    track: MixtapeTrack
+  ) => Array<{ filePath: string; listRoot?: string }>
+  resolveTrackWaveformFilePaths: (track: MixtapeTrack) => string[]
+  buildSequentialLayoutForZoom: (zoom: number) => { layout: TimelineTrackLayout[] }
+  forEachVisibleLayoutItem: (
+    snapshot: { layout: TimelineTrackLayout[] },
+    visibleStart: number,
+    visibleEnd: number,
+    iteratee: (item: TimelineTrackLayout) => void
+  ) => void
+  normalizedRenderZoom: ValueRef<number>
+  timelineScrollRef: ValueRef<{
+    osInstance?: () => { elements(): { viewport?: HTMLElement } } | null
+  } | null>
+  timelineScrollLeft: ValueRef<number>
+  timelineViewportWidth: ValueRef<number>
+  decodeStemWaveformData: (payload: unknown) => StemWaveformData | null
+  storeWaveformData: (filePath: string, data: TimelineWaveformData | null) => void
+  fetchWaveformBatch: (filePaths: string[], listRoot?: string) => Promise<void>
+  decodeRawWaveformData: (payload: unknown) => RawWaveformData | null
+  buildRawWaveformPyramid: (raw: RawWaveformData) => RawWaveformLevel[]
+  isStemMixMode: () => boolean
+  useRawWaveform: ValueRef<boolean>
+  getWaveformLoadTimer: () => ReturnType<typeof setTimeout> | null
+  setWaveformLoadTimer: (timer: ReturnType<typeof setTimeout> | null) => void
+  isTransportPreloadingActive: () => boolean
+  ENABLE_STEM_PREVIEW_WAVEFORM: boolean
+  WAVEFORM_BATCH_SIZE: number
+  RAW_WAVEFORM_BATCH_SIZE: number
+  RAW_WAVEFORM_TARGET_RATE: number
+  RAW_VISIBLE_BUFFER_PX: number
+  RAW_BATCH_MAX_CONCURRENT: number
+}
+
+export const createTimelineWaveformLoadingModule = (ctx: TimelineWaveformLoadingCtx) => {
   const {
     tracks,
     waveformDataMap,
@@ -52,7 +141,7 @@ export const createTimelineWaveformLoadingModule = (ctx: any) => {
   let rawLoadInFlight = false
   let rawLoadRerunPending = false
 
-  const fetchStemWaveformBundleBatch = async (requestItems: any[]) => {
+  const fetchStemWaveformBundleBatch = async (requestItems: StemWaveformBundleRequestItem[]) => {
     if (!requestItems.length) return
     const requestedFilePathToRoot = new Map<string, string>()
     for (const item of requestItems) {
@@ -76,12 +165,7 @@ export const createTimelineWaveformLoadingModule = (ctx: any) => {
       waveformInflight.add(filePath)
     }
 
-    let response: {
-      items?: Array<{
-        sourceFilePath?: string
-        stems?: Array<{ stemId?: string; filePath?: string; data?: unknown }>
-      }>
-    } | null = null
+    let response: StemWaveformBundleResponse | null = null
     try {
       response = await window.electron.ipcRenderer.invoke('mixtape-stem-waveform-cache:batch', {
         items: requestItems
@@ -162,7 +246,7 @@ export const createTimelineWaveformLoadingModule = (ctx: any) => {
     for (const filePath of requestedPaths) {
       rawWaveformInflight.add(filePath)
     }
-    let response: { items?: Array<{ filePath: string; data: any | null }> } | null = null
+    let response: RawWaveformBatchResponse | null = null
     try {
       response = await window.electron.ipcRenderer.invoke('mixtape-waveform-raw:batch', {
         filePaths: requestedPaths,
@@ -255,7 +339,7 @@ export const createTimelineWaveformLoadingModule = (ctx: any) => {
       return
     }
 
-    const stemBundleRequestItems: any[] = []
+    const stemBundleRequestItems: StemWaveformBundleRequestItem[] = []
     const stemBundleRequestKeySet = new Set<string>()
     for (const track of tracks.value) {
       const waveformSources = resolveTrackWaveformSources(track)
@@ -320,8 +404,9 @@ export const createTimelineWaveformLoadingModule = (ctx: any) => {
 
       const collectVisibleTargets = () => {
         const viewport =
-          (timelineScrollRef.value?.osInstance()?.elements().viewport as HTMLElement | undefined) ||
-          null
+          (timelineScrollRef.value?.osInstance?.()?.elements?.().viewport as
+            | HTMLElement
+            | undefined) || null
         const viewportLeft = Math.max(
           0,
           Math.floor(viewport?.scrollLeft || Number(timelineScrollLeft.value || 0))
@@ -375,16 +460,21 @@ export const createTimelineWaveformLoadingModule = (ctx: any) => {
           Math.ceil(viewportLeft + viewportWidth + RAW_VISIBLE_BUFFER_PX)
         )
         const snapshot = buildSequentialLayoutForZoom(normalizedRenderZoom.value)
-        forEachVisibleLayoutItem(snapshot, visibleStart, visibleEnd, (item: any) => {
-          const listRoot = resolveWaveformListRoot(item.track)
-          const filePaths = resolveTrackWaveformFilePaths(item.track)
-          for (const filePath of filePaths) {
-            pushTarget(filePath, listRoot)
+        forEachVisibleLayoutItem(
+          snapshot,
+          visibleStart,
+          visibleEnd,
+          (item: TimelineTrackLayout) => {
+            const listRoot = resolveWaveformListRoot(item.track)
+            const filePaths = resolveTrackWaveformFilePaths(item.track)
+            for (const filePath of filePaths) {
+              pushTarget(filePath, listRoot)
+            }
+            if (isStemMixMode()) {
+              pushTarget(String(item.track.filePath || '').trim(), listRoot)
+            }
           }
-          if (isStemMixMode()) {
-            pushTarget(String(item.track.filePath || '').trim(), listRoot)
-          }
-        })
+        )
         return targets
       }
 
@@ -464,7 +554,7 @@ export const createTimelineWaveformLoadingModule = (ctx: any) => {
       return
     }
 
-    const stemBundleRequestItems: any[] = []
+    const stemBundleRequestItems: StemWaveformBundleRequestItem[] = []
     const stemBundleRequestKeySet = new Set<string>()
     for (const track of tracks.value) {
       const waveformSources = resolveTrackWaveformSources(track)

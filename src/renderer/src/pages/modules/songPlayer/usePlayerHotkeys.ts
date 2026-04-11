@@ -143,7 +143,7 @@ export function usePlayerHotkeys(
       actions.delSong()
       // 兜底：触发一次歌单内容变更事件，确保徽标数量刷新
       try {
-        const uid = (runtime as any).playingData?.playingSongListUUID
+        const uid = runtime.playingData?.playingSongListUUID
         if (uid) {
           emitter.emit('playlistContentChanged', { uuids: [uid] })
         }

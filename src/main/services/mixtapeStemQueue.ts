@@ -74,6 +74,12 @@ type MixtapeStemQueueJob = {
 
 type MixtapeStemEnqueueSource = 'foreground' | 'background'
 
+type StemAnalysisState = Record<string, unknown>
+
+type ErrorWithCode = Error & {
+  code?: string
+}
+
 export type MixtapeStemEnqueueParams = {
   playlistId: string
   filePaths: string[]
@@ -151,7 +157,21 @@ const normalizeStemVersion = (value: unknown, model?: string): string => {
 const normalizeEnqueueSource = (value: unknown): MixtapeStemEnqueueSource =>
   value === 'background' ? 'background' : 'foreground'
 
-const hasExistingStemAnalysisState = (info: Record<string, any> | null): boolean => {
+const isStemAnalysisState = (value: unknown): value is StemAnalysisState =>
+  !!value && typeof value === 'object' && !Array.isArray(value)
+
+const getErrorCode = (error: unknown): string => {
+  if (!error || typeof error !== 'object') return ''
+  return normalizeText(Reflect.get(error, 'code'), 80)
+}
+
+const createStemQueueError = (message: string, code: string): ErrorWithCode => {
+  const error = new Error(message) as ErrorWithCode
+  error.code = code
+  return error
+}
+
+const hasExistingStemAnalysisState = (info: StemAnalysisState | null): boolean => {
   if (!info || typeof info !== 'object') return false
   const stemStatus = normalizeText(info?.stemStatus, 32)
   if (stemStatus === 'ready') return true
@@ -177,15 +197,15 @@ const shouldBypassReadyCacheForLegacyStemVersion = (params: {
   try {
     const items = listMixtapeItems(params.playlistId)
     for (const item of items) {
-      const itemId = normalizeText((item as any)?.id, 80)
+      const itemId = normalizeText(item.id, 80)
       if (!itemId || !targetItemIdSet.has(itemId)) continue
-      const infoJsonRaw = normalizeText((item as any)?.infoJson, 200_000)
+      const infoJsonRaw = normalizeText(item.infoJson, 200_000)
       if (!infoJsonRaw) {
         continue
       }
       try {
         const info = JSON.parse(infoJsonRaw)
-        if (!hasExistingStemAnalysisState(info)) {
+        if (!isStemAnalysisState(info) || !hasExistingStemAnalysisState(info)) {
           continue
         }
         const currentStemVersion = normalizeText(info?.stemVersion, 128)
@@ -650,9 +670,7 @@ const processQueueJob = async (job: MixtapeStemQueueJob) => {
     })
     const requiredPaths = resolveAssetRequiredPaths(job.stemMode, separation)
     if (!requiredPaths.length || !requiredPaths.every((filePath) => fs.existsSync(filePath))) {
-      const missingError = new Error('STEM_ASSET_MISSING')
-      ;(missingError as any).code = 'STEM_ASSET_MISSING'
-      throw missingError
+      throw createStemQueueError('STEM_ASSET_MISSING', 'STEM_ASSET_MISSING')
     }
     upsertMixtapeStemAsset({
       libraryRoot: job.libraryRoot,
@@ -691,7 +709,7 @@ const processQueueJob = async (job: MixtapeStemQueueJob) => {
       drumsPath: separation.drumsPath || null
     })
   } catch (error) {
-    const errorCode = normalizeText((error as any)?.code, 80) || 'STEM_SPLIT_FAILED'
+    const errorCode = getErrorCode(error) || 'STEM_SPLIT_FAILED'
     const errorMessage = normalizeText(
       error instanceof Error ? error.message : String(error || 'stem split failed'),
       1200

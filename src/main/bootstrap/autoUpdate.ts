@@ -5,19 +5,24 @@ import foundNewVersionWindow from '../window/foundNewVersionWindow'
 import store from '../store'
 import { log } from '../log'
 
+type AutoUpdaterWithExtras = typeof electronUpdater.autoUpdater & {
+  allowPrerelease?: boolean
+  channel?: string
+}
+
 export function setupAutoUpdate() {
-  const autoUpdater = electronUpdater.autoUpdater
+  const autoUpdater = electronUpdater.autoUpdater as AutoUpdaterWithExtras
   autoUpdater.autoDownload = false
   const versionString = app.getVersion()
   const isPrerelease = versionString.includes('-')
 
   try {
-    ;(autoUpdater as any).allowPrerelease = isPrerelease
+    autoUpdater.allowPrerelease = isPrerelease
   } catch {}
 
   try {
     if (isPrerelease && /-rc[.-]/i.test(versionString)) {
-      ;(autoUpdater as any).channel = 'rc'
+      autoUpdater.channel = 'rc'
     }
   } catch {}
 
@@ -35,11 +40,7 @@ export function setupAutoUpdate() {
 
   autoUpdater.on('update-available', (info) => {
     const currentIsPrerelease = app.getVersion().includes('-')
-    const remoteIsPrerelease = !!(
-      info &&
-      typeof (info as any).version === 'string' &&
-      (info as any).version.includes('-')
-    )
+    const remoteIsPrerelease = typeof info?.version === 'string' && info.version.includes('-')
 
     if (currentIsPrerelease !== remoteIsPrerelease) {
       return

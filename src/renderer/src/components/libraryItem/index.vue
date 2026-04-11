@@ -14,6 +14,7 @@ import { useLibraryContextMenu } from './useLibraryContextMenu'
 import { useLibraryDragAndDrop } from './useLibraryDragAndDrop'
 import { useLibraryTrackCount } from './useLibraryTrackCount'
 import { useLibraryFilter } from './useLibraryFilter'
+import type { IDir } from '../../../../types/globals'
 const listIcon = listIconAsset
 const listIconMaskStyle = {
   '--icon-mask': `url("${listIcon}")`
@@ -53,8 +54,8 @@ const warnAcoustIdMissing = () => {
 }
 const { handleDropToSongList } = useDragSongs()
 
-const dirDataRef = shallowRef<any | null>(null)
-const fatherDirDataRef = shallowRef<any | null>(null)
+const dirDataRef = shallowRef<IDir | null>(null)
+const fatherDirDataRef = shallowRef<IDir | null>(null)
 
 const syncNodeRefs = () => {
   dirDataRef.value = libraryUtils.getLibraryTreeByUUID(props.uuid)
@@ -257,7 +258,9 @@ const showTrackCount = computed(
 )
 const nameTextRef = ref<HTMLElement | null>(null)
 const nameTextHovered = ref(false)
-const onlyShowBubbleWhenOverflow = computed(() => !(runtime as any).setting.songListBubbleAlways)
+const onlyShowBubbleWhenOverflow = computed(
+  () => !Boolean(Reflect.get(runtime.setting, 'songListBubbleAlways'))
+)
 const openMixtapeHandleClick = () => {
   const currentDirData = dirDataRef.value
   if (!currentDirData || currentDirData.type !== 'mixtapeList') return
@@ -458,7 +461,7 @@ const openMixtapeHandleClick = () => {
       <libraryItem
         :uuid="item.uuid"
         :library-name="props.libraryName"
-        :filter-text="(props as any).filterText"
+        :filter-text="props.filterText"
       />
     </template>
   </div>

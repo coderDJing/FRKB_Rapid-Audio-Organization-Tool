@@ -14,6 +14,10 @@ export interface FrkbManifest {
   minAppVersion?: string
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
 export function getManifestPath(dirPath: string): string {
   return path.join(dirPath, MANIFEST_FILE_NAME)
 }
@@ -26,9 +30,9 @@ export async function readManifestFile(filePath: string): Promise<FrkbManifest> 
   return data as FrkbManifest
 }
 
-export function isValidManifest(obj: any): obj is FrkbManifest {
+export function isValidManifest(obj: unknown): obj is FrkbManifest {
   return (
-    obj &&
+    isRecord(obj) &&
     obj.type === 'frkb_root' &&
     typeof obj.version === 'number' &&
     typeof obj.uuid === 'string' &&

@@ -1,6 +1,6 @@
 import path = require('path')
 import fs = require('fs-extra')
-import { getLibraryDb } from '../libraryDb'
+import { getLibraryDb, isSqliteRow } from '../libraryDb'
 import { log } from '../log'
 import type { ISongInfo } from '../../types/globals'
 import type { SongCacheEntry } from './types'
@@ -13,11 +13,30 @@ import {
   normalizeInfoJsonFilePath,
   normalizeRoot
 } from './pathResolvers'
+import type { SqliteDatabase } from '../libraryDb'
 
 const migratedSongRoots = new Set<string>()
 const looseSongRootCache = new Map<string, string[]>()
 
-function parseInfoJson(raw: any): ISongInfo | null {
+type SongCacheDbRow = {
+  list_root?: string
+  file_path?: string
+  size?: unknown
+  mtime_ms?: unknown
+  info_json?: unknown
+}
+
+type SongCacheRootRow = {
+  list_root?: string
+}
+
+type SongCacheRowHit = {
+  row: SongCacheDbRow
+  hitListRoot: string
+  hitFilePath: string
+}
+
+function parseInfoJson(raw: unknown): ISongInfo | null {
   if (raw === undefined || raw === null) return null
   try {
     return JSON.parse(String(raw)) as ISongInfo
@@ -35,8 +54,8 @@ function hasBpmValue(value: unknown): value is number {
 }
 
 function mergeInfoJson(
-  baseRaw: any,
-  incomingRaw: any,
+  baseRaw: unknown,
+  incomingRaw: unknown,
   absFilePath: string
 ): { json: string; changed: boolean } {
   const base = parseInfoJson(baseRaw)
@@ -48,7 +67,7 @@ function mergeInfoJson(
   if (incoming) {
     for (const [key, value] of Object.entries(incoming)) {
       if (value !== undefined) {
-        ;(next as any)[key] = value
+        Reflect.set(next, key, value)
       }
     }
   }
@@ -86,7 +105,7 @@ function toLooseCompareExprRaw(expr: string): string {
 }
 
 function getLooseSongCacheRoots(
-  db: any,
+  db: SqliteDatabase,
   candidates: Array<string | null | undefined>,
   listRootKey: string
 ): string[] {
@@ -95,13 +114,13 @@ function getLooseSongCacheRoots(
   if (cached) return cached
   const roots: string[] = []
   const seen = new Set<string>()
-  const stmt = db.prepare(
+  const stmt = db.prepare<SongCacheRootRow>(
     `SELECT DISTINCT list_root FROM song_cache WHERE ${toLooseCompareExpr('list_root')} LIMIT 20`
   )
   for (const candidate of candidates) {
     const value = candidate ? String(candidate) : ''
     if (!value) continue
-    let rows: any[] = []
+    let rows: SongCacheRootRow[] = []
     try {
       rows = stmt.all(value)
     } catch {
@@ -119,23 +138,23 @@ function getLooseSongCacheRoots(
 }
 
 function getSongCacheRowLoose(
-  db: any,
+  db: SqliteDatabase,
   listRootCandidates: string[],
   filePathCandidates: string[]
-): { row: any; hitListRoot: string; hitFilePath: string } | null {
+): SongCacheRowHit | null {
   if (!db || listRootCandidates.length === 0 || filePathCandidates.length === 0) return null
-  const stmt = db.prepare(
+  const stmt = db.prepare<SongCacheDbRow>(
     `SELECT list_root, file_path, size, mtime_ms, info_json FROM song_cache WHERE ${toLooseCompareExpr(
       'list_root'
     )} AND ${toLooseCompareExpr('file_path')} LIMIT 1`
   )
   for (const listRoot of listRootCandidates) {
     for (const filePath of filePathCandidates) {
-      let row: any = null
+      let row: SongCacheDbRow | undefined
       try {
         row = stmt.get(listRoot, filePath)
       } catch {
-        row = null
+        row = undefined
       }
       if (row && row.info_json !== undefined) {
         return {
@@ -150,21 +169,21 @@ function getSongCacheRowLoose(
 }
 
 function getSongCacheRowGlobal(
-  db: any,
+  db: SqliteDatabase,
   filePathCandidates: string[]
-): { row: any; hitListRoot: string; hitFilePath: string } | null {
+): SongCacheRowHit | null {
   if (!db || filePathCandidates.length === 0) return null
-  const stmt = db.prepare(
+  const stmt = db.prepare<SongCacheDbRow>(
     `SELECT list_root, file_path, size, mtime_ms, info_json FROM song_cache WHERE ${toLooseCompareExpr(
       'file_path'
     )} LIMIT 1`
   )
   for (const filePath of filePathCandidates) {
-    let row: any = null
+    let row: SongCacheDbRow | undefined
     try {
       row = stmt.get(filePath)
     } catch {
-      row = null
+      row = undefined
     }
     if (row && row.info_json !== undefined) {
       return {
@@ -178,23 +197,23 @@ function getSongCacheRowGlobal(
 }
 
 function getSongCacheRowByAbsPath(
-  db: any,
+  db: SqliteDatabase,
   absPathCandidates: string[]
-): { row: any; hitListRoot: string; hitFilePath: string } | null {
+): SongCacheRowHit | null {
   if (!db || absPathCandidates.length === 0) return null
   try {
     const expr = "json_extract(info_json, '$.filePath')"
-    const stmt = db.prepare(
+    const stmt = db.prepare<SongCacheDbRow>(
       `SELECT list_root, file_path, size, mtime_ms, info_json FROM song_cache WHERE ${toLooseCompareExprRaw(
         expr
       )} LIMIT 1`
     )
     for (const absPath of absPathCandidates) {
-      let row: any = null
+      let row: SongCacheDbRow | undefined
       try {
         row = stmt.get(absPath)
       } catch {
-        row = null
+        row = undefined
       }
       if (row && row.info_json !== undefined) {
         return {
@@ -211,21 +230,23 @@ function getSongCacheRowByAbsPath(
 }
 
 export function migrateSongCacheRows(
-  db: any,
+  db: SqliteDatabase,
   oldListRoot: string,
   newListRootKey: string,
   listRootAbs: string
 ): number {
   try {
     const rows = db
-      .prepare('SELECT file_path, size, mtime_ms, info_json FROM song_cache WHERE list_root = ?')
+      .prepare<SongCacheDbRow>(
+        'SELECT file_path, size, mtime_ms, info_json FROM song_cache WHERE list_root = ?'
+      )
       .all(oldListRoot)
     if (!rows || rows.length === 0) return 0
     const del = db.prepare('DELETE FROM song_cache WHERE list_root = ? AND file_path = ?')
     const update = db.prepare(
       'UPDATE song_cache SET list_root = ?, file_path = ?, info_json = ? WHERE list_root = ? AND file_path = ?'
     )
-    const selectNew = db.prepare(
+    const selectNew = db.prepare<SongCacheDbRow>(
       'SELECT size, mtime_ms, info_json FROM song_cache WHERE list_root = ? AND file_path = ?'
     )
     const updateNew = db.prepare(
@@ -271,7 +292,7 @@ export function migrateSongCacheRows(
   }
 }
 
-export async function ensureSongCacheMigrated(db: any, listRoot: string): Promise<void> {
+export async function ensureSongCacheMigrated(db: SqliteDatabase, listRoot: string): Promise<void> {
   const resolved = resolveListRootInput(listRoot)
   if (!resolved) return
   const listRootKey = resolved.key
@@ -287,14 +308,14 @@ export async function ensureSongCacheMigrated(db: any, listRoot: string): Promis
     const cacheFile = path.join(listRootAbs, '.songs.cache.json')
     if (!(await fs.pathExists(cacheFile))) return
     const json = await fs.readJSON(cacheFile).catch(() => null)
-    const entries = json && typeof json === 'object' ? (json.entries as any) : null
-    if (!entries || typeof entries !== 'object') return
+    const entries = isSqliteRow(json) ? json.entries : null
+    if (!isSqliteRow(entries)) return
     const rows: Array<{ filePath: string; size: number; mtimeMs: number; infoJson: string }> = []
     for (const [filePath, entry] of Object.entries(entries)) {
-      if (!filePath || typeof entry !== 'object' || entry === null) continue
-      const size = toNumber((entry as any).size)
-      const mtimeMs = toNumber((entry as any).mtimeMs)
-      const info = (entry as any).info
+      if (!filePath || !isSqliteRow(entry)) continue
+      const size = toNumber(entry.size)
+      const mtimeMs = toNumber(entry.mtimeMs)
+      const info = entry.info
       if (size === null || mtimeMs === null || !info) continue
       let infoJson = ''
       try {
@@ -344,7 +365,7 @@ export async function loadSongCache(listRoot: string): Promise<Map<string, SongC
   try {
     await ensureSongCacheMigrated(db, listRoot)
     const map = new Map<string, SongCacheEntry>()
-    const appendRows = (rowsToUse: any[], rootKey: string, legacyRelRoot?: string) => {
+    const appendRows = (rowsToUse: SongCacheDbRow[], rootKey: string, legacyRelRoot?: string) => {
       for (const row of rowsToUse || []) {
         if (!row || !row.file_path || row.info_json === undefined) continue
         let info: ISongInfo | null = null
@@ -368,11 +389,13 @@ export async function loadSongCache(listRoot: string): Promise<Map<string, SongC
       }
     }
     const rows = db
-      .prepare('SELECT file_path, size, mtime_ms, info_json FROM song_cache WHERE list_root = ?')
+      .prepare<SongCacheDbRow>(
+        'SELECT file_path, size, mtime_ms, info_json FROM song_cache WHERE list_root = ?'
+      )
       .all(listRootKey)
     const legacyRows = legacyListRoot
       ? db
-          .prepare(
+          .prepare<SongCacheDbRow>(
             'SELECT file_path, size, mtime_ms, info_json FROM song_cache WHERE list_root = ?'
           )
           .all(legacyListRoot)
@@ -384,7 +407,7 @@ export async function loadSongCache(listRoot: string): Promise<Map<string, SongC
           )
         : []
     if (looseRoots.length > 0) {
-      const extraStmt = db.prepare(
+      const extraStmt = db.prepare<SongCacheDbRow>(
         'SELECT file_path, size, mtime_ms, info_json FROM song_cache WHERE list_root = ?'
       )
       for (const root of looseRoots) {
@@ -500,7 +523,7 @@ export async function loadSongCacheEntry(
         listRootKey
       )
       const loose = getSongCacheRowLoose(db, looseRoots, fileCandidates)
-      let mergeSource: { row: any; hitListRoot: string; hitFilePath: string } | null = null
+      let mergeSource: SongCacheRowHit | null = null
       if (loose && loose.row && loose.row.info_json !== undefined) {
         const looseInfo = parseInfoJson(loose.row.info_json)
         if (hasKeyText(looseInfo?.key) || hasBpmValue(looseInfo?.bpm)) {

@@ -101,6 +101,11 @@ const props = defineProps({
   allowWaveformPreviewWhenReadOnly: { type: Boolean, default: false }
 })
 
+type MixtapeDragPayload = {
+  sourceSongListUUID?: string
+  itemIds?: string[]
+}
+
 const emit = defineEmits<{
   (e: 'song-click', event: MouseEvent, song: ISongInfo): void
   (e: 'song-contextmenu', event: MouseEvent, song: ISongInfo): void
@@ -251,7 +256,7 @@ const scheduleAutoScroll = (event: DragEvent) => {
 
 const getKeyDisplayText = (value: unknown): string => {
   const text = typeof value === 'string' ? value.trim() : ''
-  const style = (runtime.setting as any).keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
+  const style = runtime.setting.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
   const display = formatKeyDisplayText(text, style)
   if (display.toLowerCase() === 'o') {
     return t('player.keyDisplayNone')
@@ -261,15 +266,15 @@ const getKeyDisplayText = (value: unknown): string => {
 
 const getCellValue = (song: ISongInfo, colKey: string): string | number => {
   if (colKey === 'key') {
-    return getKeyDisplayText((song as any).key)
+    return getKeyDisplayText(song.key)
   }
   if (colKey === 'deletedAtMs') {
-    return formatDeletedAtMs((song as any).deletedAtMs)
+    return formatDeletedAtMs(song.deletedAtMs)
   }
   if (colKey === 'originalPlaylistPath') {
     return getOriginalPlaylistDisplay(song)
   }
-  const raw = (song as any)[colKey]
+  const raw = song[colKey as keyof ISongInfo]
   if (colKey === 'bpm') {
     const bpm = Number(raw)
     return Number.isFinite(bpm) && bpm > 0 ? bpm.toFixed(2) : ''
@@ -309,7 +314,7 @@ const getCuratedArtistFavorite = (song: ISongInfo) =>
 const isCuratedArtistHit = (song: ISongInfo, colKey: string) => {
   if (colKey !== 'artist') return false
   if (props.sourceLibraryName !== 'FilterLibrary') return false
-  if ((runtime.setting as any).enableCuratedArtistTracking === false) return false
+  if (runtime.setting.enableCuratedArtistTracking === false) return false
   return curatedArtistFavoriteSet.value.has(normalizeArtistName(song.artist))
 }
 
@@ -467,10 +472,10 @@ const resolveDragPayload = (event: DragEvent) => {
 }
 
 const resolveDragItemIds = (event: DragEvent): string[] => {
-  const parsed: any = resolveDragPayload(event)
+  const parsed = resolveDragPayload(event) as MixtapeDragPayload | null
   if (!parsed || parsed.sourceSongListUUID !== props.sourceSongListUUID) return []
   const sourceItemIds = Array.isArray(parsed?.itemIds)
-    ? parsed.itemIds.map((id: any) => String(id)).filter(Boolean)
+    ? parsed.itemIds.map((id) => String(id)).filter(Boolean)
     : []
   return sourceItemIds
 }

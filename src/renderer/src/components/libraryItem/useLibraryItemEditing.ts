@@ -6,13 +6,15 @@ import {
   consumePendingMixtapeProjectMode,
   persistMixtapeProjectMode
 } from '@renderer/composables/mixtape/stemMode'
+import type { useRuntimeStore } from '@renderer/stores/runtime'
+import type { IDir } from '../../../../types/globals'
 
 interface UseLibraryItemEditingOptions {
-  dirDataRef: Ref<any | null>
-  fatherDirDataRef: Ref<any | null>
-  runtime: any
+  dirDataRef: Ref<IDir | null>
+  fatherDirDataRef: Ref<IDir | null>
+  runtime: ReturnType<typeof useRuntimeStore>
   props: { uuid: string }
-  emitter: { on: (event: string, handler: (...args: any[]) => void) => void }
+  emitter: { on: (event: string, handler: (payload: unknown) => void) => void }
 }
 
 export function useLibraryItemEditing({
@@ -50,7 +52,7 @@ export function useLibraryItemEditing({
       hintShouldShow = true
     } else {
       const fatherDirData = getFatherDirData()
-      const exists = fatherDirData?.children?.some((obj: any) => obj.dirName === newName)
+      const exists = fatherDirData?.children?.some((obj) => obj.dirName === newName)
       if (exists) {
         hintText = t('library.nameAlreadyExists', { name: newName })
         hintShouldShow = true
@@ -201,7 +203,7 @@ export function useLibraryItemEditing({
       hintShouldShow = true
     } else {
       const exists = fatherDirData.children?.some(
-        (obj: any) => obj.dirName === newName && obj.uuid !== props.uuid
+        (obj) => obj.dirName === newName && obj.uuid !== props.uuid
       )
       if (exists) {
         hintText = t('library.nameAlreadyExists', { name: newName })

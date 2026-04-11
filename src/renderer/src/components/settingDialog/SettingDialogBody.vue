@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { inject } from 'vue'
+import { computed, inject } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
 import BaseSelect from '@renderer/components/BaseSelect.vue'
 import { t } from '@renderer/utils/translate'
+import {
+  settingDialogContextKey,
+  type SettingDialogContext
+} from '@renderer/components/settingDialog/context'
 
-const ctx = inject<any>('settingDialogContext')
+const ctx = inject<SettingDialogContext>(settingDialogContextKey)
 
 if (!ctx) {
   throw new Error('settingDialogContext is missing')
@@ -50,11 +54,40 @@ const {
   hintIcon,
   fpModeHintRefs,
   setFpModeHintRef,
+  bindFpModeHintRef,
   onFingerprintModeChange,
   clearCloudFingerprints,
   clearLibraryDirtyData,
   clearAnalysisRuntime
 } = ctx
+
+const fingerprintModeModel = computed<'pcm' | 'file'>({
+  get: () => runtime.setting.fingerprintMode || 'pcm',
+  set: (value) => {
+    runtime.setting.fingerprintMode = value
+  }
+})
+
+const showIdleAnalysisStatusModel = computed<boolean>({
+  get: () => runtime.setting.showIdleAnalysisStatus === true,
+  set: (value) => {
+    runtime.setting.showIdleAnalysisStatus = value
+  }
+})
+
+const autoFillSkipCompletedModel = computed<boolean>({
+  get: () => runtime.setting.autoFillSkipCompleted !== false,
+  set: (value) => {
+    runtime.setting.autoFillSkipCompleted = value
+  }
+})
+
+const enableExplorerContextMenuModel = computed<boolean>({
+  get: () => runtime.setting.enableExplorerContextMenu === true,
+  set: (value) => {
+    runtime.setting.enableExplorerContextMenu = value
+  }
+})
 </script>
 
 <template>
@@ -86,7 +119,7 @@ const {
             <div class="setting-block">{{ t('theme.mode') }}：</div>
             <div class="setting-control">
               <BaseSelect
-                v-model="(runtime as any).setting.themeMode"
+                v-model="runtime.setting.themeMode"
                 :options="themeModeOptions"
                 :width="220"
                 @change="setSetting"
@@ -180,7 +213,7 @@ const {
             <div class="setting-block">{{ t('player.waveformStyle') }}：</div>
             <div class="setting-control">
               <BaseSelect
-                v-model="(runtime as any).setting.waveformStyle"
+                v-model="runtime.setting.waveformStyle"
                 :options="waveformStyleOptions"
                 :width="220"
                 @change="setSetting"
@@ -190,7 +223,7 @@ const {
             <div class="setting-block">{{ t('player.waveformMode') }}：</div>
             <div class="setting-control">
               <BaseSelect
-                v-model="(runtime as any).setting.waveformMode"
+                v-model="runtime.setting.waveformMode"
                 :options="waveformModeOptions"
                 :width="220"
                 @change="setSetting"
@@ -200,7 +233,7 @@ const {
             <div class="setting-block">{{ t('player.keyDisplayStyle') }}：</div>
             <div class="setting-control">
               <BaseSelect
-                v-model="(runtime as any).setting.keyDisplayStyle"
+                v-model="runtime.setting.keyDisplayStyle"
                 :options="keyDisplayStyleOptions"
                 :width="220"
                 @change="setSetting"
@@ -209,10 +242,7 @@ const {
 
             <div class="setting-block">{{ t('player.showIdleAnalysisStatus') }}：</div>
             <div class="setting-control">
-              <singleCheckbox
-                v-model="(runtime as any).setting.showIdleAnalysisStatus"
-                @change="setSetting"
-              />
+              <singleCheckbox v-model="showIdleAnalysisStatusModel" @change="setSetting" />
             </div>
 
             <div class="setting-block">{{ t('shortcuts.playerGlobalShortcuts') }}：</div>
@@ -337,17 +367,14 @@ const {
 
             <div class="setting-block">{{ t('metadata.autoFillSkipCompleted') }}：</div>
             <div class="setting-control">
-              <singleCheckbox
-                v-model="(runtime as any).setting.autoFillSkipCompleted"
-                @change="setSetting()"
-              />
+              <singleCheckbox v-model="autoFillSkipCompletedModel" @change="setSetting()" />
               <div class="setting-hint">{{ t('metadata.autoFillSkipCompletedHint') }}</div>
             </div>
 
             <div class="setting-block">{{ t('fingerprints.mode') }}：</div>
             <div class="setting-control">
               <singleRadioGroup
-                v-model="(runtime as any).setting.fingerprintMode as any"
+                v-model="fingerprintModeModel"
                 name="fpMode"
                 :options="[
                   { label: t('fingerprints.modePCM'), value: 'pcm' },
@@ -358,13 +385,13 @@ const {
                 <template #option="{ opt }">
                   <span class="label">{{ opt.label }}</span>
                   <img
-                    :ref="(el: any) => setFpModeHintRef(opt.value, el)"
+                    :ref="bindFpModeHintRef(opt.value)"
                     :src="hintIcon"
                     style="width: 14px; height: 14px; margin-left: 6px"
                     :draggable="false"
                   />
                   <bubbleBox
-                    :dom="(fpModeHintRefs[opt.value] || undefined) as any"
+                    :dom="fpModeHintRefs[opt.value] || null"
                     :title="
                       opt.value === 'pcm'
                         ? t('fingerprints.modePCMHint')
@@ -383,7 +410,7 @@ const {
                 <template v-for="fmt in allFormats" :key="fmt">
                   <div class="formatItem">
                     <span>.{{ fmt }}</span>
-                    <singleCheckbox v-model="(audioExt as any)[fmt]" @change="extChange()" />
+                    <singleCheckbox v-model="audioExt[fmt]" @change="extChange()" />
                   </div>
                 </template>
               </div>
@@ -395,16 +422,13 @@ const {
 
             <div class="setting-block">{{ t('filters.persistFiltersAfterRestart') }}：</div>
             <div class="setting-control">
-              <singleCheckbox
-                v-model="(runtime as any).setting.persistSongFilters"
-                @change="setSetting()"
-              />
+              <singleCheckbox v-model="runtime.setting.persistSongFilters" @change="setSetting()" />
             </div>
 
             <div class="setting-block">{{ t('settings.curatedArtistTracking.title') }}：</div>
             <div class="setting-control">
               <singleCheckbox
-                v-model="(runtime as any).setting.enableCuratedArtistTracking"
+                v-model="runtime.setting.enableCuratedArtistTracking"
                 @change="setSetting()"
               />
               <div class="setting-hint">{{ t('settings.curatedArtistTracking.desc') }}</div>
@@ -434,7 +458,7 @@ const {
             <div class="setting-block">{{ t('settings.showPlaylistTrackCount') }}：</div>
             <div class="setting-control">
               <singleCheckbox
-                v-model="(runtime as any).setting.showPlaylistTrackCount"
+                v-model="runtime.setting.showPlaylistTrackCount"
                 @change="setSetting()"
               />
             </div>
@@ -442,17 +466,14 @@ const {
             <template v-if="isWindowsPlatform">
               <div class="setting-block">{{ t('settings.enableExplorerContextMenu') }}：</div>
               <div class="setting-control">
-                <singleCheckbox
-                  v-model="(runtime as any).setting.enableExplorerContextMenu"
-                  @change="setSetting()"
-                />
+                <singleCheckbox v-model="enableExplorerContextMenuModel" @change="setSetting()" />
               </div>
             </template>
 
             <div class="setting-block">{{ t('settings.songListBubble.title') }}：</div>
             <div class="setting-control">
               <singleRadioGroup
-                v-model="songListBubbleMode as any"
+                v-model="songListBubbleMode"
                 name="songListBubble"
                 :options="[
                   { label: t('settings.songListBubble.overflowOnly'), value: 'overflowOnly' },
@@ -481,10 +502,7 @@ const {
 
             <div class="setting-block">{{ t('errorReport.enable') }}：</div>
             <div class="setting-control">
-              <singleCheckbox
-                v-model="(runtime as any).setting.enableErrorReport"
-                @change="setSetting()"
-              />
+              <singleCheckbox v-model="runtime.setting.enableErrorReport" @change="setSetting()" />
               <div class="setting-hint">{{ t('errorReport.hint') }}</div>
             </div>
 

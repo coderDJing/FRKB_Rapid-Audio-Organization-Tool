@@ -101,7 +101,7 @@ const normalizeText = (value: unknown, maxLen = 4000): string => {
 
 const createWorkerError = (code: string, message: string) => {
   const error = new Error(message)
-  ;(error as any).code = code
+  ;(error as Error & { code?: string }).code = code
   return error
 }
 

@@ -2,6 +2,7 @@ import { app } from 'electron'
 import type { ResolvedUpdateFileInfo, UpdateInfo } from 'electron-updater'
 import { once } from 'events'
 import { Readable } from 'stream'
+import type { ReadableStream as NodeReadableStream } from 'node:stream/web'
 import { ProxyAgent } from 'undici'
 import fs = require('fs-extra')
 import path = require('path')
@@ -159,7 +160,7 @@ export const downloadManualMacUpdate = async (
     let transferredBytes = 0
     const startedAt = Date.now()
 
-    for await (const chunk of Readable.fromWeb(response.body as any)) {
+    for await (const chunk of Readable.fromWeb(response.body as unknown as NodeReadableStream)) {
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
       transferredBytes += buffer.byteLength
       if (!writer.write(buffer)) {

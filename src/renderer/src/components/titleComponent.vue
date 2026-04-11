@@ -19,7 +19,7 @@ const logo = logoAsset
 type MenuItem = {
   name: string
   shortcutKey?: string
-  i18nParams?: Record<string, any>
+  i18nParams?: Record<string, unknown>
   action?: string
   checked?: boolean
 }

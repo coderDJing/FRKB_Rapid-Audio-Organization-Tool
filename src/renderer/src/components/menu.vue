@@ -8,6 +8,14 @@ import utils from '../utils/utils'
 const uuid = uuidV4()
 const runtime = useRuntimeStore()
 
+type MenuButton = {
+  name: string
+  shortcutKey?: string
+  i18nParams?: Record<string, unknown>
+  action?: string
+  checked?: boolean
+}
+
 const emits = defineEmits(['menuButtonClick', 'update:modelValue', 'switchMenu'])
 watch(
   () => runtime.activeMenuUUID,
@@ -20,15 +28,7 @@ watch(
 const props = defineProps({
   menuArr: {
     // 支持 i18n 参数与动作标识
-    type: Array as PropType<
-      {
-        name: string
-        shortcutKey?: string
-        i18nParams?: Record<string, any>
-        action?: string
-        checked?: boolean
-      }[][]
-    >,
+    type: Array as PropType<MenuButton[][]>,
     required: true
   },
   modelValue: {
@@ -172,10 +172,10 @@ function getButtonKey(button: {
         <span class="menuButtonLabel">
           {{
             t(
-              button.name as any,
-              (button as any).i18nParams?.libraryTypeKey
-                ? { libraryType: t((button as any).i18nParams.libraryTypeKey) }
-                : (button as any).i18nParams
+              button.name,
+              typeof button.i18nParams?.libraryTypeKey === 'string'
+                ? { libraryType: t(button.i18nParams.libraryTypeKey) }
+                : button.i18nParams
             )
           }}
         </span>

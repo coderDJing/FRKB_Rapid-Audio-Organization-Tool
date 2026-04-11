@@ -63,16 +63,22 @@ export type ExpectedErrorRule = {
   messageIncludes?: RegExp
 }
 
+type ErrorLike = {
+  code?: unknown
+  message?: unknown
+}
+
 // 预期内错误规则集中定义，后续可在此追加
 const expectedErrorRules: ExpectedErrorRule[] = [
   { code: 'ENOSPC' },
   { messageIncludes: /no space left on device/i }
 ]
 
-export function isExpectedError(error: any): boolean {
+export function isExpectedError(error: unknown): boolean {
   try {
-    const code = String(error?.code || '').toUpperCase()
-    const message = String(error?.message || '')
+    const err = (error && typeof error === 'object' ? error : null) as ErrorLike | null
+    const code = String(err?.code || '').toUpperCase()
+    const message = String(err?.message || '')
     for (const rule of expectedErrorRules) {
       if (rule.code && code === rule.code) return true
       if (rule.messageIncludes && rule.messageIncludes.test(message)) return true
@@ -87,7 +93,7 @@ process.on('uncaughtException', (error) => {
   log.error(error)
 })
 
-process.on('unhandledRejection', (reason: any, promise) => {
+process.on('unhandledRejection', (reason: unknown, promise) => {
   if (isExpectedError(reason)) return
   log.error('Unhandled Rejection at:', promise, 'reason:', reason)
 })

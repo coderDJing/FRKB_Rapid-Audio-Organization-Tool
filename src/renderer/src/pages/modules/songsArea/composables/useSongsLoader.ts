@@ -418,8 +418,10 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         const result = await window.electron.ipcRenderer.invoke('mixtape:list', {
           playlistId: runtime.songsArea.songListUUID
         })
-        const rawItems = Array.isArray(result?.items) ? result.items : []
-        const songs = rawItems.map((item: any, index: number) =>
+        const rawItems = Array.isArray(result?.items)
+          ? (result.items as Array<Record<string, unknown>>)
+          : []
+        const songs = rawItems.map((item, index: number) =>
           mapMixtapeSnapshotToSongInfo(item, index, {
             buildDisplayPathByUuid: (uuid) => libraryUtils.buildDisplayPathByUuid(uuid)
           })

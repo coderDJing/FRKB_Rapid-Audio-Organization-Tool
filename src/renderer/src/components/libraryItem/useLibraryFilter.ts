@@ -1,8 +1,9 @@
 import { computed, watch, type Ref } from 'vue'
+import type { IDir } from '../../../../types/globals'
 
 interface UseLibraryFilterOptions {
-  props: { filterText?: string | Record<string, any> }
-  dirDataRef: Ref<any | null>
+  props: { filterText?: string | Record<string, unknown> }
+  dirDataRef: Ref<IDir | null>
   dirChildRendered: { value: boolean }
   dirChildShow: { value: boolean }
 }
@@ -16,7 +17,7 @@ export function useLibraryFilter({
   const getDirData = () => dirDataRef.value
 
   const keyword = computed(() =>
-    String((props as any).filterText || '')
+    String(props.filterText || '')
       .trim()
       .toLowerCase()
   )
@@ -31,7 +32,7 @@ export function useLibraryFilter({
     )
   })
 
-  const hasMatchingDescendant = (node?: any): boolean => {
+  const hasMatchingDescendant = (node?: IDir | null): boolean => {
     if (!keyword.value) return true
     if (!node?.children) return false
     for (const c of node.children) {

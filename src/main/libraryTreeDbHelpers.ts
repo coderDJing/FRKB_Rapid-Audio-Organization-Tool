@@ -1,8 +1,9 @@
 import fs = require('fs-extra')
 import path = require('path')
 import { v4 as uuidV4 } from 'uuid'
-import { getLibraryDb, initLibraryDb } from './libraryDb'
+import { getLibraryDb, initLibraryDb, isSqliteRow } from './libraryDb'
 import { log } from './log'
+import type { SqliteDatabase } from './libraryDb'
 
 export type LibraryNodeType = 'root' | 'library' | 'dir' | 'songList' | 'mixtapeList'
 
@@ -20,7 +21,7 @@ export type LegacyLibraryNode = LibraryNodeRow & {
 
 const NODE_UUID_MARKER_FILE = '.frkb.uuid'
 
-export function normalizeOrder(value: any): number | null {
+export function normalizeOrder(value: unknown): number | null {
   if (value === null || value === undefined) return null
   const num = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(num) ? num : null
@@ -101,7 +102,7 @@ export function getPathDepth(relPath: string): number {
   return splitPath(relPath).length
 }
 
-export function isNodeType(value: any): value is LibraryNodeType {
+export function isNodeType(value: unknown): value is LibraryNodeType {
   return (
     value === 'root' ||
     value === 'library' ||
@@ -111,12 +112,12 @@ export function isNodeType(value: any): value is LibraryNodeType {
   )
 }
 
-export function isChildNodeType(value: any): value is Exclude<LibraryNodeType, 'root'> {
+export function isChildNodeType(value: unknown): value is Exclude<LibraryNodeType, 'root'> {
   return value === 'library' || value === 'dir' || value === 'songList' || value === 'mixtapeList'
 }
 
-export function toNodeRow(row: any): LibraryNodeRow | null {
-  if (!row || !row.uuid || !row.dir_name || !row.node_type) return null
+export function toNodeRow(row: unknown): LibraryNodeRow | null {
+  if (!isSqliteRow(row) || !row.uuid || !row.dir_name || !row.node_type) return null
   const nodeType = String(row.node_type)
   if (!isNodeType(nodeType)) return null
   return {
@@ -128,12 +129,12 @@ export function toNodeRow(row: any): LibraryNodeRow | null {
   }
 }
 
-export function getDb(dbRoot?: string): any | null {
+export function getDb(dbRoot?: string): SqliteDatabase | null {
   if (dbRoot) return initLibraryDb(dbRoot)
   return getLibraryDb()
 }
 
-export function getRootNode(db: any): LibraryNodeRow | null {
+export function getRootNode(db: SqliteDatabase): LibraryNodeRow | null {
   try {
     const row =
       db
@@ -152,7 +153,7 @@ export function getRootNode(db: any): LibraryNodeRow | null {
   }
 }
 
-export function ensureRootNode(db: any): LibraryNodeRow | null {
+export function ensureRootNode(db: SqliteDatabase): LibraryNodeRow | null {
   const existing = getRootNode(db)
   if (existing) return existing
   try {

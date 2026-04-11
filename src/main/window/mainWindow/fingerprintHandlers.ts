@@ -11,6 +11,27 @@ interface RegisterFingerprintHandlersOptions {
   getWindow: () => BrowserWindow | null
 }
 
+type FingerprintSummary = {
+  startAt: string
+  endAt: string
+  durationMs: number
+  scannedCount: number
+  analyzeFailedCount: number
+  duplicatesRemovedCount: number
+  fingerprintAddedCount: number
+  fingerprintTotalBefore: number
+  fingerprintTotalAfter: number
+  fingerprintMode?: 'pcm' | 'file'
+  importedToPlaylistCount?: number
+  fingerprintAlreadyExistingCount?: number
+  isComparisonSongFingerprint?: boolean
+  isPushSongFingerprintLibrary?: boolean
+  hideOverviewSection?: boolean
+}
+
+const getFingerprintMode = (): 'pcm' | 'file' =>
+  store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
+
 export function registerFingerprintHandlers({
   sendProgress,
   getWindow
@@ -58,10 +79,7 @@ export function registerFingerprintHandlers({
     store.songFingerprintList = Array.from(
       new Set([...store.songFingerprintList, ...removeDuplicatesFingerprintResults])
     )
-    await FingerprintStore.saveList(
-      store.songFingerprintList,
-      ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
-    )
+    await FingerprintStore.saveList(store.songFingerprintList, getFingerprintMode())
     const fingerprintEndAt = Date.now()
     const duplicatesRemovedCount =
       songFileUrls.length -
@@ -77,7 +95,7 @@ export function registerFingerprintHandlers({
       fingerprintAddedCount: store.songFingerprintList.length - beforeSongFingerprintListLength,
       fingerprintTotalBefore: beforeSongFingerprintListLength,
       fingerprintTotalAfter: store.songFingerprintList.length,
-      fingerprintMode: ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
+      fingerprintMode: getFingerprintMode()
     }
     getWindow()?.webContents.send('addSongFingerprintFinished', fingerprintSummary, progressId)
   })
@@ -113,7 +131,7 @@ export function registerFingerprintHandlers({
     }
     const progressId = `fingerprints_${Date.now()}`
     const fingerprintStartAt = Date.now()
-    const finalize = (summary: any | null) => {
+    const finalize = (summary: FingerprintSummary | null) => {
       getWindow()?.webContents.send('fingerprints:addExistingFinished', summary, progressId)
     }
     sendProgress({
@@ -147,8 +165,7 @@ export function registerFingerprintHandlers({
           })
         }
       )
-      const fingerprintMode =
-        ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
+      const fingerprintMode = getFingerprintMode()
       const beforeSongFingerprintListLength = store.songFingerprintList.length
       const fingerprintSet = new Set(store.songFingerprintList)
       const uniqueFingerprints = Array.from(

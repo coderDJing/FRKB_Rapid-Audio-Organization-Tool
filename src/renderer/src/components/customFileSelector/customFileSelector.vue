@@ -2,7 +2,12 @@
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { t } from '@renderer/utils/translate'
 import { useCustomFileSelector } from './useCustomFileSelector'
-import type { CustomFileSelectorEmits, CustomFileSelectorProps } from './types'
+import type {
+  CustomFileSelectorEmits,
+  CustomFileSelectorProps,
+  FileSystemItem,
+  SelectedItem
+} from './types'
 
 const props = withDefaults(defineProps<CustomFileSelectorProps>(), {
   visible: false,
@@ -39,6 +44,16 @@ const {
   findItemIndex,
   isDrive
 } = useCustomFileSelector(props, emit)
+
+const isSpecialItem = (item: FileSystemItem) => Boolean(item.isSpecial)
+const getSelectedItemIcon = (item: SelectedItem) =>
+  getItemIcon({
+    ...item,
+    isExpanded: false,
+    isSelected: false,
+    isVisible: true,
+    children: []
+  })
 </script>
 
 <template>
@@ -117,7 +132,7 @@ const {
                 </div>
                 <div v-else-if="item.type === 'directory'" class="item-type">
                   {{
-                    (item as any).isSpecial
+                    isSpecialItem(item)
                       ? t('fileSelector.commonFolder')
                       : isDrive(item)
                         ? t('fileSelector.drive')
@@ -160,7 +175,7 @@ const {
           >
             <div v-for="item in selectedItems" :key="item.id" class="selected-item">
               <div class="selected-icon">
-                <img :src="getItemIcon(item as any)" alt="" />
+                <img :src="getSelectedItemIcon(item)" alt="" />
               </div>
               <div class="selected-info">
                 <div class="selected-name" :title="item.name">{{ item.name }}</div>

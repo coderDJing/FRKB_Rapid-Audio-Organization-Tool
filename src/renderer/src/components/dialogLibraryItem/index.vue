@@ -25,7 +25,11 @@ import {
   persistMixtapeProjectMode,
   setPendingMixtapeProjectMode
 } from '@renderer/composables/mixtape/stemMode'
+import type { IDir, IMenu } from '../../../../types/globals'
 const listIcon = listIconAsset
+type PlaylistContentChangedPayload = {
+  uuids?: string[]
+}
 const props = defineProps({
   uuid: {
     type: String,
@@ -56,7 +60,7 @@ if (dirData === null) {
 }
 let fatherDirData = libraryUtils.getFatherLibraryTreeByUUID(props.uuid)
 const isMixtapeDialog = computed(() => String(props.libraryName || '').startsWith('MixtapeLibrary'))
-const isDialogListType = (node?: any) =>
+const isDialogListType = (node?: IDir | null) =>
   node?.type === 'songList' || (isMixtapeDialog.value && node?.type === 'mixtapeList')
 const resolveMixtapeModeTag = (mixMode?: string) =>
   mixMode === 'eq' ? t('mixtape.mixModeEqTag') : t('mixtape.mixModeStemTag')
@@ -65,7 +69,9 @@ const resolveMixtapeModeLabel = (mixMode?: string) =>
 const resolveMixtapeBadgeTitle = (mixMode?: string) => resolveMixtapeModeLabel(mixMode)
 const nameTextRef = ref<HTMLElement | null>(null)
 const nameTextHovered = ref(false)
-const onlyShowBubbleWhenOverflow = computed(() => !(runtime as any).setting.songListBubbleAlways)
+const onlyShowBubbleWhenOverflow = computed(
+  () => !Boolean(Reflect.get(runtime.setting, 'songListBubbleAlways'))
+)
 const createPlaylistMenuKey = 'library.createPlaylist'
 const createStemMixtapeMenuKey = 'library.createStemMixtape'
 const createEqMixtapeMenuKey = 'library.createEqMixtape'
@@ -184,7 +190,7 @@ if (dirData && dirData.dirName == '') {
 }
 
 const rightClickMenuShow = ref(false)
-const menuArr = ref(
+const menuArr = ref<IMenu[][]>(
   dirData?.type == 'dir'
     ? [
         isMixtapeDialog.value
@@ -506,7 +512,7 @@ indentWidth.value = (depth - 2) * 10
 const trackCount = ref<number | null>(null)
 let fetchingCount = false
 async function ensureTrackCount() {
-  if (!(runtime as any).setting.showPlaylistTrackCount) return
+  if (!runtime.setting.showPlaylistTrackCount) return
   if (fetchingCount) return
   if (dirData?.type !== 'songList') return
   // 未命名的临时歌单没有真实目录，避免把父目录当作歌单目录而统计成总数
@@ -533,20 +539,20 @@ onMounted(() => {
   if (runtime.dialogSelectedSongListUUID === props.uuid) {
     nextTick(() => {
       try {
-        ;(rowEl.value as any)?.scrollIntoView?.({ block: 'nearest' })
+        rowEl.value?.scrollIntoView?.({ block: 'nearest' })
       } catch {}
     })
   }
 })
 
 // 200ms 去抖 + 去重刷新（对话框）
-let debounceTimer: any = null
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
 const pendingSet = new Set<string>()
-emitter.on('playlistContentChanged', (payload: any) => {
+emitter.on('playlistContentChanged', (payload: PlaylistContentChangedPayload | null) => {
   try {
     const uuids: string[] = (payload?.uuids || []).filter(Boolean)
     for (const u of uuids) pendingSet.add(u)
-    clearTimeout(debounceTimer)
+    if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => {
       if (pendingSet.has(props.uuid)) {
         // 对话框里若当前即为打开/高亮的歌单，也可以不经 IPC。此处直接刷一次即可。
@@ -559,7 +565,7 @@ emitter.on('playlistContentChanged', (payload: any) => {
 
 // --- 筛选：仅歌单名匹配 + 自动展开包含匹配歌单的文件夹（对话框树） ---
 const keyword = computed(() =>
-  String((props as any).filterText || '')
+  String(props.filterText || '')
     .trim()
     .toLowerCase()
 )
@@ -567,7 +573,7 @@ const matchesSelf = computed(() => {
   if (!keyword.value) return true
   return isDialogListType(dirData) && dirData?.dirName?.toLowerCase().includes(keyword.value)
 })
-function hasMatchingDescendant(node?: any): boolean {
+function hasMatchingDescendant(node?: IDir | null): boolean {
   if (!keyword.value) return true
   if (!node?.children) return false
   for (const c of node.children) {
@@ -597,7 +603,7 @@ watch(
     if (newVal === props.uuid) {
       await nextTick()
       try {
-        ;(rowEl.value as any)?.scrollIntoView?.({ block: 'nearest' })
+        rowEl.value?.scrollIntoView?.({ block: 'nearest' })
       } catch {}
     }
   }
@@ -699,7 +705,7 @@ watch(
         <span
           v-if="
             dirData.type === 'songList' &&
-            (runtime as any).setting.showPlaylistTrackCount &&
+            runtime.setting.showPlaylistTrackCount &&
             trackCount !== null
           "
           class="countBadge"
@@ -752,7 +758,7 @@ watch(
       <dialogLibraryItem
         :uuid="item.uuid"
         :library-name="props.libraryName"
-        :filter-text="(props as any).filterText"
+        :filter-text="props.filterText"
         :suppress-highlight="props.suppressHighlight"
         @mark-tree-selected="emits('markTreeSelected')"
         @dbl-click-song-list="emits('dblClickSongList')"

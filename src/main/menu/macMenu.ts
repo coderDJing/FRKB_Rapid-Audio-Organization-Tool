@@ -12,21 +12,24 @@ type MainWindowBrowseMode = 'browser' | 'horizontal'
 
 let mainWindowBrowseMode: MainWindowBrowseMode = 'browser'
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value)
+
 // 依据当前设置返回语言 ID
 const getCurrentLocaleId = (): 'zh-CN' | 'en-US' =>
-  (store.settingConfig as any)?.language === 'enUS' ? 'en-US' : 'zh-CN'
+  store.settingConfig?.language === 'enUS' ? 'en-US' : 'zh-CN'
 
 // 简单的字典查找（key 形如 a.b.c）
 const tMenu = (key: string): string => {
-  const MESSAGES: Record<'zh-CN' | 'en-US', any> = {
-    'zh-CN': zhCNLocale as any,
-    'en-US': enUSLocale as any
+  const MESSAGES: Record<'zh-CN' | 'en-US', Record<string, unknown>> = {
+    'zh-CN': zhCNLocale as Record<string, unknown>,
+    'en-US': enUSLocale as Record<string, unknown>
   }
   const localeId = getCurrentLocaleId()
   const parts = key.split('.')
-  let cur: any = MESSAGES[localeId]
+  let cur: unknown = MESSAGES[localeId]
   for (const p of parts) {
-    if (cur && typeof cur === 'object' && p in cur) cur = cur[p]
+    if (isRecord(cur) && p in cur) cur = cur[p]
     else return key
   }
   return typeof cur === 'string' ? cur : key

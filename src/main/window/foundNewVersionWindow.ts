@@ -5,6 +5,12 @@ import updateWindow from './updateWindow.js'
 import path = require('path')
 let foundNewVersionWindow: BrowserWindow | null = null
 
+const setVisualEffectMaterial = (target: BrowserWindow, material: string) => {
+  const setter = Reflect.get(target, 'setVisualEffectMaterial')
+  if (typeof setter !== 'function') return
+  Reflect.apply(setter, target, [material])
+}
+
 const createWindow = () => {
   foundNewVersionWindow = new BrowserWindow({
     resizable: false,
@@ -30,7 +36,7 @@ const createWindow = () => {
       foundNewVersionWindow.setVibrancy('under-window')
     } catch {}
     try {
-      ;(foundNewVersionWindow as any).setVisualEffectMaterial?.('under-window')
+      setVisualEffectMaterial(foundNewVersionWindow, 'under-window')
     } catch {}
   }
 

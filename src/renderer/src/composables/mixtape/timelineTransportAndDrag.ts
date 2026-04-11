@@ -1,4 +1,5 @@
-import { ref } from 'vue'
+import { ref, type Ref } from 'vue'
+import type { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { t } from '@renderer/utils/translate'
 import { normalizeBeatOffset as normalizeBeatOffsetByMixxx } from '@renderer/composables/mixtape/mixxxSyncModel'
 import { applyMixxxTransportSync } from '@renderer/composables/mixtape/timelineTransportSync'
@@ -24,6 +25,7 @@ import type {
   MixtapeEnvelopeParamId,
   MixtapeMixMode,
   MixtapeMuteSegment,
+  TimelineLayoutSnapshot,
   MixtapeTrack,
   MixtapeStemStatus
 } from '@renderer/composables/mixtape/types'
@@ -49,7 +51,33 @@ const STEM_IDS_4STEMS: TransportStemId[] = ['vocal', 'inst', 'bass', 'drums']
 const MIXTAPE_SEGMENT_MUTE_GAIN = 0.0001
 const FOLLOW_PLAYHEAD_LOCK_RATIO = 1 / 3
 
-export const createTimelineTransportAndDragModule = (ctx: any) => {
+type ValueRef<T> = Ref<T>
+type TimelineScrollHost = InstanceType<typeof OverlayScrollbarsComponent>
+
+type TimelineTransportAndDragContext = {
+  tracks: ValueRef<MixtapeTrack[]>
+  mixtapeMixMode: ValueRef<MixtapeMixMode>
+  mixtapeStemMode: ValueRef<unknown>
+  timelineLayout: ValueRef<TimelineLayoutSnapshot>
+  normalizedRenderZoom: ValueRef<number>
+  timelineScrollRef: ValueRef<TimelineScrollHost | null>
+  timelineScrollLeft: ValueRef<number>
+  timelineViewportWidth: ValueRef<number>
+  isTimelinePanning: ValueRef<boolean>
+  isOverviewDragging: ValueRef<boolean>
+  rulerRef: ValueRef<HTMLElement | null>
+  buildSequentialLayoutForZoom: (zoomValue: number) => TimelineLayoutSnapshot
+  resolveRenderPxPerSec: (zoomValue: number) => number
+  resolveTrackDurationSeconds: (track: MixtapeTrack) => number
+  resolveTrackSourceDurationSeconds: (track: MixtapeTrack) => number
+  resolveTrackTempoRatio: (track: MixtapeTrack, targetBpm?: number) => number
+  resolveTrackFirstBeatSeconds: (track: MixtapeTrack, targetBpm?: number) => number
+  computeTimelineDuration: () => number
+  scheduleFullPreRender: () => void
+  scheduleWorkerPreRender: () => void
+}
+
+export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDragContext) => {
   const {
     tracks,
     mixtapeMixMode,
@@ -410,7 +438,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
     resolveEntryEqDbValue,
     resolveEntryEnvelopeValue,
     isStemMode: () => isStemMixMode(),
-    applyTransportMixParamsAtTimelineSec: (timelineSec: number, options?: any) =>
+    applyTransportMixParamsAtTimelineSec: (timelineSec: number, options?) =>
       applyTransportMixParamsAtTimelineSec(timelineSec, options),
     resolveStemIdsForMode,
     mirrorTransportStemPlaybackRates: (
@@ -670,7 +698,7 @@ export const createTimelineTransportAndDragModule = (ctx: any) => {
         resolveStemIdsForMode,
         ensureTransportAudioContext,
         shouldUseRealtimeKeyLock,
-        resolveEntryEnvelopeValue: resolveEntryEnvelopeValue as any,
+        resolveEntryEnvelopeValue,
         resolveEntryEqDbValue
       })
     }

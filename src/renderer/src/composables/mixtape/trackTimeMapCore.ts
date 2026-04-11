@@ -458,7 +458,8 @@ export const resolveTrackTimelineDurationFromSource = (params: {
   if (originalBpm === null) return fallbackDurationSec || sourceDurationSec
   const rawPointsDurationSec = Array.isArray(params.rawPoints)
     ? params.rawPoints.reduce((result, item) => {
-        const sec = Number((item as any)?.sec)
+        const point = item && typeof item === 'object' ? (item as { sec?: unknown }) : null
+        const sec = Number(point?.sec)
         return Number.isFinite(sec) && sec > result ? sec : result
       }, 0)
     : 0

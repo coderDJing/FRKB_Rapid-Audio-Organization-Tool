@@ -3,6 +3,17 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { canPlayHtmlAudio } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import emitter from '@renderer/utils/mitt'
 
+interface AudioOutputSinkTarget {
+  setSinkId?(deviceId: string): Promise<void>
+}
+
+type AudioElementWithExtensions = HTMLAudioElement & AudioOutputSinkTarget
+type AudioContextConstructor = new (options?: AudioContextOptions) => AudioContext
+type WindowWithAudioContext = Window & {
+  AudioContext?: AudioContextConstructor
+  webkitAudioContext?: AudioContextConstructor
+}
+
 type PreviewPlayPayload = {
   filePath?: string
   startPercent?: number
@@ -85,7 +96,7 @@ export function useWaveformPreviewPlayer() {
   const pendingStartPercent = ref(0)
   const playToken = ref(0)
   const pcmFallbackToken = ref(-1)
-  const audioElement = ref<HTMLAudioElement | null>(null)
+  const audioElement = ref<AudioElementWithExtensions | null>(null)
   const activeSrc = ref('')
   const volumeValue = ref(0.8)
   let pendingOutputDeviceId = runtime.setting.audioOutputDeviceId || AUDIO_FOLLOW_SYSTEM_ID
@@ -136,7 +147,8 @@ export function useWaveformPreviewPlayer() {
   }
 
   const ensurePcmContext = (sampleRate?: number): AudioContext | null => {
-    const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext
+    const windowWithAudio = window as WindowWithAudioContext
+    const AudioContextCtor = windowWithAudio.AudioContext || windowWithAudio.webkitAudioContext
     if (!AudioContextCtor) return null
 
     if (pcmContext) {
@@ -260,7 +272,7 @@ export function useWaveformPreviewPlayer() {
     if (!audio) {
       return
     }
-    const setSinkId = (audio as any)?.setSinkId
+    const setSinkId = audio.setSinkId
     if (typeof setSinkId !== 'function') {
       return
     }
@@ -381,8 +393,8 @@ export function useWaveformPreviewPlayer() {
     const duration = Number.isFinite(audio.duration) ? audio.duration : 0
     const startTime = duration > 0 ? duration * clamp01(startPercent) : 0
     try {
-      if (typeof (audio as any).fastSeek === 'function') {
-        ;(audio as any).fastSeek(startTime)
+      if (typeof audio.fastSeek === 'function') {
+        audio.fastSeek(startTime)
       } else {
         audio.currentTime = startTime
       }

@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { onUnmounted, onMounted, provide, ref, reactive, computed, watch } from 'vue'
+import {
+  onUnmounted,
+  onMounted,
+  provide,
+  ref,
+  reactive,
+  computed,
+  watch,
+  type ComponentPublicInstance
+} from 'vue'
 import hintIconAsset from '@renderer/assets/hint.svg?asset'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
@@ -23,7 +32,14 @@ import {
   ensurePlayerGlobalShortcuts,
   ensureSettingDialogRuntimeDefaults
 } from '@renderer/components/settingDialogRuntimeDefaults'
-const runtime = useRuntimeStore()
+import {
+  settingDialogContextKey,
+  type SettingDialogContext,
+  type AudioOutputOption,
+  type SettingDialogRuntimeStore,
+  type SettingDialogOption
+} from '@renderer/components/settingDialog/context'
+const runtime = useRuntimeStore() as SettingDialogRuntimeStore
 const uuid = uuidV4()
 const emits = defineEmits(['cancel'])
 
@@ -44,11 +60,12 @@ const getSongFingerprintListLength = async () => {
   }
 }
 
+const getErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : String(error || '')
+
 ensureSettingDialogRuntimeDefaults(runtime)
-const lastValidAcoustIdClientKey = ref(
-  String((runtime as any).setting.acoustIdClientKey || '').trim()
-)
-;(runtime as any).setting.acoustIdClientKey = lastValidAcoustIdClientKey.value
+const lastValidAcoustIdClientKey = ref(String(runtime.setting.acoustIdClientKey || '').trim())
+runtime.setting.acoustIdClientKey = lastValidAcoustIdClientKey.value
 const acoustIdKeyValidating = ref(false)
 const acoustIdKeyErrorText = ref('')
 
@@ -56,24 +73,20 @@ const isWindowsPlatform = computed(() => runtime.setting.platform === 'win32')
 const curatedArtistFavoritesCount = computed(() => runtime.curatedArtistFavorites.length)
 const isDevOrPrerelease = computed(() => {
   if (process.env.NODE_ENV === 'development') return true
-  const version = String((pkg as any).version || '')
+  const version = String(pkg.version || '')
   return version.includes('-')
 })
 
 // 将布尔设置映射为单选值（与指纹模式类似的布局与交互）
 const songListBubbleMode = computed<'overflowOnly' | 'always'>({
   get() {
-    return (runtime as any).setting.songListBubbleAlways ? 'always' : 'overflowOnly'
+    return runtime.setting.songListBubbleAlways ? 'always' : 'overflowOnly'
   },
   set(v) {
-    ;(runtime as any).setting.songListBubbleAlways = v === 'always'
+    runtime.setting.songListBubbleAlways = v === 'always'
   }
 })
 
-type AudioOutputOption = {
-  deviceId: string
-  label: string
-}
 const audioOutputDevices = ref<AudioOutputOption[]>([])
 const isEnumeratingAudioOutputs = ref(false)
 const audioOutputError = ref<string | null>(null)
@@ -86,31 +99,31 @@ const audioOutputSupported = computed(() => {
 })
 let cleanupAudioDeviceListener: (() => void) | null = null
 
-const themeModeOptions = computed(() => [
+const themeModeOptions = computed<SettingDialogOption[]>(() => [
   { label: t('theme.system'), value: 'system' },
   { label: t('theme.light'), value: 'light' },
   { label: t('theme.dark'), value: 'dark' }
 ])
 
-const languageOptions = computed(() => [
+const languageOptions = computed<SettingDialogOption[]>(() => [
   { label: '简体中文', value: 'zhCN' },
   { label: 'English', value: 'enUS' }
 ])
 
 const translateMaybeKey = (message: unknown) => t(String(message || ''))
 
-const waveformStyleOptions = computed(() => [
+const waveformStyleOptions = computed<SettingDialogOption[]>(() => [
   { label: t('player.waveformStyleRGB'), value: 'RGB' },
   { label: t('player.waveformStyleSoundCloud'), value: 'SoundCloud' },
   { label: t('player.waveformStyleFine'), value: 'Fine' }
 ])
 
-const waveformModeOptions = computed(() => [
+const waveformModeOptions = computed<SettingDialogOption[]>(() => [
   { label: t('player.waveformModeHalf'), value: 'half' },
   { label: t('player.waveformModeFull'), value: 'full' }
 ])
 
-const keyDisplayStyleOptions = computed(() => [
+const keyDisplayStyleOptions = computed<SettingDialogOption[]>(() => [
   { label: t('player.keyDisplayStyleClassic'), value: 'Classic' },
   { label: t('player.keyDisplayStyleCamelot'), value: 'Camelot' }
 ])
@@ -214,7 +227,7 @@ const refreshAudioOutputDevices = async () => {
       await setSetting()
     }
   } catch (error) {
-    const reason = String((error as any)?.message || error || '')
+    const reason = getErrorMessage(error)
     audioOutputError.value = t('player.audioOutputRefreshFailed', { reason })
   } finally {
     isEnumeratingAudioOutputs.value = false
@@ -252,8 +265,8 @@ const handleAcoustIdKeyBlur = async () => {
     acoustIdKeyErrorText.value = ''
     runtime.setting.acoustIdClientKey = trimmed
     await setSetting()
-  } catch (error: any) {
-    acoustIdKeyErrorText.value = mapAcoustIdClientError(error?.message)
+  } catch (error: unknown) {
+    acoustIdKeyErrorText.value = mapAcoustIdClientError(getErrorMessage(error))
     runtime.setting.acoustIdClientKey = lastValidAcoustIdClientKey.value
   } finally {
     acoustIdKeyValidating.value = false
@@ -364,7 +377,7 @@ const clearTracksFingerprintLibrary = async () => {
     } catch (error) {
       await confirm({
         title: t('common.setting'),
-        content: [t('fingerprints.clearFailed'), translateMaybeKey((error as any)?.message || '')],
+        content: [t('fingerprints.clearFailed'), translateMaybeKey(getErrorMessage(error))],
         confirmShow: false
       })
     }
@@ -399,10 +412,7 @@ const clearCuratedArtistFavorites = async () => {
   } catch (error) {
     await confirm({
       title: t('common.error'),
-      content: [
-        t('settings.curatedArtistTracking.clearFailed'),
-        String((error as any)?.message || '')
-      ],
+      content: [t('settings.curatedArtistTracking.clearFailed'), getErrorMessage(error)],
       confirmShow: false
     })
   }
@@ -419,10 +429,7 @@ const openCuratedArtistFavoritesDialog = async () => {
   } catch (error) {
     await confirm({
       title: t('common.error'),
-      content: [
-        t('settings.curatedArtistTracking.managerSaveFailed'),
-        String((error as any)?.message || '')
-      ],
+      content: [t('settings.curatedArtistTracking.managerSaveFailed'), getErrorMessage(error)],
       confirmShow: false
     })
   }
@@ -519,7 +526,7 @@ const clearCloudFingerprints = async () => {
       const msgKey = res?.message || 'common.error'
       await confirm({ title: t('common.error'), content: [t(msgKey)], confirmShow: false })
     }
-  } catch (e: any) {
+  } catch (_e) {
     await confirm({
       title: t('common.error'),
       content: [t('cloudSync.errors.cannotConnect')],
@@ -562,7 +569,7 @@ const clearLibraryDirtyData = async () => {
   } catch (error) {
     await confirm({
       title: t('common.error'),
-      content: [t('settings.clearDirtyData.failed'), String((error as any)?.message || '')],
+      content: [t('settings.clearDirtyData.failed'), getErrorMessage(error)],
       confirmShow: false
     })
   }
@@ -614,13 +621,17 @@ const clearAnalysisRuntime = async () => {
   } catch (error) {
     await confirm({
       title: t('common.error'),
-      content: [t('settings.clearAnalysisRuntime.failed'), String((error as any)?.message || '')],
+      content: [t('settings.clearAnalysisRuntime.failed'), getErrorMessage(error)],
       confirmShow: false
     })
   }
 }
 
-provide('settingDialogContext', {
+const bindFpModeHintRef = (value: string) => (el: Element | ComponentPublicInstance | null) => {
+  setFpModeHintRef(value, el instanceof HTMLImageElement ? el : null)
+}
+
+const settingDialogContext: SettingDialogContext = {
   dialogVisible,
   runtime,
   cancel,
@@ -659,12 +670,15 @@ provide('settingDialogContext', {
   hintIcon,
   fpModeHintRefs,
   setFpModeHintRef,
+  bindFpModeHintRef,
   onFingerprintModeChange,
   clearCloudFingerprints,
   clearLibraryDirtyData,
   clearAnalysisRuntime,
   openCloudSyncSettings
-})
+}
+
+provide(settingDialogContextKey, settingDialogContext)
 </script>
 <template>
   <SettingDialogBody />

@@ -26,8 +26,8 @@ export function registerSettingsHandlers(deps: Dependencies) {
   })
 
   ipcMain.handle('setSetting', async (_event, setting) => {
-    const prevContextMenu = !!(store as any).settingConfig?.enableExplorerContextMenu
-    const prevMode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
+    const prevContextMenu = !!store.settingConfig?.enableExplorerContextMenu
+    const prevMode = store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
     store.settingConfig = setting
     await persistSettingConfig(setting)
     await saveLibrarySettingsFromConfig()
@@ -38,7 +38,7 @@ export function registerSettingsHandlers(deps: Dependencies) {
     } catch {}
 
     try {
-      const nextMode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
+      const nextMode = store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
       if (nextMode !== prevMode) {
         const list = await deps.loadFingerprintList(nextMode)
         store.songFingerprintList = Array.isArray(list) ? list : []
@@ -50,7 +50,7 @@ export function registerSettingsHandlers(deps: Dependencies) {
     }
 
     if (process.platform === 'win32') {
-      const nextContextMenu = !!(store as any).settingConfig?.enableExplorerContextMenu
+      const nextContextMenu = !!store.settingConfig?.enableExplorerContextMenu
       if (nextContextMenu) {
         await ensureWindowsContextMenuIfNeeded()
       } else if (prevContextMenu) {

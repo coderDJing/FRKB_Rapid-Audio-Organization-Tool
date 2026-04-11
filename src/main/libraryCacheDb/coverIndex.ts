@@ -1,6 +1,6 @@
 import path = require('path')
 import fs = require('fs-extra')
-import { getLibraryDb } from '../libraryDb'
+import { getLibraryDb, isSqliteRow } from '../libraryDb'
 import { log } from '../log'
 import type { CoverIndexEntry } from './types'
 import {
@@ -9,9 +9,22 @@ import {
   resolveAbsoluteListRoot,
   resolveAbsoluteFilePath
 } from './pathResolvers'
+import type { SqliteDatabase } from '../libraryDb'
 
 const migratedCoverRoots = new Set<string>()
 let coverIndexWriteQueue: Promise<void> = Promise.resolve()
+
+type CoverIndexMigrationJson = {
+  fileToHash?: Record<string, string>
+  hashToExt?: Record<string, string>
+}
+
+type CoverIndexRow = {
+  list_root?: string
+  file_path?: string
+  hash?: string
+  ext?: string
+}
 
 const enqueueCoverIndexWrite = async <T>(task: () => Promise<T> | T): Promise<T> => {
   const waitForPrevious = coverIndexWriteQueue
@@ -28,14 +41,14 @@ const enqueueCoverIndexWrite = async <T>(task: () => Promise<T> | T): Promise<T>
 }
 
 export function migrateCoverIndexRows(
-  db: any,
+  db: SqliteDatabase,
   oldListRoot: string,
   newListRootKey: string,
   listRootAbs: string
 ): number {
   try {
     const rows = db
-      .prepare('SELECT file_path, hash, ext FROM cover_index WHERE list_root = ?')
+      .prepare<CoverIndexRow>('SELECT file_path, hash, ext FROM cover_index WHERE list_root = ?')
       .all(oldListRoot)
     if (!rows || rows.length === 0) return 0
     const del = db.prepare('DELETE FROM cover_index WHERE list_root = ? AND file_path = ?')
@@ -62,7 +75,10 @@ export function migrateCoverIndexRows(
   }
 }
 
-export async function ensureCoverIndexMigrated(db: any, listRoot: string): Promise<void> {
+export async function ensureCoverIndexMigrated(
+  db: SqliteDatabase,
+  listRoot: string
+): Promise<void> {
   const resolved = resolveListRootInput(listRoot)
   if (!resolved) return
   const listRootKey = resolved.key
@@ -71,20 +87,22 @@ export async function ensureCoverIndexMigrated(db: any, listRoot: string): Promi
   migratedCoverRoots.add(listRootKey)
   try {
     const countRow = db
-      .prepare('SELECT COUNT(1) as count FROM cover_index WHERE list_root = ?')
+      .prepare<{
+        count?: number | string
+      }>('SELECT COUNT(1) as count FROM cover_index WHERE list_root = ?')
       .get(listRootKey)
     if (countRow && Number(countRow.count) > 0) return
     if (!listRootAbs) return
     const indexPath = path.join(listRootAbs, '.frkb_covers', '.index.json')
     if (!(await fs.pathExists(indexPath))) return
-    const json = await fs.readJSON(indexPath).catch(() => null)
-    const fileToHash = json && typeof json === 'object' ? (json.fileToHash as any) : null
-    const hashToExt = json && typeof json === 'object' ? (json.hashToExt as any) : null
-    if (!fileToHash || typeof fileToHash !== 'object') return
+    const json = (await fs.readJSON(indexPath).catch(() => null)) as CoverIndexMigrationJson | null
+    const fileToHash = isSqliteRow(json?.fileToHash) ? json?.fileToHash : null
+    const hashToExt = isSqliteRow(json?.hashToExt) ? json?.hashToExt : null
+    if (!fileToHash) return
     const rows: CoverIndexEntry[] = []
     for (const [filePath, hash] of Object.entries(fileToHash)) {
       if (!filePath || typeof hash !== 'string' || !hash) continue
-      const extRaw = hashToExt && typeof hashToExt === 'object' ? hashToExt[hash] : null
+      const extRaw = hashToExt?.[hash] ?? null
       const ext = typeof extRaw === 'string' && extRaw.trim() ? extRaw : '.jpg'
       const resolvedFile = resolveFilePathInput(listRootAbs, filePath)
       if (!resolvedFile) continue
@@ -284,17 +302,19 @@ export async function loadCoverIndexEntries(listRoot: string): Promise<CoverInde
   try {
     await ensureCoverIndexMigrated(db, listRoot)
     const rows = db
-      .prepare('SELECT file_path, hash, ext FROM cover_index WHERE list_root = ?')
+      .prepare<CoverIndexRow>('SELECT file_path, hash, ext FROM cover_index WHERE list_root = ?')
       .all(listRootKey)
     const legacyRows = legacyListRoot
       ? db
-          .prepare('SELECT file_path, hash, ext FROM cover_index WHERE list_root = ?')
+          .prepare<CoverIndexRow>(
+            'SELECT file_path, hash, ext FROM cover_index WHERE list_root = ?'
+          )
           .all(legacyListRoot)
       : []
-    const toEntries = (rowsToUse: any[], rootKey: string, legacyRelRoot?: string) =>
+    const toEntries = (rowsToUse: CoverIndexRow[], rootKey: string, legacyRelRoot?: string) =>
       (rowsToUse || [])
-        .filter((row: any) => row && row.file_path && row.hash)
-        .map((row: any) => {
+        .filter((row) => row && row.file_path && row.hash)
+        .map((row) => {
           let absFilePath = resolveAbsoluteFilePath(rootKey, String(row.file_path))
           if (legacyRelRoot) {
             const resolvedLegacy = resolveFilePathInput(legacyRelRoot, String(row.file_path))

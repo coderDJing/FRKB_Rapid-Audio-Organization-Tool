@@ -6,6 +6,15 @@ interface DragMeta {
   handle: HTMLElement
   pointerDownHandler: (event: PointerEvent) => void
   remove: () => void
+  state?: {
+    pointerId: number
+    startClientX: number
+    startClientY: number
+    baseTranslateX: number
+    baseTranslateY: number
+    initialTop: number
+  }
+  overlay?: HTMLElement
 }
 
 const contexts = new WeakMap<HTMLElement, DragMeta>()
@@ -33,14 +42,7 @@ const mountDialogDrag = (el: HTMLElement, binding: DirectiveBinding<BindingValue
   const pointerMoveHandler = (event: PointerEvent) => {
     const context = contexts.get(el)
     if (!context || context.handle !== handle) return
-    const state = (context as any)._state as {
-      pointerId: number
-      startClientX: number
-      startClientY: number
-      baseTranslateX: number
-      baseTranslateY: number
-      initialTop: number
-    }
+    const state = context.state
     if (!state || event.pointerId !== state.pointerId) return
 
     event.preventDefault()
@@ -80,14 +82,13 @@ const mountDialogDrag = (el: HTMLElement, binding: DirectiveBinding<BindingValue
     document.removeEventListener('pointercancel', pointerUpHandler)
     document.body.style.userSelect = handle.dataset.dragPrevUserSelect || ''
     delete handle.dataset.dragPrevUserSelect
-    const overlay = (contexts.get(el) as any)?._overlay as HTMLElement | undefined
-    overlay?.classList.remove('dialog--dragging')
+    contexts.get(el)?.overlay?.classList.remove('dialog--dragging')
   }
 
   const pointerUpHandler = (event: PointerEvent) => {
     const context = contexts.get(el)
     if (!context) return
-    const state = (context as any)._state
+    const state = context.state
     if (!state || event.pointerId !== state.pointerId) return
 
     clearDragState()
@@ -118,8 +119,11 @@ const mountDialogDrag = (el: HTMLElement, binding: DirectiveBinding<BindingValue
       initialTop: elRect.top - currentY
     }
 
-    ;(contexts.get(el) as any)._state = state
-    ;(contexts.get(el) as any)._overlay = overlay
+    const context = contexts.get(el)
+    if (context) {
+      context.state = state
+      context.overlay = overlay
+    }
 
     handle.dataset.dragPrevUserSelect = document.body.style.userSelect || ''
     document.body.style.userSelect = 'none'

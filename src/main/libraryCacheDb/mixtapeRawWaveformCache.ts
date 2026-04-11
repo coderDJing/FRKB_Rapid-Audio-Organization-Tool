@@ -32,7 +32,9 @@ export type MixtapeRawWaveformData = {
 const MIXTAPE_RAW_WAVEFORM_TABLE = 'mixtape_raw_waveform_cache'
 const MIXTAPE_RAW_WAVEFORM_CACHE_VERSION = 1
 
-function normalizeRawWaveformMeta(row: any): RawWaveformCacheMeta | null {
+function normalizeRawWaveformMeta(
+  row: Record<string, unknown> | null | undefined
+): RawWaveformCacheMeta | null {
   if (!row) return null
   const size = toNumber(row.size)
   const mtimeMs = toNumber(row.mtime_ms)

@@ -15,6 +15,12 @@ export type WhatsNewReleasePayload = {
 let whatsNewWindow: BrowserWindow | null = null
 let lastPayload: WhatsNewReleasePayload | null = null
 
+const setVisualEffectMaterial = (target: BrowserWindow, material: string) => {
+  const setter = Reflect.get(target, 'setVisualEffectMaterial')
+  if (typeof setter !== 'function') return
+  Reflect.apply(setter, target, [material])
+}
+
 const createWindow = () => {
   whatsNewWindow = new BrowserWindow({
     resizable: true,
@@ -42,7 +48,7 @@ const createWindow = () => {
       whatsNewWindow.setVibrancy('under-window')
     } catch {}
     try {
-      ;(whatsNewWindow as any).setVisualEffectMaterial?.('under-window')
+      setVisualEffectMaterial(whatsNewWindow, 'under-window')
     } catch {}
   }
 

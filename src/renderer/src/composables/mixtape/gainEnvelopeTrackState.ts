@@ -225,7 +225,7 @@ export const createGainEnvelopeTrackStateModule = (params: {
     const durationSec =
       Number.isFinite(rawDurationSec) && rawDurationSec > 0 ? Math.max(0, rawDurationSec) : 0
     const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
-    const points = normalizeMixEnvelopePoints(param, (track as any)?.[envelopeField], durationSec)
+    const points = normalizeMixEnvelopePoints(param, track[envelopeField], durationSec)
     return {
       track,
       durationSec,

@@ -11,7 +11,20 @@ const totalDurationLabel = computed(() => t('bottomInfo.totalDurationLabel'))
 
 function formatDurationUnit(unit: 'day' | 'hour' | 'minute' | 'second', count: number): string {
   const pluralKey = count === 1 ? 'one' : 'other'
-  return t(`bottomInfo.durationUnits.${unit}.${pluralKey}` as any, { count })
+  return t(`bottomInfo.durationUnits.${unit}.${pluralKey}`, { count })
+}
+
+type ProgressPayload = {
+  id?: string
+  titleKey?: string
+  now?: number
+  total?: number
+  isInitial?: boolean
+  dismiss?: boolean
+  noProgress?: boolean
+  cancelable?: boolean
+  cancelChannel?: string
+  cancelPayload?: unknown
 }
 
 type Task = {
@@ -26,7 +39,7 @@ type Task = {
   lastUpdateAt: number
   cancelable?: boolean
   cancelChannel?: string
-  cancelPayload?: any
+  cancelPayload?: unknown
   canceling?: boolean
   removing?: boolean
   disableProgressTransition?: boolean
@@ -137,7 +150,7 @@ function upsertTask(titleKey: string, nowNum: number, total: number, noNumFlag?:
     tasks.value.push({
       id,
       titleKey,
-      title: t(titleKey as any),
+      title: t(titleKey),
       now: nowNum,
       total,
       noNum: !!noNumFlag,
@@ -148,7 +161,7 @@ function upsertTask(titleKey: string, nowNum: number, total: number, noNumFlag?:
   } else {
     const task = tasks.value[idx]
     task.titleKey = titleKey
-    task.title = t(titleKey as any)
+    task.title = t(titleKey)
     updateTaskProgress(task, nowNum, total)
     task.noNum = !!noNumFlag
     task.lastUpdateAt = Date.now()
@@ -165,7 +178,7 @@ function upsertTask(titleKey: string, nowNum: number, total: number, noNumFlag?:
   }
 }
 
-const applyProgressPayload = (payload: any) => {
+const applyProgressPayload = (payload: ProgressPayload) => {
   const id = String(payload.id || '')
   const titleKey = String(payload.titleKey || '')
   const nowNum = Number(payload.now || 0)
@@ -181,7 +194,7 @@ const applyProgressPayload = (payload: any) => {
   const noProgress = !!payload.noProgress
 
   // 如果是后台分析任务且设置为不显示，则忽略
-  if (id === backgroundTaskId && !(runtime as any).setting?.showIdleAnalysisStatus) {
+  if (id === backgroundTaskId && !runtime.setting?.showIdleAnalysisStatus) {
     return true
   }
 
@@ -217,7 +230,7 @@ const applyProgressPayload = (payload: any) => {
     tasks.value.push({
       id,
       titleKey,
-      title: t(titleKey as any),
+      title: t(titleKey),
       now: nowNum,
       total,
       noNum: noNumFlag,
@@ -233,7 +246,7 @@ const applyProgressPayload = (payload: any) => {
   } else {
     const task = tasks.value[idx]
     task.titleKey = titleKey
-    task.title = t(titleKey as any)
+    task.title = t(titleKey)
     updateTaskProgress(task, nowNum, total)
     task.noNum = noNumFlag
     task.lastUpdateAt = Date.now()
@@ -309,7 +322,7 @@ watch(
 )
 
 watch(
-  () => (runtime as any).setting?.showIdleAnalysisStatus,
+  () => runtime.setting?.showIdleAnalysisStatus,
   (enabled) => {
     if (enabled === false) {
       dismissBackgroundTaskNow()

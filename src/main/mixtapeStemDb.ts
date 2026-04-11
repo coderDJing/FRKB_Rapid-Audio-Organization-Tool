@@ -1,4 +1,5 @@
 import { getLibraryDb } from './libraryDb'
+import { isSqliteRow } from './libraryDb'
 import { log } from './log'
 import type { MixtapeStemMode } from './mixtapeDb'
 import { FIXED_MIXTAPE_STEM_MODE } from '../shared/mixtapeStemMode'
@@ -101,18 +102,21 @@ const normalizeTimestampMs = (value: unknown): number | null => {
   return Math.floor(numeric)
 }
 
-const parseInfoJson = (raw: unknown): Record<string, any> => {
+type MixtapeStemInfoJson = Record<string, unknown>
+
+const parseInfoJson = (raw: unknown): MixtapeStemInfoJson => {
   if (typeof raw !== 'string' || !raw) return {}
   try {
     const parsed = JSON.parse(raw)
-    if (parsed && typeof parsed === 'object') return parsed
+    if (isSqliteRow(parsed)) return parsed
     return {}
   } catch {
     return {}
   }
 }
 
-const toAssetRecord = (row: any): MixtapeStemAssetRecord | null => {
+const toAssetRecord = (row: unknown): MixtapeStemAssetRecord | null => {
+  if (!isSqliteRow(row)) return null
   const libraryRoot = normalizeText(row?.library_root, 2000)
   const sourceSignature = normalizeSourceSignature(row?.source_signature)
   const filePath = normalizeFilePath(row?.file_path)

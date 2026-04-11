@@ -8,15 +8,17 @@ import {
   type DragState
 } from '../../utils/dragUtils'
 import libraryUtils from '@renderer/utils/libraryUtils'
+import type { useRuntimeStore } from '@renderer/stores/runtime'
+import type { IDir } from '../../../../types/globals'
 
 interface UseLibraryDragAndDropOptions {
-  runtime: any
-  dirDataRef: Ref<any | null>
-  fatherDirDataRef: Ref<any | null>
+  runtime: ReturnType<typeof useRuntimeStore>
+  dirDataRef: Ref<IDir | null>
+  fatherDirDataRef: Ref<IDir | null>
   deleteDir: () => Promise<void>
   props: { uuid: string }
   handleDropToSongList: (targetUuid: string, sourceUuid: string) => Promise<string[]>
-  emitter: { emit: (event: string, payload?: any) => void }
+  emitter: { emit: (event: string, payload?: unknown) => void }
 }
 
 export function useLibraryDragAndDrop({
@@ -59,10 +61,8 @@ export function useLibraryDragAndDrop({
   }
 
   const isPlaylistInRecycleBin = () => {
-    const recycleBin = runtime.libraryTree.children?.find(
-      (item: any) => item.dirName === 'RecycleBin'
-    )
-    return recycleBin?.children?.some((child: any) => child.uuid === props.uuid)
+    const recycleBin = runtime.libraryTree.children?.find((item) => item.dirName === 'RecycleBin')
+    return recycleBin?.children?.some((child) => child.uuid === props.uuid)
   }
 
   const isInternalSongDrag = (e: DragEvent) => {

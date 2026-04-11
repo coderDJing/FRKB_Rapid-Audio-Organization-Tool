@@ -26,7 +26,61 @@ const phase = ref<
 >('idle')
 const percent = ref(0)
 const logMsg = ref('')
-const summary = ref<any | null>(null)
+type CloudSyncPhase =
+  | 'checking'
+  | 'diffing'
+  | 'analyzing'
+  | 'pulling'
+  | 'committing'
+  | 'finalizing'
+  | 'idle'
+
+type CloudSyncSummary = {
+  addedToServerCount?: number
+  pulledToClientCount?: number
+  durationMs?: number
+  clientInitialCount?: number
+  totalClientCountAfter?: number
+  serverInitialCount?: number
+  totalServerCountAfter?: number
+}
+
+type CloudSyncProgressDetails = {
+  clientCount?: number
+  serverCount?: number
+  toAddCount?: number
+  pulledPages?: number
+  totalPages?: number
+}
+
+type CloudSyncNoticePayload = {
+  code?: string
+  message?: string
+  retryAfterMs?: number
+  currentInWindow?: number
+  details?: {
+    retryAfterMs?: number
+  }
+}
+
+type CloudSyncErrorPayload = {
+  message?: string
+  error?: {
+    code?: string
+    error?: string
+    scope?: string
+    retryAfterMs?: number
+    details?: Record<string, unknown>
+  }
+}
+
+type CloudSyncProgressPayload = {
+  phase: CloudSyncPhase
+  percent: number
+  details?: CloudSyncProgressDetails
+}
+
+const summary = ref<CloudSyncSummary | null>(null)
 const summaryShouldRender = ref(false)
 const {
   dialogVisible: summaryDialogVisible,
@@ -34,7 +88,17 @@ const {
   show: showSummaryDialog
 } = useDialogTransition(DIALOG_TRANSITION_DURATION, false)
 
-const openSummary = (data: any) => {
+const summaryView = computed<Required<CloudSyncSummary>>(() => ({
+  addedToServerCount: Number(summary.value?.addedToServerCount || 0),
+  pulledToClientCount: Number(summary.value?.pulledToClientCount || 0),
+  durationMs: Number(summary.value?.durationMs || 0),
+  clientInitialCount: Number(summary.value?.clientInitialCount || 0),
+  totalClientCountAfter: Number(summary.value?.totalClientCountAfter || 0),
+  serverInitialCount: Number(summary.value?.serverInitialCount || 0),
+  totalServerCountAfter: Number(summary.value?.totalServerCountAfter || 0)
+}))
+
+const openSummary = (data: CloudSyncSummary) => {
   summary.value = data
   summaryShouldRender.value = true
   showSummaryDialog()
@@ -47,7 +111,7 @@ const closeSummaryPanel = (after?: () => void) => {
     after?.()
   })
 }
-const progressDetails = ref<any>({})
+const progressDetails = ref<CloudSyncProgressDetails>({})
 
 const stages = [
   { key: 'checking', label: 'cloudSync.phases.checking' },
@@ -87,7 +151,7 @@ const startSync = async () => {
 const isErrorPromptOpen = ref(false)
 
 // 事件处理函数需要具名，便于移除监听，避免重复绑定导致多重弹窗
-const handleState = (_e: any, state: string) => {
+const handleState = (_e: unknown, state: string) => {
   if (state === 'syncing') {
     syncing.value = true
     return
@@ -101,7 +165,7 @@ const handleState = (_e: any, state: string) => {
   }
 }
 const isNoticePromptOpen = ref(false)
-const handleNotice = (_e: any, payload: any) => {
+const handleNotice = (_e: unknown, payload: CloudSyncNoticePayload | null) => {
   if (isNoticePromptOpen.value) return
   let contentMsg = ''
   if (payload?.code === 'rate_limit_warning') {
@@ -131,12 +195,12 @@ const handleNotice = (_e: any, payload: any) => {
     void confirm({ title: t('dialog.hint'), content: [contentMsg], confirmShow: false })
   })
 }
-const handleProgress = (_e: any, p: any) => {
+const handleProgress = (_e: unknown, p: CloudSyncProgressPayload) => {
   phase.value = p.phase
   percent.value = p.percent
   progressDetails.value = p.details || {}
 }
-const handleError = async (_e: any, err: any) => {
+const handleError = async (_e: unknown, err: CloudSyncErrorPayload | null) => {
   // 网络错误或其他错误：仅提示并复位，用户手动点击“开始同步”自行重试
   syncing.value = false
   percent.value = 0
@@ -237,7 +301,7 @@ onMounted(async () => {
   window.electron.ipcRenderer.on('cloudSync/notice', handleNotice)
   window.electron.ipcRenderer.on('cloudSync/progress', handleProgress)
   window.electron.ipcRenderer.on('cloudSync/error', handleError)
-  window.electron.ipcRenderer.on('cloudSync/summary', (_e, s) => {
+  window.electron.ipcRenderer.on('cloudSync/summary', (_e, s: CloudSyncSummary) => {
     syncing.value = false
     openSummary(s)
   })
@@ -329,16 +393,16 @@ onUnmounted(() => {
           <div class="section">
             <div class="section-title">{{ t('cloudSync.overview') }}</div>
             <div class="chips">
-              <div class="chip" :class="{ success: (summary.addedToServerCount || 0) > 0 }">
-                <div class="num">{{ summary.addedToServerCount }}</div>
+              <div class="chip" :class="{ success: summaryView.addedToServerCount > 0 }">
+                <div class="num">{{ summaryView.addedToServerCount }}</div>
                 <div class="cap">{{ t('cloudSync.uploadedNew') }}</div>
               </div>
-              <div class="chip" :class="{ success: (summary.pulledToClientCount || 0) > 0 }">
-                <div class="num">{{ summary.pulledToClientCount }}</div>
+              <div class="chip" :class="{ success: summaryView.pulledToClientCount > 0 }">
+                <div class="num">{{ summaryView.pulledToClientCount }}</div>
                 <div class="cap">{{ t('cloudSync.pulledNew') }}</div>
               </div>
               <div class="chip">
-                <div class="num">{{ formatDurationSec(summary.durationMs) }}</div>
+                <div class="num">{{ formatDurationSec(summaryView.durationMs) }}</div>
                 <div class="cap">{{ t('cloudSync.duration') }} ({{ t('player.seconds') }})</div>
               </div>
             </div>
@@ -348,7 +412,7 @@ onUnmounted(() => {
             <div class="section-body">
               <span class="count-pair">
                 <span class="count-text"
-                  >{{ t('cloudSync.clientCount') }}: {{ summary.clientInitialCount }}</span
+                  >{{ t('cloudSync.clientCount') }}: {{ summaryView.clientInitialCount }}</span
                 >
                 <span class="arrow" aria-hidden="true">
                   <svg viewBox="0 0 24 24">
@@ -362,11 +426,11 @@ onUnmounted(() => {
                     ></path>
                   </svg>
                 </span>
-                <span class="count-text">{{ summary.totalClientCountAfter }}</span>
+                <span class="count-text">{{ summaryView.totalClientCountAfter }}</span>
               </span>
               <span class="count-pair" style="margin-left: 16px">
                 <span class="count-text"
-                  >{{ t('cloudSync.serverCount') }}: {{ summary.serverInitialCount }}</span
+                  >{{ t('cloudSync.serverCount') }}: {{ summaryView.serverInitialCount }}</span
                 >
                 <span class="arrow" aria-hidden="true">
                   <svg viewBox="0 0 24 24">
@@ -380,7 +444,7 @@ onUnmounted(() => {
                     ></path>
                   </svg>
                 </span>
-                <span class="count-text">{{ summary.totalServerCountAfter }}</span>
+                <span class="count-text">{{ summaryView.totalServerCountAfter }}</span>
               </span>
             </div>
           </div>

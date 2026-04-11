@@ -33,7 +33,9 @@ const normalizeTargetRate = (value: unknown, fallback = 4000) => {
   return Math.max(1, Math.round(parsed))
 }
 
-function normalizeWaveformMeta(row: any): WaveformCacheMeta | null {
+function normalizeWaveformMeta(
+  row: Record<string, unknown> | null | undefined
+): WaveformCacheMeta | null {
   if (!row) return null
   const size = toNumber(row.size)
   const mtimeMs = toNumber(row.mtime_ms)

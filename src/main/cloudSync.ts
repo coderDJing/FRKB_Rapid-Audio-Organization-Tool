@@ -18,6 +18,21 @@ const DEV_DEFAULT_USER_KEY = '5de44d53-6236-4df6-84ab-382ac0717bc0'
 
 type CloudSyncConfig = { userKey?: string }
 let cloudSyncConfig: CloudSyncConfig = {}
+type RecordLike = Record<string, unknown>
+type FetchInput = Parameters<typeof fetch>[0]
+type FetchInit = Parameters<typeof fetch>[1]
+type FingerprintMode = 'pcm' | 'file'
+type ErrorLike = {
+  message?: unknown
+  code?: unknown
+  cause?: unknown
+}
+
+const isRecord = (value: unknown): value is RecordLike =>
+  !!value && typeof value === 'object' && !Array.isArray(value)
+
+const getFingerprintMode = (): FingerprintMode =>
+  store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
 
 // 简单的全局节流器：相邻请求至少间隔 650ms，保证每分钟 <= 100 次
 const RATE_LIMIT_MIN_INTERVAL_MS = 650
@@ -34,7 +49,7 @@ function createRateLimiter(minIntervalMs: number) {
   }
 }
 const limitRequestOnce = createRateLimiter(RATE_LIMIT_MIN_INTERVAL_MS)
-async function limitedFetch(input: any, init?: any) {
+async function limitedFetch(input: FetchInput, init?: FetchInit) {
   await limitRequestOnce()
   return fetch(input, init)
 }
@@ -53,8 +68,9 @@ function markSyncStarted() {
 }
 
 // 将后端错误结构标准化为前端 i18n key（避免直接透传中文 message）
-function mapBackendErrorToI18nKey(payload: any): string {
-  const error = String(payload?.error || '').toUpperCase()
+function mapBackendErrorToI18nKey(payload: unknown): string {
+  const body = isRecord(payload) ? payload : null
+  const error = String(body?.error || '').toUpperCase()
   switch (error) {
     case 'INVALID_API_KEY':
       return 'cloudSync.errors.cannotConnect'
@@ -79,7 +95,7 @@ function mapBackendErrorToI18nKey(payload: any): string {
     case 'FINGERPRINT_LIMIT_EXCEEDED':
       return 'cloudSync.errors.limitExceeded'
   }
-  const backendMsg = String(payload?.message || '')
+  const backendMsg = String(body?.message || '')
   if (backendMsg.includes('请求参数验证失败')) return 'cloudSync.errors.validationFailed'
   if (backendMsg.includes('分页拉取差异数据失败')) return 'cloudSync.errors.pullDiffPageFailed'
   if (backendMsg.includes('请求体大小超过限制')) return 'cloudSync.errors.requestTooLarge'
@@ -115,18 +131,17 @@ async function validateUserKeyRequest(userKeyRaw: string) {
 }
 
 ipcMain.handle('cloudSync/config/get', () => {
-  let storedUserKey =
-    cloudSyncConfig.userKey || (store as any).settingConfig?.cloudSyncUserKey || ''
+  let storedUserKey = cloudSyncConfig.userKey || store.settingConfig?.cloudSyncUserKey || ''
   if (!storedUserKey && is.dev) {
     storedUserKey = DEV_DEFAULT_USER_KEY
     cloudSyncConfig.userKey = storedUserKey
-    ;(store as any).settingConfig.cloudSyncUserKey = storedUserKey
+    store.settingConfig.cloudSyncUserKey = storedUserKey
     void persistSettingConfig()
   } else {
     cloudSyncConfig.userKey = storedUserKey
   }
   // 同步当前指纹模式给渲染层
-  const mode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
+  const mode = getFingerprintMode()
   return { userKey: storedUserKey, mode }
 })
 
@@ -137,7 +152,7 @@ ipcMain.handle('cloudSync/resetUserData', async (_e, payload: { notes?: string }
     if (!userKey) {
       return { success: false, message: 'cloudSync.notConfigured' }
     }
-    const body: any = { userKey }
+    const body: { userKey: string; notes?: string } = { userKey }
     if (payload && typeof payload.notes === 'string' && payload.notes.trim()) {
       body.notes = payload.notes.trim()
     }
@@ -181,7 +196,7 @@ ipcMain.handle('cloudSync/config/save', async (_e, payload: { userKey: string })
     const json = await validateUserKeyRequest(userKey)
     if (json?.success === true && json?.data?.isActive === true) {
       cloudSyncConfig.userKey = json?.data?.userKey || userKey
-      ;(store as any).settingConfig.cloudSyncUserKey = cloudSyncConfig.userKey
+      store.settingConfig.cloudSyncUserKey = cloudSyncConfig.userKey
       await persistSettingConfig()
       return { success: true }
     }
@@ -204,7 +219,10 @@ ipcMain.handle('cloudSync/config/save', async (_e, payload: { userKey: string })
 // - 直接拼接（无分隔符）
 // - sha256 输出 hex 小写
 // - 空数组等价于 sha256('')
-function calculateCollectionHashForSet(crypto: any, fingerprints: string[]): string {
+function calculateCollectionHashForSet(
+  crypto: typeof import('crypto'),
+  fingerprints: string[]
+): string {
   if (!Array.isArray(fingerprints)) {
     throw new Error('指纹数组参数无效')
   }
@@ -325,7 +343,7 @@ ipcMain.handle('cloudSync/start', async () => {
     cancelRequested = true
   })
 
-  const sendProgress = (phase: string, percent: number, details?: any) => {
+  const sendProgress = (phase: string, percent: number, details?: unknown) => {
     if (mainWindow.instance) {
       mainWindow.instance.webContents.send('cloudSync/progress', { phase, percent, details })
     }
@@ -335,7 +353,7 @@ ipcMain.handle('cloudSync/start', async () => {
       mainWindow.instance.webContents.send('cloudSync/state', state)
     }
   }
-  const sendError = (message: string, error?: any) => {
+  const sendError = (message: string, error?: unknown) => {
     if (mainWindow.instance) {
       mainWindow.instance.webContents.send('cloudSync/error', { message, error })
     }
@@ -351,7 +369,7 @@ ipcMain.handle('cloudSync/start', async () => {
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
     }
     let addedToServerTotal = 0
-    const toNumber = (v: any, fallback = 0) => {
+    const toNumber = (v: unknown, fallback = 0) => {
       const n = Number(v)
       return Number.isFinite(n) ? n : fallback
     }
@@ -404,7 +422,7 @@ ipcMain.handle('cloudSync/start', async () => {
 
     // 1) /check（集合哈希：小写、升序、无分隔符；空数组等价于 sha256('')）
     const hash = calculateCollectionHashForSet(crypto, clientFingerprints)
-    const mode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
+    const mode = getFingerprintMode()
     if (is.dev) {
       log.info('[cloudSync] /check request', {
         url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/check`,
@@ -909,10 +927,12 @@ ipcMain.handle('cloudSync/start', async () => {
     sendState('success')
     store.songFingerprintList = mergedList
     return 'success'
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const error = (isRecord(e) ? e : null) as ErrorLike | null
+    const cause = (isRecord(error?.cause) ? error?.cause : null) as ErrorLike | null
     const msg = (() => {
-      const rawMsg = String(e?.message || '')
-      const code = String((e?.cause && e.cause.code) || e?.code || '')
+      const rawMsg = String(error?.message || '')
+      const code = String(cause?.code || error?.code || '')
       const isNetwork =
         rawMsg.includes('fetch failed') ||
         code === 'ECONNREFUSED' ||

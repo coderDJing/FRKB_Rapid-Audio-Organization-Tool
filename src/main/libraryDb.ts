@@ -6,7 +6,14 @@ import { log } from './log'
 const DB_FILE_NAME = 'FRKB.database.sqlite'
 const SCHEMA_VERSION = 23
 
-type SqliteDatabase = any
+type SqliteDatabaseCtor = typeof import('better-sqlite3')
+
+export type SqliteDatabase = InstanceType<SqliteDatabaseCtor>
+export type SqliteRow = Record<string, unknown>
+
+export function isSqliteRow(value: unknown): value is SqliteRow {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
 
 let db: SqliteDatabase | null = null
 let dbRoot: string | null = null
@@ -16,7 +23,9 @@ function hasTable(dbInstance: SqliteDatabase, tableName: string): boolean {
   if (!normalized) return false
   try {
     const row = dbInstance
-      .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1`)
+      .prepare<{
+        name?: string
+      }>(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1`)
       .get(normalized)
     return Boolean(row?.name)
   } catch {
@@ -30,9 +39,7 @@ function listTableColumns(dbInstance: SqliteDatabase, tableName: string): Set<st
   const safeTableName = normalized.replace(/[^a-zA-Z0-9_]/g, '')
   if (!safeTableName) return new Set()
   try {
-    const rows = dbInstance.prepare(`PRAGMA table_info(${safeTableName})`).all() as Array<{
-      name?: string
-    }>
+    const rows = dbInstance.prepare<{ name?: string }>(`PRAGMA table_info(${safeTableName})`).all()
     const columns = new Set<string>()
     for (const row of rows) {
       const name = String(row?.name || '').trim()
@@ -45,7 +52,7 @@ function listTableColumns(dbInstance: SqliteDatabase, tableName: string): Set<st
 }
 
 function createDatabase(dbPath: string): SqliteDatabase {
-  const Database = require('better-sqlite3')
+  const Database = require('better-sqlite3') as SqliteDatabaseCtor
   const instance = new Database(dbPath)
   instance.pragma('foreign_keys = ON')
   const userVersion = instance.pragma('user_version', { simple: true }) as number
@@ -594,7 +601,9 @@ export function closeLibraryDb(): void {
 
 export function getMetaValue(dbInstance: SqliteDatabase, key: string): string | null {
   try {
-    const row = dbInstance.prepare('SELECT value FROM meta WHERE key = ?').get(key)
+    const row = dbInstance
+      .prepare<{ value?: string }>('SELECT value FROM meta WHERE key = ?')
+      .get(key)
     return row ? String(row.value) : null
   } catch {
     return null

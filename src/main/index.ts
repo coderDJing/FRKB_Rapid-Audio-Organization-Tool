@@ -157,11 +157,9 @@ const maybeClearLogAfterUpgrade = () => {
     }
 
     const currentVersion = app.getVersion()
-    const setting = store.settingConfig || ({} as any)
+    const setting = store.settingConfig
     const lastVersion =
-      typeof (setting as any).lastRunAppVersion === 'string'
-        ? String((setting as any).lastRunAppVersion || '')
-        : ''
+      typeof setting.lastRunAppVersion === 'string' ? String(setting.lastRunAppVersion || '') : ''
     const logPath = getLogPath()
     const hasLogFile = fs.pathExistsSync(logPath)
     let logHasContent = false
@@ -177,11 +175,11 @@ const maybeClearLogAfterUpgrade = () => {
     if (isVersionChanged || shouldClearOnUnknownVersion) {
       clearLogFileSync()
       // 清理旧日志后重置上报计时，避免空日志重复触发
-      ;(setting as any).errorReportUsageMsSinceLastSuccess = 0
-      ;(setting as any).errorReportRetryMsSinceLastFailure = -1
+      setting.errorReportUsageMsSinceLastSuccess = 0
+      setting.errorReportRetryMsSinceLastFailure = -1
     }
     if (lastVersion !== currentVersion) {
-      ;(setting as any).lastRunAppVersion = currentVersion
+      setting.lastRunAppVersion = currentVersion
       store.settingConfig = setting
       persistSettingConfigSync(setting)
     }
@@ -460,7 +458,7 @@ app.whenReady().then(async () => {
   // 处理启动时通过文件关联传入的音频文件
   queueExternalAudioFiles(process.argv.slice(1))
   if (process.platform === 'win32') {
-    if ((store as any).settingConfig.enableExplorerContextMenu !== false) {
+    if (store.settingConfig.enableExplorerContextMenu !== false) {
       void ensureWindowsContextMenuIfNeeded().catch(() => {})
     } else {
       void removeWindowsContextMenu()
@@ -600,9 +598,9 @@ ipcMain.handle('clearTracksFingerprintLibrary', async (_e) => {
     store.songFingerprintList = []
     await saveList(store.songFingerprintList)
     return { success: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     log.error('clearTracksFingerprintLibrary failed', error)
-    return { success: false, message: String(error?.message || error) }
+    return { success: false, message: String(error instanceof Error ? error.message : error) }
   }
 })
 

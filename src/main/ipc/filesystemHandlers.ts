@@ -15,6 +15,23 @@ import store from '../store'
 import { mapRendererPathToFsPath, getCoreFsDirName } from '../utils'
 import { SUPPORTED_AUDIO_FORMATS } from '../../shared/audioFormats'
 
+type DriveInfo = {
+  DeviceID?: string
+  Size?: string | number
+  FreeSpace?: string | number
+}
+
+const normalizeDriveInfo = (drive: DriveInfo) => {
+  const name = String(drive.DeviceID || '').trim()
+  return {
+    name,
+    path: name,
+    type: 'drive' as const,
+    size: parseInt(String(drive.Size || '0'), 10) || 0,
+    freeSpace: parseInt(String(drive.FreeSpace || '0'), 10) || 0
+  }
+}
+
 export function registerFilesystemHandlers() {
   ipcMain.handle('select-folder', async (_event, multiSelections: boolean = true) => {
     const result = await dialog.showOpenDialog({
@@ -65,22 +82,17 @@ export function registerFilesystemHandlers() {
           const { stdout: psStdout } = await execAsync(
             'powershell -command "Get-WmiObject Win32_LogicalDisk | Select-Object DeviceID, Size, FreeSpace | ConvertTo-Json"'
           )
-          const drivesData = JSON.parse(psStdout)
-          const drives = drivesData.map((drive: any) => ({
-            name: drive.DeviceID,
-            path: drive.DeviceID,
-            type: 'drive',
-            size: parseInt(drive.Size) || 0,
-            freeSpace: parseInt(drive.FreeSpace) || 0
-          }))
-          return drives.filter((drive: any) => drive.name)
+          const parsed = JSON.parse(psStdout) as DriveInfo | DriveInfo[] | null
+          const drivesData = Array.isArray(parsed) ? parsed : parsed ? [parsed] : []
+          const drives = drivesData.map((drive) => normalizeDriveInfo(drive))
+          return drives.filter((drive) => drive.name)
         } catch (psError) {
           log.warn('PowerShell failed, falling back to wmic:', psError)
           const { stdout } = await execAsync('wmic logicaldisk get name,size,freespace')
           const lines = stdout.split('\n').slice(1)
           const drives = lines
             .filter((line: string) => line.trim() && /^[A-Z]:\s+\d+\s+\d+$/.test(line.trim()))
-            .map((line: string) => {
+            .map((line: string): ReturnType<typeof normalizeDriveInfo> => {
               const parts = line.trim().split(/\s+/)
               const name = parts[0] || ''
               const sizeStr = parts[1] || '0'
@@ -90,11 +102,11 @@ export function registerFilesystemHandlers() {
                 name: name,
                 path: name,
                 type: 'drive',
-                size: parseInt(sizeStr) || 0,
-                freeSpace: parseInt(freeSpaceStr) || 0
+                size: parseInt(sizeStr, 10) || 0,
+                freeSpace: parseInt(freeSpaceStr, 10) || 0
               }
             })
-            .filter((drive: any) => drive.name)
+            .filter((drive: ReturnType<typeof normalizeDriveInfo>) => drive.name)
           return drives
         }
       } else if (process.platform === 'darwin') {

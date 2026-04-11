@@ -43,6 +43,8 @@ export function useSongLoader(params: {
   onSongBuffered?: (filePath: string, audio: HTMLAudioElement, bpm: number | string | null) => void
 }) {
   const { runtime, audioPlayer, bpm, waveformShow, setCoverByIPC, onSongBuffered } = params
+  const isAbortError = (error: unknown) =>
+    error instanceof Error ? error.name === 'AbortError' : false
 
   const currentLoadRequestId = ref(0)
   const isLoadingBlob = ref(false)
@@ -228,8 +230,8 @@ export function useSongLoader(params: {
       }
       try {
         playerInstance.play(startTime)
-      } catch (playError: any) {
-        if (playError?.name !== 'AbortError') {
+      } catch (playError: unknown) {
+        if (!isAbortError(playError)) {
           void handleSongLoadError(filePath, false)
         }
       } finally {
@@ -293,9 +295,9 @@ export function useSongLoader(params: {
       } else {
         window.electron.ipcRenderer.send('readSongFile', filePath, String(requestId))
       }
-    } catch (loadError: any) {
+    } catch (loadError: unknown) {
       isLoadingBlob.value = false
-      if (loadError?.name !== 'AbortError') {
+      if (!isAbortError(loadError)) {
         await handleSongLoadError(filePath, false)
       }
     }
@@ -350,9 +352,9 @@ export function useSongLoader(params: {
         filePath
       })
       startPlaybackWhenReady(playerInstance, filePath, requestNumber)
-    } catch (error: any) {
+    } catch (error: unknown) {
       isLoadingBlob.value = false
-      if (error?.name !== 'AbortError') {
+      if (!isAbortError(error)) {
         void handleSongLoadError(filePath, false)
       }
     }

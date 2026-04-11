@@ -22,7 +22,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import settingDialog from '@renderer/components/settingDialog.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { t } from '@renderer/utils/translate'
-import type { Icon, IDir } from '../../../../types/globals'
+import type { Icon, IDir, IMetadataAutoFillSummary } from '../../../../types/globals'
 import tempListIconAsset from '@renderer/assets/tempList.svg?asset'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import confirm from '@renderer/components/confirmDialog'
@@ -45,6 +45,10 @@ type HoverableIcon = {
 }
 
 type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
+type ComponentWithElement = ComponentPublicInstance & { $el?: unknown }
+type ScanSongListResult = {
+  scanData?: Array<{ filePath?: string }>
+}
 
 const externalIcon: Icon = {
   name: 'ExternalPlaylist',
@@ -53,7 +57,7 @@ const externalIcon: Icon = {
   src: tempListIconAsset,
   showAlt: false,
   i18nKey: 'library.externalPlaylist'
-} as any
+}
 
 const baseIcons: Icon[] = [
   {
@@ -64,7 +68,7 @@ const baseIcons: Icon[] = [
     showAlt: false,
     // i18n key for tooltip
     i18nKey: 'library.filter'
-  } as any,
+  },
   {
     name: 'CuratedLibrary',
     grey: likeIconAsset,
@@ -72,7 +76,7 @@ const baseIcons: Icon[] = [
     src: likeIconAsset,
     showAlt: false,
     i18nKey: 'library.curated'
-  } as any,
+  },
   {
     name: 'MixtapeLibrary',
     grey: mixtapeIconAsset,
@@ -80,7 +84,7 @@ const baseIcons: Icon[] = [
     src: mixtapeIconAsset,
     showAlt: false,
     i18nKey: 'library.mixtapeLibrary'
-  } as any,
+  },
   {
     name: 'RecycleBin',
     grey: trashIconAsset,
@@ -88,7 +92,7 @@ const baseIcons: Icon[] = [
     src: trashIconAsset,
     showAlt: false,
     i18nKey: 'recycleBin.recycleBin'
-  } as any
+  }
 ]
 
 const iconArr = ref<Icon[]>([...baseIcons])
@@ -157,8 +161,8 @@ const resolveRefDom = (el: Element | ComponentPublicInstance | null) => {
   if (el) {
     if (el instanceof HTMLElement) {
       dom = el
-    } else if ((el as any).$el instanceof HTMLElement) {
-      dom = (el as any).$el as HTMLElement
+    } else if ((el as ComponentWithElement).$el instanceof HTMLElement) {
+      dom = (el as ComponentWithElement).$el
     }
   }
   return dom
@@ -198,7 +202,7 @@ const isPlayingLibraryIcon = (item: Icon) => {
 }
 
 const findLibraryNode = (libraryName: string): IDir | undefined => {
-  return runtime.libraryTree.children?.find((item: any) => item.dirName === libraryName)
+  return runtime.libraryTree.children?.find((item: IDir) => item.dirName === libraryName)
 }
 
 const collectSongLists = (root?: IDir | null): IDir[] => {
@@ -221,9 +225,13 @@ const scanSongListsFiles = async (songLists: IDir[]) => {
   for (const list of songLists) {
     try {
       const dirPath = libraryUtils.findDirPathByUuid(list.uuid)
-      const scan = await window.electron.ipcRenderer.invoke('scanSongList', dirPath, list.uuid)
+      const scan = (await window.electron.ipcRenderer.invoke(
+        'scanSongList',
+        dirPath,
+        list.uuid
+      )) as ScanSongListResult | null
       const songFiles = Array.isArray(scan?.scanData)
-        ? scan.scanData.map((s: any) => s.filePath).filter(Boolean)
+        ? scan.scanData.map((s) => s.filePath).filter((item): item is string => !!item)
         : []
       files.push(...songFiles)
     } catch (error) {
@@ -255,16 +263,14 @@ const handleAutoFillForLibrary = async (libraryName: string) => {
   }
   warnAcoustIdMissing()
   runtime.isProgressing = true
-  let summary: any = null
+  let summary: IMetadataAutoFillSummary | null = null
   let hadError = false
   try {
     summary = await invokeMetadataAutoFill(files)
-  } catch (error: any) {
+  } catch (error: unknown) {
     hadError = true
     const message =
-      typeof error?.message === 'string' && error.message.trim().length
-        ? error.message
-        : t('common.unknownError')
+      error instanceof Error && error.message.trim() ? error.message : t('common.unknownError')
     await confirm({
       title: t('common.error'),
       content: [message],
@@ -289,8 +295,8 @@ const handleAutoFillForLibrary = async (libraryName: string) => {
   await openAutoSummary(summary)
   const updates =
     summary.items
-      ?.filter((item: any) => item.status === 'applied' && item.updatedSongInfo)
-      .map((item: any) => ({
+      ?.filter((item) => item.status === 'applied' && item.updatedSongInfo)
+      .map((item) => ({
         song: item.updatedSongInfo,
         oldFilePath: item.oldFilePath
       })) || []
@@ -559,7 +565,7 @@ watch(
           ></span>
           <bubbleBox
             :dom="iconRefMap[item.name] || undefined"
-            :title="t((item as any).i18nKey || item.name)"
+            :title="t(item.i18nKey || item.name)"
           />
         </div>
       </div>
@@ -620,7 +626,7 @@ watch(
               ></span>
               <bubbleBox
                 :dom="iconRefMap[item.name] || undefined"
-                :title="t((item as any).i18nKey || item.name)"
+                :title="t(item.i18nKey || item.name)"
               />
             </div>
           </div>

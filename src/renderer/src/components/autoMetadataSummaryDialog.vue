@@ -108,7 +108,7 @@ const methodLabel = (method?: IMetadataAutoFillItemResult['method']) => {
 const reasonLabel = (item: IMetadataAutoFillItemResult) => {
   const code = item.messageCode || 'UNKNOWN'
   const key = `metadata.autoFillReason.${code}`
-  const translated = t(key as any)
+  const translated = t(key)
   if (item.messageDetail) {
     return `${translated} (${item.messageDetail})`
   }

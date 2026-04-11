@@ -54,7 +54,7 @@ const displayValue = computed<string>(() => {
   } else if (rawKey.toLowerCase() === 'o') {
     keyText = '-'
   } else {
-    const style = (runtime.setting as any).keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
+    const style = runtime.setting.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
     keyText = getKeyDisplayText(rawKey, style)
   }
 

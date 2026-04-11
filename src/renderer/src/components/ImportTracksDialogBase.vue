@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted, onMounted, useTemplateRef, reactive } from 'vue'
+import type { ComponentPublicInstance } from 'vue'
 import singleCheckbox from './singleCheckbox.vue'
 import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -166,7 +167,7 @@ const songListSelectedDisplay = computed(() => {
   return arr.join('\\')
 })
 
-const isEnglishLocale = computed(() => (i18n.global as any).locale.value === 'en-US')
+const isEnglishLocale = computed(() => i18n.global.locale.value === 'en-US')
 const labelWidth = computed(() => (isEnglishLocale.value ? '142px' : '126px'))
 
 const confirm = () => {
@@ -230,6 +231,10 @@ const dedupOptionHintRefs = reactive<Record<string, HTMLImageElement | null>>({}
 function setDedupOptionHintRef(value: string, el: HTMLImageElement | null) {
   if (el) dedupOptionHintRefs[value] = el
 }
+const bindDedupOptionHintRef =
+  (value: string) => (el: Element | ComponentPublicInstance | null) => {
+    setDedupOptionHintRef(value, el instanceof HTMLImageElement ? el : null)
+  }
 const fileSelectRef = useTemplateRef<HTMLDivElement>('fileSelectRef')
 const songListSelectRef = useTemplateRef<HTMLDivElement>('songListSelectRef')
 onMounted(() => {
@@ -320,7 +325,7 @@ onUnmounted(() => {
         <div style="margin-top: 20px">{{ t('library.deduplicateMode') }}：</div>
         <div style="margin-top: 10px">
           <singleRadioGroup
-            v-model="settingData.deduplicateMode as any"
+            v-model="settingData.deduplicateMode"
             :options="[
               { label: t('library.deduplicateModeLibrary'), value: 'library' },
               { label: t('library.deduplicateModeBatch'), value: 'batch' },
@@ -333,14 +338,14 @@ onUnmounted(() => {
               <span class="label">{{ opt.label }}</span>
               <template v-if="opt.value !== 'none'">
                 <img
-                  :ref="(el: any) => setDedupOptionHintRef(opt.value, el)"
+                  :ref="bindDedupOptionHintRef(opt.value)"
                   :src="hintIcon"
                   style="width: 14px; height: 14px; margin-left: 6px"
                   :draggable="false"
                   class="theme-icon"
                 />
                 <bubbleBox
-                  :dom="(dedupOptionHintRefs[opt.value] || undefined) as any"
+                  :dom="dedupOptionHintRefs[opt.value] || null"
                   :title="
                     opt.value === 'library'
                       ? t('library.deduplicateHint')

@@ -4,6 +4,7 @@ import crypto from 'node:crypto'
 import { once } from 'node:events'
 import { EventEmitter } from 'node:events'
 import { Readable } from 'node:stream'
+import type { ReadableStream as NodeReadableStream } from 'node:stream/web'
 import { app } from 'electron'
 import { ProxyAgent } from 'undici'
 import { resolveBundledFfmpegPath } from '../ffmpeg'
@@ -710,7 +711,7 @@ const downloadRuntimeArchivePart = async (
   )
   const writer = fs.createWriteStream(params.archivePath)
   let downloadedBytes = 0
-  for await (const chunk of Readable.fromWeb(response.body as any)) {
+  for await (const chunk of Readable.fromWeb(response.body as unknown as NodeReadableStream)) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
     downloadedBytes += buffer.byteLength
     if (!writer.write(buffer)) {

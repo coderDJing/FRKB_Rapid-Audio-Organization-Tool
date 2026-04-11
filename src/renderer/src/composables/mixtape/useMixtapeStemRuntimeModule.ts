@@ -44,6 +44,29 @@ type CreateUseMixtapeStemRuntimeModuleOptions = {
   confirmDialog: ConfirmDialogFn
 }
 
+type StemStatusPayload = {
+  playlistId?: string
+  stemStatus?: unknown
+  itemIds?: unknown[]
+  stemSummary?: unknown
+}
+
+type StemCpuSlowHintPayload = {
+  playlistId?: string
+  reasonCode?: string
+  reasonDetail?: string
+}
+
+type StemRuntimeProgressPayload = {
+  playlistId?: string
+  itemIds?: unknown[]
+  percent?: unknown
+  processedSec?: unknown
+  totalSec?: unknown
+  filePath?: unknown
+  device?: string
+}
+
 const STEM_RUNTIME_PROGRESS_MAX_VISIBLE_ITEMS = 6
 
 export const createEmptyStemSummary = (): MixtapeStemSummary => ({
@@ -256,10 +279,10 @@ export const createUseMixtapeStemRuntimeModule = (
     typeof track?.stemVersion === 'string' ? track.stemVersion.trim() : ''
 
   const hasTrackStemPathsReady = (track: MixtapeTrack, _stemMode: MixtapeStemMode) => {
-    const vocalPath = normalizeMixtapeFilePath((track as any)?.stemVocalPath)
-    const instPath = normalizeMixtapeFilePath((track as any)?.stemInstPath)
-    const bassPath = normalizeMixtapeFilePath((track as any)?.stemBassPath)
-    const drumsPath = normalizeMixtapeFilePath((track as any)?.stemDrumsPath)
+    const vocalPath = normalizeMixtapeFilePath(track?.stemVocalPath)
+    const instPath = normalizeMixtapeFilePath(track?.stemInstPath)
+    const bassPath = normalizeMixtapeFilePath(track?.stemBassPath)
+    const drumsPath = normalizeMixtapeFilePath(track?.stemDrumsPath)
     if (!vocalPath || !instPath || !bassPath || !drumsPath) return false
     return true
   }
@@ -379,7 +402,10 @@ export const createUseMixtapeStemRuntimeModule = (
     stemResumeSignatureByPlaylistId.set(playlistId, signature)
   }
 
-  const handleStemStatusPayload = (eventPayload: any) => {
+  const handleStemStatusPayload = (payload: unknown) => {
+    const eventPayload = (
+      payload && typeof payload === 'object' ? payload : null
+    ) as StemStatusPayload | null
     const playlistId = options.payload.value.playlistId
     if (!playlistId) return false
     const targetPlaylistId =
@@ -400,7 +426,10 @@ export const createUseMixtapeStemRuntimeModule = (
     return true
   }
 
-  const handleMixtapeStemCpuSlowHint = (_e: unknown, eventPayload: any) => {
+  const handleMixtapeStemCpuSlowHint = (
+    _e: unknown,
+    eventPayload: StemCpuSlowHintPayload | null
+  ) => {
     const playlistId = String(options.payload.value.playlistId || '').trim()
     if (!playlistId) return
     const targetPlaylistId =
@@ -437,7 +466,10 @@ export const createUseMixtapeStemRuntimeModule = (
     })
   }
 
-  const handleMixtapeStemRuntimeProgress = (_e: unknown, eventPayload: any) => {
+  const handleMixtapeStemRuntimeProgress = (
+    _e: unknown,
+    eventPayload: StemRuntimeProgressPayload | null
+  ) => {
     const playlistId = String(options.payload.value.playlistId || '').trim()
     if (!playlistId) return
     const targetPlaylistId =

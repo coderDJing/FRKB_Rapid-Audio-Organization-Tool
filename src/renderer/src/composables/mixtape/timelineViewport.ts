@@ -1,6 +1,21 @@
 import { computed } from 'vue'
+import type { TimelineLayoutSnapshot } from '@renderer/composables/mixtape/types'
 
-export const createTimelineViewportModule = (ctx: any) => {
+type ValueRef<T> = {
+  value: T
+}
+
+type TimelineViewportContext = {
+  timelineViewportWidth: ValueRef<number>
+  overviewWidth: ValueRef<number>
+  timelineScrollWidth: ValueRef<number>
+  timelineContentWidth: ValueRef<number>
+  timelineLayout: ValueRef<TimelineLayoutSnapshot>
+  timelineScrollLeft: ValueRef<number>
+  preRenderState: ValueRef<{ total: number; done: number }>
+}
+
+export const createTimelineViewportModule = (ctx: TimelineViewportContext) => {
   const {
     timelineViewportWidth,
     overviewWidth,

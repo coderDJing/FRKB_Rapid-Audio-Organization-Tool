@@ -1,5 +1,5 @@
 import path = require('path')
-import { getLibraryDb } from '../libraryDb'
+import { getLibraryDb, isSqliteRow } from '../libraryDb'
 import { log } from '../log'
 import {
   decodeMixxxWaveformData,
@@ -14,6 +14,7 @@ import {
   resolveAbsoluteListRoot,
   normalizeRoot
 } from './pathResolvers'
+import type { SqliteDatabase } from '../libraryDb'
 
 type WaveformCacheMeta = {
   size: number
@@ -27,6 +28,29 @@ type WaveformCacheMeta = {
 
 const looseWaveformRootCache = new Map<string, string[]>()
 
+type WaveformCacheRootRow = {
+  list_root?: string
+}
+
+type WaveformCacheRow = {
+  list_root?: string
+  file_path?: string
+  size?: unknown
+  mtime_ms?: unknown
+  version?: unknown
+  sample_rate?: unknown
+  step?: unknown
+  duration?: unknown
+  frames?: unknown
+  data?: unknown
+}
+
+type WaveformCacheRowHit = {
+  row: WaveformCacheRow
+  hitListRoot: string
+  hitFilePath: string
+}
+
 function toLooseCompareExpr(column: string): string {
   return `REPLACE(LOWER(${column}), '/', '\\\\') = REPLACE(LOWER(?), '/', '\\\\')`
 }
@@ -36,7 +60,7 @@ function toLooseCompareExprRaw(expr: string): string {
 }
 
 function getLooseWaveformRoots(
-  db: any,
+  db: SqliteDatabase,
   candidates: Array<string | null | undefined>,
   listRootKey: string
 ): string[] {
@@ -45,13 +69,13 @@ function getLooseWaveformRoots(
   if (cached) return cached
   const roots: string[] = []
   const seen = new Set<string>()
-  const stmt = db.prepare(
+  const stmt = db.prepare<WaveformCacheRootRow>(
     `SELECT DISTINCT list_root FROM waveform_cache WHERE ${toLooseCompareExpr('list_root')} LIMIT 20`
   )
   for (const candidate of candidates) {
     const value = candidate ? String(candidate) : ''
     if (!value) continue
-    let rows: any[] = []
+    let rows: WaveformCacheRootRow[] = []
     try {
       rows = stmt.all(value)
     } catch {
@@ -69,23 +93,23 @@ function getLooseWaveformRoots(
 }
 
 function getWaveformRowLoose(
-  db: any,
+  db: SqliteDatabase,
   listRootCandidates: string[],
   filePathCandidates: string[]
-): { row: any; hitListRoot: string; hitFilePath: string } | null {
+): WaveformCacheRowHit | null {
   if (!db || listRootCandidates.length === 0 || filePathCandidates.length === 0) return null
-  const stmt = db.prepare(
+  const stmt = db.prepare<WaveformCacheRow>(
     `SELECT list_root, file_path, size, mtime_ms, version, sample_rate, step, duration, frames, data FROM waveform_cache WHERE ${toLooseCompareExpr(
       'list_root'
     )} AND ${toLooseCompareExpr('file_path')} LIMIT 1`
   )
   for (const listRoot of listRootCandidates) {
     for (const filePath of filePathCandidates) {
-      let row: any = null
+      let row: WaveformCacheRow | undefined
       try {
         row = stmt.get(listRoot, filePath)
       } catch {
-        row = null
+        row = undefined
       }
       if (row && row.data !== undefined) {
         return {
@@ -100,24 +124,24 @@ function getWaveformRowLoose(
 }
 
 function getWaveformRowBySongAbsPath(
-  db: any,
+  db: SqliteDatabase,
   absPathCandidates: string[]
-): { row: any; hitListRoot: string; hitFilePath: string } | null {
+): WaveformCacheRowHit | null {
   if (!db || absPathCandidates.length === 0) return null
   try {
     const expr = "json_extract(s.info_json, '$.filePath')"
-    const stmt = db.prepare(
+    const stmt = db.prepare<WaveformCacheRow>(
       `SELECT w.list_root, w.file_path, w.size, w.mtime_ms, w.version, w.sample_rate, w.step, w.duration, w.frames, w.data
        FROM waveform_cache w
        JOIN song_cache s ON s.list_root = w.list_root AND s.file_path = w.file_path
        WHERE ${toLooseCompareExprRaw(expr)} LIMIT 1`
     )
     for (const absPath of absPathCandidates) {
-      let row: any = null
+      let row: WaveformCacheRow | undefined
       try {
         row = stmt.get(absPath)
       } catch {
-        row = null
+        row = undefined
       }
       if (row && row.data !== undefined) {
         return {
@@ -134,14 +158,14 @@ function getWaveformRowBySongAbsPath(
 }
 
 export function migrateWaveformCacheRows(
-  db: any,
+  db: SqliteDatabase,
   oldListRoot: string,
   newListRootKey: string,
   listRootAbs: string
 ): number {
   try {
     const rows = db
-      .prepare(
+      .prepare<WaveformCacheRow>(
         'SELECT file_path, size, mtime_ms, version, sample_rate, step, duration, frames, data FROM waveform_cache WHERE list_root = ?'
       )
       .all(oldListRoot)
@@ -170,8 +194,8 @@ export function migrateWaveformCacheRows(
   }
 }
 
-function normalizeWaveformMeta(row: any): WaveformCacheMeta | null {
-  if (!row) return null
+function normalizeWaveformMeta(row: unknown): WaveformCacheMeta | null {
+  if (!isSqliteRow(row)) return null
   const size = toNumber(row.size)
   const mtimeMs = toNumber(row.mtime_ms)
   const version = toNumber(row.version)

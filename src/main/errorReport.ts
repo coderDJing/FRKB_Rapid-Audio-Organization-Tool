@@ -60,7 +60,7 @@ async function uploadLogText(text: string): Promise<boolean> {
       },
       body: text
     })
-    const json = await res.json().catch(() => ({}))
+    const json = (await res.json().catch(() => ({}))) as { success?: boolean }
     const ok = res.ok && json?.success === true
     if (!ok) {
       log.error('[errorReport] 上报失败', { status: res.status, json })
@@ -79,7 +79,7 @@ function persistSettings() {
 }
 
 async function tryUploadOnce(trigger: 'auto' | 'manual'): Promise<boolean> {
-  const setting: any = store.settingConfig || {}
+  const setting = store.settingConfig
   const text = await readLogText()
   if (!text || !text.trim()) {
     // 日志为空：自动触发时重置累计时长，避免每个 tick 都重复尝试
@@ -104,7 +104,7 @@ async function tryUploadOnce(trigger: 'auto' | 'manual'): Promise<boolean> {
 }
 
 async function onTick() {
-  const setting: any = store.settingConfig || {}
+  const setting = store.settingConfig
   if (!setting.enableErrorReport) return
 
   // 初始化字段

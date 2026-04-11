@@ -30,12 +30,19 @@ const revokeCoverUrl = () => {
   coverUrl.value = ''
 }
 
+type BinaryLike = {
+  data?: number[]
+}
+
 const toUint8Array = (raw: unknown): Uint8Array | null => {
   if (!raw) return null
   if (raw instanceof Uint8Array) return raw
   if (Array.isArray(raw)) return new Uint8Array(raw as number[])
-  if (typeof raw === 'object' && Array.isArray((raw as any).data)) {
-    return new Uint8Array((raw as any).data)
+  if (typeof raw === 'object' && raw !== null) {
+    const binary = raw as BinaryLike
+    if (Array.isArray(binary.data)) {
+      return new Uint8Array(binary.data)
+    }
   }
   return null
 }

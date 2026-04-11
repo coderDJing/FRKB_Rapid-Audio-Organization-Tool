@@ -1,6 +1,62 @@
 import { nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
+import type { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
+import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import type {
+  MixtapeMixMode,
+  MixtapeStemMode,
+  MixtapeTrack,
+  RawWaveformData,
+  StemWaveformData
+} from '@renderer/composables/mixtape/types'
 
-export const createTimelineWatchAndMountModule = (ctx: any) => {
+type ValueRef<T> = {
+  value: T
+}
+
+type TimelineScrollHost = InstanceType<typeof OverlayScrollbarsComponent> | null
+
+type TimelineWatchAndMountContext = {
+  tracks: ValueRef<MixtapeTrack[]>
+  mixtapeMixMode: ValueRef<MixtapeMixMode>
+  mixtapeStemMode: ValueRef<MixtapeStemMode>
+  resolveTrackWaveformFilePaths: (track: MixtapeTrack) => string[]
+  resolveTrackGridSignature: (track: MixtapeTrack) => string
+  isTrackDragging: ValueRef<boolean>
+  bpmAnalysisActive: ValueRef<boolean>
+  timelineDurationSec: ValueRef<number>
+  playheadSec: ValueRef<number>
+  renderPxPerSec: ValueRef<number>
+  waveformVersion: ValueRef<number>
+  stopTransportForTrackChange: () => void
+  clearTimelineLayoutCache: () => void
+  updateTimelineWidth: (preserveScrollCenter?: boolean) => void
+  scheduleWaveformLoad: () => void
+  scheduleFullPreRender: () => void
+  scheduleWorkerPreRender: () => void
+  scheduleTimelineDraw: () => void
+  scheduleWaveformDraw: () => void
+  waveformRenderWorkerRef: ValueRef<Worker | null>
+  handleWaveformWorkerMessage: (event: MessageEvent) => void
+  pushStemWaveformToWorker: (filePath: string, data: StemWaveformData | null) => void
+  pushRawWaveformToWorker: (filePath: string, data: RawWaveformData | null) => void
+  waveformDataMap: Map<string, StemWaveformData | MixxxWaveformData | null>
+  rawWaveformDataMap: Map<string, RawWaveformData | null>
+  timelineScrollRef: ValueRef<TimelineScrollHost>
+  setTimelineWheelTarget: (target: HTMLElement | null) => void
+  timelineViewport: ValueRef<HTMLElement | null>
+  timelineObserverRef: ValueRef<ResizeObserver | null>
+  timelineViewportObserverRef: ValueRef<ResizeObserver | null>
+  overviewObserverRef: ValueRef<ResizeObserver | null>
+  overviewRef: ValueRef<HTMLElement | null>
+  updateOverviewWidth: () => void
+  startTimelineScrollSampler: () => void
+  handleTimelineWheel: (event: WheelEvent) => void
+  handleWaveformUpdated: (...args: unknown[]) => void
+  scheduleTransportPreload: () => void
+  initTimelineWorkerRenderer?: () => void
+}
+
+export const createTimelineWatchAndMountModule = (ctx: TimelineWatchAndMountContext) => {
   const {
     tracks,
     mixtapeMixMode,
@@ -45,6 +101,8 @@ export const createTimelineWatchAndMountModule = (ctx: any) => {
   let initialViewportBindAttempts = 0
   let initialViewportBindTimer: ReturnType<typeof setTimeout> | null = null
   const isStemMixMode = () => mixtapeMixMode?.value === 'stem'
+  const isStemWaveformData = (value: unknown): value is StemWaveformData =>
+    !!value && typeof value === 'object' && 'all' in value
 
   const clearInitialViewportBindTimer = () => {
     if (!initialViewportBindTimer) return
@@ -91,7 +149,7 @@ export const createTimelineWatchAndMountModule = (ctx: any) => {
   watch(
     () =>
       `${String(mixtapeMixMode?.value || 'stem')}|${String(mixtapeStemMode?.value || '')}|${tracks.value
-        .map((track: any) => {
+        .map((track: MixtapeTrack) => {
           const waveformPaths = resolveTrackWaveformFilePaths(track).join(',')
           const stemStatus = mixtapeMixMode?.value === 'stem' ? String(track.stemStatus || '') : ''
           return `${track.id}:${stemStatus}:${waveformPaths}`
@@ -112,7 +170,7 @@ export const createTimelineWatchAndMountModule = (ctx: any) => {
   watch(
     () =>
       tracks.value
-        .map((track: any) => {
+        .map((track: MixtapeTrack) => {
           const startSec = Number(track.startSec) || 0
           const masterTempo = track.masterTempo === false ? 0 : 1
           return `${track.id}:${Math.round(startSec * 1000)}:${resolveTrackGridSignature(
@@ -182,7 +240,7 @@ export const createTimelineWatchAndMountModule = (ctx: any) => {
         worker.onmessage = handleWaveformWorkerMessage
         if (isStemMixMode()) {
           for (const [filePath, data] of waveformDataMap.entries()) {
-            pushStemWaveformToWorker(filePath, data)
+            pushStemWaveformToWorker(filePath, isStemWaveformData(data) ? data : null)
           }
         }
         for (const [filePath, data] of rawWaveformDataMap.entries()) {

@@ -10,6 +10,7 @@ import { extFromMime } from './covers'
 import { writeWavRiffInfoWindows, readWavRiffInfoWindows } from './wavRiffInfo'
 import { updateSongCacheEntry, purgeCoverCacheForTrack, findSongListRoot } from './cacheMaintenance'
 import * as LibraryCacheDb from '../libraryCacheDb'
+import type { IAudioMetadata, IPicture } from 'music-metadata'
 
 async function parseMetadata(filePath: string) {
   const mm = await import('music-metadata')
@@ -24,7 +25,71 @@ function convertSecondsToMinutesSeconds(seconds: number) {
   return `${minutesStr}:${secondsStr}`
 }
 
-function buildSongInfo(filePath: string, metadata: any): ISongInfo {
+type FfmpegMetadataError = Error & {
+  code: 'FFMPEG_METADATA_FAILED'
+  exitCode?: number
+  stderr?: string
+}
+
+type WavRiffInfo = NonNullable<Awaited<ReturnType<typeof readWavRiffInfoWindows>>>
+
+function firstString(value: unknown): string | undefined {
+  if (!Array.isArray(value)) return undefined
+  for (const item of value) {
+    if (typeof item === 'string') {
+      const text = item.trim()
+      if (text) return text
+      continue
+    }
+    if (item && typeof item === 'object' && 'text' in item && typeof item.text === 'string') {
+      const text = item.text.trim()
+      if (text) return text
+    }
+  }
+  return undefined
+}
+
+function extractLyricsText(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value
+  if (!Array.isArray(value)) return undefined
+  const lines = value
+    .map((item) =>
+      item && typeof item === 'object' && 'text' in item && typeof item.text === 'string'
+        ? item.text.trim()
+        : ''
+    )
+    .filter(Boolean)
+  return lines.length ? lines.join('\n') : undefined
+}
+
+function mergeWavInfoMetadata(metadata: IAudioMetadata, info: WavRiffInfo): IAudioMetadata {
+  const prefer = <T extends string | undefined>(primary: T, fallback: T): T => {
+    const p = typeof primary === 'string' ? primary.trim() : ''
+    const f = typeof fallback === 'string' ? fallback.trim() : ''
+    if (f && (!p || /^[\x00-\x7F]+$/.test(p))) return fallback as T
+    return primary
+  }
+  const currentGenre = Array.isArray(metadata.common.genre) ? metadata.common.genre : undefined
+  const currentComment = firstString(metadata.common.comment)
+  const nextGenre = currentGenre?.length ? currentGenre : info.genre ? [info.genre] : currentGenre
+  const nextComment =
+    currentComment || !info.comment ? metadata.common.comment : [{ text: info.comment }]
+
+  return {
+    ...metadata,
+    common: {
+      ...metadata.common,
+      title: prefer(metadata.common.title, info.title),
+      artist: prefer(metadata.common.artist, info.artist),
+      album: prefer(metadata.common.album, info.album),
+      genre: nextGenre,
+      date: metadata.common.date ?? info.date,
+      comment: nextComment
+    }
+  }
+}
+
+function buildSongInfo(filePath: string, metadata: IAudioMetadata): ISongInfo {
   const durationSeconds = metadata.format?.duration
   const duration =
     typeof durationSeconds === 'number' && durationSeconds >= 0
@@ -38,17 +103,6 @@ function buildSongInfo(filePath: string, metadata: any): ISongInfo {
       ? metadata.format.container.trim().toUpperCase()
       : ''
   const fileFormat = normalizedExt || fallbackFormat
-
-  const firstString = (arr: unknown): string | undefined => {
-    if (!Array.isArray(arr)) return undefined
-    for (const v of arr) {
-      if (typeof v === 'string') {
-        const t = v.trim()
-        if (t) return t
-      }
-    }
-    return undefined
-  }
 
   return {
     filePath,
@@ -69,14 +123,13 @@ function buildSongInfo(filePath: string, metadata: any): ISongInfo {
   }
 }
 
-function convertCoverToDataUrl(picture: any): { dataUrl: string; format?: string } | null {
+function convertCoverToDataUrl(picture: IPicture | null | undefined): {
+  dataUrl: string
+  format?: string
+} | null {
   if (!picture || !picture.data) return null
   const mime = picture.format || 'image/jpeg'
-  const buffer = Buffer.isBuffer(picture.data)
-    ? picture.data
-    : Array.isArray(picture.data)
-      ? Buffer.from(picture.data)
-      : Buffer.from(picture.data.data || [])
+  const buffer = Buffer.from(picture.data)
   if (!buffer.length) return null
   const base64 = buffer.toString('base64')
   return {
@@ -85,7 +138,7 @@ function convertCoverToDataUrl(picture: any): { dataUrl: string; format?: string
   }
 }
 
-function buildDetail(filePath: string, metadata: any): ITrackMetadataDetail {
+function buildDetail(filePath: string, metadata: IAudioMetadata): ITrackMetadataDetail {
   const baseName = path.basename(filePath)
   const dotIndex = baseName.lastIndexOf('.')
   const nameWithoutExt = dotIndex >= 0 ? baseName.slice(0, dotIndex) : baseName
@@ -93,17 +146,6 @@ function buildDetail(filePath: string, metadata: any): ITrackMetadataDetail {
   const pictureSource = Array.isArray(metadata.common?.picture) ? metadata.common.picture[0] : null
   const durationSeconds =
     typeof metadata.format?.duration === 'number' ? Math.round(metadata.format.duration) : undefined
-
-  const firstString = (arr: unknown): string | undefined => {
-    if (!Array.isArray(arr)) return undefined
-    for (const v of arr) {
-      if (typeof v === 'string') {
-        const t = v.trim()
-        if (t) return t
-      }
-    }
-    return undefined
-  }
 
   return {
     filePath,
@@ -120,18 +162,12 @@ function buildDetail(filePath: string, metadata: any): ITrackMetadataDetail {
     discTotal: metadata.common?.disk?.of ?? undefined,
     year: metadata.common?.year ? String(metadata.common.year) : metadata.common?.date,
     genre: firstString(metadata.common?.genre),
-    composer: metadata.common?.composer,
-    lyricist: metadata.common?.lyricist ?? metadata.common?.writer,
+    composer: firstString(metadata.common?.composer),
+    lyricist: firstString(metadata.common?.lyricist) ?? firstString(metadata.common?.writer),
     label: firstString(metadata.common?.label),
-    isrc: metadata.common?.isrc,
+    isrc: firstString(metadata.common?.isrc),
     comment: firstString(metadata.common?.comment),
-    lyrics: Array.isArray(metadata.common?.lyrics)
-      ? metadata.common.lyrics
-          .filter((x: unknown) => typeof x === 'string' && x.trim() !== '')
-          .join('\n')
-      : typeof metadata.common?.lyrics === 'string'
-        ? metadata.common.lyrics
-        : undefined,
+    lyrics: extractLyricsText(metadata.common?.lyrics),
     cover: convertCoverToDataUrl(pictureSource)
   }
 }
@@ -154,7 +190,7 @@ function summarizeFfmpegStderr(output?: string): string {
 }
 
 function createFfmpegError(code: number | null, stderr?: string): Error {
-  const err: any = new Error('FFMPEG_METADATA_FAILED')
+  const err = new Error('FFMPEG_METADATA_FAILED') as FfmpegMetadataError
   err.code = 'FFMPEG_METADATA_FAILED'
   err.exitCode = code ?? undefined
   err.stderr = summarizeFfmpegStderr(stderr)
@@ -274,37 +310,7 @@ export async function readTrackMetadata(filePath: string): Promise<ITrackMetadat
       try {
         const info = await readWavRiffInfoWindows(filePath)
         if (info) {
-          // 优先采用 INFO（UTF-16/GBK）结果覆盖常见的错误解析（例如 '0!0!0!'）
-          const prefer = <T extends string | undefined>(primary: T, fallback: T): T => {
-            const p = typeof primary === 'string' ? primary.trim() : ''
-            const f = typeof fallback === 'string' ? fallback.trim() : ''
-            if (f && (!p || /^[\x00-\x7F]+$/.test(p))) return fallback as T
-            return primary
-          }
-          const patched = {
-            ...metadata,
-            common: {
-              ...metadata.common,
-              // 优先使用 INFO 的可读文本（如果 common 是 ASCII 垃圾）
-              title: prefer((metadata as any)?.common?.title, info.title),
-              artist: prefer((metadata as any)?.common?.artist, info.artist),
-              album: prefer((metadata as any)?.common?.album, info.album),
-              genre:
-                Array.isArray((metadata as any)?.common?.genre) &&
-                (metadata as any).common.genre.length
-                  ? (metadata as any).common.genre
-                  : info.genre
-                    ? [info.genre]
-                    : (metadata as any)?.common?.genre,
-              date: (metadata as any)?.common?.date ?? info.date,
-              comment: prefer(
-                Array.isArray((metadata as any)?.common?.comment)
-                  ? (metadata as any).common.comment[0]
-                  : (metadata as any)?.common?.comment,
-                info.comment
-              )
-            }
-          }
+          const patched = mergeWavInfoMetadata(metadata, info)
           return buildDetail(filePath, patched)
         }
       } catch {}
@@ -331,7 +337,7 @@ export async function updateTrackMetadata(
   )
 
   let coverTempPath: string | null = null
-  let originalMetadata: any = null
+  let originalMetadata: IAudioMetadata | null = null
   try {
     try {
       originalMetadata = await parseMetadata(filePath)
@@ -416,9 +422,7 @@ export async function updateTrackMetadata(
         if (originalCover && !currentCover) {
           const coverBuffer = Buffer.isBuffer(originalCover.data)
             ? originalCover.data
-            : Array.isArray(originalCover.data)
-              ? Buffer.from(originalCover.data)
-              : Buffer.from((originalCover.data as any)?.data || [])
+            : Buffer.from(originalCover.data)
           if (coverBuffer.length > 0) {
             const coverMime = originalCover.format || 'image/jpeg'
             const extension = extFromMime(coverMime)
@@ -474,28 +478,7 @@ export async function updateTrackMetadata(
       try {
         const info = await readWavRiffInfoWindows(filePath)
         if (info) {
-          const prefer = <T extends string | undefined>(primary: T, fallback: T): T => {
-            const p = typeof primary === 'string' ? primary.trim() : ''
-            const f = typeof fallback === 'string' ? fallback.trim() : ''
-            if (f && (!p || /^[\x00-\x7F]+$/.test(p))) return fallback as T
-            return primary
-          }
-          songInfoMeta = {
-            ...metadata,
-            common: {
-              ...metadata.common,
-              title: prefer((metadata as any)?.common?.title, info.title),
-              artist: prefer((metadata as any)?.common?.artist, info.artist),
-              album: prefer((metadata as any)?.common?.album, info.album),
-              genre:
-                Array.isArray((metadata as any)?.common?.genre) &&
-                (metadata as any).common.genre.length
-                  ? (metadata as any).common.genre
-                  : info.genre
-                    ? [info.genre]
-                    : (metadata as any)?.common?.genre
-            }
-          }
+          songInfoMeta = mergeWavInfoMetadata(metadata, info)
         }
       } catch {}
     }

@@ -7,6 +7,7 @@ import ColumnHeaderContextMenu from '@renderer/pages/modules/songsArea/ColumnHea
 import SongListHeader from '@renderer/pages/modules/songsArea/SongListHeader.vue'
 import SongListRows from '@renderer/pages/modules/songsArea/SongListRows.vue'
 import type { MixtapeTrack } from '@renderer/composables/mixtape/types'
+import type { ISongInfo, ISongsAreaColumn } from 'src/types/globals'
 
 type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
 
@@ -15,8 +16,19 @@ const emit = defineEmits<{
 }>()
 
 const autoGainSongListScrollRef = ref<OverlayScrollbarsComponentRef>(null)
+type BeatAlignGridPayload = {
+  barBeatOffset: number
+  firstBeatMs: number
+  bpm: number
+}
+
+type OutputDialogPayload = {
+  outputPath: string
+  outputFormat: 'wav' | 'mp3'
+  outputFilename: string
+}
 const props = defineProps<{
-  t: (key: string, payload?: Record<string, any>) => string
+  t: (key: string, payload?: Record<string, unknown>) => string
   transportPreloading: boolean
   transportPreloadDone: number
   transportPreloadTotal: number
@@ -38,10 +50,10 @@ const props = defineProps<{
   outputProgressText: string
   outputProgressPercent: number
   autoGainReferenceFeedback: string
-  autoGainDialogColumns: any[]
-  autoGainSongColumns: any[]
+  autoGainDialogColumns: ISongsAreaColumn[]
+  autoGainSongColumns: ISongsAreaColumn[]
   autoGainSongTotalWidth: number
-  autoGainDialogSongs: any[]
+  autoGainDialogSongs: ISongInfo[]
   autoGainSelectedRowKeys: string[]
   autoGainColumnMenuVisible: boolean
   autoGainColumnMenuEvent: MouseEvent | null
@@ -49,12 +61,12 @@ const props = defineProps<{
   ascendingOrder: string
   descendingOrder: string
   mixtapePlaylistId: string
-  handleAutoGainColumnsUpdate: (columns: any[]) => void
-  handleAutoGainColumnClick: (...args: any[]) => void
-  handleAutoGainHeaderContextMenu: (...args: any[]) => void
-  handleAutoGainToggleColumnVisibility: (...args: any[]) => void
-  handleAutoGainSongClick: (...args: any[]) => void
-  handleAutoGainSongDragStart: (...args: any[]) => void
+  handleAutoGainColumnsUpdate: (columns: ISongsAreaColumn[]) => void
+  handleAutoGainColumnClick: (...args: unknown[]) => void
+  handleAutoGainHeaderContextMenu: (...args: unknown[]) => void
+  handleAutoGainToggleColumnVisibility: (...args: unknown[]) => void
+  handleAutoGainSongClick: (...args: unknown[]) => void
+  handleAutoGainSongDragStart: (...args: unknown[]) => void
   handleAutoGainSelectLoudestReferenceClick: () => void
   handleAutoGainSelectQuietestReferenceClick: () => void
   handleAutoGainDialogCancelClick: () => void
@@ -64,7 +76,7 @@ const props = defineProps<{
   outputPath: string
   outputFormat: 'wav' | 'mp3'
   outputFilename: string
-  handleOutputDialogConfirm: (payload: any) => void
+  handleOutputDialogConfirm: (payload: OutputDialogPayload) => void
   handleOutputDialogCancel: () => void
   trackContextMenuVisible: boolean
   trackContextMenuStyle: Record<string, string>
@@ -75,7 +87,7 @@ const props = defineProps<{
   beatAlignDialogVisible: boolean
   beatAlignTrack: MixtapeTrack | null
   resolveTrackTitle: (track: MixtapeTrack) => string
-  handleBeatAlignGridDefinitionSave: (payload: any) => void
+  handleBeatAlignGridDefinitionSave: (payload: BeatAlignGridPayload) => void
   handleBeatAlignDialogCancel: () => void
 }>()
 

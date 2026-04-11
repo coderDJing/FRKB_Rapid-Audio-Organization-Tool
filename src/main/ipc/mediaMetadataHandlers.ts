@@ -28,6 +28,13 @@ import {
   IMetadataAutoFillRequest
 } from '../../types/globals'
 
+type MetadataUpdateError = {
+  message?: unknown
+  stderr?: unknown
+  exitCode?: unknown
+  code?: unknown
+}
+
 export function registerMediaMetadataHandlers() {
   ipcMain.handle('getSongCover', async (_e, filePath: string) => {
     return await svcGetSongCover(filePath)
@@ -60,18 +67,19 @@ export function registerMediaMetadataHandlers() {
         detail: result.detail,
         renamedFrom: result.renamedFrom
       }
-    } catch (error: any) {
+    } catch (error) {
+      const detail = error && typeof error === 'object' ? (error as MetadataUpdateError) : null
       log.error('更新音频元数据失败', {
         filePath: payload?.filePath,
-        error: error?.message || error,
-        stderr: error?.stderr,
-        exitCode: error?.exitCode
+        error: detail?.message || error,
+        stderr: detail?.stderr,
+        exitCode: detail?.exitCode
       })
       return {
         success: false,
-        message: error?.message || 'metadata-update-failed',
-        errorCode: error?.code || error?.message || 'metadata-update-failed',
-        errorDetail: error?.stderr || ''
+        message: detail?.message || 'metadata-update-failed',
+        errorCode: detail?.code || detail?.message || 'metadata-update-failed',
+        errorDetail: detail?.stderr || ''
       }
     }
   })

@@ -46,6 +46,7 @@ import type {
   MixtapeTrack,
   MixtapeWaveformStemId,
   RawWaveformData,
+  RawWaveformLevel,
   StemWaveformData,
   TimelineLayoutSnapshot,
   TimelineTrackLayout,
@@ -60,13 +61,51 @@ type TrackWaveformSource = {
   stemId: MixtapeWaveformStemId
 }
 
-export const createTimelineHelpersModule = (ctx: any) => {
+type ValueRef<T> = {
+  value: T
+}
+
+type WaveformCacheEntry = {
+  source: CanvasImageSource
+  used: number
+}
+
+type TimelineHelpersContext = {
+  zoom: ValueRef<number>
+  renderZoom: ValueRef<number>
+  tracks: ValueRef<MixtapeTrack[]>
+  mixtapeMixMode: ValueRef<MixtapeMixMode>
+  mixtapeStemMode?: ValueRef<unknown>
+  t: (key: string) => string
+  libraryUtils: {
+    findDirPathByUuid: (uuid: string) => string
+  }
+  waveformDataMap: Map<string, StemWaveformData | MixxxWaveformData | null>
+  rawWaveformDataMap: Map<string, RawWaveformData | null>
+  waveformInflight: Set<string>
+  rawWaveformInflight: Set<string>
+  waveformMinMaxCache: Map<
+    string,
+    { source: StemWaveformData | MixxxWaveformData; samples: MinMaxSample[] }
+  >
+  rawWaveformPyramidMap: Map<string, RawWaveformLevel[]>
+  timelineLayoutCache: Map<number, TimelineLayoutSnapshot>
+  timelineLayoutVersion: ValueRef<number>
+  waveformVersion: ValueRef<number>
+  overviewWidth: ValueRef<number>
+  timelineVisualScale: ValueRef<number>
+  waveformTileCache: Map<string, WaveformCacheEntry>
+  waveformTileCacheIndex: Map<string, Set<string>>
+  waveformTileCacheTickRef: ValueRef<number>
+  waveformTileCacheLimitRef: ValueRef<number>
+}
+
+export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
   const {
     zoom,
     renderZoom,
     tracks,
     mixtapeMixMode,
-    mixtapeStemMode,
     t,
     libraryUtils,
     waveformDataMap,
@@ -804,7 +843,9 @@ export const createTimelineHelpersModule = (ctx: any) => {
     return null
   }
 
-  const decodeRawWaveformData = (payload: any): RawWaveformData | null => {
+  const decodeRawWaveformData = (
+    payload: Record<string, unknown> | null | undefined
+  ): RawWaveformData | null => {
     if (!payload) return null
     const minLeft = decodeRawFloatArray(payload.minLeft ?? payload.min)
     const maxLeft = decodeRawFloatArray(payload.maxLeft ?? payload.max)

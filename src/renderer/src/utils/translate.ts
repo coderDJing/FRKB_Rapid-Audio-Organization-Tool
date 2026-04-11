@@ -16,19 +16,19 @@ export function toLibraryDisplayName(libraryName: string): string {
 
 // 兼容旧调用：导出同名 t()，内部使用 vue-i18n
 export function t(text: string, index?: number): string
-export function t(text: string, values?: Record<string, any>): string
-export function t(text: string, valuesOrIndex?: number | Record<string, any>): string {
+export function t(text: string, values?: Record<string, unknown>): string
+export function t(text: string, valuesOrIndex?: number | Record<string, unknown>): string {
   try {
     // 若传入的不是命名空间 key（不包含'.'），直接返回原文，避免触发缺失 key 警告
     const looksLikeKey = (val: string) => val.includes('.')
     if (!looksLikeKey(text)) return text
 
     // 访问 locale 以建立对语言的响应式依赖，切换语言时触发重渲染
-    const localeRef: any = (i18n.global as any).locale
+    const localeRef = i18n.global.locale
 
     typeof localeRef === 'object' ? localeRef.value : localeRef
 
-    const i18nT = i18n.global.t as any
+    const i18nT = i18n.global.t
     const translated =
       valuesOrIndex && typeof valuesOrIndex === 'object' ? i18nT(text, valuesOrIndex) : i18nT(text)
 

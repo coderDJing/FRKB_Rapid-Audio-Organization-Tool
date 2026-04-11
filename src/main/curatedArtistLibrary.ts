@@ -1,7 +1,8 @@
 import store from './store'
-import { getLibraryDb, initLibraryDb, getMetaValue, setMetaValue } from './libraryDb'
+import { getLibraryDb, initLibraryDb, getMetaValue, isSqliteRow, setMetaValue } from './libraryDb'
 import mainWindow from './window/mainWindow'
 import { scanSongList } from './services/scanSongs'
+import type { SqliteDatabase } from './libraryDb'
 
 const META_KEY = 'curated_artist_library_v1'
 
@@ -38,18 +39,13 @@ function sanitizeArtistCount(value: unknown, fallback = 1): number {
 function normalizeFavoriteEntries(values: unknown[]): CuratedArtistFavoriteEntry[] {
   const map = new Map<string, CuratedArtistFavoriteEntry>()
   for (const value of values) {
+    const record = isSqliteRow(value) ? value : null
     const rawName =
-      typeof value === 'string'
-        ? value
-        : value && typeof value === 'object' && typeof (value as any).name === 'string'
-          ? (value as any).name
-          : ''
+      typeof value === 'string' ? value : typeof record?.name === 'string' ? record.name : ''
     const name = sanitizeArtistName(rawName)
     const normalized = normalizeArtistName(name)
     if (!normalized) continue
-    const nextCount = sanitizeArtistCount(
-      value && typeof value === 'object' ? (value as any).count : undefined
-    )
+    const nextCount = sanitizeArtistCount(record?.count)
     const existing = map.get(normalized)
     if (existing) {
       existing.count += nextCount
@@ -107,13 +103,13 @@ function parseStoredArtists(raw: string | null | undefined): CuratedArtistFavori
   return countArtistOccurrences(String(raw).split('\n'))
 }
 
-function getDbForCurrentLibrary(): any | null {
+function getDbForCurrentLibrary(): SqliteDatabase | null {
   const root = store.databaseDir
   if (!root) return getLibraryDb()
   return initLibraryDb(root)
 }
 
-function readCurrentArtists(db?: any | null): CuratedArtistFavoriteEntry[] {
+function readCurrentArtists(db?: SqliteDatabase | null): CuratedArtistFavoriteEntry[] {
   const database = db || getDbForCurrentLibrary()
   if (!database) return []
   try {
@@ -123,7 +119,10 @@ function readCurrentArtists(db?: any | null): CuratedArtistFavoriteEntry[] {
   }
 }
 
-function writeCurrentArtists(artists: CuratedArtistFavoriteEntry[], db?: any | null): void {
+function writeCurrentArtists(
+  artists: CuratedArtistFavoriteEntry[],
+  db?: SqliteDatabase | null
+): void {
   const database = db || getDbForCurrentLibrary()
   if (!database) return
   setMetaValue(database, META_KEY, JSON.stringify(normalizeFavoriteEntries(artists)))

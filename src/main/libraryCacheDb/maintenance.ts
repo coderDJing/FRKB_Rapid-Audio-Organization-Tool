@@ -3,6 +3,7 @@ import fs = require('fs-extra')
 import { getLibraryDb, getMetaValue, setMetaValue } from '../libraryDb'
 import { log } from '../log'
 import type { LegacyCacheRoots } from './types'
+import type { SqliteDatabase } from '../libraryDb'
 import {
   toNumber,
   extractLibraryRelative,
@@ -410,7 +411,7 @@ export async function pruneCachesByRoots(keepRoots: Iterable<string> | null | un
       let removed = 0
       const run = db.transaction((items: string[]) => {
         for (const item of items) {
-          const info = del.run(item) as any
+          const info = del.run(item)
           removed += Number(info?.changes || 0)
         }
       })
@@ -448,7 +449,7 @@ export async function pruneCachesByRoots(keepRoots: Iterable<string> | null | un
   }
 }
 
-function collectMigratableCacheRoots(db: any, baseRoot: string): Set<string> {
+function collectMigratableCacheRoots(db: SqliteDatabase, baseRoot: string): Set<string> {
   const targets = new Set<string>()
   if (!db || !baseRoot) return targets
   const tables: Array<

@@ -6,7 +6,7 @@ import child_process = require('child_process')
 import store from '../store'
 import FingerprintStore from '../fingerprintStore'
 import { resolveBundledFfmpegPath, ensureExecutableOnMac } from '../ffmpeg'
-import { runWithConcurrency } from '../utils'
+import { getSongsAnalyseResult, runWithConcurrency } from '../utils'
 import { log } from '../log'
 import {
   SUPPORTED_AUDIO_FORMATS,
@@ -15,6 +15,7 @@ import {
 } from '../../shared/audioFormats'
 import { writeWavRiffInfoWindows } from './wavRiffInfo'
 import { moveFileToRecycleBin } from '../recycleBinService'
+import type { IAudioMetadata } from 'music-metadata'
 
 type ConvertJobOptions = {
   src: string
@@ -55,6 +56,36 @@ type StartPayload = {
 }
 
 const jobIdToChildren = new Map<string, child_process.ChildProcess>()
+
+const getStringComment = (value: unknown): string | undefined => {
+  if (typeof value === 'string' && value.trim()) return value
+  if (!Array.isArray(value)) return undefined
+  for (const item of value) {
+    if (typeof item === 'string' && item.trim()) return item
+    if (item && typeof item === 'object' && 'text' in item && typeof item.text === 'string') {
+      const text = item.text.trim()
+      if (text) return text
+    }
+  }
+  return undefined
+}
+
+const buildWavInfoTags = (meta: IAudioMetadata | null) => {
+  const common = meta?.common
+  return {
+    title: typeof common?.title === 'string' ? common.title : undefined,
+    artist: typeof common?.artist === 'string' ? common.artist : undefined,
+    album: typeof common?.album === 'string' ? common.album : undefined,
+    genre: Array.isArray(common?.genre) ? common.genre[0] : common?.genre,
+    date:
+      typeof common?.year === 'number'
+        ? String(common.year)
+        : typeof common?.date === 'string'
+          ? common.date
+          : undefined,
+    comment: getStringComment(common?.comment)
+  }
+}
 
 function buildNonConflictTarget(src: string, fmt: string, outputDir?: string): string {
   const dir = outputDir || path.dirname(src)
@@ -405,26 +436,7 @@ export async function startAudioConversion(
             ) {
               const mm = await import('music-metadata')
               const meta = await mm.parseFile(src).catch(() => null)
-              const common = (meta as any)?.common || {}
-              await writeWavRiffInfoWindows(dest, {
-                title: typeof common.title === 'string' ? common.title : undefined,
-                artist: typeof common.artist === 'string' ? common.artist : undefined,
-                album: typeof common.album === 'string' ? common.album : undefined,
-                genre: Array.isArray(common.genre) ? common.genre[0] : common.genre,
-                date:
-                  typeof common.year === 'number'
-                    ? String(common.year)
-                    : typeof common.date === 'string'
-                      ? common.date
-                      : undefined,
-                comment: Array.isArray(common.comment)
-                  ? (common.comment.find((c: any) => typeof c === 'string' && c.trim() !== '') as
-                      | string
-                      | undefined)
-                  : typeof common.comment === 'string'
-                    ? common.comment
-                    : undefined
-              })
+              await writeWavRiffInfoWindows(dest, buildWavInfoTags(meta))
             }
           } catch {}
         } else {
@@ -470,26 +482,7 @@ export async function startAudioConversion(
             ) {
               const mm = await import('music-metadata')
               const meta = await mm.parseFile(src).catch(() => null)
-              const common = (meta as any)?.common || {}
-              await writeWavRiffInfoWindows(dest, {
-                title: typeof common.title === 'string' ? common.title : undefined,
-                artist: typeof common.artist === 'string' ? common.artist : undefined,
-                album: typeof common.album === 'string' ? common.album : undefined,
-                genre: Array.isArray(common.genre) ? common.genre[0] : common.genre,
-                date:
-                  typeof common.year === 'number'
-                    ? String(common.year)
-                    : typeof common.date === 'string'
-                      ? common.date
-                      : undefined,
-                comment: Array.isArray(common.comment)
-                  ? (common.comment.find((c: any) => typeof c === 'string' && c.trim() !== '') as
-                      | string
-                      | undefined)
-                  : typeof common.comment === 'string'
-                    ? common.comment
-                    : undefined
-              })
+              await writeWavRiffInfoWindows(dest, buildWavInfoTags(meta))
             }
           } catch {}
         }
@@ -536,26 +529,7 @@ export async function startAudioConversion(
           ) {
             const mm = await import('music-metadata')
             const meta = await mm.parseFile(src).catch(() => null)
-            const common = (meta as any)?.common || {}
-            await writeWavRiffInfoWindows(dest, {
-              title: typeof common.title === 'string' ? common.title : undefined,
-              artist: typeof common.artist === 'string' ? common.artist : undefined,
-              album: typeof common.album === 'string' ? common.album : undefined,
-              genre: Array.isArray(common.genre) ? common.genre[0] : common.genre,
-              date:
-                typeof common.year === 'number'
-                  ? String(common.year)
-                  : typeof common.date === 'string'
-                    ? common.date
-                    : undefined,
-              comment: Array.isArray(common.comment)
-                ? (common.comment.find((c: any) => typeof c === 'string' && c.trim() !== '') as
-                    | string
-                    | undefined)
-                : typeof common.comment === 'string'
-                  ? common.comment
-                  : undefined
-            })
+            await writeWavRiffInfoWindows(dest, buildWavInfoTags(meta))
           }
         } catch {}
         renamed += 1
@@ -564,16 +538,15 @@ export async function startAudioConversion(
       // 指纹入库（可选）
       if (options.addFingerprint) {
         try {
-          const { getSongsAnalyseResult } = require('../utils')
           const res = await getSongsAnalyseResult([dest], () => {})
-          const list = (res?.songsAnalyseResult || []).map((x: any) => x.sha256_Hash)
+          const list = (res?.songsAnalyseResult || []).map((x) => x.sha256_Hash)
           if (list.length > 0) {
             const beforeLen = store.songFingerprintList.length
             store.songFingerprintList = Array.from(new Set([...store.songFingerprintList, ...list]))
             if (store.songFingerprintList.length !== beforeLen) {
               await FingerprintStore.saveList(
                 store.songFingerprintList,
-                ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
+                store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
               )
               fingerprintAddedCount += store.songFingerprintList.length - beforeLen
             }

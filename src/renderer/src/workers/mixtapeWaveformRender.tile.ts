@@ -19,7 +19,7 @@ type CreateTileRendererOptions = {
   rawWaveformMinZoom: number
   waveformHeightScale: number
   summaryZoom: number
-  postToMain: (message: any, transfer?: Transferable[]) => void
+  postToMain: (message: unknown, transfer?: Transferable[]) => void
 }
 
 export const createTileRenderer = (options: CreateTileRendererOptions) => {

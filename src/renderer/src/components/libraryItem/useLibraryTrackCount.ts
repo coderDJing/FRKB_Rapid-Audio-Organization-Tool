@@ -1,11 +1,17 @@
 import { onMounted, ref, watch, type Ref } from 'vue'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '../../utils/mitt'
+import type { useRuntimeStore } from '@renderer/stores/runtime'
+import type { IDir } from '../../../../types/globals'
 
 interface UseLibraryTrackCountOptions {
-  runtime: any
-  dirDataRef: Ref<any | null>
+  runtime: ReturnType<typeof useRuntimeStore>
+  dirDataRef: Ref<IDir | null>
   props: { uuid: string }
+}
+
+type PlaylistContentChangedPayload = {
+  uuids?: string[]
 }
 
 export function useLibraryTrackCount({ runtime, dirDataRef, props }: UseLibraryTrackCountOptions) {
@@ -35,13 +41,21 @@ export function useLibraryTrackCount({ runtime, dirDataRef, props }: UseLibraryT
     ensureTrackCount()
   })
 
-  let debounceTimer: any = null
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null
   const pendingSet = new Set<string>()
-  emitter.on('playlistContentChanged', (payload: any) => {
+  emitter.on('playlistContentChanged', (payload: unknown) => {
     try {
-      const uuids: string[] = (payload?.uuids || []).filter(Boolean)
+      const resolvedPayload =
+        payload && typeof payload === 'object' && !Array.isArray(payload)
+          ? (payload as PlaylistContentChangedPayload)
+          : {}
+      const uuids = Array.isArray(resolvedPayload.uuids)
+        ? resolvedPayload.uuids.filter((item): item is string => typeof item === 'string' && !!item)
+        : []
       for (const u of uuids) pendingSet.add(u)
-      clearTimeout(debounceTimer)
+      if (debounceTimer) {
+        clearTimeout(debounceTimer)
+      }
       debounceTimer = setTimeout(() => {
         if (pendingSet.has(props.uuid)) {
           if (runtime.songsArea.songListUUID === props.uuid) {

@@ -419,7 +419,7 @@ onUnmounted(() => {
     // 清理元数据可选
     // @ts-ignore
     try {
-      navigator.mediaSession.metadata = null as any
+      navigator.mediaSession.metadata = null
     } catch (_) {}
   }
   revokeArtworkUrl()

@@ -27,6 +27,18 @@ type MoveSongsToDirOptions = {
   curatedArtistNames?: Array<string | null | undefined>
 }
 
+type ErrorSample = {
+  code?: unknown
+  message: string
+  index: number
+}
+
+const toErrorSample = (result: unknown, index: number): ErrorSample | null => {
+  if (!(result instanceof Error)) return null
+  const error = result as Error & { code?: unknown }
+  return { code: error.code, message: error.message, index }
+}
+
 async function findUniqueFolder(inputFolderPath: string) {
   const parts = path.parse(inputFolderPath)
   const dirPath = parts.dir
@@ -66,7 +78,7 @@ export function registerExportHandlers() {
       const folderName = dirPath.split('/')[dirPath.split('/').length - 1]
       const targetPath = await findUniqueFolder(path.join(folderPathVal, folderName))
       await fs.ensureDir(targetPath)
-      const tasks: Array<() => Promise<any>> = []
+      const tasks: Array<() => Promise<string>> = []
       for (const item of songFileUrls) {
         const matches = item.match(/[^\\]+$/)
         if (Array.isArray(matches) && matches.length > 0) {
@@ -109,9 +121,7 @@ export function registerExportHandlers() {
           hasENOSPC,
           skipped,
           errorSamples: results
-            .map((r, i) =>
-              r instanceof Error ? { code: (r as any).code, message: r.message, index: i } : null
-            )
+            .map((r, i) => toErrorSample(r, i))
             .filter(Boolean)
             .slice(0, 3)
         })
@@ -131,7 +141,7 @@ export function registerExportHandlers() {
   )
 
   ipcMain.handle('exportSongsToDir', async (_e, folderPathVal, deleteSongsAfterExport, songs) => {
-    const tasks: Array<() => Promise<any>> = []
+    const tasks: Array<() => Promise<string>> = []
     for (const item of songs) {
       const matches = item.filePath.match(/[^\\]+$/)
       if (Array.isArray(matches) && matches.length > 0) {
@@ -176,9 +186,7 @@ export function registerExportHandlers() {
         hasENOSPC,
         skipped,
         errorSamples: results
-          .map((r, i) =>
-            r instanceof Error ? { code: (r as any).code, message: r.message, index: i } : null
-          )
+          .map((r, i) => toErrorSample(r, i))
           .filter(Boolean)
           .slice(0, 3)
       })
@@ -204,7 +212,7 @@ export function registerExportHandlers() {
       path.join('library', getCoreFsDirName('CuratedLibrary'))
     )
     const isCuratedTarget = targetDir === curatedRoot || targetDir.startsWith(`${curatedRoot}/`)
-    const tasks: Array<() => Promise<any>> = []
+    const tasks: Array<() => Promise<string>> = []
     for (const src of srcs) {
       const matches = src.match(/[^\\]+$/)
       if (Array.isArray(matches) && matches.length > 0) {
@@ -273,9 +281,7 @@ export function registerExportHandlers() {
         hasENOSPC,
         skipped,
         errorSamples: results
-          .map((r, i) =>
-            r instanceof Error ? { code: (r as any).code, message: r.message, index: i } : null
-          )
+          .map((r, i) => toErrorSample(r, i))
           .filter(Boolean)
           .slice(0, 3)
       })

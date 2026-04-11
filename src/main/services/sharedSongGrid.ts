@@ -6,6 +6,12 @@ import { listMixtapeItemsByFilePath } from '../mixtapeDb'
 import { findSongListRoot } from './cacheMaintenance'
 import { applyLiteDefaults, buildLiteSongInfo } from './songInfoLite'
 
+type SharedGridInfo = Partial<ISongInfo> & {
+  bpm?: unknown
+  firstBeatMs?: unknown
+  barBeatOffset?: unknown
+}
+
 export type SharedSongGridDefinition = {
   filePath: string
   bpm?: number
@@ -46,11 +52,13 @@ const hasSharedGridValue = (
   !!value &&
   (value.bpm !== undefined || value.firstBeatMs !== undefined || value.barBeatOffset !== undefined)
 
-const parseInfoJson = (value: unknown): Record<string, any> | null => {
+const parseInfoJson = (value: unknown): SharedGridInfo | null => {
   if (typeof value !== 'string' || !value.trim()) return null
   try {
     const parsed = JSON.parse(value)
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as SharedGridInfo)
+      : null
   } catch {
     return null
   }
@@ -58,12 +66,12 @@ const parseInfoJson = (value: unknown): Record<string, any> | null => {
 
 const extractSharedGridFromInfo = (
   filePath: string,
-  info: Partial<ISongInfo> | Record<string, any> | null | undefined
+  info: SharedGridInfo | null | undefined
 ): SharedSongGridDefinition | null => {
   if (!info) return null
-  const bpm = normalizeBpm((info as any).bpm)
-  const firstBeatMs = normalizeFirstBeatMs((info as any).firstBeatMs)
-  const barBeatOffset = normalizeBarBeatOffset((info as any).barBeatOffset)
+  const bpm = normalizeBpm(info.bpm)
+  const firstBeatMs = normalizeFirstBeatMs(info.firstBeatMs)
+  const barBeatOffset = normalizeBarBeatOffset(info.barBeatOffset)
   if (bpm === undefined && firstBeatMs === undefined && barBeatOffset === undefined) {
     return null
   }

@@ -3,6 +3,7 @@ import path = require('path')
 import store from './store'
 import { getLibraryDb, getMetaValue, setMetaValue } from './libraryDb'
 import { log } from './log'
+import type { SqliteDatabase } from './libraryDb'
 
 // 旧版指纹文件仅用于迁移读取：
 // - 数据文件：songFingerprintV2_YYYYMMDDHHMMSSSSS_UUID.json
@@ -28,10 +29,14 @@ function getMigrationKey(mode: FingerprintMode): string {
 }
 
 // 简单串行化队列，确保同一时间仅一次写入
-let writeQueue: Promise<any> = Promise.resolve()
+let writeQueue: Promise<unknown> = Promise.resolve()
 function enqueue<T>(task: () => Promise<T>): Promise<T> {
-  writeQueue = writeQueue.then(task, task)
-  return writeQueue
+  const nextTask = writeQueue.then(task, task)
+  writeQueue = nextTask.then(
+    () => undefined,
+    () => undefined
+  )
+  return nextTask
 }
 
 function getDir(mode?: FingerprintMode): string {
@@ -67,7 +72,7 @@ async function selectLatestFile(dir: string, candidates: string[]): Promise<stri
   return withStats[0]?.name || null
 }
 
-function toStringArray(value: any): string[] {
+function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return value.filter((item) => typeof item === 'string').map((item) => String(item))
 }
@@ -98,12 +103,14 @@ async function loadLegacyRootList(baseDir: string): Promise<string[]> {
   return normalizeList(collected)
 }
 
-function readListFromDb(db: any, mode: FingerprintMode): string[] {
-  const rows = db.prepare('SELECT hash FROM fingerprints WHERE mode = ?').all(mode)
-  return rows.map((row: any) => String(row.hash))
+function readListFromDb(db: SqliteDatabase, mode: FingerprintMode): string[] {
+  const rows = db
+    .prepare<{ hash?: string }>('SELECT hash FROM fingerprints WHERE mode = ?')
+    .all(mode)
+  return rows.map((row) => String(row.hash || ''))
 }
 
-function writeListToDb(db: any, mode: FingerprintMode, list: string[]): void {
+function writeListToDb(db: SqliteDatabase, mode: FingerprintMode, list: string[]): void {
   const insert = db.prepare('INSERT OR IGNORE INTO fingerprints (mode, hash) VALUES (?, ?)')
   const wipe = db.prepare('DELETE FROM fingerprints WHERE mode = ?')
   const run = db.transaction((items: string[]) => {
@@ -146,7 +153,7 @@ async function loadListFromFiles(mode?: FingerprintMode): Promise<string[]> {
 }
 
 async function migrateLegacyIfNeeded(
-  db: any,
+  db: SqliteDatabase,
   mode: FingerprintMode,
   fallbackList?: string[]
 ): Promise<void> {
@@ -237,9 +244,9 @@ export async function exportSnapshot(toFilePath: string, list: string[]): Promis
 }
 
 export async function importFromJsonFile(filePath: string): Promise<string[]> {
-  const json: any = await fs.readJSON(filePath)
+  const json: unknown = await fs.readJSON(filePath)
   if (Array.isArray(json)) {
-    const merged = normalizeList([...(store.songFingerprintList || []), ...json])
+    const merged = normalizeList([...(store.songFingerprintList || []), ...toStringArray(json)])
     await saveList(merged)
     return merged
   }

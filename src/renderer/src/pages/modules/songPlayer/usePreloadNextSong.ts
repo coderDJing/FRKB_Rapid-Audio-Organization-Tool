@@ -76,7 +76,7 @@ export function usePreloadNextSong(params: { runtime: ReturnType<typeof useRunti
   const { runtime } = params
 
   const currentPreloadRequestId = ref(0)
-  let preloadTimerId: any = null
+  let preloadTimerId: ReturnType<typeof setTimeout> | null = null
 
   const preloadQueue: PreloadTask[] = []
   const preloadCache = new Map<string, PreloadCacheEntry>()

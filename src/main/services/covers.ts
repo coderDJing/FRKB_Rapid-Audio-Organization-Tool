@@ -3,6 +3,21 @@ import fs = require('fs-extra')
 import { mapRendererPathToFsPath, operateHiddenFile } from '../utils'
 import store from '../store'
 import * as LibraryCacheDb from '../libraryCacheDb'
+import type { IPicture } from 'music-metadata'
+
+const toNodeBuffer = (value: unknown): Buffer | null => {
+  if (!value) return null
+  if (Buffer.isBuffer(value)) return value
+  if (value instanceof Uint8Array) return Buffer.from(value)
+  if (ArrayBuffer.isView(value)) {
+    return Buffer.from(value.buffer, value.byteOffset, value.byteLength)
+  }
+  if (Array.isArray(value)) return Buffer.from(value)
+  if (value && typeof value === 'object' && 'data' in value && Array.isArray(value.data)) {
+    return Buffer.from(value.data)
+  }
+  return null
+}
 
 export async function getSongCover(
   filePath: string
@@ -20,7 +35,9 @@ export async function getSongCover(
       cover = mm.selectCover(arr.common.picture)
     }
     if (!cover) return null
-    return { format: cover.format, data: Buffer.from(cover.data as any) }
+    const data = toNodeBuffer(cover.data)
+    if (!data) return null
+    return { format: cover.format, data }
   } catch {
     return null
   }
@@ -113,26 +130,7 @@ export async function getSongCoverThumb(
       const cover = mm.selectCover(metadata.common.picture)
       if (!cover) return null
       format = cover.format || 'image/jpeg'
-      const raw: any = cover.data as any
-      if (Buffer.isBuffer(raw)) data = raw
-      else if (raw instanceof Uint8Array) data = Buffer.from(raw)
-      else if (Array.isArray(raw)) data = Buffer.from(raw)
-      else if (raw && raw.buffer && typeof raw.byteLength === 'number') {
-        try {
-          const view = new Uint8Array(
-            raw.buffer,
-            (raw as any).byteOffset || 0,
-            (raw as any).byteLength
-          )
-          data = Buffer.from(view)
-        } catch {
-          data = null
-        }
-      } else if (raw && (raw as any).data && Array.isArray((raw as any).data)) {
-        data = Buffer.from((raw as any).data)
-      } else {
-        data = null
-      }
+      data = toNodeBuffer(cover.data)
     } catch {
       return null
     }

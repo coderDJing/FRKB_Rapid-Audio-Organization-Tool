@@ -10,8 +10,56 @@ import {
   WHEEL_ZOOM_MAX_STEP,
   WHEEL_ZOOM_RATIO_STEP
 } from '@renderer/composables/mixtape/constants'
+import type { MixtapeTrack, TimelineLayoutSnapshot } from '@renderer/composables/mixtape/types'
 
-export const createTimelineInteractionsModule = (ctx: any) => {
+type ValueRef<T> = {
+  value: T
+}
+
+type TimelineScrollHost = {
+  osInstance: () => { elements(): { viewport?: HTMLElement } } | null
+}
+
+type TimelineInteractionsContext = {
+  zoom: ValueRef<number>
+  renderZoom: ValueRef<number>
+  zoomTouched: ValueRef<boolean>
+  normalizedZoom: ValueRef<number>
+  normalizedRenderZoom: ValueRef<number>
+  resolveRenderZoomLevel: (value: number) => number
+  tracks: ValueRef<MixtapeTrack[]>
+  timelineScrollRef: ValueRef<TimelineScrollHost | null>
+  timelineViewportWidth: ValueRef<number>
+  timelineScrollWidth: ValueRef<number>
+  timelineContentWidth: ValueRef<number>
+  timelineScrollLeft: ValueRef<number>
+  timelineScrollTop: ValueRef<number>
+  timelineViewportHeight: ValueRef<number>
+  timelineLayout: ValueRef<TimelineLayoutSnapshot>
+  timelineWidth: ValueRef<number>
+  isTimelinePanning: ValueRef<boolean>
+  isTimelineZooming: ValueRef<boolean>
+  envelopePreviewRef: ValueRef<HTMLElement | null>
+  isOverviewDragging: ValueRef<boolean>
+  overviewRef: ValueRef<HTMLElement | null>
+  overviewWidth: ValueRef<number>
+  overviewViewportLeft: ValueRef<number>
+  overviewViewportWidth: ValueRef<number>
+  alignZoomToRenderLevel: (value: number) => number
+  clampZoomValue: (value: number) => number
+  resolveTrackDurationSeconds: (track: MixtapeTrack) => number
+  resolveRenderPxPerSec: (value: number) => number
+  computeTimelineDuration: () => number
+  renderPxPerSec: ValueRef<number>
+  clearTimelineLayoutCache: () => void
+  scheduleTimelineDraw: () => void
+  scheduleWaveformLoad: () => void
+  scheduleFullPreRender: () => void
+  scheduleWorkerPreRender: () => void
+  markTimelineInteracting: () => void
+}
+
+export const createTimelineInteractionsModule = (ctx: TimelineInteractionsContext) => {
   const {
     zoom,
     renderZoom,

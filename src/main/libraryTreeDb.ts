@@ -2,7 +2,7 @@ import fs = require('fs-extra')
 import path = require('path')
 import { v4 as uuidV4 } from 'uuid'
 import store from './store'
-import { getLibraryDb, getMetaValue, setMetaValue } from './libraryDb'
+import { getLibraryDb, getMetaValue, isSqliteRow, setMetaValue } from './libraryDb'
 import { log } from './log'
 import {
   normalizeOrder,
@@ -19,6 +19,7 @@ import {
   ensureRootNode
 } from './libraryTreeDbHelpers'
 import type { LibraryNodeType, LibraryNodeRow, LegacyLibraryNode } from './libraryTreeDbHelpers'
+import type { SqliteDatabase } from './libraryDb'
 
 export type { LibraryNodeType, LibraryNodeRow, LegacyLibraryNode } from './libraryTreeDbHelpers'
 
@@ -26,33 +27,35 @@ const TREE_MIGRATION_DONE_KEY = 'library_tree_migration_done_v1'
 const TREE_MIGRATION_IN_PROGRESS_KEY = 'library_tree_migration_in_progress_v1'
 const TREE_ARCHIVE_DONE_KEY = 'library_tree_legacy_archive_done_v1'
 
-export function isLibraryTreeMigrationDone(db: any): boolean {
+export function isLibraryTreeMigrationDone(db: SqliteDatabase): boolean {
   return getMetaValue(db, TREE_MIGRATION_DONE_KEY) === '1'
 }
 
-export function isLibraryTreeMigrationInProgress(db: any): boolean {
+export function isLibraryTreeMigrationInProgress(db: SqliteDatabase): boolean {
   return getMetaValue(db, TREE_MIGRATION_IN_PROGRESS_KEY) === '1'
 }
 
-export function setLibraryTreeMigrationDone(db: any, done: boolean): void {
+export function setLibraryTreeMigrationDone(db: SqliteDatabase, done: boolean): void {
   setMetaValue(db, TREE_MIGRATION_DONE_KEY, done ? '1' : '0')
 }
 
-export function setLibraryTreeMigrationInProgress(db: any, inProgress: boolean): void {
+export function setLibraryTreeMigrationInProgress(db: SqliteDatabase, inProgress: boolean): void {
   setMetaValue(db, TREE_MIGRATION_IN_PROGRESS_KEY, inProgress ? '1' : '0')
 }
 
-export function isLibraryTreeArchiveDone(db: any): boolean {
+export function isLibraryTreeArchiveDone(db: SqliteDatabase): boolean {
   return getMetaValue(db, TREE_ARCHIVE_DONE_KEY) === '1'
 }
 
-export function setLibraryTreeArchiveDone(db: any, done: boolean): void {
+export function setLibraryTreeArchiveDone(db: SqliteDatabase, done: boolean): void {
   setMetaValue(db, TREE_ARCHIVE_DONE_KEY, done ? '1' : '0')
 }
 
-export function countLibraryNodes(db: any): number {
+export function countLibraryNodes(db: SqliteDatabase): number {
   try {
-    const row = db.prepare('SELECT COUNT(1) as count FROM library_nodes').get()
+    const row = db
+      .prepare<{ count?: number | string }>('SELECT COUNT(1) as count FROM library_nodes')
+      .get()
     return row ? Number(row.count) : 0
   } catch {
     return 0
@@ -64,13 +67,13 @@ async function readLegacyLibraryNodes(dbRoot: string): Promise<LegacyLibraryNode
   const libRoot = path.join(dbRoot, 'library')
   const rootDesc = path.join(libRoot, '.description.json')
   if (!(await fs.pathExists(rootDesc))) return null
-  let rootJson: any = null
+  let rootJson: unknown = null
   try {
     rootJson = await fs.readJSON(rootDesc)
   } catch {
     rootJson = null
   }
-  if (!rootJson || !rootJson.uuid || rootJson.type !== 'root') return null
+  if (!isSqliteRow(rootJson) || !rootJson.uuid || rootJson.type !== 'root') return null
 
   const nodes: LegacyLibraryNode[] = [
     {
@@ -94,13 +97,13 @@ async function readLegacyLibraryNodes(dbRoot: string): Promise<LegacyLibraryNode
       if (!entry.isDirectory()) continue
       const childDir = path.join(dirPath, entry.name)
       const descPath = path.join(childDir, '.description.json')
-      let desc: any = null
+      let desc: unknown = null
       try {
         desc = await fs.readJSON(descPath)
       } catch {
         desc = null
       }
-      if (!desc || !desc.uuid || !isChildNodeType(desc.type)) {
+      if (!isSqliteRow(desc) || !desc.uuid || !isChildNodeType(desc.type)) {
         continue
       }
       const node: LegacyLibraryNode = {
@@ -144,7 +147,10 @@ async function hasLegacyDescriptionFiles(dbRoot: string): Promise<boolean> {
   return false
 }
 
-export async function needsLibraryTreeMigration(dbRoot: string, db?: any): Promise<boolean> {
+export async function needsLibraryTreeMigration(
+  dbRoot: string,
+  db?: SqliteDatabase
+): Promise<boolean> {
   const dbInstance = db || getDb(dbRoot)
   if (!dbInstance || !dbRoot) return false
   const rootDesc = path.join(dbRoot, 'library', '.description.json')
@@ -154,7 +160,10 @@ export async function needsLibraryTreeMigration(dbRoot: string, db?: any): Promi
   return countLibraryNodes(dbInstance) === 0
 }
 
-export async function needsLibraryTreeArchive(dbRoot: string, db?: any): Promise<boolean> {
+export async function needsLibraryTreeArchive(
+  dbRoot: string,
+  db?: SqliteDatabase
+): Promise<boolean> {
   const dbInstance = db || getDb(dbRoot)
   if (!dbInstance || !dbRoot) return false
   if (isLibraryTreeArchiveDone(dbInstance)) return false
@@ -163,7 +172,7 @@ export async function needsLibraryTreeArchive(dbRoot: string, db?: any): Promise
 
 export async function migrateLegacyLibraryTree(
   dbRoot: string,
-  db?: any
+  db?: SqliteDatabase
 ): Promise<LegacyLibraryNode[] | null> {
   const dbInstance = db || getDb(dbRoot)
   if (!dbInstance || !dbRoot) return null
@@ -190,7 +199,7 @@ export async function migrateLegacyLibraryTree(
 
 export async function archiveLegacyDescriptionFiles(
   nodes: LegacyLibraryNode[],
-  db?: any
+  db?: SqliteDatabase
 ): Promise<void> {
   if (!Array.isArray(nodes) || nodes.length === 0) return
   for (const node of nodes) {
@@ -210,7 +219,10 @@ export async function archiveLegacyDescriptionFiles(
   }
 }
 
-export async function archiveLegacyDescriptionFilesByRoot(dbRoot: string, db?: any): Promise<void> {
+export async function archiveLegacyDescriptionFilesByRoot(
+  dbRoot: string,
+  db?: SqliteDatabase
+): Promise<void> {
   const nodes = await readLegacyLibraryNodes(dbRoot)
   if (nodes && nodes.length > 0) {
     await archiveLegacyDescriptionFiles(nodes, db)

@@ -101,7 +101,7 @@ const normalizeEnvelopePreviewPolyline = (points: string) =>
   )
 
 const unwrapMaybeRef = <T>(value: MaybeRef<T>): T => {
-  if (value && typeof value === 'object' && 'value' in (value as any)) {
+  if (value && typeof value === 'object' && 'value' in value) {
     return (value as Readonly<Ref<T>>).value
   }
   return value as T

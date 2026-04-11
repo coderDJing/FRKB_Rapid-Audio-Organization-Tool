@@ -18,6 +18,13 @@ import { ensureLegacyMigration } from '../libraryMigration'
 import { persistSettingConfig } from '../settingsPersistence'
 let databaseInitWindow: BrowserWindow | null = null
 
+type BrowserWindowWithVisualEffect = BrowserWindow & {
+  setVisualEffectMaterial?: (material: string) => void
+}
+
+const getFingerprintMode = (): 'pcm' | 'file' =>
+  store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
+
 const createWindow = ({ needErrorHint = false } = {}) => {
   databaseInitWindow = new BrowserWindow({
     resizable: false,
@@ -43,7 +50,9 @@ const createWindow = ({ needErrorHint = false } = {}) => {
       databaseInitWindow.setVibrancy('under-window')
     } catch {}
     try {
-      ;(databaseInitWindow as any).setVisualEffectMaterial?.('under-window')
+      ;(databaseInitWindow as BrowserWindowWithVisualEffect).setVisualEffectMaterial?.(
+        'under-window'
+      )
     } catch {}
   }
   if (!app.isPackaged) {
@@ -108,7 +117,7 @@ const createWindow = ({ needErrorHint = false } = {}) => {
       // 持久化首次选择的指纹模式（若传入）
       try {
         if (options?.fingerprintMode === 'pcm' || options?.fingerprintMode === 'file') {
-          ;(store as any).settingConfig.fingerprintMode = options.fingerprintMode
+          store.settingConfig.fingerprintMode = options.fingerprintMode
           await persistSettingConfig()
         }
       } catch {}
@@ -133,7 +142,7 @@ const createWindow = ({ needErrorHint = false } = {}) => {
 
       // 使用 FingerprintStore：加载指纹列表
       store.databaseDir = dirPath
-      const mode = ((store as any).settingConfig?.fingerprintMode as 'pcm' | 'file') || 'pcm'
+      const mode = getFingerprintMode()
       const list = await FingerprintStore.loadList(mode)
       store.songFingerprintList = Array.isArray(list) ? list : []
       databaseInitWindow?.close()

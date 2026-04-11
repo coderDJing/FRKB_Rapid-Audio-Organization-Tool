@@ -33,12 +33,33 @@ const stemWaveformCache = new Map<string, StemWaveformData>()
 const rawCache = new Map<string, RawWaveformData>()
 const rawPyramidCache = new Map<string, RawWaveformLevel[]>()
 
-const postToMain = (message: any, transfer?: Transferable[]) => {
+type WorkerMessageToMain =
+  | { type: 'preRenderProgress'; done: number; total: number }
+  | { type: 'preRenderDone' }
+  | { type: string; [key: string]: unknown }
+
+type WorkerMessageFromMain = {
+  type?: string
+  payload?: unknown
+}
+
+type WorkerInitCanvasPayload = { canvas?: OffscreenCanvas }
+type WorkerStoreStemPayload = { filePath?: string; data?: StemWaveformData | null }
+type WorkerStoreRawPayload = { filePath?: string; data?: RawWaveformData | null }
+type WorkerClearTilePayload = { filePath?: string }
+
+type WorkerGlobal = Worker & {
+  postMessage: (message: WorkerMessageToMain, transfer?: Transferable[]) => void
+}
+
+const workerScope = self as unknown as WorkerGlobal
+
+const postToMain = (message: WorkerMessageToMain, transfer?: Transferable[]) => {
   if (transfer && transfer.length) {
-    ;(self as any).postMessage(message, transfer)
+    workerScope.postMessage(message, transfer)
     return
   }
-  ;(self as any).postMessage(message)
+  workerScope.postMessage(message)
 }
 
 const tileRenderer = createTileRenderer({
@@ -252,18 +273,18 @@ const scheduleFrameRender = () => {
   }, FRAME_RENDER_INTERVAL_MS)
 }
 
-self.onmessage = (event: MessageEvent) => {
-  const message = event.data as { type?: string; payload?: any }
+self.onmessage = (event: MessageEvent<WorkerMessageFromMain>) => {
+  const message = event.data
   if (!message || !message.type) return
   if (message.type === 'initCanvas') {
-    const { canvas } = message.payload || {}
+    const { canvas } = (message.payload || {}) as WorkerInitCanvasPayload
     if (canvas) {
       frameRenderer.initCanvas(canvas as OffscreenCanvas)
     }
     return
   }
   if (message.type === 'storeStemWaveform') {
-    const { filePath, data } = message.payload || {}
+    const { filePath, data } = (message.payload || {}) as WorkerStoreStemPayload
     if (!filePath) return
     if (data) {
       stemWaveformCache.set(filePath, data)
@@ -273,7 +294,7 @@ self.onmessage = (event: MessageEvent) => {
     return
   }
   if (message.type === 'storeRaw') {
-    const { filePath, data } = message.payload || {}
+    const { filePath, data } = (message.payload || {}) as WorkerStoreRawPayload
     if (!filePath) return
     if (data) {
       rawCache.set(filePath, data)
@@ -285,7 +306,7 @@ self.onmessage = (event: MessageEvent) => {
     return
   }
   if (message.type === 'clearTileCache') {
-    const { filePath } = message.payload || {}
+    const { filePath } = (message.payload || {}) as WorkerClearTilePayload
     if (filePath) {
       frameRenderer.clearTileCacheForFile(filePath)
     }

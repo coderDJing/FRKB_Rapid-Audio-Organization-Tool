@@ -1,10 +1,48 @@
 import { onBeforeUnmount, onMounted, watch } from 'vue'
+import type { MixtapeTrack } from '@renderer/composables/mixtape/types'
 
 type BridgeRef<T> = {
   value: T
 }
 
-export const setupTimelineVisualScaleLifecycle = (ctx: any) => {
+type TimelineWaveformUpdatedPayload = {
+  filePath?: string
+}
+
+type TimelineVisualScaleLifecycleCtx = {
+  tracks: BridgeRef<MixtapeTrack[]>
+  timelineRootRef: BridgeRef<HTMLElement | null>
+  transportError: BridgeRef<string>
+  timelineVisualScale: BridgeRef<number>
+  layoutScaleDeps: Array<BridgeRef<unknown>>
+  resolveTimelineScalableBaseHeight: () => number
+  timelineVisualScaleMin: number
+  timelineVisualScaleMax: number
+  scheduleTimelineDraw: () => void
+  scheduleFullPreRender: () => void
+  scheduleWorkerPreRender: () => void
+  cleanupTransportAndDrag: () => void
+  timelineObserverRef: BridgeRef<ResizeObserver | null>
+  timelineViewportObserverRef: BridgeRef<ResizeObserver | null>
+  overviewObserverRef: BridgeRef<ResizeObserver | null>
+  timelineRootObserverRef: BridgeRef<ResizeObserver | null>
+  timelineScaleRafRef: BridgeRef<number>
+  setTimelineWheelTarget: (value: HTMLElement | null) => void
+  handleWaveformUpdated: (_event: unknown, payload: TimelineWaveformUpdatedPayload) => void
+  waveformLoadTimerRef: BridgeRef<ReturnType<typeof setTimeout> | null>
+  waveformPreRenderTimerRef: BridgeRef<ReturnType<typeof setTimeout> | null>
+  cancelWorkerPreRender: () => void
+  waveformPreRenderRafRef: BridgeRef<number>
+  waveformPreRenderQueueRef: BridgeRef<unknown[]>
+  waveformRenderWorkerRef: BridgeRef<Worker | null>
+  postWaveformWorkerMessage: (payload: { type: 'clearAllCaches' }) => void
+  timelineWorkerReady: BridgeRef<boolean>
+  timelineOffscreenCanvasRef: BridgeRef<OffscreenCanvas | null>
+  timelineCanvasRafRef: BridgeRef<number>
+  cleanupInteractions: () => void
+}
+
+export const setupTimelineVisualScaleLifecycle = (ctx: TimelineVisualScaleLifecycleCtx) => {
   const {
     tracks,
     timelineRootRef,
@@ -36,38 +74,7 @@ export const setupTimelineVisualScaleLifecycle = (ctx: any) => {
     timelineOffscreenCanvasRef,
     timelineCanvasRafRef,
     cleanupInteractions
-  } = ctx as {
-    tracks: BridgeRef<Array<unknown>>
-    timelineRootRef: BridgeRef<HTMLElement | null>
-    transportError: BridgeRef<string>
-    timelineVisualScale: BridgeRef<number>
-    layoutScaleDeps: Array<BridgeRef<unknown>>
-    resolveTimelineScalableBaseHeight: () => number
-    timelineVisualScaleMin: number
-    timelineVisualScaleMax: number
-    scheduleTimelineDraw: () => void
-    scheduleFullPreRender: () => void
-    scheduleWorkerPreRender: () => void
-    cleanupTransportAndDrag: () => void
-    timelineObserverRef: BridgeRef<ResizeObserver | null>
-    timelineViewportObserverRef: BridgeRef<ResizeObserver | null>
-    overviewObserverRef: BridgeRef<ResizeObserver | null>
-    timelineRootObserverRef: BridgeRef<ResizeObserver | null>
-    timelineScaleRafRef: BridgeRef<number>
-    setTimelineWheelTarget: (value: HTMLElement | null) => void
-    handleWaveformUpdated: (...args: any[]) => void
-    waveformLoadTimerRef: BridgeRef<ReturnType<typeof setTimeout> | null>
-    waveformPreRenderTimerRef: BridgeRef<ReturnType<typeof setTimeout> | null>
-    cancelWorkerPreRender: () => void
-    waveformPreRenderRafRef: BridgeRef<number>
-    waveformPreRenderQueueRef: BridgeRef<any[]>
-    waveformRenderWorkerRef: BridgeRef<Worker | null>
-    postWaveformWorkerMessage: (payload: any) => void
-    timelineWorkerReady: BridgeRef<boolean>
-    timelineOffscreenCanvasRef: BridgeRef<OffscreenCanvas | null>
-    timelineCanvasRafRef: BridgeRef<number>
-    cleanupInteractions: () => void
-  }
+  } = ctx
   const TIMELINE_VISUAL_SCALE_EPSILON = 0.01
 
   const measureTimelineCurrentContentHeight = () => {
@@ -193,7 +200,7 @@ export const setupTimelineVisualScaleLifecycle = (ctx: any) => {
       if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
         window.electron.ipcRenderer.removeListener(
           'mixtape-waveform-updated',
-          handleWaveformUpdated as any
+          handleWaveformUpdated
         )
       }
     } catch {}

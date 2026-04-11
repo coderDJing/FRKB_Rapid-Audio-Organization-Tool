@@ -138,6 +138,8 @@ const originPathSnapshot = computed(() => {
   return playlistLabel ? `${driveLabel} / ${playlistLabel}` : driveLabel
 })
 
+const getSongField = (song: ISongInfo, key: string): unknown => song[key as keyof ISongInfo]
+
 const pioneerSongMenuArr: IMenu[][] = [
   [{ menuName: 'tracks.exportTracksCopyOnly' }],
   [
@@ -238,7 +240,7 @@ const showErrorDialog = async (message: string) => {
   })
 }
 
-const sortArrayByProperty = <T extends Record<string, any>>(
+const sortArrayByProperty = <T extends object>(
   array: T[],
   property: keyof T,
   order: 'asc' | 'desc'
@@ -295,10 +297,9 @@ const applyFiltersAndSorting = () => {
       const hasExclude = excludeKeywords.length > 0
       if (!hasInclude && !hasExclude) continue
       const isKeyColumn = col.key === 'key'
-      const keyStyle =
-        (runtime.setting as any).keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
+      const keyStyle = runtime.setting.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
       filtered = filtered.filter((song) => {
-        const rawValue = String((song as any)[col.key] ?? '')
+        const rawValue = String(getSongField(song, col.key) ?? '')
         const displayValue = isKeyColumn ? getKeyDisplayText(rawValue, keyStyle) : rawValue
         const value = displayValue.toLowerCase()
         if (hasInclude && !value.includes(keyword)) return false
@@ -308,7 +309,7 @@ const applyFiltersAndSorting = () => {
     } else if (col.filterType === 'duration' && col.filterOp && col.filterDuration) {
       const target = parseDurationToSeconds(col.filterDuration)
       filtered = filtered.filter((song) => {
-        const duration = parseDurationToSeconds(String((song as any).duration ?? ''))
+        const duration = parseDurationToSeconds(String(song.duration ?? ''))
         if (Number.isNaN(duration) || Number.isNaN(target)) return false
         if (col.filterOp === 'eq') return duration === target
         if (col.filterOp === 'gte') return duration >= target
@@ -318,7 +319,7 @@ const applyFiltersAndSorting = () => {
     } else if (col.filterType === 'bpm' && col.filterOp && col.filterNumber) {
       const target = parseNumberInput(col.filterNumber)
       filtered = filtered.filter((song) => {
-        const bpm = parseNumberInput((song as any)?.bpm)
+        const bpm = parseNumberInput(song.bpm)
         if (Number.isNaN(bpm) || Number.isNaN(target)) return false
         if (col.filterOp === 'eq') return bpm === target
         if (col.filterOp === 'gte') return bpm >= target
@@ -337,21 +338,17 @@ const applyFiltersAndSorting = () => {
         return sortedCol.order === 'asc' ? valueA - valueB : valueB - valueA
       })
     } else if (sortedCol.key === 'key') {
-      const style = (runtime.setting as any).keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
+      const style = runtime.setting.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
       const collator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
       filtered = [...filtered].sort((a, b) => {
-        const valueA = getKeySortText(String((a as any).key || ''), style)
-        const valueB = getKeySortText(String((b as any).key || ''), style)
+        const valueA = getKeySortText(String(a.key || ''), style)
+        const valueB = getKeySortText(String(b.key || ''), style)
         return sortedCol.order === 'asc'
           ? collator.compare(valueA, valueB)
           : collator.compare(valueB, valueA)
       })
     } else {
-      filtered = sortArrayByProperty(
-        filtered as any[],
-        sortedCol.key as keyof ISongInfo,
-        sortedCol.order!
-      )
+      filtered = sortArrayByProperty(filtered, sortedCol.key as keyof ISongInfo, sortedCol.order!)
     }
   }
 
@@ -680,8 +677,8 @@ const handleSelectSongListDialogConfirm = async (targetSongListUUID: string) => 
       }
     )
     emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
-  } catch (error: any) {
-    const messageCode = String(error?.message || '')
+  } catch (error: unknown) {
+    const messageCode = error instanceof Error ? error.message : String(error || '')
     if (messageCode === 'MIXTAPE_VAULT_UNAVAILABLE') {
       await showErrorDialog(t('pioneer.mixtapeVaultUnavailable'))
       return

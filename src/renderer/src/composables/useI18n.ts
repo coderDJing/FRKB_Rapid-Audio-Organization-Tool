@@ -16,11 +16,11 @@ export function useI18n() {
    * @param interpolations 插值参数
    * @param options 选项
    */
-  const t = (key: string, interpolations?: Record<string, any>, options?: any) => {
-    if (interpolations) {
-      return translate(key, interpolations, options)
+  const t = (key: string, interpolations?: Record<string, unknown>, options?: unknown) => {
+    if (interpolations !== undefined) {
+      return translate(key, interpolations as never, options as never)
     }
-    return translate(key, options)
+    return translate(key, options as never)
   }
 
   /**

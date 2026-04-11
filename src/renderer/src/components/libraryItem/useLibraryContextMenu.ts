@@ -10,14 +10,31 @@ import { DEFAULT_MIXTAPE_STEM_PROFILE } from '@shared/mixtapeStemProfiles'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
 import { setPendingMixtapeProjectMode } from '@renderer/composables/mixtape/stemMode'
-import type { IMetadataAutoFillSummary } from '../../../../types/globals'
+import type { AudioConvertDialogResult } from '@renderer/components/audioConvertDialog.types'
+import type { useRuntimeStore } from '@renderer/stores/runtime'
+import type { IDir, IMenu, IMetadataAutoFillSummary } from '../../../../types/globals'
+
+type ScanSongListResult = {
+  scanData?: Array<{ filePath?: string }>
+}
+
+type PlaylistDedupSummary = {
+  removedFilePaths?: string[]
+  fingerprintMode?: 'pcm' | 'file'
+  analyzeFailedCount?: number
+  scannedCount?: number
+}
+
+type LibraryItemEmitter = {
+  emit: (event: string, payload?: unknown) => void
+}
 
 interface UseLibraryContextMenuOptions {
-  dirDataRef: Ref<any | null>
-  fatherDirDataRef: Ref<any | null>
-  runtime: any
+  dirDataRef: Ref<IDir | null>
+  fatherDirDataRef: Ref<IDir | null>
+  runtime: ReturnType<typeof useRuntimeStore>
   props: { uuid: string; libraryName: string }
-  emitter: { emit: (event: string, payload?: any) => void }
+  emitter: LibraryItemEmitter
   dirChildRendered: { value: boolean }
   dirChildShow: { value: boolean }
   trackCount: { value: number | null }
@@ -37,11 +54,13 @@ export function useLibraryContextMenu({
   warnAcoustIdMissing,
   startRename
 }: UseLibraryContextMenuOptions) {
+  const getErrorMessage = (error: unknown) =>
+    error instanceof Error && error.message.trim() ? error.message : t('common.unknownError')
   const getDirData = () => dirDataRef.value
   const getFatherDirData = () => fatherDirDataRef.value
 
   const rightClickMenuShow = ref(false)
-  const buildMenuArr = () => {
+  const buildMenuArr = (): IMenu[][] => {
     const dirData = getDirData()
     if (!dirData) return []
     if (runtime.libraryAreaSelected === 'RecycleBin') {
@@ -88,7 +107,7 @@ export function useLibraryContextMenu({
     ]
   }
 
-  const menuArr = ref<any[][]>(buildMenuArr())
+  const menuArr = ref<IMenu[][]>(buildMenuArr())
 
   const deleteDir = async () => {
     if (runtime.isProgressing) {
@@ -311,9 +330,13 @@ export function useLibraryContextMenu({
       }
       case 'metadata.autoFillMenu': {
         const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
-        const scan = await window.electron.ipcRenderer.invoke('scanSongList', dirPath, props.uuid)
+        const scan = (await window.electron.ipcRenderer.invoke(
+          'scanSongList',
+          dirPath,
+          props.uuid
+        )) as ScanSongListResult | null
         const files: string[] = Array.isArray(scan?.scanData)
-          ? scan.scanData.map((s: any) => s.filePath).filter(Boolean)
+          ? scan.scanData.map((s) => s.filePath).filter((item): item is string => !!item)
           : []
         if (!files.length) {
           await confirm({
@@ -329,15 +352,11 @@ export function useLibraryContextMenu({
         let hadError = false
         try {
           summary = await invokeMetadataAutoFill(files)
-        } catch (error: any) {
+        } catch (error: unknown) {
           hadError = true
-          const message =
-            typeof error?.message === 'string' && error.message.trim().length
-              ? error.message
-              : t('common.unknownError')
           await confirm({
             title: t('common.error'),
-            content: [message],
+            content: [getErrorMessage(error)],
             confirmShow: false
           })
         } finally {
@@ -379,9 +398,13 @@ export function useLibraryContextMenu({
       case 'tracks.convertFormat': {
         try {
           const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
-          const scan = await window.electron.ipcRenderer.invoke('scanSongList', dirPath, props.uuid)
+          const scan = (await window.electron.ipcRenderer.invoke(
+            'scanSongList',
+            dirPath,
+            props.uuid
+          )) as ScanSongListResult | null
           const files: string[] = Array.isArray(scan?.scanData)
-            ? scan.scanData.map((s: any) => s.filePath).filter(Boolean)
+            ? scan.scanData.map((s) => s.filePath).filter((item): item is string => !!item)
             : []
           if (files.length === 0) return
           const sourceExts = Array.from(
@@ -395,8 +418,10 @@ export function useLibraryContextMenu({
           const { default: openConvertDialog } = await import(
             '@renderer/components/audioConvertDialog'
           )
-          const dialogResult: any = await openConvertDialog({ sourceExts })
-          if (dialogResult && dialogResult !== 'cancel') {
+          const dialogResult = (await openConvertDialog({
+            sourceExts
+          })) as AudioConvertDialogResult
+          if (dialogResult && dialogResult !== 'cancel' && !('files' in dialogResult)) {
             await window.electron.ipcRenderer.invoke('audio:convert:start', {
               files,
               options: dialogResult,
@@ -408,9 +433,13 @@ export function useLibraryContextMenu({
       }
       case 'fingerprints.analyzeAndAdd': {
         const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
-        const scan = await window.electron.ipcRenderer.invoke('scanSongList', dirPath, props.uuid)
+        const scan = (await window.electron.ipcRenderer.invoke(
+          'scanSongList',
+          dirPath,
+          props.uuid
+        )) as ScanSongListResult | null
         const files: string[] = Array.isArray(scan?.scanData)
-          ? scan.scanData.map((s: any) => s.filePath).filter(Boolean)
+          ? scan.scanData.map((s) => s.filePath).filter((item): item is string => !!item)
           : []
         if (!files.length) {
           await confirm({
@@ -441,13 +470,13 @@ export function useLibraryContextMenu({
         const normalizePath = (p: string | undefined | null) =>
           (p || '').replace(/\//g, '\\').toLowerCase()
         try {
-          const summary: any = await window.electron.ipcRenderer.invoke(
+          const summary = (await window.electron.ipcRenderer.invoke(
             'deduplicateSongListByFingerprint',
             {
               songListPath,
               progressId
             }
-          )
+          )) as PlaylistDedupSummary
           const removedRaw: string[] = Array.isArray(summary?.removedFilePaths)
             ? summary.removedFilePaths.filter(Boolean)
             : []
@@ -481,11 +510,10 @@ export function useLibraryContextMenu({
             content: feedbackLines,
             confirmShow: false
           })
-        } catch (error: any) {
-          const message = error?.message ? String(error.message) : t('common.unknownError')
+        } catch (error: unknown) {
           await confirm({
             title: t('common.error'),
-            content: [message],
+            content: [getErrorMessage(error)],
             confirmShow: false
           })
         } finally {
@@ -500,9 +528,9 @@ export function useLibraryContextMenu({
         })
         if (res === 'confirm') {
           const recycleBin = runtime.libraryTree.children?.find(
-            (item: any) => item.dirName === 'RecycleBin'
+            (item) => item.dirName === 'RecycleBin'
           )
-          const index = recycleBin?.children?.findIndex((item: any) => item.uuid === props.uuid)
+          const index = recycleBin?.children?.findIndex((item) => item.uuid === props.uuid)
           if (index !== undefined && index !== -1 && recycleBin?.children) {
             recycleBin.children.splice(index, 1)
           }
