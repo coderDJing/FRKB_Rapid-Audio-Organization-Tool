@@ -6,7 +6,7 @@ on:
       release_tag:
         description: GitHub Release tag used to host runtime assets
         required: true
-        default: demucs-runtime-assets
+        default: demucs-runtime-assets-rc
       win_profiles:
         description: Windows runtime profiles
         required: true

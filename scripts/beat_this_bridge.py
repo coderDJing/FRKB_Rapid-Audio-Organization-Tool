@@ -7,6 +7,8 @@ from typing import Any
 
 ENV_BEAT_THIS_EXTRA_SITE_DIRS = "FRKB_BEAT_THIS_EXTRA_SITE_DIRS"
 ENV_BEAT_THIS_EXTRA_DLL_DIRS = "FRKB_BEAT_THIS_EXTRA_DLL_DIRS"
+ENV_BEAT_THIS_CHECKPOINT = "FRKB_BEAT_THIS_CHECKPOINT"
+DEFAULT_BEAT_THIS_CHECKPOINT_RELATIVE_PATH = os.path.join("beat-this-checkpoints", "final0.ckpt")
 _DLL_DIR_HANDLES: list[Any] = []
 
 
@@ -213,8 +215,23 @@ def _predict_beats(
     return _predict_beats_with_accelerated_device(predictor, cpu_spect, signal, sample_rate)
 
 
+def _resolve_checkpoint_path() -> str:
+    env_checkpoint = str(os.environ.get(ENV_BEAT_THIS_CHECKPOINT) or "").strip()
+    if env_checkpoint and os.path.isfile(env_checkpoint):
+        return env_checkpoint
+
+    executable_dir = os.path.dirname(os.path.abspath(sys.executable))
+    runtime_dir = executable_dir
+    if os.path.basename(executable_dir).lower() == "scripts":
+        runtime_dir = os.path.dirname(executable_dir)
+    bundled_checkpoint = os.path.join(runtime_dir, DEFAULT_BEAT_THIS_CHECKPOINT_RELATIVE_PATH)
+    if os.path.isfile(bundled_checkpoint):
+        return bundled_checkpoint
+    return "final0"
+
+
 def serve(device: str, dbn: bool) -> int:
-    predictor = Audio2Beats(checkpoint_path="final0", device=device, dbn=dbn)
+    predictor = Audio2Beats(checkpoint_path=_resolve_checkpoint_path(), device=device, dbn=dbn)
     cpu_spect = LogMelSpect(device="cpu") if _uses_accelerated_device(device) else None
     _emit({"type": "ready"})
 

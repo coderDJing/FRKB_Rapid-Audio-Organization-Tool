@@ -14,9 +14,11 @@ import { validatePortableDarwinRuntime } from './lib/demucs-runtime-portability.
 const runtimeProfilesPath = path.resolve('./scripts/demucs-runtime-profiles.json')
 const runtimeProfilesRaw = fs.readFileSync(runtimeProfilesPath, 'utf8')
 const runtimeProfiles = JSON.parse(runtimeProfilesRaw)
+const packageJsonPath = path.resolve('./package.json')
+const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))
 const modelManifestPath = path.resolve('./scripts/demucs-model-manifest.json')
-const DEFAULT_DEMUCS_RUNTIME_MANIFEST_URL =
-  'https://github.com/coderDjing/FRKB_Rapid-Audio-Organization-Tool/releases/download/demucs-runtime-assets/demucs-runtime-manifest.json'
+const DEFAULT_DEMUCS_RUNTIME_RELEASE_TAG = 'demucs-runtime-assets'
+const DEFAULT_DEMUCS_RUNTIME_RC_RELEASE_TAG = 'demucs-runtime-assets-rc'
 const BASE_RUNTIME_METADATA_FILE = '.frkb-base-runtime-meta.json'
 
 const platformDefault = (() => {
@@ -76,10 +78,23 @@ const skip =
   process.env.FRKB_SKIP_DEMUCS_RUNTIME_ENSURE === 'true'
 
 const runtimeRoot = path.resolve(runtimeRootArg)
+const isPrereleaseVersion = (value) => /-/.test(String(value || '').trim())
+const buildRuntimeManifestUrl = (releaseTag) =>
+  `https://github.com/coderDjing/FRKB_Rapid-Audio-Organization-Tool/releases/download/${releaseTag}/demucs-runtime-manifest.json`
+const resolveDefaultRuntimeReleaseTag = () => {
+  const configuredReleaseTag =
+    getArgValue('--runtime-release-tag', '').trim() ||
+    String(process.env.FRKB_DEMUCS_RUNTIME_RELEASE_TAG || '').trim()
+  if (configuredReleaseTag) return configuredReleaseTag
+  const packageVersion = String(packageJson?.version || '').trim()
+  return isPrereleaseVersion(packageVersion)
+    ? DEFAULT_DEMUCS_RUNTIME_RC_RELEASE_TAG
+    : DEFAULT_DEMUCS_RUNTIME_RELEASE_TAG
+}
 const runtimeAssetManifestUrl =
   getArgValue('--runtime-manifest-url', '').trim() ||
   String(process.env.FRKB_DEMUCS_RUNTIME_MANIFEST_URL || '').trim() ||
-  DEFAULT_DEMUCS_RUNTIME_MANIFEST_URL
+  buildRuntimeManifestUrl(resolveDefaultRuntimeReleaseTag())
 
 const resolveRuntimePythonPath = (runtimeDir) => {
   if (process.platform === 'win32') {
@@ -592,9 +607,9 @@ const ensureBaseRuntime = async (platformKey, platformConfig) => {
       })
     } catch (error) {
       console.warn(
-        `[demucs-runtime-ensure] Rebuilding non-portable base runtime: ${
-          toShortText(error instanceof Error ? error.message : String(error || 'unknown'))
-        }`
+        `[demucs-runtime-ensure] Rebuilding non-portable base runtime: ${toShortText(
+          error instanceof Error ? error.message : String(error || 'unknown')
+        )}`
       )
       fs.rmSync(baseRuntimeDir, { recursive: true, force: true })
       needsBootstrap = true
@@ -615,7 +630,9 @@ const ensureBaseRuntime = async (platformKey, platformConfig) => {
   if (needsBootstrap) {
     fs.mkdirSync(path.dirname(baseRuntimeDir), { recursive: true })
     if (process.platform === 'darwin') {
-      console.log(`[demucs-runtime-ensure] Creating portable Darwin base runtime: ${baseRuntimeDir}`)
+      console.log(
+        `[demucs-runtime-ensure] Creating portable Darwin base runtime: ${baseRuntimeDir}`
+      )
       const bootstrapResult = await bootstrapPortableDarwinPython({
         platformKey,
         runtimeRoot,
@@ -802,6 +819,11 @@ const main = async () => {
     const metadataPath = path.join(runtimeDir, '.frkb-runtime-meta.json')
     const pipInstallArgs = normalizeList(profileConfig.pipInstall)
     const metadata = readJsonFileIfExists(metadataPath)
+    const checkpointRelativePath = normalizeRelativePath(metadata?.beatThisCheckpointRelativePath)
+    const checkpointPath = checkpointRelativePath
+      ? path.join(runtimeDir, ...checkpointRelativePath.split('/'))
+      : ''
+    const beatThisExpected = pipInstallArgs.some((item) => item.includes('beat_this'))
 
     if (syncRemoteAssets) {
       const synced = await tryRestorePortableProfileFromRemoteAsset(profileName, runtimeDir)
@@ -856,9 +878,9 @@ const main = async () => {
       addUniqueItem(brokenProfiles, profileName)
       addUniqueItem(rebuildProfiles, profileName)
       console.warn(
-        `[demucs-runtime-ensure] Runtime portability check failed (${profileName}), will rebuild: ${
-          toShortText(error instanceof Error ? error.message : String(error || 'unknown'))
-        }`
+        `[demucs-runtime-ensure] Runtime portability check failed (${profileName}), will rebuild: ${toShortText(
+          error instanceof Error ? error.message : String(error || 'unknown')
+        )}`
       )
       continue
     }
@@ -887,13 +909,17 @@ const main = async () => {
     const requiresXpu = profileName === 'xpu'
     const directmlReady = !requiresDirectml ? true : !!payload.torch_directml
     const xpuReady = !requiresXpu ? true : !!payload.xpu_backend
-    if (!baseReady || !directmlReady || !xpuReady) {
+    const beatThisReady = !beatThisExpected
+      ? true
+      : !!payload.beat_this && !!payload.soxr && !!payload.rotary_embedding_torch
+    const checkpointReady = !beatThisExpected || (!!checkpointPath && fs.existsSync(checkpointPath))
+    if (!baseReady || !directmlReady || !xpuReady || !beatThisReady || !checkpointReady) {
       const restored = await tryRestorePortableProfileFromRemoteAsset(profileName, runtimeDir)
       if (restored) continue
       addUniqueItem(brokenProfiles, profileName)
       addUniqueItem(rebuildProfiles, profileName)
       console.warn(
-        `[demucs-runtime-ensure] Runtime deps incomplete (${profileName}), will rebuild: demucs=${payload.demucs} torch=${payload.torch} torchaudio=${payload.torchaudio} torch_version=${payload.torch_version || ''} xpu_backend=${payload.xpu_backend} torch_directml=${payload.torch_directml}`
+        `[demucs-runtime-ensure] Runtime deps incomplete (${profileName}), will rebuild: demucs=${payload.demucs} torch=${payload.torch} torchaudio=${payload.torchaudio} torch_version=${payload.torch_version || ''} xpu_backend=${payload.xpu_backend} torch_directml=${payload.torch_directml} beat_this=${payload.beat_this} soxr=${payload.soxr} rotary=${payload.rotary_embedding_torch} checkpoint=${checkpointReady}`
       )
     }
   }

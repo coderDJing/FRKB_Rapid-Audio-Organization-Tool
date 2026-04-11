@@ -372,6 +372,14 @@ const createRuntimeContentHash = (params) => {
     basePipInstallArgs: normalizeHashList(runtimeMeta?.basePipInstallArgs),
     pipInstallArgs: normalizeHashList(runtimeMeta?.pipInstallArgs),
     torchVersion: normalizeHashText(runtimeMeta?.torchVersion || probe?.torch_version),
+    beatThisInstalled: !!(runtimeMeta?.beatThisInstalled ?? probe?.beat_this),
+    beatThisVersion: normalizeHashText(runtimeMeta?.beatThisVersion || probe?.beat_this_version),
+    beatThisCheckpointRelativePath: normalizeHashText(runtimeMeta?.beatThisCheckpointRelativePath),
+    beatThisCheckpointSha256: normalizeHashText(runtimeMeta?.beatThisCheckpointSha256),
+    soxrInstalled: !!(runtimeMeta?.soxrInstalled ?? probe?.soxr),
+    rotaryEmbeddingTorchInstalled: !!(
+      runtimeMeta?.rotaryEmbeddingTorchInstalled ?? probe?.rotary_embedding_torch
+    ),
     xpuAvailable: !!(runtimeMeta?.xpuAvailable ?? probe?.xpu),
     xpuBackendInstalled: !!(runtimeMeta?.xpuBackendInstalled ?? probe?.xpu_backend_installed),
     xpuDemucsCompatible: !!(runtimeMeta?.xpuDemucsCompatible ?? probe?.xpu_demucs_compatible),
@@ -498,6 +506,9 @@ for (const profileName of profileNames) {
     pythonRelativePath,
     generatedAt: new Date().toISOString(),
     torchVersion: String(runtimeMeta?.torchVersion || runtimeMeta?.probe?.torch_version || ''),
+    beatThisVersion: String(
+      runtimeMeta?.beatThisVersion || runtimeMeta?.probe?.beat_this_version || ''
+    ),
     contentHash
   })
   console.log(

@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { validatePortableDarwinRuntime } from './lib/demucs-runtime-portability.mjs'
 
 const runtimeProfilesPath = path.resolve('./scripts/demucs-runtime-profiles.json')
@@ -39,6 +40,9 @@ const pipExtraArgs = pipExtraArg
   .split(',')
   .map((item) => item.trim())
   .filter(Boolean)
+const BEAT_THIS_CHECKPOINT_URL =
+  'https://cloud.cp.jku.at/public.php/dav/files/7ik4RrBKTS273gp/final0.ckpt'
+const BEAT_THIS_CHECKPOINT_RELATIVE_PATH = 'beat-this-checkpoints/final0.ckpt'
 
 const runtimeRoot = path.resolve(runtimeRootArg)
 const platformConfig = runtimeProfiles?.[platformArg]
@@ -235,10 +239,9 @@ const validatePortableWindowsRuntime = (runtimeDir) => {
         }
         continue
       }
-      const fallbackSourcePath =
-        lowerAliasName.startsWith('pythonw')
-          ? path.join(runtimeDir, 'pythonw.exe')
-          : path.join(runtimeDir, 'python.exe')
+      const fallbackSourcePath = lowerAliasName.startsWith('pythonw')
+        ? path.join(runtimeDir, 'pythonw.exe')
+        : path.join(runtimeDir, 'python.exe')
       if (!fs.existsSync(fallbackSourcePath)) {
         const linkTarget = fs.readlinkSync(aliasPath)
         return {
@@ -294,7 +297,7 @@ const runProbe = ({ pythonPath, runtimeDir, runtimeKey }) => {
   const env = buildRuntimeEnv(runtimeDir)
   const script = [
     'import json',
-    'payload = {"runtime_key": "", "torch_version": "", "cuda": False, "mps": False, "xpu": False, "xpu_backend_installed": False, "directml_installed": False, "onnxruntime_installed": False, "onnxruntime_directml_installed": False}',
+    'payload = {"runtime_key": "", "torch_version": "", "cuda": False, "mps": False, "xpu": False, "xpu_backend_installed": False, "directml_installed": False, "onnxruntime_installed": False, "onnxruntime_directml_installed": False, "beat_this": False, "beat_this_version": "", "soxr": False, "rotary_embedding_torch": False}',
     `payload["runtime_key"] = ${JSON.stringify(runtimeKey)}`,
     'try:',
     '  import torch',
@@ -325,6 +328,23 @@ const runProbe = ({ pythonPath, runtimeDir, runtimeKey }) => {
     '  payload["onnxruntime_directml_installed"] = "DmlExecutionProvider" in providers',
     'except Exception:',
     '  payload["onnxruntime_directml_installed"] = False',
+    'try:',
+    '  import importlib.metadata as _metadata',
+    '  import beat_this',
+    '  payload["beat_this"] = True',
+    '  payload["beat_this_version"] = str(_metadata.version("beat-this"))',
+    'except Exception as exc:',
+    '  payload["beat_this_error"] = str(exc)',
+    'try:',
+    '  import soxr',
+    '  payload["soxr"] = True',
+    'except Exception as exc:',
+    '  payload["soxr_error"] = str(exc)',
+    'try:',
+    '  import rotary_embedding_torch',
+    '  payload["rotary_embedding_torch"] = True',
+    'except Exception as exc:',
+    '  payload["rotary_embedding_torch_error"] = str(exc)',
     'print(json.dumps(payload))'
   ].join('\n')
   const result = spawnSync(pythonPath, ['-c', script], {
@@ -397,137 +417,210 @@ const writeJson = (filePath, data) => {
   fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf8')
 }
 
+const normalizeAssetRelativePath = (value) =>
+  String(value || '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '')
+
+const resolveRuntimeAssetPath = (runtimeDir, relativePath) =>
+  path.join(runtimeDir, ...normalizeAssetRelativePath(relativePath).split('/'))
+
+const computeFileSha256 = (filePath) => {
+  const hash = createHash('sha256')
+  hash.update(fs.readFileSync(filePath))
+  return hash.digest('hex')
+}
+
+const ensureBeatThisCheckpoint = async (params) => {
+  const relativePath = normalizeAssetRelativePath(BEAT_THIS_CHECKPOINT_RELATIVE_PATH)
+  const checkpointPath = resolveRuntimeAssetPath(params.runtimeDir, relativePath)
+  if (!params.install && !fs.existsSync(checkpointPath)) {
+    return {
+      relativePath: '',
+      sha256: '',
+      url: BEAT_THIS_CHECKPOINT_URL
+    }
+  }
+
+  if (!params.force && fs.existsSync(checkpointPath)) {
+    return {
+      relativePath,
+      sha256: computeFileSha256(checkpointPath),
+      url: BEAT_THIS_CHECKPOINT_URL
+    }
+  }
+
+  console.log(`[demucs-runtime] Downloading Beat This checkpoint -> ${relativePath}`)
+  const response = await fetch(BEAT_THIS_CHECKPOINT_URL)
+  if (!response.ok) {
+    throw new Error(
+      `[demucs-runtime] Beat This checkpoint download failed: HTTP ${response.status}`
+    )
+  }
+  const buffer = Buffer.from(await response.arrayBuffer())
+  if (buffer.byteLength <= 0) {
+    throw new Error('[demucs-runtime] Beat This checkpoint download empty')
+  }
+  fs.mkdirSync(path.dirname(checkpointPath), { recursive: true })
+  fs.writeFileSync(checkpointPath, buffer)
+  return {
+    relativePath,
+    sha256: createHash('sha256').update(buffer).digest('hex'),
+    url: BEAT_THIS_CHECKPOINT_URL
+  }
+}
+
 const buildPortableRuntimeCopyOptions = () => ({
   recursive: true,
   ...(process.platform === 'darwin' ? { verbatimSymlinks: true } : {})
 })
 
-for (const [profileName, profileConfig] of selectedProfiles) {
-  const targetDirName = String(profileConfig.targetDir || `runtime-${profileName}`)
-  const targetRuntimeDir = path.resolve(runtimeRoot, platformArg, targetDirName)
-  const pipInstallArgs = [
-    ...(Array.isArray(profileConfig.pipInstall)
-      ? profileConfig.pipInstall.map((item) => String(item).trim()).filter(Boolean)
-      : []),
-    ...pipExtraArgs
-  ]
-    .map((item) => String(item).trim())
-    .filter(Boolean)
+const main = async () => {
+  for (const [profileName, profileConfig] of selectedProfiles) {
+    const targetDirName = String(profileConfig.targetDir || `runtime-${profileName}`)
+    const targetRuntimeDir = path.resolve(runtimeRoot, platformArg, targetDirName)
+    const pipInstallArgs = [
+      ...(Array.isArray(profileConfig.pipInstall)
+        ? profileConfig.pipInstall.map((item) => String(item).trim()).filter(Boolean)
+        : []),
+      ...pipExtraArgs
+    ]
+      .map((item) => String(item).trim())
+      .filter(Boolean)
 
-  if (fs.existsSync(targetRuntimeDir)) {
-    const existingPythonPath = resolveRuntimePythonPath(targetRuntimeDir)
-    const portabilityCheck = validateRuntimePortability({
+    if (fs.existsSync(targetRuntimeDir)) {
+      const existingPythonPath = resolveRuntimePythonPath(targetRuntimeDir)
+      const portabilityCheck = validateRuntimePortability({
+        runtimeDir: targetRuntimeDir,
+        pythonPath: existingPythonPath,
+        profileName,
+        stage: 'existing'
+      })
+      if (!portabilityCheck.ok) {
+        fs.rmSync(targetRuntimeDir, { recursive: true, force: true })
+        console.log(
+          `[demucs-runtime] Removed non-portable runtime (${profileName}): ${portabilityCheck.error}`
+        )
+      }
+    }
+
+    if (fs.existsSync(targetRuntimeDir)) {
+      if (!force) {
+        console.log(`[demucs-runtime] Skip existing runtime (${profileName}): ${targetRuntimeDir}`)
+      } else {
+        fs.rmSync(targetRuntimeDir, { recursive: true, force: true })
+        console.log(`[demucs-runtime] Removed existing runtime (${profileName})`)
+      }
+    }
+
+    if (!fs.existsSync(targetRuntimeDir)) {
+      fs.cpSync(baseRuntimeDir, targetRuntimeDir, buildPortableRuntimeCopyOptions())
+      console.log(`[demucs-runtime] Copied base runtime -> ${targetDirName}`)
+    }
+
+    const pythonPath = resolveRuntimePythonPath(targetRuntimeDir)
+    if (!fs.existsSync(pythonPath)) {
+      throw new Error(`[demucs-runtime] Python not found for ${profileName}: ${pythonPath}`)
+    }
+    const runtimePortabilityCheck = validateRuntimePortability({
       runtimeDir: targetRuntimeDir,
-      pythonPath: existingPythonPath,
+      pythonPath,
       profileName,
-      stage: 'existing'
+      stage: 'prepared'
     })
-    if (!portabilityCheck.ok) {
-      fs.rmSync(targetRuntimeDir, { recursive: true, force: true })
+    if (!runtimePortabilityCheck.ok) {
+      throw new Error(runtimePortabilityCheck.error)
+    }
+    const runtimeEnv = buildRuntimeEnv(targetRuntimeDir)
+
+    if (install && pipInstallArgs.length > 0) {
       console.log(
-        `[demucs-runtime] Removed non-portable runtime (${profileName}): ${portabilityCheck.error}`
+        `[demucs-runtime] Installing pip deps for ${profileName}: ${pipInstallArgs.join(' ')}`
+      )
+      run(pythonPath, ['-m', 'pip', 'install', '--upgrade', ...pipInstallArgs], {
+        cwd: targetRuntimeDir,
+        env: runtimeEnv
+      })
+    } else if (pipInstallArgs.length > 0) {
+      console.log(
+        `[demucs-runtime] ${profileName} has pip deps configured but --install not set, skipped install`
       )
     }
-  }
 
-  if (fs.existsSync(targetRuntimeDir)) {
-    if (!force) {
-      console.log(`[demucs-runtime] Skip existing runtime (${profileName}): ${targetRuntimeDir}`)
+    const beatThisCheckpoint = await ensureBeatThisCheckpoint({
+      runtimeDir: targetRuntimeDir,
+      install,
+      force
+    })
+    const probe = runProbe({
+      pythonPath,
+      runtimeDir: targetRuntimeDir,
+      runtimeKey: profileName
+    })
+    if (probe?.directml_installed) {
+      probe.directml_demucs_compatible = runCompatibilityProbe({
+        pythonPath,
+        runtimeDir: targetRuntimeDir,
+        scriptLines: [
+          'import torch',
+          'import torch_directml',
+          'x = torch.randn(2048, device="privateuseone:0")',
+          '_ = torch.fft.rfft(x)',
+          'print("ok")'
+        ]
+      })
     } else {
-      fs.rmSync(targetRuntimeDir, { recursive: true, force: true })
-      console.log(`[demucs-runtime] Removed existing runtime (${profileName})`)
+      probe.directml_demucs_compatible = false
     }
-  }
-
-  if (!fs.existsSync(targetRuntimeDir)) {
-    fs.cpSync(baseRuntimeDir, targetRuntimeDir, buildPortableRuntimeCopyOptions())
-    console.log(`[demucs-runtime] Copied base runtime -> ${targetDirName}`)
-  }
-
-  const pythonPath = resolveRuntimePythonPath(targetRuntimeDir)
-  if (!fs.existsSync(pythonPath)) {
-    throw new Error(`[demucs-runtime] Python not found for ${profileName}: ${pythonPath}`)
-  }
-  const runtimePortabilityCheck = validateRuntimePortability({
-    runtimeDir: targetRuntimeDir,
-    pythonPath,
-    profileName,
-    stage: 'prepared'
-  })
-  if (!runtimePortabilityCheck.ok) {
-    throw new Error(runtimePortabilityCheck.error)
-  }
-  const runtimeEnv = buildRuntimeEnv(targetRuntimeDir)
-
-  if (install && pipInstallArgs.length > 0) {
+    if (probe?.xpu) {
+      probe.xpu_demucs_compatible = runCompatibilityProbe({
+        pythonPath,
+        runtimeDir: targetRuntimeDir,
+        scriptLines: [
+          'import torch',
+          'xpu_backend = getattr(torch, "xpu", None)',
+          'assert xpu_backend and xpu_backend.is_available()',
+          'x = torch.randn(2048, device="xpu")',
+          '_ = torch.fft.rfft(x)',
+          'print("ok")'
+        ]
+      })
+    } else {
+      probe.xpu_demucs_compatible = false
+    }
+    const metadata = {
+      runtimeKey: profileName,
+      platform: platformArg,
+      generatedAt: new Date().toISOString(),
+      installExecuted: install,
+      basePipInstallArgs,
+      pipInstallArgs,
+      torchVersion: String(probe?.torch_version || ''),
+      xpuAvailable: !!probe?.xpu,
+      xpuBackendInstalled: !!probe?.xpu_backend_installed,
+      xpuDemucsCompatible: !!probe?.xpu_demucs_compatible,
+      directmlInstalled: !!probe?.directml_installed,
+      directmlDemucsCompatible: !!probe?.directml_demucs_compatible,
+      beatThisInstalled: !!probe?.beat_this,
+      beatThisVersion: String(probe?.beat_this_version || ''),
+      beatThisCheckpointRelativePath: beatThisCheckpoint.relativePath || '',
+      beatThisCheckpointUrl: beatThisCheckpoint.url || '',
+      beatThisCheckpointSha256: beatThisCheckpoint.sha256 || '',
+      soxrInstalled: !!probe?.soxr,
+      rotaryEmbeddingTorchInstalled: !!probe?.rotary_embedding_torch,
+      probe
+    }
+    writeJson(path.join(targetRuntimeDir, '.frkb-runtime-meta.json'), metadata)
     console.log(
-      `[demucs-runtime] Installing pip deps for ${profileName}: ${pipInstallArgs.join(' ')}`
-    )
-    run(pythonPath, ['-m', 'pip', 'install', '--upgrade', ...pipInstallArgs], {
-      cwd: targetRuntimeDir,
-      env: runtimeEnv
-    })
-  } else if (pipInstallArgs.length > 0) {
-    console.log(
-      `[demucs-runtime] ${profileName} has pip deps configured but --install not set, skipped install`
+      `[demucs-runtime] Ready ${profileName} -> cuda=${probe.cuda} mps=${probe.mps} xpu=${probe.xpu} xpu-backend=${probe.xpu_backend_installed} directml=${probe.directml_installed} directml-demucs=${probe.directml_demucs_compatible} beat-this=${probe.beat_this} soxr=${probe.soxr} rotary=${probe.rotary_embedding_torch} onnxruntime=${probe.onnxruntime_installed} onnxruntime-directml=${probe.onnxruntime_directml_installed}`
     )
   }
 
-  const probe = runProbe({
-    pythonPath,
-    runtimeDir: targetRuntimeDir,
-    runtimeKey: profileName
-  })
-  if (probe?.directml_installed) {
-    probe.directml_demucs_compatible = runCompatibilityProbe({
-      pythonPath,
-      runtimeDir: targetRuntimeDir,
-      scriptLines: [
-        'import torch',
-        'import torch_directml',
-        'x = torch.randn(2048, device="privateuseone:0")',
-        '_ = torch.fft.rfft(x)',
-        'print("ok")'
-      ]
-    })
-  } else {
-    probe.directml_demucs_compatible = false
-  }
-  if (probe?.xpu) {
-    probe.xpu_demucs_compatible = runCompatibilityProbe({
-      pythonPath,
-      runtimeDir: targetRuntimeDir,
-      scriptLines: [
-        'import torch',
-        'xpu_backend = getattr(torch, "xpu", None)',
-        'assert xpu_backend and xpu_backend.is_available()',
-        'x = torch.randn(2048, device="xpu")',
-        '_ = torch.fft.rfft(x)',
-        'print("ok")'
-      ]
-    })
-  } else {
-    probe.xpu_demucs_compatible = false
-  }
-  const metadata = {
-    runtimeKey: profileName,
-    platform: platformArg,
-    generatedAt: new Date().toISOString(),
-    installExecuted: install,
-    basePipInstallArgs,
-    pipInstallArgs,
-    torchVersion: String(probe?.torch_version || ''),
-    xpuAvailable: !!probe?.xpu,
-    xpuBackendInstalled: !!probe?.xpu_backend_installed,
-    xpuDemucsCompatible: !!probe?.xpu_demucs_compatible,
-    directmlInstalled: !!probe?.directml_installed,
-    directmlDemucsCompatible: !!probe?.directml_demucs_compatible,
-    probe
-  }
-  writeJson(path.join(targetRuntimeDir, '.frkb-runtime-meta.json'), metadata)
-  console.log(
-    `[demucs-runtime] Ready ${profileName} -> cuda=${probe.cuda} mps=${probe.mps} xpu=${probe.xpu} xpu-backend=${probe.xpu_backend_installed} directml=${probe.directml_installed} directml-demucs=${probe.directml_demucs_compatible} onnxruntime=${probe.onnxruntime_installed} onnxruntime-directml=${probe.onnxruntime_directml_installed}`
-  )
+  console.log('[demucs-runtime] Completed')
 }
 
-console.log('[demucs-runtime] Completed')
+void main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error || 'unknown'))
+  process.exit(1)
+})

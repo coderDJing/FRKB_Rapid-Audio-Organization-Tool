@@ -27,8 +27,8 @@ import { probeWindowsGpuAdapters } from './mixtapeStemSeparationProbe'
 import { getCachedStemDeviceProbeSnapshot, probeDemucsDevices } from './mixtapeStemSeparationProbe'
 import { invalidateStemDeviceProbeCache } from './mixtapeStemSeparationProbe'
 
-const DEFAULT_DEMUCS_RUNTIME_MANIFEST_URL =
-  'https://github.com/coderDjing/FRKB_Rapid-Audio-Organization-Tool/releases/download/demucs-runtime-assets/demucs-runtime-manifest.json'
+const DEFAULT_DEMUCS_RUNTIME_RELEASE_TAG = 'demucs-runtime-assets'
+const DEFAULT_DEMUCS_RUNTIME_RC_RELEASE_TAG = 'demucs-runtime-assets-rc'
 const FAILED_RUNTIME_RETRY_COOLDOWN_MS = 5 * 60 * 1000
 
 type RuntimeProfileName = 'cuda' | 'xpu' | 'directml' | 'cpu' | 'mps' | 'rocm'
@@ -52,6 +52,7 @@ type RuntimeAssetEntry = {
   pythonRelativePath: string
   generatedAt: string
   torchVersion?: string
+  beatThisVersion?: string
   contentHash?: string
 }
 
@@ -124,9 +125,27 @@ let runtimeDownloadState: MixtapeStemRuntimeDownloadState = {
 }
 export const stemRuntimeDownloadEvents = new EventEmitter()
 
+const isPrereleaseVersion = (value: string) => /-/.test(String(value || '').trim())
+
+const buildRuntimeManifestUrl = (releaseTag: string) =>
+  `https://github.com/coderDjing/FRKB_Rapid-Audio-Organization-Tool/releases/download/${releaseTag}/demucs-runtime-manifest.json`
+
+const resolveDefaultRuntimeReleaseTag = () => {
+  const configuredReleaseTag = normalizeText(process.env.FRKB_DEMUCS_RUNTIME_RELEASE_TAG, 200)
+  if (configuredReleaseTag) return configuredReleaseTag
+  try {
+    const appVersion = normalizeText(app.getVersion(), 120)
+    return isPrereleaseVersion(appVersion)
+      ? DEFAULT_DEMUCS_RUNTIME_RC_RELEASE_TAG
+      : DEFAULT_DEMUCS_RUNTIME_RELEASE_TAG
+  } catch {
+    return DEFAULT_DEMUCS_RUNTIME_RELEASE_TAG
+  }
+}
+
 const resolveRuntimeManifestUrl = () =>
   normalizeText(process.env.FRKB_DEMUCS_RUNTIME_MANIFEST_URL, 2000) ||
-  DEFAULT_DEMUCS_RUNTIME_MANIFEST_URL
+  buildRuntimeManifestUrl(resolveDefaultRuntimeReleaseTag())
 
 const resolveRuntimeProfileTitle = (profile: RuntimeProfileName | '') => {
   if (profile === 'cuda') return 'NVIDIA CUDA'
@@ -156,6 +175,7 @@ const resolveRuntimeInstalledVersionPath = (runtimeDir: string) =>
 
 const resolveRuntimeMetaPath = (runtimeDir: string) =>
   path.join(runtimeDir, '.frkb-runtime-meta.json')
+const DEFAULT_BEAT_THIS_CHECKPOINT_RELATIVE_PATH = 'beat-this-checkpoints/final0.ckpt'
 
 const normalizeRuntimeContentHashText = (value: unknown) => String(value || '').trim()
 
@@ -186,6 +206,18 @@ const createRuntimeContentHash = (params: {
     basePipInstallArgs: normalizeRuntimeContentHashList(runtimeMeta.basePipInstallArgs),
     pipInstallArgs: normalizeRuntimeContentHashList(runtimeMeta.pipInstallArgs),
     torchVersion: normalizeRuntimeContentHashText(runtimeMeta.torchVersion || probe.torch_version),
+    beatThisInstalled: !!(runtimeMeta.beatThisInstalled ?? probe.beat_this),
+    beatThisVersion: normalizeRuntimeContentHashText(
+      runtimeMeta.beatThisVersion || probe.beat_this_version
+    ),
+    beatThisCheckpointRelativePath: normalizeRuntimeContentHashText(
+      runtimeMeta.beatThisCheckpointRelativePath
+    ),
+    beatThisCheckpointSha256: normalizeRuntimeContentHashText(runtimeMeta.beatThisCheckpointSha256),
+    soxrInstalled: !!(runtimeMeta.soxrInstalled ?? probe.soxr),
+    rotaryEmbeddingTorchInstalled: !!(
+      runtimeMeta.rotaryEmbeddingTorchInstalled ?? probe.rotary_embedding_torch
+    ),
     xpuAvailable: !!(runtimeMeta.xpuAvailable ?? probe.xpu),
     xpuBackendInstalled: !!(runtimeMeta.xpuBackendInstalled ?? probe.xpu_backend_installed),
     xpuDemucsCompatible: !!(runtimeMeta.xpuDemucsCompatible ?? probe.xpu_demucs_compatible),
@@ -518,6 +550,37 @@ const readRuntimeMetaFile = async (runtimeDir: string): Promise<Record<string, u
   }
 }
 
+const normalizeRuntimeRelativePath = (value: unknown) =>
+  String(value || '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '')
+
+const resolveRuntimeBeatThisCheckpointCandidates = (
+  runtimeDir: string,
+  runtimeMeta: Record<string, unknown> | null
+) => {
+  const relativeCandidates = [
+    normalizeRuntimeRelativePath(runtimeMeta?.beatThisCheckpointRelativePath),
+    DEFAULT_BEAT_THIS_CHECKPOINT_RELATIVE_PATH
+  ].filter(Boolean)
+  return relativeCandidates.map((relativePath) => path.join(runtimeDir, ...relativePath.split('/')))
+}
+
+const hasBundledBeatThisSupport = async (runtimeDir: string) => {
+  const runtimeMeta = await readRuntimeMetaFile(runtimeDir)
+  const sitePackagesDir =
+    process.platform === 'win32' ? path.join(runtimeDir, 'Lib', 'site-packages') : ''
+  const beatThisPackagePath = sitePackagesDir ? path.join(sitePackagesDir, 'beat_this') : ''
+  if (!beatThisPackagePath || !(await fileExists(beatThisPackagePath))) return false
+  if (runtimeMeta?.beatThisInstalled === false) return false
+  const checkpointCandidates = resolveRuntimeBeatThisCheckpointCandidates(runtimeDir, runtimeMeta)
+  for (const checkpointPath of checkpointCandidates) {
+    if (await fileExists(checkpointPath)) return true
+  }
+  return false
+}
+
 const resolveInstalledRuntimeContentHash = async (
   runtimeDir: string,
   installed: InstalledRuntimeVersionInfo | null,
@@ -621,6 +684,7 @@ const isRuntimeAlreadyAvailable = async (entry: RuntimeAssetEntry) => {
     (item) => item.key === entry.runtimeKey
   )
   if (candidate?.pythonPath && fs.existsSync(candidate.pythonPath)) {
+    if (!(await hasBundledBeatThisSupport(candidate.runtimeDir))) return false
     if (candidate.runtimeDir.startsWith(resolveInstalledDemucsPlatformRootPath())) {
       const installed = await readInstalledRuntimeVersionInfo(candidate.runtimeDir)
       if (await doesInstalledRuntimeMatchEntry(candidate.runtimeDir, installed, entry)) return true
@@ -637,9 +701,15 @@ const resolveAnyLocalRuntimeAvailability = async (): Promise<{
   runtimeKey: string
   title: string
 }> => {
-  const runtimeCandidates = resolveBundledDemucsRuntimeCandidates().filter(
+  const runtimeCandidatesRaw = resolveBundledDemucsRuntimeCandidates().filter(
     (candidate) => !!normalizeText(candidate.key, 120) && fs.existsSync(candidate.pythonPath)
   )
+  const runtimeCandidates: typeof runtimeCandidatesRaw = []
+  for (const candidate of runtimeCandidatesRaw) {
+    if (await hasBundledBeatThisSupport(candidate.runtimeDir)) {
+      runtimeCandidates.push(candidate)
+    }
+  }
   if (runtimeCandidates.length <= 0) {
     return {
       alreadyAvailable: false,
@@ -653,7 +723,8 @@ const resolveAnyLocalRuntimeAvailability = async (): Promise<{
   if (
     cachedProbe?.runtimeUsable &&
     normalizeText(cachedProbe.runtimeKey, 120) &&
-    fs.existsSync(cachedProbe.pythonPath)
+    fs.existsSync(cachedProbe.pythonPath) &&
+    (await hasBundledBeatThisSupport(cachedProbe.runtimeDir))
   ) {
     const profile = resolveRuntimeProfileByRuntimeKey(cachedProbe.runtimeKey)
     return {
@@ -669,7 +740,8 @@ const resolveAnyLocalRuntimeAvailability = async (): Promise<{
     if (
       runtimeSnapshot.runtimeUsable &&
       normalizeText(runtimeSnapshot.runtimeKey, 120) &&
-      fs.existsSync(runtimeSnapshot.pythonPath)
+      fs.existsSync(runtimeSnapshot.pythonPath) &&
+      (await hasBundledBeatThisSupport(runtimeSnapshot.runtimeDir))
     ) {
       const profile = resolveRuntimeProfileByRuntimeKey(runtimeSnapshot.runtimeKey)
       return {

@@ -31,11 +31,13 @@ export type BeatThisResolvedRuntime = {
 
 const ENV_BEAT_THIS_PYTHON = 'FRKB_BEAT_THIS_PYTHON'
 const ENV_BEAT_THIS_DEVICE = 'FRKB_BEAT_THIS_DEVICE'
+const ENV_BEAT_THIS_CHECKPOINT = 'FRKB_BEAT_THIS_CHECKPOINT'
 const ENV_BEAT_THIS_EXTRA_SITE_DIRS = 'FRKB_BEAT_THIS_EXTRA_SITE_DIRS'
 const ENV_BEAT_THIS_EXTRA_DLL_DIRS = 'FRKB_BEAT_THIS_EXTRA_DLL_DIRS'
 const ENV_DEMUCS_ROOT = 'FRKB_DEMUCS_ROOT'
 const ENV_USER_DATA_DIR = 'FRKB_USER_DATA_DIR'
 const LOCAL_RUNTIME_DIR = 'grid-analysis-lab/beat-this-runtime'
+const DEFAULT_BEAT_THIS_CHECKPOINT_RELATIVE_PATH = 'beat-this-checkpoints/final0.ckpt'
 const BEAT_THIS_PROBE_TIMEOUT_MS = 30_000
 const BEAT_THIS_COMPATIBILITY_TIMEOUT_MS = 90_000
 
@@ -200,6 +202,48 @@ const resolveRuntimeLibraryBinDir = (runtimeDir: string) => {
   return ''
 }
 
+const normalizeBeatThisRelativePath = (value: unknown) =>
+  String(value || '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '')
+
+const resolveRuntimeMetaFile = (runtimeDir: string) => {
+  const normalizedRuntimeDir = normalizeBeatThisFsPath(runtimeDir)
+  if (!normalizedRuntimeDir) return null
+  const runtimeMetaPath = path.join(normalizedRuntimeDir, '.frkb-runtime-meta.json')
+  if (!fs.existsSync(runtimeMetaPath)) return null
+  try {
+    const raw = fs.readFileSync(runtimeMetaPath, 'utf8')
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+const resolveRuntimeBeatThisCheckpointPath = (runtimeDir: string) => {
+  const normalizedRuntimeDir = normalizeBeatThisFsPath(runtimeDir)
+  if (!normalizedRuntimeDir) return ''
+  const envCheckpoint = normalizeBeatThisFsPath(process.env[ENV_BEAT_THIS_CHECKPOINT] || '')
+  if (envCheckpoint && fs.existsSync(envCheckpoint)) {
+    return envCheckpoint
+  }
+  const runtimeMeta = resolveRuntimeMetaFile(normalizedRuntimeDir)
+  const relativeCandidates = [
+    normalizeBeatThisRelativePath(runtimeMeta?.beatThisCheckpointRelativePath),
+    DEFAULT_BEAT_THIS_CHECKPOINT_RELATIVE_PATH
+  ]
+  for (const relativePath of relativeCandidates) {
+    if (!relativePath) continue
+    const absolutePath = path.join(normalizedRuntimeDir, ...relativePath.split('/'))
+    if (fs.existsSync(absolutePath)) {
+      return normalizeBeatThisFsPath(absolutePath)
+    }
+  }
+  return ''
+}
+
 const runtimeHasBeatThisPackage = (runtimeDir: string) => {
   const sitePackagesDir = resolveRuntimeSitePackagesDir(runtimeDir)
   if (!sitePackagesDir) return false
@@ -353,13 +397,17 @@ const joinEnvPathList = (values: string[]) =>
     .filter(Boolean)
     .join(path.delimiter)
 
-export const buildBeatThisChildEnv = (candidate: BeatThisPythonCommand): NodeJS.ProcessEnv => ({
-  ...process.env,
-  PYTHONUTF8: '1',
-  PYTHONIOENCODING: 'utf-8',
-  [ENV_BEAT_THIS_EXTRA_SITE_DIRS]: joinEnvPathList(candidate.extraSiteDirs || []),
-  [ENV_BEAT_THIS_EXTRA_DLL_DIRS]: joinEnvPathList(candidate.extraDllDirs || [])
-})
+export const buildBeatThisChildEnv = (candidate: BeatThisPythonCommand): NodeJS.ProcessEnv => {
+  const checkpointPath = resolveRuntimeBeatThisCheckpointPath(candidate.runtimeDir || '')
+  return {
+    ...process.env,
+    PYTHONUTF8: '1',
+    PYTHONIOENCODING: 'utf-8',
+    [ENV_BEAT_THIS_EXTRA_SITE_DIRS]: joinEnvPathList(candidate.extraSiteDirs || []),
+    [ENV_BEAT_THIS_EXTRA_DLL_DIRS]: joinEnvPathList(candidate.extraDllDirs || []),
+    ...(checkpointPath ? { [ENV_BEAT_THIS_CHECKPOINT]: checkpointPath } : {})
+  }
+}
 
 const buildBeatThisBootstrapCode = () =>
   [
