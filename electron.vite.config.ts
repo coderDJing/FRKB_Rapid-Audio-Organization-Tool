@@ -1,6 +1,16 @@
 import { resolve } from 'path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
+
+const rendererDevPort = Number.parseInt(process.env.FRKB_DEV_SERVER_PORT || '', 10)
+const rendererServer =
+  Number.isInteger(rendererDevPort) && rendererDevPort > 0 && rendererDevPort <= 65535
+    ? {
+        port: rendererDevPort,
+        strictPort: true
+      }
+    : undefined
+
 export default defineConfig({
   main: {
     resolve: {
@@ -83,6 +93,7 @@ export default defineConfig({
     }
   },
   renderer: {
+    server: rendererServer,
     css: {
       preprocessorOptions: {
         scss: {

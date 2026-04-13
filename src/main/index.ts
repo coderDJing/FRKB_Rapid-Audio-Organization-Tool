@@ -76,17 +76,10 @@ import {
 } from './services/backgroundOrchestrator'
 import globalSongSearchEngine from './services/globalSongSearch'
 import { registerBackgroundForegroundBusyProvider } from './services/backgroundIdleGate'
+import { acquireDevSingleInstanceLock, configureDevRuntime } from './devInstance'
 // import AudioFeatureExtractor from './mfccTest'
 
-if (is.dev) {
-  try {
-    const devUserDataDir = path.join(app.getPath('appData'), 'frkb-dev')
-    app.setPath('userData', devUserDataDir)
-    app.setPath('sessionData', path.join(devUserDataDir, 'session'))
-  } catch (error) {
-    log.warn('[dev] 设置独立用户目录失败', error)
-  }
-}
+const devRuntime = configureDevRuntime(is.dev, process.platform, log)
 
 try {
   const resolvedUserDataDir = app.getPath('userData')
@@ -98,13 +91,13 @@ try {
 }
 
 const initDevDatabase = false
-const dev_DB = 'D:/FRKB_database'
-const my_real_DB = 'D:/FRKB_database'
-let devDatabase = dev_DB
+const devDatabase = devRuntime?.databaseDir || ''
+const my_real_DB = devDatabase
 
 // 主题：默认按设置文件（首次为 system），不再强制日间模式
 
-const gotTheLock = app.requestSingleInstanceLock()
+const devInstanceLock = acquireDevSingleInstanceLock(devRuntime, log)
+const gotTheLock = devInstanceLock?.isPrimaryInstance ?? app.requestSingleInstanceLock()
 const PREVIEW_PROTOCOL = 'frkb-preview'
 const PREVIEW_MIME_MAP: Record<string, string> = {
   '.mp3': 'audio/mpeg',
@@ -206,15 +199,25 @@ protocol.registerSchemesAsPrivileged([
 if (!gotTheLock) {
   app.quit()
 } else {
-  app.on('second-instance', (_event, _commandLine, _workingDirectory) => {
-    queueExternalAudioFiles(_commandLine)
-    void ensurePrimaryWindowVisible()
-  })
+  if (!devInstanceLock) {
+    app.on('second-instance', (_event, _commandLine, _workingDirectory) => {
+      queueExternalAudioFiles(_commandLine)
+      void ensurePrimaryWindowVisible()
+    })
+  }
 }
 app.on('open-file', (event, openedPath) => {
   event.preventDefault()
   queueExternalAudioFiles([openedPath])
 })
+
+if (devInstanceLock) {
+  const releaseDevInstanceLock = () => {
+    devInstanceLock.release()
+  }
+  app.on('before-quit', releaseDevInstanceLock)
+  process.on('exit', releaseDevInstanceLock)
+}
 
 const platform = process.platform
 const ffmpegPath = resolveBundledFfmpegPath()
@@ -342,7 +345,7 @@ let devInitDatabaseFunction = async () => {
   store.songFingerprintList = []
   await saveList([])
 }
-if (is.dev && platform === 'win32') {
+if (is.dev && platform === 'win32' && devDatabase) {
   store.settingConfig.databaseUrl = devDatabase
   // if (initDevDatabase) {
   //   if (devDatabase !== my_real_DB) {
