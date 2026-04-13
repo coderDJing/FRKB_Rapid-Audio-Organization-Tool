@@ -721,7 +721,7 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   border: 1px solid var(--border);
   border-radius: 6px;
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
-  z-index: 9999;
+  z-index: var(--z-popover);
   min-width: 120px;
 }
 .cancel-menu::after {

@@ -28,6 +28,10 @@
   "app": {
     "name": "Rapid Audio Organization Tool"
   },
+  "modeSwitcher": {
+    "browser": "Full Mode",
+    "horizontal": "Dual-Track"
+  },
   "menu": {
     "file": "File(F)",
     "browseMode": "Browse Mode(M)",

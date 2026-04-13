@@ -156,7 +156,7 @@ onUnmounted(() => {
   width: max-content;
   max-width: calc(100vw - 12px);
   border-radius: 5px;
-  z-index: 10010; // 高于全局 .dialog(9999)
+  z-index: var(--z-context-menu);
 
   .menuGroup {
     border-bottom: 1px solid var(--border);

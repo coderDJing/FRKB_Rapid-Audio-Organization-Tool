@@ -135,21 +135,6 @@ const defaultMenuConfigs = computed<MenuConfig[]>(() => [
     ]
   },
   {
-    name: 'menu.browseMode',
-    subMenu: [
-      [
-        {
-          name: 'menu.fullBrowseMode',
-          checked: runtime.mainWindowBrowseMode === 'browser'
-        },
-        {
-          name: 'menu.horizontalBrowseMode',
-          checked: runtime.mainWindowBrowseMode === 'horizontal'
-        }
-      ]
-    ]
-  },
-  {
     name: 'menu.migration',
     subMenu: [[{ name: 'fingerprints.exportDatabase' }, { name: 'fingerprints.importDatabase' }]]
   },
@@ -217,14 +202,6 @@ if (props.enableMenuHotkeys) {
   hotkeys('alt+g', 'windowGlobal', () => {
     menuArr.value.forEach((item) => {
       if (item.name === 'menu.migration') {
-        item.show = true
-        return
-      }
-    })
-  })
-  hotkeys('alt+m', 'windowGlobal', () => {
-    menuArr.value.forEach((item) => {
-      if (item.name === 'menu.browseMode') {
         item.show = true
         return
       }
@@ -446,7 +423,7 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
 
 .titleComponent {
   position: relative;
-  z-index: 10100;
+  z-index: var(--z-title-bar);
   width: 100vw;
   height: 35px;
   display: flex;

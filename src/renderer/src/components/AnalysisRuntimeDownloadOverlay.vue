@@ -35,7 +35,7 @@ const clampedPercent = computed(() => Math.max(0, Math.min(100, Math.round(props
 .analysis-runtime-download-mask {
   position: fixed;
   inset: 0;
-  z-index: 12000;
+  z-index: var(--z-blocking-overlay);
   display: flex;
   align-items: center;
   justify-content: center;

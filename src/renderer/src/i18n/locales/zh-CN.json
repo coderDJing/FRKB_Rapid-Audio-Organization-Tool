@@ -28,6 +28,10 @@
   "app": {
     "name": "快速音频整理工具"
   },
+  "modeSwitcher": {
+    "browser": "完整模式",
+    "horizontal": "双轨模式"
+  },
   "menu": {
     "file": "文件(F)",
     "browseMode": "浏览模式(M)",

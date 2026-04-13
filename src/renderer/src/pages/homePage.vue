@@ -594,7 +594,7 @@ const drop = async (e: DragEvent) => {
   border: 1px solid #0078d4;
   pointer-events: none;
   /* 不影响鼠标事件 */
-  z-index: 1000;
+  z-index: 2;
   /* 确保在所有内容之上 */
 }
 </style>

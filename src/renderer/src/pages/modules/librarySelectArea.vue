@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import listIconAsset from '@renderer/assets/list.svg?asset'
 import likeIconAsset from '@renderer/assets/like.svg?asset'
-import settingIconAsset from '@renderer/assets/setting.svg?asset'
 import trashIconAsset from '@renderer/assets/trash.svg?asset'
 import mixtapeIconAsset from '@renderer/assets/mixtape.svg?asset'
 import usbDriveIconAsset from '@renderer/assets/usbDrive.svg?asset'
@@ -19,7 +18,6 @@ import {
 import type { ComponentPublicInstance } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import settingDialog from '@renderer/components/settingDialog.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { t } from '@renderer/utils/translate'
 import type { Icon, IDir, IMetadataAutoFillSummary } from '../../../../types/globals'
@@ -155,13 +153,6 @@ const clickIcon = (item: Icon) => {
     return
   }
   runtime.libraryAreaSelected = item.name
-}
-
-const settingDialogShow = ref(false)
-const clickButtomIcon = (item: ButtomIcon) => {
-  if (item.name === 'settings') {
-    settingDialogShow.value = true
-  }
 }
 const iconRefMap = reactive<Record<string, HTMLElement | null>>({})
 const scrollItemRefMap = reactive<Record<string, HTMLElement | null>>({})
@@ -384,14 +375,6 @@ const handleIconContextmenu = async (event: MouseEvent, item: Icon) => {
       break
   }
 }
-type ButtomIcon = {
-  name: 'settings'
-  grey: string
-  white: string
-  src: string
-  showAlt: boolean
-  i18nKey?: string
-}
 
 const {
   pioneerDriveGroups,
@@ -475,17 +458,6 @@ onUnmounted(() => {
   dynamicScrollViewportEl?.removeEventListener('scroll', handleDynamicScroll)
   dynamicScrollViewportEl = null
 })
-
-const buttomIconArr = ref<ButtomIcon[]>([
-  {
-    name: 'settings',
-    grey: settingIconAsset,
-    white: settingIconAsset,
-    src: settingIconAsset,
-    showAlt: false,
-    i18nKey: 'common.setting'
-  }
-])
 
 const libraryHandleClick = (item: Icon) => {
   emit('librarySelectedChange', item)
@@ -769,31 +741,6 @@ watch(
         ></div>
       </div>
     </div>
-
-    <div class="librarySelectAreaFooter">
-      <div
-        v-for="item of buttomIconArr"
-        :key="item.name"
-        class="iconBox"
-        @click="clickButtomIcon(item)"
-        @mouseover="iconMouseover(item)"
-        @mouseout="iconMouseout(item)"
-      >
-        <div class="iconBoxAccent"></div>
-        <div class="iconBoxContent">
-          <span
-            :ref="(el) => setIconRef(item.name, el)"
-            :style="getIconMaskStyle(item)"
-            :class="['sidebar-icon']"
-          ></span>
-          <bubbleBox
-            :dom="iconRefMap[item.name] || undefined"
-            :title="t(item.i18nKey || 'common.setting')"
-          />
-        </div>
-      </div>
-    </div>
-    <settingDialog v-if="settingDialogShow" @cancel="settingDialogShow = false" />
   </div>
 </template>
 <style lang="scss" scoped>
@@ -806,8 +753,7 @@ watch(
   flex-direction: column;
   align-items: stretch;
 
-  .librarySelectAreaCore,
-  .librarySelectAreaFooter {
+  .librarySelectAreaCore {
     flex: 0 0 auto;
   }
 
@@ -837,16 +783,6 @@ watch(
   .librarySelectAreaDynamicScroller {
     height: 100%;
     width: 100%;
-  }
-
-  .librarySelectAreaFooter {
-    padding-top: 0;
-    border-top: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
-    background: linear-gradient(
-      to bottom,
-      color-mix(in srgb, var(--bg) 88%, transparent),
-      var(--bg)
-    );
   }
 
   .librarySelectAreaScrollFade {

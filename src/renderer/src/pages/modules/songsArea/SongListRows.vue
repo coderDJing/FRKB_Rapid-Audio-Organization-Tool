@@ -892,7 +892,7 @@ onUnmounted(() => {
 
 .mixtape-drop-pad {
   position: fixed;
-  z-index: 3500;
+  z-index: var(--z-content-overlay);
   pointer-events: auto;
   background: transparent;
 }
@@ -1223,7 +1223,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   pointer-events: auto;
-  z-index: 3000;
+  z-index: var(--z-content-overlay);
   overflow: hidden;
 }
 .cover-preview-overlay img {

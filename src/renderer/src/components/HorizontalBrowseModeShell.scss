@@ -9,6 +9,13 @@
   --shell-drop-hover: rgba(0, 120, 212, 0.08);
   --shell-drop-border: rgba(0, 120, 212, 0.32);
   --fader-travel-inset: 17%;
+  --shell-z-overview-top: 30;
+  --shell-z-detail-pair: 20;
+  --shell-z-overview-bottom: 10;
+  --shell-z-deck-info-top: 40;
+  --shell-z-deck-info-bottom: 12;
+  --shell-z-cover-anchor: 20;
+  --shell-z-deck-menu: 45;
   display: grid;
   grid-template-columns: 68px minmax(0, 1fr);
   width: 100%;
@@ -191,12 +198,12 @@
 
 .overview--top {
   grid-template-rows: minmax(0, 1.46fr) minmax(0, 0.62fr) minmax(0, 0.92fr);
-  z-index: 30;
+  z-index: var(--shell-z-overview-top);
 }
 
 .overview--bottom {
   grid-template-rows: minmax(0, 0.92fr) minmax(0, 0.62fr) minmax(0, 1.46fr);
-  z-index: 10;
+  z-index: var(--shell-z-overview-bottom);
 }
 
 .overview__region {
@@ -214,11 +221,11 @@
 }
 
 .overview--top .overview__region--deck-info {
-  z-index: 10040;
+  z-index: var(--shell-z-deck-info-top);
 }
 
 .overview--bottom .overview__region--deck-info {
-  z-index: 10010;
+  z-index: var(--shell-z-deck-info-bottom);
 }
 
 .overview__region--muted {
@@ -247,7 +254,7 @@
   min-height: 0;
   background: var(--shell-panel);
   position: relative;
-  z-index: 20;
+  z-index: var(--shell-z-detail-pair);
 }
 
 .detail-lane {

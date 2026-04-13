@@ -553,7 +553,7 @@ onUnmounted(() => {
   position: absolute;
   border: 1px solid var(--border);
   border-radius: 3px;
-  z-index: 10010;
+  z-index: var(--z-popover);
   bottom: 60px;
   left: 250px;
   font-size: 14px;
@@ -633,7 +633,7 @@ img {
   align-items: center;
   justify-content: center;
   padding: 8px 0;
-  z-index: 100;
+  z-index: 3;
   // 确保浮层不受任何父级滤镜影响
   filter: none;
 }

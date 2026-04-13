@@ -730,7 +730,7 @@
 
 .mixtape-track-menu {
   position: fixed;
-  z-index: 10060;
+  z-index: var(--z-context-menu);
   min-width: 140px;
   border: 1px solid var(--border);
   border-radius: 4px;

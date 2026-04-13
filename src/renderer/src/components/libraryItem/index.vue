@@ -690,7 +690,7 @@ const openMixtapeHandleClick = () => {
     font-size: 12px;
     padding-left: 5px;
     position: relative;
-    z-index: 100;
+    z-index: 2;
   }
 }
 

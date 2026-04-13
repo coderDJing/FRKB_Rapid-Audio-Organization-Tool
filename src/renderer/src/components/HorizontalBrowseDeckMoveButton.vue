@@ -162,7 +162,7 @@ onUnmounted(() => {
   border-radius: 6px;
   background: var(--bg-elev);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.26);
-  z-index: 10045;
+  z-index: var(--shell-z-deck-menu, 45);
 }
 
 .deck-move-button__menu-item {

@@ -192,7 +192,7 @@ onUnmounted(() => {
   width: max-content;
   max-width: calc(100vw - 12px);
   border-radius: 5px;
-  z-index: 10060; // 高于 .dialog(9999) 与 .frkb-bubble(10050) 与封面弹框(10010)
+  z-index: var(--z-context-menu);
 
   .menuGroup {
     border-bottom: 1px solid var(--border);

@@ -248,7 +248,7 @@ onUnmounted(() => {
   width: 34px;
   height: 34px;
   flex-shrink: 0;
-  z-index: 10020;
+  z-index: var(--shell-z-cover-anchor, 20);
 }
 
 .deck-info-card__cover {

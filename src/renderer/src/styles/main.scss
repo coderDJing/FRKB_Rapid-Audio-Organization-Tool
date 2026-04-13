@@ -45,6 +45,21 @@ body,
     sans-serif;
 }
 
+:root {
+  /* 全局层级约定：页面内容 < 顶部工具条 < 标题栏 < 弹窗/气泡/菜单 < 阻塞遮罩 */
+  --z-content-overlay: 30;
+  --z-app-toolbar: 40;
+  --z-app-toolbar-dropdown: 45;
+  --z-title-bar: 50;
+  --z-title-menu: 55;
+  --z-popover: 60;
+  --z-dialog: 70;
+  --z-dialog-raised: 75;
+  --z-tooltip: 80;
+  --z-context-menu: 90;
+  --z-blocking-overlay: 100;
+}
+
 /* 主题变量：深色 */
 .theme-dark {
   --bg: #181818;
@@ -94,7 +109,7 @@ body,
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 9999;
+  z-index: var(--z-dialog);
   background-color: rgba(0, 0, 0, 0.45);
   color: var(--text);
   overflow: hidden;

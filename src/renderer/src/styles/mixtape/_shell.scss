@@ -175,7 +175,7 @@
 .mixtape-title-wrap {
   height: 35px;
   position: relative;
-  z-index: 10030;
+  z-index: var(--z-title-bar);
   overflow: visible;
 }
 

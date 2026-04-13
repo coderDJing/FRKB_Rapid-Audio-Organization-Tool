@@ -192,7 +192,7 @@ function getButtonKey(button: {
 <style lang="scss" scoped>
 .menu {
   position: absolute;
-  z-index: 10120;
+  z-index: var(--z-title-menu);
   background-color: var(--bg-elev);
   border: 1px solid var(--border);
   font-size: 14px;

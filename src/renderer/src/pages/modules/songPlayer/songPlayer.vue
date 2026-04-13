@@ -815,7 +815,7 @@ watch(
   border: 1px solid var(--border);
   border-radius: 3px;
   padding-top: 10px;
-  z-index: 10010;
+  z-index: var(--z-popover);
   color: var(--text);
 
   .cover {

@@ -63,8 +63,8 @@ const props = defineProps({
   },
   // 层级
   zIndex: {
-    type: Number,
-    default: 10050
+    type: [Number, String] as PropType<number | string>,
+    default: 'var(--z-tooltip)'
   },
   // 仅当锚点元素内容发生溢出（如被省略号遮挡）时才显示气泡
   onlyWhenOverflow: {

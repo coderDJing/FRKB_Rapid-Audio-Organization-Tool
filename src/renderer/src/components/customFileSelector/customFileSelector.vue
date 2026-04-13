@@ -224,7 +224,7 @@ const getSelectedItemIcon = (item: SelectedItem) =>
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
   display: flex;
   flex-direction: column;
-  z-index: 10050; // 高于全局 .dialog(9999)
+  z-index: var(--z-dialog-raised);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   user-select: none;
   -webkit-user-select: none;

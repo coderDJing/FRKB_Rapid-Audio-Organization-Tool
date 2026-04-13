@@ -23,6 +23,8 @@ import { createClickThroughGuard } from '@renderer/utils/clickThroughGuard'
 import HorizontalBrowseModeShell from '@renderer/components/HorizontalBrowseModeShell.vue'
 import AnalysisRuntimeDownloadOverlay from '@renderer/components/AnalysisRuntimeDownloadOverlay.vue'
 import { useAnalysisRuntimeDownload } from '@renderer/composables/useAnalysisRuntimeDownload'
+import settingDialog from '@renderer/components/settingDialog.vue'
+import settingIconAsset from '@renderer/assets/setting.svg?asset'
 
 const runtime = useRuntimeStore()
 const contextMenuClickThroughGuard = createClickThroughGuard()
@@ -64,18 +66,44 @@ const fileOpSuccessSoFar = ref(0)
 const fileOpFailedSoFar = ref(0)
 let songSearchWarmupTimer: ReturnType<typeof setTimeout> | null = null
 const CTRL_DOUBLE_TAP_MS = 260
-const horizontalModeTopSpacerHeight = 372
-const showHorizontalModeTopSpacer = computed(() => runtime.mainWindowBrowseMode === 'horizontal')
-const horizontalModeTopSpacerStyle = computed(() => ({
-  height: `${horizontalModeTopSpacerHeight}px`,
-  flex: `0 0 ${horizontalModeTopSpacerHeight}px`,
+const mainWindowTopGapHeight = 41
+const horizontalModeShellHeight = 372
+const mainWindowBrowseModeMenuOpen = ref(false)
+const mainWindowBrowseModeMenuRef = ref<HTMLElement | null>(null)
+const mainWindowBrowseModeOptions = [
+  { value: 'browser', labelKey: 'modeSwitcher.browser' },
+  { value: 'horizontal', labelKey: 'modeSwitcher.horizontal' }
+] as const
+const showHorizontalModeShell = computed(() => runtime.mainWindowBrowseMode === 'horizontal')
+const mainWindowTopGapStyle = computed(() => ({
+  height: `${mainWindowTopGapHeight}px`,
+  flex: `0 0 ${mainWindowTopGapHeight}px`,
   backgroundColor: 'var(--bg)',
   borderBottom: '1px solid var(--border)',
   boxSizing: 'border-box' as const,
   position: 'relative' as const,
   overflow: 'visible' as const,
-  zIndex: 20
+  zIndex: 'var(--z-app-toolbar)'
 }))
+const horizontalModeShellStyle = computed(() => ({
+  height: `${horizontalModeShellHeight}px`,
+  flex: `0 0 ${horizontalModeShellHeight}px`,
+  backgroundColor: 'var(--bg)',
+  borderBottom: '1px solid var(--border)',
+  boxSizing: 'border-box' as const,
+  position: 'relative' as const,
+  overflow: 'visible' as const,
+  zIndex: 10
+}))
+const topToolbarSettingIconStyle = computed(() => ({
+  '--top-toolbar-setting-icon-mask': `url("${settingIconAsset}")`
+}))
+const currentMainWindowBrowseModeLabel = computed(() => {
+  const currentMode =
+    mainWindowBrowseModeOptions.find((item) => item.value === runtime.mainWindowBrowseMode) ||
+    mainWindowBrowseModeOptions[0]
+  return t(currentMode.labelKey)
+})
 const {
   analysisRuntimeDownloadVisible,
   analysisRuntimeDownloadPercent,
@@ -570,11 +598,40 @@ const handleGlobalSongSearchPlay = async (item: GlobalSongSearchItem) => {
   await focusSongFromGlobalSearch(item, true)
 }
 
+const closeMainWindowBrowseModeMenu = () => {
+  mainWindowBrowseModeMenuOpen.value = false
+}
+
+const toggleMainWindowBrowseModeMenu = () => {
+  mainWindowBrowseModeMenuOpen.value = !mainWindowBrowseModeMenuOpen.value
+}
+
+const selectMainWindowBrowseMode = async (mode: 'browser' | 'horizontal') => {
+  closeMainWindowBrowseModeMenu()
+  if (runtime.mainWindowBrowseMode === mode) return
+  await openDialog(mode === 'browser' ? 'menu.fullBrowseMode' : 'menu.horizontalBrowseMode')
+}
+
+const openSettingsDialog = () => {
+  activeDialog.value = 'settings'
+}
+
 const documentHandleClick = () => {
   runtime.activeMenuUUID = ''
 }
 document.addEventListener('click', documentHandleClick)
 document.addEventListener('contextmenu', documentHandleClick)
+
+const handleMainWindowBrowseModeMenuPointerDown = (event: PointerEvent) => {
+  if (!mainWindowBrowseModeMenuOpen.value) return
+  const target = event.target as Node | null
+  if (
+    !mainWindowBrowseModeMenuRef.value ||
+    (target && mainWindowBrowseModeMenuRef.value.contains(target))
+  )
+    return
+  closeMainWindowBrowseModeMenu()
+}
 
 const hasOpenContextMenu = () => {
   return !!document.querySelector(CONTEXT_MENU_SELECTOR)
@@ -634,6 +691,7 @@ onMounted(() => {
   })
   hotkeys('esc', () => {
     runtime.activeMenuUUID = ''
+    closeMainWindowBrowseModeMenu()
   })
   // F2/Enter 重命名快捷键：Windows 用 F2，Mac 用 Enter
   const triggerRename = () => {
@@ -731,6 +789,7 @@ onMounted(() => {
   })
 
   window.addEventListener('pointerdown', handleContextMenuPointerDownCapture, true)
+  window.addEventListener('pointerdown', handleMainWindowBrowseModeMenuPointerDown, true)
   window.addEventListener('click', handleContextMenuClickCapture, true)
   window.addEventListener('keydown', handleCtrlDoubleTapKeyDown, true)
   window.addEventListener('keyup', handleCtrlDoubleTapKeyUp, true)
@@ -754,6 +813,7 @@ onBeforeUnmount(() => {
     songSearchWarmupTimer = null
   }
   window.removeEventListener('pointerdown', handleContextMenuPointerDownCapture, true)
+  window.removeEventListener('pointerdown', handleMainWindowBrowseModeMenuPointerDown, true)
   window.removeEventListener('click', handleContextMenuClickCapture, true)
   window.removeEventListener('keydown', handleCtrlDoubleTapKeyDown, true)
   window.removeEventListener('keyup', handleCtrlDoubleTapKeyUp, true)
@@ -789,14 +849,63 @@ window.electron.ipcRenderer.on('cloudSync/state', (_e, state) => {
 })
 window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
   runtime.activeMenuUUID = ''
+  closeMainWindowBrowseModeMenu()
 })
 </script>
 <template>
   <div style="height: 100%; max-height: 100%; width: 100%; display: flex; flex-direction: column">
-    <div style="height: 35px; position: relative; z-index: 10100; overflow: visible">
+    <div style="height: 35px; position: relative; z-index: var(--z-title-bar); overflow: visible">
       <titleComponent @open-dialog="openDialog" />
     </div>
-    <div v-if="showHorizontalModeTopSpacer" :style="horizontalModeTopSpacerStyle">
+    <div :style="mainWindowTopGapStyle" class="mainWindowTopGap">
+      <div ref="mainWindowBrowseModeMenuRef" class="topToolbarModeDropdown">
+        <button
+          class="topToolbarModeButton"
+          :class="{ 'is-open': mainWindowBrowseModeMenuOpen }"
+          :title="currentMainWindowBrowseModeLabel"
+          :aria-expanded="mainWindowBrowseModeMenuOpen ? 'true' : 'false'"
+          aria-haspopup="menu"
+          type="button"
+          @click.stop="toggleMainWindowBrowseModeMenu"
+        >
+          <span class="topToolbarModeButtonLabel">{{ currentMainWindowBrowseModeLabel }}</span>
+          <span class="topToolbarModeButtonCaret"></span>
+        </button>
+        <div
+          v-if="mainWindowBrowseModeMenuOpen"
+          class="topToolbarModeMenu"
+          role="menu"
+          @click.stop="() => {}"
+        >
+          <button
+            v-for="item in mainWindowBrowseModeOptions"
+            :key="item.value"
+            class="topToolbarModeOption"
+            :class="{ 'is-active': runtime.mainWindowBrowseMode === item.value }"
+            type="button"
+            role="menuitemradio"
+            :aria-checked="runtime.mainWindowBrowseMode === item.value ? 'true' : 'false'"
+            @click="void selectMainWindowBrowseMode(item.value)"
+          >
+            <span class="topToolbarModeOptionCheck">{{
+              runtime.mainWindowBrowseMode === item.value ? '✓' : ''
+            }}</span>
+            <span class="topToolbarModeOptionLabel">{{ t(item.labelKey) }}</span>
+          </button>
+        </div>
+      </div>
+      <button
+        class="topToolbarSettingButton"
+        :style="topToolbarSettingIconStyle"
+        :title="t('common.setting')"
+        :aria-label="t('common.setting')"
+        type="button"
+        @click="openSettingsDialog"
+      >
+        <span class="topToolbarSettingIcon"></span>
+      </button>
+    </div>
+    <div v-if="showHorizontalModeShell" :style="horizontalModeShellStyle">
       <HorizontalBrowseModeShell />
     </div>
     <div style="flex: 1 1 auto; min-height: 0">
@@ -829,6 +938,7 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
     v-if="activeDialog == 'cloudSync.settings'"
     @cancel="activeDialog = ''"
   />
+  <settingDialog v-if="activeDialog == 'settings'" @cancel="activeDialog = ''" />
   <cloudSyncSyncDialog
     v-if="activeDialog == 'cloudSync.syncFingerprints'"
     @cancel="activeDialog = ''"
@@ -871,5 +981,173 @@ body {
   margin: 0px;
   background-color: var(--bg-elev);
   overflow: hidden;
+}
+
+.mainWindowTopGap {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 0 8px;
+  gap: 12px;
+}
+
+.topToolbarModeDropdown {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.topToolbarModeButton {
+  min-width: 128px;
+  height: 24px;
+  padding: 0 10px 0 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--bg-elev) 88%, var(--bg));
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.topToolbarModeButton:hover,
+.topToolbarModeButton.is-open {
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+  background: color-mix(in srgb, var(--bg-elev) 92%, var(--bg));
+}
+
+.topToolbarModeButton.is-open {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.topToolbarModeButtonLabel {
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.topToolbarModeButtonCaret {
+  width: 8px;
+  height: 8px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-1px) rotate(45deg);
+  transition: transform 0.15s ease;
+  flex: 0 0 auto;
+  opacity: 0.82;
+}
+
+.topToolbarModeButton.is-open .topToolbarModeButtonCaret {
+  transform: translateY(1px) rotate(-135deg);
+}
+
+.topToolbarModeMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 144px;
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, var(--border) 92%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--bg-elev) 96%, var(--bg));
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.12),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  box-sizing: border-box;
+  z-index: var(--z-app-toolbar-dropdown);
+}
+
+.topToolbarModeOption {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.topToolbarModeOption:hover,
+.topToolbarModeOption.is-active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.topToolbarModeOption.is-active {
+  color: color-mix(in srgb, var(--accent) 74%, var(--text));
+}
+
+.topToolbarModeOptionCheck {
+  width: 12px;
+  flex: 0 0 12px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.topToolbarModeOptionLabel {
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.topToolbarSettingButton {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-weak);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.topToolbarSettingButton:hover {
+  color: var(--text);
+  opacity: 1;
+}
+
+.topToolbarSettingButton:active {
+  transform: translateY(1px);
+}
+
+.topToolbarSettingIcon {
+  width: 18px;
+  height: 18px;
+  display: inline-block;
+  background-color: currentColor;
+  opacity: 0.72;
+  mask-image: var(--top-toolbar-setting-icon-mask);
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-image: var(--top-toolbar-setting-icon-mask);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}
+
+.topToolbarSettingButton:hover .topToolbarSettingIcon {
+  opacity: 1;
 }
 </style>
