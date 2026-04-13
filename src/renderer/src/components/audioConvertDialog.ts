@@ -24,7 +24,9 @@ export default (args: OpenAudioConvertDialogArgs = {}) => {
       confirmCallback,
       cancelCallback,
       sourceExts: args?.sourceExts || [],
-      standaloneMode: Boolean(args?.standaloneMode)
+      standaloneMode: Boolean(args?.standaloneMode),
+      presetTargetFormat: args?.presetTargetFormat,
+      lockTargetFormat: Boolean(args?.lockTargetFormat)
     })
     attachAppContext(vnode)
     render(vnode, div)

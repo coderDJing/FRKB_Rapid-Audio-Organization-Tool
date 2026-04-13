@@ -10,7 +10,10 @@ import { DEFAULT_MIXTAPE_STEM_PROFILE } from '@shared/mixtapeStemProfiles'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
 import { setPendingMixtapeProjectMode } from '@renderer/composables/mixtape/stemMode'
-import type { AudioConvertDialogResult } from '@renderer/components/audioConvertDialog.types'
+import {
+  collectFilesForAudioConvert,
+  startAudioConvertFromFiles
+} from '@renderer/utils/audioConvertActions'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
 import type { IDir, IMenu, IMetadataAutoFillSummary } from '../../../../types/globals'
 
@@ -67,7 +70,7 @@ export function useLibraryContextMenu({
       return [
         [{ menuName: 'recycleBin.permanentlyDelete' }],
         [{ menuName: 'tracks.showInFileExplorer' }],
-        [{ menuName: 'tracks.convertFormat' }]
+        [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.convertNonMp3ToMp3' }]
       ]
     }
     if (dirData.type === 'dir') {
@@ -102,7 +105,7 @@ export function useLibraryContextMenu({
       [{ menuName: 'tracks.showInFileExplorer' }],
       [{ menuName: 'metadata.autoFillMenu' }],
       [{ menuName: 'playlist.fingerprintDeduplicate' }],
-      [{ menuName: 'tracks.convertFormat' }],
+      [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.convertNonMp3ToMp3' }],
       [{ menuName: 'fingerprints.analyzeAndAdd' }]
     ]
   }
@@ -398,34 +401,42 @@ export function useLibraryContextMenu({
       case 'tracks.convertFormat': {
         try {
           const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
-          const scan = (await window.electron.ipcRenderer.invoke(
-            'scanSongList',
-            dirPath,
-            props.uuid
-          )) as ScanSongListResult | null
-          const files: string[] = Array.isArray(scan?.scanData)
-            ? scan.scanData.map((s) => s.filePath).filter((item): item is string => !!item)
-            : []
-          if (files.length === 0) return
-          const sourceExts = Array.from(
-            new Set(
-              files
-                .map((p) => (p || '').toLowerCase())
-                .map((p) => p.match(/\.[^\\\/\.]+$/)?.[0] || '')
-                .filter((e) => runtime.setting.audioExt.includes(e))
-            )
-          )
-          const { default: openConvertDialog } = await import(
-            '@renderer/components/audioConvertDialog'
-          )
-          const dialogResult = (await openConvertDialog({
-            sourceExts
-          })) as AudioConvertDialogResult
-          if (dialogResult && dialogResult !== 'cancel' && !('files' in dialogResult)) {
-            await window.electron.ipcRenderer.invoke('audio:convert:start', {
-              files,
-              options: dialogResult,
+          const files = await collectFilesForAudioConvert([
+            {
+              songListPath: dirPath,
               songListUUID: props.uuid
+            }
+          ])
+          await startAudioConvertFromFiles({
+            files,
+            allowedSourceExts: runtime.setting.audioExt,
+            songListUUID: props.uuid
+          })
+        } catch {}
+        break
+      }
+      case 'tracks.convertNonMp3ToMp3': {
+        try {
+          const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
+          const files = await collectFilesForAudioConvert([
+            {
+              songListPath: dirPath,
+              songListUUID: props.uuid
+            }
+          ])
+          const result = await startAudioConvertFromFiles({
+            files,
+            allowedSourceExts: runtime.setting.audioExt,
+            songListUUID: props.uuid,
+            presetTargetFormat: 'mp3',
+            lockTargetFormat: true,
+            excludeSameFormatAsTarget: true
+          })
+          if (result.status === 'no-files') {
+            await confirm({
+              title: t('dialog.hint'),
+              content: [t('convert.noNonMp3Files')],
+              confirmShow: false
             })
           }
         } catch {}

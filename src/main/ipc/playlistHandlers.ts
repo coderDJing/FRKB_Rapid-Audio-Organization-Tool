@@ -24,6 +24,15 @@ type DeduplicateSongListPayload =
       progressId?: string
     }
 
+type AudioConvertCollectFilesPayload = {
+  songLists?: Array<{
+    songListPath?: string | string[]
+    songListUUID?: string
+  }>
+  progressId?: string
+  titleKey?: string
+}
+
 export function registerPlaylistHandlers() {
   const runSongListScan = async (scanPath: string | string[], songListUUID: string) => {
     const result = await scanSongListOffMainThread({
@@ -48,6 +57,74 @@ export function registerPlaylistHandlers() {
         )
         return await runSongListScan(scanPaths, songListUUID)
       }
+    }
+  )
+
+  ipcMain.handle(
+    'audio:convert:collect-files',
+    async (_e, payload: AudioConvertCollectFilesPayload) => {
+      const requests = Array.isArray(payload?.songLists) ? payload.songLists : []
+      const progressId =
+        typeof payload?.progressId === 'string' && payload.progressId.trim()
+          ? payload.progressId.trim()
+          : `audio_convert_collect_${Date.now()}`
+      const titleKey =
+        typeof payload?.titleKey === 'string' && payload.titleKey.trim()
+          ? payload.titleKey.trim()
+          : 'convert.scanningSourceFiles'
+      const total = requests.length
+
+      if (total <= 0) {
+        return { files: [] as string[] }
+      }
+
+      mainWindow.instance?.webContents.send('progressSet', {
+        id: progressId,
+        titleKey,
+        now: 0,
+        total,
+        isInitial: true,
+        noProgress: true
+      })
+
+      const files: string[] = []
+      for (let index = 0; index < requests.length; index++) {
+        const request = requests[index]
+        try {
+          const rawSongListPath = request?.songListPath
+          const songListUUID = String(request?.songListUUID || '')
+          const hasValidPath =
+            (typeof rawSongListPath === 'string' && rawSongListPath.trim().length > 0) ||
+            (Array.isArray(rawSongListPath) &&
+              rawSongListPath.some((item) => String(item || '').trim()))
+          if (!hasValidPath) {
+            continue
+          }
+          const scanPath = Array.isArray(rawSongListPath)
+            ? rawSongListPath.map((item) =>
+                path.join(store.databaseDir, mapRendererPathToFsPath(item))
+              )
+            : path.join(store.databaseDir, mapRendererPathToFsPath(String(rawSongListPath || '')))
+          const result = await runSongListScan(scanPath, songListUUID)
+          const songFiles = Array.isArray(result?.scanData)
+            ? result.scanData.map((item) => item.filePath).filter((item): item is string => !!item)
+            : []
+          files.push(...songFiles)
+        } catch (error) {
+          log.error('audio:convert:collect-files scan failed', error)
+        } finally {
+          mainWindow.instance?.webContents.send('progressSet', {
+            id: progressId,
+            titleKey,
+            now: index + 1,
+            total,
+            isInitial: true,
+            noProgress: true
+          })
+        }
+      }
+
+      return { files: Array.from(new Set(files)) }
     }
   )
 

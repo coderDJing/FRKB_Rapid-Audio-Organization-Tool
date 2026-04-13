@@ -17,6 +17,8 @@ export type ConvertOptions = {
 export type OpenAudioConvertDialogArgs = {
   sourceExts?: string[]
   standaloneMode?: boolean
+  presetTargetFormat?: SupportedAudioFormat
+  lockTargetFormat?: boolean
 }
 
 export type StandaloneConvertPayload = {

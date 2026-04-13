@@ -29,6 +29,10 @@ import confirm from '@renderer/components/confirmDialog'
 import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
 import emitter from '@renderer/utils/mitt'
 import libraryUtils from '@renderer/utils/libraryUtils'
+import {
+  collectFilesForAudioConvert,
+  startAudioConvertFromFiles
+} from '@renderer/utils/audioConvertActions'
 import { emptyRecycleBinWithOptimisticUpdate } from '@renderer/utils/recycleBinActions'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
@@ -48,6 +52,11 @@ type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsCompon
 type ComponentWithElement = ComponentPublicInstance & { $el?: unknown }
 type ScanSongListResult = {
   scanData?: Array<{ filePath?: string }>
+}
+
+type SongListScanRequest = {
+  songListPath: string | string[]
+  songListUUID: string
 }
 
 const externalIcon: Icon = {
@@ -241,6 +250,12 @@ const scanSongListsFiles = async (songLists: IDir[]) => {
   return Array.from(new Set(files))
 }
 
+const buildSongListScanRequests = (songLists: IDir[]): SongListScanRequest[] =>
+  songLists.map((list) => ({
+    songListPath: libraryUtils.findDirPathByUuid(list.uuid),
+    songListUUID: list.uuid
+  }))
+
 const handleAutoFillForLibrary = async (libraryName: string) => {
   const libraryNode = findLibraryNode(libraryName)
   const songLists = collectSongLists(libraryNode)
@@ -312,11 +327,42 @@ const emptyRecycleBinHandleClick = async () => {
 }
 
 const buildMenuArr = (item: Icon) => {
-  const commonMenus = [[{ menuName: 'metadata.autoFillMenu' }]]
+  const commonMenus = [
+    [{ menuName: 'metadata.autoFillMenu' }],
+    [{ menuName: 'tracks.convertNonMp3ToMp3' }]
+  ]
   if (item.name === 'RecycleBin') {
     return [[{ menuName: 'recycleBin.emptyRecycleBin' }], ...commonMenus]
   }
   return commonMenus
+}
+
+const handleConvertLibraryToMp3 = async (libraryName: string) => {
+  const libraryNode = findLibraryNode(libraryName)
+  const songLists = collectSongLists(libraryNode)
+  if (!songLists.length) {
+    await confirm({
+      title: t('dialog.hint'),
+      content: [t('convert.noNonMp3Files')],
+      confirmShow: false
+    })
+    return
+  }
+  const files = await collectFilesForAudioConvert(buildSongListScanRequests(songLists))
+  const result = await startAudioConvertFromFiles({
+    files,
+    allowedSourceExts: runtime.setting.audioExt,
+    presetTargetFormat: 'mp3',
+    lockTargetFormat: true,
+    excludeSameFormatAsTarget: true
+  })
+  if (result.status === 'no-files') {
+    await confirm({
+      title: t('dialog.hint'),
+      content: [t('convert.noNonMp3Files')],
+      confirmShow: false
+    })
+  }
 }
 
 const handleIconContextmenu = async (event: MouseEvent, item: Icon) => {
@@ -328,6 +374,9 @@ const handleIconContextmenu = async (event: MouseEvent, item: Icon) => {
   switch (result.menuName) {
     case 'metadata.autoFillMenu':
       await handleAutoFillForLibrary(item.name)
+      break
+    case 'tracks.convertNonMp3ToMp3':
+      await handleConvertLibraryToMp3(item.name)
       break
     case 'recycleBin.emptyRecycleBin':
       await emptyRecycleBinHandleClick()

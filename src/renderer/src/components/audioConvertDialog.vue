@@ -24,6 +24,8 @@ const props = defineProps<{
   cancelCallback?: () => void
   sourceExts?: string[]
   standaloneMode?: boolean
+  presetTargetFormat?: SupportedAudioFormat
+  lockTargetFormat?: boolean
 }>()
 const uuid = uuidV4()
 
@@ -43,6 +45,9 @@ const formatOptions = computed(() =>
     label: fmt.toUpperCase(),
     value: fmt
   }))
+)
+const targetFormatLocked = computed(() =>
+  Boolean(props.lockTargetFormat && props.presetTargetFormat)
 )
 const form = ref<ConvertDefaults>({
   targetFormat: 'mp3',
@@ -158,10 +163,18 @@ const applySupportedFormats = () => {
     availableTargetFormats.value,
     resolvedSourceExts.value
   )
+  if (supportedFormats.value.length === 0) {
+    return
+  }
   if (
-    supportedFormats.value.length > 0 &&
-    !supportedFormats.value.includes(form.value.targetFormat)
+    props.presetTargetFormat &&
+    supportedFormats.value.includes(props.presetTargetFormat) &&
+    (targetFormatLocked.value || !supportedFormats.value.includes(form.value.targetFormat))
   ) {
+    form.value.targetFormat = props.presetTargetFormat
+    return
+  }
+  if (!supportedFormats.value.includes(form.value.targetFormat)) {
     form.value.targetFormat = supportedFormats.value[0]
   }
 }
@@ -276,7 +289,16 @@ const confirm = async () => {
     : { ...form.value }
   try {
     const setting = await window.electron.ipcRenderer.invoke('getSetting')
-    const next = { ...setting, convertDefaults: { ...form.value } }
+    const nextConvertDefaults: ConvertDefaults = { ...form.value }
+    const persistedTargetFormat = setting?.convertDefaults?.targetFormat
+    if (
+      targetFormatLocked.value &&
+      typeof persistedTargetFormat === 'string' &&
+      isSupportedAudioFormat(persistedTargetFormat)
+    ) {
+      nextConvertDefaults.targetFormat = persistedTargetFormat
+    }
+    const next = { ...setting, convertDefaults: nextConvertDefaults }
     await window.electron.ipcRenderer.invoke('setSetting', next)
   } catch {}
   closeWithAnimation(() => {
@@ -404,6 +426,7 @@ const cancel = () => {
               v-model="form.targetFormat"
               :options="formatOptions"
               :width="220"
+              :disabled="targetFormatLocked"
               class="flashing-border"
               :class="{ 'is-flashing': flashArea == 'targetFormat' }"
             />
