@@ -119,6 +119,21 @@ if (rendererPort && !(await isRendererPortAvailable(rendererPort))) {
 
 ensureRustPackageBinaryAlias()
 
+const mediaToolsEnsureArgs = [
+  path.resolve('./scripts/ensure-bundled-media-tools.mjs'),
+  '--mode',
+  'dev'
+]
+const mediaToolsEnsureResult = spawnSync(process.execPath, mediaToolsEnsureArgs, {
+  stdio: 'inherit',
+  windowsHide: false,
+  env
+})
+
+if ((mediaToolsEnsureResult.status ?? 1) !== 0) {
+  process.exit(mediaToolsEnsureResult.status ?? 1)
+}
+
 const rekordboxEnsureArgs = [path.resolve('./scripts/ensure-rekordbox-desktop-runtime.mjs')]
 const rekordboxEnsureResult = spawnSync(process.execPath, rekordboxEnsureArgs, {
   stdio: 'inherit',

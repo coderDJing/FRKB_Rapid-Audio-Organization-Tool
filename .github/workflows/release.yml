@@ -129,6 +129,9 @@ jobs:
           Remove-Item fpcalc.zip -Force
           Remove-Item fpcalc_unzip -Recurse -Force
 
+      - name: Validate bundled media tools (Windows)
+        run: node scripts/validate-bundled-media-tools.mjs --mode package --platform-key win32-x64
+
       - name: Build Rust N-API (rust_package)
         working-directory: rust_package
         run: npx --yes @napi-rs/cli@2.18.4 build --platform --release --target x86_64-pc-windows-msvc
@@ -419,6 +422,9 @@ jobs:
           install -m 755 chromaprint-fpcalc-${CHROMAPRINT_VERSION}-macos-universal/fpcalc vendor/chromaprint/darwin/fpcalc
           rm -rf fpcalc-mac.tar.gz chromaprint-fpcalc-${CHROMAPRINT_VERSION}-macos-universal
           ls -l vendor/chromaprint/darwin
+
+      - name: Validate bundled media tools (macOS)
+        run: node scripts/validate-bundled-media-tools.mjs --mode package --platform-key darwin-universal
 
       - name: Build Rust N-API for mac (both arch)
         working-directory: rust_package
