@@ -37,6 +37,7 @@ type StartTransportTrackGraphNodeParams = {
   isStemMixMode: () => boolean
   resolveStemIdsForMode: () => TransportStemId[]
   ensureTransportAudioContext: (sampleRate?: number) => AudioContext
+  resolveTransportOutputNode: (ctx: AudioContext) => AudioNode
   shouldUseRealtimeKeyLock: (entry: TransportEntry) => boolean
   resolveEntryEnvelopeValue: (
     entry: TransportEntry,
@@ -59,6 +60,7 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
     isStemMixMode,
     resolveStemIdsForMode,
     ensureTransportAudioContext,
+    resolveTransportOutputNode,
     shouldUseRealtimeKeyLock,
     resolveEntryEnvelopeValue,
     resolveEntryEqDbValue
@@ -80,13 +82,14 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
       const stemBus = ctx.createGain()
       const volume = ctx.createGain()
       const gain = ctx.createGain()
+      const outputNode = resolveTransportOutputNode(ctx)
       const offsetTimelineSec = offsetSourceSec / Math.max(0.01, entry.tempoRatio)
       volume.gain.value = resolveEntryEnvelopeValue(entry, 'volume', offsetTimelineSec)
       gain.gain.value = resolveEntryEnvelopeValue(entry, 'gain', offsetTimelineSec)
       stemBus.gain.value = 1
       stemBus.connect(volume)
       volume.connect(gain)
-      gain.connect(ctx.destination)
+      gain.connect(outputNode)
 
       const stemNodes: TrackStemGraphNode[] = []
       for (const stemAudio of stemAudios) {
@@ -200,6 +203,7 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
 
     const volume = ctx.createGain()
     const gain = ctx.createGain()
+    const outputNode = resolveTransportOutputNode(ctx)
     const offsetTimelineSec = offsetSourceSec / Math.max(0.01, entry.tempoRatio)
     eqHigh.gain.value = resolveEntryEqDbValue(entry, 'high', offsetTimelineSec)
     eqMid.gain.value = resolveEntryEqDbValue(entry, 'mid', offsetTimelineSec)
@@ -212,7 +216,7 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
     eqMid.connect(eqHigh)
     eqHigh.connect(volume)
     volume.connect(gain)
-    gain.connect(ctx.destination)
+    gain.connect(outputNode)
 
     const safeWhen = Number.isFinite(whenSec) ? Math.max(ctx.currentTime, whenSec) : ctx.currentTime
     const safeOffset = Math.max(

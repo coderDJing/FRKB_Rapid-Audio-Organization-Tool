@@ -118,6 +118,8 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
   let transportAudioStartAt = 0
   let transportDurationSec = 0
   let transportAudioCtx: AudioContext | null = null
+  let transportMasterGainNode: GainNode | null = null
+  let transportMasterVolume = 0.8
   let transportGraphNodes: TrackGraphNode[] = []
   let transportMasterTrackId = ''
   let transportVersion = 0
@@ -279,7 +281,35 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
       return transportAudioCtx
     }
     transportAudioCtx = new AudioContext(sampleRate ? { sampleRate } : undefined)
+    transportMasterGainNode = null
     return transportAudioCtx
+  }
+
+  const setTransportMasterVolume = (value: number) => {
+    const numeric = Number(value)
+    transportMasterVolume = clampNumber(Number.isFinite(numeric) ? numeric : 0.8, 0, 1)
+    if (transportMasterGainNode && transportAudioCtx && transportAudioCtx.state !== 'closed') {
+      try {
+        transportMasterGainNode.gain.setTargetAtTime(
+          transportMasterVolume,
+          transportAudioCtx.currentTime,
+          0.03
+        )
+      } catch {
+        transportMasterGainNode.gain.value = transportMasterVolume
+      }
+    }
+    return transportMasterVolume
+  }
+
+  const resolveTransportOutputNode = (ctx: AudioContext) => {
+    if (transportMasterGainNode && transportAudioCtx === ctx) {
+      return transportMasterGainNode
+    }
+    transportMasterGainNode = ctx.createGain()
+    transportMasterGainNode.gain.value = transportMasterVolume
+    transportMasterGainNode.connect(ctx.destination)
+    return transportMasterGainNode
   }
 
   const clearTransportGraphNodes = () => {
@@ -697,6 +727,7 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
         isStemMixMode,
         resolveStemIdsForMode,
         ensureTransportAudioContext,
+        resolveTransportOutputNode,
         shouldUseRealtimeKeyLock,
         resolveEntryEnvelopeValue,
         resolveEntryEqDbValue
@@ -791,6 +822,12 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
     cleanupTransportAudioData()
     stopTransport()
     cleanupTrackDrag()
+    if (transportMasterGainNode) {
+      try {
+        transportMasterGainNode.disconnect()
+      } catch {}
+      transportMasterGainNode = null
+    }
     // 关闭 AudioContext 释放资源
     if (transportAudioCtx && transportAudioCtx.state !== 'closed') {
       try {
@@ -829,6 +866,7 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
     handleTrackDragStart,
     scheduleTransportPreload,
     cleanupTransportAndDrag,
-    renderMixtapeOutputWav
+    renderMixtapeOutputWav,
+    setTransportMasterVolume
   }
 }

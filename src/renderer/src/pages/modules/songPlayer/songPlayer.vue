@@ -28,6 +28,13 @@ import { useWaveform } from './useWaveform'
 import emitter from '@renderer/utils/mitt'
 import { useSongLoader } from './useSongLoader'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
+import {
+  MAIN_WINDOW_VOLUME_CHANGED_EVENT,
+  MAIN_WINDOW_VOLUME_SET_EVENT,
+  MAIN_WINDOW_VOLUME_STORAGE_KEY,
+  readWindowVolume,
+  writeWindowVolume
+} from '@renderer/utils/windowVolume'
 const musicIcon = musicIconAsset
 
 const runtime = useRuntimeStore()
@@ -362,15 +369,13 @@ onMounted(() => {
     }
   })
 
-  try {
-    const s = localStorage.getItem('frkb_volume')
-    let v = s !== null ? parseFloat(s) : NaN
-    if (!(v >= 0 && v <= 1)) v = 0.8
-    audioPlayer.value?.setVolume(v)
-  } catch (_) {}
+  const initialVolume = readWindowVolume(MAIN_WINDOW_VOLUME_STORAGE_KEY)
+  audioPlayer.value?.setVolume(initialVolume)
+  syncMainWindowVolume(initialVolume)
 
   window.addEventListener('resize', updateParentWaveformWidth)
   window.electron.ipcRenderer.on('player/global-shortcut', handleGlobalPlayerShortcut)
+  emitter.on(MAIN_WINDOW_VOLUME_SET_EVENT, handleMainWindowVolumeSet)
 })
 
 // 歌曲移动、删除、播放控制等统一动作
@@ -452,46 +457,33 @@ const handleSeekToPercent = (percent: number) => {
 }
 
 // 音量控制
-const VOLUME_KEY = 'frkb_volume'
 const VOLUME_STEP = 0.05
 
-const getVolume = (): number => {
-  try {
-    const s = localStorage.getItem(VOLUME_KEY)
-    let v = s !== null ? parseFloat(s) : NaN
-    if (!(v >= 0 && v <= 1)) v = 0.8
-    return v
-  } catch {
-    return 0.8
-  }
+const syncMainWindowVolume = (value: number) => {
+  emitter.emit(MAIN_WINDOW_VOLUME_CHANGED_EVENT, value)
 }
+
+const getVolume = () => readWindowVolume(MAIN_WINDOW_VOLUME_STORAGE_KEY)
 
 const setVolume = (v: number) => {
-  const clamped = Math.min(1, Math.max(0, v))
-  audioPlayer.value?.setVolume?.(clamped)
-  playerControlsRef.value?.setVolumeValue?.(clamped)
-  try {
-    localStorage.setItem(VOLUME_KEY, String(clamped))
-  } catch {}
-}
-
-const showVolumeUiIfVisible = () => {
-  if (runtime.setting.hiddenPlayControlArea) {
-    return
-  }
-  playerControlsRef.value?.showVolumeSliderByShortcut?.()
+  const nextVolume = writeWindowVolume(MAIN_WINDOW_VOLUME_STORAGE_KEY, v)
+  audioPlayer.value?.setVolume?.(nextVolume)
+  syncMainWindowVolume(nextVolume)
 }
 
 const handleVolumeUp = () => {
   const current = getVolume()
   setVolume(current + VOLUME_STEP)
-  showVolumeUiIfVisible()
 }
 
 const handleVolumeDown = () => {
   const current = getVolume()
   setVolume(current - VOLUME_STEP)
-  showVolumeUiIfVisible()
+}
+
+const handleMainWindowVolumeSet = (value: unknown) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return
+  setVolume(value)
 }
 
 const selectSongListDialogConfirm = async (item: string) => {
@@ -613,6 +605,7 @@ onUnmounted(() => {
   emitter.off('external-open/play', handleExternalOpenPlay)
   emitter.off('waveform-preview:pause-main', handleWaveformPreviewPauseMain)
   emitter.off('waveform-preview:resume-main', handleWaveformPreviewResumeMain)
+  emitter.off(MAIN_WINDOW_VOLUME_SET_EVENT, handleMainWindowVolumeSet)
   window.electron.ipcRenderer.removeListener('player/global-shortcut', handleGlobalPlayerShortcut)
 })
 
@@ -759,13 +752,6 @@ watch(
             @move-to-like-library="(song) => playerActions.moveToLikeLibrary(song)"
             @move-to-mixtape-library="(song) => playerActions.moveToMixtapeLibrary(song)"
             @export-track="playerActions.exportTrack"
-            @set-volume="
-              (v) => {
-                try {
-                  audioPlayer?.setVolume?.(v)
-                } catch (_) {}
-              }
-            "
           />
         </transition>
       </div>

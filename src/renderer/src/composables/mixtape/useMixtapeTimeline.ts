@@ -661,7 +661,8 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     handleTrackDragStart,
     scheduleTransportPreload,
     cleanupTransportAndDrag,
-    renderMixtapeOutputWav
+    renderMixtapeOutputWav,
+    setTransportMasterVolume
   } = createTimelineTransportAndDragModule({
     tracks,
     mixtapeMixMode,
@@ -1113,6 +1114,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     handleToggleFollowPlayhead,
     transportError,
     renderMixtapeOutputWav,
+    setTransportMasterVolume,
     setZoomValue,
     applyRenderZoomImmediate
   }

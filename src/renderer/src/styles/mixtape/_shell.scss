@@ -267,6 +267,11 @@
   margin-left: auto;
 }
 
+.mixtape-param-bar__volume {
+  flex: 0 0 auto;
+  margin-left: 2px;
+}
+
 .mixtape-param-bar__profile-group {
   display: inline-flex;
   align-items: center;

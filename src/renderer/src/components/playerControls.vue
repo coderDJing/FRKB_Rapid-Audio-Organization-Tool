@@ -6,8 +6,6 @@ import pauseAsset from '@renderer/assets/pause.svg?asset'
 import fastForwardAsset from '@renderer/assets/fastForward.svg?asset'
 import nextSongAsset from '@renderer/assets/nextSong.svg?asset'
 import moreAsset from '@renderer/assets/more.svg?asset'
-import volumePngAsset from '@renderer/assets/volume.svg?asset'
-import volumeMutePngAsset from '@renderer/assets/volumeMute.svg?asset'
 import { ref, onUnmounted, watch, useTemplateRef, onMounted, computed } from 'vue'
 import { v4 as uuidV4 } from 'uuid'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -24,8 +22,6 @@ const pause = pauseAsset
 const fastForward = fastForwardAsset
 const nextSong = nextSongAsset
 const more = moreAsset
-const volumePng = volumePngAsset
-const volumeMutePng = volumeMutePngAsset
 const shortcutIcon = shortcutIconAsset
 const uuid = uuidV4()
 const runtime = useRuntimeStore()
@@ -55,18 +51,11 @@ const emits = defineEmits([
   'moveToLikeLibrary',
   'moveToListLibrary',
   'moveToMixtapeLibrary',
-  'exportTrack',
-  'setVolume'
+  'exportTrack'
 ])
 
 const setPlayingValue = (value: boolean) => {
   playing.value = value
-}
-
-const setVolumeValue = (value: number) => {
-  const v = Math.min(1, Math.max(0, value))
-  volume.value = v
-  if (v > 0) lastNonZeroVolume.value = v
 }
 
 const handlePause = () => {
@@ -181,117 +170,8 @@ const moveToCuratedLabel = computed(() =>
   isReadOnlyPlaybackSource.value ? t('library.copyToCurated') : t('library.moveToCurated')
 )
 
-// ---------------- 音量控制 ----------------
-const VOLUME_KEY = 'frkb_volume'
-const volume = ref(1)
-const lastNonZeroVolume = ref(1)
-const sliderHovering = ref(false)
-const iconHovering = ref(false)
-const shortcutVolumeVisible = ref(false)
-let draggingVolume = false
-let volumeUiTimer: number | null = null
-const showVolumeSlider = computed(
-  () => iconHovering.value || sliderHovering.value || draggingVolume || shortcutVolumeVisible.value
-)
-
-const volumeIcon = computed(() => {
-  return volume.value <= 0 ? volumeMutePng : volumePng
-})
-
-const emitSetVolume = (val: number) => {
-  const v = Math.min(1, Math.max(0, val))
-  volume.value = v
-  if (v > 0) lastNonZeroVolume.value = v
-  emits('setVolume', v)
-  try {
-    localStorage.setItem(VOLUME_KEY, String(v))
-  } catch (_) {}
-}
-
-let justDragged = false
-const toggleMute = () => {
-  // 仅在拖动中或刚拖完的极短时间内抑制，其他情况立即切换
-  if (draggingVolume || justDragged) return
-  if (volume.value > 0) {
-    lastNonZeroVolume.value = volume.value
-    emitSetVolume(0)
-  } else {
-    const prev = Number.isFinite(lastNonZeroVolume.value as number)
-      ? (lastNonZeroVolume.value as number)
-      : 0
-    // 若历史非零音量过低(<10%)，按 10% 恢复，避免“体感几乎为 0”
-    const restore = prev > 0 ? Math.max(prev, 0.1) : 0.25
-    emitSetVolume(restore)
-  }
-}
-
-const volumeBarRef = useTemplateRef<HTMLDivElement>('volumeBarRef')
-const updateVolumeFromClientY = (clientY: number) => {
-  const el = volumeBarRef.value
-  if (!el) return
-  const rect = el.getBoundingClientRect()
-  if (!rect || rect.height <= 0) return
-  const ratio = 1 - (clientY - rect.top) / rect.height
-  emitSetVolume(ratio)
-}
-
-const handleBarMousedown = (e: MouseEvent) => {
-  draggingVolume = true
-  updateVolumeFromClientY(e.clientY)
-  document.addEventListener('mousemove', handleBarMousemove)
-  document.addEventListener('mouseup', handleBarMouseup)
-}
-const handleBarMousemove = (e: MouseEvent) => {
-  if (!draggingVolume) return
-  updateVolumeFromClientY(e.clientY)
-}
-const handleBarMouseup = () => {
-  draggingVolume = false
-  justDragged = true
-  setTimeout(() => {
-    justDragged = false
-  }, 150)
-  document.removeEventListener('mousemove', handleBarMousemove)
-  document.removeEventListener('mouseup', handleBarMouseup)
-}
-
-const showVolumeSliderByShortcut = (duration = 1200) => {
-  shortcutVolumeVisible.value = true
-  if (volumeUiTimer !== null) {
-    window.clearTimeout(volumeUiTimer)
-  }
-  volumeUiTimer = window.setTimeout(() => {
-    shortcutVolumeVisible.value = false
-    volumeUiTimer = null
-  }, duration)
-}
-
 defineExpose({
-  setPlayingValue,
-  setVolumeValue,
-  showVolumeSliderByShortcut
-})
-
-onUnmounted(() => {
-  document.removeEventListener('mousemove', handleBarMousemove)
-  document.removeEventListener('mouseup', handleBarMouseup)
-  if (volumeUiTimer !== null) {
-    window.clearTimeout(volumeUiTimer)
-    volumeUiTimer = null
-  }
-})
-
-// 初始化从 localStorage 读取音量（默认 0.8）并应用
-onMounted(() => {
-  try {
-    const s = localStorage.getItem(VOLUME_KEY)
-    let v = s !== null ? parseFloat(s) : NaN
-    if (!(v >= 0 && v <= 1)) v = 0.8
-    // 设置组件内部状态并通知父组件
-    volume.value = v
-    lastNonZeroVolume.value = v > 0 ? v : 0
-    emits('setVolume', v)
-  } catch (_) {}
+  setPlayingValue
 })
 
 // ---------------- 系统媒体会话（Media Session API）集成 ----------------
@@ -466,27 +346,6 @@ onUnmounted(() => {
         <img :src="nextSong" draggable="false" />
       </div>
       <bubbleBox :dom="nextSongRef || undefined" :title="t('player.next')" shortcut="S" />
-      <!-- 音量按钮，与“下一首”同风格 -->
-      <div
-        class="buttonIcon volumeIcon"
-        style="position: relative"
-        @mouseenter="iconHovering = true"
-        @mouseleave="iconHovering = false"
-      >
-        <img :src="volumeIcon" draggable="false" @click.stop="toggleMute" />
-        <transition name="fade">
-          <div
-            v-if="showVolumeSlider"
-            class="volumePopover unselectable"
-            @mouseenter="sliderHovering = true"
-            @mouseleave="sliderHovering = false"
-          >
-            <div ref="volumeBarRef" class="volumeBar" @mousedown="handleBarMousedown">
-              <div class="volumeFill" :style="{ height: Math.round(volume * 100) + '%' }"></div>
-            </div>
-          </div>
-        </transition>
-      </div>
       <div class="buttonIcon" @click.stop="handelMoreClick()">
         <img :src="more" draggable="false" />
       </div>
@@ -607,54 +466,11 @@ onUnmounted(() => {
       filter: contrast(120%) drop-shadow(0px 0px 6px var(--text));
     }
   }
-
-  // 仅移除音量图标的发光
-  .volumeIcon:hover {
-    filter: none;
-  }
 }
 
 img {
   width: 20px;
   height: 20px;
-}
-
-.volumePopover {
-  position: absolute;
-  bottom: 38px; // 更贴近图标，轻微重叠，避免鼠标经过间隙
-  left: 50%;
-  transform: translateX(-50%);
-  width: 32px;
-  height: 120px;
-  background-color: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 0;
-  z-index: 3;
-  // 确保浮层不受任何父级滤镜影响
-  filter: none;
-}
-
-.volumeBar {
-  position: relative;
-  width: 6px;
-  height: 100%;
-  background: var(--border);
-  border-radius: 4px;
-  cursor: pointer;
-  filter: none;
-}
-
-.volumeFill {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: 100%;
-  background: var(--accent);
-  border-radius: 4px;
 }
 
 /* 浅色主题下：去掉阴影，用纯黑作为 hover 高亮（适用于白色 PNG 图标） */

@@ -25,6 +25,15 @@ import AnalysisRuntimeDownloadOverlay from '@renderer/components/AnalysisRuntime
 import { useAnalysisRuntimeDownload } from '@renderer/composables/useAnalysisRuntimeDownload'
 import settingDialog from '@renderer/components/settingDialog.vue'
 import settingIconAsset from '@renderer/assets/setting.svg?asset'
+import WindowVolumeDial from '@renderer/components/WindowVolumeDial.vue'
+import {
+  MAIN_WINDOW_VOLUME_CHANGED_EVENT,
+  MAIN_WINDOW_VOLUME_SET_EVENT,
+  MAIN_WINDOW_VOLUME_STORAGE_KEY,
+  clampVolumeValue,
+  readWindowVolume,
+  writeWindowVolume
+} from '@renderer/utils/windowVolume'
 
 const runtime = useRuntimeStore()
 const contextMenuClickThroughGuard = createClickThroughGuard()
@@ -98,6 +107,7 @@ const horizontalModeShellStyle = computed(() => ({
 const topToolbarSettingIconStyle = computed(() => ({
   '--top-toolbar-setting-icon-mask': `url("${settingIconAsset}")`
 }))
+const mainWindowVolume = ref(readWindowVolume(MAIN_WINDOW_VOLUME_STORAGE_KEY))
 const currentMainWindowBrowseModeLabel = computed(() => {
   const currentMode =
     mainWindowBrowseModeOptions.find((item) => item.value === runtime.mainWindowBrowseMode) ||
@@ -616,6 +626,17 @@ const openSettingsDialog = () => {
   activeDialog.value = 'settings'
 }
 
+const handleMainWindowVolumeChange = (value: number) => {
+  const nextVolume = writeWindowVolume(MAIN_WINDOW_VOLUME_STORAGE_KEY, value)
+  mainWindowVolume.value = nextVolume
+  emitter.emit(MAIN_WINDOW_VOLUME_SET_EVENT, nextVolume)
+}
+
+const handleMainWindowVolumeSync = (value: unknown) => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return
+  mainWindowVolume.value = clampVolumeValue(value)
+}
+
 const documentHandleClick = () => {
   runtime.activeMenuUUID = ''
 }
@@ -666,6 +687,7 @@ onMounted(() => {
     songSearchWarmupTimer = null
     void window.electron.ipcRenderer.invoke('song-search:warmup').catch(() => {})
   }, 5000)
+  emitter.on(MAIN_WINDOW_VOLUME_CHANGED_EVENT, handleMainWindowVolumeSync)
   hotkeys('F1', 'windowGlobal', () => {
     openDialog('menu.visitGithub')
   })
@@ -812,6 +834,7 @@ onBeforeUnmount(() => {
     clearTimeout(songSearchWarmupTimer)
     songSearchWarmupTimer = null
   }
+  emitter.off(MAIN_WINDOW_VOLUME_CHANGED_EVENT, handleMainWindowVolumeSync)
   window.removeEventListener('pointerdown', handleContextMenuPointerDownCapture, true)
   window.removeEventListener('pointerdown', handleMainWindowBrowseModeMenuPointerDown, true)
   window.removeEventListener('click', handleContextMenuClickCapture, true)
@@ -894,16 +917,24 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
           </button>
         </div>
       </div>
-      <button
-        class="topToolbarSettingButton"
-        :style="topToolbarSettingIconStyle"
-        :title="t('common.setting')"
-        :aria-label="t('common.setting')"
-        type="button"
-        @click="openSettingsDialog"
-      >
-        <span class="topToolbarSettingIcon"></span>
-      </button>
+      <div class="topToolbarActions">
+        <WindowVolumeDial
+          :model-value="mainWindowVolume"
+          :label="t('player.volumeControl')"
+          :size="28"
+          @update:model-value="handleMainWindowVolumeChange"
+        />
+        <button
+          class="topToolbarSettingButton"
+          :style="topToolbarSettingIconStyle"
+          :title="t('common.setting')"
+          :aria-label="t('common.setting')"
+          type="button"
+          @click="openSettingsDialog"
+        >
+          <span class="topToolbarSettingIcon"></span>
+        </button>
+      </div>
     </div>
     <div v-if="showHorizontalModeShell" :style="horizontalModeShellStyle">
       <HorizontalBrowseModeShell />
@@ -1105,9 +1136,18 @@ body {
   line-height: 1.2;
 }
 
+.topToolbarActions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-left: auto;
+}
+
 .topToolbarSettingButton {
-  width: 22px;
-  height: 22px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1132,11 +1172,11 @@ body {
 }
 
 .topToolbarSettingIcon {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   display: inline-block;
   background-color: currentColor;
-  opacity: 0.72;
+  opacity: 0.82;
   mask-image: var(--top-toolbar-setting-icon-mask);
   mask-repeat: no-repeat;
   mask-position: center;

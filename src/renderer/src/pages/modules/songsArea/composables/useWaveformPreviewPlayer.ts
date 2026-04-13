@@ -2,6 +2,12 @@ import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { canPlayHtmlAudio } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import emitter from '@renderer/utils/mitt'
+import {
+  MAIN_WINDOW_VOLUME_CHANGED_EVENT,
+  MAIN_WINDOW_VOLUME_STORAGE_KEY,
+  clampVolumeValue,
+  readWindowVolume
+} from '@renderer/utils/windowVolume'
 
 interface AudioOutputSinkTarget {
   setSinkId?(deviceId: string): Promise<void>
@@ -249,12 +255,7 @@ export function useWaveformPreviewPlayer() {
   }
 
   const applySavedVolume = () => {
-    try {
-      const s = localStorage.getItem('frkb_volume')
-      let v = s !== null ? parseFloat(s) : NaN
-      if (!(v >= 0 && v <= 1)) v = 0.8
-      volumeValue.value = v
-    } catch {}
+    volumeValue.value = readWindowVolume(MAIN_WINDOW_VOLUME_STORAGE_KEY)
 
     const audio = audioElement.value
     if (audio) {
@@ -263,6 +264,12 @@ export function useWaveformPreviewPlayer() {
     if (pcmGainNode) {
       pcmGainNode.gain.value = volumeValue.value
     }
+  }
+
+  const handleMainWindowVolumeChanged = (value: unknown) => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return
+    volumeValue.value = clampVolumeValue(value)
+    applySavedVolume()
   }
 
   const applyAudioOutputDevice = async (deviceId: string) => {
@@ -601,6 +608,7 @@ export function useWaveformPreviewPlayer() {
   onMounted(() => {
     emitter.on('waveform-preview:play', handlePreviewPlay)
     emitter.on('waveform-preview:stop', handlePreviewStop)
+    emitter.on(MAIN_WINDOW_VOLUME_CHANGED_EVENT, handleMainWindowVolumeChanged)
   })
 
   watch(
@@ -625,6 +633,7 @@ export function useWaveformPreviewPlayer() {
   onUnmounted(() => {
     emitter.off('waveform-preview:play', handlePreviewPlay)
     emitter.off('waveform-preview:stop', handlePreviewStop)
+    emitter.off(MAIN_WINDOW_VOLUME_CHANGED_EVENT, handleMainWindowVolumeChanged)
     stopWaveformPreview('cancel')
     stopProgressLoop()
     releasePcm()

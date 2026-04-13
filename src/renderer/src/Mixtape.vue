@@ -2,6 +2,7 @@
 import { computed, ref, type CSSProperties } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import titleComponent from '@renderer/components/titleComponent.vue'
+import WindowVolumeDial from '@renderer/components/WindowVolumeDial.vue'
 import MixtapeDialogsLayer from '@renderer/components/MixtapeDialogsLayer.vue'
 import MixtapeEnvelopePreviewTrack from '@renderer/components/mixtape/MixtapeEnvelopePreviewTrack.vue'
 import MixtapeGlobalBpmEditor from '@renderer/components/mixtape/MixtapeGlobalBpmEditor.vue'
@@ -23,6 +24,11 @@ import type {
   MixtapeTrack,
   TimelineTrackLayout
 } from '@renderer/composables/mixtape/types'
+import {
+  MIXTAPE_WINDOW_VOLUME_STORAGE_KEY,
+  readWindowVolume,
+  writeWindowVolume
+} from '@renderer/utils/windowVolume'
 
 const masterTempoLaneExpanded = ref(false)
 
@@ -143,11 +149,21 @@ const {
   handleAutoGainDialogConfirm,
   handleAutoGainSelectLoudestReference,
   handleAutoGainSelectQuietestReference,
+  setTransportMasterVolume,
   setZoomValue,
   applyRenderZoomImmediate
 } = useMixtape({
   layoutScaleDeps: [masterTempoLaneExpanded]
 })
+
+const mixtapeWindowVolume = ref(readWindowVolume(MIXTAPE_WINDOW_VOLUME_STORAGE_KEY))
+setTransportMasterVolume(mixtapeWindowVolume.value)
+
+const handleMixtapeWindowVolumeChange = (value: number) => {
+  const nextVolume = writeWindowVolume(MIXTAPE_WINDOW_VOLUME_STORAGE_KEY, value)
+  mixtapeWindowVolume.value = nextVolume
+  setTransportMasterVolume(nextVolume)
+}
 
 const { canOutput: canOutputFromTitle } = useMixtapeOutputAvailability({
   tracks,
@@ -508,6 +524,13 @@ const handleGlobalBpmTrackTargetsSync = (nextTracks: MixtapeTrack[]) => {
             >
               {{ t(isVolumeParamMode ? 'mixtape.segmentMuteAction' : 'mixtape.stemSegmentAction') }}
             </button>
+            <WindowVolumeDial
+              class="mixtape-param-bar__volume"
+              :model-value="mixtapeWindowVolume"
+              :label="t('player.volumeControl')"
+              :size="28"
+              @update:model-value="handleMixtapeWindowVolumeChange"
+            />
           </div>
         </div>
         <div class="mixtape-main">
