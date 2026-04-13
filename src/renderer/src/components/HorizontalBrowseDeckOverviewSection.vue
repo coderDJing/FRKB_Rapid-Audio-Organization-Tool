@@ -125,3 +125,38 @@ const isTop = props.position === 'top'
     </div>
   </section>
 </template>
+
+<style scoped lang="scss">
+.overview__region {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-start;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.overview__region > * {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.overview__region--deck-info {
+  overflow: hidden;
+}
+
+.overview--top .overview__region--deck-info {
+  z-index: var(--shell-z-deck-info-top);
+}
+
+.overview--bottom .overview__region--deck-info {
+  z-index: var(--shell-z-deck-info-bottom);
+}
+
+.overview__region--muted {
+  padding: 0;
+  background: var(--shell-overview-waveform-bg);
+}
+</style>
