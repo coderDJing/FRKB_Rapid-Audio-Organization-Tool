@@ -358,9 +358,24 @@ jobs:
             exit 1
           fi
 
+          PRERELEASE=false
+          case "$TAG_NAME" in
+            *-rc|*-beta|*-alpha)
+              PRERELEASE=true
+              ;;
+          esac
+
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
             gh release upload "$TAG_NAME" "${assets[@]}" --clobber
-            gh release edit "$TAG_NAME" --title "$TAG_NAME"
+            if [ "$PRERELEASE" = "true" ]; then
+              gh release edit "$TAG_NAME" --title "$TAG_NAME" --prerelease
+            else
+              gh release edit "$TAG_NAME" --title "$TAG_NAME"
+            fi
           else
-            gh release create "$TAG_NAME" "${assets[@]}" --title "$TAG_NAME" --verify-tag
+            if [ "$PRERELEASE" = "true" ]; then
+              gh release create "$TAG_NAME" "${assets[@]}" --title "$TAG_NAME" --prerelease --verify-tag
+            else
+              gh release create "$TAG_NAME" "${assets[@]}" --title "$TAG_NAME" --verify-tag
+            fi
           fi

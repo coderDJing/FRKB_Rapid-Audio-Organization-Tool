@@ -154,6 +154,7 @@ jobs:
             "ffmpeg/win32-x64/ffmpeg.exe",
             "ffmpeg/win32-x64/ffprobe.exe",
             "demucs/bootstrap/mixtape_demucs_bootstrap.py",
+            "demucs/bootstrap/beat_this_bridge.py",
             "demucs/models/htdemucs.yaml",
             "demucs/models/955717e8-8726e21a.th",
             "rekordboxDesktopLibrary/bridge.py",
@@ -454,6 +455,7 @@ jobs:
             "ffmpeg/darwin/ffmpeg"
             "ffmpeg/darwin/ffprobe"
             "demucs/bootstrap/mixtape_demucs_bootstrap.py"
+            "demucs/bootstrap/beat_this_bridge.py"
             "demucs/models/htdemucs.yaml"
             "demucs/models/955717e8-8726e21a.th"
             "rekordboxDesktopLibrary/bridge.py"

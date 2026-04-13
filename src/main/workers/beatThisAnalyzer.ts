@@ -53,6 +53,7 @@ type PendingRequest = {
 const ENV_BEAT_THIS_BRIDGE = 'FRKB_BEAT_THIS_BRIDGE'
 const ENV_BEAT_THIS_DBN = 'FRKB_BEAT_THIS_DBN'
 const LOCAL_BRIDGE_PATH = 'scripts/beat_this_bridge.py'
+const PACKAGED_BRIDGE_RELATIVE_PATH = 'demucs/bootstrap/beat_this_bridge.py'
 const DEFAULT_WINDOW_SEC = 30
 const DEFAULT_MAX_SCAN_SEC = 120
 const WINDOW_MIN_DURATION_SEC = 8
@@ -92,6 +93,26 @@ const resolveBridgeScriptPath = () => {
   if (envBridge && fs.existsSync(envBridge)) {
     cachedBridgePath = envBridge
     return envBridge
+  }
+
+  const packagedBridge = normalizeBeatThisFsPath(
+    path.join(normalizeBeatThisFsPath(process.resourcesPath || ''), PACKAGED_BRIDGE_RELATIVE_PATH)
+  )
+  if (packagedBridge && fs.existsSync(packagedBridge)) {
+    cachedBridgePath = packagedBridge
+    return packagedBridge
+  }
+
+  const unpackedBridge = normalizeBeatThisFsPath(
+    path.join(
+      normalizeBeatThisFsPath(process.resourcesPath || ''),
+      'app.asar.unpacked',
+      LOCAL_BRIDGE_PATH
+    )
+  )
+  if (unpackedBridge && fs.existsSync(unpackedBridge)) {
+    cachedBridgePath = unpackedBridge
+    return unpackedBridge
   }
 
   const localBridge = path.join(resolveBeatThisProjectRoot(), LOCAL_BRIDGE_PATH)
