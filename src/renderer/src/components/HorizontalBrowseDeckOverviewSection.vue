@@ -24,6 +24,7 @@ const props = defineProps<{
   beatSyncEnabled: boolean
   beatSyncBlinking: boolean
   masterActive: boolean
+  keyHighlighted: boolean
   currentSeconds: number
   durationSeconds: number
   toolbarState: DeckToolbarState
@@ -84,6 +85,7 @@ const isTop = props.position === 'top'
         :beat-sync-enabled="props.beatSyncEnabled"
         :beat-sync-blinking="props.beatSyncBlinking"
         :master-active="props.masterActive"
+        :key-highlighted="props.keyHighlighted"
         :current-seconds="props.currentSeconds"
         :duration-seconds="props.durationSeconds"
         @trigger-beat-sync="emit('trigger-beat-sync')"

@@ -133,6 +133,17 @@ const playingSongFilePathsForRows = computed(() => {
   }
   return [...keys]
 })
+const harmonicReferenceKeyForRows = computed(() => {
+  if (runtime.mainWindowBrowseMode !== 'horizontal') return ''
+  const leaderDeck = runtime.horizontalBrowseDecks.leaderDeck
+  if (leaderDeck === 'top') {
+    return String(runtime.horizontalBrowseDecks.topSong?.key || '').trim()
+  }
+  if (leaderDeck === 'bottom') {
+    return String(runtime.horizontalBrowseDecks.bottomSong?.key || '').trim()
+  }
+  return ''
+})
 const originPathSnapshot = computed(() => {
   const driveLabel = selectedSourceName.value || 'Pioneer USB'
   const playlistLabel = selectedPlaylistNode.value?.name || ''
@@ -768,6 +779,7 @@ const placeholderText = computed(() => {
         :playing-song-file-paths="playingSongFilePathsForRows"
         :flash-row-key="''"
         :flash-row-token="0"
+        :harmonic-reference-key="harmonicReferenceKeyForRows"
         :total-width="totalWidth"
         source-library-name="PioneerDeviceLibrary"
         :source-song-list-u-u-i-d="

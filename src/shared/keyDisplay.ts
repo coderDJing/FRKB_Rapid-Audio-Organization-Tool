@@ -27,8 +27,62 @@ const KEY_TO_CAMELOT: Record<string, string> = {
   Bm: '10A'
 }
 
+const CAMELOT_KEY_PATTERN = /^0?([1-9]|1[0-2])\s*([AB])$/i
+
+const normalizeKeyText = (keyText: string): string => {
+  const raw = typeof keyText === 'string' ? keyText.trim() : ''
+  if (!raw) return ''
+
+  const symbolic = raw.replace(/♯/g, '#').replace(/♭/g, 'b').replace(/\s+/g, '')
+  const camelotMatch = symbolic.match(CAMELOT_KEY_PATTERN)
+  if (camelotMatch) {
+    return `${Number(camelotMatch[1])}${camelotMatch[2].toUpperCase()}`
+  }
+
+  const tonalMatch = symbolic.match(/^([A-Ga-g])([#b]?)(m?)$/)
+  if (!tonalMatch) return symbolic
+
+  const root = tonalMatch[1].toUpperCase()
+  const accidental = tonalMatch[2] === '#' ? '#' : tonalMatch[2] === 'b' ? 'b' : ''
+  const minor = tonalMatch[3] ? 'm' : ''
+  return `${root}${accidental}${minor}`
+}
+
 export const mapKeyToCamelot = (keyText: string): string => {
-  return KEY_TO_CAMELOT[keyText] || keyText
+  const normalized = normalizeKeyText(keyText)
+  return KEY_TO_CAMELOT[normalized] || normalized
+}
+
+export const normalizeCamelotKey = (keyText: string): string => {
+  const camelot = mapKeyToCamelot(keyText)
+  const match = camelot.match(CAMELOT_KEY_PATTERN)
+  if (!match) return ''
+  return `${Number(match[1])}${match[2].toUpperCase()}`
+}
+
+export const isHarmonicMixCompatible = (referenceKeyText: string, candidateKeyText: string) => {
+  const reference = normalizeCamelotKey(referenceKeyText)
+  const candidate = normalizeCamelotKey(candidateKeyText)
+  if (!reference || !candidate) return false
+  if (reference === candidate) return true
+
+  const referenceMatch = reference.match(CAMELOT_KEY_PATTERN)
+  const candidateMatch = candidate.match(CAMELOT_KEY_PATTERN)
+  if (!referenceMatch || !candidateMatch) return false
+
+  const referenceNumber = Number(referenceMatch[1])
+  const referenceLetter = referenceMatch[2].toUpperCase()
+  const candidateNumber = Number(candidateMatch[1])
+  const candidateLetter = candidateMatch[2].toUpperCase()
+  const previousNumber = referenceNumber === 1 ? 12 : referenceNumber - 1
+  const nextNumber = referenceNumber === 12 ? 1 : referenceNumber + 1
+  const isRelativeMajorMinor =
+    candidateNumber === referenceNumber && candidateLetter !== referenceLetter
+  const isAdjacentSameMode =
+    candidateLetter === referenceLetter &&
+    (candidateNumber === previousNumber || candidateNumber === nextNumber)
+
+  return isRelativeMajorMinor || isAdjacentSameMode
 }
 
 export const getKeyDisplayText = (keyText: string, style: KeyDisplayStyle): string => {

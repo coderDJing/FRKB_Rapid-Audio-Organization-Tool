@@ -37,6 +37,7 @@ import { useHorizontalBrowseDeckMove } from '@renderer/components/useHorizontalB
 import { useHorizontalBrowseDeckSongs } from '@renderer/components/useHorizontalBrowseDeckSongs'
 import { useHorizontalBrowseDeckTempoControls } from '@renderer/components/useHorizontalBrowseDeckTempoControls'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import { isHarmonicMixCompatible } from '@shared/keyDisplay'
 import emitter from '@renderer/utils/mitt'
 
 type DeckKey = HorizontalBrowseDeckKey
@@ -420,6 +421,12 @@ const resolveDeckRawLoadPriorityHint = (deck: DeckKey) => {
 }
 const topDeckRawLoadPriorityHint = computed(() => resolveDeckRawLoadPriorityHint('top'))
 const bottomDeckRawLoadPriorityHint = computed(() => resolveDeckRawLoadPriorityHint('bottom'))
+const deckKeysHarmonicMatched = computed(() =>
+  isHarmonicMixCompatible(
+    String(topDeckSong.value?.key || ''),
+    String(bottomDeckSong.value?.key || '')
+  )
+)
 const syncDeckDefaultCue = (deck: DeckKey, song: ISongInfo | null, force = false) => {
   const target = resolveDeckCuePointRef(deck)
   if (!force && target.value > 0.000001) return
@@ -1077,6 +1084,15 @@ const handleSongKeyUpdated = (
   patchDeckSongKey('bottom')
 }
 
+watch(
+  () => deckSyncState.leaderDeck,
+  (leaderDeck) => {
+    runtime.horizontalBrowseDecks.leaderDeck =
+      leaderDeck === 'top' || leaderDeck === 'bottom' ? leaderDeck : null
+  },
+  { immediate: true }
+)
+
 onMounted(() => {
   syncCrossfaderValue(0)
   void nativeTransport.reset()
@@ -1107,6 +1123,7 @@ onUnmounted(() => {
   window.electron.ipcRenderer.removeListener('song-key-updated', handleSongKeyUpdated)
   runtime.horizontalBrowseDecks.topSong = null
   runtime.horizontalBrowseDecks.bottomSong = null
+  runtime.horizontalBrowseDecks.leaderDeck = null
 })
 </script>
 
@@ -1173,6 +1190,7 @@ onUnmounted(() => {
         :beat-sync-enabled="topDeckSong ? resolveDeckSyncUiEnabled('top') : false"
         :beat-sync-blinking="topDeckSong ? resolveDeckSyncUiLock('top') === 'tempo-only' : false"
         :master-active="topDeckSong ? deckSyncState.leaderDeck === 'top' : false"
+        :key-highlighted="deckKeysHarmonicMatched"
         :current-seconds="topDeckRenderCurrentSeconds"
         :duration-seconds="topDeckDurationSeconds"
         :toolbar-state="resolveDeckToolbarState('top')"
@@ -1260,6 +1278,7 @@ onUnmounted(() => {
           bottomDeckSong ? resolveDeckSyncUiLock('bottom') === 'tempo-only' : false
         "
         :master-active="bottomDeckSong ? deckSyncState.leaderDeck === 'bottom' : false"
+        :key-highlighted="deckKeysHarmonicMatched"
         :current-seconds="bottomDeckRenderCurrentSeconds"
         :duration-seconds="bottomDeckDurationSeconds"
         :toolbar-state="resolveDeckToolbarState('bottom')"

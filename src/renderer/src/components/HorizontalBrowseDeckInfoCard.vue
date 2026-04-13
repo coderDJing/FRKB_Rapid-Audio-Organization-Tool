@@ -11,6 +11,7 @@ const props = defineProps<{
   beatSyncEnabled: boolean
   beatSyncBlinking: boolean
   masterActive: boolean
+  keyHighlighted: boolean
   currentSeconds?: number
   durationSeconds?: number
 }>()
@@ -200,7 +201,12 @@ onUnmounted(() => {
         <span class="deck-info-card__meta-gap"></span>
         <div class="deck-info-card__meta-line">{{ remainingText }}</div>
         <span class="deck-info-card__meta-separator"></span>
-        <div class="deck-info-card__meta-line">{{ keyDisplayText }}</div>
+        <div
+          class="deck-info-card__meta-line deck-info-card__meta-line--key"
+          :class="{ 'is-harmonic-match': props.keyHighlighted }"
+        >
+          {{ keyDisplayText }}
+        </div>
         <span class="deck-info-card__meta-separator"></span>
         <div class="deck-info-card__meta-line">{{ bpmText }}</div>
       </div>
@@ -231,6 +237,7 @@ onUnmounted(() => {
 
 <style scoped lang="scss">
 .deck-info-card {
+  --deck-info-key-match: color-mix(in srgb, #6eb28a 72%, var(--text) 28%);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -367,6 +374,14 @@ onUnmounted(() => {
   font-size: 12px;
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
+  transition:
+    color 0.14s ease,
+    font-weight 0.14s ease;
+}
+
+.deck-info-card__meta-line--key.is-harmonic-match {
+  color: var(--deck-info-key-match);
+  font-weight: 600;
 }
 
 .deck-info-card__stats {

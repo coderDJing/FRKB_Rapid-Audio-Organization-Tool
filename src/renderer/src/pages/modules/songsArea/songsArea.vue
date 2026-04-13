@@ -534,6 +534,17 @@ const playingSongFilePathsForRows = computed(() => {
   if (bottomDeckSong) keys.add(getRowKey(bottomDeckSong))
   return [...keys]
 })
+const harmonicReferenceKeyForRows = computed(() => {
+  if (runtime.mainWindowBrowseMode !== 'horizontal') return ''
+  const leaderDeck = runtime.horizontalBrowseDecks.leaderDeck
+  if (leaderDeck === 'top') {
+    return String(runtime.horizontalBrowseDecks.topSong?.key || '').trim()
+  }
+  if (leaderDeck === 'bottom') {
+    return String(runtime.horizontalBrowseDecks.bottomSong?.key || '').trim()
+  }
+  return ''
+})
 const currentPlayingRowKey = computed(() => {
   const playingSong = runtime.playingData.playingSong
   if (!playingSong) return ''
@@ -886,6 +897,7 @@ const handleMixtapeReorder = async (payload: { sourceItemIds: string[]; targetIn
             :playing-song-file-paths="playingSongFilePathsForRows"
             :flash-row-key="globalSearchFlashRowKey"
             :flash-row-token="globalSearchFlashToken"
+            :harmonic-reference-key="harmonicReferenceKeyForRows"
             :total-width="totalColumnsWidth"
             :source-library-name="runtime.libraryAreaSelected"
             :source-song-list-u-u-i-d="runtime.songsArea.songListUUID"

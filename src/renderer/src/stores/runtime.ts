@@ -99,6 +99,7 @@ interface Runtime {
   horizontalBrowseDecks: {
     topSong: null | ISongInfo
     bottomSong: null | ISongInfo
+    leaderDeck: null | 'top' | 'bottom'
   }
   externalPlaylist: {
     songs: ISongInfo[]
@@ -205,7 +206,8 @@ export const useRuntimeStore = defineStore('runtime', {
       },
       horizontalBrowseDecks: {
         topSong: null,
-        bottomSong: null
+        bottomSong: null,
+        leaderDeck: null
       },
       externalPlaylist: {
         songs: [],

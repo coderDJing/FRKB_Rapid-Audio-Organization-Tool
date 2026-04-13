@@ -11,7 +11,10 @@ import {
 import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import { getKeyDisplayText as formatKeyDisplayText } from '@shared/keyDisplay'
+import {
+  getKeyDisplayText as formatKeyDisplayText,
+  isHarmonicMixCompatible
+} from '@shared/keyDisplay'
 import { t } from '@renderer/utils/translate'
 import { formatDeletedAtMs, getOriginalPlaylistDisplay } from '@renderer/utils/recycleBinDisplay'
 import libraryUtils from '@renderer/utils/libraryUtils'
@@ -99,7 +102,11 @@ const props = defineProps({
   },
   allowContextMenuWhenReadOnly: { type: Boolean, default: false },
   allowDblclickWhenReadOnly: { type: Boolean, default: false },
-  allowWaveformPreviewWhenReadOnly: { type: Boolean, default: false }
+  allowWaveformPreviewWhenReadOnly: { type: Boolean, default: false },
+  harmonicReferenceKey: {
+    type: String as PropType<string | undefined>,
+    default: ''
+  }
 })
 
 type MixtapeDragPayload = {
@@ -334,6 +341,13 @@ const getCuratedArtistBadgeTitle = (song: ISongInfo, colKey: string) => {
     artist: favorite.name || String(song.artist || ''),
     count: favorite.count
   })
+}
+
+const isHarmonicKeyMatch = (song: ISongInfo, colKey: string) => {
+  if (colKey !== 'key') return false
+  const referenceKey = String(props.harmonicReferenceKey || '').trim()
+  if (!referenceKey) return false
+  return isHarmonicMixCompatible(referenceKey, String(song.key || '').trim())
 }
 
 const {
@@ -783,7 +797,8 @@ onUnmounted(() => {
                 :ref="(el) => setCellRef(getCellKey(item.song, col.key), el)"
                 class="cell-title"
                 :class="{
-                  'cell-title--curated-artist-hit': isCuratedArtistHit(item.song, col.key)
+                  'cell-title--curated-artist-hit': isCuratedArtistHit(item.song, col.key),
+                  'cell-title--harmonic-match': isHarmonicKeyMatch(item.song, col.key)
                 }"
                 :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
                 :data-key="getCellKey(item.song, col.key)"
@@ -916,6 +931,7 @@ onUnmounted(() => {
 }
 
 .song-row-content {
+  --song-harmonic-match-color: color-mix(in srgb, #63a07f 78%, var(--text) 22%);
   display: flex;
   height: 30px; // Standard row height
   contain: content;
@@ -974,9 +990,18 @@ onUnmounted(() => {
   text-shadow: 0 0 10px rgba(200, 162, 60, 0.18);
 }
 
+.cell-title--harmonic-match {
+  color: var(--song-harmonic-match-color);
+  font-weight: 600;
+}
+
 .song-row-content.playingSong .cell-title--curated-artist-hit {
   color: inherit;
   text-shadow: none;
+}
+
+.song-row-content.playingSong .cell-title--harmonic-match {
+  color: var(--song-harmonic-match-color);
 }
 
 @keyframes global-search-locate-flash-a {
