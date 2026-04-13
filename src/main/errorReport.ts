@@ -1,10 +1,8 @@
 import { ipcMain } from 'electron'
 import fs = require('fs-extra')
-import path = require('path')
 import { is } from '@electron-toolkit/utils'
 import store from './store'
-import url from './url'
-import { log } from './log'
+import { getLogPath, log } from './log'
 import { persistSettingConfig } from './settingsPersistence'
 
 // 正式阈值：累计运行 100 小时上报一次；失败后每 1 小时重试一次
@@ -23,8 +21,7 @@ const ERROR_API = {
 let timer: NodeJS.Timeout | null = null
 
 function getLogFilePath() {
-  // log.ts中通过 resolvePathFn 指定了 userDataDir/log.txt
-  return path.join(url.userDataDir, 'log.txt')
+  return getLogPath()
 }
 
 async function readLogText(): Promise<string> {

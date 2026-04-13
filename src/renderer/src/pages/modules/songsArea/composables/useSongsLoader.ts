@@ -137,6 +137,37 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     runtime.songsArea.selectedSongFilePath = nextSelection
   }
 
+  const syncPlayingStateAfterReload = (scanData: ISongInfo[], songListUUID: string) => {
+    if (runtime.playingData.playingSongListUUID !== songListUUID) return
+
+    runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+
+    const currentPlayingSong = runtime.playingData.playingSong
+    if (!currentPlayingSong) return
+
+    const playingMixtapeItemId = normalizeComparableText(currentPlayingSong.mixtapeItemId)
+    const normalizedPlayingPath = normalizeSongPath(currentPlayingSong.filePath)
+    const songCandidates =
+      runtime.songsArea.songInfoArr.length > 0 ? runtime.songsArea.songInfoArr : scanData
+
+    const matchedSong = songCandidates.find((song) => {
+      const songMixtapeItemId = normalizeComparableText(song.mixtapeItemId)
+      if (playingMixtapeItemId && songMixtapeItemId) {
+        return songMixtapeItemId === playingMixtapeItemId
+      }
+      return (
+        normalizedPlayingPath !== '' && normalizeSongPath(song.filePath) === normalizedPlayingPath
+      )
+    })
+
+    if (!matchedSong) return
+
+    runtime.playingData.playingSong = {
+      ...currentPlayingSong,
+      ...matchedSong
+    }
+  }
+
   const isEquivalentSongInfo = (left: ISongInfo, right: ISongInfo) => {
     return (
       getSongIdentityKey(left) === getSongIdentityKey(right) &&
@@ -322,13 +353,11 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     originalSongInfoArr.value = markRaw(scanData)
     applyFiltersAndSorting()
     syncSelectedKeysAfterReload(scanData, songListUUID)
+    syncPlayingStateAfterReload(scanData, songListUUID)
     lastAppliedSongListUUID = songListUUID
     try {
       emitter.emit('playlistContentChanged', { uuids: [songListUUID] })
     } catch {}
-    if (runtime.playingData.playingSongListUUID === songListUUID) {
-      runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
-    }
     await hydrateRenderCount()
   }
 
@@ -383,6 +412,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       originalSongInfoArr.value = markRaw([...songs])
       applyFiltersAndSorting()
       syncSelectedKeysAfterReload(runtime.songsArea.songInfoArr, requestUUID)
+      syncPlayingStateAfterReload(runtime.songsArea.songInfoArr, requestUUID)
       lastAppliedSongListUUID = requestUUID
       isRequesting.value = false
       loadingShow.value = false
@@ -400,6 +430,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         originalSongInfoArr.value = markRaw(scanData)
         applyFiltersAndSorting()
         syncSelectedKeysAfterReload(scanData, songListUUID)
+        syncPlayingStateAfterReload(scanData, songListUUID)
         lastAppliedSongListUUID = songListUUID
       } finally {
         isRequesting.value = false
@@ -429,11 +460,8 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         originalSongInfoArr.value = markRaw(songs)
         applyFiltersAndSorting()
         syncSelectedKeysAfterReload(songs, requestUUID)
+        syncPlayingStateAfterReload(songs, requestUUID)
         lastAppliedSongListUUID = requestUUID
-
-        if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-          runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
-        }
 
         const totalRows = runtime.songsArea.songInfoArr.length
         const INITIAL_ROWS = 40

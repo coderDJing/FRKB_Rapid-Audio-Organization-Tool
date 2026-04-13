@@ -118,6 +118,7 @@ export function useSongLoader(params: {
           runtime.playingData.playingSong = null
           runtime.playingData.playingSongListUUID = ''
           if (audioPlayer.value) {
+            ignoreNextEmptyError.value = true
             audioPlayer.value.empty()
           }
         }
@@ -133,6 +134,7 @@ export function useSongLoader(params: {
           runtime.playingData.playingSong = null
           runtime.playingData.playingSongListUUID = ''
           if (audioPlayer.value) {
+            ignoreNextEmptyError.value = true
             audioPlayer.value.empty()
           }
           waveformShow.value = false

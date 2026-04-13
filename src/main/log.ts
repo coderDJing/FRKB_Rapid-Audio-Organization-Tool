@@ -74,12 +74,6 @@ const isPackagedRuntime = (() => {
   }
 })()
 
-const isDevRuntime = (() => {
-  if (String(process.env.NODE_ENV || '').trim() === 'development') return true
-  if (String(process.env.VITE_DEV_SERVER_URL || '').trim()) return true
-  return !isPackagedRuntime
-})()
-
 const resolveUserDataDir = () => {
   if (!isPackagedRuntime) return __dirname
   try {
@@ -99,21 +93,21 @@ const appVersion = (() => {
   }
 })()
 
+const resolveLogPath = () => {
+  // 打包版日志必须固定写入 userData，别让环境变量把 RC/正式包带到安装目录去
+  if (isPackagedRuntime) {
+    return path.join(resolveUserDataDir(), 'log.txt')
+  }
+  return path.join(process.cwd(), 'log.txt')
+}
+
 log.transports.file.level = 'debug'
 log.transports.file.format = `{y}-{m}-{d} {h}:{i}:{s}.{ms} [v${appVersion}] {text}`
 log.transports.file.maxSize = 20 * 1024 * 1024
-log.transports.file.resolvePathFn = () => {
-  if (isDevRuntime) {
-    return path.join(process.cwd(), 'log.txt')
-  }
-  return path.join(resolveUserDataDir(), 'log.txt')
-}
+log.transports.file.resolvePathFn = resolveLogPath
 
 export function getLogPath(): string {
-  if (isDevRuntime) {
-    return path.join(process.cwd(), 'log.txt')
-  }
-  return path.join(resolveUserDataDir(), 'log.txt')
+  return resolveLogPath()
 }
 
 export function clearLogFileSync(): void {

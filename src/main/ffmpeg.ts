@@ -7,7 +7,7 @@ export function resolveBundledFfmpegPath(): string {
   const isPackaged = app.isPackaged
   const platform = process.platform // 'win32' | 'darwin'
   const arch = process.arch // 'x64' | 'arm64'
-  const base = isPackaged ? process.resourcesPath : path.resolve(__dirname, '../../vendor')
+  const base = isPackaged ? process.resourcesPath : path.resolve(process.cwd(), 'vendor')
   const exe = platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'
   const ffmpegRoot = path.join(base, 'ffmpeg')
 

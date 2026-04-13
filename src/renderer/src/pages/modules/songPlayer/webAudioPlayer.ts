@@ -87,6 +87,12 @@ const isIgnorablePlayInterruptionError = (error: unknown) => {
   )
 }
 
+const isEmptySourceAudioErrorMessage = (message: unknown) =>
+  String(message || '')
+    .trim()
+    .toLowerCase()
+    .includes('empty src attribute')
+
 const AUDIO_MIME_BY_EXTENSION: Record<string, string> = {
   aac: 'audio/aac',
   ac3: 'audio/ac3',
@@ -220,6 +226,7 @@ export class WebAudioPlayer {
   private mixxxWaveformFilePath: string | null = null
   private mixxxWaveformBytes = 0
   private suppressPauseEvent = false
+  private ignoreNextEmptySourceError = false
   private mode: 'none' | 'html' | 'pcm' = 'none'
 
   private audioElement: AudioElementWithExtensions | null = null
@@ -293,6 +300,10 @@ export class WebAudioPlayer {
       return Boolean(this.audioBuffer)
     }
     return Boolean(this.audioElement?.src)
+  }
+
+  suppressNextEmptySourceError(): void {
+    this.ignoreNextEmptySourceError = true
   }
 
   loadFile(filePath: string, options?: LoadFileOptions): void {
@@ -721,6 +732,7 @@ export class WebAudioPlayer {
     if (!audio) return
     this.unbindAudioEvents(audio)
     if (clearSrc) {
+      this.suppressNextEmptySourceError()
       try {
         audio.pause()
       } catch (_) {}
@@ -817,6 +829,12 @@ export class WebAudioPlayer {
     const playPromise = audio.play()
     if (playPromise && typeof playPromise.catch === 'function') {
       playPromise.catch((error: unknown) => {
+        if (isEmptySourceAudioErrorMessage(getErrorLike(error)?.message || error)) {
+          return
+        }
+        if (this.consumeIgnoredEmptySourceError(error)) {
+          return
+        }
         if (isIgnorablePlayInterruptionError(error)) {
           return
         }
@@ -868,6 +886,12 @@ export class WebAudioPlayer {
     this.isPlayingFlag = false
     this.stopTimeUpdate()
     const error = this.audioElement?.error
+    if (isEmptySourceAudioErrorMessage(error?.message)) {
+      return
+    }
+    if (this.consumeIgnoredEmptySourceError(error?.message)) {
+      return
+    }
 
     // 记录详细的错误信息
     let errorMessage = 'Audio error'
@@ -894,6 +918,13 @@ export class WebAudioPlayer {
     })
 
     this.emit('error', new Error(errorMessage))
+  }
+
+  private consumeIgnoredEmptySourceError(errorLike: unknown): boolean {
+    if (!this.ignoreNextEmptySourceError) return false
+    if (!isEmptySourceAudioErrorMessage(errorLike)) return false
+    this.ignoreNextEmptySourceError = false
+    return true
   }
 
   private async applyOutputDevice(

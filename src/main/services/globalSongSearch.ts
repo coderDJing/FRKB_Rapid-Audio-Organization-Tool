@@ -558,9 +558,9 @@ class GlobalSongSearchEngine {
       info_json: string
     }
 
-    const songCacheStmt = db.prepare('SELECT list_root, file_path, info_json FROM song_cache') as {
-      iterate(): Iterable<SongCacheRow>
-    }
+    const songCacheRows = db
+      .prepare<SongCacheRow>('SELECT list_root, file_path, info_json FROM song_cache')
+      .all()
 
     const playlistInfo = this.buildPlaylistMeta()
     const docs: SearchDoc[] = []
@@ -571,7 +571,7 @@ class GlobalSongSearchEngine {
     const knownPlaylists = new Set<string>(playlistInfo.knownUuids)
 
     let processedRows = 0
-    for (const row of songCacheStmt.iterate()) {
+    for (const row of songCacheRows) {
       processedRows += 1
       if (!row || !row.list_root || row.info_json === undefined) continue
 

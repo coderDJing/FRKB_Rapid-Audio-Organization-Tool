@@ -197,12 +197,17 @@ const bindPlayerEvents = (player: WebAudioPlayer) => {
   disposers.push(() => player.off('decode', onDecode))
 
   const onReady = () => {
+    ignoreNextEmptyError.value = false
     updateParentWaveformWidth()
   }
   player.on('ready', onReady)
   disposers.push(() => player.off('ready', onReady))
 
   const onError = async (error: unknown) => {
+    if (isIgnorablePlayerEmptySourceError(error)) {
+      ignoreNextEmptyError.value = false
+      return
+    }
     if (isIgnorablePlayerInterruptionError(error)) return
     const currentPath = runtime.playingData.playingSong?.filePath ?? null
     const errorMsg = getErrorMessage(error)
@@ -249,6 +254,17 @@ const isIgnorablePlayerInterruptionError = (error: unknown) => {
     message.includes('play() request was interrupted by a new load request')
   )
 }
+
+const isIgnorablePlayerEmptySourceError = (error: unknown) =>
+  String(
+    ((error && typeof error === 'object' ? error : null) as { message?: unknown } | null)
+      ?.message ||
+      error ||
+      ''
+  )
+    .trim()
+    .toLowerCase()
+    .includes('empty src attribute')
 
 // 封面与右键保存
 const {
@@ -337,6 +353,10 @@ onMounted(() => {
     cancelPreloadTimer,
     playerControlsRef,
     onError: async (_error: unknown) => {
+      if (isIgnorablePlayerEmptySourceError(_error)) {
+        ignoreNextEmptyError.value = false
+        return
+      }
       const currentPath = runtime.playingData.playingSong?.filePath ?? null
       await handleSongLoadError(currentPath, false)
     }

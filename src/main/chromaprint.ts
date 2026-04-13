@@ -10,7 +10,7 @@ export function resolveBundledFpcalcPath(): string {
   if (override && fs.pathExistsSync(override)) {
     return override
   }
-  const base = app.isPackaged ? process.resourcesPath : path.resolve(__dirname, '../../vendor')
+  const base = app.isPackaged ? process.resourcesPath : path.resolve(process.cwd(), 'vendor')
   const exe = process.platform === 'win32' ? 'fpcalc.exe' : 'fpcalc'
   const root = path.join(base, DIR_NAME)
   if (process.platform === 'darwin') {
