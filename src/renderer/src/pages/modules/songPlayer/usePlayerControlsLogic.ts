@@ -147,6 +147,41 @@ export function usePlayerControlsLogic({
       .map((item, index) => ({ song: { ...item }, index }))
       .filter((item) => pathSet.has(normalizePath(item.song.filePath)))
   }
+  const resolvePlaybackAfterRemovingSong = (filePath: string) => {
+    const currentList = [...runtime.playingData.playingSongListData]
+    const currentIndex = currentList.findIndex((song) => song.filePath === filePath)
+    if (currentIndex === -1) {
+      return {
+        nextList: currentList,
+        nextSong: null as ISongInfo | null
+      }
+    }
+    const nextList = currentList.filter((_, index) => index !== currentIndex)
+    const nextSong =
+      nextList.length > 0 ? nextList[Math.min(currentIndex, nextList.length - 1)] || null : null
+    return {
+      nextList,
+      nextSong
+    }
+  }
+  const restorePlaybackAfterDeleteFailure = (payload: {
+    listUUID: string
+    listData: ISongInfo[]
+    song: ISongInfo | null
+  }) => {
+    if (!payload.song?.filePath) {
+      runtime.playingData.playingSongListUUID = payload.listUUID
+      runtime.playingData.playingSongListData = payload.listData
+      runtime.playingData.playingSong = null
+      return
+    }
+    isInternalSongChange.value = true
+    runtime.playingData.playingSongListUUID = payload.listUUID
+    runtime.playingData.playingSongListData = payload.listData
+    runtime.playingData.playingSong = payload.song
+    requestLoadSong(payload.song.filePath)
+    preloadApi.refreshPreloadWindow()
+  }
   const clearPlayerStateForDelete = () => {
     try {
       emitter.emit('waveform-preview:stop', { reason: 'switch' })
@@ -358,12 +393,17 @@ export function usePlayerControlsLogic({
     try {
       isFileOperationInProgress.value = true
       const filePathToDelete = runtime.playingData.playingSong.filePath
+      const currentSongListUUID = runtime.playingData.playingSongListUUID
+      const currentPlayingSongSnapshot = runtime.playingData.playingSong
+        ? { ...runtime.playingData.playingSong }
+        : null
+      const currentPlayingListSnapshot = [...runtime.playingData.playingSongListData]
+      const playbackAfterDelete = resolvePlaybackAfterRemovingSong(filePathToDelete)
       let shouldFinalizeDestroyedPlayerState = false
+      let shouldRestorePlaybackAfterFailure = false
 
       try {
         cancelPreloadTimer('delSong start')
-
-        const currentSongListUUID = runtime.playingData.playingSongListUUID
         preloadApi.forgetCachesForFile(filePathToDelete)
 
         // 检查是否在回收站
@@ -397,7 +437,7 @@ export function usePlayerControlsLogic({
           filePathToDelete
         ])
         clearPlayerStateForDelete()
-        shouldFinalizeDestroyedPlayerState = true
+        shouldRestorePlaybackAfterFailure = true
         emitter.emit('songsArea/optimistic-remove', {
           listUUID: currentSongListUUID,
           paths: [filePathToDelete]
@@ -473,6 +513,19 @@ export function usePlayerControlsLogic({
           return
         }
 
+        if (playbackAfterDelete.nextSong?.filePath) {
+          isInternalSongChange.value = true
+          runtime.playingData.playingSongListUUID = currentSongListUUID
+          runtime.playingData.playingSongListData = playbackAfterDelete.nextList
+          runtime.playingData.playingSong = playbackAfterDelete.nextSong
+          requestLoadSong(playbackAfterDelete.nextSong.filePath)
+          preloadApi.refreshPreloadWindow()
+          shouldRestorePlaybackAfterFailure = false
+        } else {
+          shouldFinalizeDestroyedPlayerState = true
+          shouldRestorePlaybackAfterFailure = false
+        }
+
         // 广播删除，保证当前 songsArea 若显示同一歌单可同步移除
         const listUuidAtDeleteStart = currentSongListUUID
         if (removedPathsForEvent.length > 0) {
@@ -490,6 +543,14 @@ export function usePlayerControlsLogic({
         console.error(`[delSong] 删除歌曲过程中发生错误 (${filePathToDelete}):`, error)
         ignoreNextEmptyError.value = false
       } finally {
+        if (shouldRestorePlaybackAfterFailure) {
+          restorePlaybackAfterDeleteFailure({
+            listUUID: currentSongListUUID,
+            listData: currentPlayingListSnapshot,
+            song: currentPlayingSongSnapshot
+          })
+          shouldRestorePlaybackAfterFailure = false
+        }
         if (shouldFinalizeDestroyedPlayerState) {
           finalizeDestroyedPlayerState()
         }

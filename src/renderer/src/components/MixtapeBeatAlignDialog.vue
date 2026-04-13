@@ -16,7 +16,6 @@ import {
   OVERVIEW_WAVEFORM_VERTICAL_PADDING,
   PREVIEW_BAR_BEAT_INTERVAL,
   PREVIEW_BAR_LINE_HIT_RADIUS_PX,
-  PREVIEW_BPM_DISPLAY_DECIMALS,
   PREVIEW_BPM_MAX,
   PREVIEW_BPM_MIN,
   PREVIEW_BPM_STEP,
@@ -152,7 +151,7 @@ const previewRenderer = createBeatAlignPreviewRenderer()
 const bpmDisplay = computed(() => {
   const bpmValue = Number(previewBpm.value)
   if (!Number.isFinite(bpmValue) || bpmValue <= 0) return 'N/A'
-  return bpmValue.toFixed(PREVIEW_BPM_DISPLAY_DECIMALS)
+  return formatPreviewBpm(bpmValue)
 })
 
 const trackKeyDisplay = computed(() => {

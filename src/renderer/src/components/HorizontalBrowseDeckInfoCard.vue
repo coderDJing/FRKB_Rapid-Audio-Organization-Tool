@@ -2,6 +2,7 @@
 import { computed, onUnmounted, ref, watch } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import { formatBpmDisplay } from '@renderer/utils/bpm'
 import { getKeyDisplayText } from '@shared/keyDisplay'
 import { t } from '@renderer/utils/translate'
 
@@ -135,7 +136,7 @@ const keyDisplayText = computed(() => {
 })
 const bpmText = computed(() => {
   const bpm = Number(props.song?.bpm)
-  return Number.isFinite(bpm) && bpm > 0 ? bpm.toFixed(2) : '--'
+  return Number.isFinite(bpm) && bpm > 0 ? formatBpmDisplay(bpm, '--') : '--'
 })
 const totalSeconds = computed(() => {
   const explicit = Number(props.durationSeconds)

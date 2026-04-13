@@ -2,41 +2,20 @@ import fs = require('fs-extra')
 import type { ILayoutConfig } from 'src/types/globals'
 import { log } from './log'
 import url from './url'
+import {
+  MAIN_WINDOW_MIN_HEIGHT,
+  MAIN_WINDOW_MIN_WIDTH,
+  MAIN_WINDOW_SIZE_MIGRATIONS,
+  defaultLayoutConfig
+} from './layoutConfigDefaults'
 
-type MainWindowSizeMigration = {
-  version: number
-  minWidth: number
-  minHeight: number
-}
-
-const MAIN_WINDOW_SIZE_MIGRATIONS: MainWindowSizeMigration[] = [
-  {
-    version: 1,
-    minWidth: 1200,
-    minHeight: 720
-  }
-]
-
-const latestMainWindowSizeMigration = MAIN_WINDOW_SIZE_MIGRATIONS[
-  MAIN_WINDOW_SIZE_MIGRATIONS.length - 1
-] ?? {
-  version: 0,
-  minWidth: 900,
-  minHeight: 600
-}
-
-export const MAIN_WINDOW_DEFAULT_WIDTH = latestMainWindowSizeMigration.minWidth
-export const MAIN_WINDOW_DEFAULT_HEIGHT = latestMainWindowSizeMigration.minHeight
-export const MAIN_WINDOW_MIN_WIDTH = latestMainWindowSizeMigration.minWidth
-export const MAIN_WINDOW_MIN_HEIGHT = latestMainWindowSizeMigration.minHeight
-
-export const defaultLayoutConfig: ILayoutConfig = {
-  libraryAreaWidth: 175,
-  isMaxMainWin: false,
-  mainWindowWidth: MAIN_WINDOW_DEFAULT_WIDTH,
-  mainWindowHeight: MAIN_WINDOW_DEFAULT_HEIGHT,
-  mainWindowSizeMigrationVersion: latestMainWindowSizeMigration.version
-}
+export {
+  MAIN_WINDOW_DEFAULT_HEIGHT,
+  MAIN_WINDOW_DEFAULT_WIDTH,
+  MAIN_WINDOW_MIN_HEIGHT,
+  MAIN_WINDOW_MIN_WIDTH,
+  defaultLayoutConfig
+} from './layoutConfigDefaults'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)

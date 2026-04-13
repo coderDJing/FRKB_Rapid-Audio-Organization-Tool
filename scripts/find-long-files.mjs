@@ -30,7 +30,7 @@ function parseArgs(argv) {
     root: '.',
     gt: 1200,
     ext: ['.ts', '.tsx', '.js', '.jsx', '.vue', '.css', '.scss', '.json', '.md'],
-    exclude: ['node_modules', 'dist', 'out', '.git', '.vitepress','vendor'],
+    exclude: ['node_modules', 'dist', 'out', '.git', '.vitepress','vendor','.codex_tmp'],
     json: false
   }
   for (let i = 2; i < argv.length; i++) {

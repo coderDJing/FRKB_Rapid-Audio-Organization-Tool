@@ -14,6 +14,7 @@ import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
+import { normalizeBpmDisplayScaled } from '@renderer/utils/bpm'
 import {
   buildRekordboxSourceCacheKey,
   getCachedRekordboxPlaylistTracks,
@@ -276,6 +277,12 @@ const parseNumberInput = (input: unknown): number => {
   return Number.isFinite(value) ? value : NaN
 }
 
+const parseComparableBpm = (input: unknown): number | null => {
+  const numeric = parseNumberInput(input)
+  if (Number.isNaN(numeric)) return null
+  return normalizeBpmDisplayScaled(numeric)
+}
+
 const parseExcludeKeywords = (input: unknown): string[] => {
   if (input === null || input === undefined) return []
   const raw = String(input)
@@ -317,10 +324,10 @@ const applyFiltersAndSorting = () => {
         return true
       })
     } else if (col.filterType === 'bpm' && col.filterOp && col.filterNumber) {
-      const target = parseNumberInput(col.filterNumber)
+      const target = parseComparableBpm(col.filterNumber)
       filtered = filtered.filter((song) => {
-        const bpm = parseNumberInput(song.bpm)
-        if (Number.isNaN(bpm) || Number.isNaN(target)) return false
+        const bpm = parseComparableBpm(song.bpm)
+        if (bpm === null || target === null) return false
         if (col.filterOp === 'eq') return bpm === target
         if (col.filterOp === 'gte') return bpm >= target
         if (col.filterOp === 'lte') return bpm <= target

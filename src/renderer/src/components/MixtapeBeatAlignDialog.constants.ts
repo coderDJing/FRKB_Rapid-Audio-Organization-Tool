@@ -1,4 +1,5 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import { BPM_DISPLAY_DECIMALS, BPM_INTERNAL_DECIMALS, formatBpmDisplay } from '@renderer/utils/bpm'
 import { resizeCanvasWithScaleMetrics } from '@renderer/utils/canvasScale'
 
 export const PREVIEW_MIN_ZOOM = 50
@@ -14,8 +15,8 @@ export const PREVIEW_MAX_SAMPLES_PER_PIXEL = 180
 export const PREVIEW_PLAY_MAX_SAMPLES_PER_PIXEL = 20
 export const PREVIEW_PLAY_ANCHOR_RATIO = 1 / 3
 export const PREVIEW_SHORTCUT_FALLBACK_BPM = 128
-export const PREVIEW_BPM_INTERNAL_DECIMALS = 6
-export const PREVIEW_BPM_DISPLAY_DECIMALS = 2
+export const PREVIEW_BPM_INTERNAL_DECIMALS = BPM_INTERNAL_DECIMALS
+export const PREVIEW_BPM_DISPLAY_DECIMALS = BPM_DISPLAY_DECIMALS
 export const PREVIEW_BPM_STEP = 0.01
 export const PREVIEW_BPM_MIN = 1
 export const PREVIEW_BPM_MAX = 300
@@ -52,8 +53,7 @@ export const normalizePreviewBpm = (value: unknown) => {
   return Number(clamped.toFixed(PREVIEW_BPM_INTERNAL_DECIMALS))
 }
 
-export const formatPreviewBpm = (value: unknown) =>
-  normalizePreviewBpm(value).toFixed(PREVIEW_BPM_DISPLAY_DECIMALS)
+export const formatPreviewBpm = (value: unknown) => formatBpmDisplay(normalizePreviewBpm(value))
 
 export const parsePreviewBpmInput = (value: string) => {
   const normalized = String(value || '')

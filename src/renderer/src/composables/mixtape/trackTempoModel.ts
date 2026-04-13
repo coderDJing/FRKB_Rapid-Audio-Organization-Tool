@@ -1,9 +1,10 @@
 import type { MixtapeBpmPoint, MixtapeTrack } from '@renderer/composables/mixtape/types'
+import { BPM_DISPLAY_DECIMALS, BPM_INTERNAL_DECIMALS, formatBpmDisplay } from '@renderer/utils/bpm'
 
 export const BPM_POINT_SEC_EPSILON = 0.0001
 export const BPM_MIN_VALUE = 1
-export const TRACK_BPM_INTERNAL_DECIMALS = 6
-export const TRACK_BPM_DISPLAY_DECIMALS = 2
+export const TRACK_BPM_INTERNAL_DECIMALS = BPM_INTERNAL_DECIMALS
+export const TRACK_BPM_DISPLAY_DECIMALS = BPM_DISPLAY_DECIMALS
 const TRACK_TEMPO_ROUND_FACTOR = 10000
 
 const BPM_MAX_POINTS_PER_SEC = 2
@@ -83,7 +84,7 @@ export const normalizeTrackBpmValue = (value: unknown): number | null => {
 export const formatTrackBpmDisplay = (value: unknown, fallback: string = 'N/A') => {
   const normalized = normalizeTrackBpmValue(value)
   if (normalized === null) return fallback
-  return normalized.toFixed(TRACK_BPM_DISPLAY_DECIMALS).replace(/\.?0+$/, '')
+  return formatBpmDisplay(normalized, fallback)
 }
 
 export const resolveTrackBpmEnvelopeBaseValue = (

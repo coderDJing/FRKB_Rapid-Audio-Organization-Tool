@@ -34,8 +34,6 @@ import {
   PREVIEW_BAR_BEAT_INTERVAL,
   PREVIEW_BAR_LINE_HIT_RADIUS_PX,
   PREVIEW_BPM_TAP_RESET_MS,
-  PREVIEW_GRID_SHIFT_LARGE_MS,
-  PREVIEW_GRID_SHIFT_SMALL_MS,
   PREVIEW_MAX_SAMPLES_PER_PIXEL,
   PREVIEW_RAW_TARGET_RATE,
   clampNumber,
@@ -122,6 +120,8 @@ const WAVEFORM_TILE_WIDTH = 256
 const WAVEFORM_TILE_OVERSCAN = 1
 const WAVEFORM_TILE_CACHE_LIMIT = 72
 const WAVEFORM_PREWARM_STEP_COUNT = 2
+const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MS = 2
+const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MS = 8
 const HORIZONTAL_BROWSE_DEFERRED_RAW_TARGET_RATE = Math.min(PREVIEW_RAW_TARGET_RATE, 2400)
 const DRAG_RAW_MAX_SAMPLES_PER_PIXEL = 32
 const RAW_STREAM_REDRAW_INTERVAL_MS = 80
@@ -1455,6 +1455,13 @@ watch(
 )
 
 watch(
+  () => canAdjustGrid.value,
+  () => {
+    emitToolbarState()
+  }
+)
+
+watch(
   () => [previewBpm.value, previewFirstBeatMs.value, previewBarBeatOffset.value] as const,
   () => {
     gridRenderer.reset()
@@ -1657,10 +1664,10 @@ onUnmounted(() => {
 defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   toggleBarLinePicking,
   setBarLineAtPlayhead,
-  shiftGridSmallLeft: () => shiftGrid(-PREVIEW_GRID_SHIFT_SMALL_MS),
-  shiftGridLargeLeft: () => shiftGrid(-PREVIEW_GRID_SHIFT_LARGE_MS),
-  shiftGridSmallRight: () => shiftGrid(PREVIEW_GRID_SHIFT_SMALL_MS),
-  shiftGridLargeRight: () => shiftGrid(PREVIEW_GRID_SHIFT_LARGE_MS),
+  shiftGridSmallLeft: () => shiftGrid(-HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MS),
+  shiftGridLargeLeft: () => shiftGrid(-HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MS),
+  shiftGridSmallRight: () => shiftGrid(HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MS),
+  shiftGridLargeRight: () => shiftGrid(HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MS),
   updateBpmInput: handlePreviewBpmInputUpdate,
   blurBpmInput: handlePreviewBpmInputBlur,
   tapBpm: handlePreviewBpmTap

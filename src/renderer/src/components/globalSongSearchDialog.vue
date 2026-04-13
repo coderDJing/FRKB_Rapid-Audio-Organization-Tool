@@ -4,6 +4,7 @@ import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
 import { t } from '@renderer/utils/translate'
 import utils from '@renderer/utils/utils'
+import { formatBpmDisplay } from '@renderer/utils/bpm'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 
 type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
@@ -72,7 +73,7 @@ const getMetaLineText = (item: GlobalSongSearchDialogItem) => {
   if (item.duration) parts.push(item.duration)
   if (item.keyText) parts.push(item.keyText)
   if (typeof item.bpm === 'number' && Number.isFinite(item.bpm)) {
-    parts.push(`BPM ${item.bpm.toFixed(2)}`)
+    parts.push(`BPM ${formatBpmDisplay(item.bpm)}`)
   }
   return parts.join(' · ')
 }

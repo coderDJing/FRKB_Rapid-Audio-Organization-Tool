@@ -1,6 +1,6 @@
 import path = require('path')
 import fs = require('fs-extra')
-import { collectFilesWithExtensions, runWithConcurrency } from '../utils'
+import { collectFilesWithExtensions, runWithConcurrency } from '../nodeTaskUtils'
 import { ISongInfo } from '../../types/globals'
 import { SUPPORTED_AUDIO_FORMATS } from '../../shared/audioFormats'
 import { readWavRiffInfoWindows } from './wavRiffInfo'

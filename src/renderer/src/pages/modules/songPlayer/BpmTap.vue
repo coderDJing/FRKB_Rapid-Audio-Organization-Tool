@@ -3,6 +3,7 @@ import { computed, ref, watch, useTemplateRef } from 'vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import { formatBpmDisplay } from '@renderer/utils/bpm'
 import { getKeyDisplayText } from '@shared/keyDisplay'
 
 // 组件用于显示 BPM，并支持通过左键点击节拍来计算 BPM，右键恢复系统分析值
@@ -19,7 +20,7 @@ const props = defineProps<{
 const isManual = ref(false)
 // 是否已开始手动点击（用于隐藏气泡直到右键恢复）
 const isTapActive = ref(false)
-// 手动计算得到的 BPM（保留一位小数）
+// 手动计算得到的 BPM（保留 6 位小数供展示层统一格式化）
 const manualBpm = ref<number | null>(null)
 // 最近的点击时间戳（毫秒）
 const tapTimestamps = ref<number[]>([])
@@ -40,9 +41,9 @@ watch(
 const displayValue = computed<string>(() => {
   let bpmText = ''
   if (isManual.value && manualBpm.value !== null) {
-    bpmText = manualBpm.value.toFixed(1)
+    bpmText = formatBpmDisplay(manualBpm.value, '')
   } else if (typeof props.bpm === 'number') {
-    bpmText = props.bpm.toString()
+    bpmText = formatBpmDisplay(props.bpm, '')
   } else {
     bpmText = props.bpm || ''
   }
@@ -96,7 +97,7 @@ const handleLeftClick = () => {
       const recent = deltas
       const avgMs = recent.reduce((a, b) => a + b, 0) / recent.length
       const bpm = 60000 / avgMs
-      manualBpm.value = Math.max(1, Math.min(999, Number(bpm.toFixed(1))))
+      manualBpm.value = Math.max(1, Math.min(999, Number(bpm.toFixed(6))))
       isManual.value = true
     }
   }

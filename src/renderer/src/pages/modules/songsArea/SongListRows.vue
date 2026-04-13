@@ -22,6 +22,7 @@ import { useKeyAnalysisQueue } from './SongListRows/useKeyAnalysisQueue'
 import { useCoverPreview } from './SongListRows/useCoverPreview'
 import { useSongRowHoverInteractions } from './SongListRows/useSongRowHoverInteractions'
 import { useWaveformPreview } from './SongListRows/useWaveformPreview'
+import { formatBpmDisplay } from '@renderer/utils/bpm'
 
 const props = defineProps({
   songs: {
@@ -277,7 +278,7 @@ const getCellValue = (song: ISongInfo, colKey: string): string | number => {
   const raw = song[colKey as keyof ISongInfo]
   if (colKey === 'bpm') {
     const bpm = Number(raw)
-    return Number.isFinite(bpm) && bpm > 0 ? bpm.toFixed(2) : ''
+    return Number.isFinite(bpm) && bpm > 0 ? formatBpmDisplay(bpm, '') : ''
   }
   if (raw === undefined || raw === null) return ''
   return raw as string | number
