@@ -430,7 +430,8 @@ export function useLibraryContextMenu({
             songListUUID: props.uuid,
             presetTargetFormat: 'mp3',
             lockTargetFormat: true,
-            excludeSameFormatAsTarget: true
+            excludeSameFormatAsTarget: true,
+            skipExistingTargetCopies: true
           })
           if (result.status === 'no-files') {
             await confirm({

@@ -8,6 +8,7 @@ type StartAudioConvertFromFilesArgs = {
   presetTargetFormat?: SupportedAudioFormat
   lockTargetFormat?: boolean
   excludeSameFormatAsTarget?: boolean
+  skipExistingTargetCopies?: boolean
 }
 
 type StartAudioConvertFromFilesResult =
@@ -22,6 +23,12 @@ type SongListScanRequest = {
 
 type CollectFilesForAudioConvertResult = {
   files: string[]
+}
+
+type FilterExistingTargetCopiesPayload = {
+  files: string[]
+  targetFormat: SupportedAudioFormat
+  outputDir?: string
 }
 
 const getFileExtension = (filePath: string) => {
@@ -70,7 +77,8 @@ export const startAudioConvertFromFiles = async ({
   allowedSourceExts,
   presetTargetFormat,
   lockTargetFormat = false,
-  excludeSameFormatAsTarget = false
+  excludeSameFormatAsTarget = false,
+  skipExistingTargetCopies = false
 }: StartAudioConvertFromFilesArgs): Promise<StartAudioConvertFromFilesResult> => {
   const uniqueFiles = Array.from(
     new Set(files.map((item) => String(item || '').trim()).filter(Boolean))
@@ -96,11 +104,30 @@ export const startAudioConvertFromFiles = async ({
     return { status: 'cancel', files: filteredFiles }
   }
 
+  let filesToConvert = filteredFiles
+  if (skipExistingTargetCopies && dialogResult.strategy === 'new_file') {
+    const payload: FilterExistingTargetCopiesPayload = {
+      files: filteredFiles,
+      targetFormat: dialogResult.targetFormat,
+      outputDir: dialogResult.outputDir
+    }
+    const result = (await window.electron.ipcRenderer.invoke(
+      'audio:convert:filter-existing-target-copies',
+      payload
+    )) as string[] | null
+    filesToConvert = Array.isArray(result)
+      ? result.map((item) => String(item || '').trim()).filter(Boolean)
+      : filteredFiles
+    if (filesToConvert.length === 0) {
+      return { status: 'no-files', files: filesToConvert }
+    }
+  }
+
   await window.electron.ipcRenderer.invoke('audio:convert:start', {
-    files: filteredFiles,
+    files: filesToConvert,
     options: dialogResult,
     songListUUID
   })
 
-  return { status: 'started', files: filteredFiles }
+  return { status: 'started', files: filesToConvert }
 }

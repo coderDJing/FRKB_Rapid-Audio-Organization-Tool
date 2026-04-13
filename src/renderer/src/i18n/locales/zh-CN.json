@@ -308,7 +308,7 @@
     "curatedArtistCountBadgeTitle": "“{artist}”已被加入精选 {count} 次",
     "saveCoverAs": "封面另存为",
     "convertFormat": "转换格式",
-    "convertNonMp3ToMp3": "非 MP3 转为 MP3",
+    "convertNonMp3ToMp3": "统一转为 MP3",
     "editMetadata": "编辑曲目信息",
     "clearTrackCache": "清除曲目缓存"
   },
@@ -503,7 +503,7 @@
     "failed": "失败",
     "createdNew": "新文件（重命名）",
     "replaced": "替换覆盖",
-    "noNonMp3Files": "没有可转换的非 MP3 音频文件",
+    "noNonMp3Files": "没有可转换的非 MP3 音频文件，或 MP3 副本已存在",
     "errorDetails": "失败详情",
     "backupCount": ""
   },

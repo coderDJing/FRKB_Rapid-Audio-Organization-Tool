@@ -308,7 +308,7 @@
     "curatedArtistCountBadgeTitle": "\"{artist}\" has been added to Curated {count} times",
     "saveCoverAs": "Save cover as",
     "convertFormat": "Convert format",
-    "convertNonMp3ToMp3": "Convert non-MP3 to MP3",
+    "convertNonMp3ToMp3": "Convert All to MP3",
     "editMetadata": "Edit track info",
     "clearTrackCache": "Clear track cache"
   },
@@ -524,7 +524,7 @@
     "failed": "Failed",
     "createdNew": "Created new file",
     "replaced": "Replaced original",
-    "noNonMp3Files": "No non-MP3 audio files are available to convert",
+    "noNonMp3Files": "No non-MP3 files are available to convert, or MP3 copies already exist",
     "errorDetails": "Failure details",
     "backupCount": ""
   },

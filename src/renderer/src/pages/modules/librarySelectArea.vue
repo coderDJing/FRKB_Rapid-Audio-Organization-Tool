@@ -354,7 +354,8 @@ const handleConvertLibraryToMp3 = async (libraryName: string) => {
     allowedSourceExts: runtime.setting.audioExt,
     presetTargetFormat: 'mp3',
     lockTargetFormat: true,
-    excludeSameFormatAsTarget: true
+    excludeSameFormatAsTarget: true,
+    skipExistingTargetCopies: true
   })
   if (result.status === 'no-files') {
     await confirm({

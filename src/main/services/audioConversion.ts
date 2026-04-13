@@ -100,6 +100,57 @@ function buildNonConflictTarget(src: string, fmt: string, outputDir?: string): s
   return candidate
 }
 
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+export async function filterOutFilesWithExistingConvertedCopies(
+  files: string[],
+  targetFormat: SupportedAudioFormat,
+  outputDir?: string
+): Promise<string[]> {
+  const uniqueFiles = Array.from(
+    new Set(files.map((item) => String(item || '').trim()).filter(Boolean))
+  )
+  if (uniqueFiles.length === 0) return []
+
+  const filesByDir = new Map<string, Array<{ src: string; base: string }>>()
+  for (const src of uniqueFiles) {
+    const dir = outputDir || path.dirname(src)
+    const base = path.basename(src, path.extname(src))
+    const current = filesByDir.get(dir) || []
+    current.push({ src, base })
+    filesByDir.set(dir, current)
+  }
+
+  const keptFiles: string[] = []
+  for (const [dir, items] of filesByDir) {
+    let entries: string[] = []
+    try {
+      if (await fs.pathExists(dir)) {
+        entries = await fs.readdir(dir)
+      }
+    } catch {}
+    const loweredEntrySet = new Set(entries.map((item) => item.toLowerCase()))
+    for (const item of items) {
+      const exactName = `${item.base} [${targetFormat}].${targetFormat}`.toLowerCase()
+      if (loweredEntrySet.has(exactName)) {
+        continue
+      }
+      const numberedPattern = new RegExp(
+        `^${escapeRegExp(item.base)} \\[${escapeRegExp(targetFormat)}\\] \\(\\d+\\)\\.${escapeRegExp(
+          targetFormat
+        )}$`,
+        'i'
+      )
+      if (entries.some((entry) => numberedPattern.test(entry))) {
+        continue
+      }
+      keptFiles.push(item.src)
+    }
+  }
+
+  return keptFiles
+}
+
 async function backupOriginalIfNeeded(src: string) {
   const result = await moveFileToRecycleBin(src, { sourceType: 'conversion_backup' })
   if (result.status === 'failed') {
