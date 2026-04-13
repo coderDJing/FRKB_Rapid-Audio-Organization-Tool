@@ -23,6 +23,10 @@ on:
         description: Optional runtime asset version suffix
         required: false
         default: ''
+      app_version:
+        description: Optional app version metadata written into runtime manifest
+        required: false
+        default: ''
       build_win:
         description: Build Windows runtime assets
         required: true
@@ -103,6 +107,9 @@ jobs:
           if ("${{ inputs.asset_version }}".Trim()) {
             $args += @("--asset-version", "${{ inputs.asset_version }}")
           }
+          if ("${{ inputs.app_version }}".Trim()) {
+            $args += @("--app-version", "${{ inputs.app_version }}")
+          }
           node @args
 
       - name: Upload workflow artifact (Windows)
@@ -169,6 +176,9 @@ jobs:
           if [ -n "${{ inputs.asset_version }}" ]; then
             args+=("--asset-version" "${{ inputs.asset_version }}")
           fi
+          if [ -n "${{ inputs.app_version }}" ]; then
+            args+=("--app-version" "${{ inputs.app_version }}")
+          fi
           node "${args[@]}"
 
       - name: Upload workflow artifact (macOS arm64)
@@ -233,6 +243,9 @@ jobs:
           )
           if [ -n "${{ inputs.asset_version }}" ]; then
             args+=("--asset-version" "${{ inputs.asset_version }}")
+          fi
+          if [ -n "${{ inputs.app_version }}" ]; then
+            args+=("--app-version" "${{ inputs.app_version }}")
           fi
           node "${args[@]}"
 
@@ -336,6 +349,9 @@ jobs:
             "--output-root" "dist/demucs-runtime-assets"
             "--release-tag" "${{ inputs.release_tag }}"
           )
+          if [ -n "${{ inputs.app_version }}" ]; then
+            args+=("--app-version" "${{ inputs.app_version }}")
+          fi
           if [ -f "$base_manifest" ]; then
             args+=("--base-manifest" "$base_manifest")
           fi

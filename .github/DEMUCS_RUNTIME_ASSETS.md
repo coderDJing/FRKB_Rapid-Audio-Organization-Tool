@@ -58,6 +58,29 @@ RC 运行时建议先发到：
 - `build_mac_x64 = true`
 
 如果想强制区分资产版本，可以填写 `asset_version`。
+如果想让 RC / 正式版 manifest 明确记录当前应用版本，可以额外填写 `app_version`。
+
+### 正式版优先做 RC 提升
+
+如果正式版发布前最后一个 RC 与正式版之间只有版本号变化，没有其他代码变化，
+优先不要重新构建正式版 runtime，而是直接把 RC runtime 提升到正式通道：
+
+- 工作流：`Promote Demucs Runtime Assets`
+- 文件：`.github/workflows/promote-demucs-runtime-assets.yml`
+
+输入建议：
+
+- `app_version`: 例如 `1.2.3`
+- `source_release_tag`: `demucs-runtime-assets-rc`
+- `target_release_tag`: `demucs-runtime-assets`
+
+这会：
+
+- 下载 RC runtime release 当前 manifest 和资产
+- 重写 manifest 中的 `releaseTag/archiveUrl/channel/appVersion/appBaseVersion`
+- 把同一份资产上传到正式通道
+
+这样正式版 runtime 与最后验过的 RC runtime 保持一致，避免“正式版再次重建出另一份内容”。
 
 ## 本地命令
 
@@ -89,14 +112,15 @@ pnpm run demucs:runtime:merge -- --input-roots "dist/demucs-runtime-assets-win32
 至少检查下面几件事：
 
 1. `demucs-runtime-manifest.json` 中对应资产的 `contentHash` 已更新。
-2. 新 runtime 解压后存在 `.frkb-runtime-meta.json`，且其中包含：
+2. manifest 中的 `channel/appVersion/appBaseVersion` 与当前发布通道一致。
+3. 新 runtime 解压后存在 `.frkb-runtime-meta.json`，且其中包含：
    - `beatThisInstalled`
    - `beatThisVersion`
    - `beatThisCheckpointRelativePath`
    - `beatThisCheckpointSha256`
-3. runtime 目录下存在 `beat-this-checkpoints/final0.ckpt`。
-4. Windows 新装或清空 `userData/demucs-runtimes` 后，首次分析会下载 GPU runtime，且 BPM 不再报 `Beat This! Python runtime not available`。
-5. 已安装旧 runtime 的环境里，客户端会把旧资产判定为不可用并触发迁移重下。
+4. runtime 目录下存在 `beat-this-checkpoints/final0.ckpt`。
+5. Windows 新装或清空 `userData/demucs-runtimes` 后，首次分析会下载 GPU runtime，且 BPM 不再报 `Beat This! Python runtime not available`。
+6. 已安装旧 runtime 的环境里，客户端会把旧资产判定为不可用并触发迁移重下。
 
 ## 风险说明
 

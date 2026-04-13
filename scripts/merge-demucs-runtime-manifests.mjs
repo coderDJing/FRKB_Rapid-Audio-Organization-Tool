@@ -25,6 +25,8 @@ const inputRoots = parseCsv(getArgValue('--input-roots', ''))
 const outputRoot = path.resolve(getArgValue('--output-root', 'dist/demucs-runtime-assets'))
 const releaseTag = getArgValue('--release-tag', 'demucs-runtime-assets')
 const baseManifestPath = getArgValue('--base-manifest', '').trim()
+const appVersionArg = getArgValue('--app-version', '').trim()
+const channelArg = getArgValue('--channel', '').trim().toLowerCase()
 
 if (inputRoots.length === 0) {
   console.error('[demucs-runtime-merge] No input roots provided')
@@ -32,6 +34,9 @@ if (inputRoots.length === 0) {
 }
 
 const normalizeText = (value) => String(value || '').trim()
+const toBaseVersion = (value) => normalizeText(value).replace(/-.+$/, '')
+const inferChannelFromReleaseTag = (tag) =>
+  /(^|[-_])(rc|beta|alpha)([-_.]|$)/i.test(normalizeText(tag)) ? 'rc' : 'stable'
 const toAssetIdentityKey = (asset) =>
   [asset?.platform, asset?.profile, asset?.runtimeKey].map((item) => normalizeText(item)).join(':')
 
@@ -122,10 +127,21 @@ const mergedAssets = Array.from(mergedAssetsByKey.values()).sort((a, b) => {
   return left.localeCompare(right)
 })
 
+const primaryManifest = manifests[0]?.manifest || {}
+const appVersion = appVersionArg || normalizeText(primaryManifest.appVersion)
+const appBaseVersion = appVersion ? toBaseVersion(appVersion) : normalizeText(primaryManifest.appBaseVersion)
+const channel =
+  channelArg === 'rc' || channelArg === 'stable'
+    ? channelArg
+    : normalizeText(primaryManifest.channel) || inferChannelFromReleaseTag(releaseTag)
+
 const mergedManifest = {
   schemaVersion: 1,
   generatedAt: new Date().toISOString(),
   releaseTag,
+  channel,
+  appVersion,
+  appBaseVersion,
   assets: mergedAssets
 }
 

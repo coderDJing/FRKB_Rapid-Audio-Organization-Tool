@@ -43,6 +43,8 @@ const releaseTag = getArgValue('--release-tag', 'demucs-runtime-assets')
 const assetVersion = getArgValue('--asset-version', '')
 const profilesArg = parseCsv(getArgValue('--profiles', ''))
 const packagePrefix = getArgValue('--package-prefix', 'frkb-demucs-runtime')
+const appVersion = String(getArgValue('--app-version', packageJson?.version || '')).trim()
+const explicitChannel = String(getArgValue('--channel', '')).trim().toLowerCase()
 
 const repoUrl = String(packageJson?.repository?.url || '')
 const repoMatch = repoUrl.match(/github\.com[:/](.+?)\/(.+?)(?:\.git)?$/i)
@@ -51,6 +53,17 @@ const githubRepo = getArgValue(
   '--github-repo',
   repoMatch?.[2] || 'FRKB_Rapid-Audio-Organization-Tool'
 )
+
+const toBaseVersion = (value) => String(value || '').trim().replace(/-.+$/, '')
+
+const inferChannel = () => {
+  if (explicitChannel === 'rc' || explicitChannel === 'stable') return explicitChannel
+  if (/-/.test(appVersion) || /(^|[-_])(rc|beta|alpha)([-_.]|$)/i.test(releaseTag)) return 'rc'
+  return 'stable'
+}
+
+const manifestChannel = inferChannel()
+const appBaseVersion = toBaseVersion(appVersion)
 
 const platformConfig = runtimeProfiles?.[platformKey]
 if (!platformConfig || typeof platformConfig !== 'object') {
@@ -527,6 +540,9 @@ const manifest = {
   schemaVersion: 1,
   generatedAt: new Date().toISOString(),
   releaseTag,
+  channel: manifestChannel,
+  appVersion,
+  appBaseVersion,
   assets
 }
 

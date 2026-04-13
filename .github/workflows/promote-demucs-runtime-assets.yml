@@ -1,0 +1,75 @@
+name: Promote Demucs Runtime Assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_version:
+        description: Stable app version to align with the promoted runtime assets
+        required: true
+      source_release_tag:
+        description: Source RC runtime release tag
+        required: true
+        default: demucs-runtime-assets-rc
+      target_release_tag:
+        description: Target stable runtime release tag
+        required: true
+        default: demucs-runtime-assets
+
+permissions:
+  contents: write
+
+jobs:
+  promote_runtime_assets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Download source runtime release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_TAG: ${{ inputs.source_release_tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/source-runtime
+          gh release download "$SOURCE_TAG" --dir artifacts/source-runtime --clobber
+
+      - name: Promote RC runtime manifest to stable channel
+        run: |
+          set -euo pipefail
+          node scripts/promote-demucs-runtime-assets.mjs \
+            --source-root artifacts/source-runtime \
+            --output-root dist/demucs-runtime-assets \
+            --source-release-tag "${{ inputs.source_release_tag }}" \
+            --target-release-tag "${{ inputs.target_release_tag }}" \
+            --app-version "${{ inputs.app_version }}"
+
+      - name: Show promoted runtime assets
+        run: find dist/demucs-runtime-assets -maxdepth 1 -type f | sort
+
+      - name: Create or update stable runtime release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TARGET_TAG: ${{ inputs.target_release_tag }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(dist/demucs-runtime-assets/*)
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "No promoted runtime assets found."
+            exit 1
+          fi
+
+          if gh release view "$TARGET_TAG" >/dev/null 2>&1; then
+            gh release upload "$TARGET_TAG" "${assets[@]}" --clobber
+            gh release edit "$TARGET_TAG" --title "$TARGET_TAG"
+          else
+            gh release create "$TARGET_TAG" "${assets[@]}" --title "$TARGET_TAG"
+          fi
