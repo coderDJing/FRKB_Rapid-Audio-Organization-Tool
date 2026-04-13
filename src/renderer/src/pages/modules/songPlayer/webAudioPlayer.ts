@@ -246,6 +246,7 @@ export class WebAudioPlayer {
   private htmlAnalysisAudioElement: AudioElementWithExtensions | null = null
   private htmlAnalysisSourceNode: MediaElementAudioSourceNode | null = null
   private htmlAnalysisAnalyserNode: AnalyserNode | null = null
+  private htmlOutputGainNode: GainNode | null = null
 
   private pcmContext: AudioContext | null = null
   private pcmGainNode: GainNode | null = null
@@ -517,6 +518,10 @@ export class WebAudioPlayer {
 
   setVolume(volume: number): void {
     this.volume = Math.max(0, Math.min(1, volume))
+    if (this.mode === 'html' && this.htmlOutputGainNode) {
+      this.htmlOutputGainNode.gain.value = this.volume
+      return
+    }
     if (this.mode === 'pcm' && this.pcmGainNode) {
       this.pcmGainNode.gain.value = this.volume
       return
@@ -1005,14 +1010,19 @@ export class WebAudioPlayer {
     try {
       const source = context.createMediaElementSource(audio)
       const analyser = configureTitleAudioVisualizerAnalyser(context.createAnalyser())
+      const outputGain = context.createGain()
+      outputGain.gain.value = this.volume
       source.connect(analyser)
-      analyser.connect(context.destination)
+      analyser.connect(outputGain)
+      outputGain.connect(context.destination)
 
       this.htmlAnalysisContext = context
       this.htmlAnalysisAudioElement = audio
       this.htmlAnalysisSourceNode = source
       this.htmlAnalysisAnalyserNode = analyser
+      this.htmlOutputGainNode = outputGain
       this.setVisualizerAnalyserNode(analyser)
+      audio.volume = 1
       if (this.currentOutputDeviceId) {
         void this.applyOutputDeviceToContext(context, this.currentOutputDeviceId).catch(() => {})
       }
@@ -1039,6 +1049,9 @@ export class WebAudioPlayer {
     try {
       this.htmlAnalysisAnalyserNode?.disconnect()
     } catch {}
+    try {
+      this.htmlOutputGainNode?.disconnect()
+    } catch {}
     if (this.htmlAnalysisContext && this.htmlAnalysisContext.state !== 'closed') {
       try {
         void this.htmlAnalysisContext.close()
@@ -1048,6 +1061,7 @@ export class WebAudioPlayer {
     this.htmlAnalysisAudioElement = null
     this.htmlAnalysisSourceNode = null
     this.htmlAnalysisAnalyserNode = null
+    this.htmlOutputGainNode = null
     if (this.mode !== 'pcm') {
       this.setVisualizerAnalyserNode(null)
     }
@@ -1076,8 +1090,8 @@ export class WebAudioPlayer {
     this.pcmGainNode = context.createGain()
     this.pcmAnalyserNode = configureTitleAudioVisualizerAnalyser(context.createAnalyser())
     this.pcmGainNode.gain.value = this.volume
-    this.pcmGainNode.connect(this.pcmAnalyserNode)
-    this.pcmAnalyserNode.connect(context.destination)
+    this.pcmAnalyserNode.connect(this.pcmGainNode)
+    this.pcmGainNode.connect(context.destination)
     this.setVisualizerAnalyserNode(this.pcmAnalyserNode)
 
     if (this.currentOutputDeviceId) {
@@ -1147,7 +1161,9 @@ export class WebAudioPlayer {
     this.stopPcmSource(true)
     const source = context.createBufferSource()
     source.buffer = this.audioBuffer
-    if (this.pcmGainNode) {
+    if (this.pcmAnalyserNode) {
+      source.connect(this.pcmAnalyserNode)
+    } else if (this.pcmGainNode) {
       source.connect(this.pcmGainNode)
     } else {
       source.connect(context.destination)

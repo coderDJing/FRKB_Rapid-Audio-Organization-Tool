@@ -897,7 +897,21 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
           @click.stop="toggleMainWindowBrowseModeMenu"
         >
           <span class="topToolbarModeButtonLabel">{{ currentMainWindowBrowseModeLabel }}</span>
-          <span class="topToolbarModeButtonCaret"></span>
+          <svg
+            class="topToolbarModeButtonCaret"
+            viewBox="0 0 10 10"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path
+              d="M2 3.25 5 6.25 8 3.25"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
         </button>
         <div
           v-if="mainWindowBrowseModeMenuOpen"
@@ -1065,24 +1079,28 @@ body {
 }
 
 .topToolbarModeButtonLabel {
+  display: inline-flex;
+  align-items: center;
   font-size: 12px;
   line-height: 1;
   white-space: nowrap;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .topToolbarModeButtonCaret {
-  width: 8px;
-  height: 8px;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: translateY(-1px) rotate(45deg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
   transition: transform 0.15s ease;
   flex: 0 0 auto;
   opacity: 0.82;
 }
 
 .topToolbarModeButton.is-open .topToolbarModeButtonCaret {
-  transform: translateY(1px) rotate(-135deg);
+  transform: rotate(180deg);
 }
 
 .topToolbarModeMenu {

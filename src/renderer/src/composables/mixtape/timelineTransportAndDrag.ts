@@ -316,20 +316,19 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
   }
 
   const resolveTransportOutputNode = (ctx: AudioContext) => {
+    if (!transportMasterGainNode || transportAudioCtx !== ctx) {
+      transportMasterGainNode = ctx.createGain()
+      transportMasterGainNode.gain.value = transportMasterVolume
+      transportMasterGainNode.connect(ctx.destination)
+    }
     if (!transportAnalyserNode || transportAnalyserNode.context !== ctx) {
       try {
         transportAnalyserNode?.disconnect()
       } catch {}
       transportAnalyserNode = configureTitleAudioVisualizerAnalyser(ctx.createAnalyser())
-      transportAnalyserNode.connect(ctx.destination)
+      transportAnalyserNode.connect(transportMasterGainNode)
     }
-    if (transportMasterGainNode && transportAudioCtx === ctx) {
-      return transportMasterGainNode
-    }
-    transportMasterGainNode = ctx.createGain()
-    transportMasterGainNode.gain.value = transportMasterVolume
-    transportMasterGainNode.connect(transportAnalyserNode)
-    return transportMasterGainNode
+    return transportAnalyserNode
   }
 
   const clearTransportGraphNodes = () => {
