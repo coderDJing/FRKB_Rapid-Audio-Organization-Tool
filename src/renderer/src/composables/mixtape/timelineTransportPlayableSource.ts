@@ -59,7 +59,6 @@ export const ensureTransportKeyLockWorkletModule = async (
     await existing
     return
   }
-  // @ts-expect-error Vite resolves import.meta.url in renderer build
   const moduleUrl = new URL('../../workers/mixtapeTransportKeyLock.worklet.js', import.meta.url)
   const task = audioCtx.audioWorklet.addModule(moduleUrl.href)
   workletModuleByContext.set(audioCtx, task)

@@ -191,7 +191,6 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
       await scrubWorkletModulePromise
       return
     }
-    // @ts-expect-error Vite resolves import.meta.url in renderer build
     const moduleUrl = new URL('../workers/mixtapeBeatAlignScrub.worklet.js', import.meta.url)
     const task = ctx.audioWorklet.addModule(moduleUrl.href)
     scrubWorkletModuleCtx = ctx

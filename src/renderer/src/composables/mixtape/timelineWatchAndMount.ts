@@ -232,7 +232,6 @@ export const createTimelineWatchAndMountModule = (ctx: TimelineWatchAndMountCont
     if (typeof Worker !== 'undefined') {
       try {
         const worker = new Worker(
-          // @ts-expect-error Vite resolves import.meta.url in renderer build
           new URL('../../workers/mixtapeWaveformRender.worker.ts', import.meta.url),
           { type: 'module' }
         )
