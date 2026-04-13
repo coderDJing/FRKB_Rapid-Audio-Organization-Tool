@@ -88,6 +88,13 @@ const enableExplorerContextMenuModel = computed<boolean>({
     runtime.setting.enableExplorerContextMenu = value
   }
 })
+
+const showTitleAudioVisualizerModel = computed<boolean>({
+  get: () => runtime.setting.showTitleAudioVisualizer !== false,
+  set: (value) => {
+    runtime.setting.showTitleAudioVisualizer = value
+  }
+})
 </script>
 
 <template>
@@ -238,6 +245,11 @@ const enableExplorerContextMenuModel = computed<boolean>({
                 :width="220"
                 @change="setSetting"
               />
+            </div>
+
+            <div class="setting-block">{{ t('player.showTitleAudioVisualizer') }}：</div>
+            <div class="setting-control">
+              <singleCheckbox v-model="showTitleAudioVisualizerModel" @change="setSetting()" />
             </div>
 
             <div class="setting-block">{{ t('player.showIdleAnalysisStatus') }}：</div>

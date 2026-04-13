@@ -358,6 +358,9 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
       <div v-if="$slots.meta" class="title-meta">
         <slot name="meta" />
       </div>
+      <div v-if="$slots.rightExtra" class="title-right-extra canNotDrag">
+        <slot name="rightExtra" />
+      </div>
     </div>
     <div v-if="runtime.platform !== 'Mac'" style="display: flex; z-index: 1">
       <div class="rightIcon" @click="toggleMinimize()">
@@ -451,6 +454,14 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
     white-space: nowrap;
     text-overflow: ellipsis;
     pointer-events: none;
+  }
+
+  .title-right-extra {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-shrink: 0;
+    margin-left: 10px;
   }
 
   .rightIcon {

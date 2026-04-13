@@ -6,7 +6,12 @@ import './styles/main.scss'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { i18n } from '@renderer/i18n'
 import dialogDrag from './directives/dialogDrag'
-import { initUiSettings, watchUiSettings } from '@renderer/utils/uiSettingsStorage'
+import {
+  applyUiSettings,
+  initUiSettings,
+  readUiSettings,
+  watchUiSettings
+} from '@renderer/utils/uiSettingsStorage'
 import { installConsoleLogBridge } from '@renderer/utils/installConsoleLogBridge'
 import type { ICuratedArtistFavorite } from 'src/types/globals'
 
@@ -66,6 +71,10 @@ const initializeApp = async () => {
     void window.electron.ipcRenderer.invoke('setSetting', cleanedSetting)
   }
   watchUiSettings(runtime.setting)
+  window.addEventListener('storage', (event) => {
+    if (event.storageArea !== localStorage) return
+    applyUiSettings(runtime.setting as unknown as Record<string, unknown>, readUiSettings())
+  })
   // 初始化主题：根据设置、系统推送选择 theme-dark/theme-light 类
   const rootEl = document.getElementById('app')
   const applyThemeClass = (mode: 'system' | 'light' | 'dark', isSystemDark?: boolean) => {

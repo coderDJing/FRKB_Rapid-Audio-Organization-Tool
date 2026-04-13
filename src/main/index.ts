@@ -427,7 +427,9 @@ app.whenReady().then(async () => {
                 'Content-Type': mimeType,
                 'Content-Range': `bytes ${start}-${end}/${size}`,
                 'Accept-Ranges': 'bytes',
-                'Content-Length': String(end - start + 1)
+                'Content-Length': String(end - start + 1),
+                'Access-Control-Allow-Origin': '*',
+                'Cross-Origin-Resource-Policy': 'cross-origin'
               }
             })
             return
@@ -441,7 +443,9 @@ app.whenReady().then(async () => {
             headers: {
               'Content-Type': mimeType,
               'Accept-Ranges': 'bytes',
-              'Content-Length': String(size)
+              'Content-Length': String(size),
+              'Access-Control-Allow-Origin': '*',
+              'Cross-Origin-Resource-Policy': 'cross-origin'
             }
           })
         } catch (error) {

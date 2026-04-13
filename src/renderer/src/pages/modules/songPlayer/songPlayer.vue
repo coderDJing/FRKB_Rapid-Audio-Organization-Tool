@@ -35,6 +35,11 @@ import {
   readWindowVolume,
   writeWindowVolume
 } from '@renderer/utils/windowVolume'
+import {
+  registerTitleAudioVisualizerSource,
+  unregisterTitleAudioVisualizerSource,
+  type TitleAudioVisualizerSource
+} from '@renderer/composables/titleAudioVisualizerBridge'
 const musicIcon = musicIconAsset
 
 const runtime = useRuntimeStore()
@@ -57,6 +62,10 @@ const handleExternalOpenPlay = (payload: { songs?: ISongInfo[]; startIndex?: num
   runtime.playingData.playingSongListUUID = EXTERNAL_PLAYLIST_UUID
   runtime.playingData.playingSongListData = normalizedQueue
   runtime.playingData.playingSong = normalizedQueue[startIndex]
+}
+
+const titleAudioVisualizerSource: TitleAudioVisualizerSource = {
+  getAnalyser: () => audioPlayer.value?.getVisualizerAnalyser() ?? null
 }
 
 // 预加载
@@ -345,6 +354,7 @@ const handleReplayRequest = () => {
 // 初始化 WebAudioPlayer 和波形
 onMounted(() => {
   initAudioPlayer()
+  registerTitleAudioVisualizerSource('mainWindow', titleAudioVisualizerSource)
   emitter.on('player/replay-current-song', handleReplayRequest)
   emitter.on('external-open/play', handleExternalOpenPlay)
   emitter.on('waveform-preview:pause-main', handleWaveformPreviewPauseMain)
@@ -592,6 +602,7 @@ onUnmounted(() => {
   cancelPreloadTimer()
   runtime.playerReady = false
   clearManualSeekTimer()
+  unregisterTitleAudioVisualizerSource('mainWindow', titleAudioVisualizerSource)
   if (teardownPlayerEvents) {
     teardownPlayerEvents()
     teardownPlayerEvents = null

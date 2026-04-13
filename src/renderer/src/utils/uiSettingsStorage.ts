@@ -48,6 +48,7 @@ const sanitizeUiSettings = (input: Record<string, unknown>): UiSettings => {
       case 'autoPlayNextSong':
       case 'enablePlaybackRange':
       case 'autoScrollToCurrentSong':
+      case 'showTitleAudioVisualizer':
       case 'showPlaylistTrackCount':
       case 'songListBubbleAlways': {
         const v = normalizeBoolean(value)
@@ -89,6 +90,12 @@ const sanitizeUiSettings = (input: Record<string, unknown>): UiSettings => {
         if (v !== undefined) output[key] = v
         break
       }
+      case 'mainWindowTitleAudioVisualizerMode':
+      case 'mixtapeWindowTitleAudioVisualizerMode':
+        if (value === 'bars' || value === 'line') {
+          output[key] = value
+        }
+        break
     }
   }
   return output

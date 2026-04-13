@@ -68,6 +68,7 @@ const createPreloadAudio = (filePath: string) => {
   audio.preload = 'auto'
   audio.autoplay = false
   audio.muted = false
+  audio.crossOrigin = 'anonymous'
   audio.src = toPreviewUrl(filePath)
   return audio
 }

@@ -12,6 +12,9 @@ export const UI_SETTING_KEYS = [
   'enablePlaybackRange',
   'autoScrollToCurrentSong',
   'audioOutputDeviceId',
+  'showTitleAudioVisualizer',
+  'mainWindowTitleAudioVisualizerMode',
+  'mixtapeWindowTitleAudioVisualizerMode',
   'showPlaylistTrackCount',
   'recentDialogSelectedSongListMaxCount',
   'songListBubbleAlways'

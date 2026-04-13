@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import homePage from './pages/homePage.vue'
 import titleComponent from './components/titleComponent.vue'
+import TitleBarAudioVisualizer from '@renderer/components/TitleBarAudioVisualizer.vue'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import bottomInfoArea from './pages/modules/bottomInfoArea.vue'
@@ -878,7 +879,11 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
 <template>
   <div style="height: 100%; max-height: 100%; width: 100%; display: flex; flex-direction: column">
     <div style="height: 35px; position: relative; z-index: var(--z-title-bar); overflow: visible">
-      <titleComponent @open-dialog="openDialog" />
+      <titleComponent @open-dialog="openDialog">
+        <template #rightExtra>
+          <TitleBarAudioVisualizer target="mainWindow" />
+        </template>
+      </titleComponent>
     </div>
     <div :style="mainWindowTopGapStyle" class="mainWindowTopGap">
       <div ref="mainWindowBrowseModeMenuRef" class="topToolbarModeDropdown">

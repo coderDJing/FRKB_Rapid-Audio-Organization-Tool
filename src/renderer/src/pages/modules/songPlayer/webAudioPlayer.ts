@@ -1,6 +1,7 @@
 import mitt from 'mitt'
 import type { IPioneerPreviewWaveformData } from 'src/types/globals'
 import { t } from '@renderer/utils/translate'
+import { configureTitleAudioVisualizerAnalyser } from '@renderer/composables/titleAudioVisualizerBridge'
 
 export type RGBWaveformBandKey = 'low' | 'mid' | 'high'
 export type MixxxWaveformBandKey = RGBWaveformBandKey | 'all'
@@ -62,7 +63,10 @@ interface AudioOutputSinkTarget {
   setSinkId?(deviceId: string): Promise<void>
 }
 
-type AudioElementWithExtensions = HTMLAudioElement & AudioOutputSinkTarget
+type AudioElementWithExtensions = HTMLAudioElement &
+  AudioOutputSinkTarget & {
+    crossOrigin: string | null
+  }
 type AudioContextWithExtensions = AudioContext & AudioOutputSinkTarget
 type AudioContextConstructor = new (options?: AudioContextOptions) => AudioContext
 type WindowWithAudioContext = Window & {
@@ -228,6 +232,7 @@ export class WebAudioPlayer {
   private suppressPauseEvent = false
   private ignoreNextEmptySourceError = false
   private mode: 'none' | 'html' | 'pcm' = 'none'
+  private visualizerAnalyserNode: AnalyserNode | null = null
 
   private audioElement: AudioElementWithExtensions | null = null
   private audioHandlers: {
@@ -237,9 +242,14 @@ export class WebAudioPlayer {
     ended: () => void
     error: () => void
   } | null = null
+  private htmlAnalysisContext: AudioContext | null = null
+  private htmlAnalysisAudioElement: AudioElementWithExtensions | null = null
+  private htmlAnalysisSourceNode: MediaElementAudioSourceNode | null = null
+  private htmlAnalysisAnalyserNode: AnalyserNode | null = null
 
   private pcmContext: AudioContext | null = null
   private pcmGainNode: GainNode | null = null
+  private pcmAnalyserNode: AnalyserNode | null = null
   private pcmSourceNode: AudioBufferSourceNode | null = null
   private pcmOffset = 0
   private pcmStartTime = 0
@@ -289,6 +299,10 @@ export class WebAudioPlayer {
 
   getAudioElement(): HTMLAudioElement | null {
     return this.mode === 'html' ? this.audioElement : null
+  }
+
+  getVisualizerAnalyser(): AnalyserNode | null {
+    return this.visualizerAnalyserNode
   }
 
   isReady(): boolean {
@@ -349,6 +363,7 @@ export class WebAudioPlayer {
         this.emit('error', error)
       }
     }
+    this.ensureHtmlAnalysis(audio)
 
     if (options?.mixxxWaveformData !== undefined) {
       this.setMixxxWaveformData(options.mixxxWaveformData ?? null, normalized)
@@ -663,6 +678,7 @@ export class WebAudioPlayer {
     this.stopInternal(true)
     this.empty()
     this.removeAllListeners()
+    this.releaseHtmlAnalysis()
     this.releasePcmContext()
   }
 
@@ -672,8 +688,8 @@ export class WebAudioPlayer {
       return
     }
     this.currentOutputDeviceId = normalized
-    if (this.mode === 'pcm') {
-      const context = this.pcmContext
+    if (this.mode === 'pcm' || this.mode === 'html') {
+      const context = this.mode === 'pcm' ? this.pcmContext : this.htmlAnalysisContext
       if (!context) {
         return
       }
@@ -703,6 +719,7 @@ export class WebAudioPlayer {
     audio.preload = 'auto'
     audio.autoplay = false
     audio.muted = false
+    audio.crossOrigin = 'anonymous'
     audio.volume = this.volume
     audio.setAttribute('playsinline', 'true')
     audio.style.display = 'none'
@@ -722,14 +739,12 @@ export class WebAudioPlayer {
     this.bindAudioEvents(audio)
     this.ensureAudioElementAttached(audio)
     audio.volume = this.volume
-    if (this.currentOutputDeviceId) {
-      void this.applyOutputDevice(audio, this.currentOutputDeviceId).catch(() => {})
-    }
   }
 
   private detachAudioElement(clearSrc: boolean): void {
     const audio = this.audioElement
     if (!audio) return
+    this.releaseHtmlAnalysis()
     this.unbindAudioEvents(audio)
     if (clearSrc) {
       this.suppressNextEmptySourceError()
@@ -863,6 +878,7 @@ export class WebAudioPlayer {
   }
 
   private handlePlayEvent(): void {
+    this.resumeHtmlAnalysisContext()
     this.emitPlayEvent()
   }
 
@@ -951,13 +967,93 @@ export class WebAudioPlayer {
     this.mode = 'pcm'
   }
 
-  private ensurePcmContext(sampleRate?: number): AudioContext | null {
+  private setVisualizerAnalyserNode(analyser: AnalyserNode | null): void {
+    this.visualizerAnalyserNode = analyser
+  }
+
+  private resolveAudioContextConstructor(): AudioContextConstructor | null {
     const windowWithAudio = window as WindowWithAudioContext
-    const AudioContextCtor = windowWithAudio.AudioContext || windowWithAudio.webkitAudioContext
+    return windowWithAudio.AudioContext || windowWithAudio.webkitAudioContext || null
+  }
+
+  private createAudioContext(options?: AudioContextOptions): AudioContext | null {
+    const AudioContextCtor = this.resolveAudioContextConstructor()
     if (!AudioContextCtor) {
       return null
     }
+    try {
+      return options ? new AudioContextCtor(options) : new AudioContextCtor()
+    } catch {
+      return null
+    }
+  }
 
+  private ensureHtmlAnalysis(audio: AudioElementWithExtensions): void {
+    if (this.mode !== 'html') return
+    if (this.htmlAnalysisAudioElement === audio && this.htmlAnalysisAnalyserNode) {
+      this.setVisualizerAnalyserNode(this.htmlAnalysisAnalyserNode)
+      return
+    }
+
+    this.releaseHtmlAnalysis()
+    const context = this.createAudioContext()
+    if (!context) {
+      this.setVisualizerAnalyserNode(null)
+      return
+    }
+
+    try {
+      const source = context.createMediaElementSource(audio)
+      const analyser = configureTitleAudioVisualizerAnalyser(context.createAnalyser())
+      source.connect(analyser)
+      analyser.connect(context.destination)
+
+      this.htmlAnalysisContext = context
+      this.htmlAnalysisAudioElement = audio
+      this.htmlAnalysisSourceNode = source
+      this.htmlAnalysisAnalyserNode = analyser
+      this.setVisualizerAnalyserNode(analyser)
+      if (this.currentOutputDeviceId) {
+        void this.applyOutputDeviceToContext(context, this.currentOutputDeviceId).catch(() => {})
+      }
+    } catch {
+      try {
+        void context.close()
+      } catch {}
+      this.setVisualizerAnalyserNode(null)
+    }
+  }
+
+  private resumeHtmlAnalysisContext(): void {
+    const context = this.htmlAnalysisContext
+    if (!context || context.state !== 'suspended') {
+      return
+    }
+    void context.resume().catch(() => {})
+  }
+
+  private releaseHtmlAnalysis(): void {
+    try {
+      this.htmlAnalysisSourceNode?.disconnect()
+    } catch {}
+    try {
+      this.htmlAnalysisAnalyserNode?.disconnect()
+    } catch {}
+    if (this.htmlAnalysisContext && this.htmlAnalysisContext.state !== 'closed') {
+      try {
+        void this.htmlAnalysisContext.close()
+      } catch {}
+    }
+    this.htmlAnalysisContext = null
+    this.htmlAnalysisAudioElement = null
+    this.htmlAnalysisSourceNode = null
+    this.htmlAnalysisAnalyserNode = null
+    if (this.mode !== 'pcm') {
+      this.setVisualizerAnalyserNode(null)
+    }
+  }
+
+  private ensurePcmContext(sampleRate?: number): AudioContext | null {
     if (this.pcmContext) {
       if (sampleRate && this.pcmContext.sampleRate !== sampleRate) {
         this.releasePcmContext()
@@ -966,9 +1062,8 @@ export class WebAudioPlayer {
       }
     }
 
-    try {
-      this.pcmContext = sampleRate ? new AudioContextCtor({ sampleRate }) : new AudioContextCtor()
-    } catch {
+    this.pcmContext = this.createAudioContext(sampleRate ? { sampleRate } : undefined)
+    if (!this.pcmContext) {
       this.pcmContext = null
       return null
     }
@@ -979,8 +1074,11 @@ export class WebAudioPlayer {
     }
 
     this.pcmGainNode = context.createGain()
+    this.pcmAnalyserNode = configureTitleAudioVisualizerAnalyser(context.createAnalyser())
     this.pcmGainNode.gain.value = this.volume
-    this.pcmGainNode.connect(context.destination)
+    this.pcmGainNode.connect(this.pcmAnalyserNode)
+    this.pcmAnalyserNode.connect(context.destination)
+    this.setVisualizerAnalyserNode(this.pcmAnalyserNode)
 
     if (this.currentOutputDeviceId) {
       void this.applyOutputDeviceToContext(context, this.currentOutputDeviceId).catch(() => {})
@@ -990,6 +1088,12 @@ export class WebAudioPlayer {
   }
 
   private releasePcmContext(): void {
+    try {
+      this.pcmGainNode?.disconnect()
+    } catch {}
+    try {
+      this.pcmAnalyserNode?.disconnect()
+    } catch {}
     if (this.pcmContext) {
       try {
         void this.pcmContext.close()
@@ -997,7 +1101,9 @@ export class WebAudioPlayer {
     }
     this.pcmContext = null
     this.pcmGainNode = null
+    this.pcmAnalyserNode = null
     this.pcmSourceNode = null
+    this.setVisualizerAnalyserNode(this.mode === 'html' ? this.htmlAnalysisAnalyserNode : null)
   }
 
   private stopPcmSource(suppressEnded: boolean): void {

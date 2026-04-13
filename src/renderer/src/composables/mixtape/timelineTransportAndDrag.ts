@@ -4,6 +4,12 @@ import { t } from '@renderer/utils/translate'
 import { normalizeBeatOffset as normalizeBeatOffsetByMixxx } from '@renderer/composables/mixtape/mixxxSyncModel'
 import { applyMixxxTransportSync } from '@renderer/composables/mixtape/timelineTransportSync'
 import {
+  configureTitleAudioVisualizerAnalyser,
+  registerTitleAudioVisualizerSource,
+  unregisterTitleAudioVisualizerSource,
+  type TitleAudioVisualizerSource
+} from '@renderer/composables/titleAudioVisualizerBridge'
+import {
   createTimelineTransportRenderWavModule,
   type MixtapeOutputProgressPayload,
   type MixtapeRenderedWavResult
@@ -120,10 +126,16 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
   let transportAudioCtx: AudioContext | null = null
   let transportMasterGainNode: GainNode | null = null
   let transportMasterVolume = 0.8
+  let transportAnalyserNode: AnalyserNode | null = null
   let transportGraphNodes: TrackGraphNode[] = []
   let transportMasterTrackId = ''
   let transportVersion = 0
   let transportKeyLockWorkletReady = false
+  const titleAudioVisualizerSource: TitleAudioVisualizerSource = {
+    getAnalyser: () => transportAnalyserNode
+  }
+
+  registerTitleAudioVisualizerSource('mixtapeWindow', titleAudioVisualizerSource)
 
   const clampNumber = (value: number, min: number, max: number) =>
     Math.max(min, Math.min(max, value))
@@ -282,6 +294,7 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
     }
     transportAudioCtx = new AudioContext(sampleRate ? { sampleRate } : undefined)
     transportMasterGainNode = null
+    transportAnalyserNode = null
     return transportAudioCtx
   }
 
@@ -303,12 +316,19 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
   }
 
   const resolveTransportOutputNode = (ctx: AudioContext) => {
+    if (!transportAnalyserNode || transportAnalyserNode.context !== ctx) {
+      try {
+        transportAnalyserNode?.disconnect()
+      } catch {}
+      transportAnalyserNode = configureTitleAudioVisualizerAnalyser(ctx.createAnalyser())
+      transportAnalyserNode.connect(ctx.destination)
+    }
     if (transportMasterGainNode && transportAudioCtx === ctx) {
       return transportMasterGainNode
     }
     transportMasterGainNode = ctx.createGain()
     transportMasterGainNode.gain.value = transportMasterVolume
-    transportMasterGainNode.connect(ctx.destination)
+    transportMasterGainNode.connect(transportAnalyserNode)
     return transportMasterGainNode
   }
 
@@ -828,6 +848,11 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
       } catch {}
       transportMasterGainNode = null
     }
+    unregisterTitleAudioVisualizerSource('mixtapeWindow', titleAudioVisualizerSource)
+    try {
+      transportAnalyserNode?.disconnect()
+    } catch {}
+    transportAnalyserNode = null
     // 关闭 AudioContext 释放资源
     if (transportAudioCtx && transportAudioCtx.state !== 'closed') {
       try {

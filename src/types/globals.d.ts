@@ -335,6 +335,8 @@ interface IPlayerGlobalShortcuts {
   previousSong: string
 }
 
+type TitleAudioVisualizerMode = 'bars' | 'line'
+
 interface ISettingConfig {
   platform: 'win32' | 'darwin'
   language: '' | 'enUS' | 'zhCN'
@@ -362,6 +364,12 @@ interface ISettingConfig {
   recentDialogSelectedSongListMaxCount: number
   // 音频输出设备 ID，空字符串表示跟随系统默认设备
   audioOutputDeviceId: string
+  // 是否显示标题栏右侧音频可视化
+  showTitleAudioVisualizer?: boolean
+  // 主窗口标题栏音频可视化样式
+  mainWindowTitleAudioVisualizerMode?: TitleAudioVisualizerMode
+  // Mixtape 窗口标题栏音频可视化样式
+  mixtapeWindowTitleAudioVisualizerMode?: TitleAudioVisualizerMode
   // 错误日志上报设置
   enableErrorReport: boolean
   errorReportUsageMsSinceLastSuccess: number
@@ -496,6 +504,7 @@ export {
   ILayoutConfig,
   ISettingConfig,
   IPlayerGlobalShortcuts,
+  TitleAudioVisualizerMode,
   PlayerGlobalShortcutAction,
   ILanguageDict,
   IMenu,

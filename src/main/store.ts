@@ -53,6 +53,9 @@ let settingConfig: ISettingConfig = {
   enablePlaybackRange: false,
   recentDialogSelectedSongListMaxCount: 10,
   audioOutputDeviceId: '',
+  showTitleAudioVisualizer: true,
+  mainWindowTitleAudioVisualizerMode: 'bars',
+  mixtapeWindowTitleAudioVisualizerMode: 'bars',
   // 错误日志上报默认配置
   enableErrorReport: true,
   errorReportUsageMsSinceLastSuccess: 0,

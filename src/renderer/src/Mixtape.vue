@@ -3,6 +3,7 @@ import { computed, ref, type CSSProperties } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import titleComponent from '@renderer/components/titleComponent.vue'
 import WindowVolumeDial from '@renderer/components/WindowVolumeDial.vue'
+import TitleBarAudioVisualizer from '@renderer/components/TitleBarAudioVisualizer.vue'
 import MixtapeDialogsLayer from '@renderer/components/MixtapeDialogsLayer.vue'
 import MixtapeEnvelopePreviewTrack from '@renderer/components/mixtape/MixtapeEnvelopePreviewTrack.vue'
 import MixtapeGlobalBpmEditor from '@renderer/components/mixtape/MixtapeGlobalBpmEditor.vue'
@@ -393,6 +394,9 @@ const handleGlobalBpmTrackTargetsSync = (nextTracks: MixtapeTrack[]) => {
         :enable-menu-hotkeys="false"
         @open-dialog="handleTitleMenuOpen"
       >
+        <template #rightExtra>
+          <TitleBarAudioVisualizer target="mixtapeWindow" />
+        </template>
       </titleComponent>
     </div>
     <div class="mixtape-window">

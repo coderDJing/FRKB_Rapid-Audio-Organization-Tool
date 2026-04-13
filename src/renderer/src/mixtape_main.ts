@@ -6,7 +6,12 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { i18n } from '@renderer/i18n'
 import 'overlayscrollbars/overlayscrollbars.css'
 import dialogDrag from './directives/dialogDrag'
-import { initUiSettings, watchUiSettings } from '@renderer/utils/uiSettingsStorage'
+import {
+  applyUiSettings,
+  initUiSettings,
+  readUiSettings,
+  watchUiSettings
+} from '@renderer/utils/uiSettingsStorage'
 import { installConsoleLogBridge } from '@renderer/utils/installConsoleLogBridge'
 
 declare global {
@@ -39,6 +44,10 @@ const initializeApp = async () => {
     void window.electron.ipcRenderer.invoke('setSetting', cleanedSetting)
   }
   watchUiSettings(runtime.setting)
+  window.addEventListener('storage', (event) => {
+    if (event.storageArea !== localStorage) return
+    applyUiSettings(runtime.setting as unknown as Record<string, unknown>, readUiSettings())
+  })
   {
     const p = runtime.setting?.platform
     runtime.platform = p === 'darwin' ? 'Mac' : p === 'win32' ? 'Windows' : 'Unknown'
