@@ -18,6 +18,7 @@ import {
   type HorizontalBrowseGridToolbarState
 } from '@renderer/components/useHorizontalBrowseGridToolbar'
 import { useMixtapeBeatAlignGridAdjust } from '@renderer/components/mixtapeBeatAlignGridAdjust'
+import { useMixtapeBeatAlignMetronome } from '@renderer/components/mixtapeBeatAlignMetronome'
 import {
   PREVIEW_BAR_BEAT_INTERVAL,
   PREVIEW_BAR_LINE_HIT_RADIUS_PX,
@@ -40,6 +41,8 @@ type HorizontalBrowseRawWaveformDetailExpose = {
   updateBpmInput: (value: string) => void
   blurBpmInput: () => void
   tapBpm: () => void
+  toggleMetronome: () => void
+  cycleMetronomeVolume: () => void
 }
 
 type HorizontalBrowseSharedZoomState = {
@@ -285,6 +288,7 @@ const handleWheel = (event: WheelEvent) => {
 const canAdjustGrid = computed(() => !previewLoading.value && !!mixxxData.value)
 const previewFirstBeatMsComputed = computed(() => Number(previewFirstBeatMs.value) || 0)
 const previewPlaying = ref(false)
+const detailVisible = computed(() => true)
 const loopMaskStyle = computed(() => {
   const loopRange = props.loopRange
   if (!loopRange) return null
@@ -333,6 +337,23 @@ const {
 })
 
 const {
+  metronomeEnabled,
+  metronomeVolumeLevel,
+  metronomeSupported,
+  setMetronomeEnabled,
+  setMetronomeVolumeLevel
+} = useMixtapeBeatAlignMetronome({
+  dialogVisible: detailVisible,
+  previewPlaying,
+  bpm: previewBpm,
+  firstBeatMs: previewFirstBeatMsComputed,
+  resolveAnchorSec: resolvePreviewAnchorSec
+})
+
+const canToggleMetronome = computed(() => canAdjustGrid.value && metronomeSupported.value)
+const canAdjustMetronomeVolume = computed(() => canToggleMetronome.value)
+
+const {
   emitToolbarState,
   syncGridStateFromSong,
   handlePreviewBpmInputUpdate,
@@ -340,7 +361,9 @@ const {
   handlePreviewBpmTap,
   toggleBarLinePicking,
   setBarLineAtPlayhead,
-  shiftGrid
+  shiftGrid,
+  toggleMetronome,
+  cycleMetronomeVolume
 } = useHorizontalBrowseGridToolbar({
   canAdjustGrid,
   previewLoading,
@@ -350,6 +373,10 @@ const {
   previewBarBeatOffset,
   bpmTapTimestamps,
   previewBarLinePicking,
+  metronomeEnabled,
+  metronomeVolumeLevel,
+  canToggleMetronome,
+  canAdjustMetronomeVolume,
   emitToolbarStateChange: (value) => emit('toolbar-state-change', value),
   resolveDisplayGridBpm,
   resolveSongFirstBeatMs: () => Number(props.song?.firstBeatMs) || 0,
@@ -362,7 +389,13 @@ const {
   resetBarLinePicking,
   handleBarLinePickingToggle,
   handleSetBarLineAtPlayhead,
-  handleGridShift
+  handleGridShift,
+  handleMetronomeToggle: () => setMetronomeEnabled(!metronomeEnabled.value),
+  handleMetronomeVolumeCycle: () => {
+    const currentLevel = Number(metronomeVolumeLevel.value)
+    const nextLevel = currentLevel >= 3 ? 1 : ((currentLevel + 1) as 1 | 2 | 3)
+    setMetronomeVolumeLevel(nextLevel)
+  }
 })
 
 const {
@@ -571,6 +604,19 @@ watch(
 )
 
 watch(
+  () =>
+    [
+      metronomeEnabled.value,
+      metronomeVolumeLevel.value,
+      canToggleMetronome.value,
+      canAdjustMetronomeVolume.value
+    ] as const,
+  () => {
+    emitToolbarState()
+  }
+)
+
+watch(
   () => runtime.setting?.themeMode,
   () => {
     invalidateWaveformTiles()
@@ -616,7 +662,9 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   shiftGridLargeRight: () => shiftGrid(HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MS),
   updateBpmInput: handlePreviewBpmInputUpdate,
   blurBpmInput: handlePreviewBpmInputBlur,
-  tapBpm: handlePreviewBpmTap
+  tapBpm: handlePreviewBpmTap,
+  toggleMetronome,
+  cycleMetronomeVolume
 })
 </script>
 

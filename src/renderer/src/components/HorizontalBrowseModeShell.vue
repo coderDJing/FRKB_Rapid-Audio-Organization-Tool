@@ -74,6 +74,8 @@ type HorizontalBrowseDeckDetailLaneExpose = {
   shiftGridSmallLeft?: () => void
   shiftGridSmallRight?: () => void
   shiftGridLargeRight?: () => void
+  toggleMetronome?: () => void
+  cycleMetronomeVolume?: () => void
 }
 
 const createDefaultDeckToolbarState = () => ({
@@ -82,7 +84,11 @@ const createDefaultDeckToolbarState = () => ({
   bpmStep: 0.01,
   bpmMin: 1,
   bpmMax: 300,
-  barLinePicking: false
+  barLinePicking: false,
+  metronomeEnabled: false,
+  metronomeVolumeLevel: 2 as 1 | 2 | 3,
+  canToggleMetronome: false,
+  canAdjustMetronomeVolume: false
 })
 const FADER_TRAVEL_INSET_RATIO = 0.17
 const CROSSFADER_KEY_STEP = 0.25
@@ -603,6 +609,8 @@ const {
   handleDeckGridShiftSmallLeft,
   handleDeckGridShiftSmallRight,
   handleDeckGridShiftLargeRight,
+  handleDeckMetronomeToggle,
+  handleDeckMetronomeVolumeCycle,
   handleDeckBpmInputUpdate,
   handleDeckBpmInputBlur
 } = useHorizontalBrowseDeckToolbarInteractions({
@@ -956,6 +964,8 @@ onUnmounted(() => {
         @update-bpm-input="handleDeckBpmInputUpdate('top', $event)"
         @blur-bpm-input="handleDeckBpmInputBlur('top')"
         @toggle-bar-line-picking="handleDeckBarLinePickingToggle('top')"
+        @toggle-metronome="handleDeckMetronomeToggle('top')"
+        @cycle-metronome-volume="handleDeckMetronomeVolumeCycle('top')"
         @loop-step-down="handleDeckLoopStepDown('top')"
         @loop-step-up="handleDeckLoopStepUp('top')"
         @toggle-loop="handleDeckLoopToggle('top')"
@@ -1050,6 +1060,8 @@ onUnmounted(() => {
         @update-bpm-input="handleDeckBpmInputUpdate('bottom', $event)"
         @blur-bpm-input="handleDeckBpmInputBlur('bottom')"
         @toggle-bar-line-picking="handleDeckBarLinePickingToggle('bottom')"
+        @toggle-metronome="handleDeckMetronomeToggle('bottom')"
+        @cycle-metronome-volume="handleDeckMetronomeVolumeCycle('bottom')"
         @loop-step-down="handleDeckLoopStepDown('bottom')"
         @loop-step-up="handleDeckLoopStepUp('bottom')"
         @toggle-loop="handleDeckLoopToggle('bottom')"

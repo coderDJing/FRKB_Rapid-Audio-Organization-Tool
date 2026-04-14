@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BeatGridMetronomeControls from '@renderer/components/BeatGridMetronomeControls.vue'
 import MixtapeBeatAlignGridAdjustToolbar from '@renderer/components/mixtapeBeatAlignGridAdjustToolbar.vue'
 import HorizontalBrowseDeckMoveButton from '@renderer/components/HorizontalBrowseDeckMoveButton.vue'
 import type { HorizontalBrowseDeckMoveTargetLibrary } from '@renderer/components/useHorizontalBrowseDeckMove'
@@ -17,6 +18,10 @@ const props = defineProps<{
   songPresent: boolean
   readOnlySource: boolean
   masterTempoEnabled: boolean
+  metronomeEnabled: boolean
+  metronomeVolumeLevel: 1 | 2 | 3
+  canToggleMetronome: boolean
+  canAdjustMetronomeVolume: boolean
 }>()
 
 const emit = defineEmits<{
@@ -33,6 +38,8 @@ const emit = defineEmits<{
   (event: 'toggle-loop'): void
   (event: 'toggle-master-tempo'): void
   (event: 'reset-tempo'): void
+  (event: 'toggle-metronome'): void
+  (event: 'cycle-metronome-volume'): void
   (event: 'select-move-target', target: HorizontalBrowseDeckMoveTargetLibrary): void
 }>()
 </script>
@@ -105,6 +112,14 @@ const emit = defineEmits<{
             : t('mixtape.gridAdjustSetBarLine')
         }}
       </button>
+      <BeatGridMetronomeControls
+        :metronome-enabled="props.metronomeEnabled"
+        :metronome-volume-level="props.metronomeVolumeLevel"
+        :can-toggle-metronome="props.canToggleMetronome"
+        :can-adjust-metronome-volume="props.canAdjustMetronomeVolume"
+        @toggle-metronome="emit('toggle-metronome')"
+        @cycle-metronome-volume="emit('cycle-metronome-volume')"
+      />
     </div>
     <div class="overview__toolbar-actions">
       <button

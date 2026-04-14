@@ -13,6 +13,10 @@ type DeckToolbarState = {
   bpmMin: number
   bpmMax: number
   barLinePicking: boolean
+  metronomeEnabled: boolean
+  metronomeVolumeLevel: 1 | 2 | 3
+  canToggleMetronome: boolean
+  canAdjustMetronomeVolume: boolean
   loopBeatLabel: string
   loopActive: boolean
   loopDisabled: boolean
@@ -63,6 +67,8 @@ const emit = defineEmits<{
   (event: 'toggle-loop'): void
   (event: 'toggle-master-tempo'): void
   (event: 'reset-tempo'): void
+  (event: 'toggle-metronome'): void
+  (event: 'cycle-metronome-volume'): void
   (event: 'select-move-target', target: HorizontalBrowseDeckMoveTargetLibrary): void
 }>()
 
@@ -126,6 +132,10 @@ const isTop = props.position === 'top'
         :song-present="!!props.song"
         :read-only-source="props.readOnlySource"
         :master-tempo-enabled="props.masterTempoEnabled"
+        :metronome-enabled="props.toolbarState.metronomeEnabled"
+        :metronome-volume-level="props.toolbarState.metronomeVolumeLevel"
+        :can-toggle-metronome="props.toolbarState.canToggleMetronome"
+        :can-adjust-metronome-volume="props.toolbarState.canAdjustMetronomeVolume"
         @set-bar-line="emit('set-bar-line')"
         @shift-left-large="emit('shift-left-large')"
         @shift-left-small="emit('shift-left-small')"
@@ -139,6 +149,8 @@ const isTop = props.position === 'top'
         @toggle-loop="emit('toggle-loop')"
         @toggle-master-tempo="emit('toggle-master-tempo')"
         @reset-tempo="emit('reset-tempo')"
+        @toggle-metronome="emit('toggle-metronome')"
+        @cycle-metronome-volume="emit('cycle-metronome-volume')"
         @select-move-target="emit('select-move-target', $event)"
       />
     </div>

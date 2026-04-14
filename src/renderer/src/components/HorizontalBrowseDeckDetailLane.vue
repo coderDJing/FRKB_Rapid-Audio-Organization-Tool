@@ -26,6 +26,8 @@ type HorizontalBrowseRawWaveformDetailExpose = {
   updateBpmInput: (value: string) => void
   blurBpmInput: () => void
   tapBpm: () => void
+  toggleMetronome: () => void
+  cycleMetronomeVolume: () => void
 }
 
 const props = defineProps<{
@@ -69,7 +71,9 @@ defineExpose({
   shiftGridLargeRight: () => detailRef.value?.shiftGridLargeRight?.(),
   updateBpmInput: (value: string) => detailRef.value?.updateBpmInput?.(value),
   blurBpmInput: () => detailRef.value?.blurBpmInput?.(),
-  tapBpm: () => detailRef.value?.tapBpm?.()
+  tapBpm: () => detailRef.value?.tapBpm?.(),
+  toggleMetronome: () => detailRef.value?.toggleMetronome?.(),
+  cycleMetronomeVolume: () => detailRef.value?.cycleMetronomeVolume?.()
 })
 </script>
 
