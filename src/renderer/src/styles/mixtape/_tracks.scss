@@ -445,28 +445,6 @@
   animation: lane-track-stem-placeholder-indeterminate 1s ease-in-out infinite;
 }
 
-.lane-track__stem-placeholder-skeleton {
-  display: flex;
-  gap: 4px;
-  margin-top: 1px;
-  opacity: 0.55;
-}
-
-.lane-track__stem-placeholder-skeleton span {
-  display: block;
-  height: 4px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.lane-track__stem-placeholder-skeleton .is-wide {
-  width: 56%;
-}
-
-.lane-track__stem-placeholder-skeleton .is-mid {
-  width: 32%;
-}
-
 .lane-track__stem-placeholder-actions {
   display: flex;
   justify-content: flex-start;

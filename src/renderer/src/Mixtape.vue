@@ -884,15 +884,6 @@ const handleGlobalBpmTrackTargetsSync = (nextTracks: MixtapeTrack[]) => {
                                 </div>
                                 <div
                                   v-if="
-                                    stemPlaceholderStateByTrackId[item.track.id].kind !== 'failed'
-                                  "
-                                  class="lane-track__stem-placeholder-skeleton"
-                                >
-                                  <span class="is-wide"></span>
-                                  <span class="is-mid"></span>
-                                </div>
-                                <div
-                                  v-if="
                                     stemPlaceholderStateByTrackId[item.track.id].kind === 'failed'
                                   "
                                   class="lane-track__stem-placeholder-actions"
