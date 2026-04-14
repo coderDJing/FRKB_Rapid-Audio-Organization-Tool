@@ -611,7 +611,7 @@ const handleSongDblClick = (song: ISongInfo, event?: MouseEvent) => {
   requestImmediateAnalysis(normalizedSong)
   if (runtime.mainWindowBrowseMode === 'horizontal') {
     emitter.emit('horizontalBrowse/load-song', {
-      deck: event?.altKey ? 'bottom' : 'top',
+      deck: event?.shiftKey ? 'bottom' : 'top',
       song: normalizedSong
     })
     return

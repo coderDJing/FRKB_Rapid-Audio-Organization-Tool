@@ -33,8 +33,10 @@ import {
   resolveHorizontalBrowseDefaultCuePointSec
 } from '@renderer/components/horizontalBrowseDetailMath'
 import { createHorizontalBrowseDeckEjectHandler } from '@renderer/components/useHorizontalBrowseDeckEject'
+import { useHorizontalBrowseDeckDelete } from '@renderer/components/useHorizontalBrowseDeckDelete'
 import { useHorizontalBrowseDeckMove } from '@renderer/components/useHorizontalBrowseDeckMove'
 import { useHorizontalBrowseDeckSongs } from '@renderer/components/useHorizontalBrowseDeckSongs'
+import { useHorizontalBrowseHotkeys } from '@renderer/components/useHorizontalBrowseHotkeys'
 import { useHorizontalBrowseDeckTempoControls } from '@renderer/components/useHorizontalBrowseDeckTempoControls'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { isHarmonicMixCompatible } from '@shared/keyDisplay'
@@ -111,6 +113,8 @@ const createDefaultDeckWaveformDragState = (): DeckWaveformDragState => ({
 })
 const FADER_TRAVEL_INSET_RATIO = 0.17
 const CUE_POINT_TRIGGER_EPSILON_SEC = 0.05
+const CROSSFADER_KEY_STEP = 0.25
+const BAR_JUMP_BEATS = 4
 
 const runtime = useRuntimeStore()
 const {
@@ -784,6 +788,41 @@ const handleDeckPlayheadSeek = (deck: DeckKey, seconds: number) => {
   })
 }
 
+const seekDeckToSeconds = (deck: DeckKey, seconds: number) => {
+  touchDeckInteraction(deck)
+  const durationSeconds = resolveDeckDurationSeconds(deck)
+  const nextSeconds = clampNumber(
+    Number(seconds) || 0,
+    0,
+    durationSeconds > 0 ? durationSeconds : Number.MAX_SAFE_INTEGER
+  )
+  void (async () => {
+    await nativeTransport.seek(deck, nextSeconds)
+    if (resolveDeckPlaying(deck) && resolveTransportDeckSnapshot(deck).syncEnabled) {
+      await nativeTransport.beatsync(deck)
+    }
+    syncDeckRenderState()
+  })().catch(() => {})
+}
+
+const handleDeckBarJump = (deck: DeckKey, direction: -1 | 1) => {
+  const gridBpm = Number(resolveDeckGridBpm(deck))
+  if (!Number.isFinite(gridBpm) || gridBpm <= 0) return
+  const deltaSeconds = (60 / gridBpm) * BAR_JUMP_BEATS * direction
+  seekDeckToSeconds(deck, resolveDeckCurrentSeconds(deck) + deltaSeconds)
+}
+
+const handleDeckSeekPercent = (deck: DeckKey, percent: number) => {
+  const safePercent = clampNumber(Number(percent) || 0, 0, 1)
+  if (safePercent === 0) {
+    seekDeckToSeconds(deck, 0)
+    return
+  }
+  const durationSeconds = resolveDeckDurationSeconds(deck)
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return
+  seekDeckToSeconds(deck, durationSeconds * safePercent)
+}
+
 const isDeckStoppedAtCuePoint = (deck: DeckKey) => {
   if (resolveDeckPlaying(deck) || !resolveDeckSong(deck)) return false
   const cueSeconds = resolveDeckCuePointRef(deck).value
@@ -915,6 +954,24 @@ const handleDeckCueClick = (deck: DeckKey) => {
   void handleDeckSetCueFromCurrentPosition(deck)
 }
 
+const handleDeckCueHotkeyDown = (deck: DeckKey) => {
+  touchDeckInteraction(deck)
+  if (resolveDeckPlaying(deck)) {
+    void handleDeckBackCue(deck)
+    return false
+  }
+  if (!isDeckStoppedAtCuePoint(deck)) {
+    void handleDeckSetCueFromCurrentPosition(deck)
+    return false
+  }
+  startDeckCuePreview(deck, -1)
+  return true
+}
+
+const handleDeckCueHotkeyUp = (deck: DeckKey) => {
+  stopDeckCuePreview(deck)
+}
+
 const handleDeckPlayPauseToggle = (deck: DeckKey) => {
   touchDeckInteraction(deck)
   const nextPlaying = deck === 'top' ? !topDeckUiPlaying.value : !bottomDeckUiPlaying.value
@@ -985,6 +1042,49 @@ const triggerDeckBeatSync = async (deck: DeckKey) => {
   }
   syncDeckRenderState()
 }
+
+const handleCrossfaderNudgeByKeyboard = (direction: -1 | 1) => {
+  syncCrossfaderValue(faderValue.value + direction * CROSSFADER_KEY_STEP)
+}
+
+const handleCrossfaderResetByKeyboard = () => {
+  syncCrossfaderValue(0)
+}
+
+const handleDeckMoveToFilterHotkey = (deck: DeckKey) => {
+  touchDeckInteraction(deck)
+  openDeckMoveDialog(deck, 'FilterLibrary')
+}
+
+const handleDeckMoveToCuratedHotkey = (deck: DeckKey) => {
+  touchDeckInteraction(deck)
+  openDeckMoveDialog(deck, 'CuratedLibrary')
+}
+
+const { deleteDeckSong } = useHorizontalBrowseDeckDelete({
+  runtime,
+  getDeckSong: resolveDeckSong,
+  ejectDeckSong: handleDeckEjectSong
+})
+
+const handleDeckDeleteHotkey = (deck: DeckKey) => {
+  touchDeckInteraction(deck)
+  void deleteDeckSong(deck)
+}
+
+useHorizontalBrowseHotkeys({
+  runtime,
+  onTogglePlayPause: handleDeckPlayPauseToggle,
+  onCueKeyDown: handleDeckCueHotkeyDown,
+  onCueKeyUp: handleDeckCueHotkeyUp,
+  onJumpBar: handleDeckBarJump,
+  onMoveToFilter: handleDeckMoveToFilterHotkey,
+  onMoveToCurated: handleDeckMoveToCuratedHotkey,
+  onDelete: handleDeckDeleteHotkey,
+  onSeekPercent: handleDeckSeekPercent,
+  onNudgeCrossfader: handleCrossfaderNudgeByKeyboard,
+  onResetCrossfader: handleCrossfaderResetByKeyboard
+})
 
 const resolveDeckDragDepth = (deck: DeckKey) => {
   if (deck === 'top') {
