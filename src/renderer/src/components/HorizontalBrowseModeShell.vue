@@ -22,10 +22,7 @@ import {
   isSameHorizontalBrowseSongFilePath,
   mergeHorizontalBrowseSongWithSharedGrid
 } from '@renderer/components/horizontalBrowseShellSongs'
-import {
-  formatPreviewBpm,
-  parsePreviewBpmInput
-} from '@renderer/components/MixtapeBeatAlignDialog.constants'
+import { formatPreviewBpm } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
 import { createHorizontalBrowseNativeTransport } from '@renderer/components/horizontalBrowseNativeTransport'
 import {
@@ -38,6 +35,8 @@ import { useHorizontalBrowseDeckMove } from '@renderer/components/useHorizontalB
 import { useHorizontalBrowseDeckSongs } from '@renderer/components/useHorizontalBrowseDeckSongs'
 import { useHorizontalBrowseHotkeys } from '@renderer/components/useHorizontalBrowseHotkeys'
 import { useHorizontalBrowseDeckTempoControls } from '@renderer/components/useHorizontalBrowseDeckTempoControls'
+import { useHorizontalBrowseDeckToolbarInteractions } from '@renderer/components/useHorizontalBrowseDeckToolbarInteractions'
+import { useHorizontalBrowseDeckTransportInteractions } from '@renderer/components/useHorizontalBrowseDeckTransportInteractions'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { isHarmonicMixCompatible } from '@shared/keyDisplay'
 import emitter from '@renderer/utils/mitt'
@@ -68,25 +67,13 @@ type SharedDetailZoomState = {
   sourceDirection: 'up' | 'down' | null
   revision: number
 }
-type DeckCuePreviewState = {
-  active: boolean
-  pointerId: number | null
-  cueSeconds: number
-  syncEnabledBefore: boolean
-  syncLockBefore: string
-  token: number
-}
-
-type DeckWaveformDragState = {
-  active: boolean
-  wasPlaying: boolean
-  syncEnabledBefore: boolean
-  token: number
-}
-
-type DeckWaveformDragEndPayload = {
-  anchorSec: number
-  committed: boolean
+type HorizontalBrowseDeckDetailLaneExpose = {
+  toggleBarLinePicking?: () => void
+  setBarLineAtPlayhead?: () => void
+  shiftGridLargeLeft?: () => void
+  shiftGridSmallLeft?: () => void
+  shiftGridSmallRight?: () => void
+  shiftGridLargeRight?: () => void
 }
 
 const createDefaultDeckToolbarState = () => ({
@@ -97,24 +84,8 @@ const createDefaultDeckToolbarState = () => ({
   bpmMax: 300,
   barLinePicking: false
 })
-const createDefaultDeckCuePreviewState = (): DeckCuePreviewState => ({
-  active: false,
-  pointerId: null,
-  cueSeconds: 0,
-  syncEnabledBefore: false,
-  syncLockBefore: 'off',
-  token: 0
-})
-const createDefaultDeckWaveformDragState = (): DeckWaveformDragState => ({
-  active: false,
-  wasPlaying: false,
-  syncEnabledBefore: false,
-  token: 0
-})
 const FADER_TRAVEL_INSET_RATIO = 0.17
-const CUE_POINT_TRIGGER_EPSILON_SEC = 0.05
 const CROSSFADER_KEY_STEP = 0.25
-const BAR_JUMP_BEATS = 4
 
 const runtime = useRuntimeStore()
 const {
@@ -125,8 +96,8 @@ const {
 } = useHorizontalBrowseDeckSongs()
 const topDeckCuePointSeconds = ref(0)
 const bottomDeckCuePointSeconds = ref(0)
-const topDetailRef = ref<any | null>(null)
-const bottomDetailRef = ref<any | null>(null)
+const topDetailRef = ref<HorizontalBrowseDeckDetailLaneExpose | null>(null)
+const bottomDetailRef = ref<HorizontalBrowseDeckDetailLaneExpose | null>(null)
 const faderRef = ref<HTMLElement | null>(null)
 const faderRailRef = ref<HTMLElement | null>(null)
 const topDeckToolbarState = ref(createDefaultDeckToolbarState())
@@ -193,19 +164,6 @@ const deckTempoCommitToken = reactive<Record<DeckKey, number>>({
   top: 0,
   bottom: 0
 })
-const deckCuePreviewState = reactive<Record<DeckKey, DeckCuePreviewState>>({
-  top: createDefaultDeckCuePreviewState(),
-  bottom: createDefaultDeckCuePreviewState()
-})
-const deckWaveformDragState = reactive<Record<DeckKey, DeckWaveformDragState>>({
-  top: createDefaultDeckWaveformDragState(),
-  bottom: createDefaultDeckWaveformDragState()
-})
-const deckPendingPlayOnLoad = reactive<Record<DeckKey, boolean>>({
-  top: false,
-  bottom: false
-})
-const suppressDeckCueClick = reactive<Record<DeckKey, boolean>>({ top: false, bottom: false })
 const deckInteractionOrder = reactive<Record<DeckKey, number>>({
   top: 0,
   bottom: 0
@@ -364,9 +322,10 @@ const resolveTransportDeckSnapshot = (deck: DeckKey) =>
   deck === 'top' ? nativeTransport.state.top : nativeTransport.state.bottom
 const resolveDeckCuePointRef = (deck: DeckKey) =>
   deck === 'top' ? topDeckCuePointSeconds : bottomDeckCuePointSeconds
-const resolveDeckCuePreviewRuntimeState = (deck: DeckKey) => deckCuePreviewState[deck]
 const resolveDeckCurrentSeconds = (deck: DeckKey) =>
   Number(resolveTransportDeckSnapshot(deck).currentSec) || 0
+const resolveDeckRenderCurrentSeconds = (deck: DeckKey) =>
+  deck === 'top' ? topDeckRenderCurrentSeconds.value : bottomDeckRenderCurrentSeconds.value
 const resolveDeckDurationSeconds = (deck: DeckKey) =>
   resolveHorizontalBrowseDeckDurationSeconds(
     resolveTransportDeckSnapshot(deck).durationSec,
@@ -393,38 +352,6 @@ const resolveDeckGridBpm = (deck: DeckKey) =>
   )
 const topDeckGridBpm = computed(() => resolveDeckGridBpm('top'))
 const bottomDeckGridBpm = computed(() => resolveDeckGridBpm('bottom'))
-const resolveDeckSyncUiEnabled = (deck: DeckKey) =>
-  resolveHorizontalBrowseDeckSyncUiEnabled(
-    Boolean(resolveDeckSong(deck)),
-    resolveTransportDeckSnapshot(deck).syncEnabled,
-    resolveDeckCuePreviewRuntimeState(deck).active,
-    resolveDeckCuePreviewRuntimeState(deck).syncEnabledBefore
-  )
-const resolveDeckSyncUiLock = (deck: DeckKey) =>
-  resolveHorizontalBrowseDeckSyncUiLock(
-    Boolean(resolveDeckSong(deck)),
-    resolveTransportDeckSnapshot(deck).syncLock,
-    resolveDeckCuePreviewRuntimeState(deck).active,
-    resolveDeckCuePreviewRuntimeState(deck).syncEnabledBefore,
-    resolveDeckCuePreviewRuntimeState(deck).syncLockBefore
-  )
-const resolveDeckRawLoadPriorityHint = (deck: DeckKey) => {
-  const recentBoost = deckRecentInteraction[deck] ? 1_000_000 : 0
-  const dragBoost = deckWaveformDragState[deck].active ? 2_000_000 : 0
-  const cuePreviewBoost = resolveDeckCuePreviewRuntimeState(deck).active ? 1_500_000 : 0
-  const playingBoost = resolveDeckPlaying(deck) ? 500_000 : 0
-  const loadedBoost = resolveDeckSong(deck) ? 100_000 : 0
-  return (
-    dragBoost +
-    cuePreviewBoost +
-    recentBoost +
-    playingBoost +
-    loadedBoost +
-    deckInteractionOrder[deck]
-  )
-}
-const topDeckRawLoadPriorityHint = computed(() => resolveDeckRawLoadPriorityHint('top'))
-const bottomDeckRawLoadPriorityHint = computed(() => resolveDeckRawLoadPriorityHint('bottom'))
 const deckKeysHarmonicMatched = computed(() =>
   isHarmonicMixCompatible(
     String(topDeckSong.value?.key || ''),
@@ -451,11 +378,6 @@ const resolveDeckToolbarBpmInputValue = (deck: DeckKey) => {
   }
   return toolbarState.bpmInputValue
 }
-const resolveDeckToolbarState = (deck: DeckKey) =>
-  buildHorizontalBrowseDeckToolbarState(
-    deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value,
-    resolveDeckToolbarBpmInputValue(deck)
-  )
 let renderSyncRaf = 0
 
 const buildDeckStateForNative = (deck: DeckKey, override?: DeckTransportStateOverride) => ({
@@ -503,6 +425,8 @@ const startRenderSyncLoop = () => {
   stopRenderSyncLoop()
   const tick = async () => {
     await syncNativeTransportNow().catch(() => {})
+    handleDeckLoopPlaybackTick('top')
+    handleDeckLoopPlaybackTick('bottom')
     renderSyncRaf = requestAnimationFrame(tick)
   }
   void tick()
@@ -597,6 +521,50 @@ const handleDeckMasterTempoToggle = (deck: DeckKey) => {
   })
 }
 
+const {
+  deckPendingPlayOnLoad,
+  suppressDeckCueClick,
+  isDeckWaveformDragging,
+  resolveDeckCuePreviewRuntimeState,
+  resolveDeckLoopRange,
+  resolveDeckLoopBeatLabel,
+  resolveDeckLoopDisabled,
+  isDeckLoopActive,
+  handleDeckLoopToggle,
+  handleDeckLoopStepDown,
+  handleDeckLoopStepUp,
+  handleDeckLoopPlaybackTick,
+  handleDeckRawWaveformDragStart,
+  handleDeckRawWaveformDragEnd,
+  handleDeckPlayheadSeek,
+  handleDeckBarJump,
+  handleDeckSeekPercent,
+  stopAllDeckCuePreview,
+  handleWindowDeckCuePointerUp,
+  handleDeckCuePointerDown,
+  handleDeckCueClick,
+  handleDeckCueHotkeyDown,
+  handleDeckCueHotkeyUp,
+  handleDeckPlayPauseToggle
+} = useHorizontalBrowseDeckTransportInteractions({
+  touchDeckInteraction,
+  nativeTransport,
+  syncDeckRenderState,
+  commitDeckStateToNative,
+  commitDeckStatesToNative,
+  resolveDeckSong,
+  resolveDeckGridBpm,
+  resolveDeckDurationSeconds,
+  resolveDeckCurrentSeconds,
+  resolveDeckRenderCurrentSeconds,
+  resolveDeckPlaying,
+  resolveDeckLoaded,
+  resolveDeckDecoding,
+  resolveTransportDeckSnapshot,
+  resolveDeckCuePointRef,
+  resolveCuePointSec: resolveHorizontalBrowseCuePointSec
+})
+
 const handleDeckEjectSong = createHorizontalBrowseDeckEjectHandler({
   resolveDeckCuePreviewRuntimeState,
   resolveTransportDeckSnapshot,
@@ -627,398 +595,73 @@ const handleSharedDetailZoomChange = (payload: {
   }
 }
 
-const handleToolbarStateChange = (
-  deck: DeckKey,
-  value: ReturnType<typeof createDefaultDeckToolbarState>
-) => {
-  const nextValue = deckTempoInputDirty[deck]
-    ? {
-        ...value,
-        bpmInputValue:
-          deck === 'top'
-            ? topDeckToolbarState.value.bpmInputValue
-            : bottomDeckToolbarState.value.bpmInputValue
-      }
-    : { ...value }
-  if (deck === 'top') {
-    topDeckToolbarState.value = nextValue
-    return
-  }
-  bottomDeckToolbarState.value = nextValue
-}
+const {
+  handleToolbarStateChange,
+  handleDeckBarLinePickingToggle,
+  handleDeckSetBarLineAtPlayhead,
+  handleDeckGridShiftLargeLeft,
+  handleDeckGridShiftSmallLeft,
+  handleDeckGridShiftSmallRight,
+  handleDeckGridShiftLargeRight,
+  handleDeckBpmInputUpdate,
+  handleDeckBpmInputBlur
+} = useHorizontalBrowseDeckToolbarInteractions({
+  topDeckToolbarState,
+  bottomDeckToolbarState,
+  deckTempoInputDirty,
+  deckTempoCommitToken,
+  touchDeckInteraction,
+  resolveDetailRef,
+  resolveDeckToolbarBpmInputValue,
+  setDeckTargetBpm
+})
 
-const handleDeckBarLinePickingToggle = (deck: DeckKey) => {
-  touchDeckInteraction(deck)
-  resolveDetailRef(deck)?.toggleBarLinePicking?.()
-}
-
-const handleDeckSetBarLineAtPlayhead = (deck: DeckKey) => {
-  touchDeckInteraction(deck)
-  resolveDetailRef(deck)?.setBarLineAtPlayhead?.()
-}
-
-const handleDeckGridShiftLargeLeft = (deck: DeckKey) => {
-  touchDeckInteraction(deck)
-  resolveDetailRef(deck)?.shiftGridLargeLeft?.()
-}
-
-const handleDeckGridShiftSmallLeft = (deck: DeckKey) => {
-  touchDeckInteraction(deck)
-  resolveDetailRef(deck)?.shiftGridSmallLeft?.()
-}
-
-const handleDeckGridShiftSmallRight = (deck: DeckKey) => {
-  touchDeckInteraction(deck)
-  resolveDetailRef(deck)?.shiftGridSmallRight?.()
-}
-
-const handleDeckGridShiftLargeRight = (deck: DeckKey) => {
-  touchDeckInteraction(deck)
-  resolveDetailRef(deck)?.shiftGridLargeRight?.()
-}
-
-const handleDeckBpmInputUpdate = (deck: DeckKey, value: string) => {
-  touchDeckInteraction(deck)
-  const nextToolbarState = deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value
-  deckTempoCommitToken[deck] += 1
-  deckTempoInputDirty[deck] = true
-  if (deck === 'top') {
-    topDeckToolbarState.value = { ...nextToolbarState, bpmInputValue: value }
-  } else {
-    bottomDeckToolbarState.value = { ...nextToolbarState, bpmInputValue: value }
-  }
-}
-
-const handleDeckBpmInputBlur = (deck: DeckKey) => {
-  touchDeckInteraction(deck)
-  const nextToolbarState = deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value
-  const parsed = parsePreviewBpmInput(nextToolbarState.bpmInputValue)
-  if (parsed === null) {
-    deckTempoInputDirty[deck] = false
-    deckTempoCommitToken[deck] += 1
-    const bpmInputValue = resolveDeckToolbarBpmInputValue(deck)
-    if (deck === 'top') {
-      topDeckToolbarState.value = { ...nextToolbarState, bpmInputValue }
-      return
-    }
-    bottomDeckToolbarState.value = { ...nextToolbarState, bpmInputValue }
-    return
-  }
-
-  const token = deckTempoCommitToken[deck] + 1
-  deckTempoCommitToken[deck] = token
-  if (deck === 'top') {
-    topDeckToolbarState.value = { ...nextToolbarState, bpmInputValue: formatPreviewBpm(parsed) }
-  } else {
-    bottomDeckToolbarState.value = { ...nextToolbarState, bpmInputValue: formatPreviewBpm(parsed) }
-  }
-
-  // 横推 BPM 输入只在失焦时提交，输入过程中只维护草稿值。
-  void setDeckTargetBpm(deck, parsed).finally(() => {
-    if (deckTempoCommitToken[deck] !== token) return
-    deckTempoInputDirty[deck] = false
-    const latestToolbarState =
-      deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value
-    const bpmInputValue = resolveDeckToolbarBpmInputValue(deck)
-    if (deck === 'top') {
-      topDeckToolbarState.value = { ...latestToolbarState, bpmInputValue }
-      return
-    }
-    bottomDeckToolbarState.value = { ...latestToolbarState, bpmInputValue }
-  })
-}
-
-const handleDeckRawWaveformDragStart = (deck: DeckKey) => {
-  touchDeckInteraction(deck)
-  const dragState = deckWaveformDragState[deck]
-  if (dragState.active) return
-
-  const snapshot = resolveTransportDeckSnapshot(deck)
-  dragState.active = true
-  dragState.wasPlaying = snapshot.playing
-  dragState.syncEnabledBefore = snapshot.syncEnabled
-  dragState.token += 1
-
-  if (!dragState.wasPlaying) return
-
-  const token = dragState.token
-  void nativeTransport
-    .setPlaying(deck, false)
-    .then(() => {
-      if (!deckWaveformDragState[deck].active || deckWaveformDragState[deck].token !== token) return
-      syncDeckRenderState()
-    })
-    .catch(() => {})
-}
-
-const handleDeckRawWaveformDragEnd = (deck: DeckKey, payload: DeckWaveformDragEndPayload) => {
-  touchDeckInteraction(deck)
-  const dragState = deckWaveformDragState[deck]
-  const shouldResume = dragState.wasPlaying
-  const syncEnabledBefore = dragState.syncEnabledBefore
-
-  dragState.active = false
-  dragState.wasPlaying = false
-  dragState.syncEnabledBefore = false
-  dragState.token += 1
-
-  if (!payload?.committed) return
-
-  const token = dragState.token
-  const targetSec = Math.max(0, Number(payload.anchorSec) || 0)
-  void (async () => {
-    await nativeTransport.seek(deck, targetSec)
-    if (deckWaveformDragState[deck].token !== token) return
-    if (shouldResume) {
-      if (syncEnabledBefore) {
-        await nativeTransport.beatsync(deck)
-        if (deckWaveformDragState[deck].token !== token) return
-      }
-      await nativeTransport.setPlaying(deck, true)
-      if (deckWaveformDragState[deck].token !== token) return
-    }
-    syncDeckRenderState()
-  })().catch(() => {})
-}
-
-const handleDeckPlayheadSeek = (deck: DeckKey, seconds: number) => {
-  touchDeckInteraction(deck)
-  void nativeTransport.seek(deck, seconds).then(() => {
-    syncDeckRenderState()
-  })
-}
-
-const seekDeckToSeconds = (deck: DeckKey, seconds: number) => {
-  touchDeckInteraction(deck)
-  const durationSeconds = resolveDeckDurationSeconds(deck)
-  const nextSeconds = clampNumber(
-    Number(seconds) || 0,
-    0,
-    durationSeconds > 0 ? durationSeconds : Number.MAX_SAFE_INTEGER
+const resolveDeckSyncUiEnabled = (deck: DeckKey) =>
+  resolveHorizontalBrowseDeckSyncUiEnabled(
+    Boolean(resolveDeckSong(deck)),
+    resolveTransportDeckSnapshot(deck).syncEnabled,
+    resolveDeckCuePreviewRuntimeState(deck).active,
+    resolveDeckCuePreviewRuntimeState(deck).syncEnabledBefore
   )
-  void (async () => {
-    await nativeTransport.seek(deck, nextSeconds)
-    if (resolveDeckPlaying(deck) && resolveTransportDeckSnapshot(deck).syncEnabled) {
-      await nativeTransport.beatsync(deck)
-    }
-    syncDeckRenderState()
-  })().catch(() => {})
-}
 
-const handleDeckBarJump = (deck: DeckKey, direction: -1 | 1) => {
-  const gridBpm = Number(resolveDeckGridBpm(deck))
-  if (!Number.isFinite(gridBpm) || gridBpm <= 0) return
-  const deltaSeconds = (60 / gridBpm) * BAR_JUMP_BEATS * direction
-  seekDeckToSeconds(deck, resolveDeckCurrentSeconds(deck) + deltaSeconds)
-}
-
-const handleDeckSeekPercent = (deck: DeckKey, percent: number) => {
-  const safePercent = clampNumber(Number(percent) || 0, 0, 1)
-  if (safePercent === 0) {
-    seekDeckToSeconds(deck, 0)
-    return
-  }
-  const durationSeconds = resolveDeckDurationSeconds(deck)
-  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return
-  seekDeckToSeconds(deck, durationSeconds * safePercent)
-}
-
-const isDeckStoppedAtCuePoint = (deck: DeckKey) => {
-  if (resolveDeckPlaying(deck) || !resolveDeckSong(deck)) return false
-  const cueSeconds = resolveDeckCuePointRef(deck).value
-  return Math.abs(resolveDeckCurrentSeconds(deck) - cueSeconds) <= CUE_POINT_TRIGGER_EPSILON_SEC
-}
-
-const handleDeckBackCue = async (
-  deck: DeckKey,
-  cueSeconds = resolveDeckCuePointRef(deck).value
-) => {
-  touchDeckInteraction(deck)
-  await nativeTransport.setPlaying(deck, false)
-  await nativeTransport.seek(deck, cueSeconds)
-  syncDeckRenderState()
-}
-
-const handleDeckSetCueFromCurrentPosition = async (deck: DeckKey) => {
-  touchDeckInteraction(deck)
-  const cueRef = resolveDeckCuePointRef(deck)
-  const song = resolveDeckSong(deck)
-  const nextCuePoint = resolveHorizontalBrowseCuePointSec(
-    song,
-    resolveDeckCurrentSeconds(deck),
-    resolveDeckDurationSeconds(deck)
+const resolveDeckSyncUiLock = (deck: DeckKey) =>
+  resolveHorizontalBrowseDeckSyncUiLock(
+    Boolean(resolveDeckSong(deck)),
+    resolveTransportDeckSnapshot(deck).syncLock,
+    resolveDeckCuePreviewRuntimeState(deck).active,
+    resolveDeckCuePreviewRuntimeState(deck).syncEnabledBefore,
+    resolveDeckCuePreviewRuntimeState(deck).syncLockBefore
   )
-  cueRef.value = nextCuePoint
-  await nativeTransport.seek(deck, nextCuePoint)
-  syncDeckRenderState()
+
+const resolveDeckRawLoadPriorityHint = (deck: DeckKey) => {
+  const recentBoost = deckRecentInteraction[deck] ? 1_000_000 : 0
+  const dragBoost = isDeckWaveformDragging(deck) ? 2_000_000 : 0
+  const cuePreviewBoost = resolveDeckCuePreviewRuntimeState(deck).active ? 1_500_000 : 0
+  const playingBoost = resolveDeckPlaying(deck) ? 500_000 : 0
+  const loadedBoost = resolveDeckSong(deck) ? 100_000 : 0
+  return (
+    dragBoost +
+    cuePreviewBoost +
+    recentBoost +
+    playingBoost +
+    loadedBoost +
+    deckInteractionOrder[deck]
+  )
 }
 
-const startDeckCuePreview = (deck: DeckKey, pointerId: number) => {
-  touchDeckInteraction(deck)
-  const cuePreviewState = resolveDeckCuePreviewRuntimeState(deck)
-  if (cuePreviewState.active) return
+const topDeckRawLoadPriorityHint = computed(() => resolveDeckRawLoadPriorityHint('top'))
+const bottomDeckRawLoadPriorityHint = computed(() => resolveDeckRawLoadPriorityHint('bottom'))
 
-  const snapshot = resolveTransportDeckSnapshot(deck)
-  cuePreviewState.active = true
-  cuePreviewState.pointerId = pointerId
-  cuePreviewState.cueSeconds = resolveDeckCuePointRef(deck).value
-  cuePreviewState.syncEnabledBefore = snapshot.syncEnabled
-  cuePreviewState.syncLockBefore = snapshot.syncLock
-  cuePreviewState.token += 1
-
-  const token = cuePreviewState.token
-  const syncEnabledBefore = cuePreviewState.syncEnabledBefore
-  void (async () => {
-    if (syncEnabledBefore) {
-      await nativeTransport.setSyncEnabled(deck, false)
+const resolveDeckToolbarState = (deck: DeckKey) =>
+  buildHorizontalBrowseDeckToolbarState(
+    deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value,
+    resolveDeckToolbarBpmInputValue(deck),
+    {
+      loopBeatLabel: resolveDeckLoopBeatLabel(deck),
+      loopActive: isDeckLoopActive(deck),
+      loopDisabled: resolveDeckLoopDisabled(deck)
     }
-    const latestState = resolveDeckCuePreviewRuntimeState(deck)
-    if (!latestState.active || latestState.token !== token) return
-    await nativeTransport.setPlaying(deck, true)
-    if (resolveDeckCuePreviewRuntimeState(deck).token !== token) return
-    syncDeckRenderState()
-  })()
-}
-
-const stopDeckCuePreview = (deck: DeckKey, pointerId?: number) => {
-  const cuePreviewState = resolveDeckCuePreviewRuntimeState(deck)
-  if (!cuePreviewState.active) return
-  if (typeof pointerId === 'number' && cuePreviewState.pointerId !== pointerId) return
-  touchDeckInteraction(deck)
-
-  const cueSeconds = cuePreviewState.cueSeconds
-  const syncEnabledBefore = cuePreviewState.syncEnabledBefore
-  cuePreviewState.active = false
-  cuePreviewState.pointerId = null
-  cuePreviewState.cueSeconds = 0
-  cuePreviewState.syncEnabledBefore = false
-  cuePreviewState.syncLockBefore = 'off'
-  cuePreviewState.token += 1
-
-  void (async () => {
-    await nativeTransport.setPlaying(deck, false).catch(() => {})
-    await nativeTransport.seek(deck, cueSeconds).catch(() => {})
-    if (syncEnabledBefore) {
-      await nativeTransport.setSyncEnabled(deck, true).catch(() => {})
-    }
-    syncDeckRenderState()
-  })()
-}
-
-const stopAllDeckCuePreview = () => {
-  stopDeckCuePreview('top')
-  stopDeckCuePreview('bottom')
-  suppressDeckCueClick.top = suppressDeckCueClick.bottom = false
-}
-
-const clearDeckCueClickSuppressSoon = () =>
-  requestAnimationFrame(() => {
-    suppressDeckCueClick.top = false
-    suppressDeckCueClick.bottom = false
-  })
-
-const handleWindowDeckCuePointerUp = (event: PointerEvent) => {
-  stopDeckCuePreview('top', event.pointerId)
-  stopDeckCuePreview('bottom', event.pointerId)
-  clearDeckCueClickSuppressSoon()
-}
-
-const handleDeckCuePointerDown = (deck: DeckKey, event: PointerEvent) => {
-  if (event.button !== 0) return
-  touchDeckInteraction(deck)
-  suppressDeckCueClick[deck] = true
-  event.preventDefault()
-
-  if (resolveDeckPlaying(deck)) {
-    void handleDeckBackCue(deck)
-    return
-  }
-  if (isDeckStoppedAtCuePoint(deck)) {
-    startDeckCuePreview(deck, event.pointerId)
-    return
-  }
-  void handleDeckSetCueFromCurrentPosition(deck)
-}
-
-const handleDeckCueClick = (deck: DeckKey) => {
-  touchDeckInteraction(deck)
-  if (suppressDeckCueClick[deck]) {
-    suppressDeckCueClick[deck] = false
-    return
-  }
-  if (resolveDeckPlaying(deck)) {
-    void handleDeckBackCue(deck)
-    return
-  }
-  if (isDeckStoppedAtCuePoint(deck)) return
-  void handleDeckSetCueFromCurrentPosition(deck)
-}
-
-const handleDeckCueHotkeyDown = (deck: DeckKey) => {
-  touchDeckInteraction(deck)
-  if (resolveDeckPlaying(deck)) {
-    void handleDeckBackCue(deck)
-    return false
-  }
-  if (!isDeckStoppedAtCuePoint(deck)) {
-    void handleDeckSetCueFromCurrentPosition(deck)
-    return false
-  }
-  startDeckCuePreview(deck, -1)
-  return true
-}
-
-const handleDeckCueHotkeyUp = (deck: DeckKey) => {
-  stopDeckCuePreview(deck)
-}
-
-const handleDeckPlayPauseToggle = (deck: DeckKey) => {
-  touchDeckInteraction(deck)
-  const nextPlaying = deck === 'top' ? !topDeckUiPlaying.value : !bottomDeckUiPlaying.value
-  void (async () => {
-    if (nextPlaying && !resolveDeckLoaded(deck)) {
-      deckPendingPlayOnLoad[deck] = true
-      await commitDeckStateToNative(deck)
-      console.info('[horizontal-browse-play] waiting for decode before play', {
-        deck,
-        filePath: resolveDeckSong(deck)?.filePath || '',
-        decoding: resolveDeckDecoding(deck)
-      })
-      return
-    }
-    deckPendingPlayOnLoad[deck] = false
-    if (nextPlaying && resolveTransportDeckSnapshot(deck).syncEnabled) {
-      await commitDeckStatesToNative()
-      await nativeTransport.beatsync(deck)
-    }
-    await nativeTransport.setPlaying(deck, nextPlaying)
-    syncDeckRenderState()
-  })()
-}
-
-watch(
-  () =>
-    [
-      resolveDeckLoaded('top'),
-      resolveDeckDecoding('top'),
-      resolveDeckLoaded('bottom'),
-      resolveDeckDecoding('bottom')
-    ] as const,
-  ([topLoaded, topDecoding, bottomLoaded, bottomDecoding]) => {
-    const maybeResumePendingPlay = (deck: DeckKey, loaded: boolean, decoding: boolean) => {
-      if (!deckPendingPlayOnLoad[deck] || !loaded) return
-      deckPendingPlayOnLoad[deck] = false
-      console.info('[horizontal-browse-play] decode ready, resuming pending play', {
-        deck,
-        filePath: resolveDeckSong(deck)?.filePath || '',
-        decoding
-      })
-      void handleDeckPlayPauseToggle(deck)
-    }
-    maybeResumePendingPlay('top', topLoaded, topDecoding)
-    maybeResumePendingPlay('bottom', bottomLoaded, bottomDecoding)
-  }
-)
+  )
 
 const toggleDeckMaster = async (deck: DeckKey) => {
   touchDeckInteraction(deck)
@@ -1294,6 +937,7 @@ onUnmounted(() => {
         :current-seconds="topDeckRenderCurrentSeconds"
         :duration-seconds="topDeckDurationSeconds"
         :toolbar-state="resolveDeckToolbarState('top')"
+        :loop-range="resolveDeckLoopRange('top')"
         :read-only-source="isDeckSongReadOnly('top')"
         :master-tempo-enabled="isDeckMasterTempoEnabled('top')"
         @region-drag-enter="handleRegionDragEnter"
@@ -1312,6 +956,9 @@ onUnmounted(() => {
         @update-bpm-input="handleDeckBpmInputUpdate('top', $event)"
         @blur-bpm-input="handleDeckBpmInputBlur('top')"
         @toggle-bar-line-picking="handleDeckBarLinePickingToggle('top')"
+        @loop-step-down="handleDeckLoopStepDown('top')"
+        @loop-step-up="handleDeckLoopStepUp('top')"
+        @toggle-loop="handleDeckLoopToggle('top')"
         @toggle-master-tempo="handleDeckMasterTempoToggle('top')"
         @reset-tempo="resetDeckTempo('top')"
         @select-move-target="openDeckMoveDialog('top', $event)"
@@ -1326,6 +973,7 @@ onUnmounted(() => {
           :playing="topDeckUiPlaying"
           :playback-rate="topDeckPlaybackRate"
           :grid-bpm="topDeckGridBpm"
+          :loop-range="resolveDeckLoopRange('top')"
           :cue-seconds="topDeckCuePointSeconds"
           :defer-waveform-load="topDeckShouldDeferWaveformLoad"
           :raw-load-priority-hint="topDeckRawLoadPriorityHint"
@@ -1350,6 +998,7 @@ onUnmounted(() => {
           :playing="bottomDeckUiPlaying"
           :playback-rate="bottomDeckPlaybackRate"
           :grid-bpm="bottomDeckGridBpm"
+          :loop-range="resolveDeckLoopRange('bottom')"
           :cue-seconds="bottomDeckCuePointSeconds"
           :defer-waveform-load="bottomDeckShouldDeferWaveformLoad"
           :raw-load-priority-hint="bottomDeckRawLoadPriorityHint"
@@ -1382,6 +1031,7 @@ onUnmounted(() => {
         :current-seconds="bottomDeckRenderCurrentSeconds"
         :duration-seconds="bottomDeckDurationSeconds"
         :toolbar-state="resolveDeckToolbarState('bottom')"
+        :loop-range="resolveDeckLoopRange('bottom')"
         :read-only-source="isDeckSongReadOnly('bottom')"
         :master-tempo-enabled="isDeckMasterTempoEnabled('bottom')"
         @region-drag-enter="handleRegionDragEnter"
@@ -1400,6 +1050,9 @@ onUnmounted(() => {
         @update-bpm-input="handleDeckBpmInputUpdate('bottom', $event)"
         @blur-bpm-input="handleDeckBpmInputBlur('bottom')"
         @toggle-bar-line-picking="handleDeckBarLinePickingToggle('bottom')"
+        @loop-step-down="handleDeckLoopStepDown('bottom')"
+        @loop-step-up="handleDeckLoopStepUp('bottom')"
+        @toggle-loop="handleDeckLoopToggle('bottom')"
         @toggle-master-tempo="handleDeckMasterTempoToggle('bottom')"
         @reset-tempo="resetDeckTempo('bottom')"
         @select-move-target="openDeckMoveDialog('bottom', $event)"

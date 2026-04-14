@@ -13,6 +13,14 @@ type DeckToolbarState = {
   bpmMin: number
   bpmMax: number
   barLinePicking: boolean
+  loopBeatLabel: string
+  loopActive: boolean
+  loopDisabled: boolean
+}
+
+type HorizontalBrowseLoopRange = {
+  startSec: number
+  endSec: number
 }
 
 const props = defineProps<{
@@ -28,6 +36,7 @@ const props = defineProps<{
   currentSeconds: number
   durationSeconds: number
   toolbarState: DeckToolbarState
+  loopRange: HorizontalBrowseLoopRange | null
   readOnlySource: boolean
   masterTempoEnabled: boolean
 }>()
@@ -49,6 +58,9 @@ const emit = defineEmits<{
   (event: 'update-bpm-input', value: string): void
   (event: 'blur-bpm-input'): void
   (event: 'toggle-bar-line-picking'): void
+  (event: 'loop-step-down'): void
+  (event: 'loop-step-up'): void
+  (event: 'toggle-loop'): void
   (event: 'toggle-master-tempo'): void
   (event: 'reset-tempo'): void
   (event: 'select-move-target', target: HorizontalBrowseDeckMoveTargetLibrary): void
@@ -97,6 +109,7 @@ const isTop = props.position === 'top'
         :song="props.song"
         :current-seconds="props.currentSeconds"
         :duration-seconds="props.durationSeconds"
+        :loop-range="props.loopRange"
         @seek="emit('seek', $event)"
       />
       <HorizontalBrowseDeckToolbarRow
@@ -107,6 +120,9 @@ const isTop = props.position === 'top'
         :bpm-min="props.toolbarState.bpmMin"
         :bpm-max="props.toolbarState.bpmMax"
         :bar-line-picking="props.toolbarState.barLinePicking"
+        :loop-beat-label="props.toolbarState.loopBeatLabel"
+        :loop-active="props.toolbarState.loopActive"
+        :loop-disabled="props.toolbarState.loopDisabled"
         :song-present="!!props.song"
         :read-only-source="props.readOnlySource"
         :master-tempo-enabled="props.masterTempoEnabled"
@@ -118,6 +134,9 @@ const isTop = props.position === 'top'
         @update-bpm-input="emit('update-bpm-input', $event)"
         @blur-bpm-input="emit('blur-bpm-input')"
         @toggle-bar-line-picking="emit('toggle-bar-line-picking')"
+        @loop-step-down="emit('loop-step-down')"
+        @loop-step-up="emit('loop-step-up')"
+        @toggle-loop="emit('toggle-loop')"
         @toggle-master-tempo="emit('toggle-master-tempo')"
         @reset-tempo="emit('reset-tempo')"
         @select-move-target="emit('select-move-target', $event)"

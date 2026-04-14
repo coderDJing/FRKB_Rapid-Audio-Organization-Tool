@@ -11,6 +11,9 @@ const props = defineProps<{
   bpmMin: number
   bpmMax: number
   barLinePicking: boolean
+  loopBeatLabel: string
+  loopActive: boolean
+  loopDisabled: boolean
   songPresent: boolean
   readOnlySource: boolean
   masterTempoEnabled: boolean
@@ -25,6 +28,9 @@ const emit = defineEmits<{
   (event: 'update-bpm-input', value: string): void
   (event: 'blur-bpm-input'): void
   (event: 'toggle-bar-line-picking'): void
+  (event: 'loop-step-down'): void
+  (event: 'loop-step-up'): void
+  (event: 'toggle-loop'): void
   (event: 'toggle-master-tempo'): void
   (event: 'reset-tempo'): void
   (event: 'select-move-target', target: HorizontalBrowseDeckMoveTargetLibrary): void
@@ -49,6 +55,43 @@ const emit = defineEmits<{
         @update-bpm-input="emit('update-bpm-input', $event)"
         @blur-bpm-input="emit('blur-bpm-input')"
       />
+      <div class="overview__loop-control">
+        <button
+          type="button"
+          class="overview__loop-arrow"
+          :disabled="props.loopDisabled"
+          title="Loop 缩短"
+          aria-label="Loop 缩短"
+          @click="emit('loop-step-down')"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M10.5 3.5 6 8l4.5 4.5"></path>
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="overview__loop-value"
+          :class="{ 'is-active': props.loopActive }"
+          :disabled="props.loopDisabled"
+          title="Toggle Loop"
+          aria-label="Toggle Loop"
+          @click="emit('toggle-loop')"
+        >
+          {{ props.loopBeatLabel }}
+        </button>
+        <button
+          type="button"
+          class="overview__loop-arrow"
+          :disabled="props.loopDisabled"
+          title="Loop 加长"
+          aria-label="Loop 加长"
+          @click="emit('loop-step-up')"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M5.5 3.5 10 8l-4.5 4.5"></path>
+          </svg>
+        </button>
+      </div>
       <button
         type="button"
         class="overview__set-bar-btn"
@@ -117,6 +160,73 @@ const emit = defineEmits<{
   align-items: center;
   gap: 6px;
   margin-left: auto;
+}
+
+.overview__loop-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.overview__loop-arrow,
+.overview__loop-value {
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elev);
+  color: var(--text);
+  box-sizing: border-box;
+  cursor: pointer;
+  transition:
+    border-color 0.14s ease,
+    background-color 0.14s ease,
+    color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+
+.overview__loop-arrow {
+  width: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.overview__loop-arrow svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.overview__loop-value {
+  min-width: 44px;
+  padding: 0 10px;
+  font-size: 12px;
+  line-height: 22px;
+  white-space: nowrap;
+}
+
+.overview__loop-arrow:hover:not(:disabled),
+.overview__loop-value:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
+.overview__loop-value.is-active {
+  color: var(--shell-cue-accent, #d98921);
+  border-color: color-mix(in srgb, var(--shell-cue-accent, #d98921) 72%, var(--border));
+  background: color-mix(in srgb, var(--shell-cue-accent, #d98921) 12%, var(--bg-elev));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--shell-cue-accent, #d98921) 22%, transparent);
+}
+
+.overview__loop-arrow:disabled,
+.overview__loop-value:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .overview__set-bar-btn {

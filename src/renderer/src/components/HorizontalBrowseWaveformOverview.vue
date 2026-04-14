@@ -17,6 +17,7 @@ const props = defineProps<{
   song: ISongInfo | null
   currentSeconds?: number
   durationSeconds?: number
+  loopRange?: { startSec: number; endSec: number } | null
 }>()
 
 const emit = defineEmits<{
@@ -94,6 +95,18 @@ const playheadLeft = computed(() => {
     ? Math.max(0, Math.min(1, current / totalSeconds.value))
     : 0
   return `${ratio * 100}%`
+})
+
+const loopMaskStyle = computed(() => {
+  const loopRange = props.loopRange
+  if (!loopRange || totalSeconds.value <= 0) return null
+  const startSec = Math.max(0, Number(loopRange.startSec) || 0)
+  const endSec = Math.max(startSec, Number(loopRange.endSec) || 0)
+  if (endSec <= startSec) return null
+  return {
+    left: `${(startSec / totalSeconds.value) * 100}%`,
+    width: `${((endSec - startSec) / totalSeconds.value) * 100}%`
+  }
 })
 
 const flushPendingSeek = () => {
@@ -687,6 +700,7 @@ onUnmounted(() => {
     @pointerdown.stop="handlePointerDown"
   >
     <canvas ref="canvasRef" class="overview-waveform__canvas"></canvas>
+    <div v-if="loopMaskStyle" class="overview-waveform__loop-mask" :style="loopMaskStyle"></div>
     <div
       v-if="playheadLeft !== null"
       class="overview-waveform__playhead"
@@ -710,6 +724,15 @@ onUnmounted(() => {
   display: block;
   width: 100%;
   height: 100%;
+  pointer-events: none;
+}
+
+.overview-waveform__loop-mask {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--shell-cue-accent, #d98921) 28%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--shell-cue-accent, #d98921) 44%, transparent);
   pointer-events: none;
 }
 

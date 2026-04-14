@@ -62,12 +62,20 @@ export const buildHorizontalBrowseDeckToolbarState = (
     bpmMax: number
     barLinePicking: boolean
   },
-  bpmInputValue: string
+  bpmInputValue: string,
+  loopState?: {
+    loopBeatLabel?: string
+    loopActive?: boolean
+    loopDisabled?: boolean
+  }
 ) => ({
   disabled: toolbarState.disabled,
   bpmInputValue,
   bpmStep: toolbarState.bpmStep,
   bpmMin: toolbarState.bpmMin,
   bpmMax: toolbarState.bpmMax,
-  barLinePicking: toolbarState.barLinePicking
+  barLinePicking: toolbarState.barLinePicking,
+  loopBeatLabel: loopState?.loopBeatLabel || '8',
+  loopActive: loopState?.loopActive === true,
+  loopDisabled: loopState?.loopDisabled === true
 })

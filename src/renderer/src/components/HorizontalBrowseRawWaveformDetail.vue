@@ -54,6 +54,11 @@ type HorizontalBrowseDragSessionEndPayload = {
   committed: boolean
 }
 
+type HorizontalBrowseLoopRange = {
+  startSec: number
+  endSec: number
+}
+
 const props = defineProps<{
   song: ISongInfo | null
   direction: 'up' | 'down'
@@ -62,6 +67,7 @@ const props = defineProps<{
   playing?: boolean
   playbackRate?: number
   gridBpm?: number
+  loopRange?: HorizontalBrowseLoopRange | null
   cueSeconds?: number
   deferWaveformLoad?: boolean
   rawLoadPriorityHint?: number
@@ -279,6 +285,21 @@ const handleWheel = (event: WheelEvent) => {
 const canAdjustGrid = computed(() => !previewLoading.value && !!mixxxData.value)
 const previewFirstBeatMsComputed = computed(() => Number(previewFirstBeatMs.value) || 0)
 const previewPlaying = ref(false)
+const loopMaskStyle = computed(() => {
+  const loopRange = props.loopRange
+  if (!loopRange) return null
+  const visibleDurationSec = resolveVisibleDurationSec()
+  if (!Number.isFinite(visibleDurationSec) || visibleDurationSec <= 0) return null
+  const viewStartSec = clampPreviewStart(previewStartSec.value)
+  const viewEndSec = viewStartSec + visibleDurationSec
+  const visibleStartSec = Math.max(viewStartSec, Number(loopRange.startSec) || 0)
+  const visibleEndSec = Math.min(viewEndSec, Number(loopRange.endSec) || 0)
+  if (visibleEndSec <= visibleStartSec) return null
+  return {
+    left: `${((visibleStartSec - viewStartSec) / visibleDurationSec) * 100}%`,
+    width: `${((visibleEndSec - visibleStartSec) / visibleDurationSec) * 100}%`
+  }
+})
 
 const {
   previewBarLinePicking,
@@ -617,6 +638,7 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
       ref="gridCanvasRef"
       class="raw-detail-waveform__canvas raw-detail-waveform__canvas--grid"
     ></canvas>
+    <div v-if="loopMaskStyle" class="raw-detail-waveform__loop-mask" :style="loopMaskStyle"></div>
     <div class="raw-detail-waveform__playhead"></div>
     <HorizontalBrowseCueMarker
       v-if="props.song"
@@ -661,6 +683,18 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
 
 .raw-detail-waveform__canvas--grid {
   pointer-events: none;
+}
+
+.raw-detail-waveform__loop-mask {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--shell-cue-accent, #d98921) 28%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--shell-cue-accent, #d98921) 46%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--shell-cue-accent, #d98921) 14%, transparent);
+  pointer-events: none;
+  z-index: 1;
 }
 
 .raw-detail-waveform__playhead {

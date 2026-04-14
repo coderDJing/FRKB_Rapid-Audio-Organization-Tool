@@ -11,6 +11,11 @@ type HorizontalBrowseSharedZoomState = {
   revision: number
 }
 
+type HorizontalBrowseLoopRange = {
+  startSec: number
+  endSec: number
+}
+
 type HorizontalBrowseRawWaveformDetailExpose = {
   toggleBarLinePicking: () => void
   setBarLineAtPlayhead: () => void
@@ -30,6 +35,7 @@ const props = defineProps<{
   playing: boolean
   playbackRate: number
   gridBpm: number
+  loopRange: HorizontalBrowseLoopRange | null
   cueSeconds: number
   deferWaveformLoad: boolean
   rawLoadPriorityHint: number
@@ -84,6 +90,7 @@ defineExpose({
       :playing="props.playing"
       :playback-rate="props.playbackRate"
       :grid-bpm="props.gridBpm"
+      :loop-range="props.loopRange"
       :cue-seconds="props.cueSeconds"
       :defer-waveform-load="props.deferWaveformLoad"
       :raw-load-priority-hint="props.rawLoadPriorityHint"
