@@ -166,7 +166,7 @@ const createWindow = (payload: MixtapeWindowPayload, windowKey: string) => {
     } catch {}
   }
 
-  if (!app.isPackaged) {
+  if (is.dev && process.env.FRKB_OPEN_DEVTOOLS === '1') {
     mixtapeWindow.webContents.openDevTools()
   }
 
