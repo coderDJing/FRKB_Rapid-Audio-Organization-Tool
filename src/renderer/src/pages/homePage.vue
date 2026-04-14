@@ -214,7 +214,9 @@ const isPioneerDeviceLibraryView = computed(
   () => runtime.libraryAreaSelected === 'PioneerDeviceLibrary'
 )
 const isLibraryPanelHidden = computed(() => isExternalPlaylistView.value || isRecycleBinView.value)
-const showMainSongPlayer = computed(() => runtime.mainWindowBrowseMode !== 'horizontal')
+const showMainSongPlayer = computed(
+  () => runtime.mainWindowBrowseMode !== 'horizontal' && Boolean(runtime.playingData.playingSong)
+)
 
 const clearMainPlayerPlaybackState = () => {
   const hasPlayingState =
@@ -492,7 +494,7 @@ const drop = async (e: DragEvent) => {
           <songsArea v-else style="width: 100%; height: 100%; min-width: 0" />
         </div>
       </div>
-      <div v-if="showMainSongPlayer" style="height: 50px; border-top: 1px solid var(--border)">
+      <div class="mainPlayerShell" :class="{ 'mainPlayerShell--visible': showMainSongPlayer }">
         <songPlayer />
       </div>
     </div>
@@ -505,10 +507,38 @@ const drop = async (e: DragEvent) => {
   min-width: 0;
   overflow: hidden;
   position: relative;
+  transition: height 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 
   &.mainContent--with-player {
     height: calc(100% - 51px);
   }
+}
+
+.mainPlayerShell {
+  height: 50px;
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(8px);
+  border-top: 1px solid transparent;
+  position: relative;
+  overflow: hidden;
+  transform-origin: bottom center;
+  transition:
+    max-height 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.18s ease,
+    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.18s ease;
+  pointer-events: none;
+}
+
+.mainPlayerShell--visible {
+  max-height: 50px;
+  opacity: 1;
+  transform: translateY(0);
+  border-top-color: var(--border);
+  overflow: visible;
+  pointer-events: auto;
+  z-index: 2;
 }
 
 .libraryPanel {
@@ -529,6 +559,11 @@ const drop = async (e: DragEvent) => {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .mainContent,
+  .mainPlayerShell {
+    transition: none;
+  }
+
   .libraryPanel.librarySwitching {
     animation: none;
   }

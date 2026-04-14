@@ -29,13 +29,13 @@
     "name": "快速音频整理工具"
   },
   "modeSwitcher": {
-    "browser": "完整模式",
+    "browser": "浏览器模式",
     "horizontal": "双轨模式"
   },
   "menu": {
     "file": "文件(F)",
     "browseMode": "浏览模式(M)",
-    "fullBrowseMode": "完整浏览模式",
+    "fullBrowseMode": "浏览器模式",
     "horizontalBrowseMode": "双轨横推模式",
     "migration": "迁移(G)",
     "help": "帮助(H)",

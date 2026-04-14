@@ -25,6 +25,9 @@ type KeyAnalysisWorkerPoolDeps = {
   preemptedJobs: Map<number, KeyAnalysisPreemptionKind>
   getForegroundWorker: () => Worker | null
   setForegroundWorker: (worker: Worker | null) => void
+  markExpectedWorkerTermination: (worker: Worker, reason: string) => void
+  clearExpectedWorkerTermination: (worker: Worker) => void
+  consumeExpectedWorkerTermination: (worker: Worker) => string | null
   persistence: KeyAnalysisPersistence
   background: KeyAnalysisBackground
   enqueue: (
@@ -45,6 +48,13 @@ type KeyAnalysisWorkerPoolDeps = {
 }
 
 export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => {
+  const terminateWorker = (worker: Worker, reason: string) => {
+    deps.markExpectedWorkerTermination(worker, reason)
+    void worker.terminate().catch(() => {
+      deps.clearExpectedWorkerTermination(worker)
+    })
+  }
+
   const removeWorkerFromList = (list: Worker[], worker: Worker) => {
     const idx = list.indexOf(worker)
     if (idx !== -1) list.splice(idx, 1)
@@ -164,7 +174,9 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
   const handleWorkerFailure = (worker: Worker, error: Error) => {
     const jobId = deps.busy.get(worker)
     const preemptionKind = typeof jobId === 'number' ? deps.preemptedJobs.get(jobId) : undefined
+    const expectedTerminationReason = deps.consumeExpectedWorkerTermination(worker)
     const wasPreempted = preemptionKind !== undefined
+    const wasExpectedTermination = Boolean(expectedTerminationReason)
     const wasForegroundWorker = deps.getForegroundWorker() === worker
     let preemptedJob: KeyAnalysisJob | null = null
     let job: KeyAnalysisJob | undefined
@@ -176,11 +188,11 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       job = deps.inFlight.get(jobId)
       if (job) {
         const wasTimedOut = typeof job.trace?.timedOutAt === 'number'
-        if (!wasPreempted && !wasTimedOut) {
+        if (!wasPreempted && !wasTimedOut && !wasExpectedTermination) {
           deps.onJobFailure(job, failureReason, String(error?.message || error).slice(0, 300))
         }
         if (job.source === 'background') {
-          if (!wasPreempted) {
+          if (!wasPreempted && !wasExpectedTermination) {
             const errorMsg = `[闲时分析] Worker 崩溃 - ${path.basename(job.filePath)}`
             log.error(errorMsg, error)
           }
@@ -204,7 +216,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
             partialBpmPersisted: trace?.partialBpmPersisted === true,
             detail: trace?.detail
           }
-          if (!wasPreempted) {
+          if (!wasPreempted && !wasExpectedTermination) {
             log.warn('[闲时分析] 前台任务 worker 异常退出', logPayload)
           }
         }
@@ -222,8 +234,10 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       }
       deps.busy.delete(worker)
     } else {
-      const errorMsg = '[闲时分析] Worker 崩溃（无关联任务）'
-      log.error(errorMsg, error)
+      if (!wasExpectedTermination) {
+        const errorMsg = '[闲时分析] Worker 崩溃（无关联任务）'
+        log.error(errorMsg, error)
+      }
     }
 
     removeWorkerFromList(deps.workers, worker)
@@ -403,7 +417,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
         typeof foregroundJobId === 'number' ? deps.inFlight.get(foregroundJobId) : null
       if (typeof foregroundJobId === 'number' && canPreempt(foregroundJob)) {
         deps.preemptedJobs.set(foregroundJobId, resolvePreemptionKind(foregroundJob!))
-        void foregroundWorker.terminate().catch(() => {})
+        terminateWorker(foregroundWorker, resolvePreemptionKind(foregroundJob!))
         return
       }
     }
@@ -412,7 +426,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       const job = deps.inFlight.get(jobId)
       if (canPreempt(job)) {
         deps.preemptedJobs.set(jobId, resolvePreemptionKind(job!))
-        void worker.terminate().catch(() => {})
+        terminateWorker(worker, resolvePreemptionKind(job!))
         return
       }
     }

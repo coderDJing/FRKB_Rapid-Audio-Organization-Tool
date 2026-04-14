@@ -51,6 +51,7 @@ export class KeyAnalysisQueue {
   private busy = new Map<Worker, number>()
   private inFlight = new Map<number, KeyAnalysisJob>()
   private preemptedJobs = new Map<number, KeyAnalysisPreemptionKind>()
+  private expectedWorkerTerminations = new WeakMap<Worker, string>()
   private focusPathBySlot = new Map<string, string>()
   private doneByPath = new Map<string, DoneEntry>()
   private failedByPath = new Map<string, KeyAnalysisFailureRecord>()
@@ -102,6 +103,13 @@ export class KeyAnalysisQueue {
       setForegroundWorker: (worker) => {
         this.foregroundWorker = worker
       },
+      markExpectedWorkerTermination: (worker, reason) => {
+        this.markExpectedWorkerTermination(worker, reason)
+      },
+      clearExpectedWorkerTermination: (worker) => {
+        this.clearExpectedWorkerTermination(worker)
+      },
+      consumeExpectedWorkerTermination: (worker) => this.consumeExpectedWorkerTermination(worker),
       persistence: this.persistence,
       background: this.background,
       enqueue: (filePath, priority, options) => this.enqueue(filePath, priority, options),
@@ -257,10 +265,27 @@ export class KeyAnalysisQueue {
       const job = this.inFlight.get(jobId)
       if (job && job.source === 'background') {
         this.background.unmarkProcessing(job.jobId)
-        void worker.terminate().catch(() => {})
+        this.markExpectedWorkerTermination(worker, 'background-cancel')
+        void worker.terminate().catch(() => {
+          this.clearExpectedWorkerTermination(worker)
+        })
       }
     }
     this.background.cancelBackgroundWork(pauseMs)
+  }
+
+  private markExpectedWorkerTermination(worker: Worker, reason: string) {
+    this.expectedWorkerTerminations.set(worker, reason)
+  }
+
+  private clearExpectedWorkerTermination(worker: Worker) {
+    this.expectedWorkerTerminations.delete(worker)
+  }
+
+  private consumeExpectedWorkerTermination(worker: Worker): string | null {
+    const reason = this.expectedWorkerTerminations.get(worker) || null
+    this.expectedWorkerTerminations.delete(worker)
+    return reason
   }
 
   private clearPendingBackground() {
@@ -334,7 +359,10 @@ export class KeyAnalysisQueue {
           const worker = this.findWorkerByJobId(previousJob.jobId)
           if (worker) {
             this.preemptedJobs.set(previousJob.jobId, 'focus-superseded')
-            void worker.terminate().catch(() => {})
+            this.markExpectedWorkerTermination(worker, 'focus-superseded')
+            void worker.terminate().catch(() => {
+              this.clearExpectedWorkerTermination(worker)
+            })
           }
         }
       }
@@ -839,7 +867,10 @@ export class KeyAnalysisQueue {
         timeoutMs,
         estimatedDurationSec
       })
-      void worker.terminate().catch(() => {})
+      this.markExpectedWorkerTermination(worker, 'timeout')
+      void worker.terminate().catch(() => {
+        this.clearExpectedWorkerTermination(worker)
+      })
     }, timeoutMs)
     this.jobTimeouts.set(job.jobId, timer)
   }

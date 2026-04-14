@@ -29,13 +29,13 @@
     "name": "Rapid Audio Organization Tool"
   },
   "modeSwitcher": {
-    "browser": "Full Mode",
+    "browser": "Browser Mode",
     "horizontal": "Dual-Track"
   },
   "menu": {
     "file": "File(F)",
     "browseMode": "Browse Mode(M)",
-    "fullBrowseMode": "Full Browser Mode",
+    "fullBrowseMode": "Browser Mode",
     "horizontalBrowseMode": "Dual-Track Horizontal Mode",
     "migration": "Migrate(G)",
     "help": "Help(H)",
